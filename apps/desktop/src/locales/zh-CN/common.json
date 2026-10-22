@@ -1,0 +1,112 @@
+{
+  "daemon": {
+    "connecting": "正在连接后台服务…",
+    "needsApproval": "Hermesh 的后台服务需要你在“系统设置 › 登录项”里允许后才能运行。",
+    "openLoginItems": "打开登录项设置",
+    "noResponse": "Hermesh 的后台服务没有响应。它通常会自动启动；如果一直这样，请重新打开 Hermesh。"
+  },
+  "window": {
+    "showSidebar": "显示边栏",
+    "hideSidebar": "隐藏边栏",
+    "undo": "撤销"
+  },
+  "status": {
+    "failed": "出错",
+    "waiting": "等回答",
+    "crashed": "已崩溃",
+    "preparing": "准备中",
+    "queued": "排队中"
+  },
+  "codeTiles": {
+    "label": "核对码"
+  },
+  "personal": {
+    "other": "其他 Agent",
+    "connectMessage": "请帮我把你接入我的电脑（Hermesh）：\n1. 安装：curl -fsSL https://github.com/hermeshai/hermesh/releases/latest/download/install.sh | sh -s -- --cli\n2. 登录：~/.local/bin/hermesh auth login {{address}} --name \"{{name}}\"\n3. 把屏幕上显示的核对码（Verification code）告诉我，我在 Mac 上确认后你就能用了。\n之后用 hermesh project list 看能用的项目，用 hermesh session start --project {{project}} --prompt \"…\" 开始工作，hermesh --help 查看全部命令。",
+    "connectLink": "连接 Hermesh：按 {{url}} 操作。你在 Hermesh 里的名字是「{{name}}」。",
+    "projectArg": "项目"
+  },
+  "sidebar": {
+    "label": "边栏",
+    "overview": "概览",
+    "search": "搜索",
+    "attention_other": "{{count}} 项需要处理",
+    "sessions": "会话",
+    "loadingOlder": "正在读取更早的会话…",
+    "noMatch": "没有符合筛选的会话",
+    "empty": "还没有会话<br/>授权连上后，它们干的活会出现在这里",
+    "noOlder": "没有更早的会话了",
+    "showArchived": "显示已归档",
+    "account": "账号与设置",
+    "connected_other": "已连接 · {{count}} 台机器在线",
+    "notConnected": "未连接",
+    "disconnectedGrant": "已断开的授权",
+    "archived": "已归档「{{title}}」",
+    "unarchived": "已取消归档「{{title}}」"
+  },
+  "accountMenu": {
+    "settings": "设置…",
+    "newGrant": "连接 agent…",
+    "addMachine": "添加机器…",
+    "enterCode": "输入配对码…",
+    "account": "账号…"
+  },
+  "sessionMenu": {
+    "open": "打开",
+    "archive": "归档",
+    "unarchive": "取消归档",
+    "onlyGrant": "只看「{{name}}」的会话",
+    "onlyProject": "只看「{{name}}」的会话",
+    "onlyMachine": "只看「{{name}}」上的会话",
+    "copyId": "拷贝会话 ID"
+  },
+  "filter": {
+    "title": "筛选会话",
+    "all": "全部",
+    "clear": "清除",
+    "remove": "去掉这个筛选",
+    "withArchived": "含已归档",
+    "hideArchived": "不显示已归档",
+    "showArchived": "显示已归档",
+    "grant": "授权",
+    "project": "项目",
+    "agent": "编码 agent",
+    "machine": "机器"
+  },
+  "search": {
+    "openSettings": "打开设置",
+    "title": "搜索会话",
+    "placeholder": "搜索会话标题、项目、授权…",
+    "all": "{{label}}：全部",
+    "includeArchived": "包含已归档",
+    "results": "搜索结果",
+    "found": "会话 · {{n}} 个",
+    "none": "没有找到会话",
+    "noneHint": "换个关键词，或者去掉筛选。已归档的会话要勾选「包含已归档」。",
+    "archived": "已归档",
+    "actions": "操作",
+    "select": "↑↓ 选择",
+    "open": "↩ 打开",
+    "narrow": "⌘↩ 在边栏中只看这些"
+  },
+  "tray": {
+    "attention": "需要处理",
+    "running": "进行中",
+    "update": "重新启动以更新到 {{version}}",
+    "open": "打开 Hermesh",
+    "settings": "设置",
+    "settingsTitle": "设置…",
+    "quit": "退出 Hermesh",
+    "chip": {
+      "ok": "正常",
+      "down": "正在重连",
+      "setup": "未设置",
+      "daemon": "未运行"
+    },
+    "online_other": "你的 agent 能用 {{count}} 台机器",
+    "noneOnline": "还没有在线的机器",
+    "down": "已断开，agent 暂时用不了你的机器",
+    "setup": "打开 Hermesh，完成设置",
+    "daemon": "后台服务没有响应"
+  }
+}

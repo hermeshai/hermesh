@@ -1,0 +1,86 @@
+{
+  "menu": {
+    "app": {
+      "about": "About Hermesh",
+      "services": "Services",
+      "hide": "Hide Hermesh",
+      "hideOthers": "Hide Others",
+      "unhide": "Show All",
+      "quit": "Quit Hermesh"
+    },
+    "settings": "Settings…",
+    "update": {
+      "install": "Restart to Update",
+      "check": "Check for Updates…",
+      "details": "Show Update Details…"
+    },
+    "file": {
+      "title": "File",
+      "newGrant": "Connect Agent…",
+      "addMachine": "Add Machine…",
+      "addProject": "Add Project…",
+      "enterCode": "Enter Pairing Code…",
+      "close": "Close Window"
+    },
+    "edit": {
+      "title": "Edit",
+      "undo": "Undo",
+      "redo": "Redo",
+      "cut": "Cut",
+      "copy": "Copy",
+      "paste": "Paste",
+      "selectAll": "Select All",
+      "find": "Find Session…",
+      "search": "Search"
+    },
+    "view": {
+      "title": "View",
+      "overview": "Overview",
+      "nextAttention": "Next Session That Needs You",
+      "nextActive": "Next Session in Progress",
+      "showInspector": "Show Info Panel",
+      "hideInspector": "Hide Info Panel",
+      "showSidebar": "Show Sidebar",
+      "hideSidebar": "Hide Sidebar",
+      "fullScreen": "Enter Full Screen"
+    },
+    "session": {
+      "title": "Session",
+      "answer": "Answer Question",
+      "interrupt": "Interrupt This Turn",
+      "copyId": "Copy Session ID",
+      "onlyGrant": "Show Only Sessions by “{{name}}”",
+      "onlyThisGrant": "Show Only This Agent’s Sessions",
+      "onlyProject": "Show Only Sessions in “{{name}}”",
+      "onlyThisProject": "Show Only This Project’s Sessions",
+      "archive": "Archive",
+      "unarchive": "Unarchive"
+    },
+    "window": {
+      "title": "Window",
+      "minimize": "Minimize",
+      "zoom": "Zoom",
+      "settings": "Settings"
+    },
+    "help": {
+      "title": "Help",
+      "help": "Hermesh Help",
+      "shortcuts": "Keyboard Shortcuts",
+      "report": "Report an Issue…",
+      "whatsNew": "What’s New"
+    }
+  },
+  "settingsWindow": "Settings",
+  "disconnectedGrant": "Disconnected agent",
+  "anAgent": "An agent",
+  "signInExpired": "Sign-in has expired. Please sign in again.",
+  "move": {
+    "title": "Move Hermesh to the Applications folder?",
+    "body": "Hermesh needs to be in the Applications folder to run in the background and keep itself up to date. It opens again from there.",
+    "move": "Move to Applications Folder",
+    "quit": "Quit",
+    "failedTitle": "Couldn’t move Hermesh to the Applications folder",
+    "failedBody": "Drag Hermesh to the Applications folder in Finder, then open it from there.",
+    "ok": "OK"
+  }
+}

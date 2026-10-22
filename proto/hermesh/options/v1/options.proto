@@ -1,0 +1,16 @@
+syntax = "proto3";
+
+package hermesh.options.v1;
+
+import "google/protobuf/descriptor.proto";
+
+// Access classifies an RPC for authorization and audit.
+enum Access {
+  ACCESS_UNSPECIFIED = 0;
+  ACCESS_READ = 1;
+  ACCESS_WRITE = 2;
+}
+
+extend google.protobuf.MethodOptions {
+  Access access = 50001;
+}

@@ -1,0 +1,13 @@
+version: v2
+plugins:
+  - local: packages/proto/node_modules/.bin/protoc-gen-es
+    out: packages/proto/src/gen
+    opt: target=ts
+inputs:
+  - directory: proto
+    paths:
+      - proto/hermesh/local
+      - proto/hermesh/session
+      - proto/hermesh/identity
+      - proto/hermesh/machine
+      - proto/hermesh/options

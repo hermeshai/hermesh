@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  Hermesh Signer keeps the root key in the data-protection Keychain, in its
+  own keychain group, so only binaries signed by our team with this group
+  can use it (docs/desktop-app.md 5.4). These entitlements are restricted:
+  they need the Developer ID provisioning profile for com.hermesh.app.signer
+  (team G4LW3GC2T7; it allows G4LW3GC2T7.*). scripts/build-signer.sh uses
+  this file only when HERMESH_SIGNER_PROFILE names that profile, and
+  replaces TEAMID with the profile's team. Without it (development builds)
+  the signer keeps the key's Secure Enclave handle in a file instead, which
+  any process of the user could use: release builds must have the profile.
+-->
+<plist version="1.0">
+<dict>
+  <key>com.apple.application-identifier</key><string>TEAMID.com.hermesh.app.signer</string>
+  <key>com.apple.developer.team-identifier</key><string>TEAMID</string>
+  <key>keychain-access-groups</key>
+  <array>
+    <string>TEAMID.com.hermesh.signer</string>
+  </array>
+</dict>
+</plist>

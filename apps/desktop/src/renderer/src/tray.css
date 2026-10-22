@@ -1,0 +1,30 @@
+/* The menu bar panel: on the window's popover material, a header with the
+   state, two count tiles and a footer (the menu bar's own spacing). */
+:root{--tp-tile:rgba(255,255,255,.7)}
+@media (prefers-color-scheme:dark){:root{--tp-tile:rgba(255,255,255,.06)}}
+html,body{height:auto}
+.tp{display:flex;flex-direction:column;color:var(--l1);font-size:13px;user-select:none;-webkit-user-select:none}
+.tp-head{display:flex;align-items:center;gap:8px;padding:13px 13px 0}
+.tp-word{flex:1;font-family:"Inter",var(--font);font-weight:600;letter-spacing:-.02em;font-size:14px}
+.tp-chip{display:inline-flex;align-items:center;gap:5px;font-size:11.5px;color:var(--l2)}
+.tp-chip i{width:6px;height:6px;border-radius:50%;background:var(--green)}
+.tp-chip.off{color:var(--l1)}
+.tp-chip.off i{background:var(--l3);animation:tp-blink 1.6s ease-in-out infinite}
+@keyframes tp-blink{50%{opacity:.25}}
+.tp-line{padding:4px 13px 0;font-size:12px;color:var(--l2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-height:21px}
+.tp-tiles{display:grid;grid-template-columns:1fr 1fr;gap:8px;padding:13px 13px 0}
+.tp-tile{border:0;border-radius:10px;background:var(--tp-tile);box-shadow:0 0 0 .5px var(--sep);padding:10px 11px 9px;text-align:left;display:flex;flex-direction:column;gap:1px;color:inherit}
+.tp-tile:hover{background:var(--fill2)}
+.tp-n{font-size:26px;font-weight:600;line-height:1.1;letter-spacing:-.01em;font-variant-numeric:tabular-nums}
+.tp-tile.hot .tp-n{color:var(--orange)}
+.tp-tile.zero .tp-n{color:var(--l3)}
+.tp-k{font-size:12px;color:var(--l2);display:flex;align-items:center;justify-content:space-between}
+.tp-k .ic{opacity:0;width:11px;height:11px}
+.tp-tile:hover .tp-k .ic{opacity:1}
+.tp-update{margin:10px 13px 0;height:28px;border:0;border-radius:999px;background:var(--accent);color:#fff;font-size:12.5px;font-weight:500}
+.tp-foot{display:flex;align-items:center;gap:2px;margin-top:13px;border-top:.5px solid var(--sep);padding:5px 6px 5px 13px}
+.tp-open{flex:1;border:0;background:none;text-align:left;padding:0;font-size:12.5px;color:var(--l2)}
+.tp-open:hover{color:var(--l1)}
+.tp-ico{width:28px;height:28px;border:0;border-radius:8px;background:none;display:flex;align-items:center;justify-content:center;color:var(--l2);padding:0}
+.tp-ico:hover{background:var(--fill2);color:var(--l1)}
+.tp-ico .ic{width:15px;height:15px}

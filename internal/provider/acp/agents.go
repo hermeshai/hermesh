@@ -1,0 +1,31 @@
+package acp
+
+// Agents are the ACP agents Hermesh knows how to start. Commands follow
+// each vendor's documented ACP entry point; flags that pre-approve tools
+// are not needed because the gate answers permission requests.
+var Agents = []Agent{
+	{Name: "gemini", Command: "gemini", Args: []string{"--acp"}},
+	{Name: "cursor", Command: "cursor-agent", Args: []string{"acp"}, Auth: []string{"cursor_login"}},
+	{Name: "copilot", Command: "copilot", Args: []string{"--acp"}},
+	{Name: "opencode", Command: "opencode", Args: []string{"acp"}, Paths: []string{".opencode/bin/opencode"}},
+	{Name: "qwen", Command: "qwen", Args: []string{"--acp"}},
+	{Name: "goose", Command: "goose", Args: []string{"acp"}},
+	{Name: "auggie", Command: "auggie", Args: []string{"--acp"}},
+	{Name: "kimi", Command: "kimi", Args: []string{"acp"}},
+	{Name: "kiro", Command: "kiro-cli", Args: []string{"acp"}},
+	{Name: "qoder", Command: "qodercli", Args: []string{"--acp"}},
+	// The DSH Desktop app keeps its own dsh, with no `dsh` command.
+	{Name: "deepseek", Command: "dsh", Args: []string{"--profile", "acp"}, Apps: []App{{Bundle: "DSH Desktop.app",
+		Exec: "Contents/MacOS/DSH Desktop", Script: "Contents/Resources/app.asar.unpacked/lib/desktop-cli.js"}}},
+	{Name: "codebuddy", Command: "codebuddy", Args: []string{"--acp"}},
+	{Name: "grok", Command: "grok", Args: []string{"--no-auto-update", "agent", "stdio"}, Auth: []string{"cached_token", "xai.api_key"}},
+}
+
+// Providers returns a provider for every known ACP agent.
+func Providers(pathEnv string) []*Provider {
+	ps := make([]*Provider, len(Agents))
+	for i, a := range Agents {
+		ps[i] = &Provider{Agent: a, PathEnv: pathEnv}
+	}
+	return ps
+}

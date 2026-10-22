@@ -1,0 +1,115 @@
+syntax = "proto3";
+
+package hermesh.machine.v1;
+
+import "hermesh/identity/v1/identity.proto";
+import "hermesh/options/v1/options.proto";
+
+// MachineService is served by every machine over E2E tunnels.
+service MachineService {
+  rpc GetInfo(GetInfoRequest) returns (GetInfoResponse) {
+    option (hermesh.options.v1.access) = ACCESS_READ;
+  }
+  rpc ListProjects(ListProjectsRequest) returns (ListProjectsResponse) {
+    option (hermesh.options.v1.access) = ACCESS_READ;
+  }
+}
+
+message GetInfoRequest {}
+
+message GetInfoResponse {
+  string machine_id = 1;
+  string machine_name = 2;
+  MachineStatus status = 3;
+}
+
+// A machine's state, for those it lets in end to end (agents and the
+// owner's devices); the relay never sees it.
+message MachineStatus {
+  string name = 12;
+  uint32 protocol_version = 1;
+  string platform = 2;
+  repeated AgentStatus agents = 3;
+  uint32 running_sessions = 4;
+  uint32 max_sessions = 5;
+  bool paused = 6;
+  string version = 7;
+  // Live sessions by status: "queued", "preparing", "running", "idle", ...
+  map<string, uint32> sessions = 9;
+  reserved 8, 10, 11;
+  reserved "host", "agent_processes", "started_at";
+}
+
+message AgentStatus {
+  string name = 1;
+  bool available = 2;
+  string version = 3;
+  bool logged_in = 4;
+  reserved 5;
+  reserved "sandbox_available";
+  string detail = 6;
+  // A check of this agent is under way; the rest is what the last check
+  // found, if any (an agent never checked yet is not available).
+  bool checking = 7;
+}
+
+message ListProjectsRequest {}
+
+message Project {
+  string project_id = 1;
+  // Only for WORKSPACE_WORKTREE projects.
+  string default_base_ref = 2;
+  hermesh.identity.v1.Workspace workspace = 3;
+  // The project directory on the machine.
+  string path = 4;
+  // What the project is, in the owner's words.
+  string description = 5;
+  // What a new session's worktree starts from: the default base ref, with
+  // HEAD resolved to the branch checked out now (or its short commit).
+  // Worktree projects only.
+  string base = 6;
+  // Sessions with a turn in progress in this project (queued, running, or
+  // waiting for an answer).
+  uint32 active_sessions = 7;
+  // The coding agents that may work in it; empty: all.
+  repeated string agents = 8;
+}
+
+message ListProjectsResponse {
+  repeated Project projects = 1;
+}
+
+// MachineAdminService is only available to the owner device principal.
+service MachineAdminService {
+  rpc ApplyAdminCommand(ApplyAdminCommandRequest) returns (ApplyAdminCommandResponse) {
+    option (hermesh.options.v1.access) = ACCESS_WRITE;
+  }
+  rpc PushRevocations(PushRevocationsRequest) returns (PushRevocationsResponse) {
+    option (hermesh.options.v1.access) = ACCESS_WRITE;
+  }
+}
+
+message ApplyAdminCommandRequest {
+  // Signed AdminCommand.
+  hermesh.identity.v1.Signed command = 1;
+  // Or, for the machine's settings, the command itself: adding or removing
+  // a project and pausing are configuration, not permissions (a grant is
+  // full trust on its machines; projects tell agents what to use), so the
+  // owner's trusted devices send them over their own connection without a
+  // root signature. Renaming still needs a signed machine cert.
+  hermesh.identity.v1.AdminCommand settings = 2;
+}
+
+message ApplyAdminCommandResponse {
+  string message = 1;
+}
+
+message PushRevocationsRequest {
+  hermesh.identity.v1.RevocationList revocations = 1;
+  // A longer root chain, if any.
+  hermesh.identity.v1.RootChain root_chain = 2;
+}
+
+message PushRevocationsResponse {
+  bool applied = 1;
+}

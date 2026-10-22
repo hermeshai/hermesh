@@ -1,0 +1,306 @@
+import XCTest
+
+/// The iPhone app end to end, as a person uses it, in Chinese. Run by
+/// TestIPhone (e2e/iphone_test.go), which sets up an owner Mac with a
+/// session in every state and serves HERMESH_E2E_CONTROL: the world around
+/// the phone (the Mac approving the join, an agent asking to connect, what
+/// the machines say a session's state is).
+///
+/// One test, in steps: the iPhone joins once, and each step builds on it.
+final class HermeshUITests: XCTestCase {
+    let app = XCUIApplication()
+
+    override func setUp() {
+        continueAfterFailure = false
+        app.launchArguments = ["-HermeshTestApprove", "-AppleLanguages", "(zh-Hans)", "-AppleLocale", "zh_CN"]
+        app.launch()
+    }
+
+    func testTheIPhoneApp() throws {
+        try XCTContext.runActivity(named: "joins the owner by its connection address") { _ in try join() }
+        try XCTContext.runActivity(named: "answers a question from the overview") { _ in try answerFromOverview() }
+        try XCTContext.runActivity(named: "interrupts a running session") { _ in try interrupt() }
+        try XCTContext.runActivity(named: "archives a session and undoes it") { _ in try archiveAndUndo() }
+        try XCTContext.runActivity(named: "shows what a session changed") { _ in try diff() }
+        try XCTContext.runActivity(named: "approves an agent asking to connect") { _ in try approveAgent() }
+        try XCTContext.runActivity(named: "renews a grant") { _ in try renew() }
+        try XCTContext.runActivity(named: "shows a machine and its projects") { _ in try machine() }
+        try XCTContext.runActivity(named: "lists the trusted devices") { _ in try devices() }
+        try XCTContext.runActivity(named: "opens usage from its line on the overview") { _ in try usage() }
+        try XCTContext.runActivity(named: "searches sessions from the menu") { _ in try search() }
+        try XCTContext.runActivity(named: "a question arrives as a notification and opens its session") { _ in try notification() }
+    }
+
+    // MARK: Steps
+
+    func join() throws {
+        let address = try control("address")["address"] as! String
+        tap("own-server")
+        let field = app.textFields["connection-address"]
+        XCTAssertTrue(field.waitForExistence(timeout: 10))
+        field.tap()
+        field.typeText(address)
+        tap("continue")
+        tap("join")
+        // The Mac approves (the test approves at once, so the waiting screen
+        // may be gone already); then the two digits it shows, unless none
+        // are asked for.
+        let digits = app.textFields["digits"]
+        let finish = app.buttons["finish"]
+        let deadline = Date().addingTimeInterval(60)
+        while !digits.exists && !finish.exists && Date() < deadline { sleep(1) }
+        if digits.exists {
+            let d = try waitFor("the Mac's digits") { (try? self.control("digits")["digits"] as? String).flatMap { $0?.isEmpty == false ? $0 : nil } }
+            digits.tap()
+            digits.typeText(d)
+        }
+        XCTAssertTrue(finish.waitForExistence(timeout: 30), "joined")
+        XCTAssertTrue(text("这台 iPhone 已经是你的可信设备").exists)
+        allowNotifications(after: finish)
+        XCTAssertTrue(app.navigationBars["概览"].waitForExistence(timeout: 30), "the overview")
+        try waitFor("this iPhone registers for notifications") { (try self.control("registered")["devices"] as? Int ?? 0) > 0 ? true : nil }
+    }
+
+    func answerFromOverview() throws {
+        let card = app.descendants(matching: .any)["question-card"]
+        XCTAssertTrue(card.waitForExistence(timeout: 30), "the question shows on the overview")
+        XCTAssertTrue(card.descendants(matching: .any).matching(NSPredicate(format: "label CONTAINS %@", "选哪个颜色")).firstMatch.exists)
+        card.buttons["蓝"].tap()
+        XCTAssertTrue(toast(containing: "已回答"))
+        try waitFor("the question is answered") { try self.sessionStatus("选颜色") != "waiting_input" ? true : nil }
+    }
+
+    func interrupt() throws {
+        openFromMenu(session: "跑很久")
+        XCTAssertTrue(text("跑很久").waitForExistence(timeout: 20))
+        tap("interrupt")
+        tap("interrupt-confirm")
+        try waitFor("the turn stops") { try self.sessionStatus("跑很久") == "idle" ? true : nil }
+        XCTAssertTrue(app.staticTexts.containing(NSPredicate(format: "label CONTAINS %@", "这一轮被打断了")).firstMatch.waitForExistence(timeout: 20))
+    }
+
+    func archiveAndUndo() throws {
+        openMenu()
+        app.buttons["全部会话"].tap()
+        let row = app.descendants(matching: .any)["session-写 hello"].firstMatch
+        XCTAssertTrue(row.waitForExistence(timeout: 20))
+        row.swipeLeft()
+        app.buttons["归档"].firstMatch.tap()
+        try waitFor("archived") { try self.sessionStatus("写 hello") == "archived" ? true : nil }
+        let undo = app.buttons["撤销"]
+        XCTAssertTrue(undo.waitForExistence(timeout: 5))
+        undo.tap()
+        try waitFor("unarchived") { try self.sessionStatus("写 hello") == "idle" ? true : nil }
+    }
+
+    func diff() throws {
+        openFromMenu(session: "写 hello")
+        tap("session-info")
+        let file = text("hello.txt")
+        XCTAssertTrue(file.waitForExistence(timeout: 20), "the changed file is listed")
+        file.tap()
+        XCTAssertTrue(app.staticTexts.containing(NSPredicate(format: "label CONTAINS %@", "hello again")).firstMatch.waitForExistence(timeout: 10), "its diff")
+        app.navigationBars.buttons.element(boundBy: 0).tap() // back to the file list
+        tap("close")
+    }
+
+    func approveAgent() throws {
+        openMenu()
+        app.buttons["概览"].tap()
+        let code = try control("agent", method: "POST")["code"] as! String
+        XCTAssertFalse(code.isEmpty)
+        let verify = app.buttons["verify-pairing"]
+        XCTAssertTrue(verify.waitForExistence(timeout: 30), "the request shows on the overview")
+        verify.tap()
+        XCTAssertTrue(text("「Cursor」想连接你的电脑").waitForExistence(timeout: 10))
+        app.buttons["scope-projects"].tap()
+        let all = app.switches["所有项目（包括以后添加的）"]
+        XCTAssertTrue(all.waitForExistence(timeout: 10))
+        all.switches.firstMatch.exists ? all.switches.firstMatch.tap() : all.tap()
+        app.navigationBars.buttons.element(boundBy: 0).tap()
+        tap("approve")
+        XCTAssertTrue(text("「Cursor」已连接").waitForExistence(timeout: 30), "approved")
+        app.buttons["完成"].tap()
+        try waitFor("the agent is connected") { (try self.control("agent")["connected"] as? Bool) == true ? true : nil }
+    }
+
+    func renew() throws {
+        let before = try control("grant?label=bot")["version"] as? Int ?? 0
+        openMenu()
+        app.buttons["授权"].tap()
+        let grant = app.buttons["grant-bot"]
+        XCTAssertTrue(grant.waitForExistence(timeout: 20))
+        grant.tap()
+        tap("renew")
+        app.buttons["90 天"].tap()
+        tap("renew-confirm")
+        XCTAssertTrue(toast(containing: "续期 90 天"))
+        try waitFor("the grant is renewed") {
+            let g = try self.control("grant?label=bot")
+            return (g["version"] as? Int ?? 0) > before && (g["days"] as? Int ?? 0) >= 89 ? true : nil
+        }
+    }
+
+    func machine() throws {
+        openMenu()
+        app.buttons["机器"].tap()
+        let m = app.buttons["machine-owner-mac"]
+        XCTAssertTrue(m.waitForExistence(timeout: 20))
+        m.tap()
+        XCTAssertTrue(text("demo").waitForExistence(timeout: 20), "its project")
+        XCTAssertTrue(text("暂停接受新会话").exists)
+    }
+
+    func devices() throws {
+        openMenu()
+        tap("account")
+        XCTAssertTrue(text("这台 iPhone").waitForExistence(timeout: 20))
+        XCTAssertTrue(text("test-mac").exists)
+        tap("close")
+    }
+
+    func usage() throws {
+        openMenu()
+        app.buttons["概览"].tap()
+        let line = app.buttons["usage"]
+        XCTAssertTrue(line.waitForExistence(timeout: 20), "the usage line")
+        XCTAssertTrue(line.label.contains("近 30 天"), line.label)
+        line.tap()
+        XCTAssertTrue(app.navigationBars["用量"].waitForExistence(timeout: 10), "the usage page")
+        XCTAssertTrue(text("活跃天数").exists)
+        app.navigationBars.buttons.element(boundBy: 0).tap()
+    }
+
+    func search() throws {
+        openMenu()
+        let field = app.textFields["drawer-search"]
+        XCTAssertTrue(field.waitForExistence(timeout: 5))
+        press(field)
+        sleep(1)
+        field.typeText("崩溃")
+        let result = app.buttons["drawer-session-崩溃"]
+        XCTAssertTrue(result.waitForExistence(timeout: 10))
+        result.tap()
+        XCTAssertTrue(app.descendants(matching: .any)["session-failed"].waitForExistence(timeout: 20), "the failure shows")
+    }
+
+    func notification() throws {
+        _ = try control("ask?title=\("要发布吗".addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed)!)", method: "POST")
+        XCUIDevice.shared.press(.home)
+        try waitFor("the relay sends a notification") { (try self.control("pushed")["pushed"] as? Int ?? 0) > 0 ? true : nil }
+        let springboard = XCUIApplication(bundleIdentifier: "com.apple.springboard")
+        // On a phone the extension shows the question; a Simulator doesn't
+        // run it for simulated pushes, so the generic text shows there, in
+        // the Simulator's own language (the app's Chinese is only its own).
+        let banner = springboard.descendants(matching: .any)
+            .matching(NSPredicate(format: "label CONTAINS %@ OR label CONTAINS %@ OR label CONTAINS %@", "要发布吗", "有事需要你处理", "Something needs you")).firstMatch
+        XCTAssertTrue(banner.waitForExistence(timeout: 60), "the notification arrives")
+        banner.tap()
+        XCTAssertTrue(app.wait(for: .runningForeground, timeout: 10))
+        let panel = app.descendants(matching: .any)["question"]
+        XCTAssertTrue(panel.waitForExistence(timeout: 30), "its session opens with the question")
+        panel.buttons["发布"].tap()
+        tap("answer")
+        try waitFor("answered") { try self.sessionStatus("要发布吗") != "waiting_input" ? true : nil }
+    }
+
+    // MARK: Helpers
+
+    /// Text on screen that contains s.
+    func text(_ s: String) -> XCUIElement {
+        app.descendants(matching: .any).matching(NSPredicate(format: "label CONTAINS %@", s)).firstMatch
+    }
+
+    func tap(_ id: String, timeout: TimeInterval = 15) {
+        let e = app.descendants(matching: .any)[id].firstMatch
+        XCTAssertTrue(e.waitForExistence(timeout: timeout), "no \(id)")
+        press(e)
+    }
+
+    /// Taps e; by its frame when XCUITest can't work out a hit point (a
+    /// button on Liquid Glass).
+    func press(_ e: XCUIElement) {
+        if e.isHittable {
+            e.tap()
+        } else {
+            e.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).tap()
+        }
+    }
+
+    func openMenu() {
+        // Open already (a sheet opened from it was closed): the page behind is dimmed.
+        if app.descendants(matching: .any)["drawer-dim"].exists { return }
+        // Back to a root page first.
+        while app.navigationBars.buttons["BackButton"].exists { app.navigationBars.buttons["BackButton"].tap() }
+        let back = app.navigationBars.buttons.element(boundBy: 0)
+        if !app.buttons["menu"].exists && back.exists { back.tap() }
+        tap("menu")
+        XCTAssertTrue(app.descendants(matching: .any)["drawer"].waitForExistence(timeout: 5))
+        sleep(1) // until it has slid in
+    }
+
+    func openFromMenu(session title: String) {
+        openMenu()
+        tap("drawer-session-\(title)")
+    }
+
+    func toast(containing text: String) -> Bool {
+        app.descendants(matching: .any).matching(identifier: "toast").containing(NSPredicate(format: "label CONTAINS %@", text)).firstMatch.waitForExistence(timeout: 15)
+            || app.staticTexts.containing(NSPredicate(format: "label CONTAINS %@", text)).firstMatch.waitForExistence(timeout: 2)
+    }
+
+    /// Taps button, which asks for notifications, and allows them. The tap
+    /// is repeated while the button is still there (one during its
+    /// appearing transition can miss).
+    func allowNotifications(after button: XCUIElement) {
+        let springboard = XCUIApplication(bundleIdentifier: "com.apple.springboard")
+        let allow = springboard.buttons["允许"]
+        for _ in 0 ..< 3 {
+            if button.exists { press(button) }
+            let deadline = Date().addingTimeInterval(8)
+            while Date() < deadline {
+                if allow.exists {
+                    allow.tap()
+                    return
+                }
+                usleep(300_000)
+            }
+        }
+        XCTFail("no notification permission alert")
+    }
+
+    func sessionStatus(_ title: String) throws -> String {
+        try control("session?title=\(title.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed)!)")["status"] as? String ?? ""
+    }
+
+    /// Asks the test's control server (see TestIPhone).
+    func control(_ path: String, method: String = "GET") throws -> [String: Any] {
+        guard let base = ProcessInfo.processInfo.environment["HERMESH_E2E_CONTROL"], let url = URL(string: "\(base)/\(path)") else {
+            throw XCTSkip("run by TestIPhone (HERMESH_E2E_CONTROL)")
+        }
+        var req = URLRequest(url: url)
+        req.httpMethod = method
+        req.timeoutInterval = 60
+        var out: [String: Any] = [:]
+        var failure: Error?
+        let done = expectation(description: path)
+        URLSession.shared.dataTask(with: req) { data, _, error in
+            if let data, let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any] { out = obj } else { failure = error ?? URLError(.badServerResponse) }
+            done.fulfill()
+        }.resume()
+        wait(for: [done], timeout: 70)
+        if let failure { throw failure }
+        return out
+    }
+
+    @discardableResult
+    func waitFor<T>(_ what: String, timeout: TimeInterval = 60, _ check: () throws -> T?) throws -> T {
+        let deadline = Date().addingTimeInterval(timeout)
+        while Date() < deadline {
+            if let v = try check() { return v }
+            sleep(1)
+        }
+        XCTFail("timed out: \(what)")
+        throw XCTSkip(what)
+    }
+}

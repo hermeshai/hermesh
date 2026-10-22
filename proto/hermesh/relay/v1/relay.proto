@@ -1,0 +1,367 @@
+syntax = "proto3";
+
+package hermesh.relay.v1;
+
+import "google/protobuf/timestamp.proto";
+import "hermesh/identity/v1/identity.proto";
+
+// ---------------------------------------------------------------------------
+// Connection setup (WSS /v1/connect), exchanged as length-prefixed frames
+// before yamux starts.
+
+message Challenge {
+  bytes nonce = 1;
+  string relay_id = 2;
+  google.protobuf.Timestamp server_time = 3;
+}
+
+enum Role {
+  ROLE_UNSPECIFIED = 0;
+  ROLE_MACHINE = 1;
+  ROLE_CLIENT = 2;
+  ROLE_OWNER = 3;
+}
+
+message Hello {
+  Role role = 1;
+  hermesh.identity.v1.Credentials credentials = 2;
+  // Signature by the subject key over
+  // "hermesh-admit-v1\0" || relay_id || "\0" || nonce || "\0" || role.
+  bytes proof = 3;
+  uint32 protocol_version = 4;
+}
+
+message HelloResult {
+  bool ok = 1;
+  string error = 2;
+}
+
+enum StreamKind {
+  STREAM_KIND_UNSPECIFIED = 0;
+  // Control stream: the opener speaks HTTP/2 + Connect to the relay.
+  STREAM_KIND_CONTROL = 1;
+  // Tunnel to a machine: raw bytes, E2E TLS inside.
+  STREAM_KIND_TUNNEL = 2;
+}
+
+// StreamHeader prefixes every yamux stream (4-byte big-endian length + proto).
+message StreamHeader {
+  StreamKind kind = 1;
+  // Tunnel target, set by the opener.
+  string machine_id = 2;
+  // Set by the relay when it forwards a tunnel to the machine.
+  Role principal_role = 3;
+  string subject_id = 4;
+  string tunnel_id = 5;
+  string trace_id = 6;
+}
+
+// ---------------------------------------------------------------------------
+// Public HTTP API (no credentials yet).
+
+service RelayPublicService {
+  rpc GetInfo(GetInfoRequest) returns (GetInfoResponse);
+  rpc Claim(ClaimRequest) returns (ClaimResponse);
+  rpc SubmitPairing(SubmitPairingRequest) returns (SubmitPairingResponse);
+  // Long poll: returns when the pairing completes or after ~25s.
+  rpc WaitPairing(WaitPairingRequest) returns (WaitPairingResponse);
+}
+
+message GetInfoRequest {
+  // A hosted center: an owner to ask about. The response names it, with
+  // its current root cert, only while the center serves it; a device whose
+  // owner started over learns so and may pair with another. Ignored by a
+  // self-hosted relay, which has one owner.
+  string owner_id = 1;
+}
+
+message GetInfoResponse {
+  string relay_id = 1;
+  string owner_id = 2;
+  bool claimed = 3;
+  uint32 protocol_version = 4;
+  // The owner's root chain (public; verified by clients against the owner
+  // id they pinned).
+  hermesh.identity.v1.RootChain root_chain = 5;
+  // A hosted center: many owners, no claim; pairing requests need not name
+  // an owner because an account claims them.
+  bool hosted = 6;
+  // Hosted center: where the owner enters pairing codes.
+  string console_url = 7;
+}
+
+message ClaimRequest {
+  string claim_code = 1;
+  hermesh.identity.v1.RootChain root_chain = 2;
+  hermesh.identity.v1.Signed device_cert = 3;
+  // Hosted center: the PKCE verifier of a link code made for an app that
+  // signed in through the browser.
+  string claim_verifier = 4;
+}
+
+message ClaimResponse {
+  string relay_id = 1;
+}
+
+message SubmitPairingRequest {
+  // Signed PairingRequest (self-signed by the subject key).
+  hermesh.identity.v1.Signed request = 1;
+}
+
+message SubmitPairingResponse {
+  string code = 1;
+  google.protobuf.Timestamp expires_at = 2;
+}
+
+message WaitPairingRequest {
+  string code = 1;
+  // Hosted center: the owner the requester already saw the claim for (and
+  // showed the verification code of). Unset, the call returns as soon as
+  // the request is claimed; set, it waits for the signed credential.
+  string known_owner_id = 2;
+}
+
+message WaitPairingResponse {
+  bool done = 1;
+  bool expired = 2;
+  // Signed MachineCert or Grant, plus the current root cert.
+  hermesh.identity.v1.Credentials credentials = 3;
+  // Hosted center: an account claimed the request for this owner. The
+  // requester does not trust this: it shows the verification code computed
+  // from its key and owner_id, and the owner compares it on the signer.
+  bool claimed = 4;
+  string owner_id = 5;
+  hermesh.identity.v1.RootChain root_chain = 6;
+  // Masked account name, e.g. "y***@gmail.com" (informational).
+  string account_hint = 7;
+}
+
+// ---------------------------------------------------------------------------
+// Control services, served by the relay on CONTROL streams.
+
+message MachineEntry {
+  hermesh.identity.v1.Signed machine_cert = 1;
+  bool online = 2;
+  google.protobuf.Timestamp last_seen = 3;
+  // What the machine reported (ReportStatus); its state (coding agents,
+  // sessions, pausing) is asked of it end to end, never told the relay.
+  reserved 4;
+  reserved "status";
+  string name = 5;
+  string version = 6;
+}
+
+// ClientEntry is a personal agent that is not revoked (revoked ones are
+// forgotten; the revocation list refuses them).
+message ClientEntry {
+  hermesh.identity.v1.Signed grant = 1;
+  bool online = 2;
+  google.protobuf.Timestamp last_seen = 3;
+  // Always false since revoked agents are no longer listed.
+  bool revoked = 4;
+  // The grant's machine_ids without removed machines ("*" stays). The signed
+  // grant keeps them until the owner signs a new version, but a removed
+  // machine's id can never come back.
+  repeated string machine_ids = 5;
+}
+
+service MachineControlService {
+  rpc ReportStatus(ReportStatusRequest) returns (ReportStatusResponse);
+  rpc WatchUpdates(WatchUpdatesRequest) returns (stream MachineUpdate);
+  // The machine leaves its owner (a Mac that was a machine only): the relay
+  // removes it as a trusted device would. Removing only lowers permissions,
+  // so it needs no signature. The relay drops the machine's connections as
+  // it does, possibly before answering.
+  rpc Leave(LeaveRequest) returns (LeaveResponse);
+  // Notices for the owner's trusted devices, each sealed to one of them
+  // (PushTargets): the relay hands them to the push service.
+  rpc Notify(NotifyRequest) returns (NotifyResponse);
+}
+
+message LeaveRequest {}
+
+message NotifyRequest {
+  repeated SealedNotice notices = 1;
+}
+
+message NotifyResponse {}
+
+// A session.v1.Notice HPKE-sealed to one device's notice key.
+message SealedNotice {
+  // The device (its device key's fingerprint) whose registration to use.
+  string device_key_id = 1;
+  // The HPKE encapsulated key followed by the ciphertext.
+  bytes sealed = 2;
+  // "question", "failure", "turn_done" or "pairing": what the push service
+  // is told about urgency, nothing about the content.
+  string kind = 3;
+  // Groups one session's notices (a hash, not the session id).
+  string thread = 4;
+}
+
+// Where to send notices, and to whom: the owner's push registrations, each
+// with the device cert that certifies its key.
+message PushTargets {
+  repeated PushTarget targets = 1;
+}
+
+message PushTarget {
+  hermesh.identity.v1.Signed registration = 1;
+  hermesh.identity.v1.Signed device_cert = 2;
+}
+
+message LeaveResponse {}
+
+// Sent when the machine connects and when it is renamed: all a relay knows
+// of a machine besides whether it is online.
+message ReportStatusRequest {
+  reserved 1;
+  reserved "status";
+  // The machine's name as it calls itself (a hint here: agents check it on
+  // their end-to-end connection to the machine).
+  string name = 2;
+  // hermeshd's version.
+  string version = 3;
+}
+
+message ReportStatusResponse {}
+
+message WatchUpdatesRequest {}
+
+message MachineUpdate {
+  oneof update {
+    hermesh.identity.v1.RootChain root_chain = 1;
+    hermesh.identity.v1.RevocationList revocations = 2;
+    hermesh.identity.v1.Signed machine_cert = 3;
+    PushTargets push_targets = 4;
+  }
+}
+
+service ClientControlService {
+  rpc WhoAmI(WhoAmIRequest) returns (WhoAmIResponse);
+  rpc ListMachines(ListMachinesRequest) returns (ListMachinesResponse);
+  rpc GetLatestGrant(GetLatestGrantRequest) returns (GetLatestGrantResponse);
+}
+
+message WhoAmIRequest {}
+
+message WhoAmIResponse {
+  string subject_id = 1;
+  Role role = 2;
+  string owner_id = 3;
+}
+
+message ListMachinesRequest {
+  bool online_only = 1;
+}
+
+message ListMachinesResponse {
+  repeated MachineEntry machines = 1;
+  hermesh.identity.v1.RootChain root_chain = 2;
+}
+
+message GetLatestGrantRequest {}
+
+message GetLatestGrantResponse {
+  hermesh.identity.v1.Signed grant = 1;
+  hermesh.identity.v1.RootChain root_chain = 2;
+  bool revoked = 3;
+}
+
+service OwnerControlService {
+  rpc GetPairingRequest(GetPairingRequestRequest) returns (GetPairingRequestResponse);
+  // Pending pairing requests bound to this owner: made with its connection
+  // address, or claimed by its account. The owner's signer shows them
+  // without anyone typing a code.
+  rpc ListPairingRequests(ListPairingRequestsRequest) returns (ListPairingRequestsResponse);
+  // A request made without an owner (a bare center URL): the owner typed its
+  // code on its own device. A hosted center binds it to the caller; one
+  // already bound to the caller is returned as is. The requester checks the
+  // binding with the verification code.
+  rpc ClaimPairingRequest(ClaimPairingRequestRequest) returns (ClaimPairingRequestResponse);
+  rpc CompletePairing(CompletePairingRequest) returns (CompletePairingResponse);
+  rpc ListMachines(ListMachinesRequest) returns (ListMachinesResponse);
+  rpc ListClients(ListClientsRequest) returns (ListClientsResponse);
+  rpc PublishGrant(PublishGrantRequest) returns (PublishGrantResponse);
+  rpc PublishMachineCert(PublishMachineCertRequest) returns (PublishMachineCertResponse);
+  rpc Revoke(RevokeRequest) returns (RevokeResponse);
+  // A longer root chain: a trusted device joined or was removed.
+  rpc PublishRootChain(PublishRootChainRequest) returns (PublishRootChainResponse);
+  // This device's push registration, signed by its device key: replaces
+  // its earlier one. An empty token stops its notices.
+  rpc RegisterPush(RegisterPushRequest) returns (RegisterPushResponse);
+}
+
+message RegisterPushRequest {
+  hermesh.identity.v1.Signed registration = 1;
+}
+
+message RegisterPushResponse {}
+
+message GetPairingRequestRequest {
+  string code = 1;
+}
+
+message GetPairingRequestResponse {
+  hermesh.identity.v1.Signed request = 1;
+  google.protobuf.Timestamp expires_at = 2;
+}
+
+message ClaimPairingRequestRequest {
+  string code = 1;
+}
+
+message ClaimPairingRequestResponse {
+  hermesh.identity.v1.Signed request = 1;
+  google.protobuf.Timestamp expires_at = 2;
+}
+
+message ListPairingRequestsRequest {}
+
+message ListPairingRequestsResponse {
+  repeated PendingPairing pairings = 1;
+}
+
+message PendingPairing {
+  string code = 1;
+  hermesh.identity.v1.Signed request = 2;
+  google.protobuf.Timestamp expires_at = 3;
+}
+
+message CompletePairingRequest {
+  string code = 1;
+  // Signed MachineCert (machine pairing) or Signed Grant (client pairing).
+  hermesh.identity.v1.Signed credential = 2;
+}
+
+message CompletePairingResponse {}
+
+message ListClientsRequest {}
+
+message ListClientsResponse {
+  repeated ClientEntry clients = 1;
+}
+
+message PublishGrantRequest {
+  hermesh.identity.v1.Signed grant = 1;
+}
+
+message PublishGrantResponse {}
+
+message PublishMachineCertRequest {
+  hermesh.identity.v1.Signed machine_cert = 1;
+}
+
+message PublishMachineCertResponse {}
+
+message RevokeRequest {
+  hermesh.identity.v1.RevocationList revocations = 1;
+}
+
+message RevokeResponse {}
+
+message PublishRootChainRequest {
+  hermesh.identity.v1.RootChain root_chain = 1;
+}
+
+message PublishRootChainResponse {}

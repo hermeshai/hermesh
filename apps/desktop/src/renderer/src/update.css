@@ -1,0 +1,48 @@
+.update-reminder{display:flex;align-items:center;gap:10px;text-align:left;margin:6px 12px;padding:11px 12px;border:1px solid var(--sep);border-radius:10px;color:var(--accent-t);background:var(--accent-bg);flex:none}
+.update-reminder:hover{filter:brightness(.96)}
+.update-reminder>span{display:flex;flex:1;flex-direction:column;gap:3px}
+.update-reminder b{font-size:12px;font-weight:600}
+.update-reminder small{font-size:11px;color:var(--l2)}
+.update-window{height:100%;display:flex;flex-direction:column;background:var(--win);color:var(--l1);font-size:13px;line-height:1.6}
+.update-title{height:56px;flex:none;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:600;border-bottom:1px solid var(--sep)}
+.update-scroll{overflow:auto;flex:1;padding:28px 32px;min-height:0}
+.update-heading{display:flex;align-items:center;gap:18px;margin-bottom:22px}
+.update-window h1{font-size:20px;line-height:1.35;letter-spacing:-.3px;font-weight:650;margin:0}
+.update-window p{margin:8px 0 16px}
+.update-heading p{font-family:var(--mono);font-size:12px;color:var(--l2);margin:5px 0 0}
+.update-muted,.update-callout small{color:var(--l2)}
+.release-summary{margin:22px 0;border-top:1px solid var(--sep);padding-top:18px}
+.release-summary h2{font-size:13px;margin:0 0 12px;font-weight:600}
+.release-summary h3{font-size:11px;color:var(--l2);margin:12px 0 5px;font-weight:600}
+.release-summary ul{padding-left:18px;margin:0}
+.release-summary li{margin:5px 0;padding-left:2px}
+.update-callout{background:var(--fill);border-radius:10px;padding:13px 15px;margin:18px 0}
+.update-callout p{margin:0 0 5px}
+.update-callout small{font-size:11px;display:block}
+.update-actions{flex:none;display:flex;justify-content:flex-end;gap:10px;padding:18px 24px;border-top:1px solid var(--sep)}
+.update-links{display:flex;flex-wrap:wrap;gap:12px 20px;margin-top:20px;font-size:12px}
+.update-links .link{display:inline-flex;gap:5px;align-items:center}
+.update-links svg{width:12px;height:12px}
+.update-progress{height:4px;background:var(--fill2);border-radius:4px;overflow:hidden;margin:20px 0}
+.update-progress:after{content:"";display:block;height:100%;width:35%;background:var(--accent-t);border-radius:4px;animation:update-progress 1.5s ease-in-out infinite alternate}
+@keyframes update-progress{to{transform:translateX(185%)}}
+@media(prefers-reduced-motion:reduce){.update-progress:after{animation:none;width:100%;opacity:.5}}
+.update-window summary{cursor:pointer;color:var(--l2);font-size:12px}
+.upd-raw{margin:10px 0;font-family:var(--mono);font-size:11px;color:var(--l2);background:var(--code);border-radius:8px;padding:10px;white-space:pre-wrap;overflow-wrap:anywhere;user-select:text}
+.about-window .update-scroll{text-align:center}
+.about-window .update-scroll>svg{margin:0 auto 12px}
+.about-window .update-links{justify-content:center}
+
+/* Golden-ratio spacing: 13 / 21 / 34; the window follows its intrinsic content height. */
+.update-dialog .update-title{height:52px}
+.update-dialog .update-scroll{padding:21px 34px}
+.update-content{display:flow-root}
+.update-dialog .update-heading{gap:13px;margin-bottom:21px}
+.update-dialog p{margin:8px 0 13px}
+.update-dialog .update-heading p{margin:5px 0 0}
+.update-dialog .release-summary{margin:21px 0;padding-top:13px}
+.update-dialog .update-callout{padding:13px 21px;margin:21px 0}
+.update-dialog .update-callout p{margin:0 0 5px}
+.update-dialog .update-links{gap:13px 21px;margin-top:21px}
+.update-dialog .update-actions{gap:8px;padding:13px 34px}
+.update-dialog .update-actions .btn{height:32px;border-radius:8px}

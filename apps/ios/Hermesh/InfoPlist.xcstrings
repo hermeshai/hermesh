@@ -1,0 +1,19 @@
+{
+  "sourceLanguage": "en",
+  "strings": {
+    "CFBundleDisplayName": {
+      "shouldTranslate": false
+    },
+    "NSFaceIDUsageDescription": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Hermesh 用面容 ID 确认你用管理密钥批准的连接和修改。"
+          }
+        }
+      }
+    }
+  },
+  "version": "1.0"
+}

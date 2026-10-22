@@ -1,0 +1,115 @@
+{
+  "daemon": {
+    "connecting": "Connecting to the background service…",
+    "needsApproval": "Hermesh’s background service can run once you allow it in System Settings › Login Items.",
+    "openLoginItems": "Open Login Items Settings",
+    "noResponse": "Hermesh’s background service isn’t responding. It usually starts on its own; if this keeps happening, reopen Hermesh."
+  },
+  "window": {
+    "showSidebar": "Show Sidebar",
+    "hideSidebar": "Hide Sidebar",
+    "undo": "Undo"
+  },
+  "status": {
+    "failed": "Failed",
+    "waiting": "Waiting",
+    "crashed": "Crashed",
+    "preparing": "Preparing",
+    "queued": "Queued"
+  },
+  "codeTiles": {
+    "label": "Verification code"
+  },
+  "personal": {
+    "other": "Other Agent",
+    "connectMessage": "Please connect yourself to my computer (Hermesh):\n1. Install: curl -fsSL https://github.com/hermeshai/hermesh/releases/latest/download/install.sh | sh -s -- --cli\n2. Sign in: ~/.local/bin/hermesh auth login {{address}} --name \"{{name}}\"\n3. Tell me the verification code shown on screen. Once I confirm it on my Mac, you’re ready.\nThen use hermesh project list to see the projects you can use, hermesh session start --project {{project}} --prompt \"…\" to start working, and hermesh --help for every command.",
+    "connectLink": "Connect to Hermesh: follow {{url}}. Your name in Hermesh is “{{name}}”.",
+    "projectArg": "project"
+  },
+  "sidebar": {
+    "label": "Sidebar",
+    "overview": "Overview",
+    "search": "Search",
+    "attention_one": "{{count}} item needs you",
+    "attention_other": "{{count}} items need you",
+    "sessions": "Sessions",
+    "loadingOlder": "Loading earlier sessions…",
+    "noMatch": "No sessions match the filters",
+    "empty": "No sessions yet<br/>When your agents connect, their work shows up here",
+    "noOlder": "No earlier sessions",
+    "showArchived": "Show Archived",
+    "account": "Account & Settings",
+    "connected_one": "Connected · {{count}} machine online",
+    "connected_other": "Connected · {{count}} machines online",
+    "notConnected": "Not connected",
+    "disconnectedGrant": "Disconnected agent",
+    "archived": "Archived “{{title}}”",
+    "unarchived": "Unarchived “{{title}}”"
+  },
+  "accountMenu": {
+    "settings": "Settings…",
+    "newGrant": "Connect Agent…",
+    "addMachine": "Add Machine…",
+    "enterCode": "Enter Pairing Code…",
+    "account": "Account…"
+  },
+  "sessionMenu": {
+    "open": "Open",
+    "archive": "Archive",
+    "unarchive": "Unarchive",
+    "onlyGrant": "Show Only Sessions by “{{name}}”",
+    "onlyProject": "Show Only Sessions in “{{name}}”",
+    "onlyMachine": "Show Only Sessions on “{{name}}”",
+    "copyId": "Copy Session ID"
+  },
+  "filter": {
+    "title": "Filter Sessions",
+    "all": "All",
+    "clear": "Clear",
+    "remove": "Remove this filter",
+    "withArchived": "With archived",
+    "hideArchived": "Hide archived",
+    "showArchived": "Show archived",
+    "grant": "Agent",
+    "project": "Project",
+    "agent": "Coding agent",
+    "machine": "Machine"
+  },
+  "search": {
+    "openSettings": "Open Settings",
+    "title": "Search Sessions",
+    "placeholder": "Search session titles, projects, agents…",
+    "all": "{{label}}: All",
+    "includeArchived": "Include archived",
+    "results": "Search results",
+    "found": "Sessions · {{n}}",
+    "none": "No sessions found",
+    "noneHint": "Try other words, or remove the filters. To find archived sessions, check “Include archived”.",
+    "archived": "Archived",
+    "actions": "Actions",
+    "select": "↑↓ Select",
+    "open": "↩ Open",
+    "narrow": "⌘↩ Show these in the sidebar"
+  },
+  "tray": {
+    "attention": "Needs you",
+    "running": "In progress",
+    "update": "Restart to Update to {{version}}",
+    "open": "Open Hermesh",
+    "settings": "Settings",
+    "settingsTitle": "Settings…",
+    "quit": "Quit Hermesh",
+    "chip": {
+      "ok": "Connected",
+      "down": "Reconnecting",
+      "setup": "Not set up",
+      "daemon": "Not running"
+    },
+    "online_one": "Your agents can use {{count}} machine",
+    "online_other": "Your agents can use {{count}} machines",
+    "noneOnline": "No machines online yet",
+    "down": "Agents can’t use your machines for now",
+    "setup": "Open Hermesh to finish setting up",
+    "daemon": "The background service isn’t responding"
+  }
+}

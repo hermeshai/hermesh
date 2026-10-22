@@ -1,0 +1,88 @@
+/* First run: what the prototype draws that app.css does not have yet, and
+   the real states the prototype has no picture for (forms, errors, join). */
+.glow{position:absolute;inset:-40%;background:radial-gradient(closest-side,color-mix(in srgb,var(--aurora-0) 30%,transparent),transparent),radial-gradient(closest-side at 70% 60%,color-mix(in srgb,var(--aurora-2) 26%,transparent),transparent);filter:blur(18px);z-index:-1}
+.ob-top .tl-room{width:62px;flex:none}
+.ob-err{display:flex;gap:8px;align-items:flex-start;color:var(--orange);font-size:12.5px;line-height:1.5;max-width:520px;text-align:left}
+.ob-err .ic{flex:none;margin-top:1px}
+.ob-foot .ob-err{margin-right:auto}
+.ic.ob-big-ic{width:56px;height:56px;color:var(--l2);stroke-width:1.1}
+.ob-form{margin-top:14px}
+.ob-form .frow>.fv .field{max-width:320px}
+.ob-alt{margin-top:16px;font-size:12.5px;color:var(--l2)}
+.field.join-digits{width:120px;height:56px;font-family:var(--mono);font-size:36px;font-weight:600;text-align:center;letter-spacing:.2em}
+/* The connect flow's parts from the Connect Agent… sheet (sheets.css scopes them to .sheet). */
+.ob-body .sheet-q{margin:6px 0 10px;font-size:14px;font-weight:600}
+.ob-body .sheet-note{font-size:12px;margin:10px 0 0;line-height:1.55}
+.ob-body .sheet-err{color:var(--red);font-size:12.5px;margin:10px 0 0;line-height:1.5;user-select:text;-webkit-user-select:text}
+.ob-body .sheet-actions{display:flex;justify-content:flex-end;gap:8px;margin-top:16px}
+.ob-body .msgbox{user-select:text;-webkit-user-select:text}
+.ob-body .pc:disabled{cursor:default}
+.ob-body .pc .av{color:#fff;font-size:17px}
+/* A step page: its picture (StepIcon), title and line centred, like the status pages. */
+.ob-body>.ob-h,.ob-body>.ob-p{align-self:center;text-align:center}
+.step-icon{flex:none;align-self:center;width:52px;height:52px;margin-top:14px;border-radius:15px;display:flex;align-items:center;justify-content:center;color:var(--accent-t);background:linear-gradient(135deg,color-mix(in srgb,var(--aurora-0) 16%,transparent),color-mix(in srgb,var(--aurora-1) 14%,transparent),color-mix(in srgb,var(--aurora-2) 16%,transparent))}
+.step-icon .ic{width:26px;height:26px;stroke-width:1.5}
+.step-icon+.ob-h{margin-top:14px}
+/* Looking for the agents: every one Hermesh supports, lit in turn like a
+   light passing along the row (opacity only, so the compositor runs it).
+   Then the page comes in. */
+.ag-sweep{display:flex;flex-wrap:wrap;justify-content:center;gap:14px;max-width:480px}
+.ag-sweep>span{opacity:.22;animation:ag-sweep 2.6s var(--ease-in-out) calc(var(--i) * 2.6s / var(--n)) infinite}
+@keyframes ag-sweep{0%,36%,100%{opacity:.22}12%{opacity:1}}
+.ob-in>*{animation:fadein .4s var(--ease-out) both}
+.ob-in>.ag-list,.ob-in>.ag-group,.ob-in>.ag-missing{animation-delay:.08s}
+@media (prefers-reduced-motion:reduce){.ag-sweep>span{animation:none;opacity:.45}.ob-in>*{animation:fade .3s ease both}}
+/* Connect Your Agent: the agents as app icons in one row (the chosen one ringed),
+   then the message to send and, once its request arrives, what it may use. */
+.pa-pick{flex:none;display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:6px;margin:2px 0 18px}
+.pa{display:flex;flex-direction:column;align-items:center;gap:8px;padding:14px 4px 12px;border:0;border-radius:14px;background:transparent;font:inherit;color:var(--l1);text-align:center;min-width:0}
+.pa:hover:not(:disabled){background:var(--fill)}
+.pa.on{background:var(--accent-bg);box-shadow:inset 0 0 0 1.5px var(--accent)}
+.pa:disabled{cursor:default}
+.pa b{margin-top:3px;font-size:12.5px;font-weight:600;white-space:nowrap}
+.pa-icon.other{display:inline-flex;align-items:center;justify-content:center;flex:none}
+.pa-icon.other i{width:80%;height:80%;border-radius:23%;display:flex;align-items:center;justify-content:center;color:#fff;background:linear-gradient(135deg,var(--aurora-0),var(--aurora-2));box-shadow:0 1px 2px rgba(0,0,0,.18)}
+.pa-icon.other .ic{width:48%;height:48%}
+.pa-step{flex:none;display:flex;flex-direction:column}
+.pa-who{display:flex;align-items:center;gap:8px}
+.pa-name{display:flex;align-items:center;gap:10px;margin:0 0 10px 2px;font-size:12.5px;color:var(--l2)}
+.pa-name .field{width:220px}
+.pa-msg{position:relative}
+.pa-msg .msgbox{padding-right:92px;overflow-wrap:anywhere}
+.pa-msg>.btn{position:absolute;top:10px;right:10px}
+.pa-queue{display:flex;align-items:center;gap:8px;margin:0 2px 12px;font-size:12.5px;color:var(--l2)}
+.pa-queue span{display:inline-flex;align-items:center;gap:8px}
+.pa-queue .end{margin-left:auto}
+.pa-wait{display:flex;align-items:center;gap:8px;margin:14px 2px 0;font-size:12.5px;color:var(--l2)}
+/* A status page (signing in, joining, removed, connected): its picture,
+   title and line centred in the window, then what to do with it. */
+.status{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding-bottom:24px}
+.status .ob-h{margin:18px 0 6px}
+.status .ob-p{margin:0 0 18px;max-width:480px}
+.status-actions{display:flex;gap:8px;justify-content:center}
+.status-note{display:flex;align-items:center;gap:8px;margin-top:16px;font-size:12.5px;color:var(--l2)}
+.status-cancel{margin-top:18px;font-size:12.5px}
+.status .ob-err{margin:0 0 14px}
+.status .field.join-digits{margin-bottom:16px}
+.ft-icon{position:relative;display:inline-flex}
+.ft-ok{position:absolute;right:-6px;bottom:-6px;width:24px;height:24px;border-radius:50%;background:var(--green);color:#fff;display:flex;align-items:center;justify-content:center;box-shadow:0 0 0 3px var(--win);animation:popin .4s cubic-bezier(.2,0,0,1) .15s both}
+.ft-ok .ic{width:14px;height:14px;stroke-width:2.6}
+.ft-prompt{display:flex;align-items:center;gap:14px;width:100%;max-width:520px;padding:12px 12px 12px 16px;border-radius:12px;background:var(--win2);text-align:left;font-size:14px;line-height:1.5}
+.ft-prompt>span{flex:1;min-width:0}
+.ft-prompt>.btn{flex:none}
+/* A code to compare (CodeTiles). */
+.ctiles{width:100%;max-width:520px;padding:10px;border-radius:12px;background:linear-gradient(135deg,color-mix(in srgb,var(--aurora-0) 14%,transparent),color-mix(in srgb,var(--aurora-1) 12%,transparent),color-mix(in srgb,var(--aurora-2) 14%,transparent))}
+.ctiles-row{display:flex;gap:8px}
+.ctiles-row span{flex:1;padding:10px 0;border-radius:8px;background:var(--win);box-shadow:0 .5px 1.5px rgba(0,0,0,.14);font-family:var(--mono);font-size:24px;font-weight:600;letter-spacing:.08em;text-align:center;user-select:text;-webkit-user-select:text}
+.ctiles-cap{display:flex;justify-content:space-between;margin-top:8px;font-size:11.5px;color:var(--l2)}
+.ctiles-cap b{color:var(--l1);font-weight:500}
+.ob-body>.ob-h+.ag-list{margin-top:18px}
+/* The safety promise of a page, always at the footer's left; its buttons on the right. */
+.ob-foot>.promise{flex:1;min-width:0;justify-content:flex-start;padding:0;margin-right:auto;text-align:left;line-height:1.45}
+/* A failure that stops a step: a sheet over the page, the raw cause folded under Details. */
+.sheet.trouble{width:420px}
+.trouble .link{display:inline-flex;align-items:center;gap:3px;font-size:12px;color:var(--l2)}
+.trouble .link:hover{color:var(--l1)}
+.trouble .chev{transition:transform .15s;width:12px;height:12px}
+.trouble .chev.open{transform:rotate(90deg)}
+.trouble-raw{margin:6px 0 0;font-family:var(--mono);font-size:11.5px;color:var(--l2);background:var(--code);border-radius:8px;padding:8px 10px;box-shadow:inset 0 0 0 .5px var(--sep);white-space:pre-wrap;overflow-wrap:anywhere}

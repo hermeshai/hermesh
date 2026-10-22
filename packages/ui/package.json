@@ -1,0 +1,22 @@
+{
+  "name": "@hermesh/ui",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts",
+    "./agents": "./src/agents.ts",
+    "./brand.css": "./src/brand.css"
+  },
+  "scripts": {
+    "test": "node --test src/*.test.ts",
+    "typecheck": "tsc -p ."
+  },
+  "peerDependencies": {
+    "react": "^19"
+  },
+  "devDependencies": {
+    "@types/react": "19.2.7",
+    "react": "19.3.1",
+    "typescript": "5.9.3"
+  }
+}

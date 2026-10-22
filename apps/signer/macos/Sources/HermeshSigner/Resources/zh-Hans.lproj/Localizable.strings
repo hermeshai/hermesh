@@ -1,0 +1,36 @@
+/* The signer's text in Simplified Chinese, by its English (the source, in the code). */
+
+/* A card row: its label and its value */
+"%@: %@" = "%1$@：%2$@";
+"Approve (Test)" = "批准（测试）";
+"Approve with Touch ID" = "用 Touch ID 批准";
+"Denied: Hermesh can’t show this request in full" = "已拒绝：Hermesh 无法完整显示这个请求";
+"Deny" = "拒绝";
+"Details" = "详情";
+"Done" = "完成";
+"Enter on the new device" = "在新设备上输入";
+"Enter on the new machine" = "在新机器上输入";
+"Enter on “%@”" = "在「%@」上输入";
+"Enter these two digits on the new device" = "在新设备上输入这两位数字";
+"Enter these two digits on the new machine" = "在新机器上输入这两位数字";
+"Enter these two digits on “%@”" = "在「%@」上输入这两位数字";
+"Enter your login password to approve" = "输入登录密码批准";
+"Hermesh Approval" = "Hermesh 授权";
+"Hermesh didn’t start this. It may come from the command line or another program on this Mac. If you didn’t start it, deny it." = "这不是 Hermesh 发起的，可能来自命令行或这台 Mac 上的其他程序。不是你自己发起的，就拒绝。";
+"Hide Details" = "收起详情";
+/* Where the program that made the request is */
+"Location: %@" = "程序位置：%@";
+"Must match the other side" = "须与对方显示的一致";
+"Needs your confirmation" = "需要你确认";
+"Nothing Was Signed" = "没有签名";
+"OK" = "好";
+"Once you do, it becomes a trusted device, just like this Mac." = "输入后，它就和这台 Mac 一样成为你的可信设备。";
+"Once you do, it joins as a machine: it runs tasks and approves nothing." = "输入后，它作为执行机器加入：只运行任务，不能批准任何事。";
+"Signing didn’t finish: %@" = "签名没有完成：%@";
+"Signing…" = "正在签名…";
+"Technical Details" = "技术细节";
+"Try Again" = "重新验证";
+"Two digits" = "两位数字";
+"Verification code" = "核对码";
+"Verification wasn’t completed." = "没有完成验证。";
+"Who: %@" = "谁：%@";

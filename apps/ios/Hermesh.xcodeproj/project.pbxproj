@@ -1,0 +1,658 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 77;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		D0CBAA91C3D9B6287E36D725 /* HermeshKit in Frameworks */ = {isa = PBXBuildFile; productRef = CA58F41DB714CCA58E4C53F5 /* HermeshKit */; };
+		86AC8F9E5D0563AB542BD55A /* HermeshProto in Frameworks */ = {isa = PBXBuildFile; productRef = 268F62350FE5702012D12E3E /* HermeshProto */; };
+		92221C33D4F49D3218F13C49 /* HermeshSessions in Frameworks */ = {isa = PBXBuildFile; productRef = B1704967309B24A9B09642A8 /* HermeshSessions */; };
+		AC5CF953EA41B71635B8C74F /* HermeshCore.xcframework in Frameworks */ = {isa = PBXBuildFile; fileRef = C4E5471B18E1D53967B5E0B6 /* HermeshCore.xcframework */; };
+		BB78A56E18B6F9A93275E716 /* HermeshKit in Frameworks */ = {isa = PBXBuildFile; productRef = C3FC6D868C2678A25C71BCE0 /* HermeshKit */; };
+		263020E54B381CD741F857F4 /* HermeshProto in Frameworks */ = {isa = PBXBuildFile; productRef = FC55DAF41925C7626AF9CDA0 /* HermeshProto */; };
+		CCAEEB629E5F3353AA119565 /* HermeshSessions in Frameworks */ = {isa = PBXBuildFile; productRef = A115C1EBFD971BAC97943793 /* HermeshSessions */; };
+		840468796E2C5BB5D3B37CA2 /* HermeshNotifications.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = 3C3F0890418F99C7217A77B6 /* HermeshNotifications.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
+/* End PBXBuildFile section */
+
+/* Begin PBXContainerItemProxy section */
+		3BF4A6A658FBB756A0985A3C /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 4DC844ABCCFC0D132D087C1C /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 778130C49534A4D32801D13D;
+			remoteInfo = Hermesh;
+		};
+		A5D1DA235D32D38E08767A50 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 4DC844ABCCFC0D132D087C1C /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 55DB8C8CBE065C9A073AA91C;
+			remoteInfo = HermeshNotifications;
+		};
+/* End PBXContainerItemProxy section */
+
+/* Begin PBXCopyFilesBuildPhase section */
+		E80F457C98800B0C699747FD /* Embed Foundation Extensions */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = "";
+			dstSubfolderSpec = 13;
+			files = (
+				840468796E2C5BB5D3B37CA2 /* HermeshNotifications.appex in Embed Foundation Extensions */,
+			);
+			name = "Embed Foundation Extensions";
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXCopyFilesBuildPhase section */
+
+/* Begin PBXFileReference section */
+		C4E5471B18E1D53967B5E0B6 /* HermeshCore.xcframework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.xcframework; path = build/HermeshCore.xcframework; sourceTree = "<group>"; };
+		8DB90CFEBD2C1C06E9EA54A6 /* Hermesh.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Hermesh.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		B061C0C30D331A712C3C46B2 /* HermeshUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = HermeshUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		3C3F0890418F99C7217A77B6 /* HermeshNotifications.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = HermeshNotifications.appex; sourceTree = BUILT_PRODUCTS_DIR; };
+/* End PBXFileReference section */
+
+/* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
+		F91D5551ACD4CDD62ABA5753 /* Exceptions for "Hermesh" folder in "Hermesh" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				Info.plist,
+			);
+			target = 778130C49534A4D32801D13D /* Hermesh */;
+		};
+		0BFFED36E67A601EDC8F37B9 /* Exceptions for "HermeshNotifications" folder in "HermeshNotifications" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				Info.plist,
+			);
+			target = 55DB8C8CBE065C9A073AA91C /* HermeshNotifications */;
+		};
+/* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
+
+/* Begin PBXFileSystemSynchronizedRootGroup section */
+		28A0636017AEEB61BCDA9D56 /* Hermesh */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+				F91D5551ACD4CDD62ABA5753 /* Exceptions for "Hermesh" folder in "Hermesh" target */,
+			);
+			path = Hermesh;
+			sourceTree = "<group>";
+		};
+		4E431DBB82A78979B79012DA /* HermeshNotifications */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+				0BFFED36E67A601EDC8F37B9 /* Exceptions for "HermeshNotifications" folder in "HermeshNotifications" target */,
+			);
+			path = HermeshNotifications;
+			sourceTree = "<group>";
+		};
+		6DB4FBA714C70153E2F3ABE3 /* HermeshUITests */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = HermeshUITests;
+			sourceTree = "<group>";
+		};
+/* End PBXFileSystemSynchronizedRootGroup section */
+
+/* Begin PBXFrameworksBuildPhase section */
+		F72F053D4455B87BA57FD8AA /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				D0CBAA91C3D9B6287E36D725 /* HermeshKit in Frameworks */,
+				86AC8F9E5D0563AB542BD55A /* HermeshProto in Frameworks */,
+				92221C33D4F49D3218F13C49 /* HermeshSessions in Frameworks */,
+				AC5CF953EA41B71635B8C74F /* HermeshCore.xcframework in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		631AE1E007C7C323068CC968 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				BB78A56E18B6F9A93275E716 /* HermeshKit in Frameworks */,
+				263020E54B381CD741F857F4 /* HermeshProto in Frameworks */,
+				CCAEEB629E5F3353AA119565 /* HermeshSessions in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		0B16A86A45D6CAC6430EBBBD /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXFrameworksBuildPhase section */
+
+/* Begin PBXGroup section */
+		FAD58DE7366495DB4650CFEF = {
+			isa = PBXGroup;
+			children = (
+				28A0636017AEEB61BCDA9D56 /* Hermesh */,
+				4E431DBB82A78979B79012DA /* HermeshNotifications */,
+				6DB4FBA714C70153E2F3ABE3 /* HermeshUITests */,
+				4F6F5CC3FCCF73F75AE9CCF4 /* Frameworks */,
+				86024CAD1E83101D97359D73 /* Products */,
+			);
+			sourceTree = "<group>";
+		};
+		4F6F5CC3FCCF73F75AE9CCF4 /* Frameworks */ = {
+			isa = PBXGroup;
+			children = (
+				C4E5471B18E1D53967B5E0B6 /* HermeshCore.xcframework */,
+			);
+			name = Frameworks;
+			sourceTree = "<group>";
+		};
+		86024CAD1E83101D97359D73 /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				8DB90CFEBD2C1C06E9EA54A6 /* Hermesh.app */,
+				3C3F0890418F99C7217A77B6 /* HermeshNotifications.appex */,
+				B061C0C30D331A712C3C46B2 /* HermeshUITests.xctest */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		778130C49534A4D32801D13D /* Hermesh */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = AC573CC2B6EF8ABF3A944EA0 /* Build configuration list for PBXNativeTarget "Hermesh" */;
+			buildPhases = (
+				16527DD7CD2D7CF6A7105481 /* Build the Hermesh core */,
+				A26B49697F3E690398527AAB /* Sources */,
+				F72F053D4455B87BA57FD8AA /* Frameworks */,
+				509E3C5AD660F43AEF16CAB4 /* Resources */,
+				E80F457C98800B0C699747FD /* Embed Foundation Extensions */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				6CDFEBCC5EF1093301C130AB /* PBXTargetDependency */,
+			);
+			fileSystemSynchronizedGroups = (
+				28A0636017AEEB61BCDA9D56 /* Hermesh */,
+			);
+			name = Hermesh;
+			packageProductDependencies = (
+				CA58F41DB714CCA58E4C53F5 /* HermeshKit */,
+				268F62350FE5702012D12E3E /* HermeshProto */,
+				B1704967309B24A9B09642A8 /* HermeshSessions */,
+			);
+			productName = Hermesh;
+			productReference = 8DB90CFEBD2C1C06E9EA54A6 /* Hermesh.app */;
+			productType = "com.apple.product-type.application";
+		};
+		55DB8C8CBE065C9A073AA91C /* HermeshNotifications */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 88C99CD13B3C74D72439418E /* Build configuration list for PBXNativeTarget "HermeshNotifications" */;
+			buildPhases = (
+				501B9B54733A10B3D4F2202F /* Sources */,
+				631AE1E007C7C323068CC968 /* Frameworks */,
+				3D21DE00599B18BCAAA35178 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			fileSystemSynchronizedGroups = (
+				4E431DBB82A78979B79012DA /* HermeshNotifications */,
+			);
+			name = HermeshNotifications;
+			packageProductDependencies = (
+				C3FC6D868C2678A25C71BCE0 /* HermeshKit */,
+				FC55DAF41925C7626AF9CDA0 /* HermeshProto */,
+				A115C1EBFD971BAC97943793 /* HermeshSessions */,
+			);
+			productName = HermeshNotifications;
+			productReference = 3C3F0890418F99C7217A77B6 /* HermeshNotifications.appex */;
+			productType = "com.apple.product-type.app-extension";
+		};
+		A6B4318BC1886F2EA7CD85E7 /* HermeshUITests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = A1C57EB22B859536485624E3 /* Build configuration list for PBXNativeTarget "HermeshUITests" */;
+			buildPhases = (
+				91749557CCC0D4D956665296 /* Sources */,
+				0B16A86A45D6CAC6430EBBBD /* Frameworks */,
+				F5995B7E2F78525AAA6AFF00 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				4565C36A75270CB695C29EC6 /* PBXTargetDependency */,
+			);
+			fileSystemSynchronizedGroups = (
+				6DB4FBA714C70153E2F3ABE3 /* HermeshUITests */,
+			);
+			name = HermeshUITests;
+			productName = HermeshUITests;
+			productReference = B061C0C30D331A712C3C46B2 /* HermeshUITests.xctest */;
+			productType = "com.apple.product-type.bundle.ui-testing";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		4DC844ABCCFC0D132D087C1C /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				BuildIndependentTargetsInParallel = 1;
+				LastSwiftUpdateCheck = 2700;
+				LastUpgradeCheck = 2700;
+				TargetAttributes = {
+					778130C49534A4D32801D13D = {
+						CreatedOnToolsVersion = 27.0;
+					};
+					55DB8C8CBE065C9A073AA91C = {
+						CreatedOnToolsVersion = 27.0;
+					};
+					A6B4318BC1886F2EA7CD85E7 = {
+						CreatedOnToolsVersion = 27.0;
+						TestTargetID = 778130C49534A4D32801D13D;
+					};
+				};
+			};
+			buildConfigurationList = A7492CCDE30BE8F54F16B52E /* Build configuration list for PBXProject "Hermesh" */;
+			developmentRegion = en;
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				en,
+				Base,
+				"zh-Hans",
+			);
+			mainGroup = FAD58DE7366495DB4650CFEF;
+			minimizedProjectReferenceProxies = 1;
+			packageReferences = (
+				A46A1BCE0B67C45BEC8F435B /* XCLocalSwiftPackageReference "../../packages/HermeshKit" */,
+			);
+			preferredProjectObjectVersion = 77;
+			productRefGroup = 86024CAD1E83101D97359D73 /* Products */;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				778130C49534A4D32801D13D /* Hermesh */,
+				55DB8C8CBE065C9A073AA91C /* HermeshNotifications */,
+				A6B4318BC1886F2EA7CD85E7 /* HermeshUITests */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin PBXResourcesBuildPhase section */
+		509E3C5AD660F43AEF16CAB4 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		3D21DE00599B18BCAAA35178 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		F5995B7E2F78525AAA6AFF00 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXResourcesBuildPhase section */
+
+/* Begin PBXShellScriptBuildPhase section */
+		16527DD7CD2D7CF6A7105481 /* Build the Hermesh core */ = {
+			isa = PBXShellScriptBuildPhase;
+			alwaysOutOfDate = 1;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputFileListPaths = (
+			);
+			inputPaths = (
+			);
+			name = "Build the Hermesh core";
+			outputFileListPaths = (
+			);
+			outputPaths = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "\"$SRCROOT/scripts/build-core.sh\"\n";
+		};
+/* End PBXShellScriptBuildPhase section */
+
+/* Begin PBXSourcesBuildPhase section */
+		A26B49697F3E690398527AAB /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		501B9B54733A10B3D4F2202F /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		91749557CCC0D4D956665296 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin PBXTargetDependency section */
+		4565C36A75270CB695C29EC6 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 778130C49534A4D32801D13D /* Hermesh */;
+			targetProxy = 3BF4A6A658FBB756A0985A3C /* PBXContainerItemProxy */;
+		};
+		6CDFEBCC5EF1093301C130AB /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 55DB8C8CBE065C9A073AA91C /* HermeshNotifications */;
+			targetProxy = A5D1DA235D32D38E08767A50 /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
+
+/* Begin XCBuildConfiguration section */
+		67DDDDDBE66D4EDED7FE72A7 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++20";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				COPY_PHASE_STRIP = NO;
+				DEVELOPMENT_TEAM = G4LW3GC2T7;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = NO;
+				GCC_C_LANGUAGE_STANDARD = gnu17;
+				IPHONEOS_DEPLOYMENT_TARGET = 26.0;
+				LOCALIZATION_PREFERS_STRING_CATALOGS = YES;
+				SDKROOT = iphoneos;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_VERSION = 6.0;
+				TARGETED_DEVICE_FAMILY = 1;
+				DEBUG_INFORMATION_FORMAT = dwarf;
+				ENABLE_TESTABILITY = YES;
+				GCC_OPTIMIZATION_LEVEL = 0;
+				GCC_PREPROCESSOR_DEFINITIONS = (
+					"DEBUG=1",
+					"$(inherited)",
+				);
+				ONLY_ACTIVE_ARCH = YES;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "DEBUG $(inherited)";
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+			};
+			name = Debug;
+		};
+		837CAD15404C084600A3B0A8 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++20";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				COPY_PHASE_STRIP = NO;
+				DEVELOPMENT_TEAM = G4LW3GC2T7;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = NO;
+				GCC_C_LANGUAGE_STANDARD = gnu17;
+				IPHONEOS_DEPLOYMENT_TARGET = 26.0;
+				LOCALIZATION_PREFERS_STRING_CATALOGS = YES;
+				SDKROOT = iphoneos;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_VERSION = 6.0;
+				TARGETED_DEVICE_FAMILY = 1;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				ENABLE_NS_ASSERTIONS = NO;
+				SWIFT_COMPILATION_MODE = wholemodule;
+				VALIDATE_PRODUCT = YES;
+			};
+			name = Release;
+		};
+		820CB0D19387A6B51DABC54E /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_ENTITLEMENTS = Hermesh/Hermesh.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEAD_CODE_STRIPPING = YES;
+				ENABLE_PREVIEWS = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = Hermesh/Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = Hermesh;
+				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.developer-tools";
+				INFOPLIST_KEY_NSFaceIDUsageDescription = "Hermesh uses Face ID to approve connections and changes with your owner key.";
+				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
+				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
+				INFOPLIST_KEY_UISupportedInterfaceOrientations = UIInterfaceOrientationPortrait;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				MARKETING_VERSION = 0.1.0;
+				OTHER_LDFLAGS = "-lresolv";
+				PRODUCT_BUNDLE_IDENTIFIER = com.hermesh.ios;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				STRING_CATALOG_GENERATE_SYMBOLS = NO;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
+			};
+			name = Debug;
+		};
+		AD81F40529F27AACA7FCD26B /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_ENTITLEMENTS = Hermesh/Hermesh.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEAD_CODE_STRIPPING = YES;
+				ENABLE_PREVIEWS = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = Hermesh/Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = Hermesh;
+				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.developer-tools";
+				INFOPLIST_KEY_NSFaceIDUsageDescription = "Hermesh uses Face ID to approve connections and changes with your owner key.";
+				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
+				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
+				INFOPLIST_KEY_UISupportedInterfaceOrientations = UIInterfaceOrientationPortrait;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				MARKETING_VERSION = 0.1.0;
+				OTHER_LDFLAGS = "-lresolv";
+				PRODUCT_BUNDLE_IDENTIFIER = com.hermesh.ios;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				STRING_CATALOG_GENERATE_SYMBOLS = NO;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
+			};
+			name = Release;
+		};
+		DB7F71874CF99277F2B88351 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_ENTITLEMENTS = HermeshNotifications/HermeshNotifications.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = HermeshNotifications/Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = HermeshNotifications;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				MARKETING_VERSION = 0.1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.hermesh.ios.notifications;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SKIP_INSTALL = YES;
+				LOCALIZATION_PREFERS_STRING_CATALOGS = YES;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				STRING_CATALOG_GENERATE_SYMBOLS = NO;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+			};
+			name = Debug;
+		};
+		C553F120661D0B9514CA195F /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_ENTITLEMENTS = HermeshNotifications/HermeshNotifications.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = HermeshNotifications/Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = HermeshNotifications;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				MARKETING_VERSION = 0.1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.hermesh.ios.notifications;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SKIP_INSTALL = YES;
+				LOCALIZATION_PREFERS_STRING_CATALOGS = YES;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				STRING_CATALOG_GENERATE_SYMBOLS = NO;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+			};
+			name = Release;
+		};
+		4B4662D82B3A5CF527BB60DE /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				GENERATE_INFOPLIST_FILE = YES;
+				MARKETING_VERSION = 0.1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.hermesh.ios.uitests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_VERSION = 5.0;
+				TEST_TARGET_NAME = Hermesh;
+			};
+			name = Debug;
+		};
+		B5E080C10A1DB16AEA603EB6 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				GENERATE_INFOPLIST_FILE = YES;
+				MARKETING_VERSION = 0.1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.hermesh.ios.uitests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_VERSION = 5.0;
+				TEST_TARGET_NAME = Hermesh;
+			};
+			name = Release;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		A7492CCDE30BE8F54F16B52E /* Build configuration list for PBXProject "Hermesh" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				67DDDDDBE66D4EDED7FE72A7 /* Debug */,
+				837CAD15404C084600A3B0A8 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		AC573CC2B6EF8ABF3A944EA0 /* Build configuration list for PBXNativeTarget "Hermesh" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				820CB0D19387A6B51DABC54E /* Debug */,
+				AD81F40529F27AACA7FCD26B /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		88C99CD13B3C74D72439418E /* Build configuration list for PBXNativeTarget "HermeshNotifications" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				DB7F71874CF99277F2B88351 /* Debug */,
+				C553F120661D0B9514CA195F /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		A1C57EB22B859536485624E3 /* Build configuration list for PBXNativeTarget "HermeshUITests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				4B4662D82B3A5CF527BB60DE /* Debug */,
+				B5E080C10A1DB16AEA603EB6 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+/* End XCConfigurationList section */
+
+/* Begin XCLocalSwiftPackageReference section */
+		A46A1BCE0B67C45BEC8F435B /* XCLocalSwiftPackageReference "../../packages/HermeshKit" */ = {
+			isa = XCLocalSwiftPackageReference;
+			relativePath = ../../packages/HermeshKit;
+		};
+/* End XCLocalSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		CA58F41DB714CCA58E4C53F5 /* HermeshKit */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = A46A1BCE0B67C45BEC8F435B /* XCLocalSwiftPackageReference "../../packages/HermeshKit" */;
+			productName = HermeshKit;
+		};
+		268F62350FE5702012D12E3E /* HermeshProto */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = A46A1BCE0B67C45BEC8F435B /* XCLocalSwiftPackageReference "../../packages/HermeshKit" */;
+			productName = HermeshProto;
+		};
+		B1704967309B24A9B09642A8 /* HermeshSessions */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = A46A1BCE0B67C45BEC8F435B /* XCLocalSwiftPackageReference "../../packages/HermeshKit" */;
+			productName = HermeshSessions;
+		};
+		C3FC6D868C2678A25C71BCE0 /* HermeshKit */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = A46A1BCE0B67C45BEC8F435B /* XCLocalSwiftPackageReference "../../packages/HermeshKit" */;
+			productName = HermeshKit;
+		};
+		FC55DAF41925C7626AF9CDA0 /* HermeshProto */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = A46A1BCE0B67C45BEC8F435B /* XCLocalSwiftPackageReference "../../packages/HermeshKit" */;
+			productName = HermeshProto;
+		};
+		A115C1EBFD971BAC97943793 /* HermeshSessions */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = A46A1BCE0B67C45BEC8F435B /* XCLocalSwiftPackageReference "../../packages/HermeshKit" */;
+			productName = HermeshSessions;
+		};
+/* End XCSwiftPackageProductDependency section */
+	};
+	rootObject = 4DC844ABCCFC0D132D087C1C /* Project object */;
+}

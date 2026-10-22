@@ -1,0 +1,151 @@
+{
+  "bucket": {
+    "attention": "需要处理",
+    "active": "进行中",
+    "today": "今天",
+    "yesterday": "昨天",
+    "week": "本周更早",
+    "earlier": "更早",
+    "archived": "已归档"
+  },
+  "time": {
+    "justNow": "刚刚",
+    "minutesAgo": "{{count}} 分钟前",
+    "hoursAgo": "{{count}} 小时前",
+    "today": "今天",
+    "yesterday": "昨天",
+    "minutesLeft": "还剩 {{count}} 分钟"
+  },
+  "status": {
+    "queued": "排队中",
+    "preparing": "准备中",
+    "running": "运行中",
+    "idle": "空闲",
+    "archived": "已归档",
+    "crashed": "已崩溃（再发消息可继续）",
+    "waitingInput": "等你回答",
+    "unknown": "未知"
+  },
+  "phase": {
+    "preparing": "正在准备 worktree…",
+    "thinking": "思考中",
+    "editing": "编辑 {{target}}",
+    "running": "执行 {{target}}"
+  },
+  "failure": {
+    "auth": "未登录",
+    "quota": "额度已用完",
+    "rateLimit": "限流",
+    "providerError": "模型服务出错",
+    "network": "网络错误",
+    "contextOverflow": "上下文已满",
+    "modelUnavailable": "模型不可用",
+    "invalidRequest": "请求被拒绝",
+    "refused": "模型拒绝执行",
+    "limitReached": "达到步数上限",
+    "resumeRejected": "无法恢复会话",
+    "agentCrashed": "agent 进程意外退出",
+    "stalled": "长时间无进展",
+    "timeout": "超过时长上限",
+    "startFailed": "无法启动 agent",
+    "other": "失败"
+  },
+  "advice": {
+    "auth": "请在该机器上以同一用户运行一次对应的 CLI 完成登录。",
+    "quota": "额度恢复后再试，或换一个 agent / 模型。",
+    "transient": "暂时性问题，稍后再发一次消息即可。",
+    "newContext": "再发一条消息会在新的上下文中继续，worktree 里的改动都在。",
+    "modelUnavailable": "换一个模型重新开会话。",
+    "limitReached": "发“继续”让它接着做。",
+    "resume": "再发一条消息会恢复会话继续。",
+    "startFailed": "在该机器上运行 hermeshd doctor 检查。"
+  },
+  "notice": {
+    "questionTitle": "{{grant}} 在等你回答",
+    "questionBody": "{{title}}：{{text}}",
+    "failedTitle": "「{{title}}」出错了：{{failure}}",
+    "failedBody": "{{grant}} · {{agent}} · {{project}}。{{advice}}",
+    "turnDoneTitle": "「{{title}}」第 {{turn}} 轮完成",
+    "noChanges": "没有改动文件",
+    "changes_other": "{{count}} 个文件 +{{insertions}} −{{deletions}}"
+  },
+  "pairing": {
+    "machine": "机器「{{label}}」想加入",
+    "device": "「{{label}}」想成为你的可信设备",
+    "client": "「{{label}}」想连接",
+    "body": "核对码 {{code}}。点这里核对并批准；不认识就拒绝。"
+  },
+  "setup": {
+    "signIn": "登录，这台 Mac 成为可信设备",
+    "agentsShared": "已共享本机 agent",
+    "shareAgents": "安全可信地共享本机 agent",
+    "addProject": "添加第一个项目",
+    "connectGrant": "连接「{{grant}}」",
+    "connectAgent": "连接你的 agent",
+    "finishTask": "完成第一个任务",
+    "signInCodex": "登录 Codex（可选）",
+    "addMachine": "添加第二台机器（可选）"
+  },
+  "signin": {
+    "badCenter": "中心地址无效：{{center}}",
+    "httpStatus": "{{url}}：HTTP {{status}}",
+    "notJson": "{{url}}：不是有效的 JSON",
+    "badConnectURL": "中心给出的连接地址无效：{{url}}"
+  },
+  "duration": {
+    "seconds": "{{s}} 秒",
+    "minutes": "{{m}} 分 {{s}} 秒",
+    "hours": "{{h}} 小时 {{m}} 分"
+  },
+  "resolution": {
+    "answeredByYou": "你回答：{{answers}}",
+    "answeredBy": "{{name}} 回答：{{answers}}",
+    "declinedByYou": "你选择不回答",
+    "declinedBy": "{{name}} 选择不回答",
+    "timedOut": "没人回答，agent 自行继续",
+    "withdrawn": "问题已撤回",
+    "separator": "；"
+  },
+  "steps": {
+    "read": {
+      "done": "已读取",
+      "doing": "正在读取",
+      "count_other": "读取了 {{count}} 个文件"
+    },
+    "search": {
+      "done": "已搜索",
+      "doing": "正在搜索",
+      "count_other": "搜索了 {{count}} 次"
+    },
+    "edit": {
+      "done": "已编辑",
+      "doing": "正在编辑",
+      "count_other": "编辑了 {{count}} 个文件"
+    },
+    "shell": {
+      "done": "已运行",
+      "doing": "正在运行",
+      "count_other": "运行了 {{count}} 条命令"
+    },
+    "network": {
+      "done": "已访问",
+      "doing": "正在访问",
+      "count_other": "访问了 {{count}} 个网页"
+    },
+    "mcp": {
+      "done": "已调用",
+      "doing": "正在调用",
+      "count_other": "调用了 {{count}} 个工具"
+    },
+    "other": {
+      "done": "已使用",
+      "doing": "正在使用",
+      "count_other": "使用了 {{count}} 个工具"
+    },
+    "deny": {
+      "done": "已拒绝",
+      "count_other": "拒绝了 {{count}} 个操作"
+    },
+    "separator": "、"
+  }
+}

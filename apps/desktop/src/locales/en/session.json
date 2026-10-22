@@ -1,0 +1,73 @@
+{
+  "thisMac": "This Mac",
+  "waiting": "Waiting for you",
+  "page": {
+    "showInfo": "Show info panel ⌥⌘0",
+    "hideInfo": "Hide info panel ⌥⌘0",
+    "info": "Info panel"
+  },
+  "chat": {
+    "archived": "Archived: read-only, its worktree released, the changes still on the branch.",
+    "unarchive": "Unarchive",
+    "log": "Conversation",
+    "failed": "Failed",
+    "failedWith": "Failed: {{title}}",
+    "crashedWith": "Crashed: {{title}}",
+    "turnDone": "This turn is done. When {{grant}} sends another message, it goes on in this session.",
+    "agentAsked": "Agent asked:",
+    "interruptedByYou": "You interrupted this turn. The session is still here; when {{grant}} sends another message, it goes on.",
+    "interrupted": "This turn was interrupted. The session is still here; when {{grant}} sends another message, it goes on.",
+    "turnFailed": "Turn {{turn}} failed: {{title}}",
+    "turnComplete": "Turn {{turn}} done",
+    "files_one": "{{count}} file",
+    "files_other": "{{count}} files",
+    "noFiles": "no files changed",
+    "copy": "Copy",
+    "inProgress": "In progress",
+    "truncated": "… (truncated)",
+    "resume": "When {{grant}} sends another message, it picks up from here; the earlier changes are all still there.",
+    "adviceAndResume": "{{advice}} {{resume}}",
+    "details": "Details",
+    "archive": "Archive"
+  },
+  "control": {
+    "label": "This turn",
+    "interruptTitle": "Interrupt this turn ⌘.",
+    "interrupt": "Interrupt",
+    "waitingDetail": "{{grant}} · Turn {{turn}} · If no one answers, it decides by itself",
+    "working": "{{agent}} is working"
+  },
+  "actions": {
+    "interrupted": "Interrupted “{{title}}”",
+    "copiedId": "Copied session ID"
+  },
+  "question": {
+    "label": "Question",
+    "asks": "{{agent}} asks you",
+    "optional": " (optional)",
+    "options": "Options",
+    "yourAnswer": "Your answer",
+    "secret": "Your answer (secret: given only to the agent, not recorded)",
+    "write": "Write your answer…",
+    "orWrite": "Or write your own answer…",
+    "declined": "Told it to decide by itself",
+    "answered": "Answered; {{agent}} goes on working",
+    "declineTitle": "Let it decide by itself",
+    "decline": "Don’t Answer",
+    "answer": "Answer",
+    "countdown": "If no one answers, it decides by itself when the time is up"
+  },
+  "inspector": {
+    "label": "Session Info",
+    "startedBy": "Started by <b>{{grant}}</b>",
+    "turns_one": "<b>{{count}}</b> turn",
+    "turns_other": "<b>{{count}}</b> turns",
+    "files_one": "<b>{{count}}</b> file",
+    "files_other": "<b>{{count}}</b> files",
+    "noChanges": "No changes",
+    "crashed": "Crashed",
+    "failed": "Failed",
+    "turn": "Turn {{turn}}",
+    "turnLeft": "Turn {{turn}} · {{left}}"
+  }
+}

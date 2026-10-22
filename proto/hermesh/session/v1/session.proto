@@ -1,0 +1,546 @@
+syntax = "proto3";
+
+package hermesh.session.v1;
+
+import "google/protobuf/timestamp.proto";
+import "hermesh/identity/v1/identity.proto";
+import "hermesh/options/v1/options.proto";
+
+// SessionService runs coding-agent sessions on a machine.
+service SessionService {
+  rpc StartSession(StartSessionRequest) returns (StartSessionResponse) {
+    option (hermesh.options.v1.access) = ACCESS_WRITE;
+  }
+  rpc GetSession(GetSessionRequest) returns (Session) {
+    option (hermesh.options.v1.access) = ACCESS_READ;
+  }
+  rpc ListSessions(ListSessionsRequest) returns (ListSessionsResponse) {
+    option (hermesh.options.v1.access) = ACCESS_READ;
+  }
+  // WatchSessions sends the sessions the caller can read as they change:
+  // first an empty message once the watch is in place, then the sessions
+  // started or changed since the last message, each as it is now (changes
+  // that come close together are sent together).
+  rpc WatchSessions(WatchSessionsRequest) returns (stream WatchSessionsResponse) {
+    option (hermesh.options.v1.access) = ACCESS_READ;
+  }
+  rpc StreamEvents(StreamEventsRequest) returns (stream SessionEvent) {
+    option (hermesh.options.v1.access) = ACCESS_READ;
+  }
+  // ListEvents returns one page of a session's events, oldest first.
+  rpc ListEvents(ListEventsRequest) returns (ListEventsResponse) {
+    option (hermesh.options.v1.access) = ACCESS_READ;
+  }
+  rpc SendMessage(SendMessageRequest) returns (SendMessageResponse) {
+    option (hermesh.options.v1.access) = ACCESS_WRITE;
+  }
+  // InterruptSession stops the turn in progress; the session stays, idle,
+  // and the next message goes on in the same agent conversation.
+  rpc InterruptSession(InterruptSessionRequest) returns (Session) {
+    option (hermesh.options.v1.access) = ACCESS_WRITE;
+  }
+  // ArchiveSession makes an idle session read-only and frees its worktree
+  // (its branch keeps the work). Sessions never end otherwise.
+  rpc ArchiveSession(ArchiveSessionRequest) returns (Session) {
+    option (hermesh.options.v1.access) = ACCESS_WRITE;
+  }
+  // UnarchiveSession restores the worktree from the branch; the session is
+  // idle again.
+  rpc UnarchiveSession(UnarchiveSessionRequest) returns (Session) {
+    option (hermesh.options.v1.access) = ACCESS_WRITE;
+  }
+  rpc GetDiff(GetDiffRequest) returns (GetDiffResponse) {
+    option (hermesh.options.v1.access) = ACCESS_READ;
+  }
+  // AnswerQuestion answers (or declines) a question the agent asked.
+  rpc AnswerQuestion(AnswerQuestionRequest) returns (Session) {
+    option (hermesh.options.v1.access) = ACCESS_WRITE;
+  }
+  // GetUsage adds up the tokens of the turns that ended in the sessions the
+  // caller can read, by day and coding agent.
+  rpc GetUsage(GetUsageRequest) returns (GetUsageResponse) {
+    option (hermesh.options.v1.access) = ACCESS_READ;
+  }
+}
+
+enum SessionStatus {
+  SESSION_STATUS_UNSPECIFIED = 0;
+  SESSION_STATUS_QUEUED = 1;
+  SESSION_STATUS_PREPARING = 2;
+  SESSION_STATUS_RUNNING = 3;
+  SESSION_STATUS_IDLE = 4;
+  // Read-only: no messages until unarchived. The only way a session stops
+  // being usable; it is never ended by time or by a failure.
+  SESSION_STATUS_ARCHIVED = 5;
+  reserved 6, 7;
+  // The last turn did not finish (the agent crashed or could not start,
+  // or hermeshd restarted); the next message retries in the same session.
+  SESSION_STATUS_CRASHED = 8;
+  // The turn is paused until someone answers the agent's question (see
+  // SessionProgress.pending_question).
+  SESSION_STATUS_WAITING_INPUT = 9;
+}
+
+// FailureKind classifies why a turn or a session failed (see
+// docs/reliability-plan.md).
+enum FailureKind {
+  FAILURE_KIND_UNSPECIFIED = 0;
+  // Not logged in or credentials rejected; the owner must log in on the machine.
+  FAILURE_KIND_AUTH = 1;
+  // Usage or billing limit reached.
+  FAILURE_KIND_QUOTA = 2;
+  // Rate limited or provider over capacity; retry later.
+  FAILURE_KIND_RATE_LIMIT = 3;
+  // Provider server error (5xx); retry later.
+  FAILURE_KIND_PROVIDER_ERROR = 4;
+  // Connection to the provider failed or dropped; retry.
+  FAILURE_KIND_NETWORK = 5;
+  // The conversation no longer fits the model's context window.
+  FAILURE_KIND_CONTEXT_OVERFLOW = 6;
+  // The model does not exist or this account cannot use it.
+  FAILURE_KIND_MODEL_UNAVAILABLE = 7;
+  // The provider rejected the request (400).
+  FAILURE_KIND_INVALID_REQUEST = 8;
+  // The model or a policy refused the task.
+  FAILURE_KIND_REFUSED = 9;
+  // The turn hit the agent's step or token limit.
+  FAILURE_KIND_LIMIT_REACHED = 10;
+  // The provider session could not be resumed.
+  FAILURE_KIND_RESUME_REJECTED = 11;
+  // The agent process exited unexpectedly.
+  FAILURE_KIND_AGENT_CRASHED = 12;
+  // The agent made no progress for too long.
+  FAILURE_KIND_STALLED = 13;
+  // The turn exceeded the machine's turn time limit.
+  FAILURE_KIND_TIMEOUT = 14;
+  // The agent could not be started.
+  FAILURE_KIND_START_FAILED = 15;
+  FAILURE_KIND_UNKNOWN = 16;
+  // Someone interrupted the turn on purpose (the session goes on).
+  FAILURE_KIND_INTERRUPTED = 17;
+}
+
+message Failure {
+  FailureKind kind = 1;
+  // Redacted and truncated provider or daemon message.
+  string message = 2;
+  // Retrying the same request later may succeed.
+  bool retryable = 3;
+  uint32 retry_after_seconds = 4;
+  // One-line advice for the caller.
+  string hint = 5;
+  uint32 http_status = 6;
+}
+
+message StartSessionRequest {
+  string idempotency_key = 1;
+  string project_id = 2;
+  // "claude" | "codex" | an ACP agent ("gemini", "cursor", ...)
+  string agent = 3;
+  string prompt = 4;
+  string base_ref = 5;
+  string model = 6;
+  reserved 7;
+  reserved "preset";
+  repeated Attachment attachments = 8;
+  // How long the agent's questions wait for an answer; then the agent is
+  // told to continue on its best judgment. Unset: 30 minutes; 0: nobody
+  // answers (the agent is told so at once).
+  optional uint32 question_timeout_seconds = 9;
+  // A short title for session lists. Without one, the session is titled
+  // by the first line of the prompt.
+  string title = 10;
+}
+
+// Attachment is a file sent with a message (at most 20 files and 32 MiB
+// per message). The machine saves it next to the session, outside the
+// worktree, and lists its path in the message; PNG, JPEG, GIF and WebP
+// images up to 3.5 MiB are also shown to the agent as images.
+message Attachment {
+  // File name; directories are dropped.
+  string name = 1;
+  // Detected from the name and content when empty.
+  string media_type = 2;
+  bytes data = 3;
+}
+
+// AttachmentInfo describes a saved attachment.
+message AttachmentInfo {
+  string name = 1;
+  string media_type = 2;
+  uint64 size = 3;
+  // Where the machine saved it.
+  string path = 4;
+  string sha256 = 5;
+  // Shown to the agent as an image (not only listed by path).
+  bool image = 6;
+}
+
+message StartSessionResponse {
+  Session session = 1;
+}
+
+// What a trusted device is told on its lock screen, sealed to its notice
+// key end to end (identity.v1.PushRegistration): the relay forwards it
+// without reading it.
+message Notice {
+  // "question", "failure", "turn_done" or "pairing".
+  string kind = 1;
+  google.protobuf.Timestamp at = 2;
+  // A session's notice.
+  string session_id = 3;
+  string title = 4;
+  // Who started the session: its grant's label.
+  string grant = 5;
+  // The coding agent.
+  string agent = 6;
+  string project = 7;
+  string machine = 8;
+  // kind "question": what the agent asks.
+  Question question = 9;
+  // kind "failure".
+  FailureKind failure = 10;
+  string failure_message = 11;
+  // kind "turn_done": the turn and what it changed.
+  uint32 turn = 12;
+  DiffStat diff_stat = 13;
+  // kind "pairing": who asks to connect, and the code to compare.
+  hermesh.identity.v1.PairingKind pairing_kind = 14;
+  string pairing_label = 15;
+  string verification_code = 16;
+  string pairing_code = 17;
+}
+
+message DiffStat {
+  uint32 files_changed = 1;
+  uint32 insertions = 2;
+  uint32 deletions = 3;
+}
+
+message Usage {
+  uint64 input_tokens = 1;
+  uint64 output_tokens = 2;
+  double cost_usd = 3;
+}
+
+message SessionProgress {
+  uint32 turn_count = 1;
+  string phase = 2;
+  string last_message_excerpt = 3;
+  string current_tool = 4;
+  DiffStat diff_stat = 5;
+  Usage usage = 6;
+  uint64 last_event_seq = 7;
+  // The most recent turn or session failure; cleared by a successful turn.
+  Failure last_failure = 8;
+  // The question the agent waits on (status WAITING_INPUT).
+  Question pending_question = 9;
+  // When the turn in progress started (waiting for an answer included);
+  // unset once the turn is over.
+  google.protobuf.Timestamp turn_started_at = 10;
+}
+
+// Question is a question the agent asks mid-turn (Claude Code's
+// AskUserQuestion, Codex's questions, ACP elicitation).
+message Question {
+  string question_id = 1;
+  uint32 turn = 2;
+  repeated QuestionItem items = 3;
+  google.protobuf.Timestamp asked_at = 4;
+  // When the agent is told to continue without an answer.
+  google.protobuf.Timestamp expires_at = 5;
+}
+
+// QuestionItem is one question of a Question; answer each by its id.
+message QuestionItem {
+  string id = 1;
+  // Short label (e.g. "Color").
+  string header = 2;
+  string text = 3;
+  repeated QuestionOption options = 4;
+  // Several options may be chosen.
+  bool multi_select = 5;
+  // A free-text answer is accepted (always, when there are no options).
+  bool allow_other = 6;
+  // The answer is a secret: it goes to the agent but is not recorded.
+  bool secret = 7;
+  // The agent can go on without an answer to this item (an optional form field).
+  bool optional = 8;
+}
+
+message QuestionOption {
+  string label = 1;
+  string description = 2;
+}
+
+message Answer {
+  string item_id = 1;
+  // Labels of the chosen options.
+  repeated string selected = 2;
+  // A free-text answer (with or instead of options).
+  string text = 3;
+}
+
+enum QuestionResolution {
+  QUESTION_RESOLUTION_UNSPECIFIED = 0;
+  QUESTION_RESOLUTION_ANSWERED = 1;
+  // Declined by whoever answers: the agent is told no answer is coming.
+  QUESTION_RESOLUTION_DECLINED = 2;
+  // Nobody answered in time: the agent is told to continue on its own.
+  QUESTION_RESOLUTION_TIMED_OUT = 3;
+  // The turn ended or was stopped before an answer.
+  QUESTION_RESOLUTION_CANCELLED = 4;
+}
+
+message QuestionAsked {
+  Question question = 1;
+}
+
+message QuestionResolved {
+  string question_id = 1;
+  QuestionResolution resolution = 2;
+  // Who answered: a client id, or "owner".
+  string by = 3;
+  // Secret answers read "[secret]".
+  repeated Answer answers = 4;
+}
+
+message Session {
+  string session_id = 1;
+  string machine_id = 2;
+  string project_id = 3;
+  string agent = 4;
+  reserved 5;
+  reserved "preset";
+  SessionStatus status = 6;
+  string created_by = 7;
+  SessionProgress progress = 8;
+  string provider_session_ref = 9;
+  google.protobuf.Timestamp created_at = 10;
+  google.protobuf.Timestamp updated_at = 11;
+  string error = 12;
+  // Worktree sessions only.
+  string branch = 13;
+  hermesh.identity.v1.Workspace workspace = 14;
+  // The agent's full reply in the last turn that finished (when that turn
+  // failed, progress.last_failure says why). A caller that did not wait
+  // reads it here once the session is idle again.
+  string result = 15;
+  // A short title for lists: the one the client gave, or the first line of
+  // the prompt. Empty for sessions started by an older machine.
+  string title = 16;
+}
+
+message GetSessionRequest {
+  string session_id = 1;
+}
+
+message ListSessionsRequest {
+  SessionStatus status = 1;
+  google.protobuf.Timestamp since = 2;
+  // Paging: at most limit sessions, newest first by (updated_at,
+  // session_id), from the newest or from just past the session `before`
+  // names. 0: every session, unpaged and in no set order.
+  //
+  // The first page (limit without before) also carries every unsettled
+  // session however old, so lists can show those in full: queued,
+  // preparing, running, waiting for an answer or crashed, or whose last
+  // turn failed (not interrupted). A session that changes moves to the
+  // start (updated_at only grows), where WatchSessions reports it, so the
+  // pages after it never miss one.
+  uint32 limit = 3;
+  SessionCursor before = 4;
+}
+
+// SessionCursor is where a page of sessions ends: its last session's
+// updated_at and id.
+message SessionCursor {
+  google.protobuf.Timestamp updated_at = 1;
+  string session_id = 2;
+}
+
+message ListSessionsResponse {
+  repeated Session sessions = 1;
+  // Paging: where the next page starts; unset on the last page.
+  SessionCursor next = 2;
+}
+
+message WatchSessionsRequest {}
+
+message WatchSessionsResponse {
+  repeated Session sessions = 1;
+}
+
+message StreamEventsRequest {
+  string session_id = 1;
+  uint64 after_seq = 2;
+  // When false, the stream ends after replaying stored events.
+  bool follow = 3;
+}
+
+// ListEventsRequest pages through a session's events by seq: the latest
+// `limit` events, the `limit` right after after_seq, or the `limit` right
+// before before_seq (at most one of the two).
+message ListEventsRequest {
+  string session_id = 1;
+  uint64 after_seq = 2;
+  uint64 before_seq = 3;
+  // 1 to 1000; 0 means 50.
+  uint32 limit = 4;
+}
+
+message ListEventsResponse {
+  // Oldest first.
+  repeated SessionEvent events = 1;
+  bool has_more_before = 2;
+  bool has_more_after = 3;
+}
+
+message SessionEvent {
+  uint64 seq = 1;
+  google.protobuf.Timestamp ts = 2;
+  string turn_id = 3;
+  oneof kind {
+    StatusChanged status = 10;
+    TurnStarted turn_started = 11;
+    UserMessage user_message = 12;
+    AgentMessage agent_message = 13;
+    ToolCall tool_call = 14;
+    ToolResult tool_result = 15;
+    TurnCompleted turn_completed = 16;
+    ErrorEvent error = 17;
+    QuestionAsked question_asked = 18;
+    QuestionResolved question_resolved = 19;
+  }
+}
+
+message StatusChanged {
+  SessionStatus status = 1;
+  string reason = 2;
+}
+
+message TurnStarted {
+  uint32 turn = 1;
+}
+
+message UserMessage {
+  // As the agent got it (with the list of attached files).
+  string text = 1;
+  repeated AttachmentInfo attachments = 2;
+}
+
+message AgentMessage {
+  string text = 1;
+}
+
+message ToolCall {
+  string call_id = 1;
+  // read | search | edit | shell | network | mcp | other
+  string kind = 2;
+  string name = 3;
+  string summary = 4;
+  // allow | deny
+  string decision = 5;
+  string reason = 6;
+}
+
+message ToolResult {
+  string call_id = 1;
+  string summary = 2;
+  bool is_error = 3;
+  bool truncated = 4;
+}
+
+message TurnCompleted {
+  uint32 turn = 1;
+  string result = 2;
+  bool is_error = 3;
+  Usage usage = 4;
+  DiffStat diff_stat = 5;
+  string commit = 6;
+  // Set when is_error is true.
+  Failure failure = 7;
+}
+
+message ErrorEvent {
+  string message = 1;
+  Failure failure = 2;
+}
+
+// SendMessage starts a turn on an idle session. While a turn runs, the
+// message joins it when the agent takes input mid-turn (Claude Code,
+// Codex), or becomes the next turn, started right after with no idle in
+// between (ACP agents). A turn that fails drops the messages that waited
+// for it.
+message SendMessageRequest {
+  string session_id = 1;
+  string text = 2;
+  repeated Attachment attachments = 3;
+}
+
+message SendMessageResponse {
+  Session session = 1;
+}
+
+message InterruptSessionRequest {
+  string session_id = 1;
+}
+
+message ArchiveSessionRequest {
+  string session_id = 1;
+}
+
+message UnarchiveSessionRequest {
+  string session_id = 1;
+}
+
+message AnswerQuestionRequest {
+  string session_id = 1;
+  // Empty: the pending question.
+  string question_id = 2;
+  repeated Answer answers = 3;
+  // No answer: the agent is told nobody will answer and to continue.
+  bool decline = 4;
+}
+
+message GetUsageRequest {
+  // The first day counted, YYYY-MM-DD in time_zone.
+  string since = 1;
+  // An IANA time zone name (e.g. "Asia/Shanghai") the days are in; empty
+  // means UTC.
+  string time_zone = 2;
+}
+
+// One coding agent's turns that ended on one day.
+message UsageDay {
+  // YYYY-MM-DD.
+  string date = 1;
+  string agent = 2;
+  uint64 input_tokens = 3;
+  uint64 output_tokens = 4;
+  // Sessions with a turn that ended that day.
+  uint32 sessions = 5;
+  uint32 turns = 6;
+}
+
+message GetUsageResponse {
+  // By date, then agent.
+  repeated UsageDay days = 1;
+}
+
+message GetDiffRequest {
+  string session_id = 1;
+  // 0 = cumulative since the base commit.
+  uint32 turn = 2;
+  bool stat_only = 3;
+  uint64 offset = 4;
+}
+
+message GetDiffResponse {
+  string diff = 1;
+  DiffStat stat = 2;
+  bool truncated = 3;
+  uint64 next_offset = 4;
+  string base_commit = 5;
+  string head_commit = 6;
+}

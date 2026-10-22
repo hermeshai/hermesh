@@ -1,0 +1,86 @@
+{
+  "menu": {
+    "app": {
+      "about": "关于 Hermesh",
+      "services": "服务",
+      "hide": "隐藏 Hermesh",
+      "hideOthers": "隐藏其他",
+      "unhide": "全部显示",
+      "quit": "退出 Hermesh"
+    },
+    "settings": "设置…",
+    "update": {
+      "install": "重新启动以更新",
+      "check": "检查更新…",
+      "details": "查看更新详情…"
+    },
+    "file": {
+      "title": "文件",
+      "newGrant": "连接 agent…",
+      "addMachine": "添加机器…",
+      "addProject": "添加项目…",
+      "enterCode": "输入配对码…",
+      "close": "关闭窗口"
+    },
+    "edit": {
+      "title": "编辑",
+      "undo": "撤销",
+      "redo": "重做",
+      "cut": "剪切",
+      "copy": "拷贝",
+      "paste": "粘贴",
+      "selectAll": "全选",
+      "find": "查找会话…",
+      "search": "搜索"
+    },
+    "view": {
+      "title": "显示",
+      "overview": "概览",
+      "nextAttention": "下一个需要处理的会话",
+      "nextActive": "下一个进行中的会话",
+      "showInspector": "显示信息面板",
+      "hideInspector": "隐藏信息面板",
+      "showSidebar": "显示边栏",
+      "hideSidebar": "隐藏边栏",
+      "fullScreen": "进入全屏幕"
+    },
+    "session": {
+      "title": "会话",
+      "answer": "回答问题",
+      "interrupt": "打断这一轮",
+      "copyId": "拷贝会话 ID",
+      "onlyGrant": "只看「{{name}}」的会话",
+      "onlyThisGrant": "只看这个授权的会话",
+      "onlyProject": "只看「{{name}}」的会话",
+      "onlyThisProject": "只看这个项目的会话",
+      "archive": "归档",
+      "unarchive": "取消归档"
+    },
+    "window": {
+      "title": "窗口",
+      "minimize": "最小化",
+      "zoom": "缩放",
+      "settings": "设置"
+    },
+    "help": {
+      "title": "帮助",
+      "help": "Hermesh 帮助",
+      "shortcuts": "快捷键",
+      "report": "报告问题…",
+      "whatsNew": "更新内容"
+    }
+  },
+  "settingsWindow": "设置",
+  "disconnectedGrant": "已断开的授权",
+  "anAgent": "一个 agent",
+  "signInExpired": "登录已过期，请重新登录。",
+  "move": {
+    "title": "要把 Hermesh 移到「应用程序」文件夹吗？",
+    "body": "Hermesh 要放在「应用程序」文件夹里，才能在后台运行并自动更新。移好后会从那里重新打开。",
+    "move": "移到「应用程序」文件夹",
+    "quit": "退出",
+    "failedTitle": "没能把 Hermesh 移到「应用程序」文件夹",
+    "failedBody": "请在访达中把 Hermesh 拖到「应用程序」文件夹，再从那里打开。",
+    "ok": "好"
+  }
+}

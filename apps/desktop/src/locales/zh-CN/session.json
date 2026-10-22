@@ -1,0 +1,70 @@
+{
+  "thisMac": "这台 Mac",
+  "waiting": "等你回答",
+  "page": {
+    "showInfo": "显示信息面板 ⌥⌘0",
+    "hideInfo": "隐藏信息面板 ⌥⌘0",
+    "info": "信息面板"
+  },
+  "chat": {
+    "archived": "已归档：只读，worktree 已释放，改动还在分支上。",
+    "unarchive": "取消归档",
+    "log": "对话",
+    "failed": "出错了",
+    "failedWith": "出错了：{{title}}",
+    "crashedWith": "已崩溃：{{title}}",
+    "turnDone": "这一轮做完了。{{grant}} 再发消息时，会在这个会话里接着做。",
+    "agentAsked": "agent 提问：",
+    "interruptedByYou": "你打断了这一轮。会话还在，{{grant}} 再发消息就会接着做。",
+    "interrupted": "这一轮被打断了。会话还在，{{grant}} 再发消息就会接着做。",
+    "turnFailed": "第 {{turn}} 轮出错：{{title}}",
+    "turnComplete": "第 {{turn}} 轮完成",
+    "files_other": "{{count}} 个文件",
+    "noFiles": "没有改动文件",
+    "copy": "拷贝",
+    "inProgress": "进行中",
+    "truncated": "…（已截断）",
+    "resume": "{{grant}} 再发消息就会从这里接着做，之前的改动都还在。",
+    "adviceAndResume": "{{advice}}{{resume}}",
+    "details": "详情",
+    "archive": "归档"
+  },
+  "control": {
+    "label": "这一轮",
+    "interruptTitle": "打断这一轮 ⌘.",
+    "interrupt": "打断",
+    "waitingDetail": "{{grant}} · 第 {{turn}} 轮 · 没人回答它会自行判断",
+    "working": "{{agent}} 正在工作"
+  },
+  "actions": {
+    "interrupted": "已打断「{{title}}」",
+    "copiedId": "已拷贝会话 ID"
+  },
+  "question": {
+    "label": "问题",
+    "asks": "{{agent}} 问你",
+    "optional": "（可选）",
+    "options": "选项",
+    "yourAnswer": "你的回答",
+    "secret": "你的回答（保密：只交给 agent，不记录）",
+    "write": "写下你的回答…",
+    "orWrite": "或者直接写下你的回答…",
+    "declined": "已告诉它自行判断",
+    "answered": "已回答，{{agent}} 继续工作",
+    "declineTitle": "让它自行判断",
+    "decline": "不回答",
+    "answer": "回答",
+    "countdown": "没人回答的话，到时它会自行判断"
+  },
+  "inspector": {
+    "label": "会话信息",
+    "startedBy": "<b>{{grant}}</b> 发起",
+    "turns_other": "<b>{{count}}</b> 轮",
+    "files_other": "<b>{{count}}</b> 个文件",
+    "noChanges": "没有改动",
+    "crashed": "已崩溃",
+    "failed": "出错",
+    "turn": "第 {{turn}} 轮",
+    "turnLeft": "第 {{turn}} 轮 · {{left}}"
+  }
+}

@@ -1,0 +1,3120 @@
+{
+  "sourceLanguage": "en",
+  "strings": {
+    "": {
+      "shouldTranslate": false
+    },
+    " · ": {
+      "shouldTranslate": false
+    },
+    "%@ %@": {
+      "shouldTranslate": false
+    },
+    "%@ %lld%%": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%1$@ %2$lld%%"
+          }
+        }
+      }
+    },
+    "%@ asks": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ 问你"
+          }
+        }
+      }
+    },
+    "%@ asks · %@": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%1$@ 问你 · %2$@"
+          }
+        }
+      }
+    },
+    "%@ is working": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ 正在工作"
+          }
+        }
+      }
+    },
+    "%@ opens a sign-in and approval page; its request then shows up on this iPhone for you to verify and approve.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ 会打开登录和授权页面；它的连接请求会出现在这台 iPhone 上，由你核对并批准。"
+          }
+        }
+      }
+    },
+    "%@ · %@": {
+      "shouldTranslate": false
+    },
+    "%@ · %@/%@": {
+      "shouldTranslate": false
+    },
+    "%@ · not signed in": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ · 还没登录"
+          }
+        }
+      }
+    },
+    "%@ · signed in": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ · 已登录"
+          }
+        }
+      }
+    },
+    "%lld": {
+      "shouldTranslate": false
+    },
+    "%lld days": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld 天"
+          }
+        }
+      }
+    },
+    "%lld days left": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "还剩 %lld 天"
+          }
+        }
+      }
+    },
+    "%lld failed": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "出错 %lld"
+          }
+        }
+      }
+    },
+    "%lld today · %lld in all": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "今天 %1$lld 个 · 一共 %2$lld 个"
+          }
+        }
+      }
+    },
+    "**%@ is offline**; its sessions can’t be shown for now": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "**%@ 离线了**，它上面的会话暂时看不到"
+          }
+        }
+      }
+    },
+    "**%@ isn’t responding**; its sessions may be missing": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "**%@ 暂时没有回应**，它上面的会话可能没列全"
+          }
+        }
+      }
+    },
+    "**%lld machines can’t be reached**; their sessions can’t be shown for now": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "**%lld 台机器连不上**，它们上面的会话暂时看不到"
+          }
+        }
+      }
+    },
+    "+%lld": {
+      "shouldTranslate": false
+    },
+    "1. Run this in that machine’s terminal": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "1. 在那台机器的终端里运行"
+          }
+        }
+      }
+    },
+    "2. Approve it here": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "2. 在这里批准"
+          }
+        }
+      }
+    },
+    "A Mac mini, a Linux server or a cloud host can each be a machine: agents you grant access use Claude Code and Codex on it.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "一台 Mac mini、Linux 服务器或云主机，都可以成为执行机器：你授权的 agent 在上面调用 Claude Code、Codex 干活。"
+          }
+        }
+      }
+    },
+    "A binary file": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "二进制文件"
+          }
+        }
+      }
+    },
+    "A grant decides which of your projects, machines and coding agents an agent can use, and for how long.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "授权决定一个 agent 能用你的哪些项目、机器和编码 agent，用多久。"
+          }
+        }
+      }
+    },
+    "A machine calling itself “%@” wants to join": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "一台自称「%@」的机器想加入"
+          }
+        }
+      }
+    },
+    "A project is a directory agents can work in. Then choose in each grant which projects it can use.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "项目是 agent 可以工作的目录。添加以后，再在每个授权里分别勾选它能用哪些。"
+          }
+        }
+      }
+    },
+    "A question expires after 30 minutes if no one answers.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "没人回答的话，问题 30 分钟后过期。"
+          }
+        }
+      }
+    },
+    "A request to join appears on your trusted devices. Approve it if the code is the same.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "你的可信设备上会弹出加入请求。核对码一样就批准。"
+          }
+        }
+      }
+    },
+    "Account and Devices": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "账号与设备"
+          }
+        }
+      }
+    },
+    "Account and devices": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "账号与设备"
+          }
+        }
+      }
+    },
+    "Active days": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "活跃天数"
+          }
+        }
+      }
+    },
+    "Add": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "添加"
+          }
+        }
+      }
+    },
+    "Add a Machine": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "添加机器"
+          }
+        }
+      }
+    },
+    "Add a Machine…": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "添加机器…"
+          }
+        }
+      }
+    },
+    "Add a Project": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "添加项目"
+          }
+        }
+      }
+    },
+    "Add a Project…": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "添加项目…"
+          }
+        }
+      }
+    },
+    "Add a connector in %@": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "在 %@ 里添加连接器"
+          }
+        }
+      }
+    },
+    "Add this iPhone to your account": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "把这台 iPhone 加入你的账号"
+          }
+        }
+      }
+    },
+    "Added project “%@”": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "已添加项目「%@」"
+          }
+        }
+      }
+    },
+    "Adding…": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "正在添加…"
+          }
+        }
+      }
+    },
+    "Agent questions": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "agent 提问"
+          }
+        }
+      }
+    },
+    "Agents change the files in this directory directly, as if you ran Claude Code there; no separate branch and no change history.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "agent 直接在这个目录里改动，就像你自己在这里运行 Claude Code；没有单独的分支和改动记录。"
+          }
+        }
+      }
+    },
+    "Agents find a project as “machine/project”.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "agent 用“机器名/项目”找到项目。"
+          }
+        }
+      }
+    },
+    "Agents find projects as “machine/project” and will see the new name. Use lowercase letters, digits and -.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "agent 用“机器名/项目”找到项目，改名后它们会看到新名字。只能用小写字母、数字和 -。"
+          }
+        }
+      }
+    },
+    "Agents find projects as “machine/project”. Once approved, add projects to it on its page and choose which grants may use them.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "agent 用“机器名/项目”找到项目。批准后，再在它的页面里添加项目，并在授权里勾选谁能用。"
+          }
+        }
+      }
+    },
+    "All": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "全部"
+          }
+        }
+      }
+    },
+    "All Sessions": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "全部会话"
+          }
+        }
+      }
+    },
+    "All coding agents": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "所有编码 agent"
+          }
+        }
+      }
+    },
+    "All machines (including ones that join later)": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "所有机器（包括以后加入的）"
+          }
+        }
+      }
+    },
+    "All projects": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "所有项目"
+          }
+        }
+      }
+    },
+    "All projects (including ones added later)": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "所有项目（包括以后添加的）"
+          }
+        }
+      }
+    },
+    "Allow Notifications in Settings": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "在设置里允许通知"
+          }
+        }
+      }
+    },
+    "Also runs tasks · offline": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "也在执行任务 · 离线"
+          }
+        }
+      }
+    },
+    "Also runs tasks · online": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "也在执行任务 · 在线"
+          }
+        }
+      }
+    },
+    "Always": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "一直通知"
+          }
+        }
+      }
+    },
+    "Answer": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "回答"
+          }
+        }
+      }
+    },
+    "Answered; %@ is working again": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "已回答，%@ 继续工作"
+          }
+        }
+      }
+    },
+    "Answer…": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "回答…"
+          }
+        }
+      }
+    },
+    "Approve": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "批准"
+          }
+        }
+      }
+    },
+    "Approve on your other device": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "在你的另一台设备上批准"
+          }
+        }
+      }
+    },
+    "Approves; doesn’t run tasks": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "只批准，不执行任务"
+          }
+        }
+      }
+    },
+    "Archive": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "归档"
+          }
+        }
+      }
+    },
+    "Archived “%@”": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "已归档「%@」"
+          }
+        }
+      }
+    },
+    "Archived: read-only; the worktree is released and the changes stay on the branch.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "已归档：只读，worktree 已释放，改动还在分支上。"
+          }
+        }
+      }
+    },
+    "As the user you code as on that machine. It installs Hermesh, runs it in the background, and shows a verification code.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "用你平时在那台机器上写代码的用户运行。它会安装 Hermesh、在后台运行，并显示一个核对码。"
+          }
+        }
+      }
+    },
+    "Back": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "返回"
+          }
+        }
+      }
+    },
+    "Base branch (optional), e.g. main": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "默认基线（可选），例如 main"
+          }
+        }
+      }
+    },
+    "Branch": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "分支"
+          }
+        }
+      }
+    },
+    "Cancel": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "取消"
+          }
+        }
+      }
+    },
+    "Change What It Can Use…": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "修改范围…"
+          }
+        }
+      }
+    },
+    "Changes": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "改动"
+          }
+        }
+      }
+    },
+    "Changes · %lld files": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "改动 · %lld 个文件"
+          }
+        }
+      }
+    },
+    "Changes · 1 file": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "改动 · 1 个文件"
+          }
+        }
+      }
+    },
+    "Checking…": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "正在检查…"
+          }
+        }
+      }
+    },
+    "Choose at least one project, or All Projects, and one coding agent.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "至少选一个项目（或“所有项目”）和一个编码 agent。"
+          }
+        }
+      }
+    },
+    "Close": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "关闭"
+          }
+        }
+      }
+    },
+    "Close the menu": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "关闭菜单"
+          }
+        }
+      }
+    },
+    "Coding Agents": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "编码 agent"
+          }
+        }
+      }
+    },
+    "Coding agent": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "编码 agent"
+          }
+        }
+      }
+    },
+    "Coding agents": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "编码 agent"
+          }
+        }
+      }
+    },
+    "Compare the code with what it shows.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "请和对方显示的核对码比对。"
+          }
+        }
+      }
+    },
+    "Connect Your Agent": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "连接你的 Agent"
+          }
+        }
+      }
+    },
+    "Connect an Agent": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "连接 agent"
+          }
+        }
+      }
+    },
+    "Connect an Agent…": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "连接 agent…"
+          }
+        }
+      }
+    },
+    "Connected": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "已连接"
+          }
+        }
+      }
+    },
+    "Connection address": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "连接地址"
+          }
+        }
+      }
+    },
+    "Connects": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "连接方式"
+          }
+        }
+      }
+    },
+    "Continue": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "继续"
+          }
+        }
+      }
+    },
+    "Copied": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "已拷贝"
+          }
+        }
+      }
+    },
+    "Copied the session ID": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "已拷贝会话 ID"
+          }
+        }
+      }
+    },
+    "Copy": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "拷贝"
+          }
+        }
+      }
+    },
+    "Copy Session ID": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "拷贝会话 ID"
+          }
+        }
+      }
+    },
+    "Denied: Hermesh can’t show this request in full. %@": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "已拒绝：Hermesh 无法完整显示这个请求。%@"
+          }
+        }
+      }
+    },
+    "Deny": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "拒绝"
+          }
+        }
+      }
+    },
+    "Details": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "详情"
+          }
+        }
+      }
+    },
+    "Directory, e.g. ~/code/my-app": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "目录，例如 ~/code/my-app"
+          }
+        }
+      }
+    },
+    "Disconnect": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "断开"
+          }
+        }
+      }
+    },
+    "Disconnect “%@”?": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "断开「%@」？"
+          }
+        }
+      }
+    },
+    "Disconnected grant": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "已断开的授权"
+          }
+        }
+      }
+    },
+    "Disconnected “%@”": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "已断开「%@」"
+          }
+        }
+      }
+    },
+    "Disconnected “%@”; %@ will hear once online": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "已断开「%1$@」，%2$@ 上线后生效"
+          }
+        }
+      }
+    },
+    "Disconnect…": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "断开…"
+          }
+        }
+      }
+    },
+    "Does it match what the other side shows?": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "和对方显示的一样吗？"
+          }
+        }
+      }
+    },
+    "Done": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "完成"
+          }
+        }
+      }
+    },
+    "Don’t Answer": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "不回答"
+          }
+        }
+      }
+    },
+    "End-to-end encrypted: the server only forwards, and can’t read anything.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "端到端加密：服务器只转发，看不到内容。"
+          }
+        }
+      }
+    },
+    "Enter a Pairing Code": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "输入配对码"
+          }
+        }
+      }
+    },
+    "Enter a Pairing Code…": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "输入配对码…"
+          }
+        }
+      }
+    },
+    "Every trusted device can approve requests to connect. If one gets lost, remove it from another (swipe left on it).": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "每台可信设备都能批准连接请求。丢了的设备，在另一台上移除（在它上面左滑）。"
+          }
+        }
+      }
+    },
+    "Excludes %@": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "不含 %@ 的用量"
+          }
+        }
+      }
+    },
+    "Failed": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "出错"
+          }
+        }
+      }
+    },
+    "Failed sessions": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "会话出错"
+          }
+        }
+      }
+    },
+    "Filter sessions": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "筛选会话"
+          }
+        }
+      }
+    },
+    "Find": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "查找"
+          }
+        }
+      }
+    },
+    "Finding…": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "正在查找…"
+          }
+        }
+      }
+    },
+    "Fingerprint": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "指纹"
+          }
+        }
+      }
+    },
+    "Finished turns": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "一轮完成"
+          }
+        }
+      }
+    },
+    "For a git repository: each session gets its own branch and worktree, and your own files are left alone.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "git 仓库：每个会话在自己的分支和 worktree 里，不碰你正在改的文件。"
+          }
+        }
+      }
+    },
+    "Grants": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "授权"
+          }
+        }
+      }
+    },
+    "Hermesh": {
+      "shouldTranslate": false
+    },
+    "Hermesh couldn’t start": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Hermesh 没能启动"
+          }
+        }
+      }
+    },
+    "Hermesh service · %@": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Hermesh 官方服务 · %@"
+          }
+        }
+      }
+    },
+    "Hermesh tells you when an agent asks something or a machine or agent asks to connect.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "有 agent 提问，或有机器、agent 请求连接时，Hermesh 会通知你。"
+          }
+        }
+      }
+    },
+    "How agents work": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "工作方式"
+          }
+        }
+      }
+    },
+    "If no one answers by then, it decides by itself": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "没人回答的话，到时它会自行判断"
+          }
+        }
+      }
+    },
+    "In Progress": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "进行中"
+          }
+        }
+      }
+    },
+    "In place": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "原地"
+          }
+        }
+      }
+    },
+    "In these projects it can do anything you can.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "在这些项目里，它能做你本人能做的事。"
+          }
+        }
+      }
+    },
+    "In these projects it can do anything you can. You can change or disconnect it at any time.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "在这些项目里，它能做你本人能做的事。随时可以修改或断开。"
+          }
+        }
+      }
+    },
+    "Interrupt": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "打断"
+          }
+        }
+      }
+    },
+    "Interrupt this turn?": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "打断这一轮？"
+          }
+        }
+      }
+    },
+    "Interrupted “%@”": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "已打断「%@」"
+          }
+        }
+      }
+    },
+    "It can no longer approve anything at once, and its own machine is removed with it. The machines and agents it approved are reissued by this iPhone and keep working (needs Face ID).": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "它立刻不能再批准任何事，它自己的执行机器也一并移除。它批准过的机器和 agent 会改由这台 iPhone 重新签发，照常可用（需要面容 ID）。"
+          }
+        }
+      }
+    },
+    "It disconnects at once and running sessions stop. To join again it has to pair again.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "这台机器会立即断开，正在运行的会话会停止。之后需要重新配对才能加入。"
+          }
+        }
+      }
+    },
+    "It is still one of your trusted devices. First remove it on another trusted device, under Account and Devices; then sign out here.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "它现在还是你的可信设备。先在你的另一台可信设备上，到“账号与设备”把它移除，再在这里退出登录。"
+          }
+        }
+      }
+    },
+    "It loses access at once; running sessions are interrupted, and the sessions themselves stay. To use it again, connect it again.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "它会立即失去访问；正在跑的会话会被打断，会话本身保留。要再用，需要重新连接。"
+          }
+        }
+      }
+    },
+    "It may have been approved elsewhere, or it expired.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "它可能已经在别处批准，或者过期了。"
+          }
+        }
+      }
+    },
+    "It says it is: %@": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "对方自报：%@"
+          }
+        }
+      }
+    },
+    "It will approve machines, personal agents and new devices, just like this iPhone. Approve only if that device is in your hands; if it gets lost, remove it from any other device.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "它将和这台 iPhone 一样，能批准机器、个人 agent 和新设备。只在那台设备就在你手上时批准；丢了可以在任意另一台设备上移除。"
+          }
+        }
+      }
+    },
+    "Its projects and coding agents stay the same. Once you confirm with Face ID, “%@” works with the new expiry and the old grant stops working.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "项目和编码 agent 不变。用面容 ID 确认后，「%@」按新的有效期工作，旧授权立即作废。"
+          }
+        }
+      }
+    },
+    "Its sessions can’t be shown for now": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "它上面的会话暂时看不到"
+          }
+        }
+      }
+    },
+    "Join your own server": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "加入你自己的服务器"
+          }
+        }
+      }
+    },
+    "Keep an eye on your agents from your phone: answer their questions, approve new connections, and stop them when needed.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "在手机上照看你的 agent：回答它的提问，批准新的连接，必要时打断它。"
+          }
+        }
+      }
+    },
+    "Last 30 days **%@** tokens · active **%lld** days": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "近 30 天 **%1$@** tokens · 活跃 **%2$lld** 天"
+          }
+        }
+      }
+    },
+    "Last 30 days · tokens": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "近 30 天 · tokens"
+          }
+        }
+      }
+    },
+    "Last online": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "最近在线"
+          }
+        }
+      }
+    },
+    "Last online %@ · they’ll appear once it reconnects": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@还在线 · 连上后会自动补上"
+          }
+        }
+      }
+    },
+    "Loading earlier sessions…": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "正在读取更早的会话…"
+          }
+        }
+      }
+    },
+    "Machine": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "机器"
+          }
+        }
+      }
+    },
+    "Machine / project": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "机器 / 项目"
+          }
+        }
+      }
+    },
+    "Machine name": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "机器名"
+          }
+        }
+      }
+    },
+    "Machines": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "机器"
+          }
+        }
+      }
+    },
+    "Machines and grants in any browser; emergency revocation": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "在任何浏览器里查看机器和授权、紧急撤销"
+          }
+        }
+      }
+    },
+    "Menu": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "菜单"
+          }
+        }
+      }
+    },
+    "Menu, %lld need you": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "菜单，%lld 项需要处理"
+          }
+        }
+      }
+    },
+    "More": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "更多"
+          }
+        }
+      }
+    },
+    "Must match what the other side shows": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "须与对方显示的一致"
+          }
+        }
+      }
+    },
+    "Name this machine": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "给这台机器起个名字"
+          }
+        }
+      }
+    },
+    "Needs You": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "需要你处理"
+          }
+        }
+      }
+    },
+    "Needs Your Confirmation": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "需要你确认"
+          }
+        }
+      }
+    },
+    "New": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "新建"
+          }
+        }
+      }
+    },
+    "No changes": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "没有改动"
+          }
+        }
+      }
+    },
+    "No coding agent found on this machine.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "这台机器上没有找到编码 agent。"
+          }
+        }
+      }
+    },
+    "No connection address? Enter a pairing code…": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "没带连接地址？输入配对码…"
+          }
+        }
+      }
+    },
+    "No earlier sessions": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "没有更早的会话了"
+          }
+        }
+      }
+    },
+    "No grants yet.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "还没有授权。"
+          }
+        }
+      }
+    },
+    "No machines yet.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "还没有机器。"
+          }
+        }
+      }
+    },
+    "No projects yet. Add one on a machine’s page.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "还没有项目。到机器的页面里添加。"
+          }
+        }
+      }
+    },
+    "No sessions found": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "没有找到会话"
+          }
+        }
+      }
+    },
+    "No sessions yet. Once an agent is connected, its work shows up here.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "还没有会话。授权连上后，它们干的活会出现在这里。"
+          }
+        }
+      }
+    },
+    "None yet": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "还没选"
+          }
+        }
+      }
+    },
+    "Not connected": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "未连接"
+          }
+        }
+      }
+    },
+    "Nothing is running right now.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "现在没有会话在跑。"
+          }
+        }
+      }
+    },
+    "Nothing was signed: %@": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "没有签名：%@"
+          }
+        }
+      }
+    },
+    "Notifications": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "通知"
+          }
+        }
+      }
+    },
+    "Now": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "现在"
+          }
+        }
+      }
+    },
+    "OK": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "好"
+          }
+        }
+      }
+    },
+    "Offline · last online %@": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "离线 · 最近在线 %@"
+          }
+        }
+      }
+    },
+    "Once disconnected, it loses access at once; running sessions are interrupted, and the sessions themselves stay.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "断开后它会立即失去访问；正在跑的会话会被打断，会话本身保留。"
+          }
+        }
+      }
+    },
+    "Once it reconnects, its sessions and usage come back by themselves; there’s nothing for you to do.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "连上以后，会话和用量会自动补上，不用你做什么。"
+          }
+        }
+      }
+    },
+    "Once it runs the commands, its request to connect shows up here.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "它运行这段话里的命令后，连接请求会出现在这里。"
+          }
+        }
+      }
+    },
+    "Once you confirm with Face ID, “%@” works with the new settings and the old ones stop working at once.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "用面容 ID 确认后，「%@」按新设置工作，旧设置立即作废。"
+          }
+        }
+      }
+    },
+    "Online": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "在线"
+          }
+        }
+      }
+    },
+    "Online · %lld running": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "在线 · %lld 个运行中"
+          }
+        }
+      }
+    },
+    "Only “%@” Sessions": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "只看「%@」的会话"
+          }
+        }
+      }
+    },
+    "Or send this to %@": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "或者把这段话发给 %@"
+          }
+        }
+      }
+    },
+    "Or write your own answer…": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "或者直接写下你的回答…"
+          }
+        }
+      }
+    },
+    "Overview": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "概览"
+          }
+        }
+      }
+    },
+    "Pairing code": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "配对码"
+          }
+        }
+      }
+    },
+    "Paused": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "已暂停"
+          }
+        }
+      }
+    },
+    "Please connect yourself to my computer (Hermesh):\n1. Install: curl -fsSL https://github.com/hermeshai/hermesh/releases/latest/download/install.sh | sh -s -- --cli\n2. Sign in: ~/.local/bin/hermesh auth login %@ --name \"%@\"\n3. Tell me the verification code shown on screen. Once I confirm it on my iPhone, you’re ready.\nThen use hermesh project list to see the projects you can use, hermesh session start --project <project> --prompt \"…\" to start working, and hermesh --help for every command.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "请帮我把你接入我的电脑（Hermesh）：\n1. 安装：curl -fsSL https://github.com/hermeshai/hermesh/releases/latest/download/install.sh | sh -s -- --cli\n2. 登录：~/.local/bin/hermesh auth login %1$@ --name \"%2$@\"\n3. 把屏幕上显示的核对码（Verification code）告诉我，我在 iPhone 上确认后你就能用了。\n之后用 hermesh project list 看能用的项目，用 hermesh session start --project <项目> --prompt \"…\" 开始工作，hermesh --help 查看全部命令。"
+          }
+        }
+      }
+    },
+    "Project name": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "项目名"
+          }
+        }
+      }
+    },
+    "Projects": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "项目"
+          }
+        }
+      }
+    },
+    "Put off. Don’t approve unless the codes match.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "先不处理。核对码不一样就不要批准"
+          }
+        }
+      }
+    },
+    "Recent": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "最近"
+          }
+        }
+      }
+    },
+    "Remove": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "移除"
+          }
+        }
+      }
+    },
+    "Remove project “%@”?": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "移除项目「%@」？"
+          }
+        }
+      }
+    },
+    "Remove “%@”?": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "移除「%@」？"
+          }
+        }
+      }
+    },
+    "Removed “%@”": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "已移除「%@」"
+          }
+        }
+      }
+    },
+    "Remove…": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "移除…"
+          }
+        }
+      }
+    },
+    "Rename": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "改名"
+          }
+        }
+      }
+    },
+    "Rename this machine": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "给这台机器改名"
+          }
+        }
+      }
+    },
+    "Rename…": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "改名…"
+          }
+        }
+      }
+    },
+    "Renew": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "续期"
+          }
+        }
+      }
+    },
+    "Renew “%@”": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "续期「%@」的授权"
+          }
+        }
+      }
+    },
+    "Renewed “%@” for %lld days": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "已为「%1$@」续期 %2$lld 天"
+          }
+        }
+      }
+    },
+    "Renew…": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "续期…"
+          }
+        }
+      }
+    },
+    "Requests to connect": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "连接请求"
+          }
+        }
+      }
+    },
+    "Results": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "搜索结果"
+          }
+        }
+      }
+    },
+    "Retrying": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "正在重试"
+          }
+        }
+      }
+    },
+    "Running sessions aren’t affected": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "正在跑的会话不受影响"
+          }
+        }
+      }
+    },
+    "Save": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "保存"
+          }
+        }
+      }
+    },
+    "Search sessions": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "搜索会话"
+          }
+        }
+      }
+    },
+    "Send this to %@": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "把这段话发给 %@"
+          }
+        }
+      }
+    },
+    "Send…": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "发送…"
+          }
+        }
+      }
+    },
+    "Separate worktree": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "独立 worktree"
+          }
+        }
+      }
+    },
+    "Session Info": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "会话信息"
+          }
+        }
+      }
+    },
+    "Sessions": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "会话"
+          }
+        }
+      }
+    },
+    "Setting up…": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "正在设置…"
+          }
+        }
+      }
+    },
+    "Share…": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "共享…"
+          }
+        }
+      }
+    },
+    "Show All Sessions": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "显示全部会话"
+          }
+        }
+      }
+    },
+    "Show Archived": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "显示已归档"
+          }
+        }
+      }
+    },
+    "Sign In": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "登录"
+          }
+        }
+      }
+    },
+    "Sign Out": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "退出登录"
+          }
+        }
+      }
+    },
+    "Sign Out…": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "退出登录…"
+          }
+        }
+      }
+    },
+    "Sign this iPhone out?": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "让这台 iPhone 退出登录？"
+          }
+        }
+      }
+    },
+    "Signing in the first time creates your account.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "第一次登录会自动创建账号。"
+          }
+        }
+      }
+    },
+    "Something went wrong": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "出了点问题"
+          }
+        }
+      }
+    },
+    "Started": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "开始于"
+          }
+        }
+      }
+    },
+    "Started by": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "发起"
+          }
+        }
+      }
+    },
+    "Streak": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "连续使用"
+          }
+        }
+      }
+    },
+    "Take no new sessions": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "暂停接受新会话"
+          }
+        }
+      }
+    },
+    "Takes no new sessions": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "已暂停接受新会话"
+          }
+        }
+      }
+    },
+    "That isn’t a connection address. It looks like relay.example.com/o_…": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "这不是连接地址。它看起来像 relay.example.com/o_…"
+          }
+        }
+      }
+    },
+    "The Hermesh background service isn’t running on it: run %@ there to check": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "它上面的 Hermesh 后台服务没有运行：在那台机器上运行 %@ 看看"
+          }
+        }
+      }
+    },
+    "The agent asked: %@": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "agent 提问：%@"
+          }
+        }
+      }
+    },
+    "The changes are on the session’s own branch and worktree; your own files are left alone.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "改动在会话自己的分支和 worktree 里，不碰你正在改的文件。"
+          }
+        }
+      }
+    },
+    "The changes can’t be fetched right now.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "暂时取不到改动。"
+          }
+        }
+      }
+    },
+    "The directory itself isn’t deleted; agents can no longer start sessions there.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "目录本身不会被删除；agent 不能再在这里开新会话。"
+          }
+        }
+      }
+    },
+    "The machine is off, asleep, or offline": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "那台机器关机、睡眠了，或者断网了"
+          }
+        }
+      }
+    },
+    "The machine is offline; they show once it connects.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "机器离线，连上后显示。"
+          }
+        }
+      }
+    },
+    "The request expired. Start again.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "请求已过期，请重新开始。"
+          }
+        }
+      }
+    },
+    "The session stays; when %@ sends another message, it continues.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "会话还在，%@ 再发消息就会接着做。"
+          }
+        }
+      }
+    },
+    "Then it can no longer use your machines, and running sessions are interrupted": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "到期后它就不能再用你的机器，正在跑的会话会被打断"
+          }
+        }
+      }
+    },
+    "They prove the approval came from your own device.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "这一步证明批准来自你自己的设备。"
+          }
+        }
+      }
+    },
+    "They’ll appear once it reconnects": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "连上后会自动补上"
+          }
+        }
+      }
+    },
+    "This grant is gone": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "这个授权已经不在了"
+          }
+        }
+      }
+    },
+    "This iPhone": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "这台 iPhone"
+          }
+        }
+      }
+    },
+    "This iPhone creates an owner key in its Secure Enclave, then one of your trusted devices approves it.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "这台 iPhone 会用自己的安全芯片生成一把管理密钥，再由你的一台可信设备批准它加入。"
+          }
+        }
+      }
+    },
+    "This iPhone doesn’t run tasks.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "这台 iPhone 不会执行任务。"
+          }
+        }
+      }
+    },
+    "This iPhone is no longer in your Hermesh account. After signing out, you can set it up again or join your account again.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "这台 iPhone 已不在你的 Hermesh 账号里。退出登录后，可以重新设置，或再次加入你的账号。"
+          }
+        }
+      }
+    },
+    "This iPhone is one of your trusted devices": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "这台 iPhone 已经是你的可信设备"
+          }
+        }
+      }
+    },
+    "This machine is gone": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "这台机器已经不在了"
+          }
+        }
+      }
+    },
+    "This proves the approval came from your own device.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "这一步证明批准来自你自己的设备。"
+          }
+        }
+      }
+    },
+    "This request is gone": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "这个请求已经不在了"
+          }
+        }
+      }
+    },
+    "This turn is done. When %@ sends another message, it continues in this session.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "这一轮做完了。%@ 再发消息时，会在这个会话里接着做。"
+          }
+        }
+      }
+    },
+    "This turn was interrupted. The session stays; when %@ sends another message, it continues.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "这一轮被打断了。会话还在，%@ 再发消息就会接着做。"
+          }
+        }
+      }
+    },
+    "Those aren’t the digits. Check the other device and try again.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "数字不对。请看看另一台设备，再试一次。"
+          }
+        }
+      }
+    },
+    "Through %@, which keeps its key": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "经由 %@，由它保管密钥"
+          }
+        }
+      }
+    },
+    "Today **%lld** sessions · **%lld** done · %@": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "今天 **%1$lld** 个会话 · 完成 **%2$lld** · %3$@"
+          }
+        }
+      }
+    },
+    "Told it to decide by itself": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "已告诉它自行判断"
+          }
+        }
+      }
+    },
+    "Trusted devices": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "可信设备"
+          }
+        }
+      }
+    },
+    "Try telling it: “Use Hermesh to see which projects I have.”": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "试着对它说：“用 Hermesh 看看我有哪些项目”。"
+          }
+        }
+      }
+    },
+    "Turn %lld": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "第 %lld 轮"
+          }
+        }
+      }
+    },
+    "Turn %u done · %lld files": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "第 %1$u 轮完成 · %2$lld 个文件"
+          }
+        }
+      }
+    },
+    "Turn %u done · no file changes": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "第 %u 轮完成 · 没有改动文件"
+          }
+        }
+      }
+    },
+    "Turns": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "轮数"
+          }
+        }
+      }
+    },
+    "Type the connection address one of your trusted devices shows (on a Mac: Settings › Account and Devices).": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "输入你的一台可信设备上显示的连接地址（在 Mac 上：设置 › 账号与设备）。"
+          }
+        }
+      }
+    },
+    "Type the two digits your other device shows": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "输入另一台设备上显示的两位数字"
+          }
+        }
+      }
+    },
+    "Type the two digits “%@” shows": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "输入「%@」上显示的两位数字"
+          }
+        }
+      }
+    },
+    "Type these digits on the new device": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "在新设备上输入这两位数字"
+          }
+        }
+      }
+    },
+    "Type these digits on “%@”": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "在「%@」上输入这两位数字"
+          }
+        }
+      }
+    },
+    "Unarchive": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "取消归档"
+          }
+        }
+      }
+    },
+    "Unarchived “%@”": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "已取消归档「%@」"
+          }
+        }
+      }
+    },
+    "Undo": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "撤销"
+          }
+        }
+      }
+    },
+    "Usage": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "用量"
+          }
+        }
+      }
+    },
+    "Usage over the last %lld weeks": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "近 %lld 周的用量"
+          }
+        }
+      }
+    },
+    "Use Your Own Server…": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "使用自己的服务器…"
+          }
+        }
+      }
+    },
+    "Valid for": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "有效期"
+          }
+        }
+      }
+    },
+    "Valid until %@ · %lld days left": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "有效期至 %1$@ · 还剩 %2$lld 天"
+          }
+        }
+      }
+    },
+    "Verification code": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "核对码"
+          }
+        }
+      }
+    },
+    "Verification code %@": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "核对码 %@"
+          }
+        }
+      }
+    },
+    "Verify": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "核对"
+          }
+        }
+      }
+    },
+    "Version": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "版本"
+          }
+        }
+      }
+    },
+    "Waiting for approval…": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "等待批准…"
+          }
+        }
+      }
+    },
+    "Waiting for that machine to connect…": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "等待那台机器连上来…"
+          }
+        }
+      }
+    },
+    "Waiting for you · %@": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "等你回答 · %@"
+          }
+        }
+      }
+    },
+    "Web console": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "网页控制台"
+          }
+        }
+      }
+    },
+    "What it can use": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "能用什么"
+          }
+        }
+      }
+    },
+    "What “%@” Can Use": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "「%@」能用什么"
+          }
+        }
+      }
+    },
+    "When a machine or agent came without your connection address, its terminal shows a pairing code. Its request then opens like any other: compare the verification code.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "机器或 agent 没带你的连接地址时，它的终端会显示一个配对码。输入后，会和其他请求一样弹出批准页面，请核对核对码。"
+          }
+        }
+      }
+    },
+    "Working Now": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "正在干活"
+          }
+        }
+      }
+    },
+    "Write your answer…": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "写下你的回答…"
+          }
+        }
+      }
+    },
+    "Your agent": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "你的 Agent"
+          }
+        }
+      }
+    },
+    "Your answer (secret: only the agent gets it, nothing records it)": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "你的回答（保密：只交给 agent，不记录）"
+          }
+        }
+      }
+    },
+    "Your own server · %@": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "自己的服务器 · %@"
+          }
+        }
+      }
+    },
+    "a long time ago": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "很久以前"
+          }
+        }
+      }
+    },
+    "ends in %lld days": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld 天后到期"
+          }
+        }
+      }
+    },
+    "hermeshd status": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "hermeshd status"
+          }
+        }
+      }
+    },
+    "notice.body": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Something needs you. Open Hermesh to see it."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "有事需要你处理，打开 Hermesh 查看。"
+          }
+        }
+      }
+    },
+    "notice.title": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Hermesh"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Hermesh"
+          }
+        }
+      }
+    },
+    "relay.example.com/o_…": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "relay.example.com/o_…"
+          }
+        }
+      }
+    },
+    "·": {
+      "shouldTranslate": false
+    },
+    "“%@” connects through %@: %@ keeps this agent’s key, can act for it within this scope, and sees the sessions it reaches.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "「%1$@」经由 %2$@ 连接：%3$@ 保管这个 agent 的密钥，可以在这个范围内代表它操作，并能看到它触及的会话。"
+          }
+        }
+      }
+    },
+    "“%@” is a trusted device now": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "「%@」已成为可信设备"
+          }
+        }
+      }
+    },
+    "“%@” is connected": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "「%@」已连接"
+          }
+        }
+      }
+    },
+    "“%@” joined. Add projects to it on its page.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "「%@」已加入，去它的页面里添加项目"
+          }
+        }
+      }
+    },
+    "“%@” takes new sessions again": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "「%@」恢复接受新会话"
+          }
+        }
+      }
+    },
+    "“%@” takes no new sessions": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "「%@」暂停接受新会话"
+          }
+        }
+      }
+    },
+    "“%@” wants to become your trusted device": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "「%@」想成为你的可信设备"
+          }
+        }
+      }
+    },
+    "“%@” wants to connect to your computer": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "「%@」想连接你的电脑"
+          }
+        }
+      }
+    },
+    "“%@” works with the new settings": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "「%@」已按新设置工作"
+          }
+        }
+      }
+    },
+    "“%@”’s grant ends in %lld days": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "「%1$@」的授权 %2$lld 天后到期"
+          }
+        }
+      }
+    },
+    "“%@”’s grant ends today": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "「%@」的授权今天到期"
+          }
+        }
+      }
+    },
+    "−%lld": {
+      "shouldTranslate": false
+    }
+  },
+  "version": "1.0"
+}

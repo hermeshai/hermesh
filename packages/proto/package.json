@@ -1,0 +1,17 @@
+{
+  "name": "@hermesh/proto",
+  "private": true,
+  "type": "module",
+  "exports": {
+    "./local": "./src/gen/hermesh/local/v1/local_pb.ts",
+    "./session": "./src/gen/hermesh/session/v1/session_pb.ts",
+    "./identity": "./src/gen/hermesh/identity/v1/identity_pb.ts",
+    "./machine": "./src/gen/hermesh/machine/v1/machine_pb.ts"
+  },
+  "dependencies": {
+    "@bufbuild/protobuf": "2.16.0"
+  },
+  "devDependencies": {
+    "@bufbuild/protoc-gen-es": "2.16.0"
+  }
+}

@@ -1,0 +1,47 @@
+name: ci
+on:
+  push:
+    branches: [main]
+  pull_request:
+jobs:
+  go:
+    strategy:
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - name: lint
+        run: make lint
+      - name: contract compatibility
+        if: github.event_name == 'pull_request'
+        run: go tool buf breaking --against '.git#branch=origin/main'
+      - name: unit tests
+        run: make test
+      - name: end-to-end (scripted agents)
+        run: make e2e
+        env:
+          # Race-detector binaries on one runner: a data race fails the test.
+          HERMESH_E2E_RACE: ${{ matrix.os == 'ubuntu-latest' && '1' || '' }}
+  # The desktop app (Electron) and the macOS signer: types, unit tests, and
+  # their end-to-end tests driving the real app against the real daemon.
+  app:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - run: corepack enable
+      - name: types and unit tests
+        run: make test-app
+      - name: end-to-end (desktop app and signer)
+        run: go test ./e2e -run 'TestDesktop|TestSigner' -count=1 -v -timeout 30m

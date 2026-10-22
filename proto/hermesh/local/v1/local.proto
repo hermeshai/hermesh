@@ -1,0 +1,608 @@
+syntax = "proto3";
+
+package hermesh.local.v1;
+
+import "google/protobuf/timestamp.proto";
+import "hermesh/identity/v1/identity.proto";
+import "hermesh/machine/v1/machine.proto";
+import "hermesh/session/v1/session.proto";
+
+// LocalService is served by the hermeshd bundled with Hermesh.app over a
+// Unix socket. It is the only API the app uses. Anything that adds
+// permissions is signed by this trusted device's root key, which only the
+// app holds: hermeshd asks for those signatures via WatchSigningRequests.
+service LocalService {
+  rpc GetStatus(GetStatusRequest) returns (GetStatusResponse);
+
+  // Onboarding: the first trusted device creates the owner.
+  rpc Setup(SetupRequest) returns (SetupResponse);
+
+  // Another device joins the owner (docs/trusted-devices.md 4.2): it asks,
+  // waits for a trusted device to approve, then the person confirms they
+  // approved it there, and only then is the owner kept.
+  rpc RequestJoin(RequestJoinRequest) returns (RequestJoinResponse);
+  // Long poll: returns when approved or expired, or after about 25s.
+  rpc WaitJoin(WaitJoinRequest) returns (WaitJoinResponse);
+  rpc ConfirmJoin(ConfirmJoinRequest) returns (ConfirmJoinResponse);
+
+  // Trusted devices.
+  rpc ListDevices(ListDevicesRequest) returns (ListDevicesResponse);
+  // Approves a device's join request: signs the next root cert with it.
+  rpc ApproveDevicePairing(ApproveDevicePairingRequest) returns (ApproveDevicePairingResponse);
+  // Removes another device: the next root cert without it, what it signed
+  // re-issued by this one, and its own machine revoked.
+  rpc RemoveDevice(RemoveDeviceRequest) returns (RemoveDeviceResponse);
+  // Forgets the owner on this device, after it was removed, so it can be
+  // set up again or join again. Its own machine keeps its projects.
+  rpc Leave(LeaveRequest) returns (LeaveResponse);
+
+  // Signing delegation.
+  rpc WatchSigningRequests(WatchSigningRequestsRequest) returns (stream SigningRequest);
+  rpc CompleteSigningRequest(CompleteSigningRequestRequest) returns (CompleteSigningRequestResponse);
+
+  // This Mac as an execution machine.
+  rpc SetLocalMachine(SetLocalMachineRequest) returns (SetLocalMachineResponse);
+
+  // Pairing.
+  rpc LookupPairing(LookupPairingRequest) returns (LookupPairingResponse);
+  // Requests waiting for this owner's approval, newest first: machines and
+  // personal agents that used the connection address.
+  rpc ListPairingRequests(ListPairingRequestsRequest) returns (ListPairingRequestsResponse);
+  rpc ApproveMachinePairing(ApproveMachinePairingRequest) returns (ApproveMachinePairingResponse);
+  rpc ApproveClientPairing(ApproveClientPairingRequest) returns (ApproveClientPairingResponse);
+
+  // Machines.
+  rpc ListMachines(ListMachinesRequest) returns (ListMachinesResponse);
+  rpc RenameMachine(RenameMachineRequest) returns (RenameMachineResponse);
+  rpc SetMachinePaused(SetMachinePausedRequest) returns (SetMachinePausedResponse);
+  rpc RemoveMachine(RemoveMachineRequest) returns (RemoveMachineResponse);
+  // Checks this Mac's coding agents again (installed, version, signed in),
+  // in the background: they are only checked when something needs them.
+  rpc CheckAgents(CheckAgentsRequest) returns (CheckAgentsResponse);
+
+  // Projects.
+  rpc ListProjects(ListProjectsRequest) returns (ListProjectsResponse);
+  rpc AddProject(AddProjectRequest) returns (AddProjectResponse);
+  rpc RemoveProject(RemoveProjectRequest) returns (RemoveProjectResponse);
+
+  // Agents.
+  rpc ListClients(ListClientsRequest) returns (ListClientsResponse);
+  rpc UpdateClient(UpdateClientRequest) returns (UpdateClientResponse);
+  rpc RevokeClient(RevokeClientRequest) returns (RevokeClientResponse);
+
+  // Sessions (read across all reachable machines over E2E).
+  rpc ListSessions(ListSessionsRequest) returns (ListSessionsResponse);
+  // WatchSessions pushes session changes from every reachable machine as
+  // they happen (hermeshd keeps one SessionService.WatchSessions stream per
+  // online machine while anyone watches). A watcher that falls behind is
+  // ended (RESOURCE_EXHAUSTED) and should watch again.
+  rpc WatchSessions(WatchSessionsRequest) returns (stream WatchSessionsResponse);
+  rpc StreamSessionEvents(StreamSessionEventsRequest) returns (stream hermesh.session.v1.SessionEvent);
+  rpc InterruptSession(InterruptSessionRequest) returns (SessionResponse);
+  rpc ArchiveSession(ArchiveSessionRequest) returns (SessionResponse);
+  rpc UnarchiveSession(UnarchiveSessionRequest) returns (SessionResponse);
+  rpc AnswerQuestion(AnswerQuestionRequest) returns (AnswerQuestionResponse);
+  rpc GetDiff(GetDiffRequest) returns (hermesh.session.v1.GetDiffResponse);
+  // GetUsage adds up every reachable machine's tokens by day and coding
+  // agent (hermesh.session.v1.SessionService.GetUsage).
+  rpc GetUsage(GetUsageRequest) returns (GetUsageResponse);
+  // Notifications while the app is not running (the iPhone): this device's
+  // push token and notice key, signed with its device key and sent to the
+  // relay, which hands them to the owner's machines.
+  rpc RegisterPush(RegisterPushRequest) returns (RegisterPushResponse);
+}
+
+message RegisterPushRequest {
+  // The APNs device token, hex; empty stops notifications.
+  string token = 1;
+  // "production" or "development".
+  string environment = 2;
+  // X25519 public key (32 bytes) to seal notices to.
+  bytes notice_public_key = 3;
+  // "question", "failure", "turn_done" (requests to connect always come).
+  repeated string kinds = 4;
+}
+
+message RegisterPushResponse {}
+
+message GetStatusRequest {}
+
+message GetStatusResponse {
+  bool initialized = 1;
+  string owner_id = 2;
+  string relay_url = 3;
+  bool relay_connected = 4;
+  bool local_machine_enabled = 5;
+  string local_machine_id = 6;
+  string local_machine_name = 7;
+  string version = 8;
+  // Connection address handed to agents and installers.
+  string connect_address = 9;
+  // The relay is a hosted center; its web console at console_url can list
+  // and revoke, while adding machines and agents happens only here.
+  bool hosted = 10;
+  string console_url = 11;
+  // This device's root key id (one of the owner's trusted devices).
+  string device_key_id = 12;
+  // This device is no longer one of the owner's trusted devices: another
+  // removed it, or the owner started over. Leave resets it.
+  // With machine_only: the relay refuses this machine (it was removed).
+  bool removed = 13;
+  // This device joined an owner as a machine only, not a trusted device:
+  // it approves nothing and sees only its own projects and sessions.
+  // initialized stays false; owner_id, relay_url and local_machine_*
+  // describe the machine.
+  bool machine_only = 14;
+}
+
+message SetupRequest {
+  string relay_url = 1;
+  string claim_code = 2;
+  // With a link code from the browser sign-in: its PKCE verifier.
+  string claim_verifier = 5;
+  // Root public key (SPKI DER). Empty: hermeshd asks the signer to create
+  // one (a SigningRequest with create_root_key), which is what the desktop
+  // app does; tests and headless setups pass their own.
+  bytes root_public_key = 3;
+  string root_label = 4;
+  // "macos", later "ios", "windows", "linux".
+  string root_platform = 6;
+  // Also make this device a machine with this name, in the same signature
+  // (one Touch ID). Empty: not a machine.
+  string local_machine_name = 7;
+}
+
+message SetupResponse {
+  string owner_id = 1;
+  reserved 2;
+  reserved "recovery_words";
+  string connect_address = 3;
+}
+
+message RequestJoinRequest {
+  // Where devices connect (a relay, or a hosted center's connect URL).
+  string relay_url = 1;
+  // The owner to join. On a hosted center the console gave it, so it is
+  // not trusted: ConfirmJoin is the person's word that they approved it.
+  string owner_id = 2;
+  // As in SetupRequest: empty asks the signer for a new root key.
+  bytes root_public_key = 3;
+  string root_label = 4;
+  string root_platform = 5;
+  // Also make this device a machine with this name, signed with the
+  // request (one Touch ID) and installed once it joined. Empty: not one.
+  string local_machine_name = 6;
+  // Join as a machine only: no root key and no Touch ID; this device's
+  // machine asks to join, named root_label, and is approved like any
+  // machine.
+  bool machine_only = 7;
+  // With machine_only: the person typed the owner's connection address
+  // here, so the owner is theirs and ConfirmJoin asks for no digits.
+  // Otherwise the owner id came from the center and the digits are needed.
+  bool owner_typed = 8;
+}
+
+message RequestJoinResponse {
+  string code = 1;
+  // What the approving device shows for this request.
+  string verification_code = 2;
+  google.protobuf.Timestamp expires_at = 3;
+}
+
+message WaitJoinRequest {
+  string code = 1;
+}
+
+message WaitJoinResponse {
+  bool done = 1;
+  bool expired = 2;
+  // Once done: the trusted device that approved, and all of them now.
+  string approved_by = 3;
+  repeated Device devices = 4;
+  // ConfirmJoin needs the two digits the approving device shows.
+  bool match_required = 5;
+}
+
+message ConfirmJoinRequest {
+  string code = 1;
+  // The person approved this on one of their devices; false discards it.
+  bool accept = 2;
+  // To accept: the two digits the approving device showed once it signed
+  // (JoinMatchCode of the root cert listing this device). They match only
+  // if that device is the person's own; three wrong tries discard the join.
+  // For a machine only: of the machine cert, and only when
+  // WaitJoinResponse.match_required.
+  string match_code = 3;
+}
+
+message ConfirmJoinResponse {
+  string owner_id = 1;
+  string connect_address = 2;
+}
+
+message Device {
+  string key_id = 1;
+  string label = 2;
+  string platform = 3;
+  bool this_device = 4;
+  // The device's own machine, if it is one.
+  string machine_id = 5;
+  bool machine_online = 6;
+}
+
+message ListDevicesRequest {}
+
+message ListDevicesResponse {
+  repeated Device devices = 1;
+}
+
+message ApproveDevicePairingRequest {
+  string code = 1;
+}
+
+message ApproveDevicePairingResponse {
+  string key_id = 1;
+  // The two digits to type on the device that joined (the app computes
+  // them itself from the root cert it signed).
+  string match_code = 2;
+}
+
+message RemoveDeviceRequest {
+  string key_id = 1;
+}
+
+message RemoveDeviceResponse {
+  uint32 reissued_machines = 1;
+  uint32 reissued_grants = 2;
+}
+
+message LeaveRequest {}
+
+message LeaveResponse {}
+
+message WatchSigningRequestsRequest {}
+
+message SigningRequest {
+  string request_id = 1;
+  // Fully-qualified message type of body, e.g. "hermesh.identity.v1.Grant".
+  // The app parses and renders body itself before asking for Touch ID.
+  string type = 2;
+  bytes body = 3;
+  // Bytes to sign (the domain-separated message).
+  bytes message = 4;
+  // Batch requests share one user confirmation.
+  string batch_id = 5;
+  // Set instead of type, body and message: hermeshd needs a new root key
+  // (Setup or RequestJoin without one). The signer creates it, replacing any
+  // it held, and answers with its public key.
+  bool create_root_key = 6;
+  // The local process whose call led to this request, as hermeshd saw it on
+  // its socket: a hint for the person, not proof.
+  Caller caller = 7;
+  // After signing: show the two digits of this body (JoinMatchCode), for
+  // the person to type on the machine that asked for them
+  // (PairingRequest.confirm_match).
+  bool show_match = 8;
+  // A client pairing the person already confirmed as theirs
+  // (PairingDetails.confirmed): no verification code to compare.
+  bool confirmed = 9;
+}
+
+message Caller {
+  int32 pid = 1;
+  // Path of its executable; empty if the OS did not tell.
+  string executable = 2;
+}
+
+message CompleteSigningRequestRequest {
+  string request_id = 1;
+  // ASN.1 DER ECDSA-P256-SHA256 signature over SigningRequest.message.
+  bytes signature = 2;
+  bool rejected = 3;
+  // The answer to create_root_key: the new root public key, SPKI DER.
+  bytes public_key = 4;
+}
+
+message CompleteSigningRequestResponse {}
+
+message SetLocalMachineRequest {
+  bool enabled = 1;
+  string machine_name = 2;
+}
+
+message SetLocalMachineResponse {
+  string machine_id = 1;
+}
+
+message PairingDetails {
+  hermesh.identity.v1.PairingKind kind = 1;
+  string label = 2;
+  string hostname = 3;
+  string platform = 4;
+  string fingerprint = 5;
+  google.protobuf.Timestamp expires_at = 6;
+  string subject_id = 7;
+  // Binds the requester's key to this owner; the requester shows the same
+  // code when a hosted center claimed its request.
+  string verification_code = 8;
+  // The pairing code, to approve the request with.
+  string code = 9;
+  // The server that will hold the client's key (an MCP connection made
+  // through it), "" when the client holds its own.
+  string custodian = 10;
+  // The person already said this request is theirs while signed in to
+  // their account (a pairing link, an MCP consent, a code typed here): its
+  // requester shows no verification code to compare.
+  bool confirmed = 11;
+}
+
+message ListPairingRequestsRequest {}
+
+message ListPairingRequestsResponse {
+  repeated PairingDetails pairings = 1;
+}
+
+message LookupPairingRequest {
+  string code = 1;
+}
+
+message LookupPairingResponse {
+  PairingDetails details = 1;
+}
+
+message ApproveMachinePairingRequest {
+  string code = 1;
+  string machine_name = 2;
+}
+
+message ApproveMachinePairingResponse {
+  string machine_id = 1;
+  // The machine asked for the two digits (PairingRequest.confirm_match):
+  // the signer showed them, computed from the machine cert it signed.
+  string match_code = 2;
+}
+
+message GrantSpec {
+  string label = 1;
+  repeated string machine_ids = 2;
+  repeated string project_ids = 3;
+  repeated string agents = 4;
+  reserved 5;
+  reserved "preset";
+  hermesh.identity.v1.TaskVisibility task_visibility = 6;
+  uint32 ttl_days = 7;
+  uint32 max_concurrent_sessions = 8;
+}
+
+message ApproveClientPairingRequest {
+  string code = 1;
+  GrantSpec spec = 2;
+}
+
+message ApproveClientPairingResponse {
+  string client_id = 1;
+  string grant_id = 2;
+}
+
+message Machine {
+  string machine_id = 1;
+  string machine_name = 2;
+  bool online = 3;
+  google.protobuf.Timestamp last_seen = 4;
+  // Asked of the machine end to end; unset when it is offline or did not
+  // answer.
+  hermesh.machine.v1.MachineStatus status = 5;
+  bool local = 6;
+  // A trusted device's own machine: that device's root key id.
+  string device_key_id = 7;
+  // hermeshd's version, as the machine last reported it to the relay.
+  string version = 8;
+}
+
+message ListMachinesRequest {}
+
+message ListMachinesResponse {
+  repeated Machine machines = 1;
+}
+
+message RenameMachineRequest {
+  string machine_id = 1;
+  string machine_name = 2;
+}
+
+message RenameMachineResponse {}
+
+message SetMachinePausedRequest {
+  string machine_id = 1;
+  bool paused = 2;
+}
+
+message SetMachinePausedResponse {}
+
+message CheckAgentsRequest {}
+
+message CheckAgentsResponse {}
+
+message RemoveMachineRequest {
+  string machine_id = 1;
+}
+
+message RemoveMachineResponse {}
+
+message Project {
+  string machine_id = 1;
+  string project_id = 2;
+  string default_base_ref = 3;
+  hermesh.identity.v1.Workspace workspace = 4;
+  string description = 5;
+  // The coding agents that may work in it; empty: all.
+  repeated string agents = 6;
+  // The project directory on the machine.
+  string path = 7;
+}
+
+message ListProjectsRequest {
+  // Empty = all reachable machines.
+  string machine_id = 1;
+}
+
+message ListProjectsResponse {
+  repeated Project projects = 1;
+  repeated Unreachable unreachable = 2;
+}
+
+message AddProjectRequest {
+  string machine_id = 1;
+  string project_id = 2;
+  string path = 3;
+  string default_base_ref = 4;
+  hermesh.identity.v1.Workspace workspace = 5;
+  // Shown to agents choosing where to work (at most 200 characters).
+  string description = 6;
+  // The coding agents that may work in it (e.g. "claude"); empty: all.
+  repeated string agents = 7;
+}
+
+message AddProjectResponse {}
+
+message RemoveProjectRequest {
+  string machine_id = 1;
+  string project_id = 2;
+}
+
+message RemoveProjectResponse {}
+
+message Client {
+  string client_id = 1;
+  string grant_id = 2;
+  string label = 3;
+  string fingerprint = 4;
+  GrantSpec spec = 5;
+  uint64 grant_version = 6;
+  google.protobuf.Timestamp expires_at = 7;
+  bool online = 8;
+  google.protobuf.Timestamp last_seen = 9;
+  bool revoked = 10;
+  // The server that holds this client's key (an MCP connection), "" when
+  // the client holds its own.
+  string custodian = 11;
+}
+
+message ListClientsRequest {}
+
+message ListClientsResponse {
+  repeated Client clients = 1;
+}
+
+message UpdateClientRequest {
+  string grant_id = 1;
+  GrantSpec spec = 2;
+}
+
+message UpdateClientResponse {
+  uint64 grant_version = 1;
+  repeated MachineAck acks = 2;
+}
+
+message RevokeClientRequest {
+  string grant_id = 1;
+}
+
+message RevokeClientResponse {
+  repeated MachineAck acks = 1;
+}
+
+message MachineAck {
+  string machine_id = 1;
+  string machine_name = 2;
+  bool ok = 3;
+  string error = 4;
+}
+
+message Unreachable {
+  string machine_id = 1;
+  string machine_name = 2;
+  string error = 3;
+}
+
+message ListSessionsRequest {
+  string machine_id = 1;
+  // Paging across the machines, as in hermesh.session.v1.ListSessionsRequest:
+  // the newest limit sessions past `before` (the first page also carries
+  // every session that needs the owner or has a turn in progress). 0: all.
+  uint32 limit = 2;
+  hermesh.session.v1.SessionCursor before = 3;
+}
+
+message ListSessionsResponse {
+  repeated hermesh.session.v1.Session sessions = 1;
+  repeated Unreachable unreachable = 2;
+  // Paging: where the next page starts; unset on the last page.
+  hermesh.session.v1.SessionCursor next = 3;
+}
+
+message WatchSessionsRequest {}
+
+message WatchSessionsResponse {
+  // Sessions started or changed, each as it is now.
+  repeated hermesh.session.v1.Session sessions = 1;
+  // Which machines can be reached changed (always set in the first
+  // message, sent once every online machine is watched or failed): then
+  // unreachable lists those that cannot be reached now, and sessions may
+  // have changed unseen (before this watch, or on a machine that came
+  // back), so list them again.
+  bool machines_changed = 2;
+  repeated Unreachable unreachable = 3;
+}
+
+message StreamSessionEventsRequest {
+  string session_id = 1;
+  uint64 after_seq = 2;
+  bool follow = 3;
+}
+
+message AnswerQuestionRequest {
+  string session_id = 1;
+  string question_id = 2;
+  repeated hermesh.session.v1.Answer answers = 3;
+  bool decline = 4;
+}
+
+message AnswerQuestionResponse {
+  hermesh.session.v1.Session session = 1;
+}
+
+message InterruptSessionRequest {
+  string session_id = 1;
+}
+
+message ArchiveSessionRequest {
+  string session_id = 1;
+}
+
+message UnarchiveSessionRequest {
+  string session_id = 1;
+}
+
+message SessionResponse {
+  hermesh.session.v1.Session session = 1;
+}
+
+message GetUsageRequest {
+  // The first day counted, YYYY-MM-DD in time_zone.
+  string since = 1;
+  // An IANA time zone name; empty means UTC.
+  string time_zone = 2;
+}
+
+message GetUsageResponse {
+  // By date, then agent; a day and agent appear once however many machines
+  // had turns then.
+  repeated hermesh.session.v1.UsageDay days = 1;
+  repeated Unreachable unreachable = 2;
+}
+
+message GetDiffRequest {
+  string session_id = 1;
+  uint32 turn = 2;
+}

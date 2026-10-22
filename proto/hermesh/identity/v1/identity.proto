@@ -1,0 +1,242 @@
+syntax = "proto3";
+
+package hermesh.identity.v1;
+
+import "google/protobuf/timestamp.proto";
+
+// Signed wraps a serialized message together with a signature over
+// "hermesh-sig-v1\0" || type || "\0" || body. Verifiers check the signature
+// before parsing body.
+message Signed {
+  string type = 1;
+  bytes body = 2;
+  string signer_key_id = 3;
+  SignatureAlgorithm alg = 4;
+  bytes signature = 5;
+}
+
+enum SignatureAlgorithm {
+  SIGNATURE_ALGORITHM_UNSPECIFIED = 0;
+  // ECDSA over P-256 with SHA-256, ASN.1 DER signature.
+  SIGNATURE_ALGORITHM_ECDSA_P256_SHA256 = 1;
+}
+
+// RootKey is the root key of one trusted device (docs/trusted-devices.md):
+// a key in its secure hardware that signs everything adding permissions.
+message RootKey {
+  // PKIX SubjectPublicKeyInfo, DER.
+  bytes public_key = 1;
+  // The device's name, e.g. "Yi's MacBook Pro".
+  string label = 2;
+  // "macos" now; later "ios", "windows", "linux".
+  string platform = 3;
+}
+
+// RootCert lists the owner's trusted devices. Version 1 lists one key and
+// is signed by it, and owner_id = "o_" + fingerprint(that key)[:24]. Every
+// later version is signed by a key of the version before it, so the set of
+// trusted devices changes only with the approval of one already in it.
+message RootCert {
+  string owner_id = 1;
+  reserved 2;
+  reserved "recovery_public_key";
+  repeated RootKey root_keys = 3;
+  uint64 version = 4;
+  google.protobuf.Timestamp issued_at = 5;
+}
+
+// RootChain is every RootCert of an owner, version 1 first. Verifiers keep
+// it and accept a longer one only if theirs is its prefix.
+message RootChain {
+  repeated Signed certs = 1;
+}
+
+// OwnerDeviceCert is signed by a trusted device's root key, for that
+// device's own device key, used for day-to-day owner reads, cancels and
+// revocation pushes.
+message OwnerDeviceCert {
+  string owner_id = 1;
+  bytes device_public_key = 2;
+  string label = 3;
+  google.protobuf.Timestamp issued_at = 4;
+}
+
+// A trusted device (an iPhone) asks to be notified while its app is not
+// running: where (an APNs token) and how to seal notices so only it can
+// read them. Signed by the device's own device key, which its
+// OwnerDeviceCert certifies, so the relay can neither redirect notices to
+// another key nor read them; it learns only the token.
+message PushRegistration {
+  string owner_id = 1;
+  // SPKI DER of the device key that signs this.
+  bytes device_public_key = 2;
+  // The APNs device token, hex.
+  string token = 3;
+  // The APNs environment the app was built for: "production" or "development".
+  string environment = 4;
+  // An X25519 public key (32 bytes). Notices are HPKE-sealed to it:
+  // DHKEM(X25519, HKDF-SHA256), HKDF-SHA256, AES-128-GCM, info
+  // "hermesh-notice-v1".
+  bytes notice_public_key = 5;
+  // What it wants to hear about besides requests to connect, which always
+  // come: "question", "failure", "turn_done".
+  repeated string kinds = 6;
+  google.protobuf.Timestamp issued_at = 7;
+}
+
+enum PairingKind {
+  PAIRING_KIND_UNSPECIFIED = 0;
+  PAIRING_KIND_MACHINE = 1;
+  PAIRING_KIND_CLIENT = 2;
+  // A new trusted device; its subject key is the device's root key.
+  PAIRING_KIND_DEVICE = 3;
+}
+
+// PairingRequest is self-signed by the subject key.
+message PairingRequest {
+  PairingKind kind = 1;
+  bytes subject_public_key = 2;
+  // Self-reported label (agent name or machine hostname).
+  string label = 3;
+  string hostname = 4;
+  string platform = 5;
+  string owner_id = 6;
+  google.protobuf.Timestamp created_at = 7;
+  // The requester will ask the person for the two digits of the cert that
+  // admits it (JoinMatchCode of its body), because the owner it pinned came
+  // from a hosted center: a Mac joining as a machine only. The approving
+  // device shows them once it signed.
+  bool confirm_match = 8;
+  // Set when a server holds this client's private key on behalf of a remote
+  // agent product (the MCP gateway): that server's public URL. The relay
+  // accepts it only from its own gateway, never over the network.
+  string custodian = 9;
+}
+
+// MachineCert is signed by a root key. It is the machine's identity, its
+// key; the machine's name is a setting (SetName), not part of it.
+message MachineCert {
+  string owner_id = 1;
+  string machine_id = 2;
+  bytes machine_public_key = 3;
+  reserved 4;
+  reserved "machine_name";
+  google.protobuf.Timestamp issued_at = 5;
+  // A trusted device's own machine: the key id of that device's root key.
+  // Removing the device removes this machine too.
+  string device_key_id = 6;
+}
+
+// Workspace is how a project's sessions use its directory.
+enum Workspace {
+  // When adding a project: WORKTREE for a git repository, IN_PLACE for
+  // any other directory.
+  WORKSPACE_UNSPECIFIED = 0;
+  // Each session works in its own git worktree and branch
+  // hermesh/<session>, snapshotted once per turn; the directory itself is
+  // never touched.
+  WORKSPACE_WORKTREE = 1;
+  // Sessions work directly in the directory, as when you run the agent
+  // there yourself; Hermesh makes no worktree, branch or commit.
+  WORKSPACE_IN_PLACE = 2;
+}
+
+enum TaskVisibility {
+  TASK_VISIBILITY_UNSPECIFIED = 0;
+  TASK_VISIBILITY_OWN = 1;
+  TASK_VISIBILITY_ALL = 2;
+}
+
+// Grant is signed by a root key. For a given grant_id, machines only accept
+// the highest version they have seen (and never below min_grant_versions).
+message Grant {
+  string owner_id = 1;
+  string grant_id = 2;
+  uint64 version = 3;
+  string client_id = 4;
+  bytes client_public_key = 5;
+  string client_label = 6;
+  // "*" means all.
+  repeated string machine_ids = 7;
+  repeated string project_ids = 8;
+  repeated string agents = 9;
+  // Was a permission preset; a grant now fully trusts its client.
+  reserved 10;
+  reserved "preset";
+  TaskVisibility task_visibility = 11;
+  uint32 max_concurrent_sessions = 12;
+  google.protobuf.Timestamp not_before = 13;
+  google.protobuf.Timestamp expires_at = 14;
+  // Copied from the PairingRequest: the server that holds the client key
+  // (an MCP connection), "" for a client that holds its own key.
+  string custodian = 15;
+}
+
+// AdminCommand is signed by a root key and executed by the target machine.
+message AdminCommand {
+  string owner_id = 1;
+  string command_id = 2;
+  string target_machine_id = 3;
+  google.protobuf.Timestamp expires_at = 4;
+  oneof command {
+    AddProject add_project = 10;
+    RemoveProject remove_project = 11;
+    SetPaused set_paused = 13;
+    SetName set_name = 14;
+  }
+  reserved 12;
+  reserved "rename_machine";
+}
+
+message AddProject {
+  string project_id = 1;
+  string path = 2;
+  string default_base_ref = 3;
+  Workspace workspace = 4;
+  // What the project is, in the owner's words, for agents choosing where to
+  // work (at most 200 characters). Adding the project again changes it.
+  string description = 5;
+  // The coding agents that may work in it (e.g. "claude"); empty: all.
+  repeated string agents = 6;
+}
+
+message RemoveProject {
+  string project_id = 1;
+}
+
+// The machine's name, as people and agents call it (agents address
+// projects as name/project). A setting: it grants nothing.
+message SetName {
+  string name = 1;
+}
+
+message SetPaused {
+  bool paused = 1;
+}
+
+// RevocationList only ever reduces permissions, so machines accept it from the
+// relay control channel and from the owner device over E2E without a root
+// signature.
+message RevocationList {
+  string owner_id = 1;
+  repeated string revoked_grant_ids = 2;
+  repeated string revoked_machine_ids = 3;
+  map<string, uint64> min_grant_versions = 4;
+}
+
+// Credentials are embedded in the E2E TLS certificate extension and in the
+// relay admission hello.
+message Credentials {
+  reserved 1;
+  reserved "root_cert";
+  RootChain root_chain = 5;
+  // A machine's name, as it calls itself. Not signed: on an end-to-end
+  // connection the handshake authenticates it, so an agent picking a
+  // machine by name checks it there; anywhere else it is only a hint.
+  string machine_name = 6;
+  oneof subject {
+    Signed machine_cert = 2;
+    Signed grant = 3;
+    Signed device_cert = 4;
+  }
+}

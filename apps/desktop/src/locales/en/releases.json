@@ -1,0 +1,22 @@
+{
+  "unreleased": {
+    "improvements": [
+      "Find updates in the Hermesh menu and a quiet sidebar reminder.",
+      "Read release highlights in the app, and choose when to download or restart.",
+      "Keep your selected session and unfinished answers when Hermesh restarts."
+    ],
+    "fixes": [
+      "Update checks recover after sleep or a lost connection without repeated prompts.",
+      "Restarting for an update waits while an approval is in progress."
+    ]
+  },
+  "0.1.0-rc7": {
+    "improvements": [
+      "Install Hermesh from a signed disk image with a shortcut to Applications.",
+      "The app helps move itself to Applications before setting up background services."
+    ],
+    "fixes": [
+      "Update failures explain how to recover, with technical details available on demand."
+    ]
+  }
+}

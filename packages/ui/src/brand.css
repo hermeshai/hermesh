@@ -1,0 +1,219 @@
+/* The brand in CSS (brand/README.md), for the desktop app and the web
+   console: the Aurora colours, the motion curves, the colours and spacing
+   both draw with, and the mark's styles and motion (mark.tsx).
+
+   On light backgrounds the beams are 72% opaque and multiply where they
+   cross; on dark ones 60% and they add up. --aurora-0..2 are the three
+   colours; --aurora-g0..8 the beam gradient's stops, interpolated in OKLCH. */
+:root {
+  --aurora-0: #0891b2;
+  --aurora-1: #2f6bf0;
+  --aurora-2: #6d3cf0;
+  --aurora-g0: #0891b2;
+  --aurora-g1: #008cc2;
+  --aurora-g2: #0084d3;
+  --aurora-g3: #0079e3;
+  --aurora-g4: #2f6bf0;
+  --aurora-g5: #4361f2;
+  --aurora-g6: #5356f3;
+  --aurora-g7: #614af2;
+  --aurora-g8: #6d3cf0;
+  --beam-opacity: 0.72;
+  --beam-blend: multiply;
+  --ease-out: cubic-bezier(0.2, 0, 0, 1);
+  --ease-in: cubic-bezier(0.3, 0, 1, 1);
+  --ease-in-out: cubic-bezier(0.45, 0, 0.55, 1);
+  /* The brand blue: --accent fills buttons, --accent-fg is it as text. Then
+     the colours of states, and one spacing scale in golden-ratio steps. */
+  --accent: #3d5bff;
+  --accent-fg: #2d4ae6;
+  --ok: #17924f;
+  --warn: #d0700a;
+  --danger: #d7333f;
+  --sp-1: 8px;
+  --sp-2: 13px;
+  --sp-3: 21px;
+  --sp-4: 34px;
+  --sp-5: 55px;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --accent: #4a66ff;
+    --accent-fg: #8fa2ff;
+    --ok: #3fcf86;
+    --warn: #ffab3d;
+    --danger: #ff6670;
+    --aurora-0: #22e1c9;
+    --aurora-1: #3e7bff;
+    --aurora-2: #7b61ff;
+    --aurora-g0: #22e1c9;
+    --aurora-g1: #00d0de;
+    --aurora-g2: #00b9f1;
+    --aurora-g3: #009cfe;
+    --aurora-g4: #3e7bff;
+    --aurora-g5: #5175ff;
+    --aurora-g6: #616eff;
+    --aurora-g7: #6e68ff;
+    --aurora-g8: #7b61ff;
+    --beam-opacity: 0.6;
+    --beam-blend: plus-lighter;
+  }
+}
+/* Always-dark brand surfaces: the dark-background colours, whatever the
+   colour scheme. */
+.hm-dark {
+  --aurora-0: #22e1c9;
+  --aurora-1: #3e7bff;
+  --aurora-2: #7b61ff;
+  --aurora-g0: #22e1c9;
+  --aurora-g1: #00d0de;
+  --aurora-g2: #00b9f1;
+  --aurora-g3: #009cfe;
+  --aurora-g4: #3e7bff;
+  --aurora-g5: #5175ff;
+  --aurora-g6: #616eff;
+  --aurora-g7: #6e68ff;
+  --aurora-g8: #7b61ff;
+  --beam-opacity: 0.6;
+  --beam-blend: plus-lighter;
+  --accent: #4a66ff;
+  --accent-fg: #8fa2ff;
+  --ok: #3fcf86;
+  --warn: #ffab3d;
+  --danger: #ff6670;
+}
+
+.hm-beam {
+  opacity: var(--beam-opacity);
+  mix-blend-mode: var(--beam-blend);
+}
+.hm-mono .hm-beam {
+  opacity: 1;
+  mix-blend-mode: normal;
+}
+
+/* Loading: a pulse runs along each beam; the three meet in the middle. */
+.hm-pulse .hm-beam {
+  opacity: 0.26;
+}
+.hm-pulse .hm-glint {
+  opacity: 1;
+  stroke-dasharray: 26 200;
+  animation: hm-pulse 1.6s var(--ease-in-out) infinite;
+}
+@keyframes hm-pulse {
+  from {
+    stroke-dashoffset: 28;
+  }
+  to {
+    stroke-dashoffset: -102;
+  }
+}
+
+/* Busy at small sizes and in buttons: the beams light up in turn. */
+.hm-seq .hm-beam {
+  opacity: 0.28;
+  animation: hm-seq 1.2s linear infinite;
+}
+.hm-seq .hm-b1 {
+  animation-delay: 0.4s;
+}
+.hm-seq .hm-b2 {
+  animation-delay: 0.8s;
+}
+@keyframes hm-seq {
+  0%,
+  60%,
+  100% {
+    opacity: 0.28;
+  }
+  30% {
+    opacity: 1;
+  }
+}
+
+/* Reveal: beams draw in from their tails, then the word fades in. */
+.hm-reveal .hm-beam {
+  stroke-dasharray: 100 100;
+  stroke-dashoffset: 100;
+  animation: hm-draw 0.75s var(--ease-out) both;
+}
+.hm-reveal .hm-b1 {
+  animation-delay: 0.12s;
+}
+.hm-reveal .hm-b2 {
+  animation-delay: 0.24s;
+}
+@keyframes hm-draw {
+  0% {
+    stroke-dashoffset: 100;
+    opacity: 0;
+  }
+  8% {
+    opacity: var(--beam-opacity);
+  }
+  100% {
+    stroke-dashoffset: 0;
+    opacity: var(--beam-opacity);
+  }
+}
+.hm-reveal .hm-word {
+  opacity: 0;
+  animation: hm-appear 0.5s var(--ease-out) 0.9s forwards;
+}
+@keyframes hm-appear {
+  to {
+    opacity: 1;
+  }
+}
+
+/* Waiting for the other side: beams hover apart and breathe, lock in when
+   done, drift off grey when it fails. */
+.hm-bg {
+  transition: transform 0.45s var(--ease-out), opacity 0.45s, filter 0.5s;
+}
+.hm-wait .hm-bg {
+  transform: translate(var(--dx), var(--dy));
+  opacity: 0.6;
+  animation: hm-breathe 2.4s var(--ease-in-out) infinite alternate;
+}
+@keyframes hm-breathe {
+  to {
+    transform: translate(calc(var(--dx) * 0.35), calc(var(--dy) * 0.35));
+    opacity: 1;
+  }
+}
+.hm-fail .hm-bg {
+  transform: translate(calc(var(--dx) * 2), calc(var(--dy) * 2));
+  opacity: 0.2;
+  filter: grayscale(1);
+  transition-timing-function: var(--ease-in);
+}
+
+/* Reduce Motion: nothing moves; things fade instead. */
+@media (prefers-reduced-motion: reduce) {
+  .hm-pulse .hm-glint,
+  .hm-seq .hm-beam {
+    stroke-dasharray: none;
+    animation: hm-fade 2s var(--ease-in-out) infinite alternate;
+  }
+  .hm-reveal .hm-beam {
+    stroke-dasharray: none;
+    animation: hm-appear 0.3s ease forwards;
+  }
+  .hm-wait .hm-bg {
+    transform: none;
+    animation: hm-fade 2s var(--ease-in-out) infinite alternate;
+  }
+  .hm-fail .hm-bg {
+    transform: none;
+  }
+}
+@keyframes hm-fade {
+  from {
+    opacity: 0.35;
+  }
+  to {
+    opacity: 1;
+  }
+}

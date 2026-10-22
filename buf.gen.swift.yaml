@@ -1,0 +1,7 @@
+version: v2
+plugins:
+  - remote: buf.build/apple/swift
+    out: packages/HermeshKit/Sources/HermeshProto
+    opt:
+      - Visibility=Public
+      - FileNaming=PathToUnderscores

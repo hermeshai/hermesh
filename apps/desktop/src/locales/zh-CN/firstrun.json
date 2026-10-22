@@ -1,0 +1,143 @@
+{
+  "back": "返回",
+  "continue": "继续",
+  "cancel": "取消",
+  "copy": "拷贝",
+  "copied": "已拷贝",
+  "ok": "好",
+  "details": "详情",
+  "welcome": {
+    "title": "让 Agent 安全地互相连接",
+    "lede": "让 Grok Bot、Muse 在云端使用你电脑上的 Claude Code、Codex，<br/>把专业的任务分派给专业的 Agent。",
+    "start": "立即开始",
+    "selfHosted": "使用自己的服务器…",
+    "promise": "即使服务器被攻破，攻击者也访问不了你的电脑。会话端到端加密，服务器看不到内容。"
+  },
+  "browser": {
+    "title": "请在浏览器里完成登录",
+    "body": "完成后会自动回到这里。第一次登录会自动创建账号，不需要密码。",
+    "reopen": "重新打开浏览器"
+  },
+  "selfHosted": {
+    "title": "连接你自己的服务器",
+    "body": "填入你部署的 Hermesh 服务器地址，和它第一次启动时给出的认领码。",
+    "address": "服务器地址",
+    "claim": "认领码",
+    "join": "已经在别的设备上用 Hermesh？ <join>加入它…</join>"
+  },
+  "joinAddress": {
+    "invalid": "连接地址不对：应该像 relay.example.com/o_xxxxxxxx",
+    "title": "加入你已有的 Hermesh",
+    "body": "连接地址在你已有设备的 Hermesh 里：设置 › 可信设备。",
+    "address": "连接地址"
+  },
+  "authorize": {
+    "joinNote": "继续后按一次 Touch ID，再到你已有的设备上批准。",
+    "machineOnlyNote": "不需要 Touch ID，到你已有的设备上批准即可。",
+    "settingUp": "正在设置…",
+    "titleJoin": "让这台 Mac 加入你的 Hermesh？",
+    "titleTrust": "让这台 Mac 成为你的可信设备？",
+    "body": "Hermesh 只做下面这些事：不改系统设置，不读你的文件。",
+    "trusted": "可信设备",
+    "trustedBody": "在这台 Mac 的安全芯片里生成你的管理密钥，它不会离开这台 Mac。以后机器和 agent 要连接你的电脑，都要你在这里按 Touch ID 批准。",
+    "trustedOff": "关闭：不在这里生成管理密钥。这台 Mac 只运行任务，不能批准，也看不到你的其他机器。适合公司的 Mac。",
+    "required": "必需",
+    "share": "安全可信地共享本机 agent",
+    "shareBody": "Hermesh 像你自己一样，用命令行调用这台 Mac 上的 Claude Code、Codex。不读取 API Key 和 Token，也不碰这些 agent 的登录授权。关掉也能用别的机器，以后可以在设置里再开。",
+    "shareBodyMachine": "Hermesh 像你自己一样，用命令行调用这台 Mac 上的 Claude Code、Codex。不读取 API Key 和 Token，也不碰这些 agent 的登录授权。",
+    "remind": "有事时提醒我",
+    "remindBody": "登录时打开 Hermesh（只在菜单栏）。有连接请求、agent 提问、会话出错时发通知。",
+    "remindBodyMachine": "登录时打开 Hermesh（只在菜单栏）。会话出错时发通知。",
+    "failed": "没能完成设置"
+  },
+  "join": {
+    "expired": "加入请求已过期，请重新加入。",
+    "wrongDigits": "数字不对。请输入你另一台设备上显示的两位数字。",
+    "titleDigits": "输入那台设备上的两位数字",
+    "titleApprove": "在你已有的设备上批准",
+    "asking": "正在发出加入请求…",
+    "waiting": "打开你已有设备上的 Hermesh，批准这台 Mac 的加入请求。",
+    "waitingMachine": "打开你已有设备上的 Hermesh，批准这台 Mac 作为执行机器加入。",
+    "codeHint": "须与那台设备显示的一致",
+    "approved": "「{{name}}」批准了。它现在显示着两位数字，输入它们：",
+    "digits": "两位数字",
+    "notMe": "我没有批准过",
+    "join": "加入",
+    "notMeNote": "那台设备上没有出现数字？这次批准就不是你做的，点“我没有批准过”。",
+    "notMeNoteMachine": "那台设备上没有出现数字？如果它的 Hermesh 不是最新版本，先更新，再点“我没有批准过”重新加入；都是最新版本还没有数字，这次批准就不是你做的。",
+    "retry": "重试",
+    "failed": "没能加入你的 Hermesh"
+  },
+  "unreachable": {
+    "title": "连不上 Hermesh 服务器",
+    "body": "当前网络可能拦住了 {{host}}，公司网络和代理常会这样。换个网络（比如手机热点）再试，这台 Mac 上还什么都没改。"
+  },
+  "removed": {
+    "title": "这台 Mac 已不在你的 Hermesh 账号里",
+    "body": "它被你的另一台设备移除了，或者账号重新开始过。这台 Mac 不能再批准任何事。重新设置后，可以再次加入你的账号。",
+    "bodyMachine": "它已从你的机器里移除，或者账号重新开始了。它不再接任务。重新设置即可再次加入你的账号。",
+    "setUp": "重新设置这台 Mac"
+  },
+  "machineOnly": {
+    "title": "这台 Mac",
+    "online": "在线",
+    "offline": "离线",
+    "paused": "已暂停",
+    "role": "只执行任务，不能批准",
+    "accepting": "接新会话",
+    "projects": "项目",
+    "noProjects": "还没有项目。添加一个目录，agent 才能在这里干活。",
+    "addProject": "添加项目…",
+    "removeProject": "移除项目",
+    "upgrade": "让这台 Mac 也能批准…",
+    "leave": "离开你的 Hermesh…",
+    "leaveTitle": "离开你的 Hermesh？",
+    "leaveMessage": "这台 Mac 立即不再接任务，正在进行的会话会被中断。它也会从你的机器列表里移除（现在连不上服务器的话，到可信设备上移除它）。项目设置留在本机。",
+    "leaveButton": "离开"
+  },
+  "connect": {
+    "promise": "批准后，它拿到你签名的授权，用自己的密钥和你的电脑端到端加密直连，服务器看不到任何内容。",
+    "later": "稍后再连"
+  },
+  "firstTask": {
+    "notification": "{{name}} 开始了第一个任务",
+    "enter": "进入 Hermesh",
+    "title": "「{{name}}」已连接",
+    "tryIt": "去 {{name}} 里试一下，把这句话发给它：",
+    "started": "{{name}} 开始了，正在打开它的会话…",
+    "waiting": "它一开始干活，这里就会打开它的会话。",
+    "codingAgent": "编码 Agent",
+    "promptInProject": "用 Hermesh 在 {{project}} 项目里，让 {{agent}} 跟我打个招呼。",
+    "prompt": "用 Hermesh 让 {{agent}} 跟我打个招呼。"
+  },
+  "prepare": {
+    "promise": "绝不获取 Agent 的任何令牌和密钥，只像你自己在命令行里一样使用它们。",
+    "later": "稍后设置",
+    "next": "下一步：连接你的 Agent",
+    "title": "检查和管理可用的 Agent",
+    "searching": "正在查找本机上的编码 Agent",
+    "searchingBody": "看看装了哪些、版本多少、有没有登录。第一次检查会慢一些。",
+    "agents": "编码 Agent",
+    "notInstalled": "没有安装 · 装好后 Hermesh 会自己发现",
+    "missing": "没有安装的 Agent",
+    "signedIn": "已登录",
+    "notSignedIn": "还没登录",
+    "checking": "正在检查…",
+    "projects_other": "{{count}} 个项目",
+    "noProjects": "还没有项目",
+    "waitingLogin": "等你在终端里登录…",
+    "loginFirst": "先登录 {{agent}}，Hermesh 才能用它。",
+    "runInTerminal": "在终端运行",
+    "adding": "正在添加…",
+    "addProject": "添加项目…",
+    "otherProjects": "其他项目 · 给没有安装的 agent",
+    "allProjects": "项目",
+    "alsoFor": "「{{project}}」也给 {{agent}} 用了",
+    "worktreeItem": "独立 worktree：每个会话在自己的分支里",
+    "inPlaceItem": "原地：直接改这个目录",
+    "removeItem": "不再给 {{agent}} 用",
+    "worktree": "独立 worktree",
+    "inPlace": "原地",
+    "more": "更多"
+  }
+}

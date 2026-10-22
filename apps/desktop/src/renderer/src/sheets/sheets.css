@@ -1,0 +1,9 @@
+/* Sheets: what app.css (the prototype's CSS) has inline in the prototype's markup. */
+.sheet .sheet-q{margin:6px 0 10px;font-size:14px;font-weight:600}
+.sheet .sheet-note{font-size:12px;margin:10px 0 0;line-height:1.55}
+.sheet .sheet-err{color:var(--red);font-size:12.5px;margin:10px 0 0;line-height:1.5;user-select:text;-webkit-user-select:text}
+.sheet .btn.destructive{background:var(--red);box-shadow:none}
+.sheet .code-in{height:34px;font-size:16px;letter-spacing:.1em;text-align:center}
+.sheet .msgbox{user-select:text;-webkit-user-select:text;overflow-wrap:anywhere}
+.sheet .pc:disabled{cursor:default}
+.sheet .pc .av{color:#fff}

@@ -1,0 +1,160 @@
+{
+  "bucket": {
+    "attention": "Needs You",
+    "active": "In Progress",
+    "today": "Today",
+    "yesterday": "Yesterday",
+    "week": "Earlier This Week",
+    "earlier": "Older",
+    "archived": "Archived"
+  },
+  "time": {
+    "justNow": "just now",
+    "minutesAgo": "{{count}} min ago",
+    "hoursAgo": "{{count}} hr ago",
+    "today": "Today",
+    "yesterday": "Yesterday",
+    "minutesLeft": "{{count}} min left"
+  },
+  "status": {
+    "queued": "Queued",
+    "preparing": "Preparing",
+    "running": "Running",
+    "idle": "Idle",
+    "archived": "Archived",
+    "crashed": "Crashed (send a message to continue)",
+    "waitingInput": "Waiting for you",
+    "unknown": "Unknown"
+  },
+  "phase": {
+    "preparing": "Preparing worktree…",
+    "thinking": "Thinking",
+    "editing": "Editing {{target}}",
+    "running": "Running {{target}}"
+  },
+  "failure": {
+    "auth": "Not signed in",
+    "quota": "Out of quota",
+    "rateLimit": "Rate limited",
+    "providerError": "Model service failed",
+    "network": "Network error",
+    "contextOverflow": "Context full",
+    "modelUnavailable": "Model unavailable",
+    "invalidRequest": "Request rejected",
+    "refused": "Model refused",
+    "limitReached": "Step limit reached",
+    "resumeRejected": "Can’t resume session",
+    "agentCrashed": "Agent process quit unexpectedly",
+    "stalled": "No progress for a long time",
+    "timeout": "Time limit exceeded",
+    "startFailed": "Can’t start agent",
+    "other": "Failed"
+  },
+  "advice": {
+    "auth": "Run the matching CLI once on that machine, as the same user, to sign in.",
+    "quota": "Try again when the quota resets, or switch agent / model.",
+    "transient": "A temporary problem. Send the message again in a while.",
+    "newContext": "Send another message to continue in a fresh context; the changes in the worktree are kept.",
+    "modelUnavailable": "Start a new session with another model.",
+    "limitReached": "Send “continue” to have it go on.",
+    "resume": "Send another message to resume the session.",
+    "startFailed": "Run hermeshd doctor on that machine to check."
+  },
+  "notice": {
+    "questionTitle": "{{grant}} is waiting for you",
+    "questionBody": "{{title}}: {{text}}",
+    "failedTitle": "“{{title}}” failed: {{failure}}",
+    "failedBody": "{{grant}} · {{agent}} · {{project}}. {{advice}}",
+    "turnDoneTitle": "“{{title}}” finished turn {{turn}}",
+    "noChanges": "No files changed",
+    "changes_one": "{{count}} file +{{insertions}} −{{deletions}}",
+    "changes_other": "{{count}} files +{{insertions}} −{{deletions}}"
+  },
+  "pairing": {
+    "machine": "Machine “{{label}}” wants to join",
+    "device": "“{{label}}” wants to be your trusted device",
+    "client": "“{{label}}” wants to connect",
+    "body": "Verification code {{code}}. Click to check and approve; deny it if you don’t recognize it."
+  },
+  "setup": {
+    "signIn": "Sign in, making this Mac a trusted device",
+    "agentsShared": "Local agents shared",
+    "shareAgents": "Share this Mac’s agents securely",
+    "addProject": "Add your first project",
+    "connectGrant": "Connect “{{grant}}”",
+    "connectAgent": "Connect your agent",
+    "finishTask": "Finish your first task",
+    "signInCodex": "Sign in to Codex (optional)",
+    "addMachine": "Add a second machine (optional)"
+  },
+  "signin": {
+    "badCenter": "Invalid server address: {{center}}",
+    "httpStatus": "{{url}}: HTTP {{status}}",
+    "notJson": "{{url}}: not valid JSON",
+    "badConnectURL": "The server gave an invalid connection address: {{url}}"
+  },
+  "duration": {
+    "seconds": "{{s}}s",
+    "minutes": "{{m}}m {{s}}s",
+    "hours": "{{h}}h {{m}}m"
+  },
+  "resolution": {
+    "answeredByYou": "You answered: {{answers}}",
+    "answeredBy": "{{name}} answered: {{answers}}",
+    "declinedByYou": "You chose not to answer",
+    "declinedBy": "{{name}} chose not to answer",
+    "timedOut": "No one answered; the agent went on by itself",
+    "withdrawn": "Question withdrawn",
+    "separator": "; "
+  },
+  "steps": {
+    "read": {
+      "done": "Read",
+      "doing": "Reading",
+      "count_one": "Read {{count}} file",
+      "count_other": "Read {{count}} files"
+    },
+    "search": {
+      "done": "Searched",
+      "doing": "Searching",
+      "count_one": "Searched {{count}} time",
+      "count_other": "Searched {{count}} times"
+    },
+    "edit": {
+      "done": "Edited",
+      "doing": "Editing",
+      "count_one": "Edited {{count}} file",
+      "count_other": "Edited {{count}} files"
+    },
+    "shell": {
+      "done": "Ran",
+      "doing": "Running",
+      "count_one": "Ran {{count}} command",
+      "count_other": "Ran {{count}} commands"
+    },
+    "network": {
+      "done": "Visited",
+      "doing": "Visiting",
+      "count_one": "Visited {{count}} page",
+      "count_other": "Visited {{count}} pages"
+    },
+    "mcp": {
+      "done": "Called",
+      "doing": "Calling",
+      "count_one": "Called {{count}} tool",
+      "count_other": "Called {{count}} tools"
+    },
+    "other": {
+      "done": "Used",
+      "doing": "Using",
+      "count_one": "Used {{count}} tool",
+      "count_other": "Used {{count}} tools"
+    },
+    "deny": {
+      "done": "Denied",
+      "count_one": "Denied {{count}} action",
+      "count_other": "Denied {{count}} actions"
+    },
+    "separator": " · "
+  }
+}

@@ -1,0 +1,128 @@
+import {
+  FailureKind,
+  QuestionResolution,
+  type ErrorEvent,
+  type Failure,
+  type Question,
+  type QuestionResolved,
+  type SessionEvent,
+  type ToolCall,
+  type ToolResult,
+  type TurnCompleted,
+} from "@hermesh/proto/session";
+import { pad2 } from "./calendar";
+import { t } from "./i18n";
+import { dateOf } from "./sessions";
+
+// A session's conversation as the window shows it, made from its events.
+
+/** One row of the conversation. */
+export type TranscriptItem =
+  | { kind: "turn"; seq: bigint; turn: number; at: Date | undefined }
+  | { kind: "user"; seq: bigint; text: string }
+  | { kind: "agent"; seq: bigint; text: string }
+  /** A tool call with its result, once there is one; running: the agent is still in it. */
+  | { kind: "tool"; seq: bigint; call: ToolCall; result: ToolResult | undefined; running: boolean }
+  | { kind: "question"; seq: bigint; question: Question; resolution: QuestionResolved | undefined }
+  /** took: seconds since the turn started, when known. */
+  | { kind: "turnEnd"; seq: bigint; end: TurnCompleted; took: number | undefined }
+  | { kind: "error"; seq: bigint; error: ErrorEvent };
+
+/**
+ * transcript pairs tool calls with their results and questions with their
+ * answers; status changes are left out (the header shows the status).
+ * running: a turn is in progress, so its last unanswered tool call runs.
+ */
+export function transcript(events: SessionEvent[], running: boolean): TranscriptItem[] {
+  const results = new Map<string, ToolResult>();
+  const resolutions = new Map<string, QuestionResolved>();
+  let lastCall: bigint | undefined;
+  for (const e of events) {
+    if (e.kind.case === "toolResult") results.set(e.kind.value.callId, e.kind.value);
+    if (e.kind.case === "questionResolved") resolutions.set(e.kind.value.questionId, e.kind.value);
+    if (e.kind.case === "toolCall") lastCall = e.seq;
+  }
+  const items: TranscriptItem[] = [];
+  let turnStart: Date | undefined;
+  for (const e of events) {
+    const at = dateOf(e.ts);
+    const seq = e.seq;
+    switch (e.kind.case) {
+      case "turnStarted":
+        turnStart = at;
+        items.push({ kind: "turn", seq, turn: e.kind.value.turn, at });
+        break;
+      case "userMessage":
+        items.push({ kind: "user", seq, text: e.kind.value.text });
+        break;
+      case "agentMessage":
+        items.push({ kind: "agent", seq, text: e.kind.value.text });
+        break;
+      case "toolCall": {
+        const c = e.kind.value;
+        const result = results.get(c.callId);
+        items.push({ kind: "tool", seq, call: c, result, running: !result && running && seq === lastCall && c.decision !== "deny" });
+        break;
+      }
+      case "questionAsked": {
+        const q = e.kind.value.question;
+        if (q) items.push({ kind: "question", seq, question: q, resolution: resolutions.get(q.questionId) });
+        break;
+      }
+      case "turnCompleted":
+        items.push({
+          kind: "turnEnd",
+          seq,
+          end: e.kind.value,
+          took: at && turnStart ? (at.getTime() - turnStart.getTime()) / 1000 : undefined,
+        });
+        break;
+      case "error":
+        items.push({ kind: "error", seq, error: e.kind.value });
+        break;
+    }
+  }
+  return items;
+}
+
+/** When the latest turn started, if the events tell. */
+export function turnStartedAt(events: SessionEvent[]): Date | undefined {
+  for (let i = events.length - 1; i >= 0; i--) {
+    if (events[i].kind.case === "turnStarted") return dateOf(events[i].ts);
+  }
+  return undefined;
+}
+
+/** How long a turn took: "42s", "3m 05s", "1h 12m". */
+export function durationText(seconds: number): string {
+  const s = Math.max(0, Math.round(seconds));
+  if (s < 60) return t("duration.seconds", { s });
+  const m = Math.trunc(s / 60);
+  if (m < 60) return t("duration.minutes", { m, s: pad2(s % 60) });
+  return t("duration.hours", { h: Math.trunc(m / 60), m: m % 60 });
+}
+
+/** The turn was stopped on purpose (by the owner or the agent), not by a failure. */
+export function isInterruption(f: Failure | undefined): boolean {
+  return f?.kind === FailureKind.INTERRUPTED;
+}
+
+/**
+ * How a question was settled. name: who answered, by the id the machine
+ * recorded (the owner is "You").
+ */
+export function resolutionTitle(r: QuestionResolved, name: (by: string) => string = (by) => by): string {
+  const you = r.by === "owner";
+  switch (r.resolution) {
+    case QuestionResolution.ANSWERED: {
+      const answers = r.answers.map((x) => [...x.selected, ...(x.text === "" ? [] : [x.text])].join(", ")).join(t("resolution.separator"));
+      return you ? t("resolution.answeredByYou", { answers }) : t("resolution.answeredBy", { name: name(r.by), answers });
+    }
+    case QuestionResolution.DECLINED:
+      return you ? t("resolution.declinedByYou") : t("resolution.declinedBy", { name: name(r.by) });
+    case QuestionResolution.TIMED_OUT:
+      return t("resolution.timedOut");
+    default:
+      return t("resolution.withdrawn");
+  }
+}
