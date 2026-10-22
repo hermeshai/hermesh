@@ -1,6 +1,7 @@
 <p align="center">
-  <img src="docs/assets/cover.png" alt="Hermesh: let Grok Bot and Muse hand work to Claude Code on your computer. Grok Bot, Muse and ChatGPT reach a MacBook Pro, a Mac mini and a VPS through Hermesh." width="100%">
+  <a href="docs/assets/hermesh.mp4"><img src="docs/assets/cover.png" alt="Hermesh: let Grok Bot and Muse hand work to Claude Code on your computer. Grok Bot, Muse and ChatGPT reach a MacBook Pro, a Mac mini and a VPS through Hermesh." width="100%"></a>
 </p>
+<p align="center"><a href="docs/assets/hermesh.mp4">▶ Watch Hermesh in 50 seconds</a></p>
 
 # Hermesh
 
