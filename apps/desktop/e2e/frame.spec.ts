@@ -50,9 +50,13 @@ test("long titles are cut, the status dot sits by its text, and the left edge is
     // The title is cut when it needs more room than it has, and the status stays inside the row.
     if (await title.evaluate((e) => e.scrollWidth > e.clientWidth)) expect(await title.evaluate((e) => getComputedStyle(e).textOverflow)).toBe("ellipsis");
     expect(m.x + m.width).toBeLessThanOrEqual(r.x + r.width);
-    // The dot is in the status, after the title; nothing sits left of the title.
-    expect((await box(meta.locator(".sdot"))).x).toBeGreaterThan((await box(title)).x + 40);
+    // A dot, when there is one, is in the status, after the title; nothing sits left of the title.
+    if (await meta.locator(".sdot").count()) expect((await box(meta.locator(".sdot"))).x).toBeGreaterThan((await box(title)).x + 40);
   }
+  // Only what is worth noticing has a dot: a running session does, an idle one doesn't.
+  await expect(running.locator(".sdot")).toHaveCount(1);
+  await expect(list.getByRole("listitem").filter({ hasText: "写 hello" }).locator(".sdot")).toHaveCount(0);
+  await expect(list.getByRole("listitem").filter({ hasText: "选颜色" }).locator(".sdot")).toHaveCount(1);
   // Flush left: a title starts where its group's heading does.
   const heading = await box(list.getByRole("group", { name: "进行中" }).locator(".grp-h"));
   expect(Math.abs((await box(running.locator(".stitle"))).x - (heading.x + 9))).toBeLessThanOrEqual(1);

@@ -2,7 +2,7 @@ import { memo, useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent 
 import { Trans, useTranslation } from "react-i18next";
 import { SessionStatus, type Session } from "@hermesh/proto/session";
 import {
-  bucketTitle, clockText, codingAgentShort, codingAgentTitle, createdDate, dateOf, displayTitle, isActive, isArchivable, isFailed, listTime,
+  bucketTitle, clockText, codingAgentShort, codingAgentTitle, createdDate, dateOf, displayTitle, isActive, isArchivable, isFailed, listTime, needsAttention,
   sectionCounted, sessionSections, updatedDate, type SessionBucket, type SessionSection, type SessionView,
 } from "@hermesh/core";
 import { i18n } from "../../shared/i18n";
@@ -275,8 +275,9 @@ const SessionRow = memo(function SessionRow({ s, sel, grant, meta, renaming, sto
       <div className="smain">
         <div className="sl1">
           {renaming ? <RenameField s={s} store={store} /> : <span className="stitle" title={displayTitle(s)}>{displayTitle(s)}</span>}
+          {/* Only what is worth noticing (running, waiting, failed): an idle or archived session has no dot. */}
           <span className="smeta">
-            <StatusDot s={s} />
+            {(isActive(s) || needsAttention(s)) && <StatusDot s={s} />}
             <RowStatus s={s} />
           </span>
           <button
