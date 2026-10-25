@@ -48,6 +48,8 @@ type UI = {
   /** How the session list is laid out, and whether it shows archived sessions. */
   view: SessionView;
   archived: boolean;
+  /** The list's collapsed groups, as "grouping:key" (each grouping keeps its own). */
+  collapsed: string[];
   searching: boolean;
   /** The session whose title is being edited in the list. */
   renaming: string | null;
@@ -143,12 +145,12 @@ export function save(key: string, v: boolean) {
   }
 }
 
-type SavedView = Pick<UI, "selection" | "sidebar" | "view" | "archived">;
+type SavedView = Pick<UI, "selection" | "sidebar" | "view" | "archived" | "collapsed">;
 function savedView(): Partial<SavedView> {
   if (location.hash.startsWith("#settings")) return {};
   try {
     const v: Partial<SavedView> = JSON.parse(localStorage.getItem("main-view") ?? "{}");
-    return { selection: v.selection, sidebar: v.sidebar, view: sessionView(v.view), archived: v.archived };
+    return { selection: v.selection, sidebar: v.sidebar, view: sessionView(v.view), archived: v.archived, collapsed: Array.isArray(v.collapsed) ? v.collapsed : undefined };
   } catch {
     return {};
   }
@@ -162,6 +164,7 @@ export function HermeshProvider({ children }: { children: ReactNode }) {
     sidebar: true,
     view: sessionView(),
     archived: false,
+    collapsed: [],
     searching: false,
     renaming: null,
     searchFor: {},
@@ -173,9 +176,9 @@ export function HermeshProvider({ children }: { children: ReactNode }) {
   }));
   useEffect(() => {
     if (location.hash.startsWith("#settings")) return;
-    try { localStorage.setItem("main-view", JSON.stringify({ selection: ui.selection, sidebar: ui.sidebar, view: ui.view, archived: ui.archived })); }
+    try { localStorage.setItem("main-view", JSON.stringify({ selection: ui.selection, sidebar: ui.sidebar, view: ui.view, archived: ui.archived, collapsed: ui.collapsed })); }
     catch { /* Main-window context is optional when storage is unavailable. */ }
-  }, [ui.selection, ui.sidebar, ui.view, ui.archived]);
+  }, [ui.selection, ui.sidebar, ui.view, ui.archived, ui.collapsed]);
   const toastTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
 
   const refreshStatus = useCallback(async () => {

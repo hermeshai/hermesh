@@ -205,6 +205,39 @@ test("the view menu groups, sorts and shows the list from submenus, opaque over 
   await app.close();
 });
 
+test("a group's heading collapses and opens it, in every grouping, and stays so next time", async () => {
+  const profile = fs.mkdtempSync(path.join(os.tmpdir(), "hmdesk-"));
+  let { app, page } = await launch(fixture.socket, { profile });
+  const list = page.getByRole("list", { name: "会话" });
+  const heading = (name: string) => list.getByRole("group", { name }).getByRole("button", { name: new RegExp(`^${name}`) });
+  const rows = (name: string) => list.getByRole("group", { name }).getByRole("listitem");
+
+  await expect(heading("已结束")).toHaveAttribute("aria-expanded", "true");
+  await expect(rows("已结束")).not.toHaveCount(0);
+  await heading("已结束").click();
+  await expect(heading("已结束")).toHaveAttribute("aria-expanded", "false");
+  await expect(rows("已结束")).toHaveCount(0);
+  await expect(rows("进行中")).not.toHaveCount(0); // only that group
+  await snap(page, "sidebar-collapsed");
+
+  // By date, its groups collapse on their own; the status groups keep theirs.
+  await page.getByRole("button", { name: "视图选项" }).click();
+  await page.getByRole("menu", { name: "视图选项" }).getByRole("menuitem", { name: /分组/ }).hover();
+  await page.getByRole("menu", { name: "分组" }).getByRole("menuitemradio", { name: "按日期" }).click();
+  await expect(rows("今天")).not.toHaveCount(0);
+  await heading("今天").click();
+  await expect(rows("今天")).toHaveCount(0);
+
+  await app.close();
+  ({ app, page } = await launch(fixture.socket, { profile }));
+  const again = page.getByRole("list", { name: "会话" });
+  await expect(again.getByRole("group", { name: "今天" }).getByRole("button", { name: /^今天/ })).toHaveAttribute("aria-expanded", "false");
+  await expect(again.getByRole("group", { name: "今天" }).getByRole("listitem")).toHaveCount(0);
+  await again.getByRole("group", { name: "今天" }).getByRole("button", { name: /^今天/ }).click();
+  await expect(again.getByRole("group", { name: "今天" }).getByRole("listitem")).not.toHaveCount(0);
+  await app.close();
+});
+
 test("a row's ⋯ menu renames in place, archives, and deletes once confirmed, interrupting a running turn", async () => {
   await cli("session", "start", "--project", "demo", "--agent", "gemini", "--title", "改个名字", "--prompt", "say 好", "--wait");
   await cli("session", "start", "--project", "demo", "--agent", "gemini", "--title", "还在跑的", "--prompt", "shell sleep 1800");
