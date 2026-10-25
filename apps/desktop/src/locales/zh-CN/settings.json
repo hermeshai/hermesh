@@ -23,6 +23,12 @@
   "removeTitle": "移除「{{name}}」？",
   "removed": "已移除「{{name}}」",
   "showInMain": "在主窗口里查看",
+  "appearance": {
+    "title": "外观",
+    "system": "跟随系统",
+    "light": "浅色",
+    "dark": "深色"
+  },
   "language": {
     "title": "语言",
     "system": "跟随系统（{{name}}）",

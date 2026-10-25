@@ -28,13 +28,15 @@ export const fixture: Fixture = JSON.parse(fs.readFileSync(process.env.HERMESH_E
  */
 export async function launch(
   socket = fixture.socket,
-  o: { systemLanguages?: string[]; profile?: string } = {},
+  // systemColors: pages see the app's own light or dark (Playwright makes them light otherwise).
+  o: { systemLanguages?: string[]; profile?: string; systemColors?: boolean } = {},
 ): Promise<{ app: ElectronApplication; page: Page }> {
   const languages = o.systemLanguages ?? ["zh-Hans"];
   const app = await electron.launch({
     args: ["-r", background, path.join(process.env.HERMESH_DESKTOP_OUT || path.join(import.meta.dirname, "..", "out"), "main", "index.js"), "-AppleLanguages", `(${languages.join(", ")})`],
     // Its own profile, so app instances of parallel runs don't meet.
     env: { ...process.env, HERMESH_SOCKET: socket, HERMESH_USER_DATA: o.profile ?? fs.mkdtempSync(path.join(os.tmpdir(), "hmdesk-")) },
+    ...(o.systemColors ? { colorScheme: null } : {}),
   });
   const page = await app.firstWindow();
   return { app, page };

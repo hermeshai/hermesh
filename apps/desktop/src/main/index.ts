@@ -7,7 +7,7 @@ import { settleInApplications } from "./install";
 import { registerIPC } from "./ipc";
 import { chooseLanguage } from "./language";
 import { setAppMenu } from "./menu";
-import { posted, watch } from "./notify";
+import { applyAppearance, posted, watch } from "./notify";
 import { dataDir, socketPath } from "./paths";
 import { keepSignerRunning } from "./signer";
 import { receiveLink } from "./signin";
@@ -73,6 +73,7 @@ app.on("second-instance", (_e, argv) => {
 });
 
 app.whenReady().then(async () => {
+  applyAppearance();
   if (!(await settleInApplications())) return;
   if (app.isPackaged) app.setAsDefaultProtocolClient("hermesh");
   serve();

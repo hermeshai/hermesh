@@ -102,7 +102,11 @@ export type Bridge = {
   traySize(height: number): void;
 };
 
+/** Light or dark: the system's, or one chosen for the app. */
+export type Appearance = "system" | "light" | "dark";
+
 export type Preferences = {
+  appearance: Appearance;
   notifyQuestion: boolean;
   notifyFailed: boolean;
   notifyTurnDone: boolean;

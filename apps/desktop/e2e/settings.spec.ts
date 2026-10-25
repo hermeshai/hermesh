@@ -1,5 +1,8 @@
 import { expect, test, type ElectronApplication, type Page } from "@playwright/test";
 import { codingAgentIds, codingAgentTitle } from "@hermesh/ui/agents";
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
 import { answerMenu, gitRepo, launch, pickAnswers, snap } from "./app";
 
 // The settings window: a window of its own (⌘,), laid out as System
@@ -217,5 +220,37 @@ test("settings 账号与设备 shows the identity, the trusted devices and, fold
   expect(app.windows()).toHaveLength(2);
   await Promise.all([settings.waitForEvent("close"), settings.keyboard.down("Escape")]); // closes the window
   expect(app.windows()).toHaveLength(1);
+  await app.close();
+});
+
+test("通用's 外观 follows the system, or keeps every window light or dark, also next time", async () => {
+  const profile = fs.mkdtempSync(path.join(os.tmpdir(), "hmdesk-"));
+  let { app, page } = await launch(undefined, { profile, systemColors: true });
+  const dark = (p: Page) => p.evaluate(() => matchMedia("(prefers-color-scheme: dark)").matches);
+  const source = () => app.evaluate(({ nativeTheme }) => nativeTheme.themeSource);
+  let settings = await openSettings(app, page, "general");
+  const appearance = () => page_(settings, "通用").getByRole("group", { name: "外观" });
+  await expect(appearance().getByRole("button")).toHaveText(["跟随系统", "浅色", "深色"]);
+  await expect(appearance().getByRole("button", { name: "跟随系统" })).toHaveAttribute("aria-pressed", "true");
+  expect(await source()).toBe("system");
+
+  await appearance().getByRole("button", { name: "深色" }).click();
+  await expect(appearance().getByRole("button", { name: "深色" })).toHaveAttribute("aria-pressed", "true");
+  await expect.poll(() => dark(page)).toBe(true);
+  await expect.poll(() => dark(settings)).toBe(true);
+  await snap(settings, "settings-appearance-dark");
+  await appearance().getByRole("button", { name: "浅色" }).click();
+  await expect.poll(() => dark(page)).toBe(false);
+  await expect.poll(() => dark(settings)).toBe(false);
+
+  // Kept for next time, from the start.
+  await app.close();
+  ({ app, page } = await launch(undefined, { profile, systemColors: true }));
+  expect(await source()).toBe("light");
+  expect(await dark(page)).toBe(false);
+  settings = await openSettings(app, page, "general");
+  await expect(appearance().getByRole("button", { name: "浅色" })).toHaveAttribute("aria-pressed", "true");
+  await appearance().getByRole("button", { name: "跟随系统" }).click();
+  await expect.poll(source).toBe("system");
   await app.close();
 });
