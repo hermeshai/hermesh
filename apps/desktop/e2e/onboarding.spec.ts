@@ -303,6 +303,12 @@ test("browser sign-in: the link brings the authorization page, the center's rela
   await page.getByRole("button", { name: "概览" }).click();
   await expect(page.getByRole("heading", { name: "概览", level: 1 })).toBeVisible();
   await expect(page.getByRole("region", { name: "完成设置" })).toHaveCount(0);
+  // Once the first session is done, 正在干活 rests: the mark, what runs (nothing), and what will show there.
+  const working = page.getByRole("region", { name: "正在干活" });
+  await expect(working.getByRole("status")).toContainText("现在没有会话在跑", { timeout: 30_000 });
+  await expect(working.getByRole("status")).toContainText("agent 一开始干活，会话会出现在这里，链路图也会亮起来。");
+  await expect(working.locator(".hm-mark")).toBeVisible();
+  await snap(page, "first-13-resting");
   await app.close();
   center.close();
 });
