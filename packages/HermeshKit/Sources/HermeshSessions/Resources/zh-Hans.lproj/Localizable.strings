@@ -25,6 +25,7 @@
 "Denied %lld actions" = "拒绝了 %lld 个操作";
 "Denied 1 action" = "拒绝了 1 个操作";
 "Earlier" = "更早";
+"Done" = "已结束";
 "Earlier This Week" = "本周更早";
 "Edited" = "已编辑";
 "Edited %lld files" = "编辑了 %lld 个文件";

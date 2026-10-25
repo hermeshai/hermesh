@@ -33,33 +33,49 @@ func ask(_ s: inout Session) {
     s.progress.pendingQuestion = q
 }
 
-@Test func bucketsByStateThenByDay() {
-    var waiting = session("w", .waitingInput)
+@Test func byStatusByDefault() {
+    var waiting = session("w", .waitingInput, updated: -600)
     ask(&waiting)
+    let all = [session("today", .idle, updated: -3600), session("old", .idle, updated: -30 * 86400), session("run", .running),
+               session("crash", .crashed, updated: -120), waiting, session("arch", .archived, updated: -100)]
+    let secs = sessionSections(all, view: SessionListLayout(), archived: false, now: now, calendar: utc)
+    #expect(secs.map(\.key) == ["attention", "active", "done"])
+    #expect(secs[0].sessions.map(\.sessionID) == ["crash", "w"]) // by last activity
+    #expect(secs[0].counted && secs[1].counted && !secs[2].counted)
+    let shown = sessionSections(all, view: SessionListLayout(), archived: true, now: now, calendar: utc)
+    #expect(shown.last?.grouping == nil && shown.last?.sessions.map(\.sessionID) == ["arch"])
+    let oldest = sessionSections(all, view: SessionListLayout(newestFirst: false), archived: false, now: now, calendar: utc)
+    #expect(oldest.map(\.key) == ["attention", "active", "done"] && oldest[0].sessions.map(\.sessionID) == ["w", "crash"])
+}
+
+@Test func byDateTheDaysFollowTheSort() {
     let all = [session("today", .idle, updated: -3600), session("yday", .idle, updated: -86400), session("week", .idle, updated: -4 * 86400),
-               session("old", .idle, updated: -30 * 86400), session("run", .running), session("crash", .crashed, updated: -120), waiting,
-               session("arch", .archived, updated: -100)]
-    let secs = sessionSections(all, filter: SessionFilter(), now: now, calendar: utc)
-    #expect(secs.map(\.bucket) == [.attention, .active, .today, .yesterday, .week, .earlier])
-    #expect(secs[0].sessions.map(\.sessionID) == ["w", "crash"]) // a question comes before a failure
-    #expect(sessionSections(all, filter: SessionFilter(archived: true), now: now, calendar: utc).last?.sessions.map(\.sessionID) == ["arch"])
+               session("old", .idle, updated: -30 * 86400)]
+    #expect(sessionSections(all, view: SessionListLayout(group: .date), archived: false, now: now, calendar: utc).map(\.key) == ["today", "yesterday", "week", "earlier"])
+    #expect(sessionSections(all, view: SessionListLayout(group: .date, newestFirst: false), archived: false, now: now, calendar: utc).map(\.key)
+        == ["earlier", "week", "yesterday", "today"])
+}
+
+@Test func byAgentAndByMachine() {
+    let all = [session("a", .idle, agent: "gemini", machine: "m2"), session("b", .idle, agent: "claude", machine: "m1"),
+               session("c", .idle, agent: "codex", machine: "m3")]
+    #expect(sessionSections(all, view: SessionListLayout(group: .agent), archived: false, now: now).map(\.key) == ["claude", "codex", "gemini"])
+    #expect(sessionSections(all, view: SessionListLayout(group: .machine), archived: false, now: now, machines: ["m2", "m1"]).map(\.key) == ["m2", "m1", "m3"])
 }
 
 @Test func aFailedTurnNeedsTheOwnerAnInterruptedOneDoesNot() {
     var f = session("f", .idle)
     f.progress.lastFailure.kind = .contextOverflow
-    #expect(f.isFailed && f.needsAttention && bucketOf(f, now: now, calendar: utc) == .attention)
+    #expect(f.isFailed && f.needsAttention && statusOf(f) == .attention)
     var i = session("i", .idle)
     i.progress.lastFailure.kind = .interrupted
-    #expect(!i.isFailed && !i.needsAttention && bucketOf(i, now: now, calendar: utc) == .today)
+    #expect(!i.isFailed && !i.needsAttention && statusOf(i) == .done && dayOf(i, now: now, calendar: utc) == .today)
 }
 
-@Test func runningSortsNewestFirstAndTheFilterNarrows() {
-    let secs = sessionSections([session("a", .running, created: -600), session("b", .running, created: -60)], filter: SessionFilter(), now: now, calendar: utc)
-    #expect(secs[0].sessions.map(\.sessionID) == ["b", "a"])
+@Test func theFilterNarrows() {
     let all = [session("a", .idle, by: "c1", project: "app", agent: "claude", machine: "m1"), session("b", .idle, by: "c2", project: "api", agent: "codex", machine: "m2")]
     for f in [SessionFilter(grant: "c2"), SessionFilter(project: "api"), SessionFilter(agent: "codex"), SessionFilter(machine: "m2")] {
-        #expect(sessionSections(all, filter: f, now: now, calendar: utc).flatMap(\.sessions).map(\.sessionID) == ["b"])
+        #expect(all.filter(f.matches).map(\.sessionID) == ["b"])
         #expect(f.narrowed && f.any)
     }
     #expect(!SessionFilter().any && SessionFilter(archived: true).any && !SessionFilter(archived: true).narrowed)
@@ -74,6 +90,7 @@ func ask(_ s: inout Session) {
     #expect(mergeSessions([old], [newer]).map(\.status) == [.idle])
     #expect(mergeSessions([newer], [old]).map(\.status) == [.idle])
     #expect(mergeSessions([old], [session("b", .idle)]).map(\.sessionID) == ["a", "b"])
+    #expect(mergeSessions([old, session("b", .idle)], [], deleted: ["a"]).map(\.sessionID) == ["b"])
 }
 
 @Test func searchRanksWhatNeedsTheOwnerFirst() {

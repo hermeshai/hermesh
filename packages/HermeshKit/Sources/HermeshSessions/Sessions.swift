@@ -62,8 +62,10 @@ public extension Session {
 }
 
 /// The list with changes applied (a page, or what a watch pushed): each
-/// session replaces an earlier state of itself, or joins the list.
-public func mergeSessions(_ list: [Session], _ changes: [Session]) -> [Session] {
+/// session replaces an earlier state of itself, or joins the list. Deleted
+/// sessions leave it.
+public func mergeSessions(_ list: [Session], _ changes: [Session], deleted: [String] = []) -> [Session] {
+    let list = deleted.isEmpty ? list : list.filter { !deleted.contains($0.sessionID) }
     if changes.isEmpty { return list }
     var out = list
     var at: [String: Int] = [:]
@@ -90,14 +92,35 @@ public func relistedCursor(loaded: SessionCursor?, first: SessionCursor?) -> Ses
     return la > fa || (la == fa && li > fi) ? loaded : first
 }
 
-/// Where a session sits in the list, in the list's order.
+/// How the session list groups its sessions.
+public enum SessionGrouping: String, CaseIterable, Codable, Sendable {
+    case status, date, agent, machine
+}
+
+/// How the session list is laid out: its grouping, which way it sorts by
+/// last activity, and whether rows show their metadata line (grant, coding
+/// agent, project and time). The same as the Mac's.
+public struct SessionListLayout: Equatable, Codable, Sendable {
+    public var group: SessionGrouping = .status
+    public var newestFirst = true
+    public var metadata = true
+
+    public init(group: SessionGrouping = .status, newestFirst: Bool = true, metadata: Bool = true) {
+        self.group = group
+        self.newestFirst = newestFirst
+        self.metadata = metadata
+    }
+}
+
+/// A state or a day: what a section is called when the list groups by status or date.
 public enum SessionBucket: String, CaseIterable, Sendable {
-    case attention, active, today, yesterday, week, earlier, archived
+    case attention, active, done, today, yesterday, week, earlier, archived
 
     public var title: String {
         switch self {
         case .attention: String(localized: "Needs You", bundle: .module)
         case .active: String(localized: "In Progress", bundle: .module)
+        case .done: String(localized: "Done", bundle: .module)
         case .today: String(localized: "Today", bundle: .module)
         case .yesterday: String(localized: "Yesterday", bundle: .module)
         case .week: String(localized: "Earlier This Week", bundle: .module)
@@ -107,11 +130,13 @@ public enum SessionBucket: String, CaseIterable, Sendable {
     }
 }
 
-/// "week" is the six days before today, not the calendar week.
-public func bucketOf(_ s: Session, now: Date, calendar: Calendar = .current) -> SessionBucket {
-    if s.status == .archived { return .archived }
-    if s.needsAttention { return .attention }
-    if s.isActive { return .active }
+/// Needs the owner, runs, or is done.
+public func statusOf(_ s: Session) -> SessionBucket {
+    s.needsAttention ? .attention : s.isActive ? .active : .done
+}
+
+/// The day it was last active; "week" is the six days before today, not the calendar week.
+public func dayOf(_ s: Session, now: Date, calendar: Calendar = .current) -> SessionBucket {
     let d = s.updatedDate
     if calendar.isDate(d, inSameDayAs: now) { return .today }
     if isYesterday(d, now: now, calendar: calendar) { return .yesterday }
@@ -119,8 +144,9 @@ public func bucketOf(_ s: Session, now: Date, calendar: Calendar = .current) -> 
     return .earlier
 }
 
-/// The session list's filter: by grant (its client id), project, coding
-/// agent or machine (empty matches all), and whether archived sessions show.
+/// A filter by grant (its client id), project, coding agent or machine
+/// (empty matches all), and whether archived sessions show: for search, and
+/// the sessions of one grant or machine.
 public struct SessionFilter: Equatable, Sendable {
     public var grant = ""
     public var project = ""
@@ -146,33 +172,50 @@ public struct SessionFilter: Equatable, Sendable {
 }
 
 public struct SessionSection: Identifiable {
-    public let bucket: SessionBucket
+    /// The grouping, or nil for the archived sessions' own section.
+    public let grouping: SessionGrouping?
+    /// A state or a day (a SessionBucket's raw value), a coding agent, or a machine id.
+    public let key: String
     public let sessions: [Session]
-    public var id: SessionBucket { bucket }
+    public var id: String { "\(grouping?.rawValue ?? "archived"):\(key)" }
+    /// What needs the owner and what runs show how many they hold.
+    public var counted: Bool { grouping == .status && (key == SessionBucket.attention.rawValue || key == SessionBucket.active.rawValue) }
 }
 
-/// The list: what needs the owner first (questions before failures), then
-/// what runs (newest first), then the rest by when it last changed.
-public func sessionSections(_ sessions: [Session], filter: SessionFilter, now: Date, calendar: Calendar = .current) -> [SessionSection] {
-    var by: [SessionBucket: [Session]] = [:]
-    for s in sessions where filter.matches(s) {
-        let b = bucketOf(s, now: now, calendar: calendar)
-        if b == .archived && !filter.archived { continue }
-        by[b, default: []].append(s)
-    }
-    return SessionBucket.allCases.compactMap { b in
-        guard var list = by[b] else { return nil }
-        switch b {
-        case .attention:
-            list.sort { a, c in
-                let qa = a.status == .waitingInput, qc = c.status == .waitingInput
-                return qa != qc ? qa : a.updatedDate > c.updatedDate
-            }
-        case .active: list.sort { $0.createdDate > $1.createdDate }
-        default: list.sort { $0.updatedDate > $1.updatedDate }
+/// The list as the view lays it out, each section sorted by last activity.
+/// States keep their order (needs you, running, done); days follow the sort;
+/// coding agents go by name, machines in the order given (unknown ones
+/// last). Archived sessions, when shown, are a section of their own at the end.
+public func sessionSections(_ sessions: [Session], view: SessionListLayout, archived: Bool, now: Date, machines: [String] = [],
+                            calendar: Calendar = .current) -> [SessionSection] {
+    var by: [String: [Session]] = [:]
+    var gone: [Session] = []
+    for s in sessions {
+        if s.status == .archived {
+            if archived { gone.append(s) }
+            continue
         }
-        return SessionSection(bucket: b, sessions: list)
+        let k = switch view.group {
+        case .status: statusOf(s).rawValue
+        case .date: dayOf(s, now: now, calendar: calendar).rawValue
+        case .agent: s.agent
+        case .machine: s.machineID
+        }
+        by[k, default: []].append(s)
     }
+    let days: [SessionBucket] = [.today, .yesterday, .week, .earlier]
+    let order: [String] = switch view.group {
+    case .status: [SessionBucket.attention, .active, .done].map(\.rawValue)
+    case .date: (view.newestFirst ? days : days.reversed()).map(\.rawValue)
+    case .agent: by.keys.sorted { agentTitle($0).localizedStandardCompare(agentTitle($1)) == .orderedAscending }
+    case .machine: by.keys.sorted { (machines.firstIndex(of: $0) ?? .max, $0) < (machines.firstIndex(of: $1) ?? .max, $1) }
+    }
+    func sorted(_ list: [Session]) -> [Session] {
+        list.sorted { view.newestFirst ? $0.updatedDate > $1.updatedDate : $0.updatedDate < $1.updatedDate }
+    }
+    var out = order.compactMap { k in by[k].map { SessionSection(grouping: view.group, key: k, sessions: sorted($0)) } }
+    if !gone.isEmpty { out.append(SessionSection(grouping: nil, key: SessionBucket.archived.rawValue, sessions: sorted(gone))) }
+    return out
 }
 
 /// Sessions matching a search, those needing the owner first, then running

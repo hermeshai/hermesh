@@ -165,6 +165,7 @@ func (w *ownerMac) cli(timeout time.Duration, args ...string) result {
 type sessionJSON struct {
 	SessionID   string `json:"session_id"`
 	Status      string `json:"status"`
+	Title       string `json:"title"`
 	Ref         string `json:"agent_session_id"`
 	Result      string `json:"result"`
 	LastFailure *struct {

@@ -303,7 +303,20 @@ func newIPhoneControl(t *testing.T, w *ownerMac, sessions map[string]string) str
 			return
 		}
 		s := w.get(id)
-		reply(rw, map[string]string{"status": s.Status})
+		reply(rw, map[string]string{"status": s.Status, "title": s.Title}) // a deleted one: no status
+	})
+	// A new session that says one thing and is done (to rename or delete).
+	mux.HandleFunc("POST /start", func(rw http.ResponseWriter, r *http.Request) {
+		title := r.URL.Query().Get("title")
+		s, res := w.startSession(2*time.Minute, "--agent", "gemini", "--title", title, "--prompt", "say 好", "--wait")
+		if s.SessionID == "" {
+			http.Error(rw, "start: "+res.stdout+res.stderr, 500)
+			return
+		}
+		mu.Lock()
+		sessions[title] = s.SessionID
+		mu.Unlock()
+		reply(rw, map[string]string{"id": s.SessionID})
 	})
 	// An agent asks to connect (hermesh auth login), for the iPhone to approve.
 	mux.HandleFunc("POST /agent", func(rw http.ResponseWriter, r *http.Request) {

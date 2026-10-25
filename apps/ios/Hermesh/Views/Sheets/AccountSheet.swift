@@ -3,12 +3,13 @@ import HermeshProto
 import SwiftUI
 import UserNotifications
 
-/// The account: the service, the trusted devices, notifications.
+/// The account: the service, the trusted devices, the appearance, notifications.
 struct AccountSheet: View {
     @Environment(AppModel.self) private var model
     @State private var removing: Device?
     @State private var signingOut = false
     @State private var notifications: UNAuthorizationStatus?
+    @AppStorage("appearance") private var appearance = "system"
 
     var body: some View {
         NavigationStack {
@@ -46,6 +47,17 @@ struct AccountSheet: View {
                     Text("Trusted devices")
                 } footer: {
                     Text("Every trusted device can approve requests to connect. If one gets lost, remove it from another (swipe left on it).")
+                }
+                Section {
+                    Picker("Appearance", selection: $appearance) {
+                        Text("System").tag("system")
+                        Text("Light").tag("light")
+                        Text("Dark").tag("dark")
+                    }
+                    .pickerStyle(.segmented)
+                    .accessibilityIdentifier("appearance")
+                } header: {
+                    Text("Appearance")
                 }
                 Section {
                     if notifications == .denied {

@@ -552,6 +552,16 @@
         }
       }
     },
+    "Appearance": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "外观"
+          }
+        }
+      }
+    },
     "Approve": {
       "localizations": {
         "zh-Hans": {
@@ -648,6 +658,46 @@
           "stringUnit": {
             "state": "translated",
             "value": "分支"
+          }
+        }
+      }
+    },
+    "By Agent": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "按 Agent"
+          }
+        }
+      }
+    },
+    "By Date": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "按日期"
+          }
+        }
+      }
+    },
+    "By Machine": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "按机器"
+          }
+        }
+      }
+    },
+    "By Status": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "按状态"
           }
         }
       }
@@ -772,6 +822,16 @@
         }
       }
     },
+    "Collapsed": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "已收起"
+          }
+        }
+      }
+    },
     "Compare the code with what it shows.": {
       "localizations": {
         "zh-Hans": {
@@ -888,6 +948,56 @@
           "stringUnit": {
             "state": "translated",
             "value": "拷贝会话 ID"
+          }
+        }
+      }
+    },
+    "Dark": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "深色"
+          }
+        }
+      }
+    },
+    "Delete": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "删除"
+          }
+        }
+      }
+    },
+    "Delete “%@”?": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "删除「%@」？"
+          }
+        }
+      }
+    },
+    "Deleted “%@”": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "已删除「%@」"
+          }
+        }
+      }
+    },
+    "Delete…": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "删除…"
           }
         }
       }
@@ -1072,6 +1182,16 @@
         }
       }
     },
+    "Expanded": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "已展开"
+          }
+        }
+      }
+    },
     "Failed": {
       "localizations": {
         "zh-Hans": {
@@ -1088,16 +1208,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "会话出错"
-          }
-        }
-      }
-    },
-    "Filter sessions": {
-      "localizations": {
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "筛选会话"
           }
         }
       }
@@ -1162,6 +1272,16 @@
         }
       }
     },
+    "Group": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "分组"
+          }
+        }
+      }
+    },
     "Hermesh": {
       "shouldTranslate": false
     },
@@ -1191,6 +1311,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "有 agent 提问，或有机器、agent 请求连接时，Hermesh 会通知你。"
+          }
+        }
+      }
+    },
+    "Hide Archived": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "隐藏已归档"
           }
         }
       }
@@ -1365,12 +1495,42 @@
         }
       }
     },
+    "Its record and conversation are deleted for good.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "会话记录和对话会被永久删除，无法恢复。"
+          }
+        }
+      }
+    },
+    "Its record, conversation and worktree are deleted for good. The agent’s changes stay on the branch %@.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "会话记录、对话和工作区会被永久删除，无法恢复。agent 做的改动仍保留在分支 %@ 上。"
+          }
+        }
+      }
+    },
     "Its sessions can’t be shown for now": {
       "localizations": {
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
             "value": "它上面的会话暂时看不到"
+          }
+        }
+      }
+    },
+    "Its turn in progress is interrupted first.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "这一轮还在进行，会先被打断。"
           }
         }
       }
@@ -1415,6 +1575,16 @@
         }
       }
     },
+    "Last Active": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "最后活跃时间"
+          }
+        }
+      }
+    },
     "Last online": {
       "localizations": {
         "zh-Hans": {
@@ -1431,6 +1601,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "%@还在线 · 连上后会自动补上"
+          }
+        }
+      }
+    },
+    "Light": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "浅色"
           }
         }
       }
@@ -1515,6 +1695,16 @@
         }
       }
     },
+    "Metadata": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "元数据"
+          }
+        }
+      }
+    },
     "More": {
       "localizations": {
         "zh-Hans": {
@@ -1575,6 +1765,16 @@
         }
       }
     },
+    "Newest First": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "最新在前"
+          }
+        }
+      }
+    },
     "No changes": {
       "localizations": {
         "zh-Hans": {
@@ -1615,6 +1815,16 @@
         }
       }
     },
+    "No earlier sessions ·": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "没有更早的会话了 ·"
+          }
+        }
+      }
+    },
     "No grants yet.": {
       "localizations": {
         "zh-Hans": {
@@ -1641,6 +1851,26 @@
           "stringUnit": {
             "state": "translated",
             "value": "还没有项目。到机器的页面里添加。"
+          }
+        }
+      }
+    },
+    "No sessions": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "没有会话"
+          }
+        }
+      }
+    },
+    "No sessions are running": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "现在没有会话在跑"
           }
         }
       }
@@ -1681,16 +1911,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "未连接"
-          }
-        }
-      }
-    },
-    "Nothing is running right now.": {
-      "localizations": {
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "现在没有会话在跑。"
           }
         }
       }
@@ -1741,6 +1961,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "离线 · 最近在线 %@"
+          }
+        }
+      }
+    },
+    "Oldest First": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "最早在前"
           }
         }
       }
@@ -1805,16 +2035,6 @@
         }
       }
     },
-    "Only “%@” Sessions": {
-      "localizations": {
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "只看「%@」的会话"
-          }
-        }
-      }
-    },
     "Or send this to %@": {
       "localizations": {
         "zh-Hans": {
@@ -1831,6 +2051,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "或者直接写下你的回答…"
+          }
+        }
+      }
+    },
+    "Order": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "顺序"
           }
         }
       }
@@ -1970,7 +2200,17 @@
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "改名"
+            "value": "重命名"
+          }
+        }
+      }
+    },
+    "Rename Session": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "重命名会话"
           }
         }
       }
@@ -1990,7 +2230,7 @@
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "改名…"
+            "value": "重命名…"
           }
         }
       }
@@ -2135,12 +2375,32 @@
         }
       }
     },
+    "Session title": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "会话标题"
+          }
+        }
+      }
+    },
     "Sessions": {
       "localizations": {
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
             "value": "会话"
+          }
+        }
+      }
+    },
+    "Sessions on %@": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ 上的会话"
           }
         }
       }
@@ -2165,12 +2425,12 @@
         }
       }
     },
-    "Show All Sessions": {
+    "Show": {
       "localizations": {
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "显示全部会话"
+            "value": "显示"
           }
         }
       }
@@ -2245,6 +2505,26 @@
         }
       }
     },
+    "Sort": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "排序"
+          }
+        }
+      }
+    },
+    "Sort By": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "排序方式"
+          }
+        }
+      }
+    },
     "Started": {
       "localizations": {
         "zh-Hans": {
@@ -2271,6 +2551,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "连续使用"
+          }
+        }
+      }
+    },
+    "System": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "跟随系统"
           }
         }
       }
@@ -2555,6 +2845,16 @@
         }
       }
     },
+    "Title Only": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "仅标题"
+          }
+        }
+      }
+    },
     "Today **%lld** sessions · **%lld** done · %@": {
       "localizations": {
         "zh-Hans": {
@@ -2805,6 +3105,16 @@
         }
       }
     },
+    "View Options": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "视图选项"
+          }
+        }
+      }
+    },
     "Waiting for approval…": {
       "localizations": {
         "zh-Hans": {
@@ -2871,6 +3181,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "机器或 agent 没带你的连接地址时，它的终端会显示一个配对码。输入后，会和其他请求一样弹出批准页面，请核对核对码。"
+          }
+        }
+      }
+    },
+    "When an agent starts working, its sessions show up here.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "agent 一开始干活，会话会出现在这里。"
           }
         }
       }
@@ -3001,6 +3321,16 @@
     },
     "·": {
       "shouldTranslate": false
+    },
+    "“%@” Sessions": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "「%@」的会话"
+          }
+        }
+      }
     },
     "“%@” connects through %@: %@ keeps this agent’s key, can act for it within this scope, and sees the sessions it reaches.": {
       "localizations": {

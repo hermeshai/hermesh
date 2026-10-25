@@ -10,6 +10,8 @@ struct SessionView: View {
     @State private var events: [SessionEvent] = []
     @State private var open: Set<UInt64> = []
     @State private var confirmInterrupt = false
+    @State private var renaming = false
+    @State private var deleting = false
 
     var body: some View {
         Group {
@@ -62,19 +64,11 @@ struct SessionView: View {
                 Button("Session Info", systemImage: "info.circle") { model.sheet = .sessionInfo(s.sessionID) }
                     .accessibilityIdentifier("session-info")
                 Menu {
-                    if let c = model.grantFor(s) {
-                        Button("Only “\(c.label)” Sessions", systemImage: "line.3.horizontal.decrease") { show(SessionFilter(grant: c.clientID)) }
-                    }
-                    Button("Only “\(s.projectID)” Sessions", systemImage: "folder") { show(SessionFilter(project: s.projectID)) }
                     Button("Copy Session ID", systemImage: "doc.on.doc") {
                         UIPasteboard.general.string = s.sessionID
                         model.show(String(localized: "Copied the session ID"))
                     }
-                    if s.isArchivable {
-                        Button("Archive", systemImage: "archivebox") { Task { await model.setArchived(s, true) } }
-                    } else if s.status == .archived {
-                        Button("Unarchive", systemImage: "tray.and.arrow.up") { Task { await model.setArchived(s, false) } }
-                    }
+                    SessionActions(session: s, renaming: $renaming, deleting: $deleting)
                 } label: {
                     Image(systemName: "ellipsis")
                 }
@@ -82,17 +76,13 @@ struct SessionView: View {
                 .accessibilityIdentifier("session-more")
             }
         }
+        .sessionDialogs(s, renaming: $renaming, deleting: $deleting)
         .confirmationDialog("Interrupt this turn?", isPresented: $confirmInterrupt, titleVisibility: .visible) {
             Button("Interrupt", role: .destructive) { Task { await model.interrupt(s) } }
                 .accessibilityIdentifier("interrupt-confirm")
         } message: {
             Text("The session stays; when \(grant) sends another message, it continues.")
         }
-    }
-
-    private func show(_ f: SessionFilter) {
-        model.filter = f
-        model.open(.sessions)
     }
 
     @ViewBuilder private func ending(_ s: Session, grant: String) -> some View {

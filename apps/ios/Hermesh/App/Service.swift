@@ -72,6 +72,20 @@ extension LocalAPI {
         return res.session
     }
 
+    func delete(_ sessionID: String) async throws {
+        var r = Hermesh_Local_V1_DeleteSessionRequest()
+        r.sessionID = sessionID
+        let _: Hermesh_Local_V1_DeleteSessionResponse = try await call("DeleteSession", r)
+    }
+
+    func rename(_ sessionID: String, to title: String) async throws -> Hermesh_Session_V1_Session {
+        var r = Hermesh_Local_V1_RenameSessionRequest()
+        r.sessionID = sessionID
+        r.title = title
+        let res: Hermesh_Local_V1_SessionResponse = try await call("RenameSession", r)
+        return res.session
+    }
+
     func diff(_ sessionID: String) async throws -> String {
         var r = Hermesh_Local_V1_GetDiffRequest()
         r.sessionID = sessionID

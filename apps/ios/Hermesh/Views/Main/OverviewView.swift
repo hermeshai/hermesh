@@ -62,7 +62,7 @@ struct OverviewView: View {
         let running = model.sessions.filter(\.isActive).sorted { $0.createdDate > $1.createdDate }
         Section {
             if running.isEmpty {
-                Text("Nothing is running right now.").font(.subheadline).foregroundStyle(.secondary).padding(.horizontal, 20)
+                Resting().padding(.horizontal, 16)
             } else {
                 VStack(spacing: 0) {
                     ForEach(running, id: \.sessionID) { s in
@@ -112,6 +112,28 @@ struct OverviewView: View {
         }
         .buttonStyle(.plain)
         .padding(.horizontal, 16)
+    }
+}
+
+/// Nothing running: the mark at rest, breathing slowly, and what will show here.
+struct Resting: View {
+    @Environment(\.accessibilityReduceMotion) private var still
+    @State private var bright = false
+
+    var body: some View {
+        VStack(spacing: 6) {
+            Mark(size: 34)
+                .opacity(still || bright ? 1 : 0.55)
+                .padding(.bottom, 6)
+                .onAppear { if !still { withAnimation(.easeInOut(duration: 3.2).repeatForever()) { bright = true } } }
+            Text("No sessions are running").font(.subheadline.weight(.semibold))
+            Text("When an agent starts working, its sessions show up here.").font(.footnote).foregroundStyle(.secondary).multilineTextAlignment(.center)
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 26).padding(.horizontal, 20)
+        .background(Color(.secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 26, style: .continuous))
+        .accessibilityElement(children: .combine)
+        .accessibilityIdentifier("working-resting")
     }
 }
 
@@ -177,19 +199,21 @@ struct UnreachableNotice: View {
 }
 
 /// A session in a list: its state, title, what it is doing or who started it, and when.
+/// Without its metadata (the list's view menu), its state and title alone.
 struct SessionRow: View {
     @Environment(AppModel.self) private var model
     let session: Session
+    var metadata = true
 
     var body: some View {
         HStack(alignment: .center, spacing: 12) {
             StatusDot(session: session)
             VStack(alignment: .leading, spacing: 2) {
                 Text(session.displayTitle).lineLimit(1)
-                second.font(.subheadline).lineLimit(1)
+                if metadata { second.font(.subheadline).lineLimit(1) }
             }
             .frame(maxWidth: .infinity, alignment: .leading)
-            trailing.font(.subheadline).foregroundStyle(.secondary).monospacedDigit()
+            if metadata { trailing.font(.subheadline).foregroundStyle(.secondary).monospacedDigit() }
         }
         .padding(.horizontal, 16).padding(.vertical, 11)
         .contentShape(.rect)
