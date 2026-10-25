@@ -36,6 +36,18 @@ const (
 const (
 	// LocalServiceGetStatusProcedure is the fully-qualified name of the LocalService's GetStatus RPC.
 	LocalServiceGetStatusProcedure = "/hermesh.local.v1.LocalService/GetStatus"
+	// LocalServiceListProfilesProcedure is the fully-qualified name of the LocalService's ListProfiles
+	// RPC.
+	LocalServiceListProfilesProcedure = "/hermesh.local.v1.LocalService/ListProfiles"
+	// LocalServiceSwitchProfileProcedure is the fully-qualified name of the LocalService's
+	// SwitchProfile RPC.
+	LocalServiceSwitchProfileProcedure = "/hermesh.local.v1.LocalService/SwitchProfile"
+	// LocalServiceAddProfileProcedure is the fully-qualified name of the LocalService's AddProfile RPC.
+	LocalServiceAddProfileProcedure = "/hermesh.local.v1.LocalService/AddProfile"
+	// LocalServiceSignOutProcedure is the fully-qualified name of the LocalService's SignOut RPC.
+	LocalServiceSignOutProcedure = "/hermesh.local.v1.LocalService/SignOut"
+	// LocalServiceSignInProcedure is the fully-qualified name of the LocalService's SignIn RPC.
+	LocalServiceSignInProcedure = "/hermesh.local.v1.LocalService/SignIn"
 	// LocalServiceSetupProcedure is the fully-qualified name of the LocalService's Setup RPC.
 	LocalServiceSetupProcedure = "/hermesh.local.v1.LocalService/Setup"
 	// LocalServiceRequestJoinProcedure is the fully-qualified name of the LocalService's RequestJoin
@@ -143,6 +155,21 @@ const (
 // LocalServiceClient is a client for the hermesh.local.v1.LocalService service.
 type LocalServiceClient interface {
 	GetStatus(context.Context, *v1.GetStatusRequest) (*v1.GetStatusResponse, error)
+	// Accounts (docs/trusted-devices.md 4.8): a device keeps a profile for
+	// each owner it set up or joined, each with its own root key, and uses one
+	// at a time, the current one, which every other call acts on.
+	ListProfiles(context.Context, *v1.ListProfilesRequest) (*v1.ListProfilesResponse, error)
+	// Makes another profile current: the current one disconnects and its
+	// machine stops; the other connects, unless it is signed out.
+	SwitchProfile(context.Context, *v1.SwitchProfileRequest) (*v1.SwitchProfileResponse, error)
+	// Makes an empty profile current, to set up or join another owner.
+	AddProfile(context.Context, *v1.AddProfileRequest) (*v1.AddProfileResponse, error)
+	// Signs the current profile out: it disconnects and its machine stops,
+	// but it keeps its keys, so signing in again needs no other device.
+	SignOut(context.Context, *v1.SignOutRequest) (*v1.SignOutResponse, error)
+	// Signs the current profile in again: on a hosted center with a link
+	// code from a browser sign-in to the account that owns it.
+	SignIn(context.Context, *v1.SignInRequest) (*v1.SignInResponse, error)
 	// Onboarding: the first trusted device creates the owner.
 	Setup(context.Context, *v1.SetupRequest) (*v1.SetupResponse, error)
 	// Another device joins the owner (docs/trusted-devices.md 4.2): it asks,
@@ -160,7 +187,8 @@ type LocalServiceClient interface {
 	// re-issued by this one, and its own machine revoked.
 	RemoveDevice(context.Context, *v1.RemoveDeviceRequest) (*v1.RemoveDeviceResponse, error)
 	// Forgets the owner on this device, after it was removed, so it can be
-	// set up again or join again. Its own machine keeps its projects.
+	// set up again or join again: its root key is deleted, and its own
+	// machine keeps its projects.
 	Leave(context.Context, *v1.LeaveRequest) (*v1.LeaveResponse, error)
 	// Signing delegation.
 	WatchSigningRequests(context.Context, *v1.WatchSigningRequestsRequest) (*connect.ServerStreamForClient[v1.SigningRequest], error)
@@ -227,6 +255,36 @@ func NewLocalServiceClient(httpClient connect.HTTPClient, baseURL string, opts .
 			httpClient,
 			baseURL+LocalServiceGetStatusProcedure,
 			connect.WithSchema(localServiceMethods.ByName("GetStatus")),
+			connect.WithClientOptions(opts...),
+		),
+		listProfiles: connect.NewClient[v1.ListProfilesRequest, v1.ListProfilesResponse](
+			httpClient,
+			baseURL+LocalServiceListProfilesProcedure,
+			connect.WithSchema(localServiceMethods.ByName("ListProfiles")),
+			connect.WithClientOptions(opts...),
+		),
+		switchProfile: connect.NewClient[v1.SwitchProfileRequest, v1.SwitchProfileResponse](
+			httpClient,
+			baseURL+LocalServiceSwitchProfileProcedure,
+			connect.WithSchema(localServiceMethods.ByName("SwitchProfile")),
+			connect.WithClientOptions(opts...),
+		),
+		addProfile: connect.NewClient[v1.AddProfileRequest, v1.AddProfileResponse](
+			httpClient,
+			baseURL+LocalServiceAddProfileProcedure,
+			connect.WithSchema(localServiceMethods.ByName("AddProfile")),
+			connect.WithClientOptions(opts...),
+		),
+		signOut: connect.NewClient[v1.SignOutRequest, v1.SignOutResponse](
+			httpClient,
+			baseURL+LocalServiceSignOutProcedure,
+			connect.WithSchema(localServiceMethods.ByName("SignOut")),
+			connect.WithClientOptions(opts...),
+		),
+		signIn: connect.NewClient[v1.SignInRequest, v1.SignInResponse](
+			httpClient,
+			baseURL+LocalServiceSignInProcedure,
+			connect.WithSchema(localServiceMethods.ByName("SignIn")),
 			connect.WithClientOptions(opts...),
 		),
 		setup: connect.NewClient[v1.SetupRequest, v1.SetupResponse](
@@ -451,6 +509,11 @@ func NewLocalServiceClient(httpClient connect.HTTPClient, baseURL string, opts .
 // localServiceClient implements LocalServiceClient.
 type localServiceClient struct {
 	getStatus              *connect.Client[v1.GetStatusRequest, v1.GetStatusResponse]
+	listProfiles           *connect.Client[v1.ListProfilesRequest, v1.ListProfilesResponse]
+	switchProfile          *connect.Client[v1.SwitchProfileRequest, v1.SwitchProfileResponse]
+	addProfile             *connect.Client[v1.AddProfileRequest, v1.AddProfileResponse]
+	signOut                *connect.Client[v1.SignOutRequest, v1.SignOutResponse]
+	signIn                 *connect.Client[v1.SignInRequest, v1.SignInResponse]
 	setup                  *connect.Client[v1.SetupRequest, v1.SetupResponse]
 	requestJoin            *connect.Client[v1.RequestJoinRequest, v1.RequestJoinResponse]
 	waitJoin               *connect.Client[v1.WaitJoinRequest, v1.WaitJoinResponse]
@@ -492,6 +555,51 @@ type localServiceClient struct {
 // GetStatus calls hermesh.local.v1.LocalService.GetStatus.
 func (c *localServiceClient) GetStatus(ctx context.Context, req *v1.GetStatusRequest) (*v1.GetStatusResponse, error) {
 	response, err := c.getStatus.CallUnary(ctx, connect.NewRequest(req))
+	if response != nil {
+		return response.Msg, err
+	}
+	return nil, err
+}
+
+// ListProfiles calls hermesh.local.v1.LocalService.ListProfiles.
+func (c *localServiceClient) ListProfiles(ctx context.Context, req *v1.ListProfilesRequest) (*v1.ListProfilesResponse, error) {
+	response, err := c.listProfiles.CallUnary(ctx, connect.NewRequest(req))
+	if response != nil {
+		return response.Msg, err
+	}
+	return nil, err
+}
+
+// SwitchProfile calls hermesh.local.v1.LocalService.SwitchProfile.
+func (c *localServiceClient) SwitchProfile(ctx context.Context, req *v1.SwitchProfileRequest) (*v1.SwitchProfileResponse, error) {
+	response, err := c.switchProfile.CallUnary(ctx, connect.NewRequest(req))
+	if response != nil {
+		return response.Msg, err
+	}
+	return nil, err
+}
+
+// AddProfile calls hermesh.local.v1.LocalService.AddProfile.
+func (c *localServiceClient) AddProfile(ctx context.Context, req *v1.AddProfileRequest) (*v1.AddProfileResponse, error) {
+	response, err := c.addProfile.CallUnary(ctx, connect.NewRequest(req))
+	if response != nil {
+		return response.Msg, err
+	}
+	return nil, err
+}
+
+// SignOut calls hermesh.local.v1.LocalService.SignOut.
+func (c *localServiceClient) SignOut(ctx context.Context, req *v1.SignOutRequest) (*v1.SignOutResponse, error) {
+	response, err := c.signOut.CallUnary(ctx, connect.NewRequest(req))
+	if response != nil {
+		return response.Msg, err
+	}
+	return nil, err
+}
+
+// SignIn calls hermesh.local.v1.LocalService.SignIn.
+func (c *localServiceClient) SignIn(ctx context.Context, req *v1.SignInRequest) (*v1.SignInResponse, error) {
+	response, err := c.signIn.CallUnary(ctx, connect.NewRequest(req))
 	if response != nil {
 		return response.Msg, err
 	}
@@ -813,6 +921,21 @@ func (c *localServiceClient) RegisterPush(ctx context.Context, req *v1.RegisterP
 // LocalServiceHandler is an implementation of the hermesh.local.v1.LocalService service.
 type LocalServiceHandler interface {
 	GetStatus(context.Context, *v1.GetStatusRequest) (*v1.GetStatusResponse, error)
+	// Accounts (docs/trusted-devices.md 4.8): a device keeps a profile for
+	// each owner it set up or joined, each with its own root key, and uses one
+	// at a time, the current one, which every other call acts on.
+	ListProfiles(context.Context, *v1.ListProfilesRequest) (*v1.ListProfilesResponse, error)
+	// Makes another profile current: the current one disconnects and its
+	// machine stops; the other connects, unless it is signed out.
+	SwitchProfile(context.Context, *v1.SwitchProfileRequest) (*v1.SwitchProfileResponse, error)
+	// Makes an empty profile current, to set up or join another owner.
+	AddProfile(context.Context, *v1.AddProfileRequest) (*v1.AddProfileResponse, error)
+	// Signs the current profile out: it disconnects and its machine stops,
+	// but it keeps its keys, so signing in again needs no other device.
+	SignOut(context.Context, *v1.SignOutRequest) (*v1.SignOutResponse, error)
+	// Signs the current profile in again: on a hosted center with a link
+	// code from a browser sign-in to the account that owns it.
+	SignIn(context.Context, *v1.SignInRequest) (*v1.SignInResponse, error)
 	// Onboarding: the first trusted device creates the owner.
 	Setup(context.Context, *v1.SetupRequest) (*v1.SetupResponse, error)
 	// Another device joins the owner (docs/trusted-devices.md 4.2): it asks,
@@ -830,7 +953,8 @@ type LocalServiceHandler interface {
 	// re-issued by this one, and its own machine revoked.
 	RemoveDevice(context.Context, *v1.RemoveDeviceRequest) (*v1.RemoveDeviceResponse, error)
 	// Forgets the owner on this device, after it was removed, so it can be
-	// set up again or join again. Its own machine keeps its projects.
+	// set up again or join again: its root key is deleted, and its own
+	// machine keeps its projects.
 	Leave(context.Context, *v1.LeaveRequest) (*v1.LeaveResponse, error)
 	// Signing delegation.
 	WatchSigningRequests(context.Context, *v1.WatchSigningRequestsRequest, *connect.ServerStream[v1.SigningRequest]) error
@@ -893,6 +1017,36 @@ func NewLocalServiceHandler(svc LocalServiceHandler, opts ...connect.HandlerOpti
 		LocalServiceGetStatusProcedure,
 		svc.GetStatus,
 		connect.WithSchema(localServiceMethods.ByName("GetStatus")),
+		connect.WithHandlerOptions(opts...),
+	)
+	localServiceListProfilesHandler := connect.NewUnaryHandlerSimple(
+		LocalServiceListProfilesProcedure,
+		svc.ListProfiles,
+		connect.WithSchema(localServiceMethods.ByName("ListProfiles")),
+		connect.WithHandlerOptions(opts...),
+	)
+	localServiceSwitchProfileHandler := connect.NewUnaryHandlerSimple(
+		LocalServiceSwitchProfileProcedure,
+		svc.SwitchProfile,
+		connect.WithSchema(localServiceMethods.ByName("SwitchProfile")),
+		connect.WithHandlerOptions(opts...),
+	)
+	localServiceAddProfileHandler := connect.NewUnaryHandlerSimple(
+		LocalServiceAddProfileProcedure,
+		svc.AddProfile,
+		connect.WithSchema(localServiceMethods.ByName("AddProfile")),
+		connect.WithHandlerOptions(opts...),
+	)
+	localServiceSignOutHandler := connect.NewUnaryHandlerSimple(
+		LocalServiceSignOutProcedure,
+		svc.SignOut,
+		connect.WithSchema(localServiceMethods.ByName("SignOut")),
+		connect.WithHandlerOptions(opts...),
+	)
+	localServiceSignInHandler := connect.NewUnaryHandlerSimple(
+		LocalServiceSignInProcedure,
+		svc.SignIn,
+		connect.WithSchema(localServiceMethods.ByName("SignIn")),
 		connect.WithHandlerOptions(opts...),
 	)
 	localServiceSetupHandler := connect.NewUnaryHandlerSimple(
@@ -1115,6 +1269,16 @@ func NewLocalServiceHandler(svc LocalServiceHandler, opts ...connect.HandlerOpti
 		switch r.URL.Path {
 		case LocalServiceGetStatusProcedure:
 			localServiceGetStatusHandler.ServeHTTP(w, r)
+		case LocalServiceListProfilesProcedure:
+			localServiceListProfilesHandler.ServeHTTP(w, r)
+		case LocalServiceSwitchProfileProcedure:
+			localServiceSwitchProfileHandler.ServeHTTP(w, r)
+		case LocalServiceAddProfileProcedure:
+			localServiceAddProfileHandler.ServeHTTP(w, r)
+		case LocalServiceSignOutProcedure:
+			localServiceSignOutHandler.ServeHTTP(w, r)
+		case LocalServiceSignInProcedure:
+			localServiceSignInHandler.ServeHTTP(w, r)
 		case LocalServiceSetupProcedure:
 			localServiceSetupHandler.ServeHTTP(w, r)
 		case LocalServiceRequestJoinProcedure:
@@ -1198,6 +1362,26 @@ type UnimplementedLocalServiceHandler struct{}
 
 func (UnimplementedLocalServiceHandler) GetStatus(context.Context, *v1.GetStatusRequest) (*v1.GetStatusResponse, error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("hermesh.local.v1.LocalService.GetStatus is not implemented"))
+}
+
+func (UnimplementedLocalServiceHandler) ListProfiles(context.Context, *v1.ListProfilesRequest) (*v1.ListProfilesResponse, error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("hermesh.local.v1.LocalService.ListProfiles is not implemented"))
+}
+
+func (UnimplementedLocalServiceHandler) SwitchProfile(context.Context, *v1.SwitchProfileRequest) (*v1.SwitchProfileResponse, error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("hermesh.local.v1.LocalService.SwitchProfile is not implemented"))
+}
+
+func (UnimplementedLocalServiceHandler) AddProfile(context.Context, *v1.AddProfileRequest) (*v1.AddProfileResponse, error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("hermesh.local.v1.LocalService.AddProfile is not implemented"))
+}
+
+func (UnimplementedLocalServiceHandler) SignOut(context.Context, *v1.SignOutRequest) (*v1.SignOutResponse, error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("hermesh.local.v1.LocalService.SignOut is not implemented"))
+}
+
+func (UnimplementedLocalServiceHandler) SignIn(context.Context, *v1.SignInRequest) (*v1.SignInResponse, error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("hermesh.local.v1.LocalService.SignIn is not implemented"))
 }
 
 func (UnimplementedLocalServiceHandler) Setup(context.Context, *v1.SetupRequest) (*v1.SetupResponse, error) {

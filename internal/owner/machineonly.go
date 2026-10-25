@@ -87,7 +87,7 @@ func (o *Owner) requestMachineJoin(ctx context.Context, req *localv1.RequestJoin
 		return nil, err
 	}
 	o.mu.Lock()
-	o.join = &pendingJoin{code: res.Code, relayURL: relayURL, ownerID: req.OwnerId, rootPub: spki, machineName: label,
+	o.join = &pendingJoin{code: res.Code, relayURL: relayURL, ownerID: req.OwnerId, account: req.Account, rootPub: spki, machineName: label,
 		machineOnly: true, match: !req.OwnerTyped}
 	o.mu.Unlock()
 	return &localv1.RequestJoinResponse{Code: res.Code, ExpiresAt: res.ExpiresAt,
@@ -140,8 +140,11 @@ func (o *Owner) confirmMachineJoin(ctx context.Context, j *pendingJoin) (*localv
 	if err := o.st.set(kMachineOnly, []byte("1")); err != nil {
 		return nil, err
 	}
+	if err := o.st.set(kAccount, []byte(j.account)); err != nil {
+		return nil, err
+	}
 	o.mu.Lock()
-	o.join = nil
+	o.join, o.account = nil, j.account
 	o.mu.Unlock()
 	if err := o.startLocalMachine(); err != nil {
 		return nil, err
@@ -172,6 +175,7 @@ func (o *Owner) rebindLocalMachine(ctx context.Context, chain *identityv1.RootCh
 func (o *Owner) machineOnlyStatus(st *localv1.GetStatusResponse) {
 	st.MachineOnly = true
 	o.mu.Lock()
+	st.Account = o.account
 	n := o.localMachine
 	o.mu.Unlock()
 	if n == nil {

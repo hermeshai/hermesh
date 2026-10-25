@@ -493,12 +493,12 @@ final class AppModel {
         } catch { report(error) }
     }
 
-    /// Leaves the owner: this iPhone forgets it and its key.
+    /// Leaves the owner: this iPhone forgets it, and the owner role has the
+    /// signer delete its key.
     func signOut() async {
         guard let api else { return }
         do {
             try await api.leave()
-            RootKey.delete()
             background()
             sessions = []
             clients = []

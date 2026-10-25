@@ -548,6 +548,10 @@ type ClaimRequest struct {
 	// Hosted center: the PKCE verifier of a link code made for an app that
 	// signed in through the browser.
 	ClaimVerifier string `protobuf:"bytes,4,opt,name=claim_verifier,json=claimVerifier,proto3" json:"claim_verifier,omitempty"`
+	// Hosted center: this device, already one of the owner's, signs in again
+	// (it signed out). The account of the link code must be that owner's;
+	// nothing is linked or changed.
+	Resume        bool `protobuf:"varint,5,opt,name=resume,proto3" json:"resume,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -608,6 +612,13 @@ func (x *ClaimRequest) GetClaimVerifier() string {
 		return x.ClaimVerifier
 	}
 	return ""
+}
+
+func (x *ClaimRequest) GetResume() bool {
+	if x != nil {
+		return x.Resume
+	}
+	return false
 }
 
 type ClaimResponse struct {
@@ -2855,7 +2866,7 @@ const file_hermesh_relay_v1_relay_proto_rawDesc = "" +
 	"root_chain\x18\x05 \x01(\v2\x1e.hermesh.identity.v1.RootChainR\trootChain\x12\x16\n" +
 	"\x06hosted\x18\x06 \x01(\bR\x06hosted\x12\x1f\n" +
 	"\vconsole_url\x18\a \x01(\tR\n" +
-	"consoleUrl\"\xd1\x01\n" +
+	"consoleUrl\"\xe9\x01\n" +
 	"\fClaimRequest\x12\x1d\n" +
 	"\n" +
 	"claim_code\x18\x01 \x01(\tR\tclaimCode\x12=\n" +
@@ -2863,7 +2874,8 @@ const file_hermesh_relay_v1_relay_proto_rawDesc = "" +
 	"root_chain\x18\x02 \x01(\v2\x1e.hermesh.identity.v1.RootChainR\trootChain\x12<\n" +
 	"\vdevice_cert\x18\x03 \x01(\v2\x1b.hermesh.identity.v1.SignedR\n" +
 	"deviceCert\x12%\n" +
-	"\x0eclaim_verifier\x18\x04 \x01(\tR\rclaimVerifier\"*\n" +
+	"\x0eclaim_verifier\x18\x04 \x01(\tR\rclaimVerifier\x12\x16\n" +
+	"\x06resume\x18\x05 \x01(\bR\x06resume\"*\n" +
 	"\rClaimResponse\x12\x19\n" +
 	"\brelay_id\x18\x01 \x01(\tR\arelayId\"M\n" +
 	"\x14SubmitPairingRequest\x125\n" +

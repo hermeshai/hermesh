@@ -107,19 +107,29 @@ func badOptions(args: [String]) {
 
 // MARK: Test key and report
 
-@Test func testKeyFileSignsWithTheKeyItCreated() throws {
+@Test func testKeyFileSignsWithTheKeysItCreated() throws {
     let path = FileManager.default.temporaryDirectory.appendingPathComponent("hermesh-signer-\(UUID().uuidString).pem").path
-    defer { try? FileManager.default.removeItem(atPath: path) }
+    defer { for f in [path, path + ".handed"] { try? FileManager.default.removeItem(atPath: f) } }
     let store = try TestKeyFile(path: path)
     let first = try String(contentsOfFile: path, encoding: .utf8)
     #expect(first.hasPrefix("-----BEGIN PRIVATE KEY-----")) // PKCS#8, as identity.LoadKey reads it
     _ = try TestKeyFile(path: path)
     #expect(try String(contentsOfFile: path, encoding: .utf8) == first) // an existing key is kept
 
-    let pub = try P256.Signing.PublicKey(derRepresentation: try store.create())
+    // The first key created is the one in the file; the next is another.
+    let firstPub = try store.create()
+    #expect(firstPub == (try P256.Signing.PrivateKey(pemRepresentation: first).publicKey.derRepresentation))
+    let secondPub = try store.create()
+    #expect(secondPub != firstPub)
     let message = SigningPreview.signingInput(type: SigningPreview.grant, body: Data([1, 2]))
-    let sig = try store.sign([message], context: nil)[0]
-    #expect(pub.isValidSignature(try P256.Signing.ECDSASignature(derRepresentation: sig), for: message))
+    for der in [firstPub, secondPub] {
+        let pub = try P256.Signing.PublicKey(derRepresentation: der)
+        let sig = try store.sign([message], keyID: keyID(spki: der), context: nil)[0]
+        #expect(pub.isValidSignature(try P256.Signing.ECDSASignature(derRepresentation: sig), for: message))
+    }
+    try store.delete(keyID: keyID(spki: secondPub))
+    #expect(throws: (any Error).self) { try store.sign([message], keyID: keyID(spki: secondPub), context: nil) }
+    #expect(try store.sign([message], keyID: keyID(spki: firstPub), context: nil).count == 1)
 }
 
 @Test func reportLineSaysWhatThePanelShowed() throws {

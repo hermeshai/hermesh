@@ -73,6 +73,8 @@ type Owner struct {
 	join       *pendingJoin // this device asking to join an owner
 	pendingMu  sync.Mutex   // pending names (pendingNames)
 	removed    bool         // the relay no longer counts this device as the owner's
+	signedOut  bool         // SignOut: set up, but it neither connects nor signs
+	account    string       // the account, as the center named it (display)
 
 	localMachine *machine.Machine
 	// lastMachines: the machines as the relay last listed them, shown
@@ -90,15 +92,13 @@ const (
 	kRootChain    = "root_chain"
 	kDeviceCert   = "device_cert"
 	kLocalMachine = "local_machine"
+	kSignedOut    = "signed_out"
+	kAccount      = "account"
 )
 
-func Open(cfg Config) (*Owner, error) {
-	if cfg.Logger == nil {
-		cfg.Logger = slog.Default()
-	}
-	if cfg.HTTPClient == nil {
-		cfg.HTTPClient = http.DefaultClient
-	}
+// openProfile opens one profile (profiles.go): cfg.DataDir is its
+// directory, and hub the device's signer, shared by its profiles.
+func openProfile(cfg Config, hub *signHub) (*Owner, error) {
 	if _, err := flock.Acquire(cfg.DataDir); err != nil {
 		return nil, err
 	}
@@ -106,16 +106,20 @@ func Open(cfg Config) (*Owner, error) {
 	if err != nil {
 		return nil, err
 	}
-	o := &Owner{cfg: cfg, log: cfg.Logger, st: st, hub: newSignHub()}
+	o := &Owner{cfg: cfg, log: cfg.Logger, st: st, hub: hub}
 	o.watch = &sessionWatch{o: o, watchers: map[chan *localv1.WatchSessionsResponse]bool{}}
 	return o, o.load()
 }
 
 func (o *Owner) load() error {
+	account, _ := o.st.get(kAccount)
+	o.account = string(account)
 	id, _ := o.st.get(kOwnerID)
 	if len(id) == 0 {
 		return nil
 	}
+	signedOut, _ := o.st.get(kSignedOut)
+	o.signedOut = string(signedOut) == "1"
 	relay, _ := o.st.get(kRelayURL)
 	rootPub, _ := o.st.get(kRootPub)
 	pub, err := identity.ParsePublicKey(rootPub)
@@ -149,11 +153,17 @@ func (o *Owner) Initialized() bool {
 }
 
 // Run keeps background work going: the local execution machine (if
-// enabled) and the owner relay connection.
+// enabled) and the owner relay connection. A profile that is signed out
+// does neither.
 func (o *Owner) Run(ctx context.Context) {
 	o.mu.Lock()
 	o.runCtx = ctx
+	signedOut := o.signedOut
 	o.mu.Unlock()
+	if signedOut {
+		<-ctx.Done()
+		return
+	}
 	if v, _ := o.st.get(kLocalMachine); (string(v) == "1" && o.Initialized()) || o.machineOnly() {
 		if err := o.startLocalMachine(); err != nil {
 			o.log.Warn("local machine did not start", "err", err)
@@ -164,11 +174,10 @@ func (o *Owner) Run(ctx context.Context) {
 	o.mu.Lock()
 	if o.client != nil {
 		o.client.Close()
-	}
-	if o.localCancel != nil {
-		o.localCancel()
+		o.client = nil
 	}
 	o.mu.Unlock()
+	o.stopLocalMachine()
 }
 
 // stayConnected keeps the relay connection up once set up, so the relay
@@ -206,7 +215,18 @@ func (o *Owner) requireInit() error {
 	if !o.Initialized() {
 		return connect.NewError(connect.CodeFailedPrecondition, errors.New("Hermesh is not set up yet"))
 	}
+	if o.isSignedOut() {
+		return errSignedOut
+	}
 	return nil
+}
+
+var errSignedOut = connect.NewError(connect.CodeFailedPrecondition, errors.New("this account is signed out on this device; sign in again"))
+
+func (o *Owner) isSignedOut() bool {
+	o.mu.Lock()
+	defer o.mu.Unlock()
+	return o.signedOut
 }
 
 func (o *Owner) credentials() *identityv1.Credentials {
@@ -326,7 +346,7 @@ func (o *Owner) ownerStatus() *localv1.GetStatusResponse {
 	if o.rootPub != nil && o.ownerID != "" {
 		st.DeviceKeyId = identity.KeyID(o.rootPub)
 	}
-	st.Removed = o.removed
+	st.Removed, st.SignedOut, st.Account = o.removed, o.signedOut, o.account
 	return st
 }
 
@@ -402,7 +422,7 @@ func (o *Owner) Setup(ctx context.Context, req *localv1.SetupRequest) (*localv1.
 	if _, err := o.publicClient(relayURL).Claim(ctx, &relayv1.ClaimRequest{ClaimCode: req.ClaimCode, ClaimVerifier: req.ClaimVerifier, RootChain: chain, DeviceCert: signed[1]}); err != nil {
 		return nil, fmt.Errorf("claim relay: %w", err)
 	}
-	if err := o.saveIdentity(ownerID, relayURL, req.RootPublicKey, chain, device, signed[1]); err != nil {
+	if err := o.saveIdentity(ownerID, relayURL, req.RootPublicKey, chain, device, signed[1], req.Account); err != nil {
 		return nil, err
 	}
 	if len(signed) > 2 {
@@ -418,7 +438,7 @@ func deviceCert(ownerID string, device *identity.SoftwareKey, label string) *ide
 	return &identityv1.OwnerDeviceCert{OwnerId: ownerID, DevicePublicKey: identity.MarshalPublicKey(device.Public()), Label: label, IssuedAt: timestamppb.Now()}
 }
 
-func (o *Owner) saveIdentity(ownerID, relayURL string, rootPub []byte, chain *identityv1.RootChain, device *identity.SoftwareKey, deviceCert *identityv1.Signed) error {
+func (o *Owner) saveIdentity(ownerID, relayURL string, rootPub []byte, chain *identityv1.RootChain, device *identity.SoftwareKey, deviceCert *identityv1.Signed, account string) error {
 	trust := identity.NewTrust(ownerID)
 	if _, err := trust.AcceptRootChain(chain); err != nil {
 		return err
@@ -430,7 +450,7 @@ func (o *Owner) saveIdentity(ownerID, relayURL string, rootPub []byte, chain *id
 		return err
 	}
 	b, _ := proto.Marshal(chain)
-	for k, v := range map[string][]byte{kOwnerID: []byte(ownerID), kRelayURL: []byte(relayURL), kRootPub: rootPub, kRootChain: b} {
+	for k, v := range map[string][]byte{kOwnerID: []byte(ownerID), kRelayURL: []byte(relayURL), kRootPub: rootPub, kRootChain: b, kAccount: []byte(account), kSignedOut: {}} {
 		if err := o.st.set(k, v); err != nil {
 			return err
 		}
@@ -443,6 +463,7 @@ func (o *Owner) saveIdentity(ownerID, relayURL string, rootPub []byte, chain *id
 		o.client = nil
 	}
 	o.ownerID, o.relayURL, o.rootPub, o.trust, o.device, o.deviceCert = ownerID, relayURL, pub, trust, device, deviceCert
+	o.account, o.signedOut = account, false
 	o.mu.Unlock()
 	return nil
 }
@@ -558,7 +579,7 @@ func (o *Owner) openLocalMachine() (*machine.Machine, error) {
 
 func (o *Owner) localMachineConfig() machine.Config {
 	cfg := o.cfg.MachineConfig
-	cfg.DataDir = filepath.Join(filepath.Dir(o.cfg.DataDir), "machine")
+	cfg.DataDir = filepath.Join(o.cfg.DataDir, "machine")
 	if cfg.Logger == nil {
 		cfg.Logger = o.log
 	}

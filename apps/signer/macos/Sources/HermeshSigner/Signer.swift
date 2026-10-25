@@ -91,6 +91,11 @@ final class Signer {
             Task { await createKey(r) }
             return
         }
+        if r.deleteRootKey {
+            answered.insert(r.requestID)
+            Task { await deleteKey(r) }
+            return
+        }
         // More of the batch on screen: show it all, and authenticate again.
         if let c = shown, c.batchID == r.batchID, !signing {
             guard !c.requests.contains(where: { $0.requestID == r.requestID }) else { return }
@@ -203,8 +208,9 @@ final class Signer {
         panel.model.working = true
         let store = self.store
         let messages = c.requests.map(\.message)
+        let keyID = c.requests.first?.rootKeyID ?? ""
         do {
-            let sigs = try await Task.detached { try store.sign(messages, context: context) }.value
+            let sigs = try await Task.detached { try store.sign(messages, keyID: keyID, context: context) }.value
             report(c, "approve")
             for (r, sig) in zip(c.requests, sigs) {
                 var req = Hermesh_Local_V1_CompleteSigningRequestRequest()
@@ -273,8 +279,8 @@ final class Signer {
         }
     }
 
-    /// hermeshd needs a new root key: create it (replacing any earlier
-    /// one) and answer with its public key, without a panel.
+    /// hermeshd needs a new root key: create it (keeping the others) and
+    /// answer with its public key, without a panel.
     private func createKey(_ r: SigningRequest) async {
         defer { creatingKeys -= 1; reportBusy() }
         let store = self.store
@@ -292,6 +298,25 @@ final class Signer {
             let _: Hermesh_Local_V1_CompleteSigningRequestResponse = try await api.call("CompleteSigningRequest", c)
         } catch {
             log("answering the root key request: \(error.localizedDescription)")
+        }
+    }
+
+    /// hermeshd no longer uses a root key (the Mac left that owner): delete
+    /// it, without a panel, since that gives nothing to anyone.
+    private func deleteKey(_ r: SigningRequest) async {
+        let store = self.store
+        var c = Hermesh_Local_V1_CompleteSigningRequestRequest()
+        c.requestID = r.requestID
+        do {
+            try await Task.detached { try store.delete(keyID: r.rootKeyID) }.value
+        } catch {
+            log("deleting the root key: \(error.localizedDescription)")
+            c.rejected = true
+        }
+        do {
+            let _: Hermesh_Local_V1_CompleteSigningRequestResponse = try await api.call("CompleteSigningRequest", c)
+        } catch {
+            log("answering the root key deletion: \(error.localizedDescription)")
         }
     }
 

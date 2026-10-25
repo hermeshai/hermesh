@@ -30,6 +30,7 @@ import (
 // confirms they approved it on one of their devices.
 type pendingJoin struct {
 	code, relayURL, ownerID string
+	account                 string // RequestJoinRequest.account
 	rootPub                 []byte
 	device                  *identity.SoftwareKey
 	deviceCert              *identityv1.Signed
@@ -113,7 +114,7 @@ func (o *Owner) RequestJoin(ctx context.Context, req *localv1.RequestJoinRequest
 		return nil, err
 	}
 	o.mu.Lock()
-	o.join = &pendingJoin{code: res.Code, relayURL: relayURL, ownerID: req.OwnerId, rootPub: req.RootPublicKey, device: device, deviceCert: signed[1]}
+	o.join = &pendingJoin{code: res.Code, relayURL: relayURL, ownerID: req.OwnerId, account: req.Account, rootPub: req.RootPublicKey, device: device, deviceCert: signed[1]}
 	if len(signed) > 2 {
 		o.join.machineCert, o.join.machineName, o.join.rebind = signed[2], req.LocalMachineName, running != nil
 	}
@@ -220,7 +221,7 @@ func (o *Owner) ConfirmJoin(ctx context.Context, code string, accept bool, match
 	if j.machineOnly {
 		return o.confirmMachineJoin(ctx, j)
 	}
-	if err := o.saveIdentity(j.ownerID, j.relayURL, j.rootPub, j.chain, j.device, j.deviceCert); err != nil {
+	if err := o.saveIdentity(j.ownerID, j.relayURL, j.rootPub, j.chain, j.device, j.deviceCert, j.account); err != nil {
 		return nil, err
 	}
 	o.mu.Lock()
@@ -480,8 +481,9 @@ func (o *Owner) checkRemoved() {
 }
 
 // Leave forgets the owner on this device once it was removed, so it can
-// be set up or join again. Its own machine, removed with it, is retired: it
-// keeps its projects and comes back under a new id.
+// be set up or join again, and has the signer delete its root key. Its own
+// machine, removed with it, is retired: it keeps its projects and comes
+// back under a new id.
 func (o *Owner) Leave(ctx context.Context) error {
 	if !o.Initialized() && o.machineOnly() {
 		return o.leaveAsMachine(ctx)
@@ -501,7 +503,90 @@ func (o *Owner) Leave(ctx context.Context) error {
 		o.client.Close()
 		o.client = nil
 	}
+	rootPub := o.rootPub
 	o.ownerID, o.relayURL, o.rootPub, o.trust, o.device, o.deviceCert, o.relayInfo, o.removed = "", "", nil, nil, nil, nil, nil, false
+	o.signedOut, o.account = false, ""
 	o.mu.Unlock()
-	return o.st.set(kOwnerID, []byte{})
+	for _, k := range []string{kOwnerID, kSignedOut, kAccount} {
+		if err := o.st.set(k, []byte{}); err != nil {
+			return err
+		}
+	}
+	if err := o.st.clearGrants(); err != nil {
+		return err
+	}
+	if err := o.hub.deleteKey(ctx, identity.KeyID(rootPub)); err != nil {
+		o.log.Warn("leaving: the old root key stays in the signer", "err", err)
+	}
+	return nil
+}
+
+// SignOut stops using this profile's keys without giving them up: it stops
+// its notifications, and Run (restarted by the device) neither connects nor
+// starts its machine until SignIn.
+func (o *Owner) SignOut(ctx context.Context) error {
+	if err := o.requireInit(); err != nil {
+		return err
+	}
+	pctx, cancel := context.WithTimeout(ctx, 10*time.Second)
+	if err := o.RegisterPush(pctx, &localv1.RegisterPushRequest{}); err != nil {
+		o.log.Debug("signing out: notifications not stopped", "err", err)
+	}
+	cancel()
+	if err := o.st.set(kSignedOut, []byte("1")); err != nil {
+		return err
+	}
+	o.mu.Lock()
+	o.signedOut = true
+	o.mu.Unlock()
+	return nil
+}
+
+// SignIn takes this profile's keys up again. A hosted center first checks
+// that the person signed in to the account that owns it (Claim with
+// resume). If the owner meanwhile removed this device, or started over, it
+// signs in removed, for Leave.
+func (o *Owner) SignIn(ctx context.Context, req *localv1.SignInRequest) error {
+	if !o.Initialized() {
+		return connect.NewError(connect.CodeFailedPrecondition, errors.New("Hermesh is not set up yet"))
+	}
+	if !o.isSignedOut() {
+		return nil
+	}
+	o.mu.Lock()
+	ownerID, relayURL, rootPub, trust, deviceCert := o.ownerID, o.relayURL, o.rootPub, o.trust, o.deviceCert
+	o.mu.Unlock()
+	info, err := o.publicClient(relayURL).GetInfo(ctx, &relayv1.GetInfoRequest{OwnerId: ownerID})
+	if err != nil {
+		return connect.NewError(connect.CodeUnavailable, fmt.Errorf("relay unreachable: %w", err))
+	}
+	removed := info.OwnerId != ownerID
+	if !removed {
+		if info.Hosted {
+			if req.ClaimCode == "" {
+				return connect.NewError(connect.CodeInvalidArgument, errors.New("sign in to the account in the browser first"))
+			}
+			if _, err := o.publicClient(relayURL).Claim(ctx, &relayv1.ClaimRequest{ClaimCode: req.ClaimCode, ClaimVerifier: req.ClaimVerifier,
+				RootChain: trust.RootChain(), DeviceCert: deviceCert, Resume: true}); err != nil {
+				return err
+			}
+		}
+		o.adoptChain(info.RootChain)
+		removed = !hasKey(trust.Root(), identity.MarshalPublicKey(rootPub))
+	}
+	if err := o.st.set(kSignedOut, []byte{}); err != nil {
+		return err
+	}
+	if req.Account != "" {
+		if err := o.st.set(kAccount, []byte(req.Account)); err != nil {
+			return err
+		}
+	}
+	o.mu.Lock()
+	o.signedOut, o.removed = false, removed
+	if req.Account != "" {
+		o.account = req.Account
+	}
+	o.mu.Unlock()
+	return nil
 }

@@ -51,7 +51,9 @@ packages/HermeshKit/         Swift package shared with the Mac signer
   background, so nothing runs in the background but notifications.
 - **The signer.** The root key lives in the Secure Enclave, usable after Face
   ID (`userPresence`); the Simulator has no Secure Enclave for such keys and
-  uses a software key. Requests the owner started on this phone (a pairing
+  uses a software key. As on the Mac, there is one per profile the owner role
+  keeps (trusted-devices.md 4.8), named by its key id in each request, and
+  deleted when the owner role asks once the phone left that owner. Requests the owner started on this phone (a pairing
   code they entered, a first setup) are expected and signed after Face ID
   alone; others show the shared signing preview (`SigningPreview`, worded for
   an iPhone) first.

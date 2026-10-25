@@ -112,6 +112,11 @@ final class Signer {
             Task { await createKey(r) }
             return
         }
+        if r.deleteRootKey {
+            answered.insert(r.requestID)
+            Task { await deleteKey(r) }
+            return
+        }
         var reqs = queued[r.batchID] ?? []
         guard !reqs.contains(where: { $0.requestID == r.requestID }) else { return }
         if reqs.isEmpty { order.append(r.batchID) }
@@ -172,7 +177,8 @@ final class Signer {
         }
         do {
             let messages = c.requests.map(\.message)
-            let sigs = try await Task.detached { try RootKey.sign(messages, context: Authentication.skipped ? nil : ctx) }.value
+            let keyID = c.requests.first?.rootKeyID ?? ""
+            let sigs = try await Task.detached { try RootKey.sign(messages, keyID: keyID, context: Authentication.skipped ? nil : ctx) }.value
             for (r, sig) in zip(c.requests, sigs) {
                 var req = Hermesh_Local_V1_CompleteSigningRequestRequest()
                 req.requestID = r.requestID
@@ -219,6 +225,20 @@ final class Signer {
         } catch {
             c.rejected = true
             failure = error.localizedDescription
+        }
+        let _: Hermesh_Local_V1_CompleteSigningRequestResponse? = try? await api?.call("CompleteSigningRequest", c)
+    }
+
+    /// The owner role no longer uses a root key (the iPhone left that
+    /// owner): delete it, without asking.
+    private func deleteKey(_ r: SigningRequest) async {
+        var c = Hermesh_Local_V1_CompleteSigningRequestRequest()
+        c.requestID = r.requestID
+        let id = r.rootKeyID
+        do {
+            try await Task.detached { try RootKey.delete(keyID: id) }.value
+        } catch {
+            c.rejected = true
         }
         let _: Hermesh_Local_V1_CompleteSigningRequestResponse? = try? await api?.call("CompleteSigningRequest", c)
     }

@@ -12,6 +12,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"strings"
 	"sync"
 	"syscall"
@@ -208,9 +209,9 @@ func run(t *testing.T, env []string, timeout time.Duration, bin string, args ...
 }
 
 // testApp plays the signer of the desktop app: it talks to the bundled
-// hermeshd over the Unix socket, answers signing requests with a software
-// root key (in place of the Secure Enclave) and hands that key's public
-// half over when hermeshd asks for a new root key.
+// hermeshd over the Unix socket, answers signing requests with software
+// root keys (in place of the Secure Enclave), one per profile: root first,
+// handed over when hermeshd asks for a new root key, then new ones.
 type testApp struct {
 	t      *testing.T
 	client localv1connect.LocalServiceClient
@@ -218,6 +219,9 @@ type testApp struct {
 	cancel context.CancelFunc
 
 	mu      sync.Mutex
+	keys    map[string]*identity.SoftwareKey // by key id, root's included
+	handed  bool                             // root was handed over as a new key
+	deleted []string                         // key ids hermeshd had deleted
 	signed  []string
 	callers []*localv1.Caller
 	reject  bool
@@ -227,7 +231,7 @@ type testApp struct {
 }
 
 func newTestApp(t *testing.T, sock string, root *identity.SoftwareKey) *testApp {
-	a := &testApp{t: t, client: localClient(t, sock), root: root}
+	a := &testApp{t: t, client: localClient(t, sock), root: root, keys: map[string]*identity.SoftwareKey{identity.KeyID(root.Public()): root}}
 	ctx, cancel := context.WithCancel(context.Background())
 	a.cancel = cancel
 	t.Cleanup(cancel)
@@ -266,7 +270,23 @@ func (a *testApp) signLoop(ctx context.Context) {
 			a.callers = append(a.callers, req.Caller)
 			a.mu.Unlock()
 			if req.CreateRootKey {
-				a.client.CompleteSigningRequest(ctx, &localv1.CompleteSigningRequestRequest{RequestId: req.RequestId, PublicKey: rootPub(a.root)})
+				a.mu.Lock()
+				k := a.root
+				if a.handed {
+					k, _ = identity.GenerateKey()
+					a.keys[identity.KeyID(k.Public())] = k
+				}
+				a.handed = true
+				a.mu.Unlock()
+				a.client.CompleteSigningRequest(ctx, &localv1.CompleteSigningRequestRequest{RequestId: req.RequestId, PublicKey: rootPub(k)})
+				continue
+			}
+			if req.DeleteRootKey {
+				a.mu.Lock()
+				delete(a.keys, req.RootKeyId)
+				a.deleted = append(a.deleted, req.RootKeyId)
+				a.mu.Unlock()
+				a.client.CompleteSigningRequest(ctx, &localv1.CompleteSigningRequestRequest{RequestId: req.RequestId})
 				continue
 			}
 			// Like the real signer: parse and "show" what is signed, then
@@ -289,11 +309,32 @@ func (a *testApp) signLoop(ctx context.Context) {
 				a.client.CompleteSigningRequest(ctx, &localv1.CompleteSigningRequestRequest{RequestId: req.RequestId, Rejected: true})
 				continue
 			}
-			sig, _ := a.root.SignMessage(req.Message)
+			a.mu.Lock()
+			key := a.keys[req.RootKeyId]
+			a.mu.Unlock()
+			if key == nil {
+				a.t.Logf("app has no root key %s", req.RootKeyId)
+				a.client.CompleteSigningRequest(ctx, &localv1.CompleteSigningRequestRequest{RequestId: req.RequestId, Rejected: true})
+				continue
+			}
+			sig, _ := key.SignMessage(req.Message)
 			a.client.CompleteSigningRequest(ctx, &localv1.CompleteSigningRequestRequest{RequestId: req.RequestId, Signature: sig})
 		}
 		stream.Close()
 	}
+}
+
+// addKey gives the app another root key, for a profile set up with it.
+func (a *testApp) addKey(k *identity.SoftwareKey) {
+	a.mu.Lock()
+	a.keys[identity.KeyID(k.Public())] = k
+	a.mu.Unlock()
+}
+
+func (a *testApp) deletedKeys() []string {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	return slices.Clone(a.deleted)
 }
 
 func (a *testApp) signedTypes() []string {

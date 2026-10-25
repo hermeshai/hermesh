@@ -127,8 +127,11 @@ func (w *ownerMac) restartRelay() {
 	w.startRelay()
 }
 
+// worktree is where this Mac's machine, in the current profile, keeps a
+// session's worktree.
 func (w *ownerMac) worktree(id string) string {
-	return filepath.Join(w.tmp, "owner-mac", "machine", "worktrees", id)
+	cur, _ := os.ReadFile(filepath.Join(w.tmp, "owner-mac", "owner", "current"))
+	return filepath.Join(w.tmp, "owner-mac", "owner", "profiles", string(cur), "machine", "worktrees", id)
 }
 
 func (w *ownerMac) startOwner() {

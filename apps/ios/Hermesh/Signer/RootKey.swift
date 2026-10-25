@@ -1,12 +1,14 @@
 import CryptoKit
 import Foundation
+import HermeshKit
 import LocalAuthentication
 import Security
 
-/// The owner root key of this iPhone. On a phone it lives in the Secure
-/// Enclave and every use needs Face ID (or the passcode); the Simulator has
-/// no Secure Enclave, so there it is a software key in the Keychain.
-/// Signatures are ASN.1 DER ECDSA-P256 over SHA-256(message).
+/// The owner root keys of this iPhone, one per profile the owner role keeps
+/// (one per owner the phone belongs to). On a phone they live in the
+/// Secure Enclave and every use needs Face ID (or the passcode); the
+/// Simulator has no Secure Enclave, so there they are software keys in the
+/// Keychain. Signatures are ASN.1 DER ECDSA-P256 over SHA-256(message).
 nonisolated enum RootKey {
     private static let tag = Data("com.hermesh.ios.root".utf8)
 
@@ -20,14 +22,9 @@ nonisolated enum RootKey {
         #endif
     }
 
-    private static var query: [CFString: Any] {
-        [kSecClass: kSecClassKey, kSecAttrApplicationTag: tag, kSecAttrKeyType: kSecAttrKeyTypeECSECPrimeRandom]
-    }
-
-    /// Creates a new root key, replacing any earlier one, and returns its
-    /// public key (SPKI DER).
+    /// Creates a new root key, keeping the others, and returns its public
+    /// key (SPKI DER).
     static func create() throws -> Data {
-        SecItemDelete(query as CFDictionary)
         var err: Unmanaged<CFError>?
         var attributes: [CFString: Any] = [kSecAttrKeyType: kSecAttrKeyTypeECSECPrimeRandom, kSecAttrKeySizeInBits: 256]
         if useSecureEnclave {
@@ -41,21 +38,15 @@ nonisolated enum RootKey {
                                                kSecAttrAccessible: kSecAttrAccessibleWhenUnlockedThisDeviceOnly] as [CFString: Any]
         }
         guard let key = SecKeyCreateRandomKey(attributes as CFDictionary, &err) else { throw err!.takeRetainedValue() as Error }
-        guard let pub = SecKeyCopyPublicKey(key), let x963 = SecKeyCopyExternalRepresentation(pub, &err) else { throw err!.takeRetainedValue() as Error }
-        return try P256.Signing.PublicKey(x963Representation: x963 as Data).derRepresentation
+        return try spki(key)
     }
 
-    /// Signs every message with the key, using context's authentication.
-    static func sign(_ messages: [Data], context: LAContext?) throws -> [Data] {
-        var q = query
-        q[kSecReturnRef] = true
-        if let context { q[kSecUseAuthenticationContext] = context }
-        var item: CFTypeRef?
-        let status = SecItemCopyMatching(q as CFDictionary, &item)
-        guard status == errSecSuccess, let found = item else {
-            throw NSError(domain: NSOSStatusErrorDomain, code: Int(status), userInfo: [NSLocalizedDescriptionKey: "There is no owner key on this iPhone"])
+    /// Signs every message with the key keyID names, using context's
+    /// authentication.
+    static func sign(_ messages: [Data], keyID: String, context: LAContext?) throws -> [Data] {
+        guard let key = try keys(context).first(where: { $0.id == keyID })?.key else {
+            throw NSError(domain: NSOSStatusErrorDomain, code: Int(errSecItemNotFound), userInfo: [NSLocalizedDescriptionKey: "This iPhone does not have that owner key"])
         }
-        let key = found as! SecKey
         return try messages.map { m in
             var err: Unmanaged<CFError>?
             guard let sig = SecKeyCreateSignature(key, .ecdsaSignatureMessageX962SHA256, m as CFData, &err) else { throw err!.takeRetainedValue() as Error }
@@ -63,8 +54,29 @@ nonisolated enum RootKey {
         }
     }
 
-    /// Forgets the key (the iPhone left its owner).
-    static func delete() { SecItemDelete(query as CFDictionary) }
+    /// Forgets the key keyID names (the iPhone left that owner).
+    static func delete(keyID: String) throws {
+        guard let key = try keys(nil).first(where: { $0.id == keyID })?.key else { return }
+        SecItemDelete([kSecClass: kSecClassKey, kSecValueRef: key] as CFDictionary)
+    }
+
+    private static func spki(_ key: SecKey) throws -> Data {
+        var err: Unmanaged<CFError>?
+        guard let pub = SecKeyCopyPublicKey(key), let x963 = SecKeyCopyExternalRepresentation(pub, &err) else { throw err!.takeRetainedValue() as Error }
+        return try P256.Signing.PublicKey(x963Representation: x963 as Data).derRepresentation
+    }
+
+    /// The keys with the ids the owner role names them by.
+    private static func keys(_ context: LAContext?) throws -> [(id: String, key: SecKey)] {
+        var q: [CFString: Any] = [kSecClass: kSecClassKey, kSecAttrApplicationTag: tag, kSecAttrKeyType: kSecAttrKeyTypeECSECPrimeRandom,
+                                  kSecReturnRef: true, kSecMatchLimit: kSecMatchLimitAll]
+        if let context { q[kSecUseAuthenticationContext] = context }
+        var items: CFTypeRef?
+        let status = SecItemCopyMatching(q as CFDictionary, &items)
+        if status == errSecItemNotFound { return [] }
+        guard status == errSecSuccess else { throw NSError(domain: NSOSStatusErrorDomain, code: Int(status)) }
+        return try (items as! [SecKey]).map { (SigningPreview.keyID(try spki($0)), $0) }
+    }
 }
 
 /// Face ID (or the passcode) for one decision. End-to-end tests on the

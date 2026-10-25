@@ -84,6 +84,12 @@ func (s *store) putGrant(signed *identityv1.Signed, revoked bool) error {
 	return err
 }
 
+// clearGrants forgets the grants of an owner this device left.
+func (s *store) clearGrants() error {
+	_, err := s.db.Exec(`DELETE FROM grants`)
+	return err
+}
+
 func (s *store) setRevoked(grantID string) error {
 	_, err := s.db.Exec(`UPDATE grants SET revoked=1, updated_at=? WHERE grant_id=?`, time.Now().Unix(), grantID)
 	return err
