@@ -126,7 +126,7 @@ export function Sidebar() {
             >
               {sectionTitle(st, sec)}
               {sectionCounted(sec) && <span className="n">{sec.sessions.length}</span>}
-              <Icon name="chevD" className="sm" />
+              <Icon name="caret" className="sm" />
             </button>
             {open && sec.sessions.map((s) => (
               <SessionRow

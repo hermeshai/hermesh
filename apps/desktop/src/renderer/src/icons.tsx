@@ -12,6 +12,7 @@ const paths: Record<string, string> = {
   more: "<circle cx=\"3.6\" cy=\"8\" r=\"1.15\" fill=\"currentColor\" stroke=\"none\"/><circle cx=\"8\" cy=\"8\" r=\"1.15\" fill=\"currentColor\" stroke=\"none\"/><circle cx=\"12.4\" cy=\"8\" r=\"1.15\" fill=\"currentColor\" stroke=\"none\"/>",
   x: "<path d=\"M4.3 4.3l7.4 7.4M11.7 4.3l-7.4 7.4\"/>",
   check: "<path d=\"M3.4 8.4l3 3 6.2-6.8\"/>",
+  caret: "<path d=\"M4.8 6.4h6.4L8 10z\" fill=\"currentColor\" stroke=\"none\"/>",
   chevD: "<path d=\"M4.5 6.3L8 9.8l3.5-3.5\"/>",
   chevR: "<path d=\"M6.3 4.5L9.8 8l-3.5 3.5\"/>",
   stop: "<rect x=\"4.3\" y=\"4.3\" width=\"7.4\" height=\"7.4\" rx=\"1.6\"/>",
