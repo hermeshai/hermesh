@@ -1555,13 +1555,13 @@ func (o *Owner) sessionMachine(ctx context.Context, sessionID string) (*peer.Mac
 
 func (o *Owner) StreamSessionEvents(ctx context.Context, req *localv1.StreamSessionEventsRequest, send func(*sessionv1.SessionEvent) error) error {
 	if l := o.localSession(req.SessionId); l != nil {
-		return l.StreamEvents(ctx, &sessionv1.StreamEventsRequest{SessionId: req.SessionId, AfterSeq: req.AfterSeq, Follow: req.Follow}, send)
+		return l.StreamEvents(ctx, &sessionv1.StreamEventsRequest{SessionId: req.SessionId, AfterSeq: req.AfterSeq, Follow: req.Follow, Partial: req.Partial}, send)
 	}
 	n, err := o.sessionMachine(ctx, req.SessionId)
 	if err != nil {
 		return err
 	}
-	stream, err := n.Session.StreamEvents(ctx, &sessionv1.StreamEventsRequest{SessionId: req.SessionId, AfterSeq: req.AfterSeq, Follow: req.Follow})
+	stream, err := n.Session.StreamEvents(ctx, &sessionv1.StreamEventsRequest{SessionId: req.SessionId, AfterSeq: req.AfterSeq, Follow: req.Follow, Partial: req.Partial})
 	if err != nil {
 		return err
 	}

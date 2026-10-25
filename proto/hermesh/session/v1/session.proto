@@ -390,6 +390,9 @@ message StreamEventsRequest {
   uint64 after_seq = 2;
   // When false, the stream ends after replaying stored events.
   bool follow = 3;
+  // (4 is left for an event view, docs/state-sync.md.)
+  // Also send AgentDraft events while the agent writes (docs/reply-streaming.md).
+  bool partial = 5;
 }
 
 // ListEventsRequest pages through a session's events by seq: the latest
@@ -425,6 +428,11 @@ message SessionEvent {
     ErrorEvent error = 17;
     QuestionAsked question_asked = 18;
     QuestionResolved question_resolved = 19;
+    // Reply text the agent is still writing. Never stored, and seq is 0:
+    // it is not a position to resume from. Sent only to streams that ask
+    // (StreamEventsRequest.partial). Any stored event that follows ends the
+    // draft; its text is then in that event, or the agent dropped it.
+    AgentDraft agent_draft = 20;
   }
 }
 
@@ -445,6 +453,14 @@ message UserMessage {
 
 message AgentMessage {
   string text = 1;
+}
+
+message AgentDraft {
+  // Text to append to the draft.
+  string text = 1;
+  // Text is the whole draft so far, not an addition: the first draft a
+  // stream sends, and the first after a stored event the reply went on past.
+  bool whole = 2;
 }
 
 message ToolCall {

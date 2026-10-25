@@ -3,6 +3,8 @@
 // command:
 //
 //	say <text>          agent message (streamed in chunks); \n in text is a newline
+//	stream <text>       agent message written slowly: a few characters every
+//	                    50 ms, as a reply grows (\n as in say)
 //	write <path> <text> edit tool call, asks permission, then writes the file
 //	shell <command>     execute tool call, asks permission, then runs it
 //	read <path>         read tool call without a permission request
@@ -298,6 +300,17 @@ func prompt(id json.RawMessage, sid, text string, images []string) {
 			update(sid, map[string]any{"sessionUpdate": "agent_message_chunk", "content": map[string]any{"type": "text", "text": string(r[:half])}})
 			update(sid, map[string]any{"sessionUpdate": "agent_thought_chunk", "content": map[string]any{"type": "text", "text": "thinking"}})
 			update(sid, map[string]any{"sessionUpdate": "agent_message_chunk", "content": map[string]any{"type": "text", "text": string(r[half:])}})
+		case "stream":
+			r := []rune(strings.ReplaceAll(arg, `\n`, "\n"))
+			for i := 0; i < len(r); i += 4 {
+				update(sid, map[string]any{"sessionUpdate": "agent_message_chunk", "content": map[string]any{"type": "text", "text": string(r[i:min(i+4, len(r))])}})
+				select {
+				case <-time.After(50 * time.Millisecond):
+				case <-cancelled:
+					reply(id, map[string]any{"stopReason": "cancelled"})
+					return
+				}
+			}
 		case "images":
 			update(sid, map[string]any{"sessionUpdate": "agent_message_chunk", "content": map[string]any{"type": "text", "text": "images: " + strings.Join(images, ",")}})
 		case "ask":

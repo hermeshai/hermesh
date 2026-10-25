@@ -14,7 +14,7 @@ import "./session/session.css";
 export function SessionPage({ s }: { s: Session }) {
   const { t } = useTranslation("session");
   const st = useStore();
-  const events = useSessionEvents(s.sessionId, s.progress?.lastEventSeq ?? 0n);
+  const { events, draft } = useSessionEvents(s.sessionId, s.progress?.lastEventSeq ?? 0n);
   return (
     <>
       <div className="ctool drag">
@@ -35,7 +35,7 @@ export function SessionPage({ s }: { s: Session }) {
       </div>
       <div className={`dwrap ${st.inspector ? "dock" : ""}`}>
         <div className="dmain">
-          <Chat key={s.sessionId} s={s} events={events} />
+          <Chat key={s.sessionId} s={s} events={events} draft={draft} />
         </div>
         {st.inspector && <Inspector s={s} />}
       </div>

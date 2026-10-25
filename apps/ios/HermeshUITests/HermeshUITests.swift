@@ -20,6 +20,7 @@ final class HermeshUITests: XCTestCase {
         try XCTContext.runActivity(named: "joins the owner by its connection address") { _ in try join() }
         try XCTContext.runActivity(named: "answers a question from the overview") { _ in try answerFromOverview() }
         try XCTContext.runActivity(named: "interrupts a running session") { _ in try interrupt() }
+        try XCTContext.runActivity(named: "shows a reply as the agent writes it") { _ in try streamedReply() }
         try XCTContext.runActivity(named: "archives a session and undoes it") { _ in try archiveAndUndo() }
         try XCTContext.runActivity(named: "lays the session list out from the view menu") { _ in try viewMenu() }
         try XCTContext.runActivity(named: "renames a session from its row, and deletes another once confirmed") { _ in try renameAndDelete() }
@@ -80,6 +81,20 @@ final class HermeshUITests: XCTestCase {
         tap("interrupt-confirm")
         try waitFor("the turn stops") { try self.sessionStatus("跑很久") == "idle" ? true : nil }
         XCTAssertTrue(app.staticTexts.containing(NSPredicate(format: "label CONTAINS %@", "这一轮被打断了")).firstMatch.waitForExistence(timeout: 20))
+    }
+
+    func streamedReply() throws {
+        _ = try control("stream?title=\("慢慢写".addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed)!)", method: "POST")
+        openFromMenu(session: "慢慢写")
+        // The reply shows while the turn still runs...
+        let draft = app.descendants(matching: .any)["session-draft"].firstMatch
+        XCTAssertTrue(draft.waitForExistence(timeout: 30))
+        XCTAssertEqual(try sessionStatus("慢慢写"), "running")
+        try waitFor("the whole reply is written") { draft.exists && draft.label.contains("写完以后还要等一会儿") ? true : nil }
+        // ...and stays, as the stored message, once it is done (the prompt above says it too).
+        try waitFor("the turn ends") { try self.sessionStatus("慢慢写") == "idle" ? true : nil }
+        XCTAssertTrue(draft.waitForNonExistence(timeout: 10))
+        XCTAssertGreaterThanOrEqual(app.descendants(matching: .any).matching(NSPredicate(format: "label CONTAINS %@", "写完以后还要等一会儿")).count, 2)
     }
 
     func archiveAndUndo() throws {

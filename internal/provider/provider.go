@@ -62,6 +62,9 @@ const (
 	EventTurnCompleted
 	EventError
 	EventQuestion // the agent asks the user (Question); answer with Session.Answer
+	// EventAgentDraft is reply text the agent is still writing (Text: the
+	// next piece). The EventAgentMessage that follows carries all of it.
+	EventAgentDraft
 )
 
 // Question is a question the agent asks mid-turn.
@@ -119,7 +122,7 @@ type Event struct {
 
 	Ref string // EventRef
 
-	Text string // AgentMessage, TurnCompleted (result), Error
+	Text string // AgentMessage, AgentDraft, TurnCompleted (result), Error
 
 	CallID   string // ToolCall, ToolResult
 	ToolKind ToolKind

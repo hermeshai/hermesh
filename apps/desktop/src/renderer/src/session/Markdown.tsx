@@ -1,5 +1,8 @@
+import { memo } from "react";
 import ReactMarkdown, { type Components } from "react-markdown";
 import remarkGfm from "remark-gfm";
+import remend from "remend";
+import { splitBlocks, withoutOpenTable } from "@hermesh/core";
 
 /**
  * An agent's reply as GitHub Markdown, rendered as React elements (raw HTML
@@ -15,6 +18,33 @@ export function Markdown({ text }: { text: string }) {
     </div>
   );
 }
+
+/**
+ * A reply the agent is still writing (docs/reply-streaming.md): its
+ * finished blocks as they will stay, each parsed once, then the last one
+ * with what is still open closed (remend), or without a table that has no
+ * delimiter row yet, so nothing shows as raw Markdown on its way.
+ */
+export function DraftMarkdown({ text }: { text: string }) {
+  const blocks = splitBlocks(text);
+  const last = withoutOpenTable(blocks.pop() ?? "");
+  return (
+    <div className="md sel-text">
+      {blocks.map((b, i) => (
+        <Block key={i} text={b} />
+      ))}
+      {last.trim() !== "" && <Block key={blocks.length} text={remend(last, { linkMode: "text-only", katex: false })} />}
+    </div>
+  );
+}
+
+const Block = memo(function Block({ text }: { text: string }) {
+  return (
+    <ReactMarkdown remarkPlugins={plugins} components={components}>
+      {text}
+    </ReactMarkdown>
+  );
+});
 
 const web = /^https?:\/\//i;
 

@@ -1493,6 +1493,10 @@ public nonisolated struct Hermesh_Local_V1_StreamSessionEventsRequest: Sendable 
 
   public var follow: Bool = false
 
+  /// (4 is left for an event view, docs/state-sync.md.)
+  /// Also send AgentDraft events while the agent writes.
+  public var partial: Bool = false
+
   public var unknownFields = SwiftProtobuf.UnknownStorage()
 
   public init() {}
@@ -4664,7 +4668,7 @@ nonisolated extension Hermesh_Local_V1_WatchSessionsResponse: SwiftProtobuf.Mess
 
 nonisolated extension Hermesh_Local_V1_StreamSessionEventsRequest: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
   public static let protoMessageName: String = _protobuf_package + ".StreamSessionEventsRequest"
-  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{3}session_id\0\u{3}after_seq\0\u{1}follow\0")
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{3}session_id\0\u{3}after_seq\0\u{1}follow\0\u{2}\u{2}partial\0")
 
   public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
     while let fieldNumber = try decoder.nextFieldNumber() {
@@ -4675,6 +4679,7 @@ nonisolated extension Hermesh_Local_V1_StreamSessionEventsRequest: SwiftProtobuf
       case 1: try { try decoder.decodeSingularStringField(value: &self.sessionID) }()
       case 2: try { try decoder.decodeSingularUInt64Field(value: &self.afterSeq) }()
       case 3: try { try decoder.decodeSingularBoolField(value: &self.follow) }()
+      case 5: try { try decoder.decodeSingularBoolField(value: &self.partial) }()
       default: break
       }
     }
@@ -4690,6 +4695,9 @@ nonisolated extension Hermesh_Local_V1_StreamSessionEventsRequest: SwiftProtobuf
     if self.follow != false {
       try visitor.visitSingularBoolField(value: self.follow, fieldNumber: 3)
     }
+    if self.partial != false {
+      try visitor.visitSingularBoolField(value: self.partial, fieldNumber: 5)
+    }
     try unknownFields.traverse(visitor: &visitor)
   }
 
@@ -4697,6 +4705,7 @@ nonisolated extension Hermesh_Local_V1_StreamSessionEventsRequest: SwiftProtobuf
     if lhs.sessionID != rhs.sessionID {return false}
     if lhs.afterSeq != rhs.afterSeq {return false}
     if lhs.follow != rhs.follow {return false}
+    if lhs.partial != rhs.partial {return false}
     if lhs.unknownFields != rhs.unknownFields {return false}
     return true
   }

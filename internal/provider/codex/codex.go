@@ -289,7 +289,7 @@ func (s *session) read() {
 		for _, skip := range skipNotifications {
 			if bytes.Contains(b, skip) {
 				if !bytes.Contains(b, []byte(`"method":"account/`)) && !bytes.Contains(b, []byte(`"method":"mcpServer/`)) {
-					s.progress.Store(time.Now().UnixNano()) // message, reasoning or output deltas
+					s.progress.Store(time.Now().UnixNano()) // reasoning or output deltas
 				}
 				return
 			}
@@ -463,6 +463,13 @@ type item struct {
 
 func (s *session) handleNotification(method string, params json.RawMessage) {
 	switch method {
+	case "item/agentMessage/delta":
+		var p struct {
+			Delta string `json:"delta"`
+		}
+		if json.Unmarshal(params, &p) == nil && p.Delta != "" {
+			s.emit(provider.Event{Kind: provider.EventAgentDraft, Text: p.Delta})
+		}
 	case "item/started", "item/completed":
 		var p struct {
 			Item item `json:"item"`
@@ -686,7 +693,6 @@ func (s *session) toolCall(id string, kind provider.ToolKind, name, summary stri
 }
 
 var skipNotifications = [][]byte{
-	[]byte(`"method":"item/agentMessage/delta"`),
 	[]byte(`"method":"item/commandExecution/outputDelta"`),
 	[]byte(`"method":"item/reasoning/`),
 	[]byte(`"method":"account/rateLimits/updated"`),
