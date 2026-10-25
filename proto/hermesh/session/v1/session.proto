@@ -49,6 +49,18 @@ service SessionService {
   rpc UnarchiveSession(UnarchiveSessionRequest) returns (Session) {
     option (hermesh.options.v1.access) = ACCESS_WRITE;
   }
+  // DeleteSession deletes a session for good: its record, events,
+  // attachments and worktree. Its branch stays in the project, with every
+  // turn's work, and its tokens stay in GetUsage. A turn in progress is
+  // interrupted first. Only the owner's devices may delete.
+  rpc DeleteSession(DeleteSessionRequest) returns (DeleteSessionResponse) {
+    option (hermesh.options.v1.access) = ACCESS_WRITE;
+  }
+  // RenameSession changes the session's title. Only the owner's devices
+  // may rename.
+  rpc RenameSession(RenameSessionRequest) returns (Session) {
+    option (hermesh.options.v1.access) = ACCESS_WRITE;
+  }
   rpc GetDiff(GetDiffRequest) returns (GetDiffResponse) {
     option (hermesh.options.v1.access) = ACCESS_READ;
   }
@@ -369,6 +381,8 @@ message WatchSessionsRequest {}
 
 message WatchSessionsResponse {
   repeated Session sessions = 1;
+  // Sessions deleted since the last message.
+  repeated string deleted_session_ids = 2;
 }
 
 message StreamEventsRequest {
@@ -492,6 +506,18 @@ message ArchiveSessionRequest {
 
 message UnarchiveSessionRequest {
   string session_id = 1;
+}
+
+message DeleteSessionRequest {
+  string session_id = 1;
+}
+
+message DeleteSessionResponse {}
+
+message RenameSessionRequest {
+  string session_id = 1;
+  // The new title; it can't be empty.
+  string title = 2;
 }
 
 message AnswerQuestionRequest {

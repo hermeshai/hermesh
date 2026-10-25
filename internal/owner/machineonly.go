@@ -257,9 +257,9 @@ func onlyMachineWatch(ctx context.Context, l *machine.Local, send func(*localv1.
 		return err
 	}
 	return l.WatchSessions(ctx, func(m *sessionv1.WatchSessionsResponse) error {
-		if len(m.Sessions) == 0 {
+		if len(m.Sessions) == 0 && len(m.DeletedSessionIds) == 0 {
 			return nil
 		}
-		return send(&localv1.WatchSessionsResponse{Sessions: m.Sessions})
+		return send(&localv1.WatchSessionsResponse{Sessions: m.Sessions, DeletedSessionIds: m.DeletedSessionIds})
 	})
 }

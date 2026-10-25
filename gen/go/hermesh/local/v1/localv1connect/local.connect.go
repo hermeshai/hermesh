@@ -140,6 +140,12 @@ const (
 	// LocalServiceUnarchiveSessionProcedure is the fully-qualified name of the LocalService's
 	// UnarchiveSession RPC.
 	LocalServiceUnarchiveSessionProcedure = "/hermesh.local.v1.LocalService/UnarchiveSession"
+	// LocalServiceDeleteSessionProcedure is the fully-qualified name of the LocalService's
+	// DeleteSession RPC.
+	LocalServiceDeleteSessionProcedure = "/hermesh.local.v1.LocalService/DeleteSession"
+	// LocalServiceRenameSessionProcedure is the fully-qualified name of the LocalService's
+	// RenameSession RPC.
+	LocalServiceRenameSessionProcedure = "/hermesh.local.v1.LocalService/RenameSession"
 	// LocalServiceAnswerQuestionProcedure is the fully-qualified name of the LocalService's
 	// AnswerQuestion RPC.
 	LocalServiceAnswerQuestionProcedure = "/hermesh.local.v1.LocalService/AnswerQuestion"
@@ -229,6 +235,9 @@ type LocalServiceClient interface {
 	InterruptSession(context.Context, *v1.InterruptSessionRequest) (*v1.SessionResponse, error)
 	ArchiveSession(context.Context, *v1.ArchiveSessionRequest) (*v1.SessionResponse, error)
 	UnarchiveSession(context.Context, *v1.UnarchiveSessionRequest) (*v1.SessionResponse, error)
+	// DeleteSession and RenameSession: hermesh.session.v1.SessionService's.
+	DeleteSession(context.Context, *v1.DeleteSessionRequest) (*v1.DeleteSessionResponse, error)
+	RenameSession(context.Context, *v1.RenameSessionRequest) (*v1.SessionResponse, error)
 	AnswerQuestion(context.Context, *v1.AnswerQuestionRequest) (*v1.AnswerQuestionResponse, error)
 	GetDiff(context.Context, *v1.GetDiffRequest) (*v11.GetDiffResponse, error)
 	// GetUsage adds up every reachable machine's tokens by day and coding
@@ -479,6 +488,18 @@ func NewLocalServiceClient(httpClient connect.HTTPClient, baseURL string, opts .
 			connect.WithSchema(localServiceMethods.ByName("UnarchiveSession")),
 			connect.WithClientOptions(opts...),
 		),
+		deleteSession: connect.NewClient[v1.DeleteSessionRequest, v1.DeleteSessionResponse](
+			httpClient,
+			baseURL+LocalServiceDeleteSessionProcedure,
+			connect.WithSchema(localServiceMethods.ByName("DeleteSession")),
+			connect.WithClientOptions(opts...),
+		),
+		renameSession: connect.NewClient[v1.RenameSessionRequest, v1.SessionResponse](
+			httpClient,
+			baseURL+LocalServiceRenameSessionProcedure,
+			connect.WithSchema(localServiceMethods.ByName("RenameSession")),
+			connect.WithClientOptions(opts...),
+		),
 		answerQuestion: connect.NewClient[v1.AnswerQuestionRequest, v1.AnswerQuestionResponse](
 			httpClient,
 			baseURL+LocalServiceAnswerQuestionProcedure,
@@ -546,6 +567,8 @@ type localServiceClient struct {
 	interruptSession       *connect.Client[v1.InterruptSessionRequest, v1.SessionResponse]
 	archiveSession         *connect.Client[v1.ArchiveSessionRequest, v1.SessionResponse]
 	unarchiveSession       *connect.Client[v1.UnarchiveSessionRequest, v1.SessionResponse]
+	deleteSession          *connect.Client[v1.DeleteSessionRequest, v1.DeleteSessionResponse]
+	renameSession          *connect.Client[v1.RenameSessionRequest, v1.SessionResponse]
 	answerQuestion         *connect.Client[v1.AnswerQuestionRequest, v1.AnswerQuestionResponse]
 	getDiff                *connect.Client[v1.GetDiffRequest, v11.GetDiffResponse]
 	getUsage               *connect.Client[v1.GetUsageRequest, v1.GetUsageResponse]
@@ -882,6 +905,24 @@ func (c *localServiceClient) UnarchiveSession(ctx context.Context, req *v1.Unarc
 	return nil, err
 }
 
+// DeleteSession calls hermesh.local.v1.LocalService.DeleteSession.
+func (c *localServiceClient) DeleteSession(ctx context.Context, req *v1.DeleteSessionRequest) (*v1.DeleteSessionResponse, error) {
+	response, err := c.deleteSession.CallUnary(ctx, connect.NewRequest(req))
+	if response != nil {
+		return response.Msg, err
+	}
+	return nil, err
+}
+
+// RenameSession calls hermesh.local.v1.LocalService.RenameSession.
+func (c *localServiceClient) RenameSession(ctx context.Context, req *v1.RenameSessionRequest) (*v1.SessionResponse, error) {
+	response, err := c.renameSession.CallUnary(ctx, connect.NewRequest(req))
+	if response != nil {
+		return response.Msg, err
+	}
+	return nil, err
+}
+
 // AnswerQuestion calls hermesh.local.v1.LocalService.AnswerQuestion.
 func (c *localServiceClient) AnswerQuestion(ctx context.Context, req *v1.AnswerQuestionRequest) (*v1.AnswerQuestionResponse, error) {
 	response, err := c.answerQuestion.CallUnary(ctx, connect.NewRequest(req))
@@ -995,6 +1036,9 @@ type LocalServiceHandler interface {
 	InterruptSession(context.Context, *v1.InterruptSessionRequest) (*v1.SessionResponse, error)
 	ArchiveSession(context.Context, *v1.ArchiveSessionRequest) (*v1.SessionResponse, error)
 	UnarchiveSession(context.Context, *v1.UnarchiveSessionRequest) (*v1.SessionResponse, error)
+	// DeleteSession and RenameSession: hermesh.session.v1.SessionService's.
+	DeleteSession(context.Context, *v1.DeleteSessionRequest) (*v1.DeleteSessionResponse, error)
+	RenameSession(context.Context, *v1.RenameSessionRequest) (*v1.SessionResponse, error)
 	AnswerQuestion(context.Context, *v1.AnswerQuestionRequest) (*v1.AnswerQuestionResponse, error)
 	GetDiff(context.Context, *v1.GetDiffRequest) (*v11.GetDiffResponse, error)
 	// GetUsage adds up every reachable machine's tokens by day and coding
@@ -1241,6 +1285,18 @@ func NewLocalServiceHandler(svc LocalServiceHandler, opts ...connect.HandlerOpti
 		connect.WithSchema(localServiceMethods.ByName("UnarchiveSession")),
 		connect.WithHandlerOptions(opts...),
 	)
+	localServiceDeleteSessionHandler := connect.NewUnaryHandlerSimple(
+		LocalServiceDeleteSessionProcedure,
+		svc.DeleteSession,
+		connect.WithSchema(localServiceMethods.ByName("DeleteSession")),
+		connect.WithHandlerOptions(opts...),
+	)
+	localServiceRenameSessionHandler := connect.NewUnaryHandlerSimple(
+		LocalServiceRenameSessionProcedure,
+		svc.RenameSession,
+		connect.WithSchema(localServiceMethods.ByName("RenameSession")),
+		connect.WithHandlerOptions(opts...),
+	)
 	localServiceAnswerQuestionHandler := connect.NewUnaryHandlerSimple(
 		LocalServiceAnswerQuestionProcedure,
 		svc.AnswerQuestion,
@@ -1343,6 +1399,10 @@ func NewLocalServiceHandler(svc LocalServiceHandler, opts ...connect.HandlerOpti
 			localServiceArchiveSessionHandler.ServeHTTP(w, r)
 		case LocalServiceUnarchiveSessionProcedure:
 			localServiceUnarchiveSessionHandler.ServeHTTP(w, r)
+		case LocalServiceDeleteSessionProcedure:
+			localServiceDeleteSessionHandler.ServeHTTP(w, r)
+		case LocalServiceRenameSessionProcedure:
+			localServiceRenameSessionHandler.ServeHTTP(w, r)
 		case LocalServiceAnswerQuestionProcedure:
 			localServiceAnswerQuestionHandler.ServeHTTP(w, r)
 		case LocalServiceGetDiffProcedure:
@@ -1510,6 +1570,14 @@ func (UnimplementedLocalServiceHandler) ArchiveSession(context.Context, *v1.Arch
 
 func (UnimplementedLocalServiceHandler) UnarchiveSession(context.Context, *v1.UnarchiveSessionRequest) (*v1.SessionResponse, error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("hermesh.local.v1.LocalService.UnarchiveSession is not implemented"))
+}
+
+func (UnimplementedLocalServiceHandler) DeleteSession(context.Context, *v1.DeleteSessionRequest) (*v1.DeleteSessionResponse, error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("hermesh.local.v1.LocalService.DeleteSession is not implemented"))
+}
+
+func (UnimplementedLocalServiceHandler) RenameSession(context.Context, *v1.RenameSessionRequest) (*v1.SessionResponse, error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("hermesh.local.v1.LocalService.RenameSession is not implemented"))
 }
 
 func (UnimplementedLocalServiceHandler) AnswerQuestion(context.Context, *v1.AnswerQuestionRequest) (*v1.AnswerQuestionResponse, error) {

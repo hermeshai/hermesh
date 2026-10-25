@@ -125,6 +125,11 @@ func (s *Sessions) Usage(p *Principal, req *sessionv1.GetUsageRequest) (*session
 	if err != nil {
 		return nil, err
 	}
+	deleted, err := s.st.DeletedSessions()
+	if err != nil {
+		return nil, err
+	}
+	sessions = append(sessions, deleted...)
 	byID := map[string]*sessionRow{}
 	for _, r := range sessions {
 		if s.canRead(p, r) {

@@ -145,6 +145,9 @@ button{font:inherit;color:inherit}
 .rowact:hover{background:var(--fill2);color:var(--l1)}
 .srow.has-act:hover .smeta{display:none}
 .srow.has-act:hover .rowact{display:flex}
+.srow.menu-open .smeta{display:none}
+.srow.menu-open .rowact{display:flex;background:var(--fill2);color:var(--l1)}
+.srename{flex:1;min-width:0;font:inherit;font-size:13.5px;color:var(--l1);background:var(--field);border:0;border-radius:5px;outline:none;box-shadow:0 0 0 1.5px var(--accent);padding:0 5px;margin:-1px 0 -1px -5px}
 .side-head{flex:none;padding:4px 10px 2px 17px;position:relative}
 .lh{display:flex;align-items:center;justify-content:space-between;font-size:12px;font-weight:400;color:var(--l2);height:26px}
 .lh .tb{height:22px;min-width:24px;padding:0 4px}
@@ -190,6 +193,8 @@ button{font:inherit;color:inherit}
 .vmenu .mi>.ic{color:var(--l2)}
 .vmenu .ck{width:14px;display:flex;flex:none;color:var(--accent-t)}
 .vmenu .msep{height:.5px;background:var(--sep);margin:5px 9px}
+.vmenu .mi.danger{color:var(--red)}
+.vmenu .mi:disabled{color:var(--l3)}
 .content{position:relative;display:flex;flex-direction:column;min-width:0;min-height:0;background:var(--win)}
 .ctool{height:52px;flex:none;display:flex;align-items:center;gap:10px;padding:0 14px 0 22px}
 .noside .ctool{padding-left:30px}

@@ -200,3 +200,67 @@ test("the view menu groups, sorts and shows the list from submenus, opaque over 
   await expect(page.getByRole("menu", { name: "视图选项" }).getByRole("menuitem")).toHaveText(["分组按日期", "排序最早在前", "显示仅标题"]);
   await app.close();
 });
+
+test("a row's ⋯ menu renames in place, archives, and deletes once confirmed, interrupting a running turn", async () => {
+  await cli("session", "start", "--project", "demo", "--agent", "gemini", "--title", "改个名字", "--prompt", "say 好", "--wait");
+  await cli("session", "start", "--project", "demo", "--agent", "gemini", "--title", "还在跑的", "--prompt", "shell sleep 1800");
+  const { app, page } = await launch();
+  const list = page.getByRole("list", { name: "会话" });
+  const row = (title: string) => list.getByRole("listitem").filter({ hasText: title });
+  const more = async (title: string) => {
+    await row(title).hover();
+    await row(title).getByRole("button", { name: "更多操作" }).click();
+    return page.getByRole("menu", { name: "更多操作" });
+  };
+
+  // ⋯ in place of the archive button: rename, archive, then delete after a line.
+  let menu = await more("改个名字");
+  await expect(menu.getByRole("menuitem")).toHaveText(["重命名", "归档", "删除…"]);
+  await snap(page, "row-menu");
+  await page.keyboard.press("Escape");
+  await expect(menu).toHaveCount(0);
+
+  // Rename in place: Esc keeps the title, ↩ saves the new one.
+  menu = await more("改个名字");
+  await menu.getByRole("menuitem", { name: "重命名" }).click();
+  const field = list.getByRole("textbox", { name: "会话标题" });
+  await expect(field).toBeFocused();
+  await expect(field).toHaveValue("改个名字");
+  await field.fill("不要这个");
+  await field.press("Escape");
+  await expect(field).toHaveCount(0);
+  await expect(row("改个名字")).toBeVisible();
+  menu = await more("改个名字");
+  await menu.getByRole("menuitem", { name: "重命名" }).click();
+  await field.fill("新的名字");
+  await snap(page, "row-rename");
+  await field.press("Enter");
+  await expect(row("新的名字")).toBeVisible();
+  await expect(row("改个名字")).toHaveCount(0);
+
+  // Delete asks first; canceling keeps it.
+  menu = await more("新的名字");
+  await menu.getByRole("menuitem", { name: "删除…" }).click();
+  const dialog = page.getByRole("dialog", { name: "删除「新的名字」？" });
+  await expect(dialog).toContainText("会话记录、对话和工作区会被永久删除，无法恢复。agent 做的改动仍保留在分支");
+  await snap(page, "row-delete-confirm");
+  await dialog.getByRole("button", { name: "取消" }).click();
+  await expect(row("新的名字")).toBeVisible();
+  menu = await more("新的名字");
+  await menu.getByRole("menuitem", { name: "删除…" }).click();
+  await dialog.getByRole("button", { name: "删除" }).click();
+  await expect(page.getByText("已删除「新的名字」")).toBeVisible();
+  await expect(row("新的名字")).toHaveCount(0);
+
+  // A running session can't be archived from here, but deleting it interrupts its turn first.
+  await expect(row("还在跑的")).toBeVisible();
+  menu = await more("还在跑的");
+  await expect(menu.getByRole("menuitem", { name: "归档" })).toBeDisabled();
+  await menu.getByRole("menuitem", { name: "删除…" }).click();
+  const running = page.getByRole("dialog", { name: "删除「还在跑的」？" });
+  await expect(running).toContainText("这一轮还在进行，会先被打断。");
+  await running.getByRole("button", { name: "删除" }).click();
+  await expect(row("还在跑的")).toHaveCount(0, { timeout: 30_000 });
+  expect(await cli("session", "list")).not.toContain("还在跑的");
+  await app.close();
+});

@@ -157,7 +157,7 @@ async function followSessions(local: RpcClient<typeof LocalService>) {
       try {
         for await (const m of local.watchSessions({})) {
           if (m.machinesChanged) world.sessions = (await local.listSessions({ limit: 1 })).sessions;
-          world.sessions = mergeSessions(world.sessions, m.sessions);
+          world.sessions = mergeSessions(world.sessions, m.sessions, m.deletedSessionIds);
           noticeSessions();
           changed();
         }

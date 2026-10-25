@@ -433,6 +433,32 @@ func (l *localService) ArchiveSession(ctx context.Context, req *localv1.ArchiveS
 	return sessionResponse(l.o().ArchiveSession(ctx, req.SessionId))
 }
 
+func (l *localService) DeleteSession(ctx context.Context, req *localv1.DeleteSessionRequest) (*localv1.DeleteSessionResponse, error) {
+	if m, ok, err := l.o().onlyMachine(); ok {
+		if err == nil {
+			err = m.Delete(ctx, req.SessionId)
+		}
+		if err != nil {
+			return nil, err
+		}
+		return &localv1.DeleteSessionResponse{}, nil
+	}
+	if err := l.o().DeleteSession(ctx, req.SessionId); err != nil {
+		return nil, err
+	}
+	return &localv1.DeleteSessionResponse{}, nil
+}
+
+func (l *localService) RenameSession(ctx context.Context, req *localv1.RenameSessionRequest) (*localv1.SessionResponse, error) {
+	if m, ok, err := l.o().onlyMachine(); ok {
+		if err != nil {
+			return nil, err
+		}
+		return sessionResponse(m.Rename(ctx, req.SessionId, req.Title))
+	}
+	return sessionResponse(l.o().RenameSession(ctx, req.SessionId, req.Title))
+}
+
 func (l *localService) UnarchiveSession(ctx context.Context, req *localv1.UnarchiveSessionRequest) (*localv1.SessionResponse, error) {
 	if m, ok, err := l.o().onlyMachine(); ok {
 		if err != nil {

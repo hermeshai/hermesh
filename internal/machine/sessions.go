@@ -738,6 +738,89 @@ func (s *Sessions) Unarchive(ctx context.Context, p *Principal, id string) (*ses
 	return s.toProto(l.row), nil
 }
 
+// deleteWait bounds how long Delete waits for an interrupted turn to stop.
+const deleteWait = 15 * time.Second
+
+// Delete deletes a session for good (the owner only). A turn in progress is
+// interrupted; the session is then archived, which frees its worktree (its
+// branch keeps every turn's work), and its record, events, turns and
+// attachments go. Its tokens stay in Usage.
+func (s *Sessions) Delete(ctx context.Context, p *Principal, id string) error {
+	if p.Kind != PrincipalOwner {
+		return cerr(connect.CodePermissionDenied, "only the owner may delete a session")
+	}
+	if _, _, err := s.find(p, id, false); err != nil {
+		return err
+	}
+	// Archiving needs the session settled: interrupt it until it is (a
+	// stopped turn may hand over to a queued follow-up).
+	deadline := time.Now().Add(deleteWait)
+	for {
+		_, err := s.Archive(ctx, p, id)
+		if err == nil {
+			break
+		}
+		if connect.CodeOf(err) != connect.CodeFailedPrecondition || time.Now().After(deadline) {
+			return err
+		}
+		s.mu.Lock()
+		l := s.live[id]
+		s.mu.Unlock()
+		if l != nil {
+			s.interrupt(l, "deleted by "+p.ID())
+		}
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-time.After(50 * time.Millisecond):
+		}
+	}
+	r, err := s.st.Session(id)
+	if err != nil || r == nil {
+		return err
+	}
+	if err := s.st.DeleteSession(r); err != nil {
+		return err
+	}
+	os.RemoveAll(filepath.Dir(s.attachmentsDir(id)))
+	s.audit.Log(AuditRecord{Kind: "session.delete", Subject: p.ID(), Session: id, Decision: "allow"})
+	s.changed(id)
+	return nil
+}
+
+// Rename changes a session's title (the owner only). It is not activity:
+// the session keeps its place in lists.
+func (s *Sessions) Rename(ctx context.Context, p *Principal, id, title string) (*sessionv1.Session, error) {
+	if p.Kind != PrincipalOwner {
+		return nil, cerr(connect.CodePermissionDenied, "only the owner may rename a session")
+	}
+	title = provider.CleanTitle(title)
+	if title == "" {
+		return nil, cerr(connect.CodeInvalidArgument, "a session's title can't be empty")
+	}
+	l, r, err := s.find(p, id, false)
+	if err != nil {
+		return nil, err
+	}
+	var row *sessionRow
+	if l != nil {
+		l.mu.Lock()
+		l.row.Title = title
+		c := *l.row
+		c.Progress = proto.Clone(l.row.Progress).(*sessionv1.SessionProgress)
+		row = &c
+		l.mu.Unlock()
+	} else {
+		r.Title = title
+		row = r
+	}
+	if err := s.w.sync(writeOp{row: row}); err != nil {
+		return nil, err
+	}
+	s.audit.Log(AuditRecord{Kind: "session.rename", Subject: p.ID(), Session: id, Decision: "allow"})
+	return s.toProto(row), nil
+}
+
 // Stream replays stored events after req.AfterSeq and then, if requested,
 // follows live events until the session ends or ctx is done.
 func (s *Sessions) Stream(ctx context.Context, p *Principal, req *sessionv1.StreamEventsRequest, send func(*sessionv1.SessionEvent) error) error {

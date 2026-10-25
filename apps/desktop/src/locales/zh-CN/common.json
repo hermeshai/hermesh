@@ -53,9 +53,19 @@
   },
   "sessionMenu": {
     "open": "打开",
+    "rename": "重命名",
     "archive": "归档",
     "unarchive": "取消归档",
-    "copyId": "拷贝会话 ID"
+    "copyId": "拷贝会话 ID",
+    "delete": "删除…",
+    "more": "更多操作",
+    "renameLabel": "会话标题",
+    "deleteTitle": "删除「{{title}}」？",
+    "deleteMessage": "会话记录、对话和工作区会被永久删除，无法恢复。agent 做的改动仍保留在分支 {{branch}} 上。",
+    "deleteMessageNoBranch": "会话记录和对话会被永久删除，无法恢复。",
+    "deleteRunning": "这一轮还在进行，会先被打断。",
+    "deleteButton": "删除",
+    "deleted": "已删除「{{title}}」"
   },
   "filter": {
     "grant": "授权",

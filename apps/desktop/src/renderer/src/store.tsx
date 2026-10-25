@@ -49,6 +49,8 @@ type UI = {
   view: SessionView;
   archived: boolean;
   searching: boolean;
+  /** The session whose title is being edited in the list. */
+  renaming: string | null;
   /** What the search palette opens narrowed to ("Show in Main Window" in the settings). */
   searchFor: Partial<SessionFilter>;
   sheet: Sheet | null;
@@ -161,6 +163,7 @@ export function HermeshProvider({ children }: { children: ReactNode }) {
     view: sessionView(),
     archived: false,
     searching: false,
+    renaming: null,
     searchFor: {},
     sheet: null,
     toast: null,

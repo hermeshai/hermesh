@@ -142,6 +142,18 @@ func (s *Sessions) changed(id string) {
 	}
 }
 
+// deletedFor says whether id is a deleted session p could read.
+func (s *Sessions) deletedFor(p *Principal, id string) bool {
+	if r, err := s.st.Session(id); err != nil || r != nil {
+		return false
+	}
+	deleted, err := s.st.DeletedSessions()
+	if err != nil {
+		return false
+	}
+	return slices.ContainsFunc(deleted, func(r *sessionRow) bool { return r.ID == id && s.canRead(p, r) })
+}
+
 // Watch sends the sessions p can read as they change (see
 // SessionService.WatchSessions) until ctx is done.
 func (s *Sessions) Watch(ctx context.Context, p *Principal, send func(*sessionv1.WatchSessionsResponse) error) error {
@@ -172,11 +184,13 @@ func (s *Sessions) Watch(ctx context.Context, p *Principal, send func(*sessionv1
 		w.mu.Unlock()
 		res := &sessionv1.WatchSessionsResponse{}
 		for id := range ids {
-			if sess, err := s.Get(p, id); err == nil { // not found: not the caller's to read
+			if sess, err := s.Get(p, id); err == nil { // not found: not the caller's to read, or deleted
 				res.Sessions = append(res.Sessions, sess)
+			} else if s.deletedFor(p, id) {
+				res.DeletedSessionIds = append(res.DeletedSessionIds, id)
 			}
 		}
-		if len(res.Sessions) > 0 {
+		if len(res.Sessions) > 0 || len(res.DeletedSessionIds) > 0 {
 			slices.SortFunc(res.Sessions, NewestFirst)
 			if err := send(res); err != nil {
 				return err

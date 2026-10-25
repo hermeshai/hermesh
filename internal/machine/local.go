@@ -97,6 +97,14 @@ func (l *Local) Unarchive(ctx context.Context, id string) (*sessionv1.Session, e
 	return l.n.sessions.Unarchive(ctx, l.p, id)
 }
 
+func (l *Local) Delete(ctx context.Context, id string) error {
+	return l.n.sessions.Delete(ctx, l.p, id)
+}
+
+func (l *Local) Rename(ctx context.Context, id, title string) (*sessionv1.Session, error) {
+	return l.n.sessions.Rename(ctx, l.p, id, title)
+}
+
 func (l *Local) AnswerQuestion(ctx context.Context, req *sessionv1.AnswerQuestionRequest) (*sessionv1.Session, error) {
 	return l.n.sessions.AnswerQuestion(ctx, l.p, req)
 }

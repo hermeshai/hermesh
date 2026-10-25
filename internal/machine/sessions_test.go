@@ -2,6 +2,7 @@ package machine
 
 import (
 	"context"
+	"os/exec"
 	"slices"
 	"strings"
 	"sync"
@@ -576,5 +577,113 @@ func TestFastFollowUpsEndIdle(t *testing.T) {
 	for i := 0; i < 3; i++ {
 		h.send(id, "say again")
 		h.wait(id, idle)
+	}
+}
+
+// Only the owner deletes a session: its record, events and worktree go
+// (a turn in progress is interrupted first), its branch and its tokens
+// stay, and watchers hear it is gone.
+func TestDeleteSession(t *testing.T) {
+	h := newHarness(t, DefaultLimits())
+	ctx := context.Background()
+	owner := &Principal{Kind: PrincipalOwner}
+	done := h.start("say one")
+	h.wait(done, idle)
+	busy := h.start("sleep 30s")
+	h.wait(busy, sessionv1.SessionStatus_SESSION_STATUS_RUNNING)
+
+	if err := h.s.Delete(ctx, h.p, done); connect.CodeOf(err) != connect.CodePermissionDenied {
+		t.Fatalf("an agent deletes: %v", err)
+	}
+	today := time.Now().In(time.UTC).Format(time.DateOnly)
+	before, err := h.s.Usage(owner, &sessionv1.GetUsageRequest{Since: today})
+	if err != nil {
+		t.Fatal(err)
+	}
+	wctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+	watched := make(chan *sessionv1.WatchSessionsResponse, 100)
+	go h.s.Watch(wctx, owner, func(m *sessionv1.WatchSessionsResponse) error {
+		watched <- m
+		return nil
+	})
+	<-watched
+
+	r, _ := h.s.st.Session(done)
+	proj, _ := h.s.st.Project("demo")
+	for _, id := range []string{done, busy} {
+		if err := h.s.Delete(ctx, owner, id); err != nil {
+			t.Fatalf("delete %s: %v", id, err)
+		}
+		if r, _ := h.s.st.Session(id); r != nil {
+			t.Fatalf("%s is still stored", id)
+		}
+		if _, err := h.s.Get(owner, id); connect.CodeOf(err) != connect.CodeNotFound {
+			t.Fatalf("get %s after delete: %v", id, err)
+		}
+		if evs, _ := h.s.st.Events(id, 0, 100); len(evs) != 0 {
+			t.Fatalf("%s keeps %d events", id, len(evs))
+		}
+		if h.s.ws.Exists(id) {
+			t.Fatalf("%s keeps its worktree", id)
+		}
+	}
+	if out, err := exec.Command("git", "-C", proj.Path, "rev-parse", "--verify", r.Branch).CombinedOutput(); err != nil {
+		t.Fatalf("the branch %s went: %v %s", r.Branch, err, out)
+	}
+	if list, _, _ := h.s.List(owner, &sessionv1.ListSessionsRequest{}); len(list) != 0 {
+		t.Fatalf("listed after delete: %v", sessionIDs(list))
+	}
+	after, err := h.s.Usage(owner, &sessionv1.GetUsageRequest{Since: today})
+	if err != nil || len(after.Days) != 1 || after.Days[0].InputTokens != before.Days[0].InputTokens {
+		t.Fatalf("usage after delete: %v (before %v) %v", after, before, err)
+	}
+	gone := map[string]bool{}
+	deadline := time.After(5 * time.Second)
+	for !gone[done] || !gone[busy] {
+		select {
+		case m := <-watched:
+			for _, id := range m.DeletedSessionIds {
+				gone[id] = true
+			}
+		case <-deadline:
+			t.Fatalf("watched deleted: %v", gone)
+		}
+	}
+	if err := h.s.Delete(ctx, owner, done); connect.CodeOf(err) != connect.CodeNotFound {
+		t.Fatalf("delete again: %v", err)
+	}
+}
+
+// Only the owner renames a session; renaming isn't activity, so it keeps
+// its place in lists. An archived session can be renamed too.
+func TestRenameSession(t *testing.T) {
+	h := newHarness(t, DefaultLimits())
+	ctx := context.Background()
+	owner := &Principal{Kind: PrincipalOwner}
+	id := h.start("say one")
+	was := h.wait(id, idle)
+
+	if _, err := h.s.Rename(ctx, h.p, id, "mine"); connect.CodeOf(err) != connect.CodePermissionDenied {
+		t.Fatalf("an agent renames: %v", err)
+	}
+	if _, err := h.s.Rename(ctx, owner, id, "  \n "); connect.CodeOf(err) != connect.CodeInvalidArgument {
+		t.Fatalf("empty title: %v", err)
+	}
+	s, err := h.s.Rename(ctx, owner, id, "  修好登录页 ")
+	if err != nil || s.Title != "修好登录页" {
+		t.Fatalf("rename: %v %v", s, err)
+	}
+	if got, _ := h.s.Get(owner, id); got.Title != "修好登录页" || !got.UpdatedAt.AsTime().Equal(was.UpdatedAt.AsTime()) {
+		t.Fatalf("after rename: %q updated %v (was %v)", got.Title, got.UpdatedAt.AsTime(), was.UpdatedAt.AsTime())
+	}
+	if _, err := h.s.Archive(ctx, owner, id); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := h.s.Rename(ctx, owner, id, "归档后改名"); err != nil {
+		t.Fatal(err)
+	}
+	if r, _ := h.s.st.Session(id); r.Title != "归档后改名" {
+		t.Fatalf("stored title %q", r.Title)
 	}
 }
