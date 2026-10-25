@@ -3,6 +3,7 @@ package owner
 import (
 	"context"
 	"errors"
+	"fmt"
 	"log/slog"
 	"net/http"
 	"os"
@@ -49,6 +50,9 @@ func Open(cfg Config) (*Device, error) {
 		return nil, err
 	}
 	d := &Device{cfg: cfg, hub: newSignHub(), profiles: map[string]*Owner{}}
+	if err := d.migrate(); err != nil {
+		return nil, fmt.Errorf("moving the owner into a profile: %w", err)
+	}
 	entries, err := os.ReadDir(d.profilesDir())
 	if err != nil && !errors.Is(err, os.ErrNotExist) {
 		return nil, err
@@ -75,6 +79,40 @@ func Open(cfg Config) (*Device, error) {
 		}
 	}
 	return d, nil
+}
+
+// migrate moves the one owner a device had before profiles (owner.db and
+// keys at the top of DataDir) into a profile of its own, made current. Its
+// machine stays where it was, beside DataDir, since the git metadata of
+// its worktrees names that path: the profile records it (kMachineDir).
+func (d *Device) migrate() error {
+	if _, err := os.Stat(filepath.Join(d.cfg.DataDir, "owner.db")); err != nil {
+		return nil
+	}
+	id := strings.ToLower(ulid.Make().String())
+	dir := filepath.Join(d.profilesDir(), id)
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		return err
+	}
+	for _, name := range []string{"keys", "owner.db-wal", "owner.db-shm", "owner.db"} { // owner.db last: it marks what is left to move
+		if err := os.Rename(filepath.Join(d.cfg.DataDir, name), filepath.Join(dir, name)); err != nil && !errors.Is(err, os.ErrNotExist) {
+			return err
+		}
+	}
+	machineDir := filepath.Join(filepath.Dir(d.cfg.DataDir), "machine")
+	if _, err := os.Stat(machineDir); err == nil {
+		st, err := openStore(filepath.Join(dir, "owner.db"))
+		if err != nil {
+			return err
+		}
+		err = st.set(kMachineDir, []byte(machineDir))
+		st.db.Close()
+		if err != nil {
+			return err
+		}
+	}
+	d.cfg.Logger.Info("moved the owner into a profile", "profile", id, "machine", machineDir)
+	return os.WriteFile(d.currentFile(), []byte(id), 0o600)
 }
 
 func (d *Device) profilesDir() string { return filepath.Join(d.cfg.DataDir, "profiles") }

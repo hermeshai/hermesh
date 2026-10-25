@@ -37,6 +37,7 @@ if let path = options.testKey {
     log("TEST MODE: software root key in \(path), no Touch ID")
 } else {
     let key = SecureEnclaveKey()
+    key.adoptLegacyBlob()
     log("root key: \(key.location)")
     store = key
 }

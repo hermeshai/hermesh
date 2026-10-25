@@ -231,6 +231,12 @@ offer neither signing out nor a second owner yet.
   acts on it. A root key is never shared: an owner id comes from its first
   device's key, so a device that set up two owners with one key would name
   both the same.
+- A device set up before profiles had one owner at the top of
+  `<data>/owner/`: hermeshd moves it into a profile of its own on start.
+  Its machine stays where it was, in `<data>/machine/`, since its
+  worktrees' git metadata names that path; the profile records it
+  (`machine_dir`). The signer moves the old key handle (`app/root-key.se`)
+  beside the others; a key in the Keychain needs no move.
 - The signer keeps every profile's root key and signs with the one a
   `SigningRequest` names (`root_key_id`); creating a key keeps the others,
   and `delete_root_key` deletes one, without asking, since that gives no one
