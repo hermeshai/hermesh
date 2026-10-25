@@ -72,9 +72,9 @@ button{font:inherit;color:inherit}
 .btn.sm{height:22px;padding:0 10px;font-size:12px}
 .btn:disabled{opacity:.42;pointer-events:none}
 .btn .ic{width:14px;height:14px}
-/* Pointers, as macOS has them: the pointing hand for text links only; controls (buttons, rows, cards, headings) keep the arrow. */
-.link,a[href]{cursor:pointer}
-.link:disabled{cursor:default}
+/* Pointers, as macOS has them: the pointing hand for text links (and buttons drawn as one, like "+ Add Project"); controls (buttons, rows, cards, headings) keep the arrow. */
+.link,.ag-add,a[href]{cursor:pointer}
+.link:disabled,.ag-add:disabled{cursor:default}
 .link{border:0;background:none;padding:0;color:var(--accent-t);font-size:inherit}
 .link:hover{text-decoration:underline}
 .sw{width:34px;height:20px;border-radius:999px;border:0;background:var(--fill3);position:relative;flex:none;transition:background .2s}

@@ -125,6 +125,8 @@ test("settings 机器 opens this Mac: its sharing, its agents each with their pr
   // A folder picked under Gemini CLI is its project; taken from it, it goes.
   const repo = gitRepo(`app-${process.pid}`);
   await pickAnswers(app, repo);
+  // Drawn as a text link, it takes the pointing hand, as links do.
+  expect(await gemini.getByRole("button", { name: "添加项目…" }).evaluate((el) => getComputedStyle(el).cursor)).toBe("pointer");
   await gemini.getByRole("button", { name: "添加项目…" }).click();
   const project = gemini.getByRole("group", { name: `app-${process.pid}` });
   await expect(project).toContainText(repo);
