@@ -72,6 +72,9 @@ button{font:inherit;color:inherit}
 .btn.sm{height:22px;padding:0 10px;font-size:12px}
 .btn:disabled{opacity:.42;pointer-events:none}
 .btn .ic{width:14px;height:14px}
+/* Pointers, as macOS has them: the pointing hand for text links only; controls (buttons, rows, cards, headings) keep the arrow. */
+.link,a[href]{cursor:pointer}
+.link:disabled{cursor:default}
 .link{border:0;background:none;padding:0;color:var(--accent-t);font-size:inherit}
 .link:hover{text-decoration:underline}
 .sw{width:34px;height:20px;border-radius:999px;border:0;background:var(--fill3);position:relative;flex:none;transition:background .2s}
@@ -138,7 +141,7 @@ button{font:inherit;color:inherit}
 .side-list{flex:1;overflow-y:auto;min-height:0;padding:0 8px 8px;scrollbar-width:thin}
 .side-list>[role=group]{display:flex;flex-direction:column;gap:2px}
 /* A group's heading: its title, its count, and ▾ (▸ when collapsed); a click collapses or opens it. */
-.grp-h{position:sticky;top:0;z-index:2;font:inherit;font-size:12px;font-weight:400;color:var(--l2);padding:20px 10px 6px;margin-bottom:2px;display:flex;align-items:center;gap:6px;background:var(--side-head);border:0;width:100%;text-align:left;cursor:pointer}
+.grp-h{position:sticky;top:0;z-index:2;font:inherit;font-size:12px;font-weight:400;color:var(--l2);padding:20px 10px 6px;margin-bottom:2px;display:flex;align-items:center;gap:6px;background:var(--side-head);border:0;width:100%;text-align:left}
 .side-list>[role=group]:first-child .grp-h{padding-top:10px}
 .grp-h:hover{color:var(--l1)}
 .grp-h .n{font-weight:500;color:var(--l3)}
