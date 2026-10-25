@@ -22,17 +22,16 @@ export function SessionPage({ s }: { s: Session }) {
         <div className="ctitle">
           <h2>{displayTitle(s)}</h2>
         </div>
-        <div className="gg">
-          <button
-            className={`tb ${st.inspector ? "on" : ""}`}
-            title={st.inspector ? t("page.hideInfo") : t("page.showInfo")}
-            aria-label={t("page.info")}
-            aria-pressed={st.inspector}
-            onClick={() => st.set({ inspector: !st.inspector })}
-          >
-            <Icon name="sidebarR" />
-          </button>
-        </div>
+        {/* A toolbar button as the sidebar's toggle is, highlighted while the info shows. */}
+        <button
+          className={`tb ${st.inspector ? "on" : ""}`}
+          title={st.inspector ? t("page.hideInfo") : t("page.showInfo")}
+          aria-label={t("page.info")}
+          aria-pressed={st.inspector}
+          onClick={() => st.set({ inspector: !st.inspector })}
+        >
+          <Icon name="info" />
+        </button>
       </div>
       <div className={`dwrap ${st.inspector ? "dock" : ""}`}>
         <div className="dmain">
