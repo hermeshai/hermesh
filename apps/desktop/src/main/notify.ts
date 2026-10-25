@@ -3,7 +3,7 @@ import { createConnectTransport } from "@connectrpc/connect-node";
 import { filterNotices, mergeSessions, noticeDiff, noticeSnapshots, pairingNotice, type NoticeSnapshot } from "@hermesh/core";
 import { LocalService, type Client, type GetStatusResponse, type Machine, type PairingDetails } from "@hermesh/proto/local";
 import type { Session } from "@hermesh/proto/session";
-import { app, Notification } from "electron";
+import { app, nativeTheme, Notification } from "electron";
 import fs from "node:fs";
 import path from "node:path";
 import type { Command, Preferences } from "../shared/bridge";
@@ -30,7 +30,7 @@ const changed = () => worldListeners.forEach((f) => f());
 
 // --- Preferences (the settings window sets them) ---
 
-const defaults: Preferences = { notifyQuestion: true, notifyFailed: true, notifyTurnDone: false, menuBadge: true, language: "system" };
+const defaults: Preferences = { appearance: "system", notifyQuestion: true, notifyFailed: true, notifyTurnDone: false, menuBadge: true, language: "system" };
 let prefs: Preferences | undefined;
 const prefsFile = () => path.join(app.getPath("userData"), "preferences.json");
 
@@ -45,11 +45,18 @@ export function preferences(): Preferences {
   return prefs!;
 }
 
+/** Every window (and the native menus) in the chosen appearance: CSS follows it through prefers-color-scheme. */
+export function applyAppearance() {
+  nativeTheme.themeSource = preferences().appearance;
+}
+
 export function setPreferences(p: Partial<Preferences>): Preferences {
   const next = { ...preferences() };
   for (const k of ["notifyQuestion", "notifyFailed", "notifyTurnDone", "menuBadge"] as const) if (typeof p[k] === "boolean") next[k] = p[k];
   if (p.language === "system" || languages.includes(p.language as Language)) next.language = p.language!;
+  if (p.appearance === "system" || p.appearance === "light" || p.appearance === "dark") next.appearance = p.appearance;
   prefs = next;
+  applyAppearance();
   fs.mkdirSync(path.dirname(prefsFile()), { recursive: true });
   fs.writeFileSync(prefsFile(), JSON.stringify(next));
   changed();

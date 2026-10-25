@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { pickLanguage } from "@hermesh/core";
-import type { LoginItem, Preferences } from "../../../shared/bridge";
+import type { Appearance, LoginItem, Preferences } from "../../../shared/bridge";
 import { languages, resolveLanguage, type LanguageChoice } from "../../../shared/i18n";
 import { useUpdate } from "../update";
 import { SRow, Switch } from "./common";
@@ -9,7 +9,7 @@ import { SRow, Switch } from "./common";
 /** The preferences that are switches. */
 type Flag = { [K in keyof Preferences]: Preferences[K] extends boolean ? K : never }[keyof Preferences];
 
-/** General: the language, start at login, notifications, the menu bar, updates. */
+/** General: the appearance and language, start at login, notifications, the menu bar, updates. */
 export function General() {
   const { t } = useTranslation("settings");
   // Kept by the main process, which acts on them while no window is open.
@@ -28,6 +28,24 @@ export function General() {
 
   return (
     <div className="form">
+      <div className="fgroup">
+        <SRow title={t("appearance.title")}>
+          <div className="seg" role="group" aria-label={t("appearance.title")}>
+            {(["system", "light", "dark"] as Appearance[]).map((a) => (
+              <button
+                key={a}
+                type="button"
+                className={prefs?.appearance === a ? "on" : ""}
+                aria-pressed={prefs?.appearance === a}
+                disabled={!prefs}
+                onClick={() => window.hermesh?.setPreferences({ appearance: a }).then(setPrefs)}
+              >
+                {t(`appearance.${a}`)}
+              </button>
+            ))}
+          </div>
+        </SRow>
+      </div>
       <Language prefs={prefs} setPrefs={setPrefs} />
       <div>
         <div className="fhead">{t("general.startup")}</div>
