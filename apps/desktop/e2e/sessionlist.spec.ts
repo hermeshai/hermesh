@@ -57,7 +57,7 @@ test("a session started by an agent shows up at once, and so do its changes", as
   const row = list.getByRole("listitem").filter({ hasText: "新来的" });
   await expect(row).toBeVisible({ timeout: 1500 });
   await expect(list.getByRole("group", { name: "进行中" })).toContainText("新来的");
-  // It finishes: from 进行中 to 今天.
-  await expect(list.getByRole("group", { name: "今天" })).toContainText("新来的", { timeout: 30_000 });
+  // It finishes: from 进行中 to 已结束.
+  await expect(list.getByRole("group", { name: "已结束" })).toContainText("新来的", { timeout: 30_000 });
   await app.close();
 });
