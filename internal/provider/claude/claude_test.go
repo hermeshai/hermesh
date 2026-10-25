@@ -239,3 +239,47 @@ func TestDesktopCLI(t *testing.T) {
 		t.Fatalf("got %+v", info)
 	}
 }
+
+// With --include-partial-messages the reply streams as drafts (stream_event
+// text deltas, as Claude Code sends them) that add up to the assistant
+// message; a subagent's deltas (parent_tool_use_id) are not the reply.
+func TestDraftsAddUpToMessage(t *testing.T) {
+	if !strings.Contains(strings.Join(Args(provider.StartSpec{}), " "), "--include-partial-messages") {
+		t.Fatal("drafts need --include-partial-messages")
+	}
+	dir := t.TempDir()
+	bin := filepath.Join(dir, "claude")
+	delta := func(text, parent string) string {
+		return `echo '{"type":"stream_event","event":{"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"` + text + `"}},"parent_tool_use_id":` + parent + `}'` + "\n"
+	}
+	script := "#!/bin/sh\nread init\nread prompt\n" +
+		`echo '{"type":"stream_event","event":{"type":"content_block_start","index":0,"content_block":{"type":"text","text":""}},"parent_tool_use_id":null}'` + "\n" +
+		delta("Hel", "null") + delta("sub", `"toolu_1"`) + delta("lo", "null") +
+		`echo '{"type":"assistant","message":{"content":[{"type":"text","text":"Hello"}]}}'` + "\n" +
+		`echo '{"type":"result","subtype":"success","result":"Hello","usage":{"input_tokens":3,"output_tokens":2}}'` + "\nsleep 1\n"
+	if err := os.WriteFile(bin, []byte(script), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	s, err := (&Provider{Binary: bin}).Start(context.Background(), provider.StartSpec{WorkDir: dir, Prompt: "hi", Env: os.Environ()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+	var drafts, msg string
+	for msg == "" {
+		select {
+		case e := <-s.Events():
+			switch e.Kind {
+			case provider.EventAgentDraft:
+				drafts += e.Text
+			case provider.EventAgentMessage:
+				msg = e.Text
+			}
+		case <-time.After(10 * time.Second):
+			t.Fatal("timed out")
+		}
+	}
+	if drafts != "Hello" || msg != "Hello" {
+		t.Fatalf("drafts %q, message %q", drafts, msg)
+	}
+}

@@ -644,6 +644,9 @@ message StreamSessionEventsRequest {
   string session_id = 1;
   uint64 after_seq = 2;
   bool follow = 3;
+  // (4 is left for an event view, docs/state-sync.md.)
+  // Also send AgentDraft events while the agent writes.
+  bool partial = 5;
 }
 
 message AnswerQuestionRequest {

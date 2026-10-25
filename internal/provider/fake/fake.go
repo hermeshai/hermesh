@@ -2,6 +2,9 @@
 // each line is a command:
 //
 //	say <text>          agent message
+//	draft <a>|<b>|...   reply text still being written: pieces a, b, ... 30 ms
+//	                    apart (the say that follows is the whole message)
+//	warn <text>         an agent error that does not end the turn
 //	write <path> <text> edit tool call that writes a file (through the gate)
 //	shell <command>     shell tool call (through the gate; not executed)
 //	sleep <duration>    pause
@@ -237,6 +240,17 @@ func (s *session) script(ctx context.Context, prompt string) (last string, ended
 		case "say":
 			last = arg
 			s.emit(provider.Event{Kind: provider.EventAgentMessage, Text: arg})
+		case "draft":
+			for _, piece := range strings.Split(arg, "|") {
+				s.emit(provider.Event{Kind: provider.EventAgentDraft, Text: piece})
+				select {
+				case <-time.After(30 * time.Millisecond):
+				case <-s.done:
+					return "", true
+				}
+			}
+		case "warn":
+			s.emit(provider.Event{Kind: provider.EventError, Text: arg})
 		case "write":
 			path, text, _ := strings.Cut(arg, " ")
 			a := provider.ToolAction{CallID: id, Kind: provider.ToolEdit, Name: "Write", Paths: []string{path}, Summary: path}

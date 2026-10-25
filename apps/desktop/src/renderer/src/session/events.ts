@@ -2,14 +2,18 @@ import { useEffect, useRef, useState } from "react";
 import type { SessionEvent } from "@hermesh/proto/session";
 import { local } from "../api";
 
+/** A session's stored events, and the reply the agent is still writing ("" when none). */
+export type Conversation = { events: SessionEvent[]; draft: string };
+
 /**
  * A session's events, followed while the page shows it: the stream picks up
  * after the last event it got when it breaks (as the Mac app did). last is
  * the session's last event as the list knows it: the events up to it show
- * as soon as they are all in.
+ * as soon as they are all in. The draft grows with the agent's reply until
+ * a stored event ends it (docs/reply-streaming.md).
  */
-export function useSessionEvents(sessionId: string, last: bigint): SessionEvent[] {
-  const [got, setGot] = useState<{ id: string; events: SessionEvent[] }>({ id: sessionId, events: [] });
+export function useSessionEvents(sessionId: string, last: bigint): Conversation {
+  const [got, setGot] = useState<Conversation & { id: string }>({ id: sessionId, events: [], draft: "" });
   const known = useRef(last);
   known.current = last;
   useEffect(() => {
@@ -18,20 +22,27 @@ export function useSessionEvents(sessionId: string, last: bigint): SessionEvent[
     // was there when the page opened at once.
     let caughtUp = false;
     let batch: SessionEvent[] = [];
+    let draft = "";
     let timer: ReturnType<typeof setTimeout> | undefined;
     const flush = () => {
       timer = undefined;
       const add = batch;
       batch = [];
-      setGot((g) => (g.id === sessionId ? { id: sessionId, events: g.events.concat(add) } : { id: sessionId, events: add }));
+      setGot((g) => (g.id === sessionId ? { id: sessionId, events: add.length ? g.events.concat(add) : g.events, draft } : { id: sessionId, events: add, draft }));
     };
     (async () => {
       let after = 0n;
       while (!stop.signal.aborted) {
         try {
-          for await (const e of local.streamSessionEvents({ sessionId, afterSeq: after, follow: true }, { signal: stop.signal })) {
+          for await (const e of local.streamSessionEvents({ sessionId, afterSeq: after, follow: true, partial: true }, { signal: stop.signal })) {
+            if (e.kind.case === "agentDraft") {
+              draft = e.kind.value.whole ? e.kind.value.text : draft + e.kind.value.text;
+              timer ??= setTimeout(flush, 30);
+              continue;
+            }
             after = e.seq;
             batch.push(e);
+            draft = "";
             if (!caughtUp && e.seq >= known.current) {
               caughtUp = true;
               clearTimeout(timer);
@@ -49,5 +60,5 @@ export function useSessionEvents(sessionId: string, last: bigint): SessionEvent[
       clearTimeout(timer);
     };
   }, [sessionId]);
-  return got.id === sessionId ? got.events : [];
+  return got.id === sessionId ? got : { events: [], draft: "" };
 }

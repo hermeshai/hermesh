@@ -8,6 +8,8 @@ struct SessionView: View {
     @Environment(AppModel.self) private var model
     let id: String
     @State private var events: [SessionEvent] = []
+    /// The reply the agent is still writing; a stored event ends it.
+    @State private var draft = ""
     @State private var open: Set<UInt64> = []
     @State private var confirmInterrupt = false
     @State private var renaming = false
@@ -37,6 +39,10 @@ struct SessionView: View {
                 }
                 ForEach(Array(steps.enumerated()), id: \.element.id) { i, step in
                     StepView(step: step, session: s, grant: grant, previousTurn: previousTurn(steps, before: i), open: $open)
+                }
+                if !draft.isEmpty {
+                    Text(agentMarkdown(draft)).frame(maxWidth: .infinity, alignment: .leading)
+                        .accessibilityIdentifier("session-draft")
                 }
                 ending(s, grant: grant)
             }
@@ -140,12 +146,18 @@ struct SessionView: View {
     /// Reads the session's events and follows new ones while the page is shown.
     private func follow() async {
         events = []
+        draft = ""
         guard let api = model.api else { return }
         while !Task.isCancelled {
             do {
                 for try await e in api.events(id, after: events.last?.seq ?? 0) {
+                    if case .agentDraft(let d) = e.kind {
+                        draft = d.whole ? d.text : draft + d.text
+                        continue
+                    }
                     if let last = events.last, e.seq <= last.seq { continue }
                     events.append(e)
+                    draft = ""
                 }
             } catch {}
             try? await Task.sleep(for: .seconds(2))
@@ -184,7 +196,7 @@ struct StepView: View {
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .background(Color(.secondarySystemBackground), in: RoundedRectangle(cornerRadius: 22, style: .continuous))
             case .agent(_, let text):
-                Text(markdown(text)).textSelection(.enabled).frame(maxWidth: .infinity, alignment: .leading)
+                Text(agentMarkdown(text)).textSelection(.enabled).frame(maxWidth: .infinity, alignment: .leading)
             case .question(_, let q, let r):
                 // Unanswered, it is the panel at the bottom.
                 if let r {
@@ -237,8 +249,9 @@ struct StepView: View {
             }
         }
     }
+}
 
-    private func markdown(_ s: String) -> AttributedString {
-        (try? AttributedString(markdown: s, options: .init(interpretedSyntax: .inlineOnlyPreservingWhitespace))) ?? AttributedString(s)
-    }
+/// An agent's words: inline Markdown, its line breaks kept.
+private func agentMarkdown(_ s: String) -> AttributedString {
+    (try? AttributedString(markdown: s, options: .init(interpretedSyntax: .inlineOnlyPreservingWhitespace))) ?? AttributedString(s)
 }

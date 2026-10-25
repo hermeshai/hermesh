@@ -13,11 +13,15 @@ import { Icon } from "../icons";
 import { archive, grantLabel, unarchive } from "../Sidebar";
 import { useNow, useStore } from "../store";
 import { interrupt } from "./actions";
-import { Markdown } from "./Markdown";
+import { DraftMarkdown, Markdown } from "./Markdown";
 import { QuestionPanel } from "./Question";
 
-/** The conversation, newest at the bottom; while a turn is live, the control area sits over its bottom edge. */
-export function Chat({ s, events }: { s: Session; events: SessionEvent[] }) {
+/**
+ * The conversation, newest at the bottom, ending with the reply the agent is
+ * still writing (draft); while a turn is live, the control area sits over
+ * its bottom edge.
+ */
+export function Chat({ s, events, draft }: { s: Session; events: SessionEvent[]; draft: string }) {
   const { t } = useTranslation("session");
   const st = useStore();
   const grant = grantLabel(st, s);
@@ -32,7 +36,7 @@ export function Chat({ s, events }: { s: Session; events: SessionEvent[] }) {
   useLayoutEffect(() => {
     const el = scroll.current;
     if (el && atEnd.current) el.scrollTop = el.scrollHeight;
-  }, [items.length, ctlHeight, s.status]);
+  }, [items.length, draft.length, ctlHeight, s.status]);
   const onScroll = () => {
     const el = scroll.current;
     if (el) atEnd.current = el.scrollTop + el.clientHeight > el.scrollHeight - 80;
@@ -62,6 +66,11 @@ export function Chat({ s, events }: { s: Session; events: SessionEvent[] }) {
                 previous={previousTurn(items, i)}
               />
             ))}
+            {draft !== "" && (
+              <div className="am">
+                <DraftMarkdown text={draft} />
+              </div>
+            )}
           </div>
           {isFailed(s) && (failure || s.error !== "") && (
             <Failed s={s} title={failure ? failureTitle(failure.kind) : t("chat.failed")} message={failure?.message ?? s.error} advice={failure ? failureAdvice(failure) : ""} grant={grant} />

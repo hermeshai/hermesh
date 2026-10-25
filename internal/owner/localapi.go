@@ -392,7 +392,7 @@ func (l *localService) StreamSessionEvents(ctx context.Context, req *localv1.Str
 		if err != nil {
 			return err
 		}
-		return m.StreamEvents(ctx, &sessionv1.StreamEventsRequest{SessionId: req.SessionId, AfterSeq: req.AfterSeq, Follow: req.Follow}, stream.Send)
+		return m.StreamEvents(ctx, &sessionv1.StreamEventsRequest{SessionId: req.SessionId, AfterSeq: req.AfterSeq, Follow: req.Follow, Partial: req.Partial}, stream.Send)
 	}
 	return l.o().StreamSessionEvents(ctx, req, stream.Send)
 }

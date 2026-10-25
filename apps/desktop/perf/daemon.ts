@@ -12,7 +12,8 @@ import { ids, smallConversation, world, type World } from "./world";
 // (world.ts) with the calls the main window makes. While live, it changes
 // sessions as a busy owner's machines do: a running session every 100 ms
 // (hermeshd pushes at most that often), and the long running conversation
-// grows by an event every 250 ms.
+// grows: for 5 s by an event every 250 ms, then for 5 s by a reply written
+// as drafts every 100 ms (docs/reply-streaming.md), stored when it is done.
 
 export type Daemon = { socket: string; world: World; live: (on: boolean) => void; close: () => Promise<void> };
 
@@ -99,6 +100,9 @@ export async function startDaemon(socket: string): Promise<Daemon> {
   let timers: NodeJS.Timeout[] = [];
   let turn = 0;
   let step = 0;
+  let draft = "";
+  let pieces = 0;
+  const writing = () => step % 40 >= 20;
   const touch = (id: string, seq?: bigint) => {
     const next = clone(SessionSchema, w.sessions.get(id)!);
     next.updatedAt = timestampFromMs(Date.now());
@@ -121,16 +125,28 @@ export async function startDaemon(socket: string): Promise<Daemon> {
         watchers.forEach((f) => f(m));
       }, 100),
       setInterval(() => {
+        if (!writing()) return;
+        const piece = [`检查 \`sessions.ts\` 的第 ${step} 处，`, "**这里** 要改成按块渲染，", "| 文件 | 改动 |\n|---|---|\n| a.ts | 新增 |\n\n", "然后继续。\n\n"][pieces++ % 4];
+        draft += piece;
+        const e = create(SessionEventSchema, { kind: { case: "agentDraft", value: { text: piece } } });
+        followers.get(ids.bigLive)?.forEach((f) => f(e));
+      }, 100),
+      setInterval(() => {
         const evs = events(ids.bigLive);
         const seq = evs.at(-1)!.seq + 1n;
         step++;
+        if (writing()) return;
         const callId = `live-${step >> 1}`;
+        const written = draft;
+        draft = "";
         const kind: MessageInitShape<typeof SessionEventSchema>["kind"] =
-          step % 2
-            ? { case: "toolCall", value: { callId, kind: "read", name: "Read", summary: `Read packages/core/src/live${step}.ts` } }
-            : step % 20 === 0
-              ? { case: "agentMessage", value: { text: `进度：已经处理了 **${step}** 个文件，继续检查 \`sessions.ts\`。` } }
-              : { case: "toolResult", value: { callId: `live-${(step - 1) >> 1}`, summary: `ok\n`.repeat(3) } };
+          written
+            ? { case: "agentMessage", value: { text: written } }
+            : step % 2
+              ? { case: "toolCall", value: { callId, kind: "read", name: "Read", summary: `Read packages/core/src/live${step}.ts` } }
+              : step % 20 === 0
+                ? { case: "agentMessage", value: { text: `进度：已经处理了 **${step}** 个文件，继续检查 \`sessions.ts\`。` } }
+                : { case: "toolResult", value: { callId: `live-${(step - 1) >> 1}`, summary: `ok\n`.repeat(3) } };
         const e = create(SessionEventSchema, { seq, ts: timestampFromMs(Date.now()), turnId: "t", kind });
         evs.push(e);
         followers.get(ids.bigLive)?.forEach((f) => f(e));

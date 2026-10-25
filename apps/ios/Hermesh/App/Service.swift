@@ -38,6 +38,7 @@ extension LocalAPI {
         r.sessionID = sessionID
         r.afterSeq = after
         r.follow = true
+        r.partial = true // the reply as the agent writes it (docs/reply-streaming.md)
         return stream("StreamSessionEvents", r)
     }
 

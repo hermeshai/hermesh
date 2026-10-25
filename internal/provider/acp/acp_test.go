@@ -160,6 +160,25 @@ func TestTurnsToolsAndLoad(t *testing.T) {
 	}
 }
 
+// The reply streams as drafts (each agent_message_chunk) that add up to
+// the one message stored when the agent moves on.
+func TestDraftsAddUpToMessage(t *testing.T) {
+	f := newFixture(t)
+	s, err := f.start("stream Hello, world\\nand more\nshell echo x", "", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	evs, _ := collect(t, s)
+	var drafts string
+	for _, e := range of(evs, provider.EventAgentDraft) {
+		drafts += e.Text
+	}
+	msgs := of(evs, provider.EventAgentMessage)
+	if len(of(evs, provider.EventAgentDraft)) < 2 || drafts != "Hello, world\nand more" || len(msgs) != 1 || msgs[0].Text != drafts {
+		t.Fatalf("drafts %q, messages %+v", drafts, msgs)
+	}
+}
+
 func TestResumeModes(t *testing.T) {
 	f := newFixture(t, "FAKE_ACP_RESUME=resume")
 	s, err := f.start("say one", "", "")

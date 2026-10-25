@@ -4586,10 +4586,13 @@ func (x *WatchSessionsResponse) GetDeletedSessionIds() []string {
 }
 
 type StreamSessionEventsRequest struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	SessionId     string                 `protobuf:"bytes,1,opt,name=session_id,json=sessionId,proto3" json:"session_id,omitempty"`
-	AfterSeq      uint64                 `protobuf:"varint,2,opt,name=after_seq,json=afterSeq,proto3" json:"after_seq,omitempty"`
-	Follow        bool                   `protobuf:"varint,3,opt,name=follow,proto3" json:"follow,omitempty"`
+	state     protoimpl.MessageState `protogen:"open.v1"`
+	SessionId string                 `protobuf:"bytes,1,opt,name=session_id,json=sessionId,proto3" json:"session_id,omitempty"`
+	AfterSeq  uint64                 `protobuf:"varint,2,opt,name=after_seq,json=afterSeq,proto3" json:"after_seq,omitempty"`
+	Follow    bool                   `protobuf:"varint,3,opt,name=follow,proto3" json:"follow,omitempty"`
+	// (4 is left for an event view, docs/state-sync.md.)
+	// Also send AgentDraft events while the agent writes.
+	Partial       bool `protobuf:"varint,5,opt,name=partial,proto3" json:"partial,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -4641,6 +4644,13 @@ func (x *StreamSessionEventsRequest) GetAfterSeq() uint64 {
 func (x *StreamSessionEventsRequest) GetFollow() bool {
 	if x != nil {
 		return x.Follow
+	}
+	return false
+}
+
+func (x *StreamSessionEventsRequest) GetPartial() bool {
+	if x != nil {
+		return x.Partial
 	}
 	return false
 }
@@ -5552,12 +5562,13 @@ const file_hermesh_local_v1_local_proto_rawDesc = "" +
 	"\bsessions\x18\x01 \x03(\v2\x1b.hermesh.session.v1.SessionR\bsessions\x12)\n" +
 	"\x10machines_changed\x18\x02 \x01(\bR\x0fmachinesChanged\x12?\n" +
 	"\vunreachable\x18\x03 \x03(\v2\x1d.hermesh.local.v1.UnreachableR\vunreachable\x12.\n" +
-	"\x13deleted_session_ids\x18\x04 \x03(\tR\x11deletedSessionIds\"p\n" +
+	"\x13deleted_session_ids\x18\x04 \x03(\tR\x11deletedSessionIds\"\x8a\x01\n" +
 	"\x1aStreamSessionEventsRequest\x12\x1d\n" +
 	"\n" +
 	"session_id\x18\x01 \x01(\tR\tsessionId\x12\x1b\n" +
 	"\tafter_seq\x18\x02 \x01(\x04R\bafterSeq\x12\x16\n" +
-	"\x06follow\x18\x03 \x01(\bR\x06follow\"\xa7\x01\n" +
+	"\x06follow\x18\x03 \x01(\bR\x06follow\x12\x18\n" +
+	"\apartial\x18\x05 \x01(\bR\apartial\"\xa7\x01\n" +
 	"\x15AnswerQuestionRequest\x12\x1d\n" +
 	"\n" +
 	"session_id\x18\x01 \x01(\tR\tsessionId\x12\x1f\n" +

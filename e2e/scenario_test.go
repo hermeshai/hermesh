@@ -486,6 +486,49 @@ func TestUserJourney(t *testing.T) {
 		t.Fatalf("logs: %s", logs.stdout)
 	}
 
+	// The owner's app sees a reply on another machine as it is written: drafts
+	// come through the relay, end to end, and add up to the stored message.
+	r = cli(grokEnv, time.Minute, append([]string{"session", "start", "--project", "vps-1/demo", "--agent", "claude", "-o", "json",
+		"--prompt", prompt("sleep 2s\ndraft Hello |from |the |VPS, |as it |is |written\nsleep 500ms\nsay Hello from the VPS, as it is written",
+			"Count from one to forty in English words, separated by spaces, and nothing else.")}, model...)...)
+	var streamed struct {
+		SessionID string `json:"session_id"`
+	}
+	unmarshalSession(r.stdout, &streamed)
+	func() {
+		sctx, cancel := context.WithTimeout(ctx, 4*time.Minute)
+		defer cancel()
+		stream, err := app.client.StreamSessionEvents(sctx, &localv1.StreamSessionEventsRequest{SessionId: streamed.SessionID, Follow: true, Partial: true})
+		if err != nil {
+			t.Fatalf("stream with drafts: %v", err)
+		}
+		defer stream.Close()
+		var draft, lastDraft, message string
+		drafts := 0
+		for stream.Receive() {
+			e := stream.Msg()
+			if d := e.GetAgentDraft(); d != nil {
+				drafts++
+				if d.Whole {
+					draft = d.Text
+				} else {
+					draft += d.Text
+				}
+				lastDraft = draft
+				continue
+			}
+			if m := e.GetAgentMessage(); m != nil {
+				message = m.Text
+			}
+			if e.GetTurnCompleted() != nil {
+				break
+			}
+		}
+		if drafts < 2 || message == "" || (!real && lastDraft != message) {
+			t.Fatalf("drafts through the relay: %d, last %q, message %q (%v)", drafts, lastDraft, message, stream.Err())
+		}
+	}()
+
 	// In-place projects: the agent works in the directory itself.
 	if ps := listed(grokEnv); ps["vps-1/notes"]["workspace"] != "in_place" || ps["vps-1/demo"]["workspace"] != "worktree" {
 		t.Fatalf("projects: %v", ps)

@@ -1,6 +1,6 @@
 # Hermesh reply streaming: show an agent's reply as it is written
 
-Status: proposed, 2026-10-25. For review before any code.
+Status: built, 2026-10-25 (Mac app, iPhone app, hermeshd, all three providers).
 
 The owner watches a coding agent answer. Today the reply shows up all at
 once when the agent finishes it, sometimes after a minute of nothing but
@@ -67,7 +67,7 @@ message SessionEvent {
     // Reply text the agent is still writing. Never stored, and seq is 0:
     // it is not a position to resume from. Sent only to streams that ask
     // (StreamEventsRequest.partial). Any stored event that follows ends the
-    // draft; its text is then in that event or was dropped by the agent.
+    // draft; its text is then in that event, or the agent dropped it.
     AgentDraft agent_draft = 20;
   }
 }
@@ -75,9 +75,9 @@ message SessionEvent {
 message AgentDraft {
   // Text to append to the draft.
   string text = 1;
-  // Set on the first draft a stream sends: text is the whole draft so far
-  // (a stream that starts, or resumes, mid-reply).
-  bool reset = 2;
+  // Text is the whole draft so far, not an addition: the first draft a
+  // stream sends, and the first after a stored event the reply went on past.
+  bool whole = 2;
 }
 
 message StreamEventsRequest {
@@ -95,26 +95,33 @@ Field 4 of both requests is left for `view` ([state-sync.md](state-sync.md) §3.
 - **Appends, not snapshots.** A reply of 20 KB re-sent ten times a second
   would cost about 1 MB per reply on a phone. Appends are safe because one
   stream is ordered: if a subscriber falls behind, its stream is closed as
-  today, and the new stream starts with a `reset` draft.
+  today, and the new stream starts with a `whole` draft. (The field is not
+  called `reset`: Go's generated code has a `Reset()` method.)
 - **seq 0.** A client never moves `after_seq` on a draft. Clients that don't
   set `partial` never get one, so older iPhone builds and bots are safe.
 
 ## 4. hermeshd
 
 - **`provider.EventAgentDraft`** joins `provider.Event` (field `Text`).
-- **`live.draft`** (a `strings.Builder`) and `live.draftSent` (how much of it
-  each subscriber has, kept with the subscriber's channel).
-- **Pacing.** A draft piece marks the session dirty. A 100 ms tick, the same
-  pattern as `Sessions.Watch` ([sessionlist.go](../internal/machine/sessionlist.go)),
-  queues one `writeOp{l, draft}` with the text added since the last tick.
-  The writer skips persistence for it and hands it to `deliver`, which
-  sends it only to subscribers with `partial`.
-- **Ending a draft.** `EventAgentMessage` clears `live.draft`. Before
-  `TurnCompleted`, `Error` or a crash status, a non-empty draft is emitted
-  as an `AgentMessage` (persisted) and cleared.
+- **`live.draft`** (a `strings.Builder`), `live.draftQueued` (how much of it
+  is queued for subscribers) and `live.draftShown` (what subscribers have
+  been sent, kept by `deliver`).
+- **Pacing.** A draft piece starts a 100 ms timer unless one is pending.
+  When it fires, `sendDraft` takes `emitMu` (the lock that orders a
+  session's events into the writer) and queues one `writeOp{l, draft}` with
+  the text added since. The writer skips persistence for it (a batch of
+  drafts alone opens no transaction) and hands it to `deliver` in order,
+  which sends it only to subscribers with `partial`.
+- **Ending a draft.** `EventAgentMessage` clears `live.draft`. Before a tool
+  call, a question, and at the end of the turn (finished, interrupted,
+  crashed, stalled), a draft the agent did not finish is stored as an
+  `AgentMessage`. A turn restarted in a fresh provider session drops it.
+- **A stored event in the middle of a reply** (an agent warning, a status)
+  ends the draft on the screens, so the next send is the whole draft again
+  (`whole`).
 - **Subscribing mid-reply.** `Stream` sends the stored events up to
-  `persistedSeq`, then, with `partial`, one `reset` draft carrying
-  `live.draft`, then follows.
+  `persistedSeq`, then, with `partial`, one `whole` draft carrying
+  `live.draftShown`, then follows.
 - **Progress.** Draft pieces count as activity for the stall watchdog (Codex
   already counts its deltas). `LastMessageExcerpt` keeps following stored
   messages only, so the session list does not churn.
@@ -127,14 +134,20 @@ Field 4 of both requests is left for `view` ([state-sync.md](state-sync.md) §3.
 | Claude Code | Add `--include-partial-messages`. On `stream_event` with `content_block_delta` / `text_delta`, emit `EventAgentDraft`; ignore events with `parent_tool_use_id` (subagents). The `assistant` message stays the final text. Check the flag against the oldest Claude Code we support. |
 | Codex | Parse `item/agentMessage/delta` (`params.delta`) instead of skipping it; keep skipping command output and reasoning deltas. `item/completed` stays the final text. |
 
-The fake ACP agent gets `stream <text>`: the text in small chunks with
-pauses (`\n` for newlines, as `say`), so tests can watch a draft grow.
+The fake ACP agent gets `stream <text>`: the text four characters every
+50 ms (`\n` for newlines, as `say` now takes too), so tests can watch a draft
+grow. The in-process fake provider gets `draft a|b|c` (pieces 30 ms apart)
+and `warn <text>` (an agent error that does not end the turn).
+
+Claude Code 2.1.302 has `--include-partial-messages`; the parsing follows
+the Agent SDK's `SDKPartialAssistantMessage` and is tested on recorded
+lines, not yet against a live Claude Code.
 
 ## 6. Mac app
 
 - **Events.** [events.ts](../apps/desktop/src/renderer/src/session/events.ts)
   asks with `partial: true` and keeps the draft apart from the events: a
-  `reset` replaces it, other drafts append, any stored event clears it. Draft
+  `whole` draft replaces it, other drafts append, any stored event clears it. Draft
   changes ride the existing 30 ms batch, so one render per batch at most.
 - **Rendering.** The draft shows after the last row as a growing agent
   message, with the same type and colour as a finished one. The
@@ -144,16 +157,19 @@ pauses (`\n` for newlines, as `say`), so tests can watch a draft grow.
 - **Unfinished Markdown.** react-markdown parses a growing text correctly at
   every step but shows its unfinished parts raw: `**bol`, `[link](htt`, a
   table header before its `|---|` row. Two small layers fix this:
-  1. **Blocks.** Split the draft into blocks (blank lines outside code
-     fences). Finished blocks render through the memoised `Markdown`, so a
-     tick re-parses only the last block, not the whole reply.
+  1. **Blocks** (`splitBlocks` in [draft.ts](../packages/core/src/draft.ts)).
+     Split the draft at blank lines followed by an unindented line, outside
+     code fences (an indented line may go on a list item). Finished blocks
+     render through a memoised block, so a tick re-parses only the last one,
+     not the whole reply.
   2. **The last block.** Close what is open with
-     [`remend`](https://www.npmjs.com/package/remend) (Vercel's "self-healing
-     markdown", the piece Streamdown uses for this): dangling `**`, `*`,
-     `` ` ``, `~~` and links. Hold back a block that starts as a table until
-     its delimiter row arrives, so it appears as a table once and doesn't jump
-     from text. An open code fence already renders as code, so nothing to do
-     there.
+     [`remend`](https://www.npmjs.com/package/remend) 1.4.0 (Vercel's
+     "self-healing markdown", the piece Streamdown uses for this): dangling
+     `**`, `*`, `` ` ``, `~~`; an unfinished link shows its text only
+     (`linkMode: "text-only"`); math is off. A table at the end of the block
+     is held back until its delimiter row has every column
+     (`withoutOpenTable`), so it appears as a table once and never as text
+     with pipes. An open code fence already renders as code.
 
   The stored message, when it arrives, renders through the same `Markdown`,
   so it looks the same and nothing jumps.
@@ -169,9 +185,15 @@ held-back blocks on the phone for now.
 
 ## 8. Performance and data
 
-- **Renderer.** At most 10 draft updates a second, each re-parsing one block:
-  within the "live ≤ 5 % busy" budget of [desktop-performance.md](desktop-performance.md).
-  `pnpm perf` gets a draft-growing scenario.
+- **Renderer.** At most 10 draft updates a second, each re-parsing one block.
+  The `pnpm perf` stand-in daemon now has the long running conversation
+  write a reply as drafts for 5 s in every 10 (`perf/daemon.ts`). Measured
+  against 648e24e (before react-markdown and drafts), medians of 3 on the
+  owner's Mac: `session.live.renderer.busy%` 22.2 → 18.6, 116 fps either
+  way, no long frames. Opening the 2,700-event conversation (`open.long.ms`)
+  went 117 → 137 ms: react-markdown parses every message as the page opens,
+  where the old parser was lighter. That cost is the Markdown switch's, not
+  the drafts'; it is the next thing to win back.
 - **Daemon.** No SQLite writes for drafts. The writer's queue carries about
   10 extra ops a second per writing session.
 - **Network.** Appended text only. Over the relay, about the size of the
@@ -180,21 +202,27 @@ held-back blocks on the phone for now.
 
 ## 9. Tests
 
-- **Go, provider level.** Each adapter emits drafts that add up to the final
-  message: ACP with the fake agent; Claude and Codex with recorded stdout
-  fixtures.
-- **Go, daemon.** A subscriber with `partial` gets drafts in order, between
-  the right stored events; one without gets none. One that joins mid-reply
-  gets a `reset` draft. An interrupted turn stores its draft. Stored events
-  are byte-identical with and without drafts.
-- **Go e2e, remote.** A client device reads a remote machine through the
-  relay and sees the draft grow before the final message.
-- **Desktop e2e** (`session.spec.ts`). A session runs `stream` with a long
-  reply that has a table and a code fence. The page shows part of the reply
-  while the session runs, never a raw `|---|` or `**`, follows it to the
-  end, and ends with the same text as the stored message. Interrupt mid-reply
-  keeps what was shown.
-- **iPhone UI test.** The same session, checked for a partial reply.
+- **Go, provider level** (`TestDraftsAddUpToMessage` in each adapter). The
+  drafts add up to the final message: ACP with the fake agent; Claude Code
+  and Codex with recorded lines (a subagent's deltas left out).
+- **Go, daemon** ([draft_test.go](../internal/machine/draft_test.go)). A
+  stream with `partial` gets paced drafts, whole first, then additions; one
+  without gets none; nothing is stored. One that joins mid-reply gets the
+  draft whole. An interrupted turn, and a reply cut off by a tool call,
+  store the draft as shown. After a stored event mid-reply the draft comes
+  whole again.
+- **Go e2e, remote** (`TestUserJourney`). The owner's app reads a session on
+  `vps-1` through the relay and sees the drafts add up to the message.
+- **Desktop e2e** (`session.spec.ts`). A session `stream`s a reply with a
+  heading, long bold text, a table and a code fence. While the session
+  runs, the reply shows part, then all of it; a MutationObserver checks that
+  the agent's words never contain `|`, `**` or a fence. The stored message
+  replaces it, once. Interrupted mid-reply, what was shown stays as a
+  stored message.
+- **iPhone UI test** (`streamedReply`). A session written slowly shows its
+  reply while running, then keeps it as the stored message.
+- The daemon's whole-again check, the desktop raw-Markdown check and the
+  relay check were each seen failing once with their fix taken out.
 
 ## 10. Options considered
 

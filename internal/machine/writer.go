@@ -21,6 +21,9 @@ type writeOp struct {
 	idem *idemKey
 	turn *turnRec
 	done chan error
+
+	// draft is delivered in order with the events around it, never stored.
+	draft *sessionv1.SessionEvent
 }
 
 type idemKey struct{ clientID, key, sessionID string }
@@ -122,17 +125,23 @@ func (w *writer) run() {
 				break drain
 			}
 		}
-		start := time.Now()
-		err := w.st.WriteBatch(batch)
-		if err != nil {
-			w.log.Error("persist batch", "ops", len(batch), "err", err)
+		var err error
+		if stores(batch) {
+			start := time.Now()
+			err = w.st.WriteBatch(batch)
+			if err != nil {
+				w.log.Error("persist batch", "ops", len(batch), "err", err)
+			}
+			mBatch.Since(start)
+			mBatches.Inc()
+			mBatchOps.Add(int64(len(batch)))
 		}
-		mBatch.Since(start)
-		mBatches.Inc()
-		mBatchOps.Add(int64(len(batch)))
 		for _, op := range batch {
 			if op.ev != nil {
 				w.deliver(op.l, op.ev)
+			}
+			if op.draft != nil {
+				w.deliver(op.l, op.draft)
 			}
 			if op.row != nil {
 				w.stored(op.row.ID)
@@ -142,6 +151,16 @@ func (w *writer) run() {
 			}
 		}
 	}
+}
+
+// stores tells whether a batch has anything to store (not only drafts).
+func stores(batch []writeOp) bool {
+	for _, op := range batch {
+		if op.draft == nil {
+			return true
+		}
+	}
+	return false
 }
 
 // snapshotRow copies a session row for persistence (caller holds l.mu).

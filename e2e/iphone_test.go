@@ -318,6 +318,21 @@ func newIPhoneControl(t *testing.T, w *ownerMac, sessions map[string]string) str
 		mu.Unlock()
 		reply(rw, map[string]string{"id": s.SessionID})
 	})
+	// A new session whose reply is written slowly, then waits: to watch the
+	// reply grow (docs/reply-streaming.md).
+	mux.HandleFunc("POST /stream", func(rw http.ResponseWriter, r *http.Request) {
+		title := r.URL.Query().Get("title")
+		s, res := w.startSession(2*time.Minute, "--agent", "gemini", "--title", title, "--prompt",
+			"sleep 3s\nstream 这是一段慢慢写出来的回复，写完以后还要等一会儿，这一轮才结束。\nsleep 8s")
+		if s.SessionID == "" {
+			http.Error(rw, "start: "+res.stdout+res.stderr, 500)
+			return
+		}
+		mu.Lock()
+		sessions[title] = s.SessionID
+		mu.Unlock()
+		reply(rw, map[string]string{"id": s.SessionID})
+	})
 	// An agent asks to connect (hermesh auth login), for the iPhone to approve.
 	mux.HandleFunc("POST /agent", func(rw http.ResponseWriter, r *http.Request) {
 		home := filepath.Join(t.TempDir(), "agent")

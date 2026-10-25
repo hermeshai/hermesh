@@ -1043,6 +1043,10 @@ public nonisolated struct Hermesh_Session_V1_StreamEventsRequest: Sendable {
   /// When false, the stream ends after replaying stored events.
   public var follow: Bool = false
 
+  /// (4 is left for an event view, docs/state-sync.md.)
+  /// Also send AgentDraft events while the agent writes (docs/reply-streaming.md).
+  public var partial: Bool = false
+
   public var unknownFields = SwiftProtobuf.UnknownStorage()
 
   public init() {}
@@ -1196,6 +1200,18 @@ public nonisolated struct Hermesh_Session_V1_SessionEvent: @unchecked Sendable {
     set {_uniqueStorage()._kind = .questionResolved(newValue)}
   }
 
+  /// Reply text the agent is still writing. Never stored, and seq is 0:
+  /// it is not a position to resume from. Sent only to streams that ask
+  /// (StreamEventsRequest.partial). Any stored event that follows ends the
+  /// draft; its text is then in that event, or the agent dropped it.
+  public var agentDraft: Hermesh_Session_V1_AgentDraft {
+    get {
+      if case .agentDraft(let v)? = _storage._kind {return v}
+      return Hermesh_Session_V1_AgentDraft()
+    }
+    set {_uniqueStorage()._kind = .agentDraft(newValue)}
+  }
+
   public var unknownFields = SwiftProtobuf.UnknownStorage()
 
   public nonisolated enum OneOf_Kind: Equatable, Sendable {
@@ -1209,6 +1225,11 @@ public nonisolated struct Hermesh_Session_V1_SessionEvent: @unchecked Sendable {
     case error(Hermesh_Session_V1_ErrorEvent)
     case questionAsked(Hermesh_Session_V1_QuestionAsked)
     case questionResolved(Hermesh_Session_V1_QuestionResolved)
+    /// Reply text the agent is still writing. Never stored, and seq is 0:
+    /// it is not a position to resume from. Sent only to streams that ask
+    /// (StreamEventsRequest.partial). Any stored event that follows ends the
+    /// draft; its text is then in that event, or the agent dropped it.
+    case agentDraft(Hermesh_Session_V1_AgentDraft)
 
   }
 
@@ -1264,6 +1285,23 @@ public nonisolated struct Hermesh_Session_V1_AgentMessage: Sendable {
   // methods supported on all messages.
 
   public var text: String = String()
+
+  public var unknownFields = SwiftProtobuf.UnknownStorage()
+
+  public init() {}
+}
+
+public nonisolated struct Hermesh_Session_V1_AgentDraft: Sendable {
+  // SwiftProtobuf.Message conformance is added in an extension below. See the
+  // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
+  // methods supported on all messages.
+
+  /// Text to append to the draft.
+  public var text: String = String()
+
+  /// Text is the whole draft so far, not an addition: the first draft a
+  /// stream sends, and the first after a stored event the reply went on past.
+  public var whole: Bool = false
 
   public var unknownFields = SwiftProtobuf.UnknownStorage()
 
@@ -2948,7 +2986,7 @@ nonisolated extension Hermesh_Session_V1_WatchSessionsResponse: SwiftProtobuf.Me
 
 nonisolated extension Hermesh_Session_V1_StreamEventsRequest: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
   public static let protoMessageName: String = _protobuf_package + ".StreamEventsRequest"
-  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{3}session_id\0\u{3}after_seq\0\u{1}follow\0")
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{3}session_id\0\u{3}after_seq\0\u{1}follow\0\u{2}\u{2}partial\0")
 
   public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
     while let fieldNumber = try decoder.nextFieldNumber() {
@@ -2959,6 +2997,7 @@ nonisolated extension Hermesh_Session_V1_StreamEventsRequest: SwiftProtobuf.Mess
       case 1: try { try decoder.decodeSingularStringField(value: &self.sessionID) }()
       case 2: try { try decoder.decodeSingularUInt64Field(value: &self.afterSeq) }()
       case 3: try { try decoder.decodeSingularBoolField(value: &self.follow) }()
+      case 5: try { try decoder.decodeSingularBoolField(value: &self.partial) }()
       default: break
       }
     }
@@ -2974,6 +3013,9 @@ nonisolated extension Hermesh_Session_V1_StreamEventsRequest: SwiftProtobuf.Mess
     if self.follow != false {
       try visitor.visitSingularBoolField(value: self.follow, fieldNumber: 3)
     }
+    if self.partial != false {
+      try visitor.visitSingularBoolField(value: self.partial, fieldNumber: 5)
+    }
     try unknownFields.traverse(visitor: &visitor)
   }
 
@@ -2981,6 +3023,7 @@ nonisolated extension Hermesh_Session_V1_StreamEventsRequest: SwiftProtobuf.Mess
     if lhs.sessionID != rhs.sessionID {return false}
     if lhs.afterSeq != rhs.afterSeq {return false}
     if lhs.follow != rhs.follow {return false}
+    if lhs.partial != rhs.partial {return false}
     if lhs.unknownFields != rhs.unknownFields {return false}
     return true
   }
@@ -3073,7 +3116,7 @@ nonisolated extension Hermesh_Session_V1_ListEventsResponse: SwiftProtobuf.Messa
 
 nonisolated extension Hermesh_Session_V1_SessionEvent: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
   public static let protoMessageName: String = _protobuf_package + ".SessionEvent"
-  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{1}seq\0\u{1}ts\0\u{3}turn_id\0\u{2}\u{7}status\0\u{3}turn_started\0\u{3}user_message\0\u{3}agent_message\0\u{3}tool_call\0\u{3}tool_result\0\u{3}turn_completed\0\u{1}error\0\u{3}question_asked\0\u{3}question_resolved\0")
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{1}seq\0\u{1}ts\0\u{3}turn_id\0\u{2}\u{7}status\0\u{3}turn_started\0\u{3}user_message\0\u{3}agent_message\0\u{3}tool_call\0\u{3}tool_result\0\u{3}turn_completed\0\u{1}error\0\u{3}question_asked\0\u{3}question_resolved\0\u{3}agent_draft\0")
 
   fileprivate class _StorageClass {
     var _seq: UInt64 = 0
@@ -3245,6 +3288,19 @@ nonisolated extension Hermesh_Session_V1_SessionEvent: SwiftProtobuf.Message, Sw
             _storage._kind = .questionResolved(v)
           }
         }()
+        case 20: try {
+          var v: Hermesh_Session_V1_AgentDraft?
+          var hadOneofValue = false
+          if let current = _storage._kind {
+            hadOneofValue = true
+            if case .agentDraft(let m) = current {v = m}
+          }
+          try decoder.decodeSingularMessageField(value: &v)
+          if let v = v {
+            if hadOneofValue {try decoder.handleConflictingOneOf()}
+            _storage._kind = .agentDraft(v)
+          }
+        }()
         default: break
         }
       }
@@ -3306,6 +3362,10 @@ nonisolated extension Hermesh_Session_V1_SessionEvent: SwiftProtobuf.Message, Sw
       case .questionResolved?: try {
         guard case .questionResolved(let v)? = _storage._kind else { preconditionFailure() }
         try visitor.visitSingularMessageField(value: v, fieldNumber: 19)
+      }()
+      case .agentDraft?: try {
+        guard case .agentDraft(let v)? = _storage._kind else { preconditionFailure() }
+        try visitor.visitSingularMessageField(value: v, fieldNumber: 20)
       }()
       case nil: break
       }
@@ -3456,6 +3516,41 @@ nonisolated extension Hermesh_Session_V1_AgentMessage: SwiftProtobuf.Message, Sw
 
   public static func ==(lhs: Hermesh_Session_V1_AgentMessage, rhs: Hermesh_Session_V1_AgentMessage) -> Bool {
     if lhs.text != rhs.text {return false}
+    if lhs.unknownFields != rhs.unknownFields {return false}
+    return true
+  }
+}
+
+nonisolated extension Hermesh_Session_V1_AgentDraft: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
+  public static let protoMessageName: String = _protobuf_package + ".AgentDraft"
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{1}text\0\u{1}whole\0")
+
+  public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
+    while let fieldNumber = try decoder.nextFieldNumber() {
+      // The use of inline closures is to circumvent an issue where the compiler
+      // allocates stack space for every case branch when no optimizations are
+      // enabled. https://github.com/apple/swift-protobuf/issues/1034
+      switch fieldNumber {
+      case 1: try { try decoder.decodeSingularStringField(value: &self.text) }()
+      case 2: try { try decoder.decodeSingularBoolField(value: &self.whole) }()
+      default: break
+      }
+    }
+  }
+
+  public func traverse<V: SwiftProtobuf.Visitor>(visitor: inout V) throws {
+    if !self.text.isEmpty {
+      try visitor.visitSingularStringField(value: self.text, fieldNumber: 1)
+    }
+    if self.whole != false {
+      try visitor.visitSingularBoolField(value: self.whole, fieldNumber: 2)
+    }
+    try unknownFields.traverse(visitor: &visitor)
+  }
+
+  public static func ==(lhs: Hermesh_Session_V1_AgentDraft, rhs: Hermesh_Session_V1_AgentDraft) -> Bool {
+    if lhs.text != rhs.text {return false}
+    if lhs.whole != rhs.whole {return false}
     if lhs.unknownFields != rhs.unknownFields {return false}
     return true
   }

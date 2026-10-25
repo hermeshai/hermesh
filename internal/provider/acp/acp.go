@@ -772,6 +772,7 @@ func (s *session) handleUpdate(params json.RawMessage) {
 			s.mu.Lock()
 			s.msg.WriteString(c.Text)
 			s.mu.Unlock()
+			s.emit(provider.Event{Kind: provider.EventAgentDraft, Text: c.Text})
 		}
 	case "tool_call", "tool_call_update":
 		// ToolCall.content is an array; agent_message_chunk's is a block.

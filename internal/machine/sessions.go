@@ -119,7 +119,7 @@ type live struct {
 	sess          provider.Session
 	seq           uint64
 	turn          uint32
-	subs          map[chan *sessionv1.SessionEvent]struct{}
+	subs          map[chan *sessionv1.SessionEvent]bool // true: it takes drafts
 	lastEvent     time.Time
 	lastProgress  time.Time // last event that was not an error
 	turnStarted   time.Time
@@ -154,6 +154,14 @@ type live struct {
 	// making), and when: a stall after it is reported as that failure.
 	lastErr   *provider.Failure
 	lastErrAt time.Time
+	// draft is the reply the agent is still writing (docs/reply-streaming.md):
+	// draftQueued bytes of it are queued for subscribers (0: the next send
+	// is the whole draft), draftTimer is the pending send, and
+	// draftShown what subscribers have been sent of it.
+	draft       strings.Builder
+	draftQueued int
+	draftTimer  *time.Timer
+	draftShown  string
 }
 
 // continuityNotice tells an agent starting a fresh provider session in an
@@ -204,7 +212,7 @@ func (s *Sessions) Recover() error {
 		}
 		seq, _ := s.st.MaxSeq(r.ID)
 		s.count(r.Status, 1)
-		l := &live{id: r.ID, row: r, seq: seq, persistedSeq: seq, turn: r.Progress.GetTurnCount(), subs: map[chan *sessionv1.SessionEvent]struct{}{}, tools: map[string]string{}, idleSince: time.Now()}
+		l := &live{id: r.ID, row: r, seq: seq, persistedSeq: seq, turn: r.Progress.GetTurnCount(), subs: map[chan *sessionv1.SessionEvent]bool{}, tools: map[string]string{}, idleSince: time.Now()}
 		s.mu.Lock()
 		s.live[r.ID] = l
 		s.mu.Unlock()
@@ -333,7 +341,7 @@ func (s *Sessions) Start(ctx context.Context, p *Principal, req *sessionv1.Start
 		r.QuestionTimeout = int(*req.QuestionTimeoutSeconds)
 	}
 	s.count(r.Status, 1)
-	l := &live{id: id, row: r, subs: map[chan *sessionv1.SessionEvent]struct{}{}, tools: map[string]string{}, pending: prompt, lastEvent: now, queuedAt: now}
+	l := &live{id: id, row: r, subs: map[chan *sessionv1.SessionEvent]bool{}, tools: map[string]string{}, pending: prompt, lastEvent: now, queuedAt: now}
 	s.mu.Lock()
 	s.live[id] = l
 	s.mu.Unlock()
@@ -721,7 +729,7 @@ func (s *Sessions) Unarchive(ctx context.Context, p *Principal, id string) (*ses
 	seq, _ := s.st.MaxSeq(id)
 	r.Status = sessionv1.SessionStatus_SESSION_STATUS_IDLE
 	r.Progress.Phase = phaseOf(r.Status)
-	l = &live{id: id, row: r, seq: seq, persistedSeq: seq, turn: r.Progress.GetTurnCount(), subs: map[chan *sessionv1.SessionEvent]struct{}{},
+	l = &live{id: id, row: r, seq: seq, persistedSeq: seq, turn: r.Progress.GetTurnCount(), subs: map[chan *sessionv1.SessionEvent]bool{},
 		tools: map[string]string{}, idleSince: time.Now()}
 	s.mu.Lock()
 	if s.live[id] != nil { // unarchived meanwhile
@@ -830,11 +838,15 @@ func (s *Sessions) Stream(ctx context.Context, p *Principal, req *sessionv1.Stre
 	}
 	var ch chan *sessionv1.SessionEvent
 	var upTo uint64
+	var draft string
 	if req.Follow && l != nil {
 		ch = make(chan *sessionv1.SessionEvent, 256)
 		l.mu.Lock()
-		l.subs[ch] = struct{}{}
+		l.subs[ch] = req.Partial
 		upTo = l.persistedSeq
+		if req.Partial {
+			draft = l.draftShown
+		}
 		l.mu.Unlock()
 		defer func() {
 			l.mu.Lock()
@@ -864,6 +876,12 @@ func (s *Sessions) Stream(ctx context.Context, p *Principal, req *sessionv1.Stre
 	if ch == nil {
 		return nil
 	}
+	// A stream that starts mid-reply gets the draft so far, then its pieces.
+	if draft != "" {
+		if err := send(&sessionv1.SessionEvent{Kind: &sessionv1.SessionEvent_AgentDraft{AgentDraft: &sessionv1.AgentDraft{Text: draft, Whole: true}}}); err != nil {
+			return err
+		}
+	}
 	for {
 		select {
 		case <-ctx.Done():
@@ -871,6 +889,12 @@ func (s *Sessions) Stream(ctx context.Context, p *Principal, req *sessionv1.Stre
 		case e, ok := <-ch:
 			if !ok {
 				return cerr(connect.CodeResourceExhausted, "event stream fell behind; resume with after_seq=%d", last)
+			}
+			if e.GetAgentDraft() != nil {
+				if err := send(e); err != nil {
+					return err
+				}
+				continue
 			}
 			if e.Seq <= last {
 				continue
@@ -1210,13 +1234,20 @@ func (s *Sessions) onEvent(l *live, ps provider.Session, e provider.Event) {
 		row := snapshotRow(l.row)
 		l.mu.Unlock()
 		s.w.put(writeOp{row: row})
+	case provider.EventAgentDraft:
+		s.addDraft(l, e.Text)
 	case provider.EventAgentMessage:
+		l.mu.Lock()
+		l.clearDraft()
+		l.mu.Unlock()
 		s.emit(l, &sessionv1.SessionEvent{Kind: &sessionv1.SessionEvent_AgentMessage{AgentMessage: &sessionv1.AgentMessage{Text: e.Text}}})
 	case provider.EventQuestion:
 		if e.Question != nil {
+			s.storeDraft(l)
 			s.ask(l, ps, e.Question)
 		}
 	case provider.EventToolCall:
+		s.storeDraft(l)
 		tc := &sessionv1.ToolCall{CallId: e.CallID, Kind: string(e.ToolKind), Name: e.ToolName, Summary: e.Summary, Decision: "allow"}
 		if e.Decision != nil && !e.Decision.Allow {
 			tc.Decision, tc.Reason = "deny", e.Decision.Reason
@@ -1340,6 +1371,7 @@ func (s *Sessions) dropContext(l *live, ps provider.Session, f *provider.Failure
 func (s *Sessions) restartFresh(l *live, ps provider.Session, f *provider.Failure) {
 	s.dropContext(l, ps, f, "the agent's session could not be resumed; retrying this turn in a fresh one (the agent is told the earlier conversation is lost)")
 	l.mu.Lock()
+	l.clearDraft()
 	l.pending, l.resume, l.restarting, l.queuedAt = l.turnMsg, false, true, time.Now()
 	l.mu.Unlock()
 	s.setStatus(l, sessionv1.SessionStatus_SESSION_STATUS_QUEUED, "restarting in a fresh agent session")
@@ -1362,6 +1394,7 @@ func (s *Sessions) completeTurn(l *live, e provider.Event, status sessionv1.Sess
 // session to status (IDLE, or INTERRUPTED when the turn was cut short).
 func (s *Sessions) finishTurn(l *live, e provider.Event, status sessionv1.SessionStatus) {
 	ctx := context.Background()
+	s.storeDraft(l) // a reply cut short stays as far as it got
 	s.dropQuestions(l)
 	l.mu.Lock()
 	l.resumedStart = false
@@ -1564,12 +1597,34 @@ func (s *Sessions) statusChanged(l *live, st sessionv1.SessionStatus, reason str
 // deliver runs after an event is committed: fan out to subscribers and,
 // for a terminal status, retire the session.
 func (s *Sessions) deliver(l *live, e *sessionv1.SessionEvent) {
+	if d := e.GetAgentDraft(); d != nil {
+		l.mu.Lock()
+		if d.Whole {
+			l.draftShown = d.Text
+		} else {
+			l.draftShown += d.Text
+		}
+		for ch, partial := range l.subs {
+			if !partial {
+				continue
+			}
+			select {
+			case ch <- e:
+			default:
+				close(ch) // too slow: the client resumes by seq
+				delete(l.subs, ch)
+			}
+		}
+		l.mu.Unlock()
+		return
+	}
 	terminal := false
 	if st := e.GetStatus(); st != nil && isTerminal(st.Status) {
 		terminal = true
 	}
 	l.mu.Lock()
 	l.persistedSeq = e.Seq
+	l.draftShown = "" // a stored event ends the draft on every screen
 	for ch := range l.subs {
 		select {
 		case ch <- e:
@@ -1607,6 +1662,10 @@ func (s *Sessions) emit(l *live, e *sessionv1.SessionEvent) {
 	l.mu.Lock()
 	l.seq++
 	e.Seq, e.Ts = l.seq, timestamppb.Now()
+	if l.draft.Len() > 0 { // the reply goes on after this event: send it whole again
+		l.draftQueued = 0
+		s.scheduleDraft(l)
+	}
 	e.TurnId = strconv.FormatUint(uint64(l.turn), 10)
 	p := l.row.Progress
 	p.LastEventSeq = l.seq
@@ -1648,6 +1707,58 @@ func (s *Sessions) emit(l *live, e *sessionv1.SessionEvent) {
 	s.w.put(writeOp{l: l, ev: e, row: row})
 	if ns != nil && s.notice != nil {
 		go s.notice(*ns, e)
+	}
+}
+
+// draftEvery paces drafts: subscribers get new reply text at most this often.
+const draftEvery = 100 * time.Millisecond
+
+// addDraft adds reply text the agent is still writing.
+func (s *Sessions) addDraft(l *live, text string) {
+	l.mu.Lock()
+	l.draft.WriteString(text)
+	s.scheduleDraft(l)
+	l.mu.Unlock()
+}
+
+// scheduleDraft sends the draft's new text soon (caller holds l.mu).
+func (s *Sessions) scheduleDraft(l *live) {
+	if l.draftTimer == nil {
+		l.draftTimer = time.AfterFunc(draftEvery, func() { s.sendDraft(l) })
+	}
+}
+
+// sendDraft queues the draft's text not yet queued, behind the events
+// before it, for the subscribers that take drafts. It is never stored.
+func (s *Sessions) sendDraft(l *live) {
+	l.emitMu.Lock()
+	defer l.emitMu.Unlock()
+	l.mu.Lock()
+	l.draftTimer = nil
+	d := &sessionv1.AgentDraft{Text: l.draft.String()[l.draftQueued:], Whole: l.draftQueued == 0}
+	l.draftQueued = l.draft.Len()
+	l.mu.Unlock()
+	if d.Text != "" {
+		s.w.put(writeOp{l: l, draft: &sessionv1.SessionEvent{Kind: &sessionv1.SessionEvent_AgentDraft{AgentDraft: d}}})
+	}
+}
+
+// clearDraft forgets the draft: its final message is stored, or the turn
+// is retried (caller holds l.mu).
+func (l *live) clearDraft() {
+	l.draft.Reset()
+	l.draftQueued = 0
+}
+
+// storeDraft stores a draft the agent never finished as its message, so
+// what the owner saw stays (the turn ends, or the agent moved on).
+func (s *Sessions) storeDraft(l *live) {
+	l.mu.Lock()
+	text := l.draft.String()
+	l.clearDraft()
+	l.mu.Unlock()
+	if strings.TrimSpace(text) != "" {
+		s.emit(l, &sessionv1.SessionEvent{Kind: &sessionv1.SessionEvent_AgentMessage{AgentMessage: &sessionv1.AgentMessage{Text: text}}})
 	}
 }
 

@@ -106,8 +106,10 @@ func Args(spec provider.StartSpec) []string {
 	// --permission-prompt-tool stdio makes Hermesh the permission host:
 	// without one Claude offers no AskUserQuestion in -p mode. Anything
 	// else that would prompt is denied, as with --permission-prompts none.
+	// --include-partial-messages streams the reply as it is written
+	// (stream_event lines), for drafts.
 	args := []string{"-p", "--input-format", "stream-json", "--output-format", "stream-json", "--verbose", "--replay-user-messages",
-		"--permission-prompt-tool", "stdio", "--dangerously-skip-permissions"}
+		"--include-partial-messages", "--permission-prompt-tool", "stdio", "--dangerously-skip-permissions"}
 	for _, d := range spec.ReadDirs {
 		args = append(args, "--add-dir", d)
 	}
@@ -295,6 +297,10 @@ type line struct {
 	Result    string          `json:"result"`
 	IsError   bool            `json:"is_error"`
 	IsReplay  bool            `json:"isReplay"`
+	// stream_event lines: an API streaming event, and the Task call it is
+	// part of (subagents; empty for the main conversation).
+	Event        json.RawMessage `json:"event"`
+	ParentToolID string          `json:"parent_tool_use_id"`
 	// Structured failure details on result lines (Claude Code 2.1.292:
 	// errors[] for a refused --resume, api_error_status for API errors,
 	// terminal_reason=prompt_too_long even when is_error is false).
@@ -353,6 +359,17 @@ func (s *session) read() {
 		case "system":
 			if l.Subtype == "init" && l.SessionID != "" {
 				s.emit(provider.Event{Kind: provider.EventRef, Ref: l.SessionID})
+			}
+		case "stream_event":
+			var ev struct {
+				Type  string `json:"type"`
+				Delta struct {
+					Type string `json:"type"`
+					Text string `json:"text"`
+				} `json:"delta"`
+			}
+			if l.ParentToolID == "" && json.Unmarshal(l.Event, &ev) == nil && ev.Type == "content_block_delta" && ev.Delta.Type == "text_delta" && ev.Delta.Text != "" {
+				s.emit(provider.Event{Kind: provider.EventAgentDraft, Text: ev.Delta.Text})
 			}
 		case "assistant":
 			var m struct {
