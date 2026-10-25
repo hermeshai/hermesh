@@ -1,6 +1,6 @@
-import { createClient, type Client as RpcClient } from "@connectrpc/connect";
+import { createClient } from "@connectrpc/connect";
 import { createConnectTransport } from "@connectrpc/connect-node";
-import { filterNotices, mergeSessions, noticeDiff, noticeSnapshots, pairingNotice, type NoticeSnapshot } from "@hermesh/core";
+import { applyWatch, emptyWorld, filterNotices, noticeDiff, noticeSnapshots, pairingNotice, withKnownState, type NoticeSnapshot } from "@hermesh/core";
 import { LocalService, type Client, type GetStatusResponse, type Machine, type PairingDetails } from "@hermesh/proto/local";
 import type { Session } from "@hermesh/proto/session";
 import { app, nativeTheme, Notification } from "electron";
@@ -12,9 +12,9 @@ import { command } from "./ipc";
 import { socketPath } from "./paths";
 
 // What reaches the owner while no window may be open: the main process
-// follows hermeshd itself (sessions as hermeshd pushes them; status and
-// lists every 3 s, pairing requests every 2 s), posts notifications for
-// what changed, and keeps what it saw for the menu bar.
+// follows hermeshd itself (LocalService.Watch: everything once, then each
+// change, no polling), posts notifications for what changed, and keeps what
+// it saw for the menu bar.
 
 export type World = {
   /** null: hermeshd cannot be reached. */
@@ -129,58 +129,31 @@ export function watch() {
     LocalService,
     createConnectTransport({ baseUrl: "http://hermeshd", httpVersion: "1.1", useBinaryFormat: true, nodeOptions: { socketPath: socketPath() } }),
   );
-  every(3000, async () => {
-    try {
-      world.status = await local.getStatus({});
-    } catch {
-      world.status = null;
-    }
-    if (world.status?.initialized || world.status?.machineOnly) {
-      const [c, m] = await Promise.allSettled([local.listClients({}), local.listMachines({})]);
-      if (c.status === "fulfilled") world.clients = c.value.clients;
-      if (m.status === "fulfilled") world.machines = m.value.machines;
-    }
-    changed();
-  });
-  followSessions(local);
-  every(2000, async () => {
-    if (!world.status?.initialized) return;
-    try {
-      world.pairings = (await local.listPairingRequests({})).pairings;
-    } catch {
-      return; // kept as they were; the status poll tells when hermeshd is gone
-    }
-    noticePairings();
-    changed();
-  });
-}
-
-// Sessions as hermeshd pushes them (WatchSessions): when the watch starts
-// and whenever machines come or go, the first page again, which carries
-// every session that needs the owner or runs (all the menu bar shows and
-// notices start from); then each change as it happens.
-async function followSessions(local: RpcClient<typeof LocalService>) {
-  for (;;) {
-    if (world.status?.initialized || world.status?.machineOnly) {
+  (async () => {
+    for (;;) {
+      let w = emptyWorld;
       try {
-        for await (const m of local.watchSessions({})) {
-          if (m.machinesChanged) world.sessions = (await local.listSessions({ limit: 1 })).sessions;
-          world.sessions = mergeSessions(world.sessions, m.sessions, m.deletedSessionIds);
-          noticeSessions();
-          changed();
+        for await (const m of local.watch({})) {
+          const before = w;
+          w = applyWatch(w, m);
+          world.status = w.status ?? null;
+          world.clients = w.clients;
+          world.machines = w.machines;
+          world.sessions = withKnownState(w.sessions, w.machines);
+          world.pairings = world.status?.initialized ? w.pairings : [];
+          if (w.sessions !== before.sessions || w.machines !== before.machines) noticeSessions();
+          if (w.pairings !== before.pairings) noticePairings();
+          if (w !== before) changed();
         }
       } catch (e) {
         console.warn("hermeshd watch:", e);
       }
+      // hermeshd restarted, or this watch fell behind: watched again.
+      if (world.status !== null) {
+        world.status = null;
+        changed();
+      }
+      await new Promise((r) => setTimeout(r, 1000));
     }
-    await new Promise((r) => setTimeout(r, 1000));
-  }
-}
-
-function every(ms: number, f: () => Promise<void>) {
-  const loop = () =>
-    f()
-      .catch((e) => console.warn("hermeshd poll:", e))
-      .finally(() => setTimeout(loop, ms));
-  loop();
+  })();
 }

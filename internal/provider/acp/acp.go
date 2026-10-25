@@ -873,7 +873,7 @@ func (s *session) result(tc toolCall) {
 	if out == "" {
 		out = tc.Status
 	}
-	sum, trunc := provider.Truncate(out, 16<<10)
+	sum, trunc := provider.KeepOutput(out)
 	s.emit(provider.Event{Kind: provider.EventToolResult, CallID: tc.ToolCallID, Summary: sum, IsError: tc.Status == "failed", Truncated: trunc})
 }
 

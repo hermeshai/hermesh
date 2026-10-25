@@ -13,6 +13,12 @@ import "hermesh/session/v1/session.proto";
 // app holds: hermeshd asks for those signatures via WatchSigningRequests.
 service LocalService {
   rpc GetStatus(GetStatusRequest) returns (GetStatusResponse);
+  // Watch sends what this device knows of the owner's world (hermeshd's
+  // replica, docs/state-sync.md), then each change, until the caller
+  // leaves: the screens follow it instead of polling the List calls, which
+  // answer from the same replica. A watcher that falls behind is ended
+  // (RESOURCE_EXHAUSTED) and should watch again.
+  rpc Watch(WatchRequest) returns (stream WatchResponse);
 
   // Accounts (docs/trusted-devices.md 4.8): a device keeps a profile for
   // each owner it set up or joined, each with its own root key, and uses one
@@ -95,6 +101,10 @@ service LocalService {
   // ended (RESOURCE_EXHAUSTED) and should watch again.
   rpc WatchSessions(WatchSessionsRequest) returns (stream WatchSessionsResponse);
   rpc StreamSessionEvents(StreamSessionEventsRequest) returns (stream hermesh.session.v1.SessionEvent);
+  // A session's events by seq, as hermesh.session.v1.SessionService.ListEvents.
+  rpc ListSessionEvents(ListSessionEventsRequest) returns (ListSessionEventsResponse);
+  // A tool's whole output (hermesh.session.v1.SessionService.ReadToolOutput).
+  rpc ReadToolOutput(ReadToolOutputRequest) returns (stream hermesh.session.v1.ToolOutputChunk);
   rpc InterruptSession(InterruptSessionRequest) returns (SessionResponse);
   rpc ArchiveSession(ArchiveSessionRequest) returns (SessionResponse);
   rpc UnarchiveSession(UnarchiveSessionRequest) returns (SessionResponse);
@@ -110,6 +120,63 @@ service LocalService {
   // push token and notice key, signed with its device key and sent to the
   // relay, which hands them to the owner's machines.
   rpc RegisterPush(RegisterPushRequest) returns (RegisterPushResponse);
+}
+
+message WatchRequest {}
+
+message WatchResponse {
+  // Set on the first message, which carries everything (and again when
+  // the profile changed). Replace what you hold, except sessions: merge
+  // those (a later state wins), so older pages already loaded stay.
+  bool reset = 1;
+  // With reset, and when it changed.
+  GetStatusResponse status = 2;
+  // Added or changed, and removed, of each kind.
+  repeated Machine machines = 3;
+  repeated string removed_machine_ids = 4;
+  repeated Client clients = 5;
+  repeated string removed_grant_ids = 6;
+  repeated Device devices = 7;
+  repeated string removed_device_key_ids = 8;
+  repeated Project projects = 9;
+  repeated ProjectRef removed_projects = 10;
+  repeated PairingDetails pairings = 11;
+  repeated string removed_pairing_codes = 12;
+  // Sessions started or changed, each as it is now; with reset, the first
+  // page of every machine's (each one's newest and every unsettled one),
+  // also of the machines that cannot be reached now, as last known.
+  repeated hermesh.session.v1.Session sessions = 13;
+  repeated string deleted_session_ids = 14;
+  // With reset: where older sessions start (ListSessions before).
+  hermesh.session.v1.SessionCursor next = 15;
+}
+
+message ListSessionEventsRequest {
+  string session_id = 1;
+  uint64 after_seq = 2;
+  uint64 before_seq = 3;
+  uint32 limit = 4;
+  hermesh.session.v1.EventView view = 5;
+}
+
+message ListSessionEventsResponse {
+  // Oldest first.
+  repeated hermesh.session.v1.SessionEvent events = 1;
+  bool has_more_before = 2;
+  bool has_more_after = 3;
+}
+
+message ReadToolOutputRequest {
+  string session_id = 1;
+  string call_id = 2;
+  // The seq of its ToolResult event: a machine too old for ReadToolOutput
+  // gives the output as that event recorded it.
+  uint64 seq = 3;
+}
+
+message ProjectRef {
+  string machine_id = 1;
+  string project_id = 2;
 }
 
 message RegisterPushRequest {
@@ -480,6 +547,9 @@ message Machine {
   string device_key_id = 7;
   // hermeshd's version, as the machine last reported it to the relay.
   string version = 8;
+  // Why its sessions and projects cannot be read now ("offline", or the
+  // error); empty while they can. Set in Watch only.
+  string unreachable = 9;
 }
 
 message ListMachinesRequest {}
@@ -615,6 +685,9 @@ message ListSessionsRequest {
   // every session that needs the owner or has a turn in progress). 0: all.
   uint32 limit = 2;
   hermesh.session.v1.SessionCursor before = 3;
+  // BASIC: what lists show; the first page then comes from hermeshd's
+  // replica. Unspecified (FULL) asks the machines.
+  hermesh.session.v1.SessionView view = 4;
 }
 
 message ListSessionsResponse {
@@ -644,7 +717,7 @@ message StreamSessionEventsRequest {
   string session_id = 1;
   uint64 after_seq = 2;
   bool follow = 3;
-  // (4 is left for an event view, docs/state-sync.md.)
+  hermesh.session.v1.EventView view = 4;
   // Also send AgentDraft events while the agent writes.
   bool partial = 5;
 }

@@ -403,7 +403,7 @@ func (s *session) read() {
 						if ask {
 							continue
 						}
-						sum, trunc := provider.Truncate(toolResultText(c.Content), 16<<10)
+						sum, trunc := provider.KeepOutput(toolResultText(c.Content))
 						s.emit(provider.Event{Kind: provider.EventToolResult, CallID: c.ToolUseID, Summary: sum, IsError: c.IsError, Truncated: trunc})
 					}
 				}

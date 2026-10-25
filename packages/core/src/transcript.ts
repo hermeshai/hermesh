@@ -22,7 +22,8 @@ export type TranscriptItem =
   | { kind: "user"; seq: bigint; text: string }
   | { kind: "agent"; seq: bigint; text: string }
   /** A tool call with its result, once there is one; running: the agent is still in it. */
-  | { kind: "tool"; seq: bigint; call: ToolCall; result: ToolResult | undefined; running: boolean }
+  /** resultSeq: its result's event, when it has one. */
+  | { kind: "tool"; seq: bigint; call: ToolCall; result: ToolResult | undefined; resultSeq?: bigint; running: boolean }
   | { kind: "question"; seq: bigint; question: Question; resolution: QuestionResolved | undefined }
   /** took: seconds since the turn started, when known. */
   | { kind: "turnEnd"; seq: bigint; end: TurnCompleted; took: number | undefined }
@@ -35,10 +36,14 @@ export type TranscriptItem =
  */
 export function transcript(events: SessionEvent[], running: boolean): TranscriptItem[] {
   const results = new Map<string, ToolResult>();
+  const resultSeqs = new Map<string, bigint>();
   const resolutions = new Map<string, QuestionResolved>();
   let lastCall: bigint | undefined;
   for (const e of events) {
-    if (e.kind.case === "toolResult") results.set(e.kind.value.callId, e.kind.value);
+    if (e.kind.case === "toolResult") {
+      results.set(e.kind.value.callId, e.kind.value);
+      resultSeqs.set(e.kind.value.callId, e.seq);
+    }
     if (e.kind.case === "questionResolved") resolutions.set(e.kind.value.questionId, e.kind.value);
     if (e.kind.case === "toolCall") lastCall = e.seq;
   }
@@ -61,7 +66,7 @@ export function transcript(events: SessionEvent[], running: boolean): Transcript
       case "toolCall": {
         const c = e.kind.value;
         const result = results.get(c.callId);
-        items.push({ kind: "tool", seq, call: c, result, running: !result && running && seq === lastCall && c.decision !== "deny" });
+        items.push({ kind: "tool", seq, call: c, result, resultSeq: resultSeqs.get(c.callId), running: !result && running && seq === lastCall && c.decision !== "deny" });
         break;
       }
       case "questionAsked": {

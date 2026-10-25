@@ -419,6 +419,27 @@ func Truncate(s string, n int) (string, bool) {
 	return s[:n], true
 }
 
+// KeptOutput bytes of a tool's output are kept at most.
+const KeptOutput = 1 << 20
+
+// KeepOutput is a tool's output as it is recorded: whole up to KeptOutput
+// bytes; past that its first and last half, with a line between saying how
+// much was left out (cut: true).
+func KeepOutput(s string) (kept string, cut bool) {
+	s = strings.ReplaceAll(s, "\x00", "")
+	if len(s) <= KeptOutput {
+		return s, false
+	}
+	head, tail := KeptOutput/2, len(s)-KeptOutput/2
+	for head > 0 && !utf8.RuneStart(s[head]) {
+		head--
+	}
+	for tail < len(s) && !utf8.RuneStart(s[tail]) {
+		tail++
+	}
+	return s[:head] + fmt.Sprintf("\n… %d bytes left out …\n", tail-head) + s[tail:], true
+}
+
 // LookPath finds bin on PATH, then in extra locations.
 func LookPath(bin string, path string, extra ...string) string {
 	for _, dir := range filepath.SplitList(path) {

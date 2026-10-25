@@ -40,8 +40,18 @@ func (s *sessionService) ListSessions(ctx context.Context, req *sessionv1.ListSe
 	return &sessionv1.ListSessionsResponse{Sessions: list, Next: next}, nil
 }
 
-func (s *sessionService) WatchSessions(ctx context.Context, _ *sessionv1.WatchSessionsRequest, stream *connect.ServerStream[sessionv1.WatchSessionsResponse]) error {
-	return s.n.sessions.Watch(ctx, principalFrom(ctx), stream.Send)
+func (s *sessionService) WatchSessions(ctx context.Context, req *sessionv1.WatchSessionsRequest, stream *connect.ServerStream[sessionv1.WatchSessionsResponse]) error {
+	send := stream.Send
+	if req.View == sessionv1.SessionView_SESSION_VIEW_BASIC {
+		send = func(m *sessionv1.WatchSessionsResponse) error {
+			return stream.Send(&sessionv1.WatchSessionsResponse{Sessions: BasicSessions(m.Sessions), DeletedSessionIds: m.DeletedSessionIds})
+		}
+	}
+	return s.n.sessions.Watch(ctx, principalFrom(ctx), send)
+}
+
+func (s *sessionService) ReadToolOutput(ctx context.Context, req *sessionv1.ReadToolOutputRequest, stream *connect.ServerStream[sessionv1.ToolOutputChunk]) error {
+	return s.n.sessions.ReadToolOutput(principalFrom(ctx), req, stream.Send)
 }
 
 func (s *sessionService) StreamEvents(ctx context.Context, req *sessionv1.StreamEventsRequest, stream *connect.ServerStream[sessionv1.SessionEvent]) error {
@@ -106,6 +116,10 @@ func (s *machineService) GetInfo(ctx context.Context, _ *machinev1.GetInfoReques
 		s.n.CheckAgents(false, AgentsOnce)
 	}
 	return &machinev1.GetInfoResponse{MachineId: s.n.machineID, MachineName: s.n.Name(), Status: s.n.Status()}, nil
+}
+
+func (s *machineService) Watch(ctx context.Context, req *machinev1.WatchRequest, stream *connect.ServerStream[machinev1.WatchResponse]) error {
+	return s.n.Watch(ctx, principalFrom(ctx), req, stream.Send)
 }
 
 func (s *machineService) ListProjects(ctx context.Context, _ *machinev1.ListProjectsRequest) (*machinev1.ListProjectsResponse, error) {
@@ -285,6 +299,7 @@ func (n *Machine) execAdmin(ctx context.Context, cmd *identityv1.AdminCommand) (
 		} else if base == "" {
 			base = "HEAD"
 		}
+		defer n.sessions.changes().project(p.ProjectId)
 		if err := n.st.PutProject(Project{ID: p.ProjectId, Path: path, DefaultBaseRef: base, Workspace: mode, Description: strings.TrimSpace(p.Description), Agents: agents}); err != nil {
 			return "", err
 		}
@@ -293,6 +308,7 @@ func (n *Machine) execAdmin(ctx context.Context, cmd *identityv1.AdminCommand) (
 		}
 		return "project " + p.ProjectId + " added (a worktree per session)", nil
 	case *identityv1.AdminCommand_RemoveProject:
+		defer n.sessions.changes().project(c.RemoveProject.ProjectId)
 		return "project removed", n.st.DeleteProject(c.RemoveProject.ProjectId)
 	case *identityv1.AdminCommand_SetName:
 		if err := n.SetName(c.SetName.Name); err != nil {

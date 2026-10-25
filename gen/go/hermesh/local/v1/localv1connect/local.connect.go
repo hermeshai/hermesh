@@ -36,6 +36,8 @@ const (
 const (
 	// LocalServiceGetStatusProcedure is the fully-qualified name of the LocalService's GetStatus RPC.
 	LocalServiceGetStatusProcedure = "/hermesh.local.v1.LocalService/GetStatus"
+	// LocalServiceWatchProcedure is the fully-qualified name of the LocalService's Watch RPC.
+	LocalServiceWatchProcedure = "/hermesh.local.v1.LocalService/Watch"
 	// LocalServiceListProfilesProcedure is the fully-qualified name of the LocalService's ListProfiles
 	// RPC.
 	LocalServiceListProfilesProcedure = "/hermesh.local.v1.LocalService/ListProfiles"
@@ -131,6 +133,12 @@ const (
 	// LocalServiceStreamSessionEventsProcedure is the fully-qualified name of the LocalService's
 	// StreamSessionEvents RPC.
 	LocalServiceStreamSessionEventsProcedure = "/hermesh.local.v1.LocalService/StreamSessionEvents"
+	// LocalServiceListSessionEventsProcedure is the fully-qualified name of the LocalService's
+	// ListSessionEvents RPC.
+	LocalServiceListSessionEventsProcedure = "/hermesh.local.v1.LocalService/ListSessionEvents"
+	// LocalServiceReadToolOutputProcedure is the fully-qualified name of the LocalService's
+	// ReadToolOutput RPC.
+	LocalServiceReadToolOutputProcedure = "/hermesh.local.v1.LocalService/ReadToolOutput"
 	// LocalServiceInterruptSessionProcedure is the fully-qualified name of the LocalService's
 	// InterruptSession RPC.
 	LocalServiceInterruptSessionProcedure = "/hermesh.local.v1.LocalService/InterruptSession"
@@ -161,6 +169,12 @@ const (
 // LocalServiceClient is a client for the hermesh.local.v1.LocalService service.
 type LocalServiceClient interface {
 	GetStatus(context.Context, *v1.GetStatusRequest) (*v1.GetStatusResponse, error)
+	// Watch sends what this device knows of the owner's world (hermeshd's
+	// replica, docs/state-sync.md), then each change, until the caller
+	// leaves: the screens follow it instead of polling the List calls, which
+	// answer from the same replica. A watcher that falls behind is ended
+	// (RESOURCE_EXHAUSTED) and should watch again.
+	Watch(context.Context, *v1.WatchRequest) (*connect.ServerStreamForClient[v1.WatchResponse], error)
 	// Accounts (docs/trusted-devices.md 4.8): a device keeps a profile for
 	// each owner it set up or joined, each with its own root key, and uses one
 	// at a time, the current one, which every other call acts on.
@@ -232,6 +246,10 @@ type LocalServiceClient interface {
 	// ended (RESOURCE_EXHAUSTED) and should watch again.
 	WatchSessions(context.Context, *v1.WatchSessionsRequest) (*connect.ServerStreamForClient[v1.WatchSessionsResponse], error)
 	StreamSessionEvents(context.Context, *v1.StreamSessionEventsRequest) (*connect.ServerStreamForClient[v11.SessionEvent], error)
+	// A session's events by seq, as hermesh.session.v1.SessionService.ListEvents.
+	ListSessionEvents(context.Context, *v1.ListSessionEventsRequest) (*v1.ListSessionEventsResponse, error)
+	// A tool's whole output (hermesh.session.v1.SessionService.ReadToolOutput).
+	ReadToolOutput(context.Context, *v1.ReadToolOutputRequest) (*connect.ServerStreamForClient[v11.ToolOutputChunk], error)
 	InterruptSession(context.Context, *v1.InterruptSessionRequest) (*v1.SessionResponse, error)
 	ArchiveSession(context.Context, *v1.ArchiveSessionRequest) (*v1.SessionResponse, error)
 	UnarchiveSession(context.Context, *v1.UnarchiveSessionRequest) (*v1.SessionResponse, error)
@@ -264,6 +282,12 @@ func NewLocalServiceClient(httpClient connect.HTTPClient, baseURL string, opts .
 			httpClient,
 			baseURL+LocalServiceGetStatusProcedure,
 			connect.WithSchema(localServiceMethods.ByName("GetStatus")),
+			connect.WithClientOptions(opts...),
+		),
+		watch: connect.NewClient[v1.WatchRequest, v1.WatchResponse](
+			httpClient,
+			baseURL+LocalServiceWatchProcedure,
+			connect.WithSchema(localServiceMethods.ByName("Watch")),
 			connect.WithClientOptions(opts...),
 		),
 		listProfiles: connect.NewClient[v1.ListProfilesRequest, v1.ListProfilesResponse](
@@ -470,6 +494,18 @@ func NewLocalServiceClient(httpClient connect.HTTPClient, baseURL string, opts .
 			connect.WithSchema(localServiceMethods.ByName("StreamSessionEvents")),
 			connect.WithClientOptions(opts...),
 		),
+		listSessionEvents: connect.NewClient[v1.ListSessionEventsRequest, v1.ListSessionEventsResponse](
+			httpClient,
+			baseURL+LocalServiceListSessionEventsProcedure,
+			connect.WithSchema(localServiceMethods.ByName("ListSessionEvents")),
+			connect.WithClientOptions(opts...),
+		),
+		readToolOutput: connect.NewClient[v1.ReadToolOutputRequest, v11.ToolOutputChunk](
+			httpClient,
+			baseURL+LocalServiceReadToolOutputProcedure,
+			connect.WithSchema(localServiceMethods.ByName("ReadToolOutput")),
+			connect.WithClientOptions(opts...),
+		),
 		interruptSession: connect.NewClient[v1.InterruptSessionRequest, v1.SessionResponse](
 			httpClient,
 			baseURL+LocalServiceInterruptSessionProcedure,
@@ -530,6 +566,7 @@ func NewLocalServiceClient(httpClient connect.HTTPClient, baseURL string, opts .
 // localServiceClient implements LocalServiceClient.
 type localServiceClient struct {
 	getStatus              *connect.Client[v1.GetStatusRequest, v1.GetStatusResponse]
+	watch                  *connect.Client[v1.WatchRequest, v1.WatchResponse]
 	listProfiles           *connect.Client[v1.ListProfilesRequest, v1.ListProfilesResponse]
 	switchProfile          *connect.Client[v1.SwitchProfileRequest, v1.SwitchProfileResponse]
 	addProfile             *connect.Client[v1.AddProfileRequest, v1.AddProfileResponse]
@@ -564,6 +601,8 @@ type localServiceClient struct {
 	listSessions           *connect.Client[v1.ListSessionsRequest, v1.ListSessionsResponse]
 	watchSessions          *connect.Client[v1.WatchSessionsRequest, v1.WatchSessionsResponse]
 	streamSessionEvents    *connect.Client[v1.StreamSessionEventsRequest, v11.SessionEvent]
+	listSessionEvents      *connect.Client[v1.ListSessionEventsRequest, v1.ListSessionEventsResponse]
+	readToolOutput         *connect.Client[v1.ReadToolOutputRequest, v11.ToolOutputChunk]
 	interruptSession       *connect.Client[v1.InterruptSessionRequest, v1.SessionResponse]
 	archiveSession         *connect.Client[v1.ArchiveSessionRequest, v1.SessionResponse]
 	unarchiveSession       *connect.Client[v1.UnarchiveSessionRequest, v1.SessionResponse]
@@ -582,6 +621,11 @@ func (c *localServiceClient) GetStatus(ctx context.Context, req *v1.GetStatusReq
 		return response.Msg, err
 	}
 	return nil, err
+}
+
+// Watch calls hermesh.local.v1.LocalService.Watch.
+func (c *localServiceClient) Watch(ctx context.Context, req *v1.WatchRequest) (*connect.ServerStreamForClient[v1.WatchResponse], error) {
+	return c.watch.CallServerStream(ctx, connect.NewRequest(req))
 }
 
 // ListProfiles calls hermesh.local.v1.LocalService.ListProfiles.
@@ -878,6 +922,20 @@ func (c *localServiceClient) StreamSessionEvents(ctx context.Context, req *v1.St
 	return c.streamSessionEvents.CallServerStream(ctx, connect.NewRequest(req))
 }
 
+// ListSessionEvents calls hermesh.local.v1.LocalService.ListSessionEvents.
+func (c *localServiceClient) ListSessionEvents(ctx context.Context, req *v1.ListSessionEventsRequest) (*v1.ListSessionEventsResponse, error) {
+	response, err := c.listSessionEvents.CallUnary(ctx, connect.NewRequest(req))
+	if response != nil {
+		return response.Msg, err
+	}
+	return nil, err
+}
+
+// ReadToolOutput calls hermesh.local.v1.LocalService.ReadToolOutput.
+func (c *localServiceClient) ReadToolOutput(ctx context.Context, req *v1.ReadToolOutputRequest) (*connect.ServerStreamForClient[v11.ToolOutputChunk], error) {
+	return c.readToolOutput.CallServerStream(ctx, connect.NewRequest(req))
+}
+
 // InterruptSession calls hermesh.local.v1.LocalService.InterruptSession.
 func (c *localServiceClient) InterruptSession(ctx context.Context, req *v1.InterruptSessionRequest) (*v1.SessionResponse, error) {
 	response, err := c.interruptSession.CallUnary(ctx, connect.NewRequest(req))
@@ -962,6 +1020,12 @@ func (c *localServiceClient) RegisterPush(ctx context.Context, req *v1.RegisterP
 // LocalServiceHandler is an implementation of the hermesh.local.v1.LocalService service.
 type LocalServiceHandler interface {
 	GetStatus(context.Context, *v1.GetStatusRequest) (*v1.GetStatusResponse, error)
+	// Watch sends what this device knows of the owner's world (hermeshd's
+	// replica, docs/state-sync.md), then each change, until the caller
+	// leaves: the screens follow it instead of polling the List calls, which
+	// answer from the same replica. A watcher that falls behind is ended
+	// (RESOURCE_EXHAUSTED) and should watch again.
+	Watch(context.Context, *v1.WatchRequest, *connect.ServerStream[v1.WatchResponse]) error
 	// Accounts (docs/trusted-devices.md 4.8): a device keeps a profile for
 	// each owner it set up or joined, each with its own root key, and uses one
 	// at a time, the current one, which every other call acts on.
@@ -1033,6 +1097,10 @@ type LocalServiceHandler interface {
 	// ended (RESOURCE_EXHAUSTED) and should watch again.
 	WatchSessions(context.Context, *v1.WatchSessionsRequest, *connect.ServerStream[v1.WatchSessionsResponse]) error
 	StreamSessionEvents(context.Context, *v1.StreamSessionEventsRequest, *connect.ServerStream[v11.SessionEvent]) error
+	// A session's events by seq, as hermesh.session.v1.SessionService.ListEvents.
+	ListSessionEvents(context.Context, *v1.ListSessionEventsRequest) (*v1.ListSessionEventsResponse, error)
+	// A tool's whole output (hermesh.session.v1.SessionService.ReadToolOutput).
+	ReadToolOutput(context.Context, *v1.ReadToolOutputRequest, *connect.ServerStream[v11.ToolOutputChunk]) error
 	InterruptSession(context.Context, *v1.InterruptSessionRequest) (*v1.SessionResponse, error)
 	ArchiveSession(context.Context, *v1.ArchiveSessionRequest) (*v1.SessionResponse, error)
 	UnarchiveSession(context.Context, *v1.UnarchiveSessionRequest) (*v1.SessionResponse, error)
@@ -1061,6 +1129,12 @@ func NewLocalServiceHandler(svc LocalServiceHandler, opts ...connect.HandlerOpti
 		LocalServiceGetStatusProcedure,
 		svc.GetStatus,
 		connect.WithSchema(localServiceMethods.ByName("GetStatus")),
+		connect.WithHandlerOptions(opts...),
+	)
+	localServiceWatchHandler := connect.NewServerStreamHandlerSimple(
+		LocalServiceWatchProcedure,
+		svc.Watch,
+		connect.WithSchema(localServiceMethods.ByName("Watch")),
 		connect.WithHandlerOptions(opts...),
 	)
 	localServiceListProfilesHandler := connect.NewUnaryHandlerSimple(
@@ -1267,6 +1341,18 @@ func NewLocalServiceHandler(svc LocalServiceHandler, opts ...connect.HandlerOpti
 		connect.WithSchema(localServiceMethods.ByName("StreamSessionEvents")),
 		connect.WithHandlerOptions(opts...),
 	)
+	localServiceListSessionEventsHandler := connect.NewUnaryHandlerSimple(
+		LocalServiceListSessionEventsProcedure,
+		svc.ListSessionEvents,
+		connect.WithSchema(localServiceMethods.ByName("ListSessionEvents")),
+		connect.WithHandlerOptions(opts...),
+	)
+	localServiceReadToolOutputHandler := connect.NewServerStreamHandlerSimple(
+		LocalServiceReadToolOutputProcedure,
+		svc.ReadToolOutput,
+		connect.WithSchema(localServiceMethods.ByName("ReadToolOutput")),
+		connect.WithHandlerOptions(opts...),
+	)
 	localServiceInterruptSessionHandler := connect.NewUnaryHandlerSimple(
 		LocalServiceInterruptSessionProcedure,
 		svc.InterruptSession,
@@ -1325,6 +1411,8 @@ func NewLocalServiceHandler(svc LocalServiceHandler, opts ...connect.HandlerOpti
 		switch r.URL.Path {
 		case LocalServiceGetStatusProcedure:
 			localServiceGetStatusHandler.ServeHTTP(w, r)
+		case LocalServiceWatchProcedure:
+			localServiceWatchHandler.ServeHTTP(w, r)
 		case LocalServiceListProfilesProcedure:
 			localServiceListProfilesHandler.ServeHTTP(w, r)
 		case LocalServiceSwitchProfileProcedure:
@@ -1393,6 +1481,10 @@ func NewLocalServiceHandler(svc LocalServiceHandler, opts ...connect.HandlerOpti
 			localServiceWatchSessionsHandler.ServeHTTP(w, r)
 		case LocalServiceStreamSessionEventsProcedure:
 			localServiceStreamSessionEventsHandler.ServeHTTP(w, r)
+		case LocalServiceListSessionEventsProcedure:
+			localServiceListSessionEventsHandler.ServeHTTP(w, r)
+		case LocalServiceReadToolOutputProcedure:
+			localServiceReadToolOutputHandler.ServeHTTP(w, r)
 		case LocalServiceInterruptSessionProcedure:
 			localServiceInterruptSessionHandler.ServeHTTP(w, r)
 		case LocalServiceArchiveSessionProcedure:
@@ -1422,6 +1514,10 @@ type UnimplementedLocalServiceHandler struct{}
 
 func (UnimplementedLocalServiceHandler) GetStatus(context.Context, *v1.GetStatusRequest) (*v1.GetStatusResponse, error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("hermesh.local.v1.LocalService.GetStatus is not implemented"))
+}
+
+func (UnimplementedLocalServiceHandler) Watch(context.Context, *v1.WatchRequest, *connect.ServerStream[v1.WatchResponse]) error {
+	return connect.NewError(connect.CodeUnimplemented, errors.New("hermesh.local.v1.LocalService.Watch is not implemented"))
 }
 
 func (UnimplementedLocalServiceHandler) ListProfiles(context.Context, *v1.ListProfilesRequest) (*v1.ListProfilesResponse, error) {
@@ -1558,6 +1654,14 @@ func (UnimplementedLocalServiceHandler) WatchSessions(context.Context, *v1.Watch
 
 func (UnimplementedLocalServiceHandler) StreamSessionEvents(context.Context, *v1.StreamSessionEventsRequest, *connect.ServerStream[v11.SessionEvent]) error {
 	return connect.NewError(connect.CodeUnimplemented, errors.New("hermesh.local.v1.LocalService.StreamSessionEvents is not implemented"))
+}
+
+func (UnimplementedLocalServiceHandler) ListSessionEvents(context.Context, *v1.ListSessionEventsRequest) (*v1.ListSessionEventsResponse, error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("hermesh.local.v1.LocalService.ListSessionEvents is not implemented"))
+}
+
+func (UnimplementedLocalServiceHandler) ReadToolOutput(context.Context, *v1.ReadToolOutputRequest, *connect.ServerStream[v11.ToolOutputChunk]) error {
+	return connect.NewError(connect.CodeUnimplemented, errors.New("hermesh.local.v1.LocalService.ReadToolOutput is not implemented"))
 }
 
 func (UnimplementedLocalServiceHandler) InterruptSession(context.Context, *v1.InterruptSessionRequest) (*v1.SessionResponse, error) {

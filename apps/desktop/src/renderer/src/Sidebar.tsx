@@ -3,7 +3,7 @@ import { Trans, useTranslation } from "react-i18next";
 import { SessionStatus, type Session } from "@hermesh/proto/session";
 import {
   bucketTitle, clockText, codingAgentShort, codingAgentTitle, createdDate, dateOf, displayTitle, isActive, isArchivable, isFailed, listTime, needsAttention,
-  sectionCounted, sessionSections, updatedDate, type SessionBucket, type SessionSection, type SessionView,
+  sectionCounted, sessionSections, statusTitle, updatedDate, type SessionBucket, type SessionSection, type SessionView,
 } from "@hermesh/core";
 import { i18n } from "../../shared/i18n";
 import { UpdateReminder } from "./update";
@@ -452,6 +452,8 @@ function RowStatus({ s }: { s: Session }) {
       return <>{t("status.preparing")}</>;
     case SessionStatus.QUEUED:
       return <>{t("status.queued")}</>;
+    case SessionStatus.UNSPECIFIED: // its machine cannot be read now
+      return <>{statusTitle(s.status)}</>;
     default:
       return null;
   }

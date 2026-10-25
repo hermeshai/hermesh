@@ -49,6 +49,7 @@ func (r *recorder) count() int {
 
 type harness struct {
 	t    *testing.T
+	n    *Machine
 	s    *Sessions
 	rec  *recorder
 	p    *Principal
@@ -83,7 +84,7 @@ func newHarnessWith(t *testing.T, lim Limits, extra map[string]provider.Provider
 	if err := n.st.PutProject(Project{ID: "demo", Path: testRepo(t), DefaultBaseRef: "HEAD"}); err != nil {
 		t.Fatal(err)
 	}
-	h := &harness{t: t, s: n.sessions, rec: rec, stop: cancel, mark: map[string]int{},
+	h := &harness{t: t, n: n, s: n.sessions, rec: rec, stop: cancel, mark: map[string]int{},
 		p: &Principal{Kind: PrincipalClient, ClientID: "c_test", Grant: &identityv1.Grant{GrantId: "g_test",
 			MachineIds: []string{"*"}, ProjectIds: []string{"*"}, Agents: []string{"*"}}}}
 	t.Cleanup(func() {

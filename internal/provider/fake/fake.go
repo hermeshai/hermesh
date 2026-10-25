@@ -12,6 +12,7 @@
 //	crash               the process exits mid-turn
 //	hang                no output until stopped
 //	tool-sleep <d>      a shell tool that runs for d without output
+//	output <n>          a shell tool printing n bytes (numbered lines, then END)
 //	chatter <d>         output that is not an event (thinking) for d
 //	overflow            end the turn with a context-overflow error
 //	retry-forever <t>   keep reporting error t without doing anything (as
@@ -37,8 +38,10 @@ package fake
 import (
 	"context"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -294,6 +297,16 @@ func (s *session) script(ctx context.Context, prompt string) (last string, ended
 		case "hang":
 			<-s.done
 			return "", true
+		case "output": // a shell command printing arg bytes, numbered lines ending "END"
+			n, _ := strconv.Atoi(arg)
+			var b strings.Builder
+			for i := 1; b.Len() < n-4; i++ {
+				fmt.Fprintf(&b, "line %07d of the output\n", i)
+			}
+			out := b.String()[:max(n-4, 0)] + "END\n"
+			s.emit(provider.Event{Kind: provider.EventToolCall, CallID: id, ToolKind: provider.ToolShell, ToolName: "Bash", Summary: "print " + arg, Decision: &provider.Decision{Allow: true}})
+			kept, cut := provider.KeepOutput(out)
+			s.emit(provider.Event{Kind: provider.EventToolResult, CallID: id, Summary: kept, Truncated: cut})
 		case "tool-sleep":
 			d, _ := time.ParseDuration(arg)
 			s.emit(provider.Event{Kind: provider.EventToolCall, CallID: id, ToolKind: provider.ToolShell, ToolName: "Bash", Summary: "sleep " + arg, Decision: &provider.Decision{Allow: true}})

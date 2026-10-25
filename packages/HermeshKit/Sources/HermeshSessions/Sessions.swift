@@ -28,7 +28,7 @@ public extension Session {
 
     /// Crashed, or its last turn failed (a turn stopped on purpose did not fail).
     var isFailed: Bool {
-        status == .crashed || (status != .waitingInput && status != .archived && progress.hasLastFailure && progress.lastFailure.kind != .interrupted)
+        status == .crashed || (status != .waitingInput && status != .archived && status != .unspecified && progress.hasLastFailure && progress.lastFailure.kind != .interrupted)
     }
 
     var isActive: Bool { status == .queued || status == .preparing || status == .running }
@@ -79,6 +79,20 @@ public func mergeSessions(_ list: [Session], _ changes: [Session], deleted: [Str
         }
     }
     return out
+}
+
+/// The sessions as screens show them: one on a machine that cannot be read
+/// now has an unspecified status, which every check treats as neither in
+/// progress, waiting nor failed, and which reads "State unknown"
+/// (docs/state-sync.md §6). Archived ones stay archived.
+public func withKnownState(_ sessions: [Session], unreachable machineIDs: Set<String>) -> [Session] {
+    if machineIDs.isEmpty { return sessions }
+    return sessions.map { s in
+        guard s.status != .archived, machineIDs.contains(s.machineID) else { return s }
+        var u = s
+        u.status = .unspecified
+        return u
+    }
 }
 
 /// Where older pages go on after the first page was listed again: from the

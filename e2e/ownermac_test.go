@@ -7,6 +7,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -32,6 +33,7 @@ type ownerMac struct {
 	relay      *proc
 	relayArgs  []string
 	relayDebug string // where the relay serves /metrics
+	ownerDebug string // where the owner's hermeshd serves /metrics
 	repoHead   string // the owner's HEAD, which sessions must never move
 	addr       string // the owner's connection address
 }
@@ -60,7 +62,9 @@ func newFarOwnerMac(t *testing.T, oneWay time.Duration, daemonEnv []string, gran
 
 func newOwnerMacAt(t *testing.T, signer func(w *ownerMac) string, oneWay time.Duration, daemonEnv []string, grant *localv1.GrantSpec, daemonArgs ...string) *ownerMac {
 	t.Helper()
-	w := &ownerMac{t: t, bin: binaries(t), tmp: t.TempDir(), daemonEnv: daemonEnv, daemonArgs: daemonArgs}
+	w := &ownerMac{t: t, bin: binaries(t), tmp: t.TempDir(), daemonArgs: daemonArgs}
+	w.ownerDebug = fmt.Sprintf("127.0.0.1:%d", freePort(t))
+	w.daemonEnv = append(slices.Clone(daemonEnv), "HERMESH_DEBUG_ADDR="+w.ownerDebug)
 	sockDir, _ := os.MkdirTemp("/tmp", "hm")
 	t.Cleanup(func() { os.RemoveAll(sockDir) })
 	w.sock = filepath.Join(sockDir, "o.sock")

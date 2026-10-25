@@ -149,10 +149,11 @@ page changes nothing but its clocks. Both tests fail on the code before.
 
 ### Render only what changed
 
-- **Polls that change nothing render nothing.** The status was polled every
+- **What changes nothing renders nothing.** The status was polled every
   second and the lists every three, each answer replacing the store's data,
-  so the whole window rendered every second. An answer equal to the one
-  before (protobuf `equals`) now keeps the old object.
+  so the whole window rendered every second. The window now follows
+  `Watch` ([state-sync.md](state-sync.md)), which sends only what changed,
+  and a message that changes nothing keeps the old objects (`applyWatch`).
 - **One clock per interval.** Each elapsed time had its own `setInterval`, at
   its own phase: up to 25 separate renders and frames a second. `useNow` now
   shares one clock per interval, so all of them change in one frame (also

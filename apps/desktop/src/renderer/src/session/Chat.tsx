@@ -14,6 +14,7 @@ import { archive, grantLabel, unarchive } from "../Sidebar";
 import { useNow, useStore } from "../store";
 import { interrupt } from "./actions";
 import { DraftMarkdown, Markdown } from "./Markdown";
+import { partialOutput, useToolOutput } from "./output";
 import { QuestionPanel } from "./Question";
 
 /**
@@ -244,7 +245,7 @@ function ToolGroup({ calls, sessionId }: { calls: Calls; sessionId: string }) {
       {open && (
         <div className="tg-b">
           {calls.map((c) => (
-            <ToolRow key={c.call.callId || String(c.seq)} call={c.call} result={c.result} running={c.running} sessionId={sessionId} />
+            <ToolRow key={c.call.callId || String(c.seq)} call={c.call} result={c.result} resultSeq={c.resultSeq} running={c.running} sessionId={sessionId} />
           ))}
         </div>
       )}
@@ -252,17 +253,24 @@ function ToolGroup({ calls, sessionId }: { calls: Calls; sessionId: string }) {
   );
 }
 
-/** One tool call: what it did, and its output when opened. Failed calls start open; the one running spins. */
-function ToolRow({ call, result, running, sessionId }: { call: ToolCall; result: ToolResult | undefined; running: boolean; sessionId: string }) {
+/**
+ * One tool call: what it did, and its output when opened, read whole then
+ * when the conversation holds only its start. Failed calls start open; the
+ * one running spins.
+ */
+function ToolRow({ call, result, resultSeq, running, sessionId }: { call: ToolCall; result: ToolResult | undefined; resultSeq?: bigint; running: boolean; sessionId: string }) {
   const { t } = useTranslation("session");
   const denied = call.decision === "deny";
   const failed = denied || result?.isError === true;
   const [open, setOpen] = useState(failed);
-  const output = denied ? call.reason : result && result.summary !== "" ? result.summary + (result.truncated ? `\n${t("chat.truncated")}` : "") : "";
+  const whole = useToolOutput(sessionId, result, resultSeq, open);
+  // A machine from before whole outputs kept only their start.
+  const note = whole.failed ? t("chat.outputUnreadable") : result && !partialOutput(result) && result.truncated ? t("chat.truncated") : "";
+  const output = denied ? call.reason : whole.text !== "" ? whole.text + (note ? `\n${note}` : "") : "";
   return (
     <div className={`tool ${failed ? "err" : ""} ${open && output ? "open" : ""}`}>
       <button className="th" onClick={() => output && setOpen(!open)} aria-expanded={output ? open : undefined}>
-        {running && <span className="mini-spin" role="img" aria-label={t("chat.inProgress")} />}
+        {(running || whole.reading) && <span className="mini-spin" role="img" aria-label={t("chat.inProgress")} />}
         <span className="vb">{toolVerb(call, running)}</span>
         <span className="sm2" title={call.summary}>{toolSummary(toolObject(call), sessionId)}</span>
         {output && <Icon name="caret" className="chev" />}

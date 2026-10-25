@@ -203,3 +203,16 @@ func TestKillTree(t *testing.T) {
 		t.Fatalf("left alive: tool %v, agent %v", alive(tool), alive(c.Process.Pid))
 	}
 }
+
+// An output up to 1 MiB is kept whole; a longer one keeps its first and
+// last half (where a build log's error is), saying how much went.
+func TestKeepOutput(t *testing.T) {
+	if s, cut := KeepOutput("ok\x00\n"); s != "ok\n" || cut {
+		t.Errorf("short: %q %v", s, cut)
+	}
+	big := strings.Repeat("a", 2<<20) + "ERROR at the end\n"
+	s, cut := KeepOutput(big)
+	if !cut || !strings.HasSuffix(s, "ERROR at the end\n") || !strings.HasPrefix(s, "aaa") || !strings.Contains(s, "bytes left out") || len(s) > KeptOutput+64 {
+		t.Errorf("long: %d bytes, cut=%v, ends %q", len(s), cut, s[len(s)-20:])
+	}
+}

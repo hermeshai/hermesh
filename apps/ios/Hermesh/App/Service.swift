@@ -25,12 +25,14 @@ extension LocalAPI {
     func listSessions(limit: UInt32 = 50, before: Hermesh_Session_V1_SessionCursor? = nil) async throws -> Hermesh_Local_V1_ListSessionsResponse {
         var r = Hermesh_Local_V1_ListSessionsRequest()
         r.limit = limit
+        r.view = .basic
         if let before { r.before = before }
         return try await call("ListSessions", r)
     }
 
-    func watchSessions() -> AsyncThrowingStream<Hermesh_Local_V1_WatchSessionsResponse, Error> {
-        stream("WatchSessions", Hermesh_Local_V1_WatchSessionsRequest())
+    /// The owner's world, then each change (docs/state-sync.md): nothing is polled.
+    func watch() -> AsyncThrowingStream<Hermesh_Local_V1_WatchResponse, Error> {
+        stream("Watch", Hermesh_Local_V1_WatchRequest())
     }
 
     func events(_ sessionID: String, after: UInt64 = 0) -> AsyncThrowingStream<Hermesh_Session_V1_SessionEvent, Error> {
@@ -39,6 +41,7 @@ extension LocalAPI {
         r.afterSeq = after
         r.follow = true
         r.partial = true // the reply as the agent writes it (docs/reply-streaming.md)
+        r.view = .basic // a long tool output as its first lines, which is what the conversation shows
         return stream("StreamSessionEvents", r)
     }
 

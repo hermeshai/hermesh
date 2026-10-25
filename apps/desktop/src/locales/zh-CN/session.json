@@ -24,6 +24,7 @@
     "copy": "拷贝",
     "inProgress": "进行中",
     "truncated": "…（已截断）",
+    "outputUnreadable": "…（其余部分现在读不到）",
     "resume": "{{grant}} 再发消息就会从这里接着做，之前的改动都还在。",
     "adviceAndResume": "{{advice}}{{resume}}",
     "details": "详情",

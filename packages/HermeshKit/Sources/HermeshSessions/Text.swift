@@ -71,7 +71,7 @@ public func statusTitle(_ s: SessionStatus) -> String {
     case .archived: String(localized: "Archived", bundle: .module)
     case .crashed: String(localized: "Crashed", bundle: .module)
     case .waitingInput: String(localized: "Waiting for you", bundle: .module)
-    default: String(localized: "Unknown", bundle: .module)
+    default: String(localized: "State unknown", bundle: .module) // its machine cannot be read now
     }
 }
 

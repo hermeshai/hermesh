@@ -61,3 +61,15 @@ test("a cancelled stream releases the daemon connection", async () => {
   await expect.poll(open).toBe(1);
   await app.close();
 });
+
+test("an idle window makes no calls to hermeshd: it follows one Watch", async () => {
+  const { app, page } = await launch();
+  const calls = () => app.evaluate(() => (globalThis as unknown as { hermeshTest: { forwardedCalls(): Record<string, number> } }).hermeshTest.forwardedCalls());
+  await expect(page.getByRole("list", { name: "会话" })).toContainText("写 hello");
+  await page.waitForTimeout(2000); // what opening the window reads (the overview's usage)
+  const before = await calls();
+  expect(before.Watch).toBe(1);
+  await page.waitForTimeout(8000);
+  expect(await calls()).toEqual(before);
+  await app.close();
+});

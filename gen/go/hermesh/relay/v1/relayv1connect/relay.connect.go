@@ -90,6 +90,9 @@ const (
 	// OwnerControlServiceListClientsProcedure is the fully-qualified name of the OwnerControlService's
 	// ListClients RPC.
 	OwnerControlServiceListClientsProcedure = "/hermesh.relay.v1.OwnerControlService/ListClients"
+	// OwnerControlServiceWatchOwnerProcedure is the fully-qualified name of the OwnerControlService's
+	// WatchOwner RPC.
+	OwnerControlServiceWatchOwnerProcedure = "/hermesh.relay.v1.OwnerControlService/WatchOwner"
 	// OwnerControlServicePublishGrantProcedure is the fully-qualified name of the OwnerControlService's
 	// PublishGrant RPC.
 	OwnerControlServicePublishGrantProcedure = "/hermesh.relay.v1.OwnerControlService/PublishGrant"
@@ -597,6 +600,11 @@ type OwnerControlServiceClient interface {
 	CompletePairing(context.Context, *v1.CompletePairingRequest) (*v1.CompletePairingResponse, error)
 	ListMachines(context.Context, *v1.ListMachinesRequest) (*v1.ListMachinesResponse, error)
 	ListClients(context.Context, *v1.ListClientsRequest) (*v1.ListClientsResponse, error)
+	// WatchOwner sends what ListMachines, ListClients and ListPairingRequests
+	// return, then each again whenever it changed, until the connection ends
+	// (docs/state-sync.md §3.2): the owner's devices follow it instead of
+	// polling those three.
+	WatchOwner(context.Context, *v1.WatchOwnerRequest) (*connect.ServerStreamForClient[v1.OwnerUpdate], error)
 	PublishGrant(context.Context, *v1.PublishGrantRequest) (*v1.PublishGrantResponse, error)
 	PublishMachineCert(context.Context, *v1.PublishMachineCertRequest) (*v1.PublishMachineCertResponse, error)
 	Revoke(context.Context, *v1.RevokeRequest) (*v1.RevokeResponse, error)
@@ -654,6 +662,12 @@ func NewOwnerControlServiceClient(httpClient connect.HTTPClient, baseURL string,
 			connect.WithSchema(ownerControlServiceMethods.ByName("ListClients")),
 			connect.WithClientOptions(opts...),
 		),
+		watchOwner: connect.NewClient[v1.WatchOwnerRequest, v1.OwnerUpdate](
+			httpClient,
+			baseURL+OwnerControlServiceWatchOwnerProcedure,
+			connect.WithSchema(ownerControlServiceMethods.ByName("WatchOwner")),
+			connect.WithClientOptions(opts...),
+		),
 		publishGrant: connect.NewClient[v1.PublishGrantRequest, v1.PublishGrantResponse](
 			httpClient,
 			baseURL+OwnerControlServicePublishGrantProcedure,
@@ -695,6 +709,7 @@ type ownerControlServiceClient struct {
 	completePairing     *connect.Client[v1.CompletePairingRequest, v1.CompletePairingResponse]
 	listMachines        *connect.Client[v1.ListMachinesRequest, v1.ListMachinesResponse]
 	listClients         *connect.Client[v1.ListClientsRequest, v1.ListClientsResponse]
+	watchOwner          *connect.Client[v1.WatchOwnerRequest, v1.OwnerUpdate]
 	publishGrant        *connect.Client[v1.PublishGrantRequest, v1.PublishGrantResponse]
 	publishMachineCert  *connect.Client[v1.PublishMachineCertRequest, v1.PublishMachineCertResponse]
 	revoke              *connect.Client[v1.RevokeRequest, v1.RevokeResponse]
@@ -754,6 +769,11 @@ func (c *ownerControlServiceClient) ListClients(ctx context.Context, req *v1.Lis
 		return response.Msg, err
 	}
 	return nil, err
+}
+
+// WatchOwner calls hermesh.relay.v1.OwnerControlService.WatchOwner.
+func (c *ownerControlServiceClient) WatchOwner(ctx context.Context, req *v1.WatchOwnerRequest) (*connect.ServerStreamForClient[v1.OwnerUpdate], error) {
+	return c.watchOwner.CallServerStream(ctx, connect.NewRequest(req))
 }
 
 // PublishGrant calls hermesh.relay.v1.OwnerControlService.PublishGrant.
@@ -817,6 +837,11 @@ type OwnerControlServiceHandler interface {
 	CompletePairing(context.Context, *v1.CompletePairingRequest) (*v1.CompletePairingResponse, error)
 	ListMachines(context.Context, *v1.ListMachinesRequest) (*v1.ListMachinesResponse, error)
 	ListClients(context.Context, *v1.ListClientsRequest) (*v1.ListClientsResponse, error)
+	// WatchOwner sends what ListMachines, ListClients and ListPairingRequests
+	// return, then each again whenever it changed, until the connection ends
+	// (docs/state-sync.md §3.2): the owner's devices follow it instead of
+	// polling those three.
+	WatchOwner(context.Context, *v1.WatchOwnerRequest, *connect.ServerStream[v1.OwnerUpdate]) error
 	PublishGrant(context.Context, *v1.PublishGrantRequest) (*v1.PublishGrantResponse, error)
 	PublishMachineCert(context.Context, *v1.PublishMachineCertRequest) (*v1.PublishMachineCertResponse, error)
 	Revoke(context.Context, *v1.RevokeRequest) (*v1.RevokeResponse, error)
@@ -870,6 +895,12 @@ func NewOwnerControlServiceHandler(svc OwnerControlServiceHandler, opts ...conne
 		connect.WithSchema(ownerControlServiceMethods.ByName("ListClients")),
 		connect.WithHandlerOptions(opts...),
 	)
+	ownerControlServiceWatchOwnerHandler := connect.NewServerStreamHandlerSimple(
+		OwnerControlServiceWatchOwnerProcedure,
+		svc.WatchOwner,
+		connect.WithSchema(ownerControlServiceMethods.ByName("WatchOwner")),
+		connect.WithHandlerOptions(opts...),
+	)
 	ownerControlServicePublishGrantHandler := connect.NewUnaryHandlerSimple(
 		OwnerControlServicePublishGrantProcedure,
 		svc.PublishGrant,
@@ -914,6 +945,8 @@ func NewOwnerControlServiceHandler(svc OwnerControlServiceHandler, opts ...conne
 			ownerControlServiceListMachinesHandler.ServeHTTP(w, r)
 		case OwnerControlServiceListClientsProcedure:
 			ownerControlServiceListClientsHandler.ServeHTTP(w, r)
+		case OwnerControlServiceWatchOwnerProcedure:
+			ownerControlServiceWatchOwnerHandler.ServeHTTP(w, r)
 		case OwnerControlServicePublishGrantProcedure:
 			ownerControlServicePublishGrantHandler.ServeHTTP(w, r)
 		case OwnerControlServicePublishMachineCertProcedure:
@@ -955,6 +988,10 @@ func (UnimplementedOwnerControlServiceHandler) ListMachines(context.Context, *v1
 
 func (UnimplementedOwnerControlServiceHandler) ListClients(context.Context, *v1.ListClientsRequest) (*v1.ListClientsResponse, error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("hermesh.relay.v1.OwnerControlService.ListClients is not implemented"))
+}
+
+func (UnimplementedOwnerControlServiceHandler) WatchOwner(context.Context, *v1.WatchOwnerRequest, *connect.ServerStream[v1.OwnerUpdate]) error {
+	return connect.NewError(connect.CodeUnimplemented, errors.New("hermesh.relay.v1.OwnerControlService.WatchOwner is not implemented"))
 }
 
 func (UnimplementedOwnerControlServiceHandler) PublishGrant(context.Context, *v1.PublishGrantRequest) (*v1.PublishGrantResponse, error) {
