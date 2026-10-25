@@ -94,6 +94,9 @@ const (
 	kLocalMachine = "local_machine"
 	kSignedOut    = "signed_out"
 	kAccount      = "account"
+	// kMachineDir: where this profile's machine is, when not in its own
+	// directory (a device's machine from before profiles, profiles.go).
+	kMachineDir = "machine_dir"
 )
 
 // openProfile opens one profile (profiles.go): cfg.DataDir is its
@@ -580,6 +583,9 @@ func (o *Owner) openLocalMachine() (*machine.Machine, error) {
 func (o *Owner) localMachineConfig() machine.Config {
 	cfg := o.cfg.MachineConfig
 	cfg.DataDir = filepath.Join(o.cfg.DataDir, "machine")
+	if dir, _ := o.st.get(kMachineDir); len(dir) > 0 {
+		cfg.DataDir = string(dir)
+	}
 	if cfg.Logger == nil {
 		cfg.Logger = o.log
 	}

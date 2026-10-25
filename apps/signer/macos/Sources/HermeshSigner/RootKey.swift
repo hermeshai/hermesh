@@ -106,6 +106,23 @@ struct SecureEnclaveKey: RootKeyStore {
         log("root key \(id) deleted")
     }
 
+    /// Before profiles, the one key's handle was app/root-key.se: it moves
+    /// beside the others, under its key id. Reading its public key needs no
+    /// authentication.
+    func adoptLegacyBlob() {
+        let old = blobDir.deletingLastPathComponent().appendingPathComponent("root-key.se")
+        guard let data = try? Data(contentsOf: old) else { return }
+        do {
+            let key = try SecureEnclave.P256.Signing.PrivateKey(dataRepresentation: data)
+            try FileManager.default.createDirectory(at: blobDir, withIntermediateDirectories: true, attributes: [.posixPermissions: 0o700])
+            let url = blob(keyID(spki: key.publicKey.derRepresentation))
+            try FileManager.default.moveItem(at: old, to: url)
+            log("moved the root key handle to \(url.path)")
+        } catch {
+            log("moving the root key handle \(old.path): \(error.localizedDescription)")
+        }
+    }
+
     private func blob(_ id: String) -> URL { blobDir.appendingPathComponent("\(id).se") }
 
     private static func spki(_ key: SecKey) throws -> Data {

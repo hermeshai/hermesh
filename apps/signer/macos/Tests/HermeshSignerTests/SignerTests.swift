@@ -132,6 +132,20 @@ func badOptions(args: [String]) {
     #expect(try store.sign([message], keyID: keyID(spki: firstPub), context: nil).count == 1)
 }
 
+@Test(.enabled(if: SecureEnclave.isAvailable)) func legacyKeyHandleMovesBesideTheOthers() throws {
+    let dir = FileManager.default.temporaryDirectory.appendingPathComponent("hermesh-keys-\(UUID().uuidString)")
+    defer { try? FileManager.default.removeItem(at: dir) }
+    try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+    let key = try SecureEnclave.P256.Signing.PrivateKey()
+    try key.dataRepresentation.write(to: dir.appendingPathComponent("root-key.se"))
+    let store = SecureEnclaveKey(blobDir: dir.appendingPathComponent("root-keys"))
+    store.adoptLegacyBlob()
+    #expect(!FileManager.default.fileExists(atPath: dir.appendingPathComponent("root-key.se").path))
+    let moved = dir.appendingPathComponent("root-keys/\(keyID(spki: key.publicKey.derRepresentation)).se")
+    #expect(try Data(contentsOf: moved) == key.dataRepresentation)
+    store.adoptLegacyBlob() // nothing left to move
+}
+
 @Test func reportLineSaysWhatThePanelShowed() throws {
     var rc = request(rootCert(version: 2, [rootKey("key a", "Mac A"), rootKey("key b", "Mac B")]))
     rc.caller = caller("/private/tmp/go-build/e2e.test")

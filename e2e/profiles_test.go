@@ -236,3 +236,88 @@ func TestAccountsOnOneDevice(t *testing.T) {
 	}
 	eventually(t, 30*time.Second, "mac-b online after a restart", func() bool { return machineOnline(app, "mac-b") })
 }
+
+// TestOwnerFromBeforeProfiles: a Mac set up before profiles (owner.db and
+// keys at the top of the owner directory, its machine beside it) keeps its
+// owner and its machine: hermeshd moves the owner into a profile, and the
+// machine, whose worktrees name its path, stays where it is.
+func TestOwnerFromBeforeProfiles(t *testing.T) {
+	if testing.Short() {
+		t.Skip("e2e")
+	}
+	bin := binaries(t)
+	relayBin, daemonBin := filepath.Join(bin, "hermesh-relay"), filepath.Join(bin, "hermeshd")
+	tmp := t.TempDir()
+	sockDir, _ := os.MkdirTemp("/tmp", "hm")
+	t.Cleanup(func() { os.RemoveAll(sockDir) })
+	ctx := context.Background()
+	var logs []*proc
+	t.Cleanup(func() {
+		if t.Failed() {
+			for _, p := range logs {
+				t.Logf("==== %s output ====\n%s", p.name, p.output())
+			}
+		}
+	})
+	port := freePort(t)
+	relayData := filepath.Join(tmp, "relay")
+	relay := start(t, "relay", nil, relayBin, "serve", "--data-dir", relayData, "--listen", fmt.Sprintf("127.0.0.1:%d", port))
+	logs = append(logs, relay)
+	eventually(t, 20*time.Second, "relay up", func() bool { return strings.Contains(relay.output(), "relay listening") })
+	relayURL := fmt.Sprintf("http://127.0.0.1:%d", port)
+	claim := strings.TrimSpace(run(t, nil, 10*time.Second, relayBin, "claim-code", "--data-dir", relayData).stdout)
+
+	data, sock := filepath.Join(tmp, "mac"), filepath.Join(sockDir, "m.sock")
+	startMac := func() *proc {
+		p := start(t, "mac", []string{"HERMESH_FAKE_PROVIDERS=1"}, daemonBin, "run", "--owner", "--data-dir", data, "--socket", sock)
+		logs = append(logs, p)
+		return p
+	}
+	mac := startMac()
+	root, _ := identity.GenerateKey()
+	app := newTestApp(t, sock, root)
+	setup, err := app.client.Setup(ctx, &localv1.SetupRequest{RelayUrl: relayURL, ClaimCode: claim, RootPublicKey: rootPub(root), RootLabel: "mac", LocalMachineName: "mac"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	before, err := app.client.GetStatus(ctx, &localv1.GetStatusRequest{})
+	if err != nil || before.LocalMachineId == "" {
+		t.Fatalf("status: %v %v", before, err)
+	}
+	mac.stop()
+	app.cancel()
+
+	// The layout from before profiles.
+	ownerDir := filepath.Join(data, "owner")
+	cur, _ := os.ReadFile(filepath.Join(ownerDir, "current"))
+	profile := filepath.Join(ownerDir, "profiles", string(cur))
+	for from, to := range map[string]string{"owner.db": "owner/owner.db", "owner.db-wal": "owner/owner.db-wal", "owner.db-shm": "owner/owner.db-shm",
+		"keys": "owner/keys", "machine": "machine"} {
+		if err := os.Rename(filepath.Join(profile, from), filepath.Join(data, to)); err != nil && !os.IsNotExist(err) {
+			t.Fatal(err)
+		}
+	}
+	os.RemoveAll(filepath.Join(ownerDir, "profiles"))
+	os.Remove(filepath.Join(ownerDir, "current"))
+
+	startMac()
+	app = newTestApp(t, sock, root)
+	st, err := app.client.GetStatus(ctx, &localv1.GetStatusRequest{})
+	if err != nil || st.OwnerId != setup.OwnerId || st.DeviceKeyId != before.DeviceKeyId || st.SignedOut {
+		t.Fatalf("status after moving: %v %v", st, err)
+	}
+	eventually(t, 30*time.Second, "its machine online, under the same id", func() bool {
+		res, err := app.client.ListMachines(ctx, &localv1.ListMachinesRequest{})
+		return err == nil && slices.ContainsFunc(res.Machines, func(m *localv1.Machine) bool { return m.MachineId == before.LocalMachineId && m.Online })
+	})
+	if _, err := os.Stat(filepath.Join(ownerDir, "owner.db")); !os.IsNotExist(err) {
+		t.Fatalf("owner.db left at the top: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(data, "machine", "hermeshd.db")); err != nil {
+		t.Fatalf("the machine moved: %v", err)
+	}
+	res, err := app.client.ListProfiles(ctx, &localv1.ListProfilesRequest{})
+	if err != nil || len(res.Profiles) != 1 || res.Profiles[0].OwnerId != setup.OwnerId || !res.Profiles[0].Current {
+		t.Fatalf("profiles: %v %v", res, err)
+	}
+}
