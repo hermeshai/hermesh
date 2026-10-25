@@ -78,6 +78,10 @@ test("while nothing happens, the page changes only its clocks, all in the same f
   const { app, page } = await launch();
   const running = page.getByRole("region", { name: "正在干活" }).getByRole("listitem").filter({ hasText: "跑很久" });
   await expect(running.locator(".wc-time")).toHaveText(/^\d+:\d\d$/);
+  // The card ticks while the turn is still queued or preparing; the list
+  // row only once it runs. Wait for both clocks.
+  const row = page.getByRole("list", { name: "会话" }).getByRole("listitem").filter({ hasText: "跑很久" });
+  await expect(row.locator(".stime")).toHaveText(/^\d+:\d\d$/);
   await page.waitForTimeout(1500); // the first lists and the usage are in
   const batches = await changes(page, 3200);
   const all = batches.flat();
