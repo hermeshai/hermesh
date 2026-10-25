@@ -37,6 +37,8 @@ test("the link map's cards show they can be clicked; the hub's icon follows ligh
   expect(await cursor(map.getByRole("button", { name: "bot", exact: true }))).toBe("pointer");
   expect(await cursor(map.getByRole("button", { name: "这台 Mac", exact: true }))).toBe("pointer");
   expect(await cursor(map.getByRole("button", { name: "demo", exact: true }))).toBe("pointer");
+  expect(await cursor(map.getByRole("button", { name: "+ 连接更多", exact: true }))).toBe("pointer");
+  expect(await cursor(map.getByRole("button", { name: "+ 添加机器", exact: true }))).toBe("pointer");
   const icon = map.locator(".lmap-icon");
   expect(await icon.evaluate((el) => (el as HTMLElement).offsetWidth)).toBe(72); // before scaling to the window
   const look = () => icon.evaluate((el) => getComputedStyle(el).backgroundImage + getComputedStyle(el.querySelector(".hm-beam")!).mixBlendMode);

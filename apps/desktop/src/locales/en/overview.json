@@ -36,7 +36,7 @@
     "moreMachines_other": "{{count}} more machines",
     "moreProjects_one": "{{count}} more project",
     "moreProjects_other": "{{count}} more projects",
-    "connectMore": "Connect More Agents",
+    "connectMore": "Connect More",
     "addMachine": "Add Machine",
     "backToAll": "Back to all sessions",
     "encrypted": "End-to-end encrypted",
