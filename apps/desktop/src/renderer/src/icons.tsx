@@ -18,6 +18,8 @@ const paths: Record<string, string> = {
   stop: "<rect x=\"4.3\" y=\"4.3\" width=\"7.4\" height=\"7.4\" rx=\"1.6\"/>",
   archive: "<rect x=\"2\" y=\"2.8\" width=\"12\" height=\"3.4\" rx=\"1\"/><path d=\"M3.2 6.2v6c0 .7.5 1.2 1.2 1.2h7.2c.7 0 1.2-.5 1.2-1.2v-6M6.4 9h3.2\"/>",
   unarchive: "<rect x=\"2\" y=\"2.8\" width=\"12\" height=\"3.4\" rx=\"1\"/><path d=\"M3.2 6.2v6c0 .7.5 1.2 1.2 1.2h7.2c.7 0 1.2-.5 1.2-1.2v-6M8 11.6V8.2M6.5 9.6L8 8.1l1.5 1.5\"/>",
+  // A window with a card floating at its right: the session's info card.
+  infoCard: "<rect x=\"1.8\" y=\"2.8\" width=\"12.4\" height=\"10.4\" rx=\"2.4\"/><rect x=\"8.3\" y=\"5.1\" width=\"3.8\" height=\"5.8\" rx=\"1\" fill=\"currentColor\" stroke=\"none\"/>",
   info: "<circle cx=\"8\" cy=\"8\" r=\"6\"/><path d=\"M8 7.3v3.9M8 5v.1\"/>",
   laptop: "<rect x=\"3\" y=\"3.3\" width=\"10\" height=\"7\" rx=\"1.2\"/><path d=\"M1.4 12.7h13.2\"/>",
   server: "<rect x=\"2.5\" y=\"2.5\" width=\"11\" height=\"4.6\" rx=\"1.2\"/><rect x=\"2.5\" y=\"8.9\" width=\"11\" height=\"4.6\" rx=\"1.2\"/><path d=\"M5 4.8h.1M5 11.2h.1\"/>",

@@ -30,7 +30,7 @@ export function SessionPage({ s }: { s: Session }) {
           aria-pressed={st.inspector}
           onClick={() => st.set({ inspector: !st.inspector })}
         >
-          <Icon name="info" />
+          <Icon name="infoCard" />
         </button>
       </div>
       <div className={`dwrap ${st.inspector ? "dock" : ""}`}>
