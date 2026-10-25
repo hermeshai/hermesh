@@ -252,7 +252,7 @@ final class AppModel {
                     if r.machinesChanged {
                         await listFirstPage()
                     }
-                    sessions = mergeSessions(sessions, r.sessions)
+                    sessions = mergeSessions(sessions.filter { !r.deletedSessionIds.contains($0.sessionID) }, r.sessions)
                     if !r.unreachable.isEmpty || r.machinesChanged { unreachable = r.unreachable }
                 }
             } catch {}
