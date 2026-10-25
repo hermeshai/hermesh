@@ -30,13 +30,13 @@ test("a finished session shows both turns, what the agent did, and that it is do
   // The edit and the command right after it are one step; opened, each in Chinese, without the agent's tool name.
   const step = log.getByRole("button", { name: "编辑了 1 个文件、运行了 1 条命令" });
   await expect(step).toHaveAttribute("aria-expanded", "false");
-  // A step is a grey line in the body's size: no icon, only the caret after it.
+  // A step is a grey line a size below the agent's words: no icon, only the caret after it.
   await expect(step.locator("svg")).toHaveCount(1);
   await expect(step.locator("svg")).toHaveClass(/chev/);
-  const size = (l: typeof step) => l.evaluate((el) => getComputedStyle(el).fontSize);
-  expect(await size(step)).toBe(await size(log.locator(".am").first()));
-  // The text keeps to a column of at most 700, so lines stay short enough to read.
-  expect(await log.evaluate((el) => el.getBoundingClientRect().width)).toBeLessThanOrEqual(700);
+  const size = (l: typeof step) => l.evaluate((el) => parseFloat(getComputedStyle(el).fontSize));
+  expect(await size(step)).toBeLessThan(await size(log.locator(".am").first()));
+  // The text keeps to a column of at most 730, so lines stay short enough to read.
+  expect(await log.evaluate((el) => el.getBoundingClientRect().width)).toBeLessThanOrEqual(730);
   await step.click();
   await expect(log.getByRole("button", { name: /^已编辑\s*hello\.txt/ }).first()).toBeVisible();
   await expect(log.getByRole("button", { name: /^已运行\s*echo ran > ran\.txt/ })).toBeVisible();
@@ -226,5 +226,46 @@ test("a session's conversation appears whole as its page opens, not in pieces", 
   await page.waitForTimeout(300);
   const rows = await page.evaluate(() => (window as unknown as { __rows: number[] }).__rows);
   expect(rows).toEqual([await log.locator(":scope > *").count()]);
+  await app.close();
+});
+
+test("an agent's Markdown shows as GitHub shows it, without HTML, images or unsafe links", async () => {
+  const reply = [
+    "## 结论",
+    "见 https://hermesh.io/p/abc，然后再说。",
+    "第二行",
+    "",
+    "| 项 | 值 |",
+    "|---|---|",
+    "| 轮 | 1 |",
+    "",
+    "- 外层",
+    "  - 里层",
+    "",
+    "~~旧的~~ [危险](javascript:alert(1)) ![图](https://example.com/a.png) <b>原样</b>",
+  ].join("\\n");
+  await cli("session", "start", "--project", "demo", "--agent", "gemini", "--title", "排版", "--prompt", `say ${reply}`, "--wait");
+  const { app, page } = await launch();
+  await open(page, "排版");
+  const md = page.getByRole("log", { name: "对话" }).locator(".md");
+  await expect(md.getByRole("heading", { name: "结论" })).toBeVisible();
+  // A bare link ends where the Chinese starts; a single newline breaks the line.
+  await expect(md.getByRole("link")).toHaveCount(1);
+  await expect(md.getByRole("link")).toHaveText("https://hermesh.io/p/abc");
+  await expect(md.getByRole("link")).toHaveAttribute("href", "https://hermesh.io/p/abc");
+  await expect(md.locator("p", { hasText: "然后再说" }).locator("br")).toHaveCount(1);
+  await expect(md.getByRole("table")).toBeVisible();
+  await expect(md.getByRole("columnheader", { name: "值" })).toBeVisible();
+  await expect(md.getByRole("cell", { name: "1", exact: true })).toBeVisible();
+  await expect(md.locator("li li")).toHaveText("里层");
+  await expect(md.locator("del")).toHaveText("旧的");
+  // Not a link, no image loaded, and HTML stays text.
+  await expect(md).toContainText("危险");
+  await expect(md.locator("img")).toHaveCount(0);
+  await expect(md).toContainText("图");
+  await expect(md).toContainText("<b>原样</b>");
+  // The agent's words are 15 on 21.
+  expect(await md.evaluate((el) => [getComputedStyle(el).fontSize, getComputedStyle(el).lineHeight])).toEqual(["15px", "21px"]);
+  await snap(page, "session-markdown");
   await app.close();
 });

@@ -26,7 +26,9 @@
     "radix-ui": "1.8.1",
     "react": "19.3.1",
     "react-dom": "19.3.1",
-    "react-i18next": "17.0.15"
+    "react-i18next": "17.0.15",
+    "react-markdown": "10.1.0",
+    "remark-gfm": "4.0.1"
   },
   "devDependencies": {
     "@electron/fuses": "2.1.3",

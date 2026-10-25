@@ -2,7 +2,7 @@
 // Protocol on stdio, for tests of the ACP adapter. Each prompt line is a
 // command:
 //
-//	say <text>          agent message (streamed in chunks)
+//	say <text>          agent message (streamed in chunks); \n in text is a newline
 //	write <path> <text> edit tool call, asks permission, then writes the file
 //	shell <command>     execute tool call, asks permission, then runs it
 //	read <path>         read tool call without a permission request
@@ -293,7 +293,7 @@ func prompt(id json.RawMessage, sid, text string, images []string) {
 		cmd, arg, _ := strings.Cut(strings.TrimSpace(line), " ")
 		switch cmd {
 		case "say":
-			r := []rune(arg) // split between characters, as agents stream
+			r := []rune(strings.ReplaceAll(arg, `\n`, "\n")) // split between characters, as agents stream
 			half := len(r) / 2
 			update(sid, map[string]any{"sessionUpdate": "agent_message_chunk", "content": map[string]any{"type": "text", "text": string(r[:half])}})
 			update(sid, map[string]any{"sessionUpdate": "agent_thought_chunk", "content": map[string]any{"type": "text", "text": "thinking"}})
