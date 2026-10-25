@@ -309,6 +309,13 @@ test("browser sign-in: the link brings the authorization page, the center's rela
   await expect(working.getByRole("status")).toContainText("agent 一开始干活，会话会出现在这里，链路图也会亮起来。");
   await expect(working.locator(".hm-mark")).toBeVisible();
   await snap(page, "first-13-resting");
+  // With nothing live, hovering an agent shows what it can reach without the map growing.
+  const map = page.getByRole("region", { name: "链路" });
+  await page.mouse.move(0, 0);
+  const before = (await map.boundingBox())!.height;
+  await map.getByRole("button", { name: "Grok Bot", exact: true }).hover();
+  await expect(map).toContainText("它能用的机器和项目");
+  expect((await map.boundingBox())!.height).toBe(before);
   await app.close();
   center.close();
 });
