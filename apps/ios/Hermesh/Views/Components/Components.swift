@@ -63,7 +63,8 @@ struct AgentLogo: View {
 }
 
 /// A session's state as a dot: green and pulsing while it runs, orange
-/// while it waits on the owner, red when it failed.
+/// while it waits on the owner, red when it failed. An idle or archived
+/// session has none (as on the Mac), but keeps the dot's room so titles line up.
 struct StatusDot: View {
     let session: Session
     @State private var pulse = false
@@ -74,8 +75,9 @@ struct StatusDot: View {
                 Circle().fill(.green.opacity(0.4)).frame(width: 9, height: 9).scaleEffect(pulse ? 2.3 : 1).opacity(pulse ? 0 : 0.6)
                     .onAppear { withAnimation(.easeOut(duration: 1.8).repeatForever(autoreverses: false)) { pulse = true } }
             }
-            Circle().fill(color).frame(width: 9, height: 9)
-                .overlay(Circle().strokeBorder(.tertiary, lineWidth: session.status == .archived ? 1.5 : 0))
+            if session.isActive || session.needsAttention {
+                Circle().fill(color).frame(width: 9, height: 9)
+            }
         }
         .frame(width: 20)
         .accessibilityLabel(statusTitle(session.status))
@@ -84,8 +86,7 @@ struct StatusDot: View {
     private var color: Color {
         if session.status == .waitingInput { return .orange }
         if session.isFailed { return .red }
-        if session.isActive { return .green }
-        return session.status == .archived ? .clear : Color(.tertiaryLabel)
+        return .green
     }
 }
 

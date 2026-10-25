@@ -83,10 +83,26 @@ test("the session card floats over the conversation with what a glance needs, an
   expect(log.x + log.width).toBeLessThanOrEqual(c.x);
   await snap(page, "session-info");
 
+  // The toggle is a toolbar button the size of the sidebar's, highlighted only while the info shows.
+  const left = (await page.getByRole("button", { name: "隐藏边栏" }).boundingBox())!;
+  const right = (await toggle.boundingBox())!;
+  expect([right.width, right.height]).toEqual([left.width, left.height]);
+  const fill = () => toggle.evaluate((el) => getComputedStyle(el).backgroundColor);
+  expect(await fill()).not.toBe("rgba(0, 0, 0, 0)");
   await toggle.click();
   await expect(card).toHaveCount(0);
   await expect(toggle).toHaveAttribute("aria-pressed", "false");
+  await page.mouse.move(0, 0);
+  await expect.poll(fill).toBe("rgba(0, 0, 0, 0)");
   await snap(page, "session-chat");
+  // In the dark, the owner's messages are a quiet raised grey with light text, not a white block.
+  await page.emulateMedia({ colorScheme: "dark" });
+  const bubble = page.getByRole("log", { name: "对话" }).locator(".um .bub").first();
+  const colors = () => bubble.evaluate((el) => [getComputedStyle(el).backgroundColor, getComputedStyle(el).color]);
+  await expect.poll(async () => (await colors())[0]).toMatch(/^rgba\(255, 255, 255, 0\.\d+\)$/);
+  expect((await colors())[1]).toMatch(/^rgba\(255, 255, 255, 0\.8\d*\)$/);
+  await snap(page, "session-chat-dark");
+  await page.emulateMedia({ colorScheme: "light" });
   await toggle.click();
   await expect(card).toBeVisible();
   await app.close();
