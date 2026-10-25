@@ -22,7 +22,7 @@ import (
 
 // Core is the running owner role.
 type Core struct {
-	o     *owner.Owner
+	o     *owner.Device
 	ln    net.Listener
 	srv   *http.Server
 	token string

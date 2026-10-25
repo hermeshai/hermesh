@@ -37,10 +37,11 @@ func TestBlockedRelayFailsBeforeTouchID(t *testing.T) {
 				w.Write([]byte("<html>Blocked by policy</html>"))
 			}))
 			defer proxy.Close()
-			o, err := Open(Config{DataDir: t.TempDir()})
+			d, err := Open(Config{DataDir: t.TempDir()})
 			if err != nil {
 				t.Fatal(err)
 			}
+			o := d.owner()
 			asked, stop := o.hub.watch()
 			defer stop()
 			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)

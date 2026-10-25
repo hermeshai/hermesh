@@ -125,7 +125,9 @@ The root key moves from the `app/root-key.se` file into the **data-protection Ke
 
 Only binaries signed by our team with that entitlement can use the key, and only the signer has it. This needs a Developer ID provisioning profile embedded in `Hermesh Signer.app`, which is the pattern Codex (`CodexCLI.app`) and Claude (`hwkey` group) ship.
 
-Development builds without a profile fall back to today's file blob. The product has not launched, so existing development identities are simply reset.
+Development builds without a profile fall back to a file blob per key, `app/root-keys/<key id>.se`. The product has not launched, so existing development identities are simply reset.
+
+The signer keeps one root key per profile hermeshd has (trusted-devices.md 4.8): creating a key keeps the others, each `SigningRequest` names the key to sign with (`root_key_id`), and hermeshd asks for a key to be deleted (`delete_root_key`) once its profile left the owner.
 
 ### 5.5 Who started this?
 

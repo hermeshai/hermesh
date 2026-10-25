@@ -109,6 +109,29 @@ func (h *signHub) createKey(ctx context.Context) (*ecdsa.PublicKey, []byte, erro
 	}
 }
 
+// deleteKey has the signer delete a root key this device no longer uses.
+// It waits a little for the signer, which may not be running; a key it
+// misses only stays unused.
+func (h *signHub) deleteKey(ctx context.Context, keyID string) error {
+	req := &localv1.SigningRequest{RequestId: identity.RandomCode(16), BatchId: identity.RandomCode(10), DeleteRootKey: true, RootKeyId: keyID, Caller: callerFrom(ctx)}
+	h.mu.Lock()
+	p := h.post(req)
+	h.mu.Unlock()
+	select {
+	case _, ok := <-p.done:
+		if !ok {
+			return errors.New("the signer did not delete the root key")
+		}
+		return nil
+	case <-time.After(10 * time.Second):
+		h.drop(req.BatchId)
+		return errors.New("timed out waiting for the signer to delete the root key")
+	case <-ctx.Done():
+		h.drop(req.BatchId)
+		return ctx.Err()
+	}
+}
+
 // signBatch asks the signer to sign msgs with the root key in one
 // confirmation and returns the signed envelopes.
 func (h *signHub) signBatch(ctx context.Context, root *ecdsa.PublicKey, msgs []proto.Message) ([]*identityv1.Signed, error) {
@@ -130,7 +153,7 @@ func (h *signHub) signBatch(ctx context.Context, root *ecdsa.PublicKey, msgs []p
 		typ := identity.MessageType(m)
 		input := identity.SigningInput(typ, body)
 		req := &localv1.SigningRequest{RequestId: identity.RandomCode(16), Type: typ, Body: body, Message: input, BatchId: batch, Caller: callerFrom(ctx),
-			ShowMatch: showMatch(ctx), Confirmed: confirmed(ctx)}
+			ShowMatch: showMatch(ctx), Confirmed: confirmed(ctx), RootKeyId: identity.KeyID(root)}
 		items[i] = item{p: h.post(req), typ: typ, body: body, input: input}
 	}
 	h.mu.Unlock()

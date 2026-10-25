@@ -97,6 +97,10 @@ message ClaimRequest {
   // Hosted center: the PKCE verifier of a link code made for an app that
   // signed in through the browser.
   string claim_verifier = 4;
+  // Hosted center: this device, already one of the owner's, signs in again
+  // (it signed out). The account of the link code must be that owner's;
+  // nothing is linked or changed.
+  bool resume = 5;
 }
 
 message ClaimResponse {

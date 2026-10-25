@@ -285,6 +285,11 @@ public nonisolated struct Hermesh_Relay_V1_ClaimRequest: Sendable {
   /// signed in through the browser.
   public var claimVerifier: String = String()
 
+  /// Hosted center: this device, already one of the owner's, signs in again
+  /// (it signed out). The account of the link code must be that owner's;
+  /// nothing is linked or changed.
+  public var resume: Bool = false
+
   public var unknownFields = SwiftProtobuf.UnknownStorage()
 
   public init() {}
@@ -1442,7 +1447,7 @@ nonisolated extension Hermesh_Relay_V1_GetInfoResponse: SwiftProtobuf.Message, S
 
 nonisolated extension Hermesh_Relay_V1_ClaimRequest: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
   public static let protoMessageName: String = _protobuf_package + ".ClaimRequest"
-  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{3}claim_code\0\u{3}root_chain\0\u{3}device_cert\0\u{3}claim_verifier\0")
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{3}claim_code\0\u{3}root_chain\0\u{3}device_cert\0\u{3}claim_verifier\0\u{1}resume\0")
 
   public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
     while let fieldNumber = try decoder.nextFieldNumber() {
@@ -1454,6 +1459,7 @@ nonisolated extension Hermesh_Relay_V1_ClaimRequest: SwiftProtobuf.Message, Swif
       case 2: try { try decoder.decodeSingularMessageField(value: &self._rootChain) }()
       case 3: try { try decoder.decodeSingularMessageField(value: &self._deviceCert) }()
       case 4: try { try decoder.decodeSingularStringField(value: &self.claimVerifier) }()
+      case 5: try { try decoder.decodeSingularBoolField(value: &self.resume) }()
       default: break
       }
     }
@@ -1476,6 +1482,9 @@ nonisolated extension Hermesh_Relay_V1_ClaimRequest: SwiftProtobuf.Message, Swif
     if !self.claimVerifier.isEmpty {
       try visitor.visitSingularStringField(value: self.claimVerifier, fieldNumber: 4)
     }
+    if self.resume != false {
+      try visitor.visitSingularBoolField(value: self.resume, fieldNumber: 5)
+    }
     try unknownFields.traverse(visitor: &visitor)
   }
 
@@ -1484,6 +1493,7 @@ nonisolated extension Hermesh_Relay_V1_ClaimRequest: SwiftProtobuf.Message, Swif
     if lhs._rootChain != rhs._rootChain {return false}
     if lhs._deviceCert != rhs._deviceCert {return false}
     if lhs.claimVerifier != rhs.claimVerifier {return false}
+    if lhs.resume != rhs.resume {return false}
     if lhs.unknownFields != rhs.unknownFields {return false}
     return true
   }

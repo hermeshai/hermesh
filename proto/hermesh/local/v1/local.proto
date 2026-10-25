@@ -14,6 +14,22 @@ import "hermesh/session/v1/session.proto";
 service LocalService {
   rpc GetStatus(GetStatusRequest) returns (GetStatusResponse);
 
+  // Accounts (docs/trusted-devices.md 4.8): a device keeps a profile for
+  // each owner it set up or joined, each with its own root key, and uses one
+  // at a time, the current one, which every other call acts on.
+  rpc ListProfiles(ListProfilesRequest) returns (ListProfilesResponse);
+  // Makes another profile current: the current one disconnects and its
+  // machine stops; the other connects, unless it is signed out.
+  rpc SwitchProfile(SwitchProfileRequest) returns (SwitchProfileResponse);
+  // Makes an empty profile current, to set up or join another owner.
+  rpc AddProfile(AddProfileRequest) returns (AddProfileResponse);
+  // Signs the current profile out: it disconnects and its machine stops,
+  // but it keeps its keys, so signing in again needs no other device.
+  rpc SignOut(SignOutRequest) returns (SignOutResponse);
+  // Signs the current profile in again: on a hosted center with a link
+  // code from a browser sign-in to the account that owns it.
+  rpc SignIn(SignInRequest) returns (SignInResponse);
+
   // Onboarding: the first trusted device creates the owner.
   rpc Setup(SetupRequest) returns (SetupResponse);
 
@@ -33,7 +49,8 @@ service LocalService {
   // re-issued by this one, and its own machine revoked.
   rpc RemoveDevice(RemoveDeviceRequest) returns (RemoveDeviceResponse);
   // Forgets the owner on this device, after it was removed, so it can be
-  // set up again or join again. Its own machine keeps its projects.
+  // set up again or join again: its root key is deleted, and its own
+  // machine keeps its projects.
   rpc Leave(LeaveRequest) returns (LeaveResponse);
 
   // Signing delegation.
@@ -133,7 +150,59 @@ message GetStatusResponse {
   // initialized stays false; owner_id, relay_url and local_machine_*
   // describe the machine.
   bool machine_only = 14;
+  // This profile is signed out (SignOut): set up, but it neither connects
+  // nor signs until SignIn.
+  bool signed_out = 15;
+  // The account this profile belongs to, as the center named it when it
+  // was set up, joined or signed in (for display only).
+  string account = 16;
 }
+
+message ListProfilesRequest {}
+
+message ListProfilesResponse {
+  // Every profile that is set up, and the current one.
+  repeated Profile profiles = 1;
+}
+
+message Profile {
+  string id = 1;
+  // Empty: not set up yet (the current profile only).
+  string owner_id = 2;
+  string relay_url = 3;
+  // As GetStatusResponse.account.
+  string account = 4;
+  bool current = 5;
+  bool signed_out = 6;
+  bool machine_only = 7;
+}
+
+message SwitchProfileRequest {
+  string id = 1;
+}
+
+message SwitchProfileResponse {}
+
+message AddProfileRequest {}
+
+message AddProfileResponse {
+  string id = 1;
+}
+
+message SignOutRequest {}
+
+message SignOutResponse {}
+
+message SignInRequest {
+  // A hosted center: the link code from the browser sign-in and its PKCE
+  // verifier. A self-hosted relay needs neither.
+  string claim_code = 1;
+  string claim_verifier = 2;
+  // As SetupRequest.account.
+  string account = 3;
+}
+
+message SignInResponse {}
 
 message SetupRequest {
   string relay_url = 1;
@@ -150,6 +219,8 @@ message SetupRequest {
   // Also make this device a machine with this name, in the same signature
   // (one Touch ID). Empty: not a machine.
   string local_machine_name = 7;
+  // The account, as the center named it in the sign-in link (for display).
+  string account = 8;
 }
 
 message SetupResponse {
@@ -180,6 +251,8 @@ message RequestJoinRequest {
   // here, so the owner is theirs and ConfirmJoin asks for no digits.
   // Otherwise the owner id came from the center and the digits are needed.
   bool owner_typed = 8;
+  // As SetupRequest.account.
+  string account = 9;
 }
 
 message RequestJoinResponse {
@@ -273,8 +346,8 @@ message SigningRequest {
   // Batch requests share one user confirmation.
   string batch_id = 5;
   // Set instead of type, body and message: hermeshd needs a new root key
-  // (Setup or RequestJoin without one). The signer creates it, replacing any
-  // it held, and answers with its public key.
+  // (Setup or RequestJoin without one). The signer creates it, keeping the
+  // others it holds (one per profile), and answers with its public key.
   bool create_root_key = 6;
   // The local process whose call led to this request, as hermeshd saw it on
   // its socket: a hint for the person, not proof.
@@ -286,6 +359,13 @@ message SigningRequest {
   // A client pairing the person already confirmed as theirs
   // (PairingDetails.confirmed): no verification code to compare.
   bool confirmed = 9;
+  // The root key to sign with (its key id): the current profile's. With
+  // delete_root_key: the key to delete.
+  string root_key_id = 10;
+  // Set instead of type, body and message: the device left the owner of
+  // root_key_id (Leave), so the signer deletes that key, without asking,
+  // and completes the request.
+  bool delete_root_key = 11;
 }
 
 message Caller {

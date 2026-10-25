@@ -135,7 +135,8 @@ chain without it arrives. When it next connects and is refused, it asks the
 relay (`GetInfo` with its owner id) whether it is still listed; if not, the
 app says "这台 Mac 已不在你的 Hermesh 账号里" (This Mac Is No Longer in Your
 Hermesh Account) and offers to reset it (`Leave`), after which it can be set
-up or join again. Its own machine keeps its key and projects.
+up or join again. `Leave` also has the signer delete the root key it no
+longer uses. Its own machine keeps its key and projects.
 
 ### 4.5 Every device is gone: start over
 
@@ -215,6 +216,44 @@ no Touch ID on it.
 A default name that another machine of the owner has (two Macs called
 "MacBook Pro") gets the next free suffix (`macbook-pro-2`) when approved.
 
+### 4.8 Profiles: signing out, and more than one owner
+
+A device keeps a **profile** for each owner it set up or joined, so that one
+device can later belong to several owners (a personal and a work account)
+and switch between them. Only the foundation is built so far; the apps
+offer neither signing out nor a second owner yet.
+
+- A profile is a directory of its own,
+  `<data>/owner/profiles/<id>/` (its `owner.db`, `keys/device.key`, and its
+  own machine in `machine/`), with a root key of its own in the signer.
+  `<data>/owner/current` names the current profile. hermeshd runs only the
+  current one (its relay connection and its machine), and `LocalService`
+  acts on it. A root key is never shared: an owner id comes from its first
+  device's key, so a device that set up two owners with one key would name
+  both the same.
+- The signer keeps every profile's root key and signs with the one a
+  `SigningRequest` names (`root_key_id`); creating a key keeps the others,
+  and `delete_root_key` deletes one, without asking, since that gives no one
+  anything.
+- `ListProfiles`, `SwitchProfile` and `AddProfile` (an empty profile, made
+  current, to set up or join) manage them. Joining an owner another profile
+  already belongs to is refused.
+- **Signing out** (`SignOut`) stops using a profile without giving it up: it
+  stops its notifications, its relay connection and its machine, and keeps
+  every key, so it stays one of the owner's trusted devices and what it
+  signed stays valid. It is not a security boundary: what keeps a device
+  from signing is Touch ID, and what takes that away for good is removing
+  the device (4.3).
+- **Signing in again** (`SignIn`) takes no other device. A hosted center
+  wants the person signed in, in the browser, to the account that owns the
+  profile: the app opens `/app-login` naming the owners it has (`owners`),
+  the page hands the link code straight back for one of them, and hermeshd
+  redeems it with `Claim{resume}`, which the center accepts only when the
+  account's owner is the profile's, and which links or changes nothing. A
+  self-hosted relay has no accounts, so signing in only checks the relay.
+  Either way the device then asks the relay for the current chain: removed
+  meanwhile (or the owner started over), it signs in removed, for `Leave`.
+
 ## 5. What an attacker can do
 
 | Attack | Result | Why |
@@ -226,6 +265,8 @@ A default name that another machine of the owner has (two Macs called
 | The center withholds a removal from some machines | They keep trusting the removed device until they see the chain | Bounded as withheld revocations are: trusted devices also push the chain to machines over E2E when online |
 | A stolen device, unlocked by the thief (Touch ID or password), approves things before it is removed | Possible | The same as a stolen signer today; removal from another device ends it |
 | A stolen, unlocked device signs a competing v(n+1) before the owner removes it | A fork; verifiers that saw one version reject the other | Detected, not resolved: the owner starts over (4.5). Cheap, because it re-pairs and keeps projects |
+| Someone with the center account signs a signed-out device in | Nothing gained | Signing in only lets the device use its own keys again; each use still needs Touch ID on it |
+| Another account's link code signs a device in (`Claim{resume}`) | Fails | The center accepts it only from the account whose owner the device belongs to; the code is not used up |
 | A removed device later signs anything | Fails | Its key is not in the current RootCert; keys cannot be extracted to sign elsewhere |
 | The center hands a machine-only Mac's request to its own owner and approves it there | Fails | No device of the person shows the two digits of that machine cert (4.7) |
 
@@ -240,4 +281,5 @@ A default name that another machine of the owner has (two Macs called
 | `internal/owner` | Setup without words; `RequestJoin`, `WaitJoin`, `ConfirmJoin` (B); `ApproveDevicePairing` (A); `ListDevices`, `RemoveDevice`, `Leave`; `Recover` removed |
 | Mac app | First run without words; "add this Mac" waiting screen with the code and the final confirmation (from `hermesh://join`, or a connection address on a self-hosted relay); device requests in the approval window; a Devices list with Remove; the removed screen with Leave; self-hosted recovery screens removed |
 | Hosted center | `owners.root_chain`; `/app-login` offers joining first; the console lists trusted devices (read only) |
+| Profiles (4.8) | `LocalService` `ListProfiles`, `SwitchProfile`, `AddProfile`, `SignOut`, `SignIn`; `SigningRequest.root_key_id` and `delete_root_key`; `ClaimRequest.resume`; `internal/owner` `Device` over one `Owner` per profile; the signers keep a key per profile; the center redeems `resume` codes and `/app-login` takes `owners`; `TestAccountsOnOneDevice`, hosted `TestDeviceSignsOutAndIn` |
 | Tests | `pkg/identity` `TestRootChain` (join, removal, forks, gaps, rollbacks, foreign chains); `TestUserJourney` A10 (self-hosted); hosted-center `TestTrustedDevicesOnCenter` (join, approve, remove, a join the center completes itself) and `TestMacAppJoin` (the app's own join code); the browser test for the join choice |
