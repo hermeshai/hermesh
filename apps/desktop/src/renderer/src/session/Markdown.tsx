@@ -1,41 +1,71 @@
-import type { ReactNode } from "react";
-import { markdown, type Block, type Inline } from "@hermesh/core";
+import ReactMarkdown, { type Components } from "react-markdown";
+import remarkGfm from "remark-gfm";
 
-/** An agent's reply as Markdown, made of text nodes only (never HTML); links open in the browser. */
+/**
+ * An agent's reply as GitHub Markdown, rendered as React elements (raw HTML
+ * stays text). Links open in the browser, http and https only; images show
+ * their alt text, so a reply never loads anything.
+ */
 export function Markdown({ text }: { text: string }) {
-  return <div className="md sel-text">{markdown(text).map(block)}</div>;
+  return (
+    <div className="md sel-text">
+      <ReactMarkdown remarkPlugins={plugins} components={components}>
+        {text}
+      </ReactMarkdown>
+    </div>
+  );
 }
 
-function block(b: Block, i: number): ReactNode {
-  switch (b.t) {
-    case "p":
-      return <p key={i}>{b.c.map(inline)}</p>;
-    case "h":
-      return b.level === 1 ? <h3 key={i}>{b.c.map(inline)}</h3> : b.level === 2 ? <h4 key={i}>{b.c.map(inline)}</h4> : <h5 key={i}>{b.c.map(inline)}</h5>;
-    case "ul":
-      return <ul key={i}>{b.items.map((it, j) => <li key={j}>{it.map(inline)}</li>)}</ul>;
-    case "ol":
-      return <ol key={i} start={b.start}>{b.items.map((it, j) => <li key={j}>{it.map(inline)}</li>)}</ol>;
-    case "quote":
-      return <blockquote key={i}>{b.c.map(inline)}</blockquote>;
-    case "pre":
-      return <pre key={i}><code>{b.v}</code></pre>;
-  }
+const web = /^https?:\/\//i;
+
+const components: Components = {
+  a: ({ href, children }) =>
+    href && web.test(href) ? <a href={href} target="_blank" rel="noreferrer">{children}</a> : <span>{children}</span>,
+  img: ({ alt }) => <span>{alt}</span>,
+  table: ({ children }) => (
+    <div className="md-table">
+      <table>{children}</table>
+    </div>
+  ),
+};
+
+type Node = { type: string; value?: string; url?: string; children?: Node[] };
+
+/** Chinese text and punctuation: a bare link ends before them ("见 https://x.io，然后" links https://x.io). */
+const wide = /[　-〿㐀-鿿＀-￯]/;
+
+/**
+ * Agents write for chat: a single newline is a line break, and a bare link
+ * stops where Chinese text starts (GFM would carry it to the next space).
+ */
+function chatText() {
+  return (tree: Node) => {
+    const walk = (n: Node) => {
+      if (!n.children) return;
+      const out: Node[] = [];
+      for (const c of n.children) {
+        if (c.type === "text" && c.value?.includes("\n")) {
+          c.value.split("\n").forEach((v, i) => {
+            if (i > 0) out.push({ type: "break" });
+            if (v) out.push({ type: "text", value: v });
+          });
+          continue;
+        }
+        const label = c.type === "link" && c.children?.length === 1 && c.children[0].type === "text" ? c.children[0].value ?? "" : "";
+        const cut = label.search(wide);
+        if (cut > 0 && (web.test(label) || label.startsWith("www."))) {
+          const shown = label.slice(0, cut);
+          out.push({ ...c, url: web.test(shown) ? shown : `http://${shown}`, children: [{ type: "text", value: shown }] });
+          out.push({ type: "text", value: label.slice(cut) });
+          continue;
+        }
+        walk(c);
+        out.push(c);
+      }
+      n.children = out;
+    };
+    walk(tree);
+  };
 }
 
-function inline(n: Inline, i: number): ReactNode {
-  switch (n.t) {
-    case "text":
-      return n.v;
-    case "br":
-      return <br key={i} />;
-    case "code":
-      return <code key={i}>{n.v}</code>;
-    case "strong":
-      return <b key={i}>{n.c.map(inline)}</b>;
-    case "em":
-      return <em key={i}>{n.c.map(inline)}</em>;
-    case "link":
-      return <a key={i} href={n.href} target="_blank" rel="noreferrer">{n.c.map(inline)}</a>;
-  }
-}
+const plugins = [remarkGfm, chatText];
