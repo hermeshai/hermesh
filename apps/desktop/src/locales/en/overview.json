@@ -17,14 +17,6 @@
     "line": "Can’t reach right now: {{machines}}",
     "machine": "{{name}} ({{error}})"
   },
-  "setup": {
-    "title": "Finish Setup",
-    "left_one": "{{count}} to go",
-    "left_other": "{{count}} to go",
-    "hide": "Hide",
-    "done": "Done",
-    "notDone": "Not done"
-  },
   "attention": {
     "title": "Needs You",
     "pairingDetail": "{{device}} · verification code <code>{{code}}</code>",

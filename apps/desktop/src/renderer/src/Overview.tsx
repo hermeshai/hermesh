@@ -5,7 +5,6 @@ import { Icon } from "./icons";
 import { addMenu } from "./overview/actions";
 import { Attention } from "./overview/Attention";
 import { LinkMap } from "./overview/Map";
-import { Setup } from "./overview/Setup";
 import { dayText, Usage, useUsage } from "./overview/Usage";
 import { Working } from "./overview/Working";
 import { useNow, useStore } from "./store";
@@ -44,7 +43,6 @@ export function Overview() {
               })}
             </div>
           )}
-          <Setup />
           <Attention now={now} />
           <section aria-label={t("map.title")}>
             <LinkMap pick={pick} onPick={setPick} now={now} usage={usage} />

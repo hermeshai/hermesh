@@ -5,7 +5,6 @@ export * from "./machines";
 export * from "./notices";
 export * from "./scope";
 export * from "./sessions";
-export * from "./setup";
 export * from "./signin";
 export * from "./text";
 export * from "./transcript";

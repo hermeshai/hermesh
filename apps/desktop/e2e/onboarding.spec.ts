@@ -299,6 +299,10 @@ test("browser sign-in: the link brings the authorization page, the center's rela
   await expectMainWindow(app, page);
   await expect(page.getByText("检查 README").first()).toBeVisible();
   await snap(page, "first-12-main");
+  // The overview has no setup checklist.
+  await page.getByRole("button", { name: "概览" }).click();
+  await expect(page.getByRole("heading", { name: "概览", level: 1 })).toBeVisible();
+  await expect(page.getByRole("region", { name: "完成设置" })).toHaveCount(0);
   await app.close();
   center.close();
 });
