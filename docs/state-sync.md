@@ -1,6 +1,7 @@
 # Hermesh state sync: one replica per device, change feeds on every hop
 
-Status: accepted, 2026-10-25 (decisions in §10). Not built yet.
+Status: accepted, 2026-10-25 (decisions in §10). Step 1 built 2026-10-26
+(§7); steps 2–5 not yet.
 
 The Mac app and the iPhone app show the owner's world: machines,
 agents (clients), devices, projects, pairing requests, sessions and their
@@ -388,11 +389,11 @@ long output itself is shown as it shortened it.
 | Kind | Source | Kept |
 |---|---|---|
 | Status | this hermeshd | always; `relay_connected` from the connection, so `GetStatus` never dials the relay (it does today when disconnected) |
-| Machines | (A), plus this device's own machine | all; `status` and `unreachable` from (B) |
+| Machines | (A), plus this device's own machine | all; `status` and `unreachable` from (B). This device's own machine is read in process at each call (milliseconds, no relay), never copied |
 | Agents (clients), pairing requests | (A) | all, verified as today (`VerifyGrant`, `pairingDetails`); pairing requests dropped at `expires_at` |
 | Devices | root chain from (A) + machines | derived, as `ListDevices` does today |
 | Projects | (B) per machine | all |
-| Sessions | (B) per machine, BASIC | per machine: the newest 50 plus every unsettled one; trimmed after each change, since a session that changes becomes the newest and comes back |
+| Sessions | (B) per machine, BASIC | per machine: the newest 50 plus every unsettled one; trimmed after each change, since a session that changes becomes the newest and comes back. A page past them (`before`, or more than 50 of a machine that has more) is asked of the machine |
 | Usage | `GetUsage` per machine | days before today: once per time zone; today: refreshed (§4.4) |
 | Feed state | per machine | following / error / offline, and its resume token |
 
@@ -445,7 +446,8 @@ today. The last subscriber leaving stops them 60 s later, not at once.
 
 ### 4.4 Usage
 
-`GetUsage` answers from the replica. History (before today, in the
+`GetUsage` answers from the replica (from step 2; in step 1 it still asks
+each machine, without asking the relay first). History (before today, in the
 caller's time zone) is fetched once per machine. Today's is fetched again
 when that machine's sessions show a grown `turn_count`, debounced 2 s, and
 when the date changes. The overview drops its 60 s timer.
@@ -469,7 +471,7 @@ same Watch.
 | Peer | Detected by | Fallback |
 |---|---|---|
 | Relay without `WatchOwner` | `Unimplemented` on the first call | Poll `ListMachines` and `ListClients` every 5 s and `ListPairingRequests` every 2 s, once per device, only while sources run; poll once right after this device's own writes |
-| Machine without `Watch` | `Unimplemented` | Today's `ListSessions` first page + `WatchSessions`; `GetInfo` and `ListProjects` on connect, then again 1 s after its session changes (counts derive from sessions); no resume (relist on reconnect, as today) |
+| Machine without `Watch` | `Unimplemented` | Today's `ListSessions` first page + `WatchSessions`; `GetInfo` and `ListProjects` on connect, `GetInfo` again 1 s after its sessions change status (its counts), both every 30 s (changes other devices made) and at once after this device's own; no resume (relist on reconnect, as today) |
 | Machine that ignores `view` | a FULL session or event arrives | The owner cuts it to BASIC before the replica, so screens get small payloads anyway; only the tunnel carries the full bytes |
 | Machine without `ReadToolOutput` | `Unimplemented` | The owner serves `ReadToolOutput` from `ListEvents(after_seq: seq-1, limit: 1, view: FULL)`: the first 16 KiB, as recorded there |
 | Callers of the old LocalService calls (tests, the stand-in daemon's clients) | — | Answered from the replica |
@@ -513,7 +515,7 @@ screens are not touched again.
 
 | Step | Change | What it buys | Needs |
 |---|---|---|---|
-| 1 | The replica in hermeshd, fed by today's calls (the fallback adapters of §5); `sessionWatch` ([watch.go](../internal/owner/watch.go)) becomes the machine sources; every `List*` from the replica; `GetStatus` stops dialing | Local reads in ms; relay polls once per device (≈ 54 / min) whatever the screens | hermeshd only |
+| 1 | The replica in hermeshd, fed by today's calls (the fallback adapters of §5); `sessionWatch` becomes the machine sources; every `List*` from the replica; `GetStatus` stops dialing. **Built 2026-10-26** ([replica.go](../internal/owner/replica.go)): every list p50 60–160 µs with the relay 300 ms away, 54 relay control calls a minute with three windows polling ([replica_test.go](../e2e/replica_test.go)); `GetUsage` is still asked of the machines, its cache (§4.4) comes with step 2 | Local reads in ms; relay polls once per device (≈ 54 / min) whatever the screens | hermeshd only |
 | 2 | `LocalService.Watch`; Mac renderer, Mac main and iPhone follow it | No polls from any screen | step 1 |
 | 3 | Views (§3.1), whole tool outputs (§3.5), `ReadToolOutput`, `ListSessionEvents`, previews in the conversation, the conversation cache; the owner cuts payloads itself for machines that ignore views | List and conversation bytes down (≈ 220 B a session; the 421 KB session ≈ 100 KB); an opened tool output is whole up to 1 MiB | step 2; full gains on the tunnel once machines update |
 | 4 | `OwnerControlService.WatchOwner` | Relay control calls ≈ 0 while nothing changes | step 1; a center release (bump the submodule in hermesh-cloud, redeploy) |

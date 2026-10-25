@@ -210,9 +210,8 @@ func TestMachineOnlyMac(t *testing.T) {
 	if _, err := work.Leave(ctx, &localv1.LeaveRequest{}); err != nil {
 		t.Fatal(err)
 	}
-	if listed(again.LocalMachineId) != nil {
-		t.Fatal("a Mac that left is still among the owner's machines")
-	}
+	// The owner's Mac hears of it at its next poll of the relay.
+	eventually(t, 15*time.Second, "a Mac that left gone from the owner's machines", func() bool { return listed(again.LocalMachineId) == nil })
 
 	// A Mac called like one the owner has gets the next free name.
 	typed, typedSock := w.otherMac("typed-mac", env)

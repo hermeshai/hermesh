@@ -81,7 +81,14 @@ func TestSessionList(t *testing.T) {
 	if t.Failed() {
 		t.FailNow()
 	}
-	all, err := w.app.client.ListSessions(ctx, &localv1.ListSessionsRequest{})
+	// The owner's replica hears of the last ones from vps-1's watch, a
+	// moment after the agent saw them finish.
+	var all *localv1.ListSessionsResponse
+	var err error
+	eventually(t, 5*time.Second, "all sessions listed", func() bool {
+		all, err = w.app.client.ListSessions(ctx, &localv1.ListSessionsRequest{})
+		return len(all.GetSessions()) == 31
+	})
 	if err != nil || len(all.Sessions) != 31 || len(all.Unreachable) != 0 {
 		t.Fatalf("all sessions: %d %v %v", len(all.GetSessions()), all.GetUnreachable(), err)
 	}

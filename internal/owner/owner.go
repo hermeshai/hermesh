@@ -58,8 +58,9 @@ type Owner struct {
 	log *slog.Logger
 	st  *store
 	hub *signHub
-	// watch pushes session changes to the local API's watchers.
-	watch *sessionWatch
+	// rep is this device's copy of the owner's world, which the List
+	// calls answer from (replica.go).
+	rep *replica
 
 	mu         sync.Mutex
 	ownerID    string
@@ -110,7 +111,7 @@ func openProfile(cfg Config, hub *signHub) (*Owner, error) {
 		return nil, err
 	}
 	o := &Owner{cfg: cfg, log: cfg.Logger, st: st, hub: hub}
-	o.watch = &sessionWatch{o: o, watchers: map[chan *localv1.WatchSessionsResponse]bool{}}
+	o.rep = newReplica(o)
 	return o, o.load()
 }
 
@@ -765,9 +766,24 @@ func (o *Owner) LookupPairing(ctx context.Context, code string) (*localv1.Pairin
 	return d, err
 }
 
-// ListPairingRequests returns the requests waiting for this owner. One the
-// relay tampered with is left out (and logged), not shown.
+// ListPairingRequests returns the requests waiting for this owner, as the
+// replica last polled them, without those expired since.
 func (o *Owner) ListPairingRequests(ctx context.Context) ([]*localv1.PairingDetails, error) {
+	s, err := o.rep.use(ctx)
+	if err != nil {
+		return nil, err
+	}
+	o.rep.mu.Lock()
+	list, err := listed(&s.pairings)
+	o.rep.mu.Unlock()
+	return slices.DeleteFunc(list, func(d *localv1.PairingDetails) bool {
+		return d.ExpiresAt != nil && d.ExpiresAt.AsTime().Before(time.Now())
+	}), err
+}
+
+// listPairingRequests asks the relay for the requests waiting for this
+// owner. One the relay tampered with is left out (and logged), not shown.
+func (o *Owner) listPairingRequests(ctx context.Context) ([]*localv1.PairingDetails, error) {
 	ctl, _, err := o.control(ctx)
 	if err != nil {
 		return nil, err
@@ -986,9 +1002,21 @@ func (o *Owner) local() *machine.Local {
 
 // machines lists the owner's machines: this device's own from in process,
 // with its state (Online: whether the relay can reach it), and the others
-// as the relay lists them. Without the relay, the others are as it last
-// listed them, offline, and only a device with no machine of its own fails.
+// as the replica last polled them from the relay (see listedMachines).
 func (o *Owner) machines(ctx context.Context) ([]*localv1.Machine, error) {
+	s, err := o.rep.use(ctx)
+	if err != nil {
+		return nil, err
+	}
+	o.rep.mu.Lock()
+	listed, err := listed(&s.machines)
+	o.rep.mu.Unlock()
+	return o.withLocal(listed, err)
+}
+
+// listedMachines lists the owner's machines as the relay knows them. Without
+// the relay, they are as it last listed them, offline, with its error.
+func (o *Owner) listedMachines(ctx context.Context) ([]*localv1.Machine, error) {
 	listed, err := o.ListMachines(ctx)
 	o.mu.Lock()
 	if err == nil {
@@ -1004,6 +1032,12 @@ func (o *Owner) machines(ctx context.Context) ([]*localv1.Machine, error) {
 		}
 	}
 	o.mu.Unlock()
+	return listed, err
+}
+
+// withLocal adds this device's own machine to the machines the relay
+// listed; with it, the relay not answering is no error.
+func (o *Owner) withLocal(listed []*localv1.Machine, err error) ([]*localv1.Machine, error) {
 	l := o.local()
 	if l == nil {
 		return listed, err
@@ -1022,27 +1056,16 @@ func (o *Owner) machines(ctx context.Context) ([]*localv1.Machine, error) {
 	return out, nil
 }
 
-// machineStatus asks each online machine end to end for its state (coding
-// agents, sessions, pausing), which the relay does not know. A machine that
-// does not answer in time is left without one.
-func (o *Owner) machineStatus(ctx context.Context, machines []*localv1.Machine) {
-	var on []*localv1.Machine
-	for _, n := range machines {
-		if n.Online && !n.Local { // this device's own has its state already
-			on = append(on, n)
+// machineStatus gives each other online machine its state (coding agents,
+// sessions, pausing), which the relay does not know, as the replica follows
+// it end to end. One not followed (yet) is left without one.
+func (o *Owner) machineStatus(machines []*localv1.Machine) {
+	o.rep.feeds(func(feeds map[string]*feed) {
+		for _, n := range machines {
+			if f := feeds[n.MachineId]; n.Online && !n.Local && f != nil && f.ready { // this device's own has its state already
+				n.Status = f.status
+			}
 		}
-	}
-	if len(on) == 0 {
-		return
-	}
-	ctx, cancel := context.WithTimeout(ctx, 5*time.Second) // the list must not wait on a stuck machine
-	defer cancel()
-	o.fanOut(ctx, on, nil, func(ctx context.Context, n *peer.Machine, meta *localv1.Machine) error {
-		info, err := n.Info.GetInfo(ctx, &machinev1.GetInfoRequest{})
-		if err == nil {
-			meta.Status = info.Status
-		}
-		return err
 	})
 }
 
@@ -1218,6 +1241,17 @@ func (o *Owner) ListProjects(ctx context.Context, machineID string) (*localv1.Li
 	}
 	var mu sync.Mutex
 	out := &localv1.ListProjectsResponse{Unreachable: off}
+	// The followed machines' projects are in the replica; the others are asked.
+	var ask []*localv1.Machine
+	o.rep.feeds(func(feeds map[string]*feed) {
+		for _, n := range on {
+			if f := feeds[n.MachineId]; !n.Local && f != nil && f.ready {
+				out.Projects = append(out.Projects, f.projects...)
+			} else {
+				ask = append(ask, n)
+			}
+		}
+	})
 	add := func(res *machinev1.ListProjectsResponse, meta *localv1.Machine) {
 		mu.Lock()
 		defer mu.Unlock()
@@ -1226,7 +1260,7 @@ func (o *Owner) ListProjects(ctx context.Context, machineID string) (*localv1.Li
 				Description: p.Description, Agents: p.Agents, Path: p.Path})
 		}
 	}
-	bad, err := o.fanOut(ctx, on, func(l *machine.Local, meta *localv1.Machine) error {
+	bad, err := o.fanOut(ctx, ask, func(l *machine.Local, meta *localv1.Machine) error {
 		res, err := l.ListProjects(ctx)
 		if err == nil {
 			add(res, meta)
@@ -1255,7 +1289,19 @@ func specFromGrant(g *identityv1.Grant) *localv1.GrantSpec {
 		TaskVisibility: g.TaskVisibility, TtlDays: ttl, MaxConcurrentSessions: g.MaxConcurrentSessions}
 }
 
+// ListClients lists the owner's agents, as the replica last polled them.
 func (o *Owner) ListClients(ctx context.Context) ([]*localv1.Client, error) {
+	s, err := o.rep.use(ctx)
+	if err != nil {
+		return nil, err
+	}
+	o.rep.mu.Lock()
+	defer o.rep.mu.Unlock()
+	return listed(&s.clients)
+}
+
+// listClients asks the relay for the owner's agents.
+func (o *Owner) listClients(ctx context.Context) ([]*localv1.Client, error) {
 	ctl, _, err := o.control(ctx)
 	if err != nil {
 		return nil, err
@@ -1402,8 +1448,10 @@ func (o *Owner) revoke(ctx context.Context, r *identityv1.RevocationList) ([]*lo
 // ---------------------------------------------------------------------------
 // Sessions.
 
-// ListSessions asks every reachable machine (or one) for its sessions, or
-// for its page of them, and merges the pages into one.
+// ListSessions takes the sessions of every reachable machine (or one), or
+// its page of them, and merges the pages into one. A followed machine's
+// first page is in the replica (its newest keepSessions, all of them when
+// it has no more); the others are asked.
 func (o *Owner) ListSessions(ctx context.Context, req *localv1.ListSessionsRequest) (*localv1.ListSessionsResponse, error) {
 	on, off, err := o.onlineMachines(ctx, req.MachineId)
 	if err != nil {
@@ -1412,6 +1460,20 @@ func (o *Owner) ListSessions(ctx context.Context, req *localv1.ListSessionsReque
 	var mu sync.Mutex
 	more := false
 	out := &localv1.ListSessionsResponse{Unreachable: off}
+	var ask []*localv1.Machine
+	o.rep.feeds(func(feeds map[string]*feed) {
+		for _, n := range on {
+			f := feeds[n.MachineId]
+			if n.Local || f == nil || !f.ready || req.Before != nil || f.more && (req.Limit == 0 || req.Limit > keepSessions) {
+				ask = append(ask, n)
+				continue
+			}
+			for _, s := range f.sessions {
+				out.Sessions = append(out.Sessions, s)
+			}
+			more = more || f.more
+		}
+	})
 	page := &sessionv1.ListSessionsRequest{Limit: req.Limit, Before: req.Before}
 	add := func(res *sessionv1.ListSessionsResponse) {
 		mu.Lock()
@@ -1419,7 +1481,7 @@ func (o *Owner) ListSessions(ctx context.Context, req *localv1.ListSessionsReque
 		more = more || res.Next != nil
 		mu.Unlock()
 	}
-	bad, err := o.fanOut(ctx, on, func(l *machine.Local, _ *localv1.Machine) error {
+	bad, err := o.fanOut(ctx, ask, func(l *machine.Local, _ *localv1.Machine) error {
 		res, err := l.ListSessions(page)
 		if err == nil {
 			add(res)
@@ -1529,16 +1591,15 @@ func (o *Owner) localSession(sessionID string) *machine.Local {
 
 // sessionMachine finds the machine that owns a session from its id prefix.
 func (o *Owner) sessionMachine(ctx context.Context, sessionID string) (*peer.Machine, error) {
-	parts := strings.SplitN(sessionID, "_", 3)
-	if len(parts) != 3 || parts[0] != "s" {
+	if parts := strings.SplitN(sessionID, "_", 3); len(parts) != 3 || parts[0] != "s" {
 		return nil, connect.NewError(connect.CodeInvalidArgument, errors.New("bad session id"))
 	}
-	machines, err := o.ListMachines(ctx)
+	machines, err := o.machines(ctx)
 	if err != nil {
 		return nil, err
 	}
 	for _, n := range machines {
-		if strings.HasPrefix(strings.TrimPrefix(n.MachineId, "m_"), parts[1]) {
+		if ownsSession(n.MachineId, sessionID) {
 			c, err := o.relay(ctx)
 			if err != nil {
 				return nil, err
@@ -1582,7 +1643,7 @@ func (o *Owner) InterruptSession(ctx context.Context, id string) (*sessionv1.Ses
 	if err != nil {
 		return nil, err
 	}
-	return n.Session.InterruptSession(ctx, &sessionv1.InterruptSessionRequest{SessionId: id})
+	return o.written(id)(n.Session.InterruptSession(ctx, &sessionv1.InterruptSessionRequest{SessionId: id}))
 }
 
 func (o *Owner) ArchiveSession(ctx context.Context, id string) (*sessionv1.Session, error) {
@@ -1593,7 +1654,7 @@ func (o *Owner) ArchiveSession(ctx context.Context, id string) (*sessionv1.Sessi
 	if err != nil {
 		return nil, err
 	}
-	return n.Session.ArchiveSession(ctx, &sessionv1.ArchiveSessionRequest{SessionId: id})
+	return o.written(id)(n.Session.ArchiveSession(ctx, &sessionv1.ArchiveSessionRequest{SessionId: id}))
 }
 
 func (o *Owner) UnarchiveSession(ctx context.Context, id string) (*sessionv1.Session, error) {
@@ -1604,7 +1665,7 @@ func (o *Owner) UnarchiveSession(ctx context.Context, id string) (*sessionv1.Ses
 	if err != nil {
 		return nil, err
 	}
-	return n.Session.UnarchiveSession(ctx, &sessionv1.UnarchiveSessionRequest{SessionId: id})
+	return o.written(id)(n.Session.UnarchiveSession(ctx, &sessionv1.UnarchiveSessionRequest{SessionId: id}))
 }
 
 // DeleteSession deletes a session for good on its machine.
@@ -1616,8 +1677,21 @@ func (o *Owner) DeleteSession(ctx context.Context, id string) error {
 	if err != nil {
 		return err
 	}
-	_, err = n.Session.DeleteSession(ctx, &sessionv1.DeleteSessionRequest{SessionId: id})
+	if _, err = n.Session.DeleteSession(ctx, &sessionv1.DeleteSessionRequest{SessionId: id}); err == nil {
+		o.rep.sessionWritten(id, nil, true)
+	}
 	return err
+}
+
+// written keeps in the replica what a change to another machine's session
+// returned, and passes it on.
+func (o *Owner) written(id string) func(*sessionv1.Session, error) (*sessionv1.Session, error) {
+	return func(s *sessionv1.Session, err error) (*sessionv1.Session, error) {
+		if err == nil {
+			o.rep.sessionWritten(id, s, false)
+		}
+		return s, err
+	}
 }
 
 // RenameSession changes a session's title on its machine.
@@ -1629,7 +1703,7 @@ func (o *Owner) RenameSession(ctx context.Context, id, title string) (*sessionv1
 	if err != nil {
 		return nil, err
 	}
-	return n.Session.RenameSession(ctx, &sessionv1.RenameSessionRequest{SessionId: id, Title: title})
+	return o.written(id)(n.Session.RenameSession(ctx, &sessionv1.RenameSessionRequest{SessionId: id, Title: title}))
 }
 
 // AnswerQuestion answers a session's question as the owner.
@@ -1641,7 +1715,7 @@ func (o *Owner) AnswerQuestion(ctx context.Context, req *sessionv1.AnswerQuestio
 	if err != nil {
 		return nil, err
 	}
-	return n.Session.AnswerQuestion(ctx, req)
+	return o.written(req.SessionId)(n.Session.AnswerQuestion(ctx, req))
 }
 
 func (o *Owner) GetDiff(ctx context.Context, id string, turn uint32) (*sessionv1.GetDiffResponse, error) {

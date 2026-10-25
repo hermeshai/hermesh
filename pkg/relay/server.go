@@ -604,9 +604,31 @@ func (s *Server) controlMux(role relayv1.Role) http.Handler {
 	case relayv1.Role_ROLE_CLIENT:
 		mux.Handle(relayv1connect.NewClientControlServiceHandler(&clientControl{s: s}, transport.NoCompression))
 	case relayv1.Role_ROLE_OWNER:
-		mux.Handle(relayv1connect.NewOwnerControlServiceHandler(&ownerControl{s: s}, transport.NoCompression))
+		path, h := relayv1connect.NewOwnerControlServiceHandler(&ownerControl{s: s}, transport.NoCompression)
+		mux.Handle(path, countOwnerRPCs(h))
 	}
 	return mux
+}
+
+// mOwnerRPCs counts the owner devices' control calls by method: what an
+// owner's app costs the relay (docs/state-sync.md §8). Nothing per owner.
+var mOwnerRPCs = func() map[string]*metrics.Counter {
+	m := map[string]*metrics.Counter{}
+	methods := relayv1.File_hermesh_relay_v1_relay_proto.Services().ByName("OwnerControlService").Methods()
+	for i := range methods.Len() {
+		name := string(methods.Get(i).Name())
+		m["/"+relayv1connect.OwnerControlServiceName+"/"+name] = metrics.Default.Counter(`hermesh_relay_owner_rpcs_total{method="` + name + `"}`)
+	}
+	return m
+}()
+
+func countOwnerRPCs(h http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if c := mOwnerRPCs[r.URL.Path]; c != nil {
+			c.Inc()
+		}
+		h.ServeHTTP(w, r)
+	})
 }
 
 func (s *Server) handleTunnel(p *peer, st net.Conn, machineID string) {

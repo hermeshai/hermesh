@@ -309,7 +309,7 @@ func (o *Owner) ListDevices(ctx context.Context) ([]*localv1.Device, error) {
 	if err := o.requireInit(); err != nil {
 		return nil, err
 	}
-	machines, err := o.ListMachines(ctx) // also brings the chain up to date
+	machines, err := o.machines(ctx) // the replica's poll brings the chain up to date too
 	if err != nil {
 		return nil, err
 	}
