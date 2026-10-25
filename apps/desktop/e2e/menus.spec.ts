@@ -133,9 +133,13 @@ test("the menu bar panel counts what needs the owner and what runs; a count open
 
 test("a question notifies, and the notification opens its session", async () => {
   const { app, page } = await launch();
-  // The main process has had its first look: what was there before is no news.
-  await expect.poll(async () => (await tray(app)).view.attention).toBeGreaterThan(0);
-  expect(await app.evaluate(() => (globalThis as unknown as { hermeshTest: Hook }).hermeshTest.notifications().length)).toBe(0);
+  const posted = () =>
+    app.evaluate(() => (globalThis as unknown as { hermeshTest: Hook }).hermeshTest.notifications().map((n) => ({ id: n.id, title: n.title, body: n.body })));
+  // The app has just started (as after a restart, which takes its old
+  // notifications away): the question still waiting is notified again; the
+  // sessions that failed before are no news.
+  const waiting = fixture.sessions["选颜色"];
+  await expect.poll(posted).toEqual([{ id: `session-question-${waiting}`, title: "bot 在等你回答", body: "选颜色：选哪个颜色" }]);
 
   // The agent asks something new. (In the archived session, brought back for
   // this and archived again after: a new session would change the counts
@@ -144,8 +148,6 @@ test("a question notifies, and the notification opens its session", async () => 
   await cli("session", "unarchive", id);
   try {
     await cli("session", "send", id, "--message", "ask 要继续吗|是,否");
-    const posted = () =>
-      app.evaluate(() => (globalThis as unknown as { hermeshTest: Hook }).hermeshTest.notifications().map((n) => ({ id: n.id, title: n.title, body: n.body })));
     await expect.poll(posted, { timeout: 30_000 }).toContainEqual({ id: `session-question-${id}`, title: "bot 在等你回答", body: "归档的：要继续吗" });
     // Clicking it opens the session (the person clicks the banner).
     await app.evaluate((_e, id) => {

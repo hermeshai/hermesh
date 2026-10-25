@@ -89,18 +89,19 @@ function withdraw(id: string) {
   if (i >= 0) posted.splice(i, 1);
 }
 
-// Sessions as they were at the last look; none before the first, so what
-// was already there when the app started is no news.
-let seen: Map<string, NoticeSnapshot> | undefined;
+// Sessions as they were at the last look; none before the first. A session
+// seen for the first time only tells about its question, so a question
+// still waiting when the app starts is notified again (macOS took the old
+// notification away when the app quit); failures and finished turns from
+// before are no news.
+let seen = new Map<string, NoticeSnapshot>();
 
 function noticeSessions() {
   // A machine only does not know the owner's agents by name.
   const unnamed = i18n.t(world.status?.machineOnly ? "main:anAgent" : "main:disconnectedGrant");
   const grant = (s: Session) => world.clients.find((c) => c.clientId === s.createdBy)?.label ?? unnamed;
-  if (seen) {
-    for (const n of filterNotices(noticeDiff(seen, world.sessions, grant), preferences())) {
-      post(`session-${n.kind}-${n.sessionId}`, n.title, n.body, `open:${n.sessionId}`, n.kind === "turnDone");
-    }
+  for (const n of filterNotices(noticeDiff(seen, world.sessions, grant), preferences())) {
+    post(`session-${n.kind}-${n.sessionId}`, n.title, n.body, `open:${n.sessionId}`, n.kind === "turnDone");
   }
   seen = noticeSnapshots(world.sessions);
 }
