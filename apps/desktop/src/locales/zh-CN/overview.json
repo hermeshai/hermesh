@@ -5,8 +5,6 @@
   "thisMac": "这台 Mac",
   "runningCount_other": "{{count}} 个运行中",
   "add": {
-    "label": "新建",
-    "title": "连接 agent、添加机器或项目",
     "newGrant": "连接 agent…",
     "addMachine": "添加机器…",
     "addProject": "添加项目…",
