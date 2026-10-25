@@ -303,14 +303,15 @@ button{font:inherit;color:inherit}
 .insp-sum i{font-style:normal;font-variant-numeric:tabular-nums}
 .insp-sum .add{color:var(--add-fg)}.insp-sum .del{color:var(--del-fg)}
 .ilinks{display:flex;flex-direction:column;gap:5px;align-items:flex-start;font-size:12px}
-.dbody{max-width:780px;margin:0 auto;padding:18px 26px 40px}
-.tr{display:flex;flex-direction:column;gap:10px}
+/* The conversation: a 700-wide column, at least 34 from the edges; lines close together, blocks apart. */
+.dbody{max-width:768px;margin:0 auto;padding:var(--sp-3) var(--sp-4) 40px}
+.tr{display:flex;flex-direction:column;gap:var(--sp-2)}
 /* A time line before a turn, only after a pause: centred, no rule. */
 .tdiv{align-self:center;font-size:11.5px;color:var(--l3);margin:10px 0 2px}
 /* The one who started the session speaks in a dark bubble on the right; the agent writes plain text across the page. */
 .um{position:relative;align-self:flex-end;max-width:78%;margin-top:6px}
-.um .bub{background:var(--bub);color:var(--bub-fg);border-radius:18px;padding:9px 15px;font-size:13.5px;line-height:1.5}
-.am{position:relative;font-size:13.5px;line-height:1.65;padding-right:32px}
+.um .bub{background:var(--bub);color:var(--bub-fg);border-radius:18px;padding:9px 15px;font-size:14px;line-height:1.45}
+.am{position:relative;font-size:14px;line-height:1.45;padding-right:32px}
 /* Copy, over the message's edge on hover: it takes no room. */
 .msg-act{position:absolute;top:2px;opacity:0;transition:opacity .15s}
 .um .msg-act{right:calc(100% + 6px)}
@@ -319,33 +320,32 @@ button{font:inherit;color:inherit}
 .msg-act .tb{height:24px;min-width:24px}
 .md{overflow-wrap:anywhere}
 .md>*{margin:0}
-.md>*+*{margin-top:8px}
+.md>*+*{margin-top:10px}
 .md h3,.md h4,.md h5{font-weight:600;line-height:1.4}
-.md h3{font-size:16px}.md h4{font-size:14.5px}.md h5{font-size:13.5px}
+.md h3{font-size:16px}.md h4{font-size:15px}.md h5{font-size:14px}
 .md ul,.md ol{padding-left:20px}
-.md li+li{margin-top:3px}
+.md li+li{margin-top:4px}
 .md li::marker{color:var(--l3)}
 .md blockquote{border-left:2px solid var(--fill3);padding-left:12px;color:var(--l2)}
-.md code{font-family:var(--mono);font-size:12px;background:var(--fill2);padding:1px 5px;border-radius:5px}
+.md code{font-family:var(--mono);font-size:12.5px;background:var(--fill2);padding:1px 5px;border-radius:5px}
 .md pre{background:var(--code);border-radius:10px;padding:10px 12px;overflow-x:auto;box-shadow:inset 0 0 0 .5px var(--sep)}
 .md pre code{background:none;padding:0;font-size:12px;line-height:1.55;white-space:pre}
 .md a{color:var(--accent-t);text-decoration:none}
 .md a:hover{text-decoration:underline}
-.tool{border-radius:9px;font-size:12.5px}
-.tool .th{display:flex;align-items:center;gap:6px;padding:3px 0;border-radius:6px;border:0;background:none;max-width:100%;text-align:left;color:var(--l2)}
+/* Tool steps: a grey line in the body's size, no icon; a small caret after it opens it. */
+.tool{border-radius:9px;font-size:14px}
+.tool .th{display:flex;align-items:center;gap:6px;padding:2px 0;border-radius:6px;border:0;background:none;max-width:100%;text-align:left;color:var(--l2)}
 .tool .th:hover{color:var(--l1)}
 .tool .th .vb{flex:none}
 .tool .th .sm2{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
 .tool .th .chev{flex:none}
-.tgroup{font-size:12.5px}
-.tg-h{display:flex;align-items:center;gap:7px;padding:3px 0;border:0;background:none;color:var(--l2);text-align:left}
+.tgroup{font-size:14px}
+.tg-h{display:flex;align-items:center;gap:6px;padding:2px 0;border:0;background:none;color:var(--l2);text-align:left}
 .tg-h:hover{color:var(--l1)}
-.tg-h .chev{color:var(--l3);transition:transform .15s}
-.tgroup.open .tg-h .chev{transform:rotate(90deg)}
-.tg-b{display:flex;flex-direction:column;padding-left:21px}
-.tool .th .chev{transition:transform .15s;color:var(--l3)}
-.tool.open .th .chev{transform:rotate(90deg)}
-.tool .out{display:none;margin:4px 0 6px 21px;background:var(--code);border-radius:8px;padding:8px 10px;font-family:var(--mono);font-size:11.5px;white-space:pre-wrap;color:var(--l2);line-height:1.5}
+.tg-h .chev,.tool .th .chev{width:14px;height:14px;margin-left:-3px;color:var(--l3);transform:rotate(-90deg);transition:transform .15s}
+.tgroup.open .tg-h .chev,.tool.open .th .chev{transform:none}
+.tg-b{display:flex;flex-direction:column;padding:2px 0 2px var(--sp-2)}
+.tool .out{display:none;margin:4px 0 6px;background:var(--code);border-radius:8px;padding:8px 10px;font-family:var(--mono);font-size:11.5px;white-space:pre-wrap;color:var(--l2);line-height:1.5}
 .tool.open .out{display:block}
 .tool.err .th .vb{color:var(--red)}
 .tdone{align-self:center;display:flex;align-items:center;gap:8px;font-size:12px;color:var(--l2);background:var(--fill);padding:5px 12px;border-radius:999px;margin:4px 0}

@@ -217,11 +217,9 @@ function Copy({ text }: { text: string }) {
   );
 }
 
-const icons: Record<string, string> = { read: "read", search: "search", edit: "edit", shell: "terminal", network: "web", mcp: "bolt" };
-
 type Calls = Extract<Step, { kind: "tools" }>["calls"];
 
-/** Tool calls in a row as one line ("Read 3 files, ran 1 command"), opened to show each; open while one runs or failed. */
+/** Tool calls in a row as one grey line ("Read 3 files, ran 1 command"), opened to show each; open while one runs or failed. */
 function ToolGroup({ calls, sessionId }: { calls: Calls; sessionId: string }) {
   const { t } = useTranslation("session");
   const live = calls.some((c) => c.running || c.call.decision === "deny" || c.result?.isError === true);
@@ -230,9 +228,9 @@ function ToolGroup({ calls, sessionId }: { calls: Calls; sessionId: string }) {
   return (
     <div className={`tgroup ${open ? "open" : ""}`}>
       <button className="tg-h" aria-expanded={open} onClick={() => setOpen(!open)}>
-        {running ? <span className="mini-spin" role="img" aria-label={t("chat.inProgress")} /> : <Icon name={icons[calls[0].call.kind] ?? "bolt"} className="sm" />}
+        {running && <span className="mini-spin" role="img" aria-label={t("chat.inProgress")} />}
         <span>{stepSummary(calls)}</span>
-        <Icon name="chevR" className="sm chev" />
+        <Icon name="caret" className="chev" />
       </button>
       {open && (
         <div className="tg-b">
@@ -255,10 +253,10 @@ function ToolRow({ call, result, running, sessionId }: { call: ToolCall; result:
   return (
     <div className={`tool ${failed ? "err" : ""} ${open && output ? "open" : ""}`}>
       <button className="th" onClick={() => output && setOpen(!open)} aria-expanded={output ? open : undefined}>
-        {running ? <span className="mini-spin" role="img" aria-label={t("chat.inProgress")} /> : <Icon name={icons[call.kind] ?? "bolt"} className="sm" />}
+        {running && <span className="mini-spin" role="img" aria-label={t("chat.inProgress")} />}
         <span className="vb">{toolVerb(call, running)}</span>
         <span className="sm2" title={call.summary}>{toolSummary(toolObject(call), sessionId)}</span>
-        {output && <Icon name="chevR" className="sm chev" />}
+        {output && <Icon name="caret" className="chev" />}
       </button>
       {output && <div className="out sel-text">{output}</div>}
     </div>
