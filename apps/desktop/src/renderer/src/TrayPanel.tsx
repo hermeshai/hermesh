@@ -56,7 +56,6 @@ export function TrayPanel() {
           {t("tray.update", { version: v.update })}
         </button>
       )}
-      <button className="tp-update" onClick={() => go("updates")}>{i18n.t("updates:check")}</button>
       <div className="tp-foot">
         <button className="tp-open" onClick={() => go("open")}>{t("tray.open")}</button>
         <button className="tp-ico" aria-label={t("tray.settings")} title={t("tray.settingsTitle")} onClick={() => go("settings")}>

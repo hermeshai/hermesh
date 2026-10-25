@@ -9,6 +9,16 @@ test.skip(process.platform !== "darwin", "macOS updates");
 const clickMenu = (app: ElectronApplication, id: string) => app.evaluate(({ Menu }, id) => Menu.getApplicationMenu()?.getMenuItemById(id)?.click(), id);
 const advance = (app: ElectronApplication, ms: number) => app.evaluate(async (_, ms) => { await (globalThis as unknown as Hook).installTest.advance(ms); }, ms);
 const requests = (app: ElectronApplication) => app.evaluate(() => (globalThis as unknown as Hook).installTest.feedRequests);
+/** Opens the menu bar panel; another app taking focus closes it (the specs run side by side), so it opens it again then. */
+async function openTray(app: ElectronApplication) {
+  const tray = () => app.evaluate(() => {
+    const t = (globalThis as unknown as { hermeshTest: { tray(): { open: boolean; toggle(): void } } }).hermeshTest.tray();
+    if (!t.open) t.toggle();
+    return t.open;
+  });
+  await expect.poll(tray).toBe(true);
+  return app.windows().find((p) => p.url().endsWith("#tray"))!;
+}
 async function open(app: ElectronApplication, main: Page) {
   const existing = app.windows().find((p) => p.url().endsWith("#updates"));
   if (existing) { await main.evaluate(() => window.hermesh?.openUpdates()); return existing; }
@@ -66,6 +76,10 @@ test("background discovery stays quiet; details, snooze and automatic download s
   expect(await ready.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
   await snap(ready, "updates-ready-compact");
   await snap(main, "updates-sidebar-snoozed");
+  // The menu bar panel offers the downloaded update, and nothing to check by hand.
+  const panel = await openTray(app);
+  await expect(panel.getByRole("button", { name: "重新启动以更新到 1.2.0" })).toBeVisible();
+  await expect(panel.getByRole("button", { name: /检查更新/ })).toHaveCount(0);
 });
 
 test("approval protection covers the window and fast menu command; returning never approves", async () => {
@@ -148,7 +162,7 @@ test("checks debounce, retry with backoff, recover after wake, and preserve fres
   await expect.poll(() => requests(app)).toBe(1);
 });
 
-test("About, Help and the menu bar lead to updates and readable history", async () => {
+test("About and Help lead to updates and readable history", async () => {
   const app = await installer(true);
   const main = await app.firstWindow();
   const [about] = await Promise.all([app.waitForEvent("window"), clickMenu(app, "about")]);
@@ -160,14 +174,14 @@ test("About, Help and the menu bar lead to updates and readable history", async 
   await expect(history.getByText("通过签名磁盘映像安装 Hermesh，可直接拖入「应用程序」。")).toBeVisible();
   await snap(history, "updates-history");
   await history.close();
-  await main.evaluate(() => window.hermesh?.trayAction("updates")); // Sender restrictions reject main-window tray actions.
-  await expect.poll(() => requests(app)).toBe(1);
-  await app.evaluate(() => (globalThis as unknown as { hermeshTest: { tray(): { toggle(): void } } }).hermeshTest.tray().toggle());
-  const panel = app.windows().find((p) => p.url().endsWith("#tray"));
-  await expect.poll(() => app.windows().some((p) => p.url().endsWith("#tray"))).toBe(true);
-  await (panel ?? app.windows().find((p) => p.url().endsWith("#tray"))!).getByRole("button", { name: "检查更新…", exact: true }).click();
-  await expect.poll(() => requests(app)).toBe(2);
-  expect(app.windows().filter((p) => p.url().endsWith("#updates"))).toHaveLength(1);
+  // The menu bar panel offers no check of its own while Hermesh is up to date.
+  const panel = await openTray(app);
+  await expect(panel.getByRole("button", { name: "打开 Hermesh" })).toBeVisible();
+  await expect(panel.getByRole("button", { name: /检查更新|重新启动以更新/ })).toHaveCount(0);
+  await main.evaluate(() => window.hermesh?.trayAction("settings")); // Sender restrictions reject main-window tray actions.
+  await new Promise((r) => setTimeout(r, 500));
+  expect(app.windows().some((p) => p.url().includes("#settings"))).toBe(false);
+  expect(await requests(app)).toBe(1);
 });
 
 test("release history fits short content and keeps its actions visible with long notes", async () => {
