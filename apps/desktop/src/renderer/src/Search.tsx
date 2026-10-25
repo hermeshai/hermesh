@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import { SessionStatus, type Session } from "@hermesh/proto/session";
 import { codingAgentShort, codingAgentTitle, displayTitle, searchSessions, sessionFilter, shortTime, updatedDate, type SessionFilter } from "@hermesh/core";
@@ -49,8 +49,10 @@ export function SearchPalette() {
       a.run(st);
     }
   };
-  // The palette has the keyboard while it is open (but not while an input method composes).
-  useEffect(() => {
+  // The palette has the keyboard while it is open (but not while an input
+  // method composes), from the frame it first shows in: an Escape pressed
+  // at once closes it.
+  useLayoutEffect(() => {
     const h = (e: KeyboardEvent) => {
       if (e.isComposing) return;
       if (e.key === "Escape") close();
