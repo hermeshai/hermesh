@@ -3,12 +3,10 @@ import { timestampFromDate } from "@bufbuild/protobuf/wkt";
 import { DiffStatSchema, FailureKind, FailureSchema, SessionCursorSchema, SessionStatus, UsageSchema, type Session } from "@hermesh/proto/session";
 import { describe, expect, test } from "vitest";
 import {
-  bucketOf,
   createdDate,
   currentTurn,
   dateOf,
-  filterAny,
-  filterNarrowed,
+  dayOf,
   isFailed,
   mergeSessions,
   needsAttention,
@@ -17,6 +15,8 @@ import {
   searchSessions,
   sessionFilter,
   sessionSections,
+  sessionView,
+  statusOf,
   todayStats,
   updatedDate,
 } from "./sessions";
@@ -25,67 +25,70 @@ import { ask, now, progressOf, session } from "./testing";
 const ids = (list: Session[]) => list.map((s) => s.sessionId);
 
 describe("session list", () => {
-  test("buckets by state, then by day", () => {
-    const waiting = session("w", SessionStatus.WAITING_INPUT);
+  test("by status (the default): needs you, running, done; archived only on request, last", () => {
+    const waiting = session("w", SessionStatus.WAITING_INPUT, { updated: -600 });
     ask(waiting);
     const all = [
       session("today", SessionStatus.IDLE, { updated: -3600 }),
-      session("yday", SessionStatus.IDLE, { updated: -86400 }),
-      session("week", SessionStatus.IDLE, { updated: -4 * 86400 }),
       session("old", SessionStatus.IDLE, { updated: -30 * 86400 }),
       session("run", SessionStatus.RUNNING),
       session("crash", SessionStatus.CRASHED, { updated: -120 }),
       waiting,
       session("arch", SessionStatus.ARCHIVED, { updated: -100 }),
     ];
-    const secs = sessionSections(all, sessionFilter(), now);
-    expect(secs.map((s) => s.bucket)).toEqual(["attention", "active", "today", "yesterday", "week", "earlier"]);
-    // A question comes before a failure.
-    expect(ids(secs[0].sessions)).toEqual(["w", "crash"]);
-    expect(secs.some((s) => s.bucket === "archived")).toBe(false);
+    const secs = sessionSections(all, sessionView(), { archived: false, now });
+    expect(secs.map((s) => s.key)).toEqual(["attention", "active", "done"]);
+    // Each section by last activity, newest first: the failure was active after the question.
+    expect(ids(secs[0].sessions)).toEqual(["crash", "w"]);
+    expect(ids(secs[2].sessions)).toEqual(["today", "old"]);
 
-    expect(ids(sessionSections(all, sessionFilter({ archived: true }), now).at(-1)!.sessions)).toEqual(["arch"]);
+    const withArchived = sessionSections(all, sessionView(), { archived: true, now });
+    expect(withArchived.at(-1)).toMatchObject({ grouping: "archived", key: "archived" });
+    expect(ids(withArchived.at(-1)!.sessions)).toEqual(["arch"]);
+
+    // Oldest first turns each section around; the states keep their order.
+    const oldest = sessionSections(all, sessionView({ newestFirst: false }), { archived: false, now });
+    expect(oldest.map((s) => s.key)).toEqual(["attention", "active", "done"]);
+    expect(ids(oldest[0].sessions)).toEqual(["w", "crash"]);
+  });
+
+  test("by date, the days follow the sort", () => {
+    const all = [
+      session("today", SessionStatus.IDLE, { updated: -3600 }),
+      session("yday", SessionStatus.IDLE, { updated: -86400 }),
+      session("week", SessionStatus.IDLE, { updated: -4 * 86400 }),
+      session("old", SessionStatus.IDLE, { updated: -30 * 86400 }),
+      session("run", SessionStatus.RUNNING, { updated: -10 }),
+    ];
+    const secs = sessionSections(all, sessionView({ group: "date" }), { archived: false, now });
+    expect(secs.map((s) => s.key)).toEqual(["today", "yesterday", "week", "earlier"]);
+    expect(ids(secs[0].sessions)).toEqual(["run", "today"]);
+    const oldest = sessionSections(all, sessionView({ group: "date", newestFirst: false }), { archived: false, now });
+    expect(oldest.map((s) => s.key)).toEqual(["earlier", "week", "yesterday", "today"]);
+  });
+
+  test("by coding agent, by name; by machine, in the order given", () => {
+    const all = [
+      session("a", SessionStatus.IDLE, { agent: "gemini", machine: "m2", updated: -10 }),
+      session("b", SessionStatus.IDLE, { agent: "claude", machine: "m1", updated: -20 }),
+      session("c", SessionStatus.IDLE, { agent: "codex", machine: "m3", updated: -30 }),
+    ];
+    expect(sessionSections(all, sessionView({ group: "agent" }), { archived: false, now }).map((s) => s.key)).toEqual(["claude", "codex", "gemini"]);
+    expect(sessionSections(all, sessionView({ group: "machine" }), { archived: false, now, machines: ["m2", "m1"] }).map((s) => s.key)).toEqual(["m2", "m1", "m3"]);
   });
 
   test("a failed turn needs the owner", () => {
     const s = session("f", SessionStatus.IDLE);
     progressOf(s).lastFailure = create(FailureSchema, { kind: FailureKind.CONTEXT_OVERFLOW });
     expect(isFailed(s) && needsAttention(s)).toBe(true);
-    expect(bucketOf(s, now)).toBe("attention");
+    expect(statusOf(s)).toBe("attention");
   });
 
   test("an interrupted turn did not fail", () => {
     const s = session("i", SessionStatus.IDLE);
     progressOf(s).lastFailure = create(FailureSchema, { kind: FailureKind.INTERRUPTED, message: "interrupted by owner" });
     expect(isFailed(s) || needsAttention(s)).toBe(false);
-    expect(bucketOf(s, now)).toBe("today");
-  });
-
-  test("running sessions sort newest first", () => {
-    const secs = sessionSections(
-      [session("a", SessionStatus.RUNNING, { created: -600 }), session("b", SessionStatus.RUNNING, { created: -60 })],
-      sessionFilter(),
-      now,
-    );
-    expect(ids(secs[0].sessions)).toEqual(["b", "a"]);
-  });
-
-  test("the filter narrows by every field", () => {
-    const all = [
-      session("a", SessionStatus.IDLE, { by: "c1", project: "app", agent: "claude", machine: "m1" }),
-      session("b", SessionStatus.IDLE, { by: "c2", project: "api", agent: "codex", machine: "m2" }),
-    ];
-    for (const f of [
-      sessionFilter({ grant: "c2" }),
-      sessionFilter({ project: "api" }),
-      sessionFilter({ agent: "codex" }),
-      sessionFilter({ machine: "m2" }),
-    ]) {
-      expect(ids(sessionSections(all, f, now).flatMap((s) => s.sessions))).toEqual(["b"]);
-      expect(filterNarrowed(f) && filterAny(f)).toBe(true);
-    }
-    expect(filterNarrowed(sessionFilter({ archived: true }))).toBe(false);
-    expect(filterAny(sessionFilter({ archived: true }))).toBe(true);
+    expect(statusOf(s)).toBe("done");
   });
 
   test("search matches text and ranks what needs the owner", () => {
@@ -119,7 +122,7 @@ describe("session list", () => {
     expect(dateOf(undefined)).toBeUndefined();
     expect(createdDate(s)).toEqual(updatedDate(s));
     s.updatedAt = undefined;
-    expect(bucketOf(s, now)).toBe("earlier");
+    expect(dayOf(s, now)).toBe("earlier");
   });
 });
 

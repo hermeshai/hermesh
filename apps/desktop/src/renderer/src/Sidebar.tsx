@@ -1,9 +1,9 @@
-import { memo, useEffect, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type RefObject } from "react";
+import { memo, useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type RefObject } from "react";
 import { Trans, useTranslation } from "react-i18next";
 import { SessionStatus, type Session } from "@hermesh/proto/session";
 import {
-  bucketCounted, bucketTitle, clockText, codingAgentShort, codingAgentTitle, createdDate, dateOf, displayTitle,
-  filterAny, filterNarrowed, isArchivable, isFailed, listTime, sessionFilter, sessionSections, updatedDate, type SessionFilter,
+  bucketTitle, clockText, codingAgentShort, codingAgentTitle, createdDate, dateOf, displayTitle, isArchivable, isFailed, listTime,
+  sectionCounted, sessionSections, updatedDate, type SessionBucket, type SessionSection, type SessionView,
 } from "@hermesh/core";
 import { i18n } from "../../shared/i18n";
 import { UpdateReminder } from "./update";
@@ -36,11 +36,23 @@ export function unarchive(st: Store, s: Session) {
   st.run(() => local.unarchiveSession({ sessionId: s.sessionId }));
 }
 
+/** The list as the sidebar shows it, in the owner's view; machines this Mac first, then by name. */
+export function listSections(st: Store, now: Date): SessionSection[] {
+  const machines = [...st.machines].sort((a, b) => Number(b.local) - Number(a.local) || a.machineName.localeCompare(b.machineName)).map((m) => m.machineId);
+  return sessionSections(st.sessions, st.view, { archived: st.archived, now, machines });
+}
+
+function sectionTitle(st: Store, sec: SessionSection): string {
+  if (sec.grouping === "agent") return codingAgentTitle(sec.key);
+  if (sec.grouping === "machine") return st.machines.find((m) => m.machineId === sec.key)?.local ? i18n.t("overview:thisMac") : machineName(st, sec.key);
+  return bucketTitle(sec.key as SessionBucket);
+}
+
 export function Sidebar() {
   const st = useStore();
   const { t } = useTranslation("common");
   const now = useNow(30_000);
-  const sections = sessionSections(st.sessions, st.filter, now);
+  const sections = listSections(st, now);
   const count = attentionCount(st, now);
   const total = sections.reduce((n, x) => n + x.sessions.length, 0);
   const list = useRef<HTMLDivElement>(null);
@@ -76,13 +88,18 @@ export function Sidebar() {
           <span className="kbd">⌘K</span>
         </button>
       </nav>
-      <FilterHeader />
+      <div className="side-head">
+        <div className="lh">
+          <span>{t("sidebar.sessions")}</span>
+          <ListViewMenu />
+        </div>
+      </div>
       <div className="side-list" role="list" aria-label={t("sidebar.sessions")} ref={list}>
         {sections.map((sec) => (
-          <div key={sec.bucket} role="group" aria-label={bucketTitle(sec.bucket)}>
+          <div key={`${sec.grouping}:${sec.key}`} role="group" aria-label={sectionTitle(st, sec)}>
             <div className="grp-h">
-              {bucketTitle(sec.bucket)}
-              {bucketCounted(sec.bucket) && <span className="n">{sec.sessions.length}</span>}
+              {sectionTitle(st, sec)}
+              {sectionCounted(sec) && <span className="n">{sec.sessions.length}</span>}
             </div>
             {sec.sessions.map((s) => (
               <SessionRow
@@ -90,6 +107,7 @@ export function Sidebar() {
                 s={s}
                 sel={st.selection.kind === "session" && st.selection.id === s.sessionId}
                 grant={grantLabel(st, s)}
+                meta={st.view.metadata}
                 store={latest}
               />
             ))}
@@ -99,17 +117,13 @@ export function Sidebar() {
           <div className="endrow" ref={end}>{t("sidebar.loadingOlder")}</div>
         ) : total === 0 ? (
           <div className="endrow" style={{ paddingTop: 30 }}>
-            {filterNarrowed(st.filter) ? t("sidebar.noMatch") : <Trans t={t} i18nKey="sidebar.empty" components={{ br: <br /> }} />}
+            <Trans t={t} i18nKey="sidebar.empty" components={{ br: <br /> }} />
           </div>
         ) : (
           <div className="endrow">
             {t("sidebar.noOlder")}
-            {!st.filter.archived && (
-              <>
-                {" · "}
-                <button className="link" onClick={() => st.set({ filter: { ...st.filter, archived: true } })}>{t("sidebar.showArchived")}</button>
-              </>
-            )}
+            {" · "}
+            <button className="link" onClick={() => st.set({ archived: !st.archived })}>{t(st.archived ? "sidebar.hideArchived" : "sidebar.showArchived")}</button>
           </div>
         )}
       </div>
@@ -209,7 +223,7 @@ function AccountMenu() {
   );
 }
 
-const SessionRow = memo(function SessionRow({ s, sel, grant, store }: { s: Session; sel: boolean; grant: string; store: RefObject<Store> }) {
+const SessionRow = memo(function SessionRow({ s, sel, grant, meta, store }: { s: Session; sel: boolean; grant: string; meta: boolean; store: RefObject<Store> }) {
   const { t } = useTranslation("common");
   const archived = s.status === SessionStatus.ARCHIVED;
   const act = isArchivable(s) || archived;
@@ -244,26 +258,24 @@ const SessionRow = memo(function SessionRow({ s, sel, grant, store }: { s: Sessi
             </button>
           )}
         </div>
-        <div className="sl2">
-          <span className="sl2t">{grant} · {codingAgentShort(s.agent)} · {s.projectId}</span>
-          <RowTime s={s} />
-        </div>
+        {meta && (
+          <div className="sl2">
+            <span className="sl2t">{grant} · {codingAgentShort(s.agent)} · {s.projectId}</span>
+            <RowTime s={s} />
+          </div>
+        )}
       </div>
     </div>
   );
 });
 
-/** The session's context menu (native): open, archive, narrow the list to its grant/project/machine, copy its id. */
+/** The session's context menu (native): open, archive, copy its id. */
 async function sessionMenu(st: Store, s: Session) {
   const archived = s.status === SessionStatus.ARCHIVED;
   const id = await window.hermesh?.popupMenu([
     { id: "open", label: i18n.t("common:sessionMenu.open") },
     { separator: true },
     { id: archived ? "unarchive" : "archive", label: i18n.t(archived ? "common:sessionMenu.unarchive" : "common:sessionMenu.archive"), enabled: archived || isArchivable(s) },
-    { separator: true },
-    { id: "grant", label: i18n.t("common:sessionMenu.onlyGrant", { name: grantLabel(st, s) }) },
-    { id: "project", label: i18n.t("common:sessionMenu.onlyProject", { name: s.projectId }) },
-    { id: "machine", label: i18n.t("common:sessionMenu.onlyMachine", { name: machineName(st, s.machineId) }) },
     { separator: true },
     { id: "copy", label: i18n.t("common:sessionMenu.copyId") },
   ]);
@@ -274,12 +286,6 @@ async function sessionMenu(st: Store, s: Session) {
       return archive(st, s);
     case "unarchive":
       return unarchive(st, s);
-    case "grant":
-      return st.set({ filter: { ...st.filter, grant: s.createdBy } });
-    case "project":
-      return st.set({ filter: { ...st.filter, project: s.projectId } });
-    case "machine":
-      return st.set({ filter: { ...st.filter, machine: s.machineId } });
     case "copy":
       return navigator.clipboard.writeText(s.sessionId);
   }
@@ -311,82 +317,152 @@ function RowTime({ s }: { s: Session }) {
   return <span className="stime">{text}</span>;
 }
 
-function FilterHeader() {
+type ViewPane = "group" | "sort" | "show";
+type ViewChoice = { label: string; on: boolean; role: "menuitemradio" | "menuitemcheckbox"; patch: Partial<SessionView> } | null;
+
+/**
+ * The list's view menu, by "Sessions": grouping, sorting by last activity
+ * and whether rows show their metadata, each a submenu. Drawn like the
+ * account menu but opaque, over the list; the keyboard works as in a native
+ * menu (→ opens a submenu, ← and Esc go back). Rows follow the mouse only as
+ * it moves, so a menu opening under a resting pointer keeps the keyboard's choice.
+ */
+function ListViewMenu() {
   const st = useStore();
   const { t } = useTranslation("common");
-  const [open, setOpen] = useState(false);
-  const ref = useRef<HTMLDivElement>(null);
-  const f = st.filter;
+  const v = st.view;
+  const [open, setOpen] = useState<false | "mouse" | "key">(false);
+  const [pane, setPane] = useState<{ id: ViewPane; key: boolean } | null>(null);
+  const [at, setAt] = useState({ x: 0, y: 0, sx: 0, sy: 0 });
+  const btn = useRef<HTMLButtonElement>(null);
+  const menu = useRef<HTMLDivElement>(null);
+  const sub = useRef<HTMLDivElement>(null);
+  const close = (back: boolean) => {
+    setOpen(false);
+    setPane(null);
+    if (back) btn.current?.focus();
+  };
   useEffect(() => {
     if (!open) return;
-    const close = (e: MouseEvent) => ref.current && !ref.current.contains(e.target as Node) && setOpen(false);
-    const esc = (e: KeyboardEvent) => e.key === "Escape" && setOpen(false);
-    document.addEventListener("mousedown", close);
-    document.addEventListener("keydown", esc);
+    (open === "key" ? menu.current?.querySelector<HTMLElement>("[role=menuitem]") : menu.current)?.focus();
+    const outside = (e: MouseEvent) => ![btn, menu, sub].some((r) => r.current?.contains(e.target as Node)) && close(false);
+    const blur = () => close(false);
+    document.addEventListener("mousedown", outside);
+    window.addEventListener("blur", blur);
     return () => {
-      document.removeEventListener("mousedown", close);
-      document.removeEventListener("keydown", esc);
+      document.removeEventListener("mousedown", outside);
+      window.removeEventListener("blur", blur);
     };
   }, [open]);
-  const setF = (patch: Partial<SessionFilter>) => st.set({ filter: { ...f, ...patch } });
-  const names: Record<keyof Omit<SessionFilter, "archived">, (v: string) => string> = {
-    grant: (v) => st.clients.find((c) => c.clientId === v)?.label ?? t("sidebar.disconnectedGrant"),
-    project: (v) => v,
-    agent: (v) => codingAgentTitle(v),
-    machine: (v) => machineName(st, v),
+  // The submenu beside its row, on the left when there's no room on the right; from the keyboard its first item takes focus.
+  useLayoutEffect(() => {
+    if (!pane || !menu.current || !sub.current) return;
+    const m = menu.current.getBoundingClientRect();
+    const r = menu.current.querySelector(`[data-pane=${pane.id}]`)!.getBoundingClientRect();
+    const w = sub.current.offsetWidth;
+    setAt((a) => ({ ...a, sx: m.right + w + 4 > innerWidth ? m.left - w - 2 : m.right + 2, sy: r.top - 5 }));
+    if (pane.key) sub.current.querySelector<HTMLElement>("[role^=menuitem]")?.focus();
+  }, [pane]);
+  const toggle = (e: { detail: number }) => {
+    if (open) return close(false);
+    const r = btn.current!.getBoundingClientRect();
+    setAt({ x: Math.min(r.left - 6, innerWidth - 216), y: r.bottom + 4, sx: 0, sy: 0 });
+    setOpen(e.detail ? "mouse" : "key");
   };
-  const agents = [...new Set(st.sessions.map((s) => s.agent).concat(st.machines.flatMap((m) => (m.status?.agents ?? []).filter((a) => a.available && a.loggedIn).map((a) => a.name))))];
-  const projects = [...new Set(st.projects.map((p) => p.projectId))];
-  const select = (k: keyof typeof names, label: string, opts: [string, string][]) => (
-    <label className="fp-r">
-      <span>{label}</span>
-      <select className={`psel ${f[k] ? "on" : ""}`} aria-label={label} value={f[k]} onChange={(e) => setF({ [k]: e.target.value })}>
-        <option value="">{t("filter.all")}</option>
-        {opts.map(([v, l]) => (
-          <option key={v} value={v}>{l}</option>
-        ))}
-      </select>
-    </label>
-  );
+  const choose = (patch: Partial<SessionView>) => {
+    st.set({ view: { ...v, ...patch } });
+    close(true);
+  };
+  const groups = { status: t("listView.byStatus"), date: t("listView.byDate"), agent: t("listView.byAgent"), machine: t("listView.byMachine") };
+  const panes: { id: ViewPane; label: string; value: string }[] = [
+    { id: "group", label: t("listView.group"), value: groups[v.group] },
+    { id: "sort", label: t("listView.sort"), value: t(v.newestFirst ? "listView.newestFirst" : "listView.oldestFirst") },
+    { id: "show", label: t("listView.show"), value: t(v.metadata ? "listView.metadata" : "listView.titleOnly") },
+  ];
+  const choices: Record<ViewPane, ViewChoice[]> = {
+    group: (Object.keys(groups) as SessionView["group"][]).map((g) => ({ label: groups[g], on: v.group === g, role: "menuitemradio", patch: { group: g } })),
+    sort: [
+      { label: t("listView.lastActive"), on: true, role: "menuitemradio", patch: {} },
+      null,
+      { label: t("listView.newestFirst"), on: v.newestFirst, role: "menuitemradio", patch: { newestFirst: true } },
+      { label: t("listView.oldestFirst"), on: !v.newestFirst, role: "menuitemradio", patch: { newestFirst: false } },
+    ],
+    show: [{ label: t("listView.metadata"), on: v.metadata, role: "menuitemcheckbox", patch: { metadata: !v.metadata } }],
+  };
+  const move = (e: ReactKeyboardEvent, box: HTMLElement | null) => {
+    const all = [...(box?.querySelectorAll<HTMLElement>("[role^=menuitem]") ?? [])];
+    const i = all.indexOf(document.activeElement as HTMLElement);
+    const go = { ArrowDown: (i + 1) % all.length, ArrowUp: i <= 0 ? all.length - 1 : i - 1, Home: 0, End: all.length - 1 }[e.key];
+    if (go === undefined) return false;
+    e.preventDefault();
+    all[go]?.focus();
+    return true;
+  };
+  const onMenuKey = (e: ReactKeyboardEvent) => {
+    if (move(e, menu.current)) return setPane(null);
+    const id = (document.activeElement as HTMLElement | null)?.dataset.pane as ViewPane | undefined;
+    if (id && (e.key === "ArrowRight" || e.key === "Enter" || e.key === " ")) {
+      e.preventDefault();
+      setPane({ id, key: true });
+    } else if (e.key === "Escape" || e.key === "Tab") {
+      e.preventDefault();
+      e.stopPropagation();
+      close(true);
+    }
+  };
+  const onSubKey = (e: ReactKeyboardEvent) => {
+    e.stopPropagation();
+    if (move(e, sub.current)) return;
+    if (e.key === "ArrowLeft" || e.key === "Escape") {
+      e.preventDefault();
+      const id = pane?.id;
+      setPane(null);
+      menu.current?.querySelector<HTMLElement>(`[data-pane=${id}]`)?.focus();
+    } else if (e.key === "Tab") {
+      e.preventDefault();
+      close(true);
+    }
+  };
   return (
-    <div className="side-head" ref={ref}>
-      <div className="lh">
-        <span>{t("sidebar.sessions")}</span>
-        <button className={`tb ${filterAny(f) ? "act" : ""} ${open ? "on" : ""}`} title={t("filter.title")} aria-label={t("filter.title")} aria-expanded={open} onClick={() => setOpen(!open)}>
-          <Icon name="filter" />
-        </button>
-      </div>
-      {filterAny(f) && (
-        <div className="fchips">
-          {(Object.keys(names) as (keyof typeof names)[]).filter((k) => f[k]).map((k) => (
-            <span className="fchip" key={k}>
-              <span>{names[k](f[k])}</span>
-              <button aria-label={t("filter.remove")} onClick={() => setF({ [k]: "" })}><Icon name="x" /></button>
-            </span>
+    <>
+      <button ref={btn} className={`tb ${open ? "on" : ""}`} title={t("listView.title")} aria-label={t("listView.title")} aria-haspopup="menu" aria-expanded={!!open} onClick={toggle}>
+        <Icon name="filter" />
+      </button>
+      {open && (
+        <div className="vmenu" role="menu" aria-label={t("listView.title")} tabIndex={-1} ref={menu} style={{ left: at.x, top: at.y }} onKeyDown={onMenuKey}>
+          {panes.map((p) => (
+            <button
+              key={p.id}
+              className={`mi ${pane?.id === p.id ? "open" : ""}`}
+              role="menuitem"
+              aria-haspopup="menu"
+              aria-expanded={pane?.id === p.id}
+              tabIndex={-1}
+              data-pane={p.id}
+              onMouseMove={(e) => document.activeElement !== e.currentTarget && (e.currentTarget.focus(), setPane({ id: p.id, key: false }))}
+              onClick={() => setPane({ id: p.id, key: false })}
+            >
+              <span>{p.label}</span>
+              <span className="val">{p.value}</span>
+              <Icon name="chevR" className="sm" />
+            </button>
           ))}
-          {f.archived && (
-            <span className="fchip">
-              <span>{t("filter.withArchived")}</span>
-              <button aria-label={t("filter.hideArchived")} onClick={() => setF({ archived: false })}><Icon name="x" /></button>
-            </span>
+        </div>
+      )}
+      {open && pane && (
+        <div className="vmenu" role="menu" aria-label={panes.find((p) => p.id === pane.id)!.label} tabIndex={-1} ref={sub} style={{ left: at.sx, top: at.sy }} onKeyDown={onSubKey}>
+          {choices[pane.id].map((c, i) =>
+            c ? (
+              <button key={c.label} className="mi" role={c.role} aria-checked={c.on} tabIndex={-1} onMouseMove={(e) => e.currentTarget.focus()} onClick={() => choose(c.patch)}>
+                <span className="ck">{c.on && <Icon name="check" className="sm" />}</span>
+                <span>{c.label}</span>
+              </button>
+            ) : (
+              <div key={i} className="msep" role="separator" />
+            ),
           )}
         </div>
       )}
-      {open && (
-        <div className="fpop" role="dialog" aria-label={t("filter.title")}>
-          <div className="fp-h">
-            {t("filter.title")}
-            <button className="link" disabled={!filterAny(f)} style={filterAny(f) ? undefined : { opacity: 0.4 }} onClick={() => st.set({ filter: sessionFilter() })}>{t("filter.clear")}</button>
-          </div>
-          {select("grant", t("filter.grant"), st.clients.map((c) => [c.clientId, c.label]))}
-          {select("project", t("filter.project"), projects.map((p) => [p, p]))}
-          {select("agent", t("filter.agent"), agents.map((a) => [a, codingAgentTitle(a)]))}
-          {select("machine", t("filter.machine"), st.machines.map((m) => [m.machineId, m.machineName]))}
-          <button className={`cb ${f.archived ? "on" : ""}`} role="checkbox" aria-checked={f.archived} onClick={() => setF({ archived: !f.archived })}>
-            <span className="box"><Icon name="check" /></span>{t("filter.showArchived")}
-          </button>
-        </div>
-      )}
-    </div>
+    </>
   );
 }

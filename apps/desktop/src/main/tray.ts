@@ -1,5 +1,5 @@
-import { sessionFilter, sessionSections } from "@hermesh/core";
-import type { Session } from "@hermesh/proto/session";
+import { createdDate, isActive, needsAttention, updatedDate } from "@hermesh/core";
+import { SessionStatus, type Session } from "@hermesh/proto/session";
 import { app, BrowserWindow, ipcMain, nativeImage, screen, Tray, type NativeImage } from "electron";
 import glyph1x from "../../resources/menuBarIconTemplate.png?inline";
 import glyph2x from "../../resources/menuBarIconTemplate@2x.png?inline";
@@ -65,17 +65,19 @@ function update() {
   panel?.webContents.send("tray-view", v);
 }
 
-function sections() {
-  return sessionSections(world.sessions, sessionFilter(), new Date());
-}
+const live = (s: Session) => s.status !== SessionStatus.ARCHIVED;
 
-/** Questions first, then failures, as the sidebar lists them. */
+/** What needs the owner: questions first, then failures, the newest first. */
 function attention(): Session[] {
-  return sections().find((x) => x.bucket === "attention")?.sessions ?? [];
+  const question = (s: Session) => (s.status === SessionStatus.WAITING_INPUT ? 0 : 1);
+  return world.sessions
+    .filter((s) => live(s) && needsAttention(s))
+    .sort((a, b) => question(a) - question(b) || updatedDate(b).getTime() - updatedDate(a).getTime());
 }
 
+/** What runs, the latest started first. */
 function running(): Session[] {
-  return sections().find((x) => x.bucket === "active")?.sessions ?? [];
+  return world.sessions.filter((s) => live(s) && !needsAttention(s) && isActive(s)).sort((a, b) => createdDate(b).getTime() - createdDate(a).getTime());
 }
 
 function view(): TrayView {

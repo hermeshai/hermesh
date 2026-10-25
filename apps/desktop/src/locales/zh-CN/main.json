@@ -49,10 +49,6 @@
       "answer": "回答问题",
       "interrupt": "打断这一轮",
       "copyId": "拷贝会话 ID",
-      "onlyGrant": "只看「{{name}}」的会话",
-      "onlyThisGrant": "只看这个授权的会话",
-      "onlyProject": "只看「{{name}}」的会话",
-      "onlyThisProject": "只看这个项目的会话",
       "archive": "归档",
       "unarchive": "取消归档"
     },

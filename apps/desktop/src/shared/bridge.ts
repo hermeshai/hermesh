@@ -13,8 +13,7 @@ export type Command =
   | "newGrant" | "addMachine" | "addProject" | "enterCode"
   | "answer" | "interrupt" | "archive" | "unarchive" | "copySessionId"
   | `open:${string}` | `pairing:${string}`
-  | `filterGrant:${string}` | `filterMachine:${string}`
-  | `filterProject:${string}` | "undo";
+  | `searchGrant:${string}` | `searchMachine:${string}` | "undo";
 
 /**
  * What the menu bar panel shows (main/tray.ts): whether this Mac reaches the

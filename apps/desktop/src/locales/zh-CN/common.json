@@ -33,10 +33,10 @@
     "attention_other": "{{count}} 项需要处理",
     "sessions": "会话",
     "loadingOlder": "正在读取更早的会话…",
-    "noMatch": "没有符合筛选的会话",
     "empty": "还没有会话<br/>授权连上后，它们干的活会出现在这里",
     "noOlder": "没有更早的会话了",
     "showArchived": "显示已归档",
+    "hideArchived": "隐藏已归档",
     "account": "账号与设置",
     "connected_other": "已连接 · {{count}} 台机器在线",
     "notConnected": "未连接",
@@ -55,23 +55,28 @@
     "open": "打开",
     "archive": "归档",
     "unarchive": "取消归档",
-    "onlyGrant": "只看「{{name}}」的会话",
-    "onlyProject": "只看「{{name}}」的会话",
-    "onlyMachine": "只看「{{name}}」上的会话",
     "copyId": "拷贝会话 ID"
   },
   "filter": {
-    "title": "筛选会话",
-    "all": "全部",
-    "clear": "清除",
-    "remove": "去掉这个筛选",
-    "withArchived": "含已归档",
-    "hideArchived": "不显示已归档",
-    "showArchived": "显示已归档",
     "grant": "授权",
     "project": "项目",
     "agent": "编码 agent",
     "machine": "机器"
+  },
+  "listView": {
+    "title": "视图选项",
+    "group": "分组",
+    "sort": "排序",
+    "show": "显示",
+    "byStatus": "按状态",
+    "byDate": "按日期",
+    "byAgent": "按 Agent",
+    "byMachine": "按机器",
+    "lastActive": "最后活跃时间",
+    "newestFirst": "最新在前",
+    "oldestFirst": "最早在前",
+    "metadata": "元数据",
+    "titleOnly": "仅标题"
   },
   "search": {
     "openSettings": "打开设置",
@@ -86,8 +91,7 @@
     "archived": "已归档",
     "actions": "操作",
     "select": "↑↓ 选择",
-    "open": "↩ 打开",
-    "narrow": "⌘↩ 在边栏中只看这些"
+    "open": "↩ 打开"
   },
   "tray": {
     "attention": "需要处理",

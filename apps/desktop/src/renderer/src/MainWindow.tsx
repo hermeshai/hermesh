@@ -1,6 +1,5 @@
 import { useEffect } from "react";
 import { useTranslation } from "react-i18next";
-import { sessionFilter } from "@hermesh/core";
 import { ThisMac } from "./MachineOnly";
 import { Overview } from "./Overview";
 import { SearchPalette } from "./Search";
@@ -27,13 +26,13 @@ export function MainWindow() {
     if (st.moreSessions) st.loadOlderSessions();
     else st.set({ selection: { kind: "overview" } });
   }, [st, session]);
-  // "Show in Main Window" in the settings window: the list narrowed to a grant or a machine.
+  // "Show in Main Window" in the settings window: the search palette, narrowed to a grant or a machine.
   const { set } = st;
   useEffect(
     () =>
       window.hermesh?.onCommand((c) => {
-        if (c.startsWith("filterGrant:")) set({ filter: sessionFilter({ grant: c.slice("filterGrant:".length) }) });
-        if (c.startsWith("filterMachine:")) set({ filter: sessionFilter({ machine: c.slice("filterMachine:".length) }) });
+        if (c.startsWith("searchGrant:")) set({ searching: true, searchFor: { grant: c.slice("searchGrant:".length) } });
+        if (c.startsWith("searchMachine:")) set({ searching: true, searchFor: { machine: c.slice("searchMachine:".length) } });
       }),
     [set],
   );
@@ -43,7 +42,7 @@ export function MainWindow() {
       <section className="content">
         {session ? <SessionPage s={session} /> : st.status?.machineOnly ? <ThisMac /> : <Overview />}
       </section>
-      {st.searching && <SearchPalette />}
+      {st.searching && <SearchPalette key={JSON.stringify(st.searchFor)} />}
       <SheetHost />
       <ToastView />
     </div>

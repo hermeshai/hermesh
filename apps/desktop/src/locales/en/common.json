@@ -34,10 +34,10 @@
     "attention_other": "{{count}} items need you",
     "sessions": "Sessions",
     "loadingOlder": "Loading earlier sessions…",
-    "noMatch": "No sessions match the filters",
     "empty": "No sessions yet<br/>When your agents connect, their work shows up here",
     "noOlder": "No earlier sessions",
     "showArchived": "Show Archived",
+    "hideArchived": "Hide Archived",
     "account": "Account & Settings",
     "connected_one": "Connected · {{count}} machine online",
     "connected_other": "Connected · {{count}} machines online",
@@ -57,23 +57,28 @@
     "open": "Open",
     "archive": "Archive",
     "unarchive": "Unarchive",
-    "onlyGrant": "Show Only Sessions by “{{name}}”",
-    "onlyProject": "Show Only Sessions in “{{name}}”",
-    "onlyMachine": "Show Only Sessions on “{{name}}”",
     "copyId": "Copy Session ID"
   },
   "filter": {
-    "title": "Filter Sessions",
-    "all": "All",
-    "clear": "Clear",
-    "remove": "Remove this filter",
-    "withArchived": "With archived",
-    "hideArchived": "Hide archived",
-    "showArchived": "Show archived",
     "grant": "Agent",
     "project": "Project",
     "agent": "Coding agent",
     "machine": "Machine"
+  },
+  "listView": {
+    "title": "View Options",
+    "group": "Group",
+    "sort": "Sort",
+    "show": "Show",
+    "byStatus": "By Status",
+    "byDate": "By Date",
+    "byAgent": "By Agent",
+    "byMachine": "By Machine",
+    "lastActive": "Last Active",
+    "newestFirst": "Newest First",
+    "oldestFirst": "Oldest First",
+    "metadata": "Metadata",
+    "titleOnly": "Title Only"
   },
   "search": {
     "openSettings": "Open Settings",
@@ -88,8 +93,7 @@
     "archived": "Archived",
     "actions": "Actions",
     "select": "↑↓ Select",
-    "open": "↩ Open",
-    "narrow": "⌘↩ Show these in the sidebar"
+    "open": "↩ Open"
   },
   "tray": {
     "attention": "Needs you",

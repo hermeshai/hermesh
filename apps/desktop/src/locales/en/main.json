@@ -49,10 +49,6 @@
       "answer": "Answer Question",
       "interrupt": "Interrupt This Turn",
       "copyId": "Copy Session ID",
-      "onlyGrant": "Show Only Sessions by “{{name}}”",
-      "onlyThisGrant": "Show Only This Agent’s Sessions",
-      "onlyProject": "Show Only Sessions in “{{name}}”",
-      "onlyThisProject": "Show Only This Project’s Sessions",
       "archive": "Archive",
       "unarchive": "Unarchive"
     },

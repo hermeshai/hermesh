@@ -56,11 +56,11 @@ const appCLIs = String.raw`path+=(~/Library/Application\ Support/Claude/claude-c
 
 export function registerIPC() {
   ipcMain.on("open-settings", (e, tab?: string) => trusted(e) && showSettings(typeof tab === "string" ? tab : undefined));
-  // From the settings window: the main window, its list narrowed to a grant or a machine.
+  // From the settings window: the main window's search, narrowed to a grant or a machine.
   ipcMain.on("show-in-main", (e, f: { grant?: unknown; machine?: unknown }) => {
     if (!trusted(e) || typeof f !== "object" || f === null) return;
     const c: Command | undefined =
-      typeof f.grant === "string" ? `filterGrant:${f.grant}` : typeof f.machine === "string" ? `filterMachine:${f.machine}` : undefined;
+      typeof f.grant === "string" ? `searchGrant:${f.grant}` : typeof f.machine === "string" ? `searchMachine:${f.machine}` : undefined;
     if (!c) return;
     command(c);
   });

@@ -2,6 +2,7 @@
   "bucket": {
     "attention": "需要处理",
     "active": "进行中",
+    "done": "已结束",
     "today": "今天",
     "yesterday": "昨天",
     "week": "本周更早",

@@ -1,10 +1,11 @@
 import { timestampDate, type Timestamp } from "@bufbuild/protobuf/wkt";
 import { FailureKind, SessionStatus, type Question, type Session, type SessionCursor } from "@hermesh/proto/session";
+import { codingAgentTitle } from "./agents";
 import { isYesterday, sameDay, withinWeek } from "./calendar";
 import { t } from "./i18n";
 import { trimWhitespace } from "./text";
 
-// What the main window shows about sessions (the list and its filter, the
+// What the main window shows about sessions (the list, search, the
 // overview), worked out from the sessions alone so it can be checked
 // without a window.
 
@@ -125,34 +126,95 @@ function byNewest(a: Date, b: Date): number {
   return b.getTime() - a.getTime();
 }
 
-/** Where a session sits in the list, in the list's order. */
-export const sessionBuckets = ["attention", "active", "today", "yesterday", "week", "earlier", "archived"] as const;
-export type SessionBucket = (typeof sessionBuckets)[number];
+/** How the session list groups its sessions. */
+export const sessionGroupings = ["status", "date", "agent", "machine"] as const;
+export type SessionGrouping = (typeof sessionGroupings)[number];
+
+/**
+ * How the session list is laid out: its grouping, which way it sorts by
+ * last activity, and whether each row shows its metadata line (grant,
+ * coding agent, project and time).
+ */
+export interface SessionView {
+  group: SessionGrouping;
+  newestFirst: boolean;
+  metadata: boolean;
+}
+
+export function sessionView(v: Partial<SessionView> = {}): SessionView {
+  return { group: "status", newestFirst: true, metadata: true, ...v };
+}
+
+/** A section's key: a state or a day (titled by bucketTitle), a coding agent, a machine id, or "archived". */
+export type SessionBucket = "attention" | "active" | "done" | "today" | "yesterday" | "week" | "earlier" | "archived";
 
 /** A section of the list, by its title. */
 export function bucketTitle(b: SessionBucket): string {
   return t(`bucket.${b}`);
 }
 
-/** Sections that show how many they hold. */
-export function bucketCounted(b: SessionBucket): boolean {
-  return b === "attention" || b === "active";
+const statusOrder: SessionBucket[] = ["attention", "active", "done"];
+const dayOrder: SessionBucket[] = ["today", "yesterday", "week", "earlier"];
+
+/** Needs the owner, runs, or is done. */
+export function statusOf(s: Session): SessionBucket {
+  return needsAttention(s) ? "attention" : isActive(s) ? "active" : "done";
 }
 
-/** "week" is the six days before today, not the calendar week. */
-export function bucketOf(s: Session, now: Date): SessionBucket {
-  if (s.status === SessionStatus.ARCHIVED) return "archived";
-  if (needsAttention(s)) return "attention";
-  if (isActive(s)) return "active";
+/** The day it was last active; "week" is the six days before today, not the calendar week. */
+export function dayOf(s: Session, now: Date): SessionBucket {
   const d = updatedDate(s);
-  if (sameDay(d, now)) return "today";
-  if (isYesterday(d, now)) return "yesterday";
-  if (withinWeek(d, now)) return "week";
-  return "earlier";
+  return sameDay(d, now) ? "today" : isYesterday(d, now) ? "yesterday" : withinWeek(d, now) ? "week" : "earlier";
+}
+
+export interface SessionSection {
+  grouping: SessionGrouping | "archived";
+  key: string;
+  sessions: Session[];
+}
+
+/** Sections that show how many they hold: what needs the owner and what runs. */
+export function sectionCounted(sec: SessionSection): boolean {
+  return sec.grouping === "status" && (sec.key === "attention" || sec.key === "active");
 }
 
 /**
- * The session list's filter: by grant (its client id), project, coding
+ * The list as the view lays it out, each section sorted by last activity.
+ * States keep their order (needs you, running, done); days follow the sort;
+ * coding agents go by name, machines in the order given (unknown ones
+ * last). Archived sessions, when shown, are a section of their own at the end.
+ */
+export function sessionSections(sessions: Session[], view: SessionView, o: { archived: boolean; now: Date; machines?: string[] }): SessionSection[] {
+  const by = new Map<string, Session[]>();
+  const archived: Session[] = [];
+  for (const s of sessions) {
+    if (s.status === SessionStatus.ARCHIVED) {
+      if (o.archived) archived.push(s);
+      continue;
+    }
+    const k = { status: () => statusOf(s), date: () => dayOf(s, o.now), agent: () => s.agent, machine: () => s.machineId }[view.group]();
+    const list = by.get(k);
+    if (list) list.push(s);
+    else by.set(k, [s]);
+  }
+  const keys = [...by.keys()];
+  const at = (k: string) => {
+    const i = o.machines?.indexOf(k) ?? -1;
+    return i < 0 ? Infinity : i;
+  };
+  const order =
+    view.group === "status" ? statusOrder
+    : view.group === "date" ? (view.newestFirst ? dayOrder : [...dayOrder].reverse())
+    : view.group === "agent" ? keys.sort((a, b) => codingAgentTitle(a).localeCompare(codingAgentTitle(b)))
+    : keys.sort((a, b) => at(a) - at(b) || a.localeCompare(b));
+  const sorted = (list: Session[]) => list.sort((a, c) => (view.newestFirst ? 1 : -1) * byNewest(updatedDate(a), updatedDate(c)));
+  const out: SessionSection[] = order.filter((k) => by.has(k)).map((k) => ({ grouping: view.group, key: k, sessions: sorted(by.get(k)!) }));
+  if (archived.length) out.push({ grouping: "archived", key: "archived", sessions: sorted(archived) });
+  return out;
+}
+
+/**
+ * The search palette's filter: by grant (its client id), project, coding
  * agent or machine (empty matches all), and whether archived sessions show.
  */
 export interface SessionFilter {
@@ -167,14 +229,6 @@ export function sessionFilter(f: Partial<SessionFilter> = {}): SessionFilter {
   return { grant: "", project: "", agent: "", machine: "", archived: false, ...f };
 }
 
-export function filterNarrowed(f: SessionFilter): boolean {
-  return f.grant !== "" || f.project !== "" || f.agent !== "" || f.machine !== "";
-}
-
-export function filterAny(f: SessionFilter): boolean {
-  return filterNarrowed(f) || f.archived;
-}
-
 export function filterMatches(f: SessionFilter, s: Session): boolean {
   return (
     (f.grant === "" || s.createdBy === f.grant) &&
@@ -182,48 +236,6 @@ export function filterMatches(f: SessionFilter, s: Session): boolean {
     (f.agent === "" || s.agent === f.agent) &&
     (f.machine === "" || s.machineId === f.machine)
   );
-}
-
-export interface SessionSection {
-  bucket: SessionBucket;
-  sessions: Session[];
-}
-
-/**
- * The list: what needs the owner first (questions before failures), then
- * what runs (newest first), then the rest by when it last changed.
- */
-export function sessionSections(sessions: Session[], filter: SessionFilter, now: Date): SessionSection[] {
-  const by = new Map<SessionBucket, Session[]>();
-  for (const s of sessions) {
-    if (!filterMatches(filter, s)) continue;
-    const b = bucketOf(s, now);
-    if (b === "archived" && !filter.archived) continue;
-    const list = by.get(b);
-    if (list) list.push(s);
-    else by.set(b, [s]);
-  }
-  const out: SessionSection[] = [];
-  for (const b of sessionBuckets) {
-    const list = by.get(b);
-    if (!list) continue;
-    switch (b) {
-      case "attention":
-        list.sort((a, c) => {
-          const qa = a.status === SessionStatus.WAITING_INPUT;
-          const qc = c.status === SessionStatus.WAITING_INPUT;
-          return qa !== qc ? (qa ? -1 : 1) : byNewest(updatedDate(a), updatedDate(c));
-        });
-        break;
-      case "active":
-        list.sort((a, c) => byNewest(createdDate(a), createdDate(c)));
-        break;
-      default:
-        list.sort((a, c) => byNewest(updatedDate(a), updatedDate(c)));
-    }
-    out.push({ bucket: b, sessions: list });
-  }
-  return out;
 }
 
 /**

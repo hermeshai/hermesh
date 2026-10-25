@@ -86,10 +86,13 @@ test("settings opens on 通用; 授权 lists the grants, one opens its scope, an
   await expect(bot).toBeVisible();
   await bot.click();
 
-  // The main window's list, narrowed to this grant.
+  // The main window's search, narrowed to this grant.
   await grants.getByRole("button", { name: "更多" }).click();
   await grants.getByRole("button", { name: "在主窗口里查看" }).click();
-  await expect(page.getByRole("button", { name: "去掉这个筛选" })).toHaveCount(1);
+  const palette = page.getByRole("dialog", { name: "搜索会话" });
+  await expect(palette.getByRole("combobox", { name: "授权" })).toHaveValue(/.+/);
+  await expect(palette.getByRole("combobox", { name: "授权" }).locator("option:checked")).toHaveText("bot");
+  await expect(palette.getByRole("listbox", { name: "搜索结果" }).getByRole("option").first()).toBeVisible();
   await app.close();
 });
 
