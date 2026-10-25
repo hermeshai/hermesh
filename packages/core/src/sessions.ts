@@ -86,9 +86,10 @@ export function isLaterState(a: Session, b: Session): boolean {
  * The list with changes applied (a page, or what a watch pushed): each
  * session replaces an earlier state of itself, or joins the list. An
  * earlier state than the list's is dropped: a page can arrive after a
- * watch told of something newer.
+ * watch told of something newer. Deleted sessions leave the list.
  */
-export function mergeSessions(list: Session[], changes: Session[]): Session[] {
+export function mergeSessions(list: Session[], changes: Session[], deleted: string[] = []): Session[] {
+  if (deleted.length > 0) list = list.filter((s) => !deleted.includes(s.sessionId));
   if (changes.length === 0) return list;
   const out = [...list];
   const at = new Map(out.map((s, i) => [s.sessionId, i]));

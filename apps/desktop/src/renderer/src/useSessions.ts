@@ -50,7 +50,8 @@ export function useSessions(enabled: boolean): Sessions & { loadOlder: () => voi
                 loaded: true,
               }));
             }
-            if (m.sessions.length > 0) setState((s) => ({ ...s, sessions: mergeSessions(s.sessions, m.sessions) }));
+            if (m.sessions.length > 0 || m.deletedSessionIds.length > 0)
+              setState((s) => ({ ...s, sessions: mergeSessions(s.sessions, m.sessions, m.deletedSessionIds) }));
           }
         } catch {
           // Watched again below: hermeshd restarted, or this watch fell behind.

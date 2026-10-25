@@ -1607,6 +1607,31 @@ func (o *Owner) UnarchiveSession(ctx context.Context, id string) (*sessionv1.Ses
 	return n.Session.UnarchiveSession(ctx, &sessionv1.UnarchiveSessionRequest{SessionId: id})
 }
 
+// DeleteSession deletes a session for good on its machine.
+func (o *Owner) DeleteSession(ctx context.Context, id string) error {
+	if l := o.localSession(id); l != nil {
+		return l.Delete(ctx, id)
+	}
+	n, err := o.sessionMachine(ctx, id)
+	if err != nil {
+		return err
+	}
+	_, err = n.Session.DeleteSession(ctx, &sessionv1.DeleteSessionRequest{SessionId: id})
+	return err
+}
+
+// RenameSession changes a session's title on its machine.
+func (o *Owner) RenameSession(ctx context.Context, id, title string) (*sessionv1.Session, error) {
+	if l := o.localSession(id); l != nil {
+		return l.Rename(ctx, id, title)
+	}
+	n, err := o.sessionMachine(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+	return n.Session.RenameSession(ctx, &sessionv1.RenameSessionRequest{SessionId: id, Title: title})
+}
+
 // AnswerQuestion answers a session's question as the owner.
 func (o *Owner) AnswerQuestion(ctx context.Context, req *sessionv1.AnswerQuestionRequest) (*sessionv1.Session, error) {
 	if l := o.localSession(req.SessionId); l != nil {

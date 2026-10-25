@@ -55,9 +55,19 @@
   },
   "sessionMenu": {
     "open": "Open",
+    "rename": "Rename",
     "archive": "Archive",
     "unarchive": "Unarchive",
-    "copyId": "Copy Session ID"
+    "copyId": "Copy Session ID",
+    "delete": "Delete…",
+    "more": "More",
+    "renameLabel": "Session title",
+    "deleteTitle": "Delete “{{title}}”?",
+    "deleteMessage": "Its record, conversation and worktree are deleted for good. The agent’s changes stay on the branch {{branch}}.",
+    "deleteMessageNoBranch": "Its record and conversation are deleted for good.",
+    "deleteRunning": "Its turn in progress is interrupted first.",
+    "deleteButton": "Delete",
+    "deleted": "Deleted “{{title}}”"
   },
   "filter": {
     "grant": "Agent",

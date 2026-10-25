@@ -625,6 +625,7 @@ stateDiagram-v2
 - **Events**: written to SQLite first, then fanned out; each session has its own monotonically increasing seq. A subscriber that cannot keep up is disconnected, and the client resumes reading by seq.
 - **Path redaction**: absolute paths in events are always rewritten as paths relative to the worktree. The project directory itself is the exception: `project list` hands it to agents that have permission, to help them recognize the project (decided 2026-10-17).
 - **Sessions never end on their own**: there is no terminal state, only archiving. After 10 minutes idle the coding agent process is reclaimed, and the same provider session is resumed when another message arrives; an archived session is read-only and can continue after being unarchived.
+- **Deleting and renaming** (the owner's devices only): `DeleteSession` interrupts a turn in progress, archives the session, then removes its record, events, turns and attachments. The branch stays in the project, and its tokens stay in `GetUsage` (kept in `deleted_sessions` by who started it, where, and with which agent). Watches report it in `deleted_session_ids`. `RenameSession` changes the title without counting as activity, so the session keeps its place in lists.
 - **Restart recovery**: on startup, sessions with a turn in progress are marked `crashed`, leftover process groups are cleaned up, and `git worktree prune` is run.
 - **Idempotency**: `(client_id, idempotency_key) → session_id` is kept for 24 hours.
 - **Limits** (`config.yaml`):

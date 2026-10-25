@@ -2,7 +2,7 @@ import { memo, useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent 
 import { Trans, useTranslation } from "react-i18next";
 import { SessionStatus, type Session } from "@hermesh/proto/session";
 import {
-  bucketTitle, clockText, codingAgentShort, codingAgentTitle, createdDate, dateOf, displayTitle, isArchivable, isFailed, listTime,
+  bucketTitle, clockText, codingAgentShort, codingAgentTitle, createdDate, dateOf, displayTitle, isActive, isArchivable, isFailed, listTime,
   sectionCounted, sessionSections, updatedDate, type SessionBucket, type SessionSection, type SessionView,
 } from "@hermesh/core";
 import { i18n } from "../../shared/i18n";
@@ -34,6 +34,25 @@ export function archive(st: Store, s: Session) {
 
 export function unarchive(st: Store, s: Session) {
   st.run(() => local.unarchiveSession({ sessionId: s.sessionId }));
+}
+
+/** Delete, once confirmed: what goes for good, what stays (the branch), and that a turn in progress is interrupted. */
+export function confirmDelete(st: Store, s: Session) {
+  const title = displayTitle(s);
+  const message = [
+    i18n.t(s.branch ? "common:sessionMenu.deleteMessage" : "common:sessionMenu.deleteMessageNoBranch", { branch: s.branch }),
+    isActive(s) ? i18n.t("common:sessionMenu.deleteRunning") : "",
+  ].filter(Boolean).join(" ");
+  st.set({
+    sheet: {
+      kind: "confirm",
+      title: i18n.t("common:sessionMenu.deleteTitle", { title }),
+      message,
+      button: i18n.t("common:sessionMenu.deleteButton"),
+      run: () => local.deleteSession({ sessionId: s.sessionId }),
+      done: i18n.t("common:sessionMenu.deleted", { title }),
+    },
+  });
 }
 
 /** The list as the sidebar shows it, in the owner's view; machines this Mac first, then by name. */
@@ -108,6 +127,7 @@ export function Sidebar() {
                 sel={st.selection.kind === "session" && st.selection.id === s.sessionId}
                 grant={grantLabel(st, s)}
                 meta={st.view.metadata}
+                renaming={st.renaming === s.sessionId}
                 store={latest}
               />
             ))}
@@ -223,18 +243,21 @@ function AccountMenu() {
   );
 }
 
-const SessionRow = memo(function SessionRow({ s, sel, grant, meta, store }: { s: Session; sel: boolean; grant: string; meta: boolean; store: RefObject<Store> }) {
+const SessionRow = memo(function SessionRow({ s, sel, grant, meta, renaming, store }: {
+  s: Session; sel: boolean; grant: string; meta: boolean; renaming: boolean; store: RefObject<Store>;
+}) {
   const { t } = useTranslation("common");
   const archived = s.status === SessionStatus.ARCHIVED;
-  const act = isArchivable(s) || archived;
+  // Where the ⋯ menu opens (under its button), while it is open.
+  const [menu, setMenu] = useState<{ x: number; y: number; key: boolean } | null>(null);
   return (
     <div
-      className={`srow ${sel ? "sel" : ""} ${act ? "has-act" : ""} ${archived ? "arch" : ""}`}
+      className={`srow has-act ${sel ? "sel" : ""} ${menu ? "menu-open" : ""} ${archived ? "arch" : ""}`}
       role="listitem"
       aria-current={sel || undefined}
       tabIndex={0}
-      onClick={() => store.current.select(s.sessionId)}
-      onKeyDown={(e) => e.key === "Enter" && store.current.select(s.sessionId)}
+      onClick={() => !renaming && store.current.select(s.sessionId)}
+      onKeyDown={(e) => !renaming && e.key === "Enter" && store.current.select(s.sessionId)}
       onContextMenu={(e) => {
         e.preventDefault();
         sessionMenu(store.current, s);
@@ -242,21 +265,26 @@ const SessionRow = memo(function SessionRow({ s, sel, grant, meta, store }: { s:
     >
       <div className="smain">
         <div className="sl1">
-          <span className="stitle" title={displayTitle(s)}>{displayTitle(s)}</span>
+          {renaming ? <RenameField s={s} store={store} /> : <span className="stitle" title={displayTitle(s)}>{displayTitle(s)}</span>}
           <span className="smeta">
             <StatusDot s={s} />
             <RowStatus s={s} />
           </span>
-          {isArchivable(s) && (
-            <button className="rowact" title={t("sessionMenu.archive")} aria-label={t("sessionMenu.archive")} onClick={(e) => (e.stopPropagation(), archive(store.current, s))}>
-              <Icon name="archive" className="sm" />
-            </button>
-          )}
-          {archived && (
-            <button className="rowact" title={t("sessionMenu.unarchive")} aria-label={t("sessionMenu.unarchive")} onClick={(e) => (e.stopPropagation(), unarchive(store.current, s))}>
-              <Icon name="unarchive" className="sm" />
-            </button>
-          )}
+          <button
+            className="rowact"
+            title={t("sessionMenu.more")}
+            aria-label={t("sessionMenu.more")}
+            aria-haspopup="menu"
+            aria-expanded={!!menu}
+            onClick={(e) => {
+              e.stopPropagation();
+              const r = e.currentTarget.getBoundingClientRect();
+              setMenu(menu ? null : { x: r.right, y: r.bottom + 4, key: e.detail === 0 });
+            }}
+          >
+            <Icon name="more" className="sm" />
+          </button>
+          {menu && <RowMenu s={s} at={menu} store={store} onClose={() => setMenu(null)} />}
         </div>
         {meta && (
           <div className="sl2">
@@ -269,26 +297,136 @@ const SessionRow = memo(function SessionRow({ s, sel, grant, meta, store }: { s:
   );
 });
 
-/** The session's context menu (native): open, archive, copy its id. */
+/** The session's context menu (native): open, rename, archive, copy its id, delete. */
 async function sessionMenu(st: Store, s: Session) {
   const archived = s.status === SessionStatus.ARCHIVED;
   const id = await window.hermesh?.popupMenu([
     { id: "open", label: i18n.t("common:sessionMenu.open") },
     { separator: true },
+    { id: "rename", label: i18n.t("common:sessionMenu.rename") },
     { id: archived ? "unarchive" : "archive", label: i18n.t(archived ? "common:sessionMenu.unarchive" : "common:sessionMenu.archive"), enabled: archived || isArchivable(s) },
     { separator: true },
     { id: "copy", label: i18n.t("common:sessionMenu.copyId") },
+    { separator: true },
+    { id: "delete", label: i18n.t("common:sessionMenu.delete") },
   ]);
   switch (id) {
     case "open":
       return st.select(s.sessionId);
+    case "rename":
+      return st.set({ renaming: s.sessionId });
     case "archive":
       return archive(st, s);
     case "unarchive":
       return unarchive(st, s);
+    case "delete":
+      return confirmDelete(st, s);
     case "copy":
       return navigator.clipboard.writeText(s.sessionId);
   }
+}
+
+/**
+ * A row's ⋯ menu: rename, archive (or unarchive), and delete after a
+ * separator. Drawn like the view menu, right-aligned under its button;
+ * clicks stay in the menu, not the row.
+ */
+function RowMenu({ s, at, store, onClose }: { s: Session; at: { x: number; y: number; key: boolean }; store: RefObject<Store>; onClose: () => void }) {
+  const { t } = useTranslation("common");
+  const ref = useRef<HTMLDivElement>(null);
+  const [pos, setPos] = useState({ left: -9999, top: at.y });
+  const archived = s.status === SessionStatus.ARCHIVED;
+  const items: ({ id: string; label: string; run: () => void; disabled?: boolean; danger?: boolean } | null)[] = [
+    { id: "rename", label: t("sessionMenu.rename"), run: () => store.current.set({ renaming: s.sessionId }) },
+    archived
+      ? { id: "unarchive", label: t("sessionMenu.unarchive"), run: () => unarchive(store.current, s) }
+      : { id: "archive", label: t("sessionMenu.archive"), run: () => archive(store.current, s), disabled: !isArchivable(s) },
+    null,
+    { id: "delete", label: t("sessionMenu.delete"), run: () => confirmDelete(store.current, s), danger: true },
+  ];
+  useLayoutEffect(() => {
+    const el = ref.current!;
+    const top = at.y + el.offsetHeight > innerHeight - 8 ? at.y - el.offsetHeight - 30 : at.y;
+    setPos({ left: Math.max(8, at.x - el.offsetWidth), top });
+    (at.key ? el.querySelector<HTMLElement>("[role=menuitem]:not(:disabled)") : el)?.focus();
+  }, [at]);
+  useEffect(() => {
+    // Its own button toggles it (on click), so a press there isn't outside.
+    const outside = (e: MouseEvent) => !ref.current?.contains(e.target as Node) && !(e.target as Element).closest?.(".rowact[aria-expanded=true]") && onClose();
+    document.addEventListener("mousedown", outside);
+    window.addEventListener("blur", onClose);
+    return () => {
+      document.removeEventListener("mousedown", outside);
+      window.removeEventListener("blur", onClose);
+    };
+  }, [onClose]);
+  const onKeyDown = (e: ReactKeyboardEvent) => {
+    e.stopPropagation();
+    const all = [...(ref.current?.querySelectorAll<HTMLElement>("[role=menuitem]:not(:disabled)") ?? [])];
+    const i = all.indexOf(document.activeElement as HTMLElement);
+    const go = { ArrowDown: (i + 1) % all.length, ArrowUp: i <= 0 ? all.length - 1 : i - 1 }[e.key];
+    if (go !== undefined) {
+      e.preventDefault();
+      all[go]?.focus();
+    } else if (e.key === "Escape" || e.key === "Tab") {
+      e.preventDefault();
+      onClose();
+    }
+  };
+  return (
+    <div className="vmenu" role="menu" aria-label={t("sessionMenu.more")} tabIndex={-1} ref={ref} style={pos} onClick={(e) => e.stopPropagation()} onKeyDown={onKeyDown} onContextMenu={(e) => e.stopPropagation()}>
+      {items.map((it, i) =>
+        it ? (
+          <button
+            key={it.id}
+            className={`mi ${it.danger ? "danger" : ""}`}
+            role="menuitem"
+            tabIndex={-1}
+            disabled={it.disabled}
+            onMouseMove={(e) => e.currentTarget.focus()}
+            onClick={() => (onClose(), it.run())}
+          >
+            {it.label}
+          </button>
+        ) : (
+          <div key={i} className="msep" role="separator" />
+        ),
+      )}
+    </div>
+  );
+}
+
+/** A row's title, edited in place: ↩ or leaving the field keeps it, Esc puts it back. */
+function RenameField({ s, store }: { s: Session; store: RefObject<Store> }) {
+  const { t } = useTranslation("common");
+  const [value, setValue] = useState(displayTitle(s));
+  const done = useRef(false);
+  const finish = (keep: boolean) => {
+    if (done.current) return;
+    done.current = true;
+    const st = store.current;
+    st.set({ renaming: null });
+    const title = value.trim();
+    if (keep && title && title !== displayTitle(s)) st.run(() => local.renameSession({ sessionId: s.sessionId, title }));
+  };
+  return (
+    <input
+      className="srename"
+      aria-label={t("sessionMenu.renameLabel")}
+      autoFocus
+      value={value}
+      onFocus={(e) => e.currentTarget.select()}
+      onChange={(e) => setValue(e.target.value)}
+      onClick={(e) => e.stopPropagation()}
+      onKeyDown={(e) => {
+        e.stopPropagation();
+        if (e.nativeEvent.isComposing) return;
+        if (e.key === "Enter") finish(true);
+        else if (e.key === "Escape") finish(false);
+      }}
+      onBlur={() => finish(true)}
+    />
+  );
 }
 
 /** The status in words, beside its dot: only what needs saying (a running or idle session is its dot). */

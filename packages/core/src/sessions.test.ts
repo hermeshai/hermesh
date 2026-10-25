@@ -180,6 +180,8 @@ describe("pushed and paged sessions", () => {
     expect(mergeSessions(list, [stat])[0].progress?.diffStat?.filesChanged).toBe(2);
     // A page listed before the change answers after the watch told of it.
     expect(mergeSessions(list, [run])[0].status).toBe(SessionStatus.IDLE);
+    // A deleted session leaves the list.
+    expect(ids(mergeSessions(list, [], ["a"]))).toEqual(["b"]);
   });
 
   test("relisting the first page goes on from the newer boundary", () => {

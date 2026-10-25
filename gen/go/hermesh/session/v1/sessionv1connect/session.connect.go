@@ -63,6 +63,12 @@ const (
 	// SessionServiceUnarchiveSessionProcedure is the fully-qualified name of the SessionService's
 	// UnarchiveSession RPC.
 	SessionServiceUnarchiveSessionProcedure = "/hermesh.session.v1.SessionService/UnarchiveSession"
+	// SessionServiceDeleteSessionProcedure is the fully-qualified name of the SessionService's
+	// DeleteSession RPC.
+	SessionServiceDeleteSessionProcedure = "/hermesh.session.v1.SessionService/DeleteSession"
+	// SessionServiceRenameSessionProcedure is the fully-qualified name of the SessionService's
+	// RenameSession RPC.
+	SessionServiceRenameSessionProcedure = "/hermesh.session.v1.SessionService/RenameSession"
 	// SessionServiceGetDiffProcedure is the fully-qualified name of the SessionService's GetDiff RPC.
 	SessionServiceGetDiffProcedure = "/hermesh.session.v1.SessionService/GetDiff"
 	// SessionServiceAnswerQuestionProcedure is the fully-qualified name of the SessionService's
@@ -95,6 +101,14 @@ type SessionServiceClient interface {
 	// UnarchiveSession restores the worktree from the branch; the session is
 	// idle again.
 	UnarchiveSession(context.Context, *v1.UnarchiveSessionRequest) (*v1.Session, error)
+	// DeleteSession deletes a session for good: its record, events,
+	// attachments and worktree. Its branch stays in the project, with every
+	// turn's work, and its tokens stay in GetUsage. A turn in progress is
+	// interrupted first. Only the owner's devices may delete.
+	DeleteSession(context.Context, *v1.DeleteSessionRequest) (*v1.DeleteSessionResponse, error)
+	// RenameSession changes the session's title. Only the owner's devices
+	// may rename.
+	RenameSession(context.Context, *v1.RenameSessionRequest) (*v1.Session, error)
 	GetDiff(context.Context, *v1.GetDiffRequest) (*v1.GetDiffResponse, error)
 	// AnswerQuestion answers (or declines) a question the agent asked.
 	AnswerQuestion(context.Context, *v1.AnswerQuestionRequest) (*v1.Session, error)
@@ -174,6 +188,18 @@ func NewSessionServiceClient(httpClient connect.HTTPClient, baseURL string, opts
 			connect.WithSchema(sessionServiceMethods.ByName("UnarchiveSession")),
 			connect.WithClientOptions(opts...),
 		),
+		deleteSession: connect.NewClient[v1.DeleteSessionRequest, v1.DeleteSessionResponse](
+			httpClient,
+			baseURL+SessionServiceDeleteSessionProcedure,
+			connect.WithSchema(sessionServiceMethods.ByName("DeleteSession")),
+			connect.WithClientOptions(opts...),
+		),
+		renameSession: connect.NewClient[v1.RenameSessionRequest, v1.Session](
+			httpClient,
+			baseURL+SessionServiceRenameSessionProcedure,
+			connect.WithSchema(sessionServiceMethods.ByName("RenameSession")),
+			connect.WithClientOptions(opts...),
+		),
 		getDiff: connect.NewClient[v1.GetDiffRequest, v1.GetDiffResponse](
 			httpClient,
 			baseURL+SessionServiceGetDiffProcedure,
@@ -207,6 +233,8 @@ type sessionServiceClient struct {
 	interruptSession *connect.Client[v1.InterruptSessionRequest, v1.Session]
 	archiveSession   *connect.Client[v1.ArchiveSessionRequest, v1.Session]
 	unarchiveSession *connect.Client[v1.UnarchiveSessionRequest, v1.Session]
+	deleteSession    *connect.Client[v1.DeleteSessionRequest, v1.DeleteSessionResponse]
+	renameSession    *connect.Client[v1.RenameSessionRequest, v1.Session]
 	getDiff          *connect.Client[v1.GetDiffRequest, v1.GetDiffResponse]
 	answerQuestion   *connect.Client[v1.AnswerQuestionRequest, v1.Session]
 	getUsage         *connect.Client[v1.GetUsageRequest, v1.GetUsageResponse]
@@ -294,6 +322,24 @@ func (c *sessionServiceClient) UnarchiveSession(ctx context.Context, req *v1.Una
 	return nil, err
 }
 
+// DeleteSession calls hermesh.session.v1.SessionService.DeleteSession.
+func (c *sessionServiceClient) DeleteSession(ctx context.Context, req *v1.DeleteSessionRequest) (*v1.DeleteSessionResponse, error) {
+	response, err := c.deleteSession.CallUnary(ctx, connect.NewRequest(req))
+	if response != nil {
+		return response.Msg, err
+	}
+	return nil, err
+}
+
+// RenameSession calls hermesh.session.v1.SessionService.RenameSession.
+func (c *sessionServiceClient) RenameSession(ctx context.Context, req *v1.RenameSessionRequest) (*v1.Session, error) {
+	response, err := c.renameSession.CallUnary(ctx, connect.NewRequest(req))
+	if response != nil {
+		return response.Msg, err
+	}
+	return nil, err
+}
+
 // GetDiff calls hermesh.session.v1.SessionService.GetDiff.
 func (c *sessionServiceClient) GetDiff(ctx context.Context, req *v1.GetDiffRequest) (*v1.GetDiffResponse, error) {
 	response, err := c.getDiff.CallUnary(ctx, connect.NewRequest(req))
@@ -344,6 +390,14 @@ type SessionServiceHandler interface {
 	// UnarchiveSession restores the worktree from the branch; the session is
 	// idle again.
 	UnarchiveSession(context.Context, *v1.UnarchiveSessionRequest) (*v1.Session, error)
+	// DeleteSession deletes a session for good: its record, events,
+	// attachments and worktree. Its branch stays in the project, with every
+	// turn's work, and its tokens stay in GetUsage. A turn in progress is
+	// interrupted first. Only the owner's devices may delete.
+	DeleteSession(context.Context, *v1.DeleteSessionRequest) (*v1.DeleteSessionResponse, error)
+	// RenameSession changes the session's title. Only the owner's devices
+	// may rename.
+	RenameSession(context.Context, *v1.RenameSessionRequest) (*v1.Session, error)
 	GetDiff(context.Context, *v1.GetDiffRequest) (*v1.GetDiffResponse, error)
 	// AnswerQuestion answers (or declines) a question the agent asked.
 	AnswerQuestion(context.Context, *v1.AnswerQuestionRequest) (*v1.Session, error)
@@ -419,6 +473,18 @@ func NewSessionServiceHandler(svc SessionServiceHandler, opts ...connect.Handler
 		connect.WithSchema(sessionServiceMethods.ByName("UnarchiveSession")),
 		connect.WithHandlerOptions(opts...),
 	)
+	sessionServiceDeleteSessionHandler := connect.NewUnaryHandlerSimple(
+		SessionServiceDeleteSessionProcedure,
+		svc.DeleteSession,
+		connect.WithSchema(sessionServiceMethods.ByName("DeleteSession")),
+		connect.WithHandlerOptions(opts...),
+	)
+	sessionServiceRenameSessionHandler := connect.NewUnaryHandlerSimple(
+		SessionServiceRenameSessionProcedure,
+		svc.RenameSession,
+		connect.WithSchema(sessionServiceMethods.ByName("RenameSession")),
+		connect.WithHandlerOptions(opts...),
+	)
 	sessionServiceGetDiffHandler := connect.NewUnaryHandlerSimple(
 		SessionServiceGetDiffProcedure,
 		svc.GetDiff,
@@ -459,6 +525,10 @@ func NewSessionServiceHandler(svc SessionServiceHandler, opts ...connect.Handler
 			sessionServiceArchiveSessionHandler.ServeHTTP(w, r)
 		case SessionServiceUnarchiveSessionProcedure:
 			sessionServiceUnarchiveSessionHandler.ServeHTTP(w, r)
+		case SessionServiceDeleteSessionProcedure:
+			sessionServiceDeleteSessionHandler.ServeHTTP(w, r)
+		case SessionServiceRenameSessionProcedure:
+			sessionServiceRenameSessionHandler.ServeHTTP(w, r)
 		case SessionServiceGetDiffProcedure:
 			sessionServiceGetDiffHandler.ServeHTTP(w, r)
 		case SessionServiceAnswerQuestionProcedure:
@@ -512,6 +582,14 @@ func (UnimplementedSessionServiceHandler) ArchiveSession(context.Context, *v1.Ar
 
 func (UnimplementedSessionServiceHandler) UnarchiveSession(context.Context, *v1.UnarchiveSessionRequest) (*v1.Session, error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("hermesh.session.v1.SessionService.UnarchiveSession is not implemented"))
+}
+
+func (UnimplementedSessionServiceHandler) DeleteSession(context.Context, *v1.DeleteSessionRequest) (*v1.DeleteSessionResponse, error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("hermesh.session.v1.SessionService.DeleteSession is not implemented"))
+}
+
+func (UnimplementedSessionServiceHandler) RenameSession(context.Context, *v1.RenameSessionRequest) (*v1.Session, error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("hermesh.session.v1.SessionService.RenameSession is not implemented"))
 }
 
 func (UnimplementedSessionServiceHandler) GetDiff(context.Context, *v1.GetDiffRequest) (*v1.GetDiffResponse, error) {

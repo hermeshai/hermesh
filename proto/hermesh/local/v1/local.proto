@@ -98,6 +98,9 @@ service LocalService {
   rpc InterruptSession(InterruptSessionRequest) returns (SessionResponse);
   rpc ArchiveSession(ArchiveSessionRequest) returns (SessionResponse);
   rpc UnarchiveSession(UnarchiveSessionRequest) returns (SessionResponse);
+  // DeleteSession and RenameSession: hermesh.session.v1.SessionService's.
+  rpc DeleteSession(DeleteSessionRequest) returns (DeleteSessionResponse);
+  rpc RenameSession(RenameSessionRequest) returns (SessionResponse);
   rpc AnswerQuestion(AnswerQuestionRequest) returns (AnswerQuestionResponse);
   rpc GetDiff(GetDiffRequest) returns (hermesh.session.v1.GetDiffResponse);
   // GetUsage adds up every reachable machine's tokens by day and coding
@@ -633,6 +636,8 @@ message WatchSessionsResponse {
   // back), so list them again.
   bool machines_changed = 2;
   repeated Unreachable unreachable = 3;
+  // Sessions deleted since the last message.
+  repeated string deleted_session_ids = 4;
 }
 
 message StreamSessionEventsRequest {
@@ -662,6 +667,17 @@ message ArchiveSessionRequest {
 
 message UnarchiveSessionRequest {
   string session_id = 1;
+}
+
+message DeleteSessionRequest {
+  string session_id = 1;
+}
+
+message DeleteSessionResponse {}
+
+message RenameSessionRequest {
+  string session_id = 1;
+  string title = 2;
 }
 
 message SessionResponse {

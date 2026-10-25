@@ -92,6 +92,15 @@ CREATE TABLE turn_usage (
   PRIMARY KEY (session_id, turn)
 );
 CREATE INDEX turn_usage_by_end ON turn_usage(ended_at);
+`, `
+CREATE TABLE deleted_sessions (
+  session_id TEXT PRIMARY KEY,
+  project_id TEXT NOT NULL,
+  agent TEXT NOT NULL,
+  created_by TEXT NOT NULL,
+  grant_id TEXT NOT NULL,
+  deleted_at INTEGER NOT NULL
+);
 `}
 
 // Store uses one writer connection (db) and a pool of readers (rdb), so
@@ -322,6 +331,45 @@ func (s *Store) Sessions(where string, args ...any) ([]*sessionRow, error) {
 	for rows.Next() {
 		r, err := scanSession(rows)
 		if err != nil {
+			return nil, err
+		}
+		out = append(out, r)
+	}
+	return out, rows.Err()
+}
+
+// DeleteSession removes a session's record, events, turns and idempotency
+// keys, and keeps what Usage needs to count its turns (who started it,
+// where, with which agent) in deleted_sessions.
+func (s *Store) DeleteSession(r *sessionRow) error {
+	tx, err := s.db.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	if _, err := tx.Exec(`INSERT OR REPLACE INTO deleted_sessions(session_id, project_id, agent, created_by, grant_id, deleted_at) VALUES(?,?,?,?,?,?)`,
+		r.ID, r.ProjectID, r.Agent, r.CreatedBy, r.GrantID, time.Now().Unix()); err != nil {
+		return err
+	}
+	for _, table := range []string{"sessions", "session_events", "turns", "idempotency"} {
+		if _, err := tx.Exec(`DELETE FROM `+table+` WHERE session_id=?`, r.ID); err != nil {
+			return err
+		}
+	}
+	return tx.Commit()
+}
+
+// DeletedSessions returns what is kept of the deleted sessions (see DeleteSession).
+func (s *Store) DeletedSessions() ([]*sessionRow, error) {
+	rows, err := s.rdb.Query(`SELECT session_id, project_id, agent, created_by, grant_id FROM deleted_sessions`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []*sessionRow
+	for rows.Next() {
+		r := &sessionRow{}
+		if err := rows.Scan(&r.ID, &r.ProjectID, &r.Agent, &r.CreatedBy, &r.GrantID); err != nil {
 			return nil, err
 		}
 		out = append(out, r)

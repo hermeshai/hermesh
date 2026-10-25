@@ -219,10 +219,10 @@ func (w *sessionWatch) follow(ctx context.Context, r *watchRound, id string, sta
 	err := w.o.followMachine(ctx, id, func() {
 		set(true, "")
 		started()
-	}, func(ss []*sessionv1.Session) {
+	}, func(m *sessionv1.WatchSessionsResponse) {
 		w.mu.Lock()
 		if w.round == r {
-			w.broadcastLocked(&localv1.WatchSessionsResponse{Sessions: ss})
+			w.broadcastLocked(&localv1.WatchSessionsResponse{Sessions: m.Sessions, DeletedSessionIds: m.DeletedSessionIds})
 		}
 		w.mu.Unlock()
 	})
@@ -233,7 +233,7 @@ func (w *sessionWatch) follow(ctx context.Context, r *watchRound, id string, sta
 // followMachine follows a machine's SessionService.WatchSessions: ready is
 // called once the machine's watch is in place (within followTimeout), then
 // changed with each change, until the stream ends.
-func (o *Owner) followMachine(ctx context.Context, id string, ready func(), changed func([]*sessionv1.Session)) error {
+func (o *Owner) followMachine(ctx context.Context, id string, ready func(), changed func(*sessionv1.WatchSessionsResponse)) error {
 	if l := o.local(); l != nil && l.MachineID() == id {
 		first := true
 		err := l.WatchSessions(ctx, func(m *sessionv1.WatchSessionsResponse) error {
@@ -241,7 +241,7 @@ func (o *Owner) followMachine(ctx context.Context, id string, ready func(), chan
 				first = false
 				ready()
 			} else {
-				changed(m.Sessions)
+				changed(m)
 			}
 			return nil
 		})
@@ -280,7 +280,7 @@ func (o *Owner) followMachine(ctx context.Context, id string, ready func(), chan
 	}
 	ready()
 	for stream.Receive() {
-		changed(stream.Msg().Sessions)
+		changed(stream.Msg())
 	}
 	return cmp.Or(stream.Err(), errors.New("stopped watching"))
 }

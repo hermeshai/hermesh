@@ -72,6 +72,17 @@ func (s *sessionService) UnarchiveSession(ctx context.Context, req *sessionv1.Un
 	return s.n.sessions.Unarchive(ctx, principalFrom(ctx), req.SessionId)
 }
 
+func (s *sessionService) DeleteSession(ctx context.Context, req *sessionv1.DeleteSessionRequest) (*sessionv1.DeleteSessionResponse, error) {
+	if err := s.n.sessions.Delete(ctx, principalFrom(ctx), req.SessionId); err != nil {
+		return nil, err
+	}
+	return &sessionv1.DeleteSessionResponse{}, nil
+}
+
+func (s *sessionService) RenameSession(ctx context.Context, req *sessionv1.RenameSessionRequest) (*sessionv1.Session, error) {
+	return s.n.sessions.Rename(ctx, principalFrom(ctx), req.SessionId, req.Title)
+}
+
 func (s *sessionService) GetDiff(ctx context.Context, req *sessionv1.GetDiffRequest) (*sessionv1.GetDiffResponse, error) {
 	return s.n.sessions.Diff(ctx, principalFrom(ctx), req)
 }
