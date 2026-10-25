@@ -6,14 +6,14 @@ import {
   type Client, type Device, type GetStatusResponse, type Machine, type PairingDetails, type Project, type Unreachable,
 } from "@hermesh/proto/local";
 import type { Session } from "@hermesh/proto/session";
-import { sessionFilter, type SessionFilter } from "@hermesh/core";
+import { sessionView, type SessionFilter, type SessionView } from "@hermesh/core";
 import { local } from "./api";
 import { useSessions } from "./useSessions";
 
 // What the window knows: hermeshd's lists, polled like the Mac app did
 // (status and lists every few seconds, pairing requests more often), the
 // sessions as hermeshd pushes them (useSessions), plus the window's own
-// state (selection, filter, open sheet, toast).
+// state (selection, list view, open sheet, toast).
 
 export type Data = {
   /** undefined until the first answer; null when hermeshd cannot be reached. */
@@ -45,8 +45,12 @@ type UI = {
   selection: Selection;
   inspector: boolean;
   sidebar: boolean;
-  filter: SessionFilter;
+  /** How the session list is laid out, and whether it shows archived sessions. */
+  view: SessionView;
+  archived: boolean;
   searching: boolean;
+  /** What the search palette opens narrowed to ("Show in Main Window" in the settings). */
+  searchFor: Partial<SessionFilter>;
   sheet: Sheet | null;
   toast: Toast | null;
   /** Pairing codes the owner put off ("Deny"): left out of pairings until opened again. */
@@ -137,10 +141,15 @@ export function save(key: string, v: boolean) {
   }
 }
 
-type SavedView = Pick<UI, "selection" | "sidebar" | "filter">;
+type SavedView = Pick<UI, "selection" | "sidebar" | "view" | "archived">;
 function savedView(): Partial<SavedView> {
   if (location.hash.startsWith("#settings")) return {};
-  try { return JSON.parse(localStorage.getItem("main-view") ?? "{}"); } catch { return {}; }
+  try {
+    const v: Partial<SavedView> = JSON.parse(localStorage.getItem("main-view") ?? "{}");
+    return { selection: v.selection, sidebar: v.sidebar, view: sessionView(v.view), archived: v.archived };
+  } catch {
+    return {};
+  }
 }
 
 export function HermeshProvider({ children }: { children: ReactNode }) {
@@ -149,19 +158,21 @@ export function HermeshProvider({ children }: { children: ReactNode }) {
     selection: { kind: "overview" },
     inspector: saved("inspector", true),
     sidebar: true,
-    filter: sessionFilter(),
+    view: sessionView(),
+    archived: false,
     searching: false,
+    searchFor: {},
     sheet: null,
     toast: null,
     dismissed: [],
     upgrading: false,
-    ...savedView(),
+    ...Object.fromEntries(Object.entries(savedView()).filter(([, v]) => v !== undefined)),
   }));
   useEffect(() => {
     if (location.hash.startsWith("#settings")) return;
-    try { localStorage.setItem("main-view", JSON.stringify({ selection: ui.selection, sidebar: ui.sidebar, filter: ui.filter })); }
+    try { localStorage.setItem("main-view", JSON.stringify({ selection: ui.selection, sidebar: ui.sidebar, view: ui.view, archived: ui.archived })); }
     catch { /* Main-window context is optional when storage is unavailable. */ }
-  }, [ui.selection, ui.sidebar, ui.filter]);
+  }, [ui.selection, ui.sidebar, ui.view, ui.archived]);
   const toastTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
 
   const refreshStatus = useCallback(async () => {

@@ -153,8 +153,6 @@ function template(): MenuItemConstructorOptions[] {
         item("interrupt", t("session.interrupt"), "interrupt", !!s?.interruptible, { accelerator: "CmdOrCtrl+." }),
         sep,
         item("copySessionId", t("session.copyId"), "copySessionId", !!s),
-        item("filterGrant", s ? t("session.onlyGrant", { name: s.grantLabel }) : t("session.onlyThisGrant"), `filterGrant:${s?.grant ?? ""}`, !!s),
-        item("filterProject", s ? t("session.onlyProject", { name: s.project }) : t("session.onlyThisProject"), `filterProject:${s?.project ?? ""}`, !!s),
         sep,
         item("archive", t("session.archive"), "archive", !!s?.archivable, { accelerator: "CmdOrCtrl+E" }),
         item("unarchive", t("session.unarchive"), "unarchive", !!s?.archived),

@@ -62,8 +62,6 @@ test("the app menu drives the main window", async () => {
   await expect.poll(() => menuItem(app, "answer")).toMatchObject({ enabled: true });
   expect(await menuItem(app, "archive")).toMatchObject({ enabled: false });
   expect(await menuItem(app, "interrupt")).toMatchObject({ enabled: true });
-  expect(await menuItem(app, "filterGrant")).toMatchObject({ label: "只看「bot」的会话", enabled: true });
-  expect(await menuItem(app, "filterProject")).toMatchObject({ label: "只看「demo」的会话", enabled: true });
   await clickMenu(app, "answer");
   await expect(page.getByRole("group", { name: "问题" }).locator(":focus")).toHaveCount(1);
 

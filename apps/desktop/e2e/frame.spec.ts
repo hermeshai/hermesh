@@ -1,22 +1,26 @@
-import { expect, test } from "@playwright/test";
-import { cli, launch, snap } from "./app";
+import { expect, test, type Page } from "@playwright/test";
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
+import { cli, fixture, launch, snap } from "./app";
 
-// The main window's frame: the sidebar lists sessions in the order the
-// owner needs them, and the filter narrows it.
-test("the sidebar groups sessions: needs you, running, today; archived only on request", async () => {
+// The main window's frame: the sidebar lists sessions as the owner chose to
+// view them, by status unless they chose otherwise.
+test("the sidebar groups sessions by status: needs you, running, done; archived only on request", async () => {
   const { app, page } = await launch();
   const list = page.getByRole("list", { name: "会话" });
   const group = (name: string) => list.getByRole("group", { name });
   await expect(group("需要处理")).toContainText("选颜色");
-  await expect(group("需要处理").getByRole("listitem").first()).toContainText("选颜色"); // the question before the failures
   await expect(group("需要处理")).toContainText("限流");
   await expect(group("需要处理")).toContainText("崩溃");
   await expect(group("进行中")).toContainText("跑很久");
-  await expect(group("今天")).toContainText("写 hello");
+  await expect(group("已结束")).toContainText("写 hello");
   await expect(list).not.toContainText("归档的");
   await snap(page, "main-sidebar");
   await page.getByRole("button", { name: "显示已归档" }).click();
   await expect(group("已归档")).toContainText("归档的");
+  await page.getByRole("button", { name: "隐藏已归档" }).click();
+  await expect(list).not.toContainText("归档的");
   await app.close();
 });
 
@@ -130,15 +134,69 @@ test("the avatar opens the account menu above it, by mouse and keyboard", async 
   await app.close();
 });
 
-test("the filter narrows the list and shows as a chip", async () => {
-  const { app, page } = await launch();
-  await page.getByRole("button", { name: "筛选会话" }).click();
-  await page.getByRole("combobox", { name: "编码 agent" }).selectOption("gemini");
-  await page.getByRole("combobox", { name: "机器" }).selectOption({ label: "owner-mac" });
-  await page.keyboard.press("Escape");
-  await expect(page.getByRole("button", { name: "去掉这个筛选" })).toHaveCount(2);
+/** The titles of the list's groups, top to bottom. */
+const groups = (page: Page) => page.getByRole("list", { name: "会话" }).locator(".grp-h").allInnerTexts();
+
+test("the view menu groups, sorts and shows the list from submenus, opaque over it, and is kept for next time", async () => {
+  const profile = fs.mkdtempSync(path.join(os.tmpdir(), "hmdesk-"));
+  let { app, page } = await launch(fixture.socket, { profile });
+  const list = page.getByRole("list", { name: "会话" });
+  const button = page.getByRole("button", { name: "视图选项" });
+  const menu = page.getByRole("menu", { name: "视图选项" });
+
+  // Each row of the menu says what it is set to.
+  await button.click();
+  await expect(menu.getByRole("menuitem")).toHaveText(["分组按状态", "排序最新在前", "显示元数据"]);
+  const background = await menu.evaluate((el) => getComputedStyle(el).backgroundColor);
+  expect(background).toMatch(/^rgb\(/); // no alpha: the list doesn't show through
+  await menu.getByRole("menuitem", { name: /分组/ }).hover();
+  const group = page.getByRole("menu", { name: "分组" });
+  await expect(group.getByRole("menuitemradio")).toHaveText(["按状态", "按日期", "按 Agent", "按机器"]);
+  await expect(group.getByRole("menuitemradio", { name: "按状态" })).toHaveAttribute("aria-checked", "true");
+  await snap(page, "view-menu");
+  await group.getByRole("menuitemradio", { name: "按 Agent" }).click();
+  await expect(menu).toHaveCount(0);
+  await expect(list.getByRole("group", { name: "Gemini CLI" })).toContainText("写 hello");
+
+  // From the keyboard: → opens a submenu, ↓ moves, ↩ chooses.
+  await page.mouse.move(0, 0);
+  await button.focus();
+  await page.keyboard.press("Enter");
+  await expect(menu.getByRole("menuitem", { name: /分组/ })).toBeFocused();
+  await page.keyboard.press("ArrowRight");
+  await expect(group.getByRole("menuitemradio", { name: "按状态" })).toBeFocused();
+  await page.keyboard.press("ArrowDown");
+  await page.keyboard.press("Enter");
+  await expect(menu).toHaveCount(0);
+  await expect(button).toBeFocused();
+  expect((await groups(page))[0]).toBe("今天");
+
+  // Oldest first turns the days around, and each day's sessions.
+  const today = list.getByRole("group", { name: "今天" }).locator(".stitle");
+  const newest = await today.first().innerText();
+  await button.click();
+  await menu.getByRole("menuitem", { name: /排序/ }).hover();
+  const sort = page.getByRole("menu", { name: "排序" });
+  await expect(sort.getByRole("menuitemradio")).toHaveText(["最后活跃时间", "最新在前", "最早在前"]);
+  await sort.getByRole("menuitemradio", { name: "最早在前" }).click();
+  await expect(today.last()).toHaveText(newest);
+
+  // Without the metadata, rows are their titles and status alone.
+  await expect(list).toContainText("bot · Gemini · demo");
+  await button.click();
+  await menu.getByRole("menuitem", { name: /显示/ }).hover();
+  await page.getByRole("menu", { name: "显示" }).getByRole("menuitemcheckbox", { name: "元数据" }).click();
+  await expect(list).not.toContainText("bot · Gemini · demo");
+  await expect(list).toContainText("写 hello");
+  await snap(page, "view-title-only");
+
+  // The view stays as it was left.
+  await app.close();
+  ({ app, page } = await launch(fixture.socket, { profile }));
   await expect(page.getByRole("list", { name: "会话" })).toContainText("写 hello");
-  await page.getByRole("button", { name: "去掉这个筛选" }).first().click();
-  await expect(page.getByRole("button", { name: "去掉这个筛选" })).toHaveCount(1);
+  expect((await groups(page)).at(-1)).toBe("今天");
+  await expect(page.getByRole("list", { name: "会话" })).not.toContainText("bot · Gemini · demo");
+  await page.getByRole("button", { name: "视图选项" }).click();
+  await expect(page.getByRole("menu", { name: "视图选项" }).getByRole("menuitem")).toHaveText(["分组按日期", "排序最早在前", "显示仅标题"]);
   await app.close();
 });

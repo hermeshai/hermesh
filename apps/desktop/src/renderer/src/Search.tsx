@@ -17,12 +17,12 @@ const actions = (): Action[] => [
 ];
 
 // The ⌘K search palette: find a session by its title, project, grant,
-// coding agent or machine, narrowed by the sidebar's filters; or run an action.
+// coding agent or machine, narrowed by its filters; or run an action.
 export function SearchPalette() {
   const st = useStore();
   const { t } = useTranslation("common");
   const [query, setQuery] = useState("");
-  const [filter, setFilter] = useState<SessionFilter>(sessionFilter);
+  const [filter, setFilter] = useState<SessionFilter>(() => sessionFilter(st.searchFor));
   const [index, setIndex] = useState(0);
   const list = useRef<HTMLDivElement>(null);
 
@@ -33,12 +33,12 @@ export function SearchPalette() {
   const acts = actions().filter((a) => q === "" || a.label.toLowerCase().includes(q));
   const count = sessions.length + acts.length;
 
-  const close = () => st.set({ searching: false });
+  const close = () => st.set({ searching: false, searchFor: {} });
   const open = (i: number) => {
     const s = sessions[i];
     if (s) {
       // An archived session shows in the list only with archived ones.
-      if (s.status === SessionStatus.ARCHIVED) st.set({ filter: { ...st.filter, archived: true } });
+      if (s.status === SessionStatus.ARCHIVED) st.set({ archived: true });
       close();
       st.select(s.sessionId);
       return;
@@ -49,16 +49,12 @@ export function SearchPalette() {
       a.run(st);
     }
   };
-  // ⌘↩: the sidebar shows what the palette's filters match.
-  const narrowSidebar = () => st.set({ filter: { ...filter, archived: filter.archived || st.filter.archived }, searching: false });
-
   // The palette has the keyboard while it is open (but not while an input method composes).
   useEffect(() => {
     const h = (e: KeyboardEvent) => {
       if (e.isComposing) return;
       if (e.key === "Escape") close();
       else if (e.key === "ArrowDown" || e.key === "ArrowUp") setIndex(Math.max(0, Math.min(count - 1, index + (e.key === "ArrowDown" ? 1 : -1))));
-      else if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) narrowSidebar();
       else if (e.key === "Enter") open(index);
       else return;
       e.preventDefault();
@@ -154,7 +150,6 @@ export function SearchPalette() {
         <div className="pal-foot">
           <span>{t("search.select")}</span>
           <span>{t("search.open")}</span>
-          <span>{t("search.narrow")}</span>
         </div>
       </div>
     </>

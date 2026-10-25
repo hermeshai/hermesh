@@ -1,17 +1,17 @@
 import { useEffect, useRef } from "react";
 import { SessionStatus, type Session } from "@hermesh/proto/session";
-import { displayTitle, isActive, isArchivable, isInterruptible, needsAttention, pendingQuestion, sessionSections } from "@hermesh/core";
+import { displayTitle, isActive, isArchivable, isInterruptible, needsAttention, pendingQuestion } from "@hermesh/core";
 import type { Command, MenuState } from "../../shared/bridge";
 import { i18n } from "../../shared/i18n";
 import { local } from "./api";
 import { copySessionId, focusAnswer, interrupt } from "./session/actions";
 import { openPairing } from "./sheets/Pairing";
-import { archive, grantLabel } from "./Sidebar";
+import { archive, grantLabel, listSections } from "./Sidebar";
 import { useStore, type Store } from "./store";
 
 // The app menu's and the menu bar's commands (main/menu.ts, main/tray.ts,
 // notifications), and what the menus need to know about the window.
-// filterGrant: and filterMachine: are MainWindow's.
+// searchGrant: and searchMachine: are MainWindow's.
 export function useCommands() {
   const st = useStore();
   const latest = useRef(st);
@@ -87,14 +87,12 @@ function run(st: Store, c: Command) {
       return open(st, arg);
     case "pairing":
       return openPairing(st, arg);
-    case "filterProject":
-      return st.set({ filter: { ...st.filter, project: arg } });
   }
 }
 
 /** The session after the selected one (from the top) that matches, in the sidebar's order. */
 function next(st: Store, matches: (s: Session) => boolean) {
-  const list = sessionSections(st.sessions, st.filter, new Date())
+  const list = listSections(st, new Date())
     .flatMap((x) => x.sessions)
     .filter(matches);
   if (!list.length) return;
@@ -106,7 +104,7 @@ function next(st: Store, matches: (s: Session) => boolean) {
 async function open(st: Store, id: string) {
   const s = st.sessions.find((x) => x.sessionId === id);
   if (!s) await st.refresh();
-  else if (s.status === SessionStatus.ARCHIVED && !st.filter.archived) st.set({ filter: { ...st.filter, archived: true } });
+  else if (s.status === SessionStatus.ARCHIVED && !st.archived) st.set({ archived: true });
   st.select(id);
 }
 

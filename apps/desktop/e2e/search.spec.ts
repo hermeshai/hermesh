@@ -55,19 +55,3 @@ test("archived sessions are found only with 包含已归档", async () => {
   await expect(results.getByRole("option", { selected: true })).toContainText("已归档");
   await app.close();
 });
-
-test("⌘↩ narrows the sidebar to the palette's filters", async () => {
-  const { app, page } = await launch();
-  await page.getByRole("navigation").getByRole("button", { name: /搜索/ }).click();
-  const palette = page.getByRole("dialog", { name: "搜索会话" });
-  await palette.getByRole("combobox", { name: "项目" }).selectOption("demo");
-  await palette.getByRole("checkbox", { name: "包含已归档" }).click();
-  await expect(palette).toContainText("会话 · 6 个");
-  await snap(page, "search-filtered");
-  await page.keyboard.press("ControlOrMeta+Enter");
-  await expect(palette).toHaveCount(0);
-  await expect(page.getByRole("button", { name: "去掉这个筛选" })).toHaveCount(1);
-  await expect(page.getByRole("button", { name: "不显示已归档" })).toBeVisible();
-  await expect(page.getByRole("list", { name: "会话" })).toContainText("归档的");
-  await app.close();
-});
