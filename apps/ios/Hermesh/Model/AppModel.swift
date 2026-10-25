@@ -17,6 +17,8 @@ enum Route: Hashable {
     case session(String)
     case grant(String) // grant id
     case machine(String) // machine id
+    case grantSessions(String) // client id
+    case machineSessions(String) // machine id
     case usage
 }
 
@@ -79,13 +81,31 @@ final class AppModel {
     var path: [Route] = []
     var drawerOpen = false
     var sheet: SheetKind?
-    var filter = SessionFilter()
+    /// How the session list is laid out, whether it shows archived sessions,
+    /// and its collapsed sections ("grouping:key"); kept on this iPhone.
+    var listView = SessionListLayout() { didSet { save(listView, "listView") } }
+    var showArchived = false { didSet { save(showArchived, "showArchived") } }
+    var collapsed: Set<String> = [] { didSet { save(collapsed, "collapsed") } }
     var toast: Toast?
     var problem: String?
     /// Pairing requests the owner put off ("Deny"): hidden until they expire.
     var dismissedPairings: Set<String> = []
     /// A hermesh:// link the app was opened with, for onboarding.
     var onboardingLink: URL?
+
+    init() {
+        listView = Self.saved("listView") ?? SessionListLayout()
+        showArchived = Self.saved("showArchived") ?? false
+        collapsed = Self.saved("collapsed") ?? []
+    }
+
+    private func save(_ v: some Encodable, _ key: String) {
+        UserDefaults.standard.set(try? JSONEncoder().encode(v), forKey: "sessions." + key)
+    }
+
+    private static func saved<T: Decodable>(_ key: String) -> T? {
+        UserDefaults.standard.data(forKey: "sessions." + key).flatMap { try? JSONDecoder().decode(T.self, from: $0) }
+    }
 
     @ObservationIgnored private(set) var api: LocalAPI?
     @ObservationIgnored private var cursor: SessionCursor?
@@ -252,7 +272,7 @@ final class AppModel {
                     if r.machinesChanged {
                         await listFirstPage()
                     }
-                    sessions = mergeSessions(sessions.filter { !r.deletedSessionIds.contains($0.sessionID) }, r.sessions)
+                    sessions = mergeSessions(sessions, r.sessions, deleted: r.deletedSessionIds)
                     if !r.unreachable.isEmpty || r.machinesChanged { unreachable = r.unreachable }
                 }
             } catch {}
@@ -383,6 +403,30 @@ final class AppModel {
                 }
             }
             show(text, undo: undo)
+        } catch { report(error) }
+    }
+
+    /// Deletes a session for good (its branch stays); off its page if it is open.
+    func delete(_ s: Session) async -> Bool {
+        guard let api else { return false }
+        do {
+            try await api.delete(s.sessionID)
+            sessions = mergeSessions(sessions, [], deleted: [s.sessionID])
+            path.removeAll { $0 == .session(s.sessionID) }
+            if case .session(let id) = root, id == s.sessionID { root = .sessions }
+            show(String(localized: "Deleted “\(s.displayTitle)”"))
+            return true
+        } catch {
+            report(error)
+            return false
+        }
+    }
+
+    func rename(_ s: Session, to title: String) async {
+        let title = title.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard let api, !title.isEmpty, title != s.displayTitle else { return }
+        do {
+            replace(try await api.rename(s.sessionID, to: title))
         } catch { report(error) }
     }
 

@@ -101,8 +101,7 @@ struct GrantView: View {
                     LabeledContent("Connects", value: String(localized: "Through \(URL(string: c.custodian)?.host ?? c.custodian), which keeps its key"))
                 }
                 Button {
-                    model.filter = SessionFilter(grant: c.clientID)
-                    model.open(.sessions)
+                    model.path.append(.grantSessions(c.clientID))
                 } label: {
                     LabeledContent("Sessions", value: String(localized: "\(sessions.filter { Calendar.current.isDateInToday($0.updatedDate) }.count) today · \(sessions.count) in all"))
                 }

@@ -21,11 +21,14 @@ final class HermeshUITests: XCTestCase {
         try XCTContext.runActivity(named: "answers a question from the overview") { _ in try answerFromOverview() }
         try XCTContext.runActivity(named: "interrupts a running session") { _ in try interrupt() }
         try XCTContext.runActivity(named: "archives a session and undoes it") { _ in try archiveAndUndo() }
+        try XCTContext.runActivity(named: "lays the session list out from the view menu") { _ in try viewMenu() }
+        try XCTContext.runActivity(named: "renames a session from its row, and deletes another once confirmed") { _ in try renameAndDelete() }
         try XCTContext.runActivity(named: "shows what a session changed") { _ in try diff() }
         try XCTContext.runActivity(named: "approves an agent asking to connect") { _ in try approveAgent() }
         try XCTContext.runActivity(named: "renews a grant") { _ in try renew() }
         try XCTContext.runActivity(named: "shows a machine and its projects") { _ in try machine() }
         try XCTContext.runActivity(named: "lists the trusted devices") { _ in try devices() }
+        try XCTContext.runActivity(named: "chooses light or dark in the account") { _ in try appearance() }
         try XCTContext.runActivity(named: "opens usage from its line on the overview") { _ in try usage() }
         try XCTContext.runActivity(named: "searches sessions from the menu") { _ in try search() }
         try XCTContext.runActivity(named: "a question arrives as a notification and opens its session") { _ in try notification() }
@@ -91,6 +94,67 @@ final class HermeshUITests: XCTestCase {
         XCTAssertTrue(undo.waitForExistence(timeout: 5))
         undo.tap()
         try waitFor("unarchived") { try self.sessionStatus("写 hello") == "idle" ? true : nil }
+    }
+
+    func viewMenu() throws {
+        // Still on 全部会话. By status (the default), then by date.
+        XCTAssertTrue(app.descendants(matching: .any)["group-已结束"].waitForExistence(timeout: 10))
+        tap("view-options")
+        menuItem("分组").tap()
+        menuItem("按日期").tap()
+        XCTAssertTrue(app.descendants(matching: .any)["group-今天"].waitForExistence(timeout: 10), "grouped by date")
+        tap("view-options")
+        menuItem("分组").tap()
+        menuItem("按状态").tap()
+        // A group's heading folds it.
+        let row = app.descendants(matching: .any)["session-写 hello"].firstMatch
+        XCTAssertTrue(row.waitForExistence(timeout: 10))
+        tap("group-已结束")
+        XCTAssertTrue(row.waitForNonExistence(timeout: 5), "folded")
+        tap("group-已结束")
+        XCTAssertTrue(row.waitForExistence(timeout: 5), "open again")
+        // Without the metadata, a row is its title alone.
+        XCTAssertTrue(row.label.contains("bot"), row.label)
+        tap("view-options")
+        menuItem("显示").tap()
+        menuItem("元数据").tap()
+        XCTAssertTrue(waitUntil { !row.label.contains("bot") }, row.label)
+        tap("view-options")
+        menuItem("显示").tap()
+        menuItem("元数据").tap()
+        XCTAssertTrue(waitUntil { row.label.contains("bot") }, row.label)
+    }
+
+    func renameAndDelete() throws {
+        _ = try control("start?title=\("改个名字".addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed)!)", method: "POST")
+        _ = try control("start?title=\("要删的".addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed)!)", method: "POST")
+        // Long-press: Rename, Archive, Delete…; Rename asks for the new title.
+        let row = app.descendants(matching: .any)["session-改个名字"].firstMatch
+        XCTAssertTrue(row.waitForExistence(timeout: 30))
+        row.press(forDuration: 1.2)
+        XCTAssertTrue(app.buttons["删除…"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.buttons["归档"].exists)
+        app.buttons["重命名"].tap()
+        let field = app.alerts.textFields.firstMatch
+        XCTAssertTrue(field.waitForExistence(timeout: 5))
+        XCTAssertEqual(field.value as? String, "改个名字")
+        field.tap()
+        field.typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: 8) + "新的名字")
+        app.alerts.buttons["重命名"].firstMatch.tap()
+        try waitFor("renamed on the Mac") { (try self.control("session?title=\("改个名字".addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed)!)")["title"] as? String) == "新的名字" ? true : nil }
+        XCTAssertTrue(app.descendants(matching: .any)["session-新的名字"].waitForExistence(timeout: 20))
+        // Swipe: Delete asks first, saying what stays.
+        let gone = app.descendants(matching: .any)["session-要删的"].firstMatch
+        XCTAssertTrue(gone.waitForExistence(timeout: 20))
+        gone.swipeLeft()
+        app.buttons["删除"].firstMatch.tap()
+        XCTAssertTrue(text("删除「要删的」？").waitForExistence(timeout: 5))
+        XCTAssertTrue(text("仍保留在分支").exists)
+        let confirm = app.descendants(matching: .any)["delete-confirm"].firstMatch
+        if confirm.waitForExistence(timeout: 3) { press(confirm) } else { app.sheets.buttons["删除"].firstMatch.tap() }
+        XCTAssertTrue(toast(containing: "已删除"))
+        try waitFor("deleted on the Mac") { try self.sessionStatus("要删的") == "" ? true : nil }
+        XCTAssertTrue(gone.waitForNonExistence(timeout: 10))
     }
 
     func diff() throws {
@@ -159,9 +223,25 @@ final class HermeshUITests: XCTestCase {
         tap("close")
     }
 
+    func appearance() throws {
+        openMenu()
+        tap("account")
+        let picker = app.segmentedControls["appearance"]
+        XCTAssertTrue(picker.waitForExistence(timeout: 20))
+        XCTAssertTrue(picker.buttons["跟随系统"].isSelected)
+        picker.buttons["深色"].tap()
+        XCTAssertTrue(picker.buttons["深色"].isSelected)
+        picker.buttons["跟随系统"].tap()
+        XCTAssertTrue(picker.buttons["跟随系统"].isSelected)
+        tap("close")
+    }
+
     func usage() throws {
         openMenu()
         app.buttons["概览"].tap()
+        // Nothing runs since the interrupt: 正在干活 rests.
+        XCTAssertTrue(app.descendants(matching: .any)["working-resting"].waitForExistence(timeout: 20))
+        XCTAssertTrue(text("现在没有会话在跑").exists)
         let line = app.buttons["usage"]
         XCTAssertTrue(line.waitForExistence(timeout: 20), "the usage line")
         XCTAssertTrue(line.label.contains("近 30 天"), line.label)
@@ -205,6 +285,23 @@ final class HermeshUITests: XCTestCase {
     }
 
     // MARK: Helpers
+
+    /// An item of the open menu, by the start of its label (a submenu's label also says what it is set to).
+    func menuItem(_ title: String) -> XCUIElement {
+        // Not the list's own 显示已归档 under the menu.
+        let e = app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@ AND identifier != 'toggle-archived'", title)).firstMatch
+        XCTAssertTrue(e.waitForExistence(timeout: 5), "no menu item \(title)")
+        return e
+    }
+
+    func waitUntil(timeout: TimeInterval = 10, _ check: () -> Bool) -> Bool {
+        let deadline = Date().addingTimeInterval(timeout)
+        while Date() < deadline {
+            if check() { return true }
+            usleep(300_000)
+        }
+        return false
+    }
 
     /// Text on screen that contains s.
     func text(_ s: String) -> XCUIElement {

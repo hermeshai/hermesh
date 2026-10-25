@@ -7,6 +7,8 @@ struct HermeshApp: App {
     @UIApplicationDelegateAdaptor(AppDelegate.self) private var delegate
     @State private var model = AppModel.shared
     @Environment(\.scenePhase) private var scenePhase
+    /// Light or dark: the system's ("system"), or one the owner chose in Account.
+    @AppStorage("appearance") private var appearance = "system"
 
     init() {
         SigningPreview.device = .iPhone
@@ -16,6 +18,7 @@ struct HermeshApp: App {
         WindowGroup {
             RootView()
                 .environment(model)
+                .preferredColorScheme(appearance == "light" ? .light : appearance == "dark" ? .dark : nil)
                 .task { await model.start() }
                 .onOpenURL { url in model.onboardingLink = url }
                 .onChange(of: scenePhase, initial: true) { _, phase in

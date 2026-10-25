@@ -153,8 +153,7 @@ struct MachineView: View {
                 }
                 .disabled(!m.online)
                 Button {
-                    model.filter = SessionFilter(machine: m.machineID)
-                    model.open(.sessions)
+                    model.path.append(.machineSessions(m.machineID))
                 } label: {
                     LabeledContent("Sessions", value: "\(model.sessions.filter { $0.machineID == m.machineID }.count)")
                 }
