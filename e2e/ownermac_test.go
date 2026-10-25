@@ -31,6 +31,7 @@ type ownerMac struct {
 	logs       []*proc
 	relay      *proc
 	relayArgs  []string
+	relayDebug string // where the relay serves /metrics
 	repoHead   string // the owner's HEAD, which sessions must never move
 	addr       string // the owner's connection address
 }
@@ -47,6 +48,18 @@ func newOwnerMac(t *testing.T, daemonEnv []string, grant *localv1.GrantSpec, dae
 // the file it keeps the root key in (identity.SaveKey's format).
 func newOwnerMacSigned(t *testing.T, signer func(w *ownerMac) string, daemonEnv []string, grant *localv1.GrantSpec, daemonArgs ...string) *ownerMac {
 	t.Helper()
+	return newOwnerMacAt(t, signer, 0, daemonEnv, grant, daemonArgs...)
+}
+
+// newFarOwnerMac is newOwnerMac with the relay oneWay away from everyone
+// (delayProxy).
+func newFarOwnerMac(t *testing.T, oneWay time.Duration, daemonEnv []string, grant *localv1.GrantSpec) *ownerMac {
+	t.Helper()
+	return newOwnerMacAt(t, nil, oneWay, daemonEnv, grant)
+}
+
+func newOwnerMacAt(t *testing.T, signer func(w *ownerMac) string, oneWay time.Duration, daemonEnv []string, grant *localv1.GrantSpec, daemonArgs ...string) *ownerMac {
+	t.Helper()
 	w := &ownerMac{t: t, bin: binaries(t), tmp: t.TempDir(), daemonEnv: daemonEnv, daemonArgs: daemonArgs}
 	sockDir, _ := os.MkdirTemp("/tmp", "hm")
 	t.Cleanup(func() { os.RemoveAll(sockDir) })
@@ -62,7 +75,8 @@ func newOwnerMacSigned(t *testing.T, signer func(w *ownerMac) string, daemonEnv 
 	relayBin := filepath.Join(w.bin, "hermesh-relay")
 	port := freePort(t)
 	relayData := filepath.Join(w.tmp, "relay")
-	w.relayArgs = []string{"serve", "--data-dir", relayData, "--listen", fmt.Sprintf("127.0.0.1:%d", port)}
+	w.relayDebug = fmt.Sprintf("127.0.0.1:%d", freePort(t))
+	w.relayArgs = []string{"serve", "--data-dir", relayData, "--listen", fmt.Sprintf("127.0.0.1:%d", port), "--debug-addr", w.relayDebug}
 	w.startRelay()
 	claim := strings.TrimSpace(run(t, nil, 10*time.Second, relayBin, "claim-code", "--data-dir", relayData).stdout)
 
@@ -77,7 +91,11 @@ func newOwnerMacSigned(t *testing.T, signer func(w *ownerMac) string, daemonEnv 
 	}
 	// No root key with the request: hermeshd asks the signer to create one,
 	// as it does for the desktop app.
-	setup, err := w.app.client.Setup(ctx, &localv1.SetupRequest{RelayUrl: fmt.Sprintf("http://127.0.0.1:%d", port), ClaimCode: claim, RootLabel: "test-mac"})
+	relayURL := fmt.Sprintf("http://127.0.0.1:%d", port)
+	if oneWay > 0 {
+		relayURL = "http://" + delayProxy(t, relayURL[len("http://"):], oneWay)
+	}
+	setup, err := w.app.client.Setup(ctx, &localv1.SetupRequest{RelayUrl: relayURL, ClaimCode: claim, RootLabel: "test-mac"})
 	if err != nil {
 		t.Fatalf("setup: %v\n%s", err, w.owner.output())
 	}

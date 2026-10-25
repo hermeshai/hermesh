@@ -109,7 +109,12 @@ func (s *machineService) GetInfo(ctx context.Context, _ *machinev1.GetInfoReques
 }
 
 func (s *machineService) ListProjects(ctx context.Context, _ *machinev1.ListProjectsRequest) (*machinev1.ListProjectsResponse, error) {
-	p := principalFrom(ctx)
+	return s.projects(ctx, principalFrom(ctx), true)
+}
+
+// projects lists the projects p may see; with base, each one's base branch
+// (a git call per project).
+func (s *machineService) projects(ctx context.Context, p *Principal, base bool) (*machinev1.ListProjectsResponse, error) {
 	projects, err := s.n.st.Projects()
 	if err != nil {
 		return nil, err
@@ -120,8 +125,12 @@ func (s *machineService) ListProjects(ctx context.Context, _ *machinev1.ListProj
 		if p.Kind == PrincipalClient && !identity.Allows(p.Grant.ProjectIds, pr.ID) {
 			continue
 		}
-		out.Projects = append(out.Projects, &machinev1.Project{ProjectId: pr.ID, DefaultBaseRef: pr.DefaultBaseRef, Workspace: pr.Workspace,
-			Path: pr.Path, Description: pr.Description, Base: projectBase(ctx, pr), ActiveSessions: active[pr.ID], Agents: pr.Agents})
+		mp := &machinev1.Project{ProjectId: pr.ID, DefaultBaseRef: pr.DefaultBaseRef, Workspace: pr.Workspace,
+			Path: pr.Path, Description: pr.Description, ActiveSessions: active[pr.ID], Agents: pr.Agents}
+		if base {
+			mp.Base = projectBase(ctx, pr)
+		}
+		out.Projects = append(out.Projects, mp)
 	}
 	return out, nil
 }

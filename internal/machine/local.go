@@ -56,8 +56,10 @@ func (l *Local) PushRevocations(r *identityv1.RevocationList, chain *identityv1.
 	l.n.applyRevocations(r)
 }
 
+// ListProjects lists the projects, without their base branches (which the
+// owner's screens do not show, and which cost a git call each).
 func (l *Local) ListProjects(ctx context.Context) (*machinev1.ListProjectsResponse, error) {
-	return (&machineService{n: l.n}).ListProjects(context.WithValue(ctx, principalKey{}, l.p), &machinev1.ListProjectsRequest{})
+	return (&machineService{n: l.n}).projects(ctx, l.p, false)
 }
 
 // ApplySettings applies a setting (a project, pausing, the name) as the

@@ -78,15 +78,10 @@ func callerFrom(ctx context.Context) *localv1.Caller {
 	return c
 }
 
+// GetStatus never waits on the relay: RelayConnected is the connection the
+// owner keeps (stayConnected).
 func (l *localService) GetStatus(ctx context.Context, _ *localv1.GetStatusRequest) (*localv1.GetStatusResponse, error) {
-	o := l.o()
-	st := o.Status()
-	if st.Initialized && !st.SignedOut && !st.RelayConnected {
-		if _, err := o.relay(ctx); err == nil {
-			st.RelayConnected = true
-		}
-	}
-	return st, nil
+	return l.o().Status(), nil
 }
 
 func (l *localService) ListProfiles(context.Context, *localv1.ListProfilesRequest) (*localv1.ListProfilesResponse, error) {
@@ -136,11 +131,14 @@ func (l *localService) ListDevices(ctx context.Context, _ *localv1.ListDevicesRe
 
 func (l *localService) ApproveDevicePairing(ctx context.Context, req *localv1.ApproveDevicePairingRequest) (*localv1.ApproveDevicePairingResponse, error) {
 	id, match, err := l.o().ApproveDevicePairing(ctx, req.Code)
+	l.o().wrote(ctx, err, true)
 	return &localv1.ApproveDevicePairingResponse{KeyId: id, MatchCode: match}, err
 }
 
 func (l *localService) RemoveDevice(ctx context.Context, req *localv1.RemoveDeviceRequest) (*localv1.RemoveDeviceResponse, error) {
-	return l.o().RemoveDevice(ctx, req.KeyId)
+	res, err := l.o().RemoveDevice(ctx, req.KeyId)
+	l.o().wrote(ctx, err, true)
+	return res, err
 }
 
 func (l *localService) Leave(ctx context.Context, _ *localv1.LeaveRequest) (*localv1.LeaveResponse, error) {
@@ -171,6 +169,7 @@ func (l *localService) CompleteSigningRequest(ctx context.Context, req *localv1.
 
 func (l *localService) SetLocalMachine(ctx context.Context, req *localv1.SetLocalMachineRequest) (*localv1.SetLocalMachineResponse, error) {
 	id, err := l.o().SetLocalMachine(ctx, req.Enabled, req.MachineName)
+	l.o().wrote(ctx, err, true)
 	if err != nil {
 		return nil, err
 	}
@@ -195,6 +194,7 @@ func (l *localService) ListPairingRequests(ctx context.Context, _ *localv1.ListP
 
 func (l *localService) ApproveMachinePairing(ctx context.Context, req *localv1.ApproveMachinePairingRequest) (*localv1.ApproveMachinePairingResponse, error) {
 	id, match, err := l.o().ApproveMachinePairing(ctx, req.Code, req.MachineName)
+	l.o().wrote(ctx, err, true)
 	if err != nil {
 		return nil, err
 	}
@@ -206,6 +206,7 @@ func (l *localService) ApproveClientPairing(ctx context.Context, req *localv1.Ap
 		req.Spec = &localv1.GrantSpec{}
 	}
 	cid, gid, err := l.o().ApproveClientPairing(ctx, req.Code, req.Spec)
+	l.o().wrote(ctx, err, true)
 	if err != nil {
 		return nil, err
 	}
@@ -223,7 +224,7 @@ func (l *localService) ListMachines(ctx context.Context, _ *localv1.ListMachines
 	if err != nil {
 		return nil, err
 	}
-	l.o().machineStatus(ctx, machines)
+	l.o().machineStatus(machines)
 	return &localv1.ListMachinesResponse{Machines: machines}, nil
 }
 
@@ -236,7 +237,9 @@ func (l *localService) RenameMachine(ctx context.Context, req *localv1.RenameMac
 		}
 		return &localv1.RenameMachineResponse{}, err
 	}
-	return &localv1.RenameMachineResponse{}, l.o().RenameMachine(ctx, req.MachineId, req.MachineName)
+	err := l.o().RenameMachine(ctx, req.MachineId, req.MachineName)
+	l.o().wrote(ctx, err, true, req.MachineId)
+	return &localv1.RenameMachineResponse{}, err
 }
 
 func (l *localService) SetMachinePaused(ctx context.Context, req *localv1.SetMachinePausedRequest) (*localv1.SetMachinePausedResponse, error) {
@@ -248,7 +251,9 @@ func (l *localService) SetMachinePaused(ctx context.Context, req *localv1.SetMac
 		}
 		return &localv1.SetMachinePausedResponse{}, err
 	}
-	return &localv1.SetMachinePausedResponse{}, l.o().SetMachinePaused(ctx, req.MachineId, req.Paused)
+	err := l.o().SetMachinePaused(ctx, req.MachineId, req.Paused)
+	l.o().wrote(ctx, err, false, req.MachineId)
+	return &localv1.SetMachinePausedResponse{}, err
 }
 
 // CheckAgents checks this Mac's coding agents again, in the background.
@@ -268,7 +273,9 @@ func (l *localService) CheckAgents(ctx context.Context, _ *localv1.CheckAgentsRe
 }
 
 func (l *localService) RemoveMachine(ctx context.Context, req *localv1.RemoveMachineRequest) (*localv1.RemoveMachineResponse, error) {
-	return &localv1.RemoveMachineResponse{}, l.o().RemoveMachine(ctx, req.MachineId)
+	err := l.o().RemoveMachine(ctx, req.MachineId)
+	l.o().wrote(ctx, err, true)
+	return &localv1.RemoveMachineResponse{}, err
 }
 
 func (l *localService) ListProjects(ctx context.Context, req *localv1.ListProjectsRequest) (*localv1.ListProjectsResponse, error) {
@@ -294,7 +301,9 @@ func (l *localService) AddProject(ctx context.Context, req *localv1.AddProjectRe
 		}
 		return &localv1.AddProjectResponse{}, err
 	}
-	return &localv1.AddProjectResponse{}, l.o().AddProject(ctx, req)
+	err := l.o().AddProject(ctx, req)
+	l.o().wrote(ctx, err, false, req.MachineId)
+	return &localv1.AddProjectResponse{}, err
 }
 
 func (l *localService) RemoveProject(ctx context.Context, req *localv1.RemoveProjectRequest) (*localv1.RemoveProjectResponse, error) {
@@ -306,7 +315,9 @@ func (l *localService) RemoveProject(ctx context.Context, req *localv1.RemovePro
 		}
 		return &localv1.RemoveProjectResponse{}, err
 	}
-	return &localv1.RemoveProjectResponse{}, l.o().RemoveProject(ctx, req.MachineId, req.ProjectId)
+	err := l.o().RemoveProject(ctx, req.MachineId, req.ProjectId)
+	l.o().wrote(ctx, err, false, req.MachineId)
+	return &localv1.RemoveProjectResponse{}, err
 }
 
 func (l *localService) ListClients(ctx context.Context, _ *localv1.ListClientsRequest) (*localv1.ListClientsResponse, error) {
@@ -335,6 +346,7 @@ func (l *localService) UpdateClient(ctx context.Context, req *localv1.UpdateClie
 		return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("missing spec"))
 	}
 	v, acks, err := l.o().UpdateClient(ctx, req.GrantId, req.Spec)
+	l.o().wrote(ctx, err, true)
 	if err != nil {
 		return nil, err
 	}
@@ -343,6 +355,7 @@ func (l *localService) UpdateClient(ctx context.Context, req *localv1.UpdateClie
 
 func (l *localService) RevokeClient(ctx context.Context, req *localv1.RevokeClientRequest) (*localv1.RevokeClientResponse, error) {
 	acks, err := l.o().RevokeClient(ctx, req.GrantId)
+	l.o().wrote(ctx, err, true)
 	if err != nil {
 		return nil, err
 	}
