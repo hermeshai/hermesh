@@ -17,6 +17,7 @@ async function openTray(app: ElectronApplication) {
     return t.open;
   });
   await expect.poll(tray).toBe(true);
+  await expect.poll(() => app.windows().some((p) => p.url().endsWith("#tray"))).toBe(true);
   return app.windows().find((p) => p.url().endsWith("#tray"))!;
 }
 async function open(app: ElectronApplication, main: Page) {

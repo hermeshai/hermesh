@@ -14,6 +14,9 @@ export type Fixture = {
   fresh: { socket: string; relayURL: string; claimCode: string; gate?: string }[];
 };
 
+/** Loaded first in every launch: the app's windows open without taking focus. */
+export const background = path.join(import.meta.dirname, "background.cjs");
+
 export const fixture: Fixture = JSON.parse(fs.readFileSync(process.env.HERMESH_E2E_FIXTURE ?? "", "utf8"));
 
 /**
@@ -29,7 +32,7 @@ export async function launch(
 ): Promise<{ app: ElectronApplication; page: Page }> {
   const languages = o.systemLanguages ?? ["zh-Hans"];
   const app = await electron.launch({
-    args: [path.join(process.env.HERMESH_DESKTOP_OUT || path.join(import.meta.dirname, "..", "out"), "main", "index.js"), "-AppleLanguages", `(${languages.join(", ")})`],
+    args: ["-r", background, path.join(process.env.HERMESH_DESKTOP_OUT || path.join(import.meta.dirname, "..", "out"), "main", "index.js"), "-AppleLanguages", `(${languages.join(", ")})`],
     // Its own profile, so app instances of parallel runs don't meet.
     env: { ...process.env, HERMESH_SOCKET: socket, HERMESH_USER_DATA: o.profile ?? fs.mkdtempSync(path.join(os.tmpdir(), "hmdesk-")) },
   });

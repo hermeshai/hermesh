@@ -1,7 +1,7 @@
 import { _electron as electron, test, type ElectronApplication } from "@playwright/test";
 import fs from "node:fs";
 import path from "node:path";
-import { fixture } from "./app";
+import { background, fixture } from "./app";
 
 export type Hook = {
   installTest: {
@@ -141,7 +141,7 @@ export async function installer(inApplications = false, move: "success" | "cance
     require("node:module").syncBuiltinESMExports();
     import(require("node:url").pathToFileURL(config.entry).href);
   `);
-  const app = await electron.launch({ args: [bootstrap] });
+  const app = await electron.launch({ args: ["-r", background, bootstrap] });
   const instance = { app, home, closed: false };
   app.on("close", () => { instance.closed = true; });
   instances.push(instance);
@@ -152,7 +152,7 @@ export async function installer(inApplications = false, move: "success" | "cance
 export async function restartInstaller(app: ElectronApplication) {
   const instance = instances.find((i) => i.app === app)!;
   await app.close();
-  const next = await electron.launch({ args: [path.join(instance.home, "start.cjs")] });
+  const next = await electron.launch({ args: ["-r", background, path.join(instance.home, "start.cjs")] });
   instance.app = next;
   instance.closed = false;
   next.on("close", () => { instance.closed = true; });
