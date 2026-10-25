@@ -165,6 +165,55 @@ func TestTwoTurns(t *testing.T) {
 	}
 }
 
+// TestDraftsAddUpToMessages: the reply streams as drafts, and the drafts
+// before each agent message add up to it (docs/reply-streaming.md).
+func TestDraftsAddUpToMessages(t *testing.T) {
+	for _, p := range realProviders(t) {
+		t.Run(p.Name(), func(t *testing.T) {
+			if info := p.Discover(context.Background()); !info.Available || !info.LoggedIn {
+				t.Skipf("%s not available: %+v", p.Name(), info)
+			}
+			s, err := p.Start(context.Background(), provider.StartSpec{
+				WorkDir: gitRepo(t), TempDir: t.TempDir(), NewRef: newRef(), Env: os.Environ(), Model: model(p),
+				Prompt: prompt(p, "draft one |two |three\nsay one two three",
+					"Count from one to thirty in English words, separated by spaces. Reply with the words only, no tools."),
+				Gate: func(context.Context, provider.ToolAction) provider.Decision { return provider.Decision{Allow: true} },
+			})
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer s.Close()
+			tr := collect(t, s, 3*time.Minute)
+			if tr.result.IsError {
+				t.Fatalf("turn failed: %s", tr.result.Text)
+			}
+			var draft string
+			pieces, messages := 0, 0
+			for _, e := range tr.events {
+				switch e.Kind {
+				case provider.EventAgentDraft:
+					draft += e.Text
+					pieces++
+				case provider.EventAgentMessage:
+					messages++
+					if draft != e.Text {
+						t.Errorf("drafts %q add up to something else than the message %q", draft, e.Text)
+					}
+					draft = ""
+				}
+			}
+			// An ACP agent chunks its reply as it likes (DeepSeek sends it in one).
+			least := 2
+			if _, ok := p.(*acp.Provider); ok {
+				least = 1
+			}
+			if messages == 0 || pieces < least || draft != "" {
+				t.Fatalf("%d messages from %d draft pieces, %q left over", messages, pieces, draft)
+			}
+		})
+	}
+}
+
 func model(p provider.Provider) string {
 	switch p.Name() {
 	case "claude":
