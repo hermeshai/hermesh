@@ -30,6 +30,13 @@ test("a finished session shows both turns, what the agent did, and that it is do
   // The edit and the command right after it are one step; opened, each in Chinese, without the agent's tool name.
   const step = log.getByRole("button", { name: "编辑了 1 个文件、运行了 1 条命令" });
   await expect(step).toHaveAttribute("aria-expanded", "false");
+  // A step is a grey line in the body's size: no icon, only the caret after it.
+  await expect(step.locator("svg")).toHaveCount(1);
+  await expect(step.locator("svg")).toHaveClass(/chev/);
+  const size = (l: typeof step) => l.evaluate((el) => getComputedStyle(el).fontSize);
+  expect(await size(step)).toBe(await size(log.locator(".am").first()));
+  // The text keeps to a column of at most 700, so lines stay short enough to read.
+  expect(await log.evaluate((el) => el.getBoundingClientRect().width)).toBeLessThanOrEqual(700);
   await step.click();
   await expect(log.getByRole("button", { name: /^已编辑\s*hello\.txt/ }).first()).toBeVisible();
   await expect(log.getByRole("button", { name: /^已运行\s*echo ran > ran\.txt/ })).toBeVisible();
