@@ -98,6 +98,7 @@ func TestMCPGateway(t *testing.T) {
 			t.Fatalf("tools %v lack %s", names, want)
 		}
 	}
+	checkMCPDescriptions(t, session, tools.Tools)
 	// Before setup the tools answer as for an owner with nothing in it,
 	// with a note on what to do.
 	doc := callTool(t, session, "project_list", nil)
@@ -187,6 +188,9 @@ func TestMCPGateway(t *testing.T) {
 	}
 
 	// The tools are the CLI's commands, with its documents.
+	if doc = callTool(t, session, "session_start", map[string]any{"project": "demo"}); doc.OK || doc.Error.Kind != "usage" {
+		t.Fatalf("session_start without a prompt: %s", doc.raw)
+	}
 	doc = callTool(t, session, "session_start", map[string]any{"project": "demo", "prompt": "say hello from mcp", "wait": true, "timeout": "45s"})
 	var started struct {
 		Session struct {
@@ -210,6 +214,15 @@ func TestMCPGateway(t *testing.T) {
 	if doc = callTool(t, session, "session_events", map[string]any{"session_id": id, "limit": 5}); !doc.OK || !strings.Contains(string(doc.raw), `"page"`) {
 		t.Fatalf("session_events: %s", doc.raw)
 	}
+	// A timed-out wait does not cancel the turn or require resending input.
+	doc = callTool(t, session, "session_send", map[string]any{"session_id": id, "message": "sleep 3s\nsay finished after timeout", "wait": true, "timeout": "1s"})
+	if doc.OK || doc.Error.Kind != "wait_timeout" || json.Unmarshal(doc.raw, &started) != nil || started.Session.SessionID != id {
+		t.Fatalf("session_send wait timeout: %s", doc.raw)
+	}
+	eventually(t, 15*time.Second, "poll the turn after wait_timeout", func() bool {
+		doc = callTool(t, session, "session_get", map[string]any{"session_id": id})
+		return doc.OK && json.Unmarshal(doc.raw, &started) == nil && started.Session.Status == "idle" && strings.Contains(started.Session.Result, "finished after timeout")
+	})
 	if doc = callTool(t, session, "session_get", map[string]any{"session_id": "s_nope_nope"}); doc.OK || doc.Error.Kind != "not_found" {
 		t.Fatalf("session_get of no session: %s", doc.raw)
 	}

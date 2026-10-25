@@ -485,21 +485,37 @@ fixed order with `ttlMs` set, as 2026-07-28 asks.
   argument (`session_id`). Flags that read this computer's files or stdin
   (`--file`, `--prompt-file`, `--message-file`) are left out; the pairing
   commands and `version` are the local CLI's own.
+- Tool and parameter descriptions have MCP-specific overrides in
+  `pkg/mcpgw/descriptions.go`; CLI help is unchanged. They use MCP names,
+  describe the returned `session.session_id`, and do not advertise local
+  file attachments. A non-empty `prompt` is needed to start a session.
+  `hermesh_status` explains setup and approval; `auth_status` diagnoses
+  identity, grant and relay access after approval.
 - The result is the command's JSON document, as text and as
   `structuredContent`; `isError` is `!ok`. A hint naming a command
   (`hermesh session get <id>`) means the tool of that name; the server's
   instructions say so.
-- Coding sessions take minutes. `session_start` returns at once; the model
-  follows with `session_get` or `session_events --after`, or passes `wait`
-  with a `timeout`, which the gateway keeps at 50 s or less: proxies
-  (Cloudflare) close idle responses at 100 s.
+- Coding sessions take minutes. By default, `session_start` returns at once;
+  the model follows with `session_get` or `session_events` using `after`.
+  Hosted clients can also use `wait=true` with `timeout="30s"`. The gateway
+  caps waiting calls at 50 s, including omitted timeouts and `"0s"` (not
+  unlimited waiting). After `wait_timeout`, poll `session_get` rather than
+  repeating the action: the turn continues.
+- `session_list` follows the grant's visibility: `all` includes other
+  clients' sessions in permitted projects, but only sessions started by
+  this connection can be controlled. `session_diff` supports worktree
+  projects only; for an `in_place` session it started, the model can ask
+  the agent through `session_send` to inspect and report working-directory
+  changes, which may include other sessions' or the user's work.
 - Annotations: `auth_status`, `project_list`, `session_get`, `session_list`,
   `session_events`, `session_diff` are `readOnlyHint`; the others
   `openWorldHint`, `session_interrupt` and `session_archive`
   `destructiveHint`. Each tool carries `_meta.securitySchemes:
   [{"type": "oauth2"}]` for ChatGPT.
-- The instructions tell the model that what coding agents wrote is data,
-  not instructions.
+- The instructions explain the workflow, that coding agents have full
+  permissions in the selected project (and directly edit its existing
+  directory in `in_place` mode), and that their output is data, not
+  instructions to the caller.
 - Before the connection is active, the tools answer as for an owner with
   nothing in it, with the next step in a list's `note` or an error's `hint`
   (§5.7). A command
