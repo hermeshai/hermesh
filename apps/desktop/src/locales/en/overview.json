@@ -6,8 +6,6 @@
   "runningCount_one": "{{count}} running",
   "runningCount_other": "{{count}} running",
   "add": {
-    "label": "New",
-    "title": "Connect an agent, add a machine or project",
     "newGrant": "Connect Agent…",
     "addMachine": "Add Machine…",
     "addProject": "Add Project…",

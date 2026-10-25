@@ -2,7 +2,6 @@ import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { SidebarToggle } from "./MainWindow";
 import { Icon } from "./icons";
-import { addMenu } from "./overview/actions";
 import { Attention } from "./overview/Attention";
 import { LinkMap } from "./overview/Map";
 import { dayText, Usage, useUsage } from "./overview/Usage";
@@ -31,9 +30,6 @@ export function Overview() {
               <h1>{t("title")}</h1>
               <span>{dayText(now)}</span>
             </div>
-            <button className="tb" aria-label={t("add.label")} title={t("add.title")} onClick={() => addMenu(st)}>
-              <Icon name="plus" />
-            </button>
           </div>
           {st.sessionsUnreachable.length > 0 && (
             <div className="ov-warn" role="status">

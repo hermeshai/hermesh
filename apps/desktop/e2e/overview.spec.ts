@@ -102,9 +102,9 @@ test("用量 shows a year of tokens with today's turns", async () => {
   await app.close();
 });
 
-// One line across the top, as in Apple Music: the title, the sidebar's first
-// button and ＋ are centred on the same height.
-test("the overview's title, ＋ and the sidebar's first button share a centre line", async () => {
+// One line across the top, as in Apple Music: the title and the sidebar's
+// first button are centred on the same height. Adding lives in the sidebar.
+test("the overview's title and the sidebar's first button share a centre line", async () => {
   const { app, page } = await launch();
   const centre = async (l: ReturnType<typeof page.locator>) => {
     const b = (await l.boundingBox())!;
@@ -112,10 +112,9 @@ test("the overview's title, ＋ and the sidebar's first button share a centre li
   };
   const title = await centre(page.getByRole("heading", { name: "概览", level: 1 }));
   const first = await centre(page.getByRole("button", { name: /概览/ }));
-  const add = await centre(page.getByRole("button", { name: "新建", exact: true }));
-  console.log("centres", { title, first, add });
+  console.log("centres", { title, first });
   expect(Math.abs(title - first)).toBeLessThanOrEqual(1);
-  expect(Math.abs(add - first)).toBeLessThanOrEqual(1);
+  await expect(page.getByRole("button", { name: "新建", exact: true })).toHaveCount(0);
   await app.close();
 });
 
@@ -149,19 +148,4 @@ test("the overview stays centered when resizing the window or hiding the sidebar
   } finally {
     await app.close();
   }
-});
-
-test("＋ offers what adds something, from a native menu", async () => {
-  const { app, page } = await launch();
-  // The native menu can't be clicked by Playwright: answer it in the main process instead.
-  await app.evaluate(({ ipcMain }) => {
-    const g = globalThis as unknown as { menus: unknown[] };
-    g.menus = [];
-    ipcMain.removeHandler("popup-menu");
-    ipcMain.handle("popup-menu", (_e, items) => (g.menus.push(items), null));
-  });
-  await page.getByRole("button", { name: "新建", exact: true }).click();
-  const shown = () => app.evaluate(() => (globalThis as unknown as { menus: { label?: string }[][] }).menus.map((m) => m.map((i) => i.label ?? "-")));
-  await expect.poll(shown).toEqual([["连接 agent…", "添加机器…", "添加项目…", "-", "输入配对码…"]]);
-  await app.close();
 });
