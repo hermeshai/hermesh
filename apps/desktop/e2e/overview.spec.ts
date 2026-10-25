@@ -30,15 +30,14 @@ test("正在干活 is a card per live session: status, time worked, who started 
   await app.close();
 });
 
-test("the link map's cards show they can be clicked; the hub's icon follows light and dark", async () => {
+test("pointers are macOS's: the hand on text links only, the arrow on the map's cards; the hub's icon follows light and dark", async () => {
   const { app, page } = await launch();
   const map = page.getByRole("region", { name: "链路" });
   const cursor = (l: ReturnType<typeof page.locator>) => l.evaluate((el) => getComputedStyle(el).cursor);
-  expect(await cursor(map.getByRole("button", { name: "bot", exact: true }))).toBe("pointer");
-  expect(await cursor(map.getByRole("button", { name: "这台 Mac", exact: true }))).toBe("pointer");
-  expect(await cursor(map.getByRole("button", { name: "demo", exact: true }))).toBe("pointer");
-  expect(await cursor(map.getByRole("button", { name: "+ 连接更多", exact: true }))).toBe("pointer");
-  expect(await cursor(map.getByRole("button", { name: "+ 添加机器", exact: true }))).toBe("pointer");
+  for (const name of ["bot", "这台 Mac", "demo", "+ 连接更多", "+ 添加机器"]) expect(await cursor(map.getByRole("button", { name, exact: true }))).toBe("default");
+  expect(await cursor(page.getByRole("list", { name: "会话" }).getByRole("button", { name: /^需要处理/ }))).toBe("default");
+  expect(await cursor(page.getByRole("button", { name: "管理授权…" }))).toBe("pointer");
+  expect(await cursor(page.getByRole("button", { name: "显示已归档" }))).toBe("pointer");
   const icon = map.locator(".lmap-icon");
   expect(await icon.evaluate((el) => (el as HTMLElement).offsetWidth)).toBe(72); // before scaling to the window
   const look = () => icon.evaluate((el) => getComputedStyle(el).backgroundImage + getComputedStyle(el.querySelector(".hm-beam")!).mixBlendMode);
