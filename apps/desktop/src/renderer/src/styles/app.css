@@ -127,22 +127,24 @@ button{font:inherit;color:inherit}
 .tb:hover{background:var(--fill2);color:var(--l1)}
 .tb.on{background:var(--fill2);color:var(--l1)}
 .side-nav{padding:0 8px 6px;display:flex;flex-direction:column;gap:1px;flex:none}
-.nav-i{display:flex;align-items:center;gap:9px;height:30px;padding:0 9px;border-radius:8px;font-size:13.5px;border:0;background:none;width:100%;text-align:left}
-.nav-i .ic{color:var(--l2)}
-.nav-i .kbd{margin-left:auto}
+.nav-i{display:flex;align-items:center;gap:9px;height:30px;padding:0 9px;border-radius:8px;font-size:13px;border:0;background:none;width:100%;text-align:left}
+.nav-i .ic{color:var(--l1)}
+/* The shortcut shows on hover only: the menus say it too. */
+.nav-i .kbd{margin-left:auto;opacity:0;transition:opacity .12s}
+.nav-i:hover .kbd,.nav-i:focus-visible .kbd{opacity:1}
 .nav-i:hover{background:var(--fill)}
 .nav-i.sel{background:var(--side-sel)}
 .nav-i .cnt{margin-left:auto;font-size:11.5px;color:var(--l2);font-variant-numeric:tabular-nums}
 .side-list{flex:1;overflow-y:auto;min-height:0;padding:0 8px 8px;scrollbar-width:thin}
 .side-list>[role=group]{display:flex;flex-direction:column;gap:2px}
-/* A group's heading: its title, its count, and ⌄ (› when collapsed); a click collapses or opens it. */
+/* A group's heading: its title, its count, and ▾ (▸ when collapsed); a click collapses or opens it. */
 .grp-h{position:sticky;top:0;z-index:2;font:inherit;font-size:12px;font-weight:400;color:var(--l2);padding:20px 10px 6px;margin-bottom:2px;display:flex;align-items:center;gap:6px;background:var(--side-head);border:0;width:100%;text-align:left;cursor:pointer}
 .side-list>[role=group]:first-child .grp-h{padding-top:10px}
 .grp-h:hover{color:var(--l1)}
 .grp-h .n{font-weight:500;color:var(--l3)}
-.grp-h .ic{width:11px;height:11px;color:var(--l3);transition:transform .15s var(--ease-out)}
+.grp-h .ic{width:12px;height:12px;color:var(--l2);transition:transform .15s var(--ease-out)}
 .grp-h.shut .ic{transform:rotate(-90deg)}
-.srow{display:flex;padding:7px 10px;border-radius:10px;align-items:flex-start;border:0;background:none;width:100%;text-align:left;font-size:13.5px}
+.srow{display:flex;padding:7px 10px;border-radius:10px;align-items:flex-start;border:0;background:none;width:100%;text-align:left;font-size:13px}
 .srow:hover{background:var(--fill)}
 .srow.sel{background:var(--side-sel)}
 .srow .sdot{width:6px;height:6px}
@@ -153,7 +155,7 @@ button{font:inherit;color:inherit}
 .srow.has-act:hover .rowact{display:flex}
 .srow.menu-open .smeta{display:none}
 .srow.menu-open .rowact{display:flex;background:var(--fill2);color:var(--l1)}
-.srename{flex:1;min-width:0;font:inherit;font-size:13.5px;color:var(--l1);background:var(--field);border:0;border-radius:5px;outline:none;box-shadow:0 0 0 1.5px var(--accent);padding:0 5px;margin:-1px 0 -1px -5px}
+.srename{flex:1;min-width:0;font:inherit;font-size:13px;color:var(--l1);background:var(--field);border:0;border-radius:5px;outline:none;box-shadow:0 0 0 1.5px var(--accent);padding:0 5px;margin:-1px 0 -1px -5px}
 .side-head{flex:none;padding:4px 10px 2px 18px;position:relative}
 .lh{display:flex;align-items:center;justify-content:space-between;font-size:12px;font-weight:400;color:var(--l2);height:26px}
 .lh .tb{height:22px;min-width:24px;padding:0 4px}
@@ -165,7 +167,7 @@ button{font:inherit;color:inherit}
 .sl1{display:flex;gap:8px;align-items:center}
 .stitle{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .smeta{display:inline-flex;align-items:center;gap:5px;font-size:11px;color:var(--l2);flex:none;font-variant-numeric:tabular-nums}
-.sl2{display:flex;align-items:baseline;gap:8px;font-size:11.5px;color:var(--l2);margin-top:2px}
+.sl2{display:flex;align-items:baseline;gap:8px;font-size:11px;color:color-mix(in srgb,var(--l2) 78%,transparent);margin-top:2px}
 .sl2t{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .stime{flex:none;font-size:11px;font-variant-numeric:tabular-nums}
 .srow.flash{animation:flash 1.2s ease-out}
