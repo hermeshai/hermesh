@@ -21,7 +21,7 @@ const MAX = 6;
 const COL = { g: 24, m: 448, p: 670 };
 const WIDTH = { g: 164, m: 168, p: 134 };
 const HEIGHT = { g: 42, m: 46, p: 34 };
-const HUB = { x: 318, s: 44 };
+const HUB = { x: 318, s: 36 };
 
 type Kind = "g" | "m" | "p";
 type Spot = { key: string; kind: Kind; x: number; y: number; w: number; h: number };
@@ -269,8 +269,8 @@ export function LinkMap({ pick, onPick, now, usage }: { pick: string; onPick: (k
             title={pick ? t("map.backToAll") : undefined}
             onClick={() => pick && onPick("")}
           >
-            <div className="lmap-icon hm-dark" style={{ width: HUB.s * 2, height: HUB.s * 2 }}>
-              <Mark size={52} />
+            <div className="lmap-icon" style={{ width: HUB.s * 2, height: HUB.s * 2 }}>
+              <Mark size={46} />
             </div>
             <b>Hermesh</b>
             <span>

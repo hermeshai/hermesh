@@ -30,6 +30,29 @@ test("正在干活 is a card per live session: status, time worked, who started 
   await app.close();
 });
 
+test("the link map's cards show they can be clicked; the hub's icon follows light and dark", async () => {
+  const { app, page } = await launch();
+  const map = page.getByRole("region", { name: "链路" });
+  const cursor = (l: ReturnType<typeof page.locator>) => l.evaluate((el) => getComputedStyle(el).cursor);
+  expect(await cursor(map.getByRole("button", { name: "bot", exact: true }))).toBe("pointer");
+  expect(await cursor(map.getByRole("button", { name: "这台 Mac", exact: true }))).toBe("pointer");
+  expect(await cursor(map.getByRole("button", { name: "demo", exact: true }))).toBe("pointer");
+  const icon = map.locator(".lmap-icon");
+  expect(await icon.evaluate((el) => (el as HTMLElement).offsetWidth)).toBe(72); // before scaling to the window
+  const look = () => icon.evaluate((el) => getComputedStyle(el).backgroundImage + getComputedStyle(el.querySelector(".hm-beam")!).mixBlendMode);
+  await page.emulateMedia({ colorScheme: "light" });
+  const light = await look();
+  expect(light).toContain("rgb(255, 255, 255)");
+  expect(light).toContain("multiply");
+  await snap(page, "overview-hub-light");
+  await page.emulateMedia({ colorScheme: "dark" });
+  const dark = await look();
+  expect(dark).toContain("rgb(38, 40, 51)");
+  expect(dark).toContain("plus-lighter");
+  await snap(page, "overview-hub-dark");
+  await app.close();
+});
+
 test("a node clicked on the link map narrows 正在干活, names the condition and marks it on each card", async () => {
   const { app, page } = await launch();
   const map = page.getByRole("region", { name: "链路" });
