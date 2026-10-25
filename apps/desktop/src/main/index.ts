@@ -2,7 +2,7 @@ import { app, net, protocol } from "electron";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
 import { openedAtLogin, registerDaemon } from "./daemon";
-import { forward, openUpstream } from "./gateway";
+import { forward, forwardedCalls, openUpstream } from "./gateway";
 import { settleInApplications } from "./install";
 import { registerIPC } from "./ipc";
 import { chooseLanguage } from "./language";
@@ -98,4 +98,4 @@ app.on("window-all-closed", () => {
 });
 
 // For end-to-end tests (evaluated in the main process by Playwright).
-Object.assign(globalThis, { hermeshTest: { openUpstream, mainWindow, notifications: () => posted, tray: trayState } });
+Object.assign(globalThis, { hermeshTest: { openUpstream, forwardedCalls, mainWindow, notifications: () => posted, tray: trayState } });

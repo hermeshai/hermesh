@@ -12,12 +12,15 @@ import (
 
 	"connectrpc.com/connect"
 	"google.golang.org/protobuf/proto"
+	"google.golang.org/protobuf/types/known/timestamppb"
 
 	localv1 "github.com/hermeshai/hermesh/gen/go/hermesh/local/v1"
 	machinev1 "github.com/hermeshai/hermesh/gen/go/hermesh/machine/v1"
+	relayv1 "github.com/hermeshai/hermesh/gen/go/hermesh/relay/v1"
 	sessionv1 "github.com/hermeshai/hermesh/gen/go/hermesh/session/v1"
 	"github.com/hermeshai/hermesh/internal/machine"
 	"github.com/hermeshai/hermesh/internal/peer"
+	"github.com/hermeshai/hermesh/pkg/metrics"
 )
 
 // replica is this device's copy of the owner's world (docs/state-sync.md):
@@ -32,9 +35,13 @@ type replica struct {
 
 	mu       sync.Mutex
 	watchers map[chan *localv1.WatchSessionsResponse]bool
-	src      *sources  // nil while stopped
-	lastUse  time.Time // the last list call, or the last watcher leaving
-	polls    uint64    // numbers the relay polls, so an older one never overwrites a newer
+	// screens (LocalService.Watch) are told when what they show may have
+	// changed, besides sessions.
+	screens map[chan struct{}]bool
+	usage   map[usageKey]usageHeld // other machines' GetUsage answers
+	src     *sources               // nil while stopped
+	lastUse time.Time              // the last list call, or the last watcher leaving
+	polls   uint64                 // numbers the relay polls, so an older one never overwrites a newer
 }
 
 // sources is one run of the replica's sources, and what they found.
@@ -55,6 +62,11 @@ type sources struct {
 
 	feeds map[string]*feed // by machine id
 	sent  string           // the machines' state as last sent to watchers
+
+	// rewatch asks the relay's WatchOwner, while it is followed, to start
+	// again (after this device's write); the channel sent is closed once
+	// the new stream's first message is kept.
+	rewatch chan chan struct{}
 }
 
 // polled is what one relay list last returned.
@@ -88,7 +100,10 @@ type feed struct {
 	projects []*localv1.Project
 	sessions map[string]*sessionv1.Session // its newest keepSessions and every unsettled one
 	more     bool                          // it has others besides
-	changed  chan struct{}                 // its sessions changed status: read its state again
+	changed  chan struct{}                 // its sessions changed status: read its state again (a machine without Watch)
+	// Where its Watch resumes, and the machine's clock then.
+	token  []byte
+	heldAt *timestamppb.Timestamp
 }
 
 const (
@@ -114,8 +129,16 @@ const (
 	watcherBuffer = 256
 )
 
+// How followed machines' watches started: afresh, resumed from where they
+// were, or afresh because the machine refused the token.
+var (
+	mWatchFresh   = metrics.Default.Counter(`hermesh_owner_machine_watches_total{start="fresh"}`)
+	mWatchResumed = metrics.Default.Counter(`hermesh_owner_machine_watches_total{start="resumed"}`)
+	mWatchRefused = metrics.Default.Counter(`hermesh_owner_machine_watches_total{start="refused"}`)
+)
+
 func newReplica(o *Owner) *replica {
-	return &replica{o: o, watchers: map[chan *localv1.WatchSessionsResponse]bool{}}
+	return &replica{o: o, watchers: map[chan *localv1.WatchSessionsResponse]bool{}, screens: map[chan struct{}]bool{}, usage: map[usageKey]usageHeld{}}
 }
 
 // who names the owner and sign-in the sources run for.
@@ -153,7 +176,7 @@ func (r *replica) startLocked() *sources {
 	}
 	if r.src == nil {
 		ctx, cancel := context.WithCancel(context.Background())
-		r.src = &sources{ctx: ctx, cancel: cancel, who: who, settled: make(chan struct{}), feeds: map[string]*feed{}}
+		r.src = &sources{ctx: ctx, cancel: cancel, who: who, settled: make(chan struct{}), feeds: map[string]*feed{}, rewatch: make(chan chan struct{})}
 		go r.run(r.src)
 	}
 	return r.src
@@ -178,6 +201,125 @@ func (r *replica) run(s *sources) {
 	r.machinesChangedLocked(s)
 	r.mu.Unlock()
 
+	go r.followOwner(s)
+	idle := time.NewTicker(pollMachinesEvery)
+	defer idle.Stop()
+	for {
+		select {
+		case <-s.ctx.Done():
+			return
+		case <-idle.C:
+			r.mu.Lock()
+			if r.src == s && len(r.watchers) == 0 && time.Since(r.lastUse) > sourcesIdle {
+				s.cancel()
+				r.src = nil
+			}
+			r.mu.Unlock()
+		}
+	}
+}
+
+// followOwner keeps what the relay lists current: as its WatchOwner stream
+// pushes it, or, from a relay without WatchOwner, by asking (pollOwner).
+// When the stream ends (the connection to the relay dropped), the lists are
+// asked for once, which tells whether the relay can be reached, and it is
+// watched again.
+func (r *replica) followOwner(s *sources) {
+	var answer chan struct{} // a refresh waiting for the next first message
+	for s.ctx.Err() == nil {
+		again, err := r.watchOwner(s, answer)
+		if answer = again; again != nil {
+			continue // asked to watch again
+		}
+		if connect.CodeOf(err) == connect.CodeUnimplemented {
+			r.pollOwner(s)
+			return
+		}
+		r.poll(s.ctx, s, true, true)
+		select {
+		case <-s.ctx.Done():
+			return
+		case <-time.After(pollPairingsEvery):
+		}
+	}
+}
+
+// watchOwner keeps what the relay's WatchOwner sends until it ends; answer
+// is closed once its first message is kept. again: a refresh asked to
+// watch again, and waits on it.
+func (r *replica) watchOwner(s *sources, answer chan struct{}) (again chan struct{}, err error) {
+	defer func() {
+		if answer != nil {
+			close(answer) // no first message came: the refresh waits no more
+		}
+	}()
+	ctl, _, err := r.o.control(s.ctx)
+	if err != nil {
+		return nil, err
+	}
+	ctx, cancel := context.WithCancel(s.ctx)
+	defer cancel()
+	stream, err := ctl.WatchOwner(ctx, &relayv1.WatchOwnerRequest{})
+	if err != nil {
+		return nil, err
+	}
+	defer stream.Close()
+	asked := make(chan chan struct{}, 1)
+	go func() {
+		select {
+		case <-ctx.Done():
+		case a := <-s.rewatch:
+			asked <- a
+			cancel()
+		}
+	}()
+	defer func() {
+		select {
+		case again = <-asked:
+			err = nil
+		default:
+		}
+	}()
+	for stream.Receive() {
+		u := stream.Msg()
+		var machines []*localv1.Machine
+		var mErr error
+		if u.Machines != nil {
+			machines, mErr = r.o.keepListed(r.o.machinesFrom(u.Machines), nil)
+		}
+		var clients []*localv1.Client
+		if u.Clients != nil {
+			clients = r.o.clientsFrom(u.Clients)
+		}
+		var pairings []*localv1.PairingDetails
+		if u.Pairings != nil {
+			pairings = r.o.pairingsFrom(u.Pairings)
+		}
+		r.mu.Lock()
+		r.polls++
+		n := r.polls
+		if u.Machines != nil && s.machines.set(n, machines, mErr) {
+			r.machinesListedLocked(s)
+		}
+		if u.Clients != nil {
+			s.clients.set(n, clients, nil)
+		}
+		if u.Pairings != nil {
+			s.pairings.set(n, pairings, nil)
+		}
+		r.kickLocked()
+		r.mu.Unlock()
+		if answer != nil {
+			close(answer)
+			answer = nil
+		}
+	}
+	return nil, cmp.Or(stream.Err(), errors.New("the relay ended the watch"))
+}
+
+// pollOwner asks a relay without WatchOwner for the machines and agents
+// every pollMachinesEvery, and the pairing requests every pollPairingsEvery.
+func (r *replica) pollOwner(s *sources) {
 	machines, pairings := time.NewTicker(pollMachinesEvery), time.NewTicker(pollPairingsEvery)
 	defer machines.Stop()
 	defer pairings.Stop()
@@ -188,12 +330,6 @@ func (r *replica) run(s *sources) {
 		case <-pairings.C:
 			r.poll(s.ctx, s, false, true)
 		case <-machines.C:
-			r.mu.Lock()
-			if r.src == s && len(r.watchers) == 0 && time.Since(r.lastUse) > sourcesIdle {
-				s.cancel()
-				r.src = nil
-			}
-			r.mu.Unlock()
 			r.poll(s.ctx, s, true, false)
 		}
 	}
@@ -219,12 +355,15 @@ func (r *replica) poll(ctx context.Context, s *sources, machines, pairings bool)
 			defer r.mu.Unlock()
 			if s.machines.set(n, list, err) {
 				r.machinesListedLocked(s)
+				r.kickLocked()
 			}
 		})
 		wg.Go(func() {
 			list, err := r.o.listClients(ctx)
 			r.mu.Lock()
-			s.clients.set(n, list, err)
+			if s.clients.set(n, list, err) {
+				r.kickLocked()
+			}
 			r.mu.Unlock()
 		})
 	}
@@ -232,7 +371,9 @@ func (r *replica) poll(ctx context.Context, s *sources, machines, pairings bool)
 		wg.Go(func() {
 			list, err := r.o.listPairingRequests(ctx)
 			r.mu.Lock()
-			s.pairings.set(n, list, err)
+			if s.pairings.set(n, list, err) {
+				r.kickLocked()
+			}
 			r.mu.Unlock()
 		})
 	}
@@ -254,17 +395,34 @@ func (o *Owner) wrote(ctx context.Context, err error, relay bool, machineIDs ...
 		wg.Go(func() { o.rep.refreshMachine(ctx, id) })
 	}
 	wg.Wait()
+	o.rep.mu.Lock()
+	o.rep.kickLocked() // also what is read in process, as this device's own machine
+	o.rep.mu.Unlock()
 }
 
-// refresh polls the relay again at once, after this device changed what it
-// lists, so the next list call shows the change.
+// refresh brings what the relay lists up to date at once, after this device
+// changed it, so the next list call shows the change: by watching the relay
+// again (its first message is everything as it is now), or, while it is
+// not watched, by asking it.
 func (r *replica) refresh(ctx context.Context) {
 	r.mu.Lock()
 	s := r.src
 	r.mu.Unlock()
-	if s != nil {
-		r.poll(ctx, s, true, true)
+	if s == nil {
+		return
 	}
+	done := make(chan struct{})
+	select {
+	case s.rewatch <- done:
+		select {
+		case <-done:
+		case <-ctx.Done():
+		case <-time.After(followTimeout):
+		}
+		return
+	case <-time.After(10 * time.Millisecond): // not watched now
+	}
+	r.poll(ctx, s, true, true)
 }
 
 // refreshMachine reads a machine's state and projects again at once, after
@@ -350,7 +508,7 @@ func (r *replica) followLocal(s *sources, id string, ready func()) error {
 			ready()
 		} else {
 			r.mu.Lock()
-			r.broadcastLocked(s, &localv1.WatchSessionsResponse{Sessions: m.Sessions, DeletedSessionIds: m.DeletedSessionIds})
+			r.broadcastLocked(s, &localv1.WatchSessionsResponse{Sessions: machine.BasicSessions(m.Sessions), DeletedSessionIds: m.DeletedSessionIds})
 			r.mu.Unlock()
 		}
 		return nil
@@ -358,10 +516,9 @@ func (r *replica) followLocal(s *sources, id string, ready func()) error {
 	return cmp.Or(err, errors.New("stopped watching"))
 }
 
-// followRemote follows another machine's SessionService.WatchSessions over
-// the end-to-end channel: once its watch is in place, its newest sessions,
-// state and projects are read (within followTimeout), then each change is
-// kept and passed on, until the stream ends.
+// followRemote follows another machine over the end-to-end channel, until
+// its stream ends: its MachineService.Watch, resumed from what the feed
+// held, or, on a machine without it, as followSessions does.
 func (r *replica) followRemote(s *sources, id string, f *feed, ready func()) error {
 	c, err := r.o.relay(s.ctx)
 	if err != nil {
@@ -380,7 +537,118 @@ func (r *replica) followRemote(s *sources, id string, f *feed, ready func()) err
 	if err != nil {
 		return late(err)
 	}
-	stream, err := n.Session.WatchSessions(ctx, &sessionv1.WatchSessionsRequest{})
+	if old, err := r.followWatch(ctx, s, f, n, timer, late, ready); !old {
+		return err
+	}
+	return r.followSessions(ctx, s, f, n, timer, late, ready)
+}
+
+// followWatch follows a machine's MachineService.Watch: its first message
+// (what changed since the feed's token, or everything) within
+// followTimeout, then each change. old: the machine has no Watch.
+func (r *replica) followWatch(ctx context.Context, s *sources, f *feed, n *peer.Machine, timer *time.Timer, late func(error) error, ready func()) (old bool, err error) {
+	r.mu.Lock()
+	req := &machinev1.WatchRequest{ResumeToken: f.token, HeldAt: f.heldAt, Limit: keepSessions, View: sessionv1.SessionView_SESSION_VIEW_BASIC}
+	r.mu.Unlock()
+	stream, err := n.Info.Watch(ctx, req)
+	if err != nil {
+		return false, late(err)
+	}
+	defer stream.Close()
+	if !stream.Receive() {
+		if connect.CodeOf(stream.Err()) == connect.CodeUnimplemented {
+			return true, nil
+		}
+		return false, late(cmp.Or(stream.Err(), errors.New("stopped at once")))
+	}
+	if !timer.Stop() {
+		return false, late(nil)
+	}
+	switch first := stream.Msg(); {
+	case !first.Reset_:
+		mWatchResumed.Inc()
+	case len(req.ResumeToken) > 0:
+		mWatchRefused.Inc() // the machine started again
+	default:
+		mWatchFresh.Inc()
+	}
+	r.machineChanged(s, f, n.MachineID, stream.Msg())
+	r.mu.Lock()
+	f.conn = n
+	r.mu.Unlock()
+	ready()
+	for stream.Receive() {
+		r.machineChanged(s, f, n.MachineID, stream.Msg())
+	}
+	return false, cmp.Or(stream.Err(), errors.New("stopped watching"))
+}
+
+// machineChanged keeps what a machine's Watch sent and passes its session
+// changes on.
+func (r *replica) machineChanged(s *sources, f *feed, machineID string, m *machinev1.WatchResponse) {
+	sessions := machine.BasicSessions(m.Sessions) // a machine that ignores the view
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if r.src != s {
+		return
+	}
+	f.token, f.heldAt = m.ResumeToken, m.SentAt
+	deleted := m.DeletedSessionIds
+	if m.Reset_ {
+		held := f.sessions
+		f.sessions, f.more, f.projects = map[string]*sessionv1.Session{}, m.Next != nil, nil
+		for _, x := range sessions {
+			f.sessions[x.SessionId] = x
+		}
+		deleted = append(deleted, goneFrom(held, f.sessions, m.Next)...)
+	} else {
+		for _, x := range sessions {
+			keepLater(f.sessions, x)
+		}
+		for _, id := range deleted {
+			delete(f.sessions, id)
+		}
+		f.more = trimSessions(f.sessions, keepSessions) || f.more
+	}
+	for _, p := range m.Projects {
+		f.projects = slices.DeleteFunc(f.projects, func(x *localv1.Project) bool { return x.ProjectId == p.ProjectId })
+		f.projects = append(f.projects, localProject(machineID, p))
+	}
+	for _, id := range m.RemovedProjectIds {
+		f.projects = slices.DeleteFunc(f.projects, func(x *localv1.Project) bool { return x.ProjectId == id })
+	}
+	if m.Status != nil {
+		f.status = m.Status
+	}
+	if len(sessions) > 0 || len(deleted) > 0 {
+		r.broadcastLocked(s, &localv1.WatchSessionsResponse{Sessions: sessions, DeletedSessionIds: deleted})
+	}
+	r.kickLocked()
+}
+
+// goneFrom is the sessions held that a machine's first page (now, up to
+// next) would list and does not: deleted meanwhile.
+func goneFrom(held, now map[string]*sessionv1.Session, next *sessionv1.SessionCursor) []string {
+	var gone []string
+	for id, x := range held {
+		if now[id] == nil && (next == nil || !machine.Past(x, next)) {
+			gone = append(gone, id)
+		}
+	}
+	return gone
+}
+
+func localProject(machineID string, p *machinev1.Project) *localv1.Project {
+	return &localv1.Project{MachineId: machineID, ProjectId: p.ProjectId, DefaultBaseRef: p.DefaultBaseRef, Workspace: p.Workspace,
+		Description: p.Description, Agents: p.Agents, Path: p.Path}
+}
+
+// followSessions follows a machine without MachineService.Watch: its
+// SessionService.WatchSessions, and once that is in place its newest
+// sessions, state and projects (within followTimeout), then each change;
+// its state is read again after its sessions change (keepInfo).
+func (r *replica) followSessions(ctx context.Context, s *sources, f *feed, n *peer.Machine, timer *time.Timer, late func(error) error, ready func()) error {
+	stream, err := n.Session.WatchSessions(ctx, &sessionv1.WatchSessionsRequest{View: sessionv1.SessionView_SESSION_VIEW_BASIC})
 	if err != nil {
 		return late(err)
 	}
@@ -393,15 +661,20 @@ func (r *replica) followRemote(s *sources, id string, f *feed, ready func()) err
 	}
 	// The watch is in place before the snapshot, so no change falls
 	// between them; one the snapshot already holds is not taken back.
-	page, err := n.Session.ListSessions(ctx, &sessionv1.ListSessionsRequest{Limit: keepSessions})
+	page, err := n.Session.ListSessions(ctx, &sessionv1.ListSessionsRequest{Limit: keepSessions, View: sessionv1.SessionView_SESSION_VIEW_BASIC})
 	if err != nil {
 		return late(err)
 	}
+	page.Sessions = machine.BasicSessions(page.Sessions) // a machine from before views sends them whole
 	r.mu.Lock()
+	held := f.sessions // as last known, before it could not be read
 	f.sessions, f.more, f.changed = map[string]*sessionv1.Session{}, page.Next != nil, make(chan struct{}, 1)
 	for _, x := range page.Sessions {
 		f.sessions[x.SessionId] = x
 	}
+	// Watchers hear of the snapshot; of the sessions held, one it would list
+	// and does not was deleted meanwhile.
+	r.broadcastLocked(s, &localv1.WatchSessionsResponse{Sessions: page.Sessions, DeletedSessionIds: goneFrom(held, f.sessions, page.Next)})
 	r.mu.Unlock()
 	if err := r.readInfo(ctx, s, f, n, true); err != nil {
 		return late(err)
@@ -434,8 +707,7 @@ func (r *replica) readInfo(ctx context.Context, s *sources, f *feed, n *peer.Mac
 			return err
 		}
 		for _, p := range res.Projects {
-			list = append(list, &localv1.Project{MachineId: n.MachineID, ProjectId: p.ProjectId, DefaultBaseRef: p.DefaultBaseRef, Workspace: p.Workspace,
-				Description: p.Description, Agents: p.Agents, Path: p.Path})
+			list = append(list, localProject(n.MachineID, p))
 		}
 	}
 	r.mu.Lock()
@@ -445,6 +717,7 @@ func (r *replica) readInfo(ctx context.Context, s *sources, f *feed, n *peer.Mac
 		if projects {
 			f.projects = list
 		}
+		r.kickLocked()
 	}
 	return nil
 }
@@ -481,6 +754,7 @@ func (r *replica) keepInfo(ctx context.Context, s *sources, f *feed, n *peer.Mac
 // sessionsChanged keeps a followed machine's changed sessions and passes
 // them on.
 func (r *replica) sessionsChanged(s *sources, f *feed, m *sessionv1.WatchSessionsResponse) {
+	m = &sessionv1.WatchSessionsResponse{Sessions: machine.BasicSessions(m.Sessions), DeletedSessionIds: m.DeletedSessionIds}
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	if r.src != s {
@@ -521,7 +795,7 @@ func (r *replica) sessionWritten(id string, sess *sessionv1.Session, deleted boo
 		if deleted {
 			delete(f.sessions, id)
 		} else if sess != nil {
-			keepLater(f.sessions, sess)
+			keepLater(f.sessions, machine.BasicSession(sess))
 		}
 	}
 }
@@ -671,8 +945,118 @@ func (r *replica) machinesChangedLocked(s *sources) {
 	if r.src != s || !s.isSettled {
 		return
 	}
+	r.kickLocked()
 	if m, fp := s.state(); fp != s.sent {
 		s.sent = fp
 		r.broadcastLocked(s, m)
 	}
+}
+
+// kickLocked tells the screens that what they show may have changed.
+func (r *replica) kickLocked() {
+	for c := range r.screens {
+		select {
+		case c <- struct{}{}:
+		default:
+		}
+	}
+}
+
+// screen is told (on the channel) when what a screen shows may have
+// changed, until stop.
+func (r *replica) screen() (<-chan struct{}, func()) {
+	c := make(chan struct{}, 1)
+	r.mu.Lock()
+	r.screens[c] = true
+	r.mu.Unlock()
+	return c, func() {
+		r.mu.Lock()
+		delete(r.screens, c)
+		r.mu.Unlock()
+	}
+}
+
+// unreachable says, of each machine but this device's own, why its sessions
+// and projects cannot be read now; empty while they can, or while it is
+// being connected to.
+func (r *replica) unreachable(machines []*localv1.Machine) {
+	r.feeds(func(feeds map[string]*feed) {
+		for _, m := range machines {
+			f := feeds[m.MachineId]
+			switch {
+			case m.Local:
+			case !m.Online:
+				m.Unreachable = "offline"
+			case f != nil && !f.ready && f.err != "":
+				m.Unreachable = f.err
+			}
+		}
+	})
+}
+
+// held is the sessions kept of the machines that cannot be read now, as
+// they last were.
+func (r *replica) held() []*sessionv1.Session {
+	var out []*sessionv1.Session
+	r.feeds(func(feeds map[string]*feed) {
+		for _, f := range feeds {
+			if !f.ready {
+				out = slices.AppendSeq(out, maps.Values(f.sessions))
+			}
+		}
+	})
+	return out
+}
+
+// usageKey is a machine's GetUsage question.
+type usageKey struct{ machineID, since, timeZone string }
+
+// usageHeld is its answer, on what day and after how many turns of the
+// machine's sessions it came.
+type usageHeld struct {
+	res   *sessionv1.GetUsageResponse
+	day   string
+	turns uint64
+}
+
+// usageDay is today in a time zone (UTC when unknown).
+func usageDay(tz string) string {
+	loc, err := time.LoadLocation(tz)
+	if err != nil {
+		loc = time.UTC
+	}
+	return time.Now().In(loc).Format(time.DateOnly)
+}
+
+// turns adds up the turns of a followed machine's sessions held; known is
+// false while it is not followed.
+func (r *replica) turns(machineID string) (n uint64, known bool) {
+	r.feeds(func(feeds map[string]*feed) {
+		f := feeds[machineID]
+		if known = f != nil && f.ready; known {
+			for _, s := range f.sessions {
+				n += uint64(s.GetProgress().GetTurnCount())
+			}
+		}
+	})
+	return n, known
+}
+
+// heldUsage is a machine's kept answer to req, if still right: asked today,
+// and no turn of its sessions ended (or went) since.
+func (r *replica) heldUsage(machineID string, req *localv1.GetUsageRequest, day string) *sessionv1.GetUsageResponse {
+	turns, known := r.turns(machineID)
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	h, ok := r.usage[usageKey{machineID, req.Since, req.TimeZone}]
+	if !known || !ok || h.day != day || h.turns != turns {
+		return nil
+	}
+	return h.res
+}
+
+func (r *replica) keepUsage(machineID string, req *localv1.GetUsageRequest, day string, turns uint64, res *sessionv1.GetUsageResponse) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.usage[usageKey{machineID, req.Since, req.TimeZone}] = usageHeld{res: res, day: day, turns: turns}
 }

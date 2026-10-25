@@ -76,6 +76,9 @@ const (
 	SessionServiceAnswerQuestionProcedure = "/hermesh.session.v1.SessionService/AnswerQuestion"
 	// SessionServiceGetUsageProcedure is the fully-qualified name of the SessionService's GetUsage RPC.
 	SessionServiceGetUsageProcedure = "/hermesh.session.v1.SessionService/GetUsage"
+	// SessionServiceReadToolOutputProcedure is the fully-qualified name of the SessionService's
+	// ReadToolOutput RPC.
+	SessionServiceReadToolOutputProcedure = "/hermesh.session.v1.SessionService/ReadToolOutput"
 )
 
 // SessionServiceClient is a client for the hermesh.session.v1.SessionService service.
@@ -115,6 +118,10 @@ type SessionServiceClient interface {
 	// GetUsage adds up the tokens of the turns that ended in the sessions the
 	// caller can read, by day and coding agent.
 	GetUsage(context.Context, *v1.GetUsageRequest) (*v1.GetUsageResponse, error)
+	// ReadToolOutput streams a tool's whole output, as recorded (up to 1 MiB;
+	// past that its first and last 512 KiB), in chunks of at most 64 KiB:
+	// what a BASIC event's preview, or a FULL one's first 16 KiB, is part of.
+	ReadToolOutput(context.Context, *v1.ReadToolOutputRequest) (*connect.ServerStreamForClient[v1.ToolOutputChunk], error)
 }
 
 // NewSessionServiceClient constructs a client for the hermesh.session.v1.SessionService service. By
@@ -218,6 +225,12 @@ func NewSessionServiceClient(httpClient connect.HTTPClient, baseURL string, opts
 			connect.WithSchema(sessionServiceMethods.ByName("GetUsage")),
 			connect.WithClientOptions(opts...),
 		),
+		readToolOutput: connect.NewClient[v1.ReadToolOutputRequest, v1.ToolOutputChunk](
+			httpClient,
+			baseURL+SessionServiceReadToolOutputProcedure,
+			connect.WithSchema(sessionServiceMethods.ByName("ReadToolOutput")),
+			connect.WithClientOptions(opts...),
+		),
 	}
 }
 
@@ -238,6 +251,7 @@ type sessionServiceClient struct {
 	getDiff          *connect.Client[v1.GetDiffRequest, v1.GetDiffResponse]
 	answerQuestion   *connect.Client[v1.AnswerQuestionRequest, v1.Session]
 	getUsage         *connect.Client[v1.GetUsageRequest, v1.GetUsageResponse]
+	readToolOutput   *connect.Client[v1.ReadToolOutputRequest, v1.ToolOutputChunk]
 }
 
 // StartSession calls hermesh.session.v1.SessionService.StartSession.
@@ -367,6 +381,11 @@ func (c *sessionServiceClient) GetUsage(ctx context.Context, req *v1.GetUsageReq
 	return nil, err
 }
 
+// ReadToolOutput calls hermesh.session.v1.SessionService.ReadToolOutput.
+func (c *sessionServiceClient) ReadToolOutput(ctx context.Context, req *v1.ReadToolOutputRequest) (*connect.ServerStreamForClient[v1.ToolOutputChunk], error) {
+	return c.readToolOutput.CallServerStream(ctx, connect.NewRequest(req))
+}
+
 // SessionServiceHandler is an implementation of the hermesh.session.v1.SessionService service.
 type SessionServiceHandler interface {
 	StartSession(context.Context, *v1.StartSessionRequest) (*v1.StartSessionResponse, error)
@@ -404,6 +423,10 @@ type SessionServiceHandler interface {
 	// GetUsage adds up the tokens of the turns that ended in the sessions the
 	// caller can read, by day and coding agent.
 	GetUsage(context.Context, *v1.GetUsageRequest) (*v1.GetUsageResponse, error)
+	// ReadToolOutput streams a tool's whole output, as recorded (up to 1 MiB;
+	// past that its first and last 512 KiB), in chunks of at most 64 KiB:
+	// what a BASIC event's preview, or a FULL one's first 16 KiB, is part of.
+	ReadToolOutput(context.Context, *v1.ReadToolOutputRequest, *connect.ServerStream[v1.ToolOutputChunk]) error
 }
 
 // NewSessionServiceHandler builds an HTTP handler from the service implementation. It returns the
@@ -503,6 +526,12 @@ func NewSessionServiceHandler(svc SessionServiceHandler, opts ...connect.Handler
 		connect.WithSchema(sessionServiceMethods.ByName("GetUsage")),
 		connect.WithHandlerOptions(opts...),
 	)
+	sessionServiceReadToolOutputHandler := connect.NewServerStreamHandlerSimple(
+		SessionServiceReadToolOutputProcedure,
+		svc.ReadToolOutput,
+		connect.WithSchema(sessionServiceMethods.ByName("ReadToolOutput")),
+		connect.WithHandlerOptions(opts...),
+	)
 	return "/hermesh.session.v1.SessionService/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case SessionServiceStartSessionProcedure:
@@ -535,6 +564,8 @@ func NewSessionServiceHandler(svc SessionServiceHandler, opts ...connect.Handler
 			sessionServiceAnswerQuestionHandler.ServeHTTP(w, r)
 		case SessionServiceGetUsageProcedure:
 			sessionServiceGetUsageHandler.ServeHTTP(w, r)
+		case SessionServiceReadToolOutputProcedure:
+			sessionServiceReadToolOutputHandler.ServeHTTP(w, r)
 		default:
 			http.NotFound(w, r)
 		}
@@ -602,4 +633,8 @@ func (UnimplementedSessionServiceHandler) AnswerQuestion(context.Context, *v1.An
 
 func (UnimplementedSessionServiceHandler) GetUsage(context.Context, *v1.GetUsageRequest) (*v1.GetUsageResponse, error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("hermesh.session.v1.SessionService.GetUsage is not implemented"))
+}
+
+func (UnimplementedSessionServiceHandler) ReadToolOutput(context.Context, *v1.ReadToolOutputRequest, *connect.ServerStream[v1.ToolOutputChunk]) error {
+	return connect.NewError(connect.CodeUnimplemented, errors.New("hermesh.session.v1.SessionService.ReadToolOutput is not implemented"))
 }

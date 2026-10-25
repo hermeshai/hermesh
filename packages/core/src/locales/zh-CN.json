@@ -25,7 +25,7 @@
     "archived": "已归档",
     "crashed": "已崩溃（再发消息可继续）",
     "waitingInput": "等你回答",
-    "unknown": "未知"
+    "unknown": "状态未知"
   },
   "phase": {
     "preparing": "正在准备 worktree…",

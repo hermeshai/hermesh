@@ -578,7 +578,7 @@ func (s *session) handleItem(completed bool, it item) {
 			s.toolCall(it.ID, provider.ToolShell, "shell", it.Command, nil)
 			return
 		}
-		out, trunc := provider.Truncate(it.AggregatedOutput, 16<<10)
+		out, trunc := provider.KeepOutput(it.AggregatedOutput)
 		isErr := it.Status != "completed" || (it.ExitCode != nil && *it.ExitCode != 0)
 		s.emit(provider.Event{Kind: provider.EventToolResult, CallID: it.ID, Summary: out, IsError: isErr, Truncated: trunc})
 	case "fileChange":

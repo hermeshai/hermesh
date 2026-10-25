@@ -73,6 +73,12 @@ service SessionService {
   rpc GetUsage(GetUsageRequest) returns (GetUsageResponse) {
     option (hermesh.options.v1.access) = ACCESS_READ;
   }
+  // ReadToolOutput streams a tool's whole output, as recorded (up to 1 MiB;
+  // past that its first and last 512 KiB), in chunks of at most 64 KiB:
+  // what a BASIC event's preview, or a FULL one's first 16 KiB, is part of.
+  rpc ReadToolOutput(ReadToolOutputRequest) returns (stream ToolOutputChunk) {
+    option (hermesh.options.v1.access) = ACCESS_READ;
+  }
 }
 
 enum SessionStatus {
@@ -362,6 +368,29 @@ message ListSessionsRequest {
   // pages after it never miss one.
   uint32 limit = 3;
   SessionCursor before = 4;
+  SessionView view = 5;
+}
+
+// How much of a session a call returns (AIP-157).
+enum SessionView {
+  // FULL: what callers that predate views get.
+  SESSION_VIEW_UNSPECIFIED = 0;
+  // What lists show: all but result, progress.last_message_excerpt and
+  // provider_session_ref.
+  SESSION_VIEW_BASIC = 1;
+  SESSION_VIEW_FULL = 2;
+}
+
+// How much of each event a call returns.
+enum EventView {
+  // FULL: what callers that predate views get.
+  EVENT_VIEW_UNSPECIFIED = 0;
+  // A tool result longer than 3 lines or 512 bytes comes as its first 3
+  // lines, at most 512 bytes (cut at a UTF-8 boundary), with preview set;
+  // ReadToolOutput reads it whole.
+  EVENT_VIEW_BASIC = 1;
+  // A tool result's first 16 KiB, with its size when it is longer.
+  EVENT_VIEW_FULL = 2;
 }
 
 // SessionCursor is where a page of sessions ends: its last session's
@@ -377,7 +406,9 @@ message ListSessionsResponse {
   SessionCursor next = 2;
 }
 
-message WatchSessionsRequest {}
+message WatchSessionsRequest {
+  SessionView view = 1;
+}
 
 message WatchSessionsResponse {
   repeated Session sessions = 1;
@@ -390,7 +421,7 @@ message StreamEventsRequest {
   uint64 after_seq = 2;
   // When false, the stream ends after replaying stored events.
   bool follow = 3;
-  // (4 is left for an event view, docs/state-sync.md.)
+  EventView view = 4;
   // Also send AgentDraft events while the agent writes (docs/reply-streaming.md).
   bool partial = 5;
 }
@@ -404,6 +435,7 @@ message ListEventsRequest {
   uint64 before_seq = 3;
   // 1 to 1000; 0 means 50.
   uint32 limit = 4;
+  EventView view = 5;
 }
 
 message ListEventsResponse {
@@ -476,9 +508,29 @@ message ToolCall {
 
 message ToolResult {
   string call_id = 1;
+  // The output: whole, or its first part when size is set.
   string summary = 2;
   bool is_error = 3;
+  // summary is not the whole output: its first 16 KiB (FULL), or an
+  // output cut when recorded (past 1 MiB its first and last 512 KiB are
+  // kept; machines from before that kept its first 16 KiB only).
   bool truncated = 4;
+  // summary is a preview (EVENT_VIEW_BASIC).
+  bool preview = 5;
+  // The whole output's length in bytes, when it is longer than summary:
+  // ReadToolOutput reads it.
+  uint64 size = 6;
+}
+
+message ReadToolOutputRequest {
+  string session_id = 1;
+  string call_id = 2;
+}
+
+message ToolOutputChunk {
+  bytes data = 1;
+  // On the first chunk: the whole length.
+  uint64 size = 2;
 }
 
 message TurnCompleted {

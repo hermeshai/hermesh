@@ -1,19 +1,13 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
-import { equals, type DescMessage } from "@bufbuild/protobuf";
 import { ConnectError } from "@connectrpc/connect";
-import {
-  ClientSchema, DeviceSchema, GetStatusResponseSchema, MachineSchema, PairingDetailsSchema, ProjectSchema, UnreachableSchema,
-  type Client, type Device, type GetStatusResponse, type Machine, type PairingDetails, type Project, type Unreachable,
-} from "@hermesh/proto/local";
+import type { Client, Device, GetStatusResponse, Machine, PairingDetails, Project, Unreachable } from "@hermesh/proto/local";
 import type { Session } from "@hermesh/proto/session";
-import { sessionView, type SessionFilter, type SessionView } from "@hermesh/core";
-import { local } from "./api";
-import { useSessions } from "./useSessions";
+import { sessionView, unreachableMachines, withKnownState, type SessionFilter, type SessionView } from "@hermesh/core";
+import { useWorld } from "./useWorld";
 
-// What the window knows: hermeshd's lists, polled like the Mac app did
-// (status and lists every few seconds, pairing requests more often), the
-// sessions as hermeshd pushes them (useSessions), plus the window's own
-// state (selection, list view, open sheet, toast).
+// What the window knows: the owner's world as hermeshd pushes it
+// (useWorld: no polling), plus the window's own state (selection, list
+// view, open sheet, toast).
 
 export type Data = {
   /** undefined until the first answer; null when hermeshd cannot be reached. */
@@ -81,39 +75,6 @@ export type Store = Data &
     show: (text: string, undo?: () => void) => void;
   };
 
-const empty: Data = {
-  status: undefined,
-  clients: [],
-  machines: [],
-  projects: [],
-  projectsUnreachable: [],
-  pairings: [],
-  devices: [],
-};
-
-const schemas: { [K in keyof Data]: DescMessage } = {
-  status: GetStatusResponseSchema,
-  clients: ClientSchema,
-  machines: MachineSchema,
-  projects: ProjectSchema,
-  projectsUnreachable: UnreachableSchema,
-  pairings: PairingDetailsSchema,
-  devices: DeviceSchema,
-};
-
-/**
- * d with what a poll answered; d itself when every answer is as before, so
- * nothing renders again for a poll that changed nothing.
- */
-function merged(d: Data, answers: Partial<Data>): Data {
-  const same = (k: keyof Data, a: unknown, b: unknown): boolean => {
-    if (Array.isArray(a) && Array.isArray(b)) return a.length === b.length && a.every((x, i) => same(k, x, b[i]));
-    return a === b || (!!a && !!b && equals(schemas[k], a as never, b as never));
-  };
-  const changed = (Object.keys(answers) as (keyof Data)[]).filter((k) => !same(k, d[k], answers[k]));
-  return changed.length ? { ...d, ...Object.fromEntries(changed.map((k) => [k, answers[k]])) } : d;
-}
-
 const Ctx = createContext<Store | null>(null);
 
 export function useStore(): Store {
@@ -157,7 +118,15 @@ function savedView(): Partial<SavedView> {
 }
 
 export function HermeshProvider({ children }: { children: ReactNode }) {
-  const [data, setData] = useState<Data>(empty);
+  const world = useWorld();
+  // Each part changes only when its own list does: a session's change leaves them all.
+  const unreachable = useMemo(() => unreachableMachines(world.machines), [world.machines]);
+  const status = world.down ? null : world.loaded ? world.status : undefined;
+  const data = useMemo<Data>(
+    () => ({ status, clients: world.clients, machines: world.machines, projects: world.projects, projectsUnreachable: unreachable, pairings: world.pairings, devices: world.devices }),
+    [status, world.clients, world.machines, world.projects, unreachable, world.pairings, world.devices],
+  );
+  const sessions = useMemo(() => withKnownState(world.sessions, world.machines), [world.sessions, world.machines]);
   const [ui, setUI] = useState<UI>(() => ({
     selection: { kind: "overview" },
     inspector: saved("inspector", true),
@@ -181,65 +150,8 @@ export function HermeshProvider({ children }: { children: ReactNode }) {
   }, [ui.selection, ui.sidebar, ui.view, ui.archived, ui.collapsed]);
   const toastTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
 
-  const refreshStatus = useCallback(async () => {
-    try {
-      const status = await local.getStatus({});
-      setData((d) => merged(d, { status }));
-      return status;
-    } catch {
-      setData((d) => merged(d, { status: null }));
-      return null;
-    }
-  }, []);
-
-  const refreshLists = useCallback(async () => {
-    const [m, c, p, d] = await Promise.allSettled([
-      local.listMachines({}),
-      local.listClients({}),
-      local.listProjects({}),
-      local.listDevices({}),
-    ]);
-    setData((x) =>
-      merged(x, {
-        ...(m.status === "fulfilled" && { machines: m.value.machines }),
-        ...(c.status === "fulfilled" && { clients: c.value.clients }),
-        ...(p.status === "fulfilled" && { projects: p.value.projects, projectsUnreachable: p.value.unreachable }),
-        ...(d.status === "fulfilled" && { devices: d.value.devices }),
-      }),
-    );
-  }, []);
-
-  const refreshPairings = useCallback(async () => {
-    try {
-      const r = await local.listPairingRequests({});
-      setData((d) => merged(d, { pairings: r.pairings }));
-    } catch {
-      // Kept as they were; the status poll reports an unreachable daemon.
-    }
-  }, []);
-
-  const refresh = useCallback(async () => {
-    const st = await refreshStatus();
-    if (st?.initialized) await Promise.all([refreshLists(), refreshPairings()]);
-    else if (st?.machineOnly) await refreshLists(); // its own machine, projects and the agents that reached it
-  }, [refreshStatus, refreshLists, refreshPairings]);
-
-  useEffect(() => {
-    let tick = 0;
-    let stopped = false;
-    const loop = async () => {
-      while (!stopped) {
-        if (tick % 3 === 0) await refresh();
-        else await refreshPairings();
-        tick++;
-        await new Promise((r) => setTimeout(r, 1000));
-      }
-    };
-    loop();
-    return () => {
-      stopped = true;
-    };
-  }, [refresh, refreshPairings]);
+  // Watch brings every change; a step that waits on one (signing in) reads the status at once.
+  const refresh = world.refreshStatus;
 
   const set = useCallback((patch: Partial<UI>) => {
     if (patch.inspector !== undefined) save("inspector", patch.inspector);
@@ -270,17 +182,15 @@ export function HermeshProvider({ children }: { children: ReactNode }) {
 
   const select = useCallback((id: string) => setUI((u) => ({ ...u, selection: { kind: "session", id } })), []);
 
-  const feed = useSessions(data.status?.initialized === true || data.status?.machineOnly === true);
-
   const store = useMemo<Store>(
     () => ({
       ...data,
       pairings: data.pairings.filter((p) => !ui.dismissed.includes(p.code)),
-      sessions: feed.sessions,
-      sessionsUnreachable: feed.unreachable,
-      sessionsLoaded: feed.loaded,
-      moreSessions: feed.next !== undefined,
-      loadOlderSessions: feed.loadOlder,
+      sessions,
+      sessionsUnreachable: data.projectsUnreachable,
+      sessionsLoaded: world.loaded && world.status !== undefined && (world.status.initialized || world.status.machineOnly),
+      moreSessions: world.next !== undefined,
+      loadOlderSessions: world.loadOlder,
       ...ui,
       set,
       select,
@@ -288,7 +198,7 @@ export function HermeshProvider({ children }: { children: ReactNode }) {
       run,
       show,
     }),
-    [data, feed, ui, set, select, refresh, run, show],
+    [data, sessions, world.loaded, world.status, world.next, world.loadOlder, ui, set, select, refresh, run, show],
   );
   return <Ctx.Provider value={store}>{children}</Ctx.Provider>;
 }

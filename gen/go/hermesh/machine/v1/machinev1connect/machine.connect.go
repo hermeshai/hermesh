@@ -40,6 +40,8 @@ const (
 	// MachineServiceListProjectsProcedure is the fully-qualified name of the MachineService's
 	// ListProjects RPC.
 	MachineServiceListProjectsProcedure = "/hermesh.machine.v1.MachineService/ListProjects"
+	// MachineServiceWatchProcedure is the fully-qualified name of the MachineService's Watch RPC.
+	MachineServiceWatchProcedure = "/hermesh.machine.v1.MachineService/Watch"
 	// MachineAdminServiceApplyAdminCommandProcedure is the fully-qualified name of the
 	// MachineAdminService's ApplyAdminCommand RPC.
 	MachineAdminServiceApplyAdminCommandProcedure = "/hermesh.machine.v1.MachineAdminService/ApplyAdminCommand"
@@ -52,6 +54,12 @@ const (
 type MachineServiceClient interface {
 	GetInfo(context.Context, *v1.GetInfoRequest) (*v1.GetInfoResponse, error)
 	ListProjects(context.Context, *v1.ListProjectsRequest) (*v1.ListProjectsResponse, error)
+	// Watch sends the caller's view of this machine (the sessions it may
+	// read, its projects, the machine's state), then each change, until the
+	// caller leaves (docs/state-sync.md §3.3). The first message comes at
+	// once, carrying only what changed since resume_token, so the caller
+	// knows the watch is in place.
+	Watch(context.Context, *v1.WatchRequest) (*connect.ServerStreamForClient[v1.WatchResponse], error)
 }
 
 // NewMachineServiceClient constructs a client for the hermesh.machine.v1.MachineService service. By
@@ -77,6 +85,12 @@ func NewMachineServiceClient(httpClient connect.HTTPClient, baseURL string, opts
 			connect.WithSchema(machineServiceMethods.ByName("ListProjects")),
 			connect.WithClientOptions(opts...),
 		),
+		watch: connect.NewClient[v1.WatchRequest, v1.WatchResponse](
+			httpClient,
+			baseURL+MachineServiceWatchProcedure,
+			connect.WithSchema(machineServiceMethods.ByName("Watch")),
+			connect.WithClientOptions(opts...),
+		),
 	}
 }
 
@@ -84,6 +98,7 @@ func NewMachineServiceClient(httpClient connect.HTTPClient, baseURL string, opts
 type machineServiceClient struct {
 	getInfo      *connect.Client[v1.GetInfoRequest, v1.GetInfoResponse]
 	listProjects *connect.Client[v1.ListProjectsRequest, v1.ListProjectsResponse]
+	watch        *connect.Client[v1.WatchRequest, v1.WatchResponse]
 }
 
 // GetInfo calls hermesh.machine.v1.MachineService.GetInfo.
@@ -104,10 +119,21 @@ func (c *machineServiceClient) ListProjects(ctx context.Context, req *v1.ListPro
 	return nil, err
 }
 
+// Watch calls hermesh.machine.v1.MachineService.Watch.
+func (c *machineServiceClient) Watch(ctx context.Context, req *v1.WatchRequest) (*connect.ServerStreamForClient[v1.WatchResponse], error) {
+	return c.watch.CallServerStream(ctx, connect.NewRequest(req))
+}
+
 // MachineServiceHandler is an implementation of the hermesh.machine.v1.MachineService service.
 type MachineServiceHandler interface {
 	GetInfo(context.Context, *v1.GetInfoRequest) (*v1.GetInfoResponse, error)
 	ListProjects(context.Context, *v1.ListProjectsRequest) (*v1.ListProjectsResponse, error)
+	// Watch sends the caller's view of this machine (the sessions it may
+	// read, its projects, the machine's state), then each change, until the
+	// caller leaves (docs/state-sync.md §3.3). The first message comes at
+	// once, carrying only what changed since resume_token, so the caller
+	// knows the watch is in place.
+	Watch(context.Context, *v1.WatchRequest, *connect.ServerStream[v1.WatchResponse]) error
 }
 
 // NewMachineServiceHandler builds an HTTP handler from the service implementation. It returns the
@@ -129,12 +155,20 @@ func NewMachineServiceHandler(svc MachineServiceHandler, opts ...connect.Handler
 		connect.WithSchema(machineServiceMethods.ByName("ListProjects")),
 		connect.WithHandlerOptions(opts...),
 	)
+	machineServiceWatchHandler := connect.NewServerStreamHandlerSimple(
+		MachineServiceWatchProcedure,
+		svc.Watch,
+		connect.WithSchema(machineServiceMethods.ByName("Watch")),
+		connect.WithHandlerOptions(opts...),
+	)
 	return "/hermesh.machine.v1.MachineService/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case MachineServiceGetInfoProcedure:
 			machineServiceGetInfoHandler.ServeHTTP(w, r)
 		case MachineServiceListProjectsProcedure:
 			machineServiceListProjectsHandler.ServeHTTP(w, r)
+		case MachineServiceWatchProcedure:
+			machineServiceWatchHandler.ServeHTTP(w, r)
 		default:
 			http.NotFound(w, r)
 		}
@@ -150,6 +184,10 @@ func (UnimplementedMachineServiceHandler) GetInfo(context.Context, *v1.GetInfoRe
 
 func (UnimplementedMachineServiceHandler) ListProjects(context.Context, *v1.ListProjectsRequest) (*v1.ListProjectsResponse, error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("hermesh.machine.v1.MachineService.ListProjects is not implemented"))
+}
+
+func (UnimplementedMachineServiceHandler) Watch(context.Context, *v1.WatchRequest, *connect.ServerStream[v1.WatchResponse]) error {
+	return connect.NewError(connect.CodeUnimplemented, errors.New("hermesh.machine.v1.MachineService.Watch is not implemented"))
 }
 
 // MachineAdminServiceClient is a client for the hermesh.machine.v1.MachineAdminService service.

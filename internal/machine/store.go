@@ -1,8 +1,11 @@
 package machine
 
 import (
+	"bytes"
+	"compress/flate"
 	"database/sql"
 	"errors"
+	"io"
 	"math"
 	"os"
 	"slices"
@@ -100,6 +103,14 @@ CREATE TABLE deleted_sessions (
   created_by TEXT NOT NULL,
   grant_id TEXT NOT NULL,
   deleted_at INTEGER NOT NULL
+);
+`, `
+CREATE TABLE tool_outputs (
+  session_id TEXT NOT NULL,
+  call_id TEXT NOT NULL,
+  size INTEGER NOT NULL,
+  data BLOB NOT NULL,
+  PRIMARY KEY (session_id, call_id)
 );
 `}
 
@@ -351,12 +362,31 @@ func (s *Store) DeleteSession(r *sessionRow) error {
 		r.ID, r.ProjectID, r.Agent, r.CreatedBy, r.GrantID, time.Now().Unix()); err != nil {
 		return err
 	}
-	for _, table := range []string{"sessions", "session_events", "turns", "idempotency"} {
+	for _, table := range []string{"sessions", "session_events", "turns", "idempotency", "tool_outputs"} {
 		if _, err := tx.Exec(`DELETE FROM `+table+` WHERE session_id=?`, r.ID); err != nil {
 			return err
 		}
 	}
 	return tx.Commit()
+}
+
+// DeletedSessionsSince is what is kept of the sessions deleted at or after t
+// (to the second).
+func (s *Store) DeletedSessionsSince(t time.Time) ([]*sessionRow, error) {
+	rows, err := s.rdb.Query(`SELECT session_id, project_id, agent, created_by, grant_id FROM deleted_sessions WHERE deleted_at >= ?`, t.Unix())
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []*sessionRow
+	for rows.Next() {
+		r := &sessionRow{}
+		if err := rows.Scan(&r.ID, &r.ProjectID, &r.Agent, &r.CreatedBy, &r.GrantID); err != nil {
+			return nil, err
+		}
+		out = append(out, r)
+	}
+	return out, rows.Err()
 }
 
 // DeletedSessions returns what is kept of the deleted sessions (see DeleteSession).
@@ -437,6 +467,11 @@ func (s *Store) WriteBatch(ops []writeOp) error {
 			}
 			if err := putUsage(tx, op.l.id, op.ev); err != nil {
 				return err
+			}
+			if op.output != "" {
+				if err := putToolOutput(tx, op.l.id, op.ev.GetToolResult().GetCallId(), op.output); err != nil {
+					return err
+				}
 			}
 		}
 		if op.row != nil {
@@ -573,4 +608,29 @@ func (s *Store) SeeGrantVersion(grantID string, v uint64) (uint64, error) {
 	var max uint64
 	err := s.db.QueryRow(`SELECT version FROM grants_seen WHERE grant_id=?`, grantID).Scan(&max)
 	return max, err
+}
+
+// putToolOutput keeps a tool's whole output, compressed, beside its event
+// (docs/state-sync.md §3.5).
+func putToolOutput(tx *sql.Tx, sessionID, callID, output string) error {
+	var b bytes.Buffer
+	z, _ := flate.NewWriter(&b, flate.DefaultCompression)
+	z.Write([]byte(output))
+	z.Close()
+	_, err := tx.Exec(`INSERT OR REPLACE INTO tool_outputs(session_id, call_id, size, data) VALUES(?,?,?,?)`, sessionID, callID, len(output), b.Bytes())
+	return err
+}
+
+// ToolOutput is a tool's whole output as kept beside its event; ok is false
+// when none is (its event holds it whole).
+func (s *Store) ToolOutput(sessionID, callID string) (output []byte, ok bool, err error) {
+	var data []byte
+	switch err := s.rdb.QueryRow(`SELECT data FROM tool_outputs WHERE session_id=? AND call_id=?`, sessionID, callID).Scan(&data); {
+	case errors.Is(err, sql.ErrNoRows):
+		return nil, false, nil
+	case err != nil:
+		return nil, false, err
+	}
+	out, err := io.ReadAll(flate.NewReader(bytes.NewReader(data)))
+	return out, err == nil, err
 }

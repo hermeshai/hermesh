@@ -276,6 +276,97 @@ public nonisolated enum Hermesh_Session_V1_QuestionResolution: SwiftProtobuf.Enu
 
 }
 
+/// How much of a session a call returns (AIP-157).
+public nonisolated enum Hermesh_Session_V1_SessionView: SwiftProtobuf.Enum, Swift.CaseIterable {
+  public typealias RawValue = Int
+
+  /// FULL: what callers that predate views get.
+  case unspecified // = 0
+
+  /// What lists show: all but result, progress.last_message_excerpt and
+  /// provider_session_ref.
+  case basic // = 1
+  case full // = 2
+  case UNRECOGNIZED(Int)
+
+  public init() {
+    self = .unspecified
+  }
+
+  public init?(rawValue: Int) {
+    switch rawValue {
+    case 0: self = .unspecified
+    case 1: self = .basic
+    case 2: self = .full
+    default: self = .UNRECOGNIZED(rawValue)
+    }
+  }
+
+  public var rawValue: Int {
+    switch self {
+    case .unspecified: return 0
+    case .basic: return 1
+    case .full: return 2
+    case .UNRECOGNIZED(let i): return i
+    }
+  }
+
+  // The compiler won't synthesize support with the UNRECOGNIZED case.
+  public static let allCases: [Hermesh_Session_V1_SessionView] = [
+    .unspecified,
+    .basic,
+    .full,
+  ]
+
+}
+
+/// How much of each event a call returns.
+public nonisolated enum Hermesh_Session_V1_EventView: SwiftProtobuf.Enum, Swift.CaseIterable {
+  public typealias RawValue = Int
+
+  /// FULL: what callers that predate views get.
+  case unspecified // = 0
+
+  /// A tool result longer than 3 lines or 512 bytes comes as its first 3
+  /// lines, at most 512 bytes (cut at a UTF-8 boundary), with preview set;
+  /// ReadToolOutput reads it whole.
+  case basic // = 1
+
+  /// A tool result's first 16 KiB, with its size when it is longer.
+  case full // = 2
+  case UNRECOGNIZED(Int)
+
+  public init() {
+    self = .unspecified
+  }
+
+  public init?(rawValue: Int) {
+    switch rawValue {
+    case 0: self = .unspecified
+    case 1: self = .basic
+    case 2: self = .full
+    default: self = .UNRECOGNIZED(rawValue)
+    }
+  }
+
+  public var rawValue: Int {
+    switch self {
+    case .unspecified: return 0
+    case .basic: return 1
+    case .full: return 2
+    case .UNRECOGNIZED(let i): return i
+    }
+  }
+
+  // The compiler won't synthesize support with the UNRECOGNIZED case.
+  public static let allCases: [Hermesh_Session_V1_EventView] = [
+    .unspecified,
+    .basic,
+    .full,
+  ]
+
+}
+
 public nonisolated struct Hermesh_Session_V1_Failure: Sendable {
   // SwiftProtobuf.Message conformance is added in an extension below. See the
   // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
@@ -949,6 +1040,8 @@ public nonisolated struct Hermesh_Session_V1_ListSessionsRequest: Sendable {
   /// Clears the value of `before`. Subsequent reads from it will return its default value.
   public mutating func clearBefore() {self._before = nil}
 
+  public var view: Hermesh_Session_V1_SessionView = .unspecified
+
   public var unknownFields = SwiftProtobuf.UnknownStorage()
 
   public init() {}
@@ -1011,6 +1104,8 @@ public nonisolated struct Hermesh_Session_V1_WatchSessionsRequest: Sendable {
   // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
   // methods supported on all messages.
 
+  public var view: Hermesh_Session_V1_SessionView = .unspecified
+
   public var unknownFields = SwiftProtobuf.UnknownStorage()
 
   public init() {}
@@ -1043,7 +1138,8 @@ public nonisolated struct Hermesh_Session_V1_StreamEventsRequest: Sendable {
   /// When false, the stream ends after replaying stored events.
   public var follow: Bool = false
 
-  /// (4 is left for an event view, docs/state-sync.md.)
+  public var view: Hermesh_Session_V1_EventView = .unspecified
+
   /// Also send AgentDraft events while the agent writes (docs/reply-streaming.md).
   public var partial: Bool = false
 
@@ -1068,6 +1164,8 @@ public nonisolated struct Hermesh_Session_V1_ListEventsRequest: Sendable {
 
   /// 1 to 1000; 0 means 50.
   public var limit: UInt32 = 0
+
+  public var view: Hermesh_Session_V1_EventView = .unspecified
 
   public var unknownFields = SwiftProtobuf.UnknownStorage()
 
@@ -1339,11 +1437,51 @@ public nonisolated struct Hermesh_Session_V1_ToolResult: Sendable {
 
   public var callID: String = String()
 
+  /// The output: whole, or its first part when size is set.
   public var summary: String = String()
 
   public var isError: Bool = false
 
+  /// summary is not the whole output: its first 16 KiB (FULL), or an
+  /// output cut when recorded (past 1 MiB its first and last 512 KiB are
+  /// kept; machines from before that kept its first 16 KiB only).
   public var truncated: Bool = false
+
+  /// summary is a preview (EVENT_VIEW_BASIC).
+  public var preview: Bool = false
+
+  /// The whole output's length in bytes, when it is longer than summary:
+  /// ReadToolOutput reads it.
+  public var size: UInt64 = 0
+
+  public var unknownFields = SwiftProtobuf.UnknownStorage()
+
+  public init() {}
+}
+
+public nonisolated struct Hermesh_Session_V1_ReadToolOutputRequest: Sendable {
+  // SwiftProtobuf.Message conformance is added in an extension below. See the
+  // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
+  // methods supported on all messages.
+
+  public var sessionID: String = String()
+
+  public var callID: String = String()
+
+  public var unknownFields = SwiftProtobuf.UnknownStorage()
+
+  public init() {}
+}
+
+public nonisolated struct Hermesh_Session_V1_ToolOutputChunk: Sendable {
+  // SwiftProtobuf.Message conformance is added in an extension below. See the
+  // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
+  // methods supported on all messages.
+
+  public var data: Data = Data()
+
+  /// On the first chunk: the whole length.
+  public var size: UInt64 = 0
 
   public var unknownFields = SwiftProtobuf.UnknownStorage()
 
@@ -1677,6 +1815,14 @@ nonisolated extension Hermesh_Session_V1_FailureKind: SwiftProtobuf._ProtoNamePr
 
 nonisolated extension Hermesh_Session_V1_QuestionResolution: SwiftProtobuf._ProtoNameProviding {
   public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{2}\0QUESTION_RESOLUTION_UNSPECIFIED\0\u{1}QUESTION_RESOLUTION_ANSWERED\0\u{1}QUESTION_RESOLUTION_DECLINED\0\u{1}QUESTION_RESOLUTION_TIMED_OUT\0\u{1}QUESTION_RESOLUTION_CANCELLED\0")
+}
+
+nonisolated extension Hermesh_Session_V1_SessionView: SwiftProtobuf._ProtoNameProviding {
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{2}\0SESSION_VIEW_UNSPECIFIED\0\u{1}SESSION_VIEW_BASIC\0\u{1}SESSION_VIEW_FULL\0")
+}
+
+nonisolated extension Hermesh_Session_V1_EventView: SwiftProtobuf._ProtoNameProviding {
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{2}\0EVENT_VIEW_UNSPECIFIED\0\u{1}EVENT_VIEW_BASIC\0\u{1}EVENT_VIEW_FULL\0")
 }
 
 nonisolated extension Hermesh_Session_V1_Failure: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
@@ -2805,7 +2951,7 @@ nonisolated extension Hermesh_Session_V1_GetSessionRequest: SwiftProtobuf.Messag
 
 nonisolated extension Hermesh_Session_V1_ListSessionsRequest: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
   public static let protoMessageName: String = _protobuf_package + ".ListSessionsRequest"
-  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{1}status\0\u{1}since\0\u{1}limit\0\u{1}before\0")
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{1}status\0\u{1}since\0\u{1}limit\0\u{1}before\0\u{1}view\0")
 
   public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
     while let fieldNumber = try decoder.nextFieldNumber() {
@@ -2817,6 +2963,7 @@ nonisolated extension Hermesh_Session_V1_ListSessionsRequest: SwiftProtobuf.Mess
       case 2: try { try decoder.decodeSingularMessageField(value: &self._since) }()
       case 3: try { try decoder.decodeSingularUInt32Field(value: &self.limit) }()
       case 4: try { try decoder.decodeSingularMessageField(value: &self._before) }()
+      case 5: try { try decoder.decodeSingularEnumField(value: &self.view) }()
       default: break
       }
     }
@@ -2839,6 +2986,9 @@ nonisolated extension Hermesh_Session_V1_ListSessionsRequest: SwiftProtobuf.Mess
     try { if let v = self._before {
       try visitor.visitSingularMessageField(value: v, fieldNumber: 4)
     } }()
+    if self.view != .unspecified {
+      try visitor.visitSingularEnumField(value: self.view, fieldNumber: 5)
+    }
     try unknownFields.traverse(visitor: &visitor)
   }
 
@@ -2847,6 +2997,7 @@ nonisolated extension Hermesh_Session_V1_ListSessionsRequest: SwiftProtobuf.Mess
     if lhs._since != rhs._since {return false}
     if lhs.limit != rhs.limit {return false}
     if lhs._before != rhs._before {return false}
+    if lhs.view != rhs.view {return false}
     if lhs.unknownFields != rhs.unknownFields {return false}
     return true
   }
@@ -2932,18 +3083,29 @@ nonisolated extension Hermesh_Session_V1_ListSessionsResponse: SwiftProtobuf.Mes
 
 nonisolated extension Hermesh_Session_V1_WatchSessionsRequest: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
   public static let protoMessageName: String = _protobuf_package + ".WatchSessionsRequest"
-  public static let _protobuf_nameMap = SwiftProtobuf._NameMap()
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{1}view\0")
 
   public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
-    // Load everything into unknown fields
-    while try decoder.nextFieldNumber() != nil {}
+    while let fieldNumber = try decoder.nextFieldNumber() {
+      // The use of inline closures is to circumvent an issue where the compiler
+      // allocates stack space for every case branch when no optimizations are
+      // enabled. https://github.com/apple/swift-protobuf/issues/1034
+      switch fieldNumber {
+      case 1: try { try decoder.decodeSingularEnumField(value: &self.view) }()
+      default: break
+      }
+    }
   }
 
   public func traverse<V: SwiftProtobuf.Visitor>(visitor: inout V) throws {
+    if self.view != .unspecified {
+      try visitor.visitSingularEnumField(value: self.view, fieldNumber: 1)
+    }
     try unknownFields.traverse(visitor: &visitor)
   }
 
   public static func ==(lhs: Hermesh_Session_V1_WatchSessionsRequest, rhs: Hermesh_Session_V1_WatchSessionsRequest) -> Bool {
+    if lhs.view != rhs.view {return false}
     if lhs.unknownFields != rhs.unknownFields {return false}
     return true
   }
@@ -2986,7 +3148,7 @@ nonisolated extension Hermesh_Session_V1_WatchSessionsResponse: SwiftProtobuf.Me
 
 nonisolated extension Hermesh_Session_V1_StreamEventsRequest: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
   public static let protoMessageName: String = _protobuf_package + ".StreamEventsRequest"
-  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{3}session_id\0\u{3}after_seq\0\u{1}follow\0\u{2}\u{2}partial\0")
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{3}session_id\0\u{3}after_seq\0\u{1}follow\0\u{1}view\0\u{1}partial\0")
 
   public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
     while let fieldNumber = try decoder.nextFieldNumber() {
@@ -2997,6 +3159,7 @@ nonisolated extension Hermesh_Session_V1_StreamEventsRequest: SwiftProtobuf.Mess
       case 1: try { try decoder.decodeSingularStringField(value: &self.sessionID) }()
       case 2: try { try decoder.decodeSingularUInt64Field(value: &self.afterSeq) }()
       case 3: try { try decoder.decodeSingularBoolField(value: &self.follow) }()
+      case 4: try { try decoder.decodeSingularEnumField(value: &self.view) }()
       case 5: try { try decoder.decodeSingularBoolField(value: &self.partial) }()
       default: break
       }
@@ -3013,6 +3176,9 @@ nonisolated extension Hermesh_Session_V1_StreamEventsRequest: SwiftProtobuf.Mess
     if self.follow != false {
       try visitor.visitSingularBoolField(value: self.follow, fieldNumber: 3)
     }
+    if self.view != .unspecified {
+      try visitor.visitSingularEnumField(value: self.view, fieldNumber: 4)
+    }
     if self.partial != false {
       try visitor.visitSingularBoolField(value: self.partial, fieldNumber: 5)
     }
@@ -3023,6 +3189,7 @@ nonisolated extension Hermesh_Session_V1_StreamEventsRequest: SwiftProtobuf.Mess
     if lhs.sessionID != rhs.sessionID {return false}
     if lhs.afterSeq != rhs.afterSeq {return false}
     if lhs.follow != rhs.follow {return false}
+    if lhs.view != rhs.view {return false}
     if lhs.partial != rhs.partial {return false}
     if lhs.unknownFields != rhs.unknownFields {return false}
     return true
@@ -3031,7 +3198,7 @@ nonisolated extension Hermesh_Session_V1_StreamEventsRequest: SwiftProtobuf.Mess
 
 nonisolated extension Hermesh_Session_V1_ListEventsRequest: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
   public static let protoMessageName: String = _protobuf_package + ".ListEventsRequest"
-  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{3}session_id\0\u{3}after_seq\0\u{3}before_seq\0\u{1}limit\0")
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{3}session_id\0\u{3}after_seq\0\u{3}before_seq\0\u{1}limit\0\u{1}view\0")
 
   public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
     while let fieldNumber = try decoder.nextFieldNumber() {
@@ -3043,6 +3210,7 @@ nonisolated extension Hermesh_Session_V1_ListEventsRequest: SwiftProtobuf.Messag
       case 2: try { try decoder.decodeSingularUInt64Field(value: &self.afterSeq) }()
       case 3: try { try decoder.decodeSingularUInt64Field(value: &self.beforeSeq) }()
       case 4: try { try decoder.decodeSingularUInt32Field(value: &self.limit) }()
+      case 5: try { try decoder.decodeSingularEnumField(value: &self.view) }()
       default: break
       }
     }
@@ -3061,6 +3229,9 @@ nonisolated extension Hermesh_Session_V1_ListEventsRequest: SwiftProtobuf.Messag
     if self.limit != 0 {
       try visitor.visitSingularUInt32Field(value: self.limit, fieldNumber: 4)
     }
+    if self.view != .unspecified {
+      try visitor.visitSingularEnumField(value: self.view, fieldNumber: 5)
+    }
     try unknownFields.traverse(visitor: &visitor)
   }
 
@@ -3069,6 +3240,7 @@ nonisolated extension Hermesh_Session_V1_ListEventsRequest: SwiftProtobuf.Messag
     if lhs.afterSeq != rhs.afterSeq {return false}
     if lhs.beforeSeq != rhs.beforeSeq {return false}
     if lhs.limit != rhs.limit {return false}
+    if lhs.view != rhs.view {return false}
     if lhs.unknownFields != rhs.unknownFields {return false}
     return true
   }
@@ -3613,7 +3785,7 @@ nonisolated extension Hermesh_Session_V1_ToolCall: SwiftProtobuf.Message, SwiftP
 
 nonisolated extension Hermesh_Session_V1_ToolResult: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
   public static let protoMessageName: String = _protobuf_package + ".ToolResult"
-  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{3}call_id\0\u{1}summary\0\u{3}is_error\0\u{1}truncated\0")
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{3}call_id\0\u{1}summary\0\u{3}is_error\0\u{1}truncated\0\u{1}preview\0\u{1}size\0")
 
   public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
     while let fieldNumber = try decoder.nextFieldNumber() {
@@ -3625,6 +3797,8 @@ nonisolated extension Hermesh_Session_V1_ToolResult: SwiftProtobuf.Message, Swif
       case 2: try { try decoder.decodeSingularStringField(value: &self.summary) }()
       case 3: try { try decoder.decodeSingularBoolField(value: &self.isError) }()
       case 4: try { try decoder.decodeSingularBoolField(value: &self.truncated) }()
+      case 5: try { try decoder.decodeSingularBoolField(value: &self.preview) }()
+      case 6: try { try decoder.decodeSingularUInt64Field(value: &self.size) }()
       default: break
       }
     }
@@ -3643,6 +3817,12 @@ nonisolated extension Hermesh_Session_V1_ToolResult: SwiftProtobuf.Message, Swif
     if self.truncated != false {
       try visitor.visitSingularBoolField(value: self.truncated, fieldNumber: 4)
     }
+    if self.preview != false {
+      try visitor.visitSingularBoolField(value: self.preview, fieldNumber: 5)
+    }
+    if self.size != 0 {
+      try visitor.visitSingularUInt64Field(value: self.size, fieldNumber: 6)
+    }
     try unknownFields.traverse(visitor: &visitor)
   }
 
@@ -3651,6 +3831,78 @@ nonisolated extension Hermesh_Session_V1_ToolResult: SwiftProtobuf.Message, Swif
     if lhs.summary != rhs.summary {return false}
     if lhs.isError != rhs.isError {return false}
     if lhs.truncated != rhs.truncated {return false}
+    if lhs.preview != rhs.preview {return false}
+    if lhs.size != rhs.size {return false}
+    if lhs.unknownFields != rhs.unknownFields {return false}
+    return true
+  }
+}
+
+nonisolated extension Hermesh_Session_V1_ReadToolOutputRequest: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
+  public static let protoMessageName: String = _protobuf_package + ".ReadToolOutputRequest"
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{3}session_id\0\u{3}call_id\0")
+
+  public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
+    while let fieldNumber = try decoder.nextFieldNumber() {
+      // The use of inline closures is to circumvent an issue where the compiler
+      // allocates stack space for every case branch when no optimizations are
+      // enabled. https://github.com/apple/swift-protobuf/issues/1034
+      switch fieldNumber {
+      case 1: try { try decoder.decodeSingularStringField(value: &self.sessionID) }()
+      case 2: try { try decoder.decodeSingularStringField(value: &self.callID) }()
+      default: break
+      }
+    }
+  }
+
+  public func traverse<V: SwiftProtobuf.Visitor>(visitor: inout V) throws {
+    if !self.sessionID.isEmpty {
+      try visitor.visitSingularStringField(value: self.sessionID, fieldNumber: 1)
+    }
+    if !self.callID.isEmpty {
+      try visitor.visitSingularStringField(value: self.callID, fieldNumber: 2)
+    }
+    try unknownFields.traverse(visitor: &visitor)
+  }
+
+  public static func ==(lhs: Hermesh_Session_V1_ReadToolOutputRequest, rhs: Hermesh_Session_V1_ReadToolOutputRequest) -> Bool {
+    if lhs.sessionID != rhs.sessionID {return false}
+    if lhs.callID != rhs.callID {return false}
+    if lhs.unknownFields != rhs.unknownFields {return false}
+    return true
+  }
+}
+
+nonisolated extension Hermesh_Session_V1_ToolOutputChunk: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
+  public static let protoMessageName: String = _protobuf_package + ".ToolOutputChunk"
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{1}data\0\u{1}size\0")
+
+  public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
+    while let fieldNumber = try decoder.nextFieldNumber() {
+      // The use of inline closures is to circumvent an issue where the compiler
+      // allocates stack space for every case branch when no optimizations are
+      // enabled. https://github.com/apple/swift-protobuf/issues/1034
+      switch fieldNumber {
+      case 1: try { try decoder.decodeSingularBytesField(value: &self.data) }()
+      case 2: try { try decoder.decodeSingularUInt64Field(value: &self.size) }()
+      default: break
+      }
+    }
+  }
+
+  public func traverse<V: SwiftProtobuf.Visitor>(visitor: inout V) throws {
+    if !self.data.isEmpty {
+      try visitor.visitSingularBytesField(value: self.data, fieldNumber: 1)
+    }
+    if self.size != 0 {
+      try visitor.visitSingularUInt64Field(value: self.size, fieldNumber: 2)
+    }
+    try unknownFields.traverse(visitor: &visitor)
+  }
+
+  public static func ==(lhs: Hermesh_Session_V1_ToolOutputChunk, rhs: Hermesh_Session_V1_ToolOutputChunk) -> Bool {
+    if lhs.data != rhs.data {return false}
+    if lhs.size != rhs.size {return false}
     if lhs.unknownFields != rhs.unknownFields {return false}
     return true
   }

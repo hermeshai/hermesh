@@ -13,6 +13,10 @@ let open = 0;
 /** Upstream requests in flight (for tests: a cancelled stream must not leak). */
 export const openUpstream = () => open;
 
+const calls = new Map<string, number>();
+/** The calls forwarded so far, by method (for tests: idle windows make none, docs/state-sync.md §8). */
+export const forwardedCalls = () => Object.fromEntries(calls);
+
 export function allowed(apiPath: string): boolean {
   const m = /^\/([\w.]+)\/(\w+)$/.exec(apiPath);
   return m !== null && m[1] === service && !blocked.has(m[2]);
@@ -21,6 +25,8 @@ export function allowed(apiPath: string): boolean {
 export async function forward(req: Request, apiPath: string, socket: string, cors: Record<string, string>): Promise<Response> {
   if (req.method === "OPTIONS") return new Response(null, { status: 204, headers: cors });
   if (req.method !== "POST" || !allowed(apiPath)) return new Response("not allowed", { status: 403, headers: cors });
+  const method = apiPath.slice(apiPath.lastIndexOf("/") + 1);
+  calls.set(method, (calls.get(method) ?? 0) + 1);
   const body = Buffer.from(await req.arrayBuffer());
   const headers: Record<string, string> = { "content-length": String(body.length) };
   for (const h of forwardedHeaders) {

@@ -792,6 +792,12 @@ func (o *Owner) listPairingRequests(ctx context.Context) ([]*localv1.PairingDeta
 	if err != nil {
 		return nil, err
 	}
+	return o.pairingsFrom(res), nil
+}
+
+// pairingsFrom is the pairing requests the relay listed (ListPairingRequests,
+// or WatchOwner). One the relay tampered with is left out (and logged).
+func (o *Owner) pairingsFrom(res *relayv1.ListPairingRequestsResponse) []*localv1.PairingDetails {
 	var out []*localv1.PairingDetails
 	for _, p := range res.Pairings {
 		_, d, err := o.pairingDetails(identity.NormalizePairingCode(p.Code), p.Request, p.ExpiresAt)
@@ -801,7 +807,7 @@ func (o *Owner) listPairingRequests(ctx context.Context) ([]*localv1.PairingDeta
 		}
 		out = append(out, d)
 	}
-	return out, nil
+	return out
 }
 
 // ApproveMachinePairing certifies a machine that asked to join. It returns
@@ -967,6 +973,12 @@ func (o *Owner) ListMachines(ctx context.Context) ([]*localv1.Machine, error) {
 	if err != nil {
 		return nil, err
 	}
+	return o.machinesFrom(res), nil
+}
+
+// machinesFrom is the machines the relay listed (ListMachines, or
+// WatchOwner) that are trustworthy, as this device shows them.
+func (o *Owner) machinesFrom(res *relayv1.ListMachinesResponse) []*localv1.Machine {
 	o.adoptChain(res.RootChain) // another device may have joined or left
 	local := o.Status().LocalMachineId
 	var out []*localv1.Machine
@@ -986,7 +998,7 @@ func (o *Owner) ListMachines(ctx context.Context) ([]*localv1.Machine, error) {
 			Local: nc.MachineId == local, DeviceKeyId: nc.DeviceKeyId})
 	}
 	slices.SortFunc(out, func(a, b *localv1.Machine) int { return strings.Compare(a.MachineName, b.MachineName) })
-	return out, nil
+	return out
 }
 
 // local is this device's own machine, in process, when it runs one: what
@@ -1017,7 +1029,12 @@ func (o *Owner) machines(ctx context.Context) ([]*localv1.Machine, error) {
 // listedMachines lists the owner's machines as the relay knows them. Without
 // the relay, they are as it last listed them, offline, with its error.
 func (o *Owner) listedMachines(ctx context.Context) ([]*localv1.Machine, error) {
-	listed, err := o.ListMachines(ctx)
+	return o.keepListed(o.ListMachines(ctx))
+}
+
+// keepListed keeps what the relay listed, offline, for when it cannot be
+// reached; then (err) it is what it last listed.
+func (o *Owner) keepListed(listed []*localv1.Machine, err error) ([]*localv1.Machine, error) {
 	o.mu.Lock()
 	if err == nil {
 		o.lastMachines = nil
@@ -1310,6 +1327,12 @@ func (o *Owner) listClients(ctx context.Context) ([]*localv1.Client, error) {
 	if err != nil {
 		return nil, err
 	}
+	return o.clientsFrom(res), nil
+}
+
+// clientsFrom is the agents the relay listed (ListClients, or WatchOwner)
+// whose grants this owner signed.
+func (o *Owner) clientsFrom(res *relayv1.ListClientsResponse) []*localv1.Client {
 	byGrant := map[string]*localv1.Client{}
 	var out []*localv1.Client
 	for _, c := range res.Clients {
@@ -1337,7 +1360,7 @@ func (o *Owner) listClients(ctx context.Context) ([]*localv1.Client, error) {
 		out = append(out, a)
 	}
 	slices.SortFunc(out, func(a, b *localv1.Client) int { return strings.Compare(a.Label, b.Label) })
-	return out, nil
+	return out
 }
 
 func (o *Owner) latestGrant(ctx context.Context, grantID string) (*identityv1.Grant, error) {
@@ -1449,9 +1472,9 @@ func (o *Owner) revoke(ctx context.Context, r *identityv1.RevocationList) ([]*lo
 // Sessions.
 
 // ListSessions takes the sessions of every reachable machine (or one), or
-// its page of them, and merges the pages into one. A followed machine's
-// first page is in the replica (its newest keepSessions, all of them when
-// it has no more); the others are asked.
+// its page of them, and merges the pages into one. In the BASIC view a
+// followed machine's first page is in the replica (its newest
+// keepSessions, all of them when it has no more); the others are asked.
 func (o *Owner) ListSessions(ctx context.Context, req *localv1.ListSessionsRequest) (*localv1.ListSessionsResponse, error) {
 	on, off, err := o.onlineMachines(ctx, req.MachineId)
 	if err != nil {
@@ -1460,11 +1483,12 @@ func (o *Owner) ListSessions(ctx context.Context, req *localv1.ListSessionsReque
 	var mu sync.Mutex
 	more := false
 	out := &localv1.ListSessionsResponse{Unreachable: off}
+	basic := req.View == sessionv1.SessionView_SESSION_VIEW_BASIC
 	var ask []*localv1.Machine
 	o.rep.feeds(func(feeds map[string]*feed) {
 		for _, n := range on {
 			f := feeds[n.MachineId]
-			if n.Local || f == nil || !f.ready || req.Before != nil || f.more && (req.Limit == 0 || req.Limit > keepSessions) {
+			if n.Local || f == nil || !f.ready || !basic || req.Before != nil || f.more && (req.Limit == 0 || req.Limit > keepSessions) {
 				ask = append(ask, n)
 				continue
 			}
@@ -1474,8 +1498,11 @@ func (o *Owner) ListSessions(ctx context.Context, req *localv1.ListSessionsReque
 			more = more || f.more
 		}
 	})
-	page := &sessionv1.ListSessionsRequest{Limit: req.Limit, Before: req.Before}
+	page := &sessionv1.ListSessionsRequest{Limit: req.Limit, Before: req.Before, View: req.View}
 	add := func(res *sessionv1.ListSessionsResponse) {
+		if basic {
+			res.Sessions = machine.BasicSessions(res.Sessions) // a machine from before views sends them whole
+		}
 		mu.Lock()
 		out.Sessions = append(out.Sessions, res.Sessions...)
 		more = more || res.Next != nil
@@ -1504,16 +1531,27 @@ func (o *Owner) ListSessions(ctx context.Context, req *localv1.ListSessionsReque
 }
 
 // GetUsage asks every reachable machine for its tokens by day and coding
-// agent and adds them up.
+// agent and adds them up. Another machine's answer is kept while its turns
+// (as the replica follows them) and the day stay the same.
 func (o *Owner) GetUsage(ctx context.Context, req *localv1.GetUsageRequest) (*localv1.GetUsageResponse, error) {
 	on, off, err := o.onlineMachines(ctx, "")
 	if err != nil {
 		return nil, err
 	}
+	day := usageDay(req.TimeZone)
+	var held []*sessionv1.GetUsageResponse
+	var ask []*localv1.Machine
+	for _, n := range on {
+		if res := o.rep.heldUsage(n.MachineId, req, day); !n.Local && res != nil {
+			held = append(held, res)
+		} else {
+			ask = append(ask, n)
+		}
+	}
 	var mu sync.Mutex
 	type key struct{ date, agent string }
 	days := map[key]*sessionv1.UsageDay{}
-	ask := &sessionv1.GetUsageRequest{Since: req.Since, TimeZone: req.TimeZone}
+	question := &sessionv1.GetUsageRequest{Since: req.Since, TimeZone: req.TimeZone}
 	add := func(res *sessionv1.GetUsageResponse) {
 		mu.Lock()
 		defer mu.Unlock()
@@ -1525,23 +1563,30 @@ func (o *Owner) GetUsage(ctx context.Context, req *localv1.GetUsageRequest) (*lo
 				t.Sessions += d.Sessions
 				t.Turns += d.Turns
 			} else {
-				days[k] = d
+				days[k] = proto.CloneOf(d) // a kept answer stays as it was
 			}
 		}
 	}
-	bad, err := o.fanOut(ctx, on, func(l *machine.Local, _ *localv1.Machine) error {
-		res, err := l.Usage(ask)
+	bad, err := o.fanOut(ctx, ask, func(l *machine.Local, _ *localv1.Machine) error {
+		res, err := l.Usage(question)
 		if err == nil {
 			add(res)
 		}
 		return err
 	}, func(ctx context.Context, n *peer.Machine, _ *localv1.Machine) error {
-		res, err := n.Session.GetUsage(ctx, ask)
+		turns, known := o.rep.turns(n.MachineID)
+		res, err := n.Session.GetUsage(ctx, question)
 		if err == nil {
 			add(res)
+			if known {
+				o.rep.keepUsage(n.MachineID, req, day, turns, res)
+			}
 		}
 		return err
 	})
+	for _, res := range held {
+		add(res)
+	}
 	out := &localv1.GetUsageResponse{Unreachable: append(off, bad...)}
 	for _, d := range days {
 		out.Days = append(out.Days, d)
@@ -1615,14 +1660,19 @@ func (o *Owner) sessionMachine(ctx context.Context, sessionID string) (*peer.Mac
 }
 
 func (o *Owner) StreamSessionEvents(ctx context.Context, req *localv1.StreamSessionEventsRequest, send func(*sessionv1.SessionEvent) error) error {
+	ask := &sessionv1.StreamEventsRequest{SessionId: req.SessionId, AfterSeq: req.AfterSeq, Follow: req.Follow, Partial: req.Partial, View: req.View}
 	if l := o.localSession(req.SessionId); l != nil {
-		return l.StreamEvents(ctx, &sessionv1.StreamEventsRequest{SessionId: req.SessionId, AfterSeq: req.AfterSeq, Follow: req.Follow, Partial: req.Partial}, send)
+		return l.StreamEvents(ctx, ask, send)
 	}
 	n, err := o.sessionMachine(ctx, req.SessionId)
 	if err != nil {
 		return err
 	}
-	stream, err := n.Session.StreamEvents(ctx, &sessionv1.StreamEventsRequest{SessionId: req.SessionId, AfterSeq: req.AfterSeq, Follow: req.Follow, Partial: req.Partial})
+	if req.View == sessionv1.EventView_EVENT_VIEW_BASIC { // a machine from before views sends events whole
+		full := send
+		send = func(e *sessionv1.SessionEvent) error { return full(machine.BasicEvent(e)) }
+	}
+	stream, err := n.Session.StreamEvents(ctx, ask)
 	if err != nil {
 		return err
 	}
@@ -1633,6 +1683,61 @@ func (o *Owner) StreamSessionEvents(ctx context.Context, req *localv1.StreamSess
 		}
 	}
 	return stream.Err()
+}
+
+// ListSessionEvents pages through a session's events on its machine.
+func (o *Owner) ListSessionEvents(ctx context.Context, req *sessionv1.ListEventsRequest) (*sessionv1.ListEventsResponse, error) {
+	if l := o.localSession(req.SessionId); l != nil {
+		return l.ListEvents(req)
+	}
+	n, err := o.sessionMachine(ctx, req.SessionId)
+	if err != nil {
+		return nil, err
+	}
+	res, err := n.Session.ListEvents(ctx, req)
+	if err == nil && req.View == sessionv1.EventView_EVENT_VIEW_BASIC {
+		for i, e := range res.Events {
+			res.Events[i] = machine.BasicEvent(e)
+		}
+	}
+	return res, err
+}
+
+// ReadToolOutput streams a tool's whole output from its session's machine.
+// One from before ReadToolOutput gives it as the event at req.Seq recorded
+// it (its first 16 KiB).
+func (o *Owner) ReadToolOutput(ctx context.Context, req *localv1.ReadToolOutputRequest, send func(*sessionv1.ToolOutputChunk) error) error {
+	ask := &sessionv1.ReadToolOutputRequest{SessionId: req.SessionId, CallId: req.CallId}
+	if l := o.localSession(req.SessionId); l != nil {
+		return l.ReadToolOutput(ask, send)
+	}
+	n, err := o.sessionMachine(ctx, req.SessionId)
+	if err != nil {
+		return err
+	}
+	stream, err := n.Session.ReadToolOutput(ctx, ask)
+	if err != nil {
+		return err
+	}
+	defer stream.Close()
+	for stream.Receive() {
+		if err := send(stream.Msg()); err != nil {
+			return err
+		}
+	}
+	if connect.CodeOf(stream.Err()) != connect.CodeUnimplemented || req.Seq == 0 {
+		return stream.Err()
+	}
+	res, err := n.Session.ListEvents(ctx, &sessionv1.ListEventsRequest{SessionId: req.SessionId, AfterSeq: req.Seq - 1, Limit: 1})
+	if err != nil {
+		return err
+	}
+	for _, e := range res.Events {
+		if r := e.GetToolResult(); r != nil && r.CallId == req.CallId {
+			return send(&sessionv1.ToolOutputChunk{Data: []byte(r.Summary), Size: uint64(len(r.Summary))})
+		}
+	}
+	return connect.NewError(connect.CodeNotFound, fmt.Errorf("no output of %s at %d", req.CallId, req.Seq))
 }
 
 func (o *Owner) InterruptSession(ctx context.Context, id string) (*sessionv1.Session, error) {

@@ -71,6 +71,10 @@ func (p *Principal) ID() string {
 
 // Sessions is the session kernel of a machine.
 type Sessions struct {
+	// changeLog numbers its sessions' and projects' changes (feed.go).
+	changesOnce sync.Once
+	changeLog   *changeLog
+
 	st        *Store
 	ws        *Workspace
 	audit     *Audit
@@ -420,8 +424,16 @@ func (s *Sessions) Get(p *Principal, id string) (*sessionv1.Session, error) {
 }
 
 // List returns the sessions p can read: all of them, or one page (with
-// where the next starts) when req has a limit.
+// where the next starts) when req has a limit; in req's view.
 func (s *Sessions) List(p *Principal, req *sessionv1.ListSessionsRequest) ([]*sessionv1.Session, *sessionv1.SessionCursor, error) {
+	list, next, err := s.list(p, req)
+	if req.View == sessionv1.SessionView_SESSION_VIEW_BASIC {
+		list = BasicSessions(list)
+	}
+	return list, next, err
+}
+
+func (s *Sessions) list(p *Principal, req *sessionv1.ListSessionsRequest) ([]*sessionv1.Session, *sessionv1.SessionCursor, error) {
 	if req.Limit > 0 {
 		return s.listPage(p, req)
 	}
@@ -832,6 +844,10 @@ func (s *Sessions) Rename(ctx context.Context, p *Principal, id, title string) (
 // Stream replays stored events after req.AfterSeq and then, if requested,
 // follows live events until the session ends or ctx is done.
 func (s *Sessions) Stream(ctx context.Context, p *Principal, req *sessionv1.StreamEventsRequest, send func(*sessionv1.SessionEvent) error) error {
+	if req.View == sessionv1.EventView_EVENT_VIEW_BASIC {
+		full := send
+		send = func(e *sessionv1.SessionEvent) error { return full(BasicEvent(e)) }
+	}
 	l, _, err := s.find(p, req.SessionId, false)
 	if err != nil {
 		return err
@@ -928,6 +944,11 @@ func (s *Sessions) ListEvents(p *Principal, req *sessionv1.ListEventsRequest) (*
 	evs, before, after, err := s.st.EventPage(req.SessionId, req.AfterSeq, req.BeforeSeq, limit)
 	if err != nil {
 		return nil, err
+	}
+	if req.View == sessionv1.EventView_EVENT_VIEW_BASIC {
+		for i, e := range evs {
+			evs[i] = BasicEvent(e)
+		}
 	}
 	return &sessionv1.ListEventsResponse{Events: evs, HasMoreBefore: before, HasMoreAfter: after}, nil
 }
@@ -1266,7 +1287,14 @@ func (s *Sessions) onEvent(l *live, ps provider.Session, e provider.Event) {
 		l.mu.Lock()
 		delete(l.tools, e.CallID)
 		l.mu.Unlock()
-		s.emit(l, &sessionv1.SessionEvent{Kind: &sessionv1.SessionEvent_ToolResult{ToolResult: &sessionv1.ToolResult{CallId: e.CallID, Summary: e.Summary, IsError: e.IsError, Truncated: e.Truncated}}})
+		r := &sessionv1.ToolResult{CallId: e.CallID, Summary: e.Summary, IsError: e.IsError, Truncated: e.Truncated}
+		var whole string
+		if len(e.Summary) > inlineOutput { // kept whole beside its event, which holds its start
+			whole = e.Summary
+			r.Summary, _ = provider.Truncate(e.Summary, inlineOutput)
+			r.Size, r.Truncated = uint64(len(e.Summary)), true
+		}
+		s.emitOutput(l, &sessionv1.SessionEvent{Kind: &sessionv1.SessionEvent_ToolResult{ToolResult: r}}, whole)
 	case provider.EventError:
 		f := e.Failure
 		if f == nil {
@@ -1656,7 +1684,11 @@ func phaseOf(st sessionv1.SessionStatus) string {
 
 // emit assigns the next sequence number, updates progress and queues the
 // event for persistence; subscribers get it once it is committed.
-func (s *Sessions) emit(l *live, e *sessionv1.SessionEvent) {
+func (s *Sessions) emit(l *live, e *sessionv1.SessionEvent) { s.emitOutput(l, e, "") }
+
+// emitOutput is emit for a tool result whose whole output, longer than its
+// event holds, is kept beside it.
+func (s *Sessions) emitOutput(l *live, e *sessionv1.SessionEvent, output string) {
 	l.emitMu.Lock()
 	defer l.emitMu.Unlock()
 	l.mu.Lock()
@@ -1704,7 +1736,7 @@ func (s *Sessions) emit(l *live, e *sessionv1.SessionEvent) {
 	}
 	l.mu.Unlock()
 	mEvents.Inc()
-	s.w.put(writeOp{l: l, ev: e, row: row})
+	s.w.put(writeOp{l: l, ev: e, row: row, output: output})
 	if ns != nil && s.notice != nil {
 		go s.notice(*ns, e)
 	}

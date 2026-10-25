@@ -24,6 +24,8 @@ type writeOp struct {
 
 	// draft is delivered in order with the events around it, never stored.
 	draft *sessionv1.SessionEvent
+	// output: ev's tool output, whole (its event holds the first part).
+	output string
 }
 
 type idemKey struct{ clientID, key, sessionID string }

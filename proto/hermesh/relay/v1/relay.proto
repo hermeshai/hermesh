@@ -286,6 +286,11 @@ service OwnerControlService {
   rpc CompletePairing(CompletePairingRequest) returns (CompletePairingResponse);
   rpc ListMachines(ListMachinesRequest) returns (ListMachinesResponse);
   rpc ListClients(ListClientsRequest) returns (ListClientsResponse);
+  // WatchOwner sends what ListMachines, ListClients and ListPairingRequests
+  // return, then each again whenever it changed, until the connection ends
+  // (docs/state-sync.md §3.2): the owner's devices follow it instead of
+  // polling those three.
+  rpc WatchOwner(WatchOwnerRequest) returns (stream OwnerUpdate);
   rpc PublishGrant(PublishGrantRequest) returns (PublishGrantResponse);
   rpc PublishMachineCert(PublishMachineCertRequest) returns (PublishMachineCertResponse);
   rpc Revoke(RevokeRequest) returns (RevokeResponse);
@@ -339,6 +344,17 @@ message CompletePairingRequest {
 }
 
 message CompletePairingResponse {}
+
+message WatchOwnerRequest {}
+
+// Each list whole, in the first message and whenever it changed (unset: as
+// before). Pairing requests expire by their expires_at; none is sent for
+// that.
+message OwnerUpdate {
+  ListMachinesResponse machines = 1;
+  ListClientsResponse clients = 2;
+  ListPairingRequestsResponse pairings = 3;
+}
 
 message ListClientsRequest {}
 

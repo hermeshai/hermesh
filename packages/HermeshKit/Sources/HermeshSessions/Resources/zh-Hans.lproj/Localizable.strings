@@ -69,6 +69,7 @@
 "Searching" = "正在搜索";
 "Sign in by running the coding agent’s CLI once on that machine, as the same user." = "请在该机器上以同一用户运行一次对应的 CLI 完成登录。";
 "Start a new session with another model." = "换一个模型重新开会话。";
+"State unknown" = "状态未知";
 "Step limit reached" = "达到步数上限";
 "The agent quit unexpectedly" = "agent 进程意外退出";
 "The model refused" = "模型拒绝执行";
@@ -79,7 +80,6 @@
 "Today" = "今天";
 "Took too long" = "超过时长上限";
 "Try again once the quota resets, or use another agent or model." = "额度恢复后再试，或换一个 agent / 模型。";
-"Unknown" = "未知";
 "Used" = "已使用";
 "Used %lld tools" = "使用了 %lld 个工具";
 "Used 1 tool" = "使用了 1 个工具";

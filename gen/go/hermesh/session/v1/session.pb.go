@@ -264,6 +264,114 @@ func (QuestionResolution) EnumDescriptor() ([]byte, []int) {
 	return file_hermesh_session_v1_session_proto_rawDescGZIP(), []int{2}
 }
 
+// How much of a session a call returns (AIP-157).
+type SessionView int32
+
+const (
+	// FULL: what callers that predate views get.
+	SessionView_SESSION_VIEW_UNSPECIFIED SessionView = 0
+	// What lists show: all but result, progress.last_message_excerpt and
+	// provider_session_ref.
+	SessionView_SESSION_VIEW_BASIC SessionView = 1
+	SessionView_SESSION_VIEW_FULL  SessionView = 2
+)
+
+// Enum value maps for SessionView.
+var (
+	SessionView_name = map[int32]string{
+		0: "SESSION_VIEW_UNSPECIFIED",
+		1: "SESSION_VIEW_BASIC",
+		2: "SESSION_VIEW_FULL",
+	}
+	SessionView_value = map[string]int32{
+		"SESSION_VIEW_UNSPECIFIED": 0,
+		"SESSION_VIEW_BASIC":       1,
+		"SESSION_VIEW_FULL":        2,
+	}
+)
+
+func (x SessionView) Enum() *SessionView {
+	p := new(SessionView)
+	*p = x
+	return p
+}
+
+func (x SessionView) String() string {
+	return protoimpl.X.EnumStringOf(x.Descriptor(), protoreflect.EnumNumber(x))
+}
+
+func (SessionView) Descriptor() protoreflect.EnumDescriptor {
+	return file_hermesh_session_v1_session_proto_enumTypes[3].Descriptor()
+}
+
+func (SessionView) Type() protoreflect.EnumType {
+	return &file_hermesh_session_v1_session_proto_enumTypes[3]
+}
+
+func (x SessionView) Number() protoreflect.EnumNumber {
+	return protoreflect.EnumNumber(x)
+}
+
+// Deprecated: Use SessionView.Descriptor instead.
+func (SessionView) EnumDescriptor() ([]byte, []int) {
+	return file_hermesh_session_v1_session_proto_rawDescGZIP(), []int{3}
+}
+
+// How much of each event a call returns.
+type EventView int32
+
+const (
+	// FULL: what callers that predate views get.
+	EventView_EVENT_VIEW_UNSPECIFIED EventView = 0
+	// A tool result longer than 3 lines or 512 bytes comes as its first 3
+	// lines, at most 512 bytes (cut at a UTF-8 boundary), with preview set;
+	// ReadToolOutput reads it whole.
+	EventView_EVENT_VIEW_BASIC EventView = 1
+	// A tool result's first 16 KiB, with its size when it is longer.
+	EventView_EVENT_VIEW_FULL EventView = 2
+)
+
+// Enum value maps for EventView.
+var (
+	EventView_name = map[int32]string{
+		0: "EVENT_VIEW_UNSPECIFIED",
+		1: "EVENT_VIEW_BASIC",
+		2: "EVENT_VIEW_FULL",
+	}
+	EventView_value = map[string]int32{
+		"EVENT_VIEW_UNSPECIFIED": 0,
+		"EVENT_VIEW_BASIC":       1,
+		"EVENT_VIEW_FULL":        2,
+	}
+)
+
+func (x EventView) Enum() *EventView {
+	p := new(EventView)
+	*p = x
+	return p
+}
+
+func (x EventView) String() string {
+	return protoimpl.X.EnumStringOf(x.Descriptor(), protoreflect.EnumNumber(x))
+}
+
+func (EventView) Descriptor() protoreflect.EnumDescriptor {
+	return file_hermesh_session_v1_session_proto_enumTypes[4].Descriptor()
+}
+
+func (EventView) Type() protoreflect.EnumType {
+	return &file_hermesh_session_v1_session_proto_enumTypes[4]
+}
+
+func (x EventView) Number() protoreflect.EnumNumber {
+	return protoreflect.EnumNumber(x)
+}
+
+// Deprecated: Use EventView.Descriptor instead.
+func (EventView) EnumDescriptor() ([]byte, []int) {
+	return file_hermesh_session_v1_session_proto_rawDescGZIP(), []int{4}
+}
+
 type Failure struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	Kind  FailureKind            `protobuf:"varint,1,opt,name=kind,proto3,enum=hermesh.session.v1.FailureKind" json:"kind,omitempty"`
@@ -1720,6 +1828,7 @@ type ListSessionsRequest struct {
 	// pages after it never miss one.
 	Limit         uint32         `protobuf:"varint,3,opt,name=limit,proto3" json:"limit,omitempty"`
 	Before        *SessionCursor `protobuf:"bytes,4,opt,name=before,proto3" json:"before,omitempty"`
+	View          SessionView    `protobuf:"varint,5,opt,name=view,proto3,enum=hermesh.session.v1.SessionView" json:"view,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -1780,6 +1889,13 @@ func (x *ListSessionsRequest) GetBefore() *SessionCursor {
 		return x.Before
 	}
 	return nil
+}
+
+func (x *ListSessionsRequest) GetView() SessionView {
+	if x != nil {
+		return x.View
+	}
+	return SessionView_SESSION_VIEW_UNSPECIFIED
 }
 
 // SessionCursor is where a page of sessions ends: its last session's
@@ -1891,6 +2007,7 @@ func (x *ListSessionsResponse) GetNext() *SessionCursor {
 
 type WatchSessionsRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
+	View          SessionView            `protobuf:"varint,1,opt,name=view,proto3,enum=hermesh.session.v1.SessionView" json:"view,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -1923,6 +2040,13 @@ func (x *WatchSessionsRequest) ProtoReflect() protoreflect.Message {
 // Deprecated: Use WatchSessionsRequest.ProtoReflect.Descriptor instead.
 func (*WatchSessionsRequest) Descriptor() ([]byte, []int) {
 	return file_hermesh_session_v1_session_proto_rawDescGZIP(), []int{20}
+}
+
+func (x *WatchSessionsRequest) GetView() SessionView {
+	if x != nil {
+		return x.View
+	}
+	return SessionView_SESSION_VIEW_UNSPECIFIED
 }
 
 type WatchSessionsResponse struct {
@@ -1983,8 +2107,8 @@ type StreamEventsRequest struct {
 	SessionId string                 `protobuf:"bytes,1,opt,name=session_id,json=sessionId,proto3" json:"session_id,omitempty"`
 	AfterSeq  uint64                 `protobuf:"varint,2,opt,name=after_seq,json=afterSeq,proto3" json:"after_seq,omitempty"`
 	// When false, the stream ends after replaying stored events.
-	Follow bool `protobuf:"varint,3,opt,name=follow,proto3" json:"follow,omitempty"`
-	// (4 is left for an event view, docs/state-sync.md.)
+	Follow bool      `protobuf:"varint,3,opt,name=follow,proto3" json:"follow,omitempty"`
+	View   EventView `protobuf:"varint,4,opt,name=view,proto3,enum=hermesh.session.v1.EventView" json:"view,omitempty"`
 	// Also send AgentDraft events while the agent writes (docs/reply-streaming.md).
 	Partial       bool `protobuf:"varint,5,opt,name=partial,proto3" json:"partial,omitempty"`
 	unknownFields protoimpl.UnknownFields
@@ -2042,6 +2166,13 @@ func (x *StreamEventsRequest) GetFollow() bool {
 	return false
 }
 
+func (x *StreamEventsRequest) GetView() EventView {
+	if x != nil {
+		return x.View
+	}
+	return EventView_EVENT_VIEW_UNSPECIFIED
+}
+
 func (x *StreamEventsRequest) GetPartial() bool {
 	if x != nil {
 		return x.Partial
@@ -2058,7 +2189,8 @@ type ListEventsRequest struct {
 	AfterSeq  uint64                 `protobuf:"varint,2,opt,name=after_seq,json=afterSeq,proto3" json:"after_seq,omitempty"`
 	BeforeSeq uint64                 `protobuf:"varint,3,opt,name=before_seq,json=beforeSeq,proto3" json:"before_seq,omitempty"`
 	// 1 to 1000; 0 means 50.
-	Limit         uint32 `protobuf:"varint,4,opt,name=limit,proto3" json:"limit,omitempty"`
+	Limit         uint32    `protobuf:"varint,4,opt,name=limit,proto3" json:"limit,omitempty"`
+	View          EventView `protobuf:"varint,5,opt,name=view,proto3,enum=hermesh.session.v1.EventView" json:"view,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -2119,6 +2251,13 @@ func (x *ListEventsRequest) GetLimit() uint32 {
 		return x.Limit
 	}
 	return 0
+}
+
+func (x *ListEventsRequest) GetView() EventView {
+	if x != nil {
+		return x.View
+	}
+	return EventView_EVENT_VIEW_UNSPECIFIED
 }
 
 type ListEventsResponse struct {
@@ -2771,11 +2910,20 @@ func (x *ToolCall) GetReason() string {
 }
 
 type ToolResult struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	CallId        string                 `protobuf:"bytes,1,opt,name=call_id,json=callId,proto3" json:"call_id,omitempty"`
-	Summary       string                 `protobuf:"bytes,2,opt,name=summary,proto3" json:"summary,omitempty"`
-	IsError       bool                   `protobuf:"varint,3,opt,name=is_error,json=isError,proto3" json:"is_error,omitempty"`
-	Truncated     bool                   `protobuf:"varint,4,opt,name=truncated,proto3" json:"truncated,omitempty"`
+	state  protoimpl.MessageState `protogen:"open.v1"`
+	CallId string                 `protobuf:"bytes,1,opt,name=call_id,json=callId,proto3" json:"call_id,omitempty"`
+	// The output: whole, or its first part when size is set.
+	Summary string `protobuf:"bytes,2,opt,name=summary,proto3" json:"summary,omitempty"`
+	IsError bool   `protobuf:"varint,3,opt,name=is_error,json=isError,proto3" json:"is_error,omitempty"`
+	// summary is not the whole output: its first 16 KiB (FULL), or an
+	// output cut when recorded (past 1 MiB its first and last 512 KiB are
+	// kept; machines from before that kept its first 16 KiB only).
+	Truncated bool `protobuf:"varint,4,opt,name=truncated,proto3" json:"truncated,omitempty"`
+	// summary is a preview (EVENT_VIEW_BASIC).
+	Preview bool `protobuf:"varint,5,opt,name=preview,proto3" json:"preview,omitempty"`
+	// The whole output's length in bytes, when it is longer than summary:
+	// ReadToolOutput reads it.
+	Size          uint64 `protobuf:"varint,6,opt,name=size,proto3" json:"size,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -2838,6 +2986,125 @@ func (x *ToolResult) GetTruncated() bool {
 	return false
 }
 
+func (x *ToolResult) GetPreview() bool {
+	if x != nil {
+		return x.Preview
+	}
+	return false
+}
+
+func (x *ToolResult) GetSize() uint64 {
+	if x != nil {
+		return x.Size
+	}
+	return 0
+}
+
+type ReadToolOutputRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	SessionId     string                 `protobuf:"bytes,1,opt,name=session_id,json=sessionId,proto3" json:"session_id,omitempty"`
+	CallId        string                 `protobuf:"bytes,2,opt,name=call_id,json=callId,proto3" json:"call_id,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ReadToolOutputRequest) Reset() {
+	*x = ReadToolOutputRequest{}
+	mi := &file_hermesh_session_v1_session_proto_msgTypes[33]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ReadToolOutputRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ReadToolOutputRequest) ProtoMessage() {}
+
+func (x *ReadToolOutputRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_hermesh_session_v1_session_proto_msgTypes[33]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ReadToolOutputRequest.ProtoReflect.Descriptor instead.
+func (*ReadToolOutputRequest) Descriptor() ([]byte, []int) {
+	return file_hermesh_session_v1_session_proto_rawDescGZIP(), []int{33}
+}
+
+func (x *ReadToolOutputRequest) GetSessionId() string {
+	if x != nil {
+		return x.SessionId
+	}
+	return ""
+}
+
+func (x *ReadToolOutputRequest) GetCallId() string {
+	if x != nil {
+		return x.CallId
+	}
+	return ""
+}
+
+type ToolOutputChunk struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	Data  []byte                 `protobuf:"bytes,1,opt,name=data,proto3" json:"data,omitempty"`
+	// On the first chunk: the whole length.
+	Size          uint64 `protobuf:"varint,2,opt,name=size,proto3" json:"size,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ToolOutputChunk) Reset() {
+	*x = ToolOutputChunk{}
+	mi := &file_hermesh_session_v1_session_proto_msgTypes[34]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ToolOutputChunk) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ToolOutputChunk) ProtoMessage() {}
+
+func (x *ToolOutputChunk) ProtoReflect() protoreflect.Message {
+	mi := &file_hermesh_session_v1_session_proto_msgTypes[34]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ToolOutputChunk.ProtoReflect.Descriptor instead.
+func (*ToolOutputChunk) Descriptor() ([]byte, []int) {
+	return file_hermesh_session_v1_session_proto_rawDescGZIP(), []int{34}
+}
+
+func (x *ToolOutputChunk) GetData() []byte {
+	if x != nil {
+		return x.Data
+	}
+	return nil
+}
+
+func (x *ToolOutputChunk) GetSize() uint64 {
+	if x != nil {
+		return x.Size
+	}
+	return 0
+}
+
 type TurnCompleted struct {
 	state    protoimpl.MessageState `protogen:"open.v1"`
 	Turn     uint32                 `protobuf:"varint,1,opt,name=turn,proto3" json:"turn,omitempty"`
@@ -2854,7 +3121,7 @@ type TurnCompleted struct {
 
 func (x *TurnCompleted) Reset() {
 	*x = TurnCompleted{}
-	mi := &file_hermesh_session_v1_session_proto_msgTypes[33]
+	mi := &file_hermesh_session_v1_session_proto_msgTypes[35]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2866,7 +3133,7 @@ func (x *TurnCompleted) String() string {
 func (*TurnCompleted) ProtoMessage() {}
 
 func (x *TurnCompleted) ProtoReflect() protoreflect.Message {
-	mi := &file_hermesh_session_v1_session_proto_msgTypes[33]
+	mi := &file_hermesh_session_v1_session_proto_msgTypes[35]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2879,7 +3146,7 @@ func (x *TurnCompleted) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use TurnCompleted.ProtoReflect.Descriptor instead.
 func (*TurnCompleted) Descriptor() ([]byte, []int) {
-	return file_hermesh_session_v1_session_proto_rawDescGZIP(), []int{33}
+	return file_hermesh_session_v1_session_proto_rawDescGZIP(), []int{35}
 }
 
 func (x *TurnCompleted) GetTurn() uint32 {
@@ -2941,7 +3208,7 @@ type ErrorEvent struct {
 
 func (x *ErrorEvent) Reset() {
 	*x = ErrorEvent{}
-	mi := &file_hermesh_session_v1_session_proto_msgTypes[34]
+	mi := &file_hermesh_session_v1_session_proto_msgTypes[36]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2953,7 +3220,7 @@ func (x *ErrorEvent) String() string {
 func (*ErrorEvent) ProtoMessage() {}
 
 func (x *ErrorEvent) ProtoReflect() protoreflect.Message {
-	mi := &file_hermesh_session_v1_session_proto_msgTypes[34]
+	mi := &file_hermesh_session_v1_session_proto_msgTypes[36]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2966,7 +3233,7 @@ func (x *ErrorEvent) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ErrorEvent.ProtoReflect.Descriptor instead.
 func (*ErrorEvent) Descriptor() ([]byte, []int) {
-	return file_hermesh_session_v1_session_proto_rawDescGZIP(), []int{34}
+	return file_hermesh_session_v1_session_proto_rawDescGZIP(), []int{36}
 }
 
 func (x *ErrorEvent) GetMessage() string {
@@ -2999,7 +3266,7 @@ type SendMessageRequest struct {
 
 func (x *SendMessageRequest) Reset() {
 	*x = SendMessageRequest{}
-	mi := &file_hermesh_session_v1_session_proto_msgTypes[35]
+	mi := &file_hermesh_session_v1_session_proto_msgTypes[37]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3011,7 +3278,7 @@ func (x *SendMessageRequest) String() string {
 func (*SendMessageRequest) ProtoMessage() {}
 
 func (x *SendMessageRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_hermesh_session_v1_session_proto_msgTypes[35]
+	mi := &file_hermesh_session_v1_session_proto_msgTypes[37]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3024,7 +3291,7 @@ func (x *SendMessageRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SendMessageRequest.ProtoReflect.Descriptor instead.
 func (*SendMessageRequest) Descriptor() ([]byte, []int) {
-	return file_hermesh_session_v1_session_proto_rawDescGZIP(), []int{35}
+	return file_hermesh_session_v1_session_proto_rawDescGZIP(), []int{37}
 }
 
 func (x *SendMessageRequest) GetSessionId() string {
@@ -3057,7 +3324,7 @@ type SendMessageResponse struct {
 
 func (x *SendMessageResponse) Reset() {
 	*x = SendMessageResponse{}
-	mi := &file_hermesh_session_v1_session_proto_msgTypes[36]
+	mi := &file_hermesh_session_v1_session_proto_msgTypes[38]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3069,7 +3336,7 @@ func (x *SendMessageResponse) String() string {
 func (*SendMessageResponse) ProtoMessage() {}
 
 func (x *SendMessageResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_hermesh_session_v1_session_proto_msgTypes[36]
+	mi := &file_hermesh_session_v1_session_proto_msgTypes[38]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3082,7 +3349,7 @@ func (x *SendMessageResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SendMessageResponse.ProtoReflect.Descriptor instead.
 func (*SendMessageResponse) Descriptor() ([]byte, []int) {
-	return file_hermesh_session_v1_session_proto_rawDescGZIP(), []int{36}
+	return file_hermesh_session_v1_session_proto_rawDescGZIP(), []int{38}
 }
 
 func (x *SendMessageResponse) GetSession() *Session {
@@ -3101,7 +3368,7 @@ type InterruptSessionRequest struct {
 
 func (x *InterruptSessionRequest) Reset() {
 	*x = InterruptSessionRequest{}
-	mi := &file_hermesh_session_v1_session_proto_msgTypes[37]
+	mi := &file_hermesh_session_v1_session_proto_msgTypes[39]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3113,7 +3380,7 @@ func (x *InterruptSessionRequest) String() string {
 func (*InterruptSessionRequest) ProtoMessage() {}
 
 func (x *InterruptSessionRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_hermesh_session_v1_session_proto_msgTypes[37]
+	mi := &file_hermesh_session_v1_session_proto_msgTypes[39]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3126,7 +3393,7 @@ func (x *InterruptSessionRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use InterruptSessionRequest.ProtoReflect.Descriptor instead.
 func (*InterruptSessionRequest) Descriptor() ([]byte, []int) {
-	return file_hermesh_session_v1_session_proto_rawDescGZIP(), []int{37}
+	return file_hermesh_session_v1_session_proto_rawDescGZIP(), []int{39}
 }
 
 func (x *InterruptSessionRequest) GetSessionId() string {
@@ -3145,7 +3412,7 @@ type ArchiveSessionRequest struct {
 
 func (x *ArchiveSessionRequest) Reset() {
 	*x = ArchiveSessionRequest{}
-	mi := &file_hermesh_session_v1_session_proto_msgTypes[38]
+	mi := &file_hermesh_session_v1_session_proto_msgTypes[40]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3157,7 +3424,7 @@ func (x *ArchiveSessionRequest) String() string {
 func (*ArchiveSessionRequest) ProtoMessage() {}
 
 func (x *ArchiveSessionRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_hermesh_session_v1_session_proto_msgTypes[38]
+	mi := &file_hermesh_session_v1_session_proto_msgTypes[40]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3170,7 +3437,7 @@ func (x *ArchiveSessionRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ArchiveSessionRequest.ProtoReflect.Descriptor instead.
 func (*ArchiveSessionRequest) Descriptor() ([]byte, []int) {
-	return file_hermesh_session_v1_session_proto_rawDescGZIP(), []int{38}
+	return file_hermesh_session_v1_session_proto_rawDescGZIP(), []int{40}
 }
 
 func (x *ArchiveSessionRequest) GetSessionId() string {
@@ -3189,7 +3456,7 @@ type UnarchiveSessionRequest struct {
 
 func (x *UnarchiveSessionRequest) Reset() {
 	*x = UnarchiveSessionRequest{}
-	mi := &file_hermesh_session_v1_session_proto_msgTypes[39]
+	mi := &file_hermesh_session_v1_session_proto_msgTypes[41]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3201,7 +3468,7 @@ func (x *UnarchiveSessionRequest) String() string {
 func (*UnarchiveSessionRequest) ProtoMessage() {}
 
 func (x *UnarchiveSessionRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_hermesh_session_v1_session_proto_msgTypes[39]
+	mi := &file_hermesh_session_v1_session_proto_msgTypes[41]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3214,7 +3481,7 @@ func (x *UnarchiveSessionRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use UnarchiveSessionRequest.ProtoReflect.Descriptor instead.
 func (*UnarchiveSessionRequest) Descriptor() ([]byte, []int) {
-	return file_hermesh_session_v1_session_proto_rawDescGZIP(), []int{39}
+	return file_hermesh_session_v1_session_proto_rawDescGZIP(), []int{41}
 }
 
 func (x *UnarchiveSessionRequest) GetSessionId() string {
@@ -3233,7 +3500,7 @@ type DeleteSessionRequest struct {
 
 func (x *DeleteSessionRequest) Reset() {
 	*x = DeleteSessionRequest{}
-	mi := &file_hermesh_session_v1_session_proto_msgTypes[40]
+	mi := &file_hermesh_session_v1_session_proto_msgTypes[42]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3245,7 +3512,7 @@ func (x *DeleteSessionRequest) String() string {
 func (*DeleteSessionRequest) ProtoMessage() {}
 
 func (x *DeleteSessionRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_hermesh_session_v1_session_proto_msgTypes[40]
+	mi := &file_hermesh_session_v1_session_proto_msgTypes[42]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3258,7 +3525,7 @@ func (x *DeleteSessionRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DeleteSessionRequest.ProtoReflect.Descriptor instead.
 func (*DeleteSessionRequest) Descriptor() ([]byte, []int) {
-	return file_hermesh_session_v1_session_proto_rawDescGZIP(), []int{40}
+	return file_hermesh_session_v1_session_proto_rawDescGZIP(), []int{42}
 }
 
 func (x *DeleteSessionRequest) GetSessionId() string {
@@ -3276,7 +3543,7 @@ type DeleteSessionResponse struct {
 
 func (x *DeleteSessionResponse) Reset() {
 	*x = DeleteSessionResponse{}
-	mi := &file_hermesh_session_v1_session_proto_msgTypes[41]
+	mi := &file_hermesh_session_v1_session_proto_msgTypes[43]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3288,7 +3555,7 @@ func (x *DeleteSessionResponse) String() string {
 func (*DeleteSessionResponse) ProtoMessage() {}
 
 func (x *DeleteSessionResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_hermesh_session_v1_session_proto_msgTypes[41]
+	mi := &file_hermesh_session_v1_session_proto_msgTypes[43]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3301,7 +3568,7 @@ func (x *DeleteSessionResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DeleteSessionResponse.ProtoReflect.Descriptor instead.
 func (*DeleteSessionResponse) Descriptor() ([]byte, []int) {
-	return file_hermesh_session_v1_session_proto_rawDescGZIP(), []int{41}
+	return file_hermesh_session_v1_session_proto_rawDescGZIP(), []int{43}
 }
 
 type RenameSessionRequest struct {
@@ -3315,7 +3582,7 @@ type RenameSessionRequest struct {
 
 func (x *RenameSessionRequest) Reset() {
 	*x = RenameSessionRequest{}
-	mi := &file_hermesh_session_v1_session_proto_msgTypes[42]
+	mi := &file_hermesh_session_v1_session_proto_msgTypes[44]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3327,7 +3594,7 @@ func (x *RenameSessionRequest) String() string {
 func (*RenameSessionRequest) ProtoMessage() {}
 
 func (x *RenameSessionRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_hermesh_session_v1_session_proto_msgTypes[42]
+	mi := &file_hermesh_session_v1_session_proto_msgTypes[44]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3340,7 +3607,7 @@ func (x *RenameSessionRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RenameSessionRequest.ProtoReflect.Descriptor instead.
 func (*RenameSessionRequest) Descriptor() ([]byte, []int) {
-	return file_hermesh_session_v1_session_proto_rawDescGZIP(), []int{42}
+	return file_hermesh_session_v1_session_proto_rawDescGZIP(), []int{44}
 }
 
 func (x *RenameSessionRequest) GetSessionId() string {
@@ -3371,7 +3638,7 @@ type AnswerQuestionRequest struct {
 
 func (x *AnswerQuestionRequest) Reset() {
 	*x = AnswerQuestionRequest{}
-	mi := &file_hermesh_session_v1_session_proto_msgTypes[43]
+	mi := &file_hermesh_session_v1_session_proto_msgTypes[45]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3383,7 +3650,7 @@ func (x *AnswerQuestionRequest) String() string {
 func (*AnswerQuestionRequest) ProtoMessage() {}
 
 func (x *AnswerQuestionRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_hermesh_session_v1_session_proto_msgTypes[43]
+	mi := &file_hermesh_session_v1_session_proto_msgTypes[45]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3396,7 +3663,7 @@ func (x *AnswerQuestionRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use AnswerQuestionRequest.ProtoReflect.Descriptor instead.
 func (*AnswerQuestionRequest) Descriptor() ([]byte, []int) {
-	return file_hermesh_session_v1_session_proto_rawDescGZIP(), []int{43}
+	return file_hermesh_session_v1_session_proto_rawDescGZIP(), []int{45}
 }
 
 func (x *AnswerQuestionRequest) GetSessionId() string {
@@ -3440,7 +3707,7 @@ type GetUsageRequest struct {
 
 func (x *GetUsageRequest) Reset() {
 	*x = GetUsageRequest{}
-	mi := &file_hermesh_session_v1_session_proto_msgTypes[44]
+	mi := &file_hermesh_session_v1_session_proto_msgTypes[46]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3452,7 +3719,7 @@ func (x *GetUsageRequest) String() string {
 func (*GetUsageRequest) ProtoMessage() {}
 
 func (x *GetUsageRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_hermesh_session_v1_session_proto_msgTypes[44]
+	mi := &file_hermesh_session_v1_session_proto_msgTypes[46]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3465,7 +3732,7 @@ func (x *GetUsageRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetUsageRequest.ProtoReflect.Descriptor instead.
 func (*GetUsageRequest) Descriptor() ([]byte, []int) {
-	return file_hermesh_session_v1_session_proto_rawDescGZIP(), []int{44}
+	return file_hermesh_session_v1_session_proto_rawDescGZIP(), []int{46}
 }
 
 func (x *GetUsageRequest) GetSince() string {
@@ -3499,7 +3766,7 @@ type UsageDay struct {
 
 func (x *UsageDay) Reset() {
 	*x = UsageDay{}
-	mi := &file_hermesh_session_v1_session_proto_msgTypes[45]
+	mi := &file_hermesh_session_v1_session_proto_msgTypes[47]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3511,7 +3778,7 @@ func (x *UsageDay) String() string {
 func (*UsageDay) ProtoMessage() {}
 
 func (x *UsageDay) ProtoReflect() protoreflect.Message {
-	mi := &file_hermesh_session_v1_session_proto_msgTypes[45]
+	mi := &file_hermesh_session_v1_session_proto_msgTypes[47]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3524,7 +3791,7 @@ func (x *UsageDay) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use UsageDay.ProtoReflect.Descriptor instead.
 func (*UsageDay) Descriptor() ([]byte, []int) {
-	return file_hermesh_session_v1_session_proto_rawDescGZIP(), []int{45}
+	return file_hermesh_session_v1_session_proto_rawDescGZIP(), []int{47}
 }
 
 func (x *UsageDay) GetDate() string {
@@ -3579,7 +3846,7 @@ type GetUsageResponse struct {
 
 func (x *GetUsageResponse) Reset() {
 	*x = GetUsageResponse{}
-	mi := &file_hermesh_session_v1_session_proto_msgTypes[46]
+	mi := &file_hermesh_session_v1_session_proto_msgTypes[48]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3591,7 +3858,7 @@ func (x *GetUsageResponse) String() string {
 func (*GetUsageResponse) ProtoMessage() {}
 
 func (x *GetUsageResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_hermesh_session_v1_session_proto_msgTypes[46]
+	mi := &file_hermesh_session_v1_session_proto_msgTypes[48]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3604,7 +3871,7 @@ func (x *GetUsageResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetUsageResponse.ProtoReflect.Descriptor instead.
 func (*GetUsageResponse) Descriptor() ([]byte, []int) {
-	return file_hermesh_session_v1_session_proto_rawDescGZIP(), []int{46}
+	return file_hermesh_session_v1_session_proto_rawDescGZIP(), []int{48}
 }
 
 func (x *GetUsageResponse) GetDays() []*UsageDay {
@@ -3627,7 +3894,7 @@ type GetDiffRequest struct {
 
 func (x *GetDiffRequest) Reset() {
 	*x = GetDiffRequest{}
-	mi := &file_hermesh_session_v1_session_proto_msgTypes[47]
+	mi := &file_hermesh_session_v1_session_proto_msgTypes[49]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3639,7 +3906,7 @@ func (x *GetDiffRequest) String() string {
 func (*GetDiffRequest) ProtoMessage() {}
 
 func (x *GetDiffRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_hermesh_session_v1_session_proto_msgTypes[47]
+	mi := &file_hermesh_session_v1_session_proto_msgTypes[49]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3652,7 +3919,7 @@ func (x *GetDiffRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetDiffRequest.ProtoReflect.Descriptor instead.
 func (*GetDiffRequest) Descriptor() ([]byte, []int) {
-	return file_hermesh_session_v1_session_proto_rawDescGZIP(), []int{47}
+	return file_hermesh_session_v1_session_proto_rawDescGZIP(), []int{49}
 }
 
 func (x *GetDiffRequest) GetSessionId() string {
@@ -3697,7 +3964,7 @@ type GetDiffResponse struct {
 
 func (x *GetDiffResponse) Reset() {
 	*x = GetDiffResponse{}
-	mi := &file_hermesh_session_v1_session_proto_msgTypes[48]
+	mi := &file_hermesh_session_v1_session_proto_msgTypes[50]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3709,7 +3976,7 @@ func (x *GetDiffResponse) String() string {
 func (*GetDiffResponse) ProtoMessage() {}
 
 func (x *GetDiffResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_hermesh_session_v1_session_proto_msgTypes[48]
+	mi := &file_hermesh_session_v1_session_proto_msgTypes[50]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3722,7 +3989,7 @@ func (x *GetDiffResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetDiffResponse.ProtoReflect.Descriptor instead.
 func (*GetDiffResponse) Descriptor() ([]byte, []int) {
-	return file_hermesh_session_v1_session_proto_rawDescGZIP(), []int{48}
+	return file_hermesh_session_v1_session_proto_rawDescGZIP(), []int{50}
 }
 
 func (x *GetDiffResponse) GetDiff() string {
@@ -3912,12 +4179,13 @@ const file_hermesh_session_v1_session_proto_rawDesc = "" +
 	"\x05title\x18\x10 \x01(\tR\x05titleJ\x04\b\x05\x10\x06R\x06preset\"2\n" +
 	"\x11GetSessionRequest\x12\x1d\n" +
 	"\n" +
-	"session_id\x18\x01 \x01(\tR\tsessionId\"\xd3\x01\n" +
+	"session_id\x18\x01 \x01(\tR\tsessionId\"\x88\x02\n" +
 	"\x13ListSessionsRequest\x129\n" +
 	"\x06status\x18\x01 \x01(\x0e2!.hermesh.session.v1.SessionStatusR\x06status\x120\n" +
 	"\x05since\x18\x02 \x01(\v2\x1a.google.protobuf.TimestampR\x05since\x12\x14\n" +
 	"\x05limit\x18\x03 \x01(\rR\x05limit\x129\n" +
-	"\x06before\x18\x04 \x01(\v2!.hermesh.session.v1.SessionCursorR\x06before\"i\n" +
+	"\x06before\x18\x04 \x01(\v2!.hermesh.session.v1.SessionCursorR\x06before\x123\n" +
+	"\x04view\x18\x05 \x01(\x0e2\x1f.hermesh.session.v1.SessionViewR\x04view\"i\n" +
 	"\rSessionCursor\x129\n" +
 	"\n" +
 	"updated_at\x18\x01 \x01(\v2\x1a.google.protobuf.TimestampR\tupdatedAt\x12\x1d\n" +
@@ -3925,24 +4193,27 @@ const file_hermesh_session_v1_session_proto_rawDesc = "" +
 	"session_id\x18\x02 \x01(\tR\tsessionId\"\x86\x01\n" +
 	"\x14ListSessionsResponse\x127\n" +
 	"\bsessions\x18\x01 \x03(\v2\x1b.hermesh.session.v1.SessionR\bsessions\x125\n" +
-	"\x04next\x18\x02 \x01(\v2!.hermesh.session.v1.SessionCursorR\x04next\"\x16\n" +
-	"\x14WatchSessionsRequest\"\x80\x01\n" +
+	"\x04next\x18\x02 \x01(\v2!.hermesh.session.v1.SessionCursorR\x04next\"K\n" +
+	"\x14WatchSessionsRequest\x123\n" +
+	"\x04view\x18\x01 \x01(\x0e2\x1f.hermesh.session.v1.SessionViewR\x04view\"\x80\x01\n" +
 	"\x15WatchSessionsResponse\x127\n" +
 	"\bsessions\x18\x01 \x03(\v2\x1b.hermesh.session.v1.SessionR\bsessions\x12.\n" +
-	"\x13deleted_session_ids\x18\x02 \x03(\tR\x11deletedSessionIds\"\x83\x01\n" +
+	"\x13deleted_session_ids\x18\x02 \x03(\tR\x11deletedSessionIds\"\xb6\x01\n" +
 	"\x13StreamEventsRequest\x12\x1d\n" +
 	"\n" +
 	"session_id\x18\x01 \x01(\tR\tsessionId\x12\x1b\n" +
 	"\tafter_seq\x18\x02 \x01(\x04R\bafterSeq\x12\x16\n" +
-	"\x06follow\x18\x03 \x01(\bR\x06follow\x12\x18\n" +
-	"\apartial\x18\x05 \x01(\bR\apartial\"\x84\x01\n" +
+	"\x06follow\x18\x03 \x01(\bR\x06follow\x121\n" +
+	"\x04view\x18\x04 \x01(\x0e2\x1d.hermesh.session.v1.EventViewR\x04view\x12\x18\n" +
+	"\apartial\x18\x05 \x01(\bR\apartial\"\xb7\x01\n" +
 	"\x11ListEventsRequest\x12\x1d\n" +
 	"\n" +
 	"session_id\x18\x01 \x01(\tR\tsessionId\x12\x1b\n" +
 	"\tafter_seq\x18\x02 \x01(\x04R\bafterSeq\x12\x1d\n" +
 	"\n" +
 	"before_seq\x18\x03 \x01(\x04R\tbeforeSeq\x12\x14\n" +
-	"\x05limit\x18\x04 \x01(\rR\x05limit\"\x9c\x01\n" +
+	"\x05limit\x18\x04 \x01(\rR\x05limit\x121\n" +
+	"\x04view\x18\x05 \x01(\x0e2\x1d.hermesh.session.v1.EventViewR\x04view\"\x9c\x01\n" +
 	"\x12ListEventsResponse\x128\n" +
 	"\x06events\x18\x01 \x03(\v2 .hermesh.session.v1.SessionEventR\x06events\x12&\n" +
 	"\x0fhas_more_before\x18\x02 \x01(\bR\rhasMoreBefore\x12$\n" +
@@ -3986,13 +4257,22 @@ const file_hermesh_session_v1_session_proto_rawDesc = "" +
 	"\x04name\x18\x03 \x01(\tR\x04name\x12\x18\n" +
 	"\asummary\x18\x04 \x01(\tR\asummary\x12\x1a\n" +
 	"\bdecision\x18\x05 \x01(\tR\bdecision\x12\x16\n" +
-	"\x06reason\x18\x06 \x01(\tR\x06reason\"x\n" +
+	"\x06reason\x18\x06 \x01(\tR\x06reason\"\xa6\x01\n" +
 	"\n" +
 	"ToolResult\x12\x17\n" +
 	"\acall_id\x18\x01 \x01(\tR\x06callId\x12\x18\n" +
 	"\asummary\x18\x02 \x01(\tR\asummary\x12\x19\n" +
 	"\bis_error\x18\x03 \x01(\bR\aisError\x12\x1c\n" +
-	"\ttruncated\x18\x04 \x01(\bR\ttruncated\"\x91\x02\n" +
+	"\ttruncated\x18\x04 \x01(\bR\ttruncated\x12\x18\n" +
+	"\apreview\x18\x05 \x01(\bR\apreview\x12\x12\n" +
+	"\x04size\x18\x06 \x01(\x04R\x04size\"O\n" +
+	"\x15ReadToolOutputRequest\x12\x1d\n" +
+	"\n" +
+	"session_id\x18\x01 \x01(\tR\tsessionId\x12\x17\n" +
+	"\acall_id\x18\x02 \x01(\tR\x06callId\"9\n" +
+	"\x0fToolOutputChunk\x12\x12\n" +
+	"\x04data\x18\x01 \x01(\fR\x04data\x12\x12\n" +
+	"\x04size\x18\x02 \x01(\x04R\x04size\"\x91\x02\n" +
 	"\rTurnCompleted\x12\x12\n" +
 	"\x04turn\x18\x01 \x01(\rR\x04turn\x12\x16\n" +
 	"\x06result\x18\x02 \x01(\tR\x06result\x12\x19\n" +
@@ -4098,7 +4378,15 @@ const file_hermesh_session_v1_session_proto_rawDesc = "" +
 	"\x1cQUESTION_RESOLUTION_ANSWERED\x10\x01\x12 \n" +
 	"\x1cQUESTION_RESOLUTION_DECLINED\x10\x02\x12!\n" +
 	"\x1dQUESTION_RESOLUTION_TIMED_OUT\x10\x03\x12!\n" +
-	"\x1dQUESTION_RESOLUTION_CANCELLED\x10\x042\xdd\v\n" +
+	"\x1dQUESTION_RESOLUTION_CANCELLED\x10\x04*Z\n" +
+	"\vSessionView\x12\x1c\n" +
+	"\x18SESSION_VIEW_UNSPECIFIED\x10\x00\x12\x16\n" +
+	"\x12SESSION_VIEW_BASIC\x10\x01\x12\x15\n" +
+	"\x11SESSION_VIEW_FULL\x10\x02*R\n" +
+	"\tEventView\x12\x1a\n" +
+	"\x16EVENT_VIEW_UNSPECIFIED\x10\x00\x12\x14\n" +
+	"\x10EVENT_VIEW_BASIC\x10\x01\x12\x13\n" +
+	"\x0fEVENT_VIEW_FULL\x10\x022\xc7\f\n" +
 	"\x0eSessionService\x12g\n" +
 	"\fStartSession\x12'.hermesh.session.v1.StartSessionRequest\x1a(.hermesh.session.v1.StartSessionResponse\"\x04\x88\xb5\x18\x02\x12V\n" +
 	"\n" +
@@ -4116,7 +4404,8 @@ const file_hermesh_session_v1_session_proto_rawDesc = "" +
 	"\rRenameSession\x12(.hermesh.session.v1.RenameSessionRequest\x1a\x1b.hermesh.session.v1.Session\"\x04\x88\xb5\x18\x02\x12X\n" +
 	"\aGetDiff\x12\".hermesh.session.v1.GetDiffRequest\x1a#.hermesh.session.v1.GetDiffResponse\"\x04\x88\xb5\x18\x01\x12^\n" +
 	"\x0eAnswerQuestion\x12).hermesh.session.v1.AnswerQuestionRequest\x1a\x1b.hermesh.session.v1.Session\"\x04\x88\xb5\x18\x02\x12[\n" +
-	"\bGetUsage\x12#.hermesh.session.v1.GetUsageRequest\x1a$.hermesh.session.v1.GetUsageResponse\"\x04\x88\xb5\x18\x01B\xd2\x01\n" +
+	"\bGetUsage\x12#.hermesh.session.v1.GetUsageRequest\x1a$.hermesh.session.v1.GetUsageResponse\"\x04\x88\xb5\x18\x01\x12h\n" +
+	"\x0eReadToolOutput\x12).hermesh.session.v1.ReadToolOutputRequest\x1a#.hermesh.session.v1.ToolOutputChunk\"\x04\x88\xb5\x18\x010\x01B\xd2\x01\n" +
 	"\x16com.hermesh.session.v1B\fSessionProtoP\x01Z@github.com/hermeshai/hermesh/gen/go/hermesh/session/v1;sessionv1\xa2\x02\x03HSX\xaa\x02\x12Hermesh.Session.V1\xca\x02\x12Hermesh\\Session\\V1\xe2\x02\x1eHermesh\\Session\\V1\\GPBMetadata\xea\x02\x14Hermesh::Session::V1b\x06proto3"
 
 var (
@@ -4131,157 +4420,167 @@ func file_hermesh_session_v1_session_proto_rawDescGZIP() []byte {
 	return file_hermesh_session_v1_session_proto_rawDescData
 }
 
-var file_hermesh_session_v1_session_proto_enumTypes = make([]protoimpl.EnumInfo, 3)
-var file_hermesh_session_v1_session_proto_msgTypes = make([]protoimpl.MessageInfo, 49)
+var file_hermesh_session_v1_session_proto_enumTypes = make([]protoimpl.EnumInfo, 5)
+var file_hermesh_session_v1_session_proto_msgTypes = make([]protoimpl.MessageInfo, 51)
 var file_hermesh_session_v1_session_proto_goTypes = []any{
 	(SessionStatus)(0),              // 0: hermesh.session.v1.SessionStatus
 	(FailureKind)(0),                // 1: hermesh.session.v1.FailureKind
 	(QuestionResolution)(0),         // 2: hermesh.session.v1.QuestionResolution
-	(*Failure)(nil),                 // 3: hermesh.session.v1.Failure
-	(*StartSessionRequest)(nil),     // 4: hermesh.session.v1.StartSessionRequest
-	(*Attachment)(nil),              // 5: hermesh.session.v1.Attachment
-	(*AttachmentInfo)(nil),          // 6: hermesh.session.v1.AttachmentInfo
-	(*StartSessionResponse)(nil),    // 7: hermesh.session.v1.StartSessionResponse
-	(*Notice)(nil),                  // 8: hermesh.session.v1.Notice
-	(*DiffStat)(nil),                // 9: hermesh.session.v1.DiffStat
-	(*Usage)(nil),                   // 10: hermesh.session.v1.Usage
-	(*SessionProgress)(nil),         // 11: hermesh.session.v1.SessionProgress
-	(*Question)(nil),                // 12: hermesh.session.v1.Question
-	(*QuestionItem)(nil),            // 13: hermesh.session.v1.QuestionItem
-	(*QuestionOption)(nil),          // 14: hermesh.session.v1.QuestionOption
-	(*Answer)(nil),                  // 15: hermesh.session.v1.Answer
-	(*QuestionAsked)(nil),           // 16: hermesh.session.v1.QuestionAsked
-	(*QuestionResolved)(nil),        // 17: hermesh.session.v1.QuestionResolved
-	(*Session)(nil),                 // 18: hermesh.session.v1.Session
-	(*GetSessionRequest)(nil),       // 19: hermesh.session.v1.GetSessionRequest
-	(*ListSessionsRequest)(nil),     // 20: hermesh.session.v1.ListSessionsRequest
-	(*SessionCursor)(nil),           // 21: hermesh.session.v1.SessionCursor
-	(*ListSessionsResponse)(nil),    // 22: hermesh.session.v1.ListSessionsResponse
-	(*WatchSessionsRequest)(nil),    // 23: hermesh.session.v1.WatchSessionsRequest
-	(*WatchSessionsResponse)(nil),   // 24: hermesh.session.v1.WatchSessionsResponse
-	(*StreamEventsRequest)(nil),     // 25: hermesh.session.v1.StreamEventsRequest
-	(*ListEventsRequest)(nil),       // 26: hermesh.session.v1.ListEventsRequest
-	(*ListEventsResponse)(nil),      // 27: hermesh.session.v1.ListEventsResponse
-	(*SessionEvent)(nil),            // 28: hermesh.session.v1.SessionEvent
-	(*StatusChanged)(nil),           // 29: hermesh.session.v1.StatusChanged
-	(*TurnStarted)(nil),             // 30: hermesh.session.v1.TurnStarted
-	(*UserMessage)(nil),             // 31: hermesh.session.v1.UserMessage
-	(*AgentMessage)(nil),            // 32: hermesh.session.v1.AgentMessage
-	(*AgentDraft)(nil),              // 33: hermesh.session.v1.AgentDraft
-	(*ToolCall)(nil),                // 34: hermesh.session.v1.ToolCall
-	(*ToolResult)(nil),              // 35: hermesh.session.v1.ToolResult
-	(*TurnCompleted)(nil),           // 36: hermesh.session.v1.TurnCompleted
-	(*ErrorEvent)(nil),              // 37: hermesh.session.v1.ErrorEvent
-	(*SendMessageRequest)(nil),      // 38: hermesh.session.v1.SendMessageRequest
-	(*SendMessageResponse)(nil),     // 39: hermesh.session.v1.SendMessageResponse
-	(*InterruptSessionRequest)(nil), // 40: hermesh.session.v1.InterruptSessionRequest
-	(*ArchiveSessionRequest)(nil),   // 41: hermesh.session.v1.ArchiveSessionRequest
-	(*UnarchiveSessionRequest)(nil), // 42: hermesh.session.v1.UnarchiveSessionRequest
-	(*DeleteSessionRequest)(nil),    // 43: hermesh.session.v1.DeleteSessionRequest
-	(*DeleteSessionResponse)(nil),   // 44: hermesh.session.v1.DeleteSessionResponse
-	(*RenameSessionRequest)(nil),    // 45: hermesh.session.v1.RenameSessionRequest
-	(*AnswerQuestionRequest)(nil),   // 46: hermesh.session.v1.AnswerQuestionRequest
-	(*GetUsageRequest)(nil),         // 47: hermesh.session.v1.GetUsageRequest
-	(*UsageDay)(nil),                // 48: hermesh.session.v1.UsageDay
-	(*GetUsageResponse)(nil),        // 49: hermesh.session.v1.GetUsageResponse
-	(*GetDiffRequest)(nil),          // 50: hermesh.session.v1.GetDiffRequest
-	(*GetDiffResponse)(nil),         // 51: hermesh.session.v1.GetDiffResponse
-	(*timestamppb.Timestamp)(nil),   // 52: google.protobuf.Timestamp
-	(v1.PairingKind)(0),             // 53: hermesh.identity.v1.PairingKind
-	(v1.Workspace)(0),               // 54: hermesh.identity.v1.Workspace
+	(SessionView)(0),                // 3: hermesh.session.v1.SessionView
+	(EventView)(0),                  // 4: hermesh.session.v1.EventView
+	(*Failure)(nil),                 // 5: hermesh.session.v1.Failure
+	(*StartSessionRequest)(nil),     // 6: hermesh.session.v1.StartSessionRequest
+	(*Attachment)(nil),              // 7: hermesh.session.v1.Attachment
+	(*AttachmentInfo)(nil),          // 8: hermesh.session.v1.AttachmentInfo
+	(*StartSessionResponse)(nil),    // 9: hermesh.session.v1.StartSessionResponse
+	(*Notice)(nil),                  // 10: hermesh.session.v1.Notice
+	(*DiffStat)(nil),                // 11: hermesh.session.v1.DiffStat
+	(*Usage)(nil),                   // 12: hermesh.session.v1.Usage
+	(*SessionProgress)(nil),         // 13: hermesh.session.v1.SessionProgress
+	(*Question)(nil),                // 14: hermesh.session.v1.Question
+	(*QuestionItem)(nil),            // 15: hermesh.session.v1.QuestionItem
+	(*QuestionOption)(nil),          // 16: hermesh.session.v1.QuestionOption
+	(*Answer)(nil),                  // 17: hermesh.session.v1.Answer
+	(*QuestionAsked)(nil),           // 18: hermesh.session.v1.QuestionAsked
+	(*QuestionResolved)(nil),        // 19: hermesh.session.v1.QuestionResolved
+	(*Session)(nil),                 // 20: hermesh.session.v1.Session
+	(*GetSessionRequest)(nil),       // 21: hermesh.session.v1.GetSessionRequest
+	(*ListSessionsRequest)(nil),     // 22: hermesh.session.v1.ListSessionsRequest
+	(*SessionCursor)(nil),           // 23: hermesh.session.v1.SessionCursor
+	(*ListSessionsResponse)(nil),    // 24: hermesh.session.v1.ListSessionsResponse
+	(*WatchSessionsRequest)(nil),    // 25: hermesh.session.v1.WatchSessionsRequest
+	(*WatchSessionsResponse)(nil),   // 26: hermesh.session.v1.WatchSessionsResponse
+	(*StreamEventsRequest)(nil),     // 27: hermesh.session.v1.StreamEventsRequest
+	(*ListEventsRequest)(nil),       // 28: hermesh.session.v1.ListEventsRequest
+	(*ListEventsResponse)(nil),      // 29: hermesh.session.v1.ListEventsResponse
+	(*SessionEvent)(nil),            // 30: hermesh.session.v1.SessionEvent
+	(*StatusChanged)(nil),           // 31: hermesh.session.v1.StatusChanged
+	(*TurnStarted)(nil),             // 32: hermesh.session.v1.TurnStarted
+	(*UserMessage)(nil),             // 33: hermesh.session.v1.UserMessage
+	(*AgentMessage)(nil),            // 34: hermesh.session.v1.AgentMessage
+	(*AgentDraft)(nil),              // 35: hermesh.session.v1.AgentDraft
+	(*ToolCall)(nil),                // 36: hermesh.session.v1.ToolCall
+	(*ToolResult)(nil),              // 37: hermesh.session.v1.ToolResult
+	(*ReadToolOutputRequest)(nil),   // 38: hermesh.session.v1.ReadToolOutputRequest
+	(*ToolOutputChunk)(nil),         // 39: hermesh.session.v1.ToolOutputChunk
+	(*TurnCompleted)(nil),           // 40: hermesh.session.v1.TurnCompleted
+	(*ErrorEvent)(nil),              // 41: hermesh.session.v1.ErrorEvent
+	(*SendMessageRequest)(nil),      // 42: hermesh.session.v1.SendMessageRequest
+	(*SendMessageResponse)(nil),     // 43: hermesh.session.v1.SendMessageResponse
+	(*InterruptSessionRequest)(nil), // 44: hermesh.session.v1.InterruptSessionRequest
+	(*ArchiveSessionRequest)(nil),   // 45: hermesh.session.v1.ArchiveSessionRequest
+	(*UnarchiveSessionRequest)(nil), // 46: hermesh.session.v1.UnarchiveSessionRequest
+	(*DeleteSessionRequest)(nil),    // 47: hermesh.session.v1.DeleteSessionRequest
+	(*DeleteSessionResponse)(nil),   // 48: hermesh.session.v1.DeleteSessionResponse
+	(*RenameSessionRequest)(nil),    // 49: hermesh.session.v1.RenameSessionRequest
+	(*AnswerQuestionRequest)(nil),   // 50: hermesh.session.v1.AnswerQuestionRequest
+	(*GetUsageRequest)(nil),         // 51: hermesh.session.v1.GetUsageRequest
+	(*UsageDay)(nil),                // 52: hermesh.session.v1.UsageDay
+	(*GetUsageResponse)(nil),        // 53: hermesh.session.v1.GetUsageResponse
+	(*GetDiffRequest)(nil),          // 54: hermesh.session.v1.GetDiffRequest
+	(*GetDiffResponse)(nil),         // 55: hermesh.session.v1.GetDiffResponse
+	(*timestamppb.Timestamp)(nil),   // 56: google.protobuf.Timestamp
+	(v1.PairingKind)(0),             // 57: hermesh.identity.v1.PairingKind
+	(v1.Workspace)(0),               // 58: hermesh.identity.v1.Workspace
 }
 var file_hermesh_session_v1_session_proto_depIdxs = []int32{
 	1,  // 0: hermesh.session.v1.Failure.kind:type_name -> hermesh.session.v1.FailureKind
-	5,  // 1: hermesh.session.v1.StartSessionRequest.attachments:type_name -> hermesh.session.v1.Attachment
-	18, // 2: hermesh.session.v1.StartSessionResponse.session:type_name -> hermesh.session.v1.Session
-	52, // 3: hermesh.session.v1.Notice.at:type_name -> google.protobuf.Timestamp
-	12, // 4: hermesh.session.v1.Notice.question:type_name -> hermesh.session.v1.Question
+	7,  // 1: hermesh.session.v1.StartSessionRequest.attachments:type_name -> hermesh.session.v1.Attachment
+	20, // 2: hermesh.session.v1.StartSessionResponse.session:type_name -> hermesh.session.v1.Session
+	56, // 3: hermesh.session.v1.Notice.at:type_name -> google.protobuf.Timestamp
+	14, // 4: hermesh.session.v1.Notice.question:type_name -> hermesh.session.v1.Question
 	1,  // 5: hermesh.session.v1.Notice.failure:type_name -> hermesh.session.v1.FailureKind
-	9,  // 6: hermesh.session.v1.Notice.diff_stat:type_name -> hermesh.session.v1.DiffStat
-	53, // 7: hermesh.session.v1.Notice.pairing_kind:type_name -> hermesh.identity.v1.PairingKind
-	9,  // 8: hermesh.session.v1.SessionProgress.diff_stat:type_name -> hermesh.session.v1.DiffStat
-	10, // 9: hermesh.session.v1.SessionProgress.usage:type_name -> hermesh.session.v1.Usage
-	3,  // 10: hermesh.session.v1.SessionProgress.last_failure:type_name -> hermesh.session.v1.Failure
-	12, // 11: hermesh.session.v1.SessionProgress.pending_question:type_name -> hermesh.session.v1.Question
-	52, // 12: hermesh.session.v1.SessionProgress.turn_started_at:type_name -> google.protobuf.Timestamp
-	13, // 13: hermesh.session.v1.Question.items:type_name -> hermesh.session.v1.QuestionItem
-	52, // 14: hermesh.session.v1.Question.asked_at:type_name -> google.protobuf.Timestamp
-	52, // 15: hermesh.session.v1.Question.expires_at:type_name -> google.protobuf.Timestamp
-	14, // 16: hermesh.session.v1.QuestionItem.options:type_name -> hermesh.session.v1.QuestionOption
-	12, // 17: hermesh.session.v1.QuestionAsked.question:type_name -> hermesh.session.v1.Question
+	11, // 6: hermesh.session.v1.Notice.diff_stat:type_name -> hermesh.session.v1.DiffStat
+	57, // 7: hermesh.session.v1.Notice.pairing_kind:type_name -> hermesh.identity.v1.PairingKind
+	11, // 8: hermesh.session.v1.SessionProgress.diff_stat:type_name -> hermesh.session.v1.DiffStat
+	12, // 9: hermesh.session.v1.SessionProgress.usage:type_name -> hermesh.session.v1.Usage
+	5,  // 10: hermesh.session.v1.SessionProgress.last_failure:type_name -> hermesh.session.v1.Failure
+	14, // 11: hermesh.session.v1.SessionProgress.pending_question:type_name -> hermesh.session.v1.Question
+	56, // 12: hermesh.session.v1.SessionProgress.turn_started_at:type_name -> google.protobuf.Timestamp
+	15, // 13: hermesh.session.v1.Question.items:type_name -> hermesh.session.v1.QuestionItem
+	56, // 14: hermesh.session.v1.Question.asked_at:type_name -> google.protobuf.Timestamp
+	56, // 15: hermesh.session.v1.Question.expires_at:type_name -> google.protobuf.Timestamp
+	16, // 16: hermesh.session.v1.QuestionItem.options:type_name -> hermesh.session.v1.QuestionOption
+	14, // 17: hermesh.session.v1.QuestionAsked.question:type_name -> hermesh.session.v1.Question
 	2,  // 18: hermesh.session.v1.QuestionResolved.resolution:type_name -> hermesh.session.v1.QuestionResolution
-	15, // 19: hermesh.session.v1.QuestionResolved.answers:type_name -> hermesh.session.v1.Answer
+	17, // 19: hermesh.session.v1.QuestionResolved.answers:type_name -> hermesh.session.v1.Answer
 	0,  // 20: hermesh.session.v1.Session.status:type_name -> hermesh.session.v1.SessionStatus
-	11, // 21: hermesh.session.v1.Session.progress:type_name -> hermesh.session.v1.SessionProgress
-	52, // 22: hermesh.session.v1.Session.created_at:type_name -> google.protobuf.Timestamp
-	52, // 23: hermesh.session.v1.Session.updated_at:type_name -> google.protobuf.Timestamp
-	54, // 24: hermesh.session.v1.Session.workspace:type_name -> hermesh.identity.v1.Workspace
+	13, // 21: hermesh.session.v1.Session.progress:type_name -> hermesh.session.v1.SessionProgress
+	56, // 22: hermesh.session.v1.Session.created_at:type_name -> google.protobuf.Timestamp
+	56, // 23: hermesh.session.v1.Session.updated_at:type_name -> google.protobuf.Timestamp
+	58, // 24: hermesh.session.v1.Session.workspace:type_name -> hermesh.identity.v1.Workspace
 	0,  // 25: hermesh.session.v1.ListSessionsRequest.status:type_name -> hermesh.session.v1.SessionStatus
-	52, // 26: hermesh.session.v1.ListSessionsRequest.since:type_name -> google.protobuf.Timestamp
-	21, // 27: hermesh.session.v1.ListSessionsRequest.before:type_name -> hermesh.session.v1.SessionCursor
-	52, // 28: hermesh.session.v1.SessionCursor.updated_at:type_name -> google.protobuf.Timestamp
-	18, // 29: hermesh.session.v1.ListSessionsResponse.sessions:type_name -> hermesh.session.v1.Session
-	21, // 30: hermesh.session.v1.ListSessionsResponse.next:type_name -> hermesh.session.v1.SessionCursor
-	18, // 31: hermesh.session.v1.WatchSessionsResponse.sessions:type_name -> hermesh.session.v1.Session
-	28, // 32: hermesh.session.v1.ListEventsResponse.events:type_name -> hermesh.session.v1.SessionEvent
-	52, // 33: hermesh.session.v1.SessionEvent.ts:type_name -> google.protobuf.Timestamp
-	29, // 34: hermesh.session.v1.SessionEvent.status:type_name -> hermesh.session.v1.StatusChanged
-	30, // 35: hermesh.session.v1.SessionEvent.turn_started:type_name -> hermesh.session.v1.TurnStarted
-	31, // 36: hermesh.session.v1.SessionEvent.user_message:type_name -> hermesh.session.v1.UserMessage
-	32, // 37: hermesh.session.v1.SessionEvent.agent_message:type_name -> hermesh.session.v1.AgentMessage
-	34, // 38: hermesh.session.v1.SessionEvent.tool_call:type_name -> hermesh.session.v1.ToolCall
-	35, // 39: hermesh.session.v1.SessionEvent.tool_result:type_name -> hermesh.session.v1.ToolResult
-	36, // 40: hermesh.session.v1.SessionEvent.turn_completed:type_name -> hermesh.session.v1.TurnCompleted
-	37, // 41: hermesh.session.v1.SessionEvent.error:type_name -> hermesh.session.v1.ErrorEvent
-	16, // 42: hermesh.session.v1.SessionEvent.question_asked:type_name -> hermesh.session.v1.QuestionAsked
-	17, // 43: hermesh.session.v1.SessionEvent.question_resolved:type_name -> hermesh.session.v1.QuestionResolved
-	33, // 44: hermesh.session.v1.SessionEvent.agent_draft:type_name -> hermesh.session.v1.AgentDraft
-	0,  // 45: hermesh.session.v1.StatusChanged.status:type_name -> hermesh.session.v1.SessionStatus
-	6,  // 46: hermesh.session.v1.UserMessage.attachments:type_name -> hermesh.session.v1.AttachmentInfo
-	10, // 47: hermesh.session.v1.TurnCompleted.usage:type_name -> hermesh.session.v1.Usage
-	9,  // 48: hermesh.session.v1.TurnCompleted.diff_stat:type_name -> hermesh.session.v1.DiffStat
-	3,  // 49: hermesh.session.v1.TurnCompleted.failure:type_name -> hermesh.session.v1.Failure
-	3,  // 50: hermesh.session.v1.ErrorEvent.failure:type_name -> hermesh.session.v1.Failure
-	5,  // 51: hermesh.session.v1.SendMessageRequest.attachments:type_name -> hermesh.session.v1.Attachment
-	18, // 52: hermesh.session.v1.SendMessageResponse.session:type_name -> hermesh.session.v1.Session
-	15, // 53: hermesh.session.v1.AnswerQuestionRequest.answers:type_name -> hermesh.session.v1.Answer
-	48, // 54: hermesh.session.v1.GetUsageResponse.days:type_name -> hermesh.session.v1.UsageDay
-	9,  // 55: hermesh.session.v1.GetDiffResponse.stat:type_name -> hermesh.session.v1.DiffStat
-	4,  // 56: hermesh.session.v1.SessionService.StartSession:input_type -> hermesh.session.v1.StartSessionRequest
-	19, // 57: hermesh.session.v1.SessionService.GetSession:input_type -> hermesh.session.v1.GetSessionRequest
-	20, // 58: hermesh.session.v1.SessionService.ListSessions:input_type -> hermesh.session.v1.ListSessionsRequest
-	23, // 59: hermesh.session.v1.SessionService.WatchSessions:input_type -> hermesh.session.v1.WatchSessionsRequest
-	25, // 60: hermesh.session.v1.SessionService.StreamEvents:input_type -> hermesh.session.v1.StreamEventsRequest
-	26, // 61: hermesh.session.v1.SessionService.ListEvents:input_type -> hermesh.session.v1.ListEventsRequest
-	38, // 62: hermesh.session.v1.SessionService.SendMessage:input_type -> hermesh.session.v1.SendMessageRequest
-	40, // 63: hermesh.session.v1.SessionService.InterruptSession:input_type -> hermesh.session.v1.InterruptSessionRequest
-	41, // 64: hermesh.session.v1.SessionService.ArchiveSession:input_type -> hermesh.session.v1.ArchiveSessionRequest
-	42, // 65: hermesh.session.v1.SessionService.UnarchiveSession:input_type -> hermesh.session.v1.UnarchiveSessionRequest
-	43, // 66: hermesh.session.v1.SessionService.DeleteSession:input_type -> hermesh.session.v1.DeleteSessionRequest
-	45, // 67: hermesh.session.v1.SessionService.RenameSession:input_type -> hermesh.session.v1.RenameSessionRequest
-	50, // 68: hermesh.session.v1.SessionService.GetDiff:input_type -> hermesh.session.v1.GetDiffRequest
-	46, // 69: hermesh.session.v1.SessionService.AnswerQuestion:input_type -> hermesh.session.v1.AnswerQuestionRequest
-	47, // 70: hermesh.session.v1.SessionService.GetUsage:input_type -> hermesh.session.v1.GetUsageRequest
-	7,  // 71: hermesh.session.v1.SessionService.StartSession:output_type -> hermesh.session.v1.StartSessionResponse
-	18, // 72: hermesh.session.v1.SessionService.GetSession:output_type -> hermesh.session.v1.Session
-	22, // 73: hermesh.session.v1.SessionService.ListSessions:output_type -> hermesh.session.v1.ListSessionsResponse
-	24, // 74: hermesh.session.v1.SessionService.WatchSessions:output_type -> hermesh.session.v1.WatchSessionsResponse
-	28, // 75: hermesh.session.v1.SessionService.StreamEvents:output_type -> hermesh.session.v1.SessionEvent
-	27, // 76: hermesh.session.v1.SessionService.ListEvents:output_type -> hermesh.session.v1.ListEventsResponse
-	39, // 77: hermesh.session.v1.SessionService.SendMessage:output_type -> hermesh.session.v1.SendMessageResponse
-	18, // 78: hermesh.session.v1.SessionService.InterruptSession:output_type -> hermesh.session.v1.Session
-	18, // 79: hermesh.session.v1.SessionService.ArchiveSession:output_type -> hermesh.session.v1.Session
-	18, // 80: hermesh.session.v1.SessionService.UnarchiveSession:output_type -> hermesh.session.v1.Session
-	44, // 81: hermesh.session.v1.SessionService.DeleteSession:output_type -> hermesh.session.v1.DeleteSessionResponse
-	18, // 82: hermesh.session.v1.SessionService.RenameSession:output_type -> hermesh.session.v1.Session
-	51, // 83: hermesh.session.v1.SessionService.GetDiff:output_type -> hermesh.session.v1.GetDiffResponse
-	18, // 84: hermesh.session.v1.SessionService.AnswerQuestion:output_type -> hermesh.session.v1.Session
-	49, // 85: hermesh.session.v1.SessionService.GetUsage:output_type -> hermesh.session.v1.GetUsageResponse
-	71, // [71:86] is the sub-list for method output_type
-	56, // [56:71] is the sub-list for method input_type
-	56, // [56:56] is the sub-list for extension type_name
-	56, // [56:56] is the sub-list for extension extendee
-	0,  // [0:56] is the sub-list for field type_name
+	56, // 26: hermesh.session.v1.ListSessionsRequest.since:type_name -> google.protobuf.Timestamp
+	23, // 27: hermesh.session.v1.ListSessionsRequest.before:type_name -> hermesh.session.v1.SessionCursor
+	3,  // 28: hermesh.session.v1.ListSessionsRequest.view:type_name -> hermesh.session.v1.SessionView
+	56, // 29: hermesh.session.v1.SessionCursor.updated_at:type_name -> google.protobuf.Timestamp
+	20, // 30: hermesh.session.v1.ListSessionsResponse.sessions:type_name -> hermesh.session.v1.Session
+	23, // 31: hermesh.session.v1.ListSessionsResponse.next:type_name -> hermesh.session.v1.SessionCursor
+	3,  // 32: hermesh.session.v1.WatchSessionsRequest.view:type_name -> hermesh.session.v1.SessionView
+	20, // 33: hermesh.session.v1.WatchSessionsResponse.sessions:type_name -> hermesh.session.v1.Session
+	4,  // 34: hermesh.session.v1.StreamEventsRequest.view:type_name -> hermesh.session.v1.EventView
+	4,  // 35: hermesh.session.v1.ListEventsRequest.view:type_name -> hermesh.session.v1.EventView
+	30, // 36: hermesh.session.v1.ListEventsResponse.events:type_name -> hermesh.session.v1.SessionEvent
+	56, // 37: hermesh.session.v1.SessionEvent.ts:type_name -> google.protobuf.Timestamp
+	31, // 38: hermesh.session.v1.SessionEvent.status:type_name -> hermesh.session.v1.StatusChanged
+	32, // 39: hermesh.session.v1.SessionEvent.turn_started:type_name -> hermesh.session.v1.TurnStarted
+	33, // 40: hermesh.session.v1.SessionEvent.user_message:type_name -> hermesh.session.v1.UserMessage
+	34, // 41: hermesh.session.v1.SessionEvent.agent_message:type_name -> hermesh.session.v1.AgentMessage
+	36, // 42: hermesh.session.v1.SessionEvent.tool_call:type_name -> hermesh.session.v1.ToolCall
+	37, // 43: hermesh.session.v1.SessionEvent.tool_result:type_name -> hermesh.session.v1.ToolResult
+	40, // 44: hermesh.session.v1.SessionEvent.turn_completed:type_name -> hermesh.session.v1.TurnCompleted
+	41, // 45: hermesh.session.v1.SessionEvent.error:type_name -> hermesh.session.v1.ErrorEvent
+	18, // 46: hermesh.session.v1.SessionEvent.question_asked:type_name -> hermesh.session.v1.QuestionAsked
+	19, // 47: hermesh.session.v1.SessionEvent.question_resolved:type_name -> hermesh.session.v1.QuestionResolved
+	35, // 48: hermesh.session.v1.SessionEvent.agent_draft:type_name -> hermesh.session.v1.AgentDraft
+	0,  // 49: hermesh.session.v1.StatusChanged.status:type_name -> hermesh.session.v1.SessionStatus
+	8,  // 50: hermesh.session.v1.UserMessage.attachments:type_name -> hermesh.session.v1.AttachmentInfo
+	12, // 51: hermesh.session.v1.TurnCompleted.usage:type_name -> hermesh.session.v1.Usage
+	11, // 52: hermesh.session.v1.TurnCompleted.diff_stat:type_name -> hermesh.session.v1.DiffStat
+	5,  // 53: hermesh.session.v1.TurnCompleted.failure:type_name -> hermesh.session.v1.Failure
+	5,  // 54: hermesh.session.v1.ErrorEvent.failure:type_name -> hermesh.session.v1.Failure
+	7,  // 55: hermesh.session.v1.SendMessageRequest.attachments:type_name -> hermesh.session.v1.Attachment
+	20, // 56: hermesh.session.v1.SendMessageResponse.session:type_name -> hermesh.session.v1.Session
+	17, // 57: hermesh.session.v1.AnswerQuestionRequest.answers:type_name -> hermesh.session.v1.Answer
+	52, // 58: hermesh.session.v1.GetUsageResponse.days:type_name -> hermesh.session.v1.UsageDay
+	11, // 59: hermesh.session.v1.GetDiffResponse.stat:type_name -> hermesh.session.v1.DiffStat
+	6,  // 60: hermesh.session.v1.SessionService.StartSession:input_type -> hermesh.session.v1.StartSessionRequest
+	21, // 61: hermesh.session.v1.SessionService.GetSession:input_type -> hermesh.session.v1.GetSessionRequest
+	22, // 62: hermesh.session.v1.SessionService.ListSessions:input_type -> hermesh.session.v1.ListSessionsRequest
+	25, // 63: hermesh.session.v1.SessionService.WatchSessions:input_type -> hermesh.session.v1.WatchSessionsRequest
+	27, // 64: hermesh.session.v1.SessionService.StreamEvents:input_type -> hermesh.session.v1.StreamEventsRequest
+	28, // 65: hermesh.session.v1.SessionService.ListEvents:input_type -> hermesh.session.v1.ListEventsRequest
+	42, // 66: hermesh.session.v1.SessionService.SendMessage:input_type -> hermesh.session.v1.SendMessageRequest
+	44, // 67: hermesh.session.v1.SessionService.InterruptSession:input_type -> hermesh.session.v1.InterruptSessionRequest
+	45, // 68: hermesh.session.v1.SessionService.ArchiveSession:input_type -> hermesh.session.v1.ArchiveSessionRequest
+	46, // 69: hermesh.session.v1.SessionService.UnarchiveSession:input_type -> hermesh.session.v1.UnarchiveSessionRequest
+	47, // 70: hermesh.session.v1.SessionService.DeleteSession:input_type -> hermesh.session.v1.DeleteSessionRequest
+	49, // 71: hermesh.session.v1.SessionService.RenameSession:input_type -> hermesh.session.v1.RenameSessionRequest
+	54, // 72: hermesh.session.v1.SessionService.GetDiff:input_type -> hermesh.session.v1.GetDiffRequest
+	50, // 73: hermesh.session.v1.SessionService.AnswerQuestion:input_type -> hermesh.session.v1.AnswerQuestionRequest
+	51, // 74: hermesh.session.v1.SessionService.GetUsage:input_type -> hermesh.session.v1.GetUsageRequest
+	38, // 75: hermesh.session.v1.SessionService.ReadToolOutput:input_type -> hermesh.session.v1.ReadToolOutputRequest
+	9,  // 76: hermesh.session.v1.SessionService.StartSession:output_type -> hermesh.session.v1.StartSessionResponse
+	20, // 77: hermesh.session.v1.SessionService.GetSession:output_type -> hermesh.session.v1.Session
+	24, // 78: hermesh.session.v1.SessionService.ListSessions:output_type -> hermesh.session.v1.ListSessionsResponse
+	26, // 79: hermesh.session.v1.SessionService.WatchSessions:output_type -> hermesh.session.v1.WatchSessionsResponse
+	30, // 80: hermesh.session.v1.SessionService.StreamEvents:output_type -> hermesh.session.v1.SessionEvent
+	29, // 81: hermesh.session.v1.SessionService.ListEvents:output_type -> hermesh.session.v1.ListEventsResponse
+	43, // 82: hermesh.session.v1.SessionService.SendMessage:output_type -> hermesh.session.v1.SendMessageResponse
+	20, // 83: hermesh.session.v1.SessionService.InterruptSession:output_type -> hermesh.session.v1.Session
+	20, // 84: hermesh.session.v1.SessionService.ArchiveSession:output_type -> hermesh.session.v1.Session
+	20, // 85: hermesh.session.v1.SessionService.UnarchiveSession:output_type -> hermesh.session.v1.Session
+	48, // 86: hermesh.session.v1.SessionService.DeleteSession:output_type -> hermesh.session.v1.DeleteSessionResponse
+	20, // 87: hermesh.session.v1.SessionService.RenameSession:output_type -> hermesh.session.v1.Session
+	55, // 88: hermesh.session.v1.SessionService.GetDiff:output_type -> hermesh.session.v1.GetDiffResponse
+	20, // 89: hermesh.session.v1.SessionService.AnswerQuestion:output_type -> hermesh.session.v1.Session
+	53, // 90: hermesh.session.v1.SessionService.GetUsage:output_type -> hermesh.session.v1.GetUsageResponse
+	39, // 91: hermesh.session.v1.SessionService.ReadToolOutput:output_type -> hermesh.session.v1.ToolOutputChunk
+	76, // [76:92] is the sub-list for method output_type
+	60, // [60:76] is the sub-list for method input_type
+	60, // [60:60] is the sub-list for extension type_name
+	60, // [60:60] is the sub-list for extension extendee
+	0,  // [0:60] is the sub-list for field type_name
 }
 
 func init() { file_hermesh_session_v1_session_proto_init() }
@@ -4308,8 +4607,8 @@ func file_hermesh_session_v1_session_proto_init() {
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_hermesh_session_v1_session_proto_rawDesc), len(file_hermesh_session_v1_session_proto_rawDesc)),
-			NumEnums:      3,
-			NumMessages:   49,
+			NumEnums:      5,
+			NumMessages:   51,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

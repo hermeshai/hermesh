@@ -57,8 +57,27 @@ func (d *Device) ServeLocal(ctx context.Context, sockPath string) error {
 // its own listener and access control (the iPhone app's loopback server).
 func (d *Device) LocalHandler() http.Handler {
 	mux := http.NewServeMux()
-	mux.Handle(localv1connect.NewLocalServiceHandler(&localService{d: d}))
+	mux.Handle(localv1connect.NewLocalServiceHandler(&localService{d: d}, connect.WithInterceptors(connect.UnaryInterceptorFunc(d.kickAfterWrites))))
 	return mux
+}
+
+// kickAfterWrites tells the screens (Watch) to look again after a call that
+// may have changed what they show: any but a read.
+func (d *Device) kickAfterWrites(next connect.UnaryFunc) connect.UnaryFunc {
+	return func(ctx context.Context, req connect.AnyRequest) (connect.AnyResponse, error) {
+		res, err := next(ctx, req)
+		name := req.Spec().Procedure[strings.LastIndex(req.Spec().Procedure, "/")+1:]
+		if !strings.HasPrefix(name, "Get") && !strings.HasPrefix(name, "List") && !strings.HasPrefix(name, "Lookup") {
+			d.mu.Lock()
+			for _, o := range d.profiles {
+				o.rep.mu.Lock()
+				o.rep.kickLocked()
+				o.rep.mu.Unlock()
+			}
+			d.mu.Unlock()
+		}
+		return res, err
+	}
 }
 
 // localService serves the current profile (profiles.go).
@@ -367,7 +386,7 @@ func (l *localService) ListSessions(ctx context.Context, req *localv1.ListSessio
 		if err != nil {
 			return nil, err
 		}
-		res, err := m.ListSessions(&sessionv1.ListSessionsRequest{Limit: req.Limit, Before: req.Before})
+		res, err := m.ListSessions(&sessionv1.ListSessionsRequest{Limit: req.Limit, Before: req.Before, View: req.View})
 		if err != nil {
 			return nil, err
 		}
@@ -405,9 +424,36 @@ func (l *localService) StreamSessionEvents(ctx context.Context, req *localv1.Str
 		if err != nil {
 			return err
 		}
-		return m.StreamEvents(ctx, &sessionv1.StreamEventsRequest{SessionId: req.SessionId, AfterSeq: req.AfterSeq, Follow: req.Follow, Partial: req.Partial}, stream.Send)
+		return m.StreamEvents(ctx, &sessionv1.StreamEventsRequest{SessionId: req.SessionId, AfterSeq: req.AfterSeq, Follow: req.Follow, Partial: req.Partial, View: req.View}, stream.Send)
 	}
 	return l.o().StreamSessionEvents(ctx, req, stream.Send)
+}
+
+func (l *localService) ListSessionEvents(ctx context.Context, req *localv1.ListSessionEventsRequest) (*localv1.ListSessionEventsResponse, error) {
+	list := l.o().ListSessionEvents
+	if m, ok, err := l.o().onlyMachine(); ok {
+		if err != nil {
+			return nil, err
+		}
+		list = func(_ context.Context, r *sessionv1.ListEventsRequest) (*sessionv1.ListEventsResponse, error) {
+			return m.ListEvents(r)
+		}
+	}
+	res, err := list(ctx, &sessionv1.ListEventsRequest{SessionId: req.SessionId, AfterSeq: req.AfterSeq, BeforeSeq: req.BeforeSeq, Limit: req.Limit, View: req.View})
+	if err != nil {
+		return nil, err
+	}
+	return &localv1.ListSessionEventsResponse{Events: res.Events, HasMoreBefore: res.HasMoreBefore, HasMoreAfter: res.HasMoreAfter}, nil
+}
+
+func (l *localService) ReadToolOutput(ctx context.Context, req *localv1.ReadToolOutputRequest, stream *connect.ServerStream[sessionv1.ToolOutputChunk]) error {
+	if m, ok, err := l.o().onlyMachine(); ok {
+		if err != nil {
+			return err
+		}
+		return m.ReadToolOutput(&sessionv1.ReadToolOutputRequest{SessionId: req.SessionId, CallId: req.CallId}, stream.Send)
+	}
+	return l.o().ReadToolOutput(ctx, req, stream.Send)
 }
 
 func (l *localService) AnswerQuestion(ctx context.Context, req *localv1.AnswerQuestionRequest) (*localv1.AnswerQuestionResponse, error) {

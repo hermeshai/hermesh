@@ -25,7 +25,7 @@
     "archived": "Archived",
     "crashed": "Crashed (send a message to continue)",
     "waitingInput": "Waiting for you",
-    "unknown": "Unknown"
+    "unknown": "State unknown"
   },
   "phase": {
     "preparing": "Preparing worktree…",

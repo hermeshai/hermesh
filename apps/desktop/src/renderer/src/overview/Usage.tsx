@@ -14,7 +14,7 @@ export function dayText(d: Date): string {
   return i18n.t("overview:day", { date, weekday });
 }
 
-/** A year of tokens by day (GetUsage), asked again as turns end and every minute; null until the first answer. */
+/** A year of tokens by day (GetUsage), asked again as turns end (hermeshd keeps each machine's answer until then); null until the first answer. */
 export function useUsage(now: Date): GetUsageResponse | null {
   const st = useStore();
   const [res, setRes] = useState<GetUsageResponse | null>(null);
@@ -29,10 +29,8 @@ export function useUsage(now: Date): GetUsageResponse | null {
         .then((r) => !stop && setRes(r))
         .catch(() => {}); // kept as it was; machines that can't answer are listed in the response
     ask();
-    const t = setInterval(ask, 60_000);
     return () => {
       stop = true;
-      clearInterval(t);
     };
   }, [since, turns]);
   return res;

@@ -117,3 +117,14 @@ func ask(_ s: inout Session) {
     s.status = .idle
     #expect(s.currentTurn == 2 && s.pendingQuestion == nil)
 }
+
+@Test func stateUnknownOnAnUnreachableMachine() {
+    var asking = session("q", .waitingInput, machine: "m2")
+    ask(&asking)
+    let all = [session("r", .running, machine: "m2"), asking, session("a", .archived, machine: "m2"), session("here", .running, machine: "m1")]
+    #expect(withKnownState(all, unreachable: []).map(\.status) == all.map(\.status))
+    let shown = withKnownState(all, unreachable: ["m2"])
+    #expect(shown.map(\.status) == [.unspecified, .unspecified, .archived, .running])
+    #expect(!shown[0].isActive && !shown[1].needsAttention && !shown[1].isInterruptible && !shown[0].isArchivable)
+    #expect(statusTitle(shown[0].status) == "State unknown")
+}

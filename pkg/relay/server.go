@@ -100,6 +100,8 @@ type tenant struct {
 	lastSeen    map[string]time.Time
 	watchers    map[string]map[chan *relayv1.MachineUpdate]struct{}
 	revocations *identityv1.RevocationList
+	// ownerWatchers are woken when what WatchOwner sends may have changed.
+	ownerWatchers map[chan struct{}]struct{}
 }
 
 type peer struct {
@@ -244,7 +246,7 @@ func (s *Server) loadTenant(ownerID string) (*tenant, error) {
 	}
 	t = &tenant{ownerID: ownerID, trust: trust, machines: map[string]*peer{}, peers: map[*peer]struct{}{},
 		reported: map[string]*relayv1.ReportStatusRequest{}, lastSeen: map[string]time.Time{},
-		watchers: map[string]map[chan *relayv1.MachineUpdate]struct{}{}, revocations: rev}
+		watchers: map[string]map[chan *relayv1.MachineUpdate]struct{}{}, revocations: rev, ownerWatchers: map[chan struct{}]struct{}{}}
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if cur := s.tenants[ownerID]; cur != nil {
@@ -293,6 +295,7 @@ func (s *Server) RegisterOwner(rootChain *identityv1.RootChain) (string, error) 
 
 // acceptRootChain installs a longer root chain for t and tells its machines.
 func (s *Server) acceptRootChain(t *tenant, c *identityv1.RootChain) error {
+	defer s.wakeOwner(t)
 	changed, err := t.trust.AcceptRootChain(c)
 	if err != nil || !changed {
 		return err
@@ -547,6 +550,7 @@ func (s *Server) register(p *peer) {
 		t.machines[p.subject.ID] = p
 		t.lastSeen[p.subject.ID] = time.Now()
 	}
+	s.wakeOwnerLocked(t)
 	s.mu.Unlock()
 	if old != nil {
 		old.sess.Close()
@@ -563,6 +567,7 @@ func (s *Server) unregister(p *peer) {
 		delete(t.machines, p.subject.ID)
 		t.lastSeen[p.subject.ID] = time.Now()
 	}
+	s.wakeOwnerLocked(t)
 	s.mu.Unlock()
 	p.sess.Close()
 	s.store.LogConnection(t.ownerID, int(p.role), p.subject.ID, p.remote, "disconnect")
@@ -701,6 +706,7 @@ func (s *Server) ApplyRevocations(ownerID string, in *identityv1.RevocationList)
 }
 
 func (s *Server) applyRevocations(t *tenant, in *identityv1.RevocationList) error {
+	defer s.wakeOwner(t)
 	s.mu.Lock()
 	cur := proto.Clone(t.revocations).(*identityv1.RevocationList)
 	s.mu.Unlock()

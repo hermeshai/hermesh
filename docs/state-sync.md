@@ -1,7 +1,9 @@
 # Hermesh state sync: one replica per device, change feeds on every hop
 
-Status: accepted, 2026-10-25 (decisions in §10). Step 1 built 2026-10-26
-(§7); steps 2–5 not yet.
+Status: accepted, 2026-10-25 (decisions in §10). Built 2026-10-26, steps 1
+to 5 (§7); what the building changed is in §11. The hosted center gets
+`WatchOwner` with its own release (§10, 5); until then hermeshd polls it
+once per device.
 
 The Mac app and the iPhone app show the owner's world: machines,
 agents (clients), devices, projects, pairing requests, sessions and their
@@ -183,17 +185,12 @@ service OwnerControlService {
 
 message WatchOwnerRequest {}
 
+// Each list whole, in the first message and whenever it changed (unset: as
+// before). Pairing requests expire by their expires_at.
 message OwnerUpdate {
-  // Set on the first message, which carries everything: the caller drops
-  // what it held. Later messages carry changes only.
-  bool reset = 1;
-  repeated MachineEntry machines = 2;         // added or changed (presence, name, version)
-  repeated string removed_machine_ids = 3;
-  repeated ClientEntry clients = 4;           // added or changed (presence, grant)
-  repeated string removed_grant_ids = 5;      // revoked
-  repeated PendingPairing pairings = 6;       // new requests
-  repeated string removed_pairing_codes = 7;  // answered; expiry is the owner's to apply (expires_at)
-  hermesh.identity.v1.RootChain root_chain = 8; // with reset, and when it changed
+  ListMachinesResponse machines = 1;          // with the root chain
+  ListClientsResponse clients = 2;
+  ListPairingRequestsResponse pairings = 3;
 }
 ```
 
@@ -202,9 +199,14 @@ message OwnerUpdate {
   where presence and pairing already change (admission, disconnect,
   `ReportStatus`, `PutPairing`/`ClaimPairing`, `CompletePairing`,
   `PublishGrant`, `Revoke`, `PublishRootChain`).
-- **Pacing.** At most one message per 200 ms per watcher (dirty flags, as
-  machines pace session changes at 100 ms). A watcher that falls behind is
-  closed and reconnects with a fresh snapshot.
+- **Pacing.** At most one message per 200 ms per watcher: where presence,
+  names, grants and pairing requests change, the tenant's watchers are
+  woken, build the three lists as the List calls do and send those that
+  changed. A watcher also looks every 30 s, for a change made where none is
+  woken.
+- **Whole lists.** A handful of machines and agents: sending a list whole
+  when it changed lets the owner verify it with the very code that verifies
+  the List calls, with nothing new to drift.
 - **No resume token.** The snapshot is small: a handful of machines and
   agents. Each new relay connection starts with one.
 - **Nothing new for the center.** It sends exactly what the three List
@@ -258,10 +260,11 @@ message WatchResponse {
 
 - **Resume tokens.** Opaque to the caller; inside, a start id (random per
   hermeshd start) and a change counter. The machine keeps, in memory, the
-  counter value of each session's, project's and its status's last change.
-  It refuses a token from another start, or one older than what it still
-  remembers (the last 10,000 changes), and then sends a reset. The counter
-  is used, not `updated_at`, because the machine's clock can go back.
+  counter value of each session's and project's last change since it
+  started (a few bytes each), so any token of this start resumes; one from
+  another start is refused, and a reset sent. Its state is compared each
+  second, in process, and sent when it changed. The counter is used, not
+  `updated_at`, because the machine's clock can go back.
 - **Pacing.** Changes are batched at 100 ms, the dirty set and tick that
   `Sessions.Watch` uses today ([sessionlist.go](../internal/machine/sessionlist.go)).
   Status changes ride the same tick. Agent scans still happen only on
@@ -363,9 +366,10 @@ and streams it can go:
 - **Recording.** An output up to 16 KiB stays inline in its event, as
   today. A longer one is kept whole in a table of its own,
   `tool_outputs(session_id, call_id, size, data)`, compressed. Its event
-  holds the preview (BASIC's rule) and `size`. So `session_events` stays
-  small and replaying or paging a conversation never reads the large
-  outputs.
+  holds its first 16 KiB, `size` and `truncated` (what FULL gives, as
+  before), and BASIC cuts that to the preview. So `session_events` stays
+  as small as today and replaying or paging a conversation never reads the
+  large outputs.
 - **Bound.** At most 1 MiB is kept: past that, the first and last 512 KiB,
   with a line in between saying how many bytes were left out, and
   `truncated` set. Build and test logs keep their end, where the error
@@ -446,11 +450,10 @@ today. The last subscriber leaving stops them 60 s later, not at once.
 
 ### 4.4 Usage
 
-`GetUsage` answers from the replica (from step 2; in step 1 it still asks
-each machine, without asking the relay first). History (before today, in the
-caller's time zone) is fetched once per machine. Today's is fetched again
-when that machine's sessions show a grown `turn_count`, debounced 2 s, and
-when the date changes. The overview drops its 60 s timer.
+`GetUsage` keeps each other machine's answer while the turns of its
+sessions in the replica (their `turn_count`s added up) and the day in the
+caller's time zone stay the same; this device's own is read in process. The
+overview drops its 60 s timer and asks again as turns end.
 
 ### 4.5 Trust
 
@@ -470,7 +473,7 @@ same Watch.
 
 | Peer | Detected by | Fallback |
 |---|---|---|
-| Relay without `WatchOwner` | `Unimplemented` on the first call | Poll `ListMachines` and `ListClients` every 5 s and `ListPairingRequests` every 2 s, once per device, only while sources run; poll once right after this device's own writes |
+| Relay without `WatchOwner` (the hosted center until its release) | `Unimplemented` on the first call | Poll `ListMachines` and `ListClients` every 5 s and `ListPairingRequests` every 2 s, once per device, only while sources run; poll once right after this device's own writes (also with `WatchOwner`, so the next list shows them) |
 | Machine without `Watch` | `Unimplemented` | Today's `ListSessions` first page + `WatchSessions`; `GetInfo` and `ListProjects` on connect, `GetInfo` again 1 s after its sessions change status (its counts), both every 30 s (changes other devices made) and at once after this device's own; no resume (relist on reconnect, as today) |
 | Machine that ignores `view` | a FULL session or event arrives | The owner cuts it to BASIC before the replica, so screens get small payloads anyway; only the tunnel carries the full bytes |
 | Machine without `ReadToolOutput` | `Unimplemented` | The owner serves `ReadToolOutput` from `ListEvents(after_seq: seq-1, limit: 1, view: FULL)`: the first 16 KiB, as recorded there |
@@ -521,7 +524,8 @@ screens are not touched again.
 | 4 | `OwnerControlService.WatchOwner` | Relay control calls ≈ 0 while nothing changes | step 1; a center release (bump the submodule in hermesh-cloud, redeploy) |
 | 5 | `MachineService.Watch` with resume tokens | No `GetInfo`/`ListProjects` polls; reconnects without relists; deletions never missed | step 1 |
 
-Steps 3, 4 and 5 are independent of each other.
+Steps 3, 4 and 5 are independent of each other. All five were built on
+2026-10-26; the tests named in §8 check them.
 
 ## 8. Success criteria
 
@@ -566,3 +570,27 @@ Steps 3, 4 and 5 are independent of each other.
    step 4 is done and tested; until then hermeshd polls once per device.
 6. ~~Should `hermesh session list` move to BASIC?~~ Decided 2026-10-25: no.
    Its table and `-o json` show `result`; the CLI stays out of this work.
+
+## 11. What building it changed
+
+- **`OwnerUpdate` carries whole lists** (§3.2), not changes of each item:
+  the lists are small, and the owner verifies them with the List calls'
+  own code.
+- **A long output's event keeps its first 16 KiB** (§3.5), not only the
+  preview, so FULL readers (the CLI, MCP) see what they did; `truncated`
+  keeps saying the summary is not the whole output, `size` how long the
+  whole is.
+- **`ReadToolOutputRequest` in LocalService has the result's `seq`**, so the
+  owner can answer for a machine without `ReadToolOutput` from that event.
+- **A FULL `ListSessions` asks the machines**: the replica holds BASIC
+  sessions only; the screens ask for BASIC.
+- **Resume tokens hold for a machine's whole run** (§3.3), not the last
+  10,000 changes.
+- **A machine without `Watch` has its state and projects read again every
+  30 s** besides after its sessions change (§5), for changes other devices
+  make.
+- **Measured** (Go e2e, the relay 300 ms away): every list p50 60–170 µs;
+  0 relay control calls while three windows ask as before; a pairing
+  request on a screen 0.4 s after it was made; a BASIC session 221–236
+  bytes; a whole output's first bytes 0.3–3 ms; a reconnect resumed with
+  nothing listed again.

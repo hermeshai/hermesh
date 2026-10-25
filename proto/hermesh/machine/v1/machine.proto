@@ -2,8 +2,10 @@ syntax = "proto3";
 
 package hermesh.machine.v1;
 
+import "google/protobuf/timestamp.proto";
 import "hermesh/identity/v1/identity.proto";
 import "hermesh/options/v1/options.proto";
+import "hermesh/session/v1/session.proto";
 
 // MachineService is served by every machine over E2E tunnels.
 service MachineService {
@@ -13,6 +15,47 @@ service MachineService {
   rpc ListProjects(ListProjectsRequest) returns (ListProjectsResponse) {
     option (hermesh.options.v1.access) = ACCESS_READ;
   }
+  // Watch sends the caller's view of this machine (the sessions it may
+  // read, its projects, the machine's state), then each change, until the
+  // caller leaves (docs/state-sync.md §3.3). The first message comes at
+  // once, carrying only what changed since resume_token, so the caller
+  // knows the watch is in place.
+  rpc Watch(WatchRequest) returns (stream WatchResponse) {
+    option (hermesh.options.v1.access) = ACCESS_READ;
+  }
+}
+
+message WatchRequest {
+  // From the last message applied; empty: start fresh.
+  bytes resume_token = 1;
+  // A fresh start sends what ListSessions' first page holds: the newest
+  // limit sessions (0: 50) and every unsettled one.
+  uint32 limit = 2;
+  hermesh.session.v1.SessionView view = 3;
+  // The sent_at of the last message applied, as the machine sent it. If
+  // resume_token is refused (the machine started again), the reset also
+  // carries the sessions deleted since then.
+  google.protobuf.Timestamp held_at = 4;
+}
+
+message WatchResponse {
+  // Set on the first message of a fresh start, or when resume_token was
+  // refused: replace everything held of this machine.
+  bool reset = 1;
+  // Added or changed.
+  repeated hermesh.session.v1.Session sessions = 2;
+  repeated string deleted_session_ids = 3;
+  // With reset: where older sessions start (ListSessions before).
+  hermesh.session.v1.SessionCursor next = 4;
+  // Added or changed (without base), and removed.
+  repeated Project projects = 5;
+  repeated string removed_project_ids = 6;
+  // With the first message, and when it changed.
+  MachineStatus status = 7;
+  // Every message: resume from here.
+  bytes resume_token = 8;
+  // Every message: the machine's clock when it sent it (for held_at).
+  google.protobuf.Timestamp sent_at = 9;
 }
 
 message GetInfoRequest {}

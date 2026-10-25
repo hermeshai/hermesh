@@ -87,6 +87,19 @@ func (l *Local) StreamEvents(ctx context.Context, req *sessionv1.StreamEventsReq
 	return l.n.sessions.Stream(ctx, l.p, req, send)
 }
 
+// Watch follows this machine (MachineService.Watch), in process.
+func (l *Local) Watch(ctx context.Context, req *machinev1.WatchRequest, send func(*machinev1.WatchResponse) error) error {
+	return l.n.Watch(ctx, l.p, req, send)
+}
+
+func (l *Local) ReadToolOutput(req *sessionv1.ReadToolOutputRequest, send func(*sessionv1.ToolOutputChunk) error) error {
+	return l.n.sessions.ReadToolOutput(l.p, req, send)
+}
+
+func (l *Local) ListEvents(req *sessionv1.ListEventsRequest) (*sessionv1.ListEventsResponse, error) {
+	return l.n.sessions.ListEvents(l.p, req)
+}
+
 func (l *Local) Interrupt(ctx context.Context, id string) (*sessionv1.Session, error) {
 	return l.n.sessions.Interrupt(ctx, l.p, id)
 }

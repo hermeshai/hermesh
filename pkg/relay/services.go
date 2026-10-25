@@ -191,6 +191,7 @@ func (s *Server) submitPairing(request *identityv1.Signed, custodial bool) (*rel
 		return nil, err
 	} else if existing == nil {
 		go s.notifyPairing(pr.OwnerId, code, pr)
+		s.wakeOwnerID(pr.OwnerId)
 	}
 	return &relayv1.SubmitPairingResponse{Code: code, ExpiresAt: timestamppb.New(exp)}, nil
 }
@@ -324,6 +325,7 @@ func (s *Server) ClaimPairing(code, ownerID, accountHint string) (*Pairing, erro
 			return nil, err
 		}
 		row.OwnerID, row.AccountHint = ownerID, accountHint
+		s.wakeOwnerID(ownerID)
 	}
 	return row, nil
 }
@@ -337,6 +339,7 @@ func (n *machineControl) ReportStatus(ctx context.Context, req *relayv1.ReportSt
 	p := peerFrom(ctx)
 	n.s.mu.Lock()
 	p.t.reported[p.subject.ID] = &relayv1.ReportStatusRequest{Name: req.Name, Version: req.Version}
+	n.s.wakeOwnerLocked(p.t)
 	n.s.mu.Unlock()
 	return &relayv1.ReportStatusResponse{}, nil
 }
@@ -451,24 +454,11 @@ func (o *ownerControl) GetPairingRequest(ctx context.Context, req *relayv1.GetPa
 }
 
 func (o *ownerControl) ListPairingRequests(ctx context.Context, _ *relayv1.ListPairingRequestsRequest) (*relayv1.ListPairingRequestsResponse, error) {
-	t := peerFrom(ctx).t
-	now := time.Now()
-	codes, err := o.s.store.OwnerPendingPairings(t.ownerID, now)
+	pairings, err := o.s.pendingPairings(peerFrom(ctx).t)
 	if err != nil {
 		return nil, err
 	}
-	res := &relayv1.ListPairingRequestsResponse{}
-	for _, code := range codes {
-		row, err := o.s.store.GetPairing(code)
-		if err != nil {
-			return nil, err
-		}
-		if row == nil || row.Result != nil || now.After(row.ExpiresAt) || o.s.pairingOwner(row) != t.ownerID {
-			continue
-		}
-		res.Pairings = append(res.Pairings, &relayv1.PendingPairing{Code: row.Code, Request: row.Request, ExpiresAt: timestamppb.New(row.ExpiresAt)})
-	}
-	return res, nil
+	return &relayv1.ListPairingRequestsResponse{Pairings: pairings}, nil
 }
 
 func (o *ownerControl) ClaimPairingRequest(ctx context.Context, req *relayv1.ClaimPairingRequestRequest) (*relayv1.ClaimPairingRequestResponse, error) {
@@ -546,6 +536,7 @@ func (o *ownerControl) CompletePairing(ctx context.Context, req *relayv1.Complet
 	default:
 		return nil, errf(connect.CodeInvalidArgument, "bad pairing kind")
 	}
+	defer s.wakeOwner(t)
 	return &relayv1.CompletePairingResponse{}, s.store.CompletePairing(row.Code, req.Credential)
 }
 
@@ -572,6 +563,7 @@ func (o *ownerControl) PublishGrant(ctx context.Context, req *relayv1.PublishGra
 	if err != nil {
 		return nil, errf(connect.CodeInvalidArgument, err.Error())
 	}
+	defer o.s.wakeOwner(t)
 	return &relayv1.PublishGrantResponse{}, o.s.store.PutGrant(t.ownerID, g, req.Grant)
 }
 
@@ -585,6 +577,7 @@ func (o *ownerControl) PublishMachineCert(ctx context.Context, req *relayv1.Publ
 		return nil, err
 	}
 	o.s.mu.Lock()
+	o.s.wakeOwnerLocked(t)
 	for ch := range t.watchers[nc.MachineId] {
 		select {
 		case ch <- &relayv1.MachineUpdate{Update: &relayv1.MachineUpdate_MachineCert{MachineCert: req.MachineCert}}:

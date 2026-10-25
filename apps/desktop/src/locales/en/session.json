@@ -25,6 +25,7 @@
     "copy": "Copy",
     "inProgress": "In progress",
     "truncated": "… (truncated)",
+    "outputUnreadable": "… (the rest can't be read now)",
     "resume": "When {{grant}} sends another message, it picks up from here; the earlier changes are all still there.",
     "adviceAndResume": "{{advice}} {{resume}}",
     "details": "Details",

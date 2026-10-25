@@ -2,14 +2,14 @@ import { clone, create, type MessageInitShape } from "@bufbuild/protobuf";
 import { timestampDate, timestampFromMs } from "@bufbuild/protobuf/wkt";
 import type { ConnectRouter } from "@connectrpc/connect";
 import { connectNodeAdapter } from "@connectrpc/connect-node";
-import { GetUsageResponseSchema, LocalService, WatchSessionsResponseSchema, type WatchSessionsResponse } from "@hermesh/proto/local";
+import { GetUsageResponseSchema, LocalService, WatchResponseSchema, WatchSessionsResponseSchema, type WatchResponse, type WatchSessionsResponse } from "@hermesh/proto/local";
 import { SessionCursorSchema, SessionEventSchema, SessionSchema, type Session, type SessionCursor, type SessionEvent } from "@hermesh/proto/session";
 import fs from "node:fs";
 import http from "node:http";
 import { ids, smallConversation, world, type World } from "./world";
 
 // A stand-in for hermeshd on a Unix socket, serving the benchmark's world
-// (world.ts) with the calls the main window makes. While live, it changes
+// (world.ts) with the calls the main window makes (Watch above all). While live, it changes
 // sessions as a busy owner's machines do: a running session every 100 ms
 // (hermeshd pushes at most that often), and the long running conversation
 // grows: for 5 s by an event every 250 ms, then for 5 s by a reply written
@@ -45,11 +45,21 @@ function channel<T>(signal: AbortSignal) {
 export async function startDaemon(socket: string): Promise<Daemon> {
   const w = world();
   const watchers = new Set<(m: WatchSessionsResponse) => void>();
+  const screens = new Set<(m: WatchResponse) => void>();
   const followers = new Map<string, Set<(e: SessionEvent) => void>>();
   const events = (id: string) => {
     let evs = w.events.get(id);
     if (!evs) w.events.set(id, (evs = smallConversation(w.sessions.get(id)!)));
     return evs;
+  };
+
+  const page = (limit: number, before?: SessionCursor) => {
+    const all = [...w.sessions.values()].sort(newestFirst);
+    const from = before ? all.findIndex((s) => newestFirst(s, cursorSession(before)) > 0) : 0;
+    const list = from < 0 ? [] : all.slice(from, from + (limit || 50));
+    const last = list.at(-1);
+    const more = from >= 0 && from + list.length < all.length;
+    return { sessions: list, unreachable: [], next: more && last ? create(SessionCursorSchema, { updatedAt: last.updatedAt, sessionId: last.sessionId }) : undefined };
   };
 
   const routes = (router: ConnectRouter) =>
@@ -60,14 +70,16 @@ export async function startDaemon(socket: string): Promise<Daemon> {
       listProjects: () => ({ projects: w.projects, unreachable: [] }),
       listDevices: () => ({ devices: w.devices }),
       listPairingRequests: () => ({ pairings: [] }),
-      listSessions: (req) => {
-        const all = [...w.sessions.values()].sort(newestFirst);
-        const before = req.before;
-        const from = before ? all.findIndex((s) => newestFirst(s, cursorSession(before)) > 0) : 0;
-        const page = from < 0 ? [] : all.slice(from, from + (req.limit || 50));
-        const last = page.at(-1);
-        const more = from >= 0 && from + page.length < all.length;
-        return { sessions: page, unreachable: [], next: more && last ? create(SessionCursorSchema, { updatedAt: last.updatedAt, sessionId: last.sessionId }) : undefined };
+      listSessions: (req) => page(req.limit, req.before),
+      async *watch(_req, ctx) {
+        const ch = channel<WatchResponse>(ctx.signal);
+        screens.add(ch.push);
+        ctx.signal.addEventListener("abort", () => screens.delete(ch.push));
+        const first = page(50);
+        yield create(WatchResponseSchema, {
+          reset: true, status: w.status, machines: w.machines, clients: w.clients, projects: w.projects, devices: w.devices, sessions: first.sessions, next: first.next,
+        });
+        yield* ch.drain();
       },
       async *watchSessions(_req, ctx) {
         const ch = channel<WatchSessionsResponse>(ctx.signal);
@@ -123,6 +135,8 @@ export async function startDaemon(socket: string): Promise<Daemon> {
         dirty.clear();
         const m = create(WatchSessionsResponseSchema, { sessions: changed });
         watchers.forEach((f) => f(m));
+        const sm = create(WatchResponseSchema, { sessions: changed });
+        screens.forEach((f) => f(sm));
       }, 100),
       setInterval(() => {
         if (!writing()) return;

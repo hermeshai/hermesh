@@ -1010,6 +1010,60 @@ public nonisolated struct Hermesh_Relay_V1_CompletePairingResponse: Sendable {
   public init() {}
 }
 
+public nonisolated struct Hermesh_Relay_V1_WatchOwnerRequest: Sendable {
+  // SwiftProtobuf.Message conformance is added in an extension below. See the
+  // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
+  // methods supported on all messages.
+
+  public var unknownFields = SwiftProtobuf.UnknownStorage()
+
+  public init() {}
+}
+
+/// Each list whole, in the first message and whenever it changed (unset: as
+/// before). Pairing requests expire by their expires_at; none is sent for
+/// that.
+public nonisolated struct Hermesh_Relay_V1_OwnerUpdate: Sendable {
+  // SwiftProtobuf.Message conformance is added in an extension below. See the
+  // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
+  // methods supported on all messages.
+
+  public var machines: Hermesh_Relay_V1_ListMachinesResponse {
+    get {_machines ?? Hermesh_Relay_V1_ListMachinesResponse()}
+    set {_machines = newValue}
+  }
+  /// Returns true if `machines` has been explicitly set.
+  public var hasMachines: Bool {self._machines != nil}
+  /// Clears the value of `machines`. Subsequent reads from it will return its default value.
+  public mutating func clearMachines() {self._machines = nil}
+
+  public var clients: Hermesh_Relay_V1_ListClientsResponse {
+    get {_clients ?? Hermesh_Relay_V1_ListClientsResponse()}
+    set {_clients = newValue}
+  }
+  /// Returns true if `clients` has been explicitly set.
+  public var hasClients: Bool {self._clients != nil}
+  /// Clears the value of `clients`. Subsequent reads from it will return its default value.
+  public mutating func clearClients() {self._clients = nil}
+
+  public var pairings: Hermesh_Relay_V1_ListPairingRequestsResponse {
+    get {_pairings ?? Hermesh_Relay_V1_ListPairingRequestsResponse()}
+    set {_pairings = newValue}
+  }
+  /// Returns true if `pairings` has been explicitly set.
+  public var hasPairings: Bool {self._pairings != nil}
+  /// Clears the value of `pairings`. Subsequent reads from it will return its default value.
+  public mutating func clearPairings() {self._pairings = nil}
+
+  public var unknownFields = SwiftProtobuf.UnknownStorage()
+
+  public init() {}
+
+  fileprivate var _machines: Hermesh_Relay_V1_ListMachinesResponse? = nil
+  fileprivate var _clients: Hermesh_Relay_V1_ListClientsResponse? = nil
+  fileprivate var _pairings: Hermesh_Relay_V1_ListPairingRequestsResponse? = nil
+}
+
 public nonisolated struct Hermesh_Relay_V1_ListClientsRequest: Sendable {
   // SwiftProtobuf.Message conformance is added in an extension below. See the
   // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
@@ -2712,6 +2766,69 @@ nonisolated extension Hermesh_Relay_V1_CompletePairingResponse: SwiftProtobuf.Me
   }
 
   public static func ==(lhs: Hermesh_Relay_V1_CompletePairingResponse, rhs: Hermesh_Relay_V1_CompletePairingResponse) -> Bool {
+    if lhs.unknownFields != rhs.unknownFields {return false}
+    return true
+  }
+}
+
+nonisolated extension Hermesh_Relay_V1_WatchOwnerRequest: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
+  public static let protoMessageName: String = _protobuf_package + ".WatchOwnerRequest"
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap()
+
+  public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
+    // Load everything into unknown fields
+    while try decoder.nextFieldNumber() != nil {}
+  }
+
+  public func traverse<V: SwiftProtobuf.Visitor>(visitor: inout V) throws {
+    try unknownFields.traverse(visitor: &visitor)
+  }
+
+  public static func ==(lhs: Hermesh_Relay_V1_WatchOwnerRequest, rhs: Hermesh_Relay_V1_WatchOwnerRequest) -> Bool {
+    if lhs.unknownFields != rhs.unknownFields {return false}
+    return true
+  }
+}
+
+nonisolated extension Hermesh_Relay_V1_OwnerUpdate: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
+  public static let protoMessageName: String = _protobuf_package + ".OwnerUpdate"
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{1}machines\0\u{1}clients\0\u{1}pairings\0")
+
+  public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
+    while let fieldNumber = try decoder.nextFieldNumber() {
+      // The use of inline closures is to circumvent an issue where the compiler
+      // allocates stack space for every case branch when no optimizations are
+      // enabled. https://github.com/apple/swift-protobuf/issues/1034
+      switch fieldNumber {
+      case 1: try { try decoder.decodeSingularMessageField(value: &self._machines) }()
+      case 2: try { try decoder.decodeSingularMessageField(value: &self._clients) }()
+      case 3: try { try decoder.decodeSingularMessageField(value: &self._pairings) }()
+      default: break
+      }
+    }
+  }
+
+  public func traverse<V: SwiftProtobuf.Visitor>(visitor: inout V) throws {
+    // The use of inline closures is to circumvent an issue where the compiler
+    // allocates stack space for every if/case branch local when no optimizations
+    // are enabled. https://github.com/apple/swift-protobuf/issues/1034 and
+    // https://github.com/apple/swift-protobuf/issues/1182
+    try { if let v = self._machines {
+      try visitor.visitSingularMessageField(value: v, fieldNumber: 1)
+    } }()
+    try { if let v = self._clients {
+      try visitor.visitSingularMessageField(value: v, fieldNumber: 2)
+    } }()
+    try { if let v = self._pairings {
+      try visitor.visitSingularMessageField(value: v, fieldNumber: 3)
+    } }()
+    try unknownFields.traverse(visitor: &visitor)
+  }
+
+  public static func ==(lhs: Hermesh_Relay_V1_OwnerUpdate, rhs: Hermesh_Relay_V1_OwnerUpdate) -> Bool {
+    if lhs._machines != rhs._machines {return false}
+    if lhs._clients != rhs._clients {return false}
+    if lhs._pairings != rhs._pairings {return false}
     if lhs.unknownFields != rhs.unknownFields {return false}
     return true
   }

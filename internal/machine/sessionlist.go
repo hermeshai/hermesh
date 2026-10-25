@@ -129,6 +129,7 @@ const watchEvery = 100 * time.Millisecond
 
 // changed tells the watches that session id changed (after it was stored).
 func (s *Sessions) changed(id string) {
+	s.changes().session(id)
 	s.watchMu.Lock()
 	defer s.watchMu.Unlock()
 	for w := range s.watchers {

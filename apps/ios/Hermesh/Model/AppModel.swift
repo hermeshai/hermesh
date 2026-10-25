@@ -46,9 +46,9 @@ struct Toast: Identifiable, Equatable {
     static func == (a: Toast, b: Toast) -> Bool { a.id == b.id }
 }
 
-/// Everything the app shows, kept current while it is in front: sessions are
-/// pushed (WatchSessions) and paged; machines, grants, devices and pairing
-/// requests are polled every few seconds.
+/// Everything the app shows, kept current while it is in front: the owner's
+/// world as the in-process hermeshd pushes it (Watch), nothing polled;
+/// older sessions are paged.
 @Observable
 final class AppModel {
     /// The one model: the app's scene and its notification handling share it.
@@ -65,7 +65,11 @@ final class AppModel {
     var status = StatusResponse()
     let signer = Signer()
 
-    var sessions: [Session] = []
+    /// As screens show them: those of a machine that cannot be read now with
+    /// their state unknown (withKnownState).
+    var sessions: [Session] { withKnownState(heldSessions, unreachable: Set(unreachable.map(\.machineID))) }
+    /// As hermeshd last told of them.
+    private var heldSessions: [Session] = []
     var loadingOlder = false
     var noOlder = false
     var unreachable: [Unreachable] = []
@@ -110,7 +114,7 @@ final class AppModel {
     @ObservationIgnored private(set) var api: LocalAPI?
     @ObservationIgnored private var cursor: SessionCursor?
     @ObservationIgnored private var watchTask: Task<Void, Never>?
-    @ObservationIgnored private var pollTask: Task<Void, Never>?
+    @ObservationIgnored private var clockTask: Task<Void, Never>?
     @ObservationIgnored private var toastTask: Task<Void, Never>?
     @ObservationIgnored private var active = false
 
@@ -145,9 +149,9 @@ final class AppModel {
     func background() {
         active = false
         watchTask?.cancel()
-        pollTask?.cancel()
+        clockTask?.cancel()
         watchTask = nil
-        pollTask = nil
+        clockTask = nil
         Core.pause()
     }
 
@@ -220,7 +224,7 @@ final class AppModel {
     private func begin() {
         guard api != nil, watchTask == nil else { return }
         watchTask = Task { await watch() }
-        pollTask = Task { await poll() }
+        clockTask = Task { await clock() }
         Task { await loadUsage() }
     }
 
@@ -230,53 +234,56 @@ final class AppModel {
         if let s = try? await api?.status() { status = s }
     }
 
-    private func poll() async {
-        var tick = 0
+    /// The time, for what counts down (grants about to expire).
+    private func clock() async {
         while !Task.isCancelled {
             now = Date()
-            if let api {
-                async let p = try? api.pairings()
-                if tick % 2 == 0 {
-                    async let m = try? api.machines()
-                    async let c = try? api.clients()
-                    async let d = try? api.devices()
-                    async let s = try? api.status()
-                    if let m = await m { machines = m }
-                    if let c = await c { clients = c }
-                    if let d = await d { devices = d }
-                    if let s = await s { status = s }
-                }
-                if let p = await p { pairings = p.filter { !dismissedPairings.contains($0.code) } }
-            }
-            tick += 1
             try? await Task.sleep(for: .seconds(2))
         }
     }
 
-    /// The first page, merged into what is loaded; again whenever the watch
-    /// (re)starts or machines come and go.
+    /// The first page, merged into what is loaded (a session a notification
+    /// is about may not be in it yet).
     private func listFirstPage() async {
         guard let api, let page = try? await api.listSessions() else { return }
-        sessions = mergeSessions(sessions, page.sessions)
-        unreachable = page.unreachable
-        cursor = relistedCursor(loaded: cursor, first: page.hasNext ? page.next : nil)
-        if !page.hasNext { noOlder = true }
+        heldSessions = mergeSessions(heldSessions, page.sessions)
     }
 
     private func watch() async {
         while !Task.isCancelled {
-            await listFirstPage()
             guard let api else { return }
             do {
-                for try await r in api.watchSessions() {
-                    if r.machinesChanged {
-                        await listFirstPage()
-                    }
-                    sessions = mergeSessions(sessions, r.sessions, deleted: r.deletedSessionIds)
-                    if !r.unreachable.isEmpty || r.machinesChanged { unreachable = r.unreachable }
-                }
+                for try await r in api.watch() { apply(r) }
             } catch {}
             try? await Task.sleep(for: .seconds(2))
+        }
+    }
+
+    /// A Watch message applied: the first replaces everything but the
+    /// sessions, which are merged so older pages loaded stay.
+    private func apply(_ r: Hermesh_Local_V1_WatchResponse) {
+        if r.reset {
+            machines = []
+            clients = []
+            devices = []
+            pairings = []
+            cursor = relistedCursor(loaded: cursor, first: r.hasNext ? r.next : nil)
+            noOlder = !r.hasNext && cursor == nil
+        }
+        if r.hasStatus { status = r.status }
+        machines = upsert(machines, r.machines, removed: r.removedMachineIds, key: \.machineID).sorted { $0.machineName < $1.machineName }
+        clients = upsert(clients, r.clients, removed: r.removedGrantIds, key: \.grantID).sorted { $0.label < $1.label }
+        devices = upsert(devices, r.devices, removed: r.removedDeviceKeyIds, key: \.keyID)
+        pairings = upsert(pairings, r.pairings, removed: r.removedPairingCodes, key: \.code).filter { !dismissedPairings.contains($0.code) }
+        unreachable = machines.filter { !$0.unreachable.isEmpty }.map { m in
+            var u = Unreachable()
+            u.machineID = m.machineID
+            u.machineName = m.machineName
+            u.error = m.unreachable
+            return u
+        }
+        if !r.sessions.isEmpty || !r.deletedSessionIds.isEmpty {
+            heldSessions = mergeSessions(heldSessions, r.sessions, deleted: r.deletedSessionIds)
         }
     }
 
@@ -286,7 +293,7 @@ final class AppModel {
         loadingOlder = true
         defer { loadingOlder = false }
         guard let page = try? await api.listSessions(before: cursor) else { return }
-        sessions = mergeSessions(sessions, page.sessions)
+        heldSessions = mergeSessions(heldSessions, page.sessions)
         if page.hasNext { self.cursor = page.next } else { noOlder = true }
     }
 
@@ -369,7 +376,7 @@ final class AppModel {
 
     // MARK: Actions
 
-    private func replace(_ s: Session) { sessions = mergeSessions(sessions, [s]) }
+    private func replace(_ s: Session) { heldSessions = mergeSessions(heldSessions, [s]) }
 
     func answer(_ s: Session, answers: [Answer], decline: Bool) async -> Bool {
         guard let api, let q = s.pendingQuestion else { return false }
@@ -411,7 +418,7 @@ final class AppModel {
         guard let api else { return false }
         do {
             try await api.delete(s.sessionID)
-            sessions = mergeSessions(sessions, [], deleted: [s.sessionID])
+            heldSessions = mergeSessions(heldSessions, [], deleted: [s.sessionID])
             path.removeAll { $0 == .session(s.sessionID) }
             if case .session(let id) = root, id == s.sessionID { root = .sessions }
             show(String(localized: "Deleted “\(s.displayTitle)”"))
@@ -544,7 +551,7 @@ final class AppModel {
         do {
             try await api.leave()
             background()
-            sessions = []
+            heldSessions = []
             clients = []
             machines = []
             devices = []
@@ -554,4 +561,21 @@ final class AppModel {
             phase = .onboarding
         } catch { report(error) }
     }
+}
+
+/// list with each changed item (by key) replaced where it was or added, and
+/// those removed dropped.
+private func upsert<T>(_ list: [T], _ changed: [T], removed: [String], key: (T) -> String) -> [T] {
+    if changed.isEmpty && removed.isEmpty { return list }
+    let gone = Set(removed)
+    var out = list.filter { !gone.contains(key($0)) }
+    var at: [String: Int] = [:]
+    for (i, x) in out.enumerated() { at[key(x)] = i }
+    for c in changed {
+        if let i = at[key(c)] { out[i] = c } else {
+            at[key(c)] = out.count
+            out.append(c)
+        }
+    }
+    return out
 }
