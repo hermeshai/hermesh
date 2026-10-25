@@ -16,13 +16,6 @@
     "line": "暂时连不上：{{machines}}",
     "machine": "{{name}}（{{error}}）"
   },
-  "setup": {
-    "title": "完成设置",
-    "left_other": "还差 {{count}} 项",
-    "hide": "隐藏",
-    "done": "已完成",
-    "notDone": "未完成"
-  },
   "attention": {
     "title": "需要你处理",
     "pairingDetail": "{{device}} · 核对码 <code>{{code}}</code>",

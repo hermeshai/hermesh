@@ -76,17 +76,6 @@
     "client": "“{{label}}” wants to connect",
     "body": "Verification code {{code}}. Click to check and approve; deny it if you don’t recognize it."
   },
-  "setup": {
-    "signIn": "Sign in, making this Mac a trusted device",
-    "agentsShared": "Local agents shared",
-    "shareAgents": "Share this Mac’s agents securely",
-    "addProject": "Add your first project",
-    "connectGrant": "Connect “{{grant}}”",
-    "connectAgent": "Connect your agent",
-    "finishTask": "Finish your first task",
-    "signInCodex": "Sign in to Codex (optional)",
-    "addMachine": "Add a second machine (optional)"
-  },
   "signin": {
     "badCenter": "Invalid server address: {{center}}",
     "httpStatus": "{{url}}: HTTP {{status}}",

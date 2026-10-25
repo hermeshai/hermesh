@@ -75,17 +75,6 @@
     "client": "「{{label}}」想连接",
     "body": "核对码 {{code}}。点这里核对并批准；不认识就拒绝。"
   },
-  "setup": {
-    "signIn": "登录，这台 Mac 成为可信设备",
-    "agentsShared": "已共享本机 agent",
-    "shareAgents": "安全可信地共享本机 agent",
-    "addProject": "添加第一个项目",
-    "connectGrant": "连接「{{grant}}」",
-    "connectAgent": "连接你的 agent",
-    "finishTask": "完成第一个任务",
-    "signInCodex": "登录 Codex（可选）",
-    "addMachine": "添加第二台机器（可选）"
-  },
   "signin": {
     "badCenter": "中心地址无效：{{center}}",
     "httpStatus": "{{url}}：HTTP {{status}}",
