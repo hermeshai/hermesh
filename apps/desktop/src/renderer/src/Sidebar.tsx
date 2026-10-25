@@ -114,13 +114,21 @@ export function Sidebar() {
         </div>
       </div>
       <div className="side-list" role="list" aria-label={t("sidebar.sessions")} ref={list}>
-        {sections.map((sec) => (
-          <div key={`${sec.grouping}:${sec.key}`} role="group" aria-label={sectionTitle(st, sec)}>
-            <div className="grp-h">
+        {sections.map((sec) => {
+          const id = `${sec.grouping}:${sec.key}`;
+          const open = !st.collapsed.includes(id);
+          return (
+          <div key={id} role="group" aria-label={sectionTitle(st, sec)}>
+            <button
+              className={`grp-h ${open ? "" : "shut"}`}
+              aria-expanded={open}
+              onClick={() => st.set({ collapsed: open ? [...st.collapsed, id] : st.collapsed.filter((c) => c !== id) })}
+            >
               {sectionTitle(st, sec)}
               {sectionCounted(sec) && <span className="n">{sec.sessions.length}</span>}
-            </div>
-            {sec.sessions.map((s) => (
+              <Icon name="chevD" className="sm" />
+            </button>
+            {open && sec.sessions.map((s) => (
               <SessionRow
                 key={s.sessionId}
                 s={s}
@@ -132,7 +140,8 @@ export function Sidebar() {
               />
             ))}
           </div>
-        ))}
+          );
+        })}
         {!st.sessionsLoaded ? null : st.moreSessions ? (
           <div className="endrow" ref={end}>{t("sidebar.loadingOlder")}</div>
         ) : total === 0 ? (
