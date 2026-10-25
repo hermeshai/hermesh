@@ -25,7 +25,7 @@ export type Command =
 export type TrayView = { state: "ok" | "down" | "setup" | "daemon"; online: number; attention: number; running: number; update: string };
 
 /** The panel's buttons: the first session that needs the owner, the first that runs, the main window, settings, quit, check for updates and restart to update. */
-export type TrayAction = "attention" | "running" | "open" | "settings" | "quit" | "install" | "updates";
+export type TrayAction = "attention" | "running" | "open" | "settings" | "quit" | "install";
 
 /** Fixed commands the page may ask to run in Terminal (by key, never by text). */
 export type TerminalCommand = "codexLogin" | "claudeLogin";

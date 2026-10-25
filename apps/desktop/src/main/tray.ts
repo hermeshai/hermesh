@@ -6,7 +6,7 @@ import glyph2x from "../../resources/menuBarIconTemplate@2x.png?inline";
 import type { TrayAction, TrayView } from "../shared/bridge";
 import { command } from "./ipc";
 import { preferences, world, worldListeners } from "./notify";
-import { install, openUpdates, updateInfo, updateListeners } from "./updater";
+import { install, updateInfo, updateListeners } from "./updater";
 import { ours, showMain, showSettings, trayPanel } from "./windows";
 
 // The menu bar extra: a panel under the icon with how many sessions need the
@@ -126,7 +126,6 @@ function act(a: TrayAction) {
   }
   if (a === "open") return showMain();
   if (a === "settings") return showSettings();
-  if (a === "updates") return openUpdates(true);
   if (a === "install") return install();
   if (a === "quit") return app.quit();
 }
