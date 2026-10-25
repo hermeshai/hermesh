@@ -378,7 +378,6 @@ export function LinkMap({ pick, onPick, now, usage }: { pick: string; onPick: (k
         {waiting.length > 0 && <span><i className="wait" />{t("map.waiting")}</span>}
         {failed.length > 0 && <span><i className="fail" />{t("map.failed")}</span>}
         {offline && <span><i className="off" />{t("map.offline")}</span>}
-        {reach && <span><i className="scope" />{t("map.reach")}</span>}
         {live.length > 0 && <span className="hint">{pick ? t("map.hintPicked") : t("map.hintPick")}</span>}
       </div>
     </div>

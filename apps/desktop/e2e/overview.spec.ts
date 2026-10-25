@@ -66,7 +66,6 @@ test("a node clicked on the link map narrows 正在干活, names the condition a
   await expect(bot).toContainText("个人 agent"); // its grant is not about to expire
   // Hovering a grant shows where it may work: here, every machine and project.
   await bot.hover();
-  await expect(map).toContainText("它能用的机器和项目");
   await expect(map.locator(".lm-edge.scope")).toHaveCount(2); // hub → this Mac, this Mac → demo
   await snap(page, "overview-scope");
   await page.mouse.move(0, 0);

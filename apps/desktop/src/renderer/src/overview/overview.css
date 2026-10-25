@@ -69,14 +69,12 @@
 .lm-node.ghost{justify-content:center;background:none;box-shadow:none;outline:1px dashed var(--l3);outline-offset:-1px;color:var(--accent-t);font-size:12px}
 .lm-node.more{justify-content:center;background:none;box-shadow:none;color:var(--l2);font-size:12px}
 .lmap.focus .lm-edge:not(.on),.lmap.focus .lm-flow:not(.on),.lmap.focus .lm-node:not(.on),.lmap.focus .lm-mark:not(.on){opacity:.12}
-/* Always a line tall, so the map doesn't grow when hovering shows what an agent can reach. */
-.lmap-foot{display:flex;gap:var(--sp-3);flex-wrap:wrap;align-items:center;padding:0 var(--sp-3) var(--sp-3);font-size:11.5px;line-height:16px;color:var(--l2);min-height:calc(16px + var(--sp-3))}
+.lmap-foot{display:flex;gap:var(--sp-3);flex-wrap:wrap;align-items:center;padding:0 var(--sp-3) var(--sp-3);font-size:11.5px;color:var(--l2);min-height:16px}
 .lmap-foot span{display:inline-flex;align-items:center;gap:6px}
 .lmap-foot i{width:14px;height:2px;border-radius:2px;display:inline-block}
 .lmap-foot i.run{background:var(--live)}
 .lmap-foot i.wait{background:var(--live-wait)}
 .lmap-foot i.fail{background:var(--live-fail)}
-.lmap-foot i.scope{background:repeating-linear-gradient(90deg,var(--live) 0 3px,transparent 3px 7px)}
 .lmap-foot i.off{background:repeating-linear-gradient(90deg,var(--l3) 0 2px,transparent 2px 5px)}
 .lmap-foot .hint{margin-left:auto;color:var(--l3)}
 @media (prefers-reduced-motion:reduce){.lmap-aura.on,.lm-mark .ping,.lmap-pill i::after{animation:none}}
