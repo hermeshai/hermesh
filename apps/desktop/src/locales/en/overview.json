@@ -46,7 +46,6 @@
     "running": "Running",
     "waiting": "Waiting for you",
     "failed": "Failed",
-    "reach": "Machines and projects it can use",
     "hintPicked": "Click again, or click the icon in the middle, to see all",
     "hintPick": "Click any node to see only the sessions through it",
     "today": "Today",
