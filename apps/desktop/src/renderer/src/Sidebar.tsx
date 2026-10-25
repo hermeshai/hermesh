@@ -504,7 +504,8 @@ function ListViewMenu() {
   const toggle = (e: { detail: number }) => {
     if (open) return close(false);
     const r = btn.current!.getBoundingClientRect();
-    setAt({ x: Math.min(r.left - 6, innerWidth - 216), y: r.bottom + 4, sx: 0, sy: 0 });
+    // Right-aligned to the button, so it opens leftward, over the sidebar.
+    setAt({ x: innerWidth - r.right, y: r.bottom + 4, sx: 0, sy: 0 });
     setOpen(e.detail ? "mouse" : "key");
   };
   const choose = (patch: Partial<SessionView>) => {
@@ -567,7 +568,7 @@ function ListViewMenu() {
         <Icon name="filter" />
       </button>
       {open && (
-        <div className="vmenu" role="menu" aria-label={t("listView.title")} tabIndex={-1} ref={menu} style={{ left: at.x, top: at.y }} onKeyDown={onMenuKey}>
+        <div className="vmenu" role="menu" aria-label={t("listView.title")} tabIndex={-1} ref={menu} style={{ right: at.x, top: at.y }} onKeyDown={onMenuKey}>
           {panes.map((p) => (
             <button
               key={p.id}
