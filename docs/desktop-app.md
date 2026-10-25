@@ -169,7 +169,7 @@ The renderer uses the generated Connect client (`@connectrpc/connect`), as the c
 | Need | How |
 |---|---|
 | Menu bar | `Tray` with a template icon that opens a small panel of the menu material under it: whether agents can reach this Mac, how many sessions need the owner (pairing requests included) and how many run (each count opens the first one), Open Hermesh, Settings, Quit Hermesh. Its renderer is closed 30 s after it hides |
-| Notifications | `Notification` (UNNotification API, needs a signed build), with actions. Main runs the same notice logic as the UI (§7, `@hermesh/core`) on the sessions `WatchSessions` pushes (the first page, with everything that needs the owner or runs, then each change); pairing requests on a 2 s poll |
+| Notifications | `Notification` (UNNotification API, needs a signed build), with actions. Main runs the same notice logic as the UI (§7, `@hermesh/core`) on the sessions `WatchSessions` pushes (the first page, with everything that needs the owner or runs, then each change); a question still waiting when the app starts is notified again, since macOS drops an app's notifications when it quits; pairing requests on a 2 s poll |
 | Deep links | `setAsDefaultProtocolClient("hermesh")`, plus `open-url` (macOS) / `second-instance` (Windows/Linux) |
 | Login item and daemon | `setLoginItemSettings` with `type: "mainAppService"` for the app, and `type: "agentService"` + `serviceName: "com.hermesh.app.daemon.plist"` for hermeshd |
 | Signer | Spawns `Contents/Helpers/Hermesh Signer.app` at start and restarts it if it exits. The signer exits when its parent does |
