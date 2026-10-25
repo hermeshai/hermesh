@@ -147,6 +147,10 @@ test("the view menu groups, sorts and shows the list from submenus, opaque over 
   // Each row of the menu says what it is set to.
   await button.click();
   await expect(menu.getByRole("menuitem")).toHaveText(["分组按状态", "排序最新在前", "显示元数据"]);
+  // It opens leftward from its button, over the sidebar.
+  const [m, b, side] = await Promise.all([menu.boundingBox(), button.boundingBox(), page.getByRole("complementary", { name: "边栏" }).boundingBox()]);
+  expect(Math.abs(m!.x + m!.width - (b!.x + b!.width))).toBeLessThanOrEqual(1);
+  expect(m!.x).toBeGreaterThanOrEqual(side!.x);
   const background = await menu.evaluate((el) => getComputedStyle(el).backgroundColor);
   expect(background).toMatch(/^rgb\(/); // no alpha: the list doesn't show through
   await menu.getByRole("menuitem", { name: /分组/ }).hover();
