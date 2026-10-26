@@ -233,8 +233,22 @@ final class HermeshUITests: XCTestCase {
         let m = app.buttons["machine-owner-mac"]
         XCTAssertTrue(m.waitForExistence(timeout: 20))
         m.tap()
+        // Its page: the coding agents, each opening its own; projects are there.
+        XCTAssertTrue(text("暂停接受新会话").waitForExistence(timeout: 20))
+        let agent = app.buttons["agent-gemini"]
+        XCTAssertTrue(agent.waitForExistence(timeout: 20), "the coding agent")
+        XCTAssertTrue(agent.label.contains("1 个项目"), agent.label)
+        XCTAssertFalse(text("demo").exists, "projects are on the agent's page")
+        agent.tap()
+        // The agent's page: its projects, how agents work in each set from a menu.
         XCTAssertTrue(text("demo").waitForExistence(timeout: 20), "its project")
-        XCTAssertTrue(text("暂停接受新会话").exists)
+        tap("project-menu-demo")
+        tap("原地：直接改这个目录")
+        try waitFor("the project works in place") { self.text("原地").exists && !self.text("独立 worktree").exists ? true : nil }
+        tap("project-menu-demo")
+        tap("独立 worktree：每个会话在自己的分支里")
+        try waitFor("a separate worktree again") { self.text("独立 worktree").exists ? true : nil }
+        app.navigationBars.buttons.element(boundBy: 0).tap()
     }
 
     func devices() throws {

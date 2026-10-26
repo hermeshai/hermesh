@@ -2,10 +2,9 @@ import HermeshProto
 import HermeshSessions
 import SwiftUI
 
-/// The machines and their projects.
+/// The machines, each opening its page.
 struct MachinesView: View {
     @Environment(AppModel.self) private var model
-    @State private var projects: [Project] = []
 
     var body: some View {
         List {
@@ -15,26 +14,6 @@ struct MachinesView: View {
                         .accessibilityIdentifier("machine-\(m.machineName)")
                 }
                 if model.machines.isEmpty { Text("No machines yet.").foregroundStyle(.secondary) }
-            }
-            if !projects.isEmpty {
-                Section {
-                    ForEach(projects, id: \.self) { p in
-                        Label {
-                            VStack(alignment: .leading, spacing: 2) {
-                                Text(p.projectID)
-                                Text("\(model.machineName(p.machineID)) · \(workspaceText(p.workspace))").font(.subheadline).foregroundStyle(.secondary)
-                            }
-                        } icon: {
-                            Image(systemName: "folder")
-                        }
-                    }
-                } header: {
-                    Text("Projects")
-                } footer: {
-                    Text("Agents find a project as “machine/project”.")
-                }
-            }
-            Section {
             } footer: {
                 Label("End-to-end encrypted: the server only forwards, and can’t read anything.", systemImage: "lock").frame(maxWidth: .infinity)
             }
@@ -46,7 +25,6 @@ struct MachinesView: View {
                 Button("Add a Machine", systemImage: "plus") { model.sheet = .addMachine }
             }
         }
-        .task { projects = (try? await model.api?.projects())?.projects ?? [] }
     }
 }
 
@@ -57,37 +35,54 @@ func workspaceText(_ w: Hermesh_Identity_V1_Workspace) -> String {
     }
 }
 
+/// A machine's "darwin/arm64" as "macOS · arm64".
+func platformText(_ platform: String) -> String {
+    let parts = platform.split(separator: "/").map(String.init)
+    let os = ["darwin": "macOS", "linux": "Linux", "windows": "Windows"][parts.first ?? ""] ?? parts.first ?? ""
+    return ([os] + parts.dropFirst()).filter { !$0.isEmpty }.joined(separator: " · ")
+}
+
+func machineIcon(_ m: Machine) -> String {
+    m.status.platform.contains("linux") ? "server.rack" : m.local ? "laptopcomputer" : "desktopcomputer"
+}
+
 struct MachineRow: View {
     @Environment(AppModel.self) private var model
     let machine: Machine
 
     var body: some View {
-        let running = Int(machine.status.runningSessions)
+        let m = machine
+        let running = Int(m.status.runningSessions)
         HStack(spacing: 12) {
-            Image(systemName: machine.status.platform.contains("linux") ? "server.rack" : machine.local ? "laptopcomputer" : "desktopcomputer")
-                .frame(width: 28, height: 28).foregroundStyle(.secondary)
+            Image(systemName: machineIcon(m)).frame(width: 28, height: 28).foregroundStyle(.secondary)
             VStack(alignment: .leading, spacing: 2) {
-                Text(machine.machineName)
-                Group {
-                    if !machine.online {
-                        Text("Offline · last online \(machine.hasLastSeen ? agoText(machine.lastSeen.date, now: model.now) : String(localized: "a long time ago"))")
-                    } else if machine.status.paused {
-                        Text("Paused")
-                    } else if running > 0 {
-                        Text("Online · \(running) running")
-                    } else {
-                        Text("Online")
-                    }
-                }
-                .font(.subheadline).foregroundStyle(.secondary)
+                Text(m.machineName)
+                Text(m.online ? platformText(m.status.platform) : String(localized: "Last online \(m.hasLastSeen ? agoText(m.lastSeen.date, now: model.now) : String(localized: "a long time ago"))"))
+                    .font(.subheadline).foregroundStyle(.secondary)
             }
             Spacer()
+            Circle().fill(m.online ? Color.green : .clear).strokeBorder(m.online ? .clear : Color.secondary, lineWidth: 1.5)
+                .frame(width: 8, height: 8)
+            Group {
+                if !m.online {
+                    Text("Offline")
+                } else if m.status.paused {
+                    Text("Paused")
+                } else if running > 0 {
+                    Text("\(running) running")
+                } else {
+                    Text("Online")
+                }
+            }
+            .font(.subheadline).foregroundStyle(.secondary).monospacedDigit()
         }
     }
 }
 
-/// One machine: its coding agents, projects, pausing, renaming and removing.
-/// When it is offline, why its sessions can't be shown and what to check.
+/// One machine: its coding agents (each opening its page: defaults and
+/// projects), projects no installed agent may use, pausing, renaming and
+/// removing. When it is offline, why its sessions can't be shown and what
+/// to check.
 struct MachineView: View {
     @Environment(AppModel.self) private var model
     let id: String
@@ -114,35 +109,52 @@ struct MachineView: View {
     }
 
     private func content(_ m: Machine) -> some View {
-        List {
+        let agents = sortedAgents(m.status.agents)
+        let others = projects.filter { p in !agents.installed.contains { !projectsFor([p], $0.name).isEmpty } }
+        return List {
             Section {
-            } header: {
-                Text(statusLine(m)).textCase(nil).font(.subheadline)
+                VStack(spacing: 8) {
+                    Image(systemName: machineIcon(m)).font(.system(size: 30)).foregroundStyle(.secondary)
+                        .frame(width: 64, height: 64)
+                        .background(Color(.tertiarySystemFill), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+                    Text(m.machineName).font(.title2.bold())
+                    Text(heroLine(m)).font(.subheadline).foregroundStyle(.secondary).multilineTextAlignment(.center)
+                }
+                .frame(maxWidth: .infinity).listRowBackground(Color.clear)
             }
             if !m.online { offline(m) }
-            Section("Coding agents") {
-                if m.online {
-                    ForEach(m.status.agents.filter(\.available), id: \.name) { a in agentRow(a) }
-                    if m.status.agents.filter(\.available).isEmpty { Text("No coding agent found on this machine.").foregroundStyle(.secondary) }
-                } else {
-                    Text("The machine is offline; they show once it connects.").foregroundStyle(.secondary)
+            Section {
+                ForEach(agents.installed, id: \.name) { a in
+                    NavigationLink(value: Route.machineAgent(m.machineID, a.name)) { agentRow(a) }
+                        .accessibilityIdentifier("agent-\(a.name)")
+                }
+                ForEach(agents.checking, id: \.name) { a in
+                    HStack(spacing: 12) {
+                        AgentLogo(id: a.name, size: 30)
+                        Text(agentTitle(a.name))
+                        Spacer()
+                        ProgressView()
+                    }
+                }
+                if agents.installed.isEmpty && agents.checking.isEmpty {
+                    Text(m.online ? "No coding agent found on this machine." : "The machine is offline; they show once it connects.").foregroundStyle(.secondary)
+                }
+            } header: {
+                Text("Coding agents")
+            } footer: {
+                if !agents.missing.isEmpty {
+                    Text("Not installed: \(listText(agents.missing.map(agentTitle))) · Hermesh finds them once they are")
                 }
             }
-            Section {
-                ForEach(projects, id: \.projectID) { p in
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text(p.projectID)
-                        Text("\(p.path) · \(workspaceText(p.workspace))").font(.caption.monospaced()).foregroundStyle(.secondary)
-                            .lineLimit(1).truncationMode(.middle)
+            if !others.isEmpty {
+                Section {
+                    ForEach(others, id: \.projectID) { p in
+                        ProjectLine(project: p, detail: ([workspaceText(p.workspace)] + p.agents.map(agentTitle)).joined(separator: " · "))
+                            .swipeActions { Button("Remove", role: .destructive) { removeProject = p } }
                     }
-                    .swipeActions {
-                        Button("Remove", role: .destructive) { removeProject = p }
-                    }
+                } header: {
+                    Text("Other projects · for agents not installed")
                 }
-                Button("Add a Project…", systemImage: "plus") { model.sheet = .addProject(m.machineID) }
-                    .disabled(!m.online)
-            } header: {
-                Text("Projects")
             }
             Section {
                 Toggle(isOn: Binding(get: { m.status.paused }, set: { p in Task { await model.setPaused(m, p) } })) {
@@ -152,12 +164,11 @@ struct MachineView: View {
                     }
                 }
                 .disabled(!m.online)
-                Button {
-                    model.path.append(.machineSessions(m.machineID))
-                } label: {
+                NavigationLink(value: Route.machineSessions(m.machineID)) {
                     LabeledContent("Sessions", value: "\(model.sessions.filter { $0.machineID == m.machineID }.count)")
                 }
-                .foregroundStyle(.primary)
+            } header: {
+                Text("Sessions")
             }
             Section {
                 Button("Rename…") {
@@ -169,6 +180,7 @@ struct MachineView: View {
             }
         }
         .navigationTitle(m.machineName)
+        .navigationBarTitleDisplayMode(.inline)
         .refreshable {
             try? await model.api?.checkAgents()
             await load()
@@ -189,7 +201,9 @@ struct MachineView: View {
             Button("Remove", role: .destructive) {
                 if let p = removeProject {
                     Task {
-                        try? await model.api?.removeProject(machine: m.machineID, project: p.projectID)
+                        do {
+                            try await model.removeProject(machine: m.machineID, project: p.projectID)
+                        } catch { model.report(error) }
                         await load()
                     }
                 }
@@ -199,11 +213,13 @@ struct MachineView: View {
         }
     }
 
-    private func statusLine(_ m: Machine) -> String {
-        if !m.online { return String(localized: "Offline · last online \(m.hasLastSeen ? agoText(m.lastSeen.date, now: model.now) : String(localized: "a long time ago"))") }
-        if m.status.paused { return String(localized: "Takes no new sessions") }
-        let r = Int(m.status.runningSessions)
-        return r > 0 ? String(localized: "Online · \(r) running") : String(localized: "Online")
+    private func heroLine(_ m: Machine) -> String {
+        var parts = [m.online ? String(localized: "Online") : String(localized: "Offline · last online \(m.hasLastSeen ? agoText(m.lastSeen.date, now: model.now) : String(localized: "a long time ago"))")]
+        if m.online && m.status.paused { parts.append(String(localized: "Takes no new sessions")) }
+        parts.append(platformText(m.status.platform))
+        let version = m.status.version.isEmpty ? m.version : m.status.version
+        if !version.isEmpty { parts.append("Hermesh \(version)") }
+        return parts.filter { !$0.isEmpty }.joined(separator: " · ")
     }
 
     /// Why an offline machine's sessions can't be shown, and what to check.
@@ -231,21 +247,37 @@ struct MachineView: View {
         .accessibilityIdentifier("machine-offline")
     }
 
+    /// An installed agent: whether it is signed in, how many projects it may
+    /// work in, and its defaults when set.
     private func agentRow(_ a: AgentStatus) -> some View {
-        HStack(spacing: 12) {
-            AgentLogo(id: a.name, size: 28)
+        let n = projectsFor(projects, a.name).count
+        let rest = [n > 0 ? String(localized: "\(n) projects") : String(localized: "No projects yet"), defaultsText(a)].filter { !$0.isEmpty }
+        return HStack(spacing: 12) {
+            AgentLogo(id: a.name, size: 30)
             VStack(alignment: .leading, spacing: 2) {
                 Text(agentTitle(a.name))
-                Group {
-                    if a.checking {
-                        Text("Checking…")
-                    } else if a.loggedIn {
-                        Text("\(a.version) · signed in")
-                    } else {
-                        Text("\(a.version) · not signed in").foregroundStyle(.orange)
-                    }
+                Text("\(Text(a.loggedIn ? String(localized: "Signed in") : String(localized: "Not signed in")).foregroundStyle(a.loggedIn ? Color.secondary : .orange)) · \(rest.joined(separator: " · "))")
+                    .font(.subheadline).foregroundStyle(.secondary).lineLimit(1)
+            }
+        }
+    }
+}
+
+/// A project in a list: its name, how agents work in it and its directory.
+struct ProjectLine: View {
+    let project: Project
+    let detail: String
+
+    var body: some View {
+        HStack(spacing: 12) {
+            Image(systemName: "folder").foregroundStyle(.secondary).frame(width: 30)
+            VStack(alignment: .leading, spacing: 2) {
+                HStack(spacing: 6) {
+                    Text(project.projectID)
+                    Text(detail).font(.subheadline).foregroundStyle(.secondary)
                 }
-                .font(.subheadline).foregroundStyle(.secondary)
+                .lineLimit(1)
+                Text(project.path).font(.caption.monospaced()).foregroundStyle(.secondary).lineLimit(1).truncationMode(.middle)
             }
         }
     }

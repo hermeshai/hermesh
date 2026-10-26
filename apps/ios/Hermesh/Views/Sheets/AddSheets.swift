@@ -220,6 +220,8 @@ struct AddProjectSheet: View {
     @Environment(AppModel.self) private var model
     @Environment(\.dismiss) private var dismiss
     let machineID: String
+    /// The coding agent it is for; a directory already a project gets it too.
+    let agent: String
     @State private var path = ""
     @State private var name = ""
     @State private var inPlace = false
@@ -231,6 +233,7 @@ struct AddProjectSheet: View {
             List {
                 Section {
                     LabeledContent("Machine", value: model.machineName(machineID))
+                    LabeledContent("Coding agent", value: agentTitle(agent))
                     TextField("Directory, e.g. ~/code/my-app", text: $path).font(.body.monospaced())
                         .textInputAutocapitalization(.never).autocorrectionDisabled()
                         .onChange(of: path) { _, p in
@@ -278,11 +281,20 @@ struct AddProjectSheet: View {
         r.path = path
         r.workspace = inPlace ? .inPlace : .worktree
         r.defaultBaseRef = inPlace ? "" : baseRef
+        r.agents = [agent]
         Task {
             defer { busy = false }
             do {
-                try await model.api?.addProject(r)
-                model.show(String(localized: "Added project “\(name)”"))
+                let projects = try await model.api?.projects(machine: machineID).projects ?? []
+                if let same = projects.first(where: { $0.path == path }) {
+                    if !same.agents.isEmpty && !same.agents.contains(agent) {
+                        try await model.saveProject(same, agents: same.agents + [agent], workspace: same.workspace)
+                        model.show(String(localized: "“\(same.projectID)” is now for \(agentTitle(agent)) too"))
+                    }
+                } else {
+                    try await model.addProject(r)
+                    model.show(String(localized: "Added project “\(name)”"))
+                }
                 dismiss()
             } catch {
                 model.report(error)

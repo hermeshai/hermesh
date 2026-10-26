@@ -192,6 +192,13 @@ extension LocalAPI {
         let _: Hermesh_Local_V1_SetMachinePausedResponse = try await call("SetMachinePaused", r, timeout: signingTimeout)
     }
 
+    func setAgentDefaults(_ id: String, _ d: Hermesh_Identity_V1_AgentDefaults) async throws {
+        var r = Hermesh_Local_V1_SetAgentDefaultsRequest()
+        r.machineID = id
+        r.defaults = d
+        let _: Hermesh_Local_V1_SetAgentDefaultsResponse = try await call("SetAgentDefaults", r)
+    }
+
     func removeMachine(_ id: String) async throws {
         var r = Hermesh_Local_V1_RemoveMachineRequest()
         r.machineID = id
