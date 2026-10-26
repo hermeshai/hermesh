@@ -787,6 +787,129 @@ public nonisolated struct Hermesh_Identity_V1_Credentials: Sendable {
   fileprivate var _rootChain: Hermesh_Identity_V1_RootChain? = nil
 }
 
+/// ContactCard names one of the owner's agents, for the others to write to
+/// (docs/agent-messages.md §4): its client id, the name the owner approved,
+/// and its client key, which signs its InboxRegistration and its messages.
+/// A trusted device signs it with its device key. It grants nothing, and
+/// machines accept it for nothing: they go by grants.
+public nonisolated struct Hermesh_Identity_V1_ContactCard: Sendable {
+  // SwiftProtobuf.Message conformance is added in an extension below. See the
+  // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
+  // methods supported on all messages.
+
+  public var ownerID: String = String()
+
+  public var clientID: String = String()
+
+  public var clientPublicKey: Data = Data()
+
+  public var name: String = String()
+
+  /// "mcp" for a connection whose key a server holds, else "cli".
+  public var kind: String = String()
+
+  public var issuedAt: SwiftProtobuf.Google_Protobuf_Timestamp {
+    get {_issuedAt ?? SwiftProtobuf.Google_Protobuf_Timestamp()}
+    set {_issuedAt = newValue}
+  }
+  /// Returns true if `issuedAt` has been explicitly set.
+  public var hasIssuedAt: Bool {self._issuedAt != nil}
+  /// Clears the value of `issuedAt`. Subsequent reads from it will return its default value.
+  public mutating func clearIssuedAt() {self._issuedAt = nil}
+
+  public var unknownFields = SwiftProtobuf.UnknownStorage()
+
+  public init() {}
+
+  fileprivate var _issuedAt: SwiftProtobuf.Google_Protobuf_Timestamp? = nil
+}
+
+/// InboxRegistration is an inbox's key, signed by the inbox's identity key
+/// (a client key or a machine key). Messages are HPKE-sealed to it.
+public nonisolated struct Hermesh_Identity_V1_InboxRegistration: Sendable {
+  // SwiftProtobuf.Message conformance is added in an extension below. See the
+  // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
+  // methods supported on all messages.
+
+  public var ownerID: String = String()
+
+  /// A client id (c_…) or a machine id (m_…).
+  public var inbox: String = String()
+
+  /// X25519, 32 bytes.
+  public var inboxPublicKey: Data = Data()
+
+  /// How the inbox takes its messages, for senders to know what to expect:
+  /// "session", "hook", "wait", "webhook" or "poll". Informational.
+  public var takesMessages: String = String()
+
+  public var issuedAt: SwiftProtobuf.Google_Protobuf_Timestamp {
+    get {_issuedAt ?? SwiftProtobuf.Google_Protobuf_Timestamp()}
+    set {_issuedAt = newValue}
+  }
+  /// Returns true if `issuedAt` has been explicitly set.
+  public var hasIssuedAt: Bool {self._issuedAt != nil}
+  /// Clears the value of `issuedAt`. Subsequent reads from it will return its default value.
+  public mutating func clearIssuedAt() {self._issuedAt = nil}
+
+  public var unknownFields = SwiftProtobuf.UnknownStorage()
+
+  public init() {}
+
+  fileprivate var _issuedAt: SwiftProtobuf.Google_Protobuf_Timestamp? = nil
+}
+
+/// Contact is one of the owner's inboxes as a sender checks it: an agent's
+/// card with the cert of the trusted device that signed it, or a machine's
+/// cert; and the inbox's registration once it has one.
+public nonisolated struct Hermesh_Identity_V1_Contact: @unchecked Sendable {
+  // SwiftProtobuf.Message conformance is added in an extension below. See the
+  // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
+  // methods supported on all messages.
+
+  public var card: Hermesh_Identity_V1_Signed {
+    get {_storage._card ?? Hermesh_Identity_V1_Signed()}
+    set {_uniqueStorage()._card = newValue}
+  }
+  /// Returns true if `card` has been explicitly set.
+  public var hasCard: Bool {_storage._card != nil}
+  /// Clears the value of `card`. Subsequent reads from it will return its default value.
+  public mutating func clearCard() {_uniqueStorage()._card = nil}
+
+  public var deviceCert: Hermesh_Identity_V1_Signed {
+    get {_storage._deviceCert ?? Hermesh_Identity_V1_Signed()}
+    set {_uniqueStorage()._deviceCert = newValue}
+  }
+  /// Returns true if `deviceCert` has been explicitly set.
+  public var hasDeviceCert: Bool {_storage._deviceCert != nil}
+  /// Clears the value of `deviceCert`. Subsequent reads from it will return its default value.
+  public mutating func clearDeviceCert() {_uniqueStorage()._deviceCert = nil}
+
+  public var machineCert: Hermesh_Identity_V1_Signed {
+    get {_storage._machineCert ?? Hermesh_Identity_V1_Signed()}
+    set {_uniqueStorage()._machineCert = newValue}
+  }
+  /// Returns true if `machineCert` has been explicitly set.
+  public var hasMachineCert: Bool {_storage._machineCert != nil}
+  /// Clears the value of `machineCert`. Subsequent reads from it will return its default value.
+  public mutating func clearMachineCert() {_uniqueStorage()._machineCert = nil}
+
+  public var registration: Hermesh_Identity_V1_Signed {
+    get {_storage._registration ?? Hermesh_Identity_V1_Signed()}
+    set {_uniqueStorage()._registration = newValue}
+  }
+  /// Returns true if `registration` has been explicitly set.
+  public var hasRegistration: Bool {_storage._registration != nil}
+  /// Clears the value of `registration`. Subsequent reads from it will return its default value.
+  public mutating func clearRegistration() {_uniqueStorage()._registration = nil}
+
+  public var unknownFields = SwiftProtobuf.UnknownStorage()
+
+  public init() {}
+
+  fileprivate var _storage = _StorageClass.defaultInstance
+}
+
 // MARK: - Code below here is support for the SwiftProtobuf runtime.
 
 fileprivate nonisolated let _protobuf_package = "hermesh.identity.v1"
@@ -1782,6 +1905,210 @@ nonisolated extension Hermesh_Identity_V1_Credentials: SwiftProtobuf.Message, Sw
     if lhs._rootChain != rhs._rootChain {return false}
     if lhs.machineName != rhs.machineName {return false}
     if lhs.subject != rhs.subject {return false}
+    if lhs.unknownFields != rhs.unknownFields {return false}
+    return true
+  }
+}
+
+nonisolated extension Hermesh_Identity_V1_ContactCard: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
+  public static let protoMessageName: String = _protobuf_package + ".ContactCard"
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{3}owner_id\0\u{3}client_id\0\u{3}client_public_key\0\u{1}name\0\u{1}kind\0\u{3}issued_at\0")
+
+  public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
+    while let fieldNumber = try decoder.nextFieldNumber() {
+      // The use of inline closures is to circumvent an issue where the compiler
+      // allocates stack space for every case branch when no optimizations are
+      // enabled. https://github.com/apple/swift-protobuf/issues/1034
+      switch fieldNumber {
+      case 1: try { try decoder.decodeSingularStringField(value: &self.ownerID) }()
+      case 2: try { try decoder.decodeSingularStringField(value: &self.clientID) }()
+      case 3: try { try decoder.decodeSingularBytesField(value: &self.clientPublicKey) }()
+      case 4: try { try decoder.decodeSingularStringField(value: &self.name) }()
+      case 5: try { try decoder.decodeSingularStringField(value: &self.kind) }()
+      case 6: try { try decoder.decodeSingularMessageField(value: &self._issuedAt) }()
+      default: break
+      }
+    }
+  }
+
+  public func traverse<V: SwiftProtobuf.Visitor>(visitor: inout V) throws {
+    // The use of inline closures is to circumvent an issue where the compiler
+    // allocates stack space for every if/case branch local when no optimizations
+    // are enabled. https://github.com/apple/swift-protobuf/issues/1034 and
+    // https://github.com/apple/swift-protobuf/issues/1182
+    if !self.ownerID.isEmpty {
+      try visitor.visitSingularStringField(value: self.ownerID, fieldNumber: 1)
+    }
+    if !self.clientID.isEmpty {
+      try visitor.visitSingularStringField(value: self.clientID, fieldNumber: 2)
+    }
+    if !self.clientPublicKey.isEmpty {
+      try visitor.visitSingularBytesField(value: self.clientPublicKey, fieldNumber: 3)
+    }
+    if !self.name.isEmpty {
+      try visitor.visitSingularStringField(value: self.name, fieldNumber: 4)
+    }
+    if !self.kind.isEmpty {
+      try visitor.visitSingularStringField(value: self.kind, fieldNumber: 5)
+    }
+    try { if let v = self._issuedAt {
+      try visitor.visitSingularMessageField(value: v, fieldNumber: 6)
+    } }()
+    try unknownFields.traverse(visitor: &visitor)
+  }
+
+  public static func ==(lhs: Hermesh_Identity_V1_ContactCard, rhs: Hermesh_Identity_V1_ContactCard) -> Bool {
+    if lhs.ownerID != rhs.ownerID {return false}
+    if lhs.clientID != rhs.clientID {return false}
+    if lhs.clientPublicKey != rhs.clientPublicKey {return false}
+    if lhs.name != rhs.name {return false}
+    if lhs.kind != rhs.kind {return false}
+    if lhs._issuedAt != rhs._issuedAt {return false}
+    if lhs.unknownFields != rhs.unknownFields {return false}
+    return true
+  }
+}
+
+nonisolated extension Hermesh_Identity_V1_InboxRegistration: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
+  public static let protoMessageName: String = _protobuf_package + ".InboxRegistration"
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{3}owner_id\0\u{1}inbox\0\u{3}inbox_public_key\0\u{3}takes_messages\0\u{3}issued_at\0")
+
+  public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
+    while let fieldNumber = try decoder.nextFieldNumber() {
+      // The use of inline closures is to circumvent an issue where the compiler
+      // allocates stack space for every case branch when no optimizations are
+      // enabled. https://github.com/apple/swift-protobuf/issues/1034
+      switch fieldNumber {
+      case 1: try { try decoder.decodeSingularStringField(value: &self.ownerID) }()
+      case 2: try { try decoder.decodeSingularStringField(value: &self.inbox) }()
+      case 3: try { try decoder.decodeSingularBytesField(value: &self.inboxPublicKey) }()
+      case 4: try { try decoder.decodeSingularStringField(value: &self.takesMessages) }()
+      case 5: try { try decoder.decodeSingularMessageField(value: &self._issuedAt) }()
+      default: break
+      }
+    }
+  }
+
+  public func traverse<V: SwiftProtobuf.Visitor>(visitor: inout V) throws {
+    // The use of inline closures is to circumvent an issue where the compiler
+    // allocates stack space for every if/case branch local when no optimizations
+    // are enabled. https://github.com/apple/swift-protobuf/issues/1034 and
+    // https://github.com/apple/swift-protobuf/issues/1182
+    if !self.ownerID.isEmpty {
+      try visitor.visitSingularStringField(value: self.ownerID, fieldNumber: 1)
+    }
+    if !self.inbox.isEmpty {
+      try visitor.visitSingularStringField(value: self.inbox, fieldNumber: 2)
+    }
+    if !self.inboxPublicKey.isEmpty {
+      try visitor.visitSingularBytesField(value: self.inboxPublicKey, fieldNumber: 3)
+    }
+    if !self.takesMessages.isEmpty {
+      try visitor.visitSingularStringField(value: self.takesMessages, fieldNumber: 4)
+    }
+    try { if let v = self._issuedAt {
+      try visitor.visitSingularMessageField(value: v, fieldNumber: 5)
+    } }()
+    try unknownFields.traverse(visitor: &visitor)
+  }
+
+  public static func ==(lhs: Hermesh_Identity_V1_InboxRegistration, rhs: Hermesh_Identity_V1_InboxRegistration) -> Bool {
+    if lhs.ownerID != rhs.ownerID {return false}
+    if lhs.inbox != rhs.inbox {return false}
+    if lhs.inboxPublicKey != rhs.inboxPublicKey {return false}
+    if lhs.takesMessages != rhs.takesMessages {return false}
+    if lhs._issuedAt != rhs._issuedAt {return false}
+    if lhs.unknownFields != rhs.unknownFields {return false}
+    return true
+  }
+}
+
+nonisolated extension Hermesh_Identity_V1_Contact: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
+  public static let protoMessageName: String = _protobuf_package + ".Contact"
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{1}card\0\u{3}device_cert\0\u{3}machine_cert\0\u{1}registration\0")
+
+  fileprivate class _StorageClass {
+    var _card: Hermesh_Identity_V1_Signed? = nil
+    var _deviceCert: Hermesh_Identity_V1_Signed? = nil
+    var _machineCert: Hermesh_Identity_V1_Signed? = nil
+    var _registration: Hermesh_Identity_V1_Signed? = nil
+
+      // This property is used as the initial default value for new instances of the type.
+      // The type itself is protecting the reference to its storage via CoW semantics.
+      // This will force a copy to be made of this reference when the first mutation occurs;
+      // hence, it is safe to mark this as `nonisolated(unsafe)`.
+      static nonisolated(unsafe) let defaultInstance = _StorageClass()
+
+    private init() {}
+
+    init(copying source: _StorageClass) {
+      _card = source._card
+      _deviceCert = source._deviceCert
+      _machineCert = source._machineCert
+      _registration = source._registration
+    }
+  }
+
+  fileprivate mutating func _uniqueStorage() -> _StorageClass {
+    if !isKnownUniquelyReferenced(&_storage) {
+      _storage = _StorageClass(copying: _storage)
+    }
+    return _storage
+  }
+
+  public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
+    _ = _uniqueStorage()
+    try withExtendedLifetime(_storage) { (_storage: _StorageClass) in
+      while let fieldNumber = try decoder.nextFieldNumber() {
+        // The use of inline closures is to circumvent an issue where the compiler
+        // allocates stack space for every case branch when no optimizations are
+        // enabled. https://github.com/apple/swift-protobuf/issues/1034
+        switch fieldNumber {
+        case 1: try { try decoder.decodeSingularMessageField(value: &_storage._card) }()
+        case 2: try { try decoder.decodeSingularMessageField(value: &_storage._deviceCert) }()
+        case 3: try { try decoder.decodeSingularMessageField(value: &_storage._machineCert) }()
+        case 4: try { try decoder.decodeSingularMessageField(value: &_storage._registration) }()
+        default: break
+        }
+      }
+    }
+  }
+
+  public func traverse<V: SwiftProtobuf.Visitor>(visitor: inout V) throws {
+    try withExtendedLifetime(_storage) { (_storage: _StorageClass) in
+      // The use of inline closures is to circumvent an issue where the compiler
+      // allocates stack space for every if/case branch local when no optimizations
+      // are enabled. https://github.com/apple/swift-protobuf/issues/1034 and
+      // https://github.com/apple/swift-protobuf/issues/1182
+      try { if let v = _storage._card {
+        try visitor.visitSingularMessageField(value: v, fieldNumber: 1)
+      } }()
+      try { if let v = _storage._deviceCert {
+        try visitor.visitSingularMessageField(value: v, fieldNumber: 2)
+      } }()
+      try { if let v = _storage._machineCert {
+        try visitor.visitSingularMessageField(value: v, fieldNumber: 3)
+      } }()
+      try { if let v = _storage._registration {
+        try visitor.visitSingularMessageField(value: v, fieldNumber: 4)
+      } }()
+    }
+    try unknownFields.traverse(visitor: &visitor)
+  }
+
+  public static func ==(lhs: Hermesh_Identity_V1_Contact, rhs: Hermesh_Identity_V1_Contact) -> Bool {
+    if lhs._storage !== rhs._storage {
+      let storagesAreEqual: Bool = withExtendedLifetime((lhs._storage, rhs._storage)) { (_args: (_StorageClass, _StorageClass)) in
+        let _storage = _args.0
+        let rhs_storage = _args.1
+        if _storage._card != rhs_storage._card {return false}
+        if _storage._deviceCert != rhs_storage._deviceCert {return false}
+        if _storage._machineCert != rhs_storage._machineCert {return false}
+        if _storage._registration != rhs_storage._registration {return false}
+        return true
+      }
+      if !storagesAreEqual {return false}
+    }
     if lhs.unknownFields != rhs.unknownFields {return false}
     return true
   }

@@ -73,6 +73,7 @@ type Owner struct {
 	relayInfo  *relayv1.GetInfoResponse
 	join       *pendingJoin // this device asking to join an owner
 	pendingMu  sync.Mutex   // pending names (pendingNames)
+	cardsMu    sync.Mutex   // one card sync at a time (cards.go)
 	removed    bool         // the relay no longer counts this device as the owner's
 	signedOut  bool         // SignOut: set up, but it neither connects nor signs
 	account    string       // the account, as the center named it (display)
@@ -267,6 +268,7 @@ func (o *Owner) relay(ctx context.Context) (*peer.Client, error) {
 	}
 	o.client, o.removed = c, false
 	go o.fetchRelayInfo(o.relayURL)
+	go o.refreshCards()
 	return c, nil
 }
 
@@ -956,6 +958,7 @@ func (o *Owner) ApproveClientPairing(ctx context.Context, code string, spec *loc
 		return "", "", err
 	}
 	o.st.putGrant(signed[0], false)
+	go o.refreshCards()
 	return g.ClientId, g.GrantId, nil
 }
 
@@ -1419,6 +1422,7 @@ func (o *Owner) UpdateClient(ctx context.Context, grantID string, spec *localv1.
 		return 0, nil, err
 	}
 	o.st.putGrant(signed[0], false)
+	go o.refreshCards()
 	acks, err := o.revoke(ctx, &identityv1.RevocationList{OwnerId: o.ownerID, MinGrantVersions: map[string]uint64{grantID: g.Version}})
 	return g.Version, acks, err
 }

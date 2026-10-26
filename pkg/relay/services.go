@@ -423,7 +423,8 @@ func (c *clientControl) GetLatestGrant(ctx context.Context, _ *relayv1.GetLatest
 	if err != nil {
 		return nil, err
 	}
-	return &relayv1.GetLatestGrantResponse{Grant: g, RootChain: p.t.trust.RootChain(), Revoked: c.s.checkNotRevoked(p.t, p.subject) != nil}, nil
+	return &relayv1.GetLatestGrantResponse{Grant: g, RootChain: p.t.trust.RootChain(), Revoked: c.s.checkNotRevoked(p.t, p.subject) != nil,
+		InboxWaiting: uint32(c.s.InboxWaiting(p.t.ownerID, p.subject.ID))}, nil
 }
 
 // ---------------------------------------------------------------------------

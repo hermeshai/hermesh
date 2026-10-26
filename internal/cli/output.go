@@ -88,6 +88,9 @@ func writeDoc(w io.Writer, err error, data ...field) {
 // report prints the document of a JSON command and returns its error
 // marked as reported, so Main prints nothing more.
 func (a *app) report(w io.Writer, err error, data ...field) error {
+	if a.inboxWaiting > 0 {
+		data = append(data, field{"inbox", object{{"waiting", a.inboxWaiting}}})
+	}
 	writeDoc(w, err, data...)
 	if err == nil {
 		return nil

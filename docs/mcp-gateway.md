@@ -475,10 +475,12 @@ fixed order with `ttlMs` set, as 2026-07-28 asks.
 
 | Tool | Command |
 |---|---|
-| `hermesh_status` | the connection's state and next step (§5.7); once active, also `auth status` |
+| `hermesh_status` | the connection's state and next step (§5.7); once active, also `auth status` and the inbox (`messages`: its webhook, waiting messages) |
 | `auth_status` | `hermesh auth status` |
 | `project_list` | `hermesh project list` |
 | `session_start`, `session_get`, `session_list`, `session_events`, `session_send`, `session_answer`, `session_interrupt`, `session_archive`, `session_unarchive`, `session_diff` | `hermesh session <verb>` |
+| `message_list`, `message_ack`, `message_status`, `message_contacts` | `hermesh message <verb>`, with the connection's inbox key ([agent-messages.md](agent-messages.md)) |
+| `message_notify` | the gateway's own: the webhook rung when messages arrive (agent-messages.md §6.3) |
 
 - Parameters are the command's flags (`--question-timeout` →
   `question_timeout`; durations as strings like `30s`) and its positional

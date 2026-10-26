@@ -121,7 +121,7 @@ hermesh auth login relay.example.com/o_xxxxxxxx
 
 ## For agents: the `hermesh` CLI
 
-Commands are "noun + action": `auth`, `project` and `session`, each with its actions (`hermesh <noun> --help`). The agent calling the CLI is the **client**; the agent doing the work on the machine is the **coding agent** (`--agent claude`). Over MCP, the same commands are tools (`project_list`, `session_start`, …; [docs/mcp-gateway.md](docs/mcp-gateway.md) §7).
+Commands are "noun + action": `auth`, `project`, `session` and `message`, each with its actions (`hermesh <noun> --help`). The agent calling the CLI is the **client**; the agent doing the work on the machine is the **coding agent** (`--agent claude`). Over MCP, the same commands are tools (`project_list`, `session_start`, …; [docs/mcp-gateway.md](docs/mcp-gateway.md) §7).
 
 ```bash
 hermesh project list                # where you can work: machine/project, the owner's notes, branch, platform, usable coding agents, whether a session can start now
@@ -135,7 +135,11 @@ hermesh session list                # your sessions (--archived for archived one
 hermesh session interrupt s_xxx     # stop the running turn; the session stays, and a later send continues it
 hermesh session archive s_xxx       # when done: read-only, frees the worktree (the branch keeps the changes); unarchive restores it
 hermesh session events s_xxx --after 812   # events page by page: the latest 50 by default; --after newer, --before older
+hermesh message list --wait         # your inbox: news of your sessions, messages from the owner's other agents
+hermesh message ack msg_xxx         # handled: it leaves the inbox
 ```
+
+**Your inbox.** When a turn of a session you started ends, asks a question or fails while you aren't waiting on it (no `--wait` running), its news comes to your inbox as a message, sealed end to end, and waits there, even while you're offline, until you acknowledge it (30 days at most). Every command's JSON says `inbox.waiting` while messages wait. `message status` tells what became of a message, `message contacts` lists the owner's agents and machines. See [docs/agent-messages.md](docs/agent-messages.md).
 
 **Sessions never end on their own.** However long one has been idle, another `send` continues the same coding agent session.
 

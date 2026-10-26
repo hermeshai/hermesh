@@ -32,6 +32,7 @@ type ownerMac struct {
 	logs       []*proc
 	relay      *proc
 	relayArgs  []string
+	relayEnv   []string
 	relayDebug string // where the relay serves /metrics
 	ownerDebug string // where the owner's hermeshd serves /metrics
 	repoHead   string // the owner's HEAD, which sessions must never move
@@ -140,7 +141,7 @@ func newOwnerMacAt(t *testing.T, signer func(w *ownerMac) string, oneWay time.Du
 }
 
 func (w *ownerMac) startRelay() {
-	w.relay = start(w.t, "relay", nil, filepath.Join(w.bin, "hermesh-relay"), w.relayArgs...)
+	w.relay = start(w.t, "relay", w.relayEnv, filepath.Join(w.bin, "hermesh-relay"), w.relayArgs...)
 	w.logs = append(w.logs, w.relay)
 	r := w.relay
 	eventually(w.t, 20*time.Second, "relay up", func() bool { return strings.Contains(r.output(), "relay listening") })

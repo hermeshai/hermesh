@@ -290,6 +290,7 @@ func (r *replica) watchOwner(s *sources, answer chan struct{}) (again chan struc
 		var clients []*localv1.Client
 		if u.Clients != nil {
 			clients = r.o.clientsFrom(u.Clients)
+			go r.o.syncCards(u.Clients.Clients)
 		}
 		var pairings []*localv1.PairingDetails
 		if u.Pairings != nil {

@@ -107,7 +107,7 @@ func TestCLIOutputContract(t *testing.T) {
 	if r.code != 0 || r.stdout != want || r.stderr != "session "+tid+" in owner-mac/demo\n" {
 		t.Fatalf("start --wait text:\n%s---\n%s", r.stdout, r.stderr)
 	}
-	if g := run(t, env, time.Minute, bin, "session", "get", tid); g.stdout != want || g.stderr != "" {
+	if g := run(t, env, time.Minute, bin, "session", "get", tid); g.stdout != want || withoutInboxNote(g.stderr) != "" {
 		t.Fatalf("get differs from --wait:\n%s---\n%s", g.stdout, g.stderr)
 	}
 	r = run(t, env, time.Minute, bin, "session", "send", tid, "--wait", "--message", "fail 429 rate limit")

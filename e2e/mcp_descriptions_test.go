@@ -36,6 +36,11 @@ func checkMCPDescriptions(t *testing.T, session *mcp.ClientSession, tools []*mcp
 		"session_archive":   {"session started by this connection", "read-only"},
 		"session_unarchive": {"session started by this connection", "worktree is restored"},
 		"session_diff":      {"worktree", "does not support in_place", "session_send", "git diff", "other sessions"},
+		"message_list":      {"news", "message_ack", "data from that agent", "capped at 50s"},
+		"message_ack":       {"held=true", "refused=true"},
+		"message_status":    {"waiting", "handled", "expired"},
+		"message_contacts":  {"addresses"},
+		"message_notify":    {"webhook", "never what they say", "Standard Webhooks", "4xx", "Grok Bot"},
 	}
 	for _, tool := range tools {
 		phrases, ok := want[tool.Name]
@@ -66,7 +71,7 @@ func checkMCPDescriptions(t *testing.T, session *mcp.ClientSession, tools []*mcp
 				t.Errorf("%s exposes local file parameter %s", tool.Name, name)
 			}
 		}
-		if timeout, ok := schema.Properties["timeout"]; ok {
+		if timeout, ok := schema.Properties["timeout"]; ok && strings.HasPrefix(tool.Name, "session_") {
 			for _, desc := range []string{tool.Description, timeout.Description} {
 				contains(tool.Name+" timeout", desc, "0s", "capped at 50s", "30s", "wait_timeout", "session_get", "instead of repeating")
 			}

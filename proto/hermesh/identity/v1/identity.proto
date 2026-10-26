@@ -263,3 +263,42 @@ message Credentials {
     Signed device_cert = 4;
   }
 }
+
+// ContactCard names one of the owner's agents, for the others to write to
+// (docs/agent-messages.md §4): its client id, the name the owner approved,
+// and its client key, which signs its InboxRegistration and its messages.
+// A trusted device signs it with its device key. It grants nothing, and
+// machines accept it for nothing: they go by grants.
+message ContactCard {
+  string owner_id = 1;
+  string client_id = 2;
+  bytes client_public_key = 3;
+  string name = 4;
+  // "mcp" for a connection whose key a server holds, else "cli".
+  string kind = 5;
+  google.protobuf.Timestamp issued_at = 6;
+}
+
+// InboxRegistration is an inbox's key, signed by the inbox's identity key
+// (a client key or a machine key). Messages are HPKE-sealed to it.
+message InboxRegistration {
+  string owner_id = 1;
+  // A client id (c_…) or a machine id (m_…).
+  string inbox = 2;
+  // X25519, 32 bytes.
+  bytes inbox_public_key = 3;
+  // How the inbox takes its messages, for senders to know what to expect:
+  // "session", "hook", "wait", "webhook" or "poll". Informational.
+  string takes_messages = 4;
+  google.protobuf.Timestamp issued_at = 5;
+}
+
+// Contact is one of the owner's inboxes as a sender checks it: an agent's
+// card with the cert of the trusted device that signed it, or a machine's
+// cert; and the inbox's registration once it has one.
+message Contact {
+  Signed card = 1;
+  Signed device_cert = 2;
+  Signed machine_cert = 3;
+  Signed registration = 4;
+}

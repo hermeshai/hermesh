@@ -82,6 +82,13 @@ type Server struct {
 	// noticeLimit bounds the notices each machine sends.
 	noticeLimit *rateLimiter
 	pushMem     memoryPush
+	// The post office (messages.go): its store when the Backend has none,
+	// its limits, and what hears of each message it takes in.
+	messageMem   memoryMessages
+	messageLimit *rateLimiter
+	pairLimit    *rateLimiter
+	messageHook  func(ownerID, inbox string)
+	expiredAt    time.Time
 
 	mu      sync.Mutex
 	tenants map[string]*tenant
@@ -102,6 +109,8 @@ type tenant struct {
 	revocations *identityv1.RevocationList
 	// ownerWatchers are woken when what WatchOwner sends may have changed.
 	ownerWatchers map[chan struct{}]struct{}
+	// inboxWatchers are woken when a message arrives for their inbox.
+	inboxWatchers map[string]map[chan struct{}]struct{}
 }
 
 type peer struct {
@@ -135,7 +144,8 @@ func New(cfg Config) (*Server, error) {
 		cfg.PairingsPerMinute = 10
 	}
 	s := &Server{cfg: cfg, log: cfg.Logger, store: cfg.Backend, tenants: map[string]*tenant{}, limiter: newRateLimiter(cfg.PairingsPerMinute, time.Minute),
-		noticeLimit: newRateLimiter(noticesPerMinute, time.Minute)}
+		noticeLimit: newRateLimiter(noticesPerMinute, time.Minute), messageLimit: newRateLimiter(messagesPerMinute, time.Minute),
+		pairLimit: newRateLimiter(pairPerHour, time.Hour)}
 	if s.store == nil {
 		if cfg.Hosted {
 			return nil, errors.New("a hosted relay needs a Backend")
@@ -606,8 +616,10 @@ func (s *Server) controlMux(role relayv1.Role) http.Handler {
 	switch role {
 	case relayv1.Role_ROLE_MACHINE:
 		mux.Handle(relayv1connect.NewMachineControlServiceHandler(&machineControl{s: s}, transport.NoCompression))
+		mux.Handle(relayv1connect.NewMessageServiceHandler(&messageService{s: s}, transport.NoCompression))
 	case relayv1.Role_ROLE_CLIENT:
 		mux.Handle(relayv1connect.NewClientControlServiceHandler(&clientControl{s: s}, transport.NoCompression))
+		mux.Handle(relayv1connect.NewMessageServiceHandler(&messageService{s: s}, transport.NoCompression))
 	case relayv1.Role_ROLE_OWNER:
 		path, h := relayv1connect.NewOwnerControlServiceHandler(&ownerControl{s: s}, transport.NoCompression)
 		mux.Handle(path, countOwnerRPCs(h))
@@ -737,14 +749,17 @@ func (s *Server) applyRevocations(t *tenant, in *identityv1.RevocationList) erro
 	// Revoked agents leave the list. What refuses them is the revocation
 	// list, kept apart and never pruned, here and on every machine.
 	revoked := setOf(cur.RevokedGrantIds)
+	var gone []string
 	for _, sg := range grants {
 		g := &identityv1.Grant{}
 		if identity.Unverified(sg, g) == nil && revoked[g.GrantId] {
 			if err := s.store.DeleteGrant(t.ownerID, g.GrantId); err != nil {
 				s.log.Warn("forgetting a revoked grant", "owner", t.ownerID, "grant", g.GrantId, "err", err)
 			}
+			gone = append(gone, g.ClientId)
 		}
 	}
+	s.dropInboxes(t, gone, in.RevokedMachineIds)
 	s.mu.Lock()
 	t.revocations = cur
 	var kick []*peer
@@ -886,6 +901,7 @@ func (s *Server) clientEntries(t *tenant) ([]*relayv1.ClientEntry, error) {
 	rev := t.revocations
 	s.mu.Unlock()
 	removed := setOf(rev.RevokedMachineIds)
+	cards, _ := s.messageStore().Cards(t.ownerID)
 	var out []*relayv1.ClientEntry
 	for _, sg := range grants {
 		g := &identityv1.Grant{}
@@ -896,7 +912,8 @@ func (s *Server) clientEntries(t *tenant) ([]*relayv1.ClientEntry, error) {
 		if isRevoked(rev, &identity.Subject{Kind: identity.SubjectClient, ID: g.ClientId, Grant: g}) != nil {
 			continue
 		}
-		out = append(out, &relayv1.ClientEntry{Grant: sg, Online: online[g.ClientId], MachineIds: liveMachines(g.MachineIds, removed)})
+		out = append(out, &relayv1.ClientEntry{Grant: sg, Online: online[g.ClientId], MachineIds: liveMachines(g.MachineIds, removed),
+			Card: cards[g.ClientId].Card, CardDeviceCert: cards[g.ClientId].DeviceCert})
 	}
 	return out, nil
 }

@@ -375,3 +375,15 @@ func eventually(t *testing.T, timeout time.Duration, what string, cond func() bo
 
 var _ = proto.Equal
 var _ = strings.Contains
+
+// withoutInboxNote is stderr without the line saying messages wait in the
+// agent's inbox (docs/agent-messages.md): a hint, not a warning.
+func withoutInboxNote(stderr string) string {
+	var out []string
+	for _, l := range strings.Split(stderr, "\n") {
+		if !strings.Contains(l, "wait in your inbox: hermesh message list") {
+			out = append(out, l)
+		}
+	}
+	return strings.Join(out, "\n")
+}

@@ -167,6 +167,10 @@ message ClientEntry {
   // grant keeps them until the owner signs a new version, but a removed
   // machine's id can never come back.
   repeated string machine_ids = 5;
+  // The agent's contact card, as a trusted device last published it, and
+  // that device's cert.
+  hermesh.identity.v1.Signed card = 6;
+  hermesh.identity.v1.Signed card_device_cert = 7;
 }
 
 service MachineControlService {
@@ -279,6 +283,8 @@ message GetLatestGrantResponse {
   hermesh.identity.v1.Signed grant = 1;
   hermesh.identity.v1.RootChain root_chain = 2;
   bool revoked = 3;
+  // Messages waiting in the client's inbox: every command says so.
+  uint32 inbox_waiting = 4;
 }
 
 service OwnerControlService {
@@ -308,7 +314,16 @@ service OwnerControlService {
   // This device's push registration, signed by its device key: replaces
   // its earlier one. An empty token stops its notices.
   rpc RegisterPush(RegisterPushRequest) returns (RegisterPushResponse);
+  // Contact cards for the owner's agents, signed by this device's device
+  // key (docs/agent-messages.md §4): each replaces the agent's earlier one.
+  rpc PublishCards(PublishCardsRequest) returns (PublishCardsResponse);
 }
+
+message PublishCardsRequest {
+  repeated hermesh.identity.v1.Signed cards = 1;
+}
+
+message PublishCardsResponse {}
 
 message RegisterPushRequest {
   hermesh.identity.v1.Signed registration = 1;
@@ -394,3 +409,99 @@ message PublishRootChainRequest {
 }
 
 message PublishRootChainResponse {}
+
+// MessageService is the post office (docs/agent-messages.md §5), served on
+// the client and machine control streams: the caller's inbox is the
+// identity the relay admitted. The relay keeps sealed messages until their
+// recipient acknowledges them, at most 30 days, and never opens them.
+service MessageService {
+  // The caller's InboxRegistration, signed by its identity key.
+  rpc Register(RegisterInboxRequest) returns (RegisterInboxResponse);
+  // The owner's inboxes: agents with their cards, machines with their certs.
+  rpc Contacts(ContactsRequest) returns (ContactsResponse);
+  rpc Send(SendSealedRequest) returns (SendSealedResponse);
+  // The caller's waiting messages, oldest first.
+  rpc Fetch(FetchMessagesRequest) returns (FetchMessagesResponse);
+  // Handled messages, each with what became of it; the relay forgets them.
+  rpc Ack(AckMessagesRequest) returns (AckMessagesResponse);
+  // How many messages wait, at once and again whenever one arrives.
+  rpc Watch(WatchInboxRequest) returns (stream WatchInboxResponse);
+  // What became of messages, by id (any of the owner's inboxes may ask:
+  // ids are random, so only their sender knows them).
+  rpc Status(MessageStatusRequest) returns (MessageStatusResponse);
+}
+
+// SealedMessage is an inbox.v1.SignedMessage HPKE-sealed to its inbox's key
+// (DHKEM(X25519, HKDF-SHA256), HKDF-SHA256, AES-128-GCM, info
+// "hermesh-message-v1" followed by the inbox and the message id).
+message SealedMessage {
+  string inbox = 1;
+  string message_id = 2;
+  bytes sealed = 3;
+  // Set by the relay.
+  google.protobuf.Timestamp received_at = 4;
+}
+
+message RegisterInboxRequest {
+  hermesh.identity.v1.Signed registration = 1;
+}
+
+message RegisterInboxResponse {}
+
+message ContactsRequest {}
+
+message ContactsResponse {
+  repeated hermesh.identity.v1.Contact contacts = 1;
+  hermesh.identity.v1.RootChain root_chain = 2;
+}
+
+message SendSealedRequest {
+  SealedMessage message = 1;
+}
+
+message SendSealedResponse {}
+
+message FetchMessagesRequest {
+  // At most this many (default and most: 50).
+  uint32 limit = 1;
+}
+
+message FetchMessagesResponse {
+  repeated SealedMessage messages = 1;
+  // More are waiting.
+  bool more = 2;
+}
+
+message MessageAck {
+  string message_id = 1;
+  // "handled", "held" or "refused".
+  string outcome = 2;
+}
+
+message AckMessagesRequest {
+  repeated MessageAck acks = 1;
+}
+
+message AckMessagesResponse {}
+
+message WatchInboxRequest {}
+
+message WatchInboxResponse {
+  uint32 waiting = 1;
+}
+
+message MessageStatusRequest {
+  repeated string message_ids = 1;
+}
+
+message MessageState {
+  string message_id = 1;
+  // "waiting", "taken", "handled", "held", "refused", "expired", or
+  // "unknown" for an id the post office never had or no longer remembers.
+  string state = 2;
+  google.protobuf.Timestamp at = 3;
+}
+
+message MessageStatusResponse {
+  repeated MessageState states = 1;
+}

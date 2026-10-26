@@ -128,7 +128,8 @@ type live struct {
 	sess          provider.Session
 	seq           uint64
 	turn          uint32
-	subs          map[chan *sessionv1.SessionEvent]bool // true: it takes drafts
+	subs          map[chan *sessionv1.SessionEvent]bool   // true: it takes drafts
+	followers     map[chan *sessionv1.SessionEvent]string // who each subscriber is (Principal.ID)
 	lastEvent     time.Time
 	lastProgress  time.Time // last event that was not an error
 	turnStarted   time.Time
@@ -871,6 +872,25 @@ func (s *Sessions) Rename(ctx context.Context, p *Principal, id, title string) (
 	return s.toProto(row), nil
 }
 
+// following reports whether who (a Principal.ID) follows the session's
+// events at this moment: it has the news already.
+func (s *Sessions) following(id, who string) bool {
+	s.mu.Lock()
+	l := s.live[id]
+	s.mu.Unlock()
+	if l == nil {
+		return false
+	}
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	for ch, f := range l.followers {
+		if _, ok := l.subs[ch]; ok && f == who {
+			return true
+		}
+	}
+	return false
+}
+
 // Stream replays stored events after req.AfterSeq and then, if requested,
 // follows live events until the session ends or ctx is done.
 func (s *Sessions) Stream(ctx context.Context, p *Principal, req *sessionv1.StreamEventsRequest, send func(*sessionv1.SessionEvent) error) error {
@@ -889,6 +909,10 @@ func (s *Sessions) Stream(ctx context.Context, p *Principal, req *sessionv1.Stre
 		ch = make(chan *sessionv1.SessionEvent, 256)
 		l.mu.Lock()
 		l.subs[ch] = req.Partial
+		if l.followers == nil {
+			l.followers = map[chan *sessionv1.SessionEvent]string{}
+		}
+		l.followers[ch] = p.ID()
 		upTo = l.persistedSeq
 		if req.Partial {
 			draft = l.draftShown
@@ -897,6 +921,7 @@ func (s *Sessions) Stream(ctx context.Context, p *Principal, req *sessionv1.Stre
 		defer func() {
 			l.mu.Lock()
 			delete(l.subs, ch)
+			delete(l.followers, ch)
 			l.mu.Unlock()
 		}()
 	}

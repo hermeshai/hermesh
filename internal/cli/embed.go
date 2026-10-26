@@ -25,6 +25,12 @@ type Identity struct {
 	RootChain *identityv1.RootChain
 	// Grant is nil while the owner has not approved the client yet.
 	Grant *identityv1.Signed
+	// InboxKey is the client's inbox private key (X25519).
+	InboxKey []byte
+	// TakesMessages is how it takes messages ("webhook" or "poll"), and
+	// InboxRegistered what the post office was last told ("" for nothing).
+	TakesMessages   string
+	InboxRegistered string
 }
 
 // ExecOptions run a command for an Identity.
@@ -34,6 +40,9 @@ type ExecOptions struct {
 	// Adopted is called with the credentials a command picked up from the
 	// relay (a renewed or changed grant, a longer root chain).
 	Adopted func(rootChain *identityv1.RootChain, grant *identityv1.Signed)
+	// InboxRegistered is called once the post office has the inbox's key
+	// and how it takes messages.
+	InboxRegistered func(takes string)
 }
 
 // Exec runs one command (args without "hermesh", e.g. "session", "get",
@@ -110,6 +119,7 @@ var toolCommands = [][]string{
 	{"session", "start"}, {"session", "get"}, {"session", "list"}, {"session", "events"},
 	{"session", "send"}, {"session", "answer"}, {"session", "interrupt"},
 	{"session", "archive"}, {"session", "unarchive"}, {"session", "diff"},
+	{"message", "list"}, {"message", "ack"}, {"message", "status"}, {"message", "contacts"},
 }
 
 // localFlags read this computer's files or stdin, which a remote caller
@@ -127,8 +137,13 @@ func Tools() []Tool {
 		}
 		t := Tool{Name: strings.Join(path, "_"), Path: path, Description: describe(cmd)}
 		if _, arg, ok := strings.Cut(cmd.Use, " "); ok {
+			many := strings.HasSuffix(arg, "...") // "<message id>...": a list
+			arg = strings.TrimSuffix(arg, "...")
 			name := strings.ReplaceAll(strings.Trim(arg, "<>[]"), " ", "_")
 			t.Arg = &ToolParam{Name: name, Type: "string", Required: strings.HasPrefix(arg, "<"), Help: "the " + strings.Trim(arg, "<>[]")}
+			if many {
+				t.Arg.Type, t.Arg.Help = "array", t.Arg.Help+"s"
+			}
 		}
 		cmd.Flags().VisitAll(func(f *pflag.Flag) {
 			if localFlags[f.Name] || f.Hidden {
@@ -203,7 +218,21 @@ func (t Tool) Args(values map[string]any) ([]string, error) {
 			args = append(args, fmt.Sprintf("--%s=%s", p.Flag, s))
 		}
 	}
-	if t.Arg != nil {
+	switch {
+	case t.Arg != nil && t.Arg.Type == "array":
+		list, _ := values[t.Arg.Name].([]any)
+		if len(list) == 0 {
+			return nil, fmt.Errorf("%s is required: a list of strings", t.Arg.Name)
+		}
+		args = append(args, "--")
+		for _, x := range list {
+			s, ok := x.(string)
+			if !ok {
+				return nil, fmt.Errorf("%s: a list of strings", t.Arg.Name)
+			}
+			args = append(args, s)
+		}
+	case t.Arg != nil:
 		v, _ := values[t.Arg.Name].(string)
 		if v == "" {
 			return nil, fmt.Errorf("%s is required", t.Arg.Name)

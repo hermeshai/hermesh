@@ -35,6 +35,8 @@ type state struct {
 	// Machines is what the last machine list showed, so that the next
 	// command connects to its machine while the list is on its way.
 	Machines []seenMachine `json:"machines,omitempty"`
+	// InboxKey is the inbox public key the post office has (message.go).
+	InboxKey []byte `json:"inbox_key,omitempty"`
 }
 
 type seenMachine struct {
@@ -57,6 +59,9 @@ type app struct {
 	mu    sync.Mutex // grant, read by handshakes while it is synced
 	grant *identityv1.Signed
 	g     *identityv1.Grant
+	// inboxWaiting is how many messages wait in this client's inbox, as
+	// the relay said while the command connected.
+	inboxWaiting uint32
 }
 
 func homeDir() string {
@@ -194,6 +199,11 @@ func (a *app) connect(ctx context.Context, warm func([]machineRef) []machineRef)
 	synced := make(chan error, 1)
 	go func() {
 		_, err := a.syncGrant(ctx, c)
+		if err == nil {
+			if rerr := a.registerInbox(ctx, c); rerr != nil {
+				fmt.Fprintln(os.Stderr, "warning: registering this agent's inbox:", rerr)
+			}
+		}
 		synced <- err
 	}()
 	if warm != nil {
@@ -262,6 +272,7 @@ func (a *app) syncGrant(ctx context.Context, c *peer.Client) (uint64, error) {
 	if res.Revoked {
 		return 0, errRevoked
 	}
+	a.inboxWaiting = res.InboxWaiting
 	if res.Grant != nil && !proto.Equal(res.Grant, a.grant) {
 		ng := &identityv1.Grant{}
 		if identity.Unverified(res.Grant, ng) == nil && ng.GrantId == a.g.GrantId && ng.Version >= a.g.Version {

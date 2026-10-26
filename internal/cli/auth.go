@@ -104,6 +104,13 @@ center (it started over): then login pairs with the new one directly.`,
 			if err := a.adopt(creds.RootChain, creds.GetGrant()); err != nil {
 				return err
 			}
+			// Its inbox, so that news and messages can reach it from now on.
+			if c, err := a.dial(cmd.Context(), false); err == nil {
+				if err := a.registerInbox(cmd.Context(), c); err != nil {
+					fmt.Fprintln(os.Stderr, "warning: registering this agent's inbox:", err)
+				}
+				c.Close()
+			}
 			fmt.Fprintln(progress, "Paired. Run `hermesh project list` to see where it can work.")
 			return a.loggedIn(cmd)
 		},

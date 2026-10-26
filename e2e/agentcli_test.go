@@ -196,7 +196,7 @@ func TestAgentDrivesCLI(t *testing.T) {
 	if off["machine"] != "owner-mac" || off["last_seen"] == nil {
 		t.Fatalf("offline: %v", off)
 	}
-	if r := agent("", 30*time.Second, "project", "list"); r.code != 0 || !regexp.MustCompile(`(?m)^owner-mac/\*\s+-\s+-\s+-\s+offline\s+last seen .* ago$`).MatchString(r.stdout) || r.stderr != "" {
+	if r := agent("", 30*time.Second, "project", "list"); r.code != 0 || !regexp.MustCompile(`(?m)^owner-mac/\*\s+-\s+-\s+-\s+offline\s+last seen .* ago$`).MatchString(r.stdout) || withoutInboxNote(r.stderr) != "" {
 		t.Fatalf("project list text, owner-mac offline: %+v", r)
 	}
 	if m := one(agent("", 30*time.Second, "session", "list", "-o", "json")); m["exit_code"] != float64(0) || len(m["sessions"].([]any)) != 0 || len(m["offline"].([]any)) != 1 {
