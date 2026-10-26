@@ -117,6 +117,8 @@ ALTER TABLE sessions ADD COLUMN effort TEXT NOT NULL DEFAULT '';
 ALTER TABLE sessions ADD COLUMN speed INTEGER NOT NULL DEFAULT 0;
 `, `
 ALTER TABLE turn_usage ADD COLUMN started_at INTEGER NOT NULL DEFAULT 0;
+`, `
+ALTER TABLE sessions ADD COLUMN conversation TEXT NOT NULL DEFAULT '';
 `}
 
 // Store uses one writer connection (db) and a pool of readers (rdb), so
@@ -293,9 +295,13 @@ type sessionRow struct {
 	// Title is the first line of the starting prompt, for lists.
 	Title                string
 	CreatedAt, UpdatedAt time.Time
+
+	// Conversation is the creator's own conversation, where its news and
+	// the session's messages to it go (docs/agent-messages.md §7.3).
+	Conversation string
 }
 
-const sessionCols = `session_id, project_id, agent, status, created_by, grant_id, model, provider_ref, base_commit, branch, worktree, workspace, question_timeout, pgid, progress, error, result, title, created_at, updated_at, effort, speed`
+const sessionCols = `session_id, project_id, agent, status, created_by, grant_id, model, provider_ref, base_commit, branch, worktree, workspace, question_timeout, pgid, progress, error, result, title, created_at, updated_at, effort, speed, conversation`
 
 type execer interface {
 	Exec(query string, args ...any) (sql.Result, error)
@@ -304,12 +310,12 @@ type execer interface {
 func putSession(db execer, r *sessionRow) error {
 	prog, _ := proto.Marshal(r.Progress)
 	r.UpdatedAt = time.Now()
-	_, err := db.Exec(`INSERT INTO sessions(`+sessionCols+`) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+	_, err := db.Exec(`INSERT INTO sessions(`+sessionCols+`) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
 		ON CONFLICT(session_id) DO UPDATE SET status=excluded.status, model=excluded.model, provider_ref=excluded.provider_ref,
 		base_commit=excluded.base_commit, branch=excluded.branch, worktree=excluded.worktree, pgid=excluded.pgid,
 		progress=excluded.progress, error=excluded.error, result=excluded.result, title=excluded.title, updated_at=excluded.updated_at`,
 		r.ID, r.ProjectID, r.Agent, int(r.Status), r.CreatedBy, r.GrantID, r.Model, r.ProviderRef,
-		r.BaseCommit, r.Branch, r.Worktree, int(r.Workspace), r.QuestionTimeout, r.Pgid, prog, r.Error, r.Result, r.Title, r.CreatedAt.Unix(), r.UpdatedAt.Unix(), r.Effort, int(r.Speed))
+		r.BaseCommit, r.Branch, r.Worktree, int(r.Workspace), r.QuestionTimeout, r.Pgid, prog, r.Error, r.Result, r.Title, r.CreatedAt.Unix(), r.UpdatedAt.Unix(), r.Effort, int(r.Speed), r.Conversation)
 	return err
 }
 
@@ -319,7 +325,7 @@ func scanSession(sc interface{ Scan(...any) error }) (*sessionRow, error) {
 	var prog []byte
 	var c, u int64
 	if err := sc.Scan(&r.ID, &r.ProjectID, &r.Agent, &status, &r.CreatedBy, &r.GrantID, &r.Model, &r.ProviderRef,
-		&r.BaseCommit, &r.Branch, &r.Worktree, &workspace, &r.QuestionTimeout, &r.Pgid, &prog, &r.Error, &r.Result, &r.Title, &c, &u, &r.Effort, &speed); err != nil {
+		&r.BaseCommit, &r.Branch, &r.Worktree, &workspace, &r.QuestionTimeout, &r.Pgid, &prog, &r.Error, &r.Result, &r.Title, &c, &u, &r.Effort, &speed, &r.Conversation); err != nil {
 		return nil, err
 	}
 	r.Status, r.Workspace, r.Speed = sessionv1.SessionStatus(status), identityv1.Workspace(workspace), identityv1.AgentSpeed(speed)

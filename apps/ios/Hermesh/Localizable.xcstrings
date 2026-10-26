@@ -1945,7 +1945,7 @@
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "来自 %@ 的信"
+            "value": "来自 %@ 的消息"
           }
         }
       }
@@ -1955,7 +1955,7 @@
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "写给 %@ 的信"
+            "value": "发给 %@ 的消息"
           }
         }
       }

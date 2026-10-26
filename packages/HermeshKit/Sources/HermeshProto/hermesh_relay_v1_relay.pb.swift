@@ -1422,6 +1422,9 @@ public nonisolated struct Hermesh_Relay_V1_FetchMessagesRequest: Sendable {
   /// At most this many (default and most: 50).
   public var limit: UInt32 = 0
 
+  /// Pass over this many of the oldest first: the next page.
+  public var skip: UInt32 = 0
+
   public var unknownFields = SwiftProtobuf.UnknownStorage()
 
   public init() {}
@@ -3811,7 +3814,7 @@ nonisolated extension Hermesh_Relay_V1_SendSealedResponse: SwiftProtobuf.Message
 
 nonisolated extension Hermesh_Relay_V1_FetchMessagesRequest: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
   public static let protoMessageName: String = _protobuf_package + ".FetchMessagesRequest"
-  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{1}limit\0")
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{1}limit\0\u{1}skip\0")
 
   public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
     while let fieldNumber = try decoder.nextFieldNumber() {
@@ -3820,6 +3823,7 @@ nonisolated extension Hermesh_Relay_V1_FetchMessagesRequest: SwiftProtobuf.Messa
       // enabled. https://github.com/apple/swift-protobuf/issues/1034
       switch fieldNumber {
       case 1: try { try decoder.decodeSingularUInt32Field(value: &self.limit) }()
+      case 2: try { try decoder.decodeSingularUInt32Field(value: &self.skip) }()
       default: break
       }
     }
@@ -3829,11 +3833,15 @@ nonisolated extension Hermesh_Relay_V1_FetchMessagesRequest: SwiftProtobuf.Messa
     if self.limit != 0 {
       try visitor.visitSingularUInt32Field(value: self.limit, fieldNumber: 1)
     }
+    if self.skip != 0 {
+      try visitor.visitSingularUInt32Field(value: self.skip, fieldNumber: 2)
+    }
     try unknownFields.traverse(visitor: &visitor)
   }
 
   public static func ==(lhs: Hermesh_Relay_V1_FetchMessagesRequest, rhs: Hermesh_Relay_V1_FetchMessagesRequest) -> Bool {
     if lhs.limit != rhs.limit {return false}
+    if lhs.skip != rhs.skip {return false}
     if lhs.unknownFields != rhs.unknownFields {return false}
     return true
   }

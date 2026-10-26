@@ -69,11 +69,24 @@ func (n *Machine) checkLetter(m *inboxv1.Message, from, session string) error {
 // deliverLetter hands a checked message to its session.
 func (n *Machine) deliverLetter(ctx context.Context, p *Principal, m *inboxv1.Message, name string, atts []*sessionv1.Attachment) (*sessionv1.Session, string, error) {
 	n.mu.Lock()
-	seen := n.lettersSeen[m.MessageId]
-	n.mu.Unlock()
-	if seen {
+	if _, seen := n.lettersSeen[m.MessageId]; seen {
+		n.mu.Unlock()
 		return nil, "", cerr(connect.CodeAlreadyExists, "message %s was delivered already", m.MessageId)
 	}
+	now := time.Now()
+	if n.lettersSeen == nil {
+		n.lettersSeen = map[string]time.Time{}
+	}
+	n.lettersSeen[m.MessageId] = now
+	if now.Sub(n.lettersPrunedAt) > time.Hour { // the post office keeps none longer
+		for id, at := range n.lettersSeen {
+			if now.Sub(at) > 30*24*time.Hour {
+				delete(n.lettersSeen, id)
+			}
+		}
+		n.lettersPrunedAt = now
+	}
+	n.mu.Unlock()
 	creator := false
 	if r, err := n.st.Session(m.To.Session); err == nil && r != nil {
 		creator = r.CreatedBy == p.ClientID
@@ -81,14 +94,11 @@ func (n *Machine) deliverLetter(ctx context.Context, p *Principal, m *inboxv1.Me
 	rec := &sessionv1.MessageReceived{MessageId: m.MessageId, From: inboxAddress(m.From), FromName: name, Text: m.Text, InReplyTo: m.InReplyTo}
 	sess, delivered, err := n.sessions.Deliver(ctx, p, m.To.Session, m.From.GetSession(), letterText(m, name, creator), rec, atts)
 	if err != nil {
+		n.mu.Lock()
+		delete(n.lettersSeen, m.MessageId) // it may come again
+		n.mu.Unlock()
 		return nil, "", err
 	}
-	n.mu.Lock()
-	if n.lettersSeen == nil {
-		n.lettersSeen = map[string]bool{}
-	}
-	n.lettersSeen[m.MessageId] = true
-	n.mu.Unlock()
 	return sess, delivered, nil
 }
 
@@ -125,43 +135,87 @@ func letterText(m *inboxv1.Message, name string, creator bool) string {
 }
 
 // followInbox takes the machine's messages from the post office: what
-// waited while it was offline, then each as it arrives.
+// waited while it was offline, then each as it arrives, for as long as
+// the connection lasts.
 func (n *Machine) followInbox(ctx context.Context, conn *transport.RelayConn) {
+	backoff := time.Second
 	for ctx.Err() == nil {
-		ms, err := n.messageService(conn)
-		if err != nil {
-			return
-		}
-		res, err := ms.Fetch(ctx, &relayv1.FetchMessagesRequest{})
-		if err != nil {
-			return
-		}
-		var acks []*relayv1.MessageAck
-		for _, sm := range res.Messages {
-			acks = append(acks, &relayv1.MessageAck{MessageId: sm.MessageId, Outcome: n.takeSealed(ctx, sm)})
-		}
-		if len(acks) > 0 {
-			if _, err := ms.Ack(ctx, &relayv1.AckMessagesRequest{Acks: acks}); err != nil {
-				return
-			}
-		}
-		if res.More {
+		err := n.takeInbox(ctx, conn)
+		if err == nil {
+			backoff = time.Second
 			continue
 		}
-		if err := waitInbox(ctx, ms); err != nil {
-			return
+		if ctx.Err() == nil {
+			n.log.Debug("the machine's inbox", "err", err)
 		}
+		select {
+		case <-ctx.Done():
+		case <-time.After(backoff):
+		}
+		backoff = min(backoff*2, time.Minute)
 	}
 }
 
-func waitInbox(ctx context.Context, ms relayv1connect.MessageServiceClient) error {
+// takeInbox delivers the waiting messages, then waits until another comes.
+// Those it can't deliver now (the machine paused, say) stay waiting, and
+// it tries them again when the machine resumes, or a minute later.
+func (n *Machine) takeInbox(ctx context.Context, conn *transport.RelayConn) error {
+	ms, err := n.messageService(conn)
+	if err != nil {
+		return err
+	}
+	held := 0
+	for {
+		res, err := ms.Fetch(ctx, &relayv1.FetchMessagesRequest{Skip: uint32(held)})
+		if err != nil {
+			return err
+		}
+		var acks []*relayv1.MessageAck
+		for _, sm := range res.Messages {
+			if outcome := n.takeSealed(ctx, sm); outcome != "" {
+				acks = append(acks, &relayv1.MessageAck{MessageId: sm.MessageId, Outcome: outcome})
+			} else {
+				held++
+			}
+		}
+		if len(acks) > 0 {
+			if _, err := ms.Ack(ctx, &relayv1.AckMessagesRequest{Acks: acks}); err != nil {
+				return err
+			}
+		}
+		if !res.More || len(res.Messages) == 0 {
+			break
+		}
+	}
+	wctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+	if held > 0 {
+		go func() {
+			select {
+			case <-wctx.Done():
+			case <-n.inboxWake:
+			case <-time.After(time.Minute):
+			}
+			cancel()
+		}()
+	}
+	err = waitInbox(wctx, ms, held)
+	if ctx.Err() == nil && wctx.Err() != nil {
+		return nil // try the held ones again
+	}
+	return err
+}
+
+// waitInbox waits until more than left messages wait, or the post office
+// says another came.
+func waitInbox(ctx context.Context, ms relayv1connect.MessageServiceClient, left int) error {
 	stream, err := ms.Watch(ctx, &relayv1.WatchInboxRequest{})
 	if err != nil {
 		return err
 	}
 	defer stream.Close()
-	for stream.Receive() {
-		if stream.Msg().Waiting > 0 {
+	for first := true; stream.Receive(); first = false {
+		if !first || int(stream.Msg().Waiting) > left {
 			return nil
 		}
 	}
@@ -172,8 +226,8 @@ func waitInbox(ctx context.Context, ms relayv1connect.MessageServiceClient) erro
 }
 
 // takeSealed opens a message from the post office, checks it and hands it
-// to its session; it says what became of it. One that can't be delivered
-// is answered with a message saying why.
+// to its session; it says what became of it, or "" for one to try again
+// later. One that can't be delivered is answered with a message saying why.
 func (n *Machine) takeSealed(ctx context.Context, sm *relayv1.SealedMessage) string {
 	priv, err := n.inboxKey()
 	if err != nil {
@@ -214,8 +268,11 @@ func (n *Machine) takeSealed(ctx context.Context, sm *relayv1.SealedMessage) str
 		return bounce("your grant doesn't cover this machine")
 	}
 	if _, _, err := n.deliverLetter(ctx, &Principal{Kind: PrincipalClient, ClientID: g.ClientId, Grant: g}, m, info.Name, nil); err != nil {
-		if connect.CodeOf(err) == connect.CodeAlreadyExists {
+		switch connect.CodeOf(err) {
+		case connect.CodeAlreadyExists:
 			return "handled"
+		case connect.CodeUnavailable, connect.CodeDeadlineExceeded, connect.CodeCanceled, connect.CodeResourceExhausted, connect.CodeAborted:
+			return "" // paused, or for now
 		}
 		return bounce(err.Error())
 	}

@@ -345,7 +345,7 @@ func (a *app) messageListCmd() *cobra.Command {
 				if len(good) > 0 || !wait || res.More {
 					return a.showMessages(cmd, good, res.More)
 				}
-				if err := a.waitInbox(ctx, ms); err != nil {
+				if err := a.waitInbox(ctx, ms, 0); err != nil {
 					return a.waitErr(ctx, err)
 				}
 			}
@@ -358,14 +358,16 @@ func (a *app) messageListCmd() *cobra.Command {
 }
 
 // waitInbox returns once a message waits in the inbox.
-func (a *app) waitInbox(ctx context.Context, ms relayv1connect.MessageServiceClient) error {
+// waitInbox waits until a message arrives: more wait than the left ones
+// the caller saw and leaves there, or the post office says one came.
+func (a *app) waitInbox(ctx context.Context, ms relayv1connect.MessageServiceClient, left int) error {
 	stream, err := ms.Watch(ctx, &relayv1.WatchInboxRequest{})
 	if err != nil {
 		return err
 	}
 	defer stream.Close()
-	for stream.Receive() {
-		if stream.Msg().Waiting > 0 {
+	for first := true; stream.Receive(); first = false {
+		if !first || int(stream.Msg().Waiting) > left {
 			return nil
 		}
 	}
@@ -935,13 +937,10 @@ func (a *app) showSent(cmd *cobra.Command, sent sentJSON) error {
 // inbox that answers it. Others stay where they are.
 func (a *app) waitReply(ctx context.Context, cmd *cobra.Command, ms relayv1connect.MessageServiceClient, sent sentJSON) error {
 	for {
-		res, err := ms.Fetch(ctx, &relayv1.FetchMessagesRequest{})
+		good, err := a.fetchAll(ctx, ms)
 		if err != nil {
 			return a.waitErr(ctx, err)
 		}
-		good, refused, again := a.open(res.Messages)
-		a.ackOutcome(ctx, ms, refused, "refused")
-		a.ackOutcome(ctx, ms, again, "handled")
 		for _, o := range good {
 			if o.m.InReplyTo == sent.ID {
 				v := a.view(o)
@@ -954,10 +953,30 @@ func (a *app) waitReply(ctx context.Context, cmd *cobra.Command, ms relayv1conne
 				return nil
 			}
 		}
-		if err := a.waitInbox(ctx, ms); err != nil {
+		if err := a.waitInbox(ctx, ms, len(good)); err != nil {
 			return a.waitErr(ctx, err)
 		}
 	}
+}
+
+// fetchAll takes every waiting message, page by page, and acknowledges
+// those that are refused or were handled already; it returns the others.
+func (a *app) fetchAll(ctx context.Context, ms relayv1connect.MessageServiceClient) ([]opened, error) {
+	var sealed []*relayv1.SealedMessage
+	for {
+		res, err := ms.Fetch(ctx, &relayv1.FetchMessagesRequest{Skip: uint32(len(sealed))})
+		if err != nil {
+			return nil, err
+		}
+		sealed = append(sealed, res.Messages...)
+		if !res.More || len(res.Messages) == 0 {
+			break
+		}
+	}
+	good, refused, again := a.open(sealed)
+	a.ackOutcome(ctx, ms, refused, "refused")
+	a.ackOutcome(ctx, ms, again, "handled")
+	return good, nil
 }
 
 const fromSessionHelp = "your own conversation's key, so that replies and news come back to it (default: $HERMESH_CONVERSATION, which `message hook` sets in Claude Code)"

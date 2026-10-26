@@ -107,9 +107,14 @@ type Machine struct {
 	notices notices
 	// contacts caches the owner's inboxes, for the news it writes (news.go).
 	contacts contactBook
-	// lettersSeen are the messages delivered to sessions since it started
-	// (letters.go): one the relay hands over again is not delivered twice.
-	lettersSeen map[string]bool
+	// lettersSeen are the messages delivered to sessions, or being
+	// delivered, since it started, and when (letters.go): one the relay
+	// hands over again is not delivered twice.
+	lettersSeen     map[string]time.Time
+	lettersPrunedAt time.Time
+	// inboxWake tells the inbox's follower to try the messages it holds
+	// again: the machine resumed.
+	inboxWake chan struct{}
 	// tools is the sessions' own tools socket (sessiontools.go).
 	tools sessionTools
 }
@@ -153,7 +158,7 @@ func Open(cfg Config) (*Machine, error) {
 	if err != nil {
 		return nil, err
 	}
-	n := &Machine{cfg: cfg, log: cfg.Logger, st: st, key: key, lock: lock, machineID: identity.MachineID(identity.MarshalPublicKey(key.Public())),
+	n := &Machine{cfg: cfg, log: cfg.Logger, st: st, key: key, lock: lock, inboxWake: make(chan struct{}, 1), machineID: identity.MachineID(identity.MarshalPublicKey(key.Public())),
 		infos: map[string]provider.Info{}, defaults: map[string]*identityv1.AgentDefaults{}, tunnels: map[*tunnel]struct{}{}, adminSeen: map[string]time.Time{}, grantSeen: map[string]uint64{},
 		statusKick: make(chan struct{}, 1), revocations: &identityv1.RevocationList{MinGrantVersions: map[string]uint64{}}}
 	if n.audit, err = OpenAudit(filepath.Join(cfg.DataDir, "audit"), key); err != nil {

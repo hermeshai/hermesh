@@ -26,8 +26,8 @@
     "adviceAndResume": "{{advice}}{{resume}}",
     "details": "详情",
     "archive": "归档",
-    "messageFrom": "来自 {{name}} 的信",
-    "messageTo": "写给 {{name}} 的信",
+    "messageFrom": "来自 {{name}} 的消息",
+    "messageTo": "发给 {{name}} 的消息",
     "messageQueued": "排队等它自己的一轮"
   },
   "control": {

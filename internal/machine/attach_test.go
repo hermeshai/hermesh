@@ -106,3 +106,25 @@ func TestAttachmentLimits(t *testing.T) {
 		t.Fatalf("empty start: %v", err)
 	}
 }
+
+// A message joined from an agent's (recorded when it arrived) and the
+// creator's own records only the creator's, once.
+func TestJoinRecordsEachMessageOnce(t *testing.T) {
+	letter := message{text: "[Hermesh] A message from helper.\n\nlook at the logs", quiet: true, answer: "look at the logs"}
+	own := message{text: "and the tests"}
+	for _, j := range []message{letter.join(own), own.join(letter)} {
+		ev := j.userEvents()
+		if len(ev) != 1 || ev[0].GetUserMessage().GetText() != "and the tests" {
+			t.Fatalf("recorded: %v", ev)
+		}
+		if !strings.Contains(j.answerText(), "look at the logs") || !strings.Contains(j.answerText(), "and the tests") || strings.Contains(j.answerText(), "[Hermesh]") {
+			t.Fatalf("its answer: %q", j.answerText())
+		}
+	}
+	if ev := letter.join(letter).userEvents(); len(ev) != 0 {
+		t.Fatalf("two quiet ones record nothing: %v", ev)
+	}
+	if ev := own.join(own).userEvents(); len(ev) != 1 || ev[0].GetUserMessage().GetText() != "and the tests\n\nand the tests" {
+		t.Fatalf("two of the creator's: %v", ev)
+	}
+}

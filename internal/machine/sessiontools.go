@@ -212,12 +212,15 @@ func (n *Machine) toolSend(ctx context.Context, session string, req ToolRequest)
 		return nil, errors.New("the message is empty")
 	}
 	to := strings.TrimSpace(req.To)
-	if to == "" {
+	if to == "" { // the agent that started the session, in its conversation
 		r, err := n.st.Session(session)
 		if err != nil || r == nil {
 			return nil, errors.New("no such session")
 		}
-		to = r.CreatedBy // the agent that started the session
+		to = r.CreatedBy
+		if r.Conversation != "" {
+			to += "/" + r.Conversation
+		}
 	}
 	inbox, conv, _ := strings.Cut(to, "/")
 	if strings.HasPrefix(inbox, "m_") || strings.HasPrefix(inbox, "s_") {

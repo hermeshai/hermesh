@@ -260,6 +260,7 @@ func (m *messageService) Fetch(ctx context.Context, req *relayv1.FetchMessagesRe
 	if limit <= 0 || limit > maxFetch {
 		limit = maxFetch
 	}
+	waiting = waiting[min(int(req.Skip), len(waiting)):]
 	res := &relayv1.FetchMessagesResponse{More: len(waiting) > limit}
 	var ids []string
 	for _, w := range waiting[:min(limit, len(waiting))] {

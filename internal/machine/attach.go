@@ -41,9 +41,11 @@ type message struct {
 	// quiet: an agent's message, recorded as MessageReceived when it
 	// arrived; its turn records no UserMessage for it. answer is what of
 	// it answers a question: its text without the words Hermesh puts
-	// around it.
+	// around it. events, for one joined from quiet and other messages,
+	// are what its turn records of the others.
 	quiet  bool
 	answer string
+	events []*sessionv1.SessionEvent
 }
 
 func (m message) input() provider.Input {
@@ -60,8 +62,12 @@ func (m message) join(o message) message {
 	if m.text == "" && len(m.files) == 0 {
 		return o
 	}
-	return message{text: m.text + "\n\n" + o.text, files: append(append([]*sessionv1.AttachmentInfo{}, m.files...), o.files...), by: m.by, conv: m.conv,
-		quiet: m.quiet && o.quiet, answer: m.answerText()}
+	j := message{text: m.text + "\n\n" + o.text, files: append(append([]*sessionv1.AttachmentInfo{}, m.files...), o.files...), by: m.by, conv: m.conv,
+		quiet: m.quiet && o.quiet, answer: m.answerText() + "\n\n" + o.answerText()}
+	if m.quiet != o.quiet || m.events != nil || o.events != nil {
+		j.events = append(m.userEvents(), o.userEvents()...)
+	}
+	return j
 }
 
 func (m message) answerText() string {
@@ -73,6 +79,9 @@ func (m message) answerText() string {
 
 // userEvents are what the session records when the agent takes m.
 func (m message) userEvents() []*sessionv1.SessionEvent {
+	if m.events != nil {
+		return m.events
+	}
 	if m.quiet {
 		return nil
 	}

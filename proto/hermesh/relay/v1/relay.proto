@@ -464,6 +464,8 @@ message SendSealedResponse {}
 message FetchMessagesRequest {
   // At most this many (default and most: 50).
   uint32 limit = 1;
+  // Pass over this many of the oldest first: the next page.
+  uint32 skip = 2;
 }
 
 message FetchMessagesResponse {

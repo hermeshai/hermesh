@@ -355,3 +355,15 @@ test("a reply shows as the agent writes it, never as raw Markdown, and stays whe
   await expect(agent.locator(".msg-act")).toHaveCount(1);
   await app.close();
 });
+
+test("a message an agent writes to the session shows as a card that says who wrote it", async () => {
+  const started = JSON.parse(await cli("session", "start", "--project", "demo", "--agent", "gemini", "--title", "消息", "--prompt", "say 好", "--wait", "-o", "json"));
+  await cli("message", "send", "--to", started.session.session_id, "--message", "say 收到", "--wait");
+  const { app, page } = await launch();
+  await open(page, "消息");
+  const card = page.getByRole("log", { name: "对话" }).locator(".msg.in");
+  await expect(card).toContainText(/来自 .+ 的消息/);
+  await expect(card).toContainText("say 收到");
+  await snap(page, "session-message");
+  await app.close();
+});
