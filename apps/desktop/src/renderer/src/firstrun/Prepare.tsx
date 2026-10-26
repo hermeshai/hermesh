@@ -1,8 +1,8 @@
-import { useRef, type CSSProperties } from "react";
+import { useRef, useState, type CSSProperties } from "react";
 import { useTranslation } from "react-i18next";
 import { codingAgentIds } from "@hermesh/core";
 import { AgentLogo, Mark } from "@hermesh/ui";
-import { AgentList, projectsFor, ready, sortAgents } from "../AgentList";
+import { AgentList, AgentPage, projectsFor, ready, sortAgents } from "../AgentList";
 import { useCheckAgents } from "../agents";
 import { Icon } from "../icons";
 import { useStore } from "../store";
@@ -10,8 +10,9 @@ import { Frame, StepIcon } from "./Frame";
 import { setProgress } from "./progress";
 
 // "Check and Manage Available Agents": every coding agent Hermesh supports, what this Mac
-// has of each (version, logged in), and for each installed one the projects
-// it may work in (AgentList, as settings shows a machine's too). Opening the
+// has of each (version, logged in), each installed one opening its page: its
+// default model and the projects it may work in (AgentList and AgentPage, as
+// settings shows a machine's too). Nothing there must be set to go on. Opening the
 // page checks the agents (each CLI is run: they are checked only when
 // something needs them); until the first comes in, the page says it is
 // looking for them, and an agent whose check takes longer shows as being
@@ -28,6 +29,7 @@ export function Prepare() {
   const canGo = agents.installed.some((a) => ready(a) && projectsFor(projects, a.name).length > 0);
   // Found after the person watched the search: the page comes in.
   const searched = useRef(searching).current;
+  const [open, setOpen] = useState("");
 
   return (
     <Frame
@@ -47,11 +49,19 @@ export function Prepare() {
         </>
       }
     >
-      {!searching && machine ? (
+      {!searching && machine && open ? (
+        <>
+          <button className="ag-back" onClick={() => setOpen("")}>
+            <Icon name="chevR" />
+            {t("prepare.backToAgents")}
+          </button>
+          <AgentPage m={machine} agent={open} />
+        </>
+      ) : !searching && machine ? (
         <>
           <StepIcon name="laptop" />
           <h2 className="ob-h">{t("prepare.title")}</h2>
-          <AgentList m={machine} agents={agents} />
+          <AgentList m={machine} agents={agents} onOpen={setOpen} />
         </>
       ) : (
         <Searching />

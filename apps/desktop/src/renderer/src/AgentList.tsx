@@ -1,4 +1,5 @@
 import { useState, type ReactNode } from "react";
+import type { TFunction } from "i18next";
 import { useTranslation } from "react-i18next";
 import { AgentSpeed, Workspace } from "@hermesh/proto/identity";
 import type { AgentStatus } from "@hermesh/proto/machine";
@@ -15,9 +16,9 @@ import "./agentlist.css";
 // A machine's coding agents, as the first run's "Check and Manage Available
 // Agents" shows them and settings' machine page too: every coding agent
 // Hermesh supports, what the machine has of each (version, logged in), and
-// for each installed one the model its sessions run with (Claude Code and
-// Codex) and the projects it may work in. A project is one folder; it lists
-// the agents it is for (none: all of them).
+// each installed one opening its page (AgentPage): the model its sessions run
+// with (Claude Code and Codex) and the projects it may work in. A project is
+// one folder; it lists the agents it is for (none: all of them).
 
 /** The projects agent may work in. */
 export const projectsFor = (projects: Project[], agent: string) => projects.filter((p) => p.agents.length === 0 || p.agents.includes(agent));
@@ -40,33 +41,45 @@ export function sortAgents(agents: AgentStatus[] | undefined) {
 }
 
 /**
- * The list: one row per installed agent, opening to its projects, the ones
+ * The list: one row per installed agent, opening its page (onOpen), the ones
  * being checked, then the ones not installed; until the machine says which
  * it has, unknown instead. Projects none of the installed agents may use
  * (theirs is gone, or not known yet) follow, so they can still be removed.
  */
-export function AgentList({ m, agents, unknown }: { m: Machine; agents: ReturnType<typeof sortAgents>; unknown?: ReactNode }) {
+export function AgentList({ m, agents, unknown, onOpen }: { m: Machine; agents: ReturnType<typeof sortAgents>; unknown?: ReactNode; onOpen: (agent: string) => void }) {
   const { t } = useTranslation("firstrun");
   const st = useStore();
   const projects = st.projects.filter((p) => p.machineId === m.machineId);
   const { installed, checking, missing, known } = agents;
   const others = projects.filter((p) => !installed.some((a) => projectsFor([p], a.name).length > 0));
   const othersTitle = known ? t("prepare.otherProjects") : t("prepare.allProjects");
-  // The first ready agent starts open; the person opens and closes the rest.
-  const [opened, setOpened] = useState<Set<string> | null>(null);
-  const open = opened ?? new Set(installed.filter(ready).slice(0, 1).map((a) => a.name));
-  const toggle = (name: string) => {
-    const next = new Set(open);
-    if (!next.delete(name)) next.add(name);
-    setOpened(next);
-  };
   return (
     <>
       <div className="ag-list" role="list" aria-label={t("prepare.agents")}>
         {!known && unknown}
-        {installed.map((a) => (
-          <AgentRow key={a.name} a={a} m={m} projects={projects} open={open.has(a.name)} toggle={() => toggle(a.name)} />
-        ))}
+        {installed.map((a) => {
+          const set = defaultsText(a, t);
+          return (
+            <div key={a.name} className="ag" role="listitem" aria-label={codingAgentTitle(a.name)} title={a.detail || undefined}>
+              <button className="ag-head" onClick={() => onOpen(a.name)}>
+                <AgentTile agent={a.name} size={32} />
+                <span className="ag-text">
+                  <b>{codingAgentTitle(a.name)}</b>
+                  <span className="ag-sub">
+                    {a.version && <span className="mono">{a.version}</span>}
+                    <span className={a.loggedIn ? "ok" : "warn"}>
+                      <i />
+                      {a.loggedIn ? t("prepare.signedIn") : t("prepare.notSignedIn")}
+                    </span>
+                    <span>{projectsFor(projects, a.name).length > 0 ? t("prepare.projects", { count: projectsFor(projects, a.name).length }) : t("prepare.noProjects")}</span>
+                    {set && <span>{set}</span>}
+                  </span>
+                </span>
+                <Icon name="chevR" className="ag-chev" />
+              </button>
+            </div>
+          );
+        })}
         {checking.map((a) => (
           <div key={a.name} className="ag" role="listitem" aria-label={codingAgentTitle(a.name)}>
             <div className="ag-head">
@@ -111,174 +124,205 @@ export function AgentList({ m, agents, unknown }: { m: Machine; agents: ReturnTy
   );
 }
 
+type T = TFunction<"firstrun">;
+
+const modelName = (a: AgentStatus, id: string) => a.models.find((x) => x.id === id)?.name || id;
+const effortName = (t: T, e: string) => t(`prepare.efforts.${e}`, { defaultValue: e });
+const speedName = (t: T, v: AgentSpeed) => (v === AgentSpeed.FAST ? t("prepare.fast") : t("prepare.standard"));
+
+/** What is set for the agent's sessions here, for its row: "" while it follows its own configuration. */
+function defaultsText(a: AgentStatus, t: T): string {
+  const d = a.defaults;
+  if (!d) return "";
+  return [d.model && modelName(a, d.model), d.effort && effortName(t, d.effort), d.speed ? speedName(t, d.speed) : ""].filter(Boolean).join(" · ");
+}
+
 const logins: Record<string, { key: TerminalCommand; text: string }> = {
   codex: { key: "codexLogin", text: "codex login" },
   claude: { key: "claudeLogin", text: "claude" },
 };
 
-function AgentRow(p: { a: AgentStatus; m: Machine; projects: Project[]; open: boolean; toggle: () => void }) {
-  const { a, m } = p;
+/**
+ * An agent's page on a machine, opened from its row: signing in when it
+ * isn't, the model, reasoning effort and (Codex) speed its sessions run with
+ * when the agent starting one names no model (Claude Code and Codex), and the
+ * projects it may work in.
+ */
+export function AgentPage({ m, agent }: { m: Machine; agent: string }) {
   const { t } = useTranslation("firstrun");
   const st = useStore();
+  const a = m.status?.agents.find((x) => x.name === agent);
   const [busy, setBusy] = useState(false);
   const [ran, setRan] = useState(false);
-  useRecheckAgents(ran && !a.loggedIn);
-  const title = codingAgentTitle(a.name);
-  const mine = projectsFor(p.projects, a.name);
+  useRecheckAgents(ran && !a?.loggedIn);
+  const title = codingAgentTitle(agent);
+  const projects = st.projects.filter((p) => p.machineId === m.machineId);
+  const mine = projectsFor(projects, agent);
   // Logging in runs in this Mac's Terminal: another machine's agent is logged in there.
-  const login = m.local ? logins[a.name] : undefined;
+  const login = m.local ? logins[agent] : undefined;
 
   // On this Mac the folder is picked: one already a project gets this agent
   // too; a new one is for this agent only. Another machine's is typed in.
   const add = async () => {
-    if (!m.local) return st.set({ sheet: { kind: "addProject", machineId: m.machineId, agent: a.name } });
+    if (!m.local) return st.set({ sheet: { kind: "addProject", machineId: m.machineId, agent } });
     const path = await window.hermesh?.pickDirectory();
     if (!path) return;
-    const same = p.projects.find((x) => x.path === path);
+    const same = projects.find((x) => x.path === path);
     setBusy(true);
     if (same) {
-      if (same.agents.length > 0 && !same.agents.includes(a.name)) await st.run(() => save(same, [...same.agents, a.name]), t("prepare.alsoFor", { project: same.projectId, agent: title }));
+      if (same.agents.length > 0 && !same.agents.includes(agent)) await st.run(() => save(same, [...same.agents, agent]), t("prepare.alsoFor", { project: same.projectId, agent: title }));
     } else {
-      const projectId = projectIdFromFolder(path.split(/[\\/]/).filter(Boolean).pop() ?? "", new Set(p.projects.map((x) => x.projectId)));
-      await st.run(() => local.addProject({ machineId: m.machineId, projectId, path, agents: [a.name] }));
+      const projectId = projectIdFromFolder(path.split(/[\\/]/).filter(Boolean).pop() ?? "", new Set(projects.map((x) => x.projectId)));
+      await st.run(() => local.addProject({ machineId: m.machineId, projectId, path, agents: [agent] }));
     }
     setBusy(false);
   };
 
   return (
-    <div className={`ag ${p.open ? "open" : ""}`} role="listitem" aria-label={title} title={a.detail || undefined}>
-      <button className="ag-head" aria-expanded={p.open} onClick={p.toggle}>
-        <AgentTile agent={a.name} size={32} />
+    <div className="ag-page" role="region" aria-label={title}>
+      <div className="ag-hero">
+        <AgentTile agent={agent} size={44} />
         <span className="ag-text">
           <b>{title}</b>
           <span className="ag-sub">
-            {a.version && <span className="mono">{a.version}</span>}
-            <span className={a.loggedIn ? "ok" : "warn"}>
-              <i />
-              {a.loggedIn ? t("prepare.signedIn") : t("prepare.notSignedIn")}
-            </span>
-            <span>{mine.length > 0 ? t("prepare.projects", { count: mine.length }) : t("prepare.noProjects")}</span>
+            <span>{m.machineName}</span>
+            {a?.version && <span className="mono">{a.version}</span>}
+            {a && (
+              <span className={a.loggedIn ? "ok" : "warn"}>
+                <i />
+                {a.loggedIn ? t("prepare.signedIn") : t("prepare.notSignedIn")}
+              </span>
+            )}
           </span>
         </span>
-        <Icon name="chevR" className="ag-chev" />
-      </button>
-      {p.open && (
-        <div className="ag-body">
-          {!a.loggedIn && (
-            <div className="ag-login">
-              {ran ? (
+      </div>
+      {a && !a.loggedIn && (
+        <div className="ag-login">
+          {ran ? (
+            <>
+              <Mark size={12} variant="seq" />
+              {t("prepare.waitingLogin")}
+            </>
+          ) : (
+            <>
+              <span>{t("prepare.loginFirst", { agent: title })}</span>
+              {login && (
                 <>
-                  <Mark size={12} variant="seq" />
-                  {t("prepare.waitingLogin")}
-                </>
-              ) : (
-                <>
-                  <span>{t("prepare.loginFirst", { agent: title })}</span>
-                  {login && (
-                    <>
-                      <span className="chip mono">{login.text}</span>
-                      <button className="btn sm" onClick={() => (window.hermesh?.runInTerminal(login.key), setRan(true))}>
-                        <Icon name="terminal" />
-                        {t("prepare.runInTerminal")}
-                      </button>
-                    </>
-                  )}
+                  <span className="chip mono">{login.text}</span>
+                  <button className="btn sm" onClick={() => (window.hermesh?.runInTerminal(login.key), setRan(true))}>
+                    <Icon name="terminal" />
+                    {t("prepare.runInTerminal")}
+                  </button>
                 </>
               )}
-            </div>
+            </>
           )}
-          {a.models.length > 0 && <ModelRow a={a} m={m} />}
-          {mine.length > 0 && (
-            <div className="ag-prjs">
-              {mine.map((x) => (
-                <ProjectRow key={x.projectId} p={x} agent={a.name} />
-              ))}
-            </div>
-          )}
-          <button className="ag-add" onClick={add} disabled={busy || (!m.online && !m.local)}>
-            <Icon name="plus" />
-            {busy ? t("prepare.adding") : t("prepare.addProject")}
-          </button>
         </div>
       )}
+      {a && a.models.length > 0 && <Defaults a={a} m={m} />}
+      <section aria-label={t("prepare.projectsHead")}>
+        <div className="ag-group">{t("prepare.projectsHead")}</div>
+        {mine.length > 0 && (
+          <div className="ag-prjs">
+            {mine.map((x) => (
+              <ProjectRow key={x.projectId} p={x} agent={agent} />
+            ))}
+          </div>
+        )}
+        <button className="ag-add" onClick={add} disabled={busy || (!m.online && !m.local)}>
+          <Icon name="plus" />
+          {busy ? t("prepare.adding") : t("prepare.addProject")}
+        </button>
+      </section>
     </div>
   );
 }
 
 /**
- * The model, reasoning effort and (Codex) speed this machine's sessions of
- * an agent run with when the agent starting one names no model: the
- * agent's own configuration, unless set here; set here, only Hermesh's
- * sessions use them. A ⋯ menu changes each.
+ * The model, reasoning effort and (Codex) speed an agent's sessions run with
+ * when the agent starting one names no model, one row each: the agent's own
+ * configuration unless set here; set here, only Hermesh's sessions use them.
+ * Each row's button shows the value and opens a menu of the choices.
  */
-function ModelRow({ a, m }: { a: AgentStatus; m: Machine }) {
+function Defaults({ a, m }: { a: AgentStatus; m: Machine }) {
   const { t } = useTranslation("firstrun");
   const st = useStore();
   const title = codingAgentTitle(a.name);
-  const codex = a.name === "codex";
   const d = { model: a.defaults?.model ?? "", effort: a.defaults?.effort ?? "", speed: a.defaults?.speed ?? AgentSpeed.UNSPECIFIED };
   const own = a.own;
-  const name = (id: string) => a.models.find((x) => x.id === id)?.name || id;
-  const effort = (e: string) => t(`prepare.efforts.${e}`, { defaultValue: e });
-  const speed = (v: AgentSpeed) => (v === AgentSpeed.FAST ? t("prepare.fast") : t("prepare.standard"));
   const same = (v: string) => (v ? t("prepare.sameAsValue", { agent: title, value: v }) : t("prepare.sameAs", { agent: title }));
-  // What sessions run with: what is set here, else the agent's own as far as it tells.
-  const model = d.model || own?.model || "";
-  const eff = d.effort || own?.effort || "";
-  const spd = codex ? d.speed || own?.speed || AgentSpeed.UNSPECIFIED : AgentSpeed.UNSPECIFIED;
-  const facts = [model && name(model), eff && effort(eff), spd ? speed(spd) : ""].filter(Boolean).join(" · ");
-  const following = !d.model && !d.effort && !d.speed;
   const effortsOf = (id: string) => a.models.find((x) => x.id === id)?.efforts;
+  const model = d.model || own?.model || "";
 
-  const change = async () => {
-    const id = await window.hermesh?.popupMenu([
-      { id: "", label: t("prepare.modelMenu"), enabled: false },
-      { id: "m:", label: same(own?.model ? name(own.model) : ""), checked: !d.model },
-      ...a.models.map((x) => ({ id: `m:${x.id}`, label: x.name || x.id, checked: d.model === x.id })),
-      { separator: true },
-      { id: "", label: t("prepare.effortMenu"), enabled: false },
-      { id: "e:", label: same(own?.effort ? effort(own.effort) : ""), checked: !d.effort },
-      ...(effortsOf(model) ?? a.models[0].efforts).map((e) => ({ id: `e:${e}`, label: effort(e), checked: d.effort === e })),
-      ...(codex
-        ? [
-            { separator: true as const },
-            { id: "", label: t("prepare.speedMenu"), enabled: false },
-            { id: "s:0", label: same(own?.speed ? speed(own.speed) : ""), checked: !d.speed },
-            { id: "s:1", label: t("prepare.standard"), checked: d.speed === AgentSpeed.STANDARD },
-            { id: "s:2", label: t("prepare.fast"), checked: d.speed === AgentSpeed.FAST },
-          ]
-        : []),
-    ]);
-    if (!id) return;
-    const v = id.slice(2);
-    const next = { agent: a.name, ...d };
-    if (id.startsWith("m:")) {
-      next.model = v;
-      // An effort the newly picked model lacks goes back to the agent's own.
-      const ok = effortsOf(v || own?.model || "");
-      if (next.effort && ok && !ok.includes(next.effort)) next.effort = "";
-    }
-    if (id.startsWith("e:")) next.effort = v;
-    if (id.startsWith("s:")) next.speed = Number(v);
-    await st.run(() => local.setAgentDefaults({ machineId: m.machineId, defaults: next }));
+  const save = (next: typeof d) => st.run(() => local.setAgentDefaults({ machineId: m.machineId, defaults: { agent: a.name, ...next } }));
+  const pick = async (items: { id: string; label: string; checked: boolean }[], set: (v: string) => void) => {
+    const id = await window.hermesh?.popupMenu(items);
+    if (id == null) return;
+    set(id);
   };
-
+  const rows = [
+    {
+      key: "model",
+      label: t("prepare.model"),
+      value: d.model ? modelName(a, d.model) : same(own?.model ? modelName(a, own.model) : ""),
+      open: () =>
+        pick(
+          [{ id: "", label: same(own?.model ? modelName(a, own.model) : ""), checked: !d.model }, ...a.models.map((x) => ({ id: x.id, label: x.name || x.id, checked: d.model === x.id }))],
+          (v) => {
+            // An effort the newly picked model lacks goes back to the agent's own.
+            const ok = effortsOf(v || own?.model || "");
+            save({ ...d, model: v, effort: d.effort && ok && !ok.includes(d.effort) ? "" : d.effort });
+          },
+        ),
+    },
+    {
+      key: "effort",
+      label: t("prepare.effort"),
+      value: d.effort ? effortName(t, d.effort) : same(own?.effort ? effortName(t, own.effort) : ""),
+      open: () =>
+        pick(
+          [
+            { id: "", label: same(own?.effort ? effortName(t, own.effort) : ""), checked: !d.effort },
+            ...(effortsOf(model) ?? a.models[0].efforts).map((e) => ({ id: e, label: effortName(t, e), checked: d.effort === e })),
+          ],
+          (v) => save({ ...d, effort: v }),
+        ),
+    },
+    ...(a.name === "codex"
+      ? [
+          {
+            key: "speed",
+            label: t("prepare.speed"),
+            value: d.speed ? speedName(t, d.speed) : same(own?.speed ? speedName(t, own.speed) : ""),
+            open: () =>
+              pick(
+                [
+                  { id: "0", label: same(own?.speed ? speedName(t, own.speed) : ""), checked: !d.speed },
+                  { id: "1", label: t("prepare.standard"), checked: d.speed === AgentSpeed.STANDARD },
+                  { id: "2", label: t("prepare.fast"), checked: d.speed === AgentSpeed.FAST },
+                ],
+                (v) => save({ ...d, speed: Number(v) }),
+              ),
+          },
+        ]
+      : []),
+  ];
   return (
-    <div className="ag-prjs">
-      <div className="ag-prj" role="group" aria-label={t("prepare.model")}>
-        <Icon name="sparkle" />
-        <div className="ag-prj-t">
-          <span>
-            <b>{t("prepare.model")}</b>
-            <em>{following ? same("") : t("prepare.forHermesh")}</em>
-          </span>
-          {facts && <span className="ag-facts">{facts}</span>}
-        </div>
-        <button className="tb" aria-label={t("prepare.more")} onClick={change} disabled={!m.online && !m.local}>
-          <Icon name="more" />
-        </button>
+    <section aria-label={t("prepare.defaultsHead")}>
+      <div className="ag-group">{t("prepare.defaultsHead")}</div>
+      <div className="ag-prjs">
+        {rows.map((r) => (
+          <div key={r.key} className="ag-set" role="group" aria-label={r.label}>
+            <span>{r.label}</span>
+            <button className="ag-pop" onClick={r.open} disabled={!m.online && !m.local}>
+              {r.value}
+              <Icon name="chevD" />
+            </button>
+          </div>
+        ))}
       </div>
-    </div>
+      <p className="ag-note">{t("prepare.defaultsNote", { agent: title })}</p>
+    </section>
   );
 }
 

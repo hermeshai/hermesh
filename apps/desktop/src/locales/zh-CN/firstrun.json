@@ -140,12 +140,12 @@
     "inPlace": "原地",
     "more": "更多",
     "model": "模型",
+    "effort": "推理强度",
+    "speed": "速度",
+    "defaultsHead": "默认模型",
+    "defaultsNote": "Agent 在这里开会话、没指定模型时用这些；不改 {{agent}} 自己的配置。",
     "sameAs": "跟随 {{agent}}",
     "sameAsValue": "跟随 {{agent}}（{{value}}）",
-    "forHermesh": "只用于 Hermesh 的会话",
-    "modelMenu": "模型",
-    "effortMenu": "推理强度",
-    "speedMenu": "速度",
     "standard": "标准",
     "fast": "快速",
     "efforts": {
@@ -155,6 +155,8 @@
       "xhigh": "超高",
       "max": "最高",
       "ultra": "极限"
-    }
+    },
+    "projectsHead": "项目",
+    "backToAgents": "所有 Agent"
   }
 }

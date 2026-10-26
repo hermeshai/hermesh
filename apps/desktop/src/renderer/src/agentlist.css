@@ -1,10 +1,11 @@
 /* A machine's coding agents (AgentList.tsx), in the first run's Check and Manage
    Available Agents and in settings: one row per installed agent (name over a
-   grey line of facts, a disclosure chevron), opened to its model and its projects; the ones
-   not installed greyed below. */
+   grey line of facts, a chevron) opening its page (AgentPage: its default model,
+   its projects); the ones not installed greyed below. */
 .ag-list{flex:none;display:flex;flex-direction:column;background:var(--win2);border-radius:12px;overflow:hidden}
 .ag+.ag{box-shadow:0 -.5px 0 var(--sep)}
 .ag-head{width:100%;display:flex;align-items:center;gap:12px;padding:10px 14px;border:0;background:transparent;text-align:left;font:inherit;color:var(--l1)}
+.ag-head:hover{background:var(--fill)}
 .ag-head:hover .ag-chev{color:var(--l1)}
 .ag-head:focus-visible{outline:2px solid var(--accent);outline-offset:-2px}
 .ag-text{flex:1;min-width:0;display:flex;flex-direction:column;gap:2px}
@@ -15,8 +16,6 @@
 .ag-sub .ok{color:var(--green)}.ag-sub .warn{color:var(--orange)}
 .ag-checking{display:inline-flex;align-items:center;gap:5px}
 .ic.ag-chev{width:14px;height:14px;color:var(--l3);flex:none;transition:transform .15s}
-.ag.open .ag-chev{transform:rotate(90deg)}
-.ag-body{display:flex;flex-direction:column;gap:8px;padding:0 14px 14px 58px}
 .ag-login{display:flex;align-items:center;flex-wrap:wrap;gap:8px;font-size:12px;color:var(--l2)}
 .ag-prjs{background:var(--win);border-radius:9px;box-shadow:0 0 0 .5px var(--sep)}
 .ag-prj{display:flex;align-items:center;gap:10px;padding:7px 6px 7px 12px}
@@ -26,7 +25,7 @@
 .ag-prj-t>span:first-child{display:flex;align-items:baseline;gap:8px}
 .ag-prj-t b{font-size:12.5px;font-weight:600}
 .ag-prj-t em{font-style:normal;font-size:11px;color:var(--l2)}
-.ag-prj-t .mono,.ag-prj-t .ag-facts{font-size:11px;color:var(--l3);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.ag-prj-t .mono{font-size:11px;color:var(--l3);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .ag-add{align-self:flex-start;display:inline-flex;align-items:center;gap:5px;border:0;background:none;padding:2px 0;color:var(--accent-t);font-size:12.5px}
 .ag-add .ic{width:13px;height:13px}
 .ag-add:disabled{opacity:.5}
@@ -34,3 +33,18 @@
 .ag-missing{flex:none;display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:6px 12px}
 .ag-missing>div{display:flex;align-items:center;gap:7px;font-size:12px;color:var(--l3);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .ag-missing>div>*:first-child{filter:grayscale(1);opacity:.45;flex:none}
+.ag-page{display:flex;flex-direction:column;gap:13px}
+.ag-page .ag-group{margin:8px 2px 8px}
+.ag-page .ag-add{margin-top:8px}
+.ag-hero{display:flex;align-items:center;gap:13px}
+.ag-hero .ag-text b{font-size:15px}
+.ag-set{display:flex;align-items:center;gap:10px;min-height:38px;padding:5px 8px 5px 12px;font-size:12.5px}
+.ag-set+.ag-set{box-shadow:0 -.5px 0 var(--sep)}
+.ag-set>span{flex:1}
+.ag-pop{display:inline-flex;align-items:center;gap:5px;max-width:60%;border:0;border-radius:6px;padding:3px 6px 3px 9px;background:var(--fill);color:var(--l1);font:inherit;font-size:12px;white-space:nowrap}
+.ag-pop:hover{background:var(--fill2)}
+.ag-pop .ic{width:11px;height:11px;color:var(--l2);flex:none}
+.ag-pop:disabled{opacity:.5}
+.ag-note{margin:6px 2px 0;font-size:11.5px;color:var(--l3)}
+.ag-back{align-self:flex-start;display:inline-flex;align-items:center;gap:3px;border:0;background:none;padding:2px 0;margin-bottom:10px;color:var(--accent-t);font-size:12.5px}
+.ag-back .ic{width:12px;height:12px;transform:rotate(180deg)}

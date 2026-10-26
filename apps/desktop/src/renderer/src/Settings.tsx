@@ -32,7 +32,8 @@ function route(s: string): { page: Page; item: string } {
 /**
  * The settings window (#settings or #settings/<page>[/<item>]), laid out as
  * System Settings: the pages in a sidebar, the page on the right. Access and
- * Machines list their items; one opens in place, with ‹ back to the list.
+ * Machines list their items; one opens in place, with ‹ back to the list (a
+ * machine's agent, back to the machine).
  */
 export function SettingsWindow() {
   const { t } = useTranslation("settings");
@@ -47,6 +48,8 @@ export function SettingsWindow() {
   const page = shown.some((p) => p.id === asked) ? asked : "general";
   const label = t(`pages.${page}`);
   const open = (p: Page, it = "") => (setPage(p), setItem(it));
+  // An item within an item ("<machine>/<agent>") goes back to the one it is in.
+  const up = item.includes("/") ? item.slice(0, item.lastIndexOf("/")) : "";
   // Grants running out within a week, said once beside Access.
   const soon = st.clients.filter((c) => {
     const d = dateOf(c.expiresAt);
@@ -101,7 +104,7 @@ export function SettingsWindow() {
       <main className="set-main" aria-label={label}>
         <div className="set-top drag">
           {item && (
-            <button className="set-back" aria-label={t("back", { page: label })} onClick={() => setItem("")}>
+            <button className="set-back" aria-label={t("back", { page: up ? (st.machines.find((m) => m.machineId === up)?.machineName ?? label) : label })} onClick={() => setItem(up)}>
               <Icon name="chevR" />
             </button>
           )}
