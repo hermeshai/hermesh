@@ -28,7 +28,7 @@ final class HermeshUITests: XCTestCase {
         try XCTContext.runActivity(named: "approves an agent asking to connect") { _ in try approveAgent() }
         try XCTContext.runActivity(named: "renews a grant") { _ in try renew() }
         try XCTContext.runActivity(named: "shows a machine and its projects") { _ in try machine() }
-        try XCTContext.runActivity(named: "lists the trusted devices") { _ in try devices() }
+        try XCTContext.runActivity(named: "marks the trusted devices among the machines") { _ in try devices() }
         try XCTContext.runActivity(named: "chooses light or dark in the account") { _ in try appearance() }
         try XCTContext.runActivity(named: "shows the work on the overview, and usage in the account") { _ in try usage() }
         try XCTContext.runActivity(named: "offers New from the overview's top right") { _ in try newMenu() }
@@ -252,23 +252,36 @@ final class HermeshUITests: XCTestCase {
     }
 
     func devices() throws {
+        // The owner's Mac is a machine and a trusted device; this iPhone a
+        // trusted device only.
         openMenu()
-        tap("account")
-        XCTAssertTrue(text("这台 iPhone").waitForExistence(timeout: 20))
-        XCTAssertTrue(text("test-mac").exists)
-        tap("close")
+        app.buttons["机器"].tap()
+        let mac = app.buttons["machine-owner-mac"]
+        XCTAssertTrue(mac.waitForExistence(timeout: 20))
+        XCTAssertTrue(mac.label.contains("可信设备"), mac.label)
+        let phone = app.descendants(matching: .any)["device-this"].firstMatch
+        XCTAssertTrue(phone.waitForExistence(timeout: 20), "this iPhone")
+        XCTAssertTrue(phone.label.contains("这台 iPhone") && phone.label.contains("可信设备"), phone.label)
+        XCTAssertTrue(text("其他可信设备").exists)
     }
 
     func appearance() throws {
         openMenu()
         tap("account")
-        let picker = app.segmentedControls["appearance"]
-        XCTAssertTrue(picker.waitForExistence(timeout: 20))
-        XCTAssertTrue(picker.buttons["跟随系统"].isSelected)
-        picker.buttons["深色"].tap()
-        XCTAssertTrue(picker.buttons["深色"].isSelected)
-        picker.buttons["跟随系统"].tap()
-        XCTAssertTrue(picker.buttons["跟随系统"].isSelected)
+        // Three small phones, as Display & Brightness has them.
+        let system = app.buttons["appearance-system"], dark = app.buttons["appearance-dark"]
+        XCTAssertTrue(system.waitForExistence(timeout: 20))
+        XCTAssertTrue(system.isSelected && system.label == "跟随系统", system.label)
+        press(dark)
+        try waitFor("dark chosen") { dark.isSelected && !system.isSelected ? true : nil }
+        press(system)
+        try waitFor("the system's again") { system.isSelected && !dark.isSelected ? true : nil }
+        // Notifications are a page of their own, further down.
+        app.swipeUp()
+        tap("notifications")
+        XCTAssertTrue(app.switches["notify-questions"].waitForExistence(timeout: 10), "the notification settings")
+        XCTAssertTrue(app.switches["notify-turns"].exists && text("连接请求").exists)
+        app.navigationBars.buttons.element(boundBy: 0).tap()
         tap("close")
     }
 
@@ -303,13 +316,10 @@ final class HermeshUITests: XCTestCase {
         press(app.descendants(matching: .any)["all-sessions"].firstMatch)
         XCTAssertTrue(app.descendants(matching: .any)["drawer-dim"].waitForExistence(timeout: 5), "the menu opens")
         tap("account")
-        let line = app.buttons["usage"]
-        XCTAssertTrue(line.waitForExistence(timeout: 20), "the usage line")
-        XCTAssertTrue(line.label.contains("近 30 天"), line.label)
-        line.tap()
-        XCTAssertTrue(app.navigationBars["用量"].waitForExistence(timeout: 10), "the usage page")
-        XCTAssertTrue(text("活跃天数").exists)
-        app.navigationBars.buttons.element(boundBy: 0).tap()
+        // Usage in place: the numbers and the weeks of days, no page to open.
+        XCTAssertTrue(app.descendants(matching: .any)["usage"].firstMatch.waitForExistence(timeout: 20), "usage")
+        XCTAssertTrue(text("近 30 天 · tokens").exists && text("活跃天数").exists && text("连续使用").exists)
+        XCTAssertTrue(app.descendants(matching: .any).matching(NSPredicate(format: "label CONTAINS %@", "近 18 周的用量")).firstMatch.exists, "the weeks")
         tap("close")
         app.descendants(matching: .any)["drawer-dim"].tap()
     }
@@ -317,21 +327,48 @@ final class HermeshUITests: XCTestCase {
     func search() throws {
         openMenu()
         tap("search")
-        // Its own page, the field focused (the bar hides while searching):
-        // the recent sessions first.
+        // Its own page, the field at the top and focused: the states to
+        // search within and the recent sessions first.
         let field = app.searchFields.firstMatch
         XCTAssertTrue(field.waitForExistence(timeout: 10), "the search page")
-        XCTAssertTrue(text("最近").waitForExistence(timeout: 5), "the recent sessions")
+        XCTAssertTrue(text("按状态搜索").waitForExistence(timeout: 5), "the states")
         XCTAssertTrue(app.descendants(matching: .any)["session-写 hello"].firstMatch.exists, "a recent session")
+        // A state becomes a token: the failed sessions alone.
+        tap("search-state-failed")
+        XCTAssertTrue(text("2 个结果").waitForExistence(timeout: 10), "the failed ones")
+        XCTAssertTrue(app.descendants(matching: .any)["session-崩溃"].firstMatch.exists && app.descendants(matching: .any)["session-限流"].firstMatch.exists)
+        XCTAssertFalse(app.descendants(matching: .any)["session-写 hello"].firstMatch.exists, "only what matches")
+        cancelSearch()
+
+        tap("search")
+        XCTAssertTrue(field.waitForExistence(timeout: 10))
         sleep(1)
         field.typeText("崩溃")
-        XCTAssertTrue(text("搜索结果").waitForExistence(timeout: 10))
-        XCTAssertFalse(app.descendants(matching: .any)["session-写 hello"].firstMatch.exists, "only what matches")
+        XCTAssertTrue(text("1 个结果").waitForExistence(timeout: 10))
         let result = app.descendants(matching: .any)["session-崩溃"].firstMatch
         XCTAssertTrue(result.waitForExistence(timeout: 10))
         result.tap()
         XCTAssertFalse(app.searchFields.firstMatch.exists, "the search page closes")
         XCTAssertTrue(app.descendants(matching: .any)["session-failed"].waitForExistence(timeout: 20), "the failure shows")
+
+        // The search is remembered, and cleared.
+        openMenu()
+        tap("search")
+        XCTAssertTrue(text("最近搜索").waitForExistence(timeout: 10), "the recent searches")
+        XCTAssertTrue(app.buttons.matching(NSPredicate(format: "label CONTAINS %@", "崩溃")).firstMatch.exists)
+        tap("clear-recent")
+        XCTAssertTrue(text("最近搜索").waitForNonExistence(timeout: 5), "cleared")
+        cancelSearch()
+    }
+
+    /// Cancels the search, which closes its page: the button beside the
+    /// field (whatever it is called).
+    func cancelSearch() {
+        let field = app.searchFields.firstMatch.frame
+        let cancel = app.buttons.allElementsBoundByIndex.first { $0.frame.minX >= field.maxX - 2 && abs($0.frame.midY - field.midY) < 12 }
+        XCTAssertNotNil(cancel, "the search's cancel button")
+        cancel.map(press)
+        XCTAssertTrue(app.searchFields.firstMatch.waitForNonExistence(timeout: 5), "the search page closes")
     }
 
     func notification() throws {
