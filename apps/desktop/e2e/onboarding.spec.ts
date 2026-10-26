@@ -504,33 +504,33 @@ test("a work Mac joins as a machine only: no Touch ID, the code, the two digits;
   await page.getByRole("button", { name: "加入" }).click();
 
   // The main window, as on a trusted device: its sessions in the sidebar, and
-  // "这台 Mac" for the overview, with its projects; nothing to approve.
+  // the overview, its links this Mac's own; nothing to approve.
   await expectMainWindow(app, page);
-  await expect(page.getByRole("heading", { name: "这台 Mac" })).toBeVisible({ timeout: 30_000 });
-  await expect(page.getByText("只执行任务，不能批准")).toBeVisible();
-  await expect(page.getByText("还没有项目。添加一个目录，agent 才能在这里干活。")).toBeVisible();
-  await pickAnswers(app, gitRepo("billing"));
-  await page.getByRole("button", { name: "添加项目…" }).click({ timeout: 30_000 });
-  await page.getByRole("button", { name: "选择…" }).click();
-  await page.getByRole("button", { name: "添加", exact: true }).click();
-  const project = page.getByRole("group", { name: "billing" });
-  await expect(project).toBeVisible({ timeout: 30_000 });
+  await expect(page.getByRole("heading", { name: "概览" })).toBeVisible({ timeout: 30_000 });
+  const map = page.getByRole("region", { name: "链路" });
+  await expect(map).toContainText("这台 Mac");
   // Online: connected to the relay, which the agent's session needs.
-  await expect(page.getByText("在线 · 只执行任务，不能批准")).toBeVisible({ timeout: 30_000 });
+  await expect(map).toContainText("接新会话", { timeout: 30_000 });
+  await expect(map.getByRole("button", { name: "+ 连接更多" })).toHaveCount(0);
+  await expect(page.getByRole("region", { name: "需要你处理" })).toHaveCount(0);
 
-  // Its settings are this Mac's: its coding agents and their models, and its
-  // account; no access to grant, no other machine, nothing to approve.
-  const [settings] = await Promise.all([app.waitForEvent("window"), page.getByRole("button", { name: "这台 Mac 的设置" }).click()]);
+  // Its settings, from the account menu, are this Mac's: its coding agents,
+  // their models and projects, and its account; no access to grant, no other
+  // machine, nothing to approve.
+  await page.getByRole("button", { name: "账号与设置" }).click();
+  await expect(page.getByRole("menu", { name: "账号与设置" }).getByRole("menuitem")).toHaveText(["设置…⌘,", "账号…"]);
+  const [settings] = await Promise.all([app.waitForEvent("window"), page.getByRole("menuitem", { name: /^设置/ }).click()]);
   await settings.waitForLoadState();
   const nav = settings.getByRole("navigation", { name: "设置" });
   await expect(nav.getByRole("button")).toHaveText(["通用", "这台 Mac", "账号"]);
-  await expect(nav.getByRole("button", { name: "这台 Mac" })).toHaveAttribute("aria-current", "page");
+  await nav.getByRole("button", { name: "这台 Mac" }).click();
   const panel = settings.getByRole("main", { name: "这台 Mac" });
   await expect(panel.getByRole("switch", { name: "安全可信地共享本机 agent" })).toHaveCount(0);
   await expect(panel.getByRole("button", { name: "添加机器…" })).toHaveCount(0);
   await expect(panel.getByRole("button", { name: "移除…" })).toHaveCount(0);
   await snap(settings, "machine-05-settings");
-  const codex = panel.getByRole("list", { name: "编码 Agent" }).getByRole("listitem", { name: "Codex" });
+  const agents = panel.getByRole("list", { name: "编码 Agent" });
+  const codex = agents.getByRole("listitem", { name: "Codex" });
   await codex.getByRole("button", { name: /^Codex/ }).click({ timeout: 30_000 });
   const model = panel.getByRole("region", { name: "Codex" }).getByRole("group", { name: "模型" });
   await expect(model).toContainText("跟随 Codex（GPT-Fake-Big）", { timeout: 30_000 });
@@ -541,21 +541,30 @@ test("a work Mac joins as a machine only: no Touch ID, the code, the two digits;
   const codexDefaults = async () => (await workMac.listMachines({})).machines[0]?.status?.agents.find((a) => a.name === "codex")?.defaults?.model;
   await expect.poll(codexDefaults).toBe("gpt-fake-small");
   await snap(settings, "machine-06-agent");
-  // ‹ goes back to this Mac, which says what is set.
+  // ‹ goes back to this Mac, which says what is set; Gemini CLI gets a project.
   await settings.getByRole("button", { name: "返回这台 Mac" }).click();
   await expect(codex).toContainText("GPT-Fake-Small");
   await expect(settings.getByRole("button", { name: /^返回/ })).toHaveCount(0);
-  // Its account: whose it is and where it connects; it can leave from here too.
+  await agents.getByRole("listitem", { name: "Gemini CLI" }).getByRole("button", { name: /^Gemini CLI/ }).click();
+  await pickAnswers(app, gitRepo("billing"));
+  await panel.getByRole("region", { name: "Gemini CLI" }).getByRole("button", { name: "添加项目…" }).click();
+  await expect(panel.getByRole("region", { name: "Gemini CLI" }).getByRole("group", { name: "billing" })).toBeVisible({ timeout: 30_000 });
+  await expect(map.getByRole("button", { name: "billing" })).toBeVisible({ timeout: 30_000 });
+  // Its account: whose it is and where it connects; from here it can leave,
+  // or become a trusted device (in the main window).
   await nav.getByRole("button", { name: "账号" }).click();
   const account = settings.getByRole("main", { name: "账号" });
   await expect(account).toContainText("它不能批准，也看不到你的其他机器");
   await expect(account.getByRole("list", { name: "可信设备" })).toHaveCount(0);
   await expect(account.getByRole("button", { name: "离开你的 Hermesh…" })).toBeVisible();
   await snap(settings, "machine-07-account");
-  await settings.close();
+  await Promise.all([settings.waitForEvent("close"), account.getByRole("button", { name: "让这台 Mac 也能批准…" }).click()]);
+  await expect(page.getByRole("heading", { name: "在你已有的设备上批准" })).toBeVisible({ timeout: 30_000 });
+  await page.getByRole("button", { name: "取消" }).click();
+  await expect(page.getByRole("heading", { name: "概览" })).toBeVisible({ timeout: 30_000 });
 
-  // An agent of the owner, granted all machines, runs a session there: the
-  // work Mac lists it under the agent's name, opens it and stops it.
+  // An agent of the owner, granted all machines: before it comes, the map
+  // has it as one that may start sessions here, faint.
   const env = { ...process.env, HERMESH_HOME: fs.mkdtempSync(path.join(os.tmpdir(), "hmagent-")) };
   const login = spawn(fixture.cli, ["auth", "login", connectAddress, "--name", "Grok Bot"], { env });
   const loggedIn = new Promise<number | null>((r) => login.on("exit", r));
@@ -563,26 +572,38 @@ test("a work Mac joins as a machine only: no Touch ID, the code, the two digits;
   await expect.poll(clientRequest, { timeout: 30_000 }).toBeTruthy();
   await home.approveClientPairing({ code: (await clientRequest())!.code, spec: { agents: ["gemini"] } });
   expect(await loggedIn).toBe(0);
+  const grok = map.getByRole("button", { name: "Grok Bot", exact: true });
+  await expect(grok).toContainText("还没来过", { timeout: 30_000 });
+  await expect(map).toContainText("还没来过");
+  await snap(page, "machine-03-window");
+
+  // It runs a session there: the work Mac lists it under the agent's name,
+  // the map runs it from the agent to the project, and the agent's card says
+  // what it may do here.
   execFileSync(fixture.cli, ["session", "start", "--project", "billing", "--agent", "gemini", "--title", "修账单导出", "--prompt", "shell sleep 1800"], { env });
   const row = page.getByRole("list", { name: "会话" }).getByRole("listitem").filter({ hasText: "修账单导出" });
   await expect(row).toContainText("Grok Bot", { timeout: 30_000 });
+  await expect(grok).not.toContainText("还没来过", { timeout: 30_000 });
   await expect(page.getByRole("button", { name: "管理授权…" })).toHaveCount(0);
-  await snap(page, "machine-03-window");
+  await grok.click();
+  const card = map.getByRole("dialog", { name: "Grok Bot" });
+  await expect(card).toContainText("个人 agent · 自己保管密钥");
+  await expect(card).toContainText("授权给了它完全权限");
+  await expect(card).toContainText("在这里能用所有项目");
+  await expect(card).toContainText("编码 agentGemini CLI");
+  await expect(card).toContainText(/有效期还剩 \d+ 天/);
+  await expect(card).toContainText("在这台 Mac今天 1 个任务 · 最近一次");
+  await expect(page.getByRole("status").filter({ hasText: "Grok Bot 发起的会话" })).toBeVisible();
+  await snap(page, "machine-08-card");
+  await page.keyboard.press("Escape");
+  await expect(card).toHaveCount(0);
+
   await row.click();
   await expect(page.getByRole("heading", { name: "修账单导出" })).toBeVisible();
   await expect(page.getByRole("log", { name: "对话" })).toContainText("sleep 1800", { timeout: 30_000 });
   await snap(page, "machine-04-session");
   await page.getByRole("button", { name: /打断/ }).click();
   await expect(page.getByRole("status")).toContainText("已打断「修账单导出」");
-
-  // Its project's ⋯ menu: work in place, then remove it.
-  await page.getByRole("button", { name: "概览" }).click();
-  await answerMenu(app, "inPlace");
-  await project.getByRole("button", { name: "更多" }).click();
-  await expect(project.getByText(/· 原地$/)).toBeVisible({ timeout: 30_000 });
-  await answerMenu(app, "remove");
-  await project.getByRole("button", { name: "更多" }).click();
-  await expect(page.getByText("还没有项目。添加一个目录，agent 才能在这里干活。")).toBeVisible({ timeout: 30_000 });
 
   // The trusted device removes it: it says so, and can start over.
   const work = (await home.listMachines({})).machines.find((m) => m.machineName === "work-mac")!;

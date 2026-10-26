@@ -48,7 +48,9 @@
     "personalAgent": "个人 agent",
     "expiresToday": "今天到期",
     "expiresIn_other": "{{count}} 天后到期",
-    "machineSettings": "机器设置…"
+    "machineSettings": "机器设置…",
+    "notYet": "还没来过",
+    "accepting": "接新会话"
   },
   "working": {
     "title": "正在干活",
@@ -89,5 +91,19 @@
     "more": "多",
     "noUsage": "没有用量",
     "sessions_other": " · {{count}} 个会话"
+  },
+  "card": {
+    "ownKey": "个人 agent · 自己保管密钥",
+    "custodian": "密钥由 {{host}} 保管",
+    "fullAccess": "授权给了它完全权限：在下面这些项目里，它能读写文件、运行命令，和你自己在终端里一样。",
+    "projects": "在这里能用",
+    "allProjects": "所有项目",
+    "agents": "编码 agent",
+    "allAgents": "所有编码 agent",
+    "expiry": "有效期",
+    "daysLeft_other": "还剩 {{count}} 天 · {{date}}",
+    "here": "在这台 Mac",
+    "seen_other": "今天 {{count}} 个任务 · 最近一次 {{ago}}",
+    "revokeElsewhere": "撤销它的授权，要到你的可信设备上。"
   }
 }

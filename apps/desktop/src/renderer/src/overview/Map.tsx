@@ -1,18 +1,22 @@
-import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode, type Ref } from "react";
 import { Trans, useTranslation } from "react-i18next";
 import type { Client, GetUsageResponse, Machine } from "@hermesh/proto/local";
 import { SessionStatus, type Session } from "@hermesh/proto/session";
-import { dateOf, isActive, isFailed, todayStats, tokensText, usageYear } from "@hermesh/core";
+import { agoText, codingAgentTitle, createdDate, dateOf, isActive, isFailed, monthDay, sameDay, todayStats, tokensText, usageYear } from "@hermesh/core";
 import { AgentLogo, AgentTile, grantColor, kindNamed, Mark } from "@hermesh/ui";
 import { i18n } from "../../../shared/i18n";
 import { Icon } from "../icons";
+import { hostOf } from "../sheets/Pairing";
 import { useStore, type Store } from "../store";
 
 // "Connections": who may use this computer (grants: a personal agent connects only
 // while it runs a command, so they are never drawn offline), Hermesh in the middle, the
 // machines, and their projects; each session that is live runs along its
-// grant → machine → project path. Drawn on a fixed stage that is scaled to
-// the width, so the lines (SVG) and the nodes (HTML) stay together.
+// grant → machine → project path. On a machine only it is this Mac's: the
+// grants that cover it, this Mac in the middle, its projects; one that never
+// came is drawn faint, and a grant clicked opens a card of what it may do
+// here. Drawn on a fixed stage that is scaled to the width, so the lines
+// (SVG) and the nodes (HTML) stay together.
 
 const W = 820;
 const GAP = 64;
@@ -22,6 +26,8 @@ const COL = { g: 24, m: 448, p: 670 };
 const WIDTH = { g: 164, m: 168, p: 134 };
 const HEIGHT = { g: 42, m: 46, p: 34 };
 const HUB = { x: 318, s: 36 };
+// A machine only's map: grants, this Mac (the hub), projects.
+const ONE = { g: { x: 24, w: 196 }, p: { x: 640, w: 150 }, hub: 410 };
 
 type Kind = "g" | "m" | "p";
 type Spot = { key: string; kind: Kind; x: number; y: number; w: number; h: number };
@@ -47,6 +53,7 @@ const curve = (x1: number, y1: number, x2: number, y2: number) => {
 
 /** Lays out the columns around the hub's height, the busiest first, at most MAX a column. */
 function layout(st: Store, live: Session[]) {
+  const only = st.status?.machineOnly === true;
   const count = (k: (s: Session) => string) => {
     const n = new Map<string, number>();
     for (const s of live) n.set(k(s), (n.get(k(s)) ?? 0) + 1);
@@ -59,7 +66,7 @@ function layout(st: Store, live: Session[]) {
   const clients = st.clients
     .filter((c) => !c.revoked)
     .sort((a, b) => (byGrant.get(b.clientId) ?? 0) - (byGrant.get(a.clientId) ?? 0));
-  const machines = [...st.machines].sort((a, b) => Number(b.local) - Number(a.local) || Number(b.online) - Number(a.online));
+  const machines = only ? [] : [...st.machines].sort((a, b) => Number(b.local) - Number(a.local) || Number(b.online) - Number(a.online));
   const projects = new Map<string, { machineId: string; projectId: string }>();
   for (const s of live) projects.set(projectKey(s.machineId, s.projectId), { machineId: s.machineId, projectId: s.projectId });
   for (const p of st.projects) projects.set(projectKey(p.machineId, p.projectId), { machineId: p.machineId, projectId: p.projectId });
@@ -79,8 +86,8 @@ function layout(st: Store, live: Session[]) {
     else if (ghost) tail.push(ghost);
     return { shown, tail };
   };
-  const g = column(clients, "g", clients.length < 3 ? { key: "ghost:g", label: i18n.t("overview:map.connectMore"), action: () => st.set({ sheet: { kind: "newGrant" } }) } : null, "moreGrants");
-  const m = column(machines, "m", machines.length < 3 ? { key: "ghost:m", label: i18n.t("overview:map.addMachine"), action: () => st.set({ sheet: { kind: "addMachine" } }) } : null, "moreMachines");
+  const g = column(clients, "g", !only && clients.length < 3 ? { key: "ghost:g", label: i18n.t("overview:map.connectMore"), action: () => st.set({ sheet: { kind: "newGrant" } }) } : null, "moreGrants");
+  const m = column(machines, "m", !only && machines.length < 3 ? { key: "ghost:m", label: i18n.t("overview:map.addMachine"), action: () => st.set({ sheet: { kind: "addMachine" } }) } : null, "moreMachines");
   const p = column(projectList, "p", null, "moreProjects");
 
   const rows = Math.max(g.shown.length + g.tail.length, m.shown.length + m.tail.length, p.shown.length + p.tail.length, 1);
@@ -88,7 +95,8 @@ function layout(st: Store, live: Session[]) {
   // The hub with its label (about 127 tall, the icon on top) is what sits in the middle.
   const cy = TOP + (H - TOP) / 2 - 19;
   const y = (i: number, n: number) => cy + (i - (n - 1) / 2) * GAP;
-  const spot = (kind: Kind, i: number, n: number) => ({ kind, x: COL[kind], y: y(i, n), w: WIDTH[kind], h: HEIGHT[kind] });
+  const col = (kind: Kind) => (only && kind !== "m" ? ONE[kind] : { x: COL[kind], w: WIDTH[kind] });
+  const spot = (kind: Kind, i: number, n: number) => ({ kind, x: col(kind).x, y: y(i, n), w: col(kind).w, h: HEIGHT[kind] });
 
   const gn = g.shown.length + g.tail.length;
   const grants: GrantNode[] = g.shown.map((c, i) => ({ ...spot("g", i, gn), kind: "g", key: grantKey(c.clientId), client: c }));
@@ -101,12 +109,17 @@ function layout(st: Store, live: Session[]) {
   const projectNodes: ProjectNode[] = p.shown.map(([key, x], i) => ({ ...spot("p", i, pn), kind: "p", key, ...x, online: online.get(x.machineId) ?? false }));
   p.tail.forEach((t, i) => extras.push({ ...spot("p", p.shown.length + i, pn), ...t }));
 
-  const hub = { x: HUB.x, y: cy, l: HUB.x - HUB.s - 4, r: HUB.x + HUB.s + 4 };
+  const hx = only ? ONE.hub : HUB.x;
+  const hub = { x: hx, y: cy, l: hx - HUB.s - 4, r: hx + HUB.s + 4 };
   const at = new Map<string, Spot>([...grants, ...machineNodes, ...projectNodes].map((n) => [n.key, n]));
   const edges: { keys: string[]; d: string; off: boolean }[] = [];
-  for (const n of grants) edges.push({ keys: [n.key], off: false, d: `M${n.x + n.w} ${n.y} ${curve(n.x + n.w, n.y, hub.l, hub.y)}` });
+  for (const n of grants) edges.push({ keys: [n.key], off: only && !n.client.lastSeen, d: `M${n.x + n.w} ${n.y} ${curve(n.x + n.w, n.y, hub.l, hub.y)}` });
   for (const n of machineNodes) edges.push({ keys: [n.key], off: !n.machine.online, d: `M${hub.r} ${hub.y} ${curve(hub.r, hub.y, n.x, n.y)}` });
   for (const n of projectNodes) {
+    if (only) {
+      edges.push({ keys: [n.key], off: !n.online, d: `M${hub.r} ${hub.y} ${curve(hub.r, hub.y, n.x, n.y)}` });
+      continue;
+    }
     const mm = at.get(machineKey(n.machineId));
     if (mm) edges.push({ keys: [mm.key, n.key], off: !n.online, d: `M${mm.x + mm.w} ${mm.y} ${curve(mm.x + mm.w, mm.y, n.x, n.y)}` });
   }
@@ -115,6 +128,10 @@ function layout(st: Store, live: Session[]) {
     const a = at.get(grantKey(s.createdBy));
     const b = at.get(machineKey(s.machineId));
     const c = at.get(projectKey(s.machineId, s.projectId));
+    if (only && a && c) {
+      paths.push({ s, keys: [a.key, c.key], d: `M${a.x + a.w} ${a.y} ${curve(a.x + a.w, a.y, hub.l, hub.y)} L${hub.r} ${hub.y} ${curve(hub.r, hub.y, c.x, c.y)}` });
+      continue;
+    }
     if (!a || !b || !c) continue;
     const d =
       `M${a.x + a.w} ${a.y} ${curve(a.x + a.w, a.y, hub.l, hub.y)} L${hub.r} ${hub.y} ` +
@@ -143,6 +160,21 @@ export function LinkMap({ pick, onPick, now, usage }: { pick: string; onPick: (k
   const waiting = live.filter((s) => s.status === SessionStatus.WAITING_INPUT);
   const failed = live.filter(isFailed);
   const offline = st.machines.some((m) => !m.online);
+  const only = st.status?.machineOnly === true;
+  // A machine only: grants that never came here, and the card of the one picked.
+  const unseen = only && L.grants.some((n) => !n.client.lastSeen);
+  const card = only ? L.grants.find((n) => n.key === pick) : undefined;
+  const cardRef = useRef<HTMLDivElement>(null);
+  const [cardH, setCardH] = useState(0);
+  useLayoutEffect(() => setCardH(card ? (cardRef.current?.offsetHeight ?? 0) : 0), [card, st.sessions, st.clients]);
+  const cardTop = card ? card.y + card.h / 2 + 8 : 0;
+  const H = card ? Math.max(L.H, cardTop + cardH + 13) : L.H;
+  useEffect(() => {
+    if (!card) return;
+    const esc = (e: KeyboardEvent) => e.key === "Escape" && onPick("");
+    document.addEventListener("keydown", esc);
+    return () => document.removeEventListener("keydown", esc);
+  }, [card, onPick]);
 
   // Scale the stage to the card's width.
   const box = useRef<HTMLDivElement>(null);
@@ -230,8 +262,8 @@ export function LinkMap({ pick, onPick, now, usage }: { pick: string; onPick: (k
         <b>{t("map.title")}</b>
         <Today now={now} usage={usage} running={running.length > 0} />
       </div>
-      <div className="lmap-box" ref={box} style={{ height: L.H * scale }}>
-        <div className="lmap-stage" style={{ width: W, height: L.H, transform: `scale(${scale})` }}>
+      <div className="lmap-box" ref={box} style={{ height: H * scale }}>
+        <div className="lmap-stage" style={{ width: W, height: H, transform: `scale(${scale})` }}>
           <div
             className={`lmap-aura ${running.length ? "on" : ""}`}
             style={{ left: L.hub.x - HUB.s - 22, top: L.hub.y - HUB.s - 16, width: (HUB.s + 22) * 2, height: (HUB.s + 16) * 2 }}
@@ -265,26 +297,40 @@ export function LinkMap({ pick, onPick, now, usage }: { pick: string; onPick: (k
 
           <div
             className={`lmap-hub ${pick ? "back" : ""}`}
-            style={{ left: HUB.x - HUB.s, top: L.hub.y - HUB.s, width: HUB.s * 2 }}
+            style={{ left: L.hub.x - HUB.s, top: L.hub.y - HUB.s, width: HUB.s * 2 }}
             title={pick ? t("map.backToAll") : undefined}
             onClick={() => pick && onPick("")}
           >
-            <div className="lmap-icon" style={{ width: HUB.s * 2, height: HUB.s * 2 }}>
-              <Mark size={46} />
-            </div>
-            <b>Hermesh</b>
-            <span>
-              <Icon name="lock" className="sm" />
-              {t("map.encrypted")}
-            </span>
+            {only ? (
+              <ThisMacHub />
+            ) : (
+              <>
+                <div className="lmap-icon" style={{ width: HUB.s * 2, height: HUB.s * 2 }}>
+                  <Mark size={46} />
+                </div>
+                <b>Hermesh</b>
+                <span>
+                  <Icon name="lock" className="sm" />
+                  {t("map.encrypted")}
+                </span>
+              </>
+            )}
           </div>
 
           {L.grants.map((n) => (
-            <Node key={n.key} n={n} className={`g ${lightNode(n.key)}`} pinned={pick === n.key} label={n.client.label} onFocus={setHover} onClick={() => toggle(n.key)}>
+            <Node
+              key={n.key}
+              n={n}
+              className={`g ${only && !n.client.lastSeen ? "off" : ""} ${lightNode(n.key)}`}
+              pinned={pick === n.key}
+              label={n.client.label}
+              onFocus={setHover}
+              onClick={() => toggle(n.key)}
+            >
               <GrantIcon label={n.client.label} />
               <span className="lm-t">
                 <b>{n.client.label}</b>
-                <Expiry c={n.client} now={now} />
+                {only && !n.client.lastSeen ? <small>{t("map.notYet")}</small> : <Expiry c={n.client} now={now} />}
               </span>
               <Tail online running={runningCount(L.paths, n.key)} />
             </Node>
@@ -339,6 +385,8 @@ export function LinkMap({ pick, onPick, now, usage }: { pick: string; onPick: (k
             ),
           )}
 
+          {card && <ClientCard ref={cardRef} c={card.client} now={now} style={{ left: card.x, top: cardTop }} />}
+
           {/* A question's ping, under its dots (drawn by the compositor, as the comets). */}
           <div className="lmap-pings" aria-hidden="true">
             {L.paths.map((p) => {
@@ -378,6 +426,7 @@ export function LinkMap({ pick, onPick, now, usage }: { pick: string; onPick: (k
         {waiting.length > 0 && <span><i className="wait" />{t("map.waiting")}</span>}
         {failed.length > 0 && <span><i className="fail" />{t("map.failed")}</span>}
         {offline && <span><i className="off" />{t("map.offline")}</span>}
+        {unseen && <span><i className="off" />{t("map.notYet")}</span>}
         {live.length > 0 && <span className="hint">{pick ? t("map.hintPicked") : t("map.hintPick")}</span>}
       </div>
     </div>
@@ -433,6 +482,68 @@ function Expiry({ c, now }: { c: Client; now: Date }) {
   const days = until ? Math.ceil((until.getTime() - now.getTime()) / 86_400_000) : Infinity;
   if (days > 7) return <small>{t("map.personalAgent")}</small>;
   return <small className="soon">{days <= 0 ? t("map.expiresToday") : t("map.expiresIn", { count: days })}</small>;
+}
+
+/** A machine only's hub: this Mac, whether it is online and takes new sessions. */
+function ThisMacHub() {
+  const { t } = useTranslation("overview");
+  const st = useStore();
+  const m = st.machines.find((x) => x.local);
+  const online = st.status?.relayConnected === true;
+  const paused = m?.status?.paused === true;
+  return (
+    <>
+      <div className="lmap-icon mac" style={{ width: HUB.s * 2, height: HUB.s * 2 }} onContextMenu={(e) => (e.preventDefault(), m && machineMenu(m))}>
+        <Icon name="laptop" />
+      </div>
+      <b>{t("thisMac")}</b>
+      <span>
+        <i className={`dotc ${online && !paused ? "on" : paused ? "warn" : ""}`} />
+        {!online ? t("map.offline") : paused ? t("map.paused") : t("map.accepting")}
+      </span>
+    </>
+  );
+}
+
+/**
+ * What a grant lets its agent do on this Mac (a machine only), under its
+ * node: how much it is trusted, the projects and coding agents it may use
+ * here, how long, and what it did here.
+ */
+function ClientCard({ c, now, style, ref }: { c: Client; now: Date; style: CSSProperties; ref: Ref<HTMLDivElement> }) {
+  const { t } = useTranslation("overview");
+  const st = useStore();
+  const until = dateOf(c.expiresAt);
+  const seen = dateOf(c.lastSeen);
+  const today = st.sessions.filter((s) => s.createdBy === c.clientId && sameDay(createdDate(s), now)).length;
+  const projects = c.spec?.projectIds ?? [];
+  const agents = c.spec?.agents ?? [];
+  const chips = (all: boolean, items: string[], allText: string) =>
+    all || items.length === 0 ? <span>{allText}</span> : <span className="lm-chips">{items.map((x) => <em key={x}>{x}</em>)}</span>;
+  return (
+    <div className="lm-card" ref={ref} style={style} role="dialog" aria-label={c.label} onClick={(e) => e.stopPropagation()}>
+      <div className="lm-card-h">
+        <GrantIcon label={c.label} />
+        <b>{c.label}</b>
+      </div>
+      <p className="lm-card-sub">{c.custodian ? t("card.custodian", { host: hostOf(c.custodian) }) : t("card.ownKey")}</p>
+      <div className="lm-card-full">
+        <Icon name="shield" />
+        <span>{t("card.fullAccess")}</span>
+      </div>
+      <dl className="lm-card-kv">
+        <dt>{t("card.projects")}</dt>
+        <dd>{chips(projects.includes("*"), projects, t("card.allProjects"))}</dd>
+        <dt>{t("card.agents")}</dt>
+        <dd>{chips(agents.includes("*"), agents.map(codingAgentTitle), t("card.allAgents"))}</dd>
+        <dt>{t("card.expiry")}</dt>
+        <dd>{until ? t("card.daysLeft", { count: Math.max(0, Math.ceil((until.getTime() - now.getTime()) / 86_400_000)), date: monthDay(until) }) : "—"}</dd>
+        <dt>{t("card.here")}</dt>
+        <dd>{seen ? t("card.seen", { count: today, ago: agoText(seen, now) }) : t("map.notYet")}</dd>
+      </dl>
+      <p className="lm-card-note">{t("card.revokeElsewhere")}</p>
+    </div>
+  );
 }
 
 /** A machine node's context menu: its settings (a click on it drills down). */

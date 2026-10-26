@@ -80,6 +80,8 @@ function run(st: Store, c: Command) {
       return s && copySessionId(st, s);
     case "undo":
       return undo(st);
+    case "upgrade":
+      return st.status?.machineOnly && st.set({ upgrading: true });
   }
   const [verb, arg] = [c.slice(0, c.indexOf(":")), c.slice(c.indexOf(":") + 1)];
   switch (verb) {

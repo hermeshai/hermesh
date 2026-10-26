@@ -10,6 +10,7 @@ import { useNow, useStore } from "./store";
 import "./overview/overview.css";
 
 // The overview: what needs the owner beyond the session list, the link map of grants, machines and projects, what runs now, and a year of usage.
+// On a machine only, the same for this Mac: nothing waits on it, and the map is its own.
 export function Overview() {
   const { t } = useTranslation("overview");
   const st = useStore();
@@ -39,7 +40,7 @@ export function Overview() {
               })}
             </div>
           )}
-          <Attention now={now} />
+          {!st.status?.machineOnly && <Attention now={now} />}
           <section aria-label={t("map.title")}>
             <LinkMap pick={pick} onPick={setPick} now={now} usage={usage} />
           </section>

@@ -124,7 +124,8 @@ export function Account({ ask }: { ask: (a: Ask) => void }) {
 
 /**
  * A machine only's account: whose it is and where it connects, folded its
- * owner id; it approves nothing and has no devices to list. It can leave.
+ * owner id; it approves nothing and has no devices to list. It can become a
+ * trusted device (in the main window), or leave.
  */
 function MachineAccount() {
   const { t } = useTranslation("settings");
@@ -172,7 +173,8 @@ function MachineAccount() {
         </div>
       </More>
       <div className="set-acts">
-        <button className="btn danger" onClick={leave}>{f("machineOnly.leave")}</button>
+        <button className="btn" onClick={() => (window.hermesh?.showUpgrade(), window.close())}>{f("machineOnly.upgrade")}</button>
+        <button className="btn danger push" onClick={leave}>{f("machineOnly.leave")}</button>
       </div>
     </div>
   );

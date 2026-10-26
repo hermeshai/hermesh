@@ -30,6 +30,7 @@ const bridge: Bridge = {
   openSettings: (tab?: string) => ipcRenderer.send("open-settings", tab),
   onSettingsTab: (cb: (tab: string) => void) => listen("settings-tab", cb),
   showInMain: (filter: { grant: string } | { machine: string }) => ipcRenderer.send("show-in-main", filter),
+  showUpgrade: () => ipcRenderer.send("show-upgrade"),
   popupMenu: (items: MenuItem[]) => ipcRenderer.invoke("popup-menu", items),
   onCommand: (cb: (c: Command) => void) => listen("command", cb),
   setMenuState: (s: MenuState) => ipcRenderer.send("menu-state", s),

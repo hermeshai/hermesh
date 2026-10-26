@@ -7,6 +7,8 @@ import (
 	"fmt"
 	"os"
 	"runtime"
+	"slices"
+	"strings"
 	"time"
 	"unicode/utf8"
 
@@ -232,6 +234,35 @@ func onlyMachineProjects(ctx context.Context, l *machine.Local) (*localv1.ListPr
 			Description: p.Description, Agents: p.Agents, Path: p.Path})
 	}
 	return out, nil
+}
+
+// onlyMachineClients are the agents a machine only knows: those its grants
+// let start sessions here, scoped to this machine alone (it doesn't see the
+// others), with when each last came; then the ones that came under a grant
+// no longer valid, revoked, so their sessions keep their names.
+func onlyMachineClients(l *machine.Local) []*localv1.Client {
+	id := l.Info().MachineId
+	known := map[string]machine.KnownClient{}
+	for _, c := range l.Clients() {
+		known[c.ID] = c
+	}
+	var out []*localv1.Client
+	for _, g := range l.Grants() {
+		spec := specFromGrant(g)
+		spec.MachineIds = []string{id}
+		c := &localv1.Client{ClientId: g.ClientId, GrantId: g.GrantId, Label: g.ClientLabel, Fingerprint: identity.ShortFingerprint(g.ClientPublicKey),
+			Spec: spec, GrantVersion: g.Version, ExpiresAt: g.ExpiresAt, Custodian: g.Custodian}
+		if k, ok := known[g.ClientId]; ok && !k.Seen.IsZero() {
+			c.LastSeen = timestamppb.New(k.Seen)
+		}
+		delete(known, g.ClientId)
+		out = append(out, c)
+	}
+	for _, k := range known {
+		out = append(out, &localv1.Client{ClientId: k.ID, GrantId: k.GrantID, Label: k.Label, Revoked: true})
+	}
+	slices.SortFunc(out, func(a, b *localv1.Client) int { return strings.Compare(a.Label, b.Label) })
+	return out
 }
 
 // onlyThisMachine refuses a machine id other than this one.

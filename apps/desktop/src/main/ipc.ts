@@ -64,6 +64,7 @@ export function registerIPC() {
     if (!c) return;
     command(c);
   });
+  ipcMain.on("show-upgrade", (e) => trusted(e) && command("upgrade"));
   ipcMain.on("relaunch", (e) => {
     if (!trusted(e)) return;
     app.relaunch();

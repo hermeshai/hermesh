@@ -158,6 +158,8 @@ func (n *Machine) handleUpdate(u *relayv1.MachineUpdate) {
 		n.acceptMachineCert(v.MachineCert)
 	case *relayv1.MachineUpdate_PushTargets:
 		n.acceptPushTargets(v.PushTargets)
+	case *relayv1.MachineUpdate_Grants:
+		n.acceptGrants(v.Grants)
 	}
 }
 

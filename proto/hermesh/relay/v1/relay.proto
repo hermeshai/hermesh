@@ -238,7 +238,16 @@ message MachineUpdate {
     hermesh.identity.v1.RevocationList revocations = 2;
     hermesh.identity.v1.Signed machine_cert = 3;
     PushTargets push_targets = 4;
+    MachineGrants grants = 5;
   }
+}
+
+// The owner-signed grants that cover this machine (each verified by it), all
+// of them: sent when it connects and again whenever one is published or
+// revoked. A machine shows them as who may start sessions on it; it still
+// checks the grant each client presents.
+message MachineGrants {
+  repeated hermesh.identity.v1.Signed grants = 1;
 }
 
 service ClientControlService {
