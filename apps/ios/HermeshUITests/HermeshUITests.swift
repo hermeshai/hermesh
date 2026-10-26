@@ -35,6 +35,7 @@ final class HermeshUITests: XCTestCase {
         try XCTContext.runActivity(named: "offers New from the overview's top right") { _ in try newMenu() }
         try XCTContext.runActivity(named: "searches sessions from the menu") { _ in try search() }
         try XCTContext.runActivity(named: "opened without the relay, shows what it kept and catches up") { _ in try offline() }
+        try XCTContext.runActivity(named: "back and forth to the home screen, never shows its Mac unreachable") { _ in try backAndForth() }
         try XCTContext.runActivity(named: "a question arrives as a notification and opens its session") { _ in try notification() }
     }
 
@@ -420,6 +421,26 @@ final class HermeshUITests: XCTestCase {
         back.name = "caught up"
         back.lifetime = .keepAlways
         add(back)
+    }
+
+    /// To the home screen and back, slowly and at once, a few times: each
+    /// time the app is current again, and on the way it never says its Mac
+    /// can't be reached (it stayed online).
+    func backAndForth() throws {
+        let line = app.descendants(matching: .any)["sync-line"].firstMatch
+        let unreachable = app.descendants(matching: .any)["unreachable"].firstMatch
+        for away: UInt32 in [3, 0, 0, 3] {
+            XCUIDevice.shared.press(.home)
+            sleep(away)
+            app.activate()
+            XCTAssertTrue(app.wait(for: .runningForeground, timeout: 10))
+            let deadline = Date().addingTimeInterval(30)
+            repeat {
+                XCTAssertFalse(unreachable.exists, "the Mac shown unreachable on the way back")
+            } while line.exists && Date() < deadline
+            XCTAssertFalse(line.exists, "current again")
+            XCTAssertTrue(app.descendants(matching: .any)["machine-row-owner-mac"].exists)
+        }
     }
 
     func notification() throws {

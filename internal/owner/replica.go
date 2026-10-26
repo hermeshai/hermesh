@@ -487,6 +487,12 @@ func (r *replica) poll(ctx context.Context, s *sources, machines, pairings bool)
 			list, err := r.o.listedMachines(ctx)
 			r.mu.Lock()
 			defer r.mu.Unlock()
+			if errors.Is(ctx.Err(), context.Canceled) {
+				return // cut short (the sources stopped, its caller left): it tells nothing
+			}
+			if err != nil && s.machines.list != nil {
+				list = s.machines.list // without the relay, whether they are online is not known: as last listed
+			}
 			if s.machines.set(n, list, err) {
 				r.machinesListedLocked(s)
 				r.kickLocked()
@@ -623,6 +629,9 @@ func (r *replica) follow(s *sources, id string, f *feed, started chan struct{}) 
 	}
 	r.mu.Lock()
 	f.ready, f.running, f.conn, f.err = false, false, nil, err.Error()
+	if errors.As(err, new(noRelay)) {
+		f.err = "" // not the machine's doing: it is being connected to, as the relay is
+	}
 	f.retry = min(max(2*f.retry, retryFirst), retryMax)
 	retry := f.retry
 	r.machinesChangedLocked(s)
@@ -665,13 +674,18 @@ func (r *replica) followLocal(s *sources, id string, ready func()) error {
 	return cmp.Or(err, errors.New("stopped watching"))
 }
 
+// noRelay is a follow that failed because the relay could not be reached.
+type noRelay struct{ error }
+
+func (e noRelay) Unwrap() error { return e.error }
+
 // followRemote follows another machine over the end-to-end channel, until
 // its stream ends: its MachineService.Watch, resumed from what the feed
 // held, or, on a machine without it, as followSessions does.
 func (r *replica) followRemote(s *sources, id string, f *feed, ready func()) error {
 	c, err := r.o.relay(s.ctx)
 	if err != nil {
-		return err
+		return noRelay{err}
 	}
 	ctx, cancel := context.WithCancel(s.ctx)
 	defer cancel()

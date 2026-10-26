@@ -107,18 +107,23 @@ extension Color {
 }
 
 /// A wait the page has the room for: the mark, pulsing, and what is being
-/// done ("Reading the conversation…", never just "Loading…").
+/// done ("Reading the conversation…", never just "Loading…"); bare, the
+/// mark alone, which says it to VoiceOver only.
 struct PageLoader: View {
     let text: LocalizedStringKey
+    var bare = false
     var body: some View {
         Delayed(active: true) {
             VStack(spacing: 12) {
                 MovingMark(size: 40)
-                Text(text).font(.subheadline).foregroundStyle(.secondary).multilineTextAlignment(.center)
+                if !bare {
+                    Text(text).font(.subheadline).foregroundStyle(.secondary).multilineTextAlignment(.center)
+                }
             }
             .frame(maxWidth: .infinity)
-            .padding(.vertical, 34)
+            .padding(.vertical, bare ? 0 : 34)
             .accessibilityElement(children: .combine)
+            .accessibilityLabel(Text(text))
             .accessibilityIdentifier("loading")
         }
     }

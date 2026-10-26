@@ -215,8 +215,8 @@ final class AppModel {
         active = true
         watched = false
         relayDownSince = nil
-        Core.resume()
-        if phase == .ready {
+        Core.resume { [self] in // the core listens again
+            guard active, phase == .ready else { return }
             begin()
             Task { await askForNotifications() }
         }
@@ -354,6 +354,11 @@ final class AppModel {
     func handle(_ response: UNNotificationResponse) async {
         if api == nil { await start() }
         guard let api else { return }
+        // An action answered from the lock screen: the app is in the
+        // background, its core paused until it is done.
+        let woke = !active
+        if woke { await withCheckedContinuation { k in Core.resume { k.resume() } } }
+        defer { if woke && !active { Core.pause() } }
         var info = response.notification.request.content.userInfo
         // The extension may not have run (a Simulator's simulated push): open the notice here.
         if info["session"] == nil, let h = info["hermesh"] as? [String: Any], let b64 = h["n"] as? String,
@@ -805,6 +810,8 @@ final class AppModel {
             background()
             forgetWorld()
             sheet = nil
+            active = true // still in front: the core serves the onboarding
+            await withCheckedContinuation { k in Core.resume { k.resume() } }
             await refreshStatus()
             phase = .onboarding
         } catch { report(error) }

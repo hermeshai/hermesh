@@ -25,7 +25,7 @@ struct SessionView: View {
                 content(s)
                     .onChange(of: s.isActive) { _, running in rebuild(running: running) }
             } else {
-                PageLoader(text: "Reading the session…").frame(maxHeight: .infinity)
+                PageLoader(text: "Reading the session…", bare: true).frame(maxHeight: .infinity)
             }
         }
         .navigationBarTitleDisplayMode(.inline)
@@ -52,9 +52,6 @@ struct SessionView: View {
                     Label("Archived: read-only; the worktree is released and the changes stay on the branch.", systemImage: "archivebox")
                         .font(.footnote).foregroundStyle(.secondary)
                 }
-                if events.isEmpty && !caughtUp(s) {
-                    PageLoader(text: "Reading the conversation…").padding(.top, 60)
-                }
                 ForEach(Array(steps.enumerated()), id: \.element.id) { i, step in
                     StepView(step: step, session: s, grant: grant, previousTurn: previousTurn(steps, before: i), open: $open)
                 }
@@ -68,6 +65,11 @@ struct SessionView: View {
             .padding(.vertical, 12)
         }
         .defaultScrollAnchor(.bottom)
+        .overlay { // in the middle of the page, not where the scroll ends
+            if events.isEmpty && !caughtUp(s) {
+                PageLoader(text: "Reading the conversation…", bare: true)
+            }
+        }
         .scrollDismissesKeyboard(.interactively)
         .safeAreaInset(edge: .bottom) {
             if let q = s.pendingQuestion {

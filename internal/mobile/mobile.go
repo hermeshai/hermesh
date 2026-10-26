@@ -11,6 +11,7 @@ import (
 	"crypto/subtle"
 	"encoding/hex"
 	"errors"
+	"fmt"
 	"log/slog"
 	"net"
 	"net/http"
@@ -23,11 +24,13 @@ import (
 // Core is the running owner role.
 type Core struct {
 	o     *owner.Device
-	ln    net.Listener
+	port  int
 	srv   *http.Server
 	token string
+	log   *slog.Logger
 
 	mu     sync.Mutex
+	ln     net.Listener // while in front (listen)
 	cancel context.CancelFunc
 	done   chan struct{}
 }
@@ -45,30 +48,52 @@ func Start(dataDir string, log *slog.Logger) (*Core, error) {
 	if err != nil {
 		return nil, err
 	}
-	c := &Core{o: o, ln: ln, token: hex.EncodeToString(b)}
+	c := &Core{o: o, port: ln.Addr().(*net.TCPAddr).Port, token: hex.EncodeToString(b), log: log}
 	var protocols http.Protocols
 	protocols.SetHTTP1(true)
 	protocols.SetUnencryptedHTTP2(true)
 	c.srv = &http.Server{Handler: c.authorize(o.LocalHandler()), Protocols: &protocols}
-	go func() {
-		if err := c.srv.Serve(ln); err != nil && !errors.Is(err, http.ErrServerClosed) {
-			log.Error("local API stopped", "err", err)
-		}
-	}()
+	c.mu.Lock()
+	c.serveLocked(ln)
+	c.mu.Unlock()
 	c.Resume()
 	return c, nil
 }
 
 // Port is the loopback port LocalService is served on.
-func (c *Core) Port() int { return c.ln.Addr().(*net.TCPAddr).Port }
+func (c *Core) Port() int { return c.port }
+
+// listenLocked serves LocalService on its port again, unless it is.
+func (c *Core) listenLocked() {
+	if c.ln != nil {
+		return
+	}
+	ln, err := net.Listen("tcp", fmt.Sprintf("127.0.0.1:%d", c.port))
+	if err != nil {
+		c.log.Error("local API not served", "err", err)
+		return
+	}
+	c.serveLocked(ln)
+}
+
+func (c *Core) serveLocked(ln net.Listener) {
+	c.ln = ln
+	go func() {
+		if err := c.srv.Serve(ln); err != nil && !errors.Is(err, net.ErrClosed) {
+			c.log.Error("local API stopped", "err", err)
+		}
+	}()
+}
 
 // Token is what callers send as "Authorization: Bearer <token>".
 func (c *Core) Token() string { return c.token }
 
-// Resume keeps the owner's relay connection up (the app is in front).
+// Resume serves LocalService again and keeps the owner's relay connection
+// up (the app is in front).
 func (c *Core) Resume() {
 	c.mu.Lock()
 	defer c.mu.Unlock()
+	c.listenLocked()
 	if c.cancel != nil {
 		return
 	}
@@ -81,13 +106,19 @@ func (c *Core) Resume() {
 	}()
 }
 
-// Pause closes the relay connection and stops following the machines (the
-// app went to the background); a call to LocalService still reconnects when
-// it needs the relay.
+// Pause stops listening, closes the relay connection and stops following
+// the machines (the app went to the background). iOS may take a suspended
+// app's listening socket back without a word, to listen no more after it
+// resumed (Apple's TN2277), so it is closed here and opened again by
+// Resume; calls under way go on.
 func (c *Core) Pause() {
 	c.mu.Lock()
 	cancel, done := c.cancel, c.done
 	c.cancel, c.done = nil, nil
+	if c.ln != nil {
+		c.ln.Close()
+		c.ln = nil
+	}
 	c.mu.Unlock()
 	if cancel != nil {
 		cancel()

@@ -40,11 +40,18 @@ enum Core {
     /// and back must not resume before it paused.
     private static let lifecycle = DispatchQueue(label: "hermesh.core.lifecycle")
 
-    /// Keeps the relay connection up (the app is in front).
-    static func resume() { lifecycle.async { HermeshCoreResume() } }
+    /// Serves LocalService again and keeps the relay connection up (the app
+    /// is in front); then, once it answers calls again.
+    static func resume(then: (@Sendable @MainActor () -> Void)? = nil) {
+        lifecycle.async {
+            HermeshCoreResume()
+            if let then { Task { @MainActor in then() } }
+        }
+    }
 
-    /// Closes the relay connection and stops following the machines (the
-    /// app went to the background).
+    /// Stops serving LocalService (iOS may take a suspended app's listening
+    /// socket back), closes the relay connection and stops following the
+    /// machines (the app went to the background).
     static func pause() { lifecycle.async { HermeshCorePause() } }
 
     /// Connects again over the network now in use (Wi-Fi to cellular, say).

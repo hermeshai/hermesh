@@ -613,6 +613,18 @@ Steps 3, 4 and 5 are independent of each other. All five were built on
     presence made the error moot).
   - A follow that fails is tried again (2 s, doubling to 30 s): a relay that
     pushes its lists says nothing while they stay the same.
+  - Without the relay, whether a machine is online is not known: a list the
+    relay did not answer keeps the machines as it last listed them, a follow
+    that could not reach the relay leaves its machine `syncing`, and a poll
+    cut short (the sources stopped, its caller left) is not kept. Before,
+    each made the screens show the Mac offline or not responding for a
+    moment, after the app came back or went back and forth.
+  - The core stops listening on its loopback port while paused: iOS may take
+    a suspended app's listening socket back without a word (TN2277), and
+    then the app stayed on "Connecting to Hermesh…" until it was quit.
+  - The relay connection's warm handshakes are under way before the calls
+    that waited for the dial wake, so they join them rather than make their
+    own.
   - Round trips, before → after: the status at launch 2 → 0; the world
     complete 7.9 → 6.2 (the floor: TCP and the upgrade, then the end-to-end
     handshake and one call to the Mac, two each); after a minute away with

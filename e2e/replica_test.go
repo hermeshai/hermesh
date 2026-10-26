@@ -229,7 +229,10 @@ type screen struct {
 	devices  map[string]*localv1.Device
 	pairings map[string]*localv1.PairingDetails
 	sessions map[string]*sessionv1.Session
-	err      error
+	// shownUnreachable: each machine the screen was told could not be
+	// reached, and why, in the order told.
+	shownUnreachable []string
+	err              error
 }
 
 func watchScreen(ctx context.Context, t *testing.T, w *ownerMac) *screen {
@@ -271,6 +274,9 @@ func (s *screen) follow(ctx context.Context, t *testing.T, client localv1connect
 			}
 			for _, x := range m.Machines {
 				s.machines[x.MachineId] = x
+				if x.Unreachable != "" {
+					s.shownUnreachable = append(s.shownUnreachable, x.MachineName+": "+x.Unreachable)
+				}
 			}
 			for _, id := range m.RemovedMachineIds {
 				delete(s.machines, id)
