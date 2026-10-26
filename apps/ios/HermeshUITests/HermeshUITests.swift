@@ -31,6 +31,7 @@ final class HermeshUITests: XCTestCase {
         try XCTContext.runActivity(named: "marks the trusted devices among the machines") { _ in try devices() }
         try XCTContext.runActivity(named: "chooses light or dark in the account") { _ in try appearance() }
         try XCTContext.runActivity(named: "shows the work on the overview, and usage in the account") { _ in try usage() }
+        try XCTContext.runActivity(named: "a swipe that starts on a row opens the menu, not the row") { _ in try swipeOnRow() }
         try XCTContext.runActivity(named: "offers New from the overview's top right") { _ in try newMenu() }
         try XCTContext.runActivity(named: "searches sessions from the menu") { _ in try search() }
         try XCTContext.runActivity(named: "opened without the relay, shows what it kept and catches up") { _ in try offline() }
@@ -295,6 +296,21 @@ final class HermeshUITests: XCTestCase {
         XCTAssertTrue(app.switches["notify-turns"].exists && text("连接请求").exists)
         app.navigationBars.buttons.element(boundBy: 0).tap()
         tap("close")
+    }
+
+    func swipeOnRow() throws {
+        // The page follows the finger, so the finger ends where it started on
+        // the row: the row must not open as well.
+        for id in ["machine-row-owner-mac", "agent-bot"] {
+            let row = app.descendants(matching: .any)[id].firstMatch
+            XCTAssertTrue(row.waitForExistence(timeout: 20), id)
+            row.coordinate(withNormalizedOffset: CGVector(dx: 0.2, dy: 0.5))
+                .press(forDuration: 0.05, thenDragTo: row.coordinate(withNormalizedOffset: CGVector(dx: 0.9, dy: 0.5)))
+            XCTAssertTrue(app.descendants(matching: .any)["drawer-dim"].waitForExistence(timeout: 5), "the menu opens from \(id)")
+            app.descendants(matching: .any)["drawer-dim"].tap()
+            sleep(1)
+            XCTAssertTrue(app.navigationBars["概览"].exists && app.buttons["menu"].exists, "\(id) opened too")
+        }
     }
 
     func newMenu() throws {
