@@ -291,6 +291,9 @@ func TestModelArgs(t *testing.T) {
 	if !strings.Contains(args, "--model opus") || !strings.Contains(args, "--effort low") {
 		t.Fatal(args)
 	}
+	if args := strings.Join(Args(provider.StartSpec{}), " "); !strings.Contains(args, `--settings {"crossSessionInbound":"refuse"}`) {
+		t.Fatalf("Claude Code's own inbox must stay shut: %s", args)
+	}
 	if args := strings.Join(Args(provider.StartSpec{}), " "); strings.Contains(args, "--model") || strings.Contains(args, "--effort") {
 		t.Fatal(args)
 	}
