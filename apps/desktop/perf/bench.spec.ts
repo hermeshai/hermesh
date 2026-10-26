@@ -396,15 +396,15 @@ test("benchmark", async () => {
       await toOverview(page);
       await page.locator(".wcard").first().waitFor();
       await sleep(500);
-      open.push(await timed(page, () => row(page, titles.bigIdle).click(), { sel: ".tr > :last-child", text: `第 40 轮完成` }));
+      open.push(await timed(page, () => row(page, titles.bigIdle).click(), { sel: ".tr > :last-child", text: `第 40 轮：` }));
       await sleep(500);
       back.push(await timed(page, () => toOverview(page), { sel: ".lmap .lm-node.m" }));
       await sleep(500);
       await row(page, titles.smallA).click();
       await page.locator(`.ctitle h2:text-is("${titles.smallA}")`).first().waitFor();
-      await page.locator(".tr .tdone").first().waitFor();
+      await page.locator(".tr .am").first().waitFor();
       await sleep(300);
-      sw.push(await timed(page, () => row(page, titles.smallB).click(), { sel: ".ctitle h2", text: titles.smallB }, { sel: ".tr .tdone" }));
+      sw.push(await timed(page, () => row(page, titles.smallB).click(), { sel: ".ctitle h2", text: titles.smallB }, { sel: ".tr .am" }));
       await sleep(300);
     }
     record("open.long.ms", median(open));
@@ -416,7 +416,7 @@ test("benchmark", async () => {
 
     // Scrolling the long conversation.
     await row(page, titles.bigIdle).click();
-    await page.locator(".tr > :last-child:has-text('第 40 轮完成')").first().waitFor();
+    await page.locator(".tr > :last-child:has-text('第 40 轮：')").first().waitFor();
     await page.mouse.move(500, 400);
     const scroll = (async () => {
       for (let i = 0; i < 60; i++) {
@@ -456,10 +456,10 @@ test("benchmark", async () => {
     // Memory after visiting many sessions and coming back.
     for (let i = 0; i < 20; i++) {
       await row(page, `#${120 + i}`).click();
-      await page.locator(".tr .tdone").first().waitFor();
+      await page.locator(".tr .am").first().waitFor();
     }
     await row(page, titles.bigIdle).click();
-    await page.locator(".tr > :last-child:has-text('第 40 轮完成')").first().waitFor();
+    await page.locator(".tr > :last-child:has-text('第 40 轮：')").first().waitFor();
     await toOverview(page);
     await sleep(2000);
     await memory(c, "visited");

@@ -8,7 +8,7 @@ import {
   type SessionEvent,
 } from "@hermesh/proto/session";
 import { describe, expect, test } from "vitest";
-import { durationText, isInterruption, resolutionTitle, transcript, turnStartedAt } from "./transcript";
+import { isInterruption, resolutionTitle, transcript, turnStartedAt } from "./transcript";
 import { at } from "./testing";
 
 let seq = 0n;
@@ -56,16 +56,10 @@ describe("transcript", () => {
     expect(items.some((i) => i.kind === "tool" && i.running)).toBe(false);
   });
 
-  test("a finished turn knows how long it took", () => {
+  test("when the latest turn started", () => {
     const events = [ev(0, { case: "turnStarted", value: { turn: 2 } }), ev(65, { case: "turnCompleted", value: { turn: 2 } })];
-    const end = transcript(events, false)[1];
-    expect(end.kind === "turnEnd" && end.took).toBe(65);
     expect(turnStartedAt(events)).toEqual(at(0));
     expect(turnStartedAt([])).toBeUndefined();
-  });
-
-  test("durations", () => {
-    expect([durationText(42), durationText(185), durationText(4320)]).toEqual(["42 秒", "3 分 05 秒", "1 小时 12 分"]);
   });
 
   test("how a question was settled", () => {

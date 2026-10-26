@@ -10,7 +10,6 @@ import {
   type ToolResult,
   type TurnCompleted,
 } from "@hermesh/proto/session";
-import { pad2 } from "./calendar";
 import { t } from "./i18n";
 import { dateOf } from "./sessions";
 
@@ -20,14 +19,13 @@ import { dateOf } from "./sessions";
 export type TranscriptItem =
   /** asker: who asked for the turn (a client id; "" from before messages). */
   | { kind: "turn"; seq: bigint; turn: number; at: Date | undefined; asker: string }
-  | { kind: "user"; seq: bigint; text: string }
+  | { kind: "user"; seq: bigint; text: string; at: Date | undefined }
   | { kind: "agent"; seq: bigint; text: string }
   /** A tool call with its result, once there is one; running: the agent is still in it. */
   /** resultSeq: its result's event, when it has one. */
   | { kind: "tool"; seq: bigint; call: ToolCall; result: ToolResult | undefined; resultSeq?: bigint; running: boolean }
   | { kind: "question"; seq: bigint; question: Question; resolution: QuestionResolved | undefined }
-  /** took: seconds since the turn started, when known. */
-  | { kind: "turnEnd"; seq: bigint; end: TurnCompleted; took: number | undefined }
+  | { kind: "turnEnd"; seq: bigint; end: TurnCompleted }
   | { kind: "error"; seq: bigint; error: ErrorEvent }
   /**
    * A message between the session and one of the owner's agents
@@ -55,17 +53,15 @@ export function transcript(events: SessionEvent[], running: boolean): Transcript
     if (e.kind.case === "toolCall") lastCall = e.seq;
   }
   const items: TranscriptItem[] = [];
-  let turnStart: Date | undefined;
   for (const e of events) {
     const at = dateOf(e.ts);
     const seq = e.seq;
     switch (e.kind.case) {
       case "turnStarted":
-        turnStart = at;
         items.push({ kind: "turn", seq, turn: e.kind.value.turn, at, asker: e.kind.value.asker });
         break;
       case "userMessage":
-        items.push({ kind: "user", seq, text: e.kind.value.text });
+        items.push({ kind: "user", seq, text: e.kind.value.text, at });
         break;
       case "agentMessage":
         items.push({ kind: "agent", seq, text: e.kind.value.text });
@@ -82,12 +78,7 @@ export function transcript(events: SessionEvent[], running: boolean): Transcript
         break;
       }
       case "turnCompleted":
-        items.push({
-          kind: "turnEnd",
-          seq,
-          end: e.kind.value,
-          took: at && turnStart ? (at.getTime() - turnStart.getTime()) / 1000 : undefined,
-        });
+        items.push({ kind: "turnEnd", seq, end: e.kind.value });
         break;
       case "error":
         items.push({ kind: "error", seq, error: e.kind.value });
@@ -113,15 +104,6 @@ export function turnStartedAt(events: SessionEvent[]): Date | undefined {
     if (events[i].kind.case === "turnStarted") return dateOf(events[i].ts);
   }
   return undefined;
-}
-
-/** How long a turn took: "42s", "3m 05s", "1h 12m". */
-export function durationText(seconds: number): string {
-  const s = Math.max(0, Math.round(seconds));
-  if (s < 60) return t("duration.seconds", { s });
-  const m = Math.trunc(s / 60);
-  if (m < 60) return t("duration.minutes", { m, s: pad2(s % 60) });
-  return t("duration.hours", { h: Math.trunc(m / 60), m: m % 60 });
 }
 
 /** The turn was stopped on purpose (by the owner or the agent), not by a failure. */

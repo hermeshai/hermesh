@@ -83,11 +83,6 @@
     "notJson": "{{url}}: not valid JSON",
     "badConnectURL": "The server gave an invalid connection address: {{url}}"
   },
-  "duration": {
-    "seconds": "{{s}}s",
-    "minutes": "{{m}}m {{s}}s",
-    "hours": "{{h}}h {{m}}m"
-  },
   "resolution": {
     "answeredByYou": "You answered: {{answers}}",
     "answeredBy": "{{name}} answered: {{answers}}",

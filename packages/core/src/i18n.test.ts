@@ -5,7 +5,6 @@ import { i18n, pickLanguage } from "./i18n";
 import { noticeDiff, noticeSnapshots } from "./notices";
 import { stepSummary, turnTimeLine } from "./steps";
 import { agoText, failureTitle, minutesLeft, shortTime } from "./text";
-import { durationText } from "./transcript";
 import { at, now, progressOf, session } from "./testing";
 
 describe("English", () => {
@@ -29,7 +28,6 @@ describe("English", () => {
     expect(agoText(at(-4 * 86400), now)).toBe("Oct 15");
     expect(shortTime(at(-3 * 86400), now)).toBe("Fri");
     expect(minutesLeft(at(21 * 60 + 5), now)).toBe("22 min left");
-    expect([durationText(42), durationText(185), durationText(4320)]).toEqual(["42s", "3m 05s", "1h 12m"]);
   });
 
   test("notices", () => {
