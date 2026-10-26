@@ -589,8 +589,16 @@ test("a work Mac joins as a machine only: no Touch ID, the code, the two digits;
   await expect(row).toContainText("Grok Bot", { timeout: 30_000 });
   await expect(grok).not.toContainText("还没来过", { timeout: 30_000 });
   await expect(page.getByRole("button", { name: "管理授权…" })).toHaveCount(0);
+  // Resting on it shows its card, over the map, which keeps its height.
+  const height = (await map.boundingBox())!.height;
+  await grok.hover();
+  const card = page.getByRole("dialog", { name: "Grok Bot" });
+  await expect(card).toBeVisible();
+  expect((await map.boundingBox())!.height).toBe(height);
+  await page.mouse.move(0, 0);
+  await expect(card).toHaveCount(0);
+  // Clicked, it stays, and 正在干活 keeps only its sessions.
   await grok.click();
-  const card = map.getByRole("dialog", { name: "Grok Bot" });
   await expect(card).toContainText("个人 agent · 自己保管密钥");
   await expect(card).toContainText("授权给了它完全权限");
   await expect(card).toContainText("在这里能用所有项目");
@@ -599,6 +607,8 @@ test("a work Mac joins as a machine only: no Touch ID, the code, the two digits;
   await expect(card).toContainText("在这台 Mac今天 1 个任务 · 最近一次");
   await expect(page.getByRole("status").filter({ hasText: "Grok Bot 发起的会话" })).toBeVisible();
   await snap(page, "machine-08-card");
+  await page.mouse.move(0, 0);
+  await expect(card).toBeVisible();
   await page.keyboard.press("Escape");
   await expect(card).toHaveCount(0);
 
