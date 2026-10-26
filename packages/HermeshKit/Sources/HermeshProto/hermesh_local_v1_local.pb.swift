@@ -1153,6 +1153,14 @@ public nonisolated struct Hermesh_Local_V1_Machine: @unchecked Sendable {
     set {_uniqueStorage()._unreachable = newValue}
   }
 
+  /// Online, and its sessions and projects are being read: being connected
+  /// to, or catching up after a while away. What is shown of it meanwhile
+  /// is last known. Set in Watch only.
+  public var syncing: Bool {
+    get {_storage._syncing}
+    set {_uniqueStorage()._syncing = newValue}
+  }
+
   public var unknownFields = SwiftProtobuf.UnknownStorage()
 
   public init() {}
@@ -4106,7 +4114,7 @@ nonisolated extension Hermesh_Local_V1_ApproveClientPairingResponse: SwiftProtob
 
 nonisolated extension Hermesh_Local_V1_Machine: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
   public static let protoMessageName: String = _protobuf_package + ".Machine"
-  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{3}machine_id\0\u{3}machine_name\0\u{1}online\0\u{3}last_seen\0\u{1}status\0\u{1}local\0\u{3}device_key_id\0\u{1}version\0\u{1}unreachable\0")
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{3}machine_id\0\u{3}machine_name\0\u{1}online\0\u{3}last_seen\0\u{1}status\0\u{1}local\0\u{3}device_key_id\0\u{1}version\0\u{1}unreachable\0\u{1}syncing\0")
 
   fileprivate class _StorageClass {
     var _machineID: String = String()
@@ -4118,6 +4126,7 @@ nonisolated extension Hermesh_Local_V1_Machine: SwiftProtobuf.Message, SwiftProt
     var _deviceKeyID: String = String()
     var _version: String = String()
     var _unreachable: String = String()
+    var _syncing: Bool = false
 
       // This property is used as the initial default value for new instances of the type.
       // The type itself is protecting the reference to its storage via CoW semantics.
@@ -4137,6 +4146,7 @@ nonisolated extension Hermesh_Local_V1_Machine: SwiftProtobuf.Message, SwiftProt
       _deviceKeyID = source._deviceKeyID
       _version = source._version
       _unreachable = source._unreachable
+      _syncing = source._syncing
     }
   }
 
@@ -4164,6 +4174,7 @@ nonisolated extension Hermesh_Local_V1_Machine: SwiftProtobuf.Message, SwiftProt
         case 7: try { try decoder.decodeSingularStringField(value: &_storage._deviceKeyID) }()
         case 8: try { try decoder.decodeSingularStringField(value: &_storage._version) }()
         case 9: try { try decoder.decodeSingularStringField(value: &_storage._unreachable) }()
+        case 10: try { try decoder.decodeSingularBoolField(value: &_storage._syncing) }()
         default: break
         }
       }
@@ -4203,6 +4214,9 @@ nonisolated extension Hermesh_Local_V1_Machine: SwiftProtobuf.Message, SwiftProt
       if !_storage._unreachable.isEmpty {
         try visitor.visitSingularStringField(value: _storage._unreachable, fieldNumber: 9)
       }
+      if _storage._syncing != false {
+        try visitor.visitSingularBoolField(value: _storage._syncing, fieldNumber: 10)
+      }
     }
     try unknownFields.traverse(visitor: &visitor)
   }
@@ -4221,6 +4235,7 @@ nonisolated extension Hermesh_Local_V1_Machine: SwiftProtobuf.Message, SwiftProt
         if _storage._deviceKeyID != rhs_storage._deviceKeyID {return false}
         if _storage._version != rhs_storage._version {return false}
         if _storage._unreachable != rhs_storage._unreachable {return false}
+        if _storage._syncing != rhs_storage._syncing {return false}
         return true
       }
       if !storagesAreEqual {return false}

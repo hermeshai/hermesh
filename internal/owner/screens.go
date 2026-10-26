@@ -92,6 +92,14 @@ func (l *localService) watchRound(ctx context.Context, send func(*localv1.WatchR
 	}
 	kick, stop := o.rep.screen()
 	defer stop()
+	if mode == "owner" {
+		if err := o.rep.firstScreen(ctx); err != nil {
+			return err
+		}
+	}
+	// What a screen is sent is what the replica holds: nothing waits on the
+	// network, here or at each tick (heldOnly).
+	ctx = context.WithValue(ctx, heldOnly{}, true)
 
 	var w shown
 	first := w.diff(ctx, l, o, mode)

@@ -35,9 +35,18 @@ enum Core {
         return LocalAPI(endpoint: .loopback(port: port, token: token))
     }
 
-    /// Keeps the relay connection up (the app is in front).
-    static func resume() { Task.detached { HermeshCoreResume() } }
+    /// Runs the calls below off the main thread (pausing waits for the core),
+    /// one after another, in the order made: a quick trip to the background
+    /// and back must not resume before it paused.
+    private static let lifecycle = DispatchQueue(label: "hermesh.core.lifecycle")
 
-    /// Closes the relay connection (the app went to the background).
-    static func pause() { Task.detached { HermeshCorePause() } }
+    /// Keeps the relay connection up (the app is in front).
+    static func resume() { lifecycle.async { HermeshCoreResume() } }
+
+    /// Closes the relay connection and stops following the machines (the
+    /// app went to the background).
+    static func pause() { lifecycle.async { HermeshCorePause() } }
+
+    /// Connects again over the network now in use (Wi-Fi to cellular, say).
+    static func networkChanged() { lifecycle.async { HermeshCoreNetworkChanged() } }
 }

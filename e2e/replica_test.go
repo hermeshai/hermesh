@@ -13,6 +13,7 @@ import (
 	"time"
 
 	localv1 "github.com/hermeshai/hermesh/gen/go/hermesh/local/v1"
+	"github.com/hermeshai/hermesh/gen/go/hermesh/local/v1/localv1connect"
 	sessionv1 "github.com/hermeshai/hermesh/gen/go/hermesh/session/v1"
 )
 
@@ -219,22 +220,36 @@ type screen struct {
 	messages int
 	// withSessions: messages that carried sessions or deletions.
 	withSessions int
-	status       *localv1.GetStatusResponse
-	machines     map[string]*localv1.Machine
-	clients      map[string]*localv1.Client
-	projects     map[string]*localv1.Project
-	devices      map[string]*localv1.Device
-	pairings     map[string]*localv1.PairingDetails
-	sessions     map[string]*sessionv1.Session
-	err          error
+	// resets: first messages (one per follow, and when the profile changed).
+	resets   int
+	status   *localv1.GetStatusResponse
+	machines map[string]*localv1.Machine
+	clients  map[string]*localv1.Client
+	projects map[string]*localv1.Project
+	devices  map[string]*localv1.Device
+	pairings map[string]*localv1.PairingDetails
+	sessions map[string]*sessionv1.Session
+	err      error
 }
 
 func watchScreen(ctx context.Context, t *testing.T, w *ownerMac) *screen {
-	stream, err := w.app.client.Watch(ctx, &localv1.WatchRequest{})
+	return watchScreenOf(ctx, t, w.app.client)
+}
+
+// watchScreenOf is a screen following client's Watch.
+func watchScreenOf(ctx context.Context, t *testing.T, client localv1connect.LocalServiceClient) *screen {
+	s := &screen{}
+	s.follow(ctx, t, client)
+	return s
+}
+
+// follow has the screen follow client's Watch until ctx ends; again, it
+// keeps the sessions it holds, as an app back in the front does.
+func (s *screen) follow(ctx context.Context, t *testing.T, client localv1connect.LocalServiceClient) {
+	stream, err := client.Watch(ctx, &localv1.WatchRequest{})
 	if err != nil {
 		t.Fatal(err)
 	}
-	s := &screen{}
 	go func() {
 		for stream.Receive() {
 			m := stream.Msg()
@@ -244,6 +259,7 @@ func watchScreen(ctx context.Context, t *testing.T, w *ownerMac) *screen {
 				s.withSessions++
 			}
 			if m.Reset_ {
+				s.resets++
 				s.machines, s.clients, s.projects, s.devices = map[string]*localv1.Machine{}, map[string]*localv1.Client{}, map[string]*localv1.Project{}, map[string]*localv1.Device{}
 				s.pairings = map[string]*localv1.PairingDetails{}
 				if s.sessions == nil {
@@ -297,7 +313,6 @@ func watchScreen(ctx context.Context, t *testing.T, w *ownerMac) *screen {
 		s.err = stream.Err()
 		s.mu.Unlock()
 	}()
-	return s
 }
 
 func (s *screen) has(f func(*screen) bool) func() bool {

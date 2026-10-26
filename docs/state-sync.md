@@ -590,6 +590,34 @@ Steps 3, 4 and 5 are independent of each other. All five were built on
 - **A machine without `Watch` has its state and projects read again every
   30 s** besides after its sessions change (§5), for changes other devices
   make.
+- **On a phone** (2026-10-27, `TestMobileNetwork`: the iPhone's core in a
+  process of its own, the relay 150 ms away and the Mac as far behind it,
+  the app suspended with SIGSTOP while its network goes away):
+  - hermeshd dials the relay without `o.mu`, so the status and the
+    replica's lists never wait on a dial (the app's status at launch waited
+    two round trips, and when the dial stalled past 10 s the app showed its
+    onboarding to an owner already set up); admission is pipelined and the
+    end-to-end handshakes with the machines last seen online go out with it.
+  - Pausing (the app leaves the front) stops the sources, keeping what they
+    hold; so does the 60 s idle stop. The next start begins from it: lists
+    answer at once, last known, and each machine's Watch resumes from its
+    token. Before, the pollers dialed again right after the pause, and after
+    a while away a start from nothing re-read every machine and lost the
+    deletions made meanwhile. Each machine's `held_at` is kept on disk too,
+    so a launch asks for what was deleted since the app last watched.
+  - A screen's Watch reads only what the replica holds (no waiting for it to
+    settle at each tick, no machine asked through the relay), and its first
+    message waits for the relay's lists and at most 2 s for the machines;
+    one still being read is `Machine.syncing`. A relay that does not answer
+    no longer ends an iPhone's Watch (it has no machine of its own whose
+    presence made the error moot).
+  - A follow that fails is tried again (2 s, doubling to 30 s): a relay that
+    pushes its lists says nothing while they stay the same.
+  - Round trips, before → after: the status at launch 2 → 0; the world
+    complete 7.9 → 6.2 (the floor: TCP and the upgrade, then the end-to-end
+    handshake and one call to the Mac, two each); after a minute away with
+    dead connections, more than 90 s → 5; a session deleted meanwhile never
+    → gone with it.
 - **Measured** (Go e2e, the relay 300 ms away): every list p50 60–170 µs;
   0 relay control calls while three windows ask as before; a pairing
   request on a screen 0.4 s after it was made; a BASIC session 221–236

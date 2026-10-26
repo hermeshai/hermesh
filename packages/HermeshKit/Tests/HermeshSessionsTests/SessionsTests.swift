@@ -143,3 +143,22 @@ func ask(_ s: inout Session) {
     #expect(!shown[0].isActive && !shown[1].needsAttention && !shown[1].isInterruptible && !shown[0].isArchivable)
     #expect(statusTitle(shown[0].status) == "State unknown")
 }
+
+@Test func aResetForgetsWhatWasDeletedMeanwhile() {
+    // Held: what the app showed before it left (or was closed); an older
+    // page of m1's; m2's, a machine being read again; m3's, offline.
+    let held = [session("kept", .idle, updated: -60), session("gone", .idle, updated: -120), session("older", .idle, updated: -9000),
+                session("m2s", .idle, updated: -90, machine: "m2"), session("m3s", .idle, updated: -30, machine: "m3")]
+    var later = session("kept", .running, updated: -5)
+    later.progress.lastEventSeq = 9
+    var cursor = SessionCursor()
+    cursor.updatedAt = ts(-3600)
+    cursor.sessionID = "x"
+    let out = resetSessions(held, [later, session("new", .idle, updated: -10)], next: cursor, readNow: ["m1"])
+    #expect(Set(out.map(\.sessionID)) == ["kept", "new", "older", "m2s", "m3s"]) // m1 is read now, and "gone" is within its first page
+    #expect(out.first { $0.sessionID == "kept" }?.status == .running)
+    // Without a cursor the first page is all m1 has.
+    #expect(!resetSessions(held, [], next: nil, readNow: ["m1"]).contains { $0.sessionID == "older" })
+    // A machine not read now keeps all it had.
+    #expect(resetSessions(held, [], next: nil, readNow: []).count == held.count)
+}

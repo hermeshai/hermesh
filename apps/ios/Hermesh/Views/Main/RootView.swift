@@ -10,7 +10,7 @@ struct RootView: View {
         Group {
             switch model.phase {
             case .starting:
-                Mark(size: 72).frame(maxWidth: .infinity, maxHeight: .infinity)
+                MovingMark(size: 72).frame(maxWidth: .infinity, maxHeight: .infinity)
             case .failed(let message):
                 ContentUnavailableView("Hermesh couldn’t start", systemImage: "exclamationmark.triangle", description: Text(message))
             case .onboarding:

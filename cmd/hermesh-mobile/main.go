@@ -63,6 +63,15 @@ func HermeshCorePause() {
 	}
 }
 
+// HermeshCoreNetworkChanged connects again over the network now in use.
+//
+//export HermeshCoreNetworkChanged
+func HermeshCoreNetworkChanged() {
+	if c := started(); c != nil {
+		c.Reconnect()
+	}
+}
+
 // HermeshCoreFree frees a string the core returned.
 //
 //export HermeshCoreFree

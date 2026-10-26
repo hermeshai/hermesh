@@ -33,6 +33,7 @@ final class HermeshUITests: XCTestCase {
         try XCTContext.runActivity(named: "shows the work on the overview, and usage in the account") { _ in try usage() }
         try XCTContext.runActivity(named: "offers New from the overview's top right") { _ in try newMenu() }
         try XCTContext.runActivity(named: "searches sessions from the menu") { _ in try search() }
+        try XCTContext.runActivity(named: "opened without the relay, shows what it kept and catches up") { _ in try offline() }
         try XCTContext.runActivity(named: "a question arrives as a notification and opens its session") { _ in try notification() }
     }
 
@@ -380,6 +381,29 @@ final class HermeshUITests: XCTestCase {
         XCTAssertNotNil(cancel, "the search's cancel button")
         cancel.map(press)
         XCTAssertTrue(app.searchFields.firstMatch.waitForNonExistence(timeout: 5), "the search page closes")
+    }
+
+    /// The relay goes away and the app is opened again: it shows what it
+    /// kept at once, says it can't reach Hermesh, and catches up once the
+    /// relay is back.
+    func offline() throws {
+        _ = try control("relay?up=0", method: "POST")
+        app.terminate()
+        app.launch()
+        XCTAssertTrue(app.descendants(matching: .any)["machine-row-owner-mac"].waitForExistence(timeout: 3), "what it kept shows at once")
+        let line = app.descendants(matching: .any)["sync-line"].firstMatch
+        XCTAssertTrue(line.waitForExistence(timeout: 5), "it says it is connecting")
+        try waitFor("it says it can't reach the relay", timeout: 30) { line.exists && line.label.contains("连不上") ? true : nil }
+        let shot = XCTAttachment(screenshot: app.screenshot())
+        shot.name = "offline, what was kept"
+        shot.lifetime = .keepAlways
+        add(shot)
+        _ = try control("relay?up=1", method: "POST")
+        try waitFor("caught up once the relay is back", timeout: 90) { line.exists ? nil : true }
+        let back = XCTAttachment(screenshot: app.screenshot())
+        back.name = "caught up"
+        back.lifetime = .keepAlways
+        add(back)
     }
 
     func notification() throws {

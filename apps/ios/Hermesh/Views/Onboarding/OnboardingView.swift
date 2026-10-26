@@ -43,7 +43,7 @@ struct OnboardingView: View {
             case .join(let owner, let relay): joinIntro(owner: owner, relay: relay)
             case .waiting(let code, let verification): waiting(code: code, verification: verification)
             case .digits(let code, let by): digitsStep(code: code, by: by)
-            case .setup: VStack(spacing: 16) { Mark(size: 72); ProgressView(); Text("Setting up…").foregroundStyle(.secondary) }.frame(maxHeight: .infinity)
+            case .setup: VStack(spacing: 16) { MovingMark(size: 72); Text("Setting up…").foregroundStyle(.secondary) }.frame(maxHeight: .infinity)
             case .notifications: notificationsStep
             }
         }
@@ -138,12 +138,12 @@ struct OnboardingView: View {
     private func waiting(code: String, verification: String) -> some View {
         VStack(spacing: 16) {
             Spacer()
-            Mark(size: 72)
+            WaitingMark(size: 88)
             Text("Approve on your other device").font(.title2.bold()).multilineTextAlignment(.center)
             Text("A request to join appears on your trusted devices. Approve it if the code is the same.")
                 .foregroundStyle(.secondary).multilineTextAlignment(.center)
             CodeTiles(code: verification, caption: "Verification code").padding(.top, 8)
-            HStack(spacing: 8) { ProgressView(); Text("Waiting for approval…").foregroundStyle(.secondary) }.padding(.top, 8)
+            Text("Waiting for approval…").foregroundStyle(.secondary).padding(.top, 8)
             Spacer()
             if let error { Text(error).font(.footnote).foregroundStyle(.red).multilineTextAlignment(.center) }
             Button("Cancel") {
@@ -171,7 +171,7 @@ struct OnboardingView: View {
                 .onAppear { typing = true }
                 .accessibilityIdentifier("digits")
             if let error { Text(error).font(.footnote).foregroundStyle(.red).multilineTextAlignment(.center) }
-            if busy { ProgressView() }
+            if busy { MovingMark(size: 22, motion: .seq) }
             Spacer()
             Button("Cancel") {
                 Task { try? await model.api?.confirmJoin(code, accept: false) }

@@ -9,6 +9,7 @@ import (
 	"net"
 	"net/http"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	identityv1 "github.com/hermeshai/hermesh/gen/go/hermesh/identity/v1"
@@ -32,8 +33,10 @@ type Dialer struct {
 
 // Client is a relay connection plus cached E2E tunnels to machines.
 type Client struct {
-	d    *Dialer
-	conn *transport.RelayConn
+	d *Dialer
+	// conn is read without mu, so that asking whether the client is
+	// connected never waits for a dial.
+	conn atomic.Pointer[transport.RelayConn]
 
 	mu       sync.Mutex
 	closed   bool
@@ -60,7 +63,9 @@ func (d *Dialer) Connect(ctx context.Context) (*Client, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &Client{d: d, conn: conn, machines: map[string]*Machine{}, warming: map[string]chan struct{}{}}, nil
+	c := &Client{d: d, machines: map[string]*Machine{}, warming: map[string]chan struct{}{}}
+	c.conn.Store(conn)
+	return c, nil
 }
 
 func (c *Client) Close() error {
@@ -70,14 +75,27 @@ func (c *Client) Close() error {
 	for _, n := range c.machines {
 		n.h2.Close()
 	}
-	return c.conn.Close()
+	return c.conn.Load().Close()
 }
 
 // Done is closed when the current relay connection is lost.
-func (c *Client) Done() <-chan struct{} {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	return c.conn.Done()
+func (c *Client) Done() <-chan struct{} { return c.conn.Load().Done() }
+
+// Admitted waits for the relay's answer to this connection's Hello: nil
+// once it admitted it.
+func (c *Client) Admitted(ctx context.Context) error { return c.conn.Load().Admitted(ctx) }
+
+// Refused is why the relay refused the current connection
+// (transport.ErrAdmission), once it is closed; nil otherwise.
+func (c *Client) Refused() error {
+	conn := c.conn.Load()
+	if !conn.IsClosed() {
+		return nil
+	}
+	if err := conn.Explain(nil); errors.Is(err, transport.ErrAdmission) {
+		return err
+	}
+	return nil
 }
 
 // relay returns the relay connection, dialing it again when it was lost
@@ -89,10 +107,10 @@ func (c *Client) relay(ctx context.Context) (*transport.RelayConn, error) {
 	if c.closed {
 		return nil, net.ErrClosed
 	}
-	if !c.conn.IsClosed() {
-		return c.conn, nil
+	if conn := c.conn.Load(); !conn.IsClosed() {
+		return conn, nil
 	}
-	if err := c.conn.Explain(nil); errors.Is(err, transport.ErrAdmission) {
+	if err := c.Refused(); err != nil {
 		return nil, err // refused: dialing again would be too
 	}
 	for _, n := range c.machines {
@@ -104,7 +122,7 @@ func (c *Client) relay(ctx context.Context) (*transport.RelayConn, error) {
 	if err != nil {
 		return nil, err
 	}
-	c.conn = conn
+	c.conn.Store(conn)
 	return conn, nil
 }
 

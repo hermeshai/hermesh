@@ -150,7 +150,7 @@ struct AddMachineSheet: View {
                         Button(PairingText.title(p)) { model.sheet = .pairing(p.code) }
                     } else {
                         HStack(spacing: 10) {
-                            ProgressView()
+                            WaitingMark(size: 22)
                             Text("Waiting for that machine to connect…").foregroundStyle(.secondary)
                         }
                     }

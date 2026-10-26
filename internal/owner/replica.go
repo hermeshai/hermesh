@@ -3,6 +3,7 @@ package owner
 import (
 	"cmp"
 	"context"
+	"encoding/json"
 	"errors"
 	"maps"
 	"slices"
@@ -40,8 +41,12 @@ type replica struct {
 	screens map[chan struct{}]bool
 	usage   map[usageKey]usageHeld // other machines' GetUsage answers
 	src     *sources               // nil while stopped
-	lastUse time.Time              // the last list call, or the last watcher leaving
-	polls   uint64                 // numbers the relay polls, so an older one never overwrites a newer
+	// stopped: the sources that ran last, stopped (idle, or the app paused):
+	// the next start for the same owner begins from what they held and
+	// resumes each machine's Watch from its token.
+	stopped *sources
+	lastUse time.Time // the last list call, or the last watcher leaving
+	polls   uint64    // numbers the relay polls, so an older one never overwrites a newer
 }
 
 // sources is one run of the replica's sources, and what they found.
@@ -55,6 +60,15 @@ type sources struct {
 	// hear of the machines, from then on.
 	settled   chan struct{}
 	isSettled bool
+	// listed is closed once the relay was first asked for the lists.
+	listed chan struct{}
+	// warm: it began from what stopped sources held, so lists answer at
+	// once, last known, while the machines catch up.
+	warm bool
+	// since: on a start from nothing, each machine's clock when this device
+	// last applied what it sent (kept on disk): its first Watch asks for
+	// the sessions deleted since, which the screens may still show.
+	since map[string]*timestamppb.Timestamp
 
 	machines polled[*localv1.Machine] // without this device's own
 	clients  polled[*localv1.Client]
@@ -104,6 +118,8 @@ type feed struct {
 	// Where its Watch resumes, and the machine's clock then.
 	token  []byte
 	heldAt *timestamppb.Timestamp
+	// retry: how long after a failed follow it is tried again.
+	retry time.Duration
 }
 
 const (
@@ -127,6 +143,14 @@ const (
 	followTimeout = 15 * time.Second
 	// watcherBuffer messages may wait for a slow watcher; then it is ended.
 	watcherBuffer = 256
+	// retryFirst after a failed follow it is tried again, then twice as
+	// long each time, up to retryMax.
+	retryFirst = 2 * time.Second
+	retryMax   = 30 * time.Second
+	// screenWait: on a start from nothing, how long a screen's first
+	// message waits for the machines once the relay listed them; those
+	// still being read come as they are (Machine.syncing).
+	screenWait = 2 * time.Second
 )
 
 // How followed machines' watches started: afresh, resumed from where they
@@ -159,13 +183,51 @@ func (r *replica) use(ctx context.Context) (*sources, error) {
 	r.mu.Lock()
 	r.lastUse = time.Now()
 	s := r.startLocked()
+	warm := s.warm
 	r.mu.Unlock()
+	if warm || held(ctx) {
+		return s, nil
+	}
 	select {
 	case <-s.settled:
 		return s, nil
 	case <-ctx.Done():
 		return nil, ctx.Err()
 	}
+}
+
+// heldOnly marks a context whose list calls answer from what the replica
+// holds now: without waiting for it to settle, or asking a machine it does
+// not follow. A screen's Watch reads so, once its first message is out.
+type heldOnly struct{}
+
+func held(ctx context.Context) bool { return ctx.Value(heldOnly{}) != nil }
+
+// firstScreen waits until a screen's first message may go out: at once
+// when the sources began from what they held; else once the relay listed
+// the machines and they are followed, or screenWait after the listing.
+func (r *replica) firstScreen(ctx context.Context) error {
+	if err := r.o.requireInit(); err != nil {
+		return err
+	}
+	r.mu.Lock()
+	s := r.startLocked()
+	r.mu.Unlock()
+	if s.warm {
+		return nil
+	}
+	select {
+	case <-s.listed:
+	case <-ctx.Done():
+		return ctx.Err()
+	}
+	select {
+	case <-s.settled:
+	case <-time.After(screenWait):
+	case <-ctx.Done():
+		return ctx.Err()
+	}
+	return nil
 }
 
 func (r *replica) startLocked() *sources {
@@ -176,14 +238,77 @@ func (r *replica) startLocked() *sources {
 	}
 	if r.src == nil {
 		ctx, cancel := context.WithCancel(context.Background())
-		r.src = &sources{ctx: ctx, cancel: cancel, who: who, settled: make(chan struct{}), feeds: map[string]*feed{}, rewatch: make(chan chan struct{})}
-		go r.run(r.src)
+		s := &sources{ctx: ctx, cancel: cancel, who: who, settled: make(chan struct{}), listed: make(chan struct{}), feeds: map[string]*feed{}, rewatch: make(chan chan struct{})}
+		if h := r.stopped; h != nil && h.who == who {
+			s.adopt(h)
+		} else {
+			r.o.heldSince(s) // what deletions to ask the machines for (a start of the app)
+		}
+		r.stopped = nil
+		r.src = s
+		go r.run(s)
 	}
 	return r.src
 }
 
+// adopt begins from what stopped sources held: the relay's lists and each
+// machine's state, projects and sessions, last known, and where its Watch
+// resumes.
+func (s *sources) adopt(h *sources) {
+	s.warm = true
+	s.machines, s.clients, s.pairings = h.machines, h.clients, h.pairings
+	s.machines.err, s.clients.err, s.pairings.err = nil, nil, nil // a poll the stop cut short
+	for id, f := range h.feeds {
+		s.feeds[id] = &feed{name: f.name, online: f.online, local: f.local, status: f.status, projects: f.projects, sessions: f.sessions, more: f.more,
+			token: f.token, heldAt: f.heldAt}
+	}
+}
+
+// stopLocked stops s, keeping what it held for the next start.
+func (r *replica) stopLocked(s *sources) {
+	s.cancel()
+	r.src, r.stopped = nil, s
+	r.o.keepHeldAt(s)
+}
+
+// pause stops the sources, as the iPhone app does when it leaves the front:
+// nothing polls or follows while it is suspended. They start again, from
+// what they held, at the next watch or list.
+func (r *replica) pause() {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if r.src != nil {
+		r.stopLocked(r.src)
+	}
+}
+
+// restart starts the sources again from what they hold, for the screens
+// watching: after the network changed, the connections they had are gone.
+func (r *replica) restart() {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if r.src == nil {
+		return
+	}
+	r.stopLocked(r.src)
+	if len(r.watchers) > 0 {
+		r.startLocked()
+	}
+}
+
 func (r *replica) run(s *sources) {
+	if s.warm { // the machines online when it stopped, from their tokens, while the relay is asked
+		r.mu.Lock()
+		for id, f := range s.feeds {
+			if f.online && !f.running {
+				f.running, f.started = true, make(chan struct{})
+				go r.follow(s, id, f, f.started)
+			}
+		}
+		r.mu.Unlock()
+	}
 	r.poll(s.ctx, s, true, true)
+	close(s.listed)
 	r.mu.Lock()
 	var starting []chan struct{}
 	for _, f := range s.feeds {
@@ -211,8 +336,7 @@ func (r *replica) run(s *sources) {
 		case <-idle.C:
 			r.mu.Lock()
 			if r.src == s && len(r.watchers) == 0 && time.Since(r.lastUse) > sourcesIdle {
-				s.cancel()
-				r.src = nil
+				r.stopLocked(s)
 			}
 			r.mu.Unlock()
 		}
@@ -289,7 +413,7 @@ func (r *replica) watchOwner(s *sources, answer chan struct{}) (again chan struc
 		}
 		var clients []*localv1.Client
 		if u.Clients != nil {
-			clients = r.o.clientsFrom(u.Clients)
+			clients = r.o.keepClients(r.o.clientsFrom(u.Clients))
 			go r.o.syncCards(u.Clients.Clients)
 		}
 		var pairings []*localv1.PairingDetails
@@ -453,7 +577,7 @@ func (r *replica) machinesListedLocked(s *sources) {
 		seen[m.MachineId] = true
 		f := s.feeds[m.MachineId]
 		if f == nil {
-			f = &feed{}
+			f = &feed{heldAt: s.since[m.MachineId]}
 			s.feeds[m.MachineId] = f
 		}
 		f.name, f.local = m.MachineName, m.Local
@@ -477,7 +601,7 @@ func (r *replica) follow(s *sources, id string, f *feed, started chan struct{}) 
 	done := sync.OnceFunc(func() { close(started) })
 	ready := func() {
 		r.mu.Lock()
-		f.ready, f.err = true, ""
+		f.ready, f.err, f.retry = true, "", 0
 		r.machinesChangedLocked(s)
 		r.mu.Unlock()
 		done()
@@ -490,9 +614,24 @@ func (r *replica) follow(s *sources, id string, f *feed, started chan struct{}) 
 	}
 	r.mu.Lock()
 	f.ready, f.running, f.conn, f.err = false, false, nil, err.Error()
+	f.retry = min(max(2*f.retry, retryFirst), retryMax)
+	retry := f.retry
 	r.machinesChangedLocked(s)
 	r.mu.Unlock()
 	done()
+	// Again after a while, while the relay lists it online: a relay that
+	// pushes its lists (WatchOwner) says nothing while they stay the same.
+	select {
+	case <-s.ctx.Done():
+		return
+	case <-time.After(retry):
+	}
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if r.src == s && s.feeds[id] == f && f.online && !f.running {
+		f.running, f.started = true, make(chan struct{})
+		go r.follow(s, id, f, f.started)
+	}
 }
 
 // followLocal follows this device's own machine in process; its data is
@@ -990,6 +1129,8 @@ func (r *replica) unreachable(machines []*localv1.Machine) {
 				m.Unreachable = "offline"
 			case f != nil && !f.ready && f.err != "":
 				m.Unreachable = f.err
+			case f == nil || !f.ready:
+				m.Syncing = true
 			}
 		}
 	})
@@ -1060,4 +1201,45 @@ func (r *replica) keepUsage(machineID string, req *localv1.GetUsageRequest, day 
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	r.usage[usageKey{machineID, req.Since, req.TimeZone}] = usageHeld{res: res, day: day, turns: turns}
+}
+
+// kHeldAt keeps, for each machine, its clock when this device last applied
+// what its Watch sent: {machine id: RFC 3339 time}, in JSON.
+const kHeldAt = "held_at"
+
+// keepHeldAt keeps the machines' held_at of stopped sources, for a start
+// from nothing (the app launched again) to ask for what was deleted since.
+func (o *Owner) keepHeldAt(s *sources) {
+	kept := o.heldAtKept()
+	changed := false
+	for id, f := range s.feeds {
+		if f.heldAt == nil {
+			continue
+		}
+		if v := f.heldAt.AsTime().Format(time.RFC3339Nano); kept[id] != v {
+			kept[id], changed = v, true
+		}
+	}
+	if changed {
+		b, _ := json.Marshal(kept)
+		o.st.set(kHeldAt, b)
+	}
+}
+
+func (o *Owner) heldAtKept() map[string]string {
+	kept := map[string]string{}
+	if b, _ := o.st.get(kHeldAt); len(b) > 0 {
+		json.Unmarshal(b, &kept)
+	}
+	return kept
+}
+
+// heldSince gives sources started from nothing the machines' kept held_at.
+func (o *Owner) heldSince(s *sources) {
+	s.since = map[string]*timestamppb.Timestamp{}
+	for id, v := range o.heldAtKept() {
+		if t, err := time.Parse(time.RFC3339Nano, v); err == nil {
+			s.since[id] = timestamppb.New(t)
+		}
+	}
 }
