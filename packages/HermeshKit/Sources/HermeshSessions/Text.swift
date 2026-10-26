@@ -106,7 +106,7 @@ public func failureAdvice(_ f: Failure) -> String {
     case .modelUnavailable: String(localized: "Start a new session with another model.", bundle: .module)
     case .limitReached: String(localized: "Say “continue” to let it go on.", bundle: .module)
     case .agentCrashed, .stalled: String(localized: "The next message resumes the session.", bundle: .module)
-    case .startFailed: String(localized: "Run hermeshd doctor on that machine to check.", bundle: .module)
+    case .startFailed: String(localized: "Open that machine’s page in Hermesh Settings to see what keeps it from starting agents.", bundle: .module)
     default: f.hint
     }
 }

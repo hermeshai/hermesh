@@ -85,6 +85,10 @@ service LocalService {
   // Checks this Mac's coding agents again (installed, version, signed in),
   // in the background: they are only checked when something needs them.
   rpc CheckAgents(CheckAgentsRequest) returns (CheckAgentsResponse);
+  // This Mac's diagnostics as text, for the person to copy and send when
+  // something does not work: versions, health, PATH and each coding agent.
+  // Nothing leaves the Mac unless they do.
+  rpc GetDiagnostics(GetDiagnosticsRequest) returns (GetDiagnosticsResponse);
 
   // Projects.
   rpc ListProjects(ListProjectsRequest) returns (ListProjectsResponse);
@@ -585,6 +589,12 @@ message SetAgentDefaultsResponse {}
 message CheckAgentsRequest {}
 
 message CheckAgentsResponse {}
+
+message GetDiagnosticsRequest {}
+
+message GetDiagnosticsResponse {
+  string text = 1;
+}
 
 message RemoveMachineRequest {
   string machine_id = 1;

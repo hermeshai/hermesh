@@ -59,7 +59,7 @@
     "modelUnavailable": "换一个模型重新开会话。",
     "limitReached": "发“继续”让它接着做。",
     "resume": "再发一条消息会恢复会话继续。",
-    "startFailed": "在该机器上运行 hermeshd doctor 检查。"
+    "startFailed": "在 Hermesh 设置里打开这台机器的页面，看看是什么让它启动不了 agent。"
   },
   "notice": {
     "questionTitle": "{{grant}} 在等你回答",

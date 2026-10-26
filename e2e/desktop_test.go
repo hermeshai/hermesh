@@ -62,7 +62,7 @@ func TestDesktop(t *testing.T) {
 		t.Skip("pnpm not installed")
 	}
 	if secs, _ := strconv.Atoi(os.Getenv("HERMESH_DESKTOP_PREVIEW")); secs > 0 {
-		f := desktopWorld(t, false)
+		f := desktopWorld(t, false, false)
 		t.Logf("sessions ready; open the app with:\nHERMESH_SOCKET=%s pnpm --dir apps/desktop dev", f.Socket)
 		time.Sleep(time.Duration(secs) * time.Second)
 		return
@@ -90,7 +90,7 @@ func TestDesktop(t *testing.T) {
 		}
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
-			f := desktopWorld(t, name == "onboarding")
+			f := desktopWorld(t, name == "onboarding", name == "health")
 			file := filepath.Join(t.TempDir(), "fixture.json")
 			b, _ := json.Marshal(f)
 			os.WriteFile(file, b, 0o644)
@@ -110,7 +110,9 @@ func TestDesktop(t *testing.T) {
 
 // desktopWorld is an owner Mac with a session in every state the app
 // shows, and (fresh) owner daemons nobody has set up yet for the first run.
-func desktopWorld(t *testing.T, fresh bool) desktopFixture {
+// limited: its hermeshd may start only 80 more processes than the user runs
+// (health.spec.ts takes them).
+func desktopWorld(t *testing.T, fresh, limited bool) desktopFixture {
 	fake := filepath.Join(binaries(t), "fakeacp")
 	// Codex installed, not logged in, offering fakecodex's models: the same
 	// whatever this machine has.
@@ -120,6 +122,10 @@ func desktopWorld(t *testing.T, fresh bool) desktopFixture {
 	w := newOwnerMac(t, []string{"HERMESH_GEMINI_BIN=" + fake, "FAKE_ACP_STATE=" + filepath.Join(t.TempDir(), "fakeacp"), "HERMESH_CODEX_BIN=" + codex},
 		&localv1.GrantSpec{Agents: []string{"gemini"}})
 	f := desktopFixture{Socket: w.sock, Sessions: desktopSessions(t, w), CLI: filepath.Join(w.bin, "hermesh"), CLIEnv: w.cliEnv}
+	if limited {
+		w.nproc = userProcesses(t) + 80
+		w.restartOwner(false)
+	}
 	for i := 0; fresh && i < 9; i++ {
 		f.Fresh = append(f.Fresh, newFreshOwner(t, w, fmt.Sprintf("fresh-%d", i), i == 0, i == 8))
 	}
@@ -201,7 +207,7 @@ func newFreshOwner(t *testing.T, w *ownerMac, name string, gated, bare bool) fre
 	env := []string{"HERMESH_CLAUDE_BIN=" + claude, "HERMESH_CODEX_BIN=" + codex,
 		"HERMESH_GEMINI_BIN=" + gemini, "FAKE_ACP_STATE=" + filepath.Join(tmp, "fakeacp")}
 	if bare {
-		missing := stub("missing", "exit 1\n")
+		missing := filepath.Join(tmp, "not-installed") // no such file
 		env = []string{"HERMESH_CLAUDE_BIN=" + missing, "HERMESH_CODEX_BIN=" + missing}
 		for _, a := range acp.Agents {
 			env = append(env, "HERMESH_"+strings.ToUpper(a.Name)+"_BIN="+missing)

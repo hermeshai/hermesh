@@ -2,6 +2,8 @@
 
 .ov-warn{display:flex;align-items:center;gap:8px;font-size:12.5px;color:var(--orange)}
 .arow .at code{font-size:12px}
+.arow .ai.r{background:var(--red-bg);color:var(--red)}
+.arow .at span.wrap{white-space:normal;line-height:1.5}
 
 /* Connections: one muted ink for what runs, soft amber and brick for what waits or failed. */
 :root{--live:#5f6b85;--live-wait:#b88a4a;--live-fail:#bf5b55;--lm-node:#ffffff;--lm-node-bd:rgba(0,0,0,.09);--lm-line:rgba(0,0,0,.12);--lm-hover:rgba(0,0,0,.28)}
@@ -82,6 +84,9 @@
 .lmap-icon.mac{color:var(--l1)}
 .lmap-icon.mac .ic{width:38px;height:38px;stroke-width:1.1}
 .lmap-hub span .dotc{width:6px;height:6px}
+.lmap-hub span.bad,.lm-meta.bad{color:var(--red)}
+.lmap-hub span.warn,.lm-meta.warn{color:var(--orange)}
+.dotc.bad{background:var(--red)}
 .lm-card{position:absolute;width:300px;padding:13px 16px 12px;border-radius:14px;background:var(--menu-solid);box-shadow:0 0 0 .5px var(--sep),0 12px 40px rgba(0,0,0,.18);font-size:12.5px;z-index:3}
 .lm-card-h{display:flex;align-items:center;gap:10px}
 .lm-card-h b{font-size:14px;font-weight:600}

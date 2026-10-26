@@ -80,6 +80,8 @@ export type Bridge = {
   daemonNeedsApproval(): Promise<boolean>;
   /** Opens System Settings › Login Items. */
   openLoginItems(): void;
+  /** Opens Activity Monitor (this Mac out of processes: the person finds what holds them). */
+  openActivityMonitor(): void;
   /** The app's updates (main/updater.ts). */
   openUpdates(manual?: boolean): void;
   /** Fit the update window to its content, within the display work area. */

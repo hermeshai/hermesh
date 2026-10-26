@@ -122,5 +122,28 @@
     "down": "已断开，agent 暂时用不了你的机器",
     "setup": "打开 Hermesh，完成设置",
     "daemon": "后台服务没有响应"
+  },
+  "health": {
+    "thisMac": "这台 Mac",
+    "processesTitle": "{{name}} 开不了新程序了",
+    "processesTitleNear": "{{name}} 的进程数快满了",
+    "processesBody": "进程数到了上限（{{used}} / {{limit}}），Hermesh 启动不了编码 agent，派来的任务会失败。占用进程的程序退出后会自动恢复。",
+    "processesBodyCulprit": "进程数到了上限（{{used}} / {{limit}}），其中 {{count}} 个是 {{culprit}} 结束后没回收的。Hermesh 启动不了编码 agent，派来的任务会失败。退出 {{culprit}} 后会自动恢复。",
+    "processesBodyNear": "进程数快到上限了（{{used}} / {{limit}}）。到上限后，Hermesh 就启动不了编码 agent。",
+    "processesBodyNearCulprit": "进程数快到上限了（{{used}} / {{limit}}），其中 {{count}} 个是 {{culprit}} 结束后没回收的。趁 Hermesh 还能启动编码 agent，先退出 {{culprit}}。",
+    "diskTitle": "{{name}} 的磁盘快满了",
+    "diskBody": "只剩 {{free}}。磁盘满了以后，新的会话建不了 worktree，会话记录也存不下。",
+    "filesTitle": "{{name}} 上的 Hermesh 快打不开新文件了",
+    "filesBody": "打开的文件数 {{used}} / {{limit}}。重新启动 Hermesh 可以缓解；如果反复出现，请复制诊断信息发给我们。",
+    "shellPathTitle": "读不到 {{name}} 终端里的 PATH",
+    "shellPathBody": "{{detail}}。用 nvm、npm 这类方式装的编码 agent 可能找不到。看看新开一个终端窗口是不是很慢或会等你输入；Hermesh 每分钟会重试。",
+    "shortProcesses": "开不了新程序",
+    "shortProcessesNear": "进程数快满",
+    "shortDisk": "磁盘快满",
+    "shortFiles": "文件数快满",
+    "shortShellPath": "读不到 PATH",
+    "openActivityMonitor": "打开活动监视器",
+    "view": "查看",
+    "listLabel": "问题"
   }
 }

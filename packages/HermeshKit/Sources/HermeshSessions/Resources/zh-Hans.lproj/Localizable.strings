@@ -59,7 +59,7 @@
 "Read 1 file" = "读取了 1 个文件";
 "Reading" = "正在读取";
 "Request rejected" = "请求被拒绝";
-"Run hermeshd doctor on that machine to check." = "在该机器上运行 hermeshd doctor 检查。";
+"Open that machine’s page in Hermesh Settings to see what keeps it from starting agents." = "在 Hermesh 设置里打开这台机器的页面，看看是什么让它启动不了 agent。";
 "Running" = "运行中";
 "Running %@" = "执行 %@";
 "Say “continue” to let it go on." = "发“继续”让它接着做。";

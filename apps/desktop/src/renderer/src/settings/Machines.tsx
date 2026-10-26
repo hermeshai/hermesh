@@ -7,6 +7,7 @@ import { Mark } from "@hermesh/ui";
 import { AgentList, AgentPage, sortAgents } from "../AgentList";
 import { useCheckAgents } from "../agents";
 import { local } from "../api";
+import { Problems } from "../health";
 import { Icon } from "../icons";
 import { useNow, useStore, type Store } from "../store";
 import { GoRow, SRow, Switch, type Ask } from "./common";
@@ -118,6 +119,11 @@ function MachineDetail({ m, ask, open }: { m: Machine; ask: (a: Ask) => void; op
         done: t("removed", { name: m.machineName }),
       },
     });
+  const copyDiagnostics = () =>
+    st.run(async () => {
+      const { text } = await local.getDiagnostics({});
+      await navigator.clipboard.writeText(text);
+    }, t("machines.diagnosticsCopied"));
   const setPaused = (on: boolean) =>
     st.run(() => local.setMachinePaused({ machineId: m.machineId, paused: on }), t(on ? "machines.pausedToast" : "machines.resumedToast", { name: m.machineName }));
 
@@ -141,6 +147,7 @@ function MachineDetail({ m, ask, open }: { m: Machine; ask: (a: Ask) => void; op
           </span>
         </div>
       </div>
+      <Problems m={m} />
       {/* A machine only is there to share them. */}
       {m.local && !st.status?.machineOnly && (
         <div className="fgroup">
@@ -160,6 +167,11 @@ function MachineDetail({ m, ask, open }: { m: Machine; ask: (a: Ask) => void; op
             </div>
           }
         />
+        {m.local && (
+          <p className="set-note">
+            <button className="link" onClick={() => void local.checkAgents({}).catch(() => {})}>{t("machines.recheck")}</button>
+          </p>
+        )}
       </div>
       <div>
         <div className="fhead">{t("machines.sessions")}</div>
@@ -177,6 +189,8 @@ function MachineDetail({ m, ask, open }: { m: Machine; ask: (a: Ask) => void; op
       </div>
       <div className="set-acts">
         <button className="btn" onClick={rename}>{t("machines.rename")}</button>
+        {/* What to send when something doesn't work; only this Mac's is at hand. */}
+        {m.local && <button className="btn" onClick={copyDiagnostics}>{t("machines.copyDiagnostics")}</button>}
         {!m.local && (
           <button className="btn danger push" onClick={remove}>{t("remove")}</button>
         )}

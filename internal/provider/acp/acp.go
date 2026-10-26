@@ -14,7 +14,6 @@ import (
 	"errors"
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"regexp"
 	"slices"
@@ -38,6 +37,9 @@ type Agent struct {
 	// Apps are desktop apps whose own copy of the CLI is used when there is
 	// no other.
 	Apps []App
+	// DesktopApps are the vendor's desktop apps that don't bring this CLI:
+	// installed without it, the agent says the CLI is what is missing.
+	DesktopApps []string
 	// Auth lists `authenticate` method ids in order of preference. When
 	// set, the first one the agent offers is sent before any session call.
 	Auth []string
@@ -52,7 +54,7 @@ type App struct {
 
 type Provider struct {
 	Agent
-	// PathEnv is the PATH used to find binaries (login-shell resolved).
+	// PathEnv is the PATH used to find binaries ("": the login shell's).
 	PathEnv string
 	// Binary overrides discovery (tests use a fake agent).
 	Binary string
@@ -72,7 +74,7 @@ func (p *Provider) binary() string {
 		}
 		extra = append(extra, x)
 	}
-	return provider.LookPath(p.Command, p.PathEnv, extra...)
+	return provider.LookPath(p.Command, provider.SearchPath(p.PathEnv), extra...)
 }
 
 // command is how to start the CLI: its binary, the arguments ahead of the
@@ -99,18 +101,19 @@ var versionRE = regexp.MustCompile(`\d+\.\d+\.\d+[-\w.]*`)
 func (p *Provider) Discover(ctx context.Context) provider.Info {
 	info := provider.Info{Name: p.Name()}
 	bin, pre, env := p.command()
-	if bin == "" {
-		info.Detail = p.Command + " not found"
+	if !provider.Exists(bin) {
+		info.Problem, info.Detail = provider.ProblemNotFound, p.Command+" not found"
+		if app := provider.AppWithoutCLI(p.DesktopApps...); app != "" && p.Binary == "" {
+			info.Problem, info.Detail = provider.ProblemAppWithoutCLI, app
+		}
 		return info
 	}
 	info.Binary = bin
 	ctx, cancel := context.WithTimeout(ctx, 20*time.Second)
 	defer cancel()
-	cmd := exec.CommandContext(ctx, bin, append(pre, "--version")...)
-	cmd.Env = append(withPath(os.Environ(), p.PathEnv), env...)
-	out, err := cmd.CombinedOutput()
-	if err != nil {
-		info.Detail = p.Command + " --version failed: " + err.Error()
+	out, problem, detail := provider.Probe(ctx, append(provider.ProbeEnv(p.PathEnv), env...), bin, append(pre, "--version")...)
+	if problem != provider.ProblemNone {
+		info.Problem, info.Detail = problem, detail
 		return info
 	}
 	info.Available = true

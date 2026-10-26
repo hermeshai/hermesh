@@ -168,6 +168,7 @@ export function registerIPC() {
   ipcMain.handle("set-login-item", (e, on: unknown) => (trusted(e) && typeof on === "boolean" ? setLoginItem(on) : null));
   ipcMain.handle("daemon-needs-approval", (e) => trusted(e) && daemonNeedsApproval());
   ipcMain.on("open-login-items", (e) => trusted(e) && openLoginItems());
+  ipcMain.on("open-activity-monitor", (e) => trusted(e) && process.platform === "darwin" && void shell.openPath("/System/Applications/Utilities/Activity Monitor.app"));
 
   // Updates (main/updater.ts).
   ipcMain.on("open-updates", (e, manual) => trusted(e) && openUpdates(manual === true));

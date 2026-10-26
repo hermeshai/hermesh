@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"net"
 	"net/http"
 	"os"
 	"os/signal"
@@ -18,6 +19,8 @@ import (
 
 	"github.com/spf13/cobra"
 
+	localv1 "github.com/hermeshai/hermesh/gen/go/hermesh/local/v1"
+	"github.com/hermeshai/hermesh/gen/go/hermesh/local/v1/localv1connect"
 	relayv1 "github.com/hermeshai/hermesh/gen/go/hermesh/relay/v1"
 	"github.com/hermeshai/hermesh/gen/go/hermesh/relay/v1/relayv1connect"
 	"github.com/hermeshai/hermesh/internal/connaddr"
@@ -237,6 +240,11 @@ func main() {
 		Use:   "doctor",
 		Short: "Check this machine's setup",
 		RunE: func(cmd *cobra.Command, _ []string) error {
+			// The app's hermeshd holds the machine: ask it.
+			if text, err := askDiagnostics(cmd.Context(), SocketPath(dataDir)); err == nil {
+				fmt.Print(text)
+				return nil
+			}
 			n, err := openMachine()
 			if err != nil {
 				return err
@@ -330,6 +338,24 @@ func main() {
 	if err := root.Execute(); err != nil {
 		os.Exit(1)
 	}
+}
+
+// askDiagnostics asks the hermeshd serving sock for its diagnostics.
+func askDiagnostics(ctx context.Context, sock string) (string, error) {
+	if _, err := os.Stat(sock); err != nil {
+		return "", err
+	}
+	hc := &http.Client{Transport: &http.Transport{DialContext: func(ctx context.Context, _, _ string) (net.Conn, error) {
+		var d net.Dialer
+		return d.DialContext(ctx, "unix", sock)
+	}}}
+	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
+	res, err := localv1connect.NewLocalServiceClient(hc, "http://local").GetDiagnostics(ctx, &localv1.GetDiagnosticsRequest{})
+	if err != nil {
+		return "", err
+	}
+	return res.Text, nil
 }
 
 // providers returns the coding agents; HERMESH_FAKE_PROVIDERS=1 replaces

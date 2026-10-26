@@ -147,6 +147,9 @@
     "pause": "Pause new sessions",
     "pauseDesc": "Running sessions aren’t affected",
     "running": "{{count}} running",
-    "rename": "Rename…"
+    "rename": "Rename…",
+    "recheck": "Check Agents Again",
+    "copyDiagnostics": "Copy Diagnostics",
+    "diagnosticsCopied": "Diagnostics copied: paste them to us"
   }
 }

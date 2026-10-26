@@ -307,6 +307,33 @@ func (l *localService) CheckAgents(ctx context.Context, _ *localv1.CheckAgentsRe
 	return &localv1.CheckAgentsResponse{}, nil
 }
 
+// GetDiagnostics describes this Mac: what it is to its owner, then its
+// machine, when it shares its coding agents.
+func (l *localService) GetDiagnostics(ctx context.Context, _ *localv1.GetDiagnosticsRequest) (*localv1.GetDiagnosticsResponse, error) {
+	st := l.o().Status()
+	role := "not set up"
+	switch {
+	case st.MachineOnly:
+		role = "machine only"
+	case st.Initialized:
+		role = "trusted device"
+	}
+	text := fmt.Sprintf("this Mac     %s, owner %s\n", role, st.OwnerId)
+	m, ok, err := l.o().onlyMachine()
+	if !ok {
+		m, err = l.o().local(), nil
+	}
+	switch {
+	case err != nil:
+		text += "its machine  not running: " + err.Error() + "\n"
+	case m == nil:
+		text += "its machine  none: it shares no coding agents\n"
+	default:
+		text += m.Diagnostics()
+	}
+	return &localv1.GetDiagnosticsResponse{Text: text}, nil
+}
+
 func (l *localService) RemoveMachine(ctx context.Context, req *localv1.RemoveMachineRequest) (*localv1.RemoveMachineResponse, error) {
 	err := l.o().RemoveMachine(ctx, req.MachineId)
 	l.o().wrote(ctx, err, true)

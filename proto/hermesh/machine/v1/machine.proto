@@ -81,6 +81,39 @@ message MachineStatus {
   map<string, uint32> sessions = 9;
   reserved 8, 10, 11;
   reserved "host", "agent_processes", "started_at";
+  // What keeps this machine from working as it should (none while healthy),
+  // so every screen of the owner can say what is wrong and how to fix it.
+  repeated MachineProblem problems = 13;
+}
+
+message MachineProblem {
+  MachineProblemKind kind = 1;
+  // PROCESSES and FILES: how many are in use, out of how many; DISK: bytes
+  // free, out of the disk's size.
+  uint64 used = 2;
+  uint64 limit = 3;
+  // PROCESSES: the program whose ended processes nobody reaped hold most of
+  // them (its name), and how many it holds.
+  string culprit = 4;
+  uint32 culprit_count = 5;
+  // What went wrong, as the system said it (SHELL_PATH: why the login
+  // shell's PATH could not be read).
+  string detail = 6;
+}
+
+enum MachineProblemKind {
+  MACHINE_PROBLEM_KIND_UNSPECIFIED = 0;
+  // The user's processes are at (or near) their limit: no new program can
+  // start, so no coding agent can.
+  MACHINE_PROBLEM_KIND_PROCESSES = 1;
+  // The disk with Hermesh's data is nearly full: worktrees and the session
+  // store can't grow.
+  MACHINE_PROBLEM_KIND_DISK = 2;
+  // hermeshd is near its limit of open files.
+  MACHINE_PROBLEM_KIND_FILES = 3;
+  // The login shell's PATH could not be read, so agents installed where
+  // only it says (nvm, npm, …) are not found.
+  MACHINE_PROBLEM_KIND_SHELL_PATH = 4;
 }
 
 message AgentStatus {
@@ -101,6 +134,26 @@ message AgentStatus {
   // Its own configuration, which empty defaults follow, as far as the
   // agent tells it (Codex).
   hermesh.identity.v1.AgentDefaults own = 10;
+  // Why it is not available (detail: what the system or the agent said).
+  AgentProblem problem = 11;
+  // Where it was found, when it was.
+  string binary = 12;
+}
+
+enum AgentProblem {
+  AGENT_PROBLEM_UNSPECIFIED = 0;
+  AGENT_PROBLEM_NOT_FOUND = 1;
+  // Its desktop app is installed but not the command line tool Hermesh
+  // runs (detail: the app).
+  AGENT_PROBLEM_APP_WITHOUT_CLI = 2;
+  // Found, but it could not start: the machine can't start new programs.
+  AGENT_PROBLEM_NO_PROCESSES = 3;
+  // Found, but it did not answer in time.
+  AGENT_PROBLEM_TIMED_OUT = 4;
+  // Found, but what runs it is missing (detail: e.g. "node").
+  AGENT_PROBLEM_MISSING_RUNTIME = 5;
+  // Found, but it failed (detail: the first line it printed).
+  AGENT_PROBLEM_FAILED = 6;
 }
 
 message AgentModel {

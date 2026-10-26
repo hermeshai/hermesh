@@ -83,7 +83,9 @@ type Sessions struct {
 	dataDir   string
 	providers map[string]provider.Provider
 	info      func(name string) provider.Info
-	limits    Limits
+	// outOfProcesses says why no program can start on this machine now, or "".
+	outOfProcesses func() string
+	limits         Limits
 	// janitorEvery is how often the Janitor checks (default 10s).
 	janitorEvery time.Duration
 	paused       func() bool
@@ -190,6 +192,23 @@ func continuityNotice(reason string, inPlace bool) string {
 // unarchived. Nothing else ends a session.
 func isTerminal(s sessionv1.SessionStatus) bool {
 	return s == sessionv1.SessionStatus_SESSION_STATUS_ARCHIVED
+}
+
+// unavailable says why agent can't run here, for the agent that asked.
+func unavailable(agent string, i provider.Info) string {
+	switch i.Problem {
+	case provider.ProblemAppWithoutCLI:
+		return fmt.Sprintf("%s's command line tool is not installed on this machine (only %s is)", agent, i.Detail)
+	case provider.ProblemNoProcesses:
+		return fmt.Sprintf("%s can't start on this machine: it is out of processes (%s)", agent, i.Detail)
+	case provider.ProblemTimedOut:
+		return fmt.Sprintf("%s on this machine did not answer when checked (%s)", agent, i.Binary)
+	case provider.ProblemMissingRuntime:
+		return fmt.Sprintf("%s on this machine can't run: %s, which runs it, is missing", agent, i.Detail)
+	case provider.ProblemFailed:
+		return fmt.Sprintf("%s on this machine can't run: %s", agent, i.Detail)
+	}
+	return fmt.Sprintf("%s is not installed on this machine", agent)
 }
 
 func cerr(code connect.Code, format string, a ...any) error {
@@ -318,9 +337,11 @@ func (s *Sessions) Start(ctx context.Context, p *Principal, req *sessionv1.Start
 	if proj.InPlace() && req.BaseRef != "" {
 		return nil, cerr(connect.CodeInvalidArgument, "project %q works in place (no worktree), so it has no base ref", req.ProjectId)
 	}
-	info := s.info(req.Agent)
-	if !info.Available {
-		return nil, cerr(connect.CodeFailedPrecondition, "%s is not installed on this machine: %s", req.Agent, info.Detail)
+	if why := s.outOfProcesses(); why != "" {
+		return nil, cerr(connect.CodeUnavailable, "this machine can't start programs now: %s; start the session on another machine, or ask the owner to quit what holds them", why)
+	}
+	if info := s.info(req.Agent); !info.Available {
+		return nil, cerr(connect.CodeFailedPrecondition, "%s", unavailable(req.Agent, info))
 	}
 	if strings.TrimSpace(req.Prompt) == "" && len(req.Attachments) == 0 {
 		return nil, cerr(connect.CodeInvalidArgument, "prompt is empty")

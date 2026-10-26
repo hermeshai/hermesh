@@ -5,6 +5,7 @@ import { SessionStatus, type Session } from "@hermesh/proto/session";
 import { agoText, codingAgentTitle, createdDate, dateOf, isActive, isFailed, monthDay, sameDay, todayStats, tokensText, usageYear } from "@hermesh/core";
 import { AgentLogo, AgentTile, grantColor, kindNamed, Mark } from "@hermesh/ui";
 import { i18n } from "../../../shared/i18n";
+import { problemShort, problemsOf, severe } from "../health";
 import { Icon } from "../icons";
 import { hostOf } from "../sheets/Pairing";
 import { useStore, type Store } from "../store";
@@ -381,7 +382,7 @@ export function LinkMap({ pick, onPick, now, usage }: { pick: string; onPick: (k
                   ))}
                 </span>
               </span>
-              {n.machine.status?.paused ? <small className="lm-meta">{t("map.paused")}</small> : <Tail online={n.machine.online} running={runningCount(L.paths, n.key)} />}
+              <MachineMeta m={n.machine} running={runningCount(L.paths, n.key)} />
             </Node>
           ))}
           {L.projects.map((n) => (
@@ -527,18 +528,36 @@ function ThisMacHub() {
   const m = st.machines.find((x) => x.local);
   const online = st.status?.relayConnected === true;
   const paused = m?.status?.paused === true;
+  // What keeps it from working says so first.
+  const p = m ? problemsOf(m)[0] : undefined;
   return (
     <>
       <div className="lmap-icon mac" style={{ width: HUB.s * 2, height: HUB.s * 2 }} onContextMenu={(e) => (e.preventDefault(), m && machineMenu(m))}>
         <Icon name="laptop" />
       </div>
       <b>{t("thisMac")}</b>
-      <span>
-        <i className={`dotc ${online && !paused ? "on" : paused ? "warn" : ""}`} />
-        {!online ? t("map.offline") : paused ? t("map.paused") : t("map.accepting")}
-      </span>
+      {p ? (
+        <span className={severe(p) ? "bad" : "warn"}>
+          <i className={`dotc ${severe(p) ? "bad" : "warn"}`} />
+          {problemShort(p)}
+        </span>
+      ) : (
+        <span>
+          <i className={`dotc ${online && !paused ? "on" : paused ? "warn" : ""}`} />
+          {!online ? t("map.offline") : paused ? t("map.paused") : t("map.accepting")}
+        </span>
+      )}
     </>
   );
+}
+
+/** A machine node's last word: what keeps it from working, paused, offline, or how many run. */
+function MachineMeta({ m, running }: { m: Machine; running: number }) {
+  const { t } = useTranslation("overview");
+  const p = problemsOf(m)[0];
+  if (p && m.online) return <small className={`lm-meta ${severe(p) ? "bad" : "warn"}`}>{problemShort(p)}</small>;
+  if (m.status?.paused) return <small className="lm-meta">{t("map.paused")}</small>;
+  return <Tail online={m.online} running={running} />;
 }
 
 /**

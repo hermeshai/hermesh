@@ -25,6 +25,128 @@ fileprivate nonisolated struct _GeneratedWithProtocGenSwiftVersion: SwiftProtobu
   typealias Version = _2
 }
 
+public nonisolated enum Hermesh_Machine_V1_MachineProblemKind: SwiftProtobuf.Enum, Swift.CaseIterable {
+  public typealias RawValue = Int
+  case unspecified // = 0
+
+  /// The user's processes are at (or near) their limit: no new program can
+  /// start, so no coding agent can.
+  case processes // = 1
+
+  /// The disk with Hermesh's data is nearly full: worktrees and the session
+  /// store can't grow.
+  case disk // = 2
+
+  /// hermeshd is near its limit of open files.
+  case files // = 3
+
+  /// The login shell's PATH could not be read, so agents installed where
+  /// only it says (nvm, npm, …) are not found.
+  case shellPath // = 4
+  case UNRECOGNIZED(Int)
+
+  public init() {
+    self = .unspecified
+  }
+
+  public init?(rawValue: Int) {
+    switch rawValue {
+    case 0: self = .unspecified
+    case 1: self = .processes
+    case 2: self = .disk
+    case 3: self = .files
+    case 4: self = .shellPath
+    default: self = .UNRECOGNIZED(rawValue)
+    }
+  }
+
+  public var rawValue: Int {
+    switch self {
+    case .unspecified: return 0
+    case .processes: return 1
+    case .disk: return 2
+    case .files: return 3
+    case .shellPath: return 4
+    case .UNRECOGNIZED(let i): return i
+    }
+  }
+
+  // The compiler won't synthesize support with the UNRECOGNIZED case.
+  public static let allCases: [Hermesh_Machine_V1_MachineProblemKind] = [
+    .unspecified,
+    .processes,
+    .disk,
+    .files,
+    .shellPath,
+  ]
+
+}
+
+public nonisolated enum Hermesh_Machine_V1_AgentProblem: SwiftProtobuf.Enum, Swift.CaseIterable {
+  public typealias RawValue = Int
+  case unspecified // = 0
+  case notFound // = 1
+
+  /// Its desktop app is installed but not the command line tool Hermesh
+  /// runs (detail: the app).
+  case appWithoutCli // = 2
+
+  /// Found, but it could not start: the machine can't start new programs.
+  case noProcesses // = 3
+
+  /// Found, but it did not answer in time.
+  case timedOut // = 4
+
+  /// Found, but what runs it is missing (detail: e.g. "node").
+  case missingRuntime // = 5
+
+  /// Found, but it failed (detail: the first line it printed).
+  case failed // = 6
+  case UNRECOGNIZED(Int)
+
+  public init() {
+    self = .unspecified
+  }
+
+  public init?(rawValue: Int) {
+    switch rawValue {
+    case 0: self = .unspecified
+    case 1: self = .notFound
+    case 2: self = .appWithoutCli
+    case 3: self = .noProcesses
+    case 4: self = .timedOut
+    case 5: self = .missingRuntime
+    case 6: self = .failed
+    default: self = .UNRECOGNIZED(rawValue)
+    }
+  }
+
+  public var rawValue: Int {
+    switch self {
+    case .unspecified: return 0
+    case .notFound: return 1
+    case .appWithoutCli: return 2
+    case .noProcesses: return 3
+    case .timedOut: return 4
+    case .missingRuntime: return 5
+    case .failed: return 6
+    case .UNRECOGNIZED(let i): return i
+    }
+  }
+
+  // The compiler won't synthesize support with the UNRECOGNIZED case.
+  public static let allCases: [Hermesh_Machine_V1_AgentProblem] = [
+    .unspecified,
+    .notFound,
+    .appWithoutCli,
+    .noProcesses,
+    .timedOut,
+    .missingRuntime,
+    .failed,
+  ]
+
+}
+
 public nonisolated struct Hermesh_Machine_V1_WatchRequest: Sendable {
   // SwiftProtobuf.Message conformance is added in an extension below. See the
   // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
@@ -196,60 +318,124 @@ public nonisolated struct Hermesh_Machine_V1_MachineStatus: Sendable {
   /// Live sessions by status: "queued", "preparing", "running", "idle", ...
   public var sessions: Dictionary<String,UInt32> = [:]
 
+  /// What keeps this machine from working as it should (none while healthy),
+  /// so every screen of the owner can say what is wrong and how to fix it.
+  public var problems: [Hermesh_Machine_V1_MachineProblem] = []
+
   public var unknownFields = SwiftProtobuf.UnknownStorage()
 
   public init() {}
 }
 
-public nonisolated struct Hermesh_Machine_V1_AgentStatus: Sendable {
+public nonisolated struct Hermesh_Machine_V1_MachineProblem: Sendable {
   // SwiftProtobuf.Message conformance is added in an extension below. See the
   // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
   // methods supported on all messages.
 
-  public var name: String = String()
+  public var kind: Hermesh_Machine_V1_MachineProblemKind = .unspecified
 
-  public var available: Bool = false
+  /// PROCESSES and FILES: how many are in use, out of how many; DISK: bytes
+  /// free, out of the disk's size.
+  public var used: UInt64 = 0
 
-  public var version: String = String()
+  public var limit: UInt64 = 0
 
-  public var loggedIn: Bool = false
+  /// PROCESSES: the program whose ended processes nobody reaped hold most of
+  /// them (its name), and how many it holds.
+  public var culprit: String = String()
 
+  public var culpritCount: UInt32 = 0
+
+  /// What went wrong, as the system said it (SHELL_PATH: why the login
+  /// shell's PATH could not be read).
   public var detail: String = String()
+
+  public var unknownFields = SwiftProtobuf.UnknownStorage()
+
+  public init() {}
+}
+
+public nonisolated struct Hermesh_Machine_V1_AgentStatus: @unchecked Sendable {
+  // SwiftProtobuf.Message conformance is added in an extension below. See the
+  // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
+  // methods supported on all messages.
+
+  public var name: String {
+    get {_storage._name}
+    set {_uniqueStorage()._name = newValue}
+  }
+
+  public var available: Bool {
+    get {_storage._available}
+    set {_uniqueStorage()._available = newValue}
+  }
+
+  public var version: String {
+    get {_storage._version}
+    set {_uniqueStorage()._version = newValue}
+  }
+
+  public var loggedIn: Bool {
+    get {_storage._loggedIn}
+    set {_uniqueStorage()._loggedIn = newValue}
+  }
+
+  public var detail: String {
+    get {_storage._detail}
+    set {_uniqueStorage()._detail = newValue}
+  }
 
   /// A check of this agent is under way; the rest is what the last check
   /// found, if any (an agent never checked yet is not available).
-  public var checking: Bool = false
+  public var checking: Bool {
+    get {_storage._checking}
+    set {_uniqueStorage()._checking = newValue}
+  }
 
   /// The models it offers, to pick defaults from (Claude Code and Codex).
-  public var models: [Hermesh_Machine_V1_AgentModel] = []
+  public var models: [Hermesh_Machine_V1_AgentModel] {
+    get {_storage._models}
+    set {_uniqueStorage()._models = newValue}
+  }
 
   /// What its sessions here run with when the client names no model.
   public var defaults: Hermesh_Identity_V1_AgentDefaults {
-    get {_defaults ?? Hermesh_Identity_V1_AgentDefaults()}
-    set {_defaults = newValue}
+    get {_storage._defaults ?? Hermesh_Identity_V1_AgentDefaults()}
+    set {_uniqueStorage()._defaults = newValue}
   }
   /// Returns true if `defaults` has been explicitly set.
-  public var hasDefaults: Bool {self._defaults != nil}
+  public var hasDefaults: Bool {_storage._defaults != nil}
   /// Clears the value of `defaults`. Subsequent reads from it will return its default value.
-  public mutating func clearDefaults() {self._defaults = nil}
+  public mutating func clearDefaults() {_uniqueStorage()._defaults = nil}
 
   /// Its own configuration, which empty defaults follow, as far as the
   /// agent tells it (Codex).
   public var own: Hermesh_Identity_V1_AgentDefaults {
-    get {_own ?? Hermesh_Identity_V1_AgentDefaults()}
-    set {_own = newValue}
+    get {_storage._own ?? Hermesh_Identity_V1_AgentDefaults()}
+    set {_uniqueStorage()._own = newValue}
   }
   /// Returns true if `own` has been explicitly set.
-  public var hasOwn: Bool {self._own != nil}
+  public var hasOwn: Bool {_storage._own != nil}
   /// Clears the value of `own`. Subsequent reads from it will return its default value.
-  public mutating func clearOwn() {self._own = nil}
+  public mutating func clearOwn() {_uniqueStorage()._own = nil}
+
+  /// Why it is not available (detail: what the system or the agent said).
+  public var problem: Hermesh_Machine_V1_AgentProblem {
+    get {_storage._problem}
+    set {_uniqueStorage()._problem = newValue}
+  }
+
+  /// Where it was found, when it was.
+  public var binary: String {
+    get {_storage._binary}
+    set {_uniqueStorage()._binary = newValue}
+  }
 
   public var unknownFields = SwiftProtobuf.UnknownStorage()
 
   public init() {}
 
-  fileprivate var _defaults: Hermesh_Identity_V1_AgentDefaults? = nil
-  fileprivate var _own: Hermesh_Identity_V1_AgentDefaults? = nil
+  fileprivate var _storage = _StorageClass.defaultInstance
 }
 
 public nonisolated struct Hermesh_Machine_V1_AgentModel: Sendable {
@@ -423,6 +609,14 @@ public nonisolated struct Hermesh_Machine_V1_PushRevocationsResponse: Sendable {
 // MARK: - Code below here is support for the SwiftProtobuf runtime.
 
 fileprivate nonisolated let _protobuf_package = "hermesh.machine.v1"
+
+nonisolated extension Hermesh_Machine_V1_MachineProblemKind: SwiftProtobuf._ProtoNameProviding {
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{2}\0MACHINE_PROBLEM_KIND_UNSPECIFIED\0\u{1}MACHINE_PROBLEM_KIND_PROCESSES\0\u{1}MACHINE_PROBLEM_KIND_DISK\0\u{1}MACHINE_PROBLEM_KIND_FILES\0\u{1}MACHINE_PROBLEM_KIND_SHELL_PATH\0")
+}
+
+nonisolated extension Hermesh_Machine_V1_AgentProblem: SwiftProtobuf._ProtoNameProviding {
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{2}\0AGENT_PROBLEM_UNSPECIFIED\0\u{1}AGENT_PROBLEM_NOT_FOUND\0\u{1}AGENT_PROBLEM_APP_WITHOUT_CLI\0\u{1}AGENT_PROBLEM_NO_PROCESSES\0\u{1}AGENT_PROBLEM_TIMED_OUT\0\u{1}AGENT_PROBLEM_MISSING_RUNTIME\0\u{1}AGENT_PROBLEM_FAILED\0")
+}
 
 nonisolated extension Hermesh_Machine_V1_WatchRequest: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
   public static let protoMessageName: String = _protobuf_package + ".WatchRequest"
@@ -664,7 +858,7 @@ nonisolated extension Hermesh_Machine_V1_GetInfoResponse: SwiftProtobuf.Message,
 
 nonisolated extension Hermesh_Machine_V1_MachineStatus: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
   public static let protoMessageName: String = _protobuf_package + ".MachineStatus"
-  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{3}protocol_version\0\u{1}platform\0\u{1}agents\0\u{3}running_sessions\0\u{3}max_sessions\0\u{1}paused\0\u{1}version\0\u{2}\u{2}sessions\0\u{2}\u{3}name\0\u{b}host\0\u{b}agent_processes\0\u{b}started_at\0\u{c}\u{8}\u{1}\u{c}\u{a}\u{1}\u{c}\u{b}\u{1}")
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{3}protocol_version\0\u{1}platform\0\u{1}agents\0\u{3}running_sessions\0\u{3}max_sessions\0\u{1}paused\0\u{1}version\0\u{2}\u{2}sessions\0\u{2}\u{3}name\0\u{1}problems\0\u{b}host\0\u{b}agent_processes\0\u{b}started_at\0\u{c}\u{8}\u{1}\u{c}\u{a}\u{1}\u{c}\u{b}\u{1}")
 
   public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
     while let fieldNumber = try decoder.nextFieldNumber() {
@@ -681,6 +875,7 @@ nonisolated extension Hermesh_Machine_V1_MachineStatus: SwiftProtobuf.Message, S
       case 7: try { try decoder.decodeSingularStringField(value: &self.version) }()
       case 9: try { try decoder.decodeMapField(fieldType: SwiftProtobuf._ProtobufMap<SwiftProtobuf.ProtobufString,SwiftProtobuf.ProtobufUInt32>.self, value: &self.sessions) }()
       case 12: try { try decoder.decodeSingularStringField(value: &self.name) }()
+      case 13: try { try decoder.decodeRepeatedMessageField(value: &self.problems) }()
       default: break
       }
     }
@@ -714,6 +909,9 @@ nonisolated extension Hermesh_Machine_V1_MachineStatus: SwiftProtobuf.Message, S
     if !self.name.isEmpty {
       try visitor.visitSingularStringField(value: self.name, fieldNumber: 12)
     }
+    if !self.problems.isEmpty {
+      try visitor.visitRepeatedMessageField(value: self.problems, fieldNumber: 13)
+    }
     try unknownFields.traverse(visitor: &visitor)
   }
 
@@ -727,14 +925,15 @@ nonisolated extension Hermesh_Machine_V1_MachineStatus: SwiftProtobuf.Message, S
     if lhs.paused != rhs.paused {return false}
     if lhs.version != rhs.version {return false}
     if lhs.sessions != rhs.sessions {return false}
+    if lhs.problems != rhs.problems {return false}
     if lhs.unknownFields != rhs.unknownFields {return false}
     return true
   }
 }
 
-nonisolated extension Hermesh_Machine_V1_AgentStatus: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
-  public static let protoMessageName: String = _protobuf_package + ".AgentStatus"
-  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{1}name\0\u{1}available\0\u{1}version\0\u{3}logged_in\0\u{2}\u{2}detail\0\u{1}checking\0\u{1}models\0\u{1}defaults\0\u{1}own\0\u{b}sandbox_available\0\u{c}\u{5}\u{1}")
+nonisolated extension Hermesh_Machine_V1_MachineProblem: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
+  public static let protoMessageName: String = _protobuf_package + ".MachineProblem"
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{1}kind\0\u{1}used\0\u{1}limit\0\u{1}culprit\0\u{3}culprit_count\0\u{1}detail\0")
 
   public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
     while let fieldNumber = try decoder.nextFieldNumber() {
@@ -742,65 +941,186 @@ nonisolated extension Hermesh_Machine_V1_AgentStatus: SwiftProtobuf.Message, Swi
       // allocates stack space for every case branch when no optimizations are
       // enabled. https://github.com/apple/swift-protobuf/issues/1034
       switch fieldNumber {
-      case 1: try { try decoder.decodeSingularStringField(value: &self.name) }()
-      case 2: try { try decoder.decodeSingularBoolField(value: &self.available) }()
-      case 3: try { try decoder.decodeSingularStringField(value: &self.version) }()
-      case 4: try { try decoder.decodeSingularBoolField(value: &self.loggedIn) }()
+      case 1: try { try decoder.decodeSingularEnumField(value: &self.kind) }()
+      case 2: try { try decoder.decodeSingularUInt64Field(value: &self.used) }()
+      case 3: try { try decoder.decodeSingularUInt64Field(value: &self.limit) }()
+      case 4: try { try decoder.decodeSingularStringField(value: &self.culprit) }()
+      case 5: try { try decoder.decodeSingularUInt32Field(value: &self.culpritCount) }()
       case 6: try { try decoder.decodeSingularStringField(value: &self.detail) }()
-      case 7: try { try decoder.decodeSingularBoolField(value: &self.checking) }()
-      case 8: try { try decoder.decodeRepeatedMessageField(value: &self.models) }()
-      case 9: try { try decoder.decodeSingularMessageField(value: &self._defaults) }()
-      case 10: try { try decoder.decodeSingularMessageField(value: &self._own) }()
       default: break
       }
     }
   }
 
   public func traverse<V: SwiftProtobuf.Visitor>(visitor: inout V) throws {
-    // The use of inline closures is to circumvent an issue where the compiler
-    // allocates stack space for every if/case branch local when no optimizations
-    // are enabled. https://github.com/apple/swift-protobuf/issues/1034 and
-    // https://github.com/apple/swift-protobuf/issues/1182
-    if !self.name.isEmpty {
-      try visitor.visitSingularStringField(value: self.name, fieldNumber: 1)
+    if self.kind != .unspecified {
+      try visitor.visitSingularEnumField(value: self.kind, fieldNumber: 1)
     }
-    if self.available != false {
-      try visitor.visitSingularBoolField(value: self.available, fieldNumber: 2)
+    if self.used != 0 {
+      try visitor.visitSingularUInt64Field(value: self.used, fieldNumber: 2)
     }
-    if !self.version.isEmpty {
-      try visitor.visitSingularStringField(value: self.version, fieldNumber: 3)
+    if self.limit != 0 {
+      try visitor.visitSingularUInt64Field(value: self.limit, fieldNumber: 3)
     }
-    if self.loggedIn != false {
-      try visitor.visitSingularBoolField(value: self.loggedIn, fieldNumber: 4)
+    if !self.culprit.isEmpty {
+      try visitor.visitSingularStringField(value: self.culprit, fieldNumber: 4)
+    }
+    if self.culpritCount != 0 {
+      try visitor.visitSingularUInt32Field(value: self.culpritCount, fieldNumber: 5)
     }
     if !self.detail.isEmpty {
       try visitor.visitSingularStringField(value: self.detail, fieldNumber: 6)
     }
-    if self.checking != false {
-      try visitor.visitSingularBoolField(value: self.checking, fieldNumber: 7)
+    try unknownFields.traverse(visitor: &visitor)
+  }
+
+  public static func ==(lhs: Hermesh_Machine_V1_MachineProblem, rhs: Hermesh_Machine_V1_MachineProblem) -> Bool {
+    if lhs.kind != rhs.kind {return false}
+    if lhs.used != rhs.used {return false}
+    if lhs.limit != rhs.limit {return false}
+    if lhs.culprit != rhs.culprit {return false}
+    if lhs.culpritCount != rhs.culpritCount {return false}
+    if lhs.detail != rhs.detail {return false}
+    if lhs.unknownFields != rhs.unknownFields {return false}
+    return true
+  }
+}
+
+nonisolated extension Hermesh_Machine_V1_AgentStatus: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
+  public static let protoMessageName: String = _protobuf_package + ".AgentStatus"
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{1}name\0\u{1}available\0\u{1}version\0\u{3}logged_in\0\u{2}\u{2}detail\0\u{1}checking\0\u{1}models\0\u{1}defaults\0\u{1}own\0\u{1}problem\0\u{1}binary\0\u{b}sandbox_available\0\u{c}\u{5}\u{1}")
+
+  fileprivate class _StorageClass {
+    var _name: String = String()
+    var _available: Bool = false
+    var _version: String = String()
+    var _loggedIn: Bool = false
+    var _detail: String = String()
+    var _checking: Bool = false
+    var _models: [Hermesh_Machine_V1_AgentModel] = []
+    var _defaults: Hermesh_Identity_V1_AgentDefaults? = nil
+    var _own: Hermesh_Identity_V1_AgentDefaults? = nil
+    var _problem: Hermesh_Machine_V1_AgentProblem = .unspecified
+    var _binary: String = String()
+
+      // This property is used as the initial default value for new instances of the type.
+      // The type itself is protecting the reference to its storage via CoW semantics.
+      // This will force a copy to be made of this reference when the first mutation occurs;
+      // hence, it is safe to mark this as `nonisolated(unsafe)`.
+      static nonisolated(unsafe) let defaultInstance = _StorageClass()
+
+    private init() {}
+
+    init(copying source: _StorageClass) {
+      _name = source._name
+      _available = source._available
+      _version = source._version
+      _loggedIn = source._loggedIn
+      _detail = source._detail
+      _checking = source._checking
+      _models = source._models
+      _defaults = source._defaults
+      _own = source._own
+      _problem = source._problem
+      _binary = source._binary
     }
-    if !self.models.isEmpty {
-      try visitor.visitRepeatedMessageField(value: self.models, fieldNumber: 8)
+  }
+
+  fileprivate mutating func _uniqueStorage() -> _StorageClass {
+    if !isKnownUniquelyReferenced(&_storage) {
+      _storage = _StorageClass(copying: _storage)
     }
-    try { if let v = self._defaults {
-      try visitor.visitSingularMessageField(value: v, fieldNumber: 9)
-    } }()
-    try { if let v = self._own {
-      try visitor.visitSingularMessageField(value: v, fieldNumber: 10)
-    } }()
+    return _storage
+  }
+
+  public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
+    _ = _uniqueStorage()
+    try withExtendedLifetime(_storage) { (_storage: _StorageClass) in
+      while let fieldNumber = try decoder.nextFieldNumber() {
+        // The use of inline closures is to circumvent an issue where the compiler
+        // allocates stack space for every case branch when no optimizations are
+        // enabled. https://github.com/apple/swift-protobuf/issues/1034
+        switch fieldNumber {
+        case 1: try { try decoder.decodeSingularStringField(value: &_storage._name) }()
+        case 2: try { try decoder.decodeSingularBoolField(value: &_storage._available) }()
+        case 3: try { try decoder.decodeSingularStringField(value: &_storage._version) }()
+        case 4: try { try decoder.decodeSingularBoolField(value: &_storage._loggedIn) }()
+        case 6: try { try decoder.decodeSingularStringField(value: &_storage._detail) }()
+        case 7: try { try decoder.decodeSingularBoolField(value: &_storage._checking) }()
+        case 8: try { try decoder.decodeRepeatedMessageField(value: &_storage._models) }()
+        case 9: try { try decoder.decodeSingularMessageField(value: &_storage._defaults) }()
+        case 10: try { try decoder.decodeSingularMessageField(value: &_storage._own) }()
+        case 11: try { try decoder.decodeSingularEnumField(value: &_storage._problem) }()
+        case 12: try { try decoder.decodeSingularStringField(value: &_storage._binary) }()
+        default: break
+        }
+      }
+    }
+  }
+
+  public func traverse<V: SwiftProtobuf.Visitor>(visitor: inout V) throws {
+    try withExtendedLifetime(_storage) { (_storage: _StorageClass) in
+      // The use of inline closures is to circumvent an issue where the compiler
+      // allocates stack space for every if/case branch local when no optimizations
+      // are enabled. https://github.com/apple/swift-protobuf/issues/1034 and
+      // https://github.com/apple/swift-protobuf/issues/1182
+      if !_storage._name.isEmpty {
+        try visitor.visitSingularStringField(value: _storage._name, fieldNumber: 1)
+      }
+      if _storage._available != false {
+        try visitor.visitSingularBoolField(value: _storage._available, fieldNumber: 2)
+      }
+      if !_storage._version.isEmpty {
+        try visitor.visitSingularStringField(value: _storage._version, fieldNumber: 3)
+      }
+      if _storage._loggedIn != false {
+        try visitor.visitSingularBoolField(value: _storage._loggedIn, fieldNumber: 4)
+      }
+      if !_storage._detail.isEmpty {
+        try visitor.visitSingularStringField(value: _storage._detail, fieldNumber: 6)
+      }
+      if _storage._checking != false {
+        try visitor.visitSingularBoolField(value: _storage._checking, fieldNumber: 7)
+      }
+      if !_storage._models.isEmpty {
+        try visitor.visitRepeatedMessageField(value: _storage._models, fieldNumber: 8)
+      }
+      try { if let v = _storage._defaults {
+        try visitor.visitSingularMessageField(value: v, fieldNumber: 9)
+      } }()
+      try { if let v = _storage._own {
+        try visitor.visitSingularMessageField(value: v, fieldNumber: 10)
+      } }()
+      if _storage._problem != .unspecified {
+        try visitor.visitSingularEnumField(value: _storage._problem, fieldNumber: 11)
+      }
+      if !_storage._binary.isEmpty {
+        try visitor.visitSingularStringField(value: _storage._binary, fieldNumber: 12)
+      }
+    }
     try unknownFields.traverse(visitor: &visitor)
   }
 
   public static func ==(lhs: Hermesh_Machine_V1_AgentStatus, rhs: Hermesh_Machine_V1_AgentStatus) -> Bool {
-    if lhs.name != rhs.name {return false}
-    if lhs.available != rhs.available {return false}
-    if lhs.version != rhs.version {return false}
-    if lhs.loggedIn != rhs.loggedIn {return false}
-    if lhs.detail != rhs.detail {return false}
-    if lhs.checking != rhs.checking {return false}
-    if lhs.models != rhs.models {return false}
-    if lhs._defaults != rhs._defaults {return false}
-    if lhs._own != rhs._own {return false}
+    if lhs._storage !== rhs._storage {
+      let storagesAreEqual: Bool = withExtendedLifetime((lhs._storage, rhs._storage)) { (_args: (_StorageClass, _StorageClass)) in
+        let _storage = _args.0
+        let rhs_storage = _args.1
+        if _storage._name != rhs_storage._name {return false}
+        if _storage._available != rhs_storage._available {return false}
+        if _storage._version != rhs_storage._version {return false}
+        if _storage._loggedIn != rhs_storage._loggedIn {return false}
+        if _storage._detail != rhs_storage._detail {return false}
+        if _storage._checking != rhs_storage._checking {return false}
+        if _storage._models != rhs_storage._models {return false}
+        if _storage._defaults != rhs_storage._defaults {return false}
+        if _storage._own != rhs_storage._own {return false}
+        if _storage._problem != rhs_storage._problem {return false}
+        if _storage._binary != rhs_storage._binary {return false}
+        return true
+      }
+      if !storagesAreEqual {return false}
+    }
     if lhs.unknownFields != rhs.unknownFields {return false}
     return true
   }
