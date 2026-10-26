@@ -5,6 +5,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"slices"
 	"strconv"
 	"strings"
@@ -57,8 +58,8 @@ func zombies(t *testing.T, n int) *proc {
 // starting a session there why it can't, and recovers by itself once the
 // culprit quits.
 func TestOutOfProcesses(t *testing.T) {
-	if testing.Short() {
-		t.Skip("e2e")
+	if testing.Short() || runtime.GOOS != "darwin" {
+		t.Skip("e2e on macOS")
 	}
 	codex := filepath.Join(t.TempDir(), "codex")
 	os.WriteFile(codex, []byte("#!/bin/sh\ncase \"$1\" in --version) echo 'codex-cli 0.48.0';; login) echo 'Logged in';; esac\n"), 0o755)
