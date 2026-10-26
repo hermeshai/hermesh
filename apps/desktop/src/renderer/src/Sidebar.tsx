@@ -278,7 +278,14 @@ const SessionRow = memo(function SessionRow({ s, sel, grant, meta, renaming, sto
       <div className="smain">
         <div className="sl1">
           {/* A running session's title shimmers; waiting and failed ones have a dot instead, an idle or archived one neither. */}
-          {renaming ? <RenameField s={s} store={store} /> : <span className={`stitle ${isActive(s) && !needsAttention(s) ? "run" : ""}`} title={displayTitle(s)}>{displayTitle(s)}</span>}
+          {renaming ? (
+            <RenameField s={s} store={store} />
+          ) : (
+            <span className={`stitle ${isActive(s) && !needsAttention(s) ? "run" : ""}`} title={displayTitle(s)}>
+              {displayTitle(s)}
+              {isActive(s) && !needsAttention(s) && <i className="shine" data-t={displayTitle(s)} aria-hidden="true" />}
+            </span>
+          )}
           <span className="smeta">
             {needsAttention(s) && <StatusDot s={s} />}
             <RowStatus s={s} />

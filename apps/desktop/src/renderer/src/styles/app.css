@@ -174,10 +174,16 @@ button{font:inherit;color:inherit}
 .smain{min-width:0;flex:1}
 .sl1{display:flex;gap:8px;align-items:center}
 .stitle{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-/* Running: a faded band crosses the title left to right in 3s, then rests 1.2s. The text is painted by
-   its background, three titles wide, so moving it from the right end to the left moves the band across. */
-.stitle.run{color:transparent;-webkit-background-clip:text;background-clip:text;background-repeat:no-repeat;background-size:300% 100%;background-image:linear-gradient(90deg,var(--l1) 0 38%,var(--l3) 50%,var(--l1) 62% 100%);animation:stitle-run 4.2s ease-in-out infinite}
-@keyframes stitle-run{0%{background-position:100% 0}71%,100%{background-position:0 0}}
+/* Running: a faded band crosses the title left to right in 3s, then rests 1.2s. The band is a copy of the
+   title in the sidebar's colour over it, seen through a soft mask; the mask slides across while the copy
+   slides back by as much, so the copy stays on the title. Both are transforms: the compositor runs them. */
+.stitle.run{position:relative}
+.stitle .shine{position:absolute;inset:0;pointer-events:none;-webkit-mask-image:linear-gradient(90deg,transparent 14%,rgba(0,0,0,.66) 50%,transparent 86%);mask-image:linear-gradient(90deg,transparent 14%,rgba(0,0,0,.66) 50%,transparent 86%);animation:stitle-run 4.2s ease-in-out infinite}
+/* The stroke widens the copy a hair, so it covers the title's anti-aliased edges too. */
+.stitle .shine::before{content:attr(data-t);position:absolute;inset:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:var(--side);-webkit-text-stroke:.4px var(--side);animation:stitle-run-back 4.2s ease-in-out infinite}
+@keyframes stitle-run{0%{transform:translateX(-100%)}71%,100%{transform:translateX(100%)}}
+@keyframes stitle-run-back{0%{transform:translateX(100%)}71%,100%{transform:translateX(-100%)}}
+@media (prefers-reduced-motion:reduce){.stitle .shine{display:none}}
 .smeta{display:inline-flex;align-items:center;gap:5px;font-size:11px;color:var(--l2);flex:none;font-variant-numeric:tabular-nums}
 .sl2{display:flex;align-items:baseline;gap:8px;font-size:11px;color:color-mix(in srgb,var(--l2) 78%,transparent);margin-top:2px}
 .sl2t{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}

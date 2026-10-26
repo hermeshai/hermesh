@@ -45,7 +45,7 @@ test("the overview's motion is all the compositor's: comets ride the running ses
   );
   for (const a of animated) expect(a.props.every((p) => p === "transform" || p === "opacity"), `${a.name}: ${a.props}`).toBe(true);
   const names = new Set(animated.map((a) => a.name));
-  for (const n of ["wc-sweep", "lm-beat", "lm-ring", "lm-breathe", "ping"]) expect(names, n).toContain(n);
+  for (const n of ["wc-sweep", "lm-beat", "lm-ring", "lm-breathe", "ping", "stitle-run", "stitle-run-back"]) expect(names, n).toContain(n);
 
   // Each dot where the link puts it: u of the way along (the document's time over the comet's
   // duration, plus its phase), less its place in the tail; faded in and out at the ends.
