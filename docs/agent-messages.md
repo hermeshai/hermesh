@@ -1,6 +1,6 @@
 # Hermesh messages: agents write to each other
 
-Status: step 1 (the reverse path, §10) built 2026-10-27; steps 2 and 3 designed.
+Status: steps 1 to 3 (§10) built 2026-10-27.
 
 Agents reach coding agents through sessions: Grok Bot starts Claude Code on
 the Mac mini, sends it more, answers its questions. Nothing goes the other
@@ -297,21 +297,17 @@ the hooks are given.
   costs a turn), and ends with the conversation. Only the auth line of that
   socket is documented so far (claude-code#103048), so the hooks' context
   stays the fallback.
-- **Codex**: PostToolUse adds messages to the turn as additional context at
-  the next tool call; Stop keeps the turn going once (`stop_hook_active`)
-  when messages arrived during it; an idle thread gets them with `codex queue
-  --thread <id>`, which Codex takes when the thread is next loaded.
-- **Agents whose hooks run only at turn boundaries** (UserPromptSubmit,
-  Stop) get messages there; an idle one sees them when its user next writes.
-- **What is pushed.** Replies to the conversation's own messages, and news of
-  the sessions it started, always: it asked for them. Other messages only
-  when the conversation prompts for permissions. One that skips permission
-  prompts gets, instead, a line for its user (the hooks' `systemMessage`)
-  saying who wrote and that `hermesh message list` reads them. This is Claude
-  Code's own default for messages from other sessions; Hermesh has to apply
-  it itself, because Claude Code trusts what a conversation's own hook
-  posts. When a hook can't tell the permission mode, it treats it as
-  skipping prompts.
+- **Codex**, and agents whose hooks run only at turn boundaries, get
+  messages from UserPromptSubmit (as additional context) and from Stop,
+  which keeps the turn going once (`stop_hook_active`) when messages arrived
+  during it. An idle thread sees them when its user next writes.
+- **The conversation's key.** Claude Code's SessionStart hook exports it to
+  the conversation's commands as `HERMESH_CONVERSATION`, which `hermesh
+  session start` and `hermesh message send` read, so news and replies come
+  back to it; Codex is told to pass `--from-session <key>` instead.
+- **What is pushed**: messages addressed to the conversation. They are there
+  because it wrote or started something, or because an agent was given its
+  address.
 - **Messages without a conversation** stay in the inbox: the hooks add one
   line saying how many wait. They are never pushed into whichever
   conversation runs.
@@ -511,12 +507,15 @@ End to end, with real binaries (`e2e/`):
   held and expired messages say so.
 - **Loops**: two scripted agents that answer every message are held at the
   21st message of their chain, and the owner is told.
-- **Claude Code on a computer** (`make e2e-real`): a message to a
-  conversation reaches it between tool calls through its inbox, and starts
-  a turn when it is idle; a message nobody asked for, to a conversation that
-  skips permission prompts, only shows its line; a message without a
-  conversation is never pushed. Codex: a message reaches a running turn at
-  its next tool call.
+- **Agents on a computer** (`TestAgentsOnAComputer`, scripted): the hooks
+  deliver a conversation's messages at SessionStart, UserPromptSubmit and
+  Stop, and the watch posts them to a fake inbox socket; a message without a
+  conversation is only counted; `--install` adds the hooks and keeps the
+  settings file as it was.
+- **Claude Code on a computer** (`make e2e-real`, `TestRealClaudeInbox`): a
+  message to an idle conversation reaches it through its inbox and starts a
+  turn. `TestRealSessionWrites`: Claude Code in a session writes to its
+  creator with `message_send`.
 - **Claude Code's own door** (`TestClaudeInboxShut`, built): a message
   posted to a Hermesh session's Claude Code inbox with the session's token
   starts no turn.
@@ -622,3 +621,45 @@ Step 1, 2026-10-27 (`TestSessionNews`, `TestMCPInbox`):
   makes (`GetLatestGrant`): no extra call.
 - **Tests** ring webhooks on the test machine itself, which the gateway
   allows only with `HERMESH_MCP_LOCAL_WEBHOOKS=1`.
+
+Step 2, 2026-10-27 (`TestMessages`, `TestMCPGateway`):
+
+- **`session_send` is gone from MCP outright.** MCP clients call only the
+  tools they were listed, and the SDK refuses any other before the gateway
+  sees it, so there is no tool left to answer with a hint; the server's
+  instructions and every description name `message_send` instead. The CLI
+  keeps `session send` hidden for a release, with a note on stderr.
+- **A message to a session is recorded once, when it arrives**
+  (`MessageReceived`, with what became of it); the turn it begins records
+  no `UserMessage` of its own. The session's creator speaks to its coding
+  agent as with `session send`; anyone else's words come under a line
+  Hermesh writes, naming the sender and saying the turn is that sender's.
+- **A turn of another asker starts whenever the session goes idle**, after
+  a turn ends or is interrupted.
+- **Delivered message ids are remembered while hermeshd runs.** A relay
+  that hands over a message again after the machine restarted would have
+  it delivered twice; the machine acknowledges each once it has it.
+- **The sessions' tools** are a Unix socket in the machine's data
+  directory (or the user's temporary directory when that path is too long
+  for a socket), with a token per session; `hermeshd message-mcp` is the
+  MCP server each coding agent starts. Codex gets it as `mcp_servers` in
+  its config overrides at `thread/start`, to check with the real Codex.
+- **Writing to an agent needs one's own card**, which the owner's Mac
+  publishes once it is online: until then `message send` says so.
+
+Step 3, 2026-10-27 (`TestAgentsOnAComputer`, `TestRealClaudeInbox`):
+
+- **Only messages addressed to a conversation are pushed**, whatever its
+  permission mode. The design pushed others too, by permission mode; but a
+  message reaches a conversation only by its key, which it gave out itself,
+  so the hooks need no policy of their own.
+- **Codex gets messages at turn boundaries only.** Its PostToolUse hook
+  can't add context to a running turn, and `codex queue` has no thread to
+  wake from outside it; UserPromptSubmit and Stop are enough for now.
+- **The watch** is one process per conversation (a pid file in the agent's
+  directory), started by the SessionStart hook; it ends with the socket.
+  While it runs, the hooks only count, so a message is delivered once; a
+  lock per conversation keeps a hook and the watch from taking the same one.
+- **Claude Code's inbox socket** takes an auth line with the token, then
+  messages in the stream-json input's `user` form; checked with the real
+  Claude Code.

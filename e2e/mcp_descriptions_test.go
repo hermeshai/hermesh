@@ -30,12 +30,12 @@ func checkMCPDescriptions(t *testing.T, session *mcp.ClientSession, tools []*mcp
 		"session_get":       {"session_id", "wait_timeout", "session_answer"},
 		"session_list":      {"own", "all", "other clients", "only sessions it started", "archived=true"},
 		"session_events":    {"after", "before", "page.last_seq", "has_more_after"},
-		"session_send":      {"non-empty message", "running turn", "next turn", "every message"},
+		"message_send":      {"non-empty message", "one way to tell a session", "joins that turn", "turn of its own", "inbox", "message.delivered"},
 		"session_answer":    {"choose as an array", "item as an array", "decline=true"},
-		"session_interrupt": {"session started by this connection", "session_send"},
+		"session_interrupt": {"session started by this connection", "message_send"},
 		"session_archive":   {"session started by this connection", "read-only"},
 		"session_unarchive": {"session started by this connection", "worktree is restored"},
-		"session_diff":      {"worktree", "does not support in_place", "session_send", "git diff", "other sessions"},
+		"session_diff":      {"worktree", "does not support in_place", "message_send", "git diff", "other sessions"},
 		"message_list":      {"news", "message_ack", "data from that agent", "capped at 50s"},
 		"message_ack":       {"held=true", "refused=true"},
 		"message_status":    {"waiting", "handled", "expired"},
@@ -71,7 +71,7 @@ func checkMCPDescriptions(t *testing.T, session *mcp.ClientSession, tools []*mcp
 				t.Errorf("%s exposes local file parameter %s", tool.Name, name)
 			}
 		}
-		if timeout, ok := schema.Properties["timeout"]; ok && strings.HasPrefix(tool.Name, "session_") {
+		if timeout, ok := schema.Properties["timeout"]; ok && tool.Name != "message_list" {
 			for _, desc := range []string{tool.Description, timeout.Description} {
 				contains(tool.Name+" timeout", desc, "0s", "capped at 50s", "30s", "wait_timeout", "session_get", "instead of repeating")
 			}

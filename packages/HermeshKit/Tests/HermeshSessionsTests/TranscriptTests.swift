@@ -112,3 +112,21 @@ func call(_ kind: String, _ summary: String, id: String? = nil, name: String = "
     f.hint = "check the logs"
     #expect(failureAdvice(f) == "check the logs")
 }
+
+@Test func transcriptShowsMessagesWithTheOwnersAgents() {
+    var received = Hermesh_Session_V1_MessageReceived()
+    received.messageID = "msg_1"
+    received.from = "c_helper"
+    received.fromName = "helper"
+    received.text = "check staging"
+    received.delivered = "queued"
+    var sent = Hermesh_Session_V1_MessageSent()
+    sent.messageID = "msg_2"
+    sent.to = "c_bot"
+    sent.text = "halfway"
+    let items = transcript([event(1, .messageReceived(received)), event(2, .messageSent(sent))], running: false)
+    #expect(items == [
+        .message(seq: 1, incoming: true, name: "helper", text: "check staging", queued: true),
+        .message(seq: 2, incoming: false, name: "c_bot", text: "halfway", queued: false),
+    ])
+}

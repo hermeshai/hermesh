@@ -88,6 +88,7 @@ func writeDoc(w io.Writer, err error, data ...field) {
 // report prints the document of a JSON command and returns its error
 // marked as reported, so Main prints nothing more.
 func (a *app) report(w io.Writer, err error, data ...field) error {
+	data = append(data, a.extra...)
 	if a.inboxWaiting > 0 {
 		data = append(data, field{"inbox", object{{"waiting", a.inboxWaiting}}})
 	}
@@ -319,7 +320,14 @@ func eventView(e *sessionv1.SessionEvent) object {
 	case *sessionv1.SessionEvent_Status:
 		return typed("status", field{"status", statusName(k.Status.Status)}, field{"reason", k.Status.Reason})
 	case *sessionv1.SessionEvent_TurnStarted:
-		return typed("turn_started")
+		return typed("turn_started", field{"asker", k.TurnStarted.Asker})
+	case *sessionv1.SessionEvent_MessageReceived:
+		m := k.MessageReceived
+		return typed("message_received", field{"message_id", m.MessageId}, field{"from", m.From}, field{"from_name", m.FromName}, field{"text", m.Text},
+			field{"in_reply_to", m.InReplyTo}, field{"delivered", m.Delivered})
+	case *sessionv1.SessionEvent_MessageSent:
+		m := k.MessageSent
+		return typed("message_sent", field{"message_id", m.MessageId}, field{"to", m.To}, field{"to_name", m.ToName}, field{"text", m.Text}, field{"in_reply_to", m.InReplyTo})
 	case *sessionv1.SessionEvent_UserMessage:
 		atts := []object{}
 		for _, f := range k.UserMessage.Attachments {

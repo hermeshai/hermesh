@@ -156,9 +156,13 @@ func (s *Sessions) expireQuestions(l *live, now time.Time) {
 
 // AnswerQuestion answers (or declines) the agent's pending question.
 func (s *Sessions) AnswerQuestion(ctx context.Context, p *Principal, req *sessionv1.AnswerQuestionRequest) (*sessionv1.Session, error) {
-	l, _, err := s.find(p, req.SessionId, p.Kind != PrincipalOwner)
+	l, r, err := s.find(p, req.SessionId, false)
 	if err != nil {
 		return nil, err
+	}
+	// The owner, the session's creator, or whoever asked for the turn.
+	if p.Kind != PrincipalOwner && !s.canWrite(p, r) && (l == nil || !l.askedBy(p.ID())) {
+		return nil, cerr(connect.CodePermissionDenied, "only who asked for the turn may answer its question")
 	}
 	if l == nil {
 		return nil, cerr(connect.CodeFailedPrecondition, "session has ended")

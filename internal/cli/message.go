@@ -13,11 +13,14 @@ import (
 	"strings"
 	"time"
 
+	"connectrpc.com/connect"
 	"github.com/spf13/cobra"
 
+	identityv1 "github.com/hermeshai/hermesh/gen/go/hermesh/identity/v1"
 	inboxv1 "github.com/hermeshai/hermesh/gen/go/hermesh/inbox/v1"
 	relayv1 "github.com/hermeshai/hermesh/gen/go/hermesh/relay/v1"
 	"github.com/hermeshai/hermesh/gen/go/hermesh/relay/v1/relayv1connect"
+	sessionv1 "github.com/hermeshai/hermesh/gen/go/hermesh/session/v1"
 	"github.com/hermeshai/hermesh/internal/peer"
 	"github.com/hermeshai/hermesh/pkg/identity"
 	"github.com/hermeshai/hermesh/pkg/transport"
@@ -29,7 +32,7 @@ import (
 
 func (a *app) messageCmd() *cobra.Command {
 	cmd := group(&cobra.Command{Use: "message", Short: "Messages between your owner's agents and sessions: your inbox, and what became of what you sent"})
-	cmd.AddCommand(a.messageListCmd(), a.messageAckCmd(), a.messageStatusCmd(), a.messageContactsCmd())
+	cmd.AddCommand(a.messageSendCmd(), a.messageListCmd(), a.messageAckCmd(), a.messageStatusCmd(), a.messageContactsCmd(), a.messageHookCmd(), a.messageWatchCmd())
 	return cmd
 }
 
@@ -630,4 +633,340 @@ func (a *app) messageContactsCmd() *cobra.Command {
 			return nil
 		},
 	}
+}
+
+// ---------------------------------------------------------------------------
+// Sending.
+
+// contactRec is a contact that verified, with what the relay gave.
+type contactRec struct {
+	info *identity.ContactInfo
+	raw  *identityv1.Contact
+}
+
+func (a *app) contactRecs(ctx context.Context, ms relayv1connect.MessageServiceClient) ([]contactRec, error) {
+	res, err := ms.Contacts(ctx, &relayv1.ContactsRequest{})
+	if err != nil {
+		return nil, err
+	}
+	if res.RootChain != nil {
+		a.trust.AcceptRootChain(res.RootChain)
+	}
+	var out []contactRec
+	for _, c := range res.Contacts {
+		if info, err := a.trust.VerifyContact(c); err == nil {
+			out = append(out, contactRec{info, c})
+		}
+	}
+	return out, nil
+}
+
+// target is where a message goes: an agent's inbox (and its conversation),
+// or a session on a machine.
+type target struct {
+	inbox, session string
+	name           string
+	machine        *machineRef // a session's machine
+	contact        *contactRec
+}
+
+// resolveTarget reads --to: an agent's name or address (c_…, c_…/<conversation>),
+// a session's address (m_…/s_…) or a bare session id (s_…).
+func (a *app) resolveTarget(to string, contacts []contactRec, machines []machineRef) (target, error) {
+	notFound := func(why string) (target, error) {
+		return target{}, &exitError{code: exitUsage, kind: "not_found", err: errors.New(why), hint: "see `hermesh message contacts`, or `hermesh session list` for sessions"}
+	}
+	inbox, session, _ := strings.Cut(to, "/")
+	if strings.HasPrefix(to, "s_") && session == "" {
+		ref, err := resolveMachine(machines, "", to)
+		if err != nil {
+			return notFound(fmt.Sprintf("no session %q on the machines this agent can reach", to))
+		}
+		inbox, session = ref.ID, to
+	}
+	if strings.HasPrefix(inbox, "m_") {
+		if session == "" {
+			return notFound("a machine takes messages for its sessions: name one (m_…/s_…)")
+		}
+		t := target{inbox: inbox, session: session}
+		if ref, ok := findMachine(machines, inbox); ok {
+			t.machine, t.name = &ref, ref.Name
+		} else {
+			return notFound(fmt.Sprintf("no machine %s this agent can reach", inbox))
+		}
+		for i, c := range contacts {
+			if c.info.Inbox == inbox {
+				t.contact = &contacts[i]
+			}
+		}
+		return t, nil
+	}
+	var found []contactRec
+	for _, c := range contacts {
+		if c.info.Kind != "machine" && (c.info.Inbox == inbox || (!strings.HasPrefix(to, "c_") && c.info.Name == to)) {
+			found = append(found, c)
+		}
+	}
+	switch len(found) {
+	case 0:
+		return notFound(fmt.Sprintf("no agent %q among the owner's contacts", to))
+	case 1:
+	default:
+		return notFound(fmt.Sprintf("%d agents are called %q: give an address", len(found), to))
+	}
+	if strings.HasPrefix(to, "c_") {
+		return target{inbox: inbox, session: session, name: found[0].info.Name, contact: &found[0]}, nil
+	}
+	return target{inbox: found[0].info.Inbox, name: found[0].info.Name, contact: &found[0]}, nil
+}
+
+// expectation says when a recipient will likely read a message.
+func expectation(t target) string {
+	if t.session != "" && t.machine != nil {
+		return ""
+	}
+	switch t.contact.info.TakesMessages {
+	case "webhook":
+		return t.name + " is woken by a webhook: it sees this within minutes"
+	case "hook":
+		return t.name + " takes messages in its next turn"
+	case "wait", "session":
+		return t.name + " takes messages as they arrive"
+	}
+	return t.name + " sees this when it next checks its inbox"
+}
+
+type sentJSON struct {
+	ID        string `json:"id"`
+	To        string `json:"to"`
+	Name      string `json:"name"`
+	Delivered string `json:"delivered"`
+	Expect    string `json:"expect"`
+}
+
+func (a *app) messageSendCmd() *cobra.Command {
+	var to, text, file, subject, replyTo, from string
+	var files []string
+	var wait bool
+	var timeout time.Duration
+	cmd := &cobra.Command{
+		Use:   "send",
+		Short: "Write to one of the owner's agents, or to a session: the one way to tell a session anything",
+		Long: `Write to one of the owner's agents (by name, or address c_…), or to a session (s_…, or m_…/s_…).
+
+To a session: the message goes straight to its machine when it is online. If you asked for the turn
+running now, it joins it (and answers its question); otherwise it waits for a turn of its own. While the
+machine is offline it waits at the post office. Files (-f) need the machine online.
+
+To an agent: the message waits in its inbox until it reads it. --wait waits for its reply.`,
+		Args: cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			body, err := readPrompt("message", text, file, len(files))
+			if err != nil {
+				return err
+			}
+			atts, err := readFiles(files)
+			if err != nil {
+				return err
+			}
+			ctx := cmd.Context()
+			if timeout > 0 {
+				var cancel context.CancelFunc
+				ctx, cancel = context.WithTimeout(ctx, timeout)
+				defer cancel()
+			}
+			c, machines, err := a.connect(ctx, nil)
+			if err != nil {
+				return err
+			}
+			defer c.Close()
+			ms, err := a.messages(c)
+			if err != nil {
+				return err
+			}
+			contacts, err := a.contactRecs(ctx, ms)
+			if err != nil {
+				return err
+			}
+			t, err := a.resolveTarget(to, contacts, machines)
+			if err != nil {
+				return err
+			}
+			m := &inboxv1.Message{MessageId: "msg_" + newIdempotencyKey(), From: &inboxv1.Address{Inbox: a.g.ClientId, Session: conversation(from)},
+				To: &inboxv1.Address{Inbox: t.inbox, Session: t.session}, SentAt: timestampOf(time.Now()), InReplyTo: replyTo, Subject: subject, Text: body}
+			signed, err := identity.Sign(m, a.key)
+			if err != nil {
+				return err
+			}
+			if t.session != "" && t.machine != nil && t.machine.Online {
+				return a.deliverDirect(ctx, cmd, c, t, signed, m, atts, wait)
+			}
+			if len(atts) > 0 {
+				what := "an agent"
+				if t.session != "" {
+					what = "an offline machine"
+				}
+				return &exitError{code: exitUnavailable, kind: "unreachable", retryable: t.session != "", err: fmt.Errorf("files can't wait for %s", what),
+					hint: "send them once the machine is online, or send the message without them"}
+			}
+			if err := a.post(ctx, ms, t, contacts, signed, m); err != nil {
+				return err
+			}
+			sent := sentJSON{ID: m.MessageId, To: address(m.To), Name: t.name, Delivered: "queued", Expect: expectation(t)}
+			if t.session != "" {
+				sent.Expect = "the machine is offline: the message waits for it, and the turn's news comes to your inbox"
+			}
+			if wait && t.session == "" {
+				return a.waitReply(ctx, cmd, ms, sent)
+			}
+			return a.showSent(cmd, sent)
+		},
+	}
+	cmd.Flags().StringVar(&to, "to", "", "who: an agent's name or address (c_…), a session (s_…, m_…/s_…)")
+	cmd.Flags().StringVar(&text, "message", "", "message text")
+	cmd.Flags().StringVar(&file, "message-file", "", "read the message from a file (- for stdin)")
+	cmd.Flags().StringArrayVarP(&files, "file", "f", nil, "attach a file, to a session on an online machine (repeatable)")
+	cmd.Flags().StringVar(&subject, "subject", "", "a short subject")
+	cmd.Flags().StringVar(&replyTo, "reply-to", "", "the id of the message this answers")
+	cmd.Flags().StringVar(&from, "from-session", "", fromSessionHelp)
+	cmd.Flags().BoolVar(&wait, "wait", false, "to a session: wait for the turn the message is in; to an agent: wait for its reply")
+	cmd.Flags().DurationVar(&timeout, "timeout", 0, timeoutHelp)
+	cmd.MarkFlagRequired("to")
+	return cmd
+}
+
+// post seals a message to its recipient's inbox key and hands it to the
+// post office.
+func (a *app) post(ctx context.Context, ms relayv1connect.MessageServiceClient, t target, contacts []contactRec, signed *identityv1.Signed, m *inboxv1.Message) error {
+	if t.contact == nil || t.contact.info.InboxKey == nil {
+		return &exitError{code: exitUsage, kind: "invalid_state", err: fmt.Errorf("%s has no inbox yet", t.inbox), hint: "its Hermesh is older than messages: it needs an update"}
+	}
+	var me *identityv1.Contact
+	for _, c := range contacts {
+		if c.info.Inbox == a.g.ClientId {
+			me = &identityv1.Contact{Card: c.raw.Card, DeviceCert: c.raw.DeviceCert}
+		}
+	}
+	if me == nil {
+		return &exitError{code: exitUnavailable, kind: "unreachable", retryable: true, err: errors.New("the owner's Mac hasn't given this agent its card yet"),
+			hint: "it does once it is online with Hermesh open: try again in a minute"}
+	}
+	sealed, err := identity.SealMessage(t.contact.info.InboxKey, t.inbox, m.MessageId, &inboxv1.SignedMessage{Message: signed, Sender: me})
+	if err != nil {
+		return err
+	}
+	_, err = ms.Send(ctx, &relayv1.SendSealedRequest{Message: &relayv1.SealedMessage{Inbox: t.inbox, MessageId: m.MessageId, Sealed: sealed}})
+	return err
+}
+
+// deliverDirect hands a message to its session's machine over the
+// end-to-end tunnel and says at once what became of it.
+func (a *app) deliverDirect(ctx context.Context, cmd *cobra.Command, c *peer.Client, t target, signed *identityv1.Signed, m *inboxv1.Message, atts []*sessionv1.Attachment, wait bool) error {
+	return a.onMachine(ctx, c, *t.machine, func(c *peer.Client, n *peer.Machine, ref machineRef) error {
+		before, err := n.Session.GetSession(ctx, &sessionv1.GetSessionRequest{SessionId: t.session})
+		if err != nil {
+			return err
+		}
+		if before.Status == sessionv1.SessionStatus_SESSION_STATUS_ARCHIVED {
+			return &exitError{code: exitUsage, kind: "invalid_state", err: fmt.Errorf("session %s is archived (read-only)", t.session),
+				hint: fmt.Sprintf("`hermesh session unarchive %s` to go on with it", t.session)}
+		}
+		res, err := n.Session.DeliverMessage(ctx, &sessionv1.DeliverMessageRequest{SessionId: t.session, Message: signed, Attachments: atts})
+		delivered := ""
+		var sess *sessionv1.Session
+		switch {
+		case connect.CodeOf(err) == connect.CodeUnimplemented && before.CreatedBy == a.g.ClientId:
+			// A machine older than messages: as session send.
+			r, err := n.Session.SendMessage(ctx, &sessionv1.SendMessageRequest{SessionId: t.session, Text: m.Text, Attachments: atts})
+			if err != nil {
+				return err
+			}
+			sess, delivered = r.Session, "joined"
+		case err != nil:
+			return err
+		default:
+			sess, delivered = res.Session, res.Delivered
+		}
+		sent := sentJSON{ID: m.MessageId, To: address(m.To), Name: ref.Name, Delivered: delivered}
+		if delivered == "queued" {
+			sent.Expect = "another agent's turn is running: this waits for a turn of its own, whose news comes to your inbox"
+		}
+		if !wait || delivered == "queued" {
+			if a.output == "json" {
+				return a.report(cmd.OutOrStdout(), nil, field{"message", sent}, field{"session", sessionView(sess, ref.Name)})
+			}
+			fmt.Fprintf(cmd.OutOrStdout(), "%s → %s: %s\n", sent.ID, sent.To, deliveredText(delivered))
+			if sent.Expect != "" {
+				fmt.Fprintln(cmd.ErrOrStderr(), sent.Expect)
+			}
+			return nil
+		}
+		a.extra = append(a.extra, field{"message", sent})
+		return a.waitTurn(ctx, cmd, c, ref, t.session, before.GetProgress().GetLastEventSeq())
+	})
+}
+
+func deliveredText(d string) string {
+	switch d {
+	case "turn":
+		return "it started a turn"
+	case "joined":
+		return "it joined your turn"
+	case "answer":
+		return "it answered the question"
+	case "queued":
+		return "it waits for a turn of its own"
+	}
+	return d
+}
+
+func (a *app) showSent(cmd *cobra.Command, sent sentJSON) error {
+	if a.output == "json" {
+		return a.report(cmd.OutOrStdout(), nil, field{"message", sent})
+	}
+	fmt.Fprintf(cmd.OutOrStdout(), "%s → %s (%s): waiting in its inbox\n", sent.ID, sent.To, sent.Name)
+	if sent.Expect != "" {
+		fmt.Fprintln(cmd.ErrOrStderr(), sent.Expect)
+	}
+	return nil
+}
+
+// waitReply waits for the reply to a message: the first message in the
+// inbox that answers it. Others stay where they are.
+func (a *app) waitReply(ctx context.Context, cmd *cobra.Command, ms relayv1connect.MessageServiceClient, sent sentJSON) error {
+	for {
+		res, err := ms.Fetch(ctx, &relayv1.FetchMessagesRequest{})
+		if err != nil {
+			return a.waitErr(ctx, err)
+		}
+		good, refused, again := a.open(res.Messages)
+		a.ackOutcome(ctx, ms, refused, "refused")
+		a.ackOutcome(ctx, ms, again, "handled")
+		for _, o := range good {
+			if o.m.InReplyTo == sent.ID {
+				v := a.view(o)
+				if a.output == "json" {
+					return a.report(cmd.OutOrStdout(), nil, field{"message", sent}, field{"reply", v})
+				}
+				fmt.Fprintln(cmd.OutOrStdout(), messagesPreface)
+				fmt.Fprintln(cmd.OutOrStdout())
+				printMessage(cmd.OutOrStdout(), v)
+				return nil
+			}
+		}
+		if err := a.waitInbox(ctx, ms); err != nil {
+			return a.waitErr(ctx, err)
+		}
+	}
+}
+
+const fromSessionHelp = "your own conversation's key, so that replies and news come back to it (default: $HERMESH_CONVERSATION, which `message hook` sets in Claude Code)"
+
+// conversation is the caller's own conversation: the flag, else what the
+// agent's hook set.
+func conversation(flag string) string {
+	if flag != "" {
+		return flag
+	}
+	return os.Getenv("HERMESH_CONVERSATION")
 }

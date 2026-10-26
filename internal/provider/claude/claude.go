@@ -144,6 +144,14 @@ func Args(spec provider.StartSpec) []string {
 	if spec.Effort != "" {
 		args = append(args, "--effort", spec.Effort)
 	}
+	if len(spec.MCPServers) > 0 {
+		servers := map[string]any{}
+		for _, m := range spec.MCPServers {
+			servers[m.Name] = map[string]any{"type": "stdio", "command": m.Command, "args": m.Args, "env": m.Env}
+		}
+		b, _ := json.Marshal(map[string]any{"mcpServers": servers})
+		args = append(args, "--mcp-config", string(b))
+	}
 	return args
 }
 

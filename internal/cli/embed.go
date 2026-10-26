@@ -117,9 +117,9 @@ var toolCommands = [][]string{
 	{"auth", "status"},
 	{"project", "list"},
 	{"session", "start"}, {"session", "get"}, {"session", "list"}, {"session", "events"},
-	{"session", "send"}, {"session", "answer"}, {"session", "interrupt"},
+	{"session", "answer"}, {"session", "interrupt"},
 	{"session", "archive"}, {"session", "unarchive"}, {"session", "diff"},
-	{"message", "list"}, {"message", "ack"}, {"message", "status"}, {"message", "contacts"},
+	{"message", "send"}, {"message", "list"}, {"message", "ack"}, {"message", "status"}, {"message", "contacts"},
 }
 
 // localFlags read this computer's files or stdin, which a remote caller

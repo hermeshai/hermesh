@@ -34,6 +34,14 @@ service SessionService {
   rpc SendMessage(SendMessageRequest) returns (SendMessageResponse) {
     option (hermesh.options.v1.access) = ACCESS_WRITE;
   }
+  // DeliverMessage hands the session a message an agent wrote, signed by
+  // that agent (docs/agent-messages.md §7): it joins its sender's own turn,
+  // answers its sender's own question, or starts, or waits for, a turn of
+  // its own. Any agent whose grant covers the session and that may read it
+  // can deliver one.
+  rpc DeliverMessage(DeliverMessageRequest) returns (DeliverMessageResponse) {
+    option (hermesh.options.v1.access) = ACCESS_WRITE;
+  }
   // InterruptSession stops the turn in progress; the session stays, idle,
   // and the next message goes on in the same agent conversation.
   rpc InterruptSession(InterruptSessionRequest) returns (Session) {
@@ -168,6 +176,9 @@ message StartSessionRequest {
   // A short title for session lists. Without one, the session is titled
   // by the first line of the prompt.
   string title = 10;
+  // The starter's own conversation (a Claude Code session id, a Codex
+  // thread): the session's news goes to it (docs/agent-messages.md §6.2).
+  string conversation = 11;
 }
 
 // Attachment is a file sent with a message (at most 20 files and 32 MiB
@@ -465,6 +476,8 @@ message SessionEvent {
     // (StreamEventsRequest.partial). Any stored event that follows ends the
     // draft; its text is then in that event, or the agent dropped it.
     AgentDraft agent_draft = 20;
+    MessageReceived message_received = 21;
+    MessageSent message_sent = 22;
   }
 }
 
@@ -475,6 +488,34 @@ message StatusChanged {
 
 message TurnStarted {
   uint32 turn = 1;
+  // Who asked for the turn: the client id of the agent whose session start
+  // or message began it (docs/agent-messages.md §7.2).
+  string asker = 2;
+}
+
+// A message an agent wrote to the session (docs/agent-messages.md §7.2).
+message MessageReceived {
+  string message_id = 1;
+  // The sender's address: a client id, or a machine id and session.
+  string from = 2;
+  string from_name = 3;
+  string text = 4;
+  string in_reply_to = 5;
+  // What became of it: "turn" (it began a turn), "joined" (it joined its
+  // sender's turn), "answer" (it answered its sender's question) or
+  // "queued" (it waits for a turn of its own).
+  string delivered = 6;
+  repeated AttachmentInfo attachments = 7;
+}
+
+// A message the session's coding agent wrote to an agent.
+message MessageSent {
+  string message_id = 1;
+  // The recipient's address.
+  string to = 2;
+  string to_name = 3;
+  string text = 4;
+  string in_reply_to = 5;
 }
 
 message UserMessage {
@@ -562,6 +603,19 @@ message SendMessageRequest {
 
 message SendMessageResponse {
   Session session = 1;
+}
+
+message DeliverMessageRequest {
+  string session_id = 1;
+  // An inbox.v1.Message, signed by the sender's identity key.
+  hermesh.identity.v1.Signed message = 2;
+  repeated Attachment attachments = 3;
+}
+
+message DeliverMessageResponse {
+  Session session = 1;
+  // As MessageReceived.delivered.
+  string delivered = 2;
 }
 
 message InterruptSessionRequest {
