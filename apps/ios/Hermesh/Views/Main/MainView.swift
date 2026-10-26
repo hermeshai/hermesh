@@ -60,7 +60,7 @@ private struct PageView: View {
 }
 
 /// The menu and the page in a UIKit container. The page moves as one view,
-/// navigation bar and all, on the system's spring, as pushes and sheets do.
+/// navigation bar and all, on a spring timed to the system's push and pop.
 /// (A SwiftUI offset moved the navigation bar's frame, and the bar laid its
 /// large title out again, off the page's margin.)
 private struct SideMenu: UIViewControllerRepresentable {
@@ -217,7 +217,9 @@ final class SideMenuController: UIViewController, UIGestureRecognizerDelegate {
         generation += 1
         let g = generation
         lift()
-        UIView.animate(springDuration: 0.5, bounce: 0, initialSpringVelocity: velocity, options: [.allowUserInteraction, .beginFromCurrentState]) {
+        // 0.32 s: measured frame by frame, the page then reaches 90% of the
+        // way in a quarter second, as a push does (0.5 s took 0.4 s).
+        UIView.animate(springDuration: 0.32, bounce: 0, initialSpringVelocity: velocity, options: [.allowUserInteraction, .beginFromCurrentState]) {
             self.apply(open ? 1 : 0)
         } completion: { _ in
             if g == self.generation && !self.isOpen { self.settle() }
