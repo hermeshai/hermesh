@@ -123,8 +123,13 @@ func Args(spec provider.StartSpec) []string {
 	// else that would prompt is denied, as with --permission-prompts none.
 	// --include-partial-messages streams the reply as it is written
 	// (stream_event lines), for drafts.
+	// crossSessionInbound refuse shuts Claude Code's own inbox: a message
+	// posted there by another session, or by anything holding the session's
+	// token, would start a turn Hermesh never asked for. --settings outranks
+	// the user's and the project's settings.
 	args := []string{"-p", "--input-format", "stream-json", "--output-format", "stream-json", "--verbose", "--replay-user-messages",
-		"--include-partial-messages", "--permission-prompt-tool", "stdio", "--dangerously-skip-permissions"}
+		"--include-partial-messages", "--permission-prompt-tool", "stdio", "--dangerously-skip-permissions",
+		"--settings", `{"crossSessionInbound":"refuse"}`}
 	for _, d := range spec.ReadDirs {
 		args = append(args, "--add-dir", d)
 	}
