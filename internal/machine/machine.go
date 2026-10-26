@@ -27,7 +27,6 @@ import (
 	"github.com/hermeshai/hermesh/internal/provider/acp"
 	"github.com/hermeshai/hermesh/internal/provider/claude"
 	"github.com/hermeshai/hermesh/internal/provider/codex"
-	"github.com/hermeshai/hermesh/internal/shellenv"
 	"github.com/hermeshai/hermesh/pkg/identity"
 	"github.com/hermeshai/hermesh/pkg/transport"
 )
@@ -46,12 +45,12 @@ type Config struct {
 }
 
 func DefaultProviders() map[string]provider.Provider {
-	path := shellenv.Path()
+	// Each looks on the login shell's PATH as it is when it looks.
 	ps := map[string]provider.Provider{
-		"claude": &claude.Provider{PathEnv: path},
-		"codex":  &codex.Provider{PathEnv: path},
+		"claude": &claude.Provider{},
+		"codex":  &codex.Provider{},
 	}
-	for _, p := range acp.Providers(path) {
+	for _, p := range acp.Providers("") {
 		ps[p.Name()] = p
 	}
 	return ps
@@ -83,7 +82,9 @@ type Machine struct {
 	machineCert *identityv1.Signed
 	machineName string
 	revocations *identityv1.RevocationList
-	grants      []*identityv1.Grant // the grants that cover this machine (grants.go)
+	grants      []*identityv1.Grant         // the grants that cover this machine (grants.go)
+	health      []*machinev1.MachineProblem // what keeps it from working (health.go)
+	healthAt    time.Time                   // when it was read
 	paused      bool
 	infos       map[string]provider.Info // what the last check of each coding agent found
 	checked     time.Time                // when the last check of all of them ended
@@ -157,7 +158,7 @@ func Open(cfg Config) (*Machine, error) {
 	ws.none = cfg.WorkspaceMode == "none"
 	n.sessions = &Sessions{st: st, ws: ws, audit: n.audit, log: n.log,
 		machineID: n.machineID, dataDir: cfg.DataDir, providers: cfg.Providers, info: n.providerInfo, limits: cfg.Limits,
-		paused: n.isPaused, defaults: n.agentDefaults, live: map[string]*live{}}
+		paused: n.isPaused, defaults: n.agentDefaults, outOfProcesses: n.outOfProcesses, live: map[string]*live{}}
 	n.sessions.w = newWriter(st, n.log, n.sessions.deliver, n.sessions.changed)
 	n.sessions.notice = n.sessionNotice
 	n.sessions.registerMetrics()
@@ -350,10 +351,17 @@ func (n *Machine) CheckAgents(force bool, maxAge time.Duration) <-chan struct{} 
 		}
 		wg.Wait()
 		n.mu.Lock()
+		short := false // an agent could not start for want of processes: say so now
+		for _, i := range n.infos {
+			short = short || i.Problem == provider.ProblemNoProcesses
+		}
 		n.checked = time.Now()
 		n.checking = nil
 		n.mu.Unlock()
 		close(done)
+		if short {
+			n.refreshHealth()
+		}
 	}()
 	return done
 }
@@ -370,20 +378,23 @@ func (n *Machine) Discover(ctx context.Context) map[string]provider.Info {
 }
 
 func (n *Machine) Status() *machinev1.MachineStatus {
+	n.freshHealth()
 	n.mu.Lock()
 	st := &machinev1.MachineStatus{Name: n.machineName, ProtocolVersion: transport.ProtocolVersion, Platform: runtime.GOOS + "/" + runtime.GOARCH,
 		MaxSessions: uint32(n.cfg.Limits.MaxConcurrent), Paused: n.paused, Version: Version}
 	for _, name := range append(AgentNames(), "fake") {
-		// Claude Code and Codex are always listed; other agents only
-		// when installed, or while their first check is under way.
+		// Claude Code and Codex are always listed; other agents when found
+		// (working or not), when their app lacks the CLI, or while their
+		// first check is under way.
 		i, ok := n.infos[name]
-		if (ok && (i.Available || name == "claude" || name == "codex")) || (!ok && n.pending[name]) {
+		if (ok && (i.Available || i.Problem != provider.ProblemNotFound || name == "claude" || name == "codex")) || (!ok && n.pending[name]) {
 			a := &machinev1.AgentStatus{Name: name, Available: i.Available, Version: i.Version,
-				LoggedIn: i.LoggedIn, Detail: i.Detail, Checking: n.pending[name]}
+				LoggedIn: i.LoggedIn, Detail: i.Detail, Checking: n.pending[name], Problem: machinev1.AgentProblem(i.Problem), Binary: i.Binary}
 			n.agentModels(a, i)
 			st.Agents = append(st.Agents, a)
 		}
 	}
+	st.Problems = n.health
 	n.mu.Unlock()
 	st.RunningSessions = uint32(n.sessions.Running())
 	st.Sessions = n.sessions.Counts()

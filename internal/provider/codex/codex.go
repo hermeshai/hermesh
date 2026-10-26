@@ -35,7 +35,7 @@ func (p *Provider) binary() string {
 		return p.Binary
 	}
 	home, _ := os.UserHomeDir()
-	return provider.LookPath("codex", p.PathEnv,
+	return provider.LookPath("codex", provider.SearchPath(p.PathEnv),
 		"/opt/homebrew/bin/codex", "/usr/local/bin/codex", filepath.Join(home, ".local/bin/codex"),
 		"/Applications/ChatGPT.app/Contents/Resources/codex-cli/bin/codex",
 		"/Applications/Codex.app/Contents/Resources/codex",
@@ -48,32 +48,39 @@ var versionRE = regexp.MustCompile(`\d+\.\d+\.\d+[-\w.]*`)
 func (p *Provider) Discover(ctx context.Context) provider.Info {
 	info := provider.Info{Name: "codex"}
 	bin := p.binary()
-	if bin == "" {
-		info.Detail = "codex not found"
+	if !provider.Exists(bin) {
+		info.Problem, info.Detail = provider.ProblemNotFound, "codex not found"
+		if app := provider.AppWithoutCLI("Codex.app", "ChatGPT.app"); app != "" && p.Binary == "" {
+			info.Problem, info.Detail = provider.ProblemAppWithoutCLI, app
+		}
 		return info
 	}
 	info.Binary = bin
 	ctx, cancel := context.WithTimeout(ctx, 20*time.Second)
 	defer cancel()
-	out, err := exec.CommandContext(ctx, bin, "--version").Output()
-	if err != nil {
-		info.Detail = "codex --version failed: " + err.Error()
+	env := provider.ProbeEnv(p.PathEnv)
+	out, problem, detail := provider.Probe(ctx, env, bin, "--version")
+	if problem != provider.ProblemNone {
+		info.Problem, info.Detail = problem, detail
 		return info
 	}
 	info.Available = true
 	info.Version = versionRE.FindString(string(out))
-	if out, err := exec.CommandContext(ctx, bin, "login", "status").CombinedOutput(); err == nil && strings.Contains(string(out), "Logged in") {
+	login := exec.CommandContext(ctx, bin, "login", "status")
+	login.Env = env
+	if out, err := login.CombinedOutput(); err == nil && strings.Contains(string(out), "Logged in") {
 		info.LoggedIn = true
 	}
-	info.Models, info.Own, _ = catalog(ctx, bin)
+	info.Models, info.Own, _ = catalog(ctx, env, bin)
 	return info
 }
 
 // catalog asks Codex's app server for the models it offers and the
 // configuration its sessions follow unless told otherwise.
-func catalog(ctx context.Context, bin string) ([]provider.Model, provider.Settings, error) {
+func catalog(ctx context.Context, env []string, bin string) ([]provider.Model, provider.Settings, error) {
 	var own provider.Settings
 	cmd := exec.CommandContext(ctx, bin, "app-server")
+	cmd.Env = env
 	in, err := cmd.StdinPipe()
 	if err != nil {
 		return nil, own, err

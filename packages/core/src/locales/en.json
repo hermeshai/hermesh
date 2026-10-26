@@ -59,7 +59,7 @@
     "modelUnavailable": "Start a new session with another model.",
     "limitReached": "Send “continue” to have it go on.",
     "resume": "Send another message to resume the session.",
-    "startFailed": "Run hermeshd doctor on that machine to check."
+    "startFailed": "Open that machine’s page in Hermesh Settings to see what keeps it from starting agents."
   },
   "notice": {
     "questionTitle": "{{grant}} is waiting for you",

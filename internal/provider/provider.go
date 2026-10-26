@@ -20,7 +20,9 @@ type Info struct {
 	Binary    string
 	Version   string
 	LoggedIn  bool
-	Detail    string
+	// Problem is why it is not available; Detail, what was printed.
+	Problem Problem
+	Detail  string
 	// Models it offers and its own configuration, as far as it tells
 	// (Claude Code and Codex), for picking a machine's defaults.
 	Models []Model

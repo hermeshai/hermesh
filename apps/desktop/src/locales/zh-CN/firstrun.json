@@ -148,6 +148,15 @@
       "ultra": "极限"
     },
     "projectsHead": "项目",
-    "backToAgents": "所有 Agent"
+    "backToAgents": "所有 Agent",
+    "cannotRun": "运行不了",
+    "needsCli": "还差命令行工具",
+    "why": {
+      "appWithoutCli": "装了 {{app}}，但还没装 {{agent}} 的命令行工具，Hermesh 用的是它。按 {{agent}} 的文档装好后，Hermesh 会自己发现。",
+      "noProcesses": "找到了，但启动不了：这台机器开不了新程序了（进程数已满）。",
+      "timedOut": "找到了 {{binary}}，但它 20 秒内没有响应。在终端里运行它，看看是不是卡住了。",
+      "missingRuntime": "找到了 {{binary}}，但运行它需要的 {{runtime}} 找不到。确认它在终端里能运行。",
+      "failed": "找到了 {{binary}}，但运行时报错：{{detail}}"
+    }
   }
 }

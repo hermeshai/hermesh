@@ -2,7 +2,7 @@ import { useState, type ReactNode } from "react";
 import type { TFunction } from "i18next";
 import { useTranslation } from "react-i18next";
 import { AgentSpeed, Workspace } from "@hermesh/proto/identity";
-import type { AgentStatus } from "@hermesh/proto/machine";
+import { AgentProblem, type AgentStatus } from "@hermesh/proto/machine";
 import type { Machine, Project } from "@hermesh/proto/local";
 import { codingAgentIds, codingAgentTitle, projectIdFromFolder } from "@hermesh/core";
 import { AgentLogo, AgentTile, Mark } from "@hermesh/ui";
@@ -25,6 +25,38 @@ export const projectsFor = (projects: Project[], agent: string) => projects.filt
 
 export const ready = (a: AgentStatus) => a.available && a.loggedIn;
 
+/** Found (or its app is), but it can't run: it says why rather than counting as not installed. */
+export const broken = (a: AgentStatus) => !a.available && !a.checking && a.problem !== AgentProblem.UNSPECIFIED && a.problem !== AgentProblem.NOT_FOUND;
+
+/** Why a broken agent can't run, and what to do. */
+export function whyBroken(a: AgentStatus, t: TFunction<"firstrun">): string {
+  const v = { agent: codingAgentTitle(a.name), binary: a.binary.replace(/^\/(Users|home)\/[^/]+/, "~"), detail: a.detail };
+  switch (a.problem) {
+    case AgentProblem.APP_WITHOUT_CLI:
+      return t("prepare.why.appWithoutCli", { ...v, app: a.detail.replace(/\.app$/, "") });
+    case AgentProblem.NO_PROCESSES:
+      return t("prepare.why.noProcesses", v);
+    case AgentProblem.TIMED_OUT:
+      return t("prepare.why.timedOut", v);
+    case AgentProblem.MISSING_RUNTIME:
+      return t("prepare.why.missingRuntime", { ...v, runtime: a.detail });
+    default:
+      return t("prepare.why.failed", v);
+  }
+}
+
+/** A broken agent's state in a few words: its CLI is missing, or it can't run. */
+function BrokenState({ a }: { a: AgentStatus }) {
+  const { t } = useTranslation("firstrun");
+  const cli = a.problem === AgentProblem.APP_WITHOUT_CLI;
+  return (
+    <span className={cli ? "warn" : "bad"}>
+      <i />
+      {t(cli ? "prepare.needsCli" : "prepare.cannotRun")}
+    </span>
+  );
+}
+
 /** Claude Code and Codex first, then the order Hermesh lists them in. */
 const order = (name: string) => codingAgentIds.indexOf(name);
 
@@ -35,9 +67,11 @@ const order = (name: string) => codingAgentIds.indexOf(name);
  */
 export function sortAgents(agents: AgentStatus[] | undefined) {
   const installed = (agents ?? []).filter((a) => a.available).sort((a, b) => Number(ready(b)) - Number(ready(a)) || order(a.name) - order(b.name));
+  const troubled = (agents ?? []).filter(broken).sort((a, b) => order(a.name) - order(b.name));
   const checking = (agents ?? []).filter((a) => a.checking && !a.available).sort((a, b) => order(a.name) - order(b.name));
-  const missing = codingAgentIds.filter((id) => !installed.some((a) => a.name === id) && !checking.some((a) => a.name === id));
-  return { installed, checking, missing, searching: !agents || (installed.length === 0 && checking.length > 0), known: !!agents?.length };
+  const listed = (id: string) => [...installed, ...troubled, ...checking].some((a) => a.name === id);
+  const missing = codingAgentIds.filter((id) => !listed(id));
+  return { installed, troubled, checking, missing, searching: !agents || (installed.length === 0 && checking.length > 0), known: !!agents?.length };
 }
 
 /**
@@ -50,7 +84,7 @@ export function AgentList({ m, agents, unknown, onOpen }: { m: Machine; agents: 
   const { t } = useTranslation("firstrun");
   const st = useStore();
   const projects = st.projects.filter((p) => p.machineId === m.machineId);
-  const { installed, checking, missing, known } = agents;
+  const { installed, troubled, checking, missing, known } = agents;
   const others = projects.filter((p) => !installed.some((a) => projectsFor([p], a.name).length > 0));
   const othersTitle = known ? t("prepare.otherProjects") : t("prepare.allProjects");
   return (
@@ -80,6 +114,22 @@ export function AgentList({ m, agents, unknown, onOpen }: { m: Machine; agents: 
             </div>
           );
         })}
+        {troubled.map((a) => (
+          <div key={a.name} className="ag" role="listitem" aria-label={codingAgentTitle(a.name)}>
+            <button className="ag-head" onClick={() => onOpen(a.name)}>
+              <AgentTile agent={a.name} size={32} />
+              <span className="ag-text">
+                <b>{codingAgentTitle(a.name)}</b>
+                <span className="ag-sub">
+                  <BrokenState a={a} />
+                  {projectsFor(projects, a.name).length > 0 && <span>{t("prepare.projects", { count: projectsFor(projects, a.name).length })}</span>}
+                </span>
+                <span className="ag-why">{whyBroken(a, t)}</span>
+              </span>
+              <Icon name="chevR" className="ag-chev" />
+            </button>
+          </div>
+        ))}
         {checking.map((a) => (
           <div key={a.name} className="ag" role="listitem" aria-label={codingAgentTitle(a.name)}>
             <div className="ag-head">
@@ -187,16 +237,17 @@ export function AgentPage({ m, agent }: { m: Machine; agent: string }) {
           <span className="ag-sub">
             <span>{m.machineName}</span>
             {a?.version && <span className="mono">{a.version}</span>}
-            {a && (
+            {a && (broken(a) ? <BrokenState a={a} /> : (
               <span className={a.loggedIn ? "ok" : "warn"}>
                 <i />
                 {a.loggedIn ? t("prepare.signedIn") : t("prepare.notSignedIn")}
               </span>
-            )}
+            ))}
           </span>
         </span>
       </div>
-      {a && !a.loggedIn && (
+      {a && broken(a) && <p className="ag-why">{whyBroken(a, t)}</p>}
+      {a && a.available && !a.loggedIn && (
         <div className="ag-login">
           {ran ? (
             <>

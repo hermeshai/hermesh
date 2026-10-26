@@ -4,6 +4,7 @@ import type { Client, PairingDetails } from "@hermesh/proto/local";
 import { PairingKind } from "@hermesh/proto/identity";
 import { dateOf } from "@hermesh/core";
 import { i18n } from "../../../shared/i18n";
+import { opensActivityMonitor, problemBody, problemsOf, problemTitle, severe } from "../health";
 import { Icon } from "../icons";
 import { useStore, type Store } from "../store";
 
@@ -19,18 +20,30 @@ export function expiringClients(st: Store, now: Date): Client[] {
 
 /**
  * "Needs You": what waits on the owner and is not a session (the sidebar
- * lists those): pairing requests and grants about to expire.
+ * lists those): machines kept from working first, then pairing requests and
+ * grants about to expire. A machine only has only its own health here.
  */
 export function Attention({ now }: { now: Date }) {
   const { t } = useTranslation("overview");
   const st = useStore();
-  const expiring = expiringClients(st, now);
-  const count = st.pairings.length + expiring.length;
+  const owner = !st.status?.machineOnly;
+  const expiring = owner ? expiringClients(st, now) : [];
+  const sick = st.machines.flatMap((m) => problemsOf(m).map((p) => ({ m, p })));
+  const count = sick.length + st.pairings.length + expiring.length;
   if (count === 0) return null;
   return (
     <section aria-label={t("attention.title")}>
       <div className="sec-h">{t("attention.title")}<span className="n">{count}</span></div>
       <div className="card attn" role="list">
+        {sick.map(({ m, p }) => (
+          <Row key={`${m.machineId}:${p.kind}`} icon="warn" tint={severe(p) ? "r" : "y"} title={problemTitle(m, p)} detail={problemBody(p)} wrap>
+            {opensActivityMonitor(m, p) ? (
+              <button className="btn" onClick={() => window.hermesh?.openActivityMonitor()}>{i18n.t("common:health.openActivityMonitor")}</button>
+            ) : (
+              <button className="btn" onClick={() => window.hermesh?.openSettings(`machines/${m.machineId}`)}>{i18n.t("common:health.view")}</button>
+            )}
+          </Row>
+        ))}
         {st.pairings.map((p) => (
           <Row
             key={p.code}
@@ -77,13 +90,13 @@ function pairingTitle(p: PairingDetails): string {
   }
 }
 
-function Row({ icon, tint, title, detail, children }: { icon: string; tint: string; title: string; detail: ReactNode; children: ReactNode }) {
+function Row({ icon, tint, title, detail, wrap, children }: { icon: string; tint: string; title: string; detail: ReactNode; wrap?: boolean; children: ReactNode }) {
   return (
     <div className="arow" role="listitem">
       <span className={`ai ${tint}`}><Icon name={icon} /></span>
       <div className="at">
         <b>{title}</b>
-        <span>{detail}</span>
+        <span className={wrap ? "wrap" : undefined}>{detail}</span>
       </div>
       {children}
     </div>

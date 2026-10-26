@@ -125,5 +125,28 @@
     "down": "Agents can’t use your machines for now",
     "setup": "Open Hermesh to finish setting up",
     "daemon": "The background service isn’t responding"
+  },
+  "health": {
+    "thisMac": "This Mac",
+    "processesTitle": "{{name}} can’t start new programs",
+    "processesTitleNear": "{{name}} is running out of processes",
+    "processesBody": "Its processes are at their limit ({{used}} / {{limit}}): Hermesh can’t start coding agents, and sessions sent to it fail. It recovers by itself once the program holding them quits.",
+    "processesBodyCulprit": "Its processes are at their limit ({{used}} / {{limit}}); {{count}} of them are ended processes {{culprit}} never cleaned up. Hermesh can’t start coding agents, and sessions sent to it fail. Quit {{culprit}} and it recovers by itself.",
+    "processesBodyNear": "Its processes are near their limit ({{used}} / {{limit}}). At the limit, Hermesh can’t start coding agents.",
+    "processesBodyNearCulprit": "Its processes are near their limit ({{used}} / {{limit}}); {{count}} of them are ended processes {{culprit}} never cleaned up. Quit {{culprit}} before Hermesh can’t start coding agents.",
+    "diskTitle": "{{name}}’s disk is nearly full",
+    "diskBody": "Only {{free}} left. Once it is full, new sessions can’t get a worktree and sessions can’t be saved.",
+    "filesTitle": "Hermesh on {{name}} is running out of open files",
+    "filesBody": "{{used}} of {{limit}} open files. Restarting Hermesh helps; if it keeps happening, copy the diagnostics and send them to us.",
+    "shellPathTitle": "Can’t read the PATH of {{name}}’s Terminal",
+    "shellPathBody": "{{detail}}. Coding agents installed with nvm, npm and the like may not be found. Check whether a new Terminal window starts slowly or waits for input; Hermesh tries again every minute.",
+    "shortProcesses": "Can’t start programs",
+    "shortProcessesNear": "Running out of processes",
+    "shortDisk": "Disk nearly full",
+    "shortFiles": "Running out of files",
+    "shortShellPath": "Can’t read PATH",
+    "openActivityMonitor": "Open Activity Monitor",
+    "view": "View",
+    "listLabel": "Problems"
   }
 }

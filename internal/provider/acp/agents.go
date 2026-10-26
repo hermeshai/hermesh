@@ -5,15 +5,15 @@ package acp
 // are not needed because the gate answers permission requests.
 var Agents = []Agent{
 	{Name: "gemini", Command: "gemini", Args: []string{"--acp"}},
-	{Name: "cursor", Command: "cursor-agent", Args: []string{"acp"}, Auth: []string{"cursor_login"}},
+	{Name: "cursor", Command: "cursor-agent", Args: []string{"acp"}, DesktopApps: []string{"Cursor.app"}, Auth: []string{"cursor_login"}},
 	{Name: "copilot", Command: "copilot", Args: []string{"--acp"}},
 	{Name: "opencode", Command: "opencode", Args: []string{"acp"}, Paths: []string{".opencode/bin/opencode"}},
 	{Name: "qwen", Command: "qwen", Args: []string{"--acp"}},
 	{Name: "goose", Command: "goose", Args: []string{"acp"}},
 	{Name: "auggie", Command: "auggie", Args: []string{"--acp"}},
 	{Name: "kimi", Command: "kimi", Args: []string{"acp"}},
-	{Name: "kiro", Command: "kiro-cli", Args: []string{"acp"}},
-	{Name: "qoder", Command: "qodercli", Args: []string{"--acp"}},
+	{Name: "kiro", Command: "kiro-cli", Args: []string{"acp"}, DesktopApps: []string{"Kiro.app"}},
+	{Name: "qoder", Command: "qodercli", Args: []string{"--acp"}, DesktopApps: []string{"Qoder.app"}},
 	// The DSH Desktop app keeps its own dsh, with no `dsh` command.
 	{Name: "deepseek", Command: "dsh", Args: []string{"--profile", "acp"}, Apps: []App{{Bundle: "DSH Desktop.app",
 		Exec: "Contents/MacOS/DSH Desktop", Script: "Contents/Resources/app.asar.unpacked/lib/desktop-cli.js"}}},

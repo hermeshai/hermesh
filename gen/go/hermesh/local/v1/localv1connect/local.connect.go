@@ -110,6 +110,9 @@ const (
 	// LocalServiceCheckAgentsProcedure is the fully-qualified name of the LocalService's CheckAgents
 	// RPC.
 	LocalServiceCheckAgentsProcedure = "/hermesh.local.v1.LocalService/CheckAgents"
+	// LocalServiceGetDiagnosticsProcedure is the fully-qualified name of the LocalService's
+	// GetDiagnostics RPC.
+	LocalServiceGetDiagnosticsProcedure = "/hermesh.local.v1.LocalService/GetDiagnostics"
 	// LocalServiceListProjectsProcedure is the fully-qualified name of the LocalService's ListProjects
 	// RPC.
 	LocalServiceListProjectsProcedure = "/hermesh.local.v1.LocalService/ListProjects"
@@ -236,6 +239,10 @@ type LocalServiceClient interface {
 	// Checks this Mac's coding agents again (installed, version, signed in),
 	// in the background: they are only checked when something needs them.
 	CheckAgents(context.Context, *v1.CheckAgentsRequest) (*v1.CheckAgentsResponse, error)
+	// This Mac's diagnostics as text, for the person to copy and send when
+	// something does not work: versions, health, PATH and each coding agent.
+	// Nothing leaves the Mac unless they do.
+	GetDiagnostics(context.Context, *v1.GetDiagnosticsRequest) (*v1.GetDiagnosticsResponse, error)
 	// Projects.
 	ListProjects(context.Context, *v1.ListProjectsRequest) (*v1.ListProjectsResponse, error)
 	AddProject(context.Context, *v1.AddProjectRequest) (*v1.AddProjectResponse, error)
@@ -452,6 +459,12 @@ func NewLocalServiceClient(httpClient connect.HTTPClient, baseURL string, opts .
 			connect.WithSchema(localServiceMethods.ByName("CheckAgents")),
 			connect.WithClientOptions(opts...),
 		),
+		getDiagnostics: connect.NewClient[v1.GetDiagnosticsRequest, v1.GetDiagnosticsResponse](
+			httpClient,
+			baseURL+LocalServiceGetDiagnosticsProcedure,
+			connect.WithSchema(localServiceMethods.ByName("GetDiagnostics")),
+			connect.WithClientOptions(opts...),
+		),
 		listProjects: connect.NewClient[v1.ListProjectsRequest, v1.ListProjectsResponse](
 			httpClient,
 			baseURL+LocalServiceListProjectsProcedure,
@@ -605,6 +618,7 @@ type localServiceClient struct {
 	setAgentDefaults       *connect.Client[v1.SetAgentDefaultsRequest, v1.SetAgentDefaultsResponse]
 	removeMachine          *connect.Client[v1.RemoveMachineRequest, v1.RemoveMachineResponse]
 	checkAgents            *connect.Client[v1.CheckAgentsRequest, v1.CheckAgentsResponse]
+	getDiagnostics         *connect.Client[v1.GetDiagnosticsRequest, v1.GetDiagnosticsResponse]
 	listProjects           *connect.Client[v1.ListProjectsRequest, v1.ListProjectsResponse]
 	addProject             *connect.Client[v1.AddProjectRequest, v1.AddProjectResponse]
 	removeProject          *connect.Client[v1.RemoveProjectRequest, v1.RemoveProjectResponse]
@@ -871,6 +885,15 @@ func (c *localServiceClient) CheckAgents(ctx context.Context, req *v1.CheckAgent
 	return nil, err
 }
 
+// GetDiagnostics calls hermesh.local.v1.LocalService.GetDiagnostics.
+func (c *localServiceClient) GetDiagnostics(ctx context.Context, req *v1.GetDiagnosticsRequest) (*v1.GetDiagnosticsResponse, error) {
+	response, err := c.getDiagnostics.CallUnary(ctx, connect.NewRequest(req))
+	if response != nil {
+		return response.Msg, err
+	}
+	return nil, err
+}
+
 // ListProjects calls hermesh.local.v1.LocalService.ListProjects.
 func (c *localServiceClient) ListProjects(ctx context.Context, req *v1.ListProjectsRequest) (*v1.ListProjectsResponse, error) {
 	response, err := c.listProjects.CallUnary(ctx, connect.NewRequest(req))
@@ -1106,6 +1129,10 @@ type LocalServiceHandler interface {
 	// Checks this Mac's coding agents again (installed, version, signed in),
 	// in the background: they are only checked when something needs them.
 	CheckAgents(context.Context, *v1.CheckAgentsRequest) (*v1.CheckAgentsResponse, error)
+	// This Mac's diagnostics as text, for the person to copy and send when
+	// something does not work: versions, health, PATH and each coding agent.
+	// Nothing leaves the Mac unless they do.
+	GetDiagnostics(context.Context, *v1.GetDiagnosticsRequest) (*v1.GetDiagnosticsResponse, error)
 	// Projects.
 	ListProjects(context.Context, *v1.ListProjectsRequest) (*v1.ListProjectsResponse, error)
 	AddProject(context.Context, *v1.AddProjectRequest) (*v1.AddProjectResponse, error)
@@ -1318,6 +1345,12 @@ func NewLocalServiceHandler(svc LocalServiceHandler, opts ...connect.HandlerOpti
 		connect.WithSchema(localServiceMethods.ByName("CheckAgents")),
 		connect.WithHandlerOptions(opts...),
 	)
+	localServiceGetDiagnosticsHandler := connect.NewUnaryHandlerSimple(
+		LocalServiceGetDiagnosticsProcedure,
+		svc.GetDiagnostics,
+		connect.WithSchema(localServiceMethods.ByName("GetDiagnostics")),
+		connect.WithHandlerOptions(opts...),
+	)
 	localServiceListProjectsHandler := connect.NewUnaryHandlerSimple(
 		LocalServiceListProjectsProcedure,
 		svc.ListProjects,
@@ -1496,6 +1529,8 @@ func NewLocalServiceHandler(svc LocalServiceHandler, opts ...connect.HandlerOpti
 			localServiceRemoveMachineHandler.ServeHTTP(w, r)
 		case LocalServiceCheckAgentsProcedure:
 			localServiceCheckAgentsHandler.ServeHTTP(w, r)
+		case LocalServiceGetDiagnosticsProcedure:
+			localServiceGetDiagnosticsHandler.ServeHTTP(w, r)
 		case LocalServiceListProjectsProcedure:
 			localServiceListProjectsHandler.ServeHTTP(w, r)
 		case LocalServiceAddProjectProcedure:
@@ -1655,6 +1690,10 @@ func (UnimplementedLocalServiceHandler) RemoveMachine(context.Context, *v1.Remov
 
 func (UnimplementedLocalServiceHandler) CheckAgents(context.Context, *v1.CheckAgentsRequest) (*v1.CheckAgentsResponse, error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("hermesh.local.v1.LocalService.CheckAgents is not implemented"))
+}
+
+func (UnimplementedLocalServiceHandler) GetDiagnostics(context.Context, *v1.GetDiagnosticsRequest) (*v1.GetDiagnosticsResponse, error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("hermesh.local.v1.LocalService.GetDiagnostics is not implemented"))
 }
 
 func (UnimplementedLocalServiceHandler) ListProjects(context.Context, *v1.ListProjectsRequest) (*v1.ListProjectsResponse, error) {

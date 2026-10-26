@@ -2,8 +2,8 @@
 // @generated from file hermesh/machine/v1/machine.proto (package hermesh.machine.v1, syntax proto3)
 /* eslint-disable */
 
-import type { GenFile, GenMessage, GenService } from "@bufbuild/protobuf/codegenv2";
-import { fileDesc, messageDesc, serviceDesc } from "@bufbuild/protobuf/codegenv2";
+import type { GenEnum, GenFile, GenMessage, GenService } from "@bufbuild/protobuf/codegenv2";
+import { enumDesc, fileDesc, messageDesc, serviceDesc } from "@bufbuild/protobuf/codegenv2";
 import type { Timestamp } from "@bufbuild/protobuf/wkt";
 import { file_google_protobuf_timestamp } from "@bufbuild/protobuf/wkt";
 import type { AdminCommand, AgentDefaults, RevocationList, RootChain, Signed, Workspace } from "../../identity/v1/identity_pb";
@@ -17,7 +17,7 @@ import type { Message } from "@bufbuild/protobuf";
  * Describes the file hermesh/machine/v1/machine.proto.
  */
 export const file_hermesh_machine_v1_machine: GenFile = /*@__PURE__*/
-  fileDesc("CiBoZXJtZXNoL21hY2hpbmUvdjEvbWFjaGluZS5wcm90bxISaGVybWVzaC5tYWNoaW5lLnYxIo8BCgxXYXRjaFJlcXVlc3QSFAoMcmVzdW1lX3Rva2VuGAEgASgMEg0KBWxpbWl0GAIgASgNEi0KBHZpZXcYAyABKA4yHy5oZXJtZXNoLnNlc3Npb24udjEuU2Vzc2lvblZpZXcSKwoHaGVsZF9hdBgEIAEoCzIaLmdvb2dsZS5wcm90b2J1Zi5UaW1lc3RhbXAi3QIKDVdhdGNoUmVzcG9uc2USDQoFcmVzZXQYASABKAgSLQoIc2Vzc2lvbnMYAiADKAsyGy5oZXJtZXNoLnNlc3Npb24udjEuU2Vzc2lvbhIbChNkZWxldGVkX3Nlc3Npb25faWRzGAMgAygJEi8KBG5leHQYBCABKAsyIS5oZXJtZXNoLnNlc3Npb24udjEuU2Vzc2lvbkN1cnNvchItCghwcm9qZWN0cxgFIAMoCzIbLmhlcm1lc2gubWFjaGluZS52MS5Qcm9qZWN0EhsKE3JlbW92ZWRfcHJvamVjdF9pZHMYBiADKAkSMQoGc3RhdHVzGAcgASgLMiEuaGVybWVzaC5tYWNoaW5lLnYxLk1hY2hpbmVTdGF0dXMSFAoMcmVzdW1lX3Rva2VuGAggASgMEisKB3NlbnRfYXQYCSABKAsyGi5nb29nbGUucHJvdG9idWYuVGltZXN0YW1wIhAKDkdldEluZm9SZXF1ZXN0Im4KD0dldEluZm9SZXNwb25zZRISCgptYWNoaW5lX2lkGAEgASgJEhQKDG1hY2hpbmVfbmFtZRgCIAEoCRIxCgZzdGF0dXMYAyABKAsyIS5oZXJtZXNoLm1hY2hpbmUudjEuTWFjaGluZVN0YXR1cyL0AgoNTWFjaGluZVN0YXR1cxIMCgRuYW1lGAwgASgJEhgKEHByb3RvY29sX3ZlcnNpb24YASABKA0SEAoIcGxhdGZvcm0YAiABKAkSLwoGYWdlbnRzGAMgAygLMh8uaGVybWVzaC5tYWNoaW5lLnYxLkFnZW50U3RhdHVzEhgKEHJ1bm5pbmdfc2Vzc2lvbnMYBCABKA0SFAoMbWF4X3Nlc3Npb25zGAUgASgNEg4KBnBhdXNlZBgGIAEoCBIPCgd2ZXJzaW9uGAcgASgJEkEKCHNlc3Npb25zGAkgAygLMi8uaGVybWVzaC5tYWNoaW5lLnYxLk1hY2hpbmVTdGF0dXMuU2Vzc2lvbnNFbnRyeRovCg1TZXNzaW9uc0VudHJ5EgsKA2tleRgBIAEoCRINCgV2YWx1ZRgCIAEoDToCOAFKBAgIEAlKBAgKEAtKBAgLEAxSBGhvc3RSD2FnZW50X3Byb2Nlc3Nlc1IKc3RhcnRlZF9hdCKkAgoLQWdlbnRTdGF0dXMSDAoEbmFtZRgBIAEoCRIRCglhdmFpbGFibGUYAiABKAgSDwoHdmVyc2lvbhgDIAEoCRIRCglsb2dnZWRfaW4YBCABKAgSDgoGZGV0YWlsGAYgASgJEhAKCGNoZWNraW5nGAcgASgIEi4KBm1vZGVscxgIIAMoCzIeLmhlcm1lc2gubWFjaGluZS52MS5BZ2VudE1vZGVsEjQKCGRlZmF1bHRzGAkgASgLMiIuaGVybWVzaC5pZGVudGl0eS52MS5BZ2VudERlZmF1bHRzEi8KA293bhgKIAEoCzIiLmhlcm1lc2guaWRlbnRpdHkudjEuQWdlbnREZWZhdWx0c0oECAUQBlIRc2FuZGJveF9hdmFpbGFibGUiNwoKQWdlbnRNb2RlbBIKCgJpZBgBIAEoCRIMCgRuYW1lGAIgASgJEg8KB2VmZm9ydHMYAyADKAkiFQoTTGlzdFByb2plY3RzUmVxdWVzdCLEAQoHUHJvamVjdBISCgpwcm9qZWN0X2lkGAEgASgJEhgKEGRlZmF1bHRfYmFzZV9yZWYYAiABKAkSMQoJd29ya3NwYWNlGAMgASgOMh4uaGVybWVzaC5pZGVudGl0eS52MS5Xb3Jrc3BhY2USDAoEcGF0aBgEIAEoCRITCgtkZXNjcmlwdGlvbhgFIAEoCRIMCgRiYXNlGAYgASgJEhcKD2FjdGl2ZV9zZXNzaW9ucxgHIAEoDRIOCgZhZ2VudHMYCCADKAkiRQoUTGlzdFByb2plY3RzUmVzcG9uc2USLQoIcHJvamVjdHMYASADKAsyGy5oZXJtZXNoLm1hY2hpbmUudjEuUHJvamVjdCJ9ChhBcHBseUFkbWluQ29tbWFuZFJlcXVlc3QSLAoHY29tbWFuZBgBIAEoCzIbLmhlcm1lc2guaWRlbnRpdHkudjEuU2lnbmVkEjMKCHNldHRpbmdzGAIgASgLMiEuaGVybWVzaC5pZGVudGl0eS52MS5BZG1pbkNvbW1hbmQiLAoZQXBwbHlBZG1pbkNvbW1hbmRSZXNwb25zZRIPCgdtZXNzYWdlGAEgASgJIoYBChZQdXNoUmV2b2NhdGlvbnNSZXF1ZXN0EjgKC3Jldm9jYXRpb25zGAEgASgLMiMuaGVybWVzaC5pZGVudGl0eS52MS5SZXZvY2F0aW9uTGlzdBIyCgpyb290X2NoYWluGAIgASgLMh4uaGVybWVzaC5pZGVudGl0eS52MS5Sb290Q2hhaW4iKgoXUHVzaFJldm9jYXRpb25zUmVzcG9uc2USDwoHYXBwbGllZBgBIAEoCDKpAgoOTWFjaGluZVNlcnZpY2USWAoHR2V0SW5mbxIiLmhlcm1lc2gubWFjaGluZS52MS5HZXRJbmZvUmVxdWVzdBojLmhlcm1lc2gubWFjaGluZS52MS5HZXRJbmZvUmVzcG9uc2UiBIi1GAESZwoMTGlzdFByb2plY3RzEicuaGVybWVzaC5tYWNoaW5lLnYxLkxpc3RQcm9qZWN0c1JlcXVlc3QaKC5oZXJtZXNoLm1hY2hpbmUudjEuTGlzdFByb2plY3RzUmVzcG9uc2UiBIi1GAESVAoFV2F0Y2gSIC5oZXJtZXNoLm1hY2hpbmUudjEuV2F0Y2hSZXF1ZXN0GiEuaGVybWVzaC5tYWNoaW5lLnYxLldhdGNoUmVzcG9uc2UiBIi1GAEwATL/AQoTTWFjaGluZUFkbWluU2VydmljZRJ2ChFBcHBseUFkbWluQ29tbWFuZBIsLmhlcm1lc2gubWFjaGluZS52MS5BcHBseUFkbWluQ29tbWFuZFJlcXVlc3QaLS5oZXJtZXNoLm1hY2hpbmUudjEuQXBwbHlBZG1pbkNvbW1hbmRSZXNwb25zZSIEiLUYAhJwCg9QdXNoUmV2b2NhdGlvbnMSKi5oZXJtZXNoLm1hY2hpbmUudjEuUHVzaFJldm9jYXRpb25zUmVxdWVzdBorLmhlcm1lc2gubWFjaGluZS52MS5QdXNoUmV2b2NhdGlvbnNSZXNwb25zZSIEiLUYAmIGcHJvdG8z", [file_google_protobuf_timestamp, file_hermesh_identity_v1_identity, file_hermesh_options_v1_options, file_hermesh_session_v1_session]);
+  fileDesc("CiBoZXJtZXNoL21hY2hpbmUvdjEvbWFjaGluZS5wcm90bxISaGVybWVzaC5tYWNoaW5lLnYxIo8BCgxXYXRjaFJlcXVlc3QSFAoMcmVzdW1lX3Rva2VuGAEgASgMEg0KBWxpbWl0GAIgASgNEi0KBHZpZXcYAyABKA4yHy5oZXJtZXNoLnNlc3Npb24udjEuU2Vzc2lvblZpZXcSKwoHaGVsZF9hdBgEIAEoCzIaLmdvb2dsZS5wcm90b2J1Zi5UaW1lc3RhbXAi3QIKDVdhdGNoUmVzcG9uc2USDQoFcmVzZXQYASABKAgSLQoIc2Vzc2lvbnMYAiADKAsyGy5oZXJtZXNoLnNlc3Npb24udjEuU2Vzc2lvbhIbChNkZWxldGVkX3Nlc3Npb25faWRzGAMgAygJEi8KBG5leHQYBCABKAsyIS5oZXJtZXNoLnNlc3Npb24udjEuU2Vzc2lvbkN1cnNvchItCghwcm9qZWN0cxgFIAMoCzIbLmhlcm1lc2gubWFjaGluZS52MS5Qcm9qZWN0EhsKE3JlbW92ZWRfcHJvamVjdF9pZHMYBiADKAkSMQoGc3RhdHVzGAcgASgLMiEuaGVybWVzaC5tYWNoaW5lLnYxLk1hY2hpbmVTdGF0dXMSFAoMcmVzdW1lX3Rva2VuGAggASgMEisKB3NlbnRfYXQYCSABKAsyGi5nb29nbGUucHJvdG9idWYuVGltZXN0YW1wIhAKDkdldEluZm9SZXF1ZXN0Im4KD0dldEluZm9SZXNwb25zZRISCgptYWNoaW5lX2lkGAEgASgJEhQKDG1hY2hpbmVfbmFtZRgCIAEoCRIxCgZzdGF0dXMYAyABKAsyIS5oZXJtZXNoLm1hY2hpbmUudjEuTWFjaGluZVN0YXR1cyKqAwoNTWFjaGluZVN0YXR1cxIMCgRuYW1lGAwgASgJEhgKEHByb3RvY29sX3ZlcnNpb24YASABKA0SEAoIcGxhdGZvcm0YAiABKAkSLwoGYWdlbnRzGAMgAygLMh8uaGVybWVzaC5tYWNoaW5lLnYxLkFnZW50U3RhdHVzEhgKEHJ1bm5pbmdfc2Vzc2lvbnMYBCABKA0SFAoMbWF4X3Nlc3Npb25zGAUgASgNEg4KBnBhdXNlZBgGIAEoCBIPCgd2ZXJzaW9uGAcgASgJEkEKCHNlc3Npb25zGAkgAygLMi8uaGVybWVzaC5tYWNoaW5lLnYxLk1hY2hpbmVTdGF0dXMuU2Vzc2lvbnNFbnRyeRI0Cghwcm9ibGVtcxgNIAMoCzIiLmhlcm1lc2gubWFjaGluZS52MS5NYWNoaW5lUHJvYmxlbRovCg1TZXNzaW9uc0VudHJ5EgsKA2tleRgBIAEoCRINCgV2YWx1ZRgCIAEoDToCOAFKBAgIEAlKBAgKEAtKBAgLEAxSBGhvc3RSD2FnZW50X3Byb2Nlc3Nlc1IKc3RhcnRlZF9hdCKbAQoOTWFjaGluZVByb2JsZW0SNAoEa2luZBgBIAEoDjImLmhlcm1lc2gubWFjaGluZS52MS5NYWNoaW5lUHJvYmxlbUtpbmQSDAoEdXNlZBgCIAEoBBINCgVsaW1pdBgDIAEoBBIPCgdjdWxwcml0GAQgASgJEhUKDWN1bHByaXRfY291bnQYBSABKA0SDgoGZGV0YWlsGAYgASgJIucCCgtBZ2VudFN0YXR1cxIMCgRuYW1lGAEgASgJEhEKCWF2YWlsYWJsZRgCIAEoCBIPCgd2ZXJzaW9uGAMgASgJEhEKCWxvZ2dlZF9pbhgEIAEoCBIOCgZkZXRhaWwYBiABKAkSEAoIY2hlY2tpbmcYByABKAgSLgoGbW9kZWxzGAggAygLMh4uaGVybWVzaC5tYWNoaW5lLnYxLkFnZW50TW9kZWwSNAoIZGVmYXVsdHMYCSABKAsyIi5oZXJtZXNoLmlkZW50aXR5LnYxLkFnZW50RGVmYXVsdHMSLwoDb3duGAogASgLMiIuaGVybWVzaC5pZGVudGl0eS52MS5BZ2VudERlZmF1bHRzEjEKB3Byb2JsZW0YCyABKA4yIC5oZXJtZXNoLm1hY2hpbmUudjEuQWdlbnRQcm9ibGVtEg4KBmJpbmFyeRgMIAEoCUoECAUQBlIRc2FuZGJveF9hdmFpbGFibGUiNwoKQWdlbnRNb2RlbBIKCgJpZBgBIAEoCRIMCgRuYW1lGAIgASgJEg8KB2VmZm9ydHMYAyADKAkiFQoTTGlzdFByb2plY3RzUmVxdWVzdCLEAQoHUHJvamVjdBISCgpwcm9qZWN0X2lkGAEgASgJEhgKEGRlZmF1bHRfYmFzZV9yZWYYAiABKAkSMQoJd29ya3NwYWNlGAMgASgOMh4uaGVybWVzaC5pZGVudGl0eS52MS5Xb3Jrc3BhY2USDAoEcGF0aBgEIAEoCRITCgtkZXNjcmlwdGlvbhgFIAEoCRIMCgRiYXNlGAYgASgJEhcKD2FjdGl2ZV9zZXNzaW9ucxgHIAEoDRIOCgZhZ2VudHMYCCADKAkiRQoUTGlzdFByb2plY3RzUmVzcG9uc2USLQoIcHJvamVjdHMYASADKAsyGy5oZXJtZXNoLm1hY2hpbmUudjEuUHJvamVjdCJ9ChhBcHBseUFkbWluQ29tbWFuZFJlcXVlc3QSLAoHY29tbWFuZBgBIAEoCzIbLmhlcm1lc2guaWRlbnRpdHkudjEuU2lnbmVkEjMKCHNldHRpbmdzGAIgASgLMiEuaGVybWVzaC5pZGVudGl0eS52MS5BZG1pbkNvbW1hbmQiLAoZQXBwbHlBZG1pbkNvbW1hbmRSZXNwb25zZRIPCgdtZXNzYWdlGAEgASgJIoYBChZQdXNoUmV2b2NhdGlvbnNSZXF1ZXN0EjgKC3Jldm9jYXRpb25zGAEgASgLMiMuaGVybWVzaC5pZGVudGl0eS52MS5SZXZvY2F0aW9uTGlzdBIyCgpyb290X2NoYWluGAIgASgLMh4uaGVybWVzaC5pZGVudGl0eS52MS5Sb290Q2hhaW4iKgoXUHVzaFJldm9jYXRpb25zUmVzcG9uc2USDwoHYXBwbGllZBgBIAEoCCrCAQoSTWFjaGluZVByb2JsZW1LaW5kEiQKIE1BQ0hJTkVfUFJPQkxFTV9LSU5EX1VOU1BFQ0lGSUVEEAASIgoeTUFDSElORV9QUk9CTEVNX0tJTkRfUFJPQ0VTU0VTEAESHQoZTUFDSElORV9QUk9CTEVNX0tJTkRfRElTSxACEh4KGk1BQ0hJTkVfUFJPQkxFTV9LSU5EX0ZJTEVTEAMSIwofTUFDSElORV9QUk9CTEVNX0tJTkRfU0hFTExfUEFUSBAEKucBCgxBZ2VudFByb2JsZW0SHQoZQUdFTlRfUFJPQkxFTV9VTlNQRUNJRklFRBAAEhsKF0FHRU5UX1BST0JMRU1fTk9UX0ZPVU5EEAESIQodQUdFTlRfUFJPQkxFTV9BUFBfV0lUSE9VVF9DTEkQAhIeChpBR0VOVF9QUk9CTEVNX05PX1BST0NFU1NFUxADEhsKF0FHRU5UX1BST0JMRU1fVElNRURfT1VUEAQSIQodQUdFTlRfUFJPQkxFTV9NSVNTSU5HX1JVTlRJTUUQBRIYChRBR0VOVF9QUk9CTEVNX0ZBSUxFRBAGMqkCCg5NYWNoaW5lU2VydmljZRJYCgdHZXRJbmZvEiIuaGVybWVzaC5tYWNoaW5lLnYxLkdldEluZm9SZXF1ZXN0GiMuaGVybWVzaC5tYWNoaW5lLnYxLkdldEluZm9SZXNwb25zZSIEiLUYARJnCgxMaXN0UHJvamVjdHMSJy5oZXJtZXNoLm1hY2hpbmUudjEuTGlzdFByb2plY3RzUmVxdWVzdBooLmhlcm1lc2gubWFjaGluZS52MS5MaXN0UHJvamVjdHNSZXNwb25zZSIEiLUYARJUCgVXYXRjaBIgLmhlcm1lc2gubWFjaGluZS52MS5XYXRjaFJlcXVlc3QaIS5oZXJtZXNoLm1hY2hpbmUudjEuV2F0Y2hSZXNwb25zZSIEiLUYATABMv8BChNNYWNoaW5lQWRtaW5TZXJ2aWNlEnYKEUFwcGx5QWRtaW5Db21tYW5kEiwuaGVybWVzaC5tYWNoaW5lLnYxLkFwcGx5QWRtaW5Db21tYW5kUmVxdWVzdBotLmhlcm1lc2gubWFjaGluZS52MS5BcHBseUFkbWluQ29tbWFuZFJlc3BvbnNlIgSItRgCEnAKD1B1c2hSZXZvY2F0aW9ucxIqLmhlcm1lc2gubWFjaGluZS52MS5QdXNoUmV2b2NhdGlvbnNSZXF1ZXN0GisuaGVybWVzaC5tYWNoaW5lLnYxLlB1c2hSZXZvY2F0aW9uc1Jlc3BvbnNlIgSItRgCYgZwcm90bzM", [file_google_protobuf_timestamp, file_hermesh_identity_v1_identity, file_hermesh_options_v1_options, file_hermesh_session_v1_session]);
 
 /**
  * @generated from message hermesh.machine.v1.WatchRequest
@@ -225,6 +225,14 @@ export type MachineStatus = Message<"hermesh.machine.v1.MachineStatus"> & {
    * @generated from field: map<string, uint32> sessions = 9;
    */
   sessions: { [key: string]: number };
+
+  /**
+   * What keeps this machine from working as it should (none while healthy),
+   * so every screen of the owner can say what is wrong and how to fix it.
+   *
+   * @generated from field: repeated hermesh.machine.v1.MachineProblem problems = 13;
+   */
+  problems: MachineProblem[];
 };
 
 /**
@@ -233,6 +241,57 @@ export type MachineStatus = Message<"hermesh.machine.v1.MachineStatus"> & {
  */
 export const MachineStatusSchema: GenMessage<MachineStatus> = /*@__PURE__*/
   messageDesc(file_hermesh_machine_v1_machine, 4);
+
+/**
+ * @generated from message hermesh.machine.v1.MachineProblem
+ */
+export type MachineProblem = Message<"hermesh.machine.v1.MachineProblem"> & {
+  /**
+   * @generated from field: hermesh.machine.v1.MachineProblemKind kind = 1;
+   */
+  kind: MachineProblemKind;
+
+  /**
+   * PROCESSES and FILES: how many are in use, out of how many; DISK: bytes
+   * free, out of the disk's size.
+   *
+   * @generated from field: uint64 used = 2;
+   */
+  used: bigint;
+
+  /**
+   * @generated from field: uint64 limit = 3;
+   */
+  limit: bigint;
+
+  /**
+   * PROCESSES: the program whose ended processes nobody reaped hold most of
+   * them (its name), and how many it holds.
+   *
+   * @generated from field: string culprit = 4;
+   */
+  culprit: string;
+
+  /**
+   * @generated from field: uint32 culprit_count = 5;
+   */
+  culpritCount: number;
+
+  /**
+   * What went wrong, as the system said it (SHELL_PATH: why the login
+   * shell's PATH could not be read).
+   *
+   * @generated from field: string detail = 6;
+   */
+  detail: string;
+};
+
+/**
+ * Describes the message hermesh.machine.v1.MachineProblem.
+ * Use `create(MachineProblemSchema)` to create a new message.
+ */
+export const MachineProblemSchema: GenMessage<MachineProblem> = /*@__PURE__*/
+  messageDesc(file_hermesh_machine_v1_machine, 5);
 
 /**
  * @generated from message hermesh.machine.v1.AgentStatus
@@ -292,6 +351,20 @@ export type AgentStatus = Message<"hermesh.machine.v1.AgentStatus"> & {
    * @generated from field: hermesh.identity.v1.AgentDefaults own = 10;
    */
   own?: AgentDefaults | undefined;
+
+  /**
+   * Why it is not available (detail: what the system or the agent said).
+   *
+   * @generated from field: hermesh.machine.v1.AgentProblem problem = 11;
+   */
+  problem: AgentProblem;
+
+  /**
+   * Where it was found, when it was.
+   *
+   * @generated from field: string binary = 12;
+   */
+  binary: string;
 };
 
 /**
@@ -299,7 +372,7 @@ export type AgentStatus = Message<"hermesh.machine.v1.AgentStatus"> & {
  * Use `create(AgentStatusSchema)` to create a new message.
  */
 export const AgentStatusSchema: GenMessage<AgentStatus> = /*@__PURE__*/
-  messageDesc(file_hermesh_machine_v1_machine, 5);
+  messageDesc(file_hermesh_machine_v1_machine, 6);
 
 /**
  * @generated from message hermesh.machine.v1.AgentModel
@@ -330,7 +403,7 @@ export type AgentModel = Message<"hermesh.machine.v1.AgentModel"> & {
  * Use `create(AgentModelSchema)` to create a new message.
  */
 export const AgentModelSchema: GenMessage<AgentModel> = /*@__PURE__*/
-  messageDesc(file_hermesh_machine_v1_machine, 6);
+  messageDesc(file_hermesh_machine_v1_machine, 7);
 
 /**
  * @generated from message hermesh.machine.v1.ListProjectsRequest
@@ -343,7 +416,7 @@ export type ListProjectsRequest = Message<"hermesh.machine.v1.ListProjectsReques
  * Use `create(ListProjectsRequestSchema)` to create a new message.
  */
 export const ListProjectsRequestSchema: GenMessage<ListProjectsRequest> = /*@__PURE__*/
-  messageDesc(file_hermesh_machine_v1_machine, 7);
+  messageDesc(file_hermesh_machine_v1_machine, 8);
 
 /**
  * @generated from message hermesh.machine.v1.Project
@@ -410,7 +483,7 @@ export type Project = Message<"hermesh.machine.v1.Project"> & {
  * Use `create(ProjectSchema)` to create a new message.
  */
 export const ProjectSchema: GenMessage<Project> = /*@__PURE__*/
-  messageDesc(file_hermesh_machine_v1_machine, 8);
+  messageDesc(file_hermesh_machine_v1_machine, 9);
 
 /**
  * @generated from message hermesh.machine.v1.ListProjectsResponse
@@ -427,7 +500,7 @@ export type ListProjectsResponse = Message<"hermesh.machine.v1.ListProjectsRespo
  * Use `create(ListProjectsResponseSchema)` to create a new message.
  */
 export const ListProjectsResponseSchema: GenMessage<ListProjectsResponse> = /*@__PURE__*/
-  messageDesc(file_hermesh_machine_v1_machine, 9);
+  messageDesc(file_hermesh_machine_v1_machine, 10);
 
 /**
  * @generated from message hermesh.machine.v1.ApplyAdminCommandRequest
@@ -457,7 +530,7 @@ export type ApplyAdminCommandRequest = Message<"hermesh.machine.v1.ApplyAdminCom
  * Use `create(ApplyAdminCommandRequestSchema)` to create a new message.
  */
 export const ApplyAdminCommandRequestSchema: GenMessage<ApplyAdminCommandRequest> = /*@__PURE__*/
-  messageDesc(file_hermesh_machine_v1_machine, 10);
+  messageDesc(file_hermesh_machine_v1_machine, 11);
 
 /**
  * @generated from message hermesh.machine.v1.ApplyAdminCommandResponse
@@ -474,7 +547,7 @@ export type ApplyAdminCommandResponse = Message<"hermesh.machine.v1.ApplyAdminCo
  * Use `create(ApplyAdminCommandResponseSchema)` to create a new message.
  */
 export const ApplyAdminCommandResponseSchema: GenMessage<ApplyAdminCommandResponse> = /*@__PURE__*/
-  messageDesc(file_hermesh_machine_v1_machine, 11);
+  messageDesc(file_hermesh_machine_v1_machine, 12);
 
 /**
  * @generated from message hermesh.machine.v1.PushRevocationsRequest
@@ -498,7 +571,7 @@ export type PushRevocationsRequest = Message<"hermesh.machine.v1.PushRevocations
  * Use `create(PushRevocationsRequestSchema)` to create a new message.
  */
 export const PushRevocationsRequestSchema: GenMessage<PushRevocationsRequest> = /*@__PURE__*/
-  messageDesc(file_hermesh_machine_v1_machine, 12);
+  messageDesc(file_hermesh_machine_v1_machine, 13);
 
 /**
  * @generated from message hermesh.machine.v1.PushRevocationsResponse
@@ -515,7 +588,111 @@ export type PushRevocationsResponse = Message<"hermesh.machine.v1.PushRevocation
  * Use `create(PushRevocationsResponseSchema)` to create a new message.
  */
 export const PushRevocationsResponseSchema: GenMessage<PushRevocationsResponse> = /*@__PURE__*/
-  messageDesc(file_hermesh_machine_v1_machine, 13);
+  messageDesc(file_hermesh_machine_v1_machine, 14);
+
+/**
+ * @generated from enum hermesh.machine.v1.MachineProblemKind
+ */
+export enum MachineProblemKind {
+  /**
+   * @generated from enum value: MACHINE_PROBLEM_KIND_UNSPECIFIED = 0;
+   */
+  UNSPECIFIED = 0,
+
+  /**
+   * The user's processes are at (or near) their limit: no new program can
+   * start, so no coding agent can.
+   *
+   * @generated from enum value: MACHINE_PROBLEM_KIND_PROCESSES = 1;
+   */
+  PROCESSES = 1,
+
+  /**
+   * The disk with Hermesh's data is nearly full: worktrees and the session
+   * store can't grow.
+   *
+   * @generated from enum value: MACHINE_PROBLEM_KIND_DISK = 2;
+   */
+  DISK = 2,
+
+  /**
+   * hermeshd is near its limit of open files.
+   *
+   * @generated from enum value: MACHINE_PROBLEM_KIND_FILES = 3;
+   */
+  FILES = 3,
+
+  /**
+   * The login shell's PATH could not be read, so agents installed where
+   * only it says (nvm, npm, …) are not found.
+   *
+   * @generated from enum value: MACHINE_PROBLEM_KIND_SHELL_PATH = 4;
+   */
+  SHELL_PATH = 4,
+}
+
+/**
+ * Describes the enum hermesh.machine.v1.MachineProblemKind.
+ */
+export const MachineProblemKindSchema: GenEnum<MachineProblemKind> = /*@__PURE__*/
+  enumDesc(file_hermesh_machine_v1_machine, 0);
+
+/**
+ * @generated from enum hermesh.machine.v1.AgentProblem
+ */
+export enum AgentProblem {
+  /**
+   * @generated from enum value: AGENT_PROBLEM_UNSPECIFIED = 0;
+   */
+  UNSPECIFIED = 0,
+
+  /**
+   * @generated from enum value: AGENT_PROBLEM_NOT_FOUND = 1;
+   */
+  NOT_FOUND = 1,
+
+  /**
+   * Its desktop app is installed but not the command line tool Hermesh
+   * runs (detail: the app).
+   *
+   * @generated from enum value: AGENT_PROBLEM_APP_WITHOUT_CLI = 2;
+   */
+  APP_WITHOUT_CLI = 2,
+
+  /**
+   * Found, but it could not start: the machine can't start new programs.
+   *
+   * @generated from enum value: AGENT_PROBLEM_NO_PROCESSES = 3;
+   */
+  NO_PROCESSES = 3,
+
+  /**
+   * Found, but it did not answer in time.
+   *
+   * @generated from enum value: AGENT_PROBLEM_TIMED_OUT = 4;
+   */
+  TIMED_OUT = 4,
+
+  /**
+   * Found, but what runs it is missing (detail: e.g. "node").
+   *
+   * @generated from enum value: AGENT_PROBLEM_MISSING_RUNTIME = 5;
+   */
+  MISSING_RUNTIME = 5,
+
+  /**
+   * Found, but it failed (detail: the first line it printed).
+   *
+   * @generated from enum value: AGENT_PROBLEM_FAILED = 6;
+   */
+  FAILED = 6,
+}
+
+/**
+ * Describes the enum hermesh.machine.v1.AgentProblem.
+ */
+export const AgentProblemSchema: GenEnum<AgentProblem> = /*@__PURE__*/
+  enumDesc(file_hermesh_machine_v1_machine, 1);
 
 /**
  * MachineService is served by every machine over E2E tunnels.

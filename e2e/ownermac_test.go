@@ -36,6 +36,9 @@ type ownerMac struct {
 	ownerDebug string // where the owner's hermeshd serves /metrics
 	repoHead   string // the owner's HEAD, which sessions must never move
 	addr       string // the owner's connection address
+	// nproc, when set, is the owner daemon's limit on the user's processes
+	// (ulimit -u): it then can't start programs once they reach it.
+	nproc int
 }
 
 // newOwnerMac starts it; daemonEnv and daemonArgs configure the owner
@@ -158,7 +161,12 @@ func (w *ownerMac) worktree(id string) string {
 
 func (w *ownerMac) startOwner() {
 	args := append([]string{"run", "--owner", "--data-dir", filepath.Join(w.tmp, "owner-mac"), "--socket", w.sock}, w.daemonArgs...)
-	w.owner = start(w.t, "owner", w.daemonEnv, filepath.Join(w.bin, "hermeshd"), args...)
+	bin := filepath.Join(w.bin, "hermeshd")
+	if w.nproc > 0 {
+		args = append([]string{"-c", fmt.Sprintf(`ulimit -u %d && exec "$0" "$@"`, w.nproc), bin}, args...)
+		bin = "/bin/sh"
+	}
+	w.owner = start(w.t, "owner", w.daemonEnv, bin, args...)
 	w.logs = append(w.logs, w.owner)
 }
 

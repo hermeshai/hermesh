@@ -48,3 +48,13 @@
 .mtile.xl{width:52px;height:52px;border-radius:12px}
 .mtile.xl .ic{width:26px;height:26px;stroke-width:1.2}
 .settings .sheet .field{height:30px}
+
+/* A machine's problems (health.tsx), at the top of its page. */
+.health-list{display:flex;flex-direction:column;gap:8px}
+.health{display:flex;gap:12px;align-items:flex-start;padding:12px 14px;border-radius:12px}
+.health.bad{background:var(--red-bg)}.health.bad>.ic{color:var(--red)}
+.health.warn{background:var(--orange-bg)}.health.warn>.ic{color:var(--orange)}
+.health>.ic{width:18px;height:18px;margin-top:1px}
+.health b{display:block;font-weight:600;margin-bottom:2px}
+.health p{margin:0;font-size:12px;color:var(--l2);line-height:1.5}
+.health-acts{display:flex;gap:8px;margin-top:9px}

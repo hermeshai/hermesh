@@ -145,6 +145,9 @@
     "pause": "暂停接受新会话",
     "pauseDesc": "正在跑的会话不受影响",
     "running": "正在运行 {{count}} 个",
-    "rename": "改名…"
+    "rename": "改名…",
+    "recheck": "重新检测编码 agent",
+    "copyDiagnostics": "复制诊断信息",
+    "diagnosticsCopied": "诊断信息已拷贝，可以直接粘贴发给我们"
   }
 }

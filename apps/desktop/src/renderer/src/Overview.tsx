@@ -40,7 +40,7 @@ export function Overview() {
               })}
             </div>
           )}
-          {!st.status?.machineOnly && <Attention now={now} />}
+          <Attention now={now} />
           <section aria-label={t("map.title")}>
             <LinkMap pick={pick} onPick={setPick} now={now} usage={usage} />
           </section>

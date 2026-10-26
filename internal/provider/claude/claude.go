@@ -8,7 +8,6 @@ import (
 	"errors"
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"regexp"
 	"slices"
@@ -22,7 +21,7 @@ import (
 )
 
 type Provider struct {
-	// PathEnv is the PATH used to find binaries (login-shell resolved).
+	// PathEnv is the PATH used to find binaries ("": the login shell's).
 	PathEnv string
 	// Binary overrides discovery (tests use a fake CLI).
 	Binary string
@@ -35,7 +34,7 @@ func (p *Provider) binary() string {
 		return p.Binary
 	}
 	home, _ := os.UserHomeDir()
-	return provider.LookPath("claude", p.PathEnv,
+	return provider.LookPath("claude", provider.SearchPath(p.PathEnv),
 		filepath.Join(home, ".local/bin/claude"), filepath.Join(home, ".claude/local/claude"),
 		"/opt/homebrew/bin/claude", "/usr/local/bin/claude", desktopCLI(home))
 }
@@ -71,21 +70,25 @@ var versionRE = regexp.MustCompile(`\d+\.\d+\.\d+`)
 func (p *Provider) Discover(ctx context.Context) provider.Info {
 	info := provider.Info{Name: "claude"}
 	bin := p.binary()
-	if bin == "" {
-		info.Detail = "claude not found"
+	if !provider.Exists(bin) {
+		info.Problem, info.Detail = provider.ProblemNotFound, "claude not found"
+		if app := provider.AppWithoutCLI("Claude.app"); app != "" && p.Binary == "" {
+			info.Problem, info.Detail = provider.ProblemAppWithoutCLI, app
+		}
 		return info
 	}
 	info.Binary = bin
 	ctx, cancel := context.WithTimeout(ctx, 20*time.Second)
 	defer cancel()
-	out, err := exec.CommandContext(ctx, bin, "--version").Output()
-	if err != nil {
-		info.Detail = "claude --version failed: " + err.Error()
+	env := provider.ProbeEnv(p.PathEnv)
+	out, problem, detail := provider.Probe(ctx, env, bin, "--version")
+	if problem != provider.ProblemNone {
+		info.Problem, info.Detail = problem, detail
 		return info
 	}
 	info.Available = true
 	info.Version = versionRE.FindString(string(out))
-	if out, err := exec.CommandContext(ctx, bin, "auth", "status").Output(); err == nil {
+	if out, problem, _ := provider.Probe(ctx, env, bin, "auth", "status"); problem == provider.ProblemNone {
 		var st struct {
 			LoggedIn bool `json:"loggedIn"`
 		}
