@@ -4,7 +4,9 @@
     "general": "通用",
     "grants": "授权",
     "machines": "机器",
-    "account": "账号与设备"
+    "account": "账号与设备",
+    "machinesOnly": "这台 Mac",
+    "accountOnly": "账号"
   },
   "expiringSoon": "{{count}} 个快到期",
   "back": "返回{{page}}",
@@ -84,7 +86,8 @@
     "console": "网页控制台",
     "consoleDesc": "在任何浏览器里查看机器和授权、紧急撤销",
     "open": "打开",
-    "signOut": "退出登录…"
+    "signOut": "退出登录…",
+    "machineOnlyNote": "这台 Mac 是你账号里的执行机器：它运行 agent 的任务，它自己的设置在这里管理；但它不能批准，也看不到你的其他机器。批准请到你的可信设备上。"
   },
   "grants": {
     "expiresIn_other": "{{count}} 天后到期",

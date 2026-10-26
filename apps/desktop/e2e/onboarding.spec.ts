@@ -518,6 +518,42 @@ test("a work Mac joins as a machine only: no Touch ID, the code, the two digits;
   // Online: connected to the relay, which the agent's session needs.
   await expect(page.getByText("在线 · 只执行任务，不能批准")).toBeVisible({ timeout: 30_000 });
 
+  // Its settings are this Mac's: its coding agents and their models, and its
+  // account; no access to grant, no other machine, nothing to approve.
+  const [settings] = await Promise.all([app.waitForEvent("window"), page.getByRole("button", { name: "这台 Mac 的设置" }).click()]);
+  await settings.waitForLoadState();
+  const nav = settings.getByRole("navigation", { name: "设置" });
+  await expect(nav.getByRole("button")).toHaveText(["通用", "这台 Mac", "账号"]);
+  await expect(nav.getByRole("button", { name: "这台 Mac" })).toHaveAttribute("aria-current", "page");
+  const panel = settings.getByRole("main", { name: "这台 Mac" });
+  await expect(panel.getByRole("switch", { name: "安全可信地共享本机 agent" })).toHaveCount(0);
+  await expect(panel.getByRole("button", { name: "添加机器…" })).toHaveCount(0);
+  await expect(panel.getByRole("button", { name: "移除…" })).toHaveCount(0);
+  await snap(settings, "machine-05-settings");
+  const codex = panel.getByRole("list", { name: "编码 Agent" }).getByRole("listitem", { name: "Codex" });
+  await codex.getByRole("button", { name: /^Codex/ }).click({ timeout: 30_000 });
+  const model = panel.getByRole("region", { name: "Codex" }).getByRole("group", { name: "模型" });
+  await expect(model).toContainText("跟随 Codex（GPT-Fake-Big）", { timeout: 30_000 });
+  await answerMenu(app, "gpt-fake-small");
+  await model.getByRole("button").click();
+  await expect(model).toHaveText("模型GPT-Fake-Small");
+  const workMac = daemon(fixture.fresh[5].socket);
+  const codexDefaults = async () => (await workMac.listMachines({})).machines[0]?.status?.agents.find((a) => a.name === "codex")?.defaults?.model;
+  await expect.poll(codexDefaults).toBe("gpt-fake-small");
+  await snap(settings, "machine-06-agent");
+  // ‹ goes back to this Mac, which says what is set.
+  await settings.getByRole("button", { name: "返回这台 Mac" }).click();
+  await expect(codex).toContainText("GPT-Fake-Small");
+  await expect(settings.getByRole("button", { name: /^返回/ })).toHaveCount(0);
+  // Its account: whose it is and where it connects; it can leave from here too.
+  await nav.getByRole("button", { name: "账号" }).click();
+  const account = settings.getByRole("main", { name: "账号" });
+  await expect(account).toContainText("它不能批准，也看不到你的其他机器");
+  await expect(account.getByRole("list", { name: "可信设备" })).toHaveCount(0);
+  await expect(account.getByRole("button", { name: "离开你的 Hermesh…" })).toBeVisible();
+  await snap(settings, "machine-07-account");
+  await settings.close();
+
   // An agent of the owner, granted all machines, runs a session there: the
   // work Mac lists it under the agent's name, opens it and stops it.
   const env = { ...process.env, HERMESH_HOME: fs.mkdtempSync(path.join(os.tmpdir(), "hmagent-")) };

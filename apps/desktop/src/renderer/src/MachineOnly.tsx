@@ -51,8 +51,8 @@ function ProjectRow({ p }: { p: Project }) {
 /**
  * The overview of a Mac that joined its owner as a machine only (a work
  * Mac): this machine, its projects, what runs on it and its usage. Its
- * sessions are in the sidebar, as on a trusted device. From here it can
- * become a trusted device too, or leave.
+ * sessions are in the sidebar, as on a trusted device; its coding agents are
+ * in settings. From here it can become a trusted device too, or leave.
  */
 export function ThisMac() {
   const { t } = useTranslation("firstrun");
@@ -95,6 +95,10 @@ export function ThisMac() {
                 {state} · {t("machineOnly.role")}
               </span>
             </div>
+            {/* Its coding agents, their models and its name are set in settings. */}
+            <button className="tb" aria-label={t("machineOnly.settings")} title={t("machineOnly.settings")} onClick={() => window.hermesh?.openSettings("machines")}>
+              <Icon name="gear" />
+            </button>
             <button
               className={`sw ${paused ? "" : "on"}`}
               role="switch"
