@@ -37,6 +37,8 @@ struct OverviewView: View {
             ToolbarItem(placement: .topBarTrailing) { NewMenu() }
         }
         .task(id: dayKey(model.now)) { await model.loadActivity() }
+        .onAppear { model.overviewShown = true }
+        .onDisappear { model.overviewShown = false }
         .refreshable { await model.loadActivity() }
     }
 

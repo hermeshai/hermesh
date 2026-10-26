@@ -248,6 +248,17 @@ final class HermeshUITests: XCTestCase {
         tap("project-menu-demo")
         tap("独立 worktree：每个会话在自己的分支里")
         try waitFor("a separate worktree again") { self.text("独立 worktree").exists ? true : nil }
+        // Another directory by the same name doesn't replace the project.
+        tap("add-project")
+        let dir = app.textFields.element(boundBy: 0)
+        XCTAssertTrue(dir.waitForExistence(timeout: 10))
+        dir.tap()
+        dir.typeText("/tmp/demo")
+        app.buttons["添加"].tap()
+        XCTAssertTrue(text("已经有叫「demo」的项目").waitForExistence(timeout: 20), "the name is taken")
+        app.alerts.buttons["好"].exists ? app.alerts.buttons["好"].tap() : app.alerts.buttons.firstMatch.tap()
+        tap("close")
+        XCTAssertTrue(text("demo").waitForExistence(timeout: 10), "the project as it was")
         app.navigationBars.buttons.element(boundBy: 0).tap()
     }
 

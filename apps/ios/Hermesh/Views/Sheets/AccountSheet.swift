@@ -9,6 +9,7 @@ import UserNotifications
 /// signing out last. The trusted devices are on the Machines page.
 struct AccountSheet: View {
     @Environment(AppModel.self) private var model
+    @Environment(\.scenePhase) private var scenePhase
     @State private var signingOut = false
     @State private var notifications: UNAuthorizationStatus?
     @AppStorage("appearance") private var appearance = "system"
@@ -39,7 +40,7 @@ struct AccountSheet: View {
                         NotificationsView()
                     } label: {
                         LabeledContent {
-                            Text(notifications == .denied ? "Off" : "On")
+                            Text(notifications.map { [.authorized, .provisional, .ephemeral].contains($0) } == true ? "On" : "Off")
                         } label: {
                             Label { Text("Notifications") } icon: { SettingsIcon(symbol: "bell.badge.fill", color: .red) }
                         }
@@ -89,7 +90,9 @@ struct AccountSheet: View {
             .toolbar { CloseButton() }
             // The app takes the choice too; this sheet shows it at once.
             .preferredColorScheme(appearance == "light" ? .light : appearance == "dark" ? .dark : nil)
-            .task { notifications = await UNUserNotificationCenter.current().notificationSettings().authorizationStatus }
+            // Again when back from the notifications page or from Settings.
+            .onAppear { Task { await readNotifications() } }
+            .onChange(of: scenePhase) { if scenePhase == .active { Task { await readNotifications() } } }
             .refreshable { await model.loadUsage() }
             .confirmationDialog("Sign this iPhone out?", isPresented: $signingOut, titleVisibility: .visible) {
                 if !model.status.removed && model.devices.contains(where: { $0.thisDevice }) {
@@ -126,6 +129,10 @@ struct AccountSheet: View {
         }
         .padding(.vertical, 4)
         .accessibilityElement(children: .combine)
+    }
+
+    private func readNotifications() async {
+        notifications = await UNUserNotificationCenter.current().notificationSettings().authorizationStatus
     }
 
     private var host: String {

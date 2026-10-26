@@ -177,7 +177,8 @@ struct MachineAgentView: View {
     /// agent it is for, the project goes.
     private func projectRow(_ p: Project, title: String, editable: Bool) -> some View {
         let stop = {
-            let rest = (p.agents.isEmpty ? sortedAgents(model.machines.first { $0.machineID == machineID }?.status.agents ?? []).installed.map(\.name) : p.agents).filter { $0 != agent }
+            // One for every agent stays for every other the machine knows of.
+            let rest = (p.agents.isEmpty ? (model.machines.first { $0.machineID == machineID }?.status.agents ?? []).map(\.name) : p.agents).filter { $0 != agent }
             run {
                 if rest.isEmpty {
                     try await model.removeProject(machine: machineID, project: p.projectID)
