@@ -115,6 +115,8 @@ CREATE TABLE tool_outputs (
 `, `
 ALTER TABLE sessions ADD COLUMN effort TEXT NOT NULL DEFAULT '';
 ALTER TABLE sessions ADD COLUMN speed INTEGER NOT NULL DEFAULT 0;
+`, `
+ALTER TABLE turn_usage ADD COLUMN started_at INTEGER NOT NULL DEFAULT 0;
 `}
 
 // Store uses one writer connection (db) and a pool of readers (rdb), so

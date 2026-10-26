@@ -102,11 +102,26 @@ func ask(_ s: inout Session) {
     #expect(searchSessions(all, query: "nothing", filter: SessionFilter(), text: { $0.projectID }).isEmpty)
 }
 
-@Test func todayCountsDoneAndFailed() {
-    var f = session("f", .idle)
-    f.progress.lastFailure.kind = .network
-    let t = todayStats([session("d", .idle), f, session("r", .running), session("old", .idle, updated: -40 * 86400)], now: now, calendar: utc)
-    #expect(t == TodayStats(sessions: 3, done: 1, failed: 1))
+@Test func dayActivityAddsUpHoursAndClients() {
+    func hour(_ h: UInt32, _ by: String, _ n: UInt32) -> Hermesh_Session_V1_ActivityHour {
+        var x = Hermesh_Session_V1_ActivityHour()
+        x.hour = h
+        x.createdBy = by
+        x.sessions = n
+        return x
+    }
+    func client(_ by: String, _ n: UInt32, _ done: UInt32) -> Hermesh_Session_V1_ActivityClient {
+        var x = Hermesh_Session_V1_ActivityClient()
+        x.createdBy = by
+        x.sessions = n
+        x.done = done
+        return x
+    }
+    let a = DayActivity(date: "2026-03-04", hours: [hour(9, "c_bot", 2), hour(9, "c_cursor", 1), hour(14, "c_bot", 1), hour(30, "c_bot", 9)],
+                        clients: [client("c_bot", 3, 2), client("c_cursor", 1, 0)])
+    #expect(a.hours.count == 24 && a.hours[9] == 3 && a.hours[14] == 1 && a.hours.reduce(0, +) == 4)
+    #expect(a.byClient["c_bot"]?[9] == 2 && a.byClient["c_cursor"]?[9] == 1 && a.byClient["c_cursor"]?[14] == 0)
+    #expect(a.sessions == 4 && a.done == 2 && a.sessionsByClient == ["c_bot": 3, "c_cursor": 1])
 }
 
 @Test func turnsAndQuestions() {

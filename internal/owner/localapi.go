@@ -445,6 +445,20 @@ func (l *localService) GetUsage(ctx context.Context, req *localv1.GetUsageReques
 	return l.o().GetUsage(ctx, req)
 }
 
+func (l *localService) GetActivity(ctx context.Context, req *sessionv1.GetActivityRequest) (*localv1.GetActivityResponse, error) {
+	if m, ok, err := l.o().onlyMachine(); ok {
+		if err != nil {
+			return nil, err
+		}
+		res, err := m.Activity(req)
+		if err != nil {
+			return nil, err
+		}
+		return &localv1.GetActivityResponse{Hours: res.Hours, Clients: res.Clients}, nil
+	}
+	return l.o().GetActivity(ctx, req)
+}
+
 func (l *localService) WatchSessions(ctx context.Context, _ *localv1.WatchSessionsRequest, stream *connect.ServerStream[localv1.WatchSessionsResponse]) error {
 	if m, ok, err := l.o().onlyMachine(); ok {
 		if err != nil {

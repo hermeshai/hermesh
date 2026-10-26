@@ -243,18 +243,33 @@ public func searchSessions(_ sessions: [Session], query: String, filter: Session
         .sorted { rank($0) != rank($1) ? rank($0) < rank($1) : $0.updatedDate > $1.updatedDate }
 }
 
-/// The overview's "Today": what the sessions that ran today did.
-public struct TodayStats: Equatable {
-    public var sessions = 0
-    public var done = 0
-    public var failed = 0
-}
+/// A day's work as the machines count it (GetActivity): the sessions that
+/// worked in each hour, in all and by the client that started them, and
+/// the day's sessions and those of them now done.
+public struct DayActivity: Equatable, Sendable {
+    /// The day, YYYY-MM-DD.
+    public var date: String
+    /// 24 counts, midnight first.
+    public var hours: [Int]
+    public var byClient: [String: [Int]]
+    public var sessions: Int
+    public var done: Int
+    public var sessionsByClient: [String: Int]
 
-public func todayStats(_ all: [Session], now: Date, calendar: Calendar = .current) -> TodayStats {
-    let today = all.filter { calendar.isDate($0.updatedDate, inSameDayAs: now) || calendar.isDate($0.createdDate, inSameDayAs: now) || $0.isActive }
-    return TodayStats(sessions: today.count,
-                      done: today.filter { !$0.isFailed && ($0.status == .idle || $0.status == .archived) }.count,
-                      failed: today.filter(\.isFailed).count)
+    public init(date: String, hours: [Hermesh_Session_V1_ActivityHour], clients: [Hermesh_Session_V1_ActivityClient]) {
+        self.date = date
+        var all = Array(repeating: 0, count: 24)
+        var by: [String: [Int]] = [:]
+        for h in hours where h.hour < 24 {
+            all[Int(h.hour)] += Int(h.sessions)
+            by[h.createdBy, default: Array(repeating: 0, count: 24)][Int(h.hour)] += Int(h.sessions)
+        }
+        self.hours = all
+        byClient = by
+        sessions = clients.reduce(0) { $0 + Int($1.sessions) }
+        done = clients.reduce(0) { $0 + Int($1.done) }
+        sessionsByClient = Dictionary(clients.map { ($0.createdBy, Int($0.sessions)) }, uniquingKeysWith: +)
+    }
 }
 
 // MARK: Calendar

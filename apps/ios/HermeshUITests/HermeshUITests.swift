@@ -70,7 +70,7 @@ final class HermeshUITests: XCTestCase {
         // The overview counts them (one asks, two failed); the menu lists them.
         let waiting = app.descendants(matching: .any)["sessions-waiting"].firstMatch
         XCTAssertTrue(waiting.waitForExistence(timeout: 30), "the sessions waiting")
-        XCTAssertTrue(text("提问 1 · 出错 2").exists)
+        XCTAssertTrue(waiting.label.contains("3 个会话等你处理"), waiting.label)
         press(waiting)
         XCTAssertTrue(app.descendants(matching: .any)["drawer-dim"].waitForExistence(timeout: 5), "the menu opens")
         tap("drawer-session-选颜色")
@@ -271,13 +271,20 @@ final class HermeshUITests: XCTestCase {
     func usage() throws {
         openMenu()
         app.buttons["概览"].tap()
-        // Nothing runs since the interrupt; the agent approved and the machine idle.
+        // Nothing runs since the interrupt; today's sessions as the machine
+        // counts them; the agent that worked, the one approved folded; the machine.
         let today = app.descendants(matching: .any)["working-today"]
         XCTAssertTrue(today.waitForExistence(timeout: 20))
-        try waitFor("nothing runs") { today.label.contains("在跑 0") ? true : nil }
-        XCTAssertTrue(text("Cursor").exists, "the agent")
-        XCTAssertTrue(text("空闲").exists, "the agent idle")
-        XCTAssertTrue(text("owner-mac").exists, "the machine")
+        try waitFor("nothing runs, today's work counted") { today.label.hasPrefix("0") && today.label.contains("个会话在跑") && today.label.contains("今天有活动") ? true : nil }
+        let bot = app.descendants(matching: .any)["agent-bot"].firstMatch
+        XCTAssertTrue(bot.exists, "the agent that worked")
+        XCTAssertTrue(bot.label.contains("空闲"), bot.label)
+        let more = app.descendants(matching: .any)["more-agents"].firstMatch
+        XCTAssertTrue(more.exists && more.label.contains("另外 1 个 agent"), more.label)
+        press(more)
+        XCTAssertTrue(app.descendants(matching: .any)["agent-Cursor"].firstMatch.waitForExistence(timeout: 5), "the folded agent")
+        let mac = app.descendants(matching: .any)["machine-row-owner-mac"].firstMatch
+        XCTAssertTrue(mac.exists && mac.label.contains("在线"), mac.label)
         // View All Sessions opens the menu; usage is in the account.
         press(app.descendants(matching: .any)["all-sessions"].firstMatch)
         XCTAssertTrue(app.descendants(matching: .any)["drawer-dim"].waitForExistence(timeout: 5), "the menu opens")

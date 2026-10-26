@@ -1916,6 +1916,23 @@ public nonisolated struct Hermesh_Local_V1_GetUsageResponse: Sendable {
   public init() {}
 }
 
+public nonisolated struct Hermesh_Local_V1_GetActivityResponse: Sendable {
+  // SwiftProtobuf.Message conformance is added in an extension below. See the
+  // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
+  // methods supported on all messages.
+
+  /// An hour and client appear once however many machines worked then.
+  public var hours: [Hermesh_Session_V1_ActivityHour] = []
+
+  public var clients: [Hermesh_Session_V1_ActivityClient] = []
+
+  public var unreachable: [Hermesh_Local_V1_Unreachable] = []
+
+  public var unknownFields = SwiftProtobuf.UnknownStorage()
+
+  public init() {}
+}
+
 public nonisolated struct Hermesh_Local_V1_GetDiffRequest: Sendable {
   // SwiftProtobuf.Message conformance is added in an extension below. See the
   // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
@@ -5788,6 +5805,46 @@ nonisolated extension Hermesh_Local_V1_GetUsageResponse: SwiftProtobuf.Message, 
 
   public static func ==(lhs: Hermesh_Local_V1_GetUsageResponse, rhs: Hermesh_Local_V1_GetUsageResponse) -> Bool {
     if lhs.days != rhs.days {return false}
+    if lhs.unreachable != rhs.unreachable {return false}
+    if lhs.unknownFields != rhs.unknownFields {return false}
+    return true
+  }
+}
+
+nonisolated extension Hermesh_Local_V1_GetActivityResponse: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
+  public static let protoMessageName: String = _protobuf_package + ".GetActivityResponse"
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{1}hours\0\u{1}clients\0\u{1}unreachable\0")
+
+  public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
+    while let fieldNumber = try decoder.nextFieldNumber() {
+      // The use of inline closures is to circumvent an issue where the compiler
+      // allocates stack space for every case branch when no optimizations are
+      // enabled. https://github.com/apple/swift-protobuf/issues/1034
+      switch fieldNumber {
+      case 1: try { try decoder.decodeRepeatedMessageField(value: &self.hours) }()
+      case 2: try { try decoder.decodeRepeatedMessageField(value: &self.clients) }()
+      case 3: try { try decoder.decodeRepeatedMessageField(value: &self.unreachable) }()
+      default: break
+      }
+    }
+  }
+
+  public func traverse<V: SwiftProtobuf.Visitor>(visitor: inout V) throws {
+    if !self.hours.isEmpty {
+      try visitor.visitRepeatedMessageField(value: self.hours, fieldNumber: 1)
+    }
+    if !self.clients.isEmpty {
+      try visitor.visitRepeatedMessageField(value: self.clients, fieldNumber: 2)
+    }
+    if !self.unreachable.isEmpty {
+      try visitor.visitRepeatedMessageField(value: self.unreachable, fieldNumber: 3)
+    }
+    try unknownFields.traverse(visitor: &visitor)
+  }
+
+  public static func ==(lhs: Hermesh_Local_V1_GetActivityResponse, rhs: Hermesh_Local_V1_GetActivityResponse) -> Bool {
+    if lhs.hours != rhs.hours {return false}
+    if lhs.clients != rhs.clients {return false}
     if lhs.unreachable != rhs.unreachable {return false}
     if lhs.unknownFields != rhs.unknownFields {return false}
     return true

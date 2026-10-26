@@ -60,12 +60,9 @@ func workspaceText(_ w: Hermesh_Identity_V1_Workspace) -> String {
 struct MachineRow: View {
     @Environment(AppModel.self) private var model
     let machine: Machine
-    /// What runs on it, when the page counts it from the sessions; the
-    /// machine's own count otherwise.
-    var running: Int?
 
     var body: some View {
-        let running = running ?? Int(machine.status.runningSessions)
+        let running = Int(machine.status.runningSessions)
         HStack(spacing: 12) {
             Image(systemName: machine.status.platform.contains("linux") ? "server.rack" : machine.local ? "laptopcomputer" : "desktopcomputer")
                 .frame(width: 28, height: 28).foregroundStyle(.secondary)

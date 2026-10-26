@@ -79,16 +79,6 @@
     "%lld": {
       "shouldTranslate": false
     },
-    "%lld asking": {
-      "localizations": {
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "提问 %lld"
-          }
-        }
-      }
-    },
     "%lld days": {
       "localizations": {
         "zh-Hans": {
@@ -109,12 +99,40 @@
         }
       }
     },
-    "%lld failed": {
+    "%lld h": {
       "localizations": {
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "出错 %lld"
+            "value": "%lld 时"
+          }
+        }
+      }
+    },
+    "%lld more agents haven’t worked today": {
+      "localizations": {
+        "en": {
+          "variations": {
+            "plural": {
+              "one": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "%lld more agent hasn’t worked today"
+                }
+              },
+              "other": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "%lld more agents haven’t worked today"
+                }
+              }
+            }
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "另外 %lld 个 agent 今天没干活"
           }
         }
       }
@@ -125,6 +143,34 @@
           "stringUnit": {
             "state": "translated",
             "value": "%lld 个在跑"
+          }
+        }
+      }
+    },
+    "%lld sessions need you": {
+      "localizations": {
+        "en": {
+          "variations": {
+            "plural": {
+              "one": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "%lld session needs you"
+                }
+              },
+              "other": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "%lld sessions need you"
+                }
+              }
+            }
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld 个会话等你处理"
           }
         }
       }
@@ -292,6 +338,16 @@
         }
       }
     },
+    "Active today %@": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "今天有活动 %@"
+          }
+        }
+      }
+    },
     "Add": {
       "localizations": {
         "zh-Hans": {
@@ -388,6 +444,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "agent 提问"
+          }
+        }
+      }
+    },
+    "Agents": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Agent"
           }
         }
       }
@@ -1128,6 +1194,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "完成"
+          }
+        }
+      }
+    },
+    "Done %@": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "完成 %@"
           }
         }
       }
@@ -1985,6 +2061,26 @@
         }
       }
     },
+    "Offline": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "离线"
+          }
+        }
+      }
+    },
+    "Offline · %@": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "离线 · %@"
+          }
+        }
+      }
+    },
     "Offline · last online %@": {
       "localizations": {
         "zh-Hans": {
@@ -2445,12 +2541,12 @@
         }
       }
     },
-    "Sessions waiting for you": {
+    "Sessions working each hour": {
       "localizations": {
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "等你处理的会话"
+            "value": "每小时在干活的会话"
           }
         }
       }
@@ -2735,12 +2831,12 @@
         }
       }
     },
-    "Then it can no longer use your machines, and running sessions are interrupted": {
+    "Then it can no longer use your machines": {
       "localizations": {
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "到期后它就不能再用你的机器，正在跑的会话会被打断"
+            "value": "到期后不能再用你的机器"
           }
         }
       }
@@ -2905,12 +3001,12 @@
         }
       }
     },
-    "Today **%lld** sessions · **%lld** running · **%lld** done": {
+    "To Do": {
       "localizations": {
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "今天 **%1$lld** 个会话 · 在跑 **%2$lld** · 完成 **%3$lld**"
+            "value": "待办"
           }
         }
       }
@@ -3375,6 +3471,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "relay.example.com/o_…"
+          }
+        }
+      }
+    },
+    "sessions running": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "个会话在跑"
           }
         }
       }

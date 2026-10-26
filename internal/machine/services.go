@@ -341,3 +341,7 @@ func (n *Machine) execAdmin(ctx context.Context, cmd *identityv1.AdminCommand) (
 func (s *sessionService) GetUsage(ctx context.Context, req *sessionv1.GetUsageRequest) (*sessionv1.GetUsageResponse, error) {
 	return s.n.sessions.Usage(principalFrom(ctx), req)
 }
+
+func (s *sessionService) GetActivity(ctx context.Context, req *sessionv1.GetActivityRequest) (*sessionv1.GetActivityResponse, error) {
+	return s.n.sessions.Activity(principalFrom(ctx), req, time.Now())
+}
