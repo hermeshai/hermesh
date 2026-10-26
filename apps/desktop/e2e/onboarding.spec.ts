@@ -116,6 +116,8 @@ test("a relay of one's own: welcome, authorize, set up this Mac, add a project, 
   await expect(agentPage("Codex").getByRole("button", { name: "在终端运行" })).toBeVisible();
   await expect(page.getByRole("button", { name: "下一步：连接你的 Agent" })).toBeDisabled();
   await snap(page, "first-04-agent");
+  // Drawn as a text link, it takes the pointing hand, as links do.
+  expect(await page.getByRole("button", { name: "所有 Agent" }).evaluate((el) => getComputedStyle(el).cursor)).toBe("pointer");
   await back();
   await page.waitForTimeout(1500); // the agents around the mark have come in
   await expect(page.getByText("绝不获取 Agent 的任何令牌和密钥，只像你自己在命令行里一样使用它们。")).toBeVisible();

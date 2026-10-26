@@ -78,7 +78,7 @@ button{font:inherit;color:inherit}
 .btn:disabled{opacity:.42;pointer-events:none}
 .btn .ic{width:14px;height:14px}
 /* Pointers, as macOS has them: the pointing hand for text links (and buttons drawn as one, like "+ Add Project"); controls (buttons, rows, cards, headings) keep the arrow. */
-.link,.ag-add,a[href]{cursor:pointer}
+.link,.ag-add,.ag-back,a[href]{cursor:pointer}
 .link:disabled,.ag-add:disabled{cursor:default}
 .link{border:0;background:none;padding:0;color:var(--accent-t);font-size:inherit}
 .link:hover{text-decoration:underline}
