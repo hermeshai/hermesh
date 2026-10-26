@@ -3,6 +3,16 @@
     "improvements": [],
     "fixes": []
   },
+  "0.1.1-beta.3": {
+    "improvements": [
+      "A Mac that joined as a machine only manages what is its own in Settings: its coding agents with their models and projects, its name, pausing, and its account.",
+      "Its overview shows which agents may start sessions on this Mac, including ones that haven’t come yet; click one to see what it may do here.",
+      "The overview no longer suggests a first message to send."
+    ],
+    "fixes": [
+      "Session clocks on the overview and in the sidebar tick together."
+    ]
+  },
   "0.1.1-beta.2": {
     "improvements": [
       "Choose the model, reasoning effort and speed Claude Code and Codex use for Hermesh sessions, without changing their own settings.",
