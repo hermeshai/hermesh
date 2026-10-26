@@ -283,7 +283,12 @@ const SessionRow = memo(function SessionRow({ s, sel, grant, meta, renaming, sto
           ) : (
             <span className={`stitle ${isActive(s) && !needsAttention(s) ? "run" : ""}`} title={displayTitle(s)}>
               {displayTitle(s)}
-              {isActive(s) && !needsAttention(s) && <i className="shine" data-t={displayTitle(s)} aria-hidden="true" />}
+              {isActive(s) && !needsAttention(s) && (
+                <>
+                  <span className="shine" data-t={displayTitle(s)} aria-hidden="true" />
+                  <span className="shine band" data-t={displayTitle(s)} aria-hidden="true" />
+                </>
+              )}
             </span>
           )}
           <span className="smeta">
