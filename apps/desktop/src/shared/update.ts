@@ -151,6 +151,34 @@ export function releaseCatalog(en: Record<string, ReleaseSummary>, zh: Record<st
   }));
 }
 
+/**
+ * Why version can't be released yet ("" when it can): each catalog needs
+ * the version's own highlights, at least one line, within what the update
+ * window takes (feedNotes).
+ */
+export function releaseNotesProblem(en: Record<string, ReleaseSummary>, zh: Record<string, ReleaseSummary>, version: string): string {
+  for (const [lang, catalog] of [["en", en], ["zh-CN", zh]] as const) {
+    const s = catalog[version];
+    if (!s) return `${lang}/releases.json has no "${version}": move "unreleased" there (both languages) and write what changed for users`;
+    const lines = [...s.improvements, ...s.fixes];
+    if (lines.length === 0) return `${lang}/releases.json lists nothing for "${version}"`;
+    if (s.improvements.length > 10 || s.fixes.length > 10 || lines.some((l) => !l.trim() || l.length > 1000)) return `${lang}/releases.json: "${version}" has more than 10 lines in a list, or an empty or over-long line`;
+  }
+  return "";
+}
+
+type Headings = { improvements: string; fixes: string };
+
+/** The GitHub release's text: the version's highlights in English, then in Chinese, under the update window's headings. */
+export function releaseBody(en: Record<string, ReleaseSummary>, zh: Record<string, ReleaseSummary>, version: string, headings: { en: Headings; "zh-CN": Headings }): string {
+  const part = (s: ReleaseSummary, h: Headings) =>
+    (["improvements", "fixes"] as const)
+      .filter((g) => s[g].length > 0)
+      .map((g) => `### ${h[g]}\n\n${s[g].map((l) => `- ${l}`).join("\n")}\n`)
+      .join("\n");
+  return `${part(en[version], headings.en)}\n---\n\n${part(zh[version], headings["zh-CN"])}`;
+}
+
 /** Only bounded plain text crosses from the feed into the update window. */
 export function feedNotes(value: unknown): ReleaseNote[] {
   if (!Array.isArray(value)) return [];

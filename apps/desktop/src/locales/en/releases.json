@@ -1,5 +1,27 @@
 {
   "unreleased": {
+    "improvements": [],
+    "fixes": []
+  },
+  "0.1.1-beta.2": {
+    "improvements": [
+      "Choose the model, reasoning effort and speed Claude Code and Codex use for Hermesh sessions, without changing their own settings.",
+      "Each coding agent has its own page, in Settings and during setup, with its model and its projects.",
+      "Watch an agent's reply as it is written.",
+      "Conversations read more easily: a calmer column, GitHub-style Markdown, quieter tool steps, and a card with the session's details.",
+      "Organize the session list from a view menu, collapse its groups, and rename or delete a session from its row.",
+      "Choose System, Light or Dark appearance in Settings.",
+      "Sign out and back in, with each account kept separately on this Mac.",
+      "Lists open faster: Hermesh answers from its own up-to-date copy."
+    ],
+    "fixes": [
+      "A question waiting for your answer notifies you again when Hermesh starts.",
+      "The menu bar shows an update only once it is ready to install.",
+      "The search palette takes the keyboard as soon as it opens.",
+      "The pointer behaves as on the rest of macOS: a hand only on links."
+    ]
+  },
+  "0.1.1-beta.1": {
     "improvements": [
       "Find updates in the Hermesh menu and a quiet sidebar reminder.",
       "Read release highlights in the app, and choose when to download or restart.",

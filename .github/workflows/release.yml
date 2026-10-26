@@ -6,7 +6,22 @@ permissions:
   contents: write
   packages: write
 jobs:
+  # The version's highlights for users, in English and Chinese, from the app's
+  # catalogs (apps/desktop/src/locales/*/releases.json): nothing is built
+  # without them, and they become the release's text.
+  notes:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - run: node apps/desktop/scripts/release-notes.mjs "$GITHUB_REF_NAME" > "$RUNNER_TEMP/notes.md"
+      - uses: softprops/action-gh-release@v2
+        with:
+          body_path: ${{ runner.temp }}/notes.md
   binaries:
+    needs: notes
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -25,6 +40,7 @@ jobs:
         with:
           files: dist/release/*
   relay-image:
+    needs: notes
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -48,6 +64,7 @@ jobs:
   # Official releases require the certificate and notarization key; local builds may omit them.
   # One DMG per architecture for installation, plus the zip and feed installed apps read (docs/desktop-app.md §6.5–6.7).
   mac-app:
+    needs: notes
     strategy:
       matrix:
         arch: [arm64, x64]

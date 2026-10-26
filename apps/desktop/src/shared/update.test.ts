@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { checkEvery, feedNotes, newer, nextCheckDelay, nextUpdate, releaseCatalog, releaseFeed, squirrelFailure, type Update, type UpdateEvent } from "./update.ts";
+import { checkEvery, feedNotes, newer, nextCheckDelay, nextUpdate, releaseBody, releaseCatalog, releaseFeed, releaseNotesProblem, squirrelFailure, type Update, type UpdateEvent } from "./update.ts";
 
 test("newer compares versions as numbers, releases after their pre-releases", () => {
   const cases: [string, string, boolean][] = [
@@ -99,4 +99,16 @@ test("localized history includes skipped versions, with the current release firs
   assert.deepEqual(feedNotes([{ version: "0.1.0", summary: { en: summary } }, null, { version: "wrong" }]), []);
   assert.deepEqual(feedNotes(undefined), []);
   assert.deepEqual(feedNotes([{ version: "0.1.0", summary: { en: { improvements: ["a".repeat(1001)], fixes: [] }, "zh-CN": summary } }]), []);
+});
+
+test("a version is released only with its own highlights in both languages", () => {
+  const en = { unreleased: { improvements: ["Soon"], fixes: [] }, "0.2.0": { improvements: ["New"], fixes: ["Fixed"] } };
+  const zh = { unreleased: { improvements: ["快了"], fixes: [] }, "0.2.0": { improvements: ["新"], fixes: [] } };
+  assert.equal(releaseNotesProblem(en, zh, "0.2.0"), "");
+  assert.match(releaseNotesProblem(en, zh, "0.3.0"), /en\/releases.json has no "0.3.0"/);
+  assert.match(releaseNotesProblem(en, { ...zh, "0.2.0": { improvements: [], fixes: [] } }, "0.2.0"), /zh-CN\/releases.json lists nothing/);
+  assert.match(releaseNotesProblem({ ...en, "0.2.0": { improvements: Array(11).fill("x"), fixes: [] } }, zh, "0.2.0"), /more than 10 lines/);
+
+  const body = releaseBody(en, zh, "0.2.0", { en: { improvements: "Improvements", fixes: "Fixes" }, "zh-CN": { improvements: "改进", fixes: "修复" } });
+  assert.equal(body, "### Improvements\n\n- New\n\n### Fixes\n\n- Fixed\n\n---\n\n### 改进\n\n- 新\n");
 });
