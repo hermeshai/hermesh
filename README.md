@@ -127,21 +127,26 @@ Commands are "noun + action": `auth`, `project`, `session` and `message`, each w
 hermesh project list                # where you can work: machine/project, the owner's notes, branch, platform, usable coding agents, whether a session can start now
 hermesh session start --project vps-1/demo --agent claude --wait --prompt "Fix the bug on the login page"   # demo alone is enough if only one machine has it
 hermesh session start --project demo --title "Login page bug" --prompt "..."   # a title for the app and session list; default: the prompt's first line
-hermesh session send s_xxx --wait --message "Add one more test"   # also while running: the message joins the current turn
-hermesh session send s_xxx --wait -f screenshot.png -f spec.pdf --message "Change it to match these"   # attach files
-hermesh session answer s_xxx --wait --choose 2   # answer the agent's question (also --text, --decline, or just send a message)
+hermesh message send --to s_xxx --wait --message "Add one more test"   # the one way to tell a session anything; while it runs, the message joins your turn
+hermesh message send --to s_xxx --wait -f screenshot.png -f spec.pdf --message "Change it to match these"   # attach files
+hermesh session answer s_xxx --wait --choose 2   # answer the agent's question (also --text, --decline, or just write to the session)
 hermesh session diff s_xxx
 hermesh session list                # your sessions (--archived for archived ones)
-hermesh session interrupt s_xxx     # stop the running turn; the session stays, and a later send continues it
+hermesh session interrupt s_xxx     # stop the running turn; the session stays, and a later message continues it
 hermesh session archive s_xxx       # when done: read-only, frees the worktree (the branch keeps the changes); unarchive restores it
 hermesh session events s_xxx --after 812   # events page by page: the latest 50 by default; --after newer, --before older
 hermesh message list --wait         # your inbox: news of your sessions, messages from the owner's other agents
 hermesh message ack msg_xxx         # handled: it leaves the inbox
+hermesh message send --to "Grok Bot" --message "PR #143 is ready"   # to another of the owner's agents (message contacts lists them)
 ```
+
+**Messages to a session.** `message send --to <session>` goes straight to its machine when it's online. If you asked for the turn running now, it joins it (Claude Code and Codex take it at the next tool boundary) and answers its question; otherwise it starts a turn of its own, or waits for one, so one agent's words never go into another's turn. Any agent whose grant covers the session and that may see it can write to it; only the agent that started it can interrupt or archive it. While the machine is offline the message waits for it (files need it online). `session send` still works for now, as an alias.
 
 **Your inbox.** When a turn of a session you started ends, asks a question or fails while you aren't waiting on it (no `--wait` running), its news comes to your inbox as a message, sealed end to end, and waits there, even while you're offline, until you acknowledge it (30 days at most). Every command's JSON says `inbox.waiting` while messages wait. `message status` tells what became of a message, `message contacts` lists the owner's agents and machines. See [docs/agent-messages.md](docs/agent-messages.md).
 
-**Sessions never end on their own.** However long one has been idle, another `send` continues the same coding agent session.
+**Claude Code and Codex on your computer.** `hermesh message hook claude --install` (or `codex`) adds Hermesh's hooks to the agent's user settings. Each conversation then gets the messages addressed to it, such as news of the sessions it started and replies to what it wrote: at the start of its turns and when a turn would end, and in Claude Code also between tool calls and while idle (a new turn). Messages addressed to no conversation stay in the inbox; the hooks only say how many wait. In Claude Code the conversation's commands know its key (`HERMESH_CONVERSATION`); from Codex, add `--from-session <key>` to `session start` and `message send`.
+
+**Sessions never end on their own.** However long one has been idle, another message continues the same coding agent session.
 
 **Questions mid-turn.** Claude Code (AskUserQuestion), Codex and ACP agents with form questions can ask in the middle of a turn. The session goes to `waiting_input`; `--wait` returns at once with exit code 8 and prints the question and options. Answer with `session answer` (`--choose` a label or number, `--text`, or `--decline`), with `session send` (the message is the answer), or on the session page in the app. Unanswered, a question expires after 30 minutes by default and the agent is told to use its own judgment and state its assumptions; `session start --question-timeout 0` means nobody will answer in this session. Answers to secret questions go only to the agent and aren't recorded in events.
 

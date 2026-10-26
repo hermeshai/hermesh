@@ -195,6 +195,18 @@ function RowView({ it, sessionId, failure, clients, grant, previous }: RowProps)
         </div>
       );
     }
+    case "message":
+      // A message between the session and another of the owner's agents: who, and what became of it.
+      return (
+        <div className={it.direction === "in" ? "msg in" : "msg out"}>
+          <div className="msg-head">
+            <Icon name="mail" className="sm" />
+            <b>{t(it.direction === "in" ? "chat.messageFrom" : "chat.messageTo", { name: it.name || it.address })}</b>
+            {it.delivered === "queued" && <span className="msg-note">{t("chat.messageQueued")}</span>}
+          </div>
+          <div className="msg-body sel-text"><Markdown text={it.text} /></div>
+        </div>
+      );
     case "error": {
       const e = it.error;
       return <FailLine title={e.failure ? t("chat.failedWith", { title: failureTitle(e.failure.kind) }) : t("chat.failed")} message={e.message} />;

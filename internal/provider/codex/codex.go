@@ -201,8 +201,19 @@ func (p *Provider) Start(ctx context.Context, spec provider.StartSpec) (provider
 	if spec.Model != "" {
 		params["model"] = spec.Model
 	}
+	config := map[string]any{}
 	if spec.Effort != "" {
-		params["config"] = map[string]any{"model_reasoning_effort": spec.Effort}
+		config["model_reasoning_effort"] = spec.Effort
+	}
+	if len(spec.MCPServers) > 0 {
+		servers := map[string]any{}
+		for _, m := range spec.MCPServers {
+			servers[m.Name] = map[string]any{"command": m.Command, "args": m.Args, "env": m.Env}
+		}
+		config["mcp_servers"] = servers
+	}
+	if len(config) > 0 {
+		params["config"] = config
 	}
 	switch spec.Speed {
 	case identityv1.AgentSpeed_AGENT_SPEED_FAST:

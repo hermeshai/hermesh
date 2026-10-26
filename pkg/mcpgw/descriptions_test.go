@@ -11,7 +11,7 @@ func TestAdvertisedWaitLimits(t *testing.T) {
 		if _, ok := toolDescriptions[tool.Name]; !ok {
 			t.Errorf("%s needs an MCP-specific description", tool.Name)
 		}
-		if tool.Name != "session_start" && tool.Name != "session_send" && tool.Name != "session_answer" {
+		if tool.Name != "session_start" && tool.Name != "message_send" && tool.Name != "session_answer" {
 			continue
 		}
 		for _, timeout := range []string{"", "0s", "30s", "50s", "60s"} {

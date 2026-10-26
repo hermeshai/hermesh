@@ -34,6 +34,16 @@ var inlineImage = map[string]bool{"image/png": true, "image/jpeg": true, "image/
 type message struct {
 	text  string
 	files []*sessionv1.AttachmentInfo
+	// by is who it is from (Principal.ID): the asker of the turn it is in
+	// (docs/agent-messages.md §7.2); conv is the asker's own conversation,
+	// where the turn's news goes.
+	by, conv string
+	// quiet: an agent's message, recorded as MessageReceived when it
+	// arrived; its turn records no UserMessage for it. answer is what of
+	// it answers a question: its text without the words Hermesh puts
+	// around it.
+	quiet  bool
+	answer string
 }
 
 func (m message) input() provider.Input {
@@ -47,11 +57,26 @@ func (m message) input() provider.Input {
 }
 
 func (m message) join(o message) message {
-	return message{text: m.text + "\n\n" + o.text, files: append(append([]*sessionv1.AttachmentInfo{}, m.files...), o.files...)}
+	if m.text == "" && len(m.files) == 0 {
+		return o
+	}
+	return message{text: m.text + "\n\n" + o.text, files: append(append([]*sessionv1.AttachmentInfo{}, m.files...), o.files...), by: m.by, conv: m.conv,
+		quiet: m.quiet && o.quiet, answer: m.answerText()}
 }
 
-func (m message) userEvent() *sessionv1.SessionEvent {
-	return &sessionv1.SessionEvent{Kind: &sessionv1.SessionEvent_UserMessage{UserMessage: &sessionv1.UserMessage{Text: m.text, Attachments: m.files}}}
+func (m message) answerText() string {
+	if m.answer != "" {
+		return m.answer
+	}
+	return m.text
+}
+
+// userEvents are what the session records when the agent takes m.
+func (m message) userEvents() []*sessionv1.SessionEvent {
+	if m.quiet {
+		return nil
+	}
+	return []*sessionv1.SessionEvent{{Kind: &sessionv1.SessionEvent_UserMessage{UserMessage: &sessionv1.UserMessage{Text: m.text, Attachments: m.files}}}}
 }
 
 // checkAttachments validates a message's files before anything is saved.

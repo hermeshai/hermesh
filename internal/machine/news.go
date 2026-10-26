@@ -124,13 +124,23 @@ func (n *Machine) contact(ctx context.Context, ms relayv1connect.MessageServiceC
 	return info, nil
 }
 
-// sessionNews writes the agent that asked for a turn how it went, for the
-// events the owner's iPhone hears of too.
+// sessionNews writes the agent that asked for a turn how it went, and the
+// session's creator when that's someone else, for the events the owner's
+// iPhone hears of too.
 func (n *Machine) sessionNews(s noticeSession, e *sessionv1.SessionEvent) {
-	to := s.createdBy
-	if !strings.HasPrefix(to, "c_") || n.sessions.following(s.id, to) {
-		return
+	to := []*inboxv1.Address{{Inbox: s.asker, Session: s.askerConv}}
+	if s.createdBy != s.asker {
+		to = append(to, &inboxv1.Address{Inbox: s.createdBy, Session: s.creatorConv})
 	}
+	for _, a := range to {
+		if strings.HasPrefix(a.Inbox, "c_") && !n.sessions.following(s.id, a.Inbox) {
+			n.newsFor(a, s, e)
+		}
+	}
+}
+
+// newsFor writes one agent the news of event e.
+func (n *Machine) newsFor(to *inboxv1.Address, s noticeSession, e *sessionv1.SessionEvent) {
 	news := &inboxv1.SessionNews{SessionId: s.id, Title: s.title, Project: s.project, Agent: s.agent, Machine: n.Name()}
 	switch k := e.Kind.(type) {
 	case *sessionv1.SessionEvent_QuestionAsked:
@@ -157,13 +167,13 @@ func (n *Machine) sessionNews(s noticeSession, e *sessionv1.SessionEvent) {
 		return
 	}
 	m := &inboxv1.Message{MessageId: "msg_" + strings.ToLower(ulid.Make().String()), From: &inboxv1.Address{Inbox: n.machineID, Session: s.id},
-		To: &inboxv1.Address{Inbox: to}, SentAt: timestamppb.Now(), Text: newsText(news), SessionNews: news}
+		To: to, SentAt: timestamppb.Now(), Text: newsText(news), SessionNews: news}
 	for attempt := range 3 {
 		err := n.sendMessage(m)
 		if err == nil {
 			return
 		}
-		n.log.Debug("session news not sent", "session", s.id, "to", to, "attempt", attempt, "err", err)
+		n.log.Debug("session news not sent", "session", s.id, "to", to.Inbox, "attempt", attempt, "err", err)
 		time.Sleep(time.Duration(5*(attempt+1)) * time.Second)
 	}
 }

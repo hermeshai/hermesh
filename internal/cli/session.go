@@ -114,7 +114,7 @@ func readPrompt(flag, text, file string, files int) (string, error) {
 }
 
 func (a *app) startCmd() *cobra.Command {
-	var project, agent, base, model, prompt, promptFile, title, idem string
+	var project, agent, base, model, prompt, promptFile, title, idem, fromSession string
 	var questionTimeout time.Duration
 	var files []string
 	var wait bool
@@ -156,7 +156,8 @@ func (a *app) startCmd() *cobra.Command {
 			}
 			return a.onMachine(ctx, c, ref, func(c *peer.Client, n *peer.Machine, ref machineRef) error {
 				res, err := n.Session.StartSession(ctx, &sessionv1.StartSessionRequest{IdempotencyKey: idem, ProjectId: projectID,
-					Agent: agent, Prompt: text, BaseRef: base, Model: model, Attachments: atts, QuestionTimeoutSeconds: qt, Title: title})
+					Agent: agent, Prompt: text, BaseRef: base, Model: model, Attachments: atts, QuestionTimeoutSeconds: qt, Title: title,
+					Conversation: conversation(fromSession)})
 				if connect.CodeOf(err) == connect.CodeNotFound {
 					return &exitError{code: exitUsage, kind: "not_found", err: err, hint: "see `hermesh project list`"}
 				}
@@ -187,6 +188,7 @@ func (a *app) startCmd() *cobra.Command {
 	f.StringVar(&idem, "idempotency-key", "", "retrying with the same key returns the same session")
 	f.BoolVar(&wait, "wait", false, waitHelp)
 	f.DurationVar(&timeout, "timeout", 0, timeoutHelp)
+	f.StringVar(&fromSession, "from-session", "", fromSessionHelp)
 	cmd.MarkFlagRequired("project")
 	return cmd
 }
@@ -436,6 +438,12 @@ func (a *app) printEvent(w io.Writer, e *sessionv1.SessionEvent) {
 		fmt.Fprintf(w, "[%s]%s\n", statusName(k.Status.Status), suffix(k.Status.Reason))
 	case *sessionv1.SessionEvent_TurnStarted:
 		fmt.Fprintf(w, "── turn %d ──\n", k.TurnStarted.Turn)
+	case *sessionv1.SessionEvent_MessageReceived:
+		m := k.MessageReceived
+		fmt.Fprintf(w, "✉ from %s (%s, %s): %s\n", firstNonEmpty(m.FromName, m.From), m.MessageId, deliveredText(m.Delivered), oneLine(m.Text, 200))
+	case *sessionv1.SessionEvent_MessageSent:
+		m := k.MessageSent
+		fmt.Fprintf(w, "✉ to %s (%s): %s\n", firstNonEmpty(m.ToName, m.To), m.MessageId, oneLine(m.Text, 200))
 	case *sessionv1.SessionEvent_UserMessage:
 		fmt.Fprintf(w, "> %s\n", oneLine(k.UserMessage.Text, 200))
 		for _, f := range k.UserMessage.Attachments {
@@ -859,8 +867,9 @@ func (a *app) sendCmd() *cobra.Command {
 	var wait bool
 	var timeout time.Duration
 	cmd := &cobra.Command{
-		Use:   "send <session id>",
-		Short: "Send a message to a session; while it works, the message joins the running turn",
+		Use:    "send <session id>",
+		Hidden: true, // `message send --to <session>` took its place (docs/agent-messages.md §7.5)
+		Short:  "Send a message to a session; while it works, the message joins the running turn",
 		Long: `Send a message to a session.
 
 Attach files with -f (repeatable). An idle session starts a new turn. While a turn runs, Claude Code and Codex
@@ -869,6 +878,7 @@ take input only between turns (ACP) run it as the next turn, right after.
 --wait returns once the agent has handled every message sent so far.`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
+			fmt.Fprintf(cmd.ErrOrStderr(), "note: `hermesh session send` is now `hermesh message send --to %s`\n", args[0])
 			text, err := readPrompt("message", message, file, len(files))
 			if err != nil {
 				return err

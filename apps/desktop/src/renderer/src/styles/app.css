@@ -369,6 +369,10 @@ button{font:inherit;color:inherit}
 .tq{border-radius:12px;background:var(--fill);padding:10px 12px;font-size:12.5px}
 .tq b{font-weight:600}
 .tq .ans{margin-top:5px;color:var(--l2)}
+.msg{border-radius:12px;background:var(--fill);padding:10px 12px;font-size:13.5px;line-height:19px}
+.msg-head{display:flex;align-items:center;gap:6px;font-size:12px;color:var(--l2);margin-bottom:4px}
+.msg-head b{font-weight:600;color:var(--l1)}
+.msg-note{margin-left:auto}
 .add-anim{animation:fadein .4s cubic-bezier(.2,0,0,1)}
 /* A failure, in the voice of the steps: a red line, a grey line, Details and Archive; the agent's words folded. */
 .qfail{display:flex;flex-direction:column;gap:4px;margin-top:6px}

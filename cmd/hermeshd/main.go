@@ -333,7 +333,10 @@ func main() {
 
 	helper := &cobra.Command{Use: "spawn-helper", Hidden: true, Args: cobra.NoArgs,
 		RunE: func(*cobra.Command, []string) error { return spawn.Serve(os.NewFile(3, "spawn-helper")) }}
-	root.AddCommand(run, pair, doctor, status, audit, svc, helper,
+	// The tools a session's coding agent starts (docs/agent-messages.md §7.4).
+	messageMCP := &cobra.Command{Use: "message-mcp", Hidden: true, Args: cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, _ []string) error { return machine.ServeMessageMCP(cmd.Context()) }}
+	root.AddCommand(run, pair, doctor, status, audit, svc, helper, messageMCP,
 		&cobra.Command{Use: "version", Run: func(*cobra.Command, []string) { fmt.Println(machine.Version) }})
 	if err := root.Execute(); err != nil {
 		os.Exit(1)

@@ -192,6 +192,17 @@ type StartSpec struct {
 	NewRef string
 	Env    []string
 	Gate   Gate
+	// MCPServers are tools Hermesh gives the agent, as stdio MCP servers:
+	// the session's messages (docs/agent-messages.md §7.4).
+	MCPServers []MCPServer
+}
+
+// MCPServer is a stdio MCP server the agent starts.
+type MCPServer struct {
+	Name    string
+	Command string
+	Args    []string
+	Env     map[string]string
 }
 
 // Session is a running provider process. The first turn starts with

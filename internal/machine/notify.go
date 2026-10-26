@@ -33,6 +33,9 @@ type pushTarget struct {
 // session is locked.
 type noticeSession struct {
 	id, title, createdBy, project, agent string
+	// asker asked for the turn the notice is about; askerConv and
+	// creatorConv are where news goes for the asker and the creator.
+	asker, askerConv, creatorConv string
 }
 
 // notices keeps the push targets and what was last sent per session.

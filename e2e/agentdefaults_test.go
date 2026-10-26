@@ -90,9 +90,13 @@ esac
 
 	set(&identityv1.AgentDefaults{Agent: "codex"})
 	p = last()
-	for _, k := range []string{"model", "config", "serviceTier"} {
+	for _, k := range []string{"model", "serviceTier"} {
 		if _, ok := p[k]; ok {
 			t.Fatalf("cleared, but %s still set: %v", k, p)
 		}
+	}
+	// Only the session's own tools remain in its config (docs/agent-messages.md §7.4).
+	if cfg, _ := p["config"].(map[string]any); cfg["model_reasoning_effort"] != nil || cfg["mcp_servers"] == nil {
+		t.Fatalf("cleared, but the effort is still set, or the tools are missing: %v", p)
 	}
 }

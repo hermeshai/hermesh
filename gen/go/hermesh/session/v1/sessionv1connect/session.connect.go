@@ -54,6 +54,9 @@ const (
 	// SessionServiceSendMessageProcedure is the fully-qualified name of the SessionService's
 	// SendMessage RPC.
 	SessionServiceSendMessageProcedure = "/hermesh.session.v1.SessionService/SendMessage"
+	// SessionServiceDeliverMessageProcedure is the fully-qualified name of the SessionService's
+	// DeliverMessage RPC.
+	SessionServiceDeliverMessageProcedure = "/hermesh.session.v1.SessionService/DeliverMessage"
 	// SessionServiceInterruptSessionProcedure is the fully-qualified name of the SessionService's
 	// InterruptSession RPC.
 	SessionServiceInterruptSessionProcedure = "/hermesh.session.v1.SessionService/InterruptSession"
@@ -95,6 +98,12 @@ type SessionServiceClient interface {
 	// ListEvents returns one page of a session's events, oldest first.
 	ListEvents(context.Context, *v1.ListEventsRequest) (*v1.ListEventsResponse, error)
 	SendMessage(context.Context, *v1.SendMessageRequest) (*v1.SendMessageResponse, error)
+	// DeliverMessage hands the session a message an agent wrote, signed by
+	// that agent (docs/agent-messages.md §7): it joins its sender's own turn,
+	// answers its sender's own question, or starts, or waits for, a turn of
+	// its own. Any agent whose grant covers the session and that may read it
+	// can deliver one.
+	DeliverMessage(context.Context, *v1.DeliverMessageRequest) (*v1.DeliverMessageResponse, error)
 	// InterruptSession stops the turn in progress; the session stays, idle,
 	// and the next message goes on in the same agent conversation.
 	InterruptSession(context.Context, *v1.InterruptSessionRequest) (*v1.Session, error)
@@ -177,6 +186,12 @@ func NewSessionServiceClient(httpClient connect.HTTPClient, baseURL string, opts
 			connect.WithSchema(sessionServiceMethods.ByName("SendMessage")),
 			connect.WithClientOptions(opts...),
 		),
+		deliverMessage: connect.NewClient[v1.DeliverMessageRequest, v1.DeliverMessageResponse](
+			httpClient,
+			baseURL+SessionServiceDeliverMessageProcedure,
+			connect.WithSchema(sessionServiceMethods.ByName("DeliverMessage")),
+			connect.WithClientOptions(opts...),
+		),
 		interruptSession: connect.NewClient[v1.InterruptSessionRequest, v1.Session](
 			httpClient,
 			baseURL+SessionServiceInterruptSessionProcedure,
@@ -243,6 +258,7 @@ type sessionServiceClient struct {
 	streamEvents     *connect.Client[v1.StreamEventsRequest, v1.SessionEvent]
 	listEvents       *connect.Client[v1.ListEventsRequest, v1.ListEventsResponse]
 	sendMessage      *connect.Client[v1.SendMessageRequest, v1.SendMessageResponse]
+	deliverMessage   *connect.Client[v1.DeliverMessageRequest, v1.DeliverMessageResponse]
 	interruptSession *connect.Client[v1.InterruptSessionRequest, v1.Session]
 	archiveSession   *connect.Client[v1.ArchiveSessionRequest, v1.Session]
 	unarchiveSession *connect.Client[v1.UnarchiveSessionRequest, v1.Session]
@@ -303,6 +319,15 @@ func (c *sessionServiceClient) ListEvents(ctx context.Context, req *v1.ListEvent
 // SendMessage calls hermesh.session.v1.SessionService.SendMessage.
 func (c *sessionServiceClient) SendMessage(ctx context.Context, req *v1.SendMessageRequest) (*v1.SendMessageResponse, error) {
 	response, err := c.sendMessage.CallUnary(ctx, connect.NewRequest(req))
+	if response != nil {
+		return response.Msg, err
+	}
+	return nil, err
+}
+
+// DeliverMessage calls hermesh.session.v1.SessionService.DeliverMessage.
+func (c *sessionServiceClient) DeliverMessage(ctx context.Context, req *v1.DeliverMessageRequest) (*v1.DeliverMessageResponse, error) {
+	response, err := c.deliverMessage.CallUnary(ctx, connect.NewRequest(req))
 	if response != nil {
 		return response.Msg, err
 	}
@@ -400,6 +425,12 @@ type SessionServiceHandler interface {
 	// ListEvents returns one page of a session's events, oldest first.
 	ListEvents(context.Context, *v1.ListEventsRequest) (*v1.ListEventsResponse, error)
 	SendMessage(context.Context, *v1.SendMessageRequest) (*v1.SendMessageResponse, error)
+	// DeliverMessage hands the session a message an agent wrote, signed by
+	// that agent (docs/agent-messages.md §7): it joins its sender's own turn,
+	// answers its sender's own question, or starts, or waits for, a turn of
+	// its own. Any agent whose grant covers the session and that may read it
+	// can deliver one.
+	DeliverMessage(context.Context, *v1.DeliverMessageRequest) (*v1.DeliverMessageResponse, error)
 	// InterruptSession stops the turn in progress; the session stays, idle,
 	// and the next message goes on in the same agent conversation.
 	InterruptSession(context.Context, *v1.InterruptSessionRequest) (*v1.Session, error)
@@ -478,6 +509,12 @@ func NewSessionServiceHandler(svc SessionServiceHandler, opts ...connect.Handler
 		connect.WithSchema(sessionServiceMethods.ByName("SendMessage")),
 		connect.WithHandlerOptions(opts...),
 	)
+	sessionServiceDeliverMessageHandler := connect.NewUnaryHandlerSimple(
+		SessionServiceDeliverMessageProcedure,
+		svc.DeliverMessage,
+		connect.WithSchema(sessionServiceMethods.ByName("DeliverMessage")),
+		connect.WithHandlerOptions(opts...),
+	)
 	sessionServiceInterruptSessionHandler := connect.NewUnaryHandlerSimple(
 		SessionServiceInterruptSessionProcedure,
 		svc.InterruptSession,
@@ -548,6 +585,8 @@ func NewSessionServiceHandler(svc SessionServiceHandler, opts ...connect.Handler
 			sessionServiceListEventsHandler.ServeHTTP(w, r)
 		case SessionServiceSendMessageProcedure:
 			sessionServiceSendMessageHandler.ServeHTTP(w, r)
+		case SessionServiceDeliverMessageProcedure:
+			sessionServiceDeliverMessageHandler.ServeHTTP(w, r)
 		case SessionServiceInterruptSessionProcedure:
 			sessionServiceInterruptSessionHandler.ServeHTTP(w, r)
 		case SessionServiceArchiveSessionProcedure:
@@ -601,6 +640,10 @@ func (UnimplementedSessionServiceHandler) ListEvents(context.Context, *v1.ListEv
 
 func (UnimplementedSessionServiceHandler) SendMessage(context.Context, *v1.SendMessageRequest) (*v1.SendMessageResponse, error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("hermesh.session.v1.SessionService.SendMessage is not implemented"))
+}
+
+func (UnimplementedSessionServiceHandler) DeliverMessage(context.Context, *v1.DeliverMessageRequest) (*v1.DeliverMessageResponse, error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("hermesh.session.v1.SessionService.DeliverMessage is not implemented"))
 }
 
 func (UnimplementedSessionServiceHandler) InterruptSession(context.Context, *v1.InterruptSessionRequest) (*v1.Session, error) {

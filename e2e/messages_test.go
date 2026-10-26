@@ -1,20 +1,27 @@
 package e2e
 
 import (
+	"bytes"
 	"context"
 	"crypto/hmac"
 	"crypto/sha256"
 	"encoding/base64"
 	"encoding/json"
+	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"os/exec"
+	"path/filepath"
 	"slices"
 	"strings"
 	"sync"
 	"testing"
 	"time"
 
+	identityv1 "github.com/hermeshai/hermesh/gen/go/hermesh/identity/v1"
 	localv1 "github.com/hermeshai/hermesh/gen/go/hermesh/local/v1"
 )
 
@@ -367,4 +374,401 @@ func slowly(t *testing.T, timeout time.Duration, what string, cond func() bool) 
 		}
 		time.Sleep(time.Second)
 	}
+}
+
+// addAgent pairs another agent CLI with the owner, as newOwnerMac pairs
+// "bot", and returns its environment.
+func (w *ownerMac) addAgent(name string, grant *localv1.GrantSpec) []string {
+	w.t.Helper()
+	env := []string{"HERMESH_HOME=" + filepath.Join(w.tmp, "agent-"+name)}
+	login := start(w.t, "login "+name, env, filepath.Join(w.bin, "hermesh"), "auth", "login", w.addr, "--name", name)
+	if _, err := w.app.client.ApproveClientPairing(context.Background(), &localv1.ApproveClientPairingRequest{Code: login.pairingCode(w.t), Spec: grant}); err != nil {
+		w.t.Fatal(err)
+	}
+	if c := login.wait(w.t, 30*time.Second); c != 0 {
+		w.t.Fatalf("login %s: %s", name, login.output())
+	}
+	return env
+}
+
+type sentDoc struct {
+	OK      bool `json:"ok"`
+	Message struct {
+		ID, To, Name, Delivered, Expect string
+	} `json:"message"`
+	Session sessionJSON `json:"session"`
+	Reply   *messageDoc `json:"reply"`
+	Error   *struct{ Kind, Hint string }
+}
+
+func sendMessage(t *testing.T, w *ownerMac, env []string, timeout time.Duration, args ...string) (sentDoc, result) {
+	t.Helper()
+	r := run(t, env, timeout, filepath.Join(w.bin, "hermesh"), append([]string{"message", "send", "-o", "json"}, args...)...)
+	var d sentDoc
+	json.Unmarshal([]byte(r.stdout), &d)
+	return d, r
+}
+
+func listMessages(t *testing.T, w *ownerMac, env []string) messageList {
+	t.Helper()
+	r := run(t, env, time.Minute, filepath.Join(w.bin, "hermesh"), "message", "list", "-o", "json")
+	var l messageList
+	json.Unmarshal([]byte(r.stdout), &l)
+	return l
+}
+
+// TestMessages: agents write to each other and to sessions, the one way to
+// tell a session anything. A message to a session joins its sender's own
+// turn, or waits for a turn of its own; one to an offline machine waits
+// for it at the post office.
+func TestMessages(t *testing.T) {
+	if testing.Short() {
+		t.Skip("e2e")
+	}
+	w := newOwnerMac(t, []string{"HERMESH_FAKE_PROVIDERS=1"}, &localv1.GrantSpec{})
+	other := w.addAgent("helper", &localv1.GrantSpec{TaskVisibility: identityv1.TaskVisibility_TASK_VISIBILITY_ALL})
+
+	// --- Agent to agent ---------------------------------------------------
+	var d sentDoc
+	slowly(t, 30*time.Second, "helper reachable", func() bool {
+		d, _ = sendMessage(t, w, w.cliEnv, 30*time.Second, "--to", "helper", "--subject", "a question", "--message", "Which branch is the release on?")
+		return d.OK
+	})
+	if d.Message.Delivered != "queued" || !strings.HasPrefix(d.Message.To, "c_") || d.Message.Name != "helper" {
+		t.Fatalf("message to an agent: %+v", d)
+	}
+	asked := d.Message.ID
+	l := listMessages(t, w, other)
+	if len(l.Messages) != 1 || l.Messages[0].ID != asked || l.Messages[0].From.Name != "bot" || l.Messages[0].From.Kind != "cli" ||
+		l.Messages[0].Text != "Which branch is the release on?" {
+		t.Fatalf("helper's inbox: %+v", l)
+	}
+	botAddress := l.Messages[0].From.Address
+	var status struct {
+		States []struct{ ID, State string } `json:"states"`
+	}
+	json.Unmarshal([]byte(w.cli(30*time.Second, "message", "status", asked, "-o", "json").stdout), &status)
+	if len(status.States) != 1 || status.States[0].State != "taken" {
+		t.Fatalf("status once read: %+v", status)
+	}
+	// The reply, which bot waits for.
+	waiting := start(t, "bot waits", w.cliEnv, filepath.Join(w.bin, "hermesh"), "message", "send", "-o", "json", "--to", "helper", "--wait", "--timeout", "60s",
+		"--message", "And the tag?")
+	var second string
+	slowly(t, 30*time.Second, "the second message", func() bool {
+		for _, m := range listMessages(t, w, other).Messages {
+			if m.Text == "And the tag?" {
+				second = m.ID
+			}
+		}
+		return second != ""
+	})
+	if d, r := sendMessage(t, w, other, 30*time.Second, "--to", botAddress, "--reply-to", second, "--message", "release-7, tagged v7.0"); !d.OK {
+		t.Fatalf("reply: %+v", r)
+	}
+	if c := waiting.wait(t, time.Minute); c != 0 {
+		t.Fatalf("bot's --wait: %s", waiting.output())
+	}
+	if !strings.Contains(waiting.output(), "release-7, tagged v7.0") {
+		t.Fatalf("bot's --wait must show the reply: %s", waiting.output())
+	}
+	if r := run(t, other, 30*time.Second, filepath.Join(w.bin, "hermesh"), "message", "ack", asked, second); r.code != 0 {
+		t.Fatalf("ack: %+v", r)
+	}
+	json.Unmarshal([]byte(w.cli(30*time.Second, "message", "status", asked, "-o", "json").stdout), &status)
+	if status.States[0].State != "handled" {
+		t.Fatalf("status once handled: %+v", status)
+	}
+	for _, m := range listMessages(t, w, w.cliEnv).Messages { // the reply bot's --wait read
+		w.ack(m.ID)
+	}
+
+	// --- The creator, to its own session ------------------------------------
+	s, r := w.startSession(time.Minute, "--wait", "--prompt", "say first")
+	if r.code != 0 {
+		t.Fatalf("start: %+v", r)
+	}
+	d, r = sendMessage(t, w, w.cliEnv, time.Minute, "--to", s.SessionID, "--wait", "--message", "say second")
+	if !d.OK || d.Message.Delivered != "turn" || d.Session.Result != "second" {
+		t.Fatalf("to its own session: %+v", r)
+	}
+
+	// --- A session writes to agents, through its message_send tool ------------
+	ws, r := w.startSession(time.Minute, "--wait", "--prompt", "message |Halfway: the tests pass\nmessage helper|Can you check the staging deploy?\nsay done")
+	if r.code != 0 || ws.Result != "done" {
+		t.Fatalf("a session writing: %+v", r)
+	}
+	var fromSession messageDoc
+	for _, m := range listMessages(t, w, w.cliEnv).Messages {
+		if m.From.Session == ws.SessionID {
+			fromSession = m
+		}
+	}
+	if fromSession.Text != "Halfway: the tests pass" || fromSession.From.Kind != "machine" || fromSession.News != nil {
+		t.Fatalf("the creator's message from its session: %+v", fromSession)
+	}
+	w.ack(fromSession.ID)
+	var toHelper messageDoc
+	for _, m := range listMessages(t, w, other).Messages {
+		if m.From.Session == ws.SessionID {
+			toHelper = m
+		}
+	}
+	if toHelper.Text != "Can you check the staging deploy?" {
+		t.Fatalf("helper's message from the session: %+v", listMessages(t, w, other))
+	}
+	if ev := w.cli(30*time.Second, "session", "events", ws.SessionID, "--limit", "200", "-o", "json").stdout; strings.Count(ev, `"message_sent"`) != 2 ||
+		!strings.Contains(ev, `"to_name": "helper"`) {
+		t.Fatalf("the session records what it wrote: %s", ev)
+	}
+	run(t, other, 30*time.Second, filepath.Join(w.bin, "hermesh"), "message", "ack", toHelper.ID)
+
+	// --- Another agent's message waits for a turn of its own -----------------
+	q, _ := w.startSession(30*time.Second, "--prompt", "ask Color|Which color?|Red,Blue\nsay done")
+	slowly(t, 30*time.Second, "the question", func() bool { return w.get(q.SessionID).Status == "waiting_input" })
+	d, r = sendMessage(t, w, other, 30*time.Second, "--to", q.SessionID, "--message", "say from helper")
+	if !d.OK || d.Message.Delivered != "queued" {
+		t.Fatalf("helper's message while bot's question waits: %+v", r)
+	}
+	if g := w.get(q.SessionID); g.Status != "waiting_input" {
+		t.Fatalf("another agent's message must not answer the question: %+v", g)
+	}
+	if r := w.cli(30*time.Second, "session", "answer", q.SessionID, "--choose", "1"); r.code != 0 {
+		t.Fatalf("answer: %+v", r)
+	}
+	// Bot's turn ends, then helper's runs: its news goes to helper.
+	var news messageDoc
+	slowly(t, time.Minute, "helper's news", func() bool {
+		for _, m := range listMessages(t, w, other).Messages {
+			if m.News != nil && m.News.SessionID == q.SessionID && m.News.Kind == "turn_done" {
+				news = m
+			}
+		}
+		return news.ID != ""
+	})
+	if news.News.Result != "from helper" {
+		t.Fatalf("helper's turn: %+v", news)
+	}
+	ev := w.cli(30*time.Second, "session", "events", q.SessionID, "--limit", "200", "-o", "json").stdout
+	if !strings.Contains(ev, `"message_received"`) || !strings.Contains(ev, `"from_name": "helper"`) || !strings.Contains(ev, `"delivered": "queued"`) {
+		t.Fatalf("the session records helper's message: %s", ev)
+	}
+
+	// --- An offline machine: the message waits for it ------------------------
+	w.owner.stop()
+	w.app.cancel()
+	eventually(t, 30*time.Second, "the machine offline", func() bool {
+		r := w.cli(30*time.Second, "project", "list")
+		return strings.Contains(r.stdout, "offline")
+	})
+	notes := filepath.Join(w.tmp, "notes.txt")
+	os.WriteFile(notes, []byte("x"), 0o644)
+	if _, r := sendMessage(t, w, w.cliEnv, 30*time.Second, "--to", s.SessionID, "-f", notes, "--message", "say with a file"); r.code != 4 {
+		t.Fatalf("files to an offline machine: %+v", r)
+	}
+	d, r = sendMessage(t, w, w.cliEnv, 30*time.Second, "--to", s.SessionID, "--message", "say while you were away")
+	if !d.OK || d.Message.Delivered != "queued" || !strings.Contains(d.Message.Expect, "offline") {
+		t.Fatalf("to an offline machine: %+v", r)
+	}
+	w.startOwner()
+	w.app = newTestApp(t, w.sock, w.root)
+	slowly(t, time.Minute, "the turn the waiting message started", func() bool {
+		return w.get(s.SessionID).Result == "while you were away"
+	})
+
+	// --- Archived: refused at once --------------------------------------------
+	if r := w.cli(30*time.Second, "session", "archive", s.SessionID); r.code != 0 {
+		t.Fatalf("archive: %+v", r)
+	}
+	if d, r := sendMessage(t, w, w.cliEnv, 30*time.Second, "--to", s.SessionID, "--message", "say no"); d.OK || r.code != 2 || d.Error == nil || d.Error.Kind != "invalid_state" {
+		t.Fatalf("to an archived session: %+v", r)
+	}
+}
+
+// hookRun runs `hermesh message hook <agent>` as the agent does: the event
+// on stdin, its JSON on stdout.
+func hookRun(t *testing.T, w *ownerMac, env []string, agent string, in map[string]any) map[string]any {
+	t.Helper()
+	b, _ := json.Marshal(in)
+	cmd := exec.Command(filepath.Join(w.bin, "hermesh"), "message", "hook", agent)
+	cmd.Env = append(append(os.Environ(), w.cliEnv...), env...)
+	cmd.Stdin = bytes.NewReader(b)
+	out, err := cmd.Output()
+	if err != nil {
+		t.Fatalf("hook %s %v: %v %s", agent, in, err, out)
+	}
+	var v map[string]any
+	if len(bytes.TrimSpace(out)) > 0 {
+		if err := json.Unmarshal(out, &v); err != nil {
+			t.Fatalf("hook output: %q", out)
+		}
+	}
+	return v
+}
+
+func additionalContext(v map[string]any) string {
+	h, _ := v["hookSpecificOutput"].(map[string]any)
+	s, _ := h["additionalContext"].(string)
+	return s
+}
+
+// claudeInbox plays a Claude Code conversation's inbox socket: it records
+// what is posted to it.
+type claudeInbox struct {
+	path  string
+	mu    sync.Mutex
+	lines []string
+}
+
+func newClaudeInbox(t *testing.T) *claudeInbox {
+	dir, _ := os.MkdirTemp("/tmp", "cc")
+	t.Cleanup(func() { os.RemoveAll(dir) })
+	c := &claudeInbox{path: filepath.Join(dir, "inbox.sock")}
+	ln, err := net.Listen("unix", c.path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { ln.Close() })
+	go func() {
+		for {
+			conn, err := ln.Accept()
+			if err != nil {
+				return
+			}
+			b, _ := io.ReadAll(conn)
+			conn.Close()
+			c.mu.Lock()
+			for _, l := range strings.Split(strings.TrimSpace(string(b)), "\n") {
+				c.lines = append(c.lines, l)
+			}
+			c.mu.Unlock()
+		}
+	}()
+	return c
+}
+
+func (c *claudeInbox) posted() []string {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return slices.Clone(c.lines)
+}
+
+// TestAgentsOnAComputer: Claude Code and Codex on the user's computer take
+// their messages through their hooks: each conversation gets the news and
+// replies of what it started or wrote, Claude Code between tool calls and
+// while idle through its inbox socket, Codex when a turn would end. A
+// message addressed to no conversation is only counted.
+func TestAgentsOnAComputer(t *testing.T) {
+	if testing.Short() {
+		t.Skip("e2e")
+	}
+	w := newOwnerMac(t, []string{"HERMESH_FAKE_PROVIDERS=1"}, &localv1.GrantSpec{})
+	helper := w.addAgent("helper", &localv1.GrantSpec{})
+
+	// --- Claude Code --------------------------------------------------------
+	inbox := newClaudeInbox(t)
+	envFile := filepath.Join(w.tmp, "claude-env")
+	claudeEnv := []string{"CLAUDE_ENV_FILE=" + envFile, "CLAUDE_CODE_MESSAGING_SOCKET=" + inbox.path, "CLAUDE_CODE_MESSAGING_TOKEN=tok-1"}
+	start := hookRun(t, w, claudeEnv, "claude", map[string]any{"session_id": "conv-1", "hook_event_name": "SessionStart", "source": "startup"})
+	if ctx := additionalContext(start); !strings.Contains(ctx, "connected to Hermesh as bot") || !strings.Contains(ctx, "conv-1") {
+		t.Fatalf("SessionStart's context: %v", start)
+	}
+	if b, _ := os.ReadFile(envFile); !strings.Contains(string(b), `export HERMESH_CONVERSATION="conv-1"`) {
+		t.Fatalf("the conversation's environment: %q", b)
+	}
+	pid := filepath.Join(w.tmp, "agent", "watch-conv-1.pid")
+	eventually(t, 10*time.Second, "the watch running", func() bool { _, err := os.Stat(pid); return err == nil })
+
+	// A session this conversation starts: its news comes back to it.
+	r := run(t, append(slices.Clone(w.cliEnv), "HERMESH_CONVERSATION=conv-1"), 30*time.Second, filepath.Join(w.bin, "hermesh"),
+		"session", "start", "--project", "demo", "--prompt", "say the build is green")
+	if r.code != 0 {
+		t.Fatalf("start: %+v", r)
+	}
+	slowly(t, time.Minute, "the news in Claude Code's inbox", func() bool { return len(inbox.posted()) >= 2 })
+	posted := inbox.posted()
+	if posted[0] != `{"token":"tok-1","type":"auth"}` && posted[0] != `{"type":"auth","token":"tok-1"}` {
+		t.Fatalf("the auth line: %q", posted[0])
+	}
+	var user struct {
+		Type    string
+		Message struct{ Role, Content string }
+	}
+	json.Unmarshal([]byte(posted[1]), &user)
+	if user.Type != "user" || !strings.Contains(user.Message.Content, "<hermesh-message") || !strings.Contains(user.Message.Content, "the build is green") {
+		t.Fatalf("what the watch posted: %q", posted[1])
+	}
+	if l := listMessages(t, w, w.cliEnv); len(l.Messages) != 0 {
+		t.Fatalf("a delivered message must be acknowledged: %+v", l)
+	}
+	// One addressed to no conversation is only counted.
+	if d, r := sendMessage(t, w, helper, 30*time.Second, "--to", "bot", "--message", "for whoever reads it"); !d.OK {
+		t.Fatalf("helper's message: %+v", r)
+	}
+	time.Sleep(2 * time.Second)
+	if n := len(inbox.posted()); n != 2 {
+		t.Fatalf("a message to no conversation was pushed: %q", inbox.posted())
+	}
+	if ctx := additionalContext(hookRun(t, w, claudeEnv, "claude", map[string]any{"session_id": "conv-1", "hook_event_name": "UserPromptSubmit"})); !strings.Contains(ctx, "1 message(s) addressed to no conversation") {
+		t.Fatalf("UserPromptSubmit's note: %q", ctx)
+	}
+	// The conversation ends: so does its watch.
+	os.Remove(inbox.path)
+	eventually(t, 20*time.Second, "the watch gone", func() bool { _, err := os.Stat(pid); return err != nil })
+
+	// --- Codex: when a turn would end --------------------------------------
+	if ctx := additionalContext(hookRun(t, w, nil, "codex", map[string]any{"session_id": "thr-1", "hook_event_name": "SessionStart"})); !strings.Contains(ctx, "--from-session thr-1") {
+		t.Fatalf("Codex's SessionStart context: %q", ctx)
+	}
+	if d, r := sendMessage(t, w, helper, 30*time.Second, "--to", contactAddress(t, w, helper, "bot")+"/thr-1", "--message", "your review is done"); !d.OK {
+		t.Fatalf("helper's message to the Codex conversation: %+v", r)
+	}
+	stop := hookRun(t, w, nil, "codex", map[string]any{"session_id": "thr-1", "hook_event_name": "Stop", "stop_hook_active": false})
+	if stop["decision"] != "block" || !strings.Contains(fmt.Sprint(stop["reason"]), "your review is done") {
+		t.Fatalf("Codex's Stop: %v", stop)
+	}
+	if again := hookRun(t, w, nil, "codex", map[string]any{"session_id": "thr-1", "hook_event_name": "Stop", "stop_hook_active": true}); again != nil {
+		t.Fatalf("a Stop already continued must let the turn end: %v", again)
+	}
+
+	// --- Installing the hooks ------------------------------------------------
+	home := t.TempDir()
+	os.MkdirAll(filepath.Join(home, ".claude"), 0o700)
+	os.WriteFile(filepath.Join(home, ".claude", "settings.json"), []byte(`{"model": "opus", "hooks": {"Stop": [{"hooks": [{"type": "command", "command": "say done"}]}]}}`), 0o600)
+	for range 2 {
+		if r := run(t, append(slices.Clone(w.cliEnv), "HOME="+home), 30*time.Second, filepath.Join(w.bin, "hermesh"), "message", "hook", "claude", "--install"); r.code != 0 {
+			t.Fatalf("install: %+v", r)
+		}
+	}
+	b, _ := os.ReadFile(filepath.Join(home, ".claude", "settings.json"))
+	var settings struct {
+		Model string
+		Hooks map[string][]struct {
+			Hooks []struct{ Command string }
+		}
+	}
+	json.Unmarshal(b, &settings)
+	if settings.Model != "opus" || len(settings.Hooks["Stop"]) != 2 || settings.Hooks["Stop"][0].Hooks[0].Command != "say done" ||
+		len(settings.Hooks["SessionStart"]) != 1 || !strings.HasSuffix(settings.Hooks["SessionStart"][0].Hooks[0].Command, " message hook claude") {
+		t.Fatalf("the settings after installing twice: %s", b)
+	}
+	if !strings.HasPrefix(string(b), "{\n  \"model\"") {
+		t.Fatalf("the settings' own keys must keep their place: %s", b)
+	}
+}
+
+// contactAddress is an agent's address, as another agent's contacts list it.
+func contactAddress(t *testing.T, w *ownerMac, env []string, name string) string {
+	t.Helper()
+	var c struct {
+		Contacts []struct{ Name, Address string }
+	}
+	json.Unmarshal([]byte(run(t, env, 30*time.Second, filepath.Join(w.bin, "hermesh"), "message", "contacts", "-o", "json").stdout), &c)
+	for _, x := range c.Contacts {
+		if x.Name == name {
+			return x.Address
+		}
+	}
+	t.Fatalf("no contact %s: %+v", name, c)
+	return ""
 }

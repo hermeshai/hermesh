@@ -18,7 +18,8 @@ import { dateOf } from "./sessions";
 
 /** One row of the conversation. */
 export type TranscriptItem =
-  | { kind: "turn"; seq: bigint; turn: number; at: Date | undefined }
+  /** asker: who asked for the turn (a client id; "" from before messages). */
+  | { kind: "turn"; seq: bigint; turn: number; at: Date | undefined; asker: string }
   | { kind: "user"; seq: bigint; text: string }
   | { kind: "agent"; seq: bigint; text: string }
   /** A tool call with its result, once there is one; running: the agent is still in it. */
@@ -27,7 +28,13 @@ export type TranscriptItem =
   | { kind: "question"; seq: bigint; question: Question; resolution: QuestionResolved | undefined }
   /** took: seconds since the turn started, when known. */
   | { kind: "turnEnd"; seq: bigint; end: TurnCompleted; took: number | undefined }
-  | { kind: "error"; seq: bigint; error: ErrorEvent };
+  | { kind: "error"; seq: bigint; error: ErrorEvent }
+  /**
+   * A message between the session and one of the owner's agents
+   * (docs/agent-messages.md): in, written to the session (delivered: what
+   * became of it), or out, written by its coding agent.
+   */
+  | { kind: "message"; seq: bigint; direction: "in" | "out"; name: string; address: string; text: string; delivered: string };
 
 /**
  * transcript pairs tool calls with their results and questions with their
@@ -55,7 +62,7 @@ export function transcript(events: SessionEvent[], running: boolean): Transcript
     switch (e.kind.case) {
       case "turnStarted":
         turnStart = at;
-        items.push({ kind: "turn", seq, turn: e.kind.value.turn, at });
+        items.push({ kind: "turn", seq, turn: e.kind.value.turn, at, asker: e.kind.value.asker });
         break;
       case "userMessage":
         items.push({ kind: "user", seq, text: e.kind.value.text });
@@ -85,6 +92,16 @@ export function transcript(events: SessionEvent[], running: boolean): Transcript
       case "error":
         items.push({ kind: "error", seq, error: e.kind.value });
         break;
+      case "messageReceived": {
+        const m = e.kind.value;
+        items.push({ kind: "message", seq, direction: "in", name: m.fromName, address: m.from, text: m.text, delivered: m.delivered });
+        break;
+      }
+      case "messageSent": {
+        const m = e.kind.value;
+        items.push({ kind: "message", seq, direction: "out", name: m.toName, address: m.to, text: m.text, delivered: "" });
+        break;
+      }
     }
   }
   return items;

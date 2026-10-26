@@ -28,7 +28,10 @@
     "resume": "{{grant}} 再发消息就会从这里接着做，之前的改动都还在。",
     "adviceAndResume": "{{advice}}{{resume}}",
     "details": "详情",
-    "archive": "归档"
+    "archive": "归档",
+    "messageFrom": "来自 {{name}} 的信",
+    "messageTo": "写给 {{name}} 的信",
+    "messageQueued": "排队等它自己的一轮"
   },
   "control": {
     "label": "这一轮",

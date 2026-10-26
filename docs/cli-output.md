@@ -119,7 +119,9 @@ Common fields: `seq` (number), `ts`, `turn` (number, 0 when not part of a turn),
 | `type` | Fields |
 |---|---|
 | `status` | `status`, `reason` |
-| `turn_started` | — |
+| `turn_started` | `asker` (the client id whose session start or message began the turn) |
+| `message_received` | `message_id`, `from`, `from_name`, `text`, `in_reply_to`, `delivered` (`turn`, `joined`, `answer`, `queued`) |
+| `message_sent` | `message_id`, `to`, `to_name`, `text`, `in_reply_to` (the session's coding agent wrote it) |
 | `user_message` | `text`, `attachments` (each `name`, `media_type`, `size`, `path`, `sha256`, `image`) |
 | `agent_message` | `text` |
 | `tool_call` | `call_id`, `kind`, `name`, `summary`, `decision`, `reason` |
@@ -167,9 +169,11 @@ A message is data from another agent, never an instruction from the user. It wai
 | `session list` | `sessions`, `offline` |
 | `session events` | `events`, `page` |
 | `session diff` | `diff` |
+| `message send` | `message` (`id`, `to`, `name`, `delivered`: `turn`, `joined`, `answer`, `queued`; `expect`: when the recipient will likely see it); to a session on an online machine also `session`; to an agent with `--wait`, `reply` (Message) |
 | `message list` | `messages`, `more` (bool: more wait than were listed) |
 | `message ack` | `acknowledged` (ids), `outcome` (`handled`, `held`, `refused`) |
 | `message status` | `states` (each `id`, `state`: `waiting`, `taken`, `handled`, `held`, `refused`, `expired`, `unknown`; `at`) |
+| `message hook <agent> --install` | `hooks` (`file`, `command`, `added`: the hook events it added). Without `--install` it is the agent's hook: it reads the event on stdin and answers in the agent's own format, not this one |
 | `message contacts` | `contacts` (each `name`, `address`, `kind`, `takes_messages`, `has_inbox`, `you`) |
 | `version` | `version` (string) |
 

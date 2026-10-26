@@ -110,11 +110,11 @@ func TestCLIOutputContract(t *testing.T) {
 	if g := run(t, env, time.Minute, bin, "session", "get", tid); g.stdout != want || withoutInboxNote(g.stderr) != "" {
 		t.Fatalf("get differs from --wait:\n%s---\n%s", g.stdout, g.stderr)
 	}
-	r = run(t, env, time.Minute, bin, "session", "send", tid, "--wait", "--message", "fail 429 rate limit")
+	r = run(t, env, time.Minute, bin, "message", "send", "--to", tid, "--wait", "--message", "fail 429 rate limit")
 	if r.code != 7 || !strings.Contains(r.stdout, "\nfailure: rate_limit: ") || !strings.HasPrefix(r.stderr, "error: session "+tid+": rate_limit: ") || strings.Count(r.stderr, "\n") != 1 {
 		t.Fatalf("failed turn text:\n%s---\n%s", r.stdout, r.stderr)
 	}
-	r = run(t, env, time.Minute, bin, "session", "send", tid, "--wait", "--message", "ask Env|Where?|staging,prod\nsay ok")
+	r = run(t, env, time.Minute, bin, "message", "send", "--to", tid, "--wait", "--message", "ask Env|Where?|staging,prod\nsay ok")
 	if r.code != 8 || !strings.HasPrefix(r.stdout, "session "+tid+" · waiting_input ·") || !strings.Contains(r.stdout, "? [Env] Where?\n  1. staging\n") || strings.Contains(r.stdout, "last: ") || !strings.HasPrefix(r.stderr, "error: ") {
 		t.Fatalf("question text:\n%s---\n%s", r.stdout, r.stderr)
 	}

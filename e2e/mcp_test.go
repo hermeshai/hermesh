@@ -207,17 +207,17 @@ func TestMCPGateway(t *testing.T) {
 	if started.Session.CreatedBy != mcpClient.ClientId {
 		t.Fatalf("the session is the MCP client's: %s", doc.raw)
 	}
-	if doc = callTool(t, session, "session_send", map[string]any{"session_id": id, "message": "say second turn", "wait": true}); !doc.OK ||
+	if doc = callTool(t, session, "message_send", map[string]any{"to": id, "message": "say second turn", "wait": true}); !doc.OK ||
 		!strings.Contains(string(doc.raw), "second turn") {
-		t.Fatalf("session_send: %s", doc.raw)
+		t.Fatalf("message_send: %s", doc.raw)
 	}
 	if doc = callTool(t, session, "session_events", map[string]any{"session_id": id, "limit": 5}); !doc.OK || !strings.Contains(string(doc.raw), `"page"`) {
 		t.Fatalf("session_events: %s", doc.raw)
 	}
 	// A timed-out wait does not cancel the turn or require resending input.
-	doc = callTool(t, session, "session_send", map[string]any{"session_id": id, "message": "sleep 3s\nsay finished after timeout", "wait": true, "timeout": "1s"})
+	doc = callTool(t, session, "message_send", map[string]any{"to": id, "message": "sleep 3s\nsay finished after timeout", "wait": true, "timeout": "1s"})
 	if doc.OK || doc.Error.Kind != "wait_timeout" || json.Unmarshal(doc.raw, &started) != nil || started.Session.SessionID != id {
-		t.Fatalf("session_send wait timeout: %s", doc.raw)
+		t.Fatalf("message_send wait timeout: %s", doc.raw)
 	}
 	eventually(t, 15*time.Second, "poll the turn after wait_timeout", func() bool {
 		doc = callTool(t, session, "session_get", map[string]any{"session_id": id})
@@ -291,8 +291,14 @@ func TestMCPGateway(t *testing.T) {
 	if doc = callTool(t, session, "session_list", nil); !doc.OK || !strings.Contains(string(doc.raw), other) || !strings.Contains(string(doc.raw), id) {
 		t.Fatalf("session_list sees every session: %s", doc.raw)
 	}
-	if doc = callTool(t, session, "session_send", map[string]any{"session_id": other, "message": "say hijack"}); doc.OK || doc.Error.Kind != "denied" {
-		t.Fatalf("steering another client's session: %s", doc.raw)
+	// Another client's session takes its message as a turn of its own; it
+	// still can't interrupt or archive it.
+	if doc = callTool(t, session, "message_send", map[string]any{"to": other, "message": "say from the assistant", "wait": true}); !doc.OK ||
+		!strings.Contains(string(doc.raw), `"delivered":"turn"`) || !strings.Contains(string(doc.raw), "from the assistant") {
+		t.Fatalf("writing to another client's session: %s", doc.raw)
+	}
+	if doc = callTool(t, session, "session_interrupt", map[string]any{"session_id": other}); doc.OK || doc.Error.Kind != "denied" {
+		t.Fatalf("interrupting another client's session: %s", doc.raw)
 	}
 
 	// Refresh rotates; the old refresh token is honoured once as a retry,

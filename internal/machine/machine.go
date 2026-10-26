@@ -107,6 +107,11 @@ type Machine struct {
 	notices notices
 	// contacts caches the owner's inboxes, for the news it writes (news.go).
 	contacts contactBook
+	// lettersSeen are the messages delivered to sessions since it started
+	// (letters.go): one the relay hands over again is not delivered twice.
+	lettersSeen map[string]bool
+	// tools is the sessions' own tools socket (sessiontools.go).
+	tools sessionTools
 }
 
 const (
@@ -163,6 +168,7 @@ func Open(cfg Config) (*Machine, error) {
 		machineID: n.machineID, dataDir: cfg.DataDir, providers: cfg.Providers, info: n.providerInfo, limits: cfg.Limits,
 		paused: n.isPaused, defaults: n.agentDefaults, outOfProcesses: n.outOfProcesses, live: map[string]*live{}}
 	n.sessions.w = newWriter(st, n.log, n.sessions.deliver, n.sessions.changed)
+	n.sessions.mcp = n.mcpServers
 	n.sessions.notice = func(s noticeSession, e *sessionv1.SessionEvent) {
 		n.sessionNotice(s, e)
 		n.sessionNews(s, e)
@@ -416,6 +422,7 @@ func (n *Machine) Run(ctx context.Context) error {
 		return err
 	}
 	go n.sessions.Janitor(ctx)
+	go n.serveSessionTools(ctx)
 	n.log.Info("hermeshd machine running", "machine", n.machineID, "name", n.Name(), "relay", n.relayURL)
 	n.runLink(ctx)
 	return nil

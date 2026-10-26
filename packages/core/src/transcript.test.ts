@@ -28,6 +28,19 @@ const conversation = () => [
 ];
 
 describe("transcript", () => {
+  test("messages between the session and the owner's agents, and who asked for each turn", () => {
+    const items = transcript(
+      [
+        ev(0, { case: "turnStarted", value: { turn: 1, asker: "c_bot" } }),
+        ev(1, { case: "messageReceived", value: { messageId: "msg_1", from: "c_helper", fromName: "helper", text: "check staging", delivered: "queued" } }),
+        ev(2, { case: "messageSent", value: { messageId: "msg_2", to: "c_bot", toName: "bot", text: "halfway" } }),
+      ],
+      false,
+    );
+    expect(items[0].kind === "turn" && items[0].asker).toBe("c_bot");
+    expect(items[1]).toMatchObject({ kind: "message", direction: "in", name: "helper", address: "c_helper", text: "check staging", delivered: "queued" });
+    expect(items[2]).toMatchObject({ kind: "message", direction: "out", name: "bot", address: "c_bot", text: "halfway" });
+  });
   test("pairs calls with results and questions with answers, without status changes", () => {
     const items = transcript(conversation(), true);
     expect(items.map((i) => i.kind)).toEqual(["turn", "user", "tool", "question", "tool"]);

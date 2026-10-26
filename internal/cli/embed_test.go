@@ -15,12 +15,13 @@ func TestToolsAreTheCommands(t *testing.T) {
 		tools[tl.Name] = tl
 	}
 	for _, name := range []string{"auth_status", "project_list", "session_start", "session_get", "session_list", "session_events",
-		"session_send", "session_answer", "session_interrupt", "session_archive", "session_unarchive", "session_diff"} {
+		"session_answer", "session_interrupt", "session_archive", "session_unarchive", "session_diff",
+		"message_send", "message_list", "message_ack", "message_status", "message_contacts"} {
 		if _, ok := tools[name]; !ok {
 			t.Errorf("no tool %s", name)
 		}
 	}
-	for _, name := range []string{"auth_login", "auth_logout", "version"} {
+	for _, name := range []string{"auth_login", "auth_logout", "version", "session_send"} {
 		if _, ok := tools[name]; ok {
 			t.Errorf("%s is the local CLI's own", name)
 		}
@@ -55,6 +56,16 @@ func TestToolsAreTheCommands(t *testing.T) {
 	}
 	if p := param(tools["session_events"], "limit"); p == nil || p.Type != "integer" {
 		t.Errorf("limit: %+v", p)
+	}
+	// A list of ids as the positional argument.
+	if ack := tools["message_ack"]; ack.Arg == nil || ack.Arg.Name != "message_id" || ack.Arg.Type != "array" {
+		t.Errorf("message_ack's argument: %+v", ack.Arg)
+	} else if args, err := ack.Args(map[string]any{"message_id": []any{"msg_a", "msg_b"}, "held": true}); err != nil ||
+		!slices.Equal(args, []string{"message", "ack", "--held=true", "--", "msg_a", "msg_b"}) {
+		t.Errorf("message_ack's args: %v %v", args, err)
+	}
+	if p := param(tools["message_send"], "to"); p == nil || !p.Required {
+		t.Errorf("message_send's to: %+v", p)
 	}
 }
 

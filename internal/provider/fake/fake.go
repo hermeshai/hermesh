@@ -28,6 +28,9 @@
 //	                    then agent message "answer: <value>" or
 //	                    "declined: <message>"
 //	ask-secret <h>|<q>  the same, a secret free-text question
+//	message <to>|<text> call the session's message_send tool (Hermesh's MCP
+//	                    server) to write text to agent to ("" for the
+//	                    session's creator); its result is the turn's
 //
 // Steer appends a script to the running turn, run before it completes.
 //
@@ -40,6 +43,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -47,6 +51,8 @@ import (
 	"time"
 
 	sessionv1 "github.com/hermeshai/hermesh/gen/go/hermesh/session/v1"
+	"github.com/modelcontextprotocol/go-sdk/mcp"
+
 	"github.com/hermeshai/hermesh/internal/provider"
 )
 
@@ -254,6 +260,12 @@ func (s *session) script(ctx context.Context, prompt string) (last string, ended
 			}
 		case "warn":
 			s.emit(provider.Event{Kind: provider.EventError, Text: arg})
+		case "message": // message <to>|<text>: through the session's message_send tool
+			to, text, _ := strings.Cut(arg, "|")
+			s.emit(provider.Event{Kind: provider.EventToolCall, CallID: id, ToolKind: provider.ToolOther, ToolName: "message_send", Summary: to})
+			res, isErr := s.callTool(ctx, "message_send", map[string]any{"to": to, "message": text})
+			last = res
+			s.emit(provider.Event{Kind: provider.EventToolResult, CallID: id, Summary: res, IsError: isErr})
 		case "write":
 			path, text, _ := strings.Cut(arg, " ")
 			a := provider.ToolAction{CallID: id, Kind: provider.ToolEdit, Name: "Write", Paths: []string{path}, Summary: path}
@@ -413,4 +425,34 @@ func (s *session) decide(ctx context.Context, a provider.ToolAction) provider.De
 		return provider.Decision{Allow: true}
 	}
 	return s.spec.Gate(ctx, a)
+}
+
+// callTool calls one of the tools Hermesh gave the session, the way an
+// agent does: it starts the MCP server and calls the tool.
+func (s *session) callTool(ctx context.Context, name string, args map[string]any) (string, bool) {
+	if len(s.spec.MCPServers) == 0 {
+		return "no Hermesh tools in this session", true
+	}
+	m := s.spec.MCPServers[0]
+	cmd := exec.CommandContext(ctx, m.Command, m.Args...)
+	cmd.Env = os.Environ()
+	for k, v := range m.Env {
+		cmd.Env = append(cmd.Env, k+"="+v)
+	}
+	cs, err := mcp.NewClient(&mcp.Implementation{Name: "fake", Version: "1"}, nil).Connect(ctx, &mcp.CommandTransport{Command: cmd}, nil)
+	if err != nil {
+		return "starting the tools: " + err.Error(), true
+	}
+	defer cs.Close()
+	res, err := cs.CallTool(ctx, &mcp.CallToolParams{Name: name, Arguments: args})
+	if err != nil {
+		return err.Error(), true
+	}
+	var out []string
+	for _, c := range res.Content {
+		if t, ok := c.(*mcp.TextContent); ok {
+			out = append(out, t.Text)
+		}
+	}
+	return strings.Join(out, "\n"), res.IsError
 }

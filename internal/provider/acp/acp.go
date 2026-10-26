@@ -196,7 +196,15 @@ func (p *Provider) Start(ctx context.Context, spec provider.StartSpec) (provider
 	}
 	// The session/new, /resume or /load result (it lists config options).
 	res = nil
-	params := map[string]any{"cwd": spec.WorkDir, "mcpServers": []any{}}
+	servers := []any{}
+	for _, m := range spec.MCPServers {
+		env := []any{}
+		for k, v := range m.Env {
+			env = append(env, map[string]any{"name": k, "value": v})
+		}
+		servers = append(servers, map[string]any{"name": m.Name, "command": m.Command, "args": m.Args, "env": env})
+	}
+	params := map[string]any{"cwd": spec.WorkDir, "mcpServers": servers}
 	caps := init.AgentCapabilities
 	switch {
 	case spec.ResumeRef == "":

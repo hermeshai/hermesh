@@ -105,6 +105,20 @@ type Sessions struct {
 	// notice tells the owner's devices of a question, a failure or a
 	// finished turn (notify.go); nil in tests.
 	notice func(noticeSession, *sessionv1.SessionEvent)
+	// mcp are the tools a session's coding agent gets (sessiontools.go);
+	// nil in tests.
+	mcp func(sessionID string) []provider.MCPServer
+}
+
+// record adds an event to a live session's conversation (a message its
+// coding agent wrote).
+func (s *Sessions) record(id string, e *sessionv1.SessionEvent) {
+	s.mu.Lock()
+	l := s.live[id]
+	s.mu.Unlock()
+	if l != nil {
+		s.emit(l, e)
+	}
 }
 
 func (s *Sessions) count(st sessionv1.SessionStatus, d int64) {
@@ -145,6 +159,15 @@ type live struct {
 	// result, a crash or the watchdog; only one of them finishes it).
 	turnMsg   message
 	turnTools int
+	// asker is who asked for the current (or last) turn; asked are messages
+	// from others, each waiting for a turn of its own once the session is
+	// idle (docs/agent-messages.md §7.2).
+	asker string
+	asked []message
+	// askerConv and creatorConv are the conversations of the turn's asker
+	// and of the session's creator, where news goes (known since this
+	// hermeshd started).
+	askerConv, creatorConv string
 	// followUps are messages sent while the turn could not take them
 	// (starting, finishing, or an agent without mid-turn input); they
 	// become the next turn when this one succeeds.
@@ -376,7 +399,9 @@ func (s *Sessions) Start(ctx context.Context, p *Principal, req *sessionv1.Start
 		r.QuestionTimeout = int(*req.QuestionTimeoutSeconds)
 	}
 	s.count(r.Status, 1)
-	l := &live{id: id, row: r, subs: map[chan *sessionv1.SessionEvent]bool{}, tools: map[string]string{}, pending: prompt, lastEvent: now, queuedAt: now}
+	prompt.by, prompt.conv = p.ID(), req.Conversation
+	l := &live{id: id, row: r, subs: map[chan *sessionv1.SessionEvent]bool{}, tools: map[string]string{}, pending: prompt, lastEvent: now, queuedAt: now,
+		asker: p.ID(), askerConv: req.Conversation, creatorConv: req.Conversation}
 	s.mu.Lock()
 	s.live[id] = l
 	s.mu.Unlock()
@@ -537,7 +562,8 @@ func (s *Sessions) Send(ctx context.Context, p *Principal, id, text string, atts
 	if err != nil {
 		return nil, fmt.Errorf("saving attachments: %w", err)
 	}
-	if err := s.take(ctx, l, m, p.ID()); err != nil {
+	m.by = p.ID()
+	if _, err := s.take(ctx, l, m); err != nil {
 		return nil, err
 	}
 	s.audit.Log(AuditRecord{Kind: "session.send", Subject: p.ID(), Session: id, Decision: "allow", Detail: "message_sha=" + sha(text) + filesDetail(m.files)})
@@ -548,23 +574,31 @@ func (s *Sessions) Send(ctx context.Context, p *Principal, id, text string, atts
 
 // take delivers a message by the session's state: a new turn when idle,
 // into the running turn when the agent takes input mid-turn, otherwise
-// as the turn after the current one.
-func (s *Sessions) take(ctx context.Context, l *live, m message, by string) error {
+// as the turn after the current one. A message from someone else than the
+// turn's asker never goes into that turn and never answers its question:
+// it waits for a turn of its own (docs/agent-messages.md §7.2). It says
+// what became of m: "turn", "joined", "answer" or "queued".
+func (s *Sessions) take(ctx context.Context, l *live, m message) (string, error) {
 	for {
 		l.mu.Lock()
+		if l.asker != m.by && turnBusy(l.row.Status) {
+			l.asked = append(l.asked, m)
+			l.mu.Unlock()
+			return "queued", nil
+		}
 		switch l.row.Status {
 		case sessionv1.SessionStatus_SESSION_STATUS_WAITING_INPUT: // the answer to the agent's question
 			l.mu.Unlock()
-			if s.answerWithText(l, by, m.text) {
-				return nil
+			if s.answerWithText(l, m.by, m.answerText()) {
+				return "answer", nil
 			}
 			continue // answered meanwhile
 		case sessionv1.SessionStatus_SESSION_STATUS_IDLE, sessionv1.SessionStatus_SESSION_STATUS_CRASHED:
-			return s.nextTurn(ctx, l, m)
+			return "turn", s.nextTurn(ctx, l, m)
 		case sessionv1.SessionStatus_SESSION_STATUS_QUEUED: // not started: one prompt
 			l.pending = l.pending.join(m)
 			l.mu.Unlock()
-			return nil
+			return "joined", nil
 		case sessionv1.SessionStatus_SESSION_STATUS_RUNNING:
 			ps := l.sess
 			if ps == nil || l.finishing {
@@ -575,8 +609,8 @@ func (s *Sessions) take(ctx context.Context, l *live, m message, by string) erro
 				l.mu.Lock()
 				l.turnMsg = l.turnMsg.join(m) // a restarted turn includes it
 				l.mu.Unlock()
-				s.emit(l, m.userEvent())
-				return nil
+				s.emitUser(l, m)
+				return "joined", nil
 			}
 			l.mu.Lock()
 			if st := l.row.Status; st != sessionv1.SessionStatus_SESSION_STATUS_RUNNING {
@@ -586,11 +620,100 @@ func (s *Sessions) take(ctx context.Context, l *live, m message, by string) erro
 		case sessionv1.SessionStatus_SESSION_STATUS_PREPARING:
 		default:
 			l.mu.Unlock()
-			return cerr(connect.CodeFailedPrecondition, "session %s is archived (read-only); unarchive it to send messages", l.id)
+			return "", cerr(connect.CodeFailedPrecondition, "session %s is archived (read-only); unarchive it to send messages", l.id)
 		}
 		l.followUps = append(l.followUps, m)
 		l.mu.Unlock()
-		return nil
+		return "joined", nil
+	}
+}
+
+// askedBy reports whether who asked for the session's current turn.
+func (l *live) askedBy(who string) bool {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	return l.asker == who
+}
+
+// Deliver hands the session a message an agent wrote (docs/agent-messages.md
+// §7.2): p is that agent, with its grant, which must cover the session's
+// project and coding agent, and the session must be one it may read. text
+// is what the coding agent is given; rec is what the session records.
+func (s *Sessions) Deliver(ctx context.Context, p *Principal, id, conv, text string, rec *sessionv1.MessageReceived, atts []*sessionv1.Attachment) (*sessionv1.Session, string, error) {
+	if p.Kind != PrincipalClient {
+		return nil, "", cerr(connect.CodePermissionDenied, "only an agent delivers messages")
+	}
+	l, r, err := s.find(p, id, false)
+	if err != nil {
+		return nil, "", err
+	}
+	if !identity.Allows(p.Grant.ProjectIds, r.ProjectID) || !identity.Allows(p.Grant.Agents, r.Agent) {
+		return nil, "", cerr(connect.CodePermissionDenied, "this agent's grant does not cover session %s", id)
+	}
+	if err := checkAttachments(text, atts); err != nil {
+		return nil, "", err
+	}
+	if l == nil {
+		return nil, "", cerr(connect.CodeFailedPrecondition, "session %s is archived (read-only); unarchive it to send messages", id)
+	}
+	if s.paused() {
+		return nil, "", cerr(connect.CodeUnavailable, "this machine is paused by its owner")
+	}
+	m, err := newMessage(s.attachmentsDir(id), text, atts)
+	if err != nil {
+		return nil, "", fmt.Errorf("saving attachments: %w", err)
+	}
+	m.by, m.conv, m.quiet, m.answer = p.ID(), conv, true, rec.Text
+	delivered, err := s.take(ctx, l, m)
+	if err != nil {
+		return nil, "", err
+	}
+	rec.Delivered, rec.Attachments = delivered, m.files
+	s.emit(l, &sessionv1.SessionEvent{Kind: &sessionv1.SessionEvent_MessageReceived{MessageReceived: rec}})
+	s.audit.Log(AuditRecord{Kind: "session.message", Subject: p.ID(), Session: id, Decision: "allow", Detail: "message=" + rec.MessageId + " delivered=" + delivered + filesDetail(m.files)})
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	return s.toProto(l.row), delivered, nil
+}
+
+// turnBusy: a turn is under way, from being queued to its question.
+func turnBusy(st sessionv1.SessionStatus) bool {
+	switch st {
+	case sessionv1.SessionStatus_SESSION_STATUS_QUEUED, sessionv1.SessionStatus_SESSION_STATUS_PREPARING,
+		sessionv1.SessionStatus_SESSION_STATUS_RUNNING, sessionv1.SessionStatus_SESSION_STATUS_WAITING_INPUT:
+		return true
+	}
+	return false
+}
+
+// emitUser records what the agent was given of m.
+func (s *Sessions) emitUser(l *live, m message) {
+	for _, e := range m.userEvents() {
+		s.emit(l, e)
+	}
+}
+
+// startAsked begins the turn the oldest message from another asker waits
+// for, with the later ones from that asker, once the session is idle.
+func (s *Sessions) startAsked(l *live) {
+	l.mu.Lock()
+	st := l.row.Status
+	if len(l.asked) == 0 || (st != sessionv1.SessionStatus_SESSION_STATUS_IDLE && st != sessionv1.SessionStatus_SESSION_STATUS_CRASHED) {
+		l.mu.Unlock()
+		return
+	}
+	m := l.asked[0]
+	var keep []message
+	for _, o := range l.asked[1:] {
+		if o.by == m.by {
+			m = m.join(o)
+		} else {
+			keep = append(keep, o)
+		}
+	}
+	l.asked = keep
+	if err := s.nextTurn(context.Background(), l, m); err != nil {
+		s.log.Warn("starting a waiting message's turn", "session", l.id, "err", err)
 	}
 }
 
@@ -613,6 +736,7 @@ func (s *Sessions) nextTurn(ctx context.Context, l *live, m message) error {
 		l.sess = nil
 		go ps.Close()
 	}
+	l.asker, l.askerConv = m.by, m.conv
 	if !alive {
 		l.pending, l.resume, l.queuedAt = m, l.row.ProviderRef != "", time.Now()
 		l.mu.Unlock()
@@ -633,8 +757,8 @@ func (s *Sessions) nextTurn(ctx context.Context, l *live, m message) error {
 	if changed {
 		s.statusChanged(l, sessionv1.SessionStatus_SESSION_STATUS_RUNNING, "")
 	}
-	s.emit(l, &sessionv1.SessionEvent{Kind: &sessionv1.SessionEvent_TurnStarted{TurnStarted: &sessionv1.TurnStarted{Turn: turn}}})
-	s.emit(l, m.userEvent())
+	s.emit(l, &sessionv1.SessionEvent{Kind: &sessionv1.SessionEvent_TurnStarted{TurnStarted: &sessionv1.TurnStarted{Turn: turn, Asker: m.by}}})
+	s.emitUser(l, m)
 	if err := ps.Send(ctx, m.input()); err != nil {
 		s.interruptTurn(l, ps, &provider.Failure{Kind: sessionv1.FailureKind_FAILURE_KIND_AGENT_CRASHED, Message: "could not send the message: " + err.Error()})
 		return err
@@ -1177,6 +1301,9 @@ func (s *Sessions) prepare(l *live) {
 	l.mu.Lock()
 	spec := provider.StartSpec{WorkDir: l.row.Worktree, TempDir: tmp, Prompt: prompt.text, Images: prompt.input().Images, ReadDirs: []string{files}, Model: l.row.Model,
 		Effort: l.row.Effort, Speed: l.row.Speed, Env: shellenv.Env(tmp), Gate: gate}
+	if s.mcp != nil {
+		spec.MCPServers = s.mcp(l.id)
+	}
 	if resume && l.row.ProviderRef != "" {
 		spec.ResumeRef = l.row.ProviderRef
 	} else {
@@ -1234,14 +1361,17 @@ func (s *Sessions) prepare(l *live) {
 	}
 	l.lastProgress, l.lastErr = time.Now(), nil
 	l.turnMsg, l.turnTools, l.resumedStart, l.finishing, l.restarting = prompt, 0, spec.ResumeRef != "", false, false
+	if prompt.by != "" {
+		l.asker, l.askerConv = prompt.by, prompt.conv
+	}
 	mProcs.Add(1)
 	l.pending, l.resume = message{}, false
 	turn := l.turn
 	l.mu.Unlock()
 	s.setStatus(l, sessionv1.SessionStatus_SESSION_STATUS_RUNNING, "")
 	if !restarting { // a restarted turn was already announced
-		s.emit(l, &sessionv1.SessionEvent{Kind: &sessionv1.SessionEvent_TurnStarted{TurnStarted: &sessionv1.TurnStarted{Turn: turn}}})
-		s.emit(l, prompt.userEvent())
+		s.emit(l, &sessionv1.SessionEvent{Kind: &sessionv1.SessionEvent_TurnStarted{TurnStarted: &sessionv1.TurnStarted{Turn: turn, Asker: prompt.by}}})
+		s.emitUser(l, prompt)
 	}
 	// Messages sent while the agent was starting: into this turn if it
 	// takes them (before pumping, so the turn cannot have finished).
@@ -1254,7 +1384,7 @@ func (s *Sessions) prepare(l *live) {
 			l.mu.Lock()
 			l.turnMsg = l.turnMsg.join(m)
 			l.mu.Unlock()
-			s.emit(l, m.userEvent())
+			s.emitUser(l, m)
 			continue
 		}
 		l.mu.Lock()
@@ -1675,6 +1805,9 @@ func (s *Sessions) setStatusLocked(l *live, st sessionv1.SessionStatus) bool {
 
 func (s *Sessions) statusChanged(l *live, st sessionv1.SessionStatus, reason string) {
 	s.emit(l, &sessionv1.SessionEvent{Kind: &sessionv1.SessionEvent_Status{Status: &sessionv1.StatusChanged{Status: st, Reason: reason}}})
+	if st == sessionv1.SessionStatus_SESSION_STATUS_IDLE || st == sessionv1.SessionStatus_SESSION_STATUS_CRASHED {
+		go s.startAsked(l)
+	}
 }
 
 // deliver runs after an event is committed: fan out to subscribers and,
@@ -1783,10 +1916,10 @@ func (s *Sessions) emitOutput(l *live, e *sessionv1.SessionEvent, output string)
 	var ns *noticeSession
 	switch k := e.Kind.(type) {
 	case *sessionv1.SessionEvent_QuestionAsked, *sessionv1.SessionEvent_TurnCompleted:
-		ns = &noticeSession{l.id, l.row.Title, l.row.CreatedBy, l.row.ProjectID, l.row.Agent}
+		ns = &noticeSession{l.id, l.row.Title, l.row.CreatedBy, l.row.ProjectID, l.row.Agent, l.asker, l.askerConv, l.creatorConv}
 	case *sessionv1.SessionEvent_Status:
 		if k.Status.Status == sessionv1.SessionStatus_SESSION_STATUS_CRASHED {
-			ns = &noticeSession{l.id, l.row.Title, l.row.CreatedBy, l.row.ProjectID, l.row.Agent}
+			ns = &noticeSession{l.id, l.row.Title, l.row.CreatedBy, l.row.ProjectID, l.row.Agent, l.asker, l.askerConv, l.creatorConv}
 		}
 	}
 	l.mu.Unlock()

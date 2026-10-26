@@ -29,7 +29,10 @@
     "resume": "When {{grant}} sends another message, it picks up from here; the earlier changes are all still there.",
     "adviceAndResume": "{{advice}} {{resume}}",
     "details": "Details",
-    "archive": "Archive"
+    "archive": "Archive",
+    "messageFrom": "Message from {{name}}",
+    "messageTo": "Message to {{name}}",
+    "messageQueued": "waits for a turn of its own"
   },
   "control": {
     "label": "This turn",

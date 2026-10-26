@@ -62,6 +62,9 @@ type app struct {
 	// inboxWaiting is how many messages wait in this client's inbox, as
 	// the relay said while the command connected.
 	inboxWaiting uint32
+	// extra are data keys a command adds to whatever document it ends with
+	// (message send --wait: the message, beside the session).
+	extra []field
 }
 
 func homeDir() string {

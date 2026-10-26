@@ -197,6 +197,22 @@ struct StepView: View {
                 .background(Color(.secondarySystemBackground), in: RoundedRectangle(cornerRadius: 22, style: .continuous))
             case .agent(_, let text):
                 Text(agentMarkdown(text)).textSelection(.enabled).frame(maxWidth: .infinity, alignment: .leading)
+            case .message(_, let incoming, let name, let text, let queued):
+                // A message between the session and another of the owner's agents.
+                VStack(alignment: .leading, spacing: 5) {
+                    HStack(spacing: 6) {
+                        Image(systemName: "envelope").font(.caption)
+                        Text(incoming ? String(localized: "Message from \(name)") : String(localized: "Message to \(name)")).font(.caption.weight(.semibold))
+                        if queued {
+                            Spacer()
+                            Text("Waits for a turn of its own").font(.caption).foregroundStyle(.secondary)
+                        }
+                    }
+                    Text(agentMarkdown(text)).textSelection(.enabled)
+                }
+                .padding(.horizontal, 13).padding(.vertical, 10)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(Color(.secondarySystemBackground), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
             case .question(_, let q, let r):
                 // Unanswered, it is the panel at the bottom.
                 if let r {

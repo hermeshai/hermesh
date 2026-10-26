@@ -29,10 +29,15 @@ public enum TranscriptItem: Equatable {
     /// took: seconds since the turn started, when known.
     case turnEnd(seq: UInt64, end: TurnCompleted, took: Double?)
     case error(seq: UInt64, error: ErrorEvent)
+    /// A message between the session and one of the owner's agents
+    /// (docs/agent-messages.md): incoming, written to the session (queued: it
+    /// waits for a turn of its own), or written by its coding agent.
+    case message(seq: UInt64, incoming: Bool, name: String, text: String, queued: Bool)
 
     public var seq: UInt64 {
         switch self {
-        case .turn(let s, _, _), .user(let s, _), .agent(let s, _), .question(let s, _, _), .turnEnd(let s, _, _), .error(let s, _): s
+        case .turn(let s, _, _), .user(let s, _), .agent(let s, _), .question(let s, _, _), .turnEnd(let s, _, _), .error(let s, _),
+             .message(let s, _, _, _, _): s
         case .tool(let t): t.seq
         }
     }
@@ -72,6 +77,10 @@ public func transcript(_ events: [SessionEvent], running: Bool) -> [TranscriptIt
             let took = at.flatMap { a in turnStart.map { a.timeIntervalSince($0) } }
             items.append(.turnEnd(seq: e.seq, end: t, took: took))
         case .error(let err): items.append(.error(seq: e.seq, error: err))
+        case .messageReceived(let m):
+            items.append(.message(seq: e.seq, incoming: true, name: m.fromName.isEmpty ? m.from : m.fromName, text: m.text, queued: m.delivered == "queued"))
+        case .messageSent(let m):
+            items.append(.message(seq: e.seq, incoming: false, name: m.toName.isEmpty ? m.to : m.toName, text: m.text, queued: false))
         default: break
         }
     }
