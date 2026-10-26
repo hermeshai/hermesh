@@ -18,7 +18,6 @@ import (
 
 	"github.com/spf13/cobra"
 
-	relayv1 "github.com/hermeshai/hermesh/gen/go/hermesh/relay/v1"
 	"github.com/hermeshai/hermesh/gen/go/hermesh/relay/v1/relayv1connect"
 )
 
@@ -74,6 +73,9 @@ func (a *app) messageHookCmd() *cobra.Command {
 
 // hook answers one hook event; nil says nothing.
 func (a *app) hook(ctx context.Context, agent string, in hookInput) map[string]any {
+	if os.Getenv("HERMESH_SESSION") != "" {
+		return nil // a Hermesh session's coding agent: its machine gives it its messages
+	}
 	conv := in.SessionID
 	context := func(text string) map[string]any {
 		return map[string]any{"hookSpecificOutput": map[string]any{"hookEventName": in.Event, "additionalContext": text}}
@@ -157,13 +159,10 @@ func (a *app) conversationLetters(ctx context.Context, conv string, count bool) 
 }
 
 func (a *app) takeConversation(ctx context.Context, ms relayv1connect.MessageServiceClient, conv string, count bool) ([]opened, int, error) {
-	res, err := ms.Fetch(ctx, &relayv1.FetchMessagesRequest{})
+	good, err := a.fetchAll(ctx, ms)
 	if err != nil {
 		return nil, 0, err
 	}
-	good, refused, again := a.open(res.Messages)
-	a.ackOutcome(ctx, ms, refused, "refused")
-	a.ackOutcome(ctx, ms, again, "handled")
 	var mine []opened
 	others := 0
 	for _, o := range good {
@@ -306,14 +305,11 @@ func (a *app) watchOnce(ctx context.Context, conv, sock string) error {
 	}
 	for ctx.Err() == nil {
 		unlock := lockConversation(a.home, conv)
-		res, err := ms.Fetch(ctx, &relayv1.FetchMessagesRequest{})
+		good, err := a.fetchAll(ctx, ms)
 		if err != nil {
 			unlock()
 			return err
 		}
-		good, refused, again := a.open(res.Messages)
-		a.ackOutcome(ctx, ms, refused, "refused")
-		a.ackOutcome(ctx, ms, again, "handled")
 		var mine []opened
 		for _, o := range good {
 			if o.m.GetTo().GetSession() == conv {
@@ -332,7 +328,7 @@ func (a *app) watchOnce(ctx context.Context, conv, sock string) error {
 			a.ackOutcome(ctx, ms, ids, "handled")
 		}
 		unlock()
-		if err := a.waitInbox(ctx, ms); err != nil {
+		if err := a.waitInbox(ctx, ms, len(good)-len(mine)); err != nil {
 			return err
 		}
 	}

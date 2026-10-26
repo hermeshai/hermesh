@@ -16,6 +16,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"slices"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
@@ -555,6 +556,25 @@ func TestMessages(t *testing.T) {
 	}
 
 	// --- An offline machine: the message waits for it ------------------------
+	// Also another agent's message that waits for a turn of its own: it
+	// outlasts the restart. The machine comes back paused, and keeps what
+	// waits at the post office until it resumes.
+	q2, _ := w.startSession(30*time.Second, "--prompt", "ask Color|Which color?|Red,Blue\nsay done")
+	slowly(t, 30*time.Second, "the question", func() bool { return w.get(q2.SessionID).Status == "waiting_input" })
+	if d, r := sendMessage(t, w, other, 30*time.Second, "--to", q2.SessionID, "--message", "say after the restart"); !d.OK || d.Message.Delivered != "queued" {
+		t.Fatalf("helper's message while bot's question waits: %+v", r)
+	}
+	ms, err := w.app.client.ListMachines(context.Background(), &localv1.ListMachinesRequest{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	pause := func(paused bool) {
+		t.Helper()
+		if _, err := w.app.client.SetMachinePaused(context.Background(), &localv1.SetMachinePausedRequest{MachineId: ms.Machines[0].MachineId, Paused: paused}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	pause(true)
 	w.owner.stop()
 	w.app.cancel()
 	eventually(t, 30*time.Second, "the machine offline", func() bool {
@@ -572,8 +592,19 @@ func TestMessages(t *testing.T) {
 	}
 	w.startOwner()
 	w.app = newTestApp(t, w.sock, w.root)
-	slowly(t, time.Minute, "the turn the waiting message started", func() bool {
+	eventually(t, 30*time.Second, "the machine online", func() bool {
+		return !strings.Contains(w.cli(30*time.Second, "project", "list").stdout, "offline")
+	})
+	time.Sleep(3 * time.Second)
+	if st := messageState(t, w, w.cliEnv, d.Message.ID); st != "taken" {
+		t.Fatalf("a message to a paused machine: %s", st)
+	}
+	pause(false)
+	slowly(t, 30*time.Second, "the turn the waiting message started", func() bool {
 		return w.get(s.SessionID).Result == "while you were away"
+	})
+	slowly(t, 30*time.Second, "helper's turn after the restart", func() bool {
+		return w.get(q2.SessionID).Result == "after the restart"
 	})
 
 	// --- Archived: refused at once --------------------------------------------
@@ -701,13 +732,30 @@ func TestAgentsOnAComputer(t *testing.T) {
 	if l := listMessages(t, w, w.cliEnv); len(l.Messages) != 0 {
 		t.Fatalf("a delivered message must be acknowledged: %+v", l)
 	}
-	// One addressed to no conversation is only counted.
+	// What the session writes to the agent that started it comes back to
+	// the conversation too.
+	if r := run(t, append(slices.Clone(w.cliEnv), "HERMESH_CONVERSATION=conv-1"), 30*time.Second, filepath.Join(w.bin, "hermesh"),
+		"session", "start", "--project", "demo", "--prompt", "message |the tests pass"); r.code != 0 {
+		t.Fatalf("start: %+v", r)
+	}
+	slowly(t, time.Minute, "the session's message in Claude Code's inbox", func() bool {
+		return slices.ContainsFunc(inbox.posted(), func(p string) bool { return strings.Contains(p, "the tests pass") })
+	})
+	eventually(t, 30*time.Second, "the inbox empty", func() bool { return len(listMessages(t, w, w.cliEnv).Messages) == 0 })
+	// One addressed to no conversation is only counted, and the watch
+	// waits for the next one instead of fetching it again and again.
+	posts := len(inbox.posted())
 	if d, r := sendMessage(t, w, helper, 30*time.Second, "--to", "bot", "--message", "for whoever reads it"); !d.OK {
 		t.Fatalf("helper's message: %+v", r)
 	}
 	time.Sleep(2 * time.Second)
-	if n := len(inbox.posted()); n != 2 {
+	if n := len(inbox.posted()); n != posts {
 		t.Fatalf("a message to no conversation was pushed: %q", inbox.posted())
+	}
+	before := cpuTime(t, pid)
+	time.Sleep(3 * time.Second)
+	if used := cpuTime(t, pid) - before; used > 300*time.Millisecond {
+		t.Fatalf("the watch used %v of CPU in 3s with a message it leaves waiting", used)
 	}
 	if ctx := additionalContext(hookRun(t, w, claudeEnv, "claude", map[string]any{"session_id": "conv-1", "hook_event_name": "UserPromptSubmit"})); !strings.Contains(ctx, "1 message(s) addressed to no conversation") {
 		t.Fatalf("UserPromptSubmit's note: %q", ctx)
@@ -720,6 +768,18 @@ func TestAgentsOnAComputer(t *testing.T) {
 	if ctx := additionalContext(hookRun(t, w, nil, "codex", map[string]any{"session_id": "thr-1", "hook_event_name": "SessionStart"})); !strings.Contains(ctx, "--from-session thr-1") {
 		t.Fatalf("Codex's SessionStart context: %q", ctx)
 	}
+	// More than a page of others' messages wait ahead of the
+	// conversation's own: the hooks still find it.
+	helper2 := w.addAgent("helper2", &localv1.GrantSpec{})
+	for i := range 53 {
+		from := helper
+		if i >= 27 { // at most 30 an hour from one agent to another
+			from = helper2
+		}
+		if d, r := sendMessage(t, w, from, 30*time.Second, "--to", "bot", "--message", fmt.Sprintf("for whoever reads it, %d", i)); !d.OK {
+			t.Fatalf("message %d: %+v", i, r)
+		}
+	}
 	if d, r := sendMessage(t, w, helper, 30*time.Second, "--to", contactAddress(t, w, helper, "bot")+"/thr-1", "--message", "your review is done"); !d.OK {
 		t.Fatalf("helper's message to the Codex conversation: %+v", r)
 	}
@@ -729,6 +789,19 @@ func TestAgentsOnAComputer(t *testing.T) {
 	}
 	if again := hookRun(t, w, nil, "codex", map[string]any{"session_id": "thr-1", "hook_event_name": "Stop", "stop_hook_active": true}); again != nil {
 		t.Fatalf("a Stop already continued must let the turn end: %v", again)
+	}
+
+	// --- Hermesh's own sessions --------------------------------------------
+	// Their coding agents are told so, and the hooks the user installed
+	// for Claude Code on this computer leave them alone: their machine gives
+	// them their messages.
+	es, r := w.startSession(30*time.Second, "--wait", "--prompt", "env HERMESH_SESSION")
+	if r.code != 0 || es.Result != "HERMESH_SESSION="+es.SessionID {
+		t.Fatalf("a session's coding agent: %+v %+v", es, r)
+	}
+	if out := hookRun(t, w, append(slices.Clone(claudeEnv), "HERMESH_SESSION="+es.SessionID), "claude",
+		map[string]any{"session_id": "conv-2", "hook_event_name": "SessionStart", "source": "startup"}); out != nil {
+		t.Fatalf("the hook in a Hermesh session: %v", out)
 	}
 
 	// --- Installing the hooks ------------------------------------------------
@@ -755,6 +828,43 @@ func TestAgentsOnAComputer(t *testing.T) {
 	if !strings.HasPrefix(string(b), "{\n  \"model\"") {
 		t.Fatalf("the settings' own keys must keep their place: %s", b)
 	}
+}
+
+// messageState is what `message status` says of a message.
+func messageState(t *testing.T, w *ownerMac, env []string, id string) string {
+	t.Helper()
+	var status struct {
+		States []struct{ ID, State string } `json:"states"`
+	}
+	json.Unmarshal([]byte(run(t, env, 30*time.Second, filepath.Join(w.bin, "hermesh"), "message", "status", id, "-o", "json").stdout), &status)
+	if len(status.States) != 1 {
+		t.Fatalf("status of %s: %+v", id, status)
+	}
+	return status.States[0].State
+}
+
+// cpuTime is the CPU time a process has used so far.
+func cpuTime(t *testing.T, pidFile string) time.Duration {
+	t.Helper()
+	b, err := os.ReadFile(pidFile)
+	if err != nil {
+		t.Fatal(err)
+	}
+	out, err := exec.Command("ps", "-o", "time=", "-p", strings.TrimSpace(string(b))).Output()
+	if err != nil {
+		t.Fatalf("ps: %v", err)
+	}
+	// [[dd-]hh:]mm:ss.ss on macOS, [dd-]hh:mm:ss on Linux
+	f := strings.Split(strings.TrimSpace(string(out)), ":")
+	var d time.Duration
+	for _, p := range f {
+		if _, rest, ok := strings.Cut(p, "-"); ok {
+			p = rest
+		}
+		v, _ := strconv.ParseFloat(p, 64)
+		d = d*60 + time.Duration(v*float64(time.Second))
+	}
+	return d
 }
 
 // contactAddress is an agent's address, as another agent's contacts list it.

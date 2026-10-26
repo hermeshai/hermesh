@@ -3,6 +3,7 @@ package machine
 import (
 	"context"
 	"crypto/rand"
+	"encoding/json"
 	"fmt"
 	"github.com/hermeshai/hermesh/pkg/metrics"
 	"log/slog"
@@ -164,10 +165,9 @@ type live struct {
 	// idle (docs/agent-messages.md §7.2).
 	asker string
 	asked []message
-	// askerConv and creatorConv are the conversations of the turn's asker
-	// and of the session's creator, where news goes (known since this
-	// hermeshd started).
-	askerConv, creatorConv string
+	// askerConv is the conversation of the turn's asker, where its news
+	// goes (known since this hermeshd started; the creator's is the row's).
+	askerConv string
 	// followUps are messages sent while the turn could not take them
 	// (starting, finishing, or an agent without mid-turn input); they
 	// become the next turn when this one succeeds.
@@ -262,7 +262,8 @@ func (s *Sessions) Recover() error {
 		}
 		seq, _ := s.st.MaxSeq(r.ID)
 		s.count(r.Status, 1)
-		l := &live{id: r.ID, row: r, seq: seq, persistedSeq: seq, turn: r.Progress.GetTurnCount(), subs: map[chan *sessionv1.SessionEvent]bool{}, tools: map[string]string{}, idleSince: time.Now()}
+		l := &live{id: r.ID, row: r, seq: seq, persistedSeq: seq, turn: r.Progress.GetTurnCount(), subs: map[chan *sessionv1.SessionEvent]bool{}, tools: map[string]string{}, idleSince: time.Now(),
+			asked: s.loadAsked(r.ID)}
 		s.mu.Lock()
 		s.live[r.ID] = l
 		s.mu.Unlock()
@@ -272,6 +273,9 @@ func (s *Sessions) Recover() error {
 				r.Progress.LastFailure = (&provider.Failure{Kind: sessionv1.FailureKind_FAILURE_KIND_AGENT_CRASHED, Message: "hermeshd restarted during the turn"}).Proto()
 			}
 			s.setStatus(l, sessionv1.SessionStatus_SESSION_STATUS_CRASHED, "hermeshd restarted")
+		}
+		if len(l.asked) > 0 { // messages that waited for a turn of their own
+			go s.startAsked(l)
 		}
 	}
 	return nil
@@ -394,14 +398,14 @@ func (s *Sessions) Start(ctx context.Context, p *Principal, req *sessionv1.Start
 	}
 	r := &sessionRow{ID: id, ProjectID: req.ProjectId, Agent: req.Agent,
 		Status: sessionv1.SessionStatus_SESSION_STATUS_QUEUED, CreatedBy: p.ClientID, GrantID: g.GrantId, Model: set.Model, Effort: set.Effort, Speed: set.Speed,
-		BaseCommit: req.BaseRef, Workspace: proj.Workspace, QuestionTimeout: -1, Title: title, Progress: &sessionv1.SessionProgress{Phase: "queued"}, CreatedAt: now, UpdatedAt: now}
+		BaseCommit: req.BaseRef, Workspace: proj.Workspace, QuestionTimeout: -1, Title: title, Conversation: req.Conversation, Progress: &sessionv1.SessionProgress{Phase: "queued"}, CreatedAt: now, UpdatedAt: now}
 	if req.QuestionTimeoutSeconds != nil {
 		r.QuestionTimeout = int(*req.QuestionTimeoutSeconds)
 	}
 	s.count(r.Status, 1)
 	prompt.by, prompt.conv = p.ID(), req.Conversation
 	l := &live{id: id, row: r, subs: map[chan *sessionv1.SessionEvent]bool{}, tools: map[string]string{}, pending: prompt, lastEvent: now, queuedAt: now,
-		asker: p.ID(), askerConv: req.Conversation, creatorConv: req.Conversation}
+		asker: p.ID(), askerConv: req.Conversation}
 	s.mu.Lock()
 	s.live[id] = l
 	s.mu.Unlock()
@@ -583,6 +587,7 @@ func (s *Sessions) take(ctx context.Context, l *live, m message) (string, error)
 		l.mu.Lock()
 		if l.asker != m.by && turnBusy(l.row.Status) {
 			l.asked = append(l.asked, m)
+			s.saveAsked(l)
 			l.mu.Unlock()
 			return "queued", nil
 		}
@@ -712,9 +717,62 @@ func (s *Sessions) startAsked(l *live) {
 		}
 	}
 	l.asked = keep
+	s.saveAsked(l)
 	if err := s.nextTurn(context.Background(), l, m); err != nil {
 		s.log.Warn("starting a waiting message's turn", "session", l.id, "err", err)
 	}
+}
+
+// askedJSON is a message waiting for its turn, as the store keeps it.
+type askedJSON struct {
+	Text   string   `json:"text"`
+	Files  [][]byte `json:"files,omitempty"` // AttachmentInfo
+	By     string   `json:"by"`
+	Conv   string   `json:"conv,omitempty"`
+	Quiet  bool     `json:"quiet,omitempty"`
+	Answer string   `json:"answer,omitempty"`
+}
+
+func askedKey(id string) string { return "asked/" + id }
+
+// saveAsked stores the messages waiting for a turn of their own, so that
+// they outlast a restart; it is called with l.mu held.
+func (s *Sessions) saveAsked(l *live) {
+	out := []askedJSON{}
+	for _, m := range l.asked {
+		a := askedJSON{Text: m.text, By: m.by, Conv: m.conv, Quiet: m.quiet, Answer: m.answer}
+		for _, f := range m.files {
+			b, _ := proto.Marshal(f)
+			a.Files = append(a.Files, b)
+		}
+		out = append(out, a)
+	}
+	b, _ := json.Marshal(out)
+	if err := s.st.Set(askedKey(l.id), b); err != nil {
+		s.log.Warn("storing the messages waiting for a turn", "session", l.id, "err", err)
+	}
+}
+
+// loadAsked is what saveAsked stored.
+func (s *Sessions) loadAsked(id string) []message {
+	b, err := s.st.Get(askedKey(id))
+	if err != nil || b == nil {
+		return nil
+	}
+	var in []askedJSON
+	json.Unmarshal(b, &in)
+	var out []message
+	for _, a := range in {
+		m := message{text: a.Text, by: a.By, conv: a.Conv, quiet: a.Quiet, answer: a.Answer}
+		for _, f := range a.Files {
+			info := &sessionv1.AttachmentInfo{}
+			if proto.Unmarshal(f, info) == nil {
+				m.files = append(m.files, info)
+			}
+		}
+		out = append(out, m)
+	}
+	return out
 }
 
 // nextTurn starts a turn with m, in the running agent process or a new
@@ -835,6 +893,10 @@ func (s *Sessions) Archive(ctx context.Context, p *Principal, id string) (*sessi
 	if st := l.row.Status; st != sessionv1.SessionStatus_SESSION_STATUS_IDLE && st != sessionv1.SessionStatus_SESSION_STATUS_CRASHED {
 		l.mu.Unlock()
 		return nil, cerr(connect.CodeFailedPrecondition, "session %s has a turn in progress (%s); interrupt it first", id, phaseOf(st))
+	}
+	if len(l.asked) > 0 {
+		l.mu.Unlock()
+		return nil, cerr(connect.CodeFailedPrecondition, "session %s is starting the turn another agent's message waits for; interrupt it first", id)
 	}
 	ps := l.sess
 	l.sess = nil
@@ -1300,7 +1362,7 @@ func (s *Sessions) prepare(l *live) {
 	gate := s.gate(l)
 	l.mu.Lock()
 	spec := provider.StartSpec{WorkDir: l.row.Worktree, TempDir: tmp, Prompt: prompt.text, Images: prompt.input().Images, ReadDirs: []string{files}, Model: l.row.Model,
-		Effort: l.row.Effort, Speed: l.row.Speed, Env: shellenv.Env(tmp), Gate: gate}
+		Effort: l.row.Effort, Speed: l.row.Speed, Env: append(shellenv.Env(tmp), "HERMESH_SESSION="+id), Gate: gate}
 	if s.mcp != nil {
 		spec.MCPServers = s.mcp(l.id)
 	}
@@ -1916,10 +1978,10 @@ func (s *Sessions) emitOutput(l *live, e *sessionv1.SessionEvent, output string)
 	var ns *noticeSession
 	switch k := e.Kind.(type) {
 	case *sessionv1.SessionEvent_QuestionAsked, *sessionv1.SessionEvent_TurnCompleted:
-		ns = &noticeSession{l.id, l.row.Title, l.row.CreatedBy, l.row.ProjectID, l.row.Agent, l.asker, l.askerConv, l.creatorConv}
+		ns = &noticeSession{l.id, l.row.Title, l.row.CreatedBy, l.row.ProjectID, l.row.Agent, l.asker, l.askerConv, l.row.Conversation}
 	case *sessionv1.SessionEvent_Status:
 		if k.Status.Status == sessionv1.SessionStatus_SESSION_STATUS_CRASHED {
-			ns = &noticeSession{l.id, l.row.Title, l.row.CreatedBy, l.row.ProjectID, l.row.Agent, l.asker, l.askerConv, l.creatorConv}
+			ns = &noticeSession{l.id, l.row.Title, l.row.CreatedBy, l.row.ProjectID, l.row.Agent, l.asker, l.askerConv, l.row.Conversation}
 		}
 	}
 	l.mu.Unlock()

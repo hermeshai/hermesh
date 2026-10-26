@@ -663,3 +663,31 @@ Step 3, 2026-10-27 (`TestAgentsOnAComputer`, `TestRealClaudeInbox`):
 - **Claude Code's inbox socket** takes an auth line with the token, then
   messages in the stream-json input's `user` form; checked with the real
   Claude Code.
+
+Review of steps 2 and 3, 2026-10-27:
+
+- **Waiting means waiting for something new.** The post office's watch
+  says at once how many messages wait; an agent that leaves some there
+  (for other conversations, or none) waits for more than it left, or for
+  the next arrival, instead of fetching the same ones again.
+- **Fetch takes pages** (`skip`): hooks, watches and machines go through
+  the whole inbox, so messages left for others never hide a
+  conversation's own behind the first 50.
+- **A machine keeps following its inbox** after an error or a watch the
+  relay ends, while its connection lasts. A message it can't take for now
+  (paused, say) stays at the post office, and it tries again when the
+  owner resumes it, or a minute later; it bounces only messages that will
+  never go through.
+- **Messages waiting for a turn of their own are stored**, so they outlast
+  a restart of hermeshd; an archive waits until the turn they started is
+  interrupted.
+- **A session's creator's conversation is stored with the session**, so
+  its news after a restart, and what the session writes to its creator
+  (`message_send` with no `to`), still reach that conversation.
+- **The hooks leave Hermesh's own sessions alone.** hermeshd gives its
+  coding agents `HERMESH_SESSION`; the hooks the user installed for
+  Claude Code on that computer then do nothing there, since the machine
+  gives the session its messages.
+- **Unchanged: an interrupt starts the turn another agent's message waits
+  for.** That message asked for a turn of its own, not to be part of the
+  one interrupted; the owner who wants nothing to run pauses the machine.

@@ -22,6 +22,8 @@
 //	notice              agent message "notice: yes|no" (was the prompt
 //	                    prefixed with Hermesh's continuity notice)
 //	resumed             agent message "resumed: <ref>" ("" when fresh)
+//	env <name>          agent message "<name>=<value>" from the agent's
+//	                    environment ("" when unset)
 //	images              agent message "images: <file names>" (the images
 //	                    this turn got, comma-separated)
 //	ask <h>|<q>|<a,b>   ask question q (header h, options a and b) and wait;
@@ -414,6 +416,15 @@ func (s *session) script(ctx context.Context, prompt string) (last string, ended
 			s.emit(provider.Event{Kind: provider.EventAgentMessage, Text: last})
 		case "resumed":
 			last = "resumed: " + s.spec.ResumeRef
+			s.emit(provider.Event{Kind: provider.EventAgentMessage, Text: last})
+		case "env":
+			v := ""
+			for _, kv := range s.spec.Env {
+				if name, val, ok := strings.Cut(kv, "="); ok && name == arg {
+					v = val
+				}
+			}
+			last = arg + "=" + v
 			s.emit(provider.Event{Kind: provider.EventAgentMessage, Text: last})
 		}
 	}

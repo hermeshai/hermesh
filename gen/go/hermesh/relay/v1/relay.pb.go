@@ -3421,7 +3421,9 @@ func (*SendSealedResponse) Descriptor() ([]byte, []int) {
 type FetchMessagesRequest struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// At most this many (default and most: 50).
-	Limit         uint32 `protobuf:"varint,1,opt,name=limit,proto3" json:"limit,omitempty"`
+	Limit uint32 `protobuf:"varint,1,opt,name=limit,proto3" json:"limit,omitempty"`
+	// Pass over this many of the oldest first: the next page.
+	Skip          uint32 `protobuf:"varint,2,opt,name=skip,proto3" json:"skip,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -3459,6 +3461,13 @@ func (*FetchMessagesRequest) Descriptor() ([]byte, []int) {
 func (x *FetchMessagesRequest) GetLimit() uint32 {
 	if x != nil {
 		return x.Limit
+	}
+	return 0
+}
+
+func (x *FetchMessagesRequest) GetSkip() uint32 {
+	if x != nil {
+		return x.Skip
 	}
 	return 0
 }
@@ -4084,9 +4093,10 @@ const file_hermesh_relay_v1_relay_proto_rawDesc = "" +
 	"root_chain\x18\x02 \x01(\v2\x1e.hermesh.identity.v1.RootChainR\trootChain\"N\n" +
 	"\x11SendSealedRequest\x129\n" +
 	"\amessage\x18\x01 \x01(\v2\x1f.hermesh.relay.v1.SealedMessageR\amessage\"\x14\n" +
-	"\x12SendSealedResponse\",\n" +
+	"\x12SendSealedResponse\"@\n" +
 	"\x14FetchMessagesRequest\x12\x14\n" +
-	"\x05limit\x18\x01 \x01(\rR\x05limit\"h\n" +
+	"\x05limit\x18\x01 \x01(\rR\x05limit\x12\x12\n" +
+	"\x04skip\x18\x02 \x01(\rR\x04skip\"h\n" +
 	"\x15FetchMessagesResponse\x12;\n" +
 	"\bmessages\x18\x01 \x03(\v2\x1f.hermesh.relay.v1.SealedMessageR\bmessages\x12\x12\n" +
 	"\x04more\x18\x02 \x01(\bR\x04more\"E\n" +

@@ -333,6 +333,12 @@ func (n *Machine) execAdmin(ctx context.Context, cmd *identityv1.AdminCommand) (
 			v = "1"
 		}
 		n.st.Set(kPaused, []byte(v))
+		if !c.SetPaused.Paused {
+			select {
+			case n.inboxWake <- struct{}{}:
+			default:
+			}
+		}
 		return "paused=" + v, nil
 	}
 	return "", connect.NewError(connect.CodeInvalidArgument, errors.New("unknown admin command"))
