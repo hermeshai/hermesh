@@ -11,7 +11,7 @@ const tool = (seq: number, kind: string, summary: string): TranscriptItem => ({ 
 describe("steps", () => {
   test("consecutive tool calls are one step; anything between them ends it", () => {
     const steps = groupSteps([
-      { kind: "user", seq: 1n, text: "做" },
+      { kind: "user", seq: 1n, text: "做", at: undefined },
       tool(2, "read", "a.ts"),
       tool(3, "read", "b.ts"),
       tool(4, "shell", "go test"),
