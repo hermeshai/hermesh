@@ -4,7 +4,7 @@ import type { Machine } from "@hermesh/proto/local";
 import { SessionStatus } from "@hermesh/proto/session";
 import { agoText, dateOf, isActive, platformTitle } from "@hermesh/core";
 import { Mark } from "@hermesh/ui";
-import { AgentList, sortAgents } from "../AgentList";
+import { AgentList, AgentPage, sortAgents } from "../AgentList";
 import { useCheckAgents } from "../agents";
 import { local } from "../api";
 import { Icon } from "../icons";
@@ -25,8 +25,16 @@ export function Machines({ open, select, ask }: { open: string; select: (id: str
   const { t } = useTranslation("settings");
   const st = useStore();
   const now = useNow(30_000);
-  const m = st.machines.find((x) => x.machineId === open);
-  if (m) return <MachineDetail key={m.machineId} m={m} ask={ask} />;
+  // "<machine>" opens a machine; "<machine>/<agent>", one of its agents.
+  const [id, agent] = open.split("/");
+  const m = st.machines.find((x) => x.machineId === id);
+  if (m && agent)
+    return (
+      <div className="form">
+        <AgentPage key={open} m={m} agent={agent} />
+      </div>
+    );
+  if (m) return <MachineDetail key={m.machineId} m={m} ask={ask} open={(a) => select(`${m.machineId}/${a}`)} />;
   return (
     <div className="form">
       {!st.machines.some((x) => x.local) && (
@@ -78,7 +86,7 @@ function ShareRow() {
   );
 }
 
-function MachineDetail({ m, ask }: { m: Machine; ask: (a: Ask) => void }) {
+function MachineDetail({ m, ask, open }: { m: Machine; ask: (a: Ask) => void; open: (agent: string) => void }) {
   const { t } = useTranslation("settings");
   const st = useStore();
   const now = useNow(30_000);
@@ -138,6 +146,7 @@ function MachineDetail({ m, ask }: { m: Machine; ask: (a: Ask) => void }) {
         <AgentList
           m={m}
           agents={agents}
+          onOpen={open}
           unknown={
             <div className="frow muted">
               {(m.online || m.local) && <Mark size={14} variant="seq" />}

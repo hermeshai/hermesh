@@ -141,12 +141,12 @@
     "inPlace": "In place",
     "more": "More",
     "model": "Model",
+    "effort": "Reasoning Effort",
+    "speed": "Speed",
+    "defaultsHead": "Default Model",
+    "defaultsNote": "Sessions an agent starts here without naming a model use these. {{agent}}’s own settings stay as they are.",
     "sameAs": "Same as {{agent}}",
     "sameAsValue": "Same as {{agent}} ({{value}})",
-    "forHermesh": "For Hermesh sessions only",
-    "modelMenu": "Model",
-    "effortMenu": "Reasoning Effort",
-    "speedMenu": "Speed",
     "standard": "Standard",
     "fast": "Fast",
     "efforts": {
@@ -156,6 +156,8 @@
       "xhigh": "Extra High",
       "max": "Max",
       "ultra": "Ultra"
-    }
+    },
+    "projectsHead": "Projects",
+    "backToAgents": "All Agents"
   }
 }

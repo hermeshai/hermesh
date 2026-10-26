@@ -99,7 +99,7 @@ test("settings opens on 通用; 授权 lists the grants, one opens its scope, an
   await app.close();
 });
 
-test("settings 机器 opens this Mac: its sharing, its agents each with their projects; rename, pause and resume it", async () => {
+test("settings 机器 opens this Mac: its sharing, its agents each opening a page with their projects; rename, pause and resume it", async () => {
   const { app, page } = await launch();
   const settings = await openSettings(app, page, "machines");
   await expect(nav(settings, "机器")).toHaveAttribute("aria-current", "page");
@@ -112,23 +112,24 @@ test("settings 机器 opens this Mac: its sharing, its agents each with their pr
   await expect(panel).toContainText(/正在运行 \d+ 个/);
   await expect(panel.locator(".set-acts").getByRole("button", { name: "移除…" })).toHaveCount(0); // not this Mac
 
-  // The agents as the first run shows them, each opening to the projects it may work in.
+  // The agents as the first run shows them, each opening its page: the projects it may work in.
   const agents = panel.getByRole("list", { name: "编码 Agent" });
   const gemini = agents.getByRole("listitem", { name: "Gemini CLI" });
   await expect(gemini).toContainText("已登录", { timeout: 30_000 });
-  await expect(agents).not.toContainText("正在检查…", { timeout: 30_000 }); // the first ready one opens once all are in
-  const head = gemini.getByRole("button", { name: /^Gemini CLI/ });
-  if ((await head.getAttribute("aria-expanded")) !== "true") await head.click();
-  await expect(gemini.getByRole("group", { name: "demo" })).toBeVisible();
+  await expect(agents).not.toContainText("正在检查…", { timeout: 30_000 });
   await snap(settings, "settings-machine");
+  await gemini.getByRole("button", { name: /^Gemini CLI/ }).click();
+  const page2 = panel.getByRole("region", { name: "Gemini CLI" });
+  await expect(page2.getByRole("group", { name: "demo" })).toBeVisible();
+  await snap(settings, "settings-machine-agent");
 
   // A folder picked under Gemini CLI is its project; taken from it, it goes.
   const repo = gitRepo(`app-${process.pid}`);
   await pickAnswers(app, repo);
   // Drawn as a text link, it takes the pointing hand, as links do.
-  expect(await gemini.getByRole("button", { name: "添加项目…" }).evaluate((el) => getComputedStyle(el).cursor)).toBe("pointer");
-  await gemini.getByRole("button", { name: "添加项目…" }).click();
-  const project = gemini.getByRole("group", { name: `app-${process.pid}` });
+  expect(await page2.getByRole("button", { name: "添加项目…" }).evaluate((el) => getComputedStyle(el).cursor)).toBe("pointer");
+  await page2.getByRole("button", { name: "添加项目…" }).click();
+  const project = page2.getByRole("group", { name: `app-${process.pid}` });
   await expect(project).toContainText(repo);
   await expect(project).toContainText("独立 worktree");
   expect((await projects(settings)).find((p) => p.path === repo)?.agents).toEqual(["gemini"]);
@@ -136,6 +137,9 @@ test("settings 机器 opens this Mac: its sharing, its agents each with their pr
   await project.getByRole("button", { name: "更多" }).click();
   await expect(project).toHaveCount(0);
   expect((await projects(settings)).some((p) => p.path === repo)).toBe(false);
+  // ‹ goes back to the machine, not to the list of machines.
+  await settings.getByRole("button", { name: "返回owner-mac" }).click();
+  await expect(agents).toBeVisible();
 
   // A project of an agent not installed here shows after the agents, and can be removed.
   const missing = await panel.getByRole("list", { name: "没有安装的 Agent" }).getByRole("listitem").first().getAttribute("aria-label");
@@ -178,56 +182,59 @@ test("settings 机器 opens this Mac: its sharing, its agents each with their pr
   await app.close();
 });
 
-test("settings 机器: Codex's sessions run with its own model, effort and speed until others are set here, for Hermesh only", async () => {
+test("settings 机器: Codex's page sets the model, effort and speed its sessions run with, its own until set, for Hermesh only", async () => {
   const { app, page } = await launch();
   const settings = await openSettings(app, page, "machines");
   const panel = page_(settings, "机器");
   await panel.getByRole("list", { name: "机器" }).getByRole("button", { name: /^owner-mac/ }).click();
   const codex = panel.getByRole("list", { name: "编码 Agent" }).getByRole("listitem", { name: "Codex" });
   await expect(codex).toContainText("还没登录", { timeout: 30_000 });
-  const head = codex.getByRole("button", { name: /^Codex/ });
-  if ((await head.getAttribute("aria-expanded")) !== "true") await head.click();
-  const model = codex.getByRole("group", { name: "模型" });
-  await expect(model).toContainText("跟随 Codex");
-  await expect(model).toContainText("GPT-Fake-Big · 高 · 标准");
-  await snap(settings, "settings-machine-model");
+  await codex.getByRole("button", { name: /^Codex/ }).click();
+  const row = (name: string) => panel.getByRole("region", { name: "Codex" }).getByRole("group", { name });
+  // Each follows Codex, saying what that is.
+  await expect(row("模型")).toContainText("跟随 Codex（GPT-Fake-Big）");
+  await expect(row("推理强度")).toContainText("跟随 Codex（高）");
+  await expect(row("速度")).toContainText("跟随 Codex（标准）");
+  await snap(settings, "settings-agent");
 
-  // The menu: the models Codex offers, the efforts of the one in use, the
-  // speeds; each first follows Codex, saying what that is.
-  const pick = async (id: string) => {
+  // Each row's button opens the choices for that row alone, Codex's own first.
+  const pick = async (name: string, id: string) => {
     await app.evaluate(({ ipcMain }, id) => {
       ipcMain.removeHandler("popup-menu");
       ipcMain.handle("popup-menu", (_e, items: { label?: string; checked?: boolean }[]) => {
-        (globalThis as unknown as { shown: unknown }).shown = items.map((i) => (i.checked ? "✓ " : "") + (i.label ?? "—"));
+        (globalThis as unknown as { shown: unknown }).shown = items.map((i) => (i.checked ? "✓ " : "") + i.label);
         return id;
       });
     }, id);
-    await model.getByRole("button", { name: "更多" }).click();
+    await row(name).getByRole("button").click();
+    return app.evaluate(() => (globalThis as unknown as { shown: unknown }).shown);
   };
-  await pick("m:gpt-fake-small");
-  expect(await app.evaluate(() => (globalThis as unknown as { shown: unknown }).shown)).toEqual([
-    "模型", "✓ 跟随 Codex（GPT-Fake-Big）", "GPT-Fake-Big", "GPT-Fake-Small", "—",
-    "推理强度", "✓ 跟随 Codex（高）", "低", "高", "—",
-    "速度", "✓ 跟随 Codex（标准）", "标准", "快速",
-  ]);
-  await expect(model).toContainText("只用于 Hermesh 的会话");
-  await expect(model).toContainText("GPT-Fake-Small · 高 · 标准");
-  await pick("e:low");
-  await pick("s:2");
-  await expect(model).toContainText("GPT-Fake-Small · 低 · 快速");
+  expect(await pick("模型", "gpt-fake-small")).toEqual(["✓ 跟随 Codex（GPT-Fake-Big）", "GPT-Fake-Big", "GPT-Fake-Small"]);
+  await expect(row("模型")).toHaveText("模型GPT-Fake-Small");
+  expect(await pick("推理强度", "low")).toEqual(["✓ 跟随 Codex（高）", "低", "高"]);
+  expect(await pick("速度", "2")).toEqual(["✓ 跟随 Codex（标准）", "标准", "快速"]);
+  await expect(row("推理强度")).toHaveText("推理强度低");
+  await expect(row("速度")).toHaveText("速度快速");
+  await snap(settings, "settings-agent-set");
   const codexStatus = async () => {
     const r = await api<{ machines?: { status?: { agents?: { name: string; defaults?: object }[] } }[] }>(settings, "ListMachines");
     return r.machines?.[0]?.status?.agents?.find((a) => a.name === "codex");
   };
   expect((await codexStatus())?.defaults).toEqual({ agent: "codex", model: "gpt-fake-small", effort: "low", speed: "AGENT_SPEED_FAST" });
+  // The machine's list says what is set.
+  await settings.getByRole("button", { name: "返回owner-mac" }).click();
+  await expect(codex).toContainText("GPT-Fake-Small · 低 · 快速");
 
-  // Back to Codex's own, one by one.
-  await pick("m:");
-  await pick("e:");
-  await pick("s:0");
-  await expect(model).toContainText("跟随 Codex");
-  await expect(model).toContainText("GPT-Fake-Big · 高 · 标准");
+  // Back to Codex's own, one by one: the list says nothing more.
+  await codex.getByRole("button", { name: /^Codex/ }).click();
+  expect(await pick("模型", "")).toContain("✓ GPT-Fake-Small");
+  await pick("推理强度", "");
+  await pick("速度", "0");
+  await expect(row("模型")).toContainText("跟随 Codex（GPT-Fake-Big）");
+  await expect(row("速度")).toContainText("跟随 Codex（标准）");
   expect((await codexStatus())?.defaults).toEqual({ agent: "codex" });
+  await settings.getByRole("button", { name: "返回owner-mac" }).click();
+  await expect(codex).not.toContainText("GPT-Fake");
   await app.close();
 });
 

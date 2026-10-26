@@ -108,37 +108,47 @@ test("a relay of one's own: welcome, authorize, set up this Mac, add a project, 
   await expect(codex).toContainText("还没登录");
   await expect(page.getByRole("list", { name: "没有安装的 Agent" }).getByRole("listitem", { name: "Cursor" })).toBeVisible();
   await expect(agents.getByRole("listitem", { name: "Cursor" })).toHaveCount(0);
-  // Codex opens to how to log in.
+  // Each opens its own page, as in settings; Codex's says how to log in. The steps' buttons stay below.
+  const agentPage = (name: string) => page.getByRole("region", { name });
+  const back = () => page.getByRole("button", { name: "所有 Agent" }).click();
   await codex.getByRole("button", { name: /^Codex/ }).click();
-  await expect(codex.getByText("codex login")).toBeVisible();
-  await expect(codex.getByRole("button", { name: "在终端运行" })).toBeVisible();
+  await expect(agentPage("Codex").getByText("codex login")).toBeVisible();
+  await expect(agentPage("Codex").getByRole("button", { name: "在终端运行" })).toBeVisible();
   await expect(page.getByRole("button", { name: "下一步：连接你的 Agent" })).toBeDisabled();
+  await snap(page, "first-04-agent");
+  await back();
   await page.waitForTimeout(1500); // the agents around the mark have come in
   await expect(page.getByText("绝不获取 Agent 的任何令牌和密钥，只像你自己在命令行里一样使用它们。")).toBeVisible();
   await snap(page, "first-04-prepare");
 
-  // Claude Code (open first) gets its first project: a git repository works in its own worktree per session, unless in place.
+  // Claude Code gets its first project: a git repository works in its own worktree per session, unless in place.
   const repo = gitRepo("my-app");
   await pickAnswers(app, repo);
-  await claude.getByRole("button", { name: "添加项目…" }).click();
-  const project = claude.getByRole("group", { name: "my-app" });
+  await claude.getByRole("button", { name: /^Claude Code/ }).click();
+  await agentPage("Claude Code").getByRole("button", { name: "添加项目…" }).click();
+  const project = agentPage("Claude Code").getByRole("group", { name: "my-app" });
   await expect(project).toContainText(repo);
-  await expect(claude).toContainText("1 个项目");
   await expect(project).toContainText("独立 worktree");
   await answerMenu(app, "inPlace");
   await project.getByRole("button", { name: "更多" }).click();
   await expect(project).toContainText("原地");
+  await back();
+  await expect(claude).toContainText("1 个项目");
   // It is Claude Code's only; the same folder added to Gemini CLI is the same project, for both.
-  await gemini.getByRole("button", { name: /^Gemini CLI/ }).click();
   await expect(gemini).toContainText("还没有项目");
-  await gemini.getByRole("button", { name: "添加项目…" }).click();
-  await expect(gemini.getByRole("group", { name: "my-app" })).toBeVisible();
+  await gemini.getByRole("button", { name: /^Gemini CLI/ }).click();
+  await agentPage("Gemini CLI").getByRole("button", { name: "添加项目…" }).click();
+  await expect(agentPage("Gemini CLI").getByRole("group", { name: "my-app" })).toBeVisible();
   await snap(page, "first-05-project");
   // Taken from Claude Code, it stays Gemini CLI's; the machine knows.
+  await back();
+  await claude.getByRole("button", { name: /^Claude Code/ }).click();
   await answerMenu(app, "remove");
   await project.getByRole("button", { name: "更多" }).click();
   await expect(project).toHaveCount(0);
-  await expect(gemini.getByRole("group", { name: "my-app" })).toBeVisible();
+  await back();
+  await expect(claude).toContainText("还没有项目");
+  await expect(gemini).toContainText("1 个项目");
   const mine = (await daemon(fresh.socket).listProjects({})).projects;
   expect(mine.map((p) => [p.projectId, p.agents, p.workspace])).toEqual([["my-app", ["gemini"], Workspace.IN_PLACE]]);
 
@@ -228,8 +238,9 @@ test("browser sign-in: the link brings the authorization page, the center's rela
   await pickAnswers(app, gitRepo("site"));
   const gemini = page.getByRole("list", { name: "编码 Agent" }).getByRole("listitem", { name: "Gemini CLI" });
   await gemini.getByRole("button", { name: /^Gemini CLI/ }).click({ timeout: 30_000 });
-  await gemini.getByRole("button", { name: "添加项目…" }).click();
-  await expect(gemini.getByRole("group", { name: "site" })).toBeVisible();
+  const geminiPage = page.getByRole("region", { name: "Gemini CLI" });
+  await geminiPage.getByRole("button", { name: "添加项目…" }).click();
+  await expect(geminiPage.getByRole("group", { name: "site" })).toBeVisible();
   await page.getByRole("button", { name: "下一步：连接你的 Agent" }).click();
 
   // Muse's message sent, then Grok Bot picked: whichever agent's request arrives takes the page.
