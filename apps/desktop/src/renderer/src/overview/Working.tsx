@@ -1,11 +1,10 @@
-import { useState, type ReactNode } from "react";
+import type { ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import type { Machine } from "@hermesh/proto/local";
 import { SessionStatus, type Session } from "@hermesh/proto/session";
 import { clockText, elapsedSeconds, createdDate, dateOf, displayTitle, failureTitle, isActive, isFailed } from "@hermesh/core";
 import { AgentTile, grantColor, kindNamed, Mark } from "@hermesh/ui";
 import { i18n } from "../../../shared/i18n";
-import { helloPrompt } from "../firstrun/FirstTask";
 import { StatusDot } from "../components";
 import { Icon } from "../icons";
 import { grantLabel, machineName } from "../Sidebar";
@@ -151,32 +150,14 @@ function machineIcon(m: Machine): string {
   return p.includes("darwin") || p.includes("mac") ? "mini" : "server";
 }
 
-/** Nothing live: before the first session, one thing to send; after it, the mark at rest and what will show here. */
+/** Nothing live: the mark at rest, and what will show here. */
 function Idle() {
   const { t } = useTranslation("overview");
-  const st = useStore();
-  const [copied, setCopied] = useState(false);
-  const client = st.clients.find((c) => !c.revoked);
-  if (st.sessions.length > 0 || !client)
-    return (
-      <div className="wrest" role="status">
-        <Mark size={34} className="wrest-mark" />
-        <b>{t("working.nothingRuns")}</b>
-        <p>{t("working.nothingRunsHint")}</p>
-      </div>
-    );
-  const prompt = helloPrompt(st, client.spec?.agents ?? [], client.spec?.projectIds ?? []);
   return (
-    <div className="widle">
-      <b>{t("working.firstPrompt", { label: client.label })}</b>
-      <div className="wprompt">
-        <span className="sel-text">{prompt}</span>
-        <button className={`btn sm ${copied ? "" : "primary"}`} onClick={() => (navigator.clipboard.writeText(prompt).catch(() => {}), setCopied(true))}>
-          <Icon name={copied ? "check" : "copy"} />
-          {copied ? t("working.copied") : t("working.copy")}
-        </button>
-      </div>
-      <p>{t("working.firstHint")}</p>
+    <div className="wrest" role="status">
+      <Mark size={34} className="wrest-mark" />
+      <b>{t("working.nothingRuns")}</b>
+      <p>{t("working.nothingRunsHint")}</p>
     </div>
   );
 }

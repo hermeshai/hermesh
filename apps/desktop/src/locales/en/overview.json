@@ -76,11 +76,7 @@
     "preparing": "Preparing",
     "queued": "Queued",
     "nothingRuns": "No sessions are running",
-    "nothingRunsHint": "When an agent starts working, its sessions show up here and the link map lights up.",
-    "firstPrompt": "No sessions yet. Try sending this in {{label}}:",
-    "copy": "Copy",
-    "copied": "Copied",
-    "firstHint": "Once it starts working, the map lights up and its session shows up here."
+    "nothingRunsHint": "When an agent starts working, its sessions show up here and the link map lights up."
   },
   "usage": {
     "title": "Usage",

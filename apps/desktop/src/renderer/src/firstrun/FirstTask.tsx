@@ -79,7 +79,7 @@ export function FirstTask({ agent }: { agent: string }) {
  * A hello that is sure to run: a coding agent it was given that is ready on
  * this Mac, in a project it was given that is set up for that agent.
  */
-export function helloPrompt(st: ReturnType<typeof useStore>, granted: string[], grantedProjects: string[]): string {
+function helloPrompt(st: ReturnType<typeof useStore>, granted: string[], grantedProjects: string[]): string {
   const local = st.machines.find((m) => m.local);
   const ready = (local?.status?.agents ?? []).filter((a) => a.available && a.loggedIn).map((a) => a.name);
   const agents = granted.filter((a) => a !== "*");

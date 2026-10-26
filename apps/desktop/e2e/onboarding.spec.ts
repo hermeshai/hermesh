@@ -575,6 +575,10 @@ test("a work Mac joins as a machine only: no Touch ID, the code, the two digits;
   const grok = map.getByRole("button", { name: "Grok Bot", exact: true });
   await expect(grok).toContainText("还没来过", { timeout: 30_000 });
   await expect(map).toContainText("还没来过");
+  // Nothing has run here yet: 正在干活 rests, with no prompt to send.
+  const working = page.getByRole("region", { name: "正在干活" });
+  await expect(working.getByRole("status")).toContainText("现在没有会话在跑");
+  await expect(working).not.toContainText("发一句试试");
   await snap(page, "machine-03-window");
 
   // It runs a session there: the work Mac lists it under the agent's name,
