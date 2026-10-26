@@ -88,6 +88,7 @@ type Machine struct {
 	checked     time.Time                // when the last check of all of them ended
 	checking    chan struct{}            // closed when the check under way ends; nil when none is
 	pending     map[string]bool          // the agents the check under way has not finished yet
+	defaults    map[string]*identityv1.AgentDefaults
 	tunnels     map[*tunnel]struct{}
 	connected   bool
 	refused     bool       // the relay refused admission when last connecting
@@ -143,7 +144,7 @@ func Open(cfg Config) (*Machine, error) {
 		return nil, err
 	}
 	n := &Machine{cfg: cfg, log: cfg.Logger, st: st, key: key, lock: lock, machineID: identity.MachineID(identity.MarshalPublicKey(key.Public())),
-		infos: map[string]provider.Info{}, tunnels: map[*tunnel]struct{}{}, adminSeen: map[string]time.Time{}, grantSeen: map[string]uint64{},
+		infos: map[string]provider.Info{}, defaults: map[string]*identityv1.AgentDefaults{}, tunnels: map[*tunnel]struct{}{}, adminSeen: map[string]time.Time{}, grantSeen: map[string]uint64{},
 		statusKick: make(chan struct{}, 1), revocations: &identityv1.RevocationList{MinGrantVersions: map[string]uint64{}}}
 	if n.audit, err = OpenAudit(filepath.Join(cfg.DataDir, "audit"), key); err != nil {
 		return nil, err
@@ -155,7 +156,7 @@ func Open(cfg Config) (*Machine, error) {
 	ws.none = cfg.WorkspaceMode == "none"
 	n.sessions = &Sessions{st: st, ws: ws, audit: n.audit, log: n.log,
 		machineID: n.machineID, dataDir: cfg.DataDir, providers: cfg.Providers, info: n.providerInfo, limits: cfg.Limits,
-		paused: n.isPaused, live: map[string]*live{}}
+		paused: n.isPaused, defaults: n.agentDefaults, live: map[string]*live{}}
 	n.sessions.w = newWriter(st, n.log, n.sessions.deliver, n.sessions.changed)
 	n.sessions.notice = n.sessionNotice
 	n.sessions.registerMetrics()
@@ -163,6 +164,7 @@ func Open(cfg Config) (*Machine, error) {
 }
 
 func (n *Machine) loadState() error {
+	n.loadDefaults()
 	owner, _ := n.st.Get(kOwnerID)
 	relay, _ := n.st.Get(kRelayURL)
 	n.ownerID, n.relayURL = string(owner), string(relay)
@@ -374,8 +376,10 @@ func (n *Machine) Status() *machinev1.MachineStatus {
 		// when installed, or while their first check is under way.
 		i, ok := n.infos[name]
 		if (ok && (i.Available || name == "claude" || name == "codex")) || (!ok && n.pending[name]) {
-			st.Agents = append(st.Agents, &machinev1.AgentStatus{Name: name, Available: i.Available, Version: i.Version,
-				LoggedIn: i.LoggedIn, Detail: i.Detail, Checking: n.pending[name]})
+			a := &machinev1.AgentStatus{Name: name, Available: i.Available, Version: i.Version,
+				LoggedIn: i.LoggedIn, Detail: i.Detail, Checking: n.pending[name]}
+			n.agentModels(a, i)
+			st.Agents = append(st.Agents, a)
 		}
 	}
 	n.mu.Unlock()

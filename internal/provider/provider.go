@@ -9,6 +9,8 @@ import (
 	"regexp"
 	"strings"
 	"time"
+
+	identityv1 "github.com/hermeshai/hermesh/gen/go/hermesh/identity/v1"
 )
 
 // Info describes a provider on this machine.
@@ -19,6 +21,23 @@ type Info struct {
 	Version   string
 	LoggedIn  bool
 	Detail    string
+	// Models it offers and its own configuration, as far as it tells
+	// (Claude Code and Codex), for picking a machine's defaults.
+	Models []Model
+	Own    Settings
+}
+
+// Model is one model an agent offers.
+type Model struct {
+	ID, Name string
+	Efforts  []string
+}
+
+// Settings are what a session runs with; empty ones follow the agent's own
+// configuration.
+type Settings struct {
+	Model, Effort string
+	Speed         identityv1.AgentSpeed
 }
 
 type ToolKind string
@@ -160,6 +179,10 @@ type StartSpec struct {
 	// read (the session's attached files).
 	ReadDirs []string
 	Model    string
+	// Effort and Speed, like Model, override the agent's own configuration
+	// for this session only (Claude Code and Codex; Speed: Codex).
+	Effort string
+	Speed  identityv1.AgentSpeed
 	// ResumeRef resumes a previous provider session (Claude session id or
 	// Codex thread id) instead of starting a new one.
 	ResumeRef string

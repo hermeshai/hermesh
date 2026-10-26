@@ -178,7 +178,7 @@ func (a *app) startCmd() *cobra.Command {
 	f.StringVar(&project, "project", "", "where to work: machine/project as hermesh project list shows it, or the project alone when only one machine has it")
 	f.StringVar(&agent, "agent", "claude", "coding agent to run: claude, codex, or an ACP agent (gemini, cursor, copilot, ...); hermesh project list shows those available")
 	f.StringVar(&base, "base", "", "base git ref of the session's worktree (worktree projects only; default: the project's)")
-	f.StringVar(&model, "model", "", "model override")
+	f.StringVar(&model, "model", "", "model to run (default: the one the owner set for the agent on that machine, else the agent's own)")
 	f.StringVar(&prompt, "prompt", "", "prompt text")
 	f.StringVar(&promptFile, "prompt-file", "", "read the prompt from a file (- for stdin)")
 	f.StringVar(&title, "title", "", "a short title for session lists (default: the first line of the prompt)")

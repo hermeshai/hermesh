@@ -233,13 +233,15 @@ func (n *Machine) ApplyAdminCommand(ctx context.Context, signed *identityv1.Sign
 
 // ApplySettings applies an unsigned command from one of the owner's
 // trusted devices (the caller checked the principal): only the machine's
-// settings, which grant nothing (projects, pausing, the name).
+// settings, which grant nothing (projects, pausing, the name, agent
+// defaults).
 func (n *Machine) ApplySettings(ctx context.Context, cmd *identityv1.AdminCommand) (string, error) {
 	switch cmd.Command.(type) {
-	case *identityv1.AdminCommand_AddProject, *identityv1.AdminCommand_RemoveProject, *identityv1.AdminCommand_SetPaused, *identityv1.AdminCommand_SetName:
+	case *identityv1.AdminCommand_AddProject, *identityv1.AdminCommand_RemoveProject, *identityv1.AdminCommand_SetPaused, *identityv1.AdminCommand_SetName,
+		*identityv1.AdminCommand_SetAgentDefaults:
 	default:
 		n.audit.Log(AuditRecord{Kind: "admin", Decision: "deny", Reason: "unsigned command that is not a setting"})
-		return "", connect.NewError(connect.CodePermissionDenied, errors.New("only settings (projects, pausing, the name) may be sent without a signature"))
+		return "", connect.NewError(connect.CodePermissionDenied, errors.New("only settings (projects, pausing, the name, agent defaults) may be sent without a signature"))
 	}
 	if cmd.OwnerId != n.OwnerID() || cmd.TargetMachineId != n.machineID {
 		return "", connect.NewError(connect.CodePermissionDenied, errors.New("settings for another owner or machine"))
@@ -316,6 +318,12 @@ func (n *Machine) execAdmin(ctx context.Context, cmd *identityv1.AdminCommand) (
 		}
 		n.kickStatus()
 		return "renamed to " + n.Name(), nil
+	case *identityv1.AdminCommand_SetAgentDefaults:
+		if err := n.setAgentDefaults(c.SetAgentDefaults); err != nil {
+			return "", connect.NewError(connect.CodeInvalidArgument, err)
+		}
+		n.kickStatus()
+		return "defaults set for " + c.SetAgentDefaults.Agent, nil
 	case *identityv1.AdminCommand_SetPaused:
 		n.mu.Lock()
 		n.paused = c.SetPaused.Paused

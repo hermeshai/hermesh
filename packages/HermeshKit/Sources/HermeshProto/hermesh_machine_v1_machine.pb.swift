@@ -220,6 +220,51 @@ public nonisolated struct Hermesh_Machine_V1_AgentStatus: Sendable {
   /// found, if any (an agent never checked yet is not available).
   public var checking: Bool = false
 
+  /// The models it offers, to pick defaults from (Claude Code and Codex).
+  public var models: [Hermesh_Machine_V1_AgentModel] = []
+
+  /// What its sessions here run with when the client names no model.
+  public var defaults: Hermesh_Identity_V1_AgentDefaults {
+    get {_defaults ?? Hermesh_Identity_V1_AgentDefaults()}
+    set {_defaults = newValue}
+  }
+  /// Returns true if `defaults` has been explicitly set.
+  public var hasDefaults: Bool {self._defaults != nil}
+  /// Clears the value of `defaults`. Subsequent reads from it will return its default value.
+  public mutating func clearDefaults() {self._defaults = nil}
+
+  /// Its own configuration, which empty defaults follow, as far as the
+  /// agent tells it (Codex).
+  public var own: Hermesh_Identity_V1_AgentDefaults {
+    get {_own ?? Hermesh_Identity_V1_AgentDefaults()}
+    set {_own = newValue}
+  }
+  /// Returns true if `own` has been explicitly set.
+  public var hasOwn: Bool {self._own != nil}
+  /// Clears the value of `own`. Subsequent reads from it will return its default value.
+  public mutating func clearOwn() {self._own = nil}
+
+  public var unknownFields = SwiftProtobuf.UnknownStorage()
+
+  public init() {}
+
+  fileprivate var _defaults: Hermesh_Identity_V1_AgentDefaults? = nil
+  fileprivate var _own: Hermesh_Identity_V1_AgentDefaults? = nil
+}
+
+public nonisolated struct Hermesh_Machine_V1_AgentModel: Sendable {
+  // SwiftProtobuf.Message conformance is added in an extension below. See the
+  // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
+  // methods supported on all messages.
+
+  /// What the agent takes as its model (e.g. "opus", "gpt-6-astra").
+  public var id: String = String()
+
+  public var name: String = String()
+
+  /// The reasoning efforts it supports.
+  public var efforts: [String] = []
+
   public var unknownFields = SwiftProtobuf.UnknownStorage()
 
   public init() {}
@@ -689,7 +734,7 @@ nonisolated extension Hermesh_Machine_V1_MachineStatus: SwiftProtobuf.Message, S
 
 nonisolated extension Hermesh_Machine_V1_AgentStatus: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
   public static let protoMessageName: String = _protobuf_package + ".AgentStatus"
-  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{1}name\0\u{1}available\0\u{1}version\0\u{3}logged_in\0\u{2}\u{2}detail\0\u{1}checking\0\u{b}sandbox_available\0\u{c}\u{5}\u{1}")
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{1}name\0\u{1}available\0\u{1}version\0\u{3}logged_in\0\u{2}\u{2}detail\0\u{1}checking\0\u{1}models\0\u{1}defaults\0\u{1}own\0\u{b}sandbox_available\0\u{c}\u{5}\u{1}")
 
   public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
     while let fieldNumber = try decoder.nextFieldNumber() {
@@ -703,12 +748,19 @@ nonisolated extension Hermesh_Machine_V1_AgentStatus: SwiftProtobuf.Message, Swi
       case 4: try { try decoder.decodeSingularBoolField(value: &self.loggedIn) }()
       case 6: try { try decoder.decodeSingularStringField(value: &self.detail) }()
       case 7: try { try decoder.decodeSingularBoolField(value: &self.checking) }()
+      case 8: try { try decoder.decodeRepeatedMessageField(value: &self.models) }()
+      case 9: try { try decoder.decodeSingularMessageField(value: &self._defaults) }()
+      case 10: try { try decoder.decodeSingularMessageField(value: &self._own) }()
       default: break
       }
     }
   }
 
   public func traverse<V: SwiftProtobuf.Visitor>(visitor: inout V) throws {
+    // The use of inline closures is to circumvent an issue where the compiler
+    // allocates stack space for every if/case branch local when no optimizations
+    // are enabled. https://github.com/apple/swift-protobuf/issues/1034 and
+    // https://github.com/apple/swift-protobuf/issues/1182
     if !self.name.isEmpty {
       try visitor.visitSingularStringField(value: self.name, fieldNumber: 1)
     }
@@ -727,6 +779,15 @@ nonisolated extension Hermesh_Machine_V1_AgentStatus: SwiftProtobuf.Message, Swi
     if self.checking != false {
       try visitor.visitSingularBoolField(value: self.checking, fieldNumber: 7)
     }
+    if !self.models.isEmpty {
+      try visitor.visitRepeatedMessageField(value: self.models, fieldNumber: 8)
+    }
+    try { if let v = self._defaults {
+      try visitor.visitSingularMessageField(value: v, fieldNumber: 9)
+    } }()
+    try { if let v = self._own {
+      try visitor.visitSingularMessageField(value: v, fieldNumber: 10)
+    } }()
     try unknownFields.traverse(visitor: &visitor)
   }
 
@@ -737,6 +798,49 @@ nonisolated extension Hermesh_Machine_V1_AgentStatus: SwiftProtobuf.Message, Swi
     if lhs.loggedIn != rhs.loggedIn {return false}
     if lhs.detail != rhs.detail {return false}
     if lhs.checking != rhs.checking {return false}
+    if lhs.models != rhs.models {return false}
+    if lhs._defaults != rhs._defaults {return false}
+    if lhs._own != rhs._own {return false}
+    if lhs.unknownFields != rhs.unknownFields {return false}
+    return true
+  }
+}
+
+nonisolated extension Hermesh_Machine_V1_AgentModel: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
+  public static let protoMessageName: String = _protobuf_package + ".AgentModel"
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{1}id\0\u{1}name\0\u{1}efforts\0")
+
+  public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
+    while let fieldNumber = try decoder.nextFieldNumber() {
+      // The use of inline closures is to circumvent an issue where the compiler
+      // allocates stack space for every case branch when no optimizations are
+      // enabled. https://github.com/apple/swift-protobuf/issues/1034
+      switch fieldNumber {
+      case 1: try { try decoder.decodeSingularStringField(value: &self.id) }()
+      case 2: try { try decoder.decodeSingularStringField(value: &self.name) }()
+      case 3: try { try decoder.decodeRepeatedStringField(value: &self.efforts) }()
+      default: break
+      }
+    }
+  }
+
+  public func traverse<V: SwiftProtobuf.Visitor>(visitor: inout V) throws {
+    if !self.id.isEmpty {
+      try visitor.visitSingularStringField(value: self.id, fieldNumber: 1)
+    }
+    if !self.name.isEmpty {
+      try visitor.visitSingularStringField(value: self.name, fieldNumber: 2)
+    }
+    if !self.efforts.isEmpty {
+      try visitor.visitRepeatedStringField(value: self.efforts, fieldNumber: 3)
+    }
+    try unknownFields.traverse(visitor: &visitor)
+  }
+
+  public static func ==(lhs: Hermesh_Machine_V1_AgentModel, rhs: Hermesh_Machine_V1_AgentModel) -> Bool {
+    if lhs.id != rhs.id {return false}
+    if lhs.name != rhs.name {return false}
+    if lhs.efforts != rhs.efforts {return false}
     if lhs.unknownFields != rhs.unknownFields {return false}
     return true
   }

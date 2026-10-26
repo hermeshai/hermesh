@@ -101,6 +101,9 @@ const (
 	// LocalServiceSetMachinePausedProcedure is the fully-qualified name of the LocalService's
 	// SetMachinePaused RPC.
 	LocalServiceSetMachinePausedProcedure = "/hermesh.local.v1.LocalService/SetMachinePaused"
+	// LocalServiceSetAgentDefaultsProcedure is the fully-qualified name of the LocalService's
+	// SetAgentDefaults RPC.
+	LocalServiceSetAgentDefaultsProcedure = "/hermesh.local.v1.LocalService/SetAgentDefaults"
 	// LocalServiceRemoveMachineProcedure is the fully-qualified name of the LocalService's
 	// RemoveMachine RPC.
 	LocalServiceRemoveMachineProcedure = "/hermesh.local.v1.LocalService/RemoveMachine"
@@ -226,6 +229,9 @@ type LocalServiceClient interface {
 	ListMachines(context.Context, *v1.ListMachinesRequest) (*v1.ListMachinesResponse, error)
 	RenameMachine(context.Context, *v1.RenameMachineRequest) (*v1.RenameMachineResponse, error)
 	SetMachinePaused(context.Context, *v1.SetMachinePausedRequest) (*v1.SetMachinePausedResponse, error)
+	// What a coding agent's sessions on a machine run with when the client
+	// starting one names no model (a setting, no Touch ID).
+	SetAgentDefaults(context.Context, *v1.SetAgentDefaultsRequest) (*v1.SetAgentDefaultsResponse, error)
 	RemoveMachine(context.Context, *v1.RemoveMachineRequest) (*v1.RemoveMachineResponse, error)
 	// Checks this Mac's coding agents again (installed, version, signed in),
 	// in the background: they are only checked when something needs them.
@@ -428,6 +434,12 @@ func NewLocalServiceClient(httpClient connect.HTTPClient, baseURL string, opts .
 			connect.WithSchema(localServiceMethods.ByName("SetMachinePaused")),
 			connect.WithClientOptions(opts...),
 		),
+		setAgentDefaults: connect.NewClient[v1.SetAgentDefaultsRequest, v1.SetAgentDefaultsResponse](
+			httpClient,
+			baseURL+LocalServiceSetAgentDefaultsProcedure,
+			connect.WithSchema(localServiceMethods.ByName("SetAgentDefaults")),
+			connect.WithClientOptions(opts...),
+		),
 		removeMachine: connect.NewClient[v1.RemoveMachineRequest, v1.RemoveMachineResponse](
 			httpClient,
 			baseURL+LocalServiceRemoveMachineProcedure,
@@ -590,6 +602,7 @@ type localServiceClient struct {
 	listMachines           *connect.Client[v1.ListMachinesRequest, v1.ListMachinesResponse]
 	renameMachine          *connect.Client[v1.RenameMachineRequest, v1.RenameMachineResponse]
 	setMachinePaused       *connect.Client[v1.SetMachinePausedRequest, v1.SetMachinePausedResponse]
+	setAgentDefaults       *connect.Client[v1.SetAgentDefaultsRequest, v1.SetAgentDefaultsResponse]
 	removeMachine          *connect.Client[v1.RemoveMachineRequest, v1.RemoveMachineResponse]
 	checkAgents            *connect.Client[v1.CheckAgentsRequest, v1.CheckAgentsResponse]
 	listProjects           *connect.Client[v1.ListProjectsRequest, v1.ListProjectsResponse]
@@ -825,6 +838,15 @@ func (c *localServiceClient) RenameMachine(ctx context.Context, req *v1.RenameMa
 // SetMachinePaused calls hermesh.local.v1.LocalService.SetMachinePaused.
 func (c *localServiceClient) SetMachinePaused(ctx context.Context, req *v1.SetMachinePausedRequest) (*v1.SetMachinePausedResponse, error) {
 	response, err := c.setMachinePaused.CallUnary(ctx, connect.NewRequest(req))
+	if response != nil {
+		return response.Msg, err
+	}
+	return nil, err
+}
+
+// SetAgentDefaults calls hermesh.local.v1.LocalService.SetAgentDefaults.
+func (c *localServiceClient) SetAgentDefaults(ctx context.Context, req *v1.SetAgentDefaultsRequest) (*v1.SetAgentDefaultsResponse, error) {
+	response, err := c.setAgentDefaults.CallUnary(ctx, connect.NewRequest(req))
 	if response != nil {
 		return response.Msg, err
 	}
@@ -1077,6 +1099,9 @@ type LocalServiceHandler interface {
 	ListMachines(context.Context, *v1.ListMachinesRequest) (*v1.ListMachinesResponse, error)
 	RenameMachine(context.Context, *v1.RenameMachineRequest) (*v1.RenameMachineResponse, error)
 	SetMachinePaused(context.Context, *v1.SetMachinePausedRequest) (*v1.SetMachinePausedResponse, error)
+	// What a coding agent's sessions on a machine run with when the client
+	// starting one names no model (a setting, no Touch ID).
+	SetAgentDefaults(context.Context, *v1.SetAgentDefaultsRequest) (*v1.SetAgentDefaultsResponse, error)
 	RemoveMachine(context.Context, *v1.RemoveMachineRequest) (*v1.RemoveMachineResponse, error)
 	// Checks this Mac's coding agents again (installed, version, signed in),
 	// in the background: they are only checked when something needs them.
@@ -1275,6 +1300,12 @@ func NewLocalServiceHandler(svc LocalServiceHandler, opts ...connect.HandlerOpti
 		connect.WithSchema(localServiceMethods.ByName("SetMachinePaused")),
 		connect.WithHandlerOptions(opts...),
 	)
+	localServiceSetAgentDefaultsHandler := connect.NewUnaryHandlerSimple(
+		LocalServiceSetAgentDefaultsProcedure,
+		svc.SetAgentDefaults,
+		connect.WithSchema(localServiceMethods.ByName("SetAgentDefaults")),
+		connect.WithHandlerOptions(opts...),
+	)
 	localServiceRemoveMachineHandler := connect.NewUnaryHandlerSimple(
 		LocalServiceRemoveMachineProcedure,
 		svc.RemoveMachine,
@@ -1459,6 +1490,8 @@ func NewLocalServiceHandler(svc LocalServiceHandler, opts ...connect.HandlerOpti
 			localServiceRenameMachineHandler.ServeHTTP(w, r)
 		case LocalServiceSetMachinePausedProcedure:
 			localServiceSetMachinePausedHandler.ServeHTTP(w, r)
+		case LocalServiceSetAgentDefaultsProcedure:
+			localServiceSetAgentDefaultsHandler.ServeHTTP(w, r)
 		case LocalServiceRemoveMachineProcedure:
 			localServiceRemoveMachineHandler.ServeHTTP(w, r)
 		case LocalServiceCheckAgentsProcedure:
@@ -1610,6 +1643,10 @@ func (UnimplementedLocalServiceHandler) RenameMachine(context.Context, *v1.Renam
 
 func (UnimplementedLocalServiceHandler) SetMachinePaused(context.Context, *v1.SetMachinePausedRequest) (*v1.SetMachinePausedResponse, error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("hermesh.local.v1.LocalService.SetMachinePaused is not implemented"))
+}
+
+func (UnimplementedLocalServiceHandler) SetAgentDefaults(context.Context, *v1.SetAgentDefaultsRequest) (*v1.SetAgentDefaultsResponse, error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("hermesh.local.v1.LocalService.SetAgentDefaults is not implemented"))
 }
 
 func (UnimplementedLocalServiceHandler) RemoveMachine(context.Context, *v1.RemoveMachineRequest) (*v1.RemoveMachineResponse, error) {

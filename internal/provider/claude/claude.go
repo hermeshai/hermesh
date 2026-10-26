@@ -96,8 +96,20 @@ func (p *Provider) Discover(ctx context.Context) provider.Info {
 	if !info.LoggedIn && os.Getenv("ANTHROPIC_API_KEY") != "" {
 		info.LoggedIn = true
 	}
+	info.Models = Models
 	return info
 }
+
+// Models are the aliases Claude Code takes for its latest models; it lists
+// none itself.
+var Models = []provider.Model{
+	{ID: "fable", Name: "Fable", Efforts: efforts},
+	{ID: "opus", Name: "Opus", Efforts: efforts},
+	{ID: "sonnet", Name: "Sonnet", Efforts: efforts},
+	{ID: "haiku", Name: "Haiku", Efforts: efforts},
+}
+
+var efforts = []string{"low", "medium", "high", "xhigh", "max"}
 
 // Args returns the CLI arguments (exported for tests).
 func Args(spec provider.StartSpec) []string {
@@ -120,6 +132,9 @@ func Args(spec provider.StartSpec) []string {
 	}
 	if spec.Model != "" {
 		args = append(args, "--model", spec.Model)
+	}
+	if spec.Effort != "" {
+		args = append(args, "--effort", spec.Effort)
 	}
 	return args
 }

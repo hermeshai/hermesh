@@ -94,6 +94,21 @@ message AgentStatus {
   // A check of this agent is under way; the rest is what the last check
   // found, if any (an agent never checked yet is not available).
   bool checking = 7;
+  // The models it offers, to pick defaults from (Claude Code and Codex).
+  repeated AgentModel models = 8;
+  // What its sessions here run with when the client names no model.
+  hermesh.identity.v1.AgentDefaults defaults = 9;
+  // Its own configuration, which empty defaults follow, as far as the
+  // agent tells it (Codex).
+  hermesh.identity.v1.AgentDefaults own = 10;
+}
+
+message AgentModel {
+  // What the agent takes as its model (e.g. "opus", "gpt-6-astra").
+  string id = 1;
+  string name = 2;
+  // The reasoning efforts it supports.
+  repeated string efforts = 3;
 }
 
 message ListProjectsRequest {}

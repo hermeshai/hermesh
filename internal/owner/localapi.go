@@ -275,6 +275,23 @@ func (l *localService) SetMachinePaused(ctx context.Context, req *localv1.SetMac
 	return &localv1.SetMachinePausedResponse{}, err
 }
 
+func (l *localService) SetAgentDefaults(ctx context.Context, req *localv1.SetAgentDefaultsRequest) (*localv1.SetAgentDefaultsResponse, error) {
+	if req.Defaults == nil {
+		return nil, connect.NewError(connect.CodeInvalidArgument, errors.New("no defaults"))
+	}
+	if m, ok, err := l.o().onlyMachine(); ok {
+		if err == nil {
+			err = onlyMachineSettings(ctx, m, req.MachineId, func(c *identityv1.AdminCommand) {
+				c.Command = &identityv1.AdminCommand_SetAgentDefaults{SetAgentDefaults: req.Defaults}
+			})
+		}
+		return &localv1.SetAgentDefaultsResponse{}, err
+	}
+	err := l.o().SetAgentDefaults(ctx, req.MachineId, req.Defaults)
+	l.o().wrote(ctx, err, false, req.MachineId)
+	return &localv1.SetAgentDefaultsResponse{}, err
+}
+
 // CheckAgents checks this Mac's coding agents again, in the background.
 func (l *localService) CheckAgents(ctx context.Context, _ *localv1.CheckAgentsRequest) (*localv1.CheckAgentsResponse, error) {
 	m, ok, err := l.o().onlyMachine()

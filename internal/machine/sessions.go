@@ -87,6 +87,9 @@ type Sessions struct {
 	// janitorEvery is how often the Janitor checks (default 10s).
 	janitorEvery time.Duration
 	paused       func() bool
+	// defaults is what an agent's sessions run with when the client names
+	// no model.
+	defaults func(agent string) provider.Settings
 
 	mu         sync.Mutex
 	live       map[string]*live
@@ -338,8 +341,14 @@ func (s *Sessions) Start(ctx context.Context, p *Principal, req *sessionv1.Start
 	if title == "" {
 		title = provider.CleanTitle(req.Prompt)
 	}
+	// The client's model, else the machine's defaults; what neither sets
+	// follows the agent's own configuration.
+	set := s.defaults(req.Agent)
+	if req.Model != "" {
+		set.Model = req.Model
+	}
 	r := &sessionRow{ID: id, ProjectID: req.ProjectId, Agent: req.Agent,
-		Status: sessionv1.SessionStatus_SESSION_STATUS_QUEUED, CreatedBy: p.ClientID, GrantID: g.GrantId, Model: req.Model,
+		Status: sessionv1.SessionStatus_SESSION_STATUS_QUEUED, CreatedBy: p.ClientID, GrantID: g.GrantId, Model: set.Model, Effort: set.Effort, Speed: set.Speed,
 		BaseCommit: req.BaseRef, Workspace: proj.Workspace, QuestionTimeout: -1, Title: title, Progress: &sessionv1.SessionProgress{Phase: "queued"}, CreatedAt: now, UpdatedAt: now}
 	if req.QuestionTimeoutSeconds != nil {
 		r.QuestionTimeout = int(*req.QuestionTimeoutSeconds)
@@ -1121,7 +1130,7 @@ func (s *Sessions) prepare(l *live) {
 	gate := s.gate(l)
 	l.mu.Lock()
 	spec := provider.StartSpec{WorkDir: l.row.Worktree, TempDir: tmp, Prompt: prompt.text, Images: prompt.input().Images, ReadDirs: []string{files}, Model: l.row.Model,
-		Env: shellenv.Env(tmp), Gate: gate}
+		Effort: l.row.Effort, Speed: l.row.Speed, Env: shellenv.Env(tmp), Gate: gate}
 	if resume && l.row.ProviderRef != "" {
 		spec.ResumeRef = l.row.ProviderRef
 	} else {

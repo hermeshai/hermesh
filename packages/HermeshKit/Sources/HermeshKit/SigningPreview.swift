@@ -417,6 +417,19 @@ public enum SigningPreview {
         case .setName(let n):
             return Card(type: type, title: String(localized: "Rename \(target) to “\(n.name)”", bundle: .module), who: who, lines: [],
                         why: String(localized: "The machine takes the new name; its projects and access stay the same.", bundle: .module))
+        case .setAgentDefaults(let d):
+            let agent = codingAgentTitle(d.agent)
+            let same = String(localized: "Same as \(agent)", bundle: .module)
+            var lines = [String(localized: "Model: \(d.model.isEmpty ? same : d.model)", bundle: .module),
+                         String(localized: "Reasoning effort: \(d.effort.isEmpty ? same : d.effort)", bundle: .module)]
+            switch d.speed {
+            case .unspecified: if d.agent == "codex" { lines.append(String(localized: "Speed: \(same)", bundle: .module)) }
+            case .standard: lines.append(String(localized: "Speed: \(String(localized: "Standard", bundle: .module))", bundle: .module))
+            case .fast: lines.append(String(localized: "Speed: \(String(localized: "Fast", bundle: .module))", bundle: .module))
+            case .UNRECOGNIZED: throw Refusal.unsupported(type)
+            }
+            return Card(type: type, title: String(localized: "Set the model \(agent) runs with on \(target)", bundle: .module), who: who, lines: lines,
+                        why: String(localized: "Once approved, its sessions there that name no model run with these; the agent’s own configuration is not changed.", bundle: .module))
         case .none:
             throw Refusal.unsupported(type)
         }
