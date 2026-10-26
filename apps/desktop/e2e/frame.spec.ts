@@ -57,7 +57,10 @@ test("long titles are cut, the status dot sits by its text, a running title shim
   // Only what needs you has a dot: a waiting session does; a running one has none, its title shimmers instead.
   await expect(list.getByRole("listitem").filter({ hasText: "选颜色" }).locator(".sdot")).toHaveCount(1);
   await expect(running.locator(".sdot")).toHaveCount(0);
-  expect(await running.locator(".stitle .shine").evaluate((e) => getComputedStyle(e).animationName)).toBe("stitle-run");
+  expect(await running.locator(".stitle .shine").first().evaluate((e) => getComputedStyle(e).animationName)).toBe("stitle-run");
+  // The copies that draw it are translucent, as the title is, so the band fades into any row's background.
+  for (const c of await running.locator(".stitle .shine").evaluateAll((es) => es.map((e) => getComputedStyle(e, "::before").color)))
+    expect(c).toMatch(/^rgba\(.*, 0?\.\d+\)$/);
   // The band's copy of the title is drawn, not text: the title reads once.
   await expect(running.locator(".stitle")).toHaveText((await running.locator(".stitle").getAttribute("title"))!);
   const idle = list.getByRole("listitem").filter({ hasText: "写 hello" });
