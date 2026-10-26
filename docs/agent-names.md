@@ -1,6 +1,7 @@
 # Names under an agent: several bots on one connection, each woken on its own
 
-Status: designed and reviewed 2026-10-27 (§12). It builds on
+Status: designed and reviewed 2026-10-27 (§12); step 1 (§11) built the same
+day. It builds on
 [agent-messages.md](agent-messages.md) (steps 1–3, built) and replaces its
 §6.3 doorbell setup.
 

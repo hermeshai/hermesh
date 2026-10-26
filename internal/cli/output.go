@@ -89,7 +89,10 @@ func writeDoc(w io.Writer, err error, data ...field) {
 // marked as reported, so Main prints nothing more.
 func (a *app) report(w io.Writer, err error, data ...field) error {
 	data = append(data, a.extra...)
-	if a.inboxWaiting > 0 {
+	data = append(data, a.asField()...)
+	// Under a name, the count would include the agent's other names'
+	// messages: the post office can't tell whose they are.
+	if a.inboxWaiting > 0 && a.as == "" {
 		data = append(data, field{"inbox", object{{"waiting", a.inboxWaiting}}})
 	}
 	writeDoc(w, err, data...)
@@ -97,6 +100,14 @@ func (a *app) report(w io.Writer, err error, data ...field) error {
 		return nil
 	}
 	return reported(err)
+}
+
+// asField says, in every document, which name the command ran as.
+func (a *app) asField() []field {
+	if a.as == "" {
+		return nil
+	}
+	return []field{{"as", a.as}}
 }
 
 func reported(err error) error {

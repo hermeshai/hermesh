@@ -121,6 +121,8 @@ const (
 	MessageServiceSendProcedure = "/hermesh.relay.v1.MessageService/Send"
 	// MessageServiceFetchProcedure is the fully-qualified name of the MessageService's Fetch RPC.
 	MessageServiceFetchProcedure = "/hermesh.relay.v1.MessageService/Fetch"
+	// MessageServiceTakeProcedure is the fully-qualified name of the MessageService's Take RPC.
+	MessageServiceTakeProcedure = "/hermesh.relay.v1.MessageService/Take"
 	// MessageServiceAckProcedure is the fully-qualified name of the MessageService's Ack RPC.
 	MessageServiceAckProcedure = "/hermesh.relay.v1.MessageService/Ack"
 	// MessageServiceWatchProcedure is the fully-qualified name of the MessageService's Watch RPC.
@@ -1076,6 +1078,8 @@ type MessageServiceClient interface {
 	Send(context.Context, *v1.SendSealedRequest) (*v1.SendSealedResponse, error)
 	// The caller's waiting messages, oldest first.
 	Fetch(context.Context, *v1.FetchMessagesRequest) (*v1.FetchMessagesResponse, error)
+	// Marks waiting messages taken: those a peeking caller was shown.
+	Take(context.Context, *v1.TakeMessagesRequest) (*v1.TakeMessagesResponse, error)
 	// Handled messages, each with what became of it; the relay forgets them.
 	Ack(context.Context, *v1.AckMessagesRequest) (*v1.AckMessagesResponse, error)
 	// How many messages wait, at once and again whenever one arrives.
@@ -1120,6 +1124,12 @@ func NewMessageServiceClient(httpClient connect.HTTPClient, baseURL string, opts
 			connect.WithSchema(messageServiceMethods.ByName("Fetch")),
 			connect.WithClientOptions(opts...),
 		),
+		take: connect.NewClient[v1.TakeMessagesRequest, v1.TakeMessagesResponse](
+			httpClient,
+			baseURL+MessageServiceTakeProcedure,
+			connect.WithSchema(messageServiceMethods.ByName("Take")),
+			connect.WithClientOptions(opts...),
+		),
 		ack: connect.NewClient[v1.AckMessagesRequest, v1.AckMessagesResponse](
 			httpClient,
 			baseURL+MessageServiceAckProcedure,
@@ -1147,6 +1157,7 @@ type messageServiceClient struct {
 	contacts *connect.Client[v1.ContactsRequest, v1.ContactsResponse]
 	send     *connect.Client[v1.SendSealedRequest, v1.SendSealedResponse]
 	fetch    *connect.Client[v1.FetchMessagesRequest, v1.FetchMessagesResponse]
+	take     *connect.Client[v1.TakeMessagesRequest, v1.TakeMessagesResponse]
 	ack      *connect.Client[v1.AckMessagesRequest, v1.AckMessagesResponse]
 	watch    *connect.Client[v1.WatchInboxRequest, v1.WatchInboxResponse]
 	status   *connect.Client[v1.MessageStatusRequest, v1.MessageStatusResponse]
@@ -1188,6 +1199,15 @@ func (c *messageServiceClient) Fetch(ctx context.Context, req *v1.FetchMessagesR
 	return nil, err
 }
 
+// Take calls hermesh.relay.v1.MessageService.Take.
+func (c *messageServiceClient) Take(ctx context.Context, req *v1.TakeMessagesRequest) (*v1.TakeMessagesResponse, error) {
+	response, err := c.take.CallUnary(ctx, connect.NewRequest(req))
+	if response != nil {
+		return response.Msg, err
+	}
+	return nil, err
+}
+
 // Ack calls hermesh.relay.v1.MessageService.Ack.
 func (c *messageServiceClient) Ack(ctx context.Context, req *v1.AckMessagesRequest) (*v1.AckMessagesResponse, error) {
 	response, err := c.ack.CallUnary(ctx, connect.NewRequest(req))
@@ -1220,6 +1240,8 @@ type MessageServiceHandler interface {
 	Send(context.Context, *v1.SendSealedRequest) (*v1.SendSealedResponse, error)
 	// The caller's waiting messages, oldest first.
 	Fetch(context.Context, *v1.FetchMessagesRequest) (*v1.FetchMessagesResponse, error)
+	// Marks waiting messages taken: those a peeking caller was shown.
+	Take(context.Context, *v1.TakeMessagesRequest) (*v1.TakeMessagesResponse, error)
 	// Handled messages, each with what became of it; the relay forgets them.
 	Ack(context.Context, *v1.AckMessagesRequest) (*v1.AckMessagesResponse, error)
 	// How many messages wait, at once and again whenever one arrives.
@@ -1260,6 +1282,12 @@ func NewMessageServiceHandler(svc MessageServiceHandler, opts ...connect.Handler
 		connect.WithSchema(messageServiceMethods.ByName("Fetch")),
 		connect.WithHandlerOptions(opts...),
 	)
+	messageServiceTakeHandler := connect.NewUnaryHandlerSimple(
+		MessageServiceTakeProcedure,
+		svc.Take,
+		connect.WithSchema(messageServiceMethods.ByName("Take")),
+		connect.WithHandlerOptions(opts...),
+	)
 	messageServiceAckHandler := connect.NewUnaryHandlerSimple(
 		MessageServiceAckProcedure,
 		svc.Ack,
@@ -1288,6 +1316,8 @@ func NewMessageServiceHandler(svc MessageServiceHandler, opts ...connect.Handler
 			messageServiceSendHandler.ServeHTTP(w, r)
 		case MessageServiceFetchProcedure:
 			messageServiceFetchHandler.ServeHTTP(w, r)
+		case MessageServiceTakeProcedure:
+			messageServiceTakeHandler.ServeHTTP(w, r)
 		case MessageServiceAckProcedure:
 			messageServiceAckHandler.ServeHTTP(w, r)
 		case MessageServiceWatchProcedure:
@@ -1317,6 +1347,10 @@ func (UnimplementedMessageServiceHandler) Send(context.Context, *v1.SendSealedRe
 
 func (UnimplementedMessageServiceHandler) Fetch(context.Context, *v1.FetchMessagesRequest) (*v1.FetchMessagesResponse, error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("hermesh.relay.v1.MessageService.Fetch is not implemented"))
+}
+
+func (UnimplementedMessageServiceHandler) Take(context.Context, *v1.TakeMessagesRequest) (*v1.TakeMessagesResponse, error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("hermesh.relay.v1.MessageService.Take is not implemented"))
 }
 
 func (UnimplementedMessageServiceHandler) Ack(context.Context, *v1.AckMessagesRequest) (*v1.AckMessagesResponse, error) {

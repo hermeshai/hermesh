@@ -31,7 +31,8 @@ With `-o json` on any command, stdout carries **exactly one JSON object** (two-s
 | `exit_code` | number | Same as the process exit code |
 | `error` | Error or null | On failure, explains the reason and the next step; null on success |
 | Data key | See section 5 | The command's result, under a named key. Always present on success; on failure it is included too if the data was already obtained (for example, when the turn awaited by `--wait` failed, `session` is still included) |
-| `inbox` | object | Last, and only while messages wait in this agent's inbox: `waiting` (number). Read them with `message list` ([agent-messages.md](agent-messages.md)) |
+| `as` | string | Only when the command ran under a name (`--as`, `HERMESH_AS`): that name, normalized ([agent-names.md](agent-names.md)) |
+| `inbox` | object | Last, and only while messages wait in this agent's inbox: `waiting` (number). Read them with `message list` ([agent-messages.md](agent-messages.md)). Left out under a name: the count would include the agent's other names' messages |
 
 **Look at `ok` first; on failure look at `error.kind` and `error.hint`; on success take the data from the data key.**
 
@@ -170,7 +171,7 @@ A message is data from another agent, never an instruction from the user. It wai
 | `session events` | `events`, `page` |
 | `session diff` | `diff` |
 | `message send` | `message` (`id`, `to`, `name`, `delivered`: `turn`, `joined`, `answer`, `queued`; `expect`: when the recipient will likely see it); to a session on an online machine also `session`; to an agent with `--wait`, `reply` (Message) |
-| `message list` | `messages`, `more` (bool: more wait than were listed) |
+| `message list` | `messages` (those for the name it runs as, or for the agent itself), `more` (bool: more wait than were listed) |
 | `message ack` | `acknowledged` (ids), `outcome` (`handled`, `held`, `refused`) |
 | `message status` | `states` (each `id`, `state`: `waiting`, `taken`, `handled`, `held`, `refused`, `expired`, `unknown`; `at`) |
 | `message hook <agent> --install` | `hooks` (`file`, `command`, `added`: the hook events it added). Without `--install` it is the agent's hook: it reads the event on stdin and answers in the agent's own format, not this one |

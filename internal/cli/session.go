@@ -114,7 +114,7 @@ func readPrompt(flag, text, file string, files int) (string, error) {
 }
 
 func (a *app) startCmd() *cobra.Command {
-	var project, agent, base, model, prompt, promptFile, title, idem, fromSession string
+	var project, agent, base, model, prompt, promptFile, title, idem string
 	var questionTimeout time.Duration
 	var files []string
 	var wait bool
@@ -157,7 +157,7 @@ func (a *app) startCmd() *cobra.Command {
 			return a.onMachine(ctx, c, ref, func(c *peer.Client, n *peer.Machine, ref machineRef) error {
 				res, err := n.Session.StartSession(ctx, &sessionv1.StartSessionRequest{IdempotencyKey: idem, ProjectId: projectID,
 					Agent: agent, Prompt: text, BaseRef: base, Model: model, Attachments: atts, QuestionTimeoutSeconds: qt, Title: title,
-					Conversation: conversation(fromSession)})
+					Conversation: a.as})
 				if connect.CodeOf(err) == connect.CodeNotFound {
 					return &exitError{code: exitUsage, kind: "not_found", err: err, hint: "see `hermesh project list`"}
 				}
@@ -188,7 +188,6 @@ func (a *app) startCmd() *cobra.Command {
 	f.StringVar(&idem, "idempotency-key", "", "retrying with the same key returns the same session")
 	f.BoolVar(&wait, "wait", false, waitHelp)
 	f.DurationVar(&timeout, "timeout", 0, timeoutHelp)
-	f.StringVar(&fromSession, "from-session", "", fromSessionHelp)
 	cmd.MarkFlagRequired("project")
 	return cmd
 }

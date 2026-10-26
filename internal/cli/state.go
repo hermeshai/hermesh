@@ -48,7 +48,9 @@ type seenMachine struct {
 type app struct {
 	home   string
 	output string
-	hc     *http.Client
+	// as is the caller's name under this agent (--as, docs/agent-names.md).
+	as string
+	hc *http.Client
 	// mem holds the credentials when the caller keeps them (Exec), in
 	// place of the files in home.
 	mem *ExecOptions

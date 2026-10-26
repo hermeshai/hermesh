@@ -1425,6 +1425,32 @@ public nonisolated struct Hermesh_Relay_V1_FetchMessagesRequest: Sendable {
   /// Pass over this many of the oldest first: the next page.
   public var skip: UInt32 = 0
 
+  /// Leave them waiting: an agent with several names takes only its own
+  /// (Take), so the others' receipts stay true (docs/agent-names.md §6).
+  public var peek: Bool = false
+
+  public var unknownFields = SwiftProtobuf.UnknownStorage()
+
+  public init() {}
+}
+
+public nonisolated struct Hermesh_Relay_V1_TakeMessagesRequest: Sendable {
+  // SwiftProtobuf.Message conformance is added in an extension below. See the
+  // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
+  // methods supported on all messages.
+
+  public var messageIds: [String] = []
+
+  public var unknownFields = SwiftProtobuf.UnknownStorage()
+
+  public init() {}
+}
+
+public nonisolated struct Hermesh_Relay_V1_TakeMessagesResponse: Sendable {
+  // SwiftProtobuf.Message conformance is added in an extension below. See the
+  // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
+  // methods supported on all messages.
+
   public var unknownFields = SwiftProtobuf.UnknownStorage()
 
   public init() {}
@@ -3814,7 +3840,7 @@ nonisolated extension Hermesh_Relay_V1_SendSealedResponse: SwiftProtobuf.Message
 
 nonisolated extension Hermesh_Relay_V1_FetchMessagesRequest: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
   public static let protoMessageName: String = _protobuf_package + ".FetchMessagesRequest"
-  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{1}limit\0\u{1}skip\0")
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{1}limit\0\u{1}skip\0\u{1}peek\0")
 
   public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
     while let fieldNumber = try decoder.nextFieldNumber() {
@@ -3824,6 +3850,7 @@ nonisolated extension Hermesh_Relay_V1_FetchMessagesRequest: SwiftProtobuf.Messa
       switch fieldNumber {
       case 1: try { try decoder.decodeSingularUInt32Field(value: &self.limit) }()
       case 2: try { try decoder.decodeSingularUInt32Field(value: &self.skip) }()
+      case 3: try { try decoder.decodeSingularBoolField(value: &self.peek) }()
       default: break
       }
     }
@@ -3836,12 +3863,65 @@ nonisolated extension Hermesh_Relay_V1_FetchMessagesRequest: SwiftProtobuf.Messa
     if self.skip != 0 {
       try visitor.visitSingularUInt32Field(value: self.skip, fieldNumber: 2)
     }
+    if self.peek != false {
+      try visitor.visitSingularBoolField(value: self.peek, fieldNumber: 3)
+    }
     try unknownFields.traverse(visitor: &visitor)
   }
 
   public static func ==(lhs: Hermesh_Relay_V1_FetchMessagesRequest, rhs: Hermesh_Relay_V1_FetchMessagesRequest) -> Bool {
     if lhs.limit != rhs.limit {return false}
     if lhs.skip != rhs.skip {return false}
+    if lhs.peek != rhs.peek {return false}
+    if lhs.unknownFields != rhs.unknownFields {return false}
+    return true
+  }
+}
+
+nonisolated extension Hermesh_Relay_V1_TakeMessagesRequest: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
+  public static let protoMessageName: String = _protobuf_package + ".TakeMessagesRequest"
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{3}message_ids\0")
+
+  public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
+    while let fieldNumber = try decoder.nextFieldNumber() {
+      // The use of inline closures is to circumvent an issue where the compiler
+      // allocates stack space for every case branch when no optimizations are
+      // enabled. https://github.com/apple/swift-protobuf/issues/1034
+      switch fieldNumber {
+      case 1: try { try decoder.decodeRepeatedStringField(value: &self.messageIds) }()
+      default: break
+      }
+    }
+  }
+
+  public func traverse<V: SwiftProtobuf.Visitor>(visitor: inout V) throws {
+    if !self.messageIds.isEmpty {
+      try visitor.visitRepeatedStringField(value: self.messageIds, fieldNumber: 1)
+    }
+    try unknownFields.traverse(visitor: &visitor)
+  }
+
+  public static func ==(lhs: Hermesh_Relay_V1_TakeMessagesRequest, rhs: Hermesh_Relay_V1_TakeMessagesRequest) -> Bool {
+    if lhs.messageIds != rhs.messageIds {return false}
+    if lhs.unknownFields != rhs.unknownFields {return false}
+    return true
+  }
+}
+
+nonisolated extension Hermesh_Relay_V1_TakeMessagesResponse: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
+  public static let protoMessageName: String = _protobuf_package + ".TakeMessagesResponse"
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap()
+
+  public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
+    // Load everything into unknown fields
+    while try decoder.nextFieldNumber() != nil {}
+  }
+
+  public func traverse<V: SwiftProtobuf.Visitor>(visitor: inout V) throws {
+    try unknownFields.traverse(visitor: &visitor)
+  }
+
+  public static func ==(lhs: Hermesh_Relay_V1_TakeMessagesResponse, rhs: Hermesh_Relay_V1_TakeMessagesResponse) -> Bool {
     if lhs.unknownFields != rhs.unknownFields {return false}
     return true
   }

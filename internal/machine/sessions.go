@@ -579,13 +579,14 @@ func (s *Sessions) Send(ctx context.Context, p *Principal, id, text string, atts
 // take delivers a message by the session's state: a new turn when idle,
 // into the running turn when the agent takes input mid-turn, otherwise
 // as the turn after the current one. A message from someone else than the
-// turn's asker never goes into that turn and never answers its question:
-// it waits for a turn of its own (docs/agent-messages.md §7.2). It says
-// what became of m: "turn", "joined", "answer" or "queued".
+// turn's asker, an agent and its name (docs/agent-names.md §6), never goes
+// into that turn and never answers its question: it waits for a turn of
+// its own (docs/agent-messages.md §7.2). It says what became of m: "turn",
+// "joined", "answer" or "queued".
 func (s *Sessions) take(ctx context.Context, l *live, m message) (string, error) {
 	for {
 		l.mu.Lock()
-		if l.asker != m.by && turnBusy(l.row.Status) {
+		if (l.asker != m.by || l.askerConv != m.conv) && turnBusy(l.row.Status) {
 			l.asked = append(l.asked, m)
 			s.saveAsked(l)
 			l.mu.Unlock()
@@ -710,7 +711,7 @@ func (s *Sessions) startAsked(l *live) {
 	m := l.asked[0]
 	var keep []message
 	for _, o := range l.asked[1:] {
-		if o.by == m.by {
+		if o.by == m.by && o.conv == m.conv {
 			m = m.join(o)
 		} else {
 			keep = append(keep, o)
