@@ -78,6 +78,8 @@ final class AppModel {
     var devices: [Device] = []
     var pairings: [PairingDetails] = []
     var usage: UsageYear?
+    /// Today's work, as the machines count it.
+    var activity: DayActivity?
     var now = Date()
 
     // Navigation
@@ -116,6 +118,8 @@ final class AppModel {
     @ObservationIgnored private var watchTask: Task<Void, Never>?
     @ObservationIgnored private var clockTask: Task<Void, Never>?
     @ObservationIgnored private var toastTask: Task<Void, Never>?
+    @ObservationIgnored private var activityTask: Task<Void, Never>?
+    @ObservationIgnored private var activityAsked = Date.distantPast
     @ObservationIgnored private var active = false
 
     // MARK: Lifecycle
@@ -150,8 +154,10 @@ final class AppModel {
         active = false
         watchTask?.cancel()
         clockTask?.cancel()
+        activityTask?.cancel()
         watchTask = nil
         clockTask = nil
+        activityTask = nil
         Core.pause()
     }
 
@@ -284,6 +290,7 @@ final class AppModel {
         }
         if !r.sessions.isEmpty || !r.deletedSessionIds.isEmpty {
             heldSessions = mergeSessions(heldSessions, r.sessions, deleted: r.deletedSessionIds)
+            activityChanged()
         }
     }
 
@@ -295,6 +302,27 @@ final class AppModel {
         guard let page = try? await api.listSessions(before: cursor) else { return }
         heldSessions = mergeSessions(heldSessions, page.sessions)
         if page.hasNext { self.cursor = page.next } else { noOlder = true }
+    }
+
+    /// Today's work, asked of the machines.
+    func loadActivity() async {
+        guard let api else { return }
+        let today = dayKey(Date())
+        activityAsked = Date()
+        if let r = try? await api.activity(date: today) {
+            activity = DayActivity(date: today, hours: r.hours, clients: r.clients)
+        }
+    }
+
+    /// Sessions changed: today's work again, once a minute at most.
+    private func activityChanged() {
+        guard activityTask == nil else { return }
+        activityTask = Task {
+            try? await Task.sleep(for: .seconds(max(2, 60 - Date().timeIntervalSince(activityAsked))))
+            guard !Task.isCancelled else { return }
+            activityTask = nil
+            await loadActivity()
+        }
     }
 
     func loadUsage() async {

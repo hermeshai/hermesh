@@ -167,6 +167,9 @@ const (
 	LocalServiceGetDiffProcedure = "/hermesh.local.v1.LocalService/GetDiff"
 	// LocalServiceGetUsageProcedure is the fully-qualified name of the LocalService's GetUsage RPC.
 	LocalServiceGetUsageProcedure = "/hermesh.local.v1.LocalService/GetUsage"
+	// LocalServiceGetActivityProcedure is the fully-qualified name of the LocalService's GetActivity
+	// RPC.
+	LocalServiceGetActivityProcedure = "/hermesh.local.v1.LocalService/GetActivity"
 	// LocalServiceRegisterPushProcedure is the fully-qualified name of the LocalService's RegisterPush
 	// RPC.
 	LocalServiceRegisterPushProcedure = "/hermesh.local.v1.LocalService/RegisterPush"
@@ -274,6 +277,9 @@ type LocalServiceClient interface {
 	// GetUsage adds up every reachable machine's tokens by day and coding
 	// agent (hermesh.session.v1.SessionService.GetUsage).
 	GetUsage(context.Context, *v1.GetUsageRequest) (*v1.GetUsageResponse, error)
+	// GetActivity adds up every reachable machine's sessions that worked on
+	// a day (hermesh.session.v1.SessionService.GetActivity).
+	GetActivity(context.Context, *v11.GetActivityRequest) (*v1.GetActivityResponse, error)
 	// Notifications while the app is not running (the iPhone): this device's
 	// push token and notice key, signed with its device key and sent to the
 	// relay, which hands them to the owner's machines.
@@ -579,6 +585,12 @@ func NewLocalServiceClient(httpClient connect.HTTPClient, baseURL string, opts .
 			connect.WithSchema(localServiceMethods.ByName("GetUsage")),
 			connect.WithClientOptions(opts...),
 		),
+		getActivity: connect.NewClient[v11.GetActivityRequest, v1.GetActivityResponse](
+			httpClient,
+			baseURL+LocalServiceGetActivityProcedure,
+			connect.WithSchema(localServiceMethods.ByName("GetActivity")),
+			connect.WithClientOptions(opts...),
+		),
 		registerPush: connect.NewClient[v1.RegisterPushRequest, v1.RegisterPushResponse](
 			httpClient,
 			baseURL+LocalServiceRegisterPushProcedure,
@@ -638,6 +650,7 @@ type localServiceClient struct {
 	answerQuestion         *connect.Client[v1.AnswerQuestionRequest, v1.AnswerQuestionResponse]
 	getDiff                *connect.Client[v1.GetDiffRequest, v11.GetDiffResponse]
 	getUsage               *connect.Client[v1.GetUsageRequest, v1.GetUsageResponse]
+	getActivity            *connect.Client[v11.GetActivityRequest, v1.GetActivityResponse]
 	registerPush           *connect.Client[v1.RegisterPushRequest, v1.RegisterPushResponse]
 }
 
@@ -1053,6 +1066,15 @@ func (c *localServiceClient) GetUsage(ctx context.Context, req *v1.GetUsageReque
 	return nil, err
 }
 
+// GetActivity calls hermesh.local.v1.LocalService.GetActivity.
+func (c *localServiceClient) GetActivity(ctx context.Context, req *v11.GetActivityRequest) (*v1.GetActivityResponse, error) {
+	response, err := c.getActivity.CallUnary(ctx, connect.NewRequest(req))
+	if response != nil {
+		return response.Msg, err
+	}
+	return nil, err
+}
+
 // RegisterPush calls hermesh.local.v1.LocalService.RegisterPush.
 func (c *localServiceClient) RegisterPush(ctx context.Context, req *v1.RegisterPushRequest) (*v1.RegisterPushResponse, error) {
 	response, err := c.registerPush.CallUnary(ctx, connect.NewRequest(req))
@@ -1164,6 +1186,9 @@ type LocalServiceHandler interface {
 	// GetUsage adds up every reachable machine's tokens by day and coding
 	// agent (hermesh.session.v1.SessionService.GetUsage).
 	GetUsage(context.Context, *v1.GetUsageRequest) (*v1.GetUsageResponse, error)
+	// GetActivity adds up every reachable machine's sessions that worked on
+	// a day (hermesh.session.v1.SessionService.GetActivity).
+	GetActivity(context.Context, *v11.GetActivityRequest) (*v1.GetActivityResponse, error)
 	// Notifications while the app is not running (the iPhone): this device's
 	// push token and notice key, signed with its device key and sent to the
 	// relay, which hands them to the owner's machines.
@@ -1465,6 +1490,12 @@ func NewLocalServiceHandler(svc LocalServiceHandler, opts ...connect.HandlerOpti
 		connect.WithSchema(localServiceMethods.ByName("GetUsage")),
 		connect.WithHandlerOptions(opts...),
 	)
+	localServiceGetActivityHandler := connect.NewUnaryHandlerSimple(
+		LocalServiceGetActivityProcedure,
+		svc.GetActivity,
+		connect.WithSchema(localServiceMethods.ByName("GetActivity")),
+		connect.WithHandlerOptions(opts...),
+	)
 	localServiceRegisterPushHandler := connect.NewUnaryHandlerSimple(
 		LocalServiceRegisterPushProcedure,
 		svc.RegisterPush,
@@ -1569,6 +1600,8 @@ func NewLocalServiceHandler(svc LocalServiceHandler, opts ...connect.HandlerOpti
 			localServiceGetDiffHandler.ServeHTTP(w, r)
 		case LocalServiceGetUsageProcedure:
 			localServiceGetUsageHandler.ServeHTTP(w, r)
+		case LocalServiceGetActivityProcedure:
+			localServiceGetActivityHandler.ServeHTTP(w, r)
 		case LocalServiceRegisterPushProcedure:
 			localServiceRegisterPushHandler.ServeHTTP(w, r)
 		default:
@@ -1770,6 +1803,10 @@ func (UnimplementedLocalServiceHandler) GetDiff(context.Context, *v1.GetDiffRequ
 
 func (UnimplementedLocalServiceHandler) GetUsage(context.Context, *v1.GetUsageRequest) (*v1.GetUsageResponse, error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("hermesh.local.v1.LocalService.GetUsage is not implemented"))
+}
+
+func (UnimplementedLocalServiceHandler) GetActivity(context.Context, *v11.GetActivityRequest) (*v1.GetActivityResponse, error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("hermesh.local.v1.LocalService.GetActivity is not implemented"))
 }
 
 func (UnimplementedLocalServiceHandler) RegisterPush(context.Context, *v1.RegisterPushRequest) (*v1.RegisterPushResponse, error) {

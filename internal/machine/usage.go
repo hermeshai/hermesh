@@ -15,18 +15,27 @@ import (
 
 // Usage: each turn's tokens, kept in turn_usage when its TurnCompleted
 // event is written, so GetUsage can add them up by day without reading
-// every stored event.
+// every stored event. Its TurnStarted event writes when it started, for
+// GetActivity; a row whose turn has not ended has ended_at 0.
 
 const usageBackfilled = "turn_usage_backfilled"
 
-// putUsage records a TurnCompleted event's tokens (in the event's own
-// transaction); other events are ignored.
+// putUsage records when a TurnStarted event's turn started, and a
+// TurnCompleted event's end and tokens (in the event's own transaction);
+// other events are ignored.
 func putUsage(tx *sql.Tx, sessionID string, ev *sessionv1.SessionEvent) error {
+	if ts := ev.GetTurnStarted(); ts != nil {
+		_, err := tx.Exec(`INSERT INTO turn_usage(session_id, turn, started_at, ended_at, input_tokens, output_tokens) VALUES(?,?,?,0,0,0)
+			ON CONFLICT(session_id, turn) DO UPDATE SET started_at=excluded.started_at`,
+			sessionID, ts.Turn, ev.Ts.AsTime().Unix())
+		return err
+	}
 	tc := ev.GetTurnCompleted()
 	if tc == nil {
 		return nil
 	}
-	_, err := tx.Exec(`INSERT OR REPLACE INTO turn_usage(session_id, turn, ended_at, input_tokens, output_tokens) VALUES(?,?,?,?,?)`,
+	_, err := tx.Exec(`INSERT INTO turn_usage(session_id, turn, ended_at, input_tokens, output_tokens) VALUES(?,?,?,?,?)
+		ON CONFLICT(session_id, turn) DO UPDATE SET ended_at=excluded.ended_at, input_tokens=excluded.input_tokens, output_tokens=excluded.output_tokens`,
 		sessionID, tc.Turn, ev.Ts.AsTime().Unix(), tc.Usage.GetInputTokens(), tc.Usage.GetOutputTokens())
 	return err
 }
@@ -86,7 +95,7 @@ type usageRow struct {
 
 // TurnUsage returns the turns that ended at or after since (unix seconds).
 func (s *Store) TurnUsage(since int64) ([]usageRow, error) {
-	rows, err := s.rdb.Query(`SELECT session_id, ended_at, input_tokens, output_tokens FROM turn_usage WHERE ended_at >= ?`, since)
+	rows, err := s.rdb.Query(`SELECT session_id, ended_at, input_tokens, output_tokens FROM turn_usage WHERE ended_at >= ? AND ended_at > 0`, since)
 	if err != nil {
 		return nil, err
 	}

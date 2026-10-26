@@ -104,6 +104,13 @@ extension LocalAPI {
         return try await call("GetUsage", r, timeout: 30)
     }
 
+    func activity(date: String) async throws -> Hermesh_Local_V1_GetActivityResponse {
+        var r = Hermesh_Session_V1_GetActivityRequest()
+        r.date = date
+        r.timeZone = TimeZone.current.identifier
+        return try await call("GetActivity", r, timeout: 30)
+    }
+
     func machines() async throws -> [Machine] {
         let r: Hermesh_Local_V1_ListMachinesResponse = try await call("ListMachines", Hermesh_Local_V1_ListMachinesRequest())
         return r.machines

@@ -1609,6 +1609,68 @@ func (o *Owner) GetUsage(ctx context.Context, req *localv1.GetUsageRequest) (*lo
 	return out, err
 }
 
+// GetActivity asks every reachable machine for its sessions that worked on
+// a day and adds them up (a session is on one machine, so the counts add).
+// A machine too old to answer is left out, not counted unreachable.
+func (o *Owner) GetActivity(ctx context.Context, req *sessionv1.GetActivityRequest) (*localv1.GetActivityResponse, error) {
+	on, off, err := o.onlineMachines(ctx, "")
+	if err != nil {
+		return nil, err
+	}
+	var mu sync.Mutex
+	type hourKey struct {
+		hour uint32
+		by   string
+	}
+	hours := map[hourKey]*sessionv1.ActivityHour{}
+	clients := map[string]*sessionv1.ActivityClient{}
+	add := func(res *sessionv1.GetActivityResponse) {
+		mu.Lock()
+		defer mu.Unlock()
+		for _, h := range res.Hours {
+			k := hourKey{h.Hour, h.CreatedBy}
+			if t := hours[k]; t != nil {
+				t.Sessions += h.Sessions
+			} else {
+				hours[k] = proto.CloneOf(h)
+			}
+		}
+		for _, c := range res.Clients {
+			if t := clients[c.CreatedBy]; t != nil {
+				t.Sessions += c.Sessions
+				t.Done += c.Done
+			} else {
+				clients[c.CreatedBy] = proto.CloneOf(c)
+			}
+		}
+	}
+	bad, err := o.fanOut(ctx, on, func(l *machine.Local, _ *localv1.Machine) error {
+		res, err := l.Activity(req)
+		if err == nil {
+			add(res)
+		}
+		return err
+	}, func(ctx context.Context, n *peer.Machine, _ *localv1.Machine) error {
+		res, err := n.Session.GetActivity(ctx, req)
+		if connect.CodeOf(err) == connect.CodeUnimplemented {
+			return nil
+		}
+		if err == nil {
+			add(res)
+		}
+		return err
+	})
+	out := &localv1.GetActivityResponse{Unreachable: append(off, bad...)}
+	for _, h := range hours {
+		out.Hours = append(out.Hours, h)
+	}
+	for _, c := range clients {
+		out.Clients = append(out.Clients, c)
+	}
+	machine.SortActivity(out)
+	return out, err
+}
+
 // onePage cuts the machines' pages (each machine's newest past before, a
 // first page with its unsettled sessions too) to the newest limit across
 // them, plus on a first page the unsettled ones, and says where the next

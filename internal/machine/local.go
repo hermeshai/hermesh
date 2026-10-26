@@ -132,6 +132,10 @@ func (l *Local) Usage(req *sessionv1.GetUsageRequest) (*sessionv1.GetUsageRespon
 	return l.n.sessions.Usage(l.p, req)
 }
 
+func (l *Local) Activity(req *sessionv1.GetActivityRequest) (*sessionv1.GetActivityResponse, error) {
+	return l.n.sessions.Activity(l.p, req, time.Now())
+}
+
 // kClients: the agents that reached this machine, by client id, with the
 // name and grant their owner-signed grant gave them (JSON), so the app on a
 // machine only can name who started a session.

@@ -123,6 +123,9 @@ service LocalService {
   // GetUsage adds up every reachable machine's tokens by day and coding
   // agent (hermesh.session.v1.SessionService.GetUsage).
   rpc GetUsage(GetUsageRequest) returns (GetUsageResponse);
+  // GetActivity adds up every reachable machine's sessions that worked on
+  // a day (hermesh.session.v1.SessionService.GetActivity).
+  rpc GetActivity(hermesh.session.v1.GetActivityRequest) returns (GetActivityResponse);
   // Notifications while the app is not running (the iPhone): this device's
   // push token and notice key, signed with its device key and sent to the
   // relay, which hands them to the owner's machines.
@@ -792,6 +795,13 @@ message GetUsageResponse {
   // had turns then.
   repeated hermesh.session.v1.UsageDay days = 1;
   repeated Unreachable unreachable = 2;
+}
+
+message GetActivityResponse {
+  // An hour and client appear once however many machines worked then.
+  repeated hermesh.session.v1.ActivityHour hours = 1;
+  repeated hermesh.session.v1.ActivityClient clients = 2;
+  repeated Unreachable unreachable = 3;
 }
 
 message GetDiffRequest {

@@ -106,6 +106,16 @@ func TestOwnMacWithoutRelay(t *testing.T) {
 		_, err := app.GetUsage(ctx, &localv1.GetUsageRequest{})
 		return err
 	})
+	call("activity", func(ctx context.Context) error {
+		res, err := app.GetActivity(ctx, &sessionv1.GetActivityRequest{Date: time.Now().UTC().Format(time.DateOnly)})
+		if err != nil {
+			return err
+		}
+		if len(res.Clients) == 0 || res.Clients[0].Sessions == 0 || len(res.Hours) == 0 {
+			t.Fatalf("today's activity: %+v", res)
+		}
+		return nil
+	})
 	call("read the session", func(ctx context.Context) error {
 		stream, err := app.StreamSessionEvents(ctx, &localv1.StreamSessionEventsRequest{SessionId: s.SessionID})
 		if err != nil {
