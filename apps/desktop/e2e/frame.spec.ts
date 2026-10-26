@@ -91,8 +91,9 @@ test("the sidebar shows the window's material; the toggle sits after the traffic
 });
 
 // The avatar at the sidebar's foot opens the account menu upward, as wide as
-// the foot; it is used with the mouse and with the keyboard, as a native menu.
-test("the avatar opens the account menu above it, by mouse and keyboard", async () => {
+// the foot and opaque over the list; it is used with the mouse and with the
+// keyboard, as a native menu.
+test("the avatar opens the account menu above it, opaque, by mouse and keyboard", async () => {
   const { app, page } = await launch();
   const avatar = page.getByRole("button", { name: "账号与设置" });
   const menu = page.getByRole("menu", { name: "账号与设置" });
@@ -106,6 +107,8 @@ test("the avatar opens the account menu above it, by mouse and keyboard", async 
   expect(m.y + m.height).toBeLessThanOrEqual(a.y);
   expect(Math.abs(m.x - a.x)).toBeLessThan(1);
   expect(Math.abs(m.width - a.width)).toBeLessThan(1);
+  const background = await menu.evaluate((el) => getComputedStyle(el).backgroundColor);
+  expect(background).toMatch(/^rgb\(/); // no alpha: the list doesn't show through
   await snap(page, "account-menu");
 
   // 连接 agent… opens its sheet, and the menu closes.
