@@ -460,6 +460,11 @@ sign-in on a 401.
 4. Limits per connection: 120 requests/min, 20 `start_session`/hour,
    8 concurrent tool calls; per owner: 10 MCP connections. Bodies at most
    1 MiB (attachments are not accepted over MCP in the first version).
+5. Tracing, off unless asked for: `HERMESH_MCP_TRACE` lists connection,
+   account or owner ids whose requests the gateway logs, to learn what an
+   agent product sends besides the call (headers, `clientInfo`, `_meta`,
+   the tool and its argument names). Never the token, cookies, client
+   addresses or argument values.
 
 ### 6.3 Transport
 

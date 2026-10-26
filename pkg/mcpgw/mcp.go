@@ -51,7 +51,7 @@ func (g *Gateway) mcpHandler() http.Handler {
 		DisableLocalhostProtection: true,
 		MaxRequestBodyBytes:        1 << 20,
 	})
-	protected := auth.RequireBearerToken(g.verifyToken, &auth.RequireBearerTokenOptions{ResourceMetadataURL: g.resourceMetadataURL()})(h)
+	protected := auth.RequireBearerToken(g.verifyToken, &auth.RequireBearerTokenOptions{ResourceMetadataURL: g.resourceMetadataURL()})(g.trace(h))
 	// Browsers may not post here from other sites (DNS rebinding, CSRF).
 	return http.NewCrossOriginProtection().Handler(protected)
 }

@@ -1,6 +1,7 @@
 package mcpgw
 
 import (
+	"bytes"
 	"context"
 	"crypto/sha256"
 	"encoding/base64"
@@ -545,5 +546,48 @@ func TestAccountManagesItsConnections(t *testing.T) {
 	}
 	if list, _ := f.g.Connections(ctx, "a1"); len(list) != 0 {
 		t.Fatalf("ended connections are not listed: %+v", list)
+	}
+}
+
+// HERMESH_MCP_TRACE logs what a connection's MCP requests carry besides
+// the call, never its token, addresses or arguments.
+func TestTraceLogsWhatCallersSend(t *testing.T) {
+	t.Setenv("HERMESH_MCP_TRACE", "a1")
+	var logs bytes.Buffer
+	f := newFixture(t, func(c *Config) { c.Logger = slog.New(slog.NewTextHandler(&logs, nil)) })
+	redirect := "http://127.0.0.1/callback"
+	client := f.register(redirect)
+	code := f.browser().consentCode(client, redirect)
+	_, tok := f.token(url.Values{"grant_type": {"authorization_code"}, "code": {code}, "redirect_uri": {redirect}, "client_id": {client}, "code_verifier": {verifier}})
+	body := `{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"grok-bot","version":"1.2"},"_meta":{"bot":"tech-demos"}}}`
+	req, _ := http.NewRequest(http.MethodPost, f.srv.URL+"/mcp", strings.NewReader(body))
+	req.Header.Set("Authorization", "Bearer "+tok["access_token"].(string))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Accept", "application/json, text/event-stream")
+	req.Header.Set("X-Forwarded-For", "203.0.113.9")
+	req.Header.Set("X-Bot-Id", "bot_42")
+	res, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	res.Body.Close()
+	call := `{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"hermesh_status","arguments":{"secret":"do-not-log"}}}`
+	req, _ = http.NewRequest(http.MethodPost, f.srv.URL+"/mcp", strings.NewReader(call))
+	req.Header = res.Request.Header.Clone()
+	res, err = http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	res.Body.Close()
+	out := logs.String()
+	for _, want := range []string{"mcp trace", "grok-bot", "tech-demos", "X-Bot-Id", "bot_42", "hermesh_status", "argumentNames"} {
+		if !strings.Contains(out, want) {
+			t.Fatalf("the trace lacks %q: %s", want, out)
+		}
+	}
+	for _, never := range []string{tok["access_token"].(string), "203.0.113.9", "do-not-log"} {
+		if strings.Contains(out, never) {
+			t.Fatalf("the trace logged %q: %s", never, out)
+		}
 	}
 }
