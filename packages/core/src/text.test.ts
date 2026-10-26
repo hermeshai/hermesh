@@ -1,6 +1,6 @@
 import { SessionStatus } from "@hermesh/proto/session";
 import { describe, expect, test } from "vitest";
-import { agoText, clockText, listTime, minutesLeft, phaseText, shortTime, tokensText, toolSummary } from "./text";
+import { agoText, clockText, elapsedSeconds, listTime, minutesLeft, phaseText, shortTime, tokensText, toolSummary } from "./text";
 import { at, now, progressOf, session } from "./testing";
 
 describe("text", () => {
@@ -14,6 +14,10 @@ describe("text", () => {
     expect(agoText(at(-3 * 3600), now)).toBe("3 小时前");
     expect(agoText(at(-86400), now)).toBe("昨天 15:42");
     expect([clockText(252), clockText(3723), clockText(-5)]).toEqual(["4:12", "1:02:03", "0:00"]);
+    // Counted in wall-clock seconds: two clocks started at different milliseconds change on the same boundary.
+    const t0 = (ms: number) => new Date(Date.UTC(2026, 9, 26, 8, 0, 0) + ms);
+    expect([elapsedSeconds(t0(900), t0(1_999)), elapsedSeconds(t0(100), t0(1_999))]).toEqual([1, 1]);
+    expect([elapsedSeconds(t0(900), t0(2_000)), elapsedSeconds(t0(100), t0(2_000))]).toEqual([2, 2]);
     expect([tokensText(412_000), tokensText(1_800_000), tokensText(12)]).toEqual(["412K", "1.8M", "12"]);
     expect(minutesLeft(at(21 * 60 + 5), now)).toBe("还剩 22 分钟");
   });

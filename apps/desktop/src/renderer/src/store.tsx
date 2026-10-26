@@ -206,7 +206,10 @@ export function HermeshProvider({ children }: { children: ReactNode }) {
 /**
  * The current time, ticking every interval ms (for elapsed times and
  * countdowns). One clock per interval for the whole window, so everything
- * on the same interval changes in the same frame.
+ * on the same interval changes in the same frame. Ticks fall halfway
+ * between wall-clock multiples of interval, so a clock counting whole
+ * seconds (elapsedSeconds) moves by exactly one on each, however late a
+ * tick comes.
  */
 export function useNow(interval = 1000): Date {
   const c = clock(interval);
@@ -220,20 +223,24 @@ function clock(interval: number) {
   if (c) return c;
   const subs = new Set<() => void>();
   let now = new Date();
-  let timer: ReturnType<typeof setInterval> | undefined;
+  let timer: ReturnType<typeof setTimeout> | undefined;
   c = {
     subscribe(f) {
       if (subs.size === 0) {
         now = new Date();
-        timer = setInterval(() => {
-          now = new Date();
-          subs.forEach((g) => g());
-        }, interval);
+        const next = () => {
+          timer = setTimeout(() => {
+            now = new Date();
+            subs.forEach((g) => g());
+            next();
+          }, interval - ((Date.now() + interval / 2) % interval));
+        };
+        next();
       }
       subs.add(f);
       return () => {
         subs.delete(f);
-        if (subs.size === 0) clearInterval(timer);
+        if (subs.size === 0) clearTimeout(timer);
       };
     },
     now: () => now,

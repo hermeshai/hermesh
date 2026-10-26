@@ -3,7 +3,7 @@ import { useTranslation } from "react-i18next";
 import type { Client } from "@hermesh/proto/local";
 import { FailureKind, SessionStatus, type Failure, type Session, type SessionEvent, type ToolCall, type ToolResult } from "@hermesh/proto/session";
 import {
-  clockText, codingAgentTitle, createdDate, currentTurn, durationText, failureAdvice, failureTitle, groupSteps, isActive, isArchivable, isFailed,
+  clockText, elapsedSeconds, codingAgentTitle, createdDate, currentTurn, durationText, failureAdvice, failureTitle, groupSteps, isActive, isArchivable, isFailed,
   isInterruption, isInterruptible, pendingQuestion, phaseText, resolutionTitle, statusTitle, stepSummary, toolObject, toolSummary, toolVerb, transcript,
   turnStartedAt, turnTimeLine, type Step,
 } from "@hermesh/core";
@@ -391,7 +391,7 @@ function LiveStatus({ s, grant, events }: { s: Session; grant: string; events: S
         <>
           <span className="live-logo"><AgentLogo agent={s.agent} size={18} /></span>
           <b>{t("control.working", { agent: codingAgentTitle(s.agent) })}</b>
-          <span className="el">{clockText((now.getTime() - turnStart(s, events).getTime()) / 1000)}</span>
+          <span className="el">{clockText(elapsedSeconds(turnStart(s, events), now))}</span>
         </>
       );
     default:

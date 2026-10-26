@@ -18,6 +18,15 @@ export function shortTime(d: Date, now: Date): string {
   return monthDay(d);
 }
 
+/**
+ * Whole seconds from one time to another, as wall-clock seconds passed:
+ * elapsed clocks counted this way all change together on each second
+ * boundary, whatever the milliseconds of their start (see useNow).
+ */
+export function elapsedSeconds(from: Date, now: Date): number {
+  return Math.floor(now.getTime() / 1000) - Math.floor(from.getTime() / 1000);
+}
+
 /** How long something has been running (seconds): "4:12", "1:02:03". */
 export function clockText(seconds: number): string {
   const s = Math.max(0, Math.trunc(seconds));
