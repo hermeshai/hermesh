@@ -137,7 +137,7 @@ func (a *app) root(defaultOutput string) *cobra.Command {
 	// copied instructions may still use it.
 	login := a.loginCmd()
 	login.Hidden = true
-	root.AddCommand(a.authCmd(), login, a.projectCmd(), a.sessionCmd(), &cobra.Command{Use: "version", Short: "Show this CLI's version", Args: cobra.NoArgs,
+	root.AddCommand(a.authCmd(), login, a.projectCmd(), a.sessionCmd(), a.messageCmd(), &cobra.Command{Use: "version", Short: "Show this CLI's version", Args: cobra.NoArgs,
 		RunE: func(c *cobra.Command, _ []string) error {
 			if a.output == "json" {
 				return a.report(c.OutOrStdout(), nil, field{"version", machine.Version})
@@ -164,6 +164,9 @@ func (a *app) execute(ctx context.Context, root *cobra.Command, stdout, stderr i
 			fmt.Fprintln(stderr, "error:", err)
 		}
 		return exitCode(err)
+	}
+	if a.output == "text" && a.inboxWaiting > 0 {
+		fmt.Fprintf(stderr, "%d message(s) wait in your inbox: hermesh message list\n", a.inboxWaiting)
 	}
 	return exitOK
 }

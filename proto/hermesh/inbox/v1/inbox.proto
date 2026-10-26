@@ -1,0 +1,63 @@
+syntax = "proto3";
+
+package hermesh.inbox.v1;
+
+import "google/protobuf/timestamp.proto";
+import "hermesh/identity/v1/identity.proto";
+import "hermesh/session/v1/session.proto";
+
+// Messages between the owner's agents, and between agents and sessions
+// (docs/agent-messages.md). The relay keeps them sealed: it routes on the
+// inbox and never opens them.
+
+// Address is an inbox and, optionally, a session under it: an agent's own
+// conversation, or a Hermesh session on a machine.
+message Address {
+  // A client id (c_…) or a machine id (m_…).
+  string inbox = 1;
+  string session = 2;
+}
+
+message Message {
+  // "msg_" and a ULID, chosen by the sender: recipients drop repeats.
+  string message_id = 1;
+  Address from = 2;
+  Address to = 3;
+  google.protobuf.Timestamp sent_at = 4;
+  // The message this one answers.
+  string in_reply_to = 5;
+  string subject = 6;
+  // Markdown.
+  string text = 7;
+  // Set on messages hermeshd writes about a session's turn.
+  SessionNews session_news = 8;
+}
+
+// SessionNews tells whoever asked for a turn how it went: it ended, it
+// asks something, or it failed.
+message SessionNews {
+  // "turn_done", "question" or "failure".
+  string kind = 1;
+  string session_id = 2;
+  string title = 3;
+  uint32 turn = 4;
+  string machine = 5;
+  string project = 6;
+  string agent = 7;
+  // kind "turn_done": the start of the agent's reply, and what changed.
+  string result = 8;
+  bool result_truncated = 9;
+  hermesh.session.v1.DiffStat diff_stat = 10;
+  // kind "question".
+  hermesh.session.v1.Question question = 11;
+  // kind "failure".
+  hermesh.session.v1.FailureKind failure = 12;
+  string failure_message = 13;
+}
+
+// SignedMessage is what a recipient opens: the message, signed by its
+// sender's identity key, and who the sender is.
+message SignedMessage {
+  hermesh.identity.v1.Signed message = 1;
+  hermesh.identity.v1.Contact sender = 2;
+}

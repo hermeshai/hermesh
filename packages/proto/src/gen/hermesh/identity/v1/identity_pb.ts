@@ -12,7 +12,7 @@ import type { Message } from "@bufbuild/protobuf";
  * Describes the file hermesh/identity/v1/identity.proto.
  */
 export const file_hermesh_identity_v1_identity: GenFile = /*@__PURE__*/
-  fileDesc("CiJoZXJtZXNoL2lkZW50aXR5L3YxL2lkZW50aXR5LnByb3RvEhNoZXJtZXNoLmlkZW50aXR5LnYxIoQBCgZTaWduZWQSDAoEdHlwZRgBIAEoCRIMCgRib2R5GAIgASgMEhUKDXNpZ25lcl9rZXlfaWQYAyABKAkSNAoDYWxnGAQgASgOMicuaGVybWVzaC5pZGVudGl0eS52MS5TaWduYXR1cmVBbGdvcml0aG0SEQoJc2lnbmF0dXJlGAUgASgMIj4KB1Jvb3RLZXkSEgoKcHVibGljX2tleRgBIAEoDBINCgVsYWJlbBgCIAEoCRIQCghwbGF0Zm9ybRgDIAEoCSKoAQoIUm9vdENlcnQSEAoIb3duZXJfaWQYASABKAkSLwoJcm9vdF9rZXlzGAMgAygLMhwuaGVybWVzaC5pZGVudGl0eS52MS5Sb290S2V5Eg8KB3ZlcnNpb24YBCABKAQSLQoJaXNzdWVkX2F0GAUgASgLMhouZ29vZ2xlLnByb3RvYnVmLlRpbWVzdGFtcEoECAIQA1ITcmVjb3ZlcnlfcHVibGljX2tleSI3CglSb290Q2hhaW4SKgoFY2VydHMYASADKAsyGy5oZXJtZXNoLmlkZW50aXR5LnYxLlNpZ25lZCJ8Cg9Pd25lckRldmljZUNlcnQSEAoIb3duZXJfaWQYASABKAkSGQoRZGV2aWNlX3B1YmxpY19rZXkYAiABKAwSDQoFbGFiZWwYAyABKAkSLQoJaXNzdWVkX2F0GAQgASgLMhouZ29vZ2xlLnByb3RvYnVmLlRpbWVzdGFtcCK8AQoQUHVzaFJlZ2lzdHJhdGlvbhIQCghvd25lcl9pZBgBIAEoCRIZChFkZXZpY2VfcHVibGljX2tleRgCIAEoDBINCgV0b2tlbhgDIAEoCRITCgtlbnZpcm9ubWVudBgEIAEoCRIZChFub3RpY2VfcHVibGljX2tleRgFIAEoDBINCgVraW5kcxgGIAMoCRItCglpc3N1ZWRfYXQYByABKAsyGi5nb29nbGUucHJvdG9idWYuVGltZXN0YW1wIvsBCg5QYWlyaW5nUmVxdWVzdBIuCgRraW5kGAEgASgOMiAuaGVybWVzaC5pZGVudGl0eS52MS5QYWlyaW5nS2luZBIaChJzdWJqZWN0X3B1YmxpY19rZXkYAiABKAwSDQoFbGFiZWwYAyABKAkSEAoIaG9zdG5hbWUYBCABKAkSEAoIcGxhdGZvcm0YBSABKAkSEAoIb3duZXJfaWQYBiABKAkSLgoKY3JlYXRlZF9hdBgHIAEoCzIaLmdvb2dsZS5wcm90b2J1Zi5UaW1lc3RhbXASFQoNY29uZmlybV9tYXRjaBgIIAEoCBIRCgljdXN0b2RpYW4YCSABKAkiqQEKC01hY2hpbmVDZXJ0EhAKCG93bmVyX2lkGAEgASgJEhIKCm1hY2hpbmVfaWQYAiABKAkSGgoSbWFjaGluZV9wdWJsaWNfa2V5GAMgASgMEi0KCWlzc3VlZF9hdBgFIAEoCzIaLmdvb2dsZS5wcm90b2J1Zi5UaW1lc3RhbXASFQoNZGV2aWNlX2tleV9pZBgGIAEoCUoECAQQBVIMbWFjaGluZV9uYW1lIpoDCgVHcmFudBIQCghvd25lcl9pZBgBIAEoCRIQCghncmFudF9pZBgCIAEoCRIPCgd2ZXJzaW9uGAMgASgEEhEKCWNsaWVudF9pZBgEIAEoCRIZChFjbGllbnRfcHVibGljX2tleRgFIAEoDBIUCgxjbGllbnRfbGFiZWwYBiABKAkSEwoLbWFjaGluZV9pZHMYByADKAkSEwoLcHJvamVjdF9pZHMYCCADKAkSDgoGYWdlbnRzGAkgAygJEjwKD3Rhc2tfdmlzaWJpbGl0eRgLIAEoDjIjLmhlcm1lc2guaWRlbnRpdHkudjEuVGFza1Zpc2liaWxpdHkSHwoXbWF4X2NvbmN1cnJlbnRfc2Vzc2lvbnMYDCABKA0SLgoKbm90X2JlZm9yZRgNIAEoCzIaLmdvb2dsZS5wcm90b2J1Zi5UaW1lc3RhbXASLgoKZXhwaXJlc19hdBgOIAEoCzIaLmdvb2dsZS5wcm90b2J1Zi5UaW1lc3RhbXASEQoJY3VzdG9kaWFuGA8gASgJSgQIChALUgZwcmVzZXQiwAMKDEFkbWluQ29tbWFuZBIQCghvd25lcl9pZBgBIAEoCRISCgpjb21tYW5kX2lkGAIgASgJEhkKEXRhcmdldF9tYWNoaW5lX2lkGAMgASgJEi4KCmV4cGlyZXNfYXQYBCABKAsyGi5nb29nbGUucHJvdG9idWYuVGltZXN0YW1wEjYKC2FkZF9wcm9qZWN0GAogASgLMh8uaGVybWVzaC5pZGVudGl0eS52MS5BZGRQcm9qZWN0SAASPAoOcmVtb3ZlX3Byb2plY3QYCyABKAsyIi5oZXJtZXNoLmlkZW50aXR5LnYxLlJlbW92ZVByb2plY3RIABI0CgpzZXRfcGF1c2VkGA0gASgLMh4uaGVybWVzaC5pZGVudGl0eS52MS5TZXRQYXVzZWRIABIwCghzZXRfbmFtZRgOIAEoCzIcLmhlcm1lc2guaWRlbnRpdHkudjEuU2V0TmFtZUgAEkAKEnNldF9hZ2VudF9kZWZhdWx0cxgPIAEoCzIiLmhlcm1lc2guaWRlbnRpdHkudjEuQWdlbnREZWZhdWx0c0gAQgkKB2NvbW1hbmRKBAgMEA1SDnJlbmFtZV9tYWNoaW5lIqABCgpBZGRQcm9qZWN0EhIKCnByb2plY3RfaWQYASABKAkSDAoEcGF0aBgCIAEoCRIYChBkZWZhdWx0X2Jhc2VfcmVmGAMgASgJEjEKCXdvcmtzcGFjZRgEIAEoDjIeLmhlcm1lc2guaWRlbnRpdHkudjEuV29ya3NwYWNlEhMKC2Rlc2NyaXB0aW9uGAUgASgJEg4KBmFnZW50cxgGIAMoCSIjCg1SZW1vdmVQcm9qZWN0EhIKCnByb2plY3RfaWQYASABKAkiFwoHU2V0TmFtZRIMCgRuYW1lGAEgASgJIhsKCVNldFBhdXNlZBIOCgZwYXVzZWQYASABKAgibQoNQWdlbnREZWZhdWx0cxINCgVhZ2VudBgBIAEoCRINCgVtb2RlbBgCIAEoCRIOCgZlZmZvcnQYAyABKAkSLgoFc3BlZWQYBCABKA4yHy5oZXJtZXNoLmlkZW50aXR5LnYxLkFnZW50U3BlZWQi6gEKDlJldm9jYXRpb25MaXN0EhAKCG93bmVyX2lkGAEgASgJEhkKEXJldm9rZWRfZ3JhbnRfaWRzGAIgAygJEhsKE3Jldm9rZWRfbWFjaGluZV9pZHMYAyADKAkSVQoSbWluX2dyYW50X3ZlcnNpb25zGAQgAygLMjkuaGVybWVzaC5pZGVudGl0eS52MS5SZXZvY2F0aW9uTGlzdC5NaW5HcmFudFZlcnNpb25zRW50cnkaNwoVTWluR3JhbnRWZXJzaW9uc0VudHJ5EgsKA2tleRgBIAEoCRINCgV2YWx1ZRgCIAEoBDoCOAEiigIKC0NyZWRlbnRpYWxzEjIKCnJvb3RfY2hhaW4YBSABKAsyHi5oZXJtZXNoLmlkZW50aXR5LnYxLlJvb3RDaGFpbhIUCgxtYWNoaW5lX25hbWUYBiABKAkSMwoMbWFjaGluZV9jZXJ0GAIgASgLMhsuaGVybWVzaC5pZGVudGl0eS52MS5TaWduZWRIABIsCgVncmFudBgDIAEoCzIbLmhlcm1lc2guaWRlbnRpdHkudjEuU2lnbmVkSAASMgoLZGV2aWNlX2NlcnQYBCABKAsyGy5oZXJtZXNoLmlkZW50aXR5LnYxLlNpZ25lZEgAQgkKB3N1YmplY3RKBAgBEAJSCXJvb3RfY2VydCpkChJTaWduYXR1cmVBbGdvcml0aG0SIwofU0lHTkFUVVJFX0FMR09SSVRITV9VTlNQRUNJRklFRBAAEikKJVNJR05BVFVSRV9BTEdPUklUSE1fRUNEU0FfUDI1Nl9TSEEyNTYQASp3CgtQYWlyaW5nS2luZBIcChhQQUlSSU5HX0tJTkRfVU5TUEVDSUZJRUQQABIYChRQQUlSSU5HX0tJTkRfTUFDSElORRABEhcKE1BBSVJJTkdfS0lORF9DTElFTlQQAhIXChNQQUlSSU5HX0tJTkRfREVWSUNFEAMqVgoJV29ya3NwYWNlEhkKFVdPUktTUEFDRV9VTlNQRUNJRklFRBAAEhYKEldPUktTUEFDRV9XT1JLVFJFRRABEhYKEldPUktTUEFDRV9JTl9QTEFDRRACKmMKDlRhc2tWaXNpYmlsaXR5Eh8KG1RBU0tfVklTSUJJTElUWV9VTlNQRUNJRklFRBAAEhcKE1RBU0tfVklTSUJJTElUWV9PV04QARIXChNUQVNLX1ZJU0lCSUxJVFlfQUxMEAIqWQoKQWdlbnRTcGVlZBIbChdBR0VOVF9TUEVFRF9VTlNQRUNJRklFRBAAEhgKFEFHRU5UX1NQRUVEX1NUQU5EQVJEEAESFAoQQUdFTlRfU1BFRURfRkFTVBACYgZwcm90bzM", [file_google_protobuf_timestamp]);
+  fileDesc("CiJoZXJtZXNoL2lkZW50aXR5L3YxL2lkZW50aXR5LnByb3RvEhNoZXJtZXNoLmlkZW50aXR5LnYxIoQBCgZTaWduZWQSDAoEdHlwZRgBIAEoCRIMCgRib2R5GAIgASgMEhUKDXNpZ25lcl9rZXlfaWQYAyABKAkSNAoDYWxnGAQgASgOMicuaGVybWVzaC5pZGVudGl0eS52MS5TaWduYXR1cmVBbGdvcml0aG0SEQoJc2lnbmF0dXJlGAUgASgMIj4KB1Jvb3RLZXkSEgoKcHVibGljX2tleRgBIAEoDBINCgVsYWJlbBgCIAEoCRIQCghwbGF0Zm9ybRgDIAEoCSKoAQoIUm9vdENlcnQSEAoIb3duZXJfaWQYASABKAkSLwoJcm9vdF9rZXlzGAMgAygLMhwuaGVybWVzaC5pZGVudGl0eS52MS5Sb290S2V5Eg8KB3ZlcnNpb24YBCABKAQSLQoJaXNzdWVkX2F0GAUgASgLMhouZ29vZ2xlLnByb3RvYnVmLlRpbWVzdGFtcEoECAIQA1ITcmVjb3ZlcnlfcHVibGljX2tleSI3CglSb290Q2hhaW4SKgoFY2VydHMYASADKAsyGy5oZXJtZXNoLmlkZW50aXR5LnYxLlNpZ25lZCJ8Cg9Pd25lckRldmljZUNlcnQSEAoIb3duZXJfaWQYASABKAkSGQoRZGV2aWNlX3B1YmxpY19rZXkYAiABKAwSDQoFbGFiZWwYAyABKAkSLQoJaXNzdWVkX2F0GAQgASgLMhouZ29vZ2xlLnByb3RvYnVmLlRpbWVzdGFtcCK8AQoQUHVzaFJlZ2lzdHJhdGlvbhIQCghvd25lcl9pZBgBIAEoCRIZChFkZXZpY2VfcHVibGljX2tleRgCIAEoDBINCgV0b2tlbhgDIAEoCRITCgtlbnZpcm9ubWVudBgEIAEoCRIZChFub3RpY2VfcHVibGljX2tleRgFIAEoDBINCgVraW5kcxgGIAMoCRItCglpc3N1ZWRfYXQYByABKAsyGi5nb29nbGUucHJvdG9idWYuVGltZXN0YW1wIvsBCg5QYWlyaW5nUmVxdWVzdBIuCgRraW5kGAEgASgOMiAuaGVybWVzaC5pZGVudGl0eS52MS5QYWlyaW5nS2luZBIaChJzdWJqZWN0X3B1YmxpY19rZXkYAiABKAwSDQoFbGFiZWwYAyABKAkSEAoIaG9zdG5hbWUYBCABKAkSEAoIcGxhdGZvcm0YBSABKAkSEAoIb3duZXJfaWQYBiABKAkSLgoKY3JlYXRlZF9hdBgHIAEoCzIaLmdvb2dsZS5wcm90b2J1Zi5UaW1lc3RhbXASFQoNY29uZmlybV9tYXRjaBgIIAEoCBIRCgljdXN0b2RpYW4YCSABKAkiqQEKC01hY2hpbmVDZXJ0EhAKCG93bmVyX2lkGAEgASgJEhIKCm1hY2hpbmVfaWQYAiABKAkSGgoSbWFjaGluZV9wdWJsaWNfa2V5GAMgASgMEi0KCWlzc3VlZF9hdBgFIAEoCzIaLmdvb2dsZS5wcm90b2J1Zi5UaW1lc3RhbXASFQoNZGV2aWNlX2tleV9pZBgGIAEoCUoECAQQBVIMbWFjaGluZV9uYW1lIpoDCgVHcmFudBIQCghvd25lcl9pZBgBIAEoCRIQCghncmFudF9pZBgCIAEoCRIPCgd2ZXJzaW9uGAMgASgEEhEKCWNsaWVudF9pZBgEIAEoCRIZChFjbGllbnRfcHVibGljX2tleRgFIAEoDBIUCgxjbGllbnRfbGFiZWwYBiABKAkSEwoLbWFjaGluZV9pZHMYByADKAkSEwoLcHJvamVjdF9pZHMYCCADKAkSDgoGYWdlbnRzGAkgAygJEjwKD3Rhc2tfdmlzaWJpbGl0eRgLIAEoDjIjLmhlcm1lc2guaWRlbnRpdHkudjEuVGFza1Zpc2liaWxpdHkSHwoXbWF4X2NvbmN1cnJlbnRfc2Vzc2lvbnMYDCABKA0SLgoKbm90X2JlZm9yZRgNIAEoCzIaLmdvb2dsZS5wcm90b2J1Zi5UaW1lc3RhbXASLgoKZXhwaXJlc19hdBgOIAEoCzIaLmdvb2dsZS5wcm90b2J1Zi5UaW1lc3RhbXASEQoJY3VzdG9kaWFuGA8gASgJSgQIChALUgZwcmVzZXQiwAMKDEFkbWluQ29tbWFuZBIQCghvd25lcl9pZBgBIAEoCRISCgpjb21tYW5kX2lkGAIgASgJEhkKEXRhcmdldF9tYWNoaW5lX2lkGAMgASgJEi4KCmV4cGlyZXNfYXQYBCABKAsyGi5nb29nbGUucHJvdG9idWYuVGltZXN0YW1wEjYKC2FkZF9wcm9qZWN0GAogASgLMh8uaGVybWVzaC5pZGVudGl0eS52MS5BZGRQcm9qZWN0SAASPAoOcmVtb3ZlX3Byb2plY3QYCyABKAsyIi5oZXJtZXNoLmlkZW50aXR5LnYxLlJlbW92ZVByb2plY3RIABI0CgpzZXRfcGF1c2VkGA0gASgLMh4uaGVybWVzaC5pZGVudGl0eS52MS5TZXRQYXVzZWRIABIwCghzZXRfbmFtZRgOIAEoCzIcLmhlcm1lc2guaWRlbnRpdHkudjEuU2V0TmFtZUgAEkAKEnNldF9hZ2VudF9kZWZhdWx0cxgPIAEoCzIiLmhlcm1lc2guaWRlbnRpdHkudjEuQWdlbnREZWZhdWx0c0gAQgkKB2NvbW1hbmRKBAgMEA1SDnJlbmFtZV9tYWNoaW5lIqABCgpBZGRQcm9qZWN0EhIKCnByb2plY3RfaWQYASABKAkSDAoEcGF0aBgCIAEoCRIYChBkZWZhdWx0X2Jhc2VfcmVmGAMgASgJEjEKCXdvcmtzcGFjZRgEIAEoDjIeLmhlcm1lc2guaWRlbnRpdHkudjEuV29ya3NwYWNlEhMKC2Rlc2NyaXB0aW9uGAUgASgJEg4KBmFnZW50cxgGIAMoCSIjCg1SZW1vdmVQcm9qZWN0EhIKCnByb2plY3RfaWQYASABKAkiFwoHU2V0TmFtZRIMCgRuYW1lGAEgASgJIhsKCVNldFBhdXNlZBIOCgZwYXVzZWQYASABKAgibQoNQWdlbnREZWZhdWx0cxINCgVhZ2VudBgBIAEoCRINCgVtb2RlbBgCIAEoCRIOCgZlZmZvcnQYAyABKAkSLgoFc3BlZWQYBCABKA4yHy5oZXJtZXNoLmlkZW50aXR5LnYxLkFnZW50U3BlZWQi6gEKDlJldm9jYXRpb25MaXN0EhAKCG93bmVyX2lkGAEgASgJEhkKEXJldm9rZWRfZ3JhbnRfaWRzGAIgAygJEhsKE3Jldm9rZWRfbWFjaGluZV9pZHMYAyADKAkSVQoSbWluX2dyYW50X3ZlcnNpb25zGAQgAygLMjkuaGVybWVzaC5pZGVudGl0eS52MS5SZXZvY2F0aW9uTGlzdC5NaW5HcmFudFZlcnNpb25zRW50cnkaNwoVTWluR3JhbnRWZXJzaW9uc0VudHJ5EgsKA2tleRgBIAEoCRINCgV2YWx1ZRgCIAEoBDoCOAEiigIKC0NyZWRlbnRpYWxzEjIKCnJvb3RfY2hhaW4YBSABKAsyHi5oZXJtZXNoLmlkZW50aXR5LnYxLlJvb3RDaGFpbhIUCgxtYWNoaW5lX25hbWUYBiABKAkSMwoMbWFjaGluZV9jZXJ0GAIgASgLMhsuaGVybWVzaC5pZGVudGl0eS52MS5TaWduZWRIABIsCgVncmFudBgDIAEoCzIbLmhlcm1lc2guaWRlbnRpdHkudjEuU2lnbmVkSAASMgoLZGV2aWNlX2NlcnQYBCABKAsyGy5oZXJtZXNoLmlkZW50aXR5LnYxLlNpZ25lZEgAQgkKB3N1YmplY3RKBAgBEAJSCXJvb3RfY2VydCKYAQoLQ29udGFjdENhcmQSEAoIb3duZXJfaWQYASABKAkSEQoJY2xpZW50X2lkGAIgASgJEhkKEWNsaWVudF9wdWJsaWNfa2V5GAMgASgMEgwKBG5hbWUYBCABKAkSDAoEa2luZBgFIAEoCRItCglpc3N1ZWRfYXQYBiABKAsyGi5nb29nbGUucHJvdG9idWYuVGltZXN0YW1wIpUBChFJbmJveFJlZ2lzdHJhdGlvbhIQCghvd25lcl9pZBgBIAEoCRINCgVpbmJveBgCIAEoCRIYChBpbmJveF9wdWJsaWNfa2V5GAMgASgMEhYKDnRha2VzX21lc3NhZ2VzGAQgASgJEi0KCWlzc3VlZF9hdBgFIAEoCzIaLmdvb2dsZS5wcm90b2J1Zi5UaW1lc3RhbXAizAEKB0NvbnRhY3QSKQoEY2FyZBgBIAEoCzIbLmhlcm1lc2guaWRlbnRpdHkudjEuU2lnbmVkEjAKC2RldmljZV9jZXJ0GAIgASgLMhsuaGVybWVzaC5pZGVudGl0eS52MS5TaWduZWQSMQoMbWFjaGluZV9jZXJ0GAMgASgLMhsuaGVybWVzaC5pZGVudGl0eS52MS5TaWduZWQSMQoMcmVnaXN0cmF0aW9uGAQgASgLMhsuaGVybWVzaC5pZGVudGl0eS52MS5TaWduZWQqZAoSU2lnbmF0dXJlQWxnb3JpdGhtEiMKH1NJR05BVFVSRV9BTEdPUklUSE1fVU5TUEVDSUZJRUQQABIpCiVTSUdOQVRVUkVfQUxHT1JJVEhNX0VDRFNBX1AyNTZfU0hBMjU2EAEqdwoLUGFpcmluZ0tpbmQSHAoYUEFJUklOR19LSU5EX1VOU1BFQ0lGSUVEEAASGAoUUEFJUklOR19LSU5EX01BQ0hJTkUQARIXChNQQUlSSU5HX0tJTkRfQ0xJRU5UEAISFwoTUEFJUklOR19LSU5EX0RFVklDRRADKlYKCVdvcmtzcGFjZRIZChVXT1JLU1BBQ0VfVU5TUEVDSUZJRUQQABIWChJXT1JLU1BBQ0VfV09SS1RSRUUQARIWChJXT1JLU1BBQ0VfSU5fUExBQ0UQAipjCg5UYXNrVmlzaWJpbGl0eRIfChtUQVNLX1ZJU0lCSUxJVFlfVU5TUEVDSUZJRUQQABIXChNUQVNLX1ZJU0lCSUxJVFlfT1dOEAESFwoTVEFTS19WSVNJQklMSVRZX0FMTBACKlkKCkFnZW50U3BlZWQSGwoXQUdFTlRfU1BFRURfVU5TUEVDSUZJRUQQABIYChRBR0VOVF9TUEVFRF9TVEFOREFSRBABEhQKEEFHRU5UX1NQRUVEX0ZBU1QQAmIGcHJvdG8z", [file_google_protobuf_timestamp]);
 
 /**
  * Signed wraps a serialized message together with a signature over
@@ -753,6 +753,139 @@ export type Credentials = Message<"hermesh.identity.v1.Credentials"> & {
  */
 export const CredentialsSchema: GenMessage<Credentials> = /*@__PURE__*/
   messageDesc(file_hermesh_identity_v1_identity, 16);
+
+/**
+ * ContactCard names one of the owner's agents, for the others to write to
+ * (docs/agent-messages.md §4): its client id, the name the owner approved,
+ * and its client key, which signs its InboxRegistration and its messages.
+ * A trusted device signs it with its device key. It grants nothing, and
+ * machines accept it for nothing: they go by grants.
+ *
+ * @generated from message hermesh.identity.v1.ContactCard
+ */
+export type ContactCard = Message<"hermesh.identity.v1.ContactCard"> & {
+  /**
+   * @generated from field: string owner_id = 1;
+   */
+  ownerId: string;
+
+  /**
+   * @generated from field: string client_id = 2;
+   */
+  clientId: string;
+
+  /**
+   * @generated from field: bytes client_public_key = 3;
+   */
+  clientPublicKey: Uint8Array;
+
+  /**
+   * @generated from field: string name = 4;
+   */
+  name: string;
+
+  /**
+   * "mcp" for a connection whose key a server holds, else "cli".
+   *
+   * @generated from field: string kind = 5;
+   */
+  kind: string;
+
+  /**
+   * @generated from field: google.protobuf.Timestamp issued_at = 6;
+   */
+  issuedAt?: Timestamp | undefined;
+};
+
+/**
+ * Describes the message hermesh.identity.v1.ContactCard.
+ * Use `create(ContactCardSchema)` to create a new message.
+ */
+export const ContactCardSchema: GenMessage<ContactCard> = /*@__PURE__*/
+  messageDesc(file_hermesh_identity_v1_identity, 17);
+
+/**
+ * InboxRegistration is an inbox's key, signed by the inbox's identity key
+ * (a client key or a machine key). Messages are HPKE-sealed to it.
+ *
+ * @generated from message hermesh.identity.v1.InboxRegistration
+ */
+export type InboxRegistration = Message<"hermesh.identity.v1.InboxRegistration"> & {
+  /**
+   * @generated from field: string owner_id = 1;
+   */
+  ownerId: string;
+
+  /**
+   * A client id (c_…) or a machine id (m_…).
+   *
+   * @generated from field: string inbox = 2;
+   */
+  inbox: string;
+
+  /**
+   * X25519, 32 bytes.
+   *
+   * @generated from field: bytes inbox_public_key = 3;
+   */
+  inboxPublicKey: Uint8Array;
+
+  /**
+   * How the inbox takes its messages, for senders to know what to expect:
+   * "session", "hook", "wait", "webhook" or "poll". Informational.
+   *
+   * @generated from field: string takes_messages = 4;
+   */
+  takesMessages: string;
+
+  /**
+   * @generated from field: google.protobuf.Timestamp issued_at = 5;
+   */
+  issuedAt?: Timestamp | undefined;
+};
+
+/**
+ * Describes the message hermesh.identity.v1.InboxRegistration.
+ * Use `create(InboxRegistrationSchema)` to create a new message.
+ */
+export const InboxRegistrationSchema: GenMessage<InboxRegistration> = /*@__PURE__*/
+  messageDesc(file_hermesh_identity_v1_identity, 18);
+
+/**
+ * Contact is one of the owner's inboxes as a sender checks it: an agent's
+ * card with the cert of the trusted device that signed it, or a machine's
+ * cert; and the inbox's registration once it has one.
+ *
+ * @generated from message hermesh.identity.v1.Contact
+ */
+export type Contact = Message<"hermesh.identity.v1.Contact"> & {
+  /**
+   * @generated from field: hermesh.identity.v1.Signed card = 1;
+   */
+  card?: Signed | undefined;
+
+  /**
+   * @generated from field: hermesh.identity.v1.Signed device_cert = 2;
+   */
+  deviceCert?: Signed | undefined;
+
+  /**
+   * @generated from field: hermesh.identity.v1.Signed machine_cert = 3;
+   */
+  machineCert?: Signed | undefined;
+
+  /**
+   * @generated from field: hermesh.identity.v1.Signed registration = 4;
+   */
+  registration?: Signed | undefined;
+};
+
+/**
+ * Describes the message hermesh.identity.v1.Contact.
+ * Use `create(ContactSchema)` to create a new message.
+ */
+export const ContactSchema: GenMessage<Contact> = /*@__PURE__*/
+  messageDesc(file_hermesh_identity_v1_identity, 19);
 
 /**
  * @generated from enum hermesh.identity.v1.SignatureAlgorithm

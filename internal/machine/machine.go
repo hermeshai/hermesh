@@ -22,6 +22,7 @@ import (
 
 	identityv1 "github.com/hermeshai/hermesh/gen/go/hermesh/identity/v1"
 	machinev1 "github.com/hermeshai/hermesh/gen/go/hermesh/machine/v1"
+	sessionv1 "github.com/hermeshai/hermesh/gen/go/hermesh/session/v1"
 	"github.com/hermeshai/hermesh/internal/flock"
 	"github.com/hermeshai/hermesh/internal/provider"
 	"github.com/hermeshai/hermesh/internal/provider/acp"
@@ -104,6 +105,8 @@ type Machine struct {
 	// conn is the relay connection while there is one (notices go over it).
 	conn    *transport.RelayConn
 	notices notices
+	// contacts caches the owner's inboxes, for the news it writes (news.go).
+	contacts contactBook
 }
 
 const (
@@ -160,7 +163,10 @@ func Open(cfg Config) (*Machine, error) {
 		machineID: n.machineID, dataDir: cfg.DataDir, providers: cfg.Providers, info: n.providerInfo, limits: cfg.Limits,
 		paused: n.isPaused, defaults: n.agentDefaults, outOfProcesses: n.outOfProcesses, live: map[string]*live{}}
 	n.sessions.w = newWriter(st, n.log, n.sessions.deliver, n.sessions.changed)
-	n.sessions.notice = n.sessionNotice
+	n.sessions.notice = func(s noticeSession, e *sessionv1.SessionEvent) {
+		n.sessionNotice(s, e)
+		n.sessionNews(s, e)
+	}
 	n.sessions.registerMetrics()
 	return n, nil
 }

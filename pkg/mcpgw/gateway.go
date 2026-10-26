@@ -78,6 +78,9 @@ type Config struct {
 	// CIMDClient fetches Client ID Metadata Documents (default: one that
 	// refuses private addresses). Tests set one that reaches a local server.
 	CIMDClient *http.Client
+	// WebhookClient rings the webhooks assistants register (default: like
+	// CIMDClient, no private addresses, no redirects).
+	WebhookClient *http.Client
 	// Now is the clock (tests).
 	Now func() time.Time
 }
@@ -112,6 +115,8 @@ type Gateway struct {
 	keys      map[string]cachedKey   // connection id → unsealed key
 	connLocks map[string]*sync.Mutex // serialises a connection's state changes
 	dcr       map[string][]time.Time // DCR registrations per IP
+	inboxes   InboxBackend           // the connections' inboxes (inbox.go)
+	rings     ringer
 	stop      chan struct{}
 	done      chan struct{}
 }
@@ -143,6 +148,9 @@ func New(cfg Config) (*Gateway, error) {
 	if cfg.CIMDClient == nil {
 		cfg.CIMDClient = safeHTTPClient()
 	}
+	if cfg.WebhookClient == nil {
+		cfg.WebhookClient = safeHTTPClient()
+	}
 	if cfg.Now == nil {
 		cfg.Now = time.Now
 	}
@@ -151,6 +159,18 @@ func New(cfg Config) (*Gateway, error) {
 		stop: make(chan struct{}), done: make(chan struct{})}
 	rand.Read(g.secret)
 	g.relay = inProcessClient(cfg.RelayHandler)
+	switch b := cfg.Backend.(type) {
+	case *SQLBackend:
+		if err := b.ensureInboxes(context.Background()); err != nil {
+			return nil, fmt.Errorf("mcpgw: inbox table: %w", err)
+		}
+		g.inboxes = b
+	case InboxBackend:
+		g.inboxes = b
+	default:
+		g.inboxes = &memoryInboxes{}
+	}
+	cfg.Relay.SetMessageHook(g.onMessage)
 	go g.loop()
 	return g, nil
 }
@@ -197,6 +217,7 @@ func (g *Gateway) loop() {
 			return
 		case <-t.C:
 			g.advanceWaiting(context.Background())
+			g.ringAgainDue()
 		case <-sweep.C:
 			if err := g.db.Sweep(context.Background(), g.cfg.Now()); err != nil {
 				g.log.Warn("mcp sweep", "err", err)

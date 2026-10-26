@@ -29,6 +29,8 @@ const (
 	ClientControlServiceName = "hermesh.relay.v1.ClientControlService"
 	// OwnerControlServiceName is the fully-qualified name of the OwnerControlService service.
 	OwnerControlServiceName = "hermesh.relay.v1.OwnerControlService"
+	// MessageServiceName is the fully-qualified name of the MessageService service.
+	MessageServiceName = "hermesh.relay.v1.MessageService"
 )
 
 // These constants are the fully-qualified names of the RPCs defined in this package. They're
@@ -108,6 +110,23 @@ const (
 	// OwnerControlServiceRegisterPushProcedure is the fully-qualified name of the OwnerControlService's
 	// RegisterPush RPC.
 	OwnerControlServiceRegisterPushProcedure = "/hermesh.relay.v1.OwnerControlService/RegisterPush"
+	// OwnerControlServicePublishCardsProcedure is the fully-qualified name of the OwnerControlService's
+	// PublishCards RPC.
+	OwnerControlServicePublishCardsProcedure = "/hermesh.relay.v1.OwnerControlService/PublishCards"
+	// MessageServiceRegisterProcedure is the fully-qualified name of the MessageService's Register RPC.
+	MessageServiceRegisterProcedure = "/hermesh.relay.v1.MessageService/Register"
+	// MessageServiceContactsProcedure is the fully-qualified name of the MessageService's Contacts RPC.
+	MessageServiceContactsProcedure = "/hermesh.relay.v1.MessageService/Contacts"
+	// MessageServiceSendProcedure is the fully-qualified name of the MessageService's Send RPC.
+	MessageServiceSendProcedure = "/hermesh.relay.v1.MessageService/Send"
+	// MessageServiceFetchProcedure is the fully-qualified name of the MessageService's Fetch RPC.
+	MessageServiceFetchProcedure = "/hermesh.relay.v1.MessageService/Fetch"
+	// MessageServiceAckProcedure is the fully-qualified name of the MessageService's Ack RPC.
+	MessageServiceAckProcedure = "/hermesh.relay.v1.MessageService/Ack"
+	// MessageServiceWatchProcedure is the fully-qualified name of the MessageService's Watch RPC.
+	MessageServiceWatchProcedure = "/hermesh.relay.v1.MessageService/Watch"
+	// MessageServiceStatusProcedure is the fully-qualified name of the MessageService's Status RPC.
+	MessageServiceStatusProcedure = "/hermesh.relay.v1.MessageService/Status"
 )
 
 // RelayPublicServiceClient is a client for the hermesh.relay.v1.RelayPublicService service.
@@ -613,6 +632,9 @@ type OwnerControlServiceClient interface {
 	// This device's push registration, signed by its device key: replaces
 	// its earlier one. An empty token stops its notices.
 	RegisterPush(context.Context, *v1.RegisterPushRequest) (*v1.RegisterPushResponse, error)
+	// Contact cards for the owner's agents, signed by this device's device
+	// key (docs/agent-messages.md §4): each replaces the agent's earlier one.
+	PublishCards(context.Context, *v1.PublishCardsRequest) (*v1.PublishCardsResponse, error)
 }
 
 // NewOwnerControlServiceClient constructs a client for the hermesh.relay.v1.OwnerControlService
@@ -698,6 +720,12 @@ func NewOwnerControlServiceClient(httpClient connect.HTTPClient, baseURL string,
 			connect.WithSchema(ownerControlServiceMethods.ByName("RegisterPush")),
 			connect.WithClientOptions(opts...),
 		),
+		publishCards: connect.NewClient[v1.PublishCardsRequest, v1.PublishCardsResponse](
+			httpClient,
+			baseURL+OwnerControlServicePublishCardsProcedure,
+			connect.WithSchema(ownerControlServiceMethods.ByName("PublishCards")),
+			connect.WithClientOptions(opts...),
+		),
 	}
 }
 
@@ -715,6 +743,7 @@ type ownerControlServiceClient struct {
 	revoke              *connect.Client[v1.RevokeRequest, v1.RevokeResponse]
 	publishRootChain    *connect.Client[v1.PublishRootChainRequest, v1.PublishRootChainResponse]
 	registerPush        *connect.Client[v1.RegisterPushRequest, v1.RegisterPushResponse]
+	publishCards        *connect.Client[v1.PublishCardsRequest, v1.PublishCardsResponse]
 }
 
 // GetPairingRequest calls hermesh.relay.v1.OwnerControlService.GetPairingRequest.
@@ -821,6 +850,15 @@ func (c *ownerControlServiceClient) RegisterPush(ctx context.Context, req *v1.Re
 	return nil, err
 }
 
+// PublishCards calls hermesh.relay.v1.OwnerControlService.PublishCards.
+func (c *ownerControlServiceClient) PublishCards(ctx context.Context, req *v1.PublishCardsRequest) (*v1.PublishCardsResponse, error) {
+	response, err := c.publishCards.CallUnary(ctx, connect.NewRequest(req))
+	if response != nil {
+		return response.Msg, err
+	}
+	return nil, err
+}
+
 // OwnerControlServiceHandler is an implementation of the hermesh.relay.v1.OwnerControlService
 // service.
 type OwnerControlServiceHandler interface {
@@ -850,6 +888,9 @@ type OwnerControlServiceHandler interface {
 	// This device's push registration, signed by its device key: replaces
 	// its earlier one. An empty token stops its notices.
 	RegisterPush(context.Context, *v1.RegisterPushRequest) (*v1.RegisterPushResponse, error)
+	// Contact cards for the owner's agents, signed by this device's device
+	// key (docs/agent-messages.md §4): each replaces the agent's earlier one.
+	PublishCards(context.Context, *v1.PublishCardsRequest) (*v1.PublishCardsResponse, error)
 }
 
 // NewOwnerControlServiceHandler builds an HTTP handler from the service implementation. It returns
@@ -931,6 +972,12 @@ func NewOwnerControlServiceHandler(svc OwnerControlServiceHandler, opts ...conne
 		connect.WithSchema(ownerControlServiceMethods.ByName("RegisterPush")),
 		connect.WithHandlerOptions(opts...),
 	)
+	ownerControlServicePublishCardsHandler := connect.NewUnaryHandlerSimple(
+		OwnerControlServicePublishCardsProcedure,
+		svc.PublishCards,
+		connect.WithSchema(ownerControlServiceMethods.ByName("PublishCards")),
+		connect.WithHandlerOptions(opts...),
+	)
 	return "/hermesh.relay.v1.OwnerControlService/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case OwnerControlServiceGetPairingRequestProcedure:
@@ -957,6 +1004,8 @@ func NewOwnerControlServiceHandler(svc OwnerControlServiceHandler, opts ...conne
 			ownerControlServicePublishRootChainHandler.ServeHTTP(w, r)
 		case OwnerControlServiceRegisterPushProcedure:
 			ownerControlServiceRegisterPushHandler.ServeHTTP(w, r)
+		case OwnerControlServicePublishCardsProcedure:
+			ownerControlServicePublishCardsHandler.ServeHTTP(w, r)
 		default:
 			http.NotFound(w, r)
 		}
@@ -1012,4 +1061,272 @@ func (UnimplementedOwnerControlServiceHandler) PublishRootChain(context.Context,
 
 func (UnimplementedOwnerControlServiceHandler) RegisterPush(context.Context, *v1.RegisterPushRequest) (*v1.RegisterPushResponse, error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("hermesh.relay.v1.OwnerControlService.RegisterPush is not implemented"))
+}
+
+func (UnimplementedOwnerControlServiceHandler) PublishCards(context.Context, *v1.PublishCardsRequest) (*v1.PublishCardsResponse, error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("hermesh.relay.v1.OwnerControlService.PublishCards is not implemented"))
+}
+
+// MessageServiceClient is a client for the hermesh.relay.v1.MessageService service.
+type MessageServiceClient interface {
+	// The caller's InboxRegistration, signed by its identity key.
+	Register(context.Context, *v1.RegisterInboxRequest) (*v1.RegisterInboxResponse, error)
+	// The owner's inboxes: agents with their cards, machines with their certs.
+	Contacts(context.Context, *v1.ContactsRequest) (*v1.ContactsResponse, error)
+	Send(context.Context, *v1.SendSealedRequest) (*v1.SendSealedResponse, error)
+	// The caller's waiting messages, oldest first.
+	Fetch(context.Context, *v1.FetchMessagesRequest) (*v1.FetchMessagesResponse, error)
+	// Handled messages, each with what became of it; the relay forgets them.
+	Ack(context.Context, *v1.AckMessagesRequest) (*v1.AckMessagesResponse, error)
+	// How many messages wait, at once and again whenever one arrives.
+	Watch(context.Context, *v1.WatchInboxRequest) (*connect.ServerStreamForClient[v1.WatchInboxResponse], error)
+	// What became of messages, by id (any of the owner's inboxes may ask:
+	// ids are random, so only their sender knows them).
+	Status(context.Context, *v1.MessageStatusRequest) (*v1.MessageStatusResponse, error)
+}
+
+// NewMessageServiceClient constructs a client for the hermesh.relay.v1.MessageService service. By
+// default, it uses the Connect protocol with the binary Protobuf Codec, asks for gzipped responses,
+// and sends uncompressed requests. To use the gRPC or gRPC-Web protocols, supply the
+// connect.WithGRPC() or connect.WithGRPCWeb() options.
+//
+// The URL supplied here should be the base URL for the Connect or gRPC server (for example,
+// http://api.acme.com or https://acme.com/grpc).
+func NewMessageServiceClient(httpClient connect.HTTPClient, baseURL string, opts ...connect.ClientOption) MessageServiceClient {
+	baseURL = strings.TrimRight(baseURL, "/")
+	messageServiceMethods := v1.File_hermesh_relay_v1_relay_proto.Services().ByName("MessageService").Methods()
+	return &messageServiceClient{
+		register: connect.NewClient[v1.RegisterInboxRequest, v1.RegisterInboxResponse](
+			httpClient,
+			baseURL+MessageServiceRegisterProcedure,
+			connect.WithSchema(messageServiceMethods.ByName("Register")),
+			connect.WithClientOptions(opts...),
+		),
+		contacts: connect.NewClient[v1.ContactsRequest, v1.ContactsResponse](
+			httpClient,
+			baseURL+MessageServiceContactsProcedure,
+			connect.WithSchema(messageServiceMethods.ByName("Contacts")),
+			connect.WithClientOptions(opts...),
+		),
+		send: connect.NewClient[v1.SendSealedRequest, v1.SendSealedResponse](
+			httpClient,
+			baseURL+MessageServiceSendProcedure,
+			connect.WithSchema(messageServiceMethods.ByName("Send")),
+			connect.WithClientOptions(opts...),
+		),
+		fetch: connect.NewClient[v1.FetchMessagesRequest, v1.FetchMessagesResponse](
+			httpClient,
+			baseURL+MessageServiceFetchProcedure,
+			connect.WithSchema(messageServiceMethods.ByName("Fetch")),
+			connect.WithClientOptions(opts...),
+		),
+		ack: connect.NewClient[v1.AckMessagesRequest, v1.AckMessagesResponse](
+			httpClient,
+			baseURL+MessageServiceAckProcedure,
+			connect.WithSchema(messageServiceMethods.ByName("Ack")),
+			connect.WithClientOptions(opts...),
+		),
+		watch: connect.NewClient[v1.WatchInboxRequest, v1.WatchInboxResponse](
+			httpClient,
+			baseURL+MessageServiceWatchProcedure,
+			connect.WithSchema(messageServiceMethods.ByName("Watch")),
+			connect.WithClientOptions(opts...),
+		),
+		status: connect.NewClient[v1.MessageStatusRequest, v1.MessageStatusResponse](
+			httpClient,
+			baseURL+MessageServiceStatusProcedure,
+			connect.WithSchema(messageServiceMethods.ByName("Status")),
+			connect.WithClientOptions(opts...),
+		),
+	}
+}
+
+// messageServiceClient implements MessageServiceClient.
+type messageServiceClient struct {
+	register *connect.Client[v1.RegisterInboxRequest, v1.RegisterInboxResponse]
+	contacts *connect.Client[v1.ContactsRequest, v1.ContactsResponse]
+	send     *connect.Client[v1.SendSealedRequest, v1.SendSealedResponse]
+	fetch    *connect.Client[v1.FetchMessagesRequest, v1.FetchMessagesResponse]
+	ack      *connect.Client[v1.AckMessagesRequest, v1.AckMessagesResponse]
+	watch    *connect.Client[v1.WatchInboxRequest, v1.WatchInboxResponse]
+	status   *connect.Client[v1.MessageStatusRequest, v1.MessageStatusResponse]
+}
+
+// Register calls hermesh.relay.v1.MessageService.Register.
+func (c *messageServiceClient) Register(ctx context.Context, req *v1.RegisterInboxRequest) (*v1.RegisterInboxResponse, error) {
+	response, err := c.register.CallUnary(ctx, connect.NewRequest(req))
+	if response != nil {
+		return response.Msg, err
+	}
+	return nil, err
+}
+
+// Contacts calls hermesh.relay.v1.MessageService.Contacts.
+func (c *messageServiceClient) Contacts(ctx context.Context, req *v1.ContactsRequest) (*v1.ContactsResponse, error) {
+	response, err := c.contacts.CallUnary(ctx, connect.NewRequest(req))
+	if response != nil {
+		return response.Msg, err
+	}
+	return nil, err
+}
+
+// Send calls hermesh.relay.v1.MessageService.Send.
+func (c *messageServiceClient) Send(ctx context.Context, req *v1.SendSealedRequest) (*v1.SendSealedResponse, error) {
+	response, err := c.send.CallUnary(ctx, connect.NewRequest(req))
+	if response != nil {
+		return response.Msg, err
+	}
+	return nil, err
+}
+
+// Fetch calls hermesh.relay.v1.MessageService.Fetch.
+func (c *messageServiceClient) Fetch(ctx context.Context, req *v1.FetchMessagesRequest) (*v1.FetchMessagesResponse, error) {
+	response, err := c.fetch.CallUnary(ctx, connect.NewRequest(req))
+	if response != nil {
+		return response.Msg, err
+	}
+	return nil, err
+}
+
+// Ack calls hermesh.relay.v1.MessageService.Ack.
+func (c *messageServiceClient) Ack(ctx context.Context, req *v1.AckMessagesRequest) (*v1.AckMessagesResponse, error) {
+	response, err := c.ack.CallUnary(ctx, connect.NewRequest(req))
+	if response != nil {
+		return response.Msg, err
+	}
+	return nil, err
+}
+
+// Watch calls hermesh.relay.v1.MessageService.Watch.
+func (c *messageServiceClient) Watch(ctx context.Context, req *v1.WatchInboxRequest) (*connect.ServerStreamForClient[v1.WatchInboxResponse], error) {
+	return c.watch.CallServerStream(ctx, connect.NewRequest(req))
+}
+
+// Status calls hermesh.relay.v1.MessageService.Status.
+func (c *messageServiceClient) Status(ctx context.Context, req *v1.MessageStatusRequest) (*v1.MessageStatusResponse, error) {
+	response, err := c.status.CallUnary(ctx, connect.NewRequest(req))
+	if response != nil {
+		return response.Msg, err
+	}
+	return nil, err
+}
+
+// MessageServiceHandler is an implementation of the hermesh.relay.v1.MessageService service.
+type MessageServiceHandler interface {
+	// The caller's InboxRegistration, signed by its identity key.
+	Register(context.Context, *v1.RegisterInboxRequest) (*v1.RegisterInboxResponse, error)
+	// The owner's inboxes: agents with their cards, machines with their certs.
+	Contacts(context.Context, *v1.ContactsRequest) (*v1.ContactsResponse, error)
+	Send(context.Context, *v1.SendSealedRequest) (*v1.SendSealedResponse, error)
+	// The caller's waiting messages, oldest first.
+	Fetch(context.Context, *v1.FetchMessagesRequest) (*v1.FetchMessagesResponse, error)
+	// Handled messages, each with what became of it; the relay forgets them.
+	Ack(context.Context, *v1.AckMessagesRequest) (*v1.AckMessagesResponse, error)
+	// How many messages wait, at once and again whenever one arrives.
+	Watch(context.Context, *v1.WatchInboxRequest, *connect.ServerStream[v1.WatchInboxResponse]) error
+	// What became of messages, by id (any of the owner's inboxes may ask:
+	// ids are random, so only their sender knows them).
+	Status(context.Context, *v1.MessageStatusRequest) (*v1.MessageStatusResponse, error)
+}
+
+// NewMessageServiceHandler builds an HTTP handler from the service implementation. It returns the
+// path on which to mount the handler and the handler itself.
+//
+// By default, handlers support the Connect, gRPC, and gRPC-Web protocols with the binary Protobuf
+// and JSON codecs. They also support gzip compression.
+func NewMessageServiceHandler(svc MessageServiceHandler, opts ...connect.HandlerOption) (string, http.Handler) {
+	messageServiceMethods := v1.File_hermesh_relay_v1_relay_proto.Services().ByName("MessageService").Methods()
+	messageServiceRegisterHandler := connect.NewUnaryHandlerSimple(
+		MessageServiceRegisterProcedure,
+		svc.Register,
+		connect.WithSchema(messageServiceMethods.ByName("Register")),
+		connect.WithHandlerOptions(opts...),
+	)
+	messageServiceContactsHandler := connect.NewUnaryHandlerSimple(
+		MessageServiceContactsProcedure,
+		svc.Contacts,
+		connect.WithSchema(messageServiceMethods.ByName("Contacts")),
+		connect.WithHandlerOptions(opts...),
+	)
+	messageServiceSendHandler := connect.NewUnaryHandlerSimple(
+		MessageServiceSendProcedure,
+		svc.Send,
+		connect.WithSchema(messageServiceMethods.ByName("Send")),
+		connect.WithHandlerOptions(opts...),
+	)
+	messageServiceFetchHandler := connect.NewUnaryHandlerSimple(
+		MessageServiceFetchProcedure,
+		svc.Fetch,
+		connect.WithSchema(messageServiceMethods.ByName("Fetch")),
+		connect.WithHandlerOptions(opts...),
+	)
+	messageServiceAckHandler := connect.NewUnaryHandlerSimple(
+		MessageServiceAckProcedure,
+		svc.Ack,
+		connect.WithSchema(messageServiceMethods.ByName("Ack")),
+		connect.WithHandlerOptions(opts...),
+	)
+	messageServiceWatchHandler := connect.NewServerStreamHandlerSimple(
+		MessageServiceWatchProcedure,
+		svc.Watch,
+		connect.WithSchema(messageServiceMethods.ByName("Watch")),
+		connect.WithHandlerOptions(opts...),
+	)
+	messageServiceStatusHandler := connect.NewUnaryHandlerSimple(
+		MessageServiceStatusProcedure,
+		svc.Status,
+		connect.WithSchema(messageServiceMethods.ByName("Status")),
+		connect.WithHandlerOptions(opts...),
+	)
+	return "/hermesh.relay.v1.MessageService/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case MessageServiceRegisterProcedure:
+			messageServiceRegisterHandler.ServeHTTP(w, r)
+		case MessageServiceContactsProcedure:
+			messageServiceContactsHandler.ServeHTTP(w, r)
+		case MessageServiceSendProcedure:
+			messageServiceSendHandler.ServeHTTP(w, r)
+		case MessageServiceFetchProcedure:
+			messageServiceFetchHandler.ServeHTTP(w, r)
+		case MessageServiceAckProcedure:
+			messageServiceAckHandler.ServeHTTP(w, r)
+		case MessageServiceWatchProcedure:
+			messageServiceWatchHandler.ServeHTTP(w, r)
+		case MessageServiceStatusProcedure:
+			messageServiceStatusHandler.ServeHTTP(w, r)
+		default:
+			http.NotFound(w, r)
+		}
+	})
+}
+
+// UnimplementedMessageServiceHandler returns CodeUnimplemented from all methods.
+type UnimplementedMessageServiceHandler struct{}
+
+func (UnimplementedMessageServiceHandler) Register(context.Context, *v1.RegisterInboxRequest) (*v1.RegisterInboxResponse, error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("hermesh.relay.v1.MessageService.Register is not implemented"))
+}
+
+func (UnimplementedMessageServiceHandler) Contacts(context.Context, *v1.ContactsRequest) (*v1.ContactsResponse, error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("hermesh.relay.v1.MessageService.Contacts is not implemented"))
+}
+
+func (UnimplementedMessageServiceHandler) Send(context.Context, *v1.SendSealedRequest) (*v1.SendSealedResponse, error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("hermesh.relay.v1.MessageService.Send is not implemented"))
+}
+
+func (UnimplementedMessageServiceHandler) Fetch(context.Context, *v1.FetchMessagesRequest) (*v1.FetchMessagesResponse, error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("hermesh.relay.v1.MessageService.Fetch is not implemented"))
+}
+
+func (UnimplementedMessageServiceHandler) Ack(context.Context, *v1.AckMessagesRequest) (*v1.AckMessagesResponse, error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("hermesh.relay.v1.MessageService.Ack is not implemented"))
+}
+
+func (UnimplementedMessageServiceHandler) Watch(context.Context, *v1.WatchInboxRequest, *connect.ServerStream[v1.WatchInboxResponse]) error {
+	return connect.NewError(connect.CodeUnimplemented, errors.New("hermesh.relay.v1.MessageService.Watch is not implemented"))
+}
+
+func (UnimplementedMessageServiceHandler) Status(context.Context, *v1.MessageStatusRequest) (*v1.MessageStatusResponse, error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("hermesh.relay.v1.MessageService.Status is not implemented"))
 }

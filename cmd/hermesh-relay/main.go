@@ -162,8 +162,12 @@ func startMCP(srv *relay.Server, log *slog.Logger, dataDir, publicURL, setupURL 
 		return nil, err
 	}
 	publicURL = strings.TrimSuffix(publicURL, "/")
+	var webhooks *http.Client
+	if os.Getenv("HERMESH_MCP_LOCAL_WEBHOOKS") == "1" { // tests: webhooks on this computer
+		webhooks = &http.Client{Timeout: 5 * time.Second, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
+	}
 	gw, err := mcpgw.New(mcpgw.Config{Issuer: publicURL, ResourceURL: publicURL + "/mcp", Relay: srv, Backend: &mcpgw.SQLBackend{DB: db},
-		Vault: vault, Accounts: mcpgw.SingleOwner{Relay: srv}, SetupURL: setupURL, Logger: log})
+		Vault: vault, Accounts: mcpgw.SingleOwner{Relay: srv}, SetupURL: setupURL, Logger: log, WebhookClient: webhooks})
 	if err != nil {
 		return nil, err
 	}

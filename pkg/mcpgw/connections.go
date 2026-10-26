@@ -328,6 +328,9 @@ func (g *Gateway) end(ctx context.Context, c *Connection, state, reason string) 
 	g.mu.Lock()
 	delete(g.keys, c.ID)
 	g.mu.Unlock()
+	if err := g.inboxes.DeleteInbox(ctx, c.ID); err != nil {
+		g.log.Warn("mcp: delete the inbox", "connection", c.ID, "err", err)
+	}
 	g.log.Info("mcp: connection ended", "connection", c.ID, "state", state, "reason", reason)
 	return c, nil
 }
@@ -356,7 +359,13 @@ func (g *Gateway) identity(c *Connection) (cli.Identity, error) {
 	if err := proto.Unmarshal(c.Grant, grant); err != nil {
 		return cli.Identity{}, err
 	}
-	return cli.Identity{RelayURL: relayURL, OwnerID: c.OwnerID, Key: key, RootChain: rc, Grant: grant}, nil
+	id := cli.Identity{RelayURL: relayURL, OwnerID: c.OwnerID, Key: key, RootChain: rc, Grant: grant}
+	if in, priv, err := g.inbox(context.Background(), c); err == nil {
+		id.InboxKey, id.TakesMessages, id.InboxRegistered = priv, in.takes(), in.Registered
+	} else {
+		g.log.Warn("mcp: the connection's inbox", "connection", c.ID, "err", err)
+	}
+	return id, nil
 }
 
 // adopted stores the grant (or root chain) a command picked up.

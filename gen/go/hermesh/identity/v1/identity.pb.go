@@ -1716,6 +1716,249 @@ func (*Credentials_Grant) isCredentials_Subject() {}
 
 func (*Credentials_DeviceCert) isCredentials_Subject() {}
 
+// ContactCard names one of the owner's agents, for the others to write to
+// (docs/agent-messages.md §4): its client id, the name the owner approved,
+// and its client key, which signs its InboxRegistration and its messages.
+// A trusted device signs it with its device key. It grants nothing, and
+// machines accept it for nothing: they go by grants.
+type ContactCard struct {
+	state           protoimpl.MessageState `protogen:"open.v1"`
+	OwnerId         string                 `protobuf:"bytes,1,opt,name=owner_id,json=ownerId,proto3" json:"owner_id,omitempty"`
+	ClientId        string                 `protobuf:"bytes,2,opt,name=client_id,json=clientId,proto3" json:"client_id,omitempty"`
+	ClientPublicKey []byte                 `protobuf:"bytes,3,opt,name=client_public_key,json=clientPublicKey,proto3" json:"client_public_key,omitempty"`
+	Name            string                 `protobuf:"bytes,4,opt,name=name,proto3" json:"name,omitempty"`
+	// "mcp" for a connection whose key a server holds, else "cli".
+	Kind          string                 `protobuf:"bytes,5,opt,name=kind,proto3" json:"kind,omitempty"`
+	IssuedAt      *timestamppb.Timestamp `protobuf:"bytes,6,opt,name=issued_at,json=issuedAt,proto3" json:"issued_at,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ContactCard) Reset() {
+	*x = ContactCard{}
+	mi := &file_hermesh_identity_v1_identity_proto_msgTypes[17]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ContactCard) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ContactCard) ProtoMessage() {}
+
+func (x *ContactCard) ProtoReflect() protoreflect.Message {
+	mi := &file_hermesh_identity_v1_identity_proto_msgTypes[17]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ContactCard.ProtoReflect.Descriptor instead.
+func (*ContactCard) Descriptor() ([]byte, []int) {
+	return file_hermesh_identity_v1_identity_proto_rawDescGZIP(), []int{17}
+}
+
+func (x *ContactCard) GetOwnerId() string {
+	if x != nil {
+		return x.OwnerId
+	}
+	return ""
+}
+
+func (x *ContactCard) GetClientId() string {
+	if x != nil {
+		return x.ClientId
+	}
+	return ""
+}
+
+func (x *ContactCard) GetClientPublicKey() []byte {
+	if x != nil {
+		return x.ClientPublicKey
+	}
+	return nil
+}
+
+func (x *ContactCard) GetName() string {
+	if x != nil {
+		return x.Name
+	}
+	return ""
+}
+
+func (x *ContactCard) GetKind() string {
+	if x != nil {
+		return x.Kind
+	}
+	return ""
+}
+
+func (x *ContactCard) GetIssuedAt() *timestamppb.Timestamp {
+	if x != nil {
+		return x.IssuedAt
+	}
+	return nil
+}
+
+// InboxRegistration is an inbox's key, signed by the inbox's identity key
+// (a client key or a machine key). Messages are HPKE-sealed to it.
+type InboxRegistration struct {
+	state   protoimpl.MessageState `protogen:"open.v1"`
+	OwnerId string                 `protobuf:"bytes,1,opt,name=owner_id,json=ownerId,proto3" json:"owner_id,omitempty"`
+	// A client id (c_…) or a machine id (m_…).
+	Inbox string `protobuf:"bytes,2,opt,name=inbox,proto3" json:"inbox,omitempty"`
+	// X25519, 32 bytes.
+	InboxPublicKey []byte `protobuf:"bytes,3,opt,name=inbox_public_key,json=inboxPublicKey,proto3" json:"inbox_public_key,omitempty"`
+	// How the inbox takes its messages, for senders to know what to expect:
+	// "session", "hook", "wait", "webhook" or "poll". Informational.
+	TakesMessages string                 `protobuf:"bytes,4,opt,name=takes_messages,json=takesMessages,proto3" json:"takes_messages,omitempty"`
+	IssuedAt      *timestamppb.Timestamp `protobuf:"bytes,5,opt,name=issued_at,json=issuedAt,proto3" json:"issued_at,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *InboxRegistration) Reset() {
+	*x = InboxRegistration{}
+	mi := &file_hermesh_identity_v1_identity_proto_msgTypes[18]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *InboxRegistration) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*InboxRegistration) ProtoMessage() {}
+
+func (x *InboxRegistration) ProtoReflect() protoreflect.Message {
+	mi := &file_hermesh_identity_v1_identity_proto_msgTypes[18]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use InboxRegistration.ProtoReflect.Descriptor instead.
+func (*InboxRegistration) Descriptor() ([]byte, []int) {
+	return file_hermesh_identity_v1_identity_proto_rawDescGZIP(), []int{18}
+}
+
+func (x *InboxRegistration) GetOwnerId() string {
+	if x != nil {
+		return x.OwnerId
+	}
+	return ""
+}
+
+func (x *InboxRegistration) GetInbox() string {
+	if x != nil {
+		return x.Inbox
+	}
+	return ""
+}
+
+func (x *InboxRegistration) GetInboxPublicKey() []byte {
+	if x != nil {
+		return x.InboxPublicKey
+	}
+	return nil
+}
+
+func (x *InboxRegistration) GetTakesMessages() string {
+	if x != nil {
+		return x.TakesMessages
+	}
+	return ""
+}
+
+func (x *InboxRegistration) GetIssuedAt() *timestamppb.Timestamp {
+	if x != nil {
+		return x.IssuedAt
+	}
+	return nil
+}
+
+// Contact is one of the owner's inboxes as a sender checks it: an agent's
+// card with the cert of the trusted device that signed it, or a machine's
+// cert; and the inbox's registration once it has one.
+type Contact struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Card          *Signed                `protobuf:"bytes,1,opt,name=card,proto3" json:"card,omitempty"`
+	DeviceCert    *Signed                `protobuf:"bytes,2,opt,name=device_cert,json=deviceCert,proto3" json:"device_cert,omitempty"`
+	MachineCert   *Signed                `protobuf:"bytes,3,opt,name=machine_cert,json=machineCert,proto3" json:"machine_cert,omitempty"`
+	Registration  *Signed                `protobuf:"bytes,4,opt,name=registration,proto3" json:"registration,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *Contact) Reset() {
+	*x = Contact{}
+	mi := &file_hermesh_identity_v1_identity_proto_msgTypes[19]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *Contact) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*Contact) ProtoMessage() {}
+
+func (x *Contact) ProtoReflect() protoreflect.Message {
+	mi := &file_hermesh_identity_v1_identity_proto_msgTypes[19]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use Contact.ProtoReflect.Descriptor instead.
+func (*Contact) Descriptor() ([]byte, []int) {
+	return file_hermesh_identity_v1_identity_proto_rawDescGZIP(), []int{19}
+}
+
+func (x *Contact) GetCard() *Signed {
+	if x != nil {
+		return x.Card
+	}
+	return nil
+}
+
+func (x *Contact) GetDeviceCert() *Signed {
+	if x != nil {
+		return x.DeviceCert
+	}
+	return nil
+}
+
+func (x *Contact) GetMachineCert() *Signed {
+	if x != nil {
+		return x.MachineCert
+	}
+	return nil
+}
+
+func (x *Contact) GetRegistration() *Signed {
+	if x != nil {
+		return x.Registration
+	}
+	return nil
+}
+
 var File_hermesh_identity_v1_identity_proto protoreflect.FileDescriptor
 
 const file_hermesh_identity_v1_identity_proto_rawDesc = "" +
@@ -1843,7 +2086,26 @@ const file_hermesh_identity_v1_identity_proto_rawDesc = "" +
 	"\x05grant\x18\x03 \x01(\v2\x1b.hermesh.identity.v1.SignedH\x00R\x05grant\x12>\n" +
 	"\vdevice_cert\x18\x04 \x01(\v2\x1b.hermesh.identity.v1.SignedH\x00R\n" +
 	"deviceCertB\t\n" +
-	"\asubjectJ\x04\b\x01\x10\x02R\troot_cert*d\n" +
+	"\asubjectJ\x04\b\x01\x10\x02R\troot_cert\"\xd2\x01\n" +
+	"\vContactCard\x12\x19\n" +
+	"\bowner_id\x18\x01 \x01(\tR\aownerId\x12\x1b\n" +
+	"\tclient_id\x18\x02 \x01(\tR\bclientId\x12*\n" +
+	"\x11client_public_key\x18\x03 \x01(\fR\x0fclientPublicKey\x12\x12\n" +
+	"\x04name\x18\x04 \x01(\tR\x04name\x12\x12\n" +
+	"\x04kind\x18\x05 \x01(\tR\x04kind\x127\n" +
+	"\tissued_at\x18\x06 \x01(\v2\x1a.google.protobuf.TimestampR\bissuedAt\"\xce\x01\n" +
+	"\x11InboxRegistration\x12\x19\n" +
+	"\bowner_id\x18\x01 \x01(\tR\aownerId\x12\x14\n" +
+	"\x05inbox\x18\x02 \x01(\tR\x05inbox\x12(\n" +
+	"\x10inbox_public_key\x18\x03 \x01(\fR\x0einboxPublicKey\x12%\n" +
+	"\x0etakes_messages\x18\x04 \x01(\tR\rtakesMessages\x127\n" +
+	"\tissued_at\x18\x05 \x01(\v2\x1a.google.protobuf.TimestampR\bissuedAt\"\xf9\x01\n" +
+	"\aContact\x12/\n" +
+	"\x04card\x18\x01 \x01(\v2\x1b.hermesh.identity.v1.SignedR\x04card\x12<\n" +
+	"\vdevice_cert\x18\x02 \x01(\v2\x1b.hermesh.identity.v1.SignedR\n" +
+	"deviceCert\x12>\n" +
+	"\fmachine_cert\x18\x03 \x01(\v2\x1b.hermesh.identity.v1.SignedR\vmachineCert\x12?\n" +
+	"\fregistration\x18\x04 \x01(\v2\x1b.hermesh.identity.v1.SignedR\fregistration*d\n" +
 	"\x12SignatureAlgorithm\x12#\n" +
 	"\x1fSIGNATURE_ALGORITHM_UNSPECIFIED\x10\x00\x12)\n" +
 	"%SIGNATURE_ALGORITHM_ECDSA_P256_SHA256\x10\x01*w\n" +
@@ -1880,7 +2142,7 @@ func file_hermesh_identity_v1_identity_proto_rawDescGZIP() []byte {
 }
 
 var file_hermesh_identity_v1_identity_proto_enumTypes = make([]protoimpl.EnumInfo, 5)
-var file_hermesh_identity_v1_identity_proto_msgTypes = make([]protoimpl.MessageInfo, 18)
+var file_hermesh_identity_v1_identity_proto_msgTypes = make([]protoimpl.MessageInfo, 21)
 var file_hermesh_identity_v1_identity_proto_goTypes = []any{
 	(SignatureAlgorithm)(0),       // 0: hermesh.identity.v1.SignatureAlgorithm
 	(PairingKind)(0),              // 1: hermesh.identity.v1.PairingKind
@@ -1904,23 +2166,26 @@ var file_hermesh_identity_v1_identity_proto_goTypes = []any{
 	(*AgentDefaults)(nil),         // 19: hermesh.identity.v1.AgentDefaults
 	(*RevocationList)(nil),        // 20: hermesh.identity.v1.RevocationList
 	(*Credentials)(nil),           // 21: hermesh.identity.v1.Credentials
-	nil,                           // 22: hermesh.identity.v1.RevocationList.MinGrantVersionsEntry
-	(*timestamppb.Timestamp)(nil), // 23: google.protobuf.Timestamp
+	(*ContactCard)(nil),           // 22: hermesh.identity.v1.ContactCard
+	(*InboxRegistration)(nil),     // 23: hermesh.identity.v1.InboxRegistration
+	(*Contact)(nil),               // 24: hermesh.identity.v1.Contact
+	nil,                           // 25: hermesh.identity.v1.RevocationList.MinGrantVersionsEntry
+	(*timestamppb.Timestamp)(nil), // 26: google.protobuf.Timestamp
 }
 var file_hermesh_identity_v1_identity_proto_depIdxs = []int32{
 	0,  // 0: hermesh.identity.v1.Signed.alg:type_name -> hermesh.identity.v1.SignatureAlgorithm
 	6,  // 1: hermesh.identity.v1.RootCert.root_keys:type_name -> hermesh.identity.v1.RootKey
-	23, // 2: hermesh.identity.v1.RootCert.issued_at:type_name -> google.protobuf.Timestamp
+	26, // 2: hermesh.identity.v1.RootCert.issued_at:type_name -> google.protobuf.Timestamp
 	5,  // 3: hermesh.identity.v1.RootChain.certs:type_name -> hermesh.identity.v1.Signed
-	23, // 4: hermesh.identity.v1.OwnerDeviceCert.issued_at:type_name -> google.protobuf.Timestamp
-	23, // 5: hermesh.identity.v1.PushRegistration.issued_at:type_name -> google.protobuf.Timestamp
+	26, // 4: hermesh.identity.v1.OwnerDeviceCert.issued_at:type_name -> google.protobuf.Timestamp
+	26, // 5: hermesh.identity.v1.PushRegistration.issued_at:type_name -> google.protobuf.Timestamp
 	1,  // 6: hermesh.identity.v1.PairingRequest.kind:type_name -> hermesh.identity.v1.PairingKind
-	23, // 7: hermesh.identity.v1.PairingRequest.created_at:type_name -> google.protobuf.Timestamp
-	23, // 8: hermesh.identity.v1.MachineCert.issued_at:type_name -> google.protobuf.Timestamp
+	26, // 7: hermesh.identity.v1.PairingRequest.created_at:type_name -> google.protobuf.Timestamp
+	26, // 8: hermesh.identity.v1.MachineCert.issued_at:type_name -> google.protobuf.Timestamp
 	3,  // 9: hermesh.identity.v1.Grant.task_visibility:type_name -> hermesh.identity.v1.TaskVisibility
-	23, // 10: hermesh.identity.v1.Grant.not_before:type_name -> google.protobuf.Timestamp
-	23, // 11: hermesh.identity.v1.Grant.expires_at:type_name -> google.protobuf.Timestamp
-	23, // 12: hermesh.identity.v1.AdminCommand.expires_at:type_name -> google.protobuf.Timestamp
+	26, // 10: hermesh.identity.v1.Grant.not_before:type_name -> google.protobuf.Timestamp
+	26, // 11: hermesh.identity.v1.Grant.expires_at:type_name -> google.protobuf.Timestamp
+	26, // 12: hermesh.identity.v1.AdminCommand.expires_at:type_name -> google.protobuf.Timestamp
 	15, // 13: hermesh.identity.v1.AdminCommand.add_project:type_name -> hermesh.identity.v1.AddProject
 	16, // 14: hermesh.identity.v1.AdminCommand.remove_project:type_name -> hermesh.identity.v1.RemoveProject
 	18, // 15: hermesh.identity.v1.AdminCommand.set_paused:type_name -> hermesh.identity.v1.SetPaused
@@ -1928,16 +2193,22 @@ var file_hermesh_identity_v1_identity_proto_depIdxs = []int32{
 	19, // 17: hermesh.identity.v1.AdminCommand.set_agent_defaults:type_name -> hermesh.identity.v1.AgentDefaults
 	2,  // 18: hermesh.identity.v1.AddProject.workspace:type_name -> hermesh.identity.v1.Workspace
 	4,  // 19: hermesh.identity.v1.AgentDefaults.speed:type_name -> hermesh.identity.v1.AgentSpeed
-	22, // 20: hermesh.identity.v1.RevocationList.min_grant_versions:type_name -> hermesh.identity.v1.RevocationList.MinGrantVersionsEntry
+	25, // 20: hermesh.identity.v1.RevocationList.min_grant_versions:type_name -> hermesh.identity.v1.RevocationList.MinGrantVersionsEntry
 	8,  // 21: hermesh.identity.v1.Credentials.root_chain:type_name -> hermesh.identity.v1.RootChain
 	5,  // 22: hermesh.identity.v1.Credentials.machine_cert:type_name -> hermesh.identity.v1.Signed
 	5,  // 23: hermesh.identity.v1.Credentials.grant:type_name -> hermesh.identity.v1.Signed
 	5,  // 24: hermesh.identity.v1.Credentials.device_cert:type_name -> hermesh.identity.v1.Signed
-	25, // [25:25] is the sub-list for method output_type
-	25, // [25:25] is the sub-list for method input_type
-	25, // [25:25] is the sub-list for extension type_name
-	25, // [25:25] is the sub-list for extension extendee
-	0,  // [0:25] is the sub-list for field type_name
+	26, // 25: hermesh.identity.v1.ContactCard.issued_at:type_name -> google.protobuf.Timestamp
+	26, // 26: hermesh.identity.v1.InboxRegistration.issued_at:type_name -> google.protobuf.Timestamp
+	5,  // 27: hermesh.identity.v1.Contact.card:type_name -> hermesh.identity.v1.Signed
+	5,  // 28: hermesh.identity.v1.Contact.device_cert:type_name -> hermesh.identity.v1.Signed
+	5,  // 29: hermesh.identity.v1.Contact.machine_cert:type_name -> hermesh.identity.v1.Signed
+	5,  // 30: hermesh.identity.v1.Contact.registration:type_name -> hermesh.identity.v1.Signed
+	31, // [31:31] is the sub-list for method output_type
+	31, // [31:31] is the sub-list for method input_type
+	31, // [31:31] is the sub-list for extension type_name
+	31, // [31:31] is the sub-list for extension extendee
+	0,  // [0:31] is the sub-list for field type_name
 }
 
 func init() { file_hermesh_identity_v1_identity_proto_init() }
@@ -1963,7 +2234,7 @@ func file_hermesh_identity_v1_identity_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_hermesh_identity_v1_identity_proto_rawDesc), len(file_hermesh_identity_v1_identity_proto_rawDesc)),
 			NumEnums:      5,
-			NumMessages:   18,
+			NumMessages:   21,
 			NumExtensions: 0,
 			NumServices:   0,
 		},

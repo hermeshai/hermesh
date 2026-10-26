@@ -53,6 +53,28 @@ CREATE TABLE push_targets (
   target BLOB NOT NULL,
   updated_at INTEGER NOT NULL
 );
+`, `
+CREATE TABLE messages (
+  id TEXT PRIMARY KEY,
+  inbox TEXT NOT NULL,
+  sealed BLOB,
+  state TEXT NOT NULL,
+  state_at INTEGER NOT NULL,
+  received_at INTEGER NOT NULL,
+  expires_at INTEGER NOT NULL
+);
+CREATE INDEX messages_waiting ON messages(inbox, received_at) WHERE sealed IS NOT NULL;
+CREATE TABLE inbox_registrations (
+  inbox TEXT PRIMARY KEY,
+  registration BLOB NOT NULL,
+  updated_at INTEGER NOT NULL
+);
+CREATE TABLE contact_cards (
+  client_id TEXT PRIMARY KEY,
+  card BLOB NOT NULL,
+  device_cert BLOB NOT NULL,
+  updated_at INTEGER NOT NULL
+);
 `}
 
 // Store is the Backend of a self-hosted relay: one owner, SQLite. It keeps
@@ -62,8 +84,9 @@ CREATE TABLE push_targets (
 type Store struct{ db *sql.DB }
 
 var (
-	_ Backend   = (*Store)(nil)
-	_ PushStore = (*Store)(nil)
+	_ Backend      = (*Store)(nil)
+	_ PushStore    = (*Store)(nil)
+	_ MessageStore = (*Store)(nil)
 )
 
 func OpenStore(path string) (*Store, error) {
@@ -368,4 +391,158 @@ ON CONFLICT(device_key_id) DO UPDATE SET target = excluded.target, updated_at = 
 func (s *Store) DeletePushTarget(_, deviceKeyID string) error {
 	_, err := s.db.Exec(`DELETE FROM push_targets WHERE device_key_id = ?`, deviceKeyID)
 	return err
+}
+
+// The post office (messages.go). Times are Unix nanoseconds, so messages
+// keep their order of arrival.
+
+func (s *Store) PutMessage(_ string, m Message) error {
+	_, err := s.db.Exec(`INSERT INTO messages (id, inbox, sealed, state, state_at, received_at, expires_at) VALUES (?, ?, ?, 'waiting', ?, ?, ?)
+ON CONFLICT(id) DO NOTHING`, m.ID, m.Inbox, m.Sealed, m.ReceivedAt.UnixNano(), m.ReceivedAt.UnixNano(), m.ExpiresAt.UnixNano())
+	return err
+}
+
+func (s *Store) WaitingMessages(_, inbox string) ([]Message, error) {
+	rows, err := s.db.Query(`SELECT id, sealed, received_at, expires_at FROM messages WHERE inbox = ? AND sealed IS NOT NULL ORDER BY received_at, id`, inbox)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []Message
+	for rows.Next() {
+		m := Message{Inbox: inbox}
+		var received, expires int64
+		if err := rows.Scan(&m.ID, &m.Sealed, &received, &expires); err != nil {
+			return nil, err
+		}
+		m.ReceivedAt, m.ExpiresAt = time.Unix(0, received), time.Unix(0, expires)
+		out = append(out, m)
+	}
+	return out, rows.Err()
+}
+
+func (s *Store) SetMessageStates(_, inbox string, ids []string, state string, at time.Time) error {
+	tx, err := s.db.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	q := `UPDATE messages SET state = ?, state_at = ?, sealed = NULL WHERE id = ? AND inbox = ? AND sealed IS NOT NULL`
+	if state == "taken" {
+		q = `UPDATE messages SET state = ?, state_at = ? WHERE id = ? AND inbox = ? AND sealed IS NOT NULL`
+	}
+	for _, id := range ids {
+		if _, err := tx.Exec(q, state, at.UnixNano(), id, inbox); err != nil {
+			return err
+		}
+	}
+	return tx.Commit()
+}
+
+func (s *Store) MessageStates(_ string, ids []string) (map[string]MessageState, error) {
+	out := map[string]MessageState{}
+	for _, id := range ids {
+		var st string
+		var at int64
+		err := s.db.QueryRow(`SELECT state, state_at FROM messages WHERE id = ?`, id).Scan(&st, &at)
+		if errors.Is(err, sql.ErrNoRows) {
+			continue
+		}
+		if err != nil {
+			return nil, err
+		}
+		out[id] = MessageState{State: st, At: time.Unix(0, at)}
+	}
+	return out, nil
+}
+
+func (s *Store) ExpireMessages(now time.Time) error {
+	if _, err := s.db.Exec(`UPDATE messages SET state = 'expired', state_at = ?, sealed = NULL WHERE sealed IS NOT NULL AND expires_at < ?`, now.UnixNano(), now.UnixNano()); err != nil {
+		return err
+	}
+	_, err := s.db.Exec(`DELETE FROM messages WHERE expires_at < ?`, now.Add(-MessageRetention).UnixNano())
+	return err
+}
+
+func (s *Store) DropInbox(_, inbox string) error {
+	now := time.Now().UnixNano()
+	if _, err := s.db.Exec(`UPDATE messages SET state = 'expired', state_at = ?, sealed = NULL WHERE inbox = ? AND sealed IS NOT NULL`, now, inbox); err != nil {
+		return err
+	}
+	if _, err := s.db.Exec(`DELETE FROM inbox_registrations WHERE inbox = ?`, inbox); err != nil {
+		return err
+	}
+	_, err := s.db.Exec(`DELETE FROM contact_cards WHERE client_id = ?`, inbox)
+	return err
+}
+
+func (s *Store) PutRegistration(_, inbox string, reg *identityv1.Signed) error {
+	b, err := proto.Marshal(reg)
+	if err != nil {
+		return err
+	}
+	_, err = s.db.Exec(`INSERT INTO inbox_registrations (inbox, registration, updated_at) VALUES (?, ?, ?)
+ON CONFLICT(inbox) DO UPDATE SET registration = excluded.registration, updated_at = excluded.updated_at`, inbox, b, time.Now().Unix())
+	return err
+}
+
+func (s *Store) Registrations(string) (map[string]*identityv1.Signed, error) {
+	rows, err := s.db.Query(`SELECT inbox, registration FROM inbox_registrations`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := map[string]*identityv1.Signed{}
+	for rows.Next() {
+		var inbox string
+		var b []byte
+		if err := rows.Scan(&inbox, &b); err != nil {
+			return nil, err
+		}
+		reg := &identityv1.Signed{}
+		if err := proto.Unmarshal(b, reg); err != nil {
+			return nil, err
+		}
+		out[inbox] = reg
+	}
+	return out, rows.Err()
+}
+
+func (s *Store) PutCard(_, clientID string, card, deviceCert *identityv1.Signed) error {
+	cb, err := proto.Marshal(card)
+	if err != nil {
+		return err
+	}
+	db, err := proto.Marshal(deviceCert)
+	if err != nil {
+		return err
+	}
+	_, err = s.db.Exec(`INSERT INTO contact_cards (client_id, card, device_cert, updated_at) VALUES (?, ?, ?, ?)
+ON CONFLICT(client_id) DO UPDATE SET card = excluded.card, device_cert = excluded.device_cert, updated_at = excluded.updated_at`, clientID, cb, db, time.Now().Unix())
+	return err
+}
+
+func (s *Store) Cards(string) (map[string]StoredCard, error) {
+	rows, err := s.db.Query(`SELECT client_id, card, device_cert FROM contact_cards`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := map[string]StoredCard{}
+	for rows.Next() {
+		var id string
+		var cb, db []byte
+		if err := rows.Scan(&id, &cb, &db); err != nil {
+			return nil, err
+		}
+		c := StoredCard{Card: &identityv1.Signed{}, DeviceCert: &identityv1.Signed{}}
+		if err := proto.Unmarshal(cb, c.Card); err != nil {
+			return nil, err
+		}
+		if err := proto.Unmarshal(db, c.DeviceCert); err != nil {
+			return nil, err
+		}
+		out[id] = c
+	}
+	return out, rows.Err()
 }

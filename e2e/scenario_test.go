@@ -606,7 +606,7 @@ func TestUserJourney(t *testing.T) {
 	// Its projects cannot be listed while it is away: the list has a row
 	// for the machine instead.
 	r = cli(grokEnv, 30*time.Second, "project", "list")
-	if r.code != 0 || strings.Contains(r.stdout, "vps-1/demo") || !strings.Contains(r.stdout, "owner-mac/demo") || r.stderr != "" ||
+	if r.code != 0 || strings.Contains(r.stdout, "vps-1/demo") || !strings.Contains(r.stdout, "owner-mac/demo") || withoutInboxNote(r.stderr) != "" ||
 		!regexp.MustCompile(`(?m)^vps-1/\*\s+-\s+-\s+-\s+offline\s+last seen .* ago$`).MatchString(r.stdout) {
 		t.Fatalf("projects, vps-1 down: %+v", r)
 	}

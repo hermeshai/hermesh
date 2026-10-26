@@ -1,6 +1,6 @@
 # Hermesh messages: agents write to each other
 
-Status: design, 2026-10-26, for review.
+Status: step 1 (the reverse path, §10) built 2026-10-27; steps 2 and 3 designed.
 
 Agents reach coding agents through sessions: Grok Bot starts Claude Code on
 the Mac mini, sends it more, answers its questions. Nothing goes the other
@@ -592,3 +592,33 @@ Decided 2026-10-26:
     from sessions, `message list`, `ack` and `status`, the MCP tools and the
     doorbell), then `message send` in place of `session send`, then agents
     on a computer.
+
+## 14. What building it changed
+
+Step 1, 2026-10-27 (`TestSessionNews`, `TestMCPInbox`):
+
+- **HPKE info, not associated data.** Go's single-shot HPKE takes no
+  associated data, so the inbox and the message id follow
+  `hermesh-message-v1` in the info: a sealed message moved to another inbox
+  or id still doesn't open.
+- **Who checks a sender's revocation.** Machines hold the revocation list
+  and the grants that cover them; an agent on a computer holds neither, so
+  it relies on the relay refusing revoked senders (admission) and listing
+  only live agents in contacts. A hostile relay could hand it a message a
+  revoked agent signed before its revocation: the same exposure as a
+  revocation the relay withholds today, bounded by the grant's expiry.
+- **The list of agents carries each card and the cert of the device that
+  signed it**, so a trusted device signs again a card that is missing, says
+  something else, or was signed by a device since removed.
+- **Inboxes register** at `auth login`, on any command until the post
+  office has the key, and, for a hosted assistant, on its first tool call
+  after approval.
+- **The gateway keeps its connections' inboxes in its own table**
+  (`mcp_inboxes`), which it creates when missing: the hosted center needs no
+  migration for it. The post office itself is the relay's `MessageStore`;
+  until the center's Postgres backend implements it, the center keeps
+  messages in memory. That backend comes before the center ships messages.
+- **`inbox.waiting`** comes with the grant check every command already
+  makes (`GetLatestGrant`): no extra call.
+- **Tests** ring webhooks on the test machine itself, which the gateway
+  allows only with `HERMESH_MCP_LOCAL_WEBHOOKS=1`.
