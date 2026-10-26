@@ -1,21 +1,38 @@
 import HermeshSessions
 import SwiftUI
 
-/// The side menu: the three places (Overview, Grants, Machines), then the
-/// sessions by state as the Mac's sidebar lists them, and at the bottom the
-/// account, search and New.
+/// The side menu: search at the top, the three places (Overview, Grants,
+/// Machines), then the sessions by state as the Mac's sidebar lists them,
+/// and at the bottom the account.
 struct DrawerView: View {
     @Environment(AppModel.self) private var model
     let width: CGFloat
-    @State private var query = ""
-    @FocusState private var searchFocused: Bool
+    /// The size of the menu's buttons: the system's toolbar buttons, and the
+    /// smallest target the HIG asks for.
+    private let button: CGFloat = 44
 
     var body: some View {
         ZStack(alignment: .bottom) {
             ScrollView {
                 VStack(alignment: .leading, spacing: 2) {
-                    Text("Hermesh").font(.largeTitle.bold()).padding(.horizontal, 24).padding(.bottom, 14)
-                    if query.trimmingCharacters(in: .whitespaces).isEmpty { places; lists } else { results }
+                    HStack {
+                        Text("Hermesh").font(.largeTitle.bold())
+                        Spacer()
+                        Button {
+                            model.sheet = .search
+                        } label: {
+                            // The button's size itself: the .glass button style pads its label.
+                            Image(systemName: "magnifyingglass").font(.body.weight(.medium)).frame(width: button, height: button)
+                                .glassEffect(.regular.interactive(), in: .circle)
+                                .contentShape(.circle)
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityLabel("Search")
+                        .accessibilityIdentifier("search")
+                    }
+                    .padding(.leading, 24).padding(.trailing, 16).padding(.bottom, 14)
+                    places
+                    lists
                 }
                 .padding(.top, 8)
                 .padding(.bottom, 110)
@@ -25,7 +42,7 @@ struct DrawerView: View {
         }
         .frame(width: width)
         .frame(maxHeight: .infinity)
-        .background(Color(.systemBackground))
+        .background(Color(.menuBackground))
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("drawer")
     }
@@ -44,9 +61,8 @@ struct DrawerView: View {
         } label: {
             Label(title, systemImage: icon).font(.body).frame(maxWidth: .infinity, alignment: .leading)
                 .padding(.horizontal, 16).frame(height: 48)
-                .background(model.root == r ? AnyShapeStyle(.fill.secondary) : AnyShapeStyle(.clear), in: .capsule)
         }
-        .buttonStyle(.plain)
+        .buttonStyle(RowStyle(selected: model.root == r))
         .padding(.horizontal, 10)
     }
 
@@ -66,7 +82,8 @@ struct DrawerView: View {
                 } label: {
                     row(PairingText.title(p)) { Circle().fill(.orange).frame(width: 9, height: 9) }
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(RowStyle(selected: false))
+                .padding(.horizontal, 10)
             }
             ForEach(failed, id: \.sessionID) { s in item(s) { Circle().fill(.red).frame(width: 9, height: 9) } }
         }
@@ -86,14 +103,9 @@ struct DrawerView: View {
                 Image(systemName: "chevron.right").font(.caption.weight(.semibold))
             }
             .font(.subheadline).foregroundStyle(.secondary).padding(.horizontal, 26).padding(.vertical, 12)
+            .contentShape(.rect)
         }
         .buttonStyle(.plain)
-    }
-
-    @ViewBuilder private var results: some View {
-        let found = searchSessions(model.sessions, query: query, filter: SessionFilter(), text: model.searchText)
-        header(found.isEmpty ? "No sessions found" : "Results")
-        ForEach(found, id: \.sessionID) { s in item(s) { StatusDot(session: s) } }
     }
 
     private func header(_ title: LocalizedStringKey) -> some View {
@@ -103,61 +115,50 @@ struct DrawerView: View {
     private func item(_ s: Session, @ViewBuilder mark: () -> some View) -> some View {
         let selected: Bool = { if case .session(let id) = model.root { return id == s.sessionID && model.path.isEmpty } else { return false } }()
         return Button {
-            query = ""
             model.open(.session(s.sessionID))
         } label: {
-            row(s.displayTitle, selected: selected, mark: mark)
+            row(s.displayTitle, mark: mark)
         }
-        .buttonStyle(.plain)
+        .buttonStyle(RowStyle(selected: selected))
+        .padding(.horizontal, 10)
         .accessibilityIdentifier("drawer-session-\(s.displayTitle)")
     }
 
-    private func row(_ title: String, selected: Bool = false, @ViewBuilder mark: () -> some View) -> some View {
+    private func row(_ title: String, @ViewBuilder mark: () -> some View) -> some View {
         HStack(spacing: 12) {
             Text(title).lineLimit(1).frame(maxWidth: .infinity, alignment: .leading)
             mark().frame(width: 18)
         }
         .padding(.horizontal, 16).frame(height: 44)
-        .background(selected ? AnyShapeStyle(.fill.secondary) : AnyShapeStyle(.clear), in: .capsule)
-        .contentShape(.capsule)
-        .padding(.horizontal, 10)
     }
 
     private var bottomBar: some View {
-        HStack(spacing: 10) {
+        HStack {
             Button {
                 model.sheet = .account
             } label: {
                 Image(systemName: "person.fill")
-                    .font(.headline).foregroundStyle(.white).frame(width: 50, height: 50)
+                    .font(.body.weight(.medium)).foregroundStyle(.white).frame(width: button, height: button)
                     .background(LinearGradient(colors: [Color(red: 0.03, green: 0.57, blue: 0.70), Color(red: 0.18, green: 0.42, blue: 0.94), Color(red: 0.43, green: 0.24, blue: 0.94)], startPoint: .topLeading, endPoint: .bottomTrailing), in: .circle)
             }
             .buttonStyle(.plain)
             .accessibilityLabel("Account and devices")
             .accessibilityIdentifier("account")
-            HStack(spacing: 8) {
-                Image(systemName: "magnifyingglass").foregroundStyle(.secondary)
-                TextField("Search sessions", text: $query).textInputAutocapitalization(.never).autocorrectionDisabled()
-                    .focused($searchFocused)
-                    .accessibilityIdentifier("drawer-search")
-            }
-            .padding(.horizontal, 16).frame(height: 50)
-            .glassEffect(.regular, in: .capsule)
-            .contentShape(.capsule)
-            .onTapGesture { searchFocused = true }
-            Menu {
-                Button("Connect an Agent…", systemImage: "link") { model.sheet = .connectAgent }
-                Button("Add a Machine…", systemImage: "desktopcomputer") { model.sheet = .addMachine }
-                Button("Enter a Pairing Code…", systemImage: "number") { model.sheet = .enterCode }
-            } label: {
-                Image(systemName: "plus").font(.title3).frame(width: 50, height: 50)
-            }
-            .buttonStyle(.glass)
-            .buttonBorderShape(.circle)
-            .accessibilityLabel("New")
-            .accessibilityIdentifier("new")
+            Spacer()
         }
         .padding(.horizontal, 16).padding(.bottom, 8).padding(.top, 24)
-        .background(LinearGradient(colors: [Color(.systemBackground).opacity(0), Color(.systemBackground)], startPoint: .top, endPoint: .center))
+        .background(LinearGradient(colors: [Color(.menuBackground).opacity(0), Color(.menuBackground)], startPoint: .top, endPoint: .center))
+    }
+}
+
+/// A row of the menu: highlighted while selected, and under the finger
+/// from the moment it touches down.
+private struct RowStyle: ButtonStyle {
+    let selected: Bool
+
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .background(selected || configuration.isPressed ? AnyShapeStyle(.fill.secondary) : AnyShapeStyle(.clear), in: .capsule)
+            .contentShape(.capsule)
     }
 }
