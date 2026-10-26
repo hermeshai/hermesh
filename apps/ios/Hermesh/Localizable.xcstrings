@@ -20,6 +20,16 @@
         }
       }
     },
+    "%@ A trusted device: it can approve requests to connect.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ 可信设备：能批准连接请求。"
+          }
+        }
+      }
+    },
     "%@ asks": {
       "localizations": {
         "zh-Hans": {
@@ -144,6 +154,34 @@
           "stringUnit": {
             "state": "translated",
             "value": "%lld 个项目"
+          }
+        }
+      }
+    },
+    "%lld results": {
+      "localizations": {
+        "en": {
+          "variations": {
+            "plural": {
+              "one": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "%lld result"
+                }
+              },
+              "other": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "%lld results"
+                }
+              }
+            }
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld 个结果"
           }
         }
       }
@@ -315,6 +353,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "你的可信设备上会弹出加入请求。核对码一样就批准。"
+          }
+        }
+      }
+    },
+    "About": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "关于"
           }
         }
       }
@@ -839,6 +887,16 @@
         }
       }
     },
+    "Clear": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "清除"
+          }
+        }
+      }
+    },
     "Close": {
       "localizations": {
         "zh-Hans": {
@@ -995,6 +1053,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "已拷贝会话 ID"
+          }
+        }
+      }
+    },
+    "Copies it": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "拷贝它"
           }
         }
       }
@@ -1402,12 +1470,12 @@
         }
       }
     },
-    "Hermesh service · %@": {
+    "Hermesh service": {
       "localizations": {
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "Hermesh 官方服务 · %@"
+            "value": "Hermesh 服务"
           }
         }
       }
@@ -1572,12 +1640,12 @@
         }
       }
     },
-    "It is still one of your trusted devices. First remove it on another trusted device, under Account and Devices; then sign out here.": {
+    "It is still one of your trusted devices. First remove it on another trusted device, under Machines; then sign out here.": {
       "localizations": {
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "它现在还是你的可信设备。先在你的另一台可信设备上，到“账号与设备”把它移除，再在这里退出登录。"
+            "value": "它现在还是你的可信设备。先在你的另一台可信设备上，到“机器”把它移除，再在这里退出登录。"
           }
         }
       }
@@ -1688,16 +1756,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "在手机上照看你的 agent：回答它的提问，批准新的连接，必要时打断它。"
-          }
-        }
-      }
-    },
-    "Last 30 days **%@** tokens · active **%lld** days": {
-      "localizations": {
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "近 30 天 **%1$@** tokens · 活跃 **%2$lld** 天"
           }
         }
       }
@@ -2082,16 +2140,6 @@
         }
       }
     },
-    "No sessions found": {
-      "localizations": {
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "没有找到会话"
-          }
-        }
-      }
-    },
     "No sessions yet. Once an agent is connected, its work shows up here.": {
       "localizations": {
         "zh-Hans": {
@@ -2162,6 +2210,16 @@
         }
       }
     },
+    "Notifications are off for Hermesh": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Hermesh 的通知已关闭"
+          }
+        }
+      }
+    },
     "Now": {
       "localizations": {
         "zh-Hans": {
@@ -2178,6 +2236,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "好"
+          }
+        }
+      }
+    },
+    "Off": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "关闭"
           }
         }
       }
@@ -2218,6 +2286,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "最早在前"
+          }
+        }
+      }
+    },
+    "On": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "打开"
           }
         }
       }
@@ -2322,6 +2400,16 @@
         }
       }
     },
+    "Other trusted devices": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "其他可信设备"
+          }
+        }
+      }
+    },
     "Overview": {
       "localizations": {
         "zh-Hans": {
@@ -2408,6 +2496,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "最近"
+          }
+        }
+      }
+    },
+    "Recent Searches": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "最近搜索"
           }
         }
       }
@@ -2552,16 +2650,6 @@
         }
       }
     },
-    "Results": {
-      "localizations": {
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "搜索结果"
-          }
-        }
-      }
-    },
     "Retrying": {
       "localizations": {
         "zh-Hans": {
@@ -2618,6 +2706,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "搜索"
+          }
+        }
+      }
+    },
+    "Search Within": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "按状态搜索"
           }
         }
       }
@@ -3272,7 +3370,7 @@
         }
       }
     },
-    "Trusted devices": {
+    "Trusted device": {
       "localizations": {
         "zh-Hans": {
           "stringUnit": {
@@ -3652,12 +3750,12 @@
         }
       }
     },
-    "Your own server · %@": {
+    "Your own server": {
       "localizations": {
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "自己的服务器 · %@"
+            "value": "你自己的服务器"
           }
         }
       }

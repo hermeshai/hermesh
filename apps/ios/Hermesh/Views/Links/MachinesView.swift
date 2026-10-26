@@ -2,21 +2,65 @@ import HermeshProto
 import HermeshSessions
 import SwiftUI
 
-/// The machines, each opening its page.
+/// The machines, each opening its page, a green shield on those that are
+/// trusted devices too; then the other trusted devices (which approve but
+/// run nothing, as this iPhone).
 struct MachinesView: View {
     @Environment(AppModel.self) private var model
+    @State private var removing: Device?
 
     var body: some View {
+        let trusted = Set(model.devices.map(\.machineID).filter { !$0.isEmpty })
+        let others = model.devices.filter { d in d.machineID.isEmpty || !model.machines.contains { $0.machineID == d.machineID } }
         List {
             Section {
                 ForEach(model.machines, id: \.machineID) { m in
-                    NavigationLink(value: Route.machine(m.machineID)) { MachineRow(machine: m) }
+                    NavigationLink(value: Route.machine(m.machineID)) { MachineRow(machine: m, trusted: trusted.contains(m.machineID)) }
                         .accessibilityIdentifier("machine-\(m.machineName)")
                 }
                 if model.machines.isEmpty { Text("No machines yet.").foregroundStyle(.secondary) }
             } footer: {
+                if !trusted.isEmpty || !others.isEmpty {
+                    Text("\(Image(systemName: "checkmark.shield.fill")) A trusted device: it can approve requests to connect.")
+                }
+            }
+            if !others.isEmpty {
+                Section {
+                    ForEach(others, id: \.keyID) { d in
+                        HStack(spacing: 12) {
+                            Image(systemName: d.platform == "ios" ? "iphone" : "laptopcomputer").frame(width: 28, height: 28).foregroundStyle(.secondary)
+                            VStack(alignment: .leading, spacing: 2) {
+                                HStack(spacing: 5) {
+                                    Text(d.thisDevice ? String(localized: "This iPhone") : d.label)
+                                    TrustedMark()
+                                }
+                                Text("Approves; doesn’t run tasks").font(.subheadline).foregroundStyle(.secondary)
+                            }
+                        }
+                        .accessibilityElement(children: .combine)
+                        .accessibilityIdentifier("device-\(d.thisDevice ? "this" : d.label)")
+                        .swipeActions {
+                            if !d.thisDevice { Button("Remove", role: .destructive) { removing = d } }
+                        }
+                        .contextMenu {
+                            if !d.thisDevice { Button("Remove…", systemImage: "minus.circle", role: .destructive) { removing = d } }
+                        }
+                    }
+                } header: {
+                    Text("Other trusted devices")
+                } footer: {
+                    Text("Every trusted device can approve requests to connect. If one gets lost, remove it from another (swipe left on it).")
+                }
+            }
+            Section {
+            } footer: {
                 Label("End-to-end encrypted: the server only forwards, and can’t read anything.", systemImage: "lock").frame(maxWidth: .infinity)
             }
+        }
+        .confirmationDialog(removing.map { String(localized: "Remove “\($0.label)”?") } ?? "", isPresented: Binding(get: { removing != nil }, set: { if !$0 { removing = nil } }), titleVisibility: .visible) {
+            Button("Remove", role: .destructive) { if let d = removing { Task { await model.removeDevice(d) } } }
+        } message: {
+            Text("It can no longer approve anything at once, and its own machine is removed with it. The machines and agents it approved are reissued by this iPhone and keep working (needs Face ID).")
         }
         .navigationTitle("Machines")
         .rootToolbar()
@@ -46,9 +90,18 @@ func machineIcon(_ m: Machine) -> String {
     m.status.platform.contains("linux") ? "server.rack" : m.local ? "laptopcomputer" : "desktopcomputer"
 }
 
+/// The green shield of a trusted device.
+struct TrustedMark: View {
+    var body: some View {
+        Image(systemName: "checkmark.shield.fill").font(.footnote).foregroundStyle(.green)
+            .accessibilityLabel(Text("Trusted device"))
+    }
+}
+
 struct MachineRow: View {
     @Environment(AppModel.self) private var model
     let machine: Machine
+    var trusted = false
 
     var body: some View {
         let m = machine
@@ -56,7 +109,10 @@ struct MachineRow: View {
         HStack(spacing: 12) {
             Image(systemName: machineIcon(m)).frame(width: 28, height: 28).foregroundStyle(.secondary)
             VStack(alignment: .leading, spacing: 2) {
-                Text(m.machineName)
+                HStack(spacing: 5) {
+                    Text(m.machineName)
+                    if trusted { TrustedMark() }
+                }
                 Text(m.online ? platformText(m.status.platform) : String(localized: "Last online \(m.hasLastSeen ? agoText(m.lastSeen.date, now: model.now) : String(localized: "a long time ago"))"))
                     .font(.subheadline).foregroundStyle(.secondary)
             }
@@ -118,6 +174,9 @@ struct MachineView: View {
                         .frame(width: 64, height: 64)
                         .background(Color(.tertiarySystemFill), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
                     Text(m.machineName).font(.title2.bold())
+                    if device(m) != nil {
+                        Label("Trusted device", systemImage: "checkmark.shield.fill").font(.footnote.weight(.medium)).foregroundStyle(.green)
+                    }
                     Text(heroLine(m)).font(.subheadline).foregroundStyle(.secondary).multilineTextAlignment(.center)
                 }
                 .frame(maxWidth: .infinity).listRowBackground(Color.clear)
@@ -193,9 +252,15 @@ struct MachineView: View {
             Text("Agents find projects as “machine/project” and will see the new name. Use lowercase letters, digits and -.")
         }
         .confirmationDialog("Remove “\(m.machineName)”?", isPresented: $confirmRemove, titleVisibility: .visible) {
-            Button("Remove", role: .destructive) { Task { await model.remove(m) } }
+            Button("Remove", role: .destructive) {
+                if let d = device(m) { Task { await model.removeDevice(d) } } else { Task { await model.remove(m) } }
+            }
         } message: {
-            Text("It disconnects at once and running sessions stop. To join again it has to pair again.")
+            if device(m) != nil {
+                Text("It can no longer approve anything at once, and its own machine is removed with it. The machines and agents it approved are reissued by this iPhone and keep working (needs Face ID).")
+            } else {
+                Text("It disconnects at once and running sessions stop. To join again it has to pair again.")
+            }
         }
         .confirmationDialog(removeProject.map { String(localized: "Remove project “\($0.projectID)”?") } ?? "", isPresented: Binding(get: { removeProject != nil }, set: { if !$0 { removeProject = nil } }), titleVisibility: .visible) {
             Button("Remove", role: .destructive) {
@@ -212,6 +277,9 @@ struct MachineView: View {
             Text("The directory itself isn’t deleted; agents can no longer start sessions there.")
         }
     }
+
+    /// The trusted device this machine is, if it is one.
+    private func device(_ m: Machine) -> Device? { model.devices.first { $0.machineID == m.machineID } }
 
     private func heroLine(_ m: Machine) -> String {
         var parts = [m.online ? String(localized: "Online") : String(localized: "Offline · last online \(m.hasLastSeen ? agoText(m.lastSeen.date, now: model.now) : String(localized: "a long time ago"))")]

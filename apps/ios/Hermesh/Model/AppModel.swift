@@ -603,7 +603,9 @@ final class AppModel {
         do {
             try await api.removeDevice(d.keyID)
             devices = (try? await api.devices()) ?? devices
+            machines = (try? await api.machines()) ?? machines
             show(String(localized: "Removed “\(d.label)”"))
+            if case .machine(let id)? = path.last, id == d.machineID { path.removeLast() }
         } catch { report(error) }
     }
 

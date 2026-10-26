@@ -4,11 +4,11 @@ import HermeshSessions
 import SwiftUI
 import UserNotifications
 
-/// The account: the service, usage, the trusted devices, the appearance,
-/// notifications.
+/// The account, laid out as iOS Settings: the service this iPhone belongs
+/// to, usage (the days in a grid), appearance, notifications and about;
+/// signing out last. The trusted devices are on the Machines page.
 struct AccountSheet: View {
     @Environment(AppModel.self) private var model
-    @State private var removing: Device?
     @State private var signingOut = false
     @State private var notifications: UNAuthorizationStatus?
     @AppStorage("appearance") private var appearance = "system"
@@ -16,107 +16,81 @@ struct AccountSheet: View {
     var body: some View {
         NavigationStack {
             List {
-                Section {
-                    VStack(spacing: 8) {
-                        Mark(size: 56)
-                        Text(model.status.hosted ? String(localized: "Hermesh service · \(host)") : String(localized: "Your own server · \(host)"))
-                            .font(.subheadline)
-                        Text(model.status.relayConnected ? "Connected" : "Not connected").font(.footnote).foregroundStyle(model.status.relayConnected ? .green : .secondary)
-                    }
-                    .frame(maxWidth: .infinity).listRowBackground(Color.clear)
-                }
+                Section { service }
                 if let u = model.usage {
                     Section {
-                        NavigationLink {
-                            UsageView()
-                        } label: {
-                            Label {
-                                Text("Last 30 days **\(tokensText(u.last30))** tokens · active **\(u.active)** days")
-                            } icon: {
-                                Image(systemName: "chart.bar").foregroundStyle(.secondary)
-                            }
-                        }
-                        .accessibilityIdentifier("usage")
+                        UsageSummary(usage: u, excludes: model.unreachableMachines.map(\.name))
                     } header: {
                         Text("Usage")
                     }
                 }
                 Section {
-                    ForEach(model.devices, id: \.keyID) { d in
-                        HStack(spacing: 12) {
-                            Image(systemName: d.platform == "ios" ? "iphone" : "laptopcomputer").frame(width: 28).foregroundStyle(.secondary)
-                            VStack(alignment: .leading, spacing: 2) {
-                                Text(d.thisDevice ? String(localized: "This iPhone") : d.label)
-                                if !d.machineID.isEmpty {
-                                    Text(d.machineOnline ? "Also runs tasks · online" : "Also runs tasks · offline").font(.subheadline).foregroundStyle(.secondary)
-                                } else if d.thisDevice {
-                                    Text("Approves; doesn’t run tasks").font(.subheadline).foregroundStyle(.secondary)
-                                }
-                            }
-                        }
-                        .swipeActions {
-                            if !d.thisDevice { Button("Remove", role: .destructive) { removing = d } }
-                        }
-                        .contextMenu {
-                            if !d.thisDevice { Button("Remove…", systemImage: "minus.circle", role: .destructive) { removing = d } }
-                        }
+                    HStack(spacing: 0) {
+                        AppearanceOption(tag: "system", title: "System", selection: $appearance)
+                        AppearanceOption(tag: "light", title: "Light", selection: $appearance)
+                        AppearanceOption(tag: "dark", title: "Dark", selection: $appearance)
                     }
-                } header: {
-                    Text("Trusted devices")
-                } footer: {
-                    Text("Every trusted device can approve requests to connect. If one gets lost, remove it from another (swipe left on it).")
-                }
-                Section {
-                    Picker("Appearance", selection: $appearance) {
-                        Text("System").tag("system")
-                        Text("Light").tag("light")
-                        Text("Dark").tag("dark")
-                    }
-                    .pickerStyle(.segmented)
-                    .accessibilityIdentifier("appearance")
+                    .padding(.vertical, 8)
                 } header: {
                     Text("Appearance")
                 }
                 Section {
-                    if notifications == .denied {
-                        Button("Allow Notifications in Settings") {
-                            if let url = URL(string: UIApplication.openNotificationSettingsURLString) { UIApplication.shared.open(url) }
+                    NavigationLink {
+                        NotificationsView()
+                    } label: {
+                        LabeledContent {
+                            Text(notifications == .denied ? "Off" : "On")
+                        } label: {
+                            Label { Text("Notifications") } icon: { SettingsIcon(symbol: "bell.badge.fill", color: .red) }
                         }
-                    } else {
-                        LabeledContent("Requests to connect", value: String(localized: "Always"))
-                        Toggle("Agent questions", isOn: pref(\.questions))
-                        Toggle("Failed sessions", isOn: pref(\.failures))
-                        Toggle("Finished turns", isOn: pref(\.turnsDone))
                     }
-                } header: {
-                    Text("Notifications")
-                } footer: {
-                    Text("A question expires after 30 minutes if no one answers.")
+                    .accessibilityIdentifier("notifications")
                 }
                 Section {
-                    LabeledContent("Connection address") {
-                        Text(model.status.connectAddress).font(.footnote.monospaced()).textSelection(.enabled)
+                    Button {
+                        UIPasteboard.general.string = model.status.connectAddress
+                        model.show(String(localized: "Copied"))
+                    } label: {
+                        HStack {
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text("Connection address")
+                                Text(model.status.connectAddress).font(.footnote.monospaced()).foregroundStyle(.secondary).lineLimit(1).truncationMode(.middle)
+                            }
+                            Spacer()
+                            Image(systemName: "doc.on.doc").font(.subheadline).foregroundStyle(.tertiary)
+                        }
+                        .contentShape(.rect)
                     }
+                    .buttonStyle(.plain)
+                    .accessibilityHint(Text("Copies it"))
                     if !model.status.consoleURL.isEmpty, let url = URL(string: model.status.consoleURL) {
                         Link(destination: url) {
-                            LabeledContent("Web console", value: String(localized: "Machines and grants in any browser; emergency revocation"))
+                            HStack {
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text("Web console").foregroundStyle(.primary)
+                                    Text("Machines and grants in any browser; emergency revocation").font(.footnote).foregroundStyle(.secondary)
+                                }
+                                Spacer()
+                                Image(systemName: "arrow.up.right").font(.footnote.weight(.semibold)).foregroundStyle(.tertiary)
+                            }
                         }
                     }
                     LabeledContent("Version", value: model.status.version)
+                } header: {
+                    Text("About")
                 }
                 Section {
                     Button("Sign Out…", role: .destructive) { signingOut = true }
+                        .frame(maxWidth: .infinity)
                 }
             }
             .navigationTitle("Account and Devices")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar { CloseButton() }
+            // The app takes the choice too; this sheet shows it at once.
+            .preferredColorScheme(appearance == "light" ? .light : appearance == "dark" ? .dark : nil)
             .task { notifications = await UNUserNotificationCenter.current().notificationSettings().authorizationStatus }
-            .confirmationDialog(removing.map { String(localized: "Remove “\($0.label)”?") } ?? "", isPresented: Binding(get: { removing != nil }, set: { if !$0 { removing = nil } }), titleVisibility: .visible) {
-                Button("Remove", role: .destructive) { if let d = removing { Task { await model.removeDevice(d) } } }
-            } message: {
-                Text("It can no longer approve anything at once, and its own machine is removed with it. The machines and agents it approved are reissued by this iPhone and keep working (needs Face ID).")
-            }
+            .refreshable { await model.loadUsage() }
             .confirmationDialog("Sign this iPhone out?", isPresented: $signingOut, titleVisibility: .visible) {
                 if !model.status.removed && model.devices.contains(where: { $0.thisDevice }) {
                     Button("OK", role: .cancel) {}
@@ -125,7 +99,7 @@ struct AccountSheet: View {
                 }
             } message: {
                 if !model.status.removed && model.devices.contains(where: { $0.thisDevice }) {
-                    Text("It is still one of your trusted devices. First remove it on another trusted device, under Account and Devices; then sign out here.")
+                    Text("It is still one of your trusted devices. First remove it on another trusted device, under Machines; then sign out here.")
                 } else {
                     Text("This iPhone is no longer in your Hermesh account. After signing out, you can set it up again or join your account again.")
                 }
@@ -133,8 +107,77 @@ struct AccountSheet: View {
         }
     }
 
+    /// The service this iPhone belongs to, as Settings shows the account at
+    /// its top: the mark, which service and where, and whether it is reached.
+    private var service: some View {
+        HStack(spacing: 14) {
+            Mark(size: 38)
+                .frame(width: 60, height: 60)
+                .background(Color(.tertiarySystemFill), in: RoundedRectangle(cornerRadius: 15, style: .continuous))
+            VStack(alignment: .leading, spacing: 3) {
+                Text(model.status.hosted ? "Hermesh service" : "Your own server").font(.title3.weight(.semibold))
+                Text(host).font(.subheadline).foregroundStyle(.secondary).lineLimit(1)
+                HStack(spacing: 5) {
+                    Circle().fill(model.status.relayConnected ? Color.green : .secondary).frame(width: 7, height: 7)
+                    Text(model.status.relayConnected ? "Connected" : "Not connected")
+                }
+                .font(.footnote).foregroundStyle(.secondary)
+            }
+        }
+        .padding(.vertical, 4)
+        .accessibilityElement(children: .combine)
+    }
+
     private var host: String {
         URL(string: model.status.relayURL)?.host ?? model.status.relayURL
+    }
+
+}
+
+/// Notifications, a page of its own as in Settings: requests to connect
+/// always come; the agents' questions, failed sessions and finished turns
+/// to choose. When iOS has them off, the way to turn them on.
+struct NotificationsView: View {
+    @Environment(AppModel.self) private var model
+    @State private var status: UNAuthorizationStatus?
+
+    var body: some View {
+        List {
+            if status == .denied {
+                Section {
+                    Label("Notifications are off for Hermesh", systemImage: "bell.slash").foregroundStyle(.secondary)
+                    Button("Allow Notifications in Settings") {
+                        if let url = URL(string: UIApplication.openNotificationSettingsURLString) { UIApplication.shared.open(url) }
+                    }
+                }
+            }
+            Section {
+                LabeledContent {
+                    Text("Always")
+                } label: {
+                    Label { Text("Requests to connect") } icon: { SettingsIcon(symbol: "lock.shield.fill", color: .blue) }
+                }
+            }
+            Section {
+                Toggle(isOn: pref(\.questions)) {
+                    Label { Text("Agent questions") } icon: { SettingsIcon(symbol: "questionmark.bubble.fill", color: .orange) }
+                }
+                .accessibilityIdentifier("notify-questions")
+                Toggle(isOn: pref(\.failures)) {
+                    Label { Text("Failed sessions") } icon: { SettingsIcon(symbol: "exclamationmark.triangle.fill", color: .red) }
+                }
+                Toggle(isOn: pref(\.turnsDone)) {
+                    Label { Text("Finished turns") } icon: { SettingsIcon(symbol: "checkmark", color: .green) }
+                }
+                .accessibilityIdentifier("notify-turns")
+            } footer: {
+                Text("A question expires after 30 minutes if no one answers.")
+            }
+            .disabled(status == .denied)
+        }
+        .navigationTitle("Notifications")
+        .navigationBarTitleDisplayMode(.inline)
+        .task { status = await UNUserNotificationCenter.current().notificationSettings().authorizationStatus }
     }
 
     private func pref(_ key: WritableKeyPath<NotificationPrefs, Bool>) -> Binding<Bool> {
@@ -144,6 +187,138 @@ struct AccountSheet: View {
             p.save()
             model.notificationPrefsChanged()
         })
+    }
+}
+
+/// A row's icon as in iOS Settings: a white symbol on a rounded square of
+/// one colour.
+struct SettingsIcon: View {
+    let symbol: String
+    let color: Color
+
+    var body: some View {
+        Image(systemName: symbol)
+            .font(.system(size: 15, weight: .semibold))
+            .foregroundStyle(.white)
+            .frame(width: 29, height: 29)
+            .background(color.gradient, in: RoundedRectangle(cornerRadius: 7, style: .continuous))
+            .accessibilityHidden(true)
+    }
+}
+
+/// One appearance to choose, as Display & Brightness shows them: a small
+/// phone in it (System half light, half dark), its name and a check.
+struct AppearanceOption: View {
+    let tag: String
+    let title: LocalizedStringKey
+    @Binding var selection: String
+
+    var body: some View {
+        let on = selection == tag
+        Button {
+            withAnimation(.smooth) { selection = tag }
+        } label: {
+            VStack(spacing: 10) {
+                phone
+                    .frame(width: 62, height: 118)
+                    .overlay(RoundedRectangle(cornerRadius: 13, style: .continuous).strokeBorder(on ? Color.accentColor : Color.primary.opacity(0.12), lineWidth: on ? 2.5 : 1))
+                Text(title).font(.subheadline)
+                Image(systemName: on ? "checkmark.circle.fill" : "circle")
+                    .font(.title3)
+                    .foregroundStyle(on ? Color.accentColor : Color.secondary.opacity(0.5))
+            }
+            .frame(maxWidth: .infinity)
+            .contentShape(.rect)
+        }
+        .buttonStyle(.plain)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(Text(title))
+        .accessibilityAddTraits(on ? [.isButton, .isSelected] : .isButton)
+        .accessibilityIdentifier("appearance-\(tag)")
+    }
+
+    @ViewBuilder private var phone: some View {
+        switch tag {
+        case "light": screen(dark: false)
+        case "dark": screen(dark: true)
+        default:
+            ZStack {
+                screen(dark: false)
+                screen(dark: true).mask(HStack(spacing: 0) { Color.clear; Color.black })
+            }
+        }
+    }
+
+    /// A screen: a title, and a few rows on cards.
+    private func screen(dark: Bool) -> some View {
+        let bg = dark ? Color.black : Color(white: 0.95)
+        let card = dark ? Color(white: 0.17) : .white
+        let ink = dark ? Color(white: 0.55) : Color(white: 0.72)
+        return RoundedRectangle(cornerRadius: 13, style: .continuous)
+            .fill(bg)
+            .overlay(alignment: .top) {
+                VStack(alignment: .leading, spacing: 5) {
+                    Capsule().fill(ink).frame(width: 24, height: 5)
+                    ForEach(0 ..< 3, id: \.self) { i in
+                        RoundedRectangle(cornerRadius: 4, style: .continuous).fill(card)
+                            .frame(height: i == 0 ? 26 : 18)
+                            .overlay(alignment: .leading) { Capsule().fill(ink).frame(width: i == 0 ? 26 : 20, height: 3).padding(.leading, 5) }
+                    }
+                }
+                .padding(.horizontal, 7).padding(.top, 14)
+            }
+    }
+}
+
+/// Usage in place: the last 30 days, active days and streak, the weeks as
+/// a grid of days in ink grey, and each coding agent's share.
+struct UsageSummary: View {
+    let usage: UsageYear
+    let excludes: [String]
+
+    var body: some View {
+        let u = usage
+        VStack(alignment: .leading, spacing: 14) {
+            HStack(alignment: .top) {
+                stat(tokensText(u.last30), "Last 30 days · tokens")
+                stat(String(localized: "\(u.active) days"), "Active days")
+                stat(String(localized: "\(u.streak) days"), "Streak")
+            }
+            Grid(horizontalSpacing: 3, verticalSpacing: 3) {
+                ForEach(0 ..< 7, id: \.self) { row in
+                    GridRow {
+                        ForEach(0 ..< u.weeks, id: \.self) { col in
+                            let cell = u.cells[col * 7 + row]
+                            RoundedRectangle(cornerRadius: 2.5, style: .continuous)
+                                .fill(cell.map { Color.primary.opacity([0.07, 0.18, 0.32, 0.5, 0.74][$0.level]) } ?? .clear)
+                                .aspectRatio(1, contentMode: .fit)
+                        }
+                    }
+                }
+            }
+            .accessibilityElement()
+            .accessibilityLabel(Text("Usage over the last \(u.weeks) weeks"))
+            if !u.byAgent.isEmpty || !excludes.isEmpty {
+                HStack(spacing: 14) {
+                    ForEach(u.byAgent.prefix(3), id: \.agent) { a in
+                        Text("\(agentTitle(a.agent)) \(Int((a.share * 100).rounded()))%")
+                    }
+                    if !excludes.isEmpty { Text("Excludes \(listText(excludes))") }
+                }
+                .font(.footnote).foregroundStyle(.secondary)
+            }
+        }
+        .padding(.vertical, 6)
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("usage")
+    }
+
+    private func stat(_ value: String, _ label: LocalizedStringKey) -> some View {
+        VStack(alignment: .leading, spacing: 1) {
+            Text(value).font(.title3.weight(.semibold)).monospacedDigit()
+            Text(label).font(.caption).foregroundStyle(.secondary)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 }
 
