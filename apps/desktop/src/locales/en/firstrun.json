@@ -93,7 +93,8 @@
     "leave": "Leave Your Hermesh…",
     "leaveTitle": "Leave Your Hermesh?",
     "leaveMessage": "This Mac stops taking tasks at once, and turns under way stop. It leaves your machine list too (if it can’t reach the server now, remove it there from a trusted device). Its projects stay here.",
-    "leaveButton": "Leave"
+    "leaveButton": "Leave",
+    "settings": "This Mac’s Settings"
   },
   "connect": {
     "promise": "Once approved, it gets access you signed and connects straight to your computer with its own key, end-to-end encrypted; the server sees none of it.",

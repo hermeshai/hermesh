@@ -35,6 +35,11 @@ export function Machines({ open, select, ask }: { open: string; select: (id: str
       </div>
     );
   if (m) return <MachineDetail key={m.machineId} m={m} ask={ask} open={(a) => select(`${m.machineId}/${a}`)} />;
+  // A machine only has this machine alone.
+  if (st.status?.machineOnly) {
+    const self = st.machines.find((x) => x.local);
+    return self ? <MachineDetail m={self} ask={ask} open={(a) => select(`${self.machineId}/${a}`)} /> : null;
+  }
   return (
     <div className="form">
       {!st.machines.some((x) => x.local) && (
@@ -136,7 +141,8 @@ function MachineDetail({ m, ask, open }: { m: Machine; ask: (a: Ask) => void; op
           </span>
         </div>
       </div>
-      {m.local && (
+      {/* A machine only is there to share them. */}
+      {m.local && !st.status?.machineOnly && (
         <div className="fgroup">
           <ShareRow />
         </div>

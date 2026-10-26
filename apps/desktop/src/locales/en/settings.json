@@ -4,7 +4,9 @@
     "general": "General",
     "grants": "Access",
     "machines": "Machines",
-    "account": "Account & Devices"
+    "account": "Account & Devices",
+    "machinesOnly": "This Mac",
+    "accountOnly": "Account"
   },
   "expiringSoon": "{{count}} expiring soon",
   "back": "Back to {{page}}",
@@ -84,7 +86,8 @@
     "console": "Web console",
     "consoleDesc": "See machines and access in any browser, revoke in an emergency",
     "open": "Open",
-    "signOut": "Sign Out…"
+    "signOut": "Sign Out…",
+    "machineOnlyNote": "This Mac is a machine of your account: it runs agents’ tasks and you set it up here, but it approves nothing and doesn’t see your other machines. Approve on one of your trusted devices."
   },
   "grants": {
     "expiresIn_one": "Expires in {{count}} day",

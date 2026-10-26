@@ -176,7 +176,10 @@ function AccountMenu() {
   const online = st.machines.filter((m) => m.online).length;
   // A machine only adds nothing to the owner's (null: a separator).
   const items: AccountItem[] = st.status?.machineOnly
-    ? [{ id: "settings", icon: "gear", shortcut: "⌘," }]
+    ? [
+        { id: "settings", icon: "gear", shortcut: "⌘," },
+        { id: "account", icon: "user" },
+      ]
     : [
         { id: "newGrant", icon: "key", shortcut: "⇧⌘N" },
         { id: "addMachine", icon: "laptop" },

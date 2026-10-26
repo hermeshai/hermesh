@@ -196,9 +196,15 @@ no Touch ID on it.
    the agents' grants gave them (the machine keeps them as agents reach it);
    and for the overview, "这台 Mac" (This Mac): its state, its projects
    (added here with a folder picker, a setting), what runs and the usage.
-   hermeshd serves this from the machine in process (`machine.Local`);
-   everything that needs the owner's identity (approving, grants, devices)
-   is refused, and the app does not offer it.
+   Its settings are this Mac's as well: "这台 Mac" (This Mac) is its
+   machine's page as a trusted device has it for each machine (its coding
+   agents, each with its sign-in, default model and projects; renaming,
+   pausing), and "账号" (Account) says whose it is and where it connects,
+   and lets it leave. Whatever is this machine's own it manages here, as a
+   trusted device would. hermeshd serves this from the machine in process
+   (`machine.Local`); everything that needs the owner's identity (approving,
+   grants, devices, other machines) is refused, and the app does not offer
+   it.
 4. The owner removes it like any machine; the relay then refuses it (only a
    refusal saying the machine or its owner is gone counts), and the Mac says
    so and can leave. It can also leave by itself: it stops the turns under

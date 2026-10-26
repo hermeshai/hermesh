@@ -15,6 +15,7 @@ export function Account({ ask }: { ask: (a: Ask) => void }) {
   const { t } = useTranslation("settings");
   const st = useStore();
   const s = st.status;
+  if (s?.machineOnly) return <MachineAccount />;
   const user = window.hermesh?.userName || "—";
   const relay = s?.relayUrl ?? "";
   const host = URL.canParse(relay) ? new URL(relay).host : relay;
@@ -116,6 +117,62 @@ export function Account({ ask }: { ask: (a: Ask) => void }) {
       </More>
       <div className="set-acts">
         <button className="btn danger" onClick={leave}>{t("account.signOut")}</button>
+      </div>
+    </div>
+  );
+}
+
+/**
+ * A machine only's account: whose it is and where it connects, folded its
+ * owner id; it approves nothing and has no devices to list. It can leave.
+ */
+function MachineAccount() {
+  const { t } = useTranslation("settings");
+  const { t: f } = useTranslation("firstrun");
+  const st = useStore();
+  const s = st.status!;
+  const user = window.hermesh?.userName || "—";
+  const host = URL.canParse(s.relayUrl) ? new URL(s.relayUrl).host : s.relayUrl;
+  const leave = () =>
+    st.set({
+      sheet: {
+        kind: "confirm",
+        title: f("machineOnly.leaveTitle"),
+        message: f("machineOnly.leaveMessage"),
+        button: f("machineOnly.leaveButton"),
+        run: async () => {
+          await local.leave({});
+          window.close();
+        },
+      },
+    });
+  return (
+    <div className="form">
+      <div className="dhero">
+        <span className="av xl me" aria-hidden="true">{user.slice(0, 1).toUpperCase()}</span>
+        <div>
+          <b>{user}</b>
+          <span>
+            {s.hosted ? t("account.hosted", { host }) : t("account.ownServer", { host: host || "—" })}
+            {!s.relayConnected && <span className="warn"> · {t("account.notConnected")}</span>}
+          </span>
+        </div>
+      </div>
+      <p className="set-note">{t("account.machineOnlyNote")}</p>
+      <More label={t("account.advanced")}>
+        <div className="fgroup">
+          <div className="frow">
+            <span className="fl">{t(s.hosted ? "account.server" : "account.relay")}</span>
+            <span className="fv">
+              {host || "—"} <i className={`dotc ${s.relayConnected ? "on" : "warn"}`} />
+              {t(s.relayConnected ? "account.connected" : "account.notConnected")}
+            </span>
+          </div>
+          <CopyRow k={t("account.ownerId")} text={s.ownerId} />
+        </div>
+      </More>
+      <div className="set-acts">
+        <button className="btn danger" onClick={leave}>{f("machineOnly.leave")}</button>
       </div>
     </div>
   );
