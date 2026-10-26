@@ -220,7 +220,7 @@ message Signed {
 | `PairingRequest` | The applicant's own key (self-signed, proving possession of the private key) | kind (MACHINE / CLIENT), subject_public_key, label (the name the agent reports for itself, or the hostname), platform, created_at |
 | `MachineCert` | Root key | machine_id, machine_public_key, issued_at, device_key_id (a trusted device's own machine). Its name is not in it: the name is a setting the machine presents itself (below) |
 | `Grant` | Root key | grant_id, `version`, client_public_key, client_label, `machine_ids`, `project_ids`, `agents` (claude / codex), `task_visibility`, `max_concurrent_sessions`, not_before, expires_at |
-| `AdminCommand` | Root key, or none for settings | command_id, target_machine_id, expires_at (5 minutes), command body (add or remove a project, pause or resume, set the name: all settings, sent unsigned by a trusted device) |
+| `AdminCommand` | Root key, or none for settings | command_id, target_machine_id, expires_at (5 minutes), command body (add or remove a project, pause or resume, set the name, set a coding agent's defaults: all settings, sent unsigned by a trusted device) |
 
 **Validation rules**:
 - Only the **RootCert with the highest version** counts. Objects issued by any of its root keys are valid; everything issued by a root key removed from the list becomes invalid immediately.
@@ -316,8 +316,10 @@ If the relay withholds these messages, it will be noticed: it cannot drop just t
 
 A revoked client leaves the owner's list: the relay forgets its grant, and the revocation list (kept apart, never pruned, also held by every machine) is what keeps refusing it. Removing a machine revokes the clients whose grant names only removed machines, and lists the others without the removed machine; a removed machine's id never comes back, and the next signed version of the grant leaves it out.
 
-**F7 Manage machines**: add or remove projects, pause or resume accepting new sessions, rename. The app builds an AdminCommand and sends it to the machine over the end-to-end channel, authenticated as one of the owner's trusted devices:
-- projects, pausing and the name are settings, not permissions (a grant is already full trust on the machine; projects and the name tell agents what to use), so they go unsigned, without Touch ID; the machine accepts them only from a trusted device, never from an agent or the relay.
+**F7 Manage machines**: add or remove projects, pause or resume accepting new sessions, rename, set a coding agent's defaults. The app builds an AdminCommand and sends it to the machine over the end-to-end channel, authenticated as one of the owner's trusted devices:
+- projects, pausing, the name and agent defaults are settings, not permissions (a grant is already full trust on the machine; projects and the name tell agents what to use), so they go unsigned, without Touch ID; the machine accepts them only from a trusted device, never from an agent or the relay.
+
+**Agent defaults**: for Claude Code and Codex, each machine keeps the model, reasoning effort and (Codex) speed their sessions run with when the client starting one names no model (`AgentDefaults`, set in the app on the agent's row of the machine page). Empty fields follow the agent's own configuration; a model the client names wins over the default model, the default effort and speed still apply. They are resolved when a session starts and stored with it, so a resumed process runs as the session began. Hermesh passes them per session (`--model`/`--effort` for Claude Code; `model`, `config.model_reasoning_effort` and `serviceTier` in Codex's `thread/start`) and never edits the agents' own configuration files. To pick from, a check of the agents also reports the models each offers (Claude Code's aliases; Codex's `model/list`) and Codex's own configuration (`config/read`), so the app can say what following it means.
 
 **Machine names**: a machine is identified by its key (machine_id); its name is a label. It names itself when it pairs (its operator's `--name`, else its host name); a name chosen in the approval window is set on it once it connects, and the owner can rename it at any time. Agents address projects as `name/project`, and the relay could relabel machines in the list it hands out, so the name the agent holds a machine to is the one the machine presents in the end-to-end handshake (`Credentials.machine_name`, authenticated by that handshake): a machine that calls itself something else than the list said is not used.
 
@@ -433,7 +435,7 @@ message StartSessionRequest {
   string agent = 3;             // "claude" | "codex"
   string prompt = 4;
   string base_ref = 5;          // optional
-  string model = 6;             // optional
+  string model = 6;             // optional; unset: the machine's default for the agent, else the agent's own
 }
 
 message Session {

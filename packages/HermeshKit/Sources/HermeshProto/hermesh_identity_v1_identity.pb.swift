@@ -192,6 +192,48 @@ public nonisolated enum Hermesh_Identity_V1_TaskVisibility: SwiftProtobuf.Enum, 
 
 }
 
+public nonisolated enum Hermesh_Identity_V1_AgentSpeed: SwiftProtobuf.Enum, Swift.CaseIterable {
+  public typealias RawValue = Int
+
+  /// The agent's own setting.
+  case unspecified // = 0
+  case standard // = 1
+
+  /// Codex's Fast mode (priority processing, more usage per turn).
+  case fast // = 2
+  case UNRECOGNIZED(Int)
+
+  public init() {
+    self = .unspecified
+  }
+
+  public init?(rawValue: Int) {
+    switch rawValue {
+    case 0: self = .unspecified
+    case 1: self = .standard
+    case 2: self = .fast
+    default: self = .UNRECOGNIZED(rawValue)
+    }
+  }
+
+  public var rawValue: Int {
+    switch self {
+    case .unspecified: return 0
+    case .standard: return 1
+    case .fast: return 2
+    case .UNRECOGNIZED(let i): return i
+    }
+  }
+
+  // The compiler won't synthesize support with the UNRECOGNIZED case.
+  public static let allCases: [Hermesh_Identity_V1_AgentSpeed] = [
+    .unspecified,
+    .standard,
+    .fast,
+  ]
+
+}
+
 /// Signed wraps a serialized message together with a signature over
 /// "hermesh-sig-v1\0" || type || "\0" || body. Verifiers check the signature
 /// before parsing body.
@@ -551,6 +593,14 @@ public nonisolated struct Hermesh_Identity_V1_AdminCommand: Sendable {
     set {command = .setName(newValue)}
   }
 
+  public var setAgentDefaults: Hermesh_Identity_V1_AgentDefaults {
+    get {
+      if case .setAgentDefaults(let v)? = command {return v}
+      return Hermesh_Identity_V1_AgentDefaults()
+    }
+    set {command = .setAgentDefaults(newValue)}
+  }
+
   public var unknownFields = SwiftProtobuf.UnknownStorage()
 
   public nonisolated enum OneOf_Command: Equatable, Sendable {
@@ -558,6 +608,7 @@ public nonisolated struct Hermesh_Identity_V1_AdminCommand: Sendable {
     case removeProject(Hermesh_Identity_V1_RemoveProject)
     case setPaused(Hermesh_Identity_V1_SetPaused)
     case setName(Hermesh_Identity_V1_SetName)
+    case setAgentDefaults(Hermesh_Identity_V1_AgentDefaults)
 
   }
 
@@ -623,6 +674,31 @@ public nonisolated struct Hermesh_Identity_V1_SetPaused: Sendable {
   // methods supported on all messages.
 
   public var paused: Bool = false
+
+  public var unknownFields = SwiftProtobuf.UnknownStorage()
+
+  public init() {}
+}
+
+/// AgentDefaults is what a coding agent's sessions on the machine run with
+/// when the client starting one names no model: a setting, it grants
+/// nothing. Empty fields follow the agent's own configuration; Hermesh
+/// passes the rest per session and never changes that configuration.
+public nonisolated struct Hermesh_Identity_V1_AgentDefaults: Sendable {
+  // SwiftProtobuf.Message conformance is added in an extension below. See the
+  // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
+  // methods supported on all messages.
+
+  /// "claude" | "codex"
+  public var agent: String = String()
+
+  public var model: String = String()
+
+  /// The reasoning effort, as the agent names it ("low" … "max").
+  public var effort: String = String()
+
+  /// Codex only.
+  public var speed: Hermesh_Identity_V1_AgentSpeed = .unspecified
 
   public var unknownFields = SwiftProtobuf.UnknownStorage()
 
@@ -729,6 +805,10 @@ nonisolated extension Hermesh_Identity_V1_Workspace: SwiftProtobuf._ProtoNamePro
 
 nonisolated extension Hermesh_Identity_V1_TaskVisibility: SwiftProtobuf._ProtoNameProviding {
   public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{2}\0TASK_VISIBILITY_UNSPECIFIED\0\u{1}TASK_VISIBILITY_OWN\0\u{1}TASK_VISIBILITY_ALL\0")
+}
+
+nonisolated extension Hermesh_Identity_V1_AgentSpeed: SwiftProtobuf._ProtoNameProviding {
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{2}\0AGENT_SPEED_UNSPECIFIED\0\u{1}AGENT_SPEED_STANDARD\0\u{1}AGENT_SPEED_FAST\0")
 }
 
 nonisolated extension Hermesh_Identity_V1_Signed: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
@@ -1242,7 +1322,7 @@ nonisolated extension Hermesh_Identity_V1_Grant: SwiftProtobuf.Message, SwiftPro
 
 nonisolated extension Hermesh_Identity_V1_AdminCommand: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
   public static let protoMessageName: String = _protobuf_package + ".AdminCommand"
-  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{3}owner_id\0\u{3}command_id\0\u{3}target_machine_id\0\u{3}expires_at\0\u{4}\u{6}add_project\0\u{3}remove_project\0\u{4}\u{2}set_paused\0\u{3}set_name\0\u{b}rename_machine\0\u{c}\u{c}\u{1}")
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{3}owner_id\0\u{3}command_id\0\u{3}target_machine_id\0\u{3}expires_at\0\u{4}\u{6}add_project\0\u{3}remove_project\0\u{4}\u{2}set_paused\0\u{3}set_name\0\u{3}set_agent_defaults\0\u{b}rename_machine\0\u{c}\u{c}\u{1}")
 
   public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
     while let fieldNumber = try decoder.nextFieldNumber() {
@@ -1306,6 +1386,19 @@ nonisolated extension Hermesh_Identity_V1_AdminCommand: SwiftProtobuf.Message, S
           self.command = .setName(v)
         }
       }()
+      case 15: try {
+        var v: Hermesh_Identity_V1_AgentDefaults?
+        var hadOneofValue = false
+        if let current = self.command {
+          hadOneofValue = true
+          if case .setAgentDefaults(let m) = current {v = m}
+        }
+        try decoder.decodeSingularMessageField(value: &v)
+        if let v = v {
+          if hadOneofValue {try decoder.handleConflictingOneOf()}
+          self.command = .setAgentDefaults(v)
+        }
+      }()
       default: break
       }
     }
@@ -1344,6 +1437,10 @@ nonisolated extension Hermesh_Identity_V1_AdminCommand: SwiftProtobuf.Message, S
     case .setName?: try {
       guard case .setName(let v)? = self.command else { preconditionFailure() }
       try visitor.visitSingularMessageField(value: v, fieldNumber: 14)
+    }()
+    case .setAgentDefaults?: try {
+      guard case .setAgentDefaults(let v)? = self.command else { preconditionFailure() }
+      try visitor.visitSingularMessageField(value: v, fieldNumber: 15)
     }()
     case nil: break
     }
@@ -1501,6 +1598,51 @@ nonisolated extension Hermesh_Identity_V1_SetPaused: SwiftProtobuf.Message, Swif
 
   public static func ==(lhs: Hermesh_Identity_V1_SetPaused, rhs: Hermesh_Identity_V1_SetPaused) -> Bool {
     if lhs.paused != rhs.paused {return false}
+    if lhs.unknownFields != rhs.unknownFields {return false}
+    return true
+  }
+}
+
+nonisolated extension Hermesh_Identity_V1_AgentDefaults: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
+  public static let protoMessageName: String = _protobuf_package + ".AgentDefaults"
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{1}agent\0\u{1}model\0\u{1}effort\0\u{1}speed\0")
+
+  public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
+    while let fieldNumber = try decoder.nextFieldNumber() {
+      // The use of inline closures is to circumvent an issue where the compiler
+      // allocates stack space for every case branch when no optimizations are
+      // enabled. https://github.com/apple/swift-protobuf/issues/1034
+      switch fieldNumber {
+      case 1: try { try decoder.decodeSingularStringField(value: &self.agent) }()
+      case 2: try { try decoder.decodeSingularStringField(value: &self.model) }()
+      case 3: try { try decoder.decodeSingularStringField(value: &self.effort) }()
+      case 4: try { try decoder.decodeSingularEnumField(value: &self.speed) }()
+      default: break
+      }
+    }
+  }
+
+  public func traverse<V: SwiftProtobuf.Visitor>(visitor: inout V) throws {
+    if !self.agent.isEmpty {
+      try visitor.visitSingularStringField(value: self.agent, fieldNumber: 1)
+    }
+    if !self.model.isEmpty {
+      try visitor.visitSingularStringField(value: self.model, fieldNumber: 2)
+    }
+    if !self.effort.isEmpty {
+      try visitor.visitSingularStringField(value: self.effort, fieldNumber: 3)
+    }
+    if self.speed != .unspecified {
+      try visitor.visitSingularEnumField(value: self.speed, fieldNumber: 4)
+    }
+    try unknownFields.traverse(visitor: &visitor)
+  }
+
+  public static func ==(lhs: Hermesh_Identity_V1_AgentDefaults, rhs: Hermesh_Identity_V1_AgentDefaults) -> Bool {
+    if lhs.agent != rhs.agent {return false}
+    if lhs.model != rhs.model {return false}
+    if lhs.effort != rhs.effort {return false}
+    if lhs.speed != rhs.speed {return false}
     if lhs.unknownFields != rhs.unknownFields {return false}
     return true
   }

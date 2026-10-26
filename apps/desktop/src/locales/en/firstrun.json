@@ -139,6 +139,23 @@
     "removeItem": "Stop Using with {{agent}}",
     "worktree": "Separate worktree",
     "inPlace": "In place",
-    "more": "More"
+    "more": "More",
+    "model": "Model",
+    "sameAs": "Same as {{agent}}",
+    "sameAsValue": "Same as {{agent}} ({{value}})",
+    "forHermesh": "For Hermesh sessions only",
+    "modelMenu": "Model",
+    "effortMenu": "Reasoning Effort",
+    "speedMenu": "Speed",
+    "standard": "Standard",
+    "fast": "Fast",
+    "efforts": {
+      "low": "Low",
+      "medium": "Medium",
+      "high": "High",
+      "xhigh": "Extra High",
+      "max": "Max",
+      "ultra": "Ultra"
+    }
   }
 }

@@ -183,6 +183,7 @@ message AdminCommand {
     RemoveProject remove_project = 11;
     SetPaused set_paused = 13;
     SetName set_name = 14;
+    AgentDefaults set_agent_defaults = 15;
   }
   reserved 12;
   reserved "rename_machine";
@@ -212,6 +213,28 @@ message SetName {
 
 message SetPaused {
   bool paused = 1;
+}
+
+// AgentDefaults is what a coding agent's sessions on the machine run with
+// when the client starting one names no model: a setting, it grants
+// nothing. Empty fields follow the agent's own configuration; Hermesh
+// passes the rest per session and never changes that configuration.
+message AgentDefaults {
+  // "claude" | "codex"
+  string agent = 1;
+  string model = 2;
+  // The reasoning effort, as the agent names it ("low" … "max").
+  string effort = 3;
+  // Codex only.
+  AgentSpeed speed = 4;
+}
+
+enum AgentSpeed {
+  // The agent's own setting.
+  AGENT_SPEED_UNSPECIFIED = 0;
+  AGENT_SPEED_STANDARD = 1;
+  // Codex's Fast mode (priority processing, more usage per turn).
+  AGENT_SPEED_FAST = 2;
 }
 
 // RevocationList only ever reduces permissions, so machines accept it from the

@@ -3,6 +3,7 @@
 package codex
 
 import (
+	"bufio"
 	"bytes"
 	"context"
 	"encoding/json"
@@ -17,6 +18,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	identityv1 "github.com/hermeshai/hermesh/gen/go/hermesh/identity/v1"
 	sessionv1 "github.com/hermeshai/hermesh/gen/go/hermesh/session/v1"
 	"github.com/hermeshai/hermesh/internal/provider"
 )
@@ -63,7 +65,108 @@ func (p *Provider) Discover(ctx context.Context) provider.Info {
 	if out, err := exec.CommandContext(ctx, bin, "login", "status").CombinedOutput(); err == nil && strings.Contains(string(out), "Logged in") {
 		info.LoggedIn = true
 	}
+	info.Models, info.Own, _ = catalog(ctx, bin)
 	return info
+}
+
+// catalog asks Codex's app server for the models it offers and the
+// configuration its sessions follow unless told otherwise.
+func catalog(ctx context.Context, bin string) ([]provider.Model, provider.Settings, error) {
+	var own provider.Settings
+	cmd := exec.CommandContext(ctx, bin, "app-server")
+	in, err := cmd.StdinPipe()
+	if err != nil {
+		return nil, own, err
+	}
+	out, err := cmd.StdoutPipe()
+	if err != nil {
+		return nil, own, err
+	}
+	if err := cmd.Start(); err != nil {
+		return nil, own, err
+	}
+	defer cmd.Wait()
+	defer in.Close()
+	sc := bufio.NewScanner(out)
+	sc.Buffer(make([]byte, 64<<10), 16<<20)
+	id := 0
+	call := func(method string, params, v any) error {
+		id++
+		b, _ := json.Marshal(map[string]any{"id": id, "method": method, "params": params})
+		if _, err := in.Write(append(b, '\n')); err != nil {
+			return err
+		}
+		for sc.Scan() {
+			var m struct {
+				ID     *int            `json:"id"`
+				Result json.RawMessage `json:"result"`
+				Error  *struct {
+					Message string `json:"message"`
+				} `json:"error"`
+			}
+			if json.Unmarshal(sc.Bytes(), &m) != nil || m.ID == nil || *m.ID != id {
+				continue
+			}
+			if m.Error != nil {
+				return errors.New(m.Error.Message)
+			}
+			return json.Unmarshal(m.Result, v)
+		}
+		return fmt.Errorf("codex app-server ended before answering %s", method)
+	}
+	if err := call("initialize", map[string]any{"clientInfo": map[string]any{"name": "hermesh", "version": "0.1.0"}}, &struct{}{}); err != nil {
+		return nil, own, err
+	}
+	var list struct {
+		Data []struct {
+			ID, DisplayName           string
+			IsDefault                 bool
+			DefaultReasoningEffort    string
+			SupportedReasoningEfforts []struct {
+				ReasoningEffort string
+			}
+		}
+	}
+	if err := call("model/list", map[string]any{}, &list); err != nil {
+		return nil, own, err
+	}
+	var models []provider.Model
+	for _, m := range list.Data {
+		x := provider.Model{ID: m.ID, Name: m.DisplayName}
+		for _, e := range m.SupportedReasoningEfforts {
+			x.Efforts = append(x.Efforts, e.ReasoningEffort)
+		}
+		models = append(models, x)
+		if m.IsDefault && own.Model == "" {
+			own.Model, own.Effort = m.ID, m.DefaultReasoningEffort
+		}
+	}
+	var cfg struct {
+		Config struct {
+			Model           string `json:"model"`
+			ReasoningEffort string `json:"model_reasoning_effort"`
+			ServiceTier     string `json:"service_tier"`
+		}
+	}
+	if err := call("config/read", map[string]any{}, &cfg); err != nil {
+		return models, own, err
+	}
+	if cfg.Config.Model != "" {
+		own.Model, own.Effort = cfg.Config.Model, ""
+		for _, m := range list.Data {
+			if m.ID == own.Model {
+				own.Effort = m.DefaultReasoningEffort
+			}
+		}
+	}
+	if cfg.Config.ReasoningEffort != "" {
+		own.Effort = cfg.Config.ReasoningEffort
+	}
+	own.Speed = identityv1.AgentSpeed_AGENT_SPEED_STANDARD
+	if cfg.Config.ServiceTier == "priority" || cfg.Config.ServiceTier == "fast" {
+		own.Speed = identityv1.AgentSpeed_AGENT_SPEED_FAST
+	}
+	return models, own, nil
 }
 
 func (p *Provider) Start(ctx context.Context, spec provider.StartSpec) (provider.Session, error) {
@@ -90,6 +193,15 @@ func (p *Provider) Start(ctx context.Context, spec provider.StartSpec) (provider
 	params := map[string]any{"cwd": spec.WorkDir, "sandbox": "danger-full-access", "approvalPolicy": "never"}
 	if spec.Model != "" {
 		params["model"] = spec.Model
+	}
+	if spec.Effort != "" {
+		params["config"] = map[string]any{"model_reasoning_effort": spec.Effort}
+	}
+	switch spec.Speed {
+	case identityv1.AgentSpeed_AGENT_SPEED_FAST:
+		params["serviceTier"] = "fast"
+	case identityv1.AgentSpeed_AGENT_SPEED_STANDARD:
+		params["serviceTier"] = nil // null: no tier, whatever the configuration says
 	}
 	method := "thread/start"
 	if spec.ResumeRef != "" {

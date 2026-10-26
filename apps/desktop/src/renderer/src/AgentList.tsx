@@ -1,6 +1,6 @@
 import { useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
-import { Workspace } from "@hermesh/proto/identity";
+import { AgentSpeed, Workspace } from "@hermesh/proto/identity";
 import type { AgentStatus } from "@hermesh/proto/machine";
 import type { Machine, Project } from "@hermesh/proto/local";
 import { codingAgentIds, codingAgentTitle, projectIdFromFolder } from "@hermesh/core";
@@ -15,8 +15,9 @@ import "./agentlist.css";
 // A machine's coding agents, as the first run's "Check and Manage Available
 // Agents" shows them and settings' machine page too: every coding agent
 // Hermesh supports, what the machine has of each (version, logged in), and
-// for each installed one the projects it may work in. A project is one
-// folder; it lists the agents it is for (none: all of them).
+// for each installed one the model its sessions run with (Claude Code and
+// Codex) and the projects it may work in. A project is one folder; it lists
+// the agents it is for (none: all of them).
 
 /** The projects agent may work in. */
 export const projectsFor = (projects: Project[], agent: string) => projects.filter((p) => p.agents.length === 0 || p.agents.includes(agent));
@@ -186,6 +187,7 @@ function AgentRow(p: { a: AgentStatus; m: Machine; projects: Project[]; open: bo
               )}
             </div>
           )}
+          {a.models.length > 0 && <ModelRow a={a} m={m} />}
           {mine.length > 0 && (
             <div className="ag-prjs">
               {mine.map((x) => (
@@ -199,6 +201,83 @@ function AgentRow(p: { a: AgentStatus; m: Machine; projects: Project[]; open: bo
           </button>
         </div>
       )}
+    </div>
+  );
+}
+
+/**
+ * The model, reasoning effort and (Codex) speed this machine's sessions of
+ * an agent run with when the agent starting one names no model: the
+ * agent's own configuration, unless set here; set here, only Hermesh's
+ * sessions use them. A ⋯ menu changes each.
+ */
+function ModelRow({ a, m }: { a: AgentStatus; m: Machine }) {
+  const { t } = useTranslation("firstrun");
+  const st = useStore();
+  const title = codingAgentTitle(a.name);
+  const codex = a.name === "codex";
+  const d = { model: a.defaults?.model ?? "", effort: a.defaults?.effort ?? "", speed: a.defaults?.speed ?? AgentSpeed.UNSPECIFIED };
+  const own = a.own;
+  const name = (id: string) => a.models.find((x) => x.id === id)?.name || id;
+  const effort = (e: string) => t(`prepare.efforts.${e}`, { defaultValue: e });
+  const speed = (v: AgentSpeed) => (v === AgentSpeed.FAST ? t("prepare.fast") : t("prepare.standard"));
+  const same = (v: string) => (v ? t("prepare.sameAsValue", { agent: title, value: v }) : t("prepare.sameAs", { agent: title }));
+  // What sessions run with: what is set here, else the agent's own as far as it tells.
+  const model = d.model || own?.model || "";
+  const eff = d.effort || own?.effort || "";
+  const spd = codex ? d.speed || own?.speed || AgentSpeed.UNSPECIFIED : AgentSpeed.UNSPECIFIED;
+  const facts = [model && name(model), eff && effort(eff), spd ? speed(spd) : ""].filter(Boolean).join(" · ");
+  const following = !d.model && !d.effort && !d.speed;
+  const effortsOf = (id: string) => a.models.find((x) => x.id === id)?.efforts;
+
+  const change = async () => {
+    const id = await window.hermesh?.popupMenu([
+      { id: "", label: t("prepare.modelMenu"), enabled: false },
+      { id: "m:", label: same(own?.model ? name(own.model) : ""), checked: !d.model },
+      ...a.models.map((x) => ({ id: `m:${x.id}`, label: x.name || x.id, checked: d.model === x.id })),
+      { separator: true },
+      { id: "", label: t("prepare.effortMenu"), enabled: false },
+      { id: "e:", label: same(own?.effort ? effort(own.effort) : ""), checked: !d.effort },
+      ...(effortsOf(model) ?? a.models[0].efforts).map((e) => ({ id: `e:${e}`, label: effort(e), checked: d.effort === e })),
+      ...(codex
+        ? [
+            { separator: true as const },
+            { id: "", label: t("prepare.speedMenu"), enabled: false },
+            { id: "s:0", label: same(own?.speed ? speed(own.speed) : ""), checked: !d.speed },
+            { id: "s:1", label: t("prepare.standard"), checked: d.speed === AgentSpeed.STANDARD },
+            { id: "s:2", label: t("prepare.fast"), checked: d.speed === AgentSpeed.FAST },
+          ]
+        : []),
+    ]);
+    if (!id) return;
+    const v = id.slice(2);
+    const next = { agent: a.name, ...d };
+    if (id.startsWith("m:")) {
+      next.model = v;
+      // An effort the newly picked model lacks goes back to the agent's own.
+      const ok = effortsOf(v || own?.model || "");
+      if (next.effort && ok && !ok.includes(next.effort)) next.effort = "";
+    }
+    if (id.startsWith("e:")) next.effort = v;
+    if (id.startsWith("s:")) next.speed = Number(v);
+    await st.run(() => local.setAgentDefaults({ machineId: m.machineId, defaults: next }));
+  };
+
+  return (
+    <div className="ag-prjs">
+      <div className="ag-prj" role="group" aria-label={t("prepare.model")}>
+        <Icon name="sparkle" />
+        <div className="ag-prj-t">
+          <span>
+            <b>{t("prepare.model")}</b>
+            <em>{following ? same("") : t("prepare.forHermesh")}</em>
+          </span>
+          {facts && <span className="ag-facts">{facts}</span>}
+        </div>
+        <button className="tb" aria-label={t("prepare.more")} onClick={change} disabled={!m.online && !m.local}>
+          <Icon name="more" />
+        </button>
+      </div>
     </div>
   );
 }

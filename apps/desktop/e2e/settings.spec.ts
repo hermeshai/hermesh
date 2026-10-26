@@ -178,6 +178,59 @@ test("settings 机器 opens this Mac: its sharing, its agents each with their pr
   await app.close();
 });
 
+test("settings 机器: Codex's sessions run with its own model, effort and speed until others are set here, for Hermesh only", async () => {
+  const { app, page } = await launch();
+  const settings = await openSettings(app, page, "machines");
+  const panel = page_(settings, "机器");
+  await panel.getByRole("list", { name: "机器" }).getByRole("button", { name: /^owner-mac/ }).click();
+  const codex = panel.getByRole("list", { name: "编码 Agent" }).getByRole("listitem", { name: "Codex" });
+  await expect(codex).toContainText("还没登录", { timeout: 30_000 });
+  const head = codex.getByRole("button", { name: /^Codex/ });
+  if ((await head.getAttribute("aria-expanded")) !== "true") await head.click();
+  const model = codex.getByRole("group", { name: "模型" });
+  await expect(model).toContainText("跟随 Codex");
+  await expect(model).toContainText("GPT-Fake-Big · 高 · 标准");
+  await snap(settings, "settings-machine-model");
+
+  // The menu: the models Codex offers, the efforts of the one in use, the
+  // speeds; each first follows Codex, saying what that is.
+  const pick = async (id: string) => {
+    await app.evaluate(({ ipcMain }, id) => {
+      ipcMain.removeHandler("popup-menu");
+      ipcMain.handle("popup-menu", (_e, items: { label?: string; checked?: boolean }[]) => {
+        (globalThis as unknown as { shown: unknown }).shown = items.map((i) => (i.checked ? "✓ " : "") + (i.label ?? "—"));
+        return id;
+      });
+    }, id);
+    await model.getByRole("button", { name: "更多" }).click();
+  };
+  await pick("m:gpt-fake-small");
+  expect(await app.evaluate(() => (globalThis as unknown as { shown: unknown }).shown)).toEqual([
+    "模型", "✓ 跟随 Codex（GPT-Fake-Big）", "GPT-Fake-Big", "GPT-Fake-Small", "—",
+    "推理强度", "✓ 跟随 Codex（高）", "低", "高", "—",
+    "速度", "✓ 跟随 Codex（标准）", "标准", "快速",
+  ]);
+  await expect(model).toContainText("只用于 Hermesh 的会话");
+  await expect(model).toContainText("GPT-Fake-Small · 高 · 标准");
+  await pick("e:low");
+  await pick("s:2");
+  await expect(model).toContainText("GPT-Fake-Small · 低 · 快速");
+  const codexStatus = async () => {
+    const r = await api<{ machines?: { status?: { agents?: { name: string; defaults?: object }[] } }[] }>(settings, "ListMachines");
+    return r.machines?.[0]?.status?.agents?.find((a) => a.name === "codex");
+  };
+  expect((await codexStatus())?.defaults).toEqual({ agent: "codex", model: "gpt-fake-small", effort: "low", speed: "AGENT_SPEED_FAST" });
+
+  // Back to Codex's own, one by one.
+  await pick("m:");
+  await pick("e:");
+  await pick("s:0");
+  await expect(model).toContainText("跟随 Codex");
+  await expect(model).toContainText("GPT-Fake-Big · 高 · 标准");
+  expect((await codexStatus())?.defaults).toEqual({ agent: "codex" });
+  await app.close();
+});
+
 test("settings 账号与设备 shows the identity, the trusted devices and, folded, the addresses", async () => {
   const { app, page } = await launch();
   const status = await page.evaluate(() =>

@@ -112,6 +112,9 @@ CREATE TABLE tool_outputs (
   data BLOB NOT NULL,
   PRIMARY KEY (session_id, call_id)
 );
+`, `
+ALTER TABLE sessions ADD COLUMN effort TEXT NOT NULL DEFAULT '';
+ALTER TABLE sessions ADD COLUMN speed INTEGER NOT NULL DEFAULT 0;
 `}
 
 // Store uses one writer connection (db) and a pool of readers (rdb), so
@@ -270,7 +273,10 @@ type sessionRow struct {
 	Status               sessionv1.SessionStatus
 	CreatedBy, GrantID   string
 	Model, ProviderRef   string
-	BaseCommit, Branch   string
+	// Effort and Speed are fixed when the session starts, like Model.
+	Effort             string
+	Speed              identityv1.AgentSpeed
+	BaseCommit, Branch string
 	// Worktree is the directory the agent works in: its own worktree, or
 	// the project directory itself for an in-place session.
 	Worktree  string
@@ -287,7 +293,7 @@ type sessionRow struct {
 	CreatedAt, UpdatedAt time.Time
 }
 
-const sessionCols = `session_id, project_id, agent, status, created_by, grant_id, model, provider_ref, base_commit, branch, worktree, workspace, question_timeout, pgid, progress, error, result, title, created_at, updated_at`
+const sessionCols = `session_id, project_id, agent, status, created_by, grant_id, model, provider_ref, base_commit, branch, worktree, workspace, question_timeout, pgid, progress, error, result, title, created_at, updated_at, effort, speed`
 
 type execer interface {
 	Exec(query string, args ...any) (sql.Result, error)
@@ -296,25 +302,25 @@ type execer interface {
 func putSession(db execer, r *sessionRow) error {
 	prog, _ := proto.Marshal(r.Progress)
 	r.UpdatedAt = time.Now()
-	_, err := db.Exec(`INSERT INTO sessions(`+sessionCols+`) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+	_, err := db.Exec(`INSERT INTO sessions(`+sessionCols+`) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
 		ON CONFLICT(session_id) DO UPDATE SET status=excluded.status, model=excluded.model, provider_ref=excluded.provider_ref,
 		base_commit=excluded.base_commit, branch=excluded.branch, worktree=excluded.worktree, pgid=excluded.pgid,
 		progress=excluded.progress, error=excluded.error, result=excluded.result, title=excluded.title, updated_at=excluded.updated_at`,
 		r.ID, r.ProjectID, r.Agent, int(r.Status), r.CreatedBy, r.GrantID, r.Model, r.ProviderRef,
-		r.BaseCommit, r.Branch, r.Worktree, int(r.Workspace), r.QuestionTimeout, r.Pgid, prog, r.Error, r.Result, r.Title, r.CreatedAt.Unix(), r.UpdatedAt.Unix())
+		r.BaseCommit, r.Branch, r.Worktree, int(r.Workspace), r.QuestionTimeout, r.Pgid, prog, r.Error, r.Result, r.Title, r.CreatedAt.Unix(), r.UpdatedAt.Unix(), r.Effort, int(r.Speed))
 	return err
 }
 
 func scanSession(sc interface{ Scan(...any) error }) (*sessionRow, error) {
 	r := &sessionRow{Progress: &sessionv1.SessionProgress{}}
-	var status, workspace int
+	var status, workspace, speed int
 	var prog []byte
 	var c, u int64
 	if err := sc.Scan(&r.ID, &r.ProjectID, &r.Agent, &status, &r.CreatedBy, &r.GrantID, &r.Model, &r.ProviderRef,
-		&r.BaseCommit, &r.Branch, &r.Worktree, &workspace, &r.QuestionTimeout, &r.Pgid, &prog, &r.Error, &r.Result, &r.Title, &c, &u); err != nil {
+		&r.BaseCommit, &r.Branch, &r.Worktree, &workspace, &r.QuestionTimeout, &r.Pgid, &prog, &r.Error, &r.Result, &r.Title, &c, &u, &r.Effort, &speed); err != nil {
 		return nil, err
 	}
-	r.Status, r.Workspace = sessionv1.SessionStatus(status), identityv1.Workspace(workspace)
+	r.Status, r.Workspace, r.Speed = sessionv1.SessionStatus(status), identityv1.Workspace(workspace), identityv1.AgentSpeed(speed)
 	r.CreatedAt, r.UpdatedAt = time.Unix(c, 0), time.Unix(u, 0)
 	proto.Unmarshal(prog, r.Progress)
 	return r, nil

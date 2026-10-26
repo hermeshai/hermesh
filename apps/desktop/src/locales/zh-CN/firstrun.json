@@ -138,6 +138,23 @@
     "removeItem": "不再给 {{agent}} 用",
     "worktree": "独立 worktree",
     "inPlace": "原地",
-    "more": "更多"
+    "more": "更多",
+    "model": "模型",
+    "sameAs": "跟随 {{agent}}",
+    "sameAsValue": "跟随 {{agent}}（{{value}}）",
+    "forHermesh": "只用于 Hermesh 的会话",
+    "modelMenu": "模型",
+    "effortMenu": "推理强度",
+    "speedMenu": "速度",
+    "standard": "标准",
+    "fast": "快速",
+    "efforts": {
+      "low": "低",
+      "medium": "中",
+      "high": "高",
+      "xhigh": "超高",
+      "max": "最高",
+      "ultra": "极限"
+    }
   }
 }

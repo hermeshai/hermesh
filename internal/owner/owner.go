@@ -1099,8 +1099,8 @@ func (o *Owner) findMachine(ctx context.Context, idOrName string) (*localv1.Mach
 	return nil, connect.NewError(connect.CodeNotFound, fmt.Errorf("no machine %q", idOrName))
 }
 
-// admin sends a machine an admin command. Settings (projects, pausing, name)
-// grant nothing and go without a root signature, over this trusted
+// admin sends a machine an admin command. Settings (projects, pausing, name,
+// agent defaults) grant nothing and go without a root signature, over this trusted
 // device's own connection; anything else is signed (Touch ID).
 func (o *Owner) admin(ctx context.Context, machineID string, build func(*identityv1.AdminCommand)) (string, error) {
 	cmd := &identityv1.AdminCommand{OwnerId: o.ownerID, CommandId: identity.RandomCode(16), TargetMachineId: machineID,
@@ -1108,7 +1108,8 @@ func (o *Owner) admin(ctx context.Context, machineID string, build func(*identit
 	build(cmd)
 	req := &machinev1.ApplyAdminCommandRequest{}
 	switch cmd.Command.(type) {
-	case *identityv1.AdminCommand_AddProject, *identityv1.AdminCommand_RemoveProject, *identityv1.AdminCommand_SetPaused, *identityv1.AdminCommand_SetName:
+	case *identityv1.AdminCommand_AddProject, *identityv1.AdminCommand_RemoveProject, *identityv1.AdminCommand_SetPaused, *identityv1.AdminCommand_SetName,
+		*identityv1.AdminCommand_SetAgentDefaults:
 		if l := o.local(); l != nil && l.MachineID() == machineID {
 			return l.ApplySettings(ctx, build) // this device's own machine, in process
 		}
@@ -1162,6 +1163,15 @@ func (o *Owner) RenameMachine(ctx context.Context, machineID, name string) error
 func (o *Owner) SetMachinePaused(ctx context.Context, machineID string, paused bool) error {
 	_, err := o.admin(ctx, machineID, func(c *identityv1.AdminCommand) {
 		c.Command = &identityv1.AdminCommand_SetPaused{SetPaused: &identityv1.SetPaused{Paused: paused}}
+	})
+	return err
+}
+
+// SetAgentDefaults sets what a coding agent's sessions on a machine run
+// with when the client names no model: a setting (no Touch ID).
+func (o *Owner) SetAgentDefaults(ctx context.Context, machineID string, d *identityv1.AgentDefaults) error {
+	_, err := o.admin(ctx, machineID, func(c *identityv1.AdminCommand) {
+		c.Command = &identityv1.AdminCommand_SetAgentDefaults{SetAgentDefaults: d}
 	})
 	return err
 }

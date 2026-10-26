@@ -9,6 +9,10 @@
 //	FAKE_CODEX_WRITE         files written per turn (default 1)
 //	FAKE_CODEX_MESSAGES      agent messages between commands (default 0)
 //	FAKE_CODEX_BALLAST_MB    resident memory to hold, like a real CLI (default 0)
+//	FAKE_CODEX_LOG           file to append each thread/start's params to
+//
+// model/list offers gpt-fake-big (the default) and gpt-fake-small;
+// config/read answers FAKE_CODEX_CONFIG, a JSON object (default {}).
 package main
 
 import (
@@ -91,7 +95,25 @@ func main() {
 		case "initialize":
 			reply(m.ID, map[string]any{"userAgent": "fakecodex/1.0", "platformOs": "fake"})
 		case "initialized":
+		case "model/list":
+			efforts := []any{map[string]any{"reasoningEffort": "low"}, map[string]any{"reasoningEffort": "high"}}
+			reply(m.ID, map[string]any{"data": []any{
+				map[string]any{"id": "gpt-fake-big", "displayName": "GPT-Fake-Big", "isDefault": true, "defaultReasoningEffort": "high", "supportedReasoningEfforts": efforts},
+				map[string]any{"id": "gpt-fake-small", "displayName": "GPT-Fake-Small", "defaultReasoningEffort": "low", "supportedReasoningEfforts": efforts},
+			}})
+		case "config/read":
+			cfg := json.RawMessage(`{}`)
+			if c := os.Getenv("FAKE_CODEX_CONFIG"); c != "" {
+				cfg = json.RawMessage(c)
+			}
+			reply(m.ID, map[string]any{"config": cfg})
 		case "thread/start", "thread/resume":
+			if log := os.Getenv("FAKE_CODEX_LOG"); log != "" && m.Method == "thread/start" {
+				if f, err := os.OpenFile(log, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o644); err == nil {
+					f.Write(append(append([]byte{}, m.Params...), '\n'))
+					f.Close()
+				}
+			}
 			var p struct {
 				Cwd      string `json:"cwd"`
 				ThreadID string `json:"threadId"`

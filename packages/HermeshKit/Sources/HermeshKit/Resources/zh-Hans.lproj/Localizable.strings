@@ -43,6 +43,7 @@
 "Expires" = "有效期";
 "Expires: %@" = "有效期至：%@";
 "Expires: %@ (before the change: %@)" = "有效期：至 %1$@（修改前至 %2$@）";
+"Fast" = "快速";
 "Fingerprint: %@" = "指纹：%@";
 "Full trust: in the chosen projects, it can do anything you can." = "完全信任：它在所选项目里能做你本人能做的一切。";
 "Full trust: on the chosen machines, this personal agent can do anything you can, including reading credentials and accessing the network." = "完全信任：这个个人 agent 在所选机器上能做你本人能做的一切，包括读取凭据和访问网络。";
@@ -58,6 +59,7 @@
 "Machines" = "机器";
 "Machines: %@" = "机器：%@";
 "Machines: %@ → %@" = "机器：%1$@ → %2$@";
+"Model: %@" = "模型：%@";
 "New settings:" = "修改后的设置：";
 "On these machines: %@" = "在这些机器上：%@";
 "Once approved, Hermesh on this Mac uses it for end-to-end encrypted connections to your machines, to view and manage your sessions and machines." = "批准后：这台 Mac 上的 Hermesh 用它和你的各台机器建立端到端加密连接，查看和管理你的会话与机器。";
@@ -67,6 +69,7 @@
 "Once approved, it can no longer approve anything, and its own machine is removed with it; this iPhone reissues the machine and personal agent credentials it signed." = "批准后：它立刻不能再批准任何事，它自己的执行机器也一并移除；它签过的机器和个人 agent 凭证由这台 iPhone 重新签发。";
 "Once approved, it keeps the same access, now signed by this Mac; the old version stops working." = "批准后：它继续保持原来的权限，改由这台 Mac 签名，旧版本失效。";
 "Once approved, it keeps the same access, now signed by this iPhone; the old version stops working." = "批准后：它继续保持原来的权限，改由这台 iPhone 签名，旧版本失效。";
+"Once approved, its sessions there that name no model run with these; the agent’s own configuration is not changed." = "批准后：它在那台机器上没指定模型的会话都按这些设置运行，不改动这个 agent 自己的配置。";
 "Once approved, the list above becomes your trusted devices." = "批准后：可信设备按上面的列表生效。";
 "Once approved, the machine accepts new sessions again." = "批准后：这台机器重新开始接受新会话。";
 "Once approved, the machine accepts no new sessions until you resume it, which you can do at any time." = "批准后：这台机器不再接受新会话，直到你恢复；你可以随时恢复。";
@@ -88,6 +91,7 @@
 "Projects, machines and coding agents stay the same; only the expiry changes." = "项目、机器、编码 agent 都没有变化，只是更新有效期。";
 "Projects: %@" = "项目：%@";
 "Projects: %@ → %@" = "项目：%1$@ → %2$@";
+"Reasoning effort: %@" = "推理强度：%@";
 "Reissue the certificate of machine “%@”" = "重新签发机器「%@」的证书";
 "Reissue the grant of “%@”" = "重新签发「%@」的授权";
 "Remove project “%@” from %@" = "从%2$@删除项目「%1$@」";
@@ -99,9 +103,13 @@
 "Requested by the Hermesh app" = "由 Hermesh 应用发起";
 "Resume %@" = "恢复%@";
 "Same access: %@; %@; expires %@" = "权限范围不变：%1$@；%2$@；有效期至 %3$@";
+"Same as %@" = "跟随 %@";
 "Separate worktrees for git repositories; other directories in place" = "git 仓库用独立 worktree，其他目录原地工作";
 "Sessions at once: up to %lld" = "最多同时运行 %lld 个会话";
+"Set the model %@ runs with on %@" = "设置%2$@上 %1$@ 用的模型";
 "Share the agents on this Mac" = "共享这台 Mac 上的 agent";
+"Speed: %@" = "速度：%@";
+"Standard" = "标准";
 "The machine takes the new name; its projects and access stay the same." = "这台机器改用新名字，项目和权限不变。";
 "The request can’t be parsed (%@)." = "请求内容无法解析（%@）。";
 "The request contains something Hermesh doesn’t recognize (%@). Hermesh may need an update." = "请求里有 Hermesh 不认识的内容（%@），可能需要更新 Hermesh。";

@@ -283,3 +283,15 @@ func TestDraftsAddUpToMessage(t *testing.T) {
 		t.Fatalf("drafts %q, message %q", drafts, msg)
 	}
 }
+
+// The model and effort a session runs with go on the command line, for it
+// alone; unset, Claude Code's own settings apply.
+func TestModelArgs(t *testing.T) {
+	args := strings.Join(Args(provider.StartSpec{Model: "opus", Effort: "low"}), " ")
+	if !strings.Contains(args, "--model opus") || !strings.Contains(args, "--effort low") {
+		t.Fatal(args)
+	}
+	if args := strings.Join(Args(provider.StartSpec{}), " "); strings.Contains(args, "--model") || strings.Contains(args, "--effort") {
+		t.Fatal(args)
+	}
+}

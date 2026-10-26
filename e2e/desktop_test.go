@@ -110,7 +110,12 @@ func TestDesktop(t *testing.T) {
 // shows, and (fresh) owner daemons nobody has set up yet for the first run.
 func desktopWorld(t *testing.T, fresh bool) desktopFixture {
 	fake := filepath.Join(binaries(t), "fakeacp")
-	w := newOwnerMac(t, []string{"HERMESH_GEMINI_BIN=" + fake, "FAKE_ACP_STATE=" + filepath.Join(t.TempDir(), "fakeacp")},
+	// Codex installed, not logged in, offering fakecodex's models: the same
+	// whatever this machine has.
+	codex := filepath.Join(t.TempDir(), "codex")
+	os.WriteFile(codex, []byte(fmt.Sprintf("#!/bin/sh\ncase \"$1\" in --version) echo \"codex-cli 0.48.0\";; login) echo \"Not logged in\"; exit 1;; app-server) exec %q;; esac\n",
+		filepath.Join(binaries(t), "fakecodex"))), 0o755)
+	w := newOwnerMac(t, []string{"HERMESH_GEMINI_BIN=" + fake, "FAKE_ACP_STATE=" + filepath.Join(t.TempDir(), "fakeacp"), "HERMESH_CODEX_BIN=" + codex},
 		&localv1.GrantSpec{Agents: []string{"gemini"}})
 	f := desktopFixture{Socket: w.sock, Sessions: desktopSessions(t, w), CLI: filepath.Join(w.bin, "hermesh"), CLIEnv: w.cliEnv}
 	for i := 0; fresh && i < 9; i++ {
@@ -186,7 +191,7 @@ func newFreshOwner(t *testing.T, w *ownerMac, name string, gated, bare bool) fre
 		}
 	}
 	claude := stub("claude", wait("claude")+`case "$1" in --version) echo "2.1.4 (Claude Code)";; auth) echo '{"loggedIn":true}';; esac`+"\n")
-	codex := stub("codex", wait("codex")+`case "$1" in --version) echo "codex-cli 0.48.0";; login) echo "Not logged in"; exit 1;; esac`+"\n")
+	codex := stub("codex", wait("codex")+fmt.Sprintf(`case "$1" in --version) echo "codex-cli 0.48.0";; login) echo "Not logged in"; exit 1;; app-server) exec %q;; esac`, filepath.Join(w.bin, "fakecodex"))+"\n")
 	gemini := stub("gemini", wait("gemini")+fmt.Sprintf("exec %q \"$@\"\n", filepath.Join(w.bin, "fakeacp")))
 	sockDir, _ := os.MkdirTemp("/tmp", "hm")
 	t.Cleanup(func() { os.RemoveAll(sockDir) })

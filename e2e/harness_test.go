@@ -44,7 +44,7 @@ func binaries(t *testing.T) string {
 		if buildErr != nil {
 			return
 		}
-		for _, pkg := range []string{"./cmd/hermesh-relay", "./cmd/hermeshd", "./cmd/hermesh", "./internal/provider/acp/fakeacp"} {
+		for _, pkg := range []string{"./cmd/hermesh-relay", "./cmd/hermeshd", "./cmd/hermesh", "./internal/provider/acp/fakeacp", "./bench/fakecodex"} {
 			cmd := filepath.Base(pkg)
 			args := []string{"build", "-o", filepath.Join(binDir, cmd)}
 			if os.Getenv("HERMESH_E2E_RACE") != "" {
