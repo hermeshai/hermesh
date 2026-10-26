@@ -21,6 +21,7 @@ require (
 	golang.org/x/sys v0.49.0
 	golang.org/x/term v0.47.0
 	google.golang.org/protobuf v1.36.12
+	howett.net/plist v1.0.1
 	modernc.org/sqlite v1.60.1
 )
 

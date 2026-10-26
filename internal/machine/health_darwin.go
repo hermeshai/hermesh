@@ -30,9 +30,15 @@ func userProcesses() (procCount, error) {
 			zombies[p.Eproc.Ppid]++
 		}
 	}
+	var culprit int32
 	for ppid, c := range zombies {
 		if c > pc.culpritCount {
-			pc.culprit, pc.culpritCount = names[ppid], c
+			culprit, pc.culprit, pc.culpritCount = ppid, names[ppid], c
+		}
+	}
+	if pc.culpritCount > 0 {
+		if name := appName(culprit); name != "" {
+			pc.culprit = name
 		}
 	}
 	return pc, nil

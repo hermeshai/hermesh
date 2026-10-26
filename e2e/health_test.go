@@ -25,12 +25,30 @@ func userProcesses(t *testing.T) int {
 	return len(strings.Fields(string(out)))
 }
 
-// zombies starts a program that forks n children and never reaps them, as
-// the app that once filled a user's Mac with 2232 of them did; it holds
-// them until the test kills it.
+// zombies starts an app ("Zombie Maker", "僵尸制造机" in Chinese) that
+// forks n children and never reaps them, as the app that once filled a
+// user's Mac with 2232 of them did; it holds them until the test kills it.
 func zombies(t *testing.T, n int) *proc {
 	t.Helper()
-	return start(t, "zombies", nil, "/usr/bin/perl", "-e", `$|=1; for (1..`+strconv.Itoa(n)+`) { exit 0 unless fork } print "ready\n"; sleep 600`)
+	app := filepath.Join(t.TempDir(), "ZombieMaker.app")
+	bin := filepath.Join(app, "Contents/MacOS/zombies")
+	for f, s := range map[string]string{
+		"Info.plist": `<?xml version="1.0" encoding="UTF-8"?>
+<plist version="1.0"><dict><key>CFBundleName</key><string>Zombie Maker</string></dict></plist>`,
+		"Resources/zh-Hans.lproj/InfoPlist.strings": `"CFBundleDisplayName" = "僵尸制造机";`,
+	} {
+		os.MkdirAll(filepath.Dir(filepath.Join(app, "Contents", f)), 0o755)
+		os.WriteFile(filepath.Join(app, "Contents", f), []byte(s), 0o644)
+	}
+	// Its program is a copy of sleep (signed again, or it won't run). The
+	// shell forks the children, then becomes it; they end once it has.
+	os.MkdirAll(filepath.Dir(bin), 0o755)
+	b, _ := os.ReadFile("/bin/sleep")
+	os.WriteFile(bin, b, 0o755)
+	if out, err := exec.Command("codesign", "-f", "-s", "-", bin).CombinedOutput(); err != nil {
+		t.Fatalf("codesign: %v %s", err, out)
+	}
+	return start(t, "zombies", nil, "/bin/sh", "-c", `i=0; while [ $i -lt `+strconv.Itoa(n)+` ]; do /bin/sleep 2 & i=$((i+1)); done; echo ready; exec "$0" 600`, bin)
 }
 
 // TestOutOfProcesses: the owner's Mac runs out of processes. Its machine
@@ -84,9 +102,10 @@ func TestOutOfProcesses(t *testing.T) {
 		}
 		return p != nil
 	})
-	// It names the program holding the most (perl, unless one on this
-	// computer holds even more).
-	if p.Culprit == "" || p.CulpritCount < 150 {
+	// It names the app holding the most as the owner sees it (this one,
+	// unless one on this computer holds even more).
+	if p.Culprit == "" || p.CulpritCount < 150 ||
+		p.CulpritCount == 200 && p.Culprit != "僵尸制造机" && p.Culprit != "Zombie Maker" {
 		t.Fatalf("the problem: %v", p)
 	}
 	w.app.client.CheckAgents(ctx, &localv1.CheckAgentsRequest{})
