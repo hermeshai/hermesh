@@ -1,6 +1,6 @@
 import { Trans, useTranslation } from "react-i18next";
 import { SessionStatus, type Session } from "@hermesh/proto/session";
-import { clockText, codingAgentTitle, createdDate, currentTurn, dateOf, failureTitle, isActive, isFailed, minutesLeft, pendingQuestion, statusTitle, tokensText } from "@hermesh/core";
+import { clockText, elapsedSeconds, codingAgentTitle, createdDate, currentTurn, dateOf, failureTitle, isActive, isFailed, minutesLeft, pendingQuestion, statusTitle, tokensText } from "@hermesh/core";
 import { AgentLogo } from "@hermesh/ui";
 import { i18n } from "../../../shared/i18n";
 import { GrantAvatar, StatusDot } from "../components";
@@ -36,7 +36,7 @@ export function Inspector({ s }: { s: Session }) {
               <StatusDot s={s} />
               {stateWord(s)}
             </span>
-            {working && <span className="insp-time">{clockText((now.getTime() - from.getTime()) / 1000)}</span>}
+            {working && <span className="insp-time">{clockText(elapsedSeconds(from, now))}</span>}
           </div>
           <div className={`insp-why ${tone}`}>{detail(s, now)}</div>
         </div>

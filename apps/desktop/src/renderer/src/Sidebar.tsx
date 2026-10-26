@@ -2,7 +2,7 @@ import { memo, useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent 
 import { Trans, useTranslation } from "react-i18next";
 import { SessionStatus, type Session } from "@hermesh/proto/session";
 import {
-  bucketTitle, clockText, codingAgentShort, codingAgentTitle, createdDate, dateOf, displayTitle, isActive, isArchivable, isFailed, listTime, needsAttention,
+  bucketTitle, clockText, elapsedSeconds, codingAgentShort, codingAgentTitle, createdDate, dateOf, displayTitle, isActive, isArchivable, isFailed, listTime, needsAttention,
   sectionCounted, sessionSections, statusTitle, updatedDate, type SessionBucket, type SessionSection, type SessionView,
 } from "@hermesh/core";
 import { i18n } from "../../shared/i18n";
@@ -466,7 +466,7 @@ function RowStatus({ s }: { s: Session }) {
 function RowTime({ s }: { s: Session }) {
   const running = s.status === SessionStatus.RUNNING;
   const now = useNow(running ? 1000 : 30_000);
-  const text = running ? clockText((now.getTime() - (dateOf(s.progress?.turnStartedAt) ?? createdDate(s)).getTime()) / 1000) : listTime(updatedDate(s), now);
+  const text = running ? clockText(elapsedSeconds(dateOf(s.progress?.turnStartedAt) ?? createdDate(s), now)) : listTime(updatedDate(s), now);
   return <span className="stime">{text}</span>;
 }
 

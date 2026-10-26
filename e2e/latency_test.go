@@ -98,7 +98,9 @@ func TestRelayRoundTrips(t *testing.T) {
 		b, _ := json.Marshal(st)
 		os.WriteFile(statePath, b, 0o600)
 	}
-	const oneWay = 100 * time.Millisecond
+	// Long enough that a busy machine's jitter (CI: up to ~150 ms a
+	// command) stays well under the half round trip the limits allow.
+	const oneWay = 250 * time.Millisecond
 	far := "http://" + delayProxy(t, direct[len("http://"):], oneWay)
 
 	timed := func(args ...string) time.Duration {

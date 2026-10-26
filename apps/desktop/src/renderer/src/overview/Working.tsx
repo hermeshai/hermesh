@@ -2,7 +2,7 @@ import { useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import type { Machine } from "@hermesh/proto/local";
 import { SessionStatus, type Session } from "@hermesh/proto/session";
-import { clockText, createdDate, dateOf, displayTitle, failureTitle, isActive, isFailed } from "@hermesh/core";
+import { clockText, elapsedSeconds, createdDate, dateOf, displayTitle, failureTitle, isActive, isFailed } from "@hermesh/core";
 import { AgentTile, grantColor, kindNamed, Mark } from "@hermesh/ui";
 import { i18n } from "../../../shared/i18n";
 import { helloPrompt } from "../firstrun/FirstTask";
@@ -132,7 +132,7 @@ function Worked({ s }: { s: Session }) {
   const now = useNow(1000);
   if (isFailed(s)) return <span className="wc-why">{failureTitle(s.progress?.lastFailure?.kind ?? 0)}</span>;
   const from = dateOf(s.progress?.turnStartedAt) ?? createdDate(s);
-  return <span className="wc-time">{clockText((now.getTime() - from.getTime()) / 1000)}</span>;
+  return <span className="wc-time">{clockText(elapsedSeconds(from, now))}</span>;
 }
 
 function GrantIcon({ label, size }: { label: string; size: number }) {
