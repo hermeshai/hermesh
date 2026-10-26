@@ -315,15 +315,19 @@ button{font:inherit;color:inherit}
 /* A time line before a turn, only after a pause: centred, no rule. */
 .tdiv{align-self:center;font-size:11.5px;color:var(--l3);margin:10px 0 2px}
 /* The one who started the session speaks in a dark bubble on the right; the agent writes plain text across the page. */
-.um{position:relative;align-self:flex-end;max-width:78%;margin-top:6px}
+.um{position:relative;align-self:flex-end;max-width:78%;margin-top:var(--sp-1)}
 .um .bub{background:var(--bub);color:var(--bub-fg);border-radius:18px;padding:9px 15px;font-size:15px;line-height:21px}
-.am{position:relative;font-size:15px;line-height:21px;color:var(--msg);padding-right:32px}
-/* Copy, over the message's edge on hover: it takes no room. */
-.msg-act{position:absolute;top:2px;opacity:0;transition:opacity .15s}
-.um .msg-act{right:calc(100% + 6px)}
-.am .msg-act{right:0}
-.um:hover .msg-act,.am:hover .msg-act{opacity:1}
-.msg-act .tb{height:24px;min-width:24px}
+.am{position:relative;font-size:15px;line-height:21px;color:var(--msg)}
+/* A message keeps room below it (blocks apart); copy shows there on hover, under the bubble's right edge or the text's left. */
+.um,.am{margin-bottom:var(--sp-3)}
+.msg-act{position:absolute;top:100%;padding-top:2px;display:flex;align-items:center;gap:2px;opacity:0;transition:opacity .15s}
+.um .msg-act{right:2px}
+.am .msg-act{left:-5px}
+.um:hover .msg-act,.am:hover .msg-act,.msg-act:focus-within{opacity:1}
+.msg-act .tb{height:24px;min-width:24px;padding:0 5px;border-radius:7px;color:var(--l3)}
+.msg-act .tb:hover{color:var(--l1)}
+.msg-act .ic.sm{width:14px;height:14px}
+.msg-time{font-size:12px;color:var(--l3);white-space:nowrap;padding:0 4px}
 .md{overflow-wrap:anywhere}
 .md>*{margin:0}
 .md>*+*{margin-top:12px}
@@ -359,12 +363,16 @@ button{font:inherit;color:inherit}
 .tg-h:hover{color:var(--l1)}
 .tg-h .chev,.tool .th .chev{width:14px;height:14px;margin-left:-3px;color:var(--l3);transform:rotate(-90deg);transition:transform .15s}
 .tgroup.open .tg-h .chev,.tool.open .th .chev{transform:none}
-.tg-b{display:flex;flex-direction:column;padding:2px 0 2px var(--sp-2)}
 .tool .out{display:none;margin:4px 0 6px;background:var(--code);border-radius:8px;padding:8px 10px;font-family:var(--mono);font-size:11.5px;white-space:pre-wrap;color:var(--l2);line-height:1.5}
 .tool.open .out{display:block}
+/* Opened, a group is a hairline card a size down: one row per call, its output opening inside the card. */
+.tg-b{display:flex;flex-direction:column;margin:var(--sp-1) 0 2px;border:1px solid var(--sep);border-radius:10px;overflow:hidden}
+.tg-b .tool{border-radius:0;font-size:13px}
+.tg-b .tool+.tool{border-top:1px solid var(--sep)}
+.tg-b .tool .th{width:100%;gap:5px;padding:var(--sp-1) var(--sp-2);border-radius:0}
+.tg-b .tool .th[aria-expanded]:hover,.tg-b .tool.open .th{background:var(--fill)}
+.tg-b .tool .out{margin:0;border-radius:0;padding:var(--sp-1) var(--sp-2) 10px;background:var(--fill);color:var(--l2);max-height:320px;overflow:auto}
 .tool.err .th .vb{color:var(--red)}
-.tdone{align-self:center;display:flex;align-items:center;gap:8px;font-size:12px;color:var(--l2);background:var(--fill);padding:5px 12px;border-radius:999px;margin:4px 0}
-.tdone .ic{color:var(--green);width:14px;height:14px}
 .tnote{align-self:center;font-size:12px;color:var(--l2);background:var(--fill);padding:5px 12px;border-radius:999px}
 .tq{border-radius:12px;background:var(--fill);padding:10px 12px;font-size:12.5px}
 .tq b{font-weight:600}

@@ -3,7 +3,7 @@ import { useTranslation } from "react-i18next";
 import type { Client } from "@hermesh/proto/local";
 import { FailureKind, SessionStatus, type Failure, type Session, type SessionEvent, type ToolCall, type ToolResult } from "@hermesh/proto/session";
 import {
-  clockText, elapsedSeconds, codingAgentTitle, createdDate, currentTurn, durationText, failureAdvice, failureTitle, groupSteps, isActive, isArchivable, isFailed,
+  agoText, clockText, elapsedSeconds, codingAgentTitle, createdDate, currentTurn, failureAdvice, failureTitle, groupSteps, isActive, isArchivable, isFailed,
   isInterruption, isInterruptible, pendingQuestion, phaseText, resolutionTitle, statusTitle, stepSummary, toolObject, toolSummary, toolVerb, transcript,
   turnStartedAt, turnTimeLine, type Step,
 } from "@hermesh/core";
@@ -123,8 +123,6 @@ function sameStep(a: Step, b: Step): boolean {
     }
     case "question":
       return a.resolution === (b as typeof a).resolution;
-    case "turnEnd":
-      return a.took === (b as typeof a).took;
     default:
       return true;
   }
@@ -140,7 +138,7 @@ function RowView({ it, sessionId, failure, clients, grant, previous }: RowProps)
       return (
         <div className="um">
           <div className="bub sel-text">{it.text}</div>
-          <Copy text={it.text} />
+          <Copy text={it.text} at={it.at} />
         </div>
       );
     case "agent":
@@ -152,7 +150,7 @@ function RowView({ it, sessionId, failure, clients, grant, previous }: RowProps)
       );
     case "tools":
       return it.calls.length === 1 ? (
-        <ToolRow call={it.calls[0].call} result={it.calls[0].result} running={it.calls[0].running} sessionId={sessionId} />
+        <ToolRow call={it.calls[0].call} result={it.calls[0].result} resultSeq={it.calls[0].resultSeq} running={it.calls[0].running} sessionId={sessionId} />
       ) : (
         <ToolGroup calls={it.calls} sessionId={sessionId} />
       );
@@ -168,9 +166,6 @@ function RowView({ it, sessionId, failure, clients, grant, previous }: RowProps)
       );
     case "turnEnd": {
       const end = it.end;
-      const d = end.diffStat;
-      const files = d?.filesChanged ?? 0;
-      const took = it.took !== undefined ? ` · ${durationText(it.took)}` : "";
       if (end.isError && isInterruption(end.failure)) {
         const byOwner = end.failure?.message === "interrupted by owner";
         return <div className="tnote">{t(byOwner ? "chat.interruptedByYou" : "chat.interrupted", { grant })}</div>;
@@ -180,20 +175,8 @@ function RowView({ it, sessionId, failure, clients, grant, previous }: RowProps)
         if (sameFailure(failure, end.failure)) return null;
         return <FailLine title={t("chat.turnFailed", { turn: end.turn, title: failureTitle(end.failure?.kind ?? 0) })} message={end.failure?.message ?? ""} />;
       }
-      return (
-        <div className="tdone">
-          <Icon name="check" />
-          <span>
-            {t("chat.turnComplete", { turn: end.turn })}
-            {files > 0 ? (
-              <>
-                {" · "}{t("chat.files", { count: files })} <span className="add">+{d?.insertions}</span> <span className="del">−{d?.deletions}</span>
-              </>
-            ) : ` · ${t("chat.noFiles")}`}
-            {took}
-          </span>
-        </div>
-      );
+      // A turn that went well needs no line: the next message shows it went on.
+      return null;
     }
     case "message":
       // A message between the session and another of the owner's agents: who, and what became of it.
@@ -221,12 +204,13 @@ function TimeLine({ at, previous }: { at: Date | undefined; previous: Date | und
   return text ? <div className="tdiv">{text}</div> : null;
 }
 
-/** Copies a message's text; shows on hover. */
-function Copy({ text }: { text: string }) {
+/** Under a message on hover: when it was sent (the owner's), and Copy. */
+function Copy({ text, at }: { text: string; at?: Date }) {
   const { t } = useTranslation("session");
   const [done, setDone] = useState(false);
   return (
     <div className="msg-act">
+      {at && <SentAt at={at} />}
       <button
         className="tb"
         aria-label={t("chat.copy")}
@@ -239,13 +223,17 @@ function Copy({ text }: { text: string }) {
   );
 }
 
+function SentAt({ at }: { at: Date }) {
+  const now = useNow(60_000);
+  return <span className="msg-time">{agoText(at, now)}</span>;
+}
+
 type Calls = Extract<Step, { kind: "tools" }>["calls"];
 
-/** Tool calls in a row as one grey line ("Read 3 files, ran 1 command"), opened to show each; open while one runs or failed. */
+/** Tool calls in a row as one grey line ("Read 3 files, ran 1 command"), opened to show each; folded until the owner opens it. */
 function ToolGroup({ calls, sessionId }: { calls: Calls; sessionId: string }) {
   const { t } = useTranslation("session");
-  const live = calls.some((c) => c.running || c.call.decision === "deny" || c.result?.isError === true);
-  const [open, setOpen] = useState(live);
+  const [open, setOpen] = useState(false);
   const running = calls.some((c) => c.running);
   return (
     <div className={`tgroup ${open ? "open" : ""}`}>
@@ -267,14 +255,14 @@ function ToolGroup({ calls, sessionId }: { calls: Calls; sessionId: string }) {
 
 /**
  * One tool call: what it did, and its output when opened, read whole then
- * when the conversation holds only its start. Failed calls start open; the
- * one running spins.
+ * when the conversation holds only its start. Folded until opened, failed
+ * ones too; the one running spins.
  */
 function ToolRow({ call, result, resultSeq, running, sessionId }: { call: ToolCall; result: ToolResult | undefined; resultSeq?: bigint; running: boolean; sessionId: string }) {
   const { t } = useTranslation("session");
   const denied = call.decision === "deny";
   const failed = denied || result?.isError === true;
-  const [open, setOpen] = useState(failed);
+  const [open, setOpen] = useState(false);
   const whole = useToolOutput(sessionId, result, resultSeq, open);
   // A machine from before whole outputs kept only their start.
   const note = whole.failed ? t("chat.outputUnreadable") : result && !partialOutput(result) && result.truncated ? t("chat.truncated") : "";

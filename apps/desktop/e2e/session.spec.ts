@@ -41,8 +41,9 @@ test("a finished session shows both turns, what the agent did, and that it is do
   await expect(log.getByRole("button", { name: /^已编辑\s*hello\.txt/ }).first()).toBeVisible();
   await expect(log.getByRole("button", { name: /^已运行\s*echo ran > ran\.txt/ })).toBeVisible();
   await expect(log).not.toContainText("Write hello.txt");
-  await expect(log).toContainText("第 1 轮完成 · 2 个文件 +2 −0");
   await expect(log).toContainText("改好了");
+  // A turn that went well ends without a line of its own.
+  await expect(log).not.toContainText("轮完成");
   await expect(page.getByText("这一轮做完了。bot 再发消息时，会在这个会话里接着做。")).toBeVisible();
   await expect(page.getByRole("region", { name: "这一轮" })).toHaveCount(0);
   await snap(page, "session-chat");
@@ -51,16 +52,33 @@ test("a finished session shows both turns, what the agent did, and that it is do
   const shell = log.getByRole("button", { name: /^已运行.*echo ran/ });
   await shell.click();
   await expect(shell).toHaveAttribute("aria-expanded", "true");
+
+  // Copy shows under a message on hover: under the bubble's right edge, under the agent's text on the left.
+  for (const [msg, edge] of [[log.locator(".um").first(), "right"], [log.locator(".am").first(), "left"]] as const) {
+    const copy = msg.getByRole("button", { name: "拷贝" });
+    await page.mouse.move(0, 0);
+    await expect(copy.locator("..")).toHaveCSS("opacity", "0");
+    await msg.hover();
+    await expect(copy.locator("..")).toHaveCSS("opacity", "1");
+    const m = (await msg.boundingBox())!;
+    const c = (await copy.boundingBox())!;
+    expect(c.y).toBeGreaterThanOrEqual(m.y + m.height);
+    expect(Math.abs(edge === "right" ? c.x + c.width - (m.x + m.width) : c.x - m.x)).toBeLessThan(8);
+  }
+  // The owner's message says when it was sent there too, as time ago; the agent's does not.
+  await log.locator(".um").first().hover();
+  await expect(log.locator(".um").first().locator(".msg-act")).toHaveText(/^(刚刚|\d+ 分钟前)$/);
+  await expect(log.locator(".am .msg-time")).toHaveCount(0);
   await app.close();
 });
 
-test("the page is the conversation alone: no tabs, and a finished turn says what it changed without a link", async () => {
+test("the page is the conversation alone: no tabs, and no line or link after a finished turn", async () => {
   const { app, page } = await launch();
   await open(page, "写 hello");
   await expect(page.getByRole("tab")).toHaveCount(0);
   const log = page.getByRole("log", { name: "对话" });
-  await expect(log).toContainText("第 1 轮完成 · 2 个文件 +2 −0");
-  await expect(log).toContainText("第 2 轮完成 · 1 个文件 +1 −1");
+  await expect(log).toContainText("改好了");
+  await expect(log).not.toContainText("轮完成");
   await expect(log.getByRole("button", { name: "查看改动" })).toHaveCount(0);
   await app.close();
 });
@@ -209,6 +227,29 @@ test("a running session shows what it does, and 打断 stops the turn", async ()
   await app.close();
 });
 
+test("tool details stay folded until opened, a failed one and a running one too", async () => {
+  await cli("session", "start", "--project", "demo", "--agent", "gemini", "--title", "命令失败", "--prompt", "shell ls no-such-file\nshell sleep 1800");
+  const { app, page } = await launch();
+  await open(page, "命令失败");
+  const log = page.getByRole("log", { name: "对话" });
+  const step = log.getByRole("button", { name: /运行了 2 条命令/ });
+  await expect(step.getByRole("img", { name: "进行中" })).toBeVisible();
+  await expect(step).toHaveAttribute("aria-expanded", "false");
+  const failed = log.getByRole("button", { name: /^已运行\s*no-such-file/ });
+  await expect(failed).toBeHidden();
+  // Opened, each command shows; the failed one is red, its output still folded.
+  await step.click();
+  await expect(failed.locator("..")).toHaveClass(/\berr\b/);
+  await expect(failed).toHaveAttribute("aria-expanded", "false");
+  await expect(log.getByText("No such file or directory")).toBeHidden();
+  await failed.click();
+  await expect(failed).toHaveAttribute("aria-expanded", "true");
+  await expect(log.getByText("No such file or directory")).toBeVisible();
+  await page.getByRole("region", { name: "这一轮" }).getByRole("button", { name: /打断/ }).click();
+  await expect(page.getByRole("status")).toContainText("已打断「命令失败」");
+  await app.close();
+});
+
 test("a session's conversation appears whole as its page opens, not in pieces", async () => {
   const { app, page } = await launch();
   // Each time the conversation changes, how many rows it has.
@@ -222,7 +263,7 @@ test("a session's conversation appears whole as its page opens, not in pieces", 
   });
   await open(page, "写 hello");
   const log = page.getByRole("log", { name: "对话" });
-  await expect(log).toContainText("第 2 轮完成");
+  await expect(log).toContainText("改好了");
   await page.waitForTimeout(300);
   const rows = await page.evaluate(() => (window as unknown as { __rows: number[] }).__rows);
   expect(rows).toEqual([await log.locator(":scope > *").count()]);
@@ -299,7 +340,7 @@ test("a reply shows as the agent writes it, never as raw Markdown, and stays whe
   await expect(log.locator("pre code")).toHaveText("func main() {}");
   await snap(page, "session-streaming");
   // The stored message replaces it when the turn ends: one message, the same.
-  await expect(log).toContainText("第 1 轮完成");
+  await expect(ctl).toHaveCount(0);
   await expect(agent).toHaveCount(1);
   await expect(agent.locator("strong")).toHaveText("这一段很长很长的加粗文字会跨过好几次刷新");
   expect(await page.evaluate(() => (window as unknown as { __raw: string[] }).__raw)).toEqual([]);
