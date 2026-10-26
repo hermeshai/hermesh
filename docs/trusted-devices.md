@@ -193,18 +193,29 @@ no Touch ID on it.
 3. On the Mac, the app has the main window a trusted device has, with what
    is this Mac's: the sessions agents run on it in the sidebar, opened,
    answered, stopped and archived as on a trusted device, under the names
-   the agents' grants gave them (the machine keeps them as agents reach it);
-   and for the overview, "这台 Mac" (This Mac): its state, its projects
-   (added here with a folder picker, a setting), what runs and the usage.
+   the agents' grants gave them; and the overview, laid out as a trusted
+   device's, its connections this Mac's own: the grants that cover it on
+   the left, this Mac in the middle, its projects on the right, each live
+   session running from the agent that started it to its project. A grant
+   that never came here is drawn faint; one clicked opens a card of what it
+   may do here (full trust, the projects and coding agents it may use, how
+   long it lasts, what it did here), naming no other machine. The relay
+   sends the machine the grants that cover it (`MachineUpdate.grants`),
+   whole, when it connects and whenever one is published or revoked; the
+   machine keeps only those that check out against the owner's root keys,
+   and still lets a client in only by the grant it presents. The center
+   learns nothing new: it holds these grants already. The work Mac does
+   see the ids (not the names) of other machines a grant lists; the app
+   never shows them.
    Its settings are this Mac's as well: "这台 Mac" (This Mac) is its
    machine's page as a trusted device has it for each machine (its coding
    agents, each with its sign-in, default model and projects; renaming,
    pausing), and "账号" (Account) says whose it is and where it connects,
-   and lets it leave. Whatever is this machine's own it manages here, as a
-   trusted device would. hermeshd serves this from the machine in process
-   (`machine.Local`); everything that needs the owner's identity (approving,
-   grants, devices, other machines) is refused, and the app does not offer
-   it.
+   and lets it become a trusted device (5) or leave. Whatever is this
+   machine's own it manages here, as a trusted device would. hermeshd
+   serves this from the machine in process (`machine.Local`); everything
+   that needs the owner's identity (approving, grants, devices, other
+   machines) is refused, and the app does not offer it.
 4. The owner removes it like any machine; the relay then refuses it (only a
    refusal saying the machine or its owner is gone counts), and the Mac says
    so and can leave. It can also leave by itself: it stops the turns under

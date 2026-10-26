@@ -79,22 +79,12 @@
     "setUp": "Set Up This Mac Again"
   },
   "machineOnly": {
-    "title": "This Mac",
-    "online": "Online",
-    "offline": "Offline",
-    "paused": "Paused",
-    "role": "Runs tasks only; approves nothing",
-    "accepting": "Accept new sessions",
-    "projects": "Projects",
-    "noProjects": "No projects yet. Add a folder for agents to work in.",
-    "addProject": "Add Project…",
     "removeProject": "Remove Project",
     "upgrade": "Let This Mac Approve Too…",
     "leave": "Leave Your Hermesh…",
     "leaveTitle": "Leave Your Hermesh?",
     "leaveMessage": "This Mac stops taking tasks at once, and turns under way stop. It leaves your machine list too (if it can’t reach the server now, remove it there from a trusted device). Its projects stay here.",
-    "leaveButton": "Leave",
-    "settings": "This Mac’s Settings"
+    "leaveButton": "Leave"
   },
   "connect": {
     "promise": "Once approved, it gets access you signed and connects straight to your computer with its own key, end-to-end encrypted; the server sees none of it.",

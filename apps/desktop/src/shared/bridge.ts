@@ -13,7 +13,7 @@ export type Command =
   | "newGrant" | "addMachine" | "addProject" | "enterCode"
   | "answer" | "interrupt" | "archive" | "unarchive" | "copySessionId"
   | `open:${string}` | `pairing:${string}`
-  | `searchGrant:${string}` | `searchMachine:${string}` | "undo";
+  | `searchGrant:${string}` | `searchMachine:${string}` | "undo" | "upgrade";
 
 /**
  * What the menu bar panel shows (main/tray.ts): whether this Mac reaches the
@@ -41,6 +41,8 @@ export type Bridge = {
   onSettingsTab(cb: (tab: string) => void): () => void;
   /** Shows the main window with its session list narrowed to a grant (its client id) or a machine. */
   showInMain(filter: { grant: string } | { machine: string }): void;
+  /** Shows the main window joining the owner as a trusted device (a machine only becoming one). */
+  showUpgrade(): void;
   /** Shows a native menu at the pointer; resolves to the chosen item's id. */
   popupMenu(items: MenuItem[]): Promise<string | null>;
   onCommand(cb: (c: Command) => void): () => void;

@@ -761,6 +761,7 @@ func (s *Server) applyRevocations(t *tenant, in *identityv1.RevocationList) erro
 		p.sess.Close()
 	}
 	s.broadcastMachineUpdate(t, &relayv1.MachineUpdate{Update: &relayv1.MachineUpdate_Revocations{Revocations: cur}})
+	s.pushGrants(t)
 	return nil
 }
 
@@ -898,6 +899,59 @@ func (s *Server) clientEntries(t *tenant) ([]*relayv1.ClientEntry, error) {
 		out = append(out, &relayv1.ClientEntry{Grant: sg, Online: online[g.ClientId], MachineIds: liveMachines(g.MachineIds, removed)})
 	}
 	return out, nil
+}
+
+// machineGrants is the grants that cover machineID, unrevoked, for that
+// machine to show who may start sessions on it; nil when they can't be read.
+func (s *Server) machineGrants(t *tenant, machineID string) *relayv1.MachineGrants {
+	grants, err := s.store.Grants(t.ownerID)
+	if err != nil {
+		s.log.Warn("listing grants for a machine", "owner", t.ownerID, "machine", machineID, "err", err)
+		return nil
+	}
+	s.mu.Lock()
+	rev := t.revocations
+	s.mu.Unlock()
+	out := &relayv1.MachineGrants{}
+	for _, sg := range grants {
+		g := &identityv1.Grant{}
+		if identity.Unverified(sg, g) != nil || !identity.Allows(g.MachineIds, machineID) {
+			continue
+		}
+		if isRevoked(rev, &identity.Subject{Kind: identity.SubjectClient, ID: g.ClientId, Grant: g}) != nil {
+			continue
+		}
+		out.Grants = append(out.Grants, sg)
+	}
+	return out
+}
+
+// pushGrants sends each of the owner's connected machines the grants that
+// cover it, after one was published or revoked.
+func (s *Server) pushGrants(t *tenant) {
+	s.mu.Lock()
+	var ids []string
+	for id, set := range t.watchers {
+		if len(set) > 0 {
+			ids = append(ids, id)
+		}
+	}
+	s.mu.Unlock()
+	for _, id := range ids {
+		g := s.machineGrants(t, id)
+		if g == nil {
+			continue
+		}
+		u := &relayv1.MachineUpdate{Update: &relayv1.MachineUpdate_Grants{Grants: g}}
+		s.mu.Lock()
+		for ch := range t.watchers[id] {
+			select {
+			case ch <- u:
+			default:
+			}
+		}
+		s.mu.Unlock()
+	}
 }
 
 // OwnerOnline reports whether one of the owner's devices is connected.

@@ -1,6 +1,5 @@
 import { useEffect } from "react";
 import { useTranslation } from "react-i18next";
-import { ThisMac } from "./MachineOnly";
 import { Overview } from "./Overview";
 import { SearchPalette } from "./Search";
 import { SessionPage } from "./SessionPage";
@@ -40,7 +39,7 @@ export function MainWindow() {
     <div className={`mainwrap ${st.sidebar ? "" : "noside"}`}>
       <Sidebar />
       <section className="content">
-        {session ? <SessionPage s={session} /> : st.status?.machineOnly ? <ThisMac /> : <Overview />}
+        {session ? <SessionPage s={session} /> : <Overview />}
       </section>
       {st.searching && <SearchPalette key={JSON.stringify(st.searchFor)} />}
       <SheetHost />

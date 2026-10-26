@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"connectrpc.com/connect"
+	"google.golang.org/protobuf/proto"
 
 	identityv1 "github.com/hermeshai/hermesh/gen/go/hermesh/identity/v1"
 	localv1 "github.com/hermeshai/hermesh/gen/go/hermesh/local/v1"
@@ -131,6 +132,21 @@ func TestMachineOnlyMac(t *testing.T) {
 	}
 	defer watch.Close()
 
+	// Who may start sessions here, before any came: the owner's agent, granted
+	// all machines, as its signed grant says, scoped to this Mac alone.
+	var bot *localv1.Client
+	eventually(t, 30*time.Second, "the work Mac lists the grant that covers it", func() bool {
+		cs, err := work.ListClients(ctx, &localv1.ListClientsRequest{})
+		if err != nil || len(cs.Clients) != 1 {
+			return false
+		}
+		bot = cs.Clients[0]
+		return true
+	})
+	if bot.Label != "bot" || bot.Revoked || bot.ExpiresAt == nil || bot.LastSeen != nil || !slices.Equal(bot.Spec.GetMachineIds(), []string{st.LocalMachineId}) {
+		t.Fatalf("the grant the work Mac lists: %v", bot)
+	}
+
 	// The agent, granted all machines, runs a session there.
 	eventually(t, time.Minute, "the agent sees the work Mac's project", func() bool {
 		r := w.cli(30*time.Second, "project", "list")
@@ -154,8 +170,8 @@ func TestMachineOnlyMac(t *testing.T) {
 	if !watch.Receive() || len(watch.Msg().Sessions) == 0 {
 		t.Fatal("the watch did not report the session")
 	}
-	// It knows the agent by the name its grant gave it.
-	if cs, err := work.ListClients(ctx, &localv1.ListClientsRequest{}); err != nil || len(cs.Clients) != 1 || cs.Clients[0].Label != "bot" {
+	// It knows the agent by the name its grant gave it, and when it came.
+	if cs, err := work.ListClients(ctx, &localv1.ListClientsRequest{}); err != nil || len(cs.Clients) != 1 || cs.Clients[0].Label != "bot" || cs.Clients[0].LastSeen == nil {
 		t.Fatalf("the agents the work Mac knows: %v %v", cs, err)
 	}
 	// Its own sessions are its to settle, as on a trusted device: it answers…
@@ -174,6 +190,39 @@ func TestMachineOnlyMac(t *testing.T) {
 		t.Fatalf("stop the session on the work Mac: %v", err)
 	}
 	eventually(t, time.Minute, "the session stopped", func() bool { return w.get(long.SessionID).Status == "idle" })
+
+	// The owner narrows the grant to its own Mac: the work Mac no longer
+	// lists it as one that may start sessions here (only by name, for the
+	// sessions it started); widened again, it is back.
+	own, err := w.app.client.GetStatus(ctx, &localv1.GetStatusRequest{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	scope := func(machines ...string) {
+		t.Helper()
+		oc, err := w.app.client.ListClients(ctx, &localv1.ListClientsRequest{})
+		if err != nil {
+			t.Fatal(err)
+		}
+		i := slices.IndexFunc(oc.Clients, func(c *localv1.Client) bool { return c.GrantId == bot.GrantId })
+		spec := proto.Clone(oc.Clients[i].Spec).(*localv1.GrantSpec)
+		spec.MachineIds = machines
+		if _, err := w.app.client.UpdateClient(ctx, &localv1.UpdateClientRequest{GrantId: bot.GrantId, Spec: spec}); err != nil {
+			t.Fatalf("change the grant's machines to %v: %v", machines, err)
+		}
+	}
+	covered := func() *bool {
+		cs, err := work.ListClients(ctx, &localv1.ListClientsRequest{})
+		if err != nil || len(cs.Clients) != 1 {
+			return nil
+		}
+		v := !cs.Clients[0].Revoked
+		return &v
+	}
+	scope(own.LocalMachineId)
+	eventually(t, 30*time.Second, "the narrowed grant no longer covers the work Mac", func() bool { c := covered(); return c != nil && !*c })
+	scope("*")
+	eventually(t, 30*time.Second, "the widened grant covers it again", func() bool { c := covered(); return c != nil && *c })
 
 	// The owner removes it: the work Mac says so, and leaves.
 	if _, err := w.app.client.RemoveMachine(ctx, &localv1.RemoveMachineRequest{MachineId: st.LocalMachineId}); err != nil {

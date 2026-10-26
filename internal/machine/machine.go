@@ -83,6 +83,7 @@ type Machine struct {
 	machineCert *identityv1.Signed
 	machineName string
 	revocations *identityv1.RevocationList
+	grants      []*identityv1.Grant // the grants that cover this machine (grants.go)
 	paused      bool
 	infos       map[string]provider.Info // what the last check of each coding agent found
 	checked     time.Time                // when the last check of all of them ended
@@ -197,6 +198,7 @@ func (n *Machine) loadState() error {
 	}
 	p, _ := n.st.Get(kPaused)
 	n.paused = string(p) == "1"
+	n.loadGrants()
 	return nil
 }
 

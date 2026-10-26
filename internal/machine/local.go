@@ -140,6 +140,9 @@ const kClients = "clients"
 type knownClient struct {
 	Label   string `json:"label"`
 	GrantID string `json:"grant_id"`
+	// Seen: when it last reached this machine (Unix seconds), kept to the
+	// minute or so.
+	Seen int64 `json:"seen,omitempty"`
 }
 
 func (n *Machine) knownClients() map[string]knownClient {
@@ -150,8 +153,8 @@ func (n *Machine) knownClients() map[string]knownClient {
 	return m
 }
 
-// rememberClient keeps an agent's name and grant as its grant says, when
-// they are new.
+// rememberClient keeps an agent's name and grant as its grant says, and
+// when it came, when they are new or the time is a minute old.
 func (n *Machine) rememberClient(clientID string, g *identityv1.Grant) {
 	if g == nil {
 		return
@@ -159,8 +162,9 @@ func (n *Machine) rememberClient(clientID string, g *identityv1.Grant) {
 	n.clientsMu.Lock()
 	defer n.clientsMu.Unlock()
 	m := n.knownClients()
-	c := knownClient{Label: g.ClientLabel, GrantID: g.GrantId}
-	if m[clientID] == c {
+	now := time.Now().Unix()
+	c := knownClient{Label: g.ClientLabel, GrantID: g.GrantId, Seen: now}
+	if old := m[clientID]; old.Label == c.Label && old.GrantID == c.GrantID && now-old.Seen < 60 {
 		return
 	}
 	m[clientID] = c
@@ -168,12 +172,23 @@ func (n *Machine) rememberClient(clientID string, g *identityv1.Grant) {
 	n.st.Set(kClients, b)
 }
 
-// Clients are the agents that reached this machine: id, grant and name.
-func (l *Local) Clients() (ids, grants, labels []string) {
+// KnownClient is an agent that reached this machine.
+type KnownClient struct {
+	ID, GrantID, Label string
+	Seen               time.Time // zero when not recorded (before it was)
+}
+
+// Clients are the agents that reached this machine.
+func (l *Local) Clients() []KnownClient {
+	var out []KnownClient
 	for id, c := range l.n.knownClients() {
-		ids, grants, labels = append(ids, id), append(grants, c.GrantID), append(labels, c.Label)
+		k := KnownClient{ID: id, GrantID: c.GrantID, Label: c.Label}
+		if c.Seen > 0 {
+			k.Seen = time.Unix(c.Seen, 0)
+		}
+		out = append(out, k)
 	}
-	return ids, grants, labels
+	return out
 }
 
 // InterruptActive stops every turn under way (running, or waiting for an
@@ -305,13 +320,13 @@ func (n *Machine) Adopt(chain *identityv1.RootChain, cert *identityv1.Signed) {
 // Unpair forgets the owner, so the machine can pair again; its key,
 // projects and sessions stay.
 func (n *Machine) Unpair() error {
-	for _, k := range []string{kOwnerID, kRelayURL, kMachineCert} {
+	for _, k := range []string{kOwnerID, kRelayURL, kMachineCert, kGrants} {
 		if err := n.st.Set(k, []byte{}); err != nil {
 			return err
 		}
 	}
 	n.mu.Lock()
-	n.ownerID, n.relayURL, n.trust, n.machineCert, n.refused = "", "", nil, nil, false
+	n.ownerID, n.relayURL, n.trust, n.machineCert, n.refused, n.grants = "", "", nil, nil, false, nil
 	n.mu.Unlock()
 	n.audit.Log(AuditRecord{Kind: "unpaired"})
 	return nil

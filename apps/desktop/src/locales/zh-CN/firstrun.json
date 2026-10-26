@@ -79,22 +79,12 @@
     "setUp": "重新设置这台 Mac"
   },
   "machineOnly": {
-    "title": "这台 Mac",
-    "online": "在线",
-    "offline": "离线",
-    "paused": "已暂停",
-    "role": "只执行任务，不能批准",
-    "accepting": "接新会话",
-    "projects": "项目",
-    "noProjects": "还没有项目。添加一个目录，agent 才能在这里干活。",
-    "addProject": "添加项目…",
     "removeProject": "移除项目",
     "upgrade": "让这台 Mac 也能批准…",
     "leave": "离开你的 Hermesh…",
     "leaveTitle": "离开你的 Hermesh？",
     "leaveMessage": "这台 Mac 立即不再接任务，正在进行的会话会被中断。它也会从你的机器列表里移除（现在连不上服务器的话，到可信设备上移除它）。项目设置留在本机。",
-    "leaveButton": "离开",
-    "settings": "这台 Mac 的设置"
+    "leaveButton": "离开"
   },
   "connect": {
     "promise": "批准后，它拿到你签名的授权，用自己的密钥和你的电脑端到端加密直连，服务器看不到任何内容。",

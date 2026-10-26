@@ -687,6 +687,14 @@ public nonisolated struct Hermesh_Relay_V1_MachineUpdate: Sendable {
     set {update = .pushTargets(newValue)}
   }
 
+  public var grants: Hermesh_Relay_V1_MachineGrants {
+    get {
+      if case .grants(let v)? = update {return v}
+      return Hermesh_Relay_V1_MachineGrants()
+    }
+    set {update = .grants(newValue)}
+  }
+
   public var unknownFields = SwiftProtobuf.UnknownStorage()
 
   public nonisolated enum OneOf_Update: Equatable, Sendable {
@@ -694,8 +702,25 @@ public nonisolated struct Hermesh_Relay_V1_MachineUpdate: Sendable {
     case revocations(Hermesh_Identity_V1_RevocationList)
     case machineCert(Hermesh_Identity_V1_Signed)
     case pushTargets(Hermesh_Relay_V1_PushTargets)
+    case grants(Hermesh_Relay_V1_MachineGrants)
 
   }
+
+  public init() {}
+}
+
+/// The owner-signed grants that cover this machine (each verified by it), all
+/// of them: sent when it connects and again whenever one is published or
+/// revoked. A machine shows them as who may start sessions on it; it still
+/// checks the grant each client presents.
+public nonisolated struct Hermesh_Relay_V1_MachineGrants: Sendable {
+  // SwiftProtobuf.Message conformance is added in an extension below. See the
+  // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
+  // methods supported on all messages.
+
+  public var grants: [Hermesh_Identity_V1_Signed] = []
+
+  public var unknownFields = SwiftProtobuf.UnknownStorage()
 
   public init() {}
 }
@@ -2139,7 +2164,7 @@ nonisolated extension Hermesh_Relay_V1_WatchUpdatesRequest: SwiftProtobuf.Messag
 
 nonisolated extension Hermesh_Relay_V1_MachineUpdate: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
   public static let protoMessageName: String = _protobuf_package + ".MachineUpdate"
-  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{3}root_chain\0\u{1}revocations\0\u{3}machine_cert\0\u{3}push_targets\0")
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{3}root_chain\0\u{1}revocations\0\u{3}machine_cert\0\u{3}push_targets\0\u{1}grants\0")
 
   public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
     while let fieldNumber = try decoder.nextFieldNumber() {
@@ -2199,6 +2224,19 @@ nonisolated extension Hermesh_Relay_V1_MachineUpdate: SwiftProtobuf.Message, Swi
           self.update = .pushTargets(v)
         }
       }()
+      case 5: try {
+        var v: Hermesh_Relay_V1_MachineGrants?
+        var hadOneofValue = false
+        if let current = self.update {
+          hadOneofValue = true
+          if case .grants(let m) = current {v = m}
+        }
+        try decoder.decodeSingularMessageField(value: &v)
+        if let v = v {
+          if hadOneofValue {try decoder.handleConflictingOneOf()}
+          self.update = .grants(v)
+        }
+      }()
       default: break
       }
     }
@@ -2226,6 +2264,10 @@ nonisolated extension Hermesh_Relay_V1_MachineUpdate: SwiftProtobuf.Message, Swi
       guard case .pushTargets(let v)? = self.update else { preconditionFailure() }
       try visitor.visitSingularMessageField(value: v, fieldNumber: 4)
     }()
+    case .grants?: try {
+      guard case .grants(let v)? = self.update else { preconditionFailure() }
+      try visitor.visitSingularMessageField(value: v, fieldNumber: 5)
+    }()
     case nil: break
     }
     try unknownFields.traverse(visitor: &visitor)
@@ -2233,6 +2275,36 @@ nonisolated extension Hermesh_Relay_V1_MachineUpdate: SwiftProtobuf.Message, Swi
 
   public static func ==(lhs: Hermesh_Relay_V1_MachineUpdate, rhs: Hermesh_Relay_V1_MachineUpdate) -> Bool {
     if lhs.update != rhs.update {return false}
+    if lhs.unknownFields != rhs.unknownFields {return false}
+    return true
+  }
+}
+
+nonisolated extension Hermesh_Relay_V1_MachineGrants: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
+  public static let protoMessageName: String = _protobuf_package + ".MachineGrants"
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{1}grants\0")
+
+  public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
+    while let fieldNumber = try decoder.nextFieldNumber() {
+      // The use of inline closures is to circumvent an issue where the compiler
+      // allocates stack space for every case branch when no optimizations are
+      // enabled. https://github.com/apple/swift-protobuf/issues/1034
+      switch fieldNumber {
+      case 1: try { try decoder.decodeRepeatedMessageField(value: &self.grants) }()
+      default: break
+      }
+    }
+  }
+
+  public func traverse<V: SwiftProtobuf.Visitor>(visitor: inout V) throws {
+    if !self.grants.isEmpty {
+      try visitor.visitRepeatedMessageField(value: self.grants, fieldNumber: 1)
+    }
+    try unknownFields.traverse(visitor: &visitor)
+  }
+
+  public static func ==(lhs: Hermesh_Relay_V1_MachineGrants, rhs: Hermesh_Relay_V1_MachineGrants) -> Bool {
+    if lhs.grants != rhs.grants {return false}
     if lhs.unknownFields != rhs.unknownFields {return false}
     return true
   }

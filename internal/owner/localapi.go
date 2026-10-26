@@ -8,7 +8,6 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
-	"slices"
 	"strings"
 
 	"connectrpc.com/connect"
@@ -358,17 +357,10 @@ func (l *localService) RemoveProject(ctx context.Context, req *localv1.RemovePro
 
 func (l *localService) ListClients(ctx context.Context, _ *localv1.ListClientsRequest) (*localv1.ListClientsResponse, error) {
 	if m, ok, err := l.o().onlyMachine(); ok {
-		// A machine only knows the agents that reached it, by the names their grants gave them.
 		if err != nil {
 			return nil, err
 		}
-		ids, grants, labels := m.Clients()
-		res := &localv1.ListClientsResponse{}
-		for i := range ids {
-			res.Clients = append(res.Clients, &localv1.Client{ClientId: ids[i], GrantId: grants[i], Label: labels[i]})
-		}
-		slices.SortFunc(res.Clients, func(a, b *localv1.Client) int { return strings.Compare(a.Label, b.Label) })
-		return res, nil
+		return &localv1.ListClientsResponse{Clients: onlyMachineClients(m)}, nil
 	}
 	clients, err := l.o().ListClients(ctx)
 	if err != nil {

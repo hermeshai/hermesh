@@ -381,6 +381,9 @@ func (n *machineControl) WatchUpdates(ctx context.Context, _ *relayv1.WatchUpdat
 		targets.Targets = append(targets.Targets, pt)
 	}
 	stream.Send(&relayv1.MachineUpdate{Update: &relayv1.MachineUpdate_PushTargets{PushTargets: targets}})
+	if g := s.machineGrants(t, p.subject.ID); g != nil {
+		stream.Send(&relayv1.MachineUpdate{Update: &relayv1.MachineUpdate_Grants{Grants: g}})
+	}
 	for {
 		select {
 		case <-ctx.Done():
@@ -519,6 +522,7 @@ func (o *ownerControl) CompletePairing(ctx context.Context, req *relayv1.Complet
 		if err := s.store.PutGrant(t.ownerID, g, req.Credential); err != nil {
 			return nil, err
 		}
+		defer s.pushGrants(t)
 	case identityv1.PairingKind_PAIRING_KIND_DEVICE:
 		// The device's root key is in the chain the approving device
 		// published first; the credential is that chain's newest cert.
@@ -564,7 +568,11 @@ func (o *ownerControl) PublishGrant(ctx context.Context, req *relayv1.PublishGra
 		return nil, errf(connect.CodeInvalidArgument, err.Error())
 	}
 	defer o.s.wakeOwner(t)
-	return &relayv1.PublishGrantResponse{}, o.s.store.PutGrant(t.ownerID, g, req.Grant)
+	if err := o.s.store.PutGrant(t.ownerID, g, req.Grant); err != nil {
+		return nil, err
+	}
+	o.s.pushGrants(t)
+	return &relayv1.PublishGrantResponse{}, nil
 }
 
 func (o *ownerControl) PublishMachineCert(ctx context.Context, req *relayv1.PublishMachineCertRequest) (*relayv1.PublishMachineCertResponse, error) {
