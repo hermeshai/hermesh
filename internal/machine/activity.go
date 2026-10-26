@@ -13,7 +13,8 @@ import (
 // Activity: the sessions that worked on a day, by hour and by the client
 // that started them. A session works while a turn is in progress: the
 // turns kept in turn_usage (when they started and ended), and the turn a
-// session has in progress now (its progress.turn_started_at).
+// session working now has in progress (its progress.turn_started_at; a
+// session that crashed mid-turn keeps it, but works no more).
 
 type turnSpan struct {
 	sessionID  string
@@ -44,6 +45,15 @@ func (s *Store) TurnSpans(since int64) ([]turnSpan, error) {
 
 // doneNow: idle without a failure (a turn stopped on purpose did not
 // fail), or archived.
+func workingNow(r *sessionRow) bool {
+	switch r.Status {
+	case sessionv1.SessionStatus_SESSION_STATUS_QUEUED, sessionv1.SessionStatus_SESSION_STATUS_PREPARING,
+		sessionv1.SessionStatus_SESSION_STATUS_RUNNING, sessionv1.SessionStatus_SESSION_STATUS_WAITING_INPUT:
+		return true
+	}
+	return false
+}
+
 func doneNow(r *sessionRow) bool {
 	switch r.Status {
 	case sessionv1.SessionStatus_SESSION_STATUS_ARCHIVED:
@@ -97,7 +107,7 @@ func (s *Sessions) Activity(p *Principal, req *sessionv1.GetActivityRequest, now
 			continue
 		}
 		byID[r.ID] = r
-		if st := r.Progress.GetTurnStartedAt(); st != nil {
+		if st := r.Progress.GetTurnStartedAt(); st != nil && workingNow(r) {
 			spans[r.ID] = append(spans[r.ID], [2]time.Time{st.AsTime(), now})
 		}
 	}
@@ -117,15 +127,17 @@ func (s *Sessions) Activity(p *Principal, req *sessionv1.GetActivityRequest, now
 		r := byID[id]
 		worked := false
 		for _, sp := range list {
+			// Outside the day: it ended before it began, or began once it
+			// was over (a turn ending at its first instant was the day before).
+			if !sp[0].Before(to) || sp[1].Before(from) || sp[1].Equal(from) && sp[0].Before(from) {
+				continue
+			}
 			a, b := sp[0], sp[1]
 			if a.Before(from) {
 				a = from
 			}
 			if b.After(to) {
 				b = to
-			}
-			if b.Before(a) {
-				continue
 			}
 			worked = true
 			// Each hour of the day the span touches, in loc.

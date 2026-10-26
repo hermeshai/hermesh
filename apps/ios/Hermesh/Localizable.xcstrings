@@ -337,6 +337,16 @@
         }
       }
     },
+    "A project named “%@” is already on this machine, at %@. Choose another name.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "这台机器上已经有叫「%1$@」的项目，在 %2$@。换个名字吧。"
+          }
+        }
+      }
+    },
     "A question expires after 30 minutes if no one answers.": {
       "localizations": {
         "zh-Hans": {
@@ -3873,6 +3883,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "「%@」已成为可信设备"
+          }
+        }
+      }
+    },
+    "“%@” is already for %@": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "「%1$@」已经给 %2$@ 用了"
           }
         }
       }

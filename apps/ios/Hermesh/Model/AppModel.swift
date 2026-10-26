@@ -121,6 +121,8 @@ final class AppModel {
     @ObservationIgnored private var toastTask: Task<Void, Never>?
     @ObservationIgnored private var activityTask: Task<Void, Never>?
     @ObservationIgnored private var activityAsked = Date.distantPast
+    /// The overview is on screen: today's work is kept current only then.
+    @ObservationIgnored var overviewShown = false
     @ObservationIgnored private var active = false
 
     // MARK: Lifecycle
@@ -315,9 +317,10 @@ final class AppModel {
         }
     }
 
-    /// Sessions changed: today's work again, once a minute at most.
+    /// Sessions changed: today's work again, once a minute at most, while
+    /// the overview shows it.
     private func activityChanged() {
-        guard activityTask == nil else { return }
+        guard overviewShown, activityTask == nil else { return }
         activityTask = Task {
             try? await Task.sleep(for: .seconds(max(2, 60 - Date().timeIntervalSince(activityAsked))))
             guard !Task.isCancelled else { return }

@@ -227,6 +227,8 @@ struct AddProjectSheet: View {
     @State private var inPlace = false
     @State private var baseRef = ""
     @State private var busy = false
+    @State private var taken: String?
+    @State private var autoName = ""
 
     var body: some View {
         NavigationStack {
@@ -237,8 +239,12 @@ struct AddProjectSheet: View {
                     TextField("Directory, e.g. ~/code/my-app", text: $path).font(.body.monospaced())
                         .textInputAutocapitalization(.never).autocorrectionDisabled()
                         .onChange(of: path) { _, p in
+                            // The name follows the directory until edited.
                             let last = URL(fileURLWithPath: (p as NSString).expandingTildeInPath).lastPathComponent
-                            if name.isEmpty || name == projectID(String(last.dropLast())) { name = projectID(last) }
+                            if name.isEmpty || name == autoName {
+                                name = projectID(last)
+                                autoName = name
+                            }
                         }
                     TextField("Project name", text: $name).textInputAutocapitalization(.never).autocorrectionDisabled()
                 } footer: {
@@ -258,6 +264,11 @@ struct AddProjectSheet: View {
             }
             .navigationTitle("Add a Project")
             .navigationBarTitleDisplayMode(.inline)
+            .alert("Something went wrong", isPresented: Binding(get: { taken != nil }, set: { if !$0 { taken = nil } })) {
+                Button("OK", role: .cancel) {}
+            } message: {
+                Text(taken ?? "")
+            }
             .toolbar {
                 CloseButton()
                 ToolbarItem(placement: .confirmationAction) {
@@ -286,11 +297,19 @@ struct AddProjectSheet: View {
             defer { busy = false }
             do {
                 let projects = try await model.api?.projects(machine: machineID).projects ?? []
-                if let same = projects.first(where: { $0.path == path }) {
+                let trimmed = { (p: String) in p.count > 1 && p.hasSuffix("/") ? String(p.dropLast()) : p }
+                if let same = projects.first(where: { trimmed($0.path) == trimmed(path) }) {
                     if !same.agents.isEmpty && !same.agents.contains(agent) {
                         try await model.saveProject(same, agents: same.agents + [agent], workspace: same.workspace)
                         model.show(String(localized: "“\(same.projectID)” is now for \(agentTitle(agent)) too"))
+                    } else {
+                        model.show(String(localized: "“\(same.projectID)” is already for \(agentTitle(agent))"))
                     }
+                } else if let taken = projects.first(where: { $0.projectID == name }) {
+                    // Adding it would replace that project (it may be this
+                    // directory, written another way): a name of its own.
+                    self.taken = String(localized: "A project named “\(name)” is already on this machine, at \(taken.path). Choose another name.")
+                    return
                 } else {
                     try await model.addProject(r)
                     model.show(String(localized: "Added project “\(name)”"))

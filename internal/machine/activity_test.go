@@ -5,6 +5,8 @@ import (
 	"time"
 
 	"connectrpc.com/connect"
+	"google.golang.org/protobuf/proto"
+	"google.golang.org/protobuf/types/known/timestamppb"
 
 	identityv1 "github.com/hermeshai/hermesh/gen/go/hermesh/identity/v1"
 	sessionv1 "github.com/hermeshai/hermesh/gen/go/hermesh/session/v1"
@@ -80,7 +82,9 @@ func TestActivity(t *testing.T) {
 
 // A turn counts in every hour of the day it touched, in the caller's time
 // zone: one from the night before from midnight on; a turn kept before
-// start times were, in the hour it ended; one after the day, not at all.
+// start times were, in the hour it ended; one before or after the day, or
+// only touching its edge, not at all; nor a turn a session that crashed
+// still names as in progress.
 func TestActivityHours(t *testing.T) {
 	h := newHarness(t, DefaultLimits())
 	id := h.start("say one")
@@ -95,10 +99,20 @@ func TestActivityHours(t *testing.T) {
 		{101, 0, at(4, 9, 15)},             // kept before start times
 		{102, at(3, 8, 0), at(3, 9, 0)},    // the day before
 		{103, at(5, 1, 0), at(5, 2, 0)},    // the day after
+		{104, at(5, 0, 0), at(5, 0, 30)},   // from the next midnight
+		{105, at(3, 23, 0), at(4, 0, 0)},   // up to this midnight
 	} {
 		if _, err := h.n.st.db.Exec(`INSERT INTO turn_usage(session_id, turn, started_at, ended_at, input_tokens, output_tokens) VALUES(?,?,?,?,0,0)`, id, r[0], r[1], r[2]); err != nil {
 			t.Fatal(err)
 		}
+	}
+	// It crashed in a turn begun at 10:00, and says so still.
+	prog, err := proto.Marshal(&sessionv1.SessionProgress{TurnStartedAt: timestamppb.New(time.Unix(at(4, 10, 0), 0))})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := h.n.st.db.Exec(`UPDATE sessions SET status=?, progress=? WHERE session_id=?`, int(sessionv1.SessionStatus_SESSION_STATUS_CRASHED), prog, id); err != nil {
+		t.Fatal(err)
 	}
 	res, err := h.s.Activity(h.p, &sessionv1.GetActivityRequest{Date: "2026-03-04", TimeZone: "Asia/Shanghai"}, time.Date(2026, 3, 6, 0, 0, 0, 0, sh))
 	if err != nil {
@@ -114,7 +128,7 @@ func TestActivityHours(t *testing.T) {
 	if want := []uint32{0, 1, 2, 9}; len(got) != len(want) || got[0] != 0 || got[1] != 1 || got[2] != 2 || got[3] != 9 {
 		t.Fatalf("hours: %v, want %v", got, want)
 	}
-	if len(res.Clients) != 1 || res.Clients[0].Sessions != 1 || res.Clients[0].Done != 1 {
-		t.Fatalf("clients: %v", res.Clients)
+	if len(res.Clients) != 1 || res.Clients[0].Sessions != 1 || res.Clients[0].Done != 0 {
+		t.Fatalf("clients (it crashed, so not done): %v", res.Clients)
 	}
 }
