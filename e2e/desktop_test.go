@@ -69,7 +69,9 @@ func TestDesktop(t *testing.T) {
 	}
 	dir, _ := filepath.Abs(filepath.Join("apps", "desktop")) // TestMain runs from the repository root
 	out := filepath.Join(t.TempDir(), "app")
-	if r := run(t, []string{"HERMESH_DESKTOP_OUT=" + out}, 5*time.Minute, "pnpm", "--dir", dir, "build"); r.code != 0 {
+	// The app bundles the release notes up to VERSION: the oldest release's
+	// alone, so the tests read the same history however many releases follow.
+	if r := run(t, []string{"HERMESH_DESKTOP_OUT=" + out, "VERSION=0.1.0-rc7"}, 5*time.Minute, "pnpm", "--dir", dir, "build"); r.code != 0 {
 		t.Fatalf("build: %+v", r)
 	}
 	// Electron fetches its binary on first use; do it once, not from every spec at the same time.
