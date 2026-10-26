@@ -13,8 +13,10 @@ enum PairingText {
     }
 }
 
-/// The first page: what needs the owner, what runs, and a line each for
-/// today and usage.
+/// The first page: what needs the owner beyond the sessions (pairings,
+/// grants that end), and how many sessions wait; then the work: today's
+/// sessions, the agents and the machines. The sessions themselves are in
+/// the menu.
 struct OverviewView: View {
     @Environment(AppModel.self) private var model
 
@@ -24,132 +26,129 @@ struct OverviewView: View {
                 UnreachableNotice()
                 attention
                 working
-                VStack(spacing: 10) {
-                    today
-                    usage
-                }
             }
             .padding(.bottom, 40)
         }
         .background(Color(.systemGroupedBackground))
         .navigationTitle("Overview")
-        .navigationSubtitle(model.now.formatted(.dateTime.month().day().weekday(.wide)))
         .rootToolbar()
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) { NewMenu() }
         }
-        .refreshable { await model.loadUsage() }
     }
 
     @ViewBuilder private var attention: some View {
-        let questions = model.sessions.filter { $0.status == .waitingInput }.sorted { $0.updatedDate > $1.updatedDate }
-        let failed = model.sessions.filter { $0.isFailed && $0.status != .archived }
+        let questions = model.sessions.filter { $0.status == .waitingInput }.count
+        let failed = model.sessions.filter { $0.isFailed && $0.status != .archived }.count
         let expiring = model.expiringClients
-        let count = questions.count + model.pairings.count + expiring.count + failed.count
+        let count = model.pairings.count + expiring.count + questions + failed
         if count > 0 {
             Section {
                 VStack(spacing: 10) {
-                    ForEach(questions, id: \.sessionID) { QuestionCard(session: $0) }
                     ForEach(model.pairings, id: \.code) { PairingCard(pairing: $0) }
                     ForEach(expiring, id: \.grantID) { ExpiringCard(client: $0) }
-                    ForEach(failed, id: \.sessionID) { FailedCard(session: $0) }
+                    if questions + failed > 0 {
+                        card {
+                            row(open: { model.drawerOpen = true }) {
+                                Image(systemName: "bubble.left.and.text.bubble.right").foregroundStyle(.secondary).frame(width: 28)
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text("Sessions waiting for you")
+                                    Text(waitingText(questions: questions, failed: failed)).font(.subheadline).foregroundStyle(.secondary)
+                                }
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                                Text("\(questions + failed)").foregroundStyle(.secondary).monospacedDigit()
+                            }
+                        }
+                        .accessibilityIdentifier("sessions-waiting")
+                    }
                 }
                 .padding(.horizontal, 16)
             } header: {
-                SectionTitle(title: "Needs You", count: count)
+                SectionTitle(title: "Needs You")
             }
         }
     }
 
-    @ViewBuilder private var working: some View {
-        let running = model.sessions.filter(\.isActive).sorted { $0.createdDate > $1.createdDate }
-        Section {
-            if running.isEmpty {
-                Resting().padding(.horizontal, 16)
-            } else {
-                VStack(spacing: 0) {
-                    ForEach(running, id: \.sessionID) { s in
-                        Button { model.openSession(s.sessionID) } label: { SessionRow(session: s) }
-                            .buttonStyle(.plain)
-                        if s.sessionID != running.last?.sessionID { Divider().padding(.leading, 52) }
+    private func waitingText(questions: Int, failed: Int) -> String {
+        [questions > 0 ? String(localized: "\(questions) asking") : nil, failed > 0 ? String(localized: "\(failed) failed") : nil]
+            .compactMap { $0 }.joined(separator: " · ")
+    }
+
+    /// Today's sessions in a line, who is working (the agents), where (the
+    /// machines), and the way to the sessions: the menu.
+    private var working: some View {
+        let t = todayStats(model.sessions, now: model.now)
+        let running = model.sessions.filter(\.isActive)
+        let agents = model.clients.filter { !$0.revoked }
+        return Section {
+            VStack(alignment: .leading, spacing: 10) {
+                Text("Today **\(t.sessions)** sessions · **\(running.count)** running · **\(t.done)** done")
+                    .font(.subheadline).foregroundStyle(.secondary)
+                    .padding(.horizontal, 4)
+                    .accessibilityIdentifier("working-today")
+                if !agents.isEmpty {
+                    card {
+                        ForEach(agents, id: \.grantID) { c in
+                            let n = running.filter { $0.createdBy == c.clientID }.count
+                            row(open: { model.path.append(.grant(c.grantID)) }) {
+                                GrantAvatar(label: c.label)
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text(c.label)
+                                    Text(n > 0 ? String(localized: "\(n) running") : String(localized: "Idle")).font(.subheadline).foregroundStyle(.secondary)
+                                }
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                            }
+                            if c.grantID != agents.last?.grantID { Divider().padding(.leading, 56) }
+                        }
                     }
                 }
-                .background(Color(.secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 26, style: .continuous))
-                .padding(.horizontal, 16)
+                if !model.machines.isEmpty {
+                    card {
+                        ForEach(model.machines, id: \.machineID) { m in
+                            row(open: { model.path.append(.machine(m.machineID)) }) {
+                                MachineRow(machine: m, running: running.filter { $0.machineID == m.machineID }.count)
+                                    .frame(maxWidth: .infinity, alignment: .leading)
+                            }
+                            if m.machineID != model.machines.last?.machineID { Divider().padding(.leading, 56) }
+                        }
+                    }
+                }
+                card {
+                    row(open: { model.drawerOpen = true }) {
+                        Text("View All Sessions").frame(maxWidth: .infinity, alignment: .leading)
+                    }
+                }
+                .accessibilityIdentifier("all-sessions")
             }
+            .padding(.horizontal, 16)
         } header: {
             SectionTitle(title: "Working Now")
         }
     }
 
-    private var today: some View {
-        let t = todayStats(model.sessions, now: model.now)
-        return summaryRow("text.bubble") {
-            Text("Today **\(t.sessions)** sessions · **\(t.done)** done · \(Text("\(t.failed) failed").foregroundStyle(t.failed > 0 ? .red : .secondary))")
-        } action: {
-            model.open(.sessions)
-        }
+    private func card(@ViewBuilder _ content: () -> some View) -> some View {
+        VStack(spacing: 0, content: content)
+            .background(Color(.secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 26, style: .continuous))
     }
 
-    /// Usage in a line; its page has the year of days.
-    @ViewBuilder private var usage: some View {
-        if let u = model.usage {
-            summaryRow("chart.bar") {
-                Text("Last 30 days **\(tokensText(u.last30))** tokens · active **\(u.active)** days")
-            } action: {
-                model.path.append(.usage)
-            }
-            .accessibilityIdentifier("usage")
-        }
-    }
-
-    private func summaryRow(_ icon: String, @ViewBuilder text: () -> Text, action: @escaping () -> Void) -> some View {
-        Button(action: action) {
-            HStack(spacing: 10) {
-                Image(systemName: icon).foregroundStyle(.secondary).frame(width: 22)
-                text().frame(maxWidth: .infinity, alignment: .leading)
+    private func row(open: @escaping () -> Void, @ViewBuilder _ content: () -> some View) -> some View {
+        Button(action: open) {
+            HStack(spacing: 12) {
+                content()
                 Image(systemName: "chevron.right").font(.caption.weight(.semibold)).foregroundStyle(.tertiary)
             }
-            .padding(.horizontal, 18).padding(.vertical, 15)
-            .background(Color(.secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 26, style: .continuous))
+            .padding(.horizontal, 16).padding(.vertical, 11)
+            .contentShape(.rect)
         }
         .buttonStyle(.plain)
-        .padding(.horizontal, 16)
-    }
-}
-
-/// Nothing running: the mark at rest, breathing slowly, and what will show here.
-struct Resting: View {
-    @Environment(\.accessibilityReduceMotion) private var still
-    @State private var bright = false
-
-    var body: some View {
-        VStack(spacing: 6) {
-            Mark(size: 34)
-                .opacity(still || bright ? 1 : 0.55)
-                .padding(.bottom, 6)
-                .onAppear { if !still { withAnimation(.easeInOut(duration: 3.2).repeatForever()) { bright = true } } }
-            Text("No sessions are running").font(.subheadline.weight(.semibold))
-            Text("When an agent starts working, its sessions show up here.").font(.footnote).foregroundStyle(.secondary).multilineTextAlignment(.center)
-        }
-        .frame(maxWidth: .infinity)
-        .padding(.vertical, 26).padding(.horizontal, 20)
-        .background(Color(.secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 26, style: .continuous))
-        .accessibilityElement(children: .combine)
-        .accessibilityIdentifier("working-resting")
     }
 }
 
 struct SectionTitle: View {
     let title: LocalizedStringKey
-    var count: Int?
 
     var body: some View {
-        HStack(alignment: .firstTextBaseline, spacing: 6) {
-            Text(title).font(.title3.bold())
-            if let count { Text("\(count)").font(.body).foregroundStyle(.secondary) }
-        }
-        .padding(.horizontal, 20)
+        Text(title).font(.title3.bold()).padding(.horizontal, 20)
     }
 }
 
@@ -249,57 +248,6 @@ struct SessionRow: View {
     }
 }
 
-/// A question waiting for the owner, answerable right here when it is a
-/// single choice.
-struct QuestionCard: View {
-    @Environment(AppModel.self) private var model
-    let session: Session
-    @State private var sending = false
-
-    var body: some View {
-        let q = session.pendingQuestion
-        let item = q?.items.first
-        VStack(alignment: .leading, spacing: 10) {
-            HStack(spacing: 8) {
-                AgentLogo(id: session.agent, size: 22)
-                Text("\(agentTitle(session.agent)) asks · \(session.displayTitle)").font(.subheadline).foregroundStyle(.secondary).lineLimit(1)
-                Spacer(minLength: 4)
-                if let q, q.hasExpiresAt {
-                    Text(minutesLeft(until: q.expiresAt.date, now: model.now)).font(.footnote).foregroundStyle(.orange)
-                }
-            }
-            Text(item?.text ?? "").font(.body.weight(.medium)).fixedSize(horizontal: false, vertical: true)
-            FlowLayout(spacing: 8) {
-                if let q, let item, NoticeText.quickAnswerable(q) {
-                    ForEach(item.options, id: \.label) { o in
-                        Button(o.label) { quickAnswer(item: item, option: o.label) }
-                            .buttonStyle(.bordered).buttonBorderShape(.capsule).disabled(sending)
-                    }
-                }
-                Button("Answer…") { model.openSession(session.sessionID) }
-                    .buttonStyle(.bordered).buttonBorderShape(.capsule)
-            }
-        }
-        .padding(16)
-        .background(Color(.secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 26, style: .continuous))
-        .contentShape(.rect)
-        .onTapGesture { model.openSession(session.sessionID) }
-        .accessibilityElement(children: .contain)
-        .accessibilityIdentifier("question-card")
-    }
-
-    private func quickAnswer(item: Hermesh_Session_V1_QuestionItem, option: String) {
-        sending = true
-        var a = Answer()
-        a.itemID = item.id
-        a.selected = [option]
-        Task {
-            _ = await model.answer(session, answers: [a], decline: false)
-            sending = false
-        }
-    }
-}
-
 struct PairingCard: View {
     @Environment(AppModel.self) private var model
     let pairing: PairingDetails
@@ -339,29 +287,6 @@ struct ExpiringCard: View {
         }
         .padding(16)
         .background(Color(.secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 26, style: .continuous))
-    }
-}
-
-struct FailedCard: View {
-    @Environment(AppModel.self) private var model
-    let session: Session
-
-    var body: some View {
-        Button { model.openSession(session.sessionID) } label: {
-            HStack(spacing: 12) {
-                Circle().fill(.red).frame(width: 9, height: 9).frame(width: 28)
-                VStack(alignment: .leading, spacing: 3) {
-                    Text(session.displayTitle).font(.body.weight(.medium)).lineLimit(1)
-                    Text(session.progress.hasLastFailure ? failureTitle(session.progress.lastFailure.kind) : String(localized: "Failed"))
-                        .font(.footnote).foregroundStyle(.red)
-                }
-                .frame(maxWidth: .infinity, alignment: .leading)
-                Image(systemName: "chevron.right").font(.caption.weight(.semibold)).foregroundStyle(.tertiary)
-            }
-            .padding(16)
-            .background(Color(.secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 26, style: .continuous))
-        }
-        .buttonStyle(.plain)
     }
 }
 
@@ -423,42 +348,5 @@ struct UsageView: View {
             Text(label).font(.caption).foregroundStyle(.secondary)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
-    }
-}
-
-/// Lays children out in rows, wrapping as needed.
-struct FlowLayout: Layout {
-    var spacing: CGFloat = 8
-
-    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
-        let width = proposal.width ?? .infinity
-        var x: CGFloat = 0, y: CGFloat = 0, line: CGFloat = 0, widest: CGFloat = 0
-        for v in subviews {
-            let s = v.sizeThatFits(.unspecified)
-            if x > 0 && x + s.width > width {
-                y += line + spacing
-                x = 0
-                line = 0
-            }
-            x += s.width + spacing
-            line = max(line, s.height)
-            widest = max(widest, x - spacing)
-        }
-        return CGSize(width: min(widest, width), height: y + line)
-    }
-
-    func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
-        var x = bounds.minX, y = bounds.minY, line: CGFloat = 0
-        for v in subviews {
-            let s = v.sizeThatFits(.unspecified)
-            if x > bounds.minX && x + s.width > bounds.maxX {
-                y += line + spacing
-                x = bounds.minX
-                line = 0
-            }
-            v.place(at: CGPoint(x: x, y: y), proposal: ProposedViewSize(s))
-            x += s.width + spacing
-            line = max(line, s.height)
-        }
     }
 }

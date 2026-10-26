@@ -19,7 +19,6 @@ enum Route: Hashable {
     case machine(String) // machine id
     case grantSessions(String) // client id
     case machineSessions(String) // machine id
-    case usage
 }
 
 /// Sheets over everything.

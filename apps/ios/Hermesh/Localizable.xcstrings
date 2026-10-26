@@ -30,16 +30,6 @@
         }
       }
     },
-    "%@ asks · %@": {
-      "localizations": {
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "%1$@ 问你 · %2$@"
-          }
-        }
-      }
-    },
     "%@ is working": {
       "localizations": {
         "zh-Hans": {
@@ -89,6 +79,16 @@
     "%lld": {
       "shouldTranslate": false
     },
+    "%lld asking": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "提问 %lld"
+          }
+        }
+      }
+    },
     "%lld days": {
       "localizations": {
         "zh-Hans": {
@@ -115,6 +115,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "出错 %lld"
+          }
+        }
+      }
+    },
+    "%lld running": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld 个在跑"
           }
         }
       }
@@ -1335,6 +1345,16 @@
         }
       }
     },
+    "Idle": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "空闲"
+          }
+        }
+      }
+    },
     "If no one answers by then, it decides by itself": {
       "localizations": {
         "zh-Hans": {
@@ -1885,16 +1905,6 @@
         }
       }
     },
-    "No sessions are running": {
-      "localizations": {
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "现在没有会话在跑"
-          }
-        }
-      }
-    },
     "No sessions found": {
       "localizations": {
         "zh-Hans": {
@@ -2050,7 +2060,7 @@
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "在线 · %lld 个运行中"
+            "value": "在线 · %lld 个在跑"
           }
         }
       }
@@ -2431,6 +2441,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "%@ 上的会话"
+          }
+        }
+      }
+    },
+    "Sessions waiting for you": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "等你处理的会话"
           }
         }
       }
@@ -2885,12 +2905,12 @@
         }
       }
     },
-    "Today **%lld** sessions · **%lld** done · %@": {
+    "Today **%lld** sessions · **%lld** running · **%lld** done": {
       "localizations": {
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "今天 **%1$lld** 个会话 · 完成 **%2$lld** · %3$@"
+            "value": "今天 **%1$lld** 个会话 · 在跑 **%2$lld** · 完成 **%3$lld**"
           }
         }
       }
@@ -3135,6 +3155,16 @@
         }
       }
     },
+    "View All Sessions": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "查看全部会话"
+          }
+        }
+      }
+    },
     "View Options": {
       "localizations": {
         "zh-Hans": {
@@ -3221,16 +3251,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "机器或 agent 没带你的连接地址时，它的终端会显示一个配对码。输入后，会和其他请求一样弹出批准页面，请核对核对码。"
-          }
-        }
-      }
-    },
-    "When an agent starts working, its sessions show up here.": {
-      "localizations": {
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "agent 一开始干活，会话会出现在这里。"
           }
         }
       }
