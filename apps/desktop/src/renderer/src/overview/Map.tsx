@@ -163,18 +163,6 @@ export function LinkMap({ pick, onPick, now, usage }: { pick: string; onPick: (k
   const only = st.status?.machineOnly === true;
   // A machine only: grants that never came here, and the card of the one picked.
   const unseen = only && L.grants.some((n) => !n.client.lastSeen);
-  const card = only ? L.grants.find((n) => n.key === pick) : undefined;
-  const cardRef = useRef<HTMLDivElement>(null);
-  const [cardH, setCardH] = useState(0);
-  useLayoutEffect(() => setCardH(card ? (cardRef.current?.offsetHeight ?? 0) : 0), [card, st.sessions, st.clients]);
-  const cardTop = card ? card.y + card.h / 2 + 8 : 0;
-  const H = card ? Math.max(L.H, cardTop + cardH + 13) : L.H;
-  useEffect(() => {
-    if (!card) return;
-    const esc = (e: KeyboardEvent) => e.key === "Escape" && onPick("");
-    document.addEventListener("keydown", esc);
-    return () => document.removeEventListener("keydown", esc);
-  }, [card, onPick]);
 
   // Scale the stage to the card's width.
   const box = useRef<HTMLDivElement>(null);
@@ -191,6 +179,37 @@ export function LinkMap({ pick, onPick, now, usage }: { pick: string; onPick: (k
   const [hover, setHover] = useState<string | null>(null);
   const focus = hover ?? (pick || null);
   const toggle = (key: string) => onPick(pick === key ? "" : key);
+  // A machine only: a grant's card shows while the pointer rests on it (or
+  // on the card), and stays while the grant is picked.
+  const [peek, setPeek] = useState<string | null>(null);
+  const overCard = useRef(false);
+  useEffect(() => {
+    if (!only) return;
+    if (hover?.startsWith("g:")) {
+      const t = setTimeout(() => setPeek(hover), 350);
+      return () => clearTimeout(t);
+    }
+    // A moment to move onto the card.
+    const t = setTimeout(() => !overCard.current && setPeek(null), 150);
+    return () => clearTimeout(t);
+  }, [hover, only]);
+  const card = only ? L.grants.find((n) => n.key === (peek ?? pick)) : undefined;
+  const cardRef = useRef<HTMLDivElement>(null);
+  // Esc, or a click anywhere but the card and the grants, unpicks a grant.
+  useEffect(() => {
+    if (!pick.startsWith("g:") || !only) return;
+    const esc = (e: KeyboardEvent) => e.key === "Escape" && onPick("");
+    const away = (e: MouseEvent) => {
+      const el = e.target as Element;
+      if (!cardRef.current?.contains(el) && !el.closest?.(".lm-node.g")) onPick("");
+    };
+    document.addEventListener("keydown", esc);
+    document.addEventListener("mousedown", away);
+    return () => {
+      document.removeEventListener("keydown", esc);
+      document.removeEventListener("mousedown", away);
+    };
+  }, [pick, only, onPick]);
   // A grant in focus also shows where it may work: the machines and projects its grant allows.
   const reach = useMemo(() => {
     const c = focus?.startsWith("g:") ? st.clients.find((x) => grantKey(x.clientId) === focus) : undefined;
@@ -256,14 +275,19 @@ export function LinkMap({ pick, onPick, now, usage }: { pick: string; onPick: (k
     return () => anims.forEach((a) => a.cancel());
   }, [flights]);
 
+  // The card floats over the map and what follows it, under its grant (the
+  // stage is scaled about its top centre), so the map keeps its height.
+  const b = box.current;
+  const cardAt = card && b ? { left: b.offsetLeft + b.clientWidth / 2 + (card.x - W / 2) * scale, top: b.offsetTop + (card.y + card.h / 2 + 8) * scale } : null;
   return (
+    <div className="lmap-wrap">
     <div className={`lmap ${lit ? "focus" : ""}`}>
       <div className="lmap-top">
         <b>{t("map.title")}</b>
         <Today now={now} usage={usage} running={running.length > 0} />
       </div>
-      <div className="lmap-box" ref={box} style={{ height: H * scale }}>
-        <div className="lmap-stage" style={{ width: W, height: H, transform: `scale(${scale})` }}>
+      <div className="lmap-box" ref={box} style={{ height: L.H * scale }}>
+        <div className="lmap-stage" style={{ width: W, height: L.H, transform: `scale(${scale})` }}>
           <div
             className={`lmap-aura ${running.length ? "on" : ""}`}
             style={{ left: L.hub.x - HUB.s - 22, top: L.hub.y - HUB.s - 16, width: (HUB.s + 22) * 2, height: (HUB.s + 16) * 2 }}
@@ -385,8 +409,6 @@ export function LinkMap({ pick, onPick, now, usage }: { pick: string; onPick: (k
             ),
           )}
 
-          {card && <ClientCard ref={cardRef} c={card.client} now={now} style={{ left: card.x, top: cardTop }} />}
-
           {/* A question's ping, under its dots (drawn by the compositor, as the comets). */}
           <div className="lmap-pings" aria-hidden="true">
             {L.paths.map((p) => {
@@ -429,6 +451,20 @@ export function LinkMap({ pick, onPick, now, usage }: { pick: string; onPick: (k
         {unseen && <span><i className="off" />{t("map.notYet")}</span>}
         {live.length > 0 && <span className="hint">{pick ? t("map.hintPicked") : t("map.hintPick")}</span>}
       </div>
+    </div>
+    {card && cardAt && (
+      <ClientCard
+        ref={cardRef}
+        c={card.client}
+        now={now}
+        style={cardAt}
+        onMouseEnter={() => (overCard.current = true)}
+        onMouseLeave={() => {
+          overCard.current = false;
+          setPeek(null);
+        }}
+      />
+    )}
     </div>
   );
 }
@@ -510,7 +546,9 @@ function ThisMacHub() {
  * node: how much it is trusted, the projects and coding agents it may use
  * here, how long, and what it did here.
  */
-function ClientCard({ c, now, style, ref }: { c: Client; now: Date; style: CSSProperties; ref: Ref<HTMLDivElement> }) {
+function ClientCard({ c, now, style, ref, onMouseEnter, onMouseLeave }: {
+  c: Client; now: Date; style: CSSProperties; ref: Ref<HTMLDivElement>; onMouseEnter: () => void; onMouseLeave: () => void;
+}) {
   const { t } = useTranslation("overview");
   const st = useStore();
   const until = dateOf(c.expiresAt);
@@ -521,7 +559,7 @@ function ClientCard({ c, now, style, ref }: { c: Client; now: Date; style: CSSPr
   const chips = (all: boolean, items: string[], allText: string) =>
     all || items.length === 0 ? <span>{allText}</span> : <span className="lm-chips">{items.map((x) => <em key={x}>{x}</em>)}</span>;
   return (
-    <div className="lm-card" ref={ref} style={style} role="dialog" aria-label={c.label} onClick={(e) => e.stopPropagation()}>
+    <div className="lm-card" ref={ref} style={style} role="dialog" aria-label={c.label} onMouseEnter={onMouseEnter} onMouseLeave={onMouseLeave}>
       <div className="lm-card-h">
         <GrantIcon label={c.label} />
         <b>{c.label}</b>
