@@ -25,8 +25,12 @@ struct OverviewView: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 26) {
                 UnreachableNotice()
-                todo
-                working
+                if model.hasWorld {
+                    todo
+                    working
+                } else { // nothing kept yet: the first launch, or after joining
+                    PageLoader(text: "Reading your machines…")
+                }
             }
             .padding(.bottom, 40)
         }

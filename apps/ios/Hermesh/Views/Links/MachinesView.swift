@@ -18,7 +18,9 @@ struct MachinesView: View {
                     NavigationLink(value: Route.machine(m.machineID)) { MachineRow(machine: m, trusted: trusted.contains(m.machineID)) }
                         .accessibilityIdentifier("machine-\(m.machineName)")
                 }
-                if model.machines.isEmpty { Text("No machines yet.").foregroundStyle(.secondary) }
+                if model.machines.isEmpty {
+                    if model.hasWorld { Text("No machines yet.").foregroundStyle(.secondary) } else { PageLoader(text: "Reading your machines…") }
+                }
             } footer: {
                 if !trusted.isEmpty || !others.isEmpty {
                     Text("\(Image(systemName: "checkmark.shield.fill")) A trusted device: it can approve requests to connect.")
@@ -142,7 +144,8 @@ struct MachineRow: View {
 struct MachineView: View {
     @Environment(AppModel.self) private var model
     let id: String
-    @State private var projects: [Project] = []
+    /// Its projects, as the Watch keeps them.
+    private var projects: [Project] { model.projects.filter { $0.machineID == id }.sorted { $0.projectID < $1.projectID } }
     @State private var details = false
     @State private var renaming = false
     @State private var newName = ""
@@ -157,11 +160,6 @@ struct MachineView: View {
                 ContentUnavailableView("This machine is gone", systemImage: "desktopcomputer")
             }
         }
-        .task { await load() }
-    }
-
-    private func load() async {
-        projects = (try? await model.api?.projects(machine: id))?.projects ?? []
     }
 
     private func content(_ m: Machine) -> some View {
@@ -242,7 +240,6 @@ struct MachineView: View {
         .navigationBarTitleDisplayMode(.inline)
         .refreshable {
             try? await model.api?.checkAgents()
-            await load()
         }
         .alert("Rename this machine", isPresented: $renaming) {
             TextField("Machine name", text: $newName).textInputAutocapitalization(.never).autocorrectionDisabled()
@@ -268,8 +265,7 @@ struct MachineView: View {
                     Task {
                         do {
                             try await model.removeProject(machine: m.machineID, project: p.projectID)
-                        } catch { model.report(error) }
-                        await load()
+                        } catch { model.report(error) } // the Watch brings the change
                     }
                 }
             }

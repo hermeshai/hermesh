@@ -560,6 +560,10 @@ message Machine {
   // Why its sessions and projects cannot be read now ("offline", or the
   // error); empty while they can. Set in Watch only.
   string unreachable = 9;
+  // Online, and its sessions and projects are being read: being connected
+  // to, or catching up after a while away. What is shown of it meanwhile
+  // is last known. Set in Watch only.
+  bool syncing = 10;
 }
 
 message ListMachinesRequest {}

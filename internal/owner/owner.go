@@ -70,6 +70,7 @@ type Owner struct {
 	device     *identity.SoftwareKey
 	deviceCert *identityv1.Signed
 	client     *peer.Client
+	dialing    *relayDial // the dial to the relay under way, if any
 	relayInfo  *relayv1.GetInfoResponse
 	join       *pendingJoin // this device asking to join an owner
 	pendingMu  sync.Mutex   // pending names (pendingNames)
@@ -82,9 +83,15 @@ type Owner struct {
 	// lastMachines: the machines as the relay last listed them, shown
 	// offline while the relay cannot be reached.
 	lastMachines []*localv1.Machine
-	localCancel  context.CancelFunc
-	localDone    chan struct{} // closed once the local machine stopped and closed
-	runCtx       context.Context
+	// lastClients: the agents as the relay last listed them, shown while it
+	// cannot be reached.
+	lastClients []*localv1.Client
+	// seen: the ids of the other machines the relay last listed online,
+	// comma-separated (kSeenOnline).
+	seen        string
+	localCancel context.CancelFunc
+	localDone   chan struct{} // closed once the local machine stopped and closed
+	runCtx      context.Context
 }
 
 const (
@@ -96,6 +103,11 @@ const (
 	kLocalMachine = "local_machine"
 	kSignedOut    = "signed_out"
 	kAccount      = "account"
+	kSeenOnline   = "seen_online"
+	// kLastMachines and kLastClients: what the relay last listed, so that a
+	// start without the relay still shows them (keepListed, listClients).
+	kLastMachines = "last_machines"
+	kLastClients  = "last_clients"
 	// kMachineDir: where this profile's machine is, when not in its own
 	// directory (a device's machine from before profiles, profiles.go).
 	kMachineDir = "machine_dir"
@@ -119,6 +131,20 @@ func openProfile(cfg Config, hub *signHub) (*Owner, error) {
 func (o *Owner) load() error {
 	account, _ := o.st.get(kAccount)
 	o.account = string(account)
+	seen, _ := o.st.get(kSeenOnline)
+	o.seen = string(seen)
+	if b, _ := o.st.get(kLastMachines); len(b) > 0 {
+		var kept localv1.ListMachinesResponse
+		if proto.Unmarshal(b, &kept) == nil {
+			o.lastMachines = kept.Machines
+		}
+	}
+	if b, _ := o.st.get(kLastClients); len(b) > 0 {
+		var kept localv1.ListClientsResponse
+		if proto.Unmarshal(b, &kept) == nil {
+			o.lastClients = kept.Clients
+		}
+	}
 	id, _ := o.st.get(kOwnerID)
 	if len(id) == 0 {
 		return nil
@@ -192,9 +218,11 @@ func (o *Owner) stayConnected(ctx context.Context) {
 	backoff := time.Second
 	for ctx.Err() == nil {
 		var done <-chan struct{}
+		var c *peer.Client
 		if o.Initialized() {
-			if c, err := o.relay(ctx); err == nil {
-				done, backoff = c.Done(), time.Second
+			var err error
+			if c, err = o.relay(ctx); err == nil {
+				done = c.Done()
 			} else {
 				o.log.Debug("relay unreachable", "err", err, "retry_in", backoff)
 			}
@@ -202,9 +230,14 @@ func (o *Owner) stayConnected(ctx context.Context) {
 		if done != nil {
 			select {
 			case <-ctx.Done():
+				continue
 			case <-done:
 			}
-			continue
+			if err := c.Refused(); err == nil {
+				backoff = time.Second
+				continue
+			}
+			go o.checkRemoved() // refused after admission was pipelined: wait as for a failed dial
 		}
 		select {
 		case <-ctx.Done():
@@ -240,36 +273,101 @@ func (o *Owner) credentials() *identityv1.Credentials {
 	return &identityv1.Credentials{RootChain: o.trust.RootChain(), Subject: &identityv1.Credentials_DeviceCert{DeviceCert: o.deviceCert}}
 }
 
-// relay returns the owner's relay connection, (re)connecting as needed.
+// relayDial is a dial to the relay under way; err is set before done
+// closes. again: it ended because its caller left, so a caller that waited
+// dials itself.
+type relayDial struct {
+	done  chan struct{}
+	err   error
+	again bool
+}
+
+// relay returns the owner's relay connection, (re)connecting as needed. It
+// dials without o.mu, so that what only reads (the status, the lists the
+// replica holds) never waits on the network; a caller that comes while a
+// dial is under way waits for that one. Admission is pipelined: the first
+// calls, and end-to-end handshakes with the machines last seen online, go
+// out with it (stayConnected notices a refusal).
 func (o *Owner) relay(ctx context.Context) (*peer.Client, error) {
 	if err := o.requireInit(); err != nil {
 		return nil, err
 	}
+	for {
+		o.mu.Lock()
+		if c := o.client; c != nil {
+			select {
+			case <-c.Done():
+				o.client = nil
+			default:
+				o.mu.Unlock()
+				return c, nil
+			}
+		}
+		if w := o.dialing; w != nil {
+			o.mu.Unlock()
+			select {
+			case <-w.done:
+				if w.err != nil && !w.again {
+					return nil, w.err
+				}
+				continue
+			case <-ctx.Done():
+				return nil, ctx.Err()
+			}
+		}
+		w := &relayDial{done: make(chan struct{})}
+		o.dialing = w
+		relayURL := o.relayURL
+		d := &peer.Dialer{RelayURL: relayURL, Role: relayv1.Role_ROLE_OWNER, Key: o.device, Trust: o.trust, HTTPClient: o.cfg.HTTPClient, Pipeline: true,
+			Credentials: func() *identityv1.Credentials {
+				return &identityv1.Credentials{RootChain: o.trust.RootChain(), Subject: &identityv1.Credentials_DeviceCert{DeviceCert: o.deviceCert}}
+			}}
+		o.mu.Unlock()
+		c, err := d.Connect(ctx)
+		o.mu.Lock()
+		o.dialing = nil
+		if err == nil {
+			o.client = c
+		}
+		o.mu.Unlock()
+		if err != nil {
+			if errors.Is(err, transport.ErrAdmission) {
+				go o.checkRemoved()
+			}
+			w.err, w.again = connect.NewError(connect.CodeUnavailable, fmt.Errorf("relay unreachable: %w", err)), ctx.Err() != nil
+			close(w.done)
+			return nil, w.err
+		}
+		close(w.done)
+		go o.fetchRelayInfo(relayURL)
+		go o.refreshCards()
+		go func() { // admitted: not removed (with admission pipelined, only once the relay said so)
+			actx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+			defer cancel()
+			if c.Admitted(actx) == nil {
+				o.mu.Lock()
+				if o.client == c {
+					o.removed = false
+				}
+				o.mu.Unlock()
+			}
+		}()
+		c.Warm(o.seenOnline())
+		return c, nil
+	}
+}
+
+// dropRelay closes the relay connection, so the next call dials a new one:
+// after the app was suspended, or the network changed, the old one may be
+// dead without anything having noticed yet.
+func (o *Owner) dropRelay() {
 	o.mu.Lock()
-	defer o.mu.Unlock()
-	if o.client != nil {
-		select {
-		case <-o.client.Done():
-			o.client = nil
-		default:
-			return o.client, nil
-		}
+	c := o.client
+	o.client = nil
+	o.mu.Unlock()
+	if c != nil {
+		c.Close()
 	}
-	d := &peer.Dialer{RelayURL: o.relayURL, Role: relayv1.Role_ROLE_OWNER, Key: o.device, Trust: o.trust, HTTPClient: o.cfg.HTTPClient,
-		Credentials: func() *identityv1.Credentials {
-			return &identityv1.Credentials{RootChain: o.trust.RootChain(), Subject: &identityv1.Credentials_DeviceCert{DeviceCert: o.deviceCert}}
-		}}
-	c, err := d.Connect(ctx)
-	if err != nil {
-		if errors.Is(err, transport.ErrAdmission) {
-			go o.checkRemoved()
-		}
-		return nil, connect.NewError(connect.CodeUnavailable, fmt.Errorf("relay unreachable: %w", err))
-	}
-	o.client, o.removed = c, false
-	go o.fetchRelayInfo(o.relayURL)
-	go o.refreshCards()
-	return c, nil
 }
 
 // fetchRelayInfo learns whether the relay is a hosted center (for Status).
@@ -1026,6 +1124,9 @@ func (o *Owner) machines(ctx context.Context) ([]*localv1.Machine, error) {
 	o.rep.mu.Lock()
 	listed, err := listed(&s.machines)
 	o.rep.mu.Unlock()
+	if held(ctx) {
+		err = nil // a screen shows them as last listed, offline (keepListed), whether or not the relay answers now
+	}
 	return o.withLocal(listed, err)
 }
 
@@ -1040,11 +1141,25 @@ func (o *Owner) listedMachines(ctx context.Context) ([]*localv1.Machine, error) 
 func (o *Owner) keepListed(listed []*localv1.Machine, err error) ([]*localv1.Machine, error) {
 	o.mu.Lock()
 	if err == nil {
-		o.lastMachines = nil
+		var off []*localv1.Machine
+		var online []string
 		for _, m := range listed {
-			off := proto.CloneOf(m)
-			off.Online = false
-			o.lastMachines = append(o.lastMachines, off)
+			x := proto.CloneOf(m)
+			x.Online = false
+			off = append(off, x)
+			if m.Online && !m.Local {
+				online = append(online, m.MachineId)
+			}
+		}
+		kept := &localv1.ListMachinesResponse{Machines: off}
+		if !proto.Equal(kept, &localv1.ListMachinesResponse{Machines: o.lastMachines}) {
+			b, _ := proto.Marshal(kept)
+			o.st.set(kLastMachines, b)
+		}
+		o.lastMachines = off
+		if v := strings.Join(online, ","); v != o.seen {
+			o.seen = v
+			o.st.set(kSeenOnline, []byte(v)) // for the next start's first connection (seenOnline)
 		}
 	} else {
 		for _, m := range o.lastMachines {
@@ -1053,6 +1168,18 @@ func (o *Owner) keepListed(listed []*localv1.Machine, err error) ([]*localv1.Mac
 	}
 	o.mu.Unlock()
 	return listed, err
+}
+
+// seenOnline is the other machines the relay last listed online (kept from
+// the last start too): a new relay connection begins the end-to-end
+// handshakes with them at once, ahead of the list that names them.
+func (o *Owner) seenOnline() []string {
+	o.mu.Lock()
+	defer o.mu.Unlock()
+	if o.seen == "" {
+		return nil
+	}
+	return strings.Split(o.seen, ",")
 }
 
 // withLocal adds this device's own machine to the machines the relay
@@ -1275,9 +1402,10 @@ func (o *Owner) ListProjects(ctx context.Context, machineID string) (*localv1.Li
 	var ask []*localv1.Machine
 	o.rep.feeds(func(feeds map[string]*feed) {
 		for _, n := range on {
-			if f := feeds[n.MachineId]; !n.Local && f != nil && f.ready {
-				out.Projects = append(out.Projects, f.projects...)
-			} else {
+			switch f := feeds[n.MachineId]; {
+			case !n.Local && f != nil && (f.ready || held(ctx)):
+				out.Projects = append(out.Projects, f.projects...) // as last known, when not followed now
+			case n.Local || !held(ctx):
 				ask = append(ask, n)
 			}
 		}
@@ -1326,8 +1454,15 @@ func (o *Owner) ListClients(ctx context.Context) ([]*localv1.Client, error) {
 		return nil, err
 	}
 	o.rep.mu.Lock()
-	defer o.rep.mu.Unlock()
-	return listed(&s.clients)
+	list, err := listed(&s.clients)
+	o.rep.mu.Unlock()
+	if err != nil && held(ctx) { // a screen shows them as last listed while the relay is away
+		if len(list) == 0 {
+			list = o.keptClients()
+		}
+		err = nil
+	}
+	return list, err
 }
 
 // listClients asks the relay for the owner's agents.
@@ -1340,7 +1475,32 @@ func (o *Owner) listClients(ctx context.Context) ([]*localv1.Client, error) {
 	if err != nil {
 		return nil, err
 	}
-	return o.clientsFrom(res), nil
+	return o.keepClients(o.clientsFrom(res)), nil
+}
+
+// keepClients keeps the agents the relay listed, for when it cannot be
+// reached (lastClients).
+func (o *Owner) keepClients(list []*localv1.Client) []*localv1.Client {
+	o.mu.Lock()
+	defer o.mu.Unlock()
+	kept := &localv1.ListClientsResponse{Clients: list}
+	if !proto.Equal(kept, &localv1.ListClientsResponse{Clients: o.lastClients}) {
+		b, _ := proto.Marshal(kept)
+		o.st.set(kLastClients, b)
+		o.lastClients = list
+	}
+	return list
+}
+
+// keptClients is the agents as the relay last listed them.
+func (o *Owner) keptClients() []*localv1.Client {
+	o.mu.Lock()
+	defer o.mu.Unlock()
+	out := make([]*localv1.Client, 0, len(o.lastClients))
+	for _, c := range o.lastClients {
+		out = append(out, proto.CloneOf(c))
+	}
+	return out
 }
 
 // clientsFrom is the agents the relay listed (ListClients, or WatchOwner)
@@ -1502,6 +1662,9 @@ func (o *Owner) ListSessions(ctx context.Context, req *localv1.ListSessionsReque
 	o.rep.feeds(func(feeds map[string]*feed) {
 		for _, n := range on {
 			f := feeds[n.MachineId]
+			if !n.Local && held(ctx) && (f == nil || !f.ready) {
+				continue // a screen's: those it does not follow now come with what it held of them
+			}
 			if n.Local || f == nil || !f.ready || !basic || req.Before != nil || f.more && (req.Limit == 0 || req.Limit > keepSessions) {
 				ask = append(ask, n)
 				continue

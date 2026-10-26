@@ -81,8 +81,9 @@ func (c *Core) Resume() {
 	}()
 }
 
-// Pause closes the relay connection (the app went to the background); a
-// call to LocalService still reconnects when it needs the relay.
+// Pause closes the relay connection and stops following the machines (the
+// app went to the background); a call to LocalService still reconnects when
+// it needs the relay.
 func (c *Core) Pause() {
 	c.mu.Lock()
 	cancel, done := c.cancel, c.done
@@ -92,7 +93,12 @@ func (c *Core) Pause() {
 		cancel()
 		<-done
 	}
+	c.o.Pause()
 }
+
+// Reconnect connects to the relay and the machines again: the network
+// changed (Wi-Fi to cellular, say).
+func (c *Core) Reconnect() { c.o.Reconnect() }
 
 func (c *Core) authorize(next http.Handler) http.Handler {
 	want := []byte("Bearer " + c.token)

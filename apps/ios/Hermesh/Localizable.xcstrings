@@ -847,6 +847,16 @@
         }
       }
     },
+    "Can’t reach Hermesh; showing what was last seen": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "暂时连不上 Hermesh，显示的是上次看到的内容"
+          }
+        }
+      }
+    },
     "Change What It Can Use…": {
       "localizations": {
         "zh-Hans": {
@@ -1013,6 +1023,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "已连接"
+          }
+        }
+      }
+    },
+    "Connecting to Hermesh…": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "正在连接 Hermesh…"
           }
         }
       }
@@ -2490,6 +2510,66 @@
         }
       }
     },
+    "Reading the changes…": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "正在读取改动…"
+          }
+        }
+      }
+    },
+    "Reading the conversation…": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "正在读取对话…"
+          }
+        }
+      }
+    },
+    "Reading the session…": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "正在读取会话…"
+          }
+        }
+      }
+    },
+    "Reading your grants…": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "正在读取你的授权…"
+          }
+        }
+      }
+    },
+    "Reading your machines…": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "正在读取你的机器…"
+          }
+        }
+      }
+    },
+    "Reading your sessions…": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "正在读取你的会话…"
+          }
+        }
+      }
+    },
     "Reasoning Effort": {
       "localizations": {
         "zh-Hans": {
@@ -3100,6 +3180,16 @@
         }
       }
     },
+    "The Hermesh core isn’t answering. Quit the app and open it again.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Hermesh 内核没有响应。请退出 App 后重新打开。"
+          }
+        }
+      }
+    },
     "The agent asked: %@": {
       "localizations": {
         "zh-Hans": {
@@ -3526,6 +3616,26 @@
           "stringUnit": {
             "state": "translated",
             "value": "撤销"
+          }
+        }
+      }
+    },
+    "Updating from %@…": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "正在从 %@ 更新…"
+          }
+        }
+      }
+    },
+    "Updating from %lld machines…": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "正在从 %lld 台机器更新…"
           }
         }
       }

@@ -28,6 +28,7 @@ private struct PageView: View {
         NavigationStack(path: $model.path) {
             rootPage
                 .navigationDestination(for: Route.self) { route in
+                    Group {
                     switch route {
                     case .session(let id): SessionView(id: id)
                     case .grant(let id): GrantView(id: id)
@@ -36,6 +37,8 @@ private struct PageView: View {
                     case .grantSessions(let id): ScopedSessionsView(filter: SessionFilter(grant: id), title: String(localized: "“\(model.clients.first { $0.clientID == id }?.label ?? "")” Sessions"))
                     case .machineSessions(let id): ScopedSessionsView(filter: SessionFilter(machine: id), title: String(localized: "Sessions on \(model.machineName(id))"))
                     }
+                    }
+                    .syncLine()
                 }
         }
         .overlay(alignment: .bottom) {
@@ -54,7 +57,7 @@ private struct PageView: View {
         case .grants: GrantsView()
         case .machines: MachinesView()
         case .sessions: SessionsView()
-        case .session(let id): SessionView(id: id)
+        case .session(let id): SessionView(id: id).syncLine() // its title is in the bar
         }
     }
 }
@@ -319,10 +322,14 @@ struct MenuButton: View {
 }
 
 extension View {
-    /// The menu button on a root page.
+    /// The menu button on a root page, and the sync line in its subtitle's
+    /// place: under the large title, and in the bar once the title is small
+    /// (a large-title page shows nothing in the middle of its bar).
     func rootToolbar() -> some View {
         toolbar {
             ToolbarItem(placement: .topBarLeading) { MenuButton() }
+            ToolbarItem(placement: .largeSubtitle) { SyncLine(inBar: true).frame(maxWidth: .infinity, alignment: .leading) }
+            ToolbarItem(placement: .subtitle) { SyncLine(inBar: true) }
         }
     }
 }

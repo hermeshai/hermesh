@@ -288,6 +288,21 @@ func newIPhoneControl(t *testing.T, w *ownerMac, sessions map[string]string) str
 		json.NewEncoder(rw).Encode(v)
 	}
 	mux.HandleFunc("GET /address", func(rw http.ResponseWriter, _ *http.Request) { reply(rw, map[string]string{"address": w.addr}) })
+	// The relay down (up=0) or back (up=1): the app shows what it kept.
+	mux.HandleFunc("POST /relay", func(rw http.ResponseWriter, r *http.Request) {
+		if r.URL.Query().Get("up") == "1" {
+			w.startRelay()
+			// The Mac back on it too (it retries with a backoff): a notice
+			// it raises while away is not sent.
+			eventually(t, 60*time.Second, "the machine is back on the relay", func() bool {
+				r := w.cli(30*time.Second, "project", "list")
+				return r.code == 0 && strings.Contains(r.stdout, "owner-mac/demo")
+			})
+		} else {
+			w.relay.stop()
+		}
+		reply(rw, map[string]string{})
+	})
 	mux.HandleFunc("GET /digits", func(rw http.ResponseWriter, _ *http.Request) {
 		mu.Lock()
 		defer mu.Unlock()

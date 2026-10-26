@@ -70,7 +70,7 @@ struct SessionInfoSheet: View {
                         } else if failed {
                             Text("The changes can’t be fetched right now.").foregroundStyle(.secondary)
                         } else {
-                            ProgressView()
+                            InlineLoader(text: "Reading the changes…")
                         }
                     } header: {
                         Text(files.map { $0.count == 1 ? String(localized: "Changes · 1 file") : String(localized: "Changes · \($0.count) files") } ?? String(localized: "Changes"))
@@ -300,7 +300,6 @@ struct PairingSheet: View {
     @Environment(\.dismiss) private var dismiss
     let code: String
     @State private var scope = ScopeChoice()
-    @State private var projects: [Project]?
     @State private var machineName = ""
     @State private var busy = false
     @State private var done: String?
@@ -328,7 +327,6 @@ struct PairingSheet: View {
         }
         .presentationDetents([.large])
         .task {
-            if let p = pairing, p.kind == .client { projects = (try? await model.api?.projects())?.projects ?? [] }
             if let p = pairing { machineName = p.label }
         }
     }
@@ -349,7 +347,7 @@ struct PairingSheet: View {
             }
             switch p.kind {
             case .client:
-                ScopeRows(scope: $scope, projects: projects)
+                ScopeRows(scope: $scope, projects: model.projects)
                 Section {
                 } footer: {
                     VStack(alignment: .leading, spacing: 6) {
@@ -476,14 +474,13 @@ struct ScopeSheet: View {
     @Environment(\.dismiss) private var dismiss
     let grantID: String
     @State private var scope = ScopeChoice()
-    @State private var projects: [Project]?
     @State private var busy = false
 
     var body: some View {
         NavigationStack {
             if let c = model.grant(id: grantID) {
                 List {
-                    ScopeRows(scope: $scope, projects: projects, showsTTL: false)
+                    ScopeRows(scope: $scope, projects: model.projects, showsTTL: false)
                     Section {
                     } footer: {
                         Text("Once you confirm with Face ID, “\(c.label)” works with the new settings and the old ones stop working at once.")
@@ -509,10 +506,8 @@ struct ScopeSheet: View {
                         .disabled(busy || !scope.complete)
                     }
                 }
-                .task {
-                    let ps = (try? await model.api?.projects())?.projects ?? []
-                    projects = ps
-                    scope = ScopeChoice(client: c, projects: ps)
+                .task(id: model.projects.isEmpty) { // again once the projects came (the first Watch after a launch)
+                    scope = ScopeChoice(client: c, projects: model.projects)
                 }
             }
         }

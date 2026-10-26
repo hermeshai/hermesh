@@ -42,7 +42,9 @@ struct SessionsView: View {
             }
             Section {
                 Group {
-                    if model.noOlder {
+                    if !model.hasWorld {
+                        PageLoader(text: "Reading your sessions…")
+                    } else if model.noOlder {
                         if model.sessions.isEmpty {
                             Text("No sessions yet. Once an agent is connected, its work shows up here.")
                         } else {
@@ -54,11 +56,8 @@ struct SessionsView: View {
                             }
                         }
                     } else {
-                        HStack(spacing: 8) {
-                            ProgressView()
-                            Text("Loading earlier sessions…")
-                        }
-                        .task { await model.loadOlder() }
+                        InlineLoader(text: "Loading earlier sessions…")
+                            .task(id: model.olderKey) { await model.loadOlder() }
                     }
                 }
                 .font(.footnote).foregroundStyle(.secondary).frame(maxWidth: .infinity)

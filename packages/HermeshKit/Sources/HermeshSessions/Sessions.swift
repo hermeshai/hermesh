@@ -81,6 +81,34 @@ public func mergeSessions(_ list: [Session], _ changes: [Session], deleted: [Str
     return out
 }
 
+/// The sessions held once a watch's first message (a reset) came: merged,
+/// so older pages loaded stay, less the ones it shows were deleted
+/// meanwhile. A session held of a machine the message says is read now
+/// (readNow: neither unreachable nor syncing), as new as the message's first
+/// page reaches (not past next), that the message does not list, was
+/// deleted while nobody watched: the app was away, or closed.
+public func resetSessions(_ held: [Session], _ reset: [Session], next: SessionCursor?, readNow: Set<String>) -> [Session] {
+    let listed = Set(reset.map(\.sessionID))
+    let kept = held.filter { s in listed.contains(s.sessionID) || !readNow.contains(s.machineID) || isPast(s, next) }
+    return mergeSessions(kept, reset)
+}
+
+/// The cursor naming s as where a page ends.
+public func cursorAt(_ s: Session) -> SessionCursor {
+    var c = SessionCursor()
+    c.updatedAt = s.updatedAt
+    c.sessionID = s.sessionID
+    return c
+}
+
+/// Whether s comes after the cursor, in the lists' order (newest first, then
+/// by id); never without a cursor. As the machines' Past.
+public func isPast(_ s: Session, _ c: SessionCursor?) -> Bool {
+    guard let c else { return false }
+    let a = (s.updatedAt.seconds, s.updatedAt.nanos), b = (c.updatedAt.seconds, c.updatedAt.nanos)
+    return a != b ? a < b : s.sessionID < c.sessionID
+}
+
 /// The sessions as screens show them: one on a machine that cannot be read
 /// now has an unspecified status, which every check treats as neither in
 /// progress, waiting nor failed, and which reads "State unknown"

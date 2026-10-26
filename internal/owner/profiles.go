@@ -208,6 +208,25 @@ func (d *Device) stop() {
 	}
 }
 
+// Pause stops what keeps the current profile's world current, its relay
+// connection and its replica's sources, keeping what they hold: the iPhone
+// app left the front and is about to be suspended. Run, the next watch or
+// list start them again.
+func (d *Device) Pause() {
+	o := d.owner()
+	o.rep.pause()
+	o.dropRelay()
+}
+
+// Reconnect drops the current profile's relay connection and follows its
+// machines again from what it holds: the network changed, and the
+// connections made on the old one may be dead without anything noticing.
+func (d *Device) Reconnect() {
+	o := d.owner()
+	o.dropRelay()
+	o.rep.restart()
+}
+
 // restart runs the current profile again, as it now is (signed in or out).
 func (d *Device) restart() {
 	d.stop()

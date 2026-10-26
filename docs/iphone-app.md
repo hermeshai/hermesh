@@ -67,8 +67,25 @@ packages/HermeshKit/         Swift package shared with the Mac signer
   server's connection address.
 - **Performance.** Native controls throughout, lazy stacks for long lists,
   the owner's world followed through one `Watch` from the in-process
-  hermeshd ([state-sync.md](state-sync.md)) and a session's events read once
-  and then followed (nothing polled), no work while in the background.
+  hermeshd ([state-sync.md](state-sync.md) §11) and a session's events read
+  once and then followed (nothing polled), no work while in the background.
+  What the app last showed is kept on the phone (`world.pb`, and the last
+  10 conversations): a launch shows it at once, and a conversation opened
+  again reads only the events after the last one kept. Leaving the front
+  pauses the core (no polls, no follows, no connections); coming back, or a
+  change of network (Wi-Fi to cellular), connects again at once. The
+  LocalService client runs each call on a thread of its own, never on
+  Swift's cooperative pool. `go test ./e2e -run TestMobileNetwork` measures
+  it in round trips to a far relay.
+- **Waiting.** Waits show the mark in the brand's motion
+  (`Views/Components/Loading.swift`, as `packages/ui`): a page with nothing
+  to show yet says what it reads, with the pulse; while what shows is not
+  current, a quiet line says so, under a root page's large title or over the
+  top of another page ("Connecting to
+  Hermesh…", "Updating from Mac mini…", and after 10 s without the relay,
+  that it shows what was last seen); waiting for another device, the beams
+  hover apart. Nothing shows for a wait under 400 ms, and a loader once
+  shown stays 500 ms; with Reduce Motion the mark only fades.
 
 ## 3. Notifications
 

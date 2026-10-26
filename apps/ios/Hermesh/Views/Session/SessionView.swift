@@ -6,8 +6,12 @@ import SwiftUI
 /// live, a control bar (or the agent's question) floats over the bottom.
 struct SessionView: View {
     @Environment(AppModel.self) private var model
+    @Environment(\.scenePhase) private var scenePhase
     let id: String
     @State private var events: [SessionEvent] = []
+    /// The conversation's rows, made again only when its events change.
+    @State private var steps: [Step] = []
+    @State private var stepsRunning = false
     /// The reply the agent is still writing; a stored event ends it.
     @State private var draft = ""
     @State private var open: Set<UInt64> = []
@@ -19,23 +23,37 @@ struct SessionView: View {
         Group {
             if let s = model.session(id) {
                 content(s)
+                    .onChange(of: s.isActive) { _, running in rebuild(running: running) }
             } else {
-                ProgressView().frame(maxWidth: .infinity, maxHeight: .infinity)
+                PageLoader(text: "Reading the session…").frame(maxHeight: .infinity)
             }
         }
         .navigationBarTitleDisplayMode(.inline)
         .task(id: id) { await follow() }
+        .onDisappear { model.conversations.keep(id, events) }
+        .onChange(of: scenePhase) { _, phase in if phase == .background { model.conversations.keep(id, events) } }
     }
 
+    /// The rows, from the events (and whether a turn runs, which tells a
+    /// tool call that is still going).
+    private func rebuild(running: Bool) {
+        stepsRunning = running
+        steps = groupSteps(transcript(events, running: running))
+    }
+
+    /// Whether the conversation holds every event the session has had.
+    private func caughtUp(_ s: Session) -> Bool { (events.last?.seq ?? 0) >= s.progress.lastEventSeq }
+
     private func content(_ s: Session) -> some View {
-        let running = s.isActive
-        let steps = groupSteps(transcript(events, running: running))
         let grant = model.grantLabel(s)
         return ScrollView {
             LazyVStack(alignment: .leading, spacing: 14) {
                 if s.status == .archived {
                     Label("Archived: read-only; the worktree is released and the changes stay on the branch.", systemImage: "archivebox")
                         .font(.footnote).foregroundStyle(.secondary)
+                }
+                if events.isEmpty && !caughtUp(s) {
+                    PageLoader(text: "Reading the conversation…").padding(.top, 60)
                 }
                 ForEach(Array(steps.enumerated()), id: \.element.id) { i, step in
                     StepView(step: step, session: s, grant: grant, previousTurn: previousTurn(steps, before: i), open: $open)
@@ -143,25 +161,49 @@ struct SessionView: View {
         return nil
     }
 
-    /// Reads the session's events and follows new ones while the page is shown.
+    /// Shows what is kept of the conversation, then reads the events after
+    /// it and follows new ones while the page is shown. Events that come
+    /// together are shown together: a long conversation read at once is laid
+    /// out a few times, not once per event.
     private func follow() async {
-        events = []
+        events = model.conversations.events(id)
         draft = ""
+        rebuild(running: model.session(id)?.isActive ?? false)
         guard let api = model.api else { return }
+        var pending: [SessionEvent] = []
+        var flush: Task<Void, Never>?
+        func show() {
+            flush = nil
+            guard !pending.isEmpty else { return }
+            events.append(contentsOf: pending)
+            pending = []
+            draft = ""
+            rebuild(running: model.session(id)?.isActive ?? stepsRunning)
+        }
         while !Task.isCancelled {
             do {
-                for try await e in api.events(id, after: events.last?.seq ?? 0) {
+                for try await e in api.events(id, after: (pending.last ?? events.last)?.seq ?? 0) {
                     if case .agentDraft(let d) = e.kind {
+                        show() // a draft follows the events before it
                         draft = d.whole ? d.text : draft + d.text
                         continue
                     }
-                    if let last = events.last, e.seq <= last.seq { continue }
-                    events.append(e)
-                    draft = ""
+                    if let last = pending.last ?? events.last, e.seq <= last.seq { continue }
+                    pending.append(e)
+                    if flush == nil {
+                        flush = Task {
+                            try? await Task.sleep(for: .milliseconds(50))
+                            show()
+                        }
+                    }
                 }
             } catch {}
-            try? await Task.sleep(for: .seconds(2))
+            flush?.cancel()
+            show()
+            try? await Task.sleep(for: .seconds(1))
         }
+        flush?.cancel()
+        show()
     }
 }
 

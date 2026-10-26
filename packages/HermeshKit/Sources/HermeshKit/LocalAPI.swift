@@ -26,6 +26,11 @@ public enum LocalEndpoint: Sendable, Equatable {
 /// A minimal Connect-protocol client (JSON codec) for LocalService. Unary
 /// calls and server streams are enough. Unary calls give up after 10 s
 /// without an answer, unless given a longer timeout.
+///
+/// Its sockets block, so each call runs on a thread of its own, never on
+/// Swift's cooperative pool: a stream open for as long as a page shows, or a
+/// call that waits for Face ID, would hold one of its few threads (one per
+/// core) and could starve the work it waits for.
 public final class LocalAPI: @unchecked Sendable {
     public let endpoint: LocalEndpoint
     private let service = "hermesh.local.v1.LocalService"
@@ -43,9 +48,12 @@ public final class LocalAPI: @unchecked Sendable {
     public func call<Req: SwiftProtobuf.Message, Res: SwiftProtobuf.Message>(_ method: String, _ req: Req, as _: Res.Type = Res.self, timeout: Int = 10) async throws -> Res {
         let body = try req.jsonUTF8Data()
         let path = "/\(service)/\(method)"
-        let (status, headers, data) = try await Task.detached { [endpoint] in
-            try HTTPOverUnix.roundTrip(endpoint: endpoint, path: path, contentType: "application/json", body: body, timeout: timeout)
-        }.value
+        let endpoint = endpoint
+        let (status, headers, data) = try await withCheckedThrowingContinuation { (k: CheckedContinuation<(Int, [String: String], Data), Error>) in
+            Thread.detachNewThread {
+                k.resume(with: Result { try HTTPOverUnix.roundTrip(endpoint: endpoint, path: path, contentType: "application/json", body: body, timeout: timeout) })
+            }
+        }
         if status != 200 {
             throw Self.parseError(data, status: status, headers: headers)
         }
@@ -59,7 +67,9 @@ public final class LocalAPI: @unchecked Sendable {
         let options = decodeOptions
         return AsyncThrowingStream { continuation in
             let conn = HTTPOverUnix()
-            let task = Task.detached { [endpoint] in
+            let endpoint = endpoint
+            Thread.detachNewThread {
+                defer { conn.release() }
                 do {
                     var envelope = Data([0])
                     let json = try req.jsonUTF8Data()
@@ -96,10 +106,7 @@ public final class LocalAPI: @unchecked Sendable {
                     continuation.finish(throwing: error)
                 }
             }
-            continuation.onTermination = { _ in
-                conn.close()
-                task.cancel()
-            }
+            continuation.onTermination = { _ in conn.close() }
         }
     }
 
@@ -119,20 +126,33 @@ final class HTTPOverUnix: @unchecked Sendable {
     private var remainingInChunk = 0
     private var contentRemaining: Int?
     private var finished = false
+    private var closed = false
     private let lock = NSLock()
 
     static func roundTrip(endpoint: LocalEndpoint, path: String, contentType: String, body: Data, timeout: Int) throws -> (Int, [String: String], Data) {
         let c = HTTPOverUnix()
-        defer { c.close() }
+        defer { c.release() }
         let (status, headers) = try c.open(endpoint: endpoint, path: path, contentType: contentType, body: body, timeout: timeout)
         return (status, headers, try c.readAll(headers: headers))
     }
 
+    /// Ends the exchange from any thread: a read blocked on the socket
+    /// returns. The descriptor stays open until release, on the thread that
+    /// reads, so it is never closed (and its number reused by another
+    /// connection) under a read about to start.
     func close() {
         lock.lock()
         defer { lock.unlock() }
+        closed = true
+        if fd >= 0 { Darwin.shutdown(fd, SHUT_RDWR) }
+    }
+
+    /// Closes the descriptor, once the thread that reads is done with it.
+    func release() {
+        lock.lock()
+        defer { lock.unlock() }
+        closed = true
         if fd >= 0 {
-            Darwin.shutdown(fd, SHUT_RDWR)
             Darwin.close(fd)
             fd = -1
         }
@@ -154,6 +174,11 @@ final class HTTPOverUnix: @unchecked Sendable {
             setsockopt(s, SOL_SOCKET, SO_RCVTIMEO, &tv, socklen_t(MemoryLayout<timeval>.size))
         }
         lock.lock()
+        if closed { // ended before it was open
+            lock.unlock()
+            Darwin.close(s)
+            throw APIError(code: "canceled", message: "")
+        }
         fd = s
         lock.unlock()
         var req = "POST \(path) HTTP/1.1\r\nHost: hermesh\r\n\(auth)Content-Type: \(contentType)\r\nConnect-Protocol-Version: 1\r\nContent-Length: \(body.count)\r\n\r\n"

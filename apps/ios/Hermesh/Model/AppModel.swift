@@ -2,6 +2,7 @@ import Foundation
 import HermeshKit
 import HermeshProto
 import HermeshSessions
+import Network
 import Observation
 import SwiftUI
 import UserNotifications
@@ -47,9 +48,31 @@ struct Toast: Identifiable, Equatable {
     static func == (a: Toast, b: Toast) -> Bool { a.id == b.id }
 }
 
+/// Why what the app shows is not current, while it is not: the sync line
+/// at the top of the pages says so.
+enum Sync: Equatable {
+    /// Connecting to the relay, or the world not read yet since the app came to the front.
+    case connecting
+    /// The relay has not been reached for a while: what shows is last known.
+    case offline
+    /// Reading a machine again (by its name), or that many.
+    case machine(String)
+    case machines(Int)
+
+    var text: String {
+        switch self {
+        case .connecting: String(localized: "Connecting to Hermesh…")
+        case .offline: String(localized: "Can’t reach Hermesh; showing what was last seen")
+        case .machine(let name): String(localized: "Updating from \(name)…")
+        case .machines(let n): String(localized: "Updating from \(n) machines…")
+        }
+    }
+}
+
 /// Everything the app shows, kept current while it is in front: the owner's
 /// world as the in-process hermeshd pushes it (Watch), nothing polled;
-/// older sessions are paged.
+/// older sessions are paged. What it last showed is kept on the phone, so
+/// that a launch shows it at once while the Watch brings it up to date.
 @Observable
 final class AppModel {
     /// The one model: the app's scene and its notification handling share it.
@@ -77,11 +100,34 @@ final class AppModel {
     var machines: [Machine] = []
     var clients: [Client] = []
     var devices: [Device] = []
+    var projects: [Project] = []
     var pairings: [PairingDetails] = []
     var usage: UsageYear?
     /// Today's work, as the machines count it.
     var activity: DayActivity?
     var now = Date()
+    /// There is a world to show: kept from before, or watched.
+    var hasWorld = false
+    /// The Watch's first message came since the app came to the front.
+    var watched = false
+    /// Since when the relay has not been reached, while it is not.
+    var relayDownSince: Date?
+    /// The last conversations opened.
+    @ObservationIgnored let conversations = Conversations()
+
+    /// Why what shows is not current, while it is not (the sync line).
+    var sync: Sync? {
+        guard phase == .ready else { return nil }
+        if !watched { return .connecting }
+        if !status.relayConnected {
+            if let d = relayDownSince, now.timeIntervalSince(d) > 10 { return .offline }
+            return .connecting
+        }
+        let reading = machines.filter(\.syncing)
+        if reading.count == 1 { return .machine(reading[0].machineName) }
+        if reading.count > 1 { return .machines(reading.count) }
+        return nil
+    }
 
     // Navigation
     var root: Root = .overview
@@ -123,7 +169,10 @@ final class AppModel {
     @ObservationIgnored private var activityAsked = Date.distantPast
     /// The overview is on screen: today's work is kept current only then.
     @ObservationIgnored var overviewShown = false
+    @ObservationIgnored private var saveTask: Task<Void, Never>?
     @ObservationIgnored private var active = false
+    @ObservationIgnored private var network: NWPathMonitor?
+    @ObservationIgnored private var networkSeen: String?
 
     // MARK: Lifecycle
 
@@ -136,8 +185,27 @@ final class AppModel {
                 return
             }
             signer.start(api!)
+            let kept = restoreWorld()
+            if kept != nil { phase = .ready } // shown at once; the status, which the core has at hand, confirms it
+            watchNetwork()
         }
-        await refreshStatus()
+        // The core answers from memory, never waiting on the network: an
+        // error means it is not answering at all, not that this iPhone
+        // belongs to no one.
+        var answered = false
+        for attempt in 0 ..< 5 {
+            if let s = try? await api?.status() {
+                status = s
+                answered = true
+                break
+            }
+            try? await Task.sleep(for: .milliseconds(200 * (attempt + 1)))
+        }
+        guard answered else {
+            if phase != .ready { phase = .failed(String(localized: "The Hermesh core isn’t answering. Quit the app and open it again.")) }
+            return
+        }
+        if !status.initialized || (hasWorld && keptOwner != status.ownerID) { forgetWorld() }
         phase = status.initialized ? .ready : .onboarding
         if active { begin() }
     }
@@ -145,6 +213,8 @@ final class AppModel {
     /// The app came to the front: keep everything current.
     func foreground() {
         active = true
+        watched = false
+        relayDownSince = nil
         Core.resume()
         if phase == .ready {
             begin()
@@ -152,7 +222,8 @@ final class AppModel {
         }
     }
 
-    /// The app went to the background: stop the work that keeps it current.
+    /// The app went to the background: stop the work that keeps it current,
+    /// and keep what it shows for the next launch.
     func background() {
         active = false
         watchTask?.cancel()
@@ -161,7 +232,97 @@ final class AppModel {
         watchTask = nil
         clockTask = nil
         activityTask = nil
+        if phase == .ready { saveWorld(now: true) }
         Core.pause()
+    }
+
+    /// Wi-Fi to cellular and back: the connections made on the old network
+    /// may be dead without anything noticing, so the core connects again.
+    private func watchNetwork() {
+        let m = NWPathMonitor()
+        m.pathUpdateHandler = { [weak self] path in
+            let seen = path.status == .satisfied ? path.availableInterfaces.map(\.name).joined(separator: ",") : ""
+            Task { @MainActor in self?.networkChanged(to: seen) }
+        }
+        m.start(queue: .global(qos: .utility))
+        network = m
+    }
+
+    private func networkChanged(to seen: String) {
+        defer { networkSeen = seen }
+        guard let before = networkSeen, before != seen, !seen.isEmpty, active, phase == .ready else { return }
+        Core.networkChanged()
+    }
+
+    // MARK: What is kept on the phone
+
+    /// The owner the world kept on the phone belongs to.
+    @ObservationIgnored private var keptOwner = ""
+
+    private var worldFile: URL { Core.dataDirectory.appendingPathComponent("world.pb") }
+
+    /// The world as the app last showed it, from the phone, as a Watch's first message.
+    private func restoreWorld() -> Hermesh_Local_V1_WatchResponse? {
+        guard let data = try? Data(contentsOf: worldFile), var w = try? Hermesh_Local_V1_WatchResponse(serializedBytes: data) else { return nil }
+        w.pairings.removeAll { $0.hasExpiresAt && $0.expiresAt.date < Date() }
+        w.status.relayConnected = false
+        apply(w)
+        saveTask?.cancel() // nothing new to keep
+        watched = false
+        keptOwner = w.status.ownerID
+        return w
+    }
+
+    /// Keeps what the app shows: the newest sessions, and all else it holds.
+    /// now: written before this returns, as the app leaves the front (it may
+    /// be suspended right after); else off the main thread.
+    private func saveWorld(now: Bool = false) {
+        saveTask?.cancel()
+        var w = Hermesh_Local_V1_WatchResponse()
+        w.reset = true
+        w.status = status
+        w.machines = machines
+        w.clients = clients
+        w.devices = devices
+        w.projects = projects
+        w.pairings = pairings
+        w.sessions = Array(heldSessions.sorted { $0.updatedDate > $1.updatedDate }.prefix(200))
+        if let c = w.sessions.count < heldSessions.count ? w.sessions.last.map(cursorAt) : cursor { w.next = c }
+        keptOwner = status.ownerID
+        guard let data = try? w.serializedData() else { return }
+        let url = worldFile
+        let options: Data.WritingOptions = [.atomic, .completeFileProtectionUntilFirstUserAuthentication]
+        if now {
+            try? data.write(to: url, options: options)
+        } else {
+            Task.detached(priority: .utility) { try? data.write(to: url, options: options) }
+        }
+    }
+
+    /// Keeps it a little after the last change, while the app is in front.
+    private func saveSoon() {
+        saveTask?.cancel()
+        saveTask = Task {
+            try? await Task.sleep(for: .seconds(3))
+            guard !Task.isCancelled else { return }
+            saveWorld()
+        }
+    }
+
+    /// Forgets the world: another owner, or none.
+    private func forgetWorld() {
+        saveTask?.cancel()
+        heldSessions = []
+        machines = []
+        clients = []
+        devices = []
+        projects = []
+        pairings = []
+        cursor = nil
+        hasWorld = false
+        keptOwner = ""
+        try? FileManager.default.removeItem(at: worldFile)
+        conversations.forgetAll()
     }
 
     /// Set up or joined: show the app.
@@ -264,25 +425,33 @@ final class AppModel {
             do {
                 for try await r in api.watch() { apply(r) }
             } catch {}
-            try? await Task.sleep(for: .seconds(2))
+            try? await Task.sleep(for: .milliseconds(500)) // the core is in this process: it is back at once
         }
     }
 
     /// A Watch message applied: the first replaces everything but the
-    /// sessions, which are merged so older pages loaded stay.
+    /// sessions, which are merged so older pages loaded stay, less those it
+    /// shows were deleted meanwhile (resetSessions).
     private func apply(_ r: Hermesh_Local_V1_WatchResponse) {
         if r.reset {
             machines = []
             clients = []
             devices = []
+            projects = []
             pairings = []
             cursor = relistedCursor(loaded: cursor, first: r.hasNext ? r.next : nil)
             noOlder = !r.hasNext && cursor == nil
+            watched = true
+            hasWorld = true
         }
-        if r.hasStatus { status = r.status }
+        if r.hasStatus {
+            status = r.status
+            relayDownSince = status.relayConnected ? nil : relayDownSince ?? Date()
+        }
         machines = upsert(machines, r.machines, removed: r.removedMachineIds, key: \.machineID).sorted { $0.machineName < $1.machineName }
         clients = upsert(clients, r.clients, removed: r.removedGrantIds, key: \.grantID).sorted { $0.label < $1.label }
         devices = upsert(devices, r.devices, removed: r.removedDeviceKeyIds, key: \.keyID)
+        projects = upsert(projects, r.projects, removed: r.removedProjects.map { "\($0.machineID)/\($0.projectID)" }, key: { "\($0.machineID)/\($0.projectID)" })
         pairings = upsert(pairings, r.pairings, removed: r.removedPairingCodes, key: \.code).filter { !dismissedPairings.contains($0.code) }
         unreachable = machines.filter { !$0.unreachable.isEmpty }.map { m in
             var u = Unreachable()
@@ -291,10 +460,16 @@ final class AppModel {
             u.error = m.unreachable
             return u
         }
-        if !r.sessions.isEmpty || !r.deletedSessionIds.isEmpty {
+        if r.reset {
+            let readNow = Set(machines.filter { $0.online && $0.unreachable.isEmpty && !$0.syncing }.map(\.machineID))
+            heldSessions = mergeSessions(resetSessions(heldSessions, r.sessions, next: r.hasNext ? r.next : nil, readNow: readNow), [], deleted: r.deletedSessionIds)
+            activityChanged()
+        } else if !r.sessions.isEmpty || !r.deletedSessionIds.isEmpty {
             heldSessions = mergeSessions(heldSessions, r.sessions, deleted: r.deletedSessionIds)
             activityChanged()
         }
+        r.deletedSessionIds.forEach(conversations.forget)
+        if watched { saveSoon() }
     }
 
     /// The next older page, when the end of the list comes into view.
@@ -302,9 +477,13 @@ final class AppModel {
         guard !loadingOlder, !noOlder, let api, let cursor else { return }
         loadingOlder = true
         defer { loadingOlder = false }
-        guard let page = try? await api.listSessions(before: cursor) else { return }
-        heldSessions = mergeSessions(heldSessions, page.sessions)
-        if page.hasNext { self.cursor = page.next } else { noOlder = true }
+        if let page = try? await api.listSessions(before: cursor) {
+            heldSessions = mergeSessions(heldSessions, page.sessions)
+            if page.hasNext { self.cursor = page.next } else { noOlder = true }
+        } else {
+            try? await Task.sleep(for: .seconds(2))
+        }
+        olderKey += 1
     }
 
     /// Today's work, asked of the machines.
@@ -328,6 +507,10 @@ final class AppModel {
             await loadActivity()
         }
     }
+    /// Changes after each page asked for: the list's last row asks again
+    /// while it still shows (the page may have added nothing it shows: all
+    /// archived, or in a folded group), or after a page failed.
+    var olderKey = 0
 
     func loadUsage() async {
         guard let api else { return }
@@ -451,6 +634,7 @@ final class AppModel {
         do {
             try await api.delete(s.sessionID)
             heldSessions = mergeSessions(heldSessions, [], deleted: [s.sessionID])
+            conversations.forget(s.sessionID)
             path.removeAll { $0 == .session(s.sessionID) }
             if case .session(let id) = root, id == s.sessionID { root = .sessions }
             show(String(localized: "Deleted “\(s.displayTitle)”"))
@@ -619,11 +803,7 @@ final class AppModel {
         do {
             try await api.leave()
             background()
-            heldSessions = []
-            clients = []
-            machines = []
-            devices = []
-            pairings = []
+            forgetWorld()
             sheet = nil
             await refreshStatus()
             phase = .onboarding

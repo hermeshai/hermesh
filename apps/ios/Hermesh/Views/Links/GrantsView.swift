@@ -16,7 +16,9 @@ struct GrantsView: View {
                     NavigationLink(value: Route.grant(c.grantID)) { GrantRow(client: c) }
                         .accessibilityIdentifier("grant-\(c.label)")
                 }
-                if active.isEmpty { Text("No grants yet.").foregroundStyle(.secondary) }
+                if active.isEmpty {
+                    if model.hasWorld { Text("No grants yet.").foregroundStyle(.secondary) } else { PageLoader(text: "Reading your grants…") }
+                }
             } footer: {
                 Text("A grant decides which of your projects, machines and coding agents an agent can use, and for how long.")
             }

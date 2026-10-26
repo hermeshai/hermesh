@@ -3371,7 +3371,11 @@ type Machine struct {
 	Version string `protobuf:"bytes,8,opt,name=version,proto3" json:"version,omitempty"`
 	// Why its sessions and projects cannot be read now ("offline", or the
 	// error); empty while they can. Set in Watch only.
-	Unreachable   string `protobuf:"bytes,9,opt,name=unreachable,proto3" json:"unreachable,omitempty"`
+	Unreachable string `protobuf:"bytes,9,opt,name=unreachable,proto3" json:"unreachable,omitempty"`
+	// Online, and its sessions and projects are being read: being connected
+	// to, or catching up after a while away. What is shown of it meanwhile
+	// is last known. Set in Watch only.
+	Syncing       bool `protobuf:"varint,10,opt,name=syncing,proto3" json:"syncing,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -3467,6 +3471,13 @@ func (x *Machine) GetUnreachable() string {
 		return x.Unreachable
 	}
 	return ""
+}
+
+func (x *Machine) GetSyncing() bool {
+	if x != nil {
+		return x.Syncing
+	}
+	return false
 }
 
 type ListMachinesRequest struct {
@@ -6195,7 +6206,7 @@ const file_hermesh_local_v1_local_proto_rawDesc = "" +
 	"\x04spec\x18\x02 \x01(\v2\x1b.hermesh.local.v1.GrantSpecR\x04spec\"V\n" +
 	"\x1cApproveClientPairingResponse\x12\x1b\n" +
 	"\tclient_id\x18\x01 \x01(\tR\bclientId\x12\x19\n" +
-	"\bgrant_id\x18\x02 \x01(\tR\agrantId\"\xcd\x02\n" +
+	"\bgrant_id\x18\x02 \x01(\tR\agrantId\"\xe7\x02\n" +
 	"\aMachine\x12\x1d\n" +
 	"\n" +
 	"machine_id\x18\x01 \x01(\tR\tmachineId\x12!\n" +
@@ -6206,7 +6217,9 @@ const file_hermesh_local_v1_local_proto_rawDesc = "" +
 	"\x05local\x18\x06 \x01(\bR\x05local\x12\"\n" +
 	"\rdevice_key_id\x18\a \x01(\tR\vdeviceKeyId\x12\x18\n" +
 	"\aversion\x18\b \x01(\tR\aversion\x12 \n" +
-	"\vunreachable\x18\t \x01(\tR\vunreachable\"\x15\n" +
+	"\vunreachable\x18\t \x01(\tR\vunreachable\x12\x18\n" +
+	"\asyncing\x18\n" +
+	" \x01(\bR\asyncing\"\x15\n" +
 	"\x13ListMachinesRequest\"M\n" +
 	"\x14ListMachinesResponse\x125\n" +
 	"\bmachines\x18\x01 \x03(\v2\x19.hermesh.local.v1.MachineR\bmachines\"X\n" +
