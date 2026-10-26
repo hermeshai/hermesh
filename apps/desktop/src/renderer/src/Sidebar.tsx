@@ -277,10 +277,10 @@ const SessionRow = memo(function SessionRow({ s, sel, grant, meta, renaming, sto
     >
       <div className="smain">
         <div className="sl1">
-          {renaming ? <RenameField s={s} store={store} /> : <span className="stitle" title={displayTitle(s)}>{displayTitle(s)}</span>}
-          {/* Only what is worth noticing (running, waiting, failed): an idle or archived session has no dot. */}
+          {/* A running session's title shimmers; waiting and failed ones have a dot instead, an idle or archived one neither. */}
+          {renaming ? <RenameField s={s} store={store} /> : <span className={`stitle ${isActive(s) && !needsAttention(s) ? "run" : ""}`} title={displayTitle(s)}>{displayTitle(s)}</span>}
           <span className="smeta">
-            {(isActive(s) || needsAttention(s)) && <StatusDot s={s} />}
+            {needsAttention(s) && <StatusDot s={s} />}
             <RowStatus s={s} />
           </span>
           <button
@@ -442,7 +442,7 @@ function RenameField({ s, store }: { s: Session; store: RefObject<Store> }) {
   );
 }
 
-/** The status in words, beside its dot: only what needs saying (a running or idle session is its dot). */
+/** The status in words, beside its dot: only what needs saying (a running session shimmers, an idle one says nothing). */
 function RowStatus({ s }: { s: Session }) {
   const { t } = useTranslation("common");
   if (s.status !== SessionStatus.CRASHED && s.status !== SessionStatus.WAITING_INPUT && isFailed(s)) return <>{t("status.failed")}</>;

@@ -26,8 +26,9 @@ test("the sidebar groups sessions by status: needs you, running, done; archived 
 
 // The status dot sits with the status text on the right, so titles start at
 // the same edge as the group headings; a title too long for the row is cut
-// with an ellipsis and never pushes the status out.
-test("long titles are cut, the status dot sits by its text, and the left edge is flush", async () => {
+// with an ellipsis and never pushes the status out. A running session has no
+// dot: its title shimmers.
+test("long titles are cut, the status dot sits by its text, a running title shimmers, and the left edge is flush", async () => {
   const { app, page } = await launch();
   const long = [
     "重构登录模块并补全单元测试，同时把旧的会话迁移脚本改成幂等的，最后更新文档和变更说明",
@@ -53,10 +54,13 @@ test("long titles are cut, the status dot sits by its text, and the left edge is
     // A dot, when there is one, is in the status, after the title; nothing sits left of the title.
     if (await meta.locator(".sdot").count()) expect((await box(meta.locator(".sdot"))).x).toBeGreaterThan((await box(title)).x + 40);
   }
-  // Only what is worth noticing has a dot: a running session does, an idle one doesn't.
-  await expect(running.locator(".sdot")).toHaveCount(1);
-  await expect(list.getByRole("listitem").filter({ hasText: "写 hello" }).locator(".sdot")).toHaveCount(0);
+  // Only what needs you has a dot: a waiting session does; a running one has none, its title shimmers instead.
   await expect(list.getByRole("listitem").filter({ hasText: "选颜色" }).locator(".sdot")).toHaveCount(1);
+  await expect(running.locator(".sdot")).toHaveCount(0);
+  expect(await running.locator(".stitle").evaluate((e) => getComputedStyle(e).animationName)).toBe("stitle-run");
+  const idle = list.getByRole("listitem").filter({ hasText: "写 hello" });
+  await expect(idle.locator(".sdot")).toHaveCount(0);
+  expect(await idle.locator(".stitle").evaluate((e) => getComputedStyle(e).animationName)).toBe("none");
   // Flush left: a title starts where its group's heading does.
   const heading = await box(list.getByRole("group", { name: "进行中" }).locator(".grp-h"));
   expect(Math.abs((await box(running.locator(".stitle"))).x - (heading.x + 9))).toBeLessThanOrEqual(1);
