@@ -181,6 +181,15 @@ func (r *replica) use(ctx context.Context) (*sources, error) {
 		return nil, err
 	}
 	r.mu.Lock()
+	if held(ctx) && r.src == nil && r.stopped != nil {
+		// A screen reading what is held never starts the sources: after a
+		// pause, the last tick of a watch the app has left would start
+		// them again, to be stopped as idle once the process thaws, under
+		// the follows the app's next watch begins.
+		s := r.stopped
+		r.mu.Unlock()
+		return s, nil
+	}
 	r.lastUse = time.Now()
 	s := r.startLocked()
 	warm := s.warm
