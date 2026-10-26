@@ -3,17 +3,21 @@ import SwiftUI
 
 /// The side menu and, over it, the page it leads to. The page slides right
 /// to show the menu: a drag from anywhere on a root page, or the menu
-/// button. Pushed pages keep the system's swipe back.
+/// button. Pushed pages keep the system's swipe back. The menu sits on the
+/// darkest layer; the page rises above it as a lighter card that fades back.
 struct MainView: View {
     @Environment(AppModel.self) private var model
-    @GestureState private var drag: CGFloat = 0
+    @GestureState(resetTransaction: Transaction(animation: .smooth(duration: 0.35))) private var drag: CGFloat = 0
     private let width: CGFloat = 322
 
     var body: some View {
         @Bindable var model = model
         let offset = max(0, min(width, (model.drawerOpen ? width : 0) + drag))
+        let progress = offset / width
         ZStack(alignment: .leading) {
             DrawerView(width: width)
+                .offset(x: -width * 0.25 * (1 - progress))
+                .opacity(0.4 + 0.6 * progress)
             NavigationStack(path: $model.path) {
                 rootPage
                     .navigationDestination(for: Route.self) { route in
@@ -34,18 +38,21 @@ struct MainView: View {
                         .transition(.move(edge: .bottom).combined(with: .opacity))
                 }
             }
-            .clipShape(RoundedRectangle(cornerRadius: offset > 0 ? 44 : 0, style: .continuous))
+            // The card runs under the status bar and home indicator.
+            .mask { RoundedRectangle(cornerRadius: offset > 0 ? 44 : 0, style: .continuous).ignoresSafeArea() }
             .overlay {
                 if offset > 0 {
-                    Color.black.opacity(0.18 * offset / width)
+                    Color(.secondarySystemBackground).opacity(0.65 * progress)
                         .clipShape(RoundedRectangle(cornerRadius: 44, style: .continuous))
+                        .overlay(RoundedRectangle(cornerRadius: 44, style: .continuous).strokeBorder(Color(.separator).opacity(progress), lineWidth: 0.5))
+                        .ignoresSafeArea()
                         .onTapGesture { withAnimation(.smooth(duration: 0.35)) { model.drawerOpen = false } }
                         .accessibilityLabel("Close the menu")
                         .accessibilityAddTraits(.isButton)
                         .accessibilityIdentifier("drawer-dim")
                 }
             }
-            .shadow(color: .black.opacity(offset > 0 ? 0.2 : 0), radius: 24, x: -6)
+            .shadow(color: .black.opacity(0.15 * progress), radius: 24, x: -6)
             .offset(x: offset)
             .simultaneousGesture(panGesture, including: model.path.isEmpty ? .all : .subviews)
         }
