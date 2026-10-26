@@ -53,28 +53,11 @@
     "%@ · %@": {
       "shouldTranslate": false
     },
-    "%@ · %@/%@": {
+    "%@ · %@ · %@": {
       "shouldTranslate": false
     },
-    "%@ · not signed in": {
-      "localizations": {
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "%@ · 还没登录"
-          }
-        }
-      }
-    },
-    "%@ · signed in": {
-      "localizations": {
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "%@ · 已登录"
-          }
-        }
-      }
+    "%@ · %@/%@": {
+      "shouldTranslate": false
     },
     "%lld": {
       "shouldTranslate": false
@@ -133,6 +116,34 @@
           "stringUnit": {
             "state": "translated",
             "value": "另外 %lld 个 agent 今天没干活"
+          }
+        }
+      }
+    },
+    "%lld projects": {
+      "localizations": {
+        "en": {
+          "variations": {
+            "plural": {
+              "one": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "%lld project"
+                }
+              },
+              "other": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "%lld projects"
+                }
+              }
+            }
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld 个项目"
           }
         }
       }
@@ -464,16 +475,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "agent 直接在这个目录里改动，就像你自己在这里运行 Claude Code；没有单独的分支和改动记录。"
-          }
-        }
-      }
-    },
-    "Agents find a project as “machine/project”.": {
-      "localizations": {
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "agent 用“机器名/项目”找到项目。"
           }
         }
       }
@@ -828,16 +829,6 @@
         }
       }
     },
-    "Checking…": {
-      "localizations": {
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "正在检查…"
-          }
-        }
-      }
-    },
     "Choose at least one project, or All Projects, and one coding agent.": {
       "localizations": {
         "zh-Hans": {
@@ -1034,6 +1025,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "深色"
+          }
+        }
+      }
+    },
+    "Default Model": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "默认模型"
           }
         }
       }
@@ -1278,6 +1279,16 @@
         }
       }
     },
+    "Extra High": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "超高"
+          }
+        }
+      }
+    },
     "Failed": {
       "localizations": {
         "zh-Hans": {
@@ -1294,6 +1305,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "会话出错"
+          }
+        }
+      }
+    },
+    "Fast": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "快速"
           }
         }
       }
@@ -1411,6 +1432,16 @@
         }
       }
     },
+    "High": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "高"
+          }
+        }
+      }
+    },
     "How agents work": {
       "localizations": {
         "zh-Hans": {
@@ -1437,6 +1468,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "没人回答的话，到时它会自行判断"
+          }
+        }
+      }
+    },
+    "In Place: Change This Folder Directly": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "原地：直接改这个目录"
           }
         }
       }
@@ -1691,6 +1732,16 @@
         }
       }
     },
+    "Last online %@": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "最近在线 %@"
+          }
+        }
+      }
+    },
     "Last online %@ · they’ll appear once it reconnects": {
       "localizations": {
         "zh-Hans": {
@@ -1717,6 +1768,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "正在读取更早的会话…"
+          }
+        }
+      }
+    },
+    "Low": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "低"
           }
         }
       }
@@ -1771,6 +1832,26 @@
         }
       }
     },
+    "Max": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "最高"
+          }
+        }
+      }
+    },
+    "Medium": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "中"
+          }
+        }
+      }
+    },
     "Menu": {
       "localizations": {
         "zh-Hans": {
@@ -1817,6 +1898,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "元数据"
+          }
+        }
+      }
+    },
+    "Model": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "模型"
           }
         }
       }
@@ -1961,6 +2052,16 @@
         }
       }
     },
+    "No projects yet": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "还没有项目"
+          }
+        }
+      }
+    },
     "No projects yet. Add one on a machine’s page.": {
       "localizations": {
         "zh-Hans": {
@@ -2017,6 +2118,26 @@
           "stringUnit": {
             "state": "translated",
             "value": "未连接"
+          }
+        }
+      }
+    },
+    "Not installed: %@ · Hermesh finds them once they are": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "没有安装：%@ · 装好后 Hermesh 会自己发现"
+          }
+        }
+      }
+    },
+    "Not signed in": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "还没登录"
           }
         }
       }
@@ -2101,6 +2222,16 @@
         }
       }
     },
+    "On %@, run %@ in Terminal": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "在 %1$@ 的终端里运行 %2$@"
+          }
+        }
+      }
+    },
     "Once disconnected, it loses access at once; running sessions are interrupted, and the sessions themselves stay.": {
       "localizations": {
         "zh-Hans": {
@@ -2151,16 +2282,6 @@
         }
       }
     },
-    "Online · %lld running": {
-      "localizations": {
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "在线 · %lld 个在跑"
-          }
-        }
-      }
-    },
     "Or send this to %@": {
       "localizations": {
         "zh-Hans": {
@@ -2187,6 +2308,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "顺序"
+          }
+        }
+      }
+    },
+    "Other projects · for agents not installed": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "其他项目 · 给没有安装的 agent"
           }
         }
       }
@@ -2257,6 +2388,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "先不处理。核对码不一样就不要批准"
+          }
+        }
+      }
+    },
+    "Reasoning Effort": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "推理强度"
           }
         }
       }
@@ -2441,6 +2582,26 @@
         }
       }
     },
+    "Same as %@": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "跟随 %@"
+          }
+        }
+      }
+    },
+    "Same as %@ (%@)": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "跟随 %1$@（%2$@）"
+          }
+        }
+      }
+    },
     "Save": {
       "localizations": {
         "zh-Hans": {
@@ -2491,6 +2652,16 @@
         }
       }
     },
+    "Separate Worktree: Each Session on Its Own Branch": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "独立 worktree：每个会话在自己的分支里"
+          }
+        }
+      }
+    },
     "Separate worktree": {
       "localizations": {
         "zh-Hans": {
@@ -2527,6 +2698,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "会话"
+          }
+        }
+      }
+    },
+    "Sessions an agent starts here without naming a model use these. %@’s own settings stay as they are.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Agent 在这里开会话、没指定模型时用这些；不改 %@ 自己的配置。"
           }
         }
       }
@@ -2621,12 +2802,32 @@
         }
       }
     },
+    "Sign in to %@ first so Hermesh can use it.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "先登录 %@，Hermesh 才能用它。"
+          }
+        }
+      }
+    },
     "Sign this iPhone out?": {
       "localizations": {
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
             "value": "让这台 iPhone 退出登录？"
+          }
+        }
+      }
+    },
+    "Signed in": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "已登录"
           }
         }
       }
@@ -2671,6 +2872,26 @@
         }
       }
     },
+    "Speed": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "速度"
+          }
+        }
+      }
+    },
+    "Standard": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "标准"
+          }
+        }
+      }
+    },
     "Started": {
       "localizations": {
         "zh-Hans": {
@@ -2687,6 +2908,26 @@
           "stringUnit": {
             "state": "translated",
             "value": "发起"
+          }
+        }
+      }
+    },
+    "Stop Using": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "不再使用"
+          }
+        }
+      }
+    },
+    "Stop Using with %@": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "不再给 %@ 用"
           }
         }
       }
@@ -2857,6 +3098,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "连上后会自动补上"
+          }
+        }
+      }
+    },
+    "This coding agent isn’t on this machine": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "这台机器上没有这个编码 agent"
           }
         }
       }
@@ -3127,6 +3378,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "在「%@」上输入这两位数字"
+          }
+        }
+      }
+    },
+    "Ultra": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "极限"
           }
         }
       }
@@ -3524,6 +3785,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "「%@」已连接"
+          }
+        }
+      }
+    },
+    "“%@” is now for %@ too": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "「%1$@」也给 %2$@ 用了"
           }
         }
       }

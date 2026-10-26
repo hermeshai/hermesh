@@ -17,6 +17,7 @@ enum Route: Hashable {
     case session(String)
     case grant(String) // grant id
     case machine(String) // machine id
+    case machineAgent(String, String) // machine id, coding agent
     case grantSessions(String) // client id
     case machineSessions(String) // machine id
 }
@@ -31,7 +32,7 @@ enum SheetKind: Identifiable, Hashable {
     case connectAgent
     case addMachine
     case enterCode
-    case addProject(String) // machine id
+    case addProject(String, String) // machine id, coding agent
     case search
 
     var id: Self { self }
@@ -542,6 +543,40 @@ final class AppModel {
             machines = (try? await api.machines()) ?? machines
             show(paused ? String(localized: "“\(m.machineName)” takes no new sessions") : String(localized: "“\(m.machineName)” takes new sessions again"))
         } catch { report(error) }
+    }
+
+    /// What a coding agent's sessions on m run with when the client names
+    /// no model.
+    func setAgentDefaults(_ m: Machine, _ d: Hermesh_Identity_V1_AgentDefaults) async {
+        guard let api else { return }
+        do {
+            try await api.setAgentDefaults(m.machineID, d)
+            machines = (try? await api.machines()) ?? machines
+        } catch { report(error) }
+    }
+
+    /// Adds a project (or again, to change it), as the person just asked.
+    func addProject(_ r: Hermesh_Local_V1_AddProjectRequest) async throws {
+        signer.expect(.types([SigningPreview.adminCommand]))
+        try await api?.addProject(r)
+    }
+
+    func removeProject(machine: String, project: String) async throws {
+        signer.expect(.types([SigningPreview.adminCommand]))
+        try await api?.removeProject(machine: machine, project: project)
+    }
+
+    /// Adds p again, for agents and with workspace (adding again changes it).
+    func saveProject(_ p: Project, agents: [String], workspace: Hermesh_Identity_V1_Workspace) async throws {
+        var r = Hermesh_Local_V1_AddProjectRequest()
+        r.machineID = p.machineID
+        r.projectID = p.projectID
+        r.path = p.path
+        r.workspace = workspace
+        r.defaultBaseRef = workspace == .inPlace ? "" : p.defaultBaseRef
+        r.description_p = p.description_p
+        r.agents = agents
+        try await addProject(r)
     }
 
     func rename(_ m: Machine, to name: String) async {

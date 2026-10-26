@@ -16,7 +16,7 @@ struct SheetHost: View {
         case .connectAgent: ConnectAgentSheet()
         case .addMachine: AddMachineSheet()
         case .enterCode: EnterCodeSheet()
-        case .addProject(let machine): AddProjectSheet(machineID: machine)
+        case .addProject(let machine, let agent): AddProjectSheet(machineID: machine, agent: agent)
         case .search: SearchSheet()
         }
     }

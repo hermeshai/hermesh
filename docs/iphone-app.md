@@ -17,7 +17,7 @@ is never a machine: nothing runs on it, and it hosts no agent.
 | All Sessions | Laid out as the Mac's sidebar: the view menu groups (by status, date, coding agent or machine), sorts by last activity and shows or hides each row's metadata; a group's heading folds it; archived sessions on request; kept on the phone. Swipe a row to archive or delete it, long-press to rename, archive or delete |
 | A session | Its conversation, newest at the bottom; a control bar to interrupt a live turn, or the agent's question to answer; session info and the diff in a sheet; ⋯ to copy its id, rename, archive or delete it (delete asks first; its branch stays) |
 | Grants | Agents and MCP connections: approve, renew, rename, disconnect, pause; each grant's sessions on a page of their own |
-| Machines | Each machine's state and sessions; rename, remove |
+| Machines | The machines, each opening its page: its coding agents (signed in, projects, defaults), projects no installed agent may use, taking no new sessions, its sessions, rename, remove. A coding agent opens its own page: signing in, the default model, reasoning effort and (Codex) speed as menus in place, and its projects, each with a menu to change how agents work there or stop using it; Add a Project… for this agent. Three levels at most |
 | Account | Usage (its page: the year of days), trusted devices (approve a new one, remove one), appearance (the system's, light or dark), notifications, sign out |
 | New | The Overview's top right: Connect an Agent…, Add a Machine…, Enter a Pairing Code… |
 

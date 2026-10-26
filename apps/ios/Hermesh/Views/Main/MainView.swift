@@ -32,6 +32,7 @@ private struct PageView: View {
                     case .session(let id): SessionView(id: id)
                     case .grant(let id): GrantView(id: id)
                     case .machine(let id): MachineView(id: id)
+                    case .machineAgent(let machine, let agent): MachineAgentView(machineID: machine, agent: agent)
                     case .grantSessions(let id): ScopedSessionsView(filter: SessionFilter(grant: id), title: String(localized: "“\(model.clients.first { $0.clientID == id }?.label ?? "")” Sessions"))
                     case .machineSessions(let id): ScopedSessionsView(filter: SessionFilter(machine: id), title: String(localized: "Sessions on \(model.machineName(id))"))
                     }
