@@ -345,7 +345,7 @@ final class AppModel {
     func open(_ r: Root) {
         root = r
         path = []
-        withAnimation(.smooth(duration: 0.35)) { drawerOpen = false }
+        drawerOpen = false
     }
 
     func openSession(_ id: String) {

@@ -22,7 +22,9 @@ is never a machine: nothing runs on it, and it hosts no agent.
 
 Navigation is a side menu that slides in from the left (a drag anywhere on a
 root page, or the menu button), as the iPhone apps of AI products do; pushed
-pages keep the system's swipe back. Controls use Liquid Glass
+pages keep the system's swipe back. The menu and the page sit in a small
+UIKit container (`SideMenuController`): the page moves as one view, on the
+system's spring, and keeps its large title's margin. Controls use Liquid Glass
 (`glassEffect`, `.glass` buttons); sheets use detents.
 
 ## 2. How it is built
