@@ -109,7 +109,7 @@ final class SideMenuController: UIViewController, UIGestureRecognizerDelegate {
 
     override func viewDidLoad() {
         super.viewDidLoad()
-        view.backgroundColor = .systemBackground
+        view.backgroundColor = .menuBackground
         addChild(menu)
         view.addSubview(menu.view)
         menu.didMove(toParent: self)
@@ -121,7 +121,7 @@ final class SideMenuController: UIViewController, UIGestureRecognizerDelegate {
         clip.addSubview(page.view)
         page.didMove(toParent: self)
         clip.addSubview(dim)
-        dim.backgroundColor = .secondarySystemBackground.withAlphaComponent(0.65)
+        dim.backgroundColor = .pageFade
         dim.layer.cornerRadius = radius
         dim.layer.cornerCurve = .continuous
         dim.layer.borderWidth = 0.5
@@ -259,6 +259,40 @@ final class SideMenuController: UIViewController, UIGestureRecognizerDelegate {
 
     func gestureRecognizer(_ g: UIGestureRecognizer, shouldRecognizeSimultaneouslyWith other: UIGestureRecognizer) -> Bool {
         true
+    }
+}
+
+extension UIColor {
+    /// The menu's ground. Dark, a near-black grey rather than the pages'
+    /// black base (as Material's dark surface, #121212), so the menu reads
+    /// as a panel; light, the pages' white.
+    static let menuBackground = UIColor { t in
+        t.userInterfaceStyle == .dark ? UIColor(white: 0.07, alpha: 1) : .systemBackground
+    }
+
+    /// Fades the page back over the menu, to a card a step lighter than the
+    /// menu: the system's elevated grey (#1C1C1E) in the dark, a light grey
+    /// in the light.
+    static let pageFade = UIColor { t in
+        (t.userInterfaceStyle == .dark ? UIColor.tertiarySystemBackground : .secondarySystemBackground)
+            .resolvedColor(with: t).withAlphaComponent(0.65)
+    }
+}
+
+/// New: connect an agent, add a machine, or enter a pairing code.
+struct NewMenu: View {
+    @Environment(AppModel.self) private var model
+
+    var body: some View {
+        Menu {
+            Button("Connect an Agent…", systemImage: "link") { model.sheet = .connectAgent }
+            Button("Add a Machine…", systemImage: "desktopcomputer") { model.sheet = .addMachine }
+            Button("Enter a Pairing Code…", systemImage: "number") { model.sheet = .enterCode }
+        } label: {
+            Image(systemName: "plus")
+        }
+        .accessibilityLabel("New")
+        .accessibilityIdentifier("new")
     }
 }
 

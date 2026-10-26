@@ -35,6 +35,9 @@ struct OverviewView: View {
         .navigationTitle("Overview")
         .navigationSubtitle(model.now.formatted(.dateTime.month().day().weekday(.wide)))
         .rootToolbar()
+        .toolbar {
+            ToolbarItem(placement: .topBarTrailing) { NewMenu() }
+        }
         .refreshable { await model.loadUsage() }
     }
 

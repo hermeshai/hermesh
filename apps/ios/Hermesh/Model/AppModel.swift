@@ -33,6 +33,7 @@ enum SheetKind: Identifiable, Hashable {
     case addMachine
     case enterCode
     case addProject(String) // machine id
+    case search
 
     var id: Self { self }
 }

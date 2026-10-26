@@ -31,6 +31,7 @@ final class HermeshUITests: XCTestCase {
         try XCTContext.runActivity(named: "lists the trusted devices") { _ in try devices() }
         try XCTContext.runActivity(named: "chooses light or dark in the account") { _ in try appearance() }
         try XCTContext.runActivity(named: "opens usage from its line on the overview") { _ in try usage() }
+        try XCTContext.runActivity(named: "offers New from the overview's top right") { _ in try newMenu() }
         try XCTContext.runActivity(named: "searches sessions from the menu") { _ in try search() }
         try XCTContext.runActivity(named: "a question arrives as a notification and opens its session") { _ in try notification() }
     }
@@ -251,6 +252,16 @@ final class HermeshUITests: XCTestCase {
         tap("close")
     }
 
+    func newMenu() throws {
+        tap("new")
+        let code = app.buttons["输入配对码…"]
+        XCTAssertTrue(code.waitForExistence(timeout: 5), "the New menu")
+        XCTAssertTrue(app.buttons["连接 agent…"].exists)
+        code.tap()
+        XCTAssertTrue(app.navigationBars["输入配对码"].waitForExistence(timeout: 10), "the pairing code sheet")
+        tap("close")
+    }
+
     func usage() throws {
         openMenu()
         app.buttons["概览"].tap()
@@ -268,14 +279,21 @@ final class HermeshUITests: XCTestCase {
 
     func search() throws {
         openMenu()
-        let field = app.textFields["drawer-search"]
-        XCTAssertTrue(field.waitForExistence(timeout: 5))
-        press(field)
+        tap("search")
+        // Its own page, the field focused (the bar hides while searching):
+        // the recent sessions first.
+        let field = app.searchFields.firstMatch
+        XCTAssertTrue(field.waitForExistence(timeout: 10), "the search page")
+        XCTAssertTrue(text("最近").waitForExistence(timeout: 5), "the recent sessions")
+        XCTAssertTrue(app.descendants(matching: .any)["session-写 hello"].firstMatch.exists, "a recent session")
         sleep(1)
         field.typeText("崩溃")
-        let result = app.buttons["drawer-session-崩溃"]
+        XCTAssertTrue(text("搜索结果").waitForExistence(timeout: 10))
+        XCTAssertFalse(app.descendants(matching: .any)["session-写 hello"].firstMatch.exists, "only what matches")
+        let result = app.descendants(matching: .any)["session-崩溃"].firstMatch
         XCTAssertTrue(result.waitForExistence(timeout: 10))
         result.tap()
+        XCTAssertFalse(app.searchFields.firstMatch.exists, "the search page closes")
         XCTAssertTrue(app.descendants(matching: .any)["session-failed"].waitForExistence(timeout: 20), "the failure shows")
     }
 
