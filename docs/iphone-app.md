@@ -13,12 +13,12 @@ is never a machine: nothing runs on it, and it hosts no agent.
 |---|---|
 | Side menu | Search at the top; Overview, Grants, Machines; the sessions by state (Needs You, In Progress, Recent), All Sessions; at the bottom the account |
 | Search | A page of its own: the recent sessions, then the sessions that match what is typed |
-| Overview | What needs the owner (questions, failed turns, requests to connect), what is running (the mark at rest when nothing is), unreachable machines; today and usage in a line each (usage opens its page: the year of days) |
+| Overview | What needs the owner beyond the sessions (requests to connect, grants that end) and how many sessions wait (it opens the menu, which lists them); the work: today's sessions in a line, the agents and the machines with what each runs, unreachable machines, View All Sessions (opens the menu) |
 | All Sessions | Laid out as the Mac's sidebar: the view menu groups (by status, date, coding agent or machine), sorts by last activity and shows or hides each row's metadata; a group's heading folds it; archived sessions on request; kept on the phone. Swipe a row to archive or delete it, long-press to rename, archive or delete |
 | A session | Its conversation, newest at the bottom; a control bar to interrupt a live turn, or the agent's question to answer; session info and the diff in a sheet; ⋯ to copy its id, rename, archive or delete it (delete asks first; its branch stays) |
 | Grants | Agents and MCP connections: approve, renew, rename, disconnect, pause; each grant's sessions on a page of their own |
 | Machines | Each machine's state and sessions; rename, remove |
-| Account | Trusted devices (approve a new one, remove one), appearance (the system's, light or dark), notifications, sign out |
+| Account | Usage (its page: the year of days), trusted devices (approve a new one, remove one), appearance (the system's, light or dark), notifications, sign out |
 | New | The Overview's top right: Connect an Agent…, Add a Machine…, Enter a Pairing Code… |
 
 Navigation is a side menu that slides in from the left (a drag anywhere on a

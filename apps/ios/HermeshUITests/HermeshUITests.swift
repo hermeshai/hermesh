@@ -18,7 +18,7 @@ final class HermeshUITests: XCTestCase {
 
     func testTheIPhoneApp() throws {
         try XCTContext.runActivity(named: "joins the owner by its connection address") { _ in try join() }
-        try XCTContext.runActivity(named: "answers a question from the overview") { _ in try answerFromOverview() }
+        try XCTContext.runActivity(named: "counts the sessions waiting on the overview, and answers one from the menu") { _ in try answerFromOverview() }
         try XCTContext.runActivity(named: "interrupts a running session") { _ in try interrupt() }
         try XCTContext.runActivity(named: "shows a reply as the agent writes it") { _ in try streamedReply() }
         try XCTContext.runActivity(named: "archives a session and undoes it") { _ in try archiveAndUndo() }
@@ -30,7 +30,7 @@ final class HermeshUITests: XCTestCase {
         try XCTContext.runActivity(named: "shows a machine and its projects") { _ in try machine() }
         try XCTContext.runActivity(named: "lists the trusted devices") { _ in try devices() }
         try XCTContext.runActivity(named: "chooses light or dark in the account") { _ in try appearance() }
-        try XCTContext.runActivity(named: "opens usage from its line on the overview") { _ in try usage() }
+        try XCTContext.runActivity(named: "shows the work on the overview, and usage in the account") { _ in try usage() }
         try XCTContext.runActivity(named: "offers New from the overview's top right") { _ in try newMenu() }
         try XCTContext.runActivity(named: "searches sessions from the menu") { _ in try search() }
         try XCTContext.runActivity(named: "a question arrives as a notification and opens its session") { _ in try notification() }
@@ -67,10 +67,16 @@ final class HermeshUITests: XCTestCase {
     }
 
     func answerFromOverview() throws {
-        let card = app.descendants(matching: .any)["question-card"]
-        XCTAssertTrue(card.waitForExistence(timeout: 30), "the question shows on the overview")
-        XCTAssertTrue(card.descendants(matching: .any).matching(NSPredicate(format: "label CONTAINS %@", "选哪个颜色")).firstMatch.exists)
-        card.buttons["蓝"].tap()
+        // The overview counts them (one asks, two failed); the menu lists them.
+        let waiting = app.descendants(matching: .any)["sessions-waiting"].firstMatch
+        XCTAssertTrue(waiting.waitForExistence(timeout: 30), "the sessions waiting")
+        XCTAssertTrue(text("提问 1 · 出错 2").exists)
+        press(waiting)
+        XCTAssertTrue(app.descendants(matching: .any)["drawer-dim"].waitForExistence(timeout: 5), "the menu opens")
+        tap("drawer-session-选颜色")
+        XCTAssertTrue(app.descendants(matching: .any)["question"].waitForExistence(timeout: 20), "the question")
+        app.buttons["蓝"].tap()
+        tap("answer")
         XCTAssertTrue(toast(containing: "已回答"))
         try waitFor("the question is answered") { try self.sessionStatus("选颜色") != "waiting_input" ? true : nil }
     }
@@ -265,9 +271,17 @@ final class HermeshUITests: XCTestCase {
     func usage() throws {
         openMenu()
         app.buttons["概览"].tap()
-        // Nothing runs since the interrupt: 正在干活 rests.
-        XCTAssertTrue(app.descendants(matching: .any)["working-resting"].waitForExistence(timeout: 20))
-        XCTAssertTrue(text("现在没有会话在跑").exists)
+        // Nothing runs since the interrupt; the agent approved and the machine idle.
+        let today = app.descendants(matching: .any)["working-today"]
+        XCTAssertTrue(today.waitForExistence(timeout: 20))
+        try waitFor("nothing runs") { today.label.contains("在跑 0") ? true : nil }
+        XCTAssertTrue(text("Cursor").exists, "the agent")
+        XCTAssertTrue(text("空闲").exists, "the agent idle")
+        XCTAssertTrue(text("owner-mac").exists, "the machine")
+        // View All Sessions opens the menu; usage is in the account.
+        press(app.descendants(matching: .any)["all-sessions"].firstMatch)
+        XCTAssertTrue(app.descendants(matching: .any)["drawer-dim"].waitForExistence(timeout: 5), "the menu opens")
+        tap("account")
         let line = app.buttons["usage"]
         XCTAssertTrue(line.waitForExistence(timeout: 20), "the usage line")
         XCTAssertTrue(line.label.contains("近 30 天"), line.label)
@@ -275,6 +289,8 @@ final class HermeshUITests: XCTestCase {
         XCTAssertTrue(app.navigationBars["用量"].waitForExistence(timeout: 10), "the usage page")
         XCTAssertTrue(text("活跃天数").exists)
         app.navigationBars.buttons.element(boundBy: 0).tap()
+        tap("close")
+        app.descendants(matching: .any)["drawer-dim"].tap()
     }
 
     func search() throws {

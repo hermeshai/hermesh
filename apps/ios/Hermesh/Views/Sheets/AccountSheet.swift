@@ -1,9 +1,11 @@
 import HermeshKit
 import HermeshProto
+import HermeshSessions
 import SwiftUI
 import UserNotifications
 
-/// The account: the service, the trusted devices, the appearance, notifications.
+/// The account: the service, usage, the trusted devices, the appearance,
+/// notifications.
 struct AccountSheet: View {
     @Environment(AppModel.self) private var model
     @State private var removing: Device?
@@ -22,6 +24,22 @@ struct AccountSheet: View {
                         Text(model.status.relayConnected ? "Connected" : "Not connected").font(.footnote).foregroundStyle(model.status.relayConnected ? .green : .secondary)
                     }
                     .frame(maxWidth: .infinity).listRowBackground(Color.clear)
+                }
+                if let u = model.usage {
+                    Section {
+                        NavigationLink {
+                            UsageView()
+                        } label: {
+                            Label {
+                                Text("Last 30 days **\(tokensText(u.last30))** tokens · active **\(u.active)** days")
+                            } icon: {
+                                Image(systemName: "chart.bar").foregroundStyle(.secondary)
+                            }
+                        }
+                        .accessibilityIdentifier("usage")
+                    } header: {
+                        Text("Usage")
+                    }
                 }
                 Section {
                     ForEach(model.devices, id: \.keyID) { d in
