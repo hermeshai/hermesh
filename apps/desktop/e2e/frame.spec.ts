@@ -57,10 +57,12 @@ test("long titles are cut, the status dot sits by its text, a running title shim
   // Only what needs you has a dot: a waiting session does; a running one has none, its title shimmers instead.
   await expect(list.getByRole("listitem").filter({ hasText: "选颜色" }).locator(".sdot")).toHaveCount(1);
   await expect(running.locator(".sdot")).toHaveCount(0);
-  expect(await running.locator(".stitle").evaluate((e) => getComputedStyle(e).animationName)).toBe("stitle-run");
+  expect(await running.locator(".stitle .shine").evaluate((e) => getComputedStyle(e).animationName)).toBe("stitle-run");
+  // The band's copy of the title is drawn, not text: the title reads once.
+  await expect(running.locator(".stitle")).toHaveText((await running.locator(".stitle").getAttribute("title"))!);
   const idle = list.getByRole("listitem").filter({ hasText: "写 hello" });
   await expect(idle.locator(".sdot")).toHaveCount(0);
-  expect(await idle.locator(".stitle").evaluate((e) => getComputedStyle(e).animationName)).toBe("none");
+  await expect(idle.locator(".shine")).toHaveCount(0);
   // Flush left: a title starts where its group's heading does.
   const heading = await box(list.getByRole("group", { name: "进行中" }).locator(".grp-h"));
   expect(Math.abs((await box(running.locator(".stitle"))).x - (heading.x + 9))).toBeLessThanOrEqual(1);
