@@ -314,35 +314,39 @@ test("an agent's Markdown shows as GitHub shows it, without HTML, images or unsa
 test("a reply shows as the agent writes it, never as raw Markdown, and stays when the turn is interrupted", async () => {
   // Bold text and a table header long enough to stay open over several 100 ms updates.
   const reply = ["## 计划", "先看 **这一段很长很长的加粗文字会跨过好几次刷新** 的文件。", "", "| 文件名称写得很长很长 | 改动说明也写得很长很长 |", "|---|---|", "| a.go | 新增 |", "", "```go", "func main() {}", "```", "", "最后一段说明。"].join("\\n");
-  await cli("session", "start", "--project", "demo", "--agent", "gemini", "--title", "流式", "--prompt", `sleep 3s\nstream ${reply}\nsleep 4s`);
+  // The reply streams in a second turn, sent once the page is open, so the page sees it grow however slow the machine.
+  const streaming = JSON.parse(await cli("session", "start", "--project", "demo", "--agent", "gemini", "--title", "流式", "--prompt", "say 准备好了", "--wait", "-o", "json"));
   await cli("session", "start", "--project", "demo", "--agent", "gemini", "--title", "流式打断", "--prompt", "stream 被打断的回复写到一半\nsleep 1800s");
   const { app, page } = await launch();
-  // Every state of the agent's words while the reply grows (the prompt above shows it raw), checked for Markdown that shows raw.
+  // Every state of the agent's words while the reply grows (the prompt shows it raw), checked for Markdown that shows raw,
+  // and whether one showed part of it only.
   await page.evaluate(() => {
-    const w = window as unknown as { __raw: string[] };
+    const w = window as unknown as { __raw: string[]; __part: boolean };
     w.__raw = [];
+    w.__part = false;
     new MutationObserver(() => {
       const text = [...document.querySelectorAll("[role=log] .am")].map((el) => (el as HTMLElement).innerText).join("\n");
       if (/\||\*\*|```/.test(text)) w.__raw.push(text);
+      if (text.includes("计划") && !text.includes("最后一段说明")) w.__part = true;
     }).observe(document.body, { subtree: true, childList: true, characterData: true });
   });
   await open(page, "流式");
   const log = page.getByRole("log", { name: "对话" });
   const agent = log.locator(".am");
   const ctl = page.getByRole("region", { name: "这一轮" });
+  await expect(agent).toHaveText("准备好了");
+  await cli("session", "send", streaming.session.session_id, "--message", `stream ${reply}\nsleep 4s`);
   // Part of the reply shows while the turn runs, then all of it, still running.
-  await expect(agent).toContainText("计划");
-  await expect(ctl).toBeVisible();
-  await expect(agent).not.toContainText("最后一段说明");
-  await expect(agent).toContainText("最后一段说明");
+  await expect(agent.last()).toContainText("最后一段说明");
+  expect(await page.evaluate(() => (window as unknown as { __part: boolean }).__part)).toBe(true);
   await expect(ctl).toBeVisible();
   await expect(log.getByRole("table")).toBeVisible();
   await expect(log.locator("pre code")).toHaveText("func main() {}");
   await snap(page, "session-streaming");
-  // The stored message replaces it when the turn ends: one message, the same.
+  // The stored message replaces it when the turn ends: the same, not a second one.
   await expect(ctl).toHaveCount(0);
-  await expect(agent).toHaveCount(1);
-  await expect(agent.locator("strong")).toHaveText("这一段很长很长的加粗文字会跨过好几次刷新");
+  await expect(agent).toHaveCount(2);
+  await expect(agent.last().locator("strong")).toHaveText("这一段很长很长的加粗文字会跨过好几次刷新");
   expect(await page.evaluate(() => (window as unknown as { __raw: string[] }).__raw)).toEqual([]);
 
   // Interrupted mid-reply: what was shown stays, as a message like any other.
