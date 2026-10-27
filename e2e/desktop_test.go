@@ -62,7 +62,7 @@ func TestDesktop(t *testing.T) {
 		t.Skip("pnpm not installed")
 	}
 	if secs, _ := strconv.Atoi(os.Getenv("HERMESH_DESKTOP_PREVIEW")); secs > 0 {
-		f := desktopWorld(t, false, false)
+		f := desktopWorld(t, false, false, false)
 		t.Logf("sessions ready; open the app with:\nHERMESH_SOCKET=%s pnpm --dir apps/desktop dev", f.Socket)
 		time.Sleep(time.Duration(secs) * time.Second)
 		return
@@ -90,7 +90,7 @@ func TestDesktop(t *testing.T) {
 		}
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
-			f := desktopWorld(t, name == "onboarding", name == "health")
+			f := desktopWorld(t, name == "onboarding", name == "health", name == "settings")
 			file := filepath.Join(t.TempDir(), "fixture.json")
 			b, _ := json.Marshal(f)
 			os.WriteFile(file, b, 0o644)
@@ -111,8 +111,10 @@ func TestDesktop(t *testing.T) {
 // desktopWorld is an owner Mac with a session in every state the app
 // shows, and (fresh) owner daemons nobody has set up yet for the first run.
 // limited: its hermeshd may start only 80 more processes than the user runs
-// (health.spec.ts takes them).
-func desktopWorld(t *testing.T, fresh, limited bool) desktopFixture {
+// (health.spec.ts takes them). wake: its relay runs the MCP gateway, which
+// keeps agents' doorbells, and may call webhooks on this computer
+// (settings.spec.ts sets one up).
+func desktopWorld(t *testing.T, fresh, limited, wake bool) desktopFixture {
 	fake := filepath.Join(binaries(t), "fakeacp")
 	// Codex installed, not logged in, offering fakecodex's models: the same
 	// whatever this machine has.
@@ -121,6 +123,15 @@ func desktopWorld(t *testing.T, fresh, limited bool) desktopFixture {
 		filepath.Join(binaries(t), "fakecodex"))), 0o755)
 	w := newOwnerMac(t, []string{"HERMESH_GEMINI_BIN=" + fake, "FAKE_ACP_STATE=" + filepath.Join(t.TempDir(), "fakeacp"), "HERMESH_CODEX_BIN=" + codex},
 		&localv1.GrantSpec{Agents: []string{"gemini"}})
+	if wake {
+		w.relay.stop()
+		w.relayArgs = append(w.relayArgs, "--mcp")
+		w.relayEnv = []string{"HERMESH_MCP_LOCAL_WEBHOOKS=1"}
+		w.startRelay()
+		eventually(t, 30*time.Second, "the machine back online", func() bool {
+			return !strings.Contains(w.cli(30*time.Second, "project", "list").stdout, "offline")
+		})
+	}
 	f := desktopFixture{Socket: w.sock, Sessions: desktopSessions(t, w), CLI: filepath.Join(w.bin, "hermesh"), CLIEnv: w.cliEnv}
 	if limited {
 		w.nproc = userProcesses(t) + 80

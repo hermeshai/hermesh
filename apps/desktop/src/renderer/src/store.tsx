@@ -1,6 +1,6 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
 import { ConnectError } from "@connectrpc/connect";
-import type { Client, Device, GetStatusResponse, Machine, PairingDetails, Project, Unreachable } from "@hermesh/proto/local";
+import type { Client, Device, GetStatusResponse, Machine, PairingDetails, Project, Unreachable, Wake } from "@hermesh/proto/local";
 import type { Session } from "@hermesh/proto/session";
 import { sessionView, unreachableMachines, withKnownState, type SessionFilter, type SessionView } from "@hermesh/core";
 import { useWorld } from "./useWorld";
@@ -31,6 +31,8 @@ export type Sheet =
   /** details: from LookupPairing, until the poll lists the request. */
   | { kind: "pairing"; code: string; details?: PairingDetails }
   | { kind: "scope"; clientId: string; renew: boolean }
+  /** An agent's doorbell (docs/agent-names.md §7): set one up, or, with wake, see and change it. */
+  | { kind: "wake"; clientId: string; agent: string; wake?: Wake }
   | { kind: "confirm"; title: string; message: string; button: string; run: () => Promise<unknown>; done?: string };
 
 export type Toast = { text: string; undo?: () => void; id: number };

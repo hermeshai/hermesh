@@ -4,14 +4,15 @@ import { ConfirmSheet } from "./sheets/Confirm";
 import { NewGrantSheet } from "./sheets/NewGrant";
 import { EnterCodeSheet, PairingSheet } from "./sheets/Pairing";
 import { ScopeSheet } from "./sheets/Scope";
+import { WakeSheet } from "./sheets/Wake";
 import { useStore, type Sheet } from "./store";
 import "./sheets/sheets.css";
 
 // Sheets over the window: connect an agent, add machine/project/device, pairing code,
-// pairing approval, scope, confirm. One at a time, in st.sheet (the app
+// pairing approval, scope, an agent's wake, confirm. One at a time, in st.sheet (the app
 // menu's commands open them through commands.ts).
 
-const widths: Record<Sheet["kind"], number> = { newGrant: 620, addMachine: 560, addProject: 540, addDevice: 520, enterCode: 420, pairing: 500, scope: 560, confirm: 440 };
+const widths: Record<Sheet["kind"], number> = { newGrant: 620, addMachine: 560, addProject: 540, addDevice: 520, enterCode: 420, pairing: 500, scope: 560, wake: 480, confirm: 440 };
 
 export function SheetHost() {
   const st = useStore();
@@ -50,6 +51,8 @@ function Body({ sheet }: { sheet: Sheet }) {
       return <PairingSheet code={sheet.code} details={sheet.details} />;
     case "scope":
       return <ScopeSheet clientId={sheet.clientId} renew={sheet.renew} />;
+    case "wake":
+      return <WakeSheet sheet={sheet} />;
     case "confirm":
       return <ConfirmSheet sheet={sheet} />;
   }

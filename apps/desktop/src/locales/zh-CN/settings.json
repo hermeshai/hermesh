@@ -149,5 +149,16 @@
     "recheck": "重新检测编码 agent",
     "copyDiagnostics": "复制诊断信息",
     "diagnosticsCopied": "诊断信息已拷贝，可以直接粘贴发给我们"
+  },
+  "wake": {
+    "title": "新消息提醒",
+    "none": "还没有设置。",
+    "note": "有消息等着这个 agent 或它的某个 bot 时，Hermesh 调用一个 webhook（比如 Grok Bot routine 的）叫醒它，不会说消息的内容。",
+    "add": "添加…",
+    "self": "{{agent}} 本身",
+    "on": "已开",
+    "broken": "不能用",
+    "lastRang": "{{ago}}叫醒过",
+    "notYet": "还没叫醒过"
   }
 }
