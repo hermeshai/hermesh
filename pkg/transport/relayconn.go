@@ -288,4 +288,20 @@ func (c *RelayConn) Close() error {
 
 func (c *RelayConn) Done() <-chan struct{} { return c.sess.CloseChan() }
 
+// Ping waits for the relay to answer a ping: whether the connection still
+// works, which one kept while its process was suspended may not.
+func (c *RelayConn) Ping(ctx context.Context) error {
+	done := make(chan error, 1)
+	go func() {
+		_, err := c.sess.Ping()
+		done <- err
+	}()
+	select {
+	case err := <-done:
+		return err
+	case <-ctx.Done():
+		return ctx.Err()
+	}
+}
+
 func (c *RelayConn) IsClosed() bool { return c.sess.IsClosed() }

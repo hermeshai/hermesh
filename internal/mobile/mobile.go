@@ -106,11 +106,11 @@ func (c *Core) Resume() {
 	}()
 }
 
-// Pause stops listening, closes the relay connection and stops following
-// the machines (the app went to the background). iOS may take a suspended
-// app's listening socket back without a word, to listen no more after it
-// resumed (Apple's TN2277), so it is closed here and opened again by
-// Resume; calls under way go on.
+// Pause stops listening and following the machines, and keeps the relay
+// connection to try again first (the app went to the background). iOS may
+// take a suspended app's listening socket back without a word, to listen
+// no more after it resumed (Apple's TN2277), so it is closed here and
+// opened again by Resume; calls under way go on.
 func (c *Core) Pause() {
 	c.mu.Lock()
 	cancel, done := c.cancel, c.done
@@ -120,11 +120,11 @@ func (c *Core) Pause() {
 		c.ln = nil
 	}
 	c.mu.Unlock()
+	c.o.Pause()
 	if cancel != nil {
 		cancel()
 		<-done
 	}
-	c.o.Pause()
 }
 
 // Reconnect connects to the relay and the machines again: the network
