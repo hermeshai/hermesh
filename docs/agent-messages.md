@@ -603,6 +603,8 @@ Decided 2026-10-27:
 12. Several bots on one connection are told apart by the name each passes
     (`as`): Grok's requests carry nothing per bot (tested), and each bot
     knows its own name (tested).
+13. The privacy policy is the owner's to update, separately: it no longer
+    waits on this work (point 10).
 
 ## 14. What building it changed
 
