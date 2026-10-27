@@ -564,12 +564,12 @@ final class AppModel {
 
     func grant(id: String) -> Client? { clients.first { $0.grantID == id } }
 
-    /// The grant that started a session (by its client id), if still known.
-    func grantFor(_ s: Session) -> Client? { clients.first { $0.clientID == s.createdBy } }
-
     /// Who started a session, as the person knows them.
-    func grantLabel(_ s: Session) -> String {
-        grantFor(s)?.label ?? String(localized: "Disconnected grant")
+    func grantLabel(_ s: Session) -> String { clientLabel(s.createdBy) }
+
+    /// A client by its id (a session's created_by), as the person knows it.
+    func clientLabel(_ clientID: String) -> String {
+        clients.first { $0.clientID == clientID }?.label ?? String(localized: "Disconnected grant")
     }
 
     func machineName(_ id: String) -> String { machines.first { $0.machineID == id }?.machineName ?? String(id.prefix(12)) }

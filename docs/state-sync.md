@@ -399,7 +399,7 @@ long output itself is shown as it shortened it.
 | Projects | (B) per machine | all |
 | Sessions | (B) per machine, BASIC | per machine: the newest 50 plus every unsettled one; trimmed after each change, since a session that changes becomes the newest and comes back. A page past them (`before`, or more than 50 of a machine that has more) is asked of the machine |
 | Usage | `GetUsage` per machine | days before today: once per time zone; today: refreshed (§4.4) |
-| Today's activity | `GetActivity` per machine, not kept | the sessions that worked each hour of a day and by who started them, counted by the machine from its turns' start and end (`turn_usage`) and the turn in progress; the iPhone asks when its overview opens and, while sessions change, once a minute at most |
+| Today's activity | `GetActivity` per machine, not kept | the sessions that worked each hour of a day, by who started them and the coding agent that ran them, with the turns that ended that day and their tokens, counted by the machine from its turns' start and end (`turn_usage`) and the turn in progress; the iPhone asks when its overview opens and, while sessions change, once a minute at most |
 | Feed state | per machine | following / error / offline, and its resume token |
 
 Memory: a few hundred BASIC sessions of about 220 bytes each, plus the

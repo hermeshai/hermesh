@@ -272,17 +272,31 @@ public func searchSessions(_ sessions: [Session], query: String, filter: Session
 }
 
 /// A day's work as the machines count it (GetActivity): the sessions that
-/// worked in each hour, in all and by the client that started them, and
-/// the day's sessions and those of them now done.
+/// worked in each hour, in all and by the coding agent that ran them; the
+/// day's sessions and those of them now done; and, for each client and
+/// agent, its sessions and the turns that ended that day.
 public struct DayActivity: Equatable, Sendable {
+    /// The work one client sent one coding agent.
+    public struct Pair: Equatable, Sendable {
+        public var createdBy: String
+        /// "" from a machine too old to say.
+        public var agent: String
+        public var sessions: Int
+        public var turns: Int
+        public var tokens: UInt64
+    }
+
     /// The day, YYYY-MM-DD.
     public var date: String
     /// 24 counts, midnight first.
     public var hours: [Int]
-    public var byClient: [String: [Int]]
+    public var byAgent: [String: [Int]]
     public var sessions: Int
     public var done: Int
-    public var sessionsByClient: [String: Int]
+    public var turns: Int
+    public var tokens: UInt64
+    /// One for each client and agent, however many machines worked for it.
+    public var pairs: [Pair]
 
     public init(date: String, hours: [Hermesh_Session_V1_ActivityHour], clients: [Hermesh_Session_V1_ActivityClient]) {
         self.date = date
@@ -290,13 +304,83 @@ public struct DayActivity: Equatable, Sendable {
         var by: [String: [Int]] = [:]
         for h in hours where h.hour < 24 {
             all[Int(h.hour)] += Int(h.sessions)
-            by[h.createdBy, default: Array(repeating: 0, count: 24)][Int(h.hour)] += Int(h.sessions)
+            by[h.agent, default: Array(repeating: 0, count: 24)][Int(h.hour)] += Int(h.sessions)
         }
         self.hours = all
-        byClient = by
+        byAgent = by
         sessions = clients.reduce(0) { $0 + Int($1.sessions) }
         done = clients.reduce(0) { $0 + Int($1.done) }
-        sessionsByClient = Dictionary(clients.map { ($0.createdBy, Int($0.sessions)) }, uniquingKeysWith: +)
+        turns = clients.reduce(0) { $0 + Int($1.turns) }
+        tokens = clients.reduce(0) { $0 + $1.tokens }
+        var merged: [Pair] = []
+        for c in clients {
+            if let i = merged.firstIndex(where: { $0.createdBy == c.createdBy && $0.agent == c.agent }) {
+                merged[i].sessions += Int(c.sessions)
+                merged[i].turns += Int(c.turns)
+                merged[i].tokens += c.tokens
+            } else {
+                merged.append(Pair(createdBy: c.createdBy, agent: c.agent, sessions: Int(c.sessions), turns: Int(c.turns), tokens: c.tokens))
+            }
+        }
+        pairs = merged
+    }
+
+    public func turns(agent: String) -> Int { pairs.filter { $0.agent == agent }.reduce(0) { $0 + $1.turns } }
+    public func sessions(agent: String) -> Int { pairs.filter { $0.agent == agent }.reduce(0) { $0 + $1.sessions } }
+}
+
+/// A day's work as a flow from the clients that sent it to the coding
+/// agents that did it, by turns: the busiest few on each side, the rest
+/// together as one ("" names it). Work whose agent a machine didn't say is
+/// left out.
+public struct WorkFlow: Equatable, Sendable {
+    public struct Node: Equatable, Sendable {
+        /// A client id or an agent; "" for the rest together.
+        public var id: String
+        public var turns: Int
+        /// For "", how many it stands for.
+        public var count = 1
+    }
+
+    public struct Band: Equatable, Sendable {
+        public var client: String
+        public var agent: String
+        public var turns: Int
+    }
+
+    public var clients: [Node]
+    public var agents: [Node]
+    public var bands: [Band]
+
+    public init(_ pairs: [DayActivity.Pair], keep: Int = 3) {
+        let known = pairs.filter { !$0.agent.isEmpty }
+        func side(_ key: (DayActivity.Pair) -> String) -> (nodes: [Node], kept: Set<String>) {
+            var turns: [String: Int] = [:]
+            var sessions: [String: Int] = [:]
+            for p in known {
+                turns[key(p), default: 0] += p.turns
+                sessions[key(p), default: 0] += p.sessions
+            }
+            let order = turns.keys.sorted { (turns[$0]!, sessions[$0]!, $1) > (turns[$1]!, sessions[$1]!, $0) }
+            let shown = order.count > keep ? Array(order.prefix(keep - 1)) : order
+            var nodes = shown.map { Node(id: $0, turns: turns[$0]!) }
+            let rest = order.dropFirst(shown.count)
+            if !rest.isEmpty { nodes.append(Node(id: "", turns: rest.reduce(0) { $0 + turns[$1]! }, count: rest.count)) }
+            return (nodes, Set(shown))
+        }
+        let c = side(\.createdBy), a = side(\.agent)
+        clients = c.nodes
+        agents = a.nodes
+        var merged: [Band] = []
+        for p in known {
+            let b = Band(client: c.kept.contains(p.createdBy) ? p.createdBy : "", agent: a.kept.contains(p.agent) ? p.agent : "", turns: p.turns)
+            if let i = merged.firstIndex(where: { $0.client == b.client && $0.agent == b.agent }) {
+                merged[i].turns += b.turns
+            } else {
+                merged.append(b)
+            }
+        }
+        bands = merged
     }
 }
 

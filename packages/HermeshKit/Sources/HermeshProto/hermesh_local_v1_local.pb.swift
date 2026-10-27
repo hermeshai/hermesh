@@ -2204,7 +2204,7 @@ public nonisolated struct Hermesh_Local_V1_GetActivityResponse: Sendable {
   // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
   // methods supported on all messages.
 
-  /// An hour and client appear once however many machines worked then.
+  /// An hour, client and agent appear once however many machines worked then.
   public var hours: [Hermesh_Session_V1_ActivityHour] = []
 
   public var clients: [Hermesh_Session_V1_ActivityClient] = []

@@ -15,11 +15,12 @@ enum PairingText {
 
 /// The first page: what waits for the owner beyond the sessions (requests
 /// to connect, grants that end) and how many sessions wait (the menu lists
-/// them); then the work: what runs, today's sessions hour by hour, each
-/// agent's day and the machines.
+/// them); then the work: what runs, today's sessions hour by hour, who sent
+/// work to which coding agent, each coding agent's day and the machines.
 struct OverviewView: View {
     @Environment(AppModel.self) private var model
     @State private var everyAgent = false
+    @State private var picked: FlowPick?
 
     var body: some View {
         ScrollView {
@@ -116,28 +117,38 @@ struct OverviewView: View {
         .padding(.horizontal, 16).padding(.vertical, 11)
     }
 
-    /// What runs and today's sessions hour by hour; then each agent's day
-    /// (those that worked first, the others folded), the machines, and the
-    /// way to the sessions: the menu.
+    /// What runs and today's sessions hour by hour; then who sent the day's
+    /// work to which coding agent, each coding agent's day (those that worked
+    /// first, the others folded), the machines, and the way to the sessions:
+    /// the menu.
     private var working: some View {
         let running = model.sessions.filter(\.isActive)
         let hour = Calendar.current.component(.hour, from: model.now)
         let today = model.activity?.date == dayKey(model.now) ? model.activity : nil
-        let agents = model.clients.filter { !$0.revoked }
-        let runs = { (c: Client) in running.filter { $0.createdBy == c.clientID }.count }
-        let worked = { (c: Client) in today?.sessionsByClient[c.clientID] ?? 0 }
-        let busy = agents.filter { runs($0) > 0 || worked($0) > 0 }.sorted { (runs($0), worked($0)) > (runs($1), worked($1)) }
+        let flow = WorkFlow(today?.pairs ?? [])
+        let agents = codingAgents(running: running, today: today)
+        let runs = { (a: String) in running.filter { $0.agent == a }.count }
+        let turns = { (a: String) in today?.turns(agent: a) ?? 0 }
+        let worked = { (a: String) in today?.sessions(agent: a) ?? 0 }
+        let busy = agents.filter { runs($0) > 0 || worked($0) > 0 }.sorted { (runs($0), turns($0), worked($0)) > (runs($1), turns($1), worked($1)) }
         let rest = agents.filter { runs($0) == 0 && worked($0) == 0 }
         let shown = everyAgent ? busy + rest : busy
+        let idleClients = model.clients.filter { c in
+            !c.revoked && !(today?.pairs.contains { $0.createdBy == c.clientID } ?? false) && !running.contains { $0.createdBy == c.clientID }
+        }
         return Section {
             VStack(alignment: .leading, spacing: 10) {
                 DayCard(running: running.count, today: today, hour: hour)
+                if let today, !flow.bands.isEmpty {
+                    caption("Where Today’s Work Came From and Went", detail: "\(today.turns) turns · \(tokensText(today.tokens)) tokens")
+                    FlowCard(flow: flow, picked: $picked, clientName: { model.clientLabel($0) }, idle: idleClients.map { AgentLogo.name($0.label) })
+                }
                 if !agents.isEmpty {
                     caption("Agents", detail: "Sessions working each hour")
                     card {
-                        ForEach(Array(shown.enumerated()), id: \.element.grantID) { i, c in
+                        ForEach(Array(shown.enumerated()), id: \.element) { i, a in
                             if i > 0 { Divider().padding(.leading, 50) }
-                            agentRow(c, running: runs(c), hours: today?.byClient[c.clientID], hour: hour)
+                            agentRow(a, running: runs(a), turns: turns(a), flow: flow, today: today, hours: today?.byAgent[a], hour: hour)
                         }
                         if !everyAgent && !rest.isEmpty {
                             if !shown.isEmpty { Divider().padding(.leading, 50) }
@@ -178,26 +189,56 @@ struct OverviewView: View {
         }
     }
 
-    private func agentRow(_ c: Client, running: Int, hours: [Int]?, hour: Int) -> some View {
-        Button { model.path.append(.grant(c.grantID)) } label: {
-            HStack(alignment: .top, spacing: 10) {
-                GrantAvatar(label: c.label, size: 26)
-                VStack(alignment: .leading, spacing: 7) {
-                    HStack(alignment: .firstTextBaseline) {
-                        Text(c.label).lineLimit(1)
-                        Spacer()
-                        Text(running > 0 ? String(localized: "\(running) running") : String(localized: "Idle"))
-                            .font(.subheadline).foregroundStyle(running > 0 ? .primary : .secondary).monospacedDigit()
-                    }
-                    HourCells(hours: hours ?? Array(repeating: 0, count: 24), hour: hour)
-                }
-            }
-            .padding(.horizontal, 14).padding(.vertical, 10)
-            .contentShape(.rect)
+    /// The coding agents ready on any machine, and any that ran today or runs now.
+    private func codingAgents(running: [Session], today: DayActivity?) -> [String] {
+        var ids = Set(model.machines.flatMap { $0.status.agents.filter(\.available).map(\.name) })
+        ids.formUnion(running.map(\.agent))
+        ids.formUnion(today?.pairs.map(\.agent) ?? [])
+        ids.remove("")
+        return ids.sorted()
+    }
+
+    /// A coding agent's day: what it runs, on how many machines, its turns
+    /// (or, with a client picked in the flow, the turns that client sent
+    /// it), and its sessions hour by hour.
+    private func agentRow(_ a: String, running: Int, turns: Int, flow: WorkFlow, today: DayActivity?, hours: [Int]?, hour: Int) -> some View {
+        let machines = model.machines.filter { $0.status.agents.contains { $0.name == a && $0.available } }.count
+        var detail = machines > 0 ? (turns > 0 ? String(localized: "\(machines) machines · \(turns) turns") : String(localized: "\(machines) machines"))
+            : (turns > 0 ? String(localized: "\(turns) turns") : "")
+        var dim = false
+        switch picked {
+        case .client(let c):
+            let shown = Set(flow.clients.map(\.id))
+            let sent = today?.pairs.filter { $0.agent == a && (c.isEmpty ? !shown.contains($0.createdBy) : $0.createdBy == c) }
+            let n = sent?.reduce(0) { $0 + $1.turns } ?? 0
+            let name = c.isEmpty ? String(localized: "The others") : AgentLogo.name(model.clientLabel(c))
+            detail = String(localized: "\(name) sent \(n) turns")
+            dim = sent?.isEmpty ?? true
+        case .agent(let x):
+            dim = x.isEmpty ? flow.agents.contains { $0.id == a } : x != a
+        case nil:
+            break
         }
-        .buttonStyle(.plain)
+        return HStack(alignment: .top, spacing: 10) {
+            AgentLogo(id: a, size: 26).padding(.top, 1)
+            VStack(alignment: .leading, spacing: 6) {
+                HStack(alignment: .firstTextBaseline) {
+                    Text(agentTitle(a)).lineLimit(1)
+                    Spacer()
+                    Text(running > 0 ? String(localized: "\(running) running") : String(localized: "Idle"))
+                        .font(.subheadline).foregroundStyle(running > 0 ? .primary : .secondary).monospacedDigit()
+                }
+                if !detail.isEmpty {
+                    Text(detail).font(.footnote).foregroundStyle(.secondary).monospacedDigit().lineLimit(1)
+                }
+                HourCells(hours: hours ?? Array(repeating: 0, count: 24), hour: hour)
+            }
+        }
+        .padding(.horizontal, 14).padding(.vertical, 10)
+        .opacity(dim ? 0.35 : 1)
+        .animation(.smooth, value: picked)
         .accessibilityElement(children: .combine)
-        .accessibilityIdentifier("agent-\(c.label)")
+        .accessibilityIdentifier("coding-agent-\(a)")
     }
 
     private func machineRow(_ m: Machine, running: Int) -> some View {
@@ -298,6 +339,175 @@ struct DayCard: View {
         .background(Color(.secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 26, style: .continuous))
         .accessibilityElement(children: .combine)
         .accessibilityIdentifier("working-today")
+    }
+}
+
+/// What is picked in the flow: a client or a coding agent ("" for the
+/// others together on that side).
+enum FlowPick: Hashable {
+    case client(String)
+    case agent(String)
+}
+
+/// Who sent the day's work to which coding agent: the clients on the left,
+/// the agents on the right, each band as thick as its turns. Tapping a side
+/// picks it, its bands in the accent and the rest faint; tapping it again
+/// lets go. Under it, the clients that sent nothing.
+struct FlowCard: View {
+    let flow: WorkFlow
+    @Binding var picked: FlowPick?
+    let clientName: (String) -> String
+    let idle: [String]
+
+    private let rowHeight: CGFloat = 52
+
+    var body: some View {
+        let rows = CGFloat(max(flow.clients.count, flow.agents.count, 1))
+        VStack(alignment: .leading, spacing: 8) {
+            HStack {
+                Text("Authorized Clients")
+                Spacer()
+                Text("Agents")
+            }
+            .font(.caption2).foregroundStyle(.secondary)
+            GeometryReader { g in
+                let layout = FlowLayout(flow: flow, width: g.size.width, height: rows * rowHeight)
+                ZStack(alignment: .topLeading) {
+                    Canvas { ctx, _ in
+                        for (b, band) in zip(flow.bands, layout.bands) {
+                            var p = Path()
+                            p.move(to: CGPoint(x: layout.left, y: band.from))
+                            p.addCurve(to: CGPoint(x: layout.right, y: band.to),
+                                       control1: CGPoint(x: (layout.left + layout.right) / 2, y: band.from),
+                                       control2: CGPoint(x: (layout.left + layout.right) / 2, y: band.to))
+                            ctx.stroke(p, with: .color(color(b)), lineWidth: band.width)
+                        }
+                        for port in layout.ports {
+                            let on = picked == port.pick
+                            ctx.fill(Path(roundedRect: port.rect, cornerRadius: 2), with: .color(on ? Color.accentColor : Color.primary.opacity(0.45)))
+                        }
+                    }
+                    ForEach(Array(flow.clients.enumerated()), id: \.element.id) { i, n in
+                        node(n, pick: .client(n.id), name: n.id.isEmpty ? String(localized: "\(n.count) more") : AgentLogo.name(clientName(n.id)), logo: n.id.isEmpty ? nil : clientName(n.id))
+                            .frame(width: layout.nodeWidth, height: 44)
+                            .position(x: layout.nodeWidth / 2, y: layout.clientY[i])
+                    }
+                    ForEach(Array(flow.agents.enumerated()), id: \.element.id) { i, n in
+                        node(n, pick: .agent(n.id), name: n.id.isEmpty ? String(localized: "\(n.count) more") : agentTitle(n.id), logo: n.id.isEmpty ? nil : n.id)
+                            .frame(width: layout.nodeWidth, height: 44)
+                            .position(x: g.size.width - layout.nodeWidth / 2, y: layout.agentY[i])
+                    }
+                }
+            }
+            .frame(height: rows * rowHeight)
+            if !idle.isEmpty {
+                Text("\(listText(idle)) sent no work today").font(.caption).foregroundStyle(.secondary).lineLimit(2)
+            }
+        }
+        .padding(.horizontal, 18).padding(.vertical, 14)
+        .background(Color(.secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 26, style: .continuous))
+    }
+
+    private func node(_ n: WorkFlow.Node, pick: FlowPick, name: String, logo: String?) -> some View {
+        let on = picked == pick
+        return Button {
+            withAnimation(.smooth) { picked = on ? nil : pick }
+        } label: {
+            HStack(spacing: 8) {
+                if let logo {
+                    AgentLogo(id: logo, size: 22)
+                } else {
+                    Image(systemName: "ellipsis").font(.caption.weight(.semibold)).foregroundStyle(.secondary).frame(width: 22, height: 22)
+                }
+                VStack(alignment: .leading, spacing: 1) {
+                    Text(name).font(.subheadline.weight(on ? .semibold : .regular)).foregroundStyle(on ? Color.accentColor : .primary).lineLimit(1)
+                    Text("\(n.turns) turns").font(.caption).foregroundStyle(.secondary).monospacedDigit()
+                }
+                Spacer(minLength: 0)
+            }
+            .contentShape(.rect)
+        }
+        .buttonStyle(.plain)
+        .opacity(linked(pick) ? 1 : 0.35)
+        .accessibilityElement(children: .combine)
+        .accessibilityAddTraits(on ? .isSelected : [])
+        .accessibilityIdentifier(pick.identifier(name))
+    }
+
+    /// Whether nothing is picked, or this is picked or sends work to (or gets work from) what is.
+    private func linked(_ p: FlowPick) -> Bool {
+        guard let picked, picked != p else { return true }
+        return flow.bands.contains { touches($0, picked) && touches($0, p) }
+    }
+
+    private func touches(_ b: WorkFlow.Band, _ p: FlowPick) -> Bool {
+        switch p {
+        case .client(let c): b.client == c
+        case .agent(let a): b.agent == a
+        }
+    }
+
+    private func color(_ b: WorkFlow.Band) -> Color {
+        guard let picked else { return Color.primary.opacity(0.16) }
+        return touches(b, picked) ? Color.accentColor.opacity(0.55) : Color.primary.opacity(0.05)
+    }
+}
+
+extension FlowPick {
+    func identifier(_ name: String) -> String {
+        switch self {
+        case .client: "flow-client-\(name)"
+        case .agent(let a): "flow-agent-\(a.isEmpty ? "more" : a)"
+        }
+    }
+}
+
+/// Where the flow's nodes sit and its bands run: nodes spread down each
+/// side; each band leaves its client and reaches its agent stacked with
+/// the node's other bands, in the order of the other side, as thick as its
+/// turns (the busiest node 22 points; a band without a finished turn still
+/// shows, thin).
+struct FlowLayout {
+    struct BandLine { var from: CGFloat, to: CGFloat, width: CGFloat }
+    struct Port { var rect: CGRect, pick: FlowPick }
+
+    let nodeWidth: CGFloat
+    let left: CGFloat
+    let right: CGFloat
+    var clientY: [CGFloat] = []
+    var agentY: [CGFloat] = []
+    var bands: [BandLine] = []
+    var ports: [Port] = []
+
+    init(flow: WorkFlow, width: CGFloat, height: CGFloat) {
+        nodeWidth = (width - max(56, width * 0.22)) / 2
+        left = nodeWidth + 2
+        right = width - nodeWidth - 2
+        func spread(_ n: Int) -> [CGFloat] { (0 ..< n).map { (CGFloat($0) + 0.5) * height / CGFloat(n) } }
+        clientY = spread(flow.clients.count)
+        agentY = spread(flow.agents.count)
+        let top = CGFloat(max((flow.clients + flow.agents).map(\.turns).max() ?? 1, 1))
+        let k = 22 / top
+        let widths = flow.bands.map { max(1.5, CGFloat($0.turns) * k) }
+        let ci = { (id: String) in flow.clients.firstIndex { $0.id == id } ?? 0 }
+        let ai = { (id: String) in flow.agents.firstIndex { $0.id == id } ?? 0 }
+        var from = Array(repeating: CGFloat(0), count: flow.bands.count)
+        var to = from
+        var lefts: [Port] = [], rights: [Port] = []
+        for (i, n) in flow.clients.enumerated() {
+            let mine = flow.bands.indices.filter { flow.bands[$0].client == n.id }.sorted { ai(flow.bands[$0].agent) < ai(flow.bands[$1].agent) }
+            var y = clientY[i] - mine.reduce(0) { $0 + widths[$1] } / 2
+            lefts.append(Port(rect: CGRect(x: left - 4, y: y, width: 4, height: mine.reduce(0) { $0 + widths[$1] }), pick: .client(n.id)))
+            for b in mine { from[b] = y + widths[b] / 2; y += widths[b] }
+        }
+        for (i, n) in flow.agents.enumerated() {
+            let mine = flow.bands.indices.filter { flow.bands[$0].agent == n.id }.sorted { ci(flow.bands[$0].client) < ci(flow.bands[$1].client) }
+            var y = agentY[i] - mine.reduce(0) { $0 + widths[$1] } / 2
+            rights.append(Port(rect: CGRect(x: right, y: y, width: 4, height: mine.reduce(0) { $0 + widths[$1] }), pick: .agent(n.id)))
+            for b in mine { to[b] = y + widths[b] / 2; y += widths[b] }
+        }
+        bands = flow.bands.indices.map { BandLine(from: from[$0], to: to[$0], width: widths[$0]) }
+        ports = lefts + rights
     }
 }
 

@@ -1845,7 +1845,8 @@ func (o *Owner) GetUsage(ctx context.Context, req *localv1.GetUsageRequest) (*lo
 }
 
 // GetActivity asks every reachable machine for its sessions that worked on
-// a day and adds them up (a session is on one machine, so the counts add).
+// a day and adds them up by client and agent (a session is on one machine,
+// so the counts add).
 // A machine too old to answer is left out, not counted unreachable.
 func (o *Owner) GetActivity(ctx context.Context, req *sessionv1.GetActivityRequest) (*localv1.GetActivityResponse, error) {
 	on, off, err := o.onlineMachines(ctx, "")
@@ -1854,16 +1855,17 @@ func (o *Owner) GetActivity(ctx context.Context, req *sessionv1.GetActivityReque
 	}
 	var mu sync.Mutex
 	type hourKey struct {
-		hour uint32
-		by   string
+		hour      uint32
+		by, agent string
 	}
+	type clientKey struct{ by, agent string }
 	hours := map[hourKey]*sessionv1.ActivityHour{}
-	clients := map[string]*sessionv1.ActivityClient{}
+	clients := map[clientKey]*sessionv1.ActivityClient{}
 	add := func(res *sessionv1.GetActivityResponse) {
 		mu.Lock()
 		defer mu.Unlock()
 		for _, h := range res.Hours {
-			k := hourKey{h.Hour, h.CreatedBy}
+			k := hourKey{h.Hour, h.CreatedBy, h.Agent}
 			if t := hours[k]; t != nil {
 				t.Sessions += h.Sessions
 			} else {
@@ -1871,11 +1873,13 @@ func (o *Owner) GetActivity(ctx context.Context, req *sessionv1.GetActivityReque
 			}
 		}
 		for _, c := range res.Clients {
-			if t := clients[c.CreatedBy]; t != nil {
+			if t := clients[clientKey{c.CreatedBy, c.Agent}]; t != nil {
 				t.Sessions += c.Sessions
 				t.Done += c.Done
+				t.Turns += c.Turns
+				t.Tokens += c.Tokens
 			} else {
-				clients[c.CreatedBy] = proto.CloneOf(c)
+				clients[clientKey{c.CreatedBy, c.Agent}] = proto.CloneOf(c)
 			}
 		}
 	}

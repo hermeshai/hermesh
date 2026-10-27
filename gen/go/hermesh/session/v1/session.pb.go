@@ -4154,14 +4154,17 @@ func (x *GetActivityRequest) GetTimeZone() string {
 	return ""
 }
 
-// The sessions one client started that worked in one hour of the day.
+// The sessions one client started with one coding agent that worked in
+// one hour of the day.
 type ActivityHour struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// 0-23, in the request's time zone.
 	Hour uint32 `protobuf:"varint,1,opt,name=hour,proto3" json:"hour,omitempty"`
 	// Session.created_by.
-	CreatedBy     string `protobuf:"bytes,2,opt,name=created_by,json=createdBy,proto3" json:"created_by,omitempty"`
-	Sessions      uint32 `protobuf:"varint,3,opt,name=sessions,proto3" json:"sessions,omitempty"`
+	CreatedBy string `protobuf:"bytes,2,opt,name=created_by,json=createdBy,proto3" json:"created_by,omitempty"`
+	Sessions  uint32 `protobuf:"varint,3,opt,name=sessions,proto3" json:"sessions,omitempty"`
+	// Session.agent; "" from a machine older than this field.
+	Agent         string `protobuf:"bytes,4,opt,name=agent,proto3" json:"agent,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -4217,13 +4220,27 @@ func (x *ActivityHour) GetSessions() uint32 {
 	return 0
 }
 
-// The sessions one client started that worked on the day.
+func (x *ActivityHour) GetAgent() string {
+	if x != nil {
+		return x.Agent
+	}
+	return ""
+}
+
+// The sessions one client started with one coding agent that worked on the
+// day.
 type ActivityClient struct {
 	state     protoimpl.MessageState `protogen:"open.v1"`
 	CreatedBy string                 `protobuf:"bytes,1,opt,name=created_by,json=createdBy,proto3" json:"created_by,omitempty"`
 	Sessions  uint32                 `protobuf:"varint,2,opt,name=sessions,proto3" json:"sessions,omitempty"`
 	// Of them, those now done: idle without a failure, or archived.
-	Done          uint32 `protobuf:"varint,3,opt,name=done,proto3" json:"done,omitempty"`
+	Done uint32 `protobuf:"varint,3,opt,name=done,proto3" json:"done,omitempty"`
+	// Session.agent; "" from a machine older than this field.
+	Agent string `protobuf:"bytes,4,opt,name=agent,proto3" json:"agent,omitempty"`
+	// Their turns that ended on the day, and those turns' tokens (input and
+	// output).
+	Turns         uint32 `protobuf:"varint,5,opt,name=turns,proto3" json:"turns,omitempty"`
+	Tokens        uint64 `protobuf:"varint,6,opt,name=tokens,proto3" json:"tokens,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -4275,6 +4292,27 @@ func (x *ActivityClient) GetSessions() uint32 {
 func (x *ActivityClient) GetDone() uint32 {
 	if x != nil {
 		return x.Done
+	}
+	return 0
+}
+
+func (x *ActivityClient) GetAgent() string {
+	if x != nil {
+		return x.Agent
+	}
+	return ""
+}
+
+func (x *ActivityClient) GetTurns() uint32 {
+	if x != nil {
+		return x.Turns
+	}
+	return 0
+}
+
+func (x *ActivityClient) GetTokens() uint64 {
+	if x != nil {
+		return x.Tokens
 	}
 	return 0
 }
@@ -4933,17 +4971,21 @@ const file_hermesh_session_v1_session_proto_rawDesc = "" +
 	"\ttime_zone\x18\x02 \x01(\tR\btimeZone\"E\n" +
 	"\x12GetActivityRequest\x12\x12\n" +
 	"\x04date\x18\x01 \x01(\tR\x04date\x12\x1b\n" +
-	"\ttime_zone\x18\x02 \x01(\tR\btimeZone\"]\n" +
+	"\ttime_zone\x18\x02 \x01(\tR\btimeZone\"s\n" +
 	"\fActivityHour\x12\x12\n" +
 	"\x04hour\x18\x01 \x01(\rR\x04hour\x12\x1d\n" +
 	"\n" +
 	"created_by\x18\x02 \x01(\tR\tcreatedBy\x12\x1a\n" +
-	"\bsessions\x18\x03 \x01(\rR\bsessions\"_\n" +
+	"\bsessions\x18\x03 \x01(\rR\bsessions\x12\x14\n" +
+	"\x05agent\x18\x04 \x01(\tR\x05agent\"\xa3\x01\n" +
 	"\x0eActivityClient\x12\x1d\n" +
 	"\n" +
 	"created_by\x18\x01 \x01(\tR\tcreatedBy\x12\x1a\n" +
 	"\bsessions\x18\x02 \x01(\rR\bsessions\x12\x12\n" +
-	"\x04done\x18\x03 \x01(\rR\x04done\"\x8b\x01\n" +
+	"\x04done\x18\x03 \x01(\rR\x04done\x12\x14\n" +
+	"\x05agent\x18\x04 \x01(\tR\x05agent\x12\x14\n" +
+	"\x05turns\x18\x05 \x01(\rR\x05turns\x12\x16\n" +
+	"\x06tokens\x18\x06 \x01(\x04R\x06tokens\"\x8b\x01\n" +
 	"\x13GetActivityResponse\x126\n" +
 	"\x05hours\x18\x01 \x03(\v2 .hermesh.session.v1.ActivityHourR\x05hours\x12<\n" +
 	"\aclients\x18\x02 \x03(\v2\".hermesh.session.v1.ActivityClientR\aclients\"\xae\x01\n" +

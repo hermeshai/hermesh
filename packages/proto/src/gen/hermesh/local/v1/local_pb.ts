@@ -3110,7 +3110,7 @@ export const GetUsageResponseSchema: GenMessage<GetUsageResponse> = /*@__PURE__*
  */
 export type GetActivityResponse = Message<"hermesh.local.v1.GetActivityResponse"> & {
   /**
-   * An hour and client appear once however many machines worked then.
+   * An hour, client and agent appear once however many machines worked then.
    *
    * @generated from field: repeated hermesh.session.v1.ActivityHour hours = 1;
    */

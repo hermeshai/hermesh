@@ -111,7 +111,7 @@ func TestOwnMacWithoutRelay(t *testing.T) {
 		if err != nil {
 			return err
 		}
-		if len(res.Clients) == 0 || res.Clients[0].Sessions == 0 || len(res.Hours) == 0 {
+		if len(res.Clients) == 0 || res.Clients[0].Sessions == 0 || res.Clients[0].Agent != "gemini" || len(res.Hours) == 0 || res.Hours[0].Agent != "gemini" {
 			t.Fatalf("today's activity: %+v", res)
 		}
 		return nil

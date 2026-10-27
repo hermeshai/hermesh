@@ -894,7 +894,7 @@ message GetUsageResponse {
 }
 
 message GetActivityResponse {
-  // An hour and client appear once however many machines worked then.
+  // An hour, client and agent appear once however many machines worked then.
   repeated hermesh.session.v1.ActivityHour hours = 1;
   repeated hermesh.session.v1.ActivityClient clients = 2;
   repeated Unreachable unreachable = 3;
