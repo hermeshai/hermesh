@@ -635,16 +635,16 @@ func putToolOutput(tx *sql.Tx, sessionID, callID, output string) error {
 	return err
 }
 
-// ToolOutput is a tool's whole output as kept beside its event; ok is false
-// when none is (its event holds it whole).
-func (s *Store) ToolOutput(sessionID, callID string) (output []byte, ok bool, err error) {
+// ToolOutput is a tool's whole output as kept beside its event, and its
+// size, decompressed as it is read; ok is false when none is (its event
+// holds it whole).
+func (s *Store) ToolOutput(sessionID, callID string) (size uint64, output io.Reader, ok bool, err error) {
 	var data []byte
-	switch err := s.rdb.QueryRow(`SELECT data FROM tool_outputs WHERE session_id=? AND call_id=?`, sessionID, callID).Scan(&data); {
+	switch err := s.rdb.QueryRow(`SELECT size, data FROM tool_outputs WHERE session_id=? AND call_id=?`, sessionID, callID).Scan(&size, &data); {
 	case errors.Is(err, sql.ErrNoRows):
-		return nil, false, nil
+		return 0, nil, false, nil
 	case err != nil:
-		return nil, false, err
+		return 0, nil, false, err
 	}
-	out, err := io.ReadAll(flate.NewReader(bytes.NewReader(data)))
-	return out, err == nil, err
+	return size, flate.NewReader(bytes.NewReader(data)), true, nil
 }
