@@ -292,7 +292,8 @@ test("a hosted agent shows its app's icon only when it signs in from the app's o
   const [settings] = await Promise.all([app.waitForEvent("window"), page.evaluate(() => window.hermesh?.openSettings("grants"))]);
   await settings.waitForLoadState();
   const grants = settings.getByRole("list", { name: "授权" }).getByRole("button");
-  await expect(grants.filter({ hasText: muse }).locator("img")).toBeVisible();
+  // The app by its own name, with its icon; the impostor keeps where it signed in, and a letter.
+  await expect(grants.filter({ has: settings.locator(".fn", { hasText: /^Muse$/ }) }).first().locator("img")).toBeVisible();
   await expect(grants.filter({ hasText: impostor }).locator(".av")).toHaveText("M");
   await app.close();
 });
