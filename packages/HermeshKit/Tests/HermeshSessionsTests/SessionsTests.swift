@@ -102,26 +102,52 @@ func ask(_ s: inout Session) {
     #expect(searchSessions(all, query: "nothing", filter: SessionFilter(), text: { $0.projectID }).isEmpty)
 }
 
-@Test func dayActivityAddsUpHoursAndClients() {
-    func hour(_ h: UInt32, _ by: String, _ n: UInt32) -> Hermesh_Session_V1_ActivityHour {
+@Test func dayActivityAddsUpHoursAgentsAndPairs() {
+    func hour(_ h: UInt32, _ by: String, _ agent: String, _ n: UInt32) -> Hermesh_Session_V1_ActivityHour {
         var x = Hermesh_Session_V1_ActivityHour()
         x.hour = h
         x.createdBy = by
+        x.agent = agent
         x.sessions = n
         return x
     }
-    func client(_ by: String, _ n: UInt32, _ done: UInt32) -> Hermesh_Session_V1_ActivityClient {
+    func client(_ by: String, _ agent: String, _ n: UInt32, _ done: UInt32, turns: UInt32 = 0, tokens: UInt64 = 0) -> Hermesh_Session_V1_ActivityClient {
         var x = Hermesh_Session_V1_ActivityClient()
         x.createdBy = by
+        x.agent = agent
         x.sessions = n
         x.done = done
+        x.turns = turns
+        x.tokens = tokens
         return x
     }
-    let a = DayActivity(date: "2026-03-04", hours: [hour(9, "c_bot", 2), hour(9, "c_cursor", 1), hour(14, "c_bot", 1), hour(30, "c_bot", 9)],
-                        clients: [client("c_bot", 3, 2), client("c_cursor", 1, 0)])
-    #expect(a.hours.count == 24 && a.hours[9] == 3 && a.hours[14] == 1 && a.hours.reduce(0, +) == 4)
-    #expect(a.byClient["c_bot"]?[9] == 2 && a.byClient["c_cursor"]?[9] == 1 && a.byClient["c_cursor"]?[14] == 0)
-    #expect(a.sessions == 4 && a.done == 2 && a.sessionsByClient == ["c_bot": 3, "c_cursor": 1])
+    let a = DayActivity(date: "2026-03-04",
+                        hours: [hour(9, "c_bot", "claude", 2), hour(9, "c_cursor", "claude", 1), hour(9, "c_bot", "codex", 1), hour(14, "c_bot", "codex", 1), hour(30, "c_bot", "claude", 9)],
+                        clients: [client("c_bot", "claude", 2, 1, turns: 5, tokens: 1000), client("c_bot", "codex", 1, 1, turns: 2, tokens: 300),
+                                  client("c_cursor", "claude", 1, 0, turns: 1, tokens: 50), client("c_bot", "claude", 1, 0, turns: 1)])
+    #expect(a.hours.count == 24 && a.hours[9] == 4 && a.hours[14] == 1 && a.hours.reduce(0, +) == 5)
+    #expect(a.byAgent["claude"]?[9] == 3 && a.byAgent["codex"]?[9] == 1 && a.byAgent["codex"]?[14] == 1 && a.byAgent["claude"]?[14] == 0)
+    #expect(a.sessions == 5 && a.done == 2 && a.turns == 9 && a.tokens == 1350)
+    // Two machines' answers for one client and agent are one pair.
+    #expect(a.pairs.count == 3 && a.pairs[0] == .init(createdBy: "c_bot", agent: "claude", sessions: 3, turns: 6, tokens: 1000))
+    #expect(a.turns(agent: "claude") == 7 && a.sessions(agent: "claude") == 4 && a.turns(agent: "codex") == 2)
+}
+
+@Test func workFlowKeepsTheBusiestAndJoinsTheRest() {
+    func pair(_ by: String, _ agent: String, _ turns: Int, sessions: Int = 1) -> DayActivity.Pair {
+        .init(createdBy: by, agent: agent, sessions: sessions, turns: turns, tokens: 0)
+    }
+    let f = WorkFlow([pair("claude", "cc", 30), pair("claude", "cx", 6), pair("grok", "cc", 16), pair("grok", "cx", 12), pair("old", "", 9)])
+    #expect(f.clients.map(\.id) == ["claude", "grok"] && f.clients.map(\.turns) == [36, 28])
+    #expect(f.agents.map(\.id) == ["cc", "cx"] && f.agents.map(\.turns) == [46, 18])
+    #expect(f.bands.count == 4 && f.bands.reduce(0) { $0 + $1.turns } == 64, "a machine that doesn't say the agent is left out")
+
+    // Four clients: the busiest two, then the other two together; a client
+    // whose session hasn't ended a turn yet still counts, after those that did.
+    let g = WorkFlow([pair("a", "cc", 9), pair("b", "cc", 5), pair("c", "cc", 1), pair("d", "cx", 0, sessions: 2), pair("a", "cx", 1)])
+    #expect(g.clients.map(\.id) == ["a", "b", ""] && g.clients.map(\.turns) == [10, 5, 1] && g.clients.last?.count == 2)
+    #expect(g.bands.contains(.init(client: "", agent: "cc", turns: 1)) && g.bands.contains(.init(client: "", agent: "cx", turns: 0)))
+    #expect(WorkFlow([]).clients.isEmpty && WorkFlow([]).bands.isEmpty)
 }
 
 @Test func turnsAndQuestions() {

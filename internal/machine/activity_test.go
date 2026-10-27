@@ -13,8 +13,8 @@ import (
 )
 
 // The sessions that worked today: one done, one with its turn in progress;
-// each counted in the hour it worked, by the client that started it, for
-// the callers that can read it.
+// each counted in the hour it worked, by the client that started it and its
+// agent, with the turn that ended, for the callers that can read it.
 func TestActivity(t *testing.T) {
 	h := newHarness(t, DefaultLimits())
 	a := h.start("say one")
@@ -36,13 +36,13 @@ func TestActivity(t *testing.T) {
 			break
 		}
 	}
-	if len(res.Clients) != 1 || res.Clients[0].CreatedBy != "c_test" || res.Clients[0].Sessions != 2 || res.Clients[0].Done != 1 {
+	if len(res.Clients) != 1 || res.Clients[0].CreatedBy != "c_test" || res.Clients[0].Agent != "fake" || res.Clients[0].Sessions != 2 || res.Clients[0].Done != 1 || res.Clients[0].Turns != 1 {
 		t.Fatalf("clients: %v", res.Clients)
 	}
 	hour := uint32(now.In(time.UTC).Hour())
 	found := false
 	for _, x := range res.Hours {
-		if x.Hour == hour && x.CreatedBy == "c_test" {
+		if x.Hour == hour && x.CreatedBy == "c_test" && x.Agent == "fake" {
 			found = x.Sessions == 2
 		}
 	}
@@ -84,7 +84,8 @@ func TestActivity(t *testing.T) {
 // zone: one from the night before from midnight on; a turn kept before
 // start times were, in the hour it ended; one before or after the day, or
 // only touching its edge, not at all; nor a turn a session that crashed
-// still names as in progress.
+// still names as in progress. The turns that ended in the day are counted
+// with their tokens.
 func TestActivityHours(t *testing.T) {
 	h := newHarness(t, DefaultLimits())
 	id := h.start("say one")
@@ -102,7 +103,7 @@ func TestActivityHours(t *testing.T) {
 		{104, at(5, 0, 0), at(5, 0, 30)},   // from the next midnight
 		{105, at(3, 23, 0), at(4, 0, 0)},   // up to this midnight
 	} {
-		if _, err := h.n.st.db.Exec(`INSERT INTO turn_usage(session_id, turn, started_at, ended_at, input_tokens, output_tokens) VALUES(?,?,?,?,0,0)`, id, r[0], r[1], r[2]); err != nil {
+		if _, err := h.n.st.db.Exec(`INSERT INTO turn_usage(session_id, turn, started_at, ended_at, input_tokens, output_tokens) VALUES(?,?,?,?,1000,200)`, id, r[0], r[1], r[2]); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -130,5 +131,8 @@ func TestActivityHours(t *testing.T) {
 	}
 	if len(res.Clients) != 1 || res.Clients[0].Sessions != 1 || res.Clients[0].Done != 0 {
 		t.Fatalf("clients (it crashed, so not done): %v", res.Clients)
+	}
+	if c := res.Clients[0]; c.Turns != 2 || c.Tokens != 2400 {
+		t.Fatalf("the turns that ended on the 4th (over midnight, kept before start times): %d turns, %d tokens", c.Turns, c.Tokens)
 	}
 }

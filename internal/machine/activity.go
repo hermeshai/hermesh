@@ -11,7 +11,8 @@ import (
 )
 
 // Activity: the sessions that worked on a day, by hour and by the client
-// that started them. A session works while a turn is in progress: the
+// that started them and the coding agent they ran, with the turns that
+// ended that day. A session works while a turn is in progress: the
 // turns kept in turn_usage (when they started and ended), and the turn a
 // session working now has in progress (its progress.turn_started_at; a
 // session that crashed mid-turn keeps it, but works no more).
@@ -19,12 +20,14 @@ import (
 type turnSpan struct {
 	sessionID  string
 	start, end int64
+	tokens     uint64
 }
 
-// TurnSpans returns the turns that ended at or after since (unix seconds).
-// A turn kept before its start was written starts when it ended.
+// TurnSpans returns the turns that ended at or after since (unix seconds),
+// with their tokens (input and output). A turn kept before its start was
+// written starts when it ended.
 func (s *Store) TurnSpans(since int64) ([]turnSpan, error) {
-	rows, err := s.rdb.Query(`SELECT session_id, started_at, ended_at FROM turn_usage WHERE ended_at >= ? AND ended_at > 0`, since)
+	rows, err := s.rdb.Query(`SELECT session_id, started_at, ended_at, input_tokens + output_tokens FROM turn_usage WHERE ended_at >= ? AND ended_at > 0`, since)
 	if err != nil {
 		return nil, err
 	}
@@ -32,7 +35,7 @@ func (s *Store) TurnSpans(since int64) ([]turnSpan, error) {
 	var out []turnSpan
 	for rows.Next() {
 		var t turnSpan
-		if err := rows.Scan(&t.sessionID, &t.start, &t.end); err != nil {
+		if err := rows.Scan(&t.sessionID, &t.start, &t.end, &t.tokens); err != nil {
 			return nil, err
 		}
 		if t.start == 0 || t.start > t.end {
@@ -66,8 +69,8 @@ func doneNow(r *sessionRow) bool {
 }
 
 // Activity counts the sessions p can read that worked on req.Date (in
-// req.TimeZone) up to now: by hour and client, and by client with those
-// now done.
+// req.TimeZone) up to now: by hour, client and agent, and by client and
+// agent with those now done and the turns that ended that day.
 func (s *Sessions) Activity(p *Principal, req *sessionv1.GetActivityRequest, now time.Time) (*sessionv1.GetActivityResponse, error) {
 	loc := time.UTC
 	if req.TimeZone != "" {
@@ -102,6 +105,11 @@ func (s *Sessions) Activity(p *Principal, req *sessionv1.GetActivityRequest, now
 	}
 	byID := map[string]*sessionRow{}
 	spans := map[string][][2]time.Time{}
+	type ended struct {
+		turns  uint32
+		tokens uint64
+	}
+	ends := map[string]*ended{}
 	for _, r := range rows {
 		if !s.canRead(p, r) {
 			continue
@@ -112,17 +120,26 @@ func (s *Sessions) Activity(p *Principal, req *sessionv1.GetActivityRequest, now
 		}
 	}
 	for _, t := range turns {
-		if byID[t.sessionID] != nil {
-			spans[t.sessionID] = append(spans[t.sessionID], [2]time.Time{time.Unix(t.start, 0), time.Unix(t.end, 0)})
+		if byID[t.sessionID] == nil {
+			continue
+		}
+		spans[t.sessionID] = append(spans[t.sessionID], [2]time.Time{time.Unix(t.start, 0), time.Unix(t.end, 0)})
+		if e := time.Unix(t.end, 0); e.After(from) && !e.After(to) {
+			if ends[t.sessionID] == nil {
+				ends[t.sessionID] = &ended{}
+			}
+			ends[t.sessionID].turns++
+			ends[t.sessionID].tokens += t.tokens
 		}
 	}
 
 	type hourKey struct {
-		hour uint32
-		by   string
+		hour      uint32
+		by, agent string
 	}
+	type clientKey struct{ by, agent string }
 	hours := map[hourKey]map[string]bool{}
-	clients := map[string]*sessionv1.ActivityClient{}
+	clients := map[clientKey]*sessionv1.ActivityClient{}
 	for id, list := range spans {
 		r := byID[id]
 		worked := false
@@ -143,7 +160,7 @@ func (s *Sessions) Activity(p *Principal, req *sessionv1.GetActivityRequest, now
 			// Each hour of the day the span touches, in loc.
 			for t := a; ; {
 				lt := t.In(loc)
-				k := hourKey{uint32(lt.Hour()), r.CreatedBy}
+				k := hourKey{uint32(lt.Hour()), r.CreatedBy, r.Agent}
 				if hours[k] == nil {
 					hours[k] = map[string]bool{}
 				}
@@ -158,18 +175,23 @@ func (s *Sessions) Activity(p *Principal, req *sessionv1.GetActivityRequest, now
 		if !worked {
 			continue
 		}
-		c := clients[r.CreatedBy]
+		k := clientKey{r.CreatedBy, r.Agent}
+		c := clients[k]
 		if c == nil {
-			c = &sessionv1.ActivityClient{CreatedBy: r.CreatedBy}
-			clients[r.CreatedBy] = c
+			c = &sessionv1.ActivityClient{CreatedBy: r.CreatedBy, Agent: r.Agent}
+			clients[k] = c
 		}
 		c.Sessions++
 		if doneNow(r) {
 			c.Done++
 		}
+		if e := ends[id]; e != nil {
+			c.Turns += e.turns
+			c.Tokens += e.tokens
+		}
 	}
 	for k, ids := range hours {
-		out.Hours = append(out.Hours, &sessionv1.ActivityHour{Hour: k.hour, CreatedBy: k.by, Sessions: uint32(len(ids))})
+		out.Hours = append(out.Hours, &sessionv1.ActivityHour{Hour: k.hour, CreatedBy: k.by, Agent: k.agent, Sessions: uint32(len(ids))})
 	}
 	for _, c := range clients {
 		out.Clients = append(out.Clients, c)
@@ -178,13 +200,16 @@ func (s *Sessions) Activity(p *Principal, req *sessionv1.GetActivityRequest, now
 	return out, nil
 }
 
-// SortActivity orders hours by hour, then client, and clients by client.
+// SortActivity orders hours by hour, then client and agent, and clients by
+// client, then agent.
 func SortActivity(a interface {
 	GetHours() []*sessionv1.ActivityHour
 	GetClients() []*sessionv1.ActivityClient
 }) {
 	slices.SortFunc(a.GetHours(), func(x, y *sessionv1.ActivityHour) int {
-		return cmp.Or(cmp.Compare(x.Hour, y.Hour), cmp.Compare(x.CreatedBy, y.CreatedBy))
+		return cmp.Or(cmp.Compare(x.Hour, y.Hour), cmp.Compare(x.CreatedBy, y.CreatedBy), cmp.Compare(x.Agent, y.Agent))
 	})
-	slices.SortFunc(a.GetClients(), func(x, y *sessionv1.ActivityClient) int { return cmp.Compare(x.CreatedBy, y.CreatedBy) })
+	slices.SortFunc(a.GetClients(), func(x, y *sessionv1.ActivityClient) int {
+		return cmp.Or(cmp.Compare(x.CreatedBy, y.CreatedBy), cmp.Compare(x.Agent, y.Agent))
+	})
 }

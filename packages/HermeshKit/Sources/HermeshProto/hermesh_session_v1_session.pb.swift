@@ -1863,7 +1863,8 @@ public nonisolated struct Hermesh_Session_V1_GetActivityRequest: Sendable {
   public init() {}
 }
 
-/// The sessions one client started that worked in one hour of the day.
+/// The sessions one client started with one coding agent that worked in
+/// one hour of the day.
 public nonisolated struct Hermesh_Session_V1_ActivityHour: Sendable {
   // SwiftProtobuf.Message conformance is added in an extension below. See the
   // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
@@ -1877,12 +1878,16 @@ public nonisolated struct Hermesh_Session_V1_ActivityHour: Sendable {
 
   public var sessions: UInt32 = 0
 
+  /// Session.agent; "" from a machine older than this field.
+  public var agent: String = String()
+
   public var unknownFields = SwiftProtobuf.UnknownStorage()
 
   public init() {}
 }
 
-/// The sessions one client started that worked on the day.
+/// The sessions one client started with one coding agent that worked on the
+/// day.
 public nonisolated struct Hermesh_Session_V1_ActivityClient: Sendable {
   // SwiftProtobuf.Message conformance is added in an extension below. See the
   // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
@@ -1894,6 +1899,15 @@ public nonisolated struct Hermesh_Session_V1_ActivityClient: Sendable {
 
   /// Of them, those now done: idle without a failure, or archived.
   public var done: UInt32 = 0
+
+  /// Session.agent; "" from a machine older than this field.
+  public var agent: String = String()
+
+  /// Their turns that ended on the day, and those turns' tokens (input and
+  /// output).
+  public var turns: UInt32 = 0
+
+  public var tokens: UInt64 = 0
 
   public var unknownFields = SwiftProtobuf.UnknownStorage()
 
@@ -4821,7 +4835,7 @@ nonisolated extension Hermesh_Session_V1_GetActivityRequest: SwiftProtobuf.Messa
 
 nonisolated extension Hermesh_Session_V1_ActivityHour: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
   public static let protoMessageName: String = _protobuf_package + ".ActivityHour"
-  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{1}hour\0\u{3}created_by\0\u{1}sessions\0")
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{1}hour\0\u{3}created_by\0\u{1}sessions\0\u{1}agent\0")
 
   public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
     while let fieldNumber = try decoder.nextFieldNumber() {
@@ -4832,6 +4846,7 @@ nonisolated extension Hermesh_Session_V1_ActivityHour: SwiftProtobuf.Message, Sw
       case 1: try { try decoder.decodeSingularUInt32Field(value: &self.hour) }()
       case 2: try { try decoder.decodeSingularStringField(value: &self.createdBy) }()
       case 3: try { try decoder.decodeSingularUInt32Field(value: &self.sessions) }()
+      case 4: try { try decoder.decodeSingularStringField(value: &self.agent) }()
       default: break
       }
     }
@@ -4847,6 +4862,9 @@ nonisolated extension Hermesh_Session_V1_ActivityHour: SwiftProtobuf.Message, Sw
     if self.sessions != 0 {
       try visitor.visitSingularUInt32Field(value: self.sessions, fieldNumber: 3)
     }
+    if !self.agent.isEmpty {
+      try visitor.visitSingularStringField(value: self.agent, fieldNumber: 4)
+    }
     try unknownFields.traverse(visitor: &visitor)
   }
 
@@ -4854,6 +4872,7 @@ nonisolated extension Hermesh_Session_V1_ActivityHour: SwiftProtobuf.Message, Sw
     if lhs.hour != rhs.hour {return false}
     if lhs.createdBy != rhs.createdBy {return false}
     if lhs.sessions != rhs.sessions {return false}
+    if lhs.agent != rhs.agent {return false}
     if lhs.unknownFields != rhs.unknownFields {return false}
     return true
   }
@@ -4861,7 +4880,7 @@ nonisolated extension Hermesh_Session_V1_ActivityHour: SwiftProtobuf.Message, Sw
 
 nonisolated extension Hermesh_Session_V1_ActivityClient: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
   public static let protoMessageName: String = _protobuf_package + ".ActivityClient"
-  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{3}created_by\0\u{1}sessions\0\u{1}done\0")
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{3}created_by\0\u{1}sessions\0\u{1}done\0\u{1}agent\0\u{1}turns\0\u{1}tokens\0")
 
   public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
     while let fieldNumber = try decoder.nextFieldNumber() {
@@ -4872,6 +4891,9 @@ nonisolated extension Hermesh_Session_V1_ActivityClient: SwiftProtobuf.Message, 
       case 1: try { try decoder.decodeSingularStringField(value: &self.createdBy) }()
       case 2: try { try decoder.decodeSingularUInt32Field(value: &self.sessions) }()
       case 3: try { try decoder.decodeSingularUInt32Field(value: &self.done) }()
+      case 4: try { try decoder.decodeSingularStringField(value: &self.agent) }()
+      case 5: try { try decoder.decodeSingularUInt32Field(value: &self.turns) }()
+      case 6: try { try decoder.decodeSingularUInt64Field(value: &self.tokens) }()
       default: break
       }
     }
@@ -4887,6 +4909,15 @@ nonisolated extension Hermesh_Session_V1_ActivityClient: SwiftProtobuf.Message, 
     if self.done != 0 {
       try visitor.visitSingularUInt32Field(value: self.done, fieldNumber: 3)
     }
+    if !self.agent.isEmpty {
+      try visitor.visitSingularStringField(value: self.agent, fieldNumber: 4)
+    }
+    if self.turns != 0 {
+      try visitor.visitSingularUInt32Field(value: self.turns, fieldNumber: 5)
+    }
+    if self.tokens != 0 {
+      try visitor.visitSingularUInt64Field(value: self.tokens, fieldNumber: 6)
+    }
     try unknownFields.traverse(visitor: &visitor)
   }
 
@@ -4894,6 +4925,9 @@ nonisolated extension Hermesh_Session_V1_ActivityClient: SwiftProtobuf.Message, 
     if lhs.createdBy != rhs.createdBy {return false}
     if lhs.sessions != rhs.sessions {return false}
     if lhs.done != rhs.done {return false}
+    if lhs.agent != rhs.agent {return false}
+    if lhs.turns != rhs.turns {return false}
+    if lhs.tokens != rhs.tokens {return false}
     if lhs.unknownFields != rhs.unknownFields {return false}
     return true
   }

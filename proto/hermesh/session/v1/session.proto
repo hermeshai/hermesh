@@ -674,21 +674,31 @@ message GetActivityRequest {
   string time_zone = 2;
 }
 
-// The sessions one client started that worked in one hour of the day.
+// The sessions one client started with one coding agent that worked in
+// one hour of the day.
 message ActivityHour {
   // 0-23, in the request's time zone.
   uint32 hour = 1;
   // Session.created_by.
   string created_by = 2;
   uint32 sessions = 3;
+  // Session.agent; "" from a machine older than this field.
+  string agent = 4;
 }
 
-// The sessions one client started that worked on the day.
+// The sessions one client started with one coding agent that worked on the
+// day.
 message ActivityClient {
   string created_by = 1;
   uint32 sessions = 2;
   // Of them, those now done: idle without a failure, or archived.
   uint32 done = 3;
+  // Session.agent; "" from a machine older than this field.
+  string agent = 4;
+  // Their turns that ended on the day, and those turns' tokens (input and
+  // output).
+  uint32 turns = 5;
+  uint64 tokens = 6;
 }
 
 message GetActivityResponse {

@@ -6617,7 +6617,7 @@ func (x *GetUsageResponse) GetUnreachable() []*Unreachable {
 
 type GetActivityResponse struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
-	// An hour and client appear once however many machines worked then.
+	// An hour, client and agent appear once however many machines worked then.
 	Hours         []*v1.ActivityHour   `protobuf:"bytes,1,rep,name=hours,proto3" json:"hours,omitempty"`
 	Clients       []*v1.ActivityClient `protobuf:"bytes,2,rep,name=clients,proto3" json:"clients,omitempty"`
 	Unreachable   []*Unreachable       `protobuf:"bytes,3,rep,name=unreachable,proto3" json:"unreachable,omitempty"`

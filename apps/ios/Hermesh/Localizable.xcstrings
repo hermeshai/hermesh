@@ -60,6 +60,26 @@
         }
       }
     },
+    "%@ sent %lld turns": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%1$@ 派来 %2$lld 轮"
+          }
+        }
+      }
+    },
+    "%@ sent no work today": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ 今天没派活"
+          }
+        }
+      }
+    },
     "%@ · %@": {
       "shouldTranslate": false
     },
@@ -128,6 +148,54 @@
           "stringUnit": {
             "state": "translated",
             "value": "%lld 时"
+          }
+        }
+      }
+    },
+    "%lld machines": {
+      "localizations": {
+        "en": {
+          "variations": {
+            "plural": {
+              "one": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "%lld machine"
+                }
+              },
+              "other": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "%lld machines"
+                }
+              }
+            }
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld 台机器"
+          }
+        }
+      }
+    },
+    "%lld machines · %lld turns": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%1$lld 台机器 · %2$lld 轮"
+          }
+        }
+      }
+    },
+    "%lld more": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "其他 %lld 个"
           }
         }
       }
@@ -260,6 +328,44 @@
           "stringUnit": {
             "state": "translated",
             "value": "今天 %1$lld 个 · 一共 %2$lld 个"
+          }
+        }
+      }
+    },
+    "%lld turns": {
+      "localizations": {
+        "en": {
+          "variations": {
+            "plural": {
+              "one": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "%lld turn"
+                }
+              },
+              "other": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "%lld turns"
+                }
+              }
+            }
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld 轮"
+          }
+        }
+      }
+    },
+    "%lld turns · %@ tokens": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%1$lld 轮 · %2$@ token"
           }
         }
       }
@@ -813,6 +919,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "用你平时在那台机器上写代码的用户运行。它会安装 Hermesh、在后台运行，并显示一个核对码。"
+          }
+        }
+      }
+    },
+    "Authorized Clients": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "授权客户端"
           }
         }
       }
@@ -3733,6 +3849,16 @@
         }
       }
     },
+    "The others": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "其他"
+          }
+        }
+      }
+    },
     "The request expired. Start again.": {
       "localizations": {
         "zh-Hans": {
@@ -4399,6 +4525,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "机器或 agent 没带你的连接地址时，它的终端会显示一个配对码。输入后，会和其他请求一样弹出批准页面，请核对核对码。"
+          }
+        }
+      }
+    },
+    "Where Today’s Work Came From and Went": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "今天的活从哪来、给了谁"
           }
         }
       }

@@ -345,7 +345,7 @@ final class HermeshUITests: XCTestCase {
     func swipeOnRow() throws {
         // The page follows the finger, so the finger ends where it started on
         // the row: the row must not open as well.
-        for id in ["machine-row-owner-mac", "agent-bot"] {
+        for id in ["machine-row-owner-mac", "flow-client-bot"] {
             let row = app.descendants(matching: .any)[id].firstMatch
             XCTAssertTrue(row.waitForExistence(timeout: 20), id)
             row.coordinate(withNormalizedOffset: CGVector(dx: 0.2, dy: 0.5))
@@ -371,20 +371,28 @@ final class HermeshUITests: XCTestCase {
         openMenu()
         app.buttons["概览"].tap()
         // Nothing runs since the interrupt; today's sessions as the machine
-        // counts them; the agent that worked, the one approved folded; the machine.
+        // counts them; who sent work to which coding agent: bot to Gemini
+        // CLI, the agent approved sending none; Gemini CLI's day; the machine.
         let today = app.descendants(matching: .any)["working-today"]
         XCTAssertTrue(today.waitForExistence(timeout: 20))
         try waitFor("nothing runs, today's work counted") { today.label.hasPrefix("0") && today.label.contains("个会话在跑") && today.label.contains("今天有活动") ? true : nil }
-        let bot = app.descendants(matching: .any)["agent-bot"].firstMatch
-        XCTAssertTrue(bot.exists, "the agent that worked")
-        XCTAssertTrue(bot.label.contains("空闲"), bot.label)
-        let more = app.descendants(matching: .any)["more-agents"].firstMatch
-        XCTAssertTrue(more.exists && more.label.contains("另外 1 个 agent"), more.label)
-        press(more)
-        XCTAssertTrue(app.descendants(matching: .any)["agent-Cursor"].firstMatch.waitForExistence(timeout: 5), "the folded agent")
+        XCTAssertTrue(text("今天的活从哪来、给了谁").exists, "the flow")
+        let bot = app.descendants(matching: .any)["flow-client-bot"].firstMatch
+        XCTAssertTrue(bot.exists && bot.label.contains("轮"), "the agent that sent work: \(bot.label)")
+        let toGemini = app.descendants(matching: .any)["flow-agent-gemini"].firstMatch
+        XCTAssertTrue(toGemini.exists && toGemini.label.contains("Gemini CLI"), "the coding agent that did it")
+        XCTAssertTrue(text("Cursor 今天没派活").exists, "the agent approved, which sent nothing")
+        let gemini = app.descendants(matching: .any)["coding-agent-gemini"].firstMatch
+        XCTAssertTrue(gemini.exists && gemini.label.contains("空闲") && gemini.label.contains("1 台机器"), gemini.label)
+        // Picking bot says what it sent each coding agent; picking it again lets go.
+        press(bot)
+        try waitFor("what bot sent Gemini CLI") { gemini.label.contains("bot 派来") ? true : nil }
+        press(bot)
+        try waitFor("all of Gemini CLI's turns again") { gemini.label.contains("1 台机器") ? true : nil }
         let mac = app.descendants(matching: .any)["machine-row-owner-mac"].firstMatch
         XCTAssertTrue(mac.exists && mac.label.contains("在线"), mac.label)
-        // View All Sessions opens the menu; usage is in the account.
+        // View All Sessions, at the end of the page, opens the menu; usage is in the account.
+        app.swipeUp()
         press(app.descendants(matching: .any)["all-sessions"].firstMatch)
         XCTAssertTrue(app.descendants(matching: .any)["drawer-dim"].waitForExistence(timeout: 5), "the menu opens")
         tap("account")
