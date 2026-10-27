@@ -1,11 +1,16 @@
 {
   "unreleased": {
+    "improvements": [],
+    "fixes": []
+  },
+  "0.1.1-beta.4": {
     "improvements": [
       "Agents hear back from the sessions they started: when a session finishes or asks something, a message waits for the agent until it reads it. Agents can also send each other messages.",
       "Several bots on one agent connection (Grok bots, say) each get their own messages, by name.",
       "An agent or one of its bots can be woken when messages wait for it: in Settings → Access, open the agent and choose Wake on New Messages to set up its webhook, such as a Grok routine. Hermesh checks it first, and keeps the key itself.",
       "When a Mac can’t run a coding agent, its page says why (not installed, out of processes, low disk), and Copy Diagnostics gives the details as text.",
-      "On the session page, tool details are folded and the conversation reads more calmly; a running session’s title shimmers in the sidebar."
+      "On the session page, tool details are folded and the conversation reads more calmly; a running session’s title shimmers in the sidebar.",
+      "A long tool output opens at once."
     ],
     "fixes": [
       "Codex and Claude Code installed with npm are found again.",
