@@ -221,7 +221,7 @@ test("an app just updated finds the previous hermeshd, which keeps no doorbells;
     previous = false;
     proxy.closeAllConnections();
     await expect(grants.getByRole("list", { name: "新消息提醒" })).toBeVisible();
-    await expect(grants.getByRole("button", { name: "设置…" })).toBeVisible();
+    await expect(grants.getByRole("button", { name: "设置…", exact: true })).toBeVisible();
   } finally {
     await app.close();
     proxy.close();
