@@ -15,6 +15,8 @@ typealias Unreachable = Hermesh_Local_V1_Unreachable
 typealias MachineAck = Hermesh_Local_V1_MachineAck
 typealias AgentStatus = Hermesh_Machine_V1_AgentStatus
 typealias Answer = Hermesh_Session_V1_Answer
+typealias Wake = Hermesh_Local_V1_Wake
+typealias WakeCheck = Hermesh_Local_V1_WakeCheck
 
 /// How long a call that waits for Face ID may take.
 let signingTimeout = 180
@@ -176,6 +178,42 @@ extension LocalAPI {
         r.grantID = grantID
         let res: Hermesh_Local_V1_RevokeClientResponse = try await call("RevokeClient", r, timeout: 60)
         return res.acks
+    }
+
+    /// An agent's doorbells (docs/agent-names.md §7); nil where the relay keeps none.
+    func listWakes(_ clientID: String) async throws -> [Wake]? {
+        var r = Hermesh_Local_V1_ListWakesRequest()
+        r.clientID = clientID
+        do {
+            let res: Hermesh_Local_V1_ListWakesResponse = try await call("ListWakes", r)
+            return res.wakes
+        } catch let e as APIError where e.code == "unimplemented" {
+            return nil
+        }
+    }
+
+    func setWake(_ clientID: String, name: String, url: String, authorization: String, keep: Bool) async throws -> Hermesh_Local_V1_SetWakeResponse {
+        var r = Hermesh_Local_V1_SetWakeRequest()
+        r.clientID = clientID
+        r.name = name
+        r.url = url
+        r.authorization = authorization
+        r.keep = keep
+        return try await call("SetWake", r, timeout: 30)
+    }
+
+    func checkWake(_ clientID: String, name: String) async throws -> Hermesh_Local_V1_CheckWakeResponse {
+        var r = Hermesh_Local_V1_CheckWakeRequest()
+        r.clientID = clientID
+        r.name = name
+        return try await call("CheckWake", r, timeout: 30)
+    }
+
+    func clearWake(_ clientID: String, name: String) async throws {
+        var r = Hermesh_Local_V1_ClearWakeRequest()
+        r.clientID = clientID
+        r.name = name
+        let _: Hermesh_Local_V1_ClearWakeResponse = try await call("ClearWake", r)
     }
 
     func renameMachine(_ id: String, to name: String) async throws {

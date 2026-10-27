@@ -1,7 +1,8 @@
 # Names under an agent: several bots on one connection, each woken on its own
 
-Status: designed and reviewed 2026-10-27 (§12); steps 1 and 2 (§11) built
-the same day (§13), and the Mac app's part of step 3. It builds on
+Status: designed and reviewed 2026-10-27 (§12); steps 1 to 3 (§11) built the
+same day (§13): the Mac app, the iPhone app and the console's link page.
+It builds on
 [agent-messages.md](agent-messages.md) (steps 1–3, built) and replaces its
 §6.3 doorbell setup.
 
@@ -382,4 +383,20 @@ Step 3, the Mac app, 2026-10-27 (desktop e2e `settings`):
 - **The signing secret** shows, folded, once the doorbell is saved.
 - **The key field takes the key alone** ("crsr_…"); the app sends it as
   `Bearer <key>`, or as typed if it already says Bearer.
+
+Step 3, the iPhone app and the console, 2026-10-27 (`TestIPhone`, the
+console's `wake.spec.ts`):
+
+- **The iPhone** has the same section on an agent's page and the same four
+  steps, one page each, with Paste buttons by the URL and the key. The key
+  field is a plain text field: a secure one has iOS offer to save the key
+  as a password.
+- **The console's link page** (`/w/<code>`, hermesh-cloud) is the setup's
+  steps 3 and 4, with step 2 folded for a bot that hasn't made its routine
+  yet. Signed out, it goes through sign-in and comes back. The center
+  serves it with two console calls, `GetWakeLink` and `SetWakeLink`, which
+  call the gateway in process.
+- **The center keeps the post office in Postgres**, as the relay's own
+  stores do (`TestMessageStore` in hermesh-cloud): the last thing the center
+  needed before it serves messages.
 
