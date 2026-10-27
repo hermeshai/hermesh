@@ -25,8 +25,17 @@ struct AgentLogo: View {
         return byName[id]
     }
 
-    /// Where each app's hosted MCP connector signs in; matches personal.ts in packages/ui.
-    static let domains = ["Muse": ["meta.ai"], "ChatGPT": ["chatgpt.com"], "Claude": ["claude.ai"], "Grok Bot": ["cursor.com", "anysphere.cursor-mcp"]]
+    /// Where each app's hosted MCP connector signs in; matches personal.ts in packages/ui
+    /// (Grok Bot signs in as Cursor).
+    static let domains = ["Muse": ["meta.ai"], "ChatGPT": ["chatgpt.com"], "Claude": ["claude.ai"], "Grok Bot": ["cursor.com", "anysphere.cursor-mcp"],
+                          "Cursor": ["cursor.com"]]
+
+    /// The name a grant is shown by: a hosted app's own name ("Claude"), without where it
+    /// signs in, once that is its app's domain; else its label whole.
+    static func name(_ label: String) -> String {
+        guard asset(label) != nil, label.hasSuffix(")"), let open = label.range(of: " (", options: .backwards) else { return label }
+        return String(label[..<open.lowerBound])
+    }
 
     var body: some View {
         Group {

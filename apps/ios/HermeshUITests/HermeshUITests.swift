@@ -242,13 +242,9 @@ final class HermeshUITests: XCTestCase {
         let add = app.buttons["wake-add"]
         for _ in 0..<5 where !add.exists { app.swipeUp() }
         tap("wake-add", timeout: 30)
-        let name = app.textFields["wake-name"]
-        XCTAssertTrue(name.waitForExistence(timeout: 10))
-        name.tap()
-        name.typeText("Tech Demos")
-        tap("wake-next")
+        // No name to give: one doorbell wakes the agent. The bot makes its routine when asked.
         tap("wake-copy")
-        XCTAssertTrue(text("让「Tech Demos」建一个 routine").exists)
+        XCTAssertTrue(text("让 bot 建一个定时任务").exists)
         tap("wake-made")
         let field = app.textFields["wake-url"]
         XCTAssertTrue(field.waitForExistence(timeout: 10))
@@ -258,7 +254,7 @@ final class HermeshUITests: XCTestCase {
         key.tap()
         key.typeText("wrong")
         tap("wake-check")
-        // A wrong key: the check says so, and nothing is kept.
+        // A wrong key: the first ring says so, and nothing is kept.
         let reason = app.staticTexts["wake-reason"]
         XCTAssertTrue(reason.waitForExistence(timeout: 30))
         XCTAssertTrue(reason.label.contains("密钥不对"), reason.label)
@@ -268,12 +264,13 @@ final class HermeshUITests: XCTestCase {
         tap("wake-check")
         XCTAssertTrue(app.staticTexts["wake-ok"].waitForExistence(timeout: 30))
         tap("wake-done")
-        let row = app.buttons["wake-tech-demos"]
+        let row = app.buttons["wake-"]
         for _ in 0..<5 where !row.exists { app.swipeUp() }
         XCTAssertTrue(row.waitForExistence(timeout: 20))
         XCTAssertTrue(row.label.contains("已开"), row.label)
+        XCTAssertTrue(row.label.contains("叫醒 bot"), row.label)
         let calls = try control("webhook")["calls"] as? [String] ?? []
-        XCTAssertEqual(calls, ["hermesh.check tech-demos Bearer wrong", "hermesh.check tech-demos Bearer crsr_ok"])
+        XCTAssertEqual(calls, ["hermesh.check  Bearer wrong", "hermesh.check  Bearer crsr_ok"])
     }
 
     func machine() throws {

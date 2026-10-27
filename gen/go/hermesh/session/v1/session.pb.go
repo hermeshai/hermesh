@@ -1638,7 +1638,10 @@ type Session struct {
 	Result string `protobuf:"bytes,15,opt,name=result,proto3" json:"result,omitempty"`
 	// A short title for lists: the one the client gave, or the first line of
 	// the prompt. Empty for sessions started by an older machine.
-	Title         string `protobuf:"bytes,16,opt,name=title,proto3" json:"title,omitempty"`
+	Title string `protobuf:"bytes,16,opt,name=title,proto3" json:"title,omitempty"`
+	// The name under created_by that started it (an agent's bot, or its own
+	// conversation), "" for the agent itself.
+	CreatedAs     string `protobuf:"bytes,17,opt,name=created_as,json=createdAs,proto3" json:"created_as,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -1774,6 +1777,13 @@ func (x *Session) GetResult() string {
 func (x *Session) GetTitle() string {
 	if x != nil {
 		return x.Title
+	}
+	return ""
+}
+
+func (x *Session) GetCreatedAs() string {
+	if x != nil {
+		return x.CreatedAs
 	}
 	return ""
 }
@@ -4726,7 +4736,7 @@ const file_hermesh_session_v1_session_proto_rawDesc = "" +
 	"resolution\x18\x02 \x01(\x0e2&.hermesh.session.v1.QuestionResolutionR\n" +
 	"resolution\x12\x0e\n" +
 	"\x02by\x18\x03 \x01(\tR\x02by\x124\n" +
-	"\aanswers\x18\x04 \x03(\v2\x1a.hermesh.session.v1.AnswerR\aanswers\"\xe7\x04\n" +
+	"\aanswers\x18\x04 \x03(\v2\x1a.hermesh.session.v1.AnswerR\aanswers\"\x86\x05\n" +
 	"\aSession\x12\x1d\n" +
 	"\n" +
 	"session_id\x18\x01 \x01(\tR\tsessionId\x12\x1d\n" +
@@ -4749,7 +4759,9 @@ const file_hermesh_session_v1_session_proto_rawDesc = "" +
 	"\x06branch\x18\r \x01(\tR\x06branch\x12<\n" +
 	"\tworkspace\x18\x0e \x01(\x0e2\x1e.hermesh.identity.v1.WorkspaceR\tworkspace\x12\x16\n" +
 	"\x06result\x18\x0f \x01(\tR\x06result\x12\x14\n" +
-	"\x05title\x18\x10 \x01(\tR\x05titleJ\x04\b\x05\x10\x06R\x06preset\"2\n" +
+	"\x05title\x18\x10 \x01(\tR\x05title\x12\x1d\n" +
+	"\n" +
+	"created_as\x18\x11 \x01(\tR\tcreatedAsJ\x04\b\x05\x10\x06R\x06preset\"2\n" +
 	"\x11GetSessionRequest\x12\x1d\n" +
 	"\n" +
 	"session_id\x18\x01 \x01(\tR\tsessionId\"\x88\x02\n" +

@@ -356,6 +356,12 @@ func TestMCPInbox(t *testing.T) {
 	if !d.OK {
 		t.Fatalf("session_start: %s", d.raw)
 	}
+	// What to tell the owner, in a sentence: no ids.
+	var started struct{ Summary string }
+	if json.Unmarshal(d.raw, &started) != nil || !strings.Contains(started.Summary, "in project demo on ") ||
+		!strings.Contains(started.Summary, "comes to you as a message") || strings.Contains(started.Summary, "s_") {
+		t.Fatalf("session_start's summary: %s", d.raw)
+	}
 	eventually(t, time.Minute, "a ring", func() bool { return h.count() == 1 })
 	h.mu.Lock()
 	rg := h.rings[0]
@@ -450,12 +456,14 @@ func TestMCPInbox(t *testing.T) {
 	if b := string(h2.rings[0].body); !strings.Contains(b, `"as":"tech-demos"`) || !strings.Contains(b, `with as \"tech-demos\"`) || strings.Contains(b, "the review is ready") {
 		t.Fatalf("Tech Demos's ring: %s", b)
 	}
-	if d, r := sendMessage(t, w, w.cliEnv, 30*time.Second, "--to", self+"/chief-of-staff", "--message", "for chief"); !d.OK || strings.Contains(d.Message.Expect, "woken") {
+	// A name without a doorbell of its own is the agent's own doorbell's to
+	// wake; that one stopped (the 401 above), so nothing rings.
+	if d, r := sendMessage(t, w, w.cliEnv, 30*time.Second, "--to", self+"/chief-of-staff", "--message", "for chief"); !d.OK || !strings.Contains(d.Message.Expect, "woken") {
 		t.Fatalf("to Chief of Staff: %+v", r)
 	}
 	time.Sleep(3 * time.Second)
 	if h2.count() != 1 || h.count() != rangBefore {
-		t.Fatalf("a message to a name without a doorbell rang: %d, %d", h2.count(), h.count())
+		t.Fatalf("a stopped doorbell or another name's rang: %d, %d", h2.count(), h.count())
 	}
 	if d := callTool(t, session, "hermesh_status", map[string]any{"as": "tech_demos"}); doorbellOf(d) != "on" {
 		t.Fatalf("hermesh_status as Tech Demos: %s", d.raw)
@@ -570,16 +578,25 @@ func TestWake(t *testing.T) {
 	// name the ring is for.
 	type woken struct{ as, list string }
 	runs := make(chan woken, 10)
+	tries := make(chan string, 10)
 	routine := httptest.NewServer(http.HandlerFunc(func(rw http.ResponseWriter, req *http.Request) {
-		var body struct{ Type, As string }
+		var body struct{ Type, As, Text string }
 		json.NewDecoder(req.Body).Decode(&body)
 		if req.Header.Get("Authorization") != "Bearer crsr_key" {
 			rw.WriteHeader(http.StatusUnauthorized)
 			return
 		}
+		if body.Type == "hermesh.check" {
+			tries <- body.Text
+		}
 		if body.Type == "hermesh.message" {
 			go func() {
-				out := run(t, grok, time.Minute, hermesh, "message", "list", "--as", body.As, "-o", "json").stdout
+				// A ring for no name is for whichever name the bot goes by.
+				as := body.As
+				if as == "" {
+					as = "research"
+				}
+				out := run(t, grok, time.Minute, hermesh, "message", "list", "--as", as, "-o", "json").stdout
 				runs <- woken{body.As, out}
 			}()
 		}
@@ -639,6 +656,50 @@ func TestWake(t *testing.T) {
 	}
 	if out := run(t, w.cliEnv, 30*time.Second, hermesh, "message", "contacts").stdout; strings.Contains(out, "@tech-demos") {
 		t.Fatalf("a cleared doorbell's name is still listed: %s", out)
+	}
+
+	// The doorbell most owners set: the agent's own, which wakes it for every
+	// name. The owner pasted the whole header Grok shows; the try, the first
+	// ring, says to read whatever waits.
+	for len(tries) > 0 {
+		<-tries
+	}
+	own, err := w.app.client.SetWake(ctx, &localv1.SetWakeRequest{ClientId: grokID, Url: routine.URL, Authorization: "Bearer Authorization: Bearer crsr_key"})
+	if err != nil || !own.Check.Ok || own.Wake.Name != "" {
+		t.Fatalf("SetWake for the agent itself: %v %v", own, err)
+	}
+	if text := <-tries; !strings.Contains(text, "Read any messages waiting for you") || !strings.Contains(text, "message_list") {
+		t.Fatalf("the try: %q", text)
+	}
+	// Research, a name without a doorbell of its own, is woken by it, though
+	// the machine may not know of the doorbell yet (it looks again within a
+	// minute): the ring then names no one, and the bot reads its own name.
+	if r := run(t, grok, 30*time.Second, hermesh, "--as", "research", "session", "start", "--project", "demo", "--prompt", "say found again"); r.code != 0 {
+		t.Fatalf("start as research: %+v", r)
+	}
+	select {
+	case got := <-runs:
+		if (got.as != "research" && got.as != "") || !strings.Contains(got.list, `"result": "found again"`) {
+			t.Fatalf("the agent's routine read: %+v", got)
+		}
+	case <-time.After(2 * time.Minute): // at most one ring a minute: the try was one
+		t.Fatal("the agent's own doorbell did not wake Research")
+	}
+	// The owner sees it: what waits (Research's two news and Tech Demos's,
+	// whose own doorbell is gone), and the last rings, newest first.
+	l, err := w.app.client.ListWakes(ctx, &localv1.ListWakesRequest{ClientId: grokID})
+	if err != nil || len(l.Wakes) != 1 {
+		t.Fatalf("ListWakes: %v %v", l, err)
+	}
+	wk := l.Wakes[0]
+	if wk.Waiting != 3 || len(wk.Recent) != 2 || wk.Recent[0].Check || wk.Recent[0].Status != 200 ||
+		!wk.Recent[1].Check || wk.Recent[1].Status != 200 {
+		t.Fatalf("the agent's doorbell, as the owner sees it: %v", wk)
+	}
+	// The session says which name started it.
+	ss, err := w.app.client.ListSessions(ctx, &localv1.ListSessionsRequest{Limit: 10})
+	if err != nil || len(ss.Sessions) == 0 || ss.Sessions[0].CreatedAs != "research" {
+		t.Fatalf("the session's created_as: %v %v", ss, err)
 	}
 }
 

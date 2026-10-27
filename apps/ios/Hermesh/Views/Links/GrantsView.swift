@@ -42,9 +42,9 @@ struct GrantRow: View {
         HStack(spacing: 12) {
             GrantAvatar(label: client.label)
             VStack(alignment: .leading, spacing: 2) {
-                Text(client.label)
+                Text(AgentLogo.name(client.label))
                 HStack(spacing: 0) {
-                    Text(projectsText(client))
+                    Text(usedText())
                     Text(" · ")
                     Text(days <= 7 ? String(localized: "ends in \(days) days") : String(localized: "\(days) days left")).foregroundStyle(days <= 7 ? .orange : .secondary)
                 }
@@ -53,8 +53,20 @@ struct GrantRow: View {
         }
     }
 
-    func projectsText(_ c: Client) -> String {
-        SigningPreview.isAll(c.spec.projectIds) ? String(localized: "All projects") : listText(c.spec.projectIds)
+    /// Who used it last, and when, which tells grants apart. The names are
+    /// those a hosted app's bots go by; an agent on a computer names its
+    /// conversations instead.
+    func usedText() -> String {
+        let mine = model.sessions.filter { $0.createdBy == client.clientID }.sorted { $0.createdAt.date > $1.createdAt.date }
+        let started = mine.first.map { $0.createdAt.date }
+        let seen = client.hasLastSeen ? client.lastSeen.date : nil
+        guard let last = [started, seen].compactMap({ $0 }).max() else { return String(localized: "Not used yet") }
+        var names: [String] = []
+        if !client.custodian.isEmpty {
+            for s in mine where !s.createdAs.isEmpty && !names.contains(s.createdAs) && names.count < 2 { names.append(s.createdAs) }
+        }
+        let ago = agoText(last, now: model.now)
+        return names.isEmpty ? String(localized: "Used \(ago)") : String(localized: "\(listText(names)) · used \(ago)")
     }
 }
 
@@ -84,7 +96,7 @@ struct GrantView: View {
             Section {
                 VStack(spacing: 8) {
                     GrantAvatar(label: c.label, size: 58)
-                    Text(c.label).font(.title2.bold())
+                    Text(AgentLogo.name(c.label)).font(.title2.bold())
                     Text("Valid until \(c.expiresAt.date.formatted(date: .abbreviated, time: .omitted)) · \(days) days left")
                         .font(.subheadline).foregroundStyle(days <= 7 ? .orange : .secondary)
                 }
@@ -121,12 +133,12 @@ struct GrantView: View {
             }
             if let wakes { WakesSection(client: c, wakes: wakes) }
         }
-        .navigationTitle(c.label)
+        .navigationTitle(AgentLogo.name(c.label))
         // Its doorbells, again whenever a sheet closes: one may have changed them.
         .task(id: model.sheet) {
             if model.sheet == nil, let api = model.api { wakes = try? await api.listWakes(c.clientID) }
         }
-        .confirmationDialog("Disconnect “\(c.label)”?", isPresented: $confirmDisconnect, titleVisibility: .visible) {
+        .confirmationDialog("Disconnect “\(AgentLogo.name(c.label))”?", isPresented: $confirmDisconnect, titleVisibility: .visible) {
             Button("Disconnect", role: .destructive) { Task { await model.disconnect(c) } }
         } message: {
             Text("It loses access at once; running sessions are interrupted, and the sessions themselves stay. To use it again, connect it again.")
@@ -134,23 +146,24 @@ struct GrantView: View {
     }
 }
 
-/// An agent's doorbells (docs/agent-names.md §7): the webhooks Hermesh calls
-/// when messages wait for the agent or one of its bots. Left out where the
-/// relay keeps none.
+/// An agent's doorbells (docs/agent-names.md §7): the webhook Hermesh calls
+/// to wake the agent when messages wait for it, and, for a connection several
+/// bots share, one per bot. Left out where the relay keeps none.
 struct WakesSection: View {
     @Environment(AppModel.self) private var model
     let client: Client
     let wakes: [Wake]
 
     var body: some View {
+        let agent = AgentLogo.name(client.label)
         Section {
             ForEach(wakes, id: \.name) { w in
                 Button {
-                    model.sheet = .wake(client.clientID, client.label, w)
+                    model.sheet = .wake(client.clientID, agent, w)
                 } label: {
                     HStack {
                         VStack(alignment: .leading, spacing: 2) {
-                            Text(w.name.isEmpty ? String(localized: "\(client.label) itself") : w.name).foregroundStyle(.primary)
+                            Text("Wake \(w.name.isEmpty ? agent : w.name)").foregroundStyle(.primary)
                             Text(sub(w)).font(.subheadline).foregroundStyle(.secondary).lineLimit(1)
                         }
                         Spacer()
@@ -160,18 +173,22 @@ struct WakesSection: View {
                 }
                 .accessibilityIdentifier("wake-\(w.name)")
             }
-            if wakes.isEmpty { Text("Nothing wakes this agent yet.").foregroundStyle(.secondary) }
-            Button("Add…") { model.sheet = .wake(client.clientID, client.label, nil) }.accessibilityIdentifier("wake-add")
+            if wakes.isEmpty {
+                Button("Set Up…") { model.sheet = .wake(client.clientID, agent, nil) }.accessibilityIdentifier("wake-add")
+            }
+            Button("Set up each bot…") { model.sheet = .wake(client.clientID, agent, nil, named: true) }.accessibilityIdentifier("wake-per-bot")
         } header: {
             Text("Wake on New Messages")
         } footer: {
-            Text("Hermesh calls a webhook, such as a Grok Bot routine’s, to wake this agent or one of its bots when messages wait for it. It never says what they say.")
+            Text("Bots such as Grok Bot aren’t always running. Once this is set up, Hermesh wakes this one when a session it started finishes or another agent writes to it. Several bots on one connection can each be set up on their own.")
         }
     }
 
-    /// When it last called, or why it stopped.
+    /// When it last woke it, and whether what waits was read; or why it stopped.
     private func sub(_ w: Wake) -> String {
         guard w.state == "on" else { return wakeReason(status: w.lastStatus, reason: w.reason) }
-        return w.hasLastRingAt ? String(localized: "Called \(agoText(w.lastRingAt.date, now: model.now))") : String(localized: "Not called yet")
+        guard w.hasLastRingAt else { return String(localized: "Not woken yet") }
+        let woken = String(localized: "Woken \(agoText(w.lastRingAt.date, now: model.now))")
+        return w.waiting == 0 ? String(localized: "\(woken) · all read") : String(localized: "\(woken) · \(Int(w.waiting)) waiting")
     }
 }

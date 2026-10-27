@@ -1,7 +1,14 @@
 {
   "unreleased": {
-    "improvements": [],
-    "fixes": []
+    "improvements": [
+      "Waking a bot on new messages takes three steps and no name: copy a message that has the bot make its routine, paste the routine’s URL and key, and the first wake reads what already waits. One setting wakes the bot for all its messages.",
+      "An agent’s page shows when Hermesh last woke it, whether it read everything, and its last few wakes.",
+      "Grok Bot’s connection shows as Cursor, with its logo; Claude and ChatGPT show by name. The Access list says who used each agent last, and when.",
+      "Bots tell you about the work in plain words, without session IDs."
+    ],
+    "fixes": [
+      "Right after an update, an agent’s page shows Wake on New Messages again once Hermesh has restarted in the background."
+    ]
   },
   "0.1.1-beta.4": {
     "improvements": [

@@ -1643,11 +1643,43 @@ public nonisolated struct Hermesh_Local_V1_Wake: Sendable {
 
   public var waiting: UInt32 = 0
 
+  /// Its last rings, newest first.
+  public var recent: [Hermesh_Local_V1_WakeRing] = []
+
   public var unknownFields = SwiftProtobuf.UnknownStorage()
 
   public init() {}
 
   fileprivate var _lastRingAt: SwiftProtobuf.Google_Protobuf_Timestamp? = nil
+}
+
+public nonisolated struct Hermesh_Local_V1_WakeRing: Sendable {
+  // SwiftProtobuf.Message conformance is added in an extension below. See the
+  // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
+  // methods supported on all messages.
+
+  public var at: SwiftProtobuf.Google_Protobuf_Timestamp {
+    get {_at ?? SwiftProtobuf.Google_Protobuf_Timestamp()}
+    set {_at = newValue}
+  }
+  /// Returns true if `at` has been explicitly set.
+  public var hasAt: Bool {self._at != nil}
+  /// Clears the value of `at`. Subsequent reads from it will return its default value.
+  public mutating func clearAt() {self._at = nil}
+
+  /// A try the owner asked for; else messages waited.
+  public var check: Bool = false
+
+  /// The name the waiting messages were for.
+  public var `as`: String = String()
+
+  public var status: Int32 = 0
+
+  public var unknownFields = SwiftProtobuf.UnknownStorage()
+
+  public init() {}
+
+  fileprivate var _at: SwiftProtobuf.Google_Protobuf_Timestamp? = nil
 }
 
 public nonisolated struct Hermesh_Local_V1_WakeCheck: Sendable {
@@ -5422,7 +5454,7 @@ nonisolated extension Hermesh_Local_V1_RevokeClientResponse: SwiftProtobuf.Messa
 
 nonisolated extension Hermesh_Local_V1_Wake: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
   public static let protoMessageName: String = _protobuf_package + ".Wake"
-  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{3}client_id\0\u{1}name\0\u{1}url\0\u{1}state\0\u{1}reason\0\u{3}last_ring_at\0\u{3}last_status\0\u{1}waiting\0")
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{3}client_id\0\u{1}name\0\u{1}url\0\u{1}state\0\u{1}reason\0\u{3}last_ring_at\0\u{3}last_status\0\u{1}waiting\0\u{1}recent\0")
 
   public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
     while let fieldNumber = try decoder.nextFieldNumber() {
@@ -5438,6 +5470,7 @@ nonisolated extension Hermesh_Local_V1_Wake: SwiftProtobuf.Message, SwiftProtobu
       case 6: try { try decoder.decodeSingularMessageField(value: &self._lastRingAt) }()
       case 7: try { try decoder.decodeSingularInt32Field(value: &self.lastStatus) }()
       case 8: try { try decoder.decodeSingularUInt32Field(value: &self.waiting) }()
+      case 9: try { try decoder.decodeRepeatedMessageField(value: &self.recent) }()
       default: break
       }
     }
@@ -5472,6 +5505,9 @@ nonisolated extension Hermesh_Local_V1_Wake: SwiftProtobuf.Message, SwiftProtobu
     if self.waiting != 0 {
       try visitor.visitSingularUInt32Field(value: self.waiting, fieldNumber: 8)
     }
+    if !self.recent.isEmpty {
+      try visitor.visitRepeatedMessageField(value: self.recent, fieldNumber: 9)
+    }
     try unknownFields.traverse(visitor: &visitor)
   }
 
@@ -5484,6 +5520,56 @@ nonisolated extension Hermesh_Local_V1_Wake: SwiftProtobuf.Message, SwiftProtobu
     if lhs._lastRingAt != rhs._lastRingAt {return false}
     if lhs.lastStatus != rhs.lastStatus {return false}
     if lhs.waiting != rhs.waiting {return false}
+    if lhs.recent != rhs.recent {return false}
+    if lhs.unknownFields != rhs.unknownFields {return false}
+    return true
+  }
+}
+
+nonisolated extension Hermesh_Local_V1_WakeRing: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
+  public static let protoMessageName: String = _protobuf_package + ".WakeRing"
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{1}at\0\u{1}check\0\u{1}as\0\u{1}status\0")
+
+  public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
+    while let fieldNumber = try decoder.nextFieldNumber() {
+      // The use of inline closures is to circumvent an issue where the compiler
+      // allocates stack space for every case branch when no optimizations are
+      // enabled. https://github.com/apple/swift-protobuf/issues/1034
+      switch fieldNumber {
+      case 1: try { try decoder.decodeSingularMessageField(value: &self._at) }()
+      case 2: try { try decoder.decodeSingularBoolField(value: &self.check) }()
+      case 3: try { try decoder.decodeSingularStringField(value: &self.`as`) }()
+      case 4: try { try decoder.decodeSingularInt32Field(value: &self.status) }()
+      default: break
+      }
+    }
+  }
+
+  public func traverse<V: SwiftProtobuf.Visitor>(visitor: inout V) throws {
+    // The use of inline closures is to circumvent an issue where the compiler
+    // allocates stack space for every if/case branch local when no optimizations
+    // are enabled. https://github.com/apple/swift-protobuf/issues/1034 and
+    // https://github.com/apple/swift-protobuf/issues/1182
+    try { if let v = self._at {
+      try visitor.visitSingularMessageField(value: v, fieldNumber: 1)
+    } }()
+    if self.check != false {
+      try visitor.visitSingularBoolField(value: self.check, fieldNumber: 2)
+    }
+    if !self.`as`.isEmpty {
+      try visitor.visitSingularStringField(value: self.`as`, fieldNumber: 3)
+    }
+    if self.status != 0 {
+      try visitor.visitSingularInt32Field(value: self.status, fieldNumber: 4)
+    }
+    try unknownFields.traverse(visitor: &visitor)
+  }
+
+  public static func ==(lhs: Hermesh_Local_V1_WakeRing, rhs: Hermesh_Local_V1_WakeRing) -> Bool {
+    if lhs._at != rhs._at {return false}
+    if lhs.check != rhs.check {return false}
+    if lhs.`as` != rhs.`as` {return false}
+    if lhs.status != rhs.status {return false}
     if lhs.unknownFields != rhs.unknownFields {return false}
     return true
   }

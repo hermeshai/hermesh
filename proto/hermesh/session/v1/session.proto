@@ -363,6 +363,9 @@ message Session {
   // A short title for lists: the one the client gave, or the first line of
   // the prompt. Empty for sessions started by an older machine.
   string title = 16;
+  // The name under created_by that started it (an agent's bot, or its own
+  // conversation), "" for the agent itself.
+  string created_as = 17;
 }
 
 message GetSessionRequest {
