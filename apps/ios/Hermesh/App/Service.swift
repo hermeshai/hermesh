@@ -174,6 +174,13 @@ extension LocalAPI {
         return try await call("UpdateClient", r, timeout: signingTimeout)
     }
 
+    func renameClient(_ grantID: String, to label: String) async throws {
+        var r = Hermesh_Local_V1_RenameClientRequest()
+        r.grantID = grantID
+        r.label = label
+        let _: Hermesh_Local_V1_RenameClientResponse = try await call("RenameClient", r, timeout: signingTimeout)
+    }
+
     func revokeClient(_ grantID: String) async throws -> [MachineAck] {
         var r = Hermesh_Local_V1_RevokeClientRequest()
         r.grantID = grantID

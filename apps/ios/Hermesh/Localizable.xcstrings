@@ -2396,6 +2396,16 @@
         }
       }
     },
+    "Name": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "名字"
+          }
+        }
+      }
+    },
     "Name this machine": {
       "localizations": {
         "zh-Hans": {
@@ -3136,6 +3146,16 @@
         }
       }
     },
+    "Rename This Agent": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "给这个 agent 改名"
+          }
+        }
+      }
+    },
     "Rename this machine": {
       "localizations": {
         "zh-Hans": {
@@ -3845,6 +3865,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "机器离线，连上后显示。"
+          }
+        }
+      }
+    },
+    "The name you know it by, here and on your other devices; other agents see it too. Naming it after a known app (Grok Bot, Claude) shows that app’s icon.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "你认它用的名字，这里和你的其他设备都会显示，其他 agent 也会看到。用常见应用的名字（Grok Bot、Claude）会显示那个应用的图标。"
           }
         }
       }

@@ -19,6 +19,7 @@ import (
 	"strings"
 	"sync"
 	"time"
+	"unicode"
 
 	"connectrpc.com/connect"
 	"github.com/oklog/ulid/v2"
@@ -1640,8 +1641,31 @@ func (o *Owner) UpdateClient(ctx context.Context, grantID string, spec *localv1.
 	if err != nil {
 		return 0, nil, err
 	}
-	g := grantFromSpec(cur, spec)
-	g.Version = cur.Version + 1
+	return o.publishGrant(ctx, grantFromSpec(cur, spec), cur.Version)
+}
+
+// RenameClient gives an agent another name: its grant, signed again with
+// the label alone changed (what it may use, and until when, stay).
+func (o *Owner) RenameClient(ctx context.Context, grantID, label string) (uint64, error) {
+	label = strings.Join(strings.FieldsFunc(label, func(r rune) bool { return unicode.IsSpace(r) || unicode.IsControl(r) }), " ")
+	if label == "" || len(label) > 64 {
+		return 0, connect.NewError(connect.CodeInvalidArgument, errors.New("a name is 1 to 64 bytes"))
+	}
+	cur, err := o.latestGrant(ctx, grantID)
+	if err != nil {
+		return 0, err
+	}
+	g := proto.Clone(cur).(*identityv1.Grant)
+	g.ClientLabel = label
+	v, _, err := o.publishGrant(ctx, g, cur.Version)
+	return v, err
+}
+
+// publishGrant signs g as the version after cur and publishes it; machines
+// then take no older one.
+func (o *Owner) publishGrant(ctx context.Context, g *identityv1.Grant, cur uint64) (uint64, []*localv1.MachineAck, error) {
+	grantID := g.GrantId
+	g.Version = cur + 1
 	signed, err := o.signRoot(ctx, g)
 	if err != nil {
 		return 0, nil, err

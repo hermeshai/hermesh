@@ -127,6 +127,9 @@ const (
 	// LocalServiceUpdateClientProcedure is the fully-qualified name of the LocalService's UpdateClient
 	// RPC.
 	LocalServiceUpdateClientProcedure = "/hermesh.local.v1.LocalService/UpdateClient"
+	// LocalServiceRenameClientProcedure is the fully-qualified name of the LocalService's RenameClient
+	// RPC.
+	LocalServiceRenameClientProcedure = "/hermesh.local.v1.LocalService/RenameClient"
 	// LocalServiceRevokeClientProcedure is the fully-qualified name of the LocalService's RevokeClient
 	// RPC.
 	LocalServiceRevokeClientProcedure = "/hermesh.local.v1.LocalService/RevokeClient"
@@ -264,6 +267,9 @@ type LocalServiceClient interface {
 	// Agents.
 	ListClients(context.Context, *v1.ListClientsRequest) (*v1.ListClientsResponse, error)
 	UpdateClient(context.Context, *v1.UpdateClientRequest) (*v1.UpdateClientResponse, error)
+	// Gives an agent another name: its grant signed again with that alone
+	// changed (Touch ID).
+	RenameClient(context.Context, *v1.RenameClientRequest) (*v1.RenameClientResponse, error)
 	RevokeClient(context.Context, *v1.RevokeClientRequest) (*v1.RevokeClientResponse, error)
 	// Agents' doorbells (docs/agent-names.md §7): the webhook rung when
 	// messages wait for an agent or a name under it.
@@ -519,6 +525,12 @@ func NewLocalServiceClient(httpClient connect.HTTPClient, baseURL string, opts .
 			connect.WithSchema(localServiceMethods.ByName("UpdateClient")),
 			connect.WithClientOptions(opts...),
 		),
+		renameClient: connect.NewClient[v1.RenameClientRequest, v1.RenameClientResponse](
+			httpClient,
+			baseURL+LocalServiceRenameClientProcedure,
+			connect.WithSchema(localServiceMethods.ByName("RenameClient")),
+			connect.WithClientOptions(opts...),
+		),
 		revokeClient: connect.NewClient[v1.RevokeClientRequest, v1.RevokeClientResponse](
 			httpClient,
 			baseURL+LocalServiceRevokeClientProcedure,
@@ -684,6 +696,7 @@ type localServiceClient struct {
 	removeProject          *connect.Client[v1.RemoveProjectRequest, v1.RemoveProjectResponse]
 	listClients            *connect.Client[v1.ListClientsRequest, v1.ListClientsResponse]
 	updateClient           *connect.Client[v1.UpdateClientRequest, v1.UpdateClientResponse]
+	renameClient           *connect.Client[v1.RenameClientRequest, v1.RenameClientResponse]
 	revokeClient           *connect.Client[v1.RevokeClientRequest, v1.RevokeClientResponse]
 	listWakes              *connect.Client[v1.ListWakesRequest, v1.ListWakesResponse]
 	setWake                *connect.Client[v1.SetWakeRequest, v1.SetWakeResponse]
@@ -1005,6 +1018,15 @@ func (c *localServiceClient) UpdateClient(ctx context.Context, req *v1.UpdateCli
 	return nil, err
 }
 
+// RenameClient calls hermesh.local.v1.LocalService.RenameClient.
+func (c *localServiceClient) RenameClient(ctx context.Context, req *v1.RenameClientRequest) (*v1.RenameClientResponse, error) {
+	response, err := c.renameClient.CallUnary(ctx, connect.NewRequest(req))
+	if response != nil {
+		return response.Msg, err
+	}
+	return nil, err
+}
+
 // RevokeClient calls hermesh.local.v1.LocalService.RevokeClient.
 func (c *localServiceClient) RevokeClient(ctx context.Context, req *v1.RevokeClientRequest) (*v1.RevokeClientResponse, error) {
 	response, err := c.revokeClient.CallUnary(ctx, connect.NewRequest(req))
@@ -1260,6 +1282,9 @@ type LocalServiceHandler interface {
 	// Agents.
 	ListClients(context.Context, *v1.ListClientsRequest) (*v1.ListClientsResponse, error)
 	UpdateClient(context.Context, *v1.UpdateClientRequest) (*v1.UpdateClientResponse, error)
+	// Gives an agent another name: its grant signed again with that alone
+	// changed (Touch ID).
+	RenameClient(context.Context, *v1.RenameClientRequest) (*v1.RenameClientResponse, error)
 	RevokeClient(context.Context, *v1.RevokeClientRequest) (*v1.RevokeClientResponse, error)
 	// Agents' doorbells (docs/agent-names.md §7): the webhook rung when
 	// messages wait for an agent or a name under it.
@@ -1511,6 +1536,12 @@ func NewLocalServiceHandler(svc LocalServiceHandler, opts ...connect.HandlerOpti
 		connect.WithSchema(localServiceMethods.ByName("UpdateClient")),
 		connect.WithHandlerOptions(opts...),
 	)
+	localServiceRenameClientHandler := connect.NewUnaryHandlerSimple(
+		LocalServiceRenameClientProcedure,
+		svc.RenameClient,
+		connect.WithSchema(localServiceMethods.ByName("RenameClient")),
+		connect.WithHandlerOptions(opts...),
+	)
 	localServiceRevokeClientHandler := connect.NewUnaryHandlerSimple(
 		LocalServiceRevokeClientProcedure,
 		svc.RevokeClient,
@@ -1707,6 +1738,8 @@ func NewLocalServiceHandler(svc LocalServiceHandler, opts ...connect.HandlerOpti
 			localServiceListClientsHandler.ServeHTTP(w, r)
 		case LocalServiceUpdateClientProcedure:
 			localServiceUpdateClientHandler.ServeHTTP(w, r)
+		case LocalServiceRenameClientProcedure:
+			localServiceRenameClientHandler.ServeHTTP(w, r)
 		case LocalServiceRevokeClientProcedure:
 			localServiceRevokeClientHandler.ServeHTTP(w, r)
 		case LocalServiceListWakesProcedure:
@@ -1892,6 +1925,10 @@ func (UnimplementedLocalServiceHandler) ListClients(context.Context, *v1.ListCli
 
 func (UnimplementedLocalServiceHandler) UpdateClient(context.Context, *v1.UpdateClientRequest) (*v1.UpdateClientResponse, error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("hermesh.local.v1.LocalService.UpdateClient is not implemented"))
+}
+
+func (UnimplementedLocalServiceHandler) RenameClient(context.Context, *v1.RenameClientRequest) (*v1.RenameClientResponse, error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("hermesh.local.v1.LocalService.RenameClient is not implemented"))
 }
 
 func (UnimplementedLocalServiceHandler) RevokeClient(context.Context, *v1.RevokeClientRequest) (*v1.RevokeClientResponse, error) {

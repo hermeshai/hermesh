@@ -122,7 +122,12 @@
     "fingerprint": "Fingerprint",
     "usedBy": "{{names}} · used {{ago}}",
     "usedAgo": "Used {{ago}}",
-    "notUsed": "Not used yet"
+    "notUsed": "Not used yet",
+    "rename": "Rename…",
+    "renameTitle": "Rename This Agent",
+    "renameMessage": "The name you know it by, here and on your other devices; other agents see it too. Naming it after a known app (Grok Bot, Claude) shows that app’s icon.",
+    "agentName": "Name",
+    "renameButton": "Rename"
   },
   "machines": {
     "lastOnline": "Last online {{ago}}",

@@ -98,6 +98,9 @@ service LocalService {
   // Agents.
   rpc ListClients(ListClientsRequest) returns (ListClientsResponse);
   rpc UpdateClient(UpdateClientRequest) returns (UpdateClientResponse);
+  // Gives an agent another name: its grant signed again with that alone
+  // changed (Touch ID).
+  rpc RenameClient(RenameClientRequest) returns (RenameClientResponse);
   rpc RevokeClient(RevokeClientRequest) returns (RevokeClientResponse);
   // Agents' doorbells (docs/agent-names.md §7): the webhook rung when
   // messages wait for an agent or a name under it.
@@ -689,6 +692,15 @@ message UpdateClientRequest {
 message UpdateClientResponse {
   uint64 grant_version = 1;
   repeated MachineAck acks = 2;
+}
+
+message RenameClientRequest {
+  string grant_id = 1;
+  string label = 2;
+}
+
+message RenameClientResponse {
+  uint64 grant_version = 1;
 }
 
 message RevokeClientRequest {

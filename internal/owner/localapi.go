@@ -396,6 +396,15 @@ func (l *localService) ListClients(ctx context.Context, _ *localv1.ListClientsRe
 	return &localv1.ListClientsResponse{Clients: clients}, nil
 }
 
+func (l *localService) RenameClient(ctx context.Context, req *localv1.RenameClientRequest) (*localv1.RenameClientResponse, error) {
+	v, err := l.o().RenameClient(ctx, req.GrantId, req.Label)
+	l.o().wrote(ctx, err, true)
+	if err != nil {
+		return nil, err
+	}
+	return &localv1.RenameClientResponse{GrantVersion: v}, nil
+}
+
 func (l *localService) UpdateClient(ctx context.Context, req *localv1.UpdateClientRequest) (*localv1.UpdateClientResponse, error) {
 	if req.Spec == nil {
 		return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("missing spec"))
