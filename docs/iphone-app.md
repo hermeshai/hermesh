@@ -77,8 +77,9 @@ packages/HermeshKit/         Swift package shared with the Mac signer
   without a word; its connections are kept. Coming back, it listens again
   and pings the relay connection it kept while it dials a new one, and
   keeps the old one (with the connections to the machines through it) if
-  it answers first: after a few seconds away, the world is current after a
-  ping and one call to the Mac. A change of network (Wi-Fi to cellular)
+  it answers first: after up to 5 minutes away (the relay waits that long
+  for an owner device's answer), the world is current after a ping and one
+  call to the Mac, unless the network or iOS dropped the connection. A change of network (Wi-Fi to cellular)
   connects again at once. While
   the relay cannot be reached, the machines are as it last listed them,
   never called offline or unreachable for it (the sync line says it). The
