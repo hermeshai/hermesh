@@ -22,14 +22,17 @@ export function Wakes({ c }: { c: Client }) {
   const [kept, setKept] = useState(true);
   const load = useCallback(() => {
     local.listWakes({ clientId: c.clientId }).then(
-      (r) => setWakes(r.wakes),
+      (r) => (setWakes(r.wakes), setKept(true)),
       (e) => ConnectError.from(e).code === Code.Unimplemented && setKept(false),
     );
   }, [c.clientId]);
-  // Again whenever a sheet closes: one may have changed them.
+  // Again whenever a sheet closes (one may have changed them), and whenever
+  // hermeshd is back: an app just updated talks to the previous version's,
+  // which keeps none, until it restarts it.
+  const up = !!st.status;
   useEffect(() => {
-    if (!st.sheet) load();
-  }, [st.sheet, load]);
+    if (!st.sheet && up) load();
+  }, [st.sheet, load, up]);
   if (!kept || !wakes) return null;
   const open = (w?: Wake) => st.set({ sheet: { kind: "wake", clientId: c.clientId, agent: c.label, wake: w } });
   return (

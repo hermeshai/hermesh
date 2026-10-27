@@ -5,7 +5,7 @@ import http from "node:http";
 import type { AddressInfo } from "node:net";
 import os from "node:os";
 import path from "node:path";
-import { answerMenu, cli, gitRepo, launch, pickAnswers, snap } from "./app";
+import { answerMenu, cli, fixture, gitRepo, launch, pickAnswers, snap } from "./app";
 
 // The settings window: a window of its own (⌘,), laid out as System
 // Settings, for what is set up once and changed rarely.
@@ -168,6 +168,46 @@ test("an agent's page wakes one of its bots: four steps, a wrong key caught by t
   } finally {
     await app.close();
     server.close();
+  }
+});
+
+test("an app just updated finds the previous hermeshd, which keeps no doorbells; once that is restarted, the agent's page has them", async () => {
+  // The daemon through a proxy: first as the previous version (no
+  // ListWakes), then, its connections dropped as a restart drops them, as
+  // itself.
+  let previous = true;
+  const proxy = http.createServer((req, res) => {
+    if (previous && req.url?.endsWith("/ListWakes")) {
+      res.writeHead(404, { "content-type": "application/json" });
+      res.end(JSON.stringify({ code: "unimplemented", message: "not in this version" }));
+      return;
+    }
+    const up = http.request({ socketPath: fixture.socket, path: req.url, method: req.method, headers: req.headers }, (r) => {
+      res.writeHead(r.statusCode ?? 502, r.headers);
+      r.pipe(res);
+    });
+    up.on("error", () => res.destroy());
+    res.on("close", () => up.destroy());
+    req.pipe(up);
+  });
+  const socket = path.join(fs.mkdtempSync(path.join(os.tmpdir(), "hmw-")), "d.sock");
+  await new Promise<void>((r) => proxy.listen(socket, r));
+  const { app, page } = await launch(socket);
+  try {
+    const settings = await openSettings(app, page);
+    await nav(settings, "授权").click();
+    const grants = page_(settings, "授权");
+    await grants.getByRole("list", { name: "授权" }).getByRole("button", { name: /bot/ }).click();
+    await expect(grants.getByRole("button", { name: "修改范围…" })).toBeVisible();
+    await expect(grants.getByRole("list", { name: "新消息提醒" })).toHaveCount(0);
+
+    previous = false;
+    proxy.closeAllConnections();
+    await expect(grants.getByRole("list", { name: "新消息提醒" })).toBeVisible();
+    await expect(grants.getByRole("button", { name: "添加…" })).toBeVisible();
+  } finally {
+    await app.close();
+    proxy.close();
   }
 });
 
