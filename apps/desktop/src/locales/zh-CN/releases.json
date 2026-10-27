@@ -1,7 +1,16 @@
 {
   "unreleased": {
-    "improvements": [],
-    "fixes": []
+    "improvements": [
+      "agent 能收到它发起的会话的回音：会话完成或有提问时，会有一条消息等着它，直到它读取。agent 之间也可以互发消息。",
+      "同一个 agent 连接下的多个 bot（比如多个 Grok bot）按名字各收各的消息。",
+      "agent 或它的某个 bot 可以在有消息等待时被叫醒：在设置 → 授权里打开这个 agent，选择「新消息提醒」，填入它的 webhook（比如 Grok 的 routine）。Hermesh 会先检查一次，密钥由 Hermesh 自己保管。",
+      "Mac 跑不了编码 agent 时，页面会说明原因（没装、进程用尽、磁盘不足），「复制诊断信息」会把细节整理成文字。",
+      "会话页里工具调用的细节默认折叠，对话更清爽；侧栏里运行中会话的标题会有流光。"
+    ],
+    "fixes": [
+      "用 npm 装的 Codex 和 Claude Code 又能被找到了。",
+      "账号菜单不再透明。"
+    ]
   },
   "0.1.1-beta.3": {
     "improvements": [
