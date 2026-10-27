@@ -331,6 +331,9 @@ func (g *Gateway) end(ctx context.Context, c *Connection, state, reason string) 
 	if err := g.inboxes.DeleteInbox(ctx, c.ID); err != nil {
 		g.log.Warn("mcp: delete the inbox", "connection", c.ID, "err", err)
 	}
+	if inbox := hermeshClientID(c); inbox != "" {
+		g.Forget(ctx, c.OwnerID, inbox)
+	}
 	g.log.Info("mcp: connection ended", "connection", c.ID, "state", state, "reason", reason)
 	return c, nil
 }

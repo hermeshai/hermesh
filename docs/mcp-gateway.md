@@ -485,7 +485,7 @@ fixed order with `ttlMs` set, as 2026-07-28 asks.
 | `project_list` | `hermesh project list` |
 | `session_start`, `session_get`, `session_list`, `session_events`, `session_answer`, `session_interrupt`, `session_archive`, `session_unarchive`, `session_diff` | `hermesh session <verb>` |
 | `message_send`, `message_list`, `message_ack`, `message_status`, `message_contacts` | `hermesh message <verb>`, with the connection's inbox key ([agent-messages.md](agent-messages.md)); `message_send` is how a session is told anything more (`session_send` is gone) |
-| `message_notify` | the gateway's own: the webhook rung when messages arrive (agent-messages.md §6.3) |
+| `message_wake` | the gateway's own: a one-time link for the owner to set up the caller's doorbell, the webhook rung when messages arrive ([agent-names.md](agent-names.md) §7) |
 
 - Parameters are the command's flags (`--question-timeout` →
   `question_timeout`; durations as strings like `30s`) and its positional

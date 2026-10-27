@@ -70,6 +70,10 @@ type Config struct {
 	Accounts     Accounts
 	// SetupURL is where people get Hermesh for Mac.
 	SetupURL string
+	// WakePage is where an owner sets up a doorbell from an agent's link:
+	// the code follows it (e.g. https://hermesh.io/w/). Empty for none: the
+	// owner sets doorbells up in the Mac app.
+	WakePage string
 	// VerifiedClients are the hosts whose Client ID Metadata Documents are
 	// shown as verified (default: claude.ai, chatgpt.com, openai.com).
 	VerifiedClients []string
@@ -78,7 +82,7 @@ type Config struct {
 	// CIMDClient fetches Client ID Metadata Documents (default: one that
 	// refuses private addresses). Tests set one that reaches a local server.
 	CIMDClient *http.Client
-	// WebhookClient rings the webhooks assistants register (default: like
+	// WebhookClient rings the doorbells' webhooks (default: like
 	// CIMDClient, no private addresses, no redirects).
 	WebhookClient *http.Client
 	// Now is the clock (tests).
@@ -116,6 +120,7 @@ type Gateway struct {
 	connLocks map[string]*sync.Mutex // serialises a connection's state changes
 	dcr       map[string][]time.Time // DCR registrations per IP
 	inboxes   InboxBackend           // the connections' inboxes (inbox.go)
+	doorbells DoorbellBackend        // every agent's doorbells (doorbells.go)
 	rings     ringer
 	stop      chan struct{}
 	done      chan struct{}
@@ -162,15 +167,20 @@ func New(cfg Config) (*Gateway, error) {
 	switch b := cfg.Backend.(type) {
 	case *SQLBackend:
 		if err := b.ensureInboxes(context.Background()); err != nil {
-			return nil, fmt.Errorf("mcpgw: inbox table: %w", err)
+			return nil, fmt.Errorf("mcpgw: inbox tables: %w", err)
 		}
-		g.inboxes = b
-	case InboxBackend:
-		g.inboxes = b
+		g.inboxes, g.doorbells = b, b
 	default:
-		g.inboxes = &memoryInboxes{}
+		g.inboxes, g.doorbells = &memoryInboxes{}, &memoryDoorbells{}
+		if ib, ok := b.(InboxBackend); ok {
+			g.inboxes = ib
+		}
+		if db, ok := b.(DoorbellBackend); ok {
+			g.doorbells = db
+		}
 	}
 	cfg.Relay.SetMessageHook(g.onMessage)
+	cfg.Relay.SetDoorbells(g)
 	go g.loop()
 	return g, nil
 }

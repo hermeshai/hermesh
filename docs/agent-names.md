@@ -1,7 +1,7 @@
 # Names under an agent: several bots on one connection, each woken on its own
 
-Status: designed and reviewed 2026-10-27 (§12); step 1 (§11) built the same
-day. It builds on
+Status: designed and reviewed 2026-10-27 (§12); steps 1 and 2 (§11) built
+the same day (§13). It builds on
 [agent-messages.md](agent-messages.md) (steps 1–3, built) and replaces its
 §6.3 doorbell setup.
 
@@ -342,3 +342,32 @@ Decided by the owner, 2026-10-27:
 5. The bot's link opens the console's page.
 6. The Mac app first; the iPhone app after it.
 7. The privacy policy is the owner's to update, separately.
+
+## 13. What building it changed
+
+Steps 1 and 2, 2026-10-27 (`TestNames`, `TestWake`, `TestMCPInbox`):
+
+- **Under a name, results leave out `inbox.waiting`.** The count is the
+  agent's, other names' messages included, and the post office can't tell
+  whose they are.
+- **The owner sees the signing secret once**, when a doorbell is saved, for
+  a webhook that checks signatures. Grok's routines don't; the model never
+  sees it.
+- **A check is a ring that asks for nothing** (`"type": "hermesh.check"`).
+  A failed check keeps nothing unless the owner says to keep it anyway.
+  Setting up or checking a doorbell rings for what already waits, and only
+  when something does, so the next message isn't held behind the minute.
+- **Senders learn of doorbells from contacts.** The CLI asks at every send;
+  hermeshd keeps contacts for a minute, so news written in the minute after
+  a doorbell is set up can go without the name. It still waits, and the
+  next ring wakes the bot for it too.
+- **`@name` resolves among woken names only**, as the design said; any name
+  is reachable as `<agent>/<name>`.
+- **Links are kept hashed**, 30 minutes, one use. Without a page (a
+  self-hosted relay, or the center until the console has it) the link is
+  empty, and `message_wake` and `message wake` tell the owner the Mac app's
+  way instead.
+- **Only a trusted device sets doorbells up**; a Mac that is only a machine
+  is refused, as for every approval.
+- **`hermesh_status` takes `as`**, to say that name's doorbell.
+

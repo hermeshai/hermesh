@@ -115,6 +115,8 @@ type ToolContact struct {
 	Address string `json:"address"`
 	Kind    string `json:"kind"`
 	Takes   string `json:"takes_messages"`
+	// Woken are the names under it with a doorbell: <name>/<woken name>.
+	Woken []string `json:"woken,omitempty"`
 }
 
 // ToolWhoAmI is the session a token names.
@@ -184,7 +186,7 @@ func (n *Machine) agentContacts(ctx context.Context) ([]*identity.ContactInfo, e
 		return nil, err
 	}
 	n.contacts.mu.Lock()
-	n.contacts.list, n.contacts.at = res.Contacts, time.Now()
+	n.contacts.keep(res)
 	n.contacts.mu.Unlock()
 	var out []*identity.ContactInfo
 	for _, c := range res.Contacts {
@@ -201,9 +203,11 @@ func (n *Machine) toolContacts(ctx context.Context, _ string, _ ToolRequest) (an
 		return nil, err
 	}
 	out := []ToolContact{}
+	n.contacts.mu.Lock()
 	for _, c := range list {
-		out = append(out, ToolContact{Name: c.Name, Address: c.Inbox, Kind: c.Kind, Takes: c.TakesMessages})
+		out = append(out, ToolContact{Name: c.Name, Address: c.Inbox, Kind: c.Kind, Takes: c.TakesMessages, Woken: n.contacts.woken[c.Inbox]})
 	}
+	n.contacts.mu.Unlock()
 	return out, nil
 }
 
@@ -229,6 +233,24 @@ func (n *Machine) toolSend(ctx context.Context, session string, req ToolRequest)
 	list, err := n.agentContacts(ctx)
 	if err != nil {
 		return nil, err
+	}
+	if handle, ok := strings.CutPrefix(to, "@"); ok { // a woken name, under one agent
+		name, err := identity.NormalizeName(handle)
+		if err != nil {
+			return nil, fmt.Errorf("%q: %w", to, err)
+		}
+		var hits []string
+		n.contacts.mu.Lock()
+		for inbox, names := range n.contacts.woken {
+			if slices.Contains(names, name) {
+				hits = append(hits, inbox)
+			}
+		}
+		n.contacts.mu.Unlock()
+		if len(hits) != 1 {
+			return nil, fmt.Errorf("@%s is a woken name of %d agents: write <agent>/%s (see message_contacts)", name, len(hits), name)
+		}
+		to = hits[0] + "/" + name
 	}
 	// An agent, by its address or name, and maybe a name under it: "Grok
 	// Bot/tech-demos", "c_…/tech-demos" (docs/agent-names.md §5).

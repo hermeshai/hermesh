@@ -251,7 +251,7 @@ center holds ciphertext and what routing needs, nothing more.
 | Codex on a computer | Its hooks, and `codex queue` | The next tool call; when idle, the queued message |
 | Other agents with hooks (Cursor, Gemini CLI, …) | Their hooks, at turn boundaries | The next turn its user starts |
 | Any CLI agent | `hermesh message list`, `ack` | `hermesh message list --wait`, or its own schedule |
-| A hosted assistant with webhooks (Grok Bot) | The MCP tools `message_list`, `message_ack` | The webhook it registered with `message_notify` |
+| A hosted assistant with webhooks (Grok Bot) | The MCP tools `message_list`, `message_ack` | Its doorbell: a routine's webhook the owner set up ([agent-names.md](agent-names.md) §7) |
 | A hosted assistant without webhooks | The same tools | Its own schedule; the `messages` note on every tool result |
 
 ### 6.1 CLI
@@ -278,7 +278,7 @@ hermesh message contacts
   it takes messages: "Codex on MacBook is idle: it sees this at its next turn".
 - The MCP tools follow the commands, as always (`cli.Tools`): `message_send`,
   `message_list` (with `wait`, 50 s at most), `message_ack`, `message_status`,
-  `message_contacts`, and the MCP-only `message_notify` (§6.3).
+  `message_contacts`, and the MCP-only `message_wake` (§6.3).
 
 ### 6.2 Claude Code and Codex on a computer
 
@@ -315,11 +315,14 @@ the hooks are given.
 
 ### 6.3 Hosted assistants (MCP)
 
-- *Replaced by [agent-names.md](agent-names.md) §7: a doorbell per name, set
-  up by the owner, never with the key passing through the model.* As built
-  in step 1: `message_notify` registers the assistant's webhook: a public
-  HTTPS URL and, if it has one, the key the webhook expects (Grok Bot
-  routines take `Authorization: Bearer`). The gateway seals the key in its vault; revoking
+- *Since step 4, doorbells work as [agent-names.md](agent-names.md) §7 says:
+  one per address (an agent or a name under it), for any agent, set up by
+  the owner from a link the agent asks for with `message_wake`, never with
+  the key passing through the model. What follows is how step 1 built
+  them, for one connection, and stays true of the rings themselves.*
+  `message_notify` registered the assistant's webhook: a public HTTPS URL
+  and, if it has one, the key the webhook expects (Grok Bot routines take
+  `Authorization: Bearer`). The gateway seals the key in its vault; revoking
   the connection removes it. The relay tells the gateway, in process, when a
   message arrives for one of its connections.
 - **The doorbell carries no message.** Grok Bot, for one, starts a run for

@@ -113,6 +113,21 @@ const (
 	// OwnerControlServicePublishCardsProcedure is the fully-qualified name of the OwnerControlService's
 	// PublishCards RPC.
 	OwnerControlServicePublishCardsProcedure = "/hermesh.relay.v1.OwnerControlService/PublishCards"
+	// OwnerControlServiceListWakesProcedure is the fully-qualified name of the OwnerControlService's
+	// ListWakes RPC.
+	OwnerControlServiceListWakesProcedure = "/hermesh.relay.v1.OwnerControlService/ListWakes"
+	// OwnerControlServiceSetWakeProcedure is the fully-qualified name of the OwnerControlService's
+	// SetWake RPC.
+	OwnerControlServiceSetWakeProcedure = "/hermesh.relay.v1.OwnerControlService/SetWake"
+	// OwnerControlServiceCheckWakeProcedure is the fully-qualified name of the OwnerControlService's
+	// CheckWake RPC.
+	OwnerControlServiceCheckWakeProcedure = "/hermesh.relay.v1.OwnerControlService/CheckWake"
+	// OwnerControlServiceClearWakeProcedure is the fully-qualified name of the OwnerControlService's
+	// ClearWake RPC.
+	OwnerControlServiceClearWakeProcedure = "/hermesh.relay.v1.OwnerControlService/ClearWake"
+	// OwnerControlServiceOpenWakeLinkProcedure is the fully-qualified name of the OwnerControlService's
+	// OpenWakeLink RPC.
+	OwnerControlServiceOpenWakeLinkProcedure = "/hermesh.relay.v1.OwnerControlService/OpenWakeLink"
 	// MessageServiceRegisterProcedure is the fully-qualified name of the MessageService's Register RPC.
 	MessageServiceRegisterProcedure = "/hermesh.relay.v1.MessageService/Register"
 	// MessageServiceContactsProcedure is the fully-qualified name of the MessageService's Contacts RPC.
@@ -129,6 +144,8 @@ const (
 	MessageServiceWatchProcedure = "/hermesh.relay.v1.MessageService/Watch"
 	// MessageServiceStatusProcedure is the fully-qualified name of the MessageService's Status RPC.
 	MessageServiceStatusProcedure = "/hermesh.relay.v1.MessageService/Status"
+	// MessageServiceWakeLinkProcedure is the fully-qualified name of the MessageService's WakeLink RPC.
+	MessageServiceWakeLinkProcedure = "/hermesh.relay.v1.MessageService/WakeLink"
 )
 
 // RelayPublicServiceClient is a client for the hermesh.relay.v1.RelayPublicService service.
@@ -637,6 +654,17 @@ type OwnerControlServiceClient interface {
 	// Contact cards for the owner's agents, signed by this device's device
 	// key (docs/agent-messages.md §4): each replaces the agent's earlier one.
 	PublishCards(context.Context, *v1.PublishCardsRequest) (*v1.PublishCardsResponse, error)
+	// Doorbells (docs/agent-names.md §7), set by a trusted device: the
+	// webhook rung when messages wait for an agent or a name under it. Served
+	// by the MCP gateway; a relay without it answers Unimplemented.
+	ListWakes(context.Context, *v1.ListWakesRequest) (*v1.ListWakesResponse, error)
+	// Rings the webhook once with a check; keeps it if the check passes, or
+	// if asked to anyway.
+	SetWake(context.Context, *v1.SetWakeRequest) (*v1.SetWakeResponse, error)
+	CheckWake(context.Context, *v1.CheckWakeRequest) (*v1.CheckWakeResponse, error)
+	ClearWake(context.Context, *v1.ClearWakeRequest) (*v1.ClearWakeResponse, error)
+	// What a wake link (an agent's `message wake`) is for.
+	OpenWakeLink(context.Context, *v1.OpenWakeLinkRequest) (*v1.OpenWakeLinkResponse, error)
 }
 
 // NewOwnerControlServiceClient constructs a client for the hermesh.relay.v1.OwnerControlService
@@ -728,6 +756,36 @@ func NewOwnerControlServiceClient(httpClient connect.HTTPClient, baseURL string,
 			connect.WithSchema(ownerControlServiceMethods.ByName("PublishCards")),
 			connect.WithClientOptions(opts...),
 		),
+		listWakes: connect.NewClient[v1.ListWakesRequest, v1.ListWakesResponse](
+			httpClient,
+			baseURL+OwnerControlServiceListWakesProcedure,
+			connect.WithSchema(ownerControlServiceMethods.ByName("ListWakes")),
+			connect.WithClientOptions(opts...),
+		),
+		setWake: connect.NewClient[v1.SetWakeRequest, v1.SetWakeResponse](
+			httpClient,
+			baseURL+OwnerControlServiceSetWakeProcedure,
+			connect.WithSchema(ownerControlServiceMethods.ByName("SetWake")),
+			connect.WithClientOptions(opts...),
+		),
+		checkWake: connect.NewClient[v1.CheckWakeRequest, v1.CheckWakeResponse](
+			httpClient,
+			baseURL+OwnerControlServiceCheckWakeProcedure,
+			connect.WithSchema(ownerControlServiceMethods.ByName("CheckWake")),
+			connect.WithClientOptions(opts...),
+		),
+		clearWake: connect.NewClient[v1.ClearWakeRequest, v1.ClearWakeResponse](
+			httpClient,
+			baseURL+OwnerControlServiceClearWakeProcedure,
+			connect.WithSchema(ownerControlServiceMethods.ByName("ClearWake")),
+			connect.WithClientOptions(opts...),
+		),
+		openWakeLink: connect.NewClient[v1.OpenWakeLinkRequest, v1.OpenWakeLinkResponse](
+			httpClient,
+			baseURL+OwnerControlServiceOpenWakeLinkProcedure,
+			connect.WithSchema(ownerControlServiceMethods.ByName("OpenWakeLink")),
+			connect.WithClientOptions(opts...),
+		),
 	}
 }
 
@@ -746,6 +804,11 @@ type ownerControlServiceClient struct {
 	publishRootChain    *connect.Client[v1.PublishRootChainRequest, v1.PublishRootChainResponse]
 	registerPush        *connect.Client[v1.RegisterPushRequest, v1.RegisterPushResponse]
 	publishCards        *connect.Client[v1.PublishCardsRequest, v1.PublishCardsResponse]
+	listWakes           *connect.Client[v1.ListWakesRequest, v1.ListWakesResponse]
+	setWake             *connect.Client[v1.SetWakeRequest, v1.SetWakeResponse]
+	checkWake           *connect.Client[v1.CheckWakeRequest, v1.CheckWakeResponse]
+	clearWake           *connect.Client[v1.ClearWakeRequest, v1.ClearWakeResponse]
+	openWakeLink        *connect.Client[v1.OpenWakeLinkRequest, v1.OpenWakeLinkResponse]
 }
 
 // GetPairingRequest calls hermesh.relay.v1.OwnerControlService.GetPairingRequest.
@@ -861,6 +924,51 @@ func (c *ownerControlServiceClient) PublishCards(ctx context.Context, req *v1.Pu
 	return nil, err
 }
 
+// ListWakes calls hermesh.relay.v1.OwnerControlService.ListWakes.
+func (c *ownerControlServiceClient) ListWakes(ctx context.Context, req *v1.ListWakesRequest) (*v1.ListWakesResponse, error) {
+	response, err := c.listWakes.CallUnary(ctx, connect.NewRequest(req))
+	if response != nil {
+		return response.Msg, err
+	}
+	return nil, err
+}
+
+// SetWake calls hermesh.relay.v1.OwnerControlService.SetWake.
+func (c *ownerControlServiceClient) SetWake(ctx context.Context, req *v1.SetWakeRequest) (*v1.SetWakeResponse, error) {
+	response, err := c.setWake.CallUnary(ctx, connect.NewRequest(req))
+	if response != nil {
+		return response.Msg, err
+	}
+	return nil, err
+}
+
+// CheckWake calls hermesh.relay.v1.OwnerControlService.CheckWake.
+func (c *ownerControlServiceClient) CheckWake(ctx context.Context, req *v1.CheckWakeRequest) (*v1.CheckWakeResponse, error) {
+	response, err := c.checkWake.CallUnary(ctx, connect.NewRequest(req))
+	if response != nil {
+		return response.Msg, err
+	}
+	return nil, err
+}
+
+// ClearWake calls hermesh.relay.v1.OwnerControlService.ClearWake.
+func (c *ownerControlServiceClient) ClearWake(ctx context.Context, req *v1.ClearWakeRequest) (*v1.ClearWakeResponse, error) {
+	response, err := c.clearWake.CallUnary(ctx, connect.NewRequest(req))
+	if response != nil {
+		return response.Msg, err
+	}
+	return nil, err
+}
+
+// OpenWakeLink calls hermesh.relay.v1.OwnerControlService.OpenWakeLink.
+func (c *ownerControlServiceClient) OpenWakeLink(ctx context.Context, req *v1.OpenWakeLinkRequest) (*v1.OpenWakeLinkResponse, error) {
+	response, err := c.openWakeLink.CallUnary(ctx, connect.NewRequest(req))
+	if response != nil {
+		return response.Msg, err
+	}
+	return nil, err
+}
+
 // OwnerControlServiceHandler is an implementation of the hermesh.relay.v1.OwnerControlService
 // service.
 type OwnerControlServiceHandler interface {
@@ -893,6 +1001,17 @@ type OwnerControlServiceHandler interface {
 	// Contact cards for the owner's agents, signed by this device's device
 	// key (docs/agent-messages.md §4): each replaces the agent's earlier one.
 	PublishCards(context.Context, *v1.PublishCardsRequest) (*v1.PublishCardsResponse, error)
+	// Doorbells (docs/agent-names.md §7), set by a trusted device: the
+	// webhook rung when messages wait for an agent or a name under it. Served
+	// by the MCP gateway; a relay without it answers Unimplemented.
+	ListWakes(context.Context, *v1.ListWakesRequest) (*v1.ListWakesResponse, error)
+	// Rings the webhook once with a check; keeps it if the check passes, or
+	// if asked to anyway.
+	SetWake(context.Context, *v1.SetWakeRequest) (*v1.SetWakeResponse, error)
+	CheckWake(context.Context, *v1.CheckWakeRequest) (*v1.CheckWakeResponse, error)
+	ClearWake(context.Context, *v1.ClearWakeRequest) (*v1.ClearWakeResponse, error)
+	// What a wake link (an agent's `message wake`) is for.
+	OpenWakeLink(context.Context, *v1.OpenWakeLinkRequest) (*v1.OpenWakeLinkResponse, error)
 }
 
 // NewOwnerControlServiceHandler builds an HTTP handler from the service implementation. It returns
@@ -980,6 +1099,36 @@ func NewOwnerControlServiceHandler(svc OwnerControlServiceHandler, opts ...conne
 		connect.WithSchema(ownerControlServiceMethods.ByName("PublishCards")),
 		connect.WithHandlerOptions(opts...),
 	)
+	ownerControlServiceListWakesHandler := connect.NewUnaryHandlerSimple(
+		OwnerControlServiceListWakesProcedure,
+		svc.ListWakes,
+		connect.WithSchema(ownerControlServiceMethods.ByName("ListWakes")),
+		connect.WithHandlerOptions(opts...),
+	)
+	ownerControlServiceSetWakeHandler := connect.NewUnaryHandlerSimple(
+		OwnerControlServiceSetWakeProcedure,
+		svc.SetWake,
+		connect.WithSchema(ownerControlServiceMethods.ByName("SetWake")),
+		connect.WithHandlerOptions(opts...),
+	)
+	ownerControlServiceCheckWakeHandler := connect.NewUnaryHandlerSimple(
+		OwnerControlServiceCheckWakeProcedure,
+		svc.CheckWake,
+		connect.WithSchema(ownerControlServiceMethods.ByName("CheckWake")),
+		connect.WithHandlerOptions(opts...),
+	)
+	ownerControlServiceClearWakeHandler := connect.NewUnaryHandlerSimple(
+		OwnerControlServiceClearWakeProcedure,
+		svc.ClearWake,
+		connect.WithSchema(ownerControlServiceMethods.ByName("ClearWake")),
+		connect.WithHandlerOptions(opts...),
+	)
+	ownerControlServiceOpenWakeLinkHandler := connect.NewUnaryHandlerSimple(
+		OwnerControlServiceOpenWakeLinkProcedure,
+		svc.OpenWakeLink,
+		connect.WithSchema(ownerControlServiceMethods.ByName("OpenWakeLink")),
+		connect.WithHandlerOptions(opts...),
+	)
 	return "/hermesh.relay.v1.OwnerControlService/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case OwnerControlServiceGetPairingRequestProcedure:
@@ -1008,6 +1157,16 @@ func NewOwnerControlServiceHandler(svc OwnerControlServiceHandler, opts ...conne
 			ownerControlServiceRegisterPushHandler.ServeHTTP(w, r)
 		case OwnerControlServicePublishCardsProcedure:
 			ownerControlServicePublishCardsHandler.ServeHTTP(w, r)
+		case OwnerControlServiceListWakesProcedure:
+			ownerControlServiceListWakesHandler.ServeHTTP(w, r)
+		case OwnerControlServiceSetWakeProcedure:
+			ownerControlServiceSetWakeHandler.ServeHTTP(w, r)
+		case OwnerControlServiceCheckWakeProcedure:
+			ownerControlServiceCheckWakeHandler.ServeHTTP(w, r)
+		case OwnerControlServiceClearWakeProcedure:
+			ownerControlServiceClearWakeHandler.ServeHTTP(w, r)
+		case OwnerControlServiceOpenWakeLinkProcedure:
+			ownerControlServiceOpenWakeLinkHandler.ServeHTTP(w, r)
 		default:
 			http.NotFound(w, r)
 		}
@@ -1069,6 +1228,26 @@ func (UnimplementedOwnerControlServiceHandler) PublishCards(context.Context, *v1
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("hermesh.relay.v1.OwnerControlService.PublishCards is not implemented"))
 }
 
+func (UnimplementedOwnerControlServiceHandler) ListWakes(context.Context, *v1.ListWakesRequest) (*v1.ListWakesResponse, error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("hermesh.relay.v1.OwnerControlService.ListWakes is not implemented"))
+}
+
+func (UnimplementedOwnerControlServiceHandler) SetWake(context.Context, *v1.SetWakeRequest) (*v1.SetWakeResponse, error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("hermesh.relay.v1.OwnerControlService.SetWake is not implemented"))
+}
+
+func (UnimplementedOwnerControlServiceHandler) CheckWake(context.Context, *v1.CheckWakeRequest) (*v1.CheckWakeResponse, error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("hermesh.relay.v1.OwnerControlService.CheckWake is not implemented"))
+}
+
+func (UnimplementedOwnerControlServiceHandler) ClearWake(context.Context, *v1.ClearWakeRequest) (*v1.ClearWakeResponse, error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("hermesh.relay.v1.OwnerControlService.ClearWake is not implemented"))
+}
+
+func (UnimplementedOwnerControlServiceHandler) OpenWakeLink(context.Context, *v1.OpenWakeLinkRequest) (*v1.OpenWakeLinkResponse, error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("hermesh.relay.v1.OwnerControlService.OpenWakeLink is not implemented"))
+}
+
 // MessageServiceClient is a client for the hermesh.relay.v1.MessageService service.
 type MessageServiceClient interface {
 	// The caller's InboxRegistration, signed by its identity key.
@@ -1087,6 +1266,9 @@ type MessageServiceClient interface {
 	// What became of messages, by id (any of the owner's inboxes may ask:
 	// ids are random, so only their sender knows them).
 	Status(context.Context, *v1.MessageStatusRequest) (*v1.MessageStatusResponse, error)
+	// A one-time link for the owner to set up the caller's doorbell, under
+	// the caller's name (docs/agent-names.md §7.2). Served by the MCP gateway.
+	WakeLink(context.Context, *v1.WakeLinkRequest) (*v1.WakeLinkResponse, error)
 }
 
 // NewMessageServiceClient constructs a client for the hermesh.relay.v1.MessageService service. By
@@ -1148,6 +1330,12 @@ func NewMessageServiceClient(httpClient connect.HTTPClient, baseURL string, opts
 			connect.WithSchema(messageServiceMethods.ByName("Status")),
 			connect.WithClientOptions(opts...),
 		),
+		wakeLink: connect.NewClient[v1.WakeLinkRequest, v1.WakeLinkResponse](
+			httpClient,
+			baseURL+MessageServiceWakeLinkProcedure,
+			connect.WithSchema(messageServiceMethods.ByName("WakeLink")),
+			connect.WithClientOptions(opts...),
+		),
 	}
 }
 
@@ -1161,6 +1349,7 @@ type messageServiceClient struct {
 	ack      *connect.Client[v1.AckMessagesRequest, v1.AckMessagesResponse]
 	watch    *connect.Client[v1.WatchInboxRequest, v1.WatchInboxResponse]
 	status   *connect.Client[v1.MessageStatusRequest, v1.MessageStatusResponse]
+	wakeLink *connect.Client[v1.WakeLinkRequest, v1.WakeLinkResponse]
 }
 
 // Register calls hermesh.relay.v1.MessageService.Register.
@@ -1231,6 +1420,15 @@ func (c *messageServiceClient) Status(ctx context.Context, req *v1.MessageStatus
 	return nil, err
 }
 
+// WakeLink calls hermesh.relay.v1.MessageService.WakeLink.
+func (c *messageServiceClient) WakeLink(ctx context.Context, req *v1.WakeLinkRequest) (*v1.WakeLinkResponse, error) {
+	response, err := c.wakeLink.CallUnary(ctx, connect.NewRequest(req))
+	if response != nil {
+		return response.Msg, err
+	}
+	return nil, err
+}
+
 // MessageServiceHandler is an implementation of the hermesh.relay.v1.MessageService service.
 type MessageServiceHandler interface {
 	// The caller's InboxRegistration, signed by its identity key.
@@ -1249,6 +1447,9 @@ type MessageServiceHandler interface {
 	// What became of messages, by id (any of the owner's inboxes may ask:
 	// ids are random, so only their sender knows them).
 	Status(context.Context, *v1.MessageStatusRequest) (*v1.MessageStatusResponse, error)
+	// A one-time link for the owner to set up the caller's doorbell, under
+	// the caller's name (docs/agent-names.md §7.2). Served by the MCP gateway.
+	WakeLink(context.Context, *v1.WakeLinkRequest) (*v1.WakeLinkResponse, error)
 }
 
 // NewMessageServiceHandler builds an HTTP handler from the service implementation. It returns the
@@ -1306,6 +1507,12 @@ func NewMessageServiceHandler(svc MessageServiceHandler, opts ...connect.Handler
 		connect.WithSchema(messageServiceMethods.ByName("Status")),
 		connect.WithHandlerOptions(opts...),
 	)
+	messageServiceWakeLinkHandler := connect.NewUnaryHandlerSimple(
+		MessageServiceWakeLinkProcedure,
+		svc.WakeLink,
+		connect.WithSchema(messageServiceMethods.ByName("WakeLink")),
+		connect.WithHandlerOptions(opts...),
+	)
 	return "/hermesh.relay.v1.MessageService/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case MessageServiceRegisterProcedure:
@@ -1324,6 +1531,8 @@ func NewMessageServiceHandler(svc MessageServiceHandler, opts ...connect.Handler
 			messageServiceWatchHandler.ServeHTTP(w, r)
 		case MessageServiceStatusProcedure:
 			messageServiceStatusHandler.ServeHTTP(w, r)
+		case MessageServiceWakeLinkProcedure:
+			messageServiceWakeLinkHandler.ServeHTTP(w, r)
 		default:
 			http.NotFound(w, r)
 		}
@@ -1363,4 +1572,8 @@ func (UnimplementedMessageServiceHandler) Watch(context.Context, *v1.WatchInboxR
 
 func (UnimplementedMessageServiceHandler) Status(context.Context, *v1.MessageStatusRequest) (*v1.MessageStatusResponse, error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("hermesh.relay.v1.MessageService.Status is not implemented"))
+}
+
+func (UnimplementedMessageServiceHandler) WakeLink(context.Context, *v1.WakeLinkRequest) (*v1.WakeLinkResponse, error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("hermesh.relay.v1.MessageService.WakeLink is not implemented"))
 }

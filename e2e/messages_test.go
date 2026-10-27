@@ -22,6 +22,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/modelcontextprotocol/go-sdk/mcp"
+
 	identityv1 "github.com/hermeshai/hermesh/gen/go/hermesh/identity/v1"
 	localv1 "github.com/hermeshai/hermesh/gen/go/hermesh/local/v1"
 )
@@ -240,6 +242,43 @@ func (h *hook) count() int {
 	return len(h.rings)
 }
 
+func (h *hook) reset() {
+	h.mu.Lock()
+	h.rings = nil
+	h.mu.Unlock()
+}
+
+// selfAddress is an MCP connection's own address, as its contacts say.
+func selfAddress(t *testing.T, session *mcp.ClientSession) string {
+	t.Helper()
+	var c struct {
+		Contacts []struct {
+			Address string `json:"address"`
+			You     bool   `json:"you"`
+		} `json:"contacts"`
+	}
+	json.Unmarshal(callTool(t, session, "message_contacts", nil).raw, &c)
+	for _, x := range c.Contacts {
+		if x.You {
+			return x.Address
+		}
+	}
+	t.Fatal("no contact is the connection itself")
+	return ""
+}
+
+// doorbellOf is what hermesh_status says of a doorbell.
+func doorbellOf(d cliDoc) string {
+	var s struct {
+		Messages struct {
+			Doorbell string `json:"doorbell"`
+			Reason   string `json:"reason"`
+		} `json:"messages"`
+	}
+	json.Unmarshal(d.raw, &s)
+	return s.Messages.Doorbell
+}
+
 // TestMCPInbox: a hosted assistant's inbox. The gateway holds its key,
 // rings the webhook it registered when news arrives (a ring that says only
 // that messages wait, signed as Standard Webhooks), lists and acknowledges
@@ -289,19 +328,27 @@ func TestMCPInbox(t *testing.T) {
 		return d.OK && strings.Contains(string(d.raw), `"kind":"mcp"`) && !strings.Contains(string(d.raw), `"has_inbox":false`)
 	})
 
-	// The webhook, with the key it wants.
+	// The assistant asks to be woken; the owner sets its webhook up, with
+	// the key the webhook wants, on the Mac: the key never passes through
+	// the model (docs/agent-names.md §7.2).
+	d := callTool(t, session, "message_wake", nil)
+	if !d.OK || !strings.Contains(string(d.raw), "Settings → Access") {
+		t.Fatalf("message_wake on a relay without a console: %s", d.raw)
+	}
+	self := selfAddress(t, session)
 	h := &hook{}
 	srv := httptest.NewServer(h)
 	defer srv.Close()
-	d := callTool(t, session, "message_notify", map[string]any{"url": srv.URL + "/wake", "authorization": "Bearer k1"})
-	var notify struct {
-		Webhook struct {
-			Secret string `json:"signing_secret"`
-		} `json:"webhook"`
+	set, err := w.app.client.SetWake(ctx, &localv1.SetWakeRequest{ClientId: self, Url: srv.URL + "/wake", Authorization: "Bearer k1"})
+	if err != nil || !set.Check.Ok || set.Wake.State != "on" || !strings.HasPrefix(set.SigningSecret, "whsec_") {
+		t.Fatalf("the owner's SetWake: %v %v", set, err)
 	}
-	json.Unmarshal(d.raw, &notify)
-	if !d.OK || !strings.HasPrefix(notify.Webhook.Secret, "whsec_") {
-		t.Fatalf("message_notify: %s", d.raw)
+	if h.count() != 1 || !strings.Contains(string(h.rings[0].body), `"type":"hermesh.check"`) {
+		t.Fatalf("the check must ring once, asking for nothing: %d rings", h.count())
+	}
+	h.reset()
+	if d := callTool(t, session, "hermesh_status", nil); doorbellOf(d) != "on" {
+		t.Fatalf("hermesh_status, the doorbell set: %s", d.raw)
 	}
 
 	// A turn the assistant doesn't wait on: its news rings the webhook.
@@ -321,7 +368,7 @@ func TestMCPInbox(t *testing.T) {
 	if rg.header.Get("Authorization") != "Bearer k1" {
 		t.Fatalf("the ring's authorization: %q", rg.header.Get("Authorization"))
 	}
-	secret, _ := base64.StdEncoding.DecodeString(strings.TrimPrefix(notify.Webhook.Secret, "whsec_"))
+	secret, _ := base64.StdEncoding.DecodeString(strings.TrimPrefix(set.SigningSecret, "whsec_"))
 	mac := hmac.New(sha256.New, secret)
 	mac.Write([]byte(rg.header.Get("webhook-id") + "." + rg.header.Get("webhook-timestamp") + "." + string(rg.body)))
 	if rg.header.Get("webhook-signature") != "v1,"+base64.StdEncoding.EncodeToString(mac.Sum(nil)) {
@@ -382,6 +429,36 @@ func TestMCPInbox(t *testing.T) {
 	json.Unmarshal(d.raw, &l)
 	if len(l.Messages) != 1 || l.Messages[0].News.Result != "again" {
 		t.Fatalf("the agent's own list must hold only its own: %s", d.raw)
+	}
+
+	// A doorbell for one name rings for that name alone, saying whose
+	// messages wait; other agents find the name in their contacts, as
+	// @tech-demos.
+	h2 := &hook{}
+	srv2 := httptest.NewServer(h2)
+	defer srv2.Close()
+	rangBefore := h.count()
+	if set, err := w.app.client.SetWake(ctx, &localv1.SetWakeRequest{ClientId: self, Name: "Tech Demos", Url: srv2.URL + "/td"}); err != nil || !set.Check.Ok {
+		t.Fatalf("Tech Demos's doorbell: %v %v", set, err)
+	}
+	h2.reset()
+	if d, r := sendMessage(t, w, w.cliEnv, 30*time.Second, "--to", "@Tech Demos", "--message", "the review is ready"); !d.OK || d.Message.To != self+"/tech-demos" ||
+		!strings.Contains(d.Message.Expect, "woken") {
+		t.Fatalf("to @Tech Demos: %+v", r)
+	}
+	eventually(t, time.Minute, "Tech Demos's ring", func() bool { return h2.count() == 1 })
+	if b := string(h2.rings[0].body); !strings.Contains(b, `"as":"tech-demos"`) || !strings.Contains(b, `with as \"tech-demos\"`) || strings.Contains(b, "the review is ready") {
+		t.Fatalf("Tech Demos's ring: %s", b)
+	}
+	if d, r := sendMessage(t, w, w.cliEnv, 30*time.Second, "--to", self+"/chief-of-staff", "--message", "for chief"); !d.OK || strings.Contains(d.Message.Expect, "woken") {
+		t.Fatalf("to Chief of Staff: %+v", r)
+	}
+	time.Sleep(3 * time.Second)
+	if h2.count() != 1 || h.count() != rangBefore {
+		t.Fatalf("a message to a name without a doorbell rang: %d, %d", h2.count(), h.count())
+	}
+	if d := callTool(t, session, "hermesh_status", map[string]any{"as": "tech_demos"}); doorbellOf(d) != "on" {
+		t.Fatalf("hermesh_status as Tech Demos: %s", d.raw)
 	}
 }
 
@@ -461,6 +538,108 @@ func TestNames(t *testing.T) {
 		m, ok := news("tech-demos", s.SessionID, "turn_done")
 		return ok && m.News.Result == "done"
 	})
+}
+
+// TestWake: a bot that reads its messages with the CLI, such as a Grok bot
+// on its cloud computer, is woken by its routine's webhook when messages
+// wait for its name (docs/agent-names.md §7). It asks for the doorbell; the
+// owner sets it up with the routine's key, which the bot never sees.
+func TestWake(t *testing.T) {
+	if testing.Short() {
+		t.Skip("e2e")
+	}
+	ctx := context.Background()
+	w := newOwnerMac(t, []string{"HERMESH_FAKE_PROVIDERS=1"}, &localv1.GrantSpec{})
+	w.relay.stop()
+	w.relayArgs = append(w.relayArgs, "--mcp")
+	w.relayEnv = []string{"HERMESH_MCP_LOCAL_WEBHOOKS=1"}
+	w.startRelay()
+	grok := w.addAgent("grok", &localv1.GrantSpec{})
+	hermesh := filepath.Join(w.bin, "hermesh")
+	eventually(t, 30*time.Second, "the machine back online", func() bool {
+		return !strings.Contains(w.cli(30*time.Second, "project", "list").stdout, "offline")
+	})
+
+	// The bot asks; with no console on this relay, it's told the Mac app.
+	r := run(t, append(slices.Clone(grok), "HERMESH_AS=Tech Demos"), 30*time.Second, hermesh, "message", "wake", "-o", "json")
+	if r.code != 0 || !strings.Contains(r.stdout, "Settings → Access → grok → Wake") || !strings.Contains(r.stdout, `\"tech-demos\"`) {
+		t.Fatalf("message wake: %+v", r)
+	}
+
+	// The routine: a webhook that reads, with the CLI, the messages of the
+	// name the ring is for.
+	type woken struct{ as, list string }
+	runs := make(chan woken, 10)
+	routine := httptest.NewServer(http.HandlerFunc(func(rw http.ResponseWriter, req *http.Request) {
+		var body struct{ Type, As string }
+		json.NewDecoder(req.Body).Decode(&body)
+		if req.Header.Get("Authorization") != "Bearer crsr_key" {
+			rw.WriteHeader(http.StatusUnauthorized)
+			return
+		}
+		if body.Type == "hermesh.message" {
+			go func() {
+				out := run(t, grok, time.Minute, hermesh, "message", "list", "--as", body.As, "-o", "json").stdout
+				runs <- woken{body.As, out}
+			}()
+		}
+		rw.WriteHeader(http.StatusOK)
+	}))
+	defer routine.Close()
+	grokID := contactAddress(t, w, w.cliEnv, "grok")
+	bad, err := w.app.client.SetWake(ctx, &localv1.SetWakeRequest{ClientId: grokID, Name: "Tech Demos", Url: routine.URL, Authorization: "Bearer wrong"})
+	if err != nil || bad.Check.Ok || bad.Wake != nil || !strings.Contains(bad.Check.Reason, "the key is wrong") {
+		t.Fatalf("a wrong key must fail the check and not be kept: %v %v", bad, err)
+	}
+	set, err := w.app.client.SetWake(ctx, &localv1.SetWakeRequest{ClientId: grokID, Name: "Tech Demos", Url: routine.URL, Authorization: "Bearer crsr_key"})
+	if err != nil || !set.Check.Ok || set.Wake.Name != "tech-demos" {
+		t.Fatalf("SetWake: %v %v", set, err)
+	}
+	if l, err := w.app.client.ListWakes(ctx, &localv1.ListWakesRequest{ClientId: grokID}); err != nil || len(l.Wakes) != 1 || l.Wakes[0].State != "on" {
+		t.Fatalf("ListWakes: %v %v", l, err)
+	}
+	if out := run(t, w.cliEnv, 30*time.Second, hermesh, "message", "contacts").stdout; !strings.Contains(out, "@tech-demos") {
+		t.Fatalf("contacts must list the woken name: %s", out)
+	}
+
+	// Tech Demos starts a session; its news rings Tech Demos's routine,
+	// which finds it.
+	if r := run(t, grok, 30*time.Second, hermesh, "--as", "tech-demos", "session", "start", "--project", "demo", "--prompt", "say built"); r.code != 0 {
+		t.Fatalf("start: %+v", r)
+	}
+	select {
+	case got := <-runs:
+		if got.as != "tech-demos" || !strings.Contains(got.list, `"result": "built"`) {
+			t.Fatalf("the woken routine read: %+v", got)
+		}
+	case <-time.After(time.Minute):
+		t.Fatal("Tech Demos's routine was not woken")
+	}
+	// Another name of the same bot has no doorbell: nothing rings.
+	if r := run(t, grok, 30*time.Second, hermesh, "--as", "research", "session", "start", "--project", "demo", "--prompt", "say found"); r.code != 0 {
+		t.Fatalf("start as research: %+v", r)
+	}
+	eventually(t, 30*time.Second, "Research's news", func() bool {
+		return strings.Contains(run(t, grok, 30*time.Second, hermesh, "--as", "research", "message", "list", "-o", "json").stdout, `"result": "found"`)
+	})
+	select {
+	case got := <-runs:
+		t.Fatalf("a name without a doorbell rang: %+v", got)
+	case <-time.After(3 * time.Second):
+	}
+
+	// The key appears nowhere but the vault.
+	for _, p := range w.logs {
+		if strings.Contains(p.output(), "crsr_key") {
+			t.Fatalf("the key is in %s's output", p.name)
+		}
+	}
+	if _, err := w.app.client.ClearWake(ctx, &localv1.ClearWakeRequest{ClientId: grokID, Name: "tech-demos"}); err != nil {
+		t.Fatal(err)
+	}
+	if out := run(t, w.cliEnv, 30*time.Second, hermesh, "message", "contacts").stdout; strings.Contains(out, "@tech-demos") {
+		t.Fatalf("a cleared doorbell's name is still listed: %s", out)
+	}
 }
 
 // slowly is eventually at one try a second: MCP tools are rate limited.

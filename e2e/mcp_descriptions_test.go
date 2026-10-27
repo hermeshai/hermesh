@@ -40,7 +40,7 @@ func checkMCPDescriptions(t *testing.T, session *mcp.ClientSession, tools []*mcp
 		"message_ack":       {"held=true", "refused=true"},
 		"message_status":    {"waiting", "handled", "expired"},
 		"message_contacts":  {"addresses"},
-		"message_notify":    {"webhook", "never what they say", "Standard Webhooks", "4xx", "Grok Bot"},
+		"message_wake":      {"webhook", "link for your owner", "never passes through you", "as with your own name", "Grok Bot"},
 	}
 	for _, tool := range tools {
 		phrases, ok := want[tool.Name]
