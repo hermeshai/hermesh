@@ -81,6 +81,9 @@ func (c *Client) Close() error {
 // Done is closed when the current relay connection is lost.
 func (c *Client) Done() <-chan struct{} { return c.conn.Load().Done() }
 
+// Ping waits for the relay to answer a ping on the current connection.
+func (c *Client) Ping(ctx context.Context) error { return c.conn.Load().Ping(ctx) }
+
 // Admitted waits for the relay's answer to this connection's Hello: nil
 // once it admitted it.
 func (c *Client) Admitted(ctx context.Context) error { return c.conn.Load().Admitted(ctx) }

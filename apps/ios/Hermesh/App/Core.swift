@@ -50,8 +50,8 @@ enum Core {
     }
 
     /// Stops serving LocalService (iOS may take a suspended app's listening
-    /// socket back), closes the relay connection and stops following the
-    /// machines (the app went to the background).
+    /// socket back) and following the machines, and keeps the relay
+    /// connection to try again first (the app went to the background).
     static func pause() { lifecycle.async { HermeshCorePause() } }
 
     /// Connects again over the network now in use (Wi-Fi to cellular, say).

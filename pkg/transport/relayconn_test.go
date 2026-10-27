@@ -103,6 +103,24 @@ func latestGrant(c *RelayConn) error {
 	return err
 }
 
+// Ping answers on a connection that works, and fails at once on one that
+// is closed.
+func TestPing(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	conn, err := dialer(t, fakeRelay(t, true, make(chan bool, 1)), false).Dial(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := conn.Ping(ctx); err != nil {
+		t.Fatalf("ping: %v", err)
+	}
+	conn.Close()
+	if err := conn.Ping(ctx); err == nil || ctx.Err() != nil {
+		t.Fatalf("ping on a closed connection: %v (ctx %v)", err, ctx.Err())
+	}
+}
+
 func TestPipelinedDial(t *testing.T) {
 	ctx := context.Background()
 	for _, c := range []struct {

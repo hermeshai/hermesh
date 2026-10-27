@@ -142,14 +142,15 @@ func (m *mobileCore) kill() {
 // cutProxy forwards TCP connections to target until it is cut, as a phone's
 // network that goes away: then new connections fail at once, and those made
 // before are silent for good (their NAT mappings are gone), even after the
-// network is back.
+// network is back. A new connection forwards nothing for setup, as TCP's
+// handshake and TLS's take before its first byte.
 type cutProxy struct {
 	mu    sync.Mutex
 	cut   bool
 	epoch int
 }
 
-func newCutProxy(t *testing.T, target string) (*cutProxy, string) {
+func newCutProxy(t *testing.T, target string, setup time.Duration) (*cutProxy, string) {
 	l, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
 		t.Fatal(err)
@@ -187,13 +188,16 @@ func newCutProxy(t *testing.T, target string) (*cutProxy, string) {
 				c.Close()
 				continue
 			}
-			r, err := net.Dial("tcp", target)
-			if err != nil {
-				c.Close()
-				continue
-			}
-			go pump(r, c, epoch)
-			go pump(c, r, epoch)
+			go func() {
+				time.Sleep(setup)
+				r, err := net.Dial("tcp", target)
+				if err != nil {
+					c.Close()
+					return
+				}
+				go pump(r, c, epoch)
+				go pump(c, r, epoch)
+			}()
 		}
 	}()
 	return p, l.Addr().String()
@@ -260,10 +264,12 @@ func within(timeout time.Duration, cond func() bool) time.Duration {
 // Mac as far on the other side, as from a phone on a mobile network to an
 // owner's Mac at home through a hosted center), how long the iPhone's core
 // takes to answer the app: its status at launch, the first world it shows,
-// the world complete (the Mac followed), a long conversation opened, and
-// the world again after a minute in the background while the phone's
-// network went away (the connections it had are dead after that) and a
-// session was deleted on the Mac.
+// the world complete (the Mac followed), a long conversation opened, the
+// world again after a minute in the background while the phone's network
+// went away (the connections it had are dead after that) and a session was
+// deleted on the Mac, and after a few seconds in the background (they
+// still work). A new connection from the phone costs TCP's and TLS's
+// round trips before its first byte.
 func TestMobileNetwork(t *testing.T) {
 	if testing.Short() {
 		t.Skip("e2e")
@@ -298,7 +304,7 @@ func TestMobileNetwork(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	network, phoneRelay := newCutProxy(t, strings.TrimPrefix(st.RelayUrl, "http://"))
+	network, phoneRelay := newCutProxy(t, strings.TrimPrefix(st.RelayUrl, "http://"), 2*rtt)
 	dir := t.TempDir()
 	root, _ := identity.GenerateKey()
 	joinMobile(t, w, "http://"+phoneRelay, dir, root).kill()
@@ -436,6 +442,35 @@ func TestMobileNetwork(t *testing.T) {
 	scr.mu.Unlock()
 	leave()
 
+	// A short trip to the background (another app answered, and back), while
+	// a session starts on the Mac: the connections it had still work.
+	m.do("pause")
+	time.Sleep(3 * time.Second)
+	m.cmd.Process.Signal(syscall.SIGSTOP)
+	brief, r := w.startSession(time.Minute, "--project", "demo", "--prompt", "say while the phone was away briefly", "--wait")
+	if brief.Status != "idle" {
+		t.Fatalf("session: %+v", r)
+	}
+	sessions++
+	time.Sleep(2 * time.Second)
+	m.cmd.Process.Signal(syscall.SIGCONT)
+	m.do("resume")
+	back = time.Now()
+	scr.mu.Lock()
+	resets = scr.resets
+	scr.shownUnreachable = nil
+	scr.mu.Unlock()
+	front, leave = context.WithCancel(ctx)
+	scr.follow(front, t, m.client)
+	briefly := within(30*time.Second, scr.has(fresh(resets, brief.SessionID)))
+	time.Sleep(time.Second)
+	scr.mu.Lock()
+	if len(scr.shownUnreachable) > 0 {
+		t.Errorf("after a short background, shown unreachable: %v", scr.shownUnreachable)
+	}
+	scr.mu.Unlock()
+	leave()
+
 	// The app is closed from the switcher (it left the front first), a
 	// session is deleted on the Mac, and the app launched again: the screen
 	// still holds what it showed (the app keeps it), and loses the deleted one.
@@ -472,21 +507,24 @@ func TestMobileNetwork(t *testing.T) {
 	t.Logf("long conversation opened     %s, %d events, %d KB", round(opened), events, bytes>>10)
 	t.Logf("world after background       %s", round(resumed))
 	t.Logf("deleted meanwhile, forgotten %s", round(forgotten))
+	t.Logf("world after a short pause    %s", round(briefly))
 	t.Logf("relaunched, deleted gone     %s", round(relaunched))
-	// The floor: TCP and the WebSocket upgrade to the relay (2), the
+	// The floor: TCP, TLS and the WebSocket upgrade to the relay (3), the
 	// end-to-end handshake and one call through it to the Mac, as far
-	// again behind it (2 each).
+	// again behind it (2 each); after a short pause, a ping on the relay
+	// connection kept (1) and the call.
 	for _, c := range []struct {
 		what string
 		took time.Duration
 		max  float64
 	}{
 		{"status at launch", status, 0.2},
-		{"world complete", whole, 7},
+		{"world complete", whole, 9},
 		{"long conversation opened", opened, 3},
-		{"world after background", resumed, 6.5},
-		{"deleted session forgotten after the background", forgotten, 6.5},
-		{"deleted session forgotten after a relaunch", relaunched, 8},
+		{"world after background", resumed, 8.5},
+		{"deleted session forgotten after the background", forgotten, 8.5},
+		{"world after a short pause", briefly, 3.5},
+		{"deleted session forgotten after a relaunch", relaunched, 10},
 	} {
 		if c.took < 0 || float64(c.took) > c.max*float64(rtt) {
 			t.Errorf("%s: %s, want at most %.1f round trips", c.what, round(c.took), c.max)

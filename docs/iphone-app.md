@@ -72,10 +72,14 @@ packages/HermeshKit/         Swift package shared with the Mac signer
   What the app last showed is kept on the phone (`world.pb`, and the last
   10 conversations): a launch shows it at once, and a conversation opened
   again reads only the events after the last one kept. Leaving the front
-  pauses the core (no polls, no follows, no connections), and it stops
-  listening on its loopback port, since iOS may take a suspended app's
-  listening socket back without a word; coming back, or a change of
-  network (Wi-Fi to cellular), listens and connects again at once. While
+  pauses the core (no polls, no follows), and it stops listening on its
+  loopback port, since iOS may take a suspended app's listening socket back
+  without a word; its connections are kept. Coming back, it listens again
+  and pings the relay connection it kept while it dials a new one, and
+  keeps the old one (with the connections to the machines through it) if
+  it answers first: after a few seconds away, the world is current after a
+  ping and one call to the Mac. A change of network (Wi-Fi to cellular)
+  connects again at once. While
   the relay cannot be reached, the machines are as it last listed them,
   never called offline or unreachable for it (the sync line says it). The
   LocalService client runs each call on a thread of its own, never on

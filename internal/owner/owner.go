@@ -70,7 +70,8 @@ type Owner struct {
 	device     *identity.SoftwareKey
 	deviceCert *identityv1.Signed
 	client     *peer.Client
-	dialing    *relayDial // the dial to the relay under way, if any
+	dialing    *relayDial   // the dial to the relay under way, if any
+	kept       *peer.Client // client, kept over a pause: not known to work yet
 	relayInfo  *relayv1.GetInfoResponse
 	join       *pendingJoin // this device asking to join an owner
 	pendingMu  sync.Mutex   // pending names (pendingNames)
@@ -203,7 +204,7 @@ func (o *Owner) Run(ctx context.Context) {
 	go o.namePending(ctx)
 	o.stayConnected(ctx)
 	o.mu.Lock()
-	if o.client != nil {
+	if o.client != nil && o.client != o.kept {
 		o.client.Close()
 		o.client = nil
 	}
@@ -287,20 +288,25 @@ type relayDial struct {
 // replica holds) never waits on the network; a caller that comes while a
 // dial is under way waits for that one. Admission is pipelined: the first
 // calls, and end-to-end handshakes with the machines last seen online, go
-// out with it (stayConnected notices a refusal).
+// out with it (stayConnected notices a refusal). A connection kept over a
+// pause is tried meanwhile (connectOrKeep).
 func (o *Owner) relay(ctx context.Context) (*peer.Client, error) {
 	if err := o.requireInit(); err != nil {
 		return nil, err
 	}
 	for {
 		o.mu.Lock()
+		var kept *peer.Client
 		if c := o.client; c != nil {
 			select {
 			case <-c.Done():
 				o.client = nil
 			default:
-				o.mu.Unlock()
-				return c, nil
+				if c != o.kept {
+					o.mu.Unlock()
+					return c, nil
+				}
+				kept = c
 			}
 		}
 		if w := o.dialing; w != nil {
@@ -323,11 +329,14 @@ func (o *Owner) relay(ctx context.Context) (*peer.Client, error) {
 				return &identityv1.Credentials{RootChain: o.trust.RootChain(), Subject: &identityv1.Credentials_DeviceCert{DeviceCert: o.deviceCert}}
 			}}
 		o.mu.Unlock()
-		c, err := d.Connect(ctx)
+		c, err := connectOrKeep(ctx, d, kept)
 		o.mu.Lock()
 		o.dialing = nil
 		if err == nil {
 			o.client = c
+		}
+		if err == nil || ctx.Err() == nil {
+			o.kept = nil
 		}
 		o.mu.Unlock()
 		if err != nil {
@@ -340,6 +349,9 @@ func (o *Owner) relay(ctx context.Context) (*peer.Client, error) {
 		}
 		c.Warm(o.seenOnline()) // before the callers waiting wake, so that they join these handshakes
 		close(w.done)
+		if c == kept {
+			return c, nil
+		}
 		go o.fetchRelayInfo(relayURL)
 		go o.refreshCards()
 		go func() { // admitted: not removed (with admission pipelined, only once the relay said so)
@@ -357,9 +369,69 @@ func (o *Owner) relay(ctx context.Context) (*peer.Client, error) {
 	}
 }
 
+// connectOrKeep dials the relay. With kept, the connection kept over a
+// pause, it pings that one meanwhile and keeps it if it answers first:
+// after a short pause it mostly still works, and keeping it saves the
+// dial's round trips and the machines' handshakes (their connections
+// through it are kept too). After a long one it may be dead without a
+// word, and the dial is no later for it. The one not kept is closed.
+func connectOrKeep(ctx context.Context, d *peer.Dialer, kept *peer.Client) (*peer.Client, error) {
+	if kept == nil {
+		return d.Connect(ctx)
+	}
+	dctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+	type dial struct {
+		c   *peer.Client
+		err error
+	}
+	dialed, pinged := make(chan dial, 1), make(chan error, 1)
+	go func() {
+		c, err := d.Connect(dctx)
+		dialed <- dial{c, err}
+	}()
+	go func() { pinged <- kept.Ping(dctx) }()
+	var err error
+	for dialing, pinging := true, true; dialing || pinging; {
+		select {
+		case perr := <-pinged:
+			pinging = false
+			if perr == nil {
+				if dialing {
+					go func() {
+						if r := <-dialed; r.c != nil {
+							r.c.Close()
+						}
+					}()
+				}
+				return kept, nil
+			}
+		case r := <-dialed:
+			dialing = false
+			if r.err == nil {
+				kept.Close()
+				return r.c, nil
+			}
+			err = r.err
+		}
+	}
+	if ctx.Err() == nil { // else its caller left: it is tried at the next call
+		kept.Close()
+	}
+	return nil, err
+}
+
+// keepRelay keeps the relay connection over a pause, to be tried again
+// before it is dialed again (connectOrKeep).
+func (o *Owner) keepRelay() {
+	o.mu.Lock()
+	o.kept = o.client
+	o.mu.Unlock()
+}
+
 // dropRelay closes the relay connection, so the next call dials a new one:
-// after the app was suspended, or the network changed, the old one may be
-// dead without anything having noticed yet.
+// after the network changed, the old one may be dead without anything
+// having noticed yet.
 func (o *Owner) dropRelay() {
 	o.mu.Lock()
 	c := o.client

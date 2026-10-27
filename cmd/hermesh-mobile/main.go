@@ -54,7 +54,8 @@ func HermeshCoreResume() {
 	}
 }
 
-// HermeshCorePause closes the relay connection (the app went to the background).
+// HermeshCorePause stops following the machines, keeping the relay connection
+// to try again first (the app went to the background).
 //
 //export HermeshCorePause
 func HermeshCorePause() {

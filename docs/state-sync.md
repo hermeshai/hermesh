@@ -630,6 +630,20 @@ Steps 3, 4 and 5 are independent of each other. All five were built on
     handshake and one call to the Mac, two each); after a minute away with
     dead connections, more than 90 s → 5; a session deleted meanwhile never
     → gone with it.
+  - Pausing keeps the relay connection, and the end-to-end connections
+    through it (2026-10-27). Coming back pings it while it dials a new one,
+    keeps whichever is through first and closes the other: after a short
+    pause the ping answers in one round trip and each machine's Watch
+    resumes on the connection it had, where a dial costs TCP, TLS and the
+    upgrade before the handshakes. The relay drops a peer that misses its
+    pings for 30–45 s, and after a longer pause the dial is no later for the
+    ping. The test's phone network now charges each new connection TCP's
+    and TLS's round trips (2), as a real one does: without them a dial was
+    as quick as the ping, and won half the time. With them, before → after:
+    the world after a few seconds away 7.0 → 3.0; the world complete 8.7,
+    after a minute away 7.0 and a relaunch 7.1, as before. Against the
+    hosted center (the Simulator, 0.18 s from it), back after 5–70 s: the
+    ping 0.18 s, the Mac followed after 0.52–0.72 s, where it was 1.25–1.73 s.
 - **Measured** (Go e2e, the relay 300 ms away): every list p50 60–170 µs;
   0 relay control calls while three windows ask as before; a pairing
   request on a screen 0.4 s after it was made; a BASIC session 221–236

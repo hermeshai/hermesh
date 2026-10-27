@@ -208,14 +208,15 @@ func (d *Device) stop() {
 	}
 }
 
-// Pause stops what keeps the current profile's world current, its relay
-// connection and its replica's sources, keeping what they hold: the iPhone
-// app left the front and is about to be suspended. Run, the next watch or
-// list start them again.
+// Pause stops what keeps the current profile's world current, its
+// replica's sources, keeping what they hold, and keeps its relay connection
+// to be tried again (connectOrKeep): the iPhone app left the front and is
+// about to be suspended. Run, the next watch or list start them again;
+// Run, stopped after Pause, leaves the connection open.
 func (d *Device) Pause() {
 	o := d.owner()
 	o.rep.pause()
-	o.dropRelay()
+	o.keepRelay()
 }
 
 // Reconnect drops the current profile's relay connection and follows its
