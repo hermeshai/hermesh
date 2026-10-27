@@ -17,6 +17,7 @@ typealias AgentStatus = Hermesh_Machine_V1_AgentStatus
 typealias Answer = Hermesh_Session_V1_Answer
 typealias Wake = Hermesh_Local_V1_Wake
 typealias WakeCheck = Hermesh_Local_V1_WakeCheck
+typealias WakeRing = Hermesh_Local_V1_WakeRing
 
 /// How long a call that waits for Face ID may take.
 let signingTimeout = 180

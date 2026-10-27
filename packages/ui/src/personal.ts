@@ -16,6 +16,10 @@ export const personalAgents: PersonalAgentKind[] = [
   { id: "other", name: "其他 Agent", color: "var(--accent)" },
 ];
 
+// Apps that connect over MCP without being offered in the picker, drawn and
+// named the same way: Grok Bot signs in as Cursor.
+const hostedApps: PersonalAgentKind[] = [{ id: "cursor", name: "Cursor", color: "#1c1c1f", logo: "cursor", domains: ["cursor.com"] }];
+
 /**
  * A personal agent kind by the name its grant was given (not 其他). A hosted
  * connection's "Name (host)" is the kind only from its app's own domain: any
@@ -25,9 +29,18 @@ export function kindNamed(label: string): PersonalAgentKind | undefined {
   const hosted = /^(.+) \(([^()\s]+)\)$/.exec(label);
   const name = hosted ? hosted[1] : label;
   const host = hosted?.[2] ?? "";
-  return personalAgents.find(
+  return [...personalAgents, ...hostedApps].find(
     (k) => k.name === name && k.id !== "other" && (!hosted || !!k.domains?.some((d) => host === d || host.endsWith("." + d))),
   );
+}
+
+/**
+ * The name a grant is shown by: a hosted app's own name ("Claude"), without
+ * where it signs in, once that is its app's domain; else its label whole.
+ */
+export function agentName(label: string): string {
+  const hosted = /^(.+) \(([^()\s]+)\)$/.exec(label);
+  return hosted && kindNamed(label) ? hosted[1] : label;
 }
 
 /** The colour a grant's avatar is drawn in: its kind's, else one derived from its name. */

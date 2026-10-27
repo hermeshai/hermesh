@@ -667,6 +667,12 @@ type contactRec struct {
 	woken []string
 }
 
+// rings reports whether a message to name rings a doorbell: the name's
+// own, or the agent's, which wakes it for every name without one.
+func rings(woken []string, name string) bool {
+	return slices.Contains(woken, name) || slices.Contains(woken, "")
+}
+
 func (a *app) contactRecs(ctx context.Context, ms relayv1connect.MessageServiceClient) ([]contactRec, error) {
 	res, err := ms.Contacts(ctx, &relayv1.ContactsRequest{})
 	if err != nil {
@@ -761,7 +767,7 @@ func (a *app) resolveTarget(to string, contacts []contactRec, machines []machine
 		}
 		t.session, t.name = n, t.name+"/"+n
 	}
-	t.woken = slices.Contains(found[0].woken, t.session)
+	t.woken = rings(found[0].woken, t.session)
 	return t, nil
 }
 

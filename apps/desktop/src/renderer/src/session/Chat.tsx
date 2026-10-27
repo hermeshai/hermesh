@@ -7,7 +7,7 @@ import {
   isInterruption, isInterruptible, pendingQuestion, phaseText, resolutionTitle, statusTitle, stepSummary, toolObject, toolSummary, toolVerb, transcript,
   turnStartedAt, turnTimeLine, type Step,
 } from "@hermesh/core";
-import { AgentLogo } from "@hermesh/ui";
+import { AgentLogo, agentName } from "@hermesh/ui";
 import { StatusDot } from "../components";
 import { Icon } from "../icons";
 import { archive, grantLabel, unarchive } from "../Sidebar";
@@ -161,7 +161,7 @@ function RowView({ it, sessionId, failure, clients, grant, previous }: RowProps)
         <div className="tq">
           <Icon name="q" className="sm" /><b>{t("chat.agentAsked")}</b>
           <span className="sel-text">{it.question.items.map((x) => x.text).join(" ")}</span>
-          <div className="ans">{resolutionTitle(it.resolution, (by) => clients.find((c) => c.clientId === by)?.label ?? by)}</div>
+          <div className="ans">{resolutionTitle(it.resolution, (by) => { const l = clients.find((c) => c.clientId === by)?.label; return l ? agentName(l) : by; })}</div>
         </div>
       );
     case "turnEnd": {

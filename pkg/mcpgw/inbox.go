@@ -47,7 +47,7 @@ const inboxSchema = `CREATE TABLE IF NOT EXISTS mcp_inboxes (
 
 // ensureInboxes makes the inbox and doorbell tables if they are missing.
 func (b *SQLBackend) ensureInboxes(ctx context.Context) error {
-	for _, schema := range []string{inboxSchema, doorbellSchema, wakeLinkSchema} {
+	for _, schema := range []string{inboxSchema, doorbellSchema, ringSchema, wakeLinkSchema} {
 		s := strings.ReplaceAll(schema, " BYTES", " BLOB")
 		if b.Postgres {
 			s = strings.ReplaceAll(schema, " BYTES", " BYTEA")

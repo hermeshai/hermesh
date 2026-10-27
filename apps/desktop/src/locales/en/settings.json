@@ -94,8 +94,6 @@
     "expiresIn_other": "Expires in {{count}} days",
     "daysLeft_one": "{{count}} day left",
     "daysLeft_other": "{{count}} days left",
-    "allProjects": "All projects",
-    "allMachines": "All machines",
     "none": "No agents have access yet.",
     "connect": "Connect Agent…",
     "note": "Access decides which of your projects, machines and coding agents an agent can use, and for how long.",
@@ -121,7 +119,10 @@
     "sessionCount": "{{today}} today · {{total}} in all",
     "lastOnline": "Last online",
     "now": "Now",
-    "fingerprint": "Fingerprint"
+    "fingerprint": "Fingerprint",
+    "usedBy": "{{names}} · used {{ago}}",
+    "usedAgo": "Used {{ago}}",
+    "notUsed": "Not used yet"
   },
   "machines": {
     "lastOnline": "Last online {{ago}}",
@@ -154,13 +155,18 @@
   },
   "wake": {
     "title": "Wake on New Messages",
-    "none": "Nothing wakes this agent yet.",
-    "note": "Hermesh calls a webhook, such as a Grok Bot routine's, to wake this agent or one of its bots when messages wait for it. It never says what they say.",
-    "add": "Add…",
-    "self": "{{agent}} itself",
+    "none": "Not set up",
+    "setUp": "Set Up…",
+    "note": "Bots such as Grok Bot aren’t always running. Once this is set up, Hermesh wakes this one when a session it started finishes or another agent writes to it.",
+    "perBotAsk": " Several bots on this connection?",
+    "perBot": "Set up each bot…",
+    "row": "Wake {{name}}",
     "on": "On",
-    "broken": "Not working",
-    "lastRang": "Called {{ago}}",
-    "notYet": "Not called yet"
+    "broken": "Not Working",
+    "lastRang": "Woken {{ago}}",
+    "notYet": "Not woken yet",
+    "allRead": "all read",
+    "waitingCount_one": "{{count}} waiting",
+    "waitingCount_other": "{{count}} waiting"
   }
 }

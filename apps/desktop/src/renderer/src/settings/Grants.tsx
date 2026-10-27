@@ -1,6 +1,7 @@
 import { useTranslation } from "react-i18next";
 import type { Client } from "@hermesh/proto/local";
 import { agoText, dateOf, monthDay, sameDay, updatedDate } from "@hermesh/core";
+import { agentName } from "@hermesh/ui";
 import { i18n } from "../../../shared/i18n";
 import { local } from "../api";
 import { AgentName, GrantAvatar } from "../components";
@@ -27,14 +28,20 @@ function list(names: string[]): string {
   return names.join(i18n.t("settings:listSeparator"));
 }
 
-function projectsText(c: Client): string {
-  const p = (c.spec?.projectIds ?? []).filter((x) => x !== "*");
-  return p.length ? list(p) : i18n.t("settings:grants.allProjects");
-}
-
-function machinesText(st: Store, c: Client): string {
-  const m = (c.spec?.machineIds ?? []).filter((x) => x !== "*");
-  return m.length ? list(m.map((id) => machineName(st, id))) : i18n.t("settings:grants.allMachines");
+/**
+ * Who used a grant last, and when, which tells grants apart: "hermesh 在用 ·
+ * 2 分钟前", "3 天前用过". The names are those a hosted app's bots go by; an
+ * agent on a computer names its conversations instead.
+ */
+function usedText(st: Store, c: Client, now: Date): string {
+  const mine = st.sessions.filter((s) => s.createdBy === c.clientId).sort((a, b) => (dateOf(b.createdAt)?.getTime() ?? 0) - (dateOf(a.createdAt)?.getTime() ?? 0));
+  const seen = dateOf(c.lastSeen);
+  const started = dateOf(mine[0]?.createdAt);
+  const last = !seen || (started && started > seen) ? started : seen;
+  if (!last) return i18n.t("settings:grants.notUsed");
+  const names = c.custodian ? [...new Set(mine.map((s) => s.createdAs).filter((n) => n))].slice(0, 2) : [];
+  const ago = agoText(last, now);
+  return names.length ? i18n.t("settings:grants.usedBy", { names: list(names), ago }) : i18n.t("settings:grants.usedAgo", { ago });
 }
 
 /** Access: the grants, each opening what it may use and changing or ending it. */
@@ -51,7 +58,7 @@ export function Grants({ open, select }: { open: string; select: (id: string) =>
       {clients.length > 0 ? (
         <div className="fgroup" role="list" aria-label={t("pages.grants")}>
           {clients.map((x) => (
-            <GoRow key={x.grantId} icon={<GrantAvatar label={x.label} size="md" />} title={x.label} sub={`${projectsText(x)} · ${machinesText(st, x)}`} onClick={() => select(x.grantId)}>
+            <GoRow key={x.grantId} icon={<GrantAvatar label={x.label} size="md" />} title={agentName(x.label)} sub={usedText(st, x, now)} onClick={() => select(x.grantId)}>
               <span className="fv-side">
                 <Left days={daysLeft(x, now)} />
               </span>
@@ -82,18 +89,19 @@ function GrantDetail({ c }: { c: Client }) {
   const agents = (c.spec?.agents ?? []).filter((a) => a !== "*");
   const projects = (c.spec?.projectIds ?? []).filter((p) => p !== "*");
   const machines = (c.spec?.machineIds ?? []).filter((m) => m !== "*");
+  const name = agentName(c.label);
   const scope = (renew: boolean) => st.set({ sheet: { kind: "scope", clientId: c.clientId, renew } });
   const revoke = () =>
     st.set({
       sheet: {
         kind: "confirm",
-        title: t("grants.disconnectTitle", { name: c.label }),
+        title: t("grants.disconnectTitle", { name }),
         message: t("grants.disconnectMessage"),
         button: t("grants.disconnectButton"),
         run: async () => {
           const r = await local.revokeClient({ grantId: c.grantId });
           const offline = r.acks.filter((a) => !a.ok).map((a) => a.machineName);
-          st.show(offline.length ? t("grants.disconnectedOffline", { name: c.label, machines: list(offline) }) : t("grants.disconnected", { name: c.label }));
+          st.show(offline.length ? t("grants.disconnectedOffline", { name, machines: list(offline) }) : t("grants.disconnected", { name }));
         },
       },
     });
@@ -102,7 +110,7 @@ function GrantDetail({ c }: { c: Client }) {
       <div className="dhero">
         <GrantAvatar label={c.label} size="xl" />
         <div>
-          <b>{c.label}</b>
+          <b>{name}</b>
           <span>
             {t("grants.validUntil", { date: expires ? monthDay(expires) : "—" })} · <Left days={daysLeft(c, now)} />
           </span>

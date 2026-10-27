@@ -3,7 +3,7 @@ import { Trans, useTranslation } from "react-i18next";
 import type { Client, GetUsageResponse, Machine } from "@hermesh/proto/local";
 import { SessionStatus, type Session } from "@hermesh/proto/session";
 import { agoText, codingAgentTitle, createdDate, dateOf, isActive, isFailed, monthDay, sameDay, todayStats, tokensText, usageYear } from "@hermesh/core";
-import { AgentLogo, AgentTile, grantColor, kindNamed, Mark } from "@hermesh/ui";
+import { AgentLogo, AgentTile, agentName, grantColor, kindNamed, Mark } from "@hermesh/ui";
 import { i18n } from "../../../shared/i18n";
 import { problemShort, problemsOf, severe } from "../health";
 import { Icon } from "../icons";
@@ -354,7 +354,7 @@ export function LinkMap({ pick, onPick, now, usage }: { pick: string; onPick: (k
             >
               <GrantIcon label={n.client.label} />
               <span className="lm-t">
-                <b>{n.client.label}</b>
+                <b>{agentName(n.client.label)}</b>
                 {only && !n.client.lastSeen ? <small>{t("map.notYet")}</small> : <Expiry c={n.client} now={now} />}
               </span>
               <Tail online running={runningCount(L.paths, n.key)} />
@@ -578,10 +578,10 @@ function ClientCard({ c, now, style, ref, onMouseEnter, onMouseLeave }: {
   const chips = (all: boolean, items: string[], allText: string) =>
     all || items.length === 0 ? <span>{allText}</span> : <span className="lm-chips">{items.map((x) => <em key={x}>{x}</em>)}</span>;
   return (
-    <div className="lm-card" ref={ref} style={style} role="dialog" aria-label={c.label} onMouseEnter={onMouseEnter} onMouseLeave={onMouseLeave}>
+    <div className="lm-card" ref={ref} style={style} role="dialog" aria-label={agentName(c.label)} onMouseEnter={onMouseEnter} onMouseLeave={onMouseLeave}>
       <div className="lm-card-h">
         <GrantIcon label={c.label} />
-        <b>{c.label}</b>
+        <b>{agentName(c.label)}</b>
       </div>
       <p className="lm-card-sub">{c.custodian ? t("card.custodian", { host: hostOf(c.custodian) }) : t("card.ownKey")}</p>
       <div className="lm-card-full">

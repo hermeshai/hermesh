@@ -343,8 +343,23 @@ message Wake {
   google.protobuf.Timestamp last_ring_at = 6;
   // The webhook's last answer (an HTTP status), 0 before it rang.
   int32 last_status = 7;
-  // Messages waiting for the address.
+  // Messages waiting for the address: for the agent itself, also those of
+  // every name without a doorbell of its own, which it wakes too.
   uint32 waiting = 8;
+  // Its last rings, newest first.
+  repeated WakeRing recent = 9;
+}
+
+// WakeRing is one time a doorbell rang.
+message WakeRing {
+  google.protobuf.Timestamp at = 1;
+  // A try the owner asked for (setting it up, or CheckWake); else messages
+  // waited.
+  bool check = 2;
+  // The name the waiting messages were for.
+  string as = 3;
+  // The webhook's answer (an HTTP status), 0 when it couldn't be reached.
+  int32 status = 4;
 }
 
 // WakeCheck is how a webhook answered a check.

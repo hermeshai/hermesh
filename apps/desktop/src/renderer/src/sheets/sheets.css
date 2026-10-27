@@ -13,6 +13,7 @@
 .sheet .wk-dots i.on{background:var(--accent)}
 .sheet .wk-kicker{font-size:11.5px;color:var(--l2);margin-bottom:2px}
 .sheet .wk-big{width:100%;height:34px;font-size:13.5px;border-radius:10px}
+.sheet .wk-msg{margin-top:10px;font-family:var(--font);font-size:12px;color:var(--l2)}
 .sheet .wk-how{margin-top:12px;font-size:12px;color:var(--l2);line-height:1.6}
 .sheet .wk-how summary{color:var(--accent);width:max-content}
 .sheet .wk-how p{margin:6px 0 8px}

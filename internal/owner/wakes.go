@@ -31,8 +31,12 @@ func localWake(w *relayv1.Wake) *localv1.Wake {
 	if w == nil {
 		return nil
 	}
-	return &localv1.Wake{ClientId: w.ClientId, Name: w.Name, Url: w.Url, State: w.State, Reason: w.Reason, LastRingAt: w.LastRingAt,
+	out := &localv1.Wake{ClientId: w.ClientId, Name: w.Name, Url: w.Url, State: w.State, Reason: w.Reason, LastRingAt: w.LastRingAt,
 		LastStatus: w.LastStatus, Waiting: w.Waiting}
+	for _, r := range w.Recent {
+		out.Recent = append(out.Recent, &localv1.WakeRing{At: r.At, Check: r.Check, As: r.As, Status: r.Status})
+	}
+	return out
 }
 
 func localCheck(c *relayv1.WakeCheck) *localv1.WakeCheck {

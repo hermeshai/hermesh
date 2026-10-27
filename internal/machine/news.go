@@ -105,11 +105,13 @@ func (b *contactBook) keep(res *relayv1.ContactsResponse) {
 	}
 }
 
-// isWoken reports whether an address has a doorbell.
+// isWoken reports whether a message to an address rings a doorbell: its
+// own, or its agent's, which wakes it for every name without one.
 func (n *Machine) isWoken(a *inboxv1.Address) bool {
 	n.contacts.mu.Lock()
 	defer n.contacts.mu.Unlock()
-	return slices.Contains(n.contacts.woken[a.GetInbox()], a.GetSession())
+	woken := n.contacts.woken[a.GetInbox()]
+	return slices.Contains(woken, a.GetSession()) || slices.Contains(woken, "")
 }
 
 // contact finds an inbox among the owner's contacts and checks it.

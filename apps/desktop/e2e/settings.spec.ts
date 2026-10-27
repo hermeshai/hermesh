@@ -54,7 +54,8 @@ test("settings opens on 通用; 授权 lists the grants, one opens its scope, an
   await expect(settings).toHaveTitle("授权");
   const grants = page_(settings, "授权");
   const bot = grants.getByRole("list", { name: "授权" }).getByRole("button", { name: /bot/ });
-  await expect(bot).toContainText("所有项目 · 所有机器");
+  // A row says when it was last used, which tells grants apart (the bot started the fixture's sessions).
+  await expect(bot).toContainText(/(刚刚|分钟前|小时前)用过/);
   await expect(bot).toContainText("还剩 30 天");
   await snap(settings, "settings-grants");
 
@@ -101,7 +102,7 @@ test("settings opens on 通用; 授权 lists the grants, one opens its scope, an
   await app.close();
 });
 
-test("an agent's page wakes one of its bots: four steps, a wrong key caught by the check, then listed, called and removed", async () => {
+test("an agent's page sets up waking it: three steps, a pasted block split, a wrong key caught, then it wakes for every name, shows its rings, and stops", async () => {
   // The bot's routine: a webhook that takes one key.
   const calls: { type?: string; as?: string; raw: string }[] = [];
   const server = http.createServer((req, res) => {
@@ -122,51 +123,65 @@ test("an agent's page wakes one of its bots: four steps, a wrong key caught by t
     const grants = page_(settings, "授权");
     await grants.getByRole("list", { name: "授权" }).getByRole("button", { name: /bot/ }).click();
     const wake = grants.getByRole("list", { name: "新消息提醒" });
-    await expect(wake).toContainText("还没有设置。");
+    await expect(wake).toContainText("还没设置");
 
-    await grants.getByRole("button", { name: "添加…" }).click();
+    // No name to give: one doorbell wakes the agent, whichever bot of it the messages are for.
+    await wake.getByRole("button", { name: "设置…" }).click();
     const dialog = settings.getByRole("dialog");
-    await expect(dialog).toContainText("第 1 步，共 4 步");
-    await dialog.getByRole("textbox", { name: "bot 的名字" }).fill("Tech Demos");
-    await dialog.getByRole("button", { name: "下一步" }).click();
-    await expect(dialog.getByRole("heading", { name: "让「Tech Demos」建一个 routine" })).toBeVisible();
+    await expect(dialog).toContainText("第 1 步，共 3 步");
+    await expect(dialog.getByRole("heading", { name: "让 bot 建一个定时任务" })).toBeVisible();
+    // Grok Bot's routines are made by asking the bot: what is copied asks it.
+    await expect(dialog.locator(".wk-msg")).toContainText("帮我建一个定时任务，只由 Webhook 触发");
     await dialog.getByRole("button", { name: "复制这段话" }).click();
     await expect(dialog.getByRole("button", { name: "再复制一次" })).toBeVisible();
-    await dialog.getByText("怎么建？").click();
-    // Grok Bot's routines are made by asking the bot: what is copied asks it.
-    await expect(dialog.locator(".msgbox")).toContainText("帮我建一个只由 webhook 叫醒的 routine");
-    await expect(dialog.locator(".msgbox")).toContainText('as 填 "Tech Demos"');
+    await dialog.getByText("它建好后去哪找？").click();
+    await expect(dialog).toContainText("详情 → 定时任务");
     await snap(settings, "settings-wake-routine");
     await dialog.getByRole("button", { name: "建好了" }).click();
 
-    // A wrong key: the check says so, and nothing is kept.
-    await dialog.getByLabel("Webhook 地址").fill(url);
-    await dialog.getByLabel("密钥", { exact: true }).fill("wrong");
-    await dialog.getByRole("button", { name: "检查" }).click();
-    await expect(dialog).toContainText("没连上");
+    // Grok's Webhook section pasted whole: the URL and key go to their boxes.
+    await dialog.getByLabel("地址（POST to）").fill(`POST to\n${url}\nkey\nwrong`);
+    await expect(dialog.getByLabel("地址（POST to）")).toHaveValue(url);
+    await expect(dialog.getByLabel("密钥（key）")).toHaveValue("wrong");
+    // A wrong key: the first ring says so, and nothing is kept.
+    await dialog.getByRole("button", { name: "叫醒一次试试" }).click();
+    await expect(dialog).toContainText("没叫醒");
     await expect(dialog).toContainText("对方回复 401：密钥不对");
     await dialog.getByRole("button", { name: "回去改" }).click();
-    await dialog.getByLabel("密钥", { exact: true }).fill("crsr_test");
-    await dialog.getByRole("button", { name: "检查" }).click();
-    await expect(dialog).toContainText("「Tech Demos」设置好了");
+    await dialog.getByLabel("密钥（key）").fill("crsr_test");
+    await dialog.getByRole("button", { name: "叫醒一次试试" }).click();
+    await expect(dialog).toContainText("设置好了");
+    await expect(dialog).toContainText("以后有新消息，Hermesh 都会这样叫醒它");
     expect(calls.map((c) => c.type)).toEqual(["hermesh.check", "hermesh.check"]);
     await snap(settings, "settings-wake-ok");
     await dialog.getByRole("button", { name: "完成" }).click();
-    const row = wake.getByRole("button", { name: /tech-demos/ });
+    const row = wake.getByRole("button", { name: /叫醒 bot/ });
     await expect(row).toContainText("已开");
+    await expect(row).toContainText("叫醒过");
     await snap(settings, "settings-wake-listed");
 
-    // A message to the bot calls its webhook, naming it and nothing more.
+    // A message for a bot of it without a doorbell of its own wakes it, naming
+    // the bot and nothing more.
     await cli("message", "send", "--to", "bot/Tech Demos", "--message", "the review is ready");
     await expect.poll(() => calls.find((c) => c.type === "hermesh.message")?.as, { timeout: 30_000 }).toBe("tech-demos");
     expect(calls.map((c) => c.raw).join()).not.toContain("the review is ready");
 
-    // Removed, it's gone.
+    // Its rings, newest first; then it stops.
     await row.click();
-    await expect(dialog).toContainText("叫醒「tech-demos」");
-    await dialog.getByRole("button", { name: "移除…" }).click();
-    await settings.getByRole("dialog", { name: "不再叫醒「tech-demos」？" }).getByRole("button", { name: "移除" }).click();
-    await expect(wake).toContainText("还没有设置。");
+    await expect(dialog.getByRole("heading", { name: "叫醒 bot" })).toBeVisible();
+    const recent = dialog.getByRole("list", { name: "最近几次" });
+    await expect(recent.getByRole("listitem").first()).toContainText("tech-demos 有新消息 · 收到了");
+    await expect(recent).toContainText("试一次 · 收到了");
+    await snap(settings, "settings-wake-manage");
+    await dialog.getByRole("button", { name: "停止叫醒…" }).click();
+    await settings.getByRole("dialog", { name: "不再叫醒 bot？" }).getByRole("button", { name: "停止叫醒" }).click();
+    await expect(wake).toContainText("还没设置");
+
+    // A connection that several bots share can wake each on its own: then it asks which.
+    await grants.getByRole("button", { name: "给每个 bot 单独设置…" }).click();
+    await expect(dialog).toContainText("第 1 步，共 4 步");
+    await expect(dialog.getByRole("textbox", { name: "bot 的名字" })).toBeVisible();
+    await dialog.getByRole("button", { name: "取消" }).click();
   } finally {
     await app.close();
     server.close();
@@ -206,7 +221,7 @@ test("an app just updated finds the previous hermeshd, which keeps no doorbells;
     previous = false;
     proxy.closeAllConnections();
     await expect(grants.getByRole("list", { name: "新消息提醒" })).toBeVisible();
-    await expect(grants.getByRole("button", { name: "添加…" })).toBeVisible();
+    await expect(grants.getByRole("button", { name: "设置…" })).toBeVisible();
   } finally {
     await app.close();
     proxy.close();

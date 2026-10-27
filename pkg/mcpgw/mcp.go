@@ -26,9 +26,11 @@ Tools run through the Hermesh gateway; coding agents run on the user's selected 
 
 Start with project_list to choose a project and an available agent. Call session_start with project and a non-empty prompt, save session.session_id, then poll session_get or read session_events with after set to the last seq you saw. Answer a pending question with session_answer. To tell a session anything more, use message_send with to set to its session_id. session_start, message_send and session_answer return without waiting for the turn by default. For hosted clients, prefer polling, or use wait=true with timeout="30s" (at most 50s). On error.kind="wait_timeout", the turn continues: poll session_get using session.session_id; do not repeat the start, message or answer just to wait longer.
 
-You also have an inbox. When a turn of a session you started ends, asks a question or fails while you are not waiting on it, its news arrives there as a message, and other agents of the user can write to you too. Read it with message_list and acknowledge each message once handled with message_ack. If your platform can start you by a webhook (a Grok Bot routine), call message_wake: it gives a link for your owner to set it up, and then Hermesh wakes you when messages arrive; otherwise check message_list after handing out work. Every tool result carries inbox.waiting while messages wait.
+You also have an inbox. When a turn of a session you started ends, asks a question or fails while you are not waiting on it, its news arrives there as a message, and other agents of the user can write to you too. Read it with message_list and acknowledge each message once handled with message_ack. If your platform can start you by a webhook (a Grok Bot routine), Hermesh can wake you when messages arrive: when your owner asks for that, make the routine and call message_wake (its description says how); otherwise check message_list after handing out work. Every tool result carries inbox.waiting while messages wait.
 
 If several of your bots or chats share this connection (a Grok account's bots all do), pass as with your own bot name on every call. The news of sessions you start and replies to what you send then come back to that name alone, and message_list with as shows only that name's messages. Tool results under a name leave out inbox.waiting, which would count the other names' messages too.
+
+Talk to your owner about the work, not about Hermesh: which coding agent is doing what, on which machine, and what it found. Don't show session ids, message ids, routine names or how Hermesh wakes you unless asked; session_start and session_answer results carry a "summary" to say in your own words and your owner's language.
 
 Coding agents have full permissions in the selected project, including editing files and running commands. In an in_place project they directly modify its existing working directory; worktree projects give each session a separate worktree.
 
@@ -200,6 +202,9 @@ func (g *Gateway) toolHandler(t cli.Tool) mcp.ToolHandler {
 			return docResult(failure(1, "internal", err.Error(), "", true)), nil
 		}
 		doc, code := cli.Exec(ctx, cli.ExecOptions{Identity: id, HTTPClient: g.relay, Adopted: g.adopted(c.ID), InboxRegistered: g.inboxRegistered(c.ID)}, args)
+		if code == 0 && (t.Name == "session_start" || t.Name == "session_answer") {
+			doc = withSummary(doc)
+		}
 		if errorKindOf(doc) == "revoked" {
 			// The owner revoked it (or its grant expired): the connection ends,
 			// and the app has to connect again to ask anew.
@@ -310,6 +315,55 @@ func errorKindOf(doc []byte) string {
 }
 
 // withHint replaces a document's error hint.
+// agentTitles name coding agents as people know them.
+var agentTitles = map[string]string{"claude": "Claude Code", "codex": "Codex", "gemini": "Gemini CLI", "cursor": "Cursor Agent", "copilot": "GitHub Copilot", "qwen": "Qwen Code"}
+
+// sessionSummary says in a sentence where a session stands, for the agent
+// to tell its owner; "" for a document without a session.
+func sessionSummary(s map[string]any) string {
+	str := func(k string) string { v, _ := s[k].(string); return v }
+	agent := agentTitles[str("agent")]
+	if agent == "" {
+		agent = str("agent")
+	}
+	if agent == "" || str("machine") == "" {
+		return ""
+	}
+	where := fmt.Sprintf("in project %s on %s", str("project_id"), str("machine"))
+	switch str("status") {
+	case "idle":
+		if f, _ := s["last_failure"].(map[string]any); f != nil {
+			return fmt.Sprintf("%s stopped %s without finishing: see session.last_failure.", agent, where)
+		}
+		return fmt.Sprintf("%s finished %s: its reply is session.result.", agent, where)
+	case "waiting_input":
+		return fmt.Sprintf("%s %s asks a question: see session.question.", agent, where)
+	case "crashed":
+		return fmt.Sprintf("%s stopped %s: see session.last_failure.", agent, where)
+	}
+	return fmt.Sprintf("%s is working %s. Its result comes to you as a message when it is done.", agent, where)
+}
+
+// withSummary adds a session document's summary.
+func withSummary(doc []byte) []byte {
+	var d map[string]any
+	if json.Unmarshal(doc, &d) != nil {
+		return doc
+	}
+	s, _ := d["session"].(map[string]any)
+	if s == nil {
+		return doc
+	}
+	if sum := sessionSummary(s); sum != "" {
+		d["summary"] = sum
+	}
+	b, err := json.MarshalIndent(d, "", "  ")
+	if err != nil {
+		return doc
+	}
+	return b
+}
+
 func withHint(doc []byte, hint string) []byte {
 	var d map[string]any
 	if json.Unmarshal(doc, &d) != nil {

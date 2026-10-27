@@ -988,6 +988,13 @@ public nonisolated struct Hermesh_Session_V1_Session: @unchecked Sendable {
     set {_uniqueStorage()._title = newValue}
   }
 
+  /// The name under created_by that started it (an agent's bot, or its own
+  /// conversation), "" for the agent itself.
+  public var createdAs: String {
+    get {_storage._createdAs}
+    set {_uniqueStorage()._createdAs = newValue}
+  }
+
   public var unknownFields = SwiftProtobuf.UnknownStorage()
 
   public init() {}
@@ -2952,7 +2959,7 @@ nonisolated extension Hermesh_Session_V1_QuestionResolved: SwiftProtobuf.Message
 
 nonisolated extension Hermesh_Session_V1_Session: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
   public static let protoMessageName: String = _protobuf_package + ".Session"
-  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{3}session_id\0\u{3}machine_id\0\u{3}project_id\0\u{1}agent\0\u{2}\u{2}status\0\u{3}created_by\0\u{1}progress\0\u{3}provider_session_ref\0\u{3}created_at\0\u{3}updated_at\0\u{1}error\0\u{1}branch\0\u{1}workspace\0\u{1}result\0\u{1}title\0\u{b}preset\0\u{c}\u{5}\u{1}")
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{3}session_id\0\u{3}machine_id\0\u{3}project_id\0\u{1}agent\0\u{2}\u{2}status\0\u{3}created_by\0\u{1}progress\0\u{3}provider_session_ref\0\u{3}created_at\0\u{3}updated_at\0\u{1}error\0\u{1}branch\0\u{1}workspace\0\u{1}result\0\u{1}title\0\u{3}created_as\0\u{b}preset\0\u{c}\u{5}\u{1}")
 
   fileprivate class _StorageClass {
     var _sessionID: String = String()
@@ -2970,6 +2977,7 @@ nonisolated extension Hermesh_Session_V1_Session: SwiftProtobuf.Message, SwiftPr
     var _workspace: Hermesh_Identity_V1_Workspace = .unspecified
     var _result: String = String()
     var _title: String = String()
+    var _createdAs: String = String()
 
       // This property is used as the initial default value for new instances of the type.
       // The type itself is protecting the reference to its storage via CoW semantics.
@@ -2995,6 +3003,7 @@ nonisolated extension Hermesh_Session_V1_Session: SwiftProtobuf.Message, SwiftPr
       _workspace = source._workspace
       _result = source._result
       _title = source._title
+      _createdAs = source._createdAs
     }
   }
 
@@ -3028,6 +3037,7 @@ nonisolated extension Hermesh_Session_V1_Session: SwiftProtobuf.Message, SwiftPr
         case 14: try { try decoder.decodeSingularEnumField(value: &_storage._workspace) }()
         case 15: try { try decoder.decodeSingularStringField(value: &_storage._result) }()
         case 16: try { try decoder.decodeSingularStringField(value: &_storage._title) }()
+        case 17: try { try decoder.decodeSingularStringField(value: &_storage._createdAs) }()
         default: break
         }
       }
@@ -3085,6 +3095,9 @@ nonisolated extension Hermesh_Session_V1_Session: SwiftProtobuf.Message, SwiftPr
       if !_storage._title.isEmpty {
         try visitor.visitSingularStringField(value: _storage._title, fieldNumber: 16)
       }
+      if !_storage._createdAs.isEmpty {
+        try visitor.visitSingularStringField(value: _storage._createdAs, fieldNumber: 17)
+      }
     }
     try unknownFields.traverse(visitor: &visitor)
   }
@@ -3109,6 +3122,7 @@ nonisolated extension Hermesh_Session_V1_Session: SwiftProtobuf.Message, SwiftPr
         if _storage._workspace != rhs_storage._workspace {return false}
         if _storage._result != rhs_storage._result {return false}
         if _storage._title != rhs_storage._title {return false}
+        if _storage._createdAs != rhs_storage._createdAs {return false}
         return true
       }
       if !storagesAreEqual {return false}

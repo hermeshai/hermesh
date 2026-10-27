@@ -501,7 +501,10 @@ fixed order with `ttlMs` set, as 2026-07-28 asks.
 - The result is the command's JSON document, as text and as
   `structuredContent`; `isError` is `!ok`. A hint naming a command
   (`hermesh session get <id>`) means the tool of that name; the server's
-  instructions say so.
+  instructions say so. `session_start` and `session_answer` add a `summary`,
+  a sentence on where the session stands for the assistant to tell its
+  owner in their words; the instructions ask it to talk about the work, not
+  ids or how Hermesh works ([agent-names.md](agent-names.md) §14).
 - Coding sessions take minutes. By default, `session_start` returns at once;
   the model follows with `session_get` or `session_events` using `after`.
   Hosted clients can also use `wait=true` with `timeout="30s"`. The gateway

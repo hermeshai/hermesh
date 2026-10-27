@@ -99,19 +99,30 @@ func (s *Server) SetMessageHook(f func(ownerID, inbox string, ring *string)) {
 	s.mu.Unlock()
 }
 
-// RingWaiting counts the messages waiting in an inbox for one doorbell.
+// RingWaiting counts the messages waiting in an inbox for one doorbell: a
+// name's, or for "" the agent's own, which also has those whose sender
+// named none.
 func (s *Server) RingWaiting(ownerID, inbox, name string) int {
+	return s.RingsWaiting(ownerID, inbox)[name]
+}
+
+// RingsWaiting counts the messages waiting in an inbox by the doorbell their
+// sender asked to ring, a name; "" counts those for the agent itself and
+// those whose sender named none, which its own doorbell takes.
+func (s *Server) RingsWaiting(ownerID, inbox string) map[string]int {
+	out := map[string]int{}
 	ms, err := s.messageStore().WaitingMessages(ownerID, inbox)
 	if err != nil {
-		return 0
+		return out
 	}
-	n := 0
 	for _, m := range ms {
-		if m.Ring != nil && *m.Ring == name {
-			n++
+		if m.Ring != nil {
+			out[*m.Ring]++
+		} else {
+			out[""]++
 		}
 	}
-	return n
+	return out
 }
 
 // InboxWaiting counts the messages waiting in an inbox.

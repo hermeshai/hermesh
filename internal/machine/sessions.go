@@ -2049,7 +2049,7 @@ func (s *Sessions) toProto(r *sessionRow) *sessionv1.Session {
 	return &sessionv1.Session{SessionId: r.ID, MachineId: s.machineID, ProjectId: r.ProjectID, Agent: r.Agent,
 		Status: r.Status, CreatedBy: r.CreatedBy, Progress: proto.Clone(r.Progress).(*sessionv1.SessionProgress),
 		ProviderSessionRef: r.ProviderRef, CreatedAt: timestamppb.New(r.CreatedAt), UpdatedAt: timestamppb.New(r.UpdatedAt),
-		Error: r.Error, Branch: r.Branch, Workspace: r.Workspace, Result: r.Result, Title: r.Title}
+		Error: r.Error, Branch: r.Branch, Workspace: r.Workspace, Result: r.Result, Title: r.Title, CreatedAs: r.Conversation}
 }
 
 // Janitor enforces timeouts and stops idle agent processes (their sessions

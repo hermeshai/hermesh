@@ -2,6 +2,8 @@
 
 Status: designed and reviewed 2026-10-27 (§12); steps 1 to 3 (§11) built the
 same day (§13): the Mac app, the iPhone app and the console's link page.
+After the owner's first real Grok test, simplified for one bot (§14): read
+§14 before §7, which it changes.
 It builds on
 [agent-messages.md](agent-messages.md) (steps 1–3, built) and replaces its
 §6.3 doorbell setup.
@@ -181,6 +183,9 @@ its own, as another agent's would.
 ## 7. Waking a name
 
 ### 7.1 The doorbell
+
+(Changed by §14: an agent's own doorbell wakes it for every name without
+one, and the first ring reads what waits.)
 
 - **One per address, for any agent**: a hosted assistant over MCP, or one
   that uses the CLI on its own cloud computer. It is a routine's webhook URL
@@ -405,4 +410,62 @@ console's `wake.spec.ts`):
 - **The center keeps the post office in Postgres**, as the relay's own
   stores do (`TestMessageStore` in hermesh-cloud): the last thing the center
   needed before it serves messages.
+
+## 14. Simpler for one bot (after the first real Grok test)
+
+The owner set a Grok bot up end to end on 2026-10-27. It worked, and showed
+where a person gets lost: the name asked for first (the bot didn't know the
+name the owner typed, so the owner had to tell it `as` every time); Grok
+having no way to make a routine by hand (the bot makes it, asked in its
+chat); a connection labelled "Cursor (www.cursor.com)" that nobody would take
+for Grok Bot; a check that "asked for nothing" yet woke the bot; a ring that
+never came for news written before the doorbell; the bot reading out session
+ids. So:
+
+- **One doorbell per agent is the default, and it wakes it for every name.**
+  The setup no longer asks for a name. A message to a name without a
+  doorbell of its own rings the agent's (senders put the name on the
+  envelope when the agent has one; the ring says whose messages wait, so
+  the bot reads that name). A message whose sender named no doorbell at all
+  (it didn't know of one yet, or its Hermesh is older) rings the agent's
+  own too, saying to read with the bot's own name. A connection several
+  bots share can still give each its own ("Set up each bot…"), which then
+  asks for the name; a bot's own doorbell takes its messages.
+- **The routine's message is the same for every bot**: "when Hermesh wakes
+  you, do what its request says". The ring says which name to read. The
+  setup copies it as a message asking the bot to make itself a routine
+  triggered by a webhook only; the routine then shows in the bot's chat and
+  under the bot's Details → Routines, whose Webhook section has the URL and
+  key (in Grok's desktop app only).
+- **The check is the first ring**, "Wake It Once": it says to read whatever
+  waits, so news from before the doorbell is read then. It counts as a ring
+  for the one-a-minute rule, and what it told of is rung again after 15
+  minutes and an hour if still unread.
+- **Pasting is forgiving.** Grok's Webhook section pasted whole fills both
+  boxes; the gateway takes the key with or without "Bearer", or the whole
+  `Authorization:` header.
+- **The signing secret is hidden for Grok's routines**, which don't check
+  signatures; it shows, folded, for any other webhook.
+- **The owner sees the rings**: each doorbell keeps its last five (when, a
+  try or new messages and for which name, the answer), in the gateway's own
+  table; the Access page says when it last woke the bot and whether all was
+  read.
+- **Agents are told apart.** A hosted app known by where it signs in shows
+  its own name and logo: "Cursor" for Grok Bot's connection (it signs in as
+  Cursor), "Claude", "ChatGPT". The Access list says who used each grant
+  last and when, with the names its bots went by (`Session.created_as`, the
+  name a session was started under, kept on the machine). Renaming an agent
+  is left for later: the label is the relay's, and every device would have
+  to see the new one.
+- **Bots speak plainly.** The server's instructions ask hosted assistants
+  to talk about the work, not Hermesh (no session ids, routine names or how
+  waking works unless asked), and `session_start` and `session_answer`
+  results carry a `summary` sentence to pass on ("Claude Code is working in
+  project hermesh on yee-homebook. Its result comes to you as a message
+  when it is done.").
+
+Tested by `TestWake` (an agent's own doorbell waking a name without one,
+whether or not the sender knew of it; the rings the owner sees; a pasted
+header), `TestMCPInbox` (the summary), the desktop e2e `settings`, `TestIPhone`
+and the console's `wake.spec.ts`.
 

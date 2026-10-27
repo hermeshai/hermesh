@@ -92,8 +92,6 @@
   "grants": {
     "expiresIn_other": "{{count}} 天后到期",
     "daysLeft_other": "还剩 {{count}} 天",
-    "allProjects": "所有项目",
-    "allMachines": "所有机器",
     "none": "还没有授权。",
     "connect": "连接 agent…",
     "note": "授权决定一个 agent 能用你的哪些项目、机器和编码 agent，用多久。",
@@ -119,7 +117,10 @@
     "sessionCount": "今天 {{today}} 个 · 一共 {{total}} 个",
     "lastOnline": "最近在线",
     "now": "现在",
-    "fingerprint": "指纹"
+    "fingerprint": "指纹",
+    "usedBy": "{{names}} 在用 · {{ago}}",
+    "usedAgo": "{{ago}}用过",
+    "notUsed": "还没用过"
   },
   "machines": {
     "lastOnline": "{{ago}}在线",
@@ -152,13 +153,17 @@
   },
   "wake": {
     "title": "新消息提醒",
-    "none": "还没有设置。",
-    "note": "有消息等着这个 agent 或它的某个 bot 时，Hermesh 调用一个 webhook（比如 Grok Bot routine 的）叫醒它，不会说消息的内容。",
-    "add": "添加…",
-    "self": "{{agent}} 本身",
+    "none": "还没设置",
+    "setUp": "设置…",
+    "note": "Grok Bot 这类 bot 平时不在线。设置以后，它开的会话做完了、或者别的 agent 找它，Hermesh 就去叫醒它。",
+    "perBotAsk": "这个连接下有好几个 bot？",
+    "perBot": "给每个 bot 单独设置…",
+    "row": "叫醒 {{name}}",
     "on": "已开",
     "broken": "不能用",
     "lastRang": "{{ago}}叫醒过",
-    "notYet": "还没叫醒过"
+    "notYet": "还没叫醒过",
+    "allRead": "已读完",
+    "waitingCount_other": "{{count}} 条在等"
   }
 }

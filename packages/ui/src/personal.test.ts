@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { kindNamed } from "./personal.ts";
+import { agentName, kindNamed } from "./personal.ts";
 
 test("a grant named for an app is that app", () => {
   assert.equal(kindNamed("Muse")?.id, "muse");
@@ -21,4 +21,18 @@ test("a hosted connection is its app's only from the app's own domain", () => {
   assert.equal(kindNamed("Grok Bot (www.cursor.com)")?.id, "grok");
   assert.equal(kindNamed("Grok Bot (grok.example)"), undefined);
   assert.equal(kindNamed("OpenClaw (openclaw.ai)"), undefined); // no hosted connector known
+});
+
+test("Grok Bot, which signs in as Cursor, is drawn as Cursor; the picker doesn't offer it", async () => {
+  assert.equal(kindNamed("Cursor (www.cursor.com)")?.logo, "cursor");
+  assert.equal(kindNamed("Cursor (cursor.com.example)"), undefined);
+  assert.equal((await import("./personal.ts")).personalAgents.some((k) => k.id === "cursor"), false);
+});
+
+test("a hosted app is shown by its own name once its domain vouches for it", () => {
+  assert.equal(agentName("Claude (claude.ai)"), "Claude");
+  assert.equal(agentName("Cursor (www.cursor.com)"), "Cursor");
+  assert.equal(agentName("Claude (chatgpt.com)"), "Claude (chatgpt.com)");
+  assert.equal(agentName("Jarvis (jarvis.example)"), "Jarvis (jarvis.example)");
+  assert.equal(agentName("千问办公"), "千问办公");
 });
