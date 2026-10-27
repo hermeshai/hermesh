@@ -72,14 +72,19 @@ packages/HermeshKit/         Swift package shared with the Mac signer
   What the app last showed is kept on the phone (`world.pb`, and the last
   10 conversations): a launch shows it at once, and a conversation opened
   again reads only the events after the last one kept. Leaving the front
-  pauses the core (no polls, no follows, no connections); coming back, or a
-  change of network (Wi-Fi to cellular), connects again at once. The
+  pauses the core (no polls, no follows, no connections), and it stops
+  listening on its loopback port, since iOS may take a suspended app's
+  listening socket back without a word; coming back, or a change of
+  network (Wi-Fi to cellular), listens and connects again at once. While
+  the relay cannot be reached, the machines are as it last listed them,
+  never called offline or unreachable for it (the sync line says it). The
   LocalService client runs each call on a thread of its own, never on
   Swift's cooperative pool. `go test ./e2e -run TestMobileNetwork` measures
   it in round trips to a far relay.
 - **Waiting.** Waits show the mark in the brand's motion
   (`Views/Components/Loading.swift`, as `packages/ui`): a page with nothing
-  to show yet says what it reads, with the pulse; while what shows is not
+  to show yet says what it reads, with the pulse (a conversation has the
+  pulsing mark alone, in the middle of the page); while what shows is not
   current, a quiet line says so, under a root page's large title or over the
   top of another page ("Connecting to
   Hermesh…", "Updating from Mac mini…", and after 10 s without the relay,

@@ -354,6 +354,13 @@ func TestMobileNetwork(t *testing.T) {
 	// while a session is deleted on the Mac; then the app comes back.
 	leave()
 	m.do("pause")
+	// Paused, it listens no more (as Apple asks of a suspended app, whose
+	// listening socket iOS may take back without a word): calls are refused.
+	pctx, pcancel := context.WithTimeout(ctx, 2*time.Second)
+	if _, err := m.client.GetStatus(pctx, &localv1.GetStatusRequest{}); err == nil {
+		t.Error("LocalService answered while paused")
+	}
+	pcancel()
 	time.Sleep(3 * time.Second) // iOS suspends the app a few seconds after it left the front
 	m.cmd.Process.Signal(syscall.SIGSTOP)
 	network.setCut(true)
@@ -377,8 +384,10 @@ func TestMobileNetwork(t *testing.T) {
 	}
 	scr.mu.Lock()
 	resets := scr.resets
+	scr.shownUnreachable = nil
 	scr.mu.Unlock()
-	scr.follow(ctx, t, m.client)
+	front, leave = context.WithCancel(ctx)
+	scr.follow(front, t, m.client)
 	if within(90*time.Second, scr.has(fresh(resets, away.SessionID))) < 0 {
 		m.cmd.Process.Signal(syscall.SIGQUIT) // its goroutines, into its log
 		time.Sleep(time.Second)
@@ -389,6 +398,43 @@ func TestMobileNetwork(t *testing.T) {
 	if forgotten >= 0 {
 		forgotten = time.Since(back)
 	}
+	// The Mac stayed online: it was never shown as unreachable on the way.
+	scr.mu.Lock()
+	if len(scr.shownUnreachable) > 0 {
+		t.Errorf("after the background, shown unreachable: %v", scr.shownUnreachable)
+	}
+	scr.mu.Unlock()
+
+	// Back and forth quickly: the app leaves the front while it is still
+	// reading the world again, a few times, and stays in front at last. It
+	// shows the world, never the Mac unreachable.
+	leave()
+	m.do("pause")
+	scr.mu.Lock()
+	scr.shownUnreachable = nil
+	scr.mu.Unlock()
+	for range 3 {
+		m.do("resume")
+		quick, gone := context.WithCancel(ctx)
+		scr.follow(quick, t, m.client)
+		time.Sleep(rtt / 2)
+		gone()
+		m.do("pause")
+	}
+	m.do("resume")
+	scr.mu.Lock()
+	resets = scr.resets
+	scr.mu.Unlock()
+	front, leave = context.WithCancel(ctx)
+	scr.follow(front, t, m.client)
+	eventually(t, 30*time.Second, "the world after quick switches", scr.has(fresh(resets, away.SessionID)))
+	time.Sleep(time.Second)
+	scr.mu.Lock()
+	if len(scr.shownUnreachable) > 0 {
+		t.Errorf("switching back and forth, shown unreachable: %v", scr.shownUnreachable)
+	}
+	scr.mu.Unlock()
+	leave()
 
 	// The app is closed from the switcher (it left the front first), a
 	// session is deleted on the Mac, and the app launched again: the screen

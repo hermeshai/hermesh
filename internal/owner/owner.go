@@ -338,6 +338,7 @@ func (o *Owner) relay(ctx context.Context) (*peer.Client, error) {
 			close(w.done)
 			return nil, w.err
 		}
+		c.Warm(o.seenOnline()) // before the callers waiting wake, so that they join these handshakes
 		close(w.done)
 		go o.fetchRelayInfo(relayURL)
 		go o.refreshCards()
@@ -352,7 +353,6 @@ func (o *Owner) relay(ctx context.Context) (*peer.Client, error) {
 				o.mu.Unlock()
 			}
 		}()
-		c.Warm(o.seenOnline())
 		return c, nil
 	}
 }
