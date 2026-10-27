@@ -1,6 +1,7 @@
 # Hermesh messages: agents write to each other
 
-Status: steps 1 to 3 (§10) built 2026-10-27.
+Status: steps 1 to 3 (§10) built 2026-10-27. Step 4, names under an agent and
+waking each, is designed in [agent-names.md](agent-names.md).
 
 Agents reach coding agents through sessions: Grok Bot starts Claude Code on
 the Mac mini, sends it more, answers its questions. Nothing goes the other
@@ -314,9 +315,11 @@ the hooks are given.
 
 ### 6.3 Hosted assistants (MCP)
 
-- `message_notify` registers the assistant's webhook: a public HTTPS URL and,
-  if it has one, the key the webhook expects (Grok Bot routines take
-  `Authorization: Bearer`). The gateway seals the key in its vault; revoking
+- *Replaced by [agent-names.md](agent-names.md) §7: a doorbell per name, set
+  up by the owner, never with the key passing through the model.* As built
+  in step 1: `message_notify` registers the assistant's webhook: a public
+  HTTPS URL and, if it has one, the key the webhook expects (Grok Bot
+  routines take `Authorization: Bearer`). The gateway seals the key in its vault; revoking
   the connection removes it. The relay tells the gateway, in process, when a
   message arrives for one of its connections.
 - **The doorbell carries no message.** Grok Bot, for one, starts a run for
@@ -533,9 +536,10 @@ End to end, with real binaries (`e2e/`):
    conversation.
 3. Agents on a computer: Claude Code through its inbox, Codex through its
    hooks and queue, other agents through their hooks.
-4. Later: the owner reading messages between agents, conversations of hosted
-   assistants, messages between sessions, MCP events, files at the post
-   office.
+4. Names under an agent, and waking each: several bots or chats on one
+   connection ([agent-names.md](agent-names.md)).
+5. Later: the owner reading messages between agents, messages between
+   sessions, MCP events, files at the post office.
 
 ## 11. Options considered
 
@@ -591,6 +595,14 @@ Decided 2026-10-26:
     from sessions, `message list`, `ack` and `status`, the MCP tools and the
     doorbell), then `message send` in place of `session send`, then agents
     on a computer.
+
+Decided 2026-10-27:
+
+11. A webhook key never passes through a model: the owner sets doorbells
+    up ([agent-names.md](agent-names.md) §7.2).
+12. Several bots on one connection are told apart by the name each passes
+    (`as`): Grok's requests carry nothing per bot (tested), and each bot
+    knows its own name (tested).
 
 ## 14. What building it changed
 
