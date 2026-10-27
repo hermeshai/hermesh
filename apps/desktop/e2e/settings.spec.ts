@@ -129,10 +129,12 @@ test("an agent's page wakes one of its bots: four steps, a wrong key caught by t
     await expect(dialog).toContainText("第 1 步，共 4 步");
     await dialog.getByRole("textbox", { name: "bot 的名字" }).fill("Tech Demos");
     await dialog.getByRole("button", { name: "下一步" }).click();
-    await expect(dialog.getByRole("heading", { name: "在「Tech Demos」里建一个 routine" })).toBeVisible();
-    await dialog.getByRole("button", { name: "复制指令" }).click();
+    await expect(dialog.getByRole("heading", { name: "让「Tech Demos」建一个 routine" })).toBeVisible();
+    await dialog.getByRole("button", { name: "复制这段话" }).click();
     await expect(dialog.getByRole("button", { name: "再复制一次" })).toBeVisible();
     await dialog.getByText("怎么建？").click();
+    // Grok Bot's routines are made by asking the bot: what is copied asks it.
+    await expect(dialog.locator(".msgbox")).toContainText("帮我建一个只由 webhook 叫醒的 routine");
     await expect(dialog.locator(".msgbox")).toContainText('as 填 "Tech Demos"');
     await snap(settings, "settings-wake-routine");
     await dialog.getByRole("button", { name: "建好了" }).click();

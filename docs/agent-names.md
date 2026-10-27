@@ -230,9 +230,13 @@ The setup, one step per screen, the same in the Mac app and on the link's
 page:
 
 1. **The name**: filled in when it comes from the link or a row.
-2. **The routine**: one button copies the routine's instruction; "How?"
-   unfolds the steps in Grok (the bot → Routines → New; paste; add a Webhook
-   trigger; turn it on). The link opens at step 3, with this step folded,
+2. **The routine**: Grok Bot has no way to make a routine by hand: the
+   owner asks the bot in its chat, and the bot makes it. So one button
+   copies a message for the bot, asking for a routine that only a webhook
+   wakes, with the instruction below; "How?" unfolds the steps in Grok
+   (send it; open the routine the bot made, from its chat or the bot's
+   Details → Routines; its Webhook section has the URL and key, in Grok's
+   desktop app only). The link opens at step 3, with this step folded,
    since the bot has usually made the routine already.
 3. **The URL and key**, each with a paste button.
 4. **Check**: Hermesh rings once with a check body that asks for nothing.
@@ -240,7 +244,9 @@ page:
    is off; 404: the URL) and offers to go back, or to save it anyway, marked
    not working.
 
-The instruction, the same for every bot:
+The instruction, the same for every bot, after "Set up a routine for me
+that only a webhook wakes (add a Webhook trigger, no schedule). Its
+instruction:":
 
 > Hermesh wakes this routine when messages wait for you. Call Hermesh's
 > `message_list` with `as` set to your own bot name (or run `hermesh message

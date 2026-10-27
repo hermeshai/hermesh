@@ -247,7 +247,7 @@ final class HermeshUITests: XCTestCase {
         name.typeText("Tech Demos")
         tap("wake-next")
         tap("wake-copy")
-        XCTAssertTrue(text("在「Tech Demos」里建一个 routine").exists)
+        XCTAssertTrue(text("让「Tech Demos」建一个 routine").exists)
         tap("wake-made")
         let field = app.textFields["wake-url"]
         XCTAssertTrue(field.waitForExistence(timeout: 10))
