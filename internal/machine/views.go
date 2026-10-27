@@ -1,6 +1,8 @@
 package machine
 
 import (
+	"io"
+	"strings"
 	"unicode/utf8"
 
 	"connectrpc.com/connect"
@@ -92,18 +94,17 @@ const outputChunk = 64 << 10
 
 // ReadToolOutput sends a tool's whole output, as recorded, in chunks: from
 // beside its event when it is longer than its event holds, else from its
-// event.
+// event. The first chunk goes before the rest is read.
 func (s *Sessions) ReadToolOutput(p *Principal, req *sessionv1.ReadToolOutputRequest, send func(*sessionv1.ToolOutputChunk) error) error {
 	if _, _, err := s.find(p, req.SessionId, false); err != nil {
 		return err
 	}
-	out, ok, err := s.st.ToolOutput(req.SessionId, req.CallId)
+	size, out, ok, err := s.st.ToolOutput(req.SessionId, req.CallId)
 	if err != nil {
 		return err
 	}
 	if !ok {
-		found := false
-		for after := uint64(0); !found; {
+		for after := uint64(0); out == nil; {
 			evs, err := s.st.Events(req.SessionId, after, 500)
 			if err != nil {
 				return err
@@ -113,24 +114,33 @@ func (s *Sessions) ReadToolOutput(p *Principal, req *sessionv1.ReadToolOutputReq
 			}
 			for _, e := range evs {
 				if r := e.GetToolResult(); r != nil && r.CallId == req.CallId {
-					out, found = []byte(r.Summary), true
+					size, out = uint64(len(r.Summary)), strings.NewReader(r.Summary)
 				}
 			}
 			after = evs[len(evs)-1].Seq
 		}
 	}
-	first := &sessionv1.ToolOutputChunk{Size: uint64(len(out))}
-	for len(out) > 0 || first != nil {
+	first := &sessionv1.ToolOutputChunk{Size: size}
+	for {
+		data := make([]byte, outputChunk)
+		n, err := io.ReadFull(out, data)
+		if err != nil && err != io.EOF && err != io.ErrUnexpectedEOF {
+			return err
+		}
+		if n == 0 && first == nil {
+			return nil
+		}
 		c := first
 		if c == nil {
 			c = &sessionv1.ToolOutputChunk{}
 		}
 		first = nil
-		n := min(len(out), outputChunk)
-		c.Data, out = out[:n], out[n:]
+		c.Data = data[:n]
 		if err := send(c); err != nil {
 			return err
 		}
+		if n < outputChunk {
+			return nil
+		}
 	}
-	return nil
 }
