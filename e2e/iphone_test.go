@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net"
 	"net/http"
+	"net/http/httptest"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -57,7 +58,8 @@ func TestIPhone(t *testing.T) {
 	// Simulator as APNs would (simctl push), where the app's notification
 	// extension opens it.
 	spool := filepath.Join(t.TempDir(), "push")
-	w.relayArgs = append(w.relayArgs, "--push-spool", spool)
+	w.relayArgs = append(w.relayArgs, "--push-spool", spool, "--mcp") // the MCP gateway keeps doorbells
+	w.relayEnv = []string{"HERMESH_MCP_LOCAL_WEBHOOKS=1"}
 	w.restartRelay()
 	eventually(t, 30*time.Second, "the machine is back on the relay", func() bool {
 		r := w.cli(30*time.Second, "project", "list")
@@ -288,6 +290,24 @@ func newIPhoneControl(t *testing.T, w *ownerMac, sessions map[string]string) str
 		json.NewEncoder(rw).Encode(v)
 	}
 	mux.HandleFunc("GET /address", func(rw http.ResponseWriter, _ *http.Request) { reply(rw, map[string]string{"address": w.addr}) })
+	// A bot's routine for a doorbell: it takes one key, and says what called it.
+	var hookCalls []string
+	hook := httptest.NewServer(http.HandlerFunc(func(rw http.ResponseWriter, r *http.Request) {
+		var b struct{ Type, As string }
+		json.NewDecoder(r.Body).Decode(&b)
+		mu.Lock()
+		hookCalls = append(hookCalls, b.Type+" "+b.As+" "+r.Header.Get("Authorization"))
+		mu.Unlock()
+		if r.Header.Get("Authorization") != "Bearer crsr_ok" {
+			rw.WriteHeader(http.StatusUnauthorized)
+		}
+	}))
+	t.Cleanup(hook.Close)
+	mux.HandleFunc("GET /webhook", func(rw http.ResponseWriter, _ *http.Request) {
+		mu.Lock()
+		defer mu.Unlock()
+		reply(rw, map[string]any{"url": hook.URL + "/routine", "calls": append([]string{}, hookCalls...)})
+	})
 	// The relay down (up=0) or back (up=1): the app shows what it kept.
 	mux.HandleFunc("POST /relay", func(rw http.ResponseWriter, r *http.Request) {
 		if r.URL.Query().Get("up") == "1" {

@@ -27,6 +27,7 @@ final class HermeshUITests: XCTestCase {
         try XCTContext.runActivity(named: "shows what a session changed") { _ in try diff() }
         try XCTContext.runActivity(named: "approves an agent asking to connect") { _ in try approveAgent() }
         try XCTContext.runActivity(named: "renews a grant") { _ in try renew() }
+        try XCTContext.runActivity(named: "sets up waking one of an agent's bots, after a check that catches a wrong key") { _ in try wake() }
         try XCTContext.runActivity(named: "shows a machine and its projects") { _ in try machine() }
         try XCTContext.runActivity(named: "marks the trusted devices among the machines") { _ in try devices() }
         try XCTContext.runActivity(named: "chooses light or dark in the account") { _ in try appearance() }
@@ -228,6 +229,50 @@ final class HermeshUITests: XCTestCase {
             let g = try self.control("grant?label=bot")
             return (g["version"] as? Int ?? 0) > before && (g["days"] as? Int ?? 0) >= 89 ? true : nil
         }
+    }
+
+    func wake() throws {
+        let url = try control("webhook")["url"] as! String
+        openMenu()
+        app.buttons["授权"].tap()
+        let grant = app.buttons["grant-bot"]
+        XCTAssertTrue(grant.waitForExistence(timeout: 20))
+        grant.tap()
+        let add = app.buttons["wake-add"]
+        for _ in 0..<5 where !add.exists { app.swipeUp() }
+        tap("wake-add", timeout: 30)
+        let name = app.textFields["wake-name"]
+        XCTAssertTrue(name.waitForExistence(timeout: 10))
+        name.tap()
+        name.typeText("Tech Demos")
+        tap("wake-next")
+        tap("wake-copy")
+        XCTAssertTrue(text("在「Tech Demos」里建一个 routine").exists)
+        tap("wake-made")
+        let field = app.textFields["wake-url"]
+        XCTAssertTrue(field.waitForExistence(timeout: 10))
+        field.tap()
+        field.typeText(url)
+        let key = app.textFields["wake-key"]
+        key.tap()
+        key.typeText("wrong")
+        tap("wake-check")
+        // A wrong key: the check says so, and nothing is kept.
+        let reason = app.staticTexts["wake-reason"]
+        XCTAssertTrue(reason.waitForExistence(timeout: 30))
+        XCTAssertTrue(reason.label.contains("密钥不对"), reason.label)
+        tap("wake-back")
+        key.tap()
+        key.typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: 5) + "crsr_ok")
+        tap("wake-check")
+        XCTAssertTrue(app.staticTexts["wake-ok"].waitForExistence(timeout: 30))
+        tap("wake-done")
+        let row = app.buttons["wake-tech-demos"]
+        for _ in 0..<5 where !row.exists { app.swipeUp() }
+        XCTAssertTrue(row.waitForExistence(timeout: 20))
+        XCTAssertTrue(row.label.contains("已开"), row.label)
+        let calls = try control("webhook")["calls"] as? [String] ?? []
+        XCTAssertEqual(calls, ["hermesh.check tech-demos Bearer wrong", "hermesh.check tech-demos Bearer crsr_ok"])
     }
 
     func machine() throws {
