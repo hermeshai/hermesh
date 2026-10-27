@@ -315,7 +315,7 @@ func (a *app) messageListCmd() *cobra.Command {
 	var limit int
 	cmd := &cobra.Command{
 		Use:   "list",
-		Short: "Show the messages waiting in your inbox, oldest first; they stay until you acknowledge them with `message ack`",
+		Short: "Show the messages waiting for you (--as: for that name; otherwise for this agent itself), oldest first; they stay until you acknowledge them with `message ack`",
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			ctx := cmd.Context()
@@ -334,18 +334,24 @@ func (a *app) messageListCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
+			if limit <= 0 || limit > 50 {
+				limit = 50
+			}
 			for {
-				res, err := ms.Fetch(ctx, &relayv1.FetchMessagesRequest{Limit: uint32(limit)})
+				good, err := a.fetchAll(ctx, ms)
 				if err != nil {
 					return a.waitErr(ctx, err)
 				}
-				good, refused, again := a.open(res.Messages)
-				a.ackOutcome(ctx, ms, refused, "refused")
-				a.ackOutcome(ctx, ms, again, "handled")
-				if len(good) > 0 || !wait || res.More {
-					return a.showMessages(cmd, good, res.More)
+				mine := a.forMe(good)
+				more := len(mine) > limit
+				if more {
+					mine = mine[:limit]
 				}
-				if err := a.waitInbox(ctx, ms, 0); err != nil {
+				if len(mine) > 0 || !wait {
+					a.take(ctx, ms, mine)
+					return a.showMessages(cmd, mine, more)
+				}
+				if err := a.waitInbox(ctx, ms, len(good)); err != nil {
 					return a.waitErr(ctx, err)
 				}
 			}
@@ -357,7 +363,6 @@ func (a *app) messageListCmd() *cobra.Command {
 	return cmd
 }
 
-// waitInbox returns once a message waits in the inbox.
 // waitInbox waits until a message arrives: more wait than the left ones
 // the caller saw and leaves there, or the post office says one came.
 func (a *app) waitInbox(ctx context.Context, ms relayv1connect.MessageServiceClient, left int) error {
@@ -703,23 +708,45 @@ func (a *app) resolveTarget(to string, contacts []contactRec, machines []machine
 		}
 		return t, nil
 	}
+	// An agent, by its address or its name as the owner approved it, and
+	// maybe a name under it: "Grok Bot", "Grok Bot/tech-demos",
+	// "c_…/tech-demos" (docs/agent-names.md §5).
+	agent, name := to, ""
+	if i := strings.LastIndex(to, "/"); i >= 0 && !agentCalled(contacts, to) {
+		agent, name = to[:i], to[i+1:]
+	}
 	var found []contactRec
 	for _, c := range contacts {
-		if c.info.Kind != "machine" && (c.info.Inbox == inbox || (!strings.HasPrefix(to, "c_") && c.info.Name == to)) {
+		if c.info.Kind != "machine" && (c.info.Inbox == agent || (!strings.HasPrefix(agent, "c_") && c.info.Name == agent)) {
 			found = append(found, c)
 		}
 	}
 	switch len(found) {
 	case 0:
-		return notFound(fmt.Sprintf("no agent %q among the owner's contacts", to))
+		return notFound(fmt.Sprintf("no agent %q among the owner's contacts", agent))
 	case 1:
 	default:
-		return notFound(fmt.Sprintf("%d agents are called %q: give an address", len(found), to))
+		return notFound(fmt.Sprintf("%d agents are called %q: give an address", len(found), agent))
 	}
-	if strings.HasPrefix(to, "c_") {
-		return target{inbox: inbox, session: session, name: found[0].info.Name, contact: &found[0]}, nil
+	t := target{inbox: found[0].info.Inbox, name: found[0].info.Name, contact: &found[0]}
+	if name != "" {
+		n, err := identity.NormalizeName(name)
+		if err != nil {
+			return target{}, &exitError{code: exitUsage, kind: "usage", err: fmt.Errorf("%q: %w", to, err)}
+		}
+		t.session, t.name = n, t.name+"/"+n
 	}
-	return target{inbox: found[0].info.Inbox, name: found[0].info.Name, contact: &found[0]}, nil
+	return t, nil
+}
+
+// agentCalled reports whether one of the owner's agents is called name.
+func agentCalled(contacts []contactRec, name string) bool {
+	for _, c := range contacts {
+		if c.info.Kind != "machine" && c.info.Name == name {
+			return true
+		}
+	}
+	return false
 }
 
 // expectation says when a recipient will likely read a message.
@@ -747,7 +774,7 @@ type sentJSON struct {
 }
 
 func (a *app) messageSendCmd() *cobra.Command {
-	var to, text, file, subject, replyTo, from string
+	var to, text, file, subject, replyTo string
 	var files []string
 	var wait bool
 	var timeout time.Duration
@@ -794,7 +821,7 @@ To an agent: the message waits in its inbox until it reads it. --wait waits for 
 			if err != nil {
 				return err
 			}
-			m := &inboxv1.Message{MessageId: "msg_" + newIdempotencyKey(), From: &inboxv1.Address{Inbox: a.g.ClientId, Session: conversation(from)},
+			m := &inboxv1.Message{MessageId: "msg_" + newIdempotencyKey(), From: &inboxv1.Address{Inbox: a.g.ClientId, Session: a.as},
 				To: &inboxv1.Address{Inbox: t.inbox, Session: t.session}, SentAt: timestampOf(time.Now()), InReplyTo: replyTo, Subject: subject, Text: body}
 			signed, err := identity.Sign(m, a.key)
 			if err != nil {
@@ -805,20 +832,20 @@ To an agent: the message waits in its inbox until it reads it. --wait waits for 
 			}
 			if len(atts) > 0 {
 				what := "an agent"
-				if t.session != "" {
+				if t.machine != nil {
 					what = "an offline machine"
 				}
-				return &exitError{code: exitUnavailable, kind: "unreachable", retryable: t.session != "", err: fmt.Errorf("files can't wait for %s", what),
+				return &exitError{code: exitUnavailable, kind: "unreachable", retryable: t.machine != nil, err: fmt.Errorf("files can't wait for %s", what),
 					hint: "send them once the machine is online, or send the message without them"}
 			}
 			if err := a.post(ctx, ms, t, contacts, signed, m); err != nil {
 				return err
 			}
 			sent := sentJSON{ID: m.MessageId, To: address(m.To), Name: t.name, Delivered: "queued", Expect: expectation(t)}
-			if t.session != "" {
+			if t.machine != nil {
 				sent.Expect = "the machine is offline: the message waits for it, and the turn's news comes to your inbox"
 			}
-			if wait && t.session == "" {
+			if wait && t.machine == nil {
 				return a.waitReply(ctx, cmd, ms, sent)
 			}
 			return a.showSent(cmd, sent)
@@ -830,7 +857,6 @@ To an agent: the message waits in its inbox until it reads it. --wait waits for 
 	cmd.Flags().StringArrayVarP(&files, "file", "f", nil, "attach a file, to a session on an online machine (repeatable)")
 	cmd.Flags().StringVar(&subject, "subject", "", "a short subject")
 	cmd.Flags().StringVar(&replyTo, "reply-to", "", "the id of the message this answers")
-	cmd.Flags().StringVar(&from, "from-session", "", fromSessionHelp)
 	cmd.Flags().BoolVar(&wait, "wait", false, "to a session: wait for the turn the message is in; to an agent: wait for its reply")
 	cmd.Flags().DurationVar(&timeout, "timeout", 0, timeoutHelp)
 	cmd.MarkFlagRequired("to")
@@ -941,8 +967,9 @@ func (a *app) waitReply(ctx context.Context, cmd *cobra.Command, ms relayv1conne
 		if err != nil {
 			return a.waitErr(ctx, err)
 		}
-		for _, o := range good {
+		for _, o := range a.forMe(good) {
 			if o.m.InReplyTo == sent.ID {
+				a.take(ctx, ms, []opened{o})
 				v := a.view(o)
 				if a.output == "json" {
 					return a.report(cmd.OutOrStdout(), nil, field{"message", sent}, field{"reply", v})
@@ -959,12 +986,13 @@ func (a *app) waitReply(ctx context.Context, cmd *cobra.Command, ms relayv1conne
 	}
 }
 
-// fetchAll takes every waiting message, page by page, and acknowledges
-// those that are refused or were handled already; it returns the others.
+// fetchAll reads every waiting message, page by page, leaving them waiting,
+// and acknowledges those that are refused or were handled already; it
+// returns the others. Callers take (a.take) only the ones they show.
 func (a *app) fetchAll(ctx context.Context, ms relayv1connect.MessageServiceClient) ([]opened, error) {
 	var sealed []*relayv1.SealedMessage
 	for {
-		res, err := ms.Fetch(ctx, &relayv1.FetchMessagesRequest{Skip: uint32(len(sealed))})
+		res, err := ms.Fetch(ctx, &relayv1.FetchMessagesRequest{Skip: uint32(len(sealed)), Peek: true})
 		if err != nil {
 			return nil, err
 		}
@@ -979,13 +1007,27 @@ func (a *app) fetchAll(ctx context.Context, ms relayv1connect.MessageServiceClie
 	return good, nil
 }
 
-const fromSessionHelp = "your own conversation's key, so that replies and news come back to it (default: $HERMESH_CONVERSATION, which `message hook` sets in Claude Code)"
-
-// conversation is the caller's own conversation: the flag, else what the
-// agent's hook set.
-func conversation(flag string) string {
-	if flag != "" {
-		return flag
+// forMe are the messages for the name the command runs as (--as), or for
+// the agent itself.
+func (a *app) forMe(all []opened) []opened {
+	var out []opened
+	for _, o := range all {
+		if o.m.GetTo().GetSession() == a.as {
+			out = append(out, o)
+		}
 	}
-	return os.Getenv("HERMESH_CONVERSATION")
+	return out
+}
+
+// take marks the messages a caller was shown as taken: their senders'
+// receipts say so, and the others' stay "waiting".
+func (a *app) take(ctx context.Context, ms relayv1connect.MessageServiceClient, shown []opened) {
+	if len(shown) == 0 {
+		return
+	}
+	req := &relayv1.TakeMessagesRequest{}
+	for _, o := range shown {
+		req.MessageIds = append(req.MessageIds, o.m.MessageId)
+	}
+	ms.Take(ctx, req)
 }

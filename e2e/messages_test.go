@@ -363,6 +363,104 @@ func TestMCPInbox(t *testing.T) {
 	if len(l.Messages) != 1 || l.Messages[0].News.Result != "again" {
 		t.Fatalf("the message must still wait: %s", d.raw)
 	}
+
+	// Two bots on one connection: a bot's news comes back to its own name
+	// (docs/agent-names.md), however it writes the name.
+	d = callTool(t, session, "session_start", map[string]any{"project": "demo", "prompt": "say for tech demos", "as": "Tech Demos"})
+	if !d.OK || !strings.Contains(string(d.raw), `"as":"tech-demos"`) {
+		t.Fatalf("session_start as Tech Demos: %s", d.raw)
+	}
+	slowly(t, time.Minute, "Tech Demos's news", func() bool {
+		d = callTool(t, session, "message_list", map[string]any{"as": "tech_demos"})
+		json.Unmarshal(d.raw, &l)
+		return len(l.Messages) == 1 && l.Messages[0].News != nil && l.Messages[0].News.Result == "for tech demos"
+	})
+	if d = callTool(t, session, "message_list", map[string]any{"as": "chief-of-staff"}); !strings.Contains(string(d.raw), `"messages":[]`) {
+		t.Fatalf("another bot's list: %s", d.raw)
+	}
+	d = callTool(t, session, "message_list", nil)
+	json.Unmarshal(d.raw, &l)
+	if len(l.Messages) != 1 || l.Messages[0].News.Result != "again" {
+		t.Fatalf("the agent's own list must hold only its own: %s", d.raw)
+	}
+}
+
+// TestNames: two bots behind one agent, each with its own name
+// (docs/agent-names.md). News comes back to the name that asked, another
+// name's message waits for a turn of its own, and reading one name's
+// messages leaves the other's waiting.
+func TestNames(t *testing.T) {
+	if testing.Short() {
+		t.Skip("e2e")
+	}
+	w := newOwnerMac(t, []string{"HERMESH_FAKE_PROVIDERS=1"}, &localv1.GrantSpec{})
+	helper := w.addAgent("helper", &localv1.GrantSpec{})
+	news := func(as, session, kind string) (messageDoc, bool) {
+		l, _ := w.messages(30*time.Second, "--as", as)
+		for _, m := range l.Messages {
+			if m.News != nil && m.News.SessionID == session && m.News.Kind == kind {
+				return m, true
+			}
+		}
+		return messageDoc{}, false
+	}
+
+	// Tech Demos starts a session that asks; Chief of Staff writes into it.
+	s, r := w.startSession(30*time.Second, "--as", "Tech Demos", "--prompt", "ask Color|Which color?|Red,Blue\nsay done")
+	if r.code != 0 || !strings.Contains(r.stdout, `"as": "tech-demos"`) {
+		t.Fatalf("start as Tech Demos: %+v", r)
+	}
+	eventually(t, 30*time.Second, "the question", func() bool { return w.get(s.SessionID).Status == "waiting_input" })
+	d, r := sendMessage(t, w, append(slices.Clone(w.cliEnv), "HERMESH_AS=Chief of Staff"), 30*time.Second,
+		"--to", s.SessionID, "--message", "say from chief")
+	if !d.OK || d.Message.Delivered != "queued" {
+		t.Fatalf("another name's message must wait for a turn of its own: %+v", r)
+	}
+
+	// The question is Tech Demos's news alone, however it writes its name.
+	eventually(t, 30*time.Second, "Tech Demos's question", func() bool { _, ok := news("tech_demos", s.SessionID, "question"); return ok })
+	if l, r := w.messages(30*time.Second, "--as", "chief-of-staff"); len(l.Messages) != 0 {
+		t.Fatalf("Chief of Staff's list: %+v", r)
+	}
+	if l, r := w.messages(30 * time.Second); len(l.Messages) != 0 {
+		t.Fatalf("the agent's own list: %+v", r)
+	}
+
+	// A message to Chief of Staff stays waiting while Tech Demos reads.
+	hd, r := sendMessage(t, w, helper, 30*time.Second, "--to", contactAddress(t, w, helper, "bot")+"/Chief of Staff", "--message", "for chief")
+	if !hd.OK || !strings.HasSuffix(hd.Message.To, "/chief-of-staff") || strings.Contains(hd.Message.Expect, "machine") {
+		t.Fatalf("helper's message: %+v", r)
+	}
+	// By the agent's name too.
+	if d, r := sendMessage(t, w, helper, 30*time.Second, "--to", "bot/Tech Demos", "--message", "for tech demos"); !d.OK || d.Message.Name != "bot/tech-demos" {
+		t.Fatalf("to bot/Tech Demos: %+v", r)
+	}
+	w.messages(30*time.Second, "--as", "tech-demos")
+	if st := messageState(t, w, helper, hd.Message.ID); st != "waiting" {
+		t.Fatalf("a message nobody was shown: %s", st)
+	}
+
+	// Tech Demos's answer ends its turn; then Chief of Staff's turn runs,
+	// and that turn's news is Chief of Staff's.
+	if r := w.cli(30*time.Second, "session", "answer", s.SessionID, "--choose", "1", "--as", "Tech Demos"); r.code != 0 {
+		t.Fatalf("answer: %+v", r)
+	}
+	var chief messageDoc
+	eventually(t, time.Minute, "Chief of Staff's news", func() bool {
+		m, ok := news("Chief of Staff", s.SessionID, "turn_done")
+		chief = m
+		return ok
+	})
+	if chief.News.Result != "from chief" {
+		t.Fatalf("Chief of Staff's turn: %+v", chief)
+	}
+	if st := messageState(t, w, helper, hd.Message.ID); st != "taken" {
+		t.Fatalf("a message Chief of Staff was shown: %s", st)
+	}
+	eventually(t, 30*time.Second, "Tech Demos's own turn's news", func() bool {
+		m, ok := news("tech-demos", s.SessionID, "turn_done")
+		return ok && m.News.Result == "done"
+	})
 }
 
 // slowly is eventually at one try a second: MCP tools are rate limited.
@@ -704,14 +802,14 @@ func TestAgentsOnAComputer(t *testing.T) {
 	if ctx := additionalContext(start); !strings.Contains(ctx, "connected to Hermesh as bot") || !strings.Contains(ctx, "conv-1") {
 		t.Fatalf("SessionStart's context: %v", start)
 	}
-	if b, _ := os.ReadFile(envFile); !strings.Contains(string(b), `export HERMESH_CONVERSATION="conv-1"`) {
+	if b, _ := os.ReadFile(envFile); !strings.Contains(string(b), `export HERMESH_AS="conv-1"`) {
 		t.Fatalf("the conversation's environment: %q", b)
 	}
 	pid := filepath.Join(w.tmp, "agent", "watch-conv-1.pid")
 	eventually(t, 10*time.Second, "the watch running", func() bool { _, err := os.Stat(pid); return err == nil })
 
 	// A session this conversation starts: its news comes back to it.
-	r := run(t, append(slices.Clone(w.cliEnv), "HERMESH_CONVERSATION=conv-1"), 30*time.Second, filepath.Join(w.bin, "hermesh"),
+	r := run(t, append(slices.Clone(w.cliEnv), "HERMESH_AS=conv-1"), 30*time.Second, filepath.Join(w.bin, "hermesh"),
 		"session", "start", "--project", "demo", "--prompt", "say the build is green")
 	if r.code != 0 {
 		t.Fatalf("start: %+v", r)
@@ -734,7 +832,7 @@ func TestAgentsOnAComputer(t *testing.T) {
 	}
 	// What the session writes to the agent that started it comes back to
 	// the conversation too.
-	if r := run(t, append(slices.Clone(w.cliEnv), "HERMESH_CONVERSATION=conv-1"), 30*time.Second, filepath.Join(w.bin, "hermesh"),
+	if r := run(t, append(slices.Clone(w.cliEnv), "HERMESH_AS=conv-1"), 30*time.Second, filepath.Join(w.bin, "hermesh"),
 		"session", "start", "--project", "demo", "--prompt", "message |the tests pass"); r.code != 0 {
 		t.Fatalf("start: %+v", r)
 	}
@@ -765,7 +863,7 @@ func TestAgentsOnAComputer(t *testing.T) {
 	eventually(t, 20*time.Second, "the watch gone", func() bool { _, err := os.Stat(pid); return err != nil })
 
 	// --- Codex: when a turn would end --------------------------------------
-	if ctx := additionalContext(hookRun(t, w, nil, "codex", map[string]any{"session_id": "thr-1", "hook_event_name": "SessionStart"})); !strings.Contains(ctx, "--from-session thr-1") {
+	if ctx := additionalContext(hookRun(t, w, nil, "codex", map[string]any{"session_id": "thr-1", "hook_event_name": "SessionStart"})); !strings.Contains(ctx, "--as thr-1") {
 		t.Fatalf("Codex's SessionStart context: %q", ctx)
 	}
 	// More than a page of others' messages wait ahead of the

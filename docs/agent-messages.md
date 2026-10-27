@@ -303,9 +303,9 @@ the hooks are given.
   which keeps the turn going once (`stop_hook_active`) when messages arrived
   during it. An idle thread sees them when its user next writes.
 - **The conversation's key.** Claude Code's SessionStart hook exports it to
-  the conversation's commands as `HERMESH_CONVERSATION`, which `hermesh
+  the conversation's commands as `HERMESH_AS`, which `hermesh
   session start` and `hermesh message send` read, so news and replies come
-  back to it; Codex is told to pass `--from-session <key>` instead.
+  back to it; Codex is told to pass `--as <key>` instead.
 - **What is pushed**: messages addressed to the conversation. They are there
   because it wrote or started something, or because an agent was given its
   address.

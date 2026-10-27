@@ -136,6 +136,7 @@ hermesh session interrupt s_xxx     # stop the running turn; the session stays, 
 hermesh session archive s_xxx       # when done: read-only, frees the worktree (the branch keeps the changes); unarchive restores it
 hermesh session events s_xxx --after 812   # events page by page: the latest 50 by default; --after newer, --before older
 hermesh message list --wait         # your inbox: news of your sessions, messages from the owner's other agents
+hermesh --as "Tech Demos" session start --project web --prompt "…"   # several bots share this agent? each passes its own name: its news and replies come back to it alone
 hermesh message ack msg_xxx         # handled: it leaves the inbox
 hermesh message send --to "Grok Bot" --message "PR #143 is ready"   # to another of the owner's agents (message contacts lists them)
 ```
@@ -144,7 +145,7 @@ hermesh message send --to "Grok Bot" --message "PR #143 is ready"   # to another
 
 **Your inbox.** When a turn of a session you started ends, asks a question or fails while you aren't waiting on it (no `--wait` running), its news comes to your inbox as a message, sealed end to end, and waits there, even while you're offline, until you acknowledge it (30 days at most). Every command's JSON says `inbox.waiting` while messages wait. `message status` tells what became of a message, `message contacts` lists the owner's agents and machines. See [docs/agent-messages.md](docs/agent-messages.md).
 
-**Claude Code and Codex on your computer.** `hermesh message hook claude --install` (or `codex`) adds Hermesh's hooks to the agent's user settings. Each conversation then gets the messages addressed to it, such as news of the sessions it started and replies to what it wrote: at the start of its turns and when a turn would end, and in Claude Code also between tool calls and while idle (a new turn). Messages addressed to no conversation stay in the inbox; the hooks only say how many wait. In Claude Code the conversation's commands know its key (`HERMESH_CONVERSATION`); from Codex, add `--from-session <key>` to `session start` and `message send`.
+**Claude Code and Codex on your computer.** `hermesh message hook claude --install` (or `codex`) adds Hermesh's hooks to the agent's user settings. Each conversation then gets the messages addressed to it, such as news of the sessions it started and replies to what it wrote: at the start of its turns and when a turn would end, and in Claude Code also between tool calls and while idle (a new turn). Messages addressed to no conversation stay in the inbox; the hooks only say how many wait. In Claude Code the conversation's commands know its key (`HERMESH_AS`); from Codex, add `--as <key>` to the commands.
 
 **Sessions never end on their own.** However long one has been idle, another message continues the same coding agent session.
 

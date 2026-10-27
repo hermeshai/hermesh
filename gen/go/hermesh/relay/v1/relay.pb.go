@@ -3423,7 +3423,10 @@ type FetchMessagesRequest struct {
 	// At most this many (default and most: 50).
 	Limit uint32 `protobuf:"varint,1,opt,name=limit,proto3" json:"limit,omitempty"`
 	// Pass over this many of the oldest first: the next page.
-	Skip          uint32 `protobuf:"varint,2,opt,name=skip,proto3" json:"skip,omitempty"`
+	Skip uint32 `protobuf:"varint,2,opt,name=skip,proto3" json:"skip,omitempty"`
+	// Leave them waiting: an agent with several names takes only its own
+	// (Take), so the others' receipts stay true (docs/agent-names.md §6).
+	Peek          bool `protobuf:"varint,3,opt,name=peek,proto3" json:"peek,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -3472,6 +3475,93 @@ func (x *FetchMessagesRequest) GetSkip() uint32 {
 	return 0
 }
 
+func (x *FetchMessagesRequest) GetPeek() bool {
+	if x != nil {
+		return x.Peek
+	}
+	return false
+}
+
+type TakeMessagesRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	MessageIds    []string               `protobuf:"bytes,1,rep,name=message_ids,json=messageIds,proto3" json:"message_ids,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *TakeMessagesRequest) Reset() {
+	*x = TakeMessagesRequest{}
+	mi := &file_hermesh_relay_v1_relay_proto_msgTypes[65]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *TakeMessagesRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*TakeMessagesRequest) ProtoMessage() {}
+
+func (x *TakeMessagesRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_hermesh_relay_v1_relay_proto_msgTypes[65]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use TakeMessagesRequest.ProtoReflect.Descriptor instead.
+func (*TakeMessagesRequest) Descriptor() ([]byte, []int) {
+	return file_hermesh_relay_v1_relay_proto_rawDescGZIP(), []int{65}
+}
+
+func (x *TakeMessagesRequest) GetMessageIds() []string {
+	if x != nil {
+		return x.MessageIds
+	}
+	return nil
+}
+
+type TakeMessagesResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *TakeMessagesResponse) Reset() {
+	*x = TakeMessagesResponse{}
+	mi := &file_hermesh_relay_v1_relay_proto_msgTypes[66]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *TakeMessagesResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*TakeMessagesResponse) ProtoMessage() {}
+
+func (x *TakeMessagesResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_hermesh_relay_v1_relay_proto_msgTypes[66]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use TakeMessagesResponse.ProtoReflect.Descriptor instead.
+func (*TakeMessagesResponse) Descriptor() ([]byte, []int) {
+	return file_hermesh_relay_v1_relay_proto_rawDescGZIP(), []int{66}
+}
+
 type FetchMessagesResponse struct {
 	state    protoimpl.MessageState `protogen:"open.v1"`
 	Messages []*SealedMessage       `protobuf:"bytes,1,rep,name=messages,proto3" json:"messages,omitempty"`
@@ -3483,7 +3573,7 @@ type FetchMessagesResponse struct {
 
 func (x *FetchMessagesResponse) Reset() {
 	*x = FetchMessagesResponse{}
-	mi := &file_hermesh_relay_v1_relay_proto_msgTypes[65]
+	mi := &file_hermesh_relay_v1_relay_proto_msgTypes[67]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3495,7 +3585,7 @@ func (x *FetchMessagesResponse) String() string {
 func (*FetchMessagesResponse) ProtoMessage() {}
 
 func (x *FetchMessagesResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_hermesh_relay_v1_relay_proto_msgTypes[65]
+	mi := &file_hermesh_relay_v1_relay_proto_msgTypes[67]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3508,7 +3598,7 @@ func (x *FetchMessagesResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use FetchMessagesResponse.ProtoReflect.Descriptor instead.
 func (*FetchMessagesResponse) Descriptor() ([]byte, []int) {
-	return file_hermesh_relay_v1_relay_proto_rawDescGZIP(), []int{65}
+	return file_hermesh_relay_v1_relay_proto_rawDescGZIP(), []int{67}
 }
 
 func (x *FetchMessagesResponse) GetMessages() []*SealedMessage {
@@ -3536,7 +3626,7 @@ type MessageAck struct {
 
 func (x *MessageAck) Reset() {
 	*x = MessageAck{}
-	mi := &file_hermesh_relay_v1_relay_proto_msgTypes[66]
+	mi := &file_hermesh_relay_v1_relay_proto_msgTypes[68]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3548,7 +3638,7 @@ func (x *MessageAck) String() string {
 func (*MessageAck) ProtoMessage() {}
 
 func (x *MessageAck) ProtoReflect() protoreflect.Message {
-	mi := &file_hermesh_relay_v1_relay_proto_msgTypes[66]
+	mi := &file_hermesh_relay_v1_relay_proto_msgTypes[68]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3561,7 +3651,7 @@ func (x *MessageAck) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use MessageAck.ProtoReflect.Descriptor instead.
 func (*MessageAck) Descriptor() ([]byte, []int) {
-	return file_hermesh_relay_v1_relay_proto_rawDescGZIP(), []int{66}
+	return file_hermesh_relay_v1_relay_proto_rawDescGZIP(), []int{68}
 }
 
 func (x *MessageAck) GetMessageId() string {
@@ -3587,7 +3677,7 @@ type AckMessagesRequest struct {
 
 func (x *AckMessagesRequest) Reset() {
 	*x = AckMessagesRequest{}
-	mi := &file_hermesh_relay_v1_relay_proto_msgTypes[67]
+	mi := &file_hermesh_relay_v1_relay_proto_msgTypes[69]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3599,7 +3689,7 @@ func (x *AckMessagesRequest) String() string {
 func (*AckMessagesRequest) ProtoMessage() {}
 
 func (x *AckMessagesRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_hermesh_relay_v1_relay_proto_msgTypes[67]
+	mi := &file_hermesh_relay_v1_relay_proto_msgTypes[69]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3612,7 +3702,7 @@ func (x *AckMessagesRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use AckMessagesRequest.ProtoReflect.Descriptor instead.
 func (*AckMessagesRequest) Descriptor() ([]byte, []int) {
-	return file_hermesh_relay_v1_relay_proto_rawDescGZIP(), []int{67}
+	return file_hermesh_relay_v1_relay_proto_rawDescGZIP(), []int{69}
 }
 
 func (x *AckMessagesRequest) GetAcks() []*MessageAck {
@@ -3630,7 +3720,7 @@ type AckMessagesResponse struct {
 
 func (x *AckMessagesResponse) Reset() {
 	*x = AckMessagesResponse{}
-	mi := &file_hermesh_relay_v1_relay_proto_msgTypes[68]
+	mi := &file_hermesh_relay_v1_relay_proto_msgTypes[70]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3642,7 +3732,7 @@ func (x *AckMessagesResponse) String() string {
 func (*AckMessagesResponse) ProtoMessage() {}
 
 func (x *AckMessagesResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_hermesh_relay_v1_relay_proto_msgTypes[68]
+	mi := &file_hermesh_relay_v1_relay_proto_msgTypes[70]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3655,7 +3745,7 @@ func (x *AckMessagesResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use AckMessagesResponse.ProtoReflect.Descriptor instead.
 func (*AckMessagesResponse) Descriptor() ([]byte, []int) {
-	return file_hermesh_relay_v1_relay_proto_rawDescGZIP(), []int{68}
+	return file_hermesh_relay_v1_relay_proto_rawDescGZIP(), []int{70}
 }
 
 type WatchInboxRequest struct {
@@ -3666,7 +3756,7 @@ type WatchInboxRequest struct {
 
 func (x *WatchInboxRequest) Reset() {
 	*x = WatchInboxRequest{}
-	mi := &file_hermesh_relay_v1_relay_proto_msgTypes[69]
+	mi := &file_hermesh_relay_v1_relay_proto_msgTypes[71]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3678,7 +3768,7 @@ func (x *WatchInboxRequest) String() string {
 func (*WatchInboxRequest) ProtoMessage() {}
 
 func (x *WatchInboxRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_hermesh_relay_v1_relay_proto_msgTypes[69]
+	mi := &file_hermesh_relay_v1_relay_proto_msgTypes[71]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3691,7 +3781,7 @@ func (x *WatchInboxRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use WatchInboxRequest.ProtoReflect.Descriptor instead.
 func (*WatchInboxRequest) Descriptor() ([]byte, []int) {
-	return file_hermesh_relay_v1_relay_proto_rawDescGZIP(), []int{69}
+	return file_hermesh_relay_v1_relay_proto_rawDescGZIP(), []int{71}
 }
 
 type WatchInboxResponse struct {
@@ -3703,7 +3793,7 @@ type WatchInboxResponse struct {
 
 func (x *WatchInboxResponse) Reset() {
 	*x = WatchInboxResponse{}
-	mi := &file_hermesh_relay_v1_relay_proto_msgTypes[70]
+	mi := &file_hermesh_relay_v1_relay_proto_msgTypes[72]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3715,7 +3805,7 @@ func (x *WatchInboxResponse) String() string {
 func (*WatchInboxResponse) ProtoMessage() {}
 
 func (x *WatchInboxResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_hermesh_relay_v1_relay_proto_msgTypes[70]
+	mi := &file_hermesh_relay_v1_relay_proto_msgTypes[72]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3728,7 +3818,7 @@ func (x *WatchInboxResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use WatchInboxResponse.ProtoReflect.Descriptor instead.
 func (*WatchInboxResponse) Descriptor() ([]byte, []int) {
-	return file_hermesh_relay_v1_relay_proto_rawDescGZIP(), []int{70}
+	return file_hermesh_relay_v1_relay_proto_rawDescGZIP(), []int{72}
 }
 
 func (x *WatchInboxResponse) GetWaiting() uint32 {
@@ -3747,7 +3837,7 @@ type MessageStatusRequest struct {
 
 func (x *MessageStatusRequest) Reset() {
 	*x = MessageStatusRequest{}
-	mi := &file_hermesh_relay_v1_relay_proto_msgTypes[71]
+	mi := &file_hermesh_relay_v1_relay_proto_msgTypes[73]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3759,7 +3849,7 @@ func (x *MessageStatusRequest) String() string {
 func (*MessageStatusRequest) ProtoMessage() {}
 
 func (x *MessageStatusRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_hermesh_relay_v1_relay_proto_msgTypes[71]
+	mi := &file_hermesh_relay_v1_relay_proto_msgTypes[73]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3772,7 +3862,7 @@ func (x *MessageStatusRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use MessageStatusRequest.ProtoReflect.Descriptor instead.
 func (*MessageStatusRequest) Descriptor() ([]byte, []int) {
-	return file_hermesh_relay_v1_relay_proto_rawDescGZIP(), []int{71}
+	return file_hermesh_relay_v1_relay_proto_rawDescGZIP(), []int{73}
 }
 
 func (x *MessageStatusRequest) GetMessageIds() []string {
@@ -3795,7 +3885,7 @@ type MessageState struct {
 
 func (x *MessageState) Reset() {
 	*x = MessageState{}
-	mi := &file_hermesh_relay_v1_relay_proto_msgTypes[72]
+	mi := &file_hermesh_relay_v1_relay_proto_msgTypes[74]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3807,7 +3897,7 @@ func (x *MessageState) String() string {
 func (*MessageState) ProtoMessage() {}
 
 func (x *MessageState) ProtoReflect() protoreflect.Message {
-	mi := &file_hermesh_relay_v1_relay_proto_msgTypes[72]
+	mi := &file_hermesh_relay_v1_relay_proto_msgTypes[74]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3820,7 +3910,7 @@ func (x *MessageState) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use MessageState.ProtoReflect.Descriptor instead.
 func (*MessageState) Descriptor() ([]byte, []int) {
-	return file_hermesh_relay_v1_relay_proto_rawDescGZIP(), []int{72}
+	return file_hermesh_relay_v1_relay_proto_rawDescGZIP(), []int{74}
 }
 
 func (x *MessageState) GetMessageId() string {
@@ -3853,7 +3943,7 @@ type MessageStatusResponse struct {
 
 func (x *MessageStatusResponse) Reset() {
 	*x = MessageStatusResponse{}
-	mi := &file_hermesh_relay_v1_relay_proto_msgTypes[73]
+	mi := &file_hermesh_relay_v1_relay_proto_msgTypes[75]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3865,7 +3955,7 @@ func (x *MessageStatusResponse) String() string {
 func (*MessageStatusResponse) ProtoMessage() {}
 
 func (x *MessageStatusResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_hermesh_relay_v1_relay_proto_msgTypes[73]
+	mi := &file_hermesh_relay_v1_relay_proto_msgTypes[75]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3878,7 +3968,7 @@ func (x *MessageStatusResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use MessageStatusResponse.ProtoReflect.Descriptor instead.
 func (*MessageStatusResponse) Descriptor() ([]byte, []int) {
-	return file_hermesh_relay_v1_relay_proto_rawDescGZIP(), []int{73}
+	return file_hermesh_relay_v1_relay_proto_rawDescGZIP(), []int{75}
 }
 
 func (x *MessageStatusResponse) GetStates() []*MessageState {
@@ -4093,10 +4183,15 @@ const file_hermesh_relay_v1_relay_proto_rawDesc = "" +
 	"root_chain\x18\x02 \x01(\v2\x1e.hermesh.identity.v1.RootChainR\trootChain\"N\n" +
 	"\x11SendSealedRequest\x129\n" +
 	"\amessage\x18\x01 \x01(\v2\x1f.hermesh.relay.v1.SealedMessageR\amessage\"\x14\n" +
-	"\x12SendSealedResponse\"@\n" +
+	"\x12SendSealedResponse\"T\n" +
 	"\x14FetchMessagesRequest\x12\x14\n" +
 	"\x05limit\x18\x01 \x01(\rR\x05limit\x12\x12\n" +
-	"\x04skip\x18\x02 \x01(\rR\x04skip\"h\n" +
+	"\x04skip\x18\x02 \x01(\rR\x04skip\x12\x12\n" +
+	"\x04peek\x18\x03 \x01(\bR\x04peek\"6\n" +
+	"\x13TakeMessagesRequest\x12\x1f\n" +
+	"\vmessage_ids\x18\x01 \x03(\tR\n" +
+	"messageIds\"\x16\n" +
+	"\x14TakeMessagesResponse\"h\n" +
 	"\x15FetchMessagesResponse\x12;\n" +
 	"\bmessages\x18\x01 \x03(\v2\x1f.hermesh.relay.v1.SealedMessageR\bmessages\x12\x12\n" +
 	"\x04more\x18\x02 \x01(\bR\x04more\"E\n" +
@@ -4161,12 +4256,13 @@ const file_hermesh_relay_v1_relay_proto_rawDesc = "" +
 	"\x06Revoke\x12\x1f.hermesh.relay.v1.RevokeRequest\x1a .hermesh.relay.v1.RevokeResponse\x12i\n" +
 	"\x10PublishRootChain\x12).hermesh.relay.v1.PublishRootChainRequest\x1a*.hermesh.relay.v1.PublishRootChainResponse\x12]\n" +
 	"\fRegisterPush\x12%.hermesh.relay.v1.RegisterPushRequest\x1a&.hermesh.relay.v1.RegisterPushResponse\x12]\n" +
-	"\fPublishCards\x12%.hermesh.relay.v1.PublishCardsRequest\x1a&.hermesh.relay.v1.PublishCardsResponse2\xf2\x04\n" +
+	"\fPublishCards\x12%.hermesh.relay.v1.PublishCardsRequest\x1a&.hermesh.relay.v1.PublishCardsResponse2\xc9\x05\n" +
 	"\x0eMessageService\x12[\n" +
 	"\bRegister\x12&.hermesh.relay.v1.RegisterInboxRequest\x1a'.hermesh.relay.v1.RegisterInboxResponse\x12Q\n" +
 	"\bContacts\x12!.hermesh.relay.v1.ContactsRequest\x1a\".hermesh.relay.v1.ContactsResponse\x12Q\n" +
 	"\x04Send\x12#.hermesh.relay.v1.SendSealedRequest\x1a$.hermesh.relay.v1.SendSealedResponse\x12X\n" +
-	"\x05Fetch\x12&.hermesh.relay.v1.FetchMessagesRequest\x1a'.hermesh.relay.v1.FetchMessagesResponse\x12R\n" +
+	"\x05Fetch\x12&.hermesh.relay.v1.FetchMessagesRequest\x1a'.hermesh.relay.v1.FetchMessagesResponse\x12U\n" +
+	"\x04Take\x12%.hermesh.relay.v1.TakeMessagesRequest\x1a&.hermesh.relay.v1.TakeMessagesResponse\x12R\n" +
 	"\x03Ack\x12$.hermesh.relay.v1.AckMessagesRequest\x1a%.hermesh.relay.v1.AckMessagesResponse\x12T\n" +
 	"\x05Watch\x12#.hermesh.relay.v1.WatchInboxRequest\x1a$.hermesh.relay.v1.WatchInboxResponse0\x01\x12Y\n" +
 	"\x06Status\x12&.hermesh.relay.v1.MessageStatusRequest\x1a'.hermesh.relay.v1.MessageStatusResponseB\xc2\x01\n" +
@@ -4186,7 +4282,7 @@ func file_hermesh_relay_v1_relay_proto_rawDescGZIP() []byte {
 }
 
 var file_hermesh_relay_v1_relay_proto_enumTypes = make([]protoimpl.EnumInfo, 2)
-var file_hermesh_relay_v1_relay_proto_msgTypes = make([]protoimpl.MessageInfo, 74)
+var file_hermesh_relay_v1_relay_proto_msgTypes = make([]protoimpl.MessageInfo, 76)
 var file_hermesh_relay_v1_relay_proto_goTypes = []any{
 	(Role)(0),                           // 0: hermesh.relay.v1.Role
 	(StreamKind)(0),                     // 1: hermesh.relay.v1.StreamKind
@@ -4255,83 +4351,85 @@ var file_hermesh_relay_v1_relay_proto_goTypes = []any{
 	(*SendSealedRequest)(nil),           // 64: hermesh.relay.v1.SendSealedRequest
 	(*SendSealedResponse)(nil),          // 65: hermesh.relay.v1.SendSealedResponse
 	(*FetchMessagesRequest)(nil),        // 66: hermesh.relay.v1.FetchMessagesRequest
-	(*FetchMessagesResponse)(nil),       // 67: hermesh.relay.v1.FetchMessagesResponse
-	(*MessageAck)(nil),                  // 68: hermesh.relay.v1.MessageAck
-	(*AckMessagesRequest)(nil),          // 69: hermesh.relay.v1.AckMessagesRequest
-	(*AckMessagesResponse)(nil),         // 70: hermesh.relay.v1.AckMessagesResponse
-	(*WatchInboxRequest)(nil),           // 71: hermesh.relay.v1.WatchInboxRequest
-	(*WatchInboxResponse)(nil),          // 72: hermesh.relay.v1.WatchInboxResponse
-	(*MessageStatusRequest)(nil),        // 73: hermesh.relay.v1.MessageStatusRequest
-	(*MessageState)(nil),                // 74: hermesh.relay.v1.MessageState
-	(*MessageStatusResponse)(nil),       // 75: hermesh.relay.v1.MessageStatusResponse
-	(*timestamppb.Timestamp)(nil),       // 76: google.protobuf.Timestamp
-	(*v1.Credentials)(nil),              // 77: hermesh.identity.v1.Credentials
-	(*v1.RootChain)(nil),                // 78: hermesh.identity.v1.RootChain
-	(*v1.Signed)(nil),                   // 79: hermesh.identity.v1.Signed
-	(*v1.RevocationList)(nil),           // 80: hermesh.identity.v1.RevocationList
-	(*v1.Contact)(nil),                  // 81: hermesh.identity.v1.Contact
+	(*TakeMessagesRequest)(nil),         // 67: hermesh.relay.v1.TakeMessagesRequest
+	(*TakeMessagesResponse)(nil),        // 68: hermesh.relay.v1.TakeMessagesResponse
+	(*FetchMessagesResponse)(nil),       // 69: hermesh.relay.v1.FetchMessagesResponse
+	(*MessageAck)(nil),                  // 70: hermesh.relay.v1.MessageAck
+	(*AckMessagesRequest)(nil),          // 71: hermesh.relay.v1.AckMessagesRequest
+	(*AckMessagesResponse)(nil),         // 72: hermesh.relay.v1.AckMessagesResponse
+	(*WatchInboxRequest)(nil),           // 73: hermesh.relay.v1.WatchInboxRequest
+	(*WatchInboxResponse)(nil),          // 74: hermesh.relay.v1.WatchInboxResponse
+	(*MessageStatusRequest)(nil),        // 75: hermesh.relay.v1.MessageStatusRequest
+	(*MessageState)(nil),                // 76: hermesh.relay.v1.MessageState
+	(*MessageStatusResponse)(nil),       // 77: hermesh.relay.v1.MessageStatusResponse
+	(*timestamppb.Timestamp)(nil),       // 78: google.protobuf.Timestamp
+	(*v1.Credentials)(nil),              // 79: hermesh.identity.v1.Credentials
+	(*v1.RootChain)(nil),                // 80: hermesh.identity.v1.RootChain
+	(*v1.Signed)(nil),                   // 81: hermesh.identity.v1.Signed
+	(*v1.RevocationList)(nil),           // 82: hermesh.identity.v1.RevocationList
+	(*v1.Contact)(nil),                  // 83: hermesh.identity.v1.Contact
 }
 var file_hermesh_relay_v1_relay_proto_depIdxs = []int32{
-	76, // 0: hermesh.relay.v1.Challenge.server_time:type_name -> google.protobuf.Timestamp
+	78, // 0: hermesh.relay.v1.Challenge.server_time:type_name -> google.protobuf.Timestamp
 	0,  // 1: hermesh.relay.v1.Hello.role:type_name -> hermesh.relay.v1.Role
-	77, // 2: hermesh.relay.v1.Hello.credentials:type_name -> hermesh.identity.v1.Credentials
+	79, // 2: hermesh.relay.v1.Hello.credentials:type_name -> hermesh.identity.v1.Credentials
 	1,  // 3: hermesh.relay.v1.StreamHeader.kind:type_name -> hermesh.relay.v1.StreamKind
 	0,  // 4: hermesh.relay.v1.StreamHeader.principal_role:type_name -> hermesh.relay.v1.Role
-	78, // 5: hermesh.relay.v1.GetInfoResponse.root_chain:type_name -> hermesh.identity.v1.RootChain
-	78, // 6: hermesh.relay.v1.ClaimRequest.root_chain:type_name -> hermesh.identity.v1.RootChain
-	79, // 7: hermesh.relay.v1.ClaimRequest.device_cert:type_name -> hermesh.identity.v1.Signed
-	79, // 8: hermesh.relay.v1.SubmitPairingRequest.request:type_name -> hermesh.identity.v1.Signed
-	76, // 9: hermesh.relay.v1.SubmitPairingResponse.expires_at:type_name -> google.protobuf.Timestamp
-	77, // 10: hermesh.relay.v1.WaitPairingResponse.credentials:type_name -> hermesh.identity.v1.Credentials
-	78, // 11: hermesh.relay.v1.WaitPairingResponse.root_chain:type_name -> hermesh.identity.v1.RootChain
-	79, // 12: hermesh.relay.v1.MachineEntry.machine_cert:type_name -> hermesh.identity.v1.Signed
-	76, // 13: hermesh.relay.v1.MachineEntry.last_seen:type_name -> google.protobuf.Timestamp
-	79, // 14: hermesh.relay.v1.ClientEntry.grant:type_name -> hermesh.identity.v1.Signed
-	76, // 15: hermesh.relay.v1.ClientEntry.last_seen:type_name -> google.protobuf.Timestamp
-	79, // 16: hermesh.relay.v1.ClientEntry.card:type_name -> hermesh.identity.v1.Signed
-	79, // 17: hermesh.relay.v1.ClientEntry.card_device_cert:type_name -> hermesh.identity.v1.Signed
+	80, // 5: hermesh.relay.v1.GetInfoResponse.root_chain:type_name -> hermesh.identity.v1.RootChain
+	80, // 6: hermesh.relay.v1.ClaimRequest.root_chain:type_name -> hermesh.identity.v1.RootChain
+	81, // 7: hermesh.relay.v1.ClaimRequest.device_cert:type_name -> hermesh.identity.v1.Signed
+	81, // 8: hermesh.relay.v1.SubmitPairingRequest.request:type_name -> hermesh.identity.v1.Signed
+	78, // 9: hermesh.relay.v1.SubmitPairingResponse.expires_at:type_name -> google.protobuf.Timestamp
+	79, // 10: hermesh.relay.v1.WaitPairingResponse.credentials:type_name -> hermesh.identity.v1.Credentials
+	80, // 11: hermesh.relay.v1.WaitPairingResponse.root_chain:type_name -> hermesh.identity.v1.RootChain
+	81, // 12: hermesh.relay.v1.MachineEntry.machine_cert:type_name -> hermesh.identity.v1.Signed
+	78, // 13: hermesh.relay.v1.MachineEntry.last_seen:type_name -> google.protobuf.Timestamp
+	81, // 14: hermesh.relay.v1.ClientEntry.grant:type_name -> hermesh.identity.v1.Signed
+	78, // 15: hermesh.relay.v1.ClientEntry.last_seen:type_name -> google.protobuf.Timestamp
+	81, // 16: hermesh.relay.v1.ClientEntry.card:type_name -> hermesh.identity.v1.Signed
+	81, // 17: hermesh.relay.v1.ClientEntry.card_device_cert:type_name -> hermesh.identity.v1.Signed
 	19, // 18: hermesh.relay.v1.NotifyRequest.notices:type_name -> hermesh.relay.v1.SealedNotice
 	21, // 19: hermesh.relay.v1.PushTargets.targets:type_name -> hermesh.relay.v1.PushTarget
-	79, // 20: hermesh.relay.v1.PushTarget.registration:type_name -> hermesh.identity.v1.Signed
-	79, // 21: hermesh.relay.v1.PushTarget.device_cert:type_name -> hermesh.identity.v1.Signed
-	78, // 22: hermesh.relay.v1.MachineUpdate.root_chain:type_name -> hermesh.identity.v1.RootChain
-	80, // 23: hermesh.relay.v1.MachineUpdate.revocations:type_name -> hermesh.identity.v1.RevocationList
-	79, // 24: hermesh.relay.v1.MachineUpdate.machine_cert:type_name -> hermesh.identity.v1.Signed
+	81, // 20: hermesh.relay.v1.PushTarget.registration:type_name -> hermesh.identity.v1.Signed
+	81, // 21: hermesh.relay.v1.PushTarget.device_cert:type_name -> hermesh.identity.v1.Signed
+	80, // 22: hermesh.relay.v1.MachineUpdate.root_chain:type_name -> hermesh.identity.v1.RootChain
+	82, // 23: hermesh.relay.v1.MachineUpdate.revocations:type_name -> hermesh.identity.v1.RevocationList
+	81, // 24: hermesh.relay.v1.MachineUpdate.machine_cert:type_name -> hermesh.identity.v1.Signed
 	20, // 25: hermesh.relay.v1.MachineUpdate.push_targets:type_name -> hermesh.relay.v1.PushTargets
 	27, // 26: hermesh.relay.v1.MachineUpdate.grants:type_name -> hermesh.relay.v1.MachineGrants
-	79, // 27: hermesh.relay.v1.MachineGrants.grants:type_name -> hermesh.identity.v1.Signed
+	81, // 27: hermesh.relay.v1.MachineGrants.grants:type_name -> hermesh.identity.v1.Signed
 	0,  // 28: hermesh.relay.v1.WhoAmIResponse.role:type_name -> hermesh.relay.v1.Role
 	14, // 29: hermesh.relay.v1.ListMachinesResponse.machines:type_name -> hermesh.relay.v1.MachineEntry
-	78, // 30: hermesh.relay.v1.ListMachinesResponse.root_chain:type_name -> hermesh.identity.v1.RootChain
-	79, // 31: hermesh.relay.v1.GetLatestGrantResponse.grant:type_name -> hermesh.identity.v1.Signed
-	78, // 32: hermesh.relay.v1.GetLatestGrantResponse.root_chain:type_name -> hermesh.identity.v1.RootChain
-	79, // 33: hermesh.relay.v1.PublishCardsRequest.cards:type_name -> hermesh.identity.v1.Signed
-	79, // 34: hermesh.relay.v1.RegisterPushRequest.registration:type_name -> hermesh.identity.v1.Signed
-	79, // 35: hermesh.relay.v1.GetPairingRequestResponse.request:type_name -> hermesh.identity.v1.Signed
-	76, // 36: hermesh.relay.v1.GetPairingRequestResponse.expires_at:type_name -> google.protobuf.Timestamp
-	79, // 37: hermesh.relay.v1.ClaimPairingRequestResponse.request:type_name -> hermesh.identity.v1.Signed
-	76, // 38: hermesh.relay.v1.ClaimPairingRequestResponse.expires_at:type_name -> google.protobuf.Timestamp
+	80, // 30: hermesh.relay.v1.ListMachinesResponse.root_chain:type_name -> hermesh.identity.v1.RootChain
+	81, // 31: hermesh.relay.v1.GetLatestGrantResponse.grant:type_name -> hermesh.identity.v1.Signed
+	80, // 32: hermesh.relay.v1.GetLatestGrantResponse.root_chain:type_name -> hermesh.identity.v1.RootChain
+	81, // 33: hermesh.relay.v1.PublishCardsRequest.cards:type_name -> hermesh.identity.v1.Signed
+	81, // 34: hermesh.relay.v1.RegisterPushRequest.registration:type_name -> hermesh.identity.v1.Signed
+	81, // 35: hermesh.relay.v1.GetPairingRequestResponse.request:type_name -> hermesh.identity.v1.Signed
+	78, // 36: hermesh.relay.v1.GetPairingRequestResponse.expires_at:type_name -> google.protobuf.Timestamp
+	81, // 37: hermesh.relay.v1.ClaimPairingRequestResponse.request:type_name -> hermesh.identity.v1.Signed
+	78, // 38: hermesh.relay.v1.ClaimPairingRequestResponse.expires_at:type_name -> google.protobuf.Timestamp
 	44, // 39: hermesh.relay.v1.ListPairingRequestsResponse.pairings:type_name -> hermesh.relay.v1.PendingPairing
-	79, // 40: hermesh.relay.v1.PendingPairing.request:type_name -> hermesh.identity.v1.Signed
-	76, // 41: hermesh.relay.v1.PendingPairing.expires_at:type_name -> google.protobuf.Timestamp
-	79, // 42: hermesh.relay.v1.CompletePairingRequest.credential:type_name -> hermesh.identity.v1.Signed
+	81, // 40: hermesh.relay.v1.PendingPairing.request:type_name -> hermesh.identity.v1.Signed
+	78, // 41: hermesh.relay.v1.PendingPairing.expires_at:type_name -> google.protobuf.Timestamp
+	81, // 42: hermesh.relay.v1.CompletePairingRequest.credential:type_name -> hermesh.identity.v1.Signed
 	31, // 43: hermesh.relay.v1.OwnerUpdate.machines:type_name -> hermesh.relay.v1.ListMachinesResponse
 	50, // 44: hermesh.relay.v1.OwnerUpdate.clients:type_name -> hermesh.relay.v1.ListClientsResponse
 	43, // 45: hermesh.relay.v1.OwnerUpdate.pairings:type_name -> hermesh.relay.v1.ListPairingRequestsResponse
 	15, // 46: hermesh.relay.v1.ListClientsResponse.clients:type_name -> hermesh.relay.v1.ClientEntry
-	79, // 47: hermesh.relay.v1.PublishGrantRequest.grant:type_name -> hermesh.identity.v1.Signed
-	79, // 48: hermesh.relay.v1.PublishMachineCertRequest.machine_cert:type_name -> hermesh.identity.v1.Signed
-	80, // 49: hermesh.relay.v1.RevokeRequest.revocations:type_name -> hermesh.identity.v1.RevocationList
-	78, // 50: hermesh.relay.v1.PublishRootChainRequest.root_chain:type_name -> hermesh.identity.v1.RootChain
-	76, // 51: hermesh.relay.v1.SealedMessage.received_at:type_name -> google.protobuf.Timestamp
-	79, // 52: hermesh.relay.v1.RegisterInboxRequest.registration:type_name -> hermesh.identity.v1.Signed
-	81, // 53: hermesh.relay.v1.ContactsResponse.contacts:type_name -> hermesh.identity.v1.Contact
-	78, // 54: hermesh.relay.v1.ContactsResponse.root_chain:type_name -> hermesh.identity.v1.RootChain
+	81, // 47: hermesh.relay.v1.PublishGrantRequest.grant:type_name -> hermesh.identity.v1.Signed
+	81, // 48: hermesh.relay.v1.PublishMachineCertRequest.machine_cert:type_name -> hermesh.identity.v1.Signed
+	82, // 49: hermesh.relay.v1.RevokeRequest.revocations:type_name -> hermesh.identity.v1.RevocationList
+	80, // 50: hermesh.relay.v1.PublishRootChainRequest.root_chain:type_name -> hermesh.identity.v1.RootChain
+	78, // 51: hermesh.relay.v1.SealedMessage.received_at:type_name -> google.protobuf.Timestamp
+	81, // 52: hermesh.relay.v1.RegisterInboxRequest.registration:type_name -> hermesh.identity.v1.Signed
+	83, // 53: hermesh.relay.v1.ContactsResponse.contacts:type_name -> hermesh.identity.v1.Contact
+	80, // 54: hermesh.relay.v1.ContactsResponse.root_chain:type_name -> hermesh.identity.v1.RootChain
 	59, // 55: hermesh.relay.v1.SendSealedRequest.message:type_name -> hermesh.relay.v1.SealedMessage
 	59, // 56: hermesh.relay.v1.FetchMessagesResponse.messages:type_name -> hermesh.relay.v1.SealedMessage
-	68, // 57: hermesh.relay.v1.AckMessagesRequest.acks:type_name -> hermesh.relay.v1.MessageAck
-	76, // 58: hermesh.relay.v1.MessageState.at:type_name -> google.protobuf.Timestamp
-	74, // 59: hermesh.relay.v1.MessageStatusResponse.states:type_name -> hermesh.relay.v1.MessageState
+	70, // 57: hermesh.relay.v1.AckMessagesRequest.acks:type_name -> hermesh.relay.v1.MessageAck
+	78, // 58: hermesh.relay.v1.MessageState.at:type_name -> google.protobuf.Timestamp
+	76, // 59: hermesh.relay.v1.MessageStatusResponse.states:type_name -> hermesh.relay.v1.MessageState
 	6,  // 60: hermesh.relay.v1.RelayPublicService.GetInfo:input_type -> hermesh.relay.v1.GetInfoRequest
 	8,  // 61: hermesh.relay.v1.RelayPublicService.Claim:input_type -> hermesh.relay.v1.ClaimRequest
 	10, // 62: hermesh.relay.v1.RelayPublicService.SubmitPairing:input_type -> hermesh.relay.v1.SubmitPairingRequest
@@ -4360,42 +4458,44 @@ var file_hermesh_relay_v1_relay_proto_depIdxs = []int32{
 	62, // 85: hermesh.relay.v1.MessageService.Contacts:input_type -> hermesh.relay.v1.ContactsRequest
 	64, // 86: hermesh.relay.v1.MessageService.Send:input_type -> hermesh.relay.v1.SendSealedRequest
 	66, // 87: hermesh.relay.v1.MessageService.Fetch:input_type -> hermesh.relay.v1.FetchMessagesRequest
-	69, // 88: hermesh.relay.v1.MessageService.Ack:input_type -> hermesh.relay.v1.AckMessagesRequest
-	71, // 89: hermesh.relay.v1.MessageService.Watch:input_type -> hermesh.relay.v1.WatchInboxRequest
-	73, // 90: hermesh.relay.v1.MessageService.Status:input_type -> hermesh.relay.v1.MessageStatusRequest
-	7,  // 91: hermesh.relay.v1.RelayPublicService.GetInfo:output_type -> hermesh.relay.v1.GetInfoResponse
-	9,  // 92: hermesh.relay.v1.RelayPublicService.Claim:output_type -> hermesh.relay.v1.ClaimResponse
-	11, // 93: hermesh.relay.v1.RelayPublicService.SubmitPairing:output_type -> hermesh.relay.v1.SubmitPairingResponse
-	13, // 94: hermesh.relay.v1.RelayPublicService.WaitPairing:output_type -> hermesh.relay.v1.WaitPairingResponse
-	24, // 95: hermesh.relay.v1.MachineControlService.ReportStatus:output_type -> hermesh.relay.v1.ReportStatusResponse
-	26, // 96: hermesh.relay.v1.MachineControlService.WatchUpdates:output_type -> hermesh.relay.v1.MachineUpdate
-	22, // 97: hermesh.relay.v1.MachineControlService.Leave:output_type -> hermesh.relay.v1.LeaveResponse
-	18, // 98: hermesh.relay.v1.MachineControlService.Notify:output_type -> hermesh.relay.v1.NotifyResponse
-	29, // 99: hermesh.relay.v1.ClientControlService.WhoAmI:output_type -> hermesh.relay.v1.WhoAmIResponse
-	31, // 100: hermesh.relay.v1.ClientControlService.ListMachines:output_type -> hermesh.relay.v1.ListMachinesResponse
-	33, // 101: hermesh.relay.v1.ClientControlService.GetLatestGrant:output_type -> hermesh.relay.v1.GetLatestGrantResponse
-	39, // 102: hermesh.relay.v1.OwnerControlService.GetPairingRequest:output_type -> hermesh.relay.v1.GetPairingRequestResponse
-	43, // 103: hermesh.relay.v1.OwnerControlService.ListPairingRequests:output_type -> hermesh.relay.v1.ListPairingRequestsResponse
-	41, // 104: hermesh.relay.v1.OwnerControlService.ClaimPairingRequest:output_type -> hermesh.relay.v1.ClaimPairingRequestResponse
-	46, // 105: hermesh.relay.v1.OwnerControlService.CompletePairing:output_type -> hermesh.relay.v1.CompletePairingResponse
-	31, // 106: hermesh.relay.v1.OwnerControlService.ListMachines:output_type -> hermesh.relay.v1.ListMachinesResponse
-	50, // 107: hermesh.relay.v1.OwnerControlService.ListClients:output_type -> hermesh.relay.v1.ListClientsResponse
-	48, // 108: hermesh.relay.v1.OwnerControlService.WatchOwner:output_type -> hermesh.relay.v1.OwnerUpdate
-	52, // 109: hermesh.relay.v1.OwnerControlService.PublishGrant:output_type -> hermesh.relay.v1.PublishGrantResponse
-	54, // 110: hermesh.relay.v1.OwnerControlService.PublishMachineCert:output_type -> hermesh.relay.v1.PublishMachineCertResponse
-	56, // 111: hermesh.relay.v1.OwnerControlService.Revoke:output_type -> hermesh.relay.v1.RevokeResponse
-	58, // 112: hermesh.relay.v1.OwnerControlService.PublishRootChain:output_type -> hermesh.relay.v1.PublishRootChainResponse
-	37, // 113: hermesh.relay.v1.OwnerControlService.RegisterPush:output_type -> hermesh.relay.v1.RegisterPushResponse
-	35, // 114: hermesh.relay.v1.OwnerControlService.PublishCards:output_type -> hermesh.relay.v1.PublishCardsResponse
-	61, // 115: hermesh.relay.v1.MessageService.Register:output_type -> hermesh.relay.v1.RegisterInboxResponse
-	63, // 116: hermesh.relay.v1.MessageService.Contacts:output_type -> hermesh.relay.v1.ContactsResponse
-	65, // 117: hermesh.relay.v1.MessageService.Send:output_type -> hermesh.relay.v1.SendSealedResponse
-	67, // 118: hermesh.relay.v1.MessageService.Fetch:output_type -> hermesh.relay.v1.FetchMessagesResponse
-	70, // 119: hermesh.relay.v1.MessageService.Ack:output_type -> hermesh.relay.v1.AckMessagesResponse
-	72, // 120: hermesh.relay.v1.MessageService.Watch:output_type -> hermesh.relay.v1.WatchInboxResponse
-	75, // 121: hermesh.relay.v1.MessageService.Status:output_type -> hermesh.relay.v1.MessageStatusResponse
-	91, // [91:122] is the sub-list for method output_type
-	60, // [60:91] is the sub-list for method input_type
+	67, // 88: hermesh.relay.v1.MessageService.Take:input_type -> hermesh.relay.v1.TakeMessagesRequest
+	71, // 89: hermesh.relay.v1.MessageService.Ack:input_type -> hermesh.relay.v1.AckMessagesRequest
+	73, // 90: hermesh.relay.v1.MessageService.Watch:input_type -> hermesh.relay.v1.WatchInboxRequest
+	75, // 91: hermesh.relay.v1.MessageService.Status:input_type -> hermesh.relay.v1.MessageStatusRequest
+	7,  // 92: hermesh.relay.v1.RelayPublicService.GetInfo:output_type -> hermesh.relay.v1.GetInfoResponse
+	9,  // 93: hermesh.relay.v1.RelayPublicService.Claim:output_type -> hermesh.relay.v1.ClaimResponse
+	11, // 94: hermesh.relay.v1.RelayPublicService.SubmitPairing:output_type -> hermesh.relay.v1.SubmitPairingResponse
+	13, // 95: hermesh.relay.v1.RelayPublicService.WaitPairing:output_type -> hermesh.relay.v1.WaitPairingResponse
+	24, // 96: hermesh.relay.v1.MachineControlService.ReportStatus:output_type -> hermesh.relay.v1.ReportStatusResponse
+	26, // 97: hermesh.relay.v1.MachineControlService.WatchUpdates:output_type -> hermesh.relay.v1.MachineUpdate
+	22, // 98: hermesh.relay.v1.MachineControlService.Leave:output_type -> hermesh.relay.v1.LeaveResponse
+	18, // 99: hermesh.relay.v1.MachineControlService.Notify:output_type -> hermesh.relay.v1.NotifyResponse
+	29, // 100: hermesh.relay.v1.ClientControlService.WhoAmI:output_type -> hermesh.relay.v1.WhoAmIResponse
+	31, // 101: hermesh.relay.v1.ClientControlService.ListMachines:output_type -> hermesh.relay.v1.ListMachinesResponse
+	33, // 102: hermesh.relay.v1.ClientControlService.GetLatestGrant:output_type -> hermesh.relay.v1.GetLatestGrantResponse
+	39, // 103: hermesh.relay.v1.OwnerControlService.GetPairingRequest:output_type -> hermesh.relay.v1.GetPairingRequestResponse
+	43, // 104: hermesh.relay.v1.OwnerControlService.ListPairingRequests:output_type -> hermesh.relay.v1.ListPairingRequestsResponse
+	41, // 105: hermesh.relay.v1.OwnerControlService.ClaimPairingRequest:output_type -> hermesh.relay.v1.ClaimPairingRequestResponse
+	46, // 106: hermesh.relay.v1.OwnerControlService.CompletePairing:output_type -> hermesh.relay.v1.CompletePairingResponse
+	31, // 107: hermesh.relay.v1.OwnerControlService.ListMachines:output_type -> hermesh.relay.v1.ListMachinesResponse
+	50, // 108: hermesh.relay.v1.OwnerControlService.ListClients:output_type -> hermesh.relay.v1.ListClientsResponse
+	48, // 109: hermesh.relay.v1.OwnerControlService.WatchOwner:output_type -> hermesh.relay.v1.OwnerUpdate
+	52, // 110: hermesh.relay.v1.OwnerControlService.PublishGrant:output_type -> hermesh.relay.v1.PublishGrantResponse
+	54, // 111: hermesh.relay.v1.OwnerControlService.PublishMachineCert:output_type -> hermesh.relay.v1.PublishMachineCertResponse
+	56, // 112: hermesh.relay.v1.OwnerControlService.Revoke:output_type -> hermesh.relay.v1.RevokeResponse
+	58, // 113: hermesh.relay.v1.OwnerControlService.PublishRootChain:output_type -> hermesh.relay.v1.PublishRootChainResponse
+	37, // 114: hermesh.relay.v1.OwnerControlService.RegisterPush:output_type -> hermesh.relay.v1.RegisterPushResponse
+	35, // 115: hermesh.relay.v1.OwnerControlService.PublishCards:output_type -> hermesh.relay.v1.PublishCardsResponse
+	61, // 116: hermesh.relay.v1.MessageService.Register:output_type -> hermesh.relay.v1.RegisterInboxResponse
+	63, // 117: hermesh.relay.v1.MessageService.Contacts:output_type -> hermesh.relay.v1.ContactsResponse
+	65, // 118: hermesh.relay.v1.MessageService.Send:output_type -> hermesh.relay.v1.SendSealedResponse
+	69, // 119: hermesh.relay.v1.MessageService.Fetch:output_type -> hermesh.relay.v1.FetchMessagesResponse
+	68, // 120: hermesh.relay.v1.MessageService.Take:output_type -> hermesh.relay.v1.TakeMessagesResponse
+	72, // 121: hermesh.relay.v1.MessageService.Ack:output_type -> hermesh.relay.v1.AckMessagesResponse
+	74, // 122: hermesh.relay.v1.MessageService.Watch:output_type -> hermesh.relay.v1.WatchInboxResponse
+	77, // 123: hermesh.relay.v1.MessageService.Status:output_type -> hermesh.relay.v1.MessageStatusResponse
+	92, // [92:124] is the sub-list for method output_type
+	60, // [60:92] is the sub-list for method input_type
 	60, // [60:60] is the sub-list for extension type_name
 	60, // [60:60] is the sub-list for extension extendee
 	0,  // [0:60] is the sub-list for field type_name
@@ -4419,7 +4519,7 @@ func file_hermesh_relay_v1_relay_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_hermesh_relay_v1_relay_proto_rawDesc), len(file_hermesh_relay_v1_relay_proto_rawDesc)),
 			NumEnums:      2,
-			NumMessages:   74,
+			NumMessages:   76,
 			NumExtensions: 0,
 			NumServices:   5,
 		},

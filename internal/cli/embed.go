@@ -145,7 +145,7 @@ func Tools() []Tool {
 				t.Arg.Type, t.Arg.Help = "array", t.Arg.Help+"s"
 			}
 		}
-		cmd.Flags().VisitAll(func(f *pflag.Flag) {
+		param := func(f *pflag.Flag) {
 			if localFlags[f.Name] || f.Hidden {
 				return
 			}
@@ -164,7 +164,9 @@ func Tools() []Tool {
 				p.Type = "string"
 			}
 			t.Params = append(t.Params, p)
-		})
+		}
+		cmd.Flags().VisitAll(param)
+		cmd.InheritedFlags().VisitAll(param) // --as
 		out = append(out, t)
 	}
 	return out

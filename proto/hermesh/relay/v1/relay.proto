@@ -422,6 +422,8 @@ service MessageService {
   rpc Send(SendSealedRequest) returns (SendSealedResponse);
   // The caller's waiting messages, oldest first.
   rpc Fetch(FetchMessagesRequest) returns (FetchMessagesResponse);
+  // Marks waiting messages taken: those a peeking caller was shown.
+  rpc Take(TakeMessagesRequest) returns (TakeMessagesResponse);
   // Handled messages, each with what became of it; the relay forgets them.
   rpc Ack(AckMessagesRequest) returns (AckMessagesResponse);
   // How many messages wait, at once and again whenever one arrives.
@@ -466,7 +468,16 @@ message FetchMessagesRequest {
   uint32 limit = 1;
   // Pass over this many of the oldest first: the next page.
   uint32 skip = 2;
+  // Leave them waiting: an agent with several names takes only its own
+  // (Take), so the others' receipts stay true (docs/agent-names.md §6).
+  bool peek = 3;
 }
+
+message TakeMessagesRequest {
+  repeated string message_ids = 1;
+}
+
+message TakeMessagesResponse {}
 
 message FetchMessagesResponse {
   repeated SealedMessage messages = 1;

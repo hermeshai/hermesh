@@ -267,12 +267,23 @@ func (m *messageService) Fetch(ctx context.Context, req *relayv1.FetchMessagesRe
 		res.Messages = append(res.Messages, &relayv1.SealedMessage{Inbox: w.Inbox, MessageId: w.ID, Sealed: w.Sealed, ReceivedAt: timestamppb.New(w.ReceivedAt)})
 		ids = append(ids, w.ID)
 	}
-	if len(ids) > 0 {
+	if len(ids) > 0 && !req.Peek {
 		if err := ms.SetMessageStates(p.t.ownerID, p.subject.ID, ids, "taken", time.Now()); err != nil {
 			return nil, err
 		}
 	}
 	return res, nil
+}
+
+func (m *messageService) Take(ctx context.Context, req *relayv1.TakeMessagesRequest) (*relayv1.TakeMessagesResponse, error) {
+	p := peerFrom(ctx)
+	if len(req.MessageIds) > maxInboxMessages {
+		return nil, errf(connect.CodeInvalidArgument, "too many ids at once")
+	}
+	if err := m.s.messageStore().SetMessageStates(p.t.ownerID, p.subject.ID, req.MessageIds, "taken", time.Now()); err != nil {
+		return nil, err
+	}
+	return &relayv1.TakeMessagesResponse{}, nil
 }
 
 func (m *messageService) Ack(ctx context.Context, req *relayv1.AckMessagesRequest) (*relayv1.AckMessagesResponse, error) {

@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -222,30 +223,39 @@ func (n *Machine) toolSend(ctx context.Context, session string, req ToolRequest)
 			to += "/" + r.Conversation
 		}
 	}
-	inbox, conv, _ := strings.Cut(to, "/")
-	if strings.HasPrefix(inbox, "m_") || strings.HasPrefix(inbox, "s_") {
+	if strings.HasPrefix(to, "m_") || strings.HasPrefix(to, "s_") {
 		return nil, errors.New("sessions write to agents, not to other sessions")
 	}
 	list, err := n.agentContacts(ctx)
 	if err != nil {
 		return nil, err
 	}
+	// An agent, by its address or name, and maybe a name under it: "Grok
+	// Bot/tech-demos", "c_…/tech-demos" (docs/agent-names.md §5).
+	agent, conv := to, ""
+	if i := strings.LastIndex(to, "/"); i >= 0 && !slices.ContainsFunc(list, func(c *identity.ContactInfo) bool { return c.Name == to }) {
+		agent, conv = to[:i], to[i+1:]
+		if conv, err = identity.NormalizeName(conv); err != nil {
+			return nil, fmt.Errorf("%q: %w", to, err)
+		}
+	}
 	var found []*identity.ContactInfo
 	for _, c := range list {
-		if c.Inbox == inbox || (!strings.HasPrefix(to, "c_") && c.Name == to) {
+		if c.Inbox == agent || (!strings.HasPrefix(agent, "c_") && c.Name == agent) {
 			found = append(found, c)
 		}
 	}
 	switch len(found) {
 	case 0:
-		return nil, fmt.Errorf("no agent %q among the owner's: see message_contacts", to)
+		return nil, fmt.Errorf("no agent %q among the owner's: see message_contacts", agent)
 	case 1:
 	default:
-		return nil, fmt.Errorf("%d agents are called %q: give an address from message_contacts", len(found), to)
+		return nil, fmt.Errorf("%d agents are called %q: give an address from message_contacts", len(found), agent)
 	}
 	c := found[0]
-	if !strings.HasPrefix(to, "c_") {
-		conv = ""
+	who := c.Name
+	if conv != "" {
+		who += "/" + conv
 	}
 	m := &inboxv1.Message{MessageId: "msg_" + strings.ToLower(ulid.Make().String()), From: &inboxv1.Address{Inbox: n.machineID, Session: session},
 		To: &inboxv1.Address{Inbox: c.Inbox, Session: conv}, SentAt: timestamppb.Now(), InReplyTo: req.ReplyTo, Subject: req.Subject, Text: req.Text}
@@ -253,6 +263,6 @@ func (n *Machine) toolSend(ctx context.Context, session string, req ToolRequest)
 		return nil, err
 	}
 	n.sessions.record(session, &sessionv1.SessionEvent{Kind: &sessionv1.SessionEvent_MessageSent{MessageSent: &sessionv1.MessageSent{
-		MessageId: m.MessageId, To: inboxAddress(m.To), ToName: c.Name, Text: m.Text, InReplyTo: m.InReplyTo}}})
-	return ToolSent{MessageID: m.MessageId, To: inboxAddress(m.To), Name: c.Name}, nil
+		MessageId: m.MessageId, To: inboxAddress(m.To), ToName: who, Text: m.Text, InReplyTo: m.InReplyTo}}})
+	return ToolSent{MessageID: m.MessageId, To: inboxAddress(m.To), Name: who}, nil
 }

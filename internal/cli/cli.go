@@ -23,6 +23,7 @@ import (
 	"github.com/hermeshai/hermesh/gen/go/hermesh/relay/v1/relayv1connect"
 	"github.com/hermeshai/hermesh/internal/machine"
 	"github.com/hermeshai/hermesh/internal/peer"
+	"github.com/hermeshai/hermesh/pkg/identity"
 	"github.com/hermeshai/hermesh/pkg/transport"
 )
 
@@ -114,10 +115,21 @@ func (a *app) root(defaultOutput string) *cobra.Command {
 	root := &cobra.Command{Use: "hermesh", Short: "Drive Claude Code, Codex and other coding agents on your owner's machines through Hermesh",
 		SilenceUsage: true, SilenceErrors: true}
 	root.PersistentFlags().StringVarP(&a.output, "output", "o", defaultOutput, "output format: text (to read) or json (one document, see docs/cli-output.md); HERMESH_OUTPUT=json makes json the default")
+	root.PersistentFlags().StringVar(&a.as, "as", "", asHelp)
 	root.SetFlagErrorFunc(func(_ *cobra.Command, err error) error { return &exitError{code: exitUsage, err: err} })
 	root.PersistentPreRunE = func(*cobra.Command, []string) error {
 		if a.output != "text" && a.output != "json" {
 			return &exitError{code: exitUsage, kind: "usage", err: fmt.Errorf("unknown output format %q (text or json)", a.output)}
+		}
+		if a.as == "" && a.mem == nil { // a caller running commands for others has no environment of theirs
+			a.as = os.Getenv("HERMESH_AS")
+		}
+		if a.as != "" {
+			n, err := identity.NormalizeName(a.as)
+			if err != nil {
+				return &exitError{code: exitUsage, kind: "usage", err: fmt.Errorf("--as %q: %w", a.as, err)}
+			}
+			a.as = n
 		}
 		if a.mem != nil {
 			return nil // credentials held by the caller, no files
@@ -159,13 +171,13 @@ func (a *app) execute(ctx context.Context, root *cobra.Command, stdout, stderr i
 		switch {
 		case errors.As(err, &ee) && ee.reported:
 		case a.output == "json":
-			writeDoc(stdout, err)
+			writeDoc(stdout, err, a.asField()...)
 		default:
 			fmt.Fprintln(stderr, "error:", err)
 		}
 		return exitCode(err)
 	}
-	if a.output == "text" && a.inboxWaiting > 0 {
+	if a.output == "text" && a.inboxWaiting > 0 && a.as == "" {
 		fmt.Fprintf(stderr, "%d message(s) wait in your inbox: hermesh message list\n", a.inboxWaiting)
 	}
 	return exitOK
