@@ -25,7 +25,7 @@ struct SessionView: View {
                 content(s)
                     .onChange(of: s.isActive) { _, running in rebuild(running: running) }
             } else {
-                PageLoader(text: "Reading the session…", bare: true).frame(maxHeight: .infinity)
+                PageLoader(text: "Reading the session…", bare: true)
             }
         }
         .navigationBarTitleDisplayMode(.inline)
@@ -65,7 +65,7 @@ struct SessionView: View {
             .padding(.vertical, 12)
         }
         .defaultScrollAnchor(.bottom)
-        .overlay { // in the middle of the page, not where the scroll ends
+        .overlay { // in the middle of the screen, not where the scroll ends
             if events.isEmpty && !caughtUp(s) {
                 PageLoader(text: "Reading the conversation…", bare: true)
             }
@@ -82,7 +82,11 @@ struct SessionView: View {
             ToolbarItem(placement: .principal) {
                 VStack(spacing: 0) {
                     Text(s.displayTitle).font(.subheadline.weight(.semibold)).lineLimit(1)
-                    Text("\(grant) · \(model.machineName(s.machineID))/\(s.projectID)").font(.caption2).foregroundStyle(.secondary).lineLimit(1)
+                    if model.shownSync != nil {
+                        SyncLine(small: true) // in place of the line below while what shows is not current
+                    } else {
+                        Text("\(grant) · \(model.machineName(s.machineID))/\(s.projectID)").font(.caption2).foregroundStyle(.secondary).lineLimit(1)
+                    }
                 }
             }
             if model.path.isEmpty { ToolbarItem(placement: .topBarLeading) { MenuButton() } }

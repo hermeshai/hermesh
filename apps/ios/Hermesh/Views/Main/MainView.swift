@@ -28,19 +28,22 @@ private struct PageView: View {
         NavigationStack(path: $model.path) {
             rootPage
                 .navigationDestination(for: Route.self) { route in
-                    Group {
                     switch route {
-                    case .session(let id): SessionView(id: id)
-                    case .grant(let id): GrantView(id: id)
-                    case .machine(let id): MachineView(id: id)
-                    case .machineAgent(let machine, let agent): MachineAgentView(machineID: machine, agent: agent)
-                    case .grantSessions(let id): ScopedSessionsView(filter: SessionFilter(grant: id), title: String(localized: "“\(model.clients.first { $0.clientID == id }?.label ?? "")” Sessions"))
-                    case .machineSessions(let id): ScopedSessionsView(filter: SessionFilter(machine: id), title: String(localized: "Sessions on \(model.machineName(id))"))
+                    case .session(let id): SessionView(id: id) // the sync line in its title's second line
+                    case .grant(let id): GrantView(id: id).syncSubtitle()
+                    case .machine(let id): MachineView(id: id).syncSubtitle()
+                    case .machineAgent(let machine, let agent): MachineAgentView(machineID: machine, agent: agent).syncSubtitle()
+                    case .grantSessions(let id): ScopedSessionsView(filter: SessionFilter(grant: id), title: String(localized: "“\(model.clients.first { $0.clientID == id }?.label ?? "")” Sessions")).syncSubtitle()
+                    case .machineSessions(let id): ScopedSessionsView(filter: SessionFilter(machine: id), title: String(localized: "Sessions on \(model.machineName(id))")).syncSubtitle()
                     }
-                    }
-                    .syncLine()
                 }
         }
+        .overlay(alignment: .top) { // in the middle of a root page's bar while its title is large
+            if model.path.isEmpty && model.root.titleLarge && !model.rootTitleSmall && model.shownSync != nil {
+                SyncLine().frame(height: 44)
+            }
+        }
+        .task(id: model.sync) { await model.showSync(model.sync) }
         .overlay(alignment: .bottom) {
             if let t = model.toast {
                 ToastView(toast: t) { model.toast = nil }
@@ -57,7 +60,7 @@ private struct PageView: View {
         case .grants: GrantsView()
         case .machines: MachinesView()
         case .sessions: SessionsView()
-        case .session(let id): SessionView(id: id).syncLine() // its title is in the bar
+        case .session(let id): SessionView(id: id)
         }
     }
 }
@@ -324,14 +327,28 @@ struct MenuButton: View {
 }
 
 extension View {
-    /// The menu button on a root page, and the sync line in its subtitle's
-    /// place: under the large title, and in the bar once the title is small
-    /// (a large-title page shows nothing in the middle of its bar).
-    func rootToolbar() -> some View {
-        toolbar {
-            ToolbarItem(placement: .topBarLeading) { MenuButton() }
-            ToolbarItem(placement: .largeSubtitle) { SyncLine(inBar: true).frame(maxWidth: .infinity, alignment: .leading) }
-            ToolbarItem(placement: .subtitle) { SyncLine(inBar: true) }
-        }
+    /// The menu button on a root page, and the sync line in the middle of
+    /// its bar: once the title is small, in its place; while it is large,
+    /// the bar shows nothing there (UIKit hides a title view then), so the
+    /// line is laid over the bar (PageView).
+    func rootToolbar() -> some View { modifier(RootToolbar()) }
+}
+
+private struct RootToolbar: ViewModifier {
+    @Environment(AppModel.self) private var model
+
+    func body(content: Content) -> some View {
+        content
+            .onScrollGeometryChange(for: Bool.self) { g in g.contentOffset.y + g.contentInsets.top > smallTitleAfter } action: { _, small in
+                model.rootTitleSmall = small
+            }
+            .onAppear { model.rootTitleSmall = false } // a root page shows from its top
+            .toolbar {
+                ToolbarItem(placement: .topBarLeading) { MenuButton() }
+                if model.rootTitleSmall && model.shownSync != nil { ToolbarItem(placement: .principal) { SyncLine() } }
+            }
     }
 }
+
+/// How far a root page scrolls before its title is small.
+private let smallTitleAfter: CGFloat = 44

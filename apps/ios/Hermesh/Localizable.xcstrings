@@ -877,12 +877,12 @@
         }
       }
     },
-    "Can’t reach Hermesh; showing what was last seen": {
+    "Can’t reach Hermesh": {
       "localizations": {
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "暂时连不上 Hermesh，显示的是上次看到的内容"
+            "value": "暂时连不上 Hermesh"
           }
         }
       }

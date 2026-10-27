@@ -108,7 +108,8 @@ extension Color {
 
 /// A wait the page has the room for: the mark, pulsing, and what is being
 /// done ("Reading the conversation…", never just "Loading…"); bare, the
-/// mark alone, which says it to VoiceOver only.
+/// mark alone, which says it to VoiceOver only, in the middle of the
+/// screen (not of the room the bars leave, which sits lower).
 struct PageLoader: View {
     let text: LocalizedStringKey
     var bare = false
@@ -126,6 +127,8 @@ struct PageLoader: View {
             .accessibilityLabel(Text(text))
             .accessibilityIdentifier("loading")
         }
+        .frame(maxHeight: bare ? .infinity : nil)
+        .ignoresSafeArea(edges: bare ? .all : [])
     }
 }
 
@@ -179,42 +182,44 @@ struct Delayed<Content: View>: View {
 }
 
 /// While what a page shows is not current yet (the app is connecting, or
-/// reading a machine again after a while away): a quiet line saying so. A
-/// root page has it in the middle of its navigation bar, where nothing else
-/// is; a page with a title of its own has it floating over its top. Either
-/// way nothing moves when it comes or goes.
+/// reading a machine again after a while away): a quiet line saying so,
+/// always in the navigation bar, never over the page. A root page has it in
+/// the middle of its bar, where its title goes once small (the title comes
+/// back when it is gone); a page with a title of its own has it under that
+/// title.
 struct SyncLine: View {
     @Environment(AppModel.self) private var model
-    /// In the navigation bar: smaller, and without a backing.
-    var inBar = false
-    /// What it last said, kept while it fades out.
-    @State private var said: Sync?
+    /// Under a title: smaller.
+    var small = false
 
     var body: some View {
-        Delayed(active: model.sync != nil) {
-            if let sync = model.sync ?? said {
-                HStack(spacing: 8) {
-                    if case .offline = sync {
-                        Mark(size: 15).opacity(0.4) // offline: the mark at rest, faint (as the menu bar's)
-                    } else {
-                        MovingMark(size: 15, motion: .seq, mono: true)
-                    }
-                    Text(sync.text).lineLimit(1)
+        if let sync = model.shownSync {
+            HStack(spacing: small ? 5 : 7) {
+                if case .offline = sync {
+                    Mark(size: small ? 11 : 15).opacity(0.4) // offline: the mark at rest, faint (as the menu bar's)
+                } else {
+                    MovingMark(size: small ? 11 : 15, motion: .seq, mono: true)
                 }
-                .font(inBar ? .caption : .footnote).foregroundStyle(.secondary)
-                .padding(.horizontal, inBar ? 0 : 14).padding(.vertical, inBar ? 0 : 8)
-                .background(inBar ? AnyShapeStyle(.clear) : AnyShapeStyle(.thickMaterial), in: .capsule) // over the page's text, which glass lets through
-                .shadow(color: .black.opacity(inBar ? 0 : 0.08), radius: 8, y: 2)
-                .padding(.top, inBar ? 0 : 6)
-                .accessibilityElement(children: .combine)
-                .accessibilityIdentifier("sync-line")
+                Text(sync.text).lineLimit(1)
             }
+            .font(small ? .caption2 : .subheadline).foregroundStyle(.secondary)
+            .accessibilityElement(children: .combine)
+            .accessibilityIdentifier("sync-line")
         }
-        .onChange(of: model.sync, initial: true) { _, now in if let now { said = now } }
     }
 }
 
 extension View {
-    /// The sync line floating at the top of the page.
-    func syncLine() -> some View { overlay(alignment: .top) { SyncLine() } }
+    /// The sync line under the page's title, while there is one.
+    func syncSubtitle() -> some View { modifier(SyncSubtitle()) }
+}
+
+private struct SyncSubtitle: ViewModifier {
+    @Environment(AppModel.self) private var model
+
+    func body(content: Content) -> some View {
+        content.toolbar {
+            if model.shownSync != nil { ToolbarItem(placement: .subtitle) { SyncLine(small: true) } }
+        }
+    }
 }
