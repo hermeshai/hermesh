@@ -1,7 +1,7 @@
 # Names under an agent: several bots on one connection, each woken on its own
 
 Status: designed and reviewed 2026-10-27 (§12); steps 1 and 2 (§11) built
-the same day (§13). It builds on
+the same day (§13), and the Mac app's part of step 3. It builds on
 [agent-messages.md](agent-messages.md) (steps 1–3, built) and replaces its
 §6.3 doorbell setup.
 
@@ -370,4 +370,16 @@ Steps 1 and 2, 2026-10-27 (`TestNames`, `TestWake`, `TestMCPInbox`):
 - **Only a trusted device sets doorbells up**; a Mac that is only a machine
   is refused, as for every approval.
 - **`hermesh_status` takes `as`**, to say that name's doorbell.
+
+Step 3, the Mac app, 2026-10-27 (desktop e2e `settings`):
+
+- **The doorbells sit on the agent's Access page**, under "Wake on New
+  Messages", for every agent: a relay without the MCP gateway answers
+  Unimplemented, and the group is left out.
+- **No paste buttons on the Mac**: ⌘V does it. The iPhone gets them.
+- **A failed check says why in the app's words**, from the webhook's answer
+  (400: is the routine on? 401: the key; 404: the URL; 429, 5xx: try again).
+- **The signing secret** shows, folded, once the doorbell is saved.
+- **The key field takes the key alone** ("crsr_…"); the app sends it as
+  `Bearer <key>`, or as typed if it already says Bearer.
 

@@ -8,6 +8,7 @@ import { hostOf } from "../sheets/Pairing";
 import { machineName } from "../Sidebar";
 import { useNow, useStore, type Store } from "../store";
 import { GoRow, More, Row } from "./common";
+import { Wakes } from "./Wakes";
 
 /** Whole days until the grant ends (0 once it has). */
 function daysLeft(c: Client, now: Date): number {
@@ -121,6 +122,7 @@ function GrantDetail({ c }: { c: Client }) {
         <button className="btn" onClick={() => scope(true)}>{t("grants.renew")}</button>
         <button className="btn danger push" onClick={revoke}>{t("grants.disconnect")}</button>
       </div>
+      <Wakes c={c} />
       <More>
         <div className="fgroup">
           <div className="frow">

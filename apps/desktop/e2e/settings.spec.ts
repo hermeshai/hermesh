@@ -1,9 +1,11 @@
 import { expect, test, type ElectronApplication, type Page } from "@playwright/test";
 import { codingAgentIds, codingAgentTitle } from "@hermesh/ui/agents";
 import fs from "node:fs";
+import http from "node:http";
+import type { AddressInfo } from "node:net";
 import os from "node:os";
 import path from "node:path";
-import { answerMenu, gitRepo, launch, pickAnswers, snap } from "./app";
+import { answerMenu, cli, gitRepo, launch, pickAnswers, snap } from "./app";
 
 // The settings window: a window of its own (⌘,), laid out as System
 // Settings, for what is set up once and changed rarely.
@@ -97,6 +99,76 @@ test("settings opens on 通用; 授权 lists the grants, one opens its scope, an
   await expect(palette.getByRole("combobox", { name: "授权" }).locator("option:checked")).toHaveText("bot");
   await expect(palette.getByRole("listbox", { name: "搜索结果" }).getByRole("option").first()).toBeVisible();
   await app.close();
+});
+
+test("an agent's page wakes one of its bots: four steps, a wrong key caught by the check, then listed, called and removed", async () => {
+  // The bot's routine: a webhook that takes one key.
+  const calls: { type?: string; as?: string; raw: string }[] = [];
+  const server = http.createServer((req, res) => {
+    let raw = "";
+    req.on("data", (c) => (raw += c));
+    req.on("end", () => {
+      calls.push({ ...JSON.parse(raw || "{}"), raw });
+      res.statusCode = req.headers.authorization === "Bearer crsr_test" ? 200 : 401;
+      res.end();
+    });
+  });
+  await new Promise<void>((r) => server.listen(0, "127.0.0.1", r));
+  const url = `http://127.0.0.1:${(server.address() as AddressInfo).port}/hook`;
+  const { app, page } = await launch();
+  try {
+    const settings = await openSettings(app, page);
+    await nav(settings, "授权").click();
+    const grants = page_(settings, "授权");
+    await grants.getByRole("list", { name: "授权" }).getByRole("button", { name: /bot/ }).click();
+    const wake = grants.getByRole("list", { name: "新消息提醒" });
+    await expect(wake).toContainText("还没有设置。");
+
+    await grants.getByRole("button", { name: "添加…" }).click();
+    const dialog = settings.getByRole("dialog");
+    await expect(dialog).toContainText("第 1 步，共 4 步");
+    await dialog.getByRole("textbox", { name: "bot 的名字" }).fill("Tech Demos");
+    await dialog.getByRole("button", { name: "下一步" }).click();
+    await expect(dialog.getByRole("heading", { name: "在「Tech Demos」里建一个 routine" })).toBeVisible();
+    await dialog.getByRole("button", { name: "复制指令" }).click();
+    await expect(dialog.getByRole("button", { name: "再复制一次" })).toBeVisible();
+    await dialog.getByText("怎么建？").click();
+    await expect(dialog.locator(".msgbox")).toContainText('as 填 "Tech Demos"');
+    await snap(settings, "settings-wake-routine");
+    await dialog.getByRole("button", { name: "建好了" }).click();
+
+    // A wrong key: the check says so, and nothing is kept.
+    await dialog.getByLabel("Webhook 地址").fill(url);
+    await dialog.getByLabel("密钥", { exact: true }).fill("wrong");
+    await dialog.getByRole("button", { name: "检查" }).click();
+    await expect(dialog).toContainText("没连上");
+    await expect(dialog).toContainText("对方回复 401：密钥不对");
+    await dialog.getByRole("button", { name: "回去改" }).click();
+    await dialog.getByLabel("密钥", { exact: true }).fill("crsr_test");
+    await dialog.getByRole("button", { name: "检查" }).click();
+    await expect(dialog).toContainText("「Tech Demos」设置好了");
+    expect(calls.map((c) => c.type)).toEqual(["hermesh.check", "hermesh.check"]);
+    await snap(settings, "settings-wake-ok");
+    await dialog.getByRole("button", { name: "完成" }).click();
+    const row = wake.getByRole("button", { name: /tech-demos/ });
+    await expect(row).toContainText("已开");
+    await snap(settings, "settings-wake-listed");
+
+    // A message to the bot calls its webhook, naming it and nothing more.
+    await cli("message", "send", "--to", "bot/Tech Demos", "--message", "the review is ready");
+    await expect.poll(() => calls.find((c) => c.type === "hermesh.message")?.as, { timeout: 30_000 }).toBe("tech-demos");
+    expect(calls.map((c) => c.raw).join()).not.toContain("the review is ready");
+
+    // Removed, it's gone.
+    await row.click();
+    await expect(dialog).toContainText("叫醒「tech-demos」");
+    await dialog.getByRole("button", { name: "移除…" }).click();
+    await settings.getByRole("dialog", { name: "不再叫醒「tech-demos」？" }).getByRole("button", { name: "移除" }).click();
+    await expect(wake).toContainText("还没有设置。");
+  } finally {
+    await app.close();
+    server.close();
+  }
 });
 
 test("settings 机器 opens this Mac: its sharing, its agents each opening a page with their projects; rename, pause and resume it", async () => {

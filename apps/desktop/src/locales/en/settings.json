@@ -151,5 +151,16 @@
     "recheck": "Check Agents Again",
     "copyDiagnostics": "Copy Diagnostics",
     "diagnosticsCopied": "Diagnostics copied: paste them to us"
+  },
+  "wake": {
+    "title": "Wake on New Messages",
+    "none": "Nothing wakes this agent yet.",
+    "note": "Hermesh calls a webhook, such as a Grok Bot routine's, to wake this agent or one of its bots when messages wait for it. It never says what they say.",
+    "add": "Add…",
+    "self": "{{agent}} itself",
+    "on": "On",
+    "broken": "Not working",
+    "lastRang": "Called {{ago}}",
+    "notYet": "Not called yet"
   }
 }
