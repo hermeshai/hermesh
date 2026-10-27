@@ -87,7 +87,8 @@ type Server struct {
 	messageMem   memoryMessages
 	messageLimit *rateLimiter
 	pairLimit    *rateLimiter
-	messageHook  func(ownerID, inbox string)
+	messageHook  func(ownerID, inbox string, ring *string)
+	doorbells    Doorbells
 	expiredAt    time.Time
 
 	mu      sync.Mutex

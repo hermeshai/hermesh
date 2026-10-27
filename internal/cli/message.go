@@ -32,7 +32,7 @@ import (
 
 func (a *app) messageCmd() *cobra.Command {
 	cmd := group(&cobra.Command{Use: "message", Short: "Messages between your owner's agents and sessions: your inbox, and what became of what you sent"})
-	cmd.AddCommand(a.messageSendCmd(), a.messageListCmd(), a.messageAckCmd(), a.messageStatusCmd(), a.messageContactsCmd(), a.messageHookCmd(), a.messageWatchCmd())
+	cmd.AddCommand(a.messageSendCmd(), a.messageListCmd(), a.messageAckCmd(), a.messageStatusCmd(), a.messageContactsCmd(), a.messageWakeCmd(), a.messageHookCmd(), a.messageWatchCmd())
 	return cmd
 }
 
@@ -568,6 +568,9 @@ type contactJSON struct {
 	TakesMessages string `json:"takes_messages"`
 	HasInbox      bool   `json:"has_inbox"`
 	You           bool   `json:"you"`
+	// Woken are the names under it with a doorbell ("" for itself): write
+	// to one as <name>/<woken name>, or @<woken name>.
+	Woken []string `json:"woken"`
 }
 
 // contacts are the owner's inboxes that verify, agents first, by name.
@@ -579,13 +582,18 @@ func (a *app) contacts(ctx context.Context, ms relayv1connect.MessageServiceClie
 	if res.RootChain != nil {
 		a.trust.AcceptRootChain(res.RootChain)
 	}
+	woken := map[string][]string{}
+	for _, w := range res.Woken {
+		woken[w.Inbox] = w.Names
+	}
 	out := []contactJSON{}
 	for _, c := range res.Contacts {
 		info, err := a.trust.VerifyContact(c)
 		if err != nil {
 			continue
 		}
-		v := contactJSON{Name: info.Name, Address: info.Inbox, Kind: info.Kind, TakesMessages: info.TakesMessages, HasInbox: info.InboxKey != nil, You: info.Inbox == a.g.ClientId}
+		v := contactJSON{Name: info.Name, Address: info.Inbox, Kind: info.Kind, TakesMessages: info.TakesMessages, HasInbox: info.InboxKey != nil, You: info.Inbox == a.g.ClientId,
+			Woken: append([]string{}, woken[info.Inbox]...)}
 		if info.Kind == "machine" {
 			v.Name = a.machineName(info.Inbox)
 		}
@@ -636,6 +644,11 @@ func (a *app) messageContactsCmd() *cobra.Command {
 					note = "  (no inbox yet: its Hermesh is older)"
 				}
 				fmt.Fprintf(cmd.OutOrStdout(), "%-28s %-8s %s%s\n", v.Name, v.Kind, v.Address, note)
+				for _, n := range v.Woken {
+					if n != "" {
+						fmt.Fprintf(cmd.OutOrStdout(), "  @%-26s woken    %s/%s\n", n, v.Address, n)
+					}
+				}
 			}
 			return nil
 		},
@@ -649,6 +662,9 @@ func (a *app) messageContactsCmd() *cobra.Command {
 type contactRec struct {
 	info *identity.ContactInfo
 	raw  *identityv1.Contact
+	// woken are its names with a doorbell, "" for the agent itself
+	// (docs/agent-names.md §7.1).
+	woken []string
 }
 
 func (a *app) contactRecs(ctx context.Context, ms relayv1connect.MessageServiceClient) ([]contactRec, error) {
@@ -659,10 +675,14 @@ func (a *app) contactRecs(ctx context.Context, ms relayv1connect.MessageServiceC
 	if res.RootChain != nil {
 		a.trust.AcceptRootChain(res.RootChain)
 	}
+	woken := map[string][]string{}
+	for _, w := range res.Woken {
+		woken[w.Inbox] = w.Names
+	}
 	var out []contactRec
 	for _, c := range res.Contacts {
 		if info, err := a.trust.VerifyContact(c); err == nil {
-			out = append(out, contactRec{info, c})
+			out = append(out, contactRec{info, c, woken[info.Inbox]})
 		}
 	}
 	return out, nil
@@ -675,6 +695,8 @@ type target struct {
 	name           string
 	machine        *machineRef // a session's machine
 	contact        *contactRec
+	// woken: the address has a doorbell, rung by the name on the envelope.
+	woken bool
 }
 
 // resolveTarget reads --to: an agent's name or address (c_…, c_…/<conversation>),
@@ -708,6 +730,9 @@ func (a *app) resolveTarget(to string, contacts []contactRec, machines []machine
 		}
 		return t, nil
 	}
+	if handle, ok := strings.CutPrefix(to, "@"); ok {
+		return a.resolveHandle(handle, contacts)
+	}
 	// An agent, by its address or its name as the owner approved it, and
 	// maybe a name under it: "Grok Bot", "Grok Bot/tech-demos",
 	// "c_…/tech-demos" (docs/agent-names.md §5).
@@ -736,7 +761,34 @@ func (a *app) resolveTarget(to string, contacts []contactRec, machines []machine
 		}
 		t.session, t.name = n, t.name+"/"+n
 	}
+	t.woken = slices.Contains(found[0].woken, t.session)
 	return t, nil
+}
+
+// resolveHandle reads @name: a name with a doorbell, under exactly one of
+// the owner's agents.
+func (a *app) resolveHandle(handle string, contacts []contactRec) (target, error) {
+	n, err := identity.NormalizeName(handle)
+	if err != nil {
+		return target{}, &exitError{code: exitUsage, kind: "usage", err: fmt.Errorf("@%s: %w", handle, err)}
+	}
+	var found []target
+	var where []string
+	for i, c := range contacts {
+		if c.info.Kind != "machine" && slices.Contains(c.woken, n) {
+			found = append(found, target{inbox: c.info.Inbox, session: n, name: c.info.Name + "/" + n, contact: &contacts[i], woken: true})
+			where = append(where, c.info.Name+"/"+n)
+		}
+	}
+	switch len(found) {
+	case 1:
+		return found[0], nil
+	case 0:
+		return target{}, &exitError{code: exitUsage, kind: "not_found", err: fmt.Errorf("no agent has a woken name @%s", n),
+			hint: "write the agent and the name (<agent>/<name>); `hermesh message contacts` lists the woken names"}
+	}
+	return target{}, &exitError{code: exitUsage, kind: "not_found", err: fmt.Errorf("@%s is a name of %d agents: write one of %s", n, len(found), strings.Join(where, ", ")),
+		hint: "write the agent and the name (<agent>/<name>)"}
 }
 
 // agentCalled reports whether one of the owner's agents is called name.
@@ -753,6 +805,9 @@ func agentCalled(contacts []contactRec, name string) bool {
 func expectation(t target) string {
 	if t.session != "" && t.machine != nil {
 		return ""
+	}
+	if t.woken {
+		return t.name + " is woken by its webhook: it sees this within a minute or two"
 	}
 	switch t.contact.info.TakesMessages {
 	case "webhook":
@@ -883,7 +938,11 @@ func (a *app) post(ctx context.Context, ms relayv1connect.MessageServiceClient, 
 	if err != nil {
 		return err
 	}
-	_, err = ms.Send(ctx, &relayv1.SendSealedRequest{Message: &relayv1.SealedMessage{Inbox: t.inbox, MessageId: m.MessageId, Sealed: sealed}})
+	sm := &relayv1.SealedMessage{Inbox: t.inbox, MessageId: m.MessageId, Sealed: sealed}
+	if t.woken {
+		sm.Ring = &t.session // the post office rings its doorbell
+	}
+	_, err = ms.Send(ctx, &relayv1.SendSealedRequest{Message: sm})
 	return err
 }
 
@@ -1030,4 +1089,44 @@ func (a *app) take(ctx context.Context, ms relayv1connect.MessageServiceClient, 
 		req.MessageIds = append(req.MessageIds, o.m.MessageId)
 	}
 	ms.Take(ctx, req)
+}
+
+// messageWakeCmd asks for a one-time link with which the owner sets up the
+// caller's doorbell (docs/agent-names.md §7.2): the webhook's key goes from
+// the owner to Hermesh, never through the agent.
+func (a *app) messageWakeCmd() *cobra.Command {
+	return &cobra.Command{
+		Use:   "wake",
+		Short: "Ask your owner to have Hermesh wake you (a webhook that starts you, such as a Grok Bot routine's) when messages arrive for you (--as: for that name); prints a one-time link for your owner",
+		Args:  cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			ctx := cmd.Context()
+			c, _, err := a.connect(ctx, nil)
+			if err != nil {
+				return err
+			}
+			defer c.Close()
+			ms, err := a.messages(c)
+			if err != nil {
+				return err
+			}
+			res, err := ms.WakeLink(ctx, &relayv1.WakeLinkRequest{Name: a.as})
+			if err != nil {
+				return err
+			}
+			tell := fmt.Sprintf("In the Hermesh app on the Mac: Settings → Access → %s → Wake → Add…, with the webhook's URL and key", a.g.ClientLabel)
+			if a.as != "" {
+				tell += fmt.Sprintf(", for the name %q", a.as)
+			}
+			if res.Link != "" {
+				tell = fmt.Sprintf("Open %s, signed in to Hermesh, and paste the webhook's URL and key there (the link works once, for 30 minutes)", res.Link)
+			}
+			tell += "."
+			if a.output == "json" {
+				return a.report(cmd.OutOrStdout(), nil, field{"wake", object{{"link", res.Link}, {"expires_at", timeJSON(res.ExpiresAt.AsTime())}}}, field{"tell_owner", tell})
+			}
+			fmt.Fprintln(cmd.OutOrStdout(), "Tell your owner:", tell)
+			return nil
+		},
+	}
 }

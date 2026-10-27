@@ -99,6 +99,13 @@ service LocalService {
   rpc ListClients(ListClientsRequest) returns (ListClientsResponse);
   rpc UpdateClient(UpdateClientRequest) returns (UpdateClientResponse);
   rpc RevokeClient(RevokeClientRequest) returns (RevokeClientResponse);
+  // Agents' doorbells (docs/agent-names.md §7): the webhook rung when
+  // messages wait for an agent or a name under it.
+  rpc ListWakes(ListWakesRequest) returns (ListWakesResponse);
+  rpc SetWake(SetWakeRequest) returns (SetWakeResponse);
+  rpc CheckWake(CheckWakeRequest) returns (CheckWakeResponse);
+  rpc ClearWake(ClearWakeRequest) returns (ClearWakeResponse);
+  rpc OpenWakeLink(OpenWakeLinkRequest) returns (OpenWakeLinkResponse);
 
   // Sessions (read across all reachable machines over E2E).
   rpc ListSessions(ListSessionsRequest) returns (ListSessionsResponse);
@@ -690,6 +697,80 @@ message RevokeClientRequest {
 
 message RevokeClientResponse {
   repeated MachineAck acks = 1;
+}
+
+// Wake is a doorbell (relay.v1.Wake): its key is never shown again.
+message Wake {
+  string client_id = 1;
+  // "" for the agent itself.
+  string name = 2;
+  string url = 3;
+  // "on" or "broken".
+  string state = 4;
+  string reason = 5;
+  google.protobuf.Timestamp last_ring_at = 6;
+  int32 last_status = 7;
+  uint32 waiting = 8;
+}
+
+message WakeCheck {
+  bool ok = 1;
+  int32 status = 2;
+  string reason = 3;
+}
+
+message ListWakesRequest {
+  // One agent's; empty for all.
+  string client_id = 1;
+}
+
+message ListWakesResponse {
+  repeated Wake wakes = 1;
+}
+
+message SetWakeRequest {
+  // The address, or a wake link's code naming it.
+  string client_id = 1;
+  string name = 2;
+  string code = 3;
+  string url = 4;
+  string authorization = 5;
+  // Keep it even if the check fails, marked broken.
+  bool keep = 6;
+}
+
+message SetWakeResponse {
+  Wake wake = 1;
+  WakeCheck check = 2;
+  // What signs its rings, shown this once (relay.v1.SetWakeResponse).
+  string signing_secret = 3;
+}
+
+message CheckWakeRequest {
+  string client_id = 1;
+  string name = 2;
+}
+
+message CheckWakeResponse {
+  Wake wake = 1;
+  WakeCheck check = 2;
+}
+
+message ClearWakeRequest {
+  string client_id = 1;
+  string name = 2;
+}
+
+message ClearWakeResponse {}
+
+message OpenWakeLinkRequest {
+  string code = 1;
+}
+
+message OpenWakeLinkResponse {
+  string client_id = 1;
+  string name = 2;
+  google.protobuf.Timestamp expires_at = 3;
 }
 
 message MachineAck {

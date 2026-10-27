@@ -130,6 +130,17 @@ const (
 	// LocalServiceRevokeClientProcedure is the fully-qualified name of the LocalService's RevokeClient
 	// RPC.
 	LocalServiceRevokeClientProcedure = "/hermesh.local.v1.LocalService/RevokeClient"
+	// LocalServiceListWakesProcedure is the fully-qualified name of the LocalService's ListWakes RPC.
+	LocalServiceListWakesProcedure = "/hermesh.local.v1.LocalService/ListWakes"
+	// LocalServiceSetWakeProcedure is the fully-qualified name of the LocalService's SetWake RPC.
+	LocalServiceSetWakeProcedure = "/hermesh.local.v1.LocalService/SetWake"
+	// LocalServiceCheckWakeProcedure is the fully-qualified name of the LocalService's CheckWake RPC.
+	LocalServiceCheckWakeProcedure = "/hermesh.local.v1.LocalService/CheckWake"
+	// LocalServiceClearWakeProcedure is the fully-qualified name of the LocalService's ClearWake RPC.
+	LocalServiceClearWakeProcedure = "/hermesh.local.v1.LocalService/ClearWake"
+	// LocalServiceOpenWakeLinkProcedure is the fully-qualified name of the LocalService's OpenWakeLink
+	// RPC.
+	LocalServiceOpenWakeLinkProcedure = "/hermesh.local.v1.LocalService/OpenWakeLink"
 	// LocalServiceListSessionsProcedure is the fully-qualified name of the LocalService's ListSessions
 	// RPC.
 	LocalServiceListSessionsProcedure = "/hermesh.local.v1.LocalService/ListSessions"
@@ -254,6 +265,13 @@ type LocalServiceClient interface {
 	ListClients(context.Context, *v1.ListClientsRequest) (*v1.ListClientsResponse, error)
 	UpdateClient(context.Context, *v1.UpdateClientRequest) (*v1.UpdateClientResponse, error)
 	RevokeClient(context.Context, *v1.RevokeClientRequest) (*v1.RevokeClientResponse, error)
+	// Agents' doorbells (docs/agent-names.md §7): the webhook rung when
+	// messages wait for an agent or a name under it.
+	ListWakes(context.Context, *v1.ListWakesRequest) (*v1.ListWakesResponse, error)
+	SetWake(context.Context, *v1.SetWakeRequest) (*v1.SetWakeResponse, error)
+	CheckWake(context.Context, *v1.CheckWakeRequest) (*v1.CheckWakeResponse, error)
+	ClearWake(context.Context, *v1.ClearWakeRequest) (*v1.ClearWakeResponse, error)
+	OpenWakeLink(context.Context, *v1.OpenWakeLinkRequest) (*v1.OpenWakeLinkResponse, error)
 	// Sessions (read across all reachable machines over E2E).
 	ListSessions(context.Context, *v1.ListSessionsRequest) (*v1.ListSessionsResponse, error)
 	// WatchSessions pushes session changes from every reachable machine as
@@ -507,6 +525,36 @@ func NewLocalServiceClient(httpClient connect.HTTPClient, baseURL string, opts .
 			connect.WithSchema(localServiceMethods.ByName("RevokeClient")),
 			connect.WithClientOptions(opts...),
 		),
+		listWakes: connect.NewClient[v1.ListWakesRequest, v1.ListWakesResponse](
+			httpClient,
+			baseURL+LocalServiceListWakesProcedure,
+			connect.WithSchema(localServiceMethods.ByName("ListWakes")),
+			connect.WithClientOptions(opts...),
+		),
+		setWake: connect.NewClient[v1.SetWakeRequest, v1.SetWakeResponse](
+			httpClient,
+			baseURL+LocalServiceSetWakeProcedure,
+			connect.WithSchema(localServiceMethods.ByName("SetWake")),
+			connect.WithClientOptions(opts...),
+		),
+		checkWake: connect.NewClient[v1.CheckWakeRequest, v1.CheckWakeResponse](
+			httpClient,
+			baseURL+LocalServiceCheckWakeProcedure,
+			connect.WithSchema(localServiceMethods.ByName("CheckWake")),
+			connect.WithClientOptions(opts...),
+		),
+		clearWake: connect.NewClient[v1.ClearWakeRequest, v1.ClearWakeResponse](
+			httpClient,
+			baseURL+LocalServiceClearWakeProcedure,
+			connect.WithSchema(localServiceMethods.ByName("ClearWake")),
+			connect.WithClientOptions(opts...),
+		),
+		openWakeLink: connect.NewClient[v1.OpenWakeLinkRequest, v1.OpenWakeLinkResponse](
+			httpClient,
+			baseURL+LocalServiceOpenWakeLinkProcedure,
+			connect.WithSchema(localServiceMethods.ByName("OpenWakeLink")),
+			connect.WithClientOptions(opts...),
+		),
 		listSessions: connect.NewClient[v1.ListSessionsRequest, v1.ListSessionsResponse](
 			httpClient,
 			baseURL+LocalServiceListSessionsProcedure,
@@ -637,6 +685,11 @@ type localServiceClient struct {
 	listClients            *connect.Client[v1.ListClientsRequest, v1.ListClientsResponse]
 	updateClient           *connect.Client[v1.UpdateClientRequest, v1.UpdateClientResponse]
 	revokeClient           *connect.Client[v1.RevokeClientRequest, v1.RevokeClientResponse]
+	listWakes              *connect.Client[v1.ListWakesRequest, v1.ListWakesResponse]
+	setWake                *connect.Client[v1.SetWakeRequest, v1.SetWakeResponse]
+	checkWake              *connect.Client[v1.CheckWakeRequest, v1.CheckWakeResponse]
+	clearWake              *connect.Client[v1.ClearWakeRequest, v1.ClearWakeResponse]
+	openWakeLink           *connect.Client[v1.OpenWakeLinkRequest, v1.OpenWakeLinkResponse]
 	listSessions           *connect.Client[v1.ListSessionsRequest, v1.ListSessionsResponse]
 	watchSessions          *connect.Client[v1.WatchSessionsRequest, v1.WatchSessionsResponse]
 	streamSessionEvents    *connect.Client[v1.StreamSessionEventsRequest, v11.SessionEvent]
@@ -961,6 +1014,51 @@ func (c *localServiceClient) RevokeClient(ctx context.Context, req *v1.RevokeCli
 	return nil, err
 }
 
+// ListWakes calls hermesh.local.v1.LocalService.ListWakes.
+func (c *localServiceClient) ListWakes(ctx context.Context, req *v1.ListWakesRequest) (*v1.ListWakesResponse, error) {
+	response, err := c.listWakes.CallUnary(ctx, connect.NewRequest(req))
+	if response != nil {
+		return response.Msg, err
+	}
+	return nil, err
+}
+
+// SetWake calls hermesh.local.v1.LocalService.SetWake.
+func (c *localServiceClient) SetWake(ctx context.Context, req *v1.SetWakeRequest) (*v1.SetWakeResponse, error) {
+	response, err := c.setWake.CallUnary(ctx, connect.NewRequest(req))
+	if response != nil {
+		return response.Msg, err
+	}
+	return nil, err
+}
+
+// CheckWake calls hermesh.local.v1.LocalService.CheckWake.
+func (c *localServiceClient) CheckWake(ctx context.Context, req *v1.CheckWakeRequest) (*v1.CheckWakeResponse, error) {
+	response, err := c.checkWake.CallUnary(ctx, connect.NewRequest(req))
+	if response != nil {
+		return response.Msg, err
+	}
+	return nil, err
+}
+
+// ClearWake calls hermesh.local.v1.LocalService.ClearWake.
+func (c *localServiceClient) ClearWake(ctx context.Context, req *v1.ClearWakeRequest) (*v1.ClearWakeResponse, error) {
+	response, err := c.clearWake.CallUnary(ctx, connect.NewRequest(req))
+	if response != nil {
+		return response.Msg, err
+	}
+	return nil, err
+}
+
+// OpenWakeLink calls hermesh.local.v1.LocalService.OpenWakeLink.
+func (c *localServiceClient) OpenWakeLink(ctx context.Context, req *v1.OpenWakeLinkRequest) (*v1.OpenWakeLinkResponse, error) {
+	response, err := c.openWakeLink.CallUnary(ctx, connect.NewRequest(req))
+	if response != nil {
+		return response.Msg, err
+	}
+	return nil, err
+}
+
 // ListSessions calls hermesh.local.v1.LocalService.ListSessions.
 func (c *localServiceClient) ListSessions(ctx context.Context, req *v1.ListSessionsRequest) (*v1.ListSessionsResponse, error) {
 	response, err := c.listSessions.CallUnary(ctx, connect.NewRequest(req))
@@ -1163,6 +1261,13 @@ type LocalServiceHandler interface {
 	ListClients(context.Context, *v1.ListClientsRequest) (*v1.ListClientsResponse, error)
 	UpdateClient(context.Context, *v1.UpdateClientRequest) (*v1.UpdateClientResponse, error)
 	RevokeClient(context.Context, *v1.RevokeClientRequest) (*v1.RevokeClientResponse, error)
+	// Agents' doorbells (docs/agent-names.md §7): the webhook rung when
+	// messages wait for an agent or a name under it.
+	ListWakes(context.Context, *v1.ListWakesRequest) (*v1.ListWakesResponse, error)
+	SetWake(context.Context, *v1.SetWakeRequest) (*v1.SetWakeResponse, error)
+	CheckWake(context.Context, *v1.CheckWakeRequest) (*v1.CheckWakeResponse, error)
+	ClearWake(context.Context, *v1.ClearWakeRequest) (*v1.ClearWakeResponse, error)
+	OpenWakeLink(context.Context, *v1.OpenWakeLinkRequest) (*v1.OpenWakeLinkResponse, error)
 	// Sessions (read across all reachable machines over E2E).
 	ListSessions(context.Context, *v1.ListSessionsRequest) (*v1.ListSessionsResponse, error)
 	// WatchSessions pushes session changes from every reachable machine as
@@ -1412,6 +1517,36 @@ func NewLocalServiceHandler(svc LocalServiceHandler, opts ...connect.HandlerOpti
 		connect.WithSchema(localServiceMethods.ByName("RevokeClient")),
 		connect.WithHandlerOptions(opts...),
 	)
+	localServiceListWakesHandler := connect.NewUnaryHandlerSimple(
+		LocalServiceListWakesProcedure,
+		svc.ListWakes,
+		connect.WithSchema(localServiceMethods.ByName("ListWakes")),
+		connect.WithHandlerOptions(opts...),
+	)
+	localServiceSetWakeHandler := connect.NewUnaryHandlerSimple(
+		LocalServiceSetWakeProcedure,
+		svc.SetWake,
+		connect.WithSchema(localServiceMethods.ByName("SetWake")),
+		connect.WithHandlerOptions(opts...),
+	)
+	localServiceCheckWakeHandler := connect.NewUnaryHandlerSimple(
+		LocalServiceCheckWakeProcedure,
+		svc.CheckWake,
+		connect.WithSchema(localServiceMethods.ByName("CheckWake")),
+		connect.WithHandlerOptions(opts...),
+	)
+	localServiceClearWakeHandler := connect.NewUnaryHandlerSimple(
+		LocalServiceClearWakeProcedure,
+		svc.ClearWake,
+		connect.WithSchema(localServiceMethods.ByName("ClearWake")),
+		connect.WithHandlerOptions(opts...),
+	)
+	localServiceOpenWakeLinkHandler := connect.NewUnaryHandlerSimple(
+		LocalServiceOpenWakeLinkProcedure,
+		svc.OpenWakeLink,
+		connect.WithSchema(localServiceMethods.ByName("OpenWakeLink")),
+		connect.WithHandlerOptions(opts...),
+	)
 	localServiceListSessionsHandler := connect.NewUnaryHandlerSimple(
 		LocalServiceListSessionsProcedure,
 		svc.ListSessions,
@@ -1574,6 +1709,16 @@ func NewLocalServiceHandler(svc LocalServiceHandler, opts ...connect.HandlerOpti
 			localServiceUpdateClientHandler.ServeHTTP(w, r)
 		case LocalServiceRevokeClientProcedure:
 			localServiceRevokeClientHandler.ServeHTTP(w, r)
+		case LocalServiceListWakesProcedure:
+			localServiceListWakesHandler.ServeHTTP(w, r)
+		case LocalServiceSetWakeProcedure:
+			localServiceSetWakeHandler.ServeHTTP(w, r)
+		case LocalServiceCheckWakeProcedure:
+			localServiceCheckWakeHandler.ServeHTTP(w, r)
+		case LocalServiceClearWakeProcedure:
+			localServiceClearWakeHandler.ServeHTTP(w, r)
+		case LocalServiceOpenWakeLinkProcedure:
+			localServiceOpenWakeLinkHandler.ServeHTTP(w, r)
 		case LocalServiceListSessionsProcedure:
 			localServiceListSessionsHandler.ServeHTTP(w, r)
 		case LocalServiceWatchSessionsProcedure:
@@ -1751,6 +1896,26 @@ func (UnimplementedLocalServiceHandler) UpdateClient(context.Context, *v1.Update
 
 func (UnimplementedLocalServiceHandler) RevokeClient(context.Context, *v1.RevokeClientRequest) (*v1.RevokeClientResponse, error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("hermesh.local.v1.LocalService.RevokeClient is not implemented"))
+}
+
+func (UnimplementedLocalServiceHandler) ListWakes(context.Context, *v1.ListWakesRequest) (*v1.ListWakesResponse, error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("hermesh.local.v1.LocalService.ListWakes is not implemented"))
+}
+
+func (UnimplementedLocalServiceHandler) SetWake(context.Context, *v1.SetWakeRequest) (*v1.SetWakeResponse, error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("hermesh.local.v1.LocalService.SetWake is not implemented"))
+}
+
+func (UnimplementedLocalServiceHandler) CheckWake(context.Context, *v1.CheckWakeRequest) (*v1.CheckWakeResponse, error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("hermesh.local.v1.LocalService.CheckWake is not implemented"))
+}
+
+func (UnimplementedLocalServiceHandler) ClearWake(context.Context, *v1.ClearWakeRequest) (*v1.ClearWakeResponse, error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("hermesh.local.v1.LocalService.ClearWake is not implemented"))
+}
+
+func (UnimplementedLocalServiceHandler) OpenWakeLink(context.Context, *v1.OpenWakeLinkRequest) (*v1.OpenWakeLinkResponse, error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("hermesh.local.v1.LocalService.OpenWakeLink is not implemented"))
 }
 
 func (UnimplementedLocalServiceHandler) ListSessions(context.Context, *v1.ListSessionsRequest) (*v1.ListSessionsResponse, error) {

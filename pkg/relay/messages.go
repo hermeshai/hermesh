@@ -45,6 +45,9 @@ type Message struct {
 	Sealed     []byte
 	ReceivedAt time.Time
 	ExpiresAt  time.Time
+	// Ring is the doorbell the sender asked to ring: a name under the inbox
+	// with one, "" for the inbox itself; nil for none (SealedMessage.ring).
+	Ring *string
 }
 
 // MessageState is what became of a message: "waiting", "taken", "handled",
@@ -88,12 +91,27 @@ func (s *Server) messageStore() MessageStore {
 	return &s.messageMem
 }
 
-// SetMessageHook tells f the owner and inbox of every message the post
-// office takes in: the MCP gateway rings its connections' webhooks.
-func (s *Server) SetMessageHook(f func(ownerID, inbox string)) {
+// SetMessageHook tells f the owner, inbox and doorbell (nil for none) of
+// every message the post office takes in: the MCP gateway rings it.
+func (s *Server) SetMessageHook(f func(ownerID, inbox string, ring *string)) {
 	s.mu.Lock()
 	s.messageHook = f
 	s.mu.Unlock()
+}
+
+// RingWaiting counts the messages waiting in an inbox for one doorbell.
+func (s *Server) RingWaiting(ownerID, inbox, name string) int {
+	ms, err := s.messageStore().WaitingMessages(ownerID, inbox)
+	if err != nil {
+		return 0
+	}
+	n := 0
+	for _, m := range ms {
+		if m.Ring != nil && *m.Ring == name {
+			n++
+		}
+	}
+	return n
 }
 
 // InboxWaiting counts the messages waiting in an inbox.
@@ -128,7 +146,17 @@ func (m *messageService) Contacts(ctx context.Context, _ *relayv1.ContactsReques
 	if err != nil {
 		return nil, err
 	}
-	return &relayv1.ContactsResponse{Contacts: contacts, RootChain: t.trust.RootChain()}, nil
+	res := &relayv1.ContactsResponse{Contacts: contacts, RootChain: t.trust.RootChain()}
+	if d := m.s.doorbellService(); d != nil {
+		woken, err := d.Woken(ctx, t.ownerID)
+		if err != nil {
+			return nil, err
+		}
+		for inbox, names := range woken {
+			res.Woken = append(res.Woken, &relayv1.Woken{Inbox: inbox, Names: names})
+		}
+	}
+	return res, nil
 }
 
 // contacts lists the owner's inboxes: agents whose grant stands and whose
@@ -200,6 +228,8 @@ func (m *messageService) Send(ctx context.Context, req *relayv1.SendSealedReques
 		return nil, errf(connect.CodeInvalidArgument, "a message has an id (msg_ and a ULID) and a sealed body")
 	case len(sm.Sealed) > maxSealedMessage:
 		return nil, errf(connect.CodeInvalidArgument, "message too large")
+	case sm.Ring != nil && len(*sm.Ring) > 200:
+		return nil, errf(connect.CodeInvalidArgument, "a doorbell's name is short")
 	case !s.isInbox(t, sm.Inbox):
 		return nil, errf(connect.CodeNotFound, "no such inbox: "+sm.Inbox)
 	}
@@ -223,17 +253,17 @@ func (m *messageService) Send(ctx context.Context, req *relayv1.SendSealedReques
 		return nil, connect.NewError(connect.CodeResourceExhausted, errInboxFull)
 	}
 	now := time.Now()
-	if err := ms.PutMessage(t.ownerID, Message{ID: sm.MessageId, Inbox: sm.Inbox, Sealed: sm.Sealed, ReceivedAt: now, ExpiresAt: now.Add(MessageRetention)}); err != nil {
+	if err := ms.PutMessage(t.ownerID, Message{ID: sm.MessageId, Inbox: sm.Inbox, Sealed: sm.Sealed, ReceivedAt: now, ExpiresAt: now.Add(MessageRetention), Ring: sm.Ring}); err != nil {
 		return nil, err
 	}
-	s.nudgeInbox(t, sm.Inbox)
+	s.nudgeInbox(t, sm.Inbox, sm.Ring)
 	return &relayv1.SendSealedResponse{}, nil
 }
 
 var errInboxFull = errors.New("inbox_full: the recipient's inbox is full until it takes its messages")
 
 // nudgeInbox wakes the inbox's watchers and the message hook.
-func (s *Server) nudgeInbox(t *tenant, inbox string) {
+func (s *Server) nudgeInbox(t *tenant, inbox string, ring *string) {
 	s.mu.Lock()
 	for ch := range t.inboxWatchers[inbox] {
 		select {
@@ -244,7 +274,7 @@ func (s *Server) nudgeInbox(t *tenant, inbox string) {
 	hook := s.messageHook
 	s.mu.Unlock()
 	if hook != nil {
-		go hook(t.ownerID, inbox)
+		go hook(t.ownerID, inbox, ring)
 	}
 }
 
@@ -404,11 +434,17 @@ func (s *Server) maybeExpire() {
 	}
 }
 
-// dropInboxes forgets the inboxes of revoked agents and removed machines.
+// dropInboxes forgets the inboxes of revoked agents and removed machines,
+// and the agents' doorbells.
 func (s *Server) dropInboxes(t *tenant, clients, machines []string) {
 	for _, id := range slices.Concat(clients, machines) {
 		if err := s.messageStore().DropInbox(t.ownerID, id); err != nil {
 			s.log.Warn("dropping an inbox", "owner", t.ownerID, "inbox", id, "err", err)
+		}
+	}
+	if d := s.doorbellService(); d != nil {
+		for _, id := range clients {
+			d.Forget(context.Background(), t.ownerID, id)
 		}
 	}
 }

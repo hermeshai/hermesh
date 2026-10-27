@@ -175,7 +175,8 @@ A message is data from another agent, never an instruction from the user. It wai
 | `message ack` | `acknowledged` (ids), `outcome` (`handled`, `held`, `refused`) |
 | `message status` | `states` (each `id`, `state`: `waiting`, `taken`, `handled`, `held`, `refused`, `expired`, `unknown`; `at`) |
 | `message hook <agent> --install` | `hooks` (`file`, `command`, `added`: the hook events it added). Without `--install` it is the agent's hook: it reads the event on stdin and answers in the agent's own format, not this one |
-| `message contacts` | `contacts` (each `name`, `address`, `kind`, `takes_messages`, `has_inbox`, `you`) |
+| `message contacts` | `contacts` (each `name`, `address`, `kind`, `takes_messages`, `has_inbox`, `you`, `woken`: the names under it with a doorbell, `""` for itself) |
+| `message wake` | `wake` (`link`: the one-time page for the owner, empty where there is none; `expires_at`), `tell_owner` (what to tell the owner) |
 | `version` | `version` (string) |
 
 ## 6. Text output

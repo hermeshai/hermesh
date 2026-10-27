@@ -137,6 +137,7 @@ hermesh session archive s_xxx       # when done: read-only, frees the worktree (
 hermesh session events s_xxx --after 812   # events page by page: the latest 50 by default; --after newer, --before older
 hermesh message list --wait         # your inbox: news of your sessions, messages from the owner's other agents
 hermesh --as "Tech Demos" session start --project web --prompt "…"   # several bots share this agent? each passes its own name: its news and replies come back to it alone
+hermesh --as "Tech Demos" message wake   # started by a webhook (a Grok Bot routine)? a one-time link for your owner, who pastes its URL and key: then Hermesh wakes you when messages arrive
 hermesh message ack msg_xxx         # handled: it leaves the inbox
 hermesh message send --to "Grok Bot" --message "PR #143 is ready"   # to another of the owner's agents (message contacts lists them)
 ```

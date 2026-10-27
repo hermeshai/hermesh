@@ -26,7 +26,7 @@ Tools run through the Hermesh gateway; coding agents run on the user's selected 
 
 Start with project_list to choose a project and an available agent. Call session_start with project and a non-empty prompt, save session.session_id, then poll session_get or read session_events with after set to the last seq you saw. Answer a pending question with session_answer. To tell a session anything more, use message_send with to set to its session_id. session_start, message_send and session_answer return without waiting for the turn by default. For hosted clients, prefer polling, or use wait=true with timeout="30s" (at most 50s). On error.kind="wait_timeout", the turn continues: poll session_get using session.session_id; do not repeat the start, message or answer just to wait longer.
 
-You also have an inbox. When a turn of a session you started ends, asks a question or fails while you are not waiting on it, its news arrives there as a message, and other agents of the user can write to you too. Read it with message_list and acknowledge each message once handled with message_ack. If your platform can be woken by a webhook, register it with message_notify; otherwise check message_list after handing out work. Every tool result carries inbox.waiting while messages wait.
+You also have an inbox. When a turn of a session you started ends, asks a question or fails while you are not waiting on it, its news arrives there as a message, and other agents of the user can write to you too. Read it with message_list and acknowledge each message once handled with message_ack. If your platform can start you by a webhook (a Grok Bot routine), call message_wake: it gives a link for your owner to set it up, and then Hermesh wakes you when messages arrive; otherwise check message_list after handing out work. Every tool result carries inbox.waiting while messages wait.
 
 If several of your bots or chats share this connection (a Grok account's bots all do), pass as with your own bot name on every call. The news of sessions you start and replies to what you send then come back to that name alone, and message_list with as shows only that name's messages. Tool results under a name leave out inbox.waiting, which would count the other names' messages too.
 
@@ -82,14 +82,15 @@ func (g *Gateway) newServer() *mcp.Server {
 	s := mcp.NewServer(&mcp.Implementation{Name: "hermesh", Title: "Hermesh", Version: machine.Version}, &mcp.ServerOptions{Instructions: instructions})
 	s.AddTool(&mcp.Tool{Name: "hermesh_status", Title: "Hermesh status",
 		Description: "Check setup and approval of this app's connection to Hermesh, including the next step for the user. Use this first when connecting or when project_list is empty. Once active, also includes auth details; use auth_status for focused identity, grant and relay diagnostics.",
-		InputSchema: map[string]any{"type": "object", "properties": map[string]any{}, "additionalProperties": false},
-		Annotations: &mcp.ToolAnnotations{ReadOnlyHint: true}, Meta: securityMeta()}, g.statusTool)
-	s.AddTool(&mcp.Tool{Name: "message_notify", Title: "Ring a webhook for new messages", Description: notifyDescription,
 		InputSchema: map[string]any{"type": "object", "additionalProperties": false, "properties": map[string]any{
-			"url":           map[string]any{"type": "string", "description": "The webhook's https URL; empty to stop ringing"},
-			"authorization": map[string]any{"type": "string", "description": "The Authorization header value the webhook expects, if any (for example \"Bearer <key>\")"},
+			"as": map[string]any{"type": "string", "description": "your own bot's or chat's name, when several share this connection: the status of its doorbell"},
 		}},
-		Annotations: notifyAnnotations(), Meta: securityMeta()}, g.notifyTool)
+		Annotations: &mcp.ToolAnnotations{ReadOnlyHint: true}, Meta: securityMeta()}, g.statusTool)
+	s.AddTool(&mcp.Tool{Name: "message_wake", Title: "Be woken when messages arrive", Description: wakeDescription,
+		InputSchema: map[string]any{"type": "object", "additionalProperties": false, "properties": map[string]any{
+			"as": map[string]any{"type": "string", "description": "your own bot's or chat's name, when several share this connection"},
+		}},
+		Annotations: wakeAnnotations(), Meta: securityMeta()}, g.wakeTool)
 	for _, t := range g.tools {
 		s.AddTool(&mcp.Tool{Name: t.Name, Description: toolDescription(t), InputSchema: inputSchema(t), Annotations: annotations(t), Meta: securityMeta()},
 			g.toolHandler(t))
@@ -101,7 +102,7 @@ func securityMeta() mcp.Meta {
 	return mcp.Meta{"securitySchemes": []any{map[string]any{"type": "oauth2"}}}
 }
 
-func notifyAnnotations() *mcp.ToolAnnotations {
+func wakeAnnotations() *mcp.ToolAnnotations {
 	yes, no := true, false
 	return &mcp.ToolAnnotations{OpenWorldHint: &yes, DestructiveHint: &no}
 }
@@ -228,10 +229,23 @@ func (g *Gateway) statusTool(ctx context.Context, req *mcp.CallToolRequest) (*mc
 	if err != nil {
 		return docResult(failure(1, "internal", err.Error(), "", true)), nil
 	}
+	var args struct {
+		As string `json:"as"`
+	}
+	if len(req.Params.Arguments) > 0 {
+		json.Unmarshal(req.Params.Arguments, &args)
+	}
+	name, err := wakeName(args.As)
+	if err != nil {
+		return docResult(failure(2, "usage", err.Error(), "", false)), nil
+	}
 	st := g.status(c)
 	out := map[string]any{"ok": true, "exit_code": 0, "error": nil, "status": st}
+	if name != "" {
+		out["as"] = name
+	}
 	if c.State == StateActive {
-		out["messages"] = g.doorbellStatus(ctx, c)
+		out["messages"] = g.doorbellStatus(ctx, c, name)
 		if id, err := g.identity(c); err == nil {
 			doc, _ := cli.Exec(ctx, cli.ExecOptions{Identity: id, HTTPClient: g.relay, Adopted: g.adopted(c.ID)}, []string{"auth", "status"})
 			var d map[string]json.RawMessage

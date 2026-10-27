@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -92,6 +93,23 @@ type contactBook struct {
 	mu   sync.Mutex
 	at   time.Time
 	list []*identityv1.Contact
+	// woken are the names with a doorbell, by inbox (docs/agent-names.md §7.1).
+	woken map[string][]string
+}
+
+// keep remembers the owner's contacts as the post office gave them.
+func (b *contactBook) keep(res *relayv1.ContactsResponse) {
+	b.list, b.at, b.woken = res.Contacts, time.Now(), map[string][]string{}
+	for _, w := range res.Woken {
+		b.woken[w.Inbox] = w.Names
+	}
+}
+
+// isWoken reports whether an address has a doorbell.
+func (n *Machine) isWoken(a *inboxv1.Address) bool {
+	n.contacts.mu.Lock()
+	defer n.contacts.mu.Unlock()
+	return slices.Contains(n.contacts.woken[a.GetInbox()], a.GetSession())
 }
 
 // contact finds an inbox among the owner's contacts and checks it.
@@ -113,7 +131,7 @@ func (n *Machine) contact(ctx context.Context, ms relayv1connect.MessageServiceC
 	if err != nil {
 		return nil, err
 	}
-	n.contacts.list, n.contacts.at = res.Contacts, time.Now()
+	n.contacts.keep(res)
 	info := find()
 	if info == nil {
 		return nil, fmt.Errorf("%s is not among the owner's contacts", inbox)
@@ -205,7 +223,12 @@ func (n *Machine) sendMessage(m *inboxv1.Message) error {
 	if err != nil {
 		return err
 	}
-	_, err = ms.Send(ctx, &relayv1.SendSealedRequest{Message: &relayv1.SealedMessage{Inbox: to.Inbox, MessageId: m.MessageId, Sealed: sealed}})
+	sm := &relayv1.SealedMessage{Inbox: to.Inbox, MessageId: m.MessageId, Sealed: sealed}
+	if n.isWoken(m.To) {
+		ring := m.To.GetSession()
+		sm.Ring = &ring
+	}
+	_, err = ms.Send(ctx, &relayv1.SendSealedRequest{Message: sm})
 	return err
 }
 

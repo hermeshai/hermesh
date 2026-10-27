@@ -317,6 +317,99 @@ service OwnerControlService {
   // Contact cards for the owner's agents, signed by this device's device
   // key (docs/agent-messages.md §4): each replaces the agent's earlier one.
   rpc PublishCards(PublishCardsRequest) returns (PublishCardsResponse);
+  // Doorbells (docs/agent-names.md §7), set by a trusted device: the
+  // webhook rung when messages wait for an agent or a name under it. Served
+  // by the MCP gateway; a relay without it answers Unimplemented.
+  rpc ListWakes(ListWakesRequest) returns (ListWakesResponse);
+  // Rings the webhook once with a check; keeps it if the check passes, or
+  // if asked to anyway.
+  rpc SetWake(SetWakeRequest) returns (SetWakeResponse);
+  rpc CheckWake(CheckWakeRequest) returns (CheckWakeResponse);
+  rpc ClearWake(ClearWakeRequest) returns (ClearWakeResponse);
+  // What a wake link (an agent's `message wake`) is for.
+  rpc OpenWakeLink(OpenWakeLinkRequest) returns (OpenWakeLinkResponse);
+}
+
+// Wake is a doorbell: a webhook rung when messages wait for an address. Its
+// key is never shown again.
+message Wake {
+  string client_id = 1;
+  // The name under the agent; "" for the agent itself.
+  string name = 2;
+  string url = 3;
+  // "on", or "broken" (it stopped ringing: reason).
+  string state = 4;
+  string reason = 5;
+  google.protobuf.Timestamp last_ring_at = 6;
+  // The webhook's last answer (an HTTP status), 0 before it rang.
+  int32 last_status = 7;
+  // Messages waiting for the address.
+  uint32 waiting = 8;
+}
+
+// WakeCheck is how a webhook answered a check.
+message WakeCheck {
+  bool ok = 1;
+  int32 status = 2;
+  // What went wrong, for the owner.
+  string reason = 3;
+}
+
+message ListWakesRequest {
+  // One agent's; empty for all the owner's agents.
+  string client_id = 1;
+}
+
+message ListWakesResponse {
+  repeated Wake wakes = 1;
+}
+
+message SetWakeRequest {
+  // The address, or a wake link's code naming it.
+  string client_id = 1;
+  string name = 2;
+  string code = 3;
+  string url = 4;
+  // The Authorization header the webhook expects ("Bearer <key>"), if any.
+  string authorization = 5;
+  // Keep it even if the check fails, marked broken.
+  bool keep = 6;
+}
+
+message SetWakeResponse {
+  // Unset when the check failed and it wasn't kept.
+  Wake wake = 1;
+  WakeCheck check = 2;
+  // What signs its rings (Standard Webhooks), shown this once, for a
+  // webhook that checks signatures; empty when it wasn't kept.
+  string signing_secret = 3;
+}
+
+message CheckWakeRequest {
+  string client_id = 1;
+  string name = 2;
+}
+
+message CheckWakeResponse {
+  Wake wake = 1;
+  WakeCheck check = 2;
+}
+
+message ClearWakeRequest {
+  string client_id = 1;
+  string name = 2;
+}
+
+message ClearWakeResponse {}
+
+message OpenWakeLinkRequest {
+  string code = 1;
+}
+
+message OpenWakeLinkResponse {
+  string client_id = 1;
+  string name = 2;
+  google.protobuf.Timestamp expires_at = 3;
 }
 
 message PublishCardsRequest {
@@ -431,6 +524,20 @@ service MessageService {
   // What became of messages, by id (any of the owner's inboxes may ask:
   // ids are random, so only their sender knows them).
   rpc Status(MessageStatusRequest) returns (MessageStatusResponse);
+  // A one-time link for the owner to set up the caller's doorbell, under
+  // the caller's name (docs/agent-names.md §7.2). Served by the MCP gateway.
+  rpc WakeLink(WakeLinkRequest) returns (WakeLinkResponse);
+}
+
+message WakeLinkRequest {
+  string name = 1;
+}
+
+message WakeLinkResponse {
+  // The page the owner opens; empty where there is none (a self-hosted
+  // relay): the owner sets it up in the Mac app.
+  string link = 1;
+  google.protobuf.Timestamp expires_at = 2;
 }
 
 // SealedMessage is an inbox.v1.SignedMessage HPKE-sealed to its inbox's key
@@ -442,6 +549,10 @@ message SealedMessage {
   bytes sealed = 3;
   // Set by the relay.
   google.protobuf.Timestamp received_at = 4;
+  // The doorbell to ring (docs/agent-names.md §7.1): set by the sender when
+  // the address has one, to its name ("" for the agent itself). Otherwise
+  // absent, and the name stays sealed.
+  optional string ring = 5;
 }
 
 message RegisterInboxRequest {
@@ -455,6 +566,15 @@ message ContactsRequest {}
 message ContactsResponse {
   repeated hermesh.identity.v1.Contact contacts = 1;
   hermesh.identity.v1.RootChain root_chain = 2;
+  // Addresses with a doorbell, by agent: senders put the name on the
+  // envelope (SealedMessage.ring). Not signed: a wrong one costs a ring.
+  repeated Woken woken = 3;
+}
+
+message Woken {
+  string inbox = 1;
+  // "" for the agent itself.
+  repeated string names = 2;
 }
 
 message SendSealedRequest {
