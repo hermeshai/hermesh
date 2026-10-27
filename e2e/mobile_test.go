@@ -267,8 +267,9 @@ func within(timeout time.Duration, cond func() bool) time.Duration {
 // the world complete (the Mac followed), a long conversation opened, the
 // world again after a minute in the background while the phone's network
 // went away (the connections it had are dead after that) and a session was
-// deleted on the Mac, and after a few seconds in the background (they
-// still work). A new connection from the phone costs TCP's and TLS's
+// deleted on the Mac, and after a minute and a half in the background
+// with the network kept (they still work: the relay waits five minutes for
+// an owner device's answer). A new connection from the phone costs TCP's and TLS's
 // round trips before its first byte.
 func TestMobileNetwork(t *testing.T) {
 	if testing.Short() {
@@ -442,17 +443,19 @@ func TestMobileNetwork(t *testing.T) {
 	scr.mu.Unlock()
 	leave()
 
-	// A short trip to the background (another app answered, and back), while
-	// a session starts on the Mac: the connections it had still work.
+	// A trip to the background of a minute and a half (another app used, and
+	// back), while a session starts on the Mac: past the 30–45 s a machine's
+	// connection would last unanswered, the connections it had still work.
 	m.do("pause")
 	time.Sleep(3 * time.Second)
 	m.cmd.Process.Signal(syscall.SIGSTOP)
+	stopped := time.Now()
 	brief, r := w.startSession(time.Minute, "--project", "demo", "--prompt", "say while the phone was away briefly", "--wait")
 	if brief.Status != "idle" {
 		t.Fatalf("session: %+v", r)
 	}
 	sessions++
-	time.Sleep(2 * time.Second)
+	time.Sleep(time.Until(stopped.Add(90 * time.Second)))
 	m.cmd.Process.Signal(syscall.SIGCONT)
 	m.do("resume")
 	back = time.Now()
@@ -466,7 +469,7 @@ func TestMobileNetwork(t *testing.T) {
 	time.Sleep(time.Second)
 	scr.mu.Lock()
 	if len(scr.shownUnreachable) > 0 {
-		t.Errorf("after a short background, shown unreachable: %v", scr.shownUnreachable)
+		t.Errorf("after 90 s in the background, shown unreachable: %v", scr.shownUnreachable)
 	}
 	scr.mu.Unlock()
 	leave()
@@ -507,11 +510,11 @@ func TestMobileNetwork(t *testing.T) {
 	t.Logf("long conversation opened     %s, %d events, %d KB", round(opened), events, bytes>>10)
 	t.Logf("world after background       %s", round(resumed))
 	t.Logf("deleted meanwhile, forgotten %s", round(forgotten))
-	t.Logf("world after a short pause    %s", round(briefly))
+	t.Logf("world after 90 s away        %s", round(briefly))
 	t.Logf("relaunched, deleted gone     %s", round(relaunched))
 	// The floor: TCP, TLS and the WebSocket upgrade to the relay (3), the
 	// end-to-end handshake and one call through it to the Mac, as far
-	// again behind it (2 each); after a short pause, a ping on the relay
+	// again behind it (2 each); after 90 s away, a ping on the relay
 	// connection kept (1) and the call.
 	for _, c := range []struct {
 		what string
@@ -523,7 +526,7 @@ func TestMobileNetwork(t *testing.T) {
 		{"long conversation opened", opened, 3},
 		{"world after background", resumed, 8.5},
 		{"deleted session forgotten after the background", forgotten, 8.5},
-		{"world after a short pause", briefly, 3.5},
+		{"world after 90 s away", briefly, 3.5},
 		{"deleted session forgotten after a relaunch", relaunched, 10},
 	} {
 		if c.took < 0 || float64(c.took) > c.max*float64(rtt) {

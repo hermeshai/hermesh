@@ -387,9 +387,16 @@ func (s *Server) handleConnect(w http.ResponseWriter, r *http.Request) {
 	}
 	mAdmissionsOK.Inc()
 	conn.SetDeadline(time.Time{})
-	sess, err := yamux.Server(conn, transport.YamuxConfig())
+	cfg := transport.YamuxConfig()
+	if p.role == relayv1.Role_ROLE_OWNER {
+		cfg.EnableKeepAlive = false // keepAlive, more patient
+	}
+	sess, err := yamux.Server(conn, cfg)
 	if err != nil {
 		return
+	}
+	if p.role == relayv1.Role_ROLE_OWNER {
+		go keepAlive(sess, cfg.KeepAliveInterval, ownerQuiet)
 	}
 	p.sess, p.remote = sess, r.RemoteAddr
 	s.register(p)
@@ -400,6 +407,33 @@ func (s *Server) handleConnect(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		go s.handleStream(p, st)
+	}
+}
+
+// ownerQuiet is how long an owner device may leave the relay's pings
+// unanswered before its connection is closed. The iPhone app answers none
+// while it is suspended in the background, and with its connection kept
+// for a few minutes it comes back in a ping rather than a dial
+// (internal/owner connectOrKeep). Machines and agents are closed after
+// 30–45 s (yamux's keepalive), as whether a machine is online is shown.
+const ownerQuiet = 5 * time.Minute
+
+// keepAlive pings sess every interval, and closes it once quiet went by
+// since a ping was last answered.
+func keepAlive(sess *yamux.Session, every, quiet time.Duration) {
+	answered := time.Now()
+	for {
+		select {
+		case <-sess.CloseChan():
+			return
+		case <-time.After(every):
+		}
+		if _, err := sess.Ping(); err == nil {
+			answered = time.Now()
+		} else if time.Since(answered) > quiet {
+			sess.Close()
+			return
+		}
 	}
 }
 

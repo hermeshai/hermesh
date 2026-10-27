@@ -377,7 +377,7 @@ A revoked client leaves the owner's list: the relay forgets its grant, and the r
 
 - `coder/websocket` sends and receives binary messages, wrapped into a `net.Conn` with `websocket.NetConn`, with `hashicorp/yamux` running on top.
 - Convention: **whoever opens a stream is the HTTP client on that stream.**
-- yamux keepalive is 15 seconds. Reconnects use exponential backoff with full jitter, from 1 second to 60 seconds; the backoff resets only after the connection has been stable for 60 seconds.
+- yamux keepalive is 15 seconds: the relay closes a machine's or agent's connection once a ping goes unanswered for 30 seconds (30–45 seconds after it went quiet), an owner device's only after 5 minutes without an answer (`ownerQuiet`), so that the iPhone app, suspended in the background, comes back on the connection it kept; meanwhile it counts as online. Reconnects use exponential backoff with full jitter, from 1 second to 60 seconds; the backoff resets only after the connection has been stable for 60 seconds.
 - Every stream first writes a `StreamHeader` (4-byte big-endian length + protobuf, at most 64 KiB), followed by raw bytes.
 
 | StreamHeader.kind | Opened by | Purpose |

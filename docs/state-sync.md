@@ -644,6 +644,12 @@ Steps 3, 4 and 5 are independent of each other. All five were built on
     after a minute away 7.0 and a relaunch 7.1, as before. Against the
     hosted center (the Simulator, 0.18 s from it), back after 5–70 s: the
     ping 0.18 s, the Mac followed after 0.52–0.72 s, where it was 1.25–1.73 s.
+  - The relay waits 5 minutes for an owner device's answer to its pings
+    (`ownerQuiet`), where it closed every connection 30–45 s after it went
+    quiet; machines and agents keep that, as whether a machine is online is
+    shown. A suspended iPhone answers none, but its kernel takes the pings
+    in, which keeps the NAT mapping and the proxies along the way busy. The
+    world after 90 s away, before → after: 7.0 → 3.0 round trips.
 - **Measured** (Go e2e, the relay 300 ms away): every list p50 60–170 µs;
   0 relay control calls while three windows ask as before; a pairing
   request on a screen 0.4 s after it was made; a BASIC session 221–236
