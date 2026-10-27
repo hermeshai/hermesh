@@ -262,8 +262,10 @@ final class SideMenuController: UIViewController, UIGestureRecognizerDelegate {
         return isOpen ? v.x < 0 : panAnywhere && v.x > 0
     }
 
+    /// Alongside the page's scrolling, but not a row's tap: the page follows
+    /// the finger, so it lifts on the row it went down on, which would open.
     func gestureRecognizer(_ g: UIGestureRecognizer, shouldRecognizeSimultaneouslyWith other: UIGestureRecognizer) -> Bool {
-        true
+        other is UIPanGestureRecognizer
     }
 }
 
