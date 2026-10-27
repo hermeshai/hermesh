@@ -10,15 +10,16 @@ import { ErrorLine, useAction } from "./common";
 
 // An agent's doorbell (docs/agent-names.md §7): the webhook Hermesh calls
 // when messages wait for the agent or one of its bots. Setting one up is
-// four steps, one per screen: the bot's name, the routine's instruction to
-// copy into Grok, the webhook's URL and key, and a check. The key goes from
+// four steps, one per screen: the bot's name, the message that has it make
+// its routine in Grok (Grok Bot's routines are made by asking the bot), the
+// webhook's URL and key, and a check. The key goes from
 // here to Hermesh's vault; neither the bot nor its model ever sees it.
 
 type Step = "name" | "routine" | "webhook" | "check" | "manage";
 
 const order: Step[] = ["name", "routine", "webhook", "check"];
 
-/** What the bot's routine is told: the same for every bot but its name. */
+/** What the bot is sent to make its routine, and what the routine is told: the same for every bot but its name. */
 export function routineInstruction(name: string): string {
   return name ? i18n.t("sheets:wake.instruction", { name }) : i18n.t("sheets:wake.instructionSelf");
 }
