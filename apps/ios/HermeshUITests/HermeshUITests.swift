@@ -35,6 +35,7 @@ final class HermeshUITests: XCTestCase {
         try XCTContext.runActivity(named: "a swipe that starts on a row opens the menu, not the row") { _ in try swipeOnRow() }
         try XCTContext.runActivity(named: "offers New from the overview's top right") { _ in try newMenu() }
         try XCTContext.runActivity(named: "searches sessions from the menu") { _ in try search() }
+        try XCTContext.runActivity(named: "a conversation not read yet waits in the middle of the screen") { _ in try centeredLoader() }
         try XCTContext.runActivity(named: "opened without the relay, shows what it kept and catches up") { _ in try offline() }
         try XCTContext.runActivity(named: "back and forth to the home screen, never shows its Mac unreachable") { _ in try backAndForth() }
         try XCTContext.runActivity(named: "a question arrives as a notification and opens its session") { _ in try notification() }
@@ -445,6 +446,29 @@ final class HermeshUITests: XCTestCase {
         XCTAssertTrue(app.searchFields.firstMatch.waitForNonExistence(timeout: 5), "the search page closes")
     }
 
+    /// A conversation that can't be read yet (the relay is gone) shows the
+    /// pulsing mark in the middle of the screen, not of the room the bars
+    /// leave.
+    func centeredLoader() throws {
+        let title = "还读不到"
+        _ = try control("start?title=\(title.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed)!)", method: "POST")
+        openMenu()
+        XCTAssertTrue(app.descendants(matching: .any)["drawer-session-\(title)"].waitForExistence(timeout: 30), "the new session in the menu")
+        _ = try control("relay?up=0", method: "POST")
+        tap("drawer-session-\(title)")
+        let loading = app.descendants(matching: .any)["loading"].firstMatch
+        XCTAssertTrue(loading.waitForExistence(timeout: 10), "the conversation waits")
+        let screen = app.windows.firstMatch.frame
+        XCTAssertEqual(loading.frame.midY, screen.midY, accuracy: 2, "the mark in the middle of the screen: \(loading.frame) in \(screen)")
+        XCTAssertEqual(loading.frame.midX, screen.midX, accuracy: 2, "the mark in the middle of the screen: \(loading.frame) in \(screen)")
+        let shot = XCTAttachment(screenshot: app.screenshot())
+        shot.name = "a conversation waiting"
+        shot.lifetime = .keepAlways
+        add(shot)
+        _ = try control("relay?up=1", method: "POST")
+        app.navigationBars.buttons.element(boundBy: 0).tap()
+    }
+
     /// The relay goes away and the app is opened again: it shows what it
     /// kept at once, says it can't reach Hermesh, and catches up once the
     /// relay is back.
@@ -456,6 +480,9 @@ final class HermeshUITests: XCTestCase {
         let line = app.descendants(matching: .any)["sync-line"].firstMatch
         XCTAssertTrue(line.waitForExistence(timeout: 5), "it says it is connecting")
         try waitFor("it says it can't reach the relay", timeout: 30) { line.exists && line.label.contains("连不上") ? true : nil }
+        let bar = app.navigationBars["概览"].frame
+        XCTAssertTrue(bar.contains(CGPoint(x: line.frame.midX, y: line.frame.midY)), "the sync line in the middle of the bar, not over the page: \(line.frame) in \(bar)")
+        XCTAssertEqual(line.frame.midX, bar.midX, accuracy: 2, "the sync line in the middle of the bar")
         let shot = XCTAttachment(screenshot: app.screenshot())
         shot.name = "offline, what was kept"
         shot.lifetime = .keepAlways

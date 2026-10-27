@@ -89,11 +89,12 @@ packages/HermeshKit/         Swift package shared with the Mac signer
 - **Waiting.** Waits show the mark in the brand's motion
   (`Views/Components/Loading.swift`, as `packages/ui`): a page with nothing
   to show yet says what it reads, with the pulse (a conversation has the
-  pulsing mark alone, in the middle of the page); while what shows is not
-  current, a quiet line says so, under a root page's large title or over the
-  top of another page ("Connecting to
+  pulsing mark alone, in the middle of the screen); while what shows is not
+  current, a quiet line says so, always in the navigation bar and never
+  over the page: in the middle of a root page's bar (in the small title's
+  place once it is small), under another page's title ("Connecting to
   Hermesh…", "Updating from Mac mini…", and after 10 s without the relay,
-  that it shows what was last seen); waiting for another device, the beams
+  "Can't reach Hermesh"); waiting for another device, the beams
   hover apart. Nothing shows for a wait under 400 ms, and a loader once
   shown stays 500 ms; with Reduce Motion the mark only fades.
 

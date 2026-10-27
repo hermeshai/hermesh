@@ -11,6 +11,12 @@ import UserNotifications
 enum Root: Hashable {
     case overview, grants, machines, sessions
     case session(String)
+
+    /// A page with a large title (a session's is in the bar).
+    var titleLarge: Bool {
+        if case .session = self { return false }
+        return true
+    }
 }
 
 /// Pages pushed onto the main stack.
@@ -64,7 +70,7 @@ enum Sync: Equatable {
     var text: String {
         switch self {
         case .connecting: String(localized: "Connecting to Hermesh…")
-        case .offline: String(localized: "Can’t reach Hermesh; showing what was last seen")
+        case .offline: String(localized: "Can’t reach Hermesh")
         case .machine(let name): String(localized: "Updating from \(name)…")
         case .machines(let n): String(localized: "Updating from \(n) machines…")
         }
@@ -131,9 +137,33 @@ final class AppModel {
         return nil
     }
 
+    /// The sync line's: as sync, but nothing for a wait under 400 ms, and
+    /// once shown for at least 500 ms, so that a short wait never flashes.
+    var shownSync: Sync?
+    @ObservationIgnored private var syncShownAt = Date.distantPast
+
+    /// Follows sync into shownSync (run again at each change of it).
+    func showSync(_ sync: Sync?) async {
+        if let sync {
+            if shownSync == nil {
+                try? await Task.sleep(for: .milliseconds(400))
+                guard !Task.isCancelled else { return }
+                syncShownAt = .now
+            }
+            shownSync = sync
+        } else if shownSync != nil {
+            let left = 0.5 - Date.now.timeIntervalSince(syncShownAt)
+            if left > 0 { try? await Task.sleep(for: .seconds(left)) }
+            guard !Task.isCancelled else { return }
+            shownSync = nil
+        }
+    }
+
     // Navigation
     var root: Root = .overview
     var path: [Route] = []
+    /// The root page scrolled far enough that its title is small.
+    var rootTitleSmall = false
     var drawerOpen = false
     var sheet: SheetKind?
     /// How the session list is laid out, whether it shows archived sessions,
