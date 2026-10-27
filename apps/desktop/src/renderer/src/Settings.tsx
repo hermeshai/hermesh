@@ -115,7 +115,7 @@ export function SettingsWindow() {
         </div>
         <div className="set-body">
           {page === "general" && <General />}
-          {page === "grants" && <Grants open={item} select={setItem} />}
+          {page === "grants" && <Grants open={item} select={setItem} ask={setAsk} />}
           {page === "machines" && <Machines open={item} select={setItem} ask={setAsk} />}
           {page === "account" && <Account ask={setAsk} />}
         </div>

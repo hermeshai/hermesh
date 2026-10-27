@@ -8,7 +8,7 @@ import { AgentName, GrantAvatar } from "../components";
 import { hostOf } from "../sheets/Pairing";
 import { machineName } from "../Sidebar";
 import { useNow, useStore, type Store } from "../store";
-import { GoRow, More, Row } from "./common";
+import { GoRow, More, Row, type Ask } from "./common";
 import { Wakes } from "./Wakes";
 
 /** Whole days until the grant ends (0 once it has). */
@@ -45,14 +45,14 @@ function usedText(st: Store, c: Client, now: Date): string {
 }
 
 /** Access: the grants, each opening what it may use and changing or ending it. */
-export function Grants({ open, select }: { open: string; select: (id: string) => void }) {
+export function Grants({ open, select, ask }: { open: string; select: (id: string) => void; ask: (a: Ask) => void }) {
   const { t } = useTranslation("settings");
   const st = useStore();
   const now = useNow(60_000);
   const clients = st.clients.filter((c) => !c.revoked);
   const c = clients.find((x) => x.grantId === open);
   const connect = () => st.set({ sheet: { kind: "newGrant" } });
-  if (c) return <GrantDetail c={c} />;
+  if (c) return <GrantDetail c={c} ask={ask} />;
   return (
     <div className="form">
       {clients.length > 0 ? (
@@ -78,7 +78,7 @@ export function Grants({ open, select }: { open: string; select: (id: string) =>
   );
 }
 
-function GrantDetail({ c }: { c: Client }) {
+function GrantDetail({ c, ask }: { c: Client; ask: (a: Ask) => void }) {
   const { t } = useTranslation("settings");
   const st = useStore();
   const now = useNow(30_000);
@@ -91,6 +91,12 @@ function GrantDetail({ c }: { c: Client }) {
   const machines = (c.spec?.machineIds ?? []).filter((m) => m !== "*");
   const name = agentName(c.label);
   const scope = (renew: boolean) => st.set({ sheet: { kind: "scope", clientId: c.clientId, renew } });
+  const rename = () =>
+    ask({
+      title: t("grants.renameTitle"),
+      message: t("grants.renameMessage"),
+      field: { label: t("grants.agentName"), value: name, button: t("grants.renameButton"), run: (label) => st.run(() => local.renameClient({ grantId: c.grantId, label })) },
+    });
   const revoke = () =>
     st.set({
       sheet: {
@@ -126,6 +132,7 @@ function GrantDetail({ c }: { c: Client }) {
         </div>
       </div>
       <div className="set-acts">
+        <button className="btn" onClick={rename}>{t("grants.rename")}</button>
         <button className="btn" onClick={() => scope(false)}>{t("grants.changeScope")}</button>
         <button className="btn" onClick={() => scope(true)}>{t("grants.renew")}</button>
         <button className="btn danger push" onClick={revoke}>{t("grants.disconnect")}</button>

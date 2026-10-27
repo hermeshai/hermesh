@@ -22,7 +22,9 @@ import (
 	"testing"
 	"time"
 
+	"connectrpc.com/connect"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
+	"google.golang.org/protobuf/proto"
 
 	identityv1 "github.com/hermeshai/hermesh/gen/go/hermesh/identity/v1"
 	localv1 "github.com/hermeshai/hermesh/gen/go/hermesh/local/v1"
@@ -701,6 +703,56 @@ func TestWake(t *testing.T) {
 	if err != nil || len(ss.Sessions) == 0 || ss.Sessions[0].CreatedAs != "research" {
 		t.Fatalf("the session's created_as: %v %v", ss, err)
 	}
+}
+
+// TestRenameAgent: the owner gives an agent another name (docs/agent-names.md
+// §14). Its grant is signed again with that alone changed, so every device
+// and the agent's contacts show it, and the agent keeps working, as long as
+// before.
+func TestRenameAgent(t *testing.T) {
+	if testing.Short() {
+		t.Skip("e2e")
+	}
+	ctx := context.Background()
+	w := newOwnerMac(t, []string{"HERMESH_FAKE_PROVIDERS=1"}, &localv1.GrantSpec{})
+	grant := func(id string) *localv1.Client {
+		l, err := w.app.client.ListClients(ctx, &localv1.ListClientsRequest{})
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, c := range l.Clients {
+			if c.Label == id || c.GrantId == id {
+				return c
+			}
+		}
+		t.Fatalf("no grant %s in %v", id, l.Clients)
+		return nil
+	}
+	before := grant("bot")
+	res, err := w.app.client.RenameClient(ctx, &localv1.RenameClientRequest{GrantId: before.GrantId, Label: "  Grok   Bot "})
+	if err != nil || res.GrantVersion != before.GrantVersion+1 {
+		t.Fatalf("RenameClient: %v %v", res, err)
+	}
+	after := grant(before.GrantId)
+	if after.Label != "Grok Bot" || after.GrantVersion != res.GrantVersion || !proto.Equal(after.ExpiresAt, before.ExpiresAt) || !proto.Equal(after.Spec, withLabel(before.Spec, "Grok Bot")) {
+		t.Fatalf("renamed, the grant must change its name alone: %v, was %v", after, before)
+	}
+	eventually(t, time.Minute, "the agent's contacts saying its new name", func() bool {
+		return strings.Contains(w.cli(30*time.Second, "message", "contacts").stdout, "Grok Bot")
+	})
+	if r := w.cli(time.Minute, "session", "start", "--project", "demo", "--prompt", "say renamed", "--wait"); r.code != 0 || !strings.Contains(r.stdout, "renamed") {
+		t.Fatalf("the renamed agent's session: %+v", r)
+	}
+	if _, err := w.app.client.RenameClient(ctx, &localv1.RenameClientRequest{GrantId: before.GrantId, Label: strings.Repeat("x", 65)}); connect.CodeOf(err) != connect.CodeInvalidArgument {
+		t.Fatalf("a name too long: %v", err)
+	}
+}
+
+// withLabel is spec with another label.
+func withLabel(spec *localv1.GrantSpec, label string) *localv1.GrantSpec {
+	s := proto.Clone(spec).(*localv1.GrantSpec)
+	s.Label = label
+	return s
 }
 
 // slowly is eventually at one try a second: MCP tools are rate limited.

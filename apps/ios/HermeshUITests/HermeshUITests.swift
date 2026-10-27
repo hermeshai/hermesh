@@ -27,7 +27,8 @@ final class HermeshUITests: XCTestCase {
         try XCTContext.runActivity(named: "shows what a session changed") { _ in try diff() }
         try XCTContext.runActivity(named: "approves an agent asking to connect") { _ in try approveAgent() }
         try XCTContext.runActivity(named: "renews a grant") { _ in try renew() }
-        try XCTContext.runActivity(named: "sets up waking one of an agent's bots, after a check that catches a wrong key") { _ in try wake() }
+        try XCTContext.runActivity(named: "sets up waking an agent, after a first ring that catches a wrong key") { _ in try wake() }
+        try XCTContext.runActivity(named: "renames an agent, and back") { _ in try renameAgent() }
         try XCTContext.runActivity(named: "shows a machine and its projects") { _ in try machine() }
         try XCTContext.runActivity(named: "marks the trusted devices among the machines") { _ in try devices() }
         try XCTContext.runActivity(named: "chooses light or dark in the account") { _ in try appearance() }
@@ -222,6 +223,8 @@ final class HermeshUITests: XCTestCase {
         let grant = app.buttons["grant-bot"]
         XCTAssertTrue(grant.waitForExistence(timeout: 20))
         grant.tap()
+        let renew = app.buttons["renew"]
+        for _ in 0..<5 where !renew.exists { app.swipeUp() }
         tap("renew")
         app.buttons["90 天"].tap()
         tap("renew-confirm")
@@ -271,6 +274,23 @@ final class HermeshUITests: XCTestCase {
         XCTAssertTrue(row.label.contains("叫醒 bot"), row.label)
         let calls = try control("webhook")["calls"] as? [String] ?? []
         XCTAssertEqual(calls, ["hermesh.check  Bearer wrong", "hermesh.check  Bearer crsr_ok"])
+    }
+
+    /// On the agent's page, after wake(): its grant signed again with another name.
+    func renameAgent() throws {
+        let before = try control("grant?label=bot")["version"] as? Int ?? 0
+        for (from, to) in [("bot", "Grok Bot"), ("Grok Bot", "bot")] {
+            let rename = app.buttons["rename-agent"]
+            for _ in 0..<5 where !rename.isHittable { app.swipeDown() }
+            tap("rename-agent")
+            let field = app.alerts.textFields.firstMatch
+            XCTAssertTrue(field.waitForExistence(timeout: 10))
+            field.coordinate(withNormalizedOffset: CGVector(dx: 0.95, dy: 0.5)).tap()
+            field.typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: from.count) + to)
+            app.alerts.buttons["重命名"].tap()
+            XCTAssertTrue(app.navigationBars[to].waitForExistence(timeout: 30), "renamed to \(to)")
+        }
+        XCTAssertEqual(try control("grant?label=bot")["version"] as? Int, before + 2)
     }
 
     func machine() throws {

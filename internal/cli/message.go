@@ -1120,7 +1120,7 @@ func (a *app) messageWakeCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			tell := fmt.Sprintf("In the Hermesh app on the Mac: Settings → Access → %s → Wake → Add…, with the webhook's URL and key", a.g.ClientLabel)
+			tell := fmt.Sprintf("In the Hermesh app on the Mac: Settings → Access → %s → Wake on New Messages → Set Up…, with the routine's URL and key", a.g.ClientLabel)
 			if a.as != "" {
 				tell += fmt.Sprintf(", for the name %q", a.as)
 			}

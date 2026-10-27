@@ -28,7 +28,7 @@ async function api<T = Record<string, never>>(page: Page, method: string, body: 
 }
 
 type Status = { connectAddress: string; localMachineId: string };
-type Client = { label: string; expiresAt: string; spec: { machineIds: string[]; projectIds: string[]; agents: string[] } };
+type Client = { grantId: string; label: string; expiresAt: string; spec: { machineIds: string[]; projectIds: string[]; agents: string[] } };
 
 const running = new Set<ChildProcess>();
 test.afterEach(() => running.forEach((p) => p.kill())); // a failed test leaves no login waiting
@@ -295,6 +295,36 @@ test("a hosted agent shows its app's icon only when it signs in from the app's o
   // The app by its own name, with its icon; the impostor keeps where it signed in, and a letter.
   await expect(grants.filter({ has: settings.locator(".fn", { hasText: /^Muse$/ }) }).first().locator("img")).toBeVisible();
   await expect(grants.filter({ hasText: impostor }).locator(".av")).toHaveText("M");
+  await app.close();
+});
+
+test("renaming an agent from settings keeps what it may use and until when; a known app's name brings its icon", async () => {
+  const name = `Renamer ${process.pid}`;
+  const { app, page } = await launch();
+  const st = await api<Status>(page, "GetStatus");
+  const login = newAgent().login(st.connectAddress, name);
+  await api(page, "ApproveClientPairing", { code: await login.code, spec: { machineIds: [st.localMachineId], projectIds: ["demo"], agents: ["gemini"], ttlDays: 7 } });
+  expect(await login.exit, login.output()).toBe(0);
+  const clients = async () => (await api<{ clients: Client[] }>(page, "ListClients")).clients;
+  const before = (await clients()).find((c) => c.label === name)!;
+
+  const [settings] = await Promise.all([app.waitForEvent("window"), page.evaluate(() => window.hermesh?.openSettings("grants"))]);
+  await settings.waitForLoadState();
+  await settings.getByRole("list", { name: "授权" }).getByRole("button", { name: new RegExp(name) }).click();
+  const panel = settings.getByRole("main", { name: "授权" });
+  await panel.getByRole("button", { name: "改名…" }).click();
+  const sheet = settings.getByRole("dialog", { name: "给这个 agent 改名" });
+  await expect(sheet.getByRole("textbox", { name: "名字" })).toHaveValue(name);
+  await sheet.getByRole("textbox", { name: "名字" }).fill("Grok Bot");
+  await sheet.getByRole("button", { name: "改名" }).click(); // the signer asks, and says yes
+  await expect(sheet).toBeHidden();
+  await expect(panel.locator(".dhero b")).toHaveText("Grok Bot");
+  await expect(panel.locator(".dhero img")).toBeVisible(); // Grok Bot's icon
+  const after = (await clients()).find((c) => c.grantId === before.grantId)!;
+  expect(after.label).toBe("Grok Bot");
+  expect(after.expiresAt).toEqual(before.expiresAt);
+  expect(after.spec).toMatchObject({ projectIds: ["demo"], agents: ["gemini"] });
+  await snap(settings, "settings-grant-renamed");
   await app.close();
 });
 

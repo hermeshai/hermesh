@@ -76,6 +76,8 @@ struct GrantView: View {
     @Environment(AppModel.self) private var model
     let id: String
     @State private var confirmDisconnect = false
+    @State private var renaming = false
+    @State private var newName = ""
     @State private var wakes: [Wake]?
 
     var body: some View {
@@ -97,6 +99,12 @@ struct GrantView: View {
                 VStack(spacing: 8) {
                     GrantAvatar(label: c.label, size: 58)
                     Text(AgentLogo.name(c.label)).font(.title2.bold())
+                    Button("Rename…") {
+                        newName = AgentLogo.name(c.label)
+                        renaming = true
+                    }
+                    .font(.subheadline).buttonStyle(.borderless)
+                    .accessibilityIdentifier("rename-agent")
                     Text("Valid until \(c.expiresAt.date.formatted(date: .abbreviated, time: .omitted)) · \(days) days left")
                         .font(.subheadline).foregroundStyle(days <= 7 ? .orange : .secondary)
                 }
@@ -137,6 +145,13 @@ struct GrantView: View {
         // Its doorbells, again whenever a sheet closes: one may have changed them.
         .task(id: model.sheet) {
             if model.sheet == nil, let api = model.api { wakes = try? await api.listWakes(c.clientID) }
+        }
+        .alert("Rename This Agent", isPresented: $renaming) {
+            TextField("Name", text: $newName).accessibilityIdentifier("agent-name")
+            Button("Cancel", role: .cancel) {}
+            Button("Rename") { Task { await model.rename(c, to: newName) } }
+        } message: {
+            Text("The name you know it by, here and on your other devices; other agents see it too. Naming it after a known app (Grok Bot, Claude) shows that app’s icon.")
         }
         .confirmationDialog("Disconnect “\(AgentLogo.name(c.label))”?", isPresented: $confirmDisconnect, titleVisibility: .visible) {
             Button("Disconnect", role: .destructive) { Task { await model.disconnect(c) } }

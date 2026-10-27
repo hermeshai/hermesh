@@ -454,9 +454,12 @@ ids. So:
   its own name and logo: "Cursor" for Grok Bot's connection (it signs in as
   Cursor), "Claude", "ChatGPT". The Access list says who used each grant
   last and when, with the names its bots went by (`Session.created_as`, the
-  name a session was started under, kept on the machine). Renaming an agent
-  is left for later: the label is the relay's, and every device would have
-  to see the new one.
+  name a session was started under, kept on the machine). The owner can
+  rename an agent ("Rename…" on its page, Mac and iPhone): the name is the
+  grant's, so `RenameClient` signs the grant again with the label alone
+  changed (what it may use and until when stay; Touch ID or Face ID), and
+  every device, machine and the agent's contacts see it. A known app's
+  name ("Grok Bot") brings its icon.
 - **Bots speak plainly.** The server's instructions ask hosted assistants
   to talk about the work, not Hermesh (no session ids, routine names or how
   waking works unless asked), and `session_start` and `session_answer`
@@ -464,7 +467,7 @@ ids. So:
   project hermesh on yee-homebook. Its result comes to you as a message
   when it is done.").
 
-Tested by `TestWake` (an agent's own doorbell waking a name without one,
+Tested by `TestRenameAgent`, `TestWake` (an agent's own doorbell waking a name without one,
 whether or not the sender knew of it; the rings the owner sees; a pasted
 header), `TestMCPInbox` (the summary), the desktop e2e `settings`, `TestIPhone`
 and the console's `wake.spec.ts`.
