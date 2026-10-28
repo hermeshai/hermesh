@@ -4,6 +4,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"os"
+	"path/filepath"
 	"regexp"
 	"slices"
 	"strings"
@@ -103,16 +105,23 @@ func (s *sessionService) AnswerQuestion(ctx context.Context, req *sessionv1.Answ
 
 type machineService struct{ n *Machine }
 
-func (s *machineService) GetInfo(ctx context.Context, _ *machinev1.GetInfoRequest) (*machinev1.GetInfoResponse, error) {
+func (s *machineService) GetInfo(ctx context.Context, req *machinev1.GetInfoRequest) (*machinev1.GetInfoResponse, error) {
 	// An agent about to pick where to work waits for a fresh check of the
 	// coding agents; the owner's devices get what is known (and start the
-	// first check).
-	if principalFrom(ctx).Kind == PrincipalClient {
+	// first check), or wait for a new one when the person asked (Check
+	// Again).
+	switch {
+	case req.Recheck && principalFrom(ctx).Kind == PrincipalOwner:
+		select {
+		case <-s.n.CheckAgents(true, 0):
+		case <-ctx.Done():
+		}
+	case principalFrom(ctx).Kind == PrincipalClient:
 		select {
 		case <-s.n.CheckAgents(false, AgentsFresh):
 		case <-ctx.Done():
 		}
-	} else {
+	default:
 		s.n.CheckAgents(false, AgentsOnce)
 	}
 	return &machinev1.GetInfoResponse{MachineId: s.n.machineID, MachineName: s.n.Name(), Status: s.n.Status()}, nil
@@ -168,6 +177,10 @@ func projectAgents(names []string) ([]string, error) {
 // unspecified mode is a worktree for a git repository root and in place
 // for any other directory.
 func projectWorkspace(ctx context.Context, mode identityv1.Workspace, path string) (identityv1.Workspace, string, error) {
+	// "~/app", as a device types it or the repositories found are shown.
+	if home, err := os.UserHomeDir(); err == nil && (path == "~" || strings.HasPrefix(path, "~/")) {
+		path = filepath.Join(home, path[1:])
+	}
 	switch mode {
 	case identityv1.Workspace_WORKSPACE_WORKTREE:
 		p, err := ValidateRepo(ctx, path)
@@ -219,6 +232,20 @@ func (s *adminService) PushRevocations(ctx context.Context, req *machinev1.PushR
 	}
 	s.n.applyRevocations(req.Revocations)
 	return &machinev1.PushRevocationsResponse{Applied: true}, nil
+}
+
+func (s *adminService) ListRepos(ctx context.Context, _ *machinev1.ListReposRequest) (*machinev1.ListReposResponse, error) {
+	if principalFrom(ctx).Kind != PrincipalOwner {
+		return nil, connect.NewError(connect.CodePermissionDenied, errors.New("owner only"))
+	}
+	return &machinev1.ListReposResponse{Repos: FindRepos(ctx)}, nil
+}
+
+func (s *adminService) TestAgent(ctx context.Context, req *machinev1.TestAgentRequest) (*machinev1.TestAgentResponse, error) {
+	if principalFrom(ctx).Kind != PrincipalOwner {
+		return nil, connect.NewError(connect.CodePermissionDenied, errors.New("owner only"))
+	}
+	return s.n.TestAgent(ctx, req.Agent)
 }
 
 // ApplyAdminCommand verifies a root-signed command and executes it.

@@ -85,6 +85,10 @@ service LocalService {
   // Checks this Mac's coding agents again (installed, version, signed in),
   // in the background: they are only checked when something needs them.
   rpc CheckAgents(CheckAgentsRequest) returns (CheckAgentsResponse);
+  // A machine's git repositories under its home folder, for Add a Project.
+  rpc ListMachineRepos(ListMachineReposRequest) returns (ListMachineReposResponse);
+  // One fixed turn of a coding agent on a machine (Test).
+  rpc TestMachineAgent(TestMachineAgentRequest) returns (hermesh.machine.v1.TestAgentResponse);
   // This Mac's diagnostics as text, for the person to copy and send when
   // something does not work: versions, health, PATH and each coding agent.
   // Nothing leaves the Mac unless they do.
@@ -325,6 +329,9 @@ message RequestJoinRequest {
   string relay_url = 1;
   // The owner to join. On a hosted center the console gave it, so it is
   // not trusted: ConfirmJoin is the person's word that they approved it.
+  // Empty on a hosted center: one of the owner's devices claims the
+  // request by its code (docs/onboarding.md §9.5); the device cert is
+  // signed once it is claimed.
   string owner_id = 2;
   // As in SetupRequest: empty asks the signer for a new root key.
   bytes root_public_key = 3;
@@ -347,9 +354,13 @@ message RequestJoinRequest {
 
 message RequestJoinResponse {
   string code = 1;
-  // What the approving device shows for this request.
+  // What the approving device shows for this request (none without an
+  // owner: the code binds the key).
   string verification_code = 2;
   google.protobuf.Timestamp expires_at = 3;
+  // Without an owner, on a hosted center: the console's page for the code,
+  // which the iPhone opens as a universal link (for a QR).
+  string pairing_link = 4;
 }
 
 message WaitJoinRequest {
@@ -364,6 +375,10 @@ message WaitJoinResponse {
   repeated Device devices = 4;
   // ConfirmJoin needs the two digits the approving device shows.
   bool match_required = 5;
+  // A join without an owner: one of an owner's devices claimed it (by the
+  // account it names, a hint), and is yet to approve.
+  bool claimed = 6;
+  string claimed_by = 7;
 }
 
 message ConfirmJoinRequest {
@@ -446,8 +461,9 @@ message SigningRequest {
   // the person to type on the machine that asked for them
   // (PairingRequest.confirm_match).
   bool show_match = 8;
-  // A client pairing the person already confirmed as theirs
-  // (PairingDetails.confirmed): no verification code to compare.
+  // A pairing the person already confirmed as theirs, or a machine or
+  // device whose code they looked up here (PairingDetails.confirmed): no
+  // verification code to compare.
   bool confirmed = 9;
   // The root key to sign with (its key id): the current profile's. With
   // delete_root_key: the key to delete.
@@ -603,9 +619,26 @@ message SetAgentDefaultsRequest {
 
 message SetAgentDefaultsResponse {}
 
-message CheckAgentsRequest {}
+message CheckAgentsRequest {
+  // A machine of the owner to check, end to end, waiting for it; empty:
+  // this device's own machine, in the background.
+  string machine_id = 1;
+}
 
 message CheckAgentsResponse {}
+
+message ListMachineReposRequest {
+  string machine_id = 1;
+}
+
+message ListMachineReposResponse {
+  repeated hermesh.machine.v1.Repo repos = 1;
+}
+
+message TestMachineAgentRequest {
+  string machine_id = 1;
+  string agent = 2;
+}
 
 message GetDiagnosticsRequest {}
 

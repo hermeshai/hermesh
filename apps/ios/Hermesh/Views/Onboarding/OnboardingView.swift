@@ -29,6 +29,8 @@ struct OnboardingView: View {
 
     @State private var step: Step = .welcome
     @State private var address = ""
+    @State private var claim = ""
+    @State private var claiming = false
     @State private var digits = ""
     @State private var busy = false
     @State private var error: String?
@@ -90,25 +92,39 @@ struct OnboardingView: View {
             .accessibilityLabel(Text("Back"))
             .padding(.top, 8)
             Spacer().frame(height: 30)
-            Text("Join your own server").font(.title.bold())
-            Text("Type the connection address one of your trusted devices shows (on a Mac: Settings › Account and Devices).")
+            Text(claiming ? "Set up your own server" : "Join your own server").font(.title.bold())
+            Text(claiming ? "Type your server’s address and the claim code it printed when it started. This iPhone becomes its owner." : "Type the connection address one of your trusted devices shows (on a Mac: Settings › Account and Devices).")
                 .foregroundStyle(.secondary)
-            TextField("relay.example.com/o_…", text: $address)
+            TextField(claiming ? "relay.example.com" : "relay.example.com/o_…", text: $address)
                 .font(.body.monospaced()).textInputAutocapitalization(.never).autocorrectionDisabled().keyboardType(.URL)
                 .padding(14).background(.fill.tertiary, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
                 .focused($typing)
                 .accessibilityIdentifier("connection-address")
+            if claiming {
+                TextField("Claim code", text: $claim)
+                    .font(.body.monospaced()).textInputAutocapitalization(.characters).autocorrectionDisabled()
+                    .padding(14).background(.fill.tertiary, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                    .accessibilityIdentifier("claim-code")
+            }
+            Button(claiming ? "Join a server you already use instead" : "A new server? Enter its claim code…") {
+                claiming.toggle()
+                error = nil
+            }
+            .font(.footnote)
+            .accessibilityIdentifier("claim-toggle")
             if let error { Text(error).font(.footnote).foregroundStyle(.red) }
             Spacer()
             Button {
+                typing = false
+                if claiming { return claimServer() }
                 guard let a = ConnectAddress(address) else { return error = String(localized: "That isn’t a connection address. It looks like relay.example.com/o_…") }
                 error = nil
-                typing = false
                 step = .join(owner: a.owner, relay: a.relay)
             } label: {
                 Text("Continue").frame(maxWidth: .infinity)
             }
-            .buttonStyle(.glassProminent).controlSize(.large).disabled(address.trimmingCharacters(in: .whitespaces).isEmpty)
+            .buttonStyle(.glassProminent).controlSize(.large)
+            .disabled(address.trimmingCharacters(in: .whitespaces).isEmpty || (claiming && claim.trimmingCharacters(in: .whitespaces).isEmpty) || busy)
             .accessibilityIdentifier("continue")
         }
     }
@@ -185,7 +201,7 @@ struct OnboardingView: View {
             Spacer()
             Image(systemName: "checkmark.circle.fill").font(.system(size: 64)).foregroundStyle(.green)
             Text("This iPhone is one of your trusted devices").font(.title.bold()).multilineTextAlignment(.center)
-            Text("Hermesh tells you when an agent asks something or a machine or agent asks to connect.").foregroundStyle(.secondary).multilineTextAlignment(.center)
+            Text("Requests to connect and your agents’ questions come here. Without notifications you’ll see them only while Hermesh is open.").foregroundStyle(.secondary).multilineTextAlignment(.center)
             Spacer()
             Button {
                 Task {
@@ -258,6 +274,32 @@ struct OnboardingView: View {
         }
     }
 
+    /// Your own server, new: this iPhone claims it with the code it printed.
+    private func claimServer() {
+        var t = address.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !t.contains("://") { t = "https://" + t }
+        guard let center = URL(string: t), center.host != nil else { return error = String(localized: "That isn’t a server address. It looks like relay.example.com") }
+        error = nil
+        busy = true
+        Task {
+            defer { busy = false }
+            do {
+                var r = Hermesh_Local_V1_SetupRequest()
+                r.relayURL = try await connectURL(center)
+                r.claimCode = claim.trimmingCharacters(in: .whitespacesAndNewlines)
+                r.rootLabel = UIDevice.current.name
+                r.rootPlatform = "ios"
+                step = .setup
+                model.signer.expect(.firstSetup)
+                _ = try await model.api?.setup(r)
+                step = .notifications
+            } catch {
+                self.error = (error as? APIError)?.message ?? error.localizedDescription
+                step = .ownServer
+            }
+        }
+    }
+
     private func join(owner: String, relay: String) {
         error = nil
         busy = true
@@ -326,6 +368,31 @@ enum AppLink {
         case "join": guard let o = items.first(where: { $0.name == "owner" })?.value, !o.isEmpty else { return nil }; self = .join(o)
         default: return nil
         }
+    }
+}
+
+/// A pairing code to look up, from a link or a scan: hermesh://pair?code=…,
+/// a center's https://host/p/CODE, or the bare code as a machine shows it.
+enum PairingLink {
+    static func code(_ url: URL) -> String? {
+        if url.scheme == "hermesh", url.host == "pair" {
+            return URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems?.first { $0.name == "code" }?.value.flatMap(bare)
+        }
+        guard ["https", "http"].contains(url.scheme ?? "") else { return nil }
+        let parts = url.path.split(separator: "/")
+        guard parts.count == 2, parts[0] == "p" else { return nil }
+        return bare(String(parts[1]))
+    }
+
+    static func code(scanned s: String) -> String? {
+        let t = s.trimmingCharacters(in: .whitespacesAndNewlines)
+        if let u = URL(string: t), u.scheme != nil { return code(u) }
+        return bare(t)
+    }
+
+    private static func bare(_ s: String) -> String? {
+        let c = s.uppercased()
+        return c.wholeMatch(of: /[0-9A-Z]{4}-[0-9A-Z]{4}-[0-9A-Z]{4}/) != nil ? c : nil
     }
 }
 

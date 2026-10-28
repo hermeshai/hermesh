@@ -81,6 +81,19 @@ func workspaceText(_ w: Hermesh_Identity_V1_Workspace) -> String {
     }
 }
 
+/// Where each coding agent says how to install it.
+let installPage: [String: URL] = [
+    "claude": URL(string: "https://github.com/anthropics/claude-code")!,
+    "codex": URL(string: "https://github.com/openai/codex")!,
+]
+
+/// "v1.2.3" or "1.2.3-dev" as [1, 2, 3]; nil for a build with no version.
+func versionParts(_ v: String) -> [Int]? {
+    let core = v.trimmingCharacters(in: CharacterSet(charactersIn: "v")).split(separator: "-").first ?? ""
+    let parts = core.split(separator: ".").compactMap { Int($0) }
+    return parts.count >= 2 ? parts : nil
+}
+
 /// A machine's "darwin/arm64" as "macOS · arm64".
 func platformText(_ platform: String) -> String {
     let parts = platform.split(separator: "/").map(String.init)
@@ -151,6 +164,7 @@ struct MachineView: View {
     @State private var newName = ""
     @State private var confirmRemove = false
     @State private var removeProject: Project?
+    @State private var checking = false
 
     var body: some View {
         Group {
@@ -196,12 +210,45 @@ struct MachineView: View {
                 if agents.installed.isEmpty && agents.checking.isEmpty {
                     Text(m.online ? "No coding agent found on this machine." : "The machine is offline; they show once it connects.").foregroundStyle(.secondary)
                 }
+                if m.online {
+                    Button {
+                        checking = true
+                        Task {
+                            await model.recheck(machine: m.machineID)
+                            checking = false
+                        }
+                    } label: {
+                        HStack {
+                            Text("Check Again")
+                            if checking { Spacer(); ProgressView() }
+                        }
+                    }
+                    .disabled(checking)
+                    .accessibilityIdentifier("check-again")
+                }
             } header: {
                 Text("Coding agents")
             } footer: {
                 if !agents.missing.isEmpty {
-                    Text("Not installed: \(listText(agents.missing.map(agentTitle))) · Hermesh finds them once they are")
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("Not installed: \(listText(agents.missing.map(agentTitle))) · install one on \(m.machineName), then Check Again")
+                        ForEach(agents.missing.filter { installPage[$0] != nil }, id: \.self) { a in
+                            Link(String(localized: "How to install \(agentTitle(a))"), destination: installPage[a]!)
+                        }
+                    }
                 }
+            }
+            if let v = olderVersion(m) {
+                Section {
+                    Text("Hermesh on \(m.machineName) is \(v), older than this app. To update it, run the install command there again:")
+                        .font(.subheadline)
+                    MonoBox(text: AddMachineSheet.install)
+                    CopyShareButtons(text: AddMachineSheet.install, shareTitle: "Send…")
+                        .listRowBackground(Color.clear).listRowInsets(EdgeInsets())
+                } header: {
+                    Text("Update")
+                }
+                .accessibilityIdentifier("machine-update")
             }
             if !others.isEmpty {
                 Section {
@@ -239,7 +286,15 @@ struct MachineView: View {
         .navigationTitle(m.machineName)
         .navigationBarTitleDisplayMode(.inline)
         .refreshable {
-            try? await model.api?.checkAgents()
+            await model.recheck(machine: m.machineID)
+        }
+        .task(id: m.online) {
+            // A machine looks for its coding agents when asked: opened with
+            // none listed (just joined), it is asked once.
+            guard m.online, m.status.agents.isEmpty, !checking else { return }
+            checking = true
+            await model.recheck(machine: m.machineID)
+            checking = false
         }
         .alert("Rename this machine", isPresented: $renaming) {
             TextField("Machine name", text: $newName).textInputAutocapitalization(.never).autocorrectionDisabled()
@@ -272,6 +327,14 @@ struct MachineView: View {
         } message: {
             Text("The directory itself isn’t deleted; agents can no longer start sessions there.")
         }
+    }
+
+    /// The machine's Hermesh version, when it is older than this app's.
+    private func olderVersion(_ m: Machine) -> String? {
+        let v = m.status.version.isEmpty ? m.version : m.status.version
+        guard let mine = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String,
+              let a = versionParts(v), let b = versionParts(mine), a.lexicographicallyPrecedes(b) else { return nil }
+        return v
     }
 
     /// The trusted device this machine is, if it is one.

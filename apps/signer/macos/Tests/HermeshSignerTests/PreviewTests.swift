@@ -185,6 +185,11 @@ func goBodiesAreShown(type: String, body: String) throws {
     let m = try #require(SigningPreview.joinMatchCode(r, hints))
     #expect(m.label == "Mac B")
     #expect(m.digits == SigningPreview.joinMatch(r.body))
+
+    // Found by the code it shows (a Linux trusted device): nothing to compare.
+    var found = r
+    found.confirmed = true
+    #expect(try SigningPreview.card(found, hints).code == nil)
 }
 
 @Test func removingADeviceAndReissuing() throws {

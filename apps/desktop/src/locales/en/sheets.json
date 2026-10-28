@@ -53,6 +53,7 @@
     "titleMachine": "A Machine Calling Itself “{{name}}” Wants to Join",
     "reported": "It reports: {{who}} · verification code",
     "confirmed": "{{who}} · You confirmed it’s yours",
+    "byCode": "{{who}} · The code you entered matches its key",
     "goneTitle": "This Request Is No Longer Here",
     "goneBody": "It may have been approved elsewhere, or it expired.",
     "approvedDevice": "Enter the two digits from the pop-up window on “{{name}}”",

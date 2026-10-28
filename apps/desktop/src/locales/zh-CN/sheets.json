@@ -53,6 +53,7 @@
     "titleMachine": "一台自称「{{name}}」的机器想加入",
     "reported": "对方自报：{{who}} · 核对码",
     "confirmed": "{{who}} · 你已确认是你发起的",
+    "byCode": "{{who}} · 你输入的配对码与它的密钥相符",
     "goneTitle": "这个请求已经不在了",
     "goneBody": "它可能已经在别处批准，或者过期了。",
     "approvedDevice": "在「{{name}}」上输入弹出窗口里的两位数字",

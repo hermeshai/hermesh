@@ -1,6 +1,7 @@
 import HermeshProto
 import HermeshSessions
 import SwiftUI
+import UserNotifications
 
 /// What a pairing request is, in a line.
 enum PairingText {
@@ -19,14 +20,19 @@ enum PairingText {
 /// work to which coding agent, each coding agent's day and the machines.
 struct OverviewView: View {
     @Environment(AppModel.self) private var model
+    @Environment(\.scenePhase) private var phase
     @State private var everyAgent = false
     @State private var picked: FlowPick?
+    @State private var notificationsOff = false
+    @AppStorage("hideGetStarted") private var hideGetStarted = false
+    @AppStorage("hideSecondDevice") private var hideSecondDevice = false
 
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 26) {
                 UnreachableNotice()
                 if model.hasWorld {
+                    if !hideGetStarted { GetStarted(hide: { hideGetStarted = true }) }
                     todo
                     working
                 } else { // nothing kept yet: the first launch, or after joining
@@ -45,25 +51,40 @@ struct OverviewView: View {
         .onAppear { model.overviewShown = true }
         .onDisappear { model.overviewShown = false }
         .refreshable { await model.loadActivity() }
+        .task(id: phase) {
+            guard phase == .active else { return }
+            notificationsOff = await UNUserNotificationCenter.current().notificationSettings().authorizationStatus == .denied
+        }
     }
 
     private enum Todo: Identifiable {
         case pairing(PairingDetails)
         case expiring(Client)
         case sessions(Int)
+        case notificationsOff
+        case secondDevice
 
         var id: String {
             switch self {
             case .pairing(let p): "p" + p.code
             case .expiring(let c): "g" + c.grantID
             case .sessions: "s"
+            case .notificationsOff: "n"
+            case .secondDevice: "d"
             }
         }
+    }
+
+    /// Once the first machine joins, while this phone is the only device that
+    /// can approve.
+    private var onlyDevice: Bool {
+        !hideSecondDevice && !model.machines.isEmpty && model.devices.count == 1 && model.devices[0].thisDevice
     }
 
     @ViewBuilder private var todo: some View {
         let waiting = model.sessions.filter(\.needsAttention).count
         let items = model.pairings.map(Todo.pairing) + model.expiringClients.map(Todo.expiring) + (waiting > 0 ? [.sessions(waiting)] : [])
+            + (notificationsOff ? [.notificationsOff] : []) + (onlyDevice ? [.secondDevice] : [])
         if !items.isEmpty {
             Section {
                 card {
@@ -78,6 +99,8 @@ struct OverviewView: View {
                                 Text("\(n) sessions need you").frame(maxWidth: .infinity, alignment: .leading)
                             }
                             .accessibilityIdentifier("sessions-waiting")
+                        case .notificationsOff: notificationsRow
+                        case .secondDevice: secondDeviceRow
                         }
                     }
                 }
@@ -101,6 +124,39 @@ struct OverviewView: View {
                 .accessibilityIdentifier("verify-pairing")
         }
         .padding(.horizontal, 16).padding(.vertical, 11)
+    }
+
+    private var notificationsRow: some View {
+        HStack(spacing: 12) {
+            Image(systemName: "bell.slash").foregroundStyle(.orange).frame(width: 28)
+            VStack(alignment: .leading, spacing: 2) {
+                Text("Notifications are off")
+                Text("You’ll see requests and questions only while Hermesh is open.").font(.footnote).foregroundStyle(.secondary)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            Button("Turn On…") {
+                if let url = URL(string: UIApplication.openNotificationSettingsURLString) { UIApplication.shared.open(url) }
+            }
+            .buttonStyle(.glass)
+        }
+        .padding(.horizontal, 16).padding(.vertical, 11)
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("notifications-off")
+    }
+
+    private var secondDeviceRow: some View {
+        HStack(spacing: 12) {
+            Image(systemName: "iphone.gen3").foregroundStyle(.secondary).frame(width: 28)
+            Text("Only this iPhone can approve. If you lose it, you’ll set up again and pair your machines and agents again.")
+                .font(.subheadline).frame(maxWidth: .infinity, alignment: .leading)
+            VStack(spacing: 6) {
+                Button("Add Another…") { model.sheet = .addDevice }.buttonStyle(.glass)
+                Button("Hide") { hideSecondDevice = true }.font(.footnote)
+            }
+        }
+        .padding(.horizontal, 16).padding(.vertical, 11)
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("second-device")
     }
 
     private func expiringRow(_ c: Client) -> some View {
@@ -661,6 +717,112 @@ struct SessionRow: View {
             Text(start, style: .timer)
         } else {
             Text(listTime(session.updatedDate, now: model.now))
+        }
+    }
+}
+
+/// Get Started: from the first launch until it is done or hidden, the
+/// first machine, its coding agent, a project, an agent and its first
+/// session, in that order. The next row carries the button.
+struct GetStarted: View {
+    @Environment(AppModel.self) private var model
+    let hide: () -> Void
+    @State private var asked: String?
+
+    private enum Step: Int, CaseIterable {
+        case machine, agent, project, connect, tryIt
+    }
+
+    private var machine: Machine? { model.machines.first }
+    private var ready: (Machine, String)? {
+        for m in model.machines {
+            if let a = m.status.agents.first(where: { $0.available && $0.loggedIn }) { return (m, a.name) }
+        }
+        return nil
+    }
+    private var client: Client? { model.clients.first { !$0.revoked } }
+
+    private func done(_ s: Step) -> Bool {
+        switch s {
+        case .machine: !model.machines.isEmpty
+        case .agent: ready != nil
+        case .project: !model.projects.isEmpty
+        case .connect: client != nil
+        case .tryIt: model.sessions.contains { s in model.clients.contains { $0.clientID == s.createdBy } && !s.isActive }
+        }
+    }
+
+    private func title(_ s: Step) -> LocalizedStringKey {
+        switch s {
+        case .machine: "Add a machine"
+        case .agent: "Get a coding agent ready"
+        case .project: "Add a project"
+        case .connect: "Connect your agent"
+        case .tryIt: "Try it"
+        }
+    }
+
+    var body: some View {
+        let next = Step.allCases.first { !done($0) }
+        if let next {
+            VStack(alignment: .leading, spacing: 10) {
+                HStack {
+                    SectionTitle(title: "Get Started").accessibilityIdentifier("get-started")
+                    Spacer()
+                    Menu {
+                        Button("Hide", systemImage: "eye.slash", action: hide)
+                    } label: {
+                        Image(systemName: "ellipsis").frame(width: 32, height: 32)
+                    }
+                    .padding(.trailing, 20)
+                    .accessibilityIdentifier("get-started-menu")
+                }
+                VStack(spacing: 0) {
+                    ForEach(Step.allCases, id: \.self) { s in
+                        if s.rawValue > 0 { Divider().padding(.leading, 52) }
+                        HStack(spacing: 12) {
+                            Image(systemName: done(s) ? "checkmark.circle.fill" : s == next ? "circle.inset.filled" : "circle")
+                                .foregroundStyle(done(s) ? AnyShapeStyle(.green) : s == next ? AnyShapeStyle(.tint) : AnyShapeStyle(.tertiary))
+                                .frame(width: 24)
+                            Text(title(s)).foregroundStyle(s == next || done(s) ? .primary : .secondary)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                            if s == next { action(s) }
+                        }
+                        .padding(.horizontal, 16).padding(.vertical, 11)
+                        .accessibilityElement(children: .contain)
+                        .accessibilityIdentifier("get-started-\(s.rawValue)")
+                    }
+                }
+                .background(Color(.secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 26, style: .continuous))
+                .padding(.horizontal, 16)
+            }
+            .task(id: next == .agent ? machine.map { "\($0.machineID) \($0.online)" } : nil) {
+                // While the coding agent is next, that machine looks again, once.
+                guard next == .agent, let m = machine, m.online, asked != m.machineID else { return }
+                asked = m.machineID
+                await model.recheck(machine: m.machineID)
+            }
+        }
+    }
+
+    @ViewBuilder private func action(_ s: Step) -> some View {
+        switch s {
+        case .machine:
+            Button("Add…") { model.sheet = .addMachine }.buttonStyle(.glassProminent)
+        case .agent:
+            if let m = machine {
+                Button("\(m.machineName) ›") { model.path.append(.machine(m.machineID)) }.buttonStyle(.glassProminent)
+            }
+        case .project:
+            if let (m, a) = ready {
+                Button("Add…") { model.sheet = .addProject(m.machineID, a) }.buttonStyle(.glassProminent)
+            }
+        case .connect:
+            Button("Connect…") { model.sheet = .connectAgent }.buttonStyle(.glassProminent)
+        case .tryIt:
+            if let c = client {
+                Button("Try…") { model.sheet = .firstTask(c.clientID) }.buttonStyle(.glassProminent)
+            }
         }
     }
 }

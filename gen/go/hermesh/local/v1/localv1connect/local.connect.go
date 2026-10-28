@@ -9,7 +9,8 @@ import (
 	context "context"
 	errors "errors"
 	v1 "github.com/hermeshai/hermesh/gen/go/hermesh/local/v1"
-	v11 "github.com/hermeshai/hermesh/gen/go/hermesh/session/v1"
+	v11 "github.com/hermeshai/hermesh/gen/go/hermesh/machine/v1"
+	v12 "github.com/hermeshai/hermesh/gen/go/hermesh/session/v1"
 	http "net/http"
 	strings "strings"
 )
@@ -110,6 +111,12 @@ const (
 	// LocalServiceCheckAgentsProcedure is the fully-qualified name of the LocalService's CheckAgents
 	// RPC.
 	LocalServiceCheckAgentsProcedure = "/hermesh.local.v1.LocalService/CheckAgents"
+	// LocalServiceListMachineReposProcedure is the fully-qualified name of the LocalService's
+	// ListMachineRepos RPC.
+	LocalServiceListMachineReposProcedure = "/hermesh.local.v1.LocalService/ListMachineRepos"
+	// LocalServiceTestMachineAgentProcedure is the fully-qualified name of the LocalService's
+	// TestMachineAgent RPC.
+	LocalServiceTestMachineAgentProcedure = "/hermesh.local.v1.LocalService/TestMachineAgent"
 	// LocalServiceGetDiagnosticsProcedure is the fully-qualified name of the LocalService's
 	// GetDiagnostics RPC.
 	LocalServiceGetDiagnosticsProcedure = "/hermesh.local.v1.LocalService/GetDiagnostics"
@@ -256,6 +263,10 @@ type LocalServiceClient interface {
 	// Checks this Mac's coding agents again (installed, version, signed in),
 	// in the background: they are only checked when something needs them.
 	CheckAgents(context.Context, *v1.CheckAgentsRequest) (*v1.CheckAgentsResponse, error)
+	// A machine's git repositories under its home folder, for Add a Project.
+	ListMachineRepos(context.Context, *v1.ListMachineReposRequest) (*v1.ListMachineReposResponse, error)
+	// One fixed turn of a coding agent on a machine (Test).
+	TestMachineAgent(context.Context, *v1.TestMachineAgentRequest) (*v11.TestAgentResponse, error)
 	// This Mac's diagnostics as text, for the person to copy and send when
 	// something does not work: versions, health, PATH and each coding agent.
 	// Nothing leaves the Mac unless they do.
@@ -285,11 +296,11 @@ type LocalServiceClient interface {
 	// online machine while anyone watches). A watcher that falls behind is
 	// ended (RESOURCE_EXHAUSTED) and should watch again.
 	WatchSessions(context.Context, *v1.WatchSessionsRequest) (*connect.ServerStreamForClient[v1.WatchSessionsResponse], error)
-	StreamSessionEvents(context.Context, *v1.StreamSessionEventsRequest) (*connect.ServerStreamForClient[v11.SessionEvent], error)
+	StreamSessionEvents(context.Context, *v1.StreamSessionEventsRequest) (*connect.ServerStreamForClient[v12.SessionEvent], error)
 	// A session's events by seq, as hermesh.session.v1.SessionService.ListEvents.
 	ListSessionEvents(context.Context, *v1.ListSessionEventsRequest) (*v1.ListSessionEventsResponse, error)
 	// A tool's whole output (hermesh.session.v1.SessionService.ReadToolOutput).
-	ReadToolOutput(context.Context, *v1.ReadToolOutputRequest) (*connect.ServerStreamForClient[v11.ToolOutputChunk], error)
+	ReadToolOutput(context.Context, *v1.ReadToolOutputRequest) (*connect.ServerStreamForClient[v12.ToolOutputChunk], error)
 	InterruptSession(context.Context, *v1.InterruptSessionRequest) (*v1.SessionResponse, error)
 	ArchiveSession(context.Context, *v1.ArchiveSessionRequest) (*v1.SessionResponse, error)
 	UnarchiveSession(context.Context, *v1.UnarchiveSessionRequest) (*v1.SessionResponse, error)
@@ -297,13 +308,13 @@ type LocalServiceClient interface {
 	DeleteSession(context.Context, *v1.DeleteSessionRequest) (*v1.DeleteSessionResponse, error)
 	RenameSession(context.Context, *v1.RenameSessionRequest) (*v1.SessionResponse, error)
 	AnswerQuestion(context.Context, *v1.AnswerQuestionRequest) (*v1.AnswerQuestionResponse, error)
-	GetDiff(context.Context, *v1.GetDiffRequest) (*v11.GetDiffResponse, error)
+	GetDiff(context.Context, *v1.GetDiffRequest) (*v12.GetDiffResponse, error)
 	// GetUsage adds up every reachable machine's tokens by day and coding
 	// agent (hermesh.session.v1.SessionService.GetUsage).
 	GetUsage(context.Context, *v1.GetUsageRequest) (*v1.GetUsageResponse, error)
 	// GetActivity adds up every reachable machine's sessions that worked on
 	// a day (hermesh.session.v1.SessionService.GetActivity).
-	GetActivity(context.Context, *v11.GetActivityRequest) (*v1.GetActivityResponse, error)
+	GetActivity(context.Context, *v12.GetActivityRequest) (*v1.GetActivityResponse, error)
 	// Notifications while the app is not running (the iPhone): this device's
 	// push token and notice key, signed with its device key and sent to the
 	// relay, which hands them to the owner's machines.
@@ -489,6 +500,18 @@ func NewLocalServiceClient(httpClient connect.HTTPClient, baseURL string, opts .
 			connect.WithSchema(localServiceMethods.ByName("CheckAgents")),
 			connect.WithClientOptions(opts...),
 		),
+		listMachineRepos: connect.NewClient[v1.ListMachineReposRequest, v1.ListMachineReposResponse](
+			httpClient,
+			baseURL+LocalServiceListMachineReposProcedure,
+			connect.WithSchema(localServiceMethods.ByName("ListMachineRepos")),
+			connect.WithClientOptions(opts...),
+		),
+		testMachineAgent: connect.NewClient[v1.TestMachineAgentRequest, v11.TestAgentResponse](
+			httpClient,
+			baseURL+LocalServiceTestMachineAgentProcedure,
+			connect.WithSchema(localServiceMethods.ByName("TestMachineAgent")),
+			connect.WithClientOptions(opts...),
+		),
 		getDiagnostics: connect.NewClient[v1.GetDiagnosticsRequest, v1.GetDiagnosticsResponse](
 			httpClient,
 			baseURL+LocalServiceGetDiagnosticsProcedure,
@@ -579,7 +602,7 @@ func NewLocalServiceClient(httpClient connect.HTTPClient, baseURL string, opts .
 			connect.WithSchema(localServiceMethods.ByName("WatchSessions")),
 			connect.WithClientOptions(opts...),
 		),
-		streamSessionEvents: connect.NewClient[v1.StreamSessionEventsRequest, v11.SessionEvent](
+		streamSessionEvents: connect.NewClient[v1.StreamSessionEventsRequest, v12.SessionEvent](
 			httpClient,
 			baseURL+LocalServiceStreamSessionEventsProcedure,
 			connect.WithSchema(localServiceMethods.ByName("StreamSessionEvents")),
@@ -591,7 +614,7 @@ func NewLocalServiceClient(httpClient connect.HTTPClient, baseURL string, opts .
 			connect.WithSchema(localServiceMethods.ByName("ListSessionEvents")),
 			connect.WithClientOptions(opts...),
 		),
-		readToolOutput: connect.NewClient[v1.ReadToolOutputRequest, v11.ToolOutputChunk](
+		readToolOutput: connect.NewClient[v1.ReadToolOutputRequest, v12.ToolOutputChunk](
 			httpClient,
 			baseURL+LocalServiceReadToolOutputProcedure,
 			connect.WithSchema(localServiceMethods.ByName("ReadToolOutput")),
@@ -633,7 +656,7 @@ func NewLocalServiceClient(httpClient connect.HTTPClient, baseURL string, opts .
 			connect.WithSchema(localServiceMethods.ByName("AnswerQuestion")),
 			connect.WithClientOptions(opts...),
 		),
-		getDiff: connect.NewClient[v1.GetDiffRequest, v11.GetDiffResponse](
+		getDiff: connect.NewClient[v1.GetDiffRequest, v12.GetDiffResponse](
 			httpClient,
 			baseURL+LocalServiceGetDiffProcedure,
 			connect.WithSchema(localServiceMethods.ByName("GetDiff")),
@@ -645,7 +668,7 @@ func NewLocalServiceClient(httpClient connect.HTTPClient, baseURL string, opts .
 			connect.WithSchema(localServiceMethods.ByName("GetUsage")),
 			connect.WithClientOptions(opts...),
 		),
-		getActivity: connect.NewClient[v11.GetActivityRequest, v1.GetActivityResponse](
+		getActivity: connect.NewClient[v12.GetActivityRequest, v1.GetActivityResponse](
 			httpClient,
 			baseURL+LocalServiceGetActivityProcedure,
 			connect.WithSchema(localServiceMethods.ByName("GetActivity")),
@@ -690,6 +713,8 @@ type localServiceClient struct {
 	setAgentDefaults       *connect.Client[v1.SetAgentDefaultsRequest, v1.SetAgentDefaultsResponse]
 	removeMachine          *connect.Client[v1.RemoveMachineRequest, v1.RemoveMachineResponse]
 	checkAgents            *connect.Client[v1.CheckAgentsRequest, v1.CheckAgentsResponse]
+	listMachineRepos       *connect.Client[v1.ListMachineReposRequest, v1.ListMachineReposResponse]
+	testMachineAgent       *connect.Client[v1.TestMachineAgentRequest, v11.TestAgentResponse]
 	getDiagnostics         *connect.Client[v1.GetDiagnosticsRequest, v1.GetDiagnosticsResponse]
 	listProjects           *connect.Client[v1.ListProjectsRequest, v1.ListProjectsResponse]
 	addProject             *connect.Client[v1.AddProjectRequest, v1.AddProjectResponse]
@@ -705,18 +730,18 @@ type localServiceClient struct {
 	openWakeLink           *connect.Client[v1.OpenWakeLinkRequest, v1.OpenWakeLinkResponse]
 	listSessions           *connect.Client[v1.ListSessionsRequest, v1.ListSessionsResponse]
 	watchSessions          *connect.Client[v1.WatchSessionsRequest, v1.WatchSessionsResponse]
-	streamSessionEvents    *connect.Client[v1.StreamSessionEventsRequest, v11.SessionEvent]
+	streamSessionEvents    *connect.Client[v1.StreamSessionEventsRequest, v12.SessionEvent]
 	listSessionEvents      *connect.Client[v1.ListSessionEventsRequest, v1.ListSessionEventsResponse]
-	readToolOutput         *connect.Client[v1.ReadToolOutputRequest, v11.ToolOutputChunk]
+	readToolOutput         *connect.Client[v1.ReadToolOutputRequest, v12.ToolOutputChunk]
 	interruptSession       *connect.Client[v1.InterruptSessionRequest, v1.SessionResponse]
 	archiveSession         *connect.Client[v1.ArchiveSessionRequest, v1.SessionResponse]
 	unarchiveSession       *connect.Client[v1.UnarchiveSessionRequest, v1.SessionResponse]
 	deleteSession          *connect.Client[v1.DeleteSessionRequest, v1.DeleteSessionResponse]
 	renameSession          *connect.Client[v1.RenameSessionRequest, v1.SessionResponse]
 	answerQuestion         *connect.Client[v1.AnswerQuestionRequest, v1.AnswerQuestionResponse]
-	getDiff                *connect.Client[v1.GetDiffRequest, v11.GetDiffResponse]
+	getDiff                *connect.Client[v1.GetDiffRequest, v12.GetDiffResponse]
 	getUsage               *connect.Client[v1.GetUsageRequest, v1.GetUsageResponse]
-	getActivity            *connect.Client[v11.GetActivityRequest, v1.GetActivityResponse]
+	getActivity            *connect.Client[v12.GetActivityRequest, v1.GetActivityResponse]
 	registerPush           *connect.Client[v1.RegisterPushRequest, v1.RegisterPushResponse]
 }
 
@@ -964,6 +989,24 @@ func (c *localServiceClient) CheckAgents(ctx context.Context, req *v1.CheckAgent
 	return nil, err
 }
 
+// ListMachineRepos calls hermesh.local.v1.LocalService.ListMachineRepos.
+func (c *localServiceClient) ListMachineRepos(ctx context.Context, req *v1.ListMachineReposRequest) (*v1.ListMachineReposResponse, error) {
+	response, err := c.listMachineRepos.CallUnary(ctx, connect.NewRequest(req))
+	if response != nil {
+		return response.Msg, err
+	}
+	return nil, err
+}
+
+// TestMachineAgent calls hermesh.local.v1.LocalService.TestMachineAgent.
+func (c *localServiceClient) TestMachineAgent(ctx context.Context, req *v1.TestMachineAgentRequest) (*v11.TestAgentResponse, error) {
+	response, err := c.testMachineAgent.CallUnary(ctx, connect.NewRequest(req))
+	if response != nil {
+		return response.Msg, err
+	}
+	return nil, err
+}
+
 // GetDiagnostics calls hermesh.local.v1.LocalService.GetDiagnostics.
 func (c *localServiceClient) GetDiagnostics(ctx context.Context, req *v1.GetDiagnosticsRequest) (*v1.GetDiagnosticsResponse, error) {
 	response, err := c.getDiagnostics.CallUnary(ctx, connect.NewRequest(req))
@@ -1096,7 +1139,7 @@ func (c *localServiceClient) WatchSessions(ctx context.Context, req *v1.WatchSes
 }
 
 // StreamSessionEvents calls hermesh.local.v1.LocalService.StreamSessionEvents.
-func (c *localServiceClient) StreamSessionEvents(ctx context.Context, req *v1.StreamSessionEventsRequest) (*connect.ServerStreamForClient[v11.SessionEvent], error) {
+func (c *localServiceClient) StreamSessionEvents(ctx context.Context, req *v1.StreamSessionEventsRequest) (*connect.ServerStreamForClient[v12.SessionEvent], error) {
 	return c.streamSessionEvents.CallServerStream(ctx, connect.NewRequest(req))
 }
 
@@ -1110,7 +1153,7 @@ func (c *localServiceClient) ListSessionEvents(ctx context.Context, req *v1.List
 }
 
 // ReadToolOutput calls hermesh.local.v1.LocalService.ReadToolOutput.
-func (c *localServiceClient) ReadToolOutput(ctx context.Context, req *v1.ReadToolOutputRequest) (*connect.ServerStreamForClient[v11.ToolOutputChunk], error) {
+func (c *localServiceClient) ReadToolOutput(ctx context.Context, req *v1.ReadToolOutputRequest) (*connect.ServerStreamForClient[v12.ToolOutputChunk], error) {
 	return c.readToolOutput.CallServerStream(ctx, connect.NewRequest(req))
 }
 
@@ -1169,7 +1212,7 @@ func (c *localServiceClient) AnswerQuestion(ctx context.Context, req *v1.AnswerQ
 }
 
 // GetDiff calls hermesh.local.v1.LocalService.GetDiff.
-func (c *localServiceClient) GetDiff(ctx context.Context, req *v1.GetDiffRequest) (*v11.GetDiffResponse, error) {
+func (c *localServiceClient) GetDiff(ctx context.Context, req *v1.GetDiffRequest) (*v12.GetDiffResponse, error) {
 	response, err := c.getDiff.CallUnary(ctx, connect.NewRequest(req))
 	if response != nil {
 		return response.Msg, err
@@ -1187,7 +1230,7 @@ func (c *localServiceClient) GetUsage(ctx context.Context, req *v1.GetUsageReque
 }
 
 // GetActivity calls hermesh.local.v1.LocalService.GetActivity.
-func (c *localServiceClient) GetActivity(ctx context.Context, req *v11.GetActivityRequest) (*v1.GetActivityResponse, error) {
+func (c *localServiceClient) GetActivity(ctx context.Context, req *v12.GetActivityRequest) (*v1.GetActivityResponse, error) {
 	response, err := c.getActivity.CallUnary(ctx, connect.NewRequest(req))
 	if response != nil {
 		return response.Msg, err
@@ -1271,6 +1314,10 @@ type LocalServiceHandler interface {
 	// Checks this Mac's coding agents again (installed, version, signed in),
 	// in the background: they are only checked when something needs them.
 	CheckAgents(context.Context, *v1.CheckAgentsRequest) (*v1.CheckAgentsResponse, error)
+	// A machine's git repositories under its home folder, for Add a Project.
+	ListMachineRepos(context.Context, *v1.ListMachineReposRequest) (*v1.ListMachineReposResponse, error)
+	// One fixed turn of a coding agent on a machine (Test).
+	TestMachineAgent(context.Context, *v1.TestMachineAgentRequest) (*v11.TestAgentResponse, error)
 	// This Mac's diagnostics as text, for the person to copy and send when
 	// something does not work: versions, health, PATH and each coding agent.
 	// Nothing leaves the Mac unless they do.
@@ -1300,11 +1347,11 @@ type LocalServiceHandler interface {
 	// online machine while anyone watches). A watcher that falls behind is
 	// ended (RESOURCE_EXHAUSTED) and should watch again.
 	WatchSessions(context.Context, *v1.WatchSessionsRequest, *connect.ServerStream[v1.WatchSessionsResponse]) error
-	StreamSessionEvents(context.Context, *v1.StreamSessionEventsRequest, *connect.ServerStream[v11.SessionEvent]) error
+	StreamSessionEvents(context.Context, *v1.StreamSessionEventsRequest, *connect.ServerStream[v12.SessionEvent]) error
 	// A session's events by seq, as hermesh.session.v1.SessionService.ListEvents.
 	ListSessionEvents(context.Context, *v1.ListSessionEventsRequest) (*v1.ListSessionEventsResponse, error)
 	// A tool's whole output (hermesh.session.v1.SessionService.ReadToolOutput).
-	ReadToolOutput(context.Context, *v1.ReadToolOutputRequest, *connect.ServerStream[v11.ToolOutputChunk]) error
+	ReadToolOutput(context.Context, *v1.ReadToolOutputRequest, *connect.ServerStream[v12.ToolOutputChunk]) error
 	InterruptSession(context.Context, *v1.InterruptSessionRequest) (*v1.SessionResponse, error)
 	ArchiveSession(context.Context, *v1.ArchiveSessionRequest) (*v1.SessionResponse, error)
 	UnarchiveSession(context.Context, *v1.UnarchiveSessionRequest) (*v1.SessionResponse, error)
@@ -1312,13 +1359,13 @@ type LocalServiceHandler interface {
 	DeleteSession(context.Context, *v1.DeleteSessionRequest) (*v1.DeleteSessionResponse, error)
 	RenameSession(context.Context, *v1.RenameSessionRequest) (*v1.SessionResponse, error)
 	AnswerQuestion(context.Context, *v1.AnswerQuestionRequest) (*v1.AnswerQuestionResponse, error)
-	GetDiff(context.Context, *v1.GetDiffRequest) (*v11.GetDiffResponse, error)
+	GetDiff(context.Context, *v1.GetDiffRequest) (*v12.GetDiffResponse, error)
 	// GetUsage adds up every reachable machine's tokens by day and coding
 	// agent (hermesh.session.v1.SessionService.GetUsage).
 	GetUsage(context.Context, *v1.GetUsageRequest) (*v1.GetUsageResponse, error)
 	// GetActivity adds up every reachable machine's sessions that worked on
 	// a day (hermesh.session.v1.SessionService.GetActivity).
-	GetActivity(context.Context, *v11.GetActivityRequest) (*v1.GetActivityResponse, error)
+	GetActivity(context.Context, *v12.GetActivityRequest) (*v1.GetActivityResponse, error)
 	// Notifications while the app is not running (the iPhone): this device's
 	// push token and notice key, signed with its device key and sent to the
 	// relay, which hands them to the owner's machines.
@@ -1498,6 +1545,18 @@ func NewLocalServiceHandler(svc LocalServiceHandler, opts ...connect.HandlerOpti
 		LocalServiceCheckAgentsProcedure,
 		svc.CheckAgents,
 		connect.WithSchema(localServiceMethods.ByName("CheckAgents")),
+		connect.WithHandlerOptions(opts...),
+	)
+	localServiceListMachineReposHandler := connect.NewUnaryHandlerSimple(
+		LocalServiceListMachineReposProcedure,
+		svc.ListMachineRepos,
+		connect.WithSchema(localServiceMethods.ByName("ListMachineRepos")),
+		connect.WithHandlerOptions(opts...),
+	)
+	localServiceTestMachineAgentHandler := connect.NewUnaryHandlerSimple(
+		LocalServiceTestMachineAgentProcedure,
+		svc.TestMachineAgent,
+		connect.WithSchema(localServiceMethods.ByName("TestMachineAgent")),
 		connect.WithHandlerOptions(opts...),
 	)
 	localServiceGetDiagnosticsHandler := connect.NewUnaryHandlerSimple(
@@ -1726,6 +1785,10 @@ func NewLocalServiceHandler(svc LocalServiceHandler, opts ...connect.HandlerOpti
 			localServiceRemoveMachineHandler.ServeHTTP(w, r)
 		case LocalServiceCheckAgentsProcedure:
 			localServiceCheckAgentsHandler.ServeHTTP(w, r)
+		case LocalServiceListMachineReposProcedure:
+			localServiceListMachineReposHandler.ServeHTTP(w, r)
+		case LocalServiceTestMachineAgentProcedure:
+			localServiceTestMachineAgentHandler.ServeHTTP(w, r)
 		case LocalServiceGetDiagnosticsProcedure:
 			localServiceGetDiagnosticsHandler.ServeHTTP(w, r)
 		case LocalServiceListProjectsProcedure:
@@ -1903,6 +1966,14 @@ func (UnimplementedLocalServiceHandler) CheckAgents(context.Context, *v1.CheckAg
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("hermesh.local.v1.LocalService.CheckAgents is not implemented"))
 }
 
+func (UnimplementedLocalServiceHandler) ListMachineRepos(context.Context, *v1.ListMachineReposRequest) (*v1.ListMachineReposResponse, error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("hermesh.local.v1.LocalService.ListMachineRepos is not implemented"))
+}
+
+func (UnimplementedLocalServiceHandler) TestMachineAgent(context.Context, *v1.TestMachineAgentRequest) (*v11.TestAgentResponse, error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("hermesh.local.v1.LocalService.TestMachineAgent is not implemented"))
+}
+
 func (UnimplementedLocalServiceHandler) GetDiagnostics(context.Context, *v1.GetDiagnosticsRequest) (*v1.GetDiagnosticsResponse, error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("hermesh.local.v1.LocalService.GetDiagnostics is not implemented"))
 }
@@ -1963,7 +2034,7 @@ func (UnimplementedLocalServiceHandler) WatchSessions(context.Context, *v1.Watch
 	return connect.NewError(connect.CodeUnimplemented, errors.New("hermesh.local.v1.LocalService.WatchSessions is not implemented"))
 }
 
-func (UnimplementedLocalServiceHandler) StreamSessionEvents(context.Context, *v1.StreamSessionEventsRequest, *connect.ServerStream[v11.SessionEvent]) error {
+func (UnimplementedLocalServiceHandler) StreamSessionEvents(context.Context, *v1.StreamSessionEventsRequest, *connect.ServerStream[v12.SessionEvent]) error {
 	return connect.NewError(connect.CodeUnimplemented, errors.New("hermesh.local.v1.LocalService.StreamSessionEvents is not implemented"))
 }
 
@@ -1971,7 +2042,7 @@ func (UnimplementedLocalServiceHandler) ListSessionEvents(context.Context, *v1.L
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("hermesh.local.v1.LocalService.ListSessionEvents is not implemented"))
 }
 
-func (UnimplementedLocalServiceHandler) ReadToolOutput(context.Context, *v1.ReadToolOutputRequest, *connect.ServerStream[v11.ToolOutputChunk]) error {
+func (UnimplementedLocalServiceHandler) ReadToolOutput(context.Context, *v1.ReadToolOutputRequest, *connect.ServerStream[v12.ToolOutputChunk]) error {
 	return connect.NewError(connect.CodeUnimplemented, errors.New("hermesh.local.v1.LocalService.ReadToolOutput is not implemented"))
 }
 
@@ -1999,7 +2070,7 @@ func (UnimplementedLocalServiceHandler) AnswerQuestion(context.Context, *v1.Answ
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("hermesh.local.v1.LocalService.AnswerQuestion is not implemented"))
 }
 
-func (UnimplementedLocalServiceHandler) GetDiff(context.Context, *v1.GetDiffRequest) (*v11.GetDiffResponse, error) {
+func (UnimplementedLocalServiceHandler) GetDiff(context.Context, *v1.GetDiffRequest) (*v12.GetDiffResponse, error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("hermesh.local.v1.LocalService.GetDiff is not implemented"))
 }
 
@@ -2007,7 +2078,7 @@ func (UnimplementedLocalServiceHandler) GetUsage(context.Context, *v1.GetUsageRe
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("hermesh.local.v1.LocalService.GetUsage is not implemented"))
 }
 
-func (UnimplementedLocalServiceHandler) GetActivity(context.Context, *v11.GetActivityRequest) (*v1.GetActivityResponse, error) {
+func (UnimplementedLocalServiceHandler) GetActivity(context.Context, *v12.GetActivityRequest) (*v1.GetActivityResponse, error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("hermesh.local.v1.LocalService.GetActivity is not implemented"))
 }
 

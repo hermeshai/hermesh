@@ -4,6 +4,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"log/slog"
@@ -124,11 +125,11 @@ func main() {
 	}
 	openMachine := func() (*machine.Machine, error) { return machine.Open(machineConfig()) }
 
-	var ownerMode bool
+	var ownerMode, noMachine bool
 	var socket string
 	run := &cobra.Command{
 		Use:   "run",
-		Short: "Run the daemon in the foreground (used by launchd/systemd and Hermesh.app)",
+		Short: "Run the daemon in the foreground (used by launchd/systemd and the Hermesh app)",
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 			defer stop()
@@ -154,7 +155,7 @@ func main() {
 				go func() { log.Warn("debug server stopped", "err", metrics.Serve(debugAddr)) }()
 			}
 			if ownerMode {
-				o, err := owner.Open(owner.Config{DataDir: filepath.Join(dataDir, "owner"), Logger: log, MachineConfig: machineConfig()})
+				o, err := owner.Open(owner.Config{DataDir: filepath.Join(dataDir, "owner"), Logger: log, MachineConfig: machineConfig(), NoLocalMachine: noMachine})
 				if err != nil {
 					return err
 				}
@@ -173,8 +174,9 @@ func main() {
 			return n.Run(ctx)
 		},
 	}
-	run.Flags().BoolVar(&ownerMode, "owner", false, "run the owner role for Hermesh.app (serves the local API)")
+	run.Flags().BoolVar(&ownerMode, "owner", false, "run the owner role for the Hermesh app or a Linux trusted device (serves the local API)")
 	run.Flags().StringVar(&socket, "socket", "", "local API socket path (owner role)")
+	run.Flags().BoolVar(&noMachine, "no-machine", false, "with --owner: never run a machine here (a Linux trusted device)")
 	run.Flags().StringVar(&debugAddr, "debug-addr", os.Getenv("HERMESH_DEBUG_ADDR"), "serve /metrics and /debug/pprof on this loopback address")
 	run.Flags().IntVar(&maxSessions, "max-sessions", 0, "maximum concurrently running sessions; more wait queued (default: no limit)")
 	run.Flags().StringVar(&workspaceMode, "workspace", "git", "git (worktree per session) or none (benchmarking only)")
@@ -214,21 +216,36 @@ func main() {
 			}
 			ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 			defer stop()
-			if err := n.Pair(ctx, address, name, os.Stdout, machine.PairOptions{Confirm: machine.TerminalConfirm(os.Stdin, os.Stdout), TrustClaim: yes}); err != nil {
+			if err := n.Pair(ctx, address, name, os.Stdout, machine.PairOptions{Digits: machine.TerminalDigits(os.Stdout), TrustClaim: yes, QR: machine.IsTerminal(os.Stdout)}); err != nil {
 				n.Close()
 				return err
 			}
+			infos := n.Discover(ctx)
 			n.Close()
-			if noService && !restart {
-				return nil
+			if !noService || restart {
+				bin, _ := os.Executable()
+				switch err := service.Install(bin, dataDir, filepath.Join(dataDir, "logs")); {
+				case errors.Is(err, service.ErrNoSystemd):
+					fmt.Println("No background service:", err)
+				case err != nil:
+					fmt.Fprintln(os.Stderr, "Could not install the background service:", err)
+					fmt.Fprintln(os.Stderr, "Run `hermeshd run` manually or fix the error and run `hermeshd service install`.")
+				case runtime.GOOS == "linux":
+					fmt.Println("✓ Background service on: starts with the server, keeps running after you log out")
+				default:
+					fmt.Println("✓ Background service on")
+				}
 			}
-			bin, _ := os.Executable()
-			if err := service.Install(bin, dataDir, filepath.Join(dataDir, "logs")); err != nil {
-				fmt.Fprintln(os.Stderr, "Could not install the background service:", err)
-				fmt.Fprintln(os.Stderr, "Run `hermeshd run` manually or fix the error and run `hermeshd service install`.")
-				return nil
+			fmt.Println("\nCoding agents")
+			for _, name := range []string{"claude", "codex"} {
+				report(name, infos[name])
 			}
-			fmt.Println("Background service installed and started.")
+			for _, a := range acp.Agents {
+				if i := infos[a.Name]; i.Available {
+					fmt.Printf("  %-10s %s, sign-in not checked\n", a.Name, i.Version)
+				}
+			}
+			fmt.Println("Next: add a project here (hermeshd project add <folder>) or in the Hermesh app.")
 			return nil
 		},
 	}
@@ -268,7 +285,15 @@ func main() {
 					fmt.Printf("%-12s %s at %s, login not checked\n", a.Name, i.Version, i.Binary)
 				}
 			}
-			fmt.Printf("service      installed=%v\n", service.Installed())
+			switch {
+			case service.Running():
+				fmt.Println("service      running")
+			case service.Installed():
+				fmt.Println("service      installed, NOT RUNNING → run: hermeshd service restart")
+				ok = false
+			default:
+				fmt.Println("service      not installed → run: hermeshd service install")
+			}
 			if url := n.RelayURL(); url != "" {
 				c := relayv1connect.NewRelayPublicServiceClient(http.DefaultClient, url)
 				ctx, cancel := context.WithTimeout(cmd.Context(), 10*time.Second)
@@ -336,7 +361,8 @@ func main() {
 	// The tools a session's coding agent starts (docs/agent-messages.md §7.4).
 	messageMCP := &cobra.Command{Use: "message-mcp", Hidden: true, Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error { return machine.ServeMessageMCP(cmd.Context()) }}
-	root.AddCommand(run, pair, doctor, status, audit, svc, helper, messageMCP,
+	root.AddCommand(deviceCommands(&dataDir)...)
+	root.AddCommand(run, pair, doctor, status, audit, svc, helper, messageMCP, projectCommand(&dataDir, openMachine),
 		&cobra.Command{Use: "version", Run: func(*cobra.Command, []string) { fmt.Println(machine.Version) }})
 	if err := root.Execute(); err != nil {
 		os.Exit(1)
@@ -382,16 +408,22 @@ func providers() map[string]provider.Provider {
 	return ps
 }
 
+// installPages are where the coding agents Hermesh checks are installed from.
+var installPages = map[string]string{
+	"claude": "https://github.com/anthropics/claude-code",
+	"codex":  "https://github.com/openai/codex",
+}
+
 func report(name string, i provider.Info) bool {
 	switch {
 	case !i.Available:
-		fmt.Printf("%-12s NOT FOUND (%s)\n", name, i.Detail)
+		fmt.Printf("  %-10s not installed: %s\n", name, installPages[name])
 		return false
 	case !i.LoggedIn:
-		fmt.Printf("%-12s %s at %s, NOT LOGGED IN → run `%s` once as this user to log in\n", name, i.Version, i.Binary, name)
+		fmt.Printf("  %-10s %s, NOT SIGNED IN → run `%s` once as this user (on a server it prints a link to open on any device)\n", name, i.Version, name)
 		return false
 	default:
-		fmt.Printf("%-12s %s at %s, logged in\n", name, i.Version, i.Binary)
+		fmt.Printf("  %-10s %s, signed in\n", name, i.Version)
 		return true
 	}
 }

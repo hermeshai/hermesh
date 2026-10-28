@@ -1,3 +1,4 @@
+import HermeshKit
 import HermeshProto
 import HermeshSessions
 import SwiftUI
@@ -58,6 +59,8 @@ struct MachineAgentView: View {
     let machineID: String
     let agent: String
     @State private var projects: [Project] = []
+    @State private var testing = false
+    @State private var test: Result<Hermesh_Machine_V1_TestAgentResponse, Error>?
 
     var body: some View {
         Group {
@@ -96,8 +99,34 @@ struct MachineAgentView: View {
                     Label("Sign in to \(title) first so Hermesh can use it.", systemImage: "exclamationmark.triangle").foregroundStyle(.orange)
                     if let command = ["claude": "claude", "codex": "codex login"][agent] {
                         Text("On \(m.machineName), run \(Text(command).monospaced()) in Terminal").font(.subheadline).foregroundStyle(.secondary)
+                        Text("On a server without a browser, it shows a link: open it on this iPhone.").font(.subheadline).foregroundStyle(.secondary)
                     }
                 }
+            }
+            Section {
+                Button {
+                    testing = true
+                    test = nil
+                    Task {
+                        defer { testing = false }
+                        do {
+                            guard let api = model.api else { return }
+                            test = .success(try await api.testAgent(machine: machineID, agent: agent))
+                        } catch {
+                            test = .failure(error)
+                        }
+                    }
+                } label: {
+                    HStack {
+                        Label("Test", systemImage: "play.circle")
+                        if testing { Spacer(); ProgressView() }
+                    }
+                }
+                .disabled(testing || !m.online || !a.loggedIn)
+                .accessibilityIdentifier("test-agent")
+                if let test { testResult(test) }
+            } footer: {
+                Text("One short turn, in a folder of its own, to show \(title) works on \(m.machineName). It keeps no session.")
             }
             if !a.models.isEmpty {
                 defaults(m, a, title: title).disabled(!editable)
@@ -116,9 +145,36 @@ struct MachineAgentView: View {
             }
         }
         .refreshable {
-            try? await model.api?.checkAgents()
+            await model.recheck(machine: machineID)
             await load()
         }
+    }
+
+    private func testResult(_ r: Result<Hermesh_Machine_V1_TestAgentResponse, Error>) -> some View {
+        Group {
+            switch r {
+            case .success(let t) where t.ok:
+                Label {
+                    Text("Replied in \(String(format: "%.1f", Double(t.millis) / 1000)) s: “\(t.reply)”")
+                } icon: {
+                    Image(systemName: "checkmark.circle.fill").foregroundStyle(.green)
+                }
+            case .success(let t):
+                Label {
+                    Text(t.reply.isEmpty ? String(localized: "It didn’t reply.") : t.reply)
+                } icon: {
+                    Image(systemName: "xmark.circle.fill").foregroundStyle(.red)
+                }
+            case .failure(let e):
+                Label {
+                    Text((e as? APIError)?.message ?? e.localizedDescription)
+                } icon: {
+                    Image(systemName: "xmark.circle.fill").foregroundStyle(.red)
+                }
+            }
+        }
+        .font(.subheadline)
+        .accessibilityIdentifier("test-result")
     }
 
     /// The model, reasoning effort and (Codex) speed, one menu each: the

@@ -255,6 +255,29 @@ extension LocalAPI {
         let _: Hermesh_Local_V1_CheckAgentsResponse = try await call("CheckAgents", Hermesh_Local_V1_CheckAgentsRequest(), timeout: 30)
     }
 
+    /// Check Again on a machine: it looks at its coding agents now.
+    func checkAgents(machine: String) async throws {
+        var r = Hermesh_Local_V1_CheckAgentsRequest()
+        r.machineID = machine
+        let _: Hermesh_Local_V1_CheckAgentsResponse = try await call("CheckAgents", r, timeout: 60)
+    }
+
+    /// The git repositories under a machine's home folder.
+    func repos(machine: String) async throws -> [Hermesh_Machine_V1_Repo] {
+        var r = Hermesh_Local_V1_ListMachineReposRequest()
+        r.machineID = machine
+        let res: Hermesh_Local_V1_ListMachineReposResponse = try await call("ListMachineRepos", r, timeout: 30)
+        return res.repos
+    }
+
+    /// Test: one fixed turn of a coding agent on a machine.
+    func testAgent(machine: String, agent: String) async throws -> Hermesh_Machine_V1_TestAgentResponse {
+        var r = Hermesh_Local_V1_TestMachineAgentRequest()
+        r.machineID = machine
+        r.agent = agent
+        return try await call("TestMachineAgent", r, timeout: 120)
+    }
+
     func addProject(_ r: Hermesh_Local_V1_AddProjectRequest) async throws {
         let _: Hermesh_Local_V1_AddProjectResponse = try await call("AddProject", r, timeout: signingTimeout)
     }

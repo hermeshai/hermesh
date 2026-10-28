@@ -289,7 +289,7 @@ extension UIColor {
     }
 }
 
-/// New: connect an agent, add a machine, or enter a pairing code.
+/// New: connect an agent, add a machine, or scan or enter a pairing code.
 struct NewMenu: View {
     @Environment(AppModel.self) private var model
 
@@ -297,6 +297,7 @@ struct NewMenu: View {
         Menu {
             Button("Connect an Agent…", systemImage: "link") { model.sheet = .connectAgent }
             Button("Add a Machine…", systemImage: "desktopcomputer") { model.sheet = .addMachine }
+            Button("Scan a Code…", systemImage: "qrcode.viewfinder") { model.sheet = .scan }
             Button("Enter a Pairing Code…", systemImage: "number") { model.sheet = .enterCode }
         } label: {
             Image(systemName: "plus")

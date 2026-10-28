@@ -1,7 +1,8 @@
 # Onboarding without a Mac
 
 > Status: designed 2026-10-28; the owner took every recommendation in §12
-> the same day. Nothing is built yet. It builds on
+> the same day. Built the same day, all seven steps of §10 with the tests
+> of §11; what is left is listed after §10's table. It builds on
 > [trusted-devices.md](trusted-devices.md), [iphone-app.md](iphone-app.md)
 > and [mcp-gateway.md](mcp-gateway.md). Getting the iPhone app onto phones
 > (TestFlight, then the App Store) is the owner's and is left out.
@@ -594,6 +595,17 @@ Each step works end to end on its own and ships with its end-to-end test
 Steps 1 to 4 make the five-minute journey of §4. Steps 5 to 7 make it
 comfortable and widen who can use it.
 
+**Left after the build:**
+
+- the TPM key (§9.3): a Linux trusted device's key is sealed by a
+  passphrase only (`internal/devicekey`);
+- notifications on a Linux trusted device with a desktop (§9.3);
+- shared test vectors between the Go preview (`internal/preview`) and
+  HermeshKit's SigningPreview (§9.3): each has its own tests;
+- `hermeshd device join` refuses where this user's hermeshd is a machine,
+  but doesn't yet warn when another user's on the computer is one (§9.2);
+- how often a request may notify, and production APNs (decision 13).
+
 **Running the whole journey locally**, for the build and the demo:
 
 - a relay on the Mac;
@@ -606,28 +618,35 @@ comfortable and widen who can use it.
 
 ## 11. Tests
 
-- **TestLinuxInstall** (`HERMESH_DOCKER=1`): a systemd container, root and
-  `--user dev`, the install from a local release, the code taken by the
-  owner and the digits typed into the script's pty. It checks that the
-  service runs once the login session ends, then doctor's report,
-  `hermeshd project add`, and a session.
-- **TestIPhone, extended**:
-  - scanning, done by opening the link with `simctl openurl`;
-  - the digits read off the screen and typed into the machine's pty;
-  - Get Started rows ticking off;
-  - the first task opening its session;
-  - an own server set up with a claim code.
-- **TestMCPWithIPhoneOnly**: the owner's only device is registered for push
-  and offline. An MCP app uses its connection and the push arrives (spool).
-  The device connects later, the request is there, and the person approves
-  it.
-- **On the center** (closed source): an agent's link claimed in the console
-  leaves a sealed notice in the spool; the iPhone sets up the first owner
-  through `/app-login`.
-- **TestLinuxTrustedDevice**: joins with the digits, approves a machine and
-  an agent with a passphrase key in a pty, and removes a lost device.
-- **Wording**: a check in CI that fails on "your Mac" or "Hermesh.app" in
-  Go strings that users read, outside Mac-only code.
+- **TestLinuxInstall** (hermesh-cloud, `HERMESH_DOCKER=1`): a systemd
+  container logged in as root, the one command from a local release, the
+  user it creates, the code claimed by the owner's device and the digits
+  typed into the script's pty after a wrong pair. The service runs with
+  nobody logged in and the console lists the machine.
+- **TestRemoteMachineSetup**: Check Again on a remote machine, the
+  repositories it finds, Test, and projects added in its shell and from a
+  device (`~/…`).
+- **TestIPhoneFirstRun** (`HERMESH_IPHONE_E2E=1`): the iPhone app in the
+  Simulator claims a new own server, then Get Started: a machine added by
+  its pairing link with nothing to compare, Check Again and Test, a project
+  the machine found, the second-device row, an agent connected and its
+  first session opening by itself. **TestIPhone** keeps the rest of the
+  app.
+- **TestMCPReachesAnIPhone**: the owner's only device is an iPhone
+  registered for push and offline. An MCP app uses its connection and the
+  push arrives (spool); the phone connects later, the request is there, and
+  it approves it.
+- **On the center** (hermesh-cloud): `TestCenterPush` (an agent's link
+  claimed in the console pushes a sealed notice), `TestDirectApproval` (a
+  machine's code on the console page claims nothing), and the console's
+  tests of the machine `/p/` page, `apple-app-site-association` and
+  `/app-login?cli=1`.
+- **TestLinuxTrustedDevice** (hermesh-cloud): a first device set up with
+  the code `/app-login?cli=1` shows, another joining by its code with the
+  digits, approving a machine and an agent with the passphrase, removing a
+  lost device, and a machine's user refused.
+- **Wording**: `internal/words` fails on "your Mac", "Hermesh.app" or
+  "Touch ID" in Go strings, outside code that picks a device's words.
 
 ## 12. Decisions
 

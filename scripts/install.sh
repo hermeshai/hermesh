@@ -6,6 +6,7 @@
 #   Add a machine:   curl -fsSL https://github.com/hermeshai/hermesh/releases/latest/download/install.sh | sh -s -- [connection address]
 #                    (without one: $HERMESH_CENTER, else the official center https://hermesh.io)
 #   Agent CLI only:  curl -fsSL https://github.com/hermeshai/hermesh/releases/latest/download/install.sh | sh -s -- --cli
+#   As root:         … | sh -s -- --user dev   (installs for that user, creating it if needed; asked when not given)
 #
 # Environment: HERMESH_VERSION (default latest), HERMESH_BIN_DIR (default ~/.local/bin)
 set -eu
@@ -22,10 +23,12 @@ die() { echo "hermesh install: $*" >&2; exit 1; }
 MODE=machine
 ADDRESS=""
 NAME=""
+FOR_USER=""
 while [ $# -gt 0 ]; do
   case "$1" in
     --cli) MODE=cli ;;
     --name) shift; NAME="${1:-}" ;;
+    --user) shift; FOR_USER="${1:-}" ;;
     -*) die "unknown option $1" ;;
     *) ADDRESS="$1" ;;
   esac
@@ -42,7 +45,45 @@ case "$(uname -m)" in
   x86_64|amd64) ARCH=amd64 ;;
   *) die "unsupported architecture $(uname -m)" ;;
 esac
-[ "$(id -u)" != 0 ] || die "do not run as root; Hermesh runs as a normal user"
+# A terminal to ask on: under `curl … | sh` stdin is this script.
+TTY=""
+if (: </dev/tty) 2>/dev/null; then TTY=/dev/tty; fi
+
+# Coding agents get full trust on their machine, so Hermesh runs as the user
+# you code as, never as root. As root, it installs for that user.
+AS=""
+if [ "$(id -u)" = 0 ]; then
+  [ "$MODE" = machine ] || die "do not run as root; install the CLI as the user your agent runs as"
+  if [ -z "$FOR_USER" ]; then
+    [ -n "$TTY" ] || die "do not run as root; Hermesh runs as the user you code as: pass --user <name>"
+    def="$(awk -F: '$3 >= 1000 && $3 < 60000 && $7 !~ /(nologin|false)$/ { print $1; exit }' /etc/passwd)"
+    [ -n "$def" ] || def=dev
+    echo "Hermesh runs as the user you code as, not as root."
+    printf 'User to install for [%s]: ' "$def"
+    read -r FOR_USER <"$TTY" || true
+    [ -n "$FOR_USER" ] || FOR_USER="$def"
+  fi
+  if ! id "$FOR_USER" >/dev/null 2>&1; then
+    if [ -n "$TTY" ]; then
+      printf '“%s” doesn'"'"'t exist. Create it? [Y/n] ' "$FOR_USER"
+      read -r yes <"$TTY" || true
+      case "$yes" in n* | N*) die "nothing was installed" ;; esac
+    fi
+    useradd -m -s /bin/bash "$FOR_USER" || die "could not create the user $FOR_USER"
+    echo "✓ Created $FOR_USER"
+  fi
+  uid="$(id -u "$FOR_USER")"
+  home="$(getent passwd "$FOR_USER" | cut -d: -f6)"
+  if loginctl enable-linger "$FOR_USER" 2>/dev/null; then
+    echo "✓ Installing for $FOR_USER, with lingering on"
+  else
+    echo "✓ Installing for $FOR_USER"
+  fi
+  BIN_DIR="${HERMESH_BIN_DIR:-$home/.local/bin}"
+  AS="runuser -u $FOR_USER -- env HOME=$home USER=$FOR_USER LOGNAME=$FOR_USER XDG_RUNTIME_DIR=/run/user/$uid"
+elif [ -n "$FOR_USER" ]; then
+  die "--user is for root; you are installing for yourself already"
+fi
 
 command -v curl >/dev/null || die "curl is required"
 command -v openssl >/dev/null || die "openssl is required to verify the download"
@@ -73,7 +114,11 @@ sha256() {
   if command -v sha256sum >/dev/null; then sha256sum "$1" | cut -d' ' -f1; else shasum -a 256 "$1" | cut -d' ' -f1; fi
 }
 
-mkdir -p "$BIN_DIR"
+if [ -n "$AS" ]; then
+  $AS mkdir -p "$BIN_DIR"
+else
+  mkdir -p "$BIN_DIR"
+fi
 for b in $BINS; do
   asset="$b-$OS-$ARCH"
   echo "› downloading $asset"
@@ -81,13 +126,19 @@ for b in $BINS; do
   want="$(grep " $asset\$" "$TMP/checksums.txt" | cut -d' ' -f1)"
   [ -n "$want" ] || die "$asset is not in the signed checksum list"
   [ "$(sha256 "$TMP/$asset")" = "$want" ] || die "$asset checksum mismatch"
-  install -m 0755 "$TMP/$asset" "$BIN_DIR/$b"
+  if [ -n "$AS" ]; then
+    install -m 0755 -o "$FOR_USER" -g "$(id -gn "$FOR_USER")" "$TMP/$asset" "$BIN_DIR/$b"
+  else
+    install -m 0755 "$TMP/$asset" "$BIN_DIR/$b"
+  fi
 done
 echo "✓ installed to $BIN_DIR"
-case ":$PATH:" in
-  *":$BIN_DIR:"*) ;;
-  *) echo "note: add $BIN_DIR to your PATH" ;;
-esac
+if [ -z "$AS" ]; then
+  case ":$PATH:" in
+    *":$BIN_DIR:"*) ;;
+    *) echo "note: add $BIN_DIR to your PATH" ;;
+  esac
+fi
 
 if [ "$MODE" = cli ]; then
   echo "Next: hermesh auth login   (the official center; or give a connection address)"
@@ -97,5 +148,9 @@ fi
 set -- pair
 [ -n "$ADDRESS" ] && set -- "$@" "$ADDRESS"
 [ -n "$NAME" ] && set -- "$@" --name "$NAME"
-"$BIN_DIR/hermeshd" "$@"
-"$BIN_DIR/hermeshd" doctor || true
+# The terminal goes to hermeshd as its stdin, for the two digits it asks.
+if [ -n "$TTY" ]; then
+  $AS "$BIN_DIR/hermeshd" "$@" <"$TTY"
+else
+  $AS "$BIN_DIR/hermeshd" "$@"
+fi

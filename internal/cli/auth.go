@@ -92,7 +92,7 @@ center (it started over): then login pairs with the new one directly.`,
 			pr := &identityv1.PairingRequest{Kind: identityv1.PairingKind_PAIRING_KIND_CLIENT, SubjectPublicKey: identity.MarshalPublicKey(a.key.Public()),
 				Label: name, Hostname: host, Platform: runtime.GOOS + "/" + runtime.GOARCH, OwnerId: ownerID, CreatedAt: timestamppb.Now()}
 			creds, ownerID, err := machine.PairWithRelay(cmd.Context(), a.hc, relayURL, pr, a.key, progress,
-				machine.PairOptions{Confirm: machine.TerminalConfirm(os.Stdin, progress), TrustClaim: yes})
+				machine.PairOptions{TrustClaim: yes, QR: machine.IsTerminal(progress)})
 			if err != nil {
 				return err
 			}

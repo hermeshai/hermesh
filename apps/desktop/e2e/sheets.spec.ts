@@ -187,7 +187,9 @@ test("adding a machine: its install command, then the code its terminal shows, a
   await sheet.getByRole("button", { name: "查找" }).click();
 
   await expect(sheet.getByRole("heading", { name: "一台自称「box」的机器想加入" })).toBeVisible();
-  await expect(sheet).toContainText("对方自报：");
+  // The code entered binds its key: no verification code to compare.
+  await expect(sheet).toContainText("你输入的配对码与它的密钥相符");
+  await expect(sheet).not.toContainText("核对码");
   await sheet.getByLabel("机器名").fill(name);
   await snap(page, "sheet-pairing-machine");
   await sheet.getByRole("button", { name: "批准" }).click();

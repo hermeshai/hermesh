@@ -25,7 +25,8 @@ removed from any other, and only when none is left does the owner start over.
 
 | Device | Role | How it is added |
 |---|---|---|
-| A device with the app (Mac now; iPhone, Windows, Linux later) | **Trusted device**: holds a root key, approves, signs. Also a **machine** unless the owner turns that off | The first one creates the owner; each further one joins (4.2) |
+| A device with the app (Mac, iPhone; Windows later) | **Trusted device**: holds a root key, approves, signs. Also a **machine** unless the owner turns that off (not an iPhone) | The first one creates the owner; each further one joins (4.2) |
+| A Linux computer that runs no coding agents | **Trusted device**, never a machine: its key sealed by a passphrase, approving in a terminal ([onboarding.md](onboarding.md) §9) | `hermeshd device setup` (the first) or `hermeshd device join`: a code the owner's device claims, then the two digits |
 | A device with the app that should not approve (a work Mac) | **Machine** only | Joins with "可信设备" (Trusted device) off (4.7), approved on any trusted device |
 | A server, a VPS, any `hermeshd` without the app | **Machine** only | `hermeshd pair <connection address>`, approved on any trusted device |
 | A personal agent (`hermesh` CLI) | **Agent** | `hermesh auth login` (a link the owner opens in the web console) or `hermesh auth login <connection address>`, approved on any trusted device |
