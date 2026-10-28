@@ -509,7 +509,7 @@ message SessionEvent {
 **Attachments** (`StartSessionRequest.attachments` / `SendMessageRequest.attachments`, `-f/--file` in the CLI):
 
 - At most 20 files and 32 MiB in total per message, uploaded with the RPC over the end-to-end channel; the relay cannot see the contents.
-- The machine stores the files under `<data-dir>/sessions/<id>/attachments/<message>/`, outside the worktree, so they are not part of snapshots or diffs; only the base name of each file is kept, and duplicates are renamed automatically; they are cleaned up with the worktree according to the retention period. The audit records file name, size and sha256.
+- The machine stores the files under `<data-dir>/sessions/<id>/attachments/<message>/`, outside the worktree, so they are not part of snapshots or diffs; only the base name of each file is kept, and duplicates are renamed automatically; they stay through archiving and are removed when the session is deleted. The audit records file name, size and sha256.
 - A `[Hermesh] Attached files…` section is appended to the end of the message, listing each file's path, type and size; the agent reads them with its own tools as needed. The `UserMessage` event carries `attachments` (path, type, size, sha256).
 - Images whose content really is PNG/JPEG/GIF/WebP and that are no larger than 3.5 MiB are also given to the model directly: Claude Code gets a base64 `image` block in stream-json, Codex gets `localImage`, and ACP agents get an `image` block when `promptCapabilities.image` is true.
 - The attachments directory is created when the agent starts and is readable by the agent: Claude Code via `--add-dir`; Codex can read it already.
@@ -660,7 +660,7 @@ stateDiagram-v2
   This makes per-turn diffs possible. The agent committing or pushing on its own is not restricted.
 - **Diff**: `git diff --binary <base_commit>..<turn or HEAD>`, at most 10 MiB per response, paged beyond that.
 - **Delivery**: changes stay on the local branch `hermesh/<session_id>`. **The daemon itself never pushes.**
-- **Cleanup**: on archive the worktree is deleted, and the branch `hermesh/<session>` keeps every turn's snapshot; on unarchive the worktree is rebuilt from the branch (same path, so the coding agent's session can resume in its original working directory).
+- **Cleanup**: on archive the worktree and the session's TMPDIR are deleted, and the branch `hermesh/<session>` keeps every turn's snapshot; on unarchive the worktree is rebuilt from the branch (same path, so the coding agent's session can resume in its original working directory), and the agent's next start makes a new TMPDIR.
 
 ### 6.7 Claude Code Adapter
 

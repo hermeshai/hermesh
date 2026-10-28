@@ -2,7 +2,9 @@ package machine
 
 import (
 	"context"
+	"os"
 	"os/exec"
+	"path/filepath"
 	"slices"
 	"strings"
 	"sync"
@@ -482,6 +484,35 @@ func TestArchiveIsDoneWhenItReturns(t *testing.T) {
 	}
 	h.send(id, "say two")
 	h.wait(id, idle)
+}
+
+// Archiving removes the agent's temporary directory and keeps the
+// attachments; the next start after unarchiving makes it again.
+func TestArchiveRemovesTempDir(t *testing.T) {
+	h := newHarness(t, DefaultLimits())
+	id := h.start("say one")
+	h.wait(id, idle)
+	tmp := filepath.Join(h.s.dataDir, "sessions", id, "tmp")
+	if err := os.WriteFile(filepath.Join(tmp, "scratch"), []byte("x"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := h.s.Archive(context.Background(), h.p, id); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(tmp); !os.IsNotExist(err) {
+		t.Fatalf("temp dir after archive: %v", err)
+	}
+	if _, err := os.Stat(h.s.attachmentsDir(id)); err != nil {
+		t.Fatalf("attachments after archive: %v", err)
+	}
+	if _, err := h.s.Unarchive(context.Background(), h.p, id); err != nil {
+		t.Fatal(err)
+	}
+	h.send(id, "say two")
+	h.wait(id, idle)
+	if st, err := os.Stat(tmp); err != nil || !st.IsDir() {
+		t.Fatalf("temp dir after unarchive and a turn: %v", err)
+	}
 }
 
 // ListEvents pages by seq: the latest by default, after or before a cursor,

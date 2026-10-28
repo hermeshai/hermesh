@@ -72,13 +72,26 @@ func TestSessionLifecycle(t *testing.T) {
 	cli("session", "interrupt", id)
 	eventually(t, 30*time.Second, "idle", func() bool { return status(id) == "idle" })
 
-	// Archive: read-only, out of the default list, worktree gone, work kept.
+	// The agent's temporary files go in the session's own directory.
+	tmp := filepath.Join(filepath.Dir(filepath.Dir(w.worktree(id))), "sessions", id, "tmp")
+	if r := cli("session", "send", id, "--wait", "--message", "write "+tmp+"/scratch.txt x"); r.code != 0 {
+		t.Fatalf("send: %+v", r)
+	}
+	if _, err := os.Stat(filepath.Join(tmp, "scratch.txt")); err != nil {
+		t.Fatalf("the agent's temporary file: %v", err)
+	}
+
+	// Archive: read-only, out of the default list, worktree and temporary
+	// files gone, work kept.
 	r = cli("session", "archive", id)
 	if r.code != 0 || status(id) != "archived" {
 		t.Fatalf("archive: %+v", r)
 	}
 	if _, err := os.Stat(w.worktree(id)); !os.IsNotExist(err) {
 		t.Fatalf("worktree after archive: %v", err)
+	}
+	if _, err := os.Stat(tmp); !os.IsNotExist(err) {
+		t.Fatalf("temporary directory after archive: %v", err)
 	}
 	if out, err := exec.Command("git", "-C", w.repo, "show", "hermesh/"+id+":one.txt").Output(); err != nil || string(out) != "first\n" {
 		t.Fatalf("the session branch keeps its work: %q %v", out, err)
@@ -109,6 +122,9 @@ func TestSessionLifecycle(t *testing.T) {
 	}
 	if d := cli("session", "diff", id); !strings.Contains(d.stdout, "+first") || !strings.Contains(d.stdout, "+second") {
 		t.Fatalf("diff after unarchive: %+v", d)
+	}
+	if st, err := os.Stat(tmp); err != nil || !st.IsDir() {
+		t.Fatalf("temporary directory after unarchive: %v", err)
 	}
 
 	// The old verbs are gone.

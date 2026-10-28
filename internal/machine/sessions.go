@@ -908,6 +908,9 @@ func (s *Sessions) Archive(ctx context.Context, p *Principal, id string) (*sessi
 	if ps != nil {
 		ps.Close()
 	}
+	// The agent's temporary files go with its process; its next start makes
+	// the directory again. Attachments stay: they belong to the record.
+	os.RemoveAll(filepath.Join(s.dataDir, "sessions", id, "tmp"))
 	if !inPlace && s.ws.Exists(id) {
 		if proj, _ := s.st.Project(row.ProjectID); proj != nil {
 			if err := s.ws.Remove(ctx, proj.Path, id); err != nil {
