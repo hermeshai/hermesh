@@ -40,6 +40,11 @@ test("a finished session shows both turns, what the agent did, and that it is do
   await step.click();
   await expect(log.getByRole("button", { name: /^已编辑\s*hello\.txt/ }).first()).toBeVisible();
   await expect(log.getByRole("button", { name: /^已运行\s*echo ran > ran\.txt/ })).toBeVisible();
+  // A command reads as code, in the mono face and in colour; what other tools acted on stays plain.
+  const command = log.getByRole("button", { name: /^已运行\s*echo ran > ran\.txt/ }).locator("code.cmd");
+  await expect(command.locator(".hl")).toBeVisible();
+  expect(await command.evaluate((el) => getComputedStyle(el).fontFamily)).toMatch(/SF Mono/);
+  await expect(log.getByRole("button", { name: /^已编辑\s*hello\.txt/ }).first().locator("code")).toHaveCount(0);
   await expect(log).not.toContainText("Write hello.txt");
   await expect(log).toContainText("改好了");
   // A turn that went well ends without a line of its own.
@@ -283,6 +288,14 @@ test("an agent's Markdown shows as GitHub shows it, without HTML, images or unsa
     "- 外层",
     "  - 里层",
     "",
+    "```go",
+    'func main() { fmt.Println("hi") }',
+    "```",
+    "",
+    "```",
+    "没写语言",
+    "```",
+    "",
     "~~旧的~~ [危险](javascript:alert(1)) ![图](https://example.com/a.png) <b>原样</b>",
   ].join("\\n");
   await cli("session", "start", "--project", "demo", "--agent", "gemini", "--title", "排版", "--prompt", `say ${reply}`, "--wait");
@@ -300,6 +313,22 @@ test("an agent's Markdown shows as GitHub shows it, without HTML, images or unsa
   await expect(md.getByRole("cell", { name: "1", exact: true })).toBeVisible();
   await expect(md.locator("li li")).toHaveText("里层");
   await expect(md.locator("del")).toHaveText("旧的");
+  // A block that names its language is in GitHub's colours, light or dark with the app; one that doesn't stays plain.
+  const go = md.locator("pre code").first();
+  await expect(go).toHaveText('func main() { fmt.Println("hi") }');
+  await expect(go.locator(".hl")).toBeVisible();
+  expect(await go.locator(".hl span span").evaluateAll((els) => new Set(els.map((el) => getComputedStyle(el).color)).size)).toBeGreaterThan(2);
+  const themed = await go.getByText("func", { exact: true }).evaluate((el) => {
+    const probe = document.createElement("span");
+    probe.style.color = getComputedStyle(el).getPropertyValue(matchMedia("(prefers-color-scheme: dark)").matches ? "--shiki-dark" : "--shiki-light");
+    document.body.append(probe);
+    const want = getComputedStyle(probe).color;
+    probe.remove();
+    return getComputedStyle(el).color === want;
+  });
+  expect(themed).toBe(true);
+  await expect(md.locator("pre code").nth(1)).toHaveText("没写语言");
+  await expect(md.locator("pre code").nth(1).locator(".hl")).toHaveCount(0);
   // Not a link, no image loaded, and HTML stays text.
   await expect(md).toContainText("危险");
   await expect(md.locator("img")).toHaveCount(0);

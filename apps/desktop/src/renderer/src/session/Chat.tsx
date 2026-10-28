@@ -13,6 +13,7 @@ import { Icon } from "../icons";
 import { archive, grantLabel, unarchive } from "../Sidebar";
 import { useNow, useStore } from "../store";
 import { interrupt } from "./actions";
+import { Code } from "./Code";
 import { DraftMarkdown, Markdown } from "./Markdown";
 import { partialOutput, useToolOutput } from "./output";
 import { QuestionPanel } from "./Question";
@@ -272,7 +273,13 @@ function ToolRow({ call, result, resultSeq, running, sessionId }: { call: ToolCa
       <button className="th" onClick={() => output && setOpen(!open)} aria-expanded={output ? open : undefined}>
         {(running || whole.reading) && <span className="mini-spin" role="img" aria-label={t("chat.inProgress")} />}
         <span className="vb">{toolVerb(call, running)}</span>
-        <span className="sm2" title={call.summary}>{toolSummary(toolObject(call), sessionId)}</span>
+        {call.kind === "shell" ? (
+          <code className="sm2 cmd" title={call.summary}>
+            <Code text={toolSummary(toolObject(call), sessionId)} lang="bash" />
+          </code>
+        ) : (
+          <span className="sm2" title={call.summary}>{toolSummary(toolObject(call), sessionId)}</span>
+        )}
         {output && <Icon name="caret" className="chev" />}
       </button>
       {output && <div className="out sel-text">{output}</div>}

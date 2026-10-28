@@ -358,6 +358,8 @@ button{font:inherit;color:inherit}
 .md code{font-family:var(--mono);font-size:13px;background:var(--fill2);padding:1px 5px;border-radius:5px}
 .md pre{background:var(--code);border-radius:10px;padding:10px 12px;overflow-x:auto;box-shadow:inset 0 0 0 .5px var(--sep)}
 .md pre code{background:none;padding:0;font-size:12.5px;line-height:1.55;white-space:pre}
+/* Shiki's tokens carry both themes' colours; the app's colour scheme picks one. */
+.hl span{color:light-dark(var(--shiki-light),var(--shiki-dark))}
 .md a{color:var(--accent-t);text-decoration:none}
 .md a:hover{text-decoration:underline}
 /* Tool steps: a grey line in the body's size, no icon; a small caret after it opens it. */
@@ -366,6 +368,9 @@ button{font:inherit;color:inherit}
 .tool .th:hover{color:var(--l1)}
 .tool .th .vb{flex:none}
 .tool .th .sm2{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
+/* A command reads as code: the mono face a size down, a little quieter until hovered. */
+.tool .th .cmd{font-family:var(--mono);font-size:12.5px;opacity:.9}
+.tool .th:hover .cmd{opacity:1}
 .tool .th .chev{flex:none}
 .tgroup{font-size:14px}
 .tg-h{display:flex;align-items:center;gap:6px;padding:2px 0;border:0;background:none;color:var(--l2);text-align:left}

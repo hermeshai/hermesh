@@ -153,6 +153,7 @@ This is a hint, not a guarantee. It still matters on an owner Mac that also runs
 - Navigation and new windows are blocked. External links go through main, which opens https only, to an allowlist.
 - Fuses: RunAsNode, NodeOptions and CLI inspect off; ASAR integrity, OnlyLoadAppFromAsar and cookie encryption on; GrantFileProtocolExtraPrivileges off. This is the profile Claude, Bitwarden and Codex ship.
 - Agent text is rendered as Markdown without raw HTML. Diffs and file names are always treated as text.
+- Code blocks that name their language, and shell commands in tool rows, are coloured by Shiki: its tokens become React elements, never HTML, and it runs on its JavaScript regex engine, as the CSP allows no WebAssembly. Each language loads the first time it is shown.
 
 ### 6.2 Talking to hermeshd
 
