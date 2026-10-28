@@ -72,6 +72,15 @@ const (
 	LocalServiceRemoveDeviceProcedure = "/hermesh.local.v1.LocalService/RemoveDevice"
 	// LocalServiceLeaveProcedure is the fully-qualified name of the LocalService's Leave RPC.
 	LocalServiceLeaveProcedure = "/hermesh.local.v1.LocalService/Leave"
+	// LocalServiceEraseEverythingProcedure is the fully-qualified name of the LocalService's
+	// EraseEverything RPC.
+	LocalServiceEraseEverythingProcedure = "/hermesh.local.v1.LocalService/EraseEverything"
+	// LocalServiceEraseStatusProcedure is the fully-qualified name of the LocalService's EraseStatus
+	// RPC.
+	LocalServiceEraseStatusProcedure = "/hermesh.local.v1.LocalService/EraseStatus"
+	// LocalServiceFinishEraseProcedure is the fully-qualified name of the LocalService's FinishErase
+	// RPC.
+	LocalServiceFinishEraseProcedure = "/hermesh.local.v1.LocalService/FinishErase"
 	// LocalServiceWatchSigningRequestsProcedure is the fully-qualified name of the LocalService's
 	// WatchSigningRequests RPC.
 	LocalServiceWatchSigningRequestsProcedure = "/hermesh.local.v1.LocalService/WatchSigningRequests"
@@ -240,6 +249,15 @@ type LocalServiceClient interface {
 	// set up again or join again: its root key is deleted, and its own
 	// machine keeps its projects.
 	Leave(context.Context, *v1.LeaveRequest) (*v1.LeaveResponse, error)
+	// Erases Hermesh on every device of the owner (docs/erase-everything.md):
+	// signs the order (Touch ID) and hands it to the relay. This device keeps
+	// running until FinishErase, to show the others acking.
+	EraseEverything(context.Context, *v1.EraseEverythingRequest) (*v1.EraseEverythingResponse, error)
+	// How an erase stands: each device, machine and agent, and whether it
+	// acked.
+	EraseStatus(context.Context, *v1.EraseStatusRequest) (*v1.EraseStatusResponse, error)
+	// Erases this device too: the app opens on its first run.
+	FinishErase(context.Context, *v1.FinishEraseRequest) (*v1.FinishEraseResponse, error)
 	// Signing delegation.
 	WatchSigningRequests(context.Context, *v1.WatchSigningRequestsRequest) (*connect.ServerStreamForClient[v1.SigningRequest], error)
 	CompleteSigningRequest(context.Context, *v1.CompleteSigningRequestRequest) (*v1.CompleteSigningRequestResponse, error)
@@ -420,6 +438,24 @@ func NewLocalServiceClient(httpClient connect.HTTPClient, baseURL string, opts .
 			httpClient,
 			baseURL+LocalServiceLeaveProcedure,
 			connect.WithSchema(localServiceMethods.ByName("Leave")),
+			connect.WithClientOptions(opts...),
+		),
+		eraseEverything: connect.NewClient[v1.EraseEverythingRequest, v1.EraseEverythingResponse](
+			httpClient,
+			baseURL+LocalServiceEraseEverythingProcedure,
+			connect.WithSchema(localServiceMethods.ByName("EraseEverything")),
+			connect.WithClientOptions(opts...),
+		),
+		eraseStatus: connect.NewClient[v1.EraseStatusRequest, v1.EraseStatusResponse](
+			httpClient,
+			baseURL+LocalServiceEraseStatusProcedure,
+			connect.WithSchema(localServiceMethods.ByName("EraseStatus")),
+			connect.WithClientOptions(opts...),
+		),
+		finishErase: connect.NewClient[v1.FinishEraseRequest, v1.FinishEraseResponse](
+			httpClient,
+			baseURL+LocalServiceFinishEraseProcedure,
+			connect.WithSchema(localServiceMethods.ByName("FinishErase")),
 			connect.WithClientOptions(opts...),
 		),
 		watchSigningRequests: connect.NewClient[v1.WatchSigningRequestsRequest, v1.SigningRequest](
@@ -700,6 +736,9 @@ type localServiceClient struct {
 	approveDevicePairing   *connect.Client[v1.ApproveDevicePairingRequest, v1.ApproveDevicePairingResponse]
 	removeDevice           *connect.Client[v1.RemoveDeviceRequest, v1.RemoveDeviceResponse]
 	leave                  *connect.Client[v1.LeaveRequest, v1.LeaveResponse]
+	eraseEverything        *connect.Client[v1.EraseEverythingRequest, v1.EraseEverythingResponse]
+	eraseStatus            *connect.Client[v1.EraseStatusRequest, v1.EraseStatusResponse]
+	finishErase            *connect.Client[v1.FinishEraseRequest, v1.FinishEraseResponse]
 	watchSigningRequests   *connect.Client[v1.WatchSigningRequestsRequest, v1.SigningRequest]
 	completeSigningRequest *connect.Client[v1.CompleteSigningRequestRequest, v1.CompleteSigningRequestResponse]
 	setLocalMachine        *connect.Client[v1.SetLocalMachineRequest, v1.SetLocalMachineResponse]
@@ -870,6 +909,33 @@ func (c *localServiceClient) RemoveDevice(ctx context.Context, req *v1.RemoveDev
 // Leave calls hermesh.local.v1.LocalService.Leave.
 func (c *localServiceClient) Leave(ctx context.Context, req *v1.LeaveRequest) (*v1.LeaveResponse, error) {
 	response, err := c.leave.CallUnary(ctx, connect.NewRequest(req))
+	if response != nil {
+		return response.Msg, err
+	}
+	return nil, err
+}
+
+// EraseEverything calls hermesh.local.v1.LocalService.EraseEverything.
+func (c *localServiceClient) EraseEverything(ctx context.Context, req *v1.EraseEverythingRequest) (*v1.EraseEverythingResponse, error) {
+	response, err := c.eraseEverything.CallUnary(ctx, connect.NewRequest(req))
+	if response != nil {
+		return response.Msg, err
+	}
+	return nil, err
+}
+
+// EraseStatus calls hermesh.local.v1.LocalService.EraseStatus.
+func (c *localServiceClient) EraseStatus(ctx context.Context, req *v1.EraseStatusRequest) (*v1.EraseStatusResponse, error) {
+	response, err := c.eraseStatus.CallUnary(ctx, connect.NewRequest(req))
+	if response != nil {
+		return response.Msg, err
+	}
+	return nil, err
+}
+
+// FinishErase calls hermesh.local.v1.LocalService.FinishErase.
+func (c *localServiceClient) FinishErase(ctx context.Context, req *v1.FinishEraseRequest) (*v1.FinishEraseResponse, error) {
+	response, err := c.finishErase.CallUnary(ctx, connect.NewRequest(req))
 	if response != nil {
 		return response.Msg, err
 	}
@@ -1291,6 +1357,15 @@ type LocalServiceHandler interface {
 	// set up again or join again: its root key is deleted, and its own
 	// machine keeps its projects.
 	Leave(context.Context, *v1.LeaveRequest) (*v1.LeaveResponse, error)
+	// Erases Hermesh on every device of the owner (docs/erase-everything.md):
+	// signs the order (Touch ID) and hands it to the relay. This device keeps
+	// running until FinishErase, to show the others acking.
+	EraseEverything(context.Context, *v1.EraseEverythingRequest) (*v1.EraseEverythingResponse, error)
+	// How an erase stands: each device, machine and agent, and whether it
+	// acked.
+	EraseStatus(context.Context, *v1.EraseStatusRequest) (*v1.EraseStatusResponse, error)
+	// Erases this device too: the app opens on its first run.
+	FinishErase(context.Context, *v1.FinishEraseRequest) (*v1.FinishEraseResponse, error)
 	// Signing delegation.
 	WatchSigningRequests(context.Context, *v1.WatchSigningRequestsRequest, *connect.ServerStream[v1.SigningRequest]) error
 	CompleteSigningRequest(context.Context, *v1.CompleteSigningRequestRequest) (*v1.CompleteSigningRequestResponse, error)
@@ -1467,6 +1542,24 @@ func NewLocalServiceHandler(svc LocalServiceHandler, opts ...connect.HandlerOpti
 		LocalServiceLeaveProcedure,
 		svc.Leave,
 		connect.WithSchema(localServiceMethods.ByName("Leave")),
+		connect.WithHandlerOptions(opts...),
+	)
+	localServiceEraseEverythingHandler := connect.NewUnaryHandlerSimple(
+		LocalServiceEraseEverythingProcedure,
+		svc.EraseEverything,
+		connect.WithSchema(localServiceMethods.ByName("EraseEverything")),
+		connect.WithHandlerOptions(opts...),
+	)
+	localServiceEraseStatusHandler := connect.NewUnaryHandlerSimple(
+		LocalServiceEraseStatusProcedure,
+		svc.EraseStatus,
+		connect.WithSchema(localServiceMethods.ByName("EraseStatus")),
+		connect.WithHandlerOptions(opts...),
+	)
+	localServiceFinishEraseHandler := connect.NewUnaryHandlerSimple(
+		LocalServiceFinishEraseProcedure,
+		svc.FinishErase,
+		connect.WithSchema(localServiceMethods.ByName("FinishErase")),
 		connect.WithHandlerOptions(opts...),
 	)
 	localServiceWatchSigningRequestsHandler := connect.NewServerStreamHandlerSimple(
@@ -1759,6 +1852,12 @@ func NewLocalServiceHandler(svc LocalServiceHandler, opts ...connect.HandlerOpti
 			localServiceRemoveDeviceHandler.ServeHTTP(w, r)
 		case LocalServiceLeaveProcedure:
 			localServiceLeaveHandler.ServeHTTP(w, r)
+		case LocalServiceEraseEverythingProcedure:
+			localServiceEraseEverythingHandler.ServeHTTP(w, r)
+		case LocalServiceEraseStatusProcedure:
+			localServiceEraseStatusHandler.ServeHTTP(w, r)
+		case LocalServiceFinishEraseProcedure:
+			localServiceFinishEraseHandler.ServeHTTP(w, r)
 		case LocalServiceWatchSigningRequestsProcedure:
 			localServiceWatchSigningRequestsHandler.ServeHTTP(w, r)
 		case LocalServiceCompleteSigningRequestProcedure:
@@ -1912,6 +2011,18 @@ func (UnimplementedLocalServiceHandler) RemoveDevice(context.Context, *v1.Remove
 
 func (UnimplementedLocalServiceHandler) Leave(context.Context, *v1.LeaveRequest) (*v1.LeaveResponse, error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("hermesh.local.v1.LocalService.Leave is not implemented"))
+}
+
+func (UnimplementedLocalServiceHandler) EraseEverything(context.Context, *v1.EraseEverythingRequest) (*v1.EraseEverythingResponse, error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("hermesh.local.v1.LocalService.EraseEverything is not implemented"))
+}
+
+func (UnimplementedLocalServiceHandler) EraseStatus(context.Context, *v1.EraseStatusRequest) (*v1.EraseStatusResponse, error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("hermesh.local.v1.LocalService.EraseStatus is not implemented"))
+}
+
+func (UnimplementedLocalServiceHandler) FinishErase(context.Context, *v1.FinishEraseRequest) (*v1.FinishEraseResponse, error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("hermesh.local.v1.LocalService.FinishErase is not implemented"))
 }
 
 func (UnimplementedLocalServiceHandler) WatchSigningRequests(context.Context, *v1.WatchSigningRequestsRequest, *connect.ServerStream[v1.SigningRequest]) error {

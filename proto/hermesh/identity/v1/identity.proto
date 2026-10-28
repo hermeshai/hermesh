@@ -172,6 +172,32 @@ message Grant {
   string custodian = 15;
 }
 
+// EraseOrder is the owner's order to erase Hermesh everywhere
+// (docs/erase-everything.md), signed by a root key on one trusted device.
+// Each device, machine and agent of the owner that sees it, and verifies it
+// against the root chain it holds, erases what Hermesh keeps there.
+message EraseOrder {
+  string owner_id = 1;
+  // Random: names this erase, for the acks.
+  string erase_id = 2;
+  google.protobuf.Timestamp issued_at = 3;
+}
+
+// EraseAck says that the key in it got an erase order and is erasing:
+// signed by that key, before it is deleted.
+message EraseAck {
+  string erase_id = 1;
+  // SPKI DER.
+  bytes public_key = 2;
+  // The id the owner knows it by: a trusted device's root key id (it acks
+  // with its device key), a machine id, a client id. For showing who
+  // acked; the relay is not trusted with more.
+  string subject = 3;
+  // A trusted device's device cert: it ties public_key to the root key
+  // that signed it, the subject.
+  Signed device_cert = 4;
+}
+
 // AdminCommand is signed by a root key and executed by the target machine.
 message AdminCommand {
   string owner_id = 1;

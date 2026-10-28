@@ -21,6 +21,7 @@
 "Also" = "另外";
 "Approve a new machine" = "批准一台新机器加入";
 "Approve only if that device is in your hands." = "只在那台设备就在你手上时批准。";
+"Approve only if you started erasing everything yourself." = "只在是你自己发起的全部清空时批准。";
 "Approve “%@” to connect to your computer" = "批准「%@」连接你的电脑";
 "Available coding agents: %@" = "可用的编码 Agent：%@";
 "Base branch: %@" = "基准分支：%@";
@@ -40,6 +41,8 @@
 "Device name: %@" = "设备名：%@";
 "Device “%@”" = "设备「%@」";
 "Directory: %@" = "目录：%@";
+"Erase ID: %@" = "清空 ID：%@";
+"Erase everything in your Hermesh" = "清空你的 Hermesh 的全部内容";
 "Expires" = "有效期";
 "Expires: %@" = "有效期至：%@";
 "Expires: %@ (before the change: %@)" = "有效期：至 %1$@（修改前至 %2$@）";
@@ -62,6 +65,8 @@
 "Model: %@" = "模型：%@";
 "New settings:" = "修改后的设置：";
 "On these machines: %@" = "在这些机器上：%@";
+"Once approved, Hermesh on all your trusted devices and machines, this Mac included, erases its keys, sessions and settings, and your agents are disconnected. This can’t be undone." = "批准后，你所有可信设备和机器（包括这台 Mac）上的 Hermesh 会清除它的密钥、会话和设置，你的 agent 也会全部断开。此操作无法撤销。";
+"Once approved, Hermesh on all your trusted devices and machines, this iPhone included, erases its keys, sessions and settings, and your agents are disconnected. This can’t be undone." = "批准后，你所有可信设备和机器（包括这台 iPhone）上的 Hermesh 会清除它的密钥、会话和设置，你的 agent 也会全部断开。此操作无法撤销。";
 "Once approved, Hermesh on this Mac uses it for end-to-end encrypted connections to your machines, to view and manage your sessions and machines." = "批准后：这台 Mac 上的 Hermesh 用它和你的各台机器建立端到端加密连接，查看和管理你的会话与机器。";
 "Once approved, Hermesh on this iPhone uses it for end-to-end encrypted connections to your machines, to view and manage your sessions and machines." = "批准后：这台 iPhone 上的 Hermesh 用它和你的各台机器建立端到端加密连接，查看和管理你的会话与机器。";
 "Once approved, agents can no longer start sessions in this project; the files in the directory are not deleted." = "批准后：agent 不能再在这个项目里新开会话；目录里的文件不会被删除。";

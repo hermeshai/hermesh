@@ -14,6 +14,7 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"slices"
 	"runtime"
 	"strings"
 	"syscall"
@@ -182,12 +183,18 @@ A computer that runs no coding agents can approve instead: hermeshd device.`}
 				log.Info("serving local API", "socket", socket)
 				return o.ServeLocal(ctx, socket)
 			}
-			n, err := openMachine()
+			cfg := machineConfig()
+			cfg.SelfErase = true
+			n, err := machine.Open(cfg)
 			if err != nil {
 				return err
 			}
-			defer n.Close()
-			return n.Run(ctx)
+			err = n.Run(ctx)
+			n.Close()
+			if errors.Is(err, machine.ErrErased) {
+				return eraseMachine(dataDir, cfg)
+			}
+			return err
 		},
 	}
 	run.Flags().BoolVar(&ownerMode, "owner", false, "run the owner role for the Hermesh app or a Linux trusted device (serves the local API)")
@@ -533,3 +540,28 @@ func report(name string, i provider.Info) bool {
 		return true
 	}
 }
+
+
+// eraseMachine erases a machine whose owner erased everything
+// (docs/erase-everything.md), and the rest of dataDir (its logs), and takes
+// its service away, so that it waits to be paired as a newly installed one
+// does.
+func eraseMachine(dataDir string, cfg machine.Config) error {
+	keepDir := filepath.Join(dataDir, "kept-worktrees")
+	kept, err := machine.Erase(cfg, keepDir)
+	if err == nil {
+		err = machine.RemoveExcept(dataDir, append(slices.Clone(kept), keepDir))
+	}
+	if err != nil {
+		return fmt.Errorf("erasing this machine: %w", err)
+	}
+	fmt.Fprintln(os.Stderr, "The owner erased everything: Hermesh's data on this machine is erased. Pair it again with `hermeshd pair <connection address>`.")
+	for _, wt := range kept {
+		fmt.Fprintf(os.Stderr, "Kept, with uncommitted changes: %s\n", wt)
+	}
+	if service.InstalledFor(cfg.DataDir) {
+		return service.Uninstall()
+	}
+	return nil
+}
+

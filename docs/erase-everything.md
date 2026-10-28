@@ -1,6 +1,6 @@
 # Erase everything: one approval, every device back to its first run
 
-Status: agreed 2026-10-28 (§8), being built. One action, **Erase
+Status: agreed 2026-10-28 (§8), being built: step 1 is done (§6). One action, **Erase
 Everything** (全部清空), which first says exactly what it erases.
 
 ## 1. The ask
@@ -66,8 +66,10 @@ that owner. The relay verifies the order against the owner's current chain,
 then, in one go:
 
 1. keeps the order as the owner's **tombstone** (§3.4);
-2. sends it to every peer of the owner connected now (trusted devices,
-   machines, CLI agents) on their open connections;
+2. closes, half a second later, every connection of the owner's peers
+   (trusted devices, machines, CLI agents), which are then refused
+   ("this relay no longer serves this device's owner") and ask for the
+   order (§3.4);
 3. forgets the owner as the console's start over does (the same deletions,
    `OwnerGone`, unlinking the account) and mails the person, naming the
    device it came from;
@@ -95,20 +97,25 @@ it has it (§3.4), then erases:
 
 Never touched, and the sheet says so: the projects' own directories and
 repositories (a worktree's branch stays in its repository); a worktree with
-uncommitted changes, kept and named afterwards; other profiles on a device
+uncommitted changes, moved (`git worktree move`) to `kept-worktrees/` in
+Hermesh's data directory and named afterwards; other profiles on a device
 (another owner's); the account itself and how the person signs in; and what
 the operating system keeps (notification permission, login items).
 
 ### 3.4 Offline devices: the tombstone
 
 The relay keeps each erase order for 90 days, after it has forgotten the
-owner. A device, machine or agent of that owner that connects (or asks
-`GetInfo`) in that time is answered with the order instead of a refusal; it
-verifies it and erases as in §3.3.
+owner. A device, machine or agent of that owner that connects in that time
+is refused; it then asks `GetInfo` with its owner id, which answers with
+the order and the chain it was signed under. It verifies the order against
+the chain it holds (taking the newer chain only if it extends its own) and
+erases as in §3.3.
 
-Each erases after reporting it (`AckErase`: the erase id and its key id,
-signed with its own key before deleting it). The relay records the acks
-against the tombstone, for the owner to see:
+Each erases after reporting it (`AckErase`, signed with its own key before
+deleting it: the erase id and the id the owner knows it by, which that key
+must name: a machine's or an agent's id; a trusted device signs with its
+device key and adds its device cert, which its root key signed). The relay
+records the acks against the tombstone, for the owner to see:
 
 - on the device that started it, live, for those online now;
 - in the console afterwards (the account page: "Erased on Oct 28: 5 of 6
@@ -180,12 +187,16 @@ unchanged: it signs nothing, so it erases nothing on a device.
 
 ## 6. Steps
 
-1. The order, the relay's `EraseOwner` and tombstone, `AckErase`;
-   machines and CLI agents acting on it. e2e: online and offline machine
-   and agent, a forged order refused, the tombstone after the owner is
-   gone.
-2. Trusted devices: the Mac app and the iPhone, the sheet and its
-   progress. Desktop e2e and `TestIPhone`, each ending on the first run.
+1. Done: the order, the relay's `EraseOwner` and tombstone, `AckErase`;
+   machines, CLI agents and trusted devices acting on it (hermeshd's local
+   API: `EraseEverything`, `EraseStatus`, `FinishErase`, and
+   `GetStatus.erased` on the first run that follows); the signers' card.
+   e2e `TestEraseEverything`: a second trusted device, a machine-only Mac,
+   an online and an offline machine and an agent; a dirty worktree kept, a
+   clean one erased; the relay claimed again. Forged orders and acks:
+   `pkg/identity` tests.
+2. The Mac app and the iPhone: the sheet, its progress and the first
+   run's line. Desktop e2e and `TestIPhone`, each ending on the first run.
 3. The center: account sign-out and connector consents, the console's
    erase record. Cloud e2e.
 4. `hermeshd erase`, the harness helper, the testing notes.

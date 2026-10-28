@@ -164,6 +164,22 @@ func (l *localService) Leave(ctx context.Context, _ *localv1.LeaveRequest) (*loc
 	return &localv1.LeaveResponse{}, l.d.Leave(ctx)
 }
 
+func (l *localService) EraseEverything(ctx context.Context, _ *localv1.EraseEverythingRequest) (*localv1.EraseEverythingResponse, error) {
+	id, err := l.d.EraseEverything(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return &localv1.EraseEverythingResponse{EraseId: id}, nil
+}
+
+func (l *localService) EraseStatus(ctx context.Context, req *localv1.EraseStatusRequest) (*localv1.EraseStatusResponse, error) {
+	return l.o().EraseStatus(ctx, req.EraseId)
+}
+
+func (l *localService) FinishErase(ctx context.Context, _ *localv1.FinishEraseRequest) (*localv1.FinishEraseResponse, error) {
+	return &localv1.FinishEraseResponse{}, l.d.FinishErase(ctx)
+}
+
 func (l *localService) WatchSigningRequests(ctx context.Context, _ *localv1.WatchSigningRequestsRequest, stream *connect.ServerStream[localv1.SigningRequest]) error {
 	ch, stop := l.d.hub.watch()
 	defer stop()

@@ -53,6 +53,9 @@ const (
 	// RelayPublicServiceWaitPairingProcedure is the fully-qualified name of the RelayPublicService's
 	// WaitPairing RPC.
 	RelayPublicServiceWaitPairingProcedure = "/hermesh.relay.v1.RelayPublicService/WaitPairing"
+	// RelayPublicServiceAckEraseProcedure is the fully-qualified name of the RelayPublicService's
+	// AckErase RPC.
+	RelayPublicServiceAckEraseProcedure = "/hermesh.relay.v1.RelayPublicService/AckErase"
 	// MachineControlServiceReportStatusProcedure is the fully-qualified name of the
 	// MachineControlService's ReportStatus RPC.
 	MachineControlServiceReportStatusProcedure = "/hermesh.relay.v1.MachineControlService/ReportStatus"
@@ -107,6 +110,9 @@ const (
 	// OwnerControlServicePublishRootChainProcedure is the fully-qualified name of the
 	// OwnerControlService's PublishRootChain RPC.
 	OwnerControlServicePublishRootChainProcedure = "/hermesh.relay.v1.OwnerControlService/PublishRootChain"
+	// OwnerControlServiceEraseOwnerProcedure is the fully-qualified name of the OwnerControlService's
+	// EraseOwner RPC.
+	OwnerControlServiceEraseOwnerProcedure = "/hermesh.relay.v1.OwnerControlService/EraseOwner"
 	// OwnerControlServiceRegisterPushProcedure is the fully-qualified name of the OwnerControlService's
 	// RegisterPush RPC.
 	OwnerControlServiceRegisterPushProcedure = "/hermesh.relay.v1.OwnerControlService/RegisterPush"
@@ -155,6 +161,8 @@ type RelayPublicServiceClient interface {
 	SubmitPairing(context.Context, *v1.SubmitPairingRequest) (*v1.SubmitPairingResponse, error)
 	// Long poll: returns when the pairing completes or after ~25s.
 	WaitPairing(context.Context, *v1.WaitPairingRequest) (*v1.WaitPairingResponse, error)
+	// A device, machine or agent that got an erase order says it is erasing.
+	AckErase(context.Context, *v1.AckEraseRequest) (*v1.AckEraseResponse, error)
 }
 
 // NewRelayPublicServiceClient constructs a client for the hermesh.relay.v1.RelayPublicService
@@ -192,6 +200,12 @@ func NewRelayPublicServiceClient(httpClient connect.HTTPClient, baseURL string, 
 			connect.WithSchema(relayPublicServiceMethods.ByName("WaitPairing")),
 			connect.WithClientOptions(opts...),
 		),
+		ackErase: connect.NewClient[v1.AckEraseRequest, v1.AckEraseResponse](
+			httpClient,
+			baseURL+RelayPublicServiceAckEraseProcedure,
+			connect.WithSchema(relayPublicServiceMethods.ByName("AckErase")),
+			connect.WithClientOptions(opts...),
+		),
 	}
 }
 
@@ -201,6 +215,7 @@ type relayPublicServiceClient struct {
 	claim         *connect.Client[v1.ClaimRequest, v1.ClaimResponse]
 	submitPairing *connect.Client[v1.SubmitPairingRequest, v1.SubmitPairingResponse]
 	waitPairing   *connect.Client[v1.WaitPairingRequest, v1.WaitPairingResponse]
+	ackErase      *connect.Client[v1.AckEraseRequest, v1.AckEraseResponse]
 }
 
 // GetInfo calls hermesh.relay.v1.RelayPublicService.GetInfo.
@@ -239,6 +254,15 @@ func (c *relayPublicServiceClient) WaitPairing(ctx context.Context, req *v1.Wait
 	return nil, err
 }
 
+// AckErase calls hermesh.relay.v1.RelayPublicService.AckErase.
+func (c *relayPublicServiceClient) AckErase(ctx context.Context, req *v1.AckEraseRequest) (*v1.AckEraseResponse, error) {
+	response, err := c.ackErase.CallUnary(ctx, connect.NewRequest(req))
+	if response != nil {
+		return response.Msg, err
+	}
+	return nil, err
+}
+
 // RelayPublicServiceHandler is an implementation of the hermesh.relay.v1.RelayPublicService
 // service.
 type RelayPublicServiceHandler interface {
@@ -247,6 +271,8 @@ type RelayPublicServiceHandler interface {
 	SubmitPairing(context.Context, *v1.SubmitPairingRequest) (*v1.SubmitPairingResponse, error)
 	// Long poll: returns when the pairing completes or after ~25s.
 	WaitPairing(context.Context, *v1.WaitPairingRequest) (*v1.WaitPairingResponse, error)
+	// A device, machine or agent that got an erase order says it is erasing.
+	AckErase(context.Context, *v1.AckEraseRequest) (*v1.AckEraseResponse, error)
 }
 
 // NewRelayPublicServiceHandler builds an HTTP handler from the service implementation. It returns
@@ -280,6 +306,12 @@ func NewRelayPublicServiceHandler(svc RelayPublicServiceHandler, opts ...connect
 		connect.WithSchema(relayPublicServiceMethods.ByName("WaitPairing")),
 		connect.WithHandlerOptions(opts...),
 	)
+	relayPublicServiceAckEraseHandler := connect.NewUnaryHandlerSimple(
+		RelayPublicServiceAckEraseProcedure,
+		svc.AckErase,
+		connect.WithSchema(relayPublicServiceMethods.ByName("AckErase")),
+		connect.WithHandlerOptions(opts...),
+	)
 	return "/hermesh.relay.v1.RelayPublicService/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case RelayPublicServiceGetInfoProcedure:
@@ -290,6 +322,8 @@ func NewRelayPublicServiceHandler(svc RelayPublicServiceHandler, opts ...connect
 			relayPublicServiceSubmitPairingHandler.ServeHTTP(w, r)
 		case RelayPublicServiceWaitPairingProcedure:
 			relayPublicServiceWaitPairingHandler.ServeHTTP(w, r)
+		case RelayPublicServiceAckEraseProcedure:
+			relayPublicServiceAckEraseHandler.ServeHTTP(w, r)
 		default:
 			http.NotFound(w, r)
 		}
@@ -313,6 +347,10 @@ func (UnimplementedRelayPublicServiceHandler) SubmitPairing(context.Context, *v1
 
 func (UnimplementedRelayPublicServiceHandler) WaitPairing(context.Context, *v1.WaitPairingRequest) (*v1.WaitPairingResponse, error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("hermesh.relay.v1.RelayPublicService.WaitPairing is not implemented"))
+}
+
+func (UnimplementedRelayPublicServiceHandler) AckErase(context.Context, *v1.AckEraseRequest) (*v1.AckEraseResponse, error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("hermesh.relay.v1.RelayPublicService.AckErase is not implemented"))
 }
 
 // MachineControlServiceClient is a client for the hermesh.relay.v1.MachineControlService service.
@@ -648,6 +686,10 @@ type OwnerControlServiceClient interface {
 	Revoke(context.Context, *v1.RevokeRequest) (*v1.RevokeResponse, error)
 	// A longer root chain: a trusted device joined or was removed.
 	PublishRootChain(context.Context, *v1.PublishRootChainRequest) (*v1.PublishRootChainResponse, error)
+	// The owner erases everything (docs/erase-everything.md): the relay keeps
+	// the signed order, forgets the owner, and every peer of it is refused
+	// and shown the order when it next connects.
+	EraseOwner(context.Context, *v1.EraseOwnerRequest) (*v1.EraseOwnerResponse, error)
 	// This device's push registration, signed by its device key: replaces
 	// its earlier one. An empty token stops its notices.
 	RegisterPush(context.Context, *v1.RegisterPushRequest) (*v1.RegisterPushResponse, error)
@@ -744,6 +786,12 @@ func NewOwnerControlServiceClient(httpClient connect.HTTPClient, baseURL string,
 			connect.WithSchema(ownerControlServiceMethods.ByName("PublishRootChain")),
 			connect.WithClientOptions(opts...),
 		),
+		eraseOwner: connect.NewClient[v1.EraseOwnerRequest, v1.EraseOwnerResponse](
+			httpClient,
+			baseURL+OwnerControlServiceEraseOwnerProcedure,
+			connect.WithSchema(ownerControlServiceMethods.ByName("EraseOwner")),
+			connect.WithClientOptions(opts...),
+		),
 		registerPush: connect.NewClient[v1.RegisterPushRequest, v1.RegisterPushResponse](
 			httpClient,
 			baseURL+OwnerControlServiceRegisterPushProcedure,
@@ -802,6 +850,7 @@ type ownerControlServiceClient struct {
 	publishMachineCert  *connect.Client[v1.PublishMachineCertRequest, v1.PublishMachineCertResponse]
 	revoke              *connect.Client[v1.RevokeRequest, v1.RevokeResponse]
 	publishRootChain    *connect.Client[v1.PublishRootChainRequest, v1.PublishRootChainResponse]
+	eraseOwner          *connect.Client[v1.EraseOwnerRequest, v1.EraseOwnerResponse]
 	registerPush        *connect.Client[v1.RegisterPushRequest, v1.RegisterPushResponse]
 	publishCards        *connect.Client[v1.PublishCardsRequest, v1.PublishCardsResponse]
 	listWakes           *connect.Client[v1.ListWakesRequest, v1.ListWakesResponse]
@@ -906,6 +955,15 @@ func (c *ownerControlServiceClient) PublishRootChain(ctx context.Context, req *v
 	return nil, err
 }
 
+// EraseOwner calls hermesh.relay.v1.OwnerControlService.EraseOwner.
+func (c *ownerControlServiceClient) EraseOwner(ctx context.Context, req *v1.EraseOwnerRequest) (*v1.EraseOwnerResponse, error) {
+	response, err := c.eraseOwner.CallUnary(ctx, connect.NewRequest(req))
+	if response != nil {
+		return response.Msg, err
+	}
+	return nil, err
+}
+
 // RegisterPush calls hermesh.relay.v1.OwnerControlService.RegisterPush.
 func (c *ownerControlServiceClient) RegisterPush(ctx context.Context, req *v1.RegisterPushRequest) (*v1.RegisterPushResponse, error) {
 	response, err := c.registerPush.CallUnary(ctx, connect.NewRequest(req))
@@ -995,6 +1053,10 @@ type OwnerControlServiceHandler interface {
 	Revoke(context.Context, *v1.RevokeRequest) (*v1.RevokeResponse, error)
 	// A longer root chain: a trusted device joined or was removed.
 	PublishRootChain(context.Context, *v1.PublishRootChainRequest) (*v1.PublishRootChainResponse, error)
+	// The owner erases everything (docs/erase-everything.md): the relay keeps
+	// the signed order, forgets the owner, and every peer of it is refused
+	// and shown the order when it next connects.
+	EraseOwner(context.Context, *v1.EraseOwnerRequest) (*v1.EraseOwnerResponse, error)
 	// This device's push registration, signed by its device key: replaces
 	// its earlier one. An empty token stops its notices.
 	RegisterPush(context.Context, *v1.RegisterPushRequest) (*v1.RegisterPushResponse, error)
@@ -1087,6 +1149,12 @@ func NewOwnerControlServiceHandler(svc OwnerControlServiceHandler, opts ...conne
 		connect.WithSchema(ownerControlServiceMethods.ByName("PublishRootChain")),
 		connect.WithHandlerOptions(opts...),
 	)
+	ownerControlServiceEraseOwnerHandler := connect.NewUnaryHandlerSimple(
+		OwnerControlServiceEraseOwnerProcedure,
+		svc.EraseOwner,
+		connect.WithSchema(ownerControlServiceMethods.ByName("EraseOwner")),
+		connect.WithHandlerOptions(opts...),
+	)
 	ownerControlServiceRegisterPushHandler := connect.NewUnaryHandlerSimple(
 		OwnerControlServiceRegisterPushProcedure,
 		svc.RegisterPush,
@@ -1153,6 +1221,8 @@ func NewOwnerControlServiceHandler(svc OwnerControlServiceHandler, opts ...conne
 			ownerControlServiceRevokeHandler.ServeHTTP(w, r)
 		case OwnerControlServicePublishRootChainProcedure:
 			ownerControlServicePublishRootChainHandler.ServeHTTP(w, r)
+		case OwnerControlServiceEraseOwnerProcedure:
+			ownerControlServiceEraseOwnerHandler.ServeHTTP(w, r)
 		case OwnerControlServiceRegisterPushProcedure:
 			ownerControlServiceRegisterPushHandler.ServeHTTP(w, r)
 		case OwnerControlServicePublishCardsProcedure:
@@ -1218,6 +1288,10 @@ func (UnimplementedOwnerControlServiceHandler) Revoke(context.Context, *v1.Revok
 
 func (UnimplementedOwnerControlServiceHandler) PublishRootChain(context.Context, *v1.PublishRootChainRequest) (*v1.PublishRootChainResponse, error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("hermesh.relay.v1.OwnerControlService.PublishRootChain is not implemented"))
+}
+
+func (UnimplementedOwnerControlServiceHandler) EraseOwner(context.Context, *v1.EraseOwnerRequest) (*v1.EraseOwnerResponse, error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("hermesh.relay.v1.OwnerControlService.EraseOwner is not implemented"))
 }
 
 func (UnimplementedOwnerControlServiceHandler) RegisterPush(context.Context, *v1.RegisterPushRequest) (*v1.RegisterPushResponse, error) {

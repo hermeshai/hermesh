@@ -43,6 +43,9 @@ type Config struct {
 	HTTPClient *http.Client
 	// WorkspaceMode "none" disables git worktrees (benchmarking only).
 	WorkspaceMode string
+	// SelfErase: a machine on its own (not a trusted device's) stops with
+	// ErrErased when its owner erased everything, to be erased (Erase).
+	SelfErase bool
 }
 
 func DefaultProviders() map[string]provider.Provider {
@@ -95,6 +98,7 @@ type Machine struct {
 	tunnels     map[*tunnel]struct{}
 	connected   bool
 	refused     bool       // the relay refused admission when last connecting
+	erased      bool       // the owner's erase order came (SelfErase)
 	clientsMu   sync.Mutex // rememberClient
 	adminSeen   map[string]time.Time
 	// grantSeen caches the highest version of each grant recorded in the
@@ -431,6 +435,12 @@ func (n *Machine) Run(ctx context.Context) error {
 	go n.serveControl(ctx)
 	n.log.Info("hermeshd machine running", "machine", n.machineID, "name", n.Name(), "relay", n.relayURL)
 	n.runLink(ctx)
+	n.mu.Lock()
+	erased := n.erased
+	n.mu.Unlock()
+	if erased {
+		return ErrErased
+	}
 	return nil
 }
 

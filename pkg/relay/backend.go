@@ -49,6 +49,23 @@ type Backend interface {
 	Close() error
 }
 
+// EraseRetention is how long a relay keeps an erased owner's order, for
+// its offline devices to see when they connect (docs/erase-everything.md).
+const EraseRetention = 90 * 24 * time.Hour
+
+// EraseStore keeps erase orders: a Backend that has it lets owners erase
+// everything.
+type EraseStore interface {
+	// EraseOwner keeps the owner's signed erase order, with its root chain
+	// as it is, and forgets the owner and everything under it.
+	EraseOwner(ownerID, eraseID string, order *identityv1.Signed, chain *identityv1.RootChain, at time.Time) error
+	// EraseOrder is the owner's erase order, its root chain and the key ids
+	// that acked it; nil once EraseRetention has passed, or for none.
+	EraseOrder(ownerID string, now time.Time) (*identityv1.Signed, *identityv1.RootChain, []string, error)
+	// AckErase records that a key is erasing; unknown erase ids are ignored.
+	AckErase(eraseID, keyID string, at time.Time) error
+}
+
 // Pairing is a pending (or just completed) pairing request.
 type Pairing struct {
 	Code string

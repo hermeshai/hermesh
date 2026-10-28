@@ -65,6 +65,8 @@ service RelayPublicService {
   rpc SubmitPairing(SubmitPairingRequest) returns (SubmitPairingResponse);
   // Long poll: returns when the pairing completes or after ~25s.
   rpc WaitPairing(WaitPairingRequest) returns (WaitPairingResponse);
+  // A device, machine or agent that got an erase order says it is erasing.
+  rpc AckErase(AckEraseRequest) returns (AckEraseResponse);
 }
 
 message GetInfoRequest {
@@ -88,7 +90,21 @@ message GetInfoResponse {
   bool hosted = 6;
   // Hosted center: where the owner enters pairing codes.
   string console_url = 7;
+  // The owner erased everything (docs/erase-everything.md): its signed
+  // EraseOrder, kept 90 days after the relay forgot the owner, with
+  // root_chain as it was then, so a device whose chain is older can verify
+  // it. owner_id and claimed are then unset.
+  hermesh.identity.v1.Signed erase_order = 8;
+  // Who acked that order, by EraseAck.subject.
+  repeated string erase_acks = 9;
 }
+
+message AckEraseRequest {
+  // A signed EraseAck, by the key in it.
+  hermesh.identity.v1.Signed ack = 1;
+}
+
+message AckEraseResponse {}
 
 message ClaimRequest {
   string claim_code = 1;
@@ -311,6 +327,10 @@ service OwnerControlService {
   rpc Revoke(RevokeRequest) returns (RevokeResponse);
   // A longer root chain: a trusted device joined or was removed.
   rpc PublishRootChain(PublishRootChainRequest) returns (PublishRootChainResponse);
+  // The owner erases everything (docs/erase-everything.md): the relay keeps
+  // the signed order, forgets the owner, and every peer of it is refused
+  // and shown the order when it next connects.
+  rpc EraseOwner(EraseOwnerRequest) returns (EraseOwnerResponse);
   // This device's push registration, signed by its device key: replaces
   // its earlier one. An empty token stops its notices.
   rpc RegisterPush(RegisterPushRequest) returns (RegisterPushResponse);
@@ -517,6 +537,13 @@ message PublishRootChainRequest {
 }
 
 message PublishRootChainResponse {}
+
+message EraseOwnerRequest {
+  // A signed EraseOrder, by one of the owner's root keys.
+  hermesh.identity.v1.Signed order = 1;
+}
+
+message EraseOwnerResponse {}
 
 // MessageService is the post office (docs/agent-messages.md §5), served on
 // the client and machine control streams: the caller's inbox is the

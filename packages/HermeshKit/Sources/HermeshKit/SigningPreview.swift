@@ -119,6 +119,7 @@ public enum SigningPreview {
     public static let machineCert = "hermesh.identity.v1.MachineCert"
     public static let grant = "hermesh.identity.v1.Grant"
     public static let adminCommand = "hermesh.identity.v1.AdminCommand"
+    public static let eraseOrder = "hermesh.identity.v1.EraseOrder"
 
     public static func signingInput(type: String, body: Data) -> Data {
         var d = Data("hermesh-sig-v1\0".utf8)
@@ -258,6 +259,13 @@ public enum SigningPreview {
             return c
         case adminCommand:
             return try describeAdmin(try strict(r, Hermesh_Identity_V1_AdminCommand.self), hints)
+        case eraseOrder:
+            let e = try strict(r, Hermesh_Identity_V1_EraseOrder.self)
+            return Card(type: r.type, title: String(localized: "Erase everything in your Hermesh", bundle: .module), who: "", lines: [],
+                        why: on(String(localized: "Once approved, Hermesh on all your trusted devices and machines, this Mac included, erases its keys, sessions and settings, and your agents are disconnected. This can’t be undone.", bundle: .module),
+                           String(localized: "Once approved, Hermesh on all your trusted devices and machines, this iPhone included, erases its keys, sessions and settings, and your agents are disconnected. This can’t be undone.", bundle: .module)),
+                        warning: String(localized: "Approve only if you started erasing everything yourself.", bundle: .module),
+                        ids: [String(localized: "Owner identity ID: \(e.ownerID)", bundle: .module), String(localized: "Erase ID: \(e.eraseID)", bundle: .module)])
         default:
             throw Refusal.unknownType(r.type)
         }

@@ -20,6 +20,7 @@ import (
 	relayv1 "github.com/hermeshai/hermesh/gen/go/hermesh/relay/v1"
 	"github.com/hermeshai/hermesh/gen/go/hermesh/relay/v1/relayv1connect"
 	"github.com/hermeshai/hermesh/internal/connaddr"
+	"github.com/hermeshai/hermesh/internal/machine"
 	"github.com/hermeshai/hermesh/internal/peer"
 	"github.com/hermeshai/hermesh/pkg/identity"
 	"github.com/hermeshai/hermesh/pkg/transport"
@@ -319,8 +320,20 @@ func (a *app) syncGrant(ctx context.Context, c *peer.Client) (uint64, error) {
 	return 0, nil
 }
 
-// refused is the error of a client the owner no longer admits.
+// refused is the error of a client the owner no longer admits. When the
+// owner erased everything (docs/erase-everything.md), the agent says it is
+// erasing and forgets its pairing.
 func (a *app) refused(err error) error {
+	if order := machine.FetchEraseOrder(context.Background(), a.hc, a.st.RelayURL, a.st.OwnerID, a.trust); order != nil {
+		if err := machine.AckErase(context.Background(), a.hc, a.st.RelayURL, order.EraseId, a.g.ClientId, nil, a.key); err != nil {
+			fmt.Fprintln(os.Stderr, "warning: telling the owner this agent is erasing:", err)
+		}
+		if _, ferr := a.forget(); ferr != nil {
+			return ferr
+		}
+		return &exitError{code: exitDenied, kind: "revoked", err: fmt.Errorf("%w: the owner erased everything; this computer's pairing is erased", err),
+			hint: "run `hermesh auth login <address>` to pair with an owner again"}
+	}
 	return &exitError{code: exitDenied, kind: "revoked", err: err, hint: fmt.Sprintf("run `hermesh auth login %s` to ask the owner again", a.address())}
 }
 

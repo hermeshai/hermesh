@@ -58,6 +58,15 @@ service LocalService {
   // set up again or join again: its root key is deleted, and its own
   // machine keeps its projects.
   rpc Leave(LeaveRequest) returns (LeaveResponse);
+  // Erases Hermesh on every device of the owner (docs/erase-everything.md):
+  // signs the order (Touch ID) and hands it to the relay. This device keeps
+  // running until FinishErase, to show the others acking.
+  rpc EraseEverything(EraseEverythingRequest) returns (EraseEverythingResponse);
+  // How an erase stands: each device, machine and agent, and whether it
+  // acked.
+  rpc EraseStatus(EraseStatusRequest) returns (EraseStatusResponse);
+  // Erases this device too: the app opens on its first run.
+  rpc FinishErase(FinishEraseRequest) returns (FinishEraseResponse);
 
   // Signing delegation.
   rpc WatchSigningRequests(WatchSigningRequestsRequest) returns (stream SigningRequest);
@@ -250,6 +259,9 @@ message GetStatusResponse {
   // The account this profile belongs to, as the center named it when it
   // was set up, joined or signed in (for display only).
   string account = 16;
+  // This device erased everything (EraseEverything, or an erase order from
+  // another): what it did, until another setup.
+  Erased erased = 17;
 }
 
 message ListProfilesRequest {}
@@ -437,6 +449,45 @@ message RemoveDeviceResponse {
 message LeaveRequest {}
 
 message LeaveResponse {}
+
+message EraseEverythingRequest {}
+
+message EraseEverythingResponse {
+  string erase_id = 1;
+}
+
+message EraseStatusRequest {
+  string erase_id = 1;
+}
+
+message EraseStatusResponse {
+  // What there was when it began, and which acked.
+  repeated EraseItem items = 1;
+}
+
+message EraseItem {
+  // "device", "machine" or "agent".
+  string kind = 1;
+  string name = 2;
+  // This device.
+  bool this_device = 3;
+  bool done = 4;
+}
+
+message FinishEraseRequest {}
+
+message FinishEraseResponse {}
+
+// What the last erase did, for the app to say once on its first run.
+message Erased {
+  string erase_id = 1;
+  google.protobuf.Timestamp at = 2;
+  // Devices, machines and agents that had not acked when this one erased:
+  // they erase the next time they connect.
+  repeated string pending = 3;
+  // Worktrees with uncommitted changes, kept.
+  repeated string kept_worktrees = 4;
+}
 
 message WatchSigningRequestsRequest {}
 

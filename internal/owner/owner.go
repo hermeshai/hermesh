@@ -97,6 +97,18 @@ type Owner struct {
 	localCancel context.CancelFunc
 	localDone   chan struct{} // closed once the local machine stopped and closed
 	runCtx      context.Context
+
+	// erasing: the erase this device started, until FinishErase (erase.go).
+	erasing *eraseRun
+	// erased: what the erase that emptied this profile did, for its first
+	// run to say (kErased).
+	erased *localv1.Erased
+	// onErase: the device erasing this profile, whose owner erased
+	// everything from another device (set by Device).
+	onErase func(o *Owner, eraseID string)
+	// wiping: the profile is being erased (once, however many refusals
+	// asked).
+	wiping bool
 }
 
 const (
@@ -148,6 +160,12 @@ func (o *Owner) load() error {
 		var kept localv1.ListClientsResponse
 		if proto.Unmarshal(b, &kept) == nil {
 			o.lastClients = kept.Clients
+		}
+	}
+	if b, _ := o.st.get(kErased); len(b) > 0 {
+		var e localv1.Erased
+		if proto.Unmarshal(b, &e) == nil {
+			o.erased = &e
 		}
 	}
 	id, _ := o.st.get(kOwnerID)
@@ -527,6 +545,9 @@ func (o *Owner) ownerStatus() *localv1.GetStatusResponse {
 		st.DeviceKeyId = identity.KeyID(o.rootPub)
 	}
 	st.Removed, st.SignedOut, st.Account = o.removed, o.signedOut, o.account
+	if o.ownerID == "" {
+		st.Erased = o.erased
+	}
 	return st
 }
 
@@ -769,6 +790,9 @@ func (o *Owner) localMachineConfig() machine.Config {
 	if cfg.HTTPClient == nil {
 		cfg.HTTPClient = o.cfg.HTTPClient
 	}
+	// A device that is only a machine has no owner of its own to hear an
+	// erase on: its machine does (erase.go).
+	cfg.SelfErase = !o.Initialized() && o.machineOnly()
 	return cfg
 }
 
@@ -793,11 +817,18 @@ func (o *Owner) startLocalMachine() error {
 	o.localMachine, o.localCancel, o.localDone = n, cancel, done
 	o.mu.Unlock()
 	go func() {
-		if err := n.Run(ctx); err != nil {
+		err := n.Run(ctx)
+		if err != nil && !errors.Is(err, machine.ErrErased) {
 			o.log.Warn("local machine stopped", "err", err)
 		}
 		n.Close()
 		close(done)
+		if errors.Is(err, machine.ErrErased) && o.onErase != nil {
+			o.mu.Lock()
+			o.localCancel, o.localMachine, o.localDone = nil, nil, nil
+			o.mu.Unlock()
+			o.onErase(o, "")
+		}
 	}()
 	return nil
 }

@@ -39,7 +39,39 @@ func (p *publicService) GetInfo(ctx context.Context, req *relayv1.GetInfoRequest
 			resp.OwnerId, resp.RootChain = t.ownerID, t.trust.RootChain()
 		}
 	}
+	// An owner that erased everything: its order, for its devices to verify
+	// against the chain it was signed under (docs/erase-everything.md).
+	if req.OwnerId != "" && req.OwnerId != resp.OwnerId {
+		if order, chain, acks := s.eraseOrder(req.OwnerId); order != nil {
+			resp.EraseOrder, resp.RootChain, resp.EraseAcks = order, chain, acks
+		}
+	}
 	return resp, nil
+}
+
+func (p *publicService) AckErase(ctx context.Context, req *relayv1.AckEraseRequest) (*relayv1.AckEraseResponse, error) {
+	es, ok := p.s.store.(EraseStore)
+	if !ok {
+		return nil, errf(connect.CodeUnimplemented, "this relay keeps no erase orders")
+	}
+	// A trusted device's ack is verified against the chain its owner's
+	// order was signed under.
+	var trust *identity.Trust
+	a, dc := &identityv1.EraseAck{}, &identityv1.OwnerDeviceCert{}
+	if identity.Unverified(req.Ack, a) == nil && a.DeviceCert != nil && identity.Unverified(a.DeviceCert, dc) == nil {
+		if order, chain, _ := p.s.eraseOrder(dc.OwnerId); order != nil {
+			trust = identity.NewTrust(dc.OwnerId)
+			trust.AcceptRootChain(chain)
+		}
+	}
+	ack, err := identity.VerifyEraseAck(req.Ack, trust)
+	if err != nil {
+		return nil, errf(connect.CodeInvalidArgument, err.Error())
+	}
+	if err := es.AckErase(ack.EraseId, ack.Subject, time.Now()); err != nil {
+		return nil, err
+	}
+	return &relayv1.AckEraseResponse{}, nil
 }
 
 func (p *publicService) Claim(ctx context.Context, req *relayv1.ClaimRequest) (*relayv1.ClaimResponse, error) {
@@ -623,6 +655,26 @@ func (o *ownerControl) Revoke(ctx context.Context, req *relayv1.RevokeRequest) (
 		return nil, errf(connect.CodeInvalidArgument, "missing revocations")
 	}
 	return &relayv1.RevokeResponse{}, o.s.applyRevocations(peerFrom(ctx).t, req.Revocations)
+}
+
+func (o *ownerControl) EraseOwner(ctx context.Context, req *relayv1.EraseOwnerRequest) (*relayv1.EraseOwnerResponse, error) {
+	t := peerFrom(ctx).t
+	es, ok := o.s.store.(EraseStore)
+	if !ok {
+		return nil, errf(connect.CodeUnimplemented, "this relay can't erase an owner yet")
+	}
+	order, err := t.trust.VerifyEraseOrder(req.Order)
+	if err != nil {
+		return nil, errf(connect.CodeInvalidArgument, err.Error())
+	}
+	if at := order.IssuedAt.AsTime(); order.IssuedAt == nil || time.Since(at) > 10*time.Minute || time.Until(at) > identity.ClockSkew {
+		return nil, errf(connect.CodeInvalidArgument, "erase order: not issued just now")
+	}
+	if err := es.EraseOwner(t.ownerID, order.EraseId, req.Order, t.trust.RootChain(), time.Now()); err != nil {
+		return nil, err
+	}
+	o.s.erased(t.ownerID)
+	return &relayv1.EraseOwnerResponse{}, nil
 }
 
 func (o *ownerControl) PublishRootChain(ctx context.Context, req *relayv1.PublishRootChainRequest) (*relayv1.PublishRootChainResponse, error) {
