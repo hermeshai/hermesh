@@ -54,6 +54,9 @@ type Config struct {
 	// AccountHint names, masked, the account an owner belongs to (hosted
 	// mode): requesters see it when the owner claims their request.
 	AccountHint func(ownerID string) string
+	// Account names the account an owner belongs to (hosted mode), in full,
+	// for the owner's own trusted devices: its email.
+	Account func(ownerID string) string
 	// Claim links a new owner in hosted mode (the code is the account's
 	// one-time link code). The root and device certs are already checked
 	// for self-consistency; the hook must call RegisterOwner.

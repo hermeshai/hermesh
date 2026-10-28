@@ -927,9 +927,10 @@ final class AppModel {
 
     // MARK: Erasing everything (docs/erase-everything.md)
 
-    /// What erasing everything would reach now; with an erase id, how it stands.
-    func eraseItems(_ eraseID: String = "") async throws -> [EraseItem] {
-        guard let api else { return [] }
+    /// What erasing everything would reach now (and, on the official
+    /// service, the account's email to type); with an erase id, how it stands.
+    func eraseStatus(_ eraseID: String = "") async throws -> Hermesh_Local_V1_EraseStatusResponse {
+        guard let api else { throw CancellationError() }
         return try await api.eraseStatus(eraseID)
     }
 

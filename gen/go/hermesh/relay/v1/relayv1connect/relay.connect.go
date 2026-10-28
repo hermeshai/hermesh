@@ -113,6 +113,9 @@ const (
 	// OwnerControlServiceEraseOwnerProcedure is the fully-qualified name of the OwnerControlService's
 	// EraseOwner RPC.
 	OwnerControlServiceEraseOwnerProcedure = "/hermesh.relay.v1.OwnerControlService/EraseOwner"
+	// OwnerControlServiceGetAccountProcedure is the fully-qualified name of the OwnerControlService's
+	// GetAccount RPC.
+	OwnerControlServiceGetAccountProcedure = "/hermesh.relay.v1.OwnerControlService/GetAccount"
 	// OwnerControlServiceRegisterPushProcedure is the fully-qualified name of the OwnerControlService's
 	// RegisterPush RPC.
 	OwnerControlServiceRegisterPushProcedure = "/hermesh.relay.v1.OwnerControlService/RegisterPush"
@@ -687,9 +690,13 @@ type OwnerControlServiceClient interface {
 	// A longer root chain: a trusted device joined or was removed.
 	PublishRootChain(context.Context, *v1.PublishRootChainRequest) (*v1.PublishRootChainResponse, error)
 	// The owner erases everything (docs/erase-everything.md): the relay keeps
-	// the signed order, forgets the owner, and every peer of it is refused
-	// and shown the order when it next connects.
+	// the signed order for 10 minutes, forgets the owner, and every peer of
+	// it is refused, and shown the order in that time.
 	EraseOwner(context.Context, *v1.EraseOwnerRequest) (*v1.EraseOwnerResponse, error)
+	// The account this owner belongs to, as its devices may show it: a
+	// center's account's email ("" for a self-hosted relay). Erasing
+	// everything has the owner type it to confirm.
+	GetAccount(context.Context, *v1.GetAccountRequest) (*v1.GetAccountResponse, error)
 	// This device's push registration, signed by its device key: replaces
 	// its earlier one. An empty token stops its notices.
 	RegisterPush(context.Context, *v1.RegisterPushRequest) (*v1.RegisterPushResponse, error)
@@ -792,6 +799,12 @@ func NewOwnerControlServiceClient(httpClient connect.HTTPClient, baseURL string,
 			connect.WithSchema(ownerControlServiceMethods.ByName("EraseOwner")),
 			connect.WithClientOptions(opts...),
 		),
+		getAccount: connect.NewClient[v1.GetAccountRequest, v1.GetAccountResponse](
+			httpClient,
+			baseURL+OwnerControlServiceGetAccountProcedure,
+			connect.WithSchema(ownerControlServiceMethods.ByName("GetAccount")),
+			connect.WithClientOptions(opts...),
+		),
 		registerPush: connect.NewClient[v1.RegisterPushRequest, v1.RegisterPushResponse](
 			httpClient,
 			baseURL+OwnerControlServiceRegisterPushProcedure,
@@ -851,6 +864,7 @@ type ownerControlServiceClient struct {
 	revoke              *connect.Client[v1.RevokeRequest, v1.RevokeResponse]
 	publishRootChain    *connect.Client[v1.PublishRootChainRequest, v1.PublishRootChainResponse]
 	eraseOwner          *connect.Client[v1.EraseOwnerRequest, v1.EraseOwnerResponse]
+	getAccount          *connect.Client[v1.GetAccountRequest, v1.GetAccountResponse]
 	registerPush        *connect.Client[v1.RegisterPushRequest, v1.RegisterPushResponse]
 	publishCards        *connect.Client[v1.PublishCardsRequest, v1.PublishCardsResponse]
 	listWakes           *connect.Client[v1.ListWakesRequest, v1.ListWakesResponse]
@@ -964,6 +978,15 @@ func (c *ownerControlServiceClient) EraseOwner(ctx context.Context, req *v1.Eras
 	return nil, err
 }
 
+// GetAccount calls hermesh.relay.v1.OwnerControlService.GetAccount.
+func (c *ownerControlServiceClient) GetAccount(ctx context.Context, req *v1.GetAccountRequest) (*v1.GetAccountResponse, error) {
+	response, err := c.getAccount.CallUnary(ctx, connect.NewRequest(req))
+	if response != nil {
+		return response.Msg, err
+	}
+	return nil, err
+}
+
 // RegisterPush calls hermesh.relay.v1.OwnerControlService.RegisterPush.
 func (c *ownerControlServiceClient) RegisterPush(ctx context.Context, req *v1.RegisterPushRequest) (*v1.RegisterPushResponse, error) {
 	response, err := c.registerPush.CallUnary(ctx, connect.NewRequest(req))
@@ -1054,9 +1077,13 @@ type OwnerControlServiceHandler interface {
 	// A longer root chain: a trusted device joined or was removed.
 	PublishRootChain(context.Context, *v1.PublishRootChainRequest) (*v1.PublishRootChainResponse, error)
 	// The owner erases everything (docs/erase-everything.md): the relay keeps
-	// the signed order, forgets the owner, and every peer of it is refused
-	// and shown the order when it next connects.
+	// the signed order for 10 minutes, forgets the owner, and every peer of
+	// it is refused, and shown the order in that time.
 	EraseOwner(context.Context, *v1.EraseOwnerRequest) (*v1.EraseOwnerResponse, error)
+	// The account this owner belongs to, as its devices may show it: a
+	// center's account's email ("" for a self-hosted relay). Erasing
+	// everything has the owner type it to confirm.
+	GetAccount(context.Context, *v1.GetAccountRequest) (*v1.GetAccountResponse, error)
 	// This device's push registration, signed by its device key: replaces
 	// its earlier one. An empty token stops its notices.
 	RegisterPush(context.Context, *v1.RegisterPushRequest) (*v1.RegisterPushResponse, error)
@@ -1155,6 +1182,12 @@ func NewOwnerControlServiceHandler(svc OwnerControlServiceHandler, opts ...conne
 		connect.WithSchema(ownerControlServiceMethods.ByName("EraseOwner")),
 		connect.WithHandlerOptions(opts...),
 	)
+	ownerControlServiceGetAccountHandler := connect.NewUnaryHandlerSimple(
+		OwnerControlServiceGetAccountProcedure,
+		svc.GetAccount,
+		connect.WithSchema(ownerControlServiceMethods.ByName("GetAccount")),
+		connect.WithHandlerOptions(opts...),
+	)
 	ownerControlServiceRegisterPushHandler := connect.NewUnaryHandlerSimple(
 		OwnerControlServiceRegisterPushProcedure,
 		svc.RegisterPush,
@@ -1223,6 +1256,8 @@ func NewOwnerControlServiceHandler(svc OwnerControlServiceHandler, opts ...conne
 			ownerControlServicePublishRootChainHandler.ServeHTTP(w, r)
 		case OwnerControlServiceEraseOwnerProcedure:
 			ownerControlServiceEraseOwnerHandler.ServeHTTP(w, r)
+		case OwnerControlServiceGetAccountProcedure:
+			ownerControlServiceGetAccountHandler.ServeHTTP(w, r)
 		case OwnerControlServiceRegisterPushProcedure:
 			ownerControlServiceRegisterPushHandler.ServeHTTP(w, r)
 		case OwnerControlServicePublishCardsProcedure:
@@ -1292,6 +1327,10 @@ func (UnimplementedOwnerControlServiceHandler) PublishRootChain(context.Context,
 
 func (UnimplementedOwnerControlServiceHandler) EraseOwner(context.Context, *v1.EraseOwnerRequest) (*v1.EraseOwnerResponse, error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("hermesh.relay.v1.OwnerControlService.EraseOwner is not implemented"))
+}
+
+func (UnimplementedOwnerControlServiceHandler) GetAccount(context.Context, *v1.GetAccountRequest) (*v1.GetAccountResponse, error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("hermesh.relay.v1.OwnerControlService.GetAccount is not implemented"))
 }
 
 func (UnimplementedOwnerControlServiceHandler) RegisterPush(context.Context, *v1.RegisterPushRequest) (*v1.RegisterPushResponse, error) {

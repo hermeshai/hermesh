@@ -2488,7 +2488,10 @@ func (x *EraseStatusRequest) GetEraseId() string {
 type EraseStatusResponse struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// What there was when it began, and which acked.
-	Items         []*EraseItem `protobuf:"bytes,1,rep,name=items,proto3" json:"items,omitempty"`
+	Items []*EraseItem `protobuf:"bytes,1,rep,name=items,proto3" json:"items,omitempty"`
+	// Without an erase id, on a center: the account's email, which the owner
+	// types to confirm ("" on a self-hosted relay: its address is typed).
+	Account       string `protobuf:"bytes,2,opt,name=account,proto3" json:"account,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -2528,6 +2531,13 @@ func (x *EraseStatusResponse) GetItems() []*EraseItem {
 		return x.Items
 	}
 	return nil
+}
+
+func (x *EraseStatusResponse) GetAccount() string {
+	if x != nil {
+		return x.Account
+	}
+	return ""
 }
 
 type EraseItem struct {
@@ -7601,9 +7611,10 @@ const file_hermesh_local_v1_local_proto_rawDesc = "" +
 	"\x17EraseEverythingResponse\x12\x19\n" +
 	"\berase_id\x18\x01 \x01(\tR\aeraseId\"/\n" +
 	"\x12EraseStatusRequest\x12\x19\n" +
-	"\berase_id\x18\x01 \x01(\tR\aeraseId\"H\n" +
+	"\berase_id\x18\x01 \x01(\tR\aeraseId\"b\n" +
 	"\x13EraseStatusResponse\x121\n" +
-	"\x05items\x18\x01 \x03(\v2\x1b.hermesh.local.v1.EraseItemR\x05items\"\x80\x01\n" +
+	"\x05items\x18\x01 \x03(\v2\x1b.hermesh.local.v1.EraseItemR\x05items\x12\x18\n" +
+	"\aaccount\x18\x02 \x01(\tR\aaccount\"\x80\x01\n" +
 	"\tEraseItem\x12\x12\n" +
 	"\x04kind\x18\x01 \x01(\tR\x04kind\x12\x12\n" +
 	"\x04name\x18\x02 \x01(\tR\x04name\x12\x1f\n" +
