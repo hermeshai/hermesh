@@ -58,7 +58,11 @@ message WatchResponse {
   google.protobuf.Timestamp sent_at = 9;
 }
 
-message GetInfoRequest {}
+message GetInfoRequest {
+  // An owner's device asks the machine to check its coding agents again
+  // now (installed, version, signed in), and waits for it: Check Again.
+  bool recheck = 1;
+}
 
 message GetInfoResponse {
   string machine_id = 1;
@@ -198,6 +202,40 @@ service MachineAdminService {
   rpc PushRevocations(PushRevocationsRequest) returns (PushRevocationsResponse) {
     option (hermesh.options.v1.access) = ACCESS_WRITE;
   }
+  // The git repositories under the home folder, for Add a Project: read
+  // when the person opens it, never kept (docs/onboarding.md §5.5).
+  rpc ListRepos(ListReposRequest) returns (ListReposResponse) {
+    option (hermesh.options.v1.access) = ACCESS_WRITE;
+  }
+  // One short fixed turn of a coding agent in a scratch folder, to prove it
+  // is installed and signed in: no session, project or grant is involved.
+  rpc TestAgent(TestAgentRequest) returns (TestAgentResponse) {
+    option (hermesh.options.v1.access) = ACCESS_WRITE;
+  }
+}
+
+message ListReposRequest {}
+
+message ListReposResponse {
+  repeated Repo repos = 1;
+}
+
+message Repo {
+  // As the person writes it: "~/app".
+  string path = 1;
+  string branch = 2;
+  google.protobuf.Timestamp last_commit = 3;
+}
+
+message TestAgentRequest {
+  string agent = 1;
+}
+
+message TestAgentResponse {
+  bool ok = 1;
+  // The coding agent's answer, or why it gave none.
+  string reply = 2;
+  uint32 millis = 3;
 }
 
 message ApplyAdminCommandRequest {

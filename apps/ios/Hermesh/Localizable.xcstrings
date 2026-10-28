@@ -119,6 +119,9 @@
         }
       }
     },
+    "%@ ›": {
+      "shouldTranslate": false
+    },
     "%lld": {
       "shouldTranslate": false
     },
@@ -403,6 +406,26 @@
     "+%lld": {
       "shouldTranslate": false
     },
+    "1. On that machine, run": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "1. 在那台机器上运行"
+          }
+        }
+      }
+    },
+    "1. On the other device": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "1. 在另一台设备上"
+          }
+        }
+      }
+    },
     "1. Run this in that machine’s terminal": {
       "localizations": {
         "zh-Hans": {
@@ -419,6 +442,26 @@
           "stringUnit": {
             "state": "translated",
             "value": "2. 在这里批准"
+          }
+        }
+      }
+    },
+    "2. Scan the code it shows": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "2. 扫描它显示的配对码"
+          }
+        }
+      }
+    },
+    "A Linux server, a cloud host or a Mac mini can each be a machine.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Linux 服务器、云主机或 Mac mini 都可以作为机器。"
           }
         }
       }
@@ -459,6 +502,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "一台自称「%@」的机器想加入"
+          }
+        }
+      }
+    },
+    "A new server? Enter its claim code…": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "新的服务器？输入它的认领码…"
           }
         }
       }
@@ -573,6 +626,16 @@
         }
       }
     },
+    "Add Another…": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "再添加一台…"
+          }
+        }
+      }
+    },
     "Add a Machine": {
       "localizations": {
         "zh-Hans": {
@@ -613,12 +676,52 @@
         }
       }
     },
+    "Add a Trusted Device": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "添加可信设备"
+          }
+        }
+      }
+    },
     "Add a connector in %@": {
       "localizations": {
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
             "value": "在 %@ 里添加连接器"
+          }
+        }
+      }
+    },
+    "Add a machine": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "添加一台机器"
+          }
+        }
+      }
+    },
+    "Add a project": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "添加一个项目"
+          }
+        }
+      }
+    },
+    "Add projects to it on its page.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "在它的页面上为它添加项目。"
           }
         }
       }
@@ -649,6 +752,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "正在添加…"
+          }
+        }
+      }
+    },
+    "Add…": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "添加…"
           }
         }
       }
@@ -773,6 +886,16 @@
         }
       }
     },
+    "Allow Hermesh to use the camera in Settings, or enter the pairing code.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "请在“设置”中允许 Hermesh 使用相机，或者输入配对码。"
+          }
+        }
+      }
+    },
     "Allow Notifications in Settings": {
       "localizations": {
         "zh-Hans": {
@@ -809,6 +932,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "一直通知"
+          }
+        }
+      }
+    },
+    "Another iPhone or a Mac can approve too. If you lose this iPhone, it keeps your machines and agents working.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "另一台 iPhone 或 Mac 也可以批准。万一这台 iPhone 丢了，你的机器和 agent 也能照常工作。"
           }
         }
       }
@@ -913,12 +1046,32 @@
         }
       }
     },
+    "As soon as it starts working, its session opens here.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "它一开始工作，它的会话就会在这里打开。"
+          }
+        }
+      }
+    },
     "As the user you code as on that machine. It installs Hermesh, runs it in the background, and shows a verification code.": {
       "localizations": {
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
             "value": "用你平时在那台机器上写代码的用户运行。它会安装 Hermesh、在后台运行，并显示一个核对码。"
+          }
+        }
+      }
+    },
+    "As the user you code as. It shows a code.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "用你平时写代码的用户运行。它会显示一个配对码。"
           }
         }
       }
@@ -1073,12 +1226,32 @@
         }
       }
     },
+    "Check Again": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "重新检查"
+          }
+        }
+      }
+    },
     "Choose at least one project, or All Projects, and one coding agent.": {
       "localizations": {
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
             "value": "至少选一个项目（或“所有项目”）和一个编码 agent。"
+          }
+        }
+      }
+    },
+    "Claim code": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "认领码"
           }
         }
       }
@@ -1153,6 +1326,16 @@
         }
       }
     },
+    "Compare the code it shows, then type the two digits this iPhone shows on it.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "核对它显示的核对码，然后在它上面输入这台 iPhone 显示的两位数字。"
+          }
+        }
+      }
+    },
     "Compare the code with what it shows.": {
       "localizations": {
         "zh-Hans": {
@@ -1203,6 +1386,16 @@
         }
       }
     },
+    "Connect your agent": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "连接你的 agent"
+          }
+        }
+      }
+    },
     "Connected": {
       "localizations": {
         "zh-Hans": {
@@ -1239,6 +1432,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "连接方式"
+          }
+        }
+      }
+    },
+    "Connect…": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "连接…"
           }
         }
       }
@@ -1553,6 +1756,36 @@
         }
       }
     },
+    "Enter a pairing code instead…": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "改为输入配对码…"
+          }
+        }
+      }
+    },
+    "Enter the Pairing Code…": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "输入配对码…"
+          }
+        }
+      }
+    },
+    "Enter the pairing code instead…": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "改为输入配对码…"
+          }
+        }
+      }
+    },
     "Every trusted device can approve requests to connect. If one gets lost, remove it from another (swipe left on it).": {
       "localizations": {
         "zh-Hans": {
@@ -1663,12 +1896,42 @@
         }
       }
     },
+    "Folders macOS protects, such as Desktop and Documents, aren’t searched: type those above.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "macOS 保护的文件夹（如桌面和文稿）不会被搜索，请在上面手动输入。"
+          }
+        }
+      }
+    },
     "For a git repository: each session gets its own branch and worktree, and your own files are left alone.": {
       "localizations": {
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
             "value": "git 仓库：每个会话在自己的分支和 worktree 里，不碰你正在改的文件。"
+          }
+        }
+      }
+    },
+    "Get Started": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "开始使用"
+          }
+        }
+      }
+    },
+    "Get a coding agent ready": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "准备好一个编码 agent"
           }
         }
       }
@@ -1746,6 +2009,16 @@
         }
       }
     },
+    "Hermesh on %@ is %@, older than this app. To update it, run the install command there again:": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%1$@ 上的 Hermesh 是 %2$@，比这个 App 旧。在那台机器上再运行一次安装命令即可更新："
+          }
+        }
+      }
+    },
     "Hermesh service": {
       "localizations": {
         "zh-Hans": {
@@ -1766,22 +2039,22 @@
         }
       }
     },
-    "Hermesh tells you when an agent asks something or a machine or agent asks to connect.": {
-      "localizations": {
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "有 agent 提问，或有机器、agent 请求连接时，Hermesh 会通知你。"
-          }
-        }
-      }
-    },
     "Hermesh wakes it once; it reads any messages already waiting.": {
       "localizations": {
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
             "value": "Hermesh 叫醒它一次，在等的消息它会顺便读掉。"
+          }
+        }
+      }
+    },
+    "Hide": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "隐藏"
           }
         }
       }
@@ -1812,6 +2085,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "工作方式"
+          }
+        }
+      }
+    },
+    "How to install %@": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "如何安装 %@"
           }
         }
       }
@@ -1896,6 +2179,26 @@
         }
       }
     },
+    "Install Hermesh on it and sign in with the same account.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "在它上面安装 Hermesh，用同一个账号登录。"
+          }
+        }
+      }
+    },
+    "Install Hermesh on it, choose Use Your Own Server…, and type this connection address:": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "在它上面安装 Hermesh，选择“使用自己的服务器…”，然后输入这个连接地址："
+          }
+        }
+      }
+    },
     "Interrupt": {
       "localizations": {
         "zh-Hans": {
@@ -1972,6 +2275,26 @@
           "stringUnit": {
             "state": "translated",
             "value": "它立刻不能再批准任何事，它自己的执行机器也一并移除。它批准过的机器和 agent 会改由这台 iPhone 重新签发，照常可用（需要面容 ID）。"
+          }
+        }
+      }
+    },
+    "It didn’t join? Remove it": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "没有加入？移除它"
+          }
+        }
+      }
+    },
+    "It didn’t reply.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "它没有回复。"
           }
         }
       }
@@ -2142,6 +2465,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "对方正忙（429）：过一会儿再试"
+          }
+        }
+      }
+    },
+    "Join a server you already use instead": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "改为加入你已在使用的服务器"
           }
         }
       }
@@ -2496,6 +2829,16 @@
         }
       }
     },
+    "No camera to scan with": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "没有可用于扫描的相机"
+          }
+        }
+      }
+    },
     "No changes": {
       "localizations": {
         "zh-Hans": {
@@ -2646,6 +2989,16 @@
         }
       }
     },
+    "Not installed: %@ · install one on %@, then Check Again": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "未安装：%1$@ · 在 %2$@ 上装好后点“重新检查”"
+          }
+        }
+      }
+    },
     "Not signed in": {
       "localizations": {
         "zh-Hans": {
@@ -2702,6 +3055,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "通知"
+          }
+        }
+      }
+    },
+    "Notifications are off": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "通知已关闭"
           }
         }
       }
@@ -2806,6 +3169,26 @@
         }
       }
     },
+    "On a server without a browser, it shows a link: open it on this iPhone.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "在没有浏览器的服务器上，它会显示一个链接：在这台 iPhone 上打开即可。"
+          }
+        }
+      }
+    },
+    "On this machine": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "这台机器上的仓库"
+          }
+        }
+      }
+    },
     "Once disconnected, it loses access at once; running sessions are interrupted, and the sessions themselves stay.": {
       "localizations": {
         "zh-Hans": {
@@ -2846,12 +3229,42 @@
         }
       }
     },
+    "One short turn, in a folder of its own, to show %@ works on %@. It keeps no session.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "在单独的文件夹里跑一轮简短的对话，确认 %1$@ 在 %2$@ 上能用。不会留下会话。"
+          }
+        }
+      }
+    },
     "Online": {
       "localizations": {
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
             "value": "在线"
+          }
+        }
+      }
+    },
+    "Only this iPhone can approve. If you lose it, you’ll set up again and pair your machines and agents again.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "只有这台 iPhone 能批准。万一丢了，你得重新设置，并重新配对你的机器和 agent。"
+          }
+        }
+      }
+    },
+    "Open %@": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "打开 %@"
           }
         }
       }
@@ -2966,6 +3379,16 @@
         }
       }
     },
+    "Point the camera at the code in the terminal.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "把相机对准终端里的配对码。"
+          }
+        }
+      }
+    },
     "Project name": {
       "localizations": {
         "zh-Hans": {
@@ -2982,6 +3405,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "项目"
+          }
+        }
+      }
+    },
+    "Put off.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "已暂缓。"
           }
         }
       }
@@ -3236,12 +3669,32 @@
         }
       }
     },
+    "Replied in %@ s: “%@”": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%1$@ 秒内回复：“%2$@”"
+          }
+        }
+      }
+    },
     "Requests to connect": {
       "localizations": {
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
             "value": "连接请求"
+          }
+        }
+      }
+    },
+    "Requests to connect and your agents’ questions come here. Without notifications you’ll see them only while Hermesh is open.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "连接请求和 agent 的提问都会发到这里。不开通知的话，只有打开 Hermesh 时才能看到。"
           }
         }
       }
@@ -3312,6 +3765,26 @@
           "stringUnit": {
             "state": "translated",
             "value": "已保存，标记为不能用"
+          }
+        }
+      }
+    },
+    "Scan a Code…": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "扫描配对码…"
+          }
+        }
+      }
+    },
+    "Scan the Code": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "扫描配对码"
           }
         }
       }
@@ -3482,6 +3955,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "给每个 bot 单独设置…"
+          }
+        }
+      }
+    },
+    "Set up your own server": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "设置你自己的服务器"
           }
         }
       }
@@ -3789,12 +4272,52 @@
     "Tech Demos": {
       "shouldTranslate": false
     },
+    "Terminal on this iPhone? Copy a Command for This Account": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "终端就在这台 iPhone 上？拷贝本账户专用的命令"
+          }
+        }
+      }
+    },
+    "Test": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "测试"
+          }
+        }
+      }
+    },
+    "That isn’t a Hermesh code.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "这不是 Hermesh 的配对码。"
+          }
+        }
+      }
+    },
     "That isn’t a connection address. It looks like relay.example.com/o_…": {
       "localizations": {
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
             "value": "这不是连接地址。它看起来像 relay.example.com/o_…"
+          }
+        }
+      }
+    },
+    "That isn’t a server address. It looks like relay.example.com": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "这不是服务器地址，地址形如 relay.example.com"
           }
         }
       }
@@ -3849,6 +4372,16 @@
         }
       }
     },
+    "The code a machine or agent shows in its terminal. Its request then opens here, to approve.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "机器或 agent 在终端里显示的配对码。输入后，它的请求会在这里打开，等你批准。"
+          }
+        }
+      }
+    },
     "The directory itself isn’t deleted; agents can no longer start sessions there.": {
       "localizations": {
         "zh-Hans": {
@@ -3895,6 +4428,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "其他"
+          }
+        }
+      }
+    },
+    "The pairing code matches this machine’s key": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "配对码与这台机器的密钥相符"
           }
         }
       }
@@ -4129,12 +4672,42 @@
         }
       }
     },
+    "Try it": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "试一试"
+          }
+        }
+      }
+    },
+    "Try it in %@: send it this:": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "在 %@ 里试一下，把这句话发给它："
+          }
+        }
+      }
+    },
     "Try telling it: “Use Hermesh to see which projects I have.”": {
       "localizations": {
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
             "value": "试着对它说：“用 Hermesh 看看我有哪些项目”。"
+          }
+        }
+      }
+    },
+    "Try…": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "试一下…"
           }
         }
       }
@@ -4165,6 +4738,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "第 %u 轮完成 · 没有改动文件"
+          }
+        }
+      }
+    },
+    "Turn On…": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "打开…"
           }
         }
       }
@@ -4239,6 +4822,16 @@
         }
       }
     },
+    "Type your server’s address and the claim code it printed when it started. This iPhone becomes its owner.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "输入服务器的地址，以及它启动时打印的认领码。这台 iPhone 会成为它的所有者。"
+          }
+        }
+      }
+    },
     "URL (POST to)": {
       "localizations": {
         "zh-Hans": {
@@ -4289,6 +4882,16 @@
         }
       }
     },
+    "Update": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "更新"
+          }
+        }
+      }
+    },
     "Updating from %@…": {
       "localizations": {
         "zh-Hans": {
@@ -4325,6 +4928,26 @@
           "stringUnit": {
             "state": "translated",
             "value": "近 %lld 周的用量"
+          }
+        }
+      }
+    },
+    "Use Hermesh to have %@ say hello to me in the %@ project.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "用 Hermesh 让 %1$@ 在 %2$@ 项目里跟我打个招呼。"
+          }
+        }
+      }
+    },
+    "Use Hermesh to have %@ say hello to me.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "用 Hermesh 让 %@ 跟我打个招呼。"
           }
         }
       }
@@ -4439,6 +5062,16 @@
         }
       }
     },
+    "Waiting for its request…": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "正在等待它的请求…"
+          }
+        }
+      }
+    },
     "Waiting for that machine to connect…": {
       "localizations": {
         "zh-Hans": {
@@ -4455,6 +5088,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "等你回答 · %@"
+          }
+        }
+      }
+    },
+    "Waiting for “%@” to connect…": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "正在等待「%@」连上…"
           }
         }
       }
@@ -4599,6 +5242,16 @@
         }
       }
     },
+    "With nothing to scan: its request comes here by itself. Compare the verification code.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "无需扫描：它的请求会自动来到这里，请核对核对码。"
+          }
+        }
+      }
+    },
     "Woken %@": {
       "localizations": {
         "zh-Hans": {
@@ -4655,6 +5308,26 @@
           "stringUnit": {
             "state": "translated",
             "value": "你自己的服务器"
+          }
+        }
+      }
+    },
+    "You’ll see requests and questions only while Hermesh is open.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "只有打开 Hermesh 时你才能看到请求和提问。"
+          }
+        }
+      }
+    },
+    "a coding agent": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "编码 agent"
           }
         }
       }
@@ -4732,6 +5405,9 @@
           }
         }
       }
+    },
+    "relay.example.com": {
+      "shouldTranslate": false
     },
     "relay.example.com/o_…": {
       "localizations": {
@@ -4812,6 +5488,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "「%1$@」也给 %2$@ 用了"
+          }
+        }
+      }
+    },
+    "“%@” joined": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "「%@」已加入"
           }
         }
       }

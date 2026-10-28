@@ -290,3 +290,5 @@ pgregory.net/rapid v1.2.0 h1:keKAYRcjm+e1F0oAuU5F5+YPAWcyxNNRK2wud503Gnk=
 pgregory.net/rapid v1.2.0/go.mod h1:PY5XlDGj0+V1FCq0o192FdRhpKHGTRIWBgqjDBTrq04=
 pluginrpc.com/pluginrpc v0.6.0 h1:Dx5r3y9Nbbt02NSm+bKHvs+WgXM34lalD5grkjd8sno=
 pluginrpc.com/pluginrpc v0.6.0/go.mod h1:9FPMdIy8nmkALE5eSe2ipE42G83WpZnA2+I7M7ADijY=
+rsc.io/qr v0.2.0 h1:6vBLea5/NRMVTz8V66gipeLycZMl/+UlFmk8DvqQ6WY=
+rsc.io/qr v0.2.0/go.mod h1:IF+uZjkb9fqyeF/4tlBoynqmQxUoPfWEKh921coOuXs=

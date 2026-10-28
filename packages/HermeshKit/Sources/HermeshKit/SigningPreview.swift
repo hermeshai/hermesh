@@ -229,7 +229,10 @@ public enum SigningPreview {
                            String(localized: "Once approved, Hermesh on this iPhone uses it for end-to-end encrypted connections to your machines, to view and manage your sessions and machines.", bundle: .module)),
                         ids: [String(localized: "Device name: \(m.label)", bundle: .module), String(localized: "Fingerprint: \(fingerprint(m.devicePublicKey))", bundle: .module)])
         case rootCert:
-            return describeRoot(try strict(r, Hermesh_Identity_V1_RootCert.self), hints)
+            var c = describeRoot(try strict(r, Hermesh_Identity_V1_RootCert.self), hints)
+            // A device found by the code it shows: that code binds its key.
+            if r.confirmed { c.code = nil }
+            return c
         case pairingRequest:
             let p = try strict(r, Hermesh_Identity_V1_PairingRequest.self)
             guard p.kind == .device else { throw Refusal.unsupported(r.type) }
@@ -240,7 +243,11 @@ public enum SigningPreview {
                            String(localized: "This sends a join request to your existing devices. Check the same code on one of them and approve, and this iPhone becomes a trusted device.", bundle: .module)),
                         ids: [String(localized: "Device name: \(p.label)", bundle: .module), String(localized: "Owner identity ID: \(p.ownerID)", bundle: .module)])
         case machineCert:
-            return describeMachine(try strict(r, Hermesh_Identity_V1_MachineCert.self), hints, reissue: reissue)
+            var c = describeMachine(try strict(r, Hermesh_Identity_V1_MachineCert.self), hints, reissue: reissue)
+            // Found by the code its terminal shows: that code binds its key,
+            // so there is nothing to compare.
+            if r.confirmed { c.code = nil }
+            return c
         case grant:
             let g = try strict(r, Hermesh_Identity_V1_Grant.self)
             if case .UNRECOGNIZED = g.taskVisibility { throw Refusal.unsupported(r.type) }

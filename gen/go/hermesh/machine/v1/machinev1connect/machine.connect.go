@@ -48,6 +48,12 @@ const (
 	// MachineAdminServicePushRevocationsProcedure is the fully-qualified name of the
 	// MachineAdminService's PushRevocations RPC.
 	MachineAdminServicePushRevocationsProcedure = "/hermesh.machine.v1.MachineAdminService/PushRevocations"
+	// MachineAdminServiceListReposProcedure is the fully-qualified name of the MachineAdminService's
+	// ListRepos RPC.
+	MachineAdminServiceListReposProcedure = "/hermesh.machine.v1.MachineAdminService/ListRepos"
+	// MachineAdminServiceTestAgentProcedure is the fully-qualified name of the MachineAdminService's
+	// TestAgent RPC.
+	MachineAdminServiceTestAgentProcedure = "/hermesh.machine.v1.MachineAdminService/TestAgent"
 )
 
 // MachineServiceClient is a client for the hermesh.machine.v1.MachineService service.
@@ -194,6 +200,12 @@ func (UnimplementedMachineServiceHandler) Watch(context.Context, *v1.WatchReques
 type MachineAdminServiceClient interface {
 	ApplyAdminCommand(context.Context, *v1.ApplyAdminCommandRequest) (*v1.ApplyAdminCommandResponse, error)
 	PushRevocations(context.Context, *v1.PushRevocationsRequest) (*v1.PushRevocationsResponse, error)
+	// The git repositories under the home folder, for Add a Project: read
+	// when the person opens it, never kept (docs/onboarding.md §5.5).
+	ListRepos(context.Context, *v1.ListReposRequest) (*v1.ListReposResponse, error)
+	// One short fixed turn of a coding agent in a scratch folder, to prove it
+	// is installed and signed in: no session, project or grant is involved.
+	TestAgent(context.Context, *v1.TestAgentRequest) (*v1.TestAgentResponse, error)
 }
 
 // NewMachineAdminServiceClient constructs a client for the hermesh.machine.v1.MachineAdminService
@@ -219,6 +231,18 @@ func NewMachineAdminServiceClient(httpClient connect.HTTPClient, baseURL string,
 			connect.WithSchema(machineAdminServiceMethods.ByName("PushRevocations")),
 			connect.WithClientOptions(opts...),
 		),
+		listRepos: connect.NewClient[v1.ListReposRequest, v1.ListReposResponse](
+			httpClient,
+			baseURL+MachineAdminServiceListReposProcedure,
+			connect.WithSchema(machineAdminServiceMethods.ByName("ListRepos")),
+			connect.WithClientOptions(opts...),
+		),
+		testAgent: connect.NewClient[v1.TestAgentRequest, v1.TestAgentResponse](
+			httpClient,
+			baseURL+MachineAdminServiceTestAgentProcedure,
+			connect.WithSchema(machineAdminServiceMethods.ByName("TestAgent")),
+			connect.WithClientOptions(opts...),
+		),
 	}
 }
 
@@ -226,6 +250,8 @@ func NewMachineAdminServiceClient(httpClient connect.HTTPClient, baseURL string,
 type machineAdminServiceClient struct {
 	applyAdminCommand *connect.Client[v1.ApplyAdminCommandRequest, v1.ApplyAdminCommandResponse]
 	pushRevocations   *connect.Client[v1.PushRevocationsRequest, v1.PushRevocationsResponse]
+	listRepos         *connect.Client[v1.ListReposRequest, v1.ListReposResponse]
+	testAgent         *connect.Client[v1.TestAgentRequest, v1.TestAgentResponse]
 }
 
 // ApplyAdminCommand calls hermesh.machine.v1.MachineAdminService.ApplyAdminCommand.
@@ -246,11 +272,35 @@ func (c *machineAdminServiceClient) PushRevocations(ctx context.Context, req *v1
 	return nil, err
 }
 
+// ListRepos calls hermesh.machine.v1.MachineAdminService.ListRepos.
+func (c *machineAdminServiceClient) ListRepos(ctx context.Context, req *v1.ListReposRequest) (*v1.ListReposResponse, error) {
+	response, err := c.listRepos.CallUnary(ctx, connect.NewRequest(req))
+	if response != nil {
+		return response.Msg, err
+	}
+	return nil, err
+}
+
+// TestAgent calls hermesh.machine.v1.MachineAdminService.TestAgent.
+func (c *machineAdminServiceClient) TestAgent(ctx context.Context, req *v1.TestAgentRequest) (*v1.TestAgentResponse, error) {
+	response, err := c.testAgent.CallUnary(ctx, connect.NewRequest(req))
+	if response != nil {
+		return response.Msg, err
+	}
+	return nil, err
+}
+
 // MachineAdminServiceHandler is an implementation of the hermesh.machine.v1.MachineAdminService
 // service.
 type MachineAdminServiceHandler interface {
 	ApplyAdminCommand(context.Context, *v1.ApplyAdminCommandRequest) (*v1.ApplyAdminCommandResponse, error)
 	PushRevocations(context.Context, *v1.PushRevocationsRequest) (*v1.PushRevocationsResponse, error)
+	// The git repositories under the home folder, for Add a Project: read
+	// when the person opens it, never kept (docs/onboarding.md §5.5).
+	ListRepos(context.Context, *v1.ListReposRequest) (*v1.ListReposResponse, error)
+	// One short fixed turn of a coding agent in a scratch folder, to prove it
+	// is installed and signed in: no session, project or grant is involved.
+	TestAgent(context.Context, *v1.TestAgentRequest) (*v1.TestAgentResponse, error)
 }
 
 // NewMachineAdminServiceHandler builds an HTTP handler from the service implementation. It returns
@@ -272,12 +322,28 @@ func NewMachineAdminServiceHandler(svc MachineAdminServiceHandler, opts ...conne
 		connect.WithSchema(machineAdminServiceMethods.ByName("PushRevocations")),
 		connect.WithHandlerOptions(opts...),
 	)
+	machineAdminServiceListReposHandler := connect.NewUnaryHandlerSimple(
+		MachineAdminServiceListReposProcedure,
+		svc.ListRepos,
+		connect.WithSchema(machineAdminServiceMethods.ByName("ListRepos")),
+		connect.WithHandlerOptions(opts...),
+	)
+	machineAdminServiceTestAgentHandler := connect.NewUnaryHandlerSimple(
+		MachineAdminServiceTestAgentProcedure,
+		svc.TestAgent,
+		connect.WithSchema(machineAdminServiceMethods.ByName("TestAgent")),
+		connect.WithHandlerOptions(opts...),
+	)
 	return "/hermesh.machine.v1.MachineAdminService/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case MachineAdminServiceApplyAdminCommandProcedure:
 			machineAdminServiceApplyAdminCommandHandler.ServeHTTP(w, r)
 		case MachineAdminServicePushRevocationsProcedure:
 			machineAdminServicePushRevocationsHandler.ServeHTTP(w, r)
+		case MachineAdminServiceListReposProcedure:
+			machineAdminServiceListReposHandler.ServeHTTP(w, r)
+		case MachineAdminServiceTestAgentProcedure:
+			machineAdminServiceTestAgentHandler.ServeHTTP(w, r)
 		default:
 			http.NotFound(w, r)
 		}
@@ -293,4 +359,12 @@ func (UnimplementedMachineAdminServiceHandler) ApplyAdminCommand(context.Context
 
 func (UnimplementedMachineAdminServiceHandler) PushRevocations(context.Context, *v1.PushRevocationsRequest) (*v1.PushRevocationsResponse, error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("hermesh.machine.v1.MachineAdminService.PushRevocations is not implemented"))
+}
+
+func (UnimplementedMachineAdminServiceHandler) ListRepos(context.Context, *v1.ListReposRequest) (*v1.ListReposResponse, error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("hermesh.machine.v1.MachineAdminService.ListRepos is not implemented"))
+}
+
+func (UnimplementedMachineAdminServiceHandler) TestAgent(context.Context, *v1.TestAgentRequest) (*v1.TestAgentResponse, error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("hermesh.machine.v1.MachineAdminService.TestAgent is not implemented"))
 }

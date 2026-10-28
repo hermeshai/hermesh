@@ -50,7 +50,9 @@ The same way, Muse can watch your pull requests and have Codex review every one 
 curl -fsSL https://github.com/hermeshai/hermesh/releases/latest/download/install.sh | sh -s -- connect.hermesh.io/o_xxxxxxxx
 ```
 
-Without a connection address (`install.sh` with no argument) the machine still reaches the official center, but nobody yet knows whose it is: choose "Enter Pairing Code…" in the Mac app and type the code it shows. On each machine, sign in to `claude` / `codex` once under the same user first; `hermeshd doctor` checks this.
+Without a connection address (`install.sh` with no argument, the same command for everyone) the machine reaches the official center but nobody yet knows whose it is: it shows a code and its QR. Scan it with Hermesh on your iPhone, or choose "Enter Pairing Code…" in the app, approve, and type on the machine the two digits your device then shows. Logged in as root, the script asks which user to install for. On each machine, sign in to `claude` / `codex` once under that user; `hermeshd doctor` checks this, and `hermeshd project add <folder>` adds a project from the machine itself.
+
+**A Linux computer as a trusted device** (optional): one that runs no coding agents can approve too, with its key sealed by a passphrase. Run `hermeshd device join` there and scan the code it shows (or, with no other device yet, `hermeshd device setup`); then `hermeshd approve` approves what asks to join, and `hermeshd device remove <name>` removes a lost device.
 
 Machines and agents are added only on your own devices. The web console at [hermesh.io](https://hermesh.io) can show them, revoke them, and send an agent's request to your Mac, but it can't approve anything.
 

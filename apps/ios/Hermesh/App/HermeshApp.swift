@@ -20,7 +20,7 @@ struct HermeshApp: App {
                 .environment(model)
                 .preferredColorScheme(appearance == "light" ? .light : appearance == "dark" ? .dark : nil)
                 .task { await model.start() }
-                .onOpenURL { url in model.onboardingLink = url }
+                .onOpenURL { url in model.open(url) }
                 .onChange(of: scenePhase, initial: true) { _, phase in
                     switch phase {
                     case .active: model.foreground()

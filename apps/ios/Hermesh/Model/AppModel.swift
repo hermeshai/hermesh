@@ -39,6 +39,9 @@ enum SheetKind: Identifiable, Hashable {
     case connectAgent
     case addMachine
     case enterCode
+    case scan
+    case firstTask(String) // client id
+    case addDevice
     case addProject(String, String) // machine id, coding agent
     case search
     /// An agent's doorbell: set one up (for one bot of several: named), or,
@@ -693,7 +696,8 @@ final class AppModel {
 
     func approveClient(_ p: PairingDetails, spec: GrantSpec) async -> Bool {
         guard let api else { return false }
-        signer.expect(.code(p.verificationCode))
+        // Confirmed requests show no code: what the person chose here is the grant.
+        signer.expect(p.confirmed ? .types([SigningPreview.grant]) : .code(p.verificationCode))
         do {
             try await api.approveClient(p.code, spec: spec)
             pairings.removeAll { $0.code == p.code }
@@ -705,23 +709,51 @@ final class AppModel {
         }
     }
 
-    func approveMachine(_ p: PairingDetails, name: String) async -> Bool {
-        guard let api else { return false }
-        signer.expect(.code(p.verificationCode))
+    /// Approves a machine; the answer carries the two digits to type on it
+    /// when it asked for them (the approval sheet shows them itself).
+    func approveMachine(_ p: PairingDetails, name: String) async -> Hermesh_Local_V1_ApproveMachinePairingResponse? {
+        guard let api else { return nil }
+        // Found by its code: nothing to compare, the code binds its key.
+        signer.expect(p.confirmed ? .types([SigningPreview.machineCert]) : .code(p.verificationCode))
+        signer.inlineMatch = true
+        defer { signer.inlineMatch = false }
         do {
-            _ = try await api.approveMachine(p.code, name: name)
+            let res = try await api.approveMachine(p.code, name: name)
             pairings.removeAll { $0.code == p.code }
             machines = (try? await api.machines()) ?? machines
-            return true
+            return res
         } catch {
             report(error)
-            return false
+            return nil
+        }
+    }
+
+    /// A pairing code from a scan or a link: its request, to approve.
+    func openPairingCode(_ code: String) async {
+        guard let api else { return }
+        do {
+            let p = try await api.lookupPairing(code)
+            pairings.removeAll { $0.code == p.code }
+            pairings.append(p)
+            sheet = .pairing(p.code)
+        } catch {
+            report(error)
+        }
+    }
+
+    /// A link the app was opened with: a pairing code (a scanned machine,
+    /// an agent's link) once set up, else onboarding's.
+    func open(_ url: URL) {
+        if phase == .ready, let code = PairingLink.code(url) {
+            Task { await openPairingCode(code) }
+        } else {
+            onboardingLink = url
         }
     }
 
     func approveDevice(_ p: PairingDetails) async -> Bool {
         guard let api else { return false }
-        signer.expect(.code(p.verificationCode))
+        signer.expect(p.confirmed ? .types([SigningPreview.rootCert]) : .code(p.verificationCode))
         do {
             _ = try await api.approveDevice(p.code)
             pairings.removeAll { $0.code == p.code }
@@ -832,6 +864,15 @@ final class AppModel {
             machines = (try? await api.machines()) ?? machines
             show(String(localized: "Removed “\(m.machineName)”"))
             if case .machine(let id)? = path.last, id == m.machineID { path.removeLast() }
+        } catch { report(error) }
+    }
+
+    /// Check Again: that machine looks at its coding agents now.
+    func recheck(machine id: String) async {
+        guard let api else { return }
+        do {
+            try await api.checkAgents(machine: id)
+            machines = (try? await api.machines()) ?? machines
         } catch { report(error) }
     }
 

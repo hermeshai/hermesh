@@ -75,11 +75,14 @@ type Owner struct {
 	kept       *peer.Client // client, kept over a pause: not known to work yet
 	relayInfo  *relayv1.GetInfoResponse
 	join       *pendingJoin // this device asking to join an owner
-	pendingMu  sync.Mutex   // pending names (pendingNames)
-	cardsMu    sync.Mutex   // one card sync at a time (cards.go)
-	removed    bool         // the relay no longer counts this device as the owner's
-	signedOut  bool         // SignOut: set up, but it neither connects nor signs
-	account    string       // the account, as the center named it (display)
+	// byCode: machine and device requests the person looked up by their
+	// code here.
+	byCode    map[string]bool
+	pendingMu sync.Mutex // pending names (pendingNames)
+	cardsMu   sync.Mutex // one card sync at a time (cards.go)
+	removed   bool       // the relay no longer counts this device as the owner's
+	signedOut bool       // SignOut: set up, but it neither connects nor signs
+	account   string     // the account, as the center named it (display)
 
 	localMachine *machine.Machine
 	// lastMachines: the machines as the relay last listed them, shown
@@ -934,8 +937,21 @@ func (o *Owner) pairingDetails(norm string, request *identityv1.Signed, expiresA
 	return pr, d, nil
 }
 
+// LookupPairing finds the request with a code the person typed or scanned
+// here. A machine's or a device's then has nothing to compare: the code
+// comes from its key and pairingDetails checked the request against it, so
+// the relay could not have swapped the key (docs/onboarding.md §5.4, §9.5).
 func (o *Owner) LookupPairing(ctx context.Context, code string) (*localv1.PairingDetails, error) {
-	_, d, err := o.lookupPairing(ctx, code)
+	pr, d, err := o.lookupPairing(ctx, code)
+	if err == nil && (pr.Kind == identityv1.PairingKind_PAIRING_KIND_MACHINE || pr.Kind == identityv1.PairingKind_PAIRING_KIND_DEVICE) {
+		o.mu.Lock()
+		if o.byCode == nil {
+			o.byCode = map[string]bool{}
+		}
+		o.byCode[d.Code] = true
+		o.mu.Unlock()
+		d.Confirmed = true
+	}
 	return d, err
 }
 
@@ -949,6 +965,14 @@ func (o *Owner) ListPairingRequests(ctx context.Context) ([]*localv1.PairingDeta
 	o.rep.mu.Lock()
 	list, err := listed(&s.pairings)
 	o.rep.mu.Unlock()
+	// One the person looked up by its code here stays so (LookupPairing).
+	o.mu.Lock()
+	for _, d := range list {
+		if o.byCode[d.Code] {
+			d.Confirmed = true
+		}
+	}
+	o.mu.Unlock()
 	return slices.DeleteFunc(list, func(d *localv1.PairingDetails) bool {
 		return d.ExpiresAt != nil && d.ExpiresAt.AsTime().Before(time.Now())
 	}), err
@@ -1024,6 +1048,12 @@ func (o *Owner) ApproveMachinePairing(ctx context.Context, code, name string) (s
 	}
 	if pr.ConfirmMatch {
 		ctx = withShowMatch(ctx)
+	}
+	o.mu.Lock()
+	typed := o.byCode[identity.NormalizePairingCode(code)]
+	o.mu.Unlock()
+	if typed {
+		ctx = withConfirmed(ctx)
 	}
 	signed, err := o.signRoot(ctx, &identityv1.MachineCert{OwnerId: o.ownerID, MachineId: machineID, MachinePublicKey: pr.SubjectPublicKey, IssuedAt: timestamppb.Now()})
 	if err != nil {
@@ -1338,6 +1368,59 @@ func (o *Owner) admin(ctx context.Context, machineID string, build func(*identit
 		return "", err
 	}
 	return res.Message, nil
+}
+
+// machineClient reaches a machine end to end over this device's connection.
+func (o *Owner) machineClient(ctx context.Context, machineID string) (*peer.Machine, error) {
+	c, err := o.relay(ctx)
+	if err != nil {
+		return nil, err
+	}
+	n, err := c.Machine(ctx, machineID)
+	if err != nil {
+		return nil, connect.NewError(connect.CodeUnavailable, err)
+	}
+	return n, nil
+}
+
+// RecheckAgents has a machine check its coding agents now (Check Again)
+// and waits for it; the new state then reaches this device's replica.
+func (o *Owner) RecheckAgents(ctx context.Context, machineID string) error {
+	n, err := o.machineClient(ctx, machineID)
+	if err != nil {
+		return err
+	}
+	_, err = n.Info.GetInfo(ctx, &machinev1.GetInfoRequest{Recheck: true})
+	return err
+}
+
+// MachineRepos lists a machine's git repositories under its home folder,
+// for Add a Project; this device's own machine is searched in process.
+func (o *Owner) MachineRepos(ctx context.Context, machineID string) ([]*machinev1.Repo, error) {
+	if l := o.local(); l != nil && l.MachineID() == machineID {
+		return machine.FindRepos(ctx), nil
+	}
+	n, err := o.machineClient(ctx, machineID)
+	if err != nil {
+		return nil, err
+	}
+	res, err := n.Admin.ListRepos(ctx, &machinev1.ListReposRequest{})
+	if err != nil {
+		return nil, err
+	}
+	return res.Repos, nil
+}
+
+// TestMachineAgent runs Test with a coding agent on a machine.
+func (o *Owner) TestMachineAgent(ctx context.Context, machineID, agent string) (*machinev1.TestAgentResponse, error) {
+	if l := o.local(); l != nil && l.MachineID() == machineID {
+		return l.TestAgent(ctx, agent)
+	}
+	n, err := o.machineClient(ctx, machineID)
+	if err != nil {
+		return nil, err
+	}
+	return n.Admin.TestAgent(ctx, &machinev1.TestAgentRequest{Agent: agent})
 }
 
 // RenameMachine gives a machine another name: a setting, sent over this

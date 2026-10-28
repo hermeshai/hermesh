@@ -15,6 +15,7 @@ import (
 	identityv1 "github.com/hermeshai/hermesh/gen/go/hermesh/identity/v1"
 	localv1 "github.com/hermeshai/hermesh/gen/go/hermesh/local/v1"
 	"github.com/hermeshai/hermesh/gen/go/hermesh/local/v1/localv1connect"
+	machinev1 "github.com/hermeshai/hermesh/gen/go/hermesh/machine/v1"
 	sessionv1 "github.com/hermeshai/hermesh/gen/go/hermesh/session/v1"
 	"github.com/hermeshai/hermesh/internal/peercred"
 )
@@ -291,8 +292,12 @@ func (l *localService) SetAgentDefaults(ctx context.Context, req *localv1.SetAge
 	return &localv1.SetAgentDefaultsResponse{}, err
 }
 
-// CheckAgents checks this Mac's coding agents again, in the background.
-func (l *localService) CheckAgents(ctx context.Context, _ *localv1.CheckAgentsRequest) (*localv1.CheckAgentsResponse, error) {
+// CheckAgents checks a machine's coding agents again: another machine end
+// to end, waiting for it; this device's own in the background.
+func (l *localService) CheckAgents(ctx context.Context, req *localv1.CheckAgentsRequest) (*localv1.CheckAgentsResponse, error) {
+	if req.MachineId != "" && (l.o().local() == nil || l.o().local().MachineID() != req.MachineId) {
+		return &localv1.CheckAgentsResponse{}, l.o().RecheckAgents(ctx, req.MachineId)
+	}
 	m, ok, err := l.o().onlyMachine()
 	if !ok {
 		m = l.o().local()
@@ -305,6 +310,15 @@ func (l *localService) CheckAgents(ctx context.Context, _ *localv1.CheckAgentsRe
 	}
 	m.CheckAgents()
 	return &localv1.CheckAgentsResponse{}, nil
+}
+
+func (l *localService) ListMachineRepos(ctx context.Context, req *localv1.ListMachineReposRequest) (*localv1.ListMachineReposResponse, error) {
+	repos, err := l.o().MachineRepos(ctx, req.MachineId)
+	return &localv1.ListMachineReposResponse{Repos: repos}, err
+}
+
+func (l *localService) TestMachineAgent(ctx context.Context, req *localv1.TestMachineAgentRequest) (*machinev1.TestAgentResponse, error) {
+	return l.o().TestMachineAgent(ctx, req.MachineId, req.Agent)
 }
 
 // GetDiagnostics describes this Mac: what it is to its owner, then its

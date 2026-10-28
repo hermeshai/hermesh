@@ -47,6 +47,11 @@ func (l *Local) Info() *machinev1.GetInfoResponse {
 // CheckAgents checks the coding agents again, in the background.
 func (l *Local) CheckAgents() { l.n.CheckAgents(true, 0) }
 
+// TestAgent runs Test on this device's own machine.
+func (l *Local) TestAgent(ctx context.Context, agent string) (*machinev1.TestAgentResponse, error) {
+	return l.n.TestAgent(ctx, agent)
+}
+
 // PushRevocations applies the owner's revocations (and a longer root chain),
 // as the owner's devices push them.
 func (l *Local) PushRevocations(r *identityv1.RevocationList, chain *identityv1.RootChain) {

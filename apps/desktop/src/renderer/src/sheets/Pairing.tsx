@@ -33,11 +33,13 @@ export function hostOf(url: string): string {
 /**
  * Who asks, with what it self-reports; the verification code is compared in
  * the signer's window, unless the person already confirmed the request as
- * theirs (in the browser): then there is none to compare.
+ * theirs (in the browser), or entered the code a machine or device shows,
+ * which binds its key: then there is none to compare.
  */
 export function SelfReport({ p }: { p: PairingDetails }) {
   const { t } = useTranslation("sheets");
   const who = [p.hostname, p.platform].filter(Boolean).join(" · ");
+  if (p.confirmed && p.kind !== PairingKind.CLIENT) return <>{t("pairing.byCode", { who })}</>;
   if (p.confirmed) return <>{t("pairing.confirmed", { who })}</>;
   return (
     <>

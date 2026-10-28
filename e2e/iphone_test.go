@@ -85,9 +85,9 @@ func TestIPhone(t *testing.T) {
 	}
 	args := []string{"test", "-project", filepath.Join(dir, "Hermesh.xcodeproj"), "-scheme", "Hermesh",
 		"-destination", "platform=iOS Simulator,id=" + device, "-derivedDataPath", derived, "-resultBundlePath", results,
-		"-parallel-testing-enabled", "NO", "-only-testing:HermeshUITests"}
+		"-parallel-testing-enabled", "NO", "-only-testing:HermeshUITests/HermeshUITests/testTheIPhoneApp"}
 	if g := os.Getenv("HERMESH_IPHONE_GREP"); g != "" {
-		args = append(args, "-only-testing:HermeshUITests/HermeshUITests/"+g)
+		args = append(args[:len(args)-1], "-only-testing:HermeshUITests/HermeshUITests/"+g)
 	}
 	// xcodebuild hands TEST_RUNNER_-prefixed variables to the UI tests.
 	r := run(t, []string{"TEST_RUNNER_HERMESH_E2E_CONTROL=" + control}, 30*time.Minute, "xcodebuild", args...)

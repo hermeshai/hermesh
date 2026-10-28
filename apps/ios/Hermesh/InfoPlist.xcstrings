@@ -4,6 +4,16 @@
     "CFBundleDisplayName": {
       "shouldTranslate": false
     },
+    "NSCameraUsageDescription": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Hermesh 用相机扫描你添加的机器显示的配对码。"
+          }
+        }
+      }
+    },
     "NSFaceIDUsageDescription": {
       "localizations": {
         "zh-Hans": {

@@ -3,12 +3,14 @@
 package service
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"runtime"
 	"strings"
+	"time"
 )
 
 const label = "com.hermesh.daemon"
@@ -27,8 +29,9 @@ func systemdUnit() string {
 	return filepath.Join(cfg, "systemd", "user", "hermeshd.service")
 }
 
-// Install writes and loads the service definition running `bin run`.
-func Install(bin, dataDir, logDir string) error {
+// Install writes and loads the service definition running `bin run`, with
+// args before its data directory (a trusted device: --owner --no-machine).
+func Install(bin, dataDir, logDir string, args ...string) error {
 	switch runtime.GOOS {
 	case "darwin":
 		os.MkdirAll(logDir, 0o700)
@@ -38,7 +41,7 @@ func Install(bin, dataDir, logDir string) error {
 <dict>
   <key>Label</key><string>%s</string>
   <key>ProgramArguments</key>
-  <array><string>%s</string><string>run</string><string>--data-dir</string><string>%s</string></array>
+  <array><string>%s</string><string>run</string>%s<string>--data-dir</string><string>%s</string></array>
   <key>RunAtLoad</key><true/>
   <key>KeepAlive</key><true/>
   <key>ProcessType</key><string>Background</string>
@@ -46,7 +49,7 @@ func Install(bin, dataDir, logDir string) error {
   <key>StandardErrorPath</key><string>%s</string>
 </dict>
 </plist>
-`, label, xmlEscape(bin), xmlEscape(dataDir), xmlEscape(filepath.Join(logDir, "hermeshd.log")), xmlEscape(filepath.Join(logDir, "hermeshd.log")))
+`, label, xmlEscape(bin), plistArgs(args), xmlEscape(dataDir), xmlEscape(filepath.Join(logDir, "hermeshd.log")), xmlEscape(filepath.Join(logDir, "hermeshd.log")))
 		path := launchdPlist()
 		os.MkdirAll(filepath.Dir(path), 0o755)
 		if err := os.WriteFile(path, []byte(plist), 0o644); err != nil {
@@ -64,13 +67,22 @@ Description=Hermesh daemon
 After=network-online.target
 
 [Service]
-ExecStart=%s run --data-dir %s
+ExecStart=%s run %s--data-dir %s
 Restart=always
 RestartSec=5
 
 [Install]
 WantedBy=default.target
-`, bin, dataDir)
+`, bin, unitArgs(args), dataDir)
+		// Lingering first: it starts the user's systemd, which a session
+		// opened with su lacks, and keeps it running after logout.
+		lingerErr := enableLinger()
+		if err := userBus(); err != nil {
+			if lingerErr != nil {
+				return fmt.Errorf("%w; turn lingering on with `sudo loginctl enable-linger %s` and try again", err, os.Getenv("USER"))
+			}
+			return err
+		}
 		path := systemdUnit()
 		os.MkdirAll(filepath.Dir(path), 0o755)
 		if err := os.WriteFile(path, []byte(unit), 0o644); err != nil {
@@ -81,10 +93,8 @@ WantedBy=default.target
 				return fmt.Errorf("systemctl %s: %v: %s", strings.Join(args, " "), err, out)
 			}
 		}
-		if user := os.Getenv("USER"); user != "" {
-			if err := exec.Command("loginctl", "enable-linger", user).Run(); err != nil {
-				fmt.Fprintln(os.Stderr, "note: could not enable lingering; run `sudo loginctl enable-linger "+user+"` so hermeshd keeps running after you log out")
-			}
+		if lingerErr != nil {
+			fmt.Fprintln(os.Stderr, "note: could not enable lingering; run `sudo loginctl enable-linger "+os.Getenv("USER")+"` so hermeshd keeps running after you log out")
 		}
 		return nil
 	}
@@ -117,6 +127,59 @@ func Restart() error {
 	return fmt.Errorf("unsupported platform %s", runtime.GOOS)
 }
 
+// ErrNoSystemd: this system has no systemd user manager to run the
+// service (a container, WSL without systemd).
+var ErrNoSystemd = errors.New("this system has no systemd user manager: run `hermeshd run` as the container's command, or under tmux or nohup")
+
+// enableLinger turns lingering on for this user, unless it is on already
+// (the installer, as root, turned it on).
+func enableLinger() error {
+	user := os.Getenv("USER")
+	if user == "" {
+		return errors.New("USER is not set")
+	}
+	if out, err := exec.Command("loginctl", "show-user", user, "--property=Linger").Output(); err == nil && strings.TrimSpace(string(out)) == "Linger=yes" {
+		return nil
+	}
+	return exec.Command("loginctl", "enable-linger", user).Run()
+}
+
+// userBus makes sure systemctl --user can reach the user's manager: after
+// su the session has no XDG_RUNTIME_DIR, though lingering started it.
+func userBus() error {
+	if _, err := exec.LookPath("systemctl"); err != nil {
+		return ErrNoSystemd
+	}
+	if os.Getenv("XDG_RUNTIME_DIR") == "" {
+		os.Setenv("XDG_RUNTIME_DIR", fmt.Sprintf("/run/user/%d", os.Getuid()))
+	}
+	bus := filepath.Join(os.Getenv("XDG_RUNTIME_DIR"), "bus")
+	for i := 0; i < 50; i++ { // the manager lingering just started
+		if _, err := os.Stat(bus); err == nil {
+			return nil
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
+	if exec.Command("systemctl", "--user", "show-environment").Run() == nil {
+		return nil
+	}
+	return ErrNoSystemd
+}
+
+// Running reports whether the installed service is running now.
+func Running() bool {
+	switch runtime.GOOS {
+	case "darwin":
+		return exec.Command("launchctl", "print", fmt.Sprintf("gui/%d/%s", os.Getuid(), label)).Run() == nil
+	case "linux":
+		if userBus() != nil {
+			return false
+		}
+		return exec.Command("systemctl", "--user", "is-active", "--quiet", "hermeshd.service").Run() == nil
+	}
+	return false
+}
+
 func Installed() bool {
 	p := launchdPlist()
 	if runtime.GOOS == "linux" {
@@ -128,4 +191,20 @@ func Installed() bool {
 
 func xmlEscape(s string) string {
 	return strings.NewReplacer("&", "&amp;", "<", "&lt;", ">", "&gt;").Replace(s)
+}
+
+func plistArgs(args []string) string {
+	var b strings.Builder
+	for _, a := range args {
+		b.WriteString("<string>" + xmlEscape(a) + "</string>")
+	}
+	return b.String()
+}
+
+func unitArgs(args []string) string {
+	var b strings.Builder
+	for _, a := range args {
+		b.WriteString(a + " ")
+	}
+	return b.String()
 }

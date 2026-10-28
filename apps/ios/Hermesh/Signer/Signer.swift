@@ -70,6 +70,8 @@ final class Signer {
     var shown: Confirmation?
     /// Two digits to type on the device or machine just approved.
     var match: (label: String?, digits: String)?
+    /// The approval sheet shows a machine's digits itself, while set.
+    @ObservationIgnored var inlineMatch = false
     /// Set while Face ID runs and the batch is signed.
     var working = false
     var failure: String?
@@ -187,7 +189,7 @@ final class Signer {
                 let _: Hermesh_Local_V1_CompleteSigningRequestResponse? = try await api?.call("CompleteSigningRequest", req)
             }
             shown = nil
-            if let m = c.match { match = m }
+            if let m = c.match, !inlineMatch { match = m }
         } catch {
             reject(c)
             shown = nil

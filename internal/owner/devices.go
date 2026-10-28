@@ -3,6 +3,7 @@ package owner
 import (
 	"bytes"
 	"context"
+	"crypto/ecdsa"
 	"errors"
 	"fmt"
 	"os"
@@ -36,6 +37,7 @@ type pendingJoin struct {
 	deviceCert              *identityv1.Signed
 	machineCert             *identityv1.Signed // this device's own machine, if asked for
 	machineName             string
+	label, platform         string                // RequestJoinRequest.root_label, root_platform
 	chain                   *identityv1.RootChain // once approved
 	wrong                   int                   // match codes typed wrong
 	// A machine only (machineonly.go): rootPub is the machine's key and
@@ -55,7 +57,7 @@ func (o *Owner) RequestJoin(ctx context.Context, req *localv1.RequestJoinRequest
 	if o.Initialized() {
 		return nil, connect.NewError(connect.CodeAlreadyExists, errors.New("this device already belongs to an owner"))
 	}
-	if req.OwnerId == "" {
+	if req.OwnerId == "" && (req.MachineOnly || req.LocalMachineName != "" || o.machineOnly()) {
 		return nil, connect.NewError(connect.CodeInvalidArgument, errors.New("owner id is required"))
 	}
 	if o.cfg.NoLocalMachine && (req.MachineOnly || req.LocalMachineName != "") {
@@ -63,6 +65,9 @@ func (o *Owner) RequestJoin(ctx context.Context, req *localv1.RequestJoinRequest
 	}
 	if err := o.checkRelay(ctx, normalizeRelayURL(req.RelayUrl)); err != nil {
 		return nil, err
+	}
+	if req.OwnerId == "" {
+		return o.requestOpenJoin(ctx, req)
 	}
 	if req.MachineOnly {
 		return o.requestMachineJoin(ctx, req)
@@ -123,6 +128,51 @@ func (o *Owner) RequestJoin(ctx context.Context, req *localv1.RequestJoinRequest
 		VerificationCode: identity.VerificationCode(identityv1.PairingKind_PAIRING_KIND_DEVICE, req.RootPublicKey, req.OwnerId)}, nil
 }
 
+// requestOpenJoin asks to join whichever owner claims the request by its
+// code (a Linux trusted device on a hosted center, docs/onboarding.md §9.5):
+// the request alone is signed now, the device cert once the owner is known.
+func (o *Owner) requestOpenJoin(ctx context.Context, req *localv1.RequestJoinRequest) (*localv1.RequestJoinResponse, error) {
+	relayURL := normalizeRelayURL(req.RelayUrl)
+	info, err := o.publicClient(relayURL).GetInfo(ctx, &relayv1.GetInfoRequest{})
+	if err != nil {
+		return nil, err
+	}
+	if !info.Hosted {
+		return nil, connect.NewError(connect.CodeInvalidArgument, errors.New("an own server needs its connection address: join with it"))
+	}
+	rootPub, err := o.rootKey(ctx, req.RootPublicKey)
+	if err != nil {
+		return nil, err
+	}
+	spki := identity.MarshalPublicKey(rootPub)
+	device, err := identity.GenerateKey()
+	if err != nil {
+		return nil, err
+	}
+	host, _ := os.Hostname()
+	o.mu.Lock()
+	o.rootPub = rootPub
+	o.mu.Unlock()
+	signed, err := o.hub.signBatch(ctx, rootPub, []proto.Message{&identityv1.PairingRequest{Kind: identityv1.PairingKind_PAIRING_KIND_DEVICE,
+		SubjectPublicKey: spki, Label: req.RootLabel, Hostname: host, Platform: req.RootPlatform, CreatedAt: timestamppb.Now()}})
+	if err != nil {
+		return nil, err
+	}
+	res, err := o.publicClient(relayURL).SubmitPairing(ctx, &relayv1.SubmitPairingRequest{Request: signed[0]})
+	if err != nil {
+		return nil, err
+	}
+	o.mu.Lock()
+	o.join = &pendingJoin{code: res.Code, relayURL: relayURL, account: req.Account, rootPub: spki, device: device, label: req.RootLabel, platform: req.RootPlatform}
+	o.mu.Unlock()
+	return &localv1.RequestJoinResponse{Code: res.Code, ExpiresAt: res.ExpiresAt, PairingLink: machine.PairingLink(info.ConsoleUrl, res.Code)}, nil
+}
+
+func mustParse(spki []byte) *ecdsa.PublicKey {
+	pub, _ := identity.ParsePublicKey(spki)
+	return pub
+}
+
 func (o *Owner) pendingJoin(code string) (*pendingJoin, error) {
 	o.mu.Lock()
 	defer o.mu.Unlock()
@@ -147,6 +197,17 @@ func (o *Owner) WaitJoin(ctx context.Context, code string) (*localv1.WaitJoinRes
 	if w.Expired {
 		return &localv1.WaitJoinResponse{Expired: true}, nil
 	}
+	if w.Claimed && j.ownerID == "" {
+		// A join without an owner: claimed by one of an owner's devices,
+		// which now approves. The owner it names is proven by the digits.
+		if _, err := identity.NewTrust(w.OwnerId).AcceptRootChain(w.RootChain); err != nil {
+			return nil, fmt.Errorf("the center reported an owner that does not check out: %w", err)
+		}
+		o.mu.Lock()
+		j.ownerID = w.OwnerId
+		o.mu.Unlock()
+		return &localv1.WaitJoinResponse{Claimed: true, ClaimedBy: w.AccountHint}, nil
+	}
 	if !w.Done {
 		return &localv1.WaitJoinResponse{}, nil
 	}
@@ -160,6 +221,16 @@ func (o *Owner) WaitJoin(ctx context.Context, code string) (*localv1.WaitJoinRes
 	}
 	if !hasKey(trust.Root(), j.rootPub) {
 		return nil, errors.New("the approval does not list this device")
+	}
+	if j.deviceCert == nil {
+		// Joined without an owner: its device cert names the owner now known.
+		signed, err := o.hub.signBatch(ctx, mustParse(j.rootPub), []proto.Message{deviceCert(j.ownerID, j.device, j.label)})
+		if err != nil {
+			return nil, err
+		}
+		o.mu.Lock()
+		j.deviceCert = signed[0]
+		o.mu.Unlock()
 	}
 	if _, _, err := trust.VerifyDeviceCert(j.deviceCert); err != nil {
 		return nil, err
@@ -358,6 +429,12 @@ func (o *Owner) ApproveDevicePairing(ctx context.Context, code string) (string, 
 		last = chain[len(chain)-1]
 	} else {
 		keys := append(slices.Clone(cur.RootKeys), &identityv1.RootKey{PublicKey: pr.SubjectPublicKey, Label: pr.Label, Platform: pr.Platform})
+		o.mu.Lock()
+		typed := o.byCode[identity.NormalizePairingCode(code)]
+		o.mu.Unlock()
+		if typed {
+			ctx = withConfirmed(ctx)
+		}
 		signed, err := o.extendChain(ctx, ctl, keys)
 		if err != nil {
 			return "", "", err

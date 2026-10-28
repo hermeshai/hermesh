@@ -248,6 +248,9 @@ func (s *session) script(ctx context.Context, prompt string) (last string, ended
 		s.n++
 		id := "call-" + string(rune('a'+s.n%26))
 		switch cmd {
+		case "Reply": // Test's fixed prompt (machine.TestAgent): answered as a model would
+			last = "ready"
+			s.emit(provider.Event{Kind: provider.EventAgentMessage, Text: last})
 		case "say":
 			last = arg
 			s.emit(provider.Event{Kind: provider.EventAgentMessage, Text: arg})

@@ -348,6 +348,14 @@ func rootPub(k *identity.SoftwareKey) []byte { return identity.MarshalPublicKey(
 func gitRepo(t *testing.T, files map[string]string) string {
 	dir := t.TempDir()
 	dir, _ = filepath.EvalSymlinks(dir)
+	gitRepoAt(t, dir, files)
+	return dir
+}
+
+// gitRepoAt makes dir a git repository on main with files committed.
+func gitRepoAt(t *testing.T, dir string, files map[string]string) {
+	t.Helper()
+	os.MkdirAll(dir, 0o755)
 	for name, content := range files {
 		os.WriteFile(filepath.Join(dir, name), []byte(content), 0o644)
 	}
@@ -359,7 +367,6 @@ func gitRepo(t *testing.T, files map[string]string) string {
 			t.Fatalf("git %v: %v %s", args, err, out)
 		}
 	}
-	return dir
 }
 
 func eventually(t *testing.T, timeout time.Duration, what string, cond func() bool) {

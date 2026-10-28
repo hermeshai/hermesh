@@ -507,6 +507,9 @@ public nonisolated struct Hermesh_Local_V1_RequestJoinRequest: Sendable {
 
   /// The owner to join. On a hosted center the console gave it, so it is
   /// not trusted: ConfirmJoin is the person's word that they approved it.
+  /// Empty on a hosted center: one of the owner's devices claims the
+  /// request by its code (docs/onboarding.md §9.5); the device cert is
+  /// signed once it is claimed.
   public var ownerID: String = String()
 
   /// As in SetupRequest: empty asks the signer for a new root key.
@@ -545,7 +548,8 @@ public nonisolated struct Hermesh_Local_V1_RequestJoinResponse: Sendable {
 
   public var code: String = String()
 
-  /// What the approving device shows for this request.
+  /// What the approving device shows for this request (none without an
+  /// owner: the code binds the key).
   public var verificationCode: String = String()
 
   public var expiresAt: SwiftProtobuf.Google_Protobuf_Timestamp {
@@ -556,6 +560,10 @@ public nonisolated struct Hermesh_Local_V1_RequestJoinResponse: Sendable {
   public var hasExpiresAt: Bool {self._expiresAt != nil}
   /// Clears the value of `expiresAt`. Subsequent reads from it will return its default value.
   public mutating func clearExpiresAt() {self._expiresAt = nil}
+
+  /// Without an owner, on a hosted center: the console's page for the code,
+  /// which the iPhone opens as a universal link (for a QR).
+  public var pairingLink: String = String()
 
   public var unknownFields = SwiftProtobuf.UnknownStorage()
 
@@ -592,6 +600,12 @@ public nonisolated struct Hermesh_Local_V1_WaitJoinResponse: Sendable {
 
   /// ConfirmJoin needs the two digits the approving device shows.
   public var matchRequired: Bool = false
+
+  /// A join without an owner: one of an owner's devices claimed it (by the
+  /// account it names, a hint), and is yet to approve.
+  public var claimed: Bool = false
+
+  public var claimedBy: String = String()
 
   public var unknownFields = SwiftProtobuf.UnknownStorage()
 
@@ -803,8 +817,9 @@ public nonisolated struct Hermesh_Local_V1_SigningRequest: Sendable {
   /// (PairingRequest.confirm_match).
   public var showMatch: Bool = false
 
-  /// A client pairing the person already confirmed as theirs
-  /// (PairingDetails.confirmed): no verification code to compare.
+  /// A pairing the person already confirmed as theirs, or a machine or
+  /// device whose code they looked up here (PairingDetails.confirmed): no
+  /// verification code to compare.
   public var confirmed: Bool = false
 
   /// The root key to sign with (its key id): the current profile's. With
@@ -1276,6 +1291,10 @@ public nonisolated struct Hermesh_Local_V1_CheckAgentsRequest: Sendable {
   // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
   // methods supported on all messages.
 
+  /// A machine of the owner to check, end to end, waiting for it; empty:
+  /// this device's own machine, in the background.
+  public var machineID: String = String()
+
   public var unknownFields = SwiftProtobuf.UnknownStorage()
 
   public init() {}
@@ -1285,6 +1304,44 @@ public nonisolated struct Hermesh_Local_V1_CheckAgentsResponse: Sendable {
   // SwiftProtobuf.Message conformance is added in an extension below. See the
   // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
   // methods supported on all messages.
+
+  public var unknownFields = SwiftProtobuf.UnknownStorage()
+
+  public init() {}
+}
+
+public nonisolated struct Hermesh_Local_V1_ListMachineReposRequest: Sendable {
+  // SwiftProtobuf.Message conformance is added in an extension below. See the
+  // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
+  // methods supported on all messages.
+
+  public var machineID: String = String()
+
+  public var unknownFields = SwiftProtobuf.UnknownStorage()
+
+  public init() {}
+}
+
+public nonisolated struct Hermesh_Local_V1_ListMachineReposResponse: Sendable {
+  // SwiftProtobuf.Message conformance is added in an extension below. See the
+  // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
+  // methods supported on all messages.
+
+  public var repos: [Hermesh_Machine_V1_Repo] = []
+
+  public var unknownFields = SwiftProtobuf.UnknownStorage()
+
+  public init() {}
+}
+
+public nonisolated struct Hermesh_Local_V1_TestMachineAgentRequest: Sendable {
+  // SwiftProtobuf.Message conformance is added in an extension below. See the
+  // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
+  // methods supported on all messages.
+
+  public var machineID: String = String()
+
+  public var agent: String = String()
 
   public var unknownFields = SwiftProtobuf.UnknownStorage()
 
@@ -3276,7 +3333,7 @@ nonisolated extension Hermesh_Local_V1_RequestJoinRequest: SwiftProtobuf.Message
 
 nonisolated extension Hermesh_Local_V1_RequestJoinResponse: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
   public static let protoMessageName: String = _protobuf_package + ".RequestJoinResponse"
-  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{1}code\0\u{3}verification_code\0\u{3}expires_at\0")
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{1}code\0\u{3}verification_code\0\u{3}expires_at\0\u{3}pairing_link\0")
 
   public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
     while let fieldNumber = try decoder.nextFieldNumber() {
@@ -3287,6 +3344,7 @@ nonisolated extension Hermesh_Local_V1_RequestJoinResponse: SwiftProtobuf.Messag
       case 1: try { try decoder.decodeSingularStringField(value: &self.code) }()
       case 2: try { try decoder.decodeSingularStringField(value: &self.verificationCode) }()
       case 3: try { try decoder.decodeSingularMessageField(value: &self._expiresAt) }()
+      case 4: try { try decoder.decodeSingularStringField(value: &self.pairingLink) }()
       default: break
       }
     }
@@ -3306,6 +3364,9 @@ nonisolated extension Hermesh_Local_V1_RequestJoinResponse: SwiftProtobuf.Messag
     try { if let v = self._expiresAt {
       try visitor.visitSingularMessageField(value: v, fieldNumber: 3)
     } }()
+    if !self.pairingLink.isEmpty {
+      try visitor.visitSingularStringField(value: self.pairingLink, fieldNumber: 4)
+    }
     try unknownFields.traverse(visitor: &visitor)
   }
 
@@ -3313,6 +3374,7 @@ nonisolated extension Hermesh_Local_V1_RequestJoinResponse: SwiftProtobuf.Messag
     if lhs.code != rhs.code {return false}
     if lhs.verificationCode != rhs.verificationCode {return false}
     if lhs._expiresAt != rhs._expiresAt {return false}
+    if lhs.pairingLink != rhs.pairingLink {return false}
     if lhs.unknownFields != rhs.unknownFields {return false}
     return true
   }
@@ -3350,7 +3412,7 @@ nonisolated extension Hermesh_Local_V1_WaitJoinRequest: SwiftProtobuf.Message, S
 
 nonisolated extension Hermesh_Local_V1_WaitJoinResponse: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
   public static let protoMessageName: String = _protobuf_package + ".WaitJoinResponse"
-  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{1}done\0\u{1}expired\0\u{3}approved_by\0\u{1}devices\0\u{3}match_required\0")
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{1}done\0\u{1}expired\0\u{3}approved_by\0\u{1}devices\0\u{3}match_required\0\u{1}claimed\0\u{3}claimed_by\0")
 
   public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
     while let fieldNumber = try decoder.nextFieldNumber() {
@@ -3363,6 +3425,8 @@ nonisolated extension Hermesh_Local_V1_WaitJoinResponse: SwiftProtobuf.Message, 
       case 3: try { try decoder.decodeSingularStringField(value: &self.approvedBy) }()
       case 4: try { try decoder.decodeRepeatedMessageField(value: &self.devices) }()
       case 5: try { try decoder.decodeSingularBoolField(value: &self.matchRequired) }()
+      case 6: try { try decoder.decodeSingularBoolField(value: &self.claimed) }()
+      case 7: try { try decoder.decodeSingularStringField(value: &self.claimedBy) }()
       default: break
       }
     }
@@ -3384,6 +3448,12 @@ nonisolated extension Hermesh_Local_V1_WaitJoinResponse: SwiftProtobuf.Message, 
     if self.matchRequired != false {
       try visitor.visitSingularBoolField(value: self.matchRequired, fieldNumber: 5)
     }
+    if self.claimed != false {
+      try visitor.visitSingularBoolField(value: self.claimed, fieldNumber: 6)
+    }
+    if !self.claimedBy.isEmpty {
+      try visitor.visitSingularStringField(value: self.claimedBy, fieldNumber: 7)
+    }
     try unknownFields.traverse(visitor: &visitor)
   }
 
@@ -3393,6 +3463,8 @@ nonisolated extension Hermesh_Local_V1_WaitJoinResponse: SwiftProtobuf.Message, 
     if lhs.approvedBy != rhs.approvedBy {return false}
     if lhs.devices != rhs.devices {return false}
     if lhs.matchRequired != rhs.matchRequired {return false}
+    if lhs.claimed != rhs.claimed {return false}
+    if lhs.claimedBy != rhs.claimedBy {return false}
     if lhs.unknownFields != rhs.unknownFields {return false}
     return true
   }
@@ -4763,18 +4835,29 @@ nonisolated extension Hermesh_Local_V1_SetAgentDefaultsResponse: SwiftProtobuf.M
 
 nonisolated extension Hermesh_Local_V1_CheckAgentsRequest: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
   public static let protoMessageName: String = _protobuf_package + ".CheckAgentsRequest"
-  public static let _protobuf_nameMap = SwiftProtobuf._NameMap()
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{3}machine_id\0")
 
   public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
-    // Load everything into unknown fields
-    while try decoder.nextFieldNumber() != nil {}
+    while let fieldNumber = try decoder.nextFieldNumber() {
+      // The use of inline closures is to circumvent an issue where the compiler
+      // allocates stack space for every case branch when no optimizations are
+      // enabled. https://github.com/apple/swift-protobuf/issues/1034
+      switch fieldNumber {
+      case 1: try { try decoder.decodeSingularStringField(value: &self.machineID) }()
+      default: break
+      }
+    }
   }
 
   public func traverse<V: SwiftProtobuf.Visitor>(visitor: inout V) throws {
+    if !self.machineID.isEmpty {
+      try visitor.visitSingularStringField(value: self.machineID, fieldNumber: 1)
+    }
     try unknownFields.traverse(visitor: &visitor)
   }
 
   public static func ==(lhs: Hermesh_Local_V1_CheckAgentsRequest, rhs: Hermesh_Local_V1_CheckAgentsRequest) -> Bool {
+    if lhs.machineID != rhs.machineID {return false}
     if lhs.unknownFields != rhs.unknownFields {return false}
     return true
   }
@@ -4794,6 +4877,101 @@ nonisolated extension Hermesh_Local_V1_CheckAgentsResponse: SwiftProtobuf.Messag
   }
 
   public static func ==(lhs: Hermesh_Local_V1_CheckAgentsResponse, rhs: Hermesh_Local_V1_CheckAgentsResponse) -> Bool {
+    if lhs.unknownFields != rhs.unknownFields {return false}
+    return true
+  }
+}
+
+nonisolated extension Hermesh_Local_V1_ListMachineReposRequest: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
+  public static let protoMessageName: String = _protobuf_package + ".ListMachineReposRequest"
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{3}machine_id\0")
+
+  public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
+    while let fieldNumber = try decoder.nextFieldNumber() {
+      // The use of inline closures is to circumvent an issue where the compiler
+      // allocates stack space for every case branch when no optimizations are
+      // enabled. https://github.com/apple/swift-protobuf/issues/1034
+      switch fieldNumber {
+      case 1: try { try decoder.decodeSingularStringField(value: &self.machineID) }()
+      default: break
+      }
+    }
+  }
+
+  public func traverse<V: SwiftProtobuf.Visitor>(visitor: inout V) throws {
+    if !self.machineID.isEmpty {
+      try visitor.visitSingularStringField(value: self.machineID, fieldNumber: 1)
+    }
+    try unknownFields.traverse(visitor: &visitor)
+  }
+
+  public static func ==(lhs: Hermesh_Local_V1_ListMachineReposRequest, rhs: Hermesh_Local_V1_ListMachineReposRequest) -> Bool {
+    if lhs.machineID != rhs.machineID {return false}
+    if lhs.unknownFields != rhs.unknownFields {return false}
+    return true
+  }
+}
+
+nonisolated extension Hermesh_Local_V1_ListMachineReposResponse: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
+  public static let protoMessageName: String = _protobuf_package + ".ListMachineReposResponse"
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{1}repos\0")
+
+  public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
+    while let fieldNumber = try decoder.nextFieldNumber() {
+      // The use of inline closures is to circumvent an issue where the compiler
+      // allocates stack space for every case branch when no optimizations are
+      // enabled. https://github.com/apple/swift-protobuf/issues/1034
+      switch fieldNumber {
+      case 1: try { try decoder.decodeRepeatedMessageField(value: &self.repos) }()
+      default: break
+      }
+    }
+  }
+
+  public func traverse<V: SwiftProtobuf.Visitor>(visitor: inout V) throws {
+    if !self.repos.isEmpty {
+      try visitor.visitRepeatedMessageField(value: self.repos, fieldNumber: 1)
+    }
+    try unknownFields.traverse(visitor: &visitor)
+  }
+
+  public static func ==(lhs: Hermesh_Local_V1_ListMachineReposResponse, rhs: Hermesh_Local_V1_ListMachineReposResponse) -> Bool {
+    if lhs.repos != rhs.repos {return false}
+    if lhs.unknownFields != rhs.unknownFields {return false}
+    return true
+  }
+}
+
+nonisolated extension Hermesh_Local_V1_TestMachineAgentRequest: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
+  public static let protoMessageName: String = _protobuf_package + ".TestMachineAgentRequest"
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{3}machine_id\0\u{1}agent\0")
+
+  public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
+    while let fieldNumber = try decoder.nextFieldNumber() {
+      // The use of inline closures is to circumvent an issue where the compiler
+      // allocates stack space for every case branch when no optimizations are
+      // enabled. https://github.com/apple/swift-protobuf/issues/1034
+      switch fieldNumber {
+      case 1: try { try decoder.decodeSingularStringField(value: &self.machineID) }()
+      case 2: try { try decoder.decodeSingularStringField(value: &self.agent) }()
+      default: break
+      }
+    }
+  }
+
+  public func traverse<V: SwiftProtobuf.Visitor>(visitor: inout V) throws {
+    if !self.machineID.isEmpty {
+      try visitor.visitSingularStringField(value: self.machineID, fieldNumber: 1)
+    }
+    if !self.agent.isEmpty {
+      try visitor.visitSingularStringField(value: self.agent, fieldNumber: 2)
+    }
+    try unknownFields.traverse(visitor: &visitor)
+  }
+
+  public static func ==(lhs: Hermesh_Local_V1_TestMachineAgentRequest, rhs: Hermesh_Local_V1_TestMachineAgentRequest) -> Bool {
+    if lhs.machineID != rhs.machineID {return false}
+    if lhs.agent != rhs.agent {return false}
     if lhs.unknownFields != rhs.unknownFields {return false}
     return true
   }

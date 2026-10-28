@@ -20,13 +20,12 @@ import (
 	"github.com/hermeshai/hermesh/gen/go/hermesh/relay/v1/relayv1connect"
 	"github.com/hermeshai/hermesh/internal/connaddr"
 	"github.com/hermeshai/hermesh/pkg/identity"
-	"golang.org/x/term"
 )
 
 // Pair registers this machine with the owner: it shows a pairing code and
 // waits until the owner approves it. address is a connection address (the
 // owner is pinned from it) or a hosted center URL (the owner is learned from
-// the center's claim and checked with a verification code).
+// the center's claim and proven by the two digits, see PairWithRelay).
 func (n *Machine) Pair(ctx context.Context, address, label string, out io.Writer, opts PairOptions) error {
 	relayURL, ownerID, err := connaddr.ParseAny(address)
 	if err != nil {
@@ -53,7 +52,9 @@ func (n *Machine) Pair(ctx context.Context, address, label string, out io.Writer
 	}
 	spki := identity.MarshalPublicKey(n.key.Public())
 	pr := &identityv1.PairingRequest{Kind: identityv1.PairingKind_PAIRING_KIND_MACHINE, SubjectPublicKey: spki, Label: label,
-		Hostname: host, Platform: runtime.GOOS + "/" + runtime.GOARCH, OwnerId: ownerID, CreatedAt: timestamppb.Now()}
+		Hostname: host, Platform: runtime.GOOS + "/" + runtime.GOARCH, OwnerId: ownerID, CreatedAt: timestamppb.Now(),
+		// The two digits, when there is someone to type them.
+		ConfirmMatch: ownerID == "" && opts.Digits != nil && !opts.TrustClaim}
 	creds, ownerID, err := PairWithRelay(ctx, n.cfg.HTTPClient, relayURL, pr, n.key, out, opts)
 	if err != nil {
 		return err
@@ -69,7 +70,7 @@ func (n *Machine) Pair(ctx context.Context, address, label string, out io.Writer
 	if err := n.SetName(label); err != nil {
 		return err
 	}
-	fmt.Fprintf(out, "Paired as %q (%s).\n", n.Name(), n.machineID)
+	fmt.Fprintf(out, "✓ Paired as “%s” (%s)\n", n.Name(), n.machineID)
 	return nil
 }
 
@@ -135,42 +136,52 @@ func (n *Machine) Install(ownerID, relayURL string, rootChain *identityv1.RootCh
 // PublicKeySPKI returns this machine's public key (PKIX DER).
 func (n *Machine) PublicKeySPKI() []byte { return identity.MarshalPublicKey(n.key.Public()) }
 
-// PairOptions decides whether a machine accepts credentials from an owner it
+// PairOptions decides how a machine accepts credentials from an owner it
 // learned from a hosted center's claim (an owner pinned from a connection
 // address is always checked against the pin instead; a client accepts the
 // owner of the account that claimed it: see PairWithRelay).
 type PairOptions struct {
-	// Confirm asks the person at the requester whether their own signer showed
-	// this verification code and they approved it. A compromised center can
-	// claim the request for an attacker's owner, whose signer then approves;
-	// only this question catches that.
-	Confirm func(ownerID, code string) bool
+	// Digits reads what the person types at the requester, nil without a
+	// terminal. With it, an unpinned machine asks for the two digits the
+	// approving device shows (PairingRequest.confirm_match): a center that
+	// claimed the request for another owner cannot make the person's own
+	// device show them.
+	Digits func(prompt string) (string, error)
 	// TrustClaim accepts the center's claim without asking (--yes): the
 	// center is then trusted to have claimed for the right owner.
 	TrustClaim bool
+	// QR draws the request's link as a QR code in out (a terminal).
+	QR bool
 }
+
+// matchTries is how many times the person may type the two digits.
+const matchTries = 3
+
+// resubmitRounds bounds how often an expired request is submitted again
+// while the requester waits (about an hour with the relay's 10 minutes).
+const resubmitRounds = 6
 
 // PairWithRelay submits a self-signed pairing request and waits for the
 // owner to approve it, returning the credentials and the owner id. Re-running
-// shows the same code (it is derived from the key).
+// shows the same code (it is derived from the key), and so does a request
+// submitted again once it expired while this waits.
 //
 // With a hosted center the request may name no owner. When an account
-// claims it, the center reports the owner; that report is not trusted: the
-// requester shows the verification code for its key and that owner, the
-// owner's signer shows the code for the key it received and its own owner,
-// and the owner approves only if they match. Because a compromised center
-// could claim for an attacker's owner instead, an unpinned requester then
-// also needs PairOptions to accept the result. The credentials must chain to
-// the owner the code was shown for.
+// claims it, the center reports the owner; that report is not trusted. An
+// unpinned machine that can ask (opts.Digits) asks for the two digits of the
+// machine cert the person's device signed; the code it shows already binds
+// its key, since the device checks the request against it. Without a
+// terminal it needs opts.TrustClaim. The credentials must chain to the owner
+// the center reported.
 //
 // A client (an agent) with no owner pinned is claimed through a link
 // instead: it shows a link to the center's console, the person opens it
-// signed in to their account and sends the request to their Mac, and the
-// client accepts that account's owner without a code to compare. On this
-// first pairing it trusts the center to report the right owner; from then on
-// it is pinned to it. A compromised center could thereby point a new agent
-// at an owner of its own, never at the owner's machines: they only take
-// grants that chain to the owner's own root key.
+// signed in to their account and sends the request to their devices, and
+// the client accepts that account's owner without a code to compare. On
+// this first pairing it trusts the center to report the right owner; from
+// then on it is pinned to it. A compromised center could thereby point a
+// new agent at an owner of its own, never at the owner's machines: they only
+// take grants that chain to the owner's own root key.
 func PairWithRelay(ctx context.Context, hc connect.HTTPClient, relayURL string, pr *identityv1.PairingRequest,
 	key identity.Signer, out io.Writer, opts PairOptions) (*identityv1.Credentials, string, error) {
 	signed, err := identity.Sign(pr, key)
@@ -195,24 +206,33 @@ func PairWithRelay(ctx context.Context, hc connect.HTTPClient, relayURL string, 
 	if hosted && pinned == "" && pr.Kind == identityv1.PairingKind_PAIRING_KIND_CLIENT {
 		link = PairingLink(info.GetConsoleUrl(), res.Code)
 	}
-	if link != "" {
-		fmt.Fprintf(out, "To approve %s, open this link and sign in:\n  %s\nWaiting for approval...\n", pr.Label, link)
-	} else if hosted {
-		valid := res.ExpiresAt.AsTime().Local().Format("15:04")
-		if pinned != "" {
-			// The request reaches the owner's devices by itself: nothing to
-			// type, only the code to compare.
-			fmt.Fprintf(out, "Verification code: %s (valid until %s)\nApprove only if Hermesh on your iPhone or Mac shows this same code.\n",
-				code(pinned), valid)
+	switch {
+	case link != "":
+		fmt.Fprintf(out, "To approve %s, open this link and sign in:\n  %s\n", pr.Label, link)
+		if opts.QR {
+			fmt.Fprint(out, QRCode(link, nil))
+		}
+		fmt.Fprintln(out, "Waiting for approval...")
+	case hosted && pinned != "":
+		// The request reaches the owner's devices by itself: nothing to
+		// type, only the code to compare.
+		fmt.Fprintf(out, "Verification code: %s (valid until %s)\nApprove only if Hermesh on your iPhone or Mac shows this same code.\nWaiting...\n",
+			code(pinned), res.ExpiresAt.AsTime().Local().Format("15:04"))
+	case hosted:
+		scan := PairingLink(info.GetConsoleUrl(), res.Code)
+		fmt.Fprintln(out, "\nPair this machine with your Hermesh")
+		side := []string{"Scan it with Hermesh on your iPhone,", "or enter the pairing code in Hermesh:", "", "  " + res.Code}
+		if opts.QR && scan != "" {
+			fmt.Fprint(out, QRCode(scan, side))
 		} else {
-			fmt.Fprintf(out, "Pairing code: %s\nEnter it in Hermesh on your iPhone or Mac (valid until %s).\n",
-				res.Code, valid)
+			fmt.Fprintf(out, "Pairing code: %s\nEnter it in Hermesh on your iPhone or Mac.\n", res.Code)
 		}
 		fmt.Fprintln(out, "Waiting...")
-	} else {
+	default:
 		fmt.Fprintf(out, "Pairing code: %s\nEnter it in the Hermesh app to add this %s (valid until %s).\nWaiting for approval...\n",
 			res.Code, what, res.ExpiresAt.AsTime().Local().Format("15:04"))
 	}
+	rounds := 0
 	for {
 		w, err := pub.WaitPairing(ctx, &relayv1.WaitPairingRequest{Code: res.Code, KnownOwnerId: owner})
 		if err != nil {
@@ -230,20 +250,23 @@ func PairWithRelay(ctx context.Context, hc connect.HTTPClient, relayURL string, 
 				return nil, "", fmt.Errorf("the center reported an owner that does not check out: %w", err)
 			}
 			owner = w.OwnerId
-			by := ""
+			who := ""
 			if w.AccountHint != "" {
-				by = " by " + w.AccountHint
+				who = " (" + w.AccountHint + ")"
 			}
-			if link != "" {
-				who := ""
-				if w.AccountHint != "" {
-					who = " (" + w.AccountHint + ")"
-				}
+			switch {
+			case link != "":
 				fmt.Fprintf(out, "Sent to your trusted devices%s; approve it in the Hermesh app.\n", who)
-				continue
+			case pr.ConfirmMatch:
+				fmt.Fprintf(out, "✓ Claimed%s: approve it in Hermesh on your iPhone or Mac\n", who)
+			default:
+				by := ""
+				if w.AccountHint != "" {
+					by = " by " + w.AccountHint
+				}
+				fmt.Fprintf(out, "Claimed%s (owner %s).\nVerification code: %s\nApprove only if Hermesh on your iPhone or Mac shows this same code.\nWaiting for approval...\n",
+					by, owner, code(owner))
 			}
-			fmt.Fprintf(out, "Claimed%s (owner %s).\nVerification code: %s\nApprove only if Hermesh on your iPhone or Mac shows this same code.\nWaiting for approval...\n",
-				by, owner, code(owner))
 			continue
 		}
 		if w.Done {
@@ -255,11 +278,12 @@ func PairWithRelay(ctx context.Context, hc connect.HTTPClient, relayURL string, 
 			}
 			if pinned == "" && link == "" {
 				switch {
+				case pr.ConfirmMatch && opts.Digits != nil:
+					if err := confirmMatch(w.Credentials, opts.Digits, out); err != nil {
+						return nil, "", err
+					}
 				case opts.TrustClaim:
 					fmt.Fprintf(out, "Accepting owner %s on the center's word (--yes).\n", owner)
-				case opts.Confirm != nil && opts.Confirm(owner, code(owner)):
-				case opts.Confirm != nil:
-					return nil, "", errors.New("not confirmed; nothing was accepted")
 				default:
 					return nil, "", fmt.Errorf("cannot confirm owner %s without a terminal: pair with the connection address shown in the Hermesh app (pins the owner), or pass --yes to trust the center's claim", owner)
 				}
@@ -267,9 +291,56 @@ func PairWithRelay(ctx context.Context, hc connect.HTTPClient, relayURL string, 
 			return w.Credentials, owner, nil
 		}
 		if w.Expired {
-			return nil, "", errors.New("the pairing code expired; run the command again for a new one")
+			if rounds++; rounds > resubmitRounds {
+				return nil, "", errors.New("the pairing code expired; run the command again for a new one")
+			}
+			owner = pinned
+			// The same code again (it comes from the key): a pinned request
+			// reaches the owner's devices again, an unpinned one waits to be
+			// scanned or typed.
+			if res, err = pub.SubmitPairing(ctx, &relayv1.SubmitPairingRequest{Request: signed}); err != nil {
+				return nil, "", fmt.Errorf("submit pairing request: %w", err)
+			}
 		}
 	}
+}
+
+// confirmMatch has the person type the two digits the approving device
+// shows, computed from the machine cert it signed.
+func confirmMatch(creds *identityv1.Credentials, digits func(string) (string, error), out io.Writer) error {
+	cert := creds.GetMachineCert()
+	want := identity.JoinMatchCode(cert.GetBody())
+	fmt.Fprintf(out, "✓ Approved on %s\n", approver(creds))
+	for i := 0; i < matchTries; i++ {
+		got, err := digits("  Type the two digits it shows: ")
+		if err != nil {
+			return fmt.Errorf("reading the two digits: %w", err)
+		}
+		if strings.TrimSpace(got) == want {
+			return nil
+		}
+		left := matchTries - 1 - i
+		if left == 0 {
+			break
+		}
+		fmt.Fprintf(out, "✗ Those aren’t the digits your device shows. %d %s left.\n", left, map[bool]string{true: "try", false: "tries"}[left == 1])
+	}
+	return errors.New("not the digits the approving device shows; nothing was installed. If you didn't approve this machine, remove it in the Hermesh app")
+}
+
+// approver names the trusted device that signed the machine cert, by its
+// key's label in the root chain.
+func approver(creds *identityv1.Credentials) string {
+	tr := identity.NewTrust(identity.ChainOwner(creds.GetRootChain()))
+	if _, err := tr.AcceptRootChain(creds.GetRootChain()); err == nil {
+		for _, rk := range tr.Root().RootKeys {
+			pub, err := identity.ParsePublicKey(rk.PublicKey)
+			if err == nil && identity.KeyID(pub) == creds.GetMachineCert().GetSignerKeyId() && rk.Label != "" {
+				return "“" + rk.Label + "”"
+			}
+		}
+	}
+	return "your device"
 }
 
 // PairingLink is where a person approves a client's pairing request: the
@@ -281,17 +352,4 @@ func PairingLink(consoleURL, code string) string {
 		return ""
 	}
 	return u.Scheme + "://" + u.Host + "/p/" + code
-}
-
-// TerminalConfirm asks on the terminal when stdin is one; nil otherwise.
-func TerminalConfirm(in *os.File, out io.Writer) func(ownerID, code string) bool {
-	if !term.IsTerminal(int(in.Fd())) {
-		return nil
-	}
-	return func(ownerID, code string) bool {
-		fmt.Fprintf(out, "Did Hermesh on your iPhone or Mac ask you to approve code %s, and did you approve it? [y/N] ", code)
-		var answer string
-		fmt.Fscanln(in, &answer)
-		return strings.EqualFold(strings.TrimSpace(answer), "y") || strings.EqualFold(strings.TrimSpace(answer), "yes")
-	}
 }

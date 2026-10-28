@@ -428,6 +428,7 @@ func (n *Machine) Run(ctx context.Context) error {
 	}
 	go n.sessions.Janitor(ctx)
 	go n.serveSessionTools(ctx)
+	go n.serveControl(ctx)
 	n.log.Info("hermeshd machine running", "machine", n.machineID, "name", n.Name(), "relay", n.relayURL)
 	n.runLink(ctx)
 	return nil

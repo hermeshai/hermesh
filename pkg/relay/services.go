@@ -156,8 +156,11 @@ func (s *Server) submitPairing(request *identityv1.Signed, custodial bool) (*rel
 	switch pr.Kind {
 	case identityv1.PairingKind_PAIRING_KIND_MACHINE, identityv1.PairingKind_PAIRING_KIND_CLIENT:
 	case identityv1.PairingKind_PAIRING_KIND_DEVICE:
-		// A device asks one owner to trust it; nobody claims it by code.
-		if pr.OwnerId == "" {
+		// A device asks one owner to trust it. On a hosted center it may
+		// name none (a Linux trusted device, docs/onboarding.md §9.5): one
+		// of the owner's own devices claims it by its code, never a console
+		// link, and the two digits prove the owner.
+		if pr.OwnerId == "" && !s.cfg.Hosted {
 			return nil, errf(connect.CodeInvalidArgument, "a device joins a named owner")
 		}
 	default:

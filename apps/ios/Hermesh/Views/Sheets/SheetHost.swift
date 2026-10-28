@@ -16,6 +16,9 @@ struct SheetHost: View {
         case .connectAgent: ConnectAgentSheet()
         case .addMachine: AddMachineSheet()
         case .enterCode: EnterCodeSheet()
+        case .scan: ScanSheet()
+        case .firstTask(let client): FirstTaskSheet(clientID: client)
+        case .addDevice: AddDeviceSheet()
         case .addProject(let machine, let agent): AddProjectSheet(machineID: machine, agent: agent)
         case .search: SearchSheet()
         case .wake(let client, let agent, let wake, let named): WakeSheet(clientID: client, agent: agent, existing: wake, named: named)
@@ -304,17 +307,22 @@ struct PairingSheet: View {
     @State private var machineName = ""
     @State private var busy = false
     @State private var done: String?
+    /// The machine just approved: its id, name and the digits to type on it.
+    @State private var joining: (id: String, name: String, digits: String)?
+    /// The agent just approved: its client id and name, for the first task.
+    @State private var connected: (id: String, name: String)?
 
     var body: some View {
         NavigationStack {
             Group {
-                if let done {
+                if let joining {
+                    MachineJoining(machineID: joining.id, name: joining.name, digits: joining.digits) { dismiss() }
+                } else if let connected {
+                    FirstTask(clientID: connected.id, name: connected.name) { dismiss() }
+                } else if let done {
                     VStack(spacing: 14) {
                         Image(systemName: "checkmark.circle.fill").font(.system(size: 56)).foregroundStyle(.green)
                         Text(done).font(.title3.bold()).multilineTextAlignment(.center)
-                        if let p = pairing, p.kind == .client {
-                            Text("Try telling it: “Use Hermesh to see which projects I have.”").foregroundStyle(.secondary).multilineTextAlignment(.center)
-                        }
                         Button("Done") { dismiss() }.buttonStyle(.glassProminent).controlSize(.large).padding(.top, 8)
                     }
                     .padding(32).frame(maxHeight: .infinity)
@@ -341,10 +349,25 @@ struct PairingSheet: View {
                     AgentLogo(id: p.label, size: 58)
                     Text(PairingText.title(p)).font(.title2.bold()).multilineTextAlignment(.center)
                     Text(selfReport(p)).font(.subheadline).foregroundStyle(.secondary).multilineTextAlignment(.center)
-                    CodeTiles(code: p.verificationCode, caption: "Does it match what the other side shows?").padding(.top, 8)
+                    if !p.confirmed {
+                        CodeTiles(code: p.verificationCode, caption: "Does it match what the other side shows?").padding(.top, 8)
+                    }
                 }
                 .frame(maxWidth: .infinity)
                 .listRowBackground(Color.clear)
+            }
+            if p.confirmed && p.kind == .machine {
+                Section {
+                    Label {
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("The pairing code matches this machine’s key")
+                            Text(p.code).font(.footnote.monospaced()).foregroundStyle(.secondary)
+                        }
+                    } icon: {
+                        Image(systemName: "checkmark.circle.fill").foregroundStyle(.green)
+                    }
+                    .accessibilityIdentifier("code-matches")
+                }
             }
             switch p.kind {
             case .client:
@@ -362,6 +385,7 @@ struct PairingSheet: View {
             case .machine:
                 Section {
                     TextField("Machine name", text: $machineName).textInputAutocapitalization(.never).autocorrectionDisabled()
+                        .accessibilityIdentifier("machine-name")
                 } header: {
                     Text("Name this machine")
                 } footer: {
@@ -377,7 +401,7 @@ struct PairingSheet: View {
                 HStack(spacing: 10) {
                     Button {
                         model.dismissedPairings.insert(p.code)
-                        model.show(String(localized: "Put off. Don’t approve unless the codes match."))
+                        model.show(p.confirmed ? String(localized: "Put off.") : String(localized: "Put off. Don’t approve unless the codes match."))
                         dismiss()
                     } label: {
                         Text("Deny").frame(maxWidth: .infinity)
@@ -401,7 +425,8 @@ struct PairingSheet: View {
 
     private func selfReport(_ p: PairingDetails) -> String {
         let who = [p.hostname, p.platform].filter { !$0.isEmpty }.joined(separator: " · ")
-        return who.isEmpty ? String(localized: "Compare the code with what it shows.") : String(localized: "It says it is: \(who)")
+        if who.isEmpty { return p.confirmed ? "" : String(localized: "Compare the code with what it shows.") }
+        return String(localized: "It says it is: \(who)")
     }
 
     private func approve(_ p: PairingDetails) {
@@ -412,11 +437,155 @@ struct PairingSheet: View {
             case .client:
                 var spec = scope.spec
                 spec.label = p.label
-                if await model.approveClient(p, spec: spec) { done = String(localized: "“\(p.label)” is connected") }
+                if await model.approveClient(p, spec: spec) { connected = (p.subjectID, p.label) }
             case .machine:
-                if await model.approveMachine(p, name: machineName) { done = String(localized: "“\(machineName)” joined. Add projects to it on its page.") }
+                if let res = await model.approveMachine(p, name: machineName) {
+                    joining = (res.machineID.isEmpty ? p.subjectID : res.machineID, machineName, res.matchCode)
+                }
             default:
                 if await model.approveDevice(p) { done = String(localized: "“\(p.label)” is a trusted device now") }
+            }
+        }
+    }
+}
+
+/// After a machine is approved: the two digits to type on it, when it asked
+/// for them, until it connects; then that it joined, and its page.
+struct MachineJoining: View {
+    @Environment(AppModel.self) private var model
+    let machineID: String
+    let name: String
+    let digits: String
+    let close: () -> Void
+    @State private var long = false
+
+    private var joined: Bool { model.machines.contains { $0.machineID == machineID && $0.online } }
+
+    var body: some View {
+        VStack(spacing: 16) {
+            Spacer()
+            if joined {
+                Image(systemName: "checkmark.circle.fill").font(.system(size: 60)).foregroundStyle(.green)
+                Text("“\(name)” joined").font(.title2.bold()).multilineTextAlignment(.center)
+                    .accessibilityIdentifier("machine-joined")
+                Text("Add projects to it on its page.").foregroundStyle(.secondary)
+                Spacer()
+                Button {
+                    close()
+                    model.path.append(.machine(machineID))
+                } label: {
+                    Text("Open \(name)").frame(maxWidth: .infinity)
+                }
+                .buttonStyle(.glassProminent).controlSize(.large)
+                .accessibilityIdentifier("open-machine")
+                Button("Done") { close() }
+            } else {
+                if digits.isEmpty {
+                    WaitingMark(size: 64)
+                } else {
+                    Text("Type these digits on “\(name)”").font(.title2.bold()).multilineTextAlignment(.center)
+                    HStack(spacing: 14) {
+                        ForEach(Array(digits), id: \.self) { d in
+                            Text(String(d)).font(.system(size: 48, weight: .semibold, design: .monospaced))
+                                .frame(width: 76, height: 94).background(.fill.tertiary, in: RoundedRectangle(cornerRadius: 22, style: .continuous))
+                        }
+                    }
+                    .accessibilityElement(children: .combine)
+                    .accessibilityIdentifier("match-digits")
+                    Text("They prove the approval came from your own device.").font(.subheadline).foregroundStyle(.secondary)
+                }
+                HStack(spacing: 8) {
+                    WaitingMark(size: 20)
+                    Text("Waiting for “\(name)” to connect…").foregroundStyle(.secondary)
+                }
+                .padding(.top, 8)
+                Spacer()
+                if long {
+                    Button("It didn’t join? Remove it", role: .destructive) {
+                        Task {
+                            if let m = model.machines.first(where: { $0.machineID == machineID }) { await model.remove(m) }
+                            close()
+                        }
+                    }
+                }
+                Button("Done") { close() }
+            }
+        }
+        .padding(28)
+        .task {
+            try? await Task.sleep(for: .seconds(120))
+            long = true
+        }
+    }
+}
+
+/// The first task again, from Get Started's Try It.
+struct FirstTaskSheet: View {
+    @Environment(AppModel.self) private var model
+    @Environment(\.dismiss) private var dismiss
+    let clientID: String
+
+    var body: some View {
+        NavigationStack {
+            FirstTask(clientID: clientID, name: model.clientLabel(clientID)) { dismiss() }
+                .toolbar { CloseButton() }
+        }
+    }
+}
+
+/// After an agent is approved: one thing to send it that shows the whole way
+/// works (as the Mac's first task), then its first session as soon as it
+/// starts.
+struct FirstTask: View {
+    @Environment(AppModel.self) private var model
+    let clientID: String
+    let name: String
+    let close: () -> Void
+
+    private var prompt: String {
+        let agent = model.machines.flatMap { $0.status.agents.filter { $0.available && $0.loggedIn }.map(\.name) }.first.map(agentTitle) ?? String(localized: "a coding agent")
+        if let project = model.projects.first?.projectID {
+            return String(localized: "Use Hermesh to have \(agent) say hello to me in the \(project) project.")
+        }
+        return String(localized: "Use Hermesh to have \(agent) say hello to me.")
+    }
+
+    private var first: Session? {
+        model.sessions.filter { $0.createdBy == clientID }.min { $0.createdAt.date < $1.createdAt.date }
+    }
+
+    var body: some View {
+        List {
+            Section {
+                VStack(spacing: 10) {
+                    Image(systemName: "checkmark.circle.fill").font(.system(size: 56)).foregroundStyle(.green)
+                    Text("“\(name)” is connected").font(.title2.bold()).multilineTextAlignment(.center)
+                        .accessibilityIdentifier("client-connected")
+                    Text("Try it in \(name): send it this:").foregroundStyle(.secondary).multilineTextAlignment(.center)
+                }
+                .frame(maxWidth: .infinity)
+                .listRowBackground(Color.clear)
+            }
+            Section {
+                MonoBox(text: prompt)
+                CopyShareButtons(text: prompt, shareTitle: "Send…")
+                    .listRowBackground(Color.clear).listRowInsets(EdgeInsets())
+            } footer: {
+                HStack(spacing: 8) {
+                    WaitingMark(size: 18)
+                    Text("As soon as it starts working, its session opens here.")
+                }
+                .padding(.top, 8)
+            }
+            Section {
+                Button("Done", action: close).frame(maxWidth: .infinity)
+                    .listRowBackground(Color.clear)
+            }
+        }
+        .onChange(of: first?.sessionID) { _, id in
+            if let id {
+                close()
+                model.openSession(id)
             }
         }
     }
