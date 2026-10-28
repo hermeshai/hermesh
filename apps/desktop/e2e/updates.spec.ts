@@ -26,6 +26,18 @@ async function open(app: ElectronApplication, main: Page) {
   const [updatesPage] = await Promise.all([app.waitForEvent("window"), main.evaluate(() => window.hermesh?.openUpdates())]);
   return updatesPage;
 }
+/**
+ * Keeps the work area as it is now, for the window on route to fit and the checks to measure. Other specs' apps
+ * come and go from the Dock meanwhile; where the Dock fills the screen's width (CI's small screen) each one resizes
+ * it, and the work area's bottom moves by a few points between the window fitting itself and the check.
+ */
+async function holdWorkArea(app: ElectronApplication, route: string) {
+  await app.evaluate(({ BrowserWindow, screen }, route) => {
+    const win = BrowserWindow.getAllWindows().find((w) => w.webContents.getURL().endsWith(route))!;
+    const display = screen.getDisplayMatching(win.getBounds());
+    screen.getDisplayMatching = () => display;
+  }, route);
+}
 
 test("background discovery stays quiet; details, snooze and automatic download share one window", async () => {
   const app = await installer(true, "success", { autoDownload: false });
@@ -205,6 +217,7 @@ test("release history fits short content and keeps its actions visible with long
   await history.emulateMedia({ colorScheme: "dark" });
   await snap(history, "history-short-dark");
 
+  await holdWorkArea(app, "#whats-new");
   await app.evaluate(() => { const s = (globalThis as unknown as Hook).installTest; s.latest = "1.2.0"; s.longNotes = true; });
   await main.evaluate(() => window.hermesh?.checkForUpdates());
   await expect.poll(async () => (await layout()).height).toBeGreaterThan(shortHeight);
@@ -309,6 +322,7 @@ test("update windows fit their content with balanced action spacing and scroll l
   await expect(status).toHaveText("有可用更新");
   await compact(460);
   const shortHeight = (await layout()).height;
+  await holdWorkArea(app, "#updates");
   await app.evaluate(() => { (globalThis as unknown as Hook).installTest.longNotes = true; });
   await updates.evaluate(() => window.hermesh?.checkForUpdates());
   await expect.poll(async () => (await layout()).height).toBeGreaterThan(shortHeight);

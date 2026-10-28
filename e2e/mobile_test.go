@@ -319,7 +319,11 @@ func TestMobileNetwork(t *testing.T) {
 	status := time.Since(m.started)
 	front, leave := context.WithCancel(ctx)
 	scr := watchScreenOf(front, t, m.client)
-	eventually(t, 60*time.Second, "the first world", scr.has(func(*screen) bool { return true }))
+	// Timed with within, which looks every 10 ms: eventually looks every
+	// 200 ms, two thirds of a round trip.
+	if within(60*time.Second, scr.has(func(*screen) bool { return true })) < 0 {
+		t.Fatal("the first world did not come")
+	}
 	first := time.Since(m.started)
 	complete := func(s *screen) bool {
 		if len(s.sessions) < sessions {
@@ -332,7 +336,9 @@ func TestMobileNetwork(t *testing.T) {
 		}
 		return len(s.machines) == 1
 	}
-	eventually(t, 60*time.Second, "the world complete", scr.has(complete))
+	if within(60*time.Second, scr.has(complete)) < 0 {
+		t.Fatal("the world did not complete")
+	}
 	whole := time.Since(m.started)
 
 	// A long conversation opened: everything up to its last event.
@@ -514,8 +520,9 @@ func TestMobileNetwork(t *testing.T) {
 	t.Logf("relaunched, deleted gone     %s", round(relaunched))
 	// The floor: TCP, TLS and the WebSocket upgrade to the relay (3), the
 	// end-to-end handshake and one call through it to the Mac, as far
-	// again behind it (2 each); after 90 s away, a ping on the relay
-	// connection kept (1) and the call.
+	// again behind it (2 each), at the first launch after the relay's list
+	// (1), as this core never saw the Mac online; after 90 s away, a ping
+	// on the relay connection kept (1) and the call.
 	for _, c := range []struct {
 		what string
 		took time.Duration
