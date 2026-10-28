@@ -55,7 +55,7 @@ struct EraseView: View {
             group("Agents", "Disconnected; their pairing on their own computers erased", kind: "agent")
             VStack(alignment: .leading, spacing: 2) {
                 if model.status.hosted {
-                    Text("Data on \(host)")
+                    Text("Data on \(URL(string: model.status.consoleURL)?.host() ?? host)")
                     Text("Messages, new-message alerts and connection approvals; every browser signed out").font(.footnote).foregroundStyle(.secondary)
                 } else {
                     Text("Your Server · \(host)")

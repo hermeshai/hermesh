@@ -39,6 +39,9 @@ function Confirm({ started }: { started: (id: string, items: EraseItem[]) => voi
   const relay = st.status?.relayUrl ?? "";
   const host = URL.canParse(relay) ? new URL(relay).host : relay;
   const hosted = st.status?.hosted === true;
+  // The service by its site (hermesh.io), not where devices connect.
+  const consoleUrl = st.status?.consoleUrl ?? "";
+  const site = URL.canParse(consoleUrl) ? new URL(consoleUrl).host : host;
   // What is typed to confirm: the account's email, or a server of one's own's address.
   const expected = (hosted && account) || host;
   const match = expected !== "" && typed.trim().toLowerCase() === expected.toLowerCase();
@@ -56,7 +59,7 @@ function Confirm({ started }: { started: (id: string, items: EraseItem[]) => voi
         <div className="frow">
           <Icon name="web" />
           <div className="ft">
-            <div className="fn">{t(hosted ? "erase.hosted" : "erase.server", { host })}</div>
+            <div className="fn">{t(hosted ? "erase.hosted" : "erase.server", { host: hosted ? site : host })}</div>
             <div className="fdesc">{t(hosted ? "erase.hostedDesc" : "erase.serverDesc")}</div>
           </div>
         </div>

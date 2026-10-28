@@ -58,6 +58,15 @@ func TestRefusals(t *testing.T) {
 	}
 }
 
+// An erase order says what it does and that it can't be undone.
+func TestEraseCard(t *testing.T) {
+	cs, err := Cards([]*localv1.SigningRequest{request(t, &identityv1.EraseOrder{OwnerId: "o_x", EraseId: "e1"})}, Hints{})
+	if err != nil || cs[0].Title != "Erase everything in your Hermesh" || !strings.Contains(cs[0].Why, "can't be undone") || cs[0].Warning == "" ||
+		!strings.Contains(strings.Join(cs[0].Lines, "\n"), "Erase ID: e1") {
+		t.Fatalf("erase: %+v %v", cs, err)
+	}
+}
+
 func TestCards(t *testing.T) {
 	client := spki(t)
 	g := &identityv1.Grant{OwnerId: "o_x", ClientLabel: "bot", ClientPublicKey: client, ProjectIds: []string{"*"}, MachineIds: []string{"m_1"},

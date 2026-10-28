@@ -254,7 +254,7 @@ a user, that runs no coding agents: they could approve as you.`,
 			return nil
 		},
 	}
-	device.AddCommand(join, setup, list, remove, leave)
+	device.AddCommand(join, setup, list, remove, leave, eraseEverythingCommand(dataDir))
 
 	approve := &cobra.Command{
 		Use:   "approve [pairing code]",
