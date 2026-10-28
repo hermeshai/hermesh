@@ -279,8 +279,13 @@ final class HermeshUITests: XCTestCase {
     /// On the agent's page, after wake(): its grant signed again with another name.
     func renameAgent() throws {
         let before = try control("grant?label=bot")["version"] as? Int ?? 0
+        // Kept as it is: nothing to sign (the version below goes up twice, not three times).
+        let rename = app.buttons["rename-agent"]
+        for _ in 0..<5 where !rename.isHittable { app.swipeDown() }
+        tap("rename-agent")
+        XCTAssertTrue(app.alerts.textFields.firstMatch.waitForExistence(timeout: 10))
+        app.alerts.buttons["重命名"].tap()
         for (from, to) in [("bot", "Grok Bot"), ("Grok Bot", "bot")] {
-            let rename = app.buttons["rename-agent"]
             for _ in 0..<5 where !rename.isHittable { app.swipeDown() }
             tap("rename-agent")
             let field = app.alerts.textFields.firstMatch

@@ -159,6 +159,7 @@
   "wake": {
     "title": "新消息提醒",
     "none": "还没设置",
+    "noneOwn": "叫醒整个 {{agent}}",
     "setUp": "设置…",
     "note": "Grok Bot 这类 bot 平时不在线。设置以后，它开的会话做完了、或者别的 agent 找它，Hermesh 就去叫醒它。",
     "perBotAsk": "这个连接下有好几个 bot？",

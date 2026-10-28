@@ -161,6 +161,7 @@
   "wake": {
     "title": "Wake on New Messages",
     "none": "Not set up",
+    "noneOwn": "Wake all of {{agent}}",
     "setUp": "Set Up…",
     "note": "Bots such as Grok Bot aren’t always running. Once this is set up, Hermesh wakes this one when a session it started finishes or another agent writes to it.",
     "perBotAsk": " Several bots on this connection?",

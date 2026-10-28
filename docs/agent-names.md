@@ -444,6 +444,11 @@ ids. So:
 - **Pasting is forgiving.** Grok's Webhook section pasted whole fills both
   boxes; the gateway takes the key with or without "Bearer", or the whole
   `Authorization:` header.
+- **A minute's blind spot.** hermeshd keeps who has a doorbell for a
+  minute, so news written in the minute after a bot's own doorbell is set
+  up can go without its name: it rings the agent's own doorbell, if any,
+  telling its bot to read its own name, and the bot's own is rung by its
+  next message (the bot then reads both).
 - **The signing secret is hidden for Grok's routines**, which don't check
   signatures; it shows, folded, for any other webhook.
 - **The owner sees the rings**: each doorbell keeps its last five (when, a

@@ -188,8 +188,12 @@ struct WakesSection: View {
                 }
                 .accessibilityIdentifier("wake-\(w.name)")
             }
-            if wakes.isEmpty {
-                Button("Set Up…") { model.sheet = .wake(client.clientID, agent, nil) }.accessibilityIdentifier("wake-add")
+            // The agent's own, which wakes it for every name without one, while it has none.
+            if !wakes.contains(where: { $0.name.isEmpty }) {
+                Button(wakes.isEmpty ? String(localized: "Set Up…") : String(localized: "Wake All of \(agent)…")) {
+                    model.sheet = .wake(client.clientID, agent, nil)
+                }
+                .accessibilityIdentifier("wake-add")
             }
             Button("Set up each bot…") { model.sheet = .wake(client.clientID, agent, nil, named: true) }.accessibilityIdentifier("wake-per-bot")
         } header: {

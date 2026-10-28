@@ -177,6 +177,15 @@ test("an agent's page sets up waking it: three steps, a pasted block split, a wr
     await settings.getByRole("dialog", { name: "不再叫醒 bot？" }).getByRole("button", { name: "停止叫醒" }).click();
     await expect(wake).toContainText("还没设置");
 
+    // A bot with a doorbell of its own leaves the agent's to set up still.
+    await api(page, "SetWake", { clientId: (await api<{ clients: { clientId: string; label: string }[] }>(page, "ListClients")).clients.find((c) => c.label === "bot")!.clientId, name: "Research", url, authorization: "Bearer crsr_test" });
+    await nav(settings, "通用").click();
+    await nav(settings, "授权").click();
+    await grants.getByRole("list", { name: "授权" }).getByRole("button", { name: /bot/ }).click();
+    await expect(wake.getByRole("button", { name: /叫醒 research/ })).toBeVisible();
+    await expect(wake).toContainText("叫醒整个 bot");
+    await expect(wake.getByRole("button", { name: "设置…", exact: true })).toBeVisible();
+
     // A connection that several bots share can wake each on its own: then it asks which.
     await grants.getByRole("button", { name: "给每个 bot 单独设置…" }).click();
     await expect(dialog).toContainText("第 1 步，共 4 步");

@@ -43,26 +43,26 @@ export function Wakes({ c }: { c: Client }) {
       <div>
         <div className="fhead">{t("wake.title")}</div>
         <div className="fgroup" role="list" aria-label={t("wake.title")}>
-          {wakes.length ? (
-            wakes.map((w) => {
-              const rang = dateOf(w.lastRingAt);
-              const sub =
-                w.state !== "on" ? wakeReason(w.lastStatus, w.reason)
-                : !rang ? t("wake.notYet")
-                : `${t("wake.lastRang", { ago: agoText(rang, now) })} · ${w.waiting ? t("wake.waitingCount", { count: w.waiting }) : t("wake.allRead")}`;
-              return (
-                <GoRow key={w.name} icon={w.name ? <span className="wk-av">{w.name.slice(0, 1).toUpperCase()}</span> : <GrantAvatar label={c.label} size="sm" />}
-                  title={t("wake.row", { name: w.name || agent })} sub={sub} onClick={() => open(w)}>
-                  <span className={w.state === "on" ? "wk-state" : "wk-state bad"}>
-                    <i />
-                    {w.state === "on" ? t("wake.on") : t("wake.broken")}
-                  </span>
-                </GoRow>
-              );
-            })
-          ) : (
+          {wakes.map((w) => {
+            const rang = dateOf(w.lastRingAt);
+            const sub =
+              w.state !== "on" ? wakeReason(w.lastStatus, w.reason)
+              : !rang ? t("wake.notYet")
+              : `${t("wake.lastRang", { ago: agoText(rang, now) })} · ${w.waiting ? t("wake.waitingCount", { count: w.waiting }) : t("wake.allRead")}`;
+            return (
+              <GoRow key={w.name} icon={w.name ? <span className="wk-av">{w.name.slice(0, 1).toUpperCase()}</span> : <GrantAvatar label={c.label} size="sm" />}
+                title={t("wake.row", { name: w.name || agent })} sub={sub} onClick={() => open(w)}>
+                <span className={w.state === "on" ? "wk-state" : "wk-state bad"}>
+                  <i />
+                  {w.state === "on" ? t("wake.on") : t("wake.broken")}
+                </span>
+              </GoRow>
+            );
+          })}
+          {/* The agent's own, which wakes it for every name without one, while it has none. */}
+          {!wakes.some((w) => w.name === "") && (
             <div className="frow">
-              <span className="fl">{t("wake.none")}</span>
+              <span className="fl">{wakes.length ? t("wake.noneOwn", { agent }) : t("wake.none")}</span>
               <span className="fv">
                 <button className="btn sm" onClick={() => open()}>{t("wake.setUp")}</button>
               </span>
