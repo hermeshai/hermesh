@@ -454,8 +454,10 @@ func (s *Server) admit(h *relayv1.Hello, nonce []byte) (*peer, error) {
 	if ownerID == "" {
 		return nil, errors.New("missing root chain")
 	}
-	if order, _, _ := s.eraseOrder(ownerID); order != nil && (s.sqlite == nil || s.singleOwner() != ownerID) {
-		return nil, errors.New("this relay no longer serves this device's owner (the owner erased everything)")
+	if s.sqlite == nil || s.singleOwner() != ownerID {
+		if order, _, _ := s.eraseOrder(ownerID); order != nil {
+			return nil, errors.New("this relay no longer serves this device's owner (the owner erased everything)")
+		}
 	}
 	if s.sqlite != nil && s.singleOwner() == "" {
 		return nil, errors.New("relay is not claimed yet")

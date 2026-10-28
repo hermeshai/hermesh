@@ -15,7 +15,6 @@ import (
 	"os/signal"
 	"path/filepath"
 	"runtime"
-	"slices"
 	"strings"
 	"syscall"
 	"time"
@@ -542,23 +541,20 @@ func report(name string, i provider.Info) bool {
 }
 
 // eraseMachine erases a machine whose owner erased everything
-// (docs/erase-everything.md), and the rest of dataDir (its logs), and takes
-// its service away, so that it waits to be paired as a newly installed one
-// does.
+// (docs/erase-everything.md), and takes its service away, so that it waits
+// to be paired as a newly installed one does. The rest of dataDir stays: on
+// a Mac it is also the app's (its owners' profiles).
 func eraseMachine(dataDir string, cfg machine.Config) error {
-	keepDir := filepath.Join(dataDir, "kept-worktrees")
-	kept, err := machine.Erase(cfg, keepDir)
-	if err == nil {
-		err = machine.RemoveExcept(dataDir, append(slices.Clone(kept), keepDir))
-	}
+	kept, err := machine.Erase(cfg, filepath.Join(dataDir, "kept-worktrees"))
 	if err != nil {
 		return fmt.Errorf("erasing this machine: %w", err)
 	}
+	os.Remove(cfg.DataDir) // empty, unless a worktree could not be moved out
 	fmt.Fprintln(os.Stderr, "The owner erased everything: Hermesh's data on this machine is erased. Pair it again with `hermeshd pair <connection address>`.")
 	for _, wt := range kept {
 		fmt.Fprintf(os.Stderr, "Kept, with uncommitted changes: %s\n", wt)
 	}
-	if service.InstalledFor(cfg.DataDir) {
+	if service.InstalledFor(dataDir) {
 		return service.Uninstall()
 	}
 	return nil

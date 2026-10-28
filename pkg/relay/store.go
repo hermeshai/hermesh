@@ -581,7 +581,7 @@ ON CONFLICT(owner_id) DO UPDATE SET erase_id=excluded.erase_id, erase_order=excl
 	for _, q := range []string{
 		`DELETE FROM meta WHERE key IN ('owner_id', 'root_chain', 'device_cert', 'revocations', 'claim_code')`,
 		`DELETE FROM machine_certs`, `DELETE FROM grants`, `DELETE FROM pairing`, `DELETE FROM push_targets`,
-		`DELETE FROM messages`, `DELETE FROM inbox_registrations`, `DELETE FROM contact_cards`,
+		`DELETE FROM messages`, `DELETE FROM inbox_registrations`, `DELETE FROM contact_cards`, `DELETE FROM connection_log`,
 	} {
 		if _, err := tx.Exec(q); err != nil {
 			return err
@@ -624,8 +624,13 @@ func (s *Store) EraseOrder(ownerID string, now time.Time) (*identityv1.Signed, *
 	return order, chain, acks, rows.Err()
 }
 
+// maxEraseAcks bounds what anyone who knows an erase id can make a relay
+// keep: an owner has far fewer devices, machines and agents.
+const maxEraseAcks = 1000
+
 func (s *Store) AckErase(eraseID, keyID string, at time.Time) error {
-	_, err := s.db.Exec(`INSERT INTO erase_acks(erase_id, key_id, acked_at) SELECT ?, ?, ? WHERE EXISTS (SELECT 1 FROM erase_orders WHERE erase_id=?)
-ON CONFLICT(erase_id, key_id) DO NOTHING`, eraseID, keyID, at.Unix(), eraseID)
+	_, err := s.db.Exec(`INSERT INTO erase_acks(erase_id, key_id, acked_at) SELECT ?, ?, ?
+WHERE EXISTS (SELECT 1 FROM erase_orders WHERE erase_id=?) AND (SELECT COUNT(*) FROM erase_acks WHERE erase_id=?) < ?
+ON CONFLICT(erase_id, key_id) DO NOTHING`, eraseID, keyID, at.Unix(), eraseID, eraseID, maxEraseAcks)
 	return err
 }

@@ -73,6 +73,16 @@ func TestEraseEverything(t *testing.T) {
 		return err == nil && slices.ContainsFunc(res.Machines, func(m *localv1.Machine) bool { return m.MachineName == name && m.Online })
 	}
 	onData, offData := pairVPS("vps-on"), pairVPS("vps-off")
+	// On a Mac the app's owner shares the data directory: it stays.
+	appFile := filepath.Join(onData, "owner", "profiles", "p1", "owner.db")
+	os.MkdirAll(filepath.Dir(appFile), 0o700)
+	os.WriteFile(appFile, []byte("another owner"), 0o600)
+	machineErased := func(data string) {
+		t.Helper()
+		if _, err := os.Stat(filepath.Join(data, "machine")); !os.IsNotExist(err) {
+			t.Fatalf("%s kept its machine: %v", data, err)
+		}
+	}
 	vpsOn, vpsOff := runVPS("vps-on", onData), runVPS("vps-off", offData)
 	eventually(t, 30*time.Second, "both servers online", func() bool { return online("vps-on") && online("vps-off") })
 	vpsOff.stop()
@@ -115,6 +125,13 @@ func TestEraseEverything(t *testing.T) {
 	if got := w.app.signedTypes()[before:]; !slices.Equal(got, []string{"hermesh.identity.v1.EraseOrder"}) {
 		t.Fatalf("erasing signed %v", got)
 	}
+	// Asked again (a second click) while erasing: refused, nothing signed.
+	if _, err := w.app.client.EraseEverything(ctx, &localv1.EraseEverythingRequest{}); connect.CodeOf(err) != connect.CodeFailedPrecondition {
+		t.Fatalf("erasing twice: %v", err)
+	}
+	if got := w.app.signedTypes()[before:]; len(got) != 1 {
+		t.Fatalf("erasing twice signed %v", got)
+	}
 
 	// The agent learns it at its next command, and forgets its pairing.
 	r = w.cli(30*time.Second, "project", "list")
@@ -153,8 +170,9 @@ func TestEraseEverything(t *testing.T) {
 	if c := vpsOn.wait(t, 30*time.Second); c != 0 {
 		t.Fatalf("vps-on exited %d: %s", c, vpsOn.output())
 	}
-	if entries, _ := os.ReadDir(onData); len(entries) != 0 {
-		t.Fatalf("vps-on kept %v", entries)
+	machineErased(onData)
+	if b, err := os.ReadFile(appFile); err != nil || string(b) != "another owner" {
+		t.Fatalf("erasing the machine erased the app's owner too: %q %v", b, err)
 	}
 
 	// The Mac erases itself last, and opens empty, saying what was done.
@@ -207,9 +225,7 @@ func TestEraseEverything(t *testing.T) {
 	if !strings.Contains(vpsOff.output(), "The owner erased everything") {
 		t.Fatalf("vps-off said: %s", vpsOff.output())
 	}
-	if entries, _ := os.ReadDir(offData); len(entries) != 0 {
-		t.Fatalf("vps-off kept %v", entries)
-	}
+	machineErased(offData)
 
 	// A cold start: the relay can be claimed again, and the Mac set up anew.
 	claim := strings.TrimSpace(run(t, nil, 10*time.Second, filepath.Join(w.bin, "hermesh-relay"), "claim-code", "--data-dir", filepath.Join(w.tmp, "relay")).stdout)

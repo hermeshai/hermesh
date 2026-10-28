@@ -44,6 +44,12 @@ func (o *Owner) EraseEverything(ctx context.Context) (string, error) {
 	if err := o.requireInit(); err != nil {
 		return "", err
 	}
+	o.mu.Lock()
+	started := o.erasing != nil
+	o.mu.Unlock()
+	if started {
+		return "", connect.NewError(connect.CodeFailedPrecondition, errors.New("this device is already erasing everything"))
+	}
 	run, err := o.eraseItems(ctx)
 	if err != nil {
 		return "", err
@@ -67,7 +73,9 @@ func (o *Owner) EraseEverything(ctx context.Context) (string, error) {
 	o.mu.Unlock()
 	if _, err := ctl.EraseOwner(ctx, &relayv1.EraseOwnerRequest{Order: signed[0]}); err != nil {
 		o.mu.Lock()
-		o.erasing = nil
+		if o.erasing == run {
+			o.erasing = nil
+		}
 		o.mu.Unlock()
 		return "", err
 	}
