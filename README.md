@@ -33,15 +33,12 @@ Your agent starts a session on your machine, follows it, answers the coding agen
 
 ## How it works
 
-```mermaid
-flowchart LR
-    agent["Your agent<br/>Grok Bot · ChatGPT · Claude · your own"]
-    center(["hermesh.io<br/>or your own server"])
-    machines["Your machines<br/>Mac · Linux server · VPS<br/>with Claude Code, Codex…"]
-    device["Your trusted device<br/>iPhone · Mac · Linux"]
-    agent -- "starts and follows sessions" --> center -- "end to end" --> machines
-    device -. "approves each agent and machine" .-> center
-```
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/assets/how-it-works-dark.svg">
+    <img src="docs/assets/how-it-works-light.svg" width="100%" alt="Your agent (Grok Bot, ChatGPT, Claude, Codex or your own) starts and follows sessions through hermesh.io or your own server, encrypted end to end, on your machines (a Mac, a Linux server, a VPS) running Claude Code or Codex. Your trusted device (an iPhone, a Mac or a Linux computer) approves each agent and machine.">
+  </picture>
+</p>
 
 Three words to know:
 
