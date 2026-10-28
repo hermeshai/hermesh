@@ -560,7 +560,7 @@ func (o *Owner) checkRemoved() {
 	// itself (the one that erased waits for FinishErase).
 	if removed && !erasing && onErase != nil {
 		if order := o.eraseOrder(info); order != nil {
-			go onErase(o, order.EraseId)
+			go onErase(o, order.EraseId, o.deviceName(info.EraseOrder.SignerKeyId))
 		}
 	}
 }

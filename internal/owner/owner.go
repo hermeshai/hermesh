@@ -105,7 +105,8 @@ type Owner struct {
 	erased *localv1.Erased
 	// onErase: the device erasing this profile, whose owner erased
 	// everything from another device (set by Device).
-	onErase func(o *Owner, eraseID string)
+	// by: the trusted device that erased, by name.
+	onErase func(o *Owner, eraseID, by string)
 	// wiping: the profile is being erased (once, however many refusals
 	// asked).
 	wiping bool
@@ -827,7 +828,7 @@ func (o *Owner) startLocalMachine() error {
 			o.mu.Lock()
 			o.localCancel, o.localMachine, o.localDone = nil, nil, nil
 			o.mu.Unlock()
-			o.onErase(o, "")
+			o.onErase(o, "", "")
 		}
 	}()
 	return nil

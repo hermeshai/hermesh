@@ -29,6 +29,10 @@ import (
 // that replaced the erased one, for its first run to say.
 const kErased = "erased"
 
+// finishAfter: when the device that erased everything erases itself if the
+// app did not ask it to (FinishErase) by then.
+const finishAfter = 2 * time.Minute
+
 // eraseRun is an erase this device started: what there was, and the id
 // each acks as.
 type eraseRun struct {
@@ -79,34 +83,42 @@ func (o *Owner) EraseEverything(ctx context.Context) (string, error) {
 		o.mu.Unlock()
 		return "", err
 	}
+	// The app calls FinishErase once the others had their moment; a window
+	// closed meanwhile doesn't leave this device half erased.
+	time.AfterFunc(finishAfter, func() {
+		o.mu.Lock()
+		still, onErase := o.erasing == run, o.onErase
+		o.mu.Unlock()
+		if still && onErase != nil {
+			onErase(o, run.id, "")
+		}
+	})
 	return run.id, nil
 }
 
 // eraseItems lists what an erase reaches: the trusted devices, machines
-// and agents, with the id each acks as.
+// and agents, with the id each acks as. A device's own machine is the
+// device's: it erases with it.
 func (o *Owner) eraseItems(ctx context.Context) (*eraseRun, error) {
 	run := &eraseRun{}
-	add := func(kind, name, subject string, this bool) {
-		run.items = append(run.items, &localv1.EraseItem{Kind: kind, Name: name, ThisDevice: this})
+	add := func(kind, name, subject string, this, online bool) {
+		run.items = append(run.items, &localv1.EraseItem{Kind: kind, Name: name, ThisDevice: this, Online: online})
 		run.subjects = append(run.subjects, subject)
 	}
-	o.mu.Lock()
-	trust, rootPub := o.trust, o.rootPub
-	o.mu.Unlock()
-	me := identity.KeyID(rootPub)
-	for _, k := range trust.Root().GetRootKeys() {
-		if pub, err := identity.ParsePublicKey(k.PublicKey); err == nil {
-			add("device", k.Label, identity.KeyID(pub), identity.KeyID(pub) == me)
-		}
+	devices, err := o.ListDevices(ctx)
+	if err != nil {
+		return nil, err
+	}
+	for _, d := range devices {
+		add("device", d.Label, d.KeyId, d.ThisDevice, d.MachineOnline && !d.ThisDevice)
 	}
 	machines, err := o.machines(ctx)
 	if err != nil {
 		return nil, err
 	}
-	local := o.Status().GetLocalMachineId()
 	for _, m := range machines {
-		if m.MachineId != local {
-			add("machine", m.MachineName, m.MachineId, false)
+		if m.DeviceKeyId == "" {
+			add("machine", m.MachineName, m.MachineId, false, m.Online)
 		}
 	}
 	clients, err := o.ListClients(ctx)
@@ -121,14 +133,25 @@ func (o *Owner) eraseItems(ctx context.Context) (*eraseRun, error) {
 			if c.Custodian != "" {
 				subject = ""
 			}
-			add("agent", c.Label, subject, false)
+			add("agent", c.Label, subject, false, false)
 		}
 	}
 	return run, nil
 }
 
-// EraseStatus says which of an erase's devices, machines and agents acked.
+// EraseStatus says which of an erase's devices, machines and agents acked;
+// without an erase id, what erasing everything would reach now.
 func (o *Owner) EraseStatus(ctx context.Context, eraseID string) (*localv1.EraseStatusResponse, error) {
+	if eraseID == "" {
+		if err := o.requireInit(); err != nil {
+			return nil, err
+		}
+		run, err := o.eraseItems(ctx)
+		if err != nil {
+			return nil, err
+		}
+		return &localv1.EraseStatusResponse{Items: run.items}, nil
+	}
 	o.mu.Lock()
 	run, relayURL, ownerID := o.erasing, o.relayURL, o.ownerID
 	o.mu.Unlock()
@@ -166,6 +189,19 @@ func (o *Owner) eraseOrder(info *relayv1.GetInfoResponse) *identityv1.EraseOrder
 		return nil
 	}
 	return order
+}
+
+// deviceName is the trusted device whose root key is keyID, by its name.
+func (o *Owner) deviceName(keyID string) string {
+	o.mu.Lock()
+	trust := o.trust
+	o.mu.Unlock()
+	for _, k := range trust.Root().GetRootKeys() {
+		if pub, err := identity.ParsePublicKey(k.PublicKey); err == nil && identity.KeyID(pub) == keyID {
+			return k.Label
+		}
+	}
+	return ""
 }
 
 // eraseData erases what this profile keeps besides its directory: it acks
@@ -236,12 +272,12 @@ func (d *Device) FinishErase(ctx context.Context) error {
 			}
 		}
 	}
-	return d.eraseProfile(ctx, id, o, run.id, pending)
+	return d.eraseProfile(ctx, id, o, run.id, pending, "")
 }
 
 // erasedBy erases profile o, whose owner erased everything from another
 // device.
-func (d *Device) erasedBy(o *Owner, eraseID string) {
+func (d *Device) erasedBy(o *Owner, eraseID, by string) {
 	d.mu.Lock()
 	id := ""
 	for pid, p := range d.profiles {
@@ -255,14 +291,14 @@ func (d *Device) erasedBy(o *Owner, eraseID string) {
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
 	defer cancel()
-	if err := d.eraseProfile(ctx, id, o, eraseID, nil); err != nil {
+	if err := d.eraseProfile(ctx, id, o, eraseID, nil, by); err != nil {
 		o.log.Warn("erasing this device", "err", err)
 	}
 }
 
 // eraseProfile erases profile id: its data, then its directory. The current
 // one is replaced by an empty profile, which says what was done.
-func (d *Device) eraseProfile(ctx context.Context, id string, o *Owner, eraseID string, pending []string) error {
+func (d *Device) eraseProfile(ctx context.Context, id string, o *Owner, eraseID string, pending []string, by string) error {
 	o.mu.Lock()
 	again := o.wiping
 	o.wiping = true
@@ -293,7 +329,7 @@ func (d *Device) eraseProfile(ctx context.Context, id string, o *Owner, eraseID 
 	if err != nil {
 		return err
 	}
-	d.profiles[next].setErased(&localv1.Erased{EraseId: eraseID, At: timestamppb.Now(), Pending: pending, KeptWorktrees: kept})
+	d.profiles[next].setErased(&localv1.Erased{EraseId: eraseID, At: timestamppb.Now(), Pending: pending, KeptWorktrees: kept, By: by})
 	if err := d.setCurrent(next); err != nil {
 		return err
 	}

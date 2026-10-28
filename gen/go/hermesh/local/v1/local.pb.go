@@ -2532,12 +2532,16 @@ func (x *EraseStatusResponse) GetItems() []*EraseItem {
 
 type EraseItem struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
-	// "device", "machine" or "agent".
+	// "device", "machine" or "agent". A trusted device that is a machine too
+	// is one device.
 	Kind string `protobuf:"bytes,1,opt,name=kind,proto3" json:"kind,omitempty"`
 	Name string `protobuf:"bytes,2,opt,name=name,proto3" json:"name,omitempty"`
 	// This device.
-	ThisDevice    bool `protobuf:"varint,3,opt,name=this_device,json=thisDevice,proto3" json:"this_device,omitempty"`
-	Done          bool `protobuf:"varint,4,opt,name=done,proto3" json:"done,omitempty"`
+	ThisDevice bool `protobuf:"varint,3,opt,name=this_device,json=thisDevice,proto3" json:"this_device,omitempty"`
+	Done       bool `protobuf:"varint,4,opt,name=done,proto3" json:"done,omitempty"`
+	// Online when the erase began (a machine, or a device's own machine): it
+	// erases within seconds. The others erase the next time they connect.
+	Online        bool `protobuf:"varint,5,opt,name=online,proto3" json:"online,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -2596,6 +2600,13 @@ func (x *EraseItem) GetThisDevice() bool {
 func (x *EraseItem) GetDone() bool {
 	if x != nil {
 		return x.Done
+	}
+	return false
+}
+
+func (x *EraseItem) GetOnline() bool {
+	if x != nil {
+		return x.Online
 	}
 	return false
 }
@@ -2682,6 +2693,8 @@ type Erased struct {
 	Pending []string `protobuf:"bytes,3,rep,name=pending,proto3" json:"pending,omitempty"`
 	// Worktrees with uncommitted changes, kept.
 	KeptWorktrees []string `protobuf:"bytes,4,rep,name=kept_worktrees,json=keptWorktrees,proto3" json:"kept_worktrees,omitempty"`
+	// The trusted device that erased everything, when it was another one.
+	By            string `protobuf:"bytes,5,opt,name=by,proto3" json:"by,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -2742,6 +2755,13 @@ func (x *Erased) GetKeptWorktrees() []string {
 		return x.KeptWorktrees
 	}
 	return nil
+}
+
+func (x *Erased) GetBy() string {
+	if x != nil {
+		return x.By
+	}
+	return ""
 }
 
 type WatchSigningRequestsRequest struct {
@@ -7583,20 +7603,22 @@ const file_hermesh_local_v1_local_proto_rawDesc = "" +
 	"\x12EraseStatusRequest\x12\x19\n" +
 	"\berase_id\x18\x01 \x01(\tR\aeraseId\"H\n" +
 	"\x13EraseStatusResponse\x121\n" +
-	"\x05items\x18\x01 \x03(\v2\x1b.hermesh.local.v1.EraseItemR\x05items\"h\n" +
+	"\x05items\x18\x01 \x03(\v2\x1b.hermesh.local.v1.EraseItemR\x05items\"\x80\x01\n" +
 	"\tEraseItem\x12\x12\n" +
 	"\x04kind\x18\x01 \x01(\tR\x04kind\x12\x12\n" +
 	"\x04name\x18\x02 \x01(\tR\x04name\x12\x1f\n" +
 	"\vthis_device\x18\x03 \x01(\bR\n" +
 	"thisDevice\x12\x12\n" +
-	"\x04done\x18\x04 \x01(\bR\x04done\"\x14\n" +
+	"\x04done\x18\x04 \x01(\bR\x04done\x12\x16\n" +
+	"\x06online\x18\x05 \x01(\bR\x06online\"\x14\n" +
 	"\x12FinishEraseRequest\"\x15\n" +
-	"\x13FinishEraseResponse\"\x90\x01\n" +
+	"\x13FinishEraseResponse\"\xa0\x01\n" +
 	"\x06Erased\x12\x19\n" +
 	"\berase_id\x18\x01 \x01(\tR\aeraseId\x12*\n" +
 	"\x02at\x18\x02 \x01(\v2\x1a.google.protobuf.TimestampR\x02at\x12\x18\n" +
 	"\apending\x18\x03 \x03(\tR\apending\x12%\n" +
-	"\x0ekept_worktrees\x18\x04 \x03(\tR\rkeptWorktrees\"\x1d\n" +
+	"\x0ekept_worktrees\x18\x04 \x03(\tR\rkeptWorktrees\x12\x0e\n" +
+	"\x02by\x18\x05 \x01(\tR\x02by\"\x1d\n" +
 	"\x1bWatchSigningRequestsRequest\"\xeb\x02\n" +
 	"\x0eSigningRequest\x12\x1d\n" +
 	"\n" +

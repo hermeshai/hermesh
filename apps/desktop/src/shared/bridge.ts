@@ -82,6 +82,8 @@ export type Bridge = {
   openLoginItems(): void;
   /** Opens Activity Monitor (this Mac out of processes: the person finds what holds them). */
   openActivityMonitor(): void;
+  /** Shows in Finder a worktree erasing everything kept (it had uncommitted changes). */
+  revealKeptWorktree(path: string): void;
   /** The app's updates (main/updater.ts). */
   openUpdates(manual?: boolean): void;
   /** Fit the update window to its content, within the display work area. */

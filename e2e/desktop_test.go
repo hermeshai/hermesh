@@ -137,7 +137,7 @@ func desktopWorld(t *testing.T, fresh, limited, wake bool) desktopFixture {
 		w.nproc = userProcesses(t) + 80
 		w.restartOwner(false)
 	}
-	for i := 0; fresh && i < 9; i++ {
+	for i := 0; fresh && i < 10; i++ {
 		f.Fresh = append(f.Fresh, newFreshOwner(t, w, fmt.Sprintf("fresh-%d", i), i == 0, i == 8))
 	}
 	return f

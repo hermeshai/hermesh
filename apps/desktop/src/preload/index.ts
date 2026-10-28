@@ -59,6 +59,7 @@ const bridge: Bridge = {
   daemonNeedsApproval: () => ipcRenderer.invoke("daemon-needs-approval"),
   openLoginItems: () => ipcRenderer.send("open-login-items"),
   openActivityMonitor: () => ipcRenderer.send("open-activity-monitor"),
+  revealKeptWorktree: (path: string) => ipcRenderer.send("reveal-kept-worktree", path),
   openUpdates: (manual = false) => ipcRenderer.send("open-updates", manual),
   updateWindowHeight: (height: number) => ipcRenderer.send("update-window-height", height),
   openWhatsNew: () => ipcRenderer.send("open-whats-new"),

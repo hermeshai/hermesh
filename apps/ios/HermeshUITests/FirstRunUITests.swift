@@ -15,6 +15,9 @@ extension HermeshUITests {
         try XCTContext.runActivity(named: "adds a project the machine found") { _ in try addFoundProject() }
         try XCTContext.runActivity(named: "says this iPhone alone can approve, until hidden") { _ in try onlyDevice() }
         try XCTContext.runActivity(named: "connects an agent, whose first session opens by itself") { _ in try firstTask() }
+        try XCTContext.runActivity(named: "erases everything, and opens on its first run saying what was done") { _ in
+            try eraseEverything(URL(string: world["relay"] as! String)!)
+        }
     }
 
     func claimServer(_ relay: String, claim: String) throws {
@@ -118,6 +121,39 @@ extension HermeshUITests {
         XCTAssertFalse(app.descendants(matching: .any)["client-connected"].exists)
         back(to: "working-today")
         XCTAssertTrue(app.descendants(matching: .any)["get-started"].firstMatch.waitForNonExistence(timeout: 30), "Get Started is done")
+    }
+
+    func eraseEverything(_ relay: URL) throws {
+        openMenu()
+        tap("account")
+        // At the bottom of the account: the list makes its rows as they scroll in.
+        XCTAssertTrue(app.buttons["appearance-system"].waitForExistence(timeout: 20), "the account")
+        let erase = app.descendants(matching: .any)["erase-everything"].firstMatch
+        for _ in 0 ..< 6 where !(erase.exists && erase.isHittable) { app.swipeUp() }
+        XCTAssertTrue(erase.waitForExistence(timeout: 5), "Erase Everything, at the bottom of the account")
+        press(erase)
+        // What it erases, by name.
+        XCTAssertTrue(text("vps-1").waitForExistence(timeout: 20), "the machine")
+        XCTAssertTrue(text("Cursor").exists && text("这台 iPhone").exists, "the agent and this iPhone")
+        // The address to type and the button, further down.
+        let field = app.textFields["erase-confirm"], button = app.buttons["erase-button"]
+        for _ in 0 ..< 6 where !(button.exists && button.isHittable) { app.swipeUp() }
+        XCTAssertTrue(button.waitForExistence(timeout: 5), "the button")
+        XCTAssertFalse(button.isEnabled, "waits for the server's address")
+        field.tap()
+        // Typed, and the keyboard put away (it covers the button).
+        field.typeText("\(relay.host!):\(relay.port!)\n")
+        try waitFor("the button enabled and in reach") { button.isEnabled && button.isHittable ? true : nil }
+        button.tap()
+        // vps-1 erases itself now, the agent the next time it's used; this iPhone last.
+        let note = app.descendants(matching: .any)["erased-note"].firstMatch
+        XCTAssertTrue(note.waitForExistence(timeout: 60), "the first run says what was done")
+        XCTAssertTrue(text("Hermesh 已全部清空").exists)
+        XCTAssertTrue(text("Cursor下次连上时会自己清空").exists, "the agent waits")
+        XCTAssertEqual(try control("erased")["erased"] as? Bool, true, "vps-1 erased itself")
+        XCTAssertTrue(app.buttons["sign-in"].exists, "the first run")
+        press(note.buttons["关闭"])
+        XCTAssertTrue(note.waitForNonExistence(timeout: 10))
     }
 
     /// Back one page, until the one with this element shows.

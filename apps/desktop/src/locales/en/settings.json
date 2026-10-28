@@ -87,6 +87,7 @@
     "consoleDesc": "See machines and access in any browser, revoke in an emergency",
     "open": "Open",
     "signOut": "Sign Out…",
+    "eraseAll": "Erase Everything…",
     "machineOnlyNote": "This Mac is a machine of your account: it runs agents’ tasks and you set it up here, but it approves nothing and doesn’t see your other machines. Approve on one of your trusted devices."
   },
   "grants": {

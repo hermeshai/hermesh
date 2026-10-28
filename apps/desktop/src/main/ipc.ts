@@ -169,6 +169,10 @@ export function registerIPC() {
   ipcMain.handle("daemon-needs-approval", (e) => trusted(e) && daemonNeedsApproval());
   ipcMain.on("open-login-items", (e) => trusted(e) && openLoginItems());
   ipcMain.on("open-activity-monitor", (e) => trusted(e) && process.platform === "darwin" && void shell.openPath("/System/Applications/Utilities/Activity Monitor.app"));
+  // Only what erasing everything kept (hermeshd's kept-worktrees), never any path the page names.
+  ipcMain.on("reveal-kept-worktree", (e, p) => {
+    if (trusted(e) && typeof p === "string" && path.isAbsolute(p) && path.normalize(p).split(path.sep).includes("kept-worktrees")) shell.showItemInFolder(path.normalize(p));
+  });
 
   // Updates (main/updater.ts).
   ipcMain.on("open-updates", (e, manual) => trusted(e) && openUpdates(manual === true));

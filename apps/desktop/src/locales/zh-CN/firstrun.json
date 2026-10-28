@@ -158,5 +158,14 @@
       "missingRuntime": "找到了 {{binary}}，但运行它需要的 {{runtime}} 找不到。确认它在终端里能运行。",
       "failed": "找到了 {{binary}}，但运行时报错：{{detail}}"
     }
+  },
+  "erased": {
+    "done": "Hermesh 已全部清空",
+    "by": "你在「{{device}}」上全部清空了 Hermesh",
+    "byBody": "这台 Mac 上的 Hermesh 也已清空。",
+    "pending": "{{names}}下次连上时会自己清空。",
+    "kept": "有未提交的改动，已保留：",
+    "reveal": "在访达中显示",
+    "dismiss": "关闭"
   }
 }

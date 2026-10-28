@@ -26,3 +26,15 @@
 .sheet .wk-kv>div:first-child{border-top:0}
 .sheet .wk-kv b{font-weight:400;color:var(--l1);text-align:right;min-width:0;overflow-wrap:anywhere}
 .sheet .wk-how summary{cursor:pointer}
+/* Erase Everything (sheets/Erase.tsx). */
+.sheet .erase-what .frow{align-items:flex-start}
+.sheet .erase-what .frow>.ic{margin-top:2px;color:var(--l2)}
+.sheet .erase-names{display:flex;flex-wrap:wrap;gap:3px 12px;margin-top:5px;font-size:12px}
+.sheet .erase-name{display:inline-flex;align-items:center;gap:5px}
+.sheet .erase-stays{margin-top:14px}
+.sheet .erase-stay{margin:0;padding:8px 14px 8px 30px;background:var(--win2);border-radius:12px;font-size:12px;color:var(--l2);line-height:1.7}
+.sheet .erase-lab{display:block;font-size:12px;color:var(--l2);margin:14px 4px 5px}
+.sheet .erase-lab b{color:var(--l1);font-weight:500}
+.sheet .erase-st{display:inline-flex;align-items:center;gap:6px;font-size:12px;color:var(--l2);white-space:nowrap}
+.sheet .erase-st.ok{color:var(--green)}
+.sheet .erase-spin{width:11px;height:11px;border-radius:50%;border:2px solid var(--fill2);border-top-color:var(--l1);animation:wk-spin .8s linear infinite}

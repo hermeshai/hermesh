@@ -159,5 +159,14 @@
       "missingRuntime": "Found {{binary}}, but {{runtime}}, which runs it, can’t be found. Make sure it runs in Terminal.",
       "failed": "Found {{binary}}, but running it failed: {{detail}}"
     }
+  },
+  "erased": {
+    "done": "Hermesh erased everything",
+    "by": "You erased everything in Hermesh on “{{device}}”",
+    "byBody": "Hermesh on this Mac is erased too.",
+    "pending": "{{names}} will erase themselves the next time they connect.",
+    "kept": "Kept, with uncommitted changes:",
+    "reveal": "Show in Finder",
+    "dismiss": "Close"
   }
 }

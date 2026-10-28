@@ -628,3 +628,52 @@ test("a work Mac joins as a machine only: no Touch ID, the code, the two digits;
   await expect(page.getByRole("heading", { name: "让 Agent 安全地互相连接" })).toBeVisible();
   await app.close();
 });
+
+test("erasing everything: what it erases, the server's address typed, Touch ID, then this Mac's first run says what was done", async () => {
+  const fresh = fixture.fresh[9];
+  const mac = daemon(fresh.socket);
+  await mac.setup({ relayUrl: fresh.relayURL, claimCode: fresh.claimCode, rootLabel: "erase-mac", localMachineName: "erase-mac" });
+  const host = new URL(fresh.relayURL).host;
+  const profile = fs.mkdtempSync(path.join(os.tmpdir(), "hmdesk-"));
+  const { app, page } = await launch(fresh.socket, { profile });
+  await expectMainWindow(app, page);
+  const [settings] = await Promise.all([app.waitForEvent("window"), page.evaluate(() => window.hermesh?.openSettings("account"))]);
+  await settings.waitForLoadState();
+  await settings.getByRole("main", { name: "账号与设备" }).getByRole("button", { name: "全部清空…" }).click();
+
+  // What it erases, by name (this Mac's machine is this Mac), and what stays.
+  const sheet = settings.getByRole("dialog", { name: "全部清空 Hermesh？" });
+  await expect(sheet).toContainText("erase-mac 这台 Mac");
+  await expect(sheet).toContainText(`自己的服务器 · ${host}`);
+  await expect(sheet).not.toContainText("机器");
+  await expect(sheet).toContainText("有未提交改动的 worktree：挪到一边保留");
+  // Escape doesn't close it; the button waits for the server's address.
+  await settings.keyboard.press("Escape");
+  await expect(sheet).toBeVisible();
+  const erase = sheet.getByRole("button", { name: "全部清空", exact: true });
+  await expect(erase).toBeDisabled();
+  await sheet.getByLabel(/清空后不能撤销/).fill(host.slice(0, -1));
+  await expect(erase).toBeDisabled();
+  await sheet.getByLabel(/清空后不能撤销/).fill(` ${host.toUpperCase()} `);
+  await snap(settings, "settings-erase");
+  // The test signer approves (Touch ID); this Mac is the only one, so it erases itself at once.
+  await Promise.all([settings.waitForEvent("close"), erase.click()]);
+
+  // The first run, saying once what was done.
+  await expect(page.getByRole("heading", { name: "让 Agent 安全地互相连接" })).toBeVisible({ timeout: 30_000 });
+  const note = page.getByRole("status").filter({ hasText: "Hermesh 已全部清空" });
+  await expect(note).toBeVisible();
+  await snap(page, "first-erased");
+  const status = await mac.getStatus({});
+  expect(status.initialized).toBe(false);
+  expect(status.erased?.eraseId).toBeTruthy();
+  await note.getByRole("button", { name: "关闭" }).click();
+  await expect(note).toBeHidden();
+  await app.close();
+
+  // Closed, it stays closed.
+  const again = await launch(fresh.socket, { profile });
+  await expect(again.page.getByRole("heading", { name: "让 Agent 安全地互相连接" })).toBeVisible();
+  await expect(again.page.getByText("Hermesh 已全部清空")).toHaveCount(0);
+  await again.app.close();
+});
