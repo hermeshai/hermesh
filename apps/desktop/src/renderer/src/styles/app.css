@@ -128,15 +128,18 @@ button{font:inherit;color:inherit}
 .mainwrap.noside{grid-template-columns:0 minmax(0,1fr)}
 /* Edge to edge: the sidebar fills the window from top to bottom and left to its edge, one hairline from the content. */
 .side{background:var(--side);border-right:.5px solid var(--sep);display:flex;flex-direction:column;min-height:0;overflow:hidden}
+/* Sidebar titles a step brighter than other text in the dark, as small text on the material reads grey. */
+@media (prefers-color-scheme:dark){.side{--l1:rgba(255,255,255,.93)}}
 .noside .side{opacity:0;pointer-events:none}
-/* The sidebar toggle sits a step after the traffic lights (which end at x 82), as in Codex and Mail; hidden, the toolbar keeps it there. */
-.side-top{height:52px;display:flex;align-items:center;padding:0 8px 0 92px;flex:none}
+/* The sidebar toggle sits a step after the traffic lights (which end at x 82), as in Codex and Mail; hidden, the toolbar keeps it there. The list's view options end the row. */
+.side-top{height:52px;display:flex;align-items:center;justify-content:space-between;padding:0 8px 0 92px;flex:none}
 .tb{height:28px;min-width:28px;border:0;background:transparent;border-radius:8px;display:flex;align-items:center;justify-content:center;color:var(--l2);gap:5px;padding:0 6px}
 .tb:hover{background:var(--fill2);color:var(--l1)}
 .tb.on{background:var(--fill2);color:var(--l1)}
-.side-nav{padding:0 8px 6px;display:flex;flex-direction:column;gap:1px;flex:none}
-.nav-i{display:flex;align-items:center;gap:9px;height:30px;padding:0 9px;border-radius:8px;font-size:13px;border:0;background:none;width:100%;text-align:left}
-.nav-i .ic{color:var(--l1)}
+/* One rhythm with the list: rows 32 high, 34 apart. */
+.side-nav{padding:0 8px 6px;display:flex;flex-direction:column;gap:2px;flex:none}
+.nav-i{display:flex;align-items:center;gap:9px;height:32px;padding:0 9px;border-radius:8px;font-size:14px;border:0;background:none;width:100%;text-align:left}
+.nav-i .ic{width:18px;height:18px;color:var(--l1)}
 /* The shortcut shows on hover only: the menus say it too. */
 .nav-i .kbd{margin-left:auto;opacity:0;transition:opacity .12s}
 .nav-i:hover .kbd,.nav-i:focus-visible .kbd{opacity:1}
@@ -146,13 +149,13 @@ button{font:inherit;color:inherit}
 .side-list{flex:1;overflow-y:auto;min-height:0;padding:0 8px 8px;scrollbar-width:thin}
 .side-list>[role=group]{display:flex;flex-direction:column;gap:2px}
 /* A group's heading: its title, its count, and ▾ (▸ when collapsed); a click collapses or opens it. */
-.grp-h{position:sticky;top:0;z-index:2;font:inherit;font-size:12px;font-weight:400;color:var(--l2);padding:20px 10px 6px;margin-bottom:2px;display:flex;align-items:center;gap:6px;background:var(--side-head);border:0;width:100%;text-align:left}
-.side-list>[role=group]:first-child .grp-h{padding-top:10px}
+.grp-h{position:sticky;top:0;z-index:2;font:inherit;font-size:12px;font-weight:400;color:var(--l2);padding:24px 10px 6px;margin-bottom:2px;display:flex;align-items:center;gap:6px;background:var(--side-head);border:0;width:100%;text-align:left}
+.side-list>[role=group]:first-child .grp-h{padding-top:20px}
 .grp-h:hover{color:var(--l1)}
 .grp-h .n{font-weight:500;color:var(--l3)}
-.grp-h .ic{width:12px;height:12px;color:var(--l2);transition:transform .15s var(--ease-out)}
+.grp-h .ic{width:16px;height:16px;color:var(--l2);transition:transform .15s var(--ease-out)}
 .grp-h.shut .ic{transform:rotate(-90deg)}
-.srow{display:flex;padding:7px 10px;border-radius:10px;align-items:flex-start;border:0;background:none;width:100%;text-align:left;font-size:13px}
+.srow{display:flex;padding:7px 10px;border-radius:10px;align-items:flex-start;border:0;background:none;width:100%;text-align:left;font-size:14px}
 .srow:hover{background:var(--fill)}
 .srow.sel{background:var(--side-sel)}
 .srow .sdot{width:6px;height:6px}
@@ -163,16 +166,13 @@ button{font:inherit;color:inherit}
 .srow.has-act:hover .rowact{display:flex}
 .srow.menu-open .smeta{display:none}
 .srow.menu-open .rowact{display:flex;background:var(--fill2);color:var(--l1)}
-.srename{flex:1;min-width:0;font:inherit;font-size:13px;color:var(--l1);background:var(--field);border:0;border-radius:5px;outline:none;box-shadow:0 0 0 1.5px var(--accent);padding:0 5px;margin:-1px 0 -1px -5px}
-.side-head{flex:none;padding:4px 10px 2px 18px;position:relative}
-.lh{display:flex;align-items:center;justify-content:space-between;font-size:12px;font-weight:400;color:var(--l2);height:26px}
-.lh .tb{height:22px;min-width:24px;padding:0 4px}
+.srename{flex:1;min-width:0;font:inherit;font-size:14px;color:var(--l1);background:var(--field);border:0;border-radius:5px;outline:none;box-shadow:0 0 0 1.5px var(--accent);padding:0 5px;margin:-1px 0 -1px -5px}
 .psel{appearance:none;-webkit-appearance:none;border:0;background-color:var(--fill2);color:var(--l1);height:24px;border-radius:7px;padding:0 24px 0 9px;font:inherit;font-size:12px;width:100%;background-image:linear-gradient(45deg,transparent 50%,currentColor 50%),linear-gradient(135deg,currentColor 50%,transparent 50%);background-position:calc(100% - 13px) 10px,calc(100% - 9px) 10px;background-size:4px 4px;background-repeat:no-repeat}
 .psel.on{background-color:var(--accent-bg);color:var(--accent-t)}
 .anote{display:flex;align-items:center;gap:8px;font-size:12.5px;color:var(--l2);background:var(--fill);border-radius:10px;padding:8px 12px;margin-bottom:16px}
 .anote .link{margin-left:auto}
 .smain{min-width:0;flex:1}
-.sl1{display:flex;gap:8px;align-items:center}
+.sl1{display:flex;gap:8px;align-items:center;line-height:18px}
 .stitle{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 /* Running: a faded band crosses the title left to right in 3s, then rests 1.2s. The title itself is
    transparent (it keeps the row's layout and its words); two copies draw it, one in its colour seen
@@ -199,13 +199,14 @@ button{font:inherit;color:inherit}
 .side-foot:hover{background:var(--fill)}
 .side-foot>.ic{color:var(--l3);flex:none}
 .side-foot .who{min-width:0;flex:1;line-height:1.25;display:block}
-.side-foot .who b{font-weight:600;font-size:13px;display:block}
+.side-foot .av{background:var(--fill2);color:var(--l2);font-weight:500}
+.side-foot .who b{font-weight:500;font-size:13px;display:block}
 .side-foot .who span{font-size:11.5px;color:var(--l2);display:flex;align-items:center;gap:5px}
 .side-foot[aria-expanded="true"]{background:var(--fill2)}
 .side-foot .chev{transform:rotate(180deg);transition:transform .2s cubic-bezier(.2,0,0,1)}
 .side-foot[aria-expanded="true"] .chev{transform:none}
 /* the account menu: opens upward from the foot, as wide as it */
-.acct{position:relative;flex:none}
+.acct{position:relative;flex:none;border-top:.5px solid var(--sep);padding-top:6px}
 .acct-menu{position:absolute;left:6px;right:6px;bottom:calc(100% + 6px);z-index:10;background:var(--menu-solid);border-radius:12px;box-shadow:0 0 0 .5px var(--menu-bd),0 12px 32px rgba(0,0,0,.24),0 2px 6px rgba(0,0,0,.08);padding:5px;transform-origin:50% 100%;animation:menuup .18s cubic-bezier(.2,0,0,1)}
 @keyframes menuup{from{opacity:0;transform:translateY(6px) scale(.98)}to{opacity:1;transform:none}}
 .acct-menu .mi{display:flex;align-items:center;gap:9px;width:100%;height:30px;padding:0 9px;border:0;border-radius:7px;background:none;text-align:left;outline:none}
@@ -233,7 +234,7 @@ button{font:inherit;color:inherit}
 /* overview */
 .ov{padding:0 var(--sp-4) var(--sp-5);display:flex;flex-direction:column;gap:var(--sp-4);max-width:980px;margin:0 auto}
 /* The title row is as high as ＋ and sits on the sidebar's first button's line (the toolbar above is 54 high, and the sidebar's first button centres at 69). */
-.ov-h{display:flex;align-items:center;justify-content:space-between;gap:var(--sp-3);height:30px;margin-bottom:calc(var(--sp-2) - var(--sp-4))}
+.ov-h{display:flex;align-items:center;justify-content:space-between;gap:var(--sp-3);height:32px;margin-bottom:calc(var(--sp-2) - var(--sp-4))}
 .ov-t{display:flex;align-items:baseline;gap:var(--sp-2);min-width:0}
 .ov-h h1{margin:0;font-size:26px;font-weight:700;letter-spacing:-.01em}
 .ov-h span{color:var(--l2);font-size:13px}

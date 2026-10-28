@@ -24,6 +24,46 @@ test("the sidebar groups sessions by status: needs you, running, done; archived 
   await app.close();
 });
 
+// The sidebar reads calmly: one 34px rhythm for its buttons and rows, 14px
+// titles, room before each group, one heading per group (the view options
+// sit in the top bar, by the toggle), and a quiet foot with a dot only when
+// something is wrong.
+test("the sidebar keeps one rhythm, one heading per group and a quiet foot", async () => {
+  const { app, page } = await launch();
+  const list = page.getByRole("list", { name: "会话" });
+  await expect(list.getByRole("group", { name: "已结束" })).toContainText("写 hello");
+  const box = async (l: ReturnType<typeof page.locator>) => (await l.boundingBox())!;
+  const centre = async (l: ReturnType<typeof page.locator>) => ((b) => b.y + b.height / 2)(await box(l));
+
+  const overview = await box(page.getByRole("button", { name: /^概览/ }));
+  const search = await box(page.getByRole("button", { name: /^搜索/ }));
+  expect(overview.height).toBe(32);
+  expect(search.y - overview.y).toBe(34);
+  // The first heading's text sits a row and a breath (~17px) below the last button.
+  const heading = list.locator(".grp-h").first();
+  const text = await heading.evaluate((el) => {
+    const r = document.createRange();
+    r.selectNodeContents(el.firstChild!);
+    const b = r.getBoundingClientRect();
+    return b.y + b.height / 2;
+  });
+  const gap = text - (search.y + search.height / 2);
+  expect(gap).toBeGreaterThanOrEqual(48);
+  expect(gap).toBeLessThanOrEqual(54);
+
+  const title = list.getByRole("listitem").first().locator(".stitle");
+  expect(await title.evaluate((el) => [getComputedStyle(el).fontSize, getComputedStyle(el).lineHeight])).toEqual(["14px", "18px"]);
+  // No list-wide heading above the groups: the view options share the toggle's line.
+  expect(Math.abs((await centre(page.getByRole("button", { name: "视图选项" }))) - (await centre(page.getByRole("button", { name: "隐藏边栏" }))))).toBeLessThanOrEqual(1);
+  expect((await box(page.getByRole("button", { name: "视图选项" }))).y).toBeLessThan(overview.y);
+
+  const foot = page.getByRole("button", { name: "账号与设置" });
+  await expect(foot.locator(".dotc")).toHaveCount((await foot.innerText()).includes("未连接") ? 1 : 0);
+  await page.emulateMedia({ colorScheme: "dark" });
+  await snap(page, "sidebar-rhythm");
+  await app.close();
+});
+
 // The status dot sits with the status text on the right, so titles start at
 // the same edge as the group headings; a title too long for the row is cut
 // with an ellipsis and never pushes the status out. A running session has no

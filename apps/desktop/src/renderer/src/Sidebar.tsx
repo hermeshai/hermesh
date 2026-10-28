@@ -94,6 +94,7 @@ export function Sidebar() {
         <button className="tb" onClick={() => st.set({ sidebar: false })} title={`${t("window.hideSidebar")} ⌃⌘S`} aria-label={t("window.hideSidebar")}>
           <Icon name="sidebar" />
         </button>
+        <ListViewMenu />
       </div>
       <nav className="side-nav">
         <button className={`nav-i ${st.selection.kind === "overview" ? "sel" : ""}`} onClick={() => st.set({ selection: { kind: "overview" } })}>
@@ -107,12 +108,6 @@ export function Sidebar() {
           <span className="kbd">⌘K</span>
         </button>
       </nav>
-      <div className="side-head">
-        <div className="lh">
-          <span>{t("sidebar.sessions")}</span>
-          <ListViewMenu />
-        </div>
-      </div>
       <div className="side-list" role="list" aria-label={t("sidebar.sessions")} ref={list}>
         {sections.map((sec) => {
           const id = `${sec.grouping}:${sec.key}`;
@@ -239,13 +234,14 @@ function AccountMenu() {
         </div>
       )}
       <button className="side-foot" ref={foot} aria-label={t("sidebar.account")} aria-haspopup="menu" aria-expanded={!!open} onClick={(e) => setOpen(open ? false : e.detail ? "mouse" : "key")}>
-        <span className="av" style={{ background: "linear-gradient(135deg,var(--aurora-1),var(--aurora-2))" }} aria-hidden="true">
+        <span className="av" aria-hidden="true">
           {(window.hermesh?.userName ?? "H").slice(0, 1).toUpperCase()}
         </span>
         <span className="who">
           <b>{window.hermesh?.userName ?? "Hermesh"}</b>
           <span>
-            <i className={`dotc ${st.status?.relayConnected ? "on" : ""}`} />
+            {/* A dot only when it is worth noticing: not connected. */}
+            {!st.status?.relayConnected && <i className="dotc" />}
             {st.status?.relayConnected ? t("sidebar.connected", { count: online }) : t("sidebar.notConnected")}
           </span>
         </span>
