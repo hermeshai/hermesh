@@ -84,7 +84,8 @@ The app keeps itself up to date.
 On a Linux computer that runs no coding agents (your desktop, or a user of its own):
 
 ```bash
-curl -fsSL https://github.com/hermeshai/hermesh/releases/latest/download/install.sh | sh -s -- --device
+curl -fsSL https://github.com/hermeshai/hermesh/releases/latest/download/install.sh \
+  | sh -s -- --device
 ```
 
 With no other device yet, it signs you in with a code your browser shows, and this computer becomes your first trusted device, its key sealed by a passphrase you choose. Then add machines as above, and approve what asks to join with `hermeshd approve`.
@@ -100,7 +101,8 @@ Connect to Hermesh: follow https://hermesh.io/connect
 - **Online assistants** (ChatGPT, Claude.ai, Grok Bot, Muse) add the MCP server `https://mcp.hermesh.io/mcp` and send you to sign in.
 - **Agents on a computer** (Claude Code, Codex, Cursor, your own) install the CLI and sign in:
   ```bash
-  curl -fsSL https://github.com/hermeshai/hermesh/releases/latest/download/install.sh | sh -s -- --cli
+  curl -fsSL https://github.com/hermeshai/hermesh/releases/latest/download/install.sh \
+  | sh -s -- --cli
   hermesh auth login --name "Codex on MacBook"
   ```
 
@@ -169,7 +171,8 @@ docker logs hermesh-relay   # shows the claim code
 In the Mac or iPhone app, choose **Use Your Own Server…** and enter the server's address and the claim code. Machines and agents then use the connection address the app gives you:
 
 ```bash
-curl -fsSL https://github.com/hermeshai/hermesh/releases/latest/download/install.sh | sh -s -- relay.example.com/o_xxxxxxxx
+curl -fsSL https://github.com/hermeshai/hermesh/releases/latest/download/install.sh \
+  | sh -s -- relay.example.com/o_xxxxxxxx
 hermesh auth login relay.example.com/o_xxxxxxxx
 ```
 
