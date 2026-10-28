@@ -3,6 +3,8 @@ package machine
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -18,19 +20,25 @@ import (
 
 	identityv1 "github.com/hermeshai/hermesh/gen/go/hermesh/identity/v1"
 	"github.com/hermeshai/hermesh/internal/peercred"
+	"github.com/hermeshai/hermesh/internal/provider"
 	"github.com/hermeshai/hermesh/pkg/identity"
 )
 
 // The control socket lets `hermeshd project …` change a running machine's
-// projects (the machine holds its data directory). Projects are the
-// machine's own settings: whoever has a shell as this user can do as much
-// already, so only this user may connect.
+// projects, and `hermeshd doctor` and `status` ask it how it is (the
+// machine holds its data directory). Projects are the machine's own
+// settings: whoever has a shell as this user can do as much already, so
+// only this user may connect.
 
-// ControlSocket is where a machine with this data directory listens.
+// ControlSocket is where a machine with this data directory listens; for
+// a long path (sockets have a short limit), one in the temp folder named
+// after it, so two machines of one user never share it.
 func ControlSocket(dataDir string) string {
 	p := filepath.Join(dataDir, "control.sock")
 	if len(p) > 100 {
-		p = filepath.Join(os.TempDir(), fmt.Sprintf("hermesh-control-%d.sock", os.Getuid()))
+		abs, _ := filepath.Abs(dataDir)
+		h := sha256.Sum256([]byte(abs))
+		p = filepath.Join(os.TempDir(), fmt.Sprintf("hermesh-control-%d-%x.sock", os.Getuid(), h[:8]))
 	}
 	return p
 }
@@ -68,6 +76,9 @@ func (n *Machine) serveControl(ctx context.Context) {
 		b, _ := protojson.Marshal(res)
 		w.Write(b)
 	})
+	mux.HandleFunc("GET /check", func(w http.ResponseWriter, r *http.Request) {
+		json.NewEncoder(w).Encode(n.Check(r.Context()))
+	})
 	srv := &http.Server{Handler: mux, ReadHeaderTimeout: 10 * time.Second}
 	go func() {
 		<-ctx.Done()
@@ -75,6 +86,19 @@ func (n *Machine) serveControl(ctx context.Context) {
 		os.Remove(path)
 	}()
 	srv.Serve(&peercred.SameUserListener{UnixListener: ln.(*net.UnixListener)})
+}
+
+// Check is how this machine is, for `hermeshd doctor` and `status`; its
+// coding agents are looked at now.
+type Check struct {
+	MachineID, Name, OwnerID, RelayURL, Version string
+	Paired, Connected                           bool
+	Agents                                      map[string]provider.Info
+}
+
+func (n *Machine) Check(ctx context.Context) Check {
+	return Check{MachineID: n.MachineID(), Name: n.Name(), OwnerID: n.OwnerID(), RelayURL: n.RelayURL(), Version: Version,
+		Paired: n.Paired(), Connected: n.Connected(), Agents: n.Discover(ctx)}
 }
 
 // ApplyLocal applies a project change from this machine's own user: adding

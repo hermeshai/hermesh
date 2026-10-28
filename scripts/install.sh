@@ -136,7 +136,8 @@ echo "✓ installed to $BIN_DIR"
 if [ -z "$AS" ]; then
   case ":$PATH:" in
     *":$BIN_DIR:"*) ;;
-    *) echo "note: add $BIN_DIR to your PATH" ;;
+    *) echo "note: $BIN_DIR is not on your PATH; add it with:"
+       echo "  echo 'export PATH=\"\$HOME/.local/bin:\$PATH\"' >> ~/.profile && . ~/.profile" ;;
   esac
 fi
 
@@ -153,4 +154,12 @@ if [ -n "$TTY" ]; then
   $AS "$BIN_DIR/hermeshd" "$@" <"$TTY"
 else
   $AS "$BIN_DIR/hermeshd" "$@"
+fi
+# Installed by root: its commands, as the service, are that user's.
+if [ -n "$AS" ]; then
+  echo
+  echo "Hermesh runs as $FOR_USER: run these as $FOR_USER (su - $FOR_USER)"
+  if ! su - "$FOR_USER" -c 'command -v hermeshd' >/dev/null 2>&1; then
+    echo "  ($FOR_USER's PATH lacks $BIN_DIR: echo 'export PATH=\"\$HOME/.local/bin:\$PATH\"' >> $home/.profile)"
+  fi
 fi

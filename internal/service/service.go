@@ -108,6 +108,7 @@ func Uninstall() error {
 		os.Remove(launchdPlist())
 		return nil
 	case "linux":
+		userBus()
 		exec.Command("systemctl", "--user", "disable", "--now", "hermeshd.service").Run()
 		os.Remove(systemdUnit())
 		exec.Command("systemctl", "--user", "daemon-reload").Run()
@@ -122,14 +123,20 @@ func Restart() error {
 	case "darwin":
 		return exec.Command("launchctl", "kickstart", "-k", fmt.Sprintf("gui/%d/%s", os.Getuid(), label)).Run()
 	case "linux":
-		return exec.Command("systemctl", "--user", "restart", "hermeshd.service").Run()
+		if err := userBus(); err != nil {
+			return err
+		}
+		if out, err := exec.Command("systemctl", "--user", "restart", "hermeshd.service").CombinedOutput(); err != nil {
+			return fmt.Errorf("systemctl --user restart hermeshd: %v: %s", err, out)
+		}
+		return nil
 	}
 	return fmt.Errorf("unsupported platform %s", runtime.GOOS)
 }
 
 // ErrNoSystemd: this system has no systemd user manager to run the
 // service (a container, WSL without systemd).
-var ErrNoSystemd = errors.New("this system has no systemd user manager: run `hermeshd run` as the container's command, or under tmux or nohup")
+var ErrNoSystemd = errors.New("this system has no systemd for this user (a container, or WSL). Keep Hermesh running with\n  nohup hermeshd run >/dev/null 2>&1 &\nor make `hermeshd run` the container's command")
 
 // enableLinger turns lingering on for this user, unless it is on already
 // (the installer, as root, turned it on).
@@ -176,6 +183,22 @@ func Running() bool {
 			return false
 		}
 		return exec.Command("systemctl", "--user", "is-active", "--quiet", "hermeshd.service").Run() == nil
+	}
+	return false
+}
+
+// AtBoot reports whether the installed service starts with the computer,
+// with nobody logged in (on Linux: enabled, with lingering on).
+func AtBoot() bool {
+	switch runtime.GOOS {
+	case "darwin":
+		return Installed() // a LaunchAgent: at login
+	case "linux":
+		if userBus() != nil || exec.Command("systemctl", "--user", "is-enabled", "--quiet", "hermeshd.service").Run() != nil {
+			return false
+		}
+		out, err := exec.Command("loginctl", "show-user", os.Getenv("USER"), "--property=Linger").Output()
+		return err == nil && strings.TrimSpace(string(out)) == "Linger=yes"
 	}
 	return false
 }

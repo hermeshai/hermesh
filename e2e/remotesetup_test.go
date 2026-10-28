@@ -59,6 +59,16 @@ func TestRemoteMachineSetup(t *testing.T) {
 		return err == nil && vpsID != ""
 	})
 
+	// doctor and status in its shell ask the running machine (it holds its
+	// data directory).
+	doc := run(t, vpsEnv, 60*time.Second, daemon, "doctor", "--data-dir", data)
+	if !strings.Contains(doc.stdout, `paired       yes, as "vps-1"`) || !strings.Contains(doc.stdout, "relay        connected") || !strings.Contains(doc.stdout, "claude") {
+		t.Fatalf("doctor while it runs: %+v", doc)
+	}
+	if st := run(t, vpsEnv, 60*time.Second, daemon, "status", "--data-dir", data); st.code != 0 || !strings.Contains(st.stdout, `paired as "vps-1"`) || !strings.Contains(st.stdout, "connected") {
+		t.Fatalf("status while it runs: %+v", st)
+	}
+
 	// Check Again reaches the machine and waits for it.
 	if _, err := w.app.client.CheckAgents(ctx, &localv1.CheckAgentsRequest{MachineId: vpsID}); err != nil {
 		t.Fatalf("check again: %v", err)
