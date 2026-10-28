@@ -201,7 +201,8 @@ func (g *Gateway) toolHandler(t cli.Tool) mcp.ToolHandler {
 		if err != nil {
 			return docResult(failure(1, "internal", err.Error(), "", true)), nil
 		}
-		doc, code := cli.Exec(ctx, cli.ExecOptions{Identity: id, HTTPClient: g.relay, Adopted: g.adopted(c.ID), InboxRegistered: g.inboxRegistered(c.ID)}, args)
+		doc, code := cli.Exec(ctx, cli.ExecOptions{Identity: id, HTTPClient: g.relay, Peer: g.peer(c.ID), Adopted: g.adopted(c.ID),
+			InboxRegistered: g.inboxRegistered(c.ID)}, args)
 		if code == 0 && (t.Name == "session_start" || t.Name == "session_answer") {
 			doc = withSummary(doc)
 		}

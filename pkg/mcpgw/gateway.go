@@ -120,6 +120,7 @@ type Gateway struct {
 
 	mu        sync.Mutex
 	keys      map[string]cachedKey   // connection id → unsealed key
+	peers     map[string]*keptPeer   // connection id → what its calls connect with (peers.go)
 	connLocks map[string]*sync.Mutex // serialises a connection's state changes
 	dcr       map[string][]time.Time // DCR registrations per IP
 	inboxes   InboxBackend           // the connections' inboxes (inbox.go)
@@ -163,7 +164,7 @@ func New(cfg Config) (*Gateway, error) {
 		cfg.Now = time.Now
 	}
 	g := &Gateway{cfg: cfg, log: cfg.Logger, db: cfg.Backend, issuer: issuer, resource: resource, secret: make([]byte, 32),
-		tools: cli.Tools(), keys: map[string]cachedKey{}, connLocks: map[string]*sync.Mutex{}, dcr: map[string][]time.Time{},
+		tools: cli.Tools(), keys: map[string]cachedKey{}, peers: map[string]*keptPeer{}, connLocks: map[string]*sync.Mutex{}, dcr: map[string][]time.Time{},
 		stop: make(chan struct{}), done: make(chan struct{})}
 	rand.Read(g.secret)
 	g.relay = inProcessClient(cfg.RelayHandler)
@@ -189,7 +190,8 @@ func New(cfg Config) (*Gateway, error) {
 	return g, nil
 }
 
-// Close stops the gateway's background work.
+// Close stops the gateway's background work and closes the connections'
+// peers.
 func (g *Gateway) Close() {
 	select {
 	case <-g.stop:
@@ -197,6 +199,7 @@ func (g *Gateway) Close() {
 		close(g.stop)
 	}
 	<-g.done
+	g.closeIdlePeers(true)
 }
 
 // Mount adds the gateway's endpoints to mux.
@@ -218,7 +221,7 @@ func (g *Gateway) Mount(mux *http.ServeMux) {
 
 // loop moves connections along: approval requests the apps asked for sent
 // to Macs that came online, answers picked up, connections never approved
-// and no longer used ended.
+// and no longer used ended, peers no longer used closed.
 func (g *Gateway) loop() {
 	defer close(g.done)
 	t := time.NewTicker(5 * time.Second)
@@ -232,6 +235,7 @@ func (g *Gateway) loop() {
 		case <-t.C:
 			g.advanceWaiting(context.Background())
 			g.ringAgainDue()
+			g.closeIdlePeers(false)
 		case <-sweep.C:
 			if err := g.db.Sweep(context.Background(), g.cfg.Now()); err != nil {
 				g.log.Warn("mcp sweep", "err", err)
