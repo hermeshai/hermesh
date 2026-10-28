@@ -314,7 +314,6 @@ func errorKindOf(doc []byte) string {
 	return d.Error.Kind
 }
 
-// withHint replaces a document's error hint.
 // agentTitles name coding agents as people know them.
 var agentTitles = map[string]string{"claude": "Claude Code", "codex": "Codex", "gemini": "Gemini CLI", "cursor": "Cursor Agent", "copilot": "GitHub Copilot", "qwen": "Qwen Code"}
 
@@ -364,6 +363,7 @@ func withSummary(doc []byte) []byte {
 	return b
 }
 
+// withHint replaces a document's error hint.
 func withHint(doc []byte, hint string) []byte {
 	var d map[string]any
 	if json.Unmarshal(doc, &d) != nil {

@@ -28,7 +28,7 @@ async function api<T = Record<string, never>>(page: Page, method: string, body: 
 }
 
 type Status = { connectAddress: string; localMachineId: string };
-type Client = { grantId: string; label: string; expiresAt: string; spec: { machineIds: string[]; projectIds: string[]; agents: string[] } };
+type Client = { grantId: string; grantVersion: string; label: string; expiresAt: string; spec: { machineIds: string[]; projectIds: string[]; agents: string[] } };
 
 const running = new Set<ChildProcess>();
 test.afterEach(() => running.forEach((p) => p.kill())); // a failed test leaves no login waiting
@@ -312,8 +312,14 @@ test("renaming an agent from settings keeps what it may use and until when; a kn
   await settings.waitForLoadState();
   await settings.getByRole("list", { name: "授权" }).getByRole("button", { name: new RegExp(name) }).click();
   const panel = settings.getByRole("main", { name: "授权" });
-  await panel.getByRole("button", { name: "改名…" }).click();
   const sheet = settings.getByRole("dialog", { name: "给这个 agent 改名" });
+  // Kept as it is: nothing to sign.
+  await panel.getByRole("button", { name: "改名…" }).click();
+  await sheet.getByRole("button", { name: "改名" }).click();
+  await expect(sheet).toBeHidden();
+  expect((await clients()).find((c) => c.grantId === before.grantId)!.grantVersion).toBe(before.grantVersion);
+
+  await panel.getByRole("button", { name: "改名…" }).click();
   await expect(sheet.getByRole("textbox", { name: "名字" })).toHaveValue(name);
   await sheet.getByRole("textbox", { name: "名字" }).fill("Grok Bot");
   await sheet.getByRole("button", { name: "改名" }).click(); // the signer asks, and says yes

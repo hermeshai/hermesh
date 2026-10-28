@@ -540,6 +540,9 @@ func (g *Gateway) ring(key string) {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 	d, err := g.doorbellFor(ctx, ownerID, inbox, name)
+	if err == nil && d == nil {
+		g.quiet(key) // gone: nothing to ring again
+	}
 	if err != nil || d == nil || d.Broken != "" {
 		return
 	}

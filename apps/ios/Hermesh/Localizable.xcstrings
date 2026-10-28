@@ -4489,6 +4489,16 @@
         }
       }
     },
+    "Wake All of %@…": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "叫醒整个 %@…"
+          }
+        }
+      }
+    },
     "Wake It Once": {
       "localizations": {
         "zh-Hans": {

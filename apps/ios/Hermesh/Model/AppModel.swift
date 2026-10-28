@@ -751,7 +751,8 @@ final class AppModel {
     /// Gives an agent another name: its grant signed again with that alone changed (Face ID).
     func rename(_ c: Client, to label: String) async {
         let label = label.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard let api, !label.isEmpty, label != c.label else { return }
+        // Kept as shown ("Claude" for "Claude (claude.ai)"): nothing to sign.
+        guard let api, !label.isEmpty, label != c.label, label != AgentLogo.name(c.label) else { return }
         signer.expect(.types([SigningPreview.grant]))
         do {
             try await api.renameClient(c.grantID, to: label)

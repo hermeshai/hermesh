@@ -95,7 +95,7 @@ function GrantDetail({ c, ask }: { c: Client; ask: (a: Ask) => void }) {
     ask({
       title: t("grants.renameTitle"),
       message: t("grants.renameMessage"),
-      field: { label: t("grants.agentName"), value: name, button: t("grants.renameButton"), run: (label) => st.run(() => local.renameClient({ grantId: c.grantId, label })) },
+      field: { label: t("grants.agentName"), value: name, button: t("grants.renameButton"), run: (label) => (label === name ? Promise.resolve() : st.run(() => local.renameClient({ grantId: c.grantId, label }))) },
     });
   const revoke = () =>
     st.set({
