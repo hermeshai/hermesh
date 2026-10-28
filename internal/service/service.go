@@ -35,21 +35,7 @@ func Install(bin, dataDir, logDir string, args ...string) error {
 	switch runtime.GOOS {
 	case "darwin":
 		os.MkdirAll(logDir, 0o700)
-		plist := fmt.Sprintf(`<?xml version="1.0" encoding="UTF-8"?>
-<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-<plist version="1.0">
-<dict>
-  <key>Label</key><string>%s</string>
-  <key>ProgramArguments</key>
-  <array><string>%s</string><string>run</string>%s<string>--data-dir</string><string>%s</string></array>
-  <key>RunAtLoad</key><true/>
-  <key>KeepAlive</key><true/>
-  <key>ProcessType</key><string>Background</string>
-  <key>StandardOutPath</key><string>%s</string>
-  <key>StandardErrorPath</key><string>%s</string>
-</dict>
-</plist>
-`, label, xmlEscape(bin), plistArgs(args), xmlEscape(dataDir), xmlEscape(filepath.Join(logDir, "hermeshd.log")), xmlEscape(filepath.Join(logDir, "hermeshd.log")))
+		plist := plistText(bin, dataDir, logDir, args)
 		path := launchdPlist()
 		os.MkdirAll(filepath.Dir(path), 0o755)
 		if err := os.WriteFile(path, []byte(plist), 0o644); err != nil {
@@ -62,18 +48,7 @@ func Install(bin, dataDir, logDir string, args ...string) error {
 		}
 		return nil
 	case "linux":
-		unit := fmt.Sprintf(`[Unit]
-Description=Hermesh daemon
-After=network-online.target
-
-[Service]
-ExecStart=%s run %s--data-dir %s
-Restart=always
-RestartSec=5
-
-[Install]
-WantedBy=default.target
-`, bin, unitArgs(args), dataDir)
+		unit := unitText(bin, dataDir, args)
 		// Lingering first: it starts the user's systemd, which a session
 		// opened with su lacks, and keeps it running after logout.
 		lingerErr := enableLinger()
@@ -210,6 +185,41 @@ func Installed() bool {
 	}
 	_, err := os.Stat(p)
 	return err == nil
+}
+
+// plistText is the launchd job Install writes.
+func plistText(bin, dataDir, logDir string, args []string) string {
+	return fmt.Sprintf(`<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key><string>%s</string>
+  <key>ProgramArguments</key>
+  <array><string>%s</string><string>run</string>%s<string>--data-dir</string><string>%s</string></array>
+  <key>RunAtLoad</key><true/>
+  <key>KeepAlive</key><true/>
+  <key>ProcessType</key><string>Background</string>
+  <key>StandardOutPath</key><string>%s</string>
+  <key>StandardErrorPath</key><string>%s</string>
+</dict>
+</plist>
+`, label, xmlEscape(bin), plistArgs(args), xmlEscape(dataDir), xmlEscape(filepath.Join(logDir, "hermeshd.log")), xmlEscape(filepath.Join(logDir, "hermeshd.log")))
+}
+
+// unitText is the systemd unit Install writes.
+func unitText(bin, dataDir string, args []string) string {
+	return fmt.Sprintf(`[Unit]
+Description=Hermesh daemon
+After=network-online.target
+
+[Service]
+ExecStart=%s run %s--data-dir %s
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=default.target
+`, bin, unitArgs(args), dataDir)
 }
 
 // InstalledFor reports whether the installed service runs the machine in

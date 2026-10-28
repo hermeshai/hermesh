@@ -6,6 +6,7 @@ import (
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"path/filepath"
 	"slices"
 	"sync/atomic"
@@ -124,6 +125,24 @@ func TestExecWithoutGrant(t *testing.T) {
 	doc, code = Exec(context.Background(), ExecOptions{}, []string{"session", "get"})
 	if json.Unmarshal(doc, &d) != nil || d.OK || code != exitUsage {
 		t.Fatalf("usage: %s %d", doc, code)
+	}
+}
+
+// Embedded, an agent has no files to forget: its caller keeps the
+// credentials, and the process's directory is not the agent's home.
+func TestExecForgetsNoFiles(t *testing.T) {
+	t.Chdir(t.TempDir())
+	for _, f := range []string{"client.key", "state.json"} {
+		os.WriteFile(f, []byte("not the agent's"), 0o600)
+	}
+	a := &app{mem: &ExecOptions{}}
+	if removed, err := a.forget(); removed || err != nil {
+		t.Fatalf("forget: %v %v", removed, err)
+	}
+	for _, f := range []string{"client.key", "state.json"} {
+		if _, err := os.Stat(f); err != nil {
+			t.Fatalf("%s: %v", f, err)
+		}
 	}
 }
 

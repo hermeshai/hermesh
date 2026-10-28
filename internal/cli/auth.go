@@ -172,8 +172,12 @@ func (a *app) alreadyPaired(ctx context.Context, w io.Writer, relayURL, ownerID 
 	return false, "", fail(exitUnavailable, "cannot reach the relay to check the current pairing: %v", err)
 }
 
-// forget removes this agent's grant and key from this computer.
+// forget removes this agent's grant and key from this computer. Embedded
+// (Exec), the caller keeps them: there are no files.
 func (a *app) forget() (removed bool, err error) {
+	if a.mem != nil {
+		return false, nil
+	}
 	for _, p := range []string{a.statePath(), a.keyPath()} {
 		if err := os.Remove(p); err == nil {
 			removed = true
