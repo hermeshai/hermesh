@@ -37,11 +37,12 @@ func (n *Machine) Pair(ctx context.Context, address, label string, out io.Writer
 			return err
 		}
 	}
-	// A machine whose owner its center no longer serves (the owner identity
-	// was reset) pairs with whichever owner comes next; its projects stay.
+	// A machine whose owner its relay no longer serves (the owner erased
+	// everything, or its identity was reset) pairs with whichever owner comes
+	// next; its projects stay.
 	ownerGone := n.Paired() && OwnerGone(ctx, n.cfg.HTTPClient, n.RelayURL(), n.ownerID)
 	if ownerGone {
-		fmt.Fprintf(out, "The previous owner %s is gone from its center (it was reset); pairing with a new owner.\n", n.ownerID)
+		fmt.Fprintf(out, "The previous owner %s is gone from its server (it erased everything, or was reset); pairing with a new owner.\n", n.ownerID)
 	}
 	if n.Paired() && !ownerGone && ownerID != "" && n.ownerID != ownerID {
 		return fmt.Errorf("this machine is already paired with owner %s", n.ownerID)
@@ -74,14 +75,15 @@ func (n *Machine) Pair(ctx context.Context, address, label string, out io.Writer
 	return nil
 }
 
-// OwnerGone reports whether the hosted center at relayURL says it no longer
-// serves ownerID. Only a hosted center answers that; an unreachable one or
-// a self-hosted relay does not count as gone.
+// OwnerGone reports whether the relay or center at relayURL says it no
+// longer serves ownerID: the owner erased everything, or its identity was
+// reset (a center), or another owner claimed the relay. An unreachable one
+// does not count as gone.
 func OwnerGone(ctx context.Context, hc connect.HTTPClient, relayURL, ownerID string) bool {
 	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
 	defer cancel()
 	info, err := relayv1connect.NewRelayPublicServiceClient(hc, strings.TrimSuffix(relayURL, "/")).GetInfo(ctx, &relayv1.GetInfoRequest{OwnerId: ownerID})
-	return err == nil && info.Hosted && info.OwnerId != ownerID
+	return err == nil && info.OwnerId != ownerID
 }
 
 // HostLabel is a default name from this host's name: prefix plus its first

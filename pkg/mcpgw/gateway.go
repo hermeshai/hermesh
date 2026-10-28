@@ -287,16 +287,33 @@ func (g *Gateway) askAgain(ctx context.Context, ownerID string) {
 	}
 }
 
-// OwnerGone ends the connections of an owner the server forgot (the
-// owner started over): their grants mean nothing any more.
+// OwnerGone ends the connections of an owner the server forgot (the owner
+// started over, or erased everything): their grants mean nothing any more,
+// and connecting again starts from the consent page. Their inboxes and the
+// owner's doorbells (the bots' webhooks and their keys) go too.
 func (g *Gateway) OwnerGone(ctx context.Context, ownerID string) {
-	conns, err := g.db.ListConnections(ctx, ConnectionFilter{OwnerID: ownerID, States: []string{StateAwaitingApproval, StateActive}})
+	conns, err := g.db.ListConnections(ctx, ConnectionFilter{OwnerID: ownerID})
 	if err != nil {
 		g.log.Warn("mcp: ending a forgotten owner's connections", "owner", ownerID, "err", err)
 		return
 	}
 	for _, c := range conns {
-		g.endConnection(ctx, c.ID, StateRevoked, "the owner started over")
+		if c.Live() {
+			g.endConnection(ctx, c.ID, StateRevoked, "the owner started over")
+		}
+		if err := g.inboxes.DeleteInbox(ctx, c.ID); err != nil {
+			g.log.Warn("mcp: forgetting an inbox", "connection", c.ID, "err", err)
+		}
+	}
+	bells, err := g.doorbells.ListDoorbells(ctx, ownerID, "")
+	if err != nil {
+		g.log.Warn("mcp: forgetting a forgotten owner's doorbells", "owner", ownerID, "err", err)
+		return
+	}
+	for _, d := range bells {
+		if err := g.doorbells.DeleteDoorbell(ctx, ownerID, d.Inbox, d.Name); err != nil {
+			g.log.Warn("mcp: forgetting a doorbell", "owner", ownerID, "err", err)
+		}
 	}
 }
 

@@ -178,6 +178,12 @@ func New(cfg Config) (*Server, error) {
 			s.single = owner
 		}
 	}
+	// Orders kept past their time by a relay stopped meanwhile.
+	if es, ok := s.store.(EraseStore); ok {
+		if err := es.PurgeErases(time.Now()); err != nil {
+			s.log.Warn("purging erase orders", "err", err)
+		}
+	}
 	s.registerMetrics()
 	return s, nil
 }
@@ -454,10 +460,12 @@ func (s *Server) admit(h *relayv1.Hello, nonce []byte) (*peer, error) {
 	if ownerID == "" {
 		return nil, errors.New("missing root chain")
 	}
-	if s.sqlite == nil || s.singleOwner() != ownerID {
-		if order, _, _ := s.eraseOrder(ownerID); order != nil {
-			return nil, errors.New("this relay no longer serves this device's owner (the owner erased everything)")
-		}
+	// An owner that erased everything moments ago: its devices ask for its
+	// order (docs/erase-everything.md). Only for an owner not served here.
+	errErased := errors.New("this relay no longer serves this device's owner (the owner erased everything)")
+	erased := func() bool { order, _, _ := s.eraseOrder(ownerID); return order != nil }
+	if s.sqlite != nil && s.singleOwner() != ownerID && erased() {
+		return nil, errErased
 	}
 	if s.sqlite != nil && s.singleOwner() == "" {
 		return nil, errors.New("relay is not claimed yet")
@@ -468,6 +476,9 @@ func (s *Server) admit(h *relayv1.Hello, nonce []byte) (*peer, error) {
 	}
 	if t == nil {
 		if s.sqlite == nil {
+			if erased() {
+				return nil, errErased
+			}
 			return nil, errors.New("this center no longer serves this device's owner (the owner identity was reset); pair this device again")
 		}
 		return nil, errors.New("this relay does not serve that owner")
@@ -1048,7 +1059,8 @@ func (s *Server) AddEraseHook(f func(ownerID string)) {
 
 // erased forgets an owner that erased everything. Its connections close a
 // moment later, so that the device that asked hears the answer first; a
-// self-hosted relay is then unclaimed again.
+// self-hosted relay is then unclaimed again. Its order goes after
+// EraseRetention.
 func (s *Server) erased(ownerID string) {
 	s.mu.Lock()
 	if s.single == ownerID {
@@ -1066,6 +1078,15 @@ func (s *Server) erased(ownerID string) {
 			fmt.Fprintf(os.Stderr, "\n  This relay is not claimed any more: its owner erased everything.\n  Claim code: %s\n\n", code)
 		}
 	})
+	// The order goes once the erase had its time: devices that connect later
+	// are refused, as for an owner that is gone.
+	if es, ok := s.store.(EraseStore); ok {
+		time.AfterFunc(EraseRetention+time.Second, func() {
+			if err := es.PurgeErases(time.Now()); err != nil {
+				s.log.Warn("purging erase orders", "err", err)
+			}
+		})
+	}
 }
 
 // SetOwnerHook tells f the owner each time one of its trusted devices

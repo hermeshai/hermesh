@@ -624,6 +624,15 @@ func (s *Store) EraseOrder(ownerID string, now time.Time) (*identityv1.Signed, *
 	return order, chain, acks, rows.Err()
 }
 
+func (s *Store) PurgeErases(now time.Time) error {
+	cut := now.Add(-EraseRetention).Unix()
+	if _, err := s.db.Exec(`DELETE FROM erase_acks WHERE erase_id IN (SELECT erase_id FROM erase_orders WHERE erased_at < ?)`, cut); err != nil {
+		return err
+	}
+	_, err := s.db.Exec(`DELETE FROM erase_orders WHERE erased_at < ?`, cut)
+	return err
+}
+
 // maxEraseAcks bounds what anyone who knows an erase id can make a relay
 // keep: an owner has far fewer devices, machines and agents.
 const maxEraseAcks = 1000

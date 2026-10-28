@@ -63,13 +63,20 @@ func AckErase(ctx context.Context, hc connect.HTTPClient, relayURL, eraseID, sub
 }
 
 // checkErase is a refused machine asking whether its owner erased
-// everything: if so it acks, and Run stops with ErrErased.
+// everything: if so it acks, and Run stops with ErrErased. Once that order
+// is gone (or for an owner gone otherwise), the log says how to pair again.
 func (n *Machine) checkErase(ctx context.Context) bool {
 	n.mu.Lock()
-	relayURL, ownerID, trust := n.relayURL, n.ownerID, n.trust
+	relayURL, ownerID, trust, said := n.relayURL, n.ownerID, n.trust, n.goneSaid
 	n.mu.Unlock()
 	order := FetchEraseOrder(ctx, n.cfg.HTTPClient, relayURL, ownerID, trust)
 	if order == nil {
+		if !said && OwnerGone(ctx, n.cfg.HTTPClient, relayURL, ownerID) {
+			n.mu.Lock()
+			n.goneSaid = true
+			n.mu.Unlock()
+			n.log.Warn("the owner is gone from its server (it erased everything, or was reset): pair this machine again with `hermeshd pair <connection address>`")
+		}
 		return false
 	}
 	if err := AckErase(ctx, n.cfg.HTTPClient, relayURL, order.EraseId, n.machineID, nil, n.key); err != nil {

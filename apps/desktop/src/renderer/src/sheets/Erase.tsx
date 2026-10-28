@@ -9,9 +9,10 @@ import { errorText, useStore } from "../store";
 import { ErrorLine, SignerWaiting, useAction } from "./common";
 
 // Erase Everything (docs/erase-everything.md): what it erases, by name, and
-// what stays, confirmed by typing the server's address and approved with
-// Touch ID; then each device, machine and agent ticked as it reports, and
-// this Mac erased last.
+// what stays, confirmed by typing the account's email (a server of one's
+// own: its address) and approved with Touch ID; then each device, machine
+// and agent ticked as it reports, and this Mac erased last. Those offline
+// are reset (or paired again) when next used.
 
 /** How long this Mac waits for those online to report before it erases itself. */
 const waitOnline = 15_000;
@@ -33,7 +34,10 @@ function Confirm({ started }: { started: (id: string, items: EraseItem[]) => voi
   }, []);
   const relay = st.status?.relayUrl ?? "";
   const host = URL.canParse(relay) ? new URL(relay).host : relay;
-  const match = host !== "" && typed.trim().toLowerCase() === host.toLowerCase();
+  const hosted = st.status?.hosted === true;
+  // What is typed to confirm: the account's email, or a server of one's own's address.
+  const expected = (hosted && st.status?.account) || host;
+  const match = expected !== "" && typed.trim().toLowerCase() === expected.toLowerCase();
   const of = (kind: string) => (items ?? []).filter((it) => it.kind === kind);
   const erase = () => go(async () => started((await local.eraseEverything({})).eraseId, items ?? []));
   return (
@@ -48,8 +52,8 @@ function Confirm({ started }: { started: (id: string, items: EraseItem[]) => voi
         <div className="frow">
           <Icon name="web" />
           <div className="ft">
-            <div className="fn">{t("erase.server", { host })}</div>
-            <div className="fdesc">{t("erase.serverDesc")}</div>
+            <div className="fn">{t(hosted ? "erase.hosted" : "erase.server", { host })}</div>
+            <div className="fdesc">{t(hosted ? "erase.hostedDesc" : "erase.serverDesc")}</div>
           </div>
         </div>
       </div>
@@ -57,10 +61,12 @@ function Confirm({ started }: { started: (id: string, items: EraseItem[]) => voi
       <ul className="erase-stay">
         <li>{t("erase.stayProjects")}</li>
         <li>{t("erase.stayWorktrees")}</li>
+        {hosted && <li>{t("erase.stayAccount")}</li>}
         <li>{t("erase.stayProfiles")}</li>
+        <li>{t("erase.stayOffline")}</li>
       </ul>
       <label className="erase-lab" htmlFor="erase-confirm">
-        <Trans t={t} i18nKey="erase.confirm" values={{ text: host }} components={{ b: <b className="sel-text" /> }} />
+        <Trans t={t} i18nKey="erase.confirm" values={{ text: expected }} components={{ b: <b className="sel-text" /> }} />
       </label>
       <input id="erase-confirm" className="field" value={typed} onChange={(e) => setTyped(e.target.value)} autoComplete="off" spellCheck={false} disabled={busy} />
       {busy && <SignerWaiting detail={t("erase.approve")} />}
@@ -91,7 +97,7 @@ function Group({ icon, title, desc, items }: { icon: string; title: string; desc
               {it.thisDevice ? (
                 <span className="faint"> {t("erase.thisMac")}</span>
               ) : (
-                !it.online && <span className="faint"> {t(it.kind === "agent" ? "erase.agentLater" : "erase.later")}</span>
+                !it.online && <span className="faint"> {t(later[it.kind] ?? "erase.laterDevice")}</span>
               )}
             </span>
           ))}
@@ -172,5 +178,9 @@ function State({ it }: { it: EraseItem }) {
   const { t } = useTranslation("sheets");
   if (it.done) return <span className="erase-st ok"><Icon name="check" />{t(it.kind === "agent" ? "erase.disconnected" : "erase.erased")}</span>;
   if (it.thisDevice || it.online) return <span className="erase-st"><i className="erase-spin" />{t(it.thisDevice ? "erase.last" : "erase.erasing")}</span>;
-  return <span className="erase-st">{t(it.kind === "agent" ? "erase.stateAgentLater" : "erase.stateLater")}</span>;
+  return <span className="erase-st">{t(state[it.kind] ?? "erase.stateDevice")}</span>;
 }
+
+/** What becomes of one offline: a device offers a reset, a machine is paired again, an agent signs in again. */
+const later: Record<string, "erase.laterDevice" | "erase.laterMachine" | "erase.laterAgent"> = { device: "erase.laterDevice", machine: "erase.laterMachine", agent: "erase.laterAgent" };
+const state: Record<string, "erase.stateDevice" | "erase.stateMachine" | "erase.stateAgent"> = { device: "erase.stateDevice", machine: "erase.stateMachine", agent: "erase.stateAgent" };

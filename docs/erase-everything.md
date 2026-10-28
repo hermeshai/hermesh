@@ -1,6 +1,7 @@
 # Erase everything: one approval, every device back to its first run
 
-Status: agreed 2026-10-28 (§8), being built: steps 1 and 2 are done (§6). One action, **Erase
+Status: agreed 2026-10-28 (§8), being built: steps 1 and 2 are done, step
+3 under way (§6). One action, **Erase
 Everything** (全部清空), which first says exactly what it erases.
 
 ## 1. The ask
@@ -65,7 +66,7 @@ off only, as now.
 that owner. The relay verifies the order against the owner's current chain,
 then, in one go:
 
-1. keeps the order as the owner's **tombstone** (§3.4);
+1. keeps the order for 10 minutes (§3.4);
 2. closes, half a second later, every connection of the owner's peers
    (trusted devices, machines, CLI agents), which are then refused
    ("this relay no longer serves this device's owner") and ask for the
@@ -83,7 +84,7 @@ claim code (`hermesh-relay claim-code`, as at its first start).
 
 ### 3.3 Each kind of device
 
-Each one that gets a valid order (now, or from the tombstone) reports that
+Each one that gets a valid order (now, or within those 10 minutes) reports that
 it has it (§3.4), then erases:
 
 | Device | What it erases |
@@ -102,28 +103,37 @@ Hermesh's data directory and named afterwards; other profiles on a device
 (another owner's); the account itself and how the person signs in; and what
 the operating system keeps (notification permission, login items).
 
-### 3.4 Offline devices: the tombstone
+### 3.4 Those online now, and the others later
 
-The relay keeps each erase order for 90 days, after it has forgotten the
-owner. A device, machine or agent of that owner that connects in that time
-is refused; it then asks `GetInfo` with its owner id, which answers with
-the order and the chain it was signed under. It verifies the order against
-the chain it holds (taking the newer chain only if it extends its own) and
-erases as in §3.3.
+The relay keeps each erase order for 10 minutes, while the erase runs, and
+then deletes it and its acks. A device, machine or agent of that owner that
+connects in that time is refused; it then asks `GetInfo` with its owner id,
+which answers with the order and the chain it was signed under. It verifies
+the order against the chain it holds (taking the newer chain only if it
+extends its own) and erases as in §3.3.
 
 Each erases after reporting it (`AckErase`, signed with its own key before
 deleting it: the erase id and the id the owner knows it by, which that key
 must name: a machine's or an agent's id; a trusted device signs with its
 device key and adds its device cert, which its root key signed). The relay
-records the acks against the tombstone, for the owner to see:
+records the acks against the order, for the device that started it to
+tick each one as it reports.
 
-- on the device that started it, live, for those online now;
-- in the console afterwards (the account page: "Erased on Oct 28: 5 of 6
-  done; yee-ipad hasn't come online since").
+One offline then is not chased: nothing of the owner is kept to tell it.
+When it is next used, it is refused as a removed device is, and is reset
+there:
 
-After 90 days a device that comes back is refused as today, and the app
-offers `Leave` as today. A device that never reconnects keeps what it had
-until then; the order cannot reach it.
+- a trusted device (Mac, iPhone, machine-only Mac) shows that it is no
+  longer in the account, and Set Up This Mac Again (`Leave`);
+- a machine logs how to pair it again, and `hermeshd pair <address>` pairs
+  it with the new owner as it is: its old owner is gone from the server;
+- an agent is refused as revoked, and `hermesh auth login <address>` pairs
+  it with the new owner as it is.
+
+So there is nothing to take back, and no order waiting for anyone: what
+the order erased is gone the moment it is approved (the keys, the server's
+records), and a new owner (a new sign-in, a new setup) has a new owner id
+the old order never names.
 
 ### 3.5 In the apps: the sheet says what it erases
 
@@ -217,13 +227,16 @@ unchanged: it signs nothing, so it erases nothing on a device.
 - A machine keeps no Hermesh data but the projects' directories; a
   worktree with changes is kept and named.
 - A relay that sends a forged or another owner's order erases nothing.
-- A device back after 90 days is refused and offered `Leave`.
+- A device back after the 10 minutes is refused and offered `Leave`; a
+  machine and an agent pair with the new owner without logging out.
 
 ## 8. Decided (2026-10-28)
 
 1. Worktrees with uncommitted changes are kept (and named), not erased.
 2. The center account stays (sign in again for a first run); deleting it is
    the operator's process.
-3. The tombstone is kept 90 days.
+3. The order is kept 10 minutes, for those online (changed from 90 days the
+   same day: nothing is kept for those offline, which are reset when next
+   used).
 4. The owner confirms by typing the account's email (a self-hosted relay's
    address).

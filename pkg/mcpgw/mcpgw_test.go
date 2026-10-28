@@ -591,3 +591,43 @@ func TestTraceLogsWhatCallersSend(t *testing.T) {
 		}
 	}
 }
+
+// An owner the server forgot (it started over, or erased everything): its
+// connections end, and their inboxes and its doorbells (the bots' webhook
+// keys) go; another owner's stay.
+func TestOwnerGoneForgetsConnectionsAndDoorbells(t *testing.T) {
+	f := newFixture(t, nil)
+	ctx := context.Background()
+	now := f.clock.now()
+	for _, c := range []*Connection{{ID: "mc_1", AccountID: "a1", OwnerID: "o_x", State: StateActive, CreatedAt: now},
+		{ID: "mc_2", AccountID: "a2", OwnerID: "o_y", State: StateActive, CreatedAt: now}} {
+		if err := f.g.db.PutConnection(ctx, c); err != nil {
+			t.Fatal(err)
+		}
+		if err := f.g.inboxes.PutInbox(ctx, &Inbox{ConnectionID: c.ID, SealedKey: []byte("k"), UpdatedAt: now}); err != nil {
+			t.Fatal(err)
+		}
+		if err := f.g.doorbells.PutDoorbell(ctx, &Doorbell{OwnerID: c.OwnerID, Inbox: "c_bot", URL: "https://bot.example/hook", SealedSecret: []byte("s"), UpdatedAt: now}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	f.g.OwnerGone(ctx, "o_x")
+	if c, _ := f.g.db.GetConnection(ctx, "mc_1"); c == nil || c.Live() {
+		t.Fatalf("the forgotten owner's connection: %+v", c)
+	}
+	if in, _ := f.g.inboxes.GetInbox(ctx, "mc_1"); in != nil {
+		t.Fatal("its inbox is kept")
+	}
+	if d, _ := f.g.doorbells.ListDoorbells(ctx, "o_x", ""); len(d) != 0 {
+		t.Fatalf("its doorbells are kept: %+v", d)
+	}
+	if c, _ := f.g.db.GetConnection(ctx, "mc_2"); c == nil || !c.Live() {
+		t.Fatalf("another owner's connection: %+v", c)
+	}
+	if in, _ := f.g.inboxes.GetInbox(ctx, "mc_2"); in == nil {
+		t.Fatal("another owner's inbox went")
+	}
+	if d, _ := f.g.doorbells.ListDoorbells(ctx, "o_y", ""); len(d) != 1 {
+		t.Fatalf("another owner's doorbells: %+v", d)
+	}
+}

@@ -454,7 +454,7 @@ struct ErasedNote: View {
                     Text(e.by.isEmpty ? String(localized: "Hermesh erased everything") : String(localized: "You erased everything in Hermesh on “\(e.by)”"))
                         .font(.subheadline.weight(.semibold))
                     if !e.by.isEmpty { Text("Hermesh on this iPhone is erased too.") }
-                    if !e.pending.isEmpty { Text("\(listText(e.pending)) will erase themselves the next time they connect.") }
+                    if !e.pending.isEmpty { Text("\(listText(e.pending)) were offline: reset or pair each again when you next use it.") }
                 }
                 .font(.footnote).foregroundStyle(.secondary)
                 Spacer(minLength: 0)
