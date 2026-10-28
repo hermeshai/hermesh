@@ -125,6 +125,14 @@ func card(r *localv1.SigningRequest, h Hints, reissue bool) (Card, error) {
 			return Card{}, err
 		}
 		return admin(m, h, r.Type)
+	case identity.MessageType(&identityv1.EraseOrder{}):
+		m := &identityv1.EraseOrder{}
+		if err := strict(r, m); err != nil {
+			return Card{}, err
+		}
+		return Card{Title: "Erase everything in your Hermesh", Lines: []string{"Owner identity ID: " + m.OwnerId, "Erase ID: " + m.EraseId},
+			Why:     "Hermesh on all your trusted devices and machines, this computer included, erases its keys, sessions and settings, and your agents are disconnected. This can't be undone.",
+			Warning: "Approve only if you started erasing everything yourself."}, nil
 	}
 	return Card{}, &Refused{r.Type, "Hermesh doesn't know this kind of request"}
 }

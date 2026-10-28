@@ -281,3 +281,51 @@ func TestEraseEverything(t *testing.T) {
 		t.Fatalf("vps-late pairing again: %d\n%s", c, pair.output())
 	}
 }
+
+// TestEraseThisMachine: `hermeshd erase` on a server erases its machine
+// only: not while it runs, then unpaired (its owner's devices stop listing
+// it) and its data gone. On a trusted device it says which command erases
+// everything instead.
+func TestEraseThisMachine(t *testing.T) {
+	if testing.Short() {
+		t.Skip("e2e")
+	}
+	env := []string{"HERMESH_FAKE_PROVIDERS=1"}
+	w := newOwnerMac(t, env, &localv1.GrantSpec{})
+	ctx := context.Background()
+	daemon := filepath.Join(w.bin, "hermeshd")
+	data := filepath.Join(w.tmp, "vps-1")
+	pair := start(t, "pair", env, daemon, "pair", w.addr, "--name", "vps-1", "--no-service", "--data-dir", data)
+	if _, err := w.app.client.ApproveMachinePairing(ctx, &localv1.ApproveMachinePairingRequest{Code: pair.pairingCode(t), MachineName: "vps-1"}); err != nil {
+		t.Fatal(err)
+	}
+	if c := pair.wait(t, 30*time.Second); c != 0 {
+		t.Fatalf("pair: %s", pair.output())
+	}
+	vps := start(t, "vps-1", env, daemon, "run", "--data-dir", data)
+	w.logs = append(w.logs, vps)
+	listed := func() bool {
+		res, err := w.app.client.ListMachines(ctx, &localv1.ListMachinesRequest{})
+		return err == nil && slices.ContainsFunc(res.Machines, func(m *localv1.Machine) bool { return m.MachineName == "vps-1" })
+	}
+	eventually(t, 30*time.Second, "vps-1 online", listed)
+
+	if r := run(t, nil, 30*time.Second, daemon, "erase", "--yes", "--data-dir", data); r.code == 0 || !strings.Contains(r.stderr, "stop `hermeshd run` here first") {
+		t.Fatalf("erasing a running machine: %+v", r)
+	}
+	vps.stop()
+	r := run(t, nil, 60*time.Second, daemon, "erase", "--yes", "--data-dir", data)
+	if r.code != 0 || !strings.Contains(r.stdout, "“vps-1”") || !strings.Contains(r.stdout, "✓ Hermesh on this computer is erased") {
+		t.Fatalf("erase: %+v", r)
+	}
+	if _, err := os.Stat(filepath.Join(data, "machine")); !os.IsNotExist(err) {
+		t.Fatalf("the machine kept: %v", err)
+	}
+	eventually(t, 30*time.Second, "vps-1 gone from the owner's machines", func() bool { return !listed() })
+
+	// A trusted device (this Mac's owner role) erases everything instead.
+	if r := run(t, nil, 30*time.Second, daemon, "erase", "--yes", "--data-dir", filepath.Join(w.tmp, "owner-mac")); r.code == 0 ||
+		!strings.Contains(r.stderr, "hermeshd device erase-everything") {
+		t.Fatalf("erase on a trusted device: %+v", r)
+	}
+}

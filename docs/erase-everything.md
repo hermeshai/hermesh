@@ -1,6 +1,6 @@
 # Erase everything: one approval, every device back to its first run
 
-Status: agreed 2026-10-28 (§8), steps 1–3 built (§6). One action, **Erase
+Status: agreed 2026-10-28 (§8), built (§6). One action, **Erase
 Everything** (全部清空), which first says exactly what it erases.
 
 ## 1. The ask
@@ -169,16 +169,25 @@ world the app already has, by name, not only counts:
 The console keeps its "start over" for an owner without devices,
 unchanged: it signs nothing, so it erases nothing on a device.
 
-### 3.6 Built for testing first runs
+### 3.6 From a terminal, and for testing first runs
 
-- `hermeshd erase` on a Mac or a machine (asking the running app or
-  service, or acting on its data dir when stopped), for scripts.
-- The e2e harness gets an `erase(world)` helper that runs the real order,
-  so each first-run test starts from a world that was used and erased,
-  which is closer to people than a world never set up.
-- OS state is not Hermesh's to reset: the notes say how to clear it for a
-  test (`xcrun simctl privacy … reset`, deleting the iPhone app, System
-  Settings).
+- `hermeshd erase` erases this computer only: its machine, unpaired (the
+  server drops it from its owner's list when it can be reached), its
+  projects list, sessions and the worktrees Hermesh made (those with
+  uncommitted changes kept); its service, when one runs it, taken away. It
+  asks first (`--yes` for scripts), refuses while `hermeshd run` holds the
+  machine, and on a trusted device points to the next command.
+- `hermeshd device erase-everything` is Erase Everything on a trusted
+  device without an app (a Linux trusted device): the same list of what it
+  erases and what stays, the account's email (or the server's address)
+  typed, the order signed with the device's passphrase (`internal/preview`
+  shows its card), each one ticked as it reports, then this computer.
+- What the operating system keeps is not Hermesh's to erase. For a first
+  run as people meet it: on a Mac, notifications in System Settings ›
+  Notifications and the login item in System Settings › General › Login
+  Items (`sfltool resetbtm` clears every login item's approval); on the
+  iPhone, deleting the app; in the Simulator, `xcrun simctl privacy
+  <device> reset all com.hermesh.ios`.
 
 ## 4. What an attacker can do
 
@@ -223,7 +232,11 @@ unchanged: it signs nothing, so it erases nothing on a device.
    now drops doorbells and inboxes too), every browser signed out, the mail,
    the account's email for the apps. Cloud e2e `TestEraseEverything`;
    `TestHostedMCP` checks start over drops the bot's doorbell.
-4. `hermeshd erase`, the harness helper, the testing notes.
+4. Done: `hermeshd erase` (e2e `TestEraseThisMachine`) and `hermeshd
+   device erase-everything` (hermesh-cloud `TestLinuxTrustedDevice`), the
+   notes above. The e2e tests erase the real way (the order, signed) where
+   they test it; no helper erases a world for the first-run tests, which
+   start from a fresh one.
 
 ## 7. Tests (each step's e2e, as people do it)
 

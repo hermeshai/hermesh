@@ -453,6 +453,7 @@ in), a LaunchAgent on macOS. "hermeshd pair" installs it.`}
 	messageMCP := &cobra.Command{Use: "message-mcp", Hidden: true, Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error { return machine.ServeMessageMCP(cmd.Context()) }}
 	root.AddCommand(deviceCommands(&dataDir)...)
+	root.AddCommand(eraseCommand(&dataDir))
 	root.AddCommand(run, pair, doctor, status, audit, svc, helper, messageMCP, projects,
 		&cobra.Command{Use: "version", Short: "Print the version", Args: cobra.NoArgs, Run: func(*cobra.Command, []string) { fmt.Println(machine.Version) }})
 	return root
@@ -545,11 +546,10 @@ func report(name string, i provider.Info) bool {
 // to be paired as a newly installed one does. The rest of dataDir stays: on
 // a Mac it is also the app's (its owners' profiles).
 func eraseMachine(dataDir string, cfg machine.Config) error {
-	kept, err := machine.Erase(cfg, filepath.Join(dataDir, "kept-worktrees"))
+	kept, err := eraseHere(dataDir, cfg)
 	if err != nil {
-		return fmt.Errorf("erasing this machine: %w", err)
+		return err
 	}
-	os.Remove(cfg.DataDir) // empty, unless a worktree could not be moved out
 	fmt.Fprintln(os.Stderr, "The owner erased everything: Hermesh's data on this machine is erased. Pair it again with `hermeshd pair <connection address>`.")
 	for _, wt := range kept {
 		fmt.Fprintf(os.Stderr, "Kept, with uncommitted changes: %s\n", wt)
