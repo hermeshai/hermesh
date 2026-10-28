@@ -99,6 +99,7 @@ type Machine struct {
 	connected   bool
 	refused     bool       // the relay refused admission when last connecting
 	erased      bool       // the owner's erase order came (SelfErase)
+	goneSaid    bool       // the log said the owner is gone and how to pair again
 	clientsMu   sync.Mutex // rememberClient
 	adminSeen   map[string]time.Time
 	// grantSeen caches the highest version of each grant recorded in the

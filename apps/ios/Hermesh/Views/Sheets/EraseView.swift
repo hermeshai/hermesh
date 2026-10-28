@@ -3,9 +3,10 @@ import HermeshSessions
 import SwiftUI
 
 /// Erase Everything (docs/erase-everything.md), from the account: what it
-/// erases, by name, and what stays, confirmed by typing the server's address
-/// and approved with Face ID; then each device, machine and agent ticked as
-/// it reports, and this iPhone erased last.
+/// erases, by name, and what stays, confirmed by typing the account's email
+/// (a server of one's own: its address) and approved with Face ID; then each
+/// device, machine and agent ticked as it reports, and this iPhone erased
+/// last. Those offline are reset (or paired again) when next used.
 struct EraseView: View {
     @Environment(AppModel.self) private var model
     @State private var items: [EraseItem]?
@@ -31,10 +32,15 @@ struct EraseView: View {
         }
     }
 
-    /// The server as its address names it (with its port), as the Mac asks for it too.
+    /// The server as its address names it (with its port), as the Mac shows it too.
     private var host: String {
         guard let u = URLComponents(string: model.status.relayURL), let h = u.host else { return model.status.relayURL }
         return u.port.map { "\(h):\($0)" } ?? h
+    }
+
+    /// What is typed to confirm: the account's email, or a server of one's own's address.
+    private var expected: String {
+        model.status.hosted && !model.status.account.isEmpty ? model.status.account : host
     }
 
     @ViewBuilder private var confirm: some View {
@@ -43,8 +49,13 @@ struct EraseView: View {
             group("Machines", "Unpaired; their projects lists, sessions and the worktrees Hermesh made erased", kind: "machine")
             group("Agents", "Disconnected; their pairing on their own computers erased", kind: "agent")
             VStack(alignment: .leading, spacing: 2) {
-                Text("Your Server · \(host)")
-                Text("Back to unclaimed, with a new claim code").font(.footnote).foregroundStyle(.secondary)
+                if model.status.hosted {
+                    Text("Data on \(host)")
+                    Text("Messages, new-message alerts and connection approvals; every browser signed out").font(.footnote).foregroundStyle(.secondary)
+                } else {
+                    Text("Your Server · \(host)")
+                    Text("Back to unclaimed, with a new claim code").font(.footnote).foregroundStyle(.secondary)
+                }
             }
         } header: {
             Text("Erases")
@@ -54,19 +65,21 @@ struct EraseView: View {
         Section {
             Text("Your project directories and repositories, branches included")
             Text("Worktrees with uncommitted changes: moved aside and kept, and you’re told where")
+            if model.status.hosted { Text("Your account: sign in with it again for a fresh start") }
+            Text("What offline devices hold, until each is reset")
         } header: {
             Text("Stays")
         }
         .font(.subheadline).foregroundStyle(.secondary)
         Section {
-            TextField(host, text: $typed)
+            TextField(expected, text: $typed)
                 .textInputAutocapitalization(.never).autocorrectionDisabled().keyboardType(.URL)
                 .focused($typing)
                 .submitLabel(.done)
                 .onSubmit { typing = false }
                 .accessibilityIdentifier("erase-confirm")
         } footer: {
-            Text("This can’t be undone. Type \(host) to confirm.")
+            Text("This can’t be undone. Type \(expected) to confirm.")
         }
         Section {
             Button(role: .destructive) {
@@ -86,7 +99,7 @@ struct EraseView: View {
     }
 
     private var matches: Bool {
-        !host.isEmpty && typed.trimmingCharacters(in: .whitespaces).lowercased() == host.lowercased()
+        !expected.isEmpty && typed.trimmingCharacters(in: .whitespaces).lowercased() == expected.lowercased()
     }
 
     /// One kind of what is erased: what happens to it, and each one by name.
@@ -120,7 +133,7 @@ struct EraseView: View {
             Text("Erasing…")
         } footer: {
             VStack(alignment: .leading, spacing: 8) {
-                Text("Those online erase now; the others erase themselves the next time they connect.")
+                Text("Those online erase now; reset or pair the others again when you next use them.")
                 if let error {
                     Text(error).foregroundStyle(.red)
                     Button("Try Again") { Task { await finish() } }
@@ -139,7 +152,7 @@ struct EraseView: View {
             }
             .foregroundStyle(.secondary)
         } else {
-            Text(it.kind == "agent" ? "Erases the next time it’s used" : "Erases the next time it connects").foregroundStyle(.secondary)
+            Text(it.kind == "agent" ? "Signs in again when next used" : it.kind == "machine" ? "To pair again when next online" : "Offers a reset when next opened").foregroundStyle(.secondary)
         }
     }
 

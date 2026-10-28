@@ -90,12 +90,12 @@
         }
       }
     },
-    "%@ will erase themselves the next time they connect.": {
+    "%@ were offline: reset or pair each again when you next use it.": {
       "localizations": {
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "%@下次连上时会自己清空。"
+            "value": "%@当时离线，之后各自重置或重新配对即可。"
           }
         }
       }
@@ -1556,6 +1556,16 @@
         }
       }
     },
+    "Data on %@": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ 上的数据"
+          }
+        }
+      }
+    },
     "Default Model": {
       "localizations": {
         "zh-Hans": {
@@ -1872,26 +1882,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "会清空"
-          }
-        }
-      }
-    },
-    "Erases the next time it connects": {
-      "localizations": {
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "下次连上时清空"
-          }
-        }
-      }
-    },
-    "Erases the next time it’s used": {
-      "localizations": {
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "下次用时清空"
           }
         }
       }
@@ -2869,6 +2859,16 @@
         }
       }
     },
+    "Messages, new-message alerts and connection approvals; every browser signed out": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "消息、新消息提醒和连接授权；所有浏览器退出登录"
+          }
+        }
+      }
+    },
     "Metadata": {
       "localizations": {
         "zh-Hans": {
@@ -3275,6 +3275,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "关闭"
+          }
+        }
+      }
+    },
+    "Offers a reset when next opened": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "下次打开时提示重置"
           }
         }
       }
@@ -4269,6 +4279,16 @@
         }
       }
     },
+    "Signs in again when next used": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "下次使用时需要重新登录"
+          }
+        }
+      }
+    },
     "Something went wrong": {
       "localizations": {
         "zh-Hans": {
@@ -4832,12 +4852,12 @@
         }
       }
     },
-    "Those online erase now; the others erase themselves the next time they connect.": {
+    "Those online erase now; reset or pair the others again when you next use them.": {
       "localizations": {
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "在线的马上清空，离线的下次连上时自己清空。"
+            "value": "在线的马上清空；离线的之后各自重置或重新配对。"
           }
         }
       }
@@ -4868,6 +4888,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "待办"
+          }
+        }
+      }
+    },
+    "To pair again when next online": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "之后需要重新配对"
           }
         }
       }
@@ -5452,6 +5482,16 @@
         }
       }
     },
+    "What offline devices hold, until each is reset": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "离线设备上的数据：留到它下次被重置"
+          }
+        }
+      }
+    },
     "What “%@” Can Use": {
       "localizations": {
         "zh-Hans": {
@@ -5558,6 +5598,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "自己的服务器 · %@"
+          }
+        }
+      }
+    },
+    "Your account: sign in with it again for a fresh start": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "你的账号：用它再登录，就是全新开始"
           }
         }
       }

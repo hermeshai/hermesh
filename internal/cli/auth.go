@@ -135,8 +135,8 @@ func (a *app) alreadyPaired(ctx context.Context, w io.Writer, relayURL, ownerID 
 	}
 	if (ownerID != "" && ownerID != a.st.OwnerID || ownerID == "" && relayURL != a.st.RelayURL) &&
 		machine.OwnerGone(ctx, a.hc, a.st.RelayURL, a.st.OwnerID) {
-		// The owner identity was reset: nothing to keep, pair with the new one.
-		fmt.Fprintf(w, "The previous owner %s is gone from its center (it was reset); pairing with a new owner.\n", a.st.OwnerID)
+		// The owner erased everything, or was reset: nothing to keep, pair with the new one.
+		fmt.Fprintf(w, "The previous owner %s is gone from its server (it erased everything, or was reset); pairing with a new owner.\n", a.st.OwnerID)
 		previous = a.g.ClientLabel
 		_, err := a.forget()
 		return false, previous, err

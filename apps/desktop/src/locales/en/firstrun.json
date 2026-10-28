@@ -164,7 +164,7 @@
     "done": "Hermesh erased everything",
     "by": "You erased everything in Hermesh on “{{device}}”",
     "byBody": "Hermesh on this Mac is erased too.",
-    "pending": "{{names}} will erase themselves the next time they connect.",
+    "pending": "{{names}} were offline: reset or pair each again when you next use it.",
     "kept": "Kept, with uncommitted changes:",
     "reveal": "Show in Finder",
     "dismiss": "Close"

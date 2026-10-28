@@ -163,7 +163,7 @@
     "done": "Hermesh 已全部清空",
     "by": "你在「{{device}}」上全部清空了 Hermesh",
     "byBody": "这台 Mac 上的 Hermesh 也已清空。",
-    "pending": "{{names}}下次连上时会自己清空。",
+    "pending": "{{names}}当时离线，之后各自重置或重新配对即可。",
     "kept": "有未提交的改动，已保留：",
     "reveal": "在访达中显示",
     "dismiss": "关闭"

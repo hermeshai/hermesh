@@ -12,7 +12,7 @@ import (
 
 // An erased owner leaves only its order behind: the relay is unclaimed, its
 // owner's records and connection log are gone, and the order and its acks
-// are kept for EraseRetention.
+// are kept for EraseRetention, then purged.
 func TestEraseOwnerStore(t *testing.T) {
 	st, err := OpenStore(filepath.Join(t.TempDir(), "relay.db"))
 	if err != nil {
@@ -52,7 +52,7 @@ func TestEraseOwnerStore(t *testing.T) {
 	st.AckErase("e1", "m_1", t0)
 	st.AckErase("e1", "m_1", t0) // again: once
 	st.AckErase("e2", "m_2", t0) // no such erase: ignored
-	got, gotChain, acks, err := st.EraseOrder(owner, t0.Add(EraseRetention-time.Hour))
+	got, gotChain, acks, err := st.EraseOrder(owner, t0.Add(EraseRetention-time.Minute))
 	if err != nil || string(got.GetBody()) != "order" || len(gotChain.GetCerts()) != 1 || !slices.Equal(acks, []string{"m_1"}) {
 		t.Fatalf("the order: %v %v %v %v", got, gotChain, acks, err)
 	}
@@ -62,8 +62,23 @@ func TestEraseOwnerStore(t *testing.T) {
 	if _, _, acks, _ := st.EraseOrder(owner, t0); len(acks) != maxEraseAcks {
 		t.Fatalf("%d acks kept", len(acks))
 	}
-	if got, _, _, err := st.EraseOrder(owner, t0.Add(EraseRetention+time.Hour)); got != nil || err != nil {
+	if got, _, _, err := st.EraseOrder(owner, t0.Add(EraseRetention+time.Minute)); got != nil || err != nil {
 		t.Fatalf("the order after %v: %v %v", EraseRetention, got, err)
+	}
+	// Purged: nothing of it is kept.
+	if err := st.PurgeErases(t0.Add(EraseRetention - time.Minute)); err != nil {
+		t.Fatal(err)
+	}
+	if got, _, _, _ := st.EraseOrder(owner, t0); got == nil {
+		t.Fatal("purged within its time")
+	}
+	if err := st.PurgeErases(t0.Add(EraseRetention + time.Minute)); err != nil {
+		t.Fatal(err)
+	}
+	var left int
+	st.db.QueryRow(`SELECT (SELECT COUNT(*) FROM erase_orders) + (SELECT COUNT(*) FROM erase_acks)`).Scan(&left)
+	if left != 0 {
+		t.Fatalf("%d rows left after its time", left)
 	}
 	if got, _, _, _ := st.EraseOrder("o_other", t0); got != nil {
 		t.Fatal("an order for an owner that erased nothing")

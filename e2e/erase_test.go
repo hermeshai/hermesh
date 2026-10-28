@@ -74,6 +74,10 @@ func TestEraseEverything(t *testing.T) {
 		return err == nil && slices.ContainsFunc(res.Machines, func(m *localv1.Machine) bool { return m.MachineName == name && m.Online })
 	}
 	onData, offData := pairVPS("vps-on"), pairVPS("vps-off")
+	// Paired, and never used again until the owner is a new one: a machine
+	// and an agent the erase never reaches.
+	lateData := pairVPS("vps-late")
+	lateAgent := w.addAgent("late", &localv1.GrantSpec{})
 	// On a Mac the app's owner shares the data directory: it stays.
 	appFile := filepath.Join(onData, "owner", "profiles", "p1", "owner.db")
 	os.MkdirAll(filepath.Dir(appFile), 0o700)
@@ -84,9 +88,10 @@ func TestEraseEverything(t *testing.T) {
 			t.Fatalf("%s kept its machine: %v", data, err)
 		}
 	}
-	vpsOn, vpsOff := runVPS("vps-on", onData), runVPS("vps-off", offData)
-	eventually(t, 30*time.Second, "both servers online", func() bool { return online("vps-on") && online("vps-off") })
+	vpsOn, vpsOff, vpsLate := runVPS("vps-on", onData), runVPS("vps-off", offData), runVPS("vps-late", lateData)
+	eventually(t, 30*time.Second, "the servers online", func() bool { return online("vps-on") && online("vps-off") && online("vps-late") })
 	vpsOff.stop()
+	vpsLate.stop()
 
 	// A Mac that is only a machine, and a second trusted device.
 	mac3, _ := w.otherMac("mac3", env)
@@ -114,7 +119,7 @@ func TestEraseEverything(t *testing.T) {
 	}
 	eventually(t, 30*time.Second, "mac2 sees the machines", func() bool {
 		res, err := app2.client.ListMachines(ctx, &localv1.ListMachinesRequest{})
-		return err == nil && len(res.Machines) == 4
+		return err == nil && len(res.Machines) == 5
 	})
 
 	// What it would erase, shown before asking: each device, machine and
@@ -128,8 +133,9 @@ func TestEraseEverything(t *testing.T) {
 		shown = append(shown, fmt.Sprintf("%s/%s this=%v online=%v done=%v", it.Kind, it.Name, it.ThisDevice, it.Online, it.Done))
 	}
 	if want := []string{"device/test-mac this=true online=false done=false", "device/mac2 this=false online=false done=false",
-		"machine/mac3 this=false online=true done=false", "machine/vps-off this=false online=false done=false",
-		"machine/vps-on this=false online=true done=false", "agent/bot this=false online=false done=false"}; !slices.Equal(shown, want) {
+		"machine/mac3 this=false online=true done=false", "machine/vps-late this=false online=false done=false",
+		"machine/vps-off this=false online=false done=false", "machine/vps-on this=false online=true done=false",
+		"agent/bot this=false online=false done=false", "agent/late this=false online=false done=false"}; !slices.Equal(shown, want) {
 		t.Fatalf("preview:\n%s", strings.Join(shown, "\n"))
 	}
 
@@ -181,7 +187,7 @@ func TestEraseEverything(t *testing.T) {
 		return true
 	})
 	items := status()
-	if len(items) != 6 || !items["device/test-mac"].ThisDevice || items["device/test-mac"].Done || items["machine/vps-off"].Done {
+	if len(items) != 8 || !items["device/test-mac"].ThisDevice || items["device/test-mac"].Done || items["machine/vps-off"].Done {
 		t.Fatalf("erase items: %v", items)
 	}
 	if c := vpsOn.wait(t, 30*time.Second); c != 0 {
@@ -197,7 +203,7 @@ func TestEraseEverything(t *testing.T) {
 		t.Fatal(err)
 	}
 	st, err := w.app.client.GetStatus(ctx, &localv1.GetStatusRequest{})
-	if err != nil || st.Initialized || st.Erased == nil || st.Erased.EraseId != erase.EraseId || !slices.Equal(st.Erased.Pending, []string{"vps-off"}) ||
+	if err != nil || st.Initialized || st.Erased == nil || st.Erased.EraseId != erase.EraseId || !slices.Equal(st.Erased.Pending, []string{"vps-late", "vps-off", "late"}) ||
 		len(st.Erased.KeptWorktrees) != 1 {
 		t.Fatalf("the Mac after erasing: %v %v", st, err)
 	}
@@ -255,5 +261,23 @@ func TestEraseEverything(t *testing.T) {
 	}
 	if st, _ := w.app.client.GetStatus(ctx, &localv1.GetStatusRequest{}); !st.Initialized || st.Erased != nil {
 		t.Fatalf("status once set up again: %v", st)
+	}
+
+	// Those the erase never reached pair with the new owner as they are: their
+	// old owner is gone from the server, nothing to log out of first.
+	gone := "is gone from its server (it erased everything, or was reset)"
+	login := start(t, "login late again", lateAgent, filepath.Join(w.bin, "hermesh"), "auth", "login", setup.ConnectAddress, "--name", "late")
+	if _, err := w.app.client.ApproveClientPairing(ctx, &localv1.ApproveClientPairingRequest{Code: login.pairingCode(t), Spec: &localv1.GrantSpec{}}); err != nil {
+		t.Fatal(err)
+	}
+	if c := login.wait(t, 30*time.Second); c != 0 || !strings.Contains(login.output(), gone) {
+		t.Fatalf("the late agent pairing again: %d\n%s", c, login.output())
+	}
+	pair := start(t, "pair vps-late again", env, daemon, "pair", setup.ConnectAddress, "--name", "vps-late", "--no-service", "--data-dir", lateData)
+	if _, err := w.app.client.ApproveMachinePairing(ctx, &localv1.ApproveMachinePairingRequest{Code: pair.pairingCode(t), MachineName: "vps-late"}); err != nil {
+		t.Fatal(err)
+	}
+	if c := pair.wait(t, 30*time.Second); c != 0 || !strings.Contains(pair.output(), gone) {
+		t.Fatalf("vps-late pairing again: %d\n%s", c, pair.output())
 	}
 }

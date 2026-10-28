@@ -145,11 +145,11 @@ extension HermeshUITests {
         field.typeText("\(relay.host!):\(relay.port!)\n")
         try waitFor("the button enabled and in reach") { button.isEnabled && button.isHittable ? true : nil }
         button.tap()
-        // vps-1 erases itself now, the agent the next time it's used; this iPhone last.
+        // vps-1 erases itself now; the agent signs in again when next used; this iPhone last.
         let note = app.descendants(matching: .any)["erased-note"].firstMatch
         XCTAssertTrue(note.waitForExistence(timeout: 60), "the first run says what was done")
         XCTAssertTrue(text("Hermesh 已全部清空").exists)
-        XCTAssertTrue(text("Cursor下次连上时会自己清空").exists, "the agent waits")
+        XCTAssertTrue(text("Cursor当时离线，之后各自重置或重新配对即可").exists, "the agent, to sign in again")
         XCTAssertEqual(try control("erased")["erased"] as? Bool, true, "vps-1 erased itself")
         XCTAssertTrue(app.buttons["sign-in"].exists, "the first run")
         press(note.buttons["关闭"])

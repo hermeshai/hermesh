@@ -116,8 +116,7 @@ export function Account({ ask }: { ask: (a: Ask) => void }) {
         </div>
       </More>
       <div className="set-acts">
-        {/* Until the official service can erase an owner (docs/erase-everything.md step 3), only a server of one's own. */}
-        {s && !s.hosted && !s.removed && (
+        {s && !s.removed && (
           <button className="btn danger" onClick={() => st.set({ sheet: { kind: "erase" } })}>{t("account.eraseAll")}</button>
         )}
         <button className="btn danger push" onClick={leave}>{t("account.signOut")}</button>
