@@ -150,7 +150,19 @@ func (o *Owner) EraseStatus(ctx context.Context, eraseID string) (*localv1.Erase
 		if err != nil {
 			return nil, err
 		}
-		return &localv1.EraseStatusResponse{Items: run.items}, nil
+		res := &localv1.EraseStatusResponse{Items: run.items}
+		if o.Status().Hosted {
+			ctl, _, err := o.control(ctx)
+			if err != nil {
+				return nil, err
+			}
+			a, err := ctl.GetAccount(ctx, &relayv1.GetAccountRequest{})
+			if err != nil {
+				return nil, err
+			}
+			res.Account = a.Account
+		}
+		return res, nil
 	}
 	o.mu.Lock()
 	run, relayURL, ownerID := o.erasing, o.relayURL, o.ownerID

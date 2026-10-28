@@ -870,6 +870,10 @@ public nonisolated struct Hermesh_Local_V1_EraseStatusResponse: Sendable {
   /// What there was when it began, and which acked.
   public var items: [Hermesh_Local_V1_EraseItem] = []
 
+  /// Without an erase id, on a center: the account's email, which the owner
+  /// types to confirm ("" on a self-hosted relay: its address is typed).
+  public var account: String = String()
+
   public var unknownFields = SwiftProtobuf.UnknownStorage()
 
   public init() {}
@@ -4162,7 +4166,7 @@ nonisolated extension Hermesh_Local_V1_EraseStatusRequest: SwiftProtobuf.Message
 
 nonisolated extension Hermesh_Local_V1_EraseStatusResponse: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
   public static let protoMessageName: String = _protobuf_package + ".EraseStatusResponse"
-  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{1}items\0")
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{1}items\0\u{1}account\0")
 
   public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
     while let fieldNumber = try decoder.nextFieldNumber() {
@@ -4171,6 +4175,7 @@ nonisolated extension Hermesh_Local_V1_EraseStatusResponse: SwiftProtobuf.Messag
       // enabled. https://github.com/apple/swift-protobuf/issues/1034
       switch fieldNumber {
       case 1: try { try decoder.decodeRepeatedMessageField(value: &self.items) }()
+      case 2: try { try decoder.decodeSingularStringField(value: &self.account) }()
       default: break
       }
     }
@@ -4180,11 +4185,15 @@ nonisolated extension Hermesh_Local_V1_EraseStatusResponse: SwiftProtobuf.Messag
     if !self.items.isEmpty {
       try visitor.visitRepeatedMessageField(value: self.items, fieldNumber: 1)
     }
+    if !self.account.isEmpty {
+      try visitor.visitSingularStringField(value: self.account, fieldNumber: 2)
+    }
     try unknownFields.traverse(visitor: &visitor)
   }
 
   public static func ==(lhs: Hermesh_Local_V1_EraseStatusResponse, rhs: Hermesh_Local_V1_EraseStatusResponse) -> Bool {
     if lhs.items != rhs.items {return false}
+    if lhs.account != rhs.account {return false}
     if lhs.unknownFields != rhs.unknownFields {return false}
     return true
   }

@@ -26,17 +26,21 @@ function Confirm({ started }: { started: (id: string, items: EraseItem[]) => voi
   const { t } = useTranslation("sheets");
   const st = useStore();
   const [items, setItems] = useState<EraseItem[] | null>(null);
+  const [account, setAccount] = useState("");
   const [typed, setTyped] = useState("");
   const { busy, error, go } = useAction();
   const [loadError, setLoadError] = useState("");
   useEffect(() => {
-    local.eraseStatus({}).then((r) => setItems(r.items), (e) => setLoadError(errorText(e)));
+    local.eraseStatus({}).then(
+      (r) => (setItems(r.items), setAccount(r.account)),
+      (e) => setLoadError(errorText(e)),
+    );
   }, []);
   const relay = st.status?.relayUrl ?? "";
   const host = URL.canParse(relay) ? new URL(relay).host : relay;
   const hosted = st.status?.hosted === true;
   // What is typed to confirm: the account's email, or a server of one's own's address.
-  const expected = (hosted && st.status?.account) || host;
+  const expected = (hosted && account) || host;
   const match = expected !== "" && typed.trim().toLowerCase() === expected.toLowerCase();
   const of = (kind: string) => (items ?? []).filter((it) => it.kind === kind);
   const erase = () => go(async () => started((await local.eraseEverything({})).eraseId, items ?? []));

@@ -10,6 +10,7 @@ import SwiftUI
 struct EraseView: View {
     @Environment(AppModel.self) private var model
     @State private var items: [EraseItem]?
+    @State private var account = ""
     @State private var typed = ""
     @State private var eraseID: String?
     @State private var working = false
@@ -28,7 +29,11 @@ struct EraseView: View {
         .navigationBarBackButtonHidden(eraseID != nil || working)
         .interactiveDismissDisabled(eraseID != nil || working)
         .task {
-            do { items = try await model.eraseItems() } catch { self.error = error.localizedDescription }
+            do {
+                let r = try await model.eraseStatus()
+                items = r.items
+                account = r.account
+            } catch { self.error = error.localizedDescription }
         }
     }
 
@@ -40,7 +45,7 @@ struct EraseView: View {
 
     /// What is typed to confirm: the account's email, or a server of one's own's address.
     private var expected: String {
-        model.status.hosted && !model.status.account.isEmpty ? model.status.account : host
+        model.status.hosted && !account.isEmpty ? account : host
     }
 
     @ViewBuilder private var confirm: some View {
@@ -175,7 +180,7 @@ struct EraseView: View {
     private func follow(_ id: String) async {
         let start = ContinuousClock.now
         while true {
-            if let now = try? await model.eraseItems(id) { items = now }
+            if let now = try? await model.eraseStatus(id) { items = now.items }
             if ContinuousClock.now - start > Self.waitOnline || (items ?? []).allSatisfy({ $0.thisDevice || !$0.online || $0.done }) { break }
             try? await Task.sleep(for: .seconds(1))
         }

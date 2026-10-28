@@ -677,6 +677,14 @@ func (o *ownerControl) EraseOwner(ctx context.Context, req *relayv1.EraseOwnerRe
 	return &relayv1.EraseOwnerResponse{}, nil
 }
 
+func (o *ownerControl) GetAccount(ctx context.Context, _ *relayv1.GetAccountRequest) (*relayv1.GetAccountResponse, error) {
+	res := &relayv1.GetAccountResponse{}
+	if o.s.cfg.Account != nil {
+		res.Account = o.s.cfg.Account(peerFrom(ctx).t.ownerID)
+	}
+	return res, nil
+}
+
 func (o *ownerControl) PublishRootChain(ctx context.Context, req *relayv1.PublishRootChainRequest) (*relayv1.PublishRootChainResponse, error) {
 	if err := o.s.acceptRootChain(peerFrom(ctx).t, req.RootChain); err != nil {
 		return nil, errf(connect.CodeInvalidArgument, err.Error())

@@ -328,9 +328,13 @@ service OwnerControlService {
   // A longer root chain: a trusted device joined or was removed.
   rpc PublishRootChain(PublishRootChainRequest) returns (PublishRootChainResponse);
   // The owner erases everything (docs/erase-everything.md): the relay keeps
-  // the signed order, forgets the owner, and every peer of it is refused
-  // and shown the order when it next connects.
+  // the signed order for 10 minutes, forgets the owner, and every peer of
+  // it is refused, and shown the order in that time.
   rpc EraseOwner(EraseOwnerRequest) returns (EraseOwnerResponse);
+  // The account this owner belongs to, as its devices may show it: a
+  // center's account's email ("" for a self-hosted relay). Erasing
+  // everything has the owner type it to confirm.
+  rpc GetAccount(GetAccountRequest) returns (GetAccountResponse);
   // This device's push registration, signed by its device key: replaces
   // its earlier one. An empty token stops its notices.
   rpc RegisterPush(RegisterPushRequest) returns (RegisterPushResponse);
@@ -544,6 +548,12 @@ message EraseOwnerRequest {
 }
 
 message EraseOwnerResponse {}
+
+message GetAccountRequest {}
+
+message GetAccountResponse {
+  string account = 1;
+}
 
 // MessageService is the post office (docs/agent-messages.md §5), served on
 // the client and machine control streams: the caller's inbox is the

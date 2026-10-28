@@ -463,6 +463,9 @@ message EraseStatusRequest {
 message EraseStatusResponse {
   // What there was when it began, and which acked.
   repeated EraseItem items = 1;
+  // Without an erase id, on a center: the account's email, which the owner
+  // types to confirm ("" on a self-hosted relay: its address is typed).
+  string account = 2;
 }
 
 message EraseItem {

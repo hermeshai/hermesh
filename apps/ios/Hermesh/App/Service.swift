@@ -305,11 +305,10 @@ extension LocalAPI {
         return r.eraseID
     }
 
-    func eraseStatus(_ eraseID: String) async throws -> [EraseItem] {
+    func eraseStatus(_ eraseID: String) async throws -> Hermesh_Local_V1_EraseStatusResponse {
         var r = Hermesh_Local_V1_EraseStatusRequest()
         r.eraseID = eraseID
-        let res: Hermesh_Local_V1_EraseStatusResponse = try await call("EraseStatus", r, timeout: 30)
-        return res.items
+        return try await call("EraseStatus", r, timeout: 30)
     }
 
     func finishErase() async throws {
