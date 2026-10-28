@@ -6,6 +6,7 @@
 #   Add a machine:   curl -fsSL https://github.com/hermeshai/hermesh/releases/latest/download/install.sh | sh -s -- [connection address]
 #                    (without one: $HERMESH_CENTER, else the official center https://hermesh.io)
 #   Agent CLI only:  curl -fsSL https://github.com/hermeshai/hermesh/releases/latest/download/install.sh | sh -s -- --cli
+#   Trusted device:  … | sh -s -- --device   (a computer that approves and runs no coding agents)
 #   As root:         … | sh -s -- --user dev   (installs for that user, creating it if needed; asked when not given)
 #
 # Environment: HERMESH_VERSION (default latest), HERMESH_BIN_DIR (default ~/.local/bin)
@@ -27,6 +28,7 @@ FOR_USER=""
 while [ $# -gt 0 ]; do
   case "$1" in
     --cli) MODE=cli ;;
+    --device) MODE=device ;;
     --name) shift; NAME="${1:-}" ;;
     --user) shift; FOR_USER="${1:-}" ;;
     -*) die "unknown option $1" ;;
@@ -53,12 +55,12 @@ if (: </dev/tty) 2>/dev/null; then TTY=/dev/tty; fi
 # you code as, never as root. As root, it installs for that user.
 AS=""
 if [ "$(id -u)" = 0 ]; then
-  [ "$MODE" = machine ] || die "do not run as root; install the CLI as the user your agent runs as"
+  [ "$MODE" != cli ] || die "do not run as root; install the CLI as the user your agent runs as"
   if [ -z "$FOR_USER" ]; then
     [ -n "$TTY" ] || die "do not run as root; Hermesh runs as the user you code as: pass --user <name>"
     def="$(awk -F: '$3 >= 1000 && $3 < 60000 && $7 !~ /(nologin|false)$/ { print $1; exit }' /etc/passwd)"
     [ -n "$def" ] || def=dev
-    echo "Hermesh runs as the user you code as, not as root."
+    if [ "$MODE" = device ]; then echo "Hermesh runs as a user, not as root."; else echo "Hermesh runs as the user you code as, not as root."; fi
     printf 'User to install for [%s]: ' "$def"
     read -r FOR_USER <"$TTY" || true
     [ -n "$FOR_USER" ] || FOR_USER="$def"
@@ -98,7 +100,11 @@ fi
 
 TMP="$(mktemp -d)"
 trap 'rm -rf "$TMP"' EXIT
-if [ "$MODE" = cli ]; then BINS="hermesh"; else BINS="hermeshd hermesh"; fi
+case "$MODE" in
+  cli) BINS="hermesh" ;;
+  device) BINS="hermeshd" ;;
+  *) BINS="hermeshd hermesh" ;;
+esac
 
 echo "› downloading checksums"
 curl -fsSL "$BASE/checksums.txt" -o "$TMP/checksums.txt"
@@ -146,10 +152,21 @@ if [ "$MODE" = cli ]; then
   exit 0
 fi
 
-set -- pair
+if [ "$MODE" = device ]; then
+  # A trusted device joins your Hermesh, or, with no other device yet,
+  # sets it up (signing in with a code a browser shows).
+  set -- device join
+  if [ -z "$ADDRESS" ] && [ -n "$TTY" ]; then
+    printf 'Is Hermesh set up on another device already (your iPhone or Mac)? [Y/n] '
+    read -r yes <"$TTY" || true
+    case "$yes" in n* | N*) set -- device setup ;; esac
+  fi
+else
+  set -- pair
+  [ -n "$NAME" ] && set -- "$@" --name "$NAME"
+fi
 [ -n "$ADDRESS" ] && set -- "$@" "$ADDRESS"
-[ -n "$NAME" ] && set -- "$@" --name "$NAME"
-# The terminal goes to hermeshd as its stdin, for the two digits it asks.
+# The terminal goes to hermeshd as its stdin, for what it asks.
 if [ -n "$TTY" ]; then
   $AS "$BIN_DIR/hermeshd" "$@" <"$TTY"
 else

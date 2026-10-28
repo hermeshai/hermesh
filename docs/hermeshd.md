@@ -47,7 +47,9 @@ on any device). `hermeshd doctor`, or Check Again in the app, looks again.
 
 A computer, or a user, that runs no coding agents can approve like your
 iPhone ([onboarding.md](onboarding.md) §9). Its key is sealed by a
-passphrase.
+passphrase. Install it with the same command, ending `sh -s -- --device`:
+it asks whether Hermesh is on another device already, and joins it or sets
+Hermesh up.
 
 | Command | Does |
 |---|---|

@@ -44,5 +44,14 @@
   "errorTitle": "暂时无法更新",
   "about": "关于 Hermesh",
   "aboutBody": "让你的智能体协同工作。",
-  "fullHistory": "完整更新历史"
+  "fullHistory": "完整更新历史",
+  "install": {
+    "heading": "安装",
+    "mac": "**在 Mac 上**，用来批准、也能跑编码 agent：Apple 芯片下载 `Hermesh-macos-arm64.dmg`，Intel 下载 `Hermesh-macos-x64.dmg`",
+    "machine": "**在给编码 agent 用的机器上**（Linux 或 macOS）：`{{command}}`",
+    "device": "**在只用来批准的 Linux 电脑上**：同一条命令，结尾改成 `sh -s -- --device`",
+    "cli": "**给你的 agent 用的命令行**：同一条命令，结尾改成 `sh -s -- --cli`",
+    "relay": "**在自己的服务器上**：镜像 `{{image}}`",
+    "note": "其他文件由安装脚本和 app 的自动更新下载，不用手动下载。"
+  }
 }

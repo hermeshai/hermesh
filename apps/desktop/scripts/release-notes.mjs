@@ -1,6 +1,7 @@
 // The release notes of one version, from the app's catalogs
 // (src/locales/*/releases.json): checks that the version has its own
-// highlights in both languages, and prints the GitHub release's text.
+// highlights in both languages, and prints the GitHub release's text:
+// which file to install for what, then the highlights.
 // The release workflow runs it before building anything.
 //
 //   node apps/desktop/scripts/release-notes.mjs 0.1.1-beta.3 > notes.md
@@ -20,4 +21,7 @@ if (problem) {
   console.error(`release notes for ${version}: ${problem} (docs/desktop-app.md, Release highlights)`);
   process.exit(1);
 }
-process.stdout.write(releaseBody(enNotes, zhNotes, version, { en: enUpdates, "zh-CN": zhUpdates }));
+process.stdout.write(releaseBody(enNotes, zhNotes, version, { en: enUpdates, "zh-CN": zhUpdates }, {
+  command: "curl -fsSL https://github.com/hermeshai/hermesh/releases/latest/download/install.sh | sh",
+  image: `ghcr.io/hermeshai/hermesh-relay:v${version}`,
+}));
