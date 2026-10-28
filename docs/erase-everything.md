@@ -1,7 +1,6 @@
 # Erase everything: one approval, every device back to its first run
 
-Status: agreed 2026-10-28 (§8), being built: steps 1 and 2 are done, step
-3 under way (§6). One action, **Erase
+Status: agreed 2026-10-28 (§8), steps 1–3 built (§6). One action, **Erase
 Everything** (全部清空), which first says exactly what it erases.
 
 ## 1. The ask
@@ -72,12 +71,17 @@ then, in one go:
    ("this relay no longer serves this device's owner") and ask for the
    order (§3.4);
 3. forgets the owner as the console's start over does (the same deletions,
-   `OwnerGone`, unlinking the account) and mails the person, naming the
-   device it came from;
-4. signs the account out of every browser (its web sessions) and drops its
-   connectors' OAuth registrations and consents, so the next connector
-   starts from its first consent page. The account and how the person signs
-   in stay: signing in again finds no owner, which is a first run.
+   unlinking the account), and mails the person, naming the device it came
+   from (in the language the account last signed in with);
+4. ends the owner's connectors' connections (`OwnerGone`: the next
+   connector starts from its consent page) and drops their inboxes and the
+   owner's doorbells, with the bots' webhook keys; and signs the account out
+   of every browser. The account, how the person signs in and its audit log
+   stay: signing in again finds no owner, which is a first run.
+
+The owner types the account's email to confirm: the center tells the
+owner's devices their account (`OwnerControl.GetAccount`), as no device
+keeps it.
 
 A self-hosted relay does the same and becomes unclaimed again, with a new
 claim code (`hermesh-relay claim-code`, as at its first start).
@@ -214,8 +218,11 @@ unchanged: it signs nothing, so it erases nothing on a device.
    start again with the next sign-in. If the app never asks `FinishErase`
    (its window closed), the device erases itself two minutes after the
    order. e2e: the desktop's onboarding spec, `TestIPhoneFirstRun`.
-3. The center: account sign-out and connector consents, the console's
-   erase record. Cloud e2e.
+3. Done: the center (hermesh-cloud `center/erase.go`): the order kept 10
+   minutes in Postgres, the owner forgotten (shared with start over, which
+   now drops doorbells and inboxes too), every browser signed out, the mail,
+   the account's email for the apps. Cloud e2e `TestEraseEverything`;
+   `TestHostedMCP` checks start over drops the bot's doorbell.
 4. `hermeshd erase`, the harness helper, the testing notes.
 
 ## 7. Tests (each step's e2e, as people do it)
