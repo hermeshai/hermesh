@@ -31,6 +31,7 @@ func main() {
 	var dataDir, listen, domain, certFile, keyFile, debugAddr, publicURL, setupURL string
 	var withMCP bool
 	var apnsKey, apnsKeyID, apnsTeam, apnsTopic, pushSpool string
+	var pairingTTL time.Duration
 	serve := &cobra.Command{
 		Use:   "serve",
 		Short: "Run the relay",
@@ -51,7 +52,7 @@ func main() {
 			case pushSpool != "":
 				pusher = relay.Spool{Dir: pushSpool}
 			}
-			srv, err := relay.New(relay.Config{DataDir: dataDir, Logger: log, Pusher: pusher})
+			srv, err := relay.New(relay.Config{DataDir: dataDir, Logger: log, Pusher: pusher, PairingTTL: pairingTTL})
 			if err != nil {
 				return err
 			}
@@ -59,7 +60,7 @@ func main() {
 			if code, err := srv.ClaimCode(); err != nil {
 				return err
 			} else if code != "" {
-				fmt.Fprintf(os.Stderr, "\n  This relay is not claimed yet.\n  Claim code: %s\n  Enter it in Hermesh.app during setup.\n\n", code)
+				fmt.Fprintf(os.Stderr, "\n  This relay is not claimed yet.\n  Claim code: %s\n  Enter it in the Hermesh app during setup.\n\n", code)
 			}
 			ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 			defer stop()
@@ -119,8 +120,10 @@ func main() {
 	serve.Flags().StringVar(&apnsTeam, "apns-team-id", os.Getenv("HERMESH_APNS_TEAM_ID"), "the Apple developer team id the APNs key belongs to")
 	serve.Flags().StringVar(&apnsTopic, "apns-topic", "com.hermesh.ios", "the iPhone app's bundle id")
 	serve.Flags().StringVar(&pushSpool, "push-spool", "", "write notifications to files in this directory instead of sending them (tests)")
+	serve.Flags().DurationVar(&pairingTTL, "pairing-ttl", 0, "how long a pairing request waits (tests; default 10m)")
+	serve.Flags().MarkHidden("pairing-ttl")
 	serve.Flags().MarkHidden("push-spool")
-	serve.Flags().StringVar(&setupURL, "setup-url", "https://github.com/hermeshai/hermesh/releases/latest", "where MCP users are sent to get Hermesh for Mac")
+	serve.Flags().StringVar(&setupURL, "setup-url", "https://github.com/hermeshai/hermesh/releases/latest", "where MCP users are sent to get Hermesh")
 
 	claim := &cobra.Command{
 		Use:   "claim-code",

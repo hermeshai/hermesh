@@ -299,35 +299,52 @@ func (s *Server) pendingPairing(code string) (*Pairing, error) {
 	return row, nil
 }
 
-// ClaimPairing binds an unclaimed pairing request to ownerID (hosted center:
-// the owner typed the code in its app, or opened the request's pairing link
-// signed in to their account). A machine does not trust the binding: the
-// verification code checks it. A client claimed through its link accepts it.
+// ClaimPairing binds an unclaimed pairing request to ownerID for the
+// embedding server: the owner opened the request's pairing link signed in
+// to their account. The owner's devices are notified, as for a request that
+// named its owner, since the person may be away from all of them.
 func (s *Server) ClaimPairing(code, ownerID, accountHint string) (*Pairing, error) {
+	row, fresh, err := s.claimPairing(code, ownerID, accountHint)
+	if err == nil && fresh {
+		pr := &identityv1.PairingRequest{}
+		if identity.Unverified(row.Request, pr) == nil {
+			go s.notifyPairing(ownerID, row.Code, pr)
+		}
+	}
+	return row, err
+}
+
+// claimPairing binds an unclaimed pairing request to ownerID (hosted center:
+// the owner typed the code in its app, or opened the request's pairing link
+// signed in to their account), reporting whether this call bound it. A
+// machine does not trust the binding: the verification code checks it. A
+// client claimed through its link accepts it.
+func (s *Server) claimPairing(code, ownerID, accountHint string) (*Pairing, bool, error) {
 	if !s.cfg.Hosted {
-		return nil, errors.New("only a hosted center claims pairing requests")
+		return nil, false, errors.New("only a hosted center claims pairing requests")
 	}
 	if _, err := s.tenantFor(ownerID); err != nil {
-		return nil, err
+		return nil, false, err
 	}
 	row, err := s.pendingPairing(code)
 	if err != nil {
-		return nil, err
+		return nil, false, err
 	}
 	if row == nil {
-		return nil, errf(connect.CodeNotFound, "no pending pairing request with this code (it may have expired)")
+		return nil, false, errf(connect.CodeNotFound, "no pending pairing request with this code (it may have expired)")
 	}
 	if row.OwnerID != "" && row.OwnerID != ownerID {
-		return nil, errf(connect.CodeNotFound, "no pending pairing request with this code (it may have expired)")
+		return nil, false, errf(connect.CodeNotFound, "no pending pairing request with this code (it may have expired)")
 	}
-	if row.OwnerID == "" {
-		if err := s.store.ClaimPairing(row.Code, ownerID, accountHint); err != nil {
-			return nil, err
-		}
-		row.OwnerID, row.AccountHint = ownerID, accountHint
-		s.wakeOwnerID(ownerID)
+	if row.OwnerID != "" {
+		return row, false, nil
 	}
-	return row, nil
+	if err := s.store.ClaimPairing(row.Code, ownerID, accountHint); err != nil {
+		return nil, false, err
+	}
+	row.OwnerID, row.AccountHint = ownerID, accountHint
+	s.wakeOwnerID(ownerID)
+	return row, true, nil
 }
 
 // ---------------------------------------------------------------------------
@@ -473,7 +490,8 @@ func (o *ownerControl) ClaimPairingRequest(ctx context.Context, req *relayv1.Cla
 		if o.s.cfg.AccountHint != nil {
 			hint = o.s.cfg.AccountHint(t.ownerID)
 		}
-		if _, err := o.s.ClaimPairing(code, t.ownerID, hint); err != nil {
+		// The person typed or scanned the code on this device: nothing to notify.
+		if _, _, err := o.s.claimPairing(code, t.ownerID, hint); err != nil {
 			return nil, err
 		}
 	}

@@ -89,7 +89,7 @@ struct ConnectAgentSheet: View {
                 }
                 if kind.mcp && model.status.hosted {
                     Section {
-                        MonoBox(text: "https://mcp.hermesh.io")
+                        MonoBox(text: "https://mcp.hermesh.io/mcp")
                     } header: {
                         Text("Add a connector in \(kind.name)")
                     } footer: {
@@ -112,8 +112,15 @@ struct ConnectAgentSheet: View {
         }
     }
 
+    /// On the official service, the line the Mac gives too: the agent's
+    /// steps are on the console's /connect page and it signs in by a link.
+    /// On an own server, the steps themselves, with the connection address.
     private var message: String {
-        String(localized: """
+        if model.status.hosted, let url = URL(string: model.status.consoleURL), let scheme = url.scheme, let host = url.host {
+            let connect = "\(scheme)://\(host)\(url.port.map { ":\($0)" } ?? "")/connect"
+            return String(localized: "Connect to Hermesh: follow \(connect). Your name in Hermesh is “\(kind.name)”.")
+        }
+        return String(localized: """
         Please connect yourself to my computer (Hermesh):
         1. Install: curl -fsSL https://github.com/hermeshai/hermesh/releases/latest/download/install.sh | sh -s -- --cli
         2. Sign in: ~/.local/bin/hermesh auth login \(model.status.connectAddress) --name "\(kind.name)"

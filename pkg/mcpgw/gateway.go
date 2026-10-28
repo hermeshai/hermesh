@@ -96,7 +96,10 @@ const (
 	accessTTL        = time.Hour
 	// Tokens unused for this long stop working, and a connection never
 	// approved ends after as long without use.
-	refreshIdle        = 30 * 24 * time.Hour
+	refreshIdle = 30 * 24 * time.Hour
+	// askAgainWithin: a connection its app used this recently asks again
+	// when a trusted device of the owner connects.
+	askAgainWithin     = 24 * time.Hour
 	refreshRetryWindow = 60 * time.Second
 	// Live connections per owner (or per account before it has an owner).
 	maxConnections = 10
@@ -180,6 +183,7 @@ func New(cfg Config) (*Gateway, error) {
 		}
 	}
 	cfg.Relay.SetMessageHook(g.onMessage)
+	cfg.Relay.SetOwnerHook(func(ownerID string) { g.askAgain(context.Background(), ownerID) })
 	cfg.Relay.SetDoorbells(g)
 	go g.loop()
 	return g, nil
@@ -258,6 +262,23 @@ func (g *Gateway) OwnerLinked(ctx context.Context, accountID string) {
 	}
 	for _, c := range conns {
 		g.advance(ctx, c.ID)
+	}
+}
+
+// askAgain sends the owner, whose trusted device just connected, the
+// approvals that went unanswered: a connection keeps asking until the owner
+// answers, as long as its app used it in the last day.
+func (g *Gateway) askAgain(ctx context.Context, ownerID string) {
+	conns, err := g.db.ListConnections(ctx, ConnectionFilter{OwnerID: ownerID, States: []string{StateAwaitingApproval}})
+	if err != nil {
+		g.log.Warn("mcp: listing an owner's waiting connections", "owner", ownerID, "err", err)
+		return
+	}
+	now := g.cfg.Now()
+	for _, c := range conns {
+		if c.PairingCode == "" && now.Sub(lastUse(c)) < askAgainWithin {
+			g.ask(ctx, c.ID)
+		}
 	}
 }
 

@@ -1193,6 +1193,16 @@
         }
       }
     },
+    "Connect to Hermesh: follow %@. Your name in Hermesh is “%@”.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "连接 Hermesh：按 %1$@ 操作。你在 Hermesh 里的名字是「%2$@」。"
+          }
+        }
+      }
+    },
     "Connected": {
       "localizations": {
         "zh-Hans": {

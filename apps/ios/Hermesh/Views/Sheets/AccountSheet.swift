@@ -48,22 +48,26 @@ struct AccountSheet: View {
                     .accessibilityIdentifier("notifications")
                 }
                 Section {
-                    Button {
-                        UIPasteboard.general.string = model.status.connectAddress
-                        model.show(String(localized: "Copied"))
-                    } label: {
-                        HStack {
-                            VStack(alignment: .leading, spacing: 2) {
-                                Text("Connection address")
-                                Text(model.status.connectAddress).font(.footnote.monospaced()).foregroundStyle(.secondary).lineLimit(1).truncationMode(.middle)
+                    // The official service shows no connection address: agents
+                    // pair by a link, machines by the Add a Machine command.
+                    if !model.status.hosted {
+                        Button {
+                            UIPasteboard.general.string = model.status.connectAddress
+                            model.show(String(localized: "Copied"))
+                        } label: {
+                            HStack {
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text("Connection address")
+                                    Text(model.status.connectAddress).font(.footnote.monospaced()).foregroundStyle(.secondary).lineLimit(1).truncationMode(.middle)
+                                }
+                                Spacer()
+                                Image(systemName: "doc.on.doc").font(.subheadline).foregroundStyle(.tertiary)
                             }
-                            Spacer()
-                            Image(systemName: "doc.on.doc").font(.subheadline).foregroundStyle(.tertiary)
+                            .contentShape(.rect)
                         }
-                        .contentShape(.rect)
+                        .buttonStyle(.plain)
+                        .accessibilityHint(Text("Copies it"))
                     }
-                    .buttonStyle(.plain)
-                    .accessibilityHint(Text("Copies it"))
                     if !model.status.consoleURL.isEmpty, let url = URL(string: model.status.consoleURL) {
                         Link(destination: url) {
                             HStack {
