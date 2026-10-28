@@ -3,6 +3,7 @@ import ReactMarkdown, { type Components } from "react-markdown";
 import remarkGfm from "remark-gfm";
 import remend from "remend";
 import { splitBlocks, withoutOpenTable } from "@hermesh/core";
+import { Code } from "./Code";
 
 /**
  * An agent's reply as GitHub Markdown, rendered as React elements (raw HTML
@@ -52,6 +53,11 @@ const components: Components = {
   a: ({ href, children }) =>
     href && web.test(href) ? <a href={href} target="_blank" rel="noreferrer">{children}</a> : <span>{children}</span>,
   img: ({ alt }) => <span>{alt}</span>,
+  // A fenced block that names its language is coloured; inline code and other blocks stay plain.
+  code: ({ className, children }) => {
+    const lang = /^language-(\S+)/.exec(className ?? "")?.[1];
+    return <code className={className}>{lang && typeof children === "string" ? <Code text={children.replace(/\n$/, "")} lang={lang} /> : children}</code>;
+  },
   table: ({ children }) => (
     <div className="md-table">
       <table>{children}</table>
