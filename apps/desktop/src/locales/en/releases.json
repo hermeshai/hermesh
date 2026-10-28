@@ -1,18 +1,27 @@
 {
   "unreleased": {
+    "improvements": [],
+    "fixes": []
+  },
+  "0.1.1-beta.5": {
     "improvements": [
+      "Erase Everything: in Settings → Account & Devices on the Mac, or the account on the iPhone, erase Hermesh on all your devices at once, with one Touch ID or Face ID. It first lists what it erases and what stays; worktrees with uncommitted changes are kept. A device that was offline offers a reset when next opened. Without the app: `hermeshd device erase-everything`; `hermeshd erase` erases one server.",
       "No Mac needed: set up Hermesh with the iPhone app alone. Get Started leads you through a machine, its coding agent, a project and your agent’s first task.",
       "Add a Linux server with one command and scan the code it shows. As root it asks which user to install for, and Hermesh starts with the server; `hermeshd doctor` says what to fix.",
-      "From the iPhone, check a machine’s coding agents again, test one, and pick a project from the repositories the machine found.",
+      "On the iPhone, check a machine’s coding agents again, test one, pick a project from the repositories the machine found, and see on the overview which agent sent work to which coding agent today.",
       "A Linux computer that runs no coding agents can approve too, with its key sealed by a passphrase: install it with `sh -s -- --device`.",
-      "Waking a bot on new messages takes three steps and no name: copy a message that has the bot make its routine, paste the routine’s URL and key, and the first wake reads what already waits. One setting wakes the bot for all its messages.",
-      "An agent’s page shows when Hermesh last woke it, whether it read everything, and its last few wakes.",
+      "Waking a bot on new messages takes three steps and no name: copy a message that has the bot make its routine, paste the routine’s URL and key, and the first wake reads what already waits. One setting wakes the bot for all its messages. An agent’s page shows when Hermesh last woke it, whether it read everything, and its last few wakes.",
       "Grok Bot’s connection shows as Cursor, with its logo; Claude and ChatGPT show by name. The Access list says who used each agent last, and when.",
       "Rename an agent from its page in Settings → Access (Mac and iPhone): what it may use and until when stay. Named after a known app, such as Grok Bot, it shows that app’s icon.",
-      "Bots tell you about the work in plain words, without session IDs."
+      "Bots tell you about the work in plain words, without session IDs.",
+      "In the Mac app, code in agents’ replies is coloured when it names its language, shell commands in a session read as code, and the sidebar is calmer."
     ],
     "fixes": [
-      "Right after an update, an agent’s page shows Wake on New Messages again once Hermesh has restarted in the background."
+      "Right after an update, an agent’s page shows Wake on New Messages again once Hermesh has restarted in the background.",
+      "Archiving a session frees its temporary files (test runs’ leftovers could take gigabytes).",
+      "On a Linux server, `hermeshd doctor` and `hermeshd status` work while Hermesh runs in the background.",
+      "On the iPhone, “Connecting to Hermesh…” and “Updating from …” show in the title bar, not over the page.",
+      "Agents connected through hermesh.io answer faster: their connection to your machine is kept between calls."
     ]
   },
   "0.1.1-beta.4": {
