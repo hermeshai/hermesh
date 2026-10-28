@@ -102,7 +102,7 @@ Connect to Hermesh: follow https://hermesh.io/connect
 - **Agents on a computer** (Claude Code, Codex, Cursor, your own) install the CLI and sign in:
   ```bash
   curl -fsSL https://github.com/hermeshai/hermesh/releases/latest/download/install.sh \
-  | sh -s -- --cli
+    | sh -s -- --cli
   hermesh auth login --name "Codex on MacBook"
   ```
 
