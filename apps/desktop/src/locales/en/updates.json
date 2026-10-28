@@ -44,5 +44,14 @@
   "errorTitle": "Update Unavailable",
   "about": "About Hermesh",
   "aboutBody": "Your agents, working together.",
-  "fullHistory": "Full Release History"
+  "fullHistory": "Full Release History",
+  "install": {
+    "heading": "Install",
+    "mac": "**On a Mac**, to approve and run coding agents: `Hermesh-macos-arm64.dmg` (Apple silicon) or `Hermesh-macos-x64.dmg` (Intel)",
+    "machine": "**On a machine for coding agents** (Linux or macOS): `{{command}}`",
+    "device": "**On a Linux computer that only approves**: the same command, ending `sh -s -- --device`",
+    "cli": "**For your agent's CLI**: the same command, ending `sh -s -- --cli`",
+    "relay": "**On your own server**: the image `{{image}}`",
+    "note": "The other files are for the installer and the app's updates; there's no need to download them by hand."
+  }
 }
