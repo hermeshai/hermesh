@@ -39,8 +39,14 @@ import (
 
 func deviceCommands(dataDir *string) []*cobra.Command {
 	var noService bool
-	device := &cobra.Command{Use: "device", Short: "This computer as one of your trusted devices, which approve (no coding agents run here)"}
-	device.PersistentFlags().BoolVar(&noService, "no-service", false, "don't install the background service (run `hermeshd run --owner --no-machine` yourself)")
+	device := &cobra.Command{Use: "device", Short: "This computer as one of your trusted devices, which approve (no coding agents run here)",
+		Long: `A trusted device approves what asks to join your Hermesh, as your iPhone or
+Mac does. Its key is sealed by a passphrase you choose. Use a computer, or
+a user, that runs no coding agents: they could approve as you.`,
+		Example: `  hermeshd device join       scan the code it shows with Hermesh on your iPhone
+  hermeshd device setup      the first device, when you have no other
+  hermeshd approve           approve what waits`}
+	device.PersistentFlags().BoolVar(&noService, "no-service", false, "don't install the background service (run \"hermeshd run --owner --no-machine\" yourself)")
 
 	join := &cobra.Command{
 		Use:   "join [connection address | center URL]",

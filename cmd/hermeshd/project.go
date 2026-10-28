@@ -57,7 +57,9 @@ func projectCommand(dataDir *string, openMachine func() (*machine.Machine, error
 	add := &cobra.Command{
 		Use:   "add <folder>",
 		Short: "Add a folder as a project (a separate worktree per session, or --in-place)",
-		Args:  cobra.ExactArgs(1),
+		Example: `  hermeshd project add ~/code/app
+  hermeshd project add ~/notes --in-place --agents claude`,
+		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			dir := args[0]
 			if strings.HasPrefix(dir, "~/") {

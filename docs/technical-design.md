@@ -804,9 +804,9 @@ This command is fixed and contains no secret; it can be copied directly from the
 
 **Source of trust**: at install time what is trusted is GitHub Releases and the project's minisign release key, not the relay. The README also offers `brew install` and manual download plus verification.
 
-### 10.2 hermeshd Local Commands (only for pairing and diagnostics)
+### 10.2 hermeshd Local Commands
 
-`hermeshd pair`, `hermeshd doctor`, `hermeshd status`, `hermeshd audit verify`, `hermeshd uninstall`.
+See [hermeshd.md](hermeshd.md).
 
 ### 10.3 Upgrades and Compatibility
 

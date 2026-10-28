@@ -12,7 +12,7 @@ lint:
 	test -z "$$(gofmt -l cmd internal pkg e2e)"
 
 test:
-	go test ./internal/... ./pkg/... -count=1
+	go test ./cmd/... ./internal/... ./pkg/... -count=1
 
 # The desktop app's pure logic and types, the shared Swift package, and the macOS signer.
 test-app:

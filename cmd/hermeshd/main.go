@@ -4,6 +4,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -92,9 +93,24 @@ func openLogFile(dataDir string) {
 }
 
 func main() {
+	if err := rootCommand().Execute(); err != nil {
+		os.Exit(1)
+	}
+}
+
+func rootCommand() *cobra.Command {
 	var dataDir string
 	var verbose bool
-	root := &cobra.Command{Use: "hermeshd", Short: "Hermesh daemon", SilenceUsage: true}
+	root := &cobra.Command{Use: "hermeshd", Short: "Hermesh on a machine: runs coding agent sessions for your agents", SilenceUsage: true,
+		Long: `hermeshd runs on each machine where coding agents (Claude Code, Codex) work
+for your agents. It runs as the user you code as, in the background.
+
+First time, the install script runs "hermeshd pair" for you. Afterwards:
+  hermeshd doctor                   check everything, and what to fix
+  hermeshd project add ~/code/app   let agents work in a folder
+  hermeshd service status           is it running, and does it start at boot
+
+A computer that runs no coding agents can approve instead: hermeshd device.`}
 	root.PersistentFlags().StringVar(&dataDir, "data-dir", defaultDataDir(), "data directory")
 	root.PersistentFlags().BoolVarP(&verbose, "verbose", "v", false, "debug logging")
 
@@ -192,8 +208,15 @@ func main() {
 	pair := &cobra.Command{
 		Use:     "pair [center URL | connection address]",
 		Aliases: []string{"login"},
-		Short:   "Pair this machine with your Hermesh owner (shows a pairing code); the official center unless given or $HERMESH_CENTER",
-		Args:    cobra.MaximumNArgs(1),
+		Short:   "Pair this machine with your Hermesh: shows a code to scan with Hermesh on your iPhone or Mac",
+		Long: `Pair this machine with your Hermesh. With no argument it uses the official
+service (or $HERMESH_CENTER): scan the code it shows with Hermesh on your
+iPhone, or enter it in the app, then type here the two digits your device
+shows. With a connection address (relay.example.com/o_…) the request goes
+to that owner's devices by itself. Then it installs the background service.`,
+		Example: `  hermeshd pair
+  hermeshd pair connect.hermesh.io/o_abc… --name build-box`,
+		Args: cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			var arg string
 			if len(args) > 0 {
@@ -237,15 +260,20 @@ func main() {
 				}
 			}
 			fmt.Println("\nCoding agents")
+			ready := false
 			for _, name := range []string{"claude", "codex"} {
-				report(name, infos[name])
+				ready = report(name, infos[name]) || ready
 			}
 			for _, a := range acp.Agents {
 				if i := infos[a.Name]; i.Available {
 					fmt.Printf("  %-10s %s, sign-in not checked\n", a.Name, i.Version)
 				}
 			}
-			fmt.Println("Next: add a project here (hermeshd project add <folder>) or in the Hermesh app.")
+			if !ready {
+				fmt.Println("  Install one as this user and sign in once (run `claude`); `hermeshd doctor` checks again.")
+			}
+			fmt.Printf("\nNext\n  add a project   hermeshd project add ~/code/app   (or in the Hermesh app)\n  check it all    hermeshd doctor\n  its log         tail -f %s\n  every command   hermeshd --help\n",
+				filepath.Join(dataDir, "logs", "hermeshd.log"))
 			return nil
 		},
 	}
@@ -255,54 +283,53 @@ func main() {
 
 	doctor := &cobra.Command{
 		Use:   "doctor",
-		Short: "Check this machine's setup",
+		Short: "Check this machine's setup, and say what to fix",
+		Long:  "Check the pairing, the coding agents, the background service and the connection to the relay. It exits 1 when something needs fixing, and says how.",
+		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			// The app's hermeshd holds the machine: ask it.
 			if text, err := askDiagnostics(cmd.Context(), SocketPath(dataDir)); err == nil {
 				fmt.Print(text)
 				return nil
 			}
-			n, err := openMachine()
+			c, running, err := machineCheck(cmd.Context(), dataDir, openMachine)
 			if err != nil {
 				return err
 			}
-			defer n.Close()
 			ok := true
-			fmt.Printf("machine id   %s\n", n.MachineID())
-			if n.Paired() {
-				fmt.Printf("paired       yes, as %q\n", n.Name())
+			fmt.Printf("machine id   %s\n", c.MachineID)
+			if c.Paired {
+				fmt.Printf("paired       yes, as %q\n", c.Name)
 			} else {
-				fmt.Println("paired       NO  → run: hermeshd pair <connection address>")
+				fmt.Println("paired       NO  → run: hermeshd pair")
 				ok = false
 			}
 			fmt.Printf("PATH         %s\n", shellenv.Path())
-			infos := n.Discover(cmd.Context())
 			for _, name := range []string{"claude", "codex"} {
-				ok = report(name, infos[name]) && ok
+				ok = report(name, c.Agents[name]) && ok
 			}
 			for _, a := range acp.Agents { // optional: listed when installed
-				if i := infos[a.Name]; i.Available {
-					fmt.Printf("%-12s %s at %s, login not checked\n", a.Name, i.Version, i.Binary)
+				if i := c.Agents[a.Name]; i.Available {
+					fmt.Printf("  %-10s %s at %s, login not checked\n", a.Name, i.Version, i.Binary)
 				}
 			}
+			ok = serviceLine(running) && ok
 			switch {
-			case service.Running():
-				fmt.Println("service      running")
-			case service.Installed():
-				fmt.Println("service      installed, NOT RUNNING → run: hermeshd service restart")
-				ok = false
-			default:
-				fmt.Println("service      not installed → run: hermeshd service install")
-			}
-			if url := n.RelayURL(); url != "" {
-				c := relayv1connect.NewRelayPublicServiceClient(http.DefaultClient, url)
+			case running && c.Connected:
+				fmt.Printf("relay        connected (%s)\n", c.RelayURL)
+			case c.RelayURL != "":
+				url := c.RelayURL
+				rc := relayv1connect.NewRelayPublicServiceClient(http.DefaultClient, url)
 				ctx, cancel := context.WithTimeout(cmd.Context(), 10*time.Second)
-				info, err := c.GetInfo(ctx, &relayv1.GetInfoRequest{})
+				info, err := rc.GetInfo(ctx, &relayv1.GetInfoRequest{})
 				cancel()
-				if err != nil {
+				switch {
+				case err != nil:
 					fmt.Printf("relay        UNREACHABLE (%s): %v\n", url, err)
 					ok = false
-				} else {
+				case running:
+					fmt.Printf("relay        reachable (%s), not connected yet → its log: tail %s\n", url, filepath.Join(dataDir, "logs", "hermeshd.log"))
+				default:
 					fmt.Printf("relay        ok (%s, %s)\n", url, info.RelayId)
 				}
 			}
@@ -313,21 +340,28 @@ func main() {
 		},
 	}
 
+	projects := projectCommand(&dataDir, openMachine)
 	status := &cobra.Command{
 		Use:   "status",
-		Short: "Show pairing and projects",
+		Short: "Show this machine: its name, whether it is connected, the service and its projects",
+		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			n, err := openMachine()
+			c, running, err := machineCheck(cmd.Context(), dataDir, openMachine)
 			if err != nil {
 				return err
 			}
-			defer n.Close()
-			fmt.Printf("machine id  %s\nname        %s\npaired      %v\nrelay       %s\n", n.MachineID(), n.Name(), n.Paired(), n.RelayURL())
-			projects, _ := n.Projects()
-			for _, p := range projects {
-				fmt.Printf("project     %s → %s (base %s)\n", p.ID, p.Path, p.DefaultBaseRef)
+			paired := "not paired → run: hermeshd pair"
+			if c.Paired {
+				paired = fmt.Sprintf("paired as %q, relay %s", c.Name, c.RelayURL)
+				if running && c.Connected {
+					paired += ", connected"
+				}
 			}
-			return nil
+			fmt.Printf("machine   %s · %s · Hermesh %s\n", c.MachineID, paired, c.Version)
+			serviceLine(running)
+			fmt.Println()
+			list, _, _ := projects.Find([]string{"list"})
+			return list.RunE(cmd, nil)
 		},
 	}
 
@@ -349,12 +383,63 @@ func main() {
 		},
 	}
 
-	svc := &cobra.Command{Use: "service", Short: "Manage the background service"}
-	svc.AddCommand(&cobra.Command{Use: "install", RunE: func(cmd *cobra.Command, _ []string) error {
-		bin, _ := os.Executable()
-		return service.Install(bin, dataDir, filepath.Join(dataDir, "logs"))
-	}}, &cobra.Command{Use: "uninstall", RunE: func(cmd *cobra.Command, _ []string) error { return service.Uninstall() }},
-		&cobra.Command{Use: "restart", RunE: func(cmd *cobra.Command, _ []string) error { return service.Restart() }})
+	svc := &cobra.Command{Use: "service", Short: "The background service: status, install, restart, uninstall",
+		Long: `hermeshd runs in the background as a service of this user: a systemd user
+service on Linux (with lingering, so it starts at boot with nobody logged
+in), a LaunchAgent on macOS. "hermeshd pair" installs it.`}
+	svc.AddCommand(&cobra.Command{Use: "status", Short: "Whether the service runs, starts at boot, and where its log is", Args: cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			if !serviceLine(false) {
+				os.Exit(1)
+			}
+			return nil
+		}},
+		&cobra.Command{Use: "install", Short: "Install and start the service (again)", Args: cobra.NoArgs, RunE: func(cmd *cobra.Command, _ []string) error {
+			bin, _ := os.Executable()
+			if err := service.Install(bin, dataDir, filepath.Join(dataDir, "logs")); err != nil {
+				return err
+			}
+			serviceLine(false)
+			return nil
+		}},
+		&cobra.Command{Use: "restart", Short: "Restart the service (after an update)", Args: cobra.NoArgs, RunE: func(cmd *cobra.Command, _ []string) error {
+			if err := service.Restart(); err != nil {
+				return err
+			}
+			fmt.Println("✓ Restarted")
+			return nil
+		}},
+		&cobra.Command{Use: "uninstall", Short: "Stop the service and stop starting it; pairing and projects stay", Args: cobra.NoArgs, RunE: func(cmd *cobra.Command, _ []string) error {
+			if err := service.Uninstall(); err != nil {
+				return err
+			}
+			fmt.Println("✓ The service is stopped and won't start again; `hermeshd service install` brings it back")
+			return nil
+		}})
+	logFile := filepath.Join(dataDir, "logs", "hermeshd.log")
+	startsWhen := "at boot"
+	if runtime.GOOS == "darwin" {
+		startsWhen = "at login"
+	}
+	serviceLine = func(byHand bool) bool {
+		switch {
+		case service.Running() && service.AtBoot():
+			fmt.Printf("service      running, starts %s · log: tail -f %s\n", startsWhen, logFile)
+			return true
+		case service.Running():
+			fmt.Printf("service      running, but NOT %s → run: hermeshd service install · log: tail -f %s\n", startsWhen, logFile)
+			return false
+		case service.Installed():
+			fmt.Printf("service      installed, NOT RUNNING → run: hermeshd service restart · log: tail %s\n", logFile)
+			return false
+		case byHand:
+			fmt.Printf("service      not installed; hermeshd runs by hand → to start it %s: hermeshd service install\n", startsWhen)
+			return false
+		default:
+			fmt.Println("service      not installed → run: hermeshd service install")
+			return false
+		}
+	}
 
 	helper := &cobra.Command{Use: "spawn-helper", Hidden: true, Args: cobra.NoArgs,
 		RunE: func(*cobra.Command, []string) error { return spawn.Serve(os.NewFile(3, "spawn-helper")) }}
@@ -362,11 +447,32 @@ func main() {
 	messageMCP := &cobra.Command{Use: "message-mcp", Hidden: true, Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error { return machine.ServeMessageMCP(cmd.Context()) }}
 	root.AddCommand(deviceCommands(&dataDir)...)
-	root.AddCommand(run, pair, doctor, status, audit, svc, helper, messageMCP, projectCommand(&dataDir, openMachine),
-		&cobra.Command{Use: "version", Run: func(*cobra.Command, []string) { fmt.Println(machine.Version) }})
-	if err := root.Execute(); err != nil {
-		os.Exit(1)
+	root.AddCommand(run, pair, doctor, status, audit, svc, helper, messageMCP, projects,
+		&cobra.Command{Use: "version", Short: "Print the version", Args: cobra.NoArgs, Run: func(*cobra.Command, []string) { fmt.Println(machine.Version) }})
+	return root
+}
+
+// serviceLine prints the background service's state (byHand: a hermeshd
+// runs here outside it), and whether it is fine; set in rootCommand, where
+// the log's place is known.
+var serviceLine func(byHand bool) bool
+
+// machineCheck asks the running machine how it is (it holds the data
+// directory), or opens it when it isn't running.
+func machineCheck(ctx context.Context, dataDir string, open func() (*machine.Machine, error)) (machine.Check, bool, error) {
+	var c machine.Check
+	if out, ok, err := machine.ControlRequest(ctx, filepath.Join(dataDir, "machine"), "GET", "/check", nil); ok {
+		if err == nil {
+			err = json.Unmarshal(out, &c)
+		}
+		return c, true, err
 	}
+	n, err := open()
+	if err != nil {
+		return c, false, err
+	}
+	defer n.Close()
+	return n.Check(ctx), false, nil
 }
 
 // askDiagnostics asks the hermeshd serving sock for its diagnostics.
