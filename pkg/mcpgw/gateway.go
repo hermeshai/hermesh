@@ -185,6 +185,7 @@ func New(cfg Config) (*Gateway, error) {
 	}
 	cfg.Relay.SetMessageHook(g.onMessage)
 	cfg.Relay.SetOwnerHook(func(ownerID string) { g.askAgain(context.Background(), ownerID) })
+	cfg.Relay.AddEraseHook(func(ownerID string) { g.OwnerGone(context.Background(), ownerID) })
 	cfg.Relay.SetDoorbells(g)
 	go g.loop()
 	return g, nil

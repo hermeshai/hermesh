@@ -232,6 +232,53 @@ func (t *Trust) VerifyAdminCommand(s *identityv1.Signed, machineID string, now t
 	return c, nil
 }
 
+// VerifyEraseOrder checks the owner's order to erase everything
+// (docs/erase-everything.md): signed by one of its current root keys.
+func (t *Trust) VerifyEraseOrder(s *identityv1.Signed) (*identityv1.EraseOrder, error) {
+	o := &identityv1.EraseOrder{}
+	if err := t.verifyByRoot(s, o); err != nil {
+		return nil, fmt.Errorf("erase order: %w", err)
+	}
+	if o.OwnerId != t.ownerID || o.EraseId == "" {
+		return nil, errors.New("erase order: wrong owner")
+	}
+	return o, nil
+}
+
+// SignEraseAck says, with key s, that subject (the id the owner knows it
+// by) got the erase order eraseID and is erasing. A trusted device passes
+// its device cert, which ties s to its root key, the subject.
+func SignEraseAck(eraseID, subject string, deviceCert *identityv1.Signed, s Signer) (*identityv1.Signed, error) {
+	return Sign(&identityv1.EraseAck{EraseId: eraseID, PublicKey: MarshalPublicKey(s.Public()), Subject: subject, DeviceCert: deviceCert}, s)
+}
+
+// VerifyEraseAck checks an ack against the key it carries. Its subject must
+// be named by that key (a machine's or an agent's id) or, for a trusted
+// device, by its device cert, which trust (the erased owner's chain; nil:
+// none) verifies: the cert names the key, signed by the subject root key.
+func VerifyEraseAck(s *identityv1.Signed, trust *Trust) (*identityv1.EraseAck, error) {
+	a := &identityv1.EraseAck{}
+	if _, err := SelfSigned(s, a, func(a *identityv1.EraseAck) []byte { return a.PublicKey }); err != nil {
+		return nil, fmt.Errorf("erase ack: %w", err)
+	}
+	if a.DeviceCert == nil {
+		if a.Subject != MachineID(a.PublicKey) && a.Subject != ClientID(a.PublicKey) {
+			return nil, errors.New("erase ack: its subject is not named by its key")
+		}
+		return a, nil
+	}
+	if trust == nil {
+		return nil, errors.New("erase ack: no owner to verify its device cert against")
+	}
+	if _, pub, err := trust.VerifyDeviceCert(a.DeviceCert); err != nil || !bytes.Equal(MarshalPublicKey(pub), a.PublicKey) {
+		return nil, fmt.Errorf("erase ack: its device cert does not name its key (%v)", err)
+	}
+	if a.DeviceCert.SignerKeyId != a.Subject {
+		return nil, errors.New("erase ack: its device cert is not signed by its subject")
+	}
+	return a, nil
+}
+
 // SubjectKind identifies who presented credentials.
 type SubjectKind int
 

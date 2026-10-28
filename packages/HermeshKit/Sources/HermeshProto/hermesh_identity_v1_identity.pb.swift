@@ -538,6 +538,71 @@ public nonisolated struct Hermesh_Identity_V1_Grant: Sendable {
   fileprivate var _expiresAt: SwiftProtobuf.Google_Protobuf_Timestamp? = nil
 }
 
+/// EraseOrder is the owner's order to erase Hermesh everywhere
+/// (docs/erase-everything.md), signed by a root key on one trusted device.
+/// Each device, machine and agent of the owner that sees it, and verifies it
+/// against the root chain it holds, erases what Hermesh keeps there.
+public nonisolated struct Hermesh_Identity_V1_EraseOrder: Sendable {
+  // SwiftProtobuf.Message conformance is added in an extension below. See the
+  // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
+  // methods supported on all messages.
+
+  public var ownerID: String = String()
+
+  /// Random: names this erase, for the acks.
+  public var eraseID: String = String()
+
+  public var issuedAt: SwiftProtobuf.Google_Protobuf_Timestamp {
+    get {_issuedAt ?? SwiftProtobuf.Google_Protobuf_Timestamp()}
+    set {_issuedAt = newValue}
+  }
+  /// Returns true if `issuedAt` has been explicitly set.
+  public var hasIssuedAt: Bool {self._issuedAt != nil}
+  /// Clears the value of `issuedAt`. Subsequent reads from it will return its default value.
+  public mutating func clearIssuedAt() {self._issuedAt = nil}
+
+  public var unknownFields = SwiftProtobuf.UnknownStorage()
+
+  public init() {}
+
+  fileprivate var _issuedAt: SwiftProtobuf.Google_Protobuf_Timestamp? = nil
+}
+
+/// EraseAck says that the key in it got an erase order and is erasing:
+/// signed by that key, before it is deleted.
+public nonisolated struct Hermesh_Identity_V1_EraseAck: Sendable {
+  // SwiftProtobuf.Message conformance is added in an extension below. See the
+  // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
+  // methods supported on all messages.
+
+  public var eraseID: String = String()
+
+  /// SPKI DER.
+  public var publicKey: Data = Data()
+
+  /// The id the owner knows it by: a trusted device's root key id (it acks
+  /// with its device key), a machine id, a client id. For showing who
+  /// acked; the relay is not trusted with more.
+  public var subject: String = String()
+
+  /// A trusted device's device cert: it ties public_key to the root key
+  /// that signed it, the subject.
+  public var deviceCert: Hermesh_Identity_V1_Signed {
+    get {_deviceCert ?? Hermesh_Identity_V1_Signed()}
+    set {_deviceCert = newValue}
+  }
+  /// Returns true if `deviceCert` has been explicitly set.
+  public var hasDeviceCert: Bool {self._deviceCert != nil}
+  /// Clears the value of `deviceCert`. Subsequent reads from it will return its default value.
+  public mutating func clearDeviceCert() {self._deviceCert = nil}
+
+  public var unknownFields = SwiftProtobuf.UnknownStorage()
+
+  public init() {}
+
+  fileprivate var _deviceCert: Hermesh_Identity_V1_Signed? = nil
+}
+
 /// AdminCommand is signed by a root key and executed by the target machine.
 public nonisolated struct Hermesh_Identity_V1_AdminCommand: Sendable {
   // SwiftProtobuf.Message conformance is added in an extension below. See the
@@ -1438,6 +1503,99 @@ nonisolated extension Hermesh_Identity_V1_Grant: SwiftProtobuf.Message, SwiftPro
     if lhs._notBefore != rhs._notBefore {return false}
     if lhs._expiresAt != rhs._expiresAt {return false}
     if lhs.custodian != rhs.custodian {return false}
+    if lhs.unknownFields != rhs.unknownFields {return false}
+    return true
+  }
+}
+
+nonisolated extension Hermesh_Identity_V1_EraseOrder: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
+  public static let protoMessageName: String = _protobuf_package + ".EraseOrder"
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{3}owner_id\0\u{3}erase_id\0\u{3}issued_at\0")
+
+  public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
+    while let fieldNumber = try decoder.nextFieldNumber() {
+      // The use of inline closures is to circumvent an issue where the compiler
+      // allocates stack space for every case branch when no optimizations are
+      // enabled. https://github.com/apple/swift-protobuf/issues/1034
+      switch fieldNumber {
+      case 1: try { try decoder.decodeSingularStringField(value: &self.ownerID) }()
+      case 2: try { try decoder.decodeSingularStringField(value: &self.eraseID) }()
+      case 3: try { try decoder.decodeSingularMessageField(value: &self._issuedAt) }()
+      default: break
+      }
+    }
+  }
+
+  public func traverse<V: SwiftProtobuf.Visitor>(visitor: inout V) throws {
+    // The use of inline closures is to circumvent an issue where the compiler
+    // allocates stack space for every if/case branch local when no optimizations
+    // are enabled. https://github.com/apple/swift-protobuf/issues/1034 and
+    // https://github.com/apple/swift-protobuf/issues/1182
+    if !self.ownerID.isEmpty {
+      try visitor.visitSingularStringField(value: self.ownerID, fieldNumber: 1)
+    }
+    if !self.eraseID.isEmpty {
+      try visitor.visitSingularStringField(value: self.eraseID, fieldNumber: 2)
+    }
+    try { if let v = self._issuedAt {
+      try visitor.visitSingularMessageField(value: v, fieldNumber: 3)
+    } }()
+    try unknownFields.traverse(visitor: &visitor)
+  }
+
+  public static func ==(lhs: Hermesh_Identity_V1_EraseOrder, rhs: Hermesh_Identity_V1_EraseOrder) -> Bool {
+    if lhs.ownerID != rhs.ownerID {return false}
+    if lhs.eraseID != rhs.eraseID {return false}
+    if lhs._issuedAt != rhs._issuedAt {return false}
+    if lhs.unknownFields != rhs.unknownFields {return false}
+    return true
+  }
+}
+
+nonisolated extension Hermesh_Identity_V1_EraseAck: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
+  public static let protoMessageName: String = _protobuf_package + ".EraseAck"
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{3}erase_id\0\u{3}public_key\0\u{1}subject\0\u{3}device_cert\0")
+
+  public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
+    while let fieldNumber = try decoder.nextFieldNumber() {
+      // The use of inline closures is to circumvent an issue where the compiler
+      // allocates stack space for every case branch when no optimizations are
+      // enabled. https://github.com/apple/swift-protobuf/issues/1034
+      switch fieldNumber {
+      case 1: try { try decoder.decodeSingularStringField(value: &self.eraseID) }()
+      case 2: try { try decoder.decodeSingularBytesField(value: &self.publicKey) }()
+      case 3: try { try decoder.decodeSingularStringField(value: &self.subject) }()
+      case 4: try { try decoder.decodeSingularMessageField(value: &self._deviceCert) }()
+      default: break
+      }
+    }
+  }
+
+  public func traverse<V: SwiftProtobuf.Visitor>(visitor: inout V) throws {
+    // The use of inline closures is to circumvent an issue where the compiler
+    // allocates stack space for every if/case branch local when no optimizations
+    // are enabled. https://github.com/apple/swift-protobuf/issues/1034 and
+    // https://github.com/apple/swift-protobuf/issues/1182
+    if !self.eraseID.isEmpty {
+      try visitor.visitSingularStringField(value: self.eraseID, fieldNumber: 1)
+    }
+    if !self.publicKey.isEmpty {
+      try visitor.visitSingularBytesField(value: self.publicKey, fieldNumber: 2)
+    }
+    if !self.subject.isEmpty {
+      try visitor.visitSingularStringField(value: self.subject, fieldNumber: 3)
+    }
+    try { if let v = self._deviceCert {
+      try visitor.visitSingularMessageField(value: v, fieldNumber: 4)
+    } }()
+    try unknownFields.traverse(visitor: &visitor)
+  }
+
+  public static func ==(lhs: Hermesh_Identity_V1_EraseAck, rhs: Hermesh_Identity_V1_EraseAck) -> Bool {
+    if lhs.eraseID != rhs.eraseID {return false}
+    if lhs.publicKey != rhs.publicKey {return false}
+    if lhs.subject != rhs.subject {return false}
+    if lhs._deviceCert != rhs._deviceCert {return false}
     if lhs.unknownFields != rhs.unknownFields {return false}
     return true
   }

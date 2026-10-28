@@ -554,7 +554,15 @@ func (o *Owner) checkRemoved() {
 	if o.ownerID == ownerID { // not left meanwhile
 		o.removed = removed
 	}
+	erasing, onErase := o.erasing != nil, o.onErase
 	o.mu.Unlock()
+	// The owner erased everything from another device: this one erases
+	// itself (the one that erased waits for FinishErase).
+	if removed && !erasing && onErase != nil {
+		if order := o.eraseOrder(info); order != nil {
+			go onErase(o, order.EraseId)
+		}
+	}
 }
 
 // Leave forgets the owner on this device once it was removed, so it can

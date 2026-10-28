@@ -212,6 +212,17 @@ func Installed() bool {
 	return err == nil
 }
 
+// InstalledFor reports whether the installed service runs the machine in
+// dataDir.
+func InstalledFor(dataDir string) bool {
+	if runtime.GOOS == "linux" {
+		b, err := os.ReadFile(systemdUnit())
+		return err == nil && strings.Contains(string(b), "--data-dir "+dataDir+"\n")
+	}
+	b, err := os.ReadFile(launchdPlist())
+	return err == nil && strings.Contains(string(b), "<string>--data-dir</string><string>"+xmlEscape(dataDir)+"</string>")
+}
+
 func xmlEscape(s string) string {
 	return strings.NewReplacer("&", "&amp;", "<", "&lt;", ">", "&gt;").Replace(s)
 }

@@ -84,3 +84,13 @@ private func request<M: SwiftProtobuf.Message>(_ m: M) -> SigningRequest {
     tampered[tampered.count - 1] ^= 1
     #expect(throws: (any Error).self) { try NoticeKey.open(tampered, with: key) }
 }
+
+@Test func anEraseOrderSaysWhatItErases() throws {
+    var e = Hermesh_Identity_V1_EraseOrder()
+    e.ownerID = "o_x"
+    e.eraseID = "e1"
+    let c = try SigningPreview.card(request(e))
+    #expect(c.title == "Erase everything in your Hermesh")
+    #expect(c.why.contains("can’t be undone") && c.warning != nil)
+    #expect(c.ids == ["Owner identity ID: o_x", "Erase ID: e1"])
+}

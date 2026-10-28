@@ -36,7 +36,14 @@ func (n *Machine) runLink(ctx context.Context) {
 		conn, err := d.Dial(ctx)
 		n.mu.Lock()
 		n.refused = gone(err)
+		refused := n.refused
 		n.mu.Unlock()
+		if refused && n.cfg.SelfErase && n.checkErase(ctx) {
+			n.mu.Lock()
+			n.erased = true
+			n.mu.Unlock()
+			return
+		}
 		if err != nil {
 			n.log.Warn("relay connection failed", "err", err, "retry_in", backoff)
 		} else {

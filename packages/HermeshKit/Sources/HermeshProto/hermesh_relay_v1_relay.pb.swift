@@ -249,11 +249,60 @@ public nonisolated struct Hermesh_Relay_V1_GetInfoResponse: Sendable {
   /// Hosted center: where the owner enters pairing codes.
   public var consoleURL: String = String()
 
+  /// The owner erased everything (docs/erase-everything.md): its signed
+  /// EraseOrder, kept 90 days after the relay forgot the owner, with
+  /// root_chain as it was then, so a device whose chain is older can verify
+  /// it. owner_id and claimed are then unset.
+  public var eraseOrder: Hermesh_Identity_V1_Signed {
+    get {_eraseOrder ?? Hermesh_Identity_V1_Signed()}
+    set {_eraseOrder = newValue}
+  }
+  /// Returns true if `eraseOrder` has been explicitly set.
+  public var hasEraseOrder: Bool {self._eraseOrder != nil}
+  /// Clears the value of `eraseOrder`. Subsequent reads from it will return its default value.
+  public mutating func clearEraseOrder() {self._eraseOrder = nil}
+
+  /// Who acked that order, by EraseAck.subject.
+  public var eraseAcks: [String] = []
+
   public var unknownFields = SwiftProtobuf.UnknownStorage()
 
   public init() {}
 
   fileprivate var _rootChain: Hermesh_Identity_V1_RootChain? = nil
+  fileprivate var _eraseOrder: Hermesh_Identity_V1_Signed? = nil
+}
+
+public nonisolated struct Hermesh_Relay_V1_AckEraseRequest: Sendable {
+  // SwiftProtobuf.Message conformance is added in an extension below. See the
+  // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
+  // methods supported on all messages.
+
+  /// A signed EraseAck, by the key in it.
+  public var ack: Hermesh_Identity_V1_Signed {
+    get {_ack ?? Hermesh_Identity_V1_Signed()}
+    set {_ack = newValue}
+  }
+  /// Returns true if `ack` has been explicitly set.
+  public var hasAck: Bool {self._ack != nil}
+  /// Clears the value of `ack`. Subsequent reads from it will return its default value.
+  public mutating func clearAck() {self._ack = nil}
+
+  public var unknownFields = SwiftProtobuf.UnknownStorage()
+
+  public init() {}
+
+  fileprivate var _ack: Hermesh_Identity_V1_Signed? = nil
+}
+
+public nonisolated struct Hermesh_Relay_V1_AckEraseResponse: Sendable {
+  // SwiftProtobuf.Message conformance is added in an extension below. See the
+  // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
+  // methods supported on all messages.
+
+  public var unknownFields = SwiftProtobuf.UnknownStorage()
+
+  public init() {}
 }
 
 public nonisolated struct Hermesh_Relay_V1_ClaimRequest: Sendable {
@@ -1575,6 +1624,38 @@ public nonisolated struct Hermesh_Relay_V1_PublishRootChainResponse: Sendable {
   public init() {}
 }
 
+public nonisolated struct Hermesh_Relay_V1_EraseOwnerRequest: Sendable {
+  // SwiftProtobuf.Message conformance is added in an extension below. See the
+  // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
+  // methods supported on all messages.
+
+  /// A signed EraseOrder, by one of the owner's root keys.
+  public var order: Hermesh_Identity_V1_Signed {
+    get {_order ?? Hermesh_Identity_V1_Signed()}
+    set {_order = newValue}
+  }
+  /// Returns true if `order` has been explicitly set.
+  public var hasOrder: Bool {self._order != nil}
+  /// Clears the value of `order`. Subsequent reads from it will return its default value.
+  public mutating func clearOrder() {self._order = nil}
+
+  public var unknownFields = SwiftProtobuf.UnknownStorage()
+
+  public init() {}
+
+  fileprivate var _order: Hermesh_Identity_V1_Signed? = nil
+}
+
+public nonisolated struct Hermesh_Relay_V1_EraseOwnerResponse: Sendable {
+  // SwiftProtobuf.Message conformance is added in an extension below. See the
+  // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
+  // methods supported on all messages.
+
+  public var unknownFields = SwiftProtobuf.UnknownStorage()
+
+  public init() {}
+}
+
 public nonisolated struct Hermesh_Relay_V1_WakeLinkRequest: Sendable {
   // SwiftProtobuf.Message conformance is added in an extension below. See the
   // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
@@ -2164,7 +2245,7 @@ nonisolated extension Hermesh_Relay_V1_GetInfoRequest: SwiftProtobuf.Message, Sw
 
 nonisolated extension Hermesh_Relay_V1_GetInfoResponse: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
   public static let protoMessageName: String = _protobuf_package + ".GetInfoResponse"
-  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{3}relay_id\0\u{3}owner_id\0\u{1}claimed\0\u{3}protocol_version\0\u{3}root_chain\0\u{1}hosted\0\u{3}console_url\0")
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{3}relay_id\0\u{3}owner_id\0\u{1}claimed\0\u{3}protocol_version\0\u{3}root_chain\0\u{1}hosted\0\u{3}console_url\0\u{3}erase_order\0\u{3}erase_acks\0")
 
   public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
     while let fieldNumber = try decoder.nextFieldNumber() {
@@ -2179,6 +2260,8 @@ nonisolated extension Hermesh_Relay_V1_GetInfoResponse: SwiftProtobuf.Message, S
       case 5: try { try decoder.decodeSingularMessageField(value: &self._rootChain) }()
       case 6: try { try decoder.decodeSingularBoolField(value: &self.hosted) }()
       case 7: try { try decoder.decodeSingularStringField(value: &self.consoleURL) }()
+      case 8: try { try decoder.decodeSingularMessageField(value: &self._eraseOrder) }()
+      case 9: try { try decoder.decodeRepeatedStringField(value: &self.eraseAcks) }()
       default: break
       }
     }
@@ -2210,6 +2293,12 @@ nonisolated extension Hermesh_Relay_V1_GetInfoResponse: SwiftProtobuf.Message, S
     if !self.consoleURL.isEmpty {
       try visitor.visitSingularStringField(value: self.consoleURL, fieldNumber: 7)
     }
+    try { if let v = self._eraseOrder {
+      try visitor.visitSingularMessageField(value: v, fieldNumber: 8)
+    } }()
+    if !self.eraseAcks.isEmpty {
+      try visitor.visitRepeatedStringField(value: self.eraseAcks, fieldNumber: 9)
+    }
     try unknownFields.traverse(visitor: &visitor)
   }
 
@@ -2221,6 +2310,61 @@ nonisolated extension Hermesh_Relay_V1_GetInfoResponse: SwiftProtobuf.Message, S
     if lhs._rootChain != rhs._rootChain {return false}
     if lhs.hosted != rhs.hosted {return false}
     if lhs.consoleURL != rhs.consoleURL {return false}
+    if lhs._eraseOrder != rhs._eraseOrder {return false}
+    if lhs.eraseAcks != rhs.eraseAcks {return false}
+    if lhs.unknownFields != rhs.unknownFields {return false}
+    return true
+  }
+}
+
+nonisolated extension Hermesh_Relay_V1_AckEraseRequest: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
+  public static let protoMessageName: String = _protobuf_package + ".AckEraseRequest"
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{1}ack\0")
+
+  public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
+    while let fieldNumber = try decoder.nextFieldNumber() {
+      // The use of inline closures is to circumvent an issue where the compiler
+      // allocates stack space for every case branch when no optimizations are
+      // enabled. https://github.com/apple/swift-protobuf/issues/1034
+      switch fieldNumber {
+      case 1: try { try decoder.decodeSingularMessageField(value: &self._ack) }()
+      default: break
+      }
+    }
+  }
+
+  public func traverse<V: SwiftProtobuf.Visitor>(visitor: inout V) throws {
+    // The use of inline closures is to circumvent an issue where the compiler
+    // allocates stack space for every if/case branch local when no optimizations
+    // are enabled. https://github.com/apple/swift-protobuf/issues/1034 and
+    // https://github.com/apple/swift-protobuf/issues/1182
+    try { if let v = self._ack {
+      try visitor.visitSingularMessageField(value: v, fieldNumber: 1)
+    } }()
+    try unknownFields.traverse(visitor: &visitor)
+  }
+
+  public static func ==(lhs: Hermesh_Relay_V1_AckEraseRequest, rhs: Hermesh_Relay_V1_AckEraseRequest) -> Bool {
+    if lhs._ack != rhs._ack {return false}
+    if lhs.unknownFields != rhs.unknownFields {return false}
+    return true
+  }
+}
+
+nonisolated extension Hermesh_Relay_V1_AckEraseResponse: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
+  public static let protoMessageName: String = _protobuf_package + ".AckEraseResponse"
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap()
+
+  public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
+    // Load everything into unknown fields
+    while try decoder.nextFieldNumber() != nil {}
+  }
+
+  public func traverse<V: SwiftProtobuf.Visitor>(visitor: inout V) throws {
+    try unknownFields.traverse(visitor: &visitor)
+  }
+
+  public static func ==(lhs: Hermesh_Relay_V1_AckEraseResponse, rhs: Hermesh_Relay_V1_AckEraseResponse) -> Bool {
     if lhs.unknownFields != rhs.unknownFields {return false}
     return true
   }
@@ -4500,6 +4644,59 @@ nonisolated extension Hermesh_Relay_V1_PublishRootChainResponse: SwiftProtobuf.M
   }
 
   public static func ==(lhs: Hermesh_Relay_V1_PublishRootChainResponse, rhs: Hermesh_Relay_V1_PublishRootChainResponse) -> Bool {
+    if lhs.unknownFields != rhs.unknownFields {return false}
+    return true
+  }
+}
+
+nonisolated extension Hermesh_Relay_V1_EraseOwnerRequest: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
+  public static let protoMessageName: String = _protobuf_package + ".EraseOwnerRequest"
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{1}order\0")
+
+  public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
+    while let fieldNumber = try decoder.nextFieldNumber() {
+      // The use of inline closures is to circumvent an issue where the compiler
+      // allocates stack space for every case branch when no optimizations are
+      // enabled. https://github.com/apple/swift-protobuf/issues/1034
+      switch fieldNumber {
+      case 1: try { try decoder.decodeSingularMessageField(value: &self._order) }()
+      default: break
+      }
+    }
+  }
+
+  public func traverse<V: SwiftProtobuf.Visitor>(visitor: inout V) throws {
+    // The use of inline closures is to circumvent an issue where the compiler
+    // allocates stack space for every if/case branch local when no optimizations
+    // are enabled. https://github.com/apple/swift-protobuf/issues/1034 and
+    // https://github.com/apple/swift-protobuf/issues/1182
+    try { if let v = self._order {
+      try visitor.visitSingularMessageField(value: v, fieldNumber: 1)
+    } }()
+    try unknownFields.traverse(visitor: &visitor)
+  }
+
+  public static func ==(lhs: Hermesh_Relay_V1_EraseOwnerRequest, rhs: Hermesh_Relay_V1_EraseOwnerRequest) -> Bool {
+    if lhs._order != rhs._order {return false}
+    if lhs.unknownFields != rhs.unknownFields {return false}
+    return true
+  }
+}
+
+nonisolated extension Hermesh_Relay_V1_EraseOwnerResponse: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
+  public static let protoMessageName: String = _protobuf_package + ".EraseOwnerResponse"
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap()
+
+  public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
+    // Load everything into unknown fields
+    while try decoder.nextFieldNumber() != nil {}
+  }
+
+  public func traverse<V: SwiftProtobuf.Visitor>(visitor: inout V) throws {
+    try unknownFields.traverse(visitor: &visitor)
+  }
+
+  public static func ==(lhs: Hermesh_Relay_V1_EraseOwnerResponse, rhs: Hermesh_Relay_V1_EraseOwnerResponse) -> Bool {
     if lhs.unknownFields != rhs.unknownFields {return false}
     return true
   }

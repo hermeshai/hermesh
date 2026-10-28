@@ -18,7 +18,9 @@ import (
 	"log/slog"
 	"net"
 	"net/http"
+	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -89,6 +91,7 @@ type Server struct {
 	pairLimit    *rateLimiter
 	messageHook  func(ownerID, inbox string, ring *string)
 	ownerHook    func(ownerID string)
+	eraseHooks   []func(ownerID string)
 	doorbells    Doorbells
 	expiredAt    time.Time
 
@@ -450,6 +453,9 @@ func (s *Server) admit(h *relayv1.Hello, nonce []byte) (*peer, error) {
 	ownerID := identity.ChainOwner(h.GetCredentials().GetRootChain())
 	if ownerID == "" {
 		return nil, errors.New("missing root chain")
+	}
+	if order, _, _ := s.eraseOrder(ownerID); order != nil && (s.sqlite == nil || s.singleOwner() != ownerID) {
+		return nil, errors.New("this relay no longer serves this device's owner (the owner erased everything)")
 	}
 	if s.sqlite != nil && s.singleOwner() == "" {
 		return nil, errors.New("relay is not claimed yet")
@@ -1013,6 +1019,51 @@ func (s *Server) pushGrants(t *tenant) {
 		}
 		s.mu.Unlock()
 	}
+}
+
+// eraseOrder is an erased owner's order, root chain and acks, while the
+// relay keeps them.
+func (s *Server) eraseOrder(ownerID string) (*identityv1.Signed, *identityv1.RootChain, []string) {
+	es, ok := s.store.(EraseStore)
+	if !ok {
+		return nil, nil, nil
+	}
+	order, chain, acks, err := es.EraseOrder(ownerID, time.Now())
+	if err != nil {
+		s.log.Warn("reading an erase order", "owner", ownerID, "err", err)
+		return nil, nil, nil
+	}
+	return order, chain, acks
+}
+
+// AddEraseHook tells f each owner that erased everything, once the relay
+// forgot it: the MCP gateway ends its connections, a center its account's.
+func (s *Server) AddEraseHook(f func(ownerID string)) {
+	s.mu.Lock()
+	s.eraseHooks = append(s.eraseHooks, f)
+	s.mu.Unlock()
+}
+
+// erased forgets an owner that erased everything. Its connections close a
+// moment later, so that the device that asked hears the answer first; a
+// self-hosted relay is then unclaimed again.
+func (s *Server) erased(ownerID string) {
+	s.mu.Lock()
+	if s.single == ownerID {
+		s.single = ""
+	}
+	hooks := slices.Clone(s.eraseHooks)
+	s.mu.Unlock()
+	s.log.Info("owner erased everything", "owner", ownerID)
+	time.AfterFunc(500*time.Millisecond, func() {
+		s.ForgetOwner(ownerID)
+		for _, f := range hooks {
+			f(ownerID)
+		}
+		if code, err := s.ClaimCode(); err == nil && code != "" {
+			fmt.Fprintf(os.Stderr, "\n  This relay is not claimed any more: its owner erased everything.\n  Claim code: %s\n\n", code)
+		}
+	})
 }
 
 // SetOwnerHook tells f the owner each time one of its trusted devices

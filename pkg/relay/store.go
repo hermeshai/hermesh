@@ -77,6 +77,20 @@ CREATE TABLE contact_cards (
 );
 `, `
 ALTER TABLE messages ADD COLUMN ring TEXT;
+`, `
+CREATE TABLE erase_orders (
+  owner_id TEXT PRIMARY KEY,
+  erase_id TEXT NOT NULL,
+  erase_order BLOB NOT NULL,
+  root_chain BLOB NOT NULL,
+  erased_at INTEGER NOT NULL
+);
+CREATE TABLE erase_acks (
+  erase_id TEXT NOT NULL,
+  key_id TEXT NOT NULL,
+  acked_at INTEGER NOT NULL,
+  PRIMARY KEY (erase_id, key_id)
+);
 `}
 
 // Store is the Backend of a self-hosted relay: one owner, SQLite. It keeps
@@ -547,4 +561,71 @@ func (s *Store) Cards(string) (map[string]StoredCard, error) {
 		out[id] = c
 	}
 	return out, rows.Err()
+}
+
+// EraseOwner keeps the order and leaves the relay unclaimed, as it was
+// before its first owner: a new claim code is made when one is asked for.
+func (s *Store) EraseOwner(ownerID, eraseID string, order *identityv1.Signed, chain *identityv1.RootChain, at time.Time) error {
+	ob, _ := proto.Marshal(order)
+	cb, _ := proto.Marshal(chain)
+	tx, err := s.db.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	if _, err := tx.Exec(`INSERT INTO erase_orders(owner_id, erase_id, erase_order, root_chain, erased_at) VALUES(?,?,?,?,?)
+ON CONFLICT(owner_id) DO UPDATE SET erase_id=excluded.erase_id, erase_order=excluded.erase_order, root_chain=excluded.root_chain, erased_at=excluded.erased_at`,
+		ownerID, eraseID, ob, cb, at.Unix()); err != nil {
+		return err
+	}
+	for _, q := range []string{
+		`DELETE FROM meta WHERE key IN ('owner_id', 'root_chain', 'device_cert', 'revocations', 'claim_code')`,
+		`DELETE FROM machine_certs`, `DELETE FROM grants`, `DELETE FROM pairing`, `DELETE FROM push_targets`,
+		`DELETE FROM messages`, `DELETE FROM inbox_registrations`, `DELETE FROM contact_cards`,
+	} {
+		if _, err := tx.Exec(q); err != nil {
+			return err
+		}
+	}
+	return tx.Commit()
+}
+
+func (s *Store) EraseOrder(ownerID string, now time.Time) (*identityv1.Signed, *identityv1.RootChain, []string, error) {
+	var eraseID string
+	var ob, cb []byte
+	var at int64
+	err := s.db.QueryRow(`SELECT erase_id, erase_order, root_chain, erased_at FROM erase_orders WHERE owner_id=?`, ownerID).Scan(&eraseID, &ob, &cb, &at)
+	if errors.Is(err, sql.ErrNoRows) || err == nil && now.Sub(time.Unix(at, 0)) > EraseRetention {
+		return nil, nil, nil, nil
+	}
+	if err != nil {
+		return nil, nil, nil, err
+	}
+	order, chain := &identityv1.Signed{}, &identityv1.RootChain{}
+	if err := proto.Unmarshal(ob, order); err != nil {
+		return nil, nil, nil, err
+	}
+	if err := proto.Unmarshal(cb, chain); err != nil {
+		return nil, nil, nil, err
+	}
+	rows, err := s.db.Query(`SELECT key_id FROM erase_acks WHERE erase_id=? ORDER BY acked_at`, eraseID)
+	if err != nil {
+		return nil, nil, nil, err
+	}
+	defer rows.Close()
+	var acks []string
+	for rows.Next() {
+		var k string
+		if err := rows.Scan(&k); err != nil {
+			return nil, nil, nil, err
+		}
+		acks = append(acks, k)
+	}
+	return order, chain, acks, rows.Err()
+}
+
+func (s *Store) AckErase(eraseID, keyID string, at time.Time) error {
+	_, err := s.db.Exec(`INSERT INTO erase_acks(erase_id, key_id, acked_at) SELECT ?, ?, ? WHERE EXISTS (SELECT 1 FROM erase_orders WHERE erase_id=?)
+ON CONFLICT(erase_id, key_id) DO NOTHING`, eraseID, keyID, at.Unix(), eraseID)
+	return err
 }

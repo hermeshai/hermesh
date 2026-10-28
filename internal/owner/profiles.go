@@ -121,7 +121,11 @@ func (d *Device) currentFile() string { return filepath.Join(d.cfg.DataDir, "cur
 func (d *Device) openProfile(id string) (*Owner, error) {
 	cfg := d.cfg
 	cfg.DataDir = filepath.Join(d.profilesDir(), id)
-	return openProfile(cfg, d.hub)
+	o, err := openProfile(cfg, d.hub)
+	if o != nil {
+		o.onErase = d.erasedBy
+	}
+	return o, err
 }
 
 // emptyProfile returns a profile that is not set up, opening a new one when

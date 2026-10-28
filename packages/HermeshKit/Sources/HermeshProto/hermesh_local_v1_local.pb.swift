@@ -250,61 +250,122 @@ public nonisolated struct Hermesh_Local_V1_GetStatusRequest: Sendable {
   public init() {}
 }
 
-public nonisolated struct Hermesh_Local_V1_GetStatusResponse: Sendable {
+public nonisolated struct Hermesh_Local_V1_GetStatusResponse: @unchecked Sendable {
   // SwiftProtobuf.Message conformance is added in an extension below. See the
   // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
   // methods supported on all messages.
 
-  public var initialized: Bool = false
+  public var initialized: Bool {
+    get {_storage._initialized}
+    set {_uniqueStorage()._initialized = newValue}
+  }
 
-  public var ownerID: String = String()
+  public var ownerID: String {
+    get {_storage._ownerID}
+    set {_uniqueStorage()._ownerID = newValue}
+  }
 
-  public var relayURL: String = String()
+  public var relayURL: String {
+    get {_storage._relayURL}
+    set {_uniqueStorage()._relayURL = newValue}
+  }
 
-  public var relayConnected: Bool = false
+  public var relayConnected: Bool {
+    get {_storage._relayConnected}
+    set {_uniqueStorage()._relayConnected = newValue}
+  }
 
-  public var localMachineEnabled: Bool = false
+  public var localMachineEnabled: Bool {
+    get {_storage._localMachineEnabled}
+    set {_uniqueStorage()._localMachineEnabled = newValue}
+  }
 
-  public var localMachineID: String = String()
+  public var localMachineID: String {
+    get {_storage._localMachineID}
+    set {_uniqueStorage()._localMachineID = newValue}
+  }
 
-  public var localMachineName: String = String()
+  public var localMachineName: String {
+    get {_storage._localMachineName}
+    set {_uniqueStorage()._localMachineName = newValue}
+  }
 
-  public var version: String = String()
+  public var version: String {
+    get {_storage._version}
+    set {_uniqueStorage()._version = newValue}
+  }
 
   /// Connection address handed to agents and installers.
-  public var connectAddress: String = String()
+  public var connectAddress: String {
+    get {_storage._connectAddress}
+    set {_uniqueStorage()._connectAddress = newValue}
+  }
 
   /// The relay is a hosted center; its web console at console_url can list
   /// and revoke, while adding machines and agents happens only here.
-  public var hosted: Bool = false
+  public var hosted: Bool {
+    get {_storage._hosted}
+    set {_uniqueStorage()._hosted = newValue}
+  }
 
-  public var consoleURL: String = String()
+  public var consoleURL: String {
+    get {_storage._consoleURL}
+    set {_uniqueStorage()._consoleURL = newValue}
+  }
 
   /// This device's root key id (one of the owner's trusted devices).
-  public var deviceKeyID: String = String()
+  public var deviceKeyID: String {
+    get {_storage._deviceKeyID}
+    set {_uniqueStorage()._deviceKeyID = newValue}
+  }
 
   /// This device is no longer one of the owner's trusted devices: another
   /// removed it, or the owner started over. Leave resets it.
   /// With machine_only: the relay refuses this machine (it was removed).
-  public var removed: Bool = false
+  public var removed: Bool {
+    get {_storage._removed}
+    set {_uniqueStorage()._removed = newValue}
+  }
 
   /// This device joined an owner as a machine only, not a trusted device:
   /// it approves nothing and sees only its own projects and sessions.
   /// initialized stays false; owner_id, relay_url and local_machine_*
   /// describe the machine.
-  public var machineOnly: Bool = false
+  public var machineOnly: Bool {
+    get {_storage._machineOnly}
+    set {_uniqueStorage()._machineOnly = newValue}
+  }
 
   /// This profile is signed out (SignOut): set up, but it neither connects
   /// nor signs until SignIn.
-  public var signedOut: Bool = false
+  public var signedOut: Bool {
+    get {_storage._signedOut}
+    set {_uniqueStorage()._signedOut = newValue}
+  }
 
   /// The account this profile belongs to, as the center named it when it
   /// was set up, joined or signed in (for display only).
-  public var account: String = String()
+  public var account: String {
+    get {_storage._account}
+    set {_uniqueStorage()._account = newValue}
+  }
+
+  /// This device erased everything (EraseEverything, or an erase order from
+  /// another): what it did, until another setup.
+  public var erased: Hermesh_Local_V1_Erased {
+    get {_storage._erased ?? Hermesh_Local_V1_Erased()}
+    set {_uniqueStorage()._erased = newValue}
+  }
+  /// Returns true if `erased` has been explicitly set.
+  public var hasErased: Bool {_storage._erased != nil}
+  /// Clears the value of `erased`. Subsequent reads from it will return its default value.
+  public mutating func clearErased() {_uniqueStorage()._erased = nil}
 
   public var unknownFields = SwiftProtobuf.UnknownStorage()
 
   public init() {}
+
+  fileprivate var _storage = _StorageClass.defaultInstance
 }
 
 public nonisolated struct Hermesh_Local_V1_ListProfilesRequest: Sendable {
@@ -765,6 +826,124 @@ public nonisolated struct Hermesh_Local_V1_LeaveResponse: Sendable {
   public var unknownFields = SwiftProtobuf.UnknownStorage()
 
   public init() {}
+}
+
+public nonisolated struct Hermesh_Local_V1_EraseEverythingRequest: Sendable {
+  // SwiftProtobuf.Message conformance is added in an extension below. See the
+  // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
+  // methods supported on all messages.
+
+  public var unknownFields = SwiftProtobuf.UnknownStorage()
+
+  public init() {}
+}
+
+public nonisolated struct Hermesh_Local_V1_EraseEverythingResponse: Sendable {
+  // SwiftProtobuf.Message conformance is added in an extension below. See the
+  // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
+  // methods supported on all messages.
+
+  public var eraseID: String = String()
+
+  public var unknownFields = SwiftProtobuf.UnknownStorage()
+
+  public init() {}
+}
+
+public nonisolated struct Hermesh_Local_V1_EraseStatusRequest: Sendable {
+  // SwiftProtobuf.Message conformance is added in an extension below. See the
+  // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
+  // methods supported on all messages.
+
+  public var eraseID: String = String()
+
+  public var unknownFields = SwiftProtobuf.UnknownStorage()
+
+  public init() {}
+}
+
+public nonisolated struct Hermesh_Local_V1_EraseStatusResponse: Sendable {
+  // SwiftProtobuf.Message conformance is added in an extension below. See the
+  // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
+  // methods supported on all messages.
+
+  /// What there was when it began, and which acked.
+  public var items: [Hermesh_Local_V1_EraseItem] = []
+
+  public var unknownFields = SwiftProtobuf.UnknownStorage()
+
+  public init() {}
+}
+
+public nonisolated struct Hermesh_Local_V1_EraseItem: Sendable {
+  // SwiftProtobuf.Message conformance is added in an extension below. See the
+  // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
+  // methods supported on all messages.
+
+  /// "device", "machine" or "agent".
+  public var kind: String = String()
+
+  public var name: String = String()
+
+  /// This device.
+  public var thisDevice: Bool = false
+
+  public var done: Bool = false
+
+  public var unknownFields = SwiftProtobuf.UnknownStorage()
+
+  public init() {}
+}
+
+public nonisolated struct Hermesh_Local_V1_FinishEraseRequest: Sendable {
+  // SwiftProtobuf.Message conformance is added in an extension below. See the
+  // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
+  // methods supported on all messages.
+
+  public var unknownFields = SwiftProtobuf.UnknownStorage()
+
+  public init() {}
+}
+
+public nonisolated struct Hermesh_Local_V1_FinishEraseResponse: Sendable {
+  // SwiftProtobuf.Message conformance is added in an extension below. See the
+  // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
+  // methods supported on all messages.
+
+  public var unknownFields = SwiftProtobuf.UnknownStorage()
+
+  public init() {}
+}
+
+/// What the last erase did, for the app to say once on its first run.
+public nonisolated struct Hermesh_Local_V1_Erased: Sendable {
+  // SwiftProtobuf.Message conformance is added in an extension below. See the
+  // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
+  // methods supported on all messages.
+
+  public var eraseID: String = String()
+
+  public var at: SwiftProtobuf.Google_Protobuf_Timestamp {
+    get {_at ?? SwiftProtobuf.Google_Protobuf_Timestamp()}
+    set {_at = newValue}
+  }
+  /// Returns true if `at` has been explicitly set.
+  public var hasAt: Bool {self._at != nil}
+  /// Clears the value of `at`. Subsequent reads from it will return its default value.
+  public mutating func clearAt() {self._at = nil}
+
+  /// Devices, machines and agents that had not acked when this one erased:
+  /// they erase the next time they connect.
+  public var pending: [String] = []
+
+  /// Worktrees with uncommitted changes, kept.
+  public var keptWorktrees: [String] = []
+
+  public var unknownFields = SwiftProtobuf.UnknownStorage()
+
+  public init() {}
+
+  fileprivate var _at: SwiftProtobuf.Google_Protobuf_Timestamp? = nil
 }
 
 public nonisolated struct Hermesh_Local_V1_WatchSigningRequestsRequest: Sendable {
@@ -2754,104 +2933,181 @@ nonisolated extension Hermesh_Local_V1_GetStatusRequest: SwiftProtobuf.Message, 
 
 nonisolated extension Hermesh_Local_V1_GetStatusResponse: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
   public static let protoMessageName: String = _protobuf_package + ".GetStatusResponse"
-  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{1}initialized\0\u{3}owner_id\0\u{3}relay_url\0\u{3}relay_connected\0\u{3}local_machine_enabled\0\u{3}local_machine_id\0\u{3}local_machine_name\0\u{1}version\0\u{3}connect_address\0\u{1}hosted\0\u{3}console_url\0\u{3}device_key_id\0\u{1}removed\0\u{3}machine_only\0\u{3}signed_out\0\u{1}account\0")
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{1}initialized\0\u{3}owner_id\0\u{3}relay_url\0\u{3}relay_connected\0\u{3}local_machine_enabled\0\u{3}local_machine_id\0\u{3}local_machine_name\0\u{1}version\0\u{3}connect_address\0\u{1}hosted\0\u{3}console_url\0\u{3}device_key_id\0\u{1}removed\0\u{3}machine_only\0\u{3}signed_out\0\u{1}account\0\u{1}erased\0")
+
+  fileprivate class _StorageClass {
+    var _initialized: Bool = false
+    var _ownerID: String = String()
+    var _relayURL: String = String()
+    var _relayConnected: Bool = false
+    var _localMachineEnabled: Bool = false
+    var _localMachineID: String = String()
+    var _localMachineName: String = String()
+    var _version: String = String()
+    var _connectAddress: String = String()
+    var _hosted: Bool = false
+    var _consoleURL: String = String()
+    var _deviceKeyID: String = String()
+    var _removed: Bool = false
+    var _machineOnly: Bool = false
+    var _signedOut: Bool = false
+    var _account: String = String()
+    var _erased: Hermesh_Local_V1_Erased? = nil
+
+      // This property is used as the initial default value for new instances of the type.
+      // The type itself is protecting the reference to its storage via CoW semantics.
+      // This will force a copy to be made of this reference when the first mutation occurs;
+      // hence, it is safe to mark this as `nonisolated(unsafe)`.
+      static nonisolated(unsafe) let defaultInstance = _StorageClass()
+
+    private init() {}
+
+    init(copying source: _StorageClass) {
+      _initialized = source._initialized
+      _ownerID = source._ownerID
+      _relayURL = source._relayURL
+      _relayConnected = source._relayConnected
+      _localMachineEnabled = source._localMachineEnabled
+      _localMachineID = source._localMachineID
+      _localMachineName = source._localMachineName
+      _version = source._version
+      _connectAddress = source._connectAddress
+      _hosted = source._hosted
+      _consoleURL = source._consoleURL
+      _deviceKeyID = source._deviceKeyID
+      _removed = source._removed
+      _machineOnly = source._machineOnly
+      _signedOut = source._signedOut
+      _account = source._account
+      _erased = source._erased
+    }
+  }
+
+  fileprivate mutating func _uniqueStorage() -> _StorageClass {
+    if !isKnownUniquelyReferenced(&_storage) {
+      _storage = _StorageClass(copying: _storage)
+    }
+    return _storage
+  }
 
   public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
-    while let fieldNumber = try decoder.nextFieldNumber() {
-      // The use of inline closures is to circumvent an issue where the compiler
-      // allocates stack space for every case branch when no optimizations are
-      // enabled. https://github.com/apple/swift-protobuf/issues/1034
-      switch fieldNumber {
-      case 1: try { try decoder.decodeSingularBoolField(value: &self.initialized) }()
-      case 2: try { try decoder.decodeSingularStringField(value: &self.ownerID) }()
-      case 3: try { try decoder.decodeSingularStringField(value: &self.relayURL) }()
-      case 4: try { try decoder.decodeSingularBoolField(value: &self.relayConnected) }()
-      case 5: try { try decoder.decodeSingularBoolField(value: &self.localMachineEnabled) }()
-      case 6: try { try decoder.decodeSingularStringField(value: &self.localMachineID) }()
-      case 7: try { try decoder.decodeSingularStringField(value: &self.localMachineName) }()
-      case 8: try { try decoder.decodeSingularStringField(value: &self.version) }()
-      case 9: try { try decoder.decodeSingularStringField(value: &self.connectAddress) }()
-      case 10: try { try decoder.decodeSingularBoolField(value: &self.hosted) }()
-      case 11: try { try decoder.decodeSingularStringField(value: &self.consoleURL) }()
-      case 12: try { try decoder.decodeSingularStringField(value: &self.deviceKeyID) }()
-      case 13: try { try decoder.decodeSingularBoolField(value: &self.removed) }()
-      case 14: try { try decoder.decodeSingularBoolField(value: &self.machineOnly) }()
-      case 15: try { try decoder.decodeSingularBoolField(value: &self.signedOut) }()
-      case 16: try { try decoder.decodeSingularStringField(value: &self.account) }()
-      default: break
+    _ = _uniqueStorage()
+    try withExtendedLifetime(_storage) { (_storage: _StorageClass) in
+      while let fieldNumber = try decoder.nextFieldNumber() {
+        // The use of inline closures is to circumvent an issue where the compiler
+        // allocates stack space for every case branch when no optimizations are
+        // enabled. https://github.com/apple/swift-protobuf/issues/1034
+        switch fieldNumber {
+        case 1: try { try decoder.decodeSingularBoolField(value: &_storage._initialized) }()
+        case 2: try { try decoder.decodeSingularStringField(value: &_storage._ownerID) }()
+        case 3: try { try decoder.decodeSingularStringField(value: &_storage._relayURL) }()
+        case 4: try { try decoder.decodeSingularBoolField(value: &_storage._relayConnected) }()
+        case 5: try { try decoder.decodeSingularBoolField(value: &_storage._localMachineEnabled) }()
+        case 6: try { try decoder.decodeSingularStringField(value: &_storage._localMachineID) }()
+        case 7: try { try decoder.decodeSingularStringField(value: &_storage._localMachineName) }()
+        case 8: try { try decoder.decodeSingularStringField(value: &_storage._version) }()
+        case 9: try { try decoder.decodeSingularStringField(value: &_storage._connectAddress) }()
+        case 10: try { try decoder.decodeSingularBoolField(value: &_storage._hosted) }()
+        case 11: try { try decoder.decodeSingularStringField(value: &_storage._consoleURL) }()
+        case 12: try { try decoder.decodeSingularStringField(value: &_storage._deviceKeyID) }()
+        case 13: try { try decoder.decodeSingularBoolField(value: &_storage._removed) }()
+        case 14: try { try decoder.decodeSingularBoolField(value: &_storage._machineOnly) }()
+        case 15: try { try decoder.decodeSingularBoolField(value: &_storage._signedOut) }()
+        case 16: try { try decoder.decodeSingularStringField(value: &_storage._account) }()
+        case 17: try { try decoder.decodeSingularMessageField(value: &_storage._erased) }()
+        default: break
+        }
       }
     }
   }
 
   public func traverse<V: SwiftProtobuf.Visitor>(visitor: inout V) throws {
-    if self.initialized != false {
-      try visitor.visitSingularBoolField(value: self.initialized, fieldNumber: 1)
-    }
-    if !self.ownerID.isEmpty {
-      try visitor.visitSingularStringField(value: self.ownerID, fieldNumber: 2)
-    }
-    if !self.relayURL.isEmpty {
-      try visitor.visitSingularStringField(value: self.relayURL, fieldNumber: 3)
-    }
-    if self.relayConnected != false {
-      try visitor.visitSingularBoolField(value: self.relayConnected, fieldNumber: 4)
-    }
-    if self.localMachineEnabled != false {
-      try visitor.visitSingularBoolField(value: self.localMachineEnabled, fieldNumber: 5)
-    }
-    if !self.localMachineID.isEmpty {
-      try visitor.visitSingularStringField(value: self.localMachineID, fieldNumber: 6)
-    }
-    if !self.localMachineName.isEmpty {
-      try visitor.visitSingularStringField(value: self.localMachineName, fieldNumber: 7)
-    }
-    if !self.version.isEmpty {
-      try visitor.visitSingularStringField(value: self.version, fieldNumber: 8)
-    }
-    if !self.connectAddress.isEmpty {
-      try visitor.visitSingularStringField(value: self.connectAddress, fieldNumber: 9)
-    }
-    if self.hosted != false {
-      try visitor.visitSingularBoolField(value: self.hosted, fieldNumber: 10)
-    }
-    if !self.consoleURL.isEmpty {
-      try visitor.visitSingularStringField(value: self.consoleURL, fieldNumber: 11)
-    }
-    if !self.deviceKeyID.isEmpty {
-      try visitor.visitSingularStringField(value: self.deviceKeyID, fieldNumber: 12)
-    }
-    if self.removed != false {
-      try visitor.visitSingularBoolField(value: self.removed, fieldNumber: 13)
-    }
-    if self.machineOnly != false {
-      try visitor.visitSingularBoolField(value: self.machineOnly, fieldNumber: 14)
-    }
-    if self.signedOut != false {
-      try visitor.visitSingularBoolField(value: self.signedOut, fieldNumber: 15)
-    }
-    if !self.account.isEmpty {
-      try visitor.visitSingularStringField(value: self.account, fieldNumber: 16)
+    try withExtendedLifetime(_storage) { (_storage: _StorageClass) in
+      // The use of inline closures is to circumvent an issue where the compiler
+      // allocates stack space for every if/case branch local when no optimizations
+      // are enabled. https://github.com/apple/swift-protobuf/issues/1034 and
+      // https://github.com/apple/swift-protobuf/issues/1182
+      if _storage._initialized != false {
+        try visitor.visitSingularBoolField(value: _storage._initialized, fieldNumber: 1)
+      }
+      if !_storage._ownerID.isEmpty {
+        try visitor.visitSingularStringField(value: _storage._ownerID, fieldNumber: 2)
+      }
+      if !_storage._relayURL.isEmpty {
+        try visitor.visitSingularStringField(value: _storage._relayURL, fieldNumber: 3)
+      }
+      if _storage._relayConnected != false {
+        try visitor.visitSingularBoolField(value: _storage._relayConnected, fieldNumber: 4)
+      }
+      if _storage._localMachineEnabled != false {
+        try visitor.visitSingularBoolField(value: _storage._localMachineEnabled, fieldNumber: 5)
+      }
+      if !_storage._localMachineID.isEmpty {
+        try visitor.visitSingularStringField(value: _storage._localMachineID, fieldNumber: 6)
+      }
+      if !_storage._localMachineName.isEmpty {
+        try visitor.visitSingularStringField(value: _storage._localMachineName, fieldNumber: 7)
+      }
+      if !_storage._version.isEmpty {
+        try visitor.visitSingularStringField(value: _storage._version, fieldNumber: 8)
+      }
+      if !_storage._connectAddress.isEmpty {
+        try visitor.visitSingularStringField(value: _storage._connectAddress, fieldNumber: 9)
+      }
+      if _storage._hosted != false {
+        try visitor.visitSingularBoolField(value: _storage._hosted, fieldNumber: 10)
+      }
+      if !_storage._consoleURL.isEmpty {
+        try visitor.visitSingularStringField(value: _storage._consoleURL, fieldNumber: 11)
+      }
+      if !_storage._deviceKeyID.isEmpty {
+        try visitor.visitSingularStringField(value: _storage._deviceKeyID, fieldNumber: 12)
+      }
+      if _storage._removed != false {
+        try visitor.visitSingularBoolField(value: _storage._removed, fieldNumber: 13)
+      }
+      if _storage._machineOnly != false {
+        try visitor.visitSingularBoolField(value: _storage._machineOnly, fieldNumber: 14)
+      }
+      if _storage._signedOut != false {
+        try visitor.visitSingularBoolField(value: _storage._signedOut, fieldNumber: 15)
+      }
+      if !_storage._account.isEmpty {
+        try visitor.visitSingularStringField(value: _storage._account, fieldNumber: 16)
+      }
+      try { if let v = _storage._erased {
+        try visitor.visitSingularMessageField(value: v, fieldNumber: 17)
+      } }()
     }
     try unknownFields.traverse(visitor: &visitor)
   }
 
   public static func ==(lhs: Hermesh_Local_V1_GetStatusResponse, rhs: Hermesh_Local_V1_GetStatusResponse) -> Bool {
-    if lhs.initialized != rhs.initialized {return false}
-    if lhs.ownerID != rhs.ownerID {return false}
-    if lhs.relayURL != rhs.relayURL {return false}
-    if lhs.relayConnected != rhs.relayConnected {return false}
-    if lhs.localMachineEnabled != rhs.localMachineEnabled {return false}
-    if lhs.localMachineID != rhs.localMachineID {return false}
-    if lhs.localMachineName != rhs.localMachineName {return false}
-    if lhs.version != rhs.version {return false}
-    if lhs.connectAddress != rhs.connectAddress {return false}
-    if lhs.hosted != rhs.hosted {return false}
-    if lhs.consoleURL != rhs.consoleURL {return false}
-    if lhs.deviceKeyID != rhs.deviceKeyID {return false}
-    if lhs.removed != rhs.removed {return false}
-    if lhs.machineOnly != rhs.machineOnly {return false}
-    if lhs.signedOut != rhs.signedOut {return false}
-    if lhs.account != rhs.account {return false}
+    if lhs._storage !== rhs._storage {
+      let storagesAreEqual: Bool = withExtendedLifetime((lhs._storage, rhs._storage)) { (_args: (_StorageClass, _StorageClass)) in
+        let _storage = _args.0
+        let rhs_storage = _args.1
+        if _storage._initialized != rhs_storage._initialized {return false}
+        if _storage._ownerID != rhs_storage._ownerID {return false}
+        if _storage._relayURL != rhs_storage._relayURL {return false}
+        if _storage._relayConnected != rhs_storage._relayConnected {return false}
+        if _storage._localMachineEnabled != rhs_storage._localMachineEnabled {return false}
+        if _storage._localMachineID != rhs_storage._localMachineID {return false}
+        if _storage._localMachineName != rhs_storage._localMachineName {return false}
+        if _storage._version != rhs_storage._version {return false}
+        if _storage._connectAddress != rhs_storage._connectAddress {return false}
+        if _storage._hosted != rhs_storage._hosted {return false}
+        if _storage._consoleURL != rhs_storage._consoleURL {return false}
+        if _storage._deviceKeyID != rhs_storage._deviceKeyID {return false}
+        if _storage._removed != rhs_storage._removed {return false}
+        if _storage._machineOnly != rhs_storage._machineOnly {return false}
+        if _storage._signedOut != rhs_storage._signedOut {return false}
+        if _storage._account != rhs_storage._account {return false}
+        if _storage._erased != rhs_storage._erased {return false}
+        return true
+      }
+      if !storagesAreEqual {return false}
+    }
     if lhs.unknownFields != rhs.unknownFields {return false}
     return true
   }
@@ -3812,6 +4068,247 @@ nonisolated extension Hermesh_Local_V1_LeaveResponse: SwiftProtobuf.Message, Swi
   }
 
   public static func ==(lhs: Hermesh_Local_V1_LeaveResponse, rhs: Hermesh_Local_V1_LeaveResponse) -> Bool {
+    if lhs.unknownFields != rhs.unknownFields {return false}
+    return true
+  }
+}
+
+nonisolated extension Hermesh_Local_V1_EraseEverythingRequest: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
+  public static let protoMessageName: String = _protobuf_package + ".EraseEverythingRequest"
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap()
+
+  public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
+    // Load everything into unknown fields
+    while try decoder.nextFieldNumber() != nil {}
+  }
+
+  public func traverse<V: SwiftProtobuf.Visitor>(visitor: inout V) throws {
+    try unknownFields.traverse(visitor: &visitor)
+  }
+
+  public static func ==(lhs: Hermesh_Local_V1_EraseEverythingRequest, rhs: Hermesh_Local_V1_EraseEverythingRequest) -> Bool {
+    if lhs.unknownFields != rhs.unknownFields {return false}
+    return true
+  }
+}
+
+nonisolated extension Hermesh_Local_V1_EraseEverythingResponse: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
+  public static let protoMessageName: String = _protobuf_package + ".EraseEverythingResponse"
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{3}erase_id\0")
+
+  public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
+    while let fieldNumber = try decoder.nextFieldNumber() {
+      // The use of inline closures is to circumvent an issue where the compiler
+      // allocates stack space for every case branch when no optimizations are
+      // enabled. https://github.com/apple/swift-protobuf/issues/1034
+      switch fieldNumber {
+      case 1: try { try decoder.decodeSingularStringField(value: &self.eraseID) }()
+      default: break
+      }
+    }
+  }
+
+  public func traverse<V: SwiftProtobuf.Visitor>(visitor: inout V) throws {
+    if !self.eraseID.isEmpty {
+      try visitor.visitSingularStringField(value: self.eraseID, fieldNumber: 1)
+    }
+    try unknownFields.traverse(visitor: &visitor)
+  }
+
+  public static func ==(lhs: Hermesh_Local_V1_EraseEverythingResponse, rhs: Hermesh_Local_V1_EraseEverythingResponse) -> Bool {
+    if lhs.eraseID != rhs.eraseID {return false}
+    if lhs.unknownFields != rhs.unknownFields {return false}
+    return true
+  }
+}
+
+nonisolated extension Hermesh_Local_V1_EraseStatusRequest: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
+  public static let protoMessageName: String = _protobuf_package + ".EraseStatusRequest"
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{3}erase_id\0")
+
+  public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
+    while let fieldNumber = try decoder.nextFieldNumber() {
+      // The use of inline closures is to circumvent an issue where the compiler
+      // allocates stack space for every case branch when no optimizations are
+      // enabled. https://github.com/apple/swift-protobuf/issues/1034
+      switch fieldNumber {
+      case 1: try { try decoder.decodeSingularStringField(value: &self.eraseID) }()
+      default: break
+      }
+    }
+  }
+
+  public func traverse<V: SwiftProtobuf.Visitor>(visitor: inout V) throws {
+    if !self.eraseID.isEmpty {
+      try visitor.visitSingularStringField(value: self.eraseID, fieldNumber: 1)
+    }
+    try unknownFields.traverse(visitor: &visitor)
+  }
+
+  public static func ==(lhs: Hermesh_Local_V1_EraseStatusRequest, rhs: Hermesh_Local_V1_EraseStatusRequest) -> Bool {
+    if lhs.eraseID != rhs.eraseID {return false}
+    if lhs.unknownFields != rhs.unknownFields {return false}
+    return true
+  }
+}
+
+nonisolated extension Hermesh_Local_V1_EraseStatusResponse: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
+  public static let protoMessageName: String = _protobuf_package + ".EraseStatusResponse"
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{1}items\0")
+
+  public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
+    while let fieldNumber = try decoder.nextFieldNumber() {
+      // The use of inline closures is to circumvent an issue where the compiler
+      // allocates stack space for every case branch when no optimizations are
+      // enabled. https://github.com/apple/swift-protobuf/issues/1034
+      switch fieldNumber {
+      case 1: try { try decoder.decodeRepeatedMessageField(value: &self.items) }()
+      default: break
+      }
+    }
+  }
+
+  public func traverse<V: SwiftProtobuf.Visitor>(visitor: inout V) throws {
+    if !self.items.isEmpty {
+      try visitor.visitRepeatedMessageField(value: self.items, fieldNumber: 1)
+    }
+    try unknownFields.traverse(visitor: &visitor)
+  }
+
+  public static func ==(lhs: Hermesh_Local_V1_EraseStatusResponse, rhs: Hermesh_Local_V1_EraseStatusResponse) -> Bool {
+    if lhs.items != rhs.items {return false}
+    if lhs.unknownFields != rhs.unknownFields {return false}
+    return true
+  }
+}
+
+nonisolated extension Hermesh_Local_V1_EraseItem: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
+  public static let protoMessageName: String = _protobuf_package + ".EraseItem"
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{1}kind\0\u{1}name\0\u{3}this_device\0\u{1}done\0")
+
+  public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
+    while let fieldNumber = try decoder.nextFieldNumber() {
+      // The use of inline closures is to circumvent an issue where the compiler
+      // allocates stack space for every case branch when no optimizations are
+      // enabled. https://github.com/apple/swift-protobuf/issues/1034
+      switch fieldNumber {
+      case 1: try { try decoder.decodeSingularStringField(value: &self.kind) }()
+      case 2: try { try decoder.decodeSingularStringField(value: &self.name) }()
+      case 3: try { try decoder.decodeSingularBoolField(value: &self.thisDevice) }()
+      case 4: try { try decoder.decodeSingularBoolField(value: &self.done) }()
+      default: break
+      }
+    }
+  }
+
+  public func traverse<V: SwiftProtobuf.Visitor>(visitor: inout V) throws {
+    if !self.kind.isEmpty {
+      try visitor.visitSingularStringField(value: self.kind, fieldNumber: 1)
+    }
+    if !self.name.isEmpty {
+      try visitor.visitSingularStringField(value: self.name, fieldNumber: 2)
+    }
+    if self.thisDevice != false {
+      try visitor.visitSingularBoolField(value: self.thisDevice, fieldNumber: 3)
+    }
+    if self.done != false {
+      try visitor.visitSingularBoolField(value: self.done, fieldNumber: 4)
+    }
+    try unknownFields.traverse(visitor: &visitor)
+  }
+
+  public static func ==(lhs: Hermesh_Local_V1_EraseItem, rhs: Hermesh_Local_V1_EraseItem) -> Bool {
+    if lhs.kind != rhs.kind {return false}
+    if lhs.name != rhs.name {return false}
+    if lhs.thisDevice != rhs.thisDevice {return false}
+    if lhs.done != rhs.done {return false}
+    if lhs.unknownFields != rhs.unknownFields {return false}
+    return true
+  }
+}
+
+nonisolated extension Hermesh_Local_V1_FinishEraseRequest: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
+  public static let protoMessageName: String = _protobuf_package + ".FinishEraseRequest"
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap()
+
+  public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
+    // Load everything into unknown fields
+    while try decoder.nextFieldNumber() != nil {}
+  }
+
+  public func traverse<V: SwiftProtobuf.Visitor>(visitor: inout V) throws {
+    try unknownFields.traverse(visitor: &visitor)
+  }
+
+  public static func ==(lhs: Hermesh_Local_V1_FinishEraseRequest, rhs: Hermesh_Local_V1_FinishEraseRequest) -> Bool {
+    if lhs.unknownFields != rhs.unknownFields {return false}
+    return true
+  }
+}
+
+nonisolated extension Hermesh_Local_V1_FinishEraseResponse: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
+  public static let protoMessageName: String = _protobuf_package + ".FinishEraseResponse"
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap()
+
+  public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
+    // Load everything into unknown fields
+    while try decoder.nextFieldNumber() != nil {}
+  }
+
+  public func traverse<V: SwiftProtobuf.Visitor>(visitor: inout V) throws {
+    try unknownFields.traverse(visitor: &visitor)
+  }
+
+  public static func ==(lhs: Hermesh_Local_V1_FinishEraseResponse, rhs: Hermesh_Local_V1_FinishEraseResponse) -> Bool {
+    if lhs.unknownFields != rhs.unknownFields {return false}
+    return true
+  }
+}
+
+nonisolated extension Hermesh_Local_V1_Erased: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
+  public static let protoMessageName: String = _protobuf_package + ".Erased"
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{3}erase_id\0\u{1}at\0\u{1}pending\0\u{3}kept_worktrees\0")
+
+  public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
+    while let fieldNumber = try decoder.nextFieldNumber() {
+      // The use of inline closures is to circumvent an issue where the compiler
+      // allocates stack space for every case branch when no optimizations are
+      // enabled. https://github.com/apple/swift-protobuf/issues/1034
+      switch fieldNumber {
+      case 1: try { try decoder.decodeSingularStringField(value: &self.eraseID) }()
+      case 2: try { try decoder.decodeSingularMessageField(value: &self._at) }()
+      case 3: try { try decoder.decodeRepeatedStringField(value: &self.pending) }()
+      case 4: try { try decoder.decodeRepeatedStringField(value: &self.keptWorktrees) }()
+      default: break
+      }
+    }
+  }
+
+  public func traverse<V: SwiftProtobuf.Visitor>(visitor: inout V) throws {
+    // The use of inline closures is to circumvent an issue where the compiler
+    // allocates stack space for every if/case branch local when no optimizations
+    // are enabled. https://github.com/apple/swift-protobuf/issues/1034 and
+    // https://github.com/apple/swift-protobuf/issues/1182
+    if !self.eraseID.isEmpty {
+      try visitor.visitSingularStringField(value: self.eraseID, fieldNumber: 1)
+    }
+    try { if let v = self._at {
+      try visitor.visitSingularMessageField(value: v, fieldNumber: 2)
+    } }()
+    if !self.pending.isEmpty {
+      try visitor.visitRepeatedStringField(value: self.pending, fieldNumber: 3)
+    }
+    if !self.keptWorktrees.isEmpty {
+      try visitor.visitRepeatedStringField(value: self.keptWorktrees, fieldNumber: 4)
+    }
+    try unknownFields.traverse(visitor: &visitor)
+  }
+
+  public static func ==(lhs: Hermesh_Local_V1_Erased, rhs: Hermesh_Local_V1_Erased) -> Bool {
+    if lhs.eraseID != rhs.eraseID {return false}
+    if lhs._at != rhs._at {return false}
+    if lhs.pending != rhs.pending {return false}
+    if lhs.keptWorktrees != rhs.keptWorktrees {return false}
     if lhs.unknownFields != rhs.unknownFields {return false}
     return true
   }
