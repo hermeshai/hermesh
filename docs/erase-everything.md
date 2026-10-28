@@ -1,6 +1,6 @@
 # Erase everything: one approval, every device back to its first run
 
-Status: agreed 2026-10-28 (§8), being built: step 1 is done (§6). One action, **Erase
+Status: agreed 2026-10-28 (§8), being built: steps 1 and 2 are done (§6). One action, **Erase
 Everything** (全部清空), which first says exactly what it erases.
 
 ## 1. The ask
@@ -195,8 +195,15 @@ unchanged: it signs nothing, so it erases nothing on a device.
    an online and an offline machine and an agent; a dirty worktree kept, a
    clean one erased; the relay claimed again. Forged orders and acks:
    `pkg/identity` tests.
-2. The Mac app and the iPhone: the sheet, its progress and the first
-   run's line. Desktop e2e and `TestIPhone`, each ending on the first run.
+2. Done: the Mac app and the iPhone: the sheet (`EraseStatus` without an
+   erase id lists what it reaches, a device's own machine as the device),
+   its progress, and the first run's line (`Erased.by` names the device
+   that erased, for the others). Until step 3, only with a server of one's
+   own: the official service hides the button. The app's own preferences
+   (appearance, language, notification choices) stay; the first-run steps
+   start again with the next sign-in. If the app never asks `FinishErase`
+   (its window closed), the device erases itself two minutes after the
+   order. e2e: the desktop's onboarding spec, `TestIPhoneFirstRun`.
 3. The center: account sign-out and connector consents, the console's
    erase record. Cloud e2e.
 4. `hermeshd erase`, the harness helper, the testing notes.

@@ -20,6 +20,16 @@
         }
       }
     },
+    "%@ (offline)": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@（离线）"
+          }
+        }
+      }
+    },
     "%@ A trusted device: it can approve requests to connect.": {
       "localizations": {
         "zh-Hans": {
@@ -76,6 +86,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "%@ 今天没派活"
+          }
+        }
+      }
+    },
+    "%@ will erase themselves the next time they connect.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@下次连上时会自己清空。"
           }
         }
       }
@@ -1096,6 +1116,16 @@
         }
       }
     },
+    "Back to unclaimed, with a new claim code": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "回到未认领，换一个新的认领码"
+          }
+        }
+      }
+    },
     "Base branch (optional), e.g. main": {
       "localizations": {
         "zh-Hans": {
@@ -1636,6 +1666,16 @@
         }
       }
     },
+    "Disconnected": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "已断开"
+          }
+        }
+      }
+    },
     "Disconnected grant": {
       "localizations": {
         "zh-Hans": {
@@ -1662,6 +1702,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "已断开「%1$@」，%2$@ 上线后生效"
+          }
+        }
+      }
+    },
+    "Disconnected; their pairing on their own computers erased": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "断开，删除它们在各自电脑上的配对"
           }
         }
       }
@@ -1782,6 +1832,86 @@
           "stringUnit": {
             "state": "translated",
             "value": "改为输入配对码…"
+          }
+        }
+      }
+    },
+    "Erase Everything": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "全部清空"
+          }
+        }
+      }
+    },
+    "Erase Everything…": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "全部清空…"
+          }
+        }
+      }
+    },
+    "Erased": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "已清空"
+          }
+        }
+      }
+    },
+    "Erases": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "会清空"
+          }
+        }
+      }
+    },
+    "Erases the next time it connects": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "下次连上时清空"
+          }
+        }
+      }
+    },
+    "Erases the next time it’s used": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "下次用时清空"
+          }
+        }
+      }
+    },
+    "Erasing": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "正在清空"
+          }
+        }
+      }
+    },
+    "Erasing…": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "正在清空…"
           }
         }
       }
@@ -2009,12 +2139,42 @@
         }
       }
     },
+    "Hermesh erased everything": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Hermesh 已全部清空"
+          }
+        }
+      }
+    },
     "Hermesh on %@ is %@, older than this app. To update it, run the install command there again:": {
       "localizations": {
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
             "value": "%1$@ 上的 Hermesh 是 %2$@，比这个 App 旧。在那台机器上再运行一次安装命令即可更新："
+          }
+        }
+      }
+    },
+    "Hermesh on all your devices goes back to how it was when first installed.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "你所有设备上的 Hermesh 都回到刚安装时的样子。"
+          }
+        }
+      }
+    },
+    "Hermesh on this iPhone is erased too.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "这台 iPhone 上的 Hermesh 也已清空。"
           }
         }
       }
@@ -2505,6 +2665,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "密钥"
+          }
+        }
+      }
+    },
+    "Last": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "最后清空"
           }
         }
       }
@@ -4069,6 +4239,16 @@
         }
       }
     },
+    "Signed out; their owner keys, sessions and settings erased, and, for one that also runs tasks, its projects list and worktrees": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "退出账号，删除管理钥匙、会话记录和设置；也在执行任务的，连同它的项目列表和 worktree"
+          }
+        }
+      }
+    },
     "Signing in the first time creates your account.": {
       "localizations": {
         "zh-Hans": {
@@ -4165,6 +4345,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "状态"
+          }
+        }
+      }
+    },
+    "Stays": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "不会动"
           }
         }
       }
@@ -4492,6 +4682,16 @@
         }
       }
     },
+    "This can’t be undone. Type %@ to confirm.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "清空后不能撤销。输入 %@ 以确认。"
+          }
+        }
+      }
+    },
     "This coding agent isn’t on this machine": {
       "localizations": {
         "zh-Hans": {
@@ -4518,6 +4718,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "这台 iPhone"
+          }
+        }
+      }
+    },
+    "This iPhone couldn’t erase itself: %@": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "这台 iPhone 没能清空自己：%@"
           }
         }
       }
@@ -4622,6 +4832,16 @@
         }
       }
     },
+    "Those online erase now; the others erase themselves the next time they connect.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "在线的马上清空，离线的下次连上时自己清空。"
+          }
+        }
+      }
+    },
     "Through %@, which keeps its key": {
       "localizations": {
         "zh-Hans": {
@@ -4662,12 +4882,32 @@
         }
       }
     },
+    "Trusted Devices": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "可信设备"
+          }
+        }
+      }
+    },
     "Trusted device": {
       "localizations": {
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
             "value": "可信设备"
+          }
+        }
+      }
+    },
+    "Try Again": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "再试一次"
           }
         }
       }
@@ -4878,6 +5118,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "撤销"
+          }
+        }
+      }
+    },
+    "Unpaired; their projects lists, sessions and the worktrees Hermesh made erased": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "解除配对，删除项目列表、会话记录和 Hermesh 建的 worktree"
           }
         }
       }
@@ -5272,12 +5522,42 @@
         }
       }
     },
+    "Worktrees with uncommitted changes: moved aside and kept, and you’re told where": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "有未提交改动的 worktree：挪到一边保留，清空后告诉你在哪"
+          }
+        }
+      }
+    },
     "Write your answer…": {
       "localizations": {
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
             "value": "写下你的回答…"
+          }
+        }
+      }
+    },
+    "You erased everything in Hermesh on “%@”": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "你在「%@」上全部清空了 Hermesh"
+          }
+        }
+      }
+    },
+    "Your Server · %@": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "自己的服务器 · %@"
           }
         }
       }
@@ -5308,6 +5588,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "你自己的服务器"
+          }
+        }
+      }
+    },
+    "Your project directories and repositories, branches included": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "项目目录和代码仓库，分支都还在"
           }
         }
       }

@@ -34,7 +34,9 @@ export type Sheet =
   /** An agent's doorbell (docs/agent-names.md §7): set one up, or, with wake, see and change it. */
   // named: a doorbell for one bot of several, which asks for its name.
   | { kind: "wake"; clientId: string; agent: string; wake?: Wake; named?: boolean }
-  | { kind: "confirm"; title: string; message: string; button: string; run: () => Promise<unknown>; done?: string };
+  | { kind: "confirm"; title: string; message: string; button: string; run: () => Promise<unknown>; done?: string }
+  /** Erase Everything (docs/erase-everything.md). */
+  | { kind: "erase" };
 
 export type Toast = { text: string; undo?: () => void; id: number };
 

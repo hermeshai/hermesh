@@ -880,7 +880,8 @@ public nonisolated struct Hermesh_Local_V1_EraseItem: Sendable {
   // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
   // methods supported on all messages.
 
-  /// "device", "machine" or "agent".
+  /// "device", "machine" or "agent". A trusted device that is a machine too
+  /// is one device.
   public var kind: String = String()
 
   public var name: String = String()
@@ -889,6 +890,10 @@ public nonisolated struct Hermesh_Local_V1_EraseItem: Sendable {
   public var thisDevice: Bool = false
 
   public var done: Bool = false
+
+  /// Online when the erase began (a machine, or a device's own machine): it
+  /// erases within seconds. The others erase the next time they connect.
+  public var online: Bool = false
 
   public var unknownFields = SwiftProtobuf.UnknownStorage()
 
@@ -938,6 +943,9 @@ public nonisolated struct Hermesh_Local_V1_Erased: Sendable {
 
   /// Worktrees with uncommitted changes, kept.
   public var keptWorktrees: [String] = []
+
+  /// The trusted device that erased everything, when it was another one.
+  public var by: String = String()
 
   public var unknownFields = SwiftProtobuf.UnknownStorage()
 
@@ -4184,7 +4192,7 @@ nonisolated extension Hermesh_Local_V1_EraseStatusResponse: SwiftProtobuf.Messag
 
 nonisolated extension Hermesh_Local_V1_EraseItem: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
   public static let protoMessageName: String = _protobuf_package + ".EraseItem"
-  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{1}kind\0\u{1}name\0\u{3}this_device\0\u{1}done\0")
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{1}kind\0\u{1}name\0\u{3}this_device\0\u{1}done\0\u{1}online\0")
 
   public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
     while let fieldNumber = try decoder.nextFieldNumber() {
@@ -4196,6 +4204,7 @@ nonisolated extension Hermesh_Local_V1_EraseItem: SwiftProtobuf.Message, SwiftPr
       case 2: try { try decoder.decodeSingularStringField(value: &self.name) }()
       case 3: try { try decoder.decodeSingularBoolField(value: &self.thisDevice) }()
       case 4: try { try decoder.decodeSingularBoolField(value: &self.done) }()
+      case 5: try { try decoder.decodeSingularBoolField(value: &self.online) }()
       default: break
       }
     }
@@ -4214,6 +4223,9 @@ nonisolated extension Hermesh_Local_V1_EraseItem: SwiftProtobuf.Message, SwiftPr
     if self.done != false {
       try visitor.visitSingularBoolField(value: self.done, fieldNumber: 4)
     }
+    if self.online != false {
+      try visitor.visitSingularBoolField(value: self.online, fieldNumber: 5)
+    }
     try unknownFields.traverse(visitor: &visitor)
   }
 
@@ -4222,6 +4234,7 @@ nonisolated extension Hermesh_Local_V1_EraseItem: SwiftProtobuf.Message, SwiftPr
     if lhs.name != rhs.name {return false}
     if lhs.thisDevice != rhs.thisDevice {return false}
     if lhs.done != rhs.done {return false}
+    if lhs.online != rhs.online {return false}
     if lhs.unknownFields != rhs.unknownFields {return false}
     return true
   }
@@ -4267,7 +4280,7 @@ nonisolated extension Hermesh_Local_V1_FinishEraseResponse: SwiftProtobuf.Messag
 
 nonisolated extension Hermesh_Local_V1_Erased: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
   public static let protoMessageName: String = _protobuf_package + ".Erased"
-  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{3}erase_id\0\u{1}at\0\u{1}pending\0\u{3}kept_worktrees\0")
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{3}erase_id\0\u{1}at\0\u{1}pending\0\u{3}kept_worktrees\0\u{1}by\0")
 
   public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
     while let fieldNumber = try decoder.nextFieldNumber() {
@@ -4279,6 +4292,7 @@ nonisolated extension Hermesh_Local_V1_Erased: SwiftProtobuf.Message, SwiftProto
       case 2: try { try decoder.decodeSingularMessageField(value: &self._at) }()
       case 3: try { try decoder.decodeRepeatedStringField(value: &self.pending) }()
       case 4: try { try decoder.decodeRepeatedStringField(value: &self.keptWorktrees) }()
+      case 5: try { try decoder.decodeSingularStringField(value: &self.by) }()
       default: break
       }
     }
@@ -4301,6 +4315,9 @@ nonisolated extension Hermesh_Local_V1_Erased: SwiftProtobuf.Message, SwiftProto
     if !self.keptWorktrees.isEmpty {
       try visitor.visitRepeatedStringField(value: self.keptWorktrees, fieldNumber: 4)
     }
+    if !self.by.isEmpty {
+      try visitor.visitSingularStringField(value: self.by, fieldNumber: 5)
+    }
     try unknownFields.traverse(visitor: &visitor)
   }
 
@@ -4309,6 +4326,7 @@ nonisolated extension Hermesh_Local_V1_Erased: SwiftProtobuf.Message, SwiftProto
     if lhs._at != rhs._at {return false}
     if lhs.pending != rhs.pending {return false}
     if lhs.keptWorktrees != rhs.keptWorktrees {return false}
+    if lhs.by != rhs.by {return false}
     if lhs.unknownFields != rhs.unknownFields {return false}
     return true
   }

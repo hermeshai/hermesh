@@ -8,6 +8,7 @@ typealias StatusResponse = Hermesh_Local_V1_GetStatusResponse
 typealias Machine = Hermesh_Local_V1_Machine
 typealias Client = Hermesh_Local_V1_Client
 typealias Device = Hermesh_Local_V1_Device
+typealias EraseItem = Hermesh_Local_V1_EraseItem
 typealias Project = Hermesh_Local_V1_Project
 typealias PairingDetails = Hermesh_Local_V1_PairingDetails
 typealias GrantSpec = Hermesh_Local_V1_GrantSpec
@@ -297,6 +298,22 @@ extension LocalAPI {
 
     func leave() async throws {
         let _: Hermesh_Local_V1_LeaveResponse = try await call("Leave", Hermesh_Local_V1_LeaveRequest(), timeout: 30)
+    }
+
+    func eraseEverything() async throws -> String {
+        let r: Hermesh_Local_V1_EraseEverythingResponse = try await call("EraseEverything", Hermesh_Local_V1_EraseEverythingRequest(), timeout: signingTimeout)
+        return r.eraseID
+    }
+
+    func eraseStatus(_ eraseID: String) async throws -> [EraseItem] {
+        var r = Hermesh_Local_V1_EraseStatusRequest()
+        r.eraseID = eraseID
+        let res: Hermesh_Local_V1_EraseStatusResponse = try await call("EraseStatus", r, timeout: 30)
+        return res.items
+    }
+
+    func finishErase() async throws {
+        let _: Hermesh_Local_V1_FinishEraseResponse = try await call("FinishErase", Hermesh_Local_V1_FinishEraseRequest(), timeout: 90)
     }
 
     func setup(_ r: Hermesh_Local_V1_SetupRequest) async throws -> Hermesh_Local_V1_SetupResponse {

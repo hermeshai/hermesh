@@ -2,6 +2,7 @@ package e2e
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"path/filepath"
 	"slices"
@@ -116,6 +117,22 @@ func TestEraseEverything(t *testing.T) {
 		return err == nil && len(res.Machines) == 4
 	})
 
+	// What it would erase, shown before asking: each device, machine and
+	// agent once (the Mac's own machine is the Mac), with who is online.
+	preview, err := w.app.client.EraseStatus(ctx, &localv1.EraseStatusRequest{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var shown []string
+	for _, it := range preview.Items {
+		shown = append(shown, fmt.Sprintf("%s/%s this=%v online=%v done=%v", it.Kind, it.Name, it.ThisDevice, it.Online, it.Done))
+	}
+	if want := []string{"device/test-mac this=true online=false done=false", "device/mac2 this=false online=false done=false",
+		"machine/mac3 this=false online=true done=false", "machine/vps-off this=false online=false done=false",
+		"machine/vps-on this=false online=true done=false", "agent/bot this=false online=false done=false"}; !slices.Equal(shown, want) {
+		t.Fatalf("preview:\n%s", strings.Join(shown, "\n"))
+	}
+
 	// Erase everything, from the Mac: one approval.
 	before := len(w.app.signedTypes())
 	erase, err := w.app.client.EraseEverything(ctx, &localv1.EraseEverythingRequest{})
@@ -207,7 +224,7 @@ func TestEraseEverything(t *testing.T) {
 	// The other trusted device and the machine-only Mac erased themselves.
 	eventually(t, 30*time.Second, "mac2 erased", func() bool {
 		st, err := app2.client.GetStatus(ctx, &localv1.GetStatusRequest{})
-		return err == nil && !st.Initialized && st.Erased != nil && st.Erased.EraseId == erase.EraseId
+		return err == nil && !st.Initialized && st.Erased != nil && st.Erased.EraseId == erase.EraseId && st.Erased.By == "test-mac"
 	})
 	if got := app2.deletedKeys(); !slices.Equal(got, []string{identity.KeyID(root2.Public())}) {
 		t.Fatalf("mac2 deleted root keys %v", got)

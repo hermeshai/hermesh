@@ -8,6 +8,7 @@ import { local } from "../api";
 import { CodeTiles } from "../components";
 import { Icon } from "../icons";
 import { errorText, save, useStore } from "../store";
+import { i18n } from "../../../shared/i18n";
 import { Frame, StepIcon } from "./Frame";
 import { setProgress } from "./progress";
 
@@ -126,6 +127,7 @@ function Welcome({ center, signedIn, selfHosted }: { center: string; signedIn: (
   };
   return (
     <Frame>
+      <ErasedNote />
       <div className="hero">
         <div className="mk">
           <div className="glow" />
@@ -154,6 +156,57 @@ function Welcome({ center, signedIn, selfHosted }: { center: string; signedIn: (
         {t("welcome.promise")}
       </p>
     </Frame>
+  );
+}
+
+/**
+ * Once, after this Mac erased everything (or was erased from another device):
+ * what was done, who erases next time it connects, and the worktrees kept.
+ */
+function ErasedNote() {
+  const { t } = useTranslation("firstrun");
+  const st = useStore();
+  const e = st.status?.erased;
+  const id = e ? e.eraseId || String(e.at?.seconds ?? "") : "";
+  const [seen, setSeen] = useState(() => {
+    try {
+      return localStorage.getItem("erasedSeen") ?? "";
+    } catch {
+      return "";
+    }
+  });
+  if (!e || seen === id) return null;
+  const dismiss = () => {
+    try {
+      localStorage.setItem("erasedSeen", id);
+    } catch {
+      // Shown again next time.
+    }
+    setSeen(id);
+  };
+  return (
+    <div className="erased-note" role="status">
+      <Icon name={e.by ? "info" : "check"} />
+      <div className="t">
+        <b>{e.by ? t("erased.by", { device: e.by }) : t("erased.done")}</b>
+        {e.by && <span>{t("erased.byBody")}</span>}
+        {e.pending.length > 0 && <span>{t("erased.pending", { names: e.pending.join(i18n.t("settings:listSeparator")) })}</span>}
+        {e.keptWorktrees.length > 0 && (
+          <>
+            <span>{t("erased.kept")}</span>
+            {e.keptWorktrees.map((p) => (
+              <span key={p} className="kept">
+                <span className="mono sel-text">{p}</span>
+                <button className="link" onClick={() => bridge().revealKeptWorktree(p)}>{t("erased.reveal")}</button>
+              </span>
+            ))}
+          </>
+        )}
+      </div>
+      <button className="x" aria-label={t("erased.dismiss")} onClick={dismiss}>
+        <Icon name="x" />
+      </button>
+    </div>
   );
 }
 

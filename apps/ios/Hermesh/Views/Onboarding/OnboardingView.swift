@@ -2,6 +2,7 @@ import AuthenticationServices
 import CryptoKit
 import HermeshKit
 import HermeshProto
+import HermeshSessions
 import SwiftUI
 import UserNotifications
 
@@ -59,6 +60,7 @@ struct OnboardingView: View {
 
     private var welcome: some View {
         VStack(spacing: 14) {
+            ErasedNote()
             Spacer()
             Mark(size: 96)
             Text("Hermesh").font(.largeTitle.bold())
@@ -433,5 +435,37 @@ func connectURL(_ center: URL) async throws -> String {
 extension Data {
     var base64URL: String {
         base64EncodedString().replacingOccurrences(of: "+", with: "-").replacingOccurrences(of: "/", with: "_").replacingOccurrences(of: "=", with: "")
+    }
+}
+
+/// Once, after this iPhone erased everything (or was erased from another
+/// device): what was done, and who erases the next time it connects.
+struct ErasedNote: View {
+    @Environment(AppModel.self) private var model
+    @AppStorage("erasedSeen") private var seen = ""
+
+    var body: some View {
+        let e = model.status.erased
+        let id = e.eraseID.isEmpty ? String(e.at.seconds) : e.eraseID
+        if model.status.hasErased && seen != id {
+            HStack(alignment: .top, spacing: 10) {
+                Image(systemName: e.by.isEmpty ? "checkmark.circle.fill" : "info.circle.fill").foregroundStyle(.secondary)
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(e.by.isEmpty ? String(localized: "Hermesh erased everything") : String(localized: "You erased everything in Hermesh on “\(e.by)”"))
+                        .font(.subheadline.weight(.semibold))
+                    if !e.by.isEmpty { Text("Hermesh on this iPhone is erased too.") }
+                    if !e.pending.isEmpty { Text("\(listText(e.pending)) will erase themselves the next time they connect.") }
+                }
+                .font(.footnote).foregroundStyle(.secondary)
+                Spacer(minLength: 0)
+                Button { seen = id } label: { Image(systemName: "xmark").font(.footnote.weight(.semibold)) }
+                    .buttonStyle(.plain).foregroundStyle(.tertiary)
+                    .accessibilityLabel(Text("Close"))
+            }
+            .padding(12)
+            .background(.fill.tertiary, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+            .accessibilityElement(children: .contain)
+            .accessibilityIdentifier("erased-note")
+        }
     }
 }

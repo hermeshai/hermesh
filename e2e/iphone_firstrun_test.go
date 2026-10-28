@@ -30,7 +30,9 @@ import (
 //   - a project picked from the repositories the machine found;
 //   - the row that says this phone is the only one that can approve;
 //   - an agent connecting, and its first task: the session it starts
-//     opens by itself, and Get Started is done.
+//     opens by itself, and Get Started is done;
+//   - erasing everything: vps-1 erases itself, the agent waits for its
+//     next command, and the phone opens on its first run saying so.
 //
 // It runs when HERMESH_IPHONE_E2E is set, as TestIPhone does.
 func TestIPhoneFirstRun(t *testing.T) {
@@ -159,6 +161,14 @@ func newFirstRunControl(t *testing.T, bin, tmp, relayURL, claim string) string {
 			return
 		}
 		reply(rw, map[string]string{"id": s.SessionID})
+	})
+	// Everything erased from the phone: vps-1 erased itself (its machine is gone).
+	mux.HandleFunc("GET /erased", func(rw http.ResponseWriter, _ *http.Request) {
+		_, err := os.Stat(filepath.Join(tmp, "vps-1", "machine"))
+		for deadline := time.Now().Add(30 * time.Second); err == nil && time.Now().Before(deadline); time.Sleep(200 * time.Millisecond) {
+			_, err = os.Stat(filepath.Join(tmp, "vps-1", "machine"))
+		}
+		reply(rw, map[string]bool{"erased": os.IsNotExist(err)})
 	})
 	ln, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {

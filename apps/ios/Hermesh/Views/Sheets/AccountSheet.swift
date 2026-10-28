@@ -88,6 +88,18 @@ struct AccountSheet: View {
                     Button("Sign Out…", role: .destructive) { signingOut = true }
                         .frame(maxWidth: .infinity)
                 }
+                // Until the official service can erase an owner
+                // (docs/erase-everything.md step 3), only a server of one's own.
+                if !model.status.hosted && !model.status.removed {
+                    Section {
+                        NavigationLink {
+                            EraseView()
+                        } label: {
+                            Text("Erase Everything…").foregroundStyle(.red)
+                        }
+                        .accessibilityIdentifier("erase-everything")
+                    }
+                }
             }
             .navigationTitle("Account and Devices")
             .navigationBarTitleDisplayMode(.inline)

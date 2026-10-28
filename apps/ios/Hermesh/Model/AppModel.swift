@@ -466,6 +466,13 @@ final class AppModel {
             do {
                 for try await r in api.watch() { apply(r) }
             } catch {}
+            // Erased from another device (docs/erase-everything.md): the core
+            // ended this owner, and the first run is what is left.
+            if phase == .ready, !erasing, let s = try? await api.status(), !s.initialized {
+                status = s
+                Task { await ownerGone() }
+                return
+            }
             try? await Task.sleep(for: .milliseconds(500)) // the core is in this process: it is back at once
         }
     }
@@ -893,14 +900,56 @@ final class AppModel {
         guard let api else { return }
         do {
             try await api.leave()
-            background()
-            forgetWorld()
-            sheet = nil
-            active = true // still in front: the core serves the onboarding
-            await withCheckedContinuation { k in Core.resume { k.resume() } }
-            await refreshStatus()
-            phase = .onboarding
+            await ownerGone()
         } catch { report(error) }
+    }
+
+    /// This iPhone erases everything: it goes to its first run itself
+    /// (finishErase), not as one erased from another device.
+    @ObservationIgnored private var erasing = false
+    /// Going to the first run, once.
+    @ObservationIgnored private var leaving = false
+
+    /// This iPhone belongs to no owner any more (signed out, or erased): the
+    /// world goes, and the first run shows.
+    private func ownerGone() async {
+        guard !leaving else { return }
+        leaving = true
+        defer { leaving = false }
+        background()
+        forgetWorld()
+        sheet = nil
+        active = true // still in front: the core serves the onboarding
+        await withCheckedContinuation { k in Core.resume { k.resume() } }
+        await refreshStatus()
+        phase = .onboarding
+    }
+
+    // MARK: Erasing everything (docs/erase-everything.md)
+
+    /// What erasing everything would reach now; with an erase id, how it stands.
+    func eraseItems(_ eraseID: String = "") async throws -> [EraseItem] {
+        guard let api else { return [] }
+        return try await api.eraseStatus(eraseID)
+    }
+
+    /// Signs the erase order (Face ID) and hands it to the server: from now
+    /// on every device, machine and agent erases itself as it hears.
+    func eraseEverything() async throws -> String {
+        guard let api else { throw CancellationError() }
+        signer.expect(.types([SigningPreview.eraseOrder]))
+        erasing = true
+        do { return try await api.eraseEverything() } catch {
+            erasing = false
+            throw error
+        }
+    }
+
+    /// This iPhone erases itself, last, and the first run shows.
+    func finishErase() async throws {
+        try await api?.finishErase()
+        await ownerGone()
+        erasing = false
     }
 }
 

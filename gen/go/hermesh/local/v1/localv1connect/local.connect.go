@@ -254,7 +254,7 @@ type LocalServiceClient interface {
 	// running until FinishErase, to show the others acking.
 	EraseEverything(context.Context, *v1.EraseEverythingRequest) (*v1.EraseEverythingResponse, error)
 	// How an erase stands: each device, machine and agent, and whether it
-	// acked.
+	// acked. Without an erase id: what erasing everything would reach now.
 	EraseStatus(context.Context, *v1.EraseStatusRequest) (*v1.EraseStatusResponse, error)
 	// Erases this device too: the app opens on its first run.
 	FinishErase(context.Context, *v1.FinishEraseRequest) (*v1.FinishEraseResponse, error)
@@ -1362,7 +1362,7 @@ type LocalServiceHandler interface {
 	// running until FinishErase, to show the others acking.
 	EraseEverything(context.Context, *v1.EraseEverythingRequest) (*v1.EraseEverythingResponse, error)
 	// How an erase stands: each device, machine and agent, and whether it
-	// acked.
+	// acked. Without an erase id: what erasing everything would reach now.
 	EraseStatus(context.Context, *v1.EraseStatusRequest) (*v1.EraseStatusResponse, error)
 	// Erases this device too: the app opens on its first run.
 	FinishErase(context.Context, *v1.FinishEraseRequest) (*v1.FinishEraseResponse, error)

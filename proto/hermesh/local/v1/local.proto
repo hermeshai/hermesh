@@ -63,7 +63,7 @@ service LocalService {
   // running until FinishErase, to show the others acking.
   rpc EraseEverything(EraseEverythingRequest) returns (EraseEverythingResponse);
   // How an erase stands: each device, machine and agent, and whether it
-  // acked.
+  // acked. Without an erase id: what erasing everything would reach now.
   rpc EraseStatus(EraseStatusRequest) returns (EraseStatusResponse);
   // Erases this device too: the app opens on its first run.
   rpc FinishErase(FinishEraseRequest) returns (FinishEraseResponse);
@@ -466,12 +466,16 @@ message EraseStatusResponse {
 }
 
 message EraseItem {
-  // "device", "machine" or "agent".
+  // "device", "machine" or "agent". A trusted device that is a machine too
+  // is one device.
   string kind = 1;
   string name = 2;
   // This device.
   bool this_device = 3;
   bool done = 4;
+  // Online when the erase began (a machine, or a device's own machine): it
+  // erases within seconds. The others erase the next time they connect.
+  bool online = 5;
 }
 
 message FinishEraseRequest {}
@@ -487,6 +491,8 @@ message Erased {
   repeated string pending = 3;
   // Worktrees with uncommitted changes, kept.
   repeated string kept_worktrees = 4;
+  // The trusted device that erased everything, when it was another one.
+  string by = 5;
 }
 
 message WatchSigningRequestsRequest {}
