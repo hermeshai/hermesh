@@ -9,10 +9,12 @@ import (
 	"net/url"
 	"strings"
 	"time"
+
+	"github.com/hermeshai/hermesh/pkg/identity"
 )
 
 // The consent page: who asks and what for, Connect or Cancel; then what
-// is left to do (approve on the Mac, set Hermesh up), and on to the app.
+// is left to do (approve on a trusted device, set Hermesh up), and on to the app.
 // It always lets the connection be made: approval may come later.
 
 // authorization returns the browser's authorization, checking that this
@@ -95,6 +97,7 @@ func (g *Gateway) handleConsentPage(w http.ResponseWriter, r *http.Request) {
 
 func (g *Gateway) pageData(r *http.Request, id string, c *Client, a *Authorization, acct Account) consentData {
 	lang, t := strings_(r)
+	t = withDevice(t, g.device(acct.OwnerID, lang))
 	d := consentData{T: t, Lang: lang, ID: id, CSRF: g.csrfToken(id), App: c.Name, Verified: c.Verified, LoopbackOnly: c.loopbackOnly(),
 		Account: acct.Hint, Server: g.issuer.Host, OwnerReady: acct.OwnerID != "", SetupURL: g.cfg.SetupURL}
 	if u, err := url.Parse(c.ID); err == nil && c.Source == "cimd" {
@@ -246,6 +249,46 @@ func strings_(r *http.Request) (string, map[string]string) {
 	return "en", enText
 }
 
+// withDevice is t with {device} named: where the owner approves.
+func withDevice(t map[string]string, device string) map[string]string {
+	out := make(map[string]string, len(t))
+	for k, v := range t {
+		out[k] = strings.ReplaceAll(v, "{device}", device)
+	}
+	return out
+}
+
+// device names the owner's trusted devices by their platforms in the root
+// chain: "your iPhone", "your Mac", or both, in the page's language.
+func (g *Gateway) device(ownerID, lang string) string {
+	ios, mac := false, false
+	if ownerID != "" {
+		if rc, err := g.cfg.Relay.RootChain(ownerID); err == nil && rc != nil {
+			tr := identity.NewTrust(ownerID)
+			if _, err := tr.AcceptRootChain(rc); err == nil {
+				for _, k := range tr.Root().RootKeys {
+					switch k.Platform {
+					case "ios":
+						ios = true
+					case "macos", "":
+						mac = true
+					default:
+						ios, mac = true, true
+					}
+				}
+			}
+		}
+	}
+	zh := lang == "zh"
+	switch {
+	case ios && !mac:
+		return map[bool]string{false: "your iPhone", true: "iPhone"}[zh]
+	case mac && !ios:
+		return map[bool]string{false: "your Mac", true: "Mac"}[zh]
+	}
+	return map[bool]string{false: "your iPhone or Mac", true: "iPhone 或 Mac"}[zh]
+}
+
 var enText = map[string]string{
 	"title":         "Connect %s to Hermesh",
 	"verified":      "Verified app",
@@ -254,24 +297,24 @@ var enText = map[string]string{
 	"loopback":      "This app returns to a program on your computer. Any program there could claim to be this app: connect only if you just started this yourself.",
 	"account":       "Account",
 	"server":        "Server",
-	"can":           "Once you approve it on your Mac, it can:",
+	"can":           "Once you approve it on {device}, it can:",
 	"can1":          "See your machines, projects and sessions.",
 	"can2":          "Start Claude Code or Codex sessions and talk to them. Those agents run with full permissions in the projects you choose.",
 	"custodian":     "%s holds this connection's key: it can act as the app within what you approve, and sees the sessions the app reaches. To keep that on your own computers, run your own Hermesh server.",
-	"nextApprove":   "Next, you approve it on your Mac with Touch ID.",
-	"nextSetup":     "Hermesh isn't set up on a Mac yet. You can connect now and approve the app once it is.",
+	"nextApprove":   "Next, you approve it in Hermesh on {device}.",
+	"nextSetup":     "Hermesh isn't set up yet. You can connect now and approve the app once you set up Hermesh on your iPhone or Mac.",
 	"connect":       "Connect",
 	"cancel":        "Cancel",
-	"approveTitle":  "Approve on your Mac",
-	"approveBody":   "Hermesh on your Mac is asking you to approve %s. Approve it there with Touch ID.",
-	"waiting":       "Waiting for your Mac…",
+	"approveTitle":  "Approve on {device}",
+	"approveBody":   "Hermesh on {device} is asking you to approve %s. Approve it there.",
+	"waiting":       "Waiting for {device}…",
 	"later":         "Finish later",
 	"connected":     "Connected",
 	"connectedBody": "%s can now use Hermesh.",
 	"oneMore":       "Connected. One more step",
-	"setupBody":     "Install Hermesh for Mac, set it up with this account, and approve %s when it asks. The app starts working then; there is no need to reconnect.",
-	"download":      "Get Hermesh for Mac",
-	"offlineBody":   "Approve %s in Hermesh on your Mac the next time it is open. The app starts working then; there is no need to reconnect.",
+	"setupBody":     "Install Hermesh on your iPhone or Mac, set it up with this account, and approve %s when it asks. The app starts working then; there is no need to reconnect.",
+	"download":      "Get Hermesh",
+	"offlineBody":   "Approve %s in Hermesh on {device} the next time it is open. The app starts working then; there is no need to reconnect.",
 	"continue":      "Continue to %s",
 	"ended":         "This connection has ended",
 	"errorTitle":    "Can't connect",
@@ -285,24 +328,24 @@ var zhText = map[string]string{
 	"loopback":      "这个应用会返回到你电脑上的某个程序，那里的任何程序都可能冒充它：只有在你刚刚亲自发起时才继续。",
 	"account":       "账号",
 	"server":        "服务器",
-	"can":           "你在 Mac 上批准后，它可以：",
+	"can":           "你在 {device} 上批准后，它可以：",
 	"can1":          "查看你的机器、项目和会话。",
 	"can2":          "启动 Claude Code 或 Codex 会话并与之对话。这些 agent 会在你选择的项目里以完全权限运行。",
 	"custodian":     "%s 保管这个连接的密钥：它可以在你批准的范围内代表该应用操作，并能看到该应用触及的会话。若希望这些只留在你自己的电脑上，请使用自己的 Hermesh 服务器。",
-	"nextApprove":   "下一步，在你的 Mac 上用 Touch ID 批准。",
-	"nextSetup":     "你还没有在 Mac 上设置 Hermesh。现在可以先连接，设置好后再批准这个应用。",
+	"nextApprove":   "下一步，在 {device} 上的 Hermesh 里批准。",
+	"nextSetup":     "你还没有设置 Hermesh。现在可以先连接，在 iPhone 或 Mac 上设置好 Hermesh 后再批准这个应用。",
 	"connect":       "连接",
 	"cancel":        "取消",
-	"approveTitle":  "在 Mac 上批准",
-	"approveBody":   "你 Mac 上的 Hermesh 正在请求你批准 %s，在那里用 Touch ID 批准即可。",
-	"waiting":       "正在等待你的 Mac…",
+	"approveTitle":  "在 {device} 上批准",
+	"approveBody":   "你 {device} 上的 Hermesh 正在请求你批准 %s，在那里批准即可。",
+	"waiting":       "正在等待你的 {device}…",
 	"later":         "稍后完成",
 	"connected":     "已连接",
 	"connectedBody": "%s 现在可以使用 Hermesh 了。",
 	"oneMore":       "已连接，还差一步",
-	"setupBody":     "安装 Hermesh for Mac，用这个账号完成设置，并在它询问时批准 %s。之后应用即可使用，无需重新连接。",
-	"download":      "获取 Hermesh for Mac",
-	"offlineBody":   "下次打开 Mac 上的 Hermesh 时批准 %s。之后应用即可使用，无需重新连接。",
+	"setupBody":     "在 iPhone 或 Mac 上安装 Hermesh，用这个账号完成设置，并在它询问时批准 %s。之后应用即可使用，无需重新连接。",
+	"download":      "获取 Hermesh",
+	"offlineBody":   "下次打开 {device} 上的 Hermesh 时批准 %s。之后应用即可使用，无需重新连接。",
 	"continue":      "继续前往 %s",
 	"ended":         "这个连接已结束",
 	"errorTitle":    "无法连接",

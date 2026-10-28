@@ -202,15 +202,15 @@ func PairWithRelay(ctx context.Context, hc connect.HTTPClient, relayURL string, 
 		if pinned != "" {
 			// The request reaches the owner's devices by itself: nothing to
 			// type, only the code to compare.
-			fmt.Fprintf(out, "Verification code: %s (valid until %s)\nApprove only if Hermesh on your Mac shows this same code.\n",
+			fmt.Fprintf(out, "Verification code: %s (valid until %s)\nApprove only if Hermesh on your iPhone or Mac shows this same code.\n",
 				code(pinned), valid)
 		} else {
-			fmt.Fprintf(out, "Pairing code: %s\nIn Hermesh on your Mac, choose \"Enter Pairing Code…\" and type it (valid until %s).\n",
+			fmt.Fprintf(out, "Pairing code: %s\nEnter it in Hermesh on your iPhone or Mac (valid until %s).\n",
 				res.Code, valid)
 		}
 		fmt.Fprintln(out, "Waiting...")
 	} else {
-		fmt.Fprintf(out, "Pairing code: %s\nEnter it in Hermesh.app under \"Add %s\" (valid until %s).\nWaiting for approval...\n",
+		fmt.Fprintf(out, "Pairing code: %s\nEnter it in the Hermesh app to add this %s (valid until %s).\nWaiting for approval...\n",
 			res.Code, what, res.ExpiresAt.AsTime().Local().Format("15:04"))
 	}
 	for {
@@ -239,10 +239,10 @@ func PairWithRelay(ctx context.Context, hc connect.HTTPClient, relayURL string, 
 				if w.AccountHint != "" {
 					who = " (" + w.AccountHint + ")"
 				}
-				fmt.Fprintf(out, "Sent to Hermesh on your Mac%s; approve it there.\n", who)
+				fmt.Fprintf(out, "Sent to your trusted devices%s; approve it in the Hermesh app.\n", who)
 				continue
 			}
-			fmt.Fprintf(out, "Claimed%s (owner %s).\nVerification code: %s\nApprove only if Hermesh on your Mac shows this same code.\nWaiting for approval...\n",
+			fmt.Fprintf(out, "Claimed%s (owner %s).\nVerification code: %s\nApprove only if Hermesh on your iPhone or Mac shows this same code.\nWaiting for approval...\n",
 				by, owner, code(owner))
 			continue
 		}
@@ -261,7 +261,7 @@ func PairWithRelay(ctx context.Context, hc connect.HTTPClient, relayURL string, 
 				case opts.Confirm != nil:
 					return nil, "", errors.New("not confirmed; nothing was accepted")
 				default:
-					return nil, "", fmt.Errorf("cannot confirm owner %s without a terminal: pair with the connection address shown in Hermesh on your Mac (pins the owner), or pass --yes to trust the center's claim", owner)
+					return nil, "", fmt.Errorf("cannot confirm owner %s without a terminal: pair with the connection address shown in the Hermesh app (pins the owner), or pass --yes to trust the center's claim", owner)
 				}
 			}
 			return w.Credentials, owner, nil
@@ -289,7 +289,7 @@ func TerminalConfirm(in *os.File, out io.Writer) func(ownerID, code string) bool
 		return nil
 	}
 	return func(ownerID, code string) bool {
-		fmt.Fprintf(out, "Did Hermesh on your Mac ask you to approve code %s, and did you approve it? [y/N] ", code)
+		fmt.Fprintf(out, "Did Hermesh on your iPhone or Mac ask you to approve code %s, and did you approve it? [y/N] ", code)
 		var answer string
 		fmt.Fscanln(in, &answer)
 		return strings.EqualFold(strings.TrimSpace(answer), "y") || strings.EqualFold(strings.TrimSpace(answer), "yes")

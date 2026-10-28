@@ -88,6 +88,7 @@ type Server struct {
 	messageLimit *rateLimiter
 	pairLimit    *rateLimiter
 	messageHook  func(ownerID, inbox string, ring *string)
+	ownerHook    func(ownerID string)
 	doorbells    Doorbells
 	expiredAt    time.Time
 
@@ -401,6 +402,14 @@ func (s *Server) handleConnect(w http.ResponseWriter, r *http.Request) {
 	p.sess, p.remote = sess, r.RemoteAddr
 	s.register(p)
 	defer s.unregister(p)
+	if p.role == relayv1.Role_ROLE_OWNER {
+		s.mu.Lock()
+		hook := s.ownerHook
+		s.mu.Unlock()
+		if hook != nil {
+			go hook(p.t.ownerID)
+		}
+	}
 	for {
 		st, err := sess.AcceptStream()
 		if err != nil {
@@ -1004,6 +1013,27 @@ func (s *Server) pushGrants(t *tenant) {
 		}
 		s.mu.Unlock()
 	}
+}
+
+// SetOwnerHook tells f the owner each time one of its trusted devices
+// connects: the MCP gateway sends it the approvals still waiting.
+func (s *Server) SetOwnerHook(f func(ownerID string)) {
+	s.mu.Lock()
+	s.ownerHook = f
+	s.mu.Unlock()
+}
+
+// OwnerReachable reports whether a request to connect would reach the owner
+// now: one of its devices is connected, or one is registered for push.
+func (s *Server) OwnerReachable(ownerID string) bool {
+	if s.OwnerOnline(ownerID) {
+		return true
+	}
+	if s.cfg.Pusher == nil {
+		return false
+	}
+	t, err := s.loadTenant(ownerID)
+	return err == nil && t != nil && len(s.pushTargets(t)) > 0
 }
 
 // OwnerOnline reports whether one of the owner's devices is connected.

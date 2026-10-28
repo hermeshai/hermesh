@@ -196,7 +196,7 @@ func (a *app) loggedIn(cmd *cobra.Command) error {
 func (a *app) logoutCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "logout",
-		Short: "Forget this client's key and grant on this computer (the owner revokes the client in Hermesh.app or the console)",
+		Short: "Forget this client's key and grant on this computer (the owner revokes the client in the Hermesh app or the console)",
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			paired := a.load() == nil
@@ -216,7 +216,7 @@ func (a *app) logoutCmd() *cobra.Command {
 			case !removed:
 				fmt.Fprintln(w, "Not paired: nothing to forget.")
 			case paired:
-				fmt.Fprintf(w, "Forgot this client's key and grant. Owner %s still lists client %q (%s) until they revoke it in Hermesh.app or the console.\n",
+				fmt.Fprintf(w, "Forgot this client's key and grant. Owner %s still lists client %q (%s) until they revoke it in the Hermesh app or the console.\n",
 					a.st.OwnerID, a.g.ClientLabel, a.g.ClientId)
 			default:
 				fmt.Fprintf(w, "Removed the pairing files in %s.\n", a.home)
@@ -376,7 +376,7 @@ func (a *app) authStatus(ctx context.Context) *authReport {
 	case verr != nil:
 		grant.set("fail", fmt.Sprintf("%s · invalid: %v", summary, verr), relogin, exitDenied)
 	case left < 7*24*time.Hour:
-		grant.set("warn", fmt.Sprintf("%s · expires in %s", summary, approx(left)), "ask the owner to renew it in Hermesh.app", 0)
+		grant.set("warn", fmt.Sprintf("%s · expires in %s", summary, approx(left)), "ask the owner to renew it in the Hermesh app", 0)
 	default:
 		grant.set("ok", fmt.Sprintf("%s · expires in %s", summary, approx(left)), "", 0)
 	}

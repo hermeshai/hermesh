@@ -145,8 +145,10 @@ func (g *Gateway) advance(ctx context.Context, id string) (*Connection, error) {
 }
 
 // ask is advance for a use of the connection: while it waits for approval,
-// an approval request goes to the owner's Mac (now, or once it is online).
-// Requests are sent only when the app is used, never on a timer.
+// an approval request goes to the owner's trusted devices, now if one is
+// connected or registered for push, else once one connects. Requests are
+// sent when the app uses the connection or a trusted device connects
+// (askAgain), never on a timer.
 func (g *Gateway) ask(ctx context.Context, id string) (*Connection, error) {
 	return g.move(ctx, id, true)
 }
@@ -168,9 +170,6 @@ func (g *Gateway) move(ctx context.Context, id string, ask bool) (*Connection, e
 		return g.end(ctx, c, StateExpired, "not used in 30 days")
 	}
 	before := *c
-	if ask {
-		c.Asked = true
-	}
 	if c.State == StateAwaitingSetup {
 		owner, err := g.cfg.Accounts.Owner(ctx, c.AccountID)
 		if err != nil {
@@ -185,7 +184,12 @@ func (g *Gateway) move(ctx context.Context, id string, ask bool) (*Connection, e
 			g.log.Warn("mcp: approval", "connection", c.ID, "err", err)
 		}
 	}
-	if c.State == StateAwaitingApproval && c.Asked && c.PairingCode == "" && g.cfg.Relay.OwnerOnline(c.OwnerID) {
+	// A use asks unless a request is out already: uses while one waits
+	// don't queue more once it lapses.
+	if ask && c.PairingCode == "" {
+		c.Asked = true
+	}
+	if c.State == StateAwaitingApproval && c.Asked && c.PairingCode == "" && g.cfg.Relay.OwnerReachable(c.OwnerID) {
 		if err := g.requestApproval(c); err != nil {
 			g.log.Warn("mcp: send the approval request", "connection", c.ID, "err", err)
 		} else {
@@ -212,7 +216,7 @@ func lastUse(c *Connection) time.Time {
 	return c.CreatedAt
 }
 
-// requestApproval sends the owner's Mac a pairing request for the
+// requestApproval sends the owner's devices a pairing request for the
 // connection's key, naming this server as the key's custodian.
 func (g *Gateway) requestApproval(c *Connection) error {
 	key, err := g.key(c)
@@ -413,7 +417,7 @@ type Status struct {
 	State string `json:"state"`
 	// Next is what the person should do, "" when nothing.
 	Next string `json:"next"`
-	// PairingCode is the code the owner's Mac shows with the request, while
+	// PairingCode is the code the owner's devices show with the request, while
 	// one is waiting there.
 	PairingCode string `json:"pairing_code"`
 	SetupURL    string `json:"setup_url"`
@@ -440,16 +444,17 @@ func (g *Gateway) status(c *Connection) Status {
 		if g.selfHosted() {
 			who = "with this server (" + g.issuer.Host + ")"
 		}
-		s.Next = fmt.Sprintf("Hermesh isn't set up yet. Install Hermesh for Mac from %s, set it up %s, and approve “%s” when it asks. "+
+		s.Next = fmt.Sprintf("Hermesh isn't set up yet. Install Hermesh on your iPhone or Mac from %s, set it up %s, and approve “%s” when it asks. "+
 			"Then try again; there is no need to reconnect.", g.cfg.SetupURL, who, name)
 	case StateAwaitingApproval:
+		device := g.device(c.OwnerID, "en")
 		switch {
 		case c.PairingCode != "":
-			s.Next = fmt.Sprintf("Approve “%s” in Hermesh on your Mac: the request is waiting there now. Then try again.", name)
+			s.Next = fmt.Sprintf("Approve “%s” in Hermesh on %s: the request is waiting there now. Then try again.", name, device)
 		case s.OwnerOnline:
-			s.Next = fmt.Sprintf("Approve “%s” in Hermesh on your Mac: open Hermesh there to see the request, or disconnect and connect the app again.", name)
+			s.Next = fmt.Sprintf("Approve “%s” in Hermesh on %s: open Hermesh there to see the request, or disconnect and connect the app again.", name, device)
 		default:
-			s.Next = fmt.Sprintf("Open Hermesh on your Mac and approve “%s” there: the request goes to your Mac as soon as it is online. Then try again.", name)
+			s.Next = fmt.Sprintf("Open Hermesh on %s and approve “%s” there: the request goes there as soon as Hermesh is open. Then try again.", device, name)
 		}
 	case StateRevoked:
 		s.Next = "This connection was disconnected (" + c.EndReason + "). Connect the app to Hermesh again to ask the owner again."

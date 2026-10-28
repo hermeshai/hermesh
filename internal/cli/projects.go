@@ -101,7 +101,7 @@ is offline.`,
 				return a.report(w, nil, field{"projects", places}, field{"offline", offline})
 			}
 			if len(places) == 0 && len(offline) == 0 {
-				fmt.Fprintln(w, "no projects this client can work in: ask the owner to add one, or to grant this client one, in Hermesh.app")
+				fmt.Fprintln(w, "no projects this client can work in: ask the owner to add one, or to grant this client one, in the Hermesh app")
 				return nil
 			}
 			tw := tabwriter.NewWriter(w, 0, 0, 3, ' ', 0)

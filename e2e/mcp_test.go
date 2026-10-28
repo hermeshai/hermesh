@@ -72,14 +72,14 @@ func TestMCPGateway(t *testing.T) {
 	// --- Connect before anything is set up -------------------------------
 	app := newOAuthApp(t, base+"/mcp", "Hermesh test")
 	page := app.authorize()
-	if !strings.Contains(page, "Connect Hermesh test to Hermesh") || !strings.Contains(page, "isn&#39;t set up on a Mac yet") {
+	if !strings.Contains(page, "Connect Hermesh test to Hermesh") || !strings.Contains(page, "isn&#39;t set up yet") {
 		t.Fatalf("consent page:\n%s", page)
 	}
 	if !strings.Contains(page, "127.0.0.1:") || !strings.Contains(page, "holds this connection&#39;s key") {
 		t.Fatalf("the consent page must say where the app returns to and who holds the key:\n%s", page)
 	}
 	progress := app.connect(page)
-	if !strings.Contains(progress, "One more step") || !strings.Contains(progress, "Get Hermesh for Mac") {
+	if !strings.Contains(progress, "One more step") || !strings.Contains(progress, "Get Hermesh") {
 		t.Fatalf("after connecting with nothing set up:\n%s", progress)
 	}
 	tokens := app.finish(progress)
@@ -246,7 +246,7 @@ func TestMCPGateway(t *testing.T) {
 		t.Fatalf("connecting while the Mac is offline:\n%s", page3)
 	}
 	s3 := app3.mcpSession(app3.finish(page3).Access)
-	if doc = callTool(t, s3, "project_list", nil); !doc.OK || !strings.Contains(doc.Note, "as soon as it is online") {
+	if doc = callTool(t, s3, "project_list", nil); !doc.OK || !strings.Contains(doc.Note, "as soon as Hermesh is open") {
 		t.Fatalf("a tool while the Mac is offline: %s", doc.raw)
 	}
 	// The Mac is back: the request reaches it by itself.
