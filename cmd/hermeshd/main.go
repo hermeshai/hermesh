@@ -14,8 +14,8 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
-	"slices"
 	"runtime"
+	"slices"
 	"strings"
 	"syscall"
 	"time"
@@ -541,7 +541,6 @@ func report(name string, i provider.Info) bool {
 	}
 }
 
-
 // eraseMachine erases a machine whose owner erased everything
 // (docs/erase-everything.md), and the rest of dataDir (its logs), and takes
 // its service away, so that it waits to be paired as a newly installed one
@@ -564,4 +563,3 @@ func eraseMachine(dataDir string, cfg machine.Config) error {
 	}
 	return nil
 }
-
