@@ -5,14 +5,19 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"slices"
 	"strings"
+	"sync"
+	"sync/atomic"
 
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
 
 	identityv1 "github.com/hermeshai/hermesh/gen/go/hermesh/identity/v1"
+	relayv1 "github.com/hermeshai/hermesh/gen/go/hermesh/relay/v1"
+	"github.com/hermeshai/hermesh/internal/peer"
 	"github.com/hermeshai/hermesh/pkg/identity"
 )
 
@@ -37,6 +42,9 @@ type Identity struct {
 type ExecOptions struct {
 	Identity   Identity
 	HTTPClient *http.Client
+	// Peer, when set, keeps the relay connection, the tunnels to machines
+	// and the machine list from one command to the next.
+	Peer *Peer
 	// Adopted is called with the credentials a command picked up from the
 	// relay (a renewed or changed grant, a longer root chain).
 	Adopted func(rootChain *identityv1.RootChain, grant *identityv1.Signed)
@@ -75,6 +83,11 @@ func (a *app) loadMem() error {
 		return errNotLoggedIn
 	}
 	a.st = state{RelayURL: id.RelayURL, OwnerID: id.OwnerID}
+	if p := a.mem.Peer; p != nil {
+		p.mu.Lock()
+		a.st.Machines = p.machines
+		p.mu.Unlock()
+	}
 	a.key = id.Key
 	a.trust = identity.NewTrust(id.OwnerID)
 	if _, err := a.trust.AcceptRootChain(id.RootChain); err != nil {
@@ -83,6 +96,86 @@ func (a *app) loadMem() error {
 	a.grant = id.Grant
 	a.g = &identityv1.Grant{}
 	return identity.Unverified(a.grant, a.g)
+}
+
+// Peer keeps what commands run for one Identity connect with, from one to
+// the next (the MCP gateway keeps one per connection): the relay
+// connection, the end-to-end tunnels to machines and the machine list. A
+// command then reaches its machine over the tunnel the last one made.
+// Commands running at once share it.
+type Peer struct {
+	mu     sync.Mutex
+	client *peer.Client
+	// trust verifies the machines the client reaches; creds is what it
+	// presents (read without mu: the client reads it while it dials).
+	trust    *identity.Trust
+	creds    atomic.Pointer[identityv1.Credentials]
+	grant    *identityv1.Signed
+	version  uint64 // grant's
+	machines []seenMachine
+	closed   bool
+}
+
+// Close closes the relay connection and the tunnels, once the commands
+// using them end.
+func (p *Peer) Close() {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	p.closed = true
+	if p.client != nil {
+		p.client.Close()
+		p.client = nil
+	}
+}
+
+// open returns the kept relay connection for a's command, connecting it
+// with a's credentials first. The command closes it when done; it stays
+// open for the next one.
+func (p *Peer) open(ctx context.Context, a *app) (*peer.Client, error) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if p.closed {
+		return nil, net.ErrClosed
+	}
+	if p.client == nil {
+		p.trust = identity.NewTrust(a.st.OwnerID)
+		if _, err := p.trust.AcceptRootChain(a.trust.RootChain()); err != nil {
+			return nil, err
+		}
+		p.creds.Store(a.credentials())
+		p.grant, p.version = a.grant, a.g.Version
+		d := &peer.Dialer{RelayURL: a.st.RelayURL, Role: relayv1.Role_ROLE_CLIENT, Key: a.key, Credentials: p.creds.Load, Trust: p.trust, HTTPClient: a.hc,
+			Pipeline: true}
+		c, err := d.Connect(ctx)
+		if err != nil {
+			return nil, err
+		}
+		p.client = c
+	}
+	p.client.Hold()
+	return p.client, nil
+}
+
+// adopt has the client present what a holds where it is newer (a renewed
+// or changed grant, a longer root chain), and drops the tunnels made with
+// the old credentials. A command that holds older ones changes nothing.
+func (p *Peer) adopt(a *app) {
+	a.mu.Lock()
+	grant, version := a.grant, a.g.Version
+	a.mu.Unlock()
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if p.client == nil {
+		return
+	}
+	longer, _ := p.trust.AcceptRootChain(a.trust.RootChain())
+	if version > p.version {
+		p.grant, p.version = grant, version
+	} else if !longer {
+		return
+	}
+	p.creds.Store(&identityv1.Credentials{RootChain: p.trust.RootChain(), Subject: &identityv1.Credentials_Grant{Grant: p.grant}})
+	p.client.Reset()
 }
 
 // Tool is a CLI command as a tool for an agent (the MCP gateway's tools):

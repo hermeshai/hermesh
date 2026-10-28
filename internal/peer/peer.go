@@ -40,6 +40,7 @@ type Client struct {
 
 	mu       sync.Mutex
 	closed   bool
+	holds    int // Closes that only end a Hold
 	machines map[string]*Machine
 	warming  map[string]chan struct{} // closed when the attempt ends
 	gen      int                      // counts Resets
@@ -68,9 +69,21 @@ func (d *Dialer) Connect(ctx context.Context) (*Client, error) {
 	return c, nil
 }
 
+// Hold keeps the client open through one more Close: of the users sharing
+// it, the last to close it closes it.
+func (c *Client) Hold() {
+	c.mu.Lock()
+	c.holds++
+	c.mu.Unlock()
+}
+
 func (c *Client) Close() error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
+	if c.holds > 0 {
+		c.holds--
+		return nil
+	}
 	c.closed = true
 	for _, n := range c.machines {
 		n.h2.Close()

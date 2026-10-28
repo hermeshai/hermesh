@@ -196,7 +196,13 @@ func (a *app) connect(ctx context.Context, warm func([]machineRef) []machineRef)
 	if err := a.load(); err != nil {
 		return nil, nil, err
 	}
-	c, err := a.dial(ctx, true)
+	var c *peer.Client
+	var err error
+	if p := a.kept(); p != nil {
+		c, err = p.open(ctx, a)
+	} else {
+		c, err = a.dial(ctx, true)
+	}
 	if err != nil {
 		return nil, nil, err
 	}
@@ -227,7 +233,9 @@ func (a *app) connect(ctx context.Context, warm func([]machineRef) []machineRef)
 	case errors.Is(serr, errBadUpdate):
 		fmt.Fprintln(os.Stderr, "warning:", serr)
 	}
-	if !proto.Equal(before, a.credentials()) {
+	if p := a.kept(); p != nil {
+		p.adopt(a)
+	} else if !proto.Equal(before, a.credentials()) {
 		c.Reset() // warmed with the old grant
 	}
 	if err != nil {
@@ -248,10 +256,25 @@ func (a *app) remember(machines []machineRef) {
 	for _, m := range machines {
 		seen = append(seen, seenMachine{ID: m.ID, Name: m.Name, Online: m.Online})
 	}
-	if !slices.Equal(seen, a.st.Machines) {
-		a.st.Machines = seen
-		a.save()
+	if slices.Equal(seen, a.st.Machines) {
+		return
 	}
+	a.st.Machines = seen
+	if a.mem == nil {
+		a.save()
+	} else if p := a.mem.Peer; p != nil {
+		p.mu.Lock()
+		p.machines = seen
+		p.mu.Unlock()
+	}
+}
+
+// kept is the relay connection the caller keeps between commands, if any.
+func (a *app) kept() *Peer {
+	if a.mem == nil {
+		return nil
+	}
+	return a.mem.Peer
 }
 
 // dial opens the relay connection with the stored credentials; pipelined,

@@ -332,6 +332,7 @@ func (g *Gateway) end(ctx context.Context, c *Connection, state, reason string) 
 	g.mu.Lock()
 	delete(g.keys, c.ID)
 	g.mu.Unlock()
+	g.dropPeer(c.ID)
 	if err := g.inboxes.DeleteInbox(ctx, c.ID); err != nil {
 		g.log.Warn("mcp: delete the inbox", "connection", c.ID, "err", err)
 	}

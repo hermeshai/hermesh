@@ -13,6 +13,7 @@ import (
 	"time"
 
 	localv1 "github.com/hermeshai/hermesh/gen/go/hermesh/local/v1"
+	"github.com/hermeshai/hermesh/pkg/identity"
 )
 
 // delayProxy forwards TCP connections to target, holding every byte for
@@ -183,5 +184,144 @@ func TestRelayRoundTrips(t *testing.T) {
 		if now.Grant == oldGrant && c.name == "grant changed by the owner" {
 			t.Fatalf("%s: the new grant was not picked up", c.name)
 		}
+	}
+}
+
+// TestMCPRoundTrips counts the round trips to a far machine that MCP tool
+// calls wait for. The gateway keeps a connection's relay connection and its
+// tunnels from one call to the next: the first call costs the E2E handshake
+// and the call, later ones the call alone. Once the owner changes the grant
+// (a rename), the next call makes a tunnel with the new grant, and the
+// connection goes on.
+func TestMCPRoundTrips(t *testing.T) {
+	if testing.Short() {
+		t.Skip("e2e")
+	}
+	bin := binaries(t)
+	tmp := t.TempDir()
+	sockDir, _ := os.MkdirTemp("/tmp", "hm")
+	t.Cleanup(func() { os.RemoveAll(sockDir) })
+	var logs []*proc
+	t.Cleanup(func() {
+		if t.Failed() {
+			for _, p := range logs {
+				t.Logf("==== %s output ====\n%s", p.name, p.output())
+			}
+		}
+	})
+	ctx := context.Background()
+	port := freePort(t)
+	base := fmt.Sprintf("http://127.0.0.1:%d", port)
+	relayData := filepath.Join(tmp, "relay")
+	relay := start(t, "relay", nil, filepath.Join(bin, "hermesh-relay"), "serve", "--mcp", "--data-dir", relayData, "--listen", fmt.Sprintf("127.0.0.1:%d", port))
+	logs = append(logs, relay)
+	eventually(t, 20*time.Second, "relay up", func() bool { return strings.Contains(relay.output(), "relay listening") })
+
+	// The Mac is far from the relay: its link, which carries the tunnels to
+	// its machine, goes through the proxy. The app reaches the relay directly.
+	const oneWay = 250 * time.Millisecond
+	far := "http://" + delayProxy(t, fmt.Sprintf("127.0.0.1:%d", port), oneWay)
+	claim := strings.TrimSpace(run(t, nil, 10*time.Second, filepath.Join(bin, "hermesh-relay"), "claim-code", "--data-dir", relayData).stdout)
+	sock := filepath.Join(sockDir, "o.sock")
+	owner := start(t, "owner", []string{"HERMESH_FAKE_PROVIDERS=1"}, filepath.Join(bin, "hermeshd"), "run", "--owner", "--data-dir", filepath.Join(tmp, "owner-mac"), "--socket", sock)
+	logs = append(logs, owner)
+	root, _ := identity.GenerateKey()
+	mac := newTestApp(t, sock, root)
+	if _, err := mac.client.Setup(ctx, &localv1.SetupRequest{RelayUrl: far, ClaimCode: claim, RootPublicKey: rootPub(root), RootLabel: "test-mac", RootPlatform: "macos"}); err != nil {
+		t.Fatalf("setup: %v", err)
+	}
+	local, err := mac.client.SetLocalMachine(ctx, &localv1.SetLocalMachineRequest{Enabled: true, MachineName: "owner-mac"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	eventually(t, 30*time.Second, "machine online", func() bool {
+		res, err := mac.client.ListMachines(ctx, &localv1.ListMachinesRequest{})
+		return err == nil && len(res.Machines) == 1 && res.Machines[0].Online
+	})
+	repo := gitRepo(t, map[string]string{"README.md": "# demo\n"})
+	if _, err := mac.client.AddProject(ctx, &localv1.AddProjectRequest{MachineId: local.MachineId, ProjectId: "demo", Path: repo}); err != nil {
+		t.Fatal(err)
+	}
+
+	// An app connects, and the owner approves it on the Mac.
+	app := newOAuthApp(t, base+"/mcp", "Far app")
+	if page := app.connect(app.authorize()); !strings.Contains(page, "Approve on your Mac") {
+		t.Fatalf("connecting with the Mac online:\n%s", page)
+	}
+	var req *localv1.PairingDetails
+	eventually(t, 30*time.Second, "the request on the Mac", func() bool {
+		l, err := mac.client.ListPairingRequests(ctx, &localv1.ListPairingRequestsRequest{})
+		if err != nil || len(l.Pairings) != 1 {
+			return false
+		}
+		req = l.Pairings[0]
+		return true
+	})
+	if _, err := mac.client.ApproveClientPairing(ctx, &localv1.ApproveClientPairingRequest{Code: req.Code, Spec: &localv1.GrantSpec{}}); err != nil {
+		t.Fatal(err)
+	}
+	eventually(t, 30*time.Second, "the page seeing the approval", func() bool { return app.consentState() == "active" })
+	session := app.mcpSession(app.finish(app.get(app.consentURL)).Access)
+
+	timed := func(name string, args map[string]any) time.Duration {
+		t.Helper()
+		began := time.Now()
+		if d := callTool(t, session, name, args); !d.OK {
+			t.Fatalf("%s: %s", name, d.raw)
+		}
+		return time.Since(began)
+	}
+	best := func(name string, args map[string]any) time.Duration {
+		t.Helper()
+		b := time.Duration(1 << 62)
+		for range 3 {
+			b = min(b, timed(name, args))
+		}
+		return b
+	}
+	// A call over a kept tunnel waits for its own round trip and the
+	// machine's work, well under half another; one that makes a tunnel
+	// waits for the handshake's round trip too.
+	check := func(what string, d time.Duration, newTunnel bool) {
+		t.Helper()
+		rounds := float64(d) / float64(2*oneWay)
+		t.Logf("%-55s %4.1f round trips (%v)", what, rounds, d.Round(time.Millisecond))
+		if newTunnel && rounds < 1.5 {
+			t.Errorf("%s: %.1f round trips: no handshake with the machine?", what, rounds)
+		}
+		if !newTunnel && rounds > 1.5 {
+			t.Errorf("%s: %.1f round trips, want 1: the tunnel was not kept", what, rounds)
+		}
+	}
+	check("first call (project_list)", timed("project_list", nil), true)
+	check("project_list again", best("project_list", nil), false)
+	doc := callTool(t, session, "session_start", map[string]any{"project": "demo", "prompt": "say hi"})
+	var started struct {
+		Session struct {
+			SessionID string `json:"session_id"`
+		} `json:"session"`
+	}
+	if !doc.OK || json.Unmarshal(doc.raw, &started) != nil || started.Session.SessionID == "" {
+		t.Fatalf("session_start: %s", doc.raw)
+	}
+	get := map[string]any{"session_id": started.Session.SessionID}
+	check("session_get", best("session_get", get), false)
+
+	// The owner renames the connection: its grant is signed again, and the
+	// old version stops working (the relay drops what it admitted with it).
+	clients, err := mac.client.ListClients(ctx, &localv1.ListClientsRequest{})
+	if err != nil || len(clients.Clients) != 1 {
+		t.Fatalf("clients: %v %v", clients, err)
+	}
+	if _, err := mac.client.RenameClient(ctx, &localv1.RenameClientRequest{GrantId: clients.Clients[0].GrantId, Label: "Far app, renamed"}); err != nil {
+		t.Fatal(err)
+	}
+	check("session_get after the grant changed", timed("session_get", get), true)
+	check("session_get again", best("session_get", get), false)
+	if st := statusOf(t, session); st.State != "active" {
+		t.Fatalf("the connection after the grant changed: %+v", st)
+	}
+	if doc := callTool(t, session, "auth_status", nil); !doc.OK || !strings.Contains(string(doc.raw), "Far app, renamed") {
+		t.Fatalf("auth_status after the grant changed: %s", doc.raw)
 	}
 }

@@ -121,7 +121,9 @@ flags become parameters). Each MCP tool call runs the matching `hermesh`
 command with `-o json` and answers with its document, so the tools, their
 parameters and their output contract (docs/cli-output.md) stay the CLI's.
 The command dials the relay through an in-memory listener (`net.Pipe`), so
-it passes the relay's normal admission, grant and revocation checks.
+it passes the relay's normal admission, grant and revocation checks; the
+connection keeps that relay connection and its tunnels for its next calls
+(§8).
 
 What the gateway reuses:
 
@@ -535,11 +537,29 @@ fixed order with `ttlMs` set, as 2026-07-28 asks.
 ## 8. Running a tool
 
 A call loads the connection, unseals its key (cached in memory for at most
-10 minutes), and runs the command with `cli.Exec`: the command opens its own
-relay connection in memory and E2E tunnels to the machines it needs, as the
-CLI does per command. A renewed or changed grant the command picks up
-(`GetLatestGrant`) is stored on the connection. Limits per connection: 120
-calls a minute, 20 `session_start` an hour.
+10 minutes), and runs the command with `cli.Exec`.
+
+The connection keeps what its commands connect with from one call to the
+next (a `cli.Peer`, given to `cli.Exec` in `ExecOptions.Peer`): its relay
+connection, opened in memory, the E2E tunnels to the machines it reached,
+and the last machine list. Each command still checks the grant
+(`GetLatestGrant`) and lists the machines, in memory over the kept relay
+connection, but reaches its machine over the tunnel the last call made. So
+a `session_get` poll costs one round trip to the machine instead of two (the
+handshake, then the call), and the machine audits one `tunnel allow` per
+tunnel rather than per call. The calls of one connection share it at once.
+
+- A renewed or changed grant a command picks up is stored on the
+  connection. The kept connection presents it from then on and drops the
+  tunnels made with the old one; a command still holding the old one
+  changes nothing. (The owner's change also makes the relay drop the relay
+  connection admitted with the old version; the next command connects again
+  and is admitted with the new one.)
+- The kept connection closes after 10 minutes without a call (when the key
+  cache lets the key go too), at once when the connection ends (§11), and
+  when the gateway stops. A command still using it finishes first.
+
+Limits per connection: 120 calls a minute, 20 `session_start` an hour.
 
 ## 9. State
 
@@ -577,7 +597,9 @@ type Vault interface {
 - Database backups therefore hold only sealed keys. A cloud KMS can implement
   the same interface later.
 - **Destroying the sealed key is the revocation that needs no one else**: no
-  copy of the private key exists outside the vault and the 10-minute cache.
+  copy of the private key exists outside the vault, the 10-minute cache and
+  the connection's kept relay connection (§8), which closes 10 minutes after
+  the last call and when the connection ends.
 
 ## 11. Lifecycle
 
@@ -632,9 +654,13 @@ nothing reaches a machine without Touch ID.
   rotation with the retry window and theft detection, unapproved
   connections expiring, Client ID Metadata Documents (verified, unverified,
   and each malformed kind), the fetch client refusing private addresses,
-  vault binding, redirect matching, labels.
+  vault binding, redirect matching, labels; a connection's calls sharing one
+  relay connection, closed after 10 minutes without a call and when the
+  connection ends, and going on after the owner re-issued the grant.
 - `internal/cli`: the tools mirror the commands; arguments map to flags
-  (values starting with "-" stay values); `Exec` answers with documents.
+  (values starting with "-" stay values); `Exec` answers with documents; a
+  `Peer` keeps one relay connection for its commands, presents the newest
+  grant any of them picked up, and stays open for a command still using it.
 - Signer: a custodial grant's card says who holds the key.
 - `e2e/mcp_test.go` (`TestMCPGateway`), real binaries: an app discovers the
   server from a 401, registers, and connects before Hermesh is set up (every
@@ -647,6 +673,11 @@ nothing reaches a machine without Touch ID.
   steerable; refresh; a second app approved on the consent page itself, its
   code replayed, then disconnecting (RFC 7009) and its grant revoked; the
   owner revoking the first connection.
+- `e2e/latency_test.go` (`TestMCPRoundTrips`), real binaries, the Mac's link
+  behind a proxy that delays every byte: a connection's first call costs the
+  E2E handshake and the call, later ones one round trip to the machine; after
+  the owner renames the connection, the next call makes a tunnel with the
+  new grant, and the connection stays active.
 - Manually with Codex (`codex mcp add <name> --url <relay>/mcp`, then
   `codex mcp login`): Codex registered with its Client ID Metadata Document
   (`https://chatgpt.com/oauth/codex/client.json`, shown verified), and
