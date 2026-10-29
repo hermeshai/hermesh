@@ -723,7 +723,9 @@ struct SessionRow: View {
 
 /// Get Started: from the first launch until it is done or hidden, the
 /// first machine, its coding agent, a project, an agent and its first
-/// session, in that order. The next row carries the button.
+/// session, in that order. The next row carries the button. Done once, it
+/// stays put away: a machine back from a reconnect reports its coding
+/// agents a moment later, and that is no reason to show it again.
 struct GetStarted: View {
     @Environment(AppModel.self) private var model
     let hide: () -> Void
@@ -802,6 +804,8 @@ struct GetStarted: View {
                 asked = m.machineID
                 await model.recheck(machine: m.machineID)
             }
+        } else {
+            Color.clear.frame(height: 0).onAppear(perform: hide)
         }
     }
 

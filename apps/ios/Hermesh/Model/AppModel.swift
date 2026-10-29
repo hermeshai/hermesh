@@ -358,6 +358,7 @@ final class AppModel {
         hasWorld = false
         keptOwner = ""
         try? FileManager.default.removeItem(at: worldFile)
+        UserDefaults.standard.removeObject(forKey: "hideGetStarted") // the next owner starts it again
         conversations.forgetAll()
     }
 
