@@ -249,7 +249,7 @@ export const StartSessionResponseSchema: GenMessage<StartSessionResponse> = /*@_
  */
 export type Notice = Message<"hermesh.session.v1.Notice"> & {
   /**
-   * "question", "failure", "turn_done" or "pairing".
+   * "question", "failure", "turn_done", "session_started" or "pairing".
    *
    * @generated from field: string kind = 1;
    */

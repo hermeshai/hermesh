@@ -2979,6 +2979,16 @@
         }
       }
     },
+    "New sessions": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "新会话"
+          }
+        }
+      }
+    },
     "Newest First": {
       "localizations": {
         "zh-Hans": {

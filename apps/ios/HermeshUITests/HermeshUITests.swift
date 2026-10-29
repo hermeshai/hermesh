@@ -363,6 +363,8 @@ final class HermeshUITests: XCTestCase {
         tap("notifications")
         XCTAssertTrue(app.switches["notify-questions"].waitForExistence(timeout: 10), "the notification settings")
         XCTAssertTrue(app.switches["notify-turns"].exists && text("连接请求").exists)
+        XCTAssertTrue(app.switches["notify-started"].exists && text("新会话").exists, "new sessions, on by default")
+        XCTAssertEqual(app.switches["notify-started"].value as? String, "1")
         app.navigationBars.buttons.element(boundBy: 0).tap()
         tap("close")
     }

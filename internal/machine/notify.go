@@ -20,7 +20,8 @@ import (
 // finishes a turn, the machine seals a notice to the notice key of each
 // trusted device that asked for that kind (its push registration, signed by
 // its device key, which a root key certifies) and hands the ciphertext to
-// the relay for the push service. The relay never sees what it says.
+// the relay for the push service. The relay never sees what it says. A
+// new session is announced too (only agents start sessions).
 
 // pushTarget is a verified push registration.
 type pushTarget struct {
@@ -99,11 +100,15 @@ func (n *Machine) sessionNotice(s noticeSession, e *sessionv1.SessionEvent) {
 			nt.DiffStat = tc.DiffStat
 		}
 	case *sessionv1.SessionEvent_Status:
-		if k.Status.Status != sessionv1.SessionStatus_SESSION_STATUS_CRASHED {
+		switch k.Status.Status {
+		case sessionv1.SessionStatus_SESSION_STATUS_QUEUED: // only from Start
+			nt.Kind = "session_started"
+		case sessionv1.SessionStatus_SESSION_STATUS_CRASHED:
+			nt.Kind = "failure"
+			nt.Failure = sessionv1.FailureKind_FAILURE_KIND_AGENT_CRASHED
+		default:
 			return
 		}
-		nt.Kind = "failure"
-		nt.Failure = sessionv1.FailureKind_FAILURE_KIND_AGENT_CRASHED
 	default:
 		return
 	}

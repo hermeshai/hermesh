@@ -93,6 +93,7 @@
 /* A command being run (the status “Running” is another word in some languages) */
 "verb.running" = "正在运行";
 "%@ asks" = "%@ 问你";
+"%@ started it · %@" = "%1$@ 发起 · %2$@";
 "%lld files +%lld −%lld" = "%1$lld 个文件 +%2$lld −%3$lld";
 "A machine calling itself “%@” wants to join" = "一台自称「%@」的机器想加入";
 "No file changes" = "没有改动文件";

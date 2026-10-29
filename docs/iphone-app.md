@@ -107,10 +107,15 @@ The relay knows when something happened, never what (center-data rules).
    kinds of notices it wants, signed with its device key (`RegisterPush`).
 2. The relay keeps the registration and hands the owner's registrations to
    each of their machines (`MachineUpdate.push_targets`).
-3. When a session asks a question, fails, or an agent asks to connect, the
-   machine seals a `Notice` to each registered device's notice key (HPKE:
-   DHKEM X25519, HKDF-SHA256, AES-128-GCM, info `hermesh-notice-v1`) and
-   sends the ciphertext to the relay (`Notify`).
+3. When an agent starts a session, a session asks a question, fails or
+   finishes a turn, the machine seals a `Notice` to the notice key of each
+   registered device that asked for that kind (HPKE: DHKEM X25519,
+   HKDF-SHA256, AES-128-GCM, info `hermesh-notice-v1`) and sends the
+   ciphertext to the relay (`Notify`). A new session's notice
+   says its title (the starter's, else the prompt's first line, cut at 40
+   characters), who started it (the agent's name), the machine, the
+   project and the coding agent; the relay seals a request to connect
+   itself.
 4. The relay sends APNs a generic alert ("Something needs you", a localized
    key) with the ciphertext; urgent notices are time-sensitive.
 5. On the phone, the notification service extension opens the notice and

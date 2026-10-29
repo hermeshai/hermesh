@@ -61,7 +61,8 @@ func readSpool(t *testing.T, dir string, seen map[string]bool) []spooled {
 
 // TestPushNotices: a trusted device registers for notifications; the
 // machine seals a notice to its key when a session asks something or
-// fails, the relay announces requests to connect, and the push service
+// fails, or when an agent starts one (with its title, which a long
+// prompt cuts short), the relay announces requests to connect, and the push service
 // gets only ciphertext and a generic alert. Kinds the device did not ask
 // for are not sent.
 func TestPushNotices(t *testing.T) {
@@ -149,12 +150,30 @@ func TestPushNotices(t *testing.T) {
 		t.Fatalf("failure notice: %+v", n)
 	}
 
-	// A finished turn was not asked for: nothing is sent for it.
+	// A finished turn and a new session were not asked for: nothing is
+	// sent for them.
 	w.startSession(time.Minute, "--agent", "gemini", "--title", "写 hello", "--prompt", "say 好了", "--wait")
 	time.Sleep(2 * time.Second)
 	for _, s := range readSpool(t, spool, seen) {
-		if n := open(s); n.Kind == "turn_done" {
-			t.Fatalf("a turn_done notice nobody asked for: %+v", n)
+		if n := open(s); n.Kind == "turn_done" || n.Kind == "session_started" {
+			t.Fatalf("a %s notice nobody asked for: %+v", n.Kind, n)
+		}
+	}
+
+	// A new session, once asked for: its title is the long prompt's start.
+	register("question", "failure", "session_started")
+	time.Sleep(time.Second)
+	ns, r := w.startSession(time.Minute, "--agent", "gemini", "--prompt", "say "+strings.Repeat("长", 300))
+	if ns.SessionID == "" {
+		t.Fatalf("start: %+v", r)
+	}
+	if n := waitFor("session_started"); n.SessionId != ns.SessionID || n.Title != "say "+strings.Repeat("长", 36)+"…" ||
+		n.Grant != "bot" || n.Machine != "owner-mac" || n.Project != "demo" || n.Agent != "gemini" {
+		t.Fatalf("session_started notice: %+v", n)
+	}
+	for _, f := range mustGlob(spool) {
+		if raw, _ := os.ReadFile(f); strings.Contains(string(raw), "长长") {
+			t.Fatalf("plaintext in the push payload: %s", raw)
 		}
 	}
 

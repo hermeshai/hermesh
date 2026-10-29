@@ -46,7 +46,7 @@ final class Push {
             r.environment = Self.environment
             r.noticePublicKey = try NoticeKey.load().publicKey.rawRepresentation
             let prefs = NotificationPrefs.current
-            r.kinds = [prefs.questions ? "question" : nil, prefs.failures ? "failure" : nil, prefs.turnsDone ? "turn_done" : nil].compactMap { $0 }
+            r.kinds = [prefs.sessionsStarted ? "session_started" : nil, prefs.questions ? "question" : nil, prefs.failures ? "failure" : nil, prefs.turnsDone ? "turn_done" : nil].compactMap { $0 }
             let _: Hermesh_Local_V1_RegisterPushResponse = try await api.call("RegisterPush", r, timeout: 20)
         } catch {
             // Tried again when the app next starts.

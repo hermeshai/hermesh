@@ -45,6 +45,8 @@ import UserNotifications
     #expect(f.title == "“deploy” failed" && f.body == "Rate limited · bot · app")
     let d = filled { $0.kind = "turn_done"; $0.turn = 2; $0.diffStat.filesChanged = 3; $0.diffStat.insertions = 10; $0.diffStat.deletions = 1 }
     #expect(d.title == "“deploy”: turn 2 done" && d.body == "3 files +10 −1")
+    let s = filled { $0.kind = "session_started"; $0.sessionID = "s2"; $0.grant = "Grok"; $0.machine = "MacBook Pro"; $0.project = "app"; $0.agent = "claude" }
+    #expect(s.title == "deploy" && s.body == "Grok started it · MacBook Pro\napp · Claude Code" && s.threadIdentifier == "s2")
     let p = filled { $0.kind = "pairing"; $0.pairingKind = .client; $0.pairingLabel = "Cursor"; $0.verificationCode = "AAAA-BBBB-CCCC"; $0.pairingCode = "X" }
     #expect(p.title == "“Cursor” wants to connect to your computer" && p.body.contains("AAAA-BBBB-CCCC") && p.userInfo["pairing"] as? String == "X")
 }

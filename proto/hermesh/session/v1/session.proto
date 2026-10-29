@@ -218,7 +218,7 @@ message StartSessionResponse {
 // key end to end (identity.v1.PushRegistration): the relay forwards it
 // without reading it.
 message Notice {
-  // "question", "failure", "turn_done" or "pairing".
+  // "question", "failure", "turn_done", "session_started" or "pairing".
   string kind = 1;
   google.protobuf.Timestamp at = 2;
   // A session's notice.
