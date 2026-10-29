@@ -53,9 +53,12 @@ final class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCent
 
     func application(_ application: UIApplication, didFailToRegisterForRemoteNotificationsWithError error: Error) {}
 
-    /// In front: show it, unless it is about the session on screen.
+    /// In front: show it, unless it is about the session on screen. A new
+    /// session shows in the list as it comes, so it only goes to the list.
     func userNotificationCenter(_ center: UNUserNotificationCenter, willPresent notification: UNNotification) async -> UNNotificationPresentationOptions {
-        let session = notification.request.content.userInfo["session"] as? String
+        let info = notification.request.content.userInfo
+        if (info["hermesh"] as? [String: Any])?["k"] as? String == "session_started" { return [.list] }
+        let session = info["session"] as? String
         if let session, await AppModel.shared.isShowing(session: session) { return [] }
         return [.banner, .list, .sound]
     }
