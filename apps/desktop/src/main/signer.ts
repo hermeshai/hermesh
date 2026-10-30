@@ -1,9 +1,9 @@
+import { language } from "@hermesh/core";
 import { app } from "electron";
 import { spawn, type ChildProcess } from "node:child_process";
 import fs from "node:fs";
-import path from "node:path";
-import { appleLanguage } from "./language";
 import { dataDir } from "./paths";
+import { platform } from "./platform";
 
 let busy = false;
 let signer: ChildProcess | undefined;
@@ -17,18 +17,12 @@ function setBusy(value: boolean) {
 /** Bring the existing approval forward without accepting or rejecting it. */
 export function showSigner() { signer?.kill("SIGUSR1"); }
 
-// The signer (Hermesh Signer.app) holds the root key and shows what is
-// signed. It talks only to hermeshd; we just keep it running.
-function signerPath(): string | undefined {
-  if (process.platform !== "darwin") return undefined;
-  if (!app.isPackaged) return process.env.HERMESH_SIGNER || undefined;
-  return path.join(process.resourcesPath, "..", "Helpers", "Hermesh Signer.app", "Contents", "MacOS", "HermeshSigner");
-}
-
+// The signer holds the root key and shows what is signed. It talks only
+// to hermeshd; we just keep it running, where it is the app's child (macOS).
 export function keepSignerRunning(socket: string): () => void {
-  const bin = signerPath();
-  if (!bin || !fs.existsSync(bin)) {
-    console.warn(`signer not found${bin ? ` at ${bin}` : ""}; signing requests will wait`);
+  const program = platform.signer(language());
+  if (!program || !fs.existsSync(program.bin)) {
+    console.warn(`signer not found${program ? ` at ${program.bin}` : ""}; signing requests will wait`);
     return () => {};
   }
   // Test runs pass extra flags (a software key, a scripted decision).
@@ -40,7 +34,7 @@ export function keepSignerRunning(socket: string): () => void {
     const began = Date.now();
     // The signer keeps its files in the same data directory as the app, and speaks its language.
     setBusy(true); // Until the signer reports its initial state.
-    child = spawn(bin, ["--socket", socket, "--parent-pid", String(process.pid), "-AppleLanguages", `(${appleLanguage()})`, ...extra], {
+    child = spawn(program.bin, ["--socket", socket, "--parent-pid", String(process.pid), ...program.args, ...extra], {
       stdio: ["ignore", "pipe", "inherit"],
       env: { ...process.env, HERMESH_DATA_DIR: dataDir() },
     });

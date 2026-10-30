@@ -3,14 +3,12 @@ import { createConnectTransport } from "@connectrpc/connect-node";
 import { appLoginURL, centerBase, connectURLFrom, discoveryURL, parseAppLink, pkceChallenge, rootPlatform } from "@hermesh/core";
 import { LocalService } from "@hermesh/proto/local";
 import { app, net, shell } from "electron";
-import { execFile } from "node:child_process";
 import { randomBytes } from "node:crypto";
 import fs from "node:fs";
-import os from "node:os";
 import path from "node:path";
-import { promisify } from "node:util";
 import { i18n } from "../shared/i18n";
 import { socketPath } from "./paths";
+import { platform } from "./platform";
 import { mainWindow, showMain } from "./windows";
 
 // The browser sign-in (docs/desktop-app.md §5.3). The app keeps a random
@@ -95,19 +93,6 @@ export function takeLinks(): string[] {
   return links.splice(0);
 }
 
-/** This computer's name, as the person sees it (the label of its key and its machine). */
-export async function computerName(): Promise<string> {
-  if (process.platform === "darwin") {
-    try {
-      const { stdout } = await promisify(execFile)("/usr/sbin/scutil", ["--get", "ComputerName"]);
-      if (stdout.trim()) return stdout.trim();
-    } catch {
-      // Fall back to the host name.
-    }
-  }
-  return os.hostname().replace(/\.local$/, "");
-}
-
 /** Where center's devices connect (its .well-known/hermesh.json; a center without one is its own). */
 export async function connectURL(center: string): Promise<string> {
   const res = await net.fetch(discoveryURL(center), { signal: AbortSignal.timeout(10_000), cache: "no-store" });
@@ -123,7 +108,7 @@ export async function connectURL(center: string): Promise<string> {
 export async function completeSignIn(o: { localMachine: boolean }): Promise<void> {
   const p = current();
   if (!p?.code) throw new Error(i18n.t("main:signInExpired"));
-  const name = await computerName();
+  const name = await platform.computerName();
   const transport = createConnectTransport({ baseUrl: "http://hermeshd", httpVersion: "1.1", useBinaryFormat: true, nodeOptions: { socketPath: socketPath() } });
   await createClient(LocalService, transport).setup({
     relayUrl: await connectURL(p.center),

@@ -5,9 +5,9 @@ import path from "node:path";
 import enNotes from "../locales/en/releases.json";
 import zhNotes from "../locales/zh-CN/releases.json";
 import { feedNotes, nextCheckDelay, nextUpdate, releaseCatalog, squirrelFailure, type ReleaseNote, type Update, type UpdateEvent, type UpdateInfo } from "../shared/update";
-import { restartDaemon } from "./daemon";
 import { command } from "./ipc";
 import { world, worldListeners } from "./notify";
+import { platform } from "./platform";
 import { showSigner, signerBusy, signerListeners } from "./signer";
 import { showUpdates } from "./windows";
 
@@ -16,7 +16,8 @@ import { showUpdates } from "./windows";
 declare const __HERMESH_UPDATE_FEED__: string;
 declare const __HERMESH_RELEASE_VERSION__: string;
 const feedURL = `${__HERMESH_UPDATE_FEED__ || "https://github.com/hermeshai/hermesh/releases/latest/download"}/RELEASES-darwin-${process.arch}.json`;
-const supported = app.isPackaged && process.platform === "darwin";
+// Squirrel.Mac only: the Microsoft Store updates the Windows app (docs/windows.md §6.2).
+const supported = app.isPackaged && platform.token === "mac";
 let update: Update = { state: supported ? "idle" : "unsupported" };
 export const updateListeners = new Set<() => void>();
 const bundled = releaseCatalog(enNotes, zhNotes, __HERMESH_RELEASE_VERSION__);
@@ -221,7 +222,7 @@ function restartStaleDaemon() {
   daemonRestart = "soon";
   setTimeout(() => {
     const v = staleDaemon();
-    if (v) restartDaemon(`hermeshd ${v} with Hermesh ${app.getVersion()}`);
+    if (v) platform.restartDaemon(`hermeshd ${v} with Hermesh ${app.getVersion()}`);
     daemonRestart = v ? "done" : "no";
   }, 30_000);
 }

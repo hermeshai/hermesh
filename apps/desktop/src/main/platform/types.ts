@@ -1,0 +1,45 @@
+import type { BrowserWindow, BrowserWindowConstructorOptions } from "electron";
+import type { LoginItem, TerminalCommand } from "../../shared/bridge";
+
+/** The kinds of window, for their frames. */
+export type WindowKind = "main" | "onboarding" | "settings" | "auxiliary" | "panel";
+
+/**
+ * What differs between the systems the app runs on (docs/windows.md §5.1):
+ * one implementation each, chosen once at start (platform/index.ts).
+ */
+export interface Platform {
+  /** The pages' data-platform token. */
+  token: "mac" | "win";
+  /** The installed app runs hermeshd itself; development and test runs use a daemon of their own. */
+  installed: boolean;
+  /** True when the app may start here; otherwise it has moved, or is quitting. */
+  settle(): Promise<boolean>;
+  /** Takes hermesh:// links (sign-in and join). */
+  registerLinks(): void;
+  /** Makes hermeshd start by itself, and start now if it does not run. */
+  registerDaemon(): void;
+  /** Restarts hermeshd (after an update brought another version). */
+  restartDaemon(why: string): void;
+  /** The owner turned hermeshd's start off in the system's settings. */
+  daemonNeedsApproval(): boolean;
+  /** Opening the app at login. */
+  loginItem(): LoginItem | Promise<LoginItem>;
+  setLoginItem(on: boolean): LoginItem | Promise<LoginItem>;
+  /** This run was started at login: the app lives in the menu bar or notification area only. */
+  openedAtLogin(): boolean;
+  /** The system's settings for what starts at login. */
+  openLoginItems(): void;
+  /** The signer's program and the arguments for the app's language; undefined where there is none (yet). */
+  signer(language: string): { bin: string; args: string[] } | undefined;
+  /** Runs one of a fixed set of commands in a terminal window of the system's. */
+  runInTerminal(c: TerminalCommand, command: string): void;
+  /** Opens the system's list of processes (Activity Monitor, Task Manager). */
+  openProcessMonitor(): void;
+  /** This computer's name, as the person sees it. */
+  computerName(): Promise<string>;
+  /** A window's frame: its title bar and material. */
+  frame(kind: WindowKind): BrowserWindowConstructorOptions;
+  /** Places the window's own buttons for its mode (macOS's traffic lights). */
+  placeButtons(win: BrowserWindow, kind: WindowKind): void;
+}
