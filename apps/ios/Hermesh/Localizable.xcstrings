@@ -1213,16 +1213,6 @@
         }
       }
     },
-    "Authorized Clients": {
-      "localizations": {
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "授权客户端"
-          }
-        }
-      }
-    },
     "Back": {
       "localizations": {
         "zh-Hans": {
@@ -1889,6 +1879,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "设备"
+          }
+        }
+      }
+    },
+    "Did the work": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "干活的"
           }
         }
       }
@@ -4556,6 +4556,16 @@
         }
       }
     },
+    "Sent the work": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "派活的"
+          }
+        }
+      }
+    },
     "Separate Worktree: Each Session on Its Own Branch": {
       "localizations": {
         "zh-Hans": {
@@ -6358,21 +6368,21 @@
       }
     },
     "failure.adviceAndResume": {
+      "comment": "A failure's advice, then how to go on",
       "localizations": {
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "%1$@%2$@"
-          }
-        },
         "en": {
           "stringUnit": {
             "state": "translated",
             "value": "%1$@ %2$@"
           }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%1$@%2$@"
+          }
         }
-      },
-      "comment": "A failure's advice, then how to go on"
+      }
     },
     "hermeshd status": {
       "localizations": {

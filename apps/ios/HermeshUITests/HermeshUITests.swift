@@ -455,9 +455,9 @@ final class HermeshUITests: XCTestCase {
         try waitFor("nothing runs, today's work counted") { today.label.hasPrefix("0") && today.label.contains("个会话在跑") && today.label.contains("今天有活动") ? true : nil }
         XCTAssertTrue(text("今天的活从哪来、给了谁").exists, "the flow")
         let bot = app.descendants(matching: .any)["flow-client-bot"].firstMatch
-        XCTAssertTrue(bot.exists && bot.label.contains("轮"), "the agent that sent work: \(bot.label)")
+        XCTAssertTrue(bot.exists, "the agent that sent work")
         let toGemini = app.descendants(matching: .any)["flow-agent-gemini"].firstMatch
-        XCTAssertTrue(toGemini.exists && toGemini.label.contains("Gemini CLI"), "the coding agent that did it")
+        XCTAssertTrue(toGemini.exists && toGemini.label.contains("Gemini CLI") && toGemini.label.contains("轮"), "the coding agent that did it, and its turns: \(toGemini.label)")
         XCTAssertTrue(text("Cursor 今天没派活").exists, "the agent approved, which sent nothing")
         let gemini = app.descendants(matching: .any)["coding-agent-gemini"].firstMatch
         XCTAssertTrue(gemini.exists && gemini.label.contains("空闲") && gemini.label.contains("1 台机器"), gemini.label)

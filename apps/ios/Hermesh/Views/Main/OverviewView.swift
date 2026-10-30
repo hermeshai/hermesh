@@ -405,7 +405,8 @@ enum FlowPick: Hashable {
 }
 
 /// Who sent the day's work to which coding agent: the clients on the left,
-/// the agents on the right, each band as thick as its turns. Tapping a side
+/// the agents on the right, their logos at the bands' ends, each band as
+/// thick as its turns; the turns once, under each agent. Tapping a side
 /// picks it, its bands in the accent and the rest faint; tapping it again
 /// lets go. Under it, the clients that sent nothing.
 struct FlowCard: View {
@@ -420,9 +421,9 @@ struct FlowCard: View {
         let rows = CGFloat(max(flow.clients.count, flow.agents.count, 1))
         VStack(alignment: .leading, spacing: 8) {
             HStack {
-                Text("Authorized Clients")
+                Text("Sent the work")
                 Spacer()
-                Text("Agents")
+                Text("Did the work")
             }
             .font(.caption2).foregroundStyle(.secondary)
             GeometryReader { g in
@@ -437,13 +438,9 @@ struct FlowCard: View {
                                        control2: CGPoint(x: (layout.left + layout.right) / 2, y: band.to))
                             ctx.stroke(p, with: .color(color(b)), lineWidth: band.width)
                         }
-                        for port in layout.ports {
-                            let on = picked == port.pick
-                            ctx.fill(Path(roundedRect: port.rect, cornerRadius: 2), with: .color(on ? Color.accentColor : Color.primary.opacity(0.45)))
-                        }
                     }
                     ForEach(Array(flow.clients.enumerated()), id: \.element.id) { i, n in
-                        node(n, pick: .client(n.id), name: n.id.isEmpty ? String(localized: "\(n.count) more") : AgentLogo.name(clientName(n.id)), logo: n.id.isEmpty ? nil : clientName(n.id))
+                        node(n, pick: .client(n.id), name: n.id.isEmpty ? String(localized: "\(n.count) more") : AgentLogo.name(clientName(n.id)), logo: n.id.isEmpty ? nil : clientName(n.id), trailing: true)
                             .frame(width: layout.nodeWidth, height: 44)
                             .position(x: layout.nodeWidth / 2, y: layout.clientY[i])
                     }
@@ -463,22 +460,22 @@ struct FlowCard: View {
         .background(Color(.secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 26, style: .continuous))
     }
 
-    private func node(_ n: WorkFlow.Node, pick: FlowPick, name: String, logo: String?) -> some View {
+    /// A client (its logo trailing, next to its bands) or an agent (its
+    /// logo leading, its turns under its name).
+    private func node(_ n: WorkFlow.Node, pick: FlowPick, name: String, logo: String?, trailing: Bool = false) -> some View {
         let on = picked == pick
         return Button {
             withAnimation(.smooth) { picked = on ? nil : pick }
         } label: {
             HStack(spacing: 8) {
-                if let logo {
-                    AgentLogo(id: logo, size: 22)
-                } else {
-                    Image(systemName: "ellipsis").font(.caption.weight(.semibold)).foregroundStyle(.secondary).frame(width: 22, height: 22)
-                }
-                VStack(alignment: .leading, spacing: 1) {
+                if trailing { Spacer(minLength: 0) }
+                if !trailing { mark(logo) }
+                VStack(alignment: trailing ? .trailing : .leading, spacing: 1) {
                     Text(name).font(.subheadline.weight(on ? .semibold : .regular)).foregroundStyle(on ? Color.accentColor : .primary).lineLimit(1)
-                    Text("\(n.turns) turns").font(.caption).foregroundStyle(.secondary).monospacedDigit()
+                    if !trailing { Text("\(n.turns) turns").font(.caption).foregroundStyle(.secondary).monospacedDigit() }
                 }
-                Spacer(minLength: 0)
+                if trailing { mark(logo) }
+                if !trailing { Spacer(minLength: 0) }
             }
             .contentShape(.rect)
         }
@@ -487,6 +484,14 @@ struct FlowCard: View {
         .accessibilityElement(children: .combine)
         .accessibilityAddTraits(on ? .isSelected : [])
         .accessibilityIdentifier(pick.identifier(name))
+    }
+
+    @ViewBuilder private func mark(_ logo: String?) -> some View {
+        if let logo {
+            AgentLogo(id: logo, size: 22)
+        } else {
+            Image(systemName: "ellipsis").font(.caption.weight(.semibold)).foregroundStyle(.secondary).frame(width: 22, height: 22)
+        }
     }
 
     /// Whether nothing is picked, or this is picked or sends work to (or gets work from) what is.
@@ -520,11 +525,10 @@ extension FlowPick {
 /// Where the flow's nodes sit and its bands run: nodes spread down each
 /// side; each band leaves its client and reaches its agent stacked with
 /// the node's other bands, in the order of the other side, as thick as its
-/// turns (the busiest node 22 points; a band without a finished turn still
+/// turns (the busiest node 16 points; a band without a finished turn still
 /// shows, thin).
 struct FlowLayout {
     struct BandLine { var from: CGFloat, to: CGFloat, width: CGFloat }
-    struct Port { var rect: CGRect, pick: FlowPick }
 
     let nodeWidth: CGFloat
     let left: CGFloat
@@ -532,7 +536,6 @@ struct FlowLayout {
     var clientY: [CGFloat] = []
     var agentY: [CGFloat] = []
     var bands: [BandLine] = []
-    var ports: [Port] = []
 
     init(flow: WorkFlow, width: CGFloat, height: CGFloat) {
         nodeWidth = (width - max(56, width * 0.22)) / 2
@@ -542,27 +545,23 @@ struct FlowLayout {
         clientY = spread(flow.clients.count)
         agentY = spread(flow.agents.count)
         let top = CGFloat(max((flow.clients + flow.agents).map(\.turns).max() ?? 1, 1))
-        let k = 22 / top
+        let k = 16 / top
         let widths = flow.bands.map { max(1.5, CGFloat($0.turns) * k) }
         let ci = { (id: String) in flow.clients.firstIndex { $0.id == id } ?? 0 }
         let ai = { (id: String) in flow.agents.firstIndex { $0.id == id } ?? 0 }
         var from = Array(repeating: CGFloat(0), count: flow.bands.count)
         var to = from
-        var lefts: [Port] = [], rights: [Port] = []
         for (i, n) in flow.clients.enumerated() {
             let mine = flow.bands.indices.filter { flow.bands[$0].client == n.id }.sorted { ai(flow.bands[$0].agent) < ai(flow.bands[$1].agent) }
             var y = clientY[i] - mine.reduce(0) { $0 + widths[$1] } / 2
-            lefts.append(Port(rect: CGRect(x: left - 4, y: y, width: 4, height: mine.reduce(0) { $0 + widths[$1] }), pick: .client(n.id)))
             for b in mine { from[b] = y + widths[b] / 2; y += widths[b] }
         }
         for (i, n) in flow.agents.enumerated() {
             let mine = flow.bands.indices.filter { flow.bands[$0].agent == n.id }.sorted { ci(flow.bands[$0].client) < ci(flow.bands[$1].client) }
             var y = agentY[i] - mine.reduce(0) { $0 + widths[$1] } / 2
-            rights.append(Port(rect: CGRect(x: right, y: y, width: 4, height: mine.reduce(0) { $0 + widths[$1] }), pick: .agent(n.id)))
             for b in mine { to[b] = y + widths[b] / 2; y += widths[b] }
         }
         bands = flow.bands.indices.map { BandLine(from: from[$0], to: to[$0], width: widths[$0]) }
-        ports = lefts + rights
     }
 }
 
