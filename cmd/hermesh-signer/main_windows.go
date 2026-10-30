@@ -113,7 +113,11 @@ var parts = func(sid, test string) (signer.Keys, signer.Owner, error) {
 	if test != "" {
 		return nil, nil, errors.New("this build has no test signer")
 	}
-	return tpmKeys{dir: keysDir(sid)}, newWebPanel(sid), nil
+	// The task dialog, drawn in this elevated process. Not the WebView2
+	// panel (web_windows.go): Edge de-elevates WebView2's processes, which
+	// then can't write its folder, and the user's other programs could
+	// change what they draw.
+	return tpmKeys{dir: keysDir(sid)}, newPanel(), nil
 }
 
 // keysDir holds what opens each root key of the user sid, in a folder only
