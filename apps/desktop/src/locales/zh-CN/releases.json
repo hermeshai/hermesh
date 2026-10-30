@@ -1,7 +1,19 @@
 {
   "unreleased": {
-    "improvements": [],
-    "fixes": []
+    "improvements": [
+      "iPhone 首次打开只问一件事：第一次用，还是已经在别的设备上用 Hermesh。第一次用时会先讲清管理密钥是做什么的、打开通知，再带你设置电脑、准备编码 agent、连接 agent 并完成第一个任务。",
+      "iPhone 上的会话和 Mac 上一样好读：回复带格式，代码高亮，工具调用折叠成一行，打开对话就停在最后一条消息。",
+      "agent 开了新会话时，iPhone 会通知你：标题、谁开的、在哪台机器上。可以在账号 → 通知里关掉。",
+      "自建服务器只要一条 `docker run`，镜像在 Docker Hub（hermeshai/hermesh-relay）：用 `-e` 配置，服务器重启后自动起来，ARM 服务器也能用。README 写清了要准备什么。",
+      "没有域名？可以直接用 IP 地址连自己的服务器（HTTP）。继续之前，app 会说明哪些信息不加密。",
+      "自建服务器的 MCP 地址（给 Claude、ChatGPT 用）带有密钥，只有你能接入应用：在 Mac 的设置 → 账号与设备 → 高级，或 iPhone 的账号与设备里复制。",
+      "加入已有 Hermesh 的 Mac 只设置它自己：首次运行到准备好编码 agent 就结束。"
+    ],
+    "fixes": [
+      "服务器的 Docker 镜像能正常启动了：之前一启动就报 “unable to open database file”。",
+      "在自建服务器上，别人未经你批准接入的应用不再能挤掉你自己的应用，闲置一天也会自动结束。",
+      "iPhone 上的「开始使用」完成后，重新连接也不会再冒出来。"
+    ]
   },
   "0.1.1-beta.5": {
     "improvements": [

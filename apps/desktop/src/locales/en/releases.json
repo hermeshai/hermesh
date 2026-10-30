@@ -1,7 +1,19 @@
 {
   "unreleased": {
-    "improvements": [],
-    "fixes": []
+    "improvements": [
+      "On the iPhone, the first run asks one thing: first time, or already using Hermesh on another device. The first time, it shows what your management key does, turns on notifications, then guides you through your computer, its coding agents, connecting an agent and its first task.",
+      "Sessions on the iPhone read as they do on the Mac: formatted replies, coloured code, tool calls folded into one line, and a conversation opens at its last message.",
+      "The iPhone tells you when an agent starts a session: its title, who started it and where. Turn it off in Account → Notifications.",
+      "Run your own server with one `docker run` from Docker Hub (hermeshai/hermesh-relay): settings by `-e`, it starts again with the server, and runs on ARM servers too. The README says what to prepare.",
+      "No domain? Use your own server by its IP address, over plain HTTP. The app says what that leaves unencrypted before you go on.",
+      "Your own server’s MCP address, for Claude and ChatGPT, has a key in it, so only you can connect apps: copy it in Settings → Account & Devices → Advanced on the Mac, or Account and Devices on the iPhone.",
+      "A Mac that joins your Hermesh only sets itself up: its first run ends with its coding agents."
+    ],
+    "fixes": [
+      "The server’s Docker image starts: it stopped at once with “unable to open database file”.",
+      "On your own server, apps someone connected without your approval can’t keep yours out any more, and they end after a day unused.",
+      "On the iPhone, Get Started, once done, stays away after a reconnect."
+    ]
   },
   "0.1.1-beta.5": {
     "improvements": [
