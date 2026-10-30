@@ -6,7 +6,9 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"unsafe"
 
+	"golang.org/x/sys/windows"
 	"golang.org/x/sys/windows/registry"
 )
 
@@ -76,4 +78,54 @@ func registryPath(root registry.Key, path string) (string, error) {
 		return registry.ExpandString(v)
 	}
 	return v, nil
+}
+
+var (
+	user32             = windows.NewLazySystemDLL("user32.dll")
+	findWindow         = user32.NewProc("FindWindowW")
+	sendMessageTimeout = user32.NewProc("SendMessageTimeoutW")
+)
+
+// OnUserPath puts dir at the end of the user's PATH, or takes it off, as
+// the registry holds it (its %VARIABLES% unexpanded), and tells Explorer
+// that the environment changed, so the terminals it starts see it at once.
+// Explorer only, a second at most each: a broadcast waits on every window
+// in turn, seconds where one doesn't answer, and the installer has little
+// time.
+func OnUserPath(dir string, on bool) error {
+	k, err := registry.OpenKey(registry.CURRENT_USER, "Environment", registry.QUERY_VALUE|registry.SET_VALUE)
+	if err != nil {
+		return err
+	}
+	defer k.Close()
+	v, _, err := k.GetStringValue("Path")
+	if err != nil && !errors.Is(err, registry.ErrNotExist) {
+		return err
+	}
+	var parts []string
+	for _, p := range strings.Split(v, ";") {
+		if p != "" && !strings.EqualFold(filepath.Clean(p), filepath.Clean(dir)) {
+			parts = append(parts, p)
+		}
+	}
+	if on {
+		parts = append(parts, dir)
+	}
+	next := strings.Join(parts, ";")
+	if next == v {
+		return nil
+	}
+	if err := k.SetExpandStringValue("Path", next); err != nil {
+		return err
+	}
+	const wmSettingChange, smtoAbortIfHung = 0x1a, 0x2
+	env, _ := windows.UTF16PtrFromString("Environment")
+	for _, class := range []string{"Progman", "Shell_TrayWnd"} {
+		name, _ := windows.UTF16PtrFromString(class)
+		if w, _, _ := findWindow.Call(uintptr(unsafe.Pointer(name)), 0); w != 0 {
+			var result uintptr
+			sendMessageTimeout.Call(w, wmSettingChange, 0, uintptr(unsafe.Pointer(env)), smtoAbortIfHung, 1000, uintptr(unsafe.Pointer(&result)))
+		}
+	}
+	return nil
 }

@@ -30,7 +30,9 @@ protocol.registerSchemesAsPrivileged([
   { scheme: "app", privileges: { standard: true, secure: true, supportFetchAPI: true, corsEnabled: true, stream: true, codeCache: true } },
 ]);
 
-if (!app.requestSingleInstanceLock()) app.quit();
+// Before the single-instance lock: an update's event comes while the app runs.
+const installerEvent = platform.installerEvent();
+if (installerEvent || !app.requestSingleInstanceLock()) app.quit();
 
 function serve() {
   // In development the page comes from the Vite server, a different origin.
@@ -73,6 +75,8 @@ app.on("second-instance", (_e, argv) => {
 });
 
 app.whenReady().then(async () => {
+  // Quitting still reaches ready: nothing of the app's runs for the installer.
+  if (installerEvent) return;
   applyAppearance();
   if (!(await platform.settle())) return;
   platform.registerLinks();

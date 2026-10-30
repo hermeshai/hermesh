@@ -32,6 +32,10 @@ export const mac: Platform = {
     return installed ? settleInApplications() : Promise.resolve(true);
   },
 
+  installerEvent() {
+    return false;
+  },
+
   registerLinks() {
     if (app.isPackaged) app.setAsDefaultProtocolClient("hermesh");
   },

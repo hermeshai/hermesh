@@ -113,10 +113,10 @@ test("a version is released only with its own highlights in both languages", () 
   assert.equal(body, "### Improvements\n\n- New\n\n### Fixes\n\n- Fixed\n\n---\n\n### 改进\n\n- 新\n");
 
   // What to install comes first, in each language, with the command and the image.
-  const guide = { heading: "Install", mac: "Mac", machine: "Run `{{command}}`", device: "Device", cli: "CLI", relay: "Image {{image}}", note: "Rest." };
-  const zhGuide = { heading: "安装", mac: "Mac", machine: "运行 `{{command}}`", device: "设备", cli: "命令行", relay: "镜像 {{image}}", note: "其余。" };
+  const guide = { heading: "Install", mac: "Mac", windows: "PC", machine: "Run `{{command}}`", device: "Device", cli: "CLI", relay: "Image {{image}}", note: "Rest." };
+  const zhGuide = { heading: "安装", mac: "Mac", windows: "PC", machine: "运行 `{{command}}`", device: "设备", cli: "命令行", relay: "镜像 {{image}}", note: "其余。" };
   const withGuide = releaseBody(en, zh, "0.2.0", { en: { improvements: "Improvements", fixes: "Fixes", install: guide }, "zh-CN": { improvements: "改进", fixes: "修复", install: zhGuide } },
     { command: "curl x | sh", image: "relay:v0.2.0" });
-  assert.ok(withGuide.startsWith("### Install\n\n- Mac\n- Run `curl x | sh`\n- Device\n- CLI\n- Image relay:v0.2.0\n\nRest.\n\n### Improvements"), withGuide);
-  assert.match(withGuide, /---\n\n### 安装\n\n- Mac\n- 运行 `curl x \| sh`[\s\S]*其余。\n\n### 改进/);
+  assert.ok(withGuide.startsWith("### Install\n\n- Mac\n- PC\n- Run `curl x | sh`\n- Device\n- CLI\n- Image relay:v0.2.0\n\nRest.\n\n### Improvements"), withGuide);
+  assert.match(withGuide, /---\n\n### 安装\n\n- Mac\n- PC\n- 运行 `curl x \| sh`[\s\S]*其余。\n\n### 改进/);
 });

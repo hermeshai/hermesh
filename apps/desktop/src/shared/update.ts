@@ -168,7 +168,7 @@ export function releaseNotesProblem(en: Record<string, ReleaseSummary>, zh: Reco
 }
 
 /** Which file is for what, at the top of a release's text (updates.json's install). */
-type InstallGuide = { heading: string; mac: string; machine: string; device: string; cli: string; relay: string; note: string };
+type InstallGuide = { heading: string; mac: string; windows: string; machine: string; device: string; cli: string; relay: string; note: string };
 type Headings = { improvements: string; fixes: string; install?: InstallGuide };
 
 /**
@@ -181,7 +181,7 @@ export function releaseBody(en: Record<string, ReleaseSummary>, zh: Record<strin
     const g = h.install;
     if (!install || !g) return "";
     const fill = (l: string) => l.replaceAll("{{command}}", install.command).replaceAll("{{image}}", install.image);
-    return `### ${g.heading}\n\n${[g.mac, g.machine, g.device, g.cli, g.relay].map((l) => `- ${fill(l)}`).join("\n")}\n\n${g.note}\n\n`;
+    return `### ${g.heading}\n\n${[g.mac, g.windows, g.machine, g.device, g.cli, g.relay].map((l) => `- ${fill(l)}`).join("\n")}\n\n${g.note}\n\n`;
   };
   const part = (s: ReleaseSummary, h: Headings) =>
     guide(h) +

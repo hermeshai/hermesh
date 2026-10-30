@@ -19,6 +19,9 @@ var tempVars = []string{"TMPDIR"}
 
 func sameName(a, b string) bool { return a == b }
 
+// OnUserPath is Windows' (the registry's user PATH).
+func OnUserPath(string, bool) error { return errors.ErrUnsupported }
+
 // Source says where the PATH comes from, for diagnostics.
 func Source() string { return shell() + " -lic" }
 

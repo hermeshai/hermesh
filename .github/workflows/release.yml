@@ -159,9 +159,42 @@ jobs:
           if [ -n "${SIGNING_KEYCHAIN:-}" ]; then security delete-keychain "$SIGNING_KEYCHAIN" || true; fi
           rm -f "$RUNNER_TEMP/notary-key.p8"
       - run: gh release upload "$TAG" "dist/Hermesh-macos-${{ matrix.arch }}.dmg" "dist/Hermesh-macos-${{ matrix.arch }}.zip" "dist/RELEASES-darwin-${{ matrix.arch }}.json" --clobber
+  # The Windows app (docs/windows.md §6.1): an unsigned Setup.exe per architecture, the update
+  # package, and its feed, signed with the release key as the app checks it. x64 is installed,
+  # opened and uninstalled on the runner.
+  windows-app:
+    needs: notes
+    strategy:
+      matrix:
+        arch: [arm64, x64]
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - run: corepack enable && pnpm install --frozen-lockfile
+      - name: build, and sign the feed
+        shell: bash
+        env:
+          RELEASE_SIGNING_KEY: ${{ secrets.RELEASE_SIGNING_KEY }}
+        run: |
+          umask 077
+          printf '%s\n' "$RELEASE_SIGNING_KEY" > "$RUNNER_TEMP/release.key"
+          VERSION="${GITHUB_REF_NAME#v}" HERMESH_ARCH=${{ matrix.arch }} RELEASE_SIGNING_KEY_FILE="$RUNNER_TEMP/release.key" node apps/desktop/scripts/package-win.mjs
+          rm -f "$RUNNER_TEMP/release.key"
+      - name: check the installer
+        if: matrix.arch == 'x64'
+        shell: pwsh
+        run: apps/desktop/scripts/check-windows-setup.ps1 dist/Hermesh-windows-x64-setup.exe
+      - shell: bash
+        run: gh release upload "$TAG" dist/Hermesh-windows-${{ matrix.arch }}-setup.exe dist/Hermesh-windows-${{ matrix.arch }}.nupkg dist/RELEASES-win32-${{ matrix.arch }}.json dist/RELEASES-win32-${{ matrix.arch }}.json.sig dist/Hermesh.ico --clobber
   # Every file there and right, then a prerelease.
   publish:
-    needs: [binaries, relay-image, mac-app]
+    needs: [binaries, relay-image, mac-app, windows-app]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4

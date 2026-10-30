@@ -48,6 +48,7 @@
   "install": {
     "heading": "Install",
     "mac": "**On a Mac**, to approve and run coding agents: `Hermesh-macos-arm64.dmg` (Apple silicon) or `Hermesh-macos-x64.dmg` (Intel)",
+    "windows": "**On a Windows 11 PC**, to approve and run coding agents: `Hermesh-windows-x64-setup.exe`, or `Hermesh-windows-arm64-setup.exe` on Arm. It isn't signed yet: Windows warns once, and More info › Run anyway installs it",
     "machine": "**On a machine for coding agents** (Linux or macOS): `{{command}}`",
     "device": "**On a Linux computer that only approves**: the same command, ending `sh -s -- --device`",
     "cli": "**For your agent's CLI**: the same command, ending `sh -s -- --cli`",

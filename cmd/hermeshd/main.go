@@ -451,6 +451,22 @@ to that owner's devices by itself. Then it installs the background service.`,
 service on Linux (with lingering, so it starts at boot with nobody logged
 in), a LaunchAgent on macOS, a Task Scheduler logon task on Windows.
 "hermeshd pair" installs it.`}
+	var serviceOwner bool
+	install := &cobra.Command{Use: "install", Short: "Install and start the service (again)", Args: cobra.NoArgs, RunE: func(cmd *cobra.Command, _ []string) error {
+		bin, _ := os.Executable()
+		var args []string
+		if serviceOwner {
+			args = []string{"--owner"}
+		}
+		if err := service.Install(bin, dataDir, filepath.Join(dataDir, "logs"), args...); err != nil {
+			return err
+		}
+		serviceLine(false)
+		return nil
+	}}
+	// The Windows app's daemon: the owner's, and this PC's machine (docs/windows.md §6.1).
+	install.Flags().BoolVar(&serviceOwner, "owner", false, "also run the owner role")
+	install.Flags().MarkHidden("owner")
 	svc.AddCommand(&cobra.Command{Use: "status", Short: "Whether the service runs, starts at boot, and where its log is", Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			if !serviceLine(false) {
@@ -458,14 +474,7 @@ in), a LaunchAgent on macOS, a Task Scheduler logon task on Windows.
 			}
 			return nil
 		}},
-		&cobra.Command{Use: "install", Short: "Install and start the service (again)", Args: cobra.NoArgs, RunE: func(cmd *cobra.Command, _ []string) error {
-			bin, _ := os.Executable()
-			if err := service.Install(bin, dataDir, filepath.Join(dataDir, "logs")); err != nil {
-				return err
-			}
-			serviceLine(false)
-			return nil
-		}},
+		install,
 		&cobra.Command{Use: "restart", Short: "Restart the service (after an update)", Args: cobra.NoArgs, RunE: func(cmd *cobra.Command, _ []string) error {
 			if err := service.Restart(); err != nil {
 				return err
@@ -532,9 +541,17 @@ Hermesh also updates itself when no session is running, unless
 	// The tools a session's coding agent starts (docs/agent-messages.md §7.4).
 	messageMCP := &cobra.Command{Use: "message-mcp", Hidden: true, Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error { return machine.ServeMessageMCP(cmd.Context()) }}
+	// The Windows app's installer puts its programs' folder on the user's PATH, and takes it off (docs/windows.md §6.1).
+	userPath := &cobra.Command{Use: "user-path add|remove <dir>", Hidden: true, Args: cobra.ExactArgs(2),
+		RunE: func(_ *cobra.Command, args []string) error {
+			if args[0] != "add" && args[0] != "remove" {
+				return fmt.Errorf("user-path: add or remove, not %q", args[0])
+			}
+			return shellenv.OnUserPath(args[1], args[0] == "add")
+		}}
 	root.AddCommand(deviceCommands(&dataDir)...)
 	root.AddCommand(eraseCommand(&dataDir))
-	root.AddCommand(run, pair, doctor, status, audit, svc, upd, helper, messageMCP, projects,
+	root.AddCommand(run, pair, doctor, status, audit, svc, upd, helper, messageMCP, userPath, projects,
 		&cobra.Command{Use: "version", Short: "Print the version", Args: cobra.NoArgs, Run: func(*cobra.Command, []string) { fmt.Println(machine.Version) }})
 	return root
 }

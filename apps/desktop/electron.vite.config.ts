@@ -1,6 +1,7 @@
 import tailwindcss from "@tailwindcss/vite";
 import react from "@vitejs/plugin-react";
 import { defineConfig } from "electron-vite";
+import fs from "node:fs";
 import path from "node:path";
 
 // HERMESH_DESKTOP_OUT builds somewhere other than out/ (tests building side by side).
@@ -14,6 +15,8 @@ export default defineConfig({
     define: {
       __HERMESH_RELEASE_VERSION__: JSON.stringify(process.env.VERSION ?? ""),
       __HERMESH_UPDATE_FEED__: JSON.stringify(process.env.HERMESH_UPDATE_FEED ?? ""),
+      // The release key, which signs the Windows app's feed; test builds bring their own.
+      __HERMESH_RELEASE_PUBKEY__: JSON.stringify(fs.readFileSync(process.env.HERMESH_RELEASE_PUBKEY_FILE || path.join(import.meta.dirname, "../../scripts/release-pubkey.pem"), "utf8")),
       __HERMESH_TEST_DATA_DIR__: JSON.stringify(process.env.HERMESH_TEST_DATA_DIR ?? ""),
     },
   },
