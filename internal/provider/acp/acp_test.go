@@ -69,8 +69,12 @@ func newFixture(t *testing.T, env ...string) *fixture {
 }
 
 func (f *fixture) start(prompt, resume, model string) (provider.Session, error) {
-	return f.p.Start(context.Background(), provider.StartSpec{WorkDir: f.dir, TempDir: f.t.TempDir(),
+	s, err := f.p.Start(context.Background(), provider.StartSpec{WorkDir: f.dir, TempDir: f.t.TempDir(),
 		Prompt: prompt, ResumeRef: resume, Model: model, Env: f.env, Gate: f.gate.gate})
+	if err == nil {
+		f.t.Cleanup(func() { s.Close() }) // a running agent keeps its folders (Windows cannot delete them)
+	}
+	return s, err
 }
 
 func collect(t *testing.T, s provider.Session) (events []provider.Event, done provider.Event) {
