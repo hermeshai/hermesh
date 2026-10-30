@@ -37,6 +37,7 @@ test("settings opens on 通用; 授权 lists the grants, one opens its scope, an
   await expect(nav(settings, "通用")).toHaveAttribute("aria-current", "page");
   const general = page_(settings, "通用");
   await expect(general.getByRole("switch", { name: "连接请求" })).toHaveAttribute("aria-checked", "true");
+  await expect(general.getByRole("switch", { name: "新会话" })).toHaveAttribute("aria-checked", "true");
   const login = general.getByRole("switch", { name: "登录时打开 Hermesh" });
   await expect(login).toHaveAttribute("aria-checked", "false");
   await login.click();

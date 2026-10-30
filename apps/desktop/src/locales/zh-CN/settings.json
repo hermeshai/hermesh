@@ -50,6 +50,7 @@
     "notifications": "通知",
     "connectionRequests": "连接请求",
     "connectionRequestsDesc": "需要你批准，一直会通知",
+    "sessionStarted": "新会话",
     "agentQuestions": "agent 提问",
     "agentQuestionsDesc": "没人回答的话 30 分钟后过期",
     "sessionFailed": "会话出错",

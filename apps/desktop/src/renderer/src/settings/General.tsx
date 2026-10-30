@@ -74,6 +74,7 @@ export function General() {
           <SRow title={t("general.connectionRequests")} desc={t("general.connectionRequestsDesc")}>
             <Switch on label={t("general.connectionRequests")} disabled />
           </SRow>
+          {pref("notifyStarted", t("general.sessionStarted"))}
           {pref("notifyQuestion", t("general.agentQuestions"), t("general.agentQuestionsDesc"))}
           {pref("notifyFailed", t("general.sessionFailed"))}
           {pref("notifyTurnDone", t("general.turnDone"))}

@@ -62,6 +62,7 @@
     "startFailed": "在 Hermesh 设置里打开这台机器的页面，看看是什么让它启动不了 agent。"
   },
   "notice": {
+    "startedBody": "{{grant}} 发起 · {{project}} · {{agent}}",
     "questionTitle": "{{grant}} 在等你回答",
     "questionBody": "{{title}}：{{text}}",
     "failedTitle": "「{{title}}」出错了：{{failure}}",
