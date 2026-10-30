@@ -9,84 +9,111 @@ import UserNotifications
 /// The official service the app signs in to.
 let officialCenter = URL(string: "https://hermesh.io")!
 
-/// Joining an owner, or setting one up: sign in (or type your own server's
-/// connection address), create the owner key in the Secure Enclave, wait for
-/// another trusted device to approve, type its two digits, allow
-/// notifications.
+/// The first run (docs/onboarding.md §5.1): first time, or already using
+/// Hermesh on another device; signing in (or one's own server), then this
+/// iPhone's management key and the guide, or another device's approval and
+/// its two digits; then notifications.
 struct OnboardingView: View {
     @Environment(AppModel.self) private var model
     @Environment(\.webAuthenticationSession) private var webAuth
+    @AppStorage(Guide.key) private var guide = ""
 
-    enum Step: Equatable {
+    enum Step: Hashable {
         case welcome
         case ownServer
-        /// Ready to join this owner, through this relay.
-        case join(owner: String, relay: String)
-        case waiting(code: String, verification: String)
+        /// Chose the first time, but the account already has trusted devices.
+        case inUse(owner: String, relay: String)
+        /// Chose another device, but the account is new.
+        case newAccount
+        /// The management key, made with `pending` once asked for.
+        case key
+        /// Asking to join this owner, then waiting for another device.
+        case approve(owner: String, relay: String)
         case digits(code: String, by: String)
-        case setup
-        case notifications
+        case joined
+        /// Last; the guide follows when this iPhone was set up here.
+        case notifications(guided: Bool)
     }
 
     @State private var step: Step = .welcome
+    @State private var forward = true
+    /// The card chosen on the first page: already using Hermesh elsewhere.
+    @State private var joining = false
+    /// Signing in again for another account: no cookies kept from the last.
+    @State private var anotherAccount = false
+    /// The setup the key page runs, and the server it names.
+    @State private var pending: Hermesh_Local_V1_SetupRequest?
+    @State private var server = "hermesh.io"
+    /// The request to join, once made: its code and the code to compare.
+    @State private var request: (code: String, verification: String)?
     @State private var address = ""
     @State private var claim = ""
     @State private var claiming = false
     @State private var digits = ""
     @State private var busy = false
     @State private var error: String?
+    @State private var lost = false
     @State private var waitTask: Task<Void, Never>?
     @FocusState private var typing: Bool
 
     var body: some View {
-        VStack(spacing: 0) {
-            switch step {
-            case .welcome: welcome
-            case .ownServer: ownServer
-            case .join(let owner, let relay): joinIntro(owner: owner, relay: relay)
-            case .waiting(let code, let verification): waiting(code: code, verification: verification)
-            case .digits(let code, let by): digitsStep(code: code, by: by)
-            case .setup: VStack(spacing: 16) { MovingMark(size: 72); Text("Setting up…").foregroundStyle(.secondary) }.frame(maxHeight: .infinity)
-            case .notifications: notificationsStep
-            }
+        ZStack {
+            page(step)
+                .id(step)
+                .transition(.asymmetric(insertion: .move(edge: forward ? .trailing : .leading), removal: .move(edge: forward ? .leading : .trailing)))
         }
-        .padding(.horizontal, 28)
-        .padding(.bottom, 20)
-        .animation(.smooth, value: step)
+        .clipped()
+        .background(Color(.systemGroupedBackground))
         .onChange(of: model.onboardingLink) { _, url in if let url { handle(url) } }
     }
 
-    // MARK: Steps
+    private func go(_ next: Step, back: Bool = false) {
+        error = nil
+        forward = !back
+        withAnimation(.smooth(duration: 0.4)) { step = next }
+    }
+
+    @ViewBuilder private func page(_ s: Step) -> some View {
+        switch s {
+        case .welcome: welcome
+        case .ownServer: ownServer
+        case .inUse(let owner, let relay): inUse(owner: owner, relay: relay)
+        case .newAccount: newAccount
+        case .key: keyPage
+        case .approve(let owner, let relay): approve(owner: owner, relay: relay)
+        case .digits(let code, let by): digitsPage(code: code, by: by)
+        case .joined: joinedPage
+        case .notifications(let guided): notificationsPage(guided: guided)
+        }
+    }
+
+    // MARK: Pages
 
     private var welcome: some View {
-        VStack(spacing: 14) {
-            ErasedNote()
+        VStack(spacing: 0) {
+            ErasedNote().padding(.horizontal, 16).padding(.top, 8)
             Spacer()
-            Mark(size: 96)
-            Text("Hermesh").font(.largeTitle.bold())
-            Text("Keep an eye on your agents from your phone: answer their questions, approve new connections, and stop them when needed.")
-                .font(.body).foregroundStyle(.secondary).multilineTextAlignment(.center)
+            Mark(size: 88)
+            Text(verbatim: "Hermesh").font(.largeTitle.bold()).padding(.top, 14)
             Spacer()
-            if let error { Text(error).font(.footnote).foregroundStyle(.red).multilineTextAlignment(.center) }
-            Button {
-                signIn()
-            } label: {
-                Text("Sign In").frame(maxWidth: .infinity)
+            if let error { Text(error).font(.footnote).foregroundStyle(.red).multilineTextAlignment(.center).padding(.horizontal, 28).padding(.bottom, 12) }
+            GuideCard {
+                GuideChoice(systemImage: "sparkle", accent: true, title: Text("First time using Hermesh"), id: "start-new") { signIn(joining: false) }
+                GuideDivider()
+                GuideChoice(systemImage: "laptopcomputer.and.iphone", title: Text("Already using it on another device"), id: "start-join") { signIn(joining: true) }
             }
-            .buttonStyle(.glassProminent).controlSize(.large).disabled(busy)
-            .accessibilityIdentifier("sign-in")
-            Button("Use Your Own Server…") { step = .ownServer }
-                .padding(.top, 4)
+            .disabled(busy)
+            Button("Use Your Own Server…") { go(.ownServer) }
+                .padding(.vertical, 14)
                 .accessibilityIdentifier("own-server")
-            Text("Signing in the first time creates your account.").font(.footnote).foregroundStyle(.secondary)
         }
+        .padding(.bottom, 8)
     }
 
     private var ownServer: some View {
         VStack(alignment: .leading, spacing: 14) {
             Button {
-                step = .welcome
-                error = nil
+                go(.welcome, back: true)
             } label: {
                 Image(systemName: "chevron.left").font(.headline).frame(width: 30, height: 30)
             }
@@ -120,8 +147,8 @@ struct OnboardingView: View {
                 typing = false
                 if claiming { return claimServer() }
                 guard let a = ConnectAddress(address) else { return error = String(localized: "That isn’t a connection address. It looks like relay.example.com/o_…") }
-                error = nil
-                step = .join(owner: a.owner, relay: a.relay)
+                server = URL(string: a.relay)?.host ?? a.relay
+                go(.approve(owner: a.owner, relay: a.relay))
             } label: {
                 Text("Continue").frame(maxWidth: .infinity)
             }
@@ -129,92 +156,144 @@ struct OnboardingView: View {
             .disabled(address.trimmingCharacters(in: .whitespaces).isEmpty || (claiming && claim.trimmingCharacters(in: .whitespaces).isEmpty) || busy)
             .accessibilityIdentifier("continue")
         }
+        .padding(.horizontal, 28)
+        .padding(.bottom, 20)
     }
 
-    private func joinIntro(owner: String, relay: String) -> some View {
-        VStack(spacing: 14) {
-            Spacer()
-            Image(systemName: "iphone").font(.system(size: 52)).foregroundStyle(.secondary)
-            Text("Add this iPhone to your account").font(.title.bold()).multilineTextAlignment(.center)
-            Text("This iPhone creates an owner key in its Secure Enclave, then one of your trusted devices approves it.")
-                .foregroundStyle(.secondary).multilineTextAlignment(.center)
-            Spacer()
-            Text("This iPhone doesn’t run tasks.")
-                .font(.footnote).foregroundStyle(.secondary).multilineTextAlignment(.center)
-            if let error { Text(error).font(.footnote).foregroundStyle(.red).multilineTextAlignment(.center) }
-            Button {
-                join(owner: owner, relay: relay)
-            } label: {
-                Label("Continue", systemImage: "faceid").frame(maxWidth: .infinity)
-            }
-            .buttonStyle(.glassProminent).controlSize(.large).disabled(busy)
-            .accessibilityIdentifier("join")
-            Button("Cancel") { step = .welcome; error = nil }
+    private func inUse(owner: String, relay: String) -> some View {
+        GuidePage(centered: true, icon: AnyView(GuideTile(systemImage: "laptopcomputer.and.iphone", size: 64)), title: Text("This account is already in use")) {
+            EmptyView()
+        } footer: {
+            GuideButton(title: Text("Approve on Your Other Device"), id: "approve-elsewhere") { go(.approve(owner: owner, relay: relay)) }
+            GuideLink(title: Text("Use Another Account"), id: "another-account") { useAnotherAccount() }
         }
     }
 
-    private func waiting(code: String, verification: String) -> some View {
-        VStack(spacing: 16) {
-            Spacer()
-            WaitingMark(size: 88)
-            Text("Approve on your other device").font(.title2.bold()).multilineTextAlignment(.center)
-            Text("A request to join appears on your trusted devices. Approve it if the code is the same.")
-                .foregroundStyle(.secondary).multilineTextAlignment(.center)
-            CodeTiles(code: verification, caption: "Verification code").padding(.top, 8)
-            Text("Waiting for approval…").foregroundStyle(.secondary).padding(.top, 8)
-            Spacer()
-            if let error { Text(error).font(.footnote).foregroundStyle(.red).multilineTextAlignment(.center) }
-            Button("Cancel") {
-                waitTask?.cancel()
-                Task { try? await model.api?.confirmJoin(code, accept: false) }
-                step = .welcome
-            }
+    private var newAccount: some View {
+        GuidePage(centered: true, icon: AnyView(GuideTile(systemImage: "sparkle", size: 64)), title: Text("This is a new account")) {
+            EmptyView()
+        } footer: {
+            GuideButton(title: Text("Start with This iPhone"), id: "start-here") { go(.key) }
+            GuideLink(title: Text("Use Another Account"), id: "another-account") { useAnotherAccount() }
         }
     }
 
-    private func digitsStep(code: String, by: String) -> some View {
-        VStack(spacing: 16) {
-            Spacer().frame(height: 40)
-            Text(by.isEmpty ? String(localized: "Type the two digits your other device shows") : String(localized: "Type the two digits “\(by)” shows"))
-                .font(.title2.bold()).multilineTextAlignment(.center)
-            Text("This proves the approval came from your own device.").foregroundStyle(.secondary).multilineTextAlignment(.center)
-            TextField(String("– –"), text: $digits)
-                .keyboardType(.numberPad).font(.system(size: 44, weight: .semibold, design: .monospaced)).multilineTextAlignment(.center)
-                .frame(width: 160, height: 88).background(.fill.tertiary, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
-                .onChange(of: digits) { _, d in
-                    digits = String(d.filter(\.isNumber).prefix(2))
-                    if digits.count == 2 { confirm(code: code) }
+    private var keyPage: some View {
+        GuidePage(part: .account, back: { go(.welcome, back: true) }, title: Text("Create your management key")) {
+            GuideCard { KeyDiagram(server: server).padding(.horizontal, 8).padding(.top, 10).padding(.bottom, 6) }
+            GuideCard {
+                keyRow("lock", Text("Only on this iPhone"), Text("In its Secure Enclave; it can’t be exported"))
+                GuideDivider()
+                keyRow("faceid", Text("Everything that joins needs you"), Text("New computers, agents and devices need Face ID"))
+                GuideDivider()
+                keyRow("server.rack", Text("The server can’t approve"), Text("\(server) only relays; it can’t approve for you"))
+            }
+        } footer: {
+            if let error { Text(error).font(.footnote).foregroundStyle(.red).multilineTextAlignment(.center) }
+            GuideButton(title: Text("Create with Face ID"), systemImage: "faceid", id: "create-key") { setUp() }
+                .disabled(busy)
+        }
+    }
+
+    private func keyRow(_ symbol: String, _ title: Text, _ detail: Text) -> some View {
+        HStack(spacing: 12) {
+            GuideTile(systemImage: symbol)
+            VStack(alignment: .leading, spacing: 2) {
+                title.font(.body.weight(.semibold))
+                detail.font(.subheadline).foregroundStyle(.secondary)
+            }
+            Spacer(minLength: 0)
+        }
+        .padding(.horizontal, 16).padding(.vertical, 10)
+    }
+
+    private func approve(owner: String, relay: String) -> some View {
+        GuidePage(back: { cancelJoin() }, icon: AnyView(GuideTile(systemImage: "laptopcomputer.and.iphone", size: 64)), title: Text("Approve on your other device")) {
+            if let request {
+                VStack(spacing: 4) {
+                    Text("Verification code").font(.subheadline).foregroundStyle(.secondary)
+                    Text(request.verification).font(.system(size: 30, weight: .semibold, design: .monospaced)).tracking(2)
+                        .lineLimit(1).minimumScaleFactor(0.6)
                 }
-                .focused($typing)
-                .onAppear { typing = true }
-                .accessibilityIdentifier("digits")
-            if let error { Text(error).font(.footnote).foregroundStyle(.red).multilineTextAlignment(.center) }
-            if busy { MovingMark(size: 22, motion: .seq) }
-            Spacer()
-            Button("Cancel") {
-                Task { try? await model.api?.confirmJoin(code, accept: false) }
-                step = .welcome
+                .frame(maxWidth: .infinity).padding(.vertical, 22)
+                .background(Color(.secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 26, style: .continuous))
+                .padding(.horizontal, 16)
+                .accessibilityElement(children: .combine)
+                .accessibilityIdentifier("verification-code")
             }
+            if let error { Text(error).font(.footnote).foregroundStyle(.red).padding(.horizontal, 20) }
+        } footer: {
+            if request != nil { GuideWaiting(text: Text("Waiting for approval…")) }
+            if error != nil {
+                GuideButton(title: Text("Try Again"), id: "join") { join(owner: owner, relay: relay) }
+            }
+            GuideLink(title: Text("No other device?"), id: "no-other-device") { lost = true }
+        }
+        .task { if request == nil && !busy { join(owner: owner, relay: relay) } }
+        .alert("Can’t join", isPresented: $lost) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text("You can only set up again on this iPhone; your machines and agents then need pairing again.")
         }
     }
 
-    private var notificationsStep: some View {
-        VStack(spacing: 14) {
-            Spacer()
-            Image(systemName: "checkmark.circle.fill").font(.system(size: 64)).foregroundStyle(.green)
-            Text("This iPhone is one of your trusted devices").font(.title.bold()).multilineTextAlignment(.center)
-            Text("Requests to connect and your agents’ questions come here. Without notifications you’ll see them only while Hermesh is open.").foregroundStyle(.secondary).multilineTextAlignment(.center)
-            Spacer()
-            Button {
+    private func digitsPage(code: String, by: String) -> some View {
+        GuidePage(back: { cancelJoin() }, title: by.isEmpty ? Text("Type the digits on your other device") : Text("Type the digits on \(by)")) {
+            HStack(spacing: 14) {
+                ForEach(0 ..< 2, id: \.self) { i in
+                    let d = Array(digits)
+                    Text(i < d.count ? String(d[i]) : "")
+                        .font(.system(size: 48, weight: .semibold, design: .monospaced))
+                        .frame(width: 76, height: 94)
+                        .background(Color(.secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 22, style: .continuous))
+                        .overlay(RoundedRectangle(cornerRadius: 22, style: .continuous).strokeBorder(i == d.count && typing ? Color.accentColor : .clear, lineWidth: 2))
+                }
+            }
+            .frame(maxWidth: .infinity)
+            .contentShape(.rect)
+            .onTapGesture { typing = true }
+            .overlay {
+                TextField(String(""), text: $digits)
+                    .keyboardType(.numberPad).focused($typing).opacity(0.02)
+                    .onChange(of: digits) { _, d in
+                        digits = String(d.filter(\.isNumber).prefix(2))
+                        if digits.count == 2 { confirm(code: code) }
+                    }
+                    .accessibilityIdentifier("digits")
+            }
+            .onAppear { typing = true }
+            if let error { Text(error).font(.footnote).foregroundStyle(.red).frame(maxWidth: .infinity).multilineTextAlignment(.center) }
+            if busy { MovingMark(size: 22, motion: .seq).frame(maxWidth: .infinity) }
+        } footer: {
+            EmptyView()
+        }
+    }
+
+    private var joinedPage: some View {
+        GuidePage(centered: true, icon: AnyView(Image(systemName: "checkmark.circle.fill").font(.system(size: 64)).foregroundStyle(.green)), title: Text("Joined")) {
+            EmptyView()
+        } footer: {
+            EmptyView()
+        }
+        .task {
+            try? await Task.sleep(for: .seconds(1.2))
+            go(.notifications(guided: false))
+        }
+    }
+
+    private func notificationsPage(guided: Bool) -> some View {
+        GuidePage(part: guided ? .account : nil, title: Text("Turn on notifications")) {
+            LockScreenPreview()
+            Label("Notifications are end-to-end encrypted; the server can’t read them", systemImage: "lock")
+                .font(.footnote).foregroundStyle(.secondary).frame(maxWidth: .infinity)
+        } footer: {
+            GuideButton(title: Text("Turn On Notifications"), id: "notifications-on") {
                 Task {
                     _ = try? await UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound, .badge, .timeSensitive])
                     await finish()
                 }
-            } label: {
-                Text("Continue").frame(maxWidth: .infinity)
             }
-            .buttonStyle(.glassProminent).controlSize(.large)
-            .accessibilityIdentifier("finish")
+            GuideLink(title: Text("Not Now"), id: "notifications-later") { Task { await finish() } }
         }
     }
 
@@ -226,7 +305,8 @@ struct OnboardingView: View {
 
     /// The service's sign-in page in a browser sheet; it comes back with a
     /// link code (no owner yet: set one up) or the owner to join.
-    private func signIn() {
+    private func signIn(joining: Bool) {
+        self.joining = joining
         error = nil
         busy = true
         Task {
@@ -236,7 +316,7 @@ struct OnboardingView: View {
             var c = URLComponents(url: officialCenter.appendingPathComponent("app-login"), resolvingAgainstBaseURL: false)!
             c.queryItems = [URLQueryItem(name: "challenge", value: challenge)]
             do {
-                let back = try await webAuth.authenticate(using: c.url!, callbackURLScheme: "hermesh")
+                let back = try await webAuth.authenticate(using: c.url!, callbackURLScheme: "hermesh", preferredBrowserSession: anotherAccount ? .ephemeral : nil)
                 await follow(back, verifier: verifier)
             } catch let e as ASWebAuthenticationSessionError where e.code == .canceledLogin {
             } catch {
@@ -245,38 +325,44 @@ struct OnboardingView: View {
         }
     }
 
+    private func useAnotherAccount() {
+        anotherAccount = true
+        pending = nil
+        go(.welcome, back: true)
+    }
+
     private func handle(_ url: URL) {
         model.onboardingLink = nil
         Task { await follow(url, verifier: nil) }
     }
 
+    /// Where signing in leads: the card chosen and the account agree, or
+    /// the page that says they don't.
     private func follow(_ url: URL, verifier: String?) async {
         guard let link = AppLink(url) else { return }
         do {
             let relay = try await connectURL(officialCenter)
+            server = officialCenter.host ?? "hermesh.io"
             switch link {
             case .join(let owner):
-                step = .join(owner: owner, relay: relay)
+                go(joining || verifier == nil ? .approve(owner: owner, relay: relay) : .inUse(owner: owner, relay: relay))
             case .link(let code):
                 guard let verifier else { return }
-                step = .setup
                 var r = Hermesh_Local_V1_SetupRequest()
                 r.relayURL = relay
                 r.claimCode = code
                 r.claimVerifier = verifier
-                r.rootLabel = UIDevice.current.name
-                r.rootPlatform = "ios"
-                model.signer.expect(.firstSetup)
-                _ = try await model.api?.setup(r)
-                step = .notifications
+                pending = r
+                go(joining ? .newAccount : .key)
             }
         } catch {
             self.error = (error as? APIError)?.message ?? error.localizedDescription
-            step = .welcome
+            go(.welcome, back: true)
         }
     }
 
-    /// Your own server, new: this iPhone claims it with the code it printed.
+    /// Your own server, new: this iPhone claims it with the code it printed,
+    /// once its key is made.
     private func claimServer() {
         var t = address.trimmingCharacters(in: .whitespacesAndNewlines)
         if !t.contains("://") { t = "https://" + t }
@@ -289,15 +375,31 @@ struct OnboardingView: View {
                 var r = Hermesh_Local_V1_SetupRequest()
                 r.relayURL = try await connectURL(center)
                 r.claimCode = claim.trimmingCharacters(in: .whitespacesAndNewlines)
-                r.rootLabel = UIDevice.current.name
-                r.rootPlatform = "ios"
-                step = .setup
-                model.signer.expect(.firstSetup)
-                _ = try await model.api?.setup(r)
-                step = .notifications
+                pending = r
+                server = center.host ?? t
+                go(.key)
             } catch {
                 self.error = (error as? APIError)?.message ?? error.localizedDescription
-                step = .ownServer
+            }
+        }
+    }
+
+    /// The management key: the signer makes it (Face ID) as the owner is set up.
+    private func setUp() {
+        guard var r = pending, let api = model.api else { return }
+        r.rootLabel = UIDevice.current.name
+        r.rootPlatform = "ios"
+        error = nil
+        busy = true
+        Task {
+            defer { busy = false }
+            do {
+                model.signer.expect(.firstSetup)
+                _ = try await api.setup(r)
+                guide = Guide.on
+                go(.notifications(guided: true))
+            } catch {
+                self.error = (error as? APIError)?.message ?? error.localizedDescription
             }
         }
     }
@@ -316,26 +418,34 @@ struct OnboardingView: View {
                 r.rootPlatform = "ios"
                 model.signer.expect(.firstSetup)
                 let res = try await api.requestJoin(r)
-                step = .waiting(code: res.code, verification: res.verificationCode)
+                request = (res.code, res.verificationCode)
                 while !Task.isCancelled {
                     let w = try await api.waitJoin(res.code)
                     if w.done && !w.matchRequired {
                         try await api.confirmJoin(res.code, accept: true)
-                        step = .notifications
+                        go(.joined)
                         return
                     }
                     if w.done {
-                        step = .digits(code: res.code, by: w.approvedBy)
+                        go(.digits(code: res.code, by: w.approvedBy))
                         return
                     }
                     if w.expired { throw APIError(code: "expired", message: String(localized: "The request expired. Start again.")) }
                 }
             } catch {
                 if Task.isCancelled { return }
+                request = nil
                 self.error = (error as? APIError)?.message ?? error.localizedDescription
-                step = .join(owner: owner, relay: relay)
             }
         }
+    }
+
+    private func cancelJoin() {
+        waitTask?.cancel()
+        if let code = request?.code { Task { try? await model.api?.confirmJoin(code, accept: false) } }
+        request = nil
+        digits = ""
+        go(.welcome, back: true)
     }
 
     private func confirm(code: String) {
@@ -345,7 +455,7 @@ struct OnboardingView: View {
             defer { busy = false }
             do {
                 try await model.api?.confirmJoin(code, accept: true, match: digits)
-                step = .notifications
+                go(.joined)
             } catch let e as APIError where e.code == "invalid_argument" {
                 error = String(localized: "Those aren’t the digits. Check the other device and try again.")
                 digits = ""

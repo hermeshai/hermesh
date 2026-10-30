@@ -11,7 +11,7 @@ struct AgentLogo: View {
 
     /// The logo asset for a coding agent id or a personal agent's name.
     static func asset(_ id: String) -> String? {
-        let known = ["claude", "codex", "gemini", "cursor", "opencode", "kimi", "kiro", "qoder", "deepseek", "codebuddy", "grok", "grokbot", "muse", "openclaw"]
+        let known = ["claude", "codex", "gemini", "cursor", "copilot", "opencode", "qwen", "goose", "auggie", "kimi", "kiro", "qoder", "deepseek", "codebuddy", "grok", "grokbot", "muse", "openclaw"]
         let byName = ["Claude": "claude", "Claude Code": "claude", "ChatGPT": "codex", "Codex": "codex", "Grok Bot": "grokbot", "Grok": "grok",
                       "Muse": "muse", "OpenClaw": "openclaw", "Cursor": "cursor", "Gemini": "gemini"]
         if known.contains(id) { return id }

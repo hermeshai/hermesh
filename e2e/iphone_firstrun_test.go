@@ -19,20 +19,20 @@ import (
 // TestIPhoneFirstRun is first use with only the iPhone (docs/onboarding.md
 // §4, §5): XCUITest drives the real app on a Simulator of its own, in
 // Chinese, against a relay nobody has claimed. The phone sets the server up
-// with its claim code and is the only trusted device. Get Started then
-// leads it through a Linux-like machine, played by this test with a home
-// of its own and fake coding agents:
+// with its claim code, makes its management key and is the only trusted
+// device. The guide, put off once and taken up again from Get Started, then
+// leads it through a Linux-like machine, played by this test with a home of
+// its own and fake coding agents:
 //
 //   - the machine's pinned command prints a pairing code; the phone opens
 //     it as a pairing link, finds nothing to compare, names the machine
 //     and sees it join;
-//   - Check Again and Test on the machine's coding agent;
-//   - a project picked from the repositories the machine found;
-//   - the row that says this phone is the only one that can approve;
+//   - the machine's coding agents: Rescan, then Test on one and a project
+//     picked from the repositories the machine found, on its page;
 //   - an agent connecting, and its first task: the session it starts
-//     opens by itself, and Get Started is done;
-//   - vps-1 going offline and coming back: Get Started stays put away,
-//     though its coding agent is not ready while the machine is away;
+//     shows its answer in the guide, and the guide is done;
+//   - the row that says this phone is the only one that can approve;
+//   - vps-1 going offline and coming back: Get Started stays away;
 //   - erasing everything: vps-1 erases itself, the agent waits for its
 //     next command, and the phone opens on its first run saying so.
 //

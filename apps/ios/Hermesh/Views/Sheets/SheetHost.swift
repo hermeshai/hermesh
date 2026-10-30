@@ -17,7 +17,6 @@ struct SheetHost: View {
         case .addMachine: AddMachineSheet()
         case .enterCode: EnterCodeSheet()
         case .scan: ScanSheet()
-        case .firstTask(let client): FirstTaskSheet(clientID: client)
         case .addDevice: AddDeviceSheet()
         case .addProject(let machine, let agent): AddProjectSheet(machineID: machine, agent: agent)
         case .search: SearchSheet()
@@ -443,7 +442,7 @@ struct PairingSheet: View {
                     joining = (res.machineID.isEmpty ? p.subjectID : res.machineID, machineName, res.matchCode)
                 }
             default:
-                if await model.approveDevice(p) { done = String(localized: "“\(p.label)” is a trusted device now") }
+                if await model.approveDevice(p) != nil { done = String(localized: "“\(p.label)” is a trusted device now") }
             }
         }
     }
@@ -519,18 +518,14 @@ struct MachineJoining: View {
     }
 }
 
-/// The first task again, from Get Started's Try It.
-struct FirstTaskSheet: View {
-    @Environment(AppModel.self) private var model
-    @Environment(\.dismiss) private var dismiss
-    let clientID: String
-
-    var body: some View {
-        NavigationStack {
-            FirstTask(clientID: clientID, name: model.clientLabel(clientID)) { dismiss() }
-                .toolbar { CloseButton() }
-        }
+/// What to send an agent just connected: one short task that shows the whole
+/// way works.
+func firstTaskPrompt(_ model: AppModel) -> String {
+    let agent = model.machines.flatMap { $0.status.agents.filter { $0.available && $0.loggedIn }.map(\.name) }.first.map(agentTitle) ?? String(localized: "a coding agent")
+    if let project = model.projects.first?.projectID {
+        return String(localized: "Use Hermesh to have \(agent) say hello to me in the \(project) project.")
     }
+    return String(localized: "Use Hermesh to have \(agent) say hello to me.")
 }
 
 /// After an agent is approved: one thing to send it that shows the whole way
@@ -542,13 +537,7 @@ struct FirstTask: View {
     let name: String
     let close: () -> Void
 
-    private var prompt: String {
-        let agent = model.machines.flatMap { $0.status.agents.filter { $0.available && $0.loggedIn }.map(\.name) }.first.map(agentTitle) ?? String(localized: "a coding agent")
-        if let project = model.projects.first?.projectID {
-            return String(localized: "Use Hermesh to have \(agent) say hello to me in the \(project) project.")
-        }
-        return String(localized: "Use Hermesh to have \(agent) say hello to me.")
-    }
+    private var prompt: String { firstTaskPrompt(model) }
 
     private var first: Session? {
         model.sessions.filter { $0.createdBy == clientID }.min { $0.createdAt.date < $1.createdAt.date }

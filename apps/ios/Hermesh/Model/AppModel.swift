@@ -40,7 +40,6 @@ enum SheetKind: Identifiable, Hashable {
     case addMachine
     case enterCode
     case scan
-    case firstTask(String) // client id
     case addDevice
     case addProject(String, String) // machine id, coding agent
     case search
@@ -358,7 +357,8 @@ final class AppModel {
         hasWorld = false
         keptOwner = ""
         try? FileManager.default.removeItem(at: worldFile)
-        UserDefaults.standard.removeObject(forKey: "hideGetStarted") // the next owner starts it again
+        UserDefaults.standard.removeObject(forKey: Guide.key) // the guide is the owner's
+        UserDefaults.standard.removeObject(forKey: Guide.stepKey)
         conversations.forgetAll()
     }
 
@@ -759,17 +759,21 @@ final class AppModel {
         }
     }
 
-    func approveDevice(_ p: PairingDetails) async -> Bool {
-        guard let api else { return false }
+    /// Approves a trusted device; the answer carries the two digits to type
+    /// on it. Inline, the caller shows them itself, not the signer's sheet.
+    func approveDevice(_ p: PairingDetails, inline: Bool = false) async -> Hermesh_Local_V1_ApproveDevicePairingResponse? {
+        guard let api else { return nil }
         signer.expect(p.confirmed ? .types([SigningPreview.rootCert]) : .code(p.verificationCode))
+        signer.inlineMatch = inline
+        defer { signer.inlineMatch = false }
         do {
-            _ = try await api.approveDevice(p.code)
+            let res = try await api.approveDevice(p.code)
             pairings.removeAll { $0.code == p.code }
             devices = (try? await api.devices()) ?? devices
-            return true
+            return res
         } catch {
             report(error)
-            return false
+            return nil
         }
     }
 

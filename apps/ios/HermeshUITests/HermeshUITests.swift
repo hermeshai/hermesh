@@ -52,12 +52,11 @@ final class HermeshUITests: XCTestCase {
         field.tap()
         field.typeText(address)
         tap("continue")
-        tap("join")
         // The Mac approves (the test approves at once, so the waiting screen
         // may be gone already); then the two digits it shows, unless none
         // are asked for.
         let digits = app.textFields["digits"]
-        let finish = app.buttons["finish"]
+        let finish = app.buttons["notifications-on"]
         let deadline = Date().addingTimeInterval(60)
         while !digits.exists && !finish.exists && Date() < deadline { sleep(1) }
         if digits.exists {
@@ -66,7 +65,7 @@ final class HermeshUITests: XCTestCase {
             digits.typeText(d)
         }
         XCTAssertTrue(finish.waitForExistence(timeout: 30), "joined")
-        XCTAssertTrue(text("这台 iPhone 已经是你的可信设备").exists)
+        XCTAssertTrue(text("打开通知").exists)
         allowNotifications(after: finish)
         XCTAssertTrue(app.navigationBars["概览"].waitForExistence(timeout: 30), "the overview")
         try waitFor("this iPhone registers for notifications") { (try self.control("registered")["devices"] as? Int ?? 0) > 0 ? true : nil }

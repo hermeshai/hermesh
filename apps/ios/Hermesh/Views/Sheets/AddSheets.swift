@@ -90,7 +90,7 @@ struct ConnectAgentSheet: View {
                 }
                 if kind.mcp && model.status.hosted {
                     Section {
-                        MonoBox(text: "https://mcp.hermesh.io/mcp")
+                        MonoBox(text: mcpConnectorURL)
                     } header: {
                         Text("Add a connector in \(kind.name)")
                     } footer: {
@@ -113,22 +113,25 @@ struct ConnectAgentSheet: View {
         }
     }
 
-    /// On the official service, the line the Mac gives too: the agent's
-    /// steps are on the console's /connect page and it signs in by a link.
-    /// On an own server, the steps themselves, with the connection address.
-    private var message: String {
-        if model.status.hosted, let url = URL(string: model.status.consoleURL), let scheme = url.scheme, let host = url.host {
-            let connect = "\(scheme)://\(host)\(url.port.map { ":\($0)" } ?? "")/connect"
-            return String(localized: "Connect to Hermesh: follow \(connect). Your name in Hermesh is “\(kind.name)”.")
-        }
-        return String(localized: """
+    private var message: String { connectMessage(model.status, agent: kind.name) }
+}
+
+/// What to send a personal agent so it connects. On the official service,
+/// the line the Mac gives too: the agent's steps are on the console's
+/// /connect page and it signs in by a link. On an own server, the steps
+/// themselves, with the connection address.
+func connectMessage(_ status: StatusResponse, agent: String) -> String {
+    if status.hosted, let url = URL(string: status.consoleURL), let scheme = url.scheme, let host = url.host {
+        let connect = "\(scheme)://\(host)\(url.port.map { ":\($0)" } ?? "")/connect"
+        return String(localized: "Connect to Hermesh: follow \(connect). Your name in Hermesh is “\(agent)”.")
+    }
+    return String(localized: """
         Please connect yourself to my computer (Hermesh):
         1. Install: curl -fsSL https://github.com/hermeshai/hermesh/releases/latest/download/install.sh | sh -s -- --cli
-        2. Sign in: ~/.local/bin/hermesh auth login \(model.status.connectAddress) --name "\(kind.name)"
+        2. Sign in: ~/.local/bin/hermesh auth login \(status.connectAddress) --name "\(agent)"
         3. Tell me the verification code shown on screen. Once I confirm it on my iPhone, you’re ready.
         Then use hermesh project list to see the projects you can use, hermesh session start --project <project> --prompt "…" to start working, and hermesh --help for every command.
         """)
-    }
 }
 
 /// Add a machine: the command to run there (send it to the Mac by AirDrop),

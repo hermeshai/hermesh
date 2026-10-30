@@ -24,7 +24,6 @@ struct OverviewView: View {
     @State private var everyAgent = false
     @State private var picked: FlowPick?
     @State private var notificationsOff = false
-    @AppStorage("hideGetStarted") private var hideGetStarted = false
     @AppStorage("hideSecondDevice") private var hideSecondDevice = false
 
     var body: some View {
@@ -32,7 +31,7 @@ struct OverviewView: View {
             VStack(alignment: .leading, spacing: 26) {
                 UnreachableNotice()
                 if model.hasWorld {
-                    if !hideGetStarted { GetStarted(hide: { hideGetStarted = true }) }
+                    GetStarted()
                     todo
                     working
                 } else { // nothing kept yet: the first launch, or after joining
@@ -721,43 +720,29 @@ struct SessionRow: View {
     }
 }
 
-/// Get Started: from the first launch until it is done or hidden, the
-/// first machine, its coding agent, a project, an agent and its first
-/// session, in that order. The next row carries the button. Done once, it
-/// stays put away: a machine back from a reconnect reports its coding
-/// agents a moment later, and that is no reason to show it again.
+/// Get Started (docs/onboarding.md §5.2): what the guide has left, on the
+/// iPhone that set the owner up and put the guide off. Continue goes back
+/// to it; done or hidden, it is gone for good.
 struct GetStarted: View {
     @Environment(AppModel.self) private var model
-    let hide: () -> Void
-    @State private var asked: String?
+    @AppStorage(Guide.key) private var guide = ""
 
     private enum Step: Int, CaseIterable {
-        case machine, agent, project, connect, tryIt
+        case computer, project, connect, tryIt
     }
-
-    private var machine: Machine? { model.machines.first }
-    private var ready: (Machine, String)? {
-        for m in model.machines {
-            if let a = m.status.agents.first(where: { $0.available && $0.loggedIn }) { return (m, a.name) }
-        }
-        return nil
-    }
-    private var client: Client? { model.clients.first { !$0.revoked } }
 
     private func done(_ s: Step) -> Bool {
         switch s {
-        case .machine: !model.machines.isEmpty
-        case .agent: ready != nil
+        case .computer: !model.machines.isEmpty
         case .project: !model.projects.isEmpty
-        case .connect: client != nil
+        case .connect: model.clients.contains { !$0.revoked }
         case .tryIt: model.sessions.contains { s in model.clients.contains { $0.clientID == s.createdBy } && !s.isActive }
         }
     }
 
     private func title(_ s: Step) -> LocalizedStringKey {
         switch s {
-        case .machine: "Add a machine"
-        case .agent: "Get a coding agent ready"
+        case .computer: "Connect your computer"
         case .project: "Add a project"
         case .connect: "Connect your agent"
         case .tryIt: "Try it"
@@ -765,67 +750,45 @@ struct GetStarted: View {
     }
 
     var body: some View {
-        let next = Step.allCases.first { !done($0) }
-        if let next {
-            VStack(alignment: .leading, spacing: 10) {
-                HStack {
-                    SectionTitle(title: "Get Started").accessibilityIdentifier("get-started")
-                    Spacer()
-                    Menu {
-                        Button("Hide", systemImage: "eye.slash", action: hide)
-                    } label: {
-                        Image(systemName: "ellipsis").frame(width: 32, height: 32)
-                    }
-                    .padding(.trailing, 20)
-                    .accessibilityIdentifier("get-started-menu")
-                }
-                VStack(spacing: 0) {
-                    ForEach(Step.allCases, id: \.self) { s in
-                        if s.rawValue > 0 { Divider().padding(.leading, 52) }
-                        HStack(spacing: 12) {
-                            Image(systemName: done(s) ? "checkmark.circle.fill" : s == next ? "circle.inset.filled" : "circle")
-                                .foregroundStyle(done(s) ? AnyShapeStyle(.green) : s == next ? AnyShapeStyle(.tint) : AnyShapeStyle(.tertiary))
-                                .frame(width: 24)
-                            Text(title(s)).foregroundStyle(s == next || done(s) ? .primary : .secondary)
-                                .frame(maxWidth: .infinity, alignment: .leading)
-                            if s == next { action(s) }
+        if guide == Guide.later {
+            if let next = Step.allCases.first(where: { !done($0) }) {
+                VStack(alignment: .leading, spacing: 10) {
+                    HStack {
+                        SectionTitle(title: "Get Started").accessibilityIdentifier("get-started")
+                        Spacer()
+                        Menu {
+                            Button("Hide", systemImage: "eye.slash") { guide = Guide.done }
+                        } label: {
+                            Image(systemName: "ellipsis").frame(width: 32, height: 32)
                         }
-                        .padding(.horizontal, 16).padding(.vertical, 11)
-                        .accessibilityElement(children: .contain)
-                        .accessibilityIdentifier("get-started-\(s.rawValue)")
+                        .padding(.trailing, 20)
+                        .accessibilityIdentifier("get-started-menu")
                     }
+                    VStack(spacing: 0) {
+                        ForEach(Step.allCases, id: \.self) { s in
+                            if s.rawValue > 0 { Divider().padding(.leading, 52) }
+                            HStack(spacing: 12) {
+                                Image(systemName: done(s) ? "checkmark.circle.fill" : s == next ? "circle.inset.filled" : "circle")
+                                    .foregroundStyle(done(s) ? AnyShapeStyle(.green) : s == next ? AnyShapeStyle(.tint) : AnyShapeStyle(.tertiary))
+                                    .frame(width: 24)
+                                Text(title(s)).foregroundStyle(s == next || done(s) ? .primary : .secondary)
+                                    .frame(maxWidth: .infinity, alignment: .leading)
+                                if s == next {
+                                    Button("Continue") { guide = Guide.on }.buttonStyle(.glassProminent)
+                                        .accessibilityIdentifier("get-started-continue")
+                                }
+                            }
+                            .padding(.horizontal, 16).padding(.vertical, 11)
+                            .accessibilityElement(children: .contain)
+                            .accessibilityIdentifier("get-started-\(s.rawValue)")
+                        }
+                    }
+                    .background(Color(.secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 26, style: .continuous))
+                    .padding(.horizontal, 16)
                 }
-                .background(Color(.secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 26, style: .continuous))
-                .padding(.horizontal, 16)
-            }
-            .task(id: next == .agent ? machine.map { "\($0.machineID) \($0.online)" } : nil) {
-                // While the coding agent is next, that machine looks again, once.
-                guard next == .agent, let m = machine, m.online, asked != m.machineID else { return }
-                asked = m.machineID
-                await model.recheck(machine: m.machineID)
-            }
-        } else {
-            Color.clear.frame(height: 0).onAppear(perform: hide)
-        }
-    }
-
-    @ViewBuilder private func action(_ s: Step) -> some View {
-        switch s {
-        case .machine:
-            Button("Add…") { model.sheet = .addMachine }.buttonStyle(.glassProminent)
-        case .agent:
-            if let m = machine {
-                Button("\(m.machineName) ›") { model.path.append(.machine(m.machineID)) }.buttonStyle(.glassProminent)
-            }
-        case .project:
-            if let (m, a) = ready {
-                Button("Add…") { model.sheet = .addProject(m.machineID, a) }.buttonStyle(.glassProminent)
-            }
-        case .connect:
-            Button("Connect…") { model.sheet = .connectAgent }.buttonStyle(.glassProminent)
-        case .tryIt:
-            if let c = client {
-                Button("Try…") { model.sheet = .firstTask(c.clientID) }.buttonStyle(.glassProminent)
+            } else {
+                // Done from elsewhere (the Mac, the menus): gone for good.
+                Color.clear.frame(height: 0).onAppear { guide = Guide.done }
             }
         }
     }
