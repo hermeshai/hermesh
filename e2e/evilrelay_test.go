@@ -92,7 +92,15 @@ func newWorld(t *testing.T) *world {
 		if err != nil {
 			t.Fatal(err)
 		}
-		t.Cleanup(func() { n.Close() })
+		// Closed once it has stopped running (it writes its audit log until then).
+		var ran chan struct{}
+		t.Cleanup(func() {
+			cancel()
+			if ran != nil {
+				<-ran
+			}
+			n.Close()
+		})
 		var out bytes.Buffer
 		done := make(chan error, 1)
 		go func() { done <- n.Pair(ctx, addr, name, &syncWriter{w: &out}, machine.PairOptions{}) }()
@@ -104,7 +112,11 @@ func newWorld(t *testing.T) *world {
 		if err := <-done; err != nil {
 			t.Fatal(err)
 		}
-		go n.Run(ctx)
+		ran = make(chan struct{})
+		go func() {
+			n.Run(ctx)
+			close(ran)
+		}()
 		w.machines = append(w.machines, n)
 		_ = i
 	}
