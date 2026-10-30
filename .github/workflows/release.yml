@@ -1,25 +1,48 @@
 name: release
+# A v* tag becomes a release in three steps (docs/development.md, Releasing):
+#   1. a draft, with its notes; the builds upload their files to it;
+#   2. once every file is there and right (scripts/release-check.sh), a
+#      prerelease: nothing installed takes it, only whoever asks for it;
+#   3. promoted by hand (promote.yml) once it has been tried: the latest
+#      release, which every machine, Mac app and install command then takes.
+# A failed run leaves a draft, and the latest release as it was.
 on:
   push:
     tags: ["v*"]
 permissions:
   contents: write
   packages: write
+concurrency: release-${{ github.ref_name }}
+env:
+  GH_TOKEN: ${{ github.token }}
+  GH_REPO: ${{ github.repository }}
+  TAG: ${{ github.ref_name }}
 jobs:
   # The version's highlights for users, in English and Chinese, from the app's
   # catalogs (apps/desktop/src/locales/*/releases.json): nothing is built
-  # without them, and they become the release's text.
+  # without them, and they become the release's text, with a link to every
+  # change since the last release.
   notes:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
       - uses: actions/setup-node@v4
         with:
           node-version: 24
-      - run: node apps/desktop/scripts/release-notes.mjs "$GITHUB_REF_NAME" > "$RUNNER_TEMP/notes.md"
-      - uses: softprops/action-gh-release@v2
-        with:
-          body_path: ${{ runner.temp }}/notes.md
+      - name: the draft release, with its notes
+        run: |
+          node apps/desktop/scripts/release-notes.mjs "$TAG" > "$RUNNER_TEMP/notes.md"
+          prev="$(git describe --tags --abbrev=0 --match 'v*' "$TAG^" 2>/dev/null || true)"
+          if [ -n "$prev" ]; then
+            printf '\n**All changes**: https://github.com/%s/compare/%s...%s\n' "$GITHUB_REPOSITORY" "$prev" "$TAG" >> "$RUNNER_TEMP/notes.md"
+          fi
+          case "$(gh release view "$TAG" --json isDraft --jq .isDraft 2>/dev/null || true)" in
+            true) gh release edit "$TAG" --notes-file "$RUNNER_TEMP/notes.md" ;; # the workflow run again
+            false) echo "::error::$TAG is published already; tag a new version"; exit 1 ;;
+            *) gh release create "$TAG" --draft --prerelease --verify-tag --title "$TAG" --notes-file "$RUNNER_TEMP/notes.md" ;;
+          esac
   binaries:
     needs: notes
     runs-on: ubuntu-latest
@@ -36,9 +59,9 @@ jobs:
           printf '%s\n' "$RELEASE_SIGNING_KEY" > /tmp/release.key
           VERSION=${GITHUB_REF_NAME} RELEASE_SIGNING_KEY_FILE=/tmp/release.key ./scripts/release.sh
           rm -f /tmp/release.key
-      - uses: softprops/action-gh-release@v2
-        with:
-          files: dist/release/*
+      - run: gh release upload "$TAG" dist/release/* --clobber
+  # This version's image, on ghcr.io; promoting the release copies it to
+  # Docker Hub, where the README sends people, and makes it latest.
   relay-image:
     needs: notes
     uses: ./.github/workflows/relay-image.yml
@@ -135,9 +158,15 @@ jobs:
         run: |
           if [ -n "${SIGNING_KEYCHAIN:-}" ]; then security delete-keychain "$SIGNING_KEYCHAIN" || true; fi
           rm -f "$RUNNER_TEMP/notary-key.p8"
-      - uses: softprops/action-gh-release@v2
-        with:
-          files: |
-            dist/Hermesh-macos-${{ matrix.arch }}.dmg
-            dist/Hermesh-macos-${{ matrix.arch }}.zip
-            dist/RELEASES-darwin-${{ matrix.arch }}.json
+      - run: gh release upload "$TAG" "dist/Hermesh-macos-${{ matrix.arch }}.dmg" "dist/Hermesh-macos-${{ matrix.arch }}.zip" "dist/RELEASES-darwin-${{ matrix.arch }}.json" --clobber
+  # Every file there and right, then a prerelease.
+  publish:
+    needs: [binaries, relay-image, mac-app]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: check the draft's files
+        run: |
+          gh release download "$TAG" --dir "$RUNNER_TEMP/release"
+          ./scripts/release-check.sh "$RUNNER_TEMP/release" "$TAG"
+      - run: gh release edit "$TAG" --draft=false --prerelease
