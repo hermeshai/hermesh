@@ -132,7 +132,7 @@ func Dir() (string, error) {
 		return "", err
 	}
 	if strings.Contains(exe, ".app/Contents/") {
-		return "", errors.New("this hermeshd is part of Hermesh.app, which updates itself")
+		return "", errors.New("this hermeshd is part of the Hermesh app, which updates itself")
 	}
 	if runtime.GOOS == "windows" {
 		return "", errors.New("updating is not on Windows yet; run the install command again")
