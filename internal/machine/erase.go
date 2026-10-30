@@ -130,10 +130,20 @@ func Erase(cfg Config, keepDir string) ([]string, error) {
 	return kept, RemoveExcept(cfg.DataDir, append(slices.Clone(kept), keepDir))
 }
 
-// moveWorktree moves a worktree of repo. On Windows git knows a worktree
-// only by its path with forward slashes.
+// moveWorktree moves a worktree of repo, named as git keeps it (its gitdir
+// file): on Windows git knows a worktree by that form only (forward
+// slashes, a long name or a short one).
 func moveWorktree(ctx context.Context, repo, from, to string) error {
-	_, err := git(ctx, repo, "worktree", "move", filepath.ToSlash(from), to)
+	name := filepath.ToSlash(from)
+	if b, err := os.ReadFile(filepath.Join(from, ".git")); err == nil {
+		admin := filepath.FromSlash(strings.TrimSpace(strings.TrimPrefix(string(b), "gitdir:")))
+		if g, err := os.ReadFile(filepath.Join(admin, "gitdir")); err == nil {
+			if p, ok := strings.CutSuffix(strings.TrimSpace(string(g)), "/.git"); ok {
+				name = p
+			}
+		}
+	}
+	_, err := git(ctx, repo, "worktree", "move", name, to)
 	return err
 }
 
