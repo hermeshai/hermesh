@@ -192,5 +192,6 @@
     "reveal": "Show in Finder",
     "reveal_win": "Show in File Explorer",
     "dismiss": "Close"
-  }
+  },
+  "declined": "Nothing was signed: it was declined in the signer, or not confirmed."
 }
