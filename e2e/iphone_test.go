@@ -237,10 +237,17 @@ func simulator(t *testing.T) string {
 		DeviceTypes []struct{ Name, Identifier string } `json:"devicetypes"`
 	}
 	json.Unmarshal([]byte(types), &dt)
-	kind := ""
+	// The newest "iPhone N Pro", by its number: the list's order changes
+	// between Xcode versions (Xcode 27 lists the newest first), and an old
+	// model on a new iOS never shows the notification permission alert.
+	kind, newest := "", 0
 	for _, d := range dt.DeviceTypes {
-		if strings.HasPrefix(d.Name, "iPhone") && strings.Contains(d.Name, "Pro") && !strings.Contains(d.Name, "Max") {
-			kind = d.Identifier // the newest comes last
+		f := strings.Fields(d.Name)
+		if len(f) != 3 || f[0] != "iPhone" || f[2] != "Pro" {
+			continue
+		}
+		if n, err := strconv.Atoi(f[1]); err == nil && n > newest {
+			kind, newest = d.Identifier, n
 		}
 	}
 	if kind == "" {
