@@ -13,6 +13,8 @@ import (
 	"unsafe"
 
 	"golang.org/x/sys/windows"
+
+	"github.com/hermeshai/hermesh/internal/flock"
 )
 
 // On Windows hermeshd runs from a Task Scheduler task of this user's, at
@@ -174,8 +176,15 @@ func fromUTF16(b []byte) string {
 
 // Supervise runs exe with args, the daemon, in a job of its own (it ends
 // with the supervisor), and starts it again whenever it exits but for
-// a clean stop (exit status 0): soon at first, then backing off.
-func Supervise(exe string, args []string) error {
+// a clean stop (exit status 0): soon at first, then backing off. One
+// supervisor runs per data directory: the logon task's and the app's
+// may start together, and the second one leaves.
+func Supervise(dataDir, exe string, args []string) error {
+	lock, err := flock.Acquire(filepath.Join(dataDir, "run", "supervisor"))
+	if err != nil {
+		return err
+	}
+	defer lock.Release()
 	backoff := time.Second
 	for {
 		began := time.Now()

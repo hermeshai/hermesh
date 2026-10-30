@@ -1,4 +1,3 @@
-import { language, type Language } from "@hermesh/core";
 import { app } from "electron";
 import { resolveLanguage, setLanguage } from "../shared/i18n";
 import { preferences } from "./notify";
@@ -10,10 +9,4 @@ import { preferences } from "./notify";
 
 export function chooseLanguage() {
   setLanguage(resolveLanguage(preferences().language, app.getPreferredSystemLanguages()));
-}
-
-/** The language as macOS names it (-AppleLanguages), for the signer to match the app. */
-export function appleLanguage(): string {
-  const names: Record<Language, string> = { en: "en", "zh-CN": "zh-Hans" };
-  return names[language()];
 }

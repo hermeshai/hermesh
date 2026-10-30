@@ -1,6 +1,5 @@
 import { app, dialog } from "electron";
 import { i18n } from "../shared/i18n";
-import { installed } from "./daemon";
 
 // The installed app runs from the Applications folder (docs/desktop-app.md
 // §6.7). Opened anywhere else (the disk image, Downloads, where App
@@ -13,7 +12,7 @@ import { installed } from "./daemon";
 
 /** True when the app may start here; otherwise it has moved, or is quitting. */
 export async function settleInApplications(): Promise<boolean> {
-  if (!installed || app.isInApplicationsFolder()) return true;
+  if (app.isInApplicationsFolder()) return true;
   const { response } = await dialog.showMessageBox({
     message: i18n.t("main:move.title"),
     detail: i18n.t("main:move.body"),

@@ -129,13 +129,14 @@ function noticePairings() {
 // --- Following hermeshd ---
 
 export function watch() {
-  const local = createClient(
-    LocalService,
-    createConnectTransport({ baseUrl: "http://hermeshd", httpVersion: "1.1", useBinaryFormat: true, nodeOptions: { socketPath: socketPath() } }),
-  );
   (async () => {
     for (;;) {
       let w = emptyWorld;
+      // Where hermeshd is now: a pipe's name changes each time it starts (Windows).
+      const local = createClient(
+        LocalService,
+        createConnectTransport({ baseUrl: "http://hermeshd", httpVersion: "1.1", useBinaryFormat: true, nodeOptions: { socketPath: socketPath() } }),
+      );
       try {
         for await (const m of local.watch({})) {
           const before = w;

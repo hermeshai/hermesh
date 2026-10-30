@@ -1,8 +1,12 @@
 package service
 
 import (
+	"path/filepath"
 	"strings"
 	"testing"
+	"time"
+
+	"github.com/hermeshai/hermesh/internal/flock"
 )
 
 // The task runs the windowless daemon with its arguments quoted for the
@@ -21,5 +25,33 @@ func TestTaskXML(t *testing.T) {
 	}
 	if got := fromUTF16(utf16File(x)); got != x {
 		t.Fatalf("read back as %q", got)
+	}
+}
+
+// A second supervisor of a data directory leaves at once; the only one
+// ends when the daemon stops cleanly.
+func TestSuperviseOnce(t *testing.T) {
+	dir := t.TempDir()
+	supervise := func(code string) error {
+		done := make(chan error, 1)
+		go func() { done <- Supervise(dir, "cmd.exe", []string{"/c", "exit", code}) }()
+		select {
+		case err := <-done:
+			return err
+		case <-time.After(30 * time.Second):
+			t.Fatal("still supervising")
+			return nil
+		}
+	}
+	lock, err := flock.Acquire(filepath.Join(dir, "run", "supervisor"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := supervise("1"); err == nil {
+		t.Fatal("a second supervisor ran")
+	}
+	lock.Release()
+	if err := supervise("0"); err != nil {
+		t.Fatal(err)
 	}
 }

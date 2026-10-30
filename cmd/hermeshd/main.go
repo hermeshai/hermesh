@@ -152,7 +152,7 @@ A computer that runs no coding agents can approve instead: hermeshd device.`}
 						args = append(args, a)
 					}
 				}
-				return service.Supervise(exe, args)
+				return service.Supervise(dataDir, exe, args)
 			}
 			ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 			defer stop()

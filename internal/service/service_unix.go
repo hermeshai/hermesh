@@ -256,6 +256,6 @@ func unitArgs(args []string) string {
 }
 
 // Supervise is for Windows: launchd and systemd keep hermeshd running.
-func Supervise(exe string, args []string) error {
+func Supervise(dataDir, exe string, args []string) error {
 	return errors.New("--supervise is for Windows; launchd and systemd keep hermeshd running here")
 }

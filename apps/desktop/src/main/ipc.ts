@@ -1,11 +1,9 @@
 import { app, BrowserWindow, dialog, ipcMain, Menu, shell, type IpcMainEvent, type IpcMainInvokeEvent, type WebContents } from "electron";
-import fs from "node:fs";
-import os from "node:os";
 import path from "node:path";
 import type { Command, MenuItem, MenuState, Preferences, TerminalCommand } from "../shared/bridge";
-import { daemonNeedsApproval, loginItem, openLoginItems, setLoginItem } from "./daemon";
 import { preferences, setPreferences } from "./notify";
-import { cancelSignIn, completeSignIn, computerName, connectURL, errorMessage, signIn, signInPending, takeLinks } from "./signin";
+import { platform } from "./platform";
+import { cancelSignIn, completeSignIn, connectURL, errorMessage, signIn, signInPending, takeLinks } from "./signin";
 import { catchUp, check, download, install, openUpdates, returnToApproval, setAutoDownload, snooze, updateInfo } from "./updater";
 import { mainWindow, ours, setMode, showMain, showSettings, showWhatsNew, sizeUpdates } from "./windows";
 
@@ -44,15 +42,11 @@ export function command(c: Command) {
   else pending = c;
 }
 
-// Commands run in Terminal, by key: the page never passes command text.
+// Commands run in a terminal, by key: the page never passes command text.
 const terminalCommands: Record<TerminalCommand, string> = {
   codexLogin: "codex login",
   claudeLogin: "claude",
 };
-
-// The CLIs that come with the Claude and ChatGPT (Codex) desktop apps, after
-// the person's own PATH, as hermeshd finds them: for those who have only the app.
-const appCLIs = String.raw`path+=(~/Library/Application\ Support/Claude/claude-code/*/*/claude.app/Contents/MacOS/claude(Nn[-1]:h) {,~}/Applications/{ChatGPT.app/Contents/Resources/codex-cli/bin,Codex.app/Contents/Resources}/codex(N:h))`;
 
 export function registerIPC() {
   ipcMain.on("open-settings", (e, tab?: string) => trusted(e) && showSettings(typeof tab === "string" ? tab : undefined));
@@ -132,13 +126,7 @@ export function registerIPC() {
     });
   });
   ipcMain.on("run-in-terminal", (e, c: TerminalCommand) => {
-    if (!trusted(e) || !(c in terminalCommands) || process.platform !== "darwin") return;
-    // A .command file opens in Terminal and runs there, in the person's login shell.
-    const dir = path.join(os.homedir(), "Library", "Caches", "Hermesh");
-    fs.mkdirSync(dir, { recursive: true });
-    const file = path.join(dir, `${c}.command`);
-    fs.writeFileSync(file, `#!/bin/zsh -l\n${appCLIs}\n${terminalCommands[c]}\n`, { mode: 0o700 });
-    shell.openPath(file);
+    if (trusted(e) && c in terminalCommands) platform.runInTerminal(c, terminalCommands[c]);
   });
 
   // Signing in (main/signin.ts). Failures come back as { error } with a
@@ -158,17 +146,17 @@ export function registerIPC() {
   ipcMain.handle("cancel-sign-in", answer(cancelSignIn));
   ipcMain.handle("complete-sign-in", answer((o: { localMachine?: unknown }) => completeSignIn({ localMachine: o?.localMachine === true })));
   ipcMain.handle("connect-url", answer((center: unknown) => connectURL(String(center))));
-  ipcMain.handle("computer-name", answer(computerName));
+  ipcMain.handle("computer-name", answer(platform.computerName));
   ipcMain.handle("take-links", answer(takeLinks));
 
-  // Notifications, the menu bar and opening at login (main/notify.ts, main/daemon.ts).
+  // Notifications, the menu bar and opening at login (main/notify.ts, main/platform).
   ipcMain.handle("preferences", (e) => (trusted(e) ? preferences() : null));
   ipcMain.handle("set-preferences", (e, p: Partial<Preferences>) => (trusted(e) && typeof p === "object" && p !== null ? setPreferences(p) : null));
-  ipcMain.handle("login-item", (e) => (trusted(e) ? loginItem() : null));
-  ipcMain.handle("set-login-item", (e, on: unknown) => (trusted(e) && typeof on === "boolean" ? setLoginItem(on) : null));
-  ipcMain.handle("daemon-needs-approval", (e) => trusted(e) && daemonNeedsApproval());
-  ipcMain.on("open-login-items", (e) => trusted(e) && openLoginItems());
-  ipcMain.on("open-activity-monitor", (e) => trusted(e) && process.platform === "darwin" && void shell.openPath("/System/Applications/Utilities/Activity Monitor.app"));
+  ipcMain.handle("login-item", (e) => (trusted(e) ? platform.loginItem() : null));
+  ipcMain.handle("set-login-item", (e, on: unknown) => (trusted(e) && typeof on === "boolean" ? platform.setLoginItem(on) : null));
+  ipcMain.handle("daemon-needs-approval", (e) => trusted(e) && platform.daemonNeedsApproval());
+  ipcMain.on("open-login-items", (e) => trusted(e) && platform.openLoginItems());
+  ipcMain.on("open-activity-monitor", (e) => trusted(e) && platform.openProcessMonitor());
   // Only what erasing everything kept (hermeshd's kept-worktrees), never any path the page names.
   ipcMain.on("reveal-kept-worktree", (e, p) => {
     if (trusted(e) && typeof p === "string" && path.isAbsolute(p) && path.normalize(p).split(path.sep).includes("kept-worktrees")) shell.showItemInFolder(path.normalize(p));

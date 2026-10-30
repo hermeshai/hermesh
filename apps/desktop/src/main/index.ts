@@ -1,14 +1,13 @@
 import { app, net, protocol } from "electron";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
-import { openedAtLogin, registerDaemon } from "./daemon";
 import { forward, forwardedCalls, openUpstream } from "./gateway";
-import { settleInApplications } from "./install";
 import { registerIPC } from "./ipc";
 import { chooseLanguage } from "./language";
 import { setAppMenu } from "./menu";
 import { applyAppearance, posted, watch } from "./notify";
 import { dataDir, socketPath } from "./paths";
+import { platform } from "./platform";
 import { keepSignerRunning } from "./signer";
 import { receiveLink } from "./signin";
 import { showTray, trayState } from "./tray";
@@ -32,7 +31,6 @@ protocol.registerSchemesAsPrivileged([
 if (!app.requestSingleInstanceLock()) app.quit();
 
 function serve() {
-  const socket = socketPath();
   // In development the page comes from the Vite server, a different origin.
   const cors: Record<string, string> = devURL
     ? { "access-control-allow-origin": new URL(devURL).origin, "access-control-allow-headers": "*", "access-control-allow-methods": "POST", "access-control-expose-headers": "*" }
@@ -40,7 +38,7 @@ function serve() {
   protocol.handle("app", async (req) => {
     const url = new URL(req.url);
     if (url.host !== "hermesh") return new Response("not found", { status: 404 });
-    if (url.pathname.startsWith("/api/")) return forward(req, url.pathname.slice(4), socket, cors);
+    if (url.pathname.startsWith("/api/")) return forward(req, url.pathname.slice(4), socketPath(), cors);
     if (devURL) return new Response("not found", { status: 404 });
     // Static files of the renderer, never outside its directory.
     const file = path.normalize(path.join(rendererDir, decodeURIComponent(url.pathname === "/" ? "/index.html" : url.pathname)));
@@ -74,11 +72,11 @@ app.on("second-instance", (_e, argv) => {
 
 app.whenReady().then(async () => {
   applyAppearance();
-  if (!(await settleInApplications())) return;
-  if (app.isPackaged) app.setAsDefaultProtocolClient("hermesh");
+  if (!(await platform.settle())) return;
+  platform.registerLinks();
   serve();
   registerIPC();
-  registerDaemon();
+  platform.registerDaemon();
   setAppMenu();
   watch();
   const stopSigner = keepSignerRunning(socketPath());
@@ -87,15 +85,14 @@ app.whenReady().then(async () => {
   const url = linkArg(process.argv);
   if (url) receiveLink(url);
   pendingLinks.splice(0).forEach(receiveLink);
-  if (!openedAtLogin()) showMain();
+  if (!platform.openedAtLogin()) showMain();
   showTray();
   startUpdater();
   app.on("activate", () => showMain());
 });
 
-app.on("window-all-closed", () => {
-  if (process.platform !== "darwin") app.quit();
-});
+// Hermesh stays in the menu bar or the notification area: notifications come from here.
+app.on("window-all-closed", () => {});
 
 // For end-to-end tests (evaluated in the main process by Playwright).
 Object.assign(globalThis, { hermeshTest: { openUpstream, forwardedCalls, mainWindow, notifications: () => posted, tray: trayState } });

@@ -3,6 +3,7 @@ import { app, BrowserWindow, screen, shell, type WebContents } from "electron";
 import os from "node:os";
 import path from "node:path";
 import { i18n } from "../shared/i18n";
+import { platform } from "./platform";
 
 export const origin = "app://hermesh";
 export const devURL = !app.isPackaged ? process.env.ELECTRON_RENDERER_URL : undefined;
@@ -68,10 +69,7 @@ export function showMain(): BrowserWindow {
     ...sizes[mode],
     show: false,
     title: "Hermesh",
-    titleBarStyle: process.platform === "darwin" ? "hiddenInset" : "default",
-    trafficLightPosition: mode === "main" ? { x: 12, y: 15 } : { x: 24, y: 24 },
-    // The sidebar's material (the page leaves it see-through; the content is opaque).
-    ...(process.platform === "darwin" ? { vibrancy: "sidebar" as const, visualEffectState: "followWindow" as const, backgroundColor: "#00000000" } : {}),
+    ...platform.frame(mode),
     webPreferences: webPreferences(),
   });
   secure(main);
@@ -87,8 +85,7 @@ export function setMode(m: "onboarding" | "main") {
   mode = m;
   if (!main) return;
   const s = sizes[m];
-  // The traffic lights sit on the middle of the main window's 44 px top band.
-  if (process.platform === "darwin") main.setWindowButtonPosition(m === "main" ? { x: 12, y: 15 } : { x: 24, y: 24 });
+  platform.placeButtons(main, m);
   const b = main.getBounds();
   const area = screen.getDisplayMatching(b).workArea;
   const width = Math.min(s.width, area.width);
@@ -117,10 +114,7 @@ export function trayPanel(): BrowserWindow {
     fullscreenable: false,
     skipTaskbar: true,
     alwaysOnTop: true,
-    type: "panel",
-    vibrancy: "popover",
-    visualEffectState: "active",
-    backgroundColor: "#00000000",
+    ...platform.frame("panel"),
     webPreferences: webPreferences(),
   });
   secure(win);
@@ -144,10 +138,8 @@ export function showSettings(tab?: string) {
     minHeight: 480,
     show: false,
     title: i18n.t("main:settingsWindow"),
-    titleBarStyle: process.platform === "darwin" ? "hiddenInset" : "default",
-    // As the main window: the lights on the 44 px top band, the sidebar's material showing through.
-    trafficLightPosition: { x: 12, y: 15 },
-    ...(process.platform === "darwin" ? { vibrancy: "sidebar" as const, visualEffectState: "followWindow" as const, backgroundColor: "#00000000" } : {}),
+    // As the main window's frame.
+    ...platform.frame("settings"),
     minimizable: false,
     fullscreenable: false,
     webPreferences: webPreferences(),
@@ -164,8 +156,7 @@ function showAuxiliary(route: "updates" | "about" | "whats-new", title: string) 
   const win = new BrowserWindow({
     width: 560, height: 360, minWidth: 440, minHeight: route === "about" ? 340 : 280,
     show: false, title, minimizable: false, fullscreenable: false,
-    titleBarStyle: process.platform === "darwin" ? "hiddenInset" : "default",
-    trafficLightPosition: { x: 12, y: 15 }, webPreferences: webPreferences(),
+    ...platform.frame("auxiliary"), webPreferences: webPreferences(),
   });
   auxiliary.set(route, win);
   secure(win);
