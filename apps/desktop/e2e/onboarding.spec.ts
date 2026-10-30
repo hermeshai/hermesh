@@ -417,11 +417,13 @@ test("joining an owner: its connection address, the code compared there, the two
   await snap(page, "first-13-join-digits");
   await page.getByRole("button", { name: "加入" }).click();
 
-  // A trusted device now, and (as allowed) a machine too: set it up later.
+  // A trusted device now, and (as allowed) a machine too: only this Mac is
+  // left to set up; connecting an agent and the first task are the account's.
   await expect(page.getByRole("heading", { name: "检查和管理可用的 Agent" })).toBeVisible({ timeout: 30_000 });
   expect((await first.listDevices({})).devices.map((d) => d.label)).toHaveLength(2);
+  await expect(page.getByRole("button", { name: "完成" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "下一步：连接你的 Agent" })).toHaveCount(0);
   await page.getByRole("button", { name: "稍后设置" }).click();
-  await page.getByRole("button", { name: "稍后再连" }).click();
   await expectMainWindow(app, page);
 
   // The first device removes it again: this one says so, and can start over.

@@ -105,6 +105,7 @@
     "promise": "绝不获取 Agent 的任何令牌和密钥，只像你自己在命令行里一样使用它们。",
     "later": "稍后设置",
     "next": "下一步：连接你的 Agent",
+    "done": "完成",
     "title": "检查和管理可用的 Agent",
     "searching": "正在查找本机上的编码 Agent",
     "searchingBody": "看看装了哪些、版本多少、有没有登录。第一次检查会慢一些。",

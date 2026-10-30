@@ -471,7 +471,7 @@ export function Join(p: { owner: string; center: string; relay?: string; machine
   // Keeps the owner: the digits typed (none when not asked for).
   const finish = async (code: string, matchCode: string) => {
     // A trusted device that is a machine too sets this Mac up next; a machine only is done.
-    setProgress(trusted && machine ? { step: "prepare" } : null);
+    setProgress(trusted && machine ? { step: "prepare", joined: true } : null);
     try {
       await local.confirmJoin({ code, accept: true, matchCode });
       await st.refresh();
