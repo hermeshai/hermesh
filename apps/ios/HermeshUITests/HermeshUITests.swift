@@ -21,6 +21,7 @@ final class HermeshUITests: XCTestCase {
         try XCTContext.runActivity(named: "counts the sessions waiting on the overview, and answers one from the menu") { _ in try answerFromOverview() }
         try XCTContext.runActivity(named: "interrupts a running session") { _ in try interrupt() }
         try XCTContext.runActivity(named: "shows a reply as the agent writes it") { _ in try streamedReply() }
+        try XCTContext.runActivity(named: "shows a conversation as the Mac does: Markdown, code, and tool details folded") { _ in try richConversation() }
         try XCTContext.runActivity(named: "archives a session and undoes it") { _ in try archiveAndUndo() }
         try XCTContext.runActivity(named: "lays the session list out from the view menu") { _ in try viewMenu() }
         try XCTContext.runActivity(named: "renames a session from its row, and deletes another once confirmed") { _ in try renameAndDelete() }
@@ -93,7 +94,7 @@ final class HermeshUITests: XCTestCase {
         tap("interrupt")
         tap("interrupt-confirm")
         try waitFor("the turn stops") { try self.sessionStatus("跑很久") == "idle" ? true : nil }
-        XCTAssertTrue(app.staticTexts.containing(NSPredicate(format: "label CONTAINS %@", "这一轮被打断了")).firstMatch.waitForExistence(timeout: 20))
+        XCTAssertTrue(app.staticTexts.containing(NSPredicate(format: "label CONTAINS %@", "你打断了这一轮")).firstMatch.waitForExistence(timeout: 20))
     }
 
     func streamedReply() throws {
@@ -108,6 +109,35 @@ final class HermeshUITests: XCTestCase {
         try waitFor("the turn ends") { try self.sessionStatus("慢慢写") == "idle" ? true : nil }
         XCTAssertTrue(draft.waitForNonExistence(timeout: 10))
         XCTAssertGreaterThanOrEqual(app.descendants(matching: .any).matching(NSPredicate(format: "label CONTAINS %@", "写完以后还要等一会儿")).count, 2)
+    }
+
+    func richConversation() throws {
+        _ = try control("rich?title=\("排版".addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed)!)", method: "POST")
+        openFromMenu(session: "排版")
+        // The reply as GitHub shows it, never as raw Markdown (the prompt above it is raw).
+        XCTAssertTrue(app.staticTexts["计划"].waitForExistence(timeout: 20), "the heading")
+        XCTAssertTrue(app.staticTexts["先看 加粗的文字 和 main.go。"].exists, "bold and code, without their marks")
+        XCTAssertTrue(app.staticTexts["第一项"].exists, "the list")
+        XCTAssertTrue(app.staticTexts["a.go"].exists && app.staticTexts["新增"].exists, "the table")
+        XCTAssertTrue(app.staticTexts["func main() {}"].exists, "the code")
+        XCTAssertTrue(app.links["https://example.com"].exists, "a bare link, up to the Chinese text")
+        // Two commands in a row: one folded line, opened to a row each; a row opens to its whole output.
+        let row = app.buttons.containing(NSPredicate(format: "label CONTAINS %@", "seq 1 3000")).firstMatch
+        XCTAssertFalse(row.exists, "folded")
+        press(app.buttons["运行了 2 条命令"].firstMatch)
+        XCTAssertTrue(row.waitForExistence(timeout: 5), "a row for each command")
+        XCTAssertTrue(app.buttons.containing(NSPredicate(format: "label CONTAINS %@", "echo 改好了")).firstMatch.exists)
+        press(row)
+        let output = app.descendants(matching: .any)["tool-output"].firstMatch
+        XCTAssertTrue(output.waitForExistence(timeout: 10), "its output")
+        try waitFor("the whole output, read from the machine") { output.descendants(matching: .any)["2999"].exists ? true : nil }
+        // A command alone is its own line, and a failed one says so.
+        XCTAssertTrue(app.buttons.containing(NSPredicate(format: "label CONTAINS %@", "no-such-file")).firstMatch.exists)
+        // A long-press on a reply copies it.
+        app.staticTexts["第一项"].press(forDuration: 1.2)
+        let copy = app.buttons["拷贝"]
+        XCTAssertTrue(copy.waitForExistence(timeout: 5), "Copy")
+        copy.tap()
     }
 
     func archiveAndUndo() throws {

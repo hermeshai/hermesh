@@ -374,6 +374,24 @@ func newIPhoneControl(t *testing.T, w *ownerMac, sessions map[string]string) str
 		mu.Unlock()
 		reply(rw, map[string]string{"id": s.SessionID})
 	})
+	// A finished session with what a conversation shows: two commands in a
+	// row (one with a long output), a reply in Markdown with code, and a
+	// command that failed.
+	mux.HandleFunc("POST /rich", func(rw http.ResponseWriter, r *http.Request) {
+		title := r.URL.Query().Get("title")
+		text := strings.Join([]string{"## 计划", "先看 **加粗的文字** 和 `main.go`。", "", "- 第一项", "- 第二项", "",
+			"| 文件 | 改动 |", "|---|---|", "| a.go | 新增 |", "", "```go", "func main() {}", "```", "", "详见 https://example.com，然后继续。"}, `\n`)
+		s, res := w.startSession(2*time.Minute, "--agent", "gemini", "--title", title, "--prompt",
+			"shell seq 1 3000\nshell echo 改好了\nsay "+text+"\nshell ls no-such-file", "--wait")
+		if s.SessionID == "" {
+			http.Error(rw, "start: "+res.stdout+res.stderr, 500)
+			return
+		}
+		mu.Lock()
+		sessions[title] = s.SessionID
+		mu.Unlock()
+		reply(rw, map[string]string{"id": s.SessionID})
+	})
 	// An agent asks to connect (hermesh auth login), for the iPhone to approve.
 	mux.HandleFunc("POST /agent", func(rw http.ResponseWriter, r *http.Request) {
 		home := filepath.Join(t.TempDir(), "agent")

@@ -11,18 +11,26 @@ public typealias QuestionResolved = Hermesh_Session_V1_QuestionResolved
 public typealias TurnCompleted = Hermesh_Session_V1_TurnCompleted
 public typealias ErrorEvent = Hermesh_Session_V1_ErrorEvent
 
-/// One tool call with its result, once there is one; running: the agent is still in it.
+/// One tool call with its result, once there is one (resultSeq: its
+/// event); running: the agent is still in it.
 public struct ToolItem: Equatable {
     public let seq: UInt64
     public let call: ToolCall
     public let result: ToolResult?
+    public var resultSeq: UInt64? = nil
     public let running: Bool
+}
+
+/// Whether a result's event holds only part of its output: a preview, or its first 16 KiB.
+public func partialOutput(_ r: ToolResult) -> Bool {
+    r.preview || r.size > UInt64(r.summary.utf8.count)
 }
 
 /// One row of the conversation.
 public enum TranscriptItem: Equatable {
     case turn(seq: UInt64, turn: Int, at: Date?)
-    case user(seq: UInt64, text: String)
+    /// at: when it was sent.
+    case user(seq: UInt64, text: String, at: Date?)
     case agent(seq: UInt64, text: String)
     case tool(ToolItem)
     case question(seq: UInt64, question: Question, resolution: QuestionResolved?)
@@ -36,7 +44,7 @@ public enum TranscriptItem: Equatable {
 
     public var seq: UInt64 {
         switch self {
-        case .turn(let s, _, _), .user(let s, _), .agent(let s, _), .question(let s, _, _), .turnEnd(let s, _, _), .error(let s, _),
+        case .turn(let s, _, _), .user(let s, _, _), .agent(let s, _), .question(let s, _, _), .turnEnd(let s, _, _), .error(let s, _),
              .message(let s, _, _, _, _): s
         case .tool(let t): t.seq
         }
@@ -48,11 +56,14 @@ public enum TranscriptItem: Equatable {
 /// unanswered tool call runs.
 public func transcript(_ events: [SessionEvent], running: Bool) -> [TranscriptItem] {
     var results: [String: ToolResult] = [:]
+    var resultSeqs: [String: UInt64] = [:]
     var resolutions: [String: QuestionResolved] = [:]
     var lastCall: UInt64?
     for e in events {
         switch e.kind {
-        case .toolResult(let r): results[r.callID] = r
+        case .toolResult(let r):
+            results[r.callID] = r
+            resultSeqs[r.callID] = e.seq
         case .questionResolved(let r): resolutions[r.questionID] = r
         case .toolCall: lastCall = e.seq
         default: break
@@ -66,11 +77,11 @@ public func transcript(_ events: [SessionEvent], running: Bool) -> [TranscriptIt
         case .turnStarted(let t):
             turnStart = at
             items.append(.turn(seq: e.seq, turn: Int(t.turn), at: at))
-        case .userMessage(let m): items.append(.user(seq: e.seq, text: m.text))
+        case .userMessage(let m): items.append(.user(seq: e.seq, text: m.text, at: at))
         case .agentMessage(let m): items.append(.agent(seq: e.seq, text: m.text))
         case .toolCall(let c):
             let r = results[c.callID]
-            items.append(.tool(ToolItem(seq: e.seq, call: c, result: r, running: r == nil && running && e.seq == lastCall && c.decision != "deny")))
+            items.append(.tool(ToolItem(seq: e.seq, call: c, result: r, resultSeq: resultSeqs[c.callID], running: r == nil && running && e.seq == lastCall && c.decision != "deny")))
         case .questionAsked(let q) where q.hasQuestion:
             items.append(.question(seq: e.seq, question: q.question, resolution: resolutions[q.question.questionID]))
         case .turnCompleted(let t):

@@ -48,7 +48,7 @@ func call(_ kind: String, _ summary: String, id: String? = nil, name: String = "
         Issue.record("unexpected items \(items)")
         return
     }
-    #expect(t.result != nil && !t.running)
+    #expect(t.result != nil && !t.running && t.resultSeq == 4)
     #expect(resolutionTitle(r) == "You answered: yes")
     #expect(!running.running) // the turn ended
     #expect(took == 60)
@@ -57,7 +57,7 @@ func call(_ kind: String, _ summary: String, id: String? = nil, name: String = "
 }
 
 @Test func consecutiveToolCallsAreOneStep() {
-    let items: [TranscriptItem] = [.user(seq: 1, text: "do"), .tool(ToolItem(seq: 2, call: call("read", "a.ts"), result: nil, running: false)),
+    let items: [TranscriptItem] = [.user(seq: 1, text: "do", at: nil), .tool(ToolItem(seq: 2, call: call("read", "a.ts"), result: nil, running: false)),
                                    .tool(ToolItem(seq: 3, call: call("read", "b.ts"), result: nil, running: false)),
                                    .tool(ToolItem(seq: 4, call: call("shell", "go test"), result: nil, running: false)),
                                    .agent(seq: 5, text: "ok"), .tool(ToolItem(seq: 6, call: call("edit", "a.ts"), result: nil, running: false))]
@@ -129,4 +129,16 @@ func call(_ kind: String, _ summary: String, id: String? = nil, name: String = "
         .message(seq: 1, incoming: true, name: "helper", text: "check staging", queued: true),
         .message(seq: 2, incoming: false, name: "c_bot", text: "halfway", queued: false),
     ])
+}
+
+@Test func partialOutputIsAPreviewOrLongerThanTheSummary() {
+    var r = ToolResult()
+    r.summary = "ok"
+    r.size = 2
+    #expect(!partialOutput(r))
+    r.size = 70_000
+    #expect(partialOutput(r))
+    r.size = 2
+    r.preview = true
+    #expect(partialOutput(r))
 }

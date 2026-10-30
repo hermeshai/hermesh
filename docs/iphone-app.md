@@ -15,7 +15,7 @@ is never a machine: nothing runs on it, and it hosts no agent.
 | Search | A page of its own, the field at the top as the App Store has it: the recent searches, the states to search within (a token in the field) and the recent sessions; while typing, completions and the sessions that match. Cancelling closes it |
 | Overview | To Do: requests to connect, grants that end, and how many sessions wait (it opens the menu, which lists them); Working Now: the sessions running, today's (any with a turn today) and those done, the sessions working each hour; who sent the day's work to which coding agent (authorized clients on the left, coding agents on the right, each band as thick as its turns; tapping one side picks it, and the clients that sent nothing are named under it), each coding agent with what it runs, on how many machines, its turns and its day in hours (those that worked first, the others folded), the machines, unreachable machines, View All Sessions (opens the menu). The hours, turns and tokens come from the machines (`GetActivity`, by client and agent) |
 | All Sessions | Laid out as the Mac's sidebar: the view menu groups (by status, date, coding agent or machine), sorts by last activity and shows or hides each row's metadata; a group's heading folds it; archived sessions on request; kept on the phone. Swipe a row to archive or delete it, long-press to rename, archive or delete |
-| A session | Its conversation, newest at the bottom; a control bar to interrupt a live turn, or the agent's question to answer; session info and the diff in a sheet; ⋯ to copy its id, rename, archive or delete it (delete asks first; its branch stays) |
+| A session | Its conversation, newest at the bottom, as the Mac shows it: the owner's messages in a dark bubble on the right, the agent's replies as GitHub Markdown with code in GitHub's colours, tool calls as grey lines folded until opened (a run of them one line, opening to a card with a row each; a row opens to its whole output); long-press a message to copy it. A control bar to interrupt a live turn, or the agent's question to answer; session info and the diff in a sheet; ⋯ to copy its id, rename, archive or delete it (delete asks first; its branch stays) |
 | Grants | Agents and MCP connections: approve, renew, rename, disconnect, pause; each grant's sessions on a page of their own |
 | Machines | The machines, a green shield on those that are trusted devices too, then the other trusted devices (which approve but run nothing; remove one with a swipe), each machine opening its page: its coding agents (signed in, projects, defaults), projects no installed agent may use, taking no new sessions, its sessions, rename, remove. A coding agent opens its own page: signing in, the default model, reasoning effort and (Codex) speed as menus in place, and its projects, each with a menu to change how agents work there or stop using it; Add a Project… for this agent. Three levels at most |
 | Account | Laid out as iOS Settings: the service and whether it is reached; usage in place (the last 30 days, active days, streak, the weeks of days); appearance as three small phones (the system's, light, dark); Notifications on a page of their own; about (on an own server the connection address and, when it serves MCP, its MCP address, each copied with a tap; the web console; the version); sign out |
@@ -39,7 +39,8 @@ apps/ios/
 │   └── Views/               Main (menu, overview), Session, Links (grants, machines), Sheets, Onboarding
 ├── HermeshNotifications/    the notification service extension
 ├── HermeshUITests/          the end-to-end UI tests (run by e2e/iphone_test.go)
-└── scripts/build-core.sh    builds HermeshCore.xcframework
+├── scripts/build-core.sh    builds HermeshCore.xcframework
+└── scripts/build-highlighter.sh  bundles the Mac app's Shiki for JavaScriptCore (code colours)
 packages/HermeshKit/         Swift package shared with the Mac signer
 ├── HermeshProto             generated protobuf types
 ├── HermeshKit               LocalService client, signing preview, notice key
@@ -53,6 +54,16 @@ packages/HermeshKit/         Swift package shared with the Mac signer
   random port, with a bearer token made for that launch. It connects to the
   relay while the app is in the foreground and pauses when it goes to the
   background, so nothing runs in the background but notifications.
+- **A conversation.** Replies parse with swift-markdown and render as
+  SwiftUI views (`Views/Session/Markdown.swift`), with the Mac app's rules:
+  a single newline breaks the line, a bare link stops where Chinese text
+  starts, raw HTML stays text, images show their alt text, only http and
+  https links open. A reply being written renders block by block as on the
+  Mac (`splitBlocks` in HermeshSessions). Code is coloured by the Mac
+  app's own Shiki with the same GitHub themes, run in JavaScriptCore
+  (`Code.swift`): `build-highlighter.sh` (an Xcode build phase) bundles it
+  from `apps/desktop`'s dependencies into `Highlighter/` in the app, each
+  language's grammar a file of its own, read the first time it is shown.
 - **The signer.** The root key lives in the Secure Enclave, usable after Face
   ID (`userPresence`); the Simulator has no Secure Enclave for such keys and
   uses a software key. As on the Mac, there is one per profile the owner role
