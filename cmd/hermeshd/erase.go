@@ -68,7 +68,7 @@ func eraseCommand(dataDir *string) *cobra.Command {
 				}
 			}
 			// Its owner's devices stop listing it, when the server can be reached.
-			if n, err := machine.Open(cfg); err == nil {
+			if n, err := openWhenStopped(cfg); err == nil {
 				if n.Paired() {
 					ctx, cancel := context.WithTimeout(cmd.Context(), 15*time.Second)
 					if err := n.LeaveOwner(ctx); err != nil {
@@ -91,6 +91,18 @@ func eraseCommand(dataDir *string) *cobra.Command {
 	}
 	cmd.Flags().BoolVar(&yes, "yes", false, "don't ask")
 	return cmd
+}
+
+// openWhenStopped opens the machine once the stopped service has let go of
+// it: on Windows its daemon ends a moment after its task does.
+func openWhenStopped(cfg machine.Config) (*machine.Machine, error) {
+	for deadline := time.Now().Add(10 * time.Second); ; {
+		n, err := machine.Open(cfg)
+		if err == nil || time.Now().After(deadline) {
+			return n, err
+		}
+		time.Sleep(200 * time.Millisecond)
+	}
 }
 
 // eraseHere erases the machine in cfg.DataDir (stopped), keeping worktrees
