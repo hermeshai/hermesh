@@ -200,7 +200,7 @@ func (w *Workspace) Create(ctx context.Context, repo, baseRef, sessionID string)
 	if common := plainGitDir(repo); common != "" {
 		err = w.addWorktree(ctx, repo, common, baseRef, branch, sessionID, false)
 	} else {
-		err = w.gitWorktreeAdd(ctx, repo, baseRef, branch, sessionID)
+		err = w.gitWorktreeAdd(ctx, repo, baseRef, branch, sessionID, false)
 	}
 	if err != nil {
 		return "", "", fmt.Errorf("create worktree at %q: %w", baseRef, err)
@@ -210,7 +210,7 @@ func (w *Workspace) Create(ctx context.Context, repo, baseRef, sessionID string)
 }
 
 // Restore checks the session's branch out again at its worktree path,
-// after Remove: every turn's work is in the branch.
+// after Remove or a missing directory: every turn's work is in the branch.
 func (w *Workspace) Restore(ctx context.Context, repo, sessionID string) error {
 	if w.none {
 		return os.MkdirAll(w.Path(sessionID), 0o700)
@@ -219,13 +219,13 @@ func (w *Workspace) Restore(ctx context.Context, repo, sessionID string) error {
 		return err
 	}
 	branch := "hermesh/" + sessionID
+	// A removed directory may still be registered with git. Prune its stale
+	// metadata before either checkout path tries to register it again.
+	w.Prune(ctx, repo)
 	if common := plainGitDir(repo); common != "" {
 		return w.addWorktree(ctx, repo, common, branch, branch, sessionID, true)
 	}
-	unlock := w.lock(repo)
-	defer unlock()
-	_, err := git(ctx, repo, "worktree", "add", "-q", w.Path(sessionID), branch)
-	return err
+	return w.gitWorktreeAdd(ctx, repo, branch, branch, sessionID, true)
 }
 
 // plainGitDir returns repo's .git directory when a worktree can be laid out
@@ -331,12 +331,14 @@ func resolveCommit(ctx context.Context, repo, ref string) (string, error) {
 	return strings.TrimSpace(out), err
 }
 
-func (w *Workspace) gitWorktreeAdd(ctx context.Context, repo, baseRef, branch, id string) error {
+func (w *Workspace) gitWorktreeAdd(ctx context.Context, repo, baseRef, branch, id string, existing bool) error {
 	// The branch first, so that retrying the add is idempotent.
-	_, err := git(ctx, repo, "branch", "--no-track", branch, baseRef)
-	if err != nil {
-		return err
+	if !existing {
+		if _, err := git(ctx, repo, "branch", "--no-track", branch, baseRef); err != nil {
+			return err
+		}
 	}
+	var err error
 	for attempt := 0; ; attempt++ {
 		_, err = gitUnlimited(ctx, repo, "worktree", "add", "-q", w.Path(id), branch)
 		// Concurrent adds can see each other's lock files or half-created
@@ -352,7 +354,9 @@ func (w *Workspace) gitWorktreeAdd(ctx context.Context, repo, baseRef, branch, i
 		bg := context.WithoutCancel(ctx)
 		w.Remove(bg, repo, id)
 		os.RemoveAll(w.Path(id))
-		git(bg, repo, "branch", "-D", branch)
+		if !existing { // a restored branch holds earlier turns
+			git(bg, repo, "branch", "-D", branch)
+		}
 	}
 	return err
 }

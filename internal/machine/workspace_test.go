@@ -202,6 +202,50 @@ func TestKilledCheckoutLeavesNoLock(t *testing.T) {
 	}
 }
 
+func TestStoppedRestoreKeepsBranch(t *testing.T) {
+	for _, fallback := range []bool{false, true} {
+		t.Run(fmt.Sprint(fallback), func(t *testing.T) {
+			repo := testRepo(t)
+			if fallback {
+				gitOut(t, repo, "config", "extensions.worktreeConfig", "true")
+			}
+			w := NewWorkspace(filepath.Join(t.TempDir(), "worktrees"))
+			ctx := context.Background()
+			if _, _, err := w.Create(ctx, repo, "", "s_1"); err != nil {
+				t.Fatal(err)
+			}
+			os.WriteFile(filepath.Join(w.Path("s_1"), "previous.txt"), []byte("keep me\n"), 0o644)
+			head, _, err := w.Snapshot(ctx, repo, "s_1", 1)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := w.Remove(ctx, repo, "s_1"); err != nil {
+				t.Fatal(err)
+			}
+			os.WriteFile(filepath.Join(repo, ".git", "info", "attributes"), []byte("a.txt filter=slow\n"), 0o644)
+			gitOut(t, repo, "config", "filter.slow.smudge", "sleep 30; cat")
+			stop, cancel := context.WithTimeout(ctx, 500*time.Millisecond)
+			defer cancel()
+			if err := w.Restore(stop, repo, "s_1"); err == nil {
+				t.Fatal("a stopped restore succeeded")
+			}
+			if w.Exists("s_1") {
+				t.Fatal("half checkout left behind")
+			}
+			if got := strings.TrimSpace(gitOut(t, repo, "rev-parse", "hermesh/s_1")); got != head {
+				t.Fatalf("restore changed the branch: %s, want %s", got, head)
+			}
+			gitOut(t, repo, "config", "filter.slow.smudge", "cat")
+			if err := w.Restore(ctx, repo, "s_1"); err != nil {
+				t.Fatalf("retry restore: %v", err)
+			}
+			if b, err := os.ReadFile(filepath.Join(w.Path("s_1"), "previous.txt")); err != nil || string(b) != "keep me\n" {
+				t.Fatalf("previous work: %q %v", b, err)
+			}
+		})
+	}
+}
+
 // An agent that switches branches (or detaches HEAD) in its worktree must
 // not take its work off the session branch, which is what is delivered.
 func TestSnapshotFollowsAgentBranchSwitch(t *testing.T) {
