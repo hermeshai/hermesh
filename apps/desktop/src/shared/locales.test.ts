@@ -79,3 +79,15 @@ test("English plural forms come in pairs", () => {
     }
   }
 });
+
+test("a Windows variant stands in for a key that exists, and takes its place on Windows", async () => {
+  const { windowsWords } = await import("./words.ts");
+  for (const { ns, file } of namespaces()) {
+    const keys = texts(file("en"));
+    for (const key of keys.keys()) if (key.endsWith("_win")) assert.ok(keys.has(key.slice(0, -4)), `${ns}: ${key} has no ${key.slice(0, -4)}`);
+  }
+  assert.deepEqual(windowsWords({ thisMac: "This Mac", thisMac_win: "This PC", n: { files_one: "a file", files_win_one: "a PC file", files_other: "files" } }), {
+    thisMac: "This PC",
+    n: { files_one: "a PC file", files_other: "files" },
+  });
+});

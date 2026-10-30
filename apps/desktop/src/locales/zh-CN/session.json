@@ -1,5 +1,6 @@
 {
   "thisMac": "这台 Mac",
+  "thisMac_win": "这台电脑",
   "waiting": "等你回答",
   "page": {
     "showInfo": "显示信息面板 {{keys}}",
@@ -35,6 +36,7 @@
       "offlineSeen": "这个会话的内容保存在那台机器上，连上后会自动显示。{{ago}}还在线。",
       "notConnected": "暂时连不上 Hermesh",
       "notConnectedDetail": "这个会话的内容保存在 {{name}} 上，这台 Mac 连上后会自动显示。",
+      "notConnectedDetail_win": "这个会话的内容保存在 {{name}} 上，这台电脑连上后会自动显示。",
       "noAnswer": "{{name}} 暂时没有回应",
       "noAnswerDetail": "这个会话的内容保存在那台机器上。正在重试，读到后会自动显示。"
     },

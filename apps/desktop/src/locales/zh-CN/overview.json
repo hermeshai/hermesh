@@ -3,6 +3,7 @@
   "day": "{{date}} {{weekday}}",
   "listSeparator": "、",
   "thisMac": "这台 Mac",
+  "thisMac_win": "这台电脑",
   "runningCount_other": "{{count}} 个运行中",
   "add": {
     "newGrant": "连接 agent…",
@@ -103,6 +104,7 @@
     "expiry": "有效期",
     "daysLeft_other": "还剩 {{count}} 天 · {{date}}",
     "here": "在这台 Mac",
+    "here_win": "在这台电脑",
     "seen_other": "今天 {{count}} 个任务 · 最近一次 {{ago}}",
     "revokeElsewhere": "撤销它的授权，要到你的可信设备上。"
   }

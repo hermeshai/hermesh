@@ -6,6 +6,7 @@
     "machines": "Machines",
     "account": "Account & Devices",
     "machinesOnly": "This Mac",
+    "machinesOnly_win": "This PC",
     "accountOnly": "Account"
   },
   "expiringSoon": "{{count}} expiring soon",
@@ -18,6 +19,7 @@
   "copied": "Copied",
   "listSeparator": ", ",
   "thisMac": "This Mac",
+  "thisMac_win": "This PC",
   "online": "Online",
   "offline": "Offline",
   "remove": "Remove…",
@@ -45,8 +47,11 @@
     "startup": "Startup",
     "openAtLogin": "Open Hermesh at login",
     "openAtLoginDesc": "Runs in the menu bar only, so connection requests can be approved right away.",
+    "openAtLoginDesc_win": "Runs in the notification area only, so connection requests can be approved right away.",
     "loginItemsApproval": "Also allow it in System Settings › Login Items.",
+    "loginItemsApproval_win": "Also turn it on in Settings › Apps › Startup.",
     "openSystemSettings": "Open System Settings…",
+    "openSystemSettings_win": "Open Startup Apps…",
     "notifications": "Notifications",
     "connectionRequests": "Connection requests",
     "connectionRequestsDesc": "Always on, as they need your approval",
@@ -56,6 +61,7 @@
     "sessionFailed": "Failed sessions",
     "turnDone": "Finished turns",
     "menuBar": "Menu Bar",
+    "menuBar_win": "Notification Area",
     "menuBadge": "Show a dot on the icon when something needs you"
   },
   "update": {
@@ -65,8 +71,11 @@
   },
   "account": {
     "removeDeviceMessage": "It can no longer approve anything, starting now, and its own machine is removed too. The machines and personal agents it approved are signed again by this Mac and keep working (requires Touch ID).",
+    "removeDeviceMessage_win": "It can no longer approve anything, starting now, and its own machine is removed too. The machines and personal agents it approved are signed again by this PC and keep working (requires Windows Hello).",
     "signOutTitle": "Sign Out This Mac?",
+    "signOutTitle_win": "Sign Out This PC?",
     "signOutRemovedMessage": "This Mac is no longer in your Hermesh account and can’t approve anything. After signing out, you can set it up again or join your account again.",
+    "signOutRemovedMessage_win": "This PC is no longer in your Hermesh account and can’t approve anything. After signing out, you can set it up again or join your account again.",
     "signOutButton": "Sign Out",
     "signOutFirstMessage": "It’s still one of your trusted devices. First, on another of your trusted devices, remove it in Settings › Account & Devices: it then can’t approve anything, and as a machine it disconnects. Then sign out here.",
     "hosted": "Hermesh service · {{host}}",
@@ -90,7 +99,8 @@
     "open": "Open",
     "signOut": "Sign Out…",
     "eraseAll": "Erase Everything…",
-    "machineOnlyNote": "This Mac is a machine of your account: it runs agents’ tasks and you set it up here, but it approves nothing and doesn’t see your other machines. Approve on one of your trusted devices."
+    "machineOnlyNote": "This Mac is a machine of your account: it runs agents’ tasks and you set it up here, but it approves nothing and doesn’t see your other machines. Approve on one of your trusted devices.",
+    "machineOnlyNote_win": "This PC is a machine of your account: it runs agents’ tasks and you set it up here, but it approves nothing and doesn’t see your other machines. Approve on one of your trusted devices."
   },
   "grants": {
     "expiresIn_one": "Expires in {{count}} day",
@@ -147,7 +157,9 @@
     "none": "No machines yet.",
     "add": "Add Machine…",
     "share": "Share this Mac’s agents securely",
+    "share_win": "Share this PC’s agents securely",
     "shareDesc": "Hermesh runs them from the command line as you would, without reading API keys or tokens. Turning this off stops the sessions here; turning it on requires Touch ID.",
+    "shareDesc_win": "Hermesh runs them from the command line as you would, without reading API keys or tokens. Turning this off stops the sessions here; turning it on requires Windows Hello.",
     "renameTitle": "Rename This Machine",
     "renameMessage": "Agents find projects by “machine/project”, so after renaming they see the new name. Use only lowercase letters, digits and -.",
     "machineName": "Machine name",

@@ -1,6 +1,7 @@
 import { app, net, protocol } from "electron";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
+import { useWindowsWords } from "../shared/i18n";
 import { forward, forwardedCalls, openUpstream } from "./gateway";
 import { registerIPC } from "./ipc";
 import { chooseLanguage } from "./language";
@@ -22,6 +23,7 @@ const csp = "default-src 'self'; img-src 'self' data:; style-src 'self' 'unsafe-
 // Tests run each instance with its own profile (and so its own single-instance lock).
 app.setPath("userData", !app.isPackaged && process.env.HERMESH_USER_DATA ? process.env.HERMESH_USER_DATA : path.join(dataDir(), "desktop"));
 chooseLanguage();
+if (platform.token === "win") useWindowsWords();
 
 protocol.registerSchemesAsPrivileged([
   // codeCache: V8 keeps the renderer's compiled script between launches.

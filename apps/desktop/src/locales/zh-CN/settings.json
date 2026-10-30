@@ -6,6 +6,7 @@
     "machines": "机器",
     "account": "账号与设备",
     "machinesOnly": "这台 Mac",
+    "machinesOnly_win": "这台电脑",
     "accountOnly": "账号"
   },
   "expiringSoon": "{{count}} 个快到期",
@@ -18,6 +19,7 @@
   "copied": "已拷贝",
   "listSeparator": "、",
   "thisMac": "这台 Mac",
+  "thisMac_win": "这台电脑",
   "online": "在线",
   "offline": "离线",
   "remove": "移除…",
@@ -45,8 +47,11 @@
     "startup": "启动",
     "openAtLogin": "登录时打开 Hermesh",
     "openAtLoginDesc": "只在菜单栏运行，连接请求能及时批准。",
+    "openAtLoginDesc_win": "只在通知区域运行，连接请求能及时批准。",
     "loginItemsApproval": "还要在系统设置的“登录项”里允许它。",
+    "loginItemsApproval_win": "还要在“设置 › 应用 › 启动”里打开它。",
     "openSystemSettings": "打开系统设置…",
+    "openSystemSettings_win": "打开启动应用设置…",
     "notifications": "通知",
     "connectionRequests": "连接请求",
     "connectionRequestsDesc": "需要你批准，一直会通知",
@@ -56,6 +61,7 @@
     "sessionFailed": "会话出错",
     "turnDone": "一轮完成",
     "menuBar": "菜单栏",
+    "menuBar_win": "通知区域",
     "menuBadge": "有事需要处理时，图标上显示圆点"
   },
   "update": {
@@ -65,8 +71,11 @@
   },
   "account": {
     "removeDeviceMessage": "它立刻不能再批准任何事，它自己的执行机器也一并移除。它批准过的机器和个人 agent 会改由这台 Mac 重新签发，照常可用（需要 Touch ID）。",
+    "removeDeviceMessage_win": "它立刻不能再批准任何事，它自己的执行机器也一并移除。它批准过的机器和个人 agent 会改由这台电脑重新签发，照常可用（需要 Windows Hello）。",
     "signOutTitle": "让这台 Mac 退出登录？",
+    "signOutTitle_win": "让这台电脑退出登录？",
     "signOutRemovedMessage": "这台 Mac 已不在你的 Hermesh 账号里，不能再批准任何事。退出登录后，可以重新设置，或再次加入你的账号。",
+    "signOutRemovedMessage_win": "这台电脑已不在你的 Hermesh 账号里，不能再批准任何事。退出登录后，可以重新设置，或再次加入你的账号。",
     "signOutButton": "退出登录",
     "signOutFirstMessage": "它现在还是你的可信设备。先在你的另一台可信设备上，到“设置 › 账号与设备”把它移除：它就不能再批准任何事，作为执行机器也会断开。之后再在这里退出登录。",
     "hosted": "Hermesh 官方服务 · {{host}}",
@@ -90,7 +99,8 @@
     "open": "打开",
     "signOut": "退出登录…",
     "eraseAll": "全部清空…",
-    "machineOnlyNote": "这台 Mac 是你账号里的执行机器：它运行 agent 的任务，它自己的设置在这里管理；但它不能批准，也看不到你的其他机器。批准请到你的可信设备上。"
+    "machineOnlyNote": "这台 Mac 是你账号里的执行机器：它运行 agent 的任务，它自己的设置在这里管理；但它不能批准，也看不到你的其他机器。批准请到你的可信设备上。",
+    "machineOnlyNote_win": "这台电脑是你账号里的执行机器：它运行 agent 的任务，它自己的设置在这里管理；但它不能批准，也看不到你的其他机器。批准请到你的可信设备上。"
   },
   "grants": {
     "expiresIn_other": "{{count}} 天后到期",
@@ -145,7 +155,9 @@
     "none": "还没有机器。",
     "add": "添加机器…",
     "share": "安全可信地共享本机 agent",
+    "share_win": "安全可信地共享本机 agent",
     "shareDesc": "Hermesh 像你一样在命令行调用它们，不读取 API Key 和 Token。关掉后，这里的会话会停下；开启需要 Touch ID。",
+    "shareDesc_win": "Hermesh 像你一样在命令行调用它们，不读取 API Key 和 Token。关掉后，这里的会话会停下；开启需要 Windows Hello。",
     "renameTitle": "给这台机器改名",
     "renameMessage": "agent 用“机器名/项目”找到项目，改名后它们会看到新名字。只能用小写字母、数字和 -。",
     "machineName": "机器名",
