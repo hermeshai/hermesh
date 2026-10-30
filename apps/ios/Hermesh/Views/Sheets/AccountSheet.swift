@@ -414,29 +414,23 @@ struct SigningSheet: View {
     }
 }
 
-/// The two digits to type on the device or machine just approved.
+/// The two digits to type on the device or machine just approved, as a card.
 struct MatchSheet: View {
     @Environment(\.dismiss) private var dismiss
     let label: String?
     let digits: String
 
     var body: some View {
-        VStack(spacing: 18) {
+        VStack(spacing: 0) {
             Text(label.map { String(localized: "Type these digits on “\($0)”") } ?? String(localized: "Type these digits on the new device"))
-                .font(.title3.bold()).multilineTextAlignment(.center)
-            HStack(spacing: 14) {
-                ForEach(Array(digits), id: \.self) { d in
-                    Text(String(d)).font(.system(size: 44, weight: .semibold, design: .monospaced))
-                        .frame(width: 72, height: 88).background(.fill.tertiary, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
-                }
-            }
-            .accessibilityElement(children: .combine)
-            .accessibilityIdentifier("match-digits")
-            Text("They prove the approval came from your own device.").font(.subheadline).foregroundStyle(.secondary)
-            Button("Done") { dismiss() }.buttonStyle(.glassProminent).controlSize(.large)
+                .font(.title2.bold()).multilineTextAlignment(.center)
+            DigitTiles(digits: digits).padding(.top, 26)
+            Text("They prove the approval came from your own device.")
+                .font(.subheadline).foregroundStyle(.secondary).multilineTextAlignment(.center).padding(.top, 18)
+            CardButton(title: "Done") { dismiss() }.padding(.top, 30)
         }
-        .padding(28)
-        .presentationDetents([.medium])
+        .padding(.horizontal, 26).padding(.top, 40).padding(.bottom, 6)
+        .fittedSheet()
     }
 }
 

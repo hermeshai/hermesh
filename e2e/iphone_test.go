@@ -20,6 +20,7 @@ import (
 
 	identityv1 "github.com/hermeshai/hermesh/gen/go/hermesh/identity/v1"
 	localv1 "github.com/hermeshai/hermesh/gen/go/hermesh/local/v1"
+	"github.com/hermeshai/hermesh/pkg/identity"
 	"github.com/hermeshai/hermesh/pkg/relay"
 )
 
@@ -274,7 +275,8 @@ func simulator(t *testing.T) string {
 
 // newIPhoneControl serves what the UI tests ask of the world around the
 // iPhone, and plays the owner's Mac: it approves the iPhone's request to
-// join as soon as it arrives. It returns the server's URL.
+// join as soon as it arrives (and no device's after it: those are the
+// iPhone's to approve). It returns the server's URL.
 func newIPhoneControl(t *testing.T, w *ownerMac, sessions map[string]string) string {
 	t.Helper()
 	ctx, cancel := context.WithCancel(context.Background())
@@ -290,7 +292,10 @@ func newIPhoneControl(t *testing.T, w *ownerMac, sessions map[string]string) str
 				continue
 			}
 			for _, p := range res.Pairings {
-				if p.Kind != identityv1.PairingKind_PAIRING_KIND_DEVICE {
+				mu.Lock()
+				done := joined != ""
+				mu.Unlock()
+				if done || p.Kind != identityv1.PairingKind_PAIRING_KIND_DEVICE {
 					continue
 				}
 				a, err := w.app.client.ApproveDevicePairing(ctx, &localv1.ApproveDevicePairingRequest{Code: p.Code})
@@ -463,6 +468,56 @@ func newIPhoneControl(t *testing.T, w *ownerMac, sessions map[string]string) str
 			}
 		}
 		reply(rw, map[string]bool{"connected": connected})
+	})
+	// A Windows computer asks to become a trusted device, for the iPhone to
+	// approve; then (POST /device/confirm?digits=) it types the two digits.
+	var deviceApp *testApp
+	var deviceCode string
+	mux.HandleFunc("POST /device", func(rw http.ResponseWriter, _ *http.Request) {
+		st, err := w.app.client.GetStatus(ctx, &localv1.GetStatusRequest{})
+		if err != nil {
+			http.Error(rw, err.Error(), 500)
+			return
+		}
+		dir := t.TempDir()
+		sock := filepath.Join(dir, "d.sock")
+		w.logs = append(w.logs, start(t, "owner studio-pc", nil, filepath.Join(w.bin, "hermeshd"), "run", "--owner", "--no-machine", "--data-dir", dir, "--socket", sock))
+		root, _ := identity.GenerateKey()
+		a := newTestApp(t, sock, root)
+		join, err := a.client.RequestJoin(ctx, &localv1.RequestJoinRequest{RelayUrl: st.RelayUrl, OwnerId: st.OwnerId,
+			RootPublicKey: rootPub(root), RootLabel: "STUDIO-PC", RootPlatform: "windows"})
+		if err != nil {
+			http.Error(rw, err.Error(), 500)
+			return
+		}
+		mu.Lock()
+		deviceApp, deviceCode = a, join.Code
+		mu.Unlock()
+		reply(rw, map[string]string{"code": join.Code, "verification": join.VerificationCode})
+	})
+	mux.HandleFunc("POST /device/confirm", func(rw http.ResponseWriter, r *http.Request) {
+		mu.Lock()
+		a, code := deviceApp, deviceCode
+		mu.Unlock()
+		for {
+			res, err := a.client.WaitJoin(ctx, &localv1.WaitJoinRequest{Code: code})
+			if err != nil {
+				http.Error(rw, err.Error(), 500)
+				return
+			}
+			if res.Expired {
+				http.Error(rw, "the request expired", 500)
+				return
+			}
+			if res.Done {
+				break
+			}
+		}
+		if _, err := a.client.ConfirmJoin(ctx, &localv1.ConfirmJoinRequest{Code: code, Accept: true, MatchCode: r.URL.Query().Get("digits")}); err != nil {
+			http.Error(rw, err.Error(), 500)
+			return
+		}
+		reply(rw, map[string]bool{"joined": true})
 	})
 	// An agent asks a new question (for a notification).
 	mux.HandleFunc("POST /ask", func(rw http.ResponseWriter, r *http.Request) {

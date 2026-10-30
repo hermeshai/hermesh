@@ -155,6 +155,74 @@ struct CodeTiles: View {
     }
 }
 
+/// The digits to type on what was just approved, as large as the width
+/// allows: each one its own tile, sharing the row.
+struct DigitTiles: View {
+    let digits: String
+
+    var body: some View {
+        HStack(spacing: 12) {
+            ForEach(Array(digits.enumerated()), id: \.offset) { _, d in
+                Text(String(d)).font(.system(size: 88, weight: .semibold, design: .rounded)).monospacedDigit()
+                    .frame(maxWidth: .infinity).frame(height: 136)
+                    .background(.fill.tertiary, in: RoundedRectangle(cornerRadius: 28, style: .continuous))
+            }
+        }
+        .accessibilityElement(children: .combine)
+        .accessibilityIdentifier("match-digits")
+    }
+}
+
+extension View {
+    /// A sheet just as tall as what it shows, which iOS floats as a card
+    /// (as when AirPods come near).
+    func fittedSheet() -> some View { modifier(FittedSheet()) }
+}
+
+private struct FittedSheet: ViewModifier {
+    @State private var height: CGFloat = 480
+
+    func body(content: Content) -> some View {
+        content
+            .fixedSize(horizontal: false, vertical: true)
+            .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { height = $0 }
+            .frame(maxHeight: .infinity, alignment: .top)
+            .presentationDetents([.height(height)])
+    }
+}
+
+/// A card's close button, at its top right as the system's own cards have it.
+struct CardCloseButton: View {
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            Image(systemName: "xmark").font(.system(size: 15, weight: .semibold)).frame(width: 32, height: 32)
+        }
+        .buttonStyle(.glass).buttonBorderShape(.circle)
+        .accessibilityLabel(Text("Close"))
+        .accessibilityIdentifier("close")
+    }
+}
+
+/// A card's one main action, the width of the card.
+struct CardButton: View {
+    let title: LocalizedStringKey
+    var systemImage: String?
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            HStack(spacing: 8) {
+                if let systemImage { Image(systemName: systemImage) }
+                Text(title)
+            }
+            .font(.headline).frame(maxWidth: .infinity).frame(height: 36)
+        }
+        .buttonStyle(.glassProminent).controlSize(.large)
+    }
+}
+
 /// The toast at the bottom, with Undo when there is one.
 struct ToastView: View {
     let toast: Toast

@@ -297,7 +297,7 @@ struct AgentPicker: View {
 
 /// A request to connect: who asks, the verification code to compare, and
 /// (for an agent) what it may use. Approving signs with Face ID at once:
-/// this sheet is the confirmation.
+/// this sheet is the confirmation. A device asking is a card of its own.
 struct PairingSheet: View {
     @Environment(AppModel.self) private var model
     @Environment(\.dismiss) private var dismiss
@@ -305,26 +305,31 @@ struct PairingSheet: View {
     @State private var scope = ScopeChoice()
     @State private var machineName = ""
     @State private var busy = false
-    @State private var done: String?
+    /// The device just approved: its name and the digits to type on it.
+    @State private var device: (label: String, digits: String)?
     /// The machine just approved: its id, name and the digits to type on it.
     @State private var joining: (id: String, name: String, digits: String)?
     /// The agent just approved: its client id and name, for the first task.
     @State private var connected: (id: String, name: String)?
 
     var body: some View {
+        if let device {
+            MatchSheet(label: device.label, digits: device.digits)
+        } else if let p = pairing, p.kind == .device {
+            DeviceCard(pairing: p, busy: busy, approve: { approve(p) }, deny: { deny(p) }, close: { dismiss() })
+                .fittedSheet()
+        } else {
+            form
+        }
+    }
+
+    private var form: some View {
         NavigationStack {
             Group {
                 if let joining {
                     MachineJoining(machineID: joining.id, name: joining.name, digits: joining.digits) { dismiss() }
                 } else if let connected {
                     FirstTask(clientID: connected.id, name: connected.name) { dismiss() }
-                } else if let done {
-                    VStack(spacing: 14) {
-                        Image(systemName: "checkmark.circle.fill").font(.system(size: 56)).foregroundStyle(.green)
-                        Text(done).font(.title3.bold()).multilineTextAlignment(.center)
-                        Button("Done") { dismiss() }.buttonStyle(.glassProminent).controlSize(.large).padding(.top, 8)
-                    }
-                    .padding(32).frame(maxHeight: .infinity)
                 } else if let p = pairing {
                     form(p)
                 } else {
@@ -391,35 +396,25 @@ struct PairingSheet: View {
                     Text("Agents find projects as “machine/project”. Once approved, add projects to it on its page and choose which grants may use them.")
                 }
             default:
-                Section {
-                } footer: {
-                    Text("It will approve machines, personal agents and new devices, just like this iPhone. Approve only if that device is in your hands; if it gets lost, remove it from any other device.")
-                }
+                EmptyView()
             }
             Section {
-                HStack(spacing: 10) {
-                    Button {
-                        model.dismissedPairings.insert(p.code)
-                        model.show(p.confirmed ? String(localized: "Put off.") : String(localized: "Put off. Don’t approve unless the codes match."))
-                        dismiss()
-                    } label: {
-                        Text("Deny").frame(maxWidth: .infinity)
-                    }
-                    .buttonStyle(.glass)
-                    Button {
-                        approve(p)
-                    } label: {
-                        Label("Approve", systemImage: "faceid").frame(maxWidth: .infinity)
-                    }
-                    .buttonStyle(.glassProminent)
-                    .disabled(busy || (p.kind == .client && !scope.complete) || (p.kind == .machine && machineName.isEmpty))
-                    .accessibilityIdentifier("approve")
+                VStack(spacing: 14) {
+                    CardButton(title: "Approve", systemImage: "faceid") { approve(p) }
+                        .disabled(busy || (p.kind == .client && !scope.complete) || (p.kind == .machine && machineName.isEmpty))
+                        .accessibilityIdentifier("approve")
+                    Button("Deny") { deny(p) }
                 }
-                .controlSize(.large)
                 .listRowBackground(Color.clear)
                 .listRowInsets(EdgeInsets())
             }
         }
+    }
+
+    private func deny(_ p: PairingDetails) {
+        model.dismissedPairings.insert(p.code)
+        model.show(p.confirmed ? String(localized: "Put off.") : String(localized: "Put off. Don’t approve unless the codes match."))
+        dismiss()
     }
 
     private func selfReport(_ p: PairingDetails) -> String {
@@ -442,9 +437,71 @@ struct PairingSheet: View {
                     joining = (res.machineID.isEmpty ? p.subjectID : res.machineID, machineName, res.matchCode)
                 }
             default:
-                if await model.approveDevice(p) != nil { done = String(localized: "“\(p.label)” is a trusted device now") }
+                if let res = await model.approveDevice(p, inline: true) { device = (p.label, res.matchCode) }
             }
         }
+    }
+}
+
+/// A device asking to become a trusted one, as a card like the system's own
+/// when AirPods come near: what asks, the code to compare, one button.
+private struct DeviceCard: View {
+    let pairing: PairingDetails
+    let busy: Bool
+    let approve: () -> Void
+    let deny: () -> Void
+    let close: () -> Void
+
+    var body: some View {
+        let p = pairing
+        VStack(spacing: 0) {
+            Image(systemName: deviceSymbol(p.platform))
+                .font(.system(size: 80, weight: .thin)).symbolRenderingMode(.hierarchical)
+                .frame(height: 96)
+            Text(p.label).font(.title2.bold()).multilineTextAlignment(.center).padding(.top, 18)
+            Text(subtitle).font(.subheadline).foregroundStyle(.secondary).multilineTextAlignment(.center).padding(.top, 4)
+            if !p.confirmed {
+                VStack(spacing: 10) {
+                    HStack(spacing: 8) {
+                        ForEach(Array(p.verificationCode.split(separator: "-").enumerated()), id: \.offset) { _, g in
+                            Text(g).font(.system(size: 22, weight: .semibold, design: .monospaced)).tracking(1)
+                                .frame(maxWidth: .infinity).padding(.vertical, 12)
+                                .background(.fill.tertiary, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                        }
+                    }
+                    Text("The same as on “\(p.label)”?").font(.footnote).foregroundStyle(.secondary)
+                }
+                .accessibilityElement(children: .combine)
+                .accessibilityIdentifier("verification-code")
+                .padding(.top, 26)
+            }
+            Text("Once approved, it approves machines, personal agents and new devices, as this iPhone does. Approve only if it is in your hands.")
+                .font(.footnote).foregroundStyle(.secondary).multilineTextAlignment(.center)
+                .padding(.top, 22)
+            CardButton(title: "Approve", systemImage: "faceid", action: approve)
+                .disabled(busy)
+                .accessibilityIdentifier("approve")
+                .padding(.top, 26)
+            Button("Deny", action: deny).padding(.top, 14)
+        }
+        .padding(.horizontal, 26).padding(.top, 44).padding(.bottom, 6)
+        .overlay(alignment: .topTrailing) { CardCloseButton(action: close).padding(16) }
+    }
+
+    /// Its platform, and the name its computer goes by when that differs.
+    private var subtitle: String {
+        let platform = ["windows": "Windows", "macos": "Mac", "linux": "Linux", "ios": "iPhone"][pairing.platform] ?? pairing.platform
+        let host = pairing.hostname == pairing.label ? "" : pairing.hostname
+        return [platform, host, String(localized: "Wants to become a trusted device")].filter { !$0.isEmpty }.joined(separator: " · ")
+    }
+}
+
+/// A device's picture by its platform.
+private func deviceSymbol(_ platform: String) -> String {
+    switch platform {
+    case "ios": "iphone"
+    case "macos": "laptopcomputer"
+    default: "desktopcomputer"
     }
 }
 
@@ -483,14 +540,7 @@ struct MachineJoining: View {
                     WaitingMark(size: 64)
                 } else {
                     Text("Type these digits on “\(name)”").font(.title2.bold()).multilineTextAlignment(.center)
-                    HStack(spacing: 14) {
-                        ForEach(Array(digits), id: \.self) { d in
-                            Text(String(d)).font(.system(size: 48, weight: .semibold, design: .monospaced))
-                                .frame(width: 76, height: 94).background(.fill.tertiary, in: RoundedRectangle(cornerRadius: 22, style: .continuous))
-                        }
-                    }
-                    .accessibilityElement(children: .combine)
-                    .accessibilityIdentifier("match-digits")
+                    DigitTiles(digits: digits)
                     Text("They prove the approval came from your own device.").font(.subheadline).foregroundStyle(.secondary)
                 }
                 HStack(spacing: 8) {
