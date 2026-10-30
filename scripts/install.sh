@@ -7,7 +7,7 @@
 #                    (without one: $HERMESH_CENTER, else the official center https://hermesh.io)
 #   Agent CLI only:  curl -fsSL https://github.com/hermeshai/hermesh/releases/latest/download/install.sh | sh -s -- --cli
 #   Trusted device:  … | sh -s -- --device   (a computer that approves and runs no coding agents)
-#   As root:         … | sh -s -- --user dev   (installs for that user, creating it if needed; asked when not given)
+#   As root:         … | sh -s -- --user dev   (installs for that user, creating it if needed; without it, asks, and root is the default)
 #
 # Environment: HERMESH_VERSION (default latest), HERMESH_BIN_DIR (default ~/.local/bin)
 set -eu
@@ -51,20 +51,26 @@ esac
 TTY=""
 if (: </dev/tty) 2>/dev/null; then TTY=/dev/tty; fi
 
-# Coding agents get full trust on their machine, so Hermesh runs as the user
-# you code as, never as root. As root, it installs for that user.
+# Hermesh runs as the user it is installed for. As root, the installer says
+# so and installs for root, or for another user you name.
 AS=""
-if [ "$(id -u)" = 0 ]; then
-  [ "$MODE" != cli ] || die "do not run as root; install the CLI as the user your agent runs as"
-  if [ -z "$FOR_USER" ]; then
-    [ -n "$TTY" ] || die "do not run as root; Hermesh runs as the user you code as: pass --user <name>"
-    def="$(awk -F: '$3 >= 1000 && $3 < 60000 && $7 !~ /(nologin|false)$/ { print $1; exit }' /etc/passwd)"
-    [ -n "$def" ] || def=dev
-    if [ "$MODE" = device ]; then echo "Hermesh runs as a user, not as root."; else echo "Hermesh runs as the user you code as, not as root."; fi
-    printf 'User to install for [%s]: ' "$def"
-    read -r FOR_USER <"$TTY" || true
-    [ -n "$FOR_USER" ] || FOR_USER="$def"
+if [ "$(id -u)" = 0 ] && [ -z "$FOR_USER" ] && [ -n "$TTY" ]; then
+  echo "You are root: Hermesh will be installed for root."
+  printf 'Press Enter to continue, or type another user to install for (q quits): '
+  read -r FOR_USER <"$TTY" || true
+  case "$FOR_USER" in q | Q) echo "Nothing was installed."; exit 0 ;; esac
+fi
+if [ "$(id -u)" = 0 ] && [ "${FOR_USER:-root}" = root ]; then
+  # For root itself, whose service starts at boot with nobody logged in.
+  # USER may be unset (cloud-init, docker exec) or still another's (su).
+  FOR_USER=""
+  export USER=root LOGNAME=root
+  if command -v loginctl >/dev/null && loginctl enable-linger root 2>/dev/null; then
+    echo "✓ Installing for root, with lingering on"
+  else
+    echo "✓ Installing for root"
   fi
+elif [ "$(id -u)" = 0 ]; then
   if ! id "$FOR_USER" >/dev/null 2>&1; then
     if [ -n "$TTY" ]; then
       printf '“%s” doesn'"'"'t exist. Create it? [Y/n] ' "$FOR_USER"

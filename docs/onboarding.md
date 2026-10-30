@@ -386,24 +386,27 @@ installs; starts the service; checks the coding agents
 
 ### 6.4 Root
 
-A fresh VPS logs in as root. Coding agents get full trust on their machine,
-so Hermesh still won't run as root, and it offers the way forward:
+A fresh VPS logs in as root. Whom Hermesh runs as is the person's choice:
+the installer says who they are, and installs for root unless they name
+someone else.
 
 ```
-Hermesh runs as the user you code as, not as root.
-User to install for [dev]:
+You are root: Hermesh will be installed for root.
+Press Enter to continue, or type another user to install for (q quits): dev
 “dev” doesn't exist. Create it? [Y/n]
 ```
 
-`--user <name>` does the same without asking. As root, the installer:
+Enter installs for root, with lingering on for root. Without a terminal it
+installs for root without asking. For another user, named there or with
+`--user <name>`, the installer:
 
 1. creates the user if needed (`useradd -m`);
 2. turns on lingering for it;
 3. installs into its home and runs the rest as that user (`runuser -u
    <name>` with its `XDG_RUNTIME_DIR`), so the service is the user's own.
 
-The coding agents are installed and signed in as that user (`su - dev`),
-and the final check says so.
+The coding agents are installed and signed in as the user Hermesh runs as
+(`su - dev` for another user), and the final check says so.
 
 ### 6.5 The background service
 
