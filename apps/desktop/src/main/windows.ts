@@ -36,6 +36,11 @@ function secure(win: BrowserWindow) {
     if (url.startsWith("https://")) shell.openExternal(url);
     return { action: "deny" };
   });
+  // Its titles go grey while another window has the focus, as macOS titles do.
+  const focus = () => wc.send("window-focus", win.isFocused());
+  win.on("focus", focus);
+  win.on("blur", focus);
+  wc.on("did-finish-load", focus);
 }
 
 function webPreferences() {
@@ -64,7 +69,7 @@ export function showMain(): BrowserWindow {
     show: false,
     title: "Hermesh",
     titleBarStyle: process.platform === "darwin" ? "hiddenInset" : "default",
-    trafficLightPosition: mode === "main" ? { x: 20, y: 20 } : { x: 24, y: 24 },
+    trafficLightPosition: mode === "main" ? { x: 12, y: 15 } : { x: 24, y: 24 },
     // The sidebar's material (the page leaves it see-through; the content is opaque).
     ...(process.platform === "darwin" ? { vibrancy: "sidebar" as const, visualEffectState: "followWindow" as const, backgroundColor: "#00000000" } : {}),
     webPreferences: webPreferences(),
@@ -82,8 +87,8 @@ export function setMode(m: "onboarding" | "main") {
   mode = m;
   if (!main) return;
   const s = sizes[m];
-  // The traffic lights sit on the middle of the main window's 52 px top band.
-  if (process.platform === "darwin") main.setWindowButtonPosition(m === "main" ? { x: 20, y: 20 } : { x: 24, y: 24 });
+  // The traffic lights sit on the middle of the main window's 44 px top band.
+  if (process.platform === "darwin") main.setWindowButtonPosition(m === "main" ? { x: 12, y: 15 } : { x: 24, y: 24 });
   const b = main.getBounds();
   const area = screen.getDisplayMatching(b).workArea;
   const width = Math.min(s.width, area.width);
@@ -140,8 +145,8 @@ export function showSettings(tab?: string) {
     show: false,
     title: i18n.t("main:settingsWindow"),
     titleBarStyle: process.platform === "darwin" ? "hiddenInset" : "default",
-    // As the main window: the lights on the 52 px top band, the sidebar's material showing through.
-    trafficLightPosition: { x: 20, y: 20 },
+    // As the main window: the lights on the 44 px top band, the sidebar's material showing through.
+    trafficLightPosition: { x: 12, y: 15 },
     ...(process.platform === "darwin" ? { vibrancy: "sidebar" as const, visualEffectState: "followWindow" as const, backgroundColor: "#00000000" } : {}),
     minimizable: false,
     fullscreenable: false,
@@ -160,7 +165,7 @@ function showAuxiliary(route: "updates" | "about" | "whats-new", title: string) 
     width: 560, height: 360, minWidth: 440, minHeight: route === "about" ? 340 : 280,
     show: false, title, minimizable: false, fullscreenable: false,
     titleBarStyle: process.platform === "darwin" ? "hiddenInset" : "default",
-    trafficLightPosition: { x: 20, y: 20 }, webPreferences: webPreferences(),
+    trafficLightPosition: { x: 12, y: 15 }, webPreferences: webPreferences(),
   });
   auxiliary.set(route, win);
   secure(win);

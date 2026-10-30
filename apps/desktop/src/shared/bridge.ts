@@ -39,6 +39,8 @@ export type Bridge = {
   openSettings(tab?: string): void;
   /** In the settings window: another tab was asked for while it is open ("grants", "machines/<id>"). */
   onSettingsTab(cb: (tab: string) => void): () => void;
+  /** Whether this window has the focus: now, and whenever it changes. */
+  onWindowFocus(cb: (focused: boolean) => void): () => void;
   /** Shows the main window with its session list narrowed to a grant (its client id) or a machine. */
   showInMain(filter: { grant: string } | { machine: string }): void;
   /** Shows the main window joining the owner as a trusted device (a machine only becoming one). */

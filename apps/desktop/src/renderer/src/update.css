@@ -34,7 +34,7 @@
 .about-window .update-links{justify-content:center}
 
 /* Golden-ratio spacing: 13 / 21 / 34; the window follows its intrinsic content height. */
-.update-dialog .update-title{height:52px}
+.update-dialog .update-title{height:44px}
 .update-dialog .update-scroll{padding:21px 34px}
 .update-content{display:flow-root}
 .update-dialog .update-heading{gap:13px;margin-bottom:21px}

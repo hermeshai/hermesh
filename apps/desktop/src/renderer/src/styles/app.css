@@ -131,8 +131,8 @@ button{font:inherit;color:inherit}
 /* Sidebar titles a step brighter than other text in the dark, as small text on the material reads grey. */
 @media (prefers-color-scheme:dark){.side{--l1:rgba(255,255,255,.93)}}
 .noside .side{opacity:0;pointer-events:none}
-/* The sidebar toggle sits a step after the traffic lights (which end at x 82), as in Codex and Mail; hidden, the toolbar keeps it there. The list's view options end the row. */
-.side-top{height:52px;display:flex;align-items:center;justify-content:space-between;padding:0 8px 0 92px;flex:none}
+/* The sidebar toggle sits a step after the traffic lights (which end at x 72), as in Codex and Mail; hidden, the toolbar keeps it there. The list's view options end the row. */
+.side-top{height:44px;display:flex;align-items:center;justify-content:space-between;padding:0 8px 0 79px;flex:none}
 .tb{height:28px;min-width:28px;border:0;background:transparent;border-radius:8px;display:flex;align-items:center;justify-content:center;color:var(--l2);gap:5px;padding:0 6px}
 .tb:hover{background:var(--fill2);color:var(--l1)}
 .tb.on{background:var(--fill2);color:var(--l1)}
@@ -226,14 +226,16 @@ button{font:inherit;color:inherit}
 .vmenu .mi.danger{color:var(--red)}
 .vmenu .mi:disabled{color:var(--l3)}
 .content{position:relative;display:flex;flex-direction:column;min-width:0;min-height:0;background:var(--win)}
-.ctool{height:52px;flex:none;display:flex;align-items:center;gap:10px;padding:0 14px 0 22px}
-.noside .ctool{padding-left:30px}
+.ctool{height:44px;flex:none;display:flex;align-items:center;gap:10px;padding:0 14px 0 22px}
+.noside .ctool{padding-left:7px}
 .ctitle{flex:1;min-width:0;display:flex;align-items:center;gap:10px}
-.ctitle h2{margin:0;font-size:15px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.ctitle h2{margin:0;font-size:14px;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+/* As macOS titles: grey while another window has the focus. */
+html.blurred .ctitle h2,html.blurred .set-top h1,html.blurred .update-title{color:var(--l2)}
 .cscroll{flex:1;overflow-y:auto;min-height:0}
 /* overview */
 .ov{padding:0 var(--sp-4) var(--sp-5);display:flex;flex-direction:column;gap:var(--sp-4);max-width:980px;margin:0 auto}
-/* The title row is as high as ＋ and sits on the sidebar's first button's line (the toolbar above is 54 high, and the sidebar's first button centres at 69). */
+/* The title row is as high as ＋ and sits on the sidebar's first button's line (the toolbar above is 44 high, and the sidebar's first button centres at 61). */
 .ov-h{display:flex;align-items:center;justify-content:space-between;gap:var(--sp-3);height:32px;margin-bottom:calc(var(--sp-2) - var(--sp-4))}
 .ov-t{display:flex;align-items:baseline;gap:var(--sp-2);min-width:0}
 .ov-h h1{margin:0;font-size:26px;font-weight:700;letter-spacing:-.01em}

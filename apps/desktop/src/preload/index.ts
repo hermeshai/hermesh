@@ -29,6 +29,7 @@ const bridge: Bridge = {
   language: arg("lang") as Language,
   openSettings: (tab?: string) => ipcRenderer.send("open-settings", tab),
   onSettingsTab: (cb: (tab: string) => void) => listen("settings-tab", cb),
+  onWindowFocus: (cb: (focused: boolean) => void) => listen("window-focus", cb),
   showInMain: (filter: { grant: string } | { machine: string }) => ipcRenderer.send("show-in-main", filter),
   showUpgrade: () => ipcRenderer.send("show-upgrade"),
   popupMenu: (items: MenuItem[]) => ipcRenderer.invoke("popup-menu", items),

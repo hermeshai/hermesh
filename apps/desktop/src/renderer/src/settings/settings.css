@@ -1,11 +1,11 @@
 /* The settings window, as System Settings: the pages in a sidebar (the main
    window's .side and .nav-i), the page on the right under its title bar. */
 .settings{display:grid;grid-template-columns:200px minmax(0,1fr);height:100%;position:relative}
-.set-side-top{height:52px;flex:none}
+.set-side-top{height:44px;flex:none}
 .set-soon{margin-left:auto;font-size:11px;color:var(--orange)}
 .set-main{display:flex;flex-direction:column;min-width:0;min-height:0;background:var(--win)}
-.set-top{height:52px;flex:none;display:flex;align-items:center;gap:4px;padding:0 21px;border-bottom:.5px solid var(--sep)}
-.set-top h1{margin:0;font-size:15px;font-weight:600}
+.set-top{height:44px;flex:none;display:flex;align-items:center;gap:4px;padding:0 21px;border-bottom:.5px solid var(--sep)}
+.set-top h1{margin:0;font-size:14px;font-weight:500}
 .set-back{width:26px;height:26px;margin-left:-6px;border:0;border-radius:7px;background:none;display:flex;align-items:center;justify-content:center;color:var(--l2);padding:0}
 .set-back:hover{background:var(--fill2)}
 .set-back .ic{transform:rotate(180deg)}

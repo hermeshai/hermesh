@@ -120,8 +120,9 @@ test("long titles are cut, the status dot sits by its text, a running title shim
 });
 
 // macOS: the window is see-through where the sidebar is, so the system's
-// sidebar material shows there; the content stays opaque. The sidebar toggle
-// sits right after the traffic lights.
+// sidebar material shows there; the content stays opaque. The top band is 44
+// high with the traffic lights in its middle, and the sidebar toggle sits
+// right after them, shown or hidden.
 test("the sidebar shows the window's material; the toggle sits after the traffic lights", async () => {
   test.skip(process.platform !== "darwin", "macOS only");
   const { app, page } = await launch();
@@ -133,9 +134,19 @@ test("the sidebar shows the window's material; the toggle sits after the traffic
   const alpha = Number(side.match(/rgba?\([^)]*,\s*([\d.]+)\)$/)?.[1] ?? 1);
   expect(alpha).toBeLessThan(0.5);
   expect(await bg(".content")).not.toMatch(/rgba\(.*,\s*0(\.\d+)?\)$/);
+  expect(await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].getWindowButtonPosition())).toEqual({ x: 12, y: 15 });
+  expect((await page.locator(".side-top").boundingBox())!.height).toBe(44);
+  expect((await page.locator(".ctool").boundingBox())!.height).toBe(44);
   const toggle = (await page.getByRole("button", { name: "隐藏边栏" }).boundingBox())!;
-  expect(toggle.x).toBeGreaterThanOrEqual(90);
-  expect(toggle.x).toBeLessThanOrEqual(94);
+  expect(toggle.x).toBeGreaterThanOrEqual(77);
+  expect(toggle.x).toBeLessThanOrEqual(81);
+  // On the lights' line: 14 high from y 15.
+  expect(Math.abs(toggle.y + toggle.height / 2 - 22)).toBeLessThanOrEqual(1);
+  await page.getByRole("button", { name: "隐藏边栏" }).click();
+  // Once the sidebar has slid away, the toolbar's toggle is where the sidebar's was.
+  const shown = async () => (await page.getByRole("button", { name: "显示边栏" }).boundingBox())!;
+  await expect.poll(async () => Math.round((await shown()).x)).toBe(Math.round(toggle.x));
+  expect(Math.abs((await shown()).y - toggle.y)).toBeLessThanOrEqual(1);
   await app.close();
 });
 
