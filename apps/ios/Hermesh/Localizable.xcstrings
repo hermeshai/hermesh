@@ -4444,12 +4444,22 @@
         }
       }
     },
-    "Remove “%@”?": {
+    "Remove the machine “%@”?": {
       "localizations": {
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "移除「%@」？"
+            "value": "移除机器「%@」？"
+          }
+        }
+      }
+    },
+    "Remove the trusted device “%@”?": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "移除可信设备「%@」？"
           }
         }
       }

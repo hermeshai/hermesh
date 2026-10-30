@@ -736,7 +736,7 @@ test("removing another trusted device's machine in 设置 › 机器 removes the
   await settings.getByRole("list", { name: "机器" }).getByRole("button", { name: /^work-pc/ }).click();
   await settings.locator(".set-acts").getByRole("button", { name: "移除…" }).click();
   // The device, not only its machine: it would stay trusted otherwise.
-  const dialog = settings.getByRole("dialog", { name: "移除「work-pc」？" });
+  const dialog = settings.getByRole("dialog", { name: "移除可信设备「work-pc」？" });
   await expect(dialog).toContainText("它立刻不能再批准任何事，它自己的执行机器也一并移除。");
   await dialog.getByRole("button", { name: "移除" }).click();
   await expect.poll(async () => (await first.listDevices({})).devices.map((d) => d.label), { timeout: 30_000 }).toEqual(["first-mac"]);

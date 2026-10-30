@@ -24,7 +24,8 @@
   "offline": "Offline",
   "remove": "Remove…",
   "removeButton": "Remove",
-  "removeTitle": "Remove “{{name}}”?",
+  "removeDeviceTitle": "Remove the trusted device “{{name}}”?",
+  "removeMachineTitle": "Remove the machine “{{name}}”?",
   "removed": "Removed “{{name}}”",
   "showInMain": "Show in Main Window",
   "appearance": {

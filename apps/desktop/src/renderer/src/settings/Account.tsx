@@ -24,7 +24,7 @@ export function Account({ ask }: { ask: (a: Ask) => void }) {
     st.set({
       sheet: {
         kind: "confirm",
-        title: t("removeTitle", { name: d.label }),
+        title: t("removeDeviceTitle", { name: d.label }),
         message: t("account.removeDeviceMessage"),
         button: t("removeButton"),
         run: () => local.removeDevice({ keyId: d.keyId }),

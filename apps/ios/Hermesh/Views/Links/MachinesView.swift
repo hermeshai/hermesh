@@ -59,7 +59,7 @@ struct MachinesView: View {
                 Label("End-to-end encrypted: the server only forwards, and can’t read anything.", systemImage: "lock").frame(maxWidth: .infinity)
             }
         }
-        .confirmationDialog(removing.map { String(localized: "Remove “\($0.label)”?") } ?? "", isPresented: Binding(get: { removing != nil }, set: { if !$0 { removing = nil } }), titleVisibility: .visible) {
+        .confirmationDialog(removing.map { String(localized: "Remove the trusted device “\($0.label)”?") } ?? "", isPresented: Binding(get: { removing != nil }, set: { if !$0 { removing = nil } }), titleVisibility: .visible) {
             Button("Remove", role: .destructive) { if let d = removing { Task { await model.removeDevice(d) } } }
         } message: {
             Text("It can no longer approve anything at once, and its own machine is removed with it. The machines and agents it approved are reissued by this iPhone and keep working (needs Face ID).")
@@ -326,7 +326,7 @@ struct MachineView: View {
         } message: {
             Text("Agents find projects as “machine/project” and will see the new name. Use lowercase letters, digits and -.")
         }
-        .confirmationDialog("Remove “\(m.machineName)”?", isPresented: $confirmRemove, titleVisibility: .visible) {
+        .confirmationDialog(device(m).map { String(localized: "Remove the trusted device “\($0.label)”?") } ?? String(localized: "Remove the machine “\(m.machineName)”?"), isPresented: $confirmRemove, titleVisibility: .visible) {
             Button("Remove", role: .destructive) {
                 if let d = device(m) { Task { await model.removeDevice(d) } } else { Task { await model.remove(m) } }
             }
