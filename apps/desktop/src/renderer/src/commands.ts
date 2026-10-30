@@ -5,7 +5,7 @@ import type { Command, MenuState } from "../../shared/bridge";
 import { i18n } from "../../shared/i18n";
 import { local } from "./api";
 import { copySessionId, focusAnswer, interrupt } from "./session/actions";
-import { openPairing } from "./sheets/Pairing";
+import { frontRequest } from "./RequestCards";
 import { archive, grantLabel, listSections } from "./Sidebar";
 import { useStore, type Store } from "./store";
 
@@ -88,7 +88,7 @@ function run(st: Store, c: Command) {
     case "open":
       return open(st, arg);
     case "pairing":
-      return openPairing(st, arg);
+      return frontRequest(st, arg);
   }
 }
 

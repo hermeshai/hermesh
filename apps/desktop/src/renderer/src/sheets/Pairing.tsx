@@ -10,7 +10,7 @@ import { useStore, type Store } from "../store";
 import { ErrorLine, SignerWaiting, useAction, useWaitForPairings } from "./common";
 import { newScope, ScopeRows } from "./Scope";
 
-function pairingTitle(p: PairingDetails): string {
+export function pairingTitle(p: PairingDetails): string {
   switch (p.kind) {
     case PairingKind.CLIENT:
       return i18n.t("sheets:pairing.titleClient", { name: p.label });

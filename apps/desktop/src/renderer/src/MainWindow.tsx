@@ -1,6 +1,7 @@
 import { useEffect } from "react";
 import { useTranslation } from "react-i18next";
 import { Overview } from "./Overview";
+import { RequestCards } from "./RequestCards";
 import { SearchPalette } from "./Search";
 import { SessionPage } from "./SessionPage";
 import { SheetHost } from "./Sheets";
@@ -41,6 +42,7 @@ export function MainWindow() {
       <Sidebar />
       <section className="content">
         {session ? <SessionPage s={session} /> : <Overview />}
+        <RequestCards />
       </section>
       {st.searching && <SearchPalette key={JSON.stringify(st.searchFor)} />}
       <SheetHost />
