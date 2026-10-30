@@ -12,16 +12,17 @@ export const devURL = !app.isPackaged ? process.env.ELECTRON_RENDERER_URL : unde
 let main: BrowserWindow | undefined;
 let settings: BrowserWindow | undefined;
 const auxiliary = new Map<string, BrowserWindow>();
-// The window opens at the size it had last time (the first run's on a first
-// start), its page loading in the middle, so it seldom changes size.
+// The window opens at the size it had last time (the main window's on a
+// first start, as most starts are), its page loading in the middle, so it
+// seldom changes size.
 let mode: "onboarding" | "main" | undefined;
 const modeFile = () => path.join(app.getPath("userData"), "window.json");
 
 function lastMode(): "onboarding" | "main" {
   try {
-    return JSON.parse(fs.readFileSync(modeFile(), "utf8")).mode === "main" ? "main" : "onboarding";
+    return JSON.parse(fs.readFileSync(modeFile(), "utf8")).mode === "onboarding" ? "onboarding" : "main";
   } catch {
-    return "onboarding";
+    return "main";
   }
 }
 
@@ -98,7 +99,7 @@ export function setMode(m: "onboarding" | "main") {
   mode = m;
   try {
     fs.writeFileSync(modeFile(), JSON.stringify({ mode }));
-  } catch {} // it opens at the first run's size next time
+  } catch {} // it opens at the main window's size next time
   if (!main) return;
   const s = sizes[m];
   platform.placeButtons(main, m);

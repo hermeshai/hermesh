@@ -25,18 +25,31 @@ async function expectMainWindow(app: ElectronApplication, page: Page) {
   await expect.poll(() => app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0]?.getBounds().width ?? 0)).toBeGreaterThan(900);
 }
 
-test("the window opens at the first run's size, loading in the middle until hermeshd answers", async () => {
-  const { app, page } = await launch(path.join(fs.mkdtempSync(path.join(os.tmpdir(), "hmsock-")), "none.sock"));
-  const width = () => app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0]?.getBounds().width);
+test("the window opens at its last size, loading in the middle until hermeshd answers", async () => {
+  const none = () => path.join(fs.mkdtempSync(path.join(os.tmpdir(), "hmsock-")), "none.sock");
+  const width = (app: ElectronApplication) => app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0]?.getBounds().width ?? 0);
+  // A first start: the main window's size, as most starts are.
+  const profile = fs.mkdtempSync(path.join(os.tmpdir(), "hmdesk-"));
+  const { app, page } = await launch(none(), { profile });
   await expect(page.getByText("正在连接后台服务…")).toBeVisible();
-  expect(await width()).toBe(720);
+  expect(await width(app)).toBeGreaterThan(900);
   await snap(page, "start-01-connecting");
   // The explanation only once it has kept not answering.
   await expect(page.getByText("Hermesh 的后台服务没有响应", { exact: false })).toBeHidden();
   await expect(page.getByText("Hermesh 的后台服务没有响应", { exact: false })).toBeVisible({ timeout: 15_000 });
-  expect(await width()).toBe(720);
+  expect(await width(app)).toBeGreaterThan(900);
   await snap(page, "start-02-not-answering");
   await app.close();
+
+  // The first run makes it compact, and it opens so next time.
+  const first = await launch(fixture.fresh[0].socket, { profile });
+  await expect(first.page.getByRole("heading", { name: "让 Agent 安全地互相连接" })).toBeVisible();
+  await expect.poll(() => width(first.app)).toBe(720);
+  await first.app.close();
+  const again = await launch(none(), { profile });
+  await expect(again.page.getByText("正在连接后台服务…")).toBeVisible();
+  expect(await width(again.app)).toBe(720);
+  await again.app.close();
 });
 
 test("a relay of one's own: welcome, authorize, set up this Mac, add a project, connect later", async () => {
