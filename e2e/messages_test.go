@@ -12,7 +12,6 @@ import (
 	"image/color"
 	"image/png"
 	"io"
-	"net"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -31,6 +30,8 @@ import (
 
 	identityv1 "github.com/hermeshai/hermesh/gen/go/hermesh/identity/v1"
 	localv1 "github.com/hermeshai/hermesh/gen/go/hermesh/local/v1"
+
+	"github.com/hermeshai/hermesh/internal/localipc"
 )
 
 // Messages (docs/agent-messages.md), with real binaries.
@@ -1101,10 +1102,10 @@ type claudeInbox struct {
 }
 
 func newClaudeInbox(t *testing.T) *claudeInbox {
-	dir, _ := os.MkdirTemp("/tmp", "cc")
+	dir, _ := os.MkdirTemp(shortTemp, "cc")
 	t.Cleanup(func() { os.RemoveAll(dir) })
 	c := &claudeInbox{path: filepath.Join(dir, "inbox.sock")}
-	ln, err := net.Listen("unix", c.path)
+	ln, err := localipc.Listen(c.path)
 	if err != nil {
 		t.Fatal(err)
 	}

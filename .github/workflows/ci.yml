@@ -31,6 +31,18 @@ jobs:
         env:
           # Race-detector binaries on one runner: a data race fails the test.
           HERMESH_E2E_RACE: ${{ matrix.os == 'ubuntu-latest' && '1' || '' }}
+  # Windows (docs/windows.md): what is ported so far.
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - name: vet
+        run: go vet ./...
+      - name: unit tests
+        run: go test ./cmd/... ./internal/... ./pkg/... -count=1
   # The desktop app (Electron) and the macOS signer: types, unit tests, and
   # their end-to-end tests driving the real app against the real daemon.
   app:
