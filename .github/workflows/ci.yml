@@ -99,11 +99,14 @@ jobs:
         run: |
           reg add "HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\AppModelUnlock" /t REG_DWORD /f /v AllowDevelopmentWithoutDevLicense /d 1
           Add-AppxPackage -Register dist\Hermesh-windows-x64\AppxManifest.xml
-          Get-AppxPackage Hermesh | Format-List Name, Version, InstallLocation
-          & "$env:LOCALAPPDATA\Microsoft\WindowsApps\hermesh.exe" version
-          if ($LASTEXITCODE -ne 0) { throw "hermesh alias" }
-          & "$env:LOCALAPPDATA\Microsoft\WindowsApps\hermeshd.exe" version
-          if ($LASTEXITCODE -ne 0) { throw "hermeshd alias" }
+          $p = Get-AppxPackage Hermesh
+          $p | Format-List Name, Version, InstallLocation
+          # Aliases don't start in the runner's session (as winget's don't there): they exist, and the programs run.
+          foreach ($cli in 'hermesh', 'hermeshd') {
+            if (-not (Test-Path "$env:LOCALAPPDATA\Microsoft\WindowsApps\$cli.exe")) { throw "no $cli alias" }
+            & (Join-Path $p.InstallLocation "bin\$cli.exe") version
+            if ($LASTEXITCODE -ne 0) { throw "$cli" }
+          }
       - uses: actions/upload-artifact@v4
         with:
           name: Hermesh-windows-x64
