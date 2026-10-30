@@ -49,6 +49,13 @@ func newRelease(t *testing.T) *release {
 	return r
 }
 
+// unixOnly: a Windows machine doesn't update itself yet (docs/windows.md §14).
+func unixOnly(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("updating is not on Windows yet")
+	}
+}
+
 func setVar(t *testing.T, v *string, to string) {
 	old := *v
 	*v = to
@@ -130,6 +137,7 @@ func TestPublicKeyIsTheReleaseKey(t *testing.T) {
 }
 
 func TestInstall(t *testing.T) {
+	unixOnly(t)
 	r := newRelease(t)
 	r.publish("0.2.0")
 	rel, _ := Latest(context.Background())
@@ -161,6 +169,7 @@ func TestInstall(t *testing.T) {
 // A program that doesn't match its hash, or doesn't say its version,
 // replaces nothing.
 func TestInstallRefuses(t *testing.T) {
+	unixOnly(t)
 	r := newRelease(t)
 	for what, change := range map[string]func(){
 		"checksum": func() { r.files["hermesh-"+runtime.GOOS+"-"+runtime.GOARCH] = []byte("#!/bin/sh\necho 0.2.0 \n") },
@@ -188,12 +197,13 @@ func TestInstallRefuses(t *testing.T) {
 }
 
 func TestDirRefusesTheApp(t *testing.T) {
+	unixOnly(t)
 	app := filepath.Join(t.TempDir(), "Hermesh.app", "Contents", "Resources")
 	os.MkdirAll(app, 0o755)
 	os.WriteFile(filepath.Join(app, "hermeshd"), nil, 0o755)
 	executable = func() (string, error) { return filepath.Join(app, "hermeshd"), nil }
 	t.Cleanup(func() { executable = os.Executable })
-	if _, err := Dir(); err == nil || !strings.Contains(err.Error(), "Hermesh.app") {
+	if _, err := Dir(); err == nil || !strings.Contains(err.Error(), "the Hermesh app") {
 		t.Errorf("%v", err)
 	}
 }
@@ -201,6 +211,7 @@ func TestDirRefusesTheApp(t *testing.T) {
 // The background updater waits while a session runs, installs once none
 // does, and does nothing while automatic updates are off.
 func TestBackground(t *testing.T) {
+	unixOnly(t)
 	r := newRelease(t)
 	r.publish("0.2.0")
 	dir := programsAt(t, "0.1.0")
