@@ -1,6 +1,6 @@
-import { SessionStatus } from "@hermesh/proto/session";
+import { FailureKind, SessionStatus } from "@hermesh/proto/session";
 import { describe, expect, test } from "vitest";
-import { agoText, clockText, elapsedSeconds, listTime, minutesLeft, phaseText, shortTime, tokensText, toolSummary } from "./text";
+import { agoText, clockText, elapsedSeconds, failureHeadline, listTime, minutesLeft, phaseText, shortTime, tokensText, toolSummary } from "./text";
 import { at, now, progressOf, session } from "./testing";
 
 describe("text", () => {
@@ -20,6 +20,14 @@ describe("text", () => {
     expect([elapsedSeconds(t0(900), t0(2_000)), elapsedSeconds(t0(100), t0(2_000))]).toEqual([2, 2]);
     expect([tokensText(412_000), tokensText(1_800_000), tokensText(12)]).toEqual(["412K", "1.8M", "12"]);
     expect(minutesLeft(at(21 * 60 + 5), now)).toBe("还剩 22 分钟");
+  });
+
+  test("a failure is told of the coding agent, every kind in its own words", () => {
+    expect(failureHeadline(FailureKind.START_FAILED, "Codex")).toBe("Codex 没能启动");
+    expect(failureHeadline(FailureKind.AUTH, "Claude Code")).toBe("Claude Code 没有登录");
+    expect(failureHeadline(FailureKind.UNSPECIFIED, "Codex")).toBe("Codex 出错了");
+    const kinds = Object.values(FailureKind).filter((k): k is FailureKind => typeof k === "number" && k !== FailureKind.UNSPECIFIED && k !== FailureKind.INTERRUPTED && k !== FailureKind.UNKNOWN);
+    expect(kinds.filter((k) => failureHeadline(k, "Codex") === "Codex 出错了")).toEqual([]);
   });
 
   test("the session list's time is relative today and short after", () => {

@@ -96,6 +96,29 @@ public func failureTitle(_ k: FailureKind) -> String {
     }
 }
 
+/// A failure told of the coding agent, in a sentence ("Codex couldn’t
+/// start"): the title of the card a failed session ends with.
+public func failureHeadline(_ k: FailureKind, agent: String) -> String {
+    switch k {
+    case .auth: String(localized: "\(agent) isn’t signed in", bundle: .module)
+    case .quota: String(localized: "\(agent) is out of quota", bundle: .module)
+    case .rateLimit: String(localized: "\(agent) was rate limited", bundle: .module)
+    case .providerError: String(localized: "\(agent)’s model service failed", bundle: .module)
+    case .network: String(localized: "\(agent) lost the network", bundle: .module)
+    case .contextOverflow: String(localized: "\(agent)’s context is full", bundle: .module)
+    case .modelUnavailable: String(localized: "This model isn’t available to \(agent)", bundle: .module)
+    case .invalidRequest: String(localized: "\(agent)’s request was rejected", bundle: .module)
+    case .refused: String(localized: "The model refused this task", bundle: .module)
+    case .limitReached: String(localized: "\(agent) reached its step limit", bundle: .module)
+    case .resumeRejected: String(localized: "\(agent) couldn’t pick up the earlier conversation", bundle: .module)
+    case .agentCrashed: String(localized: "\(agent) quit unexpectedly", bundle: .module)
+    case .stalled: String(localized: "\(agent) made no progress for a long time", bundle: .module)
+    case .timeout: String(localized: "This turn ran past its time limit", bundle: .module)
+    case .startFailed: String(localized: "\(agent) couldn’t start", bundle: .module)
+    default: String(localized: "\(agent) ran into an error", bundle: .module)
+    }
+}
+
 /// What to do about a failure; the daemon's hint when there is no advice of our own.
 public func failureAdvice(_ f: Failure) -> String {
     switch f.kind {

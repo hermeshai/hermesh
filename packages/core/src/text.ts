@@ -122,6 +122,32 @@ export function failureTitle(k: FailureKind): string {
   }
 }
 
+type Headline = "auth" | "quota" | "rateLimit" | "providerError" | "network" | "contextOverflow" | "modelUnavailable" | "invalidRequest" | "refused" |
+  "limitReached" | "resumeRejected" | "agentCrashed" | "stalled" | "timeout" | "startFailed" | "other";
+
+const headlines: Partial<Record<FailureKind, Headline>> = {
+  [FailureKind.AUTH]: "auth",
+  [FailureKind.QUOTA]: "quota",
+  [FailureKind.RATE_LIMIT]: "rateLimit",
+  [FailureKind.PROVIDER_ERROR]: "providerError",
+  [FailureKind.NETWORK]: "network",
+  [FailureKind.CONTEXT_OVERFLOW]: "contextOverflow",
+  [FailureKind.MODEL_UNAVAILABLE]: "modelUnavailable",
+  [FailureKind.INVALID_REQUEST]: "invalidRequest",
+  [FailureKind.REFUSED]: "refused",
+  [FailureKind.LIMIT_REACHED]: "limitReached",
+  [FailureKind.RESUME_REJECTED]: "resumeRejected",
+  [FailureKind.AGENT_CRASHED]: "agentCrashed",
+  [FailureKind.STALLED]: "stalled",
+  [FailureKind.TIMEOUT]: "timeout",
+  [FailureKind.START_FAILED]: "startFailed",
+};
+
+/** A failure told of the coding agent, in a sentence ("Codex couldn’t start"): the title of the card a failed session ends with. */
+export function failureHeadline(k: FailureKind, agent: string): string {
+  return t(`headline.${headlines[k] ?? "other"}`, { agent });
+}
+
 /** What to do about a failure; the daemon's hint when there is no advice of our own. */
 export function failureAdvice(f: Failure): string {
   switch (f.kind) {
