@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"sync"
 	"testing"
@@ -23,6 +24,9 @@ func TestMain(m *testing.M) {
 		panic(err)
 	}
 	fakeBin = filepath.Join(dir, "fakeacp")
+	if runtime.GOOS == "windows" {
+		fakeBin += ".exe"
+	}
 	if out, err := exec.Command("go", "build", "-o", fakeBin, "./fakeacp").CombinedOutput(); err != nil {
 		panic(fmt.Sprintf("build fakeacp: %v\n%s", err, out))
 	}
@@ -414,6 +418,9 @@ func fakeApp(t *testing.T, a App) {
 
 // Without the CLI on PATH, the copy inside the agent's desktop app is used.
 func TestDesktopAppCLI(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("desktop apps' bundled CLIs are found on macOS")
+	}
 	a := App{Bundle: "Fake Desktop.app", Exec: "Contents/MacOS/Fake Desktop", Script: "Contents/Resources/lib/cli.js"}
 	fakeApp(t, a)
 	f := newFixture(t)

@@ -3,6 +3,7 @@ package devicekey
 import (
 	"errors"
 	"os"
+	"runtime"
 	"strings"
 	"testing"
 
@@ -17,7 +18,7 @@ func TestSealedKey(t *testing.T) {
 	}
 	id := identity.KeyID(k.Public())
 	b, _ := os.ReadFile(Path(dir, id))
-	if fi, _ := os.Stat(Path(dir, id)); fi.Mode().Perm() != 0o600 {
+	if fi, _ := os.Stat(Path(dir, id)); runtime.GOOS != "windows" && fi.Mode().Perm() != 0o600 {
 		t.Fatalf("key file mode %v", fi.Mode())
 	}
 	if strings.Contains(string(b), "PRIVATE KEY") {
