@@ -3,6 +3,7 @@ package main
 import (
 	"bufio"
 	"context"
+	"crypto/ecdsa"
 	"crypto/rand"
 	"crypto/sha256"
 	"encoding/base64"
@@ -31,6 +32,7 @@ import (
 	"github.com/hermeshai/hermesh/internal/paths"
 	"github.com/hermeshai/hermesh/internal/preview"
 	"github.com/hermeshai/hermesh/internal/service"
+	"github.com/hermeshai/hermesh/internal/signer"
 	"github.com/hermeshai/hermesh/pkg/identity"
 )
 
@@ -67,8 +69,8 @@ a user, that runs no coding agents: they could approve as you.`,
 			if err != nil {
 				return err
 			}
-			s := startSigner(cmd.Context(), c, *dataDir, t)
-			defer s.stop()
+			stopSigner := startSigner(cmd.Context(), c, *dataDir, t)
+			defer stopSigner()
 			req := &localv1.RequestJoinRequest{RootLabel: hostname(), RootPlatform: "linux"}
 			if relay, owner, err := connaddr.Parse(arg); err == nil && owner != "" {
 				req.RelayUrl, req.OwnerId = relay, owner
@@ -166,8 +168,8 @@ a user, that runs no coding agents: they could approve as you.`,
 			if err != nil {
 				return err
 			}
-			s := startSigner(cmd.Context(), c, *dataDir, t)
-			defer s.stop()
+			stopSigner := startSigner(cmd.Context(), c, *dataDir, t)
+			defer stopSigner()
 			res, err := c.Setup(cmd.Context(), req)
 			if err != nil {
 				return err
@@ -225,8 +227,8 @@ a user, that runs no coding agents: they could approve as you.`,
 			if found == nil {
 				return fmt.Errorf("no trusted device %q (hermeshd device list)", args[0])
 			}
-			s := startSigner(cmd.Context(), c, *dataDir, t)
-			defer s.stop()
+			stopSigner := startSigner(cmd.Context(), c, *dataDir, t)
+			defer stopSigner()
 			r, err := c.RemoveDevice(cmd.Context(), &localv1.RemoveDeviceRequest{KeyId: found.KeyId})
 			if err != nil {
 				return err
@@ -247,8 +249,8 @@ a user, that runs no coding agents: they could approve as you.`,
 			if err != nil {
 				return err
 			}
-			s := startSigner(cmd.Context(), c, *dataDir, t)
-			defer s.stop()
+			stopSigner := startSigner(cmd.Context(), c, *dataDir, t)
+			defer stopSigner()
 			if _, err := c.Leave(cmd.Context(), &localv1.LeaveRequest{}); err != nil {
 				return err
 			}
@@ -289,8 +291,8 @@ a user, that runs no coding agents: they could approve as you.`,
 				fmt.Println("Nothing waits for approval. A machine's or a device's code: hermeshd approve <code>")
 				return nil
 			}
-			s := startSigner(cmd.Context(), c, *dataDir, t)
-			defer s.stop()
+			stopSigner := startSigner(cmd.Context(), c, *dataDir, t)
+			defer stopSigner()
 			for _, p := range waiting {
 				if err := approveOne(cmd.Context(), c, t, p); err != nil {
 					fmt.Fprintf(os.Stderr, "✗ %v\n", err)
@@ -461,129 +463,94 @@ func (t *terminal) secret(prompt string) (string, error) {
 	return string(b), err
 }
 
-// signer answers the owner role's signing requests while a command runs:
-// it shows what each batch signs (internal/preview), asks for the
-// passphrase, and signs with the key it opens; the key stays open only
-// until the command ends.
-type signer struct {
-	c      localv1connect.LocalServiceClient
-	dir    string
-	t      *terminal
-	cancel context.CancelFunc
-	done   chan struct{}
-	keys   map[string]*identity.SoftwareKey
-}
-
-func startSigner(ctx context.Context, c localv1connect.LocalServiceClient, dataDir string, t *terminal) *signer {
+// startSigner answers the owner role's signing requests while a command
+// runs (internal/signer): it shows what each batch signs in this terminal
+// and signs with the key its passphrase opens, which stays open only until
+// the command ends. stop waits for the batch at hand.
+func startSigner(ctx context.Context, c localv1connect.LocalServiceClient, dataDir string, t *terminal) (stop func()) {
 	ctx, cancel := context.WithCancel(ctx)
-	s := &signer{c: c, dir: filepath.Join(dataDir, "owner-keys"), t: t, cancel: cancel, done: make(chan struct{}), keys: map[string]*identity.SoftwareKey{}}
-	reqs := make(chan *localv1.SigningRequest, 16)
+	done := make(chan struct{})
 	go func() {
-		defer close(reqs)
-		for ctx.Err() == nil {
-			stream, err := c.WatchSigningRequests(ctx, &localv1.WatchSigningRequestsRequest{})
-			if err != nil {
-				time.Sleep(200 * time.Millisecond)
-				continue
-			}
-			for stream.Receive() {
-				reqs <- stream.Msg()
-			}
-		}
+		defer close(done)
+		signer.Run(ctx, c, &terminalKeys{dir: filepath.Join(dataDir, "owner-keys"), t: t, open: map[string]*identity.SoftwareKey{}}, terminalOwner{})
 	}()
-	go func() {
-		defer close(s.done)
-		var next *localv1.SigningRequest
-		for {
-			r := next
-			if next = nil; r == nil {
-				var ok bool
-				if r, ok = <-reqs; !ok {
-					return
-				}
-			}
-			// The rest of its batch comes right after it.
-			batch := []*localv1.SigningRequest{r}
-		gather:
-			for r.BatchId != "" {
-				select {
-				case n, ok := <-reqs:
-					if !ok {
-						break gather
-					}
-					if n.BatchId != r.BatchId {
-						next = n
-						break gather
-					}
-					batch = append(batch, n)
-				case <-time.After(300 * time.Millisecond):
-					break gather
-				}
-			}
-			s.handle(ctx, batch)
-		}
-	}()
-	return s
+	return func() {
+		cancel()
+		<-done
+	}
 }
 
-func (s *signer) stop() {
-	s.cancel()
-	<-s.done
+// terminalKeys are the root keys in owner-keys, each sealed by a
+// passphrase asked in the terminal.
+type terminalKeys struct {
+	dir  string
+	t    *terminal
+	open map[string]*identity.SoftwareKey
 }
 
-func (s *signer) handle(ctx context.Context, batch []*localv1.SigningRequest) {
-	if len(batch) == 0 {
-		return
+func (k *terminalKeys) Create(context.Context) (*ecdsa.PublicKey, error) {
+	for {
+		p1, err := k.t.secret("Choose a passphrase for this device's key: ")
+		if err != nil {
+			return nil, err
+		}
+		if len(p1) < 8 {
+			fmt.Println("  At least 8 characters.")
+			continue
+		}
+		p2, err := k.t.secret("Type it again: ")
+		if err != nil {
+			return nil, err
+		}
+		if p1 != p2 {
+			fmt.Println("  They don't match.")
+			continue
+		}
+		key, err := devicekey.Create(k.dir, p1)
+		if err != nil {
+			return nil, err
+		}
+		k.open[identity.KeyID(key.Public())] = key
+		return key.Public(), nil
 	}
-	first := batch[0]
-	reject := func(why string) {
-		fmt.Fprintf(os.Stderr, "✗ Not signed: %s\n", why)
-		for _, r := range batch {
-			s.c.CompleteSigningRequest(ctx, &localv1.CompleteSigningRequestRequest{RequestId: r.RequestId, Rejected: true})
+}
+
+func (k *terminalKeys) Delete(keyID string) error {
+	delete(k.open, keyID)
+	return devicekey.Delete(k.dir, keyID)
+}
+
+// Sign asks for the passphrase unless the key is open: typing it is the approval.
+func (k *terminalKeys) Sign(_ context.Context, keyID string, messages [][]byte) ([][]byte, error) {
+	key := k.open[keyID]
+	for tries := 3; key == nil; tries-- {
+		p, err := k.t.secret("\nPassphrase to sign (Enter to refuse): ")
+		if err != nil || p == "" {
+			return nil, signer.ErrRefused
+		}
+		if key, err = devicekey.Open(k.dir, keyID, p); errors.Is(err, devicekey.ErrPassphrase) && tries > 1 {
+			fmt.Println("  Wrong passphrase.")
+			continue
+		} else if err != nil {
+			return nil, err
+		}
+		k.open[keyID] = key
+	}
+	sigs := make([][]byte, len(messages))
+	for i, m := range messages {
+		var err error
+		if sigs[i], err = key.SignMessage(m); err != nil {
+			return nil, err
 		}
 	}
-	switch {
-	case first.CreateRootKey:
-		for {
-			p1, err := s.t.secret("Choose a passphrase for this device's key: ")
-			if err != nil {
-				reject(err.Error())
-				return
-			}
-			if len(p1) < 8 {
-				fmt.Println("  At least 8 characters.")
-				continue
-			}
-			p2, err := s.t.secret("Type it again: ")
-			if err != nil {
-				reject(err.Error())
-				return
-			}
-			if p1 != p2 {
-				fmt.Println("  They don't match.")
-				continue
-			}
-			k, err := devicekey.Create(s.dir, p1)
-			if err != nil {
-				reject(err.Error())
-				return
-			}
-			s.keys[identity.KeyID(k.Public())] = k
-			s.c.CompleteSigningRequest(ctx, &localv1.CompleteSigningRequestRequest{RequestId: first.RequestId, PublicKey: identity.MarshalPublicKey(k.Public())})
-			return
-		}
-	case first.DeleteRootKey:
-		devicekey.Delete(s.dir, first.RootKeyId)
-		delete(s.keys, first.RootKeyId)
-		s.c.CompleteSigningRequest(ctx, &localv1.CompleteSigningRequestRequest{RequestId: first.RequestId})
-		return
-	}
-	h := s.hints(ctx)
-	cards, err := preview.Cards(batch, h)
-	if err != nil {
-		reject(err.Error())
-		return
-	}
+	return sigs, nil
+}
+
+// terminalOwner shows the cards in the terminal; the passphrase approves
+// (terminalKeys.Sign).
+type terminalOwner struct{}
+
+func (terminalOwner) Approve(_ context.Context, cards []preview.Card) (bool, error) {
 	for _, c := range cards {
 		fmt.Printf("\n  %s\n", c.Title)
 		if c.Code != "" {
@@ -599,45 +566,9 @@ func (s *signer) handle(ctx context.Context, batch []*localv1.SigningRequest) {
 			fmt.Printf("  ! %s\n", c.Warning)
 		}
 	}
-	k := s.keys[first.RootKeyId]
-	for tries := 3; k == nil; tries-- {
-		p, err := s.t.secret("\nPassphrase to sign (Enter to refuse): ")
-		if err != nil || p == "" {
-			reject("refused")
-			return
-		}
-		if k, err = devicekey.Open(s.dir, first.RootKeyId, p); errors.Is(err, devicekey.ErrPassphrase) && tries > 1 {
-			fmt.Println("  Wrong passphrase.")
-			continue
-		} else if err != nil {
-			reject(err.Error())
-			return
-		}
-		s.keys[first.RootKeyId] = k
-	}
-	for _, r := range batch {
-		sig, err := k.SignMessage(r.Message)
-		if err != nil {
-			reject(err.Error())
-			return
-		}
-		s.c.CompleteSigningRequest(ctx, &localv1.CompleteSigningRequestRequest{RequestId: r.RequestId, Signature: sig})
-	}
+	return true, nil
 }
 
-// hints are names from the owner role's lists, for the cards.
-func (s *signer) hints(ctx context.Context) preview.Hints {
-	h := preview.Hints{MachineNames: map[string]string{}}
-	if res, err := s.c.ListMachines(ctx, &localv1.ListMachinesRequest{}); err == nil {
-		for _, m := range res.Machines {
-			h.MachineNames[m.MachineId] = m.MachineName
-		}
-	}
-	if res, err := s.c.ListDevices(ctx, &localv1.ListDevicesRequest{}); err == nil {
-		h.Devices = map[string]string{}
-		for _, d := range res.Devices {
-			h.Devices[d.KeyId] = d.Label
-		}
-	}
-	return h
-}
+func (terminalOwner) Failed(err error) { fmt.Fprintf(os.Stderr, "✗ Not signed: %s\n", err) }
+
+func (terminalOwner) Show() {}

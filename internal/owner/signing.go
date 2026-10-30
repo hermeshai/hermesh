@@ -23,8 +23,9 @@ import (
 var ErrSigningRejected = errors.New("the owner declined to sign")
 
 type signHub struct {
-	mu       sync.Mutex
-	watchers map[chan *localv1.SigningRequest]struct{}
+	mu sync.Mutex
+	// Each signer's requests, and whether it takes show requests (ShowSigner).
+	watchers map[chan *localv1.SigningRequest]bool
 	pending  map[string]*pendingSign
 }
 
@@ -34,13 +35,13 @@ type pendingSign struct {
 }
 
 func newSignHub() *signHub {
-	return &signHub{watchers: map[chan *localv1.SigningRequest]struct{}{}, pending: map[string]*pendingSign{}}
+	return &signHub{watchers: map[chan *localv1.SigningRequest]bool{}, pending: map[string]*pendingSign{}}
 }
 
-func (h *signHub) watch() (chan *localv1.SigningRequest, func()) {
+func (h *signHub) watch(show bool) (chan *localv1.SigningRequest, func()) {
 	ch := make(chan *localv1.SigningRequest, 32)
 	h.mu.Lock()
-	h.watchers[ch] = struct{}{}
+	h.watchers[ch] = show
 	for _, p := range h.pending {
 		ch <- p.req
 	}
@@ -69,6 +70,34 @@ func (h *signHub) complete(req *localv1.CompleteSigningRequestRequest) error {
 		p.done <- req.Signature
 	}
 	return nil
+}
+
+// state is whether a signer watches, and whether a request waits for the
+// owner's approval there.
+func (h *signHub) state() *localv1.SignerState {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	st := &localv1.SignerState{Connected: len(h.watchers) > 0}
+	for _, p := range h.pending {
+		if p.req.Type != "" {
+			st.Busy = st.Connected
+		}
+	}
+	return st
+}
+
+// show has the signers that asked for it bring their open approval forward.
+func (h *signHub) show() {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	for ch, show := range h.watchers {
+		if show {
+			select {
+			case ch <- &localv1.SigningRequest{Show: true}:
+			default:
+			}
+		}
+	}
 }
 
 // post registers req and hands it to every watcher. Callers hold h.mu.

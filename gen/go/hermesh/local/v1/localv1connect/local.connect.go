@@ -87,6 +87,8 @@ const (
 	// LocalServiceCompleteSigningRequestProcedure is the fully-qualified name of the LocalService's
 	// CompleteSigningRequest RPC.
 	LocalServiceCompleteSigningRequestProcedure = "/hermesh.local.v1.LocalService/CompleteSigningRequest"
+	// LocalServiceShowSignerProcedure is the fully-qualified name of the LocalService's ShowSigner RPC.
+	LocalServiceShowSignerProcedure = "/hermesh.local.v1.LocalService/ShowSigner"
 	// LocalServiceSetLocalMachineProcedure is the fully-qualified name of the LocalService's
 	// SetLocalMachine RPC.
 	LocalServiceSetLocalMachineProcedure = "/hermesh.local.v1.LocalService/SetLocalMachine"
@@ -264,6 +266,9 @@ type LocalServiceClient interface {
 	// Signing delegation.
 	WatchSigningRequests(context.Context, *v1.WatchSigningRequestsRequest) (*connect.ServerStreamForClient[v1.SigningRequest], error)
 	CompleteSigningRequest(context.Context, *v1.CompleteSigningRequestRequest) (*v1.CompleteSigningRequestResponse, error)
+	// Brings the signer's open approval forward, for a signer that is not the
+	// app's child (Windows: docs/windows.md §7.3).
+	ShowSigner(context.Context, *v1.ShowSignerRequest) (*v1.ShowSignerResponse, error)
 	// This Mac as an execution machine.
 	SetLocalMachine(context.Context, *v1.SetLocalMachineRequest) (*v1.SetLocalMachineResponse, error)
 	// Pairing.
@@ -473,6 +478,12 @@ func NewLocalServiceClient(httpClient connect.HTTPClient, baseURL string, opts .
 			httpClient,
 			baseURL+LocalServiceCompleteSigningRequestProcedure,
 			connect.WithSchema(localServiceMethods.ByName("CompleteSigningRequest")),
+			connect.WithClientOptions(opts...),
+		),
+		showSigner: connect.NewClient[v1.ShowSignerRequest, v1.ShowSignerResponse](
+			httpClient,
+			baseURL+LocalServiceShowSignerProcedure,
+			connect.WithSchema(localServiceMethods.ByName("ShowSigner")),
 			connect.WithClientOptions(opts...),
 		),
 		setLocalMachine: connect.NewClient[v1.SetLocalMachineRequest, v1.SetLocalMachineResponse](
@@ -752,6 +763,7 @@ type localServiceClient struct {
 	finishErase            *connect.Client[v1.FinishEraseRequest, v1.FinishEraseResponse]
 	watchSigningRequests   *connect.Client[v1.WatchSigningRequestsRequest, v1.SigningRequest]
 	completeSigningRequest *connect.Client[v1.CompleteSigningRequestRequest, v1.CompleteSigningRequestResponse]
+	showSigner             *connect.Client[v1.ShowSignerRequest, v1.ShowSignerResponse]
 	setLocalMachine        *connect.Client[v1.SetLocalMachineRequest, v1.SetLocalMachineResponse]
 	lookupPairing          *connect.Client[v1.LookupPairingRequest, v1.LookupPairingResponse]
 	listPairingRequests    *connect.Client[v1.ListPairingRequestsRequest, v1.ListPairingRequestsResponse]
@@ -962,6 +974,15 @@ func (c *localServiceClient) WatchSigningRequests(ctx context.Context, req *v1.W
 // CompleteSigningRequest calls hermesh.local.v1.LocalService.CompleteSigningRequest.
 func (c *localServiceClient) CompleteSigningRequest(ctx context.Context, req *v1.CompleteSigningRequestRequest) (*v1.CompleteSigningRequestResponse, error) {
 	response, err := c.completeSigningRequest.CallUnary(ctx, connect.NewRequest(req))
+	if response != nil {
+		return response.Msg, err
+	}
+	return nil, err
+}
+
+// ShowSigner calls hermesh.local.v1.LocalService.ShowSigner.
+func (c *localServiceClient) ShowSigner(ctx context.Context, req *v1.ShowSignerRequest) (*v1.ShowSignerResponse, error) {
+	response, err := c.showSigner.CallUnary(ctx, connect.NewRequest(req))
 	if response != nil {
 		return response.Msg, err
 	}
@@ -1390,6 +1411,9 @@ type LocalServiceHandler interface {
 	// Signing delegation.
 	WatchSigningRequests(context.Context, *v1.WatchSigningRequestsRequest, *connect.ServerStream[v1.SigningRequest]) error
 	CompleteSigningRequest(context.Context, *v1.CompleteSigningRequestRequest) (*v1.CompleteSigningRequestResponse, error)
+	// Brings the signer's open approval forward, for a signer that is not the
+	// app's child (Windows: docs/windows.md §7.3).
+	ShowSigner(context.Context, *v1.ShowSignerRequest) (*v1.ShowSignerResponse, error)
 	// This Mac as an execution machine.
 	SetLocalMachine(context.Context, *v1.SetLocalMachineRequest) (*v1.SetLocalMachineResponse, error)
 	// Pairing.
@@ -1595,6 +1619,12 @@ func NewLocalServiceHandler(svc LocalServiceHandler, opts ...connect.HandlerOpti
 		LocalServiceCompleteSigningRequestProcedure,
 		svc.CompleteSigningRequest,
 		connect.WithSchema(localServiceMethods.ByName("CompleteSigningRequest")),
+		connect.WithHandlerOptions(opts...),
+	)
+	localServiceShowSignerHandler := connect.NewUnaryHandlerSimple(
+		LocalServiceShowSignerProcedure,
+		svc.ShowSigner,
+		connect.WithSchema(localServiceMethods.ByName("ShowSigner")),
 		connect.WithHandlerOptions(opts...),
 	)
 	localServiceSetLocalMachineHandler := connect.NewUnaryHandlerSimple(
@@ -1891,6 +1921,8 @@ func NewLocalServiceHandler(svc LocalServiceHandler, opts ...connect.HandlerOpti
 			localServiceWatchSigningRequestsHandler.ServeHTTP(w, r)
 		case LocalServiceCompleteSigningRequestProcedure:
 			localServiceCompleteSigningRequestHandler.ServeHTTP(w, r)
+		case LocalServiceShowSignerProcedure:
+			localServiceShowSignerHandler.ServeHTTP(w, r)
 		case LocalServiceSetLocalMachineProcedure:
 			localServiceSetLocalMachineHandler.ServeHTTP(w, r)
 		case LocalServiceLookupPairingProcedure:
@@ -2062,6 +2094,10 @@ func (UnimplementedLocalServiceHandler) WatchSigningRequests(context.Context, *v
 
 func (UnimplementedLocalServiceHandler) CompleteSigningRequest(context.Context, *v1.CompleteSigningRequestRequest) (*v1.CompleteSigningRequestResponse, error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("hermesh.local.v1.LocalService.CompleteSigningRequest is not implemented"))
+}
+
+func (UnimplementedLocalServiceHandler) ShowSigner(context.Context, *v1.ShowSignerRequest) (*v1.ShowSignerResponse, error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("hermesh.local.v1.LocalService.ShowSigner is not implemented"))
 }
 
 func (UnimplementedLocalServiceHandler) SetLocalMachine(context.Context, *v1.SetLocalMachineRequest) (*v1.SetLocalMachineResponse, error) {

@@ -544,6 +544,7 @@ func (o *Owner) Status() *localv1.GetStatusResponse {
 	if !st.Initialized && o.machineOnly() {
 		o.machineOnlyStatus(st)
 	}
+	st.Signer = o.hub.state()
 	return st
 }
 

@@ -160,8 +160,8 @@ func eraseEverythingCommand(dataDir *string) *cobra.Command {
 			if !strings.EqualFold(strings.TrimSpace(typed), expected) {
 				return errors.New("not erased: that isn't " + expected)
 			}
-			s := startSigner(ctx, c, *dataDir, t)
-			defer s.stop()
+			stopSigner := startSigner(ctx, c, *dataDir, t)
+			defer stopSigner()
 			res, err := c.EraseEverything(ctx, &localv1.EraseEverythingRequest{})
 			if err != nil {
 				return err
