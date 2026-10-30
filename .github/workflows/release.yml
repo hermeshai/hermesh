@@ -41,33 +41,10 @@ jobs:
           files: dist/release/*
   relay-image:
     needs: notes
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: docker/setup-buildx-action@v3
-      - uses: docker/login-action@v3
-        with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-      # Docker Hub, where the README sends people: DOCKERHUB_TOKEN is a
-      # personal access token of hermeshai with Read & Write.
-      - uses: docker/login-action@v3
-        with:
-          username: hermeshai
-          password: ${{ secrets.DOCKERHUB_TOKEN }}
-      # Cross-compiled in the Dockerfile: ARM servers too, no emulation.
-      - uses: docker/build-push-action@v6
-        with:
-          context: .
-          file: deploy/relay/Dockerfile
-          platforms: linux/amd64,linux/arm64
-          push: true
-          tags: |
-            hermeshai/hermesh-relay:${{ github.ref_name }}
-            hermeshai/hermesh-relay:latest
-            ghcr.io/${{ github.repository_owner }}/hermesh-relay:${{ github.ref_name }}
-            ghcr.io/${{ github.repository_owner }}/hermesh-relay:latest
+    uses: ./.github/workflows/relay-image.yml
+    with:
+      version: ${{ github.ref_name }}
+    secrets: inherit
   # Hermesh.app (Electron + hermeshd + the signer): Developer ID signing and notarization. Repository secrets needed:
   #   MACOS_DEVELOPER_ID_P12           the "Developer ID Application" certificate exported with its private key as .p12, base64-encoded
   #   MACOS_DEVELOPER_ID_P12_PASSWORD  the password set when exporting the .p12

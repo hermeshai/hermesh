@@ -1,0 +1,52 @@
+name: relay-image
+# The relay image for linux/amd64 and linux/arm64, on Docker Hub
+# (hermeshai/hermesh-relay, where the README sends people) and on ghcr.io.
+# A release (release.yml) pushes its version and latest. Run by hand from
+# the Actions page, it pushes the branch it runs on as edge: to try the
+# image, and the Docker Hub token, before a release.
+# Repository secret: DOCKERHUB_TOKEN, a personal access token of hermeshai
+# with Read & Write.
+on:
+  workflow_call:
+    inputs:
+      version:
+        type: string
+        required: true
+  workflow_dispatch:
+permissions:
+  contents: read
+  packages: write
+jobs:
+  push:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - id: tags
+        env:
+          VERSION: ${{ inputs.version }}
+          OWNER: ${{ github.repository_owner }}
+        run: |
+          if [ -n "$VERSION" ]; then set -- "$VERSION" latest; else set -- edge; fi
+          {
+            echo "list<<EOF"
+            for t; do echo "hermeshai/hermesh-relay:$t"; echo "ghcr.io/$OWNER/hermesh-relay:$t"; done
+            echo EOF
+          } >> "$GITHUB_OUTPUT"
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - uses: docker/login-action@v3
+        with:
+          username: hermeshai
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+      # Cross-compiled in the Dockerfile: ARM servers too, no emulation.
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: deploy/relay/Dockerfile
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: ${{ steps.tags.outputs.list }}
