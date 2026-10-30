@@ -121,12 +121,25 @@ A computer that runs no coding agents can approve instead: hermeshd device.`}
 	}
 	openMachine := func() (*machine.Machine, error) { return machine.Open(machineConfig()) }
 
-	var ownerMode, noMachine bool
+	var ownerMode, noMachine, supervise bool
 	var socket string
 	run := &cobra.Command{
 		Use:   "run",
 		Short: "Run the daemon in the foreground (used by launchd/systemd and the Hermesh app)",
 		RunE: func(cmd *cobra.Command, _ []string) error {
+			if supervise { // the Windows service: the daemon is a child of this process
+				exe, err := os.Executable()
+				if err != nil {
+					return err
+				}
+				var args []string
+				for _, a := range os.Args[1:] {
+					if a != "--supervise" {
+						args = append(args, a)
+					}
+				}
+				return service.Supervise(exe, args)
+			}
 			ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 			defer stop()
 			openLogFile(dataDir)
@@ -198,6 +211,8 @@ A computer that runs no coding agents can approve instead: hermeshd device.`}
 	run.Flags().StringVar(&socket, "socket", "", "local API socket path (owner role)")
 	run.Flags().BoolVar(&noMachine, "no-machine", false, "with --owner: never run a machine here (a Linux trusted device)")
 	run.Flags().StringVar(&debugAddr, "debug-addr", os.Getenv("HERMESH_DEBUG_ADDR"), "serve /metrics and /debug/pprof on this loopback address")
+	run.Flags().BoolVar(&supervise, "supervise", false, "run the daemon as a child, and start it again whenever it exits but for a clean stop (Windows)")
+	run.Flags().MarkHidden("supervise")
 	run.Flags().IntVar(&maxSessions, "max-sessions", 0, "maximum concurrently running sessions; more wait queued (default: no limit)")
 	run.Flags().StringVar(&workspaceMode, "workspace", "git", "git (worktree per session) or none (benchmarking only)")
 	run.Flags().MarkHidden("workspace")
