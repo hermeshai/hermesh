@@ -436,12 +436,12 @@ func (w *Workspace) Remove(ctx context.Context, repo, sessionID string) error {
 		return os.RemoveAll(wt)
 	}
 	b, err := os.ReadFile(filepath.Join(wt, ".git"))
-	admin := strings.TrimSpace(strings.TrimPrefix(string(b), "gitdir:"))
+	admin := filepath.FromSlash(strings.TrimSpace(strings.TrimPrefix(string(b), "gitdir:"))) // git writes / on Windows too
 	common, cerr := filepath.EvalSymlinks(filepath.Join(repo, ".git"))
 	if err != nil || cerr != nil || !strings.HasPrefix(admin, filepath.Join(common, "worktrees")+string(filepath.Separator)) {
 		unlock := w.lock(repo)
 		defer unlock()
-		_, err := git(ctx, repo, "worktree", "remove", "--force", wt)
+		_, err := git(ctx, repo, "worktree", "remove", "--force", filepath.ToSlash(wt)) // see moveWorktree
 		return err
 	}
 	if err := os.RemoveAll(wt); err != nil {
