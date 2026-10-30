@@ -84,7 +84,8 @@ func TestWorktreeLifecycle(t *testing.T) {
 			if st := gitOut(t, wt, "status", "--porcelain"); st != "" {
 				t.Fatalf("fresh worktree not clean: %q", st)
 			}
-			if b, _ := os.ReadFile(filepath.Join(wt, "sub", "b.txt")); string(b) != "b\n" {
+			// Git for Windows checks text out with CRLF (core.autocrlf).
+			if b, _ := os.ReadFile(filepath.Join(wt, "sub", "b.txt")); strings.ReplaceAll(string(b), "\r", "") != "b\n" {
 				t.Fatalf("checkout missing files: %q", b)
 			}
 			os.WriteFile(filepath.Join(wt, "c.txt"), []byte("c\n"), 0o644)
