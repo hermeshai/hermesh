@@ -405,6 +405,7 @@ Left for later, each its own change:
 - Preview vectors shared by the Go and Swift signers (desktop-app.md §5.6).
 - Update the Signer, when the app carries a newer one; Settings saying that elevation needs no consent here ("Never notify") and recommending Administrator protection.
 - The rest of the desktop suite on Windows (its specs read the Mac's words and menus).
+- `TestSessionList` now and then misses a session of the other machine on `windows-latest` (the owner's replica, with no error logged): to look into before `windows-e2e` may fail the run.
 - `install.ps1 -Device`: a trusted device without the app.
 - Add Machine in the apps offers `install.sh` only; a Windows machine's command (`install.ps1`) is in hermeshd.md.
 - Mica behind the sidebar, Windows 11's type sizes and radii.
