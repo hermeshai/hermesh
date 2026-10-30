@@ -173,16 +173,6 @@ function manifest() {
             <uap:DisplayName>Hermesh link</uap:DisplayName>
           </uap:Protocol>
         </uap:Extension>
-        <uap5:Extension Category="windows.appExecutionAlias" Executable="bin\\hermesh.exe" EntryPoint="Windows.FullTrustApplication">
-          <uap5:AppExecutionAlias desktop4:Subsystem="console">
-            <uap5:ExecutionAlias Alias="hermesh.exe"/>
-          </uap5:AppExecutionAlias>
-        </uap5:Extension>
-        <uap5:Extension Category="windows.appExecutionAlias" Executable="bin\\hermeshd.exe" EntryPoint="Windows.FullTrustApplication">
-          <uap5:AppExecutionAlias desktop4:Subsystem="console">
-            <uap5:ExecutionAlias Alias="hermeshd.exe"/>
-          </uap5:AppExecutionAlias>
-        </uap5:Extension>
         <desktop:Extension Category="windows.startupTask" Executable="bin\\hermeshdw.exe" EntryPoint="Windows.FullTrustApplication" uap10:Parameters="run --supervise --owner">
           <desktop:StartupTask TaskId="HermeshDaemon" Enabled="true" DisplayName="Hermesh background service"/>
         </desktop:Extension>
@@ -191,6 +181,17 @@ function manifest() {
         </desktop:Extension>
       </Extensions>
     </Application>
+    <!-- The command line on PATH: one alias per application, which Start doesn't list. -->${["hermesh", "hermeshd"].map((cli) => `
+    <Application Id="${cli}" Executable="bin\\${cli}.exe" EntryPoint="Windows.FullTrustApplication">
+      <uap:VisualElements DisplayName="${cli}" Description="${cli}" BackgroundColor="transparent" Square150x150Logo="Assets\\Square150x150Logo.png" Square44x44Logo="Assets\\Square44x44Logo.png" AppListEntry="none"/>
+      <Extensions>
+        <uap5:Extension Category="windows.appExecutionAlias">
+          <uap5:AppExecutionAlias desktop4:Subsystem="console">
+            <uap5:ExecutionAlias Alias="${cli}.exe"/>
+          </uap5:AppExecutionAlias>
+        </uap5:Extension>
+      </Extensions>
+    </Application>`).join("")}
   </Applications>
   <Capabilities>
     <rescap:Capability Name="runFullTrust"/>
