@@ -47,6 +47,16 @@ func TestMCPReachesAnIPhone(t *testing.T) {
 	sock := filepath.Join(sockDir, "p.sock")
 	phoneArgs := []string{"run", "--owner", "--data-dir", filepath.Join(tmp, "phone"), "--socket", sock}
 	phone := start(t, "phone", nil, filepath.Join(bin, "hermeshd"), phoneArgs...)
+	// What the phone's daemons said, when the test fails (it stops and starts one).
+	var phones []*proc
+	t.Cleanup(func() {
+		for _, p := range phones {
+			if t.Failed() {
+				t.Logf("==== %s output ====\n%s", p.name, p.output())
+			}
+		}
+	})
+	phones = append(phones, phone)
 	root, _ := identity.GenerateKey()
 	app := newTestApp(t, sock, root)
 	if _, err := app.client.Setup(ctx, &localv1.SetupRequest{RelayUrl: base, ClaimCode: claim, RootPublicKey: rootPub(root),
@@ -111,6 +121,7 @@ func TestMCPReachesAnIPhone(t *testing.T) {
 
 	// The phone comes back: the request is there again, and it approves it.
 	phone = start(t, "phone again", nil, filepath.Join(bin, "hermeshd"), phoneArgs...)
+	phones = append(phones, phone)
 	app = newTestApp(t, sock, root)
 	var code string
 	eventually(t, 30*time.Second, "the request on the phone again", func() bool {
