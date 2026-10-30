@@ -25,6 +25,28 @@ curl -fsSL https://github.com/hermeshai/hermesh/releases/latest/download/install
 
 Updating is the same command again, then `hermeshd service restart`.
 
+### On Windows
+
+In PowerShell, as yourself (no administrator):
+
+```powershell
+irm https://github.com/hermeshai/hermesh/releases/latest/download/install.ps1 | iex
+```
+
+- It installs `hermeshd`, `hermeshdw` and `hermesh` in
+  `%LOCALAPPDATA%\Programs\Hermesh\bin`, adds that folder to your PATH and
+  runs `hermeshd pair`, as on Linux.
+- With a connection address or a name:
+  `& ([scriptblock]::Create((irm https://github.com/hermeshai/hermesh/releases/latest/download/install.ps1))) <address> -Name build-box`;
+  the agents' CLI only: the same with `-Cli`.
+- The background service is a Task Scheduler task of yours that starts at
+  logon. It runs `hermeshdw`, `hermeshd` without a console window, which
+  starts the daemon again whenever it stops unexpectedly.
+- The programs are not code-signed yet ([windows.md](windows.md) §6.4):
+  the installer checks them against the signed checksum list.
+- Coding agents are looked for where their installers put them (Claude
+  Code's own installer, WinGet, npm). Worktrees need Git for Windows.
+
 ## Every day
 
 | Command | Does |
@@ -38,7 +60,8 @@ Updating is the same command again, then `hermeshd service restart`.
 | `hermeshd service install`, `service uninstall` | Start the service again; stop it for good (pairing and projects stay) |
 
 The log is `~/.local/share/hermesh/logs/hermeshd.log` on Linux
-(`tail -f` it), `~/Library/Application Support/Hermesh/logs/` on macOS.
+(`tail -f` it), `~/Library/Application Support/Hermesh/logs/` on macOS,
+`%LOCALAPPDATA%\Hermesh\logs\` on Windows.
 
 **Coding agents**: install Claude Code or Codex as this user and sign in
 once (run `claude` or `codex login`; on a server it prints a link to open
@@ -65,6 +88,13 @@ Hermesh up.
 ```bash
 hermeshd service uninstall
 rm -rf ~/.local/bin/hermeshd ~/.local/bin/hermesh ~/.local/share/hermesh
+```
+
+On Windows, in PowerShell:
+
+```powershell
+hermeshd service uninstall
+Remove-Item -Recurse "$env:LOCALAPPDATA\Programs\Hermesh", "$env:LOCALAPPDATA\Hermesh"
 ```
 
 Then remove the machine in the Hermesh app, so it is no longer listed.

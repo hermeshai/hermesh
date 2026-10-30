@@ -3,6 +3,8 @@ package cli
 import (
 	"os"
 	"os/exec"
+	"path/filepath"
+	"strings"
 	"syscall"
 
 	"golang.org/x/sys/windows"
@@ -30,4 +32,19 @@ func processAlive(pid int) bool {
 // detach makes cmd outlive this process, without a console.
 func detach(cmd *exec.Cmd) {
 	cmd.SysProcAttr = &syscall.SysProcAttr{CreationFlags: windows.DETACHED_PROCESS | windows.CREATE_NEW_PROCESS_GROUP}
+}
+
+// hookCommand is how an agent's hook names this program, in words Git
+// Bash, cmd.exe and PowerShell read alike (agents run hooks with any of
+// them on Windows): its bare name when the PATH finds it, else its path
+// with forward slashes, quoted only when it has a space.
+func hookCommand(exe string) string {
+	if p, err := exec.LookPath("hermesh"); err == nil && strings.EqualFold(filepath.Clean(p), filepath.Clean(exe)) {
+		return "hermesh"
+	}
+	p := filepath.ToSlash(exe)
+	if strings.Contains(p, " ") {
+		return `"` + p + `"`
+	}
+	return p
 }
