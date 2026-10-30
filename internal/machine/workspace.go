@@ -2,13 +2,16 @@ package machine
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"github.com/hermeshai/hermesh/internal/provider"
 	"github.com/hermeshai/hermesh/pkg/metrics"
+	"io"
 	"os"
 	"path/filepath"
 	"regexp"
 	"runtime"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -437,6 +440,119 @@ func parseShortstat(out string) *sessionv1.DiffStat {
 
 func (w *Workspace) Diff(ctx context.Context, sessionID, from, to string) (string, error) {
 	return git(ctx, w.Path(sessionID), "diff", "--binary", from, to)
+}
+
+// CopyIncluded copies into the session's worktree the ignored files that
+// the repository's .worktreeinclude names (gitignore syntax, as Claude
+// Code reads it): local settings such as signing configuration or .env,
+// which a checkout cannot bring. A named file that git does not ignore is
+// left out, so a snapshot never commits it.
+func (w *Workspace) CopyIncluded(ctx context.Context, repo, sessionID string) error {
+	if w.none {
+		return nil
+	}
+	include := filepath.Join(repo, ".worktreeinclude")
+	b, err := os.ReadFile(include)
+	if os.IsNotExist(err) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	// Both listings walk only the named paths when every pattern has one;
+	// a bare name such as .env needs the whole tree.
+	var specs []string
+	if s := includePathspecs(string(b)); s != nil {
+		specs = append([]string{"--"}, s...)
+	}
+	out, err := git(ctx, repo, append([]string{"ls-files", "-z", "--others", "--ignored", "--exclude-standard", "--directory"}, specs...)...)
+	if err != nil || out == "" {
+		return err
+	}
+	ignored := strings.Split(strings.TrimSuffix(out, "\x00"), "\x00") // a directory ends with /
+	out, err = git(ctx, repo, append([]string{"ls-files", "-z", "--others", "--ignored", "--exclude-from=" + include}, specs...)...)
+	if err != nil {
+		return err
+	}
+	var errs []error
+	for _, rel := range strings.Split(strings.TrimSuffix(out, "\x00"), "\x00") {
+		if rel == "" || !slices.ContainsFunc(ignored, func(p string) bool { return p == rel || strings.HasSuffix(p, "/") && strings.HasPrefix(rel, p) }) {
+			continue
+		}
+		if err := copyIncluded(filepath.Join(repo, filepath.FromSlash(rel)), filepath.Join(w.Path(sessionID), filepath.FromSlash(rel))); err != nil {
+			errs = append(errs, err)
+		}
+	}
+	return errors.Join(errs...)
+}
+
+// includePathspecs turns .worktreeinclude patterns into the paths they
+// can match under, or nil when a pattern can match anywhere.
+func includePathspecs(patterns string) []string {
+	var specs []string
+	for _, l := range strings.Split(patterns, "\n") {
+		l = strings.TrimRight(l, " \r")
+		if l == "" || l[0] == '#' || l[0] == '!' { // a negation only narrows
+			continue
+		}
+		p := strings.TrimSuffix(l, "/")
+		if !strings.Contains(p, "/") {
+			return nil
+		}
+		var dirs []string
+		for _, c := range strings.Split(strings.TrimPrefix(p, "/"), "/") {
+			if strings.ContainsAny(c, `*?[\`) {
+				break
+			}
+			dirs = append(dirs, c)
+		}
+		if len(dirs) == 0 {
+			return nil
+		}
+		specs = append(specs, ":(literal)"+strings.Join(dirs, "/"))
+	}
+	return specs
+}
+
+// copyIncluded copies one file or symlink, keeping one already there.
+func copyIncluded(src, dst string) error {
+	st, err := os.Lstat(src)
+	if err != nil {
+		return err
+	}
+	if err := os.MkdirAll(filepath.Dir(dst), 0o755); err != nil {
+		return err
+	}
+	if st.Mode()&os.ModeSymlink != 0 {
+		to, err := os.Readlink(src)
+		if err != nil {
+			return err
+		}
+		if err := os.Symlink(to, dst); err != nil && !os.IsExist(err) {
+			return err
+		}
+		return nil
+	}
+	if !st.Mode().IsRegular() {
+		return nil
+	}
+	in, err := os.Open(src)
+	if err != nil {
+		return err
+	}
+	defer in.Close()
+	out, err := os.OpenFile(dst, os.O_WRONLY|os.O_CREATE|os.O_EXCL, st.Mode().Perm())
+	if os.IsExist(err) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	if _, err := io.Copy(out, in); err != nil {
+		out.Close()
+		return err
+	}
+	return out.Close()
 }
 
 func (w *Workspace) Exists(sessionID string) bool {
