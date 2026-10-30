@@ -718,7 +718,7 @@ test("erasing everything: what it erases, the server's address typed, Touch ID, 
   await again.app.close();
 });
 
-test("removing another trusted device's machine in 设置 › 机器 removes the device", async () => {
+test("a trusted device's machine is marked in 设置 › 机器 and removed with the device in 账号与设备", async () => {
   // This Mac's owner, and a PC that joins it as a trusted device with its own machine.
   const first = daemon(fixture.fresh[10].socket);
   await first.setup({ relayUrl: fixture.fresh[10].relayURL, claimCode: fixture.fresh[10].claimCode, rootLabel: "first-mac" });
@@ -733,9 +733,18 @@ test("removing another trusted device's machine in 设置 › 机器 removes the
 
   const { app, page } = await launch(fixture.fresh[10].socket);
   const [settings] = await Promise.all([app.waitForEvent("window"), page.evaluate(() => window.hermesh?.openSettings("machines"))]);
-  await settings.getByRole("list", { name: "机器" }).getByRole("button", { name: /^work-pc/ }).click();
-  await settings.locator(".set-acts").getByRole("button", { name: "移除…" }).click();
-  // The device, not only its machine: it would stay trusted otherwise.
+  const row = settings.getByRole("list", { name: "机器" }).getByRole("button", { name: /^work-pc/ });
+  await expect(row).toContainText("可信设备");
+  await row.click();
+  // Its machine is removed with the device, in one place only: removing
+  // just the machine would leave it trusted.
+  await expect(settings.locator(".set-acts").getByRole("button", { name: "移除…" })).toHaveCount(0);
+  await expect(settings.getByText("这台机器是你的可信设备「work-pc」。要移除它，到账号与设备。")).toBeVisible();
+  await snap(settings, "settings-machine-trusted-device");
+  await settings.locator(".set-note").getByRole("button", { name: "账号与设备" }).click();
+  const devices = settings.getByRole("list", { name: "可信设备" });
+  await expect(devices).toContainText("work-pc");
+  await devices.getByRole("button", { name: "移除…" }).click();
   const dialog = settings.getByRole("dialog", { name: "移除可信设备「work-pc」？" });
   await expect(dialog).toContainText("它立刻不能再批准任何事，它自己的执行机器也一并移除。");
   await dialog.getByRole("button", { name: "移除" }).click();
