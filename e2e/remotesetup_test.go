@@ -34,7 +34,7 @@ func TestRemoteMachineSetup(t *testing.T) {
 	gitRepoAt(t, filepath.Join(home, "code", "api"), map[string]string{"README.md": "# api\n"})
 	gitRepoAt(t, filepath.Join(home, "code", "node_modules", "dep"), map[string]string{"x": "y"})
 	gitRepoAt(t, filepath.Join(home, "a", "b", "c", "deep"), map[string]string{"x": "y"})
-	vpsEnv := append([]string{"HOME=" + home}, env...)
+	vpsEnv := append(homeEnv(home), env...)
 	daemon := filepath.Join(w.bin, "hermeshd")
 	data := filepath.Join(w.tmp, "vps-1")
 	pair := start(t, "pair", vpsEnv, daemon, "pair", w.addr, "--name", "vps-1", "--no-service", "--data-dir", data)

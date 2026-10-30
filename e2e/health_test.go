@@ -137,6 +137,7 @@ func TestOutOfProcesses(t *testing.T) {
 // a login shell that hangs, the machine says it can't read the PATH, and
 // the agent says what is missing instead of being not installed.
 func TestAgentsOnTheLoginShellsPath(t *testing.T) {
+	unixOnly(t, "it is about the login shell's PATH")
 	if testing.Short() {
 		t.Skip("e2e")
 	}

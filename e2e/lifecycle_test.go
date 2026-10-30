@@ -114,7 +114,8 @@ func TestSessionLifecycle(t *testing.T) {
 	if r := cli("session", "unarchive", id); r.code != 0 || status(id) != "idle" {
 		t.Fatalf("unarchive: %+v", r)
 	}
-	if b, _ := os.ReadFile(filepath.Join(w.worktree(id), "one.txt")); string(b) != "first\n" {
+	// Git for Windows checks text out with CRLF (core.autocrlf).
+	if b, _ := os.ReadFile(filepath.Join(w.worktree(id), "one.txt")); strings.ReplaceAll(string(b), "\r", "") != "first\n" {
 		t.Fatalf("worktree after unarchive: %q", b)
 	}
 	if r := cli("session", "send", id, "--wait", "--message", "write two.txt second\nresumed"); r.code != 0 || !strings.Contains(r.stdout, "resumed: "+ref) {

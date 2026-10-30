@@ -5,6 +5,7 @@ package e2e
 import (
 	"os/exec"
 	"syscall"
+	"testing"
 )
 
 // ownGroup starts cmd in a process group of its own, which killGroup and
@@ -22,3 +23,9 @@ const shortTemp = "/tmp"
 
 // exe ends a program's file name.
 const exe = ""
+
+// unixOnly skips a test on Windows (nothing to do here).
+func unixOnly(t *testing.T, why string) {}
+
+// homeEnv gives a process home as its home folder.
+func homeEnv(home string) []string { return []string{"HOME=" + home} }

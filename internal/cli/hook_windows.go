@@ -48,3 +48,7 @@ func hookCommand(exe string) string {
 	}
 	return p
 }
+
+// othersCanRead is false: Windows reports no modes, and the CLI's folder is
+// in the user's own Local AppData.
+func othersCanRead(fi os.FileInfo) bool { return false }
