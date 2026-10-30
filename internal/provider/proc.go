@@ -307,6 +307,21 @@ func KeepOutput(s string) (kept string, cut bool) {
 	return s[:head] + fmt.Sprintf("\n… %d bytes left out …\n", tail-head) + s[tail:], true
 }
 
+// Command is exec.CommandContext for an agent's CLI, by this system's
+// rules for what may run (on Windows npm's shims give way to the program
+// they start, and no console window opens).
+func Command(ctx context.Context, bin string, args ...string) *exec.Cmd {
+	b, a, err := startable(bin, args)
+	if err != nil {
+		cmd := exec.CommandContext(ctx, bin, args...)
+		cmd.Err = err
+		return cmd
+	}
+	cmd := exec.CommandContext(ctx, b, a...)
+	hideWindow(cmd)
+	return cmd
+}
+
 // LookPath finds bin on PATH, then in extra locations.
 func LookPath(bin string, path string, extra ...string) string {
 	for _, dir := range filepath.SplitList(path) {
