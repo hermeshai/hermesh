@@ -1,0 +1,10 @@
+{
+  "title": "Hermesh Signer",
+  "approve": "Approve",
+  "deny": "Deny",
+  "several": "Approve these %d requests?",
+  "code": "Verification code: %s",
+  "hello": "Approve what Hermesh asks to sign",
+  "notSigned": "Not signed",
+  "noHello": "Set up Windows Hello in Settings › Accounts › Sign-in options (a PIN is enough), then approve again."
+}

@@ -1,3 +1,6 @@
+import { createClient } from "@connectrpc/connect";
+import { createConnectTransport } from "@connectrpc/connect-node";
+import { LocalService } from "@hermesh/proto/local";
 import { app, BrowserWindow, nativeTheme, shell } from "electron";
 import { execFile, spawn } from "node:child_process";
 import net from "node:net";
@@ -5,6 +8,7 @@ import os from "node:os";
 import path from "node:path";
 import { promisify } from "node:util";
 import type { LoginItem } from "../../shared/bridge";
+import { i18n } from "../../shared/i18n";
 import { socketPath, testDataDir } from "../paths";
 import type { Platform, WindowKind } from "./types";
 
@@ -63,6 +67,29 @@ switch ('${set ?? ""}') {
 function asLoginItem(state: string): LoginItem {
   return { on: state === "Enabled" || state === "EnabledByPolicy", needsApproval: state === "DisabledByUser" || state === "DisabledByPolicy" };
 }
+
+const powershell = (script: string, timeout = 20_000) =>
+  promisify(execFile)("powershell.exe", ["-NoProfile", "-NonInteractive", "-Command", script], { windowsHide: true, timeout });
+
+/** Whether a signer watches hermeshd's requests, within wait ms. */
+async function signerWatching(wait: number): Promise<boolean> {
+  const local = createClient(LocalService, createConnectTransport({ baseUrl: "http://hermeshd", httpVersion: "1.1", useBinaryFormat: true, nodeOptions: { socketPath: socketPath() } }));
+  for (const end = Date.now() + wait; ; ) {
+    try {
+      if ((await local.getStatus({})).signer?.connected) return true;
+    } catch {
+      // hermeshd not answering yet
+    }
+    if (Date.now() > end) return false;
+    await new Promise((r) => setTimeout(r, 500));
+  }
+}
+
+/** The signer's task (hermesh-signer: setup_windows.go), named after the user as there. */
+const signerTask = () => `Hermesh Signer (${(process.env.USERNAME ?? "").replace(/[\\/:*?"<>|]/g, "_")})`;
+
+// The signer's own exit statuses when it can't keep a key apart (main_windows.go), and a declined UAC prompt.
+const signerRefusals = { 3: "main:signer.notAdmin", 4: "main:signer.uacOff", 5: "main:signer.noTPM", 1223: "main:signer.declined" } as const;
 
 const symbols = () => (nativeTheme.shouldUseDarkColors ? "#ffffff" : "#1a1a1a");
 /** The caption buttons as high as the top band: the first run's (48 px) or the toolbar's (44 px). */
@@ -152,6 +179,32 @@ export const win: Platform = {
   // elevated, never by the app.
   signer() {
     return undefined;
+  },
+
+  /**
+   * The signer watches already; or its task, set up but stopped, starts
+   * again; or it is set up now: Windows asks once for permission (UAC), and
+   * the signer copies itself where only administrators write and starts.
+   */
+  async readySigner() {
+    if (await signerWatching(1000)) return;
+    try {
+      await promisify(execFile)("schtasks.exe", ["/Run", "/TN", signerTask()], { windowsHide: true });
+      if (await signerWatching(10_000)) return;
+    } catch {
+      // Not set up yet.
+    }
+    const { stdout } = await powershell("[System.Security.Principal.WindowsIdentity]::GetCurrent().User.Value");
+    const bin = path.join(process.resourcesPath, "bin", "hermesh-signer.exe").replace(/'/g, "''");
+    const script = `try { $p = Start-Process -FilePath '${bin}' -ArgumentList 'setup','--user','${stdout.trim()}' -Verb RunAs -WindowStyle Hidden -Wait -PassThru; exit $p.ExitCode } catch { exit 1223 }`;
+    let status = 0;
+    try {
+      await powershell(script, 5 * 60_000);
+    } catch (e) {
+      status = typeof (e as { code?: unknown }).code === "number" ? (e as { code: number }).code : 1;
+    }
+    if (status) throw new Error(i18n.t(signerRefusals[status as keyof typeof signerRefusals] ?? "main:signer.failed", { code: status }));
+    if (!(await signerWatching(20_000))) throw new Error(i18n.t("main:signer.notRunning"));
   },
 
   runInTerminal(_c, command) {

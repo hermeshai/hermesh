@@ -81,6 +81,9 @@ export const mac: Platform = {
     return bin ? { bin, args: ["-AppleLanguages", `(${names[language] ?? "en"})`] } : undefined;
   },
 
+  // The signer is the app's child (signer.ts).
+  async readySigner() {},
+
   runInTerminal(c: TerminalCommand, command: string) {
     // A .command file opens in Terminal and runs there, in the person's login shell.
     const dir = path.join(os.homedir(), "Library", "Caches", "Hermesh");

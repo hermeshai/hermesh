@@ -30,8 +30,10 @@ export interface Platform {
   openedAtLogin(): boolean;
   /** The system's settings for what starts at login. */
   openLoginItems(): void;
-  /** The signer's program and the arguments for the app's language; undefined where there is none (yet). */
+  /** The signer's program and the arguments for the app's language, where it is the app's child (macOS). */
   signer(language: string): { bin: string; args: string[] } | undefined;
+  /** Before hermeshd asks for a new root key: the signer is there (Windows sets it up, with one UAC prompt). */
+  readySigner(): Promise<void>;
   /** Runs one of a fixed set of commands in a terminal window of the system's. */
   runInTerminal(c: TerminalCommand, command: string): void;
   /** Opens the system's list of processes (Activity Monitor, Task Manager). */

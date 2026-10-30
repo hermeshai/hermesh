@@ -151,6 +151,7 @@ export function registerIPC() {
   ipcMain.handle("complete-sign-in", answer((o: { localMachine?: unknown }) => completeSignIn({ localMachine: o?.localMachine === true })));
   ipcMain.handle("connect-url", answer((center: unknown) => connectURL(String(center))));
   ipcMain.handle("computer-name", answer(platform.computerName));
+  ipcMain.handle("ready-signer", answer(platform.readySigner));
   ipcMain.handle("take-links", answer(takeLinks));
 
   // Notifications, the menu bar and opening at login (main/notify.ts, main/platform).

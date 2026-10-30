@@ -109,6 +109,7 @@ export async function completeSignIn(o: { localMachine: boolean }): Promise<void
   const p = current();
   if (!p?.code) throw new Error(i18n.t("main:signInExpired"));
   const name = await platform.computerName();
+  await platform.readySigner();
   const transport = createConnectTransport({ baseUrl: "http://hermeshd", httpVersion: "1.1", useBinaryFormat: true, nodeOptions: { socketPath: socketPath() } });
   await createClient(LocalService, transport).setup({
     relayUrl: await connectURL(p.center),

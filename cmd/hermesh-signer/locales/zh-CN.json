@@ -1,0 +1,10 @@
+{
+  "title": "Hermesh 签名器",
+  "approve": "批准",
+  "deny": "拒绝",
+  "several": "批准这 %d 个请求？",
+  "code": "核对码：%s",
+  "hello": "批准 Hermesh 请求签名的内容",
+  "notSigned": "没有签名",
+  "noHello": "请先在“设置 › 帐户 › 登录选项”里设置 Windows Hello（设个 PIN 即可），再批准。"
+}
