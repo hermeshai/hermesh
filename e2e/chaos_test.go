@@ -11,7 +11,6 @@ import (
 	"slices"
 	"strconv"
 	"strings"
-	"syscall"
 	"testing"
 	"time"
 
@@ -194,7 +193,7 @@ func (w *ownerMac) finish(t *testing.T) {
 		if time.Now().After(deadline) {
 			t.Errorf("processes left after the daemon stopped: %+v", ps)
 			for _, p := range ps {
-				syscall.Kill(p.pid, syscall.SIGKILL)
+				killProcess(p.pid)
 			}
 			break
 		}
@@ -238,7 +237,7 @@ func TestChaosAgentKilledMidTool(t *testing.T) {
 	for _, p := range procsIn(wt) {
 		if p.cmd == "codex" {
 			t.Logf("kill -9 codex pid %d", p.pid)
-			syscall.Kill(p.pid, syscall.SIGKILL)
+			killProcess(p.pid)
 		}
 	}
 	if c := waiter.wait(t, 2*time.Minute); c != 7 || !strings.Contains(waiter.output(), "agent_crashed") {

@@ -7,10 +7,8 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"net"
 	"net/http"
 	"os"
-	"path/filepath"
 	"slices"
 	"strings"
 	"sync"
@@ -22,6 +20,8 @@ import (
 	inboxv1 "github.com/hermeshai/hermesh/gen/go/hermesh/inbox/v1"
 	relayv1 "github.com/hermeshai/hermesh/gen/go/hermesh/relay/v1"
 	sessionv1 "github.com/hermeshai/hermesh/gen/go/hermesh/session/v1"
+	"github.com/hermeshai/hermesh/internal/localipc"
+	"github.com/hermeshai/hermesh/internal/paths"
 	"github.com/hermeshai/hermesh/internal/provider"
 	"github.com/hermeshai/hermesh/pkg/identity"
 )
@@ -40,25 +40,14 @@ type sessionTools struct {
 	byID   map[string]string // session id → token
 }
 
-// toolsSocket is where the socket is: short enough for a Unix socket's path.
-func (n *Machine) toolsSocket() string {
-	p := filepath.Join(n.cfg.DataDir, "tools.sock")
-	if len(p) > 100 {
-		p = filepath.Join(os.TempDir(), "hermesh-"+strings.TrimPrefix(n.machineID, "m_")[:12]+".sock")
-	}
-	return p
-}
-
 // serveSessionTools listens until ctx ends.
 func (n *Machine) serveSessionTools(ctx context.Context) {
-	path := n.toolsSocket()
-	os.Remove(path)
-	ln, err := net.Listen("unix", path)
+	path := paths.Tools(n.cfg.DataDir, n.machineID)
+	ln, err := localipc.Listen(path)
 	if err != nil {
 		n.log.Warn("sessions' tools socket", "err", err)
 		return
 	}
-	os.Chmod(path, 0o600)
 	n.tools.mu.Lock()
 	n.tools.path = path
 	n.tools.mu.Unlock()

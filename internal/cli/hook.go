@@ -7,18 +7,17 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"net"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strconv"
 	"strings"
-	"syscall"
 	"time"
 
 	"github.com/spf13/cobra"
 
 	"github.com/hermeshai/hermesh/gen/go/hermesh/relay/v1/relayv1connect"
+	"github.com/hermeshai/hermesh/internal/localipc"
 	"github.com/hermeshai/hermesh/pkg/identity"
 )
 
@@ -195,12 +194,12 @@ func lockConversation(home, conv string) func() {
 	if err != nil {
 		return func() {}
 	}
-	if syscall.Flock(int(f.Fd()), syscall.LOCK_EX) != nil {
+	if lockFile(f) != nil {
 		f.Close()
 		return func() {}
 	}
 	return func() {
-		syscall.Flock(int(f.Fd()), syscall.LOCK_UN)
+		unlockFile(f)
 		f.Close()
 	}
 }
@@ -225,7 +224,7 @@ func (a *app) watching(conv string) bool {
 		return false
 	}
 	pid, err := strconv.Atoi(strings.TrimSpace(string(b)))
-	return err == nil && pid > 0 && syscall.Kill(pid, 0) == nil
+	return err == nil && pid > 0 && processAlive(pid)
 }
 
 // startWatch starts `hermesh message watch` for the conversation, apart
@@ -240,7 +239,7 @@ func (a *app) startWatch(conv, sock string) {
 	}
 	cmd := exec.Command(exe, "message", "watch", "--conversation", conv, "--claude-socket", sock)
 	cmd.Env = os.Environ()
-	cmd.SysProcAttr = &syscall.SysProcAttr{Setsid: true}
+	detach(cmd)
 	if cmd.Start() == nil {
 		cmd.Process.Release()
 	}
@@ -347,7 +346,9 @@ func (a *app) watchOnce(ctx context.Context, conv, sock string) error {
 // socket: read between tool calls, or a new turn when it is idle. Several
 // messages go as one: each costs the conversation a turn.
 func postToClaude(sock, text string) error {
-	conn, err := net.DialTimeout("unix", sock, 5*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	conn, err := localipc.Dial(ctx, sock)
 	if err != nil {
 		return err
 	}

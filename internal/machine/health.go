@@ -2,12 +2,9 @@ package machine
 
 import (
 	"fmt"
-	"os"
-	"runtime"
 	"slices"
 	"time"
 
-	"golang.org/x/sys/unix"
 	"google.golang.org/protobuf/proto"
 
 	machinev1 "github.com/hermeshai/hermesh/gen/go/hermesh/machine/v1"
@@ -51,31 +48,17 @@ func (n *Machine) checkHealth() []*machinev1.MachineProblem {
 		}
 		out = append(out, p)
 	}
-	var fs unix.Statfs_t
-	if unix.Statfs(n.cfg.DataDir, &fs) == nil {
-		free, size := uint64(fs.Bavail)*uint64(fs.Bsize), uint64(fs.Blocks)*uint64(fs.Bsize)
-		if free < diskLow {
-			out = append(out, &machinev1.MachineProblem{Kind: machinev1.MachineProblemKind_MACHINE_PROBLEM_KIND_DISK, Used: free, Limit: size})
-		}
+	if free, size, ok := diskSpace(n.cfg.DataDir); ok && free < diskLow {
+		out = append(out, &machinev1.MachineProblem{Kind: machinev1.MachineProblemKind_MACHINE_PROBLEM_KIND_DISK, Used: free, Limit: size})
 	}
-	var rl unix.Rlimit
-	if unix.Getrlimit(unix.RLIMIT_NOFILE, &rl) == nil {
-		if fds, err := os.ReadDir(fdDir()); err == nil && nearLimit(uint64(len(fds)), rl.Cur) {
-			out = append(out, &machinev1.MachineProblem{Kind: machinev1.MachineProblemKind_MACHINE_PROBLEM_KIND_FILES, Used: uint64(len(fds)), Limit: rl.Cur})
-		}
+	if open, limit, ok := openFiles(); ok && nearLimit(open, limit) {
+		out = append(out, &machinev1.MachineProblem{Kind: machinev1.MachineProblemKind_MACHINE_PROBLEM_KIND_FILES, Used: open, Limit: limit})
 	}
 	// Out of processes, the shell can't start either: that says it already.
 	if why := shellenv.LastProblem(); why != "" && !hasProblem(out, machinev1.MachineProblemKind_MACHINE_PROBLEM_KIND_PROCESSES) {
 		out = append(out, &machinev1.MachineProblem{Kind: machinev1.MachineProblemKind_MACHINE_PROBLEM_KIND_SHELL_PATH, Detail: why})
 	}
 	return out
-}
-
-func fdDir() string {
-	if runtime.GOOS == "linux" {
-		return "/proc/self/fd"
-	}
-	return "/dev/fd"
 }
 
 // refreshHealth checks the health now; a change goes to the screens, and

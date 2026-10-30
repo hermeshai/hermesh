@@ -15,7 +15,6 @@ import (
 	"slices"
 	"strings"
 	"sync"
-	"syscall"
 	"testing"
 	"time"
 
@@ -93,7 +92,7 @@ func start(t *testing.T, name string, env []string, bin string, args ...string) 
 	t.Helper()
 	cmd := exec.Command(bin, args...)
 	cmd.Env = append(os.Environ(), env...)
-	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
+	ownGroup(cmd)
 	pr, pw := io.Pipe()
 	cmd.Stdout, cmd.Stderr = pw, pw
 	p := &proc{name: name, cmd: cmd, lines: make(chan string, 1024), done: make(chan struct{})}
@@ -128,7 +127,7 @@ func (p *proc) kill() {
 		return
 	default:
 	}
-	syscall.Kill(-p.cmd.Process.Pid, syscall.SIGKILL)
+	killGroup(p.cmd.Process.Pid)
 	<-p.done
 }
 
@@ -138,7 +137,7 @@ func (p *proc) stop() {
 		return
 	default:
 	}
-	syscall.Kill(-p.cmd.Process.Pid, syscall.SIGTERM)
+	stopGroup(p.cmd.Process.Pid)
 	select {
 	case <-p.done:
 	case <-time.After(10 * time.Second):

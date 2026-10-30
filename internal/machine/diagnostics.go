@@ -7,8 +7,6 @@ import (
 	"strings"
 	"time"
 
-	"golang.org/x/sys/unix"
-
 	"github.com/hermeshai/hermesh/internal/provider"
 	"github.com/hermeshai/hermesh/internal/shellenv"
 )
@@ -38,13 +36,11 @@ func (l *Local) Diagnostics() string {
 		}
 		w("%s", line)
 	}
-	var fs unix.Statfs_t
-	if unix.Statfs(n.cfg.DataDir, &fs) == nil {
-		w("  disk       %s free of %s (%s)", gb(uint64(fs.Bavail)*uint64(fs.Bsize)), gb(uint64(fs.Blocks)*uint64(fs.Bsize)), n.cfg.DataDir)
+	if free, size, ok := diskSpace(n.cfg.DataDir); ok {
+		w("  disk       %s free of %s (%s)", gb(free), gb(size), n.cfg.DataDir)
 	}
-	var rl unix.Rlimit
-	if fds, err := os.ReadDir(fdDir()); err == nil && unix.Getrlimit(unix.RLIMIT_NOFILE, &rl) == nil {
-		w("  open files %d / %d", len(fds), rl.Cur)
+	if open, limit, ok := openFiles(); ok {
+		w("  open files %d / %d", open, limit)
 	}
 	if why := shellenv.LastProblem(); why != "" {
 		w("  shell PATH %s", why)

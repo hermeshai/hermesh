@@ -1,3 +1,5 @@
+//go:build unix
+
 // Command bench load-tests the full Hermesh path: agent client → relay →
 // E2E tunnel → hermeshd → Codex adapter → coding-agent process (fakecodex).
 // It runs relay and hermeshd as separate processes, samples their CPU and

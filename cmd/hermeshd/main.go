@@ -26,8 +26,10 @@ import (
 	relayv1 "github.com/hermeshai/hermesh/gen/go/hermesh/relay/v1"
 	"github.com/hermeshai/hermesh/gen/go/hermesh/relay/v1/relayv1connect"
 	"github.com/hermeshai/hermesh/internal/connaddr"
+	"github.com/hermeshai/hermesh/internal/localipc"
 	"github.com/hermeshai/hermesh/internal/machine"
 	"github.com/hermeshai/hermesh/internal/owner"
+	"github.com/hermeshai/hermesh/internal/paths"
 	"github.com/hermeshai/hermesh/internal/provider"
 	"github.com/hermeshai/hermesh/internal/provider/acp"
 	"github.com/hermeshai/hermesh/internal/provider/claude"
@@ -39,29 +41,6 @@ import (
 	"github.com/hermeshai/hermesh/pkg/metrics"
 	"github.com/hermeshai/hermesh/pkg/rlimit"
 )
-
-func defaultDataDir() string {
-	if v := os.Getenv("HERMESH_DATA_DIR"); v != "" {
-		return v
-	}
-	home, _ := os.UserHomeDir()
-	if runtime.GOOS == "darwin" {
-		return filepath.Join(home, "Library", "Application Support", "Hermesh")
-	}
-	if x := os.Getenv("XDG_DATA_HOME"); x != "" {
-		return filepath.Join(x, "hermesh")
-	}
-	return filepath.Join(home, ".local", "share", "hermesh")
-}
-
-// SocketPath is where the owner role serves LocalService.
-func SocketPath(dataDir string) string {
-	p := filepath.Join(dataDir, "run", "hermeshd.sock")
-	if len(p) > 100 {
-		p = filepath.Join(os.TempDir(), fmt.Sprintf("hermesh-%d", os.Getuid()), "hermeshd.sock")
-	}
-	return p
-}
 
 var logOut io.Writer = os.Stderr
 
@@ -111,7 +90,7 @@ First time, the install script runs "hermeshd pair" for you. Afterwards:
   hermeshd service status           is it running, and does it start at boot
 
 A computer that runs no coding agents can approve instead: hermeshd device.`}
-	root.PersistentFlags().StringVar(&dataDir, "data-dir", defaultDataDir(), "data directory")
+	root.PersistentFlags().StringVar(&dataDir, "data-dir", paths.DataDir(), "data directory")
 	root.PersistentFlags().BoolVarP(&verbose, "verbose", "v", false, "debug logging")
 
 	var debugAddr string
@@ -176,7 +155,7 @@ A computer that runs no coding agents can approve instead: hermeshd device.`}
 					return err
 				}
 				if socket == "" {
-					socket = SocketPath(dataDir)
+					socket = paths.LocalAPI(dataDir)
 				}
 				go o.Run(ctx)
 				log.Info("serving local API", "socket", socket)
@@ -294,7 +273,7 @@ to that owner's devices by itself. Then it installs the background service.`,
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			// The app's hermeshd holds the machine: ask it.
-			if text, err := askDiagnostics(cmd.Context(), SocketPath(dataDir)); err == nil {
+			if text, err := askDiagnostics(cmd.Context(), paths.LocalAPI(dataDir)); err == nil {
 				fmt.Print(text)
 				return nil
 			}
@@ -488,8 +467,7 @@ func askDiagnostics(ctx context.Context, sock string) (string, error) {
 		return "", err
 	}
 	hc := &http.Client{Transport: &http.Transport{DialContext: func(ctx context.Context, _, _ string) (net.Conn, error) {
-		var d net.Dialer
-		return d.DialContext(ctx, "unix", sock)
+		return localipc.Dial(ctx, sock)
 	}}}
 	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()

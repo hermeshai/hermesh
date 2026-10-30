@@ -1,3 +1,5 @@
+//go:build darwin || linux
+
 // Package peercred restricts Unix socket connections to the daemon's own
 // user.
 package peercred

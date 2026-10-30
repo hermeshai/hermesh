@@ -15,7 +15,6 @@ import (
 	"strings"
 	"sync"
 	"sync/atomic"
-	"syscall"
 	"time"
 	"unicode/utf8"
 )
@@ -65,7 +64,7 @@ func startProc(bin string, args []string, dir string, env []string) (*Proc, erro
 	cmd := exec.Command(bin, args...)
 	cmd.Dir = dir
 	cmd.Env = env
-	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
+	setGroup(cmd)
 	stdin, err := cmd.StdinPipe()
 	if err != nil {
 		return nil, err
@@ -87,6 +86,12 @@ func startProc(bin string, args []string, dir string, env []string) (*Proc, erro
 		return nil, err
 	}
 	outW.Close()
+	if err := joinGroup(cmd); err != nil {
+		cmd.Process.Kill()
+		cmd.Wait()
+		outR.Close()
+		return nil, err
+	}
 	mSpawn.Since(start)
 	p.pid = cmd.Process.Pid
 	p.tree = track(p.pid)
@@ -101,160 +106,32 @@ func startProc(bin string, args []string, dir string, env []string) (*Proc, erro
 	return p, nil
 }
 
-// startSpawn starts the process with posix_spawn (see package spawn).
-func startSpawn(bin string, args []string, dir string, env []string) (*Proc, error) {
-	if !strings.Contains(bin, "/") {
-		lp, err := exec.LookPath(bin)
-		if err != nil {
-			return nil, err
-		}
-		bin = lp
-	}
-	if env == nil {
-		env = os.Environ()
-	}
-	inW, inR, err := spawn.Pipe(false)
-	if err != nil {
-		return nil, err
-	}
-	outR, outW, err := spawn.Pipe(true)
-	if err != nil {
-		inR.Close()
-		inW.Close()
-		return nil, err
-	}
-	errR, errW, err := spawn.Pipe(true)
-	if err != nil {
-		inR.Close()
-		inW.Close()
-		outR.Close()
-		outW.Close()
-		return nil, err
-	}
-	start := time.Now()
-	argv := append([]string{bin}, args...)
-	pid, exited, err := 0, (<-chan syscall.WaitStatus)(nil), spawn.ErrHelperGone
-	if hs := spawnHelpers.Load(); hs != nil && len(*hs) > 0 {
-		h := (*hs)[spawnNext.Add(1)%uint64(len(*hs))]
-		pid, exited, err = h.Start(bin, argv, env, dir, inR, outW, errW)
-	}
-	if errors.Is(err, spawn.ErrHelperGone) {
-		pid, err = spawn.Start(bin, argv, env, dir, inR, outW, errW)
-		exited = waitPid(pid)
-	}
-	inR.Close()
-	outW.Close()
-	errW.Close()
-	if err != nil {
-		inW.Close()
-		outR.Close()
-		errR.Close()
-		return nil, err
-	}
-	mSpawn.Since(start)
-	p := &Proc{pid: pid, stdin: inW, stdout: outR, stderr: newRing(64 << 10), done: make(chan struct{}), linesDone: make(chan struct{})}
-	p.tree = track(pid)
-	copied := make(chan struct{})
-	go func() {
-		io.Copy(p.stderr, errR)
-		close(copied)
-	}()
-	go p.wait(func() error {
-		ws := <-exited
-		p.afterExit(func() { // like exec.Cmd.Wait: stderr is complete once Wait returns
-			select {
-			case <-copied:
-			case <-time.After(drainGrace):
-				errR.Close()
-				<-copied
-			}
-			errR.Close()
-		}, outR)
-		return spawn.ExitErr(ws)
-	})
-	return p, nil
-}
-
 // RunCommand runs bin to completion and returns its stdout and stderr,
 // through the spawn helpers when they are in use (a fork of this large
 // process costs milliseconds of CPU each). stdin is empty; ctx kills it.
 func RunCommand(ctx context.Context, bin string, args []string, dir string, env []string) (stdout, stderr []byte, err error) {
-	hs := spawnHelpers.Load()
-	if hs == nil || len(*hs) == 0 {
-		cmd := exec.CommandContext(ctx, bin, args...)
-		cmd.Dir, cmd.Env = dir, env
-		// Kill the whole group on ctx: a child of bin (sh -c "sleep 30")
-		// would otherwise keep the output pipes, and Run, open.
-		cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
-		cmd.Cancel = func() error { return syscall.Kill(-cmd.Process.Pid, syscall.SIGKILL) }
-		cmd.WaitDelay = drainGrace
-		var out, errb bytes.Buffer
-		cmd.Stdout, cmd.Stderr = &out, &errb
-		err := cmd.Run()
-		return out.Bytes(), errb.Bytes(), err
+	if hs := spawnHelpers.Load(); hs != nil && len(*hs) > 0 {
+		return runSpawned(ctx, *hs, bin, args, dir, env)
 	}
-	if !strings.Contains(bin, "/") {
-		if bin, err = exec.LookPath(bin); err != nil {
-			return nil, nil, err
-		}
-	}
-	null, err := os.Open(os.DevNull)
-	if err != nil {
+	cmd := exec.CommandContext(ctx, bin, args...)
+	cmd.Dir, cmd.Env = dir, env
+	// Kill the whole group on ctx: a child of bin (sh -c "sleep 30")
+	// would otherwise keep the output pipes, and Run, open.
+	setGroup(cmd)
+	cmd.Cancel = func() error { return killGroup(cmd.Process.Pid) }
+	cmd.WaitDelay = drainGrace
+	var out, errb bytes.Buffer
+	cmd.Stdout, cmd.Stderr = &out, &errb
+	if err := cmd.Start(); err != nil {
 		return nil, nil, err
 	}
-	defer null.Close()
-	outR, outW, err := spawn.Pipe(true)
-	if err != nil {
+	if err := joinGroup(cmd); err != nil {
+		cmd.Process.Kill()
+		cmd.Wait()
 		return nil, nil, err
 	}
-	errR, errW, err := spawn.Pipe(true)
-	if err != nil {
-		outR.Close()
-		outW.Close()
-		return nil, nil, err
-	}
-	h := (*hs)[spawnNext.Add(1)%uint64(len(*hs))]
-	pid, exited, err := h.Start(bin, append([]string{bin}, args...), env, dir, null, outW, errW)
-	if errors.Is(err, spawn.ErrHelperGone) {
-		pid, err = spawn.Start(bin, append([]string{bin}, args...), env, dir, null, outW, errW)
-		exited = waitPid(pid)
-	}
-	outW.Close()
-	errW.Close()
-	if err != nil {
-		outR.Close()
-		errR.Close()
-		return nil, nil, err
-	}
-	stop := context.AfterFunc(ctx, func() { syscall.Kill(-pid, syscall.SIGKILL) })
-	defer stop()
-	var errBuf []byte
-	done := make(chan struct{})
-	go func() { errBuf, _ = io.ReadAll(errR); close(done) }()
-	outBuf, _ := io.ReadAll(outR)
-	<-done
-	outR.Close()
-	errR.Close()
-	err = spawn.ExitErr(<-exited)
-	if err != nil && ctx.Err() != nil {
-		err = ctx.Err()
-	}
-	return outBuf, errBuf, err
-}
-
-// waitPid reaps a child of this process.
-func waitPid(pid int) <-chan syscall.WaitStatus {
-	ch := make(chan syscall.WaitStatus, 1)
-	go func() {
-		var ws syscall.WaitStatus
-		for {
-			if _, err := syscall.Wait4(pid, &ws, 0, nil); err != syscall.EINTR {
-				break
-			}
-		}
-		ch <- ws
-	}()
-	return ch
+	err = cmd.Wait()
+	return out.Bytes(), errb.Bytes(), err
 }
 
 // spawnHelpers, when set, create agent processes in turn (see spawn.Helper;
@@ -271,7 +148,7 @@ func UseSpawnHelpers(hs ...*spawn.Helper) { spawnHelpers.Store(&hs) }
 // process group, lets stderr (waitStderr) and the stdout reader reach the
 // end within drainGrace, then closes stdout.
 func (p *Proc) afterExit(waitStderr func(), stdout io.Closer) {
-	syscall.Kill(-p.pid, syscall.SIGKILL)
+	killGroup(p.pid)
 	p.tree.stop() // descendants in groups of their own (agents' tools)
 	if waitStderr != nil {
 		waitStderr()
@@ -324,7 +201,7 @@ func (p *Proc) Lines(fn func([]byte)) error {
 		p.scanMu.Lock()
 		p.scanErr = fmt.Errorf("the agent wrote an output line longer than %d MiB", MaxLine>>20)
 		p.scanMu.Unlock()
-		syscall.Kill(-p.pid, syscall.SIGKILL)
+		killGroup(p.pid)
 	}
 	return err
 }
@@ -353,26 +230,6 @@ func (p *Proc) Stop(grace time.Duration) {
 	}
 	KillGroup(p.Pgid())
 	<-p.done
-}
-
-// KillGroup terminates a process group (also used for orphans after a
-// daemon restart).
-func KillGroup(pgid int) {
-	if pgid <= 1 {
-		return
-	}
-	syscall.Kill(-pgid, syscall.SIGTERM)
-	deadline := time.Now().Add(5 * time.Second)
-	for time.Now().Before(deadline) {
-		if syscall.Kill(-pgid, 0) != nil {
-			return
-		}
-		time.Sleep(100 * time.Millisecond)
-	}
-	for i := 0; i < 3; i++ {
-		syscall.Kill(-pgid, syscall.SIGKILL)
-		time.Sleep(200 * time.Millisecond)
-	}
 }
 
 type ring struct {

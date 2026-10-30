@@ -6,9 +6,11 @@ generate:
 	pnpm install --frozen-lockfile
 	go tool buf generate --template buf.gen.ts.yaml
 
+# Windows is vetted too, so that nothing Unix-only creeps back (docs/windows.md, W0).
 lint:
 	go tool buf lint
 	go vet ./...
+	GOOS=windows go vet ./...
 	test -z "$$(gofmt -l cmd internal pkg e2e)"
 
 test:
