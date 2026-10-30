@@ -10,6 +10,9 @@
 //	FAKE_CODEX_MESSAGES      agent messages between commands (default 0)
 //	FAKE_CODEX_BALLAST_MB    resident memory to hold, like a real CLI (default 0)
 //	FAKE_CODEX_LOG           file to append each thread/start's params to
+//	FAKE_CODEX_START_MS      time thread/start takes to answer (default 0)
+//	FAKE_CODEX_FAIL_START    a file: while it exists, thread/start removes
+//	                         it and Codex exits, as one dying at its start
 //
 // model/list offers gpt-fake-big (the default) and gpt-fake-small;
 // config/read answers FAKE_CODEX_CONFIG, a JSON object (default {}).
@@ -108,6 +111,11 @@ func main() {
 			}
 			reply(m.ID, map[string]any{"config": cfg})
 		case "thread/start", "thread/resume":
+			if f := os.Getenv("FAKE_CODEX_FAIL_START"); f != "" && os.Remove(f) == nil {
+				fmt.Fprintln(os.Stderr, "fakecodex: failing this start")
+				os.Exit(1)
+			}
+			time.Sleep(time.Duration(envInt("FAKE_CODEX_START_MS", 0)) * time.Millisecond)
 			if log := os.Getenv("FAKE_CODEX_LOG"); log != "" && m.Method == "thread/start" {
 				if f, err := os.OpenFile(log, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o644); err == nil {
 					f.Write(append(append([]byte{}, m.Params...), '\n'))

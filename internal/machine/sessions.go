@@ -36,7 +36,11 @@ type Limits struct {
 	// agent must write something within FirstOutputTimeout of starting,
 	// then may stay silent for IdleTimeout, or for ToolTimeout while one
 	// of its tools runs (0: no limit while a tool runs). TurnTimeout caps a
-	// turn that keeps making progress (0: no cap).
+	// turn that keeps making progress (0: no cap). StartTimeout caps the
+	// start before that (the worktree and the agent's own startup), which
+	// a busy machine makes slow, not stuck: generous, and the only limit
+	// on it (0: none).
+	StartTimeout       time.Duration
 	FirstOutputTimeout time.Duration
 	IdleTimeout        time.Duration
 	ToolTimeout        time.Duration
@@ -45,7 +49,7 @@ type Limits struct {
 }
 
 func DefaultLimits() Limits {
-	return Limits{FirstOutputTimeout: 3 * time.Minute, IdleTimeout: 15 * time.Minute, ToolTimeout: 2 * time.Hour,
+	return Limits{StartTimeout: 10 * time.Minute, FirstOutputTimeout: 3 * time.Minute, IdleTimeout: 15 * time.Minute, ToolTimeout: 2 * time.Hour,
 		IdleProcessTTL: 10 * time.Minute}
 }
 
@@ -183,6 +187,10 @@ type live struct {
 	// lostContext says why the provider conversation was dropped; the next
 	// fresh provider session is told (see continuityNotice).
 	lostContext string
+	// prepCancel stops the start under way (worktree, agent process),
+	// begun at prepStarted; nil when the session is not PREPARING.
+	prepCancel  context.CancelCauseFunc
+	prepStarted time.Time
 	// lastErr is the agent's last error this turn (e.g. a retry it keeps
 	// making), and when: a stall after it is reported as that failure.
 	lastErr   *provider.Failure
@@ -801,7 +809,8 @@ func (s *Sessions) nextTurn(ctx context.Context, l *live, m message) error {
 	}
 	l.asker, l.askerConv = m.by, m.conv
 	if !alive {
-		l.pending, l.resume, l.queuedAt = m, l.row.ProviderRef != "", time.Now()
+		// pending: what a failed start never delivered (interruptStart).
+		l.pending, l.resume, l.queuedAt = l.pending.join(m), l.row.ProviderRef != "", time.Now()
 		l.mu.Unlock()
 		s.setStatus(l, sessionv1.SessionStatus_SESSION_STATUS_QUEUED, "")
 		s.dispatch()
@@ -857,8 +866,11 @@ func (s *Sessions) interrupt(l *live, by string) {
 		l.pending, l.followUps, l.resume, l.restarting = message{}, nil, false, false
 		l.mu.Unlock()
 		s.settle(l, f, sessionv1.SessionStatus_SESSION_STATUS_IDLE)
-	case sessionv1.SessionStatus_SESSION_STATUS_PREPARING: // prepare stops it once the agent is up
+	case sessionv1.SessionStatus_SESSION_STATUS_PREPARING: // prepare stops it
 		l.stop = f
+		if l.prepCancel != nil {
+			l.prepCancel(&provider.FailureError{Failure: *f})
+		}
 		l.mu.Unlock()
 	default:
 		l.mu.Unlock()
@@ -1313,15 +1325,40 @@ func (s *Sessions) dispatch() {
 }
 
 func (s *Sessions) prepare(l *live) {
-	ctx := context.Background()
+	// ctx ends the start early, for an interrupt or the watchdog
+	// (StartTimeout); nothing else limits it. It is not cancelled once
+	// the agent is up: the agent's session keeps it.
+	ctx, cancel := context.WithCancelCause(context.Background())
 	l.mu.Lock()
+	l.prepCancel, l.prepStarted = cancel, time.Now()
 	id, projectID, prompt, resume, restarting := l.row.ID, l.row.ProjectID, l.pending, l.resume, l.restarting
 	needWorktree := l.row.Worktree == "" || !s.ws.Exists(id)
 	inPlace := l.row.Workspace == identityv1.Workspace_WORKSPACE_IN_PLACE
 	l.mu.Unlock()
+	// failed ends a start that did not get the agent up: the session is
+	// kept, crashed (idle when interrupted), and a later message retries.
+	failed := func(f *provider.Failure) {
+		cancel(nil)
+		l.mu.Lock()
+		l.prepCancel = nil
+		stop := l.stop
+		l.stop = nil
+		if stop != nil { // interrupted: what it was to run never runs
+			l.pending, l.followUps, l.resume, l.restarting = message{}, nil, false, false
+		}
+		l.mu.Unlock()
+		if stop != nil {
+			s.settle(l, stop, sessionv1.SessionStatus_SESSION_STATUS_IDLE)
+			return
+		}
+		s.interruptStart(l, f)
+	}
 	fail := func(err error) {
+		if c := context.Cause(ctx); c != nil {
+			err = c // why it was stopped
+		}
 		s.log.Warn("session failed to start", "session", id, "err", err)
-		s.interruptStart(l, provider.FailureOf(err, sessionv1.FailureKind_FAILURE_KIND_START_FAILED))
+		failed(provider.FailureOf(err, sessionv1.FailureKind_FAILURE_KIND_START_FAILED))
 	}
 	proj, err := s.st.Project(projectID)
 	if err != nil || proj == nil {
@@ -1387,14 +1424,14 @@ func (s *Sessions) prepare(l *live) {
 	startAt := time.Now()
 	ps, err := s.providers[agent].Start(ctx, spec)
 	mProviderStart.Since(startAt)
-	if err != nil && spec.ResumeRef != "" {
+	if err != nil && spec.ResumeRef != "" && ctx.Err() == nil {
 		f := provider.FailureOf(err, sessionv1.FailureKind_FAILURE_KIND_START_FAILED)
 		if f.Kind != sessionv1.FailureKind_FAILURE_KIND_RESUME_REJECTED {
 			// Not evidence that the conversation is gone (login, network,
 			// ...): keep it for a later retry.
 			s.log.Warn("resume failed; session kept", "session", id, "err", err)
 			countResume(agent, "failed_kept")
-			s.interruptStart(l, f)
+			failed(f)
 			return
 		}
 		s.log.Warn("resume refused, continuing in a fresh provider session", "session", id, "err", err)
@@ -1411,12 +1448,19 @@ func (s *Sessions) prepare(l *live) {
 		return
 	}
 	l.mu.Lock()
+	l.prepCancel = nil
 	if f := l.stop; f != nil { // interrupted while preparing
 		l.stop = nil
 		l.pending, l.followUps, l.resume, l.restarting = message{}, nil, false, false
 		l.mu.Unlock()
 		ps.Close()
 		s.settle(l, f, sessionv1.SessionStatus_SESSION_STATUS_IDLE)
+		return
+	}
+	if ctx.Err() != nil { // the watchdog stopped it as it came up
+		l.mu.Unlock()
+		ps.Close()
+		fail(ctx.Err())
 		return
 	}
 	l.sess = ps
@@ -1613,13 +1657,19 @@ func (s *Sessions) stopTurn(l *live, ps provider.Session, f *provider.Failure, s
 }
 
 // interruptStart reports a turn whose agent could not be started, keeping
-// the session (and its provider session) for a later message.
+// the session (and its provider session) and the turn's prompt for a
+// later message.
 func (s *Sessions) interruptStart(l *live, f *provider.Failure) {
 	pf := f.Proto()
 	l.mu.Lock()
 	l.row.Error = pf.Message
 	l.row.Progress.LastFailure = pf
-	l.pending, l.resume, l.restarting = message{}, false, false
+	// The agent never got the prompt, nor what came while it was starting:
+	// kept for the next turn, which the next message starts.
+	for _, m := range l.followUps {
+		l.pending = l.pending.join(m)
+	}
+	l.followUps, l.resume, l.restarting = nil, false, false
 	l.idleSince = time.Now()
 	agent := l.row.Agent
 	l.mu.Unlock()
@@ -2085,8 +2135,15 @@ func (s *Sessions) Janitor(ctx context.Context) {
 			l.mu.Lock()
 			st, ps := l.row.Status, l.sess
 			idleSince := l.idleSince
+			stopStart, prepStarted := l.prepCancel, l.prepStarted
 			l.mu.Unlock()
 			switch st {
+			case sessionv1.SessionStatus_SESSION_STATUS_PREPARING:
+				if lim := s.limits.StartTimeout; lim > 0 && stopStart != nil && now.Sub(prepStarted) > lim {
+					s.log.Warn("stopping a stalled start", "session", l.id)
+					mWatchdog.Inc()
+					stopStart(provider.Fail(sessionv1.FailureKind_FAILURE_KIND_STALLED, fmt.Sprintf("the session did not finish starting in %s", lim)))
+				}
 			case sessionv1.SessionStatus_SESSION_STATUS_WAITING_INPUT: // not stalled: waiting for an answer
 				s.expireQuestions(l, now)
 			case sessionv1.SessionStatus_SESSION_STATUS_RUNNING:
