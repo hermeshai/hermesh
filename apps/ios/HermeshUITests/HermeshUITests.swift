@@ -39,6 +39,7 @@ final class HermeshUITests: XCTestCase {
         try XCTContext.runActivity(named: "gives Claude this server's MCP address, with its key") { _ in try mcpConnector() }
         try XCTContext.runActivity(named: "searches sessions from the menu") { _ in try search() }
         try XCTContext.runActivity(named: "a conversation not read yet waits in the middle of the screen") { _ in try centeredLoader() }
+        try XCTContext.runActivity(named: "a conversation on a machine gone offline says why, and shows once it is back") { _ in try machineOffline() }
         try XCTContext.runActivity(named: "opened without the relay, shows what it kept and catches up") { _ in try offline() }
         try XCTContext.runActivity(named: "back and forth to the home screen, never shows its Mac unreachable") { _ in try backAndForth() }
         try XCTContext.runActivity(named: "a question arrives as a notification and opens its session") { _ in try notification() }
@@ -547,8 +548,48 @@ final class HermeshUITests: XCTestCase {
         shot.name = "a conversation waiting"
         shot.lifetime = .keepAlways
         add(shot)
+        // Once the iPhone has been away from the relay a while, the page says so.
+        let unread = app.descendants(matching: .any)["session-unread"].firstMatch
+        try waitFor("it says this iPhone can't reach Hermesh", timeout: 30) { unread.exists && app.staticTexts["暂时连不上 Hermesh"].exists ? true : nil }
         _ = try control("relay?up=1", method: "POST")
-        app.navigationBars.buttons.element(boundBy: 0).tap()
+    }
+
+    /// The Mac goes offline with the relay still up: a conversation read
+    /// before shows with a line that says it is what was last read; one
+    /// never opened says the Mac is offline instead of waiting for good, and
+    /// shows once the Mac is back.
+    func machineOffline() throws {
+        let read = "机器离线前读过", unread = "机器离线时没读过"
+        // Each says its own words, so what shows is known to be its own.
+        for (title, say) in [(read, "离线前读到"), (unread, "离线时没读")] {
+            let q = { (t: String) in t.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed)! }
+            _ = try control("start?title=\(q(title))&say=\(q(say))", method: "POST")
+        }
+        openMenu()
+        tap("drawer-session-\(read)", timeout: 30)
+        XCTAssertTrue(app.staticTexts["say 离线前读到"].waitForExistence(timeout: 30), "the conversation, read while the Mac is online")
+        openMenu()
+        XCTAssertTrue(app.descendants(matching: .any)["drawer-session-\(unread)"].waitForExistence(timeout: 30), "the other session in the menu")
+        tap("drawer-session-还读不到") // away from it (centeredLoader's session): what was read is kept as its page goes
+        _ = try control("machine?up=0", method: "POST")
+        openMenu()
+        tap("drawer-session-\(read)")
+        XCTAssertTrue(app.staticTexts["say 离线前读到"].waitForExistence(timeout: 5), "what was read shows")
+        try waitFor("a line says it is what was last read", timeout: 60) { app.staticTexts["owner-mac 离线了，这里是上次读到的内容。"].exists ? true : nil }
+        let kept = XCTAttachment(screenshot: app.screenshot())
+        kept.name = "a conversation read before its machine went offline"
+        kept.lifetime = .keepAlways
+        add(kept)
+        openMenu()
+        tap("drawer-session-\(unread)")
+        let empty = app.descendants(matching: .any)["session-unread"].firstMatch
+        try waitFor("it says the Mac is offline", timeout: 30) { empty.exists && app.staticTexts["owner-mac 离线了"].exists ? true : nil }
+        let shot = XCTAttachment(screenshot: app.screenshot())
+        shot.name = "a conversation on a machine gone offline"
+        shot.lifetime = .keepAlways
+        add(shot)
+        _ = try control("machine?up=1", method: "POST")
+        try waitFor("the conversation shows once the Mac is back", timeout: 90) { !empty.exists && app.staticTexts["say 离线时没读"].exists ? true : nil }
     }
 
     /// The relay goes away and the app is opened again: it shows what it

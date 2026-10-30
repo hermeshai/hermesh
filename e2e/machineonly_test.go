@@ -363,3 +363,86 @@ func (w *ownerMac) otherMac(name string, env []string) (localv1connect.LocalServ
 	w.logs = append(w.logs, p)
 	return localClient(w.t, sock), sock
 }
+
+// A machine offline while the relay restarts keeps its name and when it was
+// last online: the new relay hears of it only once the machine is back, and
+// until then the owner shows it as it last had them, never by its id.
+func TestMachineNameAfterRelayRestart(t *testing.T) {
+	if testing.Short() {
+		t.Skip("e2e")
+	}
+	env := []string{"HERMESH_GEMINI_BIN=" + filepath.Join(binaries(t), "fakeacp"), "FAKE_ACP_STATE=" + filepath.Join(t.TempDir(), "fakeacp")}
+	w := newOwnerMac(t, env, &localv1.GrantSpec{Agents: []string{"gemini"}})
+	ctx := context.Background()
+	home, err := w.app.client.GetStatus(ctx, &localv1.GetStatusRequest{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	work, _ := w.otherMac("work-mac", env)
+	daemon := w.logs[len(w.logs)-1] // the one otherMac started
+	id := w.joinTyped(work, home, "work-mac").LocalMachineId
+	listed := func() *localv1.Machine {
+		res, err := w.app.client.ListMachines(ctx, &localv1.ListMachinesRequest{})
+		if err != nil {
+			return nil
+		}
+		for _, m := range res.Machines {
+			if m.MachineId == id {
+				return m
+			}
+		}
+		return nil
+	}
+	eventually(t, 30*time.Second, "work-mac listed online by its name", func() bool {
+		m := listed()
+		return m != nil && m.Online && m.MachineName == "work-mac"
+	})
+
+	daemon.stop()
+	var gone *localv1.Machine
+	eventually(t, 30*time.Second, "work-mac offline", func() bool {
+		gone = listed()
+		return gone != nil && !gone.Online && gone.LastSeen != nil
+	})
+	w.restartRelay()
+	eventually(t, 60*time.Second, "this Mac back on the new relay", func() bool {
+		r := w.cli(30*time.Second, "project", "list")
+		return r.code == 0 && strings.Contains(r.stdout, "owner-mac/demo")
+	})
+	// The new relay lists work-mac without a name for as long as it is away.
+	for end := time.Now().Add(10 * time.Second); time.Now().Before(end); time.Sleep(500 * time.Millisecond) {
+		if m := listed(); m == nil || m.Online || m.MachineName != "work-mac" || !proto.Equal(m.LastSeen, gone.LastSeen) {
+			t.Fatalf("work-mac after the relay restarted: %v (before: %v)", m, gone)
+		}
+	}
+
+	// Online when the relay goes, and not back after: it was online until
+	// about then, and stays so as the list comes again.
+	w.otherMac("work-mac", env) // the same Mac started again
+	daemon = w.logs[len(w.logs)-1]
+	eventually(t, 60*time.Second, "work-mac back online", func() bool {
+		m := listed()
+		return m != nil && m.Online && m.MachineName == "work-mac"
+	})
+	w.relay.stop()
+	went := time.Now()
+	daemon.stop()
+	w.startRelay()
+	eventually(t, 60*time.Second, "this Mac back on the new relay", func() bool {
+		r := w.cli(30*time.Second, "project", "list")
+		return r.code == 0 && strings.Contains(r.stdout, "owner-mac/demo")
+	})
+	var after *localv1.Machine
+	eventually(t, 30*time.Second, "work-mac listed offline by the new relay", func() bool {
+		after = listed()
+		return after != nil && !after.Online
+	})
+	if after.MachineName != "work-mac" || after.LastSeen == nil || after.LastSeen.AsTime().Before(went.Add(-time.Second)) {
+		t.Fatalf("work-mac, online when the relay went: %v (the relay went at %v)", after, went)
+	}
+	for end := time.Now().Add(5 * time.Second); time.Now().Before(end); time.Sleep(500 * time.Millisecond) {
+		if m := listed(); m == nil || m.Online || !proto.Equal(m.LastSeen, after.LastSeen) {
+			t.Fatalf("work-mac's last online moved: %v (was %v)", m, after)
+		}
+	}
+}

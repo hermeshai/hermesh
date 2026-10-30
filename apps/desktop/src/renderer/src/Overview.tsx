@@ -1,5 +1,6 @@
 import { useState } from "react";
-import { useTranslation } from "react-i18next";
+import { Trans, useTranslation } from "react-i18next";
+import { agoText, dateOf } from "@hermesh/core";
 import { SidebarToggle } from "./MainWindow";
 import { Icon } from "./icons";
 import { Attention } from "./overview/Attention";
@@ -32,14 +33,7 @@ export function Overview() {
               <span>{dayText(now)}</span>
             </div>
           </div>
-          {st.sessionsUnreachable.length > 0 && (
-            <div className="ov-warn" role="status">
-              <Icon name="wifi" />
-              {t("unreachable.line", {
-                machines: st.sessionsUnreachable.map((u) => t("unreachable.machine", { name: u.machineName, error: u.error })).join(t("listSeparator")),
-              })}
-            </div>
-          )}
+          {st.sessionsUnreachable.length > 0 && <Unreachable now={now} />}
           <Attention now={now} />
           <section aria-label={t("map.title")}>
             <LinkMap pick={pick} onPick={setPick} now={now} usage={usage} />
@@ -49,5 +43,35 @@ export function Overview() {
         </div>
       </div>
     </>
+  );
+}
+
+/** Machines whose sessions can't be listed now: offline, or not answering (as the iPhone says it). */
+function Unreachable({ now }: { now: Date }) {
+  const { t } = useTranslation("overview");
+  const st = useStore();
+  const gone = st.sessionsUnreachable.map((u) => {
+    const m = st.machines.find((x) => x.machineId === u.machineId);
+    return { name: u.machineName, online: m?.online ?? false, seen: dateOf(m?.lastSeen) };
+  });
+  const g = gone[0];
+  const many = gone.length > 1;
+  const key = many ? "unreachable.many" : g.online ? "unreachable.notResponding" : "unreachable.offline";
+  const more = many
+    ? gone.map((x) => x.name).join(t("listSeparator"))
+    : g.online
+      ? t("unreachable.retrying")
+      : g.seen
+        ? t("unreachable.lastOnline", { ago: agoText(g.seen, now) })
+        : t("unreachable.reconnect");
+  return (
+    <div className="ov-warn" role="status">
+      <Icon name="wifi" />
+      <span>
+        <Trans t={t} i18nKey={key} values={{ name: g.name, count: gone.length }} components={{ b: <b /> }} />
+        {" · "}
+        {more}
+      </span>
+    </div>
   );
 }

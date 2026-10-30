@@ -50,12 +50,52 @@
         }
       }
     },
+    "%@ is offline": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ 离线了"
+          }
+        }
+      }
+    },
+    "%@ is offline; this is what was last read from it.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ 离线了，这里是上次读到的内容。"
+          }
+        }
+      }
+    },
     "%@ is working": {
       "localizations": {
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
             "value": "%@ 正在工作"
+          }
+        }
+      }
+    },
+    "%@ isn’t responding": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ 暂时没有回应"
+          }
+        }
+      }
+    },
+    "%@ isn’t responding; this is what was last read from it.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ 暂时没有回应，这里是上次读到的内容。"
           }
         }
       }
@@ -1329,6 +1369,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "暂时连不上 Hermesh"
+          }
+        }
+      }
+    },
+    "Can’t reach Hermesh; this is what was last read here.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "暂时连不上 Hermesh，这里是上次读到的内容。"
           }
         }
       }
@@ -5323,6 +5373,46 @@
           "stringUnit": {
             "state": "translated",
             "value": "这台机器上没有这个编码 agent"
+          }
+        }
+      }
+    },
+    "This conversation is kept on %@; it shows here once this iPhone reconnects.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "这个会话的内容保存在 %@ 上，这台 iPhone 连上后会自动显示。"
+          }
+        }
+      }
+    },
+    "This conversation is kept on that machine. Retrying; it shows here once the machine answers.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "这个会话的内容保存在那台机器上。正在重试，读到后会自动显示。"
+          }
+        }
+      }
+    },
+    "This conversation is kept on that machine; it shows here once the machine reconnects.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "这个会话的内容保存在那台机器上，连上后会自动显示。"
+          }
+        }
+      }
+    },
+    "This conversation is kept on that machine; it shows here once the machine reconnects. Last online %@.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "这个会话的内容保存在那台机器上，连上后会自动显示。%@还在线。"
           }
         }
       }

@@ -426,3 +426,28 @@ test("a message an agent writes to the session shows as a card that says who wro
   await snap(page, "session-message");
   await app.close();
 });
+
+test("a conversation on a machine gone offline says why: one read before shows with a line under it, one never read says so instead of a blank page", async () => {
+  const { app, page } = await launch();
+  await open(page, "在另一台 Mac 上");
+  const log = page.getByRole("log", { name: "对话" });
+  await expect(log).toContainText("在那边");
+  await open(page, "写 hello");
+  process.kill(-fixture.otherMac, "SIGTERM");
+  // Read before: what was read shows, and a line says it is what was last read.
+  await open(page, "在另一台 Mac 上");
+  await expect(log).toContainText("在那边");
+  await expect(page.getByText("work-mac 离线了，这里是上次读到的内容。", { exact: true })).toBeVisible({ timeout: 60_000 });
+  await snap(page, "session-machine-offline-kept");
+  // Never read: the page says why it is empty, not a blank page or a wait for good.
+  await open(page, "也在另一台 Mac 上");
+  await expect(page.getByText("work-mac 离线了", { exact: true })).toBeVisible();
+  await expect(page.getByText(/^这个会话的内容保存在那台机器上，连上后会自动显示。.*还在线。$/)).toBeVisible();
+  await snap(page, "session-machine-offline");
+  // The overview says it as the iPhone does: offline, when it was last seen, no raw error.
+  await page.getByRole("button", { name: /^概览/ }).click();
+  const warn = page.locator(".ov-warn");
+  await expect(warn).toContainText("work-mac 离线了，它上面的会话暂时看不到");
+  await expect(warn).toContainText("还在线 · 连上后会自动补上");
+  await app.close();
+});

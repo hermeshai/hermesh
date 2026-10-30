@@ -1250,6 +1250,17 @@ func (o *Owner) ListMachines(ctx context.Context) ([]*localv1.Machine, error) {
 func (o *Owner) machinesFrom(res *relayv1.ListMachinesResponse) []*localv1.Machine {
 	o.adoptChain(res.RootChain) // another device may have joined or left
 	local := o.Status().LocalMachineId
+	// What the relay last gave: a relay just started knows a machine's name
+	// and when it was last online only once it is back (reported, lastSeen),
+	// and the id is no name to show. One it last listed online was online
+	// until about now, when the relay went.
+	known := map[string]*localv1.Machine{}
+	o.mu.Lock()
+	for _, m := range o.lastMachines {
+		known[m.MachineId] = m
+	}
+	o.mu.Unlock()
+	wasOnline := o.seenOnline()
 	var out []*localv1.Machine
 	for _, e := range res.Machines {
 		nc, _, err := o.trust.VerifyMachineCert(e.MachineCert)
@@ -1260,10 +1271,22 @@ func (o *Owner) machinesFrom(res *relayv1.ListMachinesResponse) []*localv1.Machi
 		if pending, ok := o.pendingNames()[nc.MachineId]; ok {
 			name = pending // set on it shortly (namePending)
 		}
+		k := known[nc.MachineId]
+		if name == "" && k != nil {
+			name = k.MachineName
+		}
 		if name == "" {
 			name = nc.MachineId
 		}
-		out = append(out, &localv1.Machine{MachineId: nc.MachineId, MachineName: name, Online: e.Online, LastSeen: e.LastSeen, Version: e.Version,
+		seen := e.LastSeen
+		if seen == nil && !e.Online {
+			if slices.Contains(wasOnline, nc.MachineId) {
+				seen = timestamppb.Now()
+			} else if k != nil {
+				seen = k.LastSeen
+			}
+		}
+		out = append(out, &localv1.Machine{MachineId: nc.MachineId, MachineName: name, Online: e.Online, LastSeen: seen, Version: e.Version,
 			Local: nc.MachineId == local, DeviceKeyId: nc.DeviceKeyId})
 	}
 	slices.SortFunc(out, func(a, b *localv1.Machine) int { return strings.Compare(a.MachineName, b.MachineName) })

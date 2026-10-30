@@ -1,6 +1,7 @@
 package e2e
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -27,6 +28,10 @@ type desktopFixture struct {
 	// Owner daemons nobody has set up yet, for the first-run tests (each
 	// can be set up once: that claims its relay).
 	Fresh []freshOwner `json:"fresh"`
+	// The process group of a second Mac, a machine only with a finished
+	// session on it, for the spec to take offline (0 when none).
+	OtherMac int `json:"otherMac"`
+	owner    *ownerMac
 }
 
 // freshOwner is an owner daemon not set up yet: its socket, a relay of its
@@ -91,6 +96,9 @@ func TestDesktop(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
 			f := desktopWorld(t, name == "onboarding", name == "health", name == "settings")
+			if name == "session" {
+				f.OtherMac = otherMacSession(t, f)
+			}
 			file := filepath.Join(t.TempDir(), "fixture.json")
 			b, _ := json.Marshal(f)
 			os.WriteFile(file, b, 0o644)
@@ -132,7 +140,7 @@ func desktopWorld(t *testing.T, fresh, limited, wake bool) desktopFixture {
 			return !strings.Contains(w.cli(30*time.Second, "project", "list").stdout, "offline")
 		})
 	}
-	f := desktopFixture{Socket: w.sock, Sessions: desktopSessions(t, w), CLI: filepath.Join(w.bin, "hermesh"), CLIEnv: w.cliEnv}
+	f := desktopFixture{Socket: w.sock, Sessions: desktopSessions(t, w), CLI: filepath.Join(w.bin, "hermesh"), CLIEnv: w.cliEnv, owner: w}
 	if limited {
 		w.nproc = userProcesses(t) + 80
 		w.restartOwner(false)
@@ -141,6 +149,33 @@ func desktopWorld(t *testing.T, fresh, limited, wake bool) desktopFixture {
 		f.Fresh = append(f.Fresh, newFreshOwner(t, w, fmt.Sprintf("fresh-%d", i), i == 0, i == 8))
 	}
 	return f
+}
+
+// otherMacSession joins a second Mac, work-mac, as a machine only, runs two
+// sessions there (在另一台 Mac 上 and 也在另一台 Mac 上, added to f's
+// sessions), and returns its daemon's process group.
+func otherMacSession(t *testing.T, f desktopFixture) int {
+	w := f.owner
+	ctx := context.Background()
+	home, err := w.app.client.GetStatus(ctx, &localv1.GetStatusRequest{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	work, _ := w.otherMac("work-mac", []string{"HERMESH_GEMINI_BIN=" + filepath.Join(binaries(t), "fakeacp"), "FAKE_ACP_STATE=" + filepath.Join(t.TempDir(), "fakeacp")})
+	daemon := w.logs[len(w.logs)-1] // the one otherMac started
+	st := w.joinTyped(work, home, "work-mac")
+	if _, err := work.AddProject(ctx, &localv1.AddProjectRequest{MachineId: st.LocalMachineId, ProjectId: "billing", Path: gitRepo(t, map[string]string{"README.md": "# billing\n"})}); err != nil {
+		t.Fatal(err)
+	}
+	for _, title := range []string{"在另一台 Mac 上", "也在另一台 Mac 上"} {
+		var s sessionJSON
+		eventually(t, time.Minute, "a session on work-mac", func() bool {
+			s = firstSession(w.cli(2*time.Minute, "session", "start", "--project", "work-mac/billing", "-o", "json", "--agent", "gemini", "--title", title, "--prompt", "say 在那边", "--wait").stdout)
+			return s.SessionID != ""
+		})
+		f.Sessions[title] = s.SessionID
+	}
+	return daemon.cmd.Process.Pid
 }
 
 // desktopSessions starts a session in every state the app shows and

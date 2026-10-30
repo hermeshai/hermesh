@@ -19,6 +19,8 @@ struct SessionView: View {
     @State private var confirmInterrupt = false
     @State private var renaming = false
     @State private var deleting = false
+    /// The conversation has taken long enough to say why it isn't here.
+    @State private var slow = false
 
     var body: some View {
         Group {
@@ -31,6 +33,11 @@ struct SessionView: View {
         }
         .navigationBarTitleDisplayMode(.inline)
         .task(id: id) { await follow() }
+        .task(id: id) {
+            slow = false
+            try? await Task.sleep(for: .seconds(15))
+            if !Task.isCancelled { slow = true }
+        }
         .onDisappear { model.conversations.keep(id, events) }
         .onChange(of: scenePhase) { _, phase in if phase == .background { model.conversations.keep(id, events) } }
     }
@@ -62,6 +69,7 @@ struct SessionView: View {
                         .accessibilityIdentifier("session-draft")
                 }
                 ending(s, grant: grant)
+                if !events.isEmpty { stale(s) }
             }
             .padding(.horizontal, 20)
             .padding(.top, 13).padding(.bottom, 21)
@@ -71,9 +79,7 @@ struct SessionView: View {
         .defaultScrollAnchor(atEnd ? .bottom : .top, for: .sizeChanges)
         .onScrollGeometryChange(for: Bool.self) { g in g.visibleRect.maxY > g.contentSize.height - 80 } action: { _, end in atEnd = end }
         .overlay { // in the middle of the screen, not where the scroll ends
-            if events.isEmpty && !caughtUp(s) {
-                PageLoader(text: "Reading the conversation…", bare: true)
-            }
+            if events.isEmpty && !caughtUp(s) { unread(s) }
         }
         .scrollDismissesKeyboard(.interactively)
         .safeAreaInset(edge: .bottom) {
@@ -133,6 +139,76 @@ struct SessionView: View {
         .padding(.horizontal, 12).padding(.vertical, 8)
         .background(Palette.fill, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
         .padding(.bottom, 3)
+    }
+
+    /// Why the conversation can't be read now: it is kept on the machine
+    /// the session runs on, and this iPhone can't reach Hermesh (or, a
+    /// while after the page opened, still hasn't), or that
+    /// machine is offline, or (a while after the page opened, still behind)
+    /// it doesn't answer. follow() keeps trying meanwhile.
+    private enum Unreadable { case notConnected, offline(Machine), noAnswer }
+
+    private func unreadable(_ s: Session) -> Unreadable? {
+        // While this iPhone isn't current itself, the machine is never the one to blame.
+        switch model.shownSync {
+        case .offline: return .notConnected
+        case .connecting: return slow ? .notConnected : nil
+        default: break
+        }
+        if let m = model.machines.first(where: { $0.machineID == s.machineID }), !m.online { return .offline(m) }
+        return slow && !caughtUp(s) ? .noAnswer : nil
+    }
+
+    /// In place of a conversation not read yet: why, or the wait.
+    @ViewBuilder private func unread(_ s: Session) -> some View {
+        let name = model.machineName(s.machineID)
+        switch unreadable(s) {
+        case .notConnected:
+            ContentUnavailableView {
+                Label("Can’t reach Hermesh", systemImage: "wifi.slash")
+            } description: {
+                Text("This conversation is kept on \(name); it shows here once this iPhone reconnects.")
+            }
+            .accessibilityIdentifier("session-unread")
+        case .offline(let m):
+            ContentUnavailableView {
+                Label("\(name) is offline", systemImage: "desktopcomputer")
+            } description: {
+                if m.hasLastSeen {
+                    Text("This conversation is kept on that machine; it shows here once the machine reconnects. Last online \(agoText(m.lastSeen.date, now: model.now)).")
+                } else {
+                    Text("This conversation is kept on that machine; it shows here once the machine reconnects.")
+                }
+            }
+            .accessibilityIdentifier("session-unread")
+        case .noAnswer:
+            ContentUnavailableView {
+                Label("\(name) isn’t responding", systemImage: "desktopcomputer.trianglebadge.exclamationmark")
+            } description: {
+                Text("This conversation is kept on that machine. Retrying; it shows here once the machine answers.")
+            }
+            .accessibilityIdentifier("session-unread")
+        case nil:
+            PageLoader(text: "Reading the conversation…", bare: true)
+        }
+    }
+
+    /// Under a conversation kept from before that can't be brought up to
+    /// date now: a quiet line that says why it may be old.
+    @ViewBuilder private func stale(_ s: Session) -> some View {
+        let name = model.machineName(s.machineID)
+        if let why = unreadable(s) {
+            Group {
+                switch why {
+                case .notConnected: Label("Can’t reach Hermesh; this is what was last read here.", systemImage: "wifi.slash")
+                case .offline: Label("\(name) is offline; this is what was last read from it.", systemImage: "desktopcomputer")
+                case .noAnswer: Label("\(name) isn’t responding; this is what was last read from it.", systemImage: "desktopcomputer.trianglebadge.exclamationmark")
+                }
+            }
+            .font(.footnote).foregroundStyle(.secondary)
+            .frame(maxWidth: .infinity)
+            .accessibilityIdentifier("session-stale")
+        }
     }
 
     /// How the conversation ends: the failure it stopped on, or that the turn
