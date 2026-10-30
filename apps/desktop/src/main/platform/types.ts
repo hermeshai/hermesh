@@ -34,6 +34,10 @@ export interface Platform {
   signer(language: string): { bin: string; args: string[] } | undefined;
   /** Before hermeshd asks for a new root key: the signer is there (Windows sets it up, with one UAC prompt). */
   readySigner(): Promise<void>;
+  /** The installed signer's version, when the app carries a newer one (Windows: the signer is a copy in Program Files). */
+  signerUpdate(): Promise<string | undefined>;
+  /** Sets the app's signer up over the installed one (Windows: one UAC prompt). */
+  updateSigner(): Promise<void>;
   /** Runs one of a fixed set of commands in a terminal window of the system's. */
   runInTerminal(c: TerminalCommand, command: string): void;
   /** Opens a folder in the system's file browser (Finder, File Explorer) or a terminal there; anything but a folder, not at all. */

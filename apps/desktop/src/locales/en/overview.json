@@ -31,7 +31,11 @@
     "renew": "Renew…",
     "pairingDevice": "“{{label}}” wants to become your trusted device",
     "pairingClient": "“{{label}}” wants to connect to your computer",
-    "pairingMachine": "A machine calling itself “{{label}}” wants to join"
+    "pairingMachine": "A machine calling itself “{{label}}” wants to join",
+    "signer": "A new version of Hermesh Signer",
+    "signerDetail": "This PC has {{version}}. Once updated, it can sign what this Hermesh asks; Windows asks you to allow it once",
+    "updateSigner": "Update…",
+    "signerUpdated": "Signer updated"
   },
   "map": {
     "title": "Connections",

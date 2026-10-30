@@ -1,4 +1,4 @@
-import type { ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { Trans, useTranslation } from "react-i18next";
 import type { Client, PairingDetails } from "@hermesh/proto/local";
 import { PairingKind } from "@hermesh/proto/identity";
@@ -21,7 +21,8 @@ export function expiringClients(st: Store, now: Date): Client[] {
 /**
  * "Needs You": what waits on the owner and is not a session (the sidebar
  * lists those): machines kept from working first, then pairing requests and
- * grants about to expire. A machine only has only its own health here.
+ * grants about to expire, and an older signer than the app's (Windows). A
+ * machine only has only its own health here.
  */
 export function Attention({ now }: { now: Date }) {
   const { t } = useTranslation("overview");
@@ -29,7 +30,12 @@ export function Attention({ now }: { now: Date }) {
   const owner = !st.status?.machineOnly;
   const expiring = owner ? expiringClients(st, now) : [];
   const sick = st.machines.flatMap((m) => problemsOf(m).map((p) => ({ m, p })));
-  const count = sick.length + st.pairings.length + expiring.length;
+  // The signer the app carries, newer than the one set up: it signs what the old one can't show.
+  const [signer, setSigner] = useState<string>();
+  useEffect(() => {
+    if (owner) window.hermesh?.signerUpdate().then(setSigner, () => {});
+  }, [owner]);
+  const count = sick.length + st.pairings.length + expiring.length + (signer ? 1 : 0);
   if (count === 0) return null;
   return (
     <section aria-label={t("attention.title")}>
@@ -74,6 +80,21 @@ export function Attention({ now }: { now: Date }) {
             </Row>
           );
         })}
+        {signer && (
+          <Row icon="shield" tint="a" title={t("attention.signer")} detail={t("attention.signerDetail", { version: signer })}>
+            <button
+              className="btn"
+              onClick={() =>
+                st.run(async () => {
+                  await window.hermesh?.updateSigner();
+                  setSigner(await window.hermesh?.signerUpdate());
+                }, t("attention.signerUpdated"))
+              }
+            >
+              {t("attention.updateSigner")}
+            </button>
+          </Row>
+        )}
       </div>
     </section>
   );

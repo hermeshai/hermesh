@@ -14,6 +14,8 @@ export type Fixture = {
   fresh: { socket: string; relayURL: string; claimCode: string; gate?: string }[];
   /** A second Mac's daemon (its process group), a machine only with a session on it; 0 when none. */
   otherMac: number;
+  /** On Windows, a Program Files with an older signer set up in it. */
+  programFiles?: string;
 };
 
 /** Loaded first in every launch: the app's windows open without taking focus. */
@@ -32,7 +34,7 @@ export const fixture: Fixture = JSON.parse(fs.readFileSync(process.env.HERMESH_E
 export async function launch(
   socket = fixture.socket,
   // systemColors: pages see the app's own light or dark (Playwright makes them light otherwise).
-  o: { systemLanguages?: string[]; profile?: string; systemColors?: boolean } = {},
+  o: { systemLanguages?: string[]; profile?: string; systemColors?: boolean; env?: Record<string, string> } = {},
 ): Promise<{ app: ElectronApplication; page: Page }> {
   const languages = o.systemLanguages ?? ["zh-Hans"];
   const app = await electron.launch({
@@ -43,6 +45,7 @@ export async function launch(
       HERMESH_SOCKET: socket,
       ...(process.platform === "win32" ? { HERMESH_TEST_LANGUAGES: languages.join(",") } : {}),
       HERMESH_USER_DATA: o.profile ?? fs.mkdtempSync(path.join(os.tmpdir(), "hmdesk-")),
+      ...o.env,
     },
     ...(o.systemColors ? { colorScheme: null } : {}),
   });

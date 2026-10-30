@@ -84,6 +84,12 @@ export const mac: Platform = {
   // The signer is the app's child (signer.ts).
   async readySigner() {},
 
+  // The signer comes and goes with the app.
+  async signerUpdate() {
+    return undefined;
+  },
+  async updateSigner() {},
+
   runInTerminal(c: TerminalCommand, command: string) {
     // A .command file opens in Terminal and runs there, in the person's login shell.
     const dir = path.join(os.homedir(), "Library", "Caches", "Hermesh");

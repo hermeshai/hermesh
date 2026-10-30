@@ -10,6 +10,7 @@ import path from "node:path";
 import { promisify } from "node:util";
 import type { LoginItem } from "../../shared/bridge";
 import { i18n } from "../../shared/i18n";
+import { newer } from "../../shared/update";
 import { socketPath, testDataDir } from "../paths";
 import type { Platform, WindowKind } from "./types";
 
@@ -76,6 +77,27 @@ function loginItem(): LoginItem {
 
 const powershell = (script: string, timeout = 20_000) =>
   promisify(execFile)("powershell.exe", ["-NoProfile", "-NonInteractive", "-Command", script], { windowsHide: true, timeout });
+
+/** The signer as set up: a copy of the app's, which only administrators change. */
+const installedSigner = () => path.join(process.env.ProgramFiles || "C:\\Program Files", "Hermesh Signer", "hermesh-signer.exe");
+
+/**
+ * Sets the app's signer up, elevated (one UAC prompt): it copies itself
+ * over the installed one, if any, keeping the keys, and starts its task.
+ */
+async function setUpSigner() {
+  const { stdout } = await powershell("[System.Security.Principal.WindowsIdentity]::GetCurrent().User.Value");
+  const bin = program("hermesh-signer.exe").replace(/'/g, "''");
+  const script = `try { $p = Start-Process -FilePath '${bin}' -ArgumentList 'setup','--user','${stdout.trim()}' -Verb RunAs -WindowStyle Hidden -Wait -PassThru; exit $p.ExitCode } catch { exit 1223 }`;
+  let status = 0;
+  try {
+    await powershell(script, 5 * 60_000);
+  } catch (e) {
+    status = typeof (e as { code?: unknown }).code === "number" ? (e as { code: number }).code : 1;
+  }
+  if (status) throw new Error(i18n.t(signerRefusals[status as keyof typeof signerRefusals] ?? "main:signer.failed", { code: status }));
+  if (!(await signerWatching(20_000))) throw new Error(i18n.t("main:signer.notRunning"));
+}
 
 /** Whether a signer watches hermeshd's requests, within wait ms. */
 async function signerWatching(wait: number): Promise<boolean> {
@@ -191,18 +213,21 @@ export const win: Platform = {
     } catch {
       // Not set up yet.
     }
-    const { stdout } = await powershell("[System.Security.Principal.WindowsIdentity]::GetCurrent().User.Value");
-    const bin = program("hermesh-signer.exe").replace(/'/g, "''");
-    const script = `try { $p = Start-Process -FilePath '${bin}' -ArgumentList 'setup','--user','${stdout.trim()}' -Verb RunAs -WindowStyle Hidden -Wait -PassThru; exit $p.ExitCode } catch { exit 1223 }`;
-    let status = 0;
-    try {
-      await powershell(script, 5 * 60_000);
-    } catch (e) {
-      status = typeof (e as { code?: unknown }).code === "number" ? (e as { code: number }).code : 1;
-    }
-    if (status) throw new Error(i18n.t(signerRefusals[status as keyof typeof signerRefusals] ?? "main:signer.failed", { code: status }));
-    if (!(await signerWatching(20_000))) throw new Error(i18n.t("main:signer.notRunning"));
+    await setUpSigner();
   },
+
+  async signerUpdate() {
+    if (!fs.existsSync(installedSigner())) return undefined;
+    try {
+      const { stdout } = await promisify(execFile)(installedSigner(), ["version"], { windowsHide: true, timeout: 10_000 });
+      const v = stdout.trim();
+      return newer(app.getVersion(), v) ? v : undefined;
+    } catch {
+      return undefined;
+    }
+  },
+
+  updateSigner: setUpSigner,
 
   runInTerminal(_c, command) {
     // A tab of Windows Terminal, else a PowerShell window; either stays when the command ends.

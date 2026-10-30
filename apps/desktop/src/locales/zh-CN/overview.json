@@ -29,7 +29,11 @@
     "renew": "续期…",
     "pairingDevice": "「{{label}}」想成为你的可信设备",
     "pairingClient": "「{{label}}」想连接你的电脑",
-    "pairingMachine": "一台自称「{{label}}」的机器想加入"
+    "pairingMachine": "一台自称「{{label}}」的机器想加入",
+    "signer": "Hermesh 签名器有新版本",
+    "signerDetail": "这台电脑装的是 {{version}}。更新后它才能签下新版 Hermesh 的请求；Windows 会请你允许一次",
+    "updateSigner": "更新…",
+    "signerUpdated": "签名器已更新"
   },
   "map": {
     "title": "链路",

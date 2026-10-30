@@ -2,7 +2,7 @@ import { expect, test } from "@playwright/test";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { launch, snap } from "./app";
+import { fixture, launch, snap } from "./app";
 
 // The app on Windows (docs/windows.md §5), against the real daemon there:
 // a PC's words and Ctrl shortcuts, the menu button where macOS has the
@@ -40,4 +40,20 @@ test("the window opens at the size it had last time, loading in the middle until
   await expect(page.getByText("正在连接后台服务…")).toBeVisible();
   expect(await width(app)).toBeGreaterThan(900);
   await app.close();
+});
+
+test("an older signer set up here: Needs You offers the app's, with one UAC prompt", async () => {
+  const { page, app } = await launch(undefined, { env: { ProgramFiles: fixture.programFiles! } });
+  const needs = page.getByRole("region", { name: "需要你处理" });
+  await expect(needs).toContainText("Hermesh 签名器有新版本");
+  await expect(needs).toContainText("这台电脑装的是 0.0.1。");
+  await expect(needs.getByRole("button", { name: "更新…" })).toBeVisible();
+  await snap(page, "windows-signer-update");
+  await app.close();
+
+  // Up to date: nothing to offer.
+  const current = await launch();
+  await expect(current.page.getByRole("region", { name: "链路" })).toBeVisible();
+  await expect(current.page.getByText("Hermesh 签名器有新版本")).toHaveCount(0);
+  await current.app.close();
 });

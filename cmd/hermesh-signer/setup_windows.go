@@ -11,6 +11,7 @@ import (
 	"path/filepath"
 	"strings"
 	"syscall"
+	"time"
 	"unicode/utf16"
 
 	"golang.org/x/sys/windows"
@@ -21,7 +22,8 @@ import (
 // checks the PC can keep the line between elevated and other programs,
 // copies itself into Program Files, makes the folder for the keys' PINs,
 // and registers and starts a task that runs it at that user's logon with
-// the highest privileges (docs/windows.md §7.3).
+// the highest privileges (docs/windows.md §7.3). Run again by a newer app,
+// it updates the signer: the keys stay.
 func setup(args []string) error {
 	fs := flag.NewFlagSet("setup", flag.ContinueOnError)
 	user := fs.String("user", "", "the SID of the user whose signer this is")
@@ -141,7 +143,21 @@ func copySelf(to string) error {
 	if err := out.Close(); err != nil {
 		return err
 	}
-	return os.Rename(tmp, to)
+	// A signer still running (ending, or another user's) holds the old
+	// program: Windows lets it be renamed aside, and removed once it is free.
+	aside := fmt.Sprintf("%s.old-%d", to, time.Now().UnixNano())
+	if err := os.Rename(to, aside); err != nil && !errors.Is(err, os.ErrNotExist) {
+		return err
+	}
+	if err := os.Rename(tmp, to); err != nil {
+		os.Rename(aside, to) // the old one stays in place
+		return err
+	}
+	old, _ := filepath.Glob(to + ".old-*")
+	for _, f := range old {
+		os.Remove(f) // a running one's stays, until the next update
+	}
+	return nil
 }
 
 // privateDir makes dir readable and writable by the system and
