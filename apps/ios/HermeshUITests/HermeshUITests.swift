@@ -337,7 +337,14 @@ final class HermeshUITests: XCTestCase {
         XCTAssertTrue(m.waitForExistence(timeout: 20))
         m.tap()
         // Its page: the coding agents, each opening its own; projects are there.
-        XCTAssertTrue(text("暂停接受新会话").waitForExistence(timeout: 20))
+        XCTAssertTrue(app.switches["accept-sessions"].waitForExistence(timeout: 20))
+        XCTAssertFalse(app.descendants(matching: .any)["machine-offline"].exists, "online: nothing about reconnecting")
+        // Renaming and removing are in the bar's menu.
+        tap("machine-menu")
+        XCTAssertTrue(app.buttons["移除…"].waitForExistence(timeout: 5))
+        app.buttons["重命名…"].tap()
+        XCTAssertTrue(app.alerts.textFields.firstMatch.waitForExistence(timeout: 5), "the new name asked")
+        app.alerts.buttons["取消"].tap()
         let agent = app.buttons["agent-gemini"]
         XCTAssertTrue(agent.waitForExistence(timeout: 20), "the coding agent")
         XCTAssertTrue(agent.label.contains("1 个项目"), agent.label)
@@ -629,6 +636,21 @@ final class HermeshUITests: XCTestCase {
         shot.name = "a conversation on a machine gone offline"
         shot.lifetime = .keepAlways
         add(shot)
+        // Its page: one row opens how to bring it back, the command to copy.
+        openMenu()
+        app.buttons["机器"].tap()
+        tap("machine-owner-mac", timeout: 20)
+        tap("machine-offline", timeout: 20)
+        XCTAssertTrue(text("hermeshd status").waitForExistence(timeout: 10), "the command to run there")
+        XCTAssertFalse(app.switches["accept-sessions"].exists, "no switch it can't take while offline")
+        let page = XCTAttachment(screenshot: app.screenshot())
+        page.name = "how to reconnect a machine gone offline"
+        page.lifetime = .keepAlways
+        add(page)
+        tap("close")
+        app.navigationBars.buttons.element(boundBy: 0).tap()
+        openMenu()
+        tap("drawer-session-\(unread)")
         _ = try control("machine?up=1", method: "POST")
         try waitFor("the conversation shows once the Mac is back", timeout: 90) { !empty.exists && app.staticTexts["say 离线时没读"].exists ? true : nil }
     }

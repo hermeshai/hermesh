@@ -751,6 +751,16 @@
         }
       }
     },
+    "Accept New Sessions": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "接受新会话"
+          }
+        }
+      }
+    },
     "Account and Devices": {
       "localizations": {
         "zh-Hans": {
@@ -2564,16 +2574,6 @@
         }
       }
     },
-    "Hermesh on %@ is %@, older than this app. To update it, run the install command there again:": {
-      "localizations": {
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "%1$@ 上的 Hermesh 是 %2$@，比这个 App 旧。在那台机器上再运行一次安装命令即可更新："
-          }
-        }
-      }
-    },
     "Hermesh on %@ is too old to browse its folders. Update it there, or type a path.": {
       "localizations": {
         "zh-Hans": {
@@ -2690,6 +2690,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "工作方式"
+          }
+        }
+      }
+    },
+    "How to Reconnect": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "如何重新连上"
           }
         }
       }
@@ -3074,16 +3084,6 @@
         }
       }
     },
-    "Its sessions can’t be shown for now": {
-      "localizations": {
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "它上面的会话暂时看不到"
-          }
-        }
-      }
-    },
     "Its turn in progress is interrupted first.": {
       "localizations": {
         "zh-Hans": {
@@ -3320,6 +3320,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "在任何浏览器里查看机器和授权、紧急撤销"
+          }
+        }
+      }
+    },
+    "Make sure it’s on and online, then run this there:": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "确认它开着机、连着网，再在它上面运行："
           }
         }
       }
@@ -3974,6 +3984,16 @@
         }
       }
     },
+    "On %@, run the install command again:": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "在 %@ 上再运行一次安装命令："
+          }
+        }
+      }
+    },
     "On a server without a browser, it shows a link: open it on this iPhone.": {
       "localizations": {
         "zh-Hans": {
@@ -4000,16 +4020,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "断开后它会立即失去访问；正在跑的会话会被打断，会话本身保留。"
-          }
-        }
-      }
-    },
-    "Once it reconnects, its sessions and usage come back by themselves; there’s nothing for you to do.": {
-      "localizations": {
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "连上以后，会话和用量会自动补上，不用你做什么。"
           }
         }
       }
@@ -4120,6 +4130,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "打开「%@」？"
+          }
+        }
+      }
+    },
+    "Operating System": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "系统"
           }
         }
       }
@@ -4614,12 +4634,12 @@
         }
       }
     },
-    "Running sessions aren’t affected": {
+    "Running sessions go on; no new ones start here.": {
       "localizations": {
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "正在跑的会话不受影响"
+            "value": "正在跑的会话照常进行，这里不再开始新的。"
           }
         }
       }
@@ -5282,26 +5302,6 @@
         }
       }
     },
-    "Take no new sessions": {
-      "localizations": {
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "暂停接受新会话"
-          }
-        }
-      }
-    },
-    "Takes no new sessions": {
-      "localizations": {
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "已暂停接受新会话"
-          }
-        }
-      }
-    },
     "Tap to approve": {
       "localizations": {
         "zh-Hans": {
@@ -5365,16 +5365,6 @@
         }
       }
     },
-    "The Hermesh background service isn’t running on it: run %@ there to check": {
-      "localizations": {
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "它上面的 Hermesh 后台服务没有运行：在那台机器上运行 %@ 看看"
-          }
-        }
-      }
-    },
     "The Hermesh core isn’t answering. Quit the app and open it again.": {
       "localizations": {
         "zh-Hans": {
@@ -5421,26 +5411,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "目录本身不会被删除；agent 不能再在这里开新会话。"
-          }
-        }
-      }
-    },
-    "The machine is off, asleep, or offline": {
-      "localizations": {
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "那台机器关机、睡眠了，或者断网了"
-          }
-        }
-      }
-    },
-    "The machine is offline; they show once it connects.": {
-      "localizations": {
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "机器离线，连上后显示。"
           }
         }
       }
@@ -6051,6 +6021,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "更新"
+          }
+        }
+      }
+    },
+    "Update Hermesh": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "更新 Hermesh"
           }
         }
       }
