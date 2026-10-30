@@ -156,6 +156,10 @@ Overview. The guide's pages:
 
 - Each step that waits for a request opens it to approve as it comes; once
   approved the guide goes on to what joined.
+- A Mac that joins an owner (from this guide or any other way) only sets
+  itself up in its own first run: its coding agents and projects, then Done.
+  Connecting an agent and the first task are the account's, so it leaves
+  them to the device that set the owner up.
 - Later puts the guide off. Then, and only then, Get Started sits on the
   Overview with what the guide left, and Continue goes back into it:
 

@@ -105,6 +105,7 @@
     "promise": "Never takes any agent’s tokens or keys; uses them only as you would on the command line.",
     "later": "Set Up Later",
     "next": "Next: Connect Your Agent",
+    "done": "Done",
     "title": "Check and Manage Available Agents",
     "searching": "Looking for Coding Agents on This Mac",
     "searchingBody": "Checking which ones are installed, their versions and whether you’re signed in. The first check takes a moment.",

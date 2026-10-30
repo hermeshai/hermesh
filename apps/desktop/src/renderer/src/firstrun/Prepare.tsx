@@ -7,7 +7,7 @@ import { useCheckAgents } from "../agents";
 import { Icon } from "../icons";
 import { useStore } from "../store";
 import { Frame, StepIcon } from "./Frame";
-import { setProgress } from "./progress";
+import { setProgress, useProgress } from "./progress";
 
 // "Check and Manage Available Agents": every coding agent Hermesh supports, what this Mac
 // has of each (version, logged in), each installed one opening its page: its
@@ -30,6 +30,9 @@ export function Prepare() {
   // Found after the person watched the search: the page comes in.
   const searched = useRef(searching).current;
   const [open, setOpen] = useState("");
+  const progress = useProgress();
+  // Joined an owner: this Mac is all there is left to set up.
+  const next = progress?.step === "prepare" && progress.joined ? null : ({ step: "agent" } as const);
 
   return (
     <Frame
@@ -40,11 +43,11 @@ export function Prepare() {
             <Icon name="shield" />
             {t("prepare.promise")}
           </p>
-          <button className="link" onClick={() => setProgress({ step: "agent" })}>
+          <button className="link" onClick={() => setProgress(next)}>
             {t("prepare.later")}
           </button>
-          <button className="btn primary" disabled={!canGo} onClick={() => setProgress({ step: "agent" })}>
-            {t("prepare.next")}
+          <button className="btn primary" disabled={!canGo} onClick={() => setProgress(next)}>
+            {t(next ? "prepare.next" : "prepare.done")}
           </button>
         </>
       }
