@@ -6,5 +6,15 @@
   "code": "Verification code: %s",
   "hello": "Approve what Hermesh asks to sign",
   "notSigned": "Not signed",
-  "noHello": "Set up Windows Hello in Settings › Accounts › Sign-in options (a PIN is enough), then approve again."
+  "noHello": "Set up Windows Hello in Settings › Accounts › Sign-in options (a PIN is enough), then approve again.",
+  "codeLabel": "Verification code",
+  "match": "Must match the other side",
+  "ownCaption": "Signed with the key this computer just made",
+  "along": "Also signs",
+  "details": "Details",
+  "hideDetails": "Hide details",
+  "helloAfter": "Windows Hello confirms after you approve",
+  "wait": "Confirm it's you in Windows Hello…",
+  "openSignIn": "Open Sign-in Options",
+  "ok": "OK"
 }

@@ -12,15 +12,26 @@ var locales embed.FS
 // (English unless it is Chinese); what is signed reads as internal/preview
 // tells it.
 type words struct {
-	Title, Approve, Deny, Several, Code, Hello, NotSigned, NoHello string
+	lang                                                                        string
+	Title, Approve, Deny, Several, Code, Hello, NotSigned, NoHello              string
+	CodeLabel, Match, OwnCaption, Along, Details, HideDetails, HelloAfter, Wait string
+	OpenSignIn, OK                                                              string
 }
 
 func loadWords(lang string) words {
-	var w words
+	w := words{lang: lang}
 	b, err := locales.ReadFile("locales/" + lang + ".json")
 	if err != nil {
+		w.lang = "en"
 		b, _ = locales.ReadFile("locales/en.json")
 	}
 	json.Unmarshal(b, &w)
 	return w
+}
+
+// page is what panel.html says itself.
+func (w words) page() map[string]string {
+	return map[string]string{"approve": w.Approve, "deny": w.Deny, "several": w.Several, "code": w.CodeLabel, "match": w.Match,
+		"ownCaption": w.OwnCaption, "along": w.Along, "details": w.Details, "hideDetails": w.HideDetails,
+		"helloAfter": w.HelloAfter, "helloWaiting": w.Wait, "openSignIn": w.OpenSignIn, "ok": w.OK}
 }

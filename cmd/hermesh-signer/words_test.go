@@ -20,15 +20,20 @@ func TestWords(t *testing.T) {
 			t.Fatal(err)
 		}
 		w := reflect.ValueOf(loadWords(lang))
+		fields := 0
 		for i := 0; i < w.NumField(); i++ {
+			if !w.Type().Field(i).IsExported() {
+				continue
+			}
+			fields++
 			name := w.Type().Field(i).Name
 			got, want := w.Field(i).String(), reflect.ValueOf(en).Field(i).String()
 			if got == "" || strings.Count(got, "%") != strings.Count(want, "%") {
 				t.Errorf("%s: %s = %q", lang, name, got)
 			}
 		}
-		if len(raw) != w.NumField() {
-			t.Errorf("%s: %d words, want %d", lang, len(raw), w.NumField())
+		if len(raw) != fields {
+			t.Errorf("%s: %d words, want %d", lang, len(raw), fields)
 		}
 	}
 }
