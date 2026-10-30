@@ -43,6 +43,8 @@ jobs:
         run: go vet ./...
       - name: unit tests
         run: go test ./cmd/... ./internal/... ./pkg/... -count=1
+      - name: install.ps1
+        run: go test ./e2e -run '^TestWindowsInstall$' -count=1 -v
   # The desktop app (Electron) and the macOS signer: types, unit tests, and
   # their end-to-end tests driving the real app against the real daemon.
   app:
