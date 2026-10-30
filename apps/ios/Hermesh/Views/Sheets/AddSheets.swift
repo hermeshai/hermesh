@@ -377,7 +377,9 @@ struct AddProjectSheet: View {
                         .textInputAutocapitalization(.never).autocorrectionDisabled()
                         .onChange(of: path) { _, p in
                             // The name follows the directory until edited.
-                            let last = URL(fileURLWithPath: (p as NSString).expandingTildeInPath).lastPathComponent
+                            // A machine's own separators: "/", or "\" on Windows.
+                            let last = p == "~" ? URL(fileURLWithPath: (p as NSString).expandingTildeInPath).lastPathComponent
+                                : p.split(whereSeparator: { $0 == "/" || $0 == "\\" }).last.map(String.init) ?? ""
                             if name.isEmpty || name == autoName {
                                 name = projectID(last)
                                 autoName = name
