@@ -5,10 +5,12 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"fmt"
+	"io"
 	"net"
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/Microsoft/go-winio"
 	"golang.org/x/sys/windows"
@@ -43,11 +45,36 @@ func Listen(path string) (net.Listener, error) {
 		ln.Close()
 		return nil, err
 	}
-	if err := os.Rename(tmp, path); err != nil {
-		ln.Close()
-		return nil, err
+	// Windows replaces a file only while nobody has it open, and a client
+	// may be reading the old name just then: a moment more.
+	for tries := 50; ; tries-- {
+		err = os.Rename(tmp, path)
+		if err == nil {
+			break
+		}
+		if tries == 0 {
+			ln.Close()
+			return nil, err
+		}
+		time.Sleep(20 * time.Millisecond)
 	}
 	return ln, nil
+}
+
+// readName reads the file at path letting it be replaced meanwhile (the
+// endpoint starting again writes its new name over it).
+func readName(path string) ([]byte, error) {
+	p, err := windows.UTF16PtrFromString(path)
+	if err != nil {
+		return nil, err
+	}
+	h, err := windows.CreateFile(p, windows.GENERIC_READ, windows.FILE_SHARE_READ|windows.FILE_SHARE_WRITE|windows.FILE_SHARE_DELETE, nil, windows.OPEN_EXISTING, windows.FILE_ATTRIBUTE_NORMAL, 0)
+	if err != nil {
+		return nil, &os.PathError{Op: "open", Path: path, Err: err}
+	}
+	f := os.NewFile(uintptr(h), path)
+	defer f.Close()
+	return io.ReadAll(f)
 }
 
 // Dial connects to the pipe named in the file at path, or to path itself
@@ -55,7 +82,7 @@ func Listen(path string) (net.Listener, error) {
 func Dial(ctx context.Context, path string) (net.Conn, error) {
 	name := path
 	if !strings.HasPrefix(path, pipePrefix) {
-		b, err := os.ReadFile(path)
+		b, err := readName(path)
 		if err != nil {
 			return nil, err
 		}
