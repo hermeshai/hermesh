@@ -75,15 +75,17 @@
   },
   "inspector": {
     "label": "Session Info",
+    "title": "Environment",
     "startedBy": "Started by <b>{{grant}}</b>",
-    "turns_one": "<b>{{count}}</b> turn",
-    "turns_other": "<b>{{count}}</b> turns",
-    "files_one": "<b>{{count}}</b> file",
-    "files_other": "<b>{{count}}</b> files",
-    "noChanges": "No changes",
-    "crashed": "Crashed",
-    "failed": "Failed",
-    "turn": "Turn {{turn}}",
-    "turnLeft": "Turn {{turn}} · {{left}}"
+    "runBy": "Run by <b>{{agent}}</b>",
+    "machineSettings": "Machine Settings",
+    "projectMenu": "Project",
+    "branchMenu": "Branch",
+    "copyPath": "Copy Project Path",
+    "copyBranch": "Copy Branch Name",
+    "openInFinder": "Open in Finder",
+    "openInExplorer": "Open in File Explorer",
+    "openInTerminal": "Open in Terminal",
+    "notRepo": "Not a git repository"
   }
 }

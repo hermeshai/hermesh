@@ -88,6 +88,8 @@ export type Bridge = {
   openLoginItems(): void;
   /** Opens Activity Monitor (this Mac out of processes: the person finds what holds them). */
   openActivityMonitor(): void;
+  /** Opens a project's folder on this computer in its file browser or a terminal. */
+  openFolder(path: string, to: "files" | "terminal"): void;
   /** Shows in Finder a worktree erasing everything kept (it had uncommitted changes). */
   revealKeptWorktree(path: string): void;
   /** The app's updates (main/updater.ts). */

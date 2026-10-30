@@ -23,6 +23,24 @@ export function groupSteps(items: TranscriptItem[]): Step[] {
   return out;
 }
 
+/**
+ * The agent's last words in each finished turn: a turn that writes several
+ * times is one reply, which ends there. running: the last turn goes on.
+ */
+export function replyEnds(steps: Step[], running: boolean): Set<bigint> {
+  const ends = new Set<bigint>();
+  let last: bigint | undefined;
+  for (const it of steps) {
+    if (it.kind === "agent") last = it.seq;
+    else if ((it.kind === "turnEnd" || it.kind === "turn") && last !== undefined) {
+      ends.add(last);
+      last = undefined;
+    }
+  }
+  if (!running && last !== undefined) ends.add(last);
+  return ends;
+}
+
 /** The kinds of tool call with words of their own; any other is "other". */
 const kinds = ["read", "search", "edit", "shell", "network", "mcp"] as const;
 type VerbKind = (typeof kinds)[number] | "other";

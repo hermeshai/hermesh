@@ -20,7 +20,7 @@ export type TranscriptItem =
   /** asker: who asked for the turn (a client id; "" from before messages). */
   | { kind: "turn"; seq: bigint; turn: number; at: Date | undefined; asker: string }
   | { kind: "user"; seq: bigint; text: string; at: Date | undefined }
-  | { kind: "agent"; seq: bigint; text: string }
+  | { kind: "agent"; seq: bigint; text: string; at: Date | undefined }
   /** A tool call with its result, once there is one; running: the agent is still in it. */
   /** resultSeq: its result's event, when it has one. */
   | { kind: "tool"; seq: bigint; call: ToolCall; result: ToolResult | undefined; resultSeq?: bigint; running: boolean }
@@ -64,7 +64,7 @@ export function transcript(events: SessionEvent[], running: boolean): Transcript
         items.push({ kind: "user", seq, text: e.kind.value.text, at });
         break;
       case "agentMessage":
-        items.push({ kind: "agent", seq, text: e.kind.value.text });
+        items.push({ kind: "agent", seq, text: e.kind.value.text, at });
         break;
       case "toolCall": {
         const c = e.kind.value;

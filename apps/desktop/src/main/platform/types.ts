@@ -36,6 +36,8 @@ export interface Platform {
   readySigner(): Promise<void>;
   /** Runs one of a fixed set of commands in a terminal window of the system's. */
   runInTerminal(c: TerminalCommand, command: string): void;
+  /** Opens a folder in the system's file browser (Finder, File Explorer) or a terminal there; anything but a folder, not at all. */
+  openFolder(dir: string, to: "files" | "terminal"): void;
   /** Opens the system's list of processes (Activity Monitor, Task Manager). */
   openProcessMonitor(): void;
   /** This computer's name, as the person sees it. */

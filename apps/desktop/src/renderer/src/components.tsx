@@ -1,7 +1,8 @@
 import { SessionStatus, type Session } from "@hermesh/proto/session";
 import { codingAgentShort, codingAgentTitle, isActive, isFailed, statusTitle } from "@hermesh/core";
 import { AgentLogo, AgentTile, grantColor, grantLogo, grantPicture, type GrantLook, type PersonalAgentKind } from "@hermesh/ui";
-import type { ReactNode } from "react";
+import { useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type ReactNode } from "react";
+import { createPortal } from "react-dom";
 import { useTranslation } from "react-i18next";
 import { Icon } from "./icons";
 
@@ -81,3 +82,59 @@ export function AgentName({ agent, full }: { agent: string; full?: boolean }) {
     </span>
   );
 }
+
+export type MenuEntry = { id: string; label: string; run: () => void };
+
+/**
+ * A menu drawn over the page (opaque), under the element it opened from and
+ * aligned to its left edge (above it when there is no room below). Arrows
+ * move, Esc or a press outside closes; opened by the keyboard, its first
+ * item has the focus. It is drawn on the page itself: inside a card with a
+ * backdrop filter, fixed would place it by the card.
+ */
+export function PopMenu({ label, items, anchor, keyboard, onClose }: { label: string; items: MenuEntry[]; anchor: HTMLElement; keyboard: boolean; onClose: () => void }) {
+  const ref = useRef<HTMLDivElement>(null);
+  const [pos, setPos] = useState({ left: -9999, top: 0 });
+  useLayoutEffect(() => {
+    const el = ref.current!;
+    const r = anchor.getBoundingClientRect();
+    const top = r.bottom + 4 + el.offsetHeight > innerHeight - 8 ? r.top - 4 - el.offsetHeight : r.bottom + 4;
+    setPos({ left: Math.max(8, Math.min(r.left, innerWidth - 8 - el.offsetWidth)), top });
+    (keyboard ? el.querySelector<HTMLElement>("[role=menuitem]") : el)?.focus();
+  }, [anchor, keyboard]);
+  useEffect(() => {
+    // Its own anchor toggles it (on click), so a press there isn't outside.
+    const outside = (e: MouseEvent) => !ref.current?.contains(e.target as Node) && !anchor.contains(e.target as Node) && onClose();
+    document.addEventListener("mousedown", outside);
+    window.addEventListener("blur", onClose);
+    return () => {
+      document.removeEventListener("mousedown", outside);
+      window.removeEventListener("blur", onClose);
+    };
+  }, [anchor, onClose]);
+  const onKeyDown = (e: ReactKeyboardEvent) => {
+    e.stopPropagation();
+    const all = [...(ref.current?.querySelectorAll<HTMLElement>("[role=menuitem]") ?? [])];
+    const i = all.indexOf(document.activeElement as HTMLElement);
+    const go = { ArrowDown: (i + 1) % all.length, ArrowUp: i <= 0 ? all.length - 1 : i - 1 }[e.key];
+    if (go !== undefined) {
+      e.preventDefault();
+      all[go]?.focus();
+    } else if (e.key === "Escape" || e.key === "Tab") {
+      e.preventDefault();
+      onClose();
+      anchor.focus();
+    }
+  };
+  return createPortal(
+    <div className="vmenu" role="menu" aria-label={label} tabIndex={-1} ref={ref} style={pos} onKeyDown={onKeyDown}>
+      {items.map((it) => (
+        <button key={it.id} className="mi" role="menuitem" tabIndex={-1} onMouseMove={(e) => e.currentTarget.focus()} onClick={() => (onClose(), it.run())}>
+          {it.label}
+        </button>
+      ))}
+    </div>,
+    document.body,
+  );
+}
+

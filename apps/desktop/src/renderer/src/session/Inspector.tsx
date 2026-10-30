@@ -1,94 +1,124 @@
+import { useEffect, useState, type MouseEvent } from "react";
 import { Trans, useTranslation } from "react-i18next";
-import { SessionStatus, type Session } from "@hermesh/proto/session";
-import { clockText, elapsedSeconds, codingAgentTitle, createdDate, currentTurn, dateOf, failureTitle, isActive, isFailed, minutesLeft, pendingQuestion, statusTitle, tokensText } from "@hermesh/core";
+import type { Session } from "@hermesh/proto/session";
+import { codingAgentTitle } from "@hermesh/core";
 import { AgentLogo } from "@hermesh/ui";
-import { i18n } from "../../../shared/i18n";
-import { GrantAvatar, StatusDot } from "../components";
+import { local } from "../api";
+import { GrantAvatar, PopMenu, type MenuEntry } from "../components";
 import { Icon } from "../icons";
+import { copy } from "../settings/common";
 import { grantLabel, machineName } from "../Sidebar";
-import { useNow, useStore } from "../store";
+import { useStore } from "../store";
+
+type Menu = { of: "project" | "branch"; anchor: HTMLElement; keyboard: boolean };
 
 /**
- * A card floating over the conversation's top right: what a glance should
- * give. While a session is live or has failed, first its state (what it does
- * and for how long, or why it stopped; a finished one has nothing the list
- * doesn't say), then who started it, with which coding agent, where; then
- * what it has done so far. Shown or hidden with the toolbar's button (⌥⌘0).
+ * A card floating over the conversation's top right: the session's
+ * environment. Who started it, which coding agent runs it, on which machine
+ * (its settings a click away), in which project, on which branch; the
+ * project and the branch open a menu to copy them, and on this Mac the
+ * project's to open its folder. Shown or hidden with the toolbar's button
+ * (⌥⌘0).
  */
 export function Inspector({ s }: { s: Session }) {
   const { t } = useTranslation("session");
   const st = useStore();
-  const now = useNow(1000);
   const grant = grantLabel(st, s);
   const m = st.machines.find((x) => x.machineId === s.machineId);
-  const d = s.progress?.diffStat;
-  const u = s.progress?.usage;
-  const tokens = (u?.inputTokens ?? 0n) + (u?.outputTokens ?? 0n);
-  const working = isActive(s) || s.status === SessionStatus.WAITING_INPUT;
-  const from = dateOf(s.progress?.turnStartedAt) ?? createdDate(s);
-  const tone = s.status === SessionStatus.WAITING_INPUT ? "w" : isFailed(s) ? "r" : "";
+  const here = m?.local === true;
+  // A trusted device sets every machine; a machine only, its own.
+  const settings = here || (st.status?.initialized === true && st.status.machineOnly !== true);
+  const machine = here ? t("thisMac") : machineName(st, s.machineId);
+  const path = st.projects.find((p) => p.machineId === s.machineId && p.projectId === s.projectId)?.path ?? "";
+  const branch = useBranch(s, path);
+  const [menu, setMenu] = useState<Menu>();
+  const toggle = (of: Menu["of"]) => (e: MouseEvent<HTMLElement>) =>
+    setMenu(menu?.of === of ? undefined : { of, anchor: e.currentTarget, keyboard: e.detail === 0 });
+  const open = (to: "files" | "terminal") => window.hermesh?.openFolder(path, to);
+  const items: MenuEntry[] =
+    menu?.of === "project"
+      ? [
+          { id: "copy", label: t("inspector.copyPath"), run: () => copy(st, path) },
+          ...(here ? [
+            { id: "files", label: t(window.hermesh?.platform === "win32" ? "inspector.openInExplorer" : "inspector.openInFinder"), run: () => open("files") },
+            { id: "terminal", label: t("inspector.openInTerminal"), run: () => open("terminal") },
+          ] : []),
+        ]
+      : [{ id: "copy", label: t("inspector.copyBranch"), run: () => copy(st, branch ?? "") }];
   return (
     <aside className="insp" aria-label={t("inspector.label")}>
-      {(working || isFailed(s)) && (
-        <div className="insp-state">
-          <div className="insp-now">
-            <span className={`insp-st ${tone}`}>
-              <StatusDot s={s} />
-              {stateWord(s)}
-            </span>
-            {working && <span className="insp-time">{clockText(elapsedSeconds(from, now))}</span>}
-          </div>
-          <div className={`insp-why ${tone}`}>{detail(s, now)}</div>
-        </div>
-      )}
-
+      <h3 className="insp-h">{t("inspector.title")}</h3>
       <ul className="insp-facts">
         <li>
-          <GrantAvatar c={st.clients.find((c) => c.clientId === s.createdBy) ?? { label: grant }} />
-          <span><Trans t={t} i18nKey="inspector.startedBy" values={{ grant }} components={{ b: <b /> }} /></span>
+          <GrantAvatar c={st.clients.find((c) => c.clientId === s.createdBy) ?? { label: grant }} size="sm" />
+          <span className="dim" title={grant}><Trans t={t} i18nKey="inspector.startedBy" values={{ grant }} components={{ b: <b /> }} /></span>
         </li>
         <li>
           <AgentLogo agent={s.agent} size={16} />
-          <span>{codingAgentTitle(s.agent)}</span>
+          <span className="dim"><Trans t={t} i18nKey="inspector.runBy" values={{ agent: codingAgentTitle(s.agent) }} components={{ b: <b /> }} /></span>
         </li>
         <li>
-          <Icon name="laptop" className="sm" />
-          <span>{m?.local ? t("thisMac") : machineName(st, s.machineId)} / <b>{s.projectId}</b></span>
+          <Icon name="laptop" />
+          <span title={machine}>{machine}</span>
+          {settings && (
+            <button className="tb insp-gear" aria-label={t("inspector.machineSettings")} title={t("inspector.machineSettings")} onClick={() => window.hermesh?.openSettings(`machines/${s.machineId}`)}>
+              <Icon name="gear" />
+            </button>
+          )}
         </li>
-      </ul>
-
-      <div className="insp-sum">
-        <span><Trans t={t} i18nKey="inspector.turns" count={currentTurn(s)} components={{ b: <b /> }} /></span>
-        <span>
-          {d && d.filesChanged > 0 ? (
+        <li>
+          {path === "" ? (
             <>
-              <Trans t={t} i18nKey="inspector.files" count={d.filesChanged} components={{ b: <b /> }} /> <i className="add">+{d.insertions}</i> <i className="del">−{d.deletions}</i>
+              <Icon name="folder" />
+              <span>{s.projectId}</span>
             </>
           ) : (
-            t("inspector.noChanges")
+            <button className="insp-pick" title={path} aria-haspopup="menu" aria-expanded={menu?.of === "project"} onClick={toggle("project")}>
+              <Icon name="folder" />
+              <span>{s.projectId}</span>
+            </button>
           )}
-        </span>
-        {tokens > 0n && <span><b>{tokensText(tokens)}</b> tokens</span>}
-      </div>
+        </li>
+        {branch !== undefined && (
+          <li>
+            {branch === "" ? (
+              <>
+                <Icon name="branch" />
+                <span className="dim">{t("inspector.notRepo")}</span>
+              </>
+            ) : (
+              <button className="insp-pick" title={branch} aria-haspopup="menu" aria-expanded={menu?.of === "branch"} onClick={toggle("branch")}>
+                <Icon name="branch" />
+                <span>{branch}</span>
+              </button>
+            )}
+          </li>
+        )}
+      </ul>
+      {menu && <PopMenu label={t(`inspector.${menu.of}Menu`)} items={items} anchor={menu.anchor} keyboard={menu.keyboard} onClose={() => setMenu(undefined)} />}
     </aside>
   );
 }
 
-function stateWord(s: Session): string {
-  if (s.status === SessionStatus.WAITING_INPUT) return i18n.t("session:waiting");
-  if (s.status === SessionStatus.CRASHED) return i18n.t("session:inspector.crashed");
-  if (isFailed(s)) return i18n.t("session:inspector.failed");
-  return statusTitle(s.status);
-}
-
-/** The line under the state: which turn runs, how long a question waits, or why it failed. */
-function detail(s: Session, now: Date): string {
-  if (s.status === SessionStatus.WAITING_INPUT) {
-    const until = dateOf(pendingQuestion(s)?.expiresAt);
-    return until
-      ? i18n.t("session:inspector.turnLeft", { turn: currentTurn(s), left: minutesLeft(until, now) })
-      : i18n.t("session:inspector.turn", { turn: currentTurn(s) });
-  }
-  if (isFailed(s)) return failureTitle(s.progress?.lastFailure?.kind ?? 0);
-  return i18n.t("session:inspector.turn", { turn: currentTurn(s) });
+/**
+ * The branch the session works on: its own in a worktree, else the one
+ * checked out in the project's folder, read from the machine when the card
+ * opens and as the session's state changes. "": not a git repository;
+ * undefined: not known (yet, or the machine can't be read).
+ */
+function useBranch(s: Session, path: string): string | undefined {
+  const [read, setRead] = useState<string>();
+  useEffect(() => {
+    setRead(undefined);
+    if (s.branch !== "" || path === "") return;
+    let live = true;
+    local.listMachineFolders({ machineId: s.machineId, path }).then(
+      (r) => live && setRead(r.repo ? r.branch : ""),
+      () => {},
+    );
+    return () => {
+      live = false;
+    };
+  }, [s.branch, s.machineId, path, s.status]);
+  return s.branch !== "" ? s.branch : read;
 }

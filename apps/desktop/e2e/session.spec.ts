@@ -58,8 +58,15 @@ test("a finished session shows both turns, what the agent did, and that it is do
   await shell.click();
   await expect(shell).toHaveAttribute("aria-expanded", "true");
 
-  // Copy shows under a message on hover: under the bubble's right edge, under the agent's text on the left.
-  for (const [msg, edge] of [[log.locator(".um").first(), "right"], [log.locator(".am").first(), "left"]] as const) {
+  // A turn that writes several times is one reply: only its last words keep room below for when and Copy.
+  const early = log.locator(".am").filter({ hasText: "先写文件" });
+  const reply = log.locator(".am").filter({ has: page.locator(".md", { hasText: /^好了$/ }) });
+  await expect(early.locator(".msg-act")).toHaveCount(0);
+  await expect(log.locator(".am .msg-act")).toHaveCount(2);
+  await expect(early).toHaveCSS("margin-bottom", "0px");
+  await expect(reply).toHaveCSS("margin-bottom", "21px");
+  // Copy shows under a message on hover: under the bubble's right edge, under the reply's text on the left.
+  for (const [msg, edge] of [[log.locator(".um").first(), "right"], [reply, "left"]] as const) {
     const copy = msg.getByRole("button", { name: "拷贝" });
     await page.mouse.move(0, 0);
     await expect(copy.locator("..")).toHaveCSS("opacity", "0");
@@ -70,10 +77,13 @@ test("a finished session shows both turns, what the agent did, and that it is do
     expect(c.y).toBeGreaterThanOrEqual(m.y + m.height);
     expect(Math.abs(edge === "right" ? c.x + c.width - (m.x + m.width) : c.x - m.x)).toBeLessThan(8);
   }
-  // The owner's message says when it was sent there too, as time ago; the agent's does not.
-  await log.locator(".um").first().hover();
-  await expect(log.locator(".um").first().locator(".msg-act")).toHaveText(/^(刚刚|\d+ 分钟前)$/);
-  await expect(log.locator(".am .msg-time")).toHaveCount(0);
+  // Both say when they were sent there too, as time ago: after Copy under the reply.
+  for (const msg of [log.locator(".um").first(), reply]) {
+    await msg.hover();
+    await expect(msg.locator(".msg-act")).toHaveText(/^(刚刚|\d+ 分钟前)$/);
+  }
+  const copyBox = (await reply.getByRole("button", { name: "拷贝" }).boundingBox())!;
+  expect((await reply.locator(".msg-time").boundingBox())!.x).toBeGreaterThan(copyBox.x);
   await app.close();
 });
 
@@ -121,18 +131,52 @@ test("the session card floats over the conversation with what a glance needs, an
   const toggle = page.getByRole("button", { name: "信息面板", exact: true });
   await expect(card).toBeVisible();
   await expect(toggle).toHaveAttribute("aria-pressed", "true");
-  // A finished session: no state (the list says it), straight to who, with what, where; then what it has done.
+  // Its environment, one row each, under a title: who started it, with what, on which machine, in which project, on which branch
+  // (a worktree session's own). No state, turns or changes: the list and the conversation say those.
+  await expect(card.getByRole("heading", { name: "环境" })).toBeVisible();
+  const branch = `hermesh/${fixture.sessions["写 hello"]}`;
+  await expect(card.getByRole("listitem")).toHaveText([/bot 发起$/, "Gemini CLI 执行", "这台 Mac", "demo", branch]);
   await expect(card).not.toContainText("已完成");
-  await expect(card).not.toContainText("刚刚");
-  await expect(card).toContainText("bot 发起");
-  await expect(card).toContainText("Gemini CLI");
-  await expect(card).toContainText("这台 Mac / demo");
-  await expect(card).toContainText("2 轮");
-  await expect(card).toContainText("2 个文件 +2 −0");
-  await expect(card).toContainText("250 tokens");
-  // Not what a glance doesn't need.
-  await expect(card).not.toContainText(fixture.sessions["写 hello"]);
-  await expect(card).not.toContainText("worktree");
+  await expect(card).not.toContainText("轮");
+  await expect(card).not.toContainText("tokens");
+  // Every row the same height, its icon the same size.
+  const rows = card.getByRole("listitem");
+  const heights = await rows.evaluateAll((els) => els.map((el) => el.getBoundingClientRect().height));
+  expect(new Set(heights).size).toBe(1);
+  const icons = await rows.evaluateAll((els) => els.map((el) => el.querySelector("svg, img, .av")!.getBoundingClientRect().width));
+  expect(new Set(icons)).toEqual(new Set([16]));
+  // A long value is cut short; hovered, it shows whole (the project: its folder).
+  await expect(card.getByRole("button", { name: branch })).toHaveAttribute("title", branch);
+  await expect(card.getByRole("button", { name: "demo" })).toHaveAttribute("title", /^\/.+/);
+
+  // The project and the branch open a menu of what to do with them; this Mac's project can open its folder too.
+  await card.getByRole("button", { name: "demo" }).click();
+  const menu = page.getByRole("menu", { name: "项目" });
+  await expect(menu.getByRole("menuitem")).toHaveText(["拷贝项目路径", "在访达中打开", "在终端中打开"]);
+  // Right under the project, from its left edge, inside the window.
+  const anchor = (await card.getByRole("button", { name: "demo" }).boundingBox())!;
+  const box = (await menu.boundingBox())!;
+  expect(Math.abs(box.x - anchor.x)).toBeLessThan(2);
+  expect(box.y - (anchor.y + anchor.height)).toBeGreaterThanOrEqual(0);
+  expect(box.y - (anchor.y + anchor.height)).toBeLessThan(8);
+  expect(box.x + box.width).toBeLessThanOrEqual(page.viewportSize()?.width ?? (await page.evaluate(() => innerWidth)));
+  await menu.getByRole("menuitem", { name: "拷贝项目路径" }).click();
+  await expect(menu).toHaveCount(0);
+  await expect(page.getByRole("status")).toContainText("已拷贝");
+  expect(await app.evaluate(({ clipboard }) => clipboard.readText())).toBe(await card.getByRole("button", { name: "demo" }).getAttribute("title"));
+  await card.getByRole("button", { name: branch }).click();
+  const branchMenu = page.getByRole("menu", { name: "分支" });
+  await expect(branchMenu.getByRole("menuitem")).toHaveText(["拷贝分支名称"]);
+  await page.keyboard.press("Escape");
+  await expect(branchMenu).toHaveCount(0);
+  await card.getByRole("button", { name: branch }).click();
+  await page.getByRole("menuitem", { name: "拷贝分支名称" }).click();
+  await expect.poll(() => app.evaluate(({ clipboard }) => clipboard.readText())).toBe(branch);
+  // The machine's settings are a click away, on its own page.
+  const [settings] = await Promise.all([app.waitForEvent("window"), card.getByRole("button", { name: "机器设置" }).click()]);
+  await settings.waitForLoadState();
+  expect(settings.url()).toMatch(/#settings\/machines\/.+/);
+  await settings.close();
   // It floats over the conversation, which keeps clear of it.
   const c = (await card.boundingBox())!;
   const log = (await page.getByRole("log", { name: "对话" }).boundingBox())!;
@@ -227,16 +271,33 @@ test("a question waits in the control area; the owner picks an option by key and
   await app.close();
 });
 
+test("a session worked on in place shows the branch its folder is on, or that it is no git repository; another machine's can only be copied", async () => {
+  const { app, page } = await launch();
+  const card = page.getByRole("complementary", { name: "会话信息" });
+  await open(page, "就地");
+  await expect(card.getByRole("listitem")).toHaveText([/bot 发起$/, "Gemini CLI 执行", "这台 Mac", "live", "feature/card"]);
+  await open(page, "不在仓库里");
+  await expect(card.getByRole("listitem")).toHaveText([/bot 发起$/, "Gemini CLI 执行", "这台 Mac", "notes", "不是 Git 仓库"]);
+  // No branch, nothing to pick.
+  await expect(card.getByRole("button", { name: "不是 Git 仓库" })).toHaveCount(0);
+  // Another machine's project and branch can be copied, not opened here.
+  await open(page, "在另一台 Mac 上");
+  await expect(card.getByRole("listitem").nth(2)).toHaveText("work-mac");
+  await card.getByRole("button", { name: "billing" }).click();
+  await expect(page.getByRole("menu", { name: "项目" }).getByRole("menuitem")).toHaveText(["拷贝项目路径"]);
+  await app.close();
+});
+
 test("a running session shows what it does, and 打断 stops the turn", async () => {
   const { app, page } = await launch();
   await open(page, "跑很久");
   await expect(titleLine(page, "跑很久")).toHaveText("跑很久");
   const ctl = page.getByRole("region", { name: "这一轮" });
   await expect(ctl).toContainText("Gemini CLI 正在工作");
-  // A live one: the card leads with its state and the turn it is on.
+  // A live one: the card is its environment alone; the bar below says what runs.
   const card = page.getByRole("complementary", { name: "会话信息" });
-  await expect(card).toContainText("运行中");
-  await expect(card).toContainText("第 1 轮");
+  await expect(card).toContainText("Gemini CLI");
+  await expect(card).not.toContainText("运行中");
   // The agent that works is shown by its own logo, not the Hermesh mark.
   await expect(ctl.locator(".live-logo img")).toBeVisible();
   await expect(ctl.locator(".hm-mark")).toHaveCount(0);
@@ -389,7 +450,7 @@ test("a reply shows as the agent writes it, never as raw Markdown, and stays whe
   const log = page.getByRole("log", { name: "对话" });
   const agent = log.locator(".am");
   const ctl = page.getByRole("region", { name: "这一轮" });
-  await expect(agent).toHaveText("准备好了");
+  await expect(agent.locator(".md")).toHaveText("准备好了");
   await cli("session", "send", streaming.session.session_id, "--message", `stream ${reply}\nsleep 4s`);
   // Part of the reply shows while the turn runs, then all of it, still running.
   await expect(agent.last()).toContainText("最后一段说明");
@@ -410,7 +471,7 @@ test("a reply shows as the agent writes it, never as raw Markdown, and stays whe
   await page.getByRole("region", { name: "这一轮" }).getByRole("button", { name: /打断/ }).click();
   await expect(log).toContainText("你打断了这一轮");
   // A stored message (only those have a copy button), after the turn's end.
-  await expect(agent).toHaveText("被打断的回复写到一半");
+  await expect(agent.locator(".md")).toHaveText("被打断的回复写到一半");
   await expect(agent.locator(".msg-act")).toHaveCount(1);
   await app.close();
 });
