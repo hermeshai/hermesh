@@ -409,7 +409,9 @@ final class HermeshUITests: XCTestCase {
         XCTAssertTrue(code.waitForExistence(timeout: 10), "the code to compare")
         for g in verification.split(separator: "-") { XCTAssertTrue(code.label.contains(g), code.label) }
         XCTAssertTrue(code.label.contains("和「STUDIO-PC」上显示的一样吗"), code.label)
-        XCTAssertTrue(text("Windows · 想成为你的可信设备").exists)
+        // Between the two, the name of the computer the test runs on.
+        let asks = text("想成为你的可信设备")
+        XCTAssertTrue(asks.exists && asks.label.hasPrefix("Windows · "), asks.label)
         tap("approve")
         // Then, in the same card, the two digits it asks for.
         let digits = app.descendants(matching: .any)["match-digits"].firstMatch
@@ -802,20 +804,24 @@ final class HermeshUITests: XCTestCase {
 
     /// Taps button, which asks for notifications, and allows them. The tap
     /// is repeated while the button is still there (one during its
-    /// appearing transition can miss).
+    /// appearing transition can miss). A Simulator booted for the first
+    /// time keeps the request, without an alert, until SpringBoard has
+    /// loaded its notification sources: two minutes and more on iOS 27.
     func allowNotifications(after button: XCUIElement) {
         let springboard = XCUIApplication(bundleIdentifier: "com.apple.springboard")
         let allow = springboard.buttons["允许"]
-        for _ in 0 ..< 3 {
-            if button.exists { press(button) }
-            let deadline = Date().addingTimeInterval(8)
-            while Date() < deadline {
-                if allow.exists {
-                    allow.tap()
-                    return
-                }
-                usleep(300_000)
+        let start = Date()
+        var taps = 0
+        while Date() < start.addingTimeInterval(240) {
+            if allow.exists {
+                allow.tap()
+                return
             }
+            if taps < 3 && Date() >= start.addingTimeInterval(Double(taps) * 8) && button.exists {
+                press(button)
+                taps += 1
+            }
+            usleep(300_000)
         }
         XCTFail("no notification permission alert")
     }
