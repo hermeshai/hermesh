@@ -1,7 +1,7 @@
 import { useEffect, useState, type FormEvent } from "react";
 import { useTranslation } from "react-i18next";
 import { PairingKind, Workspace } from "@hermesh/proto/identity";
-import { projectIdFromFolder } from "@hermesh/core";
+import { folderName, isAbsolutePath, projectIdFromFolder } from "@hermesh/core";
 import { Mark } from "@hermesh/ui";
 import { local } from "../api";
 import { Icon } from "../icons";
@@ -128,12 +128,14 @@ export function AddProjectSheet({ machineId, agent }: { machineId?: string; agen
   const [worktree, setWorktree] = useState(true);
   const [base, setBase] = useState("");
   const act = useAction();
-  const here = online.find((m) => m.machineId === mid)?.local ?? false;
+  const machine = online.find((m) => m.machineId === mid);
+  const here = machine?.local ?? false;
+  const platform = machine?.status?.platform ?? "";
   const taken = new Set(st.projects.filter((p) => p.machineId === mid).map((p) => p.projectId));
 
   const choosePath = (p: string) => {
     setPath(p);
-    const folder = p.split("/").filter(Boolean).pop();
+    const folder = folderName(p);
     setId(folder ? projectIdFromFolder(folder, taken) : "");
   };
   const pick = async () => {
@@ -184,7 +186,7 @@ export function AddProjectSheet({ machineId, agent }: { machineId?: string; agen
         <div className="frow">
           <label className="fl" htmlFor="pj-path">{t("addProject.folder")}</label>
           <span className="fv">
-            <input id="pj-path" className="field mono" style={{ width: 260 }} autoFocus placeholder={here ? t("addProject.folderPlaceholder") : "/home/me/code/my-app"} value={path} onChange={(e) => choosePath(e.target.value)} />
+            <input id="pj-path" className="field mono" style={{ width: 260 }} autoFocus placeholder={here ? t("addProject.folderPlaceholder") : platform.startsWith("windows/") ? "C:\\code\\my-app" : "/home/me/code/my-app"} value={path} onChange={(e) => choosePath(e.target.value)} />
           </span>
           {here && <button type="button" className="btn sm" onClick={pick}>{t("addProject.choose")}</button>}
         </div>
@@ -218,7 +220,7 @@ export function AddProjectSheet({ machineId, agent }: { machineId?: string; agen
       <ErrorLine text={act.error} />
       <div className="sheet-foot">
         <button type="button" className="btn" onClick={() => st.set({ sheet: null })}>{t("cancel")}</button>
-        <button type="submit" className="btn primary" disabled={act.busy || !mid || !id.trim() || !path.trim().startsWith("/")}>
+        <button type="submit" className="btn primary" disabled={act.busy || !mid || !id.trim() || !isAbsolutePath(path.trim(), platform)}>
           {act.busy ? t("addProject.adding") : t("addProject.add")}
         </button>
       </div>
