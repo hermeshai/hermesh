@@ -71,6 +71,9 @@ service LocalService {
   // Signing delegation.
   rpc WatchSigningRequests(WatchSigningRequestsRequest) returns (stream SigningRequest);
   rpc CompleteSigningRequest(CompleteSigningRequestRequest) returns (CompleteSigningRequestResponse);
+  // Brings the signer's open approval forward, for a signer that is not the
+  // app's child (Windows: docs/windows.md §7.3).
+  rpc ShowSigner(ShowSignerRequest) returns (ShowSignerResponse);
 
   // This Mac as an execution machine.
   rpc SetLocalMachine(SetLocalMachineRequest) returns (SetLocalMachineResponse);
@@ -267,6 +270,8 @@ message GetStatusResponse {
   // A self-hosted relay's MCP address, with its key, to paste into agent
   // products ("" when it serves none, and on the official service).
   string mcp_url = 18;
+  // The signer, where it is not the app's child (Windows).
+  SignerState signer = 19;
 }
 
 message ListProfilesRequest {}
@@ -503,7 +508,21 @@ message Erased {
   string by = 5;
 }
 
-message WatchSigningRequestsRequest {}
+message WatchSigningRequestsRequest {
+  // This signer brings its open approval forward when asked (ShowSigner):
+  // its watch also gets requests that carry only show.
+  bool show = 1;
+}
+
+message ShowSignerRequest {}
+message ShowSignerResponse {}
+
+// The signers watching for requests, as hermeshd sees them.
+message SignerState {
+  bool connected = 1;
+  // A request waits for the owner's approval.
+  bool busy = 2;
+}
 
 message SigningRequest {
   string request_id = 1;
@@ -537,6 +556,9 @@ message SigningRequest {
   // root_key_id (Leave), so the signer deletes that key, without asking,
   // and completes the request.
   bool delete_root_key = 11;
+  // Set alone, to a watch that asked for it: bring the open approval
+  // forward (ShowSigner). Nothing to complete.
+  bool show = 12;
 }
 
 message Caller {

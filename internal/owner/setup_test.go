@@ -43,7 +43,7 @@ func TestBlockedRelayFailsBeforeTouchID(t *testing.T) {
 			}
 			t.Cleanup(d.Close)
 			o := d.owner()
-			asked, stop := o.hub.watch()
+			asked, stop := o.hub.watch(false)
 			defer stop()
 			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 			defer cancel()
@@ -88,5 +88,42 @@ func TestNormalizeRelayURL(t *testing.T) {
 		if got := normalizeRelayURL(in); got != want {
 			t.Errorf("normalizeRelayURL(%q) = %q, want %q", in, got, want)
 		}
+	}
+}
+
+// The status tells whether a signer watches and whether one waits on the
+// owner; ShowSigner reaches only the signers that asked for it.
+func TestSignerState(t *testing.T) {
+	h := newSignHub()
+	if st := h.state(); st.Connected || st.Busy {
+		t.Fatalf("no signer: %v", st)
+	}
+	plain, stopPlain := h.watch(false)
+	defer stopPlain()
+	shows, stopShows := h.watch(true)
+	defer stopShows()
+	if st := h.state(); !st.Connected || st.Busy {
+		t.Fatalf("watching: %v", st)
+	}
+	h.mu.Lock()
+	h.post(&localv1.SigningRequest{RequestId: "r1", Type: "hermesh.identity.v1.Grant"})
+	h.mu.Unlock()
+	if st := h.state(); !st.Busy {
+		t.Fatalf("a request waits: %v", st)
+	}
+	<-plain
+	<-shows
+	h.show()
+	if r := <-shows; !r.Show {
+		t.Fatalf("show: %v", r)
+	}
+	select {
+	case r := <-plain:
+		t.Fatalf("a signer that didn't ask was shown: %v", r)
+	default:
+	}
+	h.complete(&localv1.CompleteSigningRequestRequest{RequestId: "r1", Rejected: true})
+	if st := h.state(); st.Busy {
+		t.Fatalf("answered: %v", st)
 	}
 }

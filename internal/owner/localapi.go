@@ -172,8 +172,8 @@ func (l *localService) FinishErase(ctx context.Context, _ *localv1.FinishEraseRe
 	return &localv1.FinishEraseResponse{}, l.d.FinishErase(ctx)
 }
 
-func (l *localService) WatchSigningRequests(ctx context.Context, _ *localv1.WatchSigningRequestsRequest, stream *connect.ServerStream[localv1.SigningRequest]) error {
-	ch, stop := l.d.hub.watch()
+func (l *localService) WatchSigningRequests(ctx context.Context, req *localv1.WatchSigningRequestsRequest, stream *connect.ServerStream[localv1.SigningRequest]) error {
+	ch, stop := l.d.hub.watch(req.Show)
 	defer stop()
 	for {
 		select {
@@ -192,6 +192,11 @@ func (l *localService) CompleteSigningRequest(ctx context.Context, req *localv1.
 		return nil, connect.NewError(connect.CodeNotFound, err)
 	}
 	return &localv1.CompleteSigningRequestResponse{}, nil
+}
+
+func (l *localService) ShowSigner(context.Context, *localv1.ShowSignerRequest) (*localv1.ShowSignerResponse, error) {
+	l.d.hub.show()
+	return &localv1.ShowSignerResponse{}, nil
 }
 
 func (l *localService) SetLocalMachine(ctx context.Context, req *localv1.SetLocalMachineRequest) (*localv1.SetLocalMachineResponse, error) {
