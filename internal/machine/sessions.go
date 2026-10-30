@@ -414,7 +414,8 @@ func (s *Sessions) Start(ctx context.Context, p *Principal, req *sessionv1.Start
 	// The QUEUED status event carries the row; wait for it (and the
 	// idempotency key) to commit so a started session survives a crash.
 	// Not r.Status: once in s.live, dispatch may already be moving it on.
-	s.emit(l, &sessionv1.SessionEvent{Kind: &sessionv1.SessionEvent_Status{Status: &sessionv1.StatusChanged{Status: sessionv1.SessionStatus_SESSION_STATUS_QUEUED}}})
+	queued := &sessionv1.SessionEvent{Kind: &sessionv1.SessionEvent_Status{Status: &sessionv1.StatusChanged{Status: sessionv1.SessionStatus_SESSION_STATUS_QUEUED}}}
+	s.emit(l, queued)
 	var idem *idemKey
 	if req.IdempotencyKey != "" {
 		idem = &idemKey{p.ClientID, req.IdempotencyKey, id}
@@ -433,6 +434,9 @@ func (s *Sessions) Start(ctx context.Context, p *Principal, req *sessionv1.Start
 		return nil, err
 	}
 	s.dispatch()
+	if s.notice != nil { // the owner hears of a session an agent started
+		go s.notice(noticeSession{id, r.Title, r.CreatedBy, r.ProjectID, r.Agent, l.asker, l.askerConv, r.Conversation}, queued)
+	}
 	l.mu.Lock()
 	defer l.mu.Unlock()
 	return s.toProto(l.row), nil

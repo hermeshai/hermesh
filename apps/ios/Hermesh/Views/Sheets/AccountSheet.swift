@@ -180,6 +180,10 @@ struct NotificationsView: View {
                 }
             }
             Section {
+                Toggle(isOn: pref(\.sessionsStarted)) {
+                    Label { Text("New sessions") } icon: { SettingsIcon(symbol: "plus.bubble.fill", color: .indigo) }
+                }
+                .accessibilityIdentifier("notify-started")
                 Toggle(isOn: pref(\.questions)) {
                     Label { Text("Agent questions") } icon: { SettingsIcon(symbol: "questionmark.bubble.fill", color: .orange) }
                 }
@@ -345,11 +349,24 @@ struct UsageSummary: View {
 
 /// Which notifications the owner wants (connection requests always come).
 struct NotificationPrefs: Codable, Equatable {
+    var sessionsStarted = true
     var questions = true
     var failures = true
     var turnsDone = false
 
     private static let key = "notificationPrefs"
+
+    init() {}
+
+    /// What an older app saved lacks the newer kinds: those take their defaults.
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        let d = NotificationPrefs()
+        sessionsStarted = try c.decodeIfPresent(Bool.self, forKey: .sessionsStarted) ?? d.sessionsStarted
+        questions = try c.decodeIfPresent(Bool.self, forKey: .questions) ?? d.questions
+        failures = try c.decodeIfPresent(Bool.self, forKey: .failures) ?? d.failures
+        turnsDone = try c.decodeIfPresent(Bool.self, forKey: .turnsDone) ?? d.turnsDone
+    }
 
     static var current: NotificationPrefs {
         guard let d = UserDefaults.standard.data(forKey: key), let p = try? JSONDecoder().decode(NotificationPrefs.self, from: d) else { return NotificationPrefs() }

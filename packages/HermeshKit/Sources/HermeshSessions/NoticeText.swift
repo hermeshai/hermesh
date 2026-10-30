@@ -30,6 +30,10 @@ public enum NoticeText {
             let files = Int(n.diffStat.filesChanged)
             c.body = files == 0 ? String(localized: "No file changes", bundle: .module)
                 : String(localized: "\(Int(n.diffStat.filesChanged)) files +\(Int(n.diffStat.insertions)) −\(Int(n.diffStat.deletions))", bundle: .module)
+        case "session_started":
+            c.title = n.title
+            let by = n.grant.isEmpty ? n.machine : String(localized: "\(n.grant) started it · \(n.machine)", bundle: .module)
+            c.body = [by, [n.project, agentTitle(n.agent)].filter { !$0.isEmpty }.joined(separator: " · ")].filter { !$0.isEmpty }.joined(separator: "\n")
         case "pairing":
             switch n.pairingKind {
             case .device: c.title = String(localized: "“\(n.pairingLabel)” wants to become your trusted device", bundle: .module)

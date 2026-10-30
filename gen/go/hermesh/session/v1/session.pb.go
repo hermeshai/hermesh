@@ -785,7 +785,7 @@ func (x *StartSessionResponse) GetSession() *Session {
 // without reading it.
 type Notice struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
-	// "question", "failure", "turn_done" or "pairing".
+	// "question", "failure", "turn_done", "session_started" or "pairing".
 	Kind string                 `protobuf:"bytes,1,opt,name=kind,proto3" json:"kind,omitempty"`
 	At   *timestamppb.Timestamp `protobuf:"bytes,2,opt,name=at,proto3" json:"at,omitempty"`
 	// A session's notice.

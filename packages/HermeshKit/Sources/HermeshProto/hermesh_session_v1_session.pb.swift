@@ -515,7 +515,7 @@ public nonisolated struct Hermesh_Session_V1_Notice: @unchecked Sendable {
   // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
   // methods supported on all messages.
 
-  /// "question", "failure", "turn_done" or "pairing".
+  /// "question", "failure", "turn_done", "session_started" or "pairing".
   public var kind: String {
     get {_storage._kind}
     set {_uniqueStorage()._kind = newValue}
