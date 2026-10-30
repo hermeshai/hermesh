@@ -76,7 +76,9 @@ packages/HermeshKit/         Swift package shared with the Mac signer
   approval (two digits to confirm), by the official service (signing in
   through `ASWebAuthenticationSession`, back with `hermesh://`) or by an own
   server's connection address.
-- **Performance.** Native controls throughout, lazy stacks for long lists,
+- **Performance.** Native controls throughout, lazy stacks for long lists
+  (not a conversation: opened at its bottom, a lazy stack's guessed row
+  heights left a gap under the last message, so it lays out every row),
   the owner's world followed through one `Watch` from the in-process
   hermeshd ([state-sync.md](state-sync.md) §11) and a session's events read
   once and then followed (nothing polled), no work while in the background.
