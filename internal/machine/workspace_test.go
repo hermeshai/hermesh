@@ -98,7 +98,7 @@ func TestWorktreeLifecycle(t *testing.T) {
 			}
 			// prune keeps live worktrees
 			gitOut(t, repo, "worktree", "prune")
-			if !strings.Contains(gitOut(t, repo, "worktree", "list"), wt) {
+			if !strings.Contains(gitOut(t, repo, "worktree", "list", "--porcelain"), "branch refs/heads/hermesh/s_1\n") {
 				t.Fatal("prune dropped a live worktree")
 			}
 			for _, id := range ids {
