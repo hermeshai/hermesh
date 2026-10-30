@@ -4,12 +4,12 @@ import type { PairingDetails } from "@hermesh/proto/local";
 import { FailureSchema, SessionStatus, type Session } from "@hermesh/proto/session";
 import { codingAgentTitle } from "./agents";
 import { t } from "./i18n";
-import { displayTitle, isFailed, pendingQuestion } from "./sessions";
+import { dateOf, displayTitle, isFailed, pendingQuestion } from "./sessions";
 import { failureAdvice, failureTitle } from "./text";
 import { isInterruption } from "./transcript";
 
-// What a session's change reaches the owner as: a question, a failure, a
-// finished turn. Kept apart from the notification center so it can be checked.
+// What a session's change reaches the owner as: a new session, a question,
+// a failure, a finished turn. Kept apart from the notification center so it can be checked.
 
 /** A session as it was at the last look. */
 export interface NoticeSnapshot {
@@ -35,7 +35,7 @@ export function noticeSnapshots(sessions: Session[]): Map<string, NoticeSnapshot
   return out;
 }
 
-export type NoticeKind = "question" | "failed" | "turnDone";
+export type NoticeKind = "started" | "question" | "failed" | "turnDone";
 
 export interface NoticeItem {
   kind: NoticeKind;
@@ -46,16 +46,28 @@ export interface NoticeItem {
 
 /**
  * The notices since the last look (previous: each session as it was).
- * A session seen for the first time only tells about a question.
+ * A session seen for the first time tells about a question, and is new
+ * when it was created at or after since (the first look: the sessions from
+ * before, or of a machine coming back, are no news).
  */
 export function noticeDiff(
   previous: ReadonlyMap<string, NoticeSnapshot>,
   sessions: Session[],
   grant: (s: Session) => string,
+  since?: Date,
 ): NoticeItem[] {
   const out: NoticeItem[] = [];
   for (const s of sessions) {
     const before = previous.get(s.sessionId);
+    const created = dateOf(s.createdAt);
+    if (!before && since && created && created >= since) {
+      out.push({
+        kind: "started",
+        sessionId: s.sessionId,
+        title: displayTitle(s),
+        body: t("notice.startedBody", { grant: grant(s), project: s.projectId, agent: codingAgentTitle(s.agent) }),
+      });
+    }
     const q = pendingQuestion(s);
     if (q && q.questionId !== before?.question) {
       const text = q.items[0]?.text ?? "";
@@ -101,6 +113,7 @@ export function noticeDiff(
 
 /** The notices the owner can switch off in settings, by their settings key. */
 export interface NoticePrefs {
+  notifyStarted: boolean;
   notifyQuestion: boolean;
   notifyFailed: boolean;
   notifyTurnDone: boolean;
@@ -108,11 +121,13 @@ export interface NoticePrefs {
 
 /**
  * The notices the owner wants. A preference not set yet counts as on for
- * questions and failures, off for finished turns.
+ * new sessions, questions and failures, off for finished turns.
  */
 export function filterNotices(items: NoticeItem[], prefs: Partial<NoticePrefs>): NoticeItem[] {
   return items.filter((item) => {
     switch (item.kind) {
+      case "started":
+        return prefs.notifyStarted ?? true;
       case "question":
         return prefs.notifyQuestion ?? true;
       case "failed":

@@ -193,3 +193,35 @@ test("closing the window keeps Hermesh in the menu bar, without a renderer", asy
   await expect.poll(() => app.evaluate(({ app }) => app.dock?.isVisible())).toBe(true);
   await app.close();
 });
+
+test("a session an agent starts notifies, unless switched off", async () => {
+  const { app, page } = await launch();
+  const posted = () =>
+    app.evaluate(() => (globalThis as unknown as { hermeshTest: Hook }).hermeshTest.notifications().map((n) => ({ id: n.id, title: n.title, body: n.body })));
+  // The sessions from before the app started are no news.
+  await expect.poll(posted).toEqual([{ id: `session-question-${fixture.sessions["选颜色"]}`, title: "bot 在等你回答", body: "选颜色：选哪个颜色" }]);
+
+  const start = async (title: string) => JSON.parse(await cli("session", "start", "--project", "demo", "--agent", "gemini", "--title", title, "--prompt", "say 好", "--wait", "-o", "json")).session.session_id as string;
+  const started: string[] = [];
+  try {
+    const id = await start("新会话通知");
+    started.push(id);
+    await expect.poll(posted).toContainEqual({ id: `session-started-${id}`, title: "新会话通知", body: "bot 发起 · demo · Gemini CLI" });
+    // Clicking it opens the session.
+    await app.evaluate((_e, id) => {
+      const hook = (globalThis as unknown as { hermeshTest: Hook }).hermeshTest;
+      hook.notifications().find((n) => n.id === `session-started-${id}`)?.click();
+    }, id);
+    await expect(page.getByRole("heading", { name: "新会话通知" })).toBeVisible();
+
+    // 通用's switch turns them off: the next one only shows in the list.
+    await page.evaluate(() => window.hermesh?.setPreferences({ notifyStarted: false }));
+    const quiet = await start("不通知的会话");
+    started.push(quiet);
+    await expect(page.getByRole("list", { name: "会话" })).toContainText("不通知的会话");
+    expect((await posted()).map((n) => n.id)).not.toContain(`session-started-${quiet}`);
+  } finally {
+    for (const id of started) await cli("session", "archive", id).catch(() => "");
+  }
+  await app.close();
+});

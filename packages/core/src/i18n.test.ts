@@ -45,6 +45,9 @@ describe("English", () => {
       title: "“Fix sign-in” failed: Failed",
       body: "Grok Bot · Claude Code · app.",
     });
+    expect(noticeDiff(new Map(), [running], () => "Grok Bot", at(-600))).toEqual([
+      { kind: "started", sessionId: "s", title: "Fix sign-in", body: "Grok Bot started it · app · Claude Code" },
+    ]);
   });
 
   test("steps", () => {

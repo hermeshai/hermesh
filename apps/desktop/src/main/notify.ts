@@ -30,7 +30,7 @@ const changed = () => worldListeners.forEach((f) => f());
 
 // --- Preferences (the settings window sets them) ---
 
-const defaults: Preferences = { appearance: "system", notifyQuestion: true, notifyFailed: true, notifyTurnDone: false, menuBadge: true, language: "system" };
+const defaults: Preferences = { appearance: "system", notifyStarted: true, notifyQuestion: true, notifyFailed: true, notifyTurnDone: false, menuBadge: true, language: "system" };
 let prefs: Preferences | undefined;
 const prefsFile = () => path.join(app.getPath("userData"), "preferences.json");
 
@@ -52,7 +52,7 @@ export function applyAppearance() {
 
 export function setPreferences(p: Partial<Preferences>): Preferences {
   const next = { ...preferences() };
-  for (const k of ["notifyQuestion", "notifyFailed", "notifyTurnDone", "menuBadge"] as const) if (typeof p[k] === "boolean") next[k] = p[k];
+  for (const k of ["notifyStarted", "notifyQuestion", "notifyFailed", "notifyTurnDone", "menuBadge"] as const) if (typeof p[k] === "boolean") next[k] = p[k];
   if (p.language === "system" || languages.includes(p.language as Language)) next.language = p.language!;
   if (p.appearance === "system" || p.appearance === "light" || p.appearance === "dark") next.appearance = p.appearance;
   prefs = next;
@@ -93,17 +93,21 @@ function withdraw(id: string) {
 // seen for the first time only tells about its question, so a question
 // still waiting when the app starts is notified again (macOS took the old
 // notification away when the app quit); failures and finished turns from
-// before are no news.
+// before are no news. A session not seen before is new when it was created
+// after the first look (since).
 let seen = new Map<string, NoticeSnapshot>();
+let since: Date | undefined;
 
 function noticeSessions() {
   // A machine only does not know the owner's agents by name.
   const unnamed = i18n.t(world.status?.machineOnly ? "main:anAgent" : "main:disconnectedGrant");
   const grant = (s: Session) => world.clients.find((c) => c.clientId === s.createdBy)?.label ?? unnamed;
-  for (const n of filterNotices(noticeDiff(seen, world.sessions, grant), preferences())) {
-    post(`session-${n.kind}-${n.sessionId}`, n.title, n.body, `open:${n.sessionId}`, n.kind === "turnDone");
+  const look = new Date();
+  for (const n of filterNotices(noticeDiff(seen, world.sessions, grant, since), preferences())) {
+    post(`session-${n.kind}-${n.sessionId}`, n.title, n.body, `open:${n.sessionId}`, n.kind === "turnDone" || n.kind === "started");
   }
   seen = noticeSnapshots(world.sessions);
+  since ??= look;
 }
 
 // Every pending request is notified (it cannot be switched off), and

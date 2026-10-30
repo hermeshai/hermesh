@@ -115,6 +115,7 @@ export type Appearance = "system" | "light" | "dark";
 
 export type Preferences = {
   appearance: Appearance;
+  notifyStarted: boolean;
   notifyQuestion: boolean;
   notifyFailed: boolean;
   notifyTurnDone: boolean;

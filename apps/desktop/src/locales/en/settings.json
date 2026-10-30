@@ -50,6 +50,7 @@
     "notifications": "Notifications",
     "connectionRequests": "Connection requests",
     "connectionRequestsDesc": "Always on, as they need your approval",
+    "sessionStarted": "New sessions",
     "agentQuestions": "Agent questions",
     "agentQuestionsDesc": "Expire after 30 minutes if no one answers",
     "sessionFailed": "Failed sessions",

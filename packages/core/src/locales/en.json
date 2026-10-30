@@ -62,6 +62,7 @@
     "startFailed": "Open that machine’s page in Hermesh Settings to see what keeps it from starting agents."
   },
   "notice": {
+    "startedBody": "{{grant}} started it · {{project}} · {{agent}}",
     "questionTitle": "{{grant}} is waiting for you",
     "questionBody": "{{title}}: {{text}}",
     "failedTitle": "“{{title}}” failed: {{failure}}",
