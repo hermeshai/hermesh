@@ -37,7 +37,7 @@
 // Steer appends a script to the running turn, run before it completes.
 //
 // Start itself fails on a resume when the prompt has a line
-// "resume-start-reject" (refused) or "resume-start-error <text>".
+// "resume-start-reject" (refused).
 package fake
 
 import (
@@ -69,12 +69,8 @@ func (Provider) Discover(context.Context) provider.Info {
 func (Provider) Start(ctx context.Context, spec provider.StartSpec) (provider.Session, error) {
 	if spec.ResumeRef != "" {
 		for _, line := range strings.Split(spec.Prompt, "\n") {
-			cmd, arg, _ := strings.Cut(strings.TrimSpace(line), " ")
-			switch cmd {
-			case "resume-start-reject":
+			if strings.TrimSpace(line) == "resume-start-reject" {
 				return nil, provider.Fail(sessionv1.FailureKind_FAILURE_KIND_RESUME_REJECTED, "no rollout found for thread id "+spec.ResumeRef)
-			case "resume-start-error":
-				return nil, errors.New(arg)
 			}
 		}
 	}

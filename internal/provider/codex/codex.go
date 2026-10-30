@@ -190,9 +190,9 @@ func (p *Provider) Start(ctx context.Context, spec provider.StartSpec) (provider
 		proc.Stop(time.Second)
 		return nil, err
 	}
-	hctx, cancel := context.WithTimeout(ctx, 30*time.Second)
-	defer cancel()
-	if _, err := s.call(hctx, "initialize", map[string]any{"clientInfo": map[string]any{"name": "hermesh", "version": "0.1.0"}}); err != nil {
+	// No limit of its own: a busy machine makes Codex slow to start, not
+	// stuck. ctx ends it (an interrupt, or the session's start limit).
+	if _, err := s.call(ctx, "initialize", map[string]any{"clientInfo": map[string]any{"name": "hermesh", "version": "0.1.0"}}); err != nil {
 		return fail(fmt.Errorf("codex initialize: %w", err))
 	}
 	s.notify("initialized", nil)
@@ -225,7 +225,7 @@ func (p *Provider) Start(ctx context.Context, spec provider.StartSpec) (provider
 		method = "thread/resume"
 		params["threadId"] = spec.ResumeRef
 	}
-	res, err := s.call(hctx, method, params)
+	res, err := s.call(ctx, method, params)
 	if err != nil {
 		if method == "thread/resume" && provider.IsResumeRejected(err.Error()) {
 			err = provider.Fail(sessionv1.FailureKind_FAILURE_KIND_RESUME_REJECTED, err.Error())
@@ -243,7 +243,7 @@ func (p *Provider) Start(ctx context.Context, spec provider.StartSpec) (provider
 	}
 	s.threadID = tr.Thread.ID
 	s.emit(provider.Event{Kind: provider.EventRef, Ref: s.threadID})
-	if err := s.Send(ctx, provider.Input{Text: spec.Prompt, Images: spec.Images}); err != nil {
+	if err := s.send(ctx, provider.Input{Text: spec.Prompt, Images: spec.Images}); err != nil {
 		return fail(err)
 	}
 	return s, nil
@@ -348,12 +348,17 @@ func input(in provider.Input) []any {
 }
 
 func (s *session) Send(ctx context.Context, in provider.Input) error {
+	cctx, cancel := context.WithTimeout(ctx, 30*time.Second)
+	defer cancel()
+	return s.send(cctx, in)
+}
+
+// send is Send without its limit, for the first turn, part of the start.
+func (s *session) send(ctx context.Context, in provider.Input) error {
 	s.mu.Lock()
 	s.lastMsg = ""
 	s.mu.Unlock()
-	cctx, cancel := context.WithTimeout(ctx, 30*time.Second)
-	defer cancel()
-	res, err := s.call(cctx, "turn/start", map[string]any{"threadId": s.threadID, "input": input(in)})
+	res, err := s.call(ctx, "turn/start", map[string]any{"threadId": s.threadID, "input": input(in)})
 	if err != nil {
 		return err
 	}

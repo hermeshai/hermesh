@@ -156,10 +156,10 @@ func (p *Provider) Start(ctx context.Context, spec provider.StartSpec) (provider
 		proc.Stop(time.Second)
 		return nil, fmt.Errorf("%s: %w", p.Name(), err)
 	}
-	// Node-based agents can take a while to boot and load their config.
-	hctx, cancel := context.WithTimeout(ctx, 60*time.Second)
-	defer cancel()
-	res, err := s.call(hctx, "initialize", map[string]any{"protocolVersion": 1,
+	// No limit of its own: node-based agents can take a while to boot and
+	// load their config, longer on a busy machine. ctx ends it (an
+	// interrupt, or the session's start limit).
+	res, err := s.call(ctx, "initialize", map[string]any{"protocolVersion": 1,
 		"clientCapabilities": map[string]any{"fs": map[string]any{"readTextFile": false, "writeTextFile": false}, "terminal": false,
 			// Questions as forms (elicitation/create); agents without it
 			// turn their ask-the-user tools off.
@@ -185,7 +185,7 @@ func (p *Provider) Start(ctx context.Context, spec provider.StartSpec) (provider
 	json.Unmarshal(res, &init)
 	s.images = init.AgentCapabilities.PromptCapabilities.Image
 	if m := authMethod(p.Auth, init.AuthMethods); m != "" {
-		if _, err := s.call(hctx, "authenticate", map[string]any{"methodId": m}); err != nil {
+		if _, err := s.call(ctx, "authenticate", map[string]any{"methodId": m}); err != nil {
 			return fail(provider.Fail(sessionv1.FailureKind_FAILURE_KIND_AUTH, fmt.Sprintf("authenticate (%s): %v; run `%s` once as this user to log in", m, err, p.Command)))
 		}
 	}
@@ -203,7 +203,7 @@ func (p *Provider) Start(ctx context.Context, spec provider.StartSpec) (provider
 	caps := init.AgentCapabilities
 	switch {
 	case spec.ResumeRef == "":
-		res, err = s.call(hctx, "session/new", params)
+		res, err = s.call(ctx, "session/new", params)
 		if err != nil {
 			return fail(fmt.Errorf("session/new: %w", classified(err, sessionv1.FailureKind_FAILURE_KIND_START_FAILED)))
 		}
@@ -217,7 +217,7 @@ func (p *Provider) Start(ctx context.Context, spec provider.StartSpec) (provider
 		s.sessionID = r.SessionID
 	case len(caps.SessionCapabilities.Resume) > 0 && string(caps.SessionCapabilities.Resume) != "null":
 		params["sessionId"] = spec.ResumeRef
-		if res, err = s.call(hctx, "session/resume", params); err != nil {
+		if res, err = s.call(ctx, "session/resume", params); err != nil {
 			return fail(fmt.Errorf("session/resume: %w", resumeError(err)))
 		}
 		s.sessionID = spec.ResumeRef
@@ -226,7 +226,7 @@ func (p *Provider) Start(ctx context.Context, spec provider.StartSpec) (provider
 		// notifications before it answers; they are not new events.
 		params["sessionId"] = spec.ResumeRef
 		s.replaying.Store(true)
-		res, err = s.call(hctx, "session/load", params)
+		res, err = s.call(ctx, "session/load", params)
 		s.replaying.Store(false)
 		if err != nil {
 			return fail(fmt.Errorf("session/load: %w", resumeError(err)))
@@ -237,7 +237,7 @@ func (p *Provider) Start(ctx context.Context, spec provider.StartSpec) (provider
 	}
 	s.emit(provider.Event{Kind: provider.EventRef, Ref: s.sessionID})
 	if spec.Model != "" {
-		if err := s.setModel(hctx, res, spec.Model); err != nil {
+		if err := s.setModel(ctx, res, spec.Model); err != nil {
 			return fail(provider.Fail(sessionv1.FailureKind_FAILURE_KIND_MODEL_UNAVAILABLE, fmt.Sprintf("model %q: %v", spec.Model, err)))
 		}
 	}

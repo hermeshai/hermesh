@@ -9,6 +9,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	identityv1 "github.com/hermeshai/hermesh/gen/go/hermesh/identity/v1"
 )
@@ -134,6 +135,49 @@ func TestWorktreeLifecycle(t *testing.T) {
 			}
 			gitOut(t, repo, "worktree", "prune")
 			gitOut(t, repo, "fsck", "--no-progress")
+		})
+	}
+}
+
+// A checkout stopped halfway (the session's start was stopped) leaves no
+// worktree and no branch behind, so the next start makes them afresh.
+func TestStoppedCheckoutLeavesNothing(t *testing.T) {
+	for name, cfg := range map[string][]string{
+		"direct":   nil,
+		"fallback": {"extensions.worktreeConfig", "true"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			repo := testRepo(t, cfg...)
+			os.WriteFile(filepath.Join(repo, ".gitattributes"), []byte("a.txt filter=slow\n"), 0o644)
+			gitOut(t, repo, "add", ".gitattributes")
+			gitOut(t, repo, "-c", "user.name=t", "-c", "user.email=t@t", "commit", "-q", "-m", "attrs")
+			gitOut(t, repo, "config", "filter.slow.smudge", "sleep 30; cat")
+			w := NewWorkspace(filepath.Join(t.TempDir(), "worktrees"))
+			ctx, cancel := context.WithTimeout(context.Background(), 500*time.Millisecond)
+			defer cancel()
+			start := time.Now()
+			if _, _, err := w.Create(ctx, repo, "", "s_1"); err == nil {
+				t.Fatal("a stopped checkout succeeded")
+			}
+			if d := time.Since(start); d > 10*time.Second {
+				t.Fatalf("stopping took %s", d)
+			}
+			if w.Exists("s_1") {
+				t.Fatal("half checkout left behind")
+			}
+			if list := gitOut(t, repo, "worktree", "list", "--porcelain"); strings.Contains(list, "s_1") {
+				t.Fatalf("git still lists it:\n%s", list)
+			}
+			if out, err := exec.Command("git", "-C", repo, "rev-parse", "--verify", "-q", "hermesh/s_1").Output(); err == nil {
+				t.Fatalf("branch left behind at %s", out)
+			}
+			gitOut(t, repo, "config", "filter.slow.smudge", "cat")
+			if _, _, err := w.Create(context.Background(), repo, "", "s_1"); err != nil {
+				t.Fatalf("retry: %v", err)
+			}
+			if st := gitOut(t, w.Path("s_1"), "status", "--porcelain"); st != "" {
+				t.Fatalf("retried worktree not clean: %q", st)
+			}
 		})
 	}
 }

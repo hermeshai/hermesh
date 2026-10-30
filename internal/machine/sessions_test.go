@@ -2,6 +2,8 @@ package machine
 
 import (
 	"context"
+	"errors"
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -332,19 +334,139 @@ func TestRefusedResumeAtStartRestartsFresh(t *testing.T) {
 // Any other resume failure (login, network) keeps the provider session for
 // a later message instead of throwing the conversation away.
 func TestResumeErrorKeepsSession(t *testing.T) {
-	h := newHarness(t, DefaultLimits())
-	id := h.start("say one")
+	p := &startTrouble{}
+	h := newHarnessWith(t, DefaultLimits(), map[string]provider.Provider{"flaky": p})
+	id := h.startAgent("flaky", "say one")
 	ref := h.wait(id, idle).ProviderSessionRef
 	h.stopProcess(id)
-	h.send(id, "resume-start-error API Error: 401 Invalid authentication credentials\nsay never")
+	p.set(1, errors.New("API Error: 401 Invalid authentication credentials"), false)
+	h.send(id, "say two")
 	sess := h.wait(id, crashed)
 	if f := sess.Progress.LastFailure; f.GetKind() != sessionv1.FailureKind_FAILURE_KIND_AUTH || sess.ProviderSessionRef != ref {
 		t.Fatalf("session: %v", sess)
 	}
 	h.send(id, "resumed")
 	h.wait(id, idle)
-	if got := h.lastTurn(id).Result; got != "resumed: "+ref {
-		t.Fatalf("got %q", got)
+	if got := h.lastTurn(id).Result; got != "resumed: "+ref || p.spec(-1).Prompt != "say two\n\nresumed" {
+		t.Fatalf("got %q, from %q", got, p.spec(-1).Prompt)
+	}
+}
+
+// startTrouble is the fake agent, except that its next fails starts fail
+// with err, and that while hang is set a start waits until it is stopped.
+type startTrouble struct {
+	recorder
+	tmu   sync.Mutex
+	fails int
+	err   error
+	hang  bool
+}
+
+func (p *startTrouble) set(fails int, err error, hang bool) {
+	p.tmu.Lock()
+	defer p.tmu.Unlock()
+	p.fails, p.err, p.hang = fails, err, hang
+}
+
+func (p *startTrouble) Start(ctx context.Context, spec provider.StartSpec) (provider.Session, error) {
+	p.tmu.Lock()
+	fail, err, hang := p.fails > 0, p.err, p.hang
+	if fail {
+		p.fails--
+	}
+	p.tmu.Unlock()
+	switch {
+	case fail:
+		return nil, err
+	case hang:
+		<-ctx.Done()
+		return nil, fmt.Errorf("codex thread/start: %w", ctx.Err())
+	}
+	return p.recorder.Start(ctx, spec)
+}
+
+func (h *harness) startAgent(agent, prompt string) string {
+	h.t.Helper()
+	sess, err := h.s.Start(context.Background(), h.p, &sessionv1.StartSessionRequest{ProjectId: "demo", Agent: agent, Prompt: prompt})
+	if err != nil {
+		h.t.Fatal(err)
+	}
+	return sess.SessionId
+}
+
+// saidAll is what the agent said in the session, in order.
+func (h *harness) saidAll(id string) []string {
+	var out []string
+	for _, e := range h.events(id) {
+		if m := e.GetAgentMessage(); m != nil {
+			out = append(out, m.Text)
+		}
+	}
+	return out
+}
+
+// An agent that could not start never got the prompt: the next message
+// starts it with that prompt too.
+func TestStartFailureKeepsPrompt(t *testing.T) {
+	p := &startTrouble{}
+	p.set(1, errors.New("codex initialize: codex exited: exit status 1"), false)
+	h := newHarnessWith(t, DefaultLimits(), map[string]provider.Provider{"flaky": p})
+	id := h.startAgent("flaky", "say one")
+	if f := h.wait(id, crashed).Progress.LastFailure; f.GetKind() != sessionv1.FailureKind_FAILURE_KIND_START_FAILED {
+		t.Fatalf("failure: %v", f)
+	}
+	h.send(id, "say two")
+	h.wait(id, idle)
+	if got := p.spec(-1).Prompt; got != "say one\n\nsay two" {
+		t.Fatalf("the agent got %q", got)
+	}
+	if got := strings.Join(h.saidAll(id), ","); got != "one,two" {
+		t.Fatalf("said %q:\n%s", got, h.dump(id))
+	}
+}
+
+// A start that takes too long is stopped by the watchdog, as stalled, and
+// keeps the prompt for the next message.
+func TestStalledStartStops(t *testing.T) {
+	lim := DefaultLimits()
+	lim.StartTimeout = 300 * time.Millisecond
+	p := &startTrouble{}
+	p.set(0, nil, true)
+	h := newHarnessWith(t, lim, map[string]provider.Provider{"flaky": p})
+	id := h.startAgent("flaky", "say one")
+	f := h.wait(id, crashed).Progress.LastFailure
+	if f.GetKind() != sessionv1.FailureKind_FAILURE_KIND_STALLED || !strings.Contains(f.GetMessage(), "did not finish starting in 300ms") {
+		t.Fatalf("failure: %v", f)
+	}
+	p.set(0, nil, false)
+	h.send(id, "say two")
+	h.wait(id, idle)
+	if got := p.spec(-1).Prompt; got != "say one\n\nsay two" {
+		t.Fatalf("the agent got %q", got)
+	}
+}
+
+// Interrupting a start that is taking long stops it at once; what it was
+// to run never runs.
+func TestInterruptStopsStart(t *testing.T) {
+	p := &startTrouble{}
+	p.set(0, nil, true)
+	h := newHarnessWith(t, DefaultLimits(), map[string]provider.Provider{"flaky": p})
+	id := h.startAgent("flaky", "say one")
+	h.wait(id, sessionv1.SessionStatus_SESSION_STATUS_PREPARING)
+	h.mark[id] = len(h.events(id))
+	at := time.Now()
+	if _, err := h.s.Interrupt(context.Background(), h.p, id); err != nil {
+		t.Fatal(err)
+	}
+	if f := h.wait(id, idle).Progress.LastFailure; f.GetKind() != sessionv1.FailureKind_FAILURE_KIND_INTERRUPTED || time.Since(at) > 5*time.Second {
+		t.Fatalf("failure %v after %s", f, time.Since(at))
+	}
+	p.set(0, nil, false)
+	h.send(id, "say two")
+	h.wait(id, idle)
+	if got := p.spec(-1).Prompt; got != "say two" {
+		t.Fatalf("the agent got %q", got)
 	}
 }
 

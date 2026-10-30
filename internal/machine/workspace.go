@@ -67,6 +67,13 @@ func projectBase(ctx context.Context, p Project) string {
 func git(ctx context.Context, dir string, args ...string) (string, error) {
 	ctx, cancel := context.WithTimeout(ctx, 2*time.Minute)
 	defer cancel()
+	return gitUnlimited(ctx, dir, args...)
+}
+
+// gitUnlimited is git without its two minutes, for checkouts: a busy
+// machine makes them slow, and stopping one only wastes it. The session's
+// start limits them (Limits.StartTimeout).
+func gitUnlimited(ctx context.Context, dir string, args ...string) (string, error) {
 	full := append([]string{"-c", "core.hooksPath=/dev/null", "-c", "commit.gpgsign=false", "-c", "gc.auto=0", "-c", "maintenance.auto=false"}, args...)
 	env := append(os.Environ(), "GIT_TERMINAL_PROMPT=0", "GIT_OPTIONAL_LOCKS=0")
 	waitStart := time.Now()
@@ -284,7 +291,7 @@ func (w *Workspace) addWorktree(ctx context.Context, repo, common, baseRef, bran
 		}
 		// HEAD names the (unborn) session branch, so this creates it at
 		// base and checks it out in one git process.
-		if _, err := git(ctx, wt, "reset", "--hard", "-q", "--no-recurse-submodules", base, "--"); err != nil {
+		if _, err := gitUnlimited(ctx, wt, "reset", "--hard", "-q", "--no-recurse-submodules", base, "--"); err != nil {
 			return err
 		}
 		return os.Remove(filepath.Join(admin, "locked"))
@@ -324,14 +331,23 @@ func (w *Workspace) gitWorktreeAdd(ctx context.Context, repo, baseRef, branch, i
 		return err
 	}
 	for attempt := 0; ; attempt++ {
-		_, err = git(ctx, repo, "worktree", "add", "-q", w.Path(id), branch)
+		_, err = gitUnlimited(ctx, repo, "worktree", "add", "-q", w.Path(id), branch)
 		// Concurrent adds can see each other's lock files or half-created
 		// metadata; both are transient.
 		if err == nil || attempt >= 4 || !(strings.Contains(err.Error(), ".lock") || strings.Contains(err.Error(), "failed to read .git/worktrees")) {
-			return err
+			break
 		}
 		time.Sleep(time.Duration(20*(attempt+1)) * time.Millisecond)
 	}
+	if err != nil {
+		// A stopped or failed add leaves a half checkout (locked, maybe
+		// without an index) and the branch, which would fail the retry.
+		bg := context.WithoutCancel(ctx)
+		w.Remove(bg, repo, id)
+		os.RemoveAll(w.Path(id))
+		git(bg, repo, "branch", "-D", branch)
+	}
+	return err
 }
 
 // Snapshot commits all changes in the worktree and returns HEAD and this
