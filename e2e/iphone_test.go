@@ -89,13 +89,24 @@ func TestIPhone(t *testing.T) {
 	if g := os.Getenv("HERMESH_IPHONE_GREP"); g != "" {
 		args = append(args[:len(args)-1], "-only-testing:HermeshUITests/HermeshUITests/"+g)
 	}
+	// Folders for Add a Project to browse to: a repository by the name of
+	// the project there already, with a second branch, and a plain folder.
+	folders, _ := filepath.EvalSymlinks(t.TempDir())
+	gitRepoAt(t, filepath.Join(folders, "demo"), map[string]string{"README.md": "# another demo\n"})
+	if out, err := exec.Command("git", "-C", filepath.Join(folders, "demo"), "branch", "feature").CombinedOutput(); err != nil {
+		t.Fatalf("git branch: %v %s", err, out)
+	}
+	os.MkdirAll(filepath.Join(folders, "notes"), 0o755)
 	// xcodebuild hands TEST_RUNNER_-prefixed variables to the UI tests.
-	r := run(t, []string{"TEST_RUNNER_HERMESH_E2E_CONTROL=" + control}, 30*time.Minute, "xcodebuild", args...)
+	r := run(t, []string{"TEST_RUNNER_HERMESH_E2E_CONTROL=" + control, "TEST_RUNNER_HERMESH_E2E_FOLDERS=" + folders}, 30*time.Minute, "xcodebuild", args...)
 	if r.code != 0 {
 		summary := run(t, nil, time.Minute, "xcrun", "xcresulttool", "get", "test-results", "tests", "--path", results).stdout
 		t.Fatalf("UI tests failed (result bundle %s):\n%s\n---- last output ----\n%s\n%s", results, failureMessages(summary), tail(r.stdout, 40), tail(r.stderr, 40))
 	}
 	t.Log(tail(r.stdout, 30))
+	if r := w.cli(30*time.Second, "project", "list"); !strings.Contains(r.stdout, "owner-mac/demo-2") {
+		t.Fatalf("the project added on the iPhone: %+v", r)
+	}
 	checkIPhoneStrings(t, dir, derived)
 }
 

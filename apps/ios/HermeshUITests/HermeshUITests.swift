@@ -350,17 +350,27 @@ final class HermeshUITests: XCTestCase {
         tap("project-menu-demo")
         tap("独立 worktree：每个会话在自己的分支里")
         try waitFor("a separate worktree again") { self.text("独立 worktree").exists ? true : nil }
-        // Another directory by the same name doesn't replace the project.
+        // Add a Project: browse to a folder. It takes the folder's name, a
+        // number added since another project has it; its new branches start
+        // from one of its own branches.
         tap("add-project")
-        let dir = app.textFields.element(boundBy: 0)
-        XCTAssertTrue(dir.waitForExistence(timeout: 10))
-        dir.tap()
-        dir.typeText("/tmp/demo")
-        app.buttons["添加"].tap()
-        XCTAssertTrue(text("已经有叫「demo」的项目").waitForExistence(timeout: 20), "the name is taken")
-        app.alerts.buttons["好"].exists ? app.alerts.buttons["好"].tap() : app.alerts.buttons.firstMatch.tap()
-        tap("close")
-        XCTAssertTrue(text("demo").waitForExistence(timeout: 10), "the project as it was")
+        tap("browse-folders")
+        tap("folder-menu")
+        app.buttons["输入路径…"].tap()
+        let field = app.alerts.textFields.firstMatch
+        XCTAssertTrue(field.waitForExistence(timeout: 10))
+        field.typeText(try e2e("HERMESH_E2E_FOLDERS"))
+        app.alerts.buttons["前往"].tap()
+        XCTAssertTrue(text("notes").waitForExistence(timeout: 30), "the folders there")
+        tap("folder-demo")
+        XCTAssertTrue(text("这是一个 git 仓库，当前分支 main").waitForExistence(timeout: 30), "a repository")
+        tap("choose-folder")
+        XCTAssertTrue(text("agent 里叫它「demo-2」").waitForExistence(timeout: 20), "a name of its own")
+        tap("base-branch")
+        app.buttons["feature"].tap()
+        tap("add-project-confirm")
+        XCTAssertTrue(text("demo-2").waitForExistence(timeout: 30), "the project added")
+        XCTAssertTrue(text("demo").exists, "the project as it was")
         app.navigationBars.buttons.element(boundBy: 0).tap()
     }
 
@@ -742,6 +752,12 @@ final class HermeshUITests: XCTestCase {
 
     func sessionStatus(_ title: String) throws -> String {
         try control("session?title=\(title.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed)!)")["status"] as? String ?? ""
+    }
+
+    /// A value TestIPhone hands the UI tests.
+    func e2e(_ name: String) throws -> String {
+        guard let v = ProcessInfo.processInfo.environment[name] else { throw XCTSkip("run by TestIPhone (\(name))") }
+        return v
     }
 
     /// Asks the test's control server (see TestIPhone).

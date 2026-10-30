@@ -565,6 +565,75 @@ public nonisolated struct Hermesh_Machine_V1_Repo: Sendable {
   fileprivate var _lastCommit: SwiftProtobuf.Google_Protobuf_Timestamp? = nil
 }
 
+public nonisolated struct Hermesh_Machine_V1_ListFoldersRequest: Sendable {
+  // SwiftProtobuf.Message conformance is added in an extension below. See the
+  // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
+  // methods supported on all messages.
+
+  /// "~/code", or a full path; empty or "~" is the home folder.
+  public var path: String = String()
+
+  /// Folders whose name starts with a dot too.
+  public var hidden: Bool = false
+
+  public var unknownFields = SwiftProtobuf.UnknownStorage()
+
+  public init() {}
+}
+
+public nonisolated struct Hermesh_Machine_V1_ListFoldersResponse: Sendable {
+  // SwiftProtobuf.Message conformance is added in an extension below. See the
+  // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
+  // methods supported on all messages.
+
+  /// The folder listed, as the person writes it: "~/code".
+  public var path: String = String()
+
+  public var folders: [Hermesh_Machine_V1_Folder] = []
+
+  /// The files in it, counted, not listed.
+  public var files: Int32 = 0
+
+  /// Whether it is a git repository, its branch checked out, and its local
+  /// branches by name.
+  public var repo: Bool = false
+
+  public var branch: String = String()
+
+  public var branches: [String] = []
+
+  /// Its full path, links resolved, as a project made of it records it.
+  public var fullPath: String = String()
+
+  public var unknownFields = SwiftProtobuf.UnknownStorage()
+
+  public init() {}
+}
+
+public nonisolated struct Hermesh_Machine_V1_Folder: Sendable {
+  // SwiftProtobuf.Message conformance is added in an extension below. See the
+  // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
+  // methods supported on all messages.
+
+  public var name: String = String()
+
+  /// As the person writes it: "~/code/app".
+  public var path: String = String()
+
+  /// Whether it is a git repository, and its branch checked out.
+  public var repo: Bool = false
+
+  public var branch: String = String()
+
+  /// A folder macOS asks the person about before an app reads it (Desktop,
+  /// Documents…): opening it shows that question on the Mac.
+  public var protected: Bool = false
+
+  public var unknownFields = SwiftProtobuf.UnknownStorage()
+
+  public init() {}
+}
+
 public nonisolated struct Hermesh_Machine_V1_TestAgentRequest: Sendable {
   // SwiftProtobuf.Message conformance is added in an extension below. See the
   // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
@@ -1460,6 +1529,151 @@ nonisolated extension Hermesh_Machine_V1_Repo: SwiftProtobuf.Message, SwiftProto
     if lhs.path != rhs.path {return false}
     if lhs.branch != rhs.branch {return false}
     if lhs._lastCommit != rhs._lastCommit {return false}
+    if lhs.unknownFields != rhs.unknownFields {return false}
+    return true
+  }
+}
+
+nonisolated extension Hermesh_Machine_V1_ListFoldersRequest: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
+  public static let protoMessageName: String = _protobuf_package + ".ListFoldersRequest"
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{1}path\0\u{1}hidden\0")
+
+  public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
+    while let fieldNumber = try decoder.nextFieldNumber() {
+      // The use of inline closures is to circumvent an issue where the compiler
+      // allocates stack space for every case branch when no optimizations are
+      // enabled. https://github.com/apple/swift-protobuf/issues/1034
+      switch fieldNumber {
+      case 1: try { try decoder.decodeSingularStringField(value: &self.path) }()
+      case 2: try { try decoder.decodeSingularBoolField(value: &self.hidden) }()
+      default: break
+      }
+    }
+  }
+
+  public func traverse<V: SwiftProtobuf.Visitor>(visitor: inout V) throws {
+    if !self.path.isEmpty {
+      try visitor.visitSingularStringField(value: self.path, fieldNumber: 1)
+    }
+    if self.hidden != false {
+      try visitor.visitSingularBoolField(value: self.hidden, fieldNumber: 2)
+    }
+    try unknownFields.traverse(visitor: &visitor)
+  }
+
+  public static func ==(lhs: Hermesh_Machine_V1_ListFoldersRequest, rhs: Hermesh_Machine_V1_ListFoldersRequest) -> Bool {
+    if lhs.path != rhs.path {return false}
+    if lhs.hidden != rhs.hidden {return false}
+    if lhs.unknownFields != rhs.unknownFields {return false}
+    return true
+  }
+}
+
+nonisolated extension Hermesh_Machine_V1_ListFoldersResponse: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
+  public static let protoMessageName: String = _protobuf_package + ".ListFoldersResponse"
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{1}path\0\u{1}folders\0\u{1}files\0\u{1}repo\0\u{1}branch\0\u{1}branches\0\u{3}full_path\0")
+
+  public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
+    while let fieldNumber = try decoder.nextFieldNumber() {
+      // The use of inline closures is to circumvent an issue where the compiler
+      // allocates stack space for every case branch when no optimizations are
+      // enabled. https://github.com/apple/swift-protobuf/issues/1034
+      switch fieldNumber {
+      case 1: try { try decoder.decodeSingularStringField(value: &self.path) }()
+      case 2: try { try decoder.decodeRepeatedMessageField(value: &self.folders) }()
+      case 3: try { try decoder.decodeSingularInt32Field(value: &self.files) }()
+      case 4: try { try decoder.decodeSingularBoolField(value: &self.repo) }()
+      case 5: try { try decoder.decodeSingularStringField(value: &self.branch) }()
+      case 6: try { try decoder.decodeRepeatedStringField(value: &self.branches) }()
+      case 7: try { try decoder.decodeSingularStringField(value: &self.fullPath) }()
+      default: break
+      }
+    }
+  }
+
+  public func traverse<V: SwiftProtobuf.Visitor>(visitor: inout V) throws {
+    if !self.path.isEmpty {
+      try visitor.visitSingularStringField(value: self.path, fieldNumber: 1)
+    }
+    if !self.folders.isEmpty {
+      try visitor.visitRepeatedMessageField(value: self.folders, fieldNumber: 2)
+    }
+    if self.files != 0 {
+      try visitor.visitSingularInt32Field(value: self.files, fieldNumber: 3)
+    }
+    if self.repo != false {
+      try visitor.visitSingularBoolField(value: self.repo, fieldNumber: 4)
+    }
+    if !self.branch.isEmpty {
+      try visitor.visitSingularStringField(value: self.branch, fieldNumber: 5)
+    }
+    if !self.branches.isEmpty {
+      try visitor.visitRepeatedStringField(value: self.branches, fieldNumber: 6)
+    }
+    if !self.fullPath.isEmpty {
+      try visitor.visitSingularStringField(value: self.fullPath, fieldNumber: 7)
+    }
+    try unknownFields.traverse(visitor: &visitor)
+  }
+
+  public static func ==(lhs: Hermesh_Machine_V1_ListFoldersResponse, rhs: Hermesh_Machine_V1_ListFoldersResponse) -> Bool {
+    if lhs.path != rhs.path {return false}
+    if lhs.folders != rhs.folders {return false}
+    if lhs.files != rhs.files {return false}
+    if lhs.repo != rhs.repo {return false}
+    if lhs.branch != rhs.branch {return false}
+    if lhs.branches != rhs.branches {return false}
+    if lhs.fullPath != rhs.fullPath {return false}
+    if lhs.unknownFields != rhs.unknownFields {return false}
+    return true
+  }
+}
+
+nonisolated extension Hermesh_Machine_V1_Folder: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
+  public static let protoMessageName: String = _protobuf_package + ".Folder"
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{1}name\0\u{1}path\0\u{1}repo\0\u{1}branch\0\u{1}protected\0")
+
+  public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
+    while let fieldNumber = try decoder.nextFieldNumber() {
+      // The use of inline closures is to circumvent an issue where the compiler
+      // allocates stack space for every case branch when no optimizations are
+      // enabled. https://github.com/apple/swift-protobuf/issues/1034
+      switch fieldNumber {
+      case 1: try { try decoder.decodeSingularStringField(value: &self.name) }()
+      case 2: try { try decoder.decodeSingularStringField(value: &self.path) }()
+      case 3: try { try decoder.decodeSingularBoolField(value: &self.repo) }()
+      case 4: try { try decoder.decodeSingularStringField(value: &self.branch) }()
+      case 5: try { try decoder.decodeSingularBoolField(value: &self.protected) }()
+      default: break
+      }
+    }
+  }
+
+  public func traverse<V: SwiftProtobuf.Visitor>(visitor: inout V) throws {
+    if !self.name.isEmpty {
+      try visitor.visitSingularStringField(value: self.name, fieldNumber: 1)
+    }
+    if !self.path.isEmpty {
+      try visitor.visitSingularStringField(value: self.path, fieldNumber: 2)
+    }
+    if self.repo != false {
+      try visitor.visitSingularBoolField(value: self.repo, fieldNumber: 3)
+    }
+    if !self.branch.isEmpty {
+      try visitor.visitSingularStringField(value: self.branch, fieldNumber: 4)
+    }
+    if self.protected != false {
+      try visitor.visitSingularBoolField(value: self.protected, fieldNumber: 5)
+    }
+    try unknownFields.traverse(visitor: &visitor)
+  }
+
+  public static func ==(lhs: Hermesh_Machine_V1_Folder, rhs: Hermesh_Machine_V1_Folder) -> Bool {
+    if lhs.name != rhs.name {return false}
+    if lhs.path != rhs.path {return false}
+    if lhs.repo != rhs.repo {return false}
+    if lhs.branch != rhs.branch {return false}
+    if lhs.protected != rhs.protected {return false}
     if lhs.unknownFields != rhs.unknownFields {return false}
     return true
   }

@@ -51,6 +51,9 @@ const (
 	// MachineAdminServiceListReposProcedure is the fully-qualified name of the MachineAdminService's
 	// ListRepos RPC.
 	MachineAdminServiceListReposProcedure = "/hermesh.machine.v1.MachineAdminService/ListRepos"
+	// MachineAdminServiceListFoldersProcedure is the fully-qualified name of the MachineAdminService's
+	// ListFolders RPC.
+	MachineAdminServiceListFoldersProcedure = "/hermesh.machine.v1.MachineAdminService/ListFolders"
 	// MachineAdminServiceTestAgentProcedure is the fully-qualified name of the MachineAdminService's
 	// TestAgent RPC.
 	MachineAdminServiceTestAgentProcedure = "/hermesh.machine.v1.MachineAdminService/TestAgent"
@@ -203,6 +206,9 @@ type MachineAdminServiceClient interface {
 	// The git repositories under the home folder, for Add a Project: read
 	// when the person opens it, never kept (docs/onboarding.md §5.5).
 	ListRepos(context.Context, *v1.ListReposRequest) (*v1.ListReposResponse, error)
+	// The folders in one folder, for Add a Project's folder browser: read
+	// when the person opens it, never kept.
+	ListFolders(context.Context, *v1.ListFoldersRequest) (*v1.ListFoldersResponse, error)
 	// One short fixed turn of a coding agent in a scratch folder, to prove it
 	// is installed and signed in: no session, project or grant is involved.
 	TestAgent(context.Context, *v1.TestAgentRequest) (*v1.TestAgentResponse, error)
@@ -237,6 +243,12 @@ func NewMachineAdminServiceClient(httpClient connect.HTTPClient, baseURL string,
 			connect.WithSchema(machineAdminServiceMethods.ByName("ListRepos")),
 			connect.WithClientOptions(opts...),
 		),
+		listFolders: connect.NewClient[v1.ListFoldersRequest, v1.ListFoldersResponse](
+			httpClient,
+			baseURL+MachineAdminServiceListFoldersProcedure,
+			connect.WithSchema(machineAdminServiceMethods.ByName("ListFolders")),
+			connect.WithClientOptions(opts...),
+		),
 		testAgent: connect.NewClient[v1.TestAgentRequest, v1.TestAgentResponse](
 			httpClient,
 			baseURL+MachineAdminServiceTestAgentProcedure,
@@ -251,6 +263,7 @@ type machineAdminServiceClient struct {
 	applyAdminCommand *connect.Client[v1.ApplyAdminCommandRequest, v1.ApplyAdminCommandResponse]
 	pushRevocations   *connect.Client[v1.PushRevocationsRequest, v1.PushRevocationsResponse]
 	listRepos         *connect.Client[v1.ListReposRequest, v1.ListReposResponse]
+	listFolders       *connect.Client[v1.ListFoldersRequest, v1.ListFoldersResponse]
 	testAgent         *connect.Client[v1.TestAgentRequest, v1.TestAgentResponse]
 }
 
@@ -281,6 +294,15 @@ func (c *machineAdminServiceClient) ListRepos(ctx context.Context, req *v1.ListR
 	return nil, err
 }
 
+// ListFolders calls hermesh.machine.v1.MachineAdminService.ListFolders.
+func (c *machineAdminServiceClient) ListFolders(ctx context.Context, req *v1.ListFoldersRequest) (*v1.ListFoldersResponse, error) {
+	response, err := c.listFolders.CallUnary(ctx, connect.NewRequest(req))
+	if response != nil {
+		return response.Msg, err
+	}
+	return nil, err
+}
+
 // TestAgent calls hermesh.machine.v1.MachineAdminService.TestAgent.
 func (c *machineAdminServiceClient) TestAgent(ctx context.Context, req *v1.TestAgentRequest) (*v1.TestAgentResponse, error) {
 	response, err := c.testAgent.CallUnary(ctx, connect.NewRequest(req))
@@ -298,6 +320,9 @@ type MachineAdminServiceHandler interface {
 	// The git repositories under the home folder, for Add a Project: read
 	// when the person opens it, never kept (docs/onboarding.md §5.5).
 	ListRepos(context.Context, *v1.ListReposRequest) (*v1.ListReposResponse, error)
+	// The folders in one folder, for Add a Project's folder browser: read
+	// when the person opens it, never kept.
+	ListFolders(context.Context, *v1.ListFoldersRequest) (*v1.ListFoldersResponse, error)
 	// One short fixed turn of a coding agent in a scratch folder, to prove it
 	// is installed and signed in: no session, project or grant is involved.
 	TestAgent(context.Context, *v1.TestAgentRequest) (*v1.TestAgentResponse, error)
@@ -328,6 +353,12 @@ func NewMachineAdminServiceHandler(svc MachineAdminServiceHandler, opts ...conne
 		connect.WithSchema(machineAdminServiceMethods.ByName("ListRepos")),
 		connect.WithHandlerOptions(opts...),
 	)
+	machineAdminServiceListFoldersHandler := connect.NewUnaryHandlerSimple(
+		MachineAdminServiceListFoldersProcedure,
+		svc.ListFolders,
+		connect.WithSchema(machineAdminServiceMethods.ByName("ListFolders")),
+		connect.WithHandlerOptions(opts...),
+	)
 	machineAdminServiceTestAgentHandler := connect.NewUnaryHandlerSimple(
 		MachineAdminServiceTestAgentProcedure,
 		svc.TestAgent,
@@ -342,6 +373,8 @@ func NewMachineAdminServiceHandler(svc MachineAdminServiceHandler, opts ...conne
 			machineAdminServicePushRevocationsHandler.ServeHTTP(w, r)
 		case MachineAdminServiceListReposProcedure:
 			machineAdminServiceListReposHandler.ServeHTTP(w, r)
+		case MachineAdminServiceListFoldersProcedure:
+			machineAdminServiceListFoldersHandler.ServeHTTP(w, r)
 		case MachineAdminServiceTestAgentProcedure:
 			machineAdminServiceTestAgentHandler.ServeHTTP(w, r)
 		default:
@@ -363,6 +396,10 @@ func (UnimplementedMachineAdminServiceHandler) PushRevocations(context.Context, 
 
 func (UnimplementedMachineAdminServiceHandler) ListRepos(context.Context, *v1.ListReposRequest) (*v1.ListReposResponse, error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("hermesh.machine.v1.MachineAdminService.ListRepos is not implemented"))
+}
+
+func (UnimplementedMachineAdminServiceHandler) ListFolders(context.Context, *v1.ListFoldersRequest) (*v1.ListFoldersResponse, error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("hermesh.machine.v1.MachineAdminService.ListFolders is not implemented"))
 }
 
 func (UnimplementedMachineAdminServiceHandler) TestAgent(context.Context, *v1.TestAgentRequest) (*v1.TestAgentResponse, error) {

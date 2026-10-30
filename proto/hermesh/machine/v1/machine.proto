@@ -207,6 +207,11 @@ service MachineAdminService {
   rpc ListRepos(ListReposRequest) returns (ListReposResponse) {
     option (hermesh.options.v1.access) = ACCESS_WRITE;
   }
+  // The folders in one folder, for Add a Project's folder browser: read
+  // when the person opens it, never kept.
+  rpc ListFolders(ListFoldersRequest) returns (ListFoldersResponse) {
+    option (hermesh.options.v1.access) = ACCESS_WRITE;
+  }
   // One short fixed turn of a coding agent in a scratch folder, to prove it
   // is installed and signed in: no session, project or grant is involved.
   rpc TestAgent(TestAgentRequest) returns (TestAgentResponse) {
@@ -225,6 +230,40 @@ message Repo {
   string path = 1;
   string branch = 2;
   google.protobuf.Timestamp last_commit = 3;
+}
+
+message ListFoldersRequest {
+  // "~/code", or a full path; empty or "~" is the home folder.
+  string path = 1;
+  // Folders whose name starts with a dot too.
+  bool hidden = 2;
+}
+
+message ListFoldersResponse {
+  // The folder listed, as the person writes it: "~/code".
+  string path = 1;
+  repeated Folder folders = 2;
+  // The files in it, counted, not listed.
+  int32 files = 3;
+  // Whether it is a git repository, its branch checked out, and its local
+  // branches by name.
+  bool repo = 4;
+  string branch = 5;
+  repeated string branches = 6;
+  // Its full path, links resolved, as a project made of it records it.
+  string full_path = 7;
+}
+
+message Folder {
+  string name = 1;
+  // As the person writes it: "~/code/app".
+  string path = 2;
+  // Whether it is a git repository, and its branch checked out.
+  bool repo = 3;
+  string branch = 4;
+  // A folder macOS asks the person about before an app reads it (Desktop,
+  // Documents…): opening it shows that question on the Mac.
+  bool protected = 5;
 }
 
 message TestAgentRequest {

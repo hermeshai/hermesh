@@ -242,11 +242,16 @@ Terminal on this iPhone? Copy a Command for This Account
   under its home folder. This is a new end-to-end call, made when the sheet
   opens: three levels deep, skipping dependency and cache folders.
   - Picking one fills in the name and makes it a worktree project.
-  - Typing a path stays.
+  - Browse Other Folders… opens the machine's folders one screen at a
+    time (`ListFolders`, end to end, read when opened): each marked when it
+    is a git repository, Choose at the bottom. The name follows the folder;
+    How Agents Work shows only for a repository, its base branch picked
+    from the repository's own branches. Hidden folders and Type a Path… are
+    in the menu; a machine from before `ListFolders` takes a typed path.
   - On a Mac machine the search skips the folders macOS protects (Desktop,
     Documents, Downloads, iCloud Drive, other volumes): reading them would
-    put a privacy prompt on a screen nobody may be watching. A repository
-    there is typed in.
+    put a privacy prompt on a screen nobody may be watching. Browsing into
+    one says so first, since that prompt shows on the Mac.
 - **Version**: when a machine's Hermesh is older than the phone's, its page
   says so and shows the install command that updates it. Machines that
   update themselves are a design of their own.

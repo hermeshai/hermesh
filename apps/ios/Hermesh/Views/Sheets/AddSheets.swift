@@ -356,90 +356,198 @@ struct AddProjectSheet: View {
     let machineID: String
     /// The coding agent it is for; a directory already a project gets it too.
     let agent: String
+    /// The folder chosen, as the person writes it ("~/code/app").
     @State private var path = ""
-    @State private var name = ""
+    /// What its machine said of it: nil while asked, or from a machine from
+    /// before ListFolders.
+    @State private var folder: Hermesh_Machine_V1_ListFoldersResponse?
     @State private var inPlace = false
+    /// Where new sessions' branches start; empty: the branch checked out then.
     @State private var baseRef = ""
     @State private var busy = false
-    @State private var taken: String?
-    @State private var autoName = ""
     @State private var repos: [Hermesh_Machine_V1_Repo]?
+    @State private var reposError: String?
+    /// The folders browsed over this form, one screen each.
+    @State private var browsing: [String] = []
 
-    private var onMac: Bool { model.machines.first { $0.machineID == machineID }?.status.platform.hasPrefix("darwin") ?? false }
+    private var machine: Machine? { model.machines.first { $0.machineID == machineID } }
+    private var onMac: Bool { machine?.status.platform.hasPrefix("darwin") ?? false }
+    /// The project the chosen folder already is.
+    private var existing: Project? {
+        guard let full = folder?.fullPath, !full.isEmpty else { return nil }
+        return model.projects.first { $0.machineID == machineID && $0.path == full }
+    }
+    private var alreadyForAgent: Bool { existing.map { $0.agents.isEmpty || $0.agents.contains(agent) } ?? false }
+    /// What agents call the project: the folder's name, made to fit a
+    /// project's, numbered when another project of this machine has it.
+    private var name: String {
+        if let existing { return existing.projectID }
+        let names = Set(model.projects.filter { $0.machineID == machineID }.map(\.projectID))
+        let base = projectID(folderName(path))
+        var n = base, i = 2
+        while names.contains(n) {
+            n = "\(base)-\(i)"
+            i += 1
+        }
+        return n
+    }
+    /// Whether the folder is a git repository; nil when its machine couldn't say.
+    private var isRepo: Bool? { folder.map(\.repo) ?? (repos?.contains { $0.path == path } == true ? true : nil) }
+    private var canAdd: Bool {
+        !path.isEmpty && !alreadyForAgent && (machine?.online ?? false)
+    }
 
     var body: some View {
-        NavigationStack {
+        NavigationStack(path: $browsing) {
             List {
-                Section {
-                    LabeledContent("Machine", value: model.machineName(machineID))
-                    LabeledContent("Coding agent", value: agentTitle(agent))
-                    TextField("Directory, e.g. ~/code/my-app", text: $path).font(.body.monospaced())
-                        .textInputAutocapitalization(.never).autocorrectionDisabled()
-                        .onChange(of: path) { _, p in
-                            // The name follows the directory until edited.
-                            let last = URL(fileURLWithPath: (p as NSString).expandingTildeInPath).lastPathComponent
-                            if name.isEmpty || name == autoName {
-                                name = projectID(last)
-                                autoName = name
-                            }
-                        }
-                    TextField("Project name", text: $name).textInputAutocapitalization(.never).autocorrectionDisabled()
-                } footer: {
-                    Text("A project is a directory agents can work in. Then choose in each grant which projects it can use.")
-                }
-                if let repos, !repos.isEmpty {
+                if !(machine?.online ?? false) {
                     Section {
-                        ForEach(repos.prefix(8), id: \.path) { r in
-                            Button {
-                                path = r.path
-                                inPlace = false
-                            } label: {
-                                HStack {
-                                    VStack(alignment: .leading, spacing: 2) {
-                                        Text(URL(fileURLWithPath: r.path).lastPathComponent).foregroundStyle(.primary)
-                                        Text(([r.path, r.branch] + (r.hasLastCommit ? [agoText(r.lastCommit.date, now: model.now)] : [])).filter { !$0.isEmpty }.joined(separator: " · "))
-                                            .font(.footnote).foregroundStyle(.secondary).lineLimit(1).truncationMode(.middle)
-                                    }
-                                    Spacer()
-                                    if path == r.path { Image(systemName: "checkmark").foregroundStyle(.tint) }
-                                }
-                            }
-                            .accessibilityIdentifier("repo-\(r.path)")
-                        }
-                    } header: {
-                        Text("On this machine")
+                        Label("Choose a Folder", systemImage: "folder").foregroundStyle(.secondary)
                     } footer: {
-                        if onMac { Text("Folders macOS protects, such as Desktop and Documents, aren’t searched: type those above.") }
+                        Text("\(model.machineName(machineID)) is offline. Once it’s back, you can browse its folders and add a project.")
                     }
-                }
-                Section {
-                    Picker("How agents work", selection: $inPlace) {
-                        Text("Separate worktree").tag(false)
-                        Text("In place").tag(true)
-                    }
-                    .pickerStyle(.segmented)
-                    if !inPlace { TextField("Base branch (optional), e.g. main", text: $baseRef).textInputAutocapitalization(.never).autocorrectionDisabled() }
-                } footer: {
-                    Text(inPlace ? "Agents change the files in this directory directly, as if you ran Claude Code there; no separate branch and no change history."
-                        : "For a git repository: each session gets its own branch and worktree, and your own files are left alone.")
+                } else if path.isEmpty {
+                    recent
+                } else {
+                    chosen
+                    if isRepo != false && existing == nil { workspace }
                 }
             }
             .navigationTitle("Add a Project")
+            .navigationSubtitle("\(model.machineName(machineID)) · \(agentTitle(agent))")
             .navigationBarTitleDisplayMode(.inline)
-            .task { repos = try? await model.api?.repos(machine: machineID) }
-            .alert("Something went wrong", isPresented: Binding(get: { taken != nil }, set: { if !$0 { taken = nil } })) {
-                Button("OK", role: .cancel) {}
-            } message: {
-                Text(taken ?? "")
+            .navigationDestination(for: String.self) { p in
+                FolderBrowser(machineID: machineID, path: p, browsing: $browsing) { choose($0, listing: $1) }
+            }
+            .task {
+                do {
+                    repos = try await model.api?.repos(machine: machineID)
+                } catch {
+                    reposError = error.localizedDescription
+                }
             }
             .toolbar {
                 CloseButton()
                 ToolbarItem(placement: .confirmationAction) {
-                    Button(busy ? "Adding…" : "Add") { add() }.disabled(path.isEmpty || name.isEmpty || busy)
-                        .accessibilityIdentifier("add-project-confirm")
+                    if busy {
+                        ProgressView()
+                    } else {
+                        Button("Add", systemImage: "checkmark", role: .confirm) { add() }.disabled(!canAdd)
+                            .accessibilityIdentifier("add-project-confirm")
+                    }
                 }
             }
         }
+    }
+
+    /// Before a folder is chosen: the machine's newest repositories, one tap
+    /// each, and its folders to browse.
+    private var recent: some View {
+        Section {
+            if let repos {
+                ForEach(repos.prefix(5), id: \.path) { r in
+                    Button { choose(r.path) } label: {
+                        FolderLabel(name: folderName(r.path), detail: ([r.path, r.branch] + (r.hasLastCommit ? [agoText(r.lastCommit.date, now: model.now)] : [])).filter { !$0.isEmpty }.joined(separator: " · "), repo: true)
+                    }
+                    .accessibilityIdentifier("repo-\(r.path)")
+                }
+            } else if reposError == nil {
+                HStack(spacing: 10) {
+                    ProgressView()
+                    Text("Looking for repositories…").foregroundStyle(.secondary)
+                }
+            }
+            NavigationLink(value: "~") {
+                Label("Browse Other Folders…", systemImage: "folder")
+            }
+            .accessibilityIdentifier("browse-folders")
+        } header: {
+            if repos?.isEmpty == false { Text("Recent Repositories") }
+        } footer: {
+            VStack(alignment: .leading, spacing: 6) {
+                if let reposError { Text("Couldn’t list its repositories: \(reposError)") }
+                Text("A project is a directory agents can work in. Then choose in each grant which projects it can use.")
+                if onMac && repos != nil { Text("Repositories in folders macOS protects, such as Documents, aren’t listed: browse to them.") }
+            }
+        }
+    }
+
+    private var chosen: some View {
+        Section {
+            NavigationLink(value: parentFolder(path)) {
+                FolderLabel(name: folderName(path), detail: path, repo: isRepo == true, large: true)
+            }
+            .accessibilityIdentifier("chosen-folder")
+        } header: {
+            Text("Folder")
+        } footer: {
+            if let existing {
+                if alreadyForAgent {
+                    Text("“\(existing.projectID)” is already a project for \(agentTitle(agent)).")
+                } else {
+                    Text("Already the project “\(existing.projectID)”, for \(existing.agents.map(agentTitle).formatted()). Adding it lets \(agentTitle(agent)) use it too, working as it does now.")
+                }
+            } else {
+                VStack(alignment: .leading, spacing: 6) {
+                    let base = projectID(folderName(path))
+                    if name != base {
+                        Text("Agents call it “\(name)”: another project here is called “\(base)”.")
+                    } else if name != folderName(path) {
+                        Text("Agents call it “\(name)”.")
+                    }
+                    if isRepo == false { Text("Not a git repository: agents change the files in this folder directly.") }
+                }
+            }
+        }
+    }
+
+    private var workspace: some View {
+        Section("How Agents Work") {
+            choice(false, "Separate worktree", "Each session gets its own branch; the files you’re changing are left alone")
+            choice(true, "In place", "Agents change this folder directly, as if you ran \(agentTitle(agent)) here")
+            if !inPlace, let folder, folder.repo {
+                Picker("New Branches From", selection: $baseRef) {
+                    Text("Current branch (\(folder.branch))").tag("")
+                    ForEach(folder.branches, id: \.self) { Text($0).tag($0) }
+                }
+                .pickerStyle(.menu)
+                .accessibilityIdentifier("base-branch")
+            }
+        }
+    }
+
+    private func choice(_ value: Bool, _ title: LocalizedStringKey, _ detail: LocalizedStringKey) -> some View {
+        Button { inPlace = value } label: {
+            HStack {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(title).foregroundStyle(.primary)
+                    Text(detail).font(.footnote).foregroundStyle(.secondary)
+                }
+                Spacer()
+                if inPlace == value { Image(systemName: "checkmark").fontWeight(.semibold).foregroundStyle(.tint) }
+            }
+            .contentShape(Rectangle())
+        }
+        .accessibilityAddTraits(inPlace == value ? .isSelected : [])
+        .accessibilityIdentifier(value ? "workspace-in-place" : "workspace-worktree")
+    }
+
+    /// Takes a folder, with what its machine said of it, or asks.
+    private func choose(_ p: String, listing: Hermesh_Machine_V1_ListFoldersResponse? = nil) {
+        path = listing?.path ?? p
+        folder = nil
+        inPlace = false
+        baseRef = ""
+        browsing = []
+        if let listing { return describe(listing) }
+        Task {
+            if let l = try? await model.api?.folders(machine: machineID, path: p), path == l.path { describe(l) }
+        }
+    }
+
+    private func describe(_ listing: Hermesh_Machine_V1_ListFoldersResponse) {
+        folder = listing
+        inPlace = !listing.repo
     }
 
     private func projectID(_ folder: String) -> String {
@@ -449,32 +557,22 @@ struct AddProjectSheet: View {
     }
 
     private func add() {
+        let name = name
         busy = true
-        var r = Hermesh_Local_V1_AddProjectRequest()
-        r.machineID = machineID
-        r.projectID = name
-        r.path = path
-        r.workspace = inPlace ? .inPlace : .worktree
-        r.defaultBaseRef = inPlace ? "" : baseRef
-        r.agents = [agent]
         Task {
             defer { busy = false }
             do {
-                let projects = try await model.api?.projects(machine: machineID).projects ?? []
-                let trimmed = { (p: String) in p.count > 1 && p.hasSuffix("/") ? String(p.dropLast()) : p }
-                if let same = projects.first(where: { trimmed($0.path) == trimmed(path) }) {
-                    if !same.agents.isEmpty && !same.agents.contains(agent) {
-                        try await model.saveProject(same, agents: same.agents + [agent], workspace: same.workspace)
-                        model.show(String(localized: "“\(same.projectID)” is now for \(agentTitle(agent)) too"))
-                    } else {
-                        model.show(String(localized: "“\(same.projectID)” is already for \(agentTitle(agent))"))
-                    }
-                } else if let taken = projects.first(where: { $0.projectID == name }) {
-                    // Adding it would replace that project (it may be this
-                    // directory, written another way): a name of its own.
-                    self.taken = String(localized: "A project named “\(name)” is already on this machine, at \(taken.path). Choose another name.")
-                    return
+                if let existing {
+                    try await model.saveProject(existing, agents: existing.agents + [agent], workspace: existing.workspace)
+                    model.show(String(localized: "“\(existing.projectID)” is now for \(agentTitle(agent)) too"))
                 } else {
+                    var r = Hermesh_Local_V1_AddProjectRequest()
+                    r.machineID = machineID
+                    r.projectID = name
+                    r.path = folder?.fullPath.isEmpty == false ? folder!.fullPath : path
+                    r.workspace = inPlace ? .inPlace : .worktree
+                    r.defaultBaseRef = inPlace ? "" : baseRef
+                    r.agents = [agent]
                     try await model.addProject(r)
                     model.show(String(localized: "Added project “\(name)”"))
                 }

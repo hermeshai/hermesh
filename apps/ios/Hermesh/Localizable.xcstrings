@@ -60,6 +60,16 @@
         }
       }
     },
+    "%@ is offline. Once it’s back, you can browse its folders and add a project.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ 现在离线。它连上以后，才能浏览它的文件夹、添加项目。"
+          }
+        }
+      }
+    },
     "%@ is offline; this is what was last read from it.": {
       "localizations": {
         "zh-Hans": {
@@ -225,6 +235,34 @@
           "stringUnit": {
             "state": "translated",
             "value": "%@ 在用 · %@"
+          }
+        }
+      }
+    },
+    "%d files aren’t shown.": {
+      "localizations": {
+        "en": {
+          "variations": {
+            "plural": {
+              "one": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "%d file isn’t shown."
+                }
+              },
+              "other": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "%d files aren’t shown."
+                }
+              }
+            }
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "还有 %d 个文件，不显示。"
           }
         }
       }
@@ -623,6 +661,26 @@
         }
       }
     },
+    "A folder on %@.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ 上的一个文件夹。"
+          }
+        }
+      }
+    },
+    "A git repository, on %@.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "这是一个 git 仓库，当前分支 %@。"
+          }
+        }
+      }
+    },
     "A grant decides which of your projects, machines and coding agents an agent can use, and for how long.": {
       "localizations": {
         "zh-Hans": {
@@ -659,16 +717,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "项目是 agent 可以工作的目录。添加以后，再在每个授权里分别勾选它能用哪些。"
-          }
-        }
-      }
-    },
-    "A project named “%@” is already on this machine, at %@. Choose another name.": {
-      "localizations": {
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "这台机器上已经有叫「%1$@」的项目，在 %2$@。换个名字吧。"
           }
         }
       }
@@ -863,16 +911,6 @@
         }
       }
     },
-    "Adding…": {
-      "localizations": {
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "正在添加…"
-          }
-        }
-      }
-    },
     "Add…": {
       "localizations": {
         "zh-Hans": {
@@ -913,12 +951,32 @@
         }
       }
     },
-    "Agents change the files in this directory directly, as if you ran Claude Code there; no separate branch and no change history.": {
+    "Agents call it “%@”.": {
       "localizations": {
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "agent 直接在这个目录里改动，就像你自己在这里运行 Claude Code；没有单独的分支和改动记录。"
+            "value": "agent 里叫它「%@」。"
+          }
+        }
+      }
+    },
+    "Agents call it “%@”: another project here is called “%@”.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "agent 里叫它「%1$@」，因为这台机器上已有叫「%2$@」的项目。"
+          }
+        }
+      }
+    },
+    "Agents change this folder directly, as if you ran %@ here": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "直接改这个目录，像你自己在这里跑 %@"
           }
         }
       }
@@ -1039,6 +1097,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "在设置里允许通知"
+          }
+        }
+      }
+    },
+    "Already the project “%@”, for %@. Adding it lets %@ use it too, working as it does now.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "已是项目「%1$@」，%2$@ 在用。添加后 %3$@ 也能用，工作方式沿用原来的设置。"
           }
         }
       }
@@ -1273,16 +1341,6 @@
         }
       }
     },
-    "Base branch (optional), e.g. main": {
-      "localizations": {
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "默认基线（可选），例如 main"
-          }
-        }
-      }
-    },
     "Bots such as Grok Bot aren’t always running. Once this is set up, Hermesh wakes this one when a session it started finishes or another agent writes to it. Several bots on one connection can each be set up on their own.": {
       "localizations": {
         "zh-Hans": {
@@ -1299,6 +1357,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "分支"
+          }
+        }
+      }
+    },
+    "Browse Other Folders…": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "浏览其他文件夹…"
           }
         }
       }
@@ -1463,12 +1531,32 @@
         }
       }
     },
+    "Choose a Folder": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "选择目录"
+          }
+        }
+      }
+    },
     "Choose at least one project, or All Projects, and one coding agent.": {
       "localizations": {
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
             "value": "至少选一个项目（或“所有项目”）和一个编码 agent。"
+          }
+        }
+      }
+    },
+    "Choose “%@”": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "选择「%@」"
           }
         }
       }
@@ -1773,6 +1861,16 @@
         }
       }
     },
+    "Couldn’t list its repositories: %@": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "列不出它的仓库：%@"
+          }
+        }
+      }
+    },
     "Crashed": {
       "localizations": {
         "zh-Hans": {
@@ -1809,6 +1907,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "创建管理密钥"
+          }
+        }
+      }
+    },
+    "Current branch (%@)": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "当前分支（%@）"
           }
         }
       }
@@ -1943,16 +2051,6 @@
         }
       }
     },
-    "Directory, e.g. ~/code/my-app": {
-      "localizations": {
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "目录，例如 ~/code/my-app"
-          }
-        }
-      }
-    },
     "Disconnect": {
       "localizations": {
         "zh-Hans": {
@@ -2079,6 +2177,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "下载 Hermesh for Mac"
+          }
+        }
+      }
+    },
+    "Each session gets its own branch; the files you’re changing are left alone": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "每个会话一个分支，不碰你正在改的文件"
           }
         }
       }
@@ -2353,22 +2461,12 @@
         }
       }
     },
-    "Folders macOS protects, such as Desktop and Documents, aren’t searched: type those above.": {
+    "Folder": {
       "localizations": {
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "macOS 保护的文件夹（如桌面和文稿）不会被搜索，请在上面手动输入。"
-          }
-        }
-      }
-    },
-    "For a git repository: each session gets its own branch and worktree, and your own files are left alone.": {
-      "localizations": {
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "git 仓库：每个会话在自己的分支和 worktree 里，不碰你正在改的文件。"
+            "value": "目录"
           }
         }
       }
@@ -2389,6 +2487,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "开始使用"
+          }
+        }
+      }
+    },
+    "Go": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "前往"
           }
         }
       }
@@ -2486,6 +2594,16 @@
         }
       }
     },
+    "Hermesh on %@ is too old to browse its folders. Update it there, or type a path.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ 上的 Hermesh 版本太旧，不能浏览文件夹。在那台机器上更新，或者输入路径。"
+          }
+        }
+      }
+    },
     "Hermesh on all your devices goes back to how it was when first installed.": {
       "localizations": {
         "zh-Hans": {
@@ -2562,6 +2680,26 @@
           "stringUnit": {
             "state": "translated",
             "value": "高"
+          }
+        }
+      }
+    },
+    "Home": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "主目录"
+          }
+        }
+      }
+    },
+    "How Agents Work": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "工作方式"
           }
         }
       }
@@ -3146,6 +3284,16 @@
         }
       }
     },
+    "Looking for repositories…": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "正在找仓库…"
+          }
+        }
+      }
+    },
     "Low": {
       "localizations": {
         "zh-Hans": {
@@ -3162,16 +3310,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "MCP 地址"
-          }
-        }
-      }
-    },
-    "Machine": {
-      "localizations": {
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "机器"
           }
         }
       }
@@ -3376,6 +3514,16 @@
         }
       }
     },
+    "New Branches From": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "新分支基于"
+          }
+        }
+      }
+    },
     "New computers, agents and devices need Face ID": {
       "localizations": {
         "zh-Hans": {
@@ -3506,6 +3654,16 @@
         }
       }
     },
+    "No folders": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "没有子文件夹"
+          }
+        }
+      }
+    },
     "No grants yet.": {
       "localizations": {
         "zh-Hans": {
@@ -3602,6 +3760,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "以后再说"
+          }
+        }
+      }
+    },
+    "Not a git repository: agents change the files in this folder directly.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "不是 git 仓库：agent 直接改这个目录里的文件。"
           }
         }
       }
@@ -3846,16 +4014,6 @@
         }
       }
     },
-    "On this machine": {
-      "localizations": {
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "这台机器上的仓库"
-          }
-        }
-      }
-    },
     "Once disconnected, it loses access at once; running sessions are interrupted, and the sessions themselves stay.": {
       "localizations": {
         "zh-Hans": {
@@ -3946,12 +4104,42 @@
         }
       }
     },
+    "Open": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "打开"
+          }
+        }
+      }
+    },
     "Open %@": {
       "localizations": {
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
             "value": "打开 %@"
+          }
+        }
+      }
+    },
+    "Open a Folder to Choose It": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "进入一个文件夹再选择"
+          }
+        }
+      }
+    },
+    "Open “%@”?": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "打开「%@」？"
           }
         }
       }
@@ -4076,16 +4264,6 @@
         }
       }
     },
-    "Project name": {
-      "localizations": {
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "项目名"
-          }
-        }
-      }
-    },
     "Projects": {
       "localizations": {
         "zh-Hans": {
@@ -4112,6 +4290,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "先不处理。核对码不一样就不要批准"
+          }
+        }
+      }
+    },
+    "Reading %@…": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "正在读取 %@…"
           }
         }
       }
@@ -4192,6 +4380,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "最近"
+          }
+        }
+      }
+    },
+    "Recent Repositories": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "最近的仓库"
           }
         }
       }
@@ -4382,6 +4580,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "%1$@ 秒内回复：“%2$@”"
+          }
+        }
+      }
+    },
+    "Repositories in folders macOS protects, such as Documents, aren’t listed: browse to them.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "macOS 保护的文件夹（如文稿）里的仓库不会列出来，浏览进去选。"
           }
         }
       }
@@ -4772,6 +4980,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "显示已归档"
+          }
+        }
+      }
+    },
+    "Show Hidden Folders": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "显示隐藏文件夹"
           }
         }
       }
@@ -5687,6 +5905,26 @@
         }
       }
     },
+    "Type a Path": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "输入路径"
+          }
+        }
+      }
+    },
+    "Type a Path…": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "输入路径…"
+          }
+        }
+      }
+    },
     "Type on %@": {
       "localizations": {
         "zh-Hans": {
@@ -6484,6 +6722,36 @@
         }
       }
     },
+    "macOS asks on %@ whether Hermesh may read this folder. Someone at that Mac has to click Allow.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "macOS 会在 %@ 上弹窗，问 Hermesh 能不能读这个文件夹。要有人在那台 Mac 前点「允许」才能继续。"
+          }
+        }
+      }
+    },
+    "macOS asks on that Mac before it opens": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "打开前，macOS 会在那台 Mac 上问一次"
+          }
+        }
+      }
+    },
+    "macOS didn’t let Hermesh read this folder. On that Mac, allow it in System Settings › Privacy & Security › Files & Folders.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "macOS 没让 Hermesh 读这个文件夹。在那台 Mac 的「系统设置 › 隐私与安全性 › 文件与文件夹」里允许。"
+          }
+        }
+      }
+    },
     "notice.body": {
       "extractionState": "manual",
       "localizations": {
@@ -6551,6 +6819,9 @@
         }
       }
     },
+    "~/code/my-app": {
+      "shouldTranslate": false
+    },
     "·": {
       "shouldTranslate": false
     },
@@ -6584,12 +6855,12 @@
         }
       }
     },
-    "“%@” is already for %@": {
+    "“%@” is already a project for %@.": {
       "localizations": {
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "「%1$@」已经给 %2$@ 用了"
+            "value": "「%1$@」已经是 %2$@ 的项目。"
           }
         }
       }

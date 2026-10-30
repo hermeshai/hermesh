@@ -5,9 +5,11 @@ import (
 	"errors"
 	"fmt"
 	"io/fs"
+	"maps"
 	"os"
 	"path/filepath"
 	"runtime"
+	"slices"
 	"sort"
 	"strings"
 	"time"
@@ -22,11 +24,13 @@ import (
 
 // What a machine offers the owner's devices while they set it up from
 // afar (docs/onboarding.md §5.5): the repositories to make projects of,
-// and a test of each coding agent.
+// the folders to browse for one, and a test of each coding agent.
 
 const (
-	repoDepth = 3   // levels under the home folder
-	repoLimit = 100 // repositories listed at most
+	repoDepth   = 3   // levels under the home folder
+	repoLimit   = 100 // repositories listed at most
+	folderLimit = 500 // folders in one folder listed at most
+	branchLimit = 200 // branches of a repository listed at most
 )
 
 // repoSkip are folders never searched: dependencies, caches and builds.
@@ -99,6 +103,109 @@ func repoAt(home, path string) *machinev1.Repo {
 		}
 	}
 	return r
+}
+
+// ListFolders lists the folders in one folder for Add a Project's folder
+// browser, each with whether it is a git repository. path is "~/…", "~"
+// (or empty) or a full path. Like FindRepos it reads only directory
+// entries and .git files, and it doesn't look into the folders macOS
+// protects: the person opens one of those on purpose.
+func ListFolders(path string, hidden bool) (*machinev1.ListFoldersResponse, error) {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return nil, err
+	}
+	dir := path
+	switch {
+	case path == "" || path == "~":
+		dir = home
+	case strings.HasPrefix(path, "~/"):
+		dir = filepath.Join(home, path[2:])
+	case !filepath.IsAbs(path):
+		return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("%q is not a full path", path))
+	}
+	dir = filepath.Clean(dir)
+	entries, err := os.ReadDir(dir)
+	switch {
+	case errors.Is(err, fs.ErrNotExist):
+		return nil, connect.NewError(connect.CodeNotFound, fmt.Errorf("no folder %s", path))
+	case errors.Is(err, fs.ErrPermission):
+		return nil, connect.NewError(connect.CodePermissionDenied, fmt.Errorf("not allowed to read %s", path))
+	case err != nil:
+		return nil, err
+	}
+	res := &machinev1.ListFoldersResponse{Path: homePath(home, dir), FullPath: dir}
+	if real, err := filepath.EvalSymlinks(dir); err == nil {
+		res.FullPath = real
+	}
+	if r := repoAt(home, dir); r != nil {
+		res.Repo, res.Branch, res.Branches = true, r.Branch, repoBranches(dir)
+	}
+	for _, e := range entries {
+		isDir := e.IsDir()
+		if e.Type()&fs.ModeSymlink != 0 {
+			st, err := os.Stat(filepath.Join(dir, e.Name()))
+			isDir = err == nil && st.IsDir()
+		}
+		if !isDir {
+			res.Files++
+			continue
+		}
+		if !hidden && strings.HasPrefix(e.Name(), ".") || len(res.Folders) >= folderLimit {
+			continue
+		}
+		p := filepath.Join(dir, e.Name())
+		f := &machinev1.Folder{Name: e.Name(), Path: homePath(home, p), Protected: dir == home && runtime.GOOS == "darwin" && protectedOnMac[e.Name()]}
+		if !f.Protected {
+			if r := repoAt(home, p); r != nil {
+				f.Repo, f.Branch = true, r.Branch
+			}
+		}
+		res.Folders = append(res.Folders, f)
+	}
+	// As Finder sorts them: case aside.
+	slices.SortStableFunc(res.Folders, func(a, b *machinev1.Folder) int {
+		return strings.Compare(strings.ToLower(a.Name), strings.ToLower(b.Name))
+	})
+	return res, nil
+}
+
+// homePath writes a path as the person does: "~/app" under the home folder.
+func homePath(home, path string) string {
+	if path == home {
+		return "~"
+	}
+	if rel, ok := strings.CutPrefix(path, home+string(filepath.Separator)); ok {
+		return "~/" + filepath.ToSlash(rel)
+	}
+	return path
+}
+
+// repoBranches lists a repository's local branches by name, from its refs
+// and packed-refs: no git process.
+func repoBranches(repo string) []string {
+	git := filepath.Join(repo, ".git")
+	names := map[string]bool{}
+	heads := filepath.Join(git, "refs", "heads")
+	filepath.WalkDir(heads, func(p string, d fs.DirEntry, err error) error {
+		if err == nil && !d.IsDir() {
+			if rel, err := filepath.Rel(heads, p); err == nil {
+				names[filepath.ToSlash(rel)] = true
+			}
+		}
+		return nil
+	})
+	if b, err := os.ReadFile(filepath.Join(git, "packed-refs")); err == nil {
+		for _, line := range strings.Split(string(b), "\n") {
+			if _, ref, ok := strings.Cut(strings.TrimSpace(line), " "); ok {
+				if name, ok := strings.CutPrefix(ref, "refs/heads/"); ok {
+					names[name] = true
+				}
+			}
+		}
+	}
+	out := slices.Sorted(maps.Keys(names))
+	return out[:min(len(out), branchLimit)]
 }
 
 // testPrompt is the turn Test runs: short, no tools, one word back.
