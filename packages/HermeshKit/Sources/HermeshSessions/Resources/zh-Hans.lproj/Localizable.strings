@@ -102,3 +102,20 @@
 "“%@” wants to become your trusted device" = "「%@」想成为你的可信设备";
 "“%@” wants to connect to your computer" = "「%@」想连接你的电脑";
 "“%@”: turn %lld done" = "「%1$@」第 %2$lld 轮完成";
+/* A failed session's card: what happened to the coding agent (%@) */
+"%@ isn’t signed in" = "%@ 没有登录";
+"%@ is out of quota" = "%@ 的额度用完了";
+"%@ was rate limited" = "%@ 被限流了";
+"%@’s model service failed" = "%@ 的模型服务出错了";
+"%@ lost the network" = "%@ 连不上网络";
+"%@’s context is full" = "%@ 的上下文满了";
+"This model isn’t available to %@" = "%@ 用不了这个模型";
+"%@’s request was rejected" = "%@ 的请求被拒绝了";
+"The model refused this task" = "模型拒绝了这个任务";
+"%@ reached its step limit" = "%@ 到了步数上限";
+"%@ couldn’t pick up the earlier conversation" = "%@ 接不上之前的对话";
+"%@ quit unexpectedly" = "%@ 意外退出了";
+"%@ made no progress for a long time" = "%@ 长时间没有进展";
+"This turn ran past its time limit" = "这一轮超过了时长上限";
+"%@ couldn’t start" = "%@ 没能启动";
+"%@ ran into an error" = "%@ 出错了";

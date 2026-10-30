@@ -3,7 +3,7 @@ import { useTranslation } from "react-i18next";
 import type { Client, Machine } from "@hermesh/proto/local";
 import { FailureKind, SessionStatus, type Failure, type Session, type SessionEvent, type ToolCall, type ToolResult } from "@hermesh/proto/session";
 import {
-  agoText, clockText, dateOf, elapsedSeconds, codingAgentTitle, createdDate, currentTurn, failureAdvice, failureTitle, groupSteps, isActive, isArchivable, isFailed,
+  agoText, clockText, dateOf, elapsedSeconds, codingAgentTitle, createdDate, currentTurn, failureAdvice, failureHeadline, failureTitle, groupSteps, isActive, isArchivable, isFailed,
   isInterruption, isInterruptible, pendingQuestion, phaseText, replyEnds, resolutionTitle, statusTitle, stepSummary, toolObject, toolSummary, toolVerb, transcript,
   turnStartedAt, turnTimeLine, type Step,
 } from "@hermesh/core";
@@ -81,7 +81,7 @@ export function Chat({ s, events, draft }: { s: Session; events: SessionEvent[];
           </div>
           <Stale s={s} behind={(events.at(-1)?.seq ?? 0n) < (s.progress?.lastEventSeq ?? 0n)} />
           {isFailed(s) && (failure || s.error !== "") && (
-            <Failed s={s} title={failure ? failureTitle(failure.kind) : t("chat.failed")} message={failure?.message ?? s.error} advice={failure ? failureAdvice(failure) : ""} grant={grant} />
+            <Failed s={s} failure={failure} grant={grant} />
           )}
           {s.status === SessionStatus.IDLE && !isFailed(s) && !isInterruption(failure) && items.length > 0 && (
             <div className="livebar" style={{ justifyContent: "center", paddingTop: 18 }}>
@@ -265,6 +265,7 @@ function RowView({ it, end, sessionId, failure, clients, grant, previous }: RowP
       );
     case "error": {
       const e = it.error;
+      if (sameFailure(failure, e.failure)) return null; // told once, at the end
       return <FailLine title={e.failure ? t("chat.failedWith", { title: failureTitle(e.failure.kind) }) : t("chat.failed")} message={e.message} />;
     }
   }
@@ -375,33 +376,35 @@ function sameFailure(a: Failure | undefined, b: Failure | undefined): boolean {
 }
 
 /**
- * A session that stopped on a failure, in the voice of the steps above it:
- * one red line (what), one grey line (what to do), then Details (the agent's own
- * words, folded) and Archive.
+ * A session that stopped on a failure, where the agent's reply would be: a
+ * quiet card telling what happened to the coding agent, what to do when it
+ * is the owner's to fix, and that the agent driving the session goes on
+ * from here; then Details (the agent's own words, folded) and Archive.
  */
-function Failed({ s, title, message, advice, grant }: { s: Session; title: string; message: string; advice: string; grant: string }) {
+function Failed({ s, failure, grant }: { s: Session; failure: Failure | undefined; grant: string }) {
   const { t } = useTranslation("session");
   const st = useStore();
   const [open, setOpen] = useState(false);
-  const crashed = s.status === SessionStatus.CRASHED;
-  const resume = t("chat.resume", { grant });
-  const hint = advice !== "" && !adviceResumes.has(s.progress?.lastFailure?.kind ?? FailureKind.UNSPECIFIED) ? t("chat.adviceAndResume", { advice, resume }) : resume;
+  const message = failure?.message ?? s.error;
+  const kind = failure?.kind ?? FailureKind.UNSPECIFIED;
+  const advice = failure && !adviceResumes.has(kind) ? failureAdvice(failure) : "";
   return (
-    <div className="qfail" role="alert">
-      <div className="qf-line">
-        <Icon name="info" className="sm" />
-        <b>{t(crashed ? "chat.crashedWith" : "chat.failedWith", { title })}</b>
+    <div className="qcard" role="alert">
+      <Icon name="alert" className="qf-ic" />
+      <div className="qf-main">
+        <b className="qf-title">{failureHeadline(kind, codingAgentTitle(s.agent))}</b>
+        {advice !== "" && <div className="qf-hint">{advice}</div>}
+        <div className="qf-hint">{t("chat.resume", { grant: agentName(grant) })}</div>
+        <div className="qf-act">
+          {message !== "" && (
+            <button className="link" aria-expanded={open} onClick={() => setOpen(!open)}>
+              {t("chat.details")} <Icon name="chevR" className={`sm chev ${open ? "open" : ""}`} />
+            </button>
+          )}
+          {isArchivable(s) && <button className="link" onClick={() => archive(st, s)}>{t("chat.archive")}</button>}
+        </div>
+        {open && <div className="qf-raw sel-text">{message}</div>}
       </div>
-      <div className="qf-hint">{hint}</div>
-      <div className="qf-act">
-        {message !== "" && (
-          <button className="link" aria-expanded={open} onClick={() => setOpen(!open)}>
-            {t("chat.details")} <Icon name="chevR" className={`sm chev ${open ? "open" : ""}`} />
-          </button>
-        )}
-        {isArchivable(s) && <button className="link" onClick={() => archive(st, s)}>{t("chat.archive")}</button>}
-      </div>
-      {open && <div className="qf-raw sel-text">{message}</div>}
     </div>
   );
 }

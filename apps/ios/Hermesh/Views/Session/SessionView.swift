@@ -405,7 +405,10 @@ struct StepView: View {
             }
             // A turn that went well needs no line: the next message shows it went on.
         case .error(_, let e):
-            FailLine(title: e.hasFailure ? String(localized: "Failed: \(failureTitle(e.failure.kind))") : String(localized: "Failed"), message: e.message)
+            // The session's current failure is told once, at the end.
+            if !(session.isFailed && e.hasFailure && sameFailure(session.progress.lastFailure, e.failure)) {
+                FailLine(title: e.hasFailure ? String(localized: "Failed: \(failureTitle(e.failure.kind))") : String(localized: "Failed"), message: e.message)
+            }
         case .tool:
             EmptyView()
         }
@@ -429,9 +432,10 @@ private func sameFailure(_ a: Failure, _ b: Failure) -> Bool { a.kind == b.kind 
 /// Failures whose advice already says to send another message.
 private let adviceResumes: Set<FailureKind> = [.rateLimit, .providerError, .network, .contextOverflow, .resumeRejected, .agentCrashed, .stalled]
 
-/// A session that stopped on a failure, in the voice of the steps above it:
-/// one red line (what), one grey line (what to do), then Details (the
-/// agent's own words, folded) and Archive.
+/// A session that stopped on a failure, where the agent's reply would be: a
+/// quiet card telling what happened to the coding agent, what to do when it
+/// is the owner's to fix, and that the agent driving the session goes on
+/// from here; then Details (the agent's own words, folded) and Archive.
 struct FailedView: View {
     @Environment(AppModel.self) private var model
     let session: Session
@@ -441,15 +445,16 @@ struct FailedView: View {
 
     var body: some View {
         let message = failure?.message ?? session.error
-        let crashed = session.status == .crashed
-        VStack(alignment: .leading, spacing: 4) {
-            HStack(spacing: 7) {
-                Image(systemName: "exclamationmark.circle")
-                Text(title(crashed: crashed)).fontWeight(.semibold)
-            }
-            .font(.subheadline).foregroundStyle(.red)
-            VStack(alignment: .leading, spacing: 4) {
-                Text(hint).font(.footnote).foregroundStyle(.secondary)
+        HStack(alignment: .firstTextBaseline, spacing: 10) {
+            Image(systemName: "exclamationmark.circle").foregroundStyle(.red)
+            VStack(alignment: .leading, spacing: 3) {
+                Text(failureHeadline(failure?.kind ?? .unspecified, agent: agentTitle(session.agent)))
+                    .font(.subheadline.weight(.semibold))
+                Group {
+                    if !advice.isEmpty { Text(advice) }
+                    Text("When \(AgentLogo.name(grant)) sends another message, it picks up from here; the earlier changes are all still there.")
+                }
+                .font(.footnote).foregroundStyle(.secondary)
                 HStack(spacing: 14) {
                     if !message.isEmpty {
                         Button { withAnimation(.snappy(duration: 0.25)) { open.toggle() } } label: {
@@ -465,27 +470,24 @@ struct FailedView: View {
                     }
                 }
                 .font(.footnote).foregroundStyle(.secondary).buttonStyle(.plain)
-                .padding(.top, 2)
-                if open { RawMessage(text: message) }
+                .padding(.top, 6)
+                if open { RawMessage(text: message).padding(.top, 4) }
             }
-            .padding(.leading, 21)
+            .frame(maxWidth: .infinity, alignment: .leading)
         }
+        .padding(.horizontal, 14).padding(.vertical, 12)
+        .background(Palette.fill, in: RoundedRectangle(cornerRadius: 13, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: 13, style: .continuous).strokeBorder(Palette.separator, lineWidth: 0.5))
         .padding(.top, 6)
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("session-failed")
     }
 
-    private func title(crashed: Bool) -> String {
-        guard let failure else { return crashed ? String(localized: "Crashed") : String(localized: "Failed") }
-        let t = failureTitle(failure.kind)
-        return crashed ? String(localized: "Crashed: \(t)") : String(localized: "Failed: \(t)")
-    }
-
-    private var hint: String {
-        let resume = String(localized: "When \(grant) sends another message, it picks up from here; the earlier changes are all still there.")
-        let advice = failure.map(failureAdvice) ?? ""
-        guard !advice.isEmpty, !adviceResumes.contains(failure?.kind ?? .unspecified) else { return resume }
-        return String(localized: "failure.adviceAndResume", defaultValue: "\(advice) \(resume)", comment: "A failure's advice, then how to go on")
+    /// What to do, when it is the owner's to fix (the advice of the others
+    /// only says to send another message, which the card says anyway).
+    private var advice: String {
+        guard let failure, !adviceResumes.contains(failure.kind) else { return "" }
+        return failureAdvice(failure)
     }
 }
 

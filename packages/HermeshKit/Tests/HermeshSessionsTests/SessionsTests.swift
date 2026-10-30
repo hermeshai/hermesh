@@ -188,3 +188,16 @@ func ask(_ s: inout Session) {
     // A machine not read now keeps all it had.
     #expect(resetSessions(held, [], next: nil, readNow: []).count == held.count)
 }
+
+@Test func aFailureIsToldOfTheCodingAgentEveryKindInItsOwnWords() {
+    #expect(failureHeadline(.startFailed, agent: "Codex") == "Codex couldn’t start")
+    let generic = failureHeadline(.unspecified, agent: "Codex")
+    let kinds = FailureKind.allCases.filter { ![.unspecified, .unknown, .interrupted].contains($0) }
+    #expect(kinds.filter { failureHeadline($0, agent: "Codex") == generic }.isEmpty)
+    // Every one has its Chinese.
+    let zh = Bundle.module.path(forResource: "zh-Hans", ofType: "lproj").flatMap(Bundle.init(path:))
+    for k in kinds + [.unspecified] {
+        let en = failureHeadline(k, agent: "%@")
+        #expect(zh?.localizedString(forKey: en, value: nil, table: nil) != en, "no Chinese for \(en)")
+    }
+}

@@ -1871,26 +1871,6 @@
         }
       }
     },
-    "Crashed": {
-      "localizations": {
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "已崩溃"
-          }
-        }
-      }
-    },
-    "Crashed: %@": {
-      "localizations": {
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "已崩溃：%@"
-          }
-        }
-      }
-    },
     "Create with Face ID": {
       "localizations": {
         "zh-Hans": {
@@ -6701,23 +6681,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "%lld 天后到期"
-          }
-        }
-      }
-    },
-    "failure.adviceAndResume": {
-      "comment": "A failure's advice, then how to go on",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "%1$@ %2$@"
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "%1$@%2$@"
           }
         }
       }

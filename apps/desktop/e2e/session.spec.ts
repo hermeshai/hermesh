@@ -212,9 +212,12 @@ test("failed sessions tell what went wrong and what to do; an archived one says 
   const { app, page } = await launch();
   await open(page, "崩溃");
   await expect(titleLine(page, "崩溃")).toHaveText("崩溃");
-  // Said once, quietly: what, what to do, the agent's words folded under 详情, and 归档.
+  // Said once, in a quiet card where the reply would be: what happened to the coding agent, who goes on, the agent's words folded under 详情, and 归档.
   const failed = page.getByRole("alert");
-  await expect(failed).toContainText("已崩溃：agent 进程意外退出");
+  await expect(failed).toContainText("Gemini CLI 意外退出了");
+  await expect(failed).not.toContainText("已崩溃"); // the sidebar says so
+  await expect(failed.locator(".qf-ic")).toHaveCSS("color", /^rgb\((215, 51, 63|255, 102, 112)\)$/); // red only in its mark
+  await expect(failed.locator(".qf-title")).not.toHaveCSS("color", /^rgb\((215, 51, 63|255, 102, 112)\)$/);
   await expect(failed).toContainText("bot 再发消息就会从这里接着做，之前的改动都还在。");
   await expect(failed).not.toContainText("exit status");
   await failed.getByRole("button", { name: /详情/ }).click();
@@ -226,7 +229,8 @@ test("failed sessions tell what went wrong and what to do; an archived one says 
   await expect(titleLine(page, "限流")).toHaveText("限流");
   const log = page.getByRole("log", { name: "对话" });
   await expect(log).not.toContainText("第 1 轮失败"); // not said twice
-  await expect(page.getByRole("alert")).toContainText("出错了：限流");
+  await expect(page.getByRole("alert")).toContainText("Gemini CLI 被限流了");
+  await expect(log).not.toContainText("出错了"); // nor as a line above the card
   await expect(page.getByRole("alert")).toContainText("bot 再发消息就会从这里接着做");
   await snap(page, "session-failed");
 

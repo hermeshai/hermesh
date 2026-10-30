@@ -545,6 +545,10 @@ final class HermeshUITests: XCTestCase {
         result.tap()
         XCTAssertFalse(app.searchFields.firstMatch.exists, "the search page closes")
         XCTAssertTrue(app.descendants(matching: .any)["session-failed"].waitForExistence(timeout: 20), "the failure shows")
+        // Said once, as a card: what happened to the coding agent, and who goes on.
+        XCTAssertTrue(text("Gemini CLI 意外退出了").exists, "the card says what happened to the agent")
+        XCTAssertTrue(text("bot 再发消息就会从这里接着做").exists, "and who goes on")
+        XCTAssertFalse(text("已崩溃：").exists, "not the old red line")
 
         // The search is remembered, and cleared.
         openMenu()

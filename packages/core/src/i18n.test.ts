@@ -4,7 +4,7 @@ import { afterAll, beforeAll, describe, expect, test } from "vitest";
 import { i18n, pickLanguage } from "./i18n";
 import { noticeDiff, noticeSnapshots } from "./notices";
 import { stepSummary, turnTimeLine } from "./steps";
-import { agoText, failureTitle, minutesLeft, shortTime } from "./text";
+import { agoText, failureHeadline, failureTitle, minutesLeft, shortTime } from "./text";
 import { at, now, progressOf, session } from "./testing";
 
 describe("English", () => {
@@ -18,6 +18,8 @@ describe("English", () => {
   test("failures", () => {
     expect(failureTitle(FailureKind.CONTEXT_OVERFLOW)).toBe("Context full");
     expect(failureTitle(FailureKind.UNSPECIFIED)).toBe("Failed");
+    expect(failureHeadline(FailureKind.START_FAILED, "Codex")).toBe("Codex couldn’t start");
+    expect(failureHeadline(FailureKind.UNSPECIFIED, "Codex")).toBe("Codex ran into an error");
   });
 
   test("times", () => {

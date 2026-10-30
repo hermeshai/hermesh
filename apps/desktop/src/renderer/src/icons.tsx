@@ -22,6 +22,7 @@ const paths: Record<string, string> = {
   // A window with a card floating at its right: the session's info card.
   infoCard: "<rect x=\"1.8\" y=\"2.8\" width=\"12.4\" height=\"10.4\" rx=\"2.4\"/><rect x=\"8.3\" y=\"5.1\" width=\"3.8\" height=\"5.8\" rx=\"1\" fill=\"currentColor\" stroke=\"none\"/>",
   info: "<circle cx=\"8\" cy=\"8\" r=\"6\"/><path d=\"M8 7.3v3.9M8 5v.1\"/>",
+  alert: "<circle cx=\"8\" cy=\"8\" r=\"6\"/><path d=\"M8 4.9v3.9M8 11v.1\"/>",
   laptop: "<rect x=\"3\" y=\"3.3\" width=\"10\" height=\"7\" rx=\"1.2\"/><path d=\"M1.4 12.7h13.2\"/>",
   server: "<rect x=\"2.5\" y=\"2.5\" width=\"11\" height=\"4.6\" rx=\"1.2\"/><rect x=\"2.5\" y=\"8.9\" width=\"11\" height=\"4.6\" rx=\"1.2\"/><path d=\"M5 4.8h.1M5 11.2h.1\"/>",
   mini: "<rect x=\"1.8\" y=\"5.2\" width=\"12.4\" height=\"5.6\" rx=\"1.6\"/><path d=\"M4.4 8h.1\"/>",

@@ -61,6 +61,24 @@
     "resume": "Send another message to resume the session.",
     "startFailed": "Open that machine’s page in Hermesh Settings to see what keeps it from starting agents."
   },
+  "headline": {
+    "auth": "{{agent}} isn’t signed in",
+    "quota": "{{agent}} is out of quota",
+    "rateLimit": "{{agent}} was rate limited",
+    "providerError": "{{agent}}’s model service failed",
+    "network": "{{agent}} lost the network",
+    "contextOverflow": "{{agent}}’s context is full",
+    "modelUnavailable": "This model isn’t available to {{agent}}",
+    "invalidRequest": "{{agent}}’s request was rejected",
+    "refused": "The model refused this task",
+    "limitReached": "{{agent}} reached its step limit",
+    "resumeRejected": "{{agent}} couldn’t pick up the earlier conversation",
+    "agentCrashed": "{{agent}} quit unexpectedly",
+    "stalled": "{{agent}} made no progress for a long time",
+    "timeout": "This turn ran past its time limit",
+    "startFailed": "{{agent}} couldn’t start",
+    "other": "{{agent}} ran into an error"
+  },
   "notice": {
     "startedBody": "{{grant}} started it · {{project}} · {{agent}}",
     "questionTitle": "{{grant}} is waiting for you",
