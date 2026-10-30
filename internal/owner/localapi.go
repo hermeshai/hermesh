@@ -6,8 +6,6 @@ import (
 	"fmt"
 	"net"
 	"net/http"
-	"os"
-	"path/filepath"
 	"strings"
 
 	"connectrpc.com/connect"
@@ -17,27 +15,21 @@ import (
 	"github.com/hermeshai/hermesh/gen/go/hermesh/local/v1/localv1connect"
 	machinev1 "github.com/hermeshai/hermesh/gen/go/hermesh/machine/v1"
 	sessionv1 "github.com/hermeshai/hermesh/gen/go/hermesh/session/v1"
-	"github.com/hermeshai/hermesh/internal/peercred"
+	"github.com/hermeshai/hermesh/internal/localipc"
 )
 
-// ServeLocal serves LocalService on a Unix socket that only the same user
-// may connect to. It blocks until ctx is done.
+// ServeLocal serves LocalService on a local endpoint that only the same
+// user may connect to. It blocks until ctx is done.
 func (d *Device) ServeLocal(ctx context.Context, sockPath string) error {
-	if err := os.MkdirAll(filepath.Dir(sockPath), 0o700); err != nil {
-		return err
-	}
-	os.Remove(sockPath)
-	ln, err := net.Listen("unix", sockPath)
+	ln, err := localipc.Listen(sockPath)
 	if err != nil {
 		return err
 	}
-	os.Chmod(sockPath, 0o600)
 	var protocols http.Protocols
 	protocols.SetHTTP1(true)
 	protocols.SetUnencryptedHTTP2(true)
 	srv := &http.Server{Handler: d.LocalHandler(), Protocols: &protocols, ConnContext: func(ctx context.Context, c net.Conn) context.Context {
-		if uc, ok := c.(*net.UnixConn); ok {
-			p := peercred.PeerProcess(uc)
+		if p, ok := localipc.Peer(c); ok {
 			return context.WithValue(ctx, callerKey{}, &localv1.Caller{Pid: int32(p.PID), Executable: p.Executable})
 		}
 		return ctx
@@ -46,7 +38,7 @@ func (d *Device) ServeLocal(ctx context.Context, sockPath string) error {
 		<-ctx.Done()
 		srv.Close()
 	}()
-	err = srv.Serve(&peercred.SameUserListener{UnixListener: ln.(*net.UnixListener)})
+	err = srv.Serve(ln)
 	if errors.Is(err, http.ErrServerClosed) {
 		return nil
 	}

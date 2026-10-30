@@ -8,7 +8,7 @@ import path from "node:path";
 declare const __HERMESH_TEST_DATA_DIR__: string;
 export const testDataDir = __HERMESH_TEST_DATA_DIR__;
 
-// Mirrors defaultDataDir and SocketPath in cmd/hermeshd.
+// Mirrors DataDir and LocalAPI in internal/paths.
 export function dataDir(): string {
   if (testDataDir) return testDataDir;
   if (process.env.HERMESH_DATA_DIR) return process.env.HERMESH_DATA_DIR;

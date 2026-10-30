@@ -9,10 +9,6 @@ import (
 // ErrHelperGone: the spawn helper has exited; spawn in-process instead.
 var ErrHelperGone = errors.New("spawn helper exited")
 
-// unknownStatus marks an exit observed without a wait status (the child
-// outlived its helper).
-const unknownStatus = syscall.WaitStatus(0xffffffff)
-
 // ExitErr turns a wait status into nil (success) or an error worded like
 // os/exec's.
 func ExitErr(ws syscall.WaitStatus) error {

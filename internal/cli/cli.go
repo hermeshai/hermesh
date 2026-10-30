@@ -22,6 +22,7 @@ import (
 	relayv1 "github.com/hermeshai/hermesh/gen/go/hermesh/relay/v1"
 	"github.com/hermeshai/hermesh/gen/go/hermesh/relay/v1/relayv1connect"
 	"github.com/hermeshai/hermesh/internal/machine"
+	"github.com/hermeshai/hermesh/internal/paths"
 	"github.com/hermeshai/hermesh/internal/peer"
 	"github.com/hermeshai/hermesh/pkg/identity"
 	"github.com/hermeshai/hermesh/pkg/transport"
@@ -134,15 +135,7 @@ func (a *app) root(defaultOutput string) *cobra.Command {
 		if a.mem != nil {
 			return nil // credentials held by the caller, no files
 		}
-		a.home = os.Getenv("HERMESH_HOME")
-		if a.home == "" {
-			if x := os.Getenv("XDG_CONFIG_HOME"); x != "" {
-				a.home = x + "/hermesh"
-			} else {
-				h, _ := os.UserHomeDir()
-				a.home = h + "/.config/hermesh"
-			}
-		}
+		a.home = paths.CLIHome()
 		return nil
 	}
 	// `hermesh login` was the command before `auth login`; installs and

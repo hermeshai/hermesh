@@ -26,7 +26,9 @@ import (
 	"github.com/hermeshai/hermesh/gen/go/hermesh/local/v1/localv1connect"
 	"github.com/hermeshai/hermesh/internal/connaddr"
 	"github.com/hermeshai/hermesh/internal/devicekey"
+	"github.com/hermeshai/hermesh/internal/localipc"
 	"github.com/hermeshai/hermesh/internal/machine"
+	"github.com/hermeshai/hermesh/internal/paths"
 	"github.com/hermeshai/hermesh/internal/preview"
 	"github.com/hermeshai/hermesh/internal/service"
 	"github.com/hermeshai/hermesh/pkg/identity"
@@ -380,10 +382,9 @@ func ownerRole(ctx context.Context, dataDir string, noService bool) (localv1conn
 			n.Close()
 		}
 	}
-	sock := SocketPath(dataDir)
+	sock := paths.LocalAPI(dataDir)
 	hc := &http.Client{Transport: &http.Transport{DialContext: func(ctx context.Context, _, _ string) (net.Conn, error) {
-		var d net.Dialer
-		return d.DialContext(ctx, "unix", sock)
+		return localipc.Dial(ctx, sock)
 	}}}
 	c := localv1connect.NewLocalServiceClient(hc, "http://local")
 	up := func() bool {

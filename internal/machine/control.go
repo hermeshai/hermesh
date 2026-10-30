@@ -3,15 +3,12 @@ package machine
 import (
 	"bytes"
 	"context"
-	"crypto/sha256"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"io"
 	"net"
 	"net/http"
 	"os"
-	"path/filepath"
 	"strings"
 	"time"
 
@@ -19,7 +16,8 @@ import (
 	"google.golang.org/protobuf/types/known/timestamppb"
 
 	identityv1 "github.com/hermeshai/hermesh/gen/go/hermesh/identity/v1"
-	"github.com/hermeshai/hermesh/internal/peercred"
+	"github.com/hermeshai/hermesh/internal/localipc"
+	"github.com/hermeshai/hermesh/internal/paths"
 	"github.com/hermeshai/hermesh/internal/provider"
 	"github.com/hermeshai/hermesh/pkg/identity"
 )
@@ -30,28 +28,13 @@ import (
 // settings: whoever has a shell as this user can do as much already, so
 // only this user may connect.
 
-// ControlSocket is where a machine with this data directory listens; for
-// a long path (sockets have a short limit), one in the temp folder named
-// after it, so two machines of one user never share it.
-func ControlSocket(dataDir string) string {
-	p := filepath.Join(dataDir, "control.sock")
-	if len(p) > 100 {
-		abs, _ := filepath.Abs(dataDir)
-		h := sha256.Sum256([]byte(abs))
-		p = filepath.Join(os.TempDir(), fmt.Sprintf("hermesh-control-%d-%x.sock", os.Getuid(), h[:8]))
-	}
-	return p
-}
-
 func (n *Machine) serveControl(ctx context.Context) {
-	path := ControlSocket(n.cfg.DataDir)
-	os.Remove(path)
-	ln, err := net.Listen("unix", path)
+	path := paths.Control(n.cfg.DataDir)
+	ln, err := localipc.Listen(path)
 	if err != nil {
 		n.log.Warn("control socket", "err", err)
 		return
 	}
-	os.Chmod(path, 0o600)
 	mux := http.NewServeMux()
 	mux.HandleFunc("POST /settings", func(w http.ResponseWriter, r *http.Request) {
 		body, _ := io.ReadAll(io.LimitReader(r.Body, 1<<20))
@@ -85,7 +68,7 @@ func (n *Machine) serveControl(ctx context.Context) {
 		srv.Close()
 		os.Remove(path)
 	}()
-	srv.Serve(&peercred.SameUserListener{UnixListener: ln.(*net.UnixListener)})
+	srv.Serve(ln)
 }
 
 // Check is how this machine is, for `hermeshd doctor` and `status`; its
@@ -117,13 +100,12 @@ func (n *Machine) ApplyLocal(ctx context.Context, cmd *identityv1.AdminCommand) 
 // ControlRequest sends a running machine's control socket a request; ok is
 // false when no machine listens there.
 func ControlRequest(ctx context.Context, dataDir, method, path string, body []byte) (out []byte, ok bool, err error) {
-	sock := ControlSocket(dataDir)
+	sock := paths.Control(dataDir)
 	if _, err := os.Stat(sock); err != nil {
 		return nil, false, nil
 	}
 	hc := &http.Client{Transport: &http.Transport{DialContext: func(ctx context.Context, _, _ string) (net.Conn, error) {
-		var d net.Dialer
-		return d.DialContext(ctx, "unix", sock)
+		return localipc.Dial(ctx, sock)
 	}}, Timeout: 30 * time.Second}
 	req, _ := http.NewRequestWithContext(ctx, method, "http://machine"+path, bytes.NewReader(body))
 	res, err := hc.Do(req)

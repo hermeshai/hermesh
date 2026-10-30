@@ -1,3 +1,5 @@
+//go:build unix
+
 // Package flock takes an exclusive, process-lifetime lock on a data
 // directory so two daemons never share one.
 package flock

@@ -13,6 +13,8 @@ import (
 	"time"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
+
+	"github.com/hermeshai/hermesh/internal/localipc"
 )
 
 // ServeMessageMCP is `hermeshd message-mcp`: the MCP server a session's
@@ -25,7 +27,7 @@ func ServeMessageMCP(ctx context.Context) error {
 		return errors.New("hermeshd starts this for a session's coding agent: HERMESH_TOOLS_SOCKET and HERMESH_TOOLS_TOKEN are not set")
 	}
 	hc := &http.Client{Timeout: 30 * time.Second, Transport: &http.Transport{DialContext: func(ctx context.Context, _, _ string) (net.Conn, error) {
-		return (&net.Dialer{}).DialContext(ctx, "unix", sock)
+		return localipc.Dial(ctx, sock)
 	}}}
 	call := func(ctx context.Context, path string, req ToolRequest, out any) error {
 		req.Token = token

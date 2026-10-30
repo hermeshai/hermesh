@@ -1,3 +1,5 @@
+//go:build unix
+
 // Package rlimit raises the open-file limit: launchd starts agents with a
 // soft limit of 256, and every coding-agent session needs several pipes.
 package rlimit
