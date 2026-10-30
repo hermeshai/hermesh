@@ -88,7 +88,9 @@ try {
     $file = Join-Path $Tmp $asset
     Invoke-WebRequest -UseBasicParsing "$Base/$asset" -OutFile $file
     if (-not $sums.ContainsKey($asset)) { throw "hermesh install: $asset is not in the signed checksum list" }
-    if ((Get-FileHash -Algorithm SHA256 $file).Hash.ToLower() -ne $sums[$asset]) { throw "hermesh install: $asset checksum mismatch" }
+    $sha = [Security.Cryptography.SHA256]::Create()
+    $hash = -join ($sha.ComputeHash([IO.File]::ReadAllBytes($file)) | ForEach-Object { $_.ToString("x2") })
+    if ($hash -ne $sums[$asset]) { throw "hermesh install: $asset checksum mismatch" }
     # A running program can be renamed, not overwritten: the old one moves
     # aside, and goes once nothing runs it.
     $dest = Join-Path $BinDir "$b.exe"
