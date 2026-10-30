@@ -1,6 +1,6 @@
 # Hermesh on Windows
 
-Status: accepted 2026-10-30, with the owner's decisions in §12; phase W0 is built. It replaces [desktop-app.md](desktop-app.md) §9 for Windows. Windows goes into [technical-design.md](technical-design.md) §6.1 and [hermeshd.md](hermeshd.md) as it is built.
+Status: accepted 2026-10-30, with the owner's decisions in §12; phases W0 to W3 are built, and §14 lists what is checked on a real PC next and what is left. It replaces [desktop-app.md](desktop-app.md) §9 for Windows. Windows goes into [technical-design.md](technical-design.md) §6.1 and [hermeshd.md](hermeshd.md) as it is built.
 
 ## 1. Goal
 
@@ -161,33 +161,33 @@ KillGroup(pgid int)            // end it gently, then for sure (also at recovery
 
 ### 5.1 One main process, one module per OS
 
-`src/main/platform/{mac,win}.ts` export the same interface. `index.ts` takes one at start, and no other file branches on `process.platform`.
+`src/main/platform/{mac,win}.ts` export the same interface. `index.ts` takes one at start, and no other file of the main process branches on `process.platform` but `paths.ts`, which mirrors `internal/paths`; the page reads the platform's token (`renderer/src/platform.ts`, `html[data-platform]`).
 
 | | macOS | Windows |
 |---|---|---|
-| Daemon | `SMAppService` agent; `launchctl kickstart` | The package's startup task; restart through the control endpoint |
+| Daemon | `SMAppService` agent; `launchctl kickstart` | The package's startup task, or the app when it isn't running (one supervisor per data folder); a restart ends the supervisor, whose job ends the daemon, and starts it again |
 | Open Hermesh at login | `mainAppService` | The app's own startup task (Electron's login item API reportedly does not reach packaged apps; S1) |
-| Signer | `Hermesh Signer.app`, the app's child | A protected system component, not the app's child (§7.3) |
+| Signer | `Hermesh Signer.app`, the app's child | A protected system component, not the app's child (§7.3); set up before the first root key (`readySigner`) |
 | Updates | Squirrel.Mac | MSIX, through the same `autoUpdater` and the same JSON feed (§6.2) |
 | First launch | Move to Applications | Nothing: the package is installed |
 | Login commands (`codex login`) | A `.command` file in Terminal | A Windows Terminal tab (`wt.exe`), else PowerShell; a command table per OS, still chosen by key |
 | System links | Activity Monitor; Login Items | Task Manager; `ms-settings:startupapps` |
 | Computer name | `scutil --get ComputerName` | `os.hostname()`, the device name |
-| The signer's language | `-AppleLanguages` | `--lang` |
+| The signer's language | `-AppleLanguages` | Windows' display language |
 
 ### 5.2 Feeling native on Windows
 
-- **Window.** A hidden title bar with the caption overlay (`titleBarOverlay`): Windows draws minimize, maximize (with Snap Layouts) and close. The sidebar's toolbar row is the drag area, its height the caption's. Mica sits behind the sidebar where macOS has the sidebar's vibrancy; the content stays solid.
-- **Type and tokens.** Segoe UI Variable, a 14 px body (Windows 11's), 4 and 8 px radii, visible keyboard focus: tokens under `data-platform="win"`, which desktop-app.md §6.4 planned and which is not built yet.
+- **Window.** A hidden title bar with the caption overlay (`titleBarOverlay`): Windows draws minimize, maximize (with Snap Layouts) and close, the page's top bands leave them room (`env(titlebar-area-*)`), and the toolbar rows are the drag area, their height the caption's. The sidebar is solid for now; Mica behind it, where macOS has the sidebar's vibrancy, comes once seen on a real PC.
+- **Type and tokens.** Segoe UI Variable under `data-platform="win"`, at the Mac's sizes and radii for now; Windows 11's 14 px body and 4 and 8 px radii come with the look on a real PC.
 - **Menus.** Windows has no menu bar at the top of the screen, and the caption overlay leaves no room for one in the window. The command list in `menu.ts` stays the one source: on Windows it becomes the window's hidden menu (its accelerators keep working) and a menu button at the top of the sidebar. Context menus stay native.
-- **Shortcut labels** come from the accelerators (`CmdOrCtrl+K` → `⌘K` or `Ctrl+K`), not from `⌘` written in the renderer. The few that use ⌃ get a Windows equivalent in the same table.
+- **Shortcut labels** come from the accelerators (`CmdOrCtrl+K` → `⌘K` or `Ctrl+K`; `src/shared/keys.ts`), not from `⌘` written in the renderer. The two that differ get Windows keys of their own: the sidebar Ctrl+B, the info panel Ctrl+Shift+I (never Ctrl+Alt, which is AltGr on many keyboards).
 - **Notification area.** An icon in light and dark versions, for the taskbar's theme. A left click opens the panel above it, a right click a native menu. Closing the last window keeps Hermesh there, since notifications come from main; today, off macOS, it quits.
-- **Notifications** are toasts with buttons and replies (Electron 41 and later), under the package's identity.
+- **Notifications** are toasts, as the Mac's notifications are, under the package's identity; a click opens what it tells of while the app runs (it stays in the notification area). Buttons and replies (Electron 41 and later) can come to both.
 - **Deep links** come from the package's `hermesh:` protocol declaration, through `second-instance` as today.
 
 ### 5.3 Words
 
-Where the wording differs, one i18next context per platform picks the variant: `t("key", { context: "win" })` reads `key_win`. "This PC" stands for "This Mac", "Windows Hello" for "Touch ID", "Settings › Apps › Startup" for "System Settings › Login Items". The Chinese of each variant goes into the translation files, as for every string. The same goes for hermeshd's and the CLI's output, and for the center's pages in hermesh-cloud: "On your Mac" becomes "on your computer" where both apply.
+Where the wording differs, a key's Windows variant takes its place on Windows when the text loads: `key_win` (plural forms `key_win_one`), in every language and namespace, so no call site changes (`src/shared/words.ts`). "This PC" stands for "This Mac", "Windows Hello" for "Touch ID", "Settings › Apps › Startup" for "System Settings › Login Items". The Chinese of each variant goes into the translation files, as for every string. The same goes for hermeshd's and the CLI's output, and for the center's pages in hermesh-cloud: "On your Mac" becomes "on your computer" where both apply.
 
 ### 5.4 Paths of other machines
 
@@ -208,8 +208,8 @@ Why MSIX:
 
 Package context, handled:
 
-1. **The data folder is real.** `%LOCALAPPDATA%\Hermesh` is excluded from write virtualization (flexible virtualization, Windows 10 21H1 or later), so the CLI and agents outside the package see what the daemon writes.
-2. **Agents run outside the package.** hermeshd starts them breaking away from it (`PROC_THREAD_ATTRIBUTE_DESKTOP_APP_POLICY`, set next to the job of §4.3), so what they install and change lands in the real AppData and registry, not in the package's private copy.
+1. **No private copies.** The package turns write virtualization off for files and the registry (`desktop6`, with the `unvirtualizedResources` capability): the data folder is the real one, which the CLI and programs outside the package see.
+2. **Agents write where they would anyway.** With no virtualization, what they install and change lands in the real AppData and registry, so they need not break away from the package (`PROC_THREAD_ATTRIBUTE_DESKTOP_APP_POLICY` stays the fallback should the Store refuse the capability).
 3. **hermeshd and the CLI stay in the package.** hermeshd is stopped and replaced with it. The CLI, started through its alias, writes only into the data folder and into the agents' own settings under the user's profile, neither of them virtualized.
 
 ```
@@ -260,9 +260,9 @@ What signing would take, checked 2026-10-30:
 
 ### 6.5 Build and CI
 
-- `build-app.mjs` keeps what both OSes share (the page, main, Go for each target, fuses) and hands over to `package-mac.mjs` or `package-win.mjs` (the manifest and assets made from `AppIcon`, the package for the Store).
+- `package-win.mjs` builds the package's files on any system (the page, main, Go for the target, the fuses the Mac has) and, on Windows with its SDK, the `.msix`; `windows-icons.mjs` draws the logos and the program's icon from the Mac icon's mark. `build-app.mjs` stays the Mac's.
 - The Go programs carry version resources and the icon: Task Manager, Startup apps and Defender show them.
-- `ci.yml`: `windows-latest` joins the Go matrix (unit and e2e) and the desktop job; `windows-11-arm` runs a smoke test. First of all (W0) comes a compile check, `GOOS=windows go vet ./...`.
+- `ci.yml`: `windows` runs the Go unit tests, `TestWindowsInstall` and `TestWindowsSigner`; `windows-e2e` the whole Go suite; `windows-app` the desktop spec for Windows, then packs the app, installs it in Developer Mode and runs its aliases. First of all (W0) came a compile check, `GOOS=windows go vet ./...`.
 - `release.yml`: a Windows job per architecture builds the package, installs it on the runner (signed with a test certificate trusted there only), runs the packaged smoke test, and submits the package to the Store.
 
 ## 7. A trusted device on Windows
@@ -290,12 +290,13 @@ Standard (non-administrator) accounts get no protected signer; their trusted dev
 ### 7.3 The protected signer
 
 - **Program.** `hermesh-signer.exe`, in Go (`cmd/hermesh-signer`). When the owner makes this PC a trusted device, one elevated setup step (one UAC prompt) copies it into `%ProgramFiles%\Hermesh Signer\` and registers a Task Scheduler task for this user that runs it with the highest privileges, at logon and when triggered. The app and the daemon start it only by triggering that task; nothing else starts it elevated.
-- **Key.** A TPM 2.0 P-256 key (Microsoft Platform Crypto Provider), not exportable, whose security descriptor admits only this user's high-integrity processes: an entry for the user's SID plus a High mandatory label. The daemon, the app and the agents run at medium integrity and can neither open the key nor load it. One key per profile, as on the Mac (`root_key_id`, `delete_root_key`). Windows 11 requires a TPM 2.0; a PC without one cannot be a trusted device.
-- **Panel.** A native window (Win32, no web engine), in the app's look, showing what the signer computes from the bytes it signs. Approve then asks Windows Hello (`UserConsentVerifier`, with the panel's one-line summary as the dialog's message). Hello is policy here, since the signer decides to sign after it; the integrity line is what makes that meaningful.
+- **Key.** A TPM 2.0 P-256 key (Microsoft Platform Crypto Provider), not exportable, usable only with a random PIN that the signer keeps in `%ProgramData%\Hermesh Signer\keys\<SID>`, which only Administrators and SYSTEM can read: the daemon, the app and the agents, at medium integrity, can ask the TPM for the key by its name but cannot sign with it, and the TPM locks out guessing. One key per profile, as on the Mac (`root_key_id`, `delete_root_key`). Windows 11 requires a TPM 2.0; a PC without one cannot be a trusted device.
+- **Panel.** A native task dialog (no web engine) on top of other windows, showing what the signer computes from the bytes it signs (`internal/preview`), Deny the default. Approve asks Windows Hello (`UserConsentVerifier` for the dialog's window) while the dialog stays open; not verified, it stays to approve again or deny. Hello is policy here, since the signer decides to sign after it; the integrity line is what makes that meaningful. Without Windows Hello set up, it says to set up a PIN and signs nothing.
 - **Signature.** ECDSA P-256 in DER, the format everything verifies today. `RootKey.platform` is `windows`, the label "Windows · TPM". Nothing changes in what is signed or how it is checked.
 - **One signer core in Go.** The loop of `hermeshd approve` (watch, preview, confirm, sign, complete) moves into `internal/signer`, behind two interfaces: `Confirmer` (the terminal; the Windows panel) and `KeyStore` (the passphrase file; the TPM). Linux's terminal signer and the Windows panel then share one implementation of what is shown and signed, and a Linux desktop signer can reuse it later. The Swift signer stays for Apple. The shared Go and Swift preview vectors (desktop-app.md §5.6, not built yet) come first.
 - **Through the daemon only.** On the Mac the signer is the app's child: it reports busy on stdout, and SIGUSR1 brings it forward. The Windows signer is not the app's child, so hermeshd reports the signer's presence and busy state in its status, and relays "show" on the signing stream: `LocalService.ShowSigner` and a status field, the two additions to `hermesh.local.v1`. The app lets the signer's window take the foreground when the owner clicks Approve. Moving the Mac to the same later would remove the one direct channel between an app and its signer.
-- **Updates.** The signer changes rarely, and refuses what it cannot show in full. When the app carries a newer signer than the installed one and a request needs it, the app offers Update the Signer (one UAC prompt).
+- **Setup.** Before hermeshd needs a new root key (sign-in, an own server's setup, joining as a trusted device), the app makes sure a signer watches: it starts the signer's task, or runs `hermesh-signer setup` elevated (one UAC prompt). The refusals of the next point each have an exit status, which the app tells in its own words.
+- **Updates.** The signer changes rarely, and refuses what it cannot show in full. When the app carries a newer signer than the installed one and a request needs it, the app offers Update the Signer (one UAC prompt): not built yet (§14).
 - **Refusals.** With UAC off (`EnableLUA` 0), every program of an administrator runs elevated and the line is gone: such a PC cannot be a trusted device that also runs coding agents. Where elevation needs no consent ("Never notify"), Settings says so and recommends Administrator protection.
 
 ### 7.4 What an attacker can do
@@ -323,9 +324,9 @@ Every phase ends with its tests green, end-to-end tests included (AGENTS.md §4)
 | Phase | Work | Done when |
 |---|---|---|
 | W0. Seams (built) | `internal/paths` and `internal/localipc`, holding today's Unix code, with their contract tests; the process, health, lock and hook code split by OS; Windows files that compile and report "not supported yet"; `GOOS=windows go vet ./...` in `make lint` | Every current test passes; the Windows vet passes in CI |
-| W1. A Windows machine | The Windows halves of the seams; agents on Windows (locations, shims, hooks); health; `fakeacp` for Windows; `.exe` release assets; `install.ps1`; Windows in hermeshd.md; the Go suite on `windows-latest` | On a clean Windows 11, `install.ps1` pairs from the iPhone, and Claude Code and Codex sessions start, answer, interrupt, show diffs and archive; `make e2e` passes on `windows-latest`; `make e2e-real` passes on a Windows 11 VM |
-| W2. The app, as a machine only | `platform/win.ts`; window, tray, notifications, menus, shortcut labels, words, paths; MSIX, feed, signing, release job; the desktop e2e suite on Windows. The first run joins as a machine only, approved from another trusted device | `TestDesktop` passes on `windows-latest`; the packaged test installs the signed package and finds the daemon, the aliases and the protocol; an update between two signed builds works |
-| W3. A trusted device | Preview vectors; `internal/signer`; `hermesh-signer.exe` and its protected setup; the TPM key; Windows Hello; signer status and show through the daemon; the refusals of §7.3 | Approve, renew, add device, remove device and join pass e2e on Windows with the test signer; a medium-integrity program can neither open the key nor touch the signer; a checklist with real Windows Hello hardware passes |
+| W1. A Windows machine (built) | The Windows halves of the seams; agents on Windows (locations, shims, hooks); health; `fakeacp` for Windows; `.exe` release assets; `install.ps1`; Windows in hermeshd.md; the Go suite on `windows-latest` | On a clean Windows 11, `install.ps1` pairs from the iPhone, and Claude Code and Codex sessions start, answer, interrupt, show diffs and archive; `make e2e` passes on `windows-latest`; `make e2e-real` passes on a Windows 11 VM |
+| W2. The app (built; §14) | `platform/win.ts`; window, tray, notifications, menus, shortcut labels, words, paths; MSIX, feed, signing, release job; the desktop e2e suite on Windows. The first run joins as a machine only, approved from another trusted device | `TestDesktop` passes on `windows-latest`; the packaged test installs the signed package and finds the daemon, the aliases and the protocol; an update between two signed builds works |
+| W3. A trusted device (built; §14) | Preview vectors; `internal/signer`; `hermesh-signer.exe` and its protected setup; the TPM key; Windows Hello; signer status and show through the daemon; the refusals of §7.3 | Approve, renew, add device, remove device and join pass e2e on Windows with the test signer; a medium-integrity program can neither open the key nor touch the signer; a checklist with real Windows Hello hardware passes |
 | Later | WSL distributions as machines from the app; machines that run with nobody logged on; a Linux desktop app on the same seams and signer core | Per their own plans |
 
 W1 comes first because it is useful alone: a Windows PC becomes a machine for an owner who approves from the iPhone or a Mac.
@@ -382,6 +383,31 @@ Taken by the owner on 2026-10-30: function first, and as much security as Window
 | Mac-first work breaks Windows | Windows in CI from W0; a contract suite per seam |
 | The desktop e2e suite takes over the computer it runs on | CI runners and VMs, not the owner's PC |
 | More to keep up | No new language: Go and TypeScript only, the Windows signer included |
+
+## 14. Built, then checked on a real PC
+
+All of W0 to W3 is built (2026-10-30). CI checks on `windows-latest` what it can: the Go suite, `install.ps1`, the signer over its pipe with a test key, the desktop spec for Windows against the real daemon, and the package's manifest (MakeAppx). What only a real PC shows, checked in one pass:
+
+| Check | How |
+|---|---|
+| The app installed from its package | Developer Mode, `Add-AppxPackage -Register <files>\AppxManifest.xml`: Start lists Hermesh, `hermesh` and `hermeshd` run from any terminal, a `hermesh:` link opens the app |
+| The daemon at logon | Sign out and in: the startup task starts hermeshd; Startup apps lists "Hermesh background service" and "Hermesh" (off until Open Hermesh at login) |
+| The window | Caption buttons over the top band, the menu button, Ctrl shortcuts, the words of a PC, light and dark |
+| The notification area | The icon in the taskbar's colours, the panel above it, the right-click menu; closing the window keeps the app |
+| Joining as a machine only | Approved from the iPhone or a Mac; sessions run from there |
+| The protected signer (S5) | Make this PC a trusted device: one UAC prompt, the task under Task Scheduler, the TPM key; approve a pairing with the panel and Windows Hello; a program not elevated cannot sign (it has no PIN) nor click the panel |
+| The refusals | A standard account, User Account Control off, Windows Hello not set up |
+
+Left for later, each its own change:
+
+- The Microsoft Store: the reserved name and publisher, the review of the restricted capabilities, and updates (S1, §6.2).
+- The Go cards of what is signed (`internal/preview`) in Chinese; the panel's own words are.
+- Preview vectors shared by the Go and Swift signers (desktop-app.md §5.6).
+- Update the Signer, when the app carries a newer one; Settings saying that elevation needs no consent here ("Never notify") and recommending Administrator protection.
+- The rest of the desktop suite on Windows (its specs read the Mac's words and menus).
+- `install.ps1 -Device`: a trusted device without the app.
+- Add Machine in the apps offers `install.sh` only; a Windows machine's command (`install.ps1`) is in hermeshd.md.
+- Mica behind the sidebar, Windows 11's type sizes and radii.
 
 ## Appendix: sources
 
