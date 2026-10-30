@@ -21,6 +21,7 @@ import (
 // offers and Codex's own configuration (what following it means), which
 // Hermesh never changes; cleared, sessions follow it again.
 func TestAgentDefaults(t *testing.T) {
+	unixOnly(t, "its fake codex is a shell script")
 	if testing.Short() {
 		t.Skip("e2e")
 	}

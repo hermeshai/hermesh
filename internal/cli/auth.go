@@ -328,7 +328,7 @@ func (a *app) authStatus(ctx context.Context) *authReport {
 	}
 	relogin := fmt.Sprintf("run `hermesh auth login %s` to ask the owner again", a.address())
 	id.set("ok", fmt.Sprintf("client %q (%s), owner %s", a.g.ClientLabel, a.g.ClientId, a.st.OwnerID), "", 0)
-	if fi, err := os.Stat(a.keyPath()); a.mem == nil && err == nil && fi.Mode().Perm()&0o077 != 0 {
+	if fi, err := os.Stat(a.keyPath()); a.mem == nil && err == nil && othersCanRead(fi) {
 		id.set("warn", id.Detail+"; the key file is readable by others", fmt.Sprintf("run `chmod 600 %s`", a.keyPath()), 0)
 	}
 

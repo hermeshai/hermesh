@@ -39,7 +39,9 @@ func main() {
 		Short: "Run the relay",
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			log := slog.New(slog.NewTextHandler(os.Stderr, nil))
-			log.Info("open file limit", "soft", rlimit.RaiseNoFile())
+			if n := rlimit.RaiseNoFile(); n > 0 { // Windows has no such limit
+				log.Info("open file limit", "soft", n)
+			}
 			if debugAddr != "" {
 				go func() { log.Warn("debug server stopped", "err", metrics.Serve(debugAddr)) }()
 			}

@@ -38,6 +38,9 @@ func executable(p string) string {
 	return ""
 }
 
+// fileExists: a program named without its extension exists too.
+func fileExists(p string) bool { return executable(p) != "" }
+
 func isFile(p string) bool {
 	st, err := os.Stat(p)
 	return err == nil && !st.IsDir()
@@ -56,6 +59,8 @@ func startable(bin string, args []string) (string, []string, error) {
 		if p := LookPath(bin, shellenv.Path()); p != "" {
 			bin = p
 		}
+	} else if p := executable(bin); p != "" {
+		bin = p // named without its extension
 	}
 	switch strings.ToLower(filepath.Ext(bin)) {
 	case ".cmd", ".bat":

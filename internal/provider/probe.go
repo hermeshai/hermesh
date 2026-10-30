@@ -132,10 +132,7 @@ func firstLine(printed string, err error) string {
 }
 
 // Exists: bin is a path to a file (an override may name one that is gone).
-func Exists(bin string) bool {
-	st, err := os.Stat(bin)
-	return bin != "" && err == nil && !st.IsDir()
-}
+func Exists(bin string) bool { return bin != "" && fileExists(bin) }
 
 // AppWithoutCLI is the first of apps (bundle names) installed in
 // /Applications or ~/Applications, or "". (Not asked when a test names the

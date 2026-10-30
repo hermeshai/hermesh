@@ -16,6 +16,7 @@ import (
 // agent CLI: discovery, tool calls into the worktree, follow-up turns,
 // cancel, and resume after a daemon restart.
 func TestACPAgents(t *testing.T) {
+	unixOnly(t, "its fake Cursor is a shell script")
 	if testing.Short() {
 		t.Skip("e2e")
 	}
@@ -117,6 +118,7 @@ func TestACPAgents(t *testing.T) {
 // `dsh` on PATH) can use DeepSeek Harness: hermeshd runs the dsh the app
 // keeps, as the app does (its executable as Node on its CLI script).
 func TestDeepSeekFromDesktopApp(t *testing.T) {
+	unixOnly(t, "it reads a macOS app bundle")
 	if testing.Short() {
 		t.Skip("e2e")
 	}
@@ -150,6 +152,7 @@ func TestDeepSeekFromDesktopApp(t *testing.T) {
 // TestCodeBuddy: CodeBuddy Code installed as its npm package puts
 // `codebuddy` on PATH; hermeshd finds it there and starts it as an ACP agent.
 func TestCodeBuddy(t *testing.T) {
+	unixOnly(t, "its fake CodeBuddy is a shell script")
 	if testing.Short() {
 		t.Skip("e2e")
 	}

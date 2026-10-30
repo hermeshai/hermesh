@@ -102,7 +102,7 @@ func TestRelayImage(t *testing.T) {
 		t.Fatalf("claim-code %q, the log's %q", c, m[1])
 	}
 	mcpURL := docker("exec", name, "hermesh-relay", "mcp-url")
-	sockDir, _ := os.MkdirTemp("/tmp", "hm")
+	sockDir, _ := os.MkdirTemp(shortTemp, "hm")
 	t.Cleanup(func() { os.RemoveAll(sockDir) })
 	sock := filepath.Join(sockDir, "o.sock")
 	start(t, "owner", nil, filepath.Join(bin, "hermeshd"), "run", "--owner", "--data-dir", filepath.Join(t.TempDir(), "owner"), "--socket", sock)
