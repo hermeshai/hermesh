@@ -6,6 +6,7 @@ import { i18n } from "../../shared/i18n";
 import { StatusDot } from "./components";
 import { Icon } from "./icons";
 import { addActions, openAdd } from "./overview/actions";
+import { keys } from "./platform";
 import { grantLabel, machineName } from "./Sidebar";
 import { useStore, type Store } from "./store";
 
@@ -13,7 +14,7 @@ type Action = { label: string; shortcut: string; run: (st: Store) => void };
 
 const actions = (): Action[] => [
   ...addActions.map((a) => ({ label: a.label, shortcut: a.shortcut, run: (st: Store) => openAdd(st, a.id) })),
-  { label: i18n.t("common:search.openSettings"), shortcut: "⌘,", run: () => window.hermesh?.openSettings() },
+  { label: i18n.t("common:search.openSettings"), shortcut: keys("CmdOrCtrl+,"), run: () => window.hermesh?.openSettings() },
 ];
 
 // The ⌘K search palette: find a session by its title, project, grant,

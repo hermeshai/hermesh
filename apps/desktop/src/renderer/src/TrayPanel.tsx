@@ -4,6 +4,7 @@ import type { TrayAction, TrayView } from "../../shared/bridge";
 import { i18n } from "../../shared/i18n";
 import { Mark } from "@hermesh/ui";
 import { Icon } from "./icons";
+import { platform } from "./platform";
 import "./tray.css";
 
 /**
@@ -17,7 +18,7 @@ export function TrayPanel() {
   const [v, setV] = useState<TrayView | null>(null);
   const box = useRef<HTMLDivElement>(null);
   useEffect(() => {
-    document.documentElement.classList.add("vibrant");
+    if (platform === "mac") document.documentElement.classList.add("vibrant");
     window.hermesh?.trayView().then(setV);
     return window.hermesh?.onTrayView(setV);
   }, []);

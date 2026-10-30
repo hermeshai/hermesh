@@ -10,6 +10,7 @@ import {
 import { AgentLogo, Mark, agentName } from "@hermesh/ui";
 import { StatusDot } from "../components";
 import { Icon } from "../icons";
+import { keys } from "../platform";
 import { archive, grantLabel, machineName, unarchive } from "../Sidebar";
 import { useNow, useStore } from "../store";
 import { interrupt } from "./actions";
@@ -439,10 +440,10 @@ function ControlArea({ s, grant, events, onHeight }: { s: Session; grant: string
       <div className="cbar-row">
         <LiveStatus s={s} grant={grant} events={events} />
         <span className="ctl-sep" />
-        <button className="ctl-btn" title={t("control.interruptTitle")} onClick={() => interrupt(st, s)}>
+        <button className="ctl-btn" title={t("control.interruptTitle", { keys: keys("CmdOrCtrl+.") })} onClick={() => interrupt(st, s)}>
           <Icon name="stop" />
           {t("control.interrupt")}
-          <span className="kbd">⌘.</span>
+          <span className="kbd">{keys("CmdOrCtrl+.")}</span>
         </button>
       </div>
     </div>

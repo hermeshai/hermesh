@@ -7,6 +7,7 @@ import { SheetHost } from "./Sheets";
 import { Sidebar } from "./Sidebar";
 import { useCommands } from "./commands";
 import { Icon } from "./icons";
+import { platform } from "./platform";
 import { useStore } from "./store";
 
 export function MainWindow() {
@@ -55,11 +56,31 @@ export function SidebarToggle() {
   if (st.sidebar) return null;
   return (
     <>
-      <span style={{ width: 62, flex: "none" }} />
+      <span className="tl-room" />
+      <AppMenuButton />
       <button className="tb" onClick={() => st.set({ sidebar: true })} aria-label={t("window.showSidebar")}>
         <Icon name="sidebar" />
       </button>
     </>
+  );
+}
+
+/** Windows: the app menu, under its button (there is no menu bar; main/menu.ts). */
+export function AppMenuButton() {
+  const { t } = useTranslation("common");
+  if (platform !== "win") return null;
+  return (
+    <button
+      className="tb"
+      aria-label={t("window.menu")}
+      title={t("window.menu")}
+      onClick={(e) => {
+        const r = e.currentTarget.getBoundingClientRect();
+        window.hermesh?.showAppMenu(r.left, r.bottom + 4);
+      }}
+    >
+      <Icon name="menu" />
+    </button>
   );
 }
 

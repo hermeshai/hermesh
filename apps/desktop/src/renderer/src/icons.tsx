@@ -4,6 +4,7 @@ const paths: Record<string, string> = {
   arrowD: "<path d=\"M8 2v8M5 7l3 3 3-3M3 11v3h10v-3\"/>",
   grid: "<rect x=\"2.8\" y=\"2.8\" width=\"3.9\" height=\"3.9\" rx=\"1.1\"/><rect x=\"9.3\" y=\"2.8\" width=\"3.9\" height=\"3.9\" rx=\"1.1\"/><rect x=\"2.8\" y=\"9.3\" width=\"3.9\" height=\"3.9\" rx=\"1.1\"/><rect x=\"9.3\" y=\"9.3\" width=\"3.9\" height=\"3.9\" rx=\"1.1\"/>",
   search: "<circle cx=\"7\" cy=\"7\" r=\"4.4\"/><path d=\"M10.3 10.3l3.4 3.4\"/>",
+  menu: "<path d=\"M2.5 4.5h11M2.5 8h11M2.5 11.5h11\"/>",
   sidebar: "<rect x=\"1.8\" y=\"2.8\" width=\"12.4\" height=\"10.4\" rx=\"2.4\"/><path d=\"M6.2 2.8v10.4\"/>",
   power: "<path d=\"M8 2v5.5\"/><path d=\"M4.6 4.2a5 5 0 1 0 6.8 0\"/>",
   gear: "<circle cx=\"8\" cy=\"8\" r=\"2.1\"/><path d=\"M8 1.9v1.8M8 12.3v1.8M1.9 8h1.8M12.3 8h1.8M3.7 3.7l1.3 1.3M11 11l1.3 1.3M3.7 12.3L5 11M11 5l1.3-1.3\"/>",

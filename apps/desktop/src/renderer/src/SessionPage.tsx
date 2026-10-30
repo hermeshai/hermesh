@@ -3,6 +3,7 @@ import type { Session } from "@hermesh/proto/session";
 import { displayTitle } from "@hermesh/core";
 import { Icon } from "./icons";
 import { SidebarToggle } from "./MainWindow";
+import { keys, ownKeys } from "./platform";
 import { useStore } from "./store";
 import { Chat } from "./session/Chat";
 import { useSessionEvents } from "./session/events";
@@ -25,7 +26,7 @@ export function SessionPage({ s }: { s: Session }) {
         {/* A toolbar button as the sidebar's toggle is, highlighted while the info shows. */}
         <button
           className={`tb ${st.inspector ? "on" : ""}`}
-          title={st.inspector ? t("page.hideInfo") : t("page.showInfo")}
+          title={t(st.inspector ? "page.hideInfo" : "page.showInfo", { keys: keys(ownKeys.toggleInspector) })}
           aria-label={t("page.info")}
           aria-pressed={st.inspector}
           onClick={() => st.set({ inspector: !st.inspector })}

@@ -45,6 +45,8 @@ export type Bridge = {
   showInMain(filter: { grant: string } | { machine: string }): void;
   /** Shows the main window joining the owner as a trusted device (a machine only becoming one). */
   showUpgrade(): void;
+  /** Windows: shows the app menu at x, y (the window's menu bar stays hidden). */
+  showAppMenu(x: number, y: number): void;
   /** Shows a native menu at the pointer; resolves to the chosen item's id. */
   popupMenu(items: MenuItem[]): Promise<string | null>;
   onCommand(cb: (c: Command) => void): () => void;

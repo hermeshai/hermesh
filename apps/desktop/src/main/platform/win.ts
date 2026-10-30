@@ -65,6 +65,8 @@ function asLoginItem(state: string): LoginItem {
 }
 
 const symbols = () => (nativeTheme.shouldUseDarkColors ? "#ffffff" : "#1a1a1a");
+/** The caption buttons as high as the top band: the first run's (48 px) or the toolbar's (44 px). */
+const buttonsHeight = (kind: WindowKind) => (kind === "onboarding" ? 48 : 44);
 
 export const win: Platform = {
   token: "win",
@@ -169,14 +171,14 @@ export const win: Platform = {
   },
 
   frame(kind: WindowKind) {
-    if (kind === "panel") return { backgroundMaterial: "acrylic" };
-    // Windows draws the caption buttons over the page's top band (the sidebar's toolbar row is the drag area); Mica shows through the sidebar.
-    return {
-      titleBarStyle: "hidden",
-      titleBarOverlay: { color: "#00000000", symbolColor: symbols(), height: kind === "onboarding" ? 48 : 44 },
-      backgroundMaterial: "mica",
-    };
+    // The page's own background from the first frame (--win), for no white flash in the dark.
+    const backgroundColor = nativeTheme.shouldUseDarkColors ? "#1e1e21" : "#ffffff";
+    if (kind === "panel") return { backgroundColor };
+    // Windows draws the caption buttons over the page's top band, whose toolbar rows are the drag area.
+    return { titleBarStyle: "hidden", titleBarOverlay: { color: "#00000000", symbolColor: symbols(), height: buttonsHeight(kind) }, backgroundColor };
   },
 
-  placeButtons() {},
+  placeButtons(win, kind) {
+    win.setTitleBarOverlay({ height: buttonsHeight(kind) });
+  },
 };
