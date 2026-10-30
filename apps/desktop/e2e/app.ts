@@ -14,8 +14,8 @@ export type Fixture = {
   fresh: { socket: string; relayURL: string; claimCode: string; gate?: string }[];
   /** A second Mac's daemon (its process group), a machine only with a session on it; 0 when none. */
   otherMac: number;
-  /** On Windows, a Program Files with an older signer set up in it. */
-  programFiles?: string;
+  /** On Windows, the folder of an older signer, as if set up. */
+  oldSigner?: string;
 };
 
 /** Loaded first in every launch: the app's windows open without taking focus. */

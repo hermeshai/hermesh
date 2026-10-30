@@ -33,10 +33,10 @@ type desktopFixture struct {
 	// The process group of a second Mac, a machine only with a finished
 	// session on it, for the spec to take offline (0 when none).
 	OtherMac int `json:"otherMac"`
-	// On Windows, a Program Files with an older signer set up in it, for
-	// the app to offer its own (empty elsewhere).
-	ProgramFiles string `json:"programFiles,omitempty"`
-	owner        *ownerMac
+	// On Windows, the folder of an older signer, as if set up, for the app
+	// to offer its own (empty elsewhere).
+	OldSigner string `json:"oldSigner,omitempty"`
+	owner     *ownerMac
 }
 
 // freshOwner is an owner daemon not set up yet: its socket, a relay of its
@@ -110,8 +110,8 @@ func TestDesktop(t *testing.T) {
 				inPlaceSessions(t, f)
 			}
 			if name == "windows" {
-				f.ProgramFiles = t.TempDir()
-				bin := filepath.Join(f.ProgramFiles, "Hermesh Signer", "hermesh-signer.exe")
+				f.OldSigner = t.TempDir()
+				bin := filepath.Join(f.OldSigner, "hermesh-signer.exe")
 				if r := run(t, nil, 5*time.Minute, "go", "build", "-ldflags", "-X main.version=0.0.1", "-o", bin, "./cmd/hermesh-signer"); r.code != 0 {
 					t.Fatalf("an older signer: %+v", r)
 				}

@@ -43,7 +43,7 @@ test("the window opens at the size it had last time, loading in the middle until
 });
 
 test("an older signer set up here: Needs You offers the app's, with one UAC prompt", async () => {
-  const { page, app } = await launch(undefined, { env: { ProgramFiles: fixture.programFiles! } });
+  const { page, app } = await launch(undefined, { env: { HERMESH_TEST_SIGNER_DIR: fixture.oldSigner! } });
   const needs = page.getByRole("region", { name: "需要你处理" });
   await expect(needs).toContainText("Hermesh 签名器有新版本");
   await expect(needs).toContainText("这台电脑装的是 0.0.1。");
