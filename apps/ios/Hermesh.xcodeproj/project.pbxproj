@@ -10,6 +10,7 @@
 		D0CBAA91C3D9B6287E36D725 /* HermeshKit in Frameworks */ = {isa = PBXBuildFile; productRef = CA58F41DB714CCA58E4C53F5 /* HermeshKit */; };
 		86AC8F9E5D0563AB542BD55A /* HermeshProto in Frameworks */ = {isa = PBXBuildFile; productRef = 268F62350FE5702012D12E3E /* HermeshProto */; };
 		92221C33D4F49D3218F13C49 /* HermeshSessions in Frameworks */ = {isa = PBXBuildFile; productRef = B1704967309B24A9B09642A8 /* HermeshSessions */; };
+		5A2E8C1D7B3F4A6E9D0C1B21 /* Markdown in Frameworks */ = {isa = PBXBuildFile; productRef = 5A2E8C1D7B3F4A6E9D0C1B22 /* Markdown */; };
 		AC5CF953EA41B71635B8C74F /* HermeshCore.xcframework in Frameworks */ = {isa = PBXBuildFile; fileRef = C4E5471B18E1D53967B5E0B6 /* HermeshCore.xcframework */; };
 		BB78A56E18B6F9A93275E716 /* HermeshKit in Frameworks */ = {isa = PBXBuildFile; productRef = C3FC6D868C2678A25C71BCE0 /* HermeshKit */; };
 		263020E54B381CD741F857F4 /* HermeshProto in Frameworks */ = {isa = PBXBuildFile; productRef = FC55DAF41925C7626AF9CDA0 /* HermeshProto */; };
@@ -104,6 +105,7 @@
 				D0CBAA91C3D9B6287E36D725 /* HermeshKit in Frameworks */,
 				86AC8F9E5D0563AB542BD55A /* HermeshProto in Frameworks */,
 				92221C33D4F49D3218F13C49 /* HermeshSessions in Frameworks */,
+				5A2E8C1D7B3F4A6E9D0C1B21 /* Markdown in Frameworks */,
 				AC5CF953EA41B71635B8C74F /* HermeshCore.xcframework in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -168,6 +170,7 @@
 				A26B49697F3E690398527AAB /* Sources */,
 				F72F053D4455B87BA57FD8AA /* Frameworks */,
 				509E3C5AD660F43AEF16CAB4 /* Resources */,
+				3F1C2B7A9E4D5C6B7A8F9E01 /* Bundle the code highlighter */,
 				E80F457C98800B0C699747FD /* Embed Foundation Extensions */,
 			);
 			buildRules = (
@@ -183,6 +186,7 @@
 				CA58F41DB714CCA58E4C53F5 /* HermeshKit */,
 				268F62350FE5702012D12E3E /* HermeshProto */,
 				B1704967309B24A9B09642A8 /* HermeshSessions */,
+				5A2E8C1D7B3F4A6E9D0C1B22 /* Markdown */,
 			);
 			productName = Hermesh;
 			productReference = 8DB90CFEBD2C1C06E9EA54A6 /* Hermesh.app */;
@@ -268,6 +272,7 @@
 			minimizedProjectReferenceProxies = 1;
 			packageReferences = (
 				A46A1BCE0B67C45BEC8F435B /* XCLocalSwiftPackageReference "../../packages/HermeshKit" */,
+				5A2E8C1D7B3F4A6E9D0C1B23 /* XCRemoteSwiftPackageReference "swift-markdown" */,
 			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = 86024CAD1E83101D97359D73 /* Products */;
@@ -324,6 +329,25 @@
 			runOnlyForDeploymentPostprocessing = 0;
 			shellPath = /bin/sh;
 			shellScript = "\"$SRCROOT/scripts/build-core.sh\"\n";
+		};
+		3F1C2B7A9E4D5C6B7A8F9E01 /* Bundle the code highlighter */ = {
+			isa = PBXShellScriptBuildPhase;
+			alwaysOutOfDate = 1;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputFileListPaths = (
+			);
+			inputPaths = (
+			);
+			name = "Bundle the code highlighter";
+			outputFileListPaths = (
+			);
+			outputPaths = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "\"$SRCROOT/scripts/build-highlighter.sh\"\n";
 		};
 /* End PBXShellScriptBuildPhase section */
 
@@ -623,6 +647,17 @@
 		};
 /* End XCLocalSwiftPackageReference section */
 
+/* Begin XCRemoteSwiftPackageReference section */
+		5A2E8C1D7B3F4A6E9D0C1B23 /* XCRemoteSwiftPackageReference "swift-markdown" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/swiftlang/swift-markdown.git";
+			requirement = {
+				kind = upToNextMinorVersion;
+				minimumVersion = 0.9.0;
+			};
+		};
+/* End XCRemoteSwiftPackageReference section */
+
 /* Begin XCSwiftPackageProductDependency section */
 		CA58F41DB714CCA58E4C53F5 /* HermeshKit */ = {
 			isa = XCSwiftPackageProductDependency;
@@ -653,6 +688,11 @@
 			isa = XCSwiftPackageProductDependency;
 			package = A46A1BCE0B67C45BEC8F435B /* XCLocalSwiftPackageReference "../../packages/HermeshKit" */;
 			productName = HermeshSessions;
+		};
+		5A2E8C1D7B3F4A6E9D0C1B22 /* Markdown */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 5A2E8C1D7B3F4A6E9D0C1B23 /* XCRemoteSwiftPackageReference "swift-markdown" */;
+			productName = Markdown;
 		};
 /* End XCSwiftPackageProductDependency section */
 	};

@@ -843,6 +843,16 @@
         }
       }
     },
+    "Agent asked:": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "agent 提问："
+          }
+        }
+      }
+    },
     "Agent questions": {
       "localizations": {
         "zh-Hans": {
@@ -1723,6 +1733,26 @@
         }
       }
     },
+    "Crashed": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "已崩溃"
+          }
+        }
+      }
+    },
+    "Crashed: %@": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "已崩溃：%@"
+          }
+        }
+      }
+    },
     "Create with Face ID": {
       "localizations": {
         "zh-Hans": {
@@ -2203,6 +2233,16 @@
         }
       }
     },
+    "Failed: %@": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "出错了：%@"
+          }
+        }
+      }
+    },
     "Fast": {
       "localizations": {
         "zh-Hans": {
@@ -2572,6 +2612,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "原地"
+          }
+        }
+      }
+    },
+    "In progress": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "进行中"
           }
         }
       }
@@ -4486,6 +4536,16 @@
         }
       }
     },
+    "Sent %@": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@发送"
+          }
+        }
+      }
+    },
     "Separate Worktree: Each Session on Its Own Branch": {
       "localizations": {
         "zh-Hans": {
@@ -5067,16 +5127,6 @@
         }
       }
     },
-    "The agent asked: %@": {
-      "localizations": {
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "agent 提问：%@"
-          }
-        }
-      }
-    },
     "The changes are on the session’s own branch and worktree; your own files are left alone.": {
       "localizations": {
         "zh-Hans": {
@@ -5477,32 +5527,12 @@
         }
       }
     },
-    "Turn %lld": {
+    "Turn %u failed: %@": {
       "localizations": {
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "第 %lld 轮"
-          }
-        }
-      }
-    },
-    "Turn %u done · %lld files": {
-      "localizations": {
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "第 %1$u 轮完成 · %2$lld 个文件"
-          }
-        }
-      }
-    },
-    "Turn %u done · no file changes": {
-      "localizations": {
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "第 %u 轮完成 · 没有改动文件"
+            "value": "第 %1$u 轮出错：%2$@"
           }
         }
       }
@@ -6087,6 +6117,16 @@
         }
       }
     },
+    "When %@ sends another message, it picks up from here; the earlier changes are all still there.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ 再发消息就会从这里接着做，之前的改动都还在。"
+          }
+        }
+      }
+    },
     "When a machine or agent came without your connection address, its terminal shows a pairing code. Its request then opens like any other: compare the verification code.": {
       "localizations": {
         "zh-Hans": {
@@ -6197,6 +6237,16 @@
         }
       }
     },
+    "You interrupted this turn. The session stays; when %@ sends another message, it continues.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "你打断了这一轮。会话还在，%@ 再发消息就会接着做。"
+          }
+        }
+      }
+    },
     "Your Server · %@": {
       "localizations": {
         "zh-Hans": {
@@ -6296,6 +6346,23 @@
           }
         }
       }
+    },
+    "failure.adviceAndResume": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%1$@%2$@"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%1$@ %2$@"
+          }
+        }
+      },
+      "comment": "A failure's advice, then how to go on"
     },
     "hermeshd status": {
       "localizations": {
@@ -6533,6 +6600,26 @@
           "stringUnit": {
             "state": "translated",
             "value": "「%@」的授权今天到期"
+          }
+        }
+      }
+    },
+    "… (the rest can’t be read now)": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "…（其余部分现在读不到）"
+          }
+        }
+      }
+    },
+    "… (truncated)": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "…（已截断）"
           }
         }
       }

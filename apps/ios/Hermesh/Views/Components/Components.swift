@@ -187,3 +187,17 @@ extension Hermesh_Local_V1_Client {
     /// Days until the grant ends (0 on its last day).
     func daysLeft(now: Date) -> Int { max(0, Int(expiresAt.date.timeIntervalSince(now) / 86400)) }
 }
+
+/// The session page's colours: the Mac app's tokens (app.css), light and dark.
+enum Palette {
+    static let fill = Color.primary.opacity(0.045)
+    static let fill2 = Color.primary.opacity(0.075)
+    static let fill3 = Color.primary.opacity(0.12)
+    static let separator = Color.primary.opacity(0.08)
+    /// Code blocks and tool output.
+    static let code = Color(UIColor { $0.userInterfaceStyle == .dark ? UIColor(red: 0x18 / 255, green: 0x18 / 255, blue: 0x1b / 255, alpha: 1)
+        : UIColor(red: 0xf6 / 255, green: 0xf7 / 255, blue: 0xfa / 255, alpha: 1) })
+    /// The owner's messages: near black on the right in the light, a faint white in the dark.
+    static let bubble = Color(UIColor { $0.userInterfaceStyle == .dark ? UIColor(white: 1, alpha: 0.09) : UIColor(white: 0, alpha: 0.86) })
+    static let bubbleText = Color(UIColor { $0.userInterfaceStyle == .dark ? UIColor(white: 1, alpha: 0.88) : .white })
+}

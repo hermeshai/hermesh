@@ -49,6 +49,16 @@ extension LocalAPI {
         return stream("StreamSessionEvents", r)
     }
 
+    /// A tool's whole output as recorded (up to 1 MiB), in chunks; seq: its
+    /// result's event, which a machine from before ReadToolOutput reads it from.
+    func toolOutput(_ sessionID: String, callID: String, seq: UInt64) -> AsyncThrowingStream<Hermesh_Session_V1_ToolOutputChunk, Error> {
+        var r = Hermesh_Local_V1_ReadToolOutputRequest()
+        r.sessionID = sessionID
+        r.callID = callID
+        r.seq = seq
+        return stream("ReadToolOutput", r)
+    }
+
     func answer(_ sessionID: String, question: String, answers: [Answer], decline: Bool) async throws -> Hermesh_Session_V1_Session {
         var r = Hermesh_Local_V1_AnswerQuestionRequest()
         r.sessionID = sessionID
