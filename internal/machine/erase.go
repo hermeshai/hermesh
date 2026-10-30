@@ -130,13 +130,10 @@ func Erase(cfg Config, keepDir string) ([]string, error) {
 	return kept, RemoveExcept(cfg.DataDir, append(slices.Clone(kept), keepDir))
 }
 
-// moveWorktree moves a worktree of repo. git knows a worktree by its real
-// path: not by a symlink, nor by a Windows short name (C:\Users\RUNNER~1).
+// moveWorktree moves a worktree of repo. On Windows git knows a worktree
+// only by its path with forward slashes.
 func moveWorktree(ctx context.Context, repo, from, to string) error {
-	if p, err := filepath.EvalSymlinks(from); err == nil {
-		from = p
-	}
-	_, err := git(ctx, repo, "worktree", "move", from, to)
+	_, err := git(ctx, repo, "worktree", "move", filepath.ToSlash(from), to)
 	return err
 }
 
