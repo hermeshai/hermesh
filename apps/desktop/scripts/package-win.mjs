@@ -182,7 +182,7 @@ function manifest() {
       </Extensions>
     </Application>
     <!-- The command line on PATH: one alias per application, which Start doesn't list. -->${["hermesh", "hermeshd"].map((cli) => `
-    <Application Id="${cli}" Executable="bin\\${cli}.exe" EntryPoint="Windows.FullTrustApplication">
+    <Application Id="${cli}" Executable="bin\\${cli}.exe" EntryPoint="Windows.FullTrustApplication" desktop4:SupportsMultipleInstances="true">
       <uap:VisualElements DisplayName="${cli}" Description="${cli}" BackgroundColor="transparent" Square150x150Logo="Assets\\Square150x150Logo.png" Square44x44Logo="Assets\\Square44x44Logo.png" AppListEntry="none"/>
       <Extensions>
         <uap5:Extension Category="windows.appExecutionAlias">
