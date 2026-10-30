@@ -1,8 +1,8 @@
-import type { BrowserWindow, BrowserWindowConstructorOptions } from "electron";
+import type { BrowserWindow, BrowserWindowConstructorOptions, Rectangle } from "electron";
 import type { LoginItem, TerminalCommand } from "../../shared/bridge";
 
 /** The kinds of window, for their frames. */
-export type WindowKind = "main" | "onboarding" | "settings" | "auxiliary" | "panel";
+export type WindowKind = "starting" | "main" | "onboarding" | "settings" | "auxiliary" | "panel";
 
 /**
  * What differs between the systems the app runs on (docs/windows.md §5.1):
@@ -46,4 +46,6 @@ export interface Platform {
   frame(kind: WindowKind): BrowserWindowConstructorOptions;
   /** Places the window's own buttons for its mode (macOS's traffic lights). */
   placeButtons(win: BrowserWindow, kind: WindowKind): void;
+  /** Moves the window to bounds, animated. */
+  grow(win: BrowserWindow, bounds: Rectangle): void;
 }

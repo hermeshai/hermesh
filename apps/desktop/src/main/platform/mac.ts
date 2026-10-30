@@ -121,7 +121,7 @@ export const mac: Platform = {
         // The lights on the 44 px top band; the sidebar's material showing through (the content is opaque).
         return {
           titleBarStyle: "hiddenInset",
-          trafficLightPosition: kind === "onboarding" ? { x: 24, y: 24 } : { x: 12, y: 15 },
+          trafficLightPosition: kind === "onboarding" || kind === "starting" ? { x: 24, y: 24 } : { x: 12, y: 15 },
           vibrancy: "sidebar",
           visualEffectState: "followWindow",
           backgroundColor: "#00000000",
@@ -132,5 +132,9 @@ export const mac: Platform = {
   placeButtons(win, kind) {
     // The traffic lights sit on the middle of the main window's 44 px top band.
     win.setWindowButtonPosition(kind === "main" ? { x: 12, y: 15 } : { x: 24, y: 24 });
+  },
+
+  grow(win, bounds) {
+    win.setBounds(bounds, true);
   },
 };
