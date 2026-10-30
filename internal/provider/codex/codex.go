@@ -10,7 +10,6 @@ import (
 	"errors"
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"regexp"
 	"strings"
@@ -66,7 +65,7 @@ func (p *Provider) Discover(ctx context.Context) provider.Info {
 	}
 	info.Available = true
 	info.Version = versionRE.FindString(string(out))
-	login := exec.CommandContext(ctx, bin, "login", "status")
+	login := provider.Command(ctx, bin, "login", "status")
 	login.Env = env
 	if out, err := login.CombinedOutput(); err == nil && strings.Contains(string(out), "Logged in") {
 		info.LoggedIn = true
@@ -79,7 +78,7 @@ func (p *Provider) Discover(ctx context.Context) provider.Info {
 // configuration its sessions follow unless told otherwise.
 func catalog(ctx context.Context, env []string, bin string) ([]provider.Model, provider.Settings, error) {
 	var own provider.Settings
-	cmd := exec.CommandContext(ctx, bin, "app-server")
+	cmd := provider.Command(ctx, bin, "app-server")
 	cmd.Env = env
 	in, err := cmd.StdinPipe()
 	if err != nil {

@@ -36,6 +36,8 @@ func executable(p string) string {
 	return ""
 }
 
+func hideWindow(cmd *exec.Cmd) {}
+
 // startable is what runs bin: bin itself.
 func startable(bin string, args []string) (string, []string, error) { return bin, args, nil }
 
