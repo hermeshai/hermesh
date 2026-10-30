@@ -93,6 +93,10 @@ export const mac: Platform = {
     shell.openPath(file);
   },
 
+  openFolder(dir, to) {
+    if (fs.statSync(dir, { throwIfNoEntry: false })?.isDirectory()) execFile("open", ["-a", to === "files" ? "Finder" : "Terminal", dir]);
+  },
+
   openProcessMonitor() {
     void shell.openPath("/System/Applications/Utilities/Activity Monitor.app");
   },

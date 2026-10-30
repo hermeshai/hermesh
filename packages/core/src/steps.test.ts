@@ -1,7 +1,7 @@
 import { create } from "@bufbuild/protobuf";
 import { ToolCallSchema } from "@hermesh/proto/session";
 import { describe, expect, test } from "vitest";
-import { groupSteps, stepSummary, toolObject, toolVerb, turnTimeLine } from "./steps";
+import { groupSteps, replyEnds, stepSummary, toolObject, toolVerb, turnTimeLine } from "./steps";
 import type { TranscriptItem } from "./transcript";
 import { now } from "./testing";
 
@@ -15,12 +15,20 @@ describe("steps", () => {
       tool(2, "read", "a.ts"),
       tool(3, "read", "b.ts"),
       tool(4, "shell", "go test"),
-      { kind: "agent", seq: 5n, text: "好" },
+      { kind: "agent", seq: 5n, text: "好", at: undefined },
       tool(6, "edit", "a.ts"),
     ]);
     expect(steps.map((s) => s.kind)).toEqual(["user", "tools", "agent", "tools"]);
     expect(steps[1].kind === "tools" && steps[1].calls.length).toBe(3);
     expect(steps[1].kind === "tools" && stepSummary(steps[1].calls)).toBe("读取了 2 个文件、运行了 1 条命令");
+  });
+
+  test("a turn's reply ends at its last words, once the turn is over", () => {
+    const agent = (seq: number): TranscriptItem => ({ kind: "agent", seq: BigInt(seq), text: "x", at: undefined });
+    const turn = (seq: number): TranscriptItem => ({ kind: "turn", seq: BigInt(seq), turn: 1, at: undefined, asker: "" });
+    const steps = groupSteps([turn(1), agent(2), tool(3, "shell", "ls"), agent(4), tool(5, "edit", "a.ts"), turn(6), agent(7), tool(8, "shell", "ls"), agent(9)]);
+    expect([...replyEnds(steps, true)]).toEqual([4n]);
+    expect([...replyEnds(steps, false)]).toEqual([4n, 9n]);
   });
 
   test("a call in Chinese words, without the agent's tool name", () => {

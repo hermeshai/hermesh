@@ -13,6 +13,7 @@ import (
 	"testing"
 	"time"
 
+	identityv1 "github.com/hermeshai/hermesh/gen/go/hermesh/identity/v1"
 	localv1 "github.com/hermeshai/hermesh/gen/go/hermesh/local/v1"
 	"github.com/hermeshai/hermesh/internal/provider/acp"
 	"github.com/hermeshai/hermesh/pkg/identity"
@@ -103,6 +104,7 @@ func TestDesktop(t *testing.T) {
 			f := desktopWorld(t, name == "onboarding", name == "health", name == "settings")
 			if name == "session" {
 				f.OtherMac = otherMacSession(t, f)
+				inPlaceSessions(t, f)
 			}
 			file := filepath.Join(t.TempDir(), "fixture.json")
 			b, _ := json.Marshal(f)
@@ -184,6 +186,37 @@ func otherMacSession(t *testing.T, f desktopFixture) int {
 		f.Sessions[title] = s.SessionID
 	}
 	return daemon.cmd.Process.Pid
+}
+
+// inPlaceSessions adds two projects worked on in place on this Mac, a
+// plain folder (notes) and a git repository on branch feature/card (live),
+// and runs a session in each (不在仓库里 and 就地), added to f's sessions.
+func inPlaceSessions(t *testing.T, f desktopFixture) {
+	w := f.owner
+	ctx := context.Background()
+	st, err := w.app.client.GetStatus(ctx, &localv1.GetStatusRequest{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	notes := t.TempDir()
+	os.WriteFile(filepath.Join(notes, "notes.md"), []byte("notes\n"), 0o644)
+	live := gitRepo(t, map[string]string{"README.md": "# live\n"})
+	if out, err := exec.Command("git", "-C", live, "checkout", "-q", "-b", "feature/card").CombinedOutput(); err != nil {
+		t.Fatalf("git checkout: %v %s", err, out)
+	}
+	for _, p := range []*localv1.AddProjectRequest{{MachineId: st.LocalMachineId, ProjectId: "notes", Path: notes},
+		{MachineId: st.LocalMachineId, ProjectId: "live", Path: live, Workspace: identityv1.Workspace_WORKSPACE_IN_PLACE}} {
+		if _, err := w.app.client.AddProject(ctx, p); err != nil {
+			t.Fatalf("add in-place project: %v", err)
+		}
+	}
+	for title, project := range map[string]string{"不在仓库里": "notes", "就地": "live"} {
+		s := firstSession(w.cli(2*time.Minute, "session", "start", "--project", project, "-o", "json", "--agent", "gemini", "--title", title, "--prompt", "say 好", "--wait").stdout)
+		if s.SessionID == "" {
+			t.Fatalf("%s: no session", title)
+		}
+		f.Sessions[title] = s.SessionID
+	}
 }
 
 // desktopSessions starts a session in every state the app shows and

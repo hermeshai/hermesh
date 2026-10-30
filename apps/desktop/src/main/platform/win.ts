@@ -3,6 +3,7 @@ import { createConnectTransport } from "@connectrpc/connect-node";
 import { LocalService } from "@hermesh/proto/local";
 import { app, BrowserWindow, nativeTheme, shell } from "electron";
 import { execFile, spawn } from "node:child_process";
+import fs from "node:fs";
 import net from "node:net";
 import os from "node:os";
 import path from "node:path";
@@ -212,6 +213,15 @@ export const win: Platform = {
     const powershell = ["powershell.exe", "-NoExit", "-Command", command];
     const wt = spawn("wt.exe", powershell, { detached: true, stdio: "ignore" });
     wt.on("error", () => spawn("cmd.exe", ["/c", "start", "", ...powershell], { detached: true, stdio: "ignore", windowsHide: true }).unref());
+    wt.unref();
+  },
+
+  openFolder(dir, to) {
+    if (!fs.statSync(dir, { throwIfNoEntry: false })?.isDirectory()) return;
+    if (to === "files") return void spawn("explorer.exe", [dir], { detached: true, stdio: "ignore" }).unref();
+    // A tab of Windows Terminal there, else a PowerShell window.
+    const wt = spawn("wt.exe", ["-d", dir], { detached: true, stdio: "ignore" });
+    wt.on("error", () => spawn("cmd.exe", ["/c", "start", "", "powershell.exe", "-NoExit"], { cwd: dir, detached: true, stdio: "ignore", windowsHide: true }).unref());
     wt.unref();
   },
 

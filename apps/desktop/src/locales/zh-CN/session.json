@@ -75,13 +75,17 @@
   },
   "inspector": {
     "label": "会话信息",
+    "title": "环境",
     "startedBy": "<b>{{grant}}</b> 发起",
-    "turns_other": "<b>{{count}}</b> 轮",
-    "files_other": "<b>{{count}}</b> 个文件",
-    "noChanges": "没有改动",
-    "crashed": "已崩溃",
-    "failed": "出错",
-    "turn": "第 {{turn}} 轮",
-    "turnLeft": "第 {{turn}} 轮 · {{left}}"
+    "runBy": "<b>{{agent}}</b> 执行",
+    "machineSettings": "机器设置",
+    "projectMenu": "项目",
+    "branchMenu": "分支",
+    "copyPath": "拷贝项目路径",
+    "copyBranch": "拷贝分支名称",
+    "openInFinder": "在访达中打开",
+    "openInExplorer": "在文件资源管理器中打开",
+    "openInTerminal": "在终端中打开",
+    "notRepo": "不是 Git 仓库"
   }
 }

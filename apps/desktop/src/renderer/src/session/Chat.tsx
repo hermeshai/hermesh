@@ -4,7 +4,7 @@ import type { Client, Machine } from "@hermesh/proto/local";
 import { FailureKind, SessionStatus, type Failure, type Session, type SessionEvent, type ToolCall, type ToolResult } from "@hermesh/proto/session";
 import {
   agoText, clockText, dateOf, elapsedSeconds, codingAgentTitle, createdDate, currentTurn, failureAdvice, failureTitle, groupSteps, isActive, isArchivable, isFailed,
-  isInterruption, isInterruptible, pendingQuestion, phaseText, resolutionTitle, statusTitle, stepSummary, toolObject, toolSummary, toolVerb, transcript,
+  isInterruption, isInterruptible, pendingQuestion, phaseText, replyEnds, resolutionTitle, statusTitle, stepSummary, toolObject, toolSummary, toolVerb, transcript,
   turnStartedAt, turnTimeLine, type Step,
 } from "@hermesh/core";
 import { AgentLogo, Mark, agentName } from "@hermesh/ui";
@@ -30,6 +30,7 @@ export function Chat({ s, events, draft }: { s: Session; events: SessionEvent[];
   const grant = grantLabel(st, s);
   const running = isActive(s);
   const items = useMemo(() => groupSteps(transcript(events, running)), [events, running]);
+  const ends = useMemo(() => replyEnds(items, running), [items, running]);
   const live = isInterruptible(s);
   const scroll = useRef<HTMLDivElement>(null);
   const [ctlHeight, setCtlHeight] = useState(0);
@@ -64,6 +65,7 @@ export function Chat({ s, events, draft }: { s: Session; events: SessionEvent[];
               <Row
                 key={String(it.seq)}
                 it={it}
+                end={ends.has(it.seq)}
                 sessionId={s.sessionId}
                 failure={isFailed(s) ? s.progress?.lastFailure : undefined}
                 clients={st.clients}
@@ -169,7 +171,7 @@ function previousTurn(items: Step[], i: number): Date | undefined {
   return undefined;
 }
 
-type RowProps = { it: Step; sessionId: string; failure: Failure | undefined; clients: Client[]; grant: string; previous: Date | undefined };
+type RowProps = { it: Step; end: boolean; sessionId: string; failure: Failure | undefined; clients: Client[]; grant: string; previous: Date | undefined };
 
 /**
  * A row renders again only when what it shows changed: the conversation's
@@ -178,7 +180,7 @@ type RowProps = { it: Step; sessionId: string; failure: Failure | undefined; cli
 const Row = memo(
   RowView,
   (a, b) =>
-    sameStep(a.it, b.it) && a.sessionId === b.sessionId && (a.failure === b.failure || sameFailure(a.failure, b.failure)) &&
+    sameStep(a.it, b.it) && a.end === b.end && a.sessionId === b.sessionId && (a.failure === b.failure || sameFailure(a.failure, b.failure)) &&
     a.clients === b.clients && a.grant === b.grant && a.previous?.getTime() === b.previous?.getTime(),
 );
 
@@ -198,7 +200,7 @@ function sameStep(a: Step, b: Step): boolean {
   }
 }
 
-function RowView({ it, sessionId, failure, clients, grant, previous }: RowProps) {
+function RowView({ it, end, sessionId, failure, clients, grant, previous }: RowProps) {
   const { t } = useTranslation("session");
   switch (it.kind) {
     case "turn":
@@ -212,10 +214,11 @@ function RowView({ it, sessionId, failure, clients, grant, previous }: RowProps)
         </div>
       );
     case "agent":
+      // A turn's reply is one, however many times it writes: when it is over, its last words say when and Copy.
       return (
-        <div className="am">
+        <div className={end ? "am end" : "am"}>
           <Markdown text={it.text} />
-          <Copy text={it.text} />
+          {end && <Copy text={it.text} at={it.at} />}
         </div>
       );
     case "tools":
@@ -274,7 +277,7 @@ function TimeLine({ at, previous }: { at: Date | undefined; previous: Date | und
   return text ? <div className="tdiv">{text}</div> : null;
 }
 
-/** Under a message on hover: when it was sent (the owner's), and Copy. */
+/** Under a message on hover: when it was sent, and Copy. */
 function Copy({ text, at }: { text: string; at?: Date }) {
   const { t } = useTranslation("session");
   const [done, setDone] = useState(false);
