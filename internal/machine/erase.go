@@ -113,8 +113,10 @@ func Erase(cfg Config, keepDir string) ([]string, error) {
 		if out, err := git(ctx, wt, "status", "--porcelain"); err != nil || strings.TrimSpace(out) != "" {
 			dst := filepath.Join(keepDir, r.ID)
 			if p != nil && os.MkdirAll(keepDir, 0o700) == nil {
-				if _, err := git(ctx, p.Path, "worktree", "move", wt, dst); err == nil {
+				if err := moveWorktree(ctx, p.Path, wt, dst); err == nil {
 					wt = dst
+				} else {
+					n.log.Warn("keeping a worktree where it is", "path", wt, "err", err)
 				}
 			}
 			kept = append(kept, wt)
@@ -126,6 +128,19 @@ func Erase(cfg Config, keepDir string) ([]string, error) {
 	}
 	n.Close()
 	return kept, RemoveExcept(cfg.DataDir, append(slices.Clone(kept), keepDir))
+}
+
+// moveWorktree moves a worktree of repo, trying again for a moment: on
+// Windows another program (an antivirus, the search indexer) may still
+// have a file in it open.
+func moveWorktree(ctx context.Context, repo, from, to string) (err error) {
+	for i := range 5 {
+		if _, err = git(ctx, repo, "worktree", "move", from, to); err == nil {
+			return nil
+		}
+		time.Sleep(time.Duration(i+1) * 200 * time.Millisecond)
+	}
+	return err
 }
 
 // RemoveExcept removes everything in dir but the paths in keep.
