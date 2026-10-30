@@ -4,6 +4,7 @@ import SwiftUI
 /// Onboarding until this iPhone belongs to an owner, then the app.
 struct RootView: View {
     @Environment(AppModel.self) private var model
+    @AppStorage(Guide.key) private var guide = ""
 
     var body: some View {
         @Bindable var model = model
@@ -16,7 +17,8 @@ struct RootView: View {
             case .onboarding:
                 OnboardingView()
             case .ready:
-                MainView()
+                // Set up here: the guide until it is done or put off.
+                if guide == Guide.on { GuideView() } else { MainView() }
             }
         }
         // Signing: the confirmation for a batch the app had not asked for,

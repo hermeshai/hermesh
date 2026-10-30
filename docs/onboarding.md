@@ -85,16 +85,16 @@ Read in main 44c911e, not run:
 
 | # | On the iPhone | On the Linux server | Underneath |
 |---|---|---|---|
-| 1 | Sign In, the browser sheet, Face ID: "This iPhone is your trusted device". Allow notifications | | `Setup` with the link code (unchanged) |
-| 2 | Get Started: Add a Machine | | §5.2 |
-| 3 | The sheet: the install command, Copy, Share, Scan the Code | Paste the command (from the sheet, hermesh.io or the README) | §6.1 |
+| 1 | First time using Hermesh, the browser sheet; Create your management key (Face ID); Turn on notifications | | `Setup` with the link code (unchanged) |
+| 2 | The guide: Where does your code live? Linux | | §5.2 |
+| 3 | The install command, Copy, Share, Scan the QR Code | Paste the command (from the sheet, hermesh.io or the README) | §6.1 |
 | 4 | | A QR and the pairing code | An unpinned machine request with `confirm_match` (§6.3) |
 | 5 | Scan: "A machine calling itself vps-1 wants to join". Name it, Face ID | "Claimed by a…@example.com. Approve it on your iPhone" | The phone claims the code (`LookupPairing`) |
 | 6 | "Type these digits on vps-1: 47" | "Approved on Alex's iPhone. Type the two digits it shows: 47". It pairs, starts the service and checks the coding agents | `JoinMatchCode` of the machine cert |
-| 7 | vps-1's page: Claude Code signed in, Codex not installed (and how). Add a Project lists the git repositories in the home folder | Or `hermeshd project add ~/app` | §5.5, §6.7 |
-| 8 | Get Started: Connect Your Agent. ChatGPT gets the connector URL, Grok Bot the /connect line | The agent signs in or asks to connect | §5.6 |
+| 7 | Coding agents: Claude Code signed in; its page has Test and Add a Project, which lists the git repositories in the home folder | Or `hermeshd project add ~/app` | §5.5, §6.7 |
+| 8 | Connect your agent. ChatGPT gets the connector URL, Grok Bot the /connect line | The agent signs in or asks to connect | §5.6 |
 | 9 | A notification: "ChatGPT wants to connect". Choose its scope, Face ID | | §7 |
-| 10 | Try it: "Send ChatGPT this: Use Hermesh to have Claude Code say hello to me in the app project". Its session opens as it starts | Claude Code runs | §5.7 |
+| 10 | Try it: "Send ChatGPT this: Use Hermesh to have Claude Code say hello to me in the app project". Its session and answer show as it runs | Claude Code runs | §5.7 |
 
 What crosses devices by hand: one command anyone can copy, one scan and
 two digits.
@@ -103,52 +103,76 @@ two digits.
 
 ### 5.1 First run
 
-Unchanged, apart from the last page.
+It opens on a page of its own the first time, after signing out and after
+Erase Everything, and it splits by what the person says first:
 
-- "This iPhone is one of your trusted devices" adds what notifications are
-  for when the phone is the only device: "Requests to connect and your
-  agents' questions come here. Without notifications you'll see them only
-  while Hermesh is open."
+```
+             Hermesh
+ ✦ First time using Hermesh                 ›
+ ▭ Already using it on another device       ›
+          Use Your Own Server…
+```
+
+- Either card opens the sign-in at once. What comes back decides the rest,
+  so a wrong card is corrected rather than refused: the first time on an
+  account that already has trusted devices says "This account is already in
+  use" and leads to joining; another device on a new account says "This is
+  a new account" and leads to setting up here. Use Another Account signs in
+  again with nothing kept from the last.
+- **First time.** Create your management key: a diagram of what the key
+  does (a computer, an agent or a device asks through the server, the
+  approval is signed here, and the server only relays) and three lines (it
+  stays on this iPhone; everything that joins needs Face ID; the server
+  can't approve). Create with Face ID runs `Setup`. Never call it an
+  encryption key: it authorizes, and content is end to end by other keys.
+- **Another device.** The request goes out (its key made with Face ID first)
+  and the page shows the code to compare; the other device's name is only
+  known once it approves (`WaitJoinResponse.approved_by`), so the digits page
+  names it. No other device? says that only setting up again is left.
+- **Turn on notifications**, last on both paths: a small lock screen with
+  one notice of each kind (a request to connect, a question with its
+  answers, a session an agent started, a turn done) and "Notifications are
+  end-to-end encrypted; the server can't read them". Turn On Notifications
+  asks iOS; Not Now goes on without.
+- Pages that belong to the guide carry a thin progress bar in the navigation
+  bar, with no labels: the account, a computer, coding agents, connecting.
 - If notifications are turned down, a To Do row stays until they are on:
   "Notifications are off", with Turn On… opening the app's page in Settings.
 
-### 5.2 Get Started
+### 5.2 The guide, and Get Started
 
-A card at the top of the Overview's To Do, from the first launch until it is
-done or hidden:
+Only an iPhone that set the owner up here runs the guide, full screen,
+after the first run; one that joined an owner goes straight to the
+Overview. The guide's pages:
 
-| Row | Done when | Opens |
-|---|---|---|
-| Add a machine | a machine is approved | Add a Machine (§5.3) |
-| Get a coding agent ready | a machine has a coding agent installed and signed in | that machine's page (§5.5) |
-| Add a project | a machine has a project | Add a Project on that machine |
-| Connect your agent | a grant exists | Connect Your Agent (§5.6) |
-| Try it | a session started by a grant has finished a turn | the first task (§5.7) |
+| Page | What it does |
+|---|---|
+| Where does your code live? | Mac or Linux; Set Up Later puts the guide off |
+| Install Hermesh on your Mac | The download link (Copy Link, AirDrop…), then signing in with the same account (or the connection address on one's own server); the Mac's request opens to approve, then its two digits, until it joins |
+| Install Hermesh on Linux | The install command, then Scan the QR Code or Enter the Pairing Code… (one's own server: the pinned command, whose request comes by itself); the same approval, digits and join |
+| Coding agents | Those found on that computer, each opening its page (§5.5: Test, default model, projects and Add a Project…); the others Hermesh works with, by logo; Rescan after installing one there; Continue |
+| Connect your agent | As Connect Your Agent (§5.6), its request opening by itself, for all projects |
+| Try it | The first task (§5.7), and the session it starts with its answer; Add a project first when there is none; Done ends the guide |
+
+- Each step that waits for a request opens it to approve as it comes; once
+  approved the guide goes on to what joined.
+- Later puts the guide off. Then, and only then, Get Started sits on the
+  Overview with what the guide left, and Continue goes back into it:
 
 ```
 Get Started                                    ⋯
- ✓ Add a machine
- ● Get a coding agent ready         [vps-1 ›]
- ○ Add a project
+ ✓ Connect your computer
+ ● Add a project                       [Continue]
  ○ Connect your agent
  ○ Try it
 ```
 
-- The next row carries the button. Done rows show a check, and later rows
-  stay quiet.
-- ⋯ › Hide puts the card away on this phone. The New menu has every action
-  anyway.
-- Done once, it is put away the same way: a row that goes back to undone
-  later (a machine back from a reconnect reports its coding agents a moment
-  after it) does not bring it back. Another owner on this phone, or Erase
-  Everything, starts it again.
-- It is the Mac's first run (its agents, connecting, the first task) for
-  machines that are elsewhere. The order is a suggestion: an agent connected
-  first waits for a machine, as it does today.
-- Its state comes from the world the phone already follows: machines, their
-  coding agents, projects, grants and sessions. While the second row is the
-  next one, the card asks that machine for its coding agents, as a
-  machine's page does.
+- Done rows show a check, from the world the phone follows. All done, or ⋯ ›
+  Hide, and it is gone for good: a row that goes back to undone later (a
+  machine back from a reconnect reports its coding agents a moment after
+  it) does not bring it back.
+- Where the guide stands is kept on this phone for its owner: another owner,
+  or Erase Everything, forgets it.
 
 ### 5.3 Add a Machine
 
@@ -239,7 +263,7 @@ Terminal on this iPhone? Copy a Command for This Account
   task page. It says what to send the agent: "Use Hermesh to have Claude
   Code say hello to me in the app project", with Copy and Share.
 - That grant's first session opens as soon as it appears. Continue closes
-  the page. The Get Started row "Try it" opens it again.
+  the page. In the guide, Try it shows that session and its answer in place.
 - **Test** (decision 2) is a button on a coding agent's page. It runs one
   short fixed turn ("Reply with the single word ready.") in a scratch folder
   and shows the answer. This proves the install and the sign-in before any
@@ -631,10 +655,11 @@ comfortable and widen who can use it.
   repositories it finds, Test, and projects added in its shell and from a
   device (`~/…`).
 - **TestIPhoneFirstRun** (`HERMESH_IPHONE_E2E=1`): the iPhone app in the
-  Simulator claims a new own server, then Get Started: a machine added by
-  its pairing link with nothing to compare, Check Again and Test, a project
-  the machine found, the second-device row, an agent connected and its
-  first session opening by itself. **TestIPhone** keeps the rest of the
+  Simulator claims a new own server and makes its key, puts the guide off
+  and takes it up again from Get Started: a machine added by its pairing
+  link with nothing to compare, Rescan, Test and a project the machine found
+  on its coding agent's page, an agent connected and its first session's
+  answer, then the second-device row. **TestIPhone** keeps the rest of the
   app.
 - **TestMCPReachesAnIPhone**: the owner's only device is an iPhone
   registered for push and offline. An MCP app uses its connection and the
