@@ -252,9 +252,13 @@ Terminal on this iPhone? Copy a Command for This Account
     Documents, Downloads, iCloud Drive, other volumes): reading them would
     put a privacy prompt on a screen nobody may be watching. Browsing into
     one says so first, since that prompt shows on the Mac.
-- **Version**: when a machine's Hermesh is older than the phone's, its page
-  says so and shows the install command that updates it. Machines also
+- **Version**: when a machine's Hermesh is older than the phone's, its
+  version row has an Update button that opens the install command that
+  updates it (a 0.0.0 build of no release never shows it). Machines also
   update themselves ([machine-updates.md](machine-updates.md)).
+- **Offline**: the page shows only what still holds (its sessions, its
+  version) and one row, How to Reconnect, which opens the command to check
+  it with and the last error. Renaming and removing are in the bar's menu.
 
 ### 5.6 Connect Your Agent
 

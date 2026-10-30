@@ -150,21 +150,28 @@ struct MachineRow: View {
     }
 }
 
-/// One machine: its coding agents (each opening its page: defaults and
-/// projects), projects no installed agent may use, pausing, renaming and
-/// removing. When it is offline, why its sessions can't be shown and what
-/// to check.
+/// One machine: whether it is online, its coding agents (each opening its
+/// page: defaults and projects), projects no installed agent may use, its
+/// sessions, system and Hermesh version; renaming and removing are in the
+/// bar's menu. Offline, one row opens how to bring it back.
 struct MachineView: View {
     @Environment(AppModel.self) private var model
     let id: String
     /// Its projects, as the Watch keeps them.
     private var projects: [Project] { model.projects.filter { $0.machineID == id }.sorted { $0.projectID < $1.projectID } }
-    @State private var details = false
     @State private var renaming = false
     @State private var newName = ""
     @State private var confirmRemove = false
     @State private var removeProject: Project?
     @State private var checking = false
+    @State private var help: Help?
+    /// The name under the icon has scrolled under the bar, which shows it then.
+    @State private var nameHidden = false
+
+    private enum Help: Identifiable {
+        case reconnect, update
+        var id: Self { self }
+    }
 
     var body: some View {
         Group {
@@ -179,38 +186,34 @@ struct MachineView: View {
     private func content(_ m: Machine) -> some View {
         let agents = sortedAgents(m.status.agents)
         let others = projects.filter { p in !agents.installed.contains { !projectsFor([p], $0.name).isEmpty } }
+        let version = m.status.version.isEmpty ? m.version : m.status.version
         return List {
             Section {
-                VStack(spacing: 8) {
-                    Image(systemName: machineIcon(m)).font(.system(size: 30)).foregroundStyle(.secondary)
-                        .frame(width: 64, height: 64)
-                        .background(Color(.tertiarySystemFill), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
-                    Text(m.machineName).font(.title2.bold())
-                    if device(m) != nil {
-                        Label("Trusted device", systemImage: "checkmark.shield.fill").font(.footnote.weight(.medium)).foregroundStyle(.green)
-                    }
-                    Text(heroLine(m)).font(.subheadline).foregroundStyle(.secondary).multilineTextAlignment(.center)
-                }
-                .frame(maxWidth: .infinity).listRowBackground(Color.clear)
+                hero(m)
             }
-            if !m.online { offline(m) }
-            Section {
-                ForEach(agents.installed, id: \.name) { a in
-                    NavigationLink(value: Route.machineAgent(m.machineID, a.name)) { agentRow(a) }
-                        .accessibilityIdentifier("agent-\(a.name)")
+            if !m.online {
+                Section {
+                    Button("How to Reconnect", systemImage: "questionmark.circle") { help = .reconnect }
+                        .accessibilityIdentifier("machine-offline")
                 }
-                ForEach(agents.checking, id: \.name) { a in
-                    HStack(spacing: 12) {
-                        AgentLogo(id: a.name, size: 30)
-                        Text(agentTitle(a.name))
-                        Spacer()
-                        ProgressView()
+            }
+            if m.online {
+                Section {
+                    ForEach(agents.installed, id: \.name) { a in
+                        NavigationLink(value: Route.machineAgent(m.machineID, a.name)) { agentRow(a) }
+                            .accessibilityIdentifier("agent-\(a.name)")
                     }
-                }
-                if agents.installed.isEmpty && agents.checking.isEmpty {
-                    Text(m.online ? "No coding agent found on this machine." : "The machine is offline; they show once it connects.").foregroundStyle(.secondary)
-                }
-                if m.online {
+                    ForEach(agents.checking, id: \.name) { a in
+                        HStack(spacing: 12) {
+                            AgentLogo(id: a.name, size: 30)
+                            Text(agentTitle(a.name))
+                            Spacer()
+                            ProgressView()
+                        }
+                    }
+                    if agents.installed.isEmpty && agents.checking.isEmpty {
+                        Text("No coding agent found on this machine.").foregroundStyle(.secondary)
+                    }
                     Button {
                         checking = true
                         Task {
@@ -225,30 +228,18 @@ struct MachineView: View {
                     }
                     .disabled(checking)
                     .accessibilityIdentifier("check-again")
-                }
-            } header: {
-                Text("Coding agents")
-            } footer: {
-                if !agents.missing.isEmpty {
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text("Not installed: \(listText(agents.missing.map(agentTitle))) · install one on \(m.machineName), then Check Again")
-                        ForEach(agents.missing.filter { installPage[$0] != nil }, id: \.self) { a in
-                            Link(String(localized: "How to install \(agentTitle(a))"), destination: installPage[a]!)
+                } header: {
+                    Text("Coding agents")
+                } footer: {
+                    if !agents.missing.isEmpty {
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text("Not installed: \(listText(agents.missing.map(agentTitle))) · install one on \(m.machineName), then Check Again")
+                            ForEach(agents.missing.filter { installPage[$0] != nil }, id: \.self) { a in
+                                Link(String(localized: "How to install \(agentTitle(a))"), destination: installPage[a]!)
+                            }
                         }
                     }
                 }
-            }
-            if let v = olderVersion(m) {
-                Section {
-                    Text("Hermesh on \(m.machineName) is \(v), older than this app. To update it, run the install command there again:")
-                        .font(.subheadline)
-                    MonoBox(text: AddMachineSheet.install)
-                    CopyShareButtons(text: AddMachineSheet.install, shareTitle: "Send…")
-                        .listRowBackground(Color.clear).listRowInsets(EdgeInsets())
-                } header: {
-                    Text("Update")
-                }
-                .accessibilityIdentifier("machine-update")
             }
             if !others.isEmpty {
                 Section {
@@ -261,30 +252,62 @@ struct MachineView: View {
                 }
             }
             Section {
-                Toggle(isOn: Binding(get: { m.status.paused }, set: { p in Task { await model.setPaused(m, p) } })) {
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text("Take no new sessions")
-                        Text("Running sessions aren’t affected").font(.subheadline).foregroundStyle(.secondary)
-                    }
+                if m.online {
+                    Toggle("Accept New Sessions", isOn: Binding(get: { !m.status.paused }, set: { on in Task { await model.setPaused(m, !on) } }))
+                        .accessibilityIdentifier("accept-sessions")
                 }
-                .disabled(!m.online)
                 NavigationLink(value: Route.machineSessions(m.machineID)) {
                     LabeledContent("Sessions", value: "\(model.sessions.filter { $0.machineID == m.machineID }.count)")
                 }
-            } header: {
-                Text("Sessions")
+            } footer: {
+                if m.online && m.status.paused { Text("Running sessions go on; no new ones start here.") }
             }
             Section {
-                Button("Rename…") {
-                    newName = m.machineName
-                    renaming = true
+                let platform = platformText(m.status.platform)
+                if !platform.isEmpty { LabeledContent("Operating System", value: platform) }
+                if !version.isEmpty {
+                    LabeledContent {
+                        HStack(spacing: 10) {
+                            Text(version).lineLimit(1).truncationMode(.middle)
+                            if isOlder(version) {
+                                Button("Update") { help = .update }
+                                    .buttonStyle(.bordered).buttonBorderShape(.capsule).controlSize(.small)
+                                    .accessibilityIdentifier("machine-update")
+                            }
+                        }
+                    } label: {
+                        Text(verbatim: "Hermesh")
+                    }
                 }
-                .disabled(!m.online)
-                Button("Remove…", role: .destructive) { confirmRemove = true }
             }
         }
-        .navigationTitle(m.machineName)
+        .onScrollGeometryChange(for: Bool.self) { $0.contentOffset.y + $0.contentInsets.top > 110 } action: { _, hidden in
+            withAnimation(.easeOut(duration: 0.15)) { nameHidden = hidden }
+        }
+        .navigationTitle(nameHidden ? m.machineName : "")
         .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            ToolbarItem(placement: .topBarTrailing) {
+                Menu("More", systemImage: "ellipsis") {
+                    Button("Rename…", systemImage: "pencil") {
+                        newName = m.machineName
+                        renaming = true
+                    }
+                    .disabled(!m.online)
+                    Button("Remove…", systemImage: "trash", role: .destructive) { confirmRemove = true }
+                }
+                .accessibilityIdentifier("machine-menu")
+            }
+        }
+        .sheet(item: $help) { h in
+            switch h {
+            case .reconnect:
+                CommandSheet(title: "How to Reconnect", message: "Make sure it’s on and online, then run this there:",
+                             command: "hermeshd status", details: model.unreachable.first { $0.machineID == m.machineID }?.error ?? "")
+            case .update:
+                CommandSheet(title: "Update Hermesh", message: "On \(m.machineName), run the install command again:", command: AddMachineSheet.install)
+            }
+        }
         .refreshable {
             await model.recheck(machine: m.machineID)
         }
@@ -329,50 +352,37 @@ struct MachineView: View {
         }
     }
 
-    /// The machine's Hermesh version, when it is older than this app's.
-    private func olderVersion(_ m: Machine) -> String? {
-        let v = m.status.version.isEmpty ? m.version : m.status.version
+    /// Its icon, name (with the shield of a trusted device) and whether it is online.
+    private func hero(_ m: Machine) -> some View {
+        VStack(spacing: 8) {
+            Image(systemName: machineIcon(m)).font(.system(size: 30)).foregroundStyle(m.online ? .secondary : .tertiary)
+                .frame(width: 64, height: 64)
+                .background(Color(.tertiarySystemFill), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+            HStack(spacing: 6) {
+                Text(m.machineName).font(.title2.bold())
+                if device(m) != nil { TrustedMark() }
+            }
+            HStack(spacing: 6) {
+                Circle().fill(m.online ? Color.green : .clear).strokeBorder(m.online ? .clear : Color.secondary, lineWidth: 1.5)
+                    .frame(width: 8, height: 8)
+                Text(m.online ? String(localized: "Online") : String(localized: "Offline · last online \(m.hasLastSeen ? agoText(m.lastSeen.date, now: model.now) : String(localized: "a long time ago"))"))
+            }
+            .font(.subheadline).foregroundStyle(.secondary)
+        }
+        .frame(maxWidth: .infinity).listRowBackground(Color.clear)
+        .accessibilityElement(children: .combine)
+    }
+
+    /// The machine's Hermesh is older than this app's. A build of no
+    /// release (0.0.0) is never older.
+    private func isOlder(_ v: String) -> Bool {
         guard let mine = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String,
-              let a = versionParts(v), let b = versionParts(mine), a.lexicographicallyPrecedes(b) else { return nil }
-        return v
+              let a = versionParts(v), a.contains(where: { $0 != 0 }), let b = versionParts(mine) else { return false }
+        return a.lexicographicallyPrecedes(b)
     }
 
     /// The trusted device this machine is, if it is one.
     private func device(_ m: Machine) -> Device? { model.devices.first { $0.machineID == m.machineID } }
-
-    private func heroLine(_ m: Machine) -> String {
-        var parts = [m.online ? String(localized: "Online") : String(localized: "Offline · last online \(m.hasLastSeen ? agoText(m.lastSeen.date, now: model.now) : String(localized: "a long time ago"))")]
-        if m.online && m.status.paused { parts.append(String(localized: "Takes no new sessions")) }
-        parts.append(platformText(m.status.platform))
-        let version = m.status.version.isEmpty ? m.version : m.status.version
-        if !version.isEmpty { parts.append("Hermesh \(version)") }
-        return parts.filter { !$0.isEmpty }.joined(separator: " · ")
-    }
-
-    /// Why an offline machine's sessions can't be shown, and what to check.
-    private func offline(_ m: Machine) -> some View {
-        Section {
-            VStack(alignment: .leading, spacing: 8) {
-                Label("The machine is off, asleep, or offline", systemImage: "moon.zzz")
-                Label {
-                    Text("The Hermesh background service isn’t running on it: run \(Text("hermeshd status").monospaced()) there to check")
-                } icon: {
-                    Image(systemName: "terminal")
-                }
-                if let u = model.unreachable.first(where: { $0.machineID == m.machineID }), !u.error.isEmpty {
-                    DisclosureGroup("Details", isExpanded: $details) {
-                        Text(u.error).font(.caption.monospaced()).foregroundStyle(.secondary).textSelection(.enabled)
-                    }
-                }
-            }
-            .font(.subheadline)
-        } header: {
-            Text("Its sessions can’t be shown for now")
-        } footer: {
-            Text("Once it reconnects, its sessions and usage come back by themselves; there’s nothing for you to do.")
-        }
-        .accessibilityIdentifier("machine-offline")
-    }
 
     /// An installed agent: whether it is signed in, how many projects it may
     /// work in, and its defaults when set.
@@ -387,6 +397,42 @@ struct MachineView: View {
                     .font(.subheadline).foregroundStyle(.secondary).lineLimit(1)
             }
         }
+    }
+}
+
+/// A command to run on a machine, to copy or send there: what it is for,
+/// the command, and what went wrong when that is known.
+private struct CommandSheet: View {
+    let title: LocalizedStringKey
+    let message: LocalizedStringKey
+    let command: String
+    var details = ""
+    /// Its content's height: the sheet is as tall as that.
+    @State private var height: CGFloat = 300
+
+    var body: some View {
+        NavigationStack {
+            VStack(alignment: .leading, spacing: 16) {
+                Text(message).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+                MonoBox(text: command)
+                CopyShareButtons(text: command, shareTitle: "Send…")
+                if !details.isEmpty {
+                    DisclosureGroup("Details") {
+                        Text(details).font(.caption.monospaced()).foregroundStyle(.secondary).textSelection(.enabled)
+                            .frame(maxWidth: .infinity, alignment: .leading).padding(.top, 8)
+                    }
+                    .font(.subheadline)
+                }
+            }
+            .padding(.horizontal, 20).padding(.top, 8).padding(.bottom, 8)
+            .fixedSize(horizontal: false, vertical: true)
+            .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { height = $0 }
+            .frame(maxHeight: .infinity, alignment: .top)
+            .navigationTitle(title)
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar { CloseButton() }
+        }
+        .presentationDetents([.height(height + 70)])
     }
 }
 
