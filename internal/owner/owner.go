@@ -1499,6 +1499,19 @@ func (o *Owner) MachineRepos(ctx context.Context, machineID string) ([]*machinev
 	return res.Repos, nil
 }
 
+// MachineFolders lists the folders in one of a machine's folders, for Add a
+// Project; this device's own machine is read in process.
+func (o *Owner) MachineFolders(ctx context.Context, machineID, path string, hidden bool) (*machinev1.ListFoldersResponse, error) {
+	if l := o.local(); l != nil && l.MachineID() == machineID {
+		return machine.ListFolders(path, hidden)
+	}
+	n, err := o.machineClient(ctx, machineID)
+	if err != nil {
+		return nil, err
+	}
+	return n.Admin.ListFolders(ctx, &machinev1.ListFoldersRequest{Path: path, Hidden: hidden})
+}
+
 // TestMachineAgent runs Test with a coding agent on a machine.
 func (o *Owner) TestMachineAgent(ctx context.Context, machineID, agent string) (*machinev1.TestAgentResponse, error) {
 	if l := o.local(); l != nil && l.MachineID() == machineID {

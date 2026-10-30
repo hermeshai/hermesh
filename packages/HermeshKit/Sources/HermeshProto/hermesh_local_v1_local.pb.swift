@@ -1532,6 +1532,22 @@ public nonisolated struct Hermesh_Local_V1_ListMachineReposResponse: Sendable {
   public init() {}
 }
 
+public nonisolated struct Hermesh_Local_V1_ListMachineFoldersRequest: Sendable {
+  // SwiftProtobuf.Message conformance is added in an extension below. See the
+  // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
+  // methods supported on all messages.
+
+  public var machineID: String = String()
+
+  public var path: String = String()
+
+  public var hidden: Bool = false
+
+  public var unknownFields = SwiftProtobuf.UnknownStorage()
+
+  public init() {}
+}
+
 public nonisolated struct Hermesh_Local_V1_TestMachineAgentRequest: Sendable {
   // SwiftProtobuf.Message conformance is added in an extension below. See the
   // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
@@ -5501,6 +5517,46 @@ nonisolated extension Hermesh_Local_V1_ListMachineReposResponse: SwiftProtobuf.M
 
   public static func ==(lhs: Hermesh_Local_V1_ListMachineReposResponse, rhs: Hermesh_Local_V1_ListMachineReposResponse) -> Bool {
     if lhs.repos != rhs.repos {return false}
+    if lhs.unknownFields != rhs.unknownFields {return false}
+    return true
+  }
+}
+
+nonisolated extension Hermesh_Local_V1_ListMachineFoldersRequest: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
+  public static let protoMessageName: String = _protobuf_package + ".ListMachineFoldersRequest"
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{3}machine_id\0\u{1}path\0\u{1}hidden\0")
+
+  public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
+    while let fieldNumber = try decoder.nextFieldNumber() {
+      // The use of inline closures is to circumvent an issue where the compiler
+      // allocates stack space for every case branch when no optimizations are
+      // enabled. https://github.com/apple/swift-protobuf/issues/1034
+      switch fieldNumber {
+      case 1: try { try decoder.decodeSingularStringField(value: &self.machineID) }()
+      case 2: try { try decoder.decodeSingularStringField(value: &self.path) }()
+      case 3: try { try decoder.decodeSingularBoolField(value: &self.hidden) }()
+      default: break
+      }
+    }
+  }
+
+  public func traverse<V: SwiftProtobuf.Visitor>(visitor: inout V) throws {
+    if !self.machineID.isEmpty {
+      try visitor.visitSingularStringField(value: self.machineID, fieldNumber: 1)
+    }
+    if !self.path.isEmpty {
+      try visitor.visitSingularStringField(value: self.path, fieldNumber: 2)
+    }
+    if self.hidden != false {
+      try visitor.visitSingularBoolField(value: self.hidden, fieldNumber: 3)
+    }
+    try unknownFields.traverse(visitor: &visitor)
+  }
+
+  public static func ==(lhs: Hermesh_Local_V1_ListMachineFoldersRequest, rhs: Hermesh_Local_V1_ListMachineFoldersRequest) -> Bool {
+    if lhs.machineID != rhs.machineID {return false}
+    if lhs.path != rhs.path {return false}
+    if lhs.hidden != rhs.hidden {return false}
     if lhs.unknownFields != rhs.unknownFields {return false}
     return true
   }

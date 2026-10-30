@@ -96,6 +96,8 @@ service LocalService {
   rpc CheckAgents(CheckAgentsRequest) returns (CheckAgentsResponse);
   // A machine's git repositories under its home folder, for Add a Project.
   rpc ListMachineRepos(ListMachineReposRequest) returns (ListMachineReposResponse);
+  // The folders in one of a machine's folders, for Add a Project.
+  rpc ListMachineFolders(ListMachineFoldersRequest) returns (hermesh.machine.v1.ListFoldersResponse);
   // One fixed turn of a coding agent on a machine (Test).
   rpc TestMachineAgent(TestMachineAgentRequest) returns (hermesh.machine.v1.TestAgentResponse);
   // This Mac's diagnostics as text, for the person to copy and send when
@@ -696,6 +698,12 @@ message ListMachineReposRequest {
 
 message ListMachineReposResponse {
   repeated hermesh.machine.v1.Repo repos = 1;
+}
+
+message ListMachineFoldersRequest {
+  string machine_id = 1;
+  string path = 2;
+  bool hidden = 3;
 }
 
 message TestMachineAgentRequest {

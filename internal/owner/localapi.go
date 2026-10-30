@@ -325,6 +325,10 @@ func (l *localService) ListMachineRepos(ctx context.Context, req *localv1.ListMa
 	return &localv1.ListMachineReposResponse{Repos: repos}, err
 }
 
+func (l *localService) ListMachineFolders(ctx context.Context, req *localv1.ListMachineFoldersRequest) (*machinev1.ListFoldersResponse, error) {
+	return l.o().MachineFolders(ctx, req.MachineId, req.Path, req.Hidden)
+}
+
 func (l *localService) TestMachineAgent(ctx context.Context, req *localv1.TestMachineAgentRequest) (*machinev1.TestAgentResponse, error) {
 	return l.o().TestMachineAgent(ctx, req.MachineId, req.Agent)
 }

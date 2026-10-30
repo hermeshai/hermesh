@@ -281,6 +281,15 @@ extension LocalAPI {
         return res.repos
     }
 
+    /// The folders in one of a machine's folders ("~/code", or a full path).
+    func folders(machine: String, path: String, hidden: Bool = false) async throws -> Hermesh_Machine_V1_ListFoldersResponse {
+        var r = Hermesh_Local_V1_ListMachineFoldersRequest()
+        r.machineID = machine
+        r.path = path
+        r.hidden = hidden
+        return try await call("ListMachineFolders", r, timeout: 60)
+    }
+
     /// Test: one fixed turn of a coding agent on a machine.
     func testAgent(machine: String, agent: String) async throws -> Hermesh_Machine_V1_TestAgentResponse {
         var r = Hermesh_Local_V1_TestMachineAgentRequest()

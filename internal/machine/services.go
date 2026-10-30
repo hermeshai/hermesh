@@ -241,6 +241,13 @@ func (s *adminService) ListRepos(ctx context.Context, _ *machinev1.ListReposRequ
 	return &machinev1.ListReposResponse{Repos: FindRepos(ctx)}, nil
 }
 
+func (s *adminService) ListFolders(ctx context.Context, req *machinev1.ListFoldersRequest) (*machinev1.ListFoldersResponse, error) {
+	if principalFrom(ctx).Kind != PrincipalOwner {
+		return nil, connect.NewError(connect.CodePermissionDenied, errors.New("owner only"))
+	}
+	return ListFolders(req.Path, req.Hidden)
+}
+
 func (s *adminService) TestAgent(ctx context.Context, req *machinev1.TestAgentRequest) (*machinev1.TestAgentResponse, error) {
 	if principalFrom(ctx).Kind != PrincipalOwner {
 		return nil, connect.NewError(connect.CodePermissionDenied, errors.New("owner only"))

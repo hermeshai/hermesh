@@ -123,6 +123,9 @@ const (
 	// LocalServiceListMachineReposProcedure is the fully-qualified name of the LocalService's
 	// ListMachineRepos RPC.
 	LocalServiceListMachineReposProcedure = "/hermesh.local.v1.LocalService/ListMachineRepos"
+	// LocalServiceListMachineFoldersProcedure is the fully-qualified name of the LocalService's
+	// ListMachineFolders RPC.
+	LocalServiceListMachineFoldersProcedure = "/hermesh.local.v1.LocalService/ListMachineFolders"
 	// LocalServiceTestMachineAgentProcedure is the fully-qualified name of the LocalService's
 	// TestMachineAgent RPC.
 	LocalServiceTestMachineAgentProcedure = "/hermesh.local.v1.LocalService/TestMachineAgent"
@@ -283,6 +286,8 @@ type LocalServiceClient interface {
 	CheckAgents(context.Context, *v1.CheckAgentsRequest) (*v1.CheckAgentsResponse, error)
 	// A machine's git repositories under its home folder, for Add a Project.
 	ListMachineRepos(context.Context, *v1.ListMachineReposRequest) (*v1.ListMachineReposResponse, error)
+	// The folders in one of a machine's folders, for Add a Project.
+	ListMachineFolders(context.Context, *v1.ListMachineFoldersRequest) (*v11.ListFoldersResponse, error)
 	// One fixed turn of a coding agent on a machine (Test).
 	TestMachineAgent(context.Context, *v1.TestMachineAgentRequest) (*v11.TestAgentResponse, error)
 	// This Mac's diagnostics as text, for the person to copy and send when
@@ -542,6 +547,12 @@ func NewLocalServiceClient(httpClient connect.HTTPClient, baseURL string, opts .
 			connect.WithSchema(localServiceMethods.ByName("ListMachineRepos")),
 			connect.WithClientOptions(opts...),
 		),
+		listMachineFolders: connect.NewClient[v1.ListMachineFoldersRequest, v11.ListFoldersResponse](
+			httpClient,
+			baseURL+LocalServiceListMachineFoldersProcedure,
+			connect.WithSchema(localServiceMethods.ByName("ListMachineFolders")),
+			connect.WithClientOptions(opts...),
+		),
 		testMachineAgent: connect.NewClient[v1.TestMachineAgentRequest, v11.TestAgentResponse](
 			httpClient,
 			baseURL+LocalServiceTestMachineAgentProcedure,
@@ -753,6 +764,7 @@ type localServiceClient struct {
 	removeMachine          *connect.Client[v1.RemoveMachineRequest, v1.RemoveMachineResponse]
 	checkAgents            *connect.Client[v1.CheckAgentsRequest, v1.CheckAgentsResponse]
 	listMachineRepos       *connect.Client[v1.ListMachineReposRequest, v1.ListMachineReposResponse]
+	listMachineFolders     *connect.Client[v1.ListMachineFoldersRequest, v11.ListFoldersResponse]
 	testMachineAgent       *connect.Client[v1.TestMachineAgentRequest, v11.TestAgentResponse]
 	getDiagnostics         *connect.Client[v1.GetDiagnosticsRequest, v1.GetDiagnosticsResponse]
 	listProjects           *connect.Client[v1.ListProjectsRequest, v1.ListProjectsResponse]
@@ -1058,6 +1070,15 @@ func (c *localServiceClient) CheckAgents(ctx context.Context, req *v1.CheckAgent
 // ListMachineRepos calls hermesh.local.v1.LocalService.ListMachineRepos.
 func (c *localServiceClient) ListMachineRepos(ctx context.Context, req *v1.ListMachineReposRequest) (*v1.ListMachineReposResponse, error) {
 	response, err := c.listMachineRepos.CallUnary(ctx, connect.NewRequest(req))
+	if response != nil {
+		return response.Msg, err
+	}
+	return nil, err
+}
+
+// ListMachineFolders calls hermesh.local.v1.LocalService.ListMachineFolders.
+func (c *localServiceClient) ListMachineFolders(ctx context.Context, req *v1.ListMachineFoldersRequest) (*v11.ListFoldersResponse, error) {
+	response, err := c.listMachineFolders.CallUnary(ctx, connect.NewRequest(req))
 	if response != nil {
 		return response.Msg, err
 	}
@@ -1391,6 +1412,8 @@ type LocalServiceHandler interface {
 	CheckAgents(context.Context, *v1.CheckAgentsRequest) (*v1.CheckAgentsResponse, error)
 	// A machine's git repositories under its home folder, for Add a Project.
 	ListMachineRepos(context.Context, *v1.ListMachineReposRequest) (*v1.ListMachineReposResponse, error)
+	// The folders in one of a machine's folders, for Add a Project.
+	ListMachineFolders(context.Context, *v1.ListMachineFoldersRequest) (*v11.ListFoldersResponse, error)
 	// One fixed turn of a coding agent on a machine (Test).
 	TestMachineAgent(context.Context, *v1.TestMachineAgentRequest) (*v11.TestAgentResponse, error)
 	// This Mac's diagnostics as text, for the person to copy and send when
@@ -1646,6 +1669,12 @@ func NewLocalServiceHandler(svc LocalServiceHandler, opts ...connect.HandlerOpti
 		connect.WithSchema(localServiceMethods.ByName("ListMachineRepos")),
 		connect.WithHandlerOptions(opts...),
 	)
+	localServiceListMachineFoldersHandler := connect.NewUnaryHandlerSimple(
+		LocalServiceListMachineFoldersProcedure,
+		svc.ListMachineFolders,
+		connect.WithSchema(localServiceMethods.ByName("ListMachineFolders")),
+		connect.WithHandlerOptions(opts...),
+	)
 	localServiceTestMachineAgentHandler := connect.NewUnaryHandlerSimple(
 		LocalServiceTestMachineAgentProcedure,
 		svc.TestMachineAgent,
@@ -1886,6 +1915,8 @@ func NewLocalServiceHandler(svc LocalServiceHandler, opts ...connect.HandlerOpti
 			localServiceCheckAgentsHandler.ServeHTTP(w, r)
 		case LocalServiceListMachineReposProcedure:
 			localServiceListMachineReposHandler.ServeHTTP(w, r)
+		case LocalServiceListMachineFoldersProcedure:
+			localServiceListMachineFoldersHandler.ServeHTTP(w, r)
 		case LocalServiceTestMachineAgentProcedure:
 			localServiceTestMachineAgentHandler.ServeHTTP(w, r)
 		case LocalServiceGetDiagnosticsProcedure:
@@ -2079,6 +2110,10 @@ func (UnimplementedLocalServiceHandler) CheckAgents(context.Context, *v1.CheckAg
 
 func (UnimplementedLocalServiceHandler) ListMachineRepos(context.Context, *v1.ListMachineReposRequest) (*v1.ListMachineReposResponse, error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("hermesh.local.v1.LocalService.ListMachineRepos is not implemented"))
+}
+
+func (UnimplementedLocalServiceHandler) ListMachineFolders(context.Context, *v1.ListMachineFoldersRequest) (*v11.ListFoldersResponse, error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("hermesh.local.v1.LocalService.ListMachineFolders is not implemented"))
 }
 
 func (UnimplementedLocalServiceHandler) TestMachineAgent(context.Context, *v1.TestMachineAgentRequest) (*v11.TestAgentResponse, error) {
