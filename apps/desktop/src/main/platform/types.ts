@@ -2,7 +2,7 @@ import type { BrowserWindow, BrowserWindowConstructorOptions, Rectangle } from "
 import type { LoginItem, TerminalCommand } from "../../shared/bridge";
 
 /** The kinds of window, for their frames. */
-export type WindowKind = "starting" | "main" | "onboarding" | "settings" | "auxiliary" | "panel";
+export type WindowKind = "main" | "onboarding" | "settings" | "auxiliary" | "panel";
 
 /**
  * What differs between the systems the app runs on (docs/windows.md §5.1):

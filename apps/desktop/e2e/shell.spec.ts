@@ -1,5 +1,8 @@
 import { expect, test } from "@playwright/test";
-import { launch } from "./app";
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
+import { launch, snap } from "./app";
 
 // The shell around the UI: the page reaches hermeshd only through the main
 // process, which never lets it near signing.
@@ -71,5 +74,20 @@ test("an idle window makes no calls to hermeshd: it follows one Watch", async ()
   expect(before.Watch).toBe(1);
   await page.waitForTimeout(8000);
   expect(await calls()).toEqual(before);
+  await app.close();
+});
+
+test("the window opens at the size it had last time, loading in the middle until hermeshd answers", async () => {
+  const width = (app: Awaited<ReturnType<typeof launch>>["app"]) => app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0]?.getBounds().width ?? 0);
+  const profile = fs.mkdtempSync(path.join(os.tmpdir(), "hmdesk-"));
+  const first = await launch(undefined, { profile });
+  await expect(first.page.getByRole("complementary", { name: "边栏" })).toBeVisible();
+  await expect.poll(() => width(first.app)).toBeGreaterThan(900);
+  await first.app.close();
+
+  const { app, page } = await launch(path.join(fs.mkdtempSync(path.join(os.tmpdir(), "hmsock-")), "none.sock"), { profile });
+  await expect(page.getByText("正在连接后台服务…")).toBeVisible();
+  expect(await width(app)).toBeGreaterThan(900);
+  await snap(page, "start-03-main-size");
   await app.close();
 });

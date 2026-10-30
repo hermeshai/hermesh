@@ -99,7 +99,7 @@ const signerRefusals = { 3: "main:signer.notAdmin", 4: "main:signer.uacOff", 5: 
 
 const symbols = () => (nativeTheme.shouldUseDarkColors ? "#ffffff" : "#1a1a1a");
 /** The caption buttons as high as the top band: the first run's (48 px) or the toolbar's (44 px). */
-const buttonsHeight = (kind: WindowKind) => (kind === "onboarding" || kind === "starting" ? 48 : 44);
+const buttonsHeight = (kind: WindowKind) => (kind === "onboarding" ? 48 : 44);
 
 export const win: Platform = {
   token: "win",

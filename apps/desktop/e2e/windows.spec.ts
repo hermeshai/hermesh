@@ -28,15 +28,16 @@ test("a PC's words and Ctrl shortcuts, the menu button, the notification area, a
   await app.close();
 });
 
-test("the window starts small until hermeshd answers, then grows into the main window", async () => {
+test("the window opens at the size it had last time, loading in the middle until hermeshd answers", async () => {
   const width = (app: Awaited<ReturnType<typeof launch>>["app"]) => app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0]?.getBounds().width ?? 0);
-  const none = await launch(path.join(fs.mkdtempSync(path.join(os.tmpdir(), "hmsock-")), "none"));
-  await expect(none.page.getByText("正在连接后台服务…")).toBeVisible();
-  expect(await width(none.app)).toBe(360);
-  await none.app.close();
+  const profile = fs.mkdtempSync(path.join(os.tmpdir(), "hmdesk-"));
+  const first = await launch(undefined, { profile });
+  await expect(first.page.getByRole("button", { name: "菜单" })).toBeVisible();
+  await expect.poll(() => width(first.app)).toBeGreaterThan(900);
+  await first.app.close();
 
-  const { app, page } = await launch();
-  await expect(page.getByRole("button", { name: "菜单" })).toBeVisible();
-  await expect.poll(() => width(app)).toBeGreaterThan(900);
+  const { app, page } = await launch(path.join(fs.mkdtempSync(path.join(os.tmpdir(), "hmsock-")), "none"), { profile });
+  await expect(page.getByText("正在连接后台服务…")).toBeVisible();
+  expect(await width(app)).toBeGreaterThan(900);
   await app.close();
 });
