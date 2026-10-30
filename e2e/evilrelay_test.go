@@ -62,7 +62,7 @@ func newWorld(t *testing.T) *world {
 		t.Fatal(err)
 	}
 	hs := httptest.NewServer(rs.Handler())
-	t.Cleanup(hs.Close)
+	t.Cleanup(func() { hs.Close(); rs.Close() })
 	claim, _ := rs.ClaimCode()
 
 	o, err := owner.Open(owner.Config{DataDir: filepath.Join(tmp, "owner"), Logger: quiet})
