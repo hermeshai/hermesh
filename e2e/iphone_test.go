@@ -329,6 +329,21 @@ func newIPhoneControl(t *testing.T, w *ownerMac, sessions map[string]string) str
 		}
 		reply(rw, map[string]string{})
 	})
+	// The Mac's daemon down (up=0) or back (up=1): its machine offline while the relay stays up.
+	mux.HandleFunc("POST /machine", func(rw http.ResponseWriter, r *http.Request) {
+		if r.URL.Query().Get("up") == "1" {
+			w.startOwner()
+			w.app = newTestApp(w.t, w.sock, w.root)
+			eventually(t, 60*time.Second, "the machine is back on the relay", func() bool {
+				r := w.cli(30*time.Second, "project", "list")
+				return r.code == 0 && strings.Contains(r.stdout, "owner-mac/demo")
+			})
+		} else {
+			w.owner.stop()
+			w.app.cancel()
+		}
+		reply(rw, map[string]string{})
+	})
 	mux.HandleFunc("GET /digits", func(rw http.ResponseWriter, _ *http.Request) {
 		mu.Lock()
 		defer mu.Unlock()
@@ -346,10 +361,13 @@ func newIPhoneControl(t *testing.T, w *ownerMac, sessions map[string]string) str
 		s := w.get(id)
 		reply(rw, map[string]string{"status": s.Status, "title": s.Title}) // a deleted one: no status
 	})
-	// A new session that says one thing and is done (to rename or delete).
+	// A new session that says one thing (好, or say) and is done (to rename or delete).
 	mux.HandleFunc("POST /start", func(rw http.ResponseWriter, r *http.Request) {
-		title := r.URL.Query().Get("title")
-		s, res := w.startSession(2*time.Minute, "--agent", "gemini", "--title", title, "--prompt", "say 好", "--wait")
+		title, say := r.URL.Query().Get("title"), r.URL.Query().Get("say")
+		if say == "" {
+			say = "好"
+		}
+		s, res := w.startSession(2*time.Minute, "--agent", "gemini", "--title", title, "--prompt", "say "+say, "--wait")
 		if s.SessionID == "" {
 			http.Error(rw, "start: "+res.stdout+res.stderr, 500)
 			return

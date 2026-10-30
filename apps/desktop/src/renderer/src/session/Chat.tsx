@@ -1,16 +1,16 @@
 import { memo, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
-import type { Client } from "@hermesh/proto/local";
+import type { Client, Machine } from "@hermesh/proto/local";
 import { FailureKind, SessionStatus, type Failure, type Session, type SessionEvent, type ToolCall, type ToolResult } from "@hermesh/proto/session";
 import {
-  agoText, clockText, elapsedSeconds, codingAgentTitle, createdDate, currentTurn, failureAdvice, failureTitle, groupSteps, isActive, isArchivable, isFailed,
+  agoText, clockText, dateOf, elapsedSeconds, codingAgentTitle, createdDate, currentTurn, failureAdvice, failureTitle, groupSteps, isActive, isArchivable, isFailed,
   isInterruption, isInterruptible, pendingQuestion, phaseText, resolutionTitle, statusTitle, stepSummary, toolObject, toolSummary, toolVerb, transcript,
   turnStartedAt, turnTimeLine, type Step,
 } from "@hermesh/core";
-import { AgentLogo, agentName } from "@hermesh/ui";
+import { AgentLogo, Mark, agentName } from "@hermesh/ui";
 import { StatusDot } from "../components";
 import { Icon } from "../icons";
-import { archive, grantLabel, unarchive } from "../Sidebar";
+import { archive, grantLabel, machineName, unarchive } from "../Sidebar";
 import { useNow, useStore } from "../store";
 import { interrupt } from "./actions";
 import { Code } from "./Code";
@@ -45,10 +45,12 @@ export function Chat({ s, events, draft }: { s: Session; events: SessionEvent[];
   };
 
   const failure = s.progress?.lastFailure;
+  // Nothing of a conversation that has events yet: they are still on their way, or can't come.
+  const unread = items.length === 0 && draft === "" && (s.progress?.lastEventSeq ?? 0n) > 0n;
   return (
     <>
       <div className="cscroll" ref={scroll} onScroll={onScroll}>
-        <div className="dbody" style={live ? { paddingBottom: ctlHeight + 40 } : undefined}>
+        {unread ? <Unread s={s} /> : <div className="dbody" style={live ? { paddingBottom: ctlHeight + 40 } : undefined}>
           {s.status === SessionStatus.ARCHIVED && (
             <div className="anote">
               <Icon name="archive" className="sm" />
@@ -74,6 +76,7 @@ export function Chat({ s, events, draft }: { s: Session; events: SessionEvent[];
               </div>
             )}
           </div>
+          <Stale s={s} behind={(events.at(-1)?.seq ?? 0n) < (s.progress?.lastEventSeq ?? 0n)} />
           {isFailed(s) && (failure || s.error !== "") && (
             <Failed s={s} title={failure ? failureTitle(failure.kind) : t("chat.failed")} message={failure?.message ?? s.error} advice={failure ? failureAdvice(failure) : ""} grant={grant} />
           )}
@@ -83,10 +86,75 @@ export function Chat({ s, events, draft }: { s: Session; events: SessionEvent[];
               <span>{t("chat.turnDone", { grant })}</span>
             </div>
           )}
-        </div>
+        </div>}
       </div>
       {live && <ControlArea s={s} grant={grant} events={events} onHeight={setCtlHeight} />}
     </>
+  );
+}
+
+/** How long a conversation may take to come before the page says it can't be read. */
+const unreadWait = 15_000;
+
+type Unreadable = { kind: "notConnected" } | { kind: "offline"; machine: Machine } | { kind: "noAnswer" };
+
+/**
+ * Why a conversation can't be read now: it is kept on the machine the
+ * session runs on, and this Mac isn't connected, or that machine is
+ * offline, or (a while after the page opened, still behind) it doesn't
+ * answer. The stream keeps trying meanwhile.
+ */
+function useUnreadable(s: Session, behind: boolean): Unreadable | undefined {
+  const st = useStore();
+  const now = useNow(1000);
+  const [since] = useState(() => Date.now());
+  const m = st.machines.find((x) => x.machineId === s.machineId);
+  if (m?.local) return undefined;
+  if (st.status?.relayConnected === false) return { kind: "notConnected" };
+  if (m && !m.online) return { kind: "offline", machine: m };
+  return behind && now.getTime() - since >= unreadWait ? { kind: "noAnswer" } : undefined;
+}
+
+/** In place of a conversation not read yet: why, or the wait. */
+function Unread({ s }: { s: Session }) {
+  const { t } = useTranslation("session");
+  const st = useStore();
+  const why = useUnreadable(s, true);
+  const now = useNow(30_000);
+  const name = machineName(st, s.machineId);
+  if (!why) return <div className="empty"><Mark size={40} variant="pulse" /></div>;
+  let title: string, detail: string;
+  if (why.kind === "notConnected") {
+    title = t("chat.unread.notConnected");
+    detail = t("chat.unread.notConnectedDetail", { name });
+  } else if (why.kind === "offline") {
+    const seen = dateOf(why.machine.lastSeen);
+    title = t("chat.unread.offline", { name });
+    detail = seen ? t("chat.unread.offlineSeen", { ago: agoText(seen, now) }) : t("chat.unread.offlineDetail");
+  } else {
+    title = t("chat.unread.noAnswer", { name });
+    detail = t("chat.unread.noAnswerDetail");
+  }
+  return (
+    <div className="empty" role="status">
+      <Mark size={40} variant="wait" />
+      <b>{title}</b>
+      <span>{detail}</span>
+    </div>
+  );
+}
+
+/** Under a conversation kept from before that can't be brought up to date now: a quiet line that says why it may be old. */
+function Stale({ s, behind }: { s: Session; behind: boolean }) {
+  const { t } = useTranslation("session");
+  const st = useStore();
+  const why = useUnreadable(s, behind);
+  if (!why) return null;
+  return (
+    <div className="livebar stale" role="status" style={{ justifyContent: "center", paddingTop: 18 }}>
+      <Icon name="wifi" className="sm" />
+      <span>{t(`chat.stale.${why.kind}`, { name: machineName(st, s.machineId) })}</span>
+    </div>
   );
 }
 

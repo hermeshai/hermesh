@@ -12,8 +12,12 @@
     "enterCode": "Enter Pairing Code…"
   },
   "unreachable": {
-    "line": "Can’t reach right now: {{machines}}",
-    "machine": "{{name}} ({{error}})"
+    "offline": "<b>{{name}} is offline</b>; its sessions can’t be shown for now",
+    "notResponding": "<b>{{name}} isn’t responding</b>; its sessions may be missing",
+    "many": "<b>{{count}} machines can’t be reached</b>; their sessions can’t be shown for now",
+    "retrying": "Retrying",
+    "lastOnline": "Last online {{ago}} · they’ll appear once it reconnects",
+    "reconnect": "They’ll appear once it reconnects"
   },
   "attention": {
     "title": "Needs You",

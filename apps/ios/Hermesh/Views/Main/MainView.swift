@@ -60,7 +60,7 @@ private struct PageView: View {
         case .grants: GrantsView()
         case .machines: MachinesView()
         case .sessions: SessionsView()
-        case .session(let id): SessionView(id: id)
+        case .session(let id): SessionView(id: id).id(id) // a page of its own: the one left keeps its conversation as it goes
         }
     }
 }

@@ -28,7 +28,21 @@
     "archive": "归档",
     "messageFrom": "来自 {{name}} 的消息",
     "messageTo": "发给 {{name}} 的消息",
-    "messageQueued": "排队等它自己的一轮"
+    "messageQueued": "排队等它自己的一轮",
+    "unread": {
+      "offline": "{{name}} 离线了",
+      "offlineDetail": "这个会话的内容保存在那台机器上，连上后会自动显示。",
+      "offlineSeen": "这个会话的内容保存在那台机器上，连上后会自动显示。{{ago}}还在线。",
+      "notConnected": "暂时连不上 Hermesh",
+      "notConnectedDetail": "这个会话的内容保存在 {{name}} 上，这台 Mac 连上后会自动显示。",
+      "noAnswer": "{{name}} 暂时没有回应",
+      "noAnswerDetail": "这个会话的内容保存在那台机器上。正在重试，读到后会自动显示。"
+    },
+    "stale": {
+      "notConnected": "暂时连不上 Hermesh，这里是上次读到的内容。",
+      "offline": "{{name}} 离线了，这里是上次读到的内容。",
+      "noAnswer": "{{name}} 暂时没有回应，这里是上次读到的内容。"
+    }
   },
   "control": {
     "label": "这一轮",

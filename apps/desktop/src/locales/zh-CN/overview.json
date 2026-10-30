@@ -11,8 +11,12 @@
     "enterCode": "输入配对码…"
   },
   "unreachable": {
-    "line": "暂时连不上：{{machines}}",
-    "machine": "{{name}}（{{error}}）"
+    "offline": "<b>{{name}} 离线了</b>，它上面的会话暂时看不到",
+    "notResponding": "<b>{{name}} 暂时没有回应</b>，它上面的会话可能没列全",
+    "many": "<b>{{count}} 台机器连不上</b>，它们上面的会话暂时看不到",
+    "retrying": "正在重试",
+    "lastOnline": "{{ago}}还在线 · 连上后会自动补上",
+    "reconnect": "连上后会自动补上"
   },
   "attention": {
     "title": "需要你处理",

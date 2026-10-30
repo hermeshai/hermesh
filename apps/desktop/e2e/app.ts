@@ -12,6 +12,8 @@ export type Fixture = {
   cliEnv: string[];
   /** Owner daemons nobody has set up yet (first-run tests; each can be set up once). */
   fresh: { socket: string; relayURL: string; claimCode: string; gate?: string }[];
+  /** A second Mac's daemon (its process group), a machine only with a session on it; 0 when none. */
+  otherMac: number;
 };
 
 /** Loaded first in every launch: the app's windows open without taking focus. */
