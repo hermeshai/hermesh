@@ -268,13 +268,15 @@ func (w *Workspace) addWorktree(ctx context.Context, repo, common, baseRef, bran
 		if err := os.Mkdir(admin, 0o755); err != nil {
 			return err
 		}
-		// "locked" keeps git worktree prune off a half-made worktree.
+		// "locked" keeps git worktree prune off a half-made worktree. Paths
+		// as git writes them, with forward slashes on Windows too: git
+		// takes "/.git" off gitdir to know the worktree's path.
 		for _, f := range [][2]string{
 			{filepath.Join(admin, "locked"), "initializing\n"},
-			{filepath.Join(admin, "gitdir"), filepath.Join(real, ".git") + "\n"},
+			{filepath.Join(admin, "gitdir"), filepath.ToSlash(filepath.Join(real, ".git")) + "\n"},
 			{filepath.Join(admin, "commondir"), "../..\n"},
 			{filepath.Join(admin, "HEAD"), "ref: refs/heads/" + branch + "\n"},
-			{filepath.Join(wt, ".git"), "gitdir: " + admin + "\n"},
+			{filepath.Join(wt, ".git"), "gitdir: " + filepath.ToSlash(admin) + "\n"},
 		} {
 			if err := os.WriteFile(f[0], []byte(f[1]), 0o644); err != nil {
 				return err
