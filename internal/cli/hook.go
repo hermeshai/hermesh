@@ -377,7 +377,7 @@ func (a *app) installHooks(cmd *cobra.Command, agent string) error {
 	if err != nil {
 		return err
 	}
-	command := strconv.Quote(exe) + " message hook " + agent
+	command := hookCommand(exe) + " message hook " + agent
 	home, _ := os.UserHomeDir()
 	path := filepath.Join(home, ".claude", "settings.json")
 	if agent == "claude" && os.Getenv("CLAUDE_CONFIG_DIR") != "" {

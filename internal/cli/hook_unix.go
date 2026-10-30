@@ -5,6 +5,7 @@ package cli
 import (
 	"os"
 	"os/exec"
+	"strconv"
 	"syscall"
 )
 
@@ -17,3 +18,6 @@ func processAlive(pid int) bool { return syscall.Kill(pid, 0) == nil }
 
 // detach makes cmd outlive this process: a session of its own.
 func detach(cmd *exec.Cmd) { cmd.SysProcAttr = &syscall.SysProcAttr{Setsid: true} }
+
+// hookCommand is how an agent's hook names this program.
+func hookCommand(exe string) string { return strconv.Quote(exe) }
