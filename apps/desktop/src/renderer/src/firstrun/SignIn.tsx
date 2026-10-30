@@ -613,6 +613,8 @@ function troubleOf(t: TFunction<"firstrun">, e: unknown, title: string): Trouble
   const text = errorText(e);
   const m = /^relay unreachable \(([^)]+)\): (.*)$/s.exec(text);
   if (m) return { title: t("unreachable.title"), message: t("unreachable.body", { host: m[1] }), detail: m[2] };
+  // hermeshd's ErrSigningRejected: the signer said why, in its own window.
+  if (text.includes("the owner declined to sign")) return { title, message: t("declined") };
   return { title, message: text };
 }
 
