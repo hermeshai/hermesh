@@ -1140,6 +1140,7 @@ func (c *claudeInbox) posted() []string {
 // while idle through its inbox socket, Codex when a turn would end. A
 // message addressed to no conversation is only counted.
 func TestAgentsOnAComputer(t *testing.T) {
+	unixOnly(t, "it reads processes with ps")
 	if testing.Short() {
 		t.Skip("e2e")
 	}

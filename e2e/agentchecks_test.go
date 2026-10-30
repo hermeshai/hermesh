@@ -17,6 +17,7 @@ import (
 // and logging in (e.g. `codex login` run from the app) shows once the app
 // asks for a new check.
 func TestAgentsCheckedOnDemand(t *testing.T) {
+	unixOnly(t, "its fake codex is a shell script")
 	if testing.Short() {
 		t.Skip("e2e")
 	}
@@ -76,6 +77,7 @@ func TestAgentsCheckedOnDemand(t *testing.T) {
 // CLI on PATH) has Claude Code all the same, the copy the app keeps for
 // itself; the newest one shows as this Mac's Claude Code.
 func TestClaudeFromDesktopApp(t *testing.T) {
+	unixOnly(t, "its fake Claude Code is a shell script")
 	if testing.Short() {
 		t.Skip("e2e")
 	}
