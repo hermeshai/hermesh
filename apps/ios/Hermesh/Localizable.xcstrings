@@ -3054,16 +3054,6 @@
         }
       }
     },
-    "It will approve machines, personal agents and new devices, just like this iPhone. Approve only if that device is in your hands; if it gets lost, remove it from any other device.": {
-      "localizations": {
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "它将和这台 iPhone 一样，能批准机器、个人 agent 和新设备。只在那台设备就在你手上时批准；丢了可以在任意另一台设备上移除。"
-          }
-        }
-      }
-    },
     "Its name in Grok. Hermesh wakes it for its own messages only; the others’ wake the connection’s doorbell, if it has one.": {
       "localizations": {
         "zh-Hans": {
@@ -4010,6 +4000,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "在没有浏览器的服务器上，它会显示一个链接：在这台 iPhone 上打开即可。"
+          }
+        }
+      }
+    },
+    "Once approved, it approves machines, personal agents and new devices, as this iPhone does. Approve only if it is in your hands.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "批准后，它能像这台 iPhone 一样批准机器、个人 agent 和新设备。只在它就在你手上时批准。"
           }
         }
       }
@@ -5505,6 +5505,16 @@
         }
       }
     },
+    "The same as on “%@”?": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "和「%@」上显示的一样吗？"
+          }
+        }
+      }
+    },
     "The server can’t approve": {
       "localizations": {
         "zh-Hans": {
@@ -6405,6 +6415,16 @@
         }
       }
     },
+    "Wants to become a trusted device": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "想成为你的可信设备"
+          }
+        }
+      }
+    },
     "Web console": {
       "localizations": {
         "zh-Hans": {
@@ -6841,16 +6861,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "「%1$@」经由 %2$@ 连接：%3$@ 保管这个 agent 的密钥，可以在这个范围内代表它操作，并能看到它触及的会话。"
-          }
-        }
-      }
-    },
-    "“%@” is a trusted device now": {
-      "localizations": {
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "「%@」已成为可信设备"
           }
         }
       }

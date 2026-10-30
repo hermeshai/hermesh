@@ -601,14 +601,7 @@ private struct GuideJoining: View {
                 Text("Waiting for \(label) to connect…").font(.title3.bold()).multilineTextAlignment(.center)
             } else {
                 Text("Type on \(label)").font(.title2.bold()).multilineTextAlignment(.center)
-                HStack(spacing: 14) {
-                    ForEach(Array(digits.enumerated()), id: \.offset) { _, d in
-                        Text(String(d)).font(.system(size: 48, weight: .semibold, design: .monospaced))
-                            .frame(width: 76, height: 94).background(.fill.tertiary, in: RoundedRectangle(cornerRadius: 22, style: .continuous))
-                    }
-                }
-                .accessibilityElement(children: .combine)
-                .accessibilityIdentifier("match-digits")
+                DigitTiles(digits: digits)
                 GuideWaiting(text: Text("Waiting for the digits…"))
             }
             Spacer()

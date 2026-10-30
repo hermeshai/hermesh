@@ -32,6 +32,7 @@ final class HermeshUITests: XCTestCase {
         try XCTContext.runActivity(named: "renames an agent, and back") { _ in try renameAgent() }
         try XCTContext.runActivity(named: "shows a machine and its projects") { _ in try machine() }
         try XCTContext.runActivity(named: "marks the trusted devices among the machines") { _ in try devices() }
+        try XCTContext.runActivity(named: "approves a computer asking to be a trusted device, and shows the digits to type on it") { _ in try approveDevice() }
         try XCTContext.runActivity(named: "chooses light or dark in the account") { _ in try appearance() }
         try XCTContext.runActivity(named: "shows the work on the overview, and usage in the account") { _ in try usage() }
         try XCTContext.runActivity(named: "a swipe that starts on a row opens the menu, not the row") { _ in try swipeOnRow() }
@@ -386,6 +387,32 @@ final class HermeshUITests: XCTestCase {
         XCTAssertTrue(phone.waitForExistence(timeout: 20), "this iPhone")
         XCTAssertTrue(phone.label.contains("这台 iPhone") && phone.label.contains("可信设备"), phone.label)
         XCTAssertTrue(text("其他可信设备").exists)
+    }
+
+    func approveDevice() throws {
+        openMenu()
+        app.buttons["概览"].tap()
+        let asked = try control("device", method: "POST")
+        let verification = asked["verification"] as! String
+        let verify = app.buttons["verify-pairing"]
+        XCTAssertTrue(verify.waitForExistence(timeout: 30), "the request shows on the overview")
+        verify.tap()
+        // A card: the computer, the code it shows to compare, Approve with Face ID.
+        let code = app.descendants(matching: .any)["verification-code"].firstMatch
+        XCTAssertTrue(code.waitForExistence(timeout: 10), "the code to compare")
+        for g in verification.split(separator: "-") { XCTAssertTrue(code.label.contains(g), code.label) }
+        XCTAssertTrue(code.label.contains("和「STUDIO-PC」上显示的一样吗"), code.label)
+        XCTAssertTrue(text("Windows · 想成为你的可信设备").exists)
+        tap("approve")
+        // Then, in the same card, the two digits it asks for.
+        let digits = app.descendants(matching: .any)["match-digits"].firstMatch
+        XCTAssertTrue(digits.waitForExistence(timeout: 30), "the digits")
+        let d = digits.label.filter(\.isNumber)
+        XCTAssertEqual(d.count, 2, digits.label)
+        XCTAssertTrue(text("在「STUDIO-PC」上输入这两位数字").exists)
+        XCTAssertEqual(try control("device/confirm?digits=\(d)", method: "POST")["joined"] as? Bool, true, "it took the digits")
+        app.buttons["完成"].tap()
+        XCTAssertTrue(digits.waitForNonExistence(timeout: 10))
     }
 
     func appearance() throws {
