@@ -88,6 +88,32 @@ test("the page is the conversation alone: no tabs, and no line or link after a f
   await app.close();
 });
 
+// The title as macOS draws a window's: 14px medium, bright in the front
+// window and grey while another window has the focus. (The test windows open
+// behind and never take the focus, so the test tells the window it got it.)
+test("the title is 14px medium, bright in front and grey while the window is behind", async () => {
+  const { app, page } = await launch();
+  await open(page, "写 hello");
+  const title = page.getByRole("heading", { name: "写 hello" });
+  expect(await title.evaluate((e) => [getComputedStyle(e).fontSize, getComputedStyle(e).fontWeight])).toEqual(["14px", "500"]);
+  const colour = () => title.evaluate((e) => getComputedStyle(e).color);
+  const tell = (event: "focus" | "blur") =>
+    app.evaluate(({ BrowserWindow }, event) => {
+      const win = BrowserWindow.getAllWindows()[0];
+      win.isFocused = () => event === "focus";
+      win.emit(event);
+    }, event);
+  const behind = await colour();
+  await tell("focus");
+  await expect.poll(colour).not.toBe(behind);
+  const front = await colour();
+  const alpha = (c: string) => Number(c.match(/,\s*([\d.]+)\)$/)?.[1] ?? 1);
+  expect(alpha(behind)).toBeLessThan(alpha(front));
+  await tell("blur");
+  await expect.poll(colour).toBe(behind);
+  await app.close();
+});
+
 test("the session card floats over the conversation with what a glance needs, and the toolbar hides it", async () => {
   const { app, page } = await launch();
   await open(page, "写 hello");
