@@ -13,7 +13,6 @@ require (
 	github.com/Microsoft/go-winio v0.6.3
 	github.com/coder/websocket v1.8.15
 	github.com/hashicorp/yamux v0.1.2
-	github.com/jchv/go-webview2 v0.0.0-20260205173254-56598839c808
 	github.com/modelcontextprotocol/go-sdk v1.8.0
 	github.com/oklog/ulid/v2 v2.1.2
 	github.com/spf13/cobra v1.10.2
@@ -72,7 +71,6 @@ require (
 	github.com/google/jsonschema-go v0.4.3 // indirect
 	github.com/google/uuid v1.6.0 // indirect
 	github.com/inconshreveable/mousetrap v1.1.0 // indirect
-	github.com/jchv/go-winloader v0.0.0-20250406163304-c1995be93bd1 // indirect
 	github.com/jdx/go-netrc v1.0.0 // indirect
 	github.com/klauspost/compress v1.20.3 // indirect
 	github.com/klauspost/pgzip v1.2.7 // indirect
