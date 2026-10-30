@@ -248,6 +248,7 @@ func (o *Owner) eraseData(ctx context.Context, eraseID, keepDir string) []string
 		}
 	}
 	o.st.db.Close()
+	o.lock.Release() // Windows removes no file that is open
 	return kept
 }
 
