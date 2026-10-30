@@ -109,6 +109,15 @@ func TestCards(t *testing.T) {
 		t.Fatalf("removing a device: %+v %v", cs, err)
 	}
 
+	// Joining: this computer's request, and its own machine, admitted by its key.
+	join := &identityv1.PairingRequest{Kind: identityv1.PairingKind_PAIRING_KIND_DEVICE, Label: "pc", OwnerId: "o_x", SubjectPublicKey: spki(t)}
+	own := &identityv1.MachineCert{OwnerId: "o_x", MachineId: "m_2", MachinePublicKey: spki(t), DeviceKeyId: "k_1"}
+	cs, err = Cards([]*localv1.SigningRequest{request(t, join), request(t, own)}, Hints{})
+	if err != nil || cs[0].Title != "Add this computer to your Hermesh" || cs[0].Code == "" ||
+		cs[1].Title != "Share the agents on this computer" || cs[1].Code != "" || cs[1].Warning != "" {
+		t.Fatalf("joining: %+v %v", cs, err)
+	}
+
 	// A project added from here.
 	add := &identityv1.AdminCommand{TargetMachineId: "m_1", Command: &identityv1.AdminCommand_AddProject{AddProject: &identityv1.AddProject{ProjectId: "app", Path: "~/app"}}}
 	if cs, err := Cards([]*localv1.SigningRequest{request(t, add)}, Hints{MachineNames: map[string]string{"m_1": "vps-1"}}); err != nil || cs[0].Title != "Add project “app” to machine vps-1" {

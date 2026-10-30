@@ -97,8 +97,8 @@ func card(r *localv1.SigningRequest, h Hints, reissue bool) (Card, error) {
 		if m.Kind != identityv1.PairingKind_PAIRING_KIND_DEVICE {
 			return Card{}, &Refused{r.Type, "only a device's own request is signed here"}
 		}
-		c := Card{Title: "Ask to join your Hermesh as a trusted device", Lines: []string{"Device name: " + m.Label},
-			Why: "Your iPhone or Mac approves it, and shows two digits to type here."}
+		c := Card{Title: "Add this computer to your Hermesh", Lines: []string{"Device name: " + m.Label},
+			Why: "This sends a join request to your existing devices. Check the same code on one of them and approve, and this computer becomes a trusted device."}
 		if m.OwnerId != "" {
 			c.Code = identity.VerificationCode(m.Kind, m.SubjectPublicKey, m.OwnerId)
 			c.Lines = append(c.Lines, "Owner: "+m.OwnerId)
@@ -214,6 +214,11 @@ func machineCard(m *identityv1.MachineCert, h Hints, reissue, confirmed bool) Ca
 			why = "This machine stays yours, unchanged, now signed by this computer."
 		}
 		return Card{Title: fmt.Sprintf("Re-issue the certificate of machine “%s”", name), Lines: []string{id}, Why: why}
+	}
+	// This computer's own machine, which its root key admits (as the Swift signer tells it).
+	if m.DeviceKeyId != "" {
+		return Card{Title: "Share the agents on this computer", Lines: []string{id, "Fingerprint: " + identity.ShortFingerprint(m.MachinePublicKey)},
+			Why: "Agents you grant access can use the coding agents on this computer, over end-to-end encrypted connections. You can turn this off in Settings at any time."}
 	}
 	c := Card{Title: "Approve a new machine", Lines: []string{id, "Fingerprint: " + identity.ShortFingerprint(m.MachinePublicKey)},
 		Why:     "This machine becomes yours, and agents you grant access can start sessions and run commands on it.",
