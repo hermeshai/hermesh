@@ -71,3 +71,21 @@ func TestBlockedRelayFailsBeforeTouchID(t *testing.T) {
 		})
 	}
 }
+
+// A relay's address without a scheme is HTTPS, unless it is an IP address:
+// the relay gets certificates for domain names only.
+func TestNormalizeRelayURL(t *testing.T) {
+	for in, want := range map[string]string{
+		"relay.example.com":          "https://relay.example.com",
+		"relay.example.com:8443/":    "https://relay.example.com:8443",
+		"203.0.113.7:8080":           "http://203.0.113.7:8080",
+		"203.0.113.7":                "http://203.0.113.7",
+		"[2001:db8::1]:8080":         "http://[2001:db8::1]:8080",
+		"https://203.0.113.7":        "https://203.0.113.7",
+		" http://relay.example.com ": "http://relay.example.com",
+	} {
+		if got := normalizeRelayURL(in); got != want {
+			t.Errorf("normalizeRelayURL(%q) = %q, want %q", in, got, want)
+		}
+	}
+}

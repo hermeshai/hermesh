@@ -30,7 +30,15 @@ extension HermeshUITests {
         let address = app.textFields["connection-address"]
         XCTAssertTrue(address.waitForExistence(timeout: 10))
         address.tap()
+        // A server by its IP address is plain HTTP, said before going on; not
+        // this test's server, on this computer.
+        address.typeText("203.0.113.7:8080")
+        let plain = app.descendants(matching: .any)["plain-http"].firstMatch
+        XCTAssertTrue(plain.waitForExistence(timeout: 5), "the plain HTTP warning")
+        XCTAssertTrue(plain.label.contains("未加密（HTTP）") && plain.label.contains("抢在你前面认领这台服务器"), plain.label)
+        address.typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: "203.0.113.7:8080".count))
         address.typeText(relay)
+        XCTAssertFalse(plain.exists, "a warning for a server on this computer")
         let code = app.textFields["claim-code"]
         code.tap()
         code.typeText(claim)

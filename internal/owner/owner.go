@@ -12,6 +12,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"net"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -696,6 +697,15 @@ func (o *Owner) saveIdentity(ownerID, relayURL string, rootPub []byte, chain *id
 func normalizeRelayURL(s string) string {
 	s = strings.TrimSuffix(strings.TrimSpace(s), "/")
 	if !strings.Contains(s, "://") {
+		// A relay reached by its IP address gets no certificate (it gets them
+		// for a domain name): plain HTTP, which the apps warn about.
+		host := s
+		if h, _, err := net.SplitHostPort(s); err == nil {
+			host = h
+		}
+		if net.ParseIP(strings.Trim(host, "[]")) != nil {
+			return "http://" + s
+		}
 		s = "https://" + s
 	}
 	return s

@@ -67,6 +67,16 @@ func main() {
 				return err
 			}
 			defer srv.Close()
+			// Without a domain or an HTTPS proxy: say what that leaves open.
+			if !strings.HasPrefix(firstNonEmpty(publicURL, defaultPublicURL(domain, certFile, listen)), "https://") {
+				fmt.Fprint(os.Stderr, "\n  Plain HTTP, not encrypted on the way. Sessions stay end-to-end encrypted,\n"+
+					"  but the claim code and which machines are online can be seen on the network.\n"+
+					"  For HTTPS, give it a domain (HERMESH_RELAY_DOMAIN, --domain), or put an HTTPS\n"+
+					"  proxy in front and set HERMESH_RELAY_PUBLIC_URL (--public-url).\n")
+				if withMCP {
+					fmt.Fprint(os.Stderr, "  Claude, ChatGPT and other MCP apps need HTTPS: they won't connect.\n")
+				}
+			}
 			if code, err := srv.ClaimCode(); err != nil {
 				return err
 			} else if code != "" {
@@ -114,7 +124,7 @@ func main() {
 				err = hs.ListenAndServeTLS(certFile, keyFile)
 			default:
 				hs.Addr = listen
-				log.Info("relay listening (plain http; put a TLS proxy in front)", "addr", listen, "relay", srv.RelayID())
+				log.Info("relay listening (plain HTTP)", "addr", listen, "relay", srv.RelayID())
 				err = hs.ListenAndServe()
 			}
 			if errors.Is(err, http.ErrServerClosed) {

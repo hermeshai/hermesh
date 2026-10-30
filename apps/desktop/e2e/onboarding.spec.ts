@@ -42,6 +42,17 @@ test("a relay of one's own: welcome, authorize, set up this Mac, add a project, 
   await expect(page.getByRole("heading", { name: "连接你自己的服务器" })).toBeVisible();
   await expect(page.getByRole("button", { name: "继续" })).toBeDisabled();
 
+  // A server reached by its IP address is plain HTTP: said before going on.
+  // Not for a domain name, or this Mac.
+  const plain = page.getByRole("note").filter({ hasText: "未加密（HTTP）" });
+  await page.getByLabel("服务器地址").fill("203.0.113.7:8080");
+  await expect(plain).toBeVisible();
+  await expect(plain).toContainText("抢在你前面认领这台服务器");
+  await page.getByLabel("服务器地址").fill("relay.example.com");
+  await expect(plain).toHaveCount(0);
+  await page.getByLabel("服务器地址").fill("http://127.0.0.1:8080");
+  await expect(plain).toHaveCount(0);
+
   // A network that blocks the server (a company proxy answering 403):
   // said with what to do, before any Touch ID, and the way back still works.
   const proxy = http.createServer((_, res) => res.writeHead(403, { "content-type": "text/html" }).end("<html>Blocked by policy</html>"));

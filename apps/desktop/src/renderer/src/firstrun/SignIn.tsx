@@ -269,11 +269,33 @@ function SelfHosted(p: { relay: string; claim: string; set: (relay: string, clai
         </div>
         <button type="submit" hidden />
       </form>
+      {plainHTTP(p.relay) && (
+        <p className="ob-warn" role="note">
+          <Icon name="warn" />
+          {t("selfHosted.plain")}
+        </p>
+      )}
       <p className="ob-alt">
         <Trans t={t} i18nKey="selfHosted.join" components={{ join: <button className="link" onClick={p.join} /> }} />
       </p>
     </Frame>
   );
+}
+
+/**
+ * Whether a server address is plain HTTP to another computer: "http://…", or
+ * an IP address, which the app reaches by HTTP (the relay gets certificates
+ * for domain names only; internal/owner's normalizeRelayURL).
+ */
+function plainHTTP(address: string): boolean {
+  const s = address.trim();
+  const http = /^http:\/\//i.test(s);
+  if (!http && s.includes("://")) return false;
+  const host = (http ? s.slice(7) : s).split("/")[0];
+  const v6 = /^\[([^\]]+)\]/.exec(host);
+  const h = v6 ? v6[1] : host.replace(/:\d*$/, "");
+  if (!http && !v6 && !/^\d{1,3}(\.\d{1,3}){3}$/.test(h)) return false;
+  return !(h === "localhost" || h.startsWith("127.") || h === "::1");
 }
 
 /** Another device of an owner: the owner's connection address, then the same join as from the console. */

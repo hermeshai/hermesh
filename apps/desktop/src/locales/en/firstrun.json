@@ -23,6 +23,7 @@
     "body": "Enter the address of the Hermesh server you deployed, and the claim code it gave when it first started.",
     "address": "Server address",
     "claim": "Claim code",
+    "plain": "Not encrypted (HTTP). Your sessions stay end-to-end encrypted, but the claim code and which machines are online travel in the clear: someone on the network could see them, or claim this server before you do. Claude and ChatGPT can't connect either. Fine for trying Hermesh or on a network you trust; to keep using it, give the server a domain.",
     "join": "Already using Hermesh on another device? <join>Join it…</join>"
   },
   "joinAddress": {
