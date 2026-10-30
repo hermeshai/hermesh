@@ -27,7 +27,7 @@ function Root() {
   const member = st.status?.initialized === true || st.status?.machineOnly === true;
   const upgrading = st.upgrading && st.status?.machineOnly === true;
   const ready = member && !st.status?.removed && !firstRun && !upgrading;
-  // The small starting window grows once hermeshd answers, and keeps its size if it stops answering later.
+  // The window takes its size once hermeshd answers, and keeps it if it stops answering later.
   useEffect(() => {
     if (st.status) window.hermesh?.setWindowMode(ready ? "main" : "onboarding");
   }, [ready, st.status]);
@@ -50,7 +50,7 @@ function DaemonUnavailable() {
     return () => clearTimeout(t);
   }, []);
   return (
-    <div className="empty drag" style={{ height: "100%", padding: 28 }}>
+    <div className="empty drag" style={{ height: "100%" }}>
       <Mark size={40} variant="wait" />
       <b>{t("daemon.connecting")}</b>
       {approval ? (

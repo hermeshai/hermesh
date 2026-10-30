@@ -121,7 +121,7 @@ export const mac: Platform = {
         // The lights on the 44 px top band; the sidebar's material showing through (the content is opaque).
         return {
           titleBarStyle: "hiddenInset",
-          trafficLightPosition: kind === "onboarding" || kind === "starting" ? { x: 24, y: 24 } : { x: 12, y: 15 },
+          trafficLightPosition: kind === "onboarding" ? { x: 24, y: 24 } : { x: 12, y: 15 },
           vibrancy: "sidebar",
           visualEffectState: "followWindow",
           backgroundColor: "#00000000",

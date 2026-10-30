@@ -1,5 +1,6 @@
 import { language } from "@hermesh/core";
 import { app, BrowserWindow, screen, shell, type WebContents } from "electron";
+import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { i18n } from "../shared/i18n";
@@ -11,12 +12,20 @@ export const devURL = !app.isPackaged ? process.env.ELECTRON_RENDERER_URL : unde
 let main: BrowserWindow | undefined;
 let settings: BrowserWindow | undefined;
 const auxiliary = new Map<string, BrowserWindow>();
-// The window starts small while it reaches hermeshd, then grows into the
-// first run or the main window.
-let mode: "starting" | "onboarding" | "main" = "starting";
+// The window opens at the size it had last time (the first run's on a first
+// start), its page loading in the middle, so it seldom changes size.
+let mode: "onboarding" | "main" | undefined;
+const modeFile = () => path.join(app.getPath("userData"), "window.json");
+
+function lastMode(): "onboarding" | "main" {
+  try {
+    return JSON.parse(fs.readFileSync(modeFile(), "utf8")).mode === "main" ? "main" : "onboarding";
+  } catch {
+    return "onboarding";
+  }
+}
 
 const sizes = {
-  starting: { width: 360, height: 260, minWidth: 360, minHeight: 260 },
   onboarding: { width: 720, height: 660, minWidth: 720, minHeight: 600 },
   main: { width: 1240, height: 800, minWidth: 980, minHeight: 620 },
 };
@@ -68,10 +77,9 @@ export function showMain(): BrowserWindow {
     main.focus();
     return main;
   }
+  mode ??= lastMode();
   main = new BrowserWindow({
     ...sizes[mode],
-    resizable: mode !== "starting",
-    maximizable: mode !== "starting",
     show: false,
     title: "Hermesh",
     ...platform.frame(mode),
@@ -88,6 +96,9 @@ export function showMain(): BrowserWindow {
 export function setMode(m: "onboarding" | "main") {
   if (m === mode) return;
   mode = m;
+  try {
+    fs.writeFileSync(modeFile(), JSON.stringify({ mode }));
+  } catch {} // it opens at the first run's size next time
   if (!main) return;
   const s = sizes[m];
   platform.placeButtons(main, m);
@@ -97,8 +108,6 @@ export function setMode(m: "onboarding" | "main") {
   const height = Math.min(s.height, area.height);
   const x = Math.round(Math.min(Math.max(area.x, b.x + (b.width - width) / 2), area.x + area.width - width));
   const y = Math.round(Math.min(Math.max(area.y, b.y + (b.height - height) / 2), area.y + area.height - height));
-  main.setResizable(true);
-  main.setMaximizable(true);
   main.setMinimumSize(Math.min(s.minWidth, width), Math.min(s.minHeight, height));
   platform.grow(main, { x, y, width, height });
 }
