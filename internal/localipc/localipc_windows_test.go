@@ -45,3 +45,43 @@ func TestPipeNameFile(t *testing.T) {
 		t.Fatal("dialed a closed endpoint")
 	}
 }
+
+// An endpoint started again writes its new name while clients keep reading
+// the old one (as an app does for each request), and they then reach it.
+func TestNameReplacedWhileRead(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "e.pipe")
+	ln, err := localipc.Listen(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ln.Close()
+	stop := make(chan struct{})
+	defer close(stop)
+	go func() {
+		for {
+			select {
+			case <-stop:
+				return
+			default:
+				os.ReadFile(path) // without FILE_SHARE_DELETE, as other programs read
+			}
+		}
+	}()
+	for range 20 {
+		ln, err := localipc.Listen(path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		go func() {
+			if c, err := ln.Accept(); err == nil {
+				c.Close()
+			}
+		}()
+		c, err := localipc.Dial(context.Background(), path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		c.Close()
+		ln.Close()
+	}
+}
