@@ -646,6 +646,23 @@ final class HermeshUITests: XCTestCase {
             XCTAssertFalse(line.exists, "current again")
             XCTAssertTrue(app.descendants(matching: .any)["machine-row-owner-mac"].exists)
         }
+        // The Notification Center pulled part way and let go: the app was
+        // only inactive, and stays current.
+        peekNotificationCenter()
+        XCTAssertTrue(app.wait(for: .runningForeground, timeout: 10))
+        let deadline = Date().addingTimeInterval(5)
+        while Date() < deadline {
+            XCTAssertFalse(line.exists, "current after the Notification Center")
+            usleep(300_000)
+        }
+    }
+
+    /// Pulls the Notification Center down a little from the top edge and
+    /// lets go before it opens: the app goes inactive and back, never to the
+    /// background.
+    func peekNotificationCenter() {
+        let top = app.coordinate(withNormalizedOffset: CGVector(dx: 0.25, dy: 0))
+        top.press(forDuration: 0.05, thenDragTo: app.coordinate(withNormalizedOffset: CGVector(dx: 0.25, dy: 0.08)), withVelocity: .slow, thenHoldForDuration: 0.5)
     }
 
     func notification() throws {
