@@ -72,6 +72,10 @@ export type Bridge = {
   computerName(): Promise<string>;
   /** Before hermeshd asks for a new root key: the signer is there (Windows sets it up, with one UAC prompt). */
   readySigner(): Promise<void>;
+  /** The installed signer's version, when the app carries a newer one. */
+  signerUpdate(): Promise<string | undefined>;
+  /** Puts the app's signer in place of the installed one (Windows: one UAC prompt). */
+  updateSigner(): Promise<void>;
   /** hermesh:// links the app received (sign-in and join), also those that came before the page subscribed. */
   onLink(cb: (url: string) => void): () => void;
   /** What the main process does on its own: notifications and the menu bar (stored in the app's profile). */

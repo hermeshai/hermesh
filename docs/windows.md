@@ -296,7 +296,7 @@ Standard (non-administrator) accounts get no protected signer; their trusted dev
 - **One signer core in Go.** The loop of `hermeshd approve` (watch, preview, confirm, sign, complete) moves into `internal/signer`, behind two interfaces: `Confirmer` (the terminal; the Windows panel) and `KeyStore` (the passphrase file; the TPM). Linux's terminal signer and the Windows panel then share one implementation of what is shown and signed, and a Linux desktop signer can reuse it later. The Swift signer stays for Apple. The shared Go and Swift preview vectors (desktop-app.md §5.6, not built yet) come first.
 - **Through the daemon only.** On the Mac the signer is the app's child: it reports busy on stdout, and SIGUSR1 brings it forward. The Windows signer is not the app's child, so hermeshd reports the signer's presence and busy state in its status, and relays "show" on the signing stream: `LocalService.ShowSigner` and a status field, the two additions to `hermesh.local.v1`. The app lets the signer's window take the foreground when the owner clicks Approve. Moving the Mac to the same later would remove the one direct channel between an app and its signer.
 - **Setup.** Before hermeshd needs a new root key (sign-in, an own server's setup, joining as a trusted device), the app makes sure a signer watches: it starts the signer's task, or runs `hermesh-signer setup` elevated (one UAC prompt). The refusals of the next point each have an exit status, which the app tells in its own words.
-- **Updates.** The signer changes rarely, and refuses what it cannot show in full. When the app carries a newer signer than the installed one and a request needs it, the app offers Update the Signer (one UAC prompt): not built yet (§14).
+- **Updates.** The signer changes rarely, and refuses what it cannot show in full. When the app carries a newer signer than the installed one, Needs You offers to update it: the same elevated setup (one UAC prompt) copies the app's signer over the installed one, moving a still running one aside, keeps the keys and restarts the task.
 - **Refusals.** With UAC off (`EnableLUA` 0), every program of an administrator runs elevated and the line is gone: such a PC cannot be a trusted device that also runs coding agents. Where elevation needs no consent ("Never notify"), Settings says so and recommends Administrator protection.
 
 ### 7.4 What an attacker can do
@@ -404,7 +404,7 @@ Left for later, each its own change:
 
 - The Microsoft Store: the reserved name and publisher, the review of the restricted capabilities, and updates (S1, §6.2).
 - Preview vectors shared by the Go and Swift signers (desktop-app.md §5.6).
-- Update the Signer, when the app carries a newer one; Settings saying that elevation needs no consent here ("Never notify") and recommending Administrator protection.
+- Settings saying that elevation needs no consent here ("Never notify") and recommending Administrator protection.
 - The rest of the desktop suite on Windows (its specs read the Mac's words and menus).
 - `TestSessionList` now and then misses a session of the other machine on `windows-latest` (the owner's replica, with no error logged): to look into before `windows-e2e` may fail the run.
 - `install.ps1 -Device`: a trusted device without the app.
