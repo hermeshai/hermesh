@@ -45,6 +45,18 @@ jobs:
         run: go test ./cmd/... ./internal/... ./pkg/... -count=1
       - name: install.ps1
         run: go test ./e2e -run '^TestWindowsInstall$' -count=1 -v
+  # The end-to-end suite on Windows, being ported (docs/windows.md, W1): its
+  # failures do not fail the run yet.
+  windows-e2e:
+    runs-on: windows-latest
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - name: end-to-end (scripted agents)
+        run: go test ./e2e -count=1 -timeout 30m
   # The desktop app (Electron) and the macOS signer: types, unit tests, and
   # their end-to-end tests driving the real app against the real daemon.
   app:
