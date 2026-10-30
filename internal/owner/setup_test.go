@@ -41,6 +41,7 @@ func TestBlockedRelayFailsBeforeTouchID(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
+			t.Cleanup(d.Close)
 			o := d.owner()
 			asked, stop := o.hub.watch()
 			defer stop()

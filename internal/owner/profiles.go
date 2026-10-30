@@ -35,6 +35,8 @@ type Device struct {
 	runCtx   context.Context
 	stopRun  context.CancelFunc
 	runDone  chan struct{}
+	// lock holds the data directory for this process.
+	lock *flock.Lock
 }
 
 // Open opens the device's profiles under cfg.DataDir, and an empty one to
@@ -46,10 +48,11 @@ func Open(cfg Config) (*Device, error) {
 	if cfg.HTTPClient == nil {
 		cfg.HTTPClient = http.DefaultClient
 	}
-	if _, err := flock.Acquire(cfg.DataDir); err != nil {
+	lock, err := flock.Acquire(cfg.DataDir)
+	if err != nil {
 		return nil, err
 	}
-	d := &Device{cfg: cfg, hub: newSignHub(), profiles: map[string]*Owner{}}
+	d := &Device{cfg: cfg, hub: newSignHub(), profiles: map[string]*Owner{}, lock: lock}
 	if err := d.migrate(); err != nil {
 		return nil, fmt.Errorf("moving the owner into a profile: %w", err)
 	}
@@ -217,6 +220,18 @@ func (d *Device) stop() {
 // to be tried again (connectOrKeep): the iPhone app left the front and is
 // about to be suspended. Run, the next watch or list start them again;
 // Run, stopped after Pause, leaves the connection open.
+// Close lets go of the data directory: the profiles' databases and the
+// locks. hermeshd exits instead; tests and the iPhone's core close.
+func (d *Device) Close() {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	for _, o := range d.profiles {
+		o.st.db.Close()
+		o.lock.Release()
+	}
+	d.lock.Release()
+}
+
 func (d *Device) Pause() {
 	o := d.owner()
 	o.rep.pause()

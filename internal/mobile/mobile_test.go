@@ -32,6 +32,7 @@ func TestCoreServesLocalServiceToTheTokenOnly(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	t.Cleanup(c.o.Close) // after Pause: cleanups run last first
 	t.Cleanup(c.Pause)
 	ctx := context.Background()
 

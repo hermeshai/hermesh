@@ -59,7 +59,9 @@ type Owner struct {
 	cfg Config
 	log *slog.Logger
 	st  *store
-	hub *signHub
+	// lock holds the profile's directory for this process.
+	lock *flock.Lock
+	hub  *signHub
 	// rep is this device's copy of the owner's world, which the List
 	// calls answer from (replica.go).
 	rep *replica
@@ -136,14 +138,16 @@ const (
 // openProfile opens one profile (profiles.go): cfg.DataDir is its
 // directory, and hub the device's signer, shared by its profiles.
 func openProfile(cfg Config, hub *signHub) (*Owner, error) {
-	if _, err := flock.Acquire(cfg.DataDir); err != nil {
+	lock, err := flock.Acquire(cfg.DataDir)
+	if err != nil {
 		return nil, err
 	}
 	st, err := openStore(filepath.Join(cfg.DataDir, "owner.db"))
 	if err != nil {
+		lock.Release()
 		return nil, err
 	}
-	o := &Owner{cfg: cfg, log: cfg.Logger, st: st, hub: hub}
+	o := &Owner{cfg: cfg, log: cfg.Logger, st: st, lock: lock, hub: hub}
 	o.rep = newReplica(o)
 	return o, o.load()
 }

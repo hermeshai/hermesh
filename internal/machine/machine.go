@@ -228,6 +228,7 @@ func (n *Machine) loadState() error {
 func (n *Machine) Close() error {
 	n.sessions.w.close()
 	err := n.st.Close()
+	n.audit.Close()
 	n.lock.Release()
 	return err
 }
