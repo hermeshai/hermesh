@@ -4426,16 +4426,6 @@
         }
       }
     },
-    "Run it as the user you code as, not as root.": {
-      "localizations": {
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "用你写代码的那个用户运行，不要用 root。"
-          }
-        }
-      }
-    },
     "Running sessions aren’t affected": {
       "localizations": {
         "zh-Hans": {

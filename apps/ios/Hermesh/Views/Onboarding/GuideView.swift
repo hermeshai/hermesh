@@ -230,7 +230,6 @@ struct GuideView: View {
                     .padding(14).frame(maxWidth: .infinity, alignment: .leading)
             }
             CopyShareButtons(text: command, shareTitle: "Share…").padding(.horizontal, 16)
-            Text("Run it as the user you code as, not as root.").font(.footnote).foregroundStyle(.secondary).padding(.horizontal, 32)
         } footer: {
             if hosted {
                 GuideButton(title: Text("Scan the QR Code"), systemImage: "qrcode.viewfinder", id: "scan") { model.sheet = .scan }
