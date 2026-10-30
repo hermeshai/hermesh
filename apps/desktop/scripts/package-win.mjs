@@ -111,6 +111,8 @@ await flipFuses(path.join(layout, "Hermesh.exe"), {
 step("adding the programs, the logos and the manifest");
 fs.cpSync(bin, path.join(layout, "bin"), { recursive: true });
 fs.cpSync(path.join(tmp, "Assets"), path.join(layout, "Assets"), { recursive: true });
+// Without the SDK there is no resources.pri to pick a logo's variant: the files the manifest names are there too.
+if (!onWindows) for (const logo of ["Square44x44Logo", "Square150x150Logo", "StoreLogo"]) fs.copyFileSync(path.join(layout, "Assets", `${logo}.scale-100.png`), path.join(layout, "Assets", `${logo}.png`));
 fs.writeFileSync(path.join(layout, "AppxManifest.xml"), manifest());
 console.log(`✓ ${layout}`);
 
