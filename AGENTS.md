@@ -1,31 +1,8 @@
-### 0. Language
-
-**Everything in the repository is written in English.** That covers commit
-messages, pull requests, README and docs, AGENTS.md itself, code comments,
-log and error messages, CLI output, scripts, CI and config files, and test
-names.
-
-The Mac and iPhone apps are localized: their source text is English, and the
-Chinese lives only in their translation files (`apps/desktop/src/locales/zh-CN/`,
-`packages/core/src/locales/zh-CN.json`, the `zh-Hans.lproj/Localizable.strings`
-of the signer and of HermeshKit, the iPhone app's `.xcstrings` catalogs;
-see docs/desktop-app.md §6.6 and docs/iphone-app.md §4). Add new UI text to the
-English files and translate it into Chinese in the same change; don't hard-code
-text in code. Refer to UI text by its English (choose "Enter Pairing Code…").
-The desktop and iPhone end-to-end tests run the apps in Chinese and match
-their Chinese text.
-
-One exception for now: the user-facing text of the web console is still
-Chinese, until it gets localization too. Leave those strings as they are, and
-quote them verbatim where English text refers to them. Tests that match the
-console's text keep the Chinese strings too.
-
 ### 1. Think before coding
 
 **Don't assume. Don't hide confusion. Surface the trade-offs.**
 
-LLMs often pick one interpretation silently and run with it. This principle
-forces explicit reasoning:
+LLMs often pick one interpretation silently and run with it. This principle forces explicit reasoning:
 
 - **State assumptions** — if unsure, ask instead of guessing
 - **Present the interpretations** — when something is ambiguous, don't choose silently
@@ -62,7 +39,7 @@ When your change leaves orphans:
 - Remove imports, variables and functions your change made unused
 - Don't remove pre-existing dead code unless asked
 
-**The test:** every changed line traces directly back to the request.
+**The test:** every changed line traces directly back to the user's request.
 
 ### 4. Goal-driven execution
 
@@ -84,8 +61,5 @@ For multi-step tasks, state a short plan:
 3. [step] → verify: [check]
 ```
 
-Strong success criteria let an LLM loop on its own. Weak ones ("make it work")
-need constant clarification.
-Unit tests alone are not enough: on top of them, every change to a feature or
-an interface needs an end-to-end test, built as close as possible to how real
-users use the program, to check that it is reliable.
+Strong success criteria let an LLM loop on its own. Weak ones ("make it work") need constant clarification.
+Unit tests alone are not enough: on top of them, every change to a feature or an interface needs an end-to-end test, built as close as possible to how real users use the program, to check that it is reliable.
