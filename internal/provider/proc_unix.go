@@ -25,6 +25,20 @@ func joinGroup(cmd *exec.Cmd) error { return nil }
 // killGroup kills a process group now.
 func killGroup(pgid int) error { return syscall.Kill(-pgid, syscall.SIGKILL) }
 
+// releaseGroup has nothing to free: a process group ends with its members.
+func releaseGroup(pgid int) {}
+
+// executable is p when it is a file that may be run.
+func executable(p string) string {
+	if st, err := os.Stat(p); err == nil && !st.IsDir() && st.Mode()&0o111 != 0 {
+		return p
+	}
+	return ""
+}
+
+// startable is what runs bin: bin itself.
+func startable(bin string, args []string) (string, []string, error) { return bin, args, nil }
+
 // KillGroup terminates a process group (also used for orphans after a
 // daemon restart).
 func KillGroup(pgid int) {

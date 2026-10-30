@@ -10,6 +10,7 @@ tool (
 
 require (
 	connectrpc.com/connect v1.21.1
+	github.com/Microsoft/go-winio v0.6.3
 	github.com/coder/websocket v1.8.15
 	github.com/hashicorp/yamux v0.1.2
 	github.com/modelcontextprotocol/go-sdk v1.8.0
@@ -47,7 +48,6 @@ require (
 	cel.dev/expr v0.25.3 // indirect
 	connectrpc.com/connect/v2 v2.0.1 // indirect
 	connectrpc.com/otelconnect v0.11.0 // indirect
-	github.com/Microsoft/go-winio v0.6.3 // indirect
 	github.com/antlr4-go/antlr/v4 v4.13.1 // indirect
 	github.com/bufbuild/buf v1.74.0 // indirect
 	github.com/bufbuild/protocompile v0.14.2-0.20261013160345-b79bfe2f85df // indirect

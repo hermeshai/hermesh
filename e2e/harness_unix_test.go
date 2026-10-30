@@ -16,3 +16,9 @@ func killGroup(pid int) { syscall.Kill(-pid, syscall.SIGKILL) }
 func stopGroup(pid int) { syscall.Kill(-pid, syscall.SIGTERM) }
 
 func killProcess(pid int) { syscall.Kill(pid, syscall.SIGKILL) }
+
+// shortTemp is a temp folder whose paths stay short enough for sockets.
+const shortTemp = "/tmp"
+
+// exe ends a program's file name.
+const exe = ""

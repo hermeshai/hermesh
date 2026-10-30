@@ -54,6 +54,10 @@ func StartProc(ctx context.Context, bin string, args []string, dir string, env [
 }
 
 func startProc(bin string, args []string, dir string, env []string) (*Proc, error) {
+	bin, args, err := startable(bin, args)
+	if err != nil {
+		return nil, err
+	}
 	if useSpawn {
 		p, err := startSpawn(bin, args, dir, env)
 		if !errors.Is(err, spawn.ErrFDRange) {
@@ -110,6 +114,10 @@ func startProc(bin string, args []string, dir string, env []string) (*Proc, erro
 // through the spawn helpers when they are in use (a fork of this large
 // process costs milliseconds of CPU each). stdin is empty; ctx kills it.
 func RunCommand(ctx context.Context, bin string, args []string, dir string, env []string) (stdout, stderr []byte, err error) {
+	bin, args, err = startable(bin, args)
+	if err != nil {
+		return nil, nil, err
+	}
 	if hs := spawnHelpers.Load(); hs != nil && len(*hs) > 0 {
 		return runSpawned(ctx, *hs, bin, args, dir, env)
 	}
@@ -131,6 +139,7 @@ func RunCommand(ctx context.Context, bin string, args []string, dir string, env 
 		return nil, nil, err
 	}
 	err = cmd.Wait()
+	releaseGroup(cmd.Process.Pid)
 	return out.Bytes(), errb.Bytes(), err
 }
 
@@ -150,6 +159,7 @@ func UseSpawnHelpers(hs ...*spawn.Helper) { spawnHelpers.Store(&hs) }
 func (p *Proc) afterExit(waitStderr func(), stdout io.Closer) {
 	killGroup(p.pid)
 	p.tree.stop() // descendants in groups of their own (agents' tools)
+	releaseGroup(p.pid)
 	if waitStderr != nil {
 		waitStderr()
 	}
@@ -300,22 +310,16 @@ func KeepOutput(s string) (kept string, cut bool) {
 // LookPath finds bin on PATH, then in extra locations.
 func LookPath(bin string, path string, extra ...string) string {
 	for _, dir := range filepath.SplitList(path) {
-		p := filepath.Join(dir, bin)
-		if isExec(p) {
+		if p := executable(filepath.Join(dir, bin)); p != "" {
 			return p
 		}
 	}
 	for _, p := range extra {
-		if isExec(p) {
+		if p := executable(p); p != "" {
 			return p
 		}
 	}
 	return ""
-}
-
-func isExec(p string) bool {
-	st, err := os.Stat(p)
-	return err == nil && !st.IsDir() && st.Mode()&0o111 != 0
 }
 
 var errNotRunning = errors.New("provider process is not running")

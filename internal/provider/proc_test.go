@@ -15,14 +15,6 @@ import (
 	"github.com/hermeshai/hermesh/internal/spawn"
 )
 
-func TestMain(m *testing.M) {
-	if os.Getenv("HERMESH_TEST_SPAWN_HELPER") == "1" {
-		spawn.Serve(os.NewFile(3, "helper"))
-		os.Exit(0)
-	}
-	os.Exit(m.Run())
-}
-
 func TestRunCommand(t *testing.T) {
 	modes := []string{"in-process"}
 	if spawn.Supported {
