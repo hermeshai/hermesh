@@ -2,7 +2,7 @@ import SwiftUI
 
 // The pieces the first run and the guide share (docs/onboarding.md §5.1):
 // a page with its bar and title, the progress, cards and rows, the key's
-// diagram and the notifications a phone gets.
+// and the join's diagrams, and the notifications a phone gets.
 
 /// The guide's four parts: the account, a computer, its coding agents, and
 /// connecting an agent.
@@ -334,6 +334,123 @@ struct KeyDiagram: View {
                 ctx.fill(Path(ellipseIn: CGRect(x: p.x - 3.4, y: p.y - 3.4, width: 6.8, height: 6.8)), with: .color(.accentColor))
             }
         }
+    }
+}
+
+// MARK: Joining
+
+/// Joining from another device: this iPhone's request, signed with its new
+/// management key, goes through the server to a trusted device, and the
+/// approval comes back. The server only relays.
+struct JoinDiagram: View {
+    enum Stage: Equatable {
+        /// Nothing sent yet.
+        case ready
+        /// Signed and sent; waiting for the other device.
+        case sent
+        /// Approved, by the device named (empty when unknown).
+        case approved(by: String)
+    }
+
+    /// The server's name: hermesh.io, or the host of one's own.
+    let server: String
+    let stage: Stage
+    @Environment(\.accessibilityReduceMotion) private var still
+
+    private let width: CGFloat = 340, height: CGFloat = 150
+    private let phone = CGPoint(x: 62, y: 50), other = CGPoint(x: 278, y: 50)
+
+    var body: some View {
+        GeometryReader { g in
+            let scale = g.size.width / width
+            canvas.frame(width: width, height: height).scaleEffect(scale, anchor: .topLeading)
+        }
+        .aspectRatio(width / height, contentMode: .fit)
+        .accessibilityElement()
+        .accessibilityLabel(Text("This iPhone’s join request goes through \(server) to your other device, which approves it; \(server) only relays."))
+    }
+
+    private var approved: Bool { if case .approved = stage { return true } else { return false } }
+
+    private var canvas: some View {
+        ZStack(alignment: .topLeading) {
+            TimelineView(.animation(paused: still || stage == .ready)) { t in
+                Canvas { ctx, _ in draw(&ctx, t: t.date.timeIntervalSinceReferenceDate) }
+            }
+            Text(server).font(.caption2.monospaced()).lineLimit(1).minimumScaleFactor(0.7)
+                .frame(width: 76).position(x: 170, y: 42)
+            Text("Only relays").font(.caption2).foregroundStyle(.secondary).fixedSize().position(x: 170, y: 60)
+            Circle().fill(Color.accentColor).frame(width: 52, height: 52).position(phone)
+            Image(systemName: "key").font(.system(size: 22, weight: .medium)).foregroundStyle(.white).position(phone)
+            Circle().fill(Color(.systemGroupedBackground))
+                .overlay(Circle().strokeBorder(approved ? Color.green : Color(.separator), lineWidth: approved ? 2 : 1))
+                .frame(width: 52, height: 52).position(other)
+            Image(systemName: "laptopcomputer").font(.system(size: 20, weight: .medium)).position(other)
+            if approved {
+                Image(systemName: "checkmark").font(.system(size: 9, weight: .heavy)).foregroundStyle(.white)
+                    .frame(width: 18, height: 18).background(.green, in: Circle())
+                    .overlay(Circle().strokeBorder(Color(.secondarySystemGroupedBackground), lineWidth: 2))
+                    .position(x: other.x + 19, y: other.y - 19)
+            }
+            label(Text("This iPhone"), stage == .ready ? Text("Creates a management key") : Text("Request signed"), at: phone.x)
+            label(otherName, otherState, at: other.x, done: approved)
+            caption.font(.caption).foregroundStyle(.secondary).lineLimit(1).minimumScaleFactor(0.8)
+                .frame(width: 320).position(x: 170, y: 140)
+        }
+        .frame(width: width, height: height, alignment: .topLeading)
+    }
+
+    private var otherName: Text {
+        if case .approved(let by) = stage, !by.isEmpty { return Text(verbatim: by) }
+        return Text("Other device")
+    }
+
+    private var otherState: Text {
+        switch stage {
+        case .ready: Text("Trusted")
+        case .sent: Text("Waiting for your approval")
+        case .approved: Text("Approved")
+        }
+    }
+
+    private var caption: Text {
+        switch stage {
+        case .ready: Text("The request starts here; your device approves it")
+        case .sent: Text(verbatim: "")
+        case .approved: Text("The approval comes back to this iPhone")
+        }
+    }
+
+    private func label(_ title: Text, _ detail: Text, at x: CGFloat, done: Bool = false) -> some View {
+        VStack(spacing: 2) {
+            title.font(.footnote.weight(.semibold)).lineLimit(1).minimumScaleFactor(0.7)
+            detail.font(.caption2).foregroundStyle(done ? Color.green : .secondary).lineLimit(1).minimumScaleFactor(0.7)
+        }
+        .frame(width: 124).position(x: x, y: 104)
+    }
+
+    private func draw(_ ctx: inout GraphicsContext, t: Double) {
+        var line = Path()
+        line.move(to: CGPoint(x: phone.x + 30, y: phone.y))
+        line.addLine(to: CGPoint(x: other.x - 30, y: other.y))
+        switch stage {
+        case .ready: ctx.stroke(line, with: .color(Color(.tertiaryLabel)), style: StrokeStyle(lineWidth: 1.6, dash: [4, 5]))
+        case .sent: ctx.stroke(line, with: .color(.accentColor.opacity(0.7)), lineWidth: 1.8)
+        case .approved: ctx.stroke(line, with: .color(.green.opacity(0.7)), lineWidth: 1.8)
+        }
+        // The server, over the line: the request goes through it.
+        let box = Path(roundedRect: CGRect(x: 128, y: 16, width: 84, height: 68), cornerRadius: 14)
+        ctx.fill(box, with: .color(Color(.systemGroupedBackground)))
+        ctx.stroke(box, with: .color(Color(.separator)), lineWidth: 1)
+        guard !still, stage != .ready else { return }
+        // The request goes over to the other device; the approval comes back.
+        let phase = t.truncatingRemainder(dividingBy: 2.2) / 2.2
+        guard phase < 0.8 else { return }
+        let u = 1 - pow(1 - phase / 0.8, 3)
+        let x = approved ? other.x - (other.x - phone.x) * u : phone.x + (other.x - phone.x) * u
+        let dot = CGRect(x: x - 5, y: phone.y - 5, width: 10, height: 10)
+        ctx.fill(Path(ellipseIn: dot), with: .color(approved ? .green : .accentColor))
+        ctx.stroke(Path(ellipseIn: dot), with: .color(Color(.secondarySystemGroupedBackground)), lineWidth: 2)
     }
 }
 

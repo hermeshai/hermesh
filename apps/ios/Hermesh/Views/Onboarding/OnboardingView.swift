@@ -214,8 +214,12 @@ struct OnboardingView: View {
         .padding(.horizontal, 16).padding(.vertical, 10)
     }
 
+    /// Says what joining gives and why Face ID, before the request goes out;
+    /// the code to compare shows once it is signed.
     private func approve(owner: String, relay: String) -> some View {
-        GuidePage(back: { cancelJoin() }, icon: AnyView(GuideTile(systemImage: "laptopcomputer.and.iphone", size: 64)), title: Text("Approve on your other device")) {
+        GuidePage(back: { cancelJoin() }, title: request == nil ? Text("Join your Hermesh") : Text("Approve on your other device"),
+                  lede: request == nil ? Text("Once joined, this iPhone can see your computers and agents, and approve new devices with Face ID.") : nil) {
+            GuideCard { JoinDiagram(server: server, stage: request == nil ? .ready : .sent).padding(.horizontal, 8).padding(.vertical, 12) }
             if let request {
                 VStack(spacing: 4) {
                     Text("Verification code").font(.subheadline).foregroundStyle(.secondary)
@@ -227,16 +231,27 @@ struct OnboardingView: View {
                 .padding(.horizontal, 16)
                 .accessibilityElement(children: .combine)
                 .accessibilityIdentifier("verification-code")
+                Text("Approve when your other device shows the same code").font(.subheadline).foregroundStyle(.secondary)
+                    .multilineTextAlignment(.center).frame(maxWidth: .infinity).padding(.horizontal, 28)
+            } else {
+                GuideCard {
+                    keyRow("key", Text("This iPhone creates a management key"), Text("In its Secure Enclave; it can’t be exported"))
+                    GuideDivider()
+                    keyRow("faceid", Text("Face ID signs the join request"), Text("Proves it comes from this iPhone; \(server) can’t pretend to be it"))
+                    GuideDivider()
+                    keyRow("checkmark.shield", Text("Check and approve on your other device"), Text("If both show the same code, it’s this iPhone"))
+                }
             }
-            if let error { Text(error).font(.footnote).foregroundStyle(.red).padding(.horizontal, 20) }
         } footer: {
-            if request != nil { GuideWaiting(text: Text("Waiting for approval…")) }
-            if error != nil {
-                GuideButton(title: Text("Try Again"), id: "join") { join(owner: owner, relay: relay) }
+            if request != nil {
+                GuideWaiting(text: Text("Waiting for approval…"))
+            } else {
+                if let error { Text(error).font(.footnote).foregroundStyle(.red).multilineTextAlignment(.center) }
+                GuideButton(title: Text("Send Request with Face ID"), systemImage: "faceid", id: "send-join") { join(owner: owner, relay: relay) }
+                    .disabled(busy)
             }
             GuideLink(title: Text("No other device?"), id: "no-other-device") { lost = true }
         }
-        .task { if request == nil && !busy { join(owner: owner, relay: relay) } }
         .alert("Can’t join", isPresented: $lost) {
             Button("OK", role: .cancel) {}
         } message: {
@@ -246,6 +261,7 @@ struct OnboardingView: View {
 
     private func digitsPage(code: String, by: String) -> some View {
         GuidePage(back: { cancelJoin() }, title: by.isEmpty ? Text("Type the digits on your other device") : Text("Type the digits on \(by)")) {
+            GuideCard { JoinDiagram(server: server, stage: .approved(by: by)).padding(.horizontal, 8).padding(.vertical, 12) }
             HStack(spacing: 14) {
                 ForEach(0 ..< 2, id: \.self) { i in
                     let d = Array(digits)
@@ -406,6 +422,7 @@ struct OnboardingView: View {
                 guide = Guide.on
                 go(.notifications(guided: true))
             } catch {
+                if model.signer.cancelledSetup() { return }
                 self.error = (error as? APIError)?.message ?? error.localizedDescription
             }
         }
@@ -425,7 +442,7 @@ struct OnboardingView: View {
                 r.rootPlatform = "ios"
                 model.signer.expect(.firstSetup)
                 let res = try await api.requestJoin(r)
-                request = (res.code, res.verificationCode)
+                withAnimation(.smooth) { request = (res.code, res.verificationCode) }
                 while !Task.isCancelled {
                     let w = try await api.waitJoin(res.code)
                     if w.done && !w.matchRequired {
@@ -442,6 +459,8 @@ struct OnboardingView: View {
             } catch {
                 if Task.isCancelled { return }
                 request = nil
+                // Face ID cancelled: back to the button, nothing to say.
+                if model.signer.cancelledSetup() { return }
                 self.error = (error as? APIError)?.message ?? error.localizedDescription
             }
         }

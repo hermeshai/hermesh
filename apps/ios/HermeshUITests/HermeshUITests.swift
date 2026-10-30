@@ -56,6 +56,11 @@ final class HermeshUITests: XCTestCase {
         field.tap()
         field.typeText(address)
         tap("continue")
+        // What joining does, before Face ID; nothing is sent until the tap.
+        XCTAssertTrue(text("加入你的 Hermesh").waitForExistence(timeout: 30), "the join page")
+        XCTAssertTrue(text("用面容 ID 签名加入请求").exists && text("只转发").exists)
+        XCTAssertFalse(app.descendants(matching: .any)["verification-code"].exists, "no request yet")
+        tap("send-join")
         // The Mac approves (the test approves at once, so the waiting screen
         // may be gone already); then the two digits it shows, unless none
         // are asked for.

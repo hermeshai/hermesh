@@ -125,8 +125,14 @@ Erase Everything, and it splits by what the person says first:
   stays on this iPhone; everything that joins needs Face ID; the server
   can't approve). Create with Face ID runs `Setup`. Never call it an
   encryption key: it authorizes, and content is end to end by other keys.
-- **Another device.** The request goes out (its key made with Face ID first)
-  and the page shows the code to compare; the other device's name is only
+- **Another device.** Join your Hermesh: what joining gives, a diagram (this
+  iPhone's key, the server that only relays, the other device that approves)
+  and three lines (a management key made here; Face ID signs the request, so
+  the server can't pretend to be this iPhone; compare the code and approve).
+  Nothing goes out before Send Request with Face ID: iOS shows no reason on
+  its Face ID prompt, so the page says it first. A cancelled Face ID goes back
+  to the button without an error (the key page does the same). Once signed,
+  the page shows the code to compare; the other device's name is only
   known once it approves (`WaitJoinResponse.approved_by`), so the digits page
   names it. No other device? says that only setting up again is left.
 - **Turn on notifications**, last on both paths: a small lock screen with
