@@ -361,6 +361,13 @@ public nonisolated struct Hermesh_Local_V1_GetStatusResponse: @unchecked Sendabl
   /// Clears the value of `erased`. Subsequent reads from it will return its default value.
   public mutating func clearErased() {_uniqueStorage()._erased = nil}
 
+  /// A self-hosted relay's MCP address, with its key, to paste into agent
+  /// products ("" when it serves none, and on the official service).
+  public var mcpURL: String {
+    get {_storage._mcpURL}
+    set {_uniqueStorage()._mcpURL = newValue}
+  }
+
   public var unknownFields = SwiftProtobuf.UnknownStorage()
 
   public init() {}
@@ -2945,7 +2952,7 @@ nonisolated extension Hermesh_Local_V1_GetStatusRequest: SwiftProtobuf.Message, 
 
 nonisolated extension Hermesh_Local_V1_GetStatusResponse: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
   public static let protoMessageName: String = _protobuf_package + ".GetStatusResponse"
-  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{1}initialized\0\u{3}owner_id\0\u{3}relay_url\0\u{3}relay_connected\0\u{3}local_machine_enabled\0\u{3}local_machine_id\0\u{3}local_machine_name\0\u{1}version\0\u{3}connect_address\0\u{1}hosted\0\u{3}console_url\0\u{3}device_key_id\0\u{1}removed\0\u{3}machine_only\0\u{3}signed_out\0\u{1}account\0\u{1}erased\0")
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{1}initialized\0\u{3}owner_id\0\u{3}relay_url\0\u{3}relay_connected\0\u{3}local_machine_enabled\0\u{3}local_machine_id\0\u{3}local_machine_name\0\u{1}version\0\u{3}connect_address\0\u{1}hosted\0\u{3}console_url\0\u{3}device_key_id\0\u{1}removed\0\u{3}machine_only\0\u{3}signed_out\0\u{1}account\0\u{1}erased\0\u{3}mcp_url\0")
 
   fileprivate class _StorageClass {
     var _initialized: Bool = false
@@ -2965,6 +2972,7 @@ nonisolated extension Hermesh_Local_V1_GetStatusResponse: SwiftProtobuf.Message,
     var _signedOut: Bool = false
     var _account: String = String()
     var _erased: Hermesh_Local_V1_Erased? = nil
+    var _mcpURL: String = String()
 
       // This property is used as the initial default value for new instances of the type.
       // The type itself is protecting the reference to its storage via CoW semantics.
@@ -2992,6 +3000,7 @@ nonisolated extension Hermesh_Local_V1_GetStatusResponse: SwiftProtobuf.Message,
       _signedOut = source._signedOut
       _account = source._account
       _erased = source._erased
+      _mcpURL = source._mcpURL
     }
   }
 
@@ -3027,6 +3036,7 @@ nonisolated extension Hermesh_Local_V1_GetStatusResponse: SwiftProtobuf.Message,
         case 15: try { try decoder.decodeSingularBoolField(value: &_storage._signedOut) }()
         case 16: try { try decoder.decodeSingularStringField(value: &_storage._account) }()
         case 17: try { try decoder.decodeSingularMessageField(value: &_storage._erased) }()
+        case 18: try { try decoder.decodeSingularStringField(value: &_storage._mcpURL) }()
         default: break
         }
       }
@@ -3090,6 +3100,9 @@ nonisolated extension Hermesh_Local_V1_GetStatusResponse: SwiftProtobuf.Message,
       try { if let v = _storage._erased {
         try visitor.visitSingularMessageField(value: v, fieldNumber: 17)
       } }()
+      if !_storage._mcpURL.isEmpty {
+        try visitor.visitSingularStringField(value: _storage._mcpURL, fieldNumber: 18)
+      }
     }
     try unknownFields.traverse(visitor: &visitor)
   }
@@ -3116,6 +3129,7 @@ nonisolated extension Hermesh_Local_V1_GetStatusResponse: SwiftProtobuf.Message,
         if _storage._signedOut != rhs_storage._signedOut {return false}
         if _storage._account != rhs_storage._account {return false}
         if _storage._erased != rhs_storage._erased {return false}
+        if _storage._mcpURL != rhs_storage._mcpURL {return false}
         return true
       }
       if !storagesAreEqual {return false}

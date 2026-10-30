@@ -176,7 +176,7 @@ curl -fsSL https://github.com/hermeshai/hermesh/releases/latest/download/install
 hermesh auth login relay.example.com/o_xxxxxxxx
 ```
 
-`--mcp` also serves MCP at `https://relay.example.com/mcp`; leave it out if your agents all use the CLI. Don't run the relay as the same user as a machine on that server.
+`--mcp` also serves MCP, for Claude, ChatGPT and other online assistants, at an address with a key in it, so only you can connect apps: copy it from **Settings › Account & Devices › Advanced** on the Mac or **Account and Devices** on the iPhone, or print it on the server with `docker exec hermesh-relay hermesh-relay mcp-url`. Leave `--mcp` out if your agents all use the CLI. Don't run the relay as the same user as a machine on that server.
 
 ## Questions
 

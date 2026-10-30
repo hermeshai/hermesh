@@ -83,6 +83,7 @@
     "connectAddress": "Connection address",
     "addMachine": "Add a machine",
     "agentLogin": "Sign in an agent",
+    "mcpUrl": "MCP address",
     "console": "Web console",
     "consoleDesc": "See machines and access in any browser, revoke in an emergency",
     "open": "Open",

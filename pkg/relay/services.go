@@ -685,6 +685,10 @@ func (o *ownerControl) GetAccount(ctx context.Context, _ *relayv1.GetAccountRequ
 	return res, nil
 }
 
+func (o *ownerControl) GetMCP(context.Context, *relayv1.GetMCPRequest) (*relayv1.GetMCPResponse, error) {
+	return &relayv1.GetMCPResponse{Url: o.s.cfg.MCPURL}, nil
+}
+
 func (o *ownerControl) PublishRootChain(ctx context.Context, req *relayv1.PublishRootChainRequest) (*relayv1.PublishRootChainResponse, error) {
 	if err := o.s.acceptRootChain(peerFrom(ctx).t, req.RootChain); err != nil {
 		return nil, errf(connect.CodeInvalidArgument, err.Error())

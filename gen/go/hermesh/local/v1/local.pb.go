@@ -656,7 +656,10 @@ type GetStatusResponse struct {
 	Account string `protobuf:"bytes,16,opt,name=account,proto3" json:"account,omitempty"`
 	// This device erased everything (EraseEverything, or an erase order from
 	// another): what it did, until another setup.
-	Erased        *Erased `protobuf:"bytes,17,opt,name=erased,proto3" json:"erased,omitempty"`
+	Erased *Erased `protobuf:"bytes,17,opt,name=erased,proto3" json:"erased,omitempty"`
+	// A self-hosted relay's MCP address, with its key, to paste into agent
+	// products ("" when it serves none, and on the official service).
+	McpUrl        string `protobuf:"bytes,18,opt,name=mcp_url,json=mcpUrl,proto3" json:"mcp_url,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -808,6 +811,13 @@ func (x *GetStatusResponse) GetErased() *Erased {
 		return x.Erased
 	}
 	return nil
+}
+
+func (x *GetStatusResponse) GetMcpUrl() string {
+	if x != nil {
+		return x.McpUrl
+	}
+	return ""
 }
 
 type ListProfilesRequest struct {
@@ -7482,7 +7492,7 @@ const file_hermesh_local_v1_local_proto_rawDesc = "" +
 	"\x11notice_public_key\x18\x03 \x01(\fR\x0fnoticePublicKey\x12\x14\n" +
 	"\x05kinds\x18\x04 \x03(\tR\x05kinds\"\x16\n" +
 	"\x14RegisterPushResponse\"\x12\n" +
-	"\x10GetStatusRequest\"\xea\x04\n" +
+	"\x10GetStatusRequest\"\x83\x05\n" +
 	"\x11GetStatusResponse\x12 \n" +
 	"\vinitialized\x18\x01 \x01(\bR\vinitialized\x12\x19\n" +
 	"\bowner_id\x18\x02 \x01(\tR\aownerId\x12\x1b\n" +
@@ -7503,7 +7513,8 @@ const file_hermesh_local_v1_local_proto_rawDesc = "" +
 	"\n" +
 	"signed_out\x18\x0f \x01(\bR\tsignedOut\x12\x18\n" +
 	"\aaccount\x18\x10 \x01(\tR\aaccount\x120\n" +
-	"\x06erased\x18\x11 \x01(\v2\x18.hermesh.local.v1.ErasedR\x06erased\"\x15\n" +
+	"\x06erased\x18\x11 \x01(\v2\x18.hermesh.local.v1.ErasedR\x06erased\x12\x17\n" +
+	"\amcp_url\x18\x12 \x01(\tR\x06mcpUrl\"\x15\n" +
 	"\x13ListProfilesRequest\"M\n" +
 	"\x14ListProfilesResponse\x125\n" +
 	"\bprofiles\x18\x01 \x03(\v2\x19.hermesh.local.v1.ProfileR\bprofiles\"\xc7\x01\n" +

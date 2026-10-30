@@ -88,13 +88,18 @@ struct ConnectAgentSheet: View {
                     .scrollIndicators(.hidden)
                     .listRowInsets(EdgeInsets(top: 8, leading: 12, bottom: 8, trailing: 12))
                 }
-                if kind.mcp && model.status.hosted {
+                if kind.mcp && !connector.isEmpty {
                     Section {
-                        MonoBox(text: mcpConnectorURL)
+                        MonoBox(text: connector)
+                        CopyShareButtons(text: connector, shareTitle: "Send…")
+                            .listRowBackground(Color.clear).listRowInsets(EdgeInsets())
                     } header: {
                         Text("Add a connector in \(kind.name)")
                     } footer: {
-                        Text("\(kind.name) opens a sign-in and approval page; its request then shows up on this iPhone for you to verify and approve.")
+                        // An own server has no sign-in: its address's key is what lets an app ask.
+                        Text(model.status.hosted
+                            ? "\(kind.name) opens a sign-in and approval page; its request then shows up on this iPhone for you to verify and approve."
+                            : "\(kind.name) opens an approval page; its request then shows up on this iPhone for you to verify and approve.")
                     }
                 }
                 Section {
@@ -102,7 +107,7 @@ struct ConnectAgentSheet: View {
                     CopyShareButtons(text: message, shareTitle: "Send…")
                         .listRowBackground(Color.clear).listRowInsets(EdgeInsets())
                 } header: {
-                    Text(kind.mcp && model.status.hosted ? "Or send this to \(kind.name)" : "Send this to \(kind.name)")
+                    Text(kind.mcp && !connector.isEmpty ? "Or send this to \(kind.name)" : "Send this to \(kind.name)")
                 } footer: {
                     Text("Once it runs the commands, its request to connect shows up here.")
                 }
@@ -114,6 +119,7 @@ struct ConnectAgentSheet: View {
     }
 
     private var message: String { connectMessage(model.status, agent: kind.name) }
+    private var connector: String { mcpConnectorAddress(model.status) }
 }
 
 /// What to send a personal agent so it connects. On the official service,

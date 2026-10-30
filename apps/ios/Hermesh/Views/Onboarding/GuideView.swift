@@ -340,8 +340,9 @@ struct GuideView: View {
     @State private var kind = PersonalAgentKind.all[1]
 
     private var connect: some View {
-        let byConnector = kind.mcp && model.status.hosted
-        let text = byConnector ? mcpConnectorURL : connectMessage(model.status, agent: kind.name)
+        let connector = mcpConnectorAddress(model.status)
+        let byConnector = kind.mcp && !connector.isEmpty
+        let text = byConnector ? connector : connectMessage(model.status, agent: kind.name)
         return GuidePage(part: .connect, back: { if let m = model.machines.first { go(.agents(m.machineID), back: true) } }, later: putOff, title: Text("Connect your agent")) {
             ScrollView(.horizontal) {
                 HStack(spacing: 8) {
@@ -454,6 +455,12 @@ private struct FirstAnswer: View {
 
 /// The hosted MCP connector's address (docs/mcp-gateway.md).
 let mcpConnectorURL = "https://mcp.hermesh.io/mcp"
+
+/// The MCP address to add as a connector in an agent's app: the official
+/// service's, or an own server's with its key ("" when it serves none).
+func mcpConnectorAddress(_ status: StatusResponse) -> String {
+    status.hosted ? mcpConnectorURL : status.mcpURL
+}
 
 /// A request the guide waits for, to approve: a Mac or another device (a
 /// trusted device, maybe a machine too), a machine, or an agent. Then the

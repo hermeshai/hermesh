@@ -294,6 +294,8 @@ func newIPhoneControl(t *testing.T, w *ownerMac, sessions map[string]string) str
 		json.NewEncoder(rw).Encode(v)
 	}
 	mux.HandleFunc("GET /address", func(rw http.ResponseWriter, _ *http.Request) { reply(rw, map[string]string{"address": w.addr}) })
+	mcp := mcpAddress(t, w.app)
+	mux.HandleFunc("GET /mcp", func(rw http.ResponseWriter, _ *http.Request) { reply(rw, map[string]string{"address": mcp}) })
 	// A bot's routine for a doorbell: it takes one key, and says what called it.
 	var hookCalls []string
 	hook := httptest.NewServer(http.HandlerFunc(func(rw http.ResponseWriter, r *http.Request) {

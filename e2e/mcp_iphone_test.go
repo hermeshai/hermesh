@@ -59,10 +59,11 @@ func TestMCPReachesAnIPhone(t *testing.T) {
 			NoticePublicKey: notice.PublicKey().Bytes(), Kinds: []string{"pairing"}})
 		return err == nil
 	})
+	address := mcpAddress(t, app)
 	phone.stop() // in the background, as a phone is
 
 	// The app connects: the pages say where to approve.
-	mcpApp := newOAuthApp(t, base+"/mcp", "Hermesh test")
+	mcpApp := newOAuthApp(t, address, "Hermesh test")
 	page := mcpApp.authorize()
 	if !strings.Contains(page, "approve it in Hermesh on your iPhone") || strings.Contains(page, "your Mac") {
 		t.Fatalf("consent page for an owner with only an iPhone:\n%s", page)

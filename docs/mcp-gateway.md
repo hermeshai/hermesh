@@ -642,15 +642,36 @@ CLI already warns; the app gains the same for MCP connections).
 
 `hermesh-relay serve --mcp` mounts the gateway with its state in
 `<data-dir>/mcp.db` (SQLite) and the vault key in `<data-dir>/mcp-vault.key`
-(created on first start). Issuer and resource are the relay's public URL
-(`--public-url`, default from `--domain` or the listen address) and that URL
-plus `/mcp`; `--setup-url` says where people get the Mac app. There are no
-accounts: `SingleOwner` answers with the relay's one owner (none before it
-is claimed, which gives `awaiting_setup`), and anyone who can reach the
-relay can start a connection, exactly as with CLI pairing today; the
-limits of §5.7 and the per-IP registration limit bound it, waiting
-connections can't keep the owner's own apps out, and nothing reaches a
-machine without Touch ID.
+(created on first start). The issuer is the relay's public URL
+(`--public-url`, default from `--domain` or the listen address);
+`--setup-url` says where people get the Mac app. There are no accounts:
+`SingleOwner` answers with the relay's one owner (none before it is
+claimed, which gives `awaiting_setup`).
+
+**The address has a key.** With no sign-in, anyone who could reach the
+relay could start a connection and put an approval request on the owner's
+devices. So the resource is `<public URL>/mcp/<key>`, a random key of 130
+bits kept in `<data-dir>/mcp-url` (`KeyedResource`):
+
+- Only the owner's devices learn it (`GetMCP` on the owner's control
+  stream), and show it to copy: the Mac in Settings › Account & Devices › Advanced,
+  the iPhone in Account and Devices and in Connect Your Agent. On the server,
+  `hermesh-relay mcp-url` prints it. The official service's address,
+  `https://mcp.hermesh.io/mcp`, has none: its sign-in does that job.
+- Nothing served to others names it: the bare
+  `/.well-known/oauth-protected-resource` isn't served, errors don't quote
+  it, the log doesn't print it. `/mcp` and wrong keys answer 404, saying
+  where to copy the address.
+- An authorization must name it as its `resource` (RFC 8707, which MCP
+  clients send); without one it is refused.
+- `hermesh-relay mcp-url --new` makes a new key for an address that got
+  out, once the relay restarts. Apps connected with the old one connect
+  again with the new one.
+
+The key keeps strangers from asking; it doesn't approve anything. With it,
+a connection is bound as on the official service: the limits of §5.7 and
+the per-IP registration limit, waiting connections that can't keep the
+owner's own apps out, and nothing reaching a machine without Touch ID.
 
 ## 14. Testing
 

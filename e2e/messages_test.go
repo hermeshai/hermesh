@@ -296,9 +296,8 @@ func TestMCPInbox(t *testing.T) {
 	w.relayArgs = append(w.relayArgs, "--mcp")
 	w.relayEnv = []string{"HERMESH_MCP_LOCAL_WEBHOOKS=1"}
 	w.startRelay()
-	base := "http://" + w.relayArgs[slices.Index(w.relayArgs, "--listen")+1]
 
-	app := newOAuthApp(t, base+"/mcp", "Assistant")
+	app := newOAuthApp(t, mcpAddress(t, w.app), "Assistant")
 	app.connect(app.authorize())
 	var req *localv1.PairingDetails
 	eventually(t, 30*time.Second, "the approval request on the Mac", func() bool {

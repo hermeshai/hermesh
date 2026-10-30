@@ -51,22 +51,13 @@ struct AccountSheet: View {
                     // The official service shows no connection address: agents
                     // pair by a link, machines by the Add a Machine command.
                     if !model.status.hosted {
-                        Button {
-                            UIPasteboard.general.string = model.status.connectAddress
-                            model.show(String(localized: "Copied"))
-                        } label: {
-                            HStack {
-                                VStack(alignment: .leading, spacing: 2) {
-                                    Text("Connection address")
-                                    Text(model.status.connectAddress).font(.footnote.monospaced()).foregroundStyle(.secondary).lineLimit(1).truncationMode(.middle)
-                                }
-                                Spacer()
-                                Image(systemName: "doc.on.doc").font(.subheadline).foregroundStyle(.tertiary)
-                            }
-                            .contentShape(.rect)
+                        CopyAddressRow(title: "Connection address", address: model.status.connectAddress)
+                        // An own server's MCP address carries its key; the
+                        // official one is in Connect Your Agent.
+                        if !model.status.mcpURL.isEmpty {
+                            CopyAddressRow(title: "MCP address", address: model.status.mcpURL)
+                                .accessibilityIdentifier("mcpAddress")
                         }
-                        .buttonStyle(.plain)
-                        .accessibilityHint(Text("Copies it"))
                     }
                     if !model.status.consoleURL.isEmpty, let url = URL(string: model.status.consoleURL) {
                         Link(destination: url) {
@@ -446,5 +437,31 @@ struct MatchSheet: View {
         }
         .padding(28)
         .presentationDetents([.medium])
+    }
+}
+
+/// An address shown in Account, copied with a tap.
+private struct CopyAddressRow: View {
+    @Environment(AppModel.self) private var model
+    let title: LocalizedStringKey
+    let address: String
+
+    var body: some View {
+        Button {
+            UIPasteboard.general.string = address
+            model.show(String(localized: "Copied"))
+        } label: {
+            HStack {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(title)
+                    Text(address).font(.footnote.monospaced()).foregroundStyle(.secondary).lineLimit(1).truncationMode(.middle)
+                }
+                Spacer()
+                Image(systemName: "doc.on.doc").font(.subheadline).foregroundStyle(.tertiary)
+            }
+            .contentShape(.rect)
+        }
+        .buttonStyle(.plain)
+        .accessibilityHint(Text("Copies it"))
     }
 }

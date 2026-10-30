@@ -35,6 +35,7 @@ final class HermeshUITests: XCTestCase {
         try XCTContext.runActivity(named: "shows the work on the overview, and usage in the account") { _ in try usage() }
         try XCTContext.runActivity(named: "a swipe that starts on a row opens the menu, not the row") { _ in try swipeOnRow() }
         try XCTContext.runActivity(named: "offers New from the overview's top right") { _ in try newMenu() }
+        try XCTContext.runActivity(named: "gives Claude this server's MCP address, with its key") { _ in try mcpConnector() }
         try XCTContext.runActivity(named: "searches sessions from the menu") { _ in try search() }
         try XCTContext.runActivity(named: "a conversation not read yet waits in the middle of the screen") { _ in try centeredLoader() }
         try XCTContext.runActivity(named: "opened without the relay, shows what it kept and catches up") { _ in try offline() }
@@ -365,6 +366,12 @@ final class HermeshUITests: XCTestCase {
         XCTAssertTrue(app.switches["notify-started"].exists && text("新会话").exists, "new sessions, on by default")
         XCTAssertEqual(app.switches["notify-started"].value as? String, "1")
         app.navigationBars.buttons.element(boundBy: 0).tap()
+        // This server's MCP address, with its key, beside its connection address.
+        let address = try control("mcp")["address"] as! String
+        app.swipeUp()
+        let mcp = app.buttons["mcpAddress"]
+        XCTAssertTrue(mcp.waitForExistence(timeout: 10), "the MCP address in the account")
+        XCTAssertTrue(mcp.label.contains("MCP 地址") && mcp.label.contains(address), mcp.label)
         tap("close")
     }
 
@@ -390,6 +397,20 @@ final class HermeshUITests: XCTestCase {
         XCTAssertTrue(app.buttons["连接 agent…"].exists)
         code.tap()
         XCTAssertTrue(app.navigationBars["输入配对码"].waitForExistence(timeout: 10), "the pairing code sheet")
+        tap("close")
+    }
+
+    func mcpConnector() throws {
+        let address = try control("mcp")["address"] as! String
+        tap("new")
+        let connect = app.buttons["连接 agent…"]
+        XCTAssertTrue(connect.waitForExistence(timeout: 5), "the New menu")
+        connect.tap()
+        XCTAssertTrue(app.navigationBars["连接你的 Agent"].waitForExistence(timeout: 10), "the Connect Your Agent sheet")
+        // Claude, picked first, takes a connector: this server's address, not the official one.
+        XCTAssertTrue(text(address).waitForExistence(timeout: 10), "the MCP address with its key")
+        XCTAssertFalse(text("https://mcp.hermesh.io/mcp").exists, "the official service's address on an own server")
+        XCTAssertTrue(text("或者把这段话发给 Claude").exists)
         tap("close")
     }
 
