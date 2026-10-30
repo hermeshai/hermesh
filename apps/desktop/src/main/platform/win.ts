@@ -78,8 +78,9 @@ function loginItem(): LoginItem {
 const powershell = (script: string, timeout = 20_000) =>
   promisify(execFile)("powershell.exe", ["-NoProfile", "-NonInteractive", "-Command", script], { windowsHide: true, timeout });
 
-/** The signer as set up: a copy of the app's, which only administrators change. */
-const installedSigner = () => path.join(process.env.ProgramFiles || "C:\\Program Files", "Hermesh Signer", "hermesh-signer.exe");
+/** The signer as set up: a copy of the app's, which only administrators change (tests: one of their own). */
+const installedSigner = () =>
+  path.join((!app.isPackaged && process.env.HERMESH_TEST_SIGNER_DIR) || path.join(process.env.ProgramFiles || "C:\\Program Files", "Hermesh Signer"), "hermesh-signer.exe");
 
 /**
  * Sets the app's signer up, elevated (one UAC prompt): it copies itself

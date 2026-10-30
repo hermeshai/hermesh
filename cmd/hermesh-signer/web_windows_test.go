@@ -1,6 +1,7 @@
 package main
 
 import (
+	"os"
 	"runtime"
 	"sync"
 	"testing"
@@ -40,11 +41,24 @@ func TestWebPanelAfterMultithreadedCOM(t *testing.T) {
 func showsPanel(t *testing.T) {
 	t.Helper()
 	p := newPanel()
-	wp := &webPanel{w: p.w, dataDir: t.TempDir(), fallback: p}
+	// WebView2's own processes hold its folder a while after the window goes.
+	dir, err := os.MkdirTemp("", "hermesh-panel-")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		for range 20 {
+			if os.RemoveAll(dir) == nil {
+				return
+			}
+			time.Sleep(250 * time.Millisecond)
+		}
+	})
+	wp := &webPanel{w: p.w, dataDir: dir, fallback: p}
 	drawn := make(chan string, 1)
 	closed := make(chan struct{})
 	cards := []preview.Card{{Title: "Allow “bot” to connect to your computers", Code: "K4TP 9WQ2 HM3V", Lines: []string{"Machine: vps-1"}}}
-	err := wp.open(map[string]any{"kind": "confirm", "cards": cards}, func(v webview2.WebView, hwnd uintptr) {
+	err = wp.open(map[string]any{"kind": "confirm", "cards": cards}, func(v webview2.WebView, hwnd uintptr) {
 		v.Bind("probe", func(s string) { drawn <- s })
 		v.Init(`addEventListener("load", () => probe(document.querySelector("h1").textContent));`)
 	}, func() { close(closed) })
