@@ -43,8 +43,8 @@ jobs:
         run: go vet ./...
       - name: unit tests
         run: go test ./cmd/... ./internal/... ./pkg/... -count=1
-      - name: install.ps1
-        run: go test ./e2e -run '^TestWindowsInstall$' -count=1 -v
+      - name: install.ps1 and the signer
+        run: go test ./e2e -run '^(TestWindowsInstall|TestWindowsSigner)$' -count=1 -v
   # The end-to-end suite on Windows, being ported (docs/windows.md, W1): its
   # failures do not fail the run yet.
   windows-e2e:

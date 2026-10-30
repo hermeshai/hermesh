@@ -70,6 +70,8 @@ export type Bridge = {
   connectURL(center: string): Promise<string>;
   /** This computer's name as the person sees it. */
   computerName(): Promise<string>;
+  /** Before hermeshd asks for a new root key: the signer is there (Windows sets it up, with one UAC prompt). */
+  readySigner(): Promise<void>;
   /** hermesh:// links the app received (sign-in and join), also those that came before the page subscribed. */
   onLink(cb: (url: string) => void): () => void;
   /** What the main process does on its own: notifications and the menu bar (stored in the app's profile). */

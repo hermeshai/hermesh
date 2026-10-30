@@ -81,5 +81,13 @@
   },
   "tray": {
     "open": "Open Hermesh"
+  },
+  "signer": {
+    "declined": "Windows asked for permission to set up Hermesh’s signer, and it wasn’t given. Without it, this PC can’t keep your owner key.",
+    "notAdmin": "This PC can be a trusted device from an administrator account only. Join as a machine only, or approve on another of your devices.",
+    "uacOff": "User Account Control is off, so nothing keeps your programs from the key. Turn it on to make this PC a trusted device.",
+    "noTPM": "This PC has no TPM 2.0 to keep your owner key in.",
+    "failed": "Hermesh’s signer couldn’t be set up (error {{code}}).",
+    "notRunning": "Hermesh’s signer didn’t start. Try again."
   }
 }

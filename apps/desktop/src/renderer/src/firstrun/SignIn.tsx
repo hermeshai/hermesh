@@ -366,6 +366,7 @@ function Authorize({ how, cancel, join }: { how: How; cancel: () => void; join: 
         await bridge().completeSignIn({ localMachine: machine });
       } else {
         const name = await bridge().computerName();
+        await bridge().readySigner();
         await local.setup({ relayUrl: how.relay, claimCode: how.claim, rootLabel: name, rootPlatform: rootPlatform(bridge().platform), localMachineName: machine ? name : "" });
       }
       await st.refresh();
@@ -470,6 +471,7 @@ export function Join(p: { owner: string; center: string; relay?: string; machine
         const name = await bridge().computerName();
         const relayUrl = relay || (await bridge().connectURL(center));
         const platform = rootPlatform(bridge().platform);
+        if (trusted) await bridge().readySigner();
         const res = await local.requestJoin(
           trusted
             ? { relayUrl, ownerId: owner, rootLabel: name, rootPlatform: platform, localMachineName: machine ? name : "" }

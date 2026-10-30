@@ -47,6 +47,7 @@ const bridge: Bridge = {
   completeSignIn: (o: { localMachine: boolean }) => ask("complete-sign-in", o),
   connectURL: (center: string) => ask("connect-url", center),
   computerName: () => ask("computer-name"),
+  readySigner: () => ask("ready-signer"),
   onLink: (cb: (url: string) => void) => {
     // Links wait in the main process until taken: the page may load after one arrived.
     const take = () => ask<string[]>("take-links").then((urls) => urls.forEach(cb));

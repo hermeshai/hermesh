@@ -1,8 +1,12 @@
+import { createClient } from "@connectrpc/connect";
+import { createConnectTransport } from "@connectrpc/connect-node";
 import { language } from "@hermesh/core";
+import { LocalService } from "@hermesh/proto/local";
 import { app } from "electron";
 import { spawn, type ChildProcess } from "node:child_process";
 import fs from "node:fs";
-import { dataDir } from "./paths";
+import { world, worldListeners } from "./notify";
+import { dataDir, socketPath } from "./paths";
 import { platform } from "./platform";
 
 let busy = false;
@@ -15,11 +19,23 @@ function setBusy(value: boolean) {
   signerListeners.forEach((f) => f());
 }
 /** Bring the existing approval forward without accepting or rejecting it. */
-export function showSigner() { signer?.kill("SIGUSR1"); }
+export function showSigner() {
+  if (signer) signer.kill("SIGUSR1");
+  else if (platform.token === "win") {
+    const local = createClient(LocalService, createConnectTransport({ baseUrl: "http://hermeshd", httpVersion: "1.1", useBinaryFormat: true, nodeOptions: { socketPath: socketPath() } }));
+    local.showSigner({}).catch((e) => console.warn("show the signer:", e));
+  }
+}
 
 // The signer holds the root key and shows what is signed. It talks only
 // to hermeshd; we just keep it running, where it is the app's child (macOS).
 export function keepSignerRunning(socket: string): () => void {
+  if (platform.token === "win") {
+    // Not the app's child (docs/windows.md §7.3): hermeshd tells whether it waits on the owner.
+    const follow = () => setBusy(!!world.status?.signer?.busy);
+    worldListeners.add(follow);
+    return () => worldListeners.delete(follow);
+  }
   const program = platform.signer(language());
   if (!program || !fs.existsSync(program.bin)) {
     console.warn(`signer not found${program ? ` at ${program.bin}` : ""}; signing requests will wait`);
