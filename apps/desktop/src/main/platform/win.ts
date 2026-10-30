@@ -14,13 +14,16 @@ import { socketPath, testDataDir } from "../paths";
 import type { Platform, WindowKind } from "./types";
 
 // The Windows app is an MSIX package (docs/windows.md §6.1). Its manifest
-// declares two startup tasks: hermeshd's (hermeshdw.exe, the windowless
-// build, which keeps the daemon running), always on, and the app's own
-// (Open Hermesh at login), off until the owner turns it on. Development and
-// test runs use a daemon of their own and touch neither.
+// declares hermeshd's startup task (hermeshdw.exe, the windowless build,
+// which keeps the daemon running). Open Hermesh at login is the user's Run
+// value, which Electron writes: the package writes the real registry
+// (no write virtualization), and Startup apps lists and switches it.
+// Development and test runs use a daemon of their own and touch neither.
 const installed = app.isPackaged && process.platform === "win32" && !process.env.HERMESH_DATA_DIR && !testDataDir;
 const daemonArgs = ["run", "--supervise", "--owner"];
 let devLoginItem = false;
+/** Opened at login, the app gets this argument: in the notification area only. */
+const atLogin = { path: process.execPath, args: ["--hermesh-at-login"] };
 
 // The package's programs, beside Hermesh.exe (package-win.mjs).
 const program = (name: string) => path.join(path.dirname(process.execPath), "bin", name);
@@ -47,11 +50,10 @@ function startDaemon() {
 }
 
 /**
- * A startup task of the package's (StartupTask, through PowerShell's WinRT:
- * Electron's login item API does not reach packaged apps): its state, after
- * turning it on or off when asked.
+ * A startup task of the package's (StartupTask, through PowerShell's WinRT):
+ * its state, after turning it on when asked.
  */
-async function startupTask(id: string, set?: "on" | "off"): Promise<string> {
+async function startupTask(id: string, set?: "on"): Promise<string> {
   const script = `$ErrorActionPreference = 'Stop'
 Add-Type -AssemblyName System.Runtime.WindowsRuntime
 $null = [Windows.ApplicationModel.StartupTask, Windows.ApplicationModel, ContentType = WindowsRuntime]
@@ -60,15 +62,16 @@ function Await($op, [Type]$t) { $task = $asTask.MakeGenericMethod($t).Invoke($nu
 $st = Await ([Windows.ApplicationModel.StartupTask]::GetAsync('${id}')) ([Windows.ApplicationModel.StartupTask])
 switch ('${set ?? ""}') {
   'on' { (Await ($st.RequestEnableAsync()) ([Windows.ApplicationModel.StartupTaskState])).ToString() }
-  'off' { $st.Disable(); $st.State.ToString() }
   default { $st.State.ToString() }
 }`;
   const { stdout } = await promisify(execFile)("powershell.exe", ["-NoProfile", "-NonInteractive", "-Command", script], { windowsHide: true, timeout: 20_000 });
   return stdout.trim();
 }
 
-function asLoginItem(state: string): LoginItem {
-  return { on: state === "Enabled" || state === "EnabledByPolicy", needsApproval: state === "DisabledByUser" || state === "DisabledByPolicy" };
+/** Open at login: on, and whether the owner turned it off in Startup apps. */
+function loginItem(): LoginItem {
+  const s = app.getLoginItemSettings(atLogin);
+  return { on: s.openAtLogin, needsApproval: s.openAtLogin && !s.executableWillLaunchAtLogin };
 }
 
 const powershell = (script: string, timeout = 20_000) =>
@@ -113,6 +116,8 @@ export const win: Platform = {
     // The startup task starts it at logon; until then, or when it stopped, the app does
     // (one supervisor runs per data folder, so a second one leaves at once).
     void answers().then((ok) => ok || startDaemon());
+    // An update moves the package's folder: Open at login follows it.
+    if (app.getLoginItemSettings(atLogin).launchItems.some((i) => i.path !== process.execPath)) app.setLoginItemSettings({ ...atLogin, openAtLogin: true });
     // On from the first launch, unless the owner turned it off in Startup apps.
     void startupTask("HermeshDaemon")
       .then(async (state) => {
@@ -146,30 +151,19 @@ export const win: Platform = {
     return false; // read with the app's own task in Settings (needsApproval): DisabledByUser
   },
 
-  async loginItem() {
-    if (!installed) return { on: devLoginItem, needsApproval: false };
-    try {
-      return asLoginItem(await startupTask("HermeshApp"));
-    } catch (e) {
-      console.warn("startup task:", e);
-      return { on: false, needsApproval: false };
-    }
+  loginItem() {
+    return installed ? loginItem() : { on: devLoginItem, needsApproval: false };
   },
 
-  async setLoginItem(on) {
+  setLoginItem(on) {
     if (!installed) {
       devLoginItem = on;
       return { on, needsApproval: false };
     }
-    try {
-      return asLoginItem(await startupTask("HermeshApp", on ? "on" : "off"));
-    } catch (e) {
-      console.warn("startup task:", e);
-      return { on: false, needsApproval: false };
-    }
+    app.setLoginItemSettings({ ...atLogin, openAtLogin: on });
+    return loginItem();
   },
 
-  /** The app's startup task starts it with this argument (its manifest entry): in the notification area only. */
   openedAtLogin() {
     return installed && process.argv.includes("--hermesh-at-login");
   },

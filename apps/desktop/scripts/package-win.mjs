@@ -178,9 +178,6 @@ function manifest() {
         <desktop:Extension Category="windows.startupTask" Executable="bin\\hermeshdw.exe" EntryPoint="Windows.FullTrustApplication" uap10:Parameters="run --supervise --owner">
           <desktop:StartupTask TaskId="HermeshDaemon" Enabled="true" DisplayName="Hermesh background service"/>
         </desktop:Extension>
-        <desktop:Extension Category="windows.startupTask" Executable="Hermesh.exe" EntryPoint="Windows.FullTrustApplication" uap10:Parameters="--hermesh-at-login">
-          <desktop:StartupTask TaskId="HermeshApp" Enabled="false" DisplayName="Hermesh"/>
-        </desktop:Extension>
       </Extensions>
     </Application>
     <!-- The command line on PATH: one alias per application, which Start doesn't list. -->${["hermesh", "hermeshd"].map((cli) => `
