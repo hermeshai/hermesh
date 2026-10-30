@@ -8,6 +8,22 @@ export function platformTitle(platform: string): string {
   return [osTitles[os] ?? os, arch].filter(Boolean).join(" · ");
 }
 
+/**
+ * Whether path is absolute on a machine of this platform ("windows/amd64":
+ * a drive, C:\…, or a share, \\server\share; elsewhere /…). "~" counts as
+ * absolute: the machine starts it at its user's home.
+ */
+export function isAbsolutePath(path: string, platform: string): boolean {
+  if (path === "~" || /^~[\\/]/.test(path)) return true;
+  if (platform.split("/")[0] === "windows") return /^[A-Za-z]:[\\/]/.test(path) || /^\\\\[^\\]+\\[^\\]+/.test(path);
+  return path.startsWith("/");
+}
+
+/** A path's last folder, on a machine of any platform ("/" or "\"). */
+export function folderName(path: string): string {
+  return path.split(/[\\/]/).filter(Boolean).pop() ?? "";
+}
+
 /** The coding agents Hermesh helps install: shown even when missing. */
 const suggestedAgents = ["claude", "codex"];
 

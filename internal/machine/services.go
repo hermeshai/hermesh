@@ -177,8 +177,9 @@ func projectAgents(names []string) ([]string, error) {
 // unspecified mode is a worktree for a git repository root and in place
 // for any other directory.
 func projectWorkspace(ctx context.Context, mode identityv1.Workspace, path string) (identityv1.Workspace, string, error) {
-	// "~/app", as a device types it or the repositories found are shown.
-	if home, err := os.UserHomeDir(); err == nil && (path == "~" || strings.HasPrefix(path, "~/")) {
+	// "~/app", as a device types it or the repositories found are shown
+	// (on Windows also "~\app").
+	if home, err := os.UserHomeDir(); err == nil && (path == "~" || strings.HasPrefix(path, "~/") || strings.HasPrefix(path, "~"+string(filepath.Separator))) {
 		path = filepath.Join(home, path[1:])
 	}
 	switch mode {
