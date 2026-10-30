@@ -1,9 +1,15 @@
 package machine
 
-import "testing"
+import (
+	"runtime"
+	"testing"
+)
 
 // The user's processes and their limit are read without starting one.
 func TestUserProcesses(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("Windows sets no limit on a user's processes")
+	}
 	pc, err := userProcesses()
 	if err != nil {
 		t.Fatal(err)

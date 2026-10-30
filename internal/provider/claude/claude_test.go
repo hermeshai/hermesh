@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -60,6 +61,7 @@ func TestResultFailure(t *testing.T) {
 // A refused --resume starts the process normally; the reason only appears
 // in the result line, which must reach the kernel as a classified failure.
 func TestStartReportsResumeRejection(t *testing.T) {
+	scripted(t)
 	dir := t.TempDir()
 	bin := filepath.Join(dir, "claude")
 	script := "#!/bin/sh\nread a\nread b\ncat " + filepath.Join(mustAbs(t, "testdata"), "claude-2.1.292-resume-not-found.result.json") +
@@ -105,6 +107,7 @@ func mustAbs(t *testing.T, p string) string {
 // one more Claude turn (two results, as Claude Code 2.1.292 does): Hermesh
 // reports one turn, ending with the last result.
 func TestSteerAfterLastToolIsOneTurn(t *testing.T) {
+	scripted(t)
 	dir := t.TempDir()
 	bin := filepath.Join(dir, "claude")
 	replay := func(text string) string {
@@ -168,6 +171,7 @@ func TestSteerAfterLastToolIsOneTurn(t *testing.T) {
 // permission host); the answer goes back as the tool's input with
 // answers keyed by question text, as Claude Code 2.1.292 takes it.
 func TestAskUserQuestion(t *testing.T) {
+	scripted(t)
 	if args := strings.Join(Args(provider.StartSpec{}), " "); !strings.Contains(args, "--permission-prompt-tool stdio") || strings.Contains(args, "--permission-prompts") {
 		t.Fatal(args)
 	}
@@ -214,6 +218,7 @@ func TestAskUserQuestion(t *testing.T) {
 
 // Without a CLI install, the newest Claude Code the desktop app keeps is used.
 func TestDesktopCLI(t *testing.T) {
+	scripted(t)
 	home := t.TempDir()
 	base := filepath.Join(home, "Library/Application Support/Claude/claude-code")
 	mk := func(version, build string) string {
@@ -244,6 +249,7 @@ func TestDesktopCLI(t *testing.T) {
 // text deltas, as Claude Code sends them) that add up to the assistant
 // message; a subagent's deltas (parent_tool_use_id) are not the reply.
 func TestDraftsAddUpToMessage(t *testing.T) {
+	scripted(t)
 	if !strings.Contains(strings.Join(Args(provider.StartSpec{}), " "), "--include-partial-messages") {
 		t.Fatal("drafts need --include-partial-messages")
 	}
@@ -296,5 +302,12 @@ func TestModelArgs(t *testing.T) {
 	}
 	if args := strings.Join(Args(provider.StartSpec{}), " "); strings.Contains(args, "--model") || strings.Contains(args, "--effort") {
 		t.Fatal(args)
+	}
+}
+
+// scripted skips a test whose fake Claude Code is a shell script.
+func scripted(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("the fake agent is a shell script")
 	}
 }

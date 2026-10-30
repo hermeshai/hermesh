@@ -129,6 +129,16 @@ func (a *Audit) appendLocked(r AuditRecord) error {
 	return nil
 }
 
+// Close closes the month's file.
+func (a *Audit) Close() {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	if a.f != nil {
+		a.f.Close()
+		a.f = nil
+	}
+}
+
 // VerifyAudit checks the whole chain and every checkpoint signature, made
 // by one of keys (the machine's, and those it had before; none: chain only).
 func VerifyAudit(dir string, keys ...identity.Signer) (records int, err error) {
