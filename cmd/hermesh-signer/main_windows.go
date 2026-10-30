@@ -113,7 +113,7 @@ var parts = func(sid, test string) (signer.Keys, signer.Owner, error) {
 	if test != "" {
 		return nil, nil, errors.New("this build has no test signer")
 	}
-	return tpmKeys{dir: keysDir(sid)}, newPanel(), nil
+	return tpmKeys{dir: keysDir(sid)}, newWebPanel(sid), nil
 }
 
 // keysDir holds what opens each root key of the user sid, in a folder only

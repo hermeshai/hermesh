@@ -6,5 +6,15 @@
   "code": "核对码：%s",
   "hello": "批准 Hermesh 请求签名的内容",
   "notSigned": "没有签名",
-  "noHello": "请先在“设置 › 帐户 › 登录选项”里设置 Windows Hello（设个 PIN 即可），再批准。"
+  "noHello": "请先在“设置 › 帐户 › 登录选项”里设置 Windows Hello（设个 PIN 即可），再批准。",
+  "codeLabel": "核对码",
+  "match": "须与另一边显示的一致",
+  "ownCaption": "用这台电脑新建的密钥签名",
+  "along": "一并签下",
+  "details": "详细信息",
+  "hideDetails": "收起详细信息",
+  "helloAfter": "批准后用 Windows Hello 确认",
+  "wait": "请在 Windows Hello 中确认是你本人…",
+  "openSignIn": "打开登录选项",
+  "ok": "好"
 }

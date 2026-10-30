@@ -80,7 +80,7 @@ func hstring(s string) (uintptr, error) {
 // It reports whether they were verified; errNoHello when Windows Hello is
 // not set up or not allowed here.
 func hello(owner windows.HWND, message string) (bool, error) {
-	procRoInitialize.Call(0) // single-threaded, a window's thread; an earlier call is fine
+	procRoInitialize.Call(1) // multithreaded; a thread that has COM already keeps its own
 	class, err := hstring("Windows.Security.Credentials.UI.UserConsentVerifier")
 	if err != nil {
 		return false, err
