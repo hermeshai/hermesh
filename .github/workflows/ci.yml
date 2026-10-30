@@ -3,6 +3,9 @@ on:
   push:
     branches: [main]
   pull_request:
+  # By hand, on any branch: Windows work is tried on Windows runners there
+  # before it reaches main (docs/windows.md).
+  workflow_dispatch:
 jobs:
   go:
     strategy:
