@@ -27,6 +27,9 @@ type Card struct {
 	Lines   []string
 	Why     string
 	Warning string
+	// Own: this device's own (its setup, its join, its machine), signed
+	// with its new key; a panel can tell such a batch in one line.
+	Own bool
 }
 
 // Hints are names from hermeshd's lists; only ids come from the signed bytes.
@@ -42,12 +45,14 @@ type Refused struct{ Type, Why string }
 
 func (r *Refused) Error() string { return fmt.Sprintf("can't show %s in full: %s", r.Type, r.Why) }
 
-// Cards tells a batch, in order; any request it can't show refuses all.
-func Cards(reqs []*localv1.SigningRequest, h Hints) ([]Card, error) {
+// Cards tells a batch, in order, in lang (en, zh-CN); any request it can't
+// show refuses all.
+func Cards(reqs []*localv1.SigningRequest, h Hints, lang string) ([]Card, error) {
 	reissue := isReissue(reqs, h)
+	w := wordsFor(lang)
 	var out []Card
 	for _, r := range reqs {
-		c, err := card(r, h, reissue)
+		c, err := card(r, h, reissue, w)
 		if err != nil {
 			return nil, err
 		}
@@ -70,7 +75,7 @@ func strict(r *localv1.SigningRequest, m proto.Message) error {
 	return nil
 }
 
-func card(r *localv1.SigningRequest, h Hints, reissue bool) (Card, error) {
+func card(r *localv1.SigningRequest, h Hints, reissue bool, w words) (Card, error) {
 	if !bytes.Equal(r.Message, identity.SigningInput(r.Type, r.Body)) {
 		return Card{}, &Refused{r.Type, "what would be signed isn't what would be shown"}
 	}
@@ -80,15 +85,15 @@ func card(r *localv1.SigningRequest, h Hints, reissue bool) (Card, error) {
 		if err := strict(r, m); err != nil {
 			return Card{}, err
 		}
-		return Card{Title: "Issue this computer a certificate for end-to-end connections",
-			Lines: []string{"Device name: " + m.Label, "Fingerprint: " + identity.ShortFingerprint(m.DevicePublicKey)},
-			Why:   "Hermesh here uses it for end-to-end encrypted connections to your machines."}, nil
+		return Card{Title: w.f("Issue this computer a certificate for end-to-end connections"),
+			Lines: []string{w.f("Device name: %s", m.Label), w.f("Fingerprint: %s", identity.ShortFingerprint(m.DevicePublicKey))},
+			Why:   w.f("Hermesh here uses it for end-to-end encrypted connections to your machines."), Own: true}, nil
 	case identity.MessageType(&identityv1.RootCert{}):
 		m := &identityv1.RootCert{}
 		if err := strict(r, m); err != nil {
 			return Card{}, err
 		}
-		return root(m, h, r.Confirmed), nil
+		return root(m, h, r.Confirmed, w), nil
 	case identity.MessageType(&identityv1.PairingRequest{}):
 		m := &identityv1.PairingRequest{}
 		if err := strict(r, m); err != nil {
@@ -97,11 +102,11 @@ func card(r *localv1.SigningRequest, h Hints, reissue bool) (Card, error) {
 		if m.Kind != identityv1.PairingKind_PAIRING_KIND_DEVICE {
 			return Card{}, &Refused{r.Type, "only a device's own request is signed here"}
 		}
-		c := Card{Title: "Add this computer to your Hermesh", Lines: []string{"Device name: " + m.Label},
-			Why: "This sends a join request to your existing devices. Check the same code on one of them and approve, and this computer becomes a trusted device."}
+		c := Card{Title: w.f("Add this computer to your Hermesh"), Lines: []string{w.f("Device name: %s", m.Label)},
+			Why: w.f("This sends a join request to your existing devices. Check the same code on one of them and approve, and this computer becomes a trusted device."), Own: true}
 		if m.OwnerId != "" {
 			c.Code = identity.VerificationCode(m.Kind, m.SubjectPublicKey, m.OwnerId)
-			c.Lines = append(c.Lines, "Owner: "+m.OwnerId)
+			c.Lines = append(c.Lines, w.f("Owner: %s", m.OwnerId))
 		}
 		return c, nil
 	case identity.MessageType(&identityv1.MachineCert{}):
@@ -109,7 +114,7 @@ func card(r *localv1.SigningRequest, h Hints, reissue bool) (Card, error) {
 		if err := strict(r, m); err != nil {
 			return Card{}, err
 		}
-		return machineCard(m, h, reissue, r.Confirmed), nil
+		return machineCard(m, h, reissue, r.Confirmed, w), nil
 	case identity.MessageType(&identityv1.Grant{}):
 		m := &identityv1.Grant{}
 		if err := strict(r, m); err != nil {
@@ -118,21 +123,21 @@ func card(r *localv1.SigningRequest, h Hints, reissue bool) (Card, error) {
 		if _, ok := identityv1.TaskVisibility_name[int32(m.TaskVisibility)]; !ok {
 			return Card{}, &Refused{r.Type, "an unknown visibility"}
 		}
-		return grantCard(m, h, reissue, r.Confirmed), nil
+		return grantCard(m, h, reissue, r.Confirmed, w), nil
 	case identity.MessageType(&identityv1.AdminCommand{}):
 		m := &identityv1.AdminCommand{}
 		if err := strict(r, m); err != nil {
 			return Card{}, err
 		}
-		return admin(m, h, r.Type)
+		return admin(m, h, r.Type, w)
 	case identity.MessageType(&identityv1.EraseOrder{}):
 		m := &identityv1.EraseOrder{}
 		if err := strict(r, m); err != nil {
 			return Card{}, err
 		}
-		return Card{Title: "Erase everything in your Hermesh", Lines: []string{"Owner identity ID: " + m.OwnerId, "Erase ID: " + m.EraseId},
-			Why:     "Hermesh on all your trusted devices and machines, this computer included, erases its keys, sessions and settings, and your agents are disconnected. This can't be undone.",
-			Warning: "Approve only if you started erasing everything yourself."}, nil
+		return Card{Title: w.f("Erase everything in your Hermesh"), Lines: []string{w.f("Owner identity ID: %s", m.OwnerId), w.f("Erase ID: %s", m.EraseId)},
+			Why:     w.f("Hermesh on all your trusted devices and machines, this computer included, erases its keys, sessions and settings, and your agents are disconnected. This can't be undone."),
+			Warning: w.f("Approve only if you started erasing everything yourself.")}, nil
 	}
 	return Card{}, &Refused{r.Type, "Hermesh doesn't know this kind of request"}
 }
@@ -166,26 +171,27 @@ func keyIDs(c *identityv1.RootCert) map[string]bool {
 	return out
 }
 
-func root(c *identityv1.RootCert, h Hints, confirmed bool) Card {
+func root(c *identityv1.RootCert, h Hints, confirmed bool, w words) Card {
 	var names []string
 	for _, k := range c.RootKeys {
-		names = append(names, cmpOr(k.Label, "unnamed device"))
+		names = append(names, cmpOr(k.Label, w.f("unnamed device")))
 	}
+	list := strings.Join(names, w.f(", "))
 	if c.Version == 1 {
-		return Card{Title: "Create your owner identity", Lines: []string{"Owner: " + c.OwnerId, "Device name: " + strings.Join(names, ", ")},
-			Why: "This computer becomes your first trusted device; any device that joins later must be approved by a trusted device."}
+		return Card{Title: w.f("Create your owner identity"), Lines: []string{w.f("Owner: %s", c.OwnerId), w.f("Device name: %s", list)},
+			Why: w.f("This computer becomes your first trusted device; any device that joins later must be approved by a trusted device."), Own: true}
 	}
-	lines := []string{"Your trusted devices after this: " + strings.Join(names, ", "), fmt.Sprintf("Version %d", c.Version)}
+	lines := []string{w.f("Your trusted devices after this: %s", list), w.f("Version %d", c.Version)}
 	if h.Devices == nil {
-		return Card{Title: "Update your list of trusted devices", Lines: lines, Why: "The list above becomes your trusted devices."}
+		return Card{Title: w.f("Update your list of trusted devices"), Lines: lines, Why: w.f("The list above becomes your trusted devices.")}
 	}
 	for _, k := range c.RootKeys {
 		if _, ok := h.Devices[identity.Fingerprint(k.PublicKey)]; ok {
 			continue
 		}
-		cd := Card{Title: fmt.Sprintf("Add “%s” as a trusted device", k.Label), Lines: lines,
-			Why:     "Uses your owner key to make it a trusted device too, able to approve agents, machines and new devices like this one.",
-			Warning: "Approve only if that device is in your hands."}
+		cd := Card{Title: w.f("Add “%s” as a trusted device", k.Label), Lines: lines,
+			Why:     w.f("Uses your owner key to make it a trusted device too, able to approve agents, machines and new devices like this one."),
+			Warning: w.f("Approve only if that device is in your hands.")}
 		if !confirmed { // found by its code here: the code binds its key
 			cd.Code = identity.VerificationCode(identityv1.PairingKind_PAIRING_KIND_DEVICE, k.PublicKey, c.OwnerId)
 		}
@@ -200,106 +206,106 @@ func root(c *identityv1.RootCert, h Hints, confirmed bool) Card {
 	}
 	if len(gone) > 0 {
 		slices.Sort(gone)
-		return Card{Title: fmt.Sprintf("Remove trusted device “%s”", strings.Join(gone, "”, “")), Lines: lines,
-			Why: "It can no longer approve anything, and its own machine goes with it; this computer re-issues the machine and agent credentials it signed."}
+		return Card{Title: w.f("Remove trusted device “%s”", strings.Join(gone, w.f("”, “"))), Lines: lines,
+			Why: w.f("It can no longer approve anything, and its own machine goes with it; this computer re-issues the machine and agent credentials it signed.")}
 	}
-	return Card{Title: "Update your list of trusted devices", Lines: lines, Why: "The list above becomes your trusted devices."}
+	return Card{Title: w.f("Update your list of trusted devices"), Lines: lines, Why: w.f("The list above becomes your trusted devices.")}
 }
 
-func machineCard(m *identityv1.MachineCert, h Hints, reissue, confirmed bool) Card {
-	id := "Machine ID: " + m.MachineId
+func machineCard(m *identityv1.MachineCert, h Hints, reissue, confirmed bool, w words) Card {
+	id := w.f("Machine ID: %s", m.MachineId)
 	if name, ok := h.MachineNames[m.MachineId]; ok {
-		why := "This machine stays yours."
+		why := w.f("This machine stays yours.")
 		if reissue {
-			why = "This machine stays yours, unchanged, now signed by this computer."
+			why = w.f("This machine stays yours, unchanged, now signed by this computer.")
 		}
-		return Card{Title: fmt.Sprintf("Re-issue the certificate of machine “%s”", name), Lines: []string{id}, Why: why}
+		return Card{Title: w.f("Re-issue the certificate of machine “%s”", name), Lines: []string{id}, Why: why}
 	}
 	// This computer's own machine, which its root key admits (as the Swift signer tells it).
 	if m.DeviceKeyId != "" {
-		return Card{Title: "Share the agents on this computer", Lines: []string{id, "Fingerprint: " + identity.ShortFingerprint(m.MachinePublicKey)},
-			Why: "Agents you grant access can use the coding agents on this computer, over end-to-end encrypted connections. You can turn this off in Settings at any time."}
+		return Card{Title: w.f("Share the agents on this computer"), Lines: []string{id, w.f("Fingerprint: %s", identity.ShortFingerprint(m.MachinePublicKey))},
+			Why: w.f("Agents you grant access can use the coding agents on this computer, over end-to-end encrypted connections. You can turn this off in Settings at any time."), Own: true}
 	}
-	c := Card{Title: "Approve a new machine", Lines: []string{id, "Fingerprint: " + identity.ShortFingerprint(m.MachinePublicKey)},
-		Why:     "This machine becomes yours, and agents you grant access can start sessions and run commands on it.",
-		Warning: "Approve only if you know this machine."}
+	c := Card{Title: w.f("Approve a new machine"), Lines: []string{id, w.f("Fingerprint: %s", identity.ShortFingerprint(m.MachinePublicKey))},
+		Why:     w.f("This machine becomes yours, and agents you grant access can start sessions and run commands on it."),
+		Warning: w.f("Approve only if you know this machine.")}
 	if !confirmed {
 		c.Code = identity.VerificationCode(identityv1.PairingKind_PAIRING_KIND_MACHINE, m.MachinePublicKey, m.OwnerId)
 	}
 	return c
 }
 
-func grantCard(g *identityv1.Grant, h Hints, reissue, confirmed bool) Card {
+func grantCard(g *identityv1.Grant, h Hints, reissue, confirmed bool, w words) Card {
 	var machines []string
 	for _, id := range g.MachineIds {
 		machines = append(machines, cmpOr(h.MachineNames[id], id))
 	}
 	lines := []string{
-		"Projects: " + scope(g.ProjectIds),
-		"Machines: " + scope(machines),
-		"Coding agents: " + scope(g.Agents),
-		"Expires: " + g.ExpiresAt.AsTime().Local().Format(time.DateOnly),
+		w.f("Projects: %s", scope(g.ProjectIds, w)),
+		w.f("Machines: %s", scope(machines, w)),
+		w.f("Coding agents: %s", scope(g.Agents, w)),
+		w.f("Expires: %s", g.ExpiresAt.AsTime().Local().Format(w.f(time.DateOnly))),
 	}
 	if g.TaskVisibility == identityv1.TaskVisibility_TASK_VISIBILITY_ALL {
-		lines = append(lines, "Also sees other agents’ sessions in these projects")
+		lines = append(lines, w.f("Also sees other agents’ sessions in these projects"))
 	}
 	if g.MaxConcurrentSessions > 0 {
-		lines = append(lines, fmt.Sprintf("Sessions at once: up to %d", g.MaxConcurrentSessions))
+		lines = append(lines, w.f("Sessions at once: up to %d", g.MaxConcurrentSessions))
 	}
 	if g.Custodian != "" {
-		lines = append(lines, "Connects through "+g.Custodian+", which holds its key")
+		lines = append(lines, w.f("Connects through %s, which holds its key", g.Custodian))
 	}
-	lines = append(lines, "Fingerprint: "+identity.ShortFingerprint(g.ClientPublicKey))
+	lines = append(lines, w.f("Fingerprint: %s", identity.ShortFingerprint(g.ClientPublicKey)))
 	switch {
 	case reissue:
-		return Card{Title: fmt.Sprintf("Re-issue the grant of “%s”", g.ClientLabel), Lines: lines, Why: "It keeps the same access, now signed by this computer."}
+		return Card{Title: w.f("Re-issue the grant of “%s”", g.ClientLabel), Lines: lines, Why: w.f("It keeps the same access, now signed by this computer.")}
 	case g.Version > 1:
-		return Card{Title: fmt.Sprintf("Change the access of “%s”", g.ClientLabel), Lines: lines, Why: "The new access takes effect at once; the old one stops working.",
-			Warning: "Full trust: in the chosen projects, it can do anything you can."}
+		return Card{Title: w.f("Change the access of “%s”", g.ClientLabel), Lines: lines, Why: w.f("The new access takes effect at once; the old one stops working."),
+			Warning: w.f("Full trust: in the chosen projects, it can do anything you can.")}
 	}
-	c := Card{Title: fmt.Sprintf("Approve “%s” to connect to your computers", g.ClientLabel), Lines: lines,
-		Why:     "Uses your owner key to issue it a grant, which you can revoke at any time.",
-		Warning: "Full trust: in the chosen projects, it can do anything you can."}
+	c := Card{Title: w.f("Approve “%s” to connect to your computers", g.ClientLabel), Lines: lines,
+		Why:     w.f("Uses your owner key to issue it a grant, which you can revoke at any time."),
+		Warning: w.f("Full trust: in the chosen projects, it can do anything you can.")}
 	if !confirmed {
 		c.Code = identity.VerificationCode(identityv1.PairingKind_PAIRING_KIND_CLIENT, g.ClientPublicKey, g.OwnerId)
 	}
 	return c
 }
 
-func admin(c *identityv1.AdminCommand, h Hints, typ string) (Card, error) {
-	target := "machine " + cmpOr(h.MachineNames[c.TargetMachineId], c.TargetMachineId)
+func admin(c *identityv1.AdminCommand, h Hints, typ string, w words) (Card, error) {
+	target := w.f("machine %s", cmpOr(h.MachineNames[c.TargetMachineId], c.TargetMachineId))
 	switch x := c.Command.(type) {
 	case *identityv1.AdminCommand_AddProject:
 		p := x.AddProject
-		lines := []string{"Project: " + p.ProjectId, "Directory: " + p.Path, "Coding agents: " + scope(p.Agents)}
+		lines := []string{w.f("Project: %s", p.ProjectId), w.f("Directory: %s", p.Path), w.f("Coding agents: %s", scope(p.Agents, w))}
 		if p.Workspace == identityv1.Workspace_WORKSPACE_IN_PLACE {
-			lines = append(lines, "In place: agents change the directory's files directly")
+			lines = append(lines, w.f("In place: agents change the directory's files directly"))
 		}
-		return Card{Title: fmt.Sprintf("Add project “%s” to %s", p.ProjectId, target), Lines: lines,
-			Why: "Agents with access can start sessions there and read and write its files."}, nil
+		return Card{Title: w.f("Add project “%s” to %s", p.ProjectId, target), Lines: lines,
+			Why: w.f("Agents with access can start sessions there and read and write its files.")}, nil
 	case *identityv1.AdminCommand_RemoveProject:
-		return Card{Title: fmt.Sprintf("Remove project “%s” from %s", x.RemoveProject.ProjectId, target),
-			Why: "Agents can no longer start sessions there; its files stay."}, nil
+		return Card{Title: w.f("Remove project “%s” from %s", x.RemoveProject.ProjectId, target),
+			Why: w.f("Agents can no longer start sessions there; its files stay.")}, nil
 	case *identityv1.AdminCommand_SetPaused:
 		if x.SetPaused.Paused {
-			return Card{Title: "Pause " + target, Why: "It takes no new sessions until resumed."}, nil
+			return Card{Title: w.f("Pause %s", target), Why: w.f("It takes no new sessions until resumed.")}, nil
 		}
-		return Card{Title: "Resume " + target, Why: "It takes new sessions again."}, nil
+		return Card{Title: w.f("Resume %s", target), Why: w.f("It takes new sessions again.")}, nil
 	case *identityv1.AdminCommand_SetName:
-		return Card{Title: fmt.Sprintf("Rename %s to “%s”", target, x.SetName.Name)}, nil
+		return Card{Title: w.f("Rename %s to “%s”", target, x.SetName.Name)}, nil
 	case *identityv1.AdminCommand_SetAgentDefaults:
 		d := x.SetAgentDefaults
-		return Card{Title: fmt.Sprintf("Set the model %s runs with on %s", d.Agent, target),
-			Lines: []string{"Model: " + cmpOr(d.Model, "its own"), "Reasoning effort: " + cmpOr(d.Effort, "its own"), "Speed: " + d.Speed.String()}}, nil
+		return Card{Title: w.f("Set the model %s runs with on %s", d.Agent, target),
+			Lines: []string{w.f("Model: %s", cmpOr(d.Model, w.f("its own"))), w.f("Reasoning effort: %s", cmpOr(d.Effort, w.f("its own"))), w.f("Speed: %s", d.Speed.String())}}, nil
 	}
 	return Card{}, &Refused{typ, "an unknown command"}
 }
 
-func scope(ids []string) string {
+func scope(ids []string, w words) string {
 	if len(ids) == 0 || slices.Contains(ids, "*") {
-		return "all"
+		return w.f("all")
 	}
-	return strings.Join(ids, ", ")
+	return strings.Join(ids, w.f(", "))
 }
 
 func cmpOr(a, b string) string {

@@ -33,7 +33,8 @@ type Keys interface {
 	Sign(ctx context.Context, keyID string, messages [][]byte) ([][]byte, error)
 }
 
-// Owner is the person the signer asks.
+// Owner is the person the signer asks. One that has a Language()
+// (en, zh-CN) is shown what is signed in it.
 type Owner interface {
 	// Approve shows what a batch signs, and whether the owner approves it.
 	Approve(ctx context.Context, cards []preview.Card) (bool, error)
@@ -114,7 +115,11 @@ func handle(ctx context.Context, c localv1connect.LocalServiceClient, keys Keys,
 		_, err := c.CompleteSigningRequest(ctx, &localv1.CompleteSigningRequestRequest{RequestId: first.RequestId})
 		return err
 	}
-	cards, err := preview.Cards(batch, hints(ctx, c))
+	lang := "en"
+	if l, ok := owner.(interface{ Language() string }); ok {
+		lang = l.Language()
+	}
+	cards, err := preview.Cards(batch, hints(ctx, c), lang)
 	if err != nil {
 		return err
 	}
