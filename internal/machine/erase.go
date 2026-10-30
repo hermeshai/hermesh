@@ -130,16 +130,13 @@ func Erase(cfg Config, keepDir string) ([]string, error) {
 	return kept, RemoveExcept(cfg.DataDir, append(slices.Clone(kept), keepDir))
 }
 
-// moveWorktree moves a worktree of repo, trying again for a moment: on
-// Windows another program (an antivirus, the search indexer) may still
-// have a file in it open.
-func moveWorktree(ctx context.Context, repo, from, to string) (err error) {
-	for i := range 5 {
-		if _, err = git(ctx, repo, "worktree", "move", from, to); err == nil {
-			return nil
-		}
-		time.Sleep(time.Duration(i+1) * 200 * time.Millisecond)
+// moveWorktree moves a worktree of repo. git knows a worktree by its real
+// path: not by a symlink, nor by a Windows short name (C:\Users\RUNNER~1).
+func moveWorktree(ctx context.Context, repo, from, to string) error {
+	if p, err := filepath.EvalSymlinks(from); err == nil {
+		from = p
 	}
+	_, err := git(ctx, repo, "worktree", "move", from, to)
 	return err
 }
 
