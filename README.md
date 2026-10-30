@@ -76,7 +76,7 @@ The app keeps itself up to date.
    ```bash
    curl -fsSL https://github.com/hermeshai/hermesh/releases/latest/download/install.sh | sh
    ```
-   Scan the code it shows with the app, approve with Face ID, and type on the server the two digits your phone shows. Run as root, it asks which user Hermesh runs as. From then on it starts with the server.
+   Scan the code it shows with the app, approve with Face ID, and type on the server the two digits your phone shows. Run as root, it installs for root, or for another user you name. From then on it starts with the server.
 3. As that user, install Claude Code or Codex and sign in once (run `claude`); `hermeshd doctor` checks everything. Add a project from the app, then [connect your agent](#connect-your-agent).
 
 ### Only Linux

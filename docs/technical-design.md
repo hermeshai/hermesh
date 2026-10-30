@@ -525,7 +525,7 @@ message SessionEvent {
 |---|---|---|
 | Built into the app (the owner's Mac) | The app registers it as a LaunchAgent with `SMAppService.agent`; **the app can start, stop and restart it, and view its status** | Takes the owner role and (optionally) the machine role; upgraded together with the app |
 | Standalone Mac | install.sh writes `~/Library/LaunchAgents/com.hermesh.daemon.plist` | Machine role only; the app can remotely pause or resume accepting new sessions |
-| Linux (VPS) | install.sh writes a systemd user service and runs `loginctl enable-linger` | Same as above; **does not run as root**; a separate regular user for Hermesh is recommended |
+| Linux (VPS) | install.sh writes a systemd user service and runs `loginctl enable-linger` | Same as above; runs as the user it is installed for, root included; the installer asks as root |
 
 - Runs in user space, because it needs the user's CLI login state and home directory.
 - A pidfile plus flock ensures a single instance.

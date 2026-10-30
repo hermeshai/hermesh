@@ -1,7 +1,7 @@
 # hermeshd on a machine
 
 `hermeshd` runs on each machine where coding agents work for your agents.
-It runs as the user you code as, never as root, in the background.
+It runs in the background as the user it is installed for.
 `hermeshd <command> --help` says more about each command.
 
 ## Install
@@ -13,8 +13,9 @@ curl -fsSL https://github.com/hermeshai/hermesh/releases/latest/download/install
 - It installs `hermeshd` and `hermesh` in `~/.local/bin` and runs
   `hermeshd pair`: scan the code it shows with Hermesh on your iPhone (or
   enter it in the app), then type the two digits your device shows.
-- As root, it asks which user to install for (creating it if needed).
-  From then on, run the commands as that user: `su - dev`.
+- As root, it says it installs for root: press Enter, or type another
+  user to install for (creating it if needed). From then on, run the
+  commands as that user: `su - dev`.
 - With a connection address after `sh -s --`, the request goes to that
   owner's devices by itself: compare the verification code there.
 - Then it installs the background service. On Linux it is a systemd user
