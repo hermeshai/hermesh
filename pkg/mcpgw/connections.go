@@ -43,16 +43,33 @@ func (g *Gateway) createConnection(ctx context.Context, a *Authorization, acct A
 	}
 	// A connection of the same app that was never approved is replaced
 	// (the app asked again); an approved one stays until this one is.
-	n := 0
+	// Only approved ones count against the limit: anyone who can reach a
+	// self-hosted relay can connect, so waiting ones make room instead,
+	// the oldest first, and can't keep the owner's own apps out.
+	active := 0
+	var waiting []*Connection
 	for _, old := range live {
-		if old.AccountID == acct.ID && old.ClientID == c.ID && old.State != StateActive {
+		switch {
+		case old.AccountID == acct.ID && old.ClientID == c.ID && old.State != StateActive:
 			g.endConnection(ctx, old.ID, StateRevoked, "replaced by a new connection")
-			continue
+		case old.State == StateActive:
+			active++
+		default:
+			waiting = append(waiting, old)
 		}
-		n++
 	}
-	if n >= maxConnections {
+	if active >= maxConnections {
 		return nil, errTooMany
+	}
+	for len(waiting) >= maxWaiting {
+		oldest := 0
+		for i, w := range waiting {
+			if w.CreatedAt.Before(waiting[oldest].CreatedAt) {
+				oldest = i
+			}
+		}
+		g.endConnection(ctx, waiting[oldest].ID, StateRevoked, "made room for a newer connection")
+		waiting = append(waiting[:oldest], waiting[oldest+1:]...)
 	}
 	key, err := identity.GenerateKey()
 	if err != nil {
@@ -165,9 +182,9 @@ func (g *Gateway) move(ctx context.Context, id string, ask bool) (*Connection, e
 		return c, nil
 	}
 	now := g.cfg.Now()
-	// Unused as long as its tokens last: the app is gone.
-	if now.Sub(lastUse(c)) > refreshIdle {
-		return g.end(ctx, c, StateExpired, "not used in 30 days")
+	// Unused for a day while waiting: the app is gone, or never was one.
+	if now.Sub(lastUse(c)) > waitingIdle {
+		return g.end(ctx, c, StateExpired, "not used in a day while waiting")
 	}
 	before := *c
 	if c.State == StateAwaitingSetup {
