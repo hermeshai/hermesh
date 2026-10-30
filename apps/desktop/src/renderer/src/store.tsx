@@ -58,6 +58,8 @@ type UI = {
   toast: Toast | null;
   /** Pairing codes the owner put off ("Deny"): left out of pairings until opened again. */
   dismissed: string[];
+  /** The request whose card is in front (a notification's, clicked). */
+  frontRequest: string | null;
   /** A machine only asked to become a trusted device: the join pages show. */
   upgrading: boolean;
 };
@@ -145,6 +147,7 @@ export function HermeshProvider({ children }: { children: ReactNode }) {
     sheet: null,
     toast: null,
     dismissed: [],
+    frontRequest: null,
     upgrading: false,
     ...Object.fromEntries(Object.entries(savedView()).filter(([, v]) => v !== undefined)),
   }));

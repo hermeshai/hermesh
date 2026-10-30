@@ -34,6 +34,7 @@ func main() {
 	var withMCP bool
 	var apnsKey, apnsKeyID, apnsTeam, apnsTopic, pushSpool string
 	var pairingTTL time.Duration
+	var pairingsPerMinute int
 	serve := &cobra.Command{
 		Use:   "serve",
 		Short: "Run the relay",
@@ -64,7 +65,7 @@ func main() {
 					return err
 				}
 			}
-			srv, err := relay.New(relay.Config{DataDir: dataDir, Logger: log, Pusher: pusher, PairingTTL: pairingTTL, MCPURL: mcpURL})
+			srv, err := relay.New(relay.Config{DataDir: dataDir, Logger: log, Pusher: pusher, PairingTTL: pairingTTL, PairingsPerMinute: pairingsPerMinute, MCPURL: mcpURL})
 			if err != nil {
 				return err
 			}
@@ -149,7 +150,9 @@ func main() {
 	serve.Flags().StringVar(&apnsTopic, "apns-topic", "com.hermesh.ios", "the iPhone app's bundle id")
 	serve.Flags().StringVar(&pushSpool, "push-spool", "", "write notifications to files in this directory instead of sending them (tests)")
 	serve.Flags().DurationVar(&pairingTTL, "pairing-ttl", 0, "how long a pairing request waits (tests; default 10m)")
+	serve.Flags().IntVar(&pairingsPerMinute, "pairings-per-minute", 0, "pairing requests one address may make a minute (tests; default 10)")
 	serve.Flags().MarkHidden("pairing-ttl")
+	serve.Flags().MarkHidden("pairings-per-minute")
 	serve.Flags().MarkHidden("push-spool")
 	serve.Flags().StringVar(&setupURL, "setup-url", "https://github.com/hermeshai/hermesh/releases/latest", "where MCP users are sent to get Hermesh")
 

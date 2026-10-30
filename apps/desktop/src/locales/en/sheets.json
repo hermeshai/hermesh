@@ -79,6 +79,12 @@
     "later": "Not Now",
     "addTrusted": "Add as Trusted Device"
   },
+  "requests": {
+    "label": "Waiting for you",
+    "code": "Code",
+    "view": "View…",
+    "count": "{{n}} of {{total}}"
+  },
   "enterCode": {
     "title": "Enter Pairing Code",
     "sub": "When a machine or agent doesn’t have your connection address, its terminal shows a pairing code. Enter it and the approval window pops up like any other request; check the verification code.",

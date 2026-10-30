@@ -84,7 +84,8 @@ func newOwnerMacAt(t *testing.T, signer func(w *ownerMac) string, oneWay time.Du
 	port := freePort(t)
 	relayData := filepath.Join(w.tmp, "relay")
 	w.relayDebug = fmt.Sprintf("127.0.0.1:%d", freePort(t))
-	w.relayArgs = []string{"serve", "--data-dir", relayData, "--listen", fmt.Sprintf("127.0.0.1:%d", port), "--debug-addr", w.relayDebug}
+	// Its tests pair many agents and machines from this one address.
+	w.relayArgs = []string{"serve", "--data-dir", relayData, "--listen", fmt.Sprintf("127.0.0.1:%d", port), "--debug-addr", w.relayDebug, "--pairings-per-minute", "100"}
 	w.startRelay()
 	claim := strings.TrimSpace(run(t, nil, 10*time.Second, relayBin, "claim-code", "--data-dir", relayData).stdout)
 

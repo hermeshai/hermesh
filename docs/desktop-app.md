@@ -91,7 +91,7 @@ A compromised renderer, or even a compromised Electron main, gets the same power
 
 ### 5.1 Flow (example: an agent asks to connect)
 
-1. A notification ("Grok Bot 请求连接") opens the approval sheet in the UI. The sheet shows who is asking and lets the owner choose the scope (projects, coding agents, expiry). The owner clicks "批准".
+1. The request waits as a card at the bottom right of the main window (the overview lists it under 需要你处理 instead), the others stacked under it; it takes nothing else from the window and stays until answered or put off. A notification ("Grok Bot 请求连接") brings its card to the front. 查看… opens the approval sheet, which shows who is asking and lets the owner choose the scope (projects, coding agents, expiry). The owner clicks "批准".
 2. The UI calls `ApproveClientPairing(scope)`. The daemon builds the Grant and posts a `SigningRequest` batch.
 3. The signer receives it. It parses the body and refuses anything it cannot fully show (§5.6). It brings a compact confirmation panel to the front, and starts Touch ID at once with the prompt embedded in the panel (`LAAuthenticationView`). The panel shows:
    - The verification code, computed from the bytes, with "与对方显示的一致吗？" (Does it match what the other side shows?).

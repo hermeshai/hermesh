@@ -247,28 +247,55 @@ test("in settings: two machines ask at once, one at a time; a notification's cli
   await app.close();
 });
 
-test("a request from a notification: put off, opened again, approved with its scope", async () => {
+test("requests wait as cards at the bottom right: a notification brings its own forward, Deny puts it off, View opens it", async () => {
   const name = `Asker ${process.pid}`;
+  const other = `Other ${process.pid}`;
   const { app, page } = await launch();
   const st = await api<Status>(page, "GetStatus");
-  const agent = newAgent();
-  const login = agent.login(st.connectAddress, name);
+  const login = newAgent().login(st.connectAddress, name);
   const code = await login.code;
-  await expect.poll(async () => (await api<{ pairings?: { code: string }[] }>(page, "ListPairingRequests")).pairings?.map((p) => p.code)).toContain(code);
+  const card = page.getByRole("region", { name: "待你批准" });
+  // The overview lists it under 需要你处理; elsewhere, a card.
+  await expect(page.getByRole("region", { name: "需要你处理" })).toContainText(`「${name}」想连接你的电脑`, { timeout: 30_000 });
+  await expect(card).toHaveCount(0);
+  await page.getByRole("complementary", { name: "边栏" }).getByText("跑很久", { exact: true }).click();
+  // Nothing in the way: a card, no sheet.
+  await expect(card).toContainText(`「${name}」想连接你的电脑`, { timeout: 30_000 });
+  await expect(card).toContainText("核对码");
+  await expect(page.getByRole("dialog")).toHaveCount(0);
+  await snap(page, "request-card");
 
+  // A second one stacks under it; its notification brings it forward.
+  const second = newAgent().login(st.connectAddress, other);
+  const otherCode = await second.code;
+  await expect(card).toContainText("1 / 2", { timeout: 30_000 });
+  await command(app, page, `pairing:${otherCode}`);
+  await expect(card).toContainText(`「${other}」想连接你的电脑`);
+  await card.getByRole("button", { name: "拒绝" }).click();
+  await expect(page.getByRole("status").filter({ hasText: "先不处理" })).toBeVisible();
+  await expect(card).toContainText(`「${name}」想连接你的电脑`);
+  await expect(card).not.toContainText("1 / 2");
+
+  // Put off too, then back from its notification, viewed and approved.
+  await card.getByRole("button", { name: "拒绝" }).click();
+  await expect(card).toBeHidden();
   await command(app, page, `pairing:${code}`);
+  await card.getByRole("button", { name: "查看…" }).click();
   const sheet = page.getByRole("dialog", { name: `「${name}」想连接你的电脑` });
   await expect(sheet.getByText(`「${name}」能用什么`)).toBeVisible();
+  await expect(card).toBeHidden();
   await snap(page, "sheet-pairing-agent");
-  await sheet.getByRole("button", { name: "拒绝" }).click();
-  await expect(page.getByRole("status").filter({ hasText: "先不处理" })).toBeVisible();
-  await expect(sheet).toBeHidden();
-
-  await command(app, page, `pairing:${code}`);
-  await expect(sheet).toBeVisible();
   await sheet.getByRole("button", { name: "批准" }).click();
   await expect(page.getByRole("status").filter({ hasText: `「${name}」已连接` })).toBeVisible();
   expect(await login.exit, login.output()).toBe(0);
+  // The other one too, then cut off: the other tests' world stays as it was.
+  await command(app, page, `pairing:${otherCode}`);
+  await card.getByRole("button", { name: "查看…" }).click();
+  await page.getByRole("dialog", { name: `「${other}」想连接你的电脑` }).getByRole("button", { name: "批准" }).click();
+  expect(await second.exit, second.output()).toBe(0);
+  for (const c of (await api<{ clients: { grantId: string; label: string }[] }>(page, "ListClients")).clients) {
+    if (c.label === name || c.label === other) await api(page, "RevokeClient", { grantId: c.grantId });
+  }
   await app.close();
 });
 
