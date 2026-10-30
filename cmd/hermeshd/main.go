@@ -72,6 +72,20 @@ func openLogFile(dataDir string) {
 	}
 }
 
+// logHint is how to read the log in this system's terminal: following it,
+// or its last lines.
+func logHint(path string, follow bool) string {
+	switch {
+	case runtime.GOOS == "windows" && follow:
+		return `Get-Content -Wait "` + path + `"`
+	case runtime.GOOS == "windows":
+		return `Get-Content -Tail 50 "` + path + `"`
+	case follow:
+		return "tail -f " + path
+	}
+	return "tail " + path
+}
+
 func main() {
 	if err := rootCommand().Execute(); err != nil {
 		os.Exit(1)
@@ -144,7 +158,9 @@ A computer that runs no coding agents can approve instead: hermeshd device.`}
 			defer stop()
 			openLogFile(dataDir)
 			log := logger(verbose)
-			log.Info("open file limit", "soft", rlimit.RaiseNoFile())
+			if n := rlimit.RaiseNoFile(); n > 0 { // Windows has no such limit
+				log.Info("open file limit", "soft", n)
+			}
 			if exe, err := os.Executable(); err == nil && spawn.Supported {
 				// Spawning from small helpers keeps agent start cost flat
 				// as this process accumulates descriptors (see spawn.Helper).
@@ -318,8 +334,8 @@ to that owner's devices by itself. Then it installs the background service.`,
 			if !ready {
 				fmt.Println("  Install one as this user and sign in once (run `claude`); `hermeshd doctor` checks again.")
 			}
-			fmt.Printf("\nNext\n  add a project   hermeshd project add ~/code/app   (or in the Hermesh app)\n  check it all    hermeshd doctor\n  its log         tail -f %s\n  every command   hermeshd --help\n",
-				filepath.Join(dataDir, "logs", "hermeshd.log"))
+			fmt.Printf("\nNext\n  add a project   hermeshd project add ~/code/app   (or in the Hermesh app)\n  check it all    hermeshd doctor\n  its log         %s\n  every command   hermeshd --help\n",
+				logHint(filepath.Join(dataDir, "logs", "hermeshd.log"), true))
 			return nil
 		},
 	}
@@ -374,7 +390,7 @@ to that owner's devices by itself. Then it installs the background service.`,
 					fmt.Printf("relay        UNREACHABLE (%s): %v\n", url, err)
 					ok = false
 				case running:
-					fmt.Printf("relay        reachable (%s), not connected yet → its log: tail %s\n", url, filepath.Join(dataDir, "logs", "hermeshd.log"))
+					fmt.Printf("relay        reachable (%s), not connected yet → its log: %s\n", url, logHint(filepath.Join(dataDir, "logs", "hermeshd.log"), false))
 				default:
 					fmt.Printf("relay        ok (%s, %s)\n", url, info.RelayId)
 				}
@@ -433,7 +449,8 @@ to that owner's devices by itself. Then it installs the background service.`,
 	svc := &cobra.Command{Use: "service", Short: "The background service: status, install, restart, uninstall",
 		Long: `hermeshd runs in the background as a service of this user: a systemd user
 service on Linux (with lingering, so it starts at boot with nobody logged
-in), a LaunchAgent on macOS. "hermeshd pair" installs it.`}
+in), a LaunchAgent on macOS, a Task Scheduler logon task on Windows.
+"hermeshd pair" installs it.`}
 	svc.AddCommand(&cobra.Command{Use: "status", Short: "Whether the service runs, starts at boot, and where its log is", Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			if !serviceLine(false) {
@@ -465,19 +482,19 @@ in), a LaunchAgent on macOS. "hermeshd pair" installs it.`}
 		}})
 	logFile := filepath.Join(dataDir, "logs", "hermeshd.log")
 	startsWhen := "at boot"
-	if runtime.GOOS == "darwin" {
+	if runtime.GOOS != "linux" { // a LaunchAgent, a logon task
 		startsWhen = "at login"
 	}
 	serviceLine = func(byHand bool) bool {
 		switch {
 		case service.Running() && service.AtBoot():
-			fmt.Printf("service      running, starts %s · log: tail -f %s\n", startsWhen, logFile)
+			fmt.Printf("service      running, starts %s · log: %s\n", startsWhen, logHint(logFile, true))
 			return true
 		case service.Running():
-			fmt.Printf("service      running, but NOT %s → run: hermeshd service install · log: tail -f %s\n", startsWhen, logFile)
+			fmt.Printf("service      running, but NOT %s → run: hermeshd service install · log: %s\n", startsWhen, logHint(logFile, true))
 			return false
 		case service.Installed():
-			fmt.Printf("service      installed, NOT RUNNING → run: hermeshd service restart · log: tail %s\n", logFile)
+			fmt.Printf("service      installed, NOT RUNNING → run: hermeshd service restart · log: %s\n", logHint(logFile, false))
 			return false
 		case byHand:
 			fmt.Printf("service      not installed; hermeshd runs by hand → to start it %s: hermeshd service install\n", startsWhen)
