@@ -186,7 +186,7 @@ struct FolderLabel: View {
 /// A folder path's last part, as the person writes paths: "app" of "~/code/app".
 func folderName(_ path: String) -> String {
     if path == "~" { return String(localized: "Home") }
-    // A machine's own separators: "/", or "\\" on Windows.
+    // A machine's own separators: "/", or "\" on Windows.
     return path.split(whereSeparator: { $0 == "/" || $0 == "\\" }).last.map(String.init) ?? path
 }
 
