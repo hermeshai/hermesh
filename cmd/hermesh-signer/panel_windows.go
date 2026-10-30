@@ -75,10 +75,25 @@ func newPanel() *panel {
 }
 
 // Approve shows the cards and, after Approve, asks Windows Hello.
-func (p *panel) Approve(_ context.Context, cards []preview.Card) (bool, error) {
-	// A window lives on its thread.
-	runtime.LockOSThread()
-	defer runtime.UnlockOSThread()
+func (p *panel) Approve(_ context.Context, cards []preview.Card) (ok bool, err error) {
+	onOwnThread(func() { ok, err = p.approve(cards) })
+	return ok, err
+}
+
+// onOwnThread runs f on an OS thread that ends with it: a window lives on
+// its thread, and what f leaves in the thread's COM (Windows Hello makes
+// it multithreaded) never reaches other code, a WebView2 panel's above all.
+func onOwnThread(f func()) {
+	done := make(chan struct{})
+	go func() {
+		runtime.LockOSThread() // never unlocked
+		defer close(done)
+		f()
+	}()
+	<-done
+}
+
+func (p *panel) approve(cards []preview.Card) (bool, error) {
 	instruction := fmt.Sprintf(p.w.Several, len(cards))
 	var content, warnings []string
 	for _, c := range cards {
@@ -121,9 +136,7 @@ func (p *panel) Failed(err error) {
 		err = errors.New(p.w.NoHello)
 	}
 	fmt.Fprintln(os.Stderr, "hermesh-signer: not signed:", err)
-	runtime.LockOSThread()
-	defer runtime.UnlockOSThread()
-	p.dialog(p.w.NotSigned, err.Error(), "", false)
+	onOwnThread(func() { p.dialog(p.w.NotSigned, err.Error(), "", false) })
 }
 
 // Show brings the open dialog forward.

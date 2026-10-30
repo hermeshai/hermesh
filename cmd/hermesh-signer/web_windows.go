@@ -38,7 +38,9 @@ var (
 	procDestroyWindow                    = user32.NewProc("DestroyWindow")
 	procPostMessage                      = user32.NewProc("PostMessageW")
 	procDwmSetWindowAttribute            = windows.NewLazySystemDLL("dwmapi.dll").NewProc("DwmSetWindowAttribute")
+	procCoInitializeEx                   = windows.NewLazySystemDLL("ole32.dll").NewProc("CoInitializeEx")
 	errNoWebView                         = errors.New("WebView2 is not available")
+	errApartment                         = errors.New("this thread's COM is multithreaded")
 	panelStyle                   uintptr = 0x00C80000 // WS_OVERLAPPED | WS_CAPTION | WS_SYSMENU: no resizing, no maximizing
 )
 
@@ -72,8 +74,7 @@ func (p *webPanel) Approve(ctx context.Context, cards []preview.Card) (bool, err
 			// Off the top while Windows Hello asks, whose window would be under it.
 			setTopmost(hwnd, false)
 			go func() {
-				runtime.LockOSThread()
-				defer runtime.UnlockOSThread()
+				runtime.LockOSThread() // not unlocked: the thread, multithreaded for COM now, ends with this goroutine
 				ok, err := hello(windows.HWND(hwnd), p.w.Hello)
 				if !ok && err == nil { // not verified: approve again, or deny
 					v.Dispatch(func() {
@@ -159,12 +160,27 @@ func (p *webPanel) open(state map[string]any, bind func(v webview2.WebView, hwnd
 	if err != nil {
 		return err
 	}
+	if err := os.MkdirAll(p.dataDir, 0o700); err != nil {
+		return err
+	}
+	// WebView2 needs a thread whose COM is single-threaded. One that is
+	// multithreaded already (left so by other code) would wait for it
+	// forever, a blank window: that thread is ended, and another tried.
+	for range 64 {
+		if err := p.openOnThread(js, bind, closed); !errors.Is(err, errApartment) {
+			return err
+		}
+	}
+	return errNoWebView
+}
+
+func (p *webPanel) openOnThread(js []byte, bind func(v webview2.WebView, hwnd uintptr), closed func()) error {
 	up := make(chan error, 1)
 	go func() {
-		runtime.LockOSThread()
-		defer runtime.UnlockOSThread()
-		if err := os.MkdirAll(p.dataDir, 0o700); err != nil {
-			up <- err
+		runtime.LockOSThread() // not unlocked: the thread and its COM end with the window
+		// COINIT_APARTMENTTHREADED; RPC_E_CHANGED_MODE: multithreaded already.
+		if hr, _, _ := procCoInitializeEx.Call(0, 0x2); hr == 0x80010106 {
+			up <- errApartment
 			return
 		}
 		v := webview2.NewWithOptions(webview2.WebViewOptions{DataPath: p.dataDir, WindowOptions: webview2.WindowOptions{Title: p.w.Title, Width: 520, Height: 400}})
