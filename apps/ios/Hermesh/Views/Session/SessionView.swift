@@ -48,7 +48,10 @@ struct SessionView: View {
     private func content(_ s: Session) -> some View {
         let grant = model.grantLabel(s)
         return ScrollView {
-            LazyVStack(alignment: .leading, spacing: 13) {
+            // A plain stack: a lazy one guesses the height of the rows it has
+            // not laid out, and opened at the bottom it left a gap under the
+            // last message until those guesses were corrected.
+            VStack(alignment: .leading, spacing: 13) {
                 if s.status == .archived { archivedNote(s) }
                 ForEach(Array(steps.enumerated()), id: \.element.id) { i, step in
                     StepView(step: step, session: s, grant: grant, previousTurn: previousTurn(steps, before: i))
