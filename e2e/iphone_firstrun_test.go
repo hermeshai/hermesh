@@ -31,6 +31,8 @@ import (
 //   - the row that says this phone is the only one that can approve;
 //   - an agent connecting, and its first task: the session it starts
 //     opens by itself, and Get Started is done;
+//   - vps-1 going offline and coming back: Get Started stays put away,
+//     though its coding agent is not ready while the machine is away;
 //   - erasing everything: vps-1 erases itself, the agent waits for its
 //     next command, and the phone opens on its first run saying so.
 //
@@ -88,7 +90,9 @@ func TestIPhoneFirstRun(t *testing.T) {
 func newFirstRunControl(t *testing.T, bin, tmp, relayURL, claim string) string {
 	t.Helper()
 	var mu sync.Mutex
-	var agent *proc
+	var agent, vps *proc
+	vpsEnv := []string{"HOME=" + filepath.Join(tmp, "vps-home"), "HERMESH_FAKE_PROVIDERS=1"}
+	vpsArgs := []string{"run", "--data-dir", filepath.Join(tmp, "vps-1")}
 	agentHome := filepath.Join(tmp, "agent")
 	reply := func(rw http.ResponseWriter, v any) {
 		rw.Header().Set("Content-Type", "application/json")
@@ -115,10 +119,8 @@ func newFirstRunControl(t *testing.T, bin, tmp, relayURL, claim string) string {
 		home := filepath.Join(tmp, "vps-home")
 		gitRepoAt(t, filepath.Join(home, "app"), map[string]string{"README.md": "# app\n"})
 		gitRepoAt(t, filepath.Join(home, "code", "api"), map[string]string{"README.md": "# api\n"})
-		env := []string{"HOME=" + home, "HERMESH_FAKE_PROVIDERS=1"}
-		data := filepath.Join(tmp, "vps-1")
 		daemon := filepath.Join(bin, "hermeshd")
-		pair := start(t, "pair", env, daemon, "pair", address, "--name", "vps-1", "--no-service", "--data-dir", data)
+		pair := start(t, "pair", vpsEnv, daemon, "pair", address, "--name", "vps-1", "--no-service", "--data-dir", filepath.Join(tmp, "vps-1"))
 		code, err := pairingCode(pair)
 		if err != nil {
 			http.Error(rw, err.Error(), 500)
@@ -126,7 +128,10 @@ func newFirstRunControl(t *testing.T, bin, tmp, relayURL, claim string) string {
 		}
 		go func() {
 			if pair.wait(t, 5*time.Minute) == 0 {
-				start(t, "vps-1", env, daemon, "run", "--data-dir", data)
+				p := start(t, "vps-1", vpsEnv, daemon, vpsArgs...)
+				mu.Lock()
+				vps = p
+				mu.Unlock()
 			}
 		}()
 		reply(rw, map[string]string{"code": code})
@@ -161,6 +166,21 @@ func newFirstRunControl(t *testing.T, bin, tmp, relayURL, claim string) string {
 			return
 		}
 		reply(rw, map[string]string{"id": s.SessionID})
+	})
+	// vps-1 goes offline (down) or comes back (up).
+	mux.HandleFunc("POST /vps", func(rw http.ResponseWriter, r *http.Request) {
+		mu.Lock()
+		defer mu.Unlock()
+		if vps == nil {
+			http.Error(rw, "vps-1 isn't running", 500)
+			return
+		}
+		if r.URL.Query().Get("state") == "down" {
+			vps.stop()
+		} else {
+			vps = start(t, "vps-1", vpsEnv, filepath.Join(bin, "hermeshd"), vpsArgs...)
+		}
+		reply(rw, map[string]bool{"ok": true})
 	})
 	// Everything erased from the phone: vps-1 erased itself (its machine is gone).
 	mux.HandleFunc("GET /erased", func(rw http.ResponseWriter, _ *http.Request) {

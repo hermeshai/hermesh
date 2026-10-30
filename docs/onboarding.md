@@ -138,6 +138,10 @@ Get Started                                    ⋯
   stay quiet.
 - ⋯ › Hide puts the card away on this phone. The New menu has every action
   anyway.
+- Done once, it is put away the same way: a row that goes back to undone
+  later (a machine back from a reconnect reports its coding agents a moment
+  after it) does not bring it back. Another owner on this phone, or Erase
+  Everything, starts it again.
 - It is the Mac's first run (its agents, connecting, the first task) for
   machines that are elsewhere. The order is a suggestion: an agent connected
   first waits for a machine, as it does today.

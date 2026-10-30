@@ -3,7 +3,8 @@ import XCTest
 /// First use with only the iPhone (docs/onboarding.md §4, §5), run by
 /// TestIPhoneFirstRun (e2e/iphone_firstrun_test.go): the phone claims a
 /// new server, and Get Started leads it to a machine, its coding agent, a
-/// project, an agent and that agent's first session.
+/// project, an agent and that agent's first session; once done, it stays
+/// away while the machine reconnects.
 extension HermeshUITests {
     func testFirstRun() throws {
         let world = try control("first-run")
@@ -15,6 +16,7 @@ extension HermeshUITests {
         try XCTContext.runActivity(named: "adds a project the machine found") { _ in try addFoundProject() }
         try XCTContext.runActivity(named: "says this iPhone alone can approve, until hidden") { _ in try onlyDevice() }
         try XCTContext.runActivity(named: "connects an agent, whose first session opens by itself") { _ in try firstTask() }
+        try XCTContext.runActivity(named: "keeps Get Started away while the machine reconnects") { _ in try reconnect() }
         try XCTContext.runActivity(named: "erases everything, and opens on its first run saying what was done") { _ in
             try eraseEverything(URL(string: world["relay"] as! String)!)
         }
@@ -121,6 +123,19 @@ extension HermeshUITests {
         XCTAssertFalse(app.descendants(matching: .any)["client-connected"].exists)
         back(to: "working-today")
         XCTAssertTrue(app.descendants(matching: .any)["get-started"].firstMatch.waitForNonExistence(timeout: 30), "Get Started is done")
+    }
+
+    /// While vps-1 is away its coding agent is not ready, and when it is
+    /// back it reports it a moment later: Get Started, done, stays away.
+    func reconnect() throws {
+        let row = app.descendants(matching: .any)["machine-row-vps-1"].firstMatch
+        let card = app.descendants(matching: .any)["get-started"].firstMatch
+        _ = try control("vps?state=down", method: "POST")
+        try waitFor("vps-1 offline") { row.label.contains("离线") ? true : nil }
+        XCTAssertFalse(card.waitForExistence(timeout: 3), "Get Started stays away while vps-1 is offline")
+        _ = try control("vps?state=up", method: "POST")
+        try waitFor("vps-1 back") { row.label.contains("在线") ? true : nil }
+        XCTAssertFalse(card.waitForExistence(timeout: 3), "Get Started stays away once vps-1 is back")
     }
 
     func eraseEverything(_ relay: URL) throws {
