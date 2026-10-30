@@ -108,16 +108,28 @@ function MachineDetail({ m, ask, open }: { m: Machine; ask: (a: Ask) => void; op
       message: t("machines.renameMessage"),
       field: { label: t("machines.machineName"), value: m.machineName, button: t("machines.renameButton"), run: (name) => st.run(() => local.renameMachine({ machineId: m.machineId, machineName: name })) },
     });
+  // Another trusted device's own machine goes with the device, as on the
+  // iPhone: removing only the machine would leave the device trusted.
+  const device = st.devices.find((d) => d.machineId === m.machineId && !d.thisDevice);
   const remove = () =>
     st.set({
-      sheet: {
-        kind: "confirm",
-        title: t("removeTitle", { name: m.machineName }),
-        message: t("machines.removeMessage"),
-        button: t("removeButton"),
-        run: () => local.removeMachine({ machineId: m.machineId }),
-        done: t("removed", { name: m.machineName }),
-      },
+      sheet: device
+        ? {
+            kind: "confirm",
+            title: t("removeTitle", { name: device.label }),
+            message: t("account.removeDeviceMessage"),
+            button: t("removeButton"),
+            run: () => local.removeDevice({ keyId: device.keyId }),
+            done: t("removed", { name: device.label }),
+          }
+        : {
+            kind: "confirm",
+            title: t("removeTitle", { name: m.machineName }),
+            message: t("machines.removeMessage"),
+            button: t("removeButton"),
+            run: () => local.removeMachine({ machineId: m.machineId }),
+            done: t("removed", { name: m.machineName }),
+          },
     });
   const copyDiagnostics = () =>
     st.run(async () => {

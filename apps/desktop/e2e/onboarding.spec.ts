@@ -717,3 +717,29 @@ test("erasing everything: what it erases, the server's address typed, Touch ID, 
   await expect(again.page.getByText("Hermesh 已全部清空")).toHaveCount(0);
   await again.app.close();
 });
+
+test("removing another trusted device's machine in 设置 › 机器 removes the device", async () => {
+  // This Mac's owner, and a PC that joins it as a trusted device with its own machine.
+  const first = daemon(fixture.fresh[10].socket);
+  await first.setup({ relayUrl: fixture.fresh[10].relayURL, claimCode: fixture.fresh[10].claimCode, rootLabel: "first-mac" });
+  const { ownerId } = await first.getStatus({});
+  const pc = daemon(fixture.fresh[11].socket);
+  const join = await pc.requestJoin({ relayUrl: fixture.fresh[10].relayURL, ownerId, rootLabel: "work-pc", rootPlatform: "windows", localMachineName: "work-pc" });
+  await expect.poll(async () => (await first.listPairingRequests({})).pairings.some((p) => p.kind === PairingKind.DEVICE)).toBe(true);
+  const { matchCode } = await first.approveDevicePairing({ code: join.code });
+  await expect.poll(async () => (await pc.waitJoin({ code: join.code })).done, { timeout: 30_000 }).toBe(true);
+  await pc.confirmJoin({ code: join.code, accept: true, matchCode });
+  await expect.poll(async () => (await first.listDevices({})).devices.find((d) => d.label === "work-pc")?.machineId ?? "", { timeout: 30_000 }).not.toBe("");
+
+  const { app, page } = await launch(fixture.fresh[10].socket);
+  const [settings] = await Promise.all([app.waitForEvent("window"), page.evaluate(() => window.hermesh?.openSettings("machines"))]);
+  await settings.getByRole("list", { name: "机器" }).getByRole("button", { name: /^work-pc/ }).click();
+  await settings.locator(".set-acts").getByRole("button", { name: "移除…" }).click();
+  // The device, not only its machine: it would stay trusted otherwise.
+  const dialog = settings.getByRole("dialog", { name: "移除「work-pc」？" });
+  await expect(dialog).toContainText("它立刻不能再批准任何事，它自己的执行机器也一并移除。");
+  await dialog.getByRole("button", { name: "移除" }).click();
+  await expect.poll(async () => (await first.listDevices({})).devices.map((d) => d.label), { timeout: 30_000 }).toEqual(["first-mac"]);
+  await expect.poll(async () => (await pc.getStatus({})).removed, { timeout: 30_000 }).toBe(true);
+  await app.close();
+});
