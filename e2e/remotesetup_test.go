@@ -79,14 +79,16 @@ func TestRemoteMachineSetup(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	// In the machine's own form (~\code\api on Windows).
+	codeAPI, homeApp := filepath.Join("~", "code", "api"), filepath.Join("~", "app")
 	var paths []string
 	for _, r := range repos.Repos {
 		paths = append(paths, r.Path)
-		if r.Path == "~/app" && (r.Branch != "main" || r.LastCommit == nil) {
+		if r.Path == homeApp && (r.Branch != "main" || r.LastCommit == nil) {
 			t.Fatalf("repo: %+v", r)
 		}
 	}
-	if strings.Join(paths, " ") != "~/code/api ~/app" && strings.Join(paths, " ") != "~/app ~/code/api" {
+	if strings.Join(paths, " ") != codeAPI+" "+homeApp && strings.Join(paths, " ") != homeApp+" "+codeAPI {
 		t.Fatalf("repositories: %v", paths)
 	}
 
