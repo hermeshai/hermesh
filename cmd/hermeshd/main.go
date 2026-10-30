@@ -38,6 +38,7 @@ import (
 	"github.com/hermeshai/hermesh/internal/service"
 	"github.com/hermeshai/hermesh/internal/shellenv"
 	"github.com/hermeshai/hermesh/internal/spawn"
+	"github.com/hermeshai/hermesh/internal/update"
 	"github.com/hermeshai/hermesh/pkg/metrics"
 	"github.com/hermeshai/hermesh/pkg/rlimit"
 )
@@ -149,6 +150,20 @@ A computer that runs no coding agents can approve instead: hermeshd device.`}
 			if debugAddr != "" {
 				go func() { log.Warn("debug server stopped", "err", metrics.Serve(debugAddr)) }()
 			}
+			// The background updater (docs/machine-updates.md): after an
+			// update hermeshd stops, and its service starts the new program.
+			autoUpdate := func(busy func() int) {
+				if !service.Supervised(dataDir) {
+					return
+				}
+				var cancel context.CancelFunc
+				ctx, cancel = context.WithCancel(ctx)
+				go func() {
+					if update.Background(ctx, dataDir, machine.Version, busy, log) {
+						cancel()
+					}
+				}()
+			}
 			if ownerMode {
 				o, err := owner.Open(owner.Config{DataDir: filepath.Join(dataDir, "owner"), Logger: log, MachineConfig: machineConfig(), NoLocalMachine: noMachine})
 				if err != nil {
@@ -156,6 +171,9 @@ A computer that runs no coding agents can approve instead: hermeshd device.`}
 				}
 				if socket == "" {
 					socket = paths.LocalAPI(dataDir)
+				}
+				if noMachine { // a Linux trusted device
+					autoUpdate(func() int { return 0 })
 				}
 				go o.Run(ctx)
 				log.Info("serving local API", "socket", socket)
@@ -167,6 +185,7 @@ A computer that runs no coding agents can approve instead: hermeshd device.`}
 			if err != nil {
 				return err
 			}
+			autoUpdate(n.Busy)
 			err = n.Run(ctx)
 			n.Close()
 			if errors.Is(err, machine.ErrErased) {
@@ -208,6 +227,33 @@ to that owner's devices by itself. Then it installs the background service.`,
 				arg = args[0]
 			}
 			address := connaddr.Center(arg)
+			// Run again on a paired machine whose owner is still there (the
+			// install command, updating): start the service on this program.
+			_, wantOwner, _ := connaddr.ParseAny(address)
+			if c, running, err := machineCheck(cmd.Context(), dataDir, openMachine); err == nil && c.Paired && (wantOwner == "" || wantOwner == c.OwnerID) &&
+				!machine.OwnerGone(cmd.Context(), http.DefaultClient, c.RelayURL, c.OwnerID) {
+				fmt.Printf("This machine is already paired as %q.\n", c.Name)
+				switch {
+				case service.Running():
+					if err := service.Restart(); err != nil {
+						return err
+					}
+					fmt.Println("✓ The service restarted on Hermesh", machine.Version)
+				case running:
+					fmt.Println("hermeshd runs by hand here: restart it to use Hermesh", machine.Version)
+				case !noService:
+					bin, _ := os.Executable()
+					switch err := service.Install(bin, dataDir, filepath.Join(dataDir, "logs")); {
+					case errors.Is(err, service.ErrNoSystemd):
+						fmt.Println("No background service:", err)
+					case err != nil:
+						return err
+					default:
+						fmt.Println("✓ Background service on, Hermesh", machine.Version)
+					}
+				}
+				return nil
+			}
 			n, err := openMachine()
 			restart := false
 			if err != nil && service.Installed() {
@@ -344,6 +390,7 @@ to that owner's devices by itself. Then it installs the background service.`,
 			}
 			fmt.Printf("machine   %s · %s · Hermesh %s\n", c.MachineID, paired, c.Version)
 			serviceLine(running)
+			fmt.Printf("updates      %s\n", update.Line(dataDir))
 			fmt.Println()
 			list, _, _ := projects.Find([]string{"list"})
 			return list.RunE(cmd, nil)
@@ -426,6 +473,28 @@ in), a LaunchAgent on macOS. "hermeshd pair" installs it.`}
 		}
 	}
 
+	var updateCheck, updateYes bool
+	upd := &cobra.Command{
+		Use:   "update",
+		Short: "Update Hermesh here to the latest release and restart the service",
+		Long: `Update hermeshd and hermesh, where they are installed, to the latest signed
+release, and restart the background service. When that would stop a
+session, it asks first.
+
+Hermesh also updates itself when no session is running, unless
+"hermeshd update auto off" turned that off.`,
+		Args: cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			return update.Run(cmd.Context(), cmd.InOrStdin(), cmd.OutOrStdout(), dataDir, updateCheck, updateYes)
+		},
+	}
+	upd.Flags().BoolVar(&updateCheck, "check", false, "only say whether a newer version exists")
+	upd.Flags().BoolVar(&updateYes, "yes", false, "update without asking, even when that stops a session")
+	upd.AddCommand(&cobra.Command{Use: "auto [on|off]", Short: "Turn automatic updates on or off, or say which", Args: cobra.MaximumNArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return update.Auto(cmd.OutOrStdout(), dataDir, strings.Join(args, ""))
+		}})
+
 	helper := &cobra.Command{Use: "spawn-helper", Hidden: true, Args: cobra.NoArgs,
 		RunE: func(*cobra.Command, []string) error { return spawn.Serve(os.NewFile(3, "spawn-helper")) }}
 	// The tools a session's coding agent starts (docs/agent-messages.md §7.4).
@@ -433,7 +502,7 @@ in), a LaunchAgent on macOS. "hermeshd pair" installs it.`}
 		RunE: func(cmd *cobra.Command, _ []string) error { return machine.ServeMessageMCP(cmd.Context()) }}
 	root.AddCommand(deviceCommands(&dataDir)...)
 	root.AddCommand(eraseCommand(&dataDir))
-	root.AddCommand(run, pair, doctor, status, audit, svc, helper, messageMCP, projects,
+	root.AddCommand(run, pair, doctor, status, audit, svc, upd, helper, messageMCP, projects,
 		&cobra.Command{Use: "version", Short: "Print the version", Args: cobra.NoArgs, Run: func(*cobra.Command, []string) { fmt.Println(machine.Version) }})
 	return root
 }

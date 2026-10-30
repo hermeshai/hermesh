@@ -24,6 +24,7 @@ import (
 	"github.com/hermeshai/hermesh/internal/machine"
 	"github.com/hermeshai/hermesh/internal/paths"
 	"github.com/hermeshai/hermesh/internal/peer"
+	"github.com/hermeshai/hermesh/internal/update"
 	"github.com/hermeshai/hermesh/pkg/identity"
 	"github.com/hermeshai/hermesh/pkg/transport"
 )
@@ -149,8 +150,24 @@ func (a *app) root(defaultOutput string) *cobra.Command {
 			}
 			fmt.Fprintln(c.OutOrStdout(), machine.Version)
 			return nil
-		}})
+		}}, a.updateCmd())
 	return root
+}
+
+// updateCmd is `hermesh update`, the same as `hermeshd update`
+// (docs/machine-updates.md).
+func (a *app) updateCmd() *cobra.Command {
+	var check, yes bool
+	c := &cobra.Command{Use: "update", Short: "Update Hermesh here to the latest release", Args: cobra.NoArgs,
+		RunE: func(c *cobra.Command, _ []string) error {
+			if a.output == "json" {
+				return &exitError{code: exitUsage, kind: "usage", err: errors.New("hermesh update has no JSON output"), hint: "run it without -o json"}
+			}
+			return update.Run(c.Context(), c.InOrStdin(), c.OutOrStdout(), paths.DataDir(), check, yes)
+		}}
+	c.Flags().BoolVar(&check, "check", false, "only say whether a newer version exists")
+	c.Flags().BoolVar(&yes, "yes", false, "update without asking, even when that stops a session")
+	return c
 }
 
 // execute runs root and returns the exit code, printing a failure the
