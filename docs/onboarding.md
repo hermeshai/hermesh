@@ -253,8 +253,8 @@ Terminal on this iPhone? Copy a Command for This Account
     put a privacy prompt on a screen nobody may be watching. Browsing into
     one says so first, since that prompt shows on the Mac.
 - **Version**: when a machine's Hermesh is older than the phone's, its page
-  says so and shows the install command that updates it. Machines that
-  update themselves are a design of their own.
+  says so and shows the install command that updates it. Machines also
+  update themselves ([machine-updates.md](machine-updates.md)).
 
 ### 5.6 Connect Your Agent
 

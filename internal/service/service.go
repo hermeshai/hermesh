@@ -222,6 +222,18 @@ WantedBy=default.target
 `, bin, unitArgs(args), dataDir)
 }
 
+// Supervised reports whether this process is the installed service for
+// dataDir, which starts it again when it exits.
+func Supervised(dataDir string) bool {
+	switch runtime.GOOS {
+	case "darwin":
+		return os.Getenv("XPC_SERVICE_NAME") == label && InstalledFor(dataDir)
+	case "linux":
+		return os.Getenv("INVOCATION_ID") != "" && InstalledFor(dataDir)
+	}
+	return false
+}
+
 // InstalledFor reports whether the installed service runs the machine in
 // dataDir.
 func InstalledFor(dataDir string) bool {

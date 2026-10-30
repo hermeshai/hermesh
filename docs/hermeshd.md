@@ -23,18 +23,32 @@ curl -fsSL https://github.com/hermeshai/hermesh/releases/latest/download/install
   Without systemd (a container, WSL) run `hermeshd run` yourself, as the
   container's command or with `nohup hermeshd run >/dev/null 2>&1 &`.
 
-Updating is the same command again, then `hermeshd service restart`.
+## Updates
+
+Hermesh updates itself: every few hours it looks for a new release and,
+once no session is running, installs it and restarts its service. It only
+installs a release signed by the Hermesh release key, and never goes back
+to an older version ([machine-updates.md](machine-updates.md)).
+
+| Command | Does |
+|---|---|
+| `hermeshd update` | Updates now and restarts the service; asks first when that would stop a session (`--yes` does not ask) |
+| `hermeshd update --check` | Says whether a newer version exists |
+| `hermeshd update auto off`, `auto on` | Turns automatic updates off or on |
+
+`hermesh update` does the same on a computer with only the agent CLI. The
+install command, run again, also updates a paired machine.
 
 ## Every day
 
 | Command | Does |
 |---|---|
 | `hermeshd doctor` | Checks the pairing, the coding agents, the service and the relay, and says what to fix (exit 1 when something is wrong) |
-| `hermeshd status` | The machine, whether it is connected, the service and the projects |
+| `hermeshd status` | The machine, whether it is connected, the service, updates and the projects |
 | `hermeshd project add <folder>` | Lets agents work in a folder: a separate worktree per session, or `--in-place`; `--agents claude` limits it |
 | `hermeshd project list`, `project remove <name>` | The projects; removing one leaves its folder |
 | `hermeshd service status` | Whether the service runs and starts at boot, and where its log is |
-| `hermeshd service restart` | After an update |
+| `hermeshd service restart` | Restart it |
 | `hermeshd service install`, `service uninstall` | Start the service again; stop it for good (pairing and projects stay) |
 
 The log is `~/.local/share/hermesh/logs/hermeshd.log` on Linux

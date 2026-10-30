@@ -16,6 +16,7 @@ import (
 	"google.golang.org/protobuf/types/known/timestamppb"
 
 	identityv1 "github.com/hermeshai/hermesh/gen/go/hermesh/identity/v1"
+	sessionv1 "github.com/hermeshai/hermesh/gen/go/hermesh/session/v1"
 	"github.com/hermeshai/hermesh/internal/localipc"
 	"github.com/hermeshai/hermesh/internal/paths"
 	"github.com/hermeshai/hermesh/internal/provider"
@@ -71,17 +72,24 @@ func (n *Machine) serveControl(ctx context.Context) {
 	srv.Serve(ln)
 }
 
-// Check is how this machine is, for `hermeshd doctor` and `status`; its
-// coding agents are looked at now.
+// Check is how this machine is, for `hermeshd doctor`, `status` and
+// `update`; its coding agents are looked at now.
 type Check struct {
 	MachineID, Name, OwnerID, RelayURL, Version string
 	Paired, Connected                           bool
 	Agents                                      map[string]provider.Info
+	Busy                                        int // sessions a restart would stop
 }
 
 func (n *Machine) Check(ctx context.Context) Check {
 	return Check{MachineID: n.MachineID(), Name: n.Name(), OwnerID: n.OwnerID(), RelayURL: n.RelayURL(), Version: Version,
-		Paired: n.Paired(), Connected: n.Connected(), Agents: n.Discover(ctx)}
+		Paired: n.Paired(), Connected: n.Connected(), Agents: n.Discover(ctx), Busy: n.Busy()}
+}
+
+// Busy counts the sessions a restart would stop: queued, preparing,
+// running or waiting for an answer.
+func (n *Machine) Busy() int {
+	return n.sessions.Running() + int(n.sessions.counts[sessionv1.SessionStatus_SESSION_STATUS_QUEUED].Load())
 }
 
 // ApplyLocal applies a project change from this machine's own user: adding
