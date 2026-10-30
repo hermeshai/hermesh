@@ -5095,7 +5095,10 @@ type Client struct {
 	Revoked      bool                   `protobuf:"varint,10,opt,name=revoked,proto3" json:"revoked,omitempty"`
 	// The server that holds this client's key (an MCP connection), "" when
 	// the client holds its own.
-	Custodian     string `protobuf:"bytes,11,opt,name=custodian,proto3" json:"custodian,omitempty"`
+	Custodian string `protobuf:"bytes,11,opt,name=custodian,proto3" json:"custodian,omitempty"`
+	// The icon the owner picked (identity.v1.Grant client_icon, client_image).
+	Icon          string `protobuf:"bytes,12,opt,name=icon,proto3" json:"icon,omitempty"`
+	Image         []byte `protobuf:"bytes,13,opt,name=image,proto3" json:"image,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -5205,6 +5208,20 @@ func (x *Client) GetCustodian() string {
 		return x.Custodian
 	}
 	return ""
+}
+
+func (x *Client) GetIcon() string {
+	if x != nil {
+		return x.Icon
+	}
+	return ""
+}
+
+func (x *Client) GetImage() []byte {
+	if x != nil {
+		return x.Image
+	}
+	return nil
 }
 
 type ListClientsRequest struct {
@@ -5392,9 +5409,13 @@ func (x *UpdateClientResponse) GetAcks() []*MachineAck {
 }
 
 type RenameClientRequest struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	GrantId       string                 `protobuf:"bytes,1,opt,name=grant_id,json=grantId,proto3" json:"grant_id,omitempty"`
-	Label         string                 `protobuf:"bytes,2,opt,name=label,proto3" json:"label,omitempty"`
+	state   protoimpl.MessageState `protogen:"open.v1"`
+	GrantId string                 `protobuf:"bytes,1,opt,name=grant_id,json=grantId,proto3" json:"grant_id,omitempty"`
+	Label   string                 `protobuf:"bytes,2,opt,name=label,proto3" json:"label,omitempty"`
+	// When set, the icon too (Grant client_icon), with image for "image";
+	// unset keeps the icon it has.
+	Icon          *string `protobuf:"bytes,3,opt,name=icon,proto3,oneof" json:"icon,omitempty"`
+	Image         []byte  `protobuf:"bytes,4,opt,name=image,proto3" json:"image,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -5441,6 +5462,20 @@ func (x *RenameClientRequest) GetLabel() string {
 		return x.Label
 	}
 	return ""
+}
+
+func (x *RenameClientRequest) GetIcon() string {
+	if x != nil && x.Icon != nil {
+		return *x.Icon
+	}
+	return ""
+}
+
+func (x *RenameClientRequest) GetImage() []byte {
+	if x != nil {
+		return x.Image
+	}
+	return nil
 }
 
 type RenameClientResponse struct {
@@ -7805,7 +7840,7 @@ const file_hermesh_local_v1_local_proto_rawDesc = "" +
 	"machine_id\x18\x01 \x01(\tR\tmachineId\x12\x1d\n" +
 	"\n" +
 	"project_id\x18\x02 \x01(\tR\tprojectId\"\x17\n" +
-	"\x15RemoveProjectResponse\"\x92\x03\n" +
+	"\x15RemoveProjectResponse\"\xbc\x03\n" +
 	"\x06Client\x12\x1b\n" +
 	"\tclient_id\x18\x01 \x01(\tR\bclientId\x12\x19\n" +
 	"\bgrant_id\x18\x02 \x01(\tR\agrantId\x12\x14\n" +
@@ -7819,7 +7854,9 @@ const file_hermesh_local_v1_local_proto_rawDesc = "" +
 	"\tlast_seen\x18\t \x01(\v2\x1a.google.protobuf.TimestampR\blastSeen\x12\x18\n" +
 	"\arevoked\x18\n" +
 	" \x01(\bR\arevoked\x12\x1c\n" +
-	"\tcustodian\x18\v \x01(\tR\tcustodian\"\x14\n" +
+	"\tcustodian\x18\v \x01(\tR\tcustodian\x12\x12\n" +
+	"\x04icon\x18\f \x01(\tR\x04icon\x12\x14\n" +
+	"\x05image\x18\r \x01(\fR\x05image\"\x14\n" +
 	"\x12ListClientsRequest\"I\n" +
 	"\x13ListClientsResponse\x122\n" +
 	"\aclients\x18\x01 \x03(\v2\x18.hermesh.local.v1.ClientR\aclients\"a\n" +
@@ -7828,10 +7865,13 @@ const file_hermesh_local_v1_local_proto_rawDesc = "" +
 	"\x04spec\x18\x02 \x01(\v2\x1b.hermesh.local.v1.GrantSpecR\x04spec\"m\n" +
 	"\x14UpdateClientResponse\x12#\n" +
 	"\rgrant_version\x18\x01 \x01(\x04R\fgrantVersion\x120\n" +
-	"\x04acks\x18\x02 \x03(\v2\x1c.hermesh.local.v1.MachineAckR\x04acks\"F\n" +
+	"\x04acks\x18\x02 \x03(\v2\x1c.hermesh.local.v1.MachineAckR\x04acks\"~\n" +
 	"\x13RenameClientRequest\x12\x19\n" +
 	"\bgrant_id\x18\x01 \x01(\tR\agrantId\x12\x14\n" +
-	"\x05label\x18\x02 \x01(\tR\x05label\";\n" +
+	"\x05label\x18\x02 \x01(\tR\x05label\x12\x17\n" +
+	"\x04icon\x18\x03 \x01(\tH\x00R\x04icon\x88\x01\x01\x12\x14\n" +
+	"\x05image\x18\x04 \x01(\fR\x05imageB\a\n" +
+	"\x05_icon\";\n" +
 	"\x14RenameClientResponse\x12#\n" +
 	"\rgrant_version\x18\x01 \x01(\x04R\fgrantVersion\"0\n" +
 	"\x13RevokeClientRequest\x12\x19\n" +
@@ -8401,6 +8441,7 @@ func file_hermesh_local_v1_local_proto_init() {
 	if File_hermesh_local_v1_local_proto != nil {
 		return
 	}
+	file_hermesh_local_v1_local_proto_msgTypes[93].OneofWrappers = []any{}
 	type x struct{}
 	out := protoimpl.TypeBuilder{
 		File: protoimpl.DescBuilder{

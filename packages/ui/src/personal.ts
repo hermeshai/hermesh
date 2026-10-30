@@ -52,3 +52,36 @@ export function grantColor(label: string): string {
   const hue = h % 360;
   return `linear-gradient(135deg,hsl(${hue} 62% 58%),hsl(${(hue + 40) % 360} 60% 46%))`;
 }
+
+/** What a grant is drawn with: its name, and the icon its owner picked (Grant client_icon, client_image). */
+export type GrantLook = { label: string; icon?: string; image?: Uint8Array };
+
+/** The logos the owner can pick for a grant, the personal agents' first. */
+export const iconApps: { logo: string; name: string }[] = [
+  ...[...personalAgents, ...hostedApps].flatMap((k) => (k.logo ? [{ logo: k.logo, name: k.name }] : [])),
+  { logo: "gemini", name: "Gemini" },
+  { logo: "deepseek", name: "DeepSeek" },
+  { logo: "kimi", name: "Kimi" },
+  { logo: "grok", name: "Grok" },
+];
+
+/** The app logo a grant is drawn with: the one its owner picked, else, unless they chose otherwise, its app's. */
+export function grantLogo(g: GrantLook): string | undefined {
+  if (g.icon?.startsWith("app:")) return g.icon.slice(4);
+  return g.icon ? undefined : kindNamed(g.label)?.logo;
+}
+
+const pictures = new WeakMap<Uint8Array, string>();
+
+/** The owner's own picture for a grant, as a data URL. */
+export function grantPicture(g: GrantLook): string | undefined {
+  if (g.icon !== "image" || !g.image?.length) return undefined;
+  let url = pictures.get(g.image);
+  if (!url) {
+    let bin = "";
+    for (let i = 0; i < g.image.length; i += 0x8000) bin += String.fromCharCode(...g.image.subarray(i, i + 0x8000));
+    url = `data:image/${g.image[0] === 0xff ? "jpeg" : "png"};base64,${btoa(bin)}`;
+    pictures.set(g.image, url);
+  }
+  return url;
+}

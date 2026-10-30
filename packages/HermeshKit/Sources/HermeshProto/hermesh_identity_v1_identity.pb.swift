@@ -480,62 +480,112 @@ public nonisolated struct Hermesh_Identity_V1_MachineCert: Sendable {
 
 /// Grant is signed by a root key. For a given grant_id, machines only accept
 /// the highest version they have seen (and never below min_grant_versions).
-public nonisolated struct Hermesh_Identity_V1_Grant: Sendable {
+public nonisolated struct Hermesh_Identity_V1_Grant: @unchecked Sendable {
   // SwiftProtobuf.Message conformance is added in an extension below. See the
   // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
   // methods supported on all messages.
 
-  public var ownerID: String = String()
+  public var ownerID: String {
+    get {_storage._ownerID}
+    set {_uniqueStorage()._ownerID = newValue}
+  }
 
-  public var grantID: String = String()
+  public var grantID: String {
+    get {_storage._grantID}
+    set {_uniqueStorage()._grantID = newValue}
+  }
 
-  public var version: UInt64 = 0
+  public var version: UInt64 {
+    get {_storage._version}
+    set {_uniqueStorage()._version = newValue}
+  }
 
-  public var clientID: String = String()
+  public var clientID: String {
+    get {_storage._clientID}
+    set {_uniqueStorage()._clientID = newValue}
+  }
 
-  public var clientPublicKey: Data = Data()
+  public var clientPublicKey: Data {
+    get {_storage._clientPublicKey}
+    set {_uniqueStorage()._clientPublicKey = newValue}
+  }
 
-  public var clientLabel: String = String()
+  public var clientLabel: String {
+    get {_storage._clientLabel}
+    set {_uniqueStorage()._clientLabel = newValue}
+  }
 
   /// "*" means all.
-  public var machineIds: [String] = []
+  public var machineIds: [String] {
+    get {_storage._machineIds}
+    set {_uniqueStorage()._machineIds = newValue}
+  }
 
-  public var projectIds: [String] = []
+  public var projectIds: [String] {
+    get {_storage._projectIds}
+    set {_uniqueStorage()._projectIds = newValue}
+  }
 
-  public var agents: [String] = []
+  public var agents: [String] {
+    get {_storage._agents}
+    set {_uniqueStorage()._agents = newValue}
+  }
 
-  public var taskVisibility: Hermesh_Identity_V1_TaskVisibility = .unspecified
+  public var taskVisibility: Hermesh_Identity_V1_TaskVisibility {
+    get {_storage._taskVisibility}
+    set {_uniqueStorage()._taskVisibility = newValue}
+  }
 
-  public var maxConcurrentSessions: UInt32 = 0
+  public var maxConcurrentSessions: UInt32 {
+    get {_storage._maxConcurrentSessions}
+    set {_uniqueStorage()._maxConcurrentSessions = newValue}
+  }
 
   public var notBefore: SwiftProtobuf.Google_Protobuf_Timestamp {
-    get {_notBefore ?? SwiftProtobuf.Google_Protobuf_Timestamp()}
-    set {_notBefore = newValue}
+    get {_storage._notBefore ?? SwiftProtobuf.Google_Protobuf_Timestamp()}
+    set {_uniqueStorage()._notBefore = newValue}
   }
   /// Returns true if `notBefore` has been explicitly set.
-  public var hasNotBefore: Bool {self._notBefore != nil}
+  public var hasNotBefore: Bool {_storage._notBefore != nil}
   /// Clears the value of `notBefore`. Subsequent reads from it will return its default value.
-  public mutating func clearNotBefore() {self._notBefore = nil}
+  public mutating func clearNotBefore() {_uniqueStorage()._notBefore = nil}
 
   public var expiresAt: SwiftProtobuf.Google_Protobuf_Timestamp {
-    get {_expiresAt ?? SwiftProtobuf.Google_Protobuf_Timestamp()}
-    set {_expiresAt = newValue}
+    get {_storage._expiresAt ?? SwiftProtobuf.Google_Protobuf_Timestamp()}
+    set {_uniqueStorage()._expiresAt = newValue}
   }
   /// Returns true if `expiresAt` has been explicitly set.
-  public var hasExpiresAt: Bool {self._expiresAt != nil}
+  public var hasExpiresAt: Bool {_storage._expiresAt != nil}
   /// Clears the value of `expiresAt`. Subsequent reads from it will return its default value.
-  public mutating func clearExpiresAt() {self._expiresAt = nil}
+  public mutating func clearExpiresAt() {_uniqueStorage()._expiresAt = nil}
 
   /// Copied from the PairingRequest: the server that holds the client key
   /// (an MCP connection), "" for a client that holds its own key.
-  public var custodian: String = String()
+  public var custodian: String {
+    get {_storage._custodian}
+    set {_uniqueStorage()._custodian = newValue}
+  }
+
+  /// The icon the owner picked for it: "" draws its app's when its name or
+  /// where it signs in says which (the default), "letter" its initial,
+  /// "app:<id>" an app's logo, "image" client_image.
+  public var clientIcon: String {
+    get {_storage._clientIcon}
+    set {_uniqueStorage()._clientIcon = newValue}
+  }
+
+  /// A square PNG or JPEG of at most 256 px, re-encoded by the owner's
+  /// device, when client_icon is "image".
+  public var clientImage: Data {
+    get {_storage._clientImage}
+    set {_uniqueStorage()._clientImage = newValue}
+  }
 
   public var unknownFields = SwiftProtobuf.UnknownStorage()
 
   public init() {}
 
-  fileprivate var _notBefore: SwiftProtobuf.Google_Protobuf_Timestamp? = nil
-  fileprivate var _expiresAt: SwiftProtobuf.Google_Protobuf_Timestamp? = nil
+  fileprivate var _storage = _StorageClass.defaultInstance
 }
 
 /// EraseOrder is the owner's order to erase Hermesh everywhere
@@ -1411,98 +1461,174 @@ nonisolated extension Hermesh_Identity_V1_MachineCert: SwiftProtobuf.Message, Sw
 
 nonisolated extension Hermesh_Identity_V1_Grant: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
   public static let protoMessageName: String = _protobuf_package + ".Grant"
-  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{3}owner_id\0\u{3}grant_id\0\u{1}version\0\u{3}client_id\0\u{3}client_public_key\0\u{3}client_label\0\u{3}machine_ids\0\u{3}project_ids\0\u{1}agents\0\u{4}\u{2}task_visibility\0\u{3}max_concurrent_sessions\0\u{3}not_before\0\u{3}expires_at\0\u{1}custodian\0\u{b}preset\0\u{c}\u{a}\u{1}")
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{3}owner_id\0\u{3}grant_id\0\u{1}version\0\u{3}client_id\0\u{3}client_public_key\0\u{3}client_label\0\u{3}machine_ids\0\u{3}project_ids\0\u{1}agents\0\u{4}\u{2}task_visibility\0\u{3}max_concurrent_sessions\0\u{3}not_before\0\u{3}expires_at\0\u{1}custodian\0\u{3}client_icon\0\u{3}client_image\0\u{b}preset\0\u{c}\u{a}\u{1}")
+
+  fileprivate class _StorageClass {
+    var _ownerID: String = String()
+    var _grantID: String = String()
+    var _version: UInt64 = 0
+    var _clientID: String = String()
+    var _clientPublicKey: Data = Data()
+    var _clientLabel: String = String()
+    var _machineIds: [String] = []
+    var _projectIds: [String] = []
+    var _agents: [String] = []
+    var _taskVisibility: Hermesh_Identity_V1_TaskVisibility = .unspecified
+    var _maxConcurrentSessions: UInt32 = 0
+    var _notBefore: SwiftProtobuf.Google_Protobuf_Timestamp? = nil
+    var _expiresAt: SwiftProtobuf.Google_Protobuf_Timestamp? = nil
+    var _custodian: String = String()
+    var _clientIcon: String = String()
+    var _clientImage: Data = Data()
+
+      // This property is used as the initial default value for new instances of the type.
+      // The type itself is protecting the reference to its storage via CoW semantics.
+      // This will force a copy to be made of this reference when the first mutation occurs;
+      // hence, it is safe to mark this as `nonisolated(unsafe)`.
+      static nonisolated(unsafe) let defaultInstance = _StorageClass()
+
+    private init() {}
+
+    init(copying source: _StorageClass) {
+      _ownerID = source._ownerID
+      _grantID = source._grantID
+      _version = source._version
+      _clientID = source._clientID
+      _clientPublicKey = source._clientPublicKey
+      _clientLabel = source._clientLabel
+      _machineIds = source._machineIds
+      _projectIds = source._projectIds
+      _agents = source._agents
+      _taskVisibility = source._taskVisibility
+      _maxConcurrentSessions = source._maxConcurrentSessions
+      _notBefore = source._notBefore
+      _expiresAt = source._expiresAt
+      _custodian = source._custodian
+      _clientIcon = source._clientIcon
+      _clientImage = source._clientImage
+    }
+  }
+
+  fileprivate mutating func _uniqueStorage() -> _StorageClass {
+    if !isKnownUniquelyReferenced(&_storage) {
+      _storage = _StorageClass(copying: _storage)
+    }
+    return _storage
+  }
 
   public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
-    while let fieldNumber = try decoder.nextFieldNumber() {
-      // The use of inline closures is to circumvent an issue where the compiler
-      // allocates stack space for every case branch when no optimizations are
-      // enabled. https://github.com/apple/swift-protobuf/issues/1034
-      switch fieldNumber {
-      case 1: try { try decoder.decodeSingularStringField(value: &self.ownerID) }()
-      case 2: try { try decoder.decodeSingularStringField(value: &self.grantID) }()
-      case 3: try { try decoder.decodeSingularUInt64Field(value: &self.version) }()
-      case 4: try { try decoder.decodeSingularStringField(value: &self.clientID) }()
-      case 5: try { try decoder.decodeSingularBytesField(value: &self.clientPublicKey) }()
-      case 6: try { try decoder.decodeSingularStringField(value: &self.clientLabel) }()
-      case 7: try { try decoder.decodeRepeatedStringField(value: &self.machineIds) }()
-      case 8: try { try decoder.decodeRepeatedStringField(value: &self.projectIds) }()
-      case 9: try { try decoder.decodeRepeatedStringField(value: &self.agents) }()
-      case 11: try { try decoder.decodeSingularEnumField(value: &self.taskVisibility) }()
-      case 12: try { try decoder.decodeSingularUInt32Field(value: &self.maxConcurrentSessions) }()
-      case 13: try { try decoder.decodeSingularMessageField(value: &self._notBefore) }()
-      case 14: try { try decoder.decodeSingularMessageField(value: &self._expiresAt) }()
-      case 15: try { try decoder.decodeSingularStringField(value: &self.custodian) }()
-      default: break
+    _ = _uniqueStorage()
+    try withExtendedLifetime(_storage) { (_storage: _StorageClass) in
+      while let fieldNumber = try decoder.nextFieldNumber() {
+        // The use of inline closures is to circumvent an issue where the compiler
+        // allocates stack space for every case branch when no optimizations are
+        // enabled. https://github.com/apple/swift-protobuf/issues/1034
+        switch fieldNumber {
+        case 1: try { try decoder.decodeSingularStringField(value: &_storage._ownerID) }()
+        case 2: try { try decoder.decodeSingularStringField(value: &_storage._grantID) }()
+        case 3: try { try decoder.decodeSingularUInt64Field(value: &_storage._version) }()
+        case 4: try { try decoder.decodeSingularStringField(value: &_storage._clientID) }()
+        case 5: try { try decoder.decodeSingularBytesField(value: &_storage._clientPublicKey) }()
+        case 6: try { try decoder.decodeSingularStringField(value: &_storage._clientLabel) }()
+        case 7: try { try decoder.decodeRepeatedStringField(value: &_storage._machineIds) }()
+        case 8: try { try decoder.decodeRepeatedStringField(value: &_storage._projectIds) }()
+        case 9: try { try decoder.decodeRepeatedStringField(value: &_storage._agents) }()
+        case 11: try { try decoder.decodeSingularEnumField(value: &_storage._taskVisibility) }()
+        case 12: try { try decoder.decodeSingularUInt32Field(value: &_storage._maxConcurrentSessions) }()
+        case 13: try { try decoder.decodeSingularMessageField(value: &_storage._notBefore) }()
+        case 14: try { try decoder.decodeSingularMessageField(value: &_storage._expiresAt) }()
+        case 15: try { try decoder.decodeSingularStringField(value: &_storage._custodian) }()
+        case 16: try { try decoder.decodeSingularStringField(value: &_storage._clientIcon) }()
+        case 17: try { try decoder.decodeSingularBytesField(value: &_storage._clientImage) }()
+        default: break
+        }
       }
     }
   }
 
   public func traverse<V: SwiftProtobuf.Visitor>(visitor: inout V) throws {
-    // The use of inline closures is to circumvent an issue where the compiler
-    // allocates stack space for every if/case branch local when no optimizations
-    // are enabled. https://github.com/apple/swift-protobuf/issues/1034 and
-    // https://github.com/apple/swift-protobuf/issues/1182
-    if !self.ownerID.isEmpty {
-      try visitor.visitSingularStringField(value: self.ownerID, fieldNumber: 1)
-    }
-    if !self.grantID.isEmpty {
-      try visitor.visitSingularStringField(value: self.grantID, fieldNumber: 2)
-    }
-    if self.version != 0 {
-      try visitor.visitSingularUInt64Field(value: self.version, fieldNumber: 3)
-    }
-    if !self.clientID.isEmpty {
-      try visitor.visitSingularStringField(value: self.clientID, fieldNumber: 4)
-    }
-    if !self.clientPublicKey.isEmpty {
-      try visitor.visitSingularBytesField(value: self.clientPublicKey, fieldNumber: 5)
-    }
-    if !self.clientLabel.isEmpty {
-      try visitor.visitSingularStringField(value: self.clientLabel, fieldNumber: 6)
-    }
-    if !self.machineIds.isEmpty {
-      try visitor.visitRepeatedStringField(value: self.machineIds, fieldNumber: 7)
-    }
-    if !self.projectIds.isEmpty {
-      try visitor.visitRepeatedStringField(value: self.projectIds, fieldNumber: 8)
-    }
-    if !self.agents.isEmpty {
-      try visitor.visitRepeatedStringField(value: self.agents, fieldNumber: 9)
-    }
-    if self.taskVisibility != .unspecified {
-      try visitor.visitSingularEnumField(value: self.taskVisibility, fieldNumber: 11)
-    }
-    if self.maxConcurrentSessions != 0 {
-      try visitor.visitSingularUInt32Field(value: self.maxConcurrentSessions, fieldNumber: 12)
-    }
-    try { if let v = self._notBefore {
-      try visitor.visitSingularMessageField(value: v, fieldNumber: 13)
-    } }()
-    try { if let v = self._expiresAt {
-      try visitor.visitSingularMessageField(value: v, fieldNumber: 14)
-    } }()
-    if !self.custodian.isEmpty {
-      try visitor.visitSingularStringField(value: self.custodian, fieldNumber: 15)
+    try withExtendedLifetime(_storage) { (_storage: _StorageClass) in
+      // The use of inline closures is to circumvent an issue where the compiler
+      // allocates stack space for every if/case branch local when no optimizations
+      // are enabled. https://github.com/apple/swift-protobuf/issues/1034 and
+      // https://github.com/apple/swift-protobuf/issues/1182
+      if !_storage._ownerID.isEmpty {
+        try visitor.visitSingularStringField(value: _storage._ownerID, fieldNumber: 1)
+      }
+      if !_storage._grantID.isEmpty {
+        try visitor.visitSingularStringField(value: _storage._grantID, fieldNumber: 2)
+      }
+      if _storage._version != 0 {
+        try visitor.visitSingularUInt64Field(value: _storage._version, fieldNumber: 3)
+      }
+      if !_storage._clientID.isEmpty {
+        try visitor.visitSingularStringField(value: _storage._clientID, fieldNumber: 4)
+      }
+      if !_storage._clientPublicKey.isEmpty {
+        try visitor.visitSingularBytesField(value: _storage._clientPublicKey, fieldNumber: 5)
+      }
+      if !_storage._clientLabel.isEmpty {
+        try visitor.visitSingularStringField(value: _storage._clientLabel, fieldNumber: 6)
+      }
+      if !_storage._machineIds.isEmpty {
+        try visitor.visitRepeatedStringField(value: _storage._machineIds, fieldNumber: 7)
+      }
+      if !_storage._projectIds.isEmpty {
+        try visitor.visitRepeatedStringField(value: _storage._projectIds, fieldNumber: 8)
+      }
+      if !_storage._agents.isEmpty {
+        try visitor.visitRepeatedStringField(value: _storage._agents, fieldNumber: 9)
+      }
+      if _storage._taskVisibility != .unspecified {
+        try visitor.visitSingularEnumField(value: _storage._taskVisibility, fieldNumber: 11)
+      }
+      if _storage._maxConcurrentSessions != 0 {
+        try visitor.visitSingularUInt32Field(value: _storage._maxConcurrentSessions, fieldNumber: 12)
+      }
+      try { if let v = _storage._notBefore {
+        try visitor.visitSingularMessageField(value: v, fieldNumber: 13)
+      } }()
+      try { if let v = _storage._expiresAt {
+        try visitor.visitSingularMessageField(value: v, fieldNumber: 14)
+      } }()
+      if !_storage._custodian.isEmpty {
+        try visitor.visitSingularStringField(value: _storage._custodian, fieldNumber: 15)
+      }
+      if !_storage._clientIcon.isEmpty {
+        try visitor.visitSingularStringField(value: _storage._clientIcon, fieldNumber: 16)
+      }
+      if !_storage._clientImage.isEmpty {
+        try visitor.visitSingularBytesField(value: _storage._clientImage, fieldNumber: 17)
+      }
     }
     try unknownFields.traverse(visitor: &visitor)
   }
 
   public static func ==(lhs: Hermesh_Identity_V1_Grant, rhs: Hermesh_Identity_V1_Grant) -> Bool {
-    if lhs.ownerID != rhs.ownerID {return false}
-    if lhs.grantID != rhs.grantID {return false}
-    if lhs.version != rhs.version {return false}
-    if lhs.clientID != rhs.clientID {return false}
-    if lhs.clientPublicKey != rhs.clientPublicKey {return false}
-    if lhs.clientLabel != rhs.clientLabel {return false}
-    if lhs.machineIds != rhs.machineIds {return false}
-    if lhs.projectIds != rhs.projectIds {return false}
-    if lhs.agents != rhs.agents {return false}
-    if lhs.taskVisibility != rhs.taskVisibility {return false}
-    if lhs.maxConcurrentSessions != rhs.maxConcurrentSessions {return false}
-    if lhs._notBefore != rhs._notBefore {return false}
-    if lhs._expiresAt != rhs._expiresAt {return false}
-    if lhs.custodian != rhs.custodian {return false}
+    if lhs._storage !== rhs._storage {
+      let storagesAreEqual: Bool = withExtendedLifetime((lhs._storage, rhs._storage)) { (_args: (_StorageClass, _StorageClass)) in
+        let _storage = _args.0
+        let rhs_storage = _args.1
+        if _storage._ownerID != rhs_storage._ownerID {return false}
+        if _storage._grantID != rhs_storage._grantID {return false}
+        if _storage._version != rhs_storage._version {return false}
+        if _storage._clientID != rhs_storage._clientID {return false}
+        if _storage._clientPublicKey != rhs_storage._clientPublicKey {return false}
+        if _storage._clientLabel != rhs_storage._clientLabel {return false}
+        if _storage._machineIds != rhs_storage._machineIds {return false}
+        if _storage._projectIds != rhs_storage._projectIds {return false}
+        if _storage._agents != rhs_storage._agents {return false}
+        if _storage._taskVisibility != rhs_storage._taskVisibility {return false}
+        if _storage._maxConcurrentSessions != rhs_storage._maxConcurrentSessions {return false}
+        if _storage._notBefore != rhs_storage._notBefore {return false}
+        if _storage._expiresAt != rhs_storage._expiresAt {return false}
+        if _storage._custodian != rhs_storage._custodian {return false}
+        if _storage._clientIcon != rhs_storage._clientIcon {return false}
+        if _storage._clientImage != rhs_storage._clientImage {return false}
+        return true
+      }
+      if !storagesAreEqual {return false}
+    }
     if lhs.unknownFields != rhs.unknownFields {return false}
     return true
   }

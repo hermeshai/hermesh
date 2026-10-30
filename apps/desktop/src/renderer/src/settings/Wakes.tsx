@@ -50,7 +50,7 @@ export function Wakes({ c }: { c: Client }) {
               : !rang ? t("wake.notYet")
               : `${t("wake.lastRang", { ago: agoText(rang, now) })} · ${w.waiting ? t("wake.waitingCount", { count: w.waiting }) : t("wake.allRead")}`;
             return (
-              <GoRow key={w.name} icon={w.name ? <span className="wk-av">{w.name.slice(0, 1).toUpperCase()}</span> : <GrantAvatar label={c.label} size="sm" />}
+              <GoRow key={w.name} icon={w.name ? <span className="wk-av">{w.name.slice(0, 1).toUpperCase()}</span> : <GrantAvatar c={c} size="sm" />}
                 title={t("wake.row", { name: w.name || agent })} sub={sub} onClick={() => open(w)}>
                 <span className={w.state === "on" ? "wk-state" : "wk-state bad"}>
                   <i />

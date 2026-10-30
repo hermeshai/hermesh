@@ -170,6 +170,13 @@ message Grant {
   // Copied from the PairingRequest: the server that holds the client key
   // (an MCP connection), "" for a client that holds its own key.
   string custodian = 15;
+  // The icon the owner picked for it: "" draws its app's when its name or
+  // where it signs in says which (the default), "letter" its initial,
+  // "app:<id>" an app's logo, "image" client_image.
+  string client_icon = 16;
+  // A square PNG or JPEG of at most 256 px, re-encoded by the owner's
+  // device, when client_icon is "image".
+  bytes client_image = 17;
 }
 
 // EraseOrder is the owner's order to erase Hermesh everywhere

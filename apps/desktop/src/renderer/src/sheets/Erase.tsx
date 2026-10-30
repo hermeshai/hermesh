@@ -99,7 +99,7 @@ function Group({ icon, title, desc, items }: { icon: string; title: string; desc
         <div className="erase-names">
           {items.map((it, i) => (
             <span key={i} className="erase-name">
-              {it.kind === "agent" ? <GrantAvatar label={it.name} size="sm" /> : <i className={`dotc ${it.online || it.thisDevice ? "on" : ""}`} />}
+              {it.kind === "agent" ? <GrantAvatar c={{ label: it.name }} size="sm" /> : <i className={`dotc ${it.online || it.thisDevice ? "on" : ""}`} />}
               {it.kind === "agent" ? agentName(it.name) : it.name}
               {it.thisDevice ? (
                 <span className="faint"> {t("erase.thisMac")}</span>

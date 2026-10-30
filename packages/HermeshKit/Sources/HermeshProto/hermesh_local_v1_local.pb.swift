@@ -1777,6 +1777,17 @@ public nonisolated struct Hermesh_Local_V1_Client: @unchecked Sendable {
     set {_uniqueStorage()._custodian = newValue}
   }
 
+  /// The icon the owner picked (identity.v1.Grant client_icon, client_image).
+  public var icon: String {
+    get {_storage._icon}
+    set {_uniqueStorage()._icon = newValue}
+  }
+
+  public var image: Data {
+    get {_storage._image}
+    set {_uniqueStorage()._image = newValue}
+  }
+
   public var unknownFields = SwiftProtobuf.UnknownStorage()
 
   public init() {}
@@ -1852,9 +1863,24 @@ public nonisolated struct Hermesh_Local_V1_RenameClientRequest: Sendable {
 
   public var label: String = String()
 
+  /// When set, the icon too (Grant client_icon), with image for "image";
+  /// unset keeps the icon it has.
+  public var icon: String {
+    get {_icon ?? String()}
+    set {_icon = newValue}
+  }
+  /// Returns true if `icon` has been explicitly set.
+  public var hasIcon: Bool {self._icon != nil}
+  /// Clears the value of `icon`. Subsequent reads from it will return its default value.
+  public mutating func clearIcon() {self._icon = nil}
+
+  public var image: Data = Data()
+
   public var unknownFields = SwiftProtobuf.UnknownStorage()
 
   public init() {}
+
+  fileprivate var _icon: String? = nil
 }
 
 public nonisolated struct Hermesh_Local_V1_RenameClientResponse: Sendable {
@@ -5873,7 +5899,7 @@ nonisolated extension Hermesh_Local_V1_RemoveProjectResponse: SwiftProtobuf.Mess
 
 nonisolated extension Hermesh_Local_V1_Client: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
   public static let protoMessageName: String = _protobuf_package + ".Client"
-  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{3}client_id\0\u{3}grant_id\0\u{1}label\0\u{1}fingerprint\0\u{1}spec\0\u{3}grant_version\0\u{3}expires_at\0\u{1}online\0\u{3}last_seen\0\u{1}revoked\0\u{1}custodian\0")
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{3}client_id\0\u{3}grant_id\0\u{1}label\0\u{1}fingerprint\0\u{1}spec\0\u{3}grant_version\0\u{3}expires_at\0\u{1}online\0\u{3}last_seen\0\u{1}revoked\0\u{1}custodian\0\u{1}icon\0\u{1}image\0")
 
   fileprivate class _StorageClass {
     var _clientID: String = String()
@@ -5887,6 +5913,8 @@ nonisolated extension Hermesh_Local_V1_Client: SwiftProtobuf.Message, SwiftProto
     var _lastSeen: SwiftProtobuf.Google_Protobuf_Timestamp? = nil
     var _revoked: Bool = false
     var _custodian: String = String()
+    var _icon: String = String()
+    var _image: Data = Data()
 
       // This property is used as the initial default value for new instances of the type.
       // The type itself is protecting the reference to its storage via CoW semantics.
@@ -5908,6 +5936,8 @@ nonisolated extension Hermesh_Local_V1_Client: SwiftProtobuf.Message, SwiftProto
       _lastSeen = source._lastSeen
       _revoked = source._revoked
       _custodian = source._custodian
+      _icon = source._icon
+      _image = source._image
     }
   }
 
@@ -5937,6 +5967,8 @@ nonisolated extension Hermesh_Local_V1_Client: SwiftProtobuf.Message, SwiftProto
         case 9: try { try decoder.decodeSingularMessageField(value: &_storage._lastSeen) }()
         case 10: try { try decoder.decodeSingularBoolField(value: &_storage._revoked) }()
         case 11: try { try decoder.decodeSingularStringField(value: &_storage._custodian) }()
+        case 12: try { try decoder.decodeSingularStringField(value: &_storage._icon) }()
+        case 13: try { try decoder.decodeSingularBytesField(value: &_storage._image) }()
         default: break
         }
       }
@@ -5982,6 +6014,12 @@ nonisolated extension Hermesh_Local_V1_Client: SwiftProtobuf.Message, SwiftProto
       if !_storage._custodian.isEmpty {
         try visitor.visitSingularStringField(value: _storage._custodian, fieldNumber: 11)
       }
+      if !_storage._icon.isEmpty {
+        try visitor.visitSingularStringField(value: _storage._icon, fieldNumber: 12)
+      }
+      if !_storage._image.isEmpty {
+        try visitor.visitSingularBytesField(value: _storage._image, fieldNumber: 13)
+      }
     }
     try unknownFields.traverse(visitor: &visitor)
   }
@@ -6002,6 +6040,8 @@ nonisolated extension Hermesh_Local_V1_Client: SwiftProtobuf.Message, SwiftProto
         if _storage._lastSeen != rhs_storage._lastSeen {return false}
         if _storage._revoked != rhs_storage._revoked {return false}
         if _storage._custodian != rhs_storage._custodian {return false}
+        if _storage._icon != rhs_storage._icon {return false}
+        if _storage._image != rhs_storage._image {return false}
         return true
       }
       if !storagesAreEqual {return false}
@@ -6136,7 +6176,7 @@ nonisolated extension Hermesh_Local_V1_UpdateClientResponse: SwiftProtobuf.Messa
 
 nonisolated extension Hermesh_Local_V1_RenameClientRequest: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
   public static let protoMessageName: String = _protobuf_package + ".RenameClientRequest"
-  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{3}grant_id\0\u{1}label\0")
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{3}grant_id\0\u{1}label\0\u{1}icon\0\u{1}image\0")
 
   public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
     while let fieldNumber = try decoder.nextFieldNumber() {
@@ -6146,17 +6186,29 @@ nonisolated extension Hermesh_Local_V1_RenameClientRequest: SwiftProtobuf.Messag
       switch fieldNumber {
       case 1: try { try decoder.decodeSingularStringField(value: &self.grantID) }()
       case 2: try { try decoder.decodeSingularStringField(value: &self.label) }()
+      case 3: try { try decoder.decodeSingularStringField(value: &self._icon) }()
+      case 4: try { try decoder.decodeSingularBytesField(value: &self.image) }()
       default: break
       }
     }
   }
 
   public func traverse<V: SwiftProtobuf.Visitor>(visitor: inout V) throws {
+    // The use of inline closures is to circumvent an issue where the compiler
+    // allocates stack space for every if/case branch local when no optimizations
+    // are enabled. https://github.com/apple/swift-protobuf/issues/1034 and
+    // https://github.com/apple/swift-protobuf/issues/1182
     if !self.grantID.isEmpty {
       try visitor.visitSingularStringField(value: self.grantID, fieldNumber: 1)
     }
     if !self.label.isEmpty {
       try visitor.visitSingularStringField(value: self.label, fieldNumber: 2)
+    }
+    try { if let v = self._icon {
+      try visitor.visitSingularStringField(value: v, fieldNumber: 3)
+    } }()
+    if !self.image.isEmpty {
+      try visitor.visitSingularBytesField(value: self.image, fieldNumber: 4)
     }
     try unknownFields.traverse(visitor: &visitor)
   }
@@ -6164,6 +6216,8 @@ nonisolated extension Hermesh_Local_V1_RenameClientRequest: SwiftProtobuf.Messag
   public static func ==(lhs: Hermesh_Local_V1_RenameClientRequest, rhs: Hermesh_Local_V1_RenameClientRequest) -> Bool {
     if lhs.grantID != rhs.grantID {return false}
     if lhs.label != rhs.label {return false}
+    if lhs._icon != rhs._icon {return false}
+    if lhs.image != rhs.image {return false}
     if lhs.unknownFields != rhs.unknownFields {return false}
     return true
   }

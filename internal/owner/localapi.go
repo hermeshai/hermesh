@@ -427,7 +427,7 @@ func (l *localService) ListClients(ctx context.Context, _ *localv1.ListClientsRe
 }
 
 func (l *localService) RenameClient(ctx context.Context, req *localv1.RenameClientRequest) (*localv1.RenameClientResponse, error) {
-	v, err := l.o().RenameClient(ctx, req.GrantId, req.Label)
+	v, err := l.o().RenameClient(ctx, req.GrantId, req.Label, req.Icon, req.Image)
 	l.o().wrote(ctx, err, true)
 	if err != nil {
 		return nil, err

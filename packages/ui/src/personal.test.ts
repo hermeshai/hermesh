@@ -36,3 +36,15 @@ test("a hosted app is shown by its own name once its domain vouches for it", () 
   assert.equal(agentName("Jarvis (jarvis.example)"), "Jarvis (jarvis.example)");
   assert.equal(agentName("千问办公"), "千问办公");
 });
+
+test("the icon the owner picks wins over the one the name suggests", async () => {
+  const { grantLogo, grantPicture, iconApps } = await import("./personal.ts");
+  assert.equal(grantLogo({ label: "Cursor (cursor.com)" }), "cursor");
+  assert.equal(grantLogo({ label: "Cursor (cursor.com)", icon: "app:grokbot" }), "grokbot");
+  assert.equal(grantLogo({ label: "Claude", icon: "letter" }), undefined);
+  assert.equal(grantLogo({ label: "Claude", icon: "image", image: new Uint8Array([0x89]) }), undefined);
+  assert.equal(grantPicture({ label: "x", icon: "image", image: new Uint8Array([0x89, 0x50]) }), "data:image/png;base64,iVA=");
+  assert.equal(grantPicture({ label: "x", icon: "image", image: new Uint8Array([0xff, 0xd8]) }), "data:image/jpeg;base64,/9g=");
+  assert.equal(grantPicture({ label: "x", image: new Uint8Array([0x89]) }), undefined);
+  assert.ok(iconApps.some((a) => a.logo === "grokbot") && iconApps.some((a) => a.logo === "cursor"));
+});

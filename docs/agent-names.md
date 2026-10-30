@@ -465,6 +465,17 @@ ids. So:
   changed (what it may use and until when stay; Touch ID or Face ID), and
   every device, machine and the agent's contacts see it. A known app's
   name ("Grok Bot") brings its icon.
+- **The owner picks its icon** (2026-10-30). On the Mac, "Name and Icon…"
+  (or its face on its page) opens one sheet for both, signed once: its
+  icon is Automatic (the rule above), its Initial, an app's logo (Grok
+  Bot, Claude, ChatGPT, Cursor…), or a picture of the owner's. The choice
+  is the grant's `client_icon` (`""`, `letter`, `app:<logo>`, `image`); a
+  picture is `client_image`, its middle square at 128 px, re-encoded by
+  the app and again by the owner (PNG or JPEG, at most 256 px and 64 KB),
+  so no metadata travels. Every device and the console draw it; other
+  agents still see only the name. Picking an app before typing a name
+  names it after the app. `RenameClient` changes the icon only when the
+  request sets one, so renaming on the iPhone keeps it.
 - **Bots speak plainly.** The server's instructions ask hosted assistants
   to talk about the work, not Hermesh (no session ids, routine names or how
   waking works unless asked), and `session_start` and `session_answer`

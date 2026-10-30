@@ -44,7 +44,7 @@ export function Inspector({ s }: { s: Session }) {
 
       <ul className="insp-facts">
         <li>
-          <GrantAvatar label={grant} />
+          <GrantAvatar c={st.clients.find((c) => c.clientId === s.createdBy) ?? { label: grant }} />
           <span><Trans t={t} i18nKey="inspector.startedBy" values={{ grant }} components={{ b: <b /> }} /></span>
         </li>
         <li>

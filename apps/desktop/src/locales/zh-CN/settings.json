@@ -123,11 +123,18 @@
     "usedBy": "{{names}} 在用 · {{ago}}",
     "usedAgo": "{{ago}}用过",
     "notUsed": "还没用过",
-    "rename": "改名…",
-    "renameTitle": "给这个 agent 改名",
-    "renameMessage": "你认它用的名字，这里和你的其他设备都会显示，其他 agent 也会看到。用常见应用的名字（Grok Bot、Claude）会显示那个应用的图标。",
+    "rename": "名字和图标…",
+    "renameTitle": "名字和图标",
+    "renameMessage": "这里和你的其他设备都会显示；其他 agent 只看到名字。",
     "agentName": "名字",
-    "renameButton": "改名"
+    "renameButton": "存储",
+    "icon": "图标",
+    "iconAuto": "自动",
+    "iconLetter": "首字",
+    "iconMine": "你的图片",
+    "iconUpload": "上传…",
+    "iconAutoHint": "跟随它的名字或登录的地方：从 cursor.com 登录的连接显示为 Cursor。",
+    "iconBad": "读不了这张图片，换一张 PNG 或 JPEG 试试。"
   },
   "machines": {
     "lastOnline": "{{ago}}在线",

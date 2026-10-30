@@ -3,9 +3,9 @@ import { useTranslation } from "react-i18next";
 import type { Machine } from "@hermesh/proto/local";
 import { SessionStatus, type Session } from "@hermesh/proto/session";
 import { clockText, elapsedSeconds, createdDate, dateOf, displayTitle, failureTitle, isActive, isFailed } from "@hermesh/core";
-import { AgentTile, grantColor, kindNamed, Mark } from "@hermesh/ui";
+import { grantColor, Mark, type GrantLook } from "@hermesh/ui";
 import { i18n } from "../../../shared/i18n";
-import { StatusDot } from "../components";
+import { grantFace, StatusDot } from "../components";
 import { Icon } from "../icons";
 import { grantLabel, machineName } from "../Sidebar";
 import { useNow, useStore, type Store } from "../store";
@@ -71,8 +71,9 @@ function Condition({ pick, count, onClear }: { pick: string; count: number; onCl
 function describe(st: Store, pick: string): { icon: ReactNode; text: string } {
   const id = pick.slice(2);
   if (pick.startsWith("g:")) {
-    const label = st.clients.find((c) => c.clientId === id)?.label ?? i18n.t("overview:working.disconnected");
-    return { icon: <GrantIcon label={label} size={16} />, text: i18n.t("overview:working.byGrant", { label }) };
+    const c = st.clients.find((x) => x.clientId === id);
+    const label = c?.label ?? i18n.t("overview:working.disconnected");
+    return { icon: <GrantIcon c={c ?? { label }} size={16} />, text: i18n.t("overview:working.byGrant", { label }) };
   }
   if (pick.startsWith("m:")) {
     const m = st.machines.find((x) => x.machineId === id);
@@ -97,7 +98,7 @@ function Card({ s, pick }: { s: Session; pick: string }) {
       <b className="wc-title" title={displayTitle(s)}>{displayTitle(s)}</b>
       <span className="wc-foot">
         <span className={`wc-by ${pick === g ? "hit" : ""}`}>
-          <GrantIcon label={grant} size={16} />
+          <GrantIcon c={st.clients.find((c) => c.clientId === s.createdBy) ?? { label: grant }} size={16} />
           {grant}
         </span>
         <span className="arrow">→</span>
@@ -134,9 +135,10 @@ function Worked({ s }: { s: Session }) {
   return <span className="wc-time">{clockText(elapsedSeconds(from, now))}</span>;
 }
 
-function GrantIcon({ label, size }: { label: string; size: number }) {
-  const logo = kindNamed(label)?.logo;
-  if (logo) return <AgentTile agent={logo} size={size} />;
+function GrantIcon({ c, size }: { c: GrantLook; size: number }) {
+  const label = c.label;
+  const face = grantFace(c, size);
+  if (face) return face;
   return (
     <span className="av" style={{ width: size, height: size, fontSize: size * 0.55, background: grantColor(label) }} aria-hidden="true">
       {label.slice(0, 1).toUpperCase()}

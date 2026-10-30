@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import type { Client } from "@hermesh/proto/local";
 import { agoText, dateOf, monthDay, sameDay, updatedDate } from "@hermesh/core";
@@ -8,7 +9,8 @@ import { AgentName, GrantAvatar } from "../components";
 import { hostOf } from "../sheets/Pairing";
 import { machineName } from "../Sidebar";
 import { useNow, useStore, type Store } from "../store";
-import { GoRow, More, Row, type Ask } from "./common";
+import { GoRow, More, Row } from "./common";
+import { LookSheet } from "./LookSheet";
 import { Wakes } from "./Wakes";
 
 /** Whole days until the grant ends (0 once it has). */
@@ -45,20 +47,20 @@ function usedText(st: Store, c: Client, now: Date): string {
 }
 
 /** Access: the grants, each opening what it may use and changing or ending it. */
-export function Grants({ open, select, ask }: { open: string; select: (id: string) => void; ask: (a: Ask) => void }) {
+export function Grants({ open, select }: { open: string; select: (id: string) => void }) {
   const { t } = useTranslation("settings");
   const st = useStore();
   const now = useNow(60_000);
   const clients = st.clients.filter((c) => !c.revoked);
   const c = clients.find((x) => x.grantId === open);
   const connect = () => st.set({ sheet: { kind: "newGrant" } });
-  if (c) return <GrantDetail c={c} ask={ask} />;
+  if (c) return <GrantDetail c={c} />;
   return (
     <div className="form">
       {clients.length > 0 ? (
         <div className="fgroup" role="list" aria-label={t("pages.grants")}>
           {clients.map((x) => (
-            <GoRow key={x.grantId} icon={<GrantAvatar label={x.label} size="md" />} title={agentName(x.label)} sub={usedText(st, x, now)} onClick={() => select(x.grantId)}>
+            <GoRow key={x.grantId} icon={<GrantAvatar c={x} size="md" />} title={agentName(x.label)} sub={usedText(st, x, now)} onClick={() => select(x.grantId)}>
               <span className="fv-side">
                 <Left days={daysLeft(x, now)} />
               </span>
@@ -78,7 +80,7 @@ export function Grants({ open, select, ask }: { open: string; select: (id: strin
   );
 }
 
-function GrantDetail({ c, ask }: { c: Client; ask: (a: Ask) => void }) {
+function GrantDetail({ c }: { c: Client }) {
   const { t } = useTranslation("settings");
   const st = useStore();
   const now = useNow(30_000);
@@ -90,13 +92,9 @@ function GrantDetail({ c, ask }: { c: Client; ask: (a: Ask) => void }) {
   const projects = (c.spec?.projectIds ?? []).filter((p) => p !== "*");
   const machines = (c.spec?.machineIds ?? []).filter((m) => m !== "*");
   const name = agentName(c.label);
+  const [editing, setEditing] = useState(false);
   const scope = (renew: boolean) => st.set({ sheet: { kind: "scope", clientId: c.clientId, renew } });
-  const rename = () =>
-    ask({
-      title: t("grants.renameTitle"),
-      message: t("grants.renameMessage"),
-      field: { label: t("grants.agentName"), value: name, button: t("grants.renameButton"), run: (label) => (label === name ? Promise.resolve() : st.run(() => local.renameClient({ grantId: c.grantId, label }))) },
-    });
+  const rename = () => setEditing(true);
   const revoke = () =>
     st.set({
       sheet: {
@@ -114,7 +112,9 @@ function GrantDetail({ c, ask }: { c: Client; ask: (a: Ask) => void }) {
   return (
     <div className="form">
       <div className="dhero">
-        <GrantAvatar label={c.label} size="xl" />
+        <button className="dhero-av" aria-label={t("grants.renameTitle")} onClick={rename}>
+          <GrantAvatar c={c} size="xl" />
+        </button>
         <div>
           <b>{name}</b>
           <span>
@@ -138,6 +138,7 @@ function GrantDetail({ c, ask }: { c: Client; ask: (a: Ask) => void }) {
         <button className="btn danger push" onClick={revoke}>{t("grants.disconnect")}</button>
       </div>
       <Wakes c={c} />
+      {editing && <LookSheet c={c} st={st} close={() => setEditing(false)} />}
       <More>
         <div className="fgroup">
           <div className="frow">

@@ -1765,7 +1765,7 @@ func (o *Owner) clientsFrom(res *relayv1.ListClientsResponse) []*localv1.Client 
 		}
 		a := &localv1.Client{ClientId: g.ClientId, GrantId: g.GrantId, Label: g.ClientLabel, Fingerprint: identity.ShortFingerprint(g.ClientPublicKey),
 			Spec: specFromGrant(g), GrantVersion: g.Version, ExpiresAt: g.ExpiresAt, Online: c.Online && !expired, LastSeen: c.LastSeen, Revoked: c.Revoked,
-			Custodian: g.Custodian}
+			Custodian: g.Custodian, Icon: g.ClientIcon, Image: g.ClientImage}
 		if len(c.MachineIds) > 0 { // without removed machines; an update signs them away
 			a.Spec.MachineIds = c.MachineIds
 		}
@@ -1817,10 +1817,27 @@ func (o *Owner) UpdateClient(ctx context.Context, grantID string, spec *localv1.
 
 // RenameClient gives an agent another name: its grant, signed again with
 // the label alone changed (what it may use, and until when, stay).
-func (o *Owner) RenameClient(ctx context.Context, grantID, label string) (uint64, error) {
+// RenameClient gives a grant a new name and, when icon is not nil, a new
+// icon (an image with "image").
+func (o *Owner) RenameClient(ctx context.Context, grantID, label string, icon *string, img []byte) (uint64, error) {
 	label = strings.Join(strings.FieldsFunc(label, func(r rune) bool { return unicode.IsSpace(r) || unicode.IsControl(r) }), " ")
 	if label == "" || len(label) > 64 {
 		return 0, connect.NewError(connect.CodeInvalidArgument, errors.New("a name is 1 to 64 bytes"))
+	}
+	if icon != nil {
+		if !grantIcons.MatchString(*icon) {
+			return 0, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("unknown icon %q", *icon))
+		}
+		if *icon != "image" {
+			img = nil
+		} else if len(img) == 0 {
+			return 0, connect.NewError(connect.CodeInvalidArgument, errors.New("the icon \"image\" needs a picture"))
+		} else {
+			var err error
+			if img, err = grantImage(img); err != nil {
+				return 0, err
+			}
+		}
 	}
 	cur, err := o.latestGrant(ctx, grantID)
 	if err != nil {
@@ -1828,6 +1845,9 @@ func (o *Owner) RenameClient(ctx context.Context, grantID, label string) (uint64
 	}
 	g := proto.Clone(cur).(*identityv1.Grant)
 	g.ClientLabel = label
+	if icon != nil {
+		g.ClientIcon, g.ClientImage = *icon, img
+	}
 	v, _, err := o.publishGrant(ctx, g, cur.Version)
 	return v, err
 }

@@ -40,7 +40,7 @@ struct GrantRow: View {
     var body: some View {
         let days = client.daysLeft(now: model.now)
         HStack(spacing: 12) {
-            GrantAvatar(label: client.label)
+            GrantAvatar(client: client)
             VStack(alignment: .leading, spacing: 2) {
                 Text(AgentLogo.name(client.label))
                 HStack(spacing: 0) {
@@ -97,7 +97,7 @@ struct GrantView: View {
         return List {
             Section {
                 VStack(spacing: 8) {
-                    GrantAvatar(label: c.label, size: 58)
+                    GrantAvatar(client: c, size: 58)
                     Text(AgentLogo.name(c.label)).font(.title2.bold())
                     Button("Rename…") {
                         newName = AgentLogo.name(c.label)
