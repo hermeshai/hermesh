@@ -294,7 +294,7 @@ sequenceDiagram
 
 ```bash
 docker run -d --name hermesh-relay --restart unless-stopped -p 80:80 -p 443:443 -v hermesh-relay:/data \
-  -e HERMESH_RELAY_DOMAIN=relay.example.com ghcr.io/<org>/hermesh-relay:<version>
+  -e HERMESH_RELAY_DOMAIN=relay.example.com hermeshai/hermesh-relay:<version>
 ```
 
 The image is built for linux/amd64 and linux/arm64, runs as nonroot, and takes its settings from `-e` (`HERMESH_RELAY_DOMAIN`, `HERMESH_RELAY_MCP`, `HERMESH_RELAY_PUBLIC_URL`) as well as from flags. The relay obtains its certificate automatically through ACME. On first start it prints a claim code, and until it is claimed it only accepts the claim request.

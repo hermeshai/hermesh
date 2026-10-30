@@ -166,7 +166,7 @@ Instead of hermesh.io: a Linux server with Docker, a domain name that points at 
 docker run -d --name hermesh-relay --restart unless-stopped \
   -p 80:80 -p 443:443 -v hermesh-relay:/data \
   -e HERMESH_RELAY_DOMAIN=relay.example.com -e HERMESH_RELAY_MCP=1 \
-  ghcr.io/hermeshai/hermesh-relay
+  hermeshai/hermesh-relay
 docker logs hermesh-relay   # shows the claim code
 ```
 
@@ -183,7 +183,7 @@ hermesh auth login relay.example.com/o_xxxxxxxx
 <details>
 <summary>Updating, a web server already on port 443, backups</summary>
 
-- **Update:** `docker pull ghcr.io/hermeshai/hermesh-relay`, then `docker rm -f hermesh-relay` and the same `docker run`.
+- **Update:** `docker pull hermeshai/hermesh-relay`, then `docker rm -f hermesh-relay` and the same `docker run`.
 - **Behind your own web server** (nginx, Caddy…) that serves HTTPS: publish port 8080 instead (`-p 127.0.0.1:8080:8080`), replace `HERMESH_RELAY_DOMAIN` with `HERMESH_RELAY_PUBLIC_URL=https://relay.example.com`, and pass that name to it, WebSockets included.
 - **Back up** the `hermesh-relay` volume: it is the server's identity and who its owner is. Without it you would set up again and pair your machines and agents again.
 
