@@ -154,7 +154,8 @@ test("the session card floats over the conversation with what a glance needs, an
   const menu = page.getByRole("menu", { name: "项目" });
   await expect(menu.getByRole("menuitem")).toHaveText(["拷贝项目路径", "在访达中打开", "在终端中打开"]);
   // Right under the project, from its left edge, inside the window.
-  const anchor = (await card.getByRole("button", { name: "demo" }).boundingBox())!;
+  await menu.evaluate((el) => Promise.all(el.getAnimations().map((x) => x.finished))); // it rises into place
+  const anchor =(await card.getByRole("button", { name: "demo" }).boundingBox())!;
   const box = (await menu.boundingBox())!;
   expect(Math.abs(box.x - anchor.x)).toBeLessThan(2);
   expect(box.y - (anchor.y + anchor.height)).toBeGreaterThanOrEqual(0);
