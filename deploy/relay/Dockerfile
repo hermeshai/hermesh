@@ -1,7 +1,7 @@
 # hermesh-relay: self-hosted, untrusted coordinator (README: Run your own server).
 #   docker run -d --name hermesh-relay --restart unless-stopped -p 80:80 -p 443:443 \
 #     -v hermesh-relay:/data -e HERMESH_RELAY_DOMAIN=relay.example.com -e HERMESH_RELAY_MCP=1 \
-#     ghcr.io/hermeshai/hermesh-relay
+#     hermeshai/hermesh-relay
 # Without HERMESH_RELAY_DOMAIN it serves plain HTTP on :8080, for a proxy
 # that serves HTTPS (then set HERMESH_RELAY_PUBLIC_URL).
 # Built on the build platform for each target (linux/amd64, linux/arm64).
