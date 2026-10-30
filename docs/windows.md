@@ -166,7 +166,7 @@ KillGroup(pgid int)            // end it gently, then for sure (also at recovery
 | | macOS | Windows |
 |---|---|---|
 | Daemon | `SMAppService` agent; `launchctl kickstart` | The package's startup task, or the app when it isn't running (one supervisor per data folder); a restart ends the supervisor, whose job ends the daemon, and starts it again |
-| Open Hermesh at login | `mainAppService` | The app's own startup task (Electron's login item API reportedly does not reach packaged apps; S1) |
+| Open Hermesh at login | `mainAppService` | The user's Run value, through Electron's login item API: the package writes the real registry, and Startup apps lists and switches it. (Reading the package's own startup task through PowerShell's WinRT left the switch waiting on a real PC.) |
 | Signer | `Hermesh Signer.app`, the app's child | A protected system component, not the app's child (§7.3); set up before the first root key (`readySigner`) |
 | Updates | Squirrel.Mac | MSIX, through the same `autoUpdater` and the same JSON feed (§6.2) |
 | First launch | Move to Applications | Nothing: the package is installed |
@@ -202,7 +202,7 @@ The app ships as an MSIX package, installed per user without an administrator.
 Why MSIX:
 
 - **Files no program of the user can change.** A package's files live where only Windows writes. For an app that guards trust that matters: no program of the user can replace hermeshd, or the signer the app installs (§7.3).
-- **Declared, not scripted:** startup tasks (the daemon at logon; the app at login, which the owner can turn off in Settings, as Login Items on a Mac); execution aliases (`hermesh.exe` and `hermeshd.exe` on PATH at a stable path, for hooks and terminals); the `hermesh:` protocol; the toast activator.
+- **Declared, not scripted:** the daemon's startup task at logon, which the owner can turn off in Settings, as Login Items on a Mac; execution aliases (`hermesh.exe` and `hermeshd.exe` on PATH at a stable path, for hooks and terminals); the `hermesh:` protocol; the toast activator.
 - **A clean uninstall.** Windows removes the files, startup tasks and aliases, and stops the package's processes. The data folder stays, as it does when a Mac app goes to the Trash.
 - **Signed for free.** A package installs only when signed, and the Microsoft Store, whose registration is free, signs what it distributes (§6.4). Should a signed download from GitHub come later, Electron's `autoUpdater` installs MSIX updates too (since Electron 41, backported to 39.5 and 40.2), from the same JSON feed as Squirrel.Mac.
 
@@ -337,7 +337,7 @@ Each answers yes before the phase that needs it, or this document changes.
 
 | Spike | Questions | Before |
 |---|---|---|
-| S1. MSIX | The daemon's startup task at logon; the app's own, read and set without Electron's login item API; aliases on PATH; the protocol; toast buttons while the app is quit; Store updates: whether they wait for the package's processes or end them, and whether the app can hold one (`StoreContext`); the Store's review of a package with startup tasks, aliases and full trust; the data folder's exclusion, seen from a program outside the package; agents breaking away from it. Fallback: Squirrel.Windows | W2 |
+| S1. MSIX | The daemon's startup task at logon; aliases on PATH; the protocol; toast buttons while the app is quit; Store updates: whether they wait for the package's processes or end them, and whether the app can hold one (`StoreContext`); the Store's review of a package with startup tasks, aliases and full trust; the data folder's exclusion, seen from a program outside the package; agents breaking away from it. Fallback: Squirrel.Windows | W2 |
 | S2. Pipes | Electron main ↔ hermeshd over a pipe: unary calls, `Watch`, cancellation; another local user refused; the name file across daemon restarts | W1 |
 | S3. Jobs | Creating a process with the job and handle lists from Go; a whole tree (Claude Code → PowerShell or bash → node → its children) ends on Stop and when hermeshd dies; inside the package; with Codex's own sandbox processes | W1 |
 | S4. Agents | Claude Code, native, with and without Git Bash, in stream-json; which shell runs hooks for Claude Code and for Codex, and a user name with a space; Claude Code's inbox on Windows; Codex's app-server and sandbox under our job; where the Codex app keeps its CLI | W1 |
@@ -391,7 +391,7 @@ All of W0 to W3 is built (2026-10-30). CI checks on `windows-latest` what it can
 | Check | How |
 |---|---|
 | The app installed from its package | Developer Mode, `Add-AppxPackage -Register <files>\AppxManifest.xml`: Start lists Hermesh, `hermesh` and `hermeshd` run from any terminal, a `hermesh:` link opens the app |
-| The daemon at logon | Sign out and in: the startup task starts hermeshd; Startup apps lists "Hermesh background service" and "Hermesh" (off until Open Hermesh at login) |
+| The daemon at logon | Sign out and in: the startup task starts hermeshd; Startup apps lists "Hermesh background service", and "Hermesh" once Open Hermesh at login is on |
 | The window | Caption buttons over the top band, the menu button, Ctrl shortcuts, the words of a PC, light and dark |
 | The notification area | The icon in the taskbar's colours, the panel above it, the right-click menu; closing the window keeps the app |
 | Joining as a machine only | Approved from the iPhone or a Mac; sessions run from there |
