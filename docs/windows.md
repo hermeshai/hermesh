@@ -407,6 +407,7 @@ Left for later, each its own change:
 - The rest of the desktop suite on Windows (its specs read the Mac's words and menus).
 - `TestSessionList` now and then misses a session of the other machine on `windows-latest` (the owner's replica, with no error logged): to look into before `windows-e2e` may fail the run.
 - `install.ps1 -Device`: a trusted device without the app.
+- Machines that update themselves (docs/machine-updates.md): a Windows machine doesn't yet (`service.Supervised` is false there); its programs are replaced while they run by renaming them aside (§6.3).
 - Add Machine in the apps offers `install.sh` only; a Windows machine's command (`install.ps1`) is in hermeshd.md.
 - Mica behind the sidebar, Windows 11's type sizes and radii.
 
