@@ -117,7 +117,7 @@ var parts = func(sid, test string) (signer.Keys, signer.Owner, error) {
 	// panel (web_windows.go): Edge de-elevates WebView2's processes, which
 	// then can't write its folder, and the user's other programs could
 	// change what they draw.
-	return tpmKeys{dir: keysDir(sid)}, newPanel(), nil
+	return tpmKeys{dir: keysDir(sid)}, newDrawnPanel(), nil
 }
 
 // keysDir holds what opens each root key of the user sid, in a folder only

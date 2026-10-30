@@ -43,8 +43,35 @@ jobs:
         run: go vet ./...
       - name: unit tests
         run: go test ./cmd/... ./internal/... ./pkg/... -count=1
+        env:
+          HERMESH_PANEL_SHOTS: ${{ runner.temp }}/panel
+      # The signer's panel as the tests drew it, to look at against its design.
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: signer-panel
+          path: ${{ runner.temp }}/panel
+          if-no-files-found: ignore
       - name: install.ps1 and the signer
         run: go test ./e2e -run '^(TestWindowsInstall|TestWindowsSigner)$' -count=1 -v
+  # Windows on Arm: the signer, whose panel draws through Windows' own APIs.
+  windows-arm:
+    runs-on: windows-11-arm
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - name: the signer
+        run: go test ./cmd/hermesh-signer -count=1 -v
+        env:
+          HERMESH_PANEL_SHOTS: ${{ runner.temp }}/panel
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: signer-panel-arm64
+          path: ${{ runner.temp }}/panel
+          if-no-files-found: ignore
   # The end-to-end suite on Windows, being ported (docs/windows.md, W1): its
   # failures do not fail the run yet.
   windows-e2e:
