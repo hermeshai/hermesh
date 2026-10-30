@@ -7,6 +7,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strconv"
 	"strings"
 	"testing"
@@ -93,6 +94,10 @@ func TestDesktop(t *testing.T) {
 		if name == "packaged" || name == "update" { // TestDesktopPackaged, TestDesktopUpdate
 			continue
 		}
+		// Windows runs its own spec; the others are ported to it one by one (docs/windows.md §11).
+		if (runtime.GOOS == "windows") != (name == "windows") {
+			continue
+		}
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
 			f := desktopWorld(t, name == "onboarding", name == "health", name == "settings")
@@ -129,8 +134,11 @@ func desktopWorld(t *testing.T, fresh, limited, wake bool) desktopFixture {
 	codex := filepath.Join(t.TempDir(), "codex")
 	os.WriteFile(codex, []byte(fmt.Sprintf("#!/bin/sh\ncase \"$1\" in --version) echo \"codex-cli 0.48.0\";; login) echo \"Not logged in\"; exit 1;; app-server) exec %q;; esac\n",
 		filepath.Join(binaries(t), "fakecodex"))), 0o755)
-	w := newOwnerMac(t, []string{"HERMESH_GEMINI_BIN=" + fake, "FAKE_ACP_STATE=" + filepath.Join(t.TempDir(), "fakeacp"), "HERMESH_CODEX_BIN=" + codex},
-		&localv1.GrantSpec{Agents: []string{"gemini"}})
+	env := []string{"HERMESH_GEMINI_BIN=" + fake, "FAKE_ACP_STATE=" + filepath.Join(t.TempDir(), "fakeacp")}
+	if runtime.GOOS != "windows" { // a shell script
+		env = append(env, "HERMESH_CODEX_BIN="+codex)
+	}
+	w := newOwnerMac(t, env, &localv1.GrantSpec{Agents: []string{"gemini"}})
 	if wake {
 		w.relay.stop()
 		w.relayArgs = append(w.relayArgs, "--mcp")

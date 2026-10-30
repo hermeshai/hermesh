@@ -74,3 +74,37 @@ jobs:
         run: make test-app
       - name: end-to-end (desktop app and signer)
         run: go test ./e2e -run 'TestDesktop|TestSigner' -count=1 -v -timeout 30m
+  # The desktop app on Windows (docs/windows.md, W2): its end-to-end spec
+  # against the real daemon, then the package, installed in Developer Mode
+  # with its aliases checked. Its failures do not fail the run yet.
+  windows-app:
+    runs-on: windows-latest
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - run: corepack enable
+      - run: pnpm install --frozen-lockfile
+      - name: end-to-end (desktop app)
+        run: go test ./e2e -run '^TestDesktop$' -count=1 -v -timeout 30m
+      - name: package
+        run: node apps/desktop/scripts/package-win.mjs
+      - name: install it and find its programs
+        shell: pwsh
+        run: |
+          reg add "HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\AppModelUnlock" /t REG_DWORD /f /v AllowDevelopmentWithoutDevLicense /d 1
+          Add-AppxPackage -Register dist\Hermesh-windows-x64\AppxManifest.xml
+          Get-AppxPackage Hermesh | Format-List Name, Version, InstallLocation
+          & "$env:LOCALAPPDATA\Microsoft\WindowsApps\hermesh.exe" version
+          if ($LASTEXITCODE -ne 0) { throw "hermesh alias" }
+          & "$env:LOCALAPPDATA\Microsoft\WindowsApps\hermeshd.exe" version
+          if ($LASTEXITCODE -ne 0) { throw "hermeshd alias" }
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Hermesh-windows-x64
+          path: dist/Hermesh-windows-x64.msix

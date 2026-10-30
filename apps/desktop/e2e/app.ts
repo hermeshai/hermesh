@@ -25,8 +25,9 @@ export const fixture: Fixture = JSON.parse(fs.readFileSync(process.env.HERMESH_E
  * Starts the built app (pnpm build) against the fixture's daemon (or the one
  * at socket), with a new profile unless given one. The app follows the
  * system's languages, which macOS lets a single run override
- * (-AppleLanguages); the tests read the app in Chinese unless they ask for
- * other languages (language.spec.ts).
+ * (-AppleLanguages; on Windows the app reads HERMESH_TEST_LANGUAGES); the
+ * tests read the app in Chinese unless they ask for other languages
+ * (language.spec.ts).
  */
 export async function launch(
   socket = fixture.socket,
@@ -37,7 +38,12 @@ export async function launch(
   const app = await electron.launch({
     args: ["-r", background, path.join(process.env.HERMESH_DESKTOP_OUT || path.join(import.meta.dirname, "..", "out"), "main", "index.js"), "-AppleLanguages", `(${languages.join(", ")})`],
     // Its own profile, so app instances of parallel runs don't meet.
-    env: { ...process.env, HERMESH_SOCKET: socket, HERMESH_USER_DATA: o.profile ?? fs.mkdtempSync(path.join(os.tmpdir(), "hmdesk-")) },
+    env: {
+      ...process.env,
+      HERMESH_SOCKET: socket,
+      ...(process.platform === "win32" ? { HERMESH_TEST_LANGUAGES: languages.join(",") } : {}),
+      HERMESH_USER_DATA: o.profile ?? fs.mkdtempSync(path.join(os.tmpdir(), "hmdesk-")),
+    },
     ...(o.systemColors ? { colorScheme: null } : {}),
   });
   const page = await app.firstWindow();
