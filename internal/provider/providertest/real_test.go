@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"image"
 	"image/png"
-	"net"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -17,6 +16,7 @@ import (
 	"time"
 
 	sessionv1 "github.com/hermeshai/hermesh/gen/go/hermesh/session/v1"
+	"github.com/hermeshai/hermesh/internal/localipc"
 	"github.com/hermeshai/hermesh/internal/provider"
 	"github.com/hermeshai/hermesh/internal/provider/acp"
 	"github.com/hermeshai/hermesh/internal/provider/claude"
@@ -518,7 +518,7 @@ func TestClaudeInboxShut(t *testing.T) {
 	if inbox == "" {
 		t.Skip("this Claude Code has no cross-session inbox (v2.1.224 or later)")
 	}
-	conn, err := net.Dial("unix", inbox)
+	conn, err := localipc.Dial(context.Background(), inbox)
 	if err != nil {
 		t.Fatalf("the session's inbox: %v", err)
 	}

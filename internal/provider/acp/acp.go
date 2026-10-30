@@ -25,6 +25,7 @@ import (
 
 	sessionv1 "github.com/hermeshai/hermesh/gen/go/hermesh/session/v1"
 	"github.com/hermeshai/hermesh/internal/provider"
+	"github.com/hermeshai/hermesh/internal/shellenv"
 )
 
 // Agent describes how to start one ACP agent.
@@ -130,13 +131,7 @@ func withPath(env []string, path string) []string {
 	if path == "" {
 		return env
 	}
-	out := make([]string, 0, len(env)+1)
-	for _, kv := range env {
-		if !strings.HasPrefix(kv, "PATH=") {
-			out = append(out, kv)
-		}
-	}
-	return append(out, "PATH="+path)
+	return append(shellenv.Without(env, "PATH"), "PATH="+path)
 }
 
 func (p *Provider) Start(ctx context.Context, spec provider.StartSpec) (provider.Session, error) {
