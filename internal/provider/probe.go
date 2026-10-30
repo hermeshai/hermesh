@@ -5,7 +5,6 @@ import (
 	"context"
 	"errors"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"regexp"
 	"strings"
@@ -49,7 +48,7 @@ func ProbeEnv(pathEnv string) []string {
 // Probe runs bin with args in env and returns what it printed; when it
 // fails, why, as a Problem and a short detail.
 func Probe(ctx context.Context, env []string, bin string, args ...string) (stdout []byte, problem Problem, detail string) {
-	cmd := exec.CommandContext(ctx, bin, args...)
+	cmd := Command(ctx, bin, args...)
 	cmd.Env = env
 	var out, errOut bytes.Buffer
 	cmd.Stdout, cmd.Stderr = &out, &errOut

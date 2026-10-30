@@ -3,12 +3,22 @@ package provider
 import (
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"regexp"
 	"strings"
+	"syscall"
+
+	"golang.org/x/sys/windows"
 
 	"github.com/hermeshai/hermesh/internal/shellenv"
 )
+
+// hideWindow keeps a console program from opening a window: hermeshdw has
+// no console for it to share.
+func hideWindow(cmd *exec.Cmd) {
+	cmd.SysProcAttr = &syscall.SysProcAttr{CreationFlags: windows.CREATE_NO_WINDOW}
+}
 
 // executable is the program p names: p itself when it ends in .exe, .com
 // or .cmd, else p.exe, else p.cmd (an npm shim, which startable follows).
