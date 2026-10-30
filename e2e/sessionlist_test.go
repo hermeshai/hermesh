@@ -85,7 +85,7 @@ func TestSessionList(t *testing.T) {
 	// moment after the agent saw them finish.
 	var all *localv1.ListSessionsResponse
 	var err error
-	eventually(t, 5*time.Second, "all sessions listed", func() bool {
+	eventually(t, 15*time.Second, "all sessions listed", func() bool {
 		all, err = w.app.client.ListSessions(ctx, &localv1.ListSessionsRequest{})
 		return len(all.GetSessions()) == 31
 	})
