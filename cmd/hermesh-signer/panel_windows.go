@@ -48,6 +48,7 @@ const (
 	errorIcon          = 0xFFFE // TD_ERROR_ICON
 	swpNoMoveNoSize    = 0x0001 | 0x0002
 	hwndTopmost        = ^uintptr(0) // (HWND)-1
+	hwndNotopmost      = ^uintptr(1) // (HWND)-2
 	sFalse             = 1
 	mbYesNoIconWarning = 0x04 | 0x30 | 0x100 | 0x40000 // MB_YESNO | MB_ICONWARNING | MB_DEFBUTTON2 | MB_TOPMOST
 	idYes              = 6
@@ -222,8 +223,11 @@ func dialogEvent(hwnd, msg, wparam, lparam, data uintptr) uintptr {
 		procSetForegroundWindow.Call(hwnd)
 	case tdnButtonClicked:
 		if wparam == approveID {
+			// Off the top while Windows Hello asks, whose window would be under it.
+			procSetWindowPos.Call(hwnd, hwndNotopmost, 0, 0, 0, 0, swpNoMoveNoSize)
 			p.approved, p.helloErr = hello(windows.HWND(hwnd), p.w.Hello)
 			if !p.approved && p.helloErr == nil {
+				procSetWindowPos.Call(hwnd, hwndTopmost, 0, 0, 0, 0, swpNoMoveNoSize)
 				return sFalse // not verified: the dialog stays, to approve again or deny
 			}
 		}
