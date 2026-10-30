@@ -116,7 +116,7 @@ function MachineDetail({ m, ask, open }: { m: Machine; ask: (a: Ask) => void; op
       sheet: device
         ? {
             kind: "confirm",
-            title: t("removeTitle", { name: device.label }),
+            title: t("removeDeviceTitle", { name: device.label }),
             message: t("account.removeDeviceMessage"),
             button: t("removeButton"),
             run: () => local.removeDevice({ keyId: device.keyId }),
@@ -124,7 +124,7 @@ function MachineDetail({ m, ask, open }: { m: Machine; ask: (a: Ask) => void; op
           }
         : {
             kind: "confirm",
-            title: t("removeTitle", { name: m.machineName }),
+            title: t("removeMachineTitle", { name: m.machineName }),
             message: t("machines.removeMessage"),
             button: t("removeButton"),
             run: () => local.removeMachine({ machineId: m.machineId }),
