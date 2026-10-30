@@ -356,7 +356,7 @@ func (w *ownerMac) joinTyped(mac localv1connect.LocalServiceClient, home *localv
 // to nobody yet, and returns its local API and socket.
 func (w *ownerMac) otherMac(name string, env []string) (localv1connect.LocalServiceClient, string) {
 	w.t.Helper()
-	sockDir, _ := os.MkdirTemp("/tmp", "hm")
+	sockDir, _ := os.MkdirTemp(shortTemp, "hm")
 	w.t.Cleanup(func() { os.RemoveAll(sockDir) })
 	sock := filepath.Join(sockDir, "o.sock")
 	p := start(w.t, "owner "+name, env, filepath.Join(w.bin, "hermeshd"), "run", "--owner", "--data-dir", filepath.Join(w.tmp, name), "--socket", sock)

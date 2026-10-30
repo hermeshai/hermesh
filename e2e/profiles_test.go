@@ -29,7 +29,7 @@ func TestAccountsOnOneDevice(t *testing.T) {
 	bin := binaries(t)
 	relayBin, daemonBin := filepath.Join(bin, "hermesh-relay"), filepath.Join(bin, "hermeshd")
 	tmp := t.TempDir()
-	sockDir, _ := os.MkdirTemp("/tmp", "hm")
+	sockDir, _ := os.MkdirTemp(shortTemp, "hm")
 	t.Cleanup(func() { os.RemoveAll(sockDir) })
 	env := []string{"HERMESH_FAKE_PROVIDERS=1"}
 	ctx := context.Background()
@@ -248,7 +248,7 @@ func TestOwnerFromBeforeProfiles(t *testing.T) {
 	bin := binaries(t)
 	relayBin, daemonBin := filepath.Join(bin, "hermesh-relay"), filepath.Join(bin, "hermeshd")
 	tmp := t.TempDir()
-	sockDir, _ := os.MkdirTemp("/tmp", "hm")
+	sockDir, _ := os.MkdirTemp(shortTemp, "hm")
 	t.Cleanup(func() { os.RemoveAll(sockDir) })
 	ctx := context.Background()
 	var logs []*proc

@@ -38,6 +38,11 @@ func executable(p string) string {
 
 func hideWindow(cmd *exec.Cmd) {}
 
+func fileExists(p string) bool {
+	st, err := os.Stat(p)
+	return err == nil && !st.IsDir()
+}
+
 // startable is what runs bin: bin itself.
 func startable(bin string, args []string) (string, []string, error) { return bin, args, nil }
 

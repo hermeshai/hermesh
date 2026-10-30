@@ -38,7 +38,7 @@ func TestUserJourney(t *testing.T) {
 	bin := binaries(t)
 	relayBin, daemonBin, cliBin := filepath.Join(bin, "hermesh-relay"), filepath.Join(bin, "hermeshd"), filepath.Join(bin, "hermesh")
 	tmp := t.TempDir()
-	sockDir, _ := os.MkdirTemp("/tmp", "hm")
+	sockDir, _ := os.MkdirTemp(shortTemp, "hm")
 	t.Cleanup(func() { os.RemoveAll(sockDir) })
 	var agentEnv []string
 	if !real {
@@ -209,7 +209,7 @@ func TestUserJourney(t *testing.T) {
 	if r := cli(grokEnv, 20*time.Second, "auth", "login", addr); !strings.Contains(r.stdout, "Already paired") {
 		t.Fatalf("re-login: %+v", r)
 	}
-	if fi, err := os.Stat(filepath.Join(grokHome, "client.key")); err != nil || fi.Mode().Perm() != 0o600 {
+	if fi, err := os.Stat(filepath.Join(grokHome, "client.key")); err != nil || runtime.GOOS != "windows" && fi.Mode().Perm() != 0o600 {
 		t.Fatalf("client key permissions: %v %v", fi, err)
 	}
 

@@ -199,7 +199,7 @@ func TestMCPRoundTrips(t *testing.T) {
 	}
 	bin := binaries(t)
 	tmp := t.TempDir()
-	sockDir, _ := os.MkdirTemp("/tmp", "hm")
+	sockDir, _ := os.MkdirTemp(shortTemp, "hm")
 	t.Cleanup(func() { os.RemoveAll(sockDir) })
 	var logs []*proc
 	t.Cleanup(func() {

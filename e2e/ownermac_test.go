@@ -69,7 +69,7 @@ func newOwnerMacAt(t *testing.T, signer func(w *ownerMac) string, oneWay time.Du
 	w := &ownerMac{t: t, bin: binaries(t), tmp: t.TempDir(), daemonArgs: daemonArgs}
 	w.ownerDebug = fmt.Sprintf("127.0.0.1:%d", freePort(t))
 	w.daemonEnv = append(slices.Clone(daemonEnv), "HERMESH_DEBUG_ADDR="+w.ownerDebug)
-	sockDir, _ := os.MkdirTemp("/tmp", "hm")
+	sockDir, _ := os.MkdirTemp(shortTemp, "hm")
 	t.Cleanup(func() { os.RemoveAll(sockDir) })
 	w.sock = filepath.Join(sockDir, "o.sock")
 	t.Cleanup(func() {

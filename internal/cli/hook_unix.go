@@ -21,3 +21,6 @@ func detach(cmd *exec.Cmd) { cmd.SysProcAttr = &syscall.SysProcAttr{Setsid: true
 
 // hookCommand is how an agent's hook names this program.
 func hookCommand(exe string) string { return strconv.Quote(exe) }
+
+// othersCanRead reports whether a file's mode lets other users read it.
+func othersCanRead(fi os.FileInfo) bool { return fi.Mode().Perm()&0o077 != 0 }
