@@ -1,0 +1,8 @@
+# The relay image needs only the Go sources (deploy/relay/Dockerfile).
+*
+!go.mod
+!go.sum
+!cmd
+!internal
+!pkg
+!gen/go

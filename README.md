@@ -160,15 +160,17 @@ More in [the technical design](docs/technical-design.md), [trusted devices](docs
 
 ## Run your own server
 
-Instead of hermesh.io, run the relay on a server with a domain name:
+Instead of hermesh.io: a Linux server with Docker, a domain name that points at it (relay.example.com below), and ports 80 and 443 open.
 
 ```bash
-docker run -d --name hermesh-relay -p 443:443 -p 80:80 -v hermesh-relay:/data \
-  ghcr.io/hermeshai/hermesh-relay:latest serve --data-dir /data --domain relay.example.com --mcp
+docker run -d --name hermesh-relay --restart unless-stopped \
+  -p 80:80 -p 443:443 -v hermesh-relay:/data \
+  -e HERMESH_RELAY_DOMAIN=relay.example.com -e HERMESH_RELAY_MCP=1 \
+  ghcr.io/hermeshai/hermesh-relay
 docker logs hermesh-relay   # shows the claim code
 ```
 
-In the Mac or iPhone app, choose **Use Your Own Server…** and enter the server's address and the claim code. Machines and agents then use the connection address the app gives you:
+It gets its HTTPS certificate from Let's Encrypt by itself. In the Mac or iPhone app, choose **Use Your Own Server…** and enter the server's address and the claim code. Machines and agents then use the connection address the app gives you:
 
 ```bash
 curl -fsSL https://github.com/hermeshai/hermesh/releases/latest/download/install.sh \
@@ -176,7 +178,16 @@ curl -fsSL https://github.com/hermeshai/hermesh/releases/latest/download/install
 hermesh auth login relay.example.com/o_xxxxxxxx
 ```
 
-`--mcp` also serves MCP, for Claude, ChatGPT and other online assistants, at an address with a key in it, so only you can connect apps: copy it from **Settings › Account & Devices › Advanced** on the Mac or **Account and Devices** on the iPhone, or print it on the server with `docker exec hermesh-relay hermesh-relay mcp-url`. Leave `--mcp` out if your agents all use the CLI. Don't run the relay as the same user as a machine on that server.
+`HERMESH_RELAY_MCP=1` also serves MCP, for Claude, ChatGPT and other online assistants, at an address with a key in it, so only you can connect apps: copy it from **Settings › Account & Devices › Advanced** on the Mac or **Account and Devices** on the iPhone, or print it with `docker exec hermesh-relay hermesh-relay mcp-url`. Leave it out if your agents all use the CLI.
+
+<details>
+<summary>Updating, a web server already on port 443, backups</summary>
+
+- **Update:** `docker pull ghcr.io/hermeshai/hermesh-relay`, then `docker rm -f hermesh-relay` and the same `docker run`.
+- **Behind your own web server** (nginx, Caddy…) that serves HTTPS: publish port 8080 instead (`-p 127.0.0.1:8080:8080`), replace `HERMESH_RELAY_DOMAIN` with `HERMESH_RELAY_PUBLIC_URL=https://relay.example.com`, and pass that name to it, WebSockets included.
+- **Back up** the `hermesh-relay` volume: it is the server's identity and who its owner is. Without it you would set up again and pair your machines and agents again.
+
+</details>
 
 ## Questions
 

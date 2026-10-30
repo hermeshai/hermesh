@@ -1,12 +1,17 @@
-# hermesh-relay: self-hosted, untrusted coordinator.
-#   docker run -d --name hermesh-relay -p 443:443 -p 80:80 -v hermesh-relay:/data \
-#     ghcr.io/hermeshai/hermesh-relay:latest serve --data-dir /data --domain relay.example.com
-FROM golang:1.27 AS build
+# hermesh-relay: self-hosted, untrusted coordinator (README: Run your own server).
+#   docker run -d --name hermesh-relay --restart unless-stopped -p 80:80 -p 443:443 \
+#     -v hermesh-relay:/data -e HERMESH_RELAY_DOMAIN=relay.example.com -e HERMESH_RELAY_MCP=1 \
+#     ghcr.io/hermeshai/hermesh-relay
+# Without HERMESH_RELAY_DOMAIN it serves plain HTTP on :8080, for a proxy
+# that serves HTTPS (then set HERMESH_RELAY_PUBLIC_URL).
+# Built on the build platform for each target (linux/amd64, linux/arm64).
+FROM --platform=$BUILDPLATFORM golang:1.27 AS build
+ARG TARGETOS TARGETARCH
 WORKDIR /src
 COPY go.mod go.sum ./
 RUN go mod download
 COPY . .
-RUN CGO_ENABLED=0 go build -trimpath -ldflags "-s -w" -o /out/hermesh-relay ./cmd/hermesh-relay && mkdir /out/data
+RUN CGO_ENABLED=0 GOOS=$TARGETOS GOARCH=$TARGETARCH go build -trimpath -ldflags "-s -w" -o /out/hermesh-relay ./cmd/hermesh-relay && mkdir /out/data
 
 FROM gcr.io/distroless/static-debian12:nonroot
 COPY --from=build /out/hermesh-relay /usr/local/bin/hermesh-relay
@@ -17,4 +22,4 @@ ENV HERMESH_RELAY_DATA=/data
 VOLUME /data
 EXPOSE 80 443 8080
 ENTRYPOINT ["/usr/local/bin/hermesh-relay"]
-CMD ["serve", "--data-dir", "/data", "--listen", ":8080"]
+CMD ["serve"]

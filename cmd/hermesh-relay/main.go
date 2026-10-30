@@ -12,6 +12,7 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"syscall"
 	"time"
@@ -124,12 +125,12 @@ func main() {
 	}
 	serve.Flags().StringVar(&dataDir, "data-dir", envOr("HERMESH_RELAY_DATA", "./relay-data"), "data directory")
 	serve.Flags().StringVar(&listen, "listen", ":8080", "listen address (plain HTTP or with --tls-cert)")
-	serve.Flags().StringVar(&domain, "domain", "", "serve HTTPS on :443 with an automatic Let's Encrypt certificate for this domain")
+	serve.Flags().StringVar(&domain, "domain", os.Getenv("HERMESH_RELAY_DOMAIN"), "serve HTTPS on :443 with an automatic Let's Encrypt certificate for this domain (or HERMESH_RELAY_DOMAIN)")
 	serve.Flags().StringVar(&certFile, "tls-cert", "", "TLS certificate file")
 	serve.Flags().StringVar(&keyFile, "tls-key", "", "TLS key file")
 	serve.Flags().StringVar(&debugAddr, "debug-addr", "", "serve /metrics and /debug/pprof on this loopback address")
-	serve.Flags().BoolVar(&withMCP, "mcp", false, "also serve MCP at <public URL>/mcp for remote agent products (Claude, ChatGPT, Codex, ...); this relay then holds the keys of the MCP connections you approve")
-	serve.Flags().StringVar(&publicURL, "public-url", "", "the URL people reach this relay at (default: from --domain, else the listen address)")
+	serve.Flags().BoolVar(&withMCP, "mcp", envBool("HERMESH_RELAY_MCP"), "also serve MCP at <public URL>/mcp/<key> for remote agent products (Claude, ChatGPT, Codex, ...); this relay then holds the keys of the MCP connections you approve (or HERMESH_RELAY_MCP=1)")
+	serve.Flags().StringVar(&publicURL, "public-url", os.Getenv("HERMESH_RELAY_PUBLIC_URL"), "the URL people reach this relay at, behind a proxy that serves HTTPS (default: from --domain, else the listen address; or HERMESH_RELAY_PUBLIC_URL)")
 	serve.Flags().StringVar(&apnsKey, "apns-key", os.Getenv("HERMESH_APNS_KEY"), "an APNs auth key (.p8) to notify iPhones with; the key must belong to the team that signs the Hermesh iPhone app")
 	serve.Flags().StringVar(&apnsKeyID, "apns-key-id", os.Getenv("HERMESH_APNS_KEY_ID"), "the APNs key's id")
 	serve.Flags().StringVar(&apnsTeam, "apns-team-id", os.Getenv("HERMESH_APNS_TEAM_ID"), "the Apple developer team id the APNs key belongs to")
@@ -270,6 +271,13 @@ func firstNonEmpty(ss ...string) string {
 		}
 	}
 	return ""
+}
+
+// envBool: an environment variable set to 1 or true, as a flag's default
+// (a container is configured with -e).
+func envBool(k string) bool {
+	v, _ := strconv.ParseBool(os.Getenv(k))
+	return v
 }
 
 func envOr(k, d string) string {
