@@ -262,6 +262,9 @@ message GetStatusResponse {
   // This device erased everything (EraseEverything, or an erase order from
   // another): what it did, until another setup.
   Erased erased = 17;
+  // A self-hosted relay's MCP address, with its key, to paste into agent
+  // products ("" when it serves none, and on the official service).
+  string mcp_url = 18;
 }
 
 message ListProfilesRequest {}

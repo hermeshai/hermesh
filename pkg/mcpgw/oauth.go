@@ -55,6 +55,15 @@ func (g *Gateway) sameResource(v string) bool {
 		strings.TrimSuffix(u.Path, "/") == strings.TrimSuffix(g.resource.Path, "/") && u.RawQuery == "" && u.Fragment == ""
 }
 
+// resourceRequired is the error for a wrong resource, naming ours unless
+// its key must stay unknown.
+func (g *Gateway) resourceRequired() string {
+	if g.cfg.KeyedResource {
+		return "resource must be this server's MCP address, as Hermesh shows it"
+	}
+	return "resource must be " + g.cfg.ResourceURL
+}
+
 // handleAuthorize starts an authorization: it checks the request, records
 // it, and sends the browser to the consent page (through sign-in).
 func (g *Gateway) handleAuthorize(w http.ResponseWriter, r *http.Request) {
@@ -94,8 +103,8 @@ func (g *Gateway) handleAuthorize(w http.ResponseWriter, r *http.Request) {
 	case len(q.Get("code_challenge")) < 43 || len(q.Get("code_challenge")) > 128:
 		fail("invalid_request", "code_challenge must be 43 to 128 characters")
 		return
-	case q.Get("resource") != "" && !g.sameResource(q.Get("resource")):
-		fail("invalid_target", "resource must be "+g.cfg.ResourceURL)
+	case (q.Get("resource") != "" || g.cfg.KeyedResource) && !g.sameResource(q.Get("resource")):
+		fail("invalid_target", g.resourceRequired())
 		return
 	}
 	id := randomToken(16)
@@ -182,7 +191,7 @@ func (g *Gateway) exchangeCode(w http.ResponseWriter, r *http.Request) {
 		oauthError(w, http.StatusBadRequest, "invalid_grant", "redirect_uri does not match the authorization request")
 		return
 	case f.Get("resource") != "" && !g.sameResource(f.Get("resource")):
-		oauthError(w, http.StatusBadRequest, "invalid_target", "resource must be "+g.cfg.ResourceURL)
+		oauthError(w, http.StatusBadRequest, "invalid_target", g.resourceRequired())
 		return
 	case !pkceMatches(f.Get("code_verifier"), c.CodeChallenge):
 		oauthError(w, http.StatusBadRequest, "invalid_grant", "code_verifier does not match the code_challenge")
@@ -233,7 +242,7 @@ func (g *Gateway) refresh(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if f.Get("resource") != "" && !g.sameResource(f.Get("resource")) {
-		oauthError(w, http.StatusBadRequest, "invalid_target", "resource must be "+g.cfg.ResourceURL)
+		oauthError(w, http.StatusBadRequest, "invalid_target", g.resourceRequired())
 		return
 	}
 	conn, err := g.db.GetConnection(ctx, t.ConnectionID)

@@ -74,6 +74,7 @@ type Owner struct {
 	dialing    *relayDial   // the dial to the relay under way, if any
 	kept       *peer.Client // client, kept over a pause: not known to work yet
 	relayInfo  *relayv1.GetInfoResponse
+	mcpURL     string       // the relay's own MCP address, with its key (GetMCP)
 	join       *pendingJoin // this device asking to join an owner
 	// byCode: machine and device requests the person looked up by their
 	// code here.
@@ -376,6 +377,7 @@ func (o *Owner) relay(ctx context.Context) (*peer.Client, error) {
 			return c, nil
 		}
 		go o.fetchRelayInfo(relayURL)
+		go o.fetchMCP()
 		go o.refreshCards()
 		go func() { // admitted: not removed (with admission pipelined, only once the relay said so)
 			actx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
@@ -478,6 +480,24 @@ func (o *Owner) fetchRelayInfo(relayURL string) {
 	o.mu.Unlock()
 }
 
+// fetchMCP learns the relay's MCP address, which it tells only the owner's
+// devices (for Status).
+func (o *Owner) fetchMCP() {
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	ctl, _, err := o.control(ctx)
+	if err != nil {
+		return
+	}
+	res, err := ctl.GetMCP(ctx, &relayv1.GetMCPRequest{})
+	if err != nil { // a relay older than GetMCP
+		return
+	}
+	o.mu.Lock()
+	o.mcpURL = res.Url
+	o.mu.Unlock()
+}
+
 func (o *Owner) control(ctx context.Context) (relayv1connect.OwnerControlServiceClient, *peer.Client, error) {
 	c, err := o.relay(ctx)
 	if err != nil {
@@ -541,6 +561,9 @@ func (o *Owner) ownerStatus() *localv1.GetStatusResponse {
 	}
 	if o.relayInfo != nil {
 		st.Hosted, st.ConsoleUrl = o.relayInfo.Hosted, o.relayInfo.ConsoleUrl
+	}
+	if o.ownerID != "" {
+		st.McpUrl = o.mcpURL
 	}
 	if o.rootPub != nil && o.ownerID != "" {
 		st.DeviceKeyId = identity.KeyID(o.rootPub)

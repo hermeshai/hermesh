@@ -59,6 +59,10 @@ type Config struct {
 	// ResourceURL is the MCP endpoint people paste into agent products
 	// (e.g. https://mcp.hermesh.io/mcp).
 	ResourceURL string
+	// KeyedResource: ResourceURL's path holds a key only the owner knows
+	// (a self-hosted relay, where anyone may connect): nothing served to
+	// others names it, and an authorization must name it.
+	KeyedResource bool
 	// Relay is the relay this server runs: pairing, grants, revocations,
 	// presence and admission.
 	Relay *relay.Server
@@ -218,7 +222,9 @@ func (g *Gateway) Mount(mux *http.ServeMux) {
 	mux.HandleFunc("GET /oauth/consent/status", g.handleConsentStatus)
 	mux.HandleFunc("GET /oauth/consent/continue", g.handleConsentContinue)
 	prm := "/.well-known/oauth-protected-resource"
-	mux.HandleFunc("GET "+prm, g.handlePRM)
+	if !g.cfg.KeyedResource {
+		mux.HandleFunc("GET "+prm, g.handlePRM)
+	}
 	mux.HandleFunc("GET "+prm+g.resource.Path, g.handlePRM)
 	mux.Handle(g.resource.Path, g.mcpHandler())
 }

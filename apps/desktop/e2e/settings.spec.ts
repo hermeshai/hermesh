@@ -403,6 +403,10 @@ test("settings 账号与设备 shows the identity, the trusted devices and, fold
   await panel.getByRole("button", { name: "拷贝身份 ID" }).click();
   await expect(settings.getByRole("status")).toContainText("已拷贝");
   expect(await app.evaluate(({ clipboard }) => clipboard.readText())).toBe(status.ownerId);
+  // This server's MCP address, with its key in it.
+  expect(status.mcpUrl).toMatch(/\/mcp\/[0-9a-z]{26}$/);
+  await panel.getByRole("button", { name: "拷贝MCP 地址" }).click();
+  await expect.poll(() => app.evaluate(({ clipboard }) => clipboard.readText())).toBe(status.mcpUrl);
   await snap(settings, "settings-account-advanced");
 
   // Still a trusted device: signing out only explains how.

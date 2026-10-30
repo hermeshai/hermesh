@@ -116,6 +116,9 @@ const (
 	// OwnerControlServiceGetAccountProcedure is the fully-qualified name of the OwnerControlService's
 	// GetAccount RPC.
 	OwnerControlServiceGetAccountProcedure = "/hermesh.relay.v1.OwnerControlService/GetAccount"
+	// OwnerControlServiceGetMCPProcedure is the fully-qualified name of the OwnerControlService's
+	// GetMCP RPC.
+	OwnerControlServiceGetMCPProcedure = "/hermesh.relay.v1.OwnerControlService/GetMCP"
 	// OwnerControlServiceRegisterPushProcedure is the fully-qualified name of the OwnerControlService's
 	// RegisterPush RPC.
 	OwnerControlServiceRegisterPushProcedure = "/hermesh.relay.v1.OwnerControlService/RegisterPush"
@@ -697,6 +700,9 @@ type OwnerControlServiceClient interface {
 	// center's account's email ("" for a self-hosted relay). Erasing
 	// everything has the owner type it to confirm.
 	GetAccount(context.Context, *v1.GetAccountRequest) (*v1.GetAccountResponse, error)
+	// The address of this relay's MCP gateway, with the key in its path:
+	// only the owner's devices learn it (docs/mcp-gateway.md §13).
+	GetMCP(context.Context, *v1.GetMCPRequest) (*v1.GetMCPResponse, error)
 	// This device's push registration, signed by its device key: replaces
 	// its earlier one. An empty token stops its notices.
 	RegisterPush(context.Context, *v1.RegisterPushRequest) (*v1.RegisterPushResponse, error)
@@ -805,6 +811,12 @@ func NewOwnerControlServiceClient(httpClient connect.HTTPClient, baseURL string,
 			connect.WithSchema(ownerControlServiceMethods.ByName("GetAccount")),
 			connect.WithClientOptions(opts...),
 		),
+		getMCP: connect.NewClient[v1.GetMCPRequest, v1.GetMCPResponse](
+			httpClient,
+			baseURL+OwnerControlServiceGetMCPProcedure,
+			connect.WithSchema(ownerControlServiceMethods.ByName("GetMCP")),
+			connect.WithClientOptions(opts...),
+		),
 		registerPush: connect.NewClient[v1.RegisterPushRequest, v1.RegisterPushResponse](
 			httpClient,
 			baseURL+OwnerControlServiceRegisterPushProcedure,
@@ -865,6 +877,7 @@ type ownerControlServiceClient struct {
 	publishRootChain    *connect.Client[v1.PublishRootChainRequest, v1.PublishRootChainResponse]
 	eraseOwner          *connect.Client[v1.EraseOwnerRequest, v1.EraseOwnerResponse]
 	getAccount          *connect.Client[v1.GetAccountRequest, v1.GetAccountResponse]
+	getMCP              *connect.Client[v1.GetMCPRequest, v1.GetMCPResponse]
 	registerPush        *connect.Client[v1.RegisterPushRequest, v1.RegisterPushResponse]
 	publishCards        *connect.Client[v1.PublishCardsRequest, v1.PublishCardsResponse]
 	listWakes           *connect.Client[v1.ListWakesRequest, v1.ListWakesResponse]
@@ -987,6 +1000,15 @@ func (c *ownerControlServiceClient) GetAccount(ctx context.Context, req *v1.GetA
 	return nil, err
 }
 
+// GetMCP calls hermesh.relay.v1.OwnerControlService.GetMCP.
+func (c *ownerControlServiceClient) GetMCP(ctx context.Context, req *v1.GetMCPRequest) (*v1.GetMCPResponse, error) {
+	response, err := c.getMCP.CallUnary(ctx, connect.NewRequest(req))
+	if response != nil {
+		return response.Msg, err
+	}
+	return nil, err
+}
+
 // RegisterPush calls hermesh.relay.v1.OwnerControlService.RegisterPush.
 func (c *ownerControlServiceClient) RegisterPush(ctx context.Context, req *v1.RegisterPushRequest) (*v1.RegisterPushResponse, error) {
 	response, err := c.registerPush.CallUnary(ctx, connect.NewRequest(req))
@@ -1084,6 +1106,9 @@ type OwnerControlServiceHandler interface {
 	// center's account's email ("" for a self-hosted relay). Erasing
 	// everything has the owner type it to confirm.
 	GetAccount(context.Context, *v1.GetAccountRequest) (*v1.GetAccountResponse, error)
+	// The address of this relay's MCP gateway, with the key in its path:
+	// only the owner's devices learn it (docs/mcp-gateway.md §13).
+	GetMCP(context.Context, *v1.GetMCPRequest) (*v1.GetMCPResponse, error)
 	// This device's push registration, signed by its device key: replaces
 	// its earlier one. An empty token stops its notices.
 	RegisterPush(context.Context, *v1.RegisterPushRequest) (*v1.RegisterPushResponse, error)
@@ -1188,6 +1213,12 @@ func NewOwnerControlServiceHandler(svc OwnerControlServiceHandler, opts ...conne
 		connect.WithSchema(ownerControlServiceMethods.ByName("GetAccount")),
 		connect.WithHandlerOptions(opts...),
 	)
+	ownerControlServiceGetMCPHandler := connect.NewUnaryHandlerSimple(
+		OwnerControlServiceGetMCPProcedure,
+		svc.GetMCP,
+		connect.WithSchema(ownerControlServiceMethods.ByName("GetMCP")),
+		connect.WithHandlerOptions(opts...),
+	)
 	ownerControlServiceRegisterPushHandler := connect.NewUnaryHandlerSimple(
 		OwnerControlServiceRegisterPushProcedure,
 		svc.RegisterPush,
@@ -1258,6 +1289,8 @@ func NewOwnerControlServiceHandler(svc OwnerControlServiceHandler, opts ...conne
 			ownerControlServiceEraseOwnerHandler.ServeHTTP(w, r)
 		case OwnerControlServiceGetAccountProcedure:
 			ownerControlServiceGetAccountHandler.ServeHTTP(w, r)
+		case OwnerControlServiceGetMCPProcedure:
+			ownerControlServiceGetMCPHandler.ServeHTTP(w, r)
 		case OwnerControlServiceRegisterPushProcedure:
 			ownerControlServiceRegisterPushHandler.ServeHTTP(w, r)
 		case OwnerControlServicePublishCardsProcedure:
@@ -1331,6 +1364,10 @@ func (UnimplementedOwnerControlServiceHandler) EraseOwner(context.Context, *v1.E
 
 func (UnimplementedOwnerControlServiceHandler) GetAccount(context.Context, *v1.GetAccountRequest) (*v1.GetAccountResponse, error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("hermesh.relay.v1.OwnerControlService.GetAccount is not implemented"))
+}
+
+func (UnimplementedOwnerControlServiceHandler) GetMCP(context.Context, *v1.GetMCPRequest) (*v1.GetMCPResponse, error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("hermesh.relay.v1.OwnerControlService.GetMCP is not implemented"))
 }
 
 func (UnimplementedOwnerControlServiceHandler) RegisterPush(context.Context, *v1.RegisterPushRequest) (*v1.RegisterPushResponse, error) {

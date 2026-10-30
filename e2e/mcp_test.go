@@ -70,7 +70,12 @@ func TestMCPGateway(t *testing.T) {
 	eventually(t, 20*time.Second, "relay up", func() bool { return strings.Contains(relay.output(), "relay listening") })
 
 	// --- Connect before anything is set up -------------------------------
-	app := newOAuthApp(t, base+"/mcp", "Hermesh test")
+	// The address, with its key, from the server itself: no app has it yet.
+	address := strings.TrimSpace(run(t, nil, 10*time.Second, filepath.Join(bin, "hermesh-relay"), "mcp-url", "--data-dir", relayData).stdout)
+	if !strings.HasPrefix(address, base+"/mcp/") || len(address) < len(base+"/mcp/")+26 {
+		t.Fatalf("mcp-url: %q", address)
+	}
+	app := newOAuthApp(t, address, "Hermesh test")
 	page := app.authorize()
 	if !strings.Contains(page, "Connect Hermesh test to Hermesh") || !strings.Contains(page, "isn&#39;t set up yet") {
 		t.Fatalf("consent page:\n%s", page)
@@ -135,6 +140,10 @@ func TestMCPGateway(t *testing.T) {
 	})
 	if _, err := mac.client.AddProject(ctx, &localv1.AddProjectRequest{MachineId: local.MachineId, ProjectId: "demo", Path: repo}); err != nil {
 		t.Fatal(err)
+	}
+	// The Mac shows the same address, to paste into the next app.
+	if got := mcpAddress(t, mac); got != address {
+		t.Fatalf("the address on the Mac %q, the server's %q", got, address)
 	}
 
 	// The approval request reaches the Mac by itself, naming its custodian.
@@ -240,7 +249,7 @@ func TestMCPGateway(t *testing.T) {
 		t.Fatalf("session_get with its machine offline: %s", doc.raw)
 	}
 	// An app connected now waits for the Mac, and says so.
-	app3 := newOAuthApp(t, base+"/mcp", "Third app")
+	app3 := newOAuthApp(t, address, "Third app")
 	page3 := app3.connect(app3.authorize())
 	if !strings.Contains(page3, "One more step") || !strings.Contains(page3, "the next time it is open") {
 		t.Fatalf("connecting while the Mac is offline:\n%s", page3)
@@ -313,7 +322,7 @@ func TestMCPGateway(t *testing.T) {
 	}
 
 	// --- A second app, connected while the Mac is online ------------------
-	app2 := newOAuthApp(t, base+"/mcp", "Second app")
+	app2 := newOAuthApp(t, address, "Second app")
 	page2 := app2.connect(app2.authorize())
 	if !strings.Contains(page2, "Approve on your Mac") {
 		t.Fatalf("with the Mac online the page asks to approve there:\n%s", page2)
@@ -391,12 +400,13 @@ func TestMCPGateway(t *testing.T) {
 }
 
 // cliToolNames are the CLI commands the gateway serves as tools.
-// TestMCPStrangersCannotKeepAppsOut: anyone who can reach a self-hosted
-// relay can click Connect, approving nothing. Ten such connections, from
-// one address and ten made-up apps, don't keep the owner's own app out: it
-// connects, its approval request reaches the Mac, and once approved it
-// works.
-func TestMCPStrangersCannotKeepAppsOut(t *testing.T) {
+// TestMCPStrangers: a self-hosted relay's MCP address has a key in it.
+// Without it a stranger finds nothing to connect to: not the address, not
+// a way to the consent page. With it (the address got out), ten
+// connections from one address and ten made-up apps, approving nothing,
+// don't keep the owner's own app out: it connects, its approval request
+// reaches the Mac, and once approved it works.
+func TestMCPStrangers(t *testing.T) {
 	if testing.Short() {
 		t.Skip("e2e")
 	}
@@ -423,14 +433,40 @@ func TestMCPStrangersCannotKeepAppsOut(t *testing.T) {
 		t.Fatalf("setup: %v", err)
 	}
 
+	// Without the key.
+	res, err := http.Post(base+"/mcp", "application/json", strings.NewReader(`{"jsonrpc":"2.0","id":1,"method":"tools/list"}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	body, _ := io.ReadAll(res.Body)
+	res.Body.Close()
+	if res.StatusCode != 404 || !strings.Contains(string(body), "hermesh-relay mcp-url") {
+		t.Fatalf("the address without its key: %d %s", res.StatusCode, body)
+	}
+	if res, err := http.Get(base + "/.well-known/oauth-protected-resource"); err != nil || res.StatusCode != 404 {
+		t.Fatalf("resource metadata without the key: %v %v", res, err)
+	}
+	address := mcpAddress(t, mac)
+	guess := newOAuthAppVia(t, address, "Guess", fmt.Sprintf("http://[::1]:%d/oauth/register", port))
+	q := url.Values{"response_type": {"code"}, "client_id": {guess.clientID}, "redirect_uri": {guess.redirect}, "state": {"s"},
+		"code_challenge": {strings.Repeat("a", 43)}, "code_challenge_method": {"S256"}, "resource": {base + "/mcp"}}
+	if res, err = guess.hc.Get(guess.authorizeEP + "?" + q.Encode()); err != nil {
+		t.Fatal(err)
+	}
+	res.Body.Close()
+	if loc, _ := url.Parse(res.Header.Get("Location")); loc == nil || loc.Query().Get("error") != "invalid_target" || strings.Contains(loc.String(), address) {
+		t.Fatalf("an authorization without the key: %d %s", res.StatusCode, res.Header.Get("Location"))
+	}
+
+	// With it.
 	for i := range 10 {
-		a := newOAuthApp(t, base+"/mcp", fmt.Sprintf("Claude %d", i))
+		a := newOAuthApp(t, address, fmt.Sprintf("Claude %d", i))
 		if page := a.connect(a.authorize()); !strings.Contains(page, "Approve") {
 			t.Fatalf("stranger %d:\n%s", i, page)
 		}
 	}
 
-	app := newOAuthAppVia(t, base+"/mcp", "Codex", fmt.Sprintf("http://[::1]:%d/oauth/register", port))
+	app := newOAuthAppVia(t, address, "Codex", fmt.Sprintf("http://[::1]:%d/oauth/register", port))
 	page := app.connect(app.authorize())
 	if strings.Contains(page, "as many apps as Hermesh allows") {
 		t.Fatalf("the owner's own app was kept out:\n%s", page)
@@ -454,6 +490,19 @@ func TestMCPStrangersCannotKeepAppsOut(t *testing.T) {
 		t.Fatal(err)
 	}
 	eventually(t, 30*time.Second, "the app working once approved", func() bool { return statusOf(t, session).State == "active" })
+}
+
+// mcpAddress is the relay's MCP address as the owner's apps show it,
+// once the owner's hermeshd has asked the relay for it.
+func mcpAddress(t *testing.T, app *testApp) string {
+	t.Helper()
+	var u string
+	eventually(t, 30*time.Second, "the MCP address in the owner's status", func() bool {
+		st, err := app.client.GetStatus(context.Background(), &localv1.GetStatusRequest{})
+		u = st.GetMcpUrl()
+		return err == nil && u != ""
+	})
+	return u
 }
 
 func cliToolNames() []string {

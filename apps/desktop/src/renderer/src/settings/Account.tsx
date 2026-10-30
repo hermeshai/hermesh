@@ -101,6 +101,8 @@ export function Account({ ask }: { ask: (a: Ask) => void }) {
           {addr && !s?.hosted && <CopyRow k={t("account.connectAddress")} text={addr} />}
           {addr && <CopyRow k={t("account.addMachine")} text={`hermeshd pair ${addr}`} />}
           {addr && !s?.hosted && <CopyRow k={t("account.agentLogin")} text={`hermesh auth login ${addr}`} />}
+          {/* An own server's MCP address carries its key; the official one is on hermesh.io. */}
+          {s?.mcpUrl && !s?.hosted && <CopyRow k={t("account.mcpUrl")} text={s.mcpUrl} />}
           {s?.consoleUrl && (
             <div className="frow">
               <span className="fl">{t("account.console")}</span>

@@ -275,6 +275,35 @@ func TestAuthorizeRefusesBadRequests(t *testing.T) {
 	}
 }
 
+// With the key in its address (a self-hosted relay), nothing served to
+// whoever doesn't know it names it, and only an authorization naming it
+// gets to the consent page.
+func TestKeyedResource(t *testing.T) {
+	f := newFixture(t, func(c *Config) { c.ResourceURL, c.KeyedResource = c.ResourceURL+"/k3y", true })
+	redirect := "http://127.0.0.1/callback"
+	client := f.register(redirect)
+	b := f.browser()
+	if res, body := b.get(f.srv.URL + "/.well-known/oauth-protected-resource"); res.StatusCode != 404 || strings.Contains(body, "k3y") {
+		t.Fatalf("metadata without the key: %d %s", res.StatusCode, body)
+	}
+	if res, body := b.get(f.srv.URL + "/.well-known/oauth-authorization-server"); res.StatusCode != 200 || strings.Contains(body, "k3y") {
+		t.Fatalf("authorization server metadata: %d %s", res.StatusCode, body)
+	}
+	if res, body := b.get(f.srv.URL + "/.well-known/oauth-protected-resource/mcp/k3y"); res.StatusCode != 200 || !strings.Contains(body, f.srv.URL+"/mcp/k3y") {
+		t.Fatalf("metadata with the key: %d %s", res.StatusCode, body)
+	}
+	for name, resource := range map[string][]string{"none": nil, "without the key": {f.srv.URL + "/mcp"}, "a wrong key": {f.srv.URL + "/mcp/k3z"}} {
+		res, _ := b.get(f.authorizeURL(client, redirect, url.Values{"resource": resource}))
+		loc, _ := url.Parse(res.Header.Get("Location"))
+		if res.StatusCode != 302 || loc.Query().Get("error") != "invalid_target" || strings.Contains(loc.String(), "k3y") {
+			t.Errorf("resource %s: %d %v", name, res.StatusCode, loc)
+		}
+	}
+	if res, body := b.get(f.authorizeURL(client, redirect, url.Values{"resource": {f.srv.URL + "/mcp/k3y"}})); res.StatusCode != 200 || !strings.Contains(body, `name="csrf"`) {
+		t.Fatalf("with the key: %d %s", res.StatusCode, body)
+	}
+}
+
 func TestTokensRotateAndReplaysAreRevoked(t *testing.T) {
 	f := newFixture(t, nil)
 	redirect := "http://127.0.0.1/callback"

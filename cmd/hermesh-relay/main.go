@@ -20,6 +20,7 @@ import (
 	"golang.org/x/crypto/acme/autocert"
 
 	"github.com/hermeshai/hermesh/internal/sqlitedb"
+	"github.com/hermeshai/hermesh/pkg/identity"
 	"github.com/hermeshai/hermesh/pkg/mcpgw"
 	"github.com/hermeshai/hermesh/pkg/metrics"
 	"github.com/hermeshai/hermesh/pkg/relay"
@@ -42,6 +43,7 @@ func main() {
 				go func() { log.Warn("debug server stopped", "err", metrics.Serve(debugAddr)) }()
 			}
 			var pusher relay.Pusher
+			var err error
 			switch {
 			case apnsKey != "":
 				a, err := relay.NewAPNs(apnsKey, apnsKeyID, apnsTeam, apnsTopic)
@@ -52,7 +54,14 @@ func main() {
 			case pushSpool != "":
 				pusher = relay.Spool{Dir: pushSpool}
 			}
-			srv, err := relay.New(relay.Config{DataDir: dataDir, Logger: log, Pusher: pusher, PairingTTL: pairingTTL})
+			var mcpURL string
+			if withMCP {
+				public := strings.TrimSuffix(firstNonEmpty(publicURL, defaultPublicURL(domain, certFile, listen)), "/")
+				if mcpURL, err = mcpAddress(dataDir, public, false); err != nil {
+					return err
+				}
+			}
+			srv, err := relay.New(relay.Config{DataDir: dataDir, Logger: log, Pusher: pusher, PairingTTL: pairingTTL, MCPURL: mcpURL})
 			if err != nil {
 				return err
 			}
@@ -66,7 +75,7 @@ func main() {
 			defer stop()
 			handler := srv.Handler()
 			if withMCP {
-				gw, err := startMCP(srv, log, dataDir, firstNonEmpty(publicURL, defaultPublicURL(domain, certFile, listen)), setupURL)
+				gw, err := startMCP(srv, log, dataDir, mcpURL, setupURL)
 				if err != nil {
 					return err
 				}
@@ -74,6 +83,12 @@ func main() {
 				mux := http.NewServeMux()
 				srv.Mount(mux)
 				gw.Mount(mux)
+				// An address without the key, or with a wrong one.
+				noKey := func(w http.ResponseWriter, _ *http.Request) {
+					http.Error(w, "This server's MCP address has a key in it. Copy it in Hermesh: on the Mac in Settings › Account & Devices › Advanced, on the iPhone in Account and Devices. Or run hermesh-relay mcp-url on the server.", http.StatusNotFound)
+				}
+				mux.HandleFunc("/mcp", noKey)
+				mux.HandleFunc("/mcp/", noKey)
 				handler = mux
 			}
 			hs := &http.Server{Handler: handler, ReadHeaderTimeout: 15 * time.Second}
@@ -147,15 +162,66 @@ func main() {
 		},
 	}
 	claim.Flags().StringVar(&dataDir, "data-dir", envOr("HERMESH_RELAY_DATA", "./relay-data"), "data directory")
-	root.AddCommand(serve, claim)
+
+	var renew bool
+	mcpCmd := &cobra.Command{
+		Use:   "mcp-url",
+		Short: "Print the MCP address of a relay serving MCP (serve --mcp), with its key",
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			b, err := os.ReadFile(filepath.Join(dataDir, "mcp-url"))
+			if errors.Is(err, os.ErrNotExist) {
+				return errors.New("this relay serves no MCP yet: start it with serve --mcp")
+			} else if err != nil {
+				return err
+			}
+			addr := strings.TrimSpace(string(b))
+			if renew {
+				if addr, err = mcpAddress(dataDir, addr[:strings.LastIndex(addr, "/mcp/")], true); err != nil {
+					return err
+				}
+				fmt.Fprintln(os.Stderr, "A new key: restart the relay to use it. Apps connected with the old address must connect again with this one.")
+			}
+			fmt.Println(addr)
+			return nil
+		},
+	}
+	mcpCmd.Flags().StringVar(&dataDir, "data-dir", envOr("HERMESH_RELAY_DATA", "./relay-data"), "data directory")
+	mcpCmd.Flags().BoolVar(&renew, "new", false, "make a new key, for when the address got out")
+	root.AddCommand(serve, claim, mcpCmd)
 	if err := root.Execute(); err != nil {
 		os.Exit(1)
 	}
 }
 
-// startMCP starts the MCP gateway of a self-hosted relay: its state in
-// mcp.db and the key that seals the connections' keys in mcp-vault.key.
-func startMCP(srv *relay.Server, log *slog.Logger, dataDir, publicURL, setupURL string) (*mcpgw.Gateway, error) {
+// mcpAddress is the relay's MCP address: <public URL>/mcp/<key>. The key
+// keeps anyone without the address from connecting (docs/mcp-gateway.md
+// §13); it is kept in <data-dir>/mcp-url, made on first use, and made anew
+// with renew.
+func mcpAddress(dataDir, public string, renew bool) (string, error) {
+	p := filepath.Join(dataDir, "mcp-url")
+	key := ""
+	if b, err := os.ReadFile(p); err == nil {
+		old := strings.TrimSpace(string(b))
+		if i := strings.LastIndex(old, "/mcp/"); i >= 0 {
+			key = old[i+len("/mcp/"):]
+		}
+	} else if !errors.Is(err, os.ErrNotExist) {
+		return "", err
+	}
+	if key == "" || renew {
+		key = strings.ToLower(identity.RandomCode(26))
+	}
+	addr := public + "/mcp/" + key
+	if err := os.MkdirAll(dataDir, 0o700); err != nil {
+		return "", err
+	}
+	return addr, os.WriteFile(p, []byte(addr+"\n"), 0o600)
+}
+
+// startMCP starts the MCP gateway of a self-hosted relay at mcpURL: its
+// state in mcp.db and the key that seals the connections' keys in
+// mcp-vault.key.
+func startMCP(srv *relay.Server, log *slog.Logger, dataDir, mcpURL, setupURL string) (*mcpgw.Gateway, error) {
 	db, err := sqlitedb.Open(filepath.Join(dataDir, "mcp.db"), []string{mcpgw.Schema(false)})
 	if err != nil {
 		return nil, err
@@ -164,17 +230,17 @@ func startMCP(srv *relay.Server, log *slog.Logger, dataDir, publicURL, setupURL 
 	if err != nil {
 		return nil, err
 	}
-	publicURL = strings.TrimSuffix(publicURL, "/")
+	publicURL := mcpURL[:strings.LastIndex(mcpURL, "/mcp/")]
 	var webhooks *http.Client
 	if os.Getenv("HERMESH_MCP_LOCAL_WEBHOOKS") == "1" { // tests: webhooks on this computer
 		webhooks = &http.Client{Timeout: 5 * time.Second, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
 	}
-	gw, err := mcpgw.New(mcpgw.Config{Issuer: publicURL, ResourceURL: publicURL + "/mcp", Relay: srv, Backend: &mcpgw.SQLBackend{DB: db},
+	gw, err := mcpgw.New(mcpgw.Config{Issuer: publicURL, ResourceURL: mcpURL, KeyedResource: true, Relay: srv, Backend: &mcpgw.SQLBackend{DB: db},
 		Vault: vault, Accounts: mcpgw.SingleOwner{Relay: srv}, SetupURL: setupURL, Logger: log, WebhookClient: webhooks})
 	if err != nil {
 		return nil, err
 	}
-	log.Info("mcp gateway", "url", publicURL+"/mcp")
+	log.Info("mcp gateway", "url", publicURL+"/mcp/…", "address", "hermesh-relay mcp-url prints it")
 	return gw, nil
 }
 

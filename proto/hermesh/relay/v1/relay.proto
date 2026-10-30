@@ -335,6 +335,9 @@ service OwnerControlService {
   // center's account's email ("" for a self-hosted relay). Erasing
   // everything has the owner type it to confirm.
   rpc GetAccount(GetAccountRequest) returns (GetAccountResponse);
+  // The address of this relay's MCP gateway, with the key in its path:
+  // only the owner's devices learn it (docs/mcp-gateway.md §13).
+  rpc GetMCP(GetMCPRequest) returns (GetMCPResponse);
   // This device's push registration, signed by its device key: replaces
   // its earlier one. An empty token stops its notices.
   rpc RegisterPush(RegisterPushRequest) returns (RegisterPushResponse);
@@ -553,6 +556,14 @@ message GetAccountRequest {}
 
 message GetAccountResponse {
   string account = 1;
+}
+
+message GetMCPRequest {}
+
+message GetMCPResponse {
+  // "" when this relay serves no MCP of its own (a hosted center's is at
+  // a fixed address, mcp.hermesh.io).
+  string url = 1;
 }
 
 // MessageService is the post office (docs/agent-messages.md §5), served on

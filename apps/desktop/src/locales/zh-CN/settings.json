@@ -83,6 +83,7 @@
     "connectAddress": "连接地址",
     "addMachine": "接入机器",
     "agentLogin": "让 agent 登录",
+    "mcpUrl": "MCP 地址",
     "console": "网页控制台",
     "consoleDesc": "在任何浏览器里查看机器和授权、紧急撤销",
     "open": "打开",

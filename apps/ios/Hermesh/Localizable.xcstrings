@@ -90,6 +90,16 @@
         }
       }
     },
+    "%@ opens an approval page; its request then shows up on this iPhone for you to verify and approve.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ 会打开授权页面；它的连接请求会出现在这台 iPhone 上，由你核对并批准。"
+          }
+        }
+      }
+    },
     "%@ sent %lld turns": {
       "localizations": {
         "zh-Hans": {
@@ -3042,6 +3052,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "低"
+          }
+        }
+      }
+    },
+    "MCP address": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "MCP 地址"
           }
         }
       }

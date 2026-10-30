@@ -211,7 +211,6 @@ func TestMCPRoundTrips(t *testing.T) {
 	})
 	ctx := context.Background()
 	port := freePort(t)
-	base := fmt.Sprintf("http://127.0.0.1:%d", port)
 	relayData := filepath.Join(tmp, "relay")
 	relay := start(t, "relay", nil, filepath.Join(bin, "hermesh-relay"), "serve", "--mcp", "--data-dir", relayData, "--listen", fmt.Sprintf("127.0.0.1:%d", port))
 	logs = append(logs, relay)
@@ -244,7 +243,7 @@ func TestMCPRoundTrips(t *testing.T) {
 	}
 
 	// An app connects, and the owner approves it on the Mac.
-	app := newOAuthApp(t, base+"/mcp", "Far app")
+	app := newOAuthApp(t, mcpAddress(t, mac), "Far app")
 	if page := app.connect(app.authorize()); !strings.Contains(page, "Approve on your Mac") {
 		t.Fatalf("connecting with the Mac online:\n%s", page)
 	}

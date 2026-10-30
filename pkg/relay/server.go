@@ -63,6 +63,9 @@ type Config struct {
 	Claim func(ctx context.Context, req *relayv1.ClaimRequest) error
 	// ConsoleURL is shown to requesters of a hosted center.
 	ConsoleURL string
+	// MCPURL is the address of this relay's own MCP gateway, with its key:
+	// told to the owner's devices alone (GetMCP).
+	MCPURL string
 	// PairingsPerMinute bounds pairing requests per client address
 	// (default 10; a hosted center serves many people behind shared NATs).
 	PairingsPerMinute int
