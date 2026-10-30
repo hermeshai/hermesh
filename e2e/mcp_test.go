@@ -391,6 +391,71 @@ func TestMCPGateway(t *testing.T) {
 }
 
 // cliToolNames are the CLI commands the gateway serves as tools.
+// TestMCPStrangersCannotKeepAppsOut: anyone who can reach a self-hosted
+// relay can click Connect, approving nothing. Ten such connections, from
+// one address and ten made-up apps, don't keep the owner's own app out: it
+// connects, its approval request reaches the Mac, and once approved it
+// works.
+func TestMCPStrangersCannotKeepAppsOut(t *testing.T) {
+	if testing.Short() {
+		t.Skip("e2e")
+	}
+	bin := binaries(t)
+	tmp := t.TempDir()
+	sockDir, _ := os.MkdirTemp("/tmp", "hm")
+	t.Cleanup(func() { os.RemoveAll(sockDir) })
+	ctx := context.Background()
+
+	// On every address: the strangers come from 127.0.0.1, the owner's app
+	// registers from [::1] (registrations are limited per address).
+	port := freePort(t)
+	base := fmt.Sprintf("http://127.0.0.1:%d", port)
+	relayData := filepath.Join(tmp, "relay")
+	relay := start(t, "relay", nil, filepath.Join(bin, "hermesh-relay"), "serve", "--mcp", "--data-dir", relayData,
+		"--listen", fmt.Sprintf(":%d", port), "--public-url", base)
+	eventually(t, 20*time.Second, "relay up", func() bool { return strings.Contains(relay.output(), "relay listening") })
+	claim := strings.TrimSpace(run(t, nil, 10*time.Second, filepath.Join(bin, "hermesh-relay"), "claim-code", "--data-dir", relayData).stdout)
+	sock := filepath.Join(sockDir, "o.sock")
+	start(t, "owner", []string{"HERMESH_FAKE_PROVIDERS=1"}, filepath.Join(bin, "hermeshd"), "run", "--owner", "--data-dir", filepath.Join(tmp, "owner-mac"), "--socket", sock)
+	root, _ := identity.GenerateKey()
+	mac := newTestApp(t, sock, root)
+	if _, err := mac.client.Setup(ctx, &localv1.SetupRequest{RelayUrl: base, ClaimCode: claim, RootPublicKey: rootPub(root), RootLabel: "test-mac", RootPlatform: "macos"}); err != nil {
+		t.Fatalf("setup: %v", err)
+	}
+
+	for i := range 10 {
+		a := newOAuthApp(t, base+"/mcp", fmt.Sprintf("Claude %d", i))
+		if page := a.connect(a.authorize()); !strings.Contains(page, "Approve") {
+			t.Fatalf("stranger %d:\n%s", i, page)
+		}
+	}
+
+	app := newOAuthAppVia(t, base+"/mcp", "Codex", fmt.Sprintf("http://[::1]:%d/oauth/register", port))
+	page := app.connect(app.authorize())
+	if strings.Contains(page, "as many apps as Hermesh allows") {
+		t.Fatalf("the owner's own app was kept out:\n%s", page)
+	}
+	session := app.mcpSession(app.finish(page).Access)
+	var req *localv1.PairingDetails
+	eventually(t, 30*time.Second, "the app's approval request on the Mac", func() bool {
+		l, err := mac.client.ListPairingRequests(ctx, &localv1.ListPairingRequestsRequest{})
+		if err != nil {
+			return false
+		}
+		for _, p := range l.Pairings {
+			if p.Label == "Codex (127.0.0.1)" {
+				req = p
+				return true
+			}
+		}
+		return false
+	})
+	if _, err := mac.client.ApproveClientPairing(ctx, &localv1.ApproveClientPairingRequest{Code: req.Code, Spec: &localv1.GrantSpec{}}); err != nil {
+		t.Fatal(err)
+	}
+	eventually(t, 30*time.Second, "the app working once approved", func() bool { return statusOf(t, session).State == "active" })
+}
+
 func cliToolNames() []string {
 	var out []string
 	for _, t := range cli.Tools() {
@@ -486,6 +551,13 @@ type oauthTokens struct {
 
 func newOAuthApp(t *testing.T, resource, name string) *oauthApp {
 	t.Helper()
+	return newOAuthAppVia(t, resource, name, "")
+}
+
+// newOAuthAppVia is newOAuthApp registering at regURL, when set: the
+// registration endpoint reached from another address.
+func newOAuthAppVia(t *testing.T, resource, name, regURL string) *oauthApp {
+	t.Helper()
 	jar, _ := cookiejar.New(nil)
 	a := &oauthApp{t: t, resource: resource, name: name, redirect: fmt.Sprintf("http://127.0.0.1:%d/callback", freePort(t)),
 		hc: &http.Client{Jar: jar, CheckRedirect: func(req *http.Request, _ []*http.Request) error {
@@ -530,7 +602,10 @@ func newOAuthApp(t *testing.T, resource, name string) *oauthApp {
 	a.authorizeEP, a.tokenEP, a.revokeEP = as.Authorization, as.Token, as.Revocation
 	body, _ := json.Marshal(map[string]any{"client_name": name, "redirect_uris": []string{"http://127.0.0.1/callback"}, "token_endpoint_auth_method": "none",
 		"grant_types": []string{"authorization_code", "refresh_token"}, "application_type": "native"})
-	res, err = http.Post(as.Registration, "application/json", strings.NewReader(string(body)))
+	if regURL == "" {
+		regURL = as.Registration
+	}
+	res, err = http.Post(regURL, "application/json", strings.NewReader(string(body)))
 	if err != nil {
 		t.Fatal(err)
 	}

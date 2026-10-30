@@ -327,7 +327,7 @@ owner leaks into the token:
 | Token | Form | Lifetime |
 |---|---|---|
 | Access | `hm_at_` + 256 random bits | 1 hour, never past the Grant's `expires_at` once there is a Grant |
-| Refresh | `hm_rt_` + 256 random bits | rotated on every use; dies after 30 days unused, at the Grant's `expires_at`, or when a connection that was never approved expires (§5.7) |
+| Refresh | `hm_rt_` + 256 random bits | rotated on every use; dies after 30 days unused, at the Grant's `expires_at`, or when a connection that was never approved ends (§5.7) |
 
 Only `SHA-256("hermesh-mcp-token-v1\0" + token)` is stored. The prefixes let
 secret scanners recognise leaked tokens.
@@ -387,8 +387,12 @@ minutes, so the gateway doesn't submit one and hope:
 - The Mac app shows the request like any pairing request (its notification
   and approval sheet).
 - There is no deadline: a connection waits as long as the app keeps using
-  it. One unused for 30 days (as long as its refresh token lasts) ends with
-  its tokens; the agent product will offer to reconnect.
+  it. One unused for a day ends with its tokens; the agent product will
+  offer to reconnect.
+- Only approved connections count against the 10 per owner. Up to 10 more
+  may wait besides; a new one ends the oldest waiting one (`revoked`). On a
+  self-hosted relay anyone can connect (§13), so waiting connections must
+  not be able to keep the owner's own apps out.
 
 **What the agent product sees meanwhile.** `tools/list` is the same in every
 state (2026-07-28 wants lists that don't vary per connection). The tools
@@ -611,7 +615,8 @@ type Vault interface {
 | Owner dismisses the approval sheet | the request expires; it is sent again the next time the app is used |
 | Owner renews or changes access in the app | `UpdateClient` re-signs at version+1; the gateway adopts it via `GetLatestGrant`; tokens keep working |
 | Grant expires | refresh answers `invalid_grant`; the agent product sends the person through consent again, which makes a new connection |
-| Not approved, and unused for 30 days | `expired`, as in §5.7 |
+| Not approved, and unused for a day | `expired`, as in §5.7 |
+| Not approved, and 10 newer ones waiting | `revoked`, as in §5.7 |
 | Owner reset (`ForgetOwner`) | all of the owner's connections end |
 
 The app reminds the owner 7 days before an MCP Grant expires, with Renew (the
@@ -629,7 +634,7 @@ CLI already warns; the app gains the same for MCP connections).
 | Open redirect | Errors before redirect URI validation never redirect; exact matching |
 | CSRF / clickjacking on consent | Browser-bound authorization id, same-origin POSTs, `frame-ancestors 'none'` |
 | SSRF through CIMD fetches | §5.2 network rules |
-| DCR flooding, connection flooding before approval | per-IP limits, 10 connections per owner, unapproved connections end when unused, approval requests only when the app is used, at most one pending per connection |
+| DCR flooding, connection flooding before approval | per-IP limits, 10 approved connections per owner, at most 10 waiting besides (the oldest makes room), unapproved connections end after a day unused, approval requests only when the app is used, at most one pending per connection |
 | Prompt injection in the agent product | Access narrowed in the approval sheet; agent output labelled untrusted; per-connection rate limits; machine pause still works |
 | Token passthrough | The gateway never forwards OAuth tokens; machines see only Hermesh credentials |
 
@@ -642,9 +647,10 @@ CLI already warns; the app gains the same for MCP connections).
 plus `/mcp`; `--setup-url` says where people get the Mac app. There are no
 accounts: `SingleOwner` answers with the relay's one owner (none before it
 is claimed, which gives `awaiting_setup`), and anyone who can reach the
-relay can start a connection, exactly as with CLI pairing today; the 10
-live connections per owner and the per-IP registration limit bound it, and
-nothing reaches a machine without Touch ID.
+relay can start a connection, exactly as with CLI pairing today; the
+limits of §5.7 and the per-IP registration limit bound it, waiting
+connections can't keep the owner's own apps out, and nothing reaches a
+machine without Touch ID.
 
 ## 14. Testing
 

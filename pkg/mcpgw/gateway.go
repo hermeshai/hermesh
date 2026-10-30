@@ -94,15 +94,18 @@ const (
 	authorizationTTL = 30 * time.Minute
 	codeTTL          = 60 * time.Second
 	accessTTL        = time.Hour
-	// Tokens unused for this long stop working, and a connection never
-	// approved ends after as long without use.
+	// Tokens unused for this long stop working.
 	refreshIdle = 30 * 24 * time.Hour
+	// A connection never approved ends after this long without use.
+	waitingIdle = 24 * time.Hour
 	// askAgainWithin: a connection its app used this recently asks again
 	// when a trusted device of the owner connects.
 	askAgainWithin     = 24 * time.Hour
 	refreshRetryWindow = 60 * time.Second
-	// Live connections per owner (or per account before it has an owner).
+	// Approved connections per owner (or per account before it has an
+	// owner), and connections waiting for approval besides.
 	maxConnections = 10
+	maxWaiting     = 10
 	keyCacheTTL    = 10 * time.Minute
 )
 

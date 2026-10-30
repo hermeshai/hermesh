@@ -356,8 +356,7 @@ func TestTokensRotateAndReplaysAreRevoked(t *testing.T) {
 }
 
 // A connection waits for the owner's approval as long as the app keeps
-// using it (no deadline), and ends once unused for as long as its tokens
-// last.
+// using it (no deadline), and ends once unused for a day.
 func TestUnapprovedConnectionsWaitWhileUsed(t *testing.T) {
 	f := newFixture(t, nil)
 	redirect := "http://127.0.0.1/callback"
@@ -371,12 +370,12 @@ func TestUnapprovedConnectionsWaitWhileUsed(t *testing.T) {
 	refresh := func(rt string) (int, map[string]any) {
 		return f.token(url.Values{"grant_type": {"refresh_token"}, "refresh_token": {rt}, "client_id": {client}})
 	}
-	// Weeks later, still used: still waiting, still working.
+	// Days later, still used: still waiting, still working.
 	for range 3 {
-		f.clock.add(20 * 24 * time.Hour)
+		f.clock.add(20 * time.Hour)
 		status, next := refresh(tok["refresh_token"].(string))
 		if status != 200 {
-			t.Fatalf("refresh after 20 days: %d %v", status, next)
+			t.Fatalf("refresh after 20 hours: %d %v", status, next)
 		}
 		tok = next
 		f.g.advanceWaiting(context.Background())
@@ -385,14 +384,43 @@ func TestUnapprovedConnectionsWaitWhileUsed(t *testing.T) {
 		}
 	}
 	// Then left alone: it ends with its tokens.
-	f.clock.add(refreshIdle + time.Minute)
+	f.clock.add(waitingIdle + time.Minute)
 	f.g.advanceWaiting(context.Background())
 	c, _ := f.g.db.GetConnection(context.Background(), conns[0].ID)
 	if c.State != StateExpired || c.SealedKey != nil {
-		t.Fatalf("unused for 30 days: %+v", c)
+		t.Fatalf("unused for a day: %+v", c)
 	}
 	if status, _ := refresh(tok["refresh_token"].(string)); status != 400 {
 		t.Fatal("an ended connection's tokens must stop working")
+	}
+}
+
+// Anyone who can reach a self-hosted relay can connect: connections
+// waiting for approval make room for newer ones, the oldest first, rather
+// than keep the owner's own apps out.
+func TestWaitingConnectionsMakeRoom(t *testing.T) {
+	f := newFixture(t, nil)
+	ctx := context.Background()
+	redirect := "http://127.0.0.1/callback"
+	var first string
+	for i := range maxWaiting {
+		f.browser().consentCode(f.register(redirect), redirect)
+		if i == 0 {
+			conns, _ := f.g.db.ListConnections(ctx, ConnectionFilter{AccountID: "a1"})
+			first = conns[0].ID
+		}
+		f.clock.add(time.Minute)
+	}
+	// The owner's own app, an hour later (registrations are limited per
+	// address and hour).
+	f.clock.add(time.Hour)
+	f.browser().consentCode(f.register(redirect), redirect)
+	waiting, _ := f.g.db.ListConnections(ctx, ConnectionFilter{AccountID: "a1", States: []string{StateAwaitingSetup, StateAwaitingApproval}})
+	if len(waiting) != maxWaiting {
+		t.Fatalf("%d connections waiting, want %d", len(waiting), maxWaiting)
+	}
+	if c, _ := f.g.db.GetConnection(ctx, first); c.State != StateRevoked || c.SealedKey != nil {
+		t.Fatalf("the oldest waiting connection should have made room: %+v", c)
 	}
 }
 
