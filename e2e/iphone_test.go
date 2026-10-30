@@ -247,6 +247,10 @@ func simulator(t *testing.T) string {
 	if r := run(t, nil, 3*time.Minute, "xcrun", "simctl", "bootstatus", id, "-b"); r.code != 0 {
 		t.Fatalf("boot: %+v", r)
 	}
+	// A device booted for the first time is still settling: asked for
+	// notifications then, iOS may never show the alert, and the request
+	// never returns.
+	time.Sleep(time.Minute)
 	return id
 }
 
