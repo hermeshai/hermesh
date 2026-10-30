@@ -1,15 +1,36 @@
 package flock
 
 import (
-	"errors"
 	"fmt"
+	"os"
+	"path/filepath"
+
+	"golang.org/x/sys/windows"
 )
 
-type Lock struct{}
+type Lock struct{ f *os.File }
 
-// Acquire is not supported on Windows yet (docs/windows.md, phase W1).
+// Acquire locks dir/lock without blocking.
 func Acquire(dir string) (*Lock, error) {
-	return nil, fmt.Errorf("locking %s: %w on Windows yet", dir, errors.ErrUnsupported)
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		return nil, err
+	}
+	f, err := os.OpenFile(filepath.Join(dir, "lock"), os.O_CREATE|os.O_RDWR, 0o600)
+	if err != nil {
+		return nil, err
+	}
+	if err := windows.LockFileEx(windows.Handle(f.Fd()), windows.LOCKFILE_EXCLUSIVE_LOCK|windows.LOCKFILE_FAIL_IMMEDIATELY, 0, 1, 0, &windows.Overlapped{}); err != nil {
+		f.Close()
+		return nil, fmt.Errorf("another hermeshd is already using %s", dir)
+	}
+	f.Truncate(0)
+	fmt.Fprintf(f, "%d\n", os.Getpid())
+	return &Lock{f: f}, nil
 }
 
-func (l *Lock) Release() {}
+func (l *Lock) Release() {
+	if l != nil && l.f != nil {
+		windows.UnlockFileEx(windows.Handle(l.f.Fd()), 0, 1, 0, &windows.Overlapped{})
+		l.f.Close()
+	}
+}

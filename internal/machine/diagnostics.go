@@ -2,7 +2,6 @@ package machine
 
 import (
 	"fmt"
-	"os"
 	"runtime"
 	"strings"
 	"time"
@@ -45,7 +44,7 @@ func (l *Local) Diagnostics() string {
 	if why := shellenv.LastProblem(); why != "" {
 		w("  shell PATH %s", why)
 	} else {
-		w("  shell PATH read from %s -lic", os.Getenv("SHELL"))
+		w("  shell PATH read from %s", shellenv.Source())
 	}
 	w("\nPATH\n  %s", shellenv.Path())
 

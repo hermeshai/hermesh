@@ -38,7 +38,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -359,7 +358,7 @@ func prompt(id json.RawMessage, sid, text string, images []string) {
 			update(sid, map[string]any{"sessionUpdate": "tool_call_update", "toolCallId": id, "status": "completed", "rawOutput": string(b)})
 		case "shell":
 			tool(sid, "execute", arg, map[string]any{"command": arg}, "", func() (string, error) {
-				c := exec.Command("sh", "-c", arg)
+				c := shellCommand(arg)
 				c.Dir = cwd
 				b, err := c.CombinedOutput()
 				return string(b), err

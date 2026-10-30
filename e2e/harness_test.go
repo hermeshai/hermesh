@@ -20,6 +20,7 @@ import (
 
 	localv1 "github.com/hermeshai/hermesh/gen/go/hermesh/local/v1"
 	"github.com/hermeshai/hermesh/gen/go/hermesh/local/v1/localv1connect"
+	"github.com/hermeshai/hermesh/internal/localipc"
 	"github.com/hermeshai/hermesh/pkg/identity"
 	"google.golang.org/protobuf/proto"
 )
@@ -45,7 +46,7 @@ func binaries(t *testing.T) string {
 		}
 		for _, pkg := range []string{"./cmd/hermesh-relay", "./cmd/hermeshd", "./cmd/hermesh", "./internal/provider/acp/fakeacp", "./bench/fakecodex"} {
 			cmd := filepath.Base(pkg)
-			args := []string{"build", "-o", filepath.Join(binDir, cmd)}
+			args := []string{"build", "-o", filepath.Join(binDir, cmd+exe)}
 			if os.Getenv("HERMESH_E2E_RACE") != "" {
 				args = append(args, "-race") // the binaries exit 66 on a data race
 			}
@@ -241,8 +242,7 @@ func newTestApp(t *testing.T, sock string, root *identity.SoftwareKey) *testApp 
 // localClient is a client of hermeshd's local API on sock, once it answers.
 func localClient(t *testing.T, sock string) localv1connect.LocalServiceClient {
 	hc := &http.Client{Transport: &http.Transport{DialContext: func(ctx context.Context, _, _ string) (net.Conn, error) {
-		var d net.Dialer
-		return d.DialContext(ctx, "unix", sock)
+		return localipc.Dial(ctx, sock)
 	}}}
 	c := localv1connect.NewLocalServiceClient(hc, "http://local")
 	deadline := time.Now().Add(20 * time.Second)
