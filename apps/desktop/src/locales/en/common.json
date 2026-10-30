@@ -8,7 +8,8 @@
   "window": {
     "showSidebar": "Show Sidebar",
     "hideSidebar": "Hide Sidebar",
-    "undo": "Undo"
+    "undo": "Undo",
+    "menu": "Menu"
   },
   "status": {
     "failed": "Failed",

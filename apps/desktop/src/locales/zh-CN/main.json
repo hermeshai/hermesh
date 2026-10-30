@@ -78,5 +78,8 @@
     "failedTitle": "没能把 Hermesh 移到「应用程序」文件夹",
     "failedBody": "请在访达中把 Hermesh 拖到「应用程序」文件夹，再从那里打开。",
     "ok": "好"
+  },
+  "tray": {
+    "open": "打开 Hermesh"
   }
 }

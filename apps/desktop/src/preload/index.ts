@@ -32,6 +32,7 @@ const bridge: Bridge = {
   onWindowFocus: (cb: (focused: boolean) => void) => listen("window-focus", cb),
   showInMain: (filter: { grant: string } | { machine: string }) => ipcRenderer.send("show-in-main", filter),
   showUpgrade: () => ipcRenderer.send("show-upgrade"),
+  showAppMenu: (x: number, y: number) => ipcRenderer.send("app-menu", x, y),
   popupMenu: (items: MenuItem[]) => ipcRenderer.invoke("popup-menu", items),
   onCommand: (cb: (c: Command) => void) => listen("command", cb),
   setMenuState: (s: MenuState) => ipcRenderer.send("menu-state", s),

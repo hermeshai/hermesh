@@ -54,6 +54,14 @@ body{margin:0;background:var(--win);color:var(--l1);font-family:var(--font);font
 html.vibrant,html.vibrant body{background:transparent}
 html.vibrant .side{background:var(--side-tint)}
 html.vibrant .grp-h{position:static;background:transparent}
+/* Windows (docs/windows.md §5.2): its own type, no traffic lights, and room for the caption buttons Windows draws over the top band's right end. */
+html[data-platform=win]{--font:"Segoe UI Variable Text","Segoe UI","Microsoft YaHei UI","Microsoft YaHei",sans-serif;--caption:calc(100vw - env(titlebar-area-x, 0px) - env(titlebar-area-width, calc(100vw - 138px)))}
+.tl-room{width:62px;flex:none}
+html[data-platform=win] .tl-room{display:none}
+html[data-platform=win] .side-top{padding-left:8px;justify-content:flex-start;gap:2px}
+html[data-platform=win] .side-top>:last-child{margin-left:auto}
+html[data-platform=win] .ctool{padding-right:calc(var(--caption) + 8px)}
+html[data-platform=win] .noside .ctool{padding-left:8px}
 input,textarea,.sel-text{user-select:text;-webkit-user-select:text}
 :focus-visible{outline:2px solid var(--accent);outline-offset:1px}
 @keyframes fadein{from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:none}}

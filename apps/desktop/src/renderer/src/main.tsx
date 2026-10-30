@@ -3,7 +3,10 @@ import { I18nextProvider } from "react-i18next";
 import { createRoot } from "react-dom/client";
 import { i18n } from "../../shared/i18n";
 import { App } from "./App";
+import { platform } from "./platform";
 import "./styles.css";
+
+document.documentElement.dataset.platform = platform;
 
 // Titles go grey while another window has the focus (the .blurred rules).
 window.hermesh?.onWindowFocus((focused) => document.documentElement.classList.toggle("blurred", !focused));

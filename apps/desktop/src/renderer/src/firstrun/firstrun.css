@@ -1,7 +1,6 @@
 /* First run: what the prototype draws that app.css does not have yet, and
    the real states the prototype has no picture for (forms, errors, join). */
 .glow{position:absolute;inset:-40%;background:radial-gradient(closest-side,color-mix(in srgb,var(--aurora-0) 30%,transparent),transparent),radial-gradient(closest-side at 70% 60%,color-mix(in srgb,var(--aurora-2) 26%,transparent),transparent);filter:blur(18px);z-index:-1}
-.ob-top .tl-room{width:62px;flex:none}
 .ob-err{display:flex;gap:8px;align-items:flex-start;color:var(--orange);font-size:12.5px;line-height:1.5;max-width:520px;text-align:left}
 .ob-err .ic{flex:none;margin-top:1px}
 .ob-foot .ob-err{margin-right:auto}

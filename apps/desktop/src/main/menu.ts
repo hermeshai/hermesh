@@ -1,8 +1,10 @@
 import { app, BrowserWindow, dialog, Menu, shell, type MenuItemConstructorOptions } from "electron";
 import type { Command } from "../shared/bridge";
 import { i18n } from "../shared/i18n";
+import { keys, platformKeys } from "../shared/keys";
 import { command, currentMenuState, menuStateListeners } from "./ipc";
 import { world, worldListeners } from "./notify";
+import { platform } from "./platform";
 import { install, openUpdates, updateInfo, updateListeners } from "./updater";
 import { mainWindow, settingsVisible, showMain, showSettings, showAbout, showWhatsNew } from "./windows";
 
@@ -10,10 +12,11 @@ import { mainWindow, settingsVisible, showMain, showSettings, showAbout, showWha
 // renderer/src/commands.ts); what they enable and check follows what the
 // page reports (MenuState). Every item that tests click has an id.
 //
-// Windows and Linux: the same menu, for its shortcuts, but the windows'
-// menu bar stays hidden (Alt shows it), since the page has every action.
+// Windows: the same menu, for its shortcuts, but the windows' menu bar
+// stays hidden, since the caption buttons take the top band and the page
+// has every action; the sidebar's menu button shows the whole menu.
 
-const mac = process.platform === "darwin";
+const mac = platform.token === "mac";
 
 export function setAppMenu() {
   build();
@@ -21,7 +24,7 @@ export function setAppMenu() {
   updateListeners.add(build);
   worldListeners.add(() => ready() !== builtReady && build());
   app.on("browser-window-created", (_e, w) => {
-    if (!mac) w.setAutoHideMenuBar(true);
+    if (!mac) w.setMenuBarVisibility(false);
     // The window menu checks the open windows.
     const rebuild = () => setImmediate(build);
     w.on("show", rebuild);
@@ -140,9 +143,9 @@ function template(): MenuItemConstructorOptions[] {
         item("nextAttention", t("view.nextAttention"), "nextAttention", main, { accelerator: "CmdOrCtrl+2" }),
         item("nextActive", t("view.nextActive"), "nextActive", main, { accelerator: "CmdOrCtrl+3" }),
         sep,
-        item("toggleInspector", s?.inspector === false ? t("view.showInspector") : t("view.hideInspector"), "toggleInspector", !!s, { accelerator: "Alt+CmdOrCtrl+0" }),
+        item("toggleInspector", s?.inspector === false ? t("view.showInspector") : t("view.hideInspector"), "toggleInspector", !!s, { accelerator: platformKeys[platform.token].toggleInspector }),
         sep,
-        item("toggleSidebar", st.sidebar ? t("view.hideSidebar") : t("view.showSidebar"), "toggleSidebar", main, { accelerator: mac ? "Ctrl+Cmd+S" : undefined }),
+        item("toggleSidebar", st.sidebar ? t("view.hideSidebar") : t("view.showSidebar"), "toggleSidebar", main, { accelerator: platformKeys[platform.token].toggleSidebar }),
         { role: "togglefullscreen", label: t("view.fullScreen") },
       ],
     },
@@ -162,7 +165,7 @@ function template(): MenuItemConstructorOptions[] {
       label: t("window.title"),
       submenu: [
         { role: "minimize", label: t("window.minimize") },
-        { role: "zoom", label: t("window.zoom") },
+        ...(mac ? [{ role: "zoom", label: t("window.zoom") } as const] : []),
         sep,
         { id: "mainWindow", label: "Hermesh", type: "checkbox", checked: !!mainWindow()?.isVisible(), click: () => (showMain(), setImmediate(build)) },
         { id: "settingsWindow", label: t("window.settings"), type: "checkbox", checked: settingsOpen, enabled: main || settingsOpen, click: () => (showSettings(), setImmediate(build)) },
@@ -177,6 +180,8 @@ function template(): MenuItemConstructorOptions[] {
         { id: "shortcuts", label: t("help.shortcuts"), click: showShortcuts },
         sep,
         { label: t("help.report"), click: () => shell.openExternal("https://github.com/hermeshai/hermesh/issues") },
+        // Windows keeps About in Help; the Microsoft Store updates the app.
+        ...(mac ? [] : [sep, { id: "about", label: t("app.about"), click: showAbout }]),
       ],
     },
   ];
@@ -187,15 +192,7 @@ function showShortcuts() {
   const lines: string[] = [];
   for (const m of template()) {
     if (!Array.isArray(m.submenu)) continue;
-    for (const i of m.submenu) if (i.accelerator && i.label && i.registerAccelerator !== false) lines.push(`${keys(i.accelerator)}\t${i.label}`);
+    for (const i of m.submenu) if (i.accelerator && i.label && i.registerAccelerator !== false) lines.push(`${keys(String(i.accelerator), platform.token)}\t${i.label}`);
   }
   dialog.showMessageBox({ message: i18n.t("main:menu.help.shortcuts"), detail: lines.join("\n") });
-}
-
-/** "Shift+CmdOrCtrl+N" → "⇧⌘N", in the order macOS shows modifiers. */
-function keys(accelerator: string): string {
-  const parts = accelerator.split("+");
-  const key = parts.pop() ?? "";
-  const symbols: [string, string][] = [["Ctrl", "⌃"], ["Alt", "⌥"], ["Shift", "⇧"], ["Cmd", "⌘"], ["CmdOrCtrl", "⌘"]];
-  return symbols.filter(([m]) => parts.includes(m)).map(([, sym]) => sym).join("") + key;
 }

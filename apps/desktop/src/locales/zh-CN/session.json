@@ -2,8 +2,8 @@
   "thisMac": "这台 Mac",
   "waiting": "等你回答",
   "page": {
-    "showInfo": "显示信息面板 ⌥⌘0",
-    "hideInfo": "隐藏信息面板 ⌥⌘0",
+    "showInfo": "显示信息面板 {{keys}}",
+    "hideInfo": "隐藏信息面板 {{keys}}",
     "info": "信息面板"
   },
   "chat": {
@@ -46,7 +46,7 @@
   },
   "control": {
     "label": "这一轮",
-    "interruptTitle": "打断这一轮 ⌘.",
+    "interruptTitle": "打断这一轮 {{keys}}",
     "interrupt": "打断",
     "waitingDetail": "{{grant}} · 第 {{turn}} 轮 · 没人回答它会自行判断",
     "working": "{{agent}} 正在工作"

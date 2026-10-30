@@ -78,5 +78,8 @@
     "failedTitle": "Couldn’t move Hermesh to the Applications folder",
     "failedBody": "Drag Hermesh to the Applications folder in Finder, then open it from there.",
     "ok": "OK"
+  },
+  "tray": {
+    "open": "Open Hermesh"
   }
 }

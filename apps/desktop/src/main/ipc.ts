@@ -111,6 +111,10 @@ export function registerIPC() {
     const r = await (win ? dialog.showOpenDialog(win, { properties: ["openDirectory", "createDirectory"] }) : dialog.showOpenDialog({ properties: ["openDirectory"] }));
     return r.canceled ? null : (r.filePaths[0] ?? null);
   });
+  ipcMain.on("app-menu", (e, x: unknown, y: unknown) => {
+    if (!trusted(e) || typeof x !== "number" || typeof y !== "number") return;
+    Menu.getApplicationMenu()?.popup({ window: BrowserWindow.fromWebContents(e.sender) ?? undefined, x: Math.round(x), y: Math.round(y) });
+  });
   ipcMain.handle("popup-menu", (e, items: MenuItem[]) => {
     if (!trusted(e) || !Array.isArray(items)) return null;
     return new Promise<string | null>((resolve) => {

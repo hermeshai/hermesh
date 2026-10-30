@@ -8,9 +8,11 @@ import {
 import { i18n } from "../../shared/i18n";
 import { UpdateReminder } from "./update";
 import { local } from "./api";
+import { AppMenuButton } from "./MainWindow";
 import { StatusDot } from "./components";
 import { Icon } from "./icons";
 import { expiringClients } from "./overview/Attention";
+import { keys, ownKeys } from "./platform";
 import { useNow, useStore, type Store } from "./store";
 
 export function grantLabel(st: Store, s: Session): string {
@@ -91,7 +93,8 @@ export function Sidebar() {
   return (
     <aside className="side" aria-label={t("sidebar.label")}>
       <div className="side-top drag">
-        <button className="tb" onClick={() => st.set({ sidebar: false })} title={`${t("window.hideSidebar")} ⌃⌘S`} aria-label={t("window.hideSidebar")}>
+        <AppMenuButton />
+        <button className="tb" onClick={() => st.set({ sidebar: false })} title={`${t("window.hideSidebar")} ${keys(ownKeys.toggleSidebar)}`} aria-label={t("window.hideSidebar")}>
           <Icon name="sidebar" />
         </button>
         <ListViewMenu />
@@ -100,12 +103,12 @@ export function Sidebar() {
         <button className={`nav-i ${st.selection.kind === "overview" ? "sel" : ""}`} onClick={() => st.set({ selection: { kind: "overview" } })}>
           <Icon name="grid" />
           <span>{t("sidebar.overview")}</span>
-          {count ? <span className="cnt" aria-label={t("sidebar.attention", { count })}>{count}</span> : <span className="kbd">⌘1</span>}
+          {count ? <span className="cnt" aria-label={t("sidebar.attention", { count })}>{count}</span> : <span className="kbd">{keys("CmdOrCtrl+1")}</span>}
         </button>
         <button className="nav-i" onClick={() => st.set({ searching: true })}>
           <Icon name="search" />
           <span>{t("sidebar.search")}</span>
-          <span className="kbd">⌘K</span>
+          <span className="kbd">{keys("CmdOrCtrl+K")}</span>
         </button>
       </nav>
       <div className="side-list" role="list" aria-label={t("sidebar.sessions")} ref={list}>
@@ -172,15 +175,15 @@ function AccountMenu() {
   // A machine only adds nothing to the owner's (null: a separator).
   const items: AccountItem[] = st.status?.machineOnly
     ? [
-        { id: "settings", icon: "gear", shortcut: "⌘," },
+        { id: "settings", icon: "gear", shortcut: keys("CmdOrCtrl+,") },
         { id: "account", icon: "user" },
       ]
     : [
-        { id: "newGrant", icon: "key", shortcut: "⇧⌘N" },
+        { id: "newGrant", icon: "key", shortcut: keys("Shift+CmdOrCtrl+N") },
         { id: "addMachine", icon: "laptop" },
-        { id: "enterCode", icon: "link", shortcut: "⇧⌘P" },
+        { id: "enterCode", icon: "link", shortcut: keys("Shift+CmdOrCtrl+P") },
         null,
-        { id: "settings", icon: "gear", shortcut: "⌘," },
+        { id: "settings", icon: "gear", shortcut: keys("CmdOrCtrl+,") },
         { id: "account", icon: "user" },
       ];
   useEffect(() => {

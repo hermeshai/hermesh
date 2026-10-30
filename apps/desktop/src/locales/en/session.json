@@ -2,8 +2,8 @@
   "thisMac": "This Mac",
   "waiting": "Waiting for you",
   "page": {
-    "showInfo": "Show info panel ⌥⌘0",
-    "hideInfo": "Hide info panel ⌥⌘0",
+    "showInfo": "Show info panel {{keys}}",
+    "hideInfo": "Hide info panel {{keys}}",
     "info": "Info panel"
   },
   "chat": {
@@ -46,7 +46,7 @@
   },
   "control": {
     "label": "This turn",
-    "interruptTitle": "Interrupt this turn ⌘.",
+    "interruptTitle": "Interrupt this turn {{keys}}",
     "interrupt": "Interrupt",
     "waitingDetail": "{{grant}} · Turn {{turn}} · If no one answers, it decides by itself",
     "working": "{{agent}} is working"
