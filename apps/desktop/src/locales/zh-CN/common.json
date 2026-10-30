@@ -126,6 +126,7 @@
   },
   "health": {
     "thisMac": "这台 Mac",
+    "thisMac_win": "这台电脑",
     "processesTitle": "{{name}} 开不了新程序了",
     "processesTitleNear": "{{name}} 的进程数快满了",
     "processesBody": "进程数到了上限（{{used}} / {{limit}}），Hermesh 启动不了编码 agent，派来的任务会失败。占用进程的程序退出后会自动恢复。",
@@ -144,6 +145,7 @@
     "shortFiles": "文件数快满",
     "shortShellPath": "读不到 PATH",
     "openActivityMonitor": "打开活动监视器",
+    "openActivityMonitor_win": "打开任务管理器",
     "view": "查看",
     "listLabel": "问题"
   }

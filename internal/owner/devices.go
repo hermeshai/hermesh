@@ -306,11 +306,11 @@ func (o *Owner) ConfirmJoin(ctx context.Context, code string, accept bool, match
 	}
 	if j.rebind {
 		if err := o.rebindLocalMachine(ctx, j.chain, j.machineCert); err != nil {
-			return nil, fmt.Errorf("this Mac as a machine: %w", err)
+			return nil, fmt.Errorf("this computer as a machine: %w", err)
 		}
 	} else if j.machineCert != nil {
 		if err := o.installLocalMachine(ctx, j.machineCert, j.machineName); err != nil {
-			return nil, fmt.Errorf("this Mac as a machine: %w", err)
+			return nil, fmt.Errorf("this computer as a machine: %w", err)
 		}
 	}
 	return &localv1.ConfirmJoinResponse{OwnerId: j.ownerID, ConnectAddress: connaddr.Format(j.relayURL, j.ownerID)}, nil

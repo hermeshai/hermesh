@@ -51,7 +51,7 @@ func (o *Owner) onlyMachine() (l *machine.Local, ok bool, err error) {
 	n := o.localMachine
 	o.mu.Unlock()
 	if n == nil {
-		return nil, true, connect.NewError(connect.CodeUnavailable, errors.New("this Mac's machine is not running"))
+		return nil, true, connect.NewError(connect.CodeUnavailable, errors.New("this computer's machine is not running"))
 	}
 	return n.Local(), true, nil
 }
@@ -60,7 +60,7 @@ func (o *Owner) onlyMachine() (l *machine.Local, ok bool, err error) {
 // machine signs its own pairing request, pinned to the owner.
 func (o *Owner) requestMachineJoin(ctx context.Context, req *localv1.RequestJoinRequest) (*localv1.RequestJoinResponse, error) {
 	if o.machineOnly() {
-		return nil, connect.NewError(connect.CodeAlreadyExists, errors.New("this Mac is already a machine of an owner"))
+		return nil, connect.NewError(connect.CodeAlreadyExists, errors.New("this computer is already a machine of an owner"))
 	}
 	relayURL := normalizeRelayURL(req.RelayUrl)
 	n, err := o.openLocalMachine()

@@ -66,13 +66,16 @@
     "custodianNote": "“{{name}}” connects through {{server}}: {{server}} holds this agent’s key, can act as it within this access, and sees the sessions it reaches.",
     "addDevice": "Add “{{name}}” as a trusted device",
     "deviceNote": "Like this Mac, it will be able to approve machines, personal agents and new devices. Approve only when that device is in your hands; if it’s lost, remove it from any other device.",
+    "deviceNote_win": "Like this PC, it will be able to approve machines, personal agents and new devices. Approve only when that device is in your hands; if it’s lost, remove it from any other device.",
     "nameMachine": "Name this machine",
     "machineName": "Machine name",
     "machineNote": "Agents find projects by “machine name/project”. After approving, add projects for it in Settings, and choose in access who can use them.",
     "everywhere": "{{names}} can use all machines (including ones that join later), so this one too.",
     "quoted": "“{{name}}”",
     "signerDetail": "Approve with Touch ID if the verification code matches what the other side shows; if not, deny.",
+    "signerDetail_win": "Approve with Windows Hello if the verification code matches what the other side shows; if not, deny.",
     "signerConfirmed": "Approve with Touch ID.",
+    "signerConfirmed_win": "Approve with Windows Hello.",
     "later": "Not Now",
     "addTrusted": "Add as Trusted Device"
   },
@@ -111,7 +114,9 @@
     "titleRenew": "Renew Access for “{{name}}”",
     "titleChange": "Change What “{{name}}” Can Use",
     "sub": "When you save, the changes are listed side by side. Once you confirm with Touch ID, “{{name}}” works with the new settings and the old ones stop at once.",
+    "sub_win": "When you save, the changes are listed side by side. Once you confirm with Windows Hello, “{{name}}” works with the new settings and the old ones stop at once.",
     "signerDetail": "Check the changes, then confirm with Touch ID.",
+    "signerDetail_win": "Check the changes, then confirm with Windows Hello.",
     "save": "Save and Confirm"
   },
   "newGrant": {
@@ -127,6 +132,7 @@
     "waitingLink": "{{name}} will give you a link. Open it and confirm, and its connection request shows up here…",
     "copyHint": "Copy this message and send it to {{name}}",
     "signerDetail": "Check that the verification code matches what {{name}} sees, then confirm with Touch ID.",
+    "signerDetail_win": "Check that the verification code matches what {{name}} sees, then confirm with Windows Hello.",
     "denied": "Denied. Don’t approve if the codes didn’t match",
     "waitingFor": "Waiting for your approval:",
     "another": "Connect Another"
@@ -207,6 +213,7 @@
     "hosted": "Data on {{host}}",
     "hostedDesc": "Messages, new-message alerts and connection approvals; every browser signed out",
     "thisMac": "This Mac",
+    "thisMac_win": "This PC",
     "laterDevice": "offline: offers a reset when next opened",
     "laterMachine": "offline: to pair again when next online",
     "laterAgent": "signs in again when next used",
@@ -214,6 +221,7 @@
     "stayProjects": "Your project directories and repositories, branches included",
     "stayWorktrees": "Worktrees with uncommitted changes: moved aside and kept, and you’re told where",
     "stayProfiles": "Other accounts on this Mac",
+    "stayProfiles_win": "Other accounts on this PC",
     "stayAccount": "Your account: sign in with it again for a fresh start",
     "stayOffline": "What offline devices hold, until each is reset",
     "confirm": "This can’t be undone. Type <b>{{text}}</b> to confirm:",
@@ -229,6 +237,7 @@
     "stateAgent": "Signs in again when next used",
     "last": "Last",
     "finishFailed": "This Mac couldn’t erase itself: {{error}}",
+    "finishFailed_win": "This PC couldn’t erase itself: {{error}}",
     "retry": "Try Again"
   }
 }

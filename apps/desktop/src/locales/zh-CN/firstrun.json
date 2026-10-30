@@ -34,21 +34,32 @@
   },
   "authorize": {
     "joinNote": "继续后按一次 Touch ID，再到你已有的设备上批准。",
+    "joinNote_win": "继续后用一次 Windows Hello，再到你已有的设备上批准。",
     "machineOnlyNote": "不需要 Touch ID，到你已有的设备上批准即可。",
+    "machineOnlyNote_win": "不需要 Windows Hello，到你已有的设备上批准即可。",
     "settingUp": "正在设置…",
     "titleJoin": "让这台 Mac 加入你的 Hermesh？",
+    "titleJoin_win": "让这台电脑加入你的 Hermesh？",
     "titleTrust": "让这台 Mac 成为你的可信设备？",
+    "titleTrust_win": "让这台电脑成为你的可信设备？",
     "body": "Hermesh 只做下面这些事：不改系统设置，不读你的文件。",
     "trusted": "可信设备",
     "trustedBody": "在这台 Mac 的安全芯片里生成你的管理密钥，它不会离开这台 Mac。以后机器和 agent 要连接你的电脑，都要你在这里按 Touch ID 批准。",
+    "trustedBody_win": "在这台电脑的安全芯片（TPM）里生成你的管理密钥，它不会离开这台电脑。以后机器和 agent 要连接你的电脑，都要你在这里用 Windows Hello 批准。",
     "trustedOff": "关闭：不在这里生成管理密钥。这台 Mac 只运行任务，不能批准，也看不到你的其他机器。适合公司的 Mac。",
+    "trustedOff_win": "关闭：不在这里生成管理密钥。这台电脑只运行任务，不能批准，也看不到你的其他机器。适合公司的电脑。",
     "required": "必需",
     "share": "安全可信地共享本机 agent",
+    "share_win": "安全可信地共享本机 agent",
     "shareBody": "Hermesh 像你自己一样，用命令行调用这台 Mac 上的 Claude Code、Codex。不读取 API Key 和 Token，也不碰这些 agent 的登录授权。关掉也能用别的机器，以后可以在设置里再开。",
+    "shareBody_win": "Hermesh 像你自己一样，用命令行调用这台电脑上的 Claude Code、Codex。不读取 API Key 和 Token，也不碰这些 agent 的登录授权。关掉也能用别的机器，以后可以在设置里再开。",
     "shareBodyMachine": "Hermesh 像你自己一样，用命令行调用这台 Mac 上的 Claude Code、Codex。不读取 API Key 和 Token，也不碰这些 agent 的登录授权。",
+    "shareBodyMachine_win": "Hermesh 像你自己一样，用命令行调用这台电脑上的 Claude Code、Codex。不读取 API Key 和 Token，也不碰这些 agent 的登录授权。",
     "remind": "有事时提醒我",
     "remindBody": "登录时打开 Hermesh（只在菜单栏）。有连接请求、agent 提问、会话出错时发通知。",
+    "remindBody_win": "登录时打开 Hermesh（只在通知区域）。有连接请求、agent 提问、会话出错时发通知。",
     "remindBodyMachine": "登录时打开 Hermesh（只在菜单栏）。会话出错时发通知。",
+    "remindBodyMachine_win": "登录时打开 Hermesh（只在通知区域）。会话出错时发通知。",
     "failed": "没能完成设置"
   },
   "join": {
@@ -58,7 +69,9 @@
     "titleApprove": "在你已有的设备上批准",
     "asking": "正在发出加入请求…",
     "waiting": "打开你已有设备上的 Hermesh，批准这台 Mac 的加入请求。",
+    "waiting_win": "打开你已有设备上的 Hermesh，批准这台电脑的加入请求。",
     "waitingMachine": "打开你已有设备上的 Hermesh，批准这台 Mac 作为执行机器加入。",
+    "waitingMachine_win": "打开你已有设备上的 Hermesh，批准这台电脑作为执行机器加入。",
     "codeHint": "须与那台设备显示的一致",
     "approved": "「{{name}}」批准了。它现在显示着两位数字，输入它们：",
     "digits": "两位数字",
@@ -71,20 +84,26 @@
   },
   "unreachable": {
     "title": "连不上 Hermesh 服务器",
-    "body": "当前网络可能拦住了 {{host}}，公司网络和代理常会这样。换个网络（比如手机热点）再试，这台 Mac 上还什么都没改。"
+    "body": "当前网络可能拦住了 {{host}}，公司网络和代理常会这样。换个网络（比如手机热点）再试，这台 Mac 上还什么都没改。",
+    "body_win": "当前网络可能拦住了 {{host}}，公司网络和代理常会这样。换个网络（比如手机热点）再试，这台电脑上还什么都没改。"
   },
   "removed": {
     "title": "这台 Mac 已不在你的 Hermesh 账号里",
+    "title_win": "这台电脑已不在你的 Hermesh 账号里",
     "body": "它被你的另一台设备移除了，或者账号重新开始过。这台 Mac 不能再批准任何事。重新设置后，可以再次加入你的账号。",
+    "body_win": "它被你的另一台设备移除了，或者账号重新开始过。这台电脑不能再批准任何事。重新设置后，可以再次加入你的账号。",
     "bodyMachine": "它已从你的机器里移除，或者账号重新开始了。它不再接任务。重新设置即可再次加入你的账号。",
-    "setUp": "重新设置这台 Mac"
+    "setUp": "重新设置这台 Mac",
+    "setUp_win": "重新设置这台电脑"
   },
   "machineOnly": {
     "removeProject": "移除项目",
     "upgrade": "让这台 Mac 也能批准…",
+    "upgrade_win": "让这台电脑也能批准…",
     "leave": "离开你的 Hermesh…",
     "leaveTitle": "离开你的 Hermesh？",
     "leaveMessage": "这台 Mac 立即不再接任务，正在进行的会话会被中断。它也会从你的机器列表里移除（现在连不上服务器的话，到可信设备上移除它）。项目设置留在本机。",
+    "leaveMessage_win": "这台电脑立即不再接任务，正在进行的会话会被中断。它也会从你的机器列表里移除（现在连不上服务器的话，到可信设备上移除它）。项目设置留在本机。",
     "leaveButton": "离开"
   },
   "connect": {
@@ -109,6 +128,7 @@
     "done": "完成",
     "title": "检查和管理可用的 Agent",
     "searching": "正在查找本机上的编码 Agent",
+    "searching_win": "正在查找本机上的编码 Agent",
     "searchingBody": "看看装了哪些、版本多少、有没有登录。第一次检查会慢一些。",
     "agents": "编码 Agent",
     "notInstalled": "没有安装 · 装好后 Hermesh 会自己发现",
@@ -165,9 +185,11 @@
     "done": "Hermesh 已全部清空",
     "by": "你在「{{device}}」上全部清空了 Hermesh",
     "byBody": "这台 Mac 上的 Hermesh 也已清空。",
+    "byBody_win": "这台电脑上的 Hermesh 也已清空。",
     "pending": "{{names}}当时离线，之后各自重置或重新配对即可。",
     "kept": "有未提交的改动，已保留：",
     "reveal": "在访达中显示",
+    "reveal_win": "在文件资源管理器中显示",
     "dismiss": "关闭"
   }
 }

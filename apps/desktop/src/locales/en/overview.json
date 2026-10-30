@@ -3,6 +3,7 @@
   "day": "{{weekday}}, {{date}}",
   "listSeparator": ", ",
   "thisMac": "This Mac",
+  "thisMac_win": "This PC",
   "runningCount_one": "{{count}} running",
   "runningCount_other": "{{count}} running",
   "add": {
@@ -113,6 +114,7 @@
     "daysLeft_one": "{{count}} day left · {{date}}",
     "daysLeft_other": "{{count}} days left · {{date}}",
     "here": "On this Mac",
+    "here_win": "On this PC",
     "seen_one": "{{count}} session today · last came {{ago}}",
     "seen_other": "{{count}} sessions today · last came {{ago}}",
     "revokeElsewhere": "To revoke its grant, use one of your trusted devices."

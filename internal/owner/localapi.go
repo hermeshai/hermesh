@@ -311,7 +311,7 @@ func (l *localService) CheckAgents(ctx context.Context, req *localv1.CheckAgents
 		m = l.o().local()
 	}
 	if err == nil && m == nil {
-		err = connect.NewError(connect.CodeFailedPrecondition, errors.New("this Mac shares no coding agents"))
+		err = connect.NewError(connect.CodeFailedPrecondition, errors.New("this computer shares no coding agents"))
 	}
 	if err != nil {
 		return nil, err
@@ -344,7 +344,7 @@ func (l *localService) GetDiagnostics(ctx context.Context, _ *localv1.GetDiagnos
 	case st.Initialized:
 		role = "trusted device"
 	}
-	text := fmt.Sprintf("this Mac     %s, owner %s\n", role, st.OwnerId)
+	text := fmt.Sprintf("this device  %s, owner %s\n", role, st.OwnerId)
 	m, ok, err := l.o().onlyMachine()
 	if !ok {
 		m, err = l.o().local(), nil

@@ -1,5 +1,6 @@
 {
   "thisMac": "This Mac",
+  "thisMac_win": "This PC",
   "waiting": "Waiting for you",
   "page": {
     "showInfo": "Show info panel {{keys}}",
@@ -35,6 +36,7 @@
       "offlineSeen": "This conversation is kept on that machine; it shows here once the machine reconnects. Last online {{ago}}.",
       "notConnected": "Can’t reach Hermesh",
       "notConnectedDetail": "This conversation is kept on {{name}}; it shows here once this Mac reconnects.",
+      "notConnectedDetail_win": "This conversation is kept on {{name}}; it shows here once this PC reconnects.",
       "noAnswer": "{{name}} isn’t responding",
       "noAnswerDetail": "This conversation is kept on that machine. Retrying; it shows here once the machine answers."
     },

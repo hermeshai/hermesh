@@ -657,7 +657,7 @@ func (o *Owner) Setup(ctx context.Context, req *localv1.SetupRequest) (*localv1.
 	}
 	if len(signed) > 2 {
 		if err := o.installLocalMachine(ctx, signed[2], req.LocalMachineName); err != nil {
-			return nil, fmt.Errorf("this Mac as a machine: %w", err)
+			return nil, fmt.Errorf("this computer as a machine: %w", err)
 		}
 	}
 	return &localv1.SetupResponse{OwnerId: ownerID, ConnectAddress: connaddr.Format(relayURL, ownerID)}, nil

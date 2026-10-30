@@ -21,7 +21,7 @@ func (o *Owner) wakeControl(ctx context.Context) (relayv1connect.OwnerControlSer
 		return nil, err
 	}
 	if o.machineOnly() {
-		return nil, connect.NewError(connect.CodePermissionDenied, errors.New("this Mac approves nothing: set doorbells up on a trusted device"))
+		return nil, connect.NewError(connect.CodePermissionDenied, errors.New("this computer approves nothing: set doorbells up on a trusted device"))
 	}
 	c, _, err := o.control(ctx)
 	return c, err
