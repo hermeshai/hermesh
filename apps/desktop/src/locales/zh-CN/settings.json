@@ -149,6 +149,8 @@
     "iconBad": "读不了这张图片，换一张 PNG 或 JPEG 试试。"
   },
   "machines": {
+    "trustedDevice": "可信设备",
+    "deviceNote": "这台机器是你的可信设备「{{name}}」。要移除它，到<go>账号与设备</go>。",
     "lastOnline": "{{ago}}在线",
     "longAgo": "很久以前",
     "paused": "已暂停",

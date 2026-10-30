@@ -151,6 +151,8 @@
     "iconBad": "Couldn’t read that picture. Try a PNG or JPEG."
   },
   "machines": {
+    "trustedDevice": "Trusted device",
+    "deviceNote": "This machine is your trusted device “{{name}}”. To remove it, go to <go>Account & Devices</go>.",
     "lastOnline": "Last online {{ago}}",
     "longAgo": "long ago",
     "paused": "Paused",

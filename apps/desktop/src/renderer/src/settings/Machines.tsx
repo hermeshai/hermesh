@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { useTranslation } from "react-i18next";
+import { Trans, useTranslation } from "react-i18next";
 import type { Machine } from "@hermesh/proto/local";
 import { SessionStatus } from "@hermesh/proto/session";
 import { agoText, dateOf, isActive, platformTitle } from "@hermesh/core";
@@ -52,9 +52,14 @@ export function Machines({ open, select, ask }: { open: string; select: (id: str
         {st.machines.map((x) => {
           const seen = dateOf(x.lastSeen);
           const n = running(st, x.machineId);
-          const sub = x.online
-            ? [x.local ? t("thisMac") : "", platformTitle(x.status?.platform ?? "")].filter(Boolean).join(" · ")
-            : t("machines.lastOnline", { ago: seen ? agoText(seen, now) : t("machines.longAgo") });
+          const trusted = !x.local && st.devices.some((d) => d.machineId === x.machineId && !d.thisDevice);
+          const sub = (
+            x.online
+              ? [x.local ? t("thisMac") : trusted ? t("machines.trustedDevice") : "", platformTitle(x.status?.platform ?? "")]
+              : [trusted ? t("machines.trustedDevice") : "", t("machines.lastOnline", { ago: seen ? agoText(seen, now) : t("machines.longAgo") })]
+          )
+            .filter(Boolean)
+            .join(" · ");
           return (
             <GoRow key={x.machineId} icon={<span className="mtile"><Icon name={machineIcon(x)} /></span>} title={x.machineName} sub={sub} onClick={() => select(x.machineId)}>
               <span className="fv-side">
@@ -108,28 +113,19 @@ function MachineDetail({ m, ask, open }: { m: Machine; ask: (a: Ask) => void; op
       message: t("machines.renameMessage"),
       field: { label: t("machines.machineName"), value: m.machineName, button: t("machines.renameButton"), run: (name) => st.run(() => local.renameMachine({ machineId: m.machineId, machineName: name })) },
     });
-  // Another trusted device's own machine goes with the device, as on the
-  // iPhone: removing only the machine would leave the device trusted.
-  const device = st.devices.find((d) => d.machineId === m.machineId && !d.thisDevice);
+  // Another trusted device's own machine is removed with the device, in
+  // 账号与设备 only: removing just the machine would leave the device trusted.
+  const device = m.local ? undefined : st.devices.find((d) => d.machineId === m.machineId && !d.thisDevice);
   const remove = () =>
     st.set({
-      sheet: device
-        ? {
-            kind: "confirm",
-            title: t("removeDeviceTitle", { name: device.label }),
-            message: t("account.removeDeviceMessage"),
-            button: t("removeButton"),
-            run: () => local.removeDevice({ keyId: device.keyId }),
-            done: t("removed", { name: device.label }),
-          }
-        : {
-            kind: "confirm",
-            title: t("removeMachineTitle", { name: m.machineName }),
-            message: t("machines.removeMessage"),
-            button: t("removeButton"),
-            run: () => local.removeMachine({ machineId: m.machineId }),
-            done: t("removed", { name: m.machineName }),
-          },
+      sheet: {
+        kind: "confirm",
+        title: t("removeMachineTitle", { name: m.machineName }),
+        message: t("machines.removeMessage"),
+        button: t("removeButton"),
+        run: () => local.removeMachine({ machineId: m.machineId }),
+        done: t("removed", { name: m.machineName }),
+      },
     });
   const copyDiagnostics = () =>
     st.run(async () => {
@@ -149,7 +145,7 @@ function MachineDetail({ m, ask, open }: { m: Machine; ask: (a: Ask) => void; op
           <b>{m.machineName}</b>
           <span>
             {[
-              m.local ? t("thisMac") : "",
+              m.local ? t("thisMac") : device ? t("machines.trustedDevice") : "",
               m.online ? t("online") : t("machines.offlineSince", { ago: seen ? agoText(seen, now) : "—" }),
               platformTitle(m.status?.platform ?? ""),
               version ? `Hermesh ${version}` : "",
@@ -203,10 +199,15 @@ function MachineDetail({ m, ask, open }: { m: Machine; ask: (a: Ask) => void; op
         <button className="btn" onClick={rename}>{t("machines.rename")}</button>
         {/* What to send when something doesn't work; only this Mac's is at hand. */}
         {m.local && <button className="btn" onClick={copyDiagnostics}>{t("machines.copyDiagnostics")}</button>}
-        {!m.local && (
+        {!m.local && !device && (
           <button className="btn danger push" onClick={remove}>{t("remove")}</button>
         )}
       </div>
+      {device && (
+        <p className="set-note">
+          <Trans t={t} i18nKey="machines.deviceNote" values={{ name: device.label }} components={{ go: <button className="link" onClick={() => window.hermesh?.openSettings("account")} /> }} />
+        </p>
+      )}
     </div>
   );
 }
