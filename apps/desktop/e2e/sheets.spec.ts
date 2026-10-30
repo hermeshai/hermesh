@@ -314,17 +314,17 @@ test("renaming an agent from settings keeps what it may use and until when; a kn
   await settings.waitForLoadState();
   await settings.getByRole("list", { name: "授权" }).getByRole("button", { name: new RegExp(name) }).click();
   const panel = settings.getByRole("main", { name: "授权" });
-  const sheet = settings.getByRole("dialog", { name: "给这个 agent 改名" });
+  const sheet = settings.getByRole("dialog", { name: "名字和图标" });
   // Kept as it is: nothing to sign.
-  await panel.getByRole("button", { name: "改名…" }).click();
-  await sheet.getByRole("button", { name: "改名" }).click();
+  await panel.getByRole("button", { name: "名字和图标…" }).click();
+  await sheet.getByRole("button", { name: "存储" }).click();
   await expect(sheet).toBeHidden();
   expect((await clients()).find((c) => c.grantId === before.grantId)!.grantVersion).toBe(before.grantVersion);
 
-  await panel.getByRole("button", { name: "改名…" }).click();
+  await panel.getByRole("button", { name: "名字和图标…" }).click();
   await expect(sheet.getByRole("textbox", { name: "名字" })).toHaveValue(name);
   await sheet.getByRole("textbox", { name: "名字" }).fill("Grok Bot");
-  await sheet.getByRole("button", { name: "改名" }).click(); // the signer asks, and says yes
+  await sheet.getByRole("button", { name: "存储" }).click(); // the signer asks, and says yes
   await expect(sheet).toBeHidden();
   await expect(panel.locator(".dhero b")).toHaveText("Grok Bot");
   await expect(panel.locator(".dhero img")).toBeVisible(); // Grok Bot's icon
