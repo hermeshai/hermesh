@@ -248,8 +248,13 @@ final class AppModel {
     /// The app came to the front: keep everything current.
     func foreground() {
         active = true
-        watched = false
-        relayDownSince = nil
+        // Back from the background, a new Watch begins: what shows is not
+        // current until its first message. Only inactive meanwhile (the
+        // Notification Center pulled part way, say), the Watch went on.
+        if watchTask == nil {
+            watched = false
+            relayDownSince = nil
+        }
         Core.resume { [self] in // the core listens again
             guard active, phase == .ready else { return }
             begin()
