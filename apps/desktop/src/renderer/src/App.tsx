@@ -27,10 +27,11 @@ function Root() {
   const member = st.status?.initialized === true || st.status?.machineOnly === true;
   const upgrading = st.upgrading && st.status?.machineOnly === true;
   const ready = member && !st.status?.removed && !firstRun && !upgrading;
+  // The small starting window grows once hermeshd answers, and keeps its size if it stops answering later.
   useEffect(() => {
-    if (st.status !== undefined) window.hermesh?.setWindowMode(ready || st.status === null ? "main" : "onboarding");
+    if (st.status) window.hermesh?.setWindowMode(ready ? "main" : "onboarding");
   }, [ready, st.status]);
-  if (st.status === undefined) return <div className="empty"><Mark size={40} variant="seq" /></div>;
+  if (st.status === undefined) return <div className="empty drag"><Mark size={40} variant="seq" /></div>;
   if (st.status === null) return <DaemonUnavailable />;
   if (upgrading)
     return <Join owner={st.status.ownerId} center={st.status.relayUrl} relay={st.status.relayUrl} machine={false} cancel={() => st.set({ upgrading: false })} />;
@@ -41,12 +42,16 @@ function DaemonUnavailable() {
   const { t } = useTranslation("common");
   // The installed app's background service waits until the person allows it in System Settings › Login Items.
   const [approval, setApproval] = useState(false);
+  // It usually answers within moments of starting; the explanation only if it doesn't.
+  const [late, setLate] = useState(false);
   useEffect(() => {
     window.hermesh?.daemonNeedsApproval().then(setApproval);
+    const t = setTimeout(() => setLate(true), 8000);
+    return () => clearTimeout(t);
   }, []);
   return (
-    <div className="empty drag" style={{ height: "100%" }}>
-      <Mark size={48} variant="wait" />
+    <div className="empty drag" style={{ height: "100%", padding: 28 }}>
+      <Mark size={40} variant="wait" />
       <b>{t("daemon.connecting")}</b>
       {approval ? (
         <>
@@ -54,7 +59,7 @@ function DaemonUnavailable() {
           <button className="btn" onClick={() => window.hermesh?.openLoginItems()}>{t("daemon.openLoginItems")}</button>
         </>
       ) : (
-        <span>{t("daemon.noResponse")}</span>
+        late && <span>{t("daemon.noResponse")}</span>
       )}
     </div>
   );

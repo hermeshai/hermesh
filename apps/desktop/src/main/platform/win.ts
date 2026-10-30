@@ -99,7 +99,7 @@ const signerRefusals = { 3: "main:signer.notAdmin", 4: "main:signer.uacOff", 5: 
 
 const symbols = () => (nativeTheme.shouldUseDarkColors ? "#ffffff" : "#1a1a1a");
 /** The caption buttons as high as the top band: the first run's (48 px) or the toolbar's (44 px). */
-const buttonsHeight = (kind: WindowKind) => (kind === "onboarding" ? 48 : 44);
+const buttonsHeight = (kind: WindowKind) => (kind === "onboarding" || kind === "starting" ? 48 : 44);
 
 export const win: Platform = {
   token: "win",
@@ -239,5 +239,20 @@ export const win: Platform = {
 
   placeButtons(win, kind) {
     win.setTitleBarOverlay({ height: buttonsHeight(kind) });
+  },
+
+  grow(win, to) {
+    // Windows doesn't animate setBounds: a few frames of it, easing out, as macOS does.
+    const from = win.getBounds();
+    const start = Date.now();
+    const step = () => {
+      if (win.isDestroyed()) return;
+      const t = Math.min(1, (Date.now() - start) / 200);
+      const e = 1 - (1 - t) ** 3;
+      const at = (a: number, b: number) => Math.round(a + (b - a) * e);
+      win.setBounds({ x: at(from.x, to.x), y: at(from.y, to.y), width: at(from.width, to.width), height: at(from.height, to.height) });
+      if (t < 1) setTimeout(step, 16);
+    };
+    step();
   },
 };
