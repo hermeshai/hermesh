@@ -8,6 +8,9 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"image"
+	"image/color"
+	"image/png"
 	"io"
 	"net"
 	"net/http"
@@ -707,7 +710,8 @@ func TestWake(t *testing.T) {
 // TestRenameAgent: the owner gives an agent another name (docs/agent-names.md
 // §14). Its grant is signed again with that alone changed, so every device
 // and the agent's contacts show it, and the agent keeps working, as long as
-// before.
+// before. Then another icon: an app's, or a picture of the owner's, which
+// the grant carries re-encoded.
 func TestRenameAgent(t *testing.T) {
 	if testing.Short() {
 		t.Skip("e2e")
@@ -745,6 +749,62 @@ func TestRenameAgent(t *testing.T) {
 	if _, err := w.app.client.RenameClient(ctx, &localv1.RenameClientRequest{GrantId: before.GrantId, Label: strings.Repeat("x", 65)}); connect.CodeOf(err) != connect.CodeInvalidArgument {
 		t.Fatalf("a name too long: %v", err)
 	}
+
+	// An icon: an app's, then the owner's own picture, which is re-encoded.
+	icon := func(v string) *string { return &v }
+	if _, err := w.app.client.RenameClient(ctx, &localv1.RenameClientRequest{GrantId: before.GrantId, Label: "Grok Bot", Icon: icon("app:grokbot")}); err != nil {
+		t.Fatal(err)
+	}
+	if c := grant(before.GrantId); c.Icon != "app:grokbot" || len(c.Image) != 0 {
+		t.Fatalf("an app's icon: %q %d bytes", c.Icon, len(c.Image))
+	}
+	pic := squarePNG(t, 128)
+	if _, err := w.app.client.RenameClient(ctx, &localv1.RenameClientRequest{GrantId: before.GrantId, Label: "Grok Bot", Icon: icon("image"), Image: append(pic, "trailing bytes"...)}); err != nil {
+		t.Fatal(err)
+	}
+	if c := grant(before.GrantId); c.Icon != "image" || !bytes.HasPrefix(c.Image, []byte("\x89PNG")) || bytes.Contains(c.Image, []byte("trailing")) {
+		t.Fatalf("the owner's picture: %q %d bytes", c.Icon, len(c.Image))
+	}
+	// Renaming alone (the iPhone) and changing the access keep the icon.
+	if _, err := w.app.client.RenameClient(ctx, &localv1.RenameClientRequest{GrantId: before.GrantId, Label: "Grok"}); err != nil {
+		t.Fatal(err)
+	}
+	c := grant(before.GrantId)
+	if _, err := w.app.client.UpdateClient(ctx, &localv1.UpdateClientRequest{GrantId: c.GrantId, Spec: c.Spec}); err != nil {
+		t.Fatal(err)
+	}
+	if c := grant(before.GrantId); c.Label != "Grok" || c.Icon != "image" || len(c.Image) == 0 {
+		t.Fatalf("renamed and changed, the icon must stay: %q %q %d bytes", c.Label, c.Icon, len(c.Image))
+	}
+	for _, bad := range []*localv1.RenameClientRequest{
+		{GrantId: before.GrantId, Label: "Grok", Icon: icon("app:Grok Bot")},
+		{GrantId: before.GrantId, Label: "Grok", Icon: icon("image")},
+		{GrantId: before.GrantId, Label: "Grok", Icon: icon("image"), Image: []byte("<svg/>")},
+		{GrantId: before.GrantId, Label: "Grok", Icon: icon("image"), Image: squarePNG(t, 512)},
+	} {
+		if _, err := w.app.client.RenameClient(ctx, bad); connect.CodeOf(err) != connect.CodeInvalidArgument {
+			t.Fatalf("a bad icon %q (%d bytes): %v", bad.GetIcon(), len(bad.Image), err)
+		}
+	}
+	// The machines take the grant with its picture: the agent still works.
+	if r := w.cli(time.Minute, "session", "start", "--project", "demo", "--prompt", "say pictured", "--wait"); r.code != 0 || !strings.Contains(r.stdout, "pictured") {
+		t.Fatalf("the agent's session after its new icon: %+v", r)
+	}
+}
+
+// squarePNG is a size × size PNG of a gradient.
+func squarePNG(t *testing.T, size int) []byte {
+	img := image.NewRGBA(image.Rect(0, 0, size, size))
+	for y := range size {
+		for x := range size {
+			img.Set(x, y, color.RGBA{uint8(x), uint8(y), 200, 255})
+		}
+	}
+	var b bytes.Buffer
+	if err := png.Encode(&b, img); err != nil {
+		t.Fatal(err)
+	}
+	return b.Bytes()
 }
 
 // withLabel is spec with another label.

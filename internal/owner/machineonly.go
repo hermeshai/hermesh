@@ -251,7 +251,7 @@ func onlyMachineClients(l *machine.Local) []*localv1.Client {
 		spec := specFromGrant(g)
 		spec.MachineIds = []string{id}
 		c := &localv1.Client{ClientId: g.ClientId, GrantId: g.GrantId, Label: g.ClientLabel, Fingerprint: identity.ShortFingerprint(g.ClientPublicKey),
-			Spec: spec, GrantVersion: g.Version, ExpiresAt: g.ExpiresAt, Custodian: g.Custodian}
+			Spec: spec, GrantVersion: g.Version, ExpiresAt: g.ExpiresAt, Custodian: g.Custodian, Icon: g.ClientIcon, Image: g.ClientImage}
 		if k, ok := known[g.ClientId]; ok && !k.Seen.IsZero() {
 			c.LastSeen = timestamppb.New(k.Seen)
 		}

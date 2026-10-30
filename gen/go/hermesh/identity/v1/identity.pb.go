@@ -934,7 +934,14 @@ type Grant struct {
 	ExpiresAt             *timestamppb.Timestamp `protobuf:"bytes,14,opt,name=expires_at,json=expiresAt,proto3" json:"expires_at,omitempty"`
 	// Copied from the PairingRequest: the server that holds the client key
 	// (an MCP connection), "" for a client that holds its own key.
-	Custodian     string `protobuf:"bytes,15,opt,name=custodian,proto3" json:"custodian,omitempty"`
+	Custodian string `protobuf:"bytes,15,opt,name=custodian,proto3" json:"custodian,omitempty"`
+	// The icon the owner picked for it: "" draws its app's when its name or
+	// where it signs in says which (the default), "letter" its initial,
+	// "app:<id>" an app's logo, "image" client_image.
+	ClientIcon string `protobuf:"bytes,16,opt,name=client_icon,json=clientIcon,proto3" json:"client_icon,omitempty"`
+	// A square PNG or JPEG of at most 256 px, re-encoded by the owner's
+	// device, when client_icon is "image".
+	ClientImage   []byte `protobuf:"bytes,17,opt,name=client_image,json=clientImage,proto3" json:"client_image,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -1065,6 +1072,20 @@ func (x *Grant) GetCustodian() string {
 		return x.Custodian
 	}
 	return ""
+}
+
+func (x *Grant) GetClientIcon() string {
+	if x != nil {
+		return x.ClientIcon
+	}
+	return ""
+}
+
+func (x *Grant) GetClientImage() []byte {
+	if x != nil {
+		return x.ClientImage
+	}
+	return nil
 }
 
 // EraseOrder is the owner's order to erase Hermesh everywhere
@@ -2153,7 +2174,7 @@ const file_hermesh_identity_v1_identity_proto_rawDesc = "" +
 	"machine_id\x18\x02 \x01(\tR\tmachineId\x12,\n" +
 	"\x12machine_public_key\x18\x03 \x01(\fR\x10machinePublicKey\x127\n" +
 	"\tissued_at\x18\x05 \x01(\v2\x1a.google.protobuf.TimestampR\bissuedAt\x12\"\n" +
-	"\rdevice_key_id\x18\x06 \x01(\tR\vdeviceKeyIdJ\x04\b\x04\x10\x05R\fmachine_name\"\xc5\x04\n" +
+	"\rdevice_key_id\x18\x06 \x01(\tR\vdeviceKeyIdJ\x04\b\x04\x10\x05R\fmachine_name\"\x89\x05\n" +
 	"\x05Grant\x12\x19\n" +
 	"\bowner_id\x18\x01 \x01(\tR\aownerId\x12\x19\n" +
 	"\bgrant_id\x18\x02 \x01(\tR\agrantId\x12\x18\n" +
@@ -2172,7 +2193,10 @@ const file_hermesh_identity_v1_identity_proto_rawDesc = "" +
 	"not_before\x18\r \x01(\v2\x1a.google.protobuf.TimestampR\tnotBefore\x129\n" +
 	"\n" +
 	"expires_at\x18\x0e \x01(\v2\x1a.google.protobuf.TimestampR\texpiresAt\x12\x1c\n" +
-	"\tcustodian\x18\x0f \x01(\tR\tcustodianJ\x04\b\n" +
+	"\tcustodian\x18\x0f \x01(\tR\tcustodian\x12\x1f\n" +
+	"\vclient_icon\x18\x10 \x01(\tR\n" +
+	"clientIcon\x12!\n" +
+	"\fclient_image\x18\x11 \x01(\fR\vclientImageJ\x04\b\n" +
 	"\x10\vR\x06preset\"{\n" +
 	"\n" +
 	"EraseOrder\x12\x19\n" +

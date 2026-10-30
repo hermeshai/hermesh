@@ -102,6 +102,71 @@ test("settings opens on 通用; 授权 lists the grants, one opens its scope, an
   await app.close();
 });
 
+test("an agent's name and icon change together: an app's logo, or a picture of the owner's, kept in its grant and shown in the list", async () => {
+  const { app, page } = await launch();
+  const settings = await openSettings(app, page, "grants");
+  const grants = page_(settings, "授权");
+  const list = grants.getByRole("list", { name: "授权" });
+  await list.getByRole("button", { name: /bot/ }).click();
+  const grant = async () => (await api<{ clients?: { label: string; icon?: string; image?: string }[] }>(settings, "ListClients")).clients?.find((c) => /bot/i.test(c.label));
+
+  // Clicking its face opens the sheet; an app picked before the name is typed names it too.
+  await grants.locator(".dhero-av").click();
+  const dialog = settings.getByRole("dialog", { name: "名字和图标" });
+  const name = dialog.getByRole("textbox", { name: "名字" });
+  await expect(name).toHaveValue("bot");
+  await expect(dialog.getByRole("button", { name: "自动" })).toHaveAttribute("aria-pressed", "true");
+  await dialog.getByRole("button", { name: "Grok Bot" }).click();
+  await expect(name).toHaveValue("Grok Bot");
+  await name.fill("bot of mine");
+  await dialog.getByRole("button", { name: "Cursor" }).click();
+  await expect(name).toHaveValue("bot of mine");
+  await dialog.getByRole("button", { name: "Grok Bot" }).click();
+  await snap(settings, "settings-grant-look");
+  await dialog.getByRole("button", { name: "存储" }).click();
+  await expect(dialog).toBeHidden();
+  await expect(grants.locator(".dhero")).toContainText("bot of mine");
+  expect(await grant()).toMatchObject({ label: "bot of mine", icon: "app:grokbot" });
+
+  // A picture of the owner's: not square, cut to its middle at 128 px.
+  await grants.getByRole("button", { name: "名字和图标…" }).click();
+  await expect(dialog.getByRole("button", { name: "Grok Bot" })).toHaveAttribute("aria-pressed", "true");
+  const png = await settings.evaluate(async () => {
+    const c = document.createElement("canvas");
+    c.width = 300;
+    c.height = 200;
+    const g = c.getContext("2d")!;
+    g.fillStyle = "#2a7";
+    g.fillRect(0, 0, 300, 200);
+    g.fillStyle = "#fc3";
+    g.fillRect(100, 50, 100, 100);
+    return c.toDataURL("image/png").split(",")[1];
+  });
+  await dialog.locator("input[type=file]").setInputFiles({ name: "me.png", mimeType: "image/png", buffer: Buffer.from(png, "base64") });
+  await expect(dialog.getByRole("button", { name: "你的图片" })).toHaveAttribute("aria-pressed", "true");
+  await dialog.getByRole("button", { name: "存储" }).click();
+  await expect(dialog).toBeHidden();
+  const pic = await grant();
+  expect(pic?.icon).toBe("image");
+  const kept = Buffer.from(pic!.image!, "base64"); // a PNG: its IHDR says width and height
+  expect([kept.toString("latin1", 1, 4), kept.readUInt32BE(16), kept.readUInt32BE(20)]).toEqual(["PNG", 128, 128]);
+  await expect(grants.locator(".dhero img.gpic")).toBeVisible();
+  await settings.getByRole("button", { name: "返回授权" }).click();
+  await expect(list.getByRole("button", { name: /bot of mine/ }).locator("img.gpic")).toBeVisible();
+  await snap(settings, "settings-grants-picture");
+
+  // Back as it was, for the other tests: its name, its icon automatic.
+  await list.getByRole("button", { name: /bot of mine/ }).click();
+  await grants.getByRole("button", { name: "名字和图标…" }).click();
+  await name.fill("bot");
+  await dialog.getByRole("button", { name: "自动" }).click();
+  await dialog.getByRole("button", { name: "存储" }).click();
+  await expect(dialog).toBeHidden();
+  expect(await grant()).toMatchObject({ label: "bot" });
+  expect((await grant())?.icon ?? "").toBe("");
+  await app.close();
+});
+
 test("an agent's page sets up waking it: three steps, a pasted block split, a wrong key caught, then it wakes for every name, shows its rings, and stops", async () => {
   // The bot's routine: a webhook that takes one key.
   const calls: { type?: string; as?: string; raw: string }[] = [];

@@ -772,6 +772,9 @@ message Client {
   // The server that holds this client's key (an MCP connection), "" when
   // the client holds its own.
   string custodian = 11;
+  // The icon the owner picked (identity.v1.Grant client_icon, client_image).
+  string icon = 12;
+  bytes image = 13;
 }
 
 message ListClientsRequest {}
@@ -793,6 +796,10 @@ message UpdateClientResponse {
 message RenameClientRequest {
   string grant_id = 1;
   string label = 2;
+  // When set, the icon too (Grant client_icon), with image for "image";
+  // unset keeps the icon it has.
+  optional string icon = 3;
+  bytes image = 4;
 }
 
 message RenameClientResponse {

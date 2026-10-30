@@ -3,8 +3,9 @@ import { Trans, useTranslation } from "react-i18next";
 import type { Client, GetUsageResponse, Machine } from "@hermesh/proto/local";
 import { SessionStatus, type Session } from "@hermesh/proto/session";
 import { agoText, codingAgentTitle, createdDate, dateOf, isActive, isFailed, monthDay, sameDay, todayStats, tokensText, usageYear } from "@hermesh/core";
-import { AgentLogo, AgentTile, agentName, grantColor, kindNamed, Mark } from "@hermesh/ui";
+import { AgentLogo, agentName, grantColor, Mark, type GrantLook } from "@hermesh/ui";
 import { i18n } from "../../../shared/i18n";
+import { grantFace } from "../components";
 import { problemShort, problemsOf, severe } from "../health";
 import { Icon } from "../icons";
 import { hostOf } from "../sheets/Pairing";
@@ -352,7 +353,7 @@ export function LinkMap({ pick, onPick, now, usage }: { pick: string; onPick: (k
               onFocus={setHover}
               onClick={() => toggle(n.key)}
             >
-              <GrantIcon label={n.client.label} />
+              <GrantIcon c={n.client} />
               <span className="lm-t">
                 <b>{agentName(n.client.label)}</b>
                 {only && !n.client.lastSeen ? <small>{t("map.notYet")}</small> : <Expiry c={n.client} now={now} />}
@@ -580,7 +581,7 @@ function ClientCard({ c, now, style, ref, onMouseEnter, onMouseLeave }: {
   return (
     <div className="lm-card" ref={ref} style={style} role="dialog" aria-label={agentName(c.label)} onMouseEnter={onMouseEnter} onMouseLeave={onMouseLeave}>
       <div className="lm-card-h">
-        <GrantIcon label={c.label} />
+        <GrantIcon c={c} />
         <b>{agentName(c.label)}</b>
       </div>
       <p className="lm-card-sub">{c.custodian ? t("card.custodian", { host: hostOf(c.custodian) }) : t("card.ownKey")}</p>
@@ -622,9 +623,10 @@ function Tail({ online, running }: { online: boolean; running: number }) {
   );
 }
 
-function GrantIcon({ label }: { label: string }) {
-  const logo = kindNamed(label)?.logo;
-  if (logo) return <AgentTile agent={logo} size={26} />;
+function GrantIcon({ c }: { c: GrantLook }) {
+  const label = c.label;
+  const face = grantFace(c, 26);
+  if (face) return face;
   return (
     <span className="av" style={{ width: 26, height: 26, background: grantColor(label) }} aria-hidden="true">
       {label.slice(0, 1).toUpperCase()}

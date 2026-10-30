@@ -125,11 +125,18 @@
     "usedBy": "{{names}} · used {{ago}}",
     "usedAgo": "Used {{ago}}",
     "notUsed": "Not used yet",
-    "rename": "Rename…",
-    "renameTitle": "Rename This Agent",
-    "renameMessage": "The name you know it by, here and on your other devices; other agents see it too. Naming it after a known app (Grok Bot, Claude) shows that app’s icon.",
+    "rename": "Name and Icon…",
+    "renameTitle": "Name and Icon",
+    "renameMessage": "Shown here and on your other devices. Other agents see only the name.",
     "agentName": "Name",
-    "renameButton": "Rename"
+    "renameButton": "Save",
+    "icon": "Icon",
+    "iconAuto": "Automatic",
+    "iconLetter": "Initial",
+    "iconMine": "Your Picture",
+    "iconUpload": "Upload…",
+    "iconAutoHint": "Follows its name, or where it signs in: a connection from cursor.com shows as Cursor.",
+    "iconBad": "Couldn’t read that picture. Try a PNG or JPEG."
   },
   "machines": {
     "lastOnline": "Last online {{ago}}",

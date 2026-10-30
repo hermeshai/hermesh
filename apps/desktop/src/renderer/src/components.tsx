@@ -1,6 +1,7 @@
 import { SessionStatus, type Session } from "@hermesh/proto/session";
 import { codingAgentShort, codingAgentTitle, isActive, isFailed, statusTitle } from "@hermesh/core";
-import { AgentLogo, AgentTile, grantColor, kindNamed, type PersonalAgentKind } from "@hermesh/ui";
+import { AgentLogo, AgentTile, grantColor, grantLogo, grantPicture, type GrantLook, type PersonalAgentKind } from "@hermesh/ui";
+import type { ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import { Icon } from "./icons";
 
@@ -17,13 +18,21 @@ export function StatusDot({ s }: { s: Session }) {
   return <span className={`sdot ${c}`} role="img" aria-label={isFailed(s) && s.status !== SessionStatus.CRASHED ? t("status.failed") : statusTitle(s.status)} />;
 }
 
-export function GrantAvatar({ label, size = "" }: { label: string; size?: "" | "md" | "lg" | "xl" | "sm" }) {
+/** A grant's picture or app logo, when it has one (null: draw its initial). */
+export function grantFace(c: GrantLook, size: number): ReactNode {
+  const pic = grantPicture(c);
+  if (pic) return <img className="gpic" src={pic} alt="" style={{ width: size, height: size, borderRadius: size * 0.28 }} />;
+  const logo = grantLogo(c);
+  return logo ? <AgentTile agent={logo} size={size} /> : null;
+}
+
+export function GrantAvatar({ c, size = "" }: { c: GrantLook; size?: "" | "md" | "lg" | "xl" | "sm" }) {
   const style = size === "sm" ? { width: 16, height: 16, fontSize: 9 } : undefined;
-  const logo = kindNamed(label)?.logo;
-  if (logo) return <AgentTile agent={logo} size={{ sm: 16, md: 28, lg: 40, xl: 52, "": 22 }[size]} />;
+  const face = grantFace(c, { sm: 16, md: 28, lg: 40, xl: 52, "": 22 }[size]);
+  if (face) return face;
   return (
-    <span className={`av ${size === "sm" ? "" : size}`} style={{ background: grantColor(label), ...style }} aria-hidden="true">
-      {label.slice(0, 1).toUpperCase()}
+    <span className={`av ${size === "sm" ? "" : size}`} style={{ background: grantColor(c.label), ...style }} aria-hidden="true">
+      {c.label.slice(0, 1).toUpperCase()}
     </span>
   );
 }

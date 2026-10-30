@@ -8,6 +8,8 @@ import SwiftUI
 struct AgentLogo: View {
     let id: String
     var size: CGFloat = 28
+    /// Its initial even when id names an app (a grant whose owner chose its initial).
+    var initialOnly = false
 
     /// The logo asset for a coding agent id or a personal agent's name.
     static func asset(_ id: String) -> String? {
@@ -39,7 +41,7 @@ struct AgentLogo: View {
 
     var body: some View {
         Group {
-            if let a = Self.asset(id) {
+            if !initialOnly, let a = Self.asset(id) {
                 Image("Logos/\(a)").resizable().interpolation(.high)
             } else {
                 Initial(text: id, color: Self.color(id))
@@ -176,11 +178,23 @@ struct ToastView: View {
     }
 }
 
-/// A grant's avatar: its personal agent's logo, else a tile with its initial.
+/// A grant's avatar: the icon its owner picked (a picture, an app's logo or
+/// its initial), else its app's logo, else a tile with its initial.
 struct GrantAvatar: View {
-    let label: String
+    let client: Client
     var size: CGFloat = 28
-    var body: some View { AgentLogo(id: label, size: size) }
+    var body: some View {
+        if client.icon == "image", let picture = UIImage(data: client.image) {
+            Image(uiImage: picture).resizable().interpolation(.high)
+                .frame(width: size, height: size)
+                .clipShape(RoundedRectangle(cornerRadius: size * 0.26, style: .continuous))
+                .accessibilityHidden(true)
+        } else if client.icon.hasPrefix("app:") {
+            AgentLogo(id: String(client.icon.dropFirst(4)), size: size)
+        } else {
+            AgentLogo(id: client.label, size: size, initialOnly: !client.icon.isEmpty)
+        }
+    }
 }
 
 extension Hermesh_Local_V1_Client {

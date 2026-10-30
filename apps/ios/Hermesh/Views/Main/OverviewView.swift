@@ -161,7 +161,7 @@ struct OverviewView: View {
     private func expiringRow(_ c: Client) -> some View {
         let days = c.daysLeft(now: model.now)
         return HStack(spacing: 12) {
-            GrantAvatar(label: c.label)
+            GrantAvatar(client: c)
             VStack(alignment: .leading, spacing: 2) {
                 Text(days == 0 ? String(localized: "“\(c.label)”’s grant ends today") : String(localized: "“\(c.label)”’s grant ends in \(days) days"))
                 Text("Then it can no longer use your machines").font(.footnote).foregroundStyle(.secondary)
