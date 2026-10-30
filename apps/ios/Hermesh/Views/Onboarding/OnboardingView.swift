@@ -3,6 +3,7 @@ import CryptoKit
 import HermeshKit
 import HermeshProto
 import HermeshSessions
+import Network
 import SwiftUI
 import UserNotifications
 
@@ -141,6 +142,12 @@ struct OnboardingView: View {
             }
             .font(.footnote)
             .accessibilityIdentifier("claim-toggle")
+            if plainHTTP(address) {
+                Label("Not encrypted (HTTP). Your sessions stay end-to-end encrypted, but the claim code and which machines are online travel in the clear: someone on the network could see them, or claim this server before you do. Claude and ChatGPT can't connect either. Fine for trying Hermesh or on a network you trust; to keep using it, give the server a domain.", systemImage: "exclamationmark.triangle.fill")
+                    .font(.footnote).foregroundStyle(.orange)
+                    .accessibilityElement(children: .combine)
+                    .accessibilityIdentifier("plain-http")
+            }
             if let error { Text(error).font(.footnote).foregroundStyle(.red) }
             Spacer()
             Button {
@@ -365,7 +372,7 @@ struct OnboardingView: View {
     /// once its key is made.
     private func claimServer() {
         var t = address.trimmingCharacters(in: .whitespacesAndNewlines)
-        if !t.contains("://") { t = "https://" + t }
+        if !t.contains("://") { t = (isIPAddress(addressHost(t)) ? "http://" : "https://") + t }
         guard let center = URL(string: t), center.host != nil else { return error = String(localized: "That isn’t a server address. It looks like relay.example.com") }
         error = nil
         busy = true
@@ -530,6 +537,9 @@ struct ConnectAddress {
 /// Where a center's devices connect: its .well-known/hermesh.json, else itself.
 func connectURL(_ center: URL) async throws -> String {
     let base = center.absoluteString.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
+    // A server by plain HTTP is a relay of one's own, which has none; and
+    // iOS keeps the app's own requests (not its core's) to HTTPS.
+    if center.scheme == "http" { return base }
     let (data, res) = try await URLSession.shared.data(from: center.appendingPathComponent(".well-known/hermesh.json"))
     let status = (res as? HTTPURLResponse)?.statusCode ?? 0
     if status == 404 { return base }
@@ -540,6 +550,29 @@ func connectURL(_ center: URL) async throws -> String {
           u.query == nil, u.fragment == nil, u.path.replacingOccurrences(of: "/", with: "").isEmpty
     else { throw APIError(code: "invalid", message: "The service gave an invalid connect URL: \(s)") }
     return "\(scheme)://\(host)\(u.port.map { ":\($0)" } ?? "")"
+}
+
+/// An address's host, without scheme, path or port: "203.0.113.7" for
+/// "203.0.113.7:8080", "2001:db8::1" for "[2001:db8::1]:8080".
+func addressHost(_ address: String) -> String {
+    var s = address.trimmingCharacters(in: .whitespacesAndNewlines)
+    if let r = s.range(of: "://") { s = String(s[r.upperBound...]) }
+    s = String(s.split(separator: "/", maxSplits: 1, omittingEmptySubsequences: false).first ?? "")
+    if s.hasPrefix("["), let end = s.firstIndex(of: "]") { return String(s[s.index(after: s.startIndex)..<end]) }
+    if let colon = s.lastIndex(of: ":") { return String(s[..<colon]) }
+    return s
+}
+
+func isIPAddress(_ host: String) -> Bool { IPv4Address(host) != nil || IPv6Address(host) != nil }
+
+/// Whether a server address is plain HTTP to another device: "http://…", or
+/// an IP address, which is reached by HTTP (the relay gets certificates for
+/// domain names only; internal/owner's normalizeRelayURL).
+func plainHTTP(_ address: String) -> Bool {
+    let s = address.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+    let host = addressHost(s)
+    guard s.hasPrefix("http://") || (!s.contains("://") && isIPAddress(host)) else { return false }
+    return !(host == "localhost" || host.hasPrefix("127.") || host == "::1")
 }
 
 extension Data {

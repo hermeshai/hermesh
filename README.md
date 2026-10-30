@@ -181,8 +181,9 @@ hermesh auth login relay.example.com/o_xxxxxxxx
 `HERMESH_RELAY_MCP=1` also serves MCP, for Claude, ChatGPT and other online assistants, at an address with a key in it, so only you can connect apps: copy it from **Settings › Account & Devices › Advanced** on the Mac or **Account and Devices** on the iPhone, or print it with `docker exec hermesh-relay hermesh-relay mcp-url`. Leave it out if your agents all use the CLI.
 
 <details>
-<summary>Updating, a web server already on port 443, backups</summary>
+<summary>No domain, updating, a web server already on port 443, backups</summary>
 
+- **No domain?** Start it without `HERMESH_RELAY_DOMAIN`, publishing port 8080 instead (`-p 8080:8080`), and enter the server's IP address and port in the app, such as `203.0.113.7:8080`. It works, but the connection isn't encrypted: your sessions stay end-to-end encrypted, yet the claim code and which machines are online can be seen on the network, and someone could claim the server before you do. Claude and ChatGPT can't connect to it. Fine for trying Hermesh or on a network you trust.
 - **Update:** `docker pull hermeshai/hermesh-relay`, then `docker rm -f hermesh-relay` and the same `docker run`.
 - **Behind your own web server** (nginx, Caddy…) that serves HTTPS: publish port 8080 instead (`-p 127.0.0.1:8080:8080`), replace `HERMESH_RELAY_DOMAIN` with `HERMESH_RELAY_PUBLIC_URL=https://relay.example.com`, and pass that name to it, WebSockets included.
 - **Back up** the `hermesh-relay` volume: it is the server's identity and who its owner is. Without it you would set up again and pair your machines and agents again.

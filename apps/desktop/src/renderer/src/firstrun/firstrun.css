@@ -8,6 +8,8 @@
 .ic.ob-big-ic{width:56px;height:56px;color:var(--l2);stroke-width:1.1}
 .ob-form{margin-top:14px}
 .ob-form .frow>.fv .field{max-width:320px}
+.ob-warn{display:flex;gap:8px;align-items:flex-start;margin-top:14px;color:var(--orange);font-size:12.5px;line-height:1.5;max-width:520px;text-align:left}
+.ob-warn .ic{flex:none;margin-top:1px}
 .ob-alt{margin-top:16px;font-size:12.5px;color:var(--l2)}
 .field.join-digits{width:120px;height:56px;font-family:var(--mono);font-size:36px;font-weight:600;text-align:center;letter-spacing:.2em}
 /* The connect flow's parts from the Connect Agent… sheet (sheets.css scopes them to .sheet). */

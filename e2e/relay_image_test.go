@@ -22,10 +22,12 @@ import (
 //   - with a domain, it takes ports 80 and 443 and its MCP address is on
 //     that domain (no certificate is asked for: nothing reaches it by
 //     that name here);
-//   - behind a proxy that serves HTTPS (played here by plain HTTP), the
-//     claim code is in its log and by docker exec; the owner sets up with
-//     it and is shown the same MCP address as mcp-url prints; restarted,
-//     it keeps its owner and that address.
+//   - without a domain, by plain HTTP (or behind a proxy that serves
+//     HTTPS), its log says what plain HTTP leaves open; the claim code is
+//     in its log and by docker exec; the owner sets up with it, typing
+//     the server's IP address and port as a person without a domain
+//     would, and is shown the same MCP address as mcp-url prints;
+//     restarted, it keeps its owner and that address.
 //
 // HERMESH_DOCKER=1.
 func TestRelayImage(t *testing.T) {
@@ -89,6 +91,9 @@ func TestRelayImage(t *testing.T) {
 	base := fmt.Sprintf("http://127.0.0.1:%d", port)
 	name := "hermesh-e2e-proxied-" + id
 	relay(name, []string{fmt.Sprintf("127.0.0.1:%d:8080", port)}, "HERMESH_RELAY_PUBLIC_URL="+base, "HERMESH_RELAY_MCP=1")
+	if !strings.Contains(docker("logs", name), "Plain HTTP, not encrypted on the way") {
+		t.Fatalf("no word on plain HTTP in the log:\n%s", docker("logs", name))
+	}
 	m := regexp.MustCompile(`Claim code: (\S+)`).FindStringSubmatch(docker("logs", name))
 	if m == nil {
 		t.Fatalf("no claim code in the log:\n%s", docker("logs", name))
@@ -103,7 +108,7 @@ func TestRelayImage(t *testing.T) {
 	start(t, "owner", nil, filepath.Join(bin, "hermeshd"), "run", "--owner", "--data-dir", filepath.Join(t.TempDir(), "owner"), "--socket", sock)
 	root, _ := identity.GenerateKey()
 	app := newTestApp(t, sock, root)
-	if _, err := app.client.Setup(ctx, &localv1.SetupRequest{RelayUrl: base, ClaimCode: m[1], RootPublicKey: rootPub(root), RootLabel: "test-mac", RootPlatform: "macos"}); err != nil {
+	if _, err := app.client.Setup(ctx, &localv1.SetupRequest{RelayUrl: strings.TrimPrefix(base, "http://"), ClaimCode: m[1], RootPublicKey: rootPub(root), RootLabel: "test-mac", RootPlatform: "macos"}); err != nil {
 		t.Fatalf("setup: %v\n%s", err, docker("logs", name))
 	}
 	if got := mcpAddress(t, app); got != mcpURL {
