@@ -236,6 +236,43 @@ func TestMCPGateway(t *testing.T) {
 		t.Fatalf("session_get of no session: %s", doc.raw)
 	}
 
+	// A release from a tag: base checks the session's worktree out there,
+	// and the ignored signing settings .worktreeinclude names come along,
+	// out of the diff.
+	os.MkdirAll(filepath.Join(repo, "Config"), 0o755)
+	os.WriteFile(filepath.Join(repo, ".gitignore"), []byte("*.local.xcconfig\n"), 0o644)
+	os.WriteFile(filepath.Join(repo, ".worktreeinclude"), []byte("Config/Signing.local.xcconfig\n"), 0o644)
+	os.WriteFile(filepath.Join(repo, "Config", "Signing.xcconfig"), []byte("#include? \"Signing.local.xcconfig\"\n"), 0o644)
+	commit := func(msg string) {
+		gitIn(t, repo, "add", "-A")
+		gitIn(t, repo, "-c", "user.name=t", "-c", "user.email=t@t", "commit", "-q", "-m", msg)
+	}
+	commit("signing")
+	gitIn(t, repo, "tag", "ios-v1.0.0")
+	os.WriteFile(filepath.Join(repo, "README.md"), []byte("# demo, after the release\n"), 0o644)
+	commit("after the release")
+	os.WriteFile(filepath.Join(repo, "Config", "Signing.local.xcconfig"), []byte("DEVELOPMENT_TEAM = T123\n"), 0o644)
+	doc = callTool(t, session, "session_start", map[string]any{"project": "demo", "base": "ios-v1.0.0", "prompt": "write notes.txt built\nsay built the tag", "wait": true, "timeout": "45s"})
+	if !doc.OK || json.Unmarshal(doc.raw, &started) != nil || !strings.Contains(started.Session.Result, "built the tag") {
+		t.Fatalf("session_start at a tag: %s", doc.raw)
+	}
+	release := started.Session.SessionID
+	wts, _ := filepath.Glob(filepath.Join(tmp, "owner-mac", "owner", "profiles", "*", "machine", "worktrees", release))
+	if len(wts) != 1 {
+		t.Fatalf("the session's worktree: %v", wts)
+	}
+	wt := wts[0]
+	if b, _ := os.ReadFile(filepath.Join(wt, "README.md")); string(b) != "# demo\n" {
+		t.Fatalf("the worktree is not at the tag: README %q", b)
+	}
+	if b, err := os.ReadFile(filepath.Join(wt, "Config", "Signing.local.xcconfig")); err != nil || string(b) != "DEVELOPMENT_TEAM = T123\n" {
+		t.Fatalf("signing settings in the worktree: %q %v", b, err)
+	}
+	if doc = callTool(t, session, "session_diff", map[string]any{"session_id": release}); !doc.OK ||
+		!strings.Contains(string(doc.raw), "notes.txt") || strings.Contains(string(doc.raw), "Signing.local") {
+		t.Fatalf("session_diff at a tag: %s", doc.raw)
+	}
+
 	// --- The Mac goes offline ----------------------------------------------
 	ownerArgs := []string{"run", "--owner", "--data-dir", filepath.Join(tmp, "owner-mac"), "--socket", sock}
 	owner.stop()

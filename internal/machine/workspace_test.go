@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"sync"
 	"testing"
@@ -242,5 +243,126 @@ func TestProjectBase(t *testing.T) {
 	}
 	if b := projectBase(ctx, Project{Path: repo, Workspace: identityv1.Workspace_WORKSPACE_IN_PLACE}); b != "" {
 		t.Fatalf("an in-place project has no base: %q", b)
+	}
+}
+
+// TestCopyIncluded: a new or restored worktree gets the ignored files
+// .worktreeinclude names, and only those.
+func TestCopyIncluded(t *testing.T) {
+	for name, include := range map[string]string{
+		"anywhere": "# local settings\nlocal.cfg\n.env\nsecrets/*\nnotignored.txt\n!secrets/skip\nlink\n",
+		"paths":    "/local.cfg\n/.env\nsub/.env\nsecrets/*\n/notignored.txt\n!secrets/skip\n/link\n",
+	} {
+		t.Run(name, func(t *testing.T) {
+			ctx := context.Background()
+			repo := testRepo(t)
+			write := func(rel, s string, mode os.FileMode) {
+				p := filepath.Join(repo, filepath.FromSlash(rel))
+				os.MkdirAll(filepath.Dir(p), 0o755)
+				if err := os.WriteFile(p, []byte(s), mode); err != nil {
+					t.Fatal(err)
+				}
+			}
+			write(".gitignore", "*.cfg\n.env\nsecrets/\nbuild/\nlink\n", 0o644)
+			gitOut(t, repo, "add", ".gitignore")
+			gitOut(t, repo, "-c", "user.name=t", "-c", "user.email=t@t", "commit", "-q", "-m", "ignore")
+			write(".worktreeinclude", include, 0o644)
+			write("local.cfg", "team = X\n", 0o600)
+			write(".env", "A=1\n", 0o644)
+			write("sub/.env", "B=2\n", 0o644)
+			write("secrets/key", "k\n", 0o644)
+			write("secrets/nested/key2", "k2\n", 0o644)
+			write("secrets/skip", "s\n", 0o644)
+			write("build/out", "o\n", 0o644)      // ignored, not named
+			write("notignored.txt", "n\n", 0o644) // named, not ignored
+			symlinks := runtime.GOOS != "windows"
+			if symlinks {
+				os.Symlink("local.cfg", filepath.Join(repo, "link"))
+			}
+
+			w := NewWorkspace(filepath.Join(t.TempDir(), "worktrees"))
+			if _, _, err := w.Create(ctx, repo, "", "s_1"); err != nil {
+				t.Fatal(err)
+			}
+			if err := w.CopyIncluded(ctx, repo, "s_1"); err != nil {
+				t.Fatal(err)
+			}
+			wt := w.Path("s_1")
+			check := func() {
+				t.Helper()
+				for rel, want := range map[string]string{"local.cfg": "team = X\n", ".env": "A=1\n", "sub/.env": "B=2\n",
+					"secrets/key": "k\n", "secrets/nested/key2": "k2\n"} {
+					if b, err := os.ReadFile(filepath.Join(wt, filepath.FromSlash(rel))); err != nil || string(b) != want {
+						t.Errorf("%s: %q %v", rel, b, err)
+					}
+				}
+				for _, rel := range []string{"build/out", "notignored.txt", "secrets/skip", ".worktreeinclude"} {
+					if _, err := os.Lstat(filepath.Join(wt, filepath.FromSlash(rel))); !os.IsNotExist(err) {
+						t.Errorf("%s copied", rel)
+					}
+				}
+				if symlinks {
+					if to, err := os.Readlink(filepath.Join(wt, "link")); err != nil || to != "local.cfg" {
+						t.Errorf("link: %q %v", to, err)
+					}
+				}
+			}
+			check()
+			if st, _ := os.Stat(filepath.Join(wt, "local.cfg")); runtime.GOOS != "windows" && st.Mode().Perm() != 0o600 {
+				t.Errorf("mode %v", st.Mode())
+			}
+			// ignored, so the turn's snapshot leaves them out
+			if st := gitOut(t, wt, "status", "--porcelain"); st != "" {
+				t.Fatalf("copied files show in status: %q", st)
+			}
+			// the session's own edits stay
+			os.WriteFile(filepath.Join(wt, "local.cfg"), []byte("mine\n"), 0o600)
+			if err := w.CopyIncluded(ctx, repo, "s_1"); err != nil {
+				t.Fatal(err)
+			}
+			if b, _ := os.ReadFile(filepath.Join(wt, "local.cfg")); string(b) != "mine\n" {
+				t.Fatalf("overwritten: %q", b)
+			}
+			// restored after archiving
+			if err := w.Remove(ctx, repo, "s_1"); err != nil {
+				t.Fatal(err)
+			}
+			if err := w.Restore(ctx, repo, "s_1"); err != nil {
+				t.Fatal(err)
+			}
+			if err := w.CopyIncluded(ctx, repo, "s_1"); err != nil {
+				t.Fatal(err)
+			}
+			check()
+		})
+	}
+	// no .worktreeinclude: nothing to do
+	repo := testRepo(t)
+	os.WriteFile(filepath.Join(repo, ".env"), []byte("A=1\n"), 0o644)
+	w := NewWorkspace(filepath.Join(t.TempDir(), "worktrees"))
+	if _, _, err := w.Create(context.Background(), repo, "", "s_1"); err != nil {
+		t.Fatal(err)
+	}
+	if err := w.CopyIncluded(context.Background(), repo, "s_1"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(filepath.Join(w.Path("s_1"), ".env")); !os.IsNotExist(err) {
+		t.Fatal("copied without .worktreeinclude")
+	}
+}
+
+func TestIncludePathspecs(t *testing.T) {
+	for in, want := range map[string]string{
+		"apps/a/Signing.local.xcconfig\n":     ":(literal)apps/a/Signing.local.xcconfig",
+		"/config/\n# note\n!config/x\n":       ":(literal)config",
+		"apps/*/local.json\nsecrets/**/key\n": ":(literal)apps :(literal)secrets",
+		".env\napps/a/x\n":                    "",
+		"config/\n":                           "",
+		"**/local.json\n":                     "",
+		"\n":                                  "",
+	} {
+		if got := strings.Join(includePathspecs(in), " "); got != want {
+			t.Errorf("%q: %q, want %q", in, got, want)
+		}
 	}
 }

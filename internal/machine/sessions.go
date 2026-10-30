@@ -974,6 +974,9 @@ func (s *Sessions) Unarchive(ctx context.Context, p *Principal, id string) (*ses
 		if err := s.ws.Restore(ctx, proj.Path, id); err != nil {
 			return nil, fmt.Errorf("restore the worktree: %w", err)
 		}
+		if err := s.ws.CopyIncluded(ctx, proj.Path, id); err != nil {
+			s.log.Warn("copying .worktreeinclude files", "session", id, "err", err)
+		}
 	}
 	seq, _ := s.st.MaxSeq(id)
 	r.Status = sessionv1.SessionStatus_SESSION_STATUS_IDLE
@@ -1395,6 +1398,9 @@ func (s *Sessions) prepare(l *live) {
 		if err != nil {
 			fail(err)
 			return
+		}
+		if err := s.ws.CopyIncluded(ctx, proj.Path, id); err != nil {
+			s.log.Warn("copying .worktreeinclude files", "session", id, "err", err)
 		}
 		l.mu.Lock()
 		l.row.BaseCommit, l.row.Branch, l.row.Worktree = base, branch, s.ws.Path(id)
