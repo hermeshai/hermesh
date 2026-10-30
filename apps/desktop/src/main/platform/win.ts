@@ -22,7 +22,9 @@ const installed = app.isPackaged && process.platform === "win32" && !process.env
 const daemonArgs = ["run", "--supervise", "--owner"];
 let devLoginItem = false;
 
-const daemonBinary = () => path.join(process.resourcesPath, "bin", "hermeshdw.exe");
+// The package's programs, beside Hermesh.exe (package-win.mjs).
+const program = (name: string) => path.join(path.dirname(process.execPath), "bin", name);
+const daemonBinary = () => program("hermeshdw.exe");
 
 /** Whether hermeshd answers on its pipe now. */
 function answers(): Promise<boolean> {
@@ -196,7 +198,7 @@ export const win: Platform = {
       // Not set up yet.
     }
     const { stdout } = await powershell("[System.Security.Principal.WindowsIdentity]::GetCurrent().User.Value");
-    const bin = path.join(process.resourcesPath, "bin", "hermesh-signer.exe").replace(/'/g, "''");
+    const bin = program("hermesh-signer.exe").replace(/'/g, "''");
     const script = `try { $p = Start-Process -FilePath '${bin}' -ArgumentList 'setup','--user','${stdout.trim()}' -Verb RunAs -WindowStyle Hidden -Wait -PassThru; exit $p.ExitCode } catch { exit 1223 }`;
     let status = 0;
     try {

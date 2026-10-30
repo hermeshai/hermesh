@@ -107,6 +107,12 @@ jobs:
             & (Join-Path $p.InstallLocation "bin\$cli.exe") version
             if ($LASTEXITCODE -ne 0) { throw "$cli" }
           }
+          # Opened as people open it, the app starts its daemon, which serves its pipe.
+          Start-Process "shell:AppsFolder\$($p.PackageFamilyName)!Hermesh"
+          $pipe = "$env:LOCALAPPDATA\Hermesh\run\hermeshd.pipe"
+          for ($i = 0; $i -lt 60 -and -not (Test-Path $pipe); $i++) { Start-Sleep 1 }
+          Get-CimInstance Win32_Process | Where-Object { $_.Name -match '^(Hermesh|hermeshdw)\.exe$' } | Format-Table ProcessId, CommandLine -Wrap
+          if (-not (Test-Path $pipe)) { throw "the app started no daemon" }
       - uses: actions/upload-artifact@v4
         with:
           name: Hermesh-windows-x64
