@@ -1,6 +1,8 @@
 package main
 
 import (
+	"runtime"
+	"sync"
 	"testing"
 	"time"
 
@@ -11,6 +13,32 @@ import (
 
 // TestWebPanel opens the panel in WebView2 and reads back what it drew.
 func TestWebPanel(t *testing.T) {
+	showsPanel(t)
+}
+
+// TestWebPanelAfterMultithreadedCOM: threads that other code left
+// multithreaded for COM, as Windows Hello leaves its own, don't keep the
+// panel from loading (WebView2 waited forever on one: a blank window).
+func TestWebPanelAfterMultithreadedCOM(t *testing.T) {
+	var wg sync.WaitGroup
+	for range 32 {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			runtime.LockOSThread()
+			defer runtime.UnlockOSThread() // back to the pool, multithreaded
+			procRoInitialize.Call(1)
+			time.Sleep(50 * time.Millisecond) // all at once: as many threads
+		}()
+	}
+	wg.Wait()
+	for range 3 {
+		showsPanel(t)
+	}
+}
+
+func showsPanel(t *testing.T) {
+	t.Helper()
 	p := newPanel()
 	wp := &webPanel{w: p.w, dataDir: t.TempDir(), fallback: p}
 	drawn := make(chan string, 1)
