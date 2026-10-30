@@ -302,8 +302,12 @@ func (w *Workspace) addWorktree(ctx context.Context, repo, common, baseRef, bran
 	if err != nil {
 		os.RemoveAll(wt)
 		os.RemoveAll(admin)
+		ref := filepath.Join(common, "refs", "heads", filepath.FromSlash(branch))
+		// A stop kills git outright, so the lock it held while moving the
+		// branch stays and would fail the retry.
+		os.Remove(ref + ".lock")
 		if !existing { // an existing branch holds the session's work
-			os.Remove(filepath.Join(common, "refs", "heads", filepath.FromSlash(branch)))
+			os.Remove(ref)
 		}
 	}
 	return err

@@ -183,6 +183,25 @@ func TestStoppedCheckoutLeavesNothing(t *testing.T) {
 	}
 }
 
+// A git killed while it moves the session branch leaves the branch's lock
+// file; the failed start removes it, so the next start gets through.
+func TestKilledCheckoutLeavesNoLock(t *testing.T) {
+	repo := testRepo(t)
+	w := NewWorkspace(filepath.Join(t.TempDir(), "worktrees"))
+	lock := filepath.Join(repo, ".git", "refs", "heads", "hermesh", "s_1.lock")
+	os.MkdirAll(filepath.Dir(lock), 0o755)
+	os.WriteFile(lock, nil, 0o644)
+	if _, _, err := w.Create(context.Background(), repo, "", "s_1"); err == nil || !strings.Contains(err.Error(), ".lock") {
+		t.Fatalf("create with a stale lock: %v", err)
+	}
+	if _, err := os.Stat(lock); !os.IsNotExist(err) {
+		t.Fatal("lock left behind")
+	}
+	if _, _, err := w.Create(context.Background(), repo, "", "s_1"); err != nil {
+		t.Fatalf("retry: %v", err)
+	}
+}
+
 // An agent that switches branches (or detaches HEAD) in its worktree must
 // not take its work off the session branch, which is what is delivered.
 func TestSnapshotFollowsAgentBranchSwitch(t *testing.T) {
