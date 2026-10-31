@@ -601,25 +601,26 @@ final class HermeshUITests: XCTestCase {
         // CLI, the agent approved sending none; Gemini CLI's day; the machine.
         let today = app.descendants(matching: .any)["working-today"]
         XCTAssertTrue(today.waitForExistence(timeout: 20))
-        try waitFor("nothing runs, today's work counted") { today.label.contains("个会话干了活") && today.label.contains("0 个在跑") && today.label.contains("完成") ? true : nil }
-        XCTAssertTrue(text("今天的活从哪来、给了谁").exists, "the flow")
+        let inToday = { (s: String) in today.descendants(matching: .any).matching(NSPredicate(format: "label CONTAINS %@", s)).count > 0 }
+        try waitFor("nothing runs, today's work counted") { inToday("个活跃会话") && inToday("0 个运行中") && inToday("已完成") ? true : nil }
+        XCTAssertTrue(text("今日任务来源与去向").exists, "the flow")
         // The last 7 days, from the segmented control where the title was; then today again.
         let period = app.segmentedControls["work-period"]
         XCTAssertTrue(period.exists, "the range")
         period.buttons["7 天"].tap()
-        XCTAssertTrue(text("近 7 天的活从哪来、给了谁").waitForExistence(timeout: 10), "the flow over 7 days")
-        XCTAssertTrue(today.label.contains("0 个在跑"), "what runs stays live: \(today.label)")
+        XCTAssertTrue(text("近 7 天任务来源与去向").waitForExistence(timeout: 10), "the flow over 7 days")
+        XCTAssertTrue(inToday("0 个运行中"), "what runs stays live")
         let week = XCTAttachment(screenshot: app.screenshot())
         week.name = "overview, 7 days"
         week.lifetime = .keepAlways
         add(week)
         period.buttons["今天"].tap()
-        XCTAssertTrue(text("今天的活从哪来、给了谁").waitForExistence(timeout: 10), "today again")
+        XCTAssertTrue(text("今日任务来源与去向").waitForExistence(timeout: 10), "today again")
         let bot = app.descendants(matching: .any)["flow-client-bot"].firstMatch
         XCTAssertTrue(bot.exists, "the agent that sent work")
         let toGemini = app.descendants(matching: .any)["flow-agent-gemini"].firstMatch
         XCTAssertTrue(toGemini.exists && toGemini.label.contains("Gemini CLI") && toGemini.label.contains("轮"), "the coding agent that did it, and its turns: \(toGemini.label)")
-        XCTAssertTrue(text("Cursor 今天没派活").exists, "the agent approved, which sent nothing")
+        XCTAssertTrue(text("Cursor 今天未发起任务").exists, "the agent approved, which sent nothing")
         let gemini = app.descendants(matching: .any)["coding-agent-gemini"].firstMatch
         XCTAssertTrue(gemini.exists && gemini.label.contains("空闲") && gemini.label.contains("1 台机器"), gemini.label)
         // Tapping the band between them says how much: bot to Gemini CLI, its turns and tokens.
@@ -637,7 +638,7 @@ final class HermeshUITests: XCTestCase {
         XCTAssertTrue(tip.waitForNonExistence(timeout: 5), "a tap elsewhere closes it")
         // Picking bot says what it sent each coding agent; picking it again lets go.
         press(bot)
-        try waitFor("what bot sent Gemini CLI") { gemini.label.contains("bot 派来") ? true : nil }
+        try waitFor("what bot sent Gemini CLI") { gemini.label.contains("bot 发起") ? true : nil }
         press(bot)
         try waitFor("all of Gemini CLI's turns again") { gemini.label.contains("1 台机器") ? true : nil }
         let mac = app.descendants(matching: .any)["machine-row-owner-mac"].firstMatch
@@ -646,8 +647,19 @@ final class HermeshUITests: XCTestCase {
         let agentRows = app.descendants(matching: .any).matching(NSPredicate(format: "identifier BEGINSWITH 'coding-agent-'"))
         XCTAssertTrue(agentRows.count > 1 && !app.descendants(matching: .any)["more-agents"].exists, "every agent, nothing folded: \(agentRows.count)")
         XCTAssertFalse(app.descendants(matching: .any)["agents-loading"].exists, "no skeleton once the coding agents are known")
-        // Usage is in the account, from the menu.
-        openMenu()
+        // Tapping a heat cell (now's: Gemini CLI worked this hour) says whose it is, when, and its sessions.
+        if !gemini.isHittable { app.swipeUp() }
+        let width = gemini.frame.width
+        let hour = CGFloat(Calendar.current.component(.hour, from: Date()))
+        gemini.coordinate(withNormalizedOffset: .zero).withOffset(CGVector(dx: 50 + (width - 64) * (hour + 0.5) / 24, dy: gemini.frame.height - 14)).tap()
+        let heat = app.descendants(matching: .any)["heat-tip"].firstMatch
+        XCTAssertTrue(heat.waitForExistence(timeout: 5), "the cell's popover")
+        XCTAssertTrue(heat.label.contains("Gemini CLI") && heat.label.contains("个活跃会话"), heat.label)
+        app.otherElements["PopoverDismissRegion"].firstMatch.tap()
+        XCTAssertTrue(heat.waitForNonExistence(timeout: 5), "a tap elsewhere closes it")
+        // What runs now opens the menu, which lists the sessions; usage is in the account, from there.
+        tap("running-now")
+        XCTAssertTrue(app.descendants(matching: .any)["drawer-dim"].waitForExistence(timeout: 5), "the menu opens")
         tap("account")
         // Usage in place: the numbers and the weeks of days, no page to open.
         XCTAssertTrue(app.descendants(matching: .any)["usage"].firstMatch.waitForExistence(timeout: 20), "usage")

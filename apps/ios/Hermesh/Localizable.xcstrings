@@ -155,7 +155,7 @@
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "%1$@ 派来 %2$lld 轮"
+            "value": "%1$@ 发起 %2$lld 轮"
           }
         }
       }
@@ -165,7 +165,7 @@
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "%@ 近 30 天没派活"
+            "value": "%@ 近 30 天未发起任务"
           }
         }
       }
@@ -175,7 +175,7 @@
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "%@ 近 7 天没派活"
+            "value": "%@ 近 7 天未发起任务"
           }
         }
       }
@@ -185,7 +185,7 @@
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "%@ 今天没派活"
+            "value": "%@ 今天未发起任务"
           }
         }
       }
@@ -289,6 +289,16 @@
     },
     "%lld": {
       "shouldTranslate": false
+    },
+    "%lld active sessions": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld 个活跃会话"
+          }
+        }
+      }
     },
     "%lld chosen": {
       "localizations": {
@@ -439,7 +449,7 @@
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "%lld 个在跑"
+            "value": "%lld 个运行中"
           }
         }
       }
@@ -2158,7 +2168,7 @@
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "干活的"
+            "value": "执行方"
           }
         }
       }
@@ -2278,7 +2288,7 @@
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "完成 %1$@ · %2$lld 轮 · %3$@ token"
+            "value": "已完成 %1$@ · %2$lld 轮 · %3$@ token"
           }
         }
       }
@@ -3426,6 +3436,22 @@
         }
       }
     },
+    "Less work": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Less"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "少"
+          }
+        }
+      }
+    },
     "Light": {
       "localizations": {
         "zh-Hans": {
@@ -3628,6 +3654,22 @@
           "stringUnit": {
             "state": "translated",
             "value": "更多"
+          }
+        }
+      }
+    },
+    "More work": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "More"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "多"
           }
         }
       }
@@ -5107,7 +5149,7 @@
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "派活的"
+            "value": "发起方"
           }
         }
       }
@@ -5188,26 +5230,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "%@ 上的会话"
-          }
-        }
-      }
-    },
-    "Sessions working each day": {
-      "localizations": {
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "每天在干活的会话"
-          }
-        }
-      }
-    },
-    "Sessions working each hour": {
-      "localizations": {
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "每小时在干活的会话"
           }
         }
       }
@@ -6858,7 +6880,7 @@
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "今天的活从哪来、给了谁"
+            "value": "今日任务来源与去向"
           }
         }
       }
@@ -6878,7 +6900,7 @@
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "近 30 天的活从哪来、给了谁"
+            "value": "近 30 天任务来源与去向"
           }
         }
       }
@@ -6888,7 +6910,7 @@
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "近 7 天的活从哪来、给了谁"
+            "value": "近 7 天任务来源与去向"
           }
         }
       }
@@ -7178,7 +7200,7 @@
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "个会话干了活"
+            "value": "个活跃会话"
           }
         }
       }
