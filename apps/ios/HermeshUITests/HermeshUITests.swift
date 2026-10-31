@@ -176,11 +176,14 @@ final class HermeshUITests: XCTestCase {
     func opensAtTheEnd() throws {
         _ = try control("long?title=\("长对话".addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed)!)", method: "POST")
         openFromMenu(session: "长对话")
-        let last = app.staticTexts.containing(NSPredicate(format: "label CONTAINS %@", "这是最后一段")).firstMatch
+        XCTAssertTrue(app.descendants(matching: .any)["drawer-dim"].waitForNonExistence(timeout: 5), "the menu closed")
+        // The reply's paragraphs, not the prompt above them (its lines start with "say").
+        let reply = { (s: String) in self.app.staticTexts.matching(NSPredicate(format: "label BEGINSWITH %@", s)).firstMatch }
+        let last = reply("这是最后一段"), first = reply("第 1 段")
         try waitFor("the last message in view", timeout: 20) { last.exists && last.isHittable ? true : nil }
         sleep(2) // and still there once all of it is laid out
         XCTAssertTrue(last.isHittable, "the last message still in view")
-        XCTAssertFalse(app.staticTexts.containing(NSPredicate(format: "label CONTAINS %@", "第 1 段")).firstMatch.isHittable, "the first out of view")
+        XCTAssertTrue(first.exists && !first.isHittable, "the first out of view")
     }
 
     func archiveAndUndo() throws {
