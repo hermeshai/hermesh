@@ -168,22 +168,49 @@ test("connecting an agent: the message to send, its request, what it may use, ap
   await app.close();
 });
 
-test("adding a machine: its install command (a Mac or Linux one, or a Windows one), then the code its terminal shows, approved here", async () => {
+test("adding a machine: its system, then the app or a command (Linux: the command only), then the code it shows, approved here", async () => {
   const name = `build-${process.pid}`;
   const { app, page } = await launch();
   const st = await api<Status>(page, "GetStatus");
   await command(app, page, "addMachine");
   const sheet = page.getByRole("dialog");
   await expect(sheet.getByRole("heading", { name: "添加机器" })).toBeVisible();
-  await expect(sheet).toContainText(`install.sh | sh -s -- ${st.connectAddress}`);
+  const how = sheet.getByRole("group", { name: "安装方式" });
+  const viaApp = how.getByRole("button", { name: "安装应用" });
+  const viaCommand = how.getByRole("button", { name: "终端命令" });
+
+  // A Mac, by default with the app: opened there, then joined to this server.
+  await expect(sheet.getByRole("button", { name: "Mac", exact: true })).toHaveAttribute("aria-pressed", "true");
+  await expect(viaApp).toHaveAttribute("aria-pressed", "true");
+  await expect(sheet).toContainText("在那台 Mac 上打开hermesh.io/download");
+  await expect(sheet).toContainText(`安装后打开，加入${st.connectAddress}`);
+  await expect(sheet).not.toContainText("install.sh");
   await snap(page, "sheet-add-machine");
-  // A Windows PC runs install.ps1 in PowerShell.
+  await viaCommand.click();
+  await expect(sheet).toContainText("终端 · 用你平时写代码的用户");
+  await expect(sheet).toContainText(`install.sh | sh -s -- ${st.connectAddress}`);
+
+  // A Windows PC: the app, or install.ps1 in PowerShell.
   await sheet.getByRole("button", { name: "Windows" }).click();
+  await expect(sheet).toContainText("PowerShell · 用你平时写代码的用户");
   await expect(sheet).toContainText(`(irm https://github.com/hermeshai/hermesh/releases/latest/download/install.ps1))) ${st.connectAddress}`);
-  await expect(sheet).toContainText("在 PowerShell 里");
   await snap(page, "sheet-add-machine-windows");
-  await sheet.getByRole("button", { name: "macOS 或 Linux" }).click();
-  await sheet.getByRole("button", { name: "没带连接地址？输入配对码…" }).click();
+  await viaApp.click();
+  await expect(sheet).toContainText("在那台电脑上打开hermesh.io/download");
+
+  // Linux has no app: the command, whatever was picked before.
+  await sheet.getByRole("button", { name: "Linux" }).click();
+  await expect(viaApp).toBeDisabled();
+  await expect(viaApp).toContainText("暂无");
+  await expect(viaCommand).toHaveAttribute("aria-pressed", "true");
+  await expect(sheet).toContainText(`install.sh | sh -s -- ${st.connectAddress}`);
+  await snap(page, "sheet-add-machine-linux");
+
+  // Copy puts the whole command on the clipboard.
+  await sheet.getByRole("button", { name: "拷贝" }).click();
+  expect(await app.evaluate(({ clipboard }) => clipboard.readText())).toBe(`curl -fsSL https://github.com/hermeshai/hermesh/releases/latest/download/install.sh | sh -s -- ${st.connectAddress}`);
+
+  await sheet.getByRole("button", { name: "输入配对码…" }).click();
   await expect(sheet.getByRole("heading", { name: "输入配对码" })).toBeVisible();
 
   const data = fs.mkdtempSync(path.join(os.tmpdir(), "hmmachine-"));

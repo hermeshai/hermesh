@@ -38,6 +38,7 @@ final class HermeshUITests: XCTestCase {
         try XCTContext.runActivity(named: "shows the work on the overview, and usage in the account") { _ in try usage() }
         try XCTContext.runActivity(named: "a swipe that starts on a row opens the menu, not the row") { _ in try swipeOnRow() }
         try XCTContext.runActivity(named: "offers New from the overview's top right") { _ in try newMenu() }
+        try XCTContext.runActivity(named: "adds a machine: the app on a Mac or a PC, or a command; Linux has only the command") { _ in try addMachine() }
         try XCTContext.runActivity(named: "gives Claude this server's MCP address, with its key") { _ in try mcpConnector() }
         try XCTContext.runActivity(named: "searches sessions from the menu") { _ in try search() }
         try XCTContext.runActivity(named: "a conversation not read yet waits in the middle of the screen") { _ in try centeredLoader() }
@@ -522,6 +523,27 @@ final class HermeshUITests: XCTestCase {
         XCTAssertTrue(app.buttons["连接 agent…"].exists)
         code.tap()
         XCTAssertTrue(app.navigationBars["输入配对码"].waitForExistence(timeout: 10), "the pairing code sheet")
+        tap("close")
+    }
+
+    func addMachine() throws {
+        tap("new")
+        let add = app.buttons["添加机器…"]
+        XCTAssertTrue(add.waitForExistence(timeout: 5), "the New menu")
+        add.tap()
+        // A Mac, with the app by default: the page to open on it, then this server to join.
+        XCTAssertTrue(text("hermesh.io/download").waitForExistence(timeout: 10), "the download page")
+        XCTAssertTrue(text("2. 安装后打开，加入").exists, "an own server: join it from the app")
+        XCTAssertFalse(text("install.sh").exists)
+        app.segmentedControls.buttons["终端命令"].tap()
+        XCTAssertTrue(text("install.sh | sh -s -- ").waitForExistence(timeout: 5), "the command with this server's address")
+        // A Windows PC: install.ps1 in PowerShell.
+        app.segmentedControls.buttons["Windows"].tap()
+        XCTAssertTrue(text("install.ps1))) ").waitForExistence(timeout: 5), "the PowerShell command")
+        // Linux has no app: the command only.
+        app.segmentedControls.buttons["Linux"].tap()
+        XCTAssertTrue(text("install.sh | sh -s -- ").waitForExistence(timeout: 5))
+        XCTAssertFalse(app.segmentedControls.buttons["安装应用"].isEnabled, "no app for Linux")
         tap("close")
     }
 
