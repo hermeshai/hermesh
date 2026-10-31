@@ -49,6 +49,7 @@
     "stalled": "No progress for a long time",
     "timeout": "Time limit exceeded",
     "startFailed": "Can’t start agent",
+    "baseRefUnavailable": "Base ref unavailable locally",
     "other": "Failed"
   },
   "advice": {
@@ -59,7 +60,8 @@
     "modelUnavailable": "Start a new session with another model.",
     "limitReached": "Send “continue” to have it go on.",
     "resume": "Send another message to resume the session.",
-    "startFailed": "Open that machine’s page in Hermesh Settings to see what keeps it from starting agents."
+    "startFailed": "Open that machine’s page in Hermesh Settings to see what keeps it from starting agents.",
+    "baseRefUnavailable": "Check the base ref name, or sync the corresponding branch/tag into the project’s local repository. Then send another message in this session to retry the original task."
   },
   "headline": {
     "auth": "{{agent}} isn’t signed in",
@@ -77,6 +79,7 @@
     "stalled": "{{agent}} made no progress for a long time",
     "timeout": "This turn ran past its time limit",
     "startFailed": "{{agent}} couldn’t start",
+    "baseRefUnavailable": "The worktree’s base ref is unavailable locally",
     "other": "{{agent}} ran into an error"
   },
   "notice": {

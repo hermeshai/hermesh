@@ -5,6 +5,7 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"github.com/hermeshai/hermesh/pkg/metrics"
 	"log/slog"
@@ -1404,6 +1405,11 @@ func (s *Sessions) prepare(l *live) {
 		}
 		mWorktree.Since(wtStart)
 		if err != nil {
+			var baseErr *baseRefError
+			if errors.As(err, &baseErr) {
+				err = provider.Fail(sessionv1.FailureKind_FAILURE_KIND_BASE_REF_UNAVAILABLE,
+					fmt.Sprintf("Cannot create the worktree for project %q: base ref %q does not resolve to a commit in local repository %q.", proj.ID, baseErr.ref, proj.Path))
+			}
 			fail(err)
 			return
 		}

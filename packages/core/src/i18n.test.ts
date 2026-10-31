@@ -1,10 +1,10 @@
 import { clone, create } from "@bufbuild/protobuf";
-import { DiffStatSchema, FailureKind, SessionSchema, SessionStatus, ToolCallSchema } from "@hermesh/proto/session";
+import { DiffStatSchema, FailureKind, FailureSchema, SessionSchema, SessionStatus, ToolCallSchema } from "@hermesh/proto/session";
 import { afterAll, beforeAll, describe, expect, test } from "vitest";
 import { i18n, pickLanguage } from "./i18n";
 import { noticeDiff, noticeSnapshots } from "./notices";
 import { stepSummary, turnTimeLine } from "./steps";
-import { agoText, failureHeadline, failureTitle, minutesLeft, shortTime } from "./text";
+import { agoText, failureAdvice, failureHeadline, failureTitle, minutesLeft, shortTime } from "./text";
 import { at, now, progressOf, session } from "./testing";
 
 describe("English", () => {
@@ -20,6 +20,9 @@ describe("English", () => {
     expect(failureTitle(FailureKind.UNSPECIFIED)).toBe("Failed");
     expect(failureHeadline(FailureKind.START_FAILED, "Codex")).toBe("Codex couldn’t start");
     expect(failureHeadline(FailureKind.UNSPECIFIED, "Codex")).toBe("Codex ran into an error");
+    const failure = create(FailureSchema, { kind: FailureKind.BASE_REF_UNAVAILABLE, message: 'Project "movieclaw": base ref "ios-v0.12.2" unavailable.' });
+    expect(failureHeadline(failure.kind, "Codex")).toBe("The worktree’s base ref is unavailable locally");
+    expect(failureAdvice(failure)).toBe(`${failure.message} Check the base ref name, or sync the corresponding branch/tag into the project’s local repository. Then send another message in this session to retry the original task.`);
   });
 
   test("times", () => {

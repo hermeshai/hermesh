@@ -133,6 +133,8 @@ const (
 	FailureKind_FAILURE_KIND_UNKNOWN      FailureKind = 16
 	// Someone interrupted the turn on purpose (the session goes on).
 	FailureKind_FAILURE_KIND_INTERRUPTED FailureKind = 17
+	// The worktree's base ref does not resolve to a local commit.
+	FailureKind_FAILURE_KIND_BASE_REF_UNAVAILABLE FailureKind = 18
 )
 
 // Enum value maps for FailureKind.
@@ -156,26 +158,28 @@ var (
 		15: "FAILURE_KIND_START_FAILED",
 		16: "FAILURE_KIND_UNKNOWN",
 		17: "FAILURE_KIND_INTERRUPTED",
+		18: "FAILURE_KIND_BASE_REF_UNAVAILABLE",
 	}
 	FailureKind_value = map[string]int32{
-		"FAILURE_KIND_UNSPECIFIED":       0,
-		"FAILURE_KIND_AUTH":              1,
-		"FAILURE_KIND_QUOTA":             2,
-		"FAILURE_KIND_RATE_LIMIT":        3,
-		"FAILURE_KIND_PROVIDER_ERROR":    4,
-		"FAILURE_KIND_NETWORK":           5,
-		"FAILURE_KIND_CONTEXT_OVERFLOW":  6,
-		"FAILURE_KIND_MODEL_UNAVAILABLE": 7,
-		"FAILURE_KIND_INVALID_REQUEST":   8,
-		"FAILURE_KIND_REFUSED":           9,
-		"FAILURE_KIND_LIMIT_REACHED":     10,
-		"FAILURE_KIND_RESUME_REJECTED":   11,
-		"FAILURE_KIND_AGENT_CRASHED":     12,
-		"FAILURE_KIND_STALLED":           13,
-		"FAILURE_KIND_TIMEOUT":           14,
-		"FAILURE_KIND_START_FAILED":      15,
-		"FAILURE_KIND_UNKNOWN":           16,
-		"FAILURE_KIND_INTERRUPTED":       17,
+		"FAILURE_KIND_UNSPECIFIED":          0,
+		"FAILURE_KIND_AUTH":                 1,
+		"FAILURE_KIND_QUOTA":                2,
+		"FAILURE_KIND_RATE_LIMIT":           3,
+		"FAILURE_KIND_PROVIDER_ERROR":       4,
+		"FAILURE_KIND_NETWORK":              5,
+		"FAILURE_KIND_CONTEXT_OVERFLOW":     6,
+		"FAILURE_KIND_MODEL_UNAVAILABLE":    7,
+		"FAILURE_KIND_INVALID_REQUEST":      8,
+		"FAILURE_KIND_REFUSED":              9,
+		"FAILURE_KIND_LIMIT_REACHED":        10,
+		"FAILURE_KIND_RESUME_REJECTED":      11,
+		"FAILURE_KIND_AGENT_CRASHED":        12,
+		"FAILURE_KIND_STALLED":              13,
+		"FAILURE_KIND_TIMEOUT":              14,
+		"FAILURE_KIND_START_FAILED":         15,
+		"FAILURE_KIND_UNKNOWN":              16,
+		"FAILURE_KIND_INTERRUPTED":          17,
+		"FAILURE_KIND_BASE_REF_UNAVAILABLE": 18,
 	}
 )
 
@@ -4558,7 +4562,7 @@ const file_hermesh_session_v1_session_proto_rawDesc = "" +
 	"\x13SESSION_STATUS_IDLE\x10\x04\x12\x1b\n" +
 	"\x17SESSION_STATUS_ARCHIVED\x10\x05\x12\x1a\n" +
 	"\x16SESSION_STATUS_CRASHED\x10\b\x12 \n" +
-	"\x1cSESSION_STATUS_WAITING_INPUT\x10\t\"\x04\b\x06\x10\x06\"\x04\b\a\x10\a*\xa2\x04\n" +
+	"\x1cSESSION_STATUS_WAITING_INPUT\x10\t\"\x04\b\x06\x10\x06\"\x04\b\a\x10\a*\xc9\x04\n" +
 	"\vFailureKind\x12\x1c\n" +
 	"\x18FAILURE_KIND_UNSPECIFIED\x10\x00\x12\x15\n" +
 	"\x11FAILURE_KIND_AUTH\x10\x01\x12\x16\n" +
@@ -4578,7 +4582,8 @@ const file_hermesh_session_v1_session_proto_rawDesc = "" +
 	"\x14FAILURE_KIND_TIMEOUT\x10\x0e\x12\x1d\n" +
 	"\x19FAILURE_KIND_START_FAILED\x10\x0f\x12\x18\n" +
 	"\x14FAILURE_KIND_UNKNOWN\x10\x10\x12\x1c\n" +
-	"\x18FAILURE_KIND_INTERRUPTED\x10\x11*\xc3\x01\n" +
+	"\x18FAILURE_KIND_INTERRUPTED\x10\x11\x12%\n" +
+	"!FAILURE_KIND_BASE_REF_UNAVAILABLE\x10\x12*\xc3\x01\n" +
 	"\x12QuestionResolution\x12#\n" +
 	"\x1fQUESTION_RESOLUTION_UNSPECIFIED\x10\x00\x12 \n" +
 	"\x1cQUESTION_RESOLUTION_ANSWERED\x10\x01\x12 \n" +

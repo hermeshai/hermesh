@@ -22,7 +22,7 @@ func TestCLIOutputContract(t *testing.T) {
 	w := newOwnerMac(t, []string{"HERMESH_FAKE_PROVIDERS=1"}, &localv1.GrantSpec{})
 	bin := filepath.Join(w.bin, "hermesh")
 	kinds := map[int][]string{1: {"internal"}, 2: {"usage", "not_found", "invalid_state"}, 3: {"not_paired", "revoked", "denied"}, 4: {"unreachable"},
-		5: {"archived", "auth", "quota", "context_overflow", "model_unavailable", "invalid_request", "refused", "limit_reached", "resume_rejected", "timeout", "start_failed", "interrupted", "unknown"},
+		5: {"archived", "auth", "quota", "context_overflow", "model_unavailable", "invalid_request", "refused", "limit_reached", "resume_rejected", "timeout", "start_failed", "base_ref_unavailable", "interrupted", "unknown"},
 		6: {"wait_timeout"}, 7: {"rate_limit", "provider_error", "network", "agent_crashed", "stalled", "busy"}, 8: {"needs_input"}}
 	protoEnum := regexp.MustCompile(`"(SESSION_STATUS|FAILURE_KIND|WORKSPACE|QUESTION_RESOLUTION|TASK_VISIBILITY)_`)
 	// doc runs a command with -o json and checks the envelope.

@@ -244,6 +244,14 @@ func ask(_ s: inout Session) {
     }
 }
 
+@Test func aMissingBaseRefExplainsHowToRetryTheOriginalTask() {
+    var failure = Failure()
+    failure.kind = .baseRefUnavailable
+    failure.message = "Project movieclaw: base ref ios-v0.12.2 unavailable."
+    #expect(failureHeadline(failure.kind, agent: "Codex") == "The worktree’s base ref is unavailable locally")
+    #expect(failureAdvice(failure) == failure.message + " Check the base ref name, or sync the corresponding branch/tag into the project’s local repository. Then send another message in this session to retry the original task.")
+}
+
 @Test func modelsReadAsTheirAgentNamesThem() {
     var astra = Hermesh_Machine_V1_AgentModel()
     astra.id = "gpt-6-astra"
