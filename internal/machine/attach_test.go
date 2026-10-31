@@ -78,7 +78,7 @@ func TestAttachmentsAreSavedAndShown(t *testing.T) {
 	}
 
 	// With a message, steered into a running turn, and with no text.
-	h.send(id, "say one\nsleep 300ms\nimages")
+	h.send(id, "say one\nsleep 2s\nimages") // time enough for a slow runner to steer the file in
 	h.said(id, "one")
 	if _, err := h.s.Send(context.Background(), h.p, id, "", []*sessionv1.Attachment{{Name: "more.png", Data: pngBytes(t)}}); err != nil {
 		t.Fatal(err)
