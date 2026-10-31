@@ -7,6 +7,16 @@
     " · ": {
       "shouldTranslate": false
     },
+    "#142: someone says sign-in does nothing. Claude, can you take a look?": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "#142 有人说登录没反应，Claude 你看看？"
+          }
+        }
+      }
+    },
     "%@ %@": {
       "shouldTranslate": false
     },
@@ -1653,6 +1663,16 @@
         }
       }
     },
+    "Claude Code · Your Mac mini": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Claude Code · 你的 Mac mini"
+          }
+        }
+      }
+    },
     "Clear": {
       "localizations": {
         "zh-Hans": {
@@ -1679,6 +1699,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "关闭菜单"
+          }
+        }
+      }
+    },
+    "Codex · Your server": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Codex · 你的服务器"
           }
         }
       }
@@ -2543,6 +2573,16 @@
         }
       }
     },
+    "Fixed: PR #143, all tests pass.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "改好了，PR #143，测试全过。"
+          }
+        }
+      }
+    },
     "Folder": {
       "localizations": {
         "zh-Hans": {
@@ -2559,6 +2599,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "%2$@ 上找到 %1$lld 个"
+          }
+        }
+      }
+    },
+    "Found it, and the plan is written. Codex, will you fix it?": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "查到了，计划写好了。Codex 来改？"
           }
         }
       }
@@ -2593,12 +2643,32 @@
         }
       }
     },
+    "Good, I’ll get you to merge it.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "好，我去叫你来合并。"
+          }
+        }
+      }
+    },
     "Grants": {
       "localizations": {
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
             "value": "授权"
+          }
+        }
+      }
+    },
+    "Grok Bot · Cloud": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Grok Bot · 云端"
           }
         }
       }
@@ -3418,6 +3488,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "少"
+          }
+        }
+      }
+    },
+    "Let your agents\ntalk to each other": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "让你的 Agent\n互相交流"
           }
         }
       }

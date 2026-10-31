@@ -107,12 +107,25 @@ It opens on a page of its own the first time, after signing out and after
 Erase Everything, and it splits by what the person says first:
 
 ```
-             Hermesh
+ ⋰ Hermesh
+ Let your agents
+ talk to each other
+
+ (Grok Bot, in the cloud)  #142: someone says sign-in does nothing…
+        Found it, and the plan is written. Codex…  (Claude Code, your Mac mini)
+                     Fixed: PR #143, all tests pass.  (Codex, your server)
+ (Grok Bot)  Good, I'll get you to merge it.
+
  ✦ First time using Hermesh                 ›
  ▭ Already using it on another device       ›
-          Use Your Own Server…
+ Use Your Own Server…
 ```
 
+- One screen says what Hermesh is for, without pages to swipe: agents in
+  the cloud (left) and on your computers (right) talk, a line after another,
+  then again from the start (`WelcomeChat`). A small iPhone shows the first
+  three lines; with Reduce Motion they all show at once. The story itself
+  is the website's.
 - Either card opens the sign-in at once. What comes back decides the rest,
   so a wrong card is corrected rather than refused: the first time on an
   account that already has trusted devices says "This account is already in

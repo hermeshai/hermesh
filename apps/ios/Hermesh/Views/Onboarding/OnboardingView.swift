@@ -91,13 +91,21 @@ struct OnboardingView: View {
     // MARK: Pages
 
     private var welcome: some View {
-        VStack(spacing: 0) {
+        VStack(alignment: .leading, spacing: 0) {
             ErasedNote().padding(.horizontal, 16).padding(.top, 8)
-            Spacer()
-            Mark(size: 88)
-            Text(verbatim: "Hermesh").font(.largeTitle.bold()).padding(.top, 14)
-            Spacer()
-            if let error { Text(error).font(.footnote).foregroundStyle(.red).multilineTextAlignment(.center).padding(.horizontal, 28).padding(.bottom, 12) }
+            Wordmark(height: 24).padding(.horizontal, 20).padding(.top, 18)
+            Text("Let your agents\ntalk to each other")
+                .font(.largeTitle.bold())
+                .fixedSize(horizontal: false, vertical: true)
+                .padding(.horizontal, 20).padding(.top, 22)
+            // Four lines where they fit with room under them, three on a small iPhone.
+            ViewThatFits(in: .vertical) {
+                WelcomeChat(count: 4).padding(.bottom, 24)
+                WelcomeChat(count: 3).padding(.bottom, 24)
+            }
+            .padding(.top, 28)
+            .frame(maxHeight: .infinity, alignment: .top)
+            if let error { Text(error).font(.footnote).foregroundStyle(.red).multilineTextAlignment(.center).frame(maxWidth: .infinity).padding(.horizontal, 28).padding(.bottom, 12) }
             GuideCard {
                 GuideChoice(systemImage: "sparkle", accent: true, title: Text("First time using Hermesh"), id: "start-new") { signIn(joining: false) }
                 GuideDivider()
@@ -105,7 +113,7 @@ struct OnboardingView: View {
             }
             .disabled(busy)
             Button("Use Your Own Server…") { go(.ownServer) }
-                .padding(.vertical, 14)
+                .padding(.horizontal, 20).padding(.vertical, 12)
                 .accessibilityIdentifier("own-server")
         }
         .padding(.bottom, 8)
@@ -597,6 +605,72 @@ func plainHTTP(_ address: String) -> Bool {
 extension Data {
     var base64URL: String {
         base64EncodedString().replacingOccurrences(of: "+", with: "-").replacingOccurrences(of: "/", with: "_").replacingOccurrences(of: "=", with: "")
+    }
+}
+
+/// The first page's picture: agents in the cloud (left) and on your
+/// computers (right) talking, one line after another, then again. With
+/// Reduce Motion all of it shows at once. Only a picture: VoiceOver reads
+/// the title above it.
+struct WelcomeChat: View {
+    let count: Int
+    @Environment(\.accessibilityReduceMotion) private var still
+    @State private var shown = 0
+
+    private struct Line {
+        let logo: String
+        let who: LocalizedStringKey
+        let text: LocalizedStringKey
+        let local: Bool
+    }
+
+    private let lines = [
+        Line(logo: "grokbot", who: "Grok Bot · Cloud", text: "#142: someone says sign-in does nothing. Claude, can you take a look?", local: false),
+        Line(logo: "claude", who: "Claude Code · Your Mac mini", text: "Found it, and the plan is written. Codex, will you fix it?", local: true),
+        Line(logo: "codex", who: "Codex · Your server", text: "Fixed: PR #143, all tests pass.", local: true),
+        Line(logo: "grokbot", who: "Grok Bot · Cloud", text: "Good, I’ll get you to merge it.", local: false),
+    ]
+
+    var body: some View {
+        VStack(spacing: 14) {
+            ForEach(0 ..< count, id: \.self) { i in
+                line(lines[i], visible: still || i < shown)
+            }
+        }
+        .padding(.horizontal, 16)
+        .accessibilityHidden(true)
+        .task(id: still) {
+            guard !still else { return }
+            while !Task.isCancelled {
+                for i in 1 ... count {
+                    try? await Task.sleep(for: .seconds(i == 1 ? 0.5 : 1.8))
+                    withAnimation(.smooth(duration: 0.45)) { shown = i }
+                }
+                try? await Task.sleep(for: .seconds(5))
+                withAnimation(.easeOut(duration: 0.5)) { shown = 0 }
+                try? await Task.sleep(for: .seconds(0.8))
+            }
+        }
+    }
+
+    private func line(_ l: Line, visible: Bool) -> some View {
+        HStack(alignment: .bottom, spacing: 8) {
+            if l.local { Spacer(minLength: 48) }
+            if !l.local { AgentLogo(id: l.logo, size: 32) }
+            VStack(alignment: l.local ? .trailing : .leading, spacing: 4) {
+                Text(l.who).font(.caption).foregroundStyle(.secondary).padding(.horizontal, 6)
+                Text(l.text)
+                    .font(.subheadline)
+                    .padding(.horizontal, 13).padding(.vertical, 8)
+                    .background(l.local ? AnyShapeStyle(Color.accentColor.opacity(0.14)) : AnyShapeStyle(Color(.secondarySystemGroupedBackground)),
+                                in: UnevenRoundedRectangle(topLeadingRadius: 18, bottomLeadingRadius: l.local ? 18 : 6, bottomTrailingRadius: l.local ? 6 : 18, topTrailingRadius: 18, style: .continuous))
+            }
+            if l.local { AgentLogo(id: l.logo, size: 32) }
+            if !l.local { Spacer(minLength: 48) }
+        }
+        .opacity(visible ? 1 : 0)
+        .scaleEffect(visible ? 1 : 0.96, anchor: l.local ? .bottomTrailing : .bottomLeading)
+        .offset(y: visible ? 0 : 12)
     }
 }
 
