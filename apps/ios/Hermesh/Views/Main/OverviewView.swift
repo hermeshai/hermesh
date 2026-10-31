@@ -195,13 +195,19 @@ struct OverviewView: View {
         let now = Bucket.now(period, model.now)
         return Section {
             VStack(alignment: .leading, spacing: 10) {
-                WorkCard(running: running.count, work: work, period: period, now: now)
+                WorkCard(running: running.count, work: work, period: period, now: now) { model.drawerOpen = true }
                 if let work, !flow.bands.isEmpty {
                     caption(flowTitle(period), detail: "\(work.turns) turns · \(tokensText(work.tokens)) tokens")
                     FlowCard(flow: flow, picked: $picked, clientName: { model.clientLabel($0) }, idle: idleClients.map { AgentLogo.name($0.label) }, period: period)
                 }
                 if !agents.isEmpty || reading {
-                    caption("Agents", detail: period.hourly ? "Sessions working each hour" : "Sessions working each day")
+                    HStack {
+                        Text("Agents")
+                        Spacer()
+                        HeatLegend()
+                    }
+                    .font(.caption).foregroundStyle(.secondary)
+                    .padding(.horizontal, 4).padding(.top, 8)
                     if reading {
                         agentsSkeleton
                     } else {
@@ -210,6 +216,8 @@ struct OverviewView: View {
                                 if i > 0 { Divider().padding(.leading, 50) }
                                 agentRow(a, running: runs(a), turns: turns(a), flow: flow, work: work, cells: work?.byAgent[a], now: now, period: period)
                             }
+                            HeatAxis(period: period, now: now, date: model.now)
+                                .padding(.leading, 50).padding(.trailing, 14).padding(.bottom, 12)
                         }
                     }
                 }
@@ -293,17 +301,19 @@ struct OverviewView: View {
         }
         return HStack(alignment: .top, spacing: 10) {
             AgentLogo(id: a, size: 26).padding(.top, 1)
-            VStack(alignment: .leading, spacing: 6) {
+            VStack(alignment: .leading, spacing: 2) {
                 HStack(alignment: .firstTextBaseline) {
-                    Text(agentTitle(a)).lineLimit(1)
+                    Text(agentTitle(a)).font(.callout.weight(.medium)).lineLimit(1)
                     Spacer()
                     Text(running > 0 ? String(localized: "\(running) running") : String(localized: "Idle"))
-                        .font(.subheadline).foregroundStyle(running > 0 ? .primary : .secondary).monospacedDigit()
+                        .font(.footnote).foregroundStyle(running > 0 ? .primary : .secondary).monospacedDigit()
                 }
                 if !detail.isEmpty {
-                    Text(detail).font(.footnote).foregroundStyle(.secondary).monospacedDigit().lineLimit(1)
+                    Text(detail).font(.caption).foregroundStyle(.secondary).monospacedDigit().lineLimit(1)
                 }
-                BucketCells(counts: cells ?? Array(repeating: 0, count: period.hourly ? 24 : period.days), now: now, loading: work == nil)
+                BucketCells(counts: cells ?? Array(repeating: 0, count: period.hourly ? 24 : period.days), now: now, loading: work == nil,
+                            title: agentTitle(a), when: { bucketText($0, period: period) })
+                    .padding(.top, 6)
             }
         }
         .padding(.horizontal, 14).padding(.vertical, 10)
@@ -311,6 +321,20 @@ struct OverviewView: View {
         .animation(.smooth, value: picked)
         .accessibilityElement(children: .combine)
         .accessibilityIdentifier("coding-agent-\(a)")
+    }
+
+    /// A bucket of the range, as its heat cell's popover says it: its hour
+    /// today, its day over 7 or 30.
+    private func bucketText(_ i: Int, period: WorkPeriod) -> String {
+        let calendar = Calendar.current
+        if period.hourly {
+            let start = calendar.date(byAdding: .hour, value: i, to: calendar.startOfDay(for: model.now)) ?? model.now
+            let end = calendar.date(byAdding: .hour, value: 1, to: start) ?? start
+            return "\(start.formatted(date: .omitted, time: .shortened))–\(end.formatted(date: .omitted, time: .shortened))"
+        }
+        let first = period.firstDay(model.now, calendar: calendar)
+        let day = calendar.date(byAdding: .day, value: i, to: first) ?? first
+        return "\(day.formatted(.dateTime.weekday(.abbreviated))) \(day.formatted(.dateTime.month(.defaultDigits).day()))"
     }
 
     /// Where the coding agents' rows go while none is known yet: their shapes.
@@ -410,7 +434,8 @@ enum Bucket {
 }
 
 /// The range's work: the sessions that worked in it, with those done now,
-/// their turns and tokens, and a live label of what runs now; then the
+/// their turns and tokens, and a live glass button of what runs now (it
+/// opens the menu, which lists them); then the
 /// sessions at work hour by hour (today) or day by day: past ones in ink
 /// grey, now in the accent, those to come faint.
 struct WorkCard: View {
@@ -418,6 +443,7 @@ struct WorkCard: View {
     let work: RangeWork?
     let period: WorkPeriod
     let now: Int
+    let showRunning: () -> Void
 
     var body: some View {
         let counts = work?.buckets ?? Array(repeating: 0, count: period.hourly ? 24 : period.days)
@@ -434,14 +460,19 @@ struct WorkCard: View {
                     }
                     Text("sessions worked").foregroundStyle(.secondary)
                 }
+                .accessibilityElement(children: .combine)
                 Spacer()
                 // What runs now, whatever the range.
-                HStack(spacing: 6) {
-                    Circle().fill(running > 0 ? Color.green : Color.secondary.opacity(0.5)).frame(width: 7, height: 7)
-                    Text("\(running) running").font(.footnote).monospacedDigit()
+                Button(action: showRunning) {
+                    HStack(spacing: 6) {
+                        Circle().fill(running > 0 ? Color.green : Color.secondary.opacity(0.5)).frame(width: 7, height: 7)
+                        Text("\(running) running").font(.footnote).monospacedDigit()
+                    }
+                    .padding(.horizontal, 10).frame(height: 28)
+                    .contentShape(.capsule)
                 }
-                .padding(.horizontal, 10).frame(height: 28)
-                .glassEffect(.regular, in: .capsule)
+                .buttonStyle(.plain)
+                .glassEffect(.regular.interactive(), in: .capsule)
                 .accessibilityIdentifier("running-now")
             }
             if let work {
@@ -469,7 +500,7 @@ struct WorkCard: View {
         .padding(.horizontal, 18).padding(.top, 18).padding(.bottom, 12)
         .background(Color(.secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 26, style: .continuous))
         .animation(.smooth, value: work)
-        .accessibilityElement(children: .combine)
+        .accessibilityElement(children: .contain)
         .accessibilityIdentifier("working-today")
     }
 }
@@ -761,31 +792,149 @@ struct HourAxis: View {
     }
 }
 
-/// A coding agent's range in cells, one an hour or a day: how many of its
-/// sessions worked in each, in ink grey (now in the accent), those to come
-/// faint; a skeleton while not counted yet.
+/// A coding agent's range as a row of heat cells, one an hour or a day:
+/// those past as deep in the accent as its sessions at work in them (none:
+/// faint grey), now ringed in the accent, those to come hollow; a skeleton
+/// while not counted yet. Tapping one past or now says, in a popover, whose
+/// it is, when, and its sessions; tapping it again, or elsewhere, closes it.
 struct BucketCells: View {
     let counts: [Int]
     let now: Int
     var loading = false
+    var title = ""
+    /// When a cell is, as its popover says it.
+    var when: ((Int) -> String)?
+    /// The cell whose popover shows.
+    @State private var tipped: Int?
 
     var body: some View {
-        HStack(spacing: counts.count > 24 ? 1.5 : counts.count > 7 ? 2 : 4) {
+        HStack(spacing: HeatAxis.gap(counts.count)) {
             ForEach(counts.indices, id: \.self) { i in
-                RoundedRectangle(cornerRadius: 2, style: .continuous)
-                    .fill(loading ? Skeleton.grey : fill(i))
-                    .frame(height: 8)
+                let cell = RoundedRectangle(cornerRadius: 2, style: .continuous)
+                Group {
+                    if loading {
+                        cell.fill(Skeleton.grey)
+                    } else if i > now {
+                        cell.strokeBorder(Color.primary.opacity(0.12), lineWidth: 1)
+                    } else {
+                        cell.fill(Self.heat(counts[i]))
+                    }
+                }
+                .frame(height: 8)
+                .overlay {
+                    if !loading && i == now {
+                        RoundedRectangle(cornerRadius: 3.5, style: .continuous).strokeBorder(Color.accentColor, lineWidth: 1.5).padding(-1.5)
+                    }
+                }
             }
         }
         .skeleton(loading)
+        .overlay {
+            if let when, !loading {
+                GeometryReader { g in
+                    let n = counts.count, gap = HeatAxis.gap(n)
+                    let cell = (g.size.width - gap * CGFloat(n - 1)) / CGFloat(n)
+                    // Taller than the cells, which are too thin to tap.
+                    Color.clear
+                        .frame(width: g.size.width, height: 32)
+                        .contentShape(.rect)
+                        .onTapGesture(coordinateSpace: .local) { at in
+                            let i = min(max(Int(at.x / (cell + gap)), 0), n - 1)
+                            withAnimation(.smooth) { tipped = i == tipped || i > now ? nil : i }
+                        }
+                        .position(x: g.size.width / 2, y: g.size.height / 2)
+                    if let i = tipped, i < n {
+                        Color.clear.frame(width: 1, height: 1)
+                            .position(x: CGFloat(i) * (cell + gap) + cell / 2, y: 0)
+                            .popover(isPresented: Binding(get: { tipped == i }, set: { if !$0 { tipped = nil } })) {
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text(verbatim: title).font(.subheadline.weight(.semibold))
+                                    Text(verbatim: "\(when(i)) · \(String(localized: "\(counts[i]) active sessions"))")
+                                        .font(.footnote).foregroundStyle(.secondary).monospacedDigit()
+                                }
+                                .padding(.horizontal, 14).padding(.vertical, 10)
+                                .accessibilityElement(children: .combine)
+                                .accessibilityIdentifier("heat-tip")
+                                .presentationCompactAdaptation(.popover)
+                            }
+                            .id(i)
+                    }
+                }
+            }
+        }
         .accessibilityHidden(true)
     }
 
-    private func fill(_ i: Int) -> Color {
-        if i > now { return Color.primary.opacity(0.04) }
-        let v = counts[i]
-        if v == 0 { return Color.primary.opacity(0.08) }
-        return (i == now ? Color.accentColor : Color.primary).opacity(min(1, 0.25 + Double(v) / 6))
+    /// The cell of a bucket with n sessions at work.
+    static func heat(_ n: Int) -> Color {
+        n <= 0 ? Color.primary.opacity(0.08) : Color.accentColor.opacity([0.4, 0.65, 0.85, 1][min(n, 4) - 1])
+    }
+}
+
+/// What the heat cells' shades mean: fewer sessions to more.
+struct HeatLegend: View {
+    var body: some View {
+        HStack(spacing: 3) {
+            Text("Less work").padding(.trailing, 2)
+            ForEach(1 ... 4, id: \.self) { n in
+                RoundedRectangle(cornerRadius: 2, style: .continuous).fill(BucketCells.heat(n)).frame(width: 8, height: 8)
+            }
+            Text("More work").padding(.leading, 2)
+        }
+        .font(.caption2)
+        .accessibilityHidden(true)
+    }
+}
+
+/// Under the coding agents' cells: a few marks, and now in the accent under
+/// its cell (the time today, the day over 7 or 30 days); marks near it give
+/// way.
+struct HeatAxis: View {
+    let period: WorkPeriod
+    let now: Int
+    let date: Date
+    @Environment(\.calendar) private var calendar
+
+    /// The room between cells: wider for 7 days.
+    static func gap(_ n: Int) -> CGFloat { n > 7 ? 2 : 4 }
+
+    var body: some View {
+        let n = period.hourly ? 24 : period.days
+        GeometryReader { g in
+            let gap = Self.gap(n)
+            let cell = (g.size.width - gap * CGFloat(n - 1)) / CGFloat(n)
+            let start = { (i: Int) in i >= n ? g.size.width : CGFloat(i) * (cell + gap) }
+            ZStack(alignment: .topLeading) {
+                Color.clear
+                ForEach(marks(n), id: \.0) { i, label in
+                    if abs(i - now) > n / 5 {
+                        Text(label).fixedSize()
+                            .alignmentGuide(.leading) { d in i == 0 ? 0 : i >= n ? d.width : d.width / 2 }
+                            .offset(x: start(i))
+                    }
+                }
+                Text(nowText).fixedSize().fontWeight(.semibold).foregroundStyle(Color.accentColor)
+                    .alignmentGuide(.leading) { d in now * 5 > n * 4 ? d.width - 8 : now * 20 < n * 3 ? 8 : d.width / 2 }
+                    .offset(x: start(now) + cell / 2)
+            }
+        }
+        .frame(height: 14)
+        .font(.caption2).foregroundStyle(.tertiary).monospacedDigit()
+    }
+
+    private var nowText: String {
+        switch period {
+        case .today: date.formatted(date: .omitted, time: .shortened)
+        case .week: "\(date.formatted(.dateTime.weekday(.abbreviated))) \(date.formatted(.dateTime.month(.defaultDigits).day()))"
+        case .month: date.formatted(.dateTime.month(.defaultDigits).day())
+        }
+    }
+
+    private func marks(_ n: Int) -> [(Int, String)] {
+        if period.hourly { return [0, 6, 12, 18, 24].map { ($0, "\($0)") } }
+        let first = period.firstDay(date, calendar: calendar)
+        let day = { (i: Int) in (calendar.date(byAdding: .day, value: i, to: first) ?? first).formatted(.dateTime.month(.defaultDigits).day()) }
+        return period == .week ? [(0, day(0))] : [(0, day(0)), (15, day(15))]
     }
 }
 
