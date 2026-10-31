@@ -78,6 +78,9 @@ final class Signer {
 
     @ObservationIgnored private var api: LocalAPI?
     @ObservationIgnored private var expected: Expectation?
+    /// The person cancelled Face ID for a first setup: the batch was denied,
+    /// and the page that asked goes back to its button without an error.
+    @ObservationIgnored private var setupCancelled = false
     @ObservationIgnored private var queued: [String: [SigningRequest]] = [:]
     @ObservationIgnored private var order: [String] = []
     @ObservationIgnored private var settling: [String: Task<Void, Never>] = [:]
@@ -92,7 +95,17 @@ final class Signer {
     }
 
     /// The next batch was confirmed in the app already.
-    func expect(_ e: Expectation) { expected = e }
+    func expect(_ e: Expectation) {
+        expected = e
+        setupCancelled = false
+    }
+
+    /// Whether the first setup just failed because the person cancelled
+    /// Face ID; asking clears it.
+    func cancelledSetup() -> Bool {
+        defer { setupCancelled = false }
+        return setupCancelled
+    }
 
     private func watch() async {
         while !Task.isCancelled {
@@ -148,7 +161,7 @@ final class Signer {
             }
             if let e = expected, e.matches(c) {
                 expected = nil
-                await approve(c)
+                await approve(c, quiet: e == .firstSetup)
             } else {
                 shown = c
             }
@@ -169,10 +182,17 @@ final class Signer {
         finish()
     }
 
-    private func approve(_ c: Confirmation) async {
+    /// quiet: a cancelled Face ID denies the batch instead of showing the
+    /// sheet (the first setup's page asks again with its own button).
+    private func approve(_ c: Confirmation, quiet: Bool = false) async {
         working = true
         defer { working = false }
         guard let ctx = await Authentication.confirm(c.reason) else {
+            if quiet {
+                setupCancelled = true
+                reject(c)
+                return finish()
+            }
             // Not confirmed: the sheet stays, to try again or deny.
             if shown == nil { shown = c }
             return

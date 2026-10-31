@@ -1261,6 +1261,26 @@
         }
       }
     },
+    "Approve when your other device shows the same code": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "在另一台设备上看到同一串码，就点批准"
+          }
+        }
+      }
+    },
+    "Approved": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "已批准"
+          }
+        }
+      }
+    },
     "Approves; doesn’t run tasks": {
       "localizations": {
         "zh-Hans": {
@@ -1527,6 +1547,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "重新检查"
+          }
+        }
+      }
+    },
+    "Check and approve on your other device": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "在另一台设备上核对并批准"
           }
         }
       }
@@ -1897,6 +1927,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "创建管理密钥"
+          }
+        }
+      }
+    },
+    "Creates a management key": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "生成管理密钥"
           }
         }
       }
@@ -2361,6 +2401,16 @@
         }
       }
     },
+    "Face ID signs the join request": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "用面容 ID 签名加入请求"
+          }
+        }
+      }
+    },
     "Failed": {
       "localizations": {
         "zh-Hans": {
@@ -2720,6 +2770,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "空闲"
+          }
+        }
+      }
+    },
+    "If both show the same code, it’s this iPhone": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "两边的核对码一样，就是这台 iPhone"
           }
         }
       }
@@ -3120,6 +3180,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "改为加入你已在使用的服务器"
+          }
+        }
+      }
+    },
+    "Join your Hermesh": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "加入你的 Hermesh"
           }
         }
       }
@@ -4034,6 +4104,16 @@
         }
       }
     },
+    "Once joined, this iPhone can see your computers and agents, and approve new devices with Face ID.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "加入后，这台 iPhone 能看到你的电脑和 agent，也能用面容 ID 批准新的设备。"
+          }
+        }
+      }
+    },
     "Once you confirm with Face ID, “%@” works with the new settings and the old ones stop working at once.": {
       "localizations": {
         "zh-Hans": {
@@ -4174,6 +4254,16 @@
         }
       }
     },
+    "Other device": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "另一台设备"
+          }
+        }
+      }
+    },
     "Other projects · for agents not installed": {
       "localizations": {
         "zh-Hans": {
@@ -4270,6 +4360,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "项目"
+          }
+        }
+      }
+    },
+    "Proves it comes from this iPhone; %@ can’t pretend to be it": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "证明请求来自这台 iPhone，%@ 冒充不了"
           }
         }
       }
@@ -4604,6 +4704,16 @@
         }
       }
     },
+    "Request signed": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "已签名请求"
+          }
+        }
+      }
+    },
     "Requests from your computers, agents and devices go through %@ to this iPhone; you approve them here with the management key, and %@ only relays.": {
       "localizations": {
         "zh-Hans": {
@@ -4770,6 +4880,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "搜索会话"
+          }
+        }
+      }
+    },
+    "Send Request with Face ID": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "使用面容 ID 发送请求"
           }
         }
       }
@@ -5385,6 +5505,16 @@
         }
       }
     },
+    "The approval comes back to this iPhone": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "批准结果回到这台 iPhone"
+          }
+        }
+      }
+    },
     "The changes are on the session’s own branch and worktree; your own files are left alone.": {
       "localizations": {
         "zh-Hans": {
@@ -5461,6 +5591,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "请求已过期，请重新开始。"
+          }
+        }
+      }
+    },
+    "The request starts here; your device approves it": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "请求从这里发出，由你的设备批准"
           }
         }
       }
@@ -5625,12 +5765,32 @@
         }
       }
     },
+    "This iPhone creates a management key": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "这台 iPhone 生成管理密钥"
+          }
+        }
+      }
+    },
     "This iPhone is no longer in your Hermesh account. After signing out, you can set it up again or join your account again.": {
       "localizations": {
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
             "value": "这台 iPhone 已不在你的 Hermesh 账号里。退出登录后，可以重新设置，或再次加入你的账号。"
+          }
+        }
+      }
+    },
+    "This iPhone’s join request goes through %@ to your other device, which approves it; %@ only relays.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "这台 iPhone 的加入请求经过 %1$@ 送到你的另一台设备，由它批准；%2$@ 只转发。"
           }
         }
       }
@@ -5751,6 +5911,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "已告诉它自行判断"
+          }
+        }
+      }
+    },
+    "Trusted": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "已受信任"
           }
         }
       }
@@ -6301,6 +6471,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "等待 Mac 登录…"
+          }
+        }
+      }
+    },
+    "Waiting for your approval": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "等你核对批准"
           }
         }
       }
