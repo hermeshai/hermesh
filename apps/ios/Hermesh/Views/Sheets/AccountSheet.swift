@@ -12,6 +12,10 @@ struct AccountSheet: View {
     @Environment(\.scenePhase) private var scenePhase
     @State private var signingOut = false
     @State private var erasing = false
+    /// The web console, while the alert before opening it the first time shows.
+    @State private var console: URL?
+    @AppStorage("consoleOpened") private var consoleOpened = false
+    @Environment(\.openURL) private var openURL
     @State private var notifications: UNAuthorizationStatus?
     @AppStorage("appearance") private var appearance = "system"
 
@@ -66,16 +70,23 @@ struct AccountSheet: View {
                 }
                 // What ends: signing this iPhone out, and erasing everything (its own page).
                 Section {
-                    Button("Sign Out…", role: .destructive) { signingOut = true }
-                        .frame(maxWidth: .infinity)
+                    Button(role: .destructive) { signingOut = true } label: { endRow("Sign Out…") }
                     if !model.status.removed {
-                        Button("Erase Everything…", role: .destructive) { erasing = true }
-                            .frame(maxWidth: .infinity)
+                        Button(role: .destructive) { erasing = true } label: { endRow("Erase Everything…") }
                             .accessibilityIdentifier("erase-everything")
                     }
                 }
             }
             .navigationDestination(isPresented: $erasing) { EraseView() }
+            .alert("Open the web console?", isPresented: Binding(get: { console != nil }, set: { if !$0 { console = nil } }), presenting: console) { url in
+                Button("Cancel", role: .cancel) {}
+                Button("Open") {
+                    consoleOpened = true
+                    openURL(url)
+                }
+            } message: { url in
+                Text("Safari opens \(url.host ?? url.absoluteString), the web console: your machines and grants in any browser, and revoking access in an emergency.")
+            }
             .navigationTitle("Account and Devices")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar { CloseButton() }
@@ -131,9 +142,12 @@ struct AccountSheet: View {
             }
             .frame(maxWidth: .infinity, alignment: .leading)
             .accessibilityElement(children: .combine)
-            // The service's web console, where it has one.
+            // The service's web console, where it has one: the first time,
+            // an alert says where it goes; after that, straight there.
             if let url = URL(string: model.status.consoleURL), !model.status.consoleURL.isEmpty {
-                Link(destination: url) {
+                Button {
+                    if consoleOpened { openURL(url) } else { console = url }
+                } label: {
                     Image(systemName: "arrow.up.right").font(.subheadline.weight(.semibold))
                         .frame(width: 36, height: 36)
                         .background(Color(.tertiarySystemFill), in: .circle)
@@ -144,6 +158,13 @@ struct AccountSheet: View {
             }
         }
         .padding(.vertical, 4)
+    }
+
+    /// One of the buttons at the end: its title in the middle of the row,
+    /// the separator across it.
+    private func endRow(_ title: LocalizedStringKey) -> some View {
+        Text(title).frame(maxWidth: .infinity)
+            .alignmentGuide(.listRowSeparatorLeading) { _ in 0 }
     }
 
     private func readNotifications() async {
