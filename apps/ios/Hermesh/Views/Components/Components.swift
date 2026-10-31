@@ -73,20 +73,17 @@ struct AgentLogo: View {
     }
 }
 
-/// A session's state as a dot: green and pulsing while it runs, orange
-/// while it waits on the owner, red when it failed. An idle or archived
-/// session has none (as on the Mac), but keeps the dot's room so titles line up.
+/// A session's state as a dot: orange while it waits on the owner, red when
+/// it failed. One running has none, its title shimmering instead (as in the
+/// menu); an idle or archived one has none either (as on the Mac), each
+/// keeping the dot's room so titles line up.
 struct StatusDot: View {
     let session: Session
-    @State private var pulse = false
 
     var body: some View {
         ZStack {
-            if session.isActive {
-                Circle().fill(.green.opacity(0.4)).frame(width: 9, height: 9).scaleEffect(pulse ? 2.3 : 1).opacity(pulse ? 0 : 0.6)
-                    .onAppear { withAnimation(.easeOut(duration: 1.8).repeatForever(autoreverses: false)) { pulse = true } }
-            }
-            if session.isActive || session.needsAttention {
+            // One running has no dot: its title shimmers (ShimmerText).
+            if session.needsAttention {
                 Circle().fill(color).frame(width: 9, height: 9)
             }
         }
@@ -96,9 +93,42 @@ struct StatusDot: View {
 
     private var color: Color {
         if session.status == .waitingInput { return .orange }
-        if session.isFailed { return .red }
-        return .green
+        return .red
     }
+}
+
+/// A running session's title, in the menu and in the lists, as the Mac's
+/// sidebar has it (app.css .stitle.run): a fainter band crosses it from left
+/// to right in 3 s, and after a breath (0.2 s) crosses it again. With Reduce
+/// Motion it stays still.
+struct ShimmerText: View {
+    let title: String
+    /// While no one sees it (the menu closed): it does not draw.
+    let paused: Bool
+    @Environment(\.accessibilityReduceMotion) private var still
+
+    init(_ title: String, paused: Bool) {
+        self.title = title
+        self.paused = paused
+    }
+
+    var body: some View {
+        if still {
+            Text(title)
+        } else {
+            TimelineView(.animation(paused: paused)) { timeline in
+                // The band's middle runs from half the title's width before it to half after; it is 0.72 of it wide.
+                let t = timeline.date.timeIntervalSinceReferenceDate.truncatingRemainder(dividingBy: 3.2)
+                let x = -0.5 + 2 * ease(min(t / 3, 1))
+                Text(title).foregroundStyle(LinearGradient(
+                    colors: [Color(.label), Color(.tertiaryLabel), Color(.label)],
+                    startPoint: UnitPoint(x: x - 0.36, y: 0.5), endPoint: UnitPoint(x: x + 0.36, y: 0.5)))
+            }
+        }
+    }
+
+    /// CSS's ease-in-out, near enough.
+    private func ease(_ x: Double) -> Double { x < 0.5 ? 4 * x * x * x : 1 - pow(-2 * x + 2, 3) / 2 }
 }
 
 /// The Hermesh mark: three translucent beams at 0°, 60° and 120°, each 10

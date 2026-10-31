@@ -1002,7 +1002,10 @@ struct SessionRow: View {
         HStack(alignment: .center, spacing: 12) {
             StatusDot(session: session)
             VStack(alignment: .leading, spacing: 2) {
-                Text(session.displayTitle).lineLimit(1)
+                Group {
+                    if session.isActive { ShimmerText(session.displayTitle, paused: false) } else { Text(session.displayTitle) }
+                }
+                .lineLimit(1)
                 if metadata { second.font(.subheadline).lineLimit(1) }
             }
             .frame(maxWidth: .infinity, alignment: .leading)
@@ -1017,10 +1020,7 @@ struct SessionRow: View {
     @ViewBuilder private var second: some View {
         let grant = model.grantLabel(session)
         if session.isActive {
-            HStack(spacing: 6) {
-                ProgressView().controlSize(.mini)
-                Text(phaseText(session)).foregroundStyle(.secondary)
-            }
+            Text(phaseText(session)).foregroundStyle(.secondary)
         } else if session.status == .waitingInput {
             Text("Waiting for you · \(grant)").foregroundStyle(.orange)
         } else if session.isFailed {
