@@ -180,6 +180,15 @@ final class HermeshUITests: XCTestCase {
         // The reply's paragraphs, not the prompt above them (its lines start with "say").
         let reply = { (s: String) in self.app.staticTexts.matching(NSPredicate(format: "label BEGINSWITH %@", s)).firstMatch }
         let last = reply("这是最后一段"), first = reply("第 1 段")
+        _ = last.waitForExistence(timeout: 20)
+        let shot = XCTAttachment(screenshot: app.screenshot())
+        shot.name = "a long conversation, opened"
+        shot.lifetime = .keepAlways
+        add(shot)
+        let texts = XCTAttachment(string: app.staticTexts.allElementsBoundByIndex.prefix(80).map { "\($0.frame) \($0.isHittable) \($0.label.prefix(40))" }.joined(separator: "\n"))
+        texts.name = "a long conversation, its texts"
+        texts.lifetime = .keepAlways
+        add(texts)
         try waitFor("the last message in view", timeout: 20) { last.exists && last.isHittable ? true : nil }
         sleep(2) // and still there once all of it is laid out
         XCTAssertTrue(last.isHittable, "the last message still in view")

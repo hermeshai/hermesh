@@ -18,6 +18,7 @@ struct SessionView: View {
     @State private var atEnd = true
     /// The owner is scrolling (dragging, or the list still moving from it).
     @State private var scrolling = false
+    @State private var position = ScrollPosition(edge: .bottom)
     @State private var confirmInterrupt = false
     @State private var renaming = false
     @State private var deleting = false
@@ -76,15 +77,20 @@ struct SessionView: View {
             .padding(.horizontal, 20)
             .padding(.top, 13).padding(.bottom, 21)
         }
-        // Open at the end, and stay there as it grows unless the owner scrolled up.
-        // Only the owner's scrolling moves it off the end: right after the
-        // events come in a batch the end is briefly out of view, and that
-        // left a conversation opened part way up.
+        // Open at the end, and stay there as it grows unless the owner scrolled
+        // up: each time it grows, it is scrolled to its end again. Anchoring
+        // the scroll at the bottom was not enough: a conversation read in one
+        // go grew from nothing to thousands of points and stayed at its top.
+        // Only the owner's scrolling moves it off the end (right after a batch
+        // the end is briefly out of view).
+        .scrollPosition($position)
         .defaultScrollAnchor(.bottom, for: .initialOffset)
-        .defaultScrollAnchor(atEnd ? .bottom : .top, for: .sizeChanges)
         .onScrollPhaseChange { _, phase in scrolling = phase == .interacting || phase == .decelerating }
         .onScrollGeometryChange(for: Bool.self) { g in g.visibleRect.maxY > g.contentSize.height - 80 } action: { _, end in
             if scrolling { atEnd = end }
+        }
+        .onScrollGeometryChange(for: CGFloat.self) { $0.contentSize.height } action: { _, _ in
+            if atEnd && !scrolling { position.scrollTo(edge: .bottom) }
         }
         .overlay { // in the middle of the screen, not where the scroll ends
             if events.isEmpty && !caughtUp(s) { unread(s) }
@@ -277,6 +283,7 @@ struct SessionView: View {
     /// out a few times, not once per event.
     private func follow() async {
         atEnd = true
+        position.scrollTo(edge: .bottom)
         events = model.conversations.events(id)
         draft = ""
         rebuild(running: model.session(id)?.isActive ?? false)
