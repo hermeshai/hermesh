@@ -1,4 +1,5 @@
 import { expect, test } from "@playwright/test";
+import { execFileSync } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -45,13 +46,27 @@ test("the window opens at the size it had last time, loading in the middle until
   await app.close();
 });
 
-test("an older signer set up here: Needs You offers the app's, with one UAC prompt", async () => {
+test("an older signer set up here: Needs You offers the app's, with one UAC prompt; Account & Devices warns of silent elevation", async () => {
   const { page, app } = await launch(undefined, { env: { HERMESH_TEST_SIGNER_DIR: fixture.oldSigner! } });
   const needs = page.getByRole("region", { name: "需要你处理" });
   await expect(needs).toContainText("Hermesh 签名器有新版本");
   await expect(needs).toContainText("这台电脑装的是 0.0.1。");
   await expect(needs.getByRole("button", { name: "更新…" })).toBeVisible();
   await snap(page, "windows-signer-update");
+  // With a signer here, Account & Devices says so when programs become administrator without asking: as this PC is set.
+  const reg = execFileSync("reg.exe", ["query", "HKLM\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Policies\\System"], { encoding: "utf8" });
+  const silent = /^\s*(EnableLUA|ConsentPromptBehaviorAdmin)\s+REG_DWORD\s+0x0\b/im.test(reg);
+  const [settings] = await Promise.all([app.waitForEvent("window"), page.evaluate(() => window.hermesh?.openSettings("account"))]);
+  await settings.waitForLoadState();
+  await expect(settings.getByRole("main", { name: "账号与设备" })).toBeVisible();
+  const warning = settings.getByText("任何程序都能不经你同意获得管理员权限");
+  if (silent) {
+    await expect(warning).toBeVisible();
+    await expect(settings.getByRole("button", { name: "打开用户帐户控制设置…" })).toBeVisible();
+    await snap(settings, "windows-elevates-silently");
+  } else {
+    await expect(warning).toHaveCount(0);
+  }
   await app.close();
 
   // Up to date: nothing to offer.

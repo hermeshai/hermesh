@@ -86,6 +86,8 @@
     "trustedDevices": "可信设备",
     "alsoMachine": "也在执行任务 · {{status}}",
     "addDevice": "添加设备…",
+    "elevatesSilently": "这台电脑的用户帐户控制已关闭或设为“从不通知”：任何程序都能不经你同意获得管理员权限，借此替你批准。",
+    "elevationSettings": "打开用户帐户控制设置…",
     "devicesNote": "每台可信设备都能批准连接请求。丢了的设备，在另一台上移除。",
     "advanced": "高级",
     "server": "服务器",

@@ -1,3 +1,4 @@
+import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import type { Device } from "@hermesh/proto/local";
 import { platformTitle } from "@hermesh/core";
@@ -20,6 +21,7 @@ export function Account({ ask }: { ask: (a: Ask) => void }) {
   const relay = s?.relayUrl ?? "";
   const host = URL.canParse(relay) ? new URL(relay).host : relay;
   const addr = s?.connectAddress ?? "";
+  const silent = useElevatesSilently();
   const removeDevice = (d: Device) =>
     st.set({
       sheet: {
@@ -86,6 +88,12 @@ export function Account({ ask }: { ask: (a: Ask) => void }) {
           </div>
         </div>
         <p className="set-note">{t("account.devicesNote")}</p>
+        {silent && (
+          <p className="set-note">
+            <span className="warn">{t("account.elevatesSilently")}</span>{" "}
+            <button className="link" onClick={() => window.hermesh?.openElevationSettings()}>{t("account.elevationSettings")}</button>
+          </p>
+        )}
       </div>
       <More label={t("account.advanced")}>
         <div className="fgroup">
@@ -200,4 +208,13 @@ function CopyRow({ k, text }: { k: string; text: string }) {
       </span>
     </div>
   );
+}
+
+/** Whether programs become administrator here without asking, with the signer set up (Windows). */
+function useElevatesSilently(): boolean {
+  const [silent, setSilent] = useState(false);
+  useEffect(() => {
+    window.hermesh?.elevatesSilently().then(setSilent, () => {});
+  }, []);
+  return silent;
 }

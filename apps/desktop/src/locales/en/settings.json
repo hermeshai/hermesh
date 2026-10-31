@@ -86,6 +86,8 @@
     "trustedDevices": "Trusted Devices",
     "alsoMachine": "Also runs tasks · {{status}}",
     "addDevice": "Add Device…",
+    "elevatesSilently": "On this PC, User Account Control is off or set to Never notify: any program can become administrator without asking you, and approve as you.",
+    "elevationSettings": "Open User Account Control Settings…",
     "devicesNote": "Every trusted device can approve connection requests. If a device is lost, remove it on another.",
     "advanced": "Advanced",
     "server": "Server",

@@ -50,6 +50,8 @@ const bridge: Bridge = {
   readySigner: () => ask("ready-signer"),
   signerUpdate: () => ask("signer-update"),
   updateSigner: () => ask("update-signer"),
+  elevatesSilently: () => ask("elevates-silently"),
+  openElevationSettings: () => ipcRenderer.send("open-elevation-settings"),
   onLink: (cb: (url: string) => void) => {
     // Links wait in the main process until taken: the page may load after one arrived.
     const take = () => ask<string[]>("take-links").then((urls) => urls.forEach(cb));

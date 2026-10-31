@@ -154,6 +154,8 @@ export function registerIPC() {
   ipcMain.handle("ready-signer", answer(platform.readySigner));
   ipcMain.handle("signer-update", answer(platform.signerUpdate));
   ipcMain.handle("update-signer", answer(platform.updateSigner));
+  ipcMain.handle("elevates-silently", answer(platform.elevatesSilently));
+  ipcMain.on("open-elevation-settings", (e) => trusted(e) && platform.openElevationSettings());
   ipcMain.handle("take-links", answer(takeLinks));
 
   // Notifications, the menu bar and opening at login (main/notify.ts, main/platform).
