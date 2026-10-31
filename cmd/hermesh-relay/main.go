@@ -147,7 +147,7 @@ func main() {
 	serve.Flags().StringVar(&apnsKey, "apns-key", os.Getenv("HERMESH_APNS_KEY"), "an APNs auth key (.p8) to notify iPhones with; the key must belong to the team that signs the Hermesh iPhone app")
 	serve.Flags().StringVar(&apnsKeyID, "apns-key-id", os.Getenv("HERMESH_APNS_KEY_ID"), "the APNs key's id")
 	serve.Flags().StringVar(&apnsTeam, "apns-team-id", os.Getenv("HERMESH_APNS_TEAM_ID"), "the Apple developer team id the APNs key belongs to")
-	serve.Flags().StringVar(&apnsTopic, "apns-topic", "com.hermesh.ios", "the iPhone app's bundle id")
+	serve.Flags().StringVar(&apnsTopic, "apns-topic", "io.hermesh.ios", "the iPhone app's bundle id")
 	serve.Flags().StringVar(&pushSpool, "push-spool", "", "write notifications to files in this directory instead of sending them (tests)")
 	serve.Flags().DurationVar(&pairingTTL, "pairing-ttl", 0, "how long a pairing request waits (tests; default 10m)")
 	serve.Flags().IntVar(&pairingsPerMinute, "pairings-per-minute", 0, "pairing requests one address may make a minute (tests; default 10)")

@@ -211,11 +211,11 @@ func deliverToSimulator(t *testing.T, spool, device string) {
 			if json.Unmarshal(b, &s) != nil {
 				continue
 			}
-			s.Payload["Simulator Target Bundle"] = "com.hermesh.ios"
+			s.Payload["Simulator Target Bundle"] = "io.hermesh.ios"
 			p, _ := json.Marshal(s.Payload)
 			f := n + ".apns"
 			os.WriteFile(f, p, 0o600)
-			out, err := exec.Command("xcrun", "simctl", "push", device, "com.hermesh.ios", f).CombinedOutput()
+			out, err := exec.Command("xcrun", "simctl", "push", device, "io.hermesh.ios", f).CombinedOutput()
 			t.Logf("simctl push %s: %v %s", filepath.Base(n), err, out)
 			if err == nil {
 				pushed.Add(1)

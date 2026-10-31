@@ -11,7 +11,7 @@
 	<array>
 		<dict>
 			<key>CFBundleURLName</key>
-			<string>com.hermesh.ios</string>
+			<string>io.hermesh.ios</string>
 			<key>CFBundleURLSchemes</key>
 			<array>
 				<string>hermesh</string>
@@ -19,7 +19,7 @@
 		</dict>
 	</array>
 	<key>HermeshKeychainGroup</key>
-	<string>$(AppIdentifierPrefix)com.hermesh.ios.shared</string>
+	<string>$(AppIdentifierPrefix)io.hermesh.ios.shared</string>
 	<key>UIBackgroundModes</key>
 	<array>
 		<string>remote-notification</string>

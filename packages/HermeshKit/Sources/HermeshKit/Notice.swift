@@ -9,7 +9,7 @@ import Security
 /// the first unlock (notices arrive while the phone is locked).
 public enum NoticeKey {
     /// The keychain group, from the bundle's HermeshKeychainGroup
-    /// ($(AppIdentifierPrefix)com.hermesh.ios.shared).
+    /// ($(AppIdentifierPrefix)io.hermesh.ios.shared).
     static var group: String? { Bundle.main.object(forInfoDictionaryKey: "HermeshKeychainGroup") as? String }
 
     private static func query() -> [CFString: Any] {

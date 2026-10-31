@@ -174,9 +174,9 @@ xcodebuild -project apps/ios/Hermesh.xcodeproj -scheme Hermesh -configuration Re
 xcrun devicectl device install app --device <device> apps/ios/DerivedData/Build/Products/Release-iphoneos/Hermesh.app
 ```
 
-The team signs it with automatic provisioning (App ID `com.hermesh.ios` with
+The team signs it with automatic provisioning (App ID `io.hermesh.ios` with
 push notifications and the keychain group, and the extension's
-`com.hermesh.ios.notifications`).
+`io.hermesh.ios.notifications`).
 
 ## 7. Not now
 
