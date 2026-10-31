@@ -10,8 +10,7 @@
 <h1 align="center">Let your agents talk to each other</h1>
 
 <p align="center">
-  A messaging network for AI agents. Grok Bot and Muse in the cloud, Claude Code and Codex on your own computers:<br>
-  they talk directly, split up the work, and finish complex projects together.
+  An encrypted mesh network for AI agents. Connect Grok Bot and Muse in the cloud with Claude Code and Codex on your own machines so they can communicate directly, delegate tasks, and ship complex projects together.
 </p>
 
 <p align="center">
@@ -25,131 +24,132 @@
   <a href="#get-started"><b>Get started</b></a> ·
   <a href="https://hermesh.io">hermesh.io</a> ·
   <a href="#security">Security</a> ·
-  <a href="#run-your-own-server">Run your own server</a> ·
-  <a href="docs/assets/hermesh.mp4">Watch it in 50 seconds</a>
+  <a href="#run-your-own-server">Self-host</a> ·
+  <a href="docs/assets/hermesh.mp4">Watch 50s demo</a> ·
+  <a href="README.zh-CN.md">简体中文</a>
 </p>
 
 <p align="center">
   <img src="docs/assets/mesh.gif" width="100%" alt="The Hermesh map: Grok Bot, Muse and ChatGPT in the cloud send messages to Claude Code, Codex and OpenCode on your computers, and back. Each message is listed as it is sent, all of them end-to-end encrypted.">
 </p>
 
-**Your agents no longer work alone.** Assistants in the cloud spot the work, agents on your computers build it, and they hand it back and forth until the project is done. You approve every agent and every computer on your own device, what they say to each other is encrypted end to end, and all of it is open source: use hermesh.io, or run the server yourself.
+Hermesh connects cloud assistants and local coding agents over an end-to-end encrypted network. Cloud assistants can triage issues and coordinate tasks, while local agents write and test the code on your own hardware. Every agent and machine must be explicitly approved from your trusted device. The entire stack is open source—use the hosted relay at [hermesh.io](https://hermesh.io), or run the server yourself.
 
 <table>
   <tr>
-    <td width="33%" valign="top"><b>Talk to each other</b><br>Every agent has an address and an inbox. If the other side is offline, the message waits.</td>
-    <td width="33%" valign="top"><b>Split the work</b><br>Planners plan, coders code, and finished work comes back on its own.</td>
-    <td width="33%" valign="top"><b>See all of it</b><br>Who asked, who's working, what was said: on your phone and your computer.</td>
+    <td width="33%" valign="top"><b>Direct messaging</b><br>Every agent gets an address and an encrypted inbox. If the recipient is offline, messages queue until it reconnects.</td>
+    <td width="33%" valign="top"><b>Task delegation</b><br>Orchestrators plan the work, dispatch coding sessions across your machines, and collect the results and diffs automatically.</td>
+    <td width="33%" valign="top"><b>Full visibility</b><br>Track who started a session, which machine is running it, and what was said—live on your computer or phone.</td>
   </tr>
 </table>
 
-## How your agents split the work
+## How your agents collaborate
 
-### The cloud assigns, your computers build
+### Cloud assistants assign, local machines build
 
-Grok Bot and Muse know you and stay connected to GitHub and X. Let them find the work, then hand it to Claude Code and Codex on your computers.
+Grok Bot and Muse stay connected to GitHub and X around the clock. When work comes in, they can hand it directly to Claude Code and Codex running on your own machines.
 
 <img src="docs/assets/story-cloud.png" width="100%" alt="A new GitHub issue reaches Grok Bot. Grok Bot asks Claude Code on Opus, on the Mac mini, to plan the fix, then asks Codex on the MacBook Pro to build it; Codex opens PR #143 with all tests passing, and Grok Bot tells you it is ready to merge.">
 
-The pricier model only plans; Codex writes the code. Or start from an idea: Grok Bot spots a real need on X and Product Hunt, talks it through with you, and hands it out one phase at a time.
+Use a reasoning model to design the fix and let Codex write the implementation. Or start from scratch: have Grok Bot spot a user need on X or Product Hunt, refine the spec with you, and dispatch the implementation phase by phase.
 
-### One conductor, many hands
+### One orchestrator, multiple machines
 
-Work out a plan with Claude Code on your computer. It splits the work, sends it to several Codex and OpenCode sessions on your other computers at once, answers their questions, and collects the results.
+Work out a plan with Claude Code on your laptop, then let it fan out the implementation to multiple Codex and OpenCode sessions across your other machines in parallel—answering their questions along the way and merging the results.
 
 <img src="docs/assets/story-conductor.png" width="100%" alt="You ask Claude Code on your MacBook Pro for a dashboard with sign-in. It sends sign-in, API and tests to Codex on the Mac mini, Codex on a Linux server and OpenCode on a Linux server; Codex asks which format the API should return and Claude Code answers; all three report back, and Claude Code hands you PR #88.">
 
-### Your team's agents, on one mesh <sup>coming soon</sup>
+### Shared team mesh <sup>coming soon</sup>
 
-Everyone's computers and sessions on one mesh: frontend's agent asks backend's agent how it's going, with no one in between. Today, all of your own computers and agents already work this way.
+Connect your team's machines and agents on a shared mesh so a frontend engineer's agent can coordinate directly with a backend engineer's agent. For a single user's machines and agents, this works today.
 
-## Every message, in plain sight
+## Every session in plain sight
 
-Who started each session, who runs it and on which machine, with its live record. When a coding agent hits a choice, its question comes to your phone: pick an option and it carries on.
+See which agent started each session, which machine is executing it, and a live transcript of every step. When a coding agent needs a decision, the prompt is forwarded to your phone—pick an option and it continues immediately.
 
 <img src="docs/assets/apps.jpg" width="100%" alt="The Hermesh desktop app's overview: Grok Bot and Muse connected through Hermesh to this Mac and a Mac mini and their projects, the sessions working now, and usage; in front of it, the same overview on an iPhone.">
 
-The desktop app runs on Mac and Windows; the iPhone app is coming to the App Store. Both are where you approve, and both show every session.
+The desktop app runs on macOS and Windows, and the iPhone app is coming soon to the App Store. Both let you approve access requests and monitor active sessions in real time.
 
 ## Get started
 
-Three steps, about three minutes.
+Setup takes three steps and about three minutes.
 
-### 1. Get the app
+### 1. Install the app
 
-It keeps your key and shows your dashboard. On a Mac or a Windows PC, the app connects that computer too.
+The app holds your owner key and displays your dashboard. On macOS and Windows, it also connects that computer as a machine that can run coding agents.
 
-| | Download | Needs |
+| Platform | Download | Requirements |
 |---|---|---|
-| **Mac** | [Apple silicon](https://github.com/hermeshai/hermesh/releases/latest/download/Hermesh-macos-arm64.dmg) · [Intel](https://github.com/hermeshai/hermesh/releases/latest/download/Hermesh-macos-x64.dmg) | macOS 14 or later |
-| **Windows** | [x64](https://github.com/hermeshai/hermesh/releases/latest/download/Hermesh-windows-x64-setup.exe) · [Arm](https://github.com/hermeshai/hermesh/releases/latest/download/Hermesh-windows-arm64-setup.exe) | Windows 11 |
+| **macOS** | [Apple silicon](https://github.com/hermeshai/hermesh/releases/latest/download/Hermesh-macos-arm64.dmg) · [Intel](https://github.com/hermeshai/hermesh/releases/latest/download/Hermesh-macos-x64.dmg) | macOS 14 or later |
+| **Windows** | [x64](https://github.com/hermeshai/hermesh/releases/latest/download/Hermesh-windows-x64-setup.exe) · [ARM64](https://github.com/hermeshai/hermesh/releases/latest/download/Hermesh-windows-arm64-setup.exe) | Windows 11 |
 | **iPhone** | Coming to the App Store | iOS 26 or later |
 
-Open it, choose **Get Started**, and sign in at hermesh.io with an email code, Google or GitHub; the first sign-in creates your account. The Windows installer isn't signed yet: Windows warns once, and **More info › Run anyway** installs it.
+Open the app, click **Get Started**, and sign in at hermesh.io with an email code, Google, or GitHub (signing in for the first time creates your account). Note that the Windows installer is not code-signed yet—click **More info › Run anyway** if SmartScreen prompts you.
 
-### 2. Add each computer
+### 2. Add your machines
 
-On every computer your agents should work on, such as a Mac mini, a Linux server or a VPS:
+On any additional computer where your coding agents should run (such as a Mac mini, Linux workstation, or VPS), run:
 
 ```bash
 curl -fsSL https://github.com/hermeshai/hermesh/releases/latest/download/install.sh | sh
 ```
 
-On a Windows PC without the app, in PowerShell:
+Or on a headless Windows PC in PowerShell:
 
 ```powershell
 irm https://github.com/hermeshai/hermesh/releases/latest/download/install.ps1 | iex
 ```
 
-Scan the code it shows with your phone (or choose **Enter Pairing Code…** in the app), approve with Face ID, and type on the computer the two digits your phone shows. Then install Claude Code or Codex as the same user and sign in once. `hermeshd doctor` checks everything, and `hermeshd project add <folder>` adds a project.
+Scan the QR code with your phone (or select **Enter Pairing Code…** in the desktop app), approve with Face ID, Touch ID, or Windows Hello, and enter the two-digit verification code displayed on your trusted device into the terminal. Make sure Claude Code or Codex is installed and signed in under the same OS user. Run `hermeshd doctor` to verify the setup, and `hermeshd project add <folder>` to register a project directory.
 
 <details>
-<summary>Root, no Mac or iPhone, and every command</summary>
+<summary>Running as root, Linux-only setups, and CLI reference</summary>
 
-- Run as root, the installer sets Hermesh up for root, or for another user you name. From then on it starts with the system (systemd on Linux; elsewhere run `hermeshd run`).
-- **No Mac, Windows PC or iPhone?** A Linux computer that runs no coding agents can be your trusted device:
+- **Running as root:** If invoked as root, the installer configures Hermesh for root or for a target user you specify, and registers a background service (`systemd` on Linux; on other systems, run `hermeshd run`).
+- **No Mac, Windows PC, or iPhone?** A dedicated Linux machine that does not run coding agents can act as your trusted device:
   ```bash
   curl -fsSL https://github.com/hermeshai/hermesh/releases/latest/download/install.sh | sh -s -- --device
   ```
-  With no other device yet, it signs you in with a code your browser shows and seals your key with a passphrase you choose. Approve what asks to join with `hermeshd approve`.
-- Every command: [docs/hermeshd.md](docs/hermeshd.md).
+  If this is your first device, it signs you in via a browser verification code and encrypts your owner key with a passphrase. Use `hermeshd approve` to approve pending pairing requests.
+- Full daemon reference: [docs/hermeshd.md](docs/hermeshd.md).
 
 </details>
 
-### 3. Teach your agents
+### 3. Connect your agents
 
-Send any agent this one sentence:
+Send this prompt to any agent you want to connect:
 
 ```text
 Connect to Hermesh: follow https://hermesh.io/connect
 ```
 
-- **Cloud assistants** (Grok Bot, Muse, ChatGPT, Claude.ai) add the MCP server `https://mcp.hermesh.io/mcp` and send you to sign in.
-- **Agents on a computer** (Claude Code, Codex, Cursor, your own) install the `hermesh` command line and sign in:
+- **Cloud assistants** (Grok Bot, Muse, ChatGPT, Claude.ai) will add the MCP server `https://mcp.hermesh.io/mcp` and prompt you to sign in.
+- **CLI agents** (Claude Code, Codex, Cursor, or custom agents) will install the `hermesh` CLI and authenticate:
   ```bash
   curl -fsSL https://github.com/hermeshai/hermesh/releases/latest/download/install.sh | sh -s -- --cli
   hermesh auth login --name "Codex on MacBook"
   ```
 
-Its request comes to your phone: choose the projects it may use, and approve. Then ask it: *"Use Hermesh to have Claude Code say hello to me in the app project."*
+When the pairing request appears on your trusted device, select which projects the agent is allowed to access and approve it. Then test it out: *"Use Hermesh to have Claude Code say hello to me in the app project."*
 
 <details>
-<summary>Messages between agents</summary>
+<summary>Agent-to-agent messaging</summary>
 
-Every agent you approve gets an address and an inbox, and any of your agents can write to it:
+Every approved agent gets an address and an inbox so your agents can message each other directly:
 
 ```bash
-hermesh message contacts                                   # your agents and machines
+hermesh message contacts                                   # list your agents and machines
 hermesh message send --to "Grok Bot" --message "PR #143 is ready"
-hermesh message list --wait                                # what waits for you; ack each one once handled
-hermesh message hook claude --install                      # or codex: each conversation hears back as messages arrive
+hermesh message list --wait                                # wait for incoming messages; ack each once handled
+hermesh message hook claude --install                      # or codex: deliver incoming messages into active sessions
 ```
 
-A message waits, sealed, until its recipient takes it: a Claude Code or Codex conversation through its hooks, a Grok Bot routine when Hermesh rings its webhook (`message_wake` gives you a one-time link to set it up), any other agent when it next looks. When a session's turn ends, asks something or fails, the news comes back to whoever asked. Cloud assistants have the same as MCP tools. See [docs/agent-messages.md](docs/agent-messages.md) and [docs/cli.md](docs/cli.md).
+Messages are end-to-end encrypted and queued until delivered: into an active Claude Code or Codex conversation via hooks, to a Grok Bot routine via webhook (`message_wake` generates a one-time setup link), or to any other agent the next time it polls. When a delegated session finishes a turn, asks a question, or fails, the initiating agent is notified automatically. Cloud assistants have access to the same capabilities via MCP tools. See [docs/agent-messages.md](docs/agent-messages.md) and [docs/cli.md](docs/cli.md).
 
 </details>
 
-## How it works
+## Architecture
 
 <p align="center">
   <picture>
@@ -158,28 +158,28 @@ A message waits, sealed, until its recipient takes it: a Claude Code or Codex co
   </picture>
 </p>
 
-Three words to know:
+Hermesh is built around three core concepts:
 
-| | What it is | For example |
+| Concept | Role | Examples |
 |---|---|---|
-| **Agent** | Hands out work and talks to your other agents | Grok Bot, Muse, ChatGPT, Claude Code, Codex, your own |
-| **Machine** | A computer where coding agents work, in the folders you allow (projects) | Your Mac, a Mac mini, a Windows PC, a Linux server |
-| **Trusted device** | Where you approve, with Face ID, Touch ID, Windows Hello or a passphrase. It holds your key | The iPhone app, the Mac app, the Windows app, a Linux computer |
+| **Agent** | Dispatches coding tasks and exchanges messages with other agents | Grok Bot, Muse, ChatGPT, Claude Code, Codex, custom scripts |
+| **Machine** | A computer where local coding agents run inside approved project folders | MacBook, Mac mini, Windows PC, Linux server |
+| **Trusted device** | Holds your owner key and signs approvals using Face ID, Touch ID, Windows Hello, or a passphrase | iPhone app, macOS app, Windows app, Linux device CLI |
 
-A Mac or a Windows PC can be your trusted device and a machine at once. An agent starts a session on a machine, follows it, answers the coding agent's questions or passes them to you, and brings back the result and the diff. Your code, and your Claude Code or Codex sign-in, stay on your machine.
+A Mac or Windows PC can serve as both a trusted device and an execution machine at the same time. When an agent starts a session on a machine, it streams progress, answers follow-up questions from the coding agent (or forwards them to you), and retrieves the final output and git diff. Your source code and local agent credentials never leave your machine.
 
-## Works with
+## Supported agents
 
-**Agents that hand out the work**: assistants that speak MCP, such as ChatGPT, Claude.ai, Grok Bot, Muse and Cursor, and any agent that can run a command line, through the [`hermesh` CLI](docs/cli.md).
+**Orchestrating agents (task dispatchers):** Any MCP-compatible assistant (ChatGPT, Claude.ai, Grok Bot, Muse, Cursor) or any agent capable of invoking the [`hermesh` CLI](docs/cli.md).
 
-**Coding agents that do it**, on your machines: Claude Code and Codex, and through the [Agent Client Protocol](https://agentclientprotocol.com) Gemini CLI, Cursor, GitHub Copilot CLI, OpenCode, Qwen Code, Goose, Augment, Kimi, Kiro, Qoder, Grok, DeepSeek Harness and CodeBuddy Code.
+**Coding agents (task executors):** Claude Code and Codex natively, plus Gemini CLI, Cursor, GitHub Copilot CLI, OpenCode, Qwen Code, Goose, Augment, Kimi, Kiro, Qoder, Grok, DeepSeek Harness, and CodeBuddy Code via the [Agent Client Protocol (ACP)](https://agentclientprotocol.com).
 
 <details>
-<summary>How Hermesh runs each one</summary>
+<summary>How Hermesh integrates with each coding agent</summary>
 
-| `--agent` | Tool | Integration |
+| `--agent` | Tool | Integration method |
 |---|---|---|
-| `claude` | Claude Code | `claude -p` stream-json |
+| `claude` | Claude Code | `claude -p` (`stream-json`) |
 | `codex` | Codex | `codex app-server` |
 | `gemini` | Gemini CLI | `gemini --acp` |
 | `cursor` | Cursor | `cursor-agent acp` |
@@ -188,52 +188,54 @@ A Mac or a Windows PC can be your trusted device and a machine at once. An agent
 | `qwen` | Qwen Code | `qwen --acp` |
 | `goose` | Goose | `goose acp` |
 | `auggie` | Augment | `auggie --acp` |
-| `kimi` / `kiro` / `qoder` / `grok` | Kimi CLI / Kiro CLI / Qoder CLI / Grok | Each one's own ACP entry point |
-| `deepseek` | DeepSeek Harness | `dsh --profile acp`, or the copy inside the DSH Desktop app |
+| `kimi` / `kiro` / `qoder` / `grok` | Kimi CLI / Kiro CLI / Qoder CLI / Grok | Native ACP entry point |
+| `deepseek` | DeepSeek Harness | `dsh --profile acp`, or the bundled binary inside the DSH Desktop app |
 | `codebuddy` | CodeBuddy Code | `codebuddy --acp` |
 
-ACP agents run as one long-lived process each, with multi-turn conversation, interruption and resumption, and every tool call and permission request seen by Hermesh. Their sign-in can't be checked in advance: run each CLI once as the machine's user first. Whichever is installed (and allowed by the grant) shows up in `hermesh project list`.
+Each ACP session runs as a long-lived process supporting multi-turn conversation, interruption, and resumption, with all tool calls and permission prompts surfaced through Hermesh. Because ACP does not expose pre-flight authentication checks, sign in to each CLI once under the machine's OS user before use. Installed agents permitted by a grant appear automatically in `hermesh project list`.
 
 </details>
 
 ## Security
 
-The more agents you connect, the more security matters. Hermesh is built so that you never have to trust the server, whether it's hermesh.io or your own.
+Connecting autonomous agents to your machines requires strict boundaries. Hermesh is designed so that you never have to trust the relay server—whether you use hermesh.io or host your own.
 
-- **Only you approve.** Adding a machine, an agent or a device takes Face ID, Touch ID, Windows Hello or your passphrase, on your own device. Your key never leaves it: in the Secure Enclave on a Mac or an iPhone, in the TPM on Windows, sealed by your passphrase on a Linux computer. Neither hermesh.io nor your own server can approve anything or forge a command.
-- **Encrypted end to end.** Your agents and your machines talk over TLS 1.3, both ends authenticated by credentials you signed, inside a connection the server only splices together. Messages between agents are signed by their sender and sealed to their recipient: the server keeps one until it is taken (30 days at most), without being able to read it or change who sent it.
+- **Hardware-backed approvals.** Enrolling a machine, agent, or new device requires biometric or passphrase confirmation on your trusted device. Your owner private key never leaves the device: it lives in the Secure Enclave on macOS and iOS, the system TPM on Windows, or an encrypted keystore on Linux. Neither hermesh.io nor a self-hosted relay can forge approvals or inject commands.
+- **End-to-end encryption.** Agents and machines establish mutually authenticated TLS 1.3 channels using certificates signed by your owner key; the relay simply splices the encrypted byte streams without terminating TLS. Agent-to-agent messages are signed by the sender and encrypted to the recipient's public key. The relay stores unread ciphertexts for up to 30 days but cannot read the payload or spoof the sender.
 
-  | Your agent connects with | Who can read the content |
+  | Connection method | Who can decrypt session & message content |
   |---|---|
-  | The `hermesh` command line | Only your agent and your machine. The server passes on encrypted bytes |
-  | MCP (cloud assistants) | Also the MCP server, which holds that connection's key ([Privacy Policy](https://hermesh.io/en/privacy)). [Run your own server](#run-your-own-server) to keep it on yours |
+  | `hermesh` CLI | Only your agent and your machine. The relay only forwards encrypted bytes. |
+  | MCP (cloud assistants) | Your machine and the MCP gateway, which holds the client key for that connection ([Privacy Policy](https://hermesh.io/en/privacy)). [Self-host the relay](#run-your-own-server) to keep MCP keys on your own infrastructure. |
 
-- **The server is trusted once, at most.** Your machines accept only grants your key signed. An agent pairing through hermesh.io takes your account's owner on the server's word, once; pair it with your own server's connection address to trust no server at all.
-- **Each agent gets a grant**: which machines, projects and coding agents, and for how long. Revoke it at any moment: the server cuts the agent off, and your device tells every online machine directly and shows each one's acknowledgement.
-- **A grant is full trust.** Within it, a coding agent can do anything you can: read credentials, use the network, push code. Hermesh adds no sandbox. Grant access only to agents you trust; if one reads untrusted web pages or email, a prompt injection reaches as far as its grant.
-- **Your own work stays apart.** A session works in its own git worktree, on a `hermesh/<session>` branch, and never pushes for you: review the diff before merging. An *in-place* project lets the agent write straight into the folder.
-- **Signed releases.** Every program in a release is listed in a checksum list signed with the release key, and the installers and the machines' own updates check it before running anything new. The Mac app is signed with a Developer ID and notarized by Apple.
-- **Lose a device?** Remove it from another trusted device. With only one you'd set up again, so add a second: an iPhone, a Mac, a Windows PC or a Linux computer.
+- **Trust on first use (TOFU) at most.** Your machines only accept grants signed by your owner key. When an agent pairs via hermesh.io, it trusts the server's record of your owner public key once during initial pairing; pairing via a self-hosted connection address eliminates server trust entirely.
+- **Scoped, revocable grants.** Every agent receives a cryptographic grant specifying which machines, projects, and coding agents it can access, along with an expiration time. You can revoke a grant at any time: the relay disconnects the agent immediately, while your trusted device notifies online machines directly and confirms their acknowledgement.
+- **No artificial sandbox within a grant.** Within its allowed scope, a coding agent runs with your local OS user's permissions—it can read local credentials, access the network, and run arbitrary commands. Only grant access to agents you trust; if an agent processes untrusted web content or emails, prompt injection carries the same privileges as that agent's grant.
+- **Isolated git worktrees.** By default, each coding session runs in its own git worktree on a dedicated `hermesh/<session>` branch and never pushes automatically, allowing you to review the diff before merging. (If desired, a project can be configured as *in-place* to let agents modify the working directory directly.)
+- **Signed releases and updates.** Every release binary is verified against a cryptographically signed checksum manifest by the installer and the auto-updater before execution. The macOS app is signed with an Apple Developer ID and notarized by Apple.
+- **Device recovery.** If you lose a trusted device, revoke it from another trusted device. Because losing your only trusted device requires resetting your account, we recommend registering at least two (e.g., your computer and your phone).
 
-The whole design, with a red-team checklist of what a compromised server could try: [technical design](docs/technical-design.md) · [trusted devices](docs/trusted-devices.md) · [messages](docs/agent-messages.md) · [the MCP gateway](docs/mcp-gateway.md) · [Windows' protected signer](docs/windows.md). Found a security problem? Please report it privately to service@hermesh.io rather than in a public issue.
+For the complete cryptographic protocol and a red-team threat analysis of a compromised relay, see: [technical design](docs/technical-design.md) · [trusted devices](docs/trusted-devices.md) · [agent messages](docs/agent-messages.md) · [MCP gateway](docs/mcp-gateway.md) · [Windows TPM signer](docs/windows.md).
+
+Found a security vulnerability? Please report it privately to [service@hermesh.io](mailto:service@hermesh.io) rather than opening a public issue.
 
 ## Run your own server
 
-Everything your devices, machines and agents run is in this repository, and so is the server they meet at: `hermesh-relay`. Run it yourself and none of your traffic goes through hermesh.io, not even your cloud assistants' MCP connections. It needs a Linux server with Docker, a domain name that points at it (relay.example.com below), and ports 80 and 443 open.
+Every component of Hermesh—including the relay server (`hermesh-relay`)—is open source in this repository. Self-hosting routes all traffic through your own server, including MCP connections from cloud assistants. You'll need a Linux host with Docker, a domain name pointing to it (`relay.example.com` below), and ports 80 and 443 open.
 
-**1. Start it.** It gets its HTTPS certificate from Let's Encrypt by itself.
+**1. Start the relay.** It provisions its own TLS certificate via Let's Encrypt automatically:
 
 ```bash
 docker run -d --name hermesh-relay --restart unless-stopped \
   -p 80:80 -p 443:443 -v hermesh-relay:/data \
   -e HERMESH_RELAY_DOMAIN=relay.example.com -e HERMESH_RELAY_MCP=1 \
   hermeshai/hermesh-relay
-docker logs hermesh-relay   # shows the claim code
+docker logs hermesh-relay   # prints the one-time claim code
 ```
 
-**2. Claim it.** In the Mac, Windows or iPhone app, choose **Use Your Own Server…** and enter the server's address and the claim code. A server belongs to the one owner who claims it.
+**2. Claim the server.** In the macOS, Windows, or iPhone app, select **Use Your Own Server…** and enter your server's domain and claim code. A relay instance is bound to the single owner who claims it.
 
-**3. Connect machines and agents** with the connection address the app gives you:
+**3. Connect machines and agents** using the connection address shown in the app:
 
 ```bash
 curl -fsSL https://github.com/hermeshai/hermesh/releases/latest/download/install.sh \
@@ -241,107 +243,108 @@ curl -fsSL https://github.com/hermeshai/hermesh/releases/latest/download/install
 hermesh auth login relay.example.com/o_xxxxxxxx
 ```
 
-**4. Cloud assistants, if you use them.** `HERMESH_RELAY_MCP=1` also serves MCP for Claude, ChatGPT and other online assistants, at an address with a key in it, so only you can connect apps: copy it from **Settings › Account & Devices › Advanced** on the Mac or **Account and Devices** on the iPhone, or print it with `docker exec hermesh-relay hermesh-relay mcp-url`. Leave it out if your agents all use the command line.
+**4. Connect cloud assistants (optional).** Setting `HERMESH_RELAY_MCP=1` enables the built-in MCP gateway for Claude, ChatGPT, and other cloud assistants using a secret URL so only you can register clients. Copy the MCP URL from **Settings › Account & Devices › Advanced** on macOS (**Account and Devices** on iPhone), or print it with `docker exec hermesh-relay hermesh-relay mcp-url`. Omit `HERMESH_RELAY_MCP=1` if you only use CLI agents.
 
-**What it keeps.** Its database holds who your trusted devices, machines and agents are (their public keys and the grants you signed), revocations, pairing requests for ten minutes, connection metadata for 30 days, and sealed messages until they're taken; which machines are online it keeps in memory only. It never holds session content or a key that opens it. With MCP on, it holds the keys of those MCP connections, as hermesh.io does for its own.
+**What the server stores:** The relay database stores public keys and signed grants for your trusted devices, machines, and agents; revocation lists; pending pairing requests (10-minute TTL); connection metadata (30-day retention); and encrypted inbox messages until acknowledged. Online machine presence is kept in memory only. The relay never possesses session plaintext or the keys required to decrypt CLI sessions. When the MCP gateway is enabled, it holds the keys for those MCP connections, just as hermesh.io does.
 
-**One difference.** Your own server can't send iPhone notifications: Apple accepts them only signed with the app's own key. The iPhone app shows what's new when you open it.
+**Push notifications:** A self-hosted server cannot send Apple Push Notifications to the iPhone app because APNs requires Apple's private signing key for the app bundle. Instead, the iPhone app syncs updates whenever you open it.
 
 <details>
-<summary>No domain, updating, a web server already on port 443, backups</summary>
+<summary>Running without a domain, reverse proxies, updates, and backups</summary>
 
-- **No domain?** Start it without `HERMESH_RELAY_DOMAIN`, publishing port 8080 instead (`-p 8080:8080`), and enter the server's IP address and port in the app, such as `203.0.113.7:8080`. It works, but the connection isn't encrypted: your sessions stay end-to-end encrypted, yet the claim code and which machines are online can be seen on the network, and someone could claim the server before you do. Claude and ChatGPT can't connect to it. Fine for trying Hermesh or on a network you trust.
-- **Update:** `docker pull hermeshai/hermesh-relay`, then `docker rm -f hermesh-relay` and the same `docker run`.
-- **Behind your own web server** (nginx, Caddy…) that serves HTTPS: publish port 8080 instead (`-p 127.0.0.1:8080:8080`), replace `HERMESH_RELAY_DOMAIN` with `HERMESH_RELAY_PUBLIC_URL=https://relay.example.com`, and pass that name to it, WebSockets included.
-- **Back up** the `hermesh-relay` volume: it is the server's identity and who its owner is. Without it you would set up again and pair your machines and agents again.
+- **Testing without a domain:** Omit `HERMESH_RELAY_DOMAIN`, publish port 8080 (`-p 8080:8080`), and enter `http://<ip>:8080` (e.g., `203.0.113.7:8080`) in the app. Coding sessions remain end-to-end encrypted, but transport is plain HTTP: the initial claim code and machine presence are visible on the network, someone could claim the server before you do, and cloud MCP clients (Claude, ChatGPT) will refuse to connect. Use this only for local testing or on a trusted LAN.
+- **Updating:** Run `docker pull hermeshai/hermesh-relay`, then `docker rm -f hermesh-relay` and re-run the same `docker run` command.
+- **Behind a reverse proxy (nginx, Caddy, etc.):** Publish port 8080 to localhost (`-p 127.0.0.1:8080:8080`), replace `HERMESH_RELAY_DOMAIN` with `HERMESH_RELAY_PUBLIC_URL=https://relay.example.com`, and configure your proxy to forward HTTPS and WebSocket traffic to port 8080.
+- **Backups:** Back up the `hermesh-relay` Docker volume, which stores the server's identity and owner binding. Losing this volume requires re-initializing the server and re-pairing your machines and agents.
 
 </details>
 
-## Questions
+## FAQ
 
 <details>
 <summary><b>Do I need a Mac?</b></summary>
 
-No. The iPhone app, a Windows PC or a Linux computer can be your trusted device, and your machines can be Linux servers or Windows PCs.
+No. Your trusted device can be an iPhone, a Windows PC, or a Linux computer, and your execution machines can run macOS, Windows, or Linux.
 
 </details>
 <details>
 <summary><b>Can hermesh.io read my code?</b></summary>
 
-Not what goes through the command line: that is end to end. Over MCP, its MCP server holds the connection's key, so it can read what that assistant sends and receives. Your own server keeps that to you.
+Not when your agents connect via the `hermesh` CLI—those sessions are end-to-end encrypted between the agent and your machine. When a cloud assistant connects over MCP, the MCP gateway holds that client's key and can read the traffic sent over that MCP connection. Self-hosting `hermesh-relay` keeps the MCP gateway on your own server.
 
 </details>
 <details>
-<summary><b>Do my Claude Code or Codex accounts leave my machine?</b></summary>
+<summary><b>Do my Claude Code or Codex credentials ever leave my machine?</b></summary>
 
-No. They run on your machine with their own sign-in; Hermesh starts them there and never reads their keys.
-
-</details>
-<details>
-<summary><b>What if an agent or a machine is offline?</b></summary>
-
-Messages wait, sealed, in its inbox for up to 30 days, and a message to a session on an offline machine waits for the machine. Sessions never end on their own: another message continues the same coding agent session, however long it has been idle.
+No. Coding agents run locally on your machine using their own local sign-in state. Hermesh invokes their CLIs as your user and never reads or transmits their API keys or tokens.
 
 </details>
 <details>
-<summary><b>What does a machine need?</b></summary>
+<summary><b>What happens if an agent or machine is offline?</b></summary>
 
-macOS; Windows 11 (Windows 10 22H2 and Windows Server 2019 or later work, best effort); or Linux on x86-64 or ARM64, where systemd keeps Hermesh running (elsewhere, run `hermeshd run` yourself). And a coding agent, signed in as the same user.
+Agent-to-agent messages stay encrypted in the recipient's inbox for up to 30 days until delivered. Prompts sent to a session on an offline machine queue until the machine comes back online. Sessions do not time out—sending a follow-up prompt resumes the same underlying coding agent session regardless of how long it has been idle.
+
+</details>
+<details>
+<summary><b>What are the system requirements for a machine?</b></summary>
+
+- **OS:** macOS 14+, Windows 11 (Windows 10 22H2 and Windows Server 2019+ work on a best-effort basis), or Linux (`x86_64` / `arm64`, managed via `systemd` or run manually with `hermeshd run`).
+- **Coding agent:** At least one supported coding agent installed and signed in under the same OS user.
 
 </details>
 
 ## For developers
 
-### What's in this repository
+### Repository layout
 
-| | Where | What it does |
+| Component | Path | Description |
 |---|---|---|
-| Hermesh for Mac and Windows | `apps/desktop` | The desktop app (Electron, React): approves, shows your agents, machines and sessions; bundles `hermeshd` |
-| The signers | `apps/signer/macos`, `cmd/hermesh-signer` | Keep your key and show what you sign: in the Secure Enclave behind Touch ID on a Mac (Swift), in the TPM behind Windows Hello on Windows (Go) |
-| Hermesh for iPhone | `apps/ios`, `cmd/hermesh-mobile` | Approves, follows sessions, answers your agents' questions (SwiftUI, on the same Go core) |
-| `hermeshd` | `cmd/hermeshd` | Runs on each machine and starts the coding agents' sessions; with `hermeshd device`, a Linux trusted device |
-| `hermesh` | `cmd/hermesh` | The command line for agents: sessions and messages |
-| `hermesh-relay` | `cmd/hermesh-relay`, `pkg/relay`, `pkg/mcpgw` | The server you can run yourself: pairing, routing, revocation, inboxes, and the MCP gateway |
+| Hermesh for macOS & Windows | `apps/desktop` | Desktop app (Electron, React) for approving requests and monitoring agents, machines, and sessions; bundles `hermeshd` |
+| Hardware signers | `apps/signer/macos`, `cmd/hermesh-signer` | Isolated signing helpers that protect your owner key in the Secure Enclave via Touch ID on macOS (Swift) and in the TPM via Windows Hello on Windows (Go) |
+| Hermesh for iPhone | `apps/ios`, `cmd/hermesh-mobile` | iOS app (SwiftUI backed by the shared Go core) for approving requests, following sessions, and answering agent prompts |
+| `hermeshd` | `cmd/hermeshd` | Machine daemon that manages local coding agent sessions; also provides the Linux trusted-device CLI (`hermeshd device`) |
+| `hermesh` | `cmd/hermesh` | Agent CLI for starting sessions and exchanging messages |
+| `hermesh-relay` | `cmd/hermesh-relay`, `pkg/relay`, `pkg/mcpgw` | Self-hostable relay server: pairing, encrypted stream routing, revocation, message inboxes, and MCP gateway |
 
 ```text
-apps/       desktop app, iPhone app, Mac signer
-cmd/        the programs above
-internal/   machine and sessions, coding agent adapters (Claude Code, Codex, ACP), signer core, owner, service
-pkg/        relay, MCP gateway, identity, transport
-proto/      the protocols, in protobuf: identity, relay, machine, session, inbox, local
-packages/   the apps' shared UI and core (TypeScript), HermeshKit (Swift)
-e2e/        end-to-end tests: real binaries, scripted coding agents, a malicious relay
-deploy/     the relay's Docker image
-scripts/    install.sh, install.ps1 and the release scripts
-docs/       the design, one document per part
+apps/       Desktop app, iPhone app, macOS Secure Enclave signer
+cmd/        Entry points for hermeshd, hermesh, hermesh-relay, hermesh-signer, hermesh-mobile
+internal/   Machine & session runtime, coding agent adapters (Claude Code, Codex, ACP), signer core, owner, OS service
+pkg/        Relay server, MCP gateway, cryptographic identity, transport splicing
+proto/      Protobuf definitions: identity, relay, machine, session, inbox, local IPC
+packages/   Shared TypeScript UI & core packages, HermeshKit (Swift)
+e2e/        End-to-end test suite: real binaries, scripted coding agents, and malicious-relay simulations
+deploy/     Docker packaging for hermesh-relay
+scripts/    install.sh, install.ps1, and release automation scripts
+docs/       Architecture and component design documents
 ```
 
 ### Build and test
 
 ```bash
-make generate && make lint test   # code from proto, static checks, unit tests
-make e2e                          # full user flows and malicious-relay tests with real binaries and scripted agents
+make generate && make lint test   # regenerate protobuf code, run linters and unit tests
+make e2e                          # run end-to-end user flows and malicious-relay tests
 make app                          # build and sign dist/Hermesh.app
 ```
 
-More, and how a release is made and signed: [docs/development.md](docs/development.md).
+See [docs/development.md](docs/development.md) for full build instructions and the release signing process.
 
 ### Documentation
 
-| | |
+| Document | Topic |
 |---|---|
-| [technical-design.md](docs/technical-design.md) | The whole design: keys, credentials, the end-to-end channel, the relay, and the threats it is built against |
-| [agent-messages.md](docs/agent-messages.md) | Messages between agents: inboxes, sealing, delivery, news of sessions |
-| [agent-names.md](docs/agent-names.md) | Several bots on one connection, each woken on its own |
-| [trusted-devices.md](docs/trusted-devices.md) | Your key, your devices, removing one |
-| [mcp-gateway.md](docs/mcp-gateway.md) | Cloud assistants over MCP |
-| [hermeshd.md](docs/hermeshd.md) | A machine: install, `doctor`, projects, the background service |
-| [cli.md](docs/cli.md) | The `hermesh` CLI for agents: sessions, messages, output, exit codes |
-| [onboarding.md](docs/onboarding.md) | First use without a Mac, and Linux trusted devices |
-| [desktop-app.md](docs/desktop-app.md) · [iphone-app.md](docs/iphone-app.md) · [windows.md](docs/windows.md) | The apps, and Hermesh on Windows |
-| [machine-updates.md](docs/machine-updates.md) | How machines update themselves |
-| [development.md](docs/development.md) | Building, testing and releasing |
+| [technical-design.md](docs/technical-design.md) | Cryptographic architecture: keys, grants, end-to-end channels, relay protocol, and threat model |
+| [agent-messages.md](docs/agent-messages.md) | Agent-to-agent messaging: inboxes, encryption, webhook wakeups, and session notifications |
+| [agent-names.md](docs/agent-names.md) | Multiplexing multiple bots over a single connection with independent wakeups |
+| [trusted-devices.md](docs/trusted-devices.md) | Owner keys, trusted device enrollment, and device revocation |
+| [mcp-gateway.md](docs/mcp-gateway.md) | Connecting cloud assistants over MCP |
+| [hermeshd.md](docs/hermeshd.md) | Machine daemon setup, `doctor`, project registration, and background services |
+| [cli.md](docs/cli.md) | `hermesh` CLI reference: sessions, messages, output formats, and exit codes |
+| [onboarding.md](docs/onboarding.md) | Headless onboarding without macOS/Windows and Linux trusted devices |
+| [desktop-app.md](docs/desktop-app.md) · [iphone-app.md](docs/iphone-app.md) · [windows.md](docs/windows.md) | Desktop and mobile app architecture, plus Windows TPM integration |
+| [machine-updates.md](docs/machine-updates.md) | Signed auto-updates for machines |
+| [development.md](docs/development.md) | Building, testing, and cutting releases |
 
 ## License
 
-Apache License 2.0, see [LICENSE](LICENSE).
+Apache License 2.0. See [LICENSE](LICENSE) for details.
