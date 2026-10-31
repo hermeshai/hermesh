@@ -230,7 +230,7 @@ final class HermeshUITests: XCTestCase {
         XCTAssertEqual(field.value as? String, "改个名字")
         field.tap()
         field.typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: 8) + "新的名字")
-        app.alerts.buttons["重命名"].firstMatch.tap()
+        tapSettled(app.alerts.buttons["重命名"].firstMatch)
         try waitFor("renamed on the Mac") { (try self.control("session?title=\("改个名字".addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed)!)")["title"] as? String) == "新的名字" ? true : nil }
         XCTAssertTrue(app.descendants(matching: .any)["session-新的名字"].waitForExistence(timeout: 20))
         // Swipe: Delete asks first, saying what stays.
@@ -373,7 +373,7 @@ final class HermeshUITests: XCTestCase {
             XCTAssertTrue(field.waitForExistence(timeout: 10))
             field.coordinate(withNormalizedOffset: CGVector(dx: 0.95, dy: 0.5)).tap()
             field.typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: from.count) + to)
-            app.alerts.buttons["重命名"].tap()
+            tapSettled(app.alerts.buttons["重命名"])
             XCTAssertTrue(app.navigationBars[to].waitForExistence(timeout: 30), "renamed to \(to)")
         }
         XCTAssertEqual(try control("grant?label=bot")["version"] as? Int, before + 2)
@@ -417,7 +417,7 @@ final class HermeshUITests: XCTestCase {
         let field = app.alerts.textFields.firstMatch
         XCTAssertTrue(field.waitForExistence(timeout: 10))
         field.typeText(try e2e("HERMESH_E2E_FOLDERS"))
-        app.alerts.buttons["前往"].tap()
+        tapSettled(app.alerts.buttons["前往"])
         XCTAssertTrue(text("notes").waitForExistence(timeout: 30), "the folders there")
         tap("folder-demo")
         XCTAssertTrue(text("这是一个 git 仓库，当前分支 main").waitForExistence(timeout: 30), "a repository")
@@ -585,7 +585,7 @@ final class HermeshUITests: XCTestCase {
         // Grok Bot takes no connector: the message only.
         tap("agent-grok")
         XCTAssertTrue(text("把这段话发给 Grok Bot").waitForExistence(timeout: 5))
-        XCTAssertFalse(app.segmentedControls.firstMatch.exists, "no connector to choose")
+        XCTAssertFalse(app.segmentedControls.buttons["连接器"].exists, "no connector to choose")
         let grok = XCTAttachment(screenshot: app.screenshot())
         grok.name = "connect Grok Bot"
         grok.lifetime = .keepAlways
@@ -889,6 +889,23 @@ final class HermeshUITests: XCTestCase {
     /// Text on screen that contains s.
     func text(_ s: String) -> XCUIElement {
         app.descendants(matching: .any).matching(NSPredicate(format: "label CONTAINS %@", s)).firstMatch
+    }
+
+    /// Taps an alert's button once the alert sits still. On the
+    /// Simulator, typing folds the keyboard away and brings it back (since
+    /// 2026-10-31), and the alert moves with it from under a tap made at
+    /// once; a tap that missed leaves the alert up, and is made again.
+    func tapSettled(_ e: XCUIElement) {
+        for _ in 0..<3 {
+            XCTAssertTrue(waitUntil {
+                let at = e.frame
+                usleep(800_000)
+                return app.keyboards.count > 0 && e.frame == at
+            }, "the alert settles")
+            e.tap()
+            if e.waitForNonExistence(timeout: 3) { return }
+        }
+        XCTFail("the alert stays up")
     }
 
     func tap(_ id: String, timeout: TimeInterval = 15) {
