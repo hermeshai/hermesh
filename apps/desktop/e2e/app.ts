@@ -34,12 +34,12 @@ export const fixture: Fixture = JSON.parse(fs.readFileSync(process.env.HERMESH_E
 export async function launch(
   socket = fixture.socket,
   // systemColors: pages see the app's own light or dark (Playwright makes them light otherwise).
-  // dark: the app in dark (the download page's screenshots).
-  o: { systemLanguages?: string[]; profile?: string; systemColors?: boolean; dark?: boolean; env?: Record<string, string> } = {},
+  // dark: the app in dark; args: more of Electron's (the download page's screenshots).
+  o: { systemLanguages?: string[]; profile?: string; systemColors?: boolean; dark?: boolean; args?: string[]; env?: Record<string, string> } = {},
 ): Promise<{ app: ElectronApplication; page: Page }> {
   const languages = o.systemLanguages ?? ["zh-Hans"];
   const app = await electron.launch({
-    args: ["-r", background, path.join(process.env.HERMESH_DESKTOP_OUT || path.join(import.meta.dirname, "..", "out"), "main", "index.js"), "-AppleLanguages", `(${languages.join(", ")})`],
+    args: ["-r", background, path.join(process.env.HERMESH_DESKTOP_OUT || path.join(import.meta.dirname, "..", "out"), "main", "index.js"), "-AppleLanguages", `(${languages.join(", ")})`, ...(o.args ?? [])],
     // Its own profile, so app instances of parallel runs don't meet.
     env: {
       ...process.env,
