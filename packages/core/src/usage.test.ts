@@ -1,18 +1,33 @@
 import { create } from "@bufbuild/protobuf";
-import { UsageDaySchema } from "@hermesh/proto/session";
+import { QueryWorkResponseSchema, WorkBucket, WorkDimension, type QueryWorkResponse } from "@hermesh/proto/local";
 import { describe, expect, test } from "vitest";
-import { usageSince, usageYear } from "./usage";
+import { usageRequest, usageSince, usageYear } from "./usage";
 
-const day = (date: string, agent: string, tokens: number, sessions = 1) =>
-  create(UsageDaySchema, { date, agent, inputTokens: BigInt(tokens), outputTokens: 0n, sessions, turns: sessions });
+type Day = { date: string; agent: string; tokens: number; sessions: number };
+const day = (date: string, agent: string, tokens: number, sessions = 1): Day => ({ date, agent, tokens, sessions });
 
 describe("usage", () => {
   // Tuesday 20 October 2026.
   const today = new Date(2026, 9, 20, 15, 0);
+  // QueryWork's answer, by day (from usageSince) and agent.
+  const answer = (days: Day[]): QueryWorkResponse => {
+    const [y, m, d] = usageSince(today).split("-").map(Number);
+    const bucket = (date: string) => {
+      const [a, b, c] = date.split("-").map(Number);
+      return Math.round((new Date(a, b - 1, c).getTime() - new Date(y, m - 1, d).getTime()) / 86_400_000);
+    };
+    return create(QueryWorkResponseSchema, {
+      turns: days.map((x) => ({ bucket: bucket(x.date), group: { agent: x.agent }, turns: x.sessions, inputTokens: BigInt(x.tokens) })),
+      sessions: days.map((x) => ({ bucket: bucket(x.date), group: { agent: x.agent }, sessions: x.sessions })),
+    });
+  };
+  const year = (days: Day[]) => usageYear(answer(days), today);
 
   test("a year of weeks ends in today's week and starts on a Sunday", () => {
     expect(usageSince(today)).toBe("2025-10-19");
-    const y = usageYear([], today);
+    const y = usageYear(null, today);
+    const q = usageRequest(today, 53, "Asia/Shanghai");
+    expect(q).toMatchObject({ firstDay: "2025-10-19", days: 367, bucket: WorkBucket.DAY, groupBy: [WorkDimension.AGENT], timeZone: "Asia/Shanghai" });
     expect(y.cells.length).toBe(53 * 7);
     expect(y.cells[0]?.key).toBe("2025-10-19");
     // Today is the third cell of the last column; the rest of the week is not shown.
@@ -23,7 +38,7 @@ describe("usage", () => {
   });
 
   test("tokens add up by day and agent, with levels, streak and the change over 30 days", () => {
-    const y = usageYear(
+    const y = year(
       [
         day("2026-10-20", "claude", 400),
         day("2026-10-20", "codex", 100, 2),
@@ -32,7 +47,6 @@ describe("usage", () => {
         day("2026-10-10", "codex", 50),
         day("2026-09-10", "claude", 150),
       ],
-      today,
     );
     expect(y.today).toBe(500);
     expect(y.total).toBe(1000);
@@ -51,12 +65,12 @@ describe("usage", () => {
   });
 
   test("a lone day is drawn darkest", () => {
-    const y = usageYear([day("2026-10-20", "gemini", 375)], today);
+    const y = year([day("2026-10-20", "gemini", 375)]);
     expect(y.cells.find((c) => c?.key === "2026-10-20")?.level).toBe(4);
   });
 
   test("before today's first turn the streak counts up to yesterday", () => {
-    const y = usageYear([day("2026-10-19", "claude", 10), day("2026-10-18", "claude", 10)], today);
+    const y = year([day("2026-10-19", "claude", 10), day("2026-10-18", "claude", 10)]);
     expect(y.streak).toBe(2);
   });
 });

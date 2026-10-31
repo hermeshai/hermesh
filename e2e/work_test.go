@@ -30,9 +30,10 @@ func TestWorkOnIPhone(t *testing.T) {
 		}
 	}
 	ctx := context.Background()
+	sh, _ := time.LoadLocation("Asia/Shanghai")
 	today := func(c localv1connect.LocalServiceClient) (sessions, turns uint32, res *localv1.QueryWorkResponse) {
 		t.Helper()
-		res, err := c.QueryWork(ctx, &localv1.QueryWorkRequest{TimeZone: "UTC", FirstDay: time.Now().UTC().Format(time.DateOnly), Days: 1,
+		res, err := c.QueryWork(ctx, &localv1.QueryWorkRequest{TimeZone: "Asia/Shanghai", FirstDay: time.Now().In(sh).Format(time.DateOnly), Days: 1,
 			Bucket: localv1.WorkBucket_WORK_BUCKET_HOUR, GroupBy: []localv1.WorkDimension{localv1.WorkDimension_WORK_DIMENSION_CLIENT, localv1.WorkDimension_WORK_DIMENSION_AGENT}})
 		if err != nil {
 			t.Fatal(err)

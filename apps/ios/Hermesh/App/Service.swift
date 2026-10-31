@@ -111,18 +111,9 @@ extension LocalAPI {
         return res.diff
     }
 
-    func usage(since: String) async throws -> Hermesh_Local_V1_GetUsageResponse {
-        var r = Hermesh_Local_V1_GetUsageRequest()
-        r.since = since
-        r.timeZone = TimeZone.current.identifier
-        return try await call("GetUsage", r, timeout: 30)
-    }
-
-    func activity(date: String) async throws -> Hermesh_Local_V1_GetActivityResponse {
-        var r = Hermesh_Session_V1_GetActivityRequest()
-        r.date = date
-        r.timeZone = TimeZone.current.identifier
-        return try await call("GetActivity", r, timeout: 30)
+    /// Work counted over a range, from what the core holds (docs/work-stats.md §7).
+    func queryWork(_ r: Hermesh_Local_V1_QueryWorkRequest) async throws -> Hermesh_Local_V1_QueryWorkResponse {
+        try await call("QueryWork", r, timeout: 30)
     }
 
     func machines() async throws -> [Machine] {

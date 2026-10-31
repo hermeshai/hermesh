@@ -111,7 +111,7 @@ test("a node clicked on the link map narrows 正在干活, names the condition a
   await app.close();
 });
 
-// 用量: the fixture's turns, added up by the machine and hermeshd (GetUsage), on today's cell.
+// 用量: the fixture's turns, counted by the machine and read by hermeshd (QueryWork), on today's cell.
 test("用量 shows a year of tokens with today's turns", async () => {
   const { app, page } = await launch();
   const usage = page.getByRole("region", { name: "用量" });

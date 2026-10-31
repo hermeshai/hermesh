@@ -21,10 +21,12 @@ import Testing
 }
 
 @Test func usageLevelsStreakAndShares() {
+    let since = usageSince(now, calendar: utc)
     func day(_ back: Int, _ tokens: UInt64, _ agent: String = "claude") -> UsageDay {
         var d = UsageDay()
-        d.date = dayKey(utc.date(byAdding: .day, value: -back, to: now)!, calendar: utc)
-        d.agent = agent
+        let date = utc.date(byAdding: .day, value: -back, to: now)!
+        d.bucket = UInt32(utc.dateComponents([.day], from: since, to: utc.startOfDay(for: date)).day!)
+        d.group.agent = agent
         d.inputTokens = tokens
         return d
     }
@@ -35,4 +37,7 @@ import Testing
     #expect(y.byAgent.first?.agent == "claude" && abs(y.byAgent.first!.share - 750.0 / 1050) < 1e-9)
     #expect(y.cells.compactMap { $0 }.filter { $0.tokens == 400 }.first?.level == 4)
     #expect(utc.component(.weekday, from: usageSince(now, calendar: utc)) == 1) // a Sunday
+    // Asked from that Sunday to today, by day and agent.
+    let r = usageRequest(now, calendar: utc)
+    #expect(r.firstDay == dayKey(since, calendar: utc) && Int(r.days) == utc.dateComponents([.day], from: since, to: utc.startOfDay(for: now)).day! + 1 && r.groupBy == [.agent])
 }

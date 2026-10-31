@@ -46,10 +46,10 @@ struct OverviewView: View {
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) { NewMenu() }
         }
-        .task(id: dayKey(model.now)) { await model.loadActivity() }
+        .task(id: "\(dayKey(model.now)) \(model.workPeriod)") { await model.loadWork() }
         .onAppear { model.overviewShown = true }
         .onDisappear { model.overviewShown = false }
-        .refreshable { await model.loadActivity() }
+        .refreshable { await model.loadWork() }
         .task(id: phase) {
             guard phase == .active else { return }
             notificationsOff = await UNUserNotificationCenter.current().notificationSettings().authorizationStatus == .denied
@@ -172,45 +172,47 @@ struct OverviewView: View {
         .padding(.horizontal, 16).padding(.vertical, 11)
     }
 
-    /// What runs and today's sessions hour by hour; then who sent the day's
-    /// work to which coding agent, each coding agent's day (those that worked
-    /// first, the others folded), the machines, and the way to the sessions:
-    /// the menu.
+    /// The work over the range picked (today, or the last 7 or 30 days): the
+    /// sessions at work, hour by hour or day by day, and what runs now; then
+    /// who asked which coding agent for the work, each coding agent's range
+    /// (those that worked first, the others folded), the machines, and the way
+    /// to the sessions: the menu.
     private var working: some View {
         let running = model.sessions.filter(\.isActive)
-        let hour = Calendar.current.component(.hour, from: model.now)
-        let today = model.activity?.date == dayKey(model.now) ? model.activity : nil
-        let flow = WorkFlow(today?.pairs ?? [])
-        let agents = codingAgents(running: running, today: today)
+        let period = model.workPeriod
+        let work = model.work[period]
+        let flow = WorkFlow(work?.pairs ?? [])
+        let agents = codingAgents(running: running, work: work)
         let runs = { (a: String) in running.filter { $0.agent == a }.count }
-        let turns = { (a: String) in today?.turns(agent: a) ?? 0 }
-        let worked = { (a: String) in today?.sessions(agent: a) ?? 0 }
+        let turns = { (a: String) in work?.turns(agent: a) ?? 0 }
+        let worked = { (a: String) in work?.sessions(agent: a) ?? 0 }
         let busy = agents.filter { runs($0) > 0 || worked($0) > 0 }.sorted { (runs($0), turns($0), worked($0)) > (runs($1), turns($1), worked($1)) }
         let rest = agents.filter { runs($0) == 0 && worked($0) == 0 }
         let shown = everyAgent ? busy + rest : busy
         let idleClients = model.clients.filter { c in
-            !c.revoked && !(today?.pairs.contains { $0.createdBy == c.clientID } ?? false) && !running.contains { $0.createdBy == c.clientID }
+            !c.revoked && !(work?.pairs.contains { $0.client == c.clientID } ?? false) && !running.contains { $0.createdBy == c.clientID }
         }
+        let now = Bucket.now(period, model.now)
         return Section {
             VStack(alignment: .leading, spacing: 10) {
-                DayCard(running: running.count, today: today, hour: hour)
-                if let today, !flow.bands.isEmpty {
-                    caption("Where Today’s Work Came From and Went", detail: "\(today.turns) turns · \(tokensText(today.tokens)) tokens")
-                    FlowCard(flow: flow, picked: $picked, clientName: { model.clientLabel($0) }, idle: idleClients.map { AgentLogo.name($0.label) })
+                WorkCard(running: running.count, work: work, period: period, now: now)
+                if let work, !flow.bands.isEmpty {
+                    caption(flowTitle(period), detail: "\(work.turns) turns · \(tokensText(work.tokens)) tokens")
+                    FlowCard(flow: flow, picked: $picked, clientName: { model.clientLabel($0) }, idle: idleClients.map { AgentLogo.name($0.label) }, period: period)
                 }
                 if !agents.isEmpty {
-                    caption("Agents", detail: "Sessions working each hour")
+                    caption("Agents", detail: period.hourly ? "Sessions working each hour" : "Sessions working each day")
                     card {
                         ForEach(Array(shown.enumerated()), id: \.element) { i, a in
                             if i > 0 { Divider().padding(.leading, 50) }
-                            agentRow(a, running: runs(a), turns: turns(a), flow: flow, today: today, hours: today?.byAgent[a], hour: hour)
+                            agentRow(a, running: runs(a), turns: turns(a), flow: flow, work: work, cells: work?.byAgent[a], now: now, period: period)
                         }
                         if !everyAgent && !rest.isEmpty {
                             if !shown.isEmpty { Divider().padding(.leading, 50) }
                             Button {
                                 withAnimation(.smooth) { everyAgent = true }
                             } label: {
-                                Text("\(rest.count) more agents haven’t worked today")
+                                Text(restText(rest.count, period))
                                     .font(.subheadline).foregroundStyle(.secondary)
                                     .frame(maxWidth: .infinity, alignment: .leading)
                                     .padding(.leading, 50).padding(.trailing, 16).padding(.vertical, 12)
@@ -220,6 +222,10 @@ struct OverviewView: View {
                             .accessibilityIdentifier("more-agents")
                         }
                     }
+                }
+                if let note = sourcesNote(work) {
+                    Text(note).font(.caption).foregroundStyle(.secondary).padding(.horizontal, 4)
+                        .accessibilityIdentifier("work-sources")
                 }
                 if !model.machines.isEmpty {
                     caption("Machines")
@@ -240,15 +246,51 @@ struct OverviewView: View {
             }
             .padding(.horizontal, 16)
         } header: {
-            SectionTitle(title: "Working Now")
+            // The range, a glass segmented control where the section's title was.
+            Picker("Range", selection: Binding(get: { model.workPeriod }, set: { p in withAnimation(.smooth) { model.workPeriod = p } })) {
+                Text("Today").tag(WorkPeriod.today)
+                Text("7 Days").tag(WorkPeriod.week)
+                Text("30 Days").tag(WorkPeriod.month)
+            }
+            .pickerStyle(.segmented)
+            .frame(maxWidth: 280)
+            .padding(.horizontal, 20)
+            .accessibilityIdentifier("work-period")
         }
     }
 
-    /// The coding agents ready on any machine, and any that ran today or runs now.
-    private func codingAgents(running: [Session], today: DayActivity?) -> [String] {
+    private func flowTitle(_ p: WorkPeriod) -> LocalizedStringKey {
+        switch p {
+        case .today: "Where Today’s Work Came From and Went"
+        case .week: "Where the Last 7 Days’ Work Came From and Went"
+        case .month: "Where the Last 30 Days’ Work Came From and Went"
+        }
+    }
+
+    private func restText(_ n: Int, _ p: WorkPeriod) -> String {
+        switch p {
+        case .today: String(localized: "\(n) more agents haven’t worked today")
+        case .week: String(localized: "\(n) more agents haven’t worked in the last 7 days")
+        case .month: String(localized: "\(n) more agents haven’t worked in the last 30 days")
+        }
+    }
+
+    /// Machines whose work is counted only up to their last sync, or not yet
+    /// all: said under the counts.
+    private func sourcesNote(_ work: RangeWork?) -> String? {
+        guard let work else { return nil }
+        let syncing = work.sources.filter(\.syncing).map { model.machineName($0.machineID) }
+        if !syncing.isEmpty { return String(localized: "Syncing \(listText(syncing))’s work…") }
+        let behind = work.sources.filter { !$0.live && $0.hasSyncedAt }
+        guard let oldest = behind.map(\.syncedAt.date).min() else { return nil }
+        return String(localized: "\(listText(behind.map { model.machineName($0.machineID) })) counted up to \(oldest.formatted(date: .abbreviated, time: .shortened))")
+    }
+
+    /// The coding agents ready on any machine, and any that worked in the range or runs now.
+    private func codingAgents(running: [Session], work: RangeWork?) -> [String] {
         var ids = Set(model.machines.flatMap { $0.status.agents.filter(\.available).map(\.name) })
         ids.formUnion(running.map(\.agent))
-        ids.formUnion(today?.pairs.map(\.agent) ?? [])
+        ids.formUnion(work?.pairs.map(\.agent) ?? [])
         ids.remove("")
         return ids.sorted()
     }
@@ -256,7 +298,7 @@ struct OverviewView: View {
     /// A coding agent's day: what it runs, on how many machines, its turns
     /// (or, with a client picked in the flow, the turns that client sent
     /// it), and its sessions hour by hour.
-    private func agentRow(_ a: String, running: Int, turns: Int, flow: WorkFlow, today: DayActivity?, hours: [Int]?, hour: Int) -> some View {
+    private func agentRow(_ a: String, running: Int, turns: Int, flow: WorkFlow, work: RangeWork?, cells: [Int]?, now: Int, period: WorkPeriod) -> some View {
         let machines = model.machines.filter { $0.status.agents.contains { $0.name == a && $0.available } }.count
         var detail = machines > 0 ? (turns > 0 ? String(localized: "\(machines) machines · \(turns) turns") : String(localized: "\(machines) machines"))
             : (turns > 0 ? String(localized: "\(turns) turns") : "")
@@ -264,7 +306,7 @@ struct OverviewView: View {
         switch picked {
         case .client(let c):
             let shown = Set(flow.clients.map(\.id))
-            let sent = today?.pairs.filter { $0.agent == a && (c.isEmpty ? !shown.contains($0.createdBy) : $0.createdBy == c) }
+            let sent = work?.pairs.filter { $0.agent == a && (c.isEmpty ? !shown.contains($0.client) : $0.client == c) }
             let n = sent?.reduce(0) { $0 + $1.turns } ?? 0
             let name = c.isEmpty ? String(localized: "The others") : AgentLogo.name(model.clientLabel(c))
             detail = String(localized: "\(name) sent \(n) turns")
@@ -286,7 +328,7 @@ struct OverviewView: View {
                 if !detail.isEmpty {
                     Text(detail).font(.footnote).foregroundStyle(.secondary).monospacedDigit().lineLimit(1)
                 }
-                HourCells(hours: hours ?? Array(repeating: 0, count: 24), hour: hour)
+                BucketCells(counts: cells ?? Array(repeating: 0, count: period.hourly ? 24 : period.days), now: now)
             }
         }
         .padding(.horizontal, 14).padding(.vertical, 10)
@@ -354,46 +396,88 @@ struct OverviewView: View {
     }
 }
 
-/// What runs now, and today's sessions hour by hour: past hours in ink
-/// grey, this one in the accent, the hours to come faint.
-struct DayCard: View {
+/// Which hour (today) or day (of the last 7 or 30) is now: the bucket in
+/// the accent; those after it are still to come.
+enum Bucket {
+    static func now(_ period: WorkPeriod, _ now: Date, calendar: Calendar = .current) -> Int {
+        period.hourly ? calendar.component(.hour, from: now) : period.days - 1
+    }
+}
+
+/// The range's work: the sessions that worked in it, with those done now,
+/// their turns and tokens, and a live label of what runs now; then the
+/// sessions at work hour by hour (today) or day by day: past ones in ink
+/// grey, now in the accent, those to come faint.
+struct WorkCard: View {
     let running: Int
-    let today: DayActivity?
-    let hour: Int
+    let work: RangeWork?
+    let period: WorkPeriod
+    let now: Int
 
     var body: some View {
-        let hours = today?.hours ?? Array(repeating: 0, count: 24)
-        let top = max(hours.max() ?? 0, 1)
+        let counts = work?.buckets ?? Array(repeating: 0, count: period.hourly ? 24 : period.days)
+        let top = max(counts.max() ?? 0, 1)
         VStack(alignment: .leading, spacing: 14) {
-            HStack(alignment: .lastTextBaseline) {
+            HStack(alignment: .top) {
                 HStack(alignment: .firstTextBaseline, spacing: 8) {
-                    Text("\(running)").font(.system(size: 56, weight: .bold)).monospacedDigit()
-                    Text("sessions running").foregroundStyle(.secondary)
+                    Text("\(work?.sessions ?? 0)").font(.system(size: 56, weight: .bold)).monospacedDigit()
+                        .contentTransition(.numericText())
+                    Text("sessions worked").foregroundStyle(.secondary)
                 }
                 Spacer()
-                if let today {
-                    VStack(alignment: .trailing, spacing: 2) {
-                        Text("Active today \(Text("\(today.sessions)").bold().foregroundStyle(.primary))")
-                        Text("Done \(Text("\(today.done)").bold().foregroundStyle(.primary))")
-                    }
-                    .font(.footnote).foregroundStyle(.secondary).monospacedDigit()
+                // What runs now, whatever the range.
+                HStack(spacing: 6) {
+                    Circle().fill(running > 0 ? Color.green : Color.secondary.opacity(0.5)).frame(width: 7, height: 7)
+                    Text("\(running) running").font(.footnote).monospacedDigit()
                 }
+                .padding(.horizontal, 10).frame(height: 28)
+                .glassEffect(.regular, in: .capsule)
+                .accessibilityIdentifier("running-now")
             }
-            HStack(alignment: .bottom, spacing: 3) {
-                ForEach(0 ..< 24, id: \.self) { i in
-                    RoundedRectangle(cornerRadius: 3, style: .continuous)
-                        .fill(i > hour ? AnyShapeStyle(.quaternary) : i == hour ? AnyShapeStyle(Color.accentColor) : AnyShapeStyle(Color.primary.opacity(0.32)))
-                        .frame(height: i > hour ? 3 : max(3, CGFloat(hours[i]) / CGFloat(top) * 56))
+            if let work {
+                Text("Done \(Text("\(work.done)").bold().foregroundStyle(.primary)) · \(work.turns) turns · \(tokensText(work.tokens)) tokens")
+                    .font(.footnote).foregroundStyle(.secondary).monospacedDigit()
+            }
+            HStack(alignment: .bottom, spacing: period == .month ? 2 : period == .week ? 8 : 3) {
+                ForEach(counts.indices, id: \.self) { i in
+                    RoundedRectangle(cornerRadius: period == .week ? 5 : 3, style: .continuous)
+                        .fill(i > now ? AnyShapeStyle(.quaternary) : i == now ? AnyShapeStyle(Color.accentColor) : AnyShapeStyle(Color.primary.opacity(0.32)))
+                        .frame(height: i > now ? 3 : max(3, CGFloat(counts[i]) / CGFloat(top) * 56))
                 }
             }
             .frame(height: 56, alignment: .bottom)
             .accessibilityHidden(true)
-            HourAxis(hour: hour)
+            if period.hourly {
+                HourAxis(hour: now)
+            } else {
+                DayAxis(period: period)
+            }
         }
         .padding(.horizontal, 18).padding(.top, 18).padding(.bottom, 12)
         .background(Color(.secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 26, style: .continuous))
+        .animation(.smooth, value: work)
         .accessibilityElement(children: .combine)
         .accessibilityIdentifier("working-today")
+    }
+}
+
+/// Under the days of a range: its first, its middle and today.
+struct DayAxis: View {
+    let period: WorkPeriod
+    @Environment(\.calendar) private var calendar
+
+    var body: some View {
+        let first = period.firstDay(Date(), calendar: calendar)
+        let mid = calendar.date(byAdding: .day, value: period.days / 2, to: first) ?? first
+        HStack {
+            Text(first.formatted(.dateTime.month(.abbreviated).day()))
+            Spacer()
+            Text(mid.formatted(.dateTime.month(.abbreviated).day()))
+            Spacer()
+            Text("Today").foregroundStyle(Color.accentColor)
+        }
+        .font(.caption2).foregroundStyle(.tertiary).monospacedDigit()
+        .frame(height: 12)
     }
 }
 
@@ -415,6 +499,7 @@ struct FlowCard: View {
     @Binding var picked: FlowPick?
     let clientName: (String) -> String
     let idle: [String]
+    let period: WorkPeriod
     /// The band whose popover shows.
     @State private var tipped: Int?
 
@@ -483,11 +568,19 @@ struct FlowCard: View {
             }
             .frame(height: rows * rowHeight)
             if !idle.isEmpty {
-                Text("\(listText(idle)) sent no work today").font(.caption).foregroundStyle(.secondary).lineLimit(2)
+                Text(idleText).font(.caption).foregroundStyle(.secondary).lineLimit(2)
             }
         }
         .padding(.horizontal, 18).padding(.vertical, 14)
         .background(Color(.secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 26, style: .continuous))
+    }
+
+    private var idleText: String {
+        switch period {
+        case .today: String(localized: "\(listText(idle)) sent no work today")
+        case .week: String(localized: "\(listText(idle)) sent no work in the last 7 days")
+        case .month: String(localized: "\(listText(idle)) sent no work in the last 30 days")
+        }
     }
 
     /// A client's name, or how many the rest together are.
@@ -655,15 +748,16 @@ struct HourAxis: View {
     }
 }
 
-/// An agent's day in 24 cells: how many of its sessions worked each hour,
-/// in ink grey (this hour in the accent), the hours to come faint.
-struct HourCells: View {
-    let hours: [Int]
-    let hour: Int
+/// A coding agent's range in cells, one an hour or a day: how many of its
+/// sessions worked in each, in ink grey (now in the accent), those to come
+/// faint.
+struct BucketCells: View {
+    let counts: [Int]
+    let now: Int
 
     var body: some View {
-        HStack(spacing: 2) {
-            ForEach(0 ..< 24, id: \.self) { i in
+        HStack(spacing: counts.count > 24 ? 1.5 : counts.count > 7 ? 2 : 4) {
+            ForEach(counts.indices, id: \.self) { i in
                 RoundedRectangle(cornerRadius: 2, style: .continuous)
                     .fill(fill(i))
                     .frame(height: 8)
@@ -673,10 +767,10 @@ struct HourCells: View {
     }
 
     private func fill(_ i: Int) -> Color {
-        if i > hour { return Color.primary.opacity(0.04) }
-        let v = i < hours.count ? hours[i] : 0
+        if i > now { return Color.primary.opacity(0.04) }
+        let v = counts[i]
         if v == 0 { return Color.primary.opacity(0.08) }
-        return (i == hour ? Color.accentColor : Color.primary).opacity(min(1, 0.25 + Double(v) / 6))
+        return (i == now ? Color.accentColor : Color.primary).opacity(min(1, 0.25 + Double(v) / 6))
     }
 }
 

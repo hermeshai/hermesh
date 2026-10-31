@@ -271,68 +271,117 @@ public func searchSessions(_ sessions: [Session], query: String, filter: Session
         .sorted { rank($0) != rank($1) ? rank($0) < rank($1) : $0.updatedDate > $1.updatedDate }
 }
 
-/// A day's work as the machines count it (GetActivity): the sessions that
-/// worked in each hour, in all and by the coding agent that ran them; the
-/// day's sessions and those of them now done; and, for each client and
-/// agent, its sessions and the turns that ended that day.
-public struct DayActivity: Equatable, Sendable {
-    /// The work one client sent one coding agent.
-    public struct Pair: Equatable, Sendable {
-        public var createdBy: String
-        /// "" from a machine too old to say.
-        public var agent: String
-        public var sessions: Int
-        public var turns: Int
-        public var tokens: UInt64
+/// The range the overview counts work over (docs/work-stats.md §7): today
+/// by hour, or the last 7 or 30 days, today included, by day.
+public enum WorkPeriod: String, CaseIterable, Sendable {
+    case today, week, month
+
+    public var days: Int {
+        switch self {
+        case .today: 1
+        case .week: 7
+        case .month: 30
+        }
     }
 
-    /// The day, YYYY-MM-DD.
-    public var date: String
-    /// 24 counts, midnight first.
-    public var hours: [Int]
+    public var hourly: Bool { self == .today }
+
+    /// Its first day, at midnight, for now.
+    public func firstDay(_ now: Date, calendar: Calendar = .current) -> Date {
+        calendar.date(byAdding: .day, value: 1 - days, to: calendar.startOfDay(for: now)) ?? now
+    }
+
+    /// The QueryWork question for now: grouped by who and which coding agent.
+    public func request(_ now: Date, calendar: Calendar = .current) -> Hermesh_Local_V1_QueryWorkRequest {
+        var r = Hermesh_Local_V1_QueryWorkRequest()
+        r.timeZone = calendar.timeZone.identifier
+        r.firstDay = dayKey(firstDay(now, calendar: calendar), calendar: calendar)
+        r.days = UInt32(days)
+        r.bucket = hourly ? .hour : .day
+        r.groupBy = [.client, .agent]
+        return r
+    }
+}
+
+/// Work over a range as the counts say (QueryWork): the sessions at work in
+/// each hour or day, in all and by the coding agent that ran them; the
+/// range's sessions and those of them now done, its turns and tokens; and,
+/// for each client and agent, the sessions the client started and the turns
+/// it asked for.
+public struct RangeWork: Equatable, Sendable {
+    /// The work of one client with one coding agent.
+    public struct Pair: Equatable, Sendable {
+        public var client: String
+        public var agent: String
+        /// Sessions the client started, at work in the range.
+        public var sessions: Int
+        /// Turns the client asked for that ended in the range, and their tokens.
+        public var turns: Int
+        public var tokens: UInt64
+
+        public init(client: String, agent: String, sessions: Int, turns: Int, tokens: UInt64) {
+            self.client = client
+            self.agent = agent
+            self.sessions = sessions
+            self.turns = turns
+            self.tokens = tokens
+        }
+    }
+
+    public var period: WorkPeriod
+    /// Its first day, YYYY-MM-DD.
+    public var firstDay: String
+    /// Sessions at work in each hour (today) or day, the first first.
+    public var buckets: [Int]
     public var byAgent: [String: [Int]]
     public var sessions: Int
     public var done: Int
     public var turns: Int
     public var tokens: UInt64
-    /// One for each client and agent, however many machines worked for it.
     public var pairs: [Pair]
+    /// The machines counted, and how current each one's counts are.
+    public var sources: [Hermesh_Local_V1_WorkSource]
 
-    public init(date: String, hours: [Hermesh_Session_V1_ActivityHour], clients: [Hermesh_Session_V1_ActivityClient]) {
-        self.date = date
-        var all = Array(repeating: 0, count: 24)
+    public init(period: WorkPeriod, firstDay: String, _ r: Hermesh_Local_V1_QueryWorkResponse) {
+        self.period = period
+        self.firstDay = firstDay
+        let count = max(period.hourly ? 24 : period.days, (r.sessions.map { Int($0.bucket) }.max() ?? -1) + 1)
+        var all = Array(repeating: 0, count: count)
         var by: [String: [Int]] = [:]
-        for h in hours where h.hour < 24 {
-            all[Int(h.hour)] += Int(h.sessions)
-            by[h.agent, default: Array(repeating: 0, count: 24)][Int(h.hour)] += Int(h.sessions)
+        for x in r.sessions {
+            let b = Int(x.bucket)
+            all[b] += Int(x.sessions)
+            by[x.group.agent, default: Array(repeating: 0, count: count)][b] += Int(x.sessions)
         }
-        self.hours = all
+        buckets = all
         byAgent = by
-        sessions = clients.reduce(0) { $0 + Int($1.sessions) }
-        done = clients.reduce(0) { $0 + Int($1.done) }
-        turns = clients.reduce(0) { $0 + Int($1.turns) }
-        tokens = clients.reduce(0) { $0 + $1.tokens }
+        sessions = r.rangeSessions.reduce(0) { $0 + Int($1.sessions) }
+        done = r.rangeSessions.reduce(0) { $0 + Int($1.done) }
+        turns = r.rangeTurns.reduce(0) { $0 + Int($1.turns) }
+        tokens = r.rangeTurns.reduce(0) { $0 + $1.inputTokens + $1.outputTokens }
         var merged: [Pair] = []
-        for c in clients {
-            if let i = merged.firstIndex(where: { $0.createdBy == c.createdBy && $0.agent == c.agent }) {
-                merged[i].sessions += Int(c.sessions)
-                merged[i].turns += Int(c.turns)
-                merged[i].tokens += c.tokens
-            } else {
-                merged.append(Pair(createdBy: c.createdBy, agent: c.agent, sessions: Int(c.sessions), turns: Int(c.turns), tokens: c.tokens))
-            }
+        func pair(_ g: Hermesh_Local_V1_WorkGroup) -> Int {
+            if let i = merged.firstIndex(where: { $0.client == g.client && $0.agent == g.agent }) { return i }
+            merged.append(Pair(client: g.client, agent: g.agent, sessions: 0, turns: 0, tokens: 0))
+            return merged.count - 1
+        }
+        for x in r.rangeSessions { merged[pair(x.group)].sessions += Int(x.sessions) }
+        for x in r.rangeTurns {
+            let i = pair(x.group)
+            merged[i].turns += Int(x.turns)
+            merged[i].tokens += x.inputTokens + x.outputTokens
         }
         pairs = merged
+        sources = r.sources
     }
 
     public func turns(agent: String) -> Int { pairs.filter { $0.agent == agent }.reduce(0) { $0 + $1.turns } }
     public func sessions(agent: String) -> Int { pairs.filter { $0.agent == agent }.reduce(0) { $0 + $1.sessions } }
 }
 
-/// A day's work as a flow from the clients that sent it to the coding
-/// agents that did it, by turns: the busiest few on each side, the rest
-/// together as one ("" names it). Work whose agent a machine didn't say is
-/// left out.
+/// The work of a range as a flow from the clients that asked for it to the
+/// coding agents that did it, by turns: the busiest few on each side, the
+/// rest together as one ("" names it). Work without an agent is left out.
 public struct WorkFlow: Equatable, Sendable {
     public struct Node: Equatable, Sendable {
         /// A client id or an agent; "" for the rest together.
@@ -354,9 +403,9 @@ public struct WorkFlow: Equatable, Sendable {
     public var agents: [Node]
     public var bands: [Band]
 
-    public init(_ pairs: [DayActivity.Pair], keep: Int = 3) {
+    public init(_ pairs: [RangeWork.Pair], keep: Int = 3) {
         let known = pairs.filter { !$0.agent.isEmpty }
-        func side(_ key: (DayActivity.Pair) -> String) -> (nodes: [Node], kept: Set<String>) {
+        func side(_ key: (RangeWork.Pair) -> String) -> (nodes: [Node], kept: Set<String>) {
             var turns: [String: Int] = [:]
             var sessions: [String: Int] = [:]
             for p in known {
@@ -370,12 +419,12 @@ public struct WorkFlow: Equatable, Sendable {
             if !rest.isEmpty { nodes.append(Node(id: "", turns: rest.reduce(0) { $0 + turns[$1]! }, count: rest.count)) }
             return (nodes, Set(shown))
         }
-        let c = side(\.createdBy), a = side(\.agent)
+        let c = side(\.client), a = side(\.agent)
         clients = c.nodes
         agents = a.nodes
         var merged: [Band] = []
         for p in known {
-            let b = Band(client: c.kept.contains(p.createdBy) ? p.createdBy : "", agent: a.kept.contains(p.agent) ? p.agent : "", turns: p.turns, tokens: p.tokens)
+            let b = Band(client: c.kept.contains(p.client) ? p.client : "", agent: a.kept.contains(p.agent) ? p.agent : "", turns: p.turns, tokens: p.tokens)
             if let i = merged.firstIndex(where: { $0.client == b.client && $0.agent == b.agent }) {
                 merged[i].turns += b.turns
                 merged[i].tokens += b.tokens

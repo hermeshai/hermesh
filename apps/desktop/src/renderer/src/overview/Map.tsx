@@ -1,6 +1,6 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode, type Ref } from "react";
 import { Trans, useTranslation } from "react-i18next";
-import type { Client, GetUsageResponse, Machine } from "@hermesh/proto/local";
+import type { Client, Machine, QueryWorkResponse } from "@hermesh/proto/local";
 import { SessionStatus, type Session } from "@hermesh/proto/session";
 import { agoText, codingAgentTitle, createdDate, dateOf, isActive, isFailed, monthDay, sameDay, todayStats, tokensText, usageYear } from "@hermesh/core";
 import { AgentLogo, agentName, grantColor, Mark, type GrantLook } from "@hermesh/ui";
@@ -153,7 +153,7 @@ export function sessionKeys(s: Session): string[] {
  * Working Now narrows to the sessions through it), onPick toggles it ("" for
  * none).
  */
-export function LinkMap({ pick, onPick, now, usage }: { pick: string; onPick: (key: string) => void; now: Date; usage: GetUsageResponse | null }) {
+export function LinkMap({ pick, onPick, now, usage }: { pick: string; onPick: (key: string) => void; now: Date; usage: QueryWorkResponse | null }) {
   const { t } = useTranslation("overview");
   const st = useStore();
   const live = useMemo(() => st.sessions.filter(liveOnMap), [st.sessions]);
@@ -493,11 +493,11 @@ function Node({ n, className, pinned, label, onFocus, onClick, onMenu, children 
 }
 
 /** The map's headline: today's sessions, how they ended, and the tokens they used; the dot beats while one runs. */
-function Today({ now, usage, running }: { now: Date; usage: GetUsageResponse | null; running: boolean }) {
+function Today({ now, usage, running }: { now: Date; usage: QueryWorkResponse | null; running: boolean }) {
   const { t } = useTranslation("overview");
   const st = useStore();
   const n = todayStats(st.sessions, now);
-  const tokens = useMemo(() => (usage ? usageYear(usage.days, now).today : null), [usage, now]);
+  const tokens = useMemo(() => (usage ? usageYear(usage, now).today : null), [usage, now]);
   return (
     <span className={`lmap-pill ${running ? "" : "quiet"}`} role="status" aria-label={t("map.today")}>
       <i />

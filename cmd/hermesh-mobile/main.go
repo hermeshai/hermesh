@@ -16,6 +16,7 @@ import (
 	"os"
 	"path/filepath"
 	"sync"
+	_ "time/tzdata" // an iPhone has no zoneinfo to read: the days and hours of QueryWork need it
 	"unsafe"
 
 	"github.com/hermeshai/hermesh/internal/mobile"

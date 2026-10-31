@@ -79,7 +79,9 @@ public func parseUnifiedDiff(_ text: String) -> [DiffFile] {
 
 // MARK: Usage
 
-public typealias UsageDay = Hermesh_Session_V1_UsageDay
+/// One coding agent's turns on one day, as QueryWork counts them by day and
+/// agent from usageSince (bucket 0).
+public typealias UsageDay = Hermesh_Local_V1_TurnCount
 
 public struct UsageCell: Equatable, Sendable {
     public let date: Date
@@ -111,21 +113,35 @@ public func dayKey(_ d: Date, calendar: Calendar = .current) -> String {
     return String(format: "%04d-%02d-%02d", c.year ?? 0, c.month ?? 0, c.day ?? 0)
 }
 
-/// The first day a year of weeks ending in today's week starts on (what to ask GetUsage since).
+/// The first day a year of weeks ending in today's week starts on (what to ask QueryWork from).
 public func usageSince(_ today: Date, weeks: Int = 53, calendar: Calendar = .current) -> Date {
     let start = calendar.startOfDay(for: today)
     let weekday = calendar.component(.weekday, from: start) - 1 // Sunday is 0
     return calendar.date(byAdding: .day, value: -weekday - (weeks - 1) * 7, to: start) ?? start
 }
 
+/// The QueryWork question for weeks of usage: from usageSince to today, by
+/// day and coding agent.
+public func usageRequest(_ today: Date, weeks: Int = 53, calendar: Calendar = .current) -> Hermesh_Local_V1_QueryWorkRequest {
+    let since = usageSince(today, weeks: weeks, calendar: calendar)
+    var r = Hermesh_Local_V1_QueryWorkRequest()
+    r.timeZone = calendar.timeZone.identifier
+    r.firstDay = dayKey(since, calendar: calendar)
+    r.days = UInt32((calendar.dateComponents([.day], from: since, to: calendar.startOfDay(for: today)).day ?? 0) + 1)
+    r.bucket = .day
+    r.groupBy = [.agent]
+    return r
+}
+
 public func usageYear(_ days: [UsageDay], today: Date, weeks: Int = 53, calendar: Calendar = .current) -> UsageYear {
+    let since = usageSince(today, weeks: weeks, calendar: calendar)
     var tokens: [String: UInt64] = [:], agents: [String: UInt64] = [:]
     for d in days {
         let n = d.inputTokens + d.outputTokens
-        tokens[d.date, default: 0] += n
-        agents[d.agent, default: 0] += n
+        let date = calendar.date(byAdding: .day, value: Int(d.bucket), to: since) ?? since
+        tokens[dayKey(date, calendar: calendar), default: 0] += n
+        agents[d.group.agent, default: 0] += n
     }
-    let since = usageSince(today, weeks: weeks, calendar: calendar)
     let todayKey = dayKey(today, calendar: calendar)
     var cells: [UsageCell?] = []
     var past = false

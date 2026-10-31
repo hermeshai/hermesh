@@ -18,6 +18,7 @@ import (
 	"strings"
 	"syscall"
 	"time"
+	_ "time/tzdata" // Windows has no zoneinfo to read: the days and hours of QueryWork need it
 
 	"github.com/spf13/cobra"
 

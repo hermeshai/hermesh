@@ -25,7 +25,7 @@ struct AccountSheet: View {
                 Section { service }
                 if let u = model.usage {
                     Section {
-                        UsageSummary(usage: u, excludes: model.unreachableMachines.map(\.name))
+                        UsageSummary(usage: u)
                     } header: {
                         Text("Usage")
                     }
@@ -323,7 +323,6 @@ struct AppearanceOption: View {
 /// a grid of days in ink grey, and each coding agent's share.
 struct UsageSummary: View {
     let usage: UsageYear
-    let excludes: [String]
 
     var body: some View {
         let u = usage
@@ -347,12 +346,11 @@ struct UsageSummary: View {
             }
             .accessibilityElement()
             .accessibilityLabel(Text("Usage over the last \(u.weeks) weeks"))
-            if !u.byAgent.isEmpty || !excludes.isEmpty {
+            if !u.byAgent.isEmpty {
                 HStack(spacing: 14) {
                     ForEach(u.byAgent.prefix(3), id: \.agent) { a in
                         Text("\(agentTitle(a.agent)) \(Int((a.share * 100).rounded()))%")
                     }
-                    if !excludes.isEmpty { Text("Excludes \(listText(excludes))") }
                 }
                 .font(.footnote).foregroundStyle(.secondary)
             }

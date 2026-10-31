@@ -1,7 +1,7 @@
 import { memo, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
-import type { GetUsageResponse } from "@hermesh/proto/local";
-import { codingAgentShort, language, tokensText, usageSince, usageYear, type UsageCell } from "@hermesh/core";
+import type { QueryWorkResponse } from "@hermesh/proto/local";
+import { codingAgentShort, dayKey, language, tokensText, usageRequest, usageYear, type UsageCell } from "@hermesh/core";
 import { AgentLogo } from "@hermesh/ui";
 import { i18n } from "../../../shared/i18n";
 import { local } from "../api";
@@ -14,32 +14,29 @@ export function dayText(d: Date): string {
   return i18n.t("overview:day", { date, weekday });
 }
 
-/** A year of tokens by day (GetUsage), asked again as turns end (hermeshd keeps each machine's answer until then); null until the first answer. */
-export function useUsage(now: Date): GetUsageResponse | null {
+/** A year of work by day and agent (QueryWork, answered from what hermeshd holds), asked again when its counts move; null until the first answer. */
+export function useUsage(now: Date): QueryWorkResponse | null {
   const st = useStore();
-  const [res, setRes] = useState<GetUsageResponse | null>(null);
-  const since = usageSince(now);
-  // Turns ended anywhere: the sum moves when one does.
-  const turns = st.sessions.reduce((n, s) => n + (s.progress?.turnCount ?? 0), 0);
+  const [res, setRes] = useState<QueryWorkResponse | null>(null);
+  const today = dayKey(now);
   useEffect(() => {
     let stop = false;
-    const ask = () =>
-      local
-        .getUsage({ since, timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone })
-        .then((r) => !stop && setRes(r))
-        .catch(() => {}); // kept as it was; machines that can't answer are listed in the response
-    ask();
+    local
+      .queryWork(usageRequest(now))
+      .then((r) => !stop && setRes(r))
+      .catch(() => {}); // kept as it was
     return () => {
       stop = true;
     };
-  }, [since, turns]);
+    // Asked again each day, and as the counts move.
+  }, [today, st.workVersion]);
   return res;
 }
 
 /** "Usage": a year of tokens by day, as GitHub's contributions. */
-export const Usage = memo(function Usage({ now, res }: { now: Date; res: GetUsageResponse | null }) {
+export const Usage = memo(function Usage({ now, res }: { now: Date; res: QueryWorkResponse | null }) {
   const { t } = useTranslation("overview");
-  const y = useMemo(() => usageYear(res?.days ?? [], now), [res, now]);
+  const y = useMemo(() => usageYear(res, now), [res, now]);
   const card = useRef<HTMLDivElement>(null);
   const [tip, setTip] = useState<{ c: UsageCell; x: number; y: number } | null>(null);
   const hover = (c: UsageCell, el: HTMLElement) => {
@@ -59,7 +56,12 @@ export const Usage = memo(function Usage({ now, res }: { now: Date; res: GetUsag
     lastMonth = m;
     return label;
   });
-  const unreachable = res?.unreachable ?? [];
+  // Machines counted only up to their last sync, or still taking their history.
+  const st = useStore();
+  const name = (id: string) => st.machines.find((m) => m.machineId === id)?.machineName ?? id;
+  const syncing = (res?.sources ?? []).filter((s) => s.syncing).map((s) => name(s.machineId));
+  const behind = (res?.sources ?? []).filter((s) => !s.live && !s.syncing && s.syncedAt);
+  const oldest = behind.length ? new Date(Math.min(...behind.map((s) => Number(s.syncedAt!.seconds) * 1000))) : null;
   const todayCell = y.cells.findLastIndex((c) => c !== null);
   return (
     <section aria-label={t("usage.title")}>
@@ -110,7 +112,11 @@ export const Usage = memo(function Usage({ now, res }: { now: Date; res: GetUsag
           ) : (
             <span className="u-empty">{res ? t("usage.empty") : ""}</span>
           )}
-          {unreachable.length > 0 && <span className="u-empty">{t("usage.unreachable", { machines: unreachable.map((u) => u.machineName).join(t("listSeparator")) })}</span>}
+          {syncing.length > 0 ? (
+            <span className="u-empty">{t("usage.syncing", { machines: syncing.join(t("listSeparator")) })}</span>
+          ) : (
+            oldest && <span className="u-empty">{t("usage.behind", { machines: behind.map((s) => name(s.machineId)).join(t("listSeparator")), time: new Intl.DateTimeFormat(language(), { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" }).format(oldest) })}</span>
+          )}
           <div className="u-scale" aria-hidden="true">{t("usage.less")}{[0, 1, 2, 3, 4].map((l) => <div key={l} className={`l${l}`} />)}{t("usage.more")}</div>
         </div>
         {tip && (

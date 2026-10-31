@@ -20,9 +20,11 @@ export type World = {
   loaded: boolean;
   /** Where older sessions start; undefined when there are none. */
   next?: SessionCursor;
+  /** Moves when the counts of work changed: ask QueryWork again. */
+  workVersion: number;
 };
 
-export const emptyWorld: World = { machines: [], clients: [], devices: [], projects: [], pairings: [], sessions: [], loaded: false };
+export const emptyWorld: World = { machines: [], clients: [], devices: [], projects: [], pairings: [], sessions: [], loaded: false, workVersion: 0 };
 
 /** Replaces each item that changed (by key) where it was, adds new ones, and drops those removed; list itself when nothing changed. */
 function upsert<T>(list: T[], changed: T[], removed: string[], key: (x: T) => string): T[] {
@@ -46,10 +48,11 @@ const projectKey = (p: { machineId: string; projectId: string }) => `${p.machine
 
 /** The world with a Watch message applied (w itself when it changed nothing). */
 export function applyWatch(w: World, m: WatchResponse): World {
-  const base: World = m.reset ? { ...emptyWorld, sessions: w.sessions, next: w.next, loaded: w.loaded, status: w.status } : w;
+  const base: World = m.reset ? { ...emptyWorld, sessions: w.sessions, next: w.next, loaded: w.loaded, status: w.status, workVersion: w.workVersion } : w;
   const next: World = {
     ...base,
     status: m.status ?? base.status,
+    workVersion: m.workVersion ? Number(m.workVersion) : base.workVersion,
     machines: upsert(base.machines, m.machines, m.removedMachineIds, (x) => x.machineId),
     clients: upsert(base.clients, m.clients, m.removedGrantIds, (x) => x.grantId),
     devices: upsert(base.devices, m.devices, m.removedDeviceKeyIds, (x) => x.keyId),

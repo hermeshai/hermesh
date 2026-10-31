@@ -91,11 +91,12 @@
     "cells": "近一年 {{tokens}} tokens，{{active}} 天有用量",
     "byAgent": "按编码 agent",
     "empty": "开始用之后，这里会一天天点亮。",
-    "unreachable": "{{machines}} 暂时连不上，没有算进来",
     "less": "少",
     "more": "多",
     "noUsage": "没有用量",
-    "sessions_other": " · {{count}} 个会话"
+    "sessions_other": " · {{count}} 个会话",
+    "syncing": "正在同步 {{machines}} 的统计…",
+    "behind": "{{machines}} 的统计截至 {{time}}"
   },
   "card": {
     "ownKey": "个人 agent · 自己保管密钥",
