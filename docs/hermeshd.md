@@ -18,6 +18,23 @@ curl -fsSL https://github.com/hermeshai/hermesh/releases/latest/download/install
   commands as that user: `su - dev`.
 - With a connection address after `sh -s --`, the request goes to that
   owner's devices by itself: compare the verification code there.
+- On a first install, it shows the default data directory and available
+  space. Press Enter to accept it, paste an absolute path (spaces and
+  `~/` work without quoting), or type `q` to cancel. On Synology DSM,
+  writable, mounted local storage volumes with at least 2 GiB free are
+  also numbered choices; the one with the most free space is recommended
+  unless the user's default data directory is already under `/volumeN`.
+  Other Linux machines and macOS keep their ordinary platform default.
+  A low-space location shows a warning and can still be accepted.
+- Choosing another folder keeps a symbolic link at the default data
+  directory, so later commands, the service and updates use that choice
+  without extra arguments. Existing directories are kept on reinstall;
+  this does not migrate an existing installation. If the link's target
+  becomes unavailable, restore its disk before running Hermesh again.
+- Without a terminal, it uses the recommended default and prints the
+  location. `HERMESH_DATA_DIR` overrides the default for that environment;
+  `--cli` installs only the agent CLI and skips daemon data selection.
+  Colors are disabled for redirected output, `TERM=dumb` or `NO_COLOR`.
 - Then it installs the background service. On Linux it is a systemd user
   service with lingering on, so it starts at boot with nobody logged in.
   Without systemd (a container, WSL) run `hermeshd run` yourself, as the

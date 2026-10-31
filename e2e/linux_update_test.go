@@ -177,12 +177,22 @@ func TestLinuxUpdate(t *testing.T) {
 		t.Fatalf("%v %s", err, out)
 	}
 
-	// 1. The install command, as root with no terminal: A.
+	// 1. The piped install command in a terminal: accept root and choose
+	// a data folder with spaces. Later commands and updates must find it
+	// without an environment variable or a --data-dir argument.
 	installCmd := "curl -fsSL " + releasesURL + "/latest/download/install.sh | HERMESH_DOWNLOAD_BASE=" + releasesURL + "/latest/download sh -s -- " + address + " --name vps-1"
-	install := exec.Command("docker", "exec", name, "sh", "-c", installCmd)
+	install := exec.Command("docker", "exec", "-i", name, "script", "-q", "-e", "-c", installCmd, "/dev/null")
+	input, err := install.StdinPipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer input.Close()
 	var installOut syncBuffer
 	install.Stdout, install.Stderr = &installOut, &installOut
 	if err := install.Start(); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := fmt.Fprint(input, "\n/srv/hermesh data\n"); err != nil {
 		t.Fatal(err)
 	}
 	var code string
@@ -198,6 +208,9 @@ func TestLinuxUpdate(t *testing.T) {
 	}
 	if err := install.Wait(); err != nil {
 		t.Fatalf("install: %v\n%s", err, installOut.String())
+	}
+	if out, err := sh(`readlink /root/.local/share/hermesh; test -f '/srv/hermesh data/machine/hermeshd.db'`); err != nil || out != "/srv/hermesh data" {
+		t.Fatalf("selected data directory: %v %s", err, out)
 	}
 	machineVersion := func() string {
 		res, err := app.client.ListMachines(ctx, &localv1.ListMachinesRequest{})
@@ -256,7 +269,7 @@ func TestLinuxUpdate(t *testing.T) {
 
 	// 3. The install command again: it updates without pairing.
 	again, err := sh(installCmd)
-	if err != nil || !strings.Contains(again, "already paired") || codeRE.MatchString(again) {
+	if err != nil || !strings.Contains(again, "already paired") || !strings.Contains(again, "Keeping this location") || codeRE.MatchString(again) {
 		t.Fatalf("install again: %v\n%s", err, again)
 	}
 	eventually(t, 60*time.Second, "the machine back on 0.0.2", func() bool { return machineVersion() == "0.0.2" })
@@ -280,6 +293,18 @@ func TestLinuxUpdate(t *testing.T) {
 	if out, _ := sh("/root/.local/bin/hermeshd status"); !strings.Contains(out, "updates      off") {
 		t.Errorf("status: %s", out)
 	}
+	// A missing data volume must not create a new machine at the old
+	// entry point. Restore it afterwards and keep the original identity.
+	if out, err := sh(`XDG_RUNTIME_DIR=/run/user/0 systemctl --user stop hermeshd.service && mv '/srv/hermesh data' '/srv/hermesh data.offline'`); err != nil {
+		t.Fatalf("take data offline: %v %s", err, out)
+	}
+	if out, err := sh("/root/.local/bin/hermeshd status"); err == nil {
+		t.Fatalf("status succeeded without the data volume: %s", out)
+	}
+	if out, err := sh(`test ! -e '/srv/hermesh data' && mv '/srv/hermesh data.offline' '/srv/hermesh data' && XDG_RUNTIME_DIR=/run/user/0 systemctl --user start hermeshd.service`); err != nil {
+		t.Fatalf("restore data: %v %s", err, out)
+	}
+	eventually(t, 60*time.Second, "the same machine back after its data returns", func() bool { return machineVersion() == "0.0.3" })
 }
 
 // syncBuffer is a bytes.Buffer written by a command and read by the test.

@@ -26,6 +26,8 @@ jobs:
         run: go tool buf breaking --against '.git#branch=origin/main'
       - name: unit tests
         run: make test
+      - name: installer terminal interaction
+        run: python3 scripts/test_install.py
       - name: end-to-end (scripted agents)
         run: make e2e
         env:
