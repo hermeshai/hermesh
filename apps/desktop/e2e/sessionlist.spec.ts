@@ -31,9 +31,15 @@ test("the sidebar shows the newest page, and scrolling to its end loads older se
   await expect(rows).toHaveCount(54);
   await expect(list).not.toContainText("写 hello");
   // The six left out are the oldest by when they last changed: "写 hello" and
-  // five of the first batch of eight (which of them depends on how that
-  // batch happened to finish), so three of that batch are on the page.
-  expect(await list.getByText(/^批量 0[1-8]$/).count()).toBe(3);
+  // some of the first batches. Which ones depends on how those batches
+  // finished (hermeshd stores whole seconds, and a slow runner finishes a
+  // batch late): the sidebar shows exactly hermeshd's first page.
+  const first = await page.evaluate(async () => {
+    const r = await fetch("app://hermesh/api/hermesh.local.v1.LocalService/ListSessions", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ limit: 50 }) });
+    return ((await r.json()).sessions as { title: string }[]).map((s) => s.title);
+  });
+  const shown = await list.getByText(/^批量 \d\d$/).allTextContents();
+  expect(shown.sort()).toEqual(first.filter((t) => /^批量 \d\d$/.test(t)).sort());
   await expect(list.getByText("正在读取更早的会话…")).toBeAttached();
   await snap(page, "sessions-first-page");
 
@@ -41,6 +47,11 @@ test("the sidebar shows the newest page, and scrolling to its end loads older se
   await page.mouse.wheel(0, 20_000);
   await expect(list).toContainText("写 hello");
   await expect(list).toContainText(titles[0]);
+  // No gaps: every session is there once the older page has come.
+  await expect.poll(async () => {
+    const shown = await rows.allTextContents();
+    return titles.filter((t) => !shown.some((r) => r.startsWith(t)));
+  }, { message: "sessions missing after the older page" }).toEqual([]);
   await expect(rows).toHaveCount(60);
   await expect(list.getByText("没有更早的会话了")).toBeVisible();
   await expect(list.getByText("正在读取更早的会话…")).toHaveCount(0);

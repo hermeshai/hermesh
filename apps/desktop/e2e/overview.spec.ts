@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { launch, snap } from "./app";
+import { launch, onWindows, snap, thisComputer } from "./app";
 
 // The overview: the link map of grants, machines and projects, what runs
 // now (questions and failures first) and a year of usage, from the fixture's
@@ -16,13 +16,13 @@ test("正在干活 is a card per live session: status, time worked, who started 
   const running = cards.filter({ hasText: "跑很久" });
   await expect(running).toContainText("运行中");
   await expect(running.locator(".wc-time")).toHaveText(/^\d+:\d\d$/);
-  await expect(running.locator(".wc-foot")).toHaveText(/bot→这台 Mac\/demo$/); // after the grant's avatar
+  await expect(running.locator(".wc-foot")).toHaveText(new RegExp(`bot→${thisComputer}/demo$`)); // after the grant's avatar
   // What is not asked for is not there: no coding-agent counts, no tool phase.
   await expect(work).not.toContainText("Gemini CLI");
   await expect(work).not.toContainText("sleep 1800");
   // Nothing but sessions waits on the owner here: no "需要你处理", no count on 概览.
   await expect(page.getByRole("region", { name: "需要你处理" })).toHaveCount(0);
-  await expect(page.getByRole("button", { name: /概览/ })).toContainText("⌘1");
+  await expect(page.getByRole("button", { name: /概览/ })).toContainText(onWindows ? "Ctrl+1" : "⌘1");
   await snap(page, "overview");
   await cards.first().click();
   await expect(page.getByRole("heading", { name: "选颜色" })).toBeVisible();
@@ -34,7 +34,7 @@ test("pointers are macOS's: the hand on text links only, the arrow on the map's 
   const { app, page } = await launch();
   const map = page.getByRole("region", { name: "链路" });
   const cursor = (l: ReturnType<typeof page.locator>) => l.evaluate((el) => getComputedStyle(el).cursor);
-  for (const name of ["bot", "这台 Mac", "demo", "+ 连接更多", "+ 添加机器"]) expect(await cursor(map.getByRole("button", { name, exact: true }))).toBe("default");
+  for (const name of ["bot", thisComputer, "demo", "+ 连接更多", "+ 添加机器"]) expect(await cursor(map.getByRole("button", { name, exact: true }))).toBe("default");
   expect(await cursor(page.getByRole("list", { name: "会话" }).getByRole("button", { name: /^需要处理/ }))).toBe("default");
   expect(await cursor(page.getByRole("button", { name: "管理授权…" }))).toBe("pointer");
   expect(await cursor(page.getByRole("button", { name: "显示已归档" }))).toBe("pointer");
@@ -77,7 +77,7 @@ test("a node clicked on the link map narrows 正在干活, names the condition a
 
   for (const [name, text, mark] of [
     ["bot", "bot 发起的会话", "bot"],
-    ["这台 Mac", "这台 Mac 上的会话", "这台 Mac"],
+    [thisComputer, `${thisComputer} 上的会话`, thisComputer],
     ["demo", "demo 项目的会话", "demo"],
   ]) {
     const node = map.getByRole("button", { name, exact: true });
@@ -106,7 +106,7 @@ test("a node clicked on the link map narrows 正在干活, names the condition a
     ipcMain.removeHandler("popup-menu");
     ipcMain.handle("popup-menu", (_e, items: { label?: string }[]) => ((globalThis as unknown as { shown: unknown }).shown = items.map((i) => i.label), null));
   });
-  await map.getByRole("button", { name: "这台 Mac" }).click({ button: "right" });
+  await map.getByRole("button", { name: thisComputer }).click({ button: "right" });
   await expect.poll(() => app.evaluate(() => (globalThis as unknown as { shown: unknown }).shown)).toEqual(["机器设置…"]);
   await app.close();
 });

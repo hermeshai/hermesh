@@ -52,6 +52,12 @@ type freshOwner struct {
 	Gate string `json:"gate,omitempty"`
 }
 
+// windowsSpecs are the specs that run on Windows too (docs/windows.md §14);
+// the others are the Mac's (its menu bar, Touch ID, moving to
+// Applications, the process limit), and sessionlist now and then misses a
+// session on windows-latest, as TestSessionList did.
+var windowsSpecs = map[string]bool{"windows": true, "shell": true, "motion": true, "search": true, "overview": true, "sheets": true, "settings": true, "session": true}
+
 // TestDesktop runs the desktop app's end-to-end tests: Playwright drives
 // the real Electron app (apps/desktop/e2e) against sessions in every state
 // the app shows, played by a scripted ACP agent through the real relay,
@@ -98,8 +104,8 @@ func TestDesktop(t *testing.T) {
 		if name == "packaged" || name == "update" { // TestDesktopPackaged, TestDesktopUpdate
 			continue
 		}
-		// Windows runs its own spec; the others are ported to it one by one (docs/windows.md §11).
-		if (runtime.GOOS == "windows") != (name == "windows") {
+		// Windows runs its own spec and those ported to it (docs/windows.md §11).
+		if runtime.GOOS == "windows" && !windowsSpecs[name] || runtime.GOOS != "windows" && name == "windows" {
 			continue
 		}
 		t.Run(name, func(t *testing.T) {

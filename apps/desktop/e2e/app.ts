@@ -60,6 +60,10 @@ export async function cli(...args: string[]): Promise<string> {
   return stdout;
 }
 
+/** Windows' words for this computer, where the app runs on a PC (src/shared/words.ts). */
+export const onWindows = process.platform === "win32";
+export const thisComputer = onWindows ? "这台电脑" : "这台 Mac";
+
 /** With HERMESH_SCREENS=<dir>, saves a screenshot of the page there (for looking at against the design). */
 export async function snap(page: Page, name: string): Promise<void> {
   const dir = process.env.HERMESH_SCREENS;
@@ -71,7 +75,8 @@ export async function snap(page: Page, name: string): Promise<void> {
 
 /** A git repository named name, for a project. */
 export function gitRepo(name: string): string {
-  const dir = path.join(fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), "hmrepo-"))), name);
+  // The long path, as hermeshd reports it (Windows' temp folder may come as a short 8.3 one).
+  const dir = path.join(fs.realpathSync.native(fs.mkdtempSync(path.join(os.tmpdir(), "hmrepo-"))), name);
   fs.mkdirSync(dir);
   fs.writeFileSync(path.join(dir, "README.md"), `# ${name}\n`);
   const env = { ...process.env, GIT_AUTHOR_NAME: "t", GIT_AUTHOR_EMAIL: "t@t", GIT_COMMITTER_NAME: "t", GIT_COMMITTER_EMAIL: "t@t" };
