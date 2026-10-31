@@ -109,7 +109,12 @@ packages/HermeshKit/         Swift package shared with the Mac signer
   Hermesh…", "Updating from Mac mini…", and after 10 s without the relay,
   "Can't reach Hermesh"); waiting for another device, the beams
   hover apart. Nothing shows for a wait under 400 ms, and a loader once
-  shown stays 500 ms; with Reduce Motion the mark only fades.
+  shown stays 500 ms; with Reduce Motion the mark only fades. A card read
+  for the first time (the overview's counts, the coding agents while no
+  machine's are known) shows its shapes in grey at once, a light sweeping
+  across them (a skeleton; with Reduce Motion they fade). A machine being
+  read again keeps the state it was last shown with, its coding agents
+  too, as its sessions, so coming back to the app reloads nothing in view.
 
 ## 3. Notifications
 

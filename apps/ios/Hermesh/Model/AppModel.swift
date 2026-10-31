@@ -491,6 +491,7 @@ final class AppModel {
     /// sessions, which are merged so older pages loaded stay, less those it
     /// shows were deleted meanwhile (resetSessions).
     private func apply(_ r: Hermesh_Local_V1_WatchResponse) {
+        let known = machines
         if r.reset {
             machines = []
             clients = []
@@ -506,7 +507,7 @@ final class AppModel {
             status = r.status
             relayDownSince = status.relayConnected ? nil : relayDownSince ?? Date()
         }
-        machines = upsert(machines, r.machines, removed: r.removedMachineIds, key: \.machineID).sorted { $0.machineName < $1.machineName }
+        machines = upsert(machines, holdingState(r.machines, known: known), removed: r.removedMachineIds, key: \.machineID).sorted { $0.machineName < $1.machineName }
         clients = upsert(clients, r.clients, removed: r.removedGrantIds, key: \.grantID).sorted { $0.label < $1.label }
         devices = upsert(devices, r.devices, removed: r.removedDeviceKeyIds, key: \.keyID)
         projects = upsert(projects, r.projects, removed: r.removedProjects.map { "\($0.machineID)/\($0.projectID)" }, key: { "\($0.machineID)/\($0.projectID)" })

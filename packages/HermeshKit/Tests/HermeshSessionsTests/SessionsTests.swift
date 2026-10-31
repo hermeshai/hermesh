@@ -209,6 +209,28 @@ func ask(_ s: inout Session) {
     #expect(resetSessions(held, [], next: nil, readNow: []).count == held.count)
 }
 
+@Test func aMachineBeingReadAgainKeepsTheStateItWasShownWith() {
+    func machine(_ id: String, agents: [String]? = nil, syncing: Bool = false, online: Bool = true) -> Hermesh_Local_V1_Machine {
+        var m = Hermesh_Local_V1_Machine()
+        m.machineID = id
+        m.online = online
+        m.syncing = syncing
+        if let agents {
+            m.status.agents = agents.map { var a = Hermesh_Machine_V1_AgentStatus(); a.name = $0; a.available = true; return a }
+        }
+        return m
+    }
+    // Shown before the app left the front (or kept on the phone): m1 with Claude
+    // Code, m2 with Codex, m3 with Gemini CLI.
+    let known = [machine("m1", agents: ["claude"]), machine("m2", agents: ["codex"]), machine("m3", agents: ["gemini"])]
+    // The watch's first message: m1 being read again, m2 read and now with
+    // Claude Code too, m3 offline; m4 new, being read.
+    let out = holdingState([machine("m1", syncing: true), machine("m2", agents: ["codex", "claude"]), machine("m3", online: false),
+                            machine("m4", syncing: true)], known: known)
+    #expect(out.map { $0.status.agents.map(\.name) } == [["claude"], ["codex", "claude"], [], []])
+    #expect(out[0].syncing && !out[3].hasStatus)
+}
+
 @Test func aFailureIsToldOfTheCodingAgentEveryKindInItsOwnWords() {
     #expect(failureHeadline(.startFailed, agent: "Codex") == "Codex couldn’t start")
     let generic = failureHeadline(.unspecified, agent: "Codex")

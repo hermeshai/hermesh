@@ -181,6 +181,8 @@ struct OverviewView: View {
         let work = model.work[period]
         let flow = WorkFlow(work?.pairs ?? [])
         let agents = codingAgents(running: running, work: work)
+        // None known yet: nothing watched since the app came to the front, or a machine never read before is being read.
+        let reading = agents.isEmpty && (!model.watched || model.machines.contains { $0.syncing && !$0.hasStatus })
         let runs = { (a: String) in running.filter { $0.agent == a }.count }
         let turns = { (a: String) in work?.turns(agent: a) ?? 0 }
         let worked = { (a: String) in work?.sessions(agent: a) ?? 0 }
@@ -198,12 +200,16 @@ struct OverviewView: View {
                     caption(flowTitle(period), detail: "\(work.turns) turns · \(tokensText(work.tokens)) tokens")
                     FlowCard(flow: flow, picked: $picked, clientName: { model.clientLabel($0) }, idle: idleClients.map { AgentLogo.name($0.label) }, period: period)
                 }
-                if !agents.isEmpty {
+                if !agents.isEmpty || reading {
                     caption("Agents", detail: period.hourly ? "Sessions working each hour" : "Sessions working each day")
-                    card {
-                        ForEach(Array(shown.enumerated()), id: \.element) { i, a in
-                            if i > 0 { Divider().padding(.leading, 50) }
-                            agentRow(a, running: runs(a), turns: turns(a), flow: flow, work: work, cells: work?.byAgent[a], now: now, period: period)
+                    if reading {
+                        agentsSkeleton
+                    } else {
+                        card {
+                            ForEach(Array(shown.enumerated()), id: \.element) { i, a in
+                                if i > 0 { Divider().padding(.leading, 50) }
+                                agentRow(a, running: runs(a), turns: turns(a), flow: flow, work: work, cells: work?.byAgent[a], now: now, period: period)
+                            }
                         }
                     }
                 }
@@ -297,7 +303,7 @@ struct OverviewView: View {
                 if !detail.isEmpty {
                     Text(detail).font(.footnote).foregroundStyle(.secondary).monospacedDigit().lineLimit(1)
                 }
-                BucketCells(counts: cells ?? Array(repeating: 0, count: period.hourly ? 24 : period.days), now: now)
+                BucketCells(counts: cells ?? Array(repeating: 0, count: period.hourly ? 24 : period.days), now: now, loading: work == nil)
             }
         }
         .padding(.horizontal, 14).padding(.vertical, 10)
@@ -305,6 +311,36 @@ struct OverviewView: View {
         .animation(.smooth, value: picked)
         .accessibilityElement(children: .combine)
         .accessibilityIdentifier("coding-agent-\(a)")
+    }
+
+    /// Where the coding agents' rows go while none is known yet: their shapes.
+    private var agentsSkeleton: some View {
+        card {
+            VStack(spacing: 0) {
+                ForEach(0 ..< 3, id: \.self) { i in
+                    if i > 0 { Divider().padding(.leading, 50) }
+                    HStack(alignment: .top, spacing: 10) {
+                        Circle().frame(width: 26, height: 26).padding(.top, 1)
+                        VStack(alignment: .leading, spacing: 6) {
+                            HStack {
+                                Capsule().frame(width: [96, 72, 84][i], height: 12)
+                                Spacer()
+                                Capsule().frame(width: 36, height: 12)
+                            }
+                            .frame(height: 22)
+                            Capsule().frame(width: 64, height: 10).frame(height: 18)
+                            Capsule().frame(height: 8)
+                        }
+                    }
+                    .padding(.horizontal, 14).padding(.vertical, 10)
+                }
+            }
+            .foregroundStyle(Skeleton.grey)
+            .skeleton()
+        }
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(Text("Reading your machines…"))
+        .accessibilityIdentifier("agents-loading")
     }
 
     private func machineRow(_ m: Machine, running: Int) -> some View {
@@ -389,8 +425,13 @@ struct WorkCard: View {
         VStack(alignment: .leading, spacing: 14) {
             HStack(alignment: .top) {
                 HStack(alignment: .firstTextBaseline, spacing: 8) {
-                    Text("\(work?.sessions ?? 0)").font(.system(size: 56, weight: .bold)).monospacedDigit()
-                        .contentTransition(.numericText())
+                    if let work {
+                        Text("\(work.sessions)").font(.system(size: 56, weight: .bold)).monospacedDigit()
+                            .contentTransition(.numericText())
+                    } else { // not counted yet: two digits' room, as a skeleton
+                        Text(verbatim: "00").font(.system(size: 56, weight: .bold)).monospacedDigit().hidden()
+                            .overlay { RoundedRectangle(cornerRadius: 10, style: .continuous).fill(Skeleton.grey).frame(height: 44).skeleton() }
+                    }
                     Text("sessions worked").foregroundStyle(.secondary)
                 }
                 Spacer()
@@ -406,14 +447,17 @@ struct WorkCard: View {
             if let work {
                 Text("Done \(Text("\(work.done)").bold().foregroundStyle(.primary)) · \(work.turns) turns · \(tokensText(work.tokens)) tokens")
                     .font(.footnote).foregroundStyle(.secondary).monospacedDigit()
+            } else {
+                Capsule().fill(Skeleton.grey).frame(width: 190, height: 10).skeleton().frame(height: 18)
             }
             HStack(alignment: .bottom, spacing: period == .month ? 2 : period == .week ? 8 : 3) {
                 ForEach(counts.indices, id: \.self) { i in
                     RoundedRectangle(cornerRadius: period == .week ? 5 : 3, style: .continuous)
-                        .fill(i > now ? AnyShapeStyle(.quaternary) : i == now ? AnyShapeStyle(Color.accentColor) : AnyShapeStyle(Color.primary.opacity(0.32)))
+                        .fill(work == nil ? AnyShapeStyle(Skeleton.grey) : i > now ? AnyShapeStyle(.quaternary) : i == now ? AnyShapeStyle(Color.accentColor) : AnyShapeStyle(Color.primary.opacity(0.32)))
                         .frame(height: i > now ? 3 : max(3, CGFloat(counts[i]) / CGFloat(top) * 56))
                 }
             }
+            .skeleton(work == nil)
             .frame(height: 56, alignment: .bottom)
             .accessibilityHidden(true)
             if period.hourly {
@@ -719,19 +763,21 @@ struct HourAxis: View {
 
 /// A coding agent's range in cells, one an hour or a day: how many of its
 /// sessions worked in each, in ink grey (now in the accent), those to come
-/// faint.
+/// faint; a skeleton while not counted yet.
 struct BucketCells: View {
     let counts: [Int]
     let now: Int
+    var loading = false
 
     var body: some View {
         HStack(spacing: counts.count > 24 ? 1.5 : counts.count > 7 ? 2 : 4) {
             ForEach(counts.indices, id: \.self) { i in
                 RoundedRectangle(cornerRadius: 2, style: .continuous)
-                    .fill(fill(i))
+                    .fill(loading ? Skeleton.grey : fill(i))
                     .frame(height: 8)
             }
         }
+        .skeleton(loading)
         .accessibilityHidden(true)
     }
 
