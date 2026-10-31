@@ -41,6 +41,7 @@ struct OverviewView: View {
         }
         .background(Color(.systemGroupedBackground))
         .navigationTitle("Overview")
+        .navigationBarTitleDisplayMode(.inline) // in the bar: the range picker is the page's top
         .rootToolbar()
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) { NewMenu() }

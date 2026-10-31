@@ -12,10 +12,12 @@ enum Root: Hashable {
     case overview, grants, machines, sessions
     case session(String)
 
-    /// A page with a large title (a session's is in the bar).
+    /// A page with a large title (the overview's and a session's are in the bar).
     var titleLarge: Bool {
-        if case .session = self { return false }
-        return true
+        switch self {
+        case .overview, .session: false
+        default: true
+        }
     }
 }
 
