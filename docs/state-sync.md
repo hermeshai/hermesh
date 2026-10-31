@@ -269,8 +269,9 @@ message WatchResponse {
   `Sessions.Watch` uses today ([sessionlist.go](../internal/machine/sessionlist.go)).
   Status changes ride the same tick. Agent scans still happen only on
   demand (`CheckAgents`); when one ends, the new status is pushed.
-- **Usage is not pushed.** The replica refreshes a machine's usage for
-  today when one of its sessions' `turn_count` grows (§4.4).
+- **Work counts are pulled, not pushed.** Each message carries the
+  machine's `work_seq`; behind it, the owner device calls `PullWork`
+  ([work-stats.md](work-stats.md) §6).
 - **Who may watch.** The same principal filtering as `ListSessions` and
   `ListProjects`, so an agent with a grant could use the feed later too.
 - **The owner's own machine.** It is fed by the same function in process,
@@ -398,8 +399,7 @@ long output itself is shown as it shortened it.
 | Devices | root chain from (A) + machines | derived, as `ListDevices` does today |
 | Projects | (B) per machine | all |
 | Sessions | (B) per machine, BASIC | per machine: the newest 50 plus every unsettled one; trimmed after each change, since a session that changes becomes the newest and comes back. A page past them (`before`, or more than 50 of a machine that has more) is asked of the machine |
-| Usage | `GetUsage` per machine | days before today: once per time zone; today: refreshed (§4.4) |
-| Today's activity | `GetActivity` per machine, not kept | the sessions that worked each hour of a day, by who started them and the coding agent that ran them, with the turns that ended that day and their tokens, counted by the machine from its turns' start and end (`turn_usage`) and the turn in progress; the iPhone asks when its overview opens and, while sessions change, once a minute at most |
+| Work counts | `PullWork` per machine, kept in `owner.db` | every other machine's counts in quarter hours (who, which coding agent, which project), pulled when its `work_seq` moves; `QueryWork` answers any range from them ([work-stats.md](work-stats.md)); this device's own machine's are read in process |
 | Feed state | per machine | following / error / offline, and its resume token |
 
 Memory: a few hundred BASIC sessions of about 220 bytes each, plus the
@@ -451,10 +451,9 @@ today. The last subscriber leaving stops them 60 s later, not at once.
 
 ### 4.4 Usage
 
-`GetUsage` keeps each other machine's answer while the turns of its
-sessions in the replica (their `turn_count`s added up) and the day in the
-caller's time zone stay the same; this device's own is read in process. The
-overview drops its 60 s timer and asks again as turns end.
+Replaced by work counts ([work-stats.md](work-stats.md)): owner devices
+keep a copy of every other machine's counts and answer usage and the
+overview's ranges from it, with no machine asked.
 
 ### 4.5 Trust
 

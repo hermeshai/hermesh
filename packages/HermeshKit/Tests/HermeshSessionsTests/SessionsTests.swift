@@ -102,40 +102,55 @@ func ask(_ s: inout Session) {
     #expect(searchSessions(all, query: "nothing", filter: SessionFilter(), text: { $0.projectID }).isEmpty)
 }
 
-@Test func dayActivityAddsUpHoursAgentsAndPairs() {
-    func hour(_ h: UInt32, _ by: String, _ agent: String, _ n: UInt32) -> Hermesh_Session_V1_ActivityHour {
-        var x = Hermesh_Session_V1_ActivityHour()
-        x.hour = h
-        x.createdBy = by
-        x.agent = agent
-        x.sessions = n
-        return x
+@Test func rangeWorkAddsUpBucketsAgentsAndPairs() {
+    func group(_ client: String, _ agent: String) -> Hermesh_Local_V1_WorkGroup {
+        var g = Hermesh_Local_V1_WorkGroup()
+        g.client = client
+        g.agent = agent
+        return g
     }
-    func client(_ by: String, _ agent: String, _ n: UInt32, _ done: UInt32, turns: UInt32 = 0, tokens: UInt64 = 0) -> Hermesh_Session_V1_ActivityClient {
-        var x = Hermesh_Session_V1_ActivityClient()
-        x.createdBy = by
-        x.agent = agent
+    func sessions(_ b: UInt32, _ by: String, _ agent: String, _ n: UInt32, done: UInt32 = 0) -> Hermesh_Local_V1_SessionCount {
+        var x = Hermesh_Local_V1_SessionCount()
+        x.bucket = b
+        x.group = group(by, agent)
         x.sessions = n
         x.done = done
-        x.turns = turns
-        x.tokens = tokens
         return x
     }
-    let a = DayActivity(date: "2026-03-04",
-                        hours: [hour(9, "c_bot", "claude", 2), hour(9, "c_cursor", "claude", 1), hour(9, "c_bot", "codex", 1), hour(14, "c_bot", "codex", 1), hour(30, "c_bot", "claude", 9)],
-                        clients: [client("c_bot", "claude", 2, 1, turns: 5, tokens: 1000), client("c_bot", "codex", 1, 1, turns: 2, tokens: 300),
-                                  client("c_cursor", "claude", 1, 0, turns: 1, tokens: 50), client("c_bot", "claude", 1, 0, turns: 1)])
-    #expect(a.hours.count == 24 && a.hours[9] == 4 && a.hours[14] == 1 && a.hours.reduce(0, +) == 5)
+    func turns(_ by: String, _ agent: String, _ n: UInt32, tokens: UInt64) -> Hermesh_Local_V1_TurnCount {
+        var x = Hermesh_Local_V1_TurnCount()
+        x.group = group(by, agent)
+        x.turns = n
+        x.inputTokens = tokens
+        return x
+    }
+    var r = Hermesh_Local_V1_QueryWorkResponse()
+    r.sessions = [sessions(9, "c_bot", "claude", 2), sessions(9, "c_cursor", "claude", 1), sessions(9, "c_bot", "codex", 1), sessions(14, "c_bot", "codex", 1)]
+    r.rangeSessions = [sessions(0, "c_bot", "claude", 2, done: 1), sessions(0, "c_bot", "codex", 1, done: 1), sessions(0, "c_cursor", "claude", 1)]
+    // Grok asked for a turn in a session bot started: its own pair, turns and no sessions.
+    r.rangeTurns = [turns("c_bot", "claude", 5, tokens: 1000), turns("c_bot", "codex", 2, tokens: 300), turns("c_cursor", "claude", 1, tokens: 50), turns("c_grok", "claude", 1, tokens: 7)]
+    let a = RangeWork(period: .today, firstDay: "2026-03-04", r)
+    #expect(a.buckets.count == 24 && a.buckets[9] == 4 && a.buckets[14] == 1 && a.buckets.reduce(0, +) == 5)
     #expect(a.byAgent["claude"]?[9] == 3 && a.byAgent["codex"]?[9] == 1 && a.byAgent["codex"]?[14] == 1 && a.byAgent["claude"]?[14] == 0)
-    #expect(a.sessions == 5 && a.done == 2 && a.turns == 9 && a.tokens == 1350)
-    // Two machines' answers for one client and agent are one pair.
-    #expect(a.pairs.count == 3 && a.pairs[0] == .init(createdBy: "c_bot", agent: "claude", sessions: 3, turns: 6, tokens: 1000))
-    #expect(a.turns(agent: "claude") == 7 && a.sessions(agent: "claude") == 4 && a.turns(agent: "codex") == 2)
+    #expect(a.sessions == 4 && a.done == 2 && a.turns == 9 && a.tokens == 1357)
+    #expect(a.pairs.count == 4 && a.pairs[0] == .init(client: "c_bot", agent: "claude", sessions: 2, turns: 5, tokens: 1000))
+    #expect(a.pairs[3] == .init(client: "c_grok", agent: "claude", sessions: 0, turns: 1, tokens: 7))
+    #expect(a.turns(agent: "claude") == 7 && a.sessions(agent: "claude") == 3 && a.turns(agent: "codex") == 2)
+    // Seven days: a bucket a day.
+    #expect(RangeWork(period: .week, firstDay: "2026-03-04", Hermesh_Local_V1_QueryWorkResponse()).buckets.count == 7)
+}
+
+@Test func workPeriodsAsk() {
+    let now = utc.date(from: DateComponents(year: 2026, month: 3, day: 10, hour: 15))!
+    let today = WorkPeriod.today.request(now, calendar: utc), week = WorkPeriod.week.request(now, calendar: utc)
+    #expect(today.firstDay == "2026-03-10" && today.days == 1 && today.bucket == .hour && today.timeZone == utc.timeZone.identifier)
+    #expect(week.firstDay == "2026-03-04" && week.days == 7 && week.bucket == .day && week.groupBy == [.client, .agent])
+    #expect(WorkPeriod.month.request(now, calendar: utc).firstDay == "2026-02-09")
 }
 
 @Test func workFlowKeepsTheBusiestAndJoinsTheRest() {
-    func pair(_ by: String, _ agent: String, _ turns: Int, sessions: Int = 1) -> DayActivity.Pair {
-        .init(createdBy: by, agent: agent, sessions: sessions, turns: turns, tokens: 0)
+    func pair(_ by: String, _ agent: String, _ turns: Int, sessions: Int = 1) -> RangeWork.Pair {
+        .init(client: by, agent: agent, sessions: sessions, turns: turns, tokens: 0)
     }
     let f = WorkFlow([pair("claude", "cc", 30), pair("claude", "cx", 6), pair("grok", "cc", 16), pair("grok", "cx", 12), pair("old", "", 9)])
     #expect(f.clients.map(\.id) == ["claude", "grok"] && f.clients.map(\.turns) == [36, 28])
@@ -150,8 +165,8 @@ func ask(_ s: inout Session) {
     #expect(WorkFlow([]).clients.isEmpty && WorkFlow([]).bands.isEmpty)
 
     // A band joined from several pairs adds up their tokens too (what tapping it says).
-    let h = WorkFlow([.init(createdBy: "a", agent: "cc", sessions: 1, turns: 2, tokens: 300), .init(createdBy: "b", agent: "cc", sessions: 1, turns: 1, tokens: 200),
-                      .init(createdBy: "c", agent: "cc", sessions: 1, turns: 1, tokens: 50), .init(createdBy: "d", agent: "cc", sessions: 1, turns: 1, tokens: 25)])
+    let h = WorkFlow([.init(client: "a", agent: "cc", sessions: 1, turns: 2, tokens: 300), .init(client: "b", agent: "cc", sessions: 1, turns: 1, tokens: 200),
+                      .init(client: "c", agent: "cc", sessions: 1, turns: 1, tokens: 50), .init(client: "d", agent: "cc", sessions: 1, turns: 1, tokens: 25)])
     #expect(h.bands.first { $0.client == "" }.map { ($0.turns, $0.tokens) } ?? (0, 0) == (2, 75))
 }
 

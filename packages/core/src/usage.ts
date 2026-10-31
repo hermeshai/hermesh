@@ -1,4 +1,5 @@
-import type { UsageDay } from "@hermesh/proto/session";
+import type { MessageInitShape } from "@bufbuild/protobuf";
+import { WorkBucket, WorkDimension, type QueryWorkRequestSchema, type QueryWorkResponse } from "@hermesh/proto/local";
 
 // The usage heatmap: a year of days by week (columns) and weekday (rows,
 // Sunday first), each day's tokens and a level of 0 (none) to 4, and the
@@ -10,7 +11,7 @@ export type UsageYear = {
   /** weeks × 7 cells, column by column; null past today. */
   cells: (UsageCell | null)[];
   weeks: number;
-  /** The first day shown (a Sunday), YYYY-MM-DD: what to ask GetUsage since. */
+  /** The first day shown (a Sunday), YYYY-MM-DD: what QueryWork is asked from. */
   since: string;
   total: number;
   today: number;
@@ -31,18 +32,31 @@ export function usageSince(today: Date, weeks = 53): string {
   return dayKey(new Date(today.getFullYear(), today.getMonth(), today.getDate() - today.getDay() - (weeks - 1) * 7));
 }
 
-export function usageYear(days: UsageDay[], today: Date, weeks = 53): UsageYear {
+/** The QueryWork question for a year of weeks: from usageSince to today, by day and coding agent. */
+export function usageRequest(today: Date, weeks = 53, timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone): MessageInitShape<typeof QueryWorkRequestSchema> {
+  const since = usageSince(today, weeks);
+  const [y, m, d] = since.split("-").map(Number);
+  const days = Math.round((new Date(today.getFullYear(), today.getMonth(), today.getDate()).getTime() - new Date(y, m - 1, d).getTime()) / 86_400_000) + 1;
+  return { timeZone, firstDay: since, days, bucket: WorkBucket.DAY, groupBy: [WorkDimension.AGENT] };
+}
+
+/** A year of usage from QueryWork's answer to usageRequest: each day's tokens and sessions at work, and each agent's share. */
+export function usageYear(res: Pick<QueryWorkResponse, "turns" | "sessions"> | null | undefined, today: Date, weeks = 53): UsageYear {
+  const since = usageSince(today, weeks);
+  const [y, m, dd] = since.split("-").map(Number);
+  const keyOf = (bucket: number) => dayKey(new Date(y, m - 1, dd + bucket));
   const tokens = new Map<string, number>();
   const sessions = new Map<string, number>();
   const agents = new Map<string, number>();
-  for (const d of days) {
-    const n = Number(d.inputTokens) + Number(d.outputTokens);
-    tokens.set(d.date, (tokens.get(d.date) ?? 0) + n);
-    sessions.set(d.date, (sessions.get(d.date) ?? 0) + d.sessions);
-    agents.set(d.agent, (agents.get(d.agent) ?? 0) + n);
+  for (const t of res?.turns ?? []) {
+    const n = Number(t.inputTokens) + Number(t.outputTokens);
+    const key = keyOf(t.bucket);
+    tokens.set(key, (tokens.get(key) ?? 0) + n);
+    const agent = t.group?.agent ?? "";
+    agents.set(agent, (agents.get(agent) ?? 0) + n);
   }
-  const since = usageSince(today, weeks);
-  const [y, m, dd] = since.split("-").map(Number);
+  // Sessions partition by agent, so a day's add up exactly.
+  for (const x of res?.sessions ?? []) sessions.set(keyOf(x.bucket), (sessions.get(keyOf(x.bucket)) ?? 0) + x.sessions);
   const todayKey = dayKey(today);
   const cells: (UsageCell | null)[] = [];
   let past = false;

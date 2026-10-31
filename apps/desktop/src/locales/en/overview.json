@@ -99,12 +99,13 @@
     "cells": "{{tokens}} tokens in the past year, used on {{active}} days",
     "byAgent": "By coding agent",
     "empty": "Once you start, the days light up here one by one.",
-    "unreachable": "{{machines}} can’t be reached right now and aren’t counted",
     "less": "Less",
     "more": "More",
     "noUsage": "No usage",
     "sessions_one": " · {{count}} session",
-    "sessions_other": " · {{count}} sessions"
+    "sessions_other": " · {{count}} sessions",
+    "syncing": "Syncing {{machines}}’s work…",
+    "behind": "{{machines}} counted up to {{time}}"
   },
   "card": {
     "ownKey": "Personal agent · holds its own key",

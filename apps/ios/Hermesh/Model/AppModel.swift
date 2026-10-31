@@ -114,8 +114,12 @@ final class AppModel {
     var projects: [Project] = []
     var pairings: [PairingDetails] = []
     var usage: UsageYear?
-    /// Today's work, as the machines count it.
-    var activity: DayActivity?
+    /// The overview's range, and the work counted over each range asked,
+    /// kept so switching shows the last count at once.
+    var workPeriod = WorkPeriod(rawValue: UserDefaults.standard.string(forKey: "workPeriod") ?? "") ?? .today {
+        didSet { UserDefaults.standard.set(workPeriod.rawValue, forKey: "workPeriod") }
+    }
+    var work: [WorkPeriod: RangeWork] = [:]
     var now = Date()
     /// There is a world to show: kept from before, or watched.
     var hasWorld = false
@@ -200,9 +204,9 @@ final class AppModel {
     @ObservationIgnored private var watchTask: Task<Void, Never>?
     @ObservationIgnored private var clockTask: Task<Void, Never>?
     @ObservationIgnored private var toastTask: Task<Void, Never>?
-    @ObservationIgnored private var activityTask: Task<Void, Never>?
-    @ObservationIgnored private var activityAsked = Date.distantPast
-    /// The overview is on screen: today's work is kept current only then.
+    @ObservationIgnored private var workTask: Task<Void, Never>?
+    @ObservationIgnored private var workVersion: UInt64 = 0
+    /// The overview is on screen: its work is counted again only then.
     @ObservationIgnored var overviewShown = false
     @ObservationIgnored private var saveTask: Task<Void, Never>?
     @ObservationIgnored private var active = false
@@ -268,10 +272,10 @@ final class AppModel {
         active = false
         watchTask?.cancel()
         clockTask?.cancel()
-        activityTask?.cancel()
+        workTask?.cancel()
         watchTask = nil
         clockTask = nil
-        activityTask = nil
+        workTask = nil
         if phase == .ready { saveWorld(now: true) }
         Core.pause()
     }
@@ -517,10 +521,12 @@ final class AppModel {
         if r.reset {
             let readNow = Set(machines.filter { $0.online && $0.unreachable.isEmpty && !$0.syncing }.map(\.machineID))
             heldSessions = mergeSessions(resetSessions(heldSessions, r.sessions, next: r.hasNext ? r.next : nil, readNow: readNow), [], deleted: r.deletedSessionIds)
-            activityChanged()
         } else if !r.sessions.isEmpty || !r.deletedSessionIds.isEmpty {
             heldSessions = mergeSessions(heldSessions, r.sessions, deleted: r.deletedSessionIds)
-            activityChanged()
+        }
+        if r.workVersion != 0 && r.workVersion != workVersion {
+            workVersion = r.workVersion
+            workChanged()
         }
         r.deletedSessionIds.forEach(conversations.forget)
         if watched { saveSoon() }
@@ -540,25 +546,27 @@ final class AppModel {
         olderKey += 1
     }
 
-    /// Today's work, asked of the machines.
-    func loadActivity() async {
+    /// The overview's range counted, from what the core holds (nothing is
+    /// asked of the machines, so it answers at once).
+    func loadWork() async {
         guard let api else { return }
-        let today = dayKey(Date())
-        activityAsked = Date()
-        if let r = try? await api.activity(date: today) {
-            activity = DayActivity(date: today, hours: r.hours, clients: r.clients)
+        let period = workPeriod, now = Date()
+        let r = period.request(now)
+        if let res = try? await api.queryWork(r) {
+            work[period] = RangeWork(period: period, firstDay: r.firstDay, res)
         }
     }
 
-    /// Sessions changed: today's work again, once a minute at most, while
-    /// the overview shows it.
-    private func activityChanged() {
-        guard overviewShown, activityTask == nil else { return }
-        activityTask = Task {
-            try? await Task.sleep(for: .seconds(max(2, 60 - Date().timeIntervalSince(activityAsked))))
+    /// The core's counts moved: the overview's range again while it shows
+    /// it, and the weeks of usage (both read locally, in milliseconds).
+    private func workChanged() {
+        guard workTask == nil else { return }
+        workTask = Task {
+            try? await Task.sleep(for: .seconds(1)) // a burst of changes is one count
             guard !Task.isCancelled else { return }
-            activityTask = nil
-            await loadActivity()
+            workTask = nil
+            if overviewShown { await loadWork() }
+            await loadUsage()
         }
     }
     /// Changes after each page asked for: the list's last row asks again
@@ -568,9 +576,9 @@ final class AppModel {
 
     func loadUsage() async {
         guard let api else { return }
-        let since = usageSince(Date(), weeks: 18)
-        if let r = try? await api.usage(since: dayKey(since)) {
-            usage = usageYear(r.days, today: Date(), weeks: 18)
+        let now = Date()
+        if let r = try? await api.queryWork(usageRequest(now, weeks: 18)) {
+            usage = usageYear(r.turns, today: now, weeks: 18)
         }
     }
 

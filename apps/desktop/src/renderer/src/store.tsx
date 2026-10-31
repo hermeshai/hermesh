@@ -68,6 +68,8 @@ export type Store = Data &
   UI & {
     /** The sessions loaded so far: the newest page, older pages the list asked for, and every change since. */
     sessions: Session[];
+    /** Moves when the counts of work changed (QueryWork). */
+    workVersion: number;
     sessionsUnreachable: Unreachable[];
     /** The first page of sessions arrived. */
     sessionsLoaded: boolean;
@@ -199,6 +201,7 @@ export function HermeshProvider({ children }: { children: ReactNode }) {
       sessionsLoaded: world.loaded && world.status !== undefined && (world.status.initialized || world.status.machineOnly),
       moreSessions: world.next !== undefined,
       loadOlderSessions: world.loadOlder,
+      workVersion: world.workVersion,
       ...ui,
       set,
       select,
@@ -206,7 +209,7 @@ export function HermeshProvider({ children }: { children: ReactNode }) {
       run,
       show,
     }),
-    [data, sessions, world.loaded, world.status, world.next, world.loadOlder, ui, set, select, refresh, run, show],
+    [data, sessions, world.loaded, world.status, world.next, world.loadOlder, world.workVersion, ui, set, select, refresh, run, show],
   );
   return <Ctx.Provider value={store}>{children}</Ctx.Provider>;
 }

@@ -6,13 +6,16 @@ import {
 } from "@hermesh/proto/local";
 import { AgentStatusSchema, MachineStatusSchema } from "@hermesh/proto/machine";
 import {
-  FailureKind, SessionEventSchema, SessionSchema, SessionStatus, UsageDaySchema,
-  type Session, type SessionEvent, type UsageDay,
+  FailureKind, SessionEventSchema, SessionSchema, SessionStatus,
+  type Session, type SessionEvent,
 } from "@hermesh/proto/session";
 
 // A heavy owner's world, the same on every run: a few machines and grants,
 // a few hundred sessions over two months (a dozen live), a year of usage,
 // and two long conversations. The benchmark's daemon (daemon.ts) serves it.
+
+/** A coding agent's work on a day, as the daemon answers QueryWork from it. */
+export type UsageDay = { date: string; agent: string; inputTokens: bigint; outputTokens: bigint; sessions: number };
 
 export const sizes = { sessions: 400, running: 10, waiting: 2, failed: 3, archived: 40, bigTurns: 40, callsPerTurn: 30 };
 
@@ -188,7 +191,7 @@ export function world(now = Date.now()): World {
     const key = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
     for (const agent of agents) {
       if (r() < 0.35) continue;
-      usage.push(create(UsageDaySchema, { date: key, agent, inputTokens: BigInt(Math.floor(r() * 5e6)), outputTokens: BigInt(Math.floor(r() * 4e5)), sessions: 1 + Math.floor(r() * 9) }));
+      usage.push({ date: key, agent, inputTokens: BigInt(Math.floor(r() * 5e6)), outputTokens: BigInt(Math.floor(r() * 4e5)), sessions: 1 + Math.floor(r() * 9) });
     }
   }
   return { status, machines, clients, projects, devices, sessions, events, usage };

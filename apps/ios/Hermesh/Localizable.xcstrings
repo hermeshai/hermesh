@@ -50,6 +50,16 @@
         }
       }
     },
+    "%@ counted up to %@": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%1$@ 的统计截至 %2$@"
+          }
+        }
+      }
+    },
     "%@ is offline": {
       "localizations": {
         "zh-Hans": {
@@ -156,6 +166,26 @@
           "stringUnit": {
             "state": "translated",
             "value": "%1$@ 派来 %2$lld 轮"
+          }
+        }
+      }
+    },
+    "%@ sent no work in the last 30 days": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ 近 30 天没派活"
+          }
+        }
+      }
+    },
+    "%@ sent no work in the last 7 days": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ 近 7 天没派活"
           }
         }
       }
@@ -344,6 +374,26 @@
           "stringUnit": {
             "state": "translated",
             "value": "其他 %lld 个"
+          }
+        }
+      }
+    },
+    "%lld more agents haven’t worked in the last 30 days": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "另外 %lld 个 agent 近 30 天没干活"
+          }
+        }
+      }
+    },
+    "%lld more agents haven’t worked in the last 7 days": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "另外 %lld 个 agent 近 7 天没干活"
           }
         }
       }
@@ -621,6 +671,26 @@
         }
       }
     },
+    "30 Days": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "30 天"
+          }
+        }
+      }
+    },
+    "7 Days": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "7 天"
+          }
+        }
+      }
+    },
     "8 min ago": {
       "localizations": {
         "zh-Hans": {
@@ -787,16 +857,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "活跃天数"
-          }
-        }
-      }
-    },
-    "Active today %@": {
-      "localizations": {
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "今天有活动 %@"
           }
         }
       }
@@ -2201,6 +2261,16 @@
         }
       }
     },
+    "Done %@ · %lld turns · %@ tokens": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "完成 %1$@ · %2$lld 轮 · %3$@ token"
+          }
+        }
+      }
+    },
     "Don’t Answer": {
       "localizations": {
         "zh-Hans": {
@@ -2387,16 +2457,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "每次放行都要你本人"
-          }
-        }
-      }
-    },
-    "Excludes %@": {
-      "localizations": {
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "不含 %@ 的用量"
           }
         }
       }
@@ -4434,6 +4494,16 @@
         }
       }
     },
+    "Range": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "时间范围"
+          }
+        }
+      }
+    },
     "Reading %@…": {
       "localizations": {
         "zh-Hans": {
@@ -5074,6 +5144,16 @@
         }
       }
     },
+    "Sessions working each day": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "每天在干活的会话"
+          }
+        }
+      }
+    },
     "Sessions working each hour": {
       "localizations": {
         "zh-Hans": {
@@ -5468,6 +5548,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "连续使用"
+          }
+        }
+      }
+    },
+    "Syncing %@’s work…": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "正在同步 %@ 的统计…"
           }
         }
       }
@@ -5961,6 +6051,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "之后需要重新配对"
+          }
+        }
+      }
+    },
+    "Today": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "今天"
           }
         }
       }
@@ -6725,6 +6825,26 @@
         }
       }
     },
+    "Where the Last 30 Days’ Work Came From and Went": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "近 30 天的活从哪来、给了谁"
+          }
+        }
+      }
+    },
+    "Where the Last 7 Days’ Work Came From and Went": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "近 7 天的活从哪来、给了谁"
+          }
+        }
+      }
+    },
     "Which bot?": {
       "localizations": {
         "zh-Hans": {
@@ -6754,16 +6874,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "%@叫醒过"
-          }
-        }
-      }
-    },
-    "Working Now": {
-      "localizations": {
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "正在干活"
           }
         }
       }
@@ -7035,12 +7145,12 @@
         }
       }
     },
-    "sessions running": {
+    "sessions worked": {
       "localizations": {
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "个会话在跑"
+            "value": "个会话干了活"
           }
         }
       }

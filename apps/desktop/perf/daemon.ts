@@ -2,7 +2,7 @@ import { clone, create, type MessageInitShape } from "@bufbuild/protobuf";
 import { timestampDate, timestampFromMs } from "@bufbuild/protobuf/wkt";
 import type { ConnectRouter } from "@connectrpc/connect";
 import { connectNodeAdapter } from "@connectrpc/connect-node";
-import { GetUsageResponseSchema, LocalService, WatchResponseSchema, WatchSessionsResponseSchema, type WatchResponse, type WatchSessionsResponse } from "@hermesh/proto/local";
+import { LocalService, QueryWorkResponseSchema, WatchResponseSchema, WatchSessionsResponseSchema, type WatchResponse, type WatchSessionsResponse } from "@hermesh/proto/local";
 import { SessionCursorSchema, SessionEventSchema, SessionSchema, type Session, type SessionCursor, type SessionEvent } from "@hermesh/proto/session";
 import fs from "node:fs";
 import http from "node:http";
@@ -100,7 +100,21 @@ export async function startDaemon(socket: string): Promise<Daemon> {
         for (const e of evs) if (e.seq > req.afterSeq) yield e;
         if (req.follow) yield* ch.drain();
       },
-      getUsage: (req) => create(GetUsageResponseSchema, { days: w.usage.filter((d) => d.date >= req.since), unreachable: [] }),
+      queryWork: (req) => {
+        // By day and agent from the first day asked, as hermeshd counts (usageRequest).
+        const [y, m, d] = req.firstDay.split("-").map(Number);
+        const first = new Date(y, m - 1, d).getTime();
+        const days = w.usage
+          .map((x) => {
+            const [a, b, c] = x.date.split("-").map(Number);
+            return { ...x, bucket: Math.round((new Date(a, b - 1, c).getTime() - first) / 86_400_000) };
+          })
+          .filter((x) => x.bucket >= 0 && x.bucket < req.days);
+        return create(QueryWorkResponseSchema, {
+          turns: days.map((x) => ({ bucket: x.bucket, group: { agent: x.agent }, turns: x.sessions, inputTokens: x.inputTokens, outputTokens: x.outputTokens })),
+          sessions: days.map((x) => ({ bucket: x.bucket, group: { agent: x.agent }, sessions: x.sessions })),
+        });
+      },
     });
 
   fs.rmSync(socket, { force: true });

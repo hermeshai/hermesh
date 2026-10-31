@@ -547,8 +547,20 @@ final class HermeshUITests: XCTestCase {
         // CLI, the agent approved sending none; Gemini CLI's day; the machine.
         let today = app.descendants(matching: .any)["working-today"]
         XCTAssertTrue(today.waitForExistence(timeout: 20))
-        try waitFor("nothing runs, today's work counted") { today.label.hasPrefix("0") && today.label.contains("个会话在跑") && today.label.contains("今天有活动") ? true : nil }
+        try waitFor("nothing runs, today's work counted") { today.label.contains("个会话干了活") && today.label.contains("0 个在跑") && today.label.contains("完成") ? true : nil }
         XCTAssertTrue(text("今天的活从哪来、给了谁").exists, "the flow")
+        // The last 7 days, from the segmented control where the title was; then today again.
+        let period = app.segmentedControls["work-period"]
+        XCTAssertTrue(period.exists, "the range")
+        period.buttons["7 天"].tap()
+        XCTAssertTrue(text("近 7 天的活从哪来、给了谁").waitForExistence(timeout: 10), "the flow over 7 days")
+        XCTAssertTrue(today.label.contains("0 个在跑"), "what runs stays live: \(today.label)")
+        let week = XCTAttachment(screenshot: app.screenshot())
+        week.name = "overview, 7 days"
+        week.lifetime = .keepAlways
+        add(week)
+        period.buttons["今天"].tap()
+        XCTAssertTrue(text("今天的活从哪来、给了谁").waitForExistence(timeout: 10), "today again")
         let bot = app.descendants(matching: .any)["flow-client-bot"].firstMatch
         XCTAssertTrue(bot.exists, "the agent that sent work")
         let toGemini = app.descendants(matching: .any)["flow-agent-gemini"].firstMatch
