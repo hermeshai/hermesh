@@ -346,6 +346,8 @@ public struct WorkFlow: Equatable, Sendable {
         public var client: String
         public var agent: String
         public var turns: Int
+        /// Those turns' tokens.
+        public var tokens: UInt64 = 0
     }
 
     public var clients: [Node]
@@ -373,9 +375,10 @@ public struct WorkFlow: Equatable, Sendable {
         agents = a.nodes
         var merged: [Band] = []
         for p in known {
-            let b = Band(client: c.kept.contains(p.createdBy) ? p.createdBy : "", agent: a.kept.contains(p.agent) ? p.agent : "", turns: p.turns)
+            let b = Band(client: c.kept.contains(p.createdBy) ? p.createdBy : "", agent: a.kept.contains(p.agent) ? p.agent : "", turns: p.turns, tokens: p.tokens)
             if let i = merged.firstIndex(where: { $0.client == b.client && $0.agent == b.agent }) {
                 merged[i].turns += b.turns
+                merged[i].tokens += b.tokens
             } else {
                 merged.append(b)
             }
