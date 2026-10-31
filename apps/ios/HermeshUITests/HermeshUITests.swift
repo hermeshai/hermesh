@@ -185,10 +185,6 @@ final class HermeshUITests: XCTestCase {
         shot.name = "a long conversation, opened"
         shot.lifetime = .keepAlways
         add(shot)
-        let texts = XCTAttachment(string: app.staticTexts.allElementsBoundByIndex.prefix(80).map { "\($0.frame) \($0.isHittable) \($0.label.prefix(40))" }.joined(separator: "\n"))
-        texts.name = "a long conversation, its texts"
-        texts.lifetime = .keepAlways
-        add(texts)
         try waitFor("the last message in view", timeout: 20) { last.exists && last.isHittable ? true : nil }
         sleep(2) // and still there once all of it is laid out
         XCTAssertTrue(last.isHittable, "the last message still in view")
@@ -276,10 +272,11 @@ final class HermeshUITests: XCTestCase {
         // Under its environment, its context: the model it runs on; the agent tells
         // no reasoning effort, so that follows the agent's own.
         XCTAssertTrue(text("环境").waitForExistence(timeout: 10), "the environment")
-        let context = text("上下文")
-        for _ in 0..<5 where !context.exists { app.swipeUp() } // the sheet opens half high
+        let context = text("上下文"), modelRow = text("gemini-3-pro")
+        // The sheet opens half high, its rows below laid out only once in view.
+        for _ in 0..<5 where !(context.exists && modelRow.exists) { app.swipeUp() }
         XCTAssertTrue(context.exists, "the context")
-        XCTAssertTrue(text("gemini-3-pro").exists, "its model")
+        XCTAssertTrue(modelRow.exists, "its model")
         XCTAssertTrue(text("推理强度").exists && text("跟随 Gemini CLI").exists, "its reasoning effort")
         let file = text("hello.txt")
         XCTAssertTrue(file.waitForExistence(timeout: 20), "the changed file is listed")
