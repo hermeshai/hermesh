@@ -76,6 +76,10 @@ export type Bridge = {
   signerUpdate(): Promise<string | undefined>;
   /** Puts the app's signer in place of the installed one (Windows: one UAC prompt). */
   updateSigner(): Promise<void>;
+  /** With the signer set up, programs become administrator here without asking (Windows: UAC off or Never notify). */
+  elevatesSilently(): Promise<boolean>;
+  /** Opens the system's User Account Control settings. */
+  openElevationSettings(): void;
   /** hermesh:// links the app received (sign-in and join), also those that came before the page subscribed. */
   onLink(cb: (url: string) => void): () => void;
   /** What the main process does on its own: notifications and the menu bar (stored in the app's profile). */

@@ -40,6 +40,10 @@ export interface Platform {
   signerUpdate(): Promise<string | undefined>;
   /** Sets the app's signer up over the installed one (Windows: one UAC prompt). */
   updateSigner(): Promise<void>;
+  /** With the signer set up, programs become administrator here without asking (Windows' UAC off or set to Never notify), and so can approve. */
+  elevatesSilently(): Promise<boolean>;
+  /** The system's settings for that (User Account Control). */
+  openElevationSettings(): void;
   /** Runs one of a fixed set of commands in a terminal window of the system's. */
   runInTerminal(c: TerminalCommand, command: string): void;
   /** Opens a folder in the system's file browser (Finder, File Explorer) or a terminal there; anything but a folder, not at all. */

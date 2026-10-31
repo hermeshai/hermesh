@@ -94,6 +94,12 @@ export const mac: Platform = {
   },
   async updateSigner() {},
 
+  // Elevation is never silent on a Mac: Touch ID or the password, each time.
+  async elevatesSilently() {
+    return false;
+  },
+  openElevationSettings() {},
+
   runInTerminal(c: TerminalCommand, command: string) {
     // A .command file opens in Terminal and runs there, in the person's login shell.
     const dir = path.join(os.homedir(), "Library", "Caches", "Hermesh");

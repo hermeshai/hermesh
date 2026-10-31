@@ -126,8 +126,19 @@ function installerEvent(): boolean {
       attempt("PATH", () => setPath(true));
       break;
     case "--squirrel-uninstall":
-      // The app running (Squirrel ends nothing), its files could not go.
-      attempt("the app", () => execFileSync("taskkill.exe", ["/F", "/IM", "Hermesh.exe", "/FI", `PID ne ${process.pid}`], { windowsHide: true, timeout: 10_000 }));
+      // The app running (Squirrel ends nothing), its files could not go. Its
+      // helpers go with it: one already gone is no failure.
+      attempt("the app", () => {
+        const list = execFileSync("tasklist.exe", ["/FO", "CSV", "/NH", "/FI", "IMAGENAME eq Hermesh.exe"], { encoding: "utf8", windowsHide: true, timeout: 10_000 });
+        for (const [, pid] of list.matchAll(/^"Hermesh\.exe","(\d+)"/gim)) {
+          if (Number(pid) === process.pid) continue;
+          try {
+            process.kill(Number(pid));
+          } catch {
+            // Gone already.
+          }
+        }
+      });
       attempt("hermeshd's logon task", () => execFileSync(hermeshd, ["service", "uninstall"], { windowsHide: true, timeout: 5_000 }));
       attempt("links", () => app.removeAsDefaultProtocolClient("hermesh", stub, []));
       attempt("open at login", () => app.setLoginItemSettings({ ...atLogin, openAtLogin: false }));
@@ -305,6 +316,22 @@ export const win: Platform = {
   },
 
   updateSigner: setUpSigner,
+
+  async elevatesSilently() {
+    if (!fs.existsSync(installedSigner())) return false;
+    try {
+      const { stdout } = await promisify(execFile)("reg.exe", ["query", "HKLM\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Policies\\System"], { windowsHide: true, timeout: 10_000 });
+      const value = (name: string) => stdout.match(new RegExp(`^\\s*${name}\\s+REG_DWORD\\s+(0x[0-9a-f]+)`, "im"))?.[1];
+      // UAC off, or administrators elevated without a prompt ("Never notify").
+      return value("EnableLUA") === "0x0" || value("ConsentPromptBehaviorAdmin") === "0x0";
+    } catch {
+      return false;
+    }
+  },
+
+  openElevationSettings() {
+    spawn("UserAccountControlSettings.exe", [], { detached: true, stdio: "ignore" }).unref();
+  },
 
   runInTerminal(_c, command) {
     // A tab of Windows Terminal, else a PowerShell window; either stays when the command ends.
