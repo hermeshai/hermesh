@@ -130,6 +130,16 @@
         }
       }
     },
+    "%@ keeps its key, can act for it, and sees the sessions it reaches.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ 保管它的密钥，可以代表它操作，也能看到它碰到的会话。"
+          }
+        }
+      }
+    },
     "%@ only relays; it can’t approve for you": {
       "localizations": {
         "zh-Hans": {
@@ -299,6 +309,16 @@
     },
     "%lld": {
       "shouldTranslate": false
+    },
+    "%lld chosen": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld 个"
+          }
+        }
+      }
     },
     "%lld days": {
       "localizations": {
@@ -1701,6 +1721,16 @@
         }
       }
     },
+    "Choose…": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "选择…"
+          }
+        }
+      }
+    },
     "Claim code": {
       "localizations": {
         "zh-Hans": {
@@ -3020,16 +3050,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "在这些项目里，它能做你本人能做的事。"
-          }
-        }
-      }
-    },
-    "In these projects it can do anything you can. You can change or disconnect it at any time.": {
-      "localizations": {
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "在这些项目里，它能做你本人能做的事。随时可以修改或断开。"
           }
         }
       }
@@ -5070,6 +5090,16 @@
         }
       }
     },
+    "Send it this to try it:": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "把这句话发给它，试一下："
+          }
+        }
+      }
+    },
     "Send Request with Face ID": {
       "localizations": {
         "zh-Hans": {
@@ -6201,16 +6231,6 @@
         }
       }
     },
-    "Try it in %@: send it this:": {
-      "localizations": {
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "在 %@ 里试一下，把这句话发给它："
-          }
-        }
-      }
-    },
     "Try telling it: “Use Hermesh to see which projects I have.”": {
       "localizations": {
         "zh-Hans": {
@@ -7233,16 +7253,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "「%@」的会话"
-          }
-        }
-      }
-    },
-    "“%@” connects through %@: %@ keeps this agent’s key, can act for it within this scope, and sees the sessions it reaches.": {
-      "localizations": {
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "「%1$@」经由 %2$@ 连接：%3$@ 保管这个 agent 的密钥，可以在这个范围内代表它操作，并能看到它触及的会话。"
           }
         }
       }
