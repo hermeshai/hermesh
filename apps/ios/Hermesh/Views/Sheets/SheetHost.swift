@@ -184,6 +184,12 @@ struct ScopeChoice: Equatable {
 
     var complete: Bool { (allProjects || !projects.isEmpty) && !agents.isEmpty }
 
+    var projectsText: String {
+        if allProjects { return String(localized: "All projects") }
+        if projects.isEmpty { return String(localized: "None yet") }
+        return listText(projects.sorted().map { $0.split(separator: "/").last.map(String.init) ?? $0 })
+    }
+
     var spec: GrantSpec {
         var s = GrantSpec()
         s.agents = agents.sorted()
@@ -220,7 +226,7 @@ struct ScopeRows: View {
             NavigationLink {
                 ProjectPicker(scope: $scope, projects: projects ?? [])
             } label: {
-                LabeledContent("Projects", value: projectsText)
+                LabeledContent("Projects", value: scope.projectsText)
             }
             .accessibilityIdentifier("scope-projects")
             NavigationLink {
@@ -236,12 +242,6 @@ struct ScopeRows: View {
         } footer: {
             if !scope.complete { Text("Choose at least one project, or All Projects, and one coding agent.") }
         }
-    }
-
-    private var projectsText: String {
-        if scope.allProjects { return String(localized: "All projects") }
-        if scope.projects.isEmpty { return String(localized: "None yet") }
-        return listText(scope.projects.sorted().map { $0.split(separator: "/").last.map(String.init) ?? $0 })
     }
 }
 
@@ -308,7 +308,8 @@ struct AgentPicker: View {
 
 /// A request to connect: who asks, the verification code to compare, and
 /// (for an agent) what it may use. Approving signs with Face ID at once:
-/// this sheet is the confirmation. A device asking is a card of its own.
+/// this sheet is the confirmation. A device or an agent asking is a card of
+/// its own, and what follows the approval takes its place in the card.
 struct PairingSheet: View {
     @Environment(AppModel.self) private var model
     @Environment(\.dismiss) private var dismiss
@@ -326,9 +327,14 @@ struct PairingSheet: View {
     var body: some View {
         if let device {
             MatchSheet(label: device.label, digits: device.digits)
+        } else if let connected {
+            FirstTask(clientID: connected.id, name: connected.name) { dismiss() }
+                .fittedSheet()
         } else if let p = pairing, p.kind == .device {
             DeviceCard(pairing: p, busy: busy, approve: { approve(p) }, deny: { deny(p) }, close: { dismiss() })
                 .fittedSheet()
+        } else if let p = pairing, p.kind == .client {
+            ClientCard(pairing: p, report: selfReport(p), scope: $scope, busy: busy, approve: { approve(p) }, deny: { deny(p) }, close: { dismiss() })
         } else {
             form
         }
@@ -339,8 +345,6 @@ struct PairingSheet: View {
             Group {
                 if let joining {
                     MachineJoining(machineID: joining.id, name: joining.name, digits: joining.digits) { dismiss() }
-                } else if let connected {
-                    FirstTask(clientID: connected.id, name: connected.name) { dismiss() }
                 } else if let p = pairing {
                     form(p)
                 } else {
@@ -385,18 +389,6 @@ struct PairingSheet: View {
                 }
             }
             switch p.kind {
-            case .client:
-                ScopeRows(scope: $scope, projects: model.projects)
-                Section {
-                } footer: {
-                    VStack(alignment: .leading, spacing: 6) {
-                        Text("In these projects it can do anything you can. You can change or disconnect it at any time.")
-                        if !p.custodian.isEmpty {
-                            let host = URL(string: p.custodian)?.host ?? p.custodian
-                            Text("“\(p.label)” connects through \(host): \(host) keeps this agent’s key, can act for it within this scope, and sees the sessions it reaches.")
-                        }
-                    }
-                }
             case .machine:
                 Section {
                     TextField("Machine name", text: $machineName).textInputAutocapitalization(.never).autocorrectionDisabled()
@@ -412,7 +404,7 @@ struct PairingSheet: View {
             Section {
                 VStack(spacing: 14) {
                     CardButton(title: "Approve", systemImage: "faceid") { approve(p) }
-                        .disabled(busy || (p.kind == .client && !scope.complete) || (p.kind == .machine && machineName.isEmpty))
+                        .disabled(busy || (p.kind == .machine && machineName.isEmpty))
                         .accessibilityIdentifier("approve")
                     Button("Deny") { deny(p) }
                 }
@@ -516,6 +508,127 @@ private func deviceSymbol(_ platform: String) -> String {
     }
 }
 
+/// An agent asking to connect, as a card like a device's: who asks, the code
+/// to compare when it was not confirmed already, what it may use, one
+/// button. A row of its scope opens its picker, the card growing to full
+/// height until it comes back.
+private struct ClientCard: View {
+    @Environment(AppModel.self) private var model
+    let pairing: PairingDetails
+    let report: String
+    @Binding var scope: ScopeChoice
+    let busy: Bool
+    let approve: () -> Void
+    let deny: () -> Void
+    let close: () -> Void
+    @State private var path: [Page] = []
+    @State private var height: CGFloat = 560
+
+    enum Page { case projects, agents }
+
+    var body: some View {
+        NavigationStack(path: $path) {
+            card
+                .fixedSize(horizontal: false, vertical: true)
+                .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { height = $0 }
+                .frame(maxHeight: .infinity, alignment: .top)
+                .toolbar(.hidden, for: .navigationBar)
+                .navigationDestination(for: Page.self) { page in
+                    switch page {
+                    case .projects: ProjectPicker(scope: $scope, projects: model.projects)
+                    case .agents: AgentPicker(scope: $scope)
+                    }
+                }
+        }
+        .presentationDetents(path.isEmpty ? [.height(height)] : [.large])
+    }
+
+    private var card: some View {
+        let p = pairing
+        return VStack(spacing: 0) {
+            AgentLogo(id: p.label, size: 58)
+            Text(PairingText.title(p)).font(.title2.bold()).multilineTextAlignment(.center).padding(.top, 16)
+            if !report.isEmpty {
+                Text(report).font(.subheadline).foregroundStyle(.secondary).multilineTextAlignment(.center).padding(.top, 4)
+            }
+            if !p.confirmed {
+                CodeTiles(code: p.verificationCode, caption: "Does it match what the other side shows?").padding(.top, 22)
+            }
+            rows.padding(.top, 22)
+            VStack(spacing: 2) {
+                Text("In these projects it can do anything you can.")
+                if !p.custodian.isEmpty {
+                    let host = URL(string: p.custodian)?.host ?? p.custodian
+                    Text("\(host) keeps its key, can act for it, and sees the sessions it reaches.")
+                }
+            }
+            .font(.footnote).foregroundStyle(.secondary).multilineTextAlignment(.center)
+            .padding(.top, 14)
+            CardButton(title: "Approve", systemImage: "faceid", action: approve)
+                .disabled(busy || !scope.complete)
+                .accessibilityIdentifier("approve")
+                .padding(.top, 22)
+            Button("Deny", action: deny).padding(.top, 14)
+        }
+        .padding(.horizontal, 26).padding(.top, 44).padding(.bottom, 6)
+        .overlay(alignment: .topTrailing) { CardCloseButton(action: close).padding(16) }
+    }
+
+    /// Its scope: projects and coding agents open their pickers; the
+    /// lifetime is a menu.
+    private var rows: some View {
+        VStack(spacing: 0) {
+            NavigationLink(value: Page.projects) {
+                row("Projects") {
+                    if scope.allProjects || !scope.projects.isEmpty {
+                        Text(scope.projectsText)
+                    } else {
+                        Text("Choose…").foregroundStyle(Color.accentColor)
+                    }
+                }
+            }
+            .accessibilityIdentifier("scope-projects")
+            Divider().padding(.leading, 16)
+            NavigationLink(value: Page.agents) {
+                row("Coding agents") {
+                    let chosen = codingAgentIDs.filter(scope.agents.contains)
+                    if chosen.isEmpty {
+                        Text("Choose…").foregroundStyle(Color.accentColor)
+                    } else {
+                        HStack(spacing: 4) {
+                            ForEach(chosen.prefix(4), id: \.self) { AgentLogo(id: $0, size: 18) }
+                            Text("\(chosen.count) chosen").padding(.leading, 2)
+                        }
+                        .accessibilityElement(children: .ignore)
+                        .accessibilityLabel(listText(chosen.map(agentTitle)))
+                    }
+                }
+            }
+            .accessibilityIdentifier("scope-agents")
+            Divider().padding(.leading, 16)
+            LabeledContent("Valid for") {
+                Picker("Valid for", selection: $scope.ttlDays) {
+                    ForEach(ScopeChoice.ttlChoices, id: \.self) { d in Text("\(d) days").tag(d) }
+                }
+                .labelsHidden().tint(.secondary)
+            }
+            .padding(.leading, 16).padding(.trailing, 4).frame(minHeight: 44)
+        }
+        .buttonStyle(.plain)
+        .background(.fill.tertiary, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+    }
+
+    private func row(_ title: LocalizedStringKey, @ViewBuilder value: () -> some View) -> some View {
+        HStack(spacing: 8) {
+            Text(title)
+            Spacer(minLength: 12)
+            value().foregroundStyle(.secondary).lineLimit(1)
+            Image(systemName: "chevron.right").font(.footnote.weight(.semibold)).foregroundStyle(.tertiary)
+        }
+        .padding(.horizontal, 16).frame(minHeight: 44).contentShape(.rect)
+    }
+}
+
 /// After a machine is approved: the two digits to type on it, when it asked
 /// for them, until it connects; then that it joined, and its page.
 struct MachineJoining: View {
@@ -589,9 +702,9 @@ func firstTaskPrompt(_ model: AppModel) -> String {
     return String(localized: "Use Hermesh to have \(agent) say hello to me.")
 }
 
-/// After an agent is approved: one thing to send it that shows the whole way
-/// works (as the Mac's first task), then its first session as soon as it
-/// starts.
+/// After an agent is approved, in the card that asked: one thing to send it
+/// that shows the whole way works (as the Mac's first task), then its first
+/// session as soon as it starts.
 struct FirstTask: View {
     @Environment(AppModel.self) private var model
     let clientID: String
@@ -605,33 +718,36 @@ struct FirstTask: View {
     }
 
     var body: some View {
-        List {
-            Section {
-                VStack(spacing: 10) {
-                    Image(systemName: "checkmark.circle.fill").font(.system(size: 56)).foregroundStyle(.green)
-                    Text("“\(name)” is connected").font(.title2.bold()).multilineTextAlignment(.center)
-                        .accessibilityIdentifier("client-connected")
-                    Text("Try it in \(name): send it this:").foregroundStyle(.secondary).multilineTextAlignment(.center)
+        VStack(spacing: 0) {
+            AgentLogo(id: name, size: 58)
+                .overlay(alignment: .bottomTrailing) {
+                    Image(systemName: "checkmark.circle.fill").font(.system(size: 24))
+                        .symbolRenderingMode(.palette).foregroundStyle(.white, .green)
+                        .offset(x: 7, y: 7)
                 }
-                .frame(maxWidth: .infinity)
-                .listRowBackground(Color.clear)
+            Text("“\(name)” is connected").font(.title2.bold()).multilineTextAlignment(.center).padding(.top, 16)
+                .accessibilityIdentifier("client-connected")
+            Text("Send it this to try it:").font(.subheadline).foregroundStyle(.secondary).padding(.top, 4)
+            Text(prompt).font(.callout).textSelection(.enabled)
+                .padding(14).frame(maxWidth: .infinity, alignment: .leading)
+                .background(.fill.tertiary, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+                .padding(.top, 22)
+            HStack(spacing: 8) {
+                WaitingMark(size: 16)
+                Text("As soon as it starts working, its session opens here.")
             }
-            Section {
-                MonoBox(text: prompt)
-                CopyShareButtons(text: prompt, shareTitle: "Send…")
-                    .listRowBackground(Color.clear).listRowInsets(EdgeInsets())
-            } footer: {
-                HStack(spacing: 8) {
-                    WaitingMark(size: 18)
-                    Text("As soon as it starts working, its session opens here.")
-                }
-                .padding(.top, 8)
+            .font(.footnote).foregroundStyle(.secondary)
+            .padding(.top, 14)
+            CardButton(title: "Copy", systemImage: "doc.on.doc") {
+                UIPasteboard.general.string = prompt
+                model.show(String(localized: "Copied"))
             }
-            Section {
-                Button("Done", action: close).frame(maxWidth: .infinity)
-                    .listRowBackground(Color.clear)
-            }
+            .accessibilityIdentifier("copy-prompt")
+            .padding(.top, 22)
+            ShareLink(item: prompt) { Text("Send…") }.padding(.top, 14)
         }
+        .padding(.horizontal, 26).padding(.top, 44).padding(.bottom, 6)
+        .overlay(alignment: .topTrailing) { CardCloseButton(action: close).padding(16) }
         .onChange(of: first?.sessionID) { _, id in
             if let id {
                 close()

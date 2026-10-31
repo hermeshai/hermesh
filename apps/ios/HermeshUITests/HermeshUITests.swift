@@ -271,14 +271,25 @@ final class HermeshUITests: XCTestCase {
         XCTAssertTrue(verify.waitForExistence(timeout: 30), "the request shows on the overview")
         verify.tap()
         XCTAssertTrue(text("「Cursor」想连接你的电脑").waitForExistence(timeout: 10))
+        XCTAssertFalse(app.buttons["approve"].isEnabled, "no project chosen yet")
+        let request = XCTAttachment(screenshot: app.screenshot())
+        request.name = "agent request"
+        request.lifetime = .keepAlways
+        add(request)
         app.buttons["scope-projects"].tap()
         let all = app.switches["所有项目（包括以后添加的）"]
         XCTAssertTrue(all.waitForExistence(timeout: 10))
         all.switches.firstMatch.exists ? all.switches.firstMatch.tap() : all.tap()
         app.navigationBars.buttons.element(boundBy: 0).tap()
+        XCTAssertTrue(text("所有项目").waitForExistence(timeout: 10), "the card shows the choice")
         tap("approve")
         XCTAssertTrue(text("「Cursor」已连接").waitForExistence(timeout: 30), "approved")
-        app.buttons["完成"].tap()
+        XCTAssertTrue(app.buttons["copy-prompt"].exists, "the first task to copy")
+        let connected = XCTAttachment(screenshot: app.screenshot())
+        connected.name = "agent connected"
+        connected.lifetime = .keepAlways
+        add(connected)
+        tap("close")
         try waitFor("the agent is connected") { (try self.control("agent")["connected"] as? Bool) == true ? true : nil }
     }
 
