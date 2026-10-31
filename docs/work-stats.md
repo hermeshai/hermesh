@@ -1,6 +1,7 @@
 # Work stats: one model for the overview, usage and what comes next
 
-Status: proposed, 2026-10-31. Replaces `turn_usage`, `GetUsage` and
+Status: accepted 2026-10-31; machines and hermeshd (steps 1 and 2, §11)
+built the same day. Replaces `turn_usage`, `GetUsage` and
 `GetActivity` on machines and in hermeshd. There are no users yet: no
 compatibility with older machines, apps or databases is kept, and a
 machine's existing counts are rebuilt from its session events once (§5.6).
@@ -52,9 +53,11 @@ the owner's world per device; counts become part of that world.
 1. **Machines count once, when the work happens**, into quarter-hour
    buckets keyed by small integers (§4, §5). The session's event log stays
    the source of truth; the counts are derived from it and can be rebuilt.
-2. **Every owner device keeps a replica of every machine's counts** in its
-   own `owner.db`, pulled end to end and kept current from the machine's
-   `Watch` feed (§6). Machines never answer statistical questions.
+2. **Every owner device keeps a replica of every other machine's counts**
+   in its own `owner.db`, pulled end to end and kept current from the
+   machine's `Watch` feed (§6). Its own machine's counts (a Mac that is one)
+   are read in process, never copied, as its sessions are. Machines never
+   answer statistical questions.
 3. **Screens ask hermeshd one local question**, `QueryWork` (§7): any range,
    by hour or day, grouped by client, agent, machine or project. No relay
    round trip per question; an offline machine counts up to its last sync.
@@ -298,8 +301,8 @@ whole; while sessions run, that is one or two hours of a few dozen rows.
      machine is never far behind. A machine that did nothing is never
      pulled. The overview refreshes no more often than today's
      once a minute (its "N running" label is live from the sessions anyway).
-  3. **This device's own machine** is read in process, never through the
-     relay, and at once.
+  3. **This device's own machine** is never pulled: `QueryWork` reads its
+     tables in process, and its screens hear of its changes within a second.
 
   One pull in flight per machine; it repeats while `more`.
 - **Applying.** One `owner.db` transaction per page: a different `store`
@@ -440,7 +443,9 @@ message QueryWorkResponse {
 
 **How it is answered.** hermeshd turns the range into bucket bounds in
 quarters (Go's time zone database, so DST days come out right), then runs
-two aggregations in SQLite, each a nested range scan of a clustered key:
+two aggregations in SQLite, each a nested range scan of a clustered key, on
+its copy of the other machines and, the same way, on its own machine's
+tables in process ([workstats](../internal/workstats/workstats.go)):
 
 ```sql
 WITH b(i, q0, q1) AS (VALUES (0, ?, ?), (1, ?, ?), ...)

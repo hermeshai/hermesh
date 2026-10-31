@@ -76,16 +76,6 @@ service SessionService {
   rpc AnswerQuestion(AnswerQuestionRequest) returns (Session) {
     option (hermesh.options.v1.access) = ACCESS_WRITE;
   }
-  // GetUsage adds up the tokens of the turns that ended in the sessions the
-  // caller can read, by day and coding agent.
-  rpc GetUsage(GetUsageRequest) returns (GetUsageResponse) {
-    option (hermesh.options.v1.access) = ACCESS_READ;
-  }
-  // GetActivity counts the sessions the caller can read that worked on one
-  // day (a turn in progress then), by hour and by who started them.
-  rpc GetActivity(GetActivityRequest) returns (GetActivityResponse) {
-    option (hermesh.options.v1.access) = ACCESS_READ;
-  }
   // ReadToolOutput streams a tool's whole output, as recorded (up to 1 MiB;
   // past that its first and last 512 KiB), in chunks of at most 64 KiB:
   // what a BASIC event's preview, or a FULL one's first 16 KiB, is part of.
@@ -665,70 +655,6 @@ message AnswerQuestionRequest {
   repeated Answer answers = 3;
   // No answer: the agent is told nobody will answer and to continue.
   bool decline = 4;
-}
-
-message GetUsageRequest {
-  // The first day counted, YYYY-MM-DD in time_zone.
-  string since = 1;
-  // An IANA time zone name (e.g. "Asia/Shanghai") the days are in; empty
-  // means UTC.
-  string time_zone = 2;
-}
-
-message GetActivityRequest {
-  // The day, YYYY-MM-DD in time_zone.
-  string date = 1;
-  // An IANA time zone name; empty means UTC.
-  string time_zone = 2;
-}
-
-// The sessions one client started with one coding agent that worked in
-// one hour of the day.
-message ActivityHour {
-  // 0-23, in the request's time zone.
-  uint32 hour = 1;
-  // Session.created_by.
-  string created_by = 2;
-  uint32 sessions = 3;
-  // Session.agent; "" from a machine older than this field.
-  string agent = 4;
-}
-
-// The sessions one client started with one coding agent that worked on the
-// day.
-message ActivityClient {
-  string created_by = 1;
-  uint32 sessions = 2;
-  // Of them, those now done: idle without a failure, or archived.
-  uint32 done = 3;
-  // Session.agent; "" from a machine older than this field.
-  string agent = 4;
-  // Their turns that ended on the day, and those turns' tokens (input and
-  // output).
-  uint32 turns = 5;
-  uint64 tokens = 6;
-}
-
-message GetActivityResponse {
-  repeated ActivityHour hours = 1;
-  repeated ActivityClient clients = 2;
-}
-
-// One coding agent's turns that ended on one day.
-message UsageDay {
-  // YYYY-MM-DD.
-  string date = 1;
-  string agent = 2;
-  uint64 input_tokens = 3;
-  uint64 output_tokens = 4;
-  // Sessions with a turn that ended that day.
-  uint32 sessions = 5;
-  uint32 turns = 6;
-}
-
-message GetUsageResponse {
-  // By date, then agent.
-  repeated UsageDay days = 1;
 }
 
 message GetDiffRequest {

@@ -172,6 +172,7 @@ type shown struct {
 	devices  kept[*localv1.Device]
 	projects kept[*localv1.Project]
 	pairings kept[*localv1.PairingDetails]
+	work     uint64
 }
 
 // diff is what changed since the screen was last sent (everything, the
@@ -183,6 +184,9 @@ func (w *shown) diff(ctx context.Context, l *localService, o *Owner, mode string
 	}
 	if mode == "status" {
 		return out
+	}
+	if v := o.screenWorkVersion(mode); v != w.work {
+		w.work, out.WorkVersion = v, v
 	}
 	if r, err := l.ListMachines(ctx, &localv1.ListMachinesRequest{}); err == nil {
 		if mode == "owner" {

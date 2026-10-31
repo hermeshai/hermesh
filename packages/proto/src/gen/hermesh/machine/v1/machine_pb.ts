@@ -9,7 +9,7 @@ import { file_google_protobuf_timestamp } from "@bufbuild/protobuf/wkt";
 import type { AdminCommand, AgentDefaults, RevocationList, RootChain, Signed, Workspace } from "../../identity/v1/identity_pb";
 import { file_hermesh_identity_v1_identity } from "../../identity/v1/identity_pb";
 import { file_hermesh_options_v1_options } from "../../options/v1/options_pb";
-import type { Session, SessionCursor, SessionView } from "../../session/v1/session_pb";
+import type { Session, SessionCursor, SessionStatus, SessionView } from "../../session/v1/session_pb";
 import { file_hermesh_session_v1_session } from "../../session/v1/session_pb";
 import type { Message } from "@bufbuild/protobuf";
 
@@ -17,7 +17,7 @@ import type { Message } from "@bufbuild/protobuf";
  * Describes the file hermesh/machine/v1/machine.proto.
  */
 export const file_hermesh_machine_v1_machine: GenFile = /*@__PURE__*/
-  fileDesc("CiBoZXJtZXNoL21hY2hpbmUvdjEvbWFjaGluZS5wcm90bxISaGVybWVzaC5tYWNoaW5lLnYxIo8BCgxXYXRjaFJlcXVlc3QSFAoMcmVzdW1lX3Rva2VuGAEgASgMEg0KBWxpbWl0GAIgASgNEi0KBHZpZXcYAyABKA4yHy5oZXJtZXNoLnNlc3Npb24udjEuU2Vzc2lvblZpZXcSKwoHaGVsZF9hdBgEIAEoCzIaLmdvb2dsZS5wcm90b2J1Zi5UaW1lc3RhbXAi3QIKDVdhdGNoUmVzcG9uc2USDQoFcmVzZXQYASABKAgSLQoIc2Vzc2lvbnMYAiADKAsyGy5oZXJtZXNoLnNlc3Npb24udjEuU2Vzc2lvbhIbChNkZWxldGVkX3Nlc3Npb25faWRzGAMgAygJEi8KBG5leHQYBCABKAsyIS5oZXJtZXNoLnNlc3Npb24udjEuU2Vzc2lvbkN1cnNvchItCghwcm9qZWN0cxgFIAMoCzIbLmhlcm1lc2gubWFjaGluZS52MS5Qcm9qZWN0EhsKE3JlbW92ZWRfcHJvamVjdF9pZHMYBiADKAkSMQoGc3RhdHVzGAcgASgLMiEuaGVybWVzaC5tYWNoaW5lLnYxLk1hY2hpbmVTdGF0dXMSFAoMcmVzdW1lX3Rva2VuGAggASgMEisKB3NlbnRfYXQYCSABKAsyGi5nb29nbGUucHJvdG9idWYuVGltZXN0YW1wIiEKDkdldEluZm9SZXF1ZXN0Eg8KB3JlY2hlY2sYASABKAgibgoPR2V0SW5mb1Jlc3BvbnNlEhIKCm1hY2hpbmVfaWQYASABKAkSFAoMbWFjaGluZV9uYW1lGAIgASgJEjEKBnN0YXR1cxgDIAEoCzIhLmhlcm1lc2gubWFjaGluZS52MS5NYWNoaW5lU3RhdHVzIqoDCg1NYWNoaW5lU3RhdHVzEgwKBG5hbWUYDCABKAkSGAoQcHJvdG9jb2xfdmVyc2lvbhgBIAEoDRIQCghwbGF0Zm9ybRgCIAEoCRIvCgZhZ2VudHMYAyADKAsyHy5oZXJtZXNoLm1hY2hpbmUudjEuQWdlbnRTdGF0dXMSGAoQcnVubmluZ19zZXNzaW9ucxgEIAEoDRIUCgxtYXhfc2Vzc2lvbnMYBSABKA0SDgoGcGF1c2VkGAYgASgIEg8KB3ZlcnNpb24YByABKAkSQQoIc2Vzc2lvbnMYCSADKAsyLy5oZXJtZXNoLm1hY2hpbmUudjEuTWFjaGluZVN0YXR1cy5TZXNzaW9uc0VudHJ5EjQKCHByb2JsZW1zGA0gAygLMiIuaGVybWVzaC5tYWNoaW5lLnYxLk1hY2hpbmVQcm9ibGVtGi8KDVNlc3Npb25zRW50cnkSCwoDa2V5GAEgASgJEg0KBXZhbHVlGAIgASgNOgI4AUoECAgQCUoECAoQC0oECAsQDFIEaG9zdFIPYWdlbnRfcHJvY2Vzc2VzUgpzdGFydGVkX2F0IpsBCg5NYWNoaW5lUHJvYmxlbRI0CgRraW5kGAEgASgOMiYuaGVybWVzaC5tYWNoaW5lLnYxLk1hY2hpbmVQcm9ibGVtS2luZBIMCgR1c2VkGAIgASgEEg0KBWxpbWl0GAMgASgEEg8KB2N1bHByaXQYBCABKAkSFQoNY3VscHJpdF9jb3VudBgFIAEoDRIOCgZkZXRhaWwYBiABKAki5wIKC0FnZW50U3RhdHVzEgwKBG5hbWUYASABKAkSEQoJYXZhaWxhYmxlGAIgASgIEg8KB3ZlcnNpb24YAyABKAkSEQoJbG9nZ2VkX2luGAQgASgIEg4KBmRldGFpbBgGIAEoCRIQCghjaGVja2luZxgHIAEoCBIuCgZtb2RlbHMYCCADKAsyHi5oZXJtZXNoLm1hY2hpbmUudjEuQWdlbnRNb2RlbBI0CghkZWZhdWx0cxgJIAEoCzIiLmhlcm1lc2guaWRlbnRpdHkudjEuQWdlbnREZWZhdWx0cxIvCgNvd24YCiABKAsyIi5oZXJtZXNoLmlkZW50aXR5LnYxLkFnZW50RGVmYXVsdHMSMQoHcHJvYmxlbRgLIAEoDjIgLmhlcm1lc2gubWFjaGluZS52MS5BZ2VudFByb2JsZW0SDgoGYmluYXJ5GAwgASgJSgQIBRAGUhFzYW5kYm94X2F2YWlsYWJsZSI3CgpBZ2VudE1vZGVsEgoKAmlkGAEgASgJEgwKBG5hbWUYAiABKAkSDwoHZWZmb3J0cxgDIAMoCSIVChNMaXN0UHJvamVjdHNSZXF1ZXN0IsQBCgdQcm9qZWN0EhIKCnByb2plY3RfaWQYASABKAkSGAoQZGVmYXVsdF9iYXNlX3JlZhgCIAEoCRIxCgl3b3Jrc3BhY2UYAyABKA4yHi5oZXJtZXNoLmlkZW50aXR5LnYxLldvcmtzcGFjZRIMCgRwYXRoGAQgASgJEhMKC2Rlc2NyaXB0aW9uGAUgASgJEgwKBGJhc2UYBiABKAkSFwoPYWN0aXZlX3Nlc3Npb25zGAcgASgNEg4KBmFnZW50cxgIIAMoCSJFChRMaXN0UHJvamVjdHNSZXNwb25zZRItCghwcm9qZWN0cxgBIAMoCzIbLmhlcm1lc2gubWFjaGluZS52MS5Qcm9qZWN0IhIKEExpc3RSZXBvc1JlcXVlc3QiPAoRTGlzdFJlcG9zUmVzcG9uc2USJwoFcmVwb3MYASADKAsyGC5oZXJtZXNoLm1hY2hpbmUudjEuUmVwbyJVCgRSZXBvEgwKBHBhdGgYASABKAkSDgoGYnJhbmNoGAIgASgJEi8KC2xhc3RfY29tbWl0GAMgASgLMhouZ29vZ2xlLnByb3RvYnVmLlRpbWVzdGFtcCIyChJMaXN0Rm9sZGVyc1JlcXVlc3QSDAoEcGF0aBgBIAEoCRIOCgZoaWRkZW4YAiABKAgiogEKE0xpc3RGb2xkZXJzUmVzcG9uc2USDAoEcGF0aBgBIAEoCRIrCgdmb2xkZXJzGAIgAygLMhouaGVybWVzaC5tYWNoaW5lLnYxLkZvbGRlchINCgVmaWxlcxgDIAEoBRIMCgRyZXBvGAQgASgIEg4KBmJyYW5jaBgFIAEoCRIQCghicmFuY2hlcxgGIAMoCRIRCglmdWxsX3BhdGgYByABKAkiVQoGRm9sZGVyEgwKBG5hbWUYASABKAkSDAoEcGF0aBgCIAEoCRIMCgRyZXBvGAMgASgIEg4KBmJyYW5jaBgEIAEoCRIRCglwcm90ZWN0ZWQYBSABKAgiIQoQVGVzdEFnZW50UmVxdWVzdBINCgVhZ2VudBgBIAEoCSI+ChFUZXN0QWdlbnRSZXNwb25zZRIKCgJvaxgBIAEoCBINCgVyZXBseRgCIAEoCRIOCgZtaWxsaXMYAyABKA0ifQoYQXBwbHlBZG1pbkNvbW1hbmRSZXF1ZXN0EiwKB2NvbW1hbmQYASABKAsyGy5oZXJtZXNoLmlkZW50aXR5LnYxLlNpZ25lZBIzCghzZXR0aW5ncxgCIAEoCzIhLmhlcm1lc2guaWRlbnRpdHkudjEuQWRtaW5Db21tYW5kIiwKGUFwcGx5QWRtaW5Db21tYW5kUmVzcG9uc2USDwoHbWVzc2FnZRgBIAEoCSKGAQoWUHVzaFJldm9jYXRpb25zUmVxdWVzdBI4CgtyZXZvY2F0aW9ucxgBIAEoCzIjLmhlcm1lc2guaWRlbnRpdHkudjEuUmV2b2NhdGlvbkxpc3QSMgoKcm9vdF9jaGFpbhgCIAEoCzIeLmhlcm1lc2guaWRlbnRpdHkudjEuUm9vdENoYWluIioKF1B1c2hSZXZvY2F0aW9uc1Jlc3BvbnNlEg8KB2FwcGxpZWQYASABKAgqwgEKEk1hY2hpbmVQcm9ibGVtS2luZBIkCiBNQUNISU5FX1BST0JMRU1fS0lORF9VTlNQRUNJRklFRBAAEiIKHk1BQ0hJTkVfUFJPQkxFTV9LSU5EX1BST0NFU1NFUxABEh0KGU1BQ0hJTkVfUFJPQkxFTV9LSU5EX0RJU0sQAhIeChpNQUNISU5FX1BST0JMRU1fS0lORF9GSUxFUxADEiMKH01BQ0hJTkVfUFJPQkxFTV9LSU5EX1NIRUxMX1BBVEgQBCrnAQoMQWdlbnRQcm9ibGVtEh0KGUFHRU5UX1BST0JMRU1fVU5TUEVDSUZJRUQQABIbChdBR0VOVF9QUk9CTEVNX05PVF9GT1VORBABEiEKHUFHRU5UX1BST0JMRU1fQVBQX1dJVEhPVVRfQ0xJEAISHgoaQUdFTlRfUFJPQkxFTV9OT19QUk9DRVNTRVMQAxIbChdBR0VOVF9QUk9CTEVNX1RJTUVEX09VVBAEEiEKHUFHRU5UX1BST0JMRU1fTUlTU0lOR19SVU5USU1FEAUSGAoUQUdFTlRfUFJPQkxFTV9GQUlMRUQQBjKpAgoOTWFjaGluZVNlcnZpY2USWAoHR2V0SW5mbxIiLmhlcm1lc2gubWFjaGluZS52MS5HZXRJbmZvUmVxdWVzdBojLmhlcm1lc2gubWFjaGluZS52MS5HZXRJbmZvUmVzcG9uc2UiBIi1GAESZwoMTGlzdFByb2plY3RzEicuaGVybWVzaC5tYWNoaW5lLnYxLkxpc3RQcm9qZWN0c1JlcXVlc3QaKC5oZXJtZXNoLm1hY2hpbmUudjEuTGlzdFByb2plY3RzUmVzcG9uc2UiBIi1GAESVAoFV2F0Y2gSIC5oZXJtZXNoLm1hY2hpbmUudjEuV2F0Y2hSZXF1ZXN0GiEuaGVybWVzaC5tYWNoaW5lLnYxLldhdGNoUmVzcG9uc2UiBIi1GAEwATKlBAoTTWFjaGluZUFkbWluU2VydmljZRJ2ChFBcHBseUFkbWluQ29tbWFuZBIsLmhlcm1lc2gubWFjaGluZS52MS5BcHBseUFkbWluQ29tbWFuZFJlcXVlc3QaLS5oZXJtZXNoLm1hY2hpbmUudjEuQXBwbHlBZG1pbkNvbW1hbmRSZXNwb25zZSIEiLUYAhJwCg9QdXNoUmV2b2NhdGlvbnMSKi5oZXJtZXNoLm1hY2hpbmUudjEuUHVzaFJldm9jYXRpb25zUmVxdWVzdBorLmhlcm1lc2gubWFjaGluZS52MS5QdXNoUmV2b2NhdGlvbnNSZXNwb25zZSIEiLUYAhJeCglMaXN0UmVwb3MSJC5oZXJtZXNoLm1hY2hpbmUudjEuTGlzdFJlcG9zUmVxdWVzdBolLmhlcm1lc2gubWFjaGluZS52MS5MaXN0UmVwb3NSZXNwb25zZSIEiLUYAhJkCgtMaXN0Rm9sZGVycxImLmhlcm1lc2gubWFjaGluZS52MS5MaXN0Rm9sZGVyc1JlcXVlc3QaJy5oZXJtZXNoLm1hY2hpbmUudjEuTGlzdEZvbGRlcnNSZXNwb25zZSIEiLUYAhJeCglUZXN0QWdlbnQSJC5oZXJtZXNoLm1hY2hpbmUudjEuVGVzdEFnZW50UmVxdWVzdBolLmhlcm1lc2gubWFjaGluZS52MS5UZXN0QWdlbnRSZXNwb25zZSIEiLUYAmIGcHJvdG8z", [file_google_protobuf_timestamp, file_hermesh_identity_v1_identity, file_hermesh_options_v1_options, file_hermesh_session_v1_session]);
+  fileDesc("CiBoZXJtZXNoL21hY2hpbmUvdjEvbWFjaGluZS5wcm90bxISaGVybWVzaC5tYWNoaW5lLnYxIo8BCgxXYXRjaFJlcXVlc3QSFAoMcmVzdW1lX3Rva2VuGAEgASgMEg0KBWxpbWl0GAIgASgNEi0KBHZpZXcYAyABKA4yHy5oZXJtZXNoLnNlc3Npb24udjEuU2Vzc2lvblZpZXcSKwoHaGVsZF9hdBgEIAEoCzIaLmdvb2dsZS5wcm90b2J1Zi5UaW1lc3RhbXAi7wIKDVdhdGNoUmVzcG9uc2USDQoFcmVzZXQYASABKAgSLQoIc2Vzc2lvbnMYAiADKAsyGy5oZXJtZXNoLnNlc3Npb24udjEuU2Vzc2lvbhIbChNkZWxldGVkX3Nlc3Npb25faWRzGAMgAygJEi8KBG5leHQYBCABKAsyIS5oZXJtZXNoLnNlc3Npb24udjEuU2Vzc2lvbkN1cnNvchItCghwcm9qZWN0cxgFIAMoCzIbLmhlcm1lc2gubWFjaGluZS52MS5Qcm9qZWN0EhsKE3JlbW92ZWRfcHJvamVjdF9pZHMYBiADKAkSMQoGc3RhdHVzGAcgASgLMiEuaGVybWVzaC5tYWNoaW5lLnYxLk1hY2hpbmVTdGF0dXMSFAoMcmVzdW1lX3Rva2VuGAggASgMEisKB3NlbnRfYXQYCSABKAsyGi5nb29nbGUucHJvdG9idWYuVGltZXN0YW1wEhAKCHdvcmtfc2VxGAogASgEIkIKD1B1bGxXb3JrUmVxdWVzdBINCgVzdG9yZRgBIAEoDBINCgVhZnRlchgCIAEoBBIRCglmcm9tX2hvdXIYAyABKAMixwEKEFB1bGxXb3JrUmVzcG9uc2USDQoFc3RvcmUYASABKAwSCwoDc2VxGAIgASgEEgwKBG1vcmUYAyABKAgSKQoEa2V5cxgEIAMoCzIbLmhlcm1lc2gubWFjaGluZS52MS5Xb3JrS2V5EjEKCHNlc3Npb25zGAUgAygLMh8uaGVybWVzaC5tYWNoaW5lLnYxLldvcmtTZXNzaW9uEisKBWhvdXJzGAYgAygLMhwuaGVybWVzaC5tYWNoaW5lLnYxLldvcmtIb3VyIkkKB1dvcmtLZXkSCwoDa2V5GAEgASgNEg4KBmNsaWVudBgCIAEoCRINCgVhZ2VudBgDIAEoCRISCgpwcm9qZWN0X2lkGAQgASgJIm4KC1dvcmtTZXNzaW9uEg8KB3Nlc3Npb24YASABKA0SCwoDa2V5GAIgASgNEjEKBnN0YXR1cxgDIAEoDjIhLmhlcm1lc2guc2Vzc2lvbi52MS5TZXNzaW9uU3RhdHVzEg4KBmZhaWxlZBgEIAEoCCJ/CghXb3JrSG91chIMCgRob3VyGAEgASgDEjIKCHByZXNlbmNlGAIgAygLMiAuaGVybWVzaC5tYWNoaW5lLnYxLldvcmtQcmVzZW5jZRIxCghtZWFzdXJlcxgDIAMoCzIfLmhlcm1lc2gubWFjaGluZS52MS5Xb3JrTWVhc3VyZSI9CgxXb3JrUHJlc2VuY2USDwoHcXVhcnRlchgBIAEoDRILCgNrZXkYAiABKA0SDwoHc2Vzc2lvbhgDIAEoDSKTAQoLV29ya01lYXN1cmUSDwoHcXVhcnRlchgBIAEoDRILCgNrZXkYAiABKA0SDQoFdHVybnMYAyABKA0SFAoMZmFpbGVkX3R1cm5zGAQgASgNEhQKDGlucHV0X3Rva2VucxgFIAEoBBIVCg1vdXRwdXRfdG9rZW5zGAYgASgEEhQKDGJ1c3lfc2Vjb25kcxgHIAEoDSIhCg5HZXRJbmZvUmVxdWVzdBIPCgdyZWNoZWNrGAEgASgIIm4KD0dldEluZm9SZXNwb25zZRISCgptYWNoaW5lX2lkGAEgASgJEhQKDG1hY2hpbmVfbmFtZRgCIAEoCRIxCgZzdGF0dXMYAyABKAsyIS5oZXJtZXNoLm1hY2hpbmUudjEuTWFjaGluZVN0YXR1cyKqAwoNTWFjaGluZVN0YXR1cxIMCgRuYW1lGAwgASgJEhgKEHByb3RvY29sX3ZlcnNpb24YASABKA0SEAoIcGxhdGZvcm0YAiABKAkSLwoGYWdlbnRzGAMgAygLMh8uaGVybWVzaC5tYWNoaW5lLnYxLkFnZW50U3RhdHVzEhgKEHJ1bm5pbmdfc2Vzc2lvbnMYBCABKA0SFAoMbWF4X3Nlc3Npb25zGAUgASgNEg4KBnBhdXNlZBgGIAEoCBIPCgd2ZXJzaW9uGAcgASgJEkEKCHNlc3Npb25zGAkgAygLMi8uaGVybWVzaC5tYWNoaW5lLnYxLk1hY2hpbmVTdGF0dXMuU2Vzc2lvbnNFbnRyeRI0Cghwcm9ibGVtcxgNIAMoCzIiLmhlcm1lc2gubWFjaGluZS52MS5NYWNoaW5lUHJvYmxlbRovCg1TZXNzaW9uc0VudHJ5EgsKA2tleRgBIAEoCRINCgV2YWx1ZRgCIAEoDToCOAFKBAgIEAlKBAgKEAtKBAgLEAxSBGhvc3RSD2FnZW50X3Byb2Nlc3Nlc1IKc3RhcnRlZF9hdCKbAQoOTWFjaGluZVByb2JsZW0SNAoEa2luZBgBIAEoDjImLmhlcm1lc2gubWFjaGluZS52MS5NYWNoaW5lUHJvYmxlbUtpbmQSDAoEdXNlZBgCIAEoBBINCgVsaW1pdBgDIAEoBBIPCgdjdWxwcml0GAQgASgJEhUKDWN1bHByaXRfY291bnQYBSABKA0SDgoGZGV0YWlsGAYgASgJIucCCgtBZ2VudFN0YXR1cxIMCgRuYW1lGAEgASgJEhEKCWF2YWlsYWJsZRgCIAEoCBIPCgd2ZXJzaW9uGAMgASgJEhEKCWxvZ2dlZF9pbhgEIAEoCBIOCgZkZXRhaWwYBiABKAkSEAoIY2hlY2tpbmcYByABKAgSLgoGbW9kZWxzGAggAygLMh4uaGVybWVzaC5tYWNoaW5lLnYxLkFnZW50TW9kZWwSNAoIZGVmYXVsdHMYCSABKAsyIi5oZXJtZXNoLmlkZW50aXR5LnYxLkFnZW50RGVmYXVsdHMSLwoDb3duGAogASgLMiIuaGVybWVzaC5pZGVudGl0eS52MS5BZ2VudERlZmF1bHRzEjEKB3Byb2JsZW0YCyABKA4yIC5oZXJtZXNoLm1hY2hpbmUudjEuQWdlbnRQcm9ibGVtEg4KBmJpbmFyeRgMIAEoCUoECAUQBlIRc2FuZGJveF9hdmFpbGFibGUiNwoKQWdlbnRNb2RlbBIKCgJpZBgBIAEoCRIMCgRuYW1lGAIgASgJEg8KB2VmZm9ydHMYAyADKAkiFQoTTGlzdFByb2plY3RzUmVxdWVzdCLEAQoHUHJvamVjdBISCgpwcm9qZWN0X2lkGAEgASgJEhgKEGRlZmF1bHRfYmFzZV9yZWYYAiABKAkSMQoJd29ya3NwYWNlGAMgASgOMh4uaGVybWVzaC5pZGVudGl0eS52MS5Xb3Jrc3BhY2USDAoEcGF0aBgEIAEoCRITCgtkZXNjcmlwdGlvbhgFIAEoCRIMCgRiYXNlGAYgASgJEhcKD2FjdGl2ZV9zZXNzaW9ucxgHIAEoDRIOCgZhZ2VudHMYCCADKAkiRQoUTGlzdFByb2plY3RzUmVzcG9uc2USLQoIcHJvamVjdHMYASADKAsyGy5oZXJtZXNoLm1hY2hpbmUudjEuUHJvamVjdCISChBMaXN0UmVwb3NSZXF1ZXN0IjwKEUxpc3RSZXBvc1Jlc3BvbnNlEicKBXJlcG9zGAEgAygLMhguaGVybWVzaC5tYWNoaW5lLnYxLlJlcG8iVQoEUmVwbxIMCgRwYXRoGAEgASgJEg4KBmJyYW5jaBgCIAEoCRIvCgtsYXN0X2NvbW1pdBgDIAEoCzIaLmdvb2dsZS5wcm90b2J1Zi5UaW1lc3RhbXAiMgoSTGlzdEZvbGRlcnNSZXF1ZXN0EgwKBHBhdGgYASABKAkSDgoGaGlkZGVuGAIgASgIIqIBChNMaXN0Rm9sZGVyc1Jlc3BvbnNlEgwKBHBhdGgYASABKAkSKwoHZm9sZGVycxgCIAMoCzIaLmhlcm1lc2gubWFjaGluZS52MS5Gb2xkZXISDQoFZmlsZXMYAyABKAUSDAoEcmVwbxgEIAEoCBIOCgZicmFuY2gYBSABKAkSEAoIYnJhbmNoZXMYBiADKAkSEQoJZnVsbF9wYXRoGAcgASgJIlUKBkZvbGRlchIMCgRuYW1lGAEgASgJEgwKBHBhdGgYAiABKAkSDAoEcmVwbxgDIAEoCBIOCgZicmFuY2gYBCABKAkSEQoJcHJvdGVjdGVkGAUgASgIIiEKEFRlc3RBZ2VudFJlcXVlc3QSDQoFYWdlbnQYASABKAkiPgoRVGVzdEFnZW50UmVzcG9uc2USCgoCb2sYASABKAgSDQoFcmVwbHkYAiABKAkSDgoGbWlsbGlzGAMgASgNIn0KGEFwcGx5QWRtaW5Db21tYW5kUmVxdWVzdBIsCgdjb21tYW5kGAEgASgLMhsuaGVybWVzaC5pZGVudGl0eS52MS5TaWduZWQSMwoIc2V0dGluZ3MYAiABKAsyIS5oZXJtZXNoLmlkZW50aXR5LnYxLkFkbWluQ29tbWFuZCIsChlBcHBseUFkbWluQ29tbWFuZFJlc3BvbnNlEg8KB21lc3NhZ2UYASABKAkihgEKFlB1c2hSZXZvY2F0aW9uc1JlcXVlc3QSOAoLcmV2b2NhdGlvbnMYASABKAsyIy5oZXJtZXNoLmlkZW50aXR5LnYxLlJldm9jYXRpb25MaXN0EjIKCnJvb3RfY2hhaW4YAiABKAsyHi5oZXJtZXNoLmlkZW50aXR5LnYxLlJvb3RDaGFpbiIqChdQdXNoUmV2b2NhdGlvbnNSZXNwb25zZRIPCgdhcHBsaWVkGAEgASgIKsIBChJNYWNoaW5lUHJvYmxlbUtpbmQSJAogTUFDSElORV9QUk9CTEVNX0tJTkRfVU5TUEVDSUZJRUQQABIiCh5NQUNISU5FX1BST0JMRU1fS0lORF9QUk9DRVNTRVMQARIdChlNQUNISU5FX1BST0JMRU1fS0lORF9ESVNLEAISHgoaTUFDSElORV9QUk9CTEVNX0tJTkRfRklMRVMQAxIjCh9NQUNISU5FX1BST0JMRU1fS0lORF9TSEVMTF9QQVRIEAQq5wEKDEFnZW50UHJvYmxlbRIdChlBR0VOVF9QUk9CTEVNX1VOU1BFQ0lGSUVEEAASGwoXQUdFTlRfUFJPQkxFTV9OT1RfRk9VTkQQARIhCh1BR0VOVF9QUk9CTEVNX0FQUF9XSVRIT1VUX0NMSRACEh4KGkFHRU5UX1BST0JMRU1fTk9fUFJPQ0VTU0VTEAMSGwoXQUdFTlRfUFJPQkxFTV9USU1FRF9PVVQQBBIhCh1BR0VOVF9QUk9CTEVNX01JU1NJTkdfUlVOVElNRRAFEhgKFEFHRU5UX1BST0JMRU1fRkFJTEVEEAYyhgMKDk1hY2hpbmVTZXJ2aWNlElgKB0dldEluZm8SIi5oZXJtZXNoLm1hY2hpbmUudjEuR2V0SW5mb1JlcXVlc3QaIy5oZXJtZXNoLm1hY2hpbmUudjEuR2V0SW5mb1Jlc3BvbnNlIgSItRgBEmcKDExpc3RQcm9qZWN0cxInLmhlcm1lc2gubWFjaGluZS52MS5MaXN0UHJvamVjdHNSZXF1ZXN0GiguaGVybWVzaC5tYWNoaW5lLnYxLkxpc3RQcm9qZWN0c1Jlc3BvbnNlIgSItRgBElQKBVdhdGNoEiAuaGVybWVzaC5tYWNoaW5lLnYxLldhdGNoUmVxdWVzdBohLmhlcm1lc2gubWFjaGluZS52MS5XYXRjaFJlc3BvbnNlIgSItRgBMAESWwoIUHVsbFdvcmsSIy5oZXJtZXNoLm1hY2hpbmUudjEuUHVsbFdvcmtSZXF1ZXN0GiQuaGVybWVzaC5tYWNoaW5lLnYxLlB1bGxXb3JrUmVzcG9uc2UiBIi1GAEypQQKE01hY2hpbmVBZG1pblNlcnZpY2USdgoRQXBwbHlBZG1pbkNvbW1hbmQSLC5oZXJtZXNoLm1hY2hpbmUudjEuQXBwbHlBZG1pbkNvbW1hbmRSZXF1ZXN0Gi0uaGVybWVzaC5tYWNoaW5lLnYxLkFwcGx5QWRtaW5Db21tYW5kUmVzcG9uc2UiBIi1GAIScAoPUHVzaFJldm9jYXRpb25zEiouaGVybWVzaC5tYWNoaW5lLnYxLlB1c2hSZXZvY2F0aW9uc1JlcXVlc3QaKy5oZXJtZXNoLm1hY2hpbmUudjEuUHVzaFJldm9jYXRpb25zUmVzcG9uc2UiBIi1GAISXgoJTGlzdFJlcG9zEiQuaGVybWVzaC5tYWNoaW5lLnYxLkxpc3RSZXBvc1JlcXVlc3QaJS5oZXJtZXNoLm1hY2hpbmUudjEuTGlzdFJlcG9zUmVzcG9uc2UiBIi1GAISZAoLTGlzdEZvbGRlcnMSJi5oZXJtZXNoLm1hY2hpbmUudjEuTGlzdEZvbGRlcnNSZXF1ZXN0GicuaGVybWVzaC5tYWNoaW5lLnYxLkxpc3RGb2xkZXJzUmVzcG9uc2UiBIi1GAISXgoJVGVzdEFnZW50EiQuaGVybWVzaC5tYWNoaW5lLnYxLlRlc3RBZ2VudFJlcXVlc3QaJS5oZXJtZXNoLm1hY2hpbmUudjEuVGVzdEFnZW50UmVzcG9uc2UiBIi1GAJiBnByb3RvMw", [file_google_protobuf_timestamp, file_hermesh_identity_v1_identity, file_hermesh_options_v1_options, file_hermesh_session_v1_session]);
 
 /**
  * @generated from message hermesh.machine.v1.WatchRequest
@@ -123,6 +123,13 @@ export type WatchResponse = Message<"hermesh.machine.v1.WatchResponse"> & {
    * @generated from field: google.protobuf.Timestamp sent_at = 9;
    */
   sentAt?: Timestamp | undefined;
+
+  /**
+   * Every message: where the machine's counts of work are (PullWork).
+   *
+   * @generated from field: uint64 work_seq = 10;
+   */
+  workSeq: bigint;
 };
 
 /**
@@ -131,6 +138,266 @@ export type WatchResponse = Message<"hermesh.machine.v1.WatchResponse"> & {
  */
 export const WatchResponseSchema: GenMessage<WatchResponse> = /*@__PURE__*/
   messageDesc(file_hermesh_machine_v1_machine, 1);
+
+/**
+ * @generated from message hermesh.machine.v1.PullWorkRequest
+ */
+export type PullWorkRequest = Message<"hermesh.machine.v1.PullWorkRequest"> & {
+  /**
+   * The store the caller holds (empty: none) and the seq it holds.
+   *
+   * @generated from field: bytes store = 1;
+   */
+  store: Uint8Array;
+
+  /**
+   * @generated from field: uint64 after = 2;
+   */
+  after: bigint;
+
+  /**
+   * With after 0: only hours from this one on (unix seconds / 3600), for a
+   * device that keeps less history than the machine.
+   *
+   * @generated from field: int64 from_hour = 3;
+   */
+  fromHour: bigint;
+};
+
+/**
+ * Describes the message hermesh.machine.v1.PullWorkRequest.
+ * Use `create(PullWorkRequestSchema)` to create a new message.
+ */
+export const PullWorkRequestSchema: GenMessage<PullWorkRequest> = /*@__PURE__*/
+  messageDesc(file_hermesh_machine_v1_machine, 2);
+
+/**
+ * @generated from message hermesh.machine.v1.PullWorkResponse
+ */
+export type PullWorkResponse = Message<"hermesh.machine.v1.PullWorkResponse"> & {
+  /**
+   * Another than the request's: drop what you hold of this machine first.
+   *
+   * @generated from field: bytes store = 1;
+   */
+  store: Uint8Array;
+
+  /**
+   * This answer brings the caller up to seq; with more, ask again from it.
+   *
+   * @generated from field: uint64 seq = 2;
+   */
+  seq: bigint;
+
+  /**
+   * @generated from field: bool more = 3;
+   */
+  more: boolean;
+
+  /**
+   * @generated from field: repeated hermesh.machine.v1.WorkKey keys = 4;
+   */
+  keys: WorkKey[];
+
+  /**
+   * @generated from field: repeated hermesh.machine.v1.WorkSession sessions = 5;
+   */
+  sessions: WorkSession[];
+
+  /**
+   * Each replaces what the caller holds of that hour.
+   *
+   * @generated from field: repeated hermesh.machine.v1.WorkHour hours = 6;
+   */
+  hours: WorkHour[];
+};
+
+/**
+ * Describes the message hermesh.machine.v1.PullWorkResponse.
+ * Use `create(PullWorkResponseSchema)` to create a new message.
+ */
+export const PullWorkResponseSchema: GenMessage<PullWorkResponse> = /*@__PURE__*/
+  messageDesc(file_hermesh_machine_v1_machine, 3);
+
+/**
+ * Who did work: the client (who started a session, or asked for a turn),
+ * the coding agent and the project.
+ *
+ * @generated from message hermesh.machine.v1.WorkKey
+ */
+export type WorkKey = Message<"hermesh.machine.v1.WorkKey"> & {
+  /**
+   * @generated from field: uint32 key = 1;
+   */
+  key: number;
+
+  /**
+   * @generated from field: string client = 2;
+   */
+  client: string;
+
+  /**
+   * @generated from field: string agent = 3;
+   */
+  agent: string;
+
+  /**
+   * @generated from field: string project_id = 4;
+   */
+  projectId: string;
+};
+
+/**
+ * Describes the message hermesh.machine.v1.WorkKey.
+ * Use `create(WorkKeySchema)` to create a new message.
+ */
+export const WorkKeySchema: GenMessage<WorkKey> = /*@__PURE__*/
+  messageDesc(file_hermesh_machine_v1_machine, 4);
+
+/**
+ * @generated from message hermesh.machine.v1.WorkSession
+ */
+export type WorkSession = Message<"hermesh.machine.v1.WorkSession"> & {
+  /**
+   * @generated from field: uint32 session = 1;
+   */
+  session: number;
+
+  /**
+   * Its key: who started it.
+   *
+   * @generated from field: uint32 key = 2;
+   */
+  key: number;
+
+  /**
+   * @generated from field: hermesh.session.v1.SessionStatus status = 3;
+   */
+  status: SessionStatus;
+
+  /**
+   * Its last turn failed (not an interruption).
+   *
+   * @generated from field: bool failed = 4;
+   */
+  failed: boolean;
+};
+
+/**
+ * Describes the message hermesh.machine.v1.WorkSession.
+ * Use `create(WorkSessionSchema)` to create a new message.
+ */
+export const WorkSessionSchema: GenMessage<WorkSession> = /*@__PURE__*/
+  messageDesc(file_hermesh_machine_v1_machine, 5);
+
+/**
+ * @generated from message hermesh.machine.v1.WorkHour
+ */
+export type WorkHour = Message<"hermesh.machine.v1.WorkHour"> & {
+  /**
+   * Unix seconds / 3600.
+   *
+   * @generated from field: int64 hour = 1;
+   */
+  hour: bigint;
+
+  /**
+   * @generated from field: repeated hermesh.machine.v1.WorkPresence presence = 2;
+   */
+  presence: WorkPresence[];
+
+  /**
+   * @generated from field: repeated hermesh.machine.v1.WorkMeasure measures = 3;
+   */
+  measures: WorkMeasure[];
+};
+
+/**
+ * Describes the message hermesh.machine.v1.WorkHour.
+ * Use `create(WorkHourSchema)` to create a new message.
+ */
+export const WorkHourSchema: GenMessage<WorkHour> = /*@__PURE__*/
+  messageDesc(file_hermesh_machine_v1_machine, 6);
+
+/**
+ * A session at work (a turn in progress) in a quarter of the hour (0-3).
+ *
+ * @generated from message hermesh.machine.v1.WorkPresence
+ */
+export type WorkPresence = Message<"hermesh.machine.v1.WorkPresence"> & {
+  /**
+   * @generated from field: uint32 quarter = 1;
+   */
+  quarter: number;
+
+  /**
+   * @generated from field: uint32 key = 2;
+   */
+  key: number;
+
+  /**
+   * @generated from field: uint32 session = 3;
+   */
+  session: number;
+};
+
+/**
+ * Describes the message hermesh.machine.v1.WorkPresence.
+ * Use `create(WorkPresenceSchema)` to create a new message.
+ */
+export const WorkPresenceSchema: GenMessage<WorkPresence> = /*@__PURE__*/
+  messageDesc(file_hermesh_machine_v1_machine, 7);
+
+/**
+ * What turns of one key did in a quarter of the hour (0-3): those that
+ * ended there, of them failed, their tokens, and the seconds turns were in
+ * progress there.
+ *
+ * @generated from message hermesh.machine.v1.WorkMeasure
+ */
+export type WorkMeasure = Message<"hermesh.machine.v1.WorkMeasure"> & {
+  /**
+   * @generated from field: uint32 quarter = 1;
+   */
+  quarter: number;
+
+  /**
+   * @generated from field: uint32 key = 2;
+   */
+  key: number;
+
+  /**
+   * @generated from field: uint32 turns = 3;
+   */
+  turns: number;
+
+  /**
+   * @generated from field: uint32 failed_turns = 4;
+   */
+  failedTurns: number;
+
+  /**
+   * @generated from field: uint64 input_tokens = 5;
+   */
+  inputTokens: bigint;
+
+  /**
+   * @generated from field: uint64 output_tokens = 6;
+   */
+  outputTokens: bigint;
+
+  /**
+   * @generated from field: uint32 busy_seconds = 7;
+   */
+  busySeconds: number;
+};
+
+/**
+ * Describes the message hermesh.machine.v1.WorkMeasure.
+ * Use `create(WorkMeasureSchema)` to create a new message.
+ */
+export const WorkMeasureSchema: GenMessage<WorkMeasure> = /*@__PURE__*/
+  messageDesc(file_hermesh_machine_v1_machine, 8);
 
 /**
  * @generated from message hermesh.machine.v1.GetInfoRequest
@@ -150,7 +417,7 @@ export type GetInfoRequest = Message<"hermesh.machine.v1.GetInfoRequest"> & {
  * Use `create(GetInfoRequestSchema)` to create a new message.
  */
 export const GetInfoRequestSchema: GenMessage<GetInfoRequest> = /*@__PURE__*/
-  messageDesc(file_hermesh_machine_v1_machine, 2);
+  messageDesc(file_hermesh_machine_v1_machine, 9);
 
 /**
  * @generated from message hermesh.machine.v1.GetInfoResponse
@@ -177,7 +444,7 @@ export type GetInfoResponse = Message<"hermesh.machine.v1.GetInfoResponse"> & {
  * Use `create(GetInfoResponseSchema)` to create a new message.
  */
 export const GetInfoResponseSchema: GenMessage<GetInfoResponse> = /*@__PURE__*/
-  messageDesc(file_hermesh_machine_v1_machine, 3);
+  messageDesc(file_hermesh_machine_v1_machine, 10);
 
 /**
  * A machine's state, for those it lets in end to end (agents and the
@@ -247,7 +514,7 @@ export type MachineStatus = Message<"hermesh.machine.v1.MachineStatus"> & {
  * Use `create(MachineStatusSchema)` to create a new message.
  */
 export const MachineStatusSchema: GenMessage<MachineStatus> = /*@__PURE__*/
-  messageDesc(file_hermesh_machine_v1_machine, 4);
+  messageDesc(file_hermesh_machine_v1_machine, 11);
 
 /**
  * @generated from message hermesh.machine.v1.MachineProblem
@@ -298,7 +565,7 @@ export type MachineProblem = Message<"hermesh.machine.v1.MachineProblem"> & {
  * Use `create(MachineProblemSchema)` to create a new message.
  */
 export const MachineProblemSchema: GenMessage<MachineProblem> = /*@__PURE__*/
-  messageDesc(file_hermesh_machine_v1_machine, 5);
+  messageDesc(file_hermesh_machine_v1_machine, 12);
 
 /**
  * @generated from message hermesh.machine.v1.AgentStatus
@@ -379,7 +646,7 @@ export type AgentStatus = Message<"hermesh.machine.v1.AgentStatus"> & {
  * Use `create(AgentStatusSchema)` to create a new message.
  */
 export const AgentStatusSchema: GenMessage<AgentStatus> = /*@__PURE__*/
-  messageDesc(file_hermesh_machine_v1_machine, 6);
+  messageDesc(file_hermesh_machine_v1_machine, 13);
 
 /**
  * @generated from message hermesh.machine.v1.AgentModel
@@ -410,7 +677,7 @@ export type AgentModel = Message<"hermesh.machine.v1.AgentModel"> & {
  * Use `create(AgentModelSchema)` to create a new message.
  */
 export const AgentModelSchema: GenMessage<AgentModel> = /*@__PURE__*/
-  messageDesc(file_hermesh_machine_v1_machine, 7);
+  messageDesc(file_hermesh_machine_v1_machine, 14);
 
 /**
  * @generated from message hermesh.machine.v1.ListProjectsRequest
@@ -423,7 +690,7 @@ export type ListProjectsRequest = Message<"hermesh.machine.v1.ListProjectsReques
  * Use `create(ListProjectsRequestSchema)` to create a new message.
  */
 export const ListProjectsRequestSchema: GenMessage<ListProjectsRequest> = /*@__PURE__*/
-  messageDesc(file_hermesh_machine_v1_machine, 8);
+  messageDesc(file_hermesh_machine_v1_machine, 15);
 
 /**
  * @generated from message hermesh.machine.v1.Project
@@ -490,7 +757,7 @@ export type Project = Message<"hermesh.machine.v1.Project"> & {
  * Use `create(ProjectSchema)` to create a new message.
  */
 export const ProjectSchema: GenMessage<Project> = /*@__PURE__*/
-  messageDesc(file_hermesh_machine_v1_machine, 9);
+  messageDesc(file_hermesh_machine_v1_machine, 16);
 
 /**
  * @generated from message hermesh.machine.v1.ListProjectsResponse
@@ -507,7 +774,7 @@ export type ListProjectsResponse = Message<"hermesh.machine.v1.ListProjectsRespo
  * Use `create(ListProjectsResponseSchema)` to create a new message.
  */
 export const ListProjectsResponseSchema: GenMessage<ListProjectsResponse> = /*@__PURE__*/
-  messageDesc(file_hermesh_machine_v1_machine, 10);
+  messageDesc(file_hermesh_machine_v1_machine, 17);
 
 /**
  * @generated from message hermesh.machine.v1.ListReposRequest
@@ -520,7 +787,7 @@ export type ListReposRequest = Message<"hermesh.machine.v1.ListReposRequest"> & 
  * Use `create(ListReposRequestSchema)` to create a new message.
  */
 export const ListReposRequestSchema: GenMessage<ListReposRequest> = /*@__PURE__*/
-  messageDesc(file_hermesh_machine_v1_machine, 11);
+  messageDesc(file_hermesh_machine_v1_machine, 18);
 
 /**
  * @generated from message hermesh.machine.v1.ListReposResponse
@@ -537,7 +804,7 @@ export type ListReposResponse = Message<"hermesh.machine.v1.ListReposResponse"> 
  * Use `create(ListReposResponseSchema)` to create a new message.
  */
 export const ListReposResponseSchema: GenMessage<ListReposResponse> = /*@__PURE__*/
-  messageDesc(file_hermesh_machine_v1_machine, 12);
+  messageDesc(file_hermesh_machine_v1_machine, 19);
 
 /**
  * @generated from message hermesh.machine.v1.Repo
@@ -566,7 +833,7 @@ export type Repo = Message<"hermesh.machine.v1.Repo"> & {
  * Use `create(RepoSchema)` to create a new message.
  */
 export const RepoSchema: GenMessage<Repo> = /*@__PURE__*/
-  messageDesc(file_hermesh_machine_v1_machine, 13);
+  messageDesc(file_hermesh_machine_v1_machine, 20);
 
 /**
  * @generated from message hermesh.machine.v1.ListFoldersRequest
@@ -592,7 +859,7 @@ export type ListFoldersRequest = Message<"hermesh.machine.v1.ListFoldersRequest"
  * Use `create(ListFoldersRequestSchema)` to create a new message.
  */
 export const ListFoldersRequestSchema: GenMessage<ListFoldersRequest> = /*@__PURE__*/
-  messageDesc(file_hermesh_machine_v1_machine, 14);
+  messageDesc(file_hermesh_machine_v1_machine, 21);
 
 /**
  * @generated from message hermesh.machine.v1.ListFoldersResponse
@@ -648,7 +915,7 @@ export type ListFoldersResponse = Message<"hermesh.machine.v1.ListFoldersRespons
  * Use `create(ListFoldersResponseSchema)` to create a new message.
  */
 export const ListFoldersResponseSchema: GenMessage<ListFoldersResponse> = /*@__PURE__*/
-  messageDesc(file_hermesh_machine_v1_machine, 15);
+  messageDesc(file_hermesh_machine_v1_machine, 22);
 
 /**
  * @generated from message hermesh.machine.v1.Folder
@@ -692,7 +959,7 @@ export type Folder = Message<"hermesh.machine.v1.Folder"> & {
  * Use `create(FolderSchema)` to create a new message.
  */
 export const FolderSchema: GenMessage<Folder> = /*@__PURE__*/
-  messageDesc(file_hermesh_machine_v1_machine, 16);
+  messageDesc(file_hermesh_machine_v1_machine, 23);
 
 /**
  * @generated from message hermesh.machine.v1.TestAgentRequest
@@ -709,7 +976,7 @@ export type TestAgentRequest = Message<"hermesh.machine.v1.TestAgentRequest"> & 
  * Use `create(TestAgentRequestSchema)` to create a new message.
  */
 export const TestAgentRequestSchema: GenMessage<TestAgentRequest> = /*@__PURE__*/
-  messageDesc(file_hermesh_machine_v1_machine, 17);
+  messageDesc(file_hermesh_machine_v1_machine, 24);
 
 /**
  * @generated from message hermesh.machine.v1.TestAgentResponse
@@ -738,7 +1005,7 @@ export type TestAgentResponse = Message<"hermesh.machine.v1.TestAgentResponse"> 
  * Use `create(TestAgentResponseSchema)` to create a new message.
  */
 export const TestAgentResponseSchema: GenMessage<TestAgentResponse> = /*@__PURE__*/
-  messageDesc(file_hermesh_machine_v1_machine, 18);
+  messageDesc(file_hermesh_machine_v1_machine, 25);
 
 /**
  * @generated from message hermesh.machine.v1.ApplyAdminCommandRequest
@@ -768,7 +1035,7 @@ export type ApplyAdminCommandRequest = Message<"hermesh.machine.v1.ApplyAdminCom
  * Use `create(ApplyAdminCommandRequestSchema)` to create a new message.
  */
 export const ApplyAdminCommandRequestSchema: GenMessage<ApplyAdminCommandRequest> = /*@__PURE__*/
-  messageDesc(file_hermesh_machine_v1_machine, 19);
+  messageDesc(file_hermesh_machine_v1_machine, 26);
 
 /**
  * @generated from message hermesh.machine.v1.ApplyAdminCommandResponse
@@ -785,7 +1052,7 @@ export type ApplyAdminCommandResponse = Message<"hermesh.machine.v1.ApplyAdminCo
  * Use `create(ApplyAdminCommandResponseSchema)` to create a new message.
  */
 export const ApplyAdminCommandResponseSchema: GenMessage<ApplyAdminCommandResponse> = /*@__PURE__*/
-  messageDesc(file_hermesh_machine_v1_machine, 20);
+  messageDesc(file_hermesh_machine_v1_machine, 27);
 
 /**
  * @generated from message hermesh.machine.v1.PushRevocationsRequest
@@ -809,7 +1076,7 @@ export type PushRevocationsRequest = Message<"hermesh.machine.v1.PushRevocations
  * Use `create(PushRevocationsRequestSchema)` to create a new message.
  */
 export const PushRevocationsRequestSchema: GenMessage<PushRevocationsRequest> = /*@__PURE__*/
-  messageDesc(file_hermesh_machine_v1_machine, 21);
+  messageDesc(file_hermesh_machine_v1_machine, 28);
 
 /**
  * @generated from message hermesh.machine.v1.PushRevocationsResponse
@@ -826,7 +1093,7 @@ export type PushRevocationsResponse = Message<"hermesh.machine.v1.PushRevocation
  * Use `create(PushRevocationsResponseSchema)` to create a new message.
  */
 export const PushRevocationsResponseSchema: GenMessage<PushRevocationsResponse> = /*@__PURE__*/
-  messageDesc(file_hermesh_machine_v1_machine, 22);
+  messageDesc(file_hermesh_machine_v1_machine, 29);
 
 /**
  * @generated from enum hermesh.machine.v1.MachineProblemKind
@@ -967,6 +1234,18 @@ export const MachineService: GenService<{
     methodKind: "server_streaming";
     input: typeof WatchRequestSchema;
     output: typeof WatchResponseSchema;
+  },
+  /**
+   * PullWork sends the work this machine counted that changed since
+   * after, for the keys the caller may read: whole hours, keys and
+   * sessions. Owner devices keep a copy (docs/work-stats.md §6).
+   *
+   * @generated from rpc hermesh.machine.v1.MachineService.PullWork
+   */
+  pullWork: {
+    methodKind: "unary";
+    input: typeof PullWorkRequestSchema;
+    output: typeof PullWorkResponseSchema;
   },
 }> = /*@__PURE__*/
   serviceDesc(file_hermesh_machine_v1_machine, 0);

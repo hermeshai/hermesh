@@ -11,6 +11,7 @@ import (
 	"slices"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"google.golang.org/protobuf/proto"
@@ -122,6 +123,51 @@ ALTER TABLE sessions ADD COLUMN conversation TEXT NOT NULL DEFAULT '';
 `, `
 ALTER TABLE sessions ADD COLUMN agent_model TEXT NOT NULL DEFAULT '';
 ALTER TABLE sessions ADD COLUMN agent_effort TEXT NOT NULL DEFAULT '';
+`, `
+DROP INDEX turn_usage_by_end;
+DROP TABLE turn_usage;
+DELETE FROM kv WHERE key = 'turn_usage_backfilled';
+CREATE TABLE work_keys (
+  k INTEGER PRIMARY KEY,
+  client TEXT NOT NULL,
+  agent TEXT NOT NULL,
+  project_id TEXT NOT NULL,
+  seq INTEGER NOT NULL,
+  UNIQUE (client, agent, project_id)
+);
+CREATE TABLE work_sessions (
+  n INTEGER PRIMARY KEY,
+  session_id TEXT NOT NULL UNIQUE,
+  k INTEGER NOT NULL,
+  status INTEGER NOT NULL,
+  failed INTEGER NOT NULL DEFAULT 0,
+  turns INTEGER NOT NULL DEFAULT 0,
+  turn_start INTEGER NOT NULL DEFAULT 0,
+  turn_k INTEGER NOT NULL DEFAULT 0,
+  seq INTEGER NOT NULL
+);
+CREATE INDEX work_sessions_by_seq ON work_sessions(seq);
+CREATE TABLE work_quarters (
+  q INTEGER NOT NULL,
+  k INTEGER NOT NULL,
+  n INTEGER NOT NULL,
+  PRIMARY KEY (q, k, n)
+) WITHOUT ROWID;
+CREATE TABLE work_measures (
+  q INTEGER NOT NULL,
+  k INTEGER NOT NULL,
+  turns INTEGER NOT NULL DEFAULT 0,
+  failed_turns INTEGER NOT NULL DEFAULT 0,
+  input_tokens INTEGER NOT NULL DEFAULT 0,
+  output_tokens INTEGER NOT NULL DEFAULT 0,
+  busy_seconds INTEGER NOT NULL DEFAULT 0,
+  PRIMARY KEY (q, k)
+) WITHOUT ROWID;
+CREATE TABLE work_hours (
+  h INTEGER PRIMARY KEY,
+  seq INTEGER NOT NULL
+);
+CREATE INDEX work_hours_by_seq ON work_hours(seq);
 `}
 
 // Store uses one writer connection (db) and a pool of readers (rdb), so
@@ -129,6 +175,13 @@ ALTER TABLE sessions ADD COLUMN agent_effort TEXT NOT NULL DEFAULT '';
 type Store struct {
 	db, rdb *sql.DB
 	ckpt    *sqlitedb.Checkpointer
+
+	// The work counts (work.go): their store and where they are. workSeq and
+	// workKeys belong to the writer; workSeqNow is read by watchers.
+	workStore  []byte
+	workSeq    int64
+	workSeqNow atomic.Int64
+	workKeys   map[workWho]int64
 }
 
 func OpenStore(path string) (*Store, error) {
@@ -157,7 +210,7 @@ func OpenStore(path string) (*Store, error) {
 		})
 	})
 	st := &Store{db: db, rdb: rdb, ckpt: ckpt}
-	if err := st.backfillUsage(); err != nil {
+	if err := st.openWork(); err != nil {
 		st.Close()
 		return nil, err
 	}
@@ -372,8 +425,8 @@ func (s *Store) Sessions(where string, args ...any) ([]*sessionRow, error) {
 }
 
 // DeleteSession removes a session's record, events, turns and idempotency
-// keys, and keeps what Usage needs to count its turns (who started it,
-// where, with which agent) in deleted_sessions.
+// keys, and keeps who started it, where and with which agent in
+// deleted_sessions (for the watchers that held it). Its work stays counted.
 func (s *Store) DeleteSession(r *sessionRow) error {
 	tx, err := s.db.Begin()
 	if err != nil {
@@ -466,7 +519,13 @@ func (s *Store) WriteBatch(ops []writeOp) error {
 	defer ins.Close()
 	rows := map[string]*sessionRow{}
 	now := time.Now().Unix()
+	work := s.workTx(tx)
 	for _, op := range ops {
+		if op.workTick != 0 {
+			if err := work.tick(op.workTick); err != nil {
+				return err
+			}
+		}
 		if op.turn != nil {
 			if _, err := tx.Exec(`INSERT OR REPLACE INTO turns(session_id, turn, commit_sha) VALUES(?,?,?)`,
 				op.turn.sessionID, op.turn.turn, op.turn.commit); err != nil {
@@ -487,7 +546,7 @@ func (s *Store) WriteBatch(ops []writeOp) error {
 			if _, err := ins.Exec(op.l.id, op.ev.Seq, b); err != nil {
 				return err
 			}
-			if err := putUsage(tx, op.l.id, op.ev); err != nil {
+			if err := work.event(op.l.id, op.who, op.ev); err != nil {
 				return err
 			}
 			if op.output != "" {
@@ -498,6 +557,9 @@ func (s *Store) WriteBatch(ops []writeOp) error {
 		}
 		if op.row != nil {
 			rows[op.row.ID] = op.row
+			if err := work.state(op.row); err != nil {
+				return err
+			}
 		}
 	}
 	for _, r := range rows {
@@ -505,9 +567,15 @@ func (s *Store) WriteBatch(ops []writeOp) error {
 			return err
 		}
 	}
+	if err := work.finish(); err != nil {
+		return err
+	}
 	t1 := time.Now()
 	err = tx.Commit()
 	mBatchCommit.Since(t1)
+	if err == nil {
+		work.done()
+	}
 	return err
 }
 

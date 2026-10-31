@@ -138,6 +138,8 @@ func (n *Machine) Watch(ctx context.Context, p *Principal, req *machinev1.WatchR
 	}
 	status := n.Status()
 	first.Status = status
+	work := n.sessions.st.WorkSeq()
+	first.WorkSeq = uint64(work)
 	if err := n.sendWatch(c, at, first, send); err != nil {
 		return err
 	}
@@ -157,8 +159,10 @@ func (n *Machine) Watch(ctx context.Context, p *Principal, req *machinev1.WatchR
 		if st := n.Status(); !proto.Equal(st, status) {
 			status, m.Status = st, st
 		}
-		if now != at || m.Status != nil {
-			at = now
+		ws := n.sessions.st.WorkSeq()
+		m.WorkSeq = uint64(ws)
+		if now != at || m.Status != nil || ws != work {
+			at, work = now, ws
 			if err := n.sendWatch(c, at, m, send); err != nil {
 				return err
 			}

@@ -2061,6 +2061,11 @@ func (s *Sessions) emitOutput(l *live, e *sessionv1.SessionEvent, output string)
 	case *sessionv1.SessionEvent_Status:
 		row = snapshotRow(l.row)
 	}
+	var who *workWho
+	switch e.Kind.(type) {
+	case *sessionv1.SessionEvent_TurnStarted, *sessionv1.SessionEvent_TurnCompleted:
+		who = &workWho{l.row.CreatedBy, l.row.Agent, l.row.ProjectID}
+	}
 	var ns *noticeSession
 	switch k := e.Kind.(type) {
 	case *sessionv1.SessionEvent_QuestionAsked, *sessionv1.SessionEvent_TurnCompleted:
@@ -2072,7 +2077,7 @@ func (s *Sessions) emitOutput(l *live, e *sessionv1.SessionEvent, output string)
 	}
 	l.mu.Unlock()
 	mEvents.Inc()
-	s.w.put(writeOp{l: l, ev: e, row: row, output: output})
+	s.w.put(writeOp{l: l, ev: e, row: row, output: output, who: who})
 	if ns != nil && s.notice != nil {
 		go s.notice(*ns, e)
 	}

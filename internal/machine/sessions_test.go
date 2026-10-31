@@ -20,6 +20,7 @@ import (
 	sessionv1 "github.com/hermeshai/hermesh/gen/go/hermesh/session/v1"
 	"github.com/hermeshai/hermesh/internal/provider"
 	"github.com/hermeshai/hermesh/internal/provider/fake"
+	"github.com/hermeshai/hermesh/internal/workstats"
 )
 
 // recorder is the fake provider, remembering every start.
@@ -800,11 +801,28 @@ func TestDeleteSession(t *testing.T) {
 	if err := h.s.Delete(ctx, h.p, done); connect.CodeOf(err) != connect.CodePermissionDenied {
 		t.Fatalf("an agent deletes: %v", err)
 	}
-	today := time.Now().In(time.UTC).Format(time.DateOnly)
-	before, err := h.s.Usage(owner, &sessionv1.GetUsageRequest{Since: today})
-	if err != nil {
-		t.Fatal(err)
+	countToday := func() (sessions, turns uint32) {
+		buckets, whole, err := workstats.Buckets("UTC", time.Now().UTC().Format(time.DateOnly), 1, false)
+		if err != nil {
+			t.Fatal(err)
+		}
+		ss, ts, _, err := h.s.st.CountWork(ctx, buckets, whole)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, r := range ss {
+			if r.Bucket == -1 {
+				sessions += r.Sessions
+			}
+		}
+		for _, r := range ts {
+			if r.Bucket == -1 {
+				turns += r.Turns
+			}
+		}
+		return sessions, turns
 	}
+	beforeSessions, beforeTurns := countToday()
 	wctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 	watched := make(chan *sessionv1.WatchSessionsResponse, 100)
@@ -839,9 +857,9 @@ func TestDeleteSession(t *testing.T) {
 	if list, _, _ := h.s.List(owner, &sessionv1.ListSessionsRequest{}); len(list) != 0 {
 		t.Fatalf("listed after delete: %v", sessionIDs(list))
 	}
-	after, err := h.s.Usage(owner, &sessionv1.GetUsageRequest{Since: today})
-	if err != nil || len(after.Days) != 1 || after.Days[0].InputTokens != before.Days[0].InputTokens {
-		t.Fatalf("usage after delete: %v (before %v) %v", after, before, err)
+	// Their work stays counted: busy's turn, cut short by the delete, too.
+	if afterSessions, afterTurns := countToday(); afterSessions != beforeSessions || afterTurns != beforeTurns+1 || beforeSessions != 2 {
+		t.Fatalf("work after delete: %d sessions, %d turns (before %d, %d)", afterSessions, afterTurns, beforeSessions, beforeTurns)
 	}
 	gone := map[string]bool{}
 	deadline := time.After(5 * time.Second)

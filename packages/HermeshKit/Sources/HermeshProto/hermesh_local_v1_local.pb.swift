@@ -25,6 +25,92 @@ fileprivate nonisolated struct _GeneratedWithProtocGenSwiftVersion: SwiftProtobu
   typealias Version = _2
 }
 
+public nonisolated enum Hermesh_Local_V1_WorkBucket: SwiftProtobuf.Enum, Swift.CaseIterable {
+  public typealias RawValue = Int
+  case unspecified // = 0
+  case hour // = 1
+  case day // = 2
+  case UNRECOGNIZED(Int)
+
+  public init() {
+    self = .unspecified
+  }
+
+  public init?(rawValue: Int) {
+    switch rawValue {
+    case 0: self = .unspecified
+    case 1: self = .hour
+    case 2: self = .day
+    default: self = .UNRECOGNIZED(rawValue)
+    }
+  }
+
+  public var rawValue: Int {
+    switch self {
+    case .unspecified: return 0
+    case .hour: return 1
+    case .day: return 2
+    case .UNRECOGNIZED(let i): return i
+    }
+  }
+
+  // The compiler won't synthesize support with the UNRECOGNIZED case.
+  public static let allCases: [Hermesh_Local_V1_WorkBucket] = [
+    .unspecified,
+    .hour,
+    .day,
+  ]
+
+}
+
+public nonisolated enum Hermesh_Local_V1_WorkDimension: SwiftProtobuf.Enum, Swift.CaseIterable {
+  public typealias RawValue = Int
+  case unspecified // = 0
+
+  /// Sessions: who started them. Turns: who asked for them.
+  case client // = 1
+  case agent // = 2
+  case machine // = 3
+  case project // = 4
+  case UNRECOGNIZED(Int)
+
+  public init() {
+    self = .unspecified
+  }
+
+  public init?(rawValue: Int) {
+    switch rawValue {
+    case 0: self = .unspecified
+    case 1: self = .client
+    case 2: self = .agent
+    case 3: self = .machine
+    case 4: self = .project
+    default: self = .UNRECOGNIZED(rawValue)
+    }
+  }
+
+  public var rawValue: Int {
+    switch self {
+    case .unspecified: return 0
+    case .client: return 1
+    case .agent: return 2
+    case .machine: return 3
+    case .project: return 4
+    case .UNRECOGNIZED(let i): return i
+    }
+  }
+
+  // The compiler won't synthesize support with the UNRECOGNIZED case.
+  public static let allCases: [Hermesh_Local_V1_WorkDimension] = [
+    .unspecified,
+    .client,
+    .agent,
+    .machine,
+    .project,
+  ]
+
+}
+
 public nonisolated struct Hermesh_Local_V1_WatchRequest: Sendable {
   // SwiftProtobuf.Message conformance is added in an extension below. See the
   // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
@@ -131,6 +217,12 @@ public nonisolated struct Hermesh_Local_V1_WatchResponse: @unchecked Sendable {
   public var hasNext: Bool {_storage._next != nil}
   /// Clears the value of `next`. Subsequent reads from it will return its default value.
   public mutating func clearNext() {_uniqueStorage()._next = nil}
+
+  /// Moves when this device's counts of work changed: ask QueryWork again.
+  public var workVersion: UInt64 {
+    get {_storage._workVersion}
+    set {_uniqueStorage()._workVersion = newValue}
+  }
 
   public var unknownFields = SwiftProtobuf.UnknownStorage()
 
@@ -2553,49 +2645,160 @@ public nonisolated struct Hermesh_Local_V1_SessionResponse: Sendable {
   fileprivate var _session: Hermesh_Session_V1_Session? = nil
 }
 
-public nonisolated struct Hermesh_Local_V1_GetUsageRequest: Sendable {
+public nonisolated struct Hermesh_Local_V1_QueryWorkRequest: Sendable {
   // SwiftProtobuf.Message conformance is added in an extension below. See the
   // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
   // methods supported on all messages.
 
-  /// The first day counted, YYYY-MM-DD in time_zone.
-  public var since: String = String()
-
-  /// An IANA time zone name; empty means UTC.
+  /// An IANA time zone name: the days and hours counted are its.
   public var timeZone: String = String()
 
-  public var unknownFields = SwiftProtobuf.UnknownStorage()
+  /// The first day, YYYY-MM-DD in time_zone, and how many (1 to 400).
+  public var firstDay: String = String()
 
-  public init() {}
-}
+  public var days: UInt32 = 0
 
-public nonisolated struct Hermesh_Local_V1_GetUsageResponse: Sendable {
-  // SwiftProtobuf.Message conformance is added in an extension below. See the
-  // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
-  // methods supported on all messages.
+  public var bucket: Hermesh_Local_V1_WorkBucket = .unspecified
 
-  /// By date, then agent; a day and agent appear once however many machines
-  /// had turns then.
-  public var days: [Hermesh_Session_V1_UsageDay] = []
-
-  public var unreachable: [Hermesh_Local_V1_Unreachable] = []
+  /// What the counts are grouped by; none: everything together.
+  public var groupBy: [Hermesh_Local_V1_WorkDimension] = []
 
   public var unknownFields = SwiftProtobuf.UnknownStorage()
 
   public init() {}
 }
 
-public nonisolated struct Hermesh_Local_V1_GetActivityResponse: Sendable {
+/// The dimensions asked for; the others are empty.
+public nonisolated struct Hermesh_Local_V1_WorkGroup: Sendable {
   // SwiftProtobuf.Message conformance is added in an extension below. See the
   // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
   // methods supported on all messages.
 
-  /// An hour, client and agent appear once however many machines worked then.
-  public var hours: [Hermesh_Session_V1_ActivityHour] = []
+  public var client: String = String()
 
-  public var clients: [Hermesh_Session_V1_ActivityClient] = []
+  public var agent: String = String()
 
-  public var unreachable: [Hermesh_Local_V1_Unreachable] = []
+  public var machineID: String = String()
+
+  public var projectID: String = String()
+
+  public var unknownFields = SwiftProtobuf.UnknownStorage()
+
+  public init() {}
+}
+
+public nonisolated struct Hermesh_Local_V1_SessionCount: Sendable {
+  // SwiftProtobuf.Message conformance is added in an extension below. See the
+  // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
+  // methods supported on all messages.
+
+  /// From 0, the first hour or day of the range.
+  public var bucket: UInt32 = 0
+
+  public var group: Hermesh_Local_V1_WorkGroup {
+    get {_group ?? Hermesh_Local_V1_WorkGroup()}
+    set {_group = newValue}
+  }
+  /// Returns true if `group` has been explicitly set.
+  public var hasGroup: Bool {self._group != nil}
+  /// Clears the value of `group`. Subsequent reads from it will return its default value.
+  public mutating func clearGroup() {self._group = nil}
+
+  /// At work (a turn in progress) in the bucket, each once.
+  public var sessions: UInt32 = 0
+
+  /// Of them, those done now: idle without a failure, or archived.
+  public var done: UInt32 = 0
+
+  public var unknownFields = SwiftProtobuf.UnknownStorage()
+
+  public init() {}
+
+  fileprivate var _group: Hermesh_Local_V1_WorkGroup? = nil
+}
+
+public nonisolated struct Hermesh_Local_V1_TurnCount: Sendable {
+  // SwiftProtobuf.Message conformance is added in an extension below. See the
+  // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
+  // methods supported on all messages.
+
+  public var bucket: UInt32 = 0
+
+  public var group: Hermesh_Local_V1_WorkGroup {
+    get {_group ?? Hermesh_Local_V1_WorkGroup()}
+    set {_group = newValue}
+  }
+  /// Returns true if `group` has been explicitly set.
+  public var hasGroup: Bool {self._group != nil}
+  /// Clears the value of `group`. Subsequent reads from it will return its default value.
+  public mutating func clearGroup() {self._group = nil}
+
+  /// Turns that ended in the bucket, of them those that failed, their
+  /// tokens, and the time turns were in progress in the bucket.
+  public var turns: UInt32 = 0
+
+  public var failedTurns: UInt32 = 0
+
+  public var inputTokens: UInt64 = 0
+
+  public var outputTokens: UInt64 = 0
+
+  public var busySeconds: UInt64 = 0
+
+  public var unknownFields = SwiftProtobuf.UnknownStorage()
+
+  public init() {}
+
+  fileprivate var _group: Hermesh_Local_V1_WorkGroup? = nil
+}
+
+/// What a machine's counts include.
+public nonisolated struct Hermesh_Local_V1_WorkSource: Sendable {
+  // SwiftProtobuf.Message conformance is added in an extension below. See the
+  // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
+  // methods supported on all messages.
+
+  public var machineID: String = String()
+
+  /// Its work is counted up to here (this device's clock when it last
+  /// caught up); unset for this device's own machine, read as it is.
+  public var syncedAt: SwiftProtobuf.Google_Protobuf_Timestamp {
+    get {_syncedAt ?? SwiftProtobuf.Google_Protobuf_Timestamp()}
+    set {_syncedAt = newValue}
+  }
+  /// Returns true if `syncedAt` has been explicitly set.
+  public var hasSyncedAt: Bool {self._syncedAt != nil}
+  /// Clears the value of `syncedAt`. Subsequent reads from it will return its default value.
+  public mutating func clearSyncedAt() {self._syncedAt = nil}
+
+  /// Caught up and followed now.
+  public var live: Bool = false
+
+  /// Still taking its history.
+  public var syncing: Bool = false
+
+  public var unknownFields = SwiftProtobuf.UnknownStorage()
+
+  public init() {}
+
+  fileprivate var _syncedAt: SwiftProtobuf.Google_Protobuf_Timestamp? = nil
+}
+
+public nonisolated struct Hermesh_Local_V1_QueryWorkResponse: Sendable {
+  // SwiftProtobuf.Message conformance is added in an extension below. See the
+  // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
+  // methods supported on all messages.
+
+  /// Per bucket, and over the whole range (each session once).
+  public var sessions: [Hermesh_Local_V1_SessionCount] = []
+
+  public var rangeSessions: [Hermesh_Local_V1_SessionCount] = []
+
+  public var turns: [Hermesh_Local_V1_TurnCount] = []
+
+  public var rangeTurns: [Hermesh_Local_V1_TurnCount] = []
+
+  public var sources: [Hermesh_Local_V1_WorkSource] = []
 
   public var unknownFields = SwiftProtobuf.UnknownStorage()
 
@@ -2620,6 +2823,14 @@ public nonisolated struct Hermesh_Local_V1_GetDiffRequest: Sendable {
 
 fileprivate nonisolated let _protobuf_package = "hermesh.local.v1"
 
+nonisolated extension Hermesh_Local_V1_WorkBucket: SwiftProtobuf._ProtoNameProviding {
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{2}\0WORK_BUCKET_UNSPECIFIED\0\u{1}WORK_BUCKET_HOUR\0\u{1}WORK_BUCKET_DAY\0")
+}
+
+nonisolated extension Hermesh_Local_V1_WorkDimension: SwiftProtobuf._ProtoNameProviding {
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{2}\0WORK_DIMENSION_UNSPECIFIED\0\u{1}WORK_DIMENSION_CLIENT\0\u{1}WORK_DIMENSION_AGENT\0\u{1}WORK_DIMENSION_MACHINE\0\u{1}WORK_DIMENSION_PROJECT\0")
+}
+
 nonisolated extension Hermesh_Local_V1_WatchRequest: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
   public static let protoMessageName: String = _protobuf_package + ".WatchRequest"
   public static let _protobuf_nameMap = SwiftProtobuf._NameMap()
@@ -2641,7 +2852,7 @@ nonisolated extension Hermesh_Local_V1_WatchRequest: SwiftProtobuf.Message, Swif
 
 nonisolated extension Hermesh_Local_V1_WatchResponse: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
   public static let protoMessageName: String = _protobuf_package + ".WatchResponse"
-  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{1}reset\0\u{1}status\0\u{1}machines\0\u{3}removed_machine_ids\0\u{1}clients\0\u{3}removed_grant_ids\0\u{1}devices\0\u{3}removed_device_key_ids\0\u{1}projects\0\u{3}removed_projects\0\u{1}pairings\0\u{3}removed_pairing_codes\0\u{1}sessions\0\u{3}deleted_session_ids\0\u{1}next\0")
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{1}reset\0\u{1}status\0\u{1}machines\0\u{3}removed_machine_ids\0\u{1}clients\0\u{3}removed_grant_ids\0\u{1}devices\0\u{3}removed_device_key_ids\0\u{1}projects\0\u{3}removed_projects\0\u{1}pairings\0\u{3}removed_pairing_codes\0\u{1}sessions\0\u{3}deleted_session_ids\0\u{1}next\0\u{3}work_version\0")
 
   fileprivate class _StorageClass {
     var _reset: Bool = false
@@ -2659,6 +2870,7 @@ nonisolated extension Hermesh_Local_V1_WatchResponse: SwiftProtobuf.Message, Swi
     var _sessions: [Hermesh_Session_V1_Session] = []
     var _deletedSessionIds: [String] = []
     var _next: Hermesh_Session_V1_SessionCursor? = nil
+    var _workVersion: UInt64 = 0
 
       // This property is used as the initial default value for new instances of the type.
       // The type itself is protecting the reference to its storage via CoW semantics.
@@ -2684,6 +2896,7 @@ nonisolated extension Hermesh_Local_V1_WatchResponse: SwiftProtobuf.Message, Swi
       _sessions = source._sessions
       _deletedSessionIds = source._deletedSessionIds
       _next = source._next
+      _workVersion = source._workVersion
     }
   }
 
@@ -2717,6 +2930,7 @@ nonisolated extension Hermesh_Local_V1_WatchResponse: SwiftProtobuf.Message, Swi
         case 13: try { try decoder.decodeRepeatedMessageField(value: &_storage._sessions) }()
         case 14: try { try decoder.decodeRepeatedStringField(value: &_storage._deletedSessionIds) }()
         case 15: try { try decoder.decodeSingularMessageField(value: &_storage._next) }()
+        case 16: try { try decoder.decodeSingularUInt64Field(value: &_storage._workVersion) }()
         default: break
         }
       }
@@ -2774,6 +2988,9 @@ nonisolated extension Hermesh_Local_V1_WatchResponse: SwiftProtobuf.Message, Swi
       try { if let v = _storage._next {
         try visitor.visitSingularMessageField(value: v, fieldNumber: 15)
       } }()
+      if _storage._workVersion != 0 {
+        try visitor.visitSingularUInt64Field(value: _storage._workVersion, fieldNumber: 16)
+      }
     }
     try unknownFields.traverse(visitor: &visitor)
   }
@@ -2798,6 +3015,7 @@ nonisolated extension Hermesh_Local_V1_WatchResponse: SwiftProtobuf.Message, Swi
         if _storage._sessions != rhs_storage._sessions {return false}
         if _storage._deletedSessionIds != rhs_storage._deletedSessionIds {return false}
         if _storage._next != rhs_storage._next {return false}
+        if _storage._workVersion != rhs_storage._workVersion {return false}
         return true
       }
       if !storagesAreEqual {return false}
@@ -7638,9 +7856,9 @@ nonisolated extension Hermesh_Local_V1_SessionResponse: SwiftProtobuf.Message, S
   }
 }
 
-nonisolated extension Hermesh_Local_V1_GetUsageRequest: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
-  public static let protoMessageName: String = _protobuf_package + ".GetUsageRequest"
-  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{1}since\0\u{3}time_zone\0")
+nonisolated extension Hermesh_Local_V1_QueryWorkRequest: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
+  public static let protoMessageName: String = _protobuf_package + ".QueryWorkRequest"
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{3}time_zone\0\u{3}first_day\0\u{1}days\0\u{1}bucket\0\u{3}group_by\0")
 
   public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
     while let fieldNumber = try decoder.nextFieldNumber() {
@@ -7648,69 +7866,49 @@ nonisolated extension Hermesh_Local_V1_GetUsageRequest: SwiftProtobuf.Message, S
       // allocates stack space for every case branch when no optimizations are
       // enabled. https://github.com/apple/swift-protobuf/issues/1034
       switch fieldNumber {
-      case 1: try { try decoder.decodeSingularStringField(value: &self.since) }()
-      case 2: try { try decoder.decodeSingularStringField(value: &self.timeZone) }()
+      case 1: try { try decoder.decodeSingularStringField(value: &self.timeZone) }()
+      case 2: try { try decoder.decodeSingularStringField(value: &self.firstDay) }()
+      case 3: try { try decoder.decodeSingularUInt32Field(value: &self.days) }()
+      case 4: try { try decoder.decodeSingularEnumField(value: &self.bucket) }()
+      case 5: try { try decoder.decodeRepeatedEnumField(value: &self.groupBy) }()
       default: break
       }
     }
   }
 
   public func traverse<V: SwiftProtobuf.Visitor>(visitor: inout V) throws {
-    if !self.since.isEmpty {
-      try visitor.visitSingularStringField(value: self.since, fieldNumber: 1)
-    }
     if !self.timeZone.isEmpty {
-      try visitor.visitSingularStringField(value: self.timeZone, fieldNumber: 2)
+      try visitor.visitSingularStringField(value: self.timeZone, fieldNumber: 1)
+    }
+    if !self.firstDay.isEmpty {
+      try visitor.visitSingularStringField(value: self.firstDay, fieldNumber: 2)
+    }
+    if self.days != 0 {
+      try visitor.visitSingularUInt32Field(value: self.days, fieldNumber: 3)
+    }
+    if self.bucket != .unspecified {
+      try visitor.visitSingularEnumField(value: self.bucket, fieldNumber: 4)
+    }
+    if !self.groupBy.isEmpty {
+      try visitor.visitPackedEnumField(value: self.groupBy, fieldNumber: 5)
     }
     try unknownFields.traverse(visitor: &visitor)
   }
 
-  public static func ==(lhs: Hermesh_Local_V1_GetUsageRequest, rhs: Hermesh_Local_V1_GetUsageRequest) -> Bool {
-    if lhs.since != rhs.since {return false}
+  public static func ==(lhs: Hermesh_Local_V1_QueryWorkRequest, rhs: Hermesh_Local_V1_QueryWorkRequest) -> Bool {
     if lhs.timeZone != rhs.timeZone {return false}
-    if lhs.unknownFields != rhs.unknownFields {return false}
-    return true
-  }
-}
-
-nonisolated extension Hermesh_Local_V1_GetUsageResponse: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
-  public static let protoMessageName: String = _protobuf_package + ".GetUsageResponse"
-  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{1}days\0\u{1}unreachable\0")
-
-  public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
-    while let fieldNumber = try decoder.nextFieldNumber() {
-      // The use of inline closures is to circumvent an issue where the compiler
-      // allocates stack space for every case branch when no optimizations are
-      // enabled. https://github.com/apple/swift-protobuf/issues/1034
-      switch fieldNumber {
-      case 1: try { try decoder.decodeRepeatedMessageField(value: &self.days) }()
-      case 2: try { try decoder.decodeRepeatedMessageField(value: &self.unreachable) }()
-      default: break
-      }
-    }
-  }
-
-  public func traverse<V: SwiftProtobuf.Visitor>(visitor: inout V) throws {
-    if !self.days.isEmpty {
-      try visitor.visitRepeatedMessageField(value: self.days, fieldNumber: 1)
-    }
-    if !self.unreachable.isEmpty {
-      try visitor.visitRepeatedMessageField(value: self.unreachable, fieldNumber: 2)
-    }
-    try unknownFields.traverse(visitor: &visitor)
-  }
-
-  public static func ==(lhs: Hermesh_Local_V1_GetUsageResponse, rhs: Hermesh_Local_V1_GetUsageResponse) -> Bool {
+    if lhs.firstDay != rhs.firstDay {return false}
     if lhs.days != rhs.days {return false}
-    if lhs.unreachable != rhs.unreachable {return false}
+    if lhs.bucket != rhs.bucket {return false}
+    if lhs.groupBy != rhs.groupBy {return false}
     if lhs.unknownFields != rhs.unknownFields {return false}
     return true
   }
 }
 
-nonisolated extension Hermesh_Local_V1_GetActivityResponse: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
-  public static let protoMessageName: String = _protobuf_package + ".GetActivityResponse"
-  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{1}hours\0\u{1}clients\0\u{1}unreachable\0")
+nonisolated extension Hermesh_Local_V1_WorkGroup: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
+  public static let protoMessageName: String = _protobuf_package + ".WorkGroup"
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{1}client\0\u{1}agent\0\u{3}machine_id\0\u{3}project_id\0")
 
   public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
     while let fieldNumber = try decoder.nextFieldNumber() {
@@ -7718,31 +7916,248 @@ nonisolated extension Hermesh_Local_V1_GetActivityResponse: SwiftProtobuf.Messag
       // allocates stack space for every case branch when no optimizations are
       // enabled. https://github.com/apple/swift-protobuf/issues/1034
       switch fieldNumber {
-      case 1: try { try decoder.decodeRepeatedMessageField(value: &self.hours) }()
-      case 2: try { try decoder.decodeRepeatedMessageField(value: &self.clients) }()
-      case 3: try { try decoder.decodeRepeatedMessageField(value: &self.unreachable) }()
+      case 1: try { try decoder.decodeSingularStringField(value: &self.client) }()
+      case 2: try { try decoder.decodeSingularStringField(value: &self.agent) }()
+      case 3: try { try decoder.decodeSingularStringField(value: &self.machineID) }()
+      case 4: try { try decoder.decodeSingularStringField(value: &self.projectID) }()
       default: break
       }
     }
   }
 
   public func traverse<V: SwiftProtobuf.Visitor>(visitor: inout V) throws {
-    if !self.hours.isEmpty {
-      try visitor.visitRepeatedMessageField(value: self.hours, fieldNumber: 1)
+    if !self.client.isEmpty {
+      try visitor.visitSingularStringField(value: self.client, fieldNumber: 1)
     }
-    if !self.clients.isEmpty {
-      try visitor.visitRepeatedMessageField(value: self.clients, fieldNumber: 2)
+    if !self.agent.isEmpty {
+      try visitor.visitSingularStringField(value: self.agent, fieldNumber: 2)
     }
-    if !self.unreachable.isEmpty {
-      try visitor.visitRepeatedMessageField(value: self.unreachable, fieldNumber: 3)
+    if !self.machineID.isEmpty {
+      try visitor.visitSingularStringField(value: self.machineID, fieldNumber: 3)
+    }
+    if !self.projectID.isEmpty {
+      try visitor.visitSingularStringField(value: self.projectID, fieldNumber: 4)
     }
     try unknownFields.traverse(visitor: &visitor)
   }
 
-  public static func ==(lhs: Hermesh_Local_V1_GetActivityResponse, rhs: Hermesh_Local_V1_GetActivityResponse) -> Bool {
-    if lhs.hours != rhs.hours {return false}
-    if lhs.clients != rhs.clients {return false}
-    if lhs.unreachable != rhs.unreachable {return false}
+  public static func ==(lhs: Hermesh_Local_V1_WorkGroup, rhs: Hermesh_Local_V1_WorkGroup) -> Bool {
+    if lhs.client != rhs.client {return false}
+    if lhs.agent != rhs.agent {return false}
+    if lhs.machineID != rhs.machineID {return false}
+    if lhs.projectID != rhs.projectID {return false}
+    if lhs.unknownFields != rhs.unknownFields {return false}
+    return true
+  }
+}
+
+nonisolated extension Hermesh_Local_V1_SessionCount: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
+  public static let protoMessageName: String = _protobuf_package + ".SessionCount"
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{1}bucket\0\u{1}group\0\u{1}sessions\0\u{1}done\0")
+
+  public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
+    while let fieldNumber = try decoder.nextFieldNumber() {
+      // The use of inline closures is to circumvent an issue where the compiler
+      // allocates stack space for every case branch when no optimizations are
+      // enabled. https://github.com/apple/swift-protobuf/issues/1034
+      switch fieldNumber {
+      case 1: try { try decoder.decodeSingularUInt32Field(value: &self.bucket) }()
+      case 2: try { try decoder.decodeSingularMessageField(value: &self._group) }()
+      case 3: try { try decoder.decodeSingularUInt32Field(value: &self.sessions) }()
+      case 4: try { try decoder.decodeSingularUInt32Field(value: &self.done) }()
+      default: break
+      }
+    }
+  }
+
+  public func traverse<V: SwiftProtobuf.Visitor>(visitor: inout V) throws {
+    // The use of inline closures is to circumvent an issue where the compiler
+    // allocates stack space for every if/case branch local when no optimizations
+    // are enabled. https://github.com/apple/swift-protobuf/issues/1034 and
+    // https://github.com/apple/swift-protobuf/issues/1182
+    if self.bucket != 0 {
+      try visitor.visitSingularUInt32Field(value: self.bucket, fieldNumber: 1)
+    }
+    try { if let v = self._group {
+      try visitor.visitSingularMessageField(value: v, fieldNumber: 2)
+    } }()
+    if self.sessions != 0 {
+      try visitor.visitSingularUInt32Field(value: self.sessions, fieldNumber: 3)
+    }
+    if self.done != 0 {
+      try visitor.visitSingularUInt32Field(value: self.done, fieldNumber: 4)
+    }
+    try unknownFields.traverse(visitor: &visitor)
+  }
+
+  public static func ==(lhs: Hermesh_Local_V1_SessionCount, rhs: Hermesh_Local_V1_SessionCount) -> Bool {
+    if lhs.bucket != rhs.bucket {return false}
+    if lhs._group != rhs._group {return false}
+    if lhs.sessions != rhs.sessions {return false}
+    if lhs.done != rhs.done {return false}
+    if lhs.unknownFields != rhs.unknownFields {return false}
+    return true
+  }
+}
+
+nonisolated extension Hermesh_Local_V1_TurnCount: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
+  public static let protoMessageName: String = _protobuf_package + ".TurnCount"
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{1}bucket\0\u{1}group\0\u{1}turns\0\u{3}failed_turns\0\u{3}input_tokens\0\u{3}output_tokens\0\u{3}busy_seconds\0")
+
+  public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
+    while let fieldNumber = try decoder.nextFieldNumber() {
+      // The use of inline closures is to circumvent an issue where the compiler
+      // allocates stack space for every case branch when no optimizations are
+      // enabled. https://github.com/apple/swift-protobuf/issues/1034
+      switch fieldNumber {
+      case 1: try { try decoder.decodeSingularUInt32Field(value: &self.bucket) }()
+      case 2: try { try decoder.decodeSingularMessageField(value: &self._group) }()
+      case 3: try { try decoder.decodeSingularUInt32Field(value: &self.turns) }()
+      case 4: try { try decoder.decodeSingularUInt32Field(value: &self.failedTurns) }()
+      case 5: try { try decoder.decodeSingularUInt64Field(value: &self.inputTokens) }()
+      case 6: try { try decoder.decodeSingularUInt64Field(value: &self.outputTokens) }()
+      case 7: try { try decoder.decodeSingularUInt64Field(value: &self.busySeconds) }()
+      default: break
+      }
+    }
+  }
+
+  public func traverse<V: SwiftProtobuf.Visitor>(visitor: inout V) throws {
+    // The use of inline closures is to circumvent an issue where the compiler
+    // allocates stack space for every if/case branch local when no optimizations
+    // are enabled. https://github.com/apple/swift-protobuf/issues/1034 and
+    // https://github.com/apple/swift-protobuf/issues/1182
+    if self.bucket != 0 {
+      try visitor.visitSingularUInt32Field(value: self.bucket, fieldNumber: 1)
+    }
+    try { if let v = self._group {
+      try visitor.visitSingularMessageField(value: v, fieldNumber: 2)
+    } }()
+    if self.turns != 0 {
+      try visitor.visitSingularUInt32Field(value: self.turns, fieldNumber: 3)
+    }
+    if self.failedTurns != 0 {
+      try visitor.visitSingularUInt32Field(value: self.failedTurns, fieldNumber: 4)
+    }
+    if self.inputTokens != 0 {
+      try visitor.visitSingularUInt64Field(value: self.inputTokens, fieldNumber: 5)
+    }
+    if self.outputTokens != 0 {
+      try visitor.visitSingularUInt64Field(value: self.outputTokens, fieldNumber: 6)
+    }
+    if self.busySeconds != 0 {
+      try visitor.visitSingularUInt64Field(value: self.busySeconds, fieldNumber: 7)
+    }
+    try unknownFields.traverse(visitor: &visitor)
+  }
+
+  public static func ==(lhs: Hermesh_Local_V1_TurnCount, rhs: Hermesh_Local_V1_TurnCount) -> Bool {
+    if lhs.bucket != rhs.bucket {return false}
+    if lhs._group != rhs._group {return false}
+    if lhs.turns != rhs.turns {return false}
+    if lhs.failedTurns != rhs.failedTurns {return false}
+    if lhs.inputTokens != rhs.inputTokens {return false}
+    if lhs.outputTokens != rhs.outputTokens {return false}
+    if lhs.busySeconds != rhs.busySeconds {return false}
+    if lhs.unknownFields != rhs.unknownFields {return false}
+    return true
+  }
+}
+
+nonisolated extension Hermesh_Local_V1_WorkSource: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
+  public static let protoMessageName: String = _protobuf_package + ".WorkSource"
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{3}machine_id\0\u{3}synced_at\0\u{1}live\0\u{1}syncing\0")
+
+  public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
+    while let fieldNumber = try decoder.nextFieldNumber() {
+      // The use of inline closures is to circumvent an issue where the compiler
+      // allocates stack space for every case branch when no optimizations are
+      // enabled. https://github.com/apple/swift-protobuf/issues/1034
+      switch fieldNumber {
+      case 1: try { try decoder.decodeSingularStringField(value: &self.machineID) }()
+      case 2: try { try decoder.decodeSingularMessageField(value: &self._syncedAt) }()
+      case 3: try { try decoder.decodeSingularBoolField(value: &self.live) }()
+      case 4: try { try decoder.decodeSingularBoolField(value: &self.syncing) }()
+      default: break
+      }
+    }
+  }
+
+  public func traverse<V: SwiftProtobuf.Visitor>(visitor: inout V) throws {
+    // The use of inline closures is to circumvent an issue where the compiler
+    // allocates stack space for every if/case branch local when no optimizations
+    // are enabled. https://github.com/apple/swift-protobuf/issues/1034 and
+    // https://github.com/apple/swift-protobuf/issues/1182
+    if !self.machineID.isEmpty {
+      try visitor.visitSingularStringField(value: self.machineID, fieldNumber: 1)
+    }
+    try { if let v = self._syncedAt {
+      try visitor.visitSingularMessageField(value: v, fieldNumber: 2)
+    } }()
+    if self.live != false {
+      try visitor.visitSingularBoolField(value: self.live, fieldNumber: 3)
+    }
+    if self.syncing != false {
+      try visitor.visitSingularBoolField(value: self.syncing, fieldNumber: 4)
+    }
+    try unknownFields.traverse(visitor: &visitor)
+  }
+
+  public static func ==(lhs: Hermesh_Local_V1_WorkSource, rhs: Hermesh_Local_V1_WorkSource) -> Bool {
+    if lhs.machineID != rhs.machineID {return false}
+    if lhs._syncedAt != rhs._syncedAt {return false}
+    if lhs.live != rhs.live {return false}
+    if lhs.syncing != rhs.syncing {return false}
+    if lhs.unknownFields != rhs.unknownFields {return false}
+    return true
+  }
+}
+
+nonisolated extension Hermesh_Local_V1_QueryWorkResponse: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
+  public static let protoMessageName: String = _protobuf_package + ".QueryWorkResponse"
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{1}sessions\0\u{3}range_sessions\0\u{1}turns\0\u{3}range_turns\0\u{1}sources\0")
+
+  public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
+    while let fieldNumber = try decoder.nextFieldNumber() {
+      // The use of inline closures is to circumvent an issue where the compiler
+      // allocates stack space for every case branch when no optimizations are
+      // enabled. https://github.com/apple/swift-protobuf/issues/1034
+      switch fieldNumber {
+      case 1: try { try decoder.decodeRepeatedMessageField(value: &self.sessions) }()
+      case 2: try { try decoder.decodeRepeatedMessageField(value: &self.rangeSessions) }()
+      case 3: try { try decoder.decodeRepeatedMessageField(value: &self.turns) }()
+      case 4: try { try decoder.decodeRepeatedMessageField(value: &self.rangeTurns) }()
+      case 5: try { try decoder.decodeRepeatedMessageField(value: &self.sources) }()
+      default: break
+      }
+    }
+  }
+
+  public func traverse<V: SwiftProtobuf.Visitor>(visitor: inout V) throws {
+    if !self.sessions.isEmpty {
+      try visitor.visitRepeatedMessageField(value: self.sessions, fieldNumber: 1)
+    }
+    if !self.rangeSessions.isEmpty {
+      try visitor.visitRepeatedMessageField(value: self.rangeSessions, fieldNumber: 2)
+    }
+    if !self.turns.isEmpty {
+      try visitor.visitRepeatedMessageField(value: self.turns, fieldNumber: 3)
+    }
+    if !self.rangeTurns.isEmpty {
+      try visitor.visitRepeatedMessageField(value: self.rangeTurns, fieldNumber: 4)
+    }
+    if !self.sources.isEmpty {
+      try visitor.visitRepeatedMessageField(value: self.sources, fieldNumber: 5)
+    }
+    try unknownFields.traverse(visitor: &visitor)
+  }
+
+  public static func ==(lhs: Hermesh_Local_V1_QueryWorkResponse, rhs: Hermesh_Local_V1_QueryWorkResponse) -> Bool {
+    if lhs.sessions != rhs.sessions {return false}
+    if lhs.rangeSessions != rhs.rangeSessions {return false}
+    if lhs.turns != rhs.turns {return false}
+    if lhs.rangeTurns != rhs.rangeTurns {return false}
+    if lhs.sources != rhs.sources {return false}
     if lhs.unknownFields != rhs.unknownFields {return false}
     return true
   }

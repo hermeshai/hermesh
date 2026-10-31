@@ -102,17 +102,15 @@ func TestOwnMacWithoutRelay(t *testing.T) {
 		_, err := app.SetMachinePaused(ctx, &localv1.SetMachinePausedRequest{MachineId: machineID, Paused: false})
 		return err
 	})
-	call("usage", func(ctx context.Context) error {
-		_, err := app.GetUsage(ctx, &localv1.GetUsageRequest{})
-		return err
-	})
-	call("activity", func(ctx context.Context) error {
-		res, err := app.GetActivity(ctx, &sessionv1.GetActivityRequest{Date: time.Now().UTC().Format(time.DateOnly)})
+	call("today's work", func(ctx context.Context) error {
+		res, err := app.QueryWork(ctx, &localv1.QueryWorkRequest{TimeZone: "UTC", FirstDay: time.Now().UTC().Format(time.DateOnly), Days: 1,
+			Bucket: localv1.WorkBucket_WORK_BUCKET_HOUR, GroupBy: []localv1.WorkDimension{localv1.WorkDimension_WORK_DIMENSION_AGENT}})
 		if err != nil {
 			return err
 		}
-		if len(res.Clients) == 0 || res.Clients[0].Sessions == 0 || res.Clients[0].Agent != "gemini" || len(res.Hours) == 0 || res.Hours[0].Agent != "gemini" {
-			t.Fatalf("today's activity: %+v", res)
+		if len(res.RangeSessions) == 0 || res.RangeSessions[0].Sessions == 0 || res.RangeSessions[0].Group.Agent != "gemini" || len(res.Sessions) == 0 ||
+			len(res.Sources) != 1 || !res.Sources[0].Live {
+			t.Fatalf("today's work: %+v", res)
 		}
 		return nil
 	})

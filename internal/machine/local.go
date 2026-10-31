@@ -15,6 +15,7 @@ import (
 	machinev1 "github.com/hermeshai/hermesh/gen/go/hermesh/machine/v1"
 	relayv1 "github.com/hermeshai/hermesh/gen/go/hermesh/relay/v1"
 	sessionv1 "github.com/hermeshai/hermesh/gen/go/hermesh/session/v1"
+	"github.com/hermeshai/hermesh/internal/workstats"
 	"github.com/hermeshai/hermesh/pkg/identity"
 	"github.com/hermeshai/hermesh/pkg/transport"
 )
@@ -133,12 +134,13 @@ func (l *Local) Diff(ctx context.Context, req *sessionv1.GetDiffRequest) (*sessi
 	return l.n.sessions.Diff(ctx, l.p, req)
 }
 
-func (l *Local) Usage(req *sessionv1.GetUsageRequest) (*sessionv1.GetUsageResponse, error) {
-	return l.n.sessions.Usage(l.p, req)
-}
+// WorkSeq is where this machine's work counts are (work.go).
+func (l *Local) WorkSeq() int64 { return l.n.st.WorkSeq() }
 
-func (l *Local) Activity(req *sessionv1.GetActivityRequest) (*sessionv1.GetActivityResponse, error) {
-	return l.n.sessions.Activity(l.p, req, time.Now())
+// CountWork adds up this machine's work counts over a range (work.go), in
+// process: the owner device it runs on reads them here, never copies them.
+func (l *Local) CountWork(ctx context.Context, buckets []workstats.Bound, whole workstats.Bound) (sessions, turns []workstats.Row, keys map[int64]WorkKey, err error) {
+	return l.n.st.CountWork(ctx, buckets, whole)
 }
 
 // kClients: the agents that reached this machine, by client id, with the
