@@ -201,3 +201,16 @@ func ask(_ s: inout Session) {
         #expect(zh?.localizedString(forKey: en, value: nil, table: nil) != en, "no Chinese for \(en)")
     }
 }
+
+@Test func modelsReadAsTheirAgentNamesThem() {
+    var astra = Hermesh_Machine_V1_AgentModel()
+    astra.id = "gpt-6-astra"
+    astra.name = "GPT-6 Astra"
+    #expect(modelTitle("gpt-6-astra", [astra]) == "GPT-6 Astra")
+    #expect(modelTitle("claude-opus-5-5") == "Opus 5.5")
+    #expect(modelTitle("claude-haiku-5-5") == "Haiku 5.5")
+    #expect(modelTitle("claude-fable-5-1[1m]") == "Fable 5.1 (1M)")
+    #expect(modelTitle("claude-sonnet-4-20250514") == "Sonnet 4")
+    #expect(modelTitle("claude-3-5-sonnet-20241022") == "claude-3-5-sonnet-20241022")
+    #expect(modelTitle("gemini-3-pro") == "gemini-3-pro")
+}

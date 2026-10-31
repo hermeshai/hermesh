@@ -37,7 +37,9 @@ struct CloseButton: ToolbarContent {
 
 // MARK: Session info
 
-/// Who started the session, where it runs, and what it changed, file by file.
+/// Who started the session, where it runs, its context (the model and
+/// reasoning effort it runs with, once known), and what it changed, file by
+/// file.
 struct SessionInfoSheet: View {
     @Environment(AppModel.self) private var model
     let id: String
@@ -48,13 +50,22 @@ struct SessionInfoSheet: View {
         NavigationStack {
             List {
                 if let s = model.session(id) {
-                    Section {
+                    Section("Environment") {
                         LabeledContent("Started by", value: model.grantLabel(s))
                         LabeledContent("Machine / project", value: "\(model.machineName(s.machineID)) / \(s.projectID)")
                         LabeledContent("Coding agent", value: agentTitle(s.agent))
                         LabeledContent("Turns", value: "\(s.currentTurn)")
                         if !s.branch.isEmpty { LabeledContent("Branch", value: s.branch) }
                         LabeledContent("Started", value: s.createdDate.formatted(date: .abbreviated, time: .shortened))
+                    }
+                    if !s.model.isEmpty || !s.effort.isEmpty {
+                        // What the agent does not tell (Claude Code's effort) follows its own setting.
+                        let same = String(localized: "Same as \(agentTitle(s.agent))")
+                        let models = model.machines.first { $0.machineID == s.machineID }?.status.agents.first { $0.name == s.agent }?.models ?? []
+                        Section("Context") {
+                            LabeledContent("Model", value: s.model.isEmpty ? same : modelTitle(s.model, models))
+                            LabeledContent("Reasoning Effort", value: s.effort.isEmpty ? same : effortName(s.effort))
+                        }
                     }
                     Section {
                         if let files {

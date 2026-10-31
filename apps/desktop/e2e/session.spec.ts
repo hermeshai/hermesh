@@ -145,6 +145,17 @@ test("the session card floats over the conversation with what a glance needs, an
   expect(new Set(heights).size).toBe(1);
   const icons = await rows.evaluateAll((els) => els.map((el) => el.querySelector("svg, img, .av")!.getBoundingClientRect().width));
   expect(new Set(icons)).toEqual(new Set([16]));
+  // Under it, the session's context: the model it runs on, and its reasoning effort, which the agent
+  // doesn't tell, so it follows the agent's own. The same width and rows, 8 apart.
+  const context = page.getByRole("complementary", { name: "上下文" });
+  await expect(context.getByRole("heading", { name: "上下文" })).toBeVisible();
+  await expect(context.getByRole("listitem")).toHaveText(["gemini-3-pro", "推理强度 跟随 Gemini CLI"]);
+  const env = (await card.boundingBox())!;
+  const below = (await context.boundingBox())!;
+  expect([below.x, below.width]).toEqual([env.x, env.width]);
+  expect(Math.round(below.y - (env.y + env.height))).toBe(8);
+  const contextRows = await context.getByRole("listitem").evaluateAll((els) => els.map((el) => el.getBoundingClientRect().height));
+  expect(new Set([...heights, ...contextRows]).size).toBe(1);
   // A long value is cut short; hovered, it shows whole (the project: its folder).
   await expect(card.getByRole("button", { name: branch })).toHaveAttribute("title", branch);
   await expect(card.getByRole("button", { name: "demo" })).toHaveAttribute("title", /^\/.+/);
@@ -192,6 +203,7 @@ test("the session card floats over the conversation with what a glance needs, an
   expect(await fill()).not.toBe("rgba(0, 0, 0, 0)");
   await toggle.click();
   await expect(card).toHaveCount(0);
+  await expect(context).toHaveCount(0);
   await expect(toggle).toHaveAttribute("aria-pressed", "false");
   await page.mouse.move(0, 0);
   await expect.poll(fill).toBe("rgba(0, 0, 0, 0)");
@@ -303,6 +315,8 @@ test("a running session shows what it does, and 打断 stops the turn", async ()
   const card = page.getByRole("complementary", { name: "会话信息" });
   await expect(card).toContainText("Gemini CLI");
   await expect(card).not.toContainText("运行中");
+  // Neither its model nor its effort known (the agent tells neither): no context card.
+  await expect(page.getByRole("complementary", { name: "上下文" })).toHaveCount(0);
   // The agent that works is shown by its own logo, not the Hermesh mark.
   await expect(ctl.locator(".live-logo img")).toBeVisible();
   await expect(ctl.locator(".hm-mark")).toHaveCount(0);

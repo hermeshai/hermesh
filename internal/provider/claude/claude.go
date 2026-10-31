@@ -322,6 +322,7 @@ type line struct {
 	Type      string          `json:"type"`
 	Subtype   string          `json:"subtype"`
 	SessionID string          `json:"session_id"`
+	Model     string          `json:"model"` // system init lines
 	Message   json.RawMessage `json:"message"`
 	RequestID string          `json:"request_id"`
 	Request   json.RawMessage `json:"request"`
@@ -389,7 +390,7 @@ func (s *session) read() {
 		switch l.Type {
 		case "system":
 			if l.Subtype == "init" && l.SessionID != "" {
-				s.emit(provider.Event{Kind: provider.EventRef, Ref: l.SessionID})
+				s.emit(provider.Event{Kind: provider.EventRef, Ref: l.SessionID, Model: l.Model})
 			}
 		case "stream_event":
 			var ev struct {

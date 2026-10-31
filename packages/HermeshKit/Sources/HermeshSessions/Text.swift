@@ -197,6 +197,15 @@ public func agentTitle(_ id: String) -> String {
     }
 }
 
+/// A model as people call it: the name its agent gives it (Codex's display
+/// names, Claude Code's aliases), else a Claude model's ID read out
+/// ("claude-opus-5-5" → "Opus 5.5"), else the ID itself.
+public func modelTitle(_ id: String, _ models: [Hermesh_Machine_V1_AgentModel] = []) -> String {
+    if let n = models.first(where: { $0.id == id })?.name, !n.isEmpty { return n }
+    guard let m = id.wholeMatch(of: #/claude-([a-z]+)-(\d+)(?:-(\d{1,2}))?(?:-\d{8})?(\[1m\])?/#) else { return id }
+    return "\(m.1.prefix(1).uppercased())\(m.1.dropFirst()) \(m.2)\(m.3.map { ".\($0)" } ?? "")\(m.4 == nil ? "" : " (1M)")"
+}
+
 /// Items joined the way this language lists them ("a, b" / "a、b").
 public func listText(_ items: [String]) -> String {
     items.joined(separator: String(localized: ", ", bundle: .module, comment: "Separates the items of a list"))

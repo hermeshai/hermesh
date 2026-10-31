@@ -19,7 +19,8 @@ import (
 // a session without a model gets them, passed to Codex for that session
 // alone; one naming a model gets that model. The app shows the models Codex
 // offers and Codex's own configuration (what following it means), which
-// Hermesh never changes; cleared, sessions follow it again.
+// Hermesh never changes; cleared, sessions follow it again. Each session
+// shows the app the model and effort it runs with, as Codex answered.
 func TestAgentDefaults(t *testing.T) {
 	unixOnly(t, "its fake codex is a shell script")
 	if testing.Short() {
@@ -64,12 +65,30 @@ esac
 			t.Fatal(err)
 		}
 	}
+	// What the app shows of a session: its model and reasoning effort.
+	shown := func(id string) string {
+		t.Helper()
+		res, err := w.app.client.ListSessions(ctx, &localv1.ListSessionsRequest{})
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, s := range res.Sessions {
+			if s.SessionId == id {
+				return s.Model + " " + s.Effort
+			}
+		}
+		t.Fatalf("session %s not listed", id)
+		return ""
+	}
+	var started string
 	// What Codex was told by the last session started, in thread/start.
 	last := func(args ...string) map[string]any {
 		t.Helper()
-		if s, r := w.startSession(60*time.Second, append([]string{"--agent", "codex", "--prompt", "hi", "--wait"}, args...)...); r.code != 0 || s.Status != "idle" {
+		s, r := w.startSession(60*time.Second, append([]string{"--agent", "codex", "--prompt", "hi", "--wait"}, args...)...)
+		if r.code != 0 || s.Status != "idle" {
 			t.Fatalf("start: %d %s %s", r.code, r.stdout, r.stderr)
 		}
+		started = s.SessionID
 		b, _ := os.ReadFile(log)
 		lines := strings.Split(strings.TrimSpace(string(b)), "\n")
 		var p map[string]any
@@ -85,8 +104,14 @@ esac
 	if tier, ok := p["serviceTier"]; p["model"] != "gpt-fake-small" || !ok || tier != nil || p["config"].(map[string]any)["model_reasoning_effort"] != "low" {
 		t.Fatalf("defaults not passed: %v", p)
 	}
+	if got := shown(started); got != "gpt-fake-small low" {
+		t.Fatalf("shown with the defaults: %q", got)
+	}
 	if p := last("--model", "gpt-fake-big"); p["model"] != "gpt-fake-big" || p["config"].(map[string]any)["model_reasoning_effort"] != "low" {
 		t.Fatalf("the agent's model: %v", p)
+	}
+	if got := shown(started); got != "gpt-fake-big low" {
+		t.Fatalf("shown with the agent's model: %q", got)
 	}
 
 	set(&identityv1.AgentDefaults{Agent: "codex"})
@@ -99,5 +124,9 @@ esac
 	// Only the session's own tools remain in its config (docs/agent-messages.md §7.4).
 	if cfg, _ := p["config"].(map[string]any); cfg["model_reasoning_effort"] != nil || cfg["mcp_servers"] == nil {
 		t.Fatalf("cleared, but the effort is still set, or the tools are missing: %v", p)
+	}
+	// Following Codex's own configuration, the session shows what that is.
+	if got := shown(started); got != "gpt-fake-big high" {
+		t.Fatalf("shown following codex: %q", got)
 	}
 }

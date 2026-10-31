@@ -1641,7 +1641,15 @@ type Session struct {
 	Title string `protobuf:"bytes,16,opt,name=title,proto3" json:"title,omitempty"`
 	// The name under created_by that started it (an agent's bot, or its own
 	// conversation), "" for the agent itself.
-	CreatedAs     string `protobuf:"bytes,17,opt,name=created_as,json=createdAs,proto3" json:"created_as,omitempty"`
+	CreatedAs string `protobuf:"bytes,17,opt,name=created_as,json=createdAs,proto3" json:"created_as,omitempty"`
+	// The model it runs on: the one the agent reported when it started
+	// (Claude Code and Codex), else the one Hermesh passed it; "" until
+	// known.
+	Model string `protobuf:"bytes,18,opt,name=model,proto3" json:"model,omitempty"`
+	// The reasoning effort Hermesh passed, else the agent's own as it
+	// reported it (Codex); "": the agent's own setting, which it does not
+	// report (Claude Code).
+	Effort        string `protobuf:"bytes,19,opt,name=effort,proto3" json:"effort,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -1784,6 +1792,20 @@ func (x *Session) GetTitle() string {
 func (x *Session) GetCreatedAs() string {
 	if x != nil {
 		return x.CreatedAs
+	}
+	return ""
+}
+
+func (x *Session) GetModel() string {
+	if x != nil {
+		return x.Model
+	}
+	return ""
+}
+
+func (x *Session) GetEffort() string {
+	if x != nil {
+		return x.Effort
 	}
 	return ""
 }
@@ -4774,7 +4796,7 @@ const file_hermesh_session_v1_session_proto_rawDesc = "" +
 	"resolution\x18\x02 \x01(\x0e2&.hermesh.session.v1.QuestionResolutionR\n" +
 	"resolution\x12\x0e\n" +
 	"\x02by\x18\x03 \x01(\tR\x02by\x124\n" +
-	"\aanswers\x18\x04 \x03(\v2\x1a.hermesh.session.v1.AnswerR\aanswers\"\x86\x05\n" +
+	"\aanswers\x18\x04 \x03(\v2\x1a.hermesh.session.v1.AnswerR\aanswers\"\xb4\x05\n" +
 	"\aSession\x12\x1d\n" +
 	"\n" +
 	"session_id\x18\x01 \x01(\tR\tsessionId\x12\x1d\n" +
@@ -4799,7 +4821,9 @@ const file_hermesh_session_v1_session_proto_rawDesc = "" +
 	"\x06result\x18\x0f \x01(\tR\x06result\x12\x14\n" +
 	"\x05title\x18\x10 \x01(\tR\x05title\x12\x1d\n" +
 	"\n" +
-	"created_as\x18\x11 \x01(\tR\tcreatedAsJ\x04\b\x05\x10\x06R\x06preset\"2\n" +
+	"created_as\x18\x11 \x01(\tR\tcreatedAs\x12\x14\n" +
+	"\x05model\x18\x12 \x01(\tR\x05model\x12\x16\n" +
+	"\x06effort\x18\x13 \x01(\tR\x06effortJ\x04\b\x05\x10\x06R\x06preset\"2\n" +
 	"\x11GetSessionRequest\x12\x1d\n" +
 	"\n" +
 	"session_id\x18\x01 \x01(\tR\tsessionId\"\x88\x02\n" +

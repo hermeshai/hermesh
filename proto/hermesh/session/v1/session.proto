@@ -366,6 +366,14 @@ message Session {
   // The name under created_by that started it (an agent's bot, or its own
   // conversation), "" for the agent itself.
   string created_as = 17;
+  // The model it runs on: the one the agent reported when it started
+  // (Claude Code and Codex), else the one Hermesh passed it; "" until
+  // known.
+  string model = 18;
+  // The reasoning effort Hermesh passed, else the agent's own as it
+  // reported it (Codex); "": the agent's own setting, which it does not
+  // report (Claude Code).
+  string effort = 19;
 }
 
 message GetSessionRequest {

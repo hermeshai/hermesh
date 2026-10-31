@@ -26,7 +26,7 @@ final class HermeshUITests: XCTestCase {
         try XCTContext.runActivity(named: "archives a session and undoes it") { _ in try archiveAndUndo() }
         try XCTContext.runActivity(named: "lays the session list out from the view menu") { _ in try viewMenu() }
         try XCTContext.runActivity(named: "renames a session from its row, and deletes another once confirmed") { _ in try renameAndDelete() }
-        try XCTContext.runActivity(named: "shows what a session changed") { _ in try diff() }
+        try XCTContext.runActivity(named: "shows a session's context and what it changed") { _ in try diff() }
         try XCTContext.runActivity(named: "approves an agent asking to connect") { _ in try approveAgent() }
         try XCTContext.runActivity(named: "renews a grant") { _ in try renew() }
         try XCTContext.runActivity(named: "sets up waking an agent, after a first ring that catches a wrong key") { _ in try wake() }
@@ -245,6 +245,14 @@ final class HermeshUITests: XCTestCase {
     func diff() throws {
         openFromMenu(session: "写 hello")
         tap("session-info")
+        // Under its environment, its context: the model it runs on; the agent tells
+        // no reasoning effort, so that follows the agent's own.
+        XCTAssertTrue(text("环境").waitForExistence(timeout: 10), "the environment")
+        let context = text("上下文")
+        for _ in 0..<5 where !context.exists { app.swipeUp() } // the sheet opens half high
+        XCTAssertTrue(context.exists, "the context")
+        XCTAssertTrue(text("gemini-3-pro").exists, "its model")
+        XCTAssertTrue(text("推理强度").exists && text("跟随 Gemini CLI").exists, "its reasoning effort")
         let file = text("hello.txt")
         XCTAssertTrue(file.waitForExistence(timeout: 20), "the changed file is listed")
         file.tap()

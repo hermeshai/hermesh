@@ -15,11 +15,13 @@
 //	                         it and Codex exits, as one dying at its start
 //
 // model/list offers gpt-fake-big (the default) and gpt-fake-small;
-// config/read answers FAKE_CODEX_CONFIG, a JSON object (default {}).
+// config/read answers FAKE_CODEX_CONFIG, a JSON object (default {});
+// thread/start answers the model and reasoning effort the thread runs with.
 package main
 
 import (
 	"bufio"
+	"cmp"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -125,8 +127,21 @@ func main() {
 			var p struct {
 				Cwd      string `json:"cwd"`
 				ThreadID string `json:"threadId"`
+				Model    string `json:"model"`
+				Config   struct {
+					Effort string `json:"model_reasoning_effort"`
+				} `json:"config"`
 			}
 			json.Unmarshal(m.Params, &p)
+			// What it runs with, as Codex answers: what it was passed,
+			// else its configuration, else the default model's.
+			var cfg struct {
+				Model  string `json:"model"`
+				Effort string `json:"model_reasoning_effort"`
+			}
+			json.Unmarshal([]byte(os.Getenv("FAKE_CODEX_CONFIG")), &cfg)
+			model := cmp.Or(p.Model, cfg.Model, "gpt-fake-big")
+			effort := cmp.Or(p.Config.Effort, cfg.Effort, map[string]string{"gpt-fake-big": "high", "gpt-fake-small": "low"}[model])
 			st.mu.Lock()
 			st.cwd = p.Cwd
 			st.thread = p.ThreadID
@@ -134,7 +149,7 @@ func main() {
 				st.thread = fmt.Sprintf("thr_%d_%d", os.Getpid(), time.Now().UnixNano())
 			}
 			st.mu.Unlock()
-			reply(m.ID, map[string]any{"thread": map[string]any{"id": st.thread}})
+			reply(m.ID, map[string]any{"thread": map[string]any{"id": st.thread}, "model": model, "reasoningEffort": effort})
 			notify("thread/started", map[string]any{"thread": map[string]any{"id": st.thread}})
 		case "turn/start":
 			var p struct {
