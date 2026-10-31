@@ -6,26 +6,26 @@
 <marker id="approve" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" fill="#9a86ff"/></marker>
 </defs>
 <rect x="20" y="64" width="240" height="104" rx="16" fill="#161b22" stroke="#30363d"/>
-<text x="140.0" y="98" text-anchor="middle" font-size="18" font-weight="600" fill="#e6edf3">Your agent</text>
-<text x="140.0" y="124" text-anchor="middle" font-size="14" fill="#9198a1">Grok Bot · ChatGPT · Claude</text>
-<text x="140.0" y="145" text-anchor="middle" font-size="14" fill="#9198a1">Codex · your own</text>
+<text x="140.0" y="98" text-anchor="middle" font-size="18" font-weight="600" fill="#e6edf3">Your agents</text>
+<text x="140.0" y="124" text-anchor="middle" font-size="14" fill="#9198a1">Grok Bot · Muse · ChatGPT</text>
+<text x="140.0" y="145" text-anchor="middle" font-size="14" fill="#9198a1">Claude Code · Codex · your own</text>
 <rect x="380" y="58" width="240" height="116" rx="58" fill="#05070b" stroke="url(#rim)" stroke-width="2"/>
 <svg x="404" y="92" width="48" height="48" viewBox="0.05 0 99.9 100"><defs><linearGradient id="darkhm1" gradientUnits="userSpaceOnUse" x1="-37" y1="10" x2="37" y2="10"><stop offset="0" stop-color="#22E1C9"/><stop offset="0.125" stop-color="#00D0DE"/><stop offset="0.25" stop-color="#00B9F1"/><stop offset="0.375" stop-color="#009CFE"/><stop offset="0.5" stop-color="#3E7BFF"/><stop offset="0.625" stop-color="#5175FF"/><stop offset="0.75" stop-color="#616EFF"/><stop offset="0.875" stop-color="#6E68FF"/><stop offset="1" stop-color="#7B61FF"/></linearGradient><linearGradient id="darkhm2" gradientUnits="userSpaceOnUse" x1="-27.16" y1="-27.043" x2="9.84" y2="37.043"><stop offset="0" stop-color="#22E1C9"/><stop offset="0.125" stop-color="#00D0DE"/><stop offset="0.25" stop-color="#00B9F1"/><stop offset="0.375" stop-color="#009CFE"/><stop offset="0.5" stop-color="#3E7BFF"/><stop offset="0.625" stop-color="#5175FF"/><stop offset="0.75" stop-color="#616EFF"/><stop offset="0.875" stop-color="#6E68FF"/><stop offset="1" stop-color="#7B61FF"/></linearGradient><linearGradient id="darkhm3" gradientUnits="userSpaceOnUse" x1="9.84" y1="-37.043" x2="-27.16" y2="27.043"><stop offset="0" stop-color="#22E1C9"/><stop offset="0.125" stop-color="#00D0DE"/><stop offset="0.25" stop-color="#00B9F1"/><stop offset="0.375" stop-color="#009CFE"/><stop offset="0.5" stop-color="#3E7BFF"/><stop offset="0.625" stop-color="#5175FF"/><stop offset="0.75" stop-color="#616EFF"/><stop offset="0.875" stop-color="#6E68FF"/><stop offset="1" stop-color="#7B61FF"/></linearGradient></defs><g transform="translate(50 50) scale(1.162)" style="isolation:isolate"><path d="M-37 10L37 10" fill="none" stroke="url(#darkhm1)" stroke-width="12" stroke-linecap="round" opacity="0.6" style="mix-blend-mode:plus-lighter"/><path d="M-27.16 -27.043L9.84 37.043" fill="none" stroke="url(#darkhm2)" stroke-width="12" stroke-linecap="round" opacity="0.6" style="mix-blend-mode:plus-lighter"/><path d="M9.84 -37.043L-27.16 27.043" fill="none" stroke="url(#darkhm3)" stroke-width="12" stroke-linecap="round" opacity="0.6" style="mix-blend-mode:plus-lighter"/></g></svg>
 <text x="464" y="110" font-size="18" font-weight="600" fill="#e6edf3">hermesh.io</text>
 <text x="464" y="133" font-size="14" fill="#9198a1">or your own server</text>
 <rect x="740" y="64" width="240" height="104" rx="16" fill="#161b22" stroke="#30363d"/>
 <text x="860.0" y="98" text-anchor="middle" font-size="18" font-weight="600" fill="#e6edf3">Your machines</text>
-<text x="860.0" y="124" text-anchor="middle" font-size="14" fill="#9198a1">Mac · Linux server · VPS</text>
+<text x="860.0" y="124" text-anchor="middle" font-size="14" fill="#9198a1">Mac · Windows · Linux server</text>
 <text x="860.0" y="145" text-anchor="middle" font-size="14" fill="#9198a1">Claude Code · Codex …</text>
-<line x1="264" y1="116" x2="374" y2="116" stroke="#3E7BFF" stroke-width="2" marker-end="url(#arrow)"/>
-<text x="319" y="82" text-anchor="middle" font-size="13" fill="#9198a1">starts and</text>
-<text x="319" y="99" text-anchor="middle" font-size="13" fill="#9198a1">follows sessions</text>
-<line x1="626" y1="116" x2="734" y2="116" stroke="#3E7BFF" stroke-width="2" marker-end="url(#arrow)"/>
+<line x1="266" y1="116" x2="372" y2="116" stroke="#3E7BFF" stroke-width="2" marker-start="url(#arrow)" marker-end="url(#arrow)"/>
+<text x="319" y="82" text-anchor="middle" font-size="13" fill="#9198a1">messages</text>
+<text x="319" y="99" text-anchor="middle" font-size="13" fill="#9198a1">and sessions</text>
+<line x1="628" y1="116" x2="732" y2="116" stroke="#3E7BFF" stroke-width="2" marker-start="url(#arrow)" marker-end="url(#arrow)"/>
 <text x="680" y="82" text-anchor="middle" font-size="13" fill="#9198a1">encrypted</text>
 <text x="680" y="99" text-anchor="middle" font-size="13" fill="#9198a1">end to end</text>
 <rect x="390" y="262" width="220" height="92" rx="16" fill="#161b22" stroke="#30363d"/>
 <text x="500.0" y="296" text-anchor="middle" font-size="18" font-weight="600" fill="#e6edf3">Your trusted device</text>
-<text x="500.0" y="322" text-anchor="middle" font-size="14" fill="#9198a1">iPhone · Mac · Linux</text>
+<text x="500.0" y="322" text-anchor="middle" font-size="14" fill="#9198a1">iPhone · Mac · Windows · Linux</text>
 <line x1="500" y1="258" x2="500" y2="180" stroke="#9a86ff" stroke-width="2" stroke-dasharray="6 5" marker-end="url(#approve)"/>
 <text x="512" y="214" text-anchor="start" font-size="13" fill="#9a86ff">approves each agent</text>
 <text x="512" y="231" text-anchor="start" font-size="13" fill="#9a86ff">and machine, on your device</text>
