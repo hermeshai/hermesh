@@ -1,0 +1,29 @@
+name: screens
+# The website download page's screenshots of the Windows app, in the demo
+# world of e2e TestScreens (the Mac's and the iPhone's are taken on a Mac).
+# Run by hand: gh workflow run screens.yml; the pictures are the run's
+# artifact windows-screens, <lang>/windows-*.png.
+on:
+  workflow_dispatch:
+jobs:
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - run: corepack enable
+      - run: pnpm install --frozen-lockfile
+      - name: screenshots
+        run: go test ./e2e -run '^TestScreens$' -count=1 -v -timeout 40m
+        env:
+          HERMESH_SCREENS_OUT: ${{ runner.temp }}/screens
+          HERMESH_SCREENS_ONLY: desktop
+      - uses: actions/upload-artifact@v4
+        with:
+          name: windows-screens
+          path: ${{ runner.temp }}/screens
