@@ -1,12 +1,14 @@
 // Package fake is an in-process provider for tests. Prompts are scripts:
 // each line is a command:
 //
-//	say <text>          agent message
+//	say <text>          agent message (\n in text, here and in write and run, is a line break)
 //	draft <a>|<b>|...   reply text still being written: pieces a, b, ... 30 ms
 //	                    apart (the say that follows is the whole message)
 //	warn <text>         an agent error that does not end the turn
 //	write <path> <text> edit tool call that writes a file (through the gate)
 //	shell <command>     shell tool call (through the gate; not executed)
+//	run <command>|<out> shell tool call that printed out (not executed)
+//	tokens <in> <out>   the turn's usage (default 10 and 5)
 //	sleep <duration>    pause
 //	fail <text>         end the turn with an error
 //	crash               the process exits mid-turn
@@ -36,12 +38,17 @@
 //
 // Steer appends a script to the running turn, run before it completes.
 //
+// HERMESH_FAKE_SCRIPTS names a JSON object of prompts and their scripts: a
+// prompt ending in one of them runs its script instead, so a demo world's
+// conversations read as a person wrote them (e2e TestScreens).
+//
 // Start itself fails on a resume when the prompt has a line
 // "resume-start-reject" (refused).
 package fake
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
@@ -103,6 +110,7 @@ type session struct {
 	inTurn  bool
 	steered []string
 	images  []provider.Image // this turn's
+	usage   provider.Usage   // this turn's, from tokens
 	asked   map[string]chan provider.Reply
 }
 
@@ -207,8 +215,17 @@ func (s *session) turn(ctx context.Context, in provider.Input) {
 	s.turns++
 	prompt := in.Text
 	s.mu.Lock()
-	s.inTurn, s.images = true, in.Images
+	s.inTurn, s.images, s.usage = true, in.Images, provider.Usage{InputTokens: 10, OutputTokens: 5}
 	s.mu.Unlock()
+	if b, err := os.ReadFile(os.Getenv("HERMESH_FAKE_SCRIPTS")); err == nil {
+		var scripts map[string]string
+		json.Unmarshal(b, &scripts)
+		for p, script := range scripts {
+			if strings.HasSuffix(strings.TrimSpace(prompt), p) {
+				prompt = script
+			}
+		}
+	}
 	defer func() {
 		s.mu.Lock()
 		s.inTurn, s.steered = false, nil
@@ -233,7 +250,10 @@ func (s *session) turn(ctx context.Context, in provider.Input) {
 		s.steered = nil
 		s.mu.Unlock()
 	}
-	s.emit(provider.Event{Kind: provider.EventTurnCompleted, Text: last, Usage: provider.Usage{InputTokens: 10, OutputTokens: 5}})
+	s.mu.Lock()
+	usage := s.usage
+	s.mu.Unlock()
+	s.emit(provider.Event{Kind: provider.EventTurnCompleted, Text: last, Usage: usage})
 }
 
 // script runs one prompt's commands; ended: the turn already ended (an
@@ -248,6 +268,7 @@ func (s *session) script(ctx context.Context, prompt string) (last string, ended
 			last = "ready"
 			s.emit(provider.Event{Kind: provider.EventAgentMessage, Text: last})
 		case "say":
+			arg = strings.ReplaceAll(arg, `\n`, "\n")
 			last = arg
 			s.emit(provider.Event{Kind: provider.EventAgentMessage, Text: arg})
 		case "draft":
@@ -269,6 +290,7 @@ func (s *session) script(ctx context.Context, prompt string) (last string, ended
 			s.emit(provider.Event{Kind: provider.EventToolResult, CallID: id, Summary: res, IsError: isErr})
 		case "write":
 			path, text, _ := strings.Cut(arg, " ")
+			text = strings.ReplaceAll(text, `\n`, "\n")
 			a := provider.ToolAction{CallID: id, Kind: provider.ToolEdit, Name: "Write", Paths: []string{path}, Summary: path}
 			d := s.decide(ctx, a)
 			s.emit(provider.Event{Kind: provider.EventToolCall, CallID: id, ToolKind: a.Kind, ToolName: a.Name, Summary: a.Summary, Decision: &d})
@@ -291,6 +313,17 @@ func (s *session) script(ctx context.Context, prompt string) (last string, ended
 			d := s.decide(ctx, a)
 			s.emit(provider.Event{Kind: provider.EventToolCall, CallID: id, ToolKind: a.Kind, ToolName: a.Name, Summary: a.Summary, Decision: &d})
 			s.emit(provider.Event{Kind: provider.EventToolResult, CallID: id, Summary: "simulated", IsError: !d.Allow})
+		case "run":
+			command, out, _ := strings.Cut(arg, "|")
+			s.emit(provider.Event{Kind: provider.EventToolCall, CallID: id, ToolKind: provider.ToolShell, ToolName: "Bash", Summary: command, Decision: &provider.Decision{Allow: true}})
+			s.emit(provider.Event{Kind: provider.EventToolResult, CallID: id, Summary: strings.ReplaceAll(out, `\n`, "\n")})
+		case "tokens":
+			in, out, _ := strings.Cut(arg, " ")
+			i, _ := strconv.ParseUint(in, 10, 64)
+			o, _ := strconv.ParseUint(out, 10, 64)
+			s.mu.Lock()
+			s.usage = provider.Usage{InputTokens: i, OutputTokens: o}
+			s.mu.Unlock()
 		case "sleep":
 			d, _ := time.ParseDuration(arg)
 			select {
