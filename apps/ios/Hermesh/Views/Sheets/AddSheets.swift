@@ -141,25 +141,37 @@ func connectMessage(_ status: StatusResponse, agent: String) -> String {
 }
 
 /// Add a machine: the command to run there (send it to the Mac by AirDrop),
-/// then approve its request here.
+/// install.sh's, or install.ps1's in a Windows PC's PowerShell, then approve
+/// its request here.
 struct AddMachineSheet: View {
     @Environment(AppModel.self) private var model
     @State private var forThisPhone = false
+    @State private var windows = false
 
     static let install = "curl -fsSL https://github.com/hermeshai/hermesh/releases/latest/download/install.sh | sh"
+    static let installScript = "https://github.com/hermeshai/hermesh/releases/latest/download/install.ps1"
+    private var install: String { windows ? "irm \(Self.installScript) | iex" : Self.install }
     /// The command with this account's address in it: the machine's request
     /// comes here by itself, to compare its verification code.
-    private var pinned: String { Self.install + " -s -- \(model.status.connectAddress)" }
+    private var pinned: String {
+        windows ? "& ([scriptblock]::Create((irm \(Self.installScript)))) \(model.status.connectAddress)" : Self.install + " -s -- \(model.status.connectAddress)"
+    }
 
     var body: some View {
         NavigationStack {
             List {
                 Section {
+                    Picker("That machine’s system", selection: $windows) {
+                        Text("macOS or Linux").tag(false)
+                        Text("Windows").tag(true)
+                    }
+                    .pickerStyle(.segmented)
+                    .listRowBackground(Color.clear).listRowInsets(EdgeInsets())
                 } footer: {
-                    Text("A Linux server, a cloud host or a Mac mini can each be a machine.")
+                    Text("A Linux server, a cloud host, a Mac mini or a Windows PC can each be a machine.")
                 }
                 if model.status.hosted {
-                    commandSection(Self.install, footer: "As the user you code as. It shows a code.")
+                    commandSection(install, footer: windows ? "In PowerShell, as the user you code as. It shows a code." : "As the user you code as. It shows a code.")
                     Section {
                         Button {
                             model.sheet = .scan
@@ -188,7 +200,9 @@ struct AddMachineSheet: View {
                         }
                     }
                 } else {
-                    commandSection(pinned, footer: "As the user you code as on that machine. It installs Hermesh, runs it in the background, and shows a verification code.")
+                    commandSection(pinned, footer: windows
+                        ? "In PowerShell, as the user you code as on that PC (Windows 10 or later). It installs Hermesh, runs it in the background, and shows a verification code."
+                        : "As the user you code as on that machine. It installs Hermesh, runs it in the background, and shows a verification code.")
                     Section {
                         waiting
                         Button("Enter a pairing code instead…") { model.sheet = .enterCode }

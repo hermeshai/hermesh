@@ -631,12 +631,12 @@
         }
       }
     },
-    "A Linux server, a cloud host or a Mac mini can each be a machine.": {
+    "A Linux server, a cloud host, a Mac mini or a Windows PC can each be a machine.": {
       "localizations": {
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "Linux 服务器、云主机或 Mac mini 都可以作为机器。"
+            "value": "Linux 服务器、云主机、Mac mini 或 Windows 电脑都可以作为机器。"
           }
         }
       }
@@ -2840,6 +2840,26 @@
           "stringUnit": {
             "state": "translated",
             "value": "原地：直接改这个目录"
+          }
+        }
+      }
+    },
+    "In PowerShell, as the user you code as on that PC (Windows 10 or later). It installs Hermesh, runs it in the background, and shows a verification code.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "在 PowerShell 里，用你平时在那台电脑上写代码的用户运行（Windows 10 或更新）。它会安装 Hermesh、在后台运行，并显示一个核对码。"
+          }
+        }
+      }
+    },
+    "In PowerShell, as the user you code as. It shows a code.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "在 PowerShell 里，用你平时写代码的用户运行。它会显示一个配对码。"
           }
         }
       }
@@ -5515,6 +5535,16 @@
         }
       }
     },
+    "That machine’s system": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "那台机器的系统"
+          }
+        }
+      }
+    },
     "The Hermesh core isn’t answering. Quit the app and open it again.": {
       "localizations": {
         "zh-Hans": {
@@ -6695,6 +6725,9 @@
         }
       }
     },
+    "Windows": {
+      "shouldTranslate": false
+    },
     "With nothing to scan: its request comes here by itself. Compare the verification code.": {
       "localizations": {
         "zh-Hans": {
@@ -6921,6 +6954,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "macOS 没让 Hermesh 读这个文件夹。在那台 Mac 的「系统设置 › 隐私与安全性 › 文件与文件夹」里允许。"
+          }
+        }
+      }
+    },
+    "macOS or Linux": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "macOS 或 Linux"
           }
         }
       }

@@ -9,9 +9,12 @@
   "signerWaiting": "Check and confirm in the window that pops up",
   "addMachine": {
     "title": "Add Machine",
-    "sub": "A Mac mini, a Linux server or a cloud host can each be a machine: agents you allow use Claude Code and Codex on it to do the work.",
+    "sub": "A Mac mini, a Linux server, a Windows PC or a cloud host can each be a machine: agents you allow use Claude Code and Codex on it to do the work.",
     "step1": "1. Run this in a terminal on that machine",
+    "system": "That machine’s system",
+    "unix": "macOS or Linux",
     "hint": "Run it as the user you usually code as on that machine. It installs Hermesh, runs it in the background, and shows a verification code.",
+    "hintWindows": "Run it in PowerShell, as the user you usually code as on that PC (Windows 10 or later). It installs Hermesh, runs it in the background, and shows a verification code.",
     "step2": "2. Approve here",
     "waiting": "Waiting for that machine to connect…",
     "waitingDetail": "An approval window will pop up: approve if the verification code matches the one in that machine’s terminal.",
