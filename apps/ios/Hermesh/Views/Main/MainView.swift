@@ -346,7 +346,7 @@ private struct RootToolbar: ViewModifier {
             .onAppear { model.rootTitleSmall = false } // a root page shows from its top
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) { MenuButton() }
-                if model.rootTitleSmall && model.shownSync != nil { ToolbarItem(placement: .principal) { SyncLine() } }
+                if (model.rootTitleSmall || !model.root.titleLarge) && model.shownSync != nil { ToolbarItem(placement: .principal) { SyncLine() } }
             }
     }
 }
