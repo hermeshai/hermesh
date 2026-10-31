@@ -697,8 +697,8 @@ type OwnerControlServiceClient interface {
 	// it is refused, and shown the order in that time.
 	EraseOwner(context.Context, *v1.EraseOwnerRequest) (*v1.EraseOwnerResponse, error)
 	// The account this owner belongs to, as its devices may show it: a
-	// center's account's email ("" for a self-hosted relay). Erasing
-	// everything has the owner type it to confirm.
+	// center's account's email and picture ("" for a self-hosted relay).
+	// Erasing everything has the owner type the email to confirm.
 	GetAccount(context.Context, *v1.GetAccountRequest) (*v1.GetAccountResponse, error)
 	// The address of this relay's MCP gateway, with the key in its path:
 	// only the owner's devices learn it (docs/mcp-gateway.md §13).
@@ -1103,8 +1103,8 @@ type OwnerControlServiceHandler interface {
 	// it is refused, and shown the order in that time.
 	EraseOwner(context.Context, *v1.EraseOwnerRequest) (*v1.EraseOwnerResponse, error)
 	// The account this owner belongs to, as its devices may show it: a
-	// center's account's email ("" for a self-hosted relay). Erasing
-	// everything has the owner type it to confirm.
+	// center's account's email and picture ("" for a self-hosted relay).
+	// Erasing everything has the owner type the email to confirm.
 	GetAccount(context.Context, *v1.GetAccountRequest) (*v1.GetAccountResponse, error)
 	// The address of this relay's MCP gateway, with the key in its path:
 	// only the owner's devices learn it (docs/mcp-gateway.md §13).

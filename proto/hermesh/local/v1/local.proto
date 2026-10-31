@@ -272,6 +272,10 @@ message GetStatusResponse {
   string mcp_url = 18;
   // The signer, where it is not the app's child (Windows).
   SignerState signer = 19;
+  // The account's picture on the official service (GetAccount), learned
+  // each time this device connects: "" when it has none, and on a server
+  // of one's own.
+  string account_avatar_url = 20;
 }
 
 message ListProfilesRequest {}

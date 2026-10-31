@@ -4104,8 +4104,12 @@ func (*GetAccountRequest) Descriptor() ([]byte, []int) {
 }
 
 type GetAccountResponse struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Account       string                 `protobuf:"bytes,1,opt,name=account,proto3" json:"account,omitempty"`
+	state   protoimpl.MessageState `protogen:"open.v1"`
+	Account string                 `protobuf:"bytes,1,opt,name=account,proto3" json:"account,omitempty"`
+	// The account's picture, from the provider it signs in with (GitHub,
+	// Google): a URL for its devices to show ("" when it has none, and on a
+	// self-hosted relay).
+	AvatarUrl     string `protobuf:"bytes,2,opt,name=avatar_url,json=avatarUrl,proto3" json:"avatar_url,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -4143,6 +4147,13 @@ func (*GetAccountResponse) Descriptor() ([]byte, []int) {
 func (x *GetAccountResponse) GetAccount() string {
 	if x != nil {
 		return x.Account
+	}
+	return ""
+}
+
+func (x *GetAccountResponse) GetAvatarUrl() string {
+	if x != nil {
+		return x.AvatarUrl
 	}
 	return ""
 }
@@ -5532,9 +5543,11 @@ const file_hermesh_relay_v1_relay_proto_rawDesc = "" +
 	"\x11EraseOwnerRequest\x121\n" +
 	"\x05order\x18\x01 \x01(\v2\x1b.hermesh.identity.v1.SignedR\x05order\"\x14\n" +
 	"\x12EraseOwnerResponse\"\x13\n" +
-	"\x11GetAccountRequest\".\n" +
+	"\x11GetAccountRequest\"M\n" +
 	"\x12GetAccountResponse\x12\x18\n" +
-	"\aaccount\x18\x01 \x01(\tR\aaccount\"\x0f\n" +
+	"\aaccount\x18\x01 \x01(\tR\aaccount\x12\x1d\n" +
+	"\n" +
+	"avatar_url\x18\x02 \x01(\tR\tavatarUrl\"\x0f\n" +
 	"\rGetMCPRequest\"\"\n" +
 	"\x0eGetMCPResponse\x12\x10\n" +
 	"\x03url\x18\x01 \x01(\tR\x03url\"%\n" +

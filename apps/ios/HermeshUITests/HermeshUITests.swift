@@ -18,6 +18,7 @@ final class HermeshUITests: XCTestCase {
 
     func testTheIPhoneApp() throws {
         try XCTContext.runActivity(named: "joins the owner by its connection address") { _ in try join() }
+        try XCTContext.runActivity(named: "the menu: the logo, the three places, and the account as a round picture") { _ in try menu() }
         try XCTContext.runActivity(named: "counts the sessions waiting on the overview, and answers one from the menu") { _ in try answerFromOverview() }
         try XCTContext.runActivity(named: "interrupts a running session") { _ in try interrupt() }
         try XCTContext.runActivity(named: "shows a reply as the agent writes it") { _ in try streamedReply() }
@@ -78,6 +79,25 @@ final class HermeshUITests: XCTestCase {
         allowNotifications(after: finish)
         XCTAssertTrue(app.navigationBars["概览"].waitForExistence(timeout: 30), "the overview")
         try waitFor("this iPhone registers for notifications") { (try self.control("registered")["devices"] as? Int ?? 0) > 0 ? true : nil }
+    }
+
+    func menu() throws {
+        openMenu()
+        let drawer = app.descendants(matching: .any)["drawer"]
+        XCTAssertTrue(drawer.descendants(matching: .any)["Hermesh"].exists, "the logo")
+        for place in ["概览", "授权", "机器"] {
+            XCTAssertTrue(drawer.buttons[place].exists, place)
+        }
+        // A picture alone, no name beside it: on a server of one's own, a server.
+        let account = drawer.buttons["account"]
+        XCTAssertTrue(account.exists)
+        XCTAssertEqual(account.frame.width, account.frame.height, accuracy: 1, "round")
+        XCTAssertLessThan(account.frame.width, 60, "the picture alone")
+        let shot = XCTAttachment(screenshot: app.screenshot())
+        shot.name = "menu"
+        shot.lifetime = .keepAlways
+        add(shot)
+        app.descendants(matching: .any)["drawer-dim"].tap()
     }
 
     func answerFromOverview() throws {

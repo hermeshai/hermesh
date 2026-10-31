@@ -590,7 +590,7 @@ func (o *Owner) Leave(ctx context.Context) error {
 	}
 	rootPub := o.rootPub
 	o.ownerID, o.relayURL, o.rootPub, o.trust, o.device, o.deviceCert, o.relayInfo, o.removed = "", "", nil, nil, nil, nil, nil, false
-	o.mcpURL = ""
+	o.mcpURL, o.avatarURL = "", ""
 	o.signedOut, o.account = false, ""
 	o.mu.Unlock()
 	for _, k := range []string{kOwnerID, kSignedOut, kAccount} {

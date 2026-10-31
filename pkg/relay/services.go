@@ -682,6 +682,9 @@ func (o *ownerControl) GetAccount(ctx context.Context, _ *relayv1.GetAccountRequ
 	if o.s.cfg.Account != nil {
 		res.Account = o.s.cfg.Account(peerFrom(ctx).t.ownerID)
 	}
+	if o.s.cfg.AccountAvatar != nil {
+		res.AvatarUrl = o.s.cfg.AccountAvatar(peerFrom(ctx).t.ownerID)
+	}
 	return res, nil
 }
 

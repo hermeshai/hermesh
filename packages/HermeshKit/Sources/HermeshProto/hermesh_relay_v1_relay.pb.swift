@@ -1673,6 +1673,11 @@ public nonisolated struct Hermesh_Relay_V1_GetAccountResponse: Sendable {
 
   public var account: String = String()
 
+  /// The account's picture, from the provider it signs in with (GitHub,
+  /// Google): a URL for its devices to show ("" when it has none, and on a
+  /// self-hosted relay).
+  public var avatarURL: String = String()
+
   public var unknownFields = SwiftProtobuf.UnknownStorage()
 
   public init() {}
@@ -4769,7 +4774,7 @@ nonisolated extension Hermesh_Relay_V1_GetAccountRequest: SwiftProtobuf.Message,
 
 nonisolated extension Hermesh_Relay_V1_GetAccountResponse: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
   public static let protoMessageName: String = _protobuf_package + ".GetAccountResponse"
-  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{1}account\0")
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{1}account\0\u{3}avatar_url\0")
 
   public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
     while let fieldNumber = try decoder.nextFieldNumber() {
@@ -4778,6 +4783,7 @@ nonisolated extension Hermesh_Relay_V1_GetAccountResponse: SwiftProtobuf.Message
       // enabled. https://github.com/apple/swift-protobuf/issues/1034
       switch fieldNumber {
       case 1: try { try decoder.decodeSingularStringField(value: &self.account) }()
+      case 2: try { try decoder.decodeSingularStringField(value: &self.avatarURL) }()
       default: break
       }
     }
@@ -4787,11 +4793,15 @@ nonisolated extension Hermesh_Relay_V1_GetAccountResponse: SwiftProtobuf.Message
     if !self.account.isEmpty {
       try visitor.visitSingularStringField(value: self.account, fieldNumber: 1)
     }
+    if !self.avatarURL.isEmpty {
+      try visitor.visitSingularStringField(value: self.avatarURL, fieldNumber: 2)
+    }
     try unknownFields.traverse(visitor: &visitor)
   }
 
   public static func ==(lhs: Hermesh_Relay_V1_GetAccountResponse, rhs: Hermesh_Relay_V1_GetAccountResponse) -> Bool {
     if lhs.account != rhs.account {return false}
+    if lhs.avatarURL != rhs.avatarURL {return false}
     if lhs.unknownFields != rhs.unknownFields {return false}
     return true
   }

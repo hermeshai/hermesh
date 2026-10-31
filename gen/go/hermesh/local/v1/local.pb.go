@@ -661,9 +661,13 @@ type GetStatusResponse struct {
 	// products ("" when it serves none, and on the official service).
 	McpUrl string `protobuf:"bytes,18,opt,name=mcp_url,json=mcpUrl,proto3" json:"mcp_url,omitempty"`
 	// The signer, where it is not the app's child (Windows).
-	Signer        *SignerState `protobuf:"bytes,19,opt,name=signer,proto3" json:"signer,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	Signer *SignerState `protobuf:"bytes,19,opt,name=signer,proto3" json:"signer,omitempty"`
+	// The account's picture on the official service (GetAccount), learned
+	// each time this device connects: "" when it has none, and on a server
+	// of one's own.
+	AccountAvatarUrl string `protobuf:"bytes,20,opt,name=account_avatar_url,json=accountAvatarUrl,proto3" json:"account_avatar_url,omitempty"`
+	unknownFields    protoimpl.UnknownFields
+	sizeCache        protoimpl.SizeCache
 }
 
 func (x *GetStatusResponse) Reset() {
@@ -827,6 +831,13 @@ func (x *GetStatusResponse) GetSigner() *SignerState {
 		return x.Signer
 	}
 	return nil
+}
+
+func (x *GetStatusResponse) GetAccountAvatarUrl() string {
+	if x != nil {
+		return x.AccountAvatarUrl
+	}
+	return ""
 }
 
 type ListProfilesRequest struct {
@@ -7742,7 +7753,7 @@ const file_hermesh_local_v1_local_proto_rawDesc = "" +
 	"\x11notice_public_key\x18\x03 \x01(\fR\x0fnoticePublicKey\x12\x14\n" +
 	"\x05kinds\x18\x04 \x03(\tR\x05kinds\"\x16\n" +
 	"\x14RegisterPushResponse\"\x12\n" +
-	"\x10GetStatusRequest\"\xba\x05\n" +
+	"\x10GetStatusRequest\"\xe8\x05\n" +
 	"\x11GetStatusResponse\x12 \n" +
 	"\vinitialized\x18\x01 \x01(\bR\vinitialized\x12\x19\n" +
 	"\bowner_id\x18\x02 \x01(\tR\aownerId\x12\x1b\n" +
@@ -7765,7 +7776,8 @@ const file_hermesh_local_v1_local_proto_rawDesc = "" +
 	"\aaccount\x18\x10 \x01(\tR\aaccount\x120\n" +
 	"\x06erased\x18\x11 \x01(\v2\x18.hermesh.local.v1.ErasedR\x06erased\x12\x17\n" +
 	"\amcp_url\x18\x12 \x01(\tR\x06mcpUrl\x125\n" +
-	"\x06signer\x18\x13 \x01(\v2\x1d.hermesh.local.v1.SignerStateR\x06signer\"\x15\n" +
+	"\x06signer\x18\x13 \x01(\v2\x1d.hermesh.local.v1.SignerStateR\x06signer\x12,\n" +
+	"\x12account_avatar_url\x18\x14 \x01(\tR\x10accountAvatarUrl\"\x15\n" +
 	"\x13ListProfilesRequest\"M\n" +
 	"\x14ListProfilesResponse\x125\n" +
 	"\bprofiles\x18\x01 \x03(\v2\x19.hermesh.local.v1.ProfileR\bprofiles\"\xc7\x01\n" +

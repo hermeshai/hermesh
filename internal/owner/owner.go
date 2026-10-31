@@ -78,6 +78,7 @@ type Owner struct {
 	kept       *peer.Client // client, kept over a pause: not known to work yet
 	relayInfo  *relayv1.GetInfoResponse
 	mcpURL     string       // the relay's own MCP address, with its key (GetMCP)
+	avatarURL  string       // the account's picture on a center (GetAccount)
 	join       *pendingJoin // this device asking to join an owner
 	// byCode: machine and device requests the person looked up by their
 	// code here.
@@ -383,6 +384,7 @@ func (o *Owner) relay(ctx context.Context) (*peer.Client, error) {
 		}
 		go o.fetchRelayInfo(relayURL)
 		go o.fetchMCP()
+		go o.fetchAvatar()
 		go o.refreshCards()
 		go func() { // admitted: not removed (with admission pipelined, only once the relay said so)
 			actx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
@@ -503,6 +505,24 @@ func (o *Owner) fetchMCP() {
 	o.mu.Unlock()
 }
 
+// fetchAvatar learns the account's picture from a center, again on each
+// connection, so a changed one shows (for Status).
+func (o *Owner) fetchAvatar() {
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	ctl, _, err := o.control(ctx)
+	if err != nil {
+		return
+	}
+	res, err := ctl.GetAccount(ctx, &relayv1.GetAccountRequest{})
+	if err != nil {
+		return
+	}
+	o.mu.Lock()
+	o.avatarURL = res.AvatarUrl
+	o.mu.Unlock()
+}
+
 func (o *Owner) control(ctx context.Context) (relayv1connect.OwnerControlServiceClient, *peer.Client, error) {
 	c, err := o.relay(ctx)
 	if err != nil {
@@ -569,7 +589,7 @@ func (o *Owner) ownerStatus() *localv1.GetStatusResponse {
 		st.Hosted, st.ConsoleUrl = o.relayInfo.Hosted, o.relayInfo.ConsoleUrl
 	}
 	if o.ownerID != "" {
-		st.McpUrl = o.mcpURL
+		st.McpUrl, st.AccountAvatarUrl = o.mcpURL, o.avatarURL
 	}
 	if o.rootPub != nil && o.ownerID != "" {
 		st.DeviceKeyId = identity.KeyID(o.rootPub)

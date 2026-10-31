@@ -378,6 +378,14 @@ public nonisolated struct Hermesh_Local_V1_GetStatusResponse: @unchecked Sendabl
   /// Clears the value of `signer`. Subsequent reads from it will return its default value.
   public mutating func clearSigner() {_uniqueStorage()._signer = nil}
 
+  /// The account's picture on the official service (GetAccount), learned
+  /// each time this device connects: "" when it has none, and on a server
+  /// of one's own.
+  public var accountAvatarURL: String {
+    get {_storage._accountAvatarURL}
+    set {_uniqueStorage()._accountAvatarURL = newValue}
+  }
+
   public var unknownFields = SwiftProtobuf.UnknownStorage()
 
   public init() {}
@@ -3048,7 +3056,7 @@ nonisolated extension Hermesh_Local_V1_GetStatusRequest: SwiftProtobuf.Message, 
 
 nonisolated extension Hermesh_Local_V1_GetStatusResponse: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
   public static let protoMessageName: String = _protobuf_package + ".GetStatusResponse"
-  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{1}initialized\0\u{3}owner_id\0\u{3}relay_url\0\u{3}relay_connected\0\u{3}local_machine_enabled\0\u{3}local_machine_id\0\u{3}local_machine_name\0\u{1}version\0\u{3}connect_address\0\u{1}hosted\0\u{3}console_url\0\u{3}device_key_id\0\u{1}removed\0\u{3}machine_only\0\u{3}signed_out\0\u{1}account\0\u{1}erased\0\u{3}mcp_url\0\u{1}signer\0")
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{1}initialized\0\u{3}owner_id\0\u{3}relay_url\0\u{3}relay_connected\0\u{3}local_machine_enabled\0\u{3}local_machine_id\0\u{3}local_machine_name\0\u{1}version\0\u{3}connect_address\0\u{1}hosted\0\u{3}console_url\0\u{3}device_key_id\0\u{1}removed\0\u{3}machine_only\0\u{3}signed_out\0\u{1}account\0\u{1}erased\0\u{3}mcp_url\0\u{1}signer\0\u{3}account_avatar_url\0")
 
   fileprivate class _StorageClass {
     var _initialized: Bool = false
@@ -3070,6 +3078,7 @@ nonisolated extension Hermesh_Local_V1_GetStatusResponse: SwiftProtobuf.Message,
     var _erased: Hermesh_Local_V1_Erased? = nil
     var _mcpURL: String = String()
     var _signer: Hermesh_Local_V1_SignerState? = nil
+    var _accountAvatarURL: String = String()
 
       // This property is used as the initial default value for new instances of the type.
       // The type itself is protecting the reference to its storage via CoW semantics.
@@ -3099,6 +3108,7 @@ nonisolated extension Hermesh_Local_V1_GetStatusResponse: SwiftProtobuf.Message,
       _erased = source._erased
       _mcpURL = source._mcpURL
       _signer = source._signer
+      _accountAvatarURL = source._accountAvatarURL
     }
   }
 
@@ -3136,6 +3146,7 @@ nonisolated extension Hermesh_Local_V1_GetStatusResponse: SwiftProtobuf.Message,
         case 17: try { try decoder.decodeSingularMessageField(value: &_storage._erased) }()
         case 18: try { try decoder.decodeSingularStringField(value: &_storage._mcpURL) }()
         case 19: try { try decoder.decodeSingularMessageField(value: &_storage._signer) }()
+        case 20: try { try decoder.decodeSingularStringField(value: &_storage._accountAvatarURL) }()
         default: break
         }
       }
@@ -3205,6 +3216,9 @@ nonisolated extension Hermesh_Local_V1_GetStatusResponse: SwiftProtobuf.Message,
       try { if let v = _storage._signer {
         try visitor.visitSingularMessageField(value: v, fieldNumber: 19)
       } }()
+      if !_storage._accountAvatarURL.isEmpty {
+        try visitor.visitSingularStringField(value: _storage._accountAvatarURL, fieldNumber: 20)
+      }
     }
     try unknownFields.traverse(visitor: &visitor)
   }
@@ -3233,6 +3247,7 @@ nonisolated extension Hermesh_Local_V1_GetStatusResponse: SwiftProtobuf.Message,
         if _storage._erased != rhs_storage._erased {return false}
         if _storage._mcpURL != rhs_storage._mcpURL {return false}
         if _storage._signer != rhs_storage._signer {return false}
+        if _storage._accountAvatarURL != rhs_storage._accountAvatarURL {return false}
         return true
       }
       if !storagesAreEqual {return false}
