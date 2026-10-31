@@ -471,32 +471,14 @@ func (l *localService) ListSessions(ctx context.Context, req *localv1.ListSessio
 	return l.o().ListSessions(ctx, req)
 }
 
-func (l *localService) GetUsage(ctx context.Context, req *localv1.GetUsageRequest) (*localv1.GetUsageResponse, error) {
+func (l *localService) QueryWork(ctx context.Context, req *localv1.QueryWorkRequest) (*localv1.QueryWorkResponse, error) {
 	if m, ok, err := l.o().onlyMachine(); ok {
 		if err != nil {
 			return nil, err
 		}
-		res, err := m.Usage(&sessionv1.GetUsageRequest{Since: req.Since, TimeZone: req.TimeZone})
-		if err != nil {
-			return nil, err
-		}
-		return &localv1.GetUsageResponse{Days: res.Days}, nil
+		return QueryWorkOnly(ctx, m, req)
 	}
-	return l.o().GetUsage(ctx, req)
-}
-
-func (l *localService) GetActivity(ctx context.Context, req *sessionv1.GetActivityRequest) (*localv1.GetActivityResponse, error) {
-	if m, ok, err := l.o().onlyMachine(); ok {
-		if err != nil {
-			return nil, err
-		}
-		res, err := m.Activity(req)
-		if err != nil {
-			return nil, err
-		}
-		return &localv1.GetActivityResponse{Hours: res.Hours, Clients: res.Clients}, nil
-	}
-	return l.o().GetActivity(ctx, req)
+	return l.o().QueryWork(ctx, req)
 }
 
 func (l *localService) WatchSessions(ctx context.Context, _ *localv1.WatchSessionsRequest, stream *connect.ServerStream[localv1.WatchSessionsResponse]) error {

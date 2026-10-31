@@ -131,6 +131,10 @@ func (s *machineService) Watch(ctx context.Context, req *machinev1.WatchRequest,
 	return s.n.Watch(ctx, principalFrom(ctx), req, stream.Send)
 }
 
+func (s *machineService) PullWork(ctx context.Context, req *machinev1.PullWorkRequest) (*machinev1.PullWorkResponse, error) {
+	return s.n.sessions.PullWork(ctx, principalFrom(ctx), req)
+}
+
 func (s *machineService) ListProjects(ctx context.Context, _ *machinev1.ListProjectsRequest) (*machinev1.ListProjectsResponse, error) {
 	return s.projects(ctx, principalFrom(ctx), true)
 }
@@ -377,12 +381,4 @@ func (n *Machine) execAdmin(ctx context.Context, cmd *identityv1.AdminCommand) (
 		return "paused=" + v, nil
 	}
 	return "", connect.NewError(connect.CodeInvalidArgument, errors.New("unknown admin command"))
-}
-
-func (s *sessionService) GetUsage(ctx context.Context, req *sessionv1.GetUsageRequest) (*sessionv1.GetUsageResponse, error) {
-	return s.n.sessions.Usage(principalFrom(ctx), req)
-}
-
-func (s *sessionService) GetActivity(ctx context.Context, req *sessionv1.GetActivityRequest) (*sessionv1.GetActivityResponse, error) {
-	return s.n.sessions.Activity(principalFrom(ctx), req, time.Now())
 }

@@ -26,6 +26,12 @@ type writeOp struct {
 	draft *sessionv1.SessionEvent
 	// output: ev's tool output, whole (its event holds the first part).
 	output string
+	// who: for a turn's start and end, the session's creator, agent and
+	// project, which its work is counted under (work.go).
+	who *workWho
+	// workTick: a quarter in which the sessions with a turn in progress are
+	// marked at work (Sessions.CountWork).
+	workTick int64
 }
 
 type idemKey struct{ clientID, key, sessionID string }

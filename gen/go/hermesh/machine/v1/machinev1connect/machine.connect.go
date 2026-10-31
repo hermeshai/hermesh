@@ -42,6 +42,8 @@ const (
 	MachineServiceListProjectsProcedure = "/hermesh.machine.v1.MachineService/ListProjects"
 	// MachineServiceWatchProcedure is the fully-qualified name of the MachineService's Watch RPC.
 	MachineServiceWatchProcedure = "/hermesh.machine.v1.MachineService/Watch"
+	// MachineServicePullWorkProcedure is the fully-qualified name of the MachineService's PullWork RPC.
+	MachineServicePullWorkProcedure = "/hermesh.machine.v1.MachineService/PullWork"
 	// MachineAdminServiceApplyAdminCommandProcedure is the fully-qualified name of the
 	// MachineAdminService's ApplyAdminCommand RPC.
 	MachineAdminServiceApplyAdminCommandProcedure = "/hermesh.machine.v1.MachineAdminService/ApplyAdminCommand"
@@ -69,6 +71,10 @@ type MachineServiceClient interface {
 	// once, carrying only what changed since resume_token, so the caller
 	// knows the watch is in place.
 	Watch(context.Context, *v1.WatchRequest) (*connect.ServerStreamForClient[v1.WatchResponse], error)
+	// PullWork sends the work this machine counted that changed since
+	// after, for the keys the caller may read: whole hours, keys and
+	// sessions. Owner devices keep a copy (docs/work-stats.md §6).
+	PullWork(context.Context, *v1.PullWorkRequest) (*v1.PullWorkResponse, error)
 }
 
 // NewMachineServiceClient constructs a client for the hermesh.machine.v1.MachineService service. By
@@ -100,6 +106,12 @@ func NewMachineServiceClient(httpClient connect.HTTPClient, baseURL string, opts
 			connect.WithSchema(machineServiceMethods.ByName("Watch")),
 			connect.WithClientOptions(opts...),
 		),
+		pullWork: connect.NewClient[v1.PullWorkRequest, v1.PullWorkResponse](
+			httpClient,
+			baseURL+MachineServicePullWorkProcedure,
+			connect.WithSchema(machineServiceMethods.ByName("PullWork")),
+			connect.WithClientOptions(opts...),
+		),
 	}
 }
 
@@ -108,6 +120,7 @@ type machineServiceClient struct {
 	getInfo      *connect.Client[v1.GetInfoRequest, v1.GetInfoResponse]
 	listProjects *connect.Client[v1.ListProjectsRequest, v1.ListProjectsResponse]
 	watch        *connect.Client[v1.WatchRequest, v1.WatchResponse]
+	pullWork     *connect.Client[v1.PullWorkRequest, v1.PullWorkResponse]
 }
 
 // GetInfo calls hermesh.machine.v1.MachineService.GetInfo.
@@ -133,6 +146,15 @@ func (c *machineServiceClient) Watch(ctx context.Context, req *v1.WatchRequest) 
 	return c.watch.CallServerStream(ctx, connect.NewRequest(req))
 }
 
+// PullWork calls hermesh.machine.v1.MachineService.PullWork.
+func (c *machineServiceClient) PullWork(ctx context.Context, req *v1.PullWorkRequest) (*v1.PullWorkResponse, error) {
+	response, err := c.pullWork.CallUnary(ctx, connect.NewRequest(req))
+	if response != nil {
+		return response.Msg, err
+	}
+	return nil, err
+}
+
 // MachineServiceHandler is an implementation of the hermesh.machine.v1.MachineService service.
 type MachineServiceHandler interface {
 	GetInfo(context.Context, *v1.GetInfoRequest) (*v1.GetInfoResponse, error)
@@ -143,6 +165,10 @@ type MachineServiceHandler interface {
 	// once, carrying only what changed since resume_token, so the caller
 	// knows the watch is in place.
 	Watch(context.Context, *v1.WatchRequest, *connect.ServerStream[v1.WatchResponse]) error
+	// PullWork sends the work this machine counted that changed since
+	// after, for the keys the caller may read: whole hours, keys and
+	// sessions. Owner devices keep a copy (docs/work-stats.md §6).
+	PullWork(context.Context, *v1.PullWorkRequest) (*v1.PullWorkResponse, error)
 }
 
 // NewMachineServiceHandler builds an HTTP handler from the service implementation. It returns the
@@ -170,6 +196,12 @@ func NewMachineServiceHandler(svc MachineServiceHandler, opts ...connect.Handler
 		connect.WithSchema(machineServiceMethods.ByName("Watch")),
 		connect.WithHandlerOptions(opts...),
 	)
+	machineServicePullWorkHandler := connect.NewUnaryHandlerSimple(
+		MachineServicePullWorkProcedure,
+		svc.PullWork,
+		connect.WithSchema(machineServiceMethods.ByName("PullWork")),
+		connect.WithHandlerOptions(opts...),
+	)
 	return "/hermesh.machine.v1.MachineService/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case MachineServiceGetInfoProcedure:
@@ -178,6 +210,8 @@ func NewMachineServiceHandler(svc MachineServiceHandler, opts ...connect.Handler
 			machineServiceListProjectsHandler.ServeHTTP(w, r)
 		case MachineServiceWatchProcedure:
 			machineServiceWatchHandler.ServeHTTP(w, r)
+		case MachineServicePullWorkProcedure:
+			machineServicePullWorkHandler.ServeHTTP(w, r)
 		default:
 			http.NotFound(w, r)
 		}
@@ -197,6 +231,10 @@ func (UnimplementedMachineServiceHandler) ListProjects(context.Context, *v1.List
 
 func (UnimplementedMachineServiceHandler) Watch(context.Context, *v1.WatchRequest, *connect.ServerStream[v1.WatchResponse]) error {
 	return connect.NewError(connect.CodeUnimplemented, errors.New("hermesh.machine.v1.MachineService.Watch is not implemented"))
+}
+
+func (UnimplementedMachineServiceHandler) PullWork(context.Context, *v1.PullWorkRequest) (*v1.PullWorkResponse, error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("hermesh.machine.v1.MachineService.PullWork is not implemented"))
 }
 
 // MachineAdminServiceClient is a client for the hermesh.machine.v1.MachineAdminService service.

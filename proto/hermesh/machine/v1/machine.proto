@@ -23,6 +23,12 @@ service MachineService {
   rpc Watch(WatchRequest) returns (stream WatchResponse) {
     option (hermesh.options.v1.access) = ACCESS_READ;
   }
+  // PullWork sends the work this machine counted that changed since
+  // after, for the keys the caller may read: whole hours, keys and
+  // sessions. Owner devices keep a copy (docs/work-stats.md §6).
+  rpc PullWork(PullWorkRequest) returns (PullWorkResponse) {
+    option (hermesh.options.v1.access) = ACCESS_READ;
+  }
 }
 
 message WatchRequest {
@@ -56,6 +62,74 @@ message WatchResponse {
   bytes resume_token = 8;
   // Every message: the machine's clock when it sent it (for held_at).
   google.protobuf.Timestamp sent_at = 9;
+  // Every message: where the machine's counts of work are (PullWork).
+  uint64 work_seq = 10;
+}
+
+message PullWorkRequest {
+  // The store the caller holds (empty: none) and the seq it holds.
+  bytes store = 1;
+  uint64 after = 2;
+  // With after 0: only hours from this one on (unix seconds / 3600), for a
+  // device that keeps less history than the machine.
+  int64 from_hour = 3;
+}
+
+message PullWorkResponse {
+  // Another than the request's: drop what you hold of this machine first.
+  bytes store = 1;
+  // This answer brings the caller up to seq; with more, ask again from it.
+  uint64 seq = 2;
+  bool more = 3;
+  repeated WorkKey keys = 4;
+  repeated WorkSession sessions = 5;
+  // Each replaces what the caller holds of that hour.
+  repeated WorkHour hours = 6;
+}
+
+// Who did work: the client (who started a session, or asked for a turn),
+// the coding agent and the project.
+message WorkKey {
+  uint32 key = 1;
+  string client = 2;
+  string agent = 3;
+  string project_id = 4;
+}
+
+message WorkSession {
+  uint32 session = 1;
+  // Its key: who started it.
+  uint32 key = 2;
+  hermesh.session.v1.SessionStatus status = 3;
+  // Its last turn failed (not an interruption).
+  bool failed = 4;
+}
+
+message WorkHour {
+  // Unix seconds / 3600.
+  int64 hour = 1;
+  repeated WorkPresence presence = 2;
+  repeated WorkMeasure measures = 3;
+}
+
+// A session at work (a turn in progress) in a quarter of the hour (0-3).
+message WorkPresence {
+  uint32 quarter = 1;
+  uint32 key = 2;
+  uint32 session = 3;
+}
+
+// What turns of one key did in a quarter of the hour (0-3): those that
+// ended there, of them failed, their tokens, and the seconds turns were in
+// progress there.
+message WorkMeasure {
+  uint32 quarter = 1;
+  uint32 key = 2;
+  uint32 turns = 3;
+  uint32 failed_turns = 4;
+  uint64 input_tokens = 5;
+  uint64 output_tokens = 6;
+  uint32 busy_seconds = 7;
 }
 
 message GetInfoRequest {

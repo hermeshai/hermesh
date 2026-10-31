@@ -39,14 +39,18 @@ type replica struct {
 	// screens (LocalService.Watch) are told when what they show may have
 	// changed, besides sessions.
 	screens map[chan struct{}]bool
-	usage   map[usageKey]usageHeld // other machines' GetUsage answers
-	src     *sources               // nil while stopped
+	src     *sources // nil while stopped
 	// stopped: the sources that ran last, stopped (idle, or the app paused):
 	// the next start for the same owner begins from what they held and
 	// resumes each machine's Watch from its token.
 	stopped *sources
 	lastUse time.Time // the last list call, or the last watcher leaving
 	polls   uint64    // numbers the relay polls, so an older one never overwrites a newer
+	// workVersion moves when the work counts changed (work.go): a page of
+	// another machine's kept, or this device's own machine's seq (localWork).
+	workVersion uint64
+	localWork   int64
+	workPruned  time.Time
 }
 
 // sources is one run of the replica's sources, and what they found.
@@ -120,6 +124,14 @@ type feed struct {
 	heldAt *timestamppb.Timestamp
 	// retry: how long after a failed follow it is tried again.
 	retry time.Duration
+
+	// Its work counts (work.go): where its Watch says they are, where this
+	// device's copy is, and how pulling them goes.
+	workSeen, workHeld uint64
+	workPulling        bool
+	workCaught         bool // pulled since this feed began
+	workNone           bool // a machine without PullWork
+	workLast           time.Time
 }
 
 const (
@@ -162,7 +174,7 @@ var (
 )
 
 func newReplica(o *Owner) *replica {
-	return &replica{o: o, watchers: map[chan *localv1.WatchSessionsResponse]bool{}, screens: map[chan struct{}]bool{}, usage: map[usageKey]usageHeld{}}
+	return &replica{o: o, watchers: map[chan *localv1.WatchSessionsResponse]bool{}, screens: map[chan struct{}]bool{}}
 }
 
 // who names the owner and sign-in the sources run for.
@@ -738,6 +750,7 @@ func (r *replica) followWatch(ctx context.Context, s *sources, f *feed, n *peer.
 	r.machineChanged(s, f, n.MachineID, stream.Msg())
 	r.mu.Lock()
 	f.conn = n
+	r.pullWorkLocked(s, f, n.MachineID)
 	r.mu.Unlock()
 	ready()
 	for stream.Receive() {
@@ -783,6 +796,7 @@ func (r *replica) machineChanged(s *sources, f *feed, machineID string, m *machi
 	if m.Status != nil {
 		f.status = m.Status
 	}
+	r.workSeenLocked(s, f, machineID, m.WorkSeq)
 	if len(sessions) > 0 || len(deleted) > 0 {
 		r.broadcastLocked(s, &localv1.WatchSessionsResponse{Sessions: sessions, DeletedSessionIds: deleted})
 	}
@@ -1171,59 +1185,6 @@ func (r *replica) held() []*sessionv1.Session {
 		}
 	})
 	return out
-}
-
-// usageKey is a machine's GetUsage question.
-type usageKey struct{ machineID, since, timeZone string }
-
-// usageHeld is its answer, on what day and after how many turns of the
-// machine's sessions it came.
-type usageHeld struct {
-	res   *sessionv1.GetUsageResponse
-	day   string
-	turns uint64
-}
-
-// usageDay is today in a time zone (UTC when unknown).
-func usageDay(tz string) string {
-	loc, err := time.LoadLocation(tz)
-	if err != nil {
-		loc = time.UTC
-	}
-	return time.Now().In(loc).Format(time.DateOnly)
-}
-
-// turns adds up the turns of a followed machine's sessions held; known is
-// false while it is not followed.
-func (r *replica) turns(machineID string) (n uint64, known bool) {
-	r.feeds(func(feeds map[string]*feed) {
-		f := feeds[machineID]
-		if known = f != nil && f.ready; known {
-			for _, s := range f.sessions {
-				n += uint64(s.GetProgress().GetTurnCount())
-			}
-		}
-	})
-	return n, known
-}
-
-// heldUsage is a machine's kept answer to req, if still right: asked today,
-// and no turn of its sessions ended (or went) since.
-func (r *replica) heldUsage(machineID string, req *localv1.GetUsageRequest, day string) *sessionv1.GetUsageResponse {
-	turns, known := r.turns(machineID)
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	h, ok := r.usage[usageKey{machineID, req.Since, req.TimeZone}]
-	if !known || !ok || h.day != day || h.turns != turns {
-		return nil
-	}
-	return h.res
-}
-
-func (r *replica) keepUsage(machineID string, req *localv1.GetUsageRequest, day string, turns uint64, res *sessionv1.GetUsageResponse) {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	r.usage[usageKey{machineID, req.Since, req.TimeZone}] = usageHeld{res: res, day: day, turns: turns}
 }
 
 // kHeldAt keeps, for each machine, its clock when this device last applied

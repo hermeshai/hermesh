@@ -232,7 +232,9 @@ type screen struct {
 	// shownUnreachable: each machine the screen was told could not be
 	// reached, and why, in the order told.
 	shownUnreachable []string
-	err              error
+	// work: the last work_version told (QueryWork again when it moves).
+	work uint64
+	err  error
 }
 
 func watchScreen(ctx context.Context, t *testing.T, w *ownerMac) *screen {
@@ -271,6 +273,9 @@ func (s *screen) follow(ctx context.Context, t *testing.T, client localv1connect
 			}
 			if m.Status != nil {
 				s.status = m.Status
+			}
+			if m.WorkVersion != 0 {
+				s.work = m.WorkVersion
 			}
 			for _, x := range m.Machines {
 				s.machines[x.MachineId] = x

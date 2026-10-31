@@ -148,12 +148,10 @@ service LocalService {
   rpc RenameSession(RenameSessionRequest) returns (SessionResponse);
   rpc AnswerQuestion(AnswerQuestionRequest) returns (AnswerQuestionResponse);
   rpc GetDiff(GetDiffRequest) returns (hermesh.session.v1.GetDiffResponse);
-  // GetUsage adds up every reachable machine's tokens by day and coding
-  // agent (hermesh.session.v1.SessionService.GetUsage).
-  rpc GetUsage(GetUsageRequest) returns (GetUsageResponse);
-  // GetActivity adds up every reachable machine's sessions that worked on
-  // a day (hermesh.session.v1.SessionService.GetActivity).
-  rpc GetActivity(hermesh.session.v1.GetActivityRequest) returns (GetActivityResponse);
+  // QueryWork counts the work done over a range, by hour or day, from what
+  // this device holds of every machine's counts: no machine is asked
+  // (docs/work-stats.md §7).
+  rpc QueryWork(QueryWorkRequest) returns (QueryWorkResponse);
   // Notifications while the app is not running (the iPhone): this device's
   // push token and notice key, signed with its device key and sent to the
   // relay, which hands them to the owner's machines.
@@ -187,6 +185,8 @@ message WatchResponse {
   repeated string deleted_session_ids = 14;
   // With reset: where older sessions start (ListSessions before).
   hermesh.session.v1.SessionCursor next = 15;
+  // Moves when this device's counts of work changed: ask QueryWork again.
+  uint64 work_version = 16;
 }
 
 message ListSessionEventsRequest {
@@ -1029,25 +1029,81 @@ message SessionResponse {
   hermesh.session.v1.Session session = 1;
 }
 
-message GetUsageRequest {
-  // The first day counted, YYYY-MM-DD in time_zone.
-  string since = 1;
-  // An IANA time zone name; empty means UTC.
-  string time_zone = 2;
+message QueryWorkRequest {
+  // An IANA time zone name: the days and hours counted are its.
+  string time_zone = 1;
+  // The first day, YYYY-MM-DD in time_zone, and how many (1 to 400).
+  string first_day = 2;
+  uint32 days = 3;
+  WorkBucket bucket = 4;
+  // What the counts are grouped by; none: everything together.
+  repeated WorkDimension group_by = 5;
 }
 
-message GetUsageResponse {
-  // By date, then agent; a day and agent appear once however many machines
-  // had turns then.
-  repeated hermesh.session.v1.UsageDay days = 1;
-  repeated Unreachable unreachable = 2;
+enum WorkBucket {
+  WORK_BUCKET_UNSPECIFIED = 0;
+  WORK_BUCKET_HOUR = 1;
+  WORK_BUCKET_DAY = 2;
 }
 
-message GetActivityResponse {
-  // An hour, client and agent appear once however many machines worked then.
-  repeated hermesh.session.v1.ActivityHour hours = 1;
-  repeated hermesh.session.v1.ActivityClient clients = 2;
-  repeated Unreachable unreachable = 3;
+enum WorkDimension {
+  WORK_DIMENSION_UNSPECIFIED = 0;
+  // Sessions: who started them. Turns: who asked for them.
+  WORK_DIMENSION_CLIENT = 1;
+  WORK_DIMENSION_AGENT = 2;
+  WORK_DIMENSION_MACHINE = 3;
+  WORK_DIMENSION_PROJECT = 4;
+}
+
+// The dimensions asked for; the others are empty.
+message WorkGroup {
+  string client = 1;
+  string agent = 2;
+  string machine_id = 3;
+  string project_id = 4;
+}
+
+message SessionCount {
+  // From 0, the first hour or day of the range.
+  uint32 bucket = 1;
+  WorkGroup group = 2;
+  // At work (a turn in progress) in the bucket, each once.
+  uint32 sessions = 3;
+  // Of them, those done now: idle without a failure, or archived.
+  uint32 done = 4;
+}
+
+message TurnCount {
+  uint32 bucket = 1;
+  WorkGroup group = 2;
+  // Turns that ended in the bucket, of them those that failed, their
+  // tokens, and the time turns were in progress in the bucket.
+  uint32 turns = 3;
+  uint32 failed_turns = 4;
+  uint64 input_tokens = 5;
+  uint64 output_tokens = 6;
+  uint64 busy_seconds = 7;
+}
+
+// What a machine's counts include.
+message WorkSource {
+  string machine_id = 1;
+  // Its work is counted up to here (this device's clock when it last
+  // caught up); unset for this device's own machine, read as it is.
+  google.protobuf.Timestamp synced_at = 2;
+  // Caught up and followed now.
+  bool live = 3;
+  // Still taking its history.
+  bool syncing = 4;
+}
+
+message QueryWorkResponse {
+  // Per bucket, and over the whole range (each session once).
+  repeated SessionCount sessions = 1;
+  repeated SessionCount range_sessions = 2;
+  repeated TurnCount turns = 3;
+  repeated TurnCount range_turns = 4;
+  repeated WorkSource sources = 5;
 }
 
 message GetDiffRequest {
