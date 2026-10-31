@@ -39,10 +39,11 @@ func SearchPath(pathEnv string) string {
 	return shellenv.Path()
 }
 
-// ProbeEnv is the environment for checking an agent: this process's, with
-// the PATH it was looked for on, so a script finds its interpreter (node).
+// ProbeEnv is the environment for checking an agent: a new terminal's, as
+// its sessions get, with the PATH it was looked for on, so a script finds
+// its interpreter (node).
 func ProbeEnv(pathEnv string) []string {
-	return append(shellenv.Without(os.Environ(), "PATH"), "PATH="+SearchPath(pathEnv))
+	return append(shellenv.Without(shellenv.Environ(), "PATH"), "PATH="+SearchPath(pathEnv))
 }
 
 // Probe runs bin with args in env and returns what it printed; when it
