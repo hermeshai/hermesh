@@ -593,6 +593,16 @@
         }
       }
     },
+    "2. Approve it here": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "2. 在这里批准"
+          }
+        }
+      }
+    },
     "20 min ago": {
       "localizations": {
         "zh-Hans": {
