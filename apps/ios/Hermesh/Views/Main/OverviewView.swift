@@ -849,7 +849,7 @@ struct BucketCells: View {
                             .popover(isPresented: Binding(get: { tipped == i }, set: { if !$0 { tipped = nil } })) {
                                 VStack(alignment: .leading, spacing: 2) {
                                     Text(verbatim: title).font(.subheadline.weight(.semibold))
-                                    Text(verbatim: "\(when(i)) · \(String(localized: "\(counts[i]) active sessions"))")
+                                    Text(verbatim: "\(when(i)) · \(String(localized: "\(counts[i]) sessions worked"))")
                                         .font(.footnote).foregroundStyle(.secondary).monospacedDigit()
                                 }
                                 .padding(.horizontal, 14).padding(.vertical, 10)

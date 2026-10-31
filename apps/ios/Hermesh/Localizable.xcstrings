@@ -290,16 +290,6 @@
     "%lld": {
       "shouldTranslate": false
     },
-    "%lld active sessions": {
-      "localizations": {
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "%lld 个活跃会话"
-          }
-        }
-      }
-    },
     "%lld chosen": {
       "localizations": {
         "zh-Hans": {
@@ -478,6 +468,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "%lld 个会话等你处理"
+          }
+        }
+      }
+    },
+    "%lld sessions worked": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld 个会话运行过"
           }
         }
       }
@@ -7200,7 +7200,7 @@
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "个活跃会话"
+            "value": "个会话运行过"
           }
         }
       }
