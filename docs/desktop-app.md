@@ -142,7 +142,7 @@ This is a hint, not a guarantee. It still matters on an owner Mac that also runs
 - The signer refuses a body that fails to parse, or that carries fields the signer does not know. Today such a body renders as empty, or the unknown fields are signed without being shown.
 - It signs exactly the batch it displayed. Today the live list is signed 150 ms after the click.
 - It removes `touchIDAuthenticationAllowableReuseDuration = 10`, so a recent Touch ID unlock of the Mac does not count as approval.
-- Golden vectors: Go generates `(type, body) → expected summary` cases, and every signer implementation must pass them. This replaces and extends `--check-expected`, and keeps the macOS signer and future signers in step.
+- Preview vectors (`internal/preview/testdata/vectors.json`): signing requests, and what every signer must make of them whatever its words, which are its own: whether it refuses the batch, each card's verification code, and the values from the signed bytes each card shows (names, ids, paths, coding agents by their names). Go writes them (`go test ./internal/preview -run TestVectors -update`); the Go signer (Windows' panel, Linux's terminal) and HermeshKit's (the Mac's and the iPhone's) both pass them.
 
 ## 6. The UI process
 
