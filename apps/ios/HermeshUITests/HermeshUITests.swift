@@ -464,6 +464,11 @@ final class HermeshUITests: XCTestCase {
         let system = app.buttons["appearance-system"], dark = app.buttons["appearance-dark"]
         XCTAssertTrue(system.waitForExistence(timeout: 20))
         XCTAssertTrue(system.isSelected && system.label == "跟随系统", system.label)
+        XCTAssertLessThan(system.frame.height, 140, "kept low")
+        let shot = XCTAttachment(screenshot: app.screenshot())
+        shot.name = "account"
+        shot.lifetime = .keepAlways
+        add(shot)
         press(dark)
         try waitFor("dark chosen") { dark.isSelected && !system.isSelected ? true : nil }
         press(system)

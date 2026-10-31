@@ -133,6 +133,40 @@ struct Mark: View {
     }
 }
 
+/// Who this iPhone belongs to, in a circle: on the official service the
+/// account's picture (from GitHub or Google), else its initial; on a server
+/// of one's own, a server.
+struct AccountPicture: View {
+    let status: Hermesh_Local_V1_GetStatusResponse
+
+    var body: some View {
+        if status.hosted, let url = URL(string: status.accountAvatarURL), url.scheme == "https" {
+            AsyncImage(url: url) { phase in
+                if let image = phase.image {
+                    image.resizable().scaledToFill()
+                } else {
+                    initial
+                }
+            }
+            .clipShape(.circle)
+        } else if status.hosted {
+            initial
+        } else {
+            badge(Image(systemName: "server.rack").font(.body.weight(.semibold)))
+        }
+    }
+
+    private var initial: some View {
+        badge(status.account.first.map { Text(String($0).uppercased()).font(.title3.weight(.semibold)) }
+            ?? Text(Image(systemName: "person.fill")).font(.body.weight(.medium)))
+    }
+
+    private func badge(_ content: some View) -> some View {
+        content.foregroundStyle(.white).frame(maxWidth: .infinity, maxHeight: .infinity)
+            .background(LinearGradient(colors: [Color(red: 0.03, green: 0.57, blue: 0.70), Color(red: 0.18, green: 0.42, blue: 0.94), Color(red: 0.43, green: 0.24, blue: 0.94)], startPoint: .topLeading, endPoint: .bottomTrailing), in: .circle)
+    }
+}
+
 /// The mark and the name, as the brand's horizontal logo lays them out:
 /// the mark 1.5 times the letters' cap height, 0.42 of it apart, the
 /// letters' top a little below the mark's. height is the mark's.
