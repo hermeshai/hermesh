@@ -35,9 +35,9 @@ test("the download page's screenshots", async () => {
   await page.addStyleTag({
     content: [
       ".side{background:#1d1d21 !important}",
-      ".side-foot .who b, .side-foot .av{visibility:hidden;position:relative}",
-      '.side-foot .who b::after{content:"Alex";visibility:visible;position:absolute;inset:0}',
-      '.side-foot .av::after{content:"A";visibility:visible;position:absolute;inset:0;display:grid;place-items:center}',
+      ".side-foot .who b, .side-foot .av{color:transparent !important;position:relative}",
+      '.side-foot .who b::after{content:"Alex";color:var(--l1);position:absolute;inset:0}',
+      '.side-foot .av::after{content:"A";color:var(--l2);position:absolute;inset:0;display:grid;place-items:center}',
     ].join("\n"),
   });
   await expect(sessions.getByText(t("给设置页加深色模式", "Dark mode for Settings"), { exact: true })).toBeVisible();
