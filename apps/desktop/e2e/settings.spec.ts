@@ -213,7 +213,7 @@ test("an agent's page sets up waking it: three steps, a pasted block split, a wr
     await dialog.getByRole("button", { name: "叫醒一次试试" }).click();
     await expect(dialog).toContainText("没叫醒");
     await expect(dialog).toContainText("对方回复 401：密钥不对");
-    await dialog.getByRole("button", { name: "回去改" }).click();
+    await dialog.getByRole("button", { name: "返回修改" }).click();
     await dialog.getByLabel("密钥（key）").fill("crsr_test");
     await dialog.getByRole("button", { name: "叫醒一次试试" }).click();
     await expect(dialog).toContainText("设置好了");

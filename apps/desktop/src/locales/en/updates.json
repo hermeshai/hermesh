@@ -48,11 +48,11 @@
   "install": {
     "heading": "Install",
     "mac": "**On a Mac**, to approve and run coding agents: `Hermesh-macos-arm64.dmg` (Apple silicon) or `Hermesh-macos-x64.dmg` (Intel)",
-    "windows": "**On a Windows 11 PC**, to approve and run coding agents: `Hermesh-windows-x64-setup.exe`, or `Hermesh-windows-arm64-setup.exe` on Arm. It isn't signed yet: Windows warns once, and More info › Run anyway installs it",
+    "windows": "**On a Windows 11 PC**, to approve and run coding agents: `Hermesh-windows-x64-setup.exe`, or `Hermesh-windows-arm64-setup.exe` on Arm. The installer isn't signed yet, so Windows will warn once; click More info › Run anyway to install",
     "machine": "**On a machine for coding agents** (Linux or macOS): `{{command}}`",
-    "device": "**On a Linux computer that only approves**: the same command, ending `sh -s -- --device`",
-    "cli": "**For your agent's CLI**: the same command, ending `sh -s -- --cli`",
+    "device": "**On a Linux computer that only approves**: the same command, ending with `sh -s -- --device`",
+    "cli": "**For your agent's CLI**: the same command, ending with `sh -s -- --cli`",
     "relay": "**On your own server**: the image `{{image}}`",
-    "note": "The other files are for the installer and the app's updates; there's no need to download them by hand."
+    "note": "The remaining files are used by the installer and automatic updates; you don't need to download them manually."
   }
 }

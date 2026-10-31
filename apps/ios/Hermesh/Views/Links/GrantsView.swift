@@ -137,7 +137,7 @@ struct GrantView: View {
                 Button("Renew…") { model.sheet = .renew(c.grantID) }.accessibilityIdentifier("renew")
                 Button("Disconnect…", role: .destructive) { confirmDisconnect = true }.accessibilityIdentifier("disconnect")
             } footer: {
-                Text("Once disconnected, it loses access at once; running sessions are interrupted, and the sessions themselves stay.")
+                Text("Disconnecting revokes access immediately and stops any running sessions. Past session history is kept.")
             }
             if let wakes { WakesSection(client: c, wakes: wakes) }
         }
@@ -156,7 +156,7 @@ struct GrantView: View {
         .confirmationDialog("Disconnect “\(AgentLogo.name(c.label))”?", isPresented: $confirmDisconnect, titleVisibility: .visible) {
             Button("Disconnect", role: .destructive) { Task { await model.disconnect(c) } }
         } message: {
-            Text("It loses access at once; running sessions are interrupted, and the sessions themselves stay. To use it again, connect it again.")
+            Text("Access will be revoked immediately and running sessions will stop. Past session history is kept. You will need to pair again to reconnect.")
         }
     }
 }

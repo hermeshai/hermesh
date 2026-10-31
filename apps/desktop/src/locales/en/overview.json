@@ -33,7 +33,7 @@
     "pairingClient": "“{{label}}” wants to connect to your computer",
     "pairingMachine": "A machine calling itself “{{label}}” wants to join",
     "signer": "A new version of Hermesh Signer",
-    "signerDetail": "This PC has {{version}}. Once updated, it can sign what this Hermesh asks; Windows asks you to allow it once",
+    "signerDetail": "This PC has {{version}}. Update it so it can sign requests for this version of Hermesh. Windows will ask for permission once",
     "updateSigner": "Update…",
     "signerUpdated": "Signer updated"
   },
@@ -55,8 +55,8 @@
     "running": "Running",
     "waiting": "Waiting for you",
     "failed": "Failed",
-    "hintPicked": "Click again, or click the icon in the middle, to see all",
-    "hintPick": "Click any node to see only the sessions through it",
+    "hintPicked": "Click again, or click the center icon, to show all",
+    "hintPick": "Click any node to filter sessions through it",
     "today": "Today",
     "todayStats_one": "Today <b>{{count}}</b> session · <b>{{done}}</b> done · <bad>{{failed}}</bad> failed",
     "todayStats_other": "Today <b>{{count}}</b> sessions · <b>{{done}}</b> done · <bad>{{failed}}</bad> failed",
@@ -65,11 +65,11 @@
     "expiresIn_one": "Expires in {{count}} day",
     "expiresIn_other": "Expires in {{count}} days",
     "machineSettings": "Machine Settings…",
-    "notYet": "Hasn’t come yet",
+    "notYet": "No sessions yet",
     "accepting": "Taking new sessions"
   },
   "working": {
-    "title": "Working Now",
+    "title": "Active Now",
     "manageAccess": "Manage Access…",
     "noneThrough": "No sessions pass through here.",
     "matches": "· {{count}}",
@@ -84,8 +84,8 @@
     "failed": "Failed",
     "preparing": "Preparing",
     "queued": "Queued",
-    "nothingRuns": "No sessions are running",
-    "nothingRunsHint": "When an agent starts working, its sessions show up here and the link map lights up."
+    "nothingRuns": "No active sessions",
+    "nothingRunsHint": "When an agent starts working, its sessions appear here and the connection map lights up."
   },
   "usage": {
     "title": "Usage",
@@ -109,8 +109,8 @@
   },
   "card": {
     "ownKey": "Personal agent · holds its own key",
-    "custodian": "Its key is held by {{host}}",
-    "fullAccess": "Its grant trusts it fully: in these projects it can read and write files and run commands, as you can in Terminal.",
+    "custodian": "Key held by {{host}}",
+    "fullAccess": "Full access granted: in these projects it can read and write files and run commands, just as you do in Terminal.",
     "projects": "Projects here",
     "allProjects": "All projects",
     "agents": "Coding agents",
@@ -120,8 +120,8 @@
     "daysLeft_other": "{{count}} days left · {{date}}",
     "here": "On this Mac",
     "here_win": "On this PC",
-    "seen_one": "{{count}} session today · last came {{ago}}",
-    "seen_other": "{{count}} sessions today · last came {{ago}}",
-    "revokeElsewhere": "To revoke its grant, use one of your trusted devices."
+    "seen_one": "{{count}} session today · last active {{ago}}",
+    "seen_other": "{{count}} sessions today · last active {{ago}}",
+    "revokeElsewhere": "To revoke its access, use one of your trusted devices."
   }
 }

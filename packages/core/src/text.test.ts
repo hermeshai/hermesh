@@ -24,8 +24,8 @@ describe("text", () => {
   });
 
   test("a failure is told of the coding agent, every kind in its own words", () => {
-    expect(failureHeadline(FailureKind.START_FAILED, "Codex")).toBe("Codex 没能启动");
-    expect(failureHeadline(FailureKind.AUTH, "Claude Code")).toBe("Claude Code 没有登录");
+    expect(failureHeadline(FailureKind.START_FAILED, "Codex")).toBe("Codex 未能启动");
+    expect(failureHeadline(FailureKind.AUTH, "Claude Code")).toBe("Claude Code 未登录");
     expect(failureHeadline(FailureKind.UNSPECIFIED, "Codex")).toBe("Codex 出错了");
     const kinds = Object.values(FailureKind).filter((k): k is FailureKind => typeof k === "number" && k !== FailureKind.UNSPECIFIED && k !== FailureKind.INTERRUPTED && k !== FailureKind.UNKNOWN);
     expect(kinds.filter((k) => failureHeadline(k, "Codex") === "Codex 出错了")).toEqual([]);

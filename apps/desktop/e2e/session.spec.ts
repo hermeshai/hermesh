@@ -266,7 +266,7 @@ test("failed sessions tell what went wrong and what to do; an archived one says 
   await expect(titleLine(page, "限流")).toHaveText("限流");
   const log = page.getByRole("log", { name: "对话" });
   await expect(log).not.toContainText("第 1 轮失败"); // not said twice
-  await expect(page.getByRole("alert")).toContainText("Gemini CLI 被限流了");
+  await expect(page.getByRole("alert")).toContainText("Gemini CLI 触发了限流");
   await expect(log).not.toContainText("出错了"); // nor as a line above the card
   await expect(page.getByRole("alert")).toContainText("bot 再发消息就会从这里接着做");
   await snap(page, "session-failed");

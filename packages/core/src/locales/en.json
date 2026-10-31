@@ -53,14 +53,14 @@
     "other": "Failed"
   },
   "advice": {
-    "auth": "Run the matching CLI once on that machine, as the same user, to sign in.",
-    "quota": "Try again when the quota resets, or switch agent / model.",
-    "transient": "A temporary problem. Send the message again in a while.",
-    "newContext": "Send another message to continue in a fresh context; the changes in the worktree are kept.",
+    "auth": "Run the matching CLI once on that machine as the same user to sign in.",
+    "quota": "Try again when the quota resets, or switch agents or models.",
+    "transient": "Temporary issue. Try sending the message again in a moment.",
+    "newContext": "Send another message to continue in a fresh context. Your worktree changes are preserved.",
     "modelUnavailable": "Start a new session with another model.",
-    "limitReached": "Send “continue” to have it go on.",
+    "limitReached": "Send “continue” to keep going.",
     "resume": "Send another message to resume the session.",
-    "startFailed": "Open that machine’s page in Hermesh Settings to see what keeps it from starting agents.",
+    "startFailed": "Open that machine’s page in Hermesh Settings to check why it can’t start agents.",
     "baseRefUnavailable": "Check the base ref name, or sync the corresponding branch/tag into the project’s local repository. Then send another message in this session to retry the original task."
   },
   "headline": {
@@ -68,13 +68,13 @@
     "quota": "{{agent}} is out of quota",
     "rateLimit": "{{agent}} was rate limited",
     "providerError": "{{agent}}’s model service failed",
-    "network": "{{agent}} lost the network",
+    "network": "{{agent}} lost network connection",
     "contextOverflow": "{{agent}}’s context is full",
     "modelUnavailable": "This model isn’t available to {{agent}}",
     "invalidRequest": "{{agent}}’s request was rejected",
     "refused": "The model refused this task",
     "limitReached": "{{agent}} reached its step limit",
-    "resumeRejected": "{{agent}} couldn’t pick up the earlier conversation",
+    "resumeRejected": "{{agent}} couldn’t resume the conversation",
     "agentCrashed": "{{agent}} quit unexpectedly",
     "stalled": "{{agent}} made no progress for a long time",
     "timeout": "This turn ran past its time limit",
@@ -83,7 +83,7 @@
     "other": "{{agent}} ran into an error"
   },
   "notice": {
-    "startedBody": "{{grant}} started it · {{project}} · {{agent}}",
+    "startedBody": "Started by {{grant}} · {{project}} · {{agent}}",
     "questionTitle": "{{grant}} is waiting for you",
     "questionBody": "{{title}}: {{text}}",
     "failedTitle": "“{{title}}” failed: {{failure}}",
@@ -97,20 +97,20 @@
     "machine": "Machine “{{label}}” wants to join",
     "device": "“{{label}}” wants to be your trusted device",
     "client": "“{{label}}” wants to connect",
-    "body": "Verification code {{code}}. Click to check and approve; deny it if you don’t recognize it."
+    "body": "Verification code {{code}}. Click to verify and approve, or deny if you don’t recognize it."
   },
   "signin": {
     "badCenter": "Invalid server address: {{center}}",
     "httpStatus": "{{url}}: HTTP {{status}}",
     "notJson": "{{url}}: not valid JSON",
-    "badConnectURL": "The server gave an invalid connection address: {{url}}"
+    "badConnectURL": "The server returned an invalid connection address: {{url}}"
   },
   "resolution": {
     "answeredByYou": "You answered: {{answers}}",
     "answeredBy": "{{name}} answered: {{answers}}",
-    "declinedByYou": "You chose not to answer",
-    "declinedBy": "{{name}} chose not to answer",
-    "timedOut": "No one answered; the agent went on by itself",
+    "declinedByYou": "You skipped the question",
+    "declinedBy": "{{name}} skipped the question",
+    "timedOut": "No response received; the agent continued on its own",
     "withdrawn": "Question withdrawn",
     "separator": "; "
   },

@@ -62,7 +62,7 @@ struct MachinesView: View {
         .confirmationDialog(removing.map { String(localized: "Remove the trusted device “\($0.label)”?") } ?? "", isPresented: Binding(get: { removing != nil }, set: { if !$0 { removing = nil } }), titleVisibility: .visible) {
             Button("Remove", role: .destructive) { if let d = removing { Task { await model.removeDevice(d) } } }
         } message: {
-            Text("It can no longer approve anything at once, and its own machine is removed with it. The machines and agents it approved are reissued by this iPhone and keep working (needs Face ID).")
+            Text("This device will immediately lose approval rights and its own machine will be removed. Machines and agents it previously approved will be re-signed by this iPhone so they keep working (requires Face ID).")
         }
         .navigationTitle("Machines")
         .rootToolbar()
@@ -332,9 +332,9 @@ struct MachineView: View {
             }
         } message: {
             if device(m) != nil {
-                Text("It can no longer approve anything at once, and its own machine is removed with it. The machines and agents it approved are reissued by this iPhone and keep working (needs Face ID).")
+                Text("This device will immediately lose approval rights and its own machine will be removed. Machines and agents it previously approved will be re-signed by this iPhone so they keep working (requires Face ID).")
             } else {
-                Text("It disconnects at once and running sessions stop. To join again it has to pair again.")
+                Text("This machine will disconnect immediately and running sessions will stop. You will need to pair it again to reconnect.")
             }
         }
         .confirmationDialog(removeProject.map { String(localized: "Remove project “\($0.projectID)”?") } ?? "", isPresented: Binding(get: { removeProject != nil }, set: { if !$0 { removeProject = nil } }), titleVisibility: .visible) {

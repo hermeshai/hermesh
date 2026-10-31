@@ -67,8 +67,8 @@ describe("transcript", () => {
     expect(resolutionTitle(r({ resolution: QuestionResolution.ANSWERED, by: "owner", answers: [{ selected: ["红"] }, { text: "深一点" }] }))).toBe(
       "你回答：红；深一点",
     );
-    expect(resolutionTitle(r({ resolution: QuestionResolution.DECLINED, by: "c1" }), () => "bot")).toBe("bot 选择不回答");
-    expect(resolutionTitle(r({ resolution: QuestionResolution.TIMED_OUT, by: "hermesh" }))).toBe("没人回答，agent 自行继续");
+    expect(resolutionTitle(r({ resolution: QuestionResolution.DECLINED, by: "c1" }), () => "bot")).toBe("bot 跳过了回答");
+    expect(resolutionTitle(r({ resolution: QuestionResolution.TIMED_OUT, by: "hermesh" }))).toBe("无人回答，Agent 已自行继续");
   });
 
   test("an interruption is not a failure", () => {

@@ -85,7 +85,7 @@
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "%@ 现在离线。它连上以后，才能浏览它的文件夹、添加项目。"
+            "value": "%@ 当前离线。恢复在线后，即可浏览文件夹并添加项目。"
           }
         }
       }
@@ -145,7 +145,7 @@
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "%@ 保管它的密钥，可以代表它操作，也能看到它碰到的会话。"
+            "value": "%@ 保管该 Agent 的密钥，可代其执行操作，并查看其参与的会话。"
           }
         }
       }
@@ -545,7 +545,7 @@
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "**%@ 离线了**，它上面的会话暂时看不到"
+            "value": "**%@ 当前离线**，该机器上的会话暂时无法显示"
           }
         }
       }
@@ -555,7 +555,7 @@
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "**%@ 暂时没有回应**，它上面的会话可能没列全"
+            "value": "**%@ 暂无响应**，该机器上的会话可能未完全显示"
           }
         }
       }
@@ -565,7 +565,7 @@
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "**%lld 台机器连不上**，它们上面的会话暂时看不到"
+            "value": "**%lld 台机器无法连接**，这些机器上的会话暂时无法显示"
           }
         }
       }
@@ -658,7 +658,7 @@
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "一台 Mac mini、Linux 服务器或云主机，都可以成为执行机器：你授权的 agent 在上面调用 Claude Code、Codex 干活。"
+            "value": "Mac mini、Linux 服务器或云主机都可以作为执行机器，获批的 Agent 会在上面运行 Claude Code 和 Codex。"
           }
         }
       }
@@ -718,7 +718,7 @@
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "新的服务器？输入它的认领码…"
+            "value": "新服务器？输入认领码…"
           }
         }
       }
@@ -728,7 +728,7 @@
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "项目是 agent 可以工作的目录。添加以后，再在每个授权里分别勾选它能用哪些。"
+            "value": "项目是 Agent 可以工作的代码目录。添加后，可在各授权中分别勾选允许访问的项目。"
           }
         }
       }
@@ -898,7 +898,7 @@
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "在它的页面上为它添加项目。"
+            "value": "可在该机器页面中添加项目。"
           }
         }
       }
@@ -1008,7 +1008,7 @@
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "agent 用“机器名/项目”找到项目。批准后，再在它的页面里添加项目，并在授权里勾选谁能用。"
+            "value": "Agent 通过“机器名/项目”定位项目。批准后，可在该机器页面中添加项目，并在授权中勾选谁可以使用。"
           }
         }
       }
@@ -1018,7 +1018,7 @@
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "agent 会在那台机器上跑 Claude Code、Codex。"
+            "value": "Agent 会在该机器上运行 Claude Code 和 Codex。"
           }
         }
       }
@@ -1348,7 +1348,7 @@
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "它一开始工作，它的会话就会在这里打开。"
+            "value": "开始运行后，会话会自动在这里打开。"
           }
         }
       }
@@ -1398,7 +1398,7 @@
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "Grok Bot 这类 bot 平时不在线。设置以后，它开的会话做完了、或者别的 agent 找它，Hermesh 就去叫醒它。一个连接下有好几个 bot 时，可以给每个 bot 单独设置。"
+            "value": "Grok Bot 等机器人平时不常驻在线。设置后，当它发起的会话完成或有其他 Agent 发来消息时，Hermesh 会自动唤醒它。同一连接下的多个机器人可分别单独设置。"
           }
         }
       }
@@ -1758,7 +1758,7 @@
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "核对它显示的核对码，然后在它上面输入这台 iPhone 显示的两位数字。"
+            "value": "请核对对方显示的核对码，然后在对方设备上输入这台 iPhone 显示的两位数字。"
           }
         }
       }
@@ -1938,7 +1938,7 @@
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "拷贝它"
+            "value": "拷贝"
           }
         }
       }
@@ -1988,7 +1988,7 @@
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "列不出它的仓库：%@"
+            "value": "无法列出仓库：%@"
           }
         }
       }
@@ -2193,12 +2193,12 @@
         }
       }
     },
-    "Disconnected grant": {
+    "Disconnected agent": {
       "localizations": {
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "已断开的授权"
+            "value": "已断开的 Agent"
           }
         }
       }
@@ -2228,7 +2228,7 @@
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "断开，删除它们在各自电脑上的配对"
+            "value": "断开连接，并清除各自电脑上的配对信息"
           }
         }
       }
@@ -2438,7 +2438,7 @@
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "每台可信设备都能批准连接请求。丢了的设备，在另一台上移除（在它上面左滑）。"
+            "value": "每台可信设备都可以批准连接请求。如果某台设备遗失，可在另一台可信设备上左滑将它移除。"
           }
         }
       }
@@ -2638,7 +2638,7 @@
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "回去改"
+            "value": "返回修改"
           }
         }
       }
@@ -2781,7 +2781,7 @@
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "Hermesh 不再调用它的 webhook。它的消息照样等着它。"
+            "value": "Hermesh 将停止调用该机器人的 Webhook，但消息仍会为它保留。"
           }
         }
       }
@@ -2791,7 +2791,7 @@
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "Hermesh 叫醒它一次，在等的消息它会顺便读掉。"
+            "value": "Hermesh 会唤醒它一次，待处理的消息也会一并读取。"
           }
         }
       }
@@ -3011,7 +3011,7 @@
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "在这些项目里，它能做你本人能做的事。"
+            "value": "在这些项目中，它拥有与你相同的操作权限。"
           }
         }
       }
@@ -3041,7 +3041,7 @@
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "在它上面安装 Hermesh，用同一个账号登录。"
+            "value": "在新设备上安装 Hermesh，并使用同一账号登录。"
           }
         }
       }
@@ -3051,7 +3051,7 @@
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "在它上面安装 Hermesh，选择“使用自己的服务器…”，然后输入这个连接地址："
+            "value": "在新设备上安装 Hermesh，选择“使用自己的服务器…”，然后输入以下连接地址："
           }
         }
       }
@@ -3166,12 +3166,12 @@
         }
       }
     },
-    "It can no longer approve anything at once, and its own machine is removed with it. The machines and agents it approved are reissued by this iPhone and keep working (needs Face ID).": {
+    "This device will immediately lose approval rights and its own machine will be removed. Machines and agents it previously approved will be re-signed by this iPhone so they keep working (requires Face ID).": {
       "localizations": {
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "它立刻不能再批准任何事，它自己的执行机器也一并移除。它批准过的机器和 agent 会改由这台 iPhone 重新签发，照常可用（需要面容 ID）。"
+            "value": "该设备将立即失去批准权限，其关联的执行机器也会一并移除。此前由该设备批准的机器和 Agent 将改由这台 iPhone 重新签发，继续正常使用（需要面容 ID）。"
           }
         }
       }
@@ -3196,7 +3196,7 @@
         }
       }
     },
-    "It disconnects at once and running sessions stop. To join again it has to pair again.": {
+    "This machine will disconnect immediately and running sessions will stop. You will need to pair it again to reconnect.": {
       "localizations": {
         "zh-Hans": {
           "stringUnit": {
@@ -3221,17 +3221,17 @@
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "它现在还是你的可信设备。先在你的另一台可信设备上，到“机器”把它移除，再在这里退出登录。"
+            "value": "这台设备仍是你的可信设备。请先在另一台可信设备的“机器”页面将它移除，然后再退出登录。"
           }
         }
       }
     },
-    "It loses access at once; running sessions are interrupted, and the sessions themselves stay. To use it again, connect it again.": {
+    "Access will be revoked immediately and running sessions will stop. Past session history is kept. You will need to pair again to reconnect.": {
       "localizations": {
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "它会立即失去访问；正在跑的会话会被打断，会话本身保留。要再用，需要重新连接。"
+            "value": "访问权限将立即撤销，正在运行的会话会停止，历史会话记录会保留。如需再次使用，请重新配对连接。"
           }
         }
       }
@@ -3256,12 +3256,12 @@
         }
       }
     },
-    "It took it: it works.": {
+    "Webhook verified and working.": {
       "localizations": {
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "叫醒了：它收到了。"
+            "value": "已唤醒：对方已收到。"
           }
         }
       }
@@ -3271,7 +3271,7 @@
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "刚才叫醒了一次，它那边会多一次运行。以后有新消息，Hermesh 都会这样叫醒它。"
+            "value": "刚才已触发一次唤醒，因此对方会多出一条运行记录。之后每当有新消息到达，Hermesh 都会这样唤醒它。"
           }
         }
       }
@@ -3603,7 +3603,7 @@
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "确认它开着机、连着网，再在它上面运行："
+            "value": "请确认该机器已开机并联网，然后在机器上运行："
           }
         }
       }
@@ -3653,7 +3653,7 @@
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "发一段话"
+            "value": "发送指令"
           }
         }
       }
@@ -4014,12 +4014,12 @@
         }
       }
     },
-    "No sessions yet. Once an agent is connected, its work shows up here.": {
+    "No sessions yet. Once an agent connects, its sessions will appear here.": {
       "localizations": {
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "还没有会话。授权连上后，它们干的活会出现在这里。"
+            "value": "尚无会话。Agent 连接后，发起的会话会显示在这里。"
           }
         }
       }
@@ -4339,7 +4339,7 @@
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "批准后，它能像这台 iPhone 一样批准机器、个人 agent 和新设备。只在它就在你手上时批准。"
+            "value": "批准后，该设备将与这台 iPhone 一样，拥有批准机器、个人 Agent 和新设备的权限。请仅在设备位于你手边时批准。"
           }
         }
       }
@@ -4354,12 +4354,12 @@
         }
       }
     },
-    "Once disconnected, it loses access at once; running sessions are interrupted, and the sessions themselves stay.": {
+    "Disconnecting revokes access immediately and stops any running sessions. Past session history is kept.": {
       "localizations": {
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "断开后它会立即失去访问；正在跑的会话会被打断，会话本身保留。"
+            "value": "断开后将立即撤销访问权限并停止正在运行的会话，历史会话记录会保留。"
           }
         }
       }
@@ -4369,7 +4369,7 @@
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "它运行后，请求会出现在这里"
+            "value": "命令运行后，连接请求会显示在这里"
           }
         }
       }
@@ -5039,7 +5039,7 @@
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "正在跑的会话照常进行，这里不再开始新的。"
+            "value": "正在运行的会话会继续，但不再接收新会话。"
           }
         }
       }
@@ -5129,7 +5129,7 @@
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "扫描它显示的配对码"
+            "value": "扫描对方显示的配对码"
           }
         }
       }
@@ -5189,7 +5189,7 @@
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "把这句话发给它，试一下："
+            "value": "发送以下指令试试看："
           }
         }
       }
@@ -5517,7 +5517,7 @@
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "退出账号，删除管理钥匙、会话记录和设置；也在执行任务的，连同它的项目列表和 worktree"
+            "value": "退出登录，删除管理密钥、会话记录和设置；同时作为执行机器的，还会删除项目列表和 worktree"
           }
         }
       }
@@ -5637,7 +5637,7 @@
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "不会动"
+            "value": "将保留"
           }
         }
       }
@@ -5860,7 +5860,7 @@
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "机器或 agent 在终端里显示的配对码。输入后，它的请求会在这里打开，等你批准。"
+            "value": "输入机器或 Agent 终端里显示的配对码后，连接请求会在这里打开，等待你批准。"
           }
         }
       }
@@ -5880,7 +5880,7 @@
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "你认它用的名字，这里和你的其他设备都会显示，其他 agent 也会看到。用常见应用的名字（Grok Bot、Claude）会显示那个应用的图标。"
+            "value": "用于在这台设备和你的其他设备上识别该 Agent，其他 Agent 也会看到这个名称。使用常见应用名称（如 Grok Bot、Claude）会自动显示对应图标。"
           }
         }
       }
@@ -6190,7 +6190,7 @@
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "经由 %@，由它保管密钥"
+            "value": "通过 %@ 连接（由该平台保管密钥）"
           }
         }
       }
@@ -6740,7 +6740,7 @@
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "正在等待它的请求…"
+            "value": "正在等待连接请求…"
           }
         }
       }
@@ -6815,12 +6815,12 @@
         }
       }
     },
-    "Waits for a turn of its own": {
+    "Queued for next turn": {
       "localizations": {
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "排队等它自己的一轮"
+            "value": "将在下一轮处理"
           }
         }
       }
@@ -6930,7 +6930,7 @@
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "离线设备上的数据：留到它下次被重置"
+            "value": "离线设备上的本地数据（需待设备重置后清除）"
           }
         }
       }
@@ -6960,7 +6960,7 @@
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "机器或 agent 没带你的连接地址时，它的终端会显示一个配对码。输入后，会和其他请求一样弹出批准页面，请核对核对码。"
+            "value": "如果机器或 Agent 未携带你的连接地址，终端会显示一个配对码。输入配对码后，会像其他请求一样弹出批准页面，请比对双方的核对码。"
           }
         }
       }
@@ -7023,7 +7023,7 @@
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "无需扫描：它的请求会自动来到这里，请核对核对码。"
+            "value": "无需扫码：连接请求会自动显示在这里，请比对双方的核对码。"
           }
         }
       }
@@ -7103,7 +7103,7 @@
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "你的账号：用它再登录，就是全新开始"
+            "value": "你的账号本身（重新登录即可从头开始）"
           }
         }
       }
@@ -7356,7 +7356,7 @@
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "「%@」已加入，去它的页面里添加项目"
+            "value": "「%@」已加入，可前往该机器页面添加项目"
           }
         }
       }

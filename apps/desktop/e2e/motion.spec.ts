@@ -76,7 +76,7 @@ test("the overview's motion is all the compositor's: comets ride the running ses
 
 test("while nothing happens, the page changes only its clocks, all in the same frame", async () => {
   const { app, page } = await launch();
-  const running = page.getByRole("region", { name: "正在干活" }).getByRole("listitem").filter({ hasText: "跑很久" });
+  const running = page.getByRole("region", { name: "正在运行" }).getByRole("listitem").filter({ hasText: "跑很久" });
   await expect(running.locator(".wc-time")).toHaveText(/^\d+:\d\d$/);
   // The card ticks while the turn is still queued or preparing; the list
   // row only once it runs. Wait for both clocks.

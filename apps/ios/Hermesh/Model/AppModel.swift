@@ -596,7 +596,7 @@ final class AppModel {
 
     /// A client by its id (a session's created_by), as the person knows it.
     func clientLabel(_ clientID: String) -> String {
-        clients.first { $0.clientID == clientID }?.label ?? String(localized: "Disconnected grant")
+        clients.first { $0.clientID == clientID }?.label ?? String(localized: "Disconnected agent")
     }
 
     func machineName(_ id: String) -> String { machines.first { $0.machineID == id }?.machineName ?? String(id.prefix(12)) }

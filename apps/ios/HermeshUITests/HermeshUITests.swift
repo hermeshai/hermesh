@@ -609,7 +609,7 @@ final class HermeshUITests: XCTestCase {
         shot.lifetime = .keepAlways
         add(shot)
         // Or a message to send it, one way at a time.
-        app.segmentedControls.buttons["发一段话"].tap()
+        app.segmentedControls.buttons["发送指令"].tap()
         XCTAssertTrue(text("把这段话发给 Claude").waitForExistence(timeout: 5))
         XCTAssertTrue(text("hermesh auth login").exists, "an own server's steps")
         XCTAssertFalse(text(address).exists, "the connector is gone")

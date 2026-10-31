@@ -27,7 +27,7 @@
     "archive": "归档",
     "messageFrom": "来自 {{name}} 的消息",
     "messageTo": "发给 {{name}} 的消息",
-    "messageQueued": "排队等它自己的一轮",
+    "messageQueued": "将在下一轮处理",
     "unread": {
       "offline": "{{name}} 离线了",
       "offlineDetail": "这个会话的内容保存在那台机器上，连上后会自动显示。",
