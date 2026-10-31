@@ -194,61 +194,57 @@ struct OverviewView: View {
             !c.revoked && !(work?.pairs.contains { $0.client == c.clientID } ?? false) && !running.contains { $0.createdBy == c.clientID }
         }
         let now = Bucket.now(period, model.now)
-        return Section {
-            VStack(alignment: .leading, spacing: 10) {
-                WorkCard(running: running.count, work: work, period: period, now: now) { model.drawerOpen = true }
-                if let work, !flow.bands.isEmpty {
-                    caption(flowTitle(period), detail: "\(work.turns) turns · \(tokensText(work.tokens)) tokens")
-                    FlowCard(flow: flow, picked: $picked, clientName: { model.clientLabel($0) }, idle: idleClients.map { AgentLogo.name($0.label) }, period: period)
-                }
-                if !agents.isEmpty || reading {
-                    HStack {
-                        Text("Agents")
-                        Spacer()
-                        HeatLegend()
-                    }
-                    .font(.caption).foregroundStyle(.secondary)
-                    .padding(.horizontal, 4).padding(.top, 8)
-                    if reading {
-                        agentsSkeleton
-                    } else {
-                        card {
-                            ForEach(Array(shown.enumerated()), id: \.element) { i, a in
-                                if i > 0 { Divider().padding(.leading, 50) }
-                                agentRow(a, running: runs(a), turns: turns(a), flow: flow, work: work, cells: work?.byAgent[a], now: now, period: period)
-                            }
-                            HeatAxis(period: period, now: now, date: model.now)
-                                .padding(.leading, 50).padding(.trailing, 14).padding(.bottom, 12)
-                        }
-                    }
-                }
-                if let note = sourcesNote(work) {
-                    Text(note).font(.caption).foregroundStyle(.secondary).padding(.horizontal, 4)
-                        .accessibilityIdentifier("work-sources")
-                }
-                if !model.machines.isEmpty {
-                    caption("Machines")
-                    card {
-                        ForEach(Array(model.machines.enumerated()), id: \.element.machineID) { i, m in
-                            if i > 0 { Divider().padding(.leading, 50) }
-                            machineRow(m, running: running.filter { $0.machineID == m.machineID }.count)
-                        }
-                    }
-                }
-            }
-            .padding(.horizontal, 16)
-        } header: {
-            // The range, a glass segmented control where the section's title was.
+        return VStack(alignment: .leading, spacing: 10) {
+            // The range, as the Health app's: a segmented control the width of the cards, right above them.
             Picker("Range", selection: Binding(get: { model.workPeriod }, set: { p in withAnimation(.smooth) { model.workPeriod = p } })) {
                 Text("Today").tag(WorkPeriod.today)
                 Text("7 Days").tag(WorkPeriod.week)
                 Text("30 Days").tag(WorkPeriod.month)
             }
             .pickerStyle(.segmented)
-            .frame(maxWidth: 280)
-            .padding(.horizontal, 20)
+            .padding(.bottom, 4)
             .accessibilityIdentifier("work-period")
+            WorkCard(running: running.count, work: work, period: period, now: now) { model.drawerOpen = true }
+            if let work, !flow.bands.isEmpty {
+                caption(flowTitle(period), detail: "\(work.turns) turns · \(tokensText(work.tokens)) tokens")
+                FlowCard(flow: flow, picked: $picked, clientName: { model.clientLabel($0) }, idle: idleClients.map { AgentLogo.name($0.label) }, period: period)
+            }
+            if !agents.isEmpty || reading {
+                HStack {
+                    Text("Agents")
+                    Spacer()
+                    HeatLegend()
+                }
+                .font(.caption).foregroundStyle(.secondary)
+                .padding(.horizontal, 4).padding(.top, 8)
+                if reading {
+                    agentsSkeleton
+                } else {
+                    card {
+                        ForEach(Array(shown.enumerated()), id: \.element) { i, a in
+                            if i > 0 { Divider().padding(.leading, 50) }
+                            agentRow(a, running: runs(a), turns: turns(a), flow: flow, work: work, cells: work?.byAgent[a], now: now, period: period)
+                        }
+                        HeatAxis(period: period, now: now, date: model.now)
+                            .padding(.leading, 50).padding(.trailing, 14).padding(.bottom, 12)
+                    }
+                }
+            }
+            if let note = sourcesNote(work) {
+                Text(note).font(.caption).foregroundStyle(.secondary).padding(.horizontal, 4)
+                    .accessibilityIdentifier("work-sources")
+            }
+            if !model.machines.isEmpty {
+                caption("Machines")
+                card {
+                    ForEach(Array(model.machines.enumerated()), id: \.element.machineID) { i, m in
+                        if i > 0 { Divider().padding(.leading, 50) }
+                        machineRow(m, running: running.filter { $0.machineID == m.machineID }.count)
+                    }
+                }
+            }
         }
+        .padding(.horizontal, 16)
     }
 
     private func flowTitle(_ p: WorkPeriod) -> LocalizedStringKey {
