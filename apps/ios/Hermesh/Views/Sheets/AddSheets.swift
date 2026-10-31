@@ -343,7 +343,7 @@ struct AddMachineSheet: View {
             HStack(alignment: .top, spacing: 8) {
                 Text(footer).font(.footnote).foregroundStyle(.secondary)
                 Spacer(minLength: 0)
-                CopyIcons(text: text, size: 34)
+                CopyIcons(text: text)
             }
         }
     }
@@ -365,7 +365,7 @@ struct AddMachineSheet: View {
 struct CopyIcons: View {
     @Environment(AppModel.self) private var model
     let text: String
-    var size: CGFloat = 40
+    private let size: CGFloat = 36
 
     var body: some View {
         HStack(spacing: 8) {
