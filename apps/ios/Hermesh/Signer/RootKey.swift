@@ -10,6 +10,7 @@ import Security
 /// Simulator has no Secure Enclave, so there they are software keys in the
 /// Keychain. Signatures are ASN.1 DER ECDSA-P256 over SHA-256(message).
 nonisolated enum RootKey {
+    // The app's first bundle id, kept: the keys phones already made carry it.
     private static let tag = Data("com.hermesh.ios.root".utf8)
 
     /// A phone's Secure Enclave; the Simulator's can't make keys that need

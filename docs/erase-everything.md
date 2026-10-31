@@ -187,7 +187,7 @@ unchanged: it signs nothing, so it erases nothing on a device.
   Notifications and the login item in System Settings › General › Login
   Items (`sfltool resetbtm` clears every login item's approval); on the
   iPhone, deleting the app; in the Simulator, `xcrun simctl privacy
-  <device> reset all com.hermesh.ios`.
+  <device> reset all io.hermesh.ios`.
 
 ## 4. What an attacker can do
 

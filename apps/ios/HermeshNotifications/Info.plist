@@ -3,7 +3,7 @@
 <plist version="1.0">
 <dict>
 	<key>HermeshKeychainGroup</key>
-	<string>$(AppIdentifierPrefix)com.hermesh.ios.shared</string>
+	<string>$(AppIdentifierPrefix)io.hermesh.ios.shared</string>
 	<key>NSExtension</key>
 	<dict>
 		<key>NSExtensionPointIdentifier</key>

@@ -63,7 +63,7 @@ func TestIPhoneFirstRun(t *testing.T) {
 
 	device := simulator(t)
 	// A Simulator kept between runs (HERMESH_IPHONE_SIMULATOR) starts without the app.
-	exec.Command("xcrun", "simctl", "uninstall", device, "com.hermesh.ios").Run()
+	exec.Command("xcrun", "simctl", "uninstall", device, "io.hermesh.ios").Run()
 	control := newFirstRunControl(t, bin, tmp, base, claim)
 
 	derived := filepath.Join(t.TempDir(), "derived")
