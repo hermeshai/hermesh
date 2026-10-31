@@ -563,36 +563,6 @@
     "+%lld": {
       "shouldTranslate": false
     },
-    "1. On that Mac, open": {
-      "localizations": {
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "1. 在那台 Mac 上打开"
-          }
-        }
-      }
-    },
-    "1. On that machine, run": {
-      "localizations": {
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "1. 在那台机器上运行"
-          }
-        }
-      }
-    },
-    "1. On that PC, open": {
-      "localizations": {
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "1. 在那台电脑上打开"
-          }
-        }
-      }
-    },
     "1. On the other device": {
       "localizations": {
         "zh-Hans": {
@@ -619,46 +589,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "2 分钟前"
-          }
-        }
-      }
-    },
-    "2. Approve it here": {
-      "localizations": {
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "2. 在这里批准"
-          }
-        }
-      }
-    },
-    "2. Install it, open it, and join": {
-      "localizations": {
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "2. 安装后打开，加入"
-          }
-        }
-      }
-    },
-    "2. Install it, open it, and sign in with the same account": {
-      "localizations": {
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "2. 安装后打开，用同一个账号登录"
-          }
-        }
-      }
-    },
-    "2. Scan the code it shows": {
-      "localizations": {
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "2. 扫描它显示的配对码"
           }
         }
       }
@@ -1303,6 +1233,16 @@
         }
       }
     },
+    "Approve it here": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "在这里批准"
+          }
+        }
+      }
+    },
     "Approve on Your Other Device": {
       "localizations": {
         "zh-Hans": {
@@ -1539,6 +1479,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "暂时连不上 Hermesh，这里是上次读到的内容。"
+          }
+        }
+      }
+    },
+    "Can’t Scan?": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "无法扫码？"
           }
         }
       }
@@ -2363,32 +2313,12 @@
         }
       }
     },
-    "Enter a pairing code instead…": {
-      "localizations": {
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "改为输入配对码…"
-          }
-        }
-      }
-    },
     "Enter the Pairing Code…": {
       "localizations": {
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
             "value": "输入配对码…"
-          }
-        }
-      }
-    },
-    "Enter the pairing code instead…": {
-      "localizations": {
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "改为输入配对码…"
           }
         }
       }
@@ -3006,6 +2936,16 @@
         }
       }
     },
+    "Install from a Terminal on This iPhone": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "在这台 iPhone 的终端里安装"
+          }
+        }
+      }
+    },
     "Install Hermesh on Linux": {
       "localizations": {
         "zh-Hans": {
@@ -3042,6 +2982,26 @@
           "stringUnit": {
             "state": "translated",
             "value": "在 Mac 上安装 Hermesh"
+          }
+        }
+      }
+    },
+    "Install it, open it, and join": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "安装后打开，加入"
+          }
+        }
+      }
+    },
+    "Install it, open it, and sign in with the same account": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "安装后打开，用同一个账号登录"
           }
         }
       }
@@ -3464,6 +3424,16 @@
     },
     "Linux": {
       "shouldTranslate": false
+    },
+    "Linux has no app: install it with the command.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Linux 没有应用，用终端命令安装。"
+          }
+        }
+      }
     },
     "Loading earlier sessions…": {
       "localizations": {
@@ -4240,6 +4210,36 @@
           "stringUnit": {
             "state": "translated",
             "value": "在没有浏览器的服务器上，它会显示一个链接：在这台 iPhone 上打开即可。"
+          }
+        }
+      }
+    },
+    "On that Mac, open": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "在那台 Mac 上打开"
+          }
+        }
+      }
+    },
+    "On that machine, run": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "在那台机器上运行"
+          }
+        }
+      }
+    },
+    "On that PC, open": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "在那台电脑上打开"
           }
         }
       }
@@ -5034,6 +5034,16 @@
         }
       }
     },
+    "Scan the code it shows": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "扫描它显示的配对码"
+          }
+        }
+      }
+    },
     "Scan the QR Code": {
       "localizations": {
         "zh-Hans": {
@@ -5661,16 +5671,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "终端命令"
-          }
-        }
-      }
-    },
-    "Terminal on this iPhone? Copy a Command for This Account": {
-      "localizations": {
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "终端就在这台 iPhone 上？拷贝本账户专用的命令"
           }
         }
       }
