@@ -3424,16 +3424,6 @@
         }
       }
     },
-    "Machines and grants in any browser; emergency revocation": {
-      "localizations": {
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "在任何浏览器里查看机器和授权、紧急撤销"
-          }
-        }
-      }
-    },
     "Make sure it’s on and online, then run this there:": {
       "localizations": {
         "zh-Hans": {

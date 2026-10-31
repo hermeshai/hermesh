@@ -418,7 +418,8 @@ export type GetStatusResponse = Message<"hermesh.local.v1.GetStatusResponse"> & 
 
   /**
    * The account this profile belongs to, as the center named it when it
-   * was set up, joined or signed in (for display only).
+   * was set up, joined or signed in, or since it last connected (for
+   * display only).
    *
    * @generated from field: string account = 16;
    */
