@@ -193,6 +193,16 @@ The team signs it with automatic provisioning (App ID `io.hermesh.ios` with
 push notifications and the keychain group, and the extension's
 `io.hermesh.ios.notifications`).
 
+Each release goes to TestFlight with the release's version (App Store
+Connect app "Hermesh", SKU `hermesh-ios`), signed with a team App Store
+Connect API key, as no Apple account needs to be signed in to Xcode:
+
+```
+VERSION=0.1.1 ASC_KEY_ID=<key id> ASC_ISSUER_ID=<issuer id> apps/ios/scripts/testflight.sh
+```
+
+The build number is the commit count unless `BUILD` says otherwise.
+
 ## 7. Not now
 
 Sign in with Apple and App Store review, an iPad layout, widgets and Live

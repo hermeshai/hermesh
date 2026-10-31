@@ -1,18 +1,29 @@
 {
   "unreleased": {
+    "improvements": [],
+    "fixes": []
+  },
+  "0.1.1": {
     "improvements": [
-      "On the iPhone, the first run asks one thing: first time, or already using Hermesh on another device. The first time, it shows what your management key does, turns on notifications, then guides you through your computer, its coding agents, connecting an agent and its first task.",
-      "Sessions on the iPhone read as they do on the Mac: formatted replies, coloured code, tool calls folded into one line, and a conversation opens at its last message.",
-      "The iPhone tells you when an agent starts a session: its title, who started it and where. Turn it off in Account → Notifications.",
-      "Run your own server with one `docker run` from Docker Hub (hermeshai/hermesh-relay): settings by `-e`, it starts again with the server, and runs on ARM servers too. The README says what to prepare.",
-      "No domain? Use your own server by its IP address, over plain HTTP. The app says what that leaves unencrypted before you go on.",
-      "Your own server’s MCP address, for Claude and ChatGPT, has a key in it, so only you can connect apps: copy it in Settings → Account & Devices → Advanced on the Mac, or Account and Devices on the iPhone.",
-      "A Mac that joins your Hermesh only sets itself up: its first run ends with its coding agents."
+      "Hermesh on Windows 11: install the app with its Setup file, approve with Windows Hello, and add a PC as a machine from the app or with one PowerShell command. The app and the PC’s machine update themselves.",
+      "Machines keep themselves up to date: a new release installs once no session is working. `hermeshd update` updates one now, `hermeshd update auto off` turns it off. Machines installed before this version need the install command once more.",
+      "On the iPhone, the overview covers today, 7 days or 30 days: sessions that ran, turns and tokens, which agent sent work to which coding agent, and each coding agent’s days. Usage on the Mac and the iPhone counts from the same numbers.",
+      "On the iPhone, the first run asks one thing: first time, or already using Hermesh on another device. The first time, it explains your management key, turns on notifications, then guides you through your computer, its coding agents, connecting an agent and its first task.",
+      "Sessions on the iPhone read as they do on the Mac: formatted replies, coloured code, tool calls folded into one line; a conversation opens at its last message and follows it as it grows. Session info on both shows the model and reasoning effort.",
+      "The Mac and the iPhone tell you when an agent starts a session: its title, who started it and where. Turn it off under New sessions in each one’s notification settings.",
+      "Add Machine asks for the system first (Mac, Windows or Linux), then the app or a terminal command. On the iPhone, Add a Project browses the machine’s folders. Requests on the Mac wait as cards at the bottom right instead of covering your work.",
+      "Give each agent a name and an icon: an app’s logo, its initial, or a picture of your own.",
+      "Run your own server with one `docker run` from Docker Hub (hermeshai/hermesh-relay), on ARM servers too; without a domain, by its IP address over plain HTTP. Its MCP address for Claude and ChatGPT has a key in it, so only you can connect apps.",
+      "A session’s worktree brings the files kept out of git that the repository’s .worktreeinclude names, such as .env. The Linux install command installs as root unless you name another user."
     ],
     "fixes": [
       "The server’s Docker image starts: it stopped at once with “unable to open database file”.",
       "On your own server, apps someone connected without your approval can’t keep yours out any more, and they end after a day unused.",
-      "On the iPhone, Get Started, once done, stays away after a reconnect."
+      "A slow session start (a busy computer, a large repository) is no longer stopped halfway, and a failed one no longer leaves a worktree that blocks the session.",
+      "A session’s worktree that went missing is restored from its branch, and its changes since the start survive a restart.",
+      "A conversation whose machine is offline says why instead of a blank page, and shows what was read before.",
+      "On the iPhone, coming back to the app no longer leaves it “Connecting to Hermesh…”, and Get Started, once done, stays away after a reconnect.",
+      "A Mac that joins your Hermesh only sets itself up: its first run ends with its coding agents."
     ]
   },
   "0.1.1-beta.5": {
