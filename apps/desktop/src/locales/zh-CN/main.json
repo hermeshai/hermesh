@@ -67,8 +67,8 @@
     }
   },
   "settingsWindow": "设置",
-  "disconnectedGrant": "已断开的授权",
-  "anAgent": "一个 agent",
+  "disconnectedGrant": "已断开的 Agent",
+  "anAgent": "一个 Agent",
   "signInExpired": "登录已过期，请重新登录。",
   "move": {
     "title": "要把 Hermesh 移到「应用程序」文件夹吗？",

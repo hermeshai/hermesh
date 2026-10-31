@@ -46,7 +46,7 @@ struct SessionsView: View {
                         PageLoader(text: "Reading your sessions…")
                     } else if model.noOlder {
                         if model.sessions.isEmpty {
-                            Text("No sessions yet. Once an agent is connected, its work shows up here.")
+                            Text("No sessions yet. Once an agent connects, its sessions will appear here.")
                         } else {
                             HStack(spacing: 4) {
                                 Text("No earlier sessions ·")

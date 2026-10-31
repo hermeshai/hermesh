@@ -8,47 +8,47 @@
     "info": "Info panel"
   },
   "chat": {
-    "archived": "Archived: read-only, its worktree released, the changes still on the branch.",
+    "archived": "Archived: read-only. Worktree released, with changes preserved on the branch.",
     "unarchive": "Unarchive",
     "log": "Conversation",
     "failed": "Failed",
     "failedWith": "Failed: {{title}}",
-    "turnDone": "This turn is done. When {{grant}} sends another message, it goes on in this session.",
+    "turnDone": "This turn is complete. Send another message from {{grant}} to continue in this session.",
     "agentAsked": "Agent asked:",
-    "interruptedByYou": "You interrupted this turn. The session is still here; when {{grant}} sends another message, it goes on.",
-    "interrupted": "This turn was interrupted. The session is still here; when {{grant}} sends another message, it goes on.",
+    "interruptedByYou": "You interrupted this turn. The session remains open, and {{grant}} can send another message to continue.",
+    "interrupted": "This turn was interrupted. The session remains open, and {{grant}} can send another message to continue.",
     "turnFailed": "Turn {{turn}} failed: {{title}}",
     "copy": "Copy",
     "inProgress": "In progress",
     "truncated": "… (truncated)",
-    "outputUnreadable": "… (the rest can't be read now)",
-    "resume": "When {{grant}} sends another message, it picks up from here; the earlier changes are all still there.",
+    "outputUnreadable": "… (remaining output unavailable)",
+    "resume": "When {{grant}} sends another message, it will resume from here with all earlier changes preserved.",
     "details": "Details",
     "archive": "Archive",
     "messageFrom": "Message from {{name}}",
     "messageTo": "Message to {{name}}",
-    "messageQueued": "waits for a turn of its own",
+    "messageQueued": "queued for next turn",
     "unread": {
       "offline": "{{name}} is offline",
-      "offlineDetail": "This conversation is kept on that machine; it shows here once the machine reconnects.",
-      "offlineSeen": "This conversation is kept on that machine; it shows here once the machine reconnects. Last online {{ago}}.",
+      "offlineDetail": "This conversation is stored on that machine and will appear once it reconnects.",
+      "offlineSeen": "This conversation is stored on that machine and will appear once it reconnects. Last online {{ago}}.",
       "notConnected": "Can’t reach Hermesh",
-      "notConnectedDetail": "This conversation is kept on {{name}}; it shows here once this Mac reconnects.",
-      "notConnectedDetail_win": "This conversation is kept on {{name}}; it shows here once this PC reconnects.",
+      "notConnectedDetail": "This conversation is stored on {{name}} and will appear once this Mac reconnects.",
+      "notConnectedDetail_win": "This conversation is stored on {{name}} and will appear once this PC reconnects.",
       "noAnswer": "{{name}} isn’t responding",
-      "noAnswerDetail": "This conversation is kept on that machine. Retrying; it shows here once the machine answers."
+      "noAnswerDetail": "This conversation is stored on that machine. Retrying automatically; it will appear once the machine responds."
     },
     "stale": {
-      "notConnected": "Can’t reach Hermesh; this is what was last read here.",
-      "offline": "{{name}} is offline; this is what was last read from it.",
-      "noAnswer": "{{name}} isn’t responding; this is what was last read from it."
+      "notConnected": "Can’t reach Hermesh. Showing last synced messages.",
+      "offline": "{{name}} is offline. Showing last synced messages.",
+      "noAnswer": "{{name}} isn’t responding. Showing last synced messages."
     }
   },
   "control": {
     "label": "This turn",
     "interruptTitle": "Interrupt this turn {{keys}}",
     "interrupt": "Interrupt",
-    "waitingDetail": "{{grant}} · Turn {{turn}} · If no one answers, it decides by itself",
+    "waitingDetail": "{{grant}} · Turn {{turn}} · Will continue automatically if unanswered",
     "working": "{{agent}} is working"
   },
   "actions": {
@@ -61,15 +61,15 @@
     "optional": " (optional)",
     "options": "Options",
     "yourAnswer": "Your answer",
-    "secret": "Your answer (secret: given only to the agent, not recorded)",
+    "secret": "Your answer (secret: sent only to the agent and not recorded)",
     "write": "Write your answer…",
     "orWrite": "Or write your own answer…",
-    "declined": "Told it to decide by itself",
-    "answered": "Answered; {{agent}} goes on working",
-    "declineTitle": "Let it decide by itself",
-    "decline": "Don’t Answer",
+    "declined": "Skipped question; agent will decide",
+    "answered": "Answered. {{agent}} is continuing",
+    "declineTitle": "Let the agent decide",
+    "decline": "Skip",
     "answer": "Answer",
-    "countdown": "If no one answers, it decides by itself when the time is up"
+    "countdown": "If unanswered, the agent will decide automatically when time runs out"
   },
   "inspector": {
     "label": "Session Info",

@@ -1,9 +1,9 @@
 {
   "daemon": {
     "connecting": "Connecting to the background service…",
-    "needsApproval": "Hermesh’s background service can run once you allow it in System Settings › Login Items.",
+    "needsApproval": "Allow Hermesh’s background service in System Settings › Login Items so it can run.",
     "openLoginItems": "Open Login Items Settings",
-    "noResponse": "Hermesh’s background service isn’t responding. It usually starts on its own; if this keeps happening, reopen Hermesh."
+    "noResponse": "Hermesh’s background service isn’t responding. It usually starts automatically; if this continues, reopen Hermesh."
   },
   "window": {
     "showSidebar": "Show Sidebar",
@@ -64,9 +64,9 @@
     "more": "More",
     "renameLabel": "Session title",
     "deleteTitle": "Delete “{{title}}”?",
-    "deleteMessage": "Its record, conversation and worktree are deleted for good. The agent’s changes stay on the branch {{branch}}.",
-    "deleteMessageNoBranch": "Its record and conversation are deleted for good.",
-    "deleteRunning": "Its turn in progress is interrupted first.",
+    "deleteMessage": "Its record, conversation, and worktree will be permanently deleted. The agent’s changes remain on branch {{branch}}.",
+    "deleteMessageNoBranch": "Its record and conversation will be permanently deleted.",
+    "deleteRunning": "The current turn will be interrupted first.",
     "deleteButton": "Delete",
     "deleted": "Deleted “{{title}}”"
   },
@@ -132,16 +132,16 @@
     "thisMac_win": "This PC",
     "processesTitle": "{{name}} can’t start new programs",
     "processesTitleNear": "{{name}} is running out of processes",
-    "processesBody": "Its processes are at their limit ({{used}} / {{limit}}): Hermesh can’t start coding agents, and sessions sent to it fail. It recovers by itself once the program holding them quits.",
-    "processesBodyCulprit": "Its processes are at their limit ({{used}} / {{limit}}); {{count}} of them are ended processes {{culprit}} never cleaned up. Hermesh can’t start coding agents, and sessions sent to it fail. Quit {{culprit}} and it recovers by itself.",
-    "processesBodyNear": "Its processes are near their limit ({{used}} / {{limit}}). At the limit, Hermesh can’t start coding agents.",
-    "processesBodyNearCulprit": "Its processes are near their limit ({{used}} / {{limit}}); {{count}} of them are ended processes {{culprit}} never cleaned up. Quit {{culprit}} before Hermesh can’t start coding agents.",
+    "processesBody": "Process limit reached ({{used}} / {{limit}}). Hermesh can’t start coding agents, so new sessions will fail. It will recover automatically once the program holding those processes quits.",
+    "processesBodyCulprit": "Process limit reached ({{used}} / {{limit}}), including {{count}} finished processes that {{culprit}} never cleaned up. Hermesh can’t start coding agents, so new sessions will fail. Quit {{culprit}} to recover automatically.",
+    "processesBodyNear": "Processes are near the system limit ({{used}} / {{limit}}). Once reached, Hermesh won’t be able to start coding agents.",
+    "processesBodyNearCulprit": "Processes are near the system limit ({{used}} / {{limit}}), including {{count}} finished processes that {{culprit}} never cleaned up. Quit {{culprit}} before Hermesh can no longer start coding agents.",
     "diskTitle": "{{name}}’s disk is nearly full",
-    "diskBody": "Only {{free}} left. Once it is full, new sessions can’t get a worktree and sessions can’t be saved.",
+    "diskBody": "Only {{free}} remaining. When the disk is full, new sessions can’t create a worktree or save session records.",
     "filesTitle": "Hermesh on {{name}} is running out of open files",
-    "filesBody": "{{used}} of {{limit}} open files. Restarting Hermesh helps; if it keeps happening, copy the diagnostics and send them to us.",
+    "filesBody": "{{used}} of {{limit}} open files in use. Restarting Hermesh helps; if this keeps happening, copy the diagnostics and send them to us.",
     "shellPathTitle": "Can’t read the PATH of {{name}}’s Terminal",
-    "shellPathBody": "{{detail}}. Coding agents installed with nvm, npm and the like may not be found. Check whether a new Terminal window starts slowly or waits for input; Hermesh tries again every minute.",
+    "shellPathBody": "{{detail}}. Coding agents installed via nvm, npm, or similar tools may not be found. Check whether a new Terminal window opens slowly or waits for input. Hermesh retries every minute.",
     "shortProcesses": "Can’t start programs",
     "shortProcessesNear": "Running out of processes",
     "shortDisk": "Disk nearly full",

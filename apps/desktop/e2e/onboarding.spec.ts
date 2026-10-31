@@ -207,7 +207,7 @@ test("a relay of one's own: welcome, authorize, set up this Mac, add a project, 
   await page.getByLabel("它叫什么").fill("Jarvis");
   await expect(page.locator(".msgbox")).toContainText('--name "Jarvis"');
   await kinds.getByRole("radio", { name: "Grok Bot" }).click();
-  await expect(page.getByText("批准后，它拿到你签名的授权，用自己的密钥和你的电脑端到端加密直连，服务器看不到任何内容。")).toBeVisible();
+  await expect(page.getByText("批准后，它将获得你签名的授权，并使用自身密钥与你的电脑建立端到端加密直连，服务器看不到任何内容。")).toBeVisible();
   await snap(page, "first-06-agent");
   await page.getByRole("button", { name: "稍后再连" }).click();
   await expectMainWindow(app, page);
@@ -354,10 +354,10 @@ test("browser sign-in: the link brings the authorization page, the center's rela
   await page.getByRole("button", { name: "概览" }).click();
   await expect(page.getByRole("heading", { name: "概览", level: 1 })).toBeVisible();
   await expect(page.getByRole("region", { name: "完成设置" })).toHaveCount(0);
-  // Once the first session is done, 正在干活 rests: the mark, what runs (nothing), and what will show there.
-  const working = page.getByRole("region", { name: "正在干活" });
-  await expect(working.getByRole("status")).toContainText("现在没有会话在跑", { timeout: 30_000 });
-  await expect(working.getByRole("status")).toContainText("agent 一开始干活，会话会出现在这里，链路图也会亮起来。");
+  // Once the first session is done, 正在运行 rests: the mark, what runs (nothing), and what will show there.
+  const working = page.getByRole("region", { name: "正在运行" });
+  await expect(working.getByRole("status")).toContainText("当前没有运行中的会话", { timeout: 30_000 });
+  await expect(working.getByRole("status")).toContainText("Agent 开始工作后，会话会显示在这里，链路图也会同步点亮。");
   await expect(working.locator(".hm-mark")).toBeVisible();
   await snap(page, "first-13-resting");
   // With nothing live, hovering an agent marks what it can reach on the map, which doesn't grow.
@@ -446,11 +446,11 @@ test("joining an owner: its connection address, the code compared there, the two
   await expect(code).toHaveAttribute("data-code", request.verificationCode);
   const { matchCode } = await first.approveDevicePairing({ code: request.code });
 
-  await expect(page.getByText("「first-mac」批准了。它现在显示着两位数字，输入它们：")).toBeVisible({ timeout: 30_000 });
+  await expect(page.getByText("「first-mac」已批准。请输入对方设备上显示的两位数字：")).toBeVisible({ timeout: 30_000 });
   const wrong = String((Number(matchCode) + 1) % 100).padStart(2, "0");
   await page.getByLabel("两位数字").fill(wrong);
   await page.getByRole("button", { name: "加入" }).click();
-  await expect(page.getByText("数字不对。请输入你另一台设备上显示的两位数字。")).toBeVisible();
+  await expect(page.getByText("数字不匹配。请输入你另一台设备上显示的两位数字。")).toBeVisible();
   await page.getByLabel("两位数字").fill(matchCode);
   await snap(page, "first-13-join-digits");
   await page.getByRole("button", { name: "加入" }).click();
@@ -539,7 +539,7 @@ test("a work Mac joins as a machine only: no Touch ID, the code, the two digits;
   expect(matchCode).toMatch(/^\d\d$/);
 
   // The owner id came from the center: the two digits that device shows.
-  await expect(page.getByText("「home-mac」批准了。它现在显示着两位数字，输入它们：")).toBeVisible({ timeout: 30_000 });
+  await expect(page.getByText("「home-mac」已批准。请输入对方设备上显示的两位数字：")).toBeVisible({ timeout: 30_000 });
   await page.getByLabel("两位数字").fill(matchCode);
   await page.getByRole("button", { name: "加入" }).click();
 
@@ -594,7 +594,7 @@ test("a work Mac joins as a machine only: no Touch ID, the code, the two digits;
   // or become a trusted device (in the main window).
   await nav.getByRole("button", { name: "账号" }).click();
   const account = settings.getByRole("main", { name: "账号" });
-  await expect(account).toContainText("它不能批准，也看不到你的其他机器");
+  await expect(account).toContainText("它不能批准请求，也看不到你的其他机器");
   await expect(account.getByRole("list", { name: "可信设备" })).toHaveCount(0);
   await expect(account.getByRole("button", { name: "离开你的 Hermesh…" })).toBeVisible();
   await snap(settings, "machine-07-account");
@@ -613,11 +613,11 @@ test("a work Mac joins as a machine only: no Touch ID, the code, the two digits;
   await home.approveClientPairing({ code: (await clientRequest())!.code, spec: { agents: ["gemini"] } });
   expect(await loggedIn).toBe(0);
   const grok = map.getByRole("button", { name: "Grok Bot", exact: true });
-  await expect(grok).toContainText("还没来过", { timeout: 30_000 });
-  await expect(map).toContainText("还没来过");
-  // Nothing has run here yet: 正在干活 rests, with no prompt to send.
-  const working = page.getByRole("region", { name: "正在干活" });
-  await expect(working.getByRole("status")).toContainText("现在没有会话在跑");
+  await expect(grok).toContainText("尚无会话", { timeout: 30_000 });
+  await expect(map).toContainText("尚无会话");
+  // Nothing has run here yet: 正在运行 rests, with no prompt to send.
+  const working = page.getByRole("region", { name: "正在运行" });
+  await expect(working.getByRole("status")).toContainText("当前没有运行中的会话");
   await expect(working).not.toContainText("发一句试试");
   await snap(page, "machine-03-window");
 
@@ -627,7 +627,7 @@ test("a work Mac joins as a machine only: no Touch ID, the code, the two digits;
   execFileSync(fixture.cli, ["session", "start", "--project", "billing", "--agent", "gemini", "--title", "修账单导出", "--prompt", "shell sleep 1800"], { env });
   const row = page.getByRole("list", { name: "会话" }).getByRole("listitem").filter({ hasText: "修账单导出" });
   await expect(row).toContainText("Grok Bot", { timeout: 30_000 });
-  await expect(grok).not.toContainText("还没来过", { timeout: 30_000 });
+  await expect(grok).not.toContainText("尚无会话", { timeout: 30_000 });
   await expect(page.getByRole("button", { name: "管理授权…" })).toHaveCount(0);
   // Resting on it shows its card, over the map, which keeps its height.
   const height = (await map.boundingBox())!.height;
@@ -663,7 +663,7 @@ test("a work Mac joins as a machine only: no Touch ID, the code, the two digits;
   const work = (await home.listMachines({})).machines.find((m) => m.machineName === "work-mac")!;
   await home.removeMachine({ machineId: work.machineId });
   await expect(page.getByRole("heading", { name: "这台 Mac 已不在你的 Hermesh 账号里" })).toBeVisible({ timeout: 60_000 });
-  await expect(page.getByText("它已从你的机器里移除，或者账号重新开始了。它不再接任务。重新设置即可再次加入你的账号。")).toBeVisible();
+  await expect(page.getByText("这台设备已从你的机器列表中移除，或账号已被重置，现已停止接收任务。重新设置即可再次加入账号。")).toBeVisible();
   await page.getByRole("button", { name: "重新设置这台 Mac" }).click();
   await expect(page.getByRole("heading", { name: "让 Agent 安全地互相连接" })).toBeVisible();
   await app.close();
@@ -746,7 +746,7 @@ test("a trusted device's machine is marked in 设置 › 机器 and removed with
   await expect(devices).toContainText("work-pc");
   await devices.getByRole("button", { name: "移除…" }).click();
   const dialog = settings.getByRole("dialog", { name: "移除可信设备「work-pc」？" });
-  await expect(dialog).toContainText("它立刻不能再批准任何事，它自己的执行机器也一并移除。");
+  await expect(dialog).toContainText("该设备将立即失去批准权限，其关联的执行机器也会一并移除。");
   await dialog.getByRole("button", { name: "移除" }).click();
   await expect.poll(async () => (await first.listDevices({})).devices.map((d) => d.label), { timeout: 30_000 }).toEqual(["first-mac"]);
   await expect.poll(async () => (await pc.getStatus({})).removed, { timeout: 30_000 }).toBe(true);

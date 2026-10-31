@@ -51,7 +51,7 @@ describe("English", () => {
       body: "Grok Bot · Claude Code · app.",
     });
     expect(noticeDiff(new Map(), [running], () => "Grok Bot", at(-600))).toEqual([
-      { kind: "started", sessionId: "s", title: "Fix sign-in", body: "Grok Bot started it · app · Claude Code" },
+      { kind: "started", sessionId: "s", title: "Fix sign-in", body: "Started by Grok Bot · app · Claude Code" },
     ]);
   });
 

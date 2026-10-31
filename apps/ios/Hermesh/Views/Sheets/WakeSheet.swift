@@ -279,7 +279,7 @@ struct WakeSheet: View {
         defer { busy = false }
         if let res = try? await api.checkWake(clientID, name: name) {
             wake = res.wake
-            model.show(res.check.ok ? String(localized: "It took it: it works.") : wakeReason(status: res.check.status, reason: res.check.reason))
+            model.show(res.check.ok ? String(localized: "Webhook verified and working.") : wakeReason(status: res.check.status, reason: res.check.reason))
         }
     }
 

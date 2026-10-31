@@ -382,7 +382,7 @@ struct StepView: View {
                     Text(incoming ? String(localized: "Message from \(name)") : String(localized: "Message to \(name)")).fontWeight(.semibold)
                     if queued {
                         Spacer(minLength: 8)
-                        Text("Waits for a turn of its own").foregroundStyle(.secondary)
+                        Text("Queued for next turn").foregroundStyle(.secondary)
                     }
                 }
                 .font(.caption)

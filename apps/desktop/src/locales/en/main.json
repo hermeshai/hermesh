@@ -72,7 +72,7 @@
   "signInExpired": "Sign-in has expired. Please sign in again.",
   "move": {
     "title": "Move Hermesh to the Applications folder?",
-    "body": "Hermesh needs to be in the Applications folder to run in the background and keep itself up to date. It opens again from there.",
+    "body": "Hermesh needs to be in the Applications folder to run in the background and update automatically. It will reopen from there.",
     "move": "Move to Applications Folder",
     "quit": "Quit",
     "failedTitle": "Couldn’t move Hermesh to the Applications folder",
@@ -83,11 +83,11 @@
     "open": "Open Hermesh"
   },
   "signer": {
-    "declined": "Windows asked for permission to set up Hermesh’s signer, and it wasn’t given. Without it, this PC can’t keep your owner key.",
-    "notAdmin": "This PC can be a trusted device from an administrator account only. Join as a machine only, or approve on another of your devices.",
-    "uacOff": "User Account Control is off, so nothing keeps your programs from the key. Turn it on to make this PC a trusted device.",
-    "noTPM": "This PC has no TPM 2.0 to keep your owner key in.",
+    "declined": "Windows asked for permission to set up Hermesh’s signer, and permission wasn’t granted. Without it, this PC can’t store your owner key.",
+    "notAdmin": "Only an administrator account can make this PC a trusted device. Join as a machine only, or approve on another device.",
+    "uacOff": "User Account Control is turned off, so other programs could access your key. Turn it on to make this PC a trusted device.",
+    "noTPM": "This PC doesn’t have a TPM 2.0 security chip to store your owner key.",
     "failed": "Hermesh’s signer couldn’t be set up (error {{code}}).",
-    "notRunning": "Hermesh’s signer didn’t start. Try again."
+    "notRunning": "Hermesh’s signer didn’t start. Please try again."
   }
 }

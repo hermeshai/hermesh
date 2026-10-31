@@ -4,9 +4,9 @@ import { launch, onWindows, snap, thisComputer } from "./app";
 // The overview: the link map of grants, machines and projects, what runs
 // now (questions and failures first) and a year of usage, from the fixture's
 // sessions. Sessions stay out of "需要你处理": the sidebar lists them.
-test("正在干活 is a card per live session: status, time worked, who started it and where, questions and failures first", async () => {
+test("正在运行 is a card per live session: status, time worked, who started it and where, questions and failures first", async () => {
   const { app, page } = await launch();
-  const work = page.getByRole("region", { name: "正在干活" });
+  const work = page.getByRole("region", { name: "正在运行" });
   const cards = work.getByRole("listitem");
   await expect(cards).toHaveCount(4);
   await expect(cards.first()).toContainText("选颜色");
@@ -71,7 +71,7 @@ test("a node clicked on the link map narrows 正在干活, names the condition a
   await page.mouse.move(0, 0);
   await expect(map.locator(".lm-edge.scope")).toHaveCount(0);
   for (const legend of ["运行中", "等你回答", "出错"]) await expect(map).toContainText(legend);
-  const work = page.getByRole("region", { name: "正在干活" });
+  const work = page.getByRole("region", { name: "正在运行" });
   const condition = work.getByRole("status");
   const cards = work.getByRole("listitem");
 
