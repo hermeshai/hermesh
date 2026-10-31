@@ -13,6 +13,8 @@ export interface Platform {
   token: "mac" | "win";
   /** The installed app runs hermeshd itself; development and test runs use a daemon of their own. */
   installed: boolean;
+  /** The window's material shows through the sidebar: macOS's vibrancy, Windows 11's Mica. */
+  material: boolean;
   /** True when the app may start here; otherwise it has moved, or is quitting. */
   settle(): Promise<boolean>;
   /** The installer started this run to set the app up or remove it (Windows): it does that and quits. */

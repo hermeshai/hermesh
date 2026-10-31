@@ -31,6 +31,8 @@ export type TerminalCommand = "codexLogin" | "claudeLogin";
 
 export type Bridge = {
   platform: string;
+  /** The window's material shows through the sidebar (macOS's vibrancy, Windows 11's Mica). */
+  material: boolean;
   userName: string;
   version: string;
   /** The app's language, chosen by the main process for this run (main/language.ts). */

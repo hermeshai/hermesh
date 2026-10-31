@@ -13,13 +13,18 @@ test.skip(process.platform !== "win32", "Windows only");
 
 type Hook = { tray(): { view: { state: string } }; mainWindow(): { close(): void } | undefined };
 
-test("a PC's words and Ctrl shortcuts, the menu button, the notification area, staying there without a window, and a link bringing it back", async () => {
+test("a PC's words, type and corners, and Ctrl shortcuts, the menu button, the notification area, staying there without a window, and a link bringing it back", async () => {
   const { app, page } = await launch();
   await expect(page.locator("html")).toHaveAttribute("data-platform", "win");
   const map = page.getByRole("region", { name: "链路" });
   await expect(map.getByRole("button", { name: "这台电脑", exact: true })).toBeVisible();
   await expect(page.getByRole("button", { name: /概览/ })).toContainText("Ctrl+1");
   await expect(page.getByRole("button", { name: "菜单" })).toBeVisible();
+  // Windows 11's type and corners, and its accent bar on the selected row.
+  const overview = page.getByRole("button", { name: /概览/ });
+  expect(await page.evaluate(() => getComputedStyle(document.body).fontSize)).toBe("14px");
+  expect(await overview.evaluate((e) => getComputedStyle(e).borderRadius)).toBe("4px");
+  expect(await overview.evaluate((e) => getComputedStyle(e, "::before").width)).toBe("3px");
   await expect.poll(() => app.evaluate(() => (globalThis as unknown as { hermeshTest: Hook }).hermeshTest.tray().view.state)).toBe("ok");
   await snap(page, "windows");
   await app.evaluate(() => (globalThis as unknown as { hermeshTest: Hook }).hermeshTest.mainWindow()?.close());

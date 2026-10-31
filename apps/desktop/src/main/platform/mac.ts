@@ -26,6 +26,7 @@ const appCLIs = String.raw`path+=(~/Library/Application\ Support/Claude/claude-c
 export const mac: Platform = {
   token: "mac",
   installed,
+  material: true,
 
   /** The installed app runs from the Applications folder (install.ts). */
   settle() {

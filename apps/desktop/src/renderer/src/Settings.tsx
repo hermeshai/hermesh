@@ -74,9 +74,9 @@ export function SettingsWindow() {
   useEffect(() => {
     document.title = label;
   }, [label]);
-  // On macOS the window's sidebar material shows through the sidebar, as in the main window.
+  // The window's material shows through the sidebar, as in the main window.
   useEffect(() => {
-    if (window.hermesh?.platform !== "darwin") return;
+    if (!window.hermesh?.material) return;
     document.documentElement.classList.add("vibrant");
     return () => document.documentElement.classList.remove("vibrant");
   }, []);
