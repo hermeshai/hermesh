@@ -16,9 +16,11 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"runtime"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -26,6 +28,7 @@ import (
 
 // release is a signed release served the way GitHub serves one.
 type release struct {
+	t     *testing.T
 	key   *ecdsa.PrivateKey
 	files map[string][]byte // under /download/v<version>/ and /latest/download/
 	srv   *httptest.Server
@@ -33,7 +36,7 @@ type release struct {
 
 func newRelease(t *testing.T) *release {
 	key, _ := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
-	r := &release{key: key, files: map[string][]byte{}}
+	r := &release{t: t, key: key, files: map[string][]byte{}}
 	r.srv = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
 		name := filepath.Base(req.URL.Path)
 		if b, ok := r.files[name]; ok && (strings.HasPrefix(req.URL.Path, "/releases/latest/download/") || strings.HasPrefix(req.URL.Path, "/releases/download/v")) {
@@ -49,11 +52,26 @@ func newRelease(t *testing.T) *release {
 	return r
 }
 
-// unixOnly: a Windows machine doesn't update itself yet (docs/windows.md §14).
-func unixOnly(t *testing.T) {
-	if runtime.GOOS == "windows" {
-		t.Skip("updating is not on Windows yet")
+// fakePrograms are programs that print a version, by version: a shell
+// script, or on Windows a program built once.
+var fakePrograms sync.Map
+
+func fakeProgram(t *testing.T, version string) []byte {
+	if runtime.GOOS != "windows" {
+		return []byte("#!/bin/sh\necho " + version + "\n")
 	}
+	if b, ok := fakePrograms.Load(version); ok {
+		return b.([]byte)
+	}
+	dir := t.TempDir()
+	os.WriteFile(filepath.Join(dir, "main.go"), []byte("package main\n\nimport \"fmt\"\n\nfunc main() { fmt.Println(\""+version+"\") }\n"), 0o644)
+	exe := filepath.Join(dir, "p.exe")
+	if out, err := exec.Command("go", "build", "-o", exe, filepath.Join(dir, "main.go")).CombinedOutput(); err != nil {
+		t.Fatalf("go build: %v %s", err, out)
+	}
+	b, _ := os.ReadFile(exe)
+	fakePrograms.Store(version, b)
+	return b
 }
 
 func setVar(t *testing.T, v *string, to string) {
@@ -66,7 +84,7 @@ func setVar(t *testing.T, v *string, to string) {
 func (r *release) publish(version string) {
 	r.files = map[string][]byte{"version": []byte(version + "\n")}
 	for _, name := range Programs {
-		r.files[name+"-"+runtime.GOOS+"-"+runtime.GOARCH] = []byte("#!/bin/sh\necho " + version + "\n")
+		r.files[asset(name)] = fakeProgram(r.t, version)
 	}
 	r.sign()
 }
@@ -88,7 +106,7 @@ func (r *release) sign() {
 func programsAt(t *testing.T, version string) string {
 	dir := t.TempDir()
 	for _, name := range Programs {
-		os.WriteFile(filepath.Join(dir, name), []byte("#!/bin/sh\necho "+version+"\n"), 0o755)
+		os.WriteFile(filepath.Join(dir, name), fakeProgram(t, version), 0o755)
 	}
 	return dir
 }
@@ -137,31 +155,31 @@ func TestPublicKeyIsTheReleaseKey(t *testing.T) {
 }
 
 func TestInstall(t *testing.T) {
-	unixOnly(t)
 	r := newRelease(t)
 	r.publish("0.2.0")
 	rel, _ := Latest(context.Background())
 	dir := programsAt(t, "0.1.0")
 	names, err := Install(context.Background(), t.TempDir(), dir, rel)
-	if err != nil || strings.Join(names, " ") != "hermeshd hermesh" {
+	if err != nil || strings.Join(names, " ") != strings.Join(Programs, " ") {
 		t.Fatalf("%v %v", names, err)
 	}
 	for _, name := range Programs {
 		if b, _ := os.ReadFile(filepath.Join(dir, name)); !strings.Contains(string(b), "0.2.0") {
 			t.Errorf("%s: %s", name, b)
 		}
-		if b, _ := os.ReadFile(filepath.Join(dir, "."+name+".previous")); !strings.Contains(string(b), "0.1.0") {
-			t.Errorf(".%s.previous: %s", name, b)
+		if b, _ := os.ReadFile(previousPath(dir, name)); !strings.Contains(string(b), "0.1.0") {
+			t.Errorf("%s's previous: %.40q", name, b)
 		}
-		if _, err := os.Stat(filepath.Join(dir, "."+name+".new")); err == nil {
-			t.Errorf(".%s.new left behind", name)
+		if _, err := os.Stat(newPath(dir, name)); err == nil {
+			t.Errorf("%s's new left behind", name)
 		}
 	}
 
 	// Only the programs there: an agent CLI alone.
 	cli := t.TempDir()
-	os.WriteFile(filepath.Join(cli, "hermesh"), []byte("#!/bin/sh\necho 0.1.0\n"), 0o755)
-	if names, err := Install(context.Background(), t.TempDir(), cli, rel); err != nil || strings.Join(names, " ") != "hermesh" {
+	hermesh := Programs[len(Programs)-1]
+	os.WriteFile(filepath.Join(cli, hermesh), fakeProgram(t, "0.1.0"), 0o755)
+	if names, err := Install(context.Background(), t.TempDir(), cli, rel); err != nil || strings.Join(names, " ") != hermesh {
 		t.Errorf("CLI only: %v %v", names, err)
 	}
 }
@@ -169,12 +187,12 @@ func TestInstall(t *testing.T) {
 // A program that doesn't match its hash, or doesn't say its version,
 // replaces nothing.
 func TestInstallRefuses(t *testing.T) {
-	unixOnly(t)
 	r := newRelease(t)
+	hermesh := asset(Programs[len(Programs)-1])
 	for what, change := range map[string]func(){
-		"checksum": func() { r.files["hermesh-"+runtime.GOOS+"-"+runtime.GOARCH] = []byte("#!/bin/sh\necho 0.2.0 \n") },
+		"checksum": func() { r.files[hermesh] = append(fakeProgram(t, "0.2.0"), ' ') },
 		"start as": func() {
-			r.files["hermesh-"+runtime.GOOS+"-"+runtime.GOARCH] = []byte("#!/bin/sh\necho 0.1.9\n")
+			r.files[hermesh] = fakeProgram(t, "0.1.9")
 			r.sign()
 		},
 	} {
@@ -189,15 +207,29 @@ func TestInstallRefuses(t *testing.T) {
 			if b, _ := os.ReadFile(filepath.Join(dir, name)); !strings.Contains(string(b), "0.1.0") {
 				t.Errorf("%s: %s replaced", what, name)
 			}
-			if _, err := os.Stat(filepath.Join(dir, "."+name+".new")); err == nil {
-				t.Errorf("%s: .%s.new left behind", what, name)
+			if _, err := os.Stat(newPath(dir, name)); err == nil {
+				t.Errorf("%s: %s's new left behind", what, name)
 			}
 		}
 	}
 }
 
 func TestDirRefusesTheApp(t *testing.T) {
-	unixOnly(t)
+	if runtime.GOOS == "windows" {
+		// The Windows app's programs, in the folder install.ps1 uses.
+		local := t.TempDir()
+		t.Setenv("LOCALAPPDATA", local)
+		os.MkdirAll(filepath.Join(local, "HermeshApp"), 0o755)
+		os.WriteFile(filepath.Join(local, "HermeshApp", "Update.exe"), nil, 0o755)
+		executable = func() (string, error) { return filepath.Join(local, "Programs", "Hermesh", "bin", "hermeshd.exe"), nil }
+		t.Cleanup(func() { executable = os.Executable })
+		os.MkdirAll(filepath.Join(local, "Programs", "Hermesh", "bin"), 0o755)
+		os.WriteFile(filepath.Join(local, "Programs", "Hermesh", "bin", "hermeshd.exe"), nil, 0o755)
+		if _, err := Dir(); err == nil || !strings.Contains(err.Error(), "the Hermesh app") {
+			t.Errorf("%v", err)
+		}
+		return
+	}
 	app := filepath.Join(t.TempDir(), "Hermesh.app", "Contents", "Resources")
 	os.MkdirAll(app, 0o755)
 	os.WriteFile(filepath.Join(app, "hermeshd"), nil, 0o755)
@@ -211,11 +243,10 @@ func TestDirRefusesTheApp(t *testing.T) {
 // The background updater waits while a session runs, installs once none
 // does, and does nothing while automatic updates are off.
 func TestBackground(t *testing.T) {
-	unixOnly(t)
 	r := newRelease(t)
 	r.publish("0.2.0")
 	dir := programsAt(t, "0.1.0")
-	executable = func() (string, error) { return filepath.Join(dir, "hermeshd"), nil }
+	executable = func() (string, error) { return filepath.Join(dir, Programs[0]), nil }
 	t.Cleanup(func() { executable = os.Executable })
 	setVar(t, &testInterval, "20ms")
 	log := slog.New(slog.NewTextHandler(io.Discard, nil))
@@ -239,7 +270,7 @@ func TestBackground(t *testing.T) {
 		done <- Background(context.Background(), data, "0.1.0", func() int { return int(busy.Load()) }, log)
 	}()
 	time.Sleep(300 * time.Millisecond)
-	if b, _ := os.ReadFile(filepath.Join(dir, "hermeshd")); !strings.Contains(string(b), "0.1.0") {
+	if b, _ := os.ReadFile(filepath.Join(dir, Programs[0])); !strings.Contains(string(b), "0.1.0") {
 		t.Fatal("installed while a session runs")
 	}
 	if s := Load(data); s.Available != "0.2.0" || s.Checked.IsZero() {
@@ -254,7 +285,7 @@ func TestBackground(t *testing.T) {
 	case <-time.After(5 * time.Second):
 		t.Fatal("not installed once idle")
 	}
-	if b, _ := os.ReadFile(filepath.Join(dir, "hermeshd")); !strings.Contains(string(b), "0.2.0") {
+	if b, _ := os.ReadFile(filepath.Join(dir, Programs[0])); !strings.Contains(string(b), "0.2.0") {
 		t.Error("not installed")
 	}
 	if s := Load(data); s.From != "0.1.0" || s.To != "0.2.0" || s.Available != "" {
