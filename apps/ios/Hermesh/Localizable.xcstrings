@@ -378,54 +378,6 @@
         }
       }
     },
-    "%lld more agents haven’t worked in the last 30 days": {
-      "localizations": {
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "另外 %lld 个 agent 近 30 天没干活"
-          }
-        }
-      }
-    },
-    "%lld more agents haven’t worked in the last 7 days": {
-      "localizations": {
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "另外 %lld 个 agent 近 7 天没干活"
-          }
-        }
-      }
-    },
-    "%lld more agents haven’t worked today": {
-      "localizations": {
-        "en": {
-          "variations": {
-            "plural": {
-              "one": {
-                "stringUnit": {
-                  "state": "translated",
-                  "value": "%lld more agent hasn’t worked today"
-                }
-              },
-              "other": {
-                "stringUnit": {
-                  "state": "translated",
-                  "value": "%lld more agents haven’t worked today"
-                }
-              }
-            }
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "另外 %lld 个 agent 今天没干活"
-          }
-        }
-      }
-    },
     "%lld projects": {
       "localizations": {
         "en": {
@@ -6617,16 +6569,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "版本"
-          }
-        }
-      }
-    },
-    "View All Sessions": {
-      "localizations": {
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "查看全部会话"
           }
         }
       }

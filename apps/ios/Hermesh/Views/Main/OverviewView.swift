@@ -21,7 +21,6 @@ enum PairingText {
 struct OverviewView: View {
     @Environment(AppModel.self) private var model
     @Environment(\.scenePhase) private var phase
-    @State private var everyAgent = false
     @State private var picked: FlowPick?
     @State private var notificationsOff = false
     @AppStorage("hideSecondDevice") private var hideSecondDevice = false
@@ -175,8 +174,7 @@ struct OverviewView: View {
     /// The work over the range picked (today, or the last 7 or 30 days): the
     /// sessions at work, hour by hour or day by day, and what runs now; then
     /// who asked which coding agent for the work, each coding agent's range
-    /// (those that worked first, the others folded), the machines, and the way
-    /// to the sessions: the menu.
+    /// (those that worked first, then the others), and the machines.
     private var working: some View {
         let running = model.sessions.filter(\.isActive)
         let period = model.workPeriod
@@ -188,7 +186,7 @@ struct OverviewView: View {
         let worked = { (a: String) in work?.sessions(agent: a) ?? 0 }
         let busy = agents.filter { runs($0) > 0 || worked($0) > 0 }.sorted { (runs($0), turns($0), worked($0)) > (runs($1), turns($1), worked($1)) }
         let rest = agents.filter { runs($0) == 0 && worked($0) == 0 }
-        let shown = everyAgent ? busy + rest : busy
+        let shown = busy + rest
         let idleClients = model.clients.filter { c in
             !c.revoked && !(work?.pairs.contains { $0.client == c.clientID } ?? false) && !running.contains { $0.createdBy == c.clientID }
         }
@@ -207,20 +205,6 @@ struct OverviewView: View {
                             if i > 0 { Divider().padding(.leading, 50) }
                             agentRow(a, running: runs(a), turns: turns(a), flow: flow, work: work, cells: work?.byAgent[a], now: now, period: period)
                         }
-                        if !everyAgent && !rest.isEmpty {
-                            if !shown.isEmpty { Divider().padding(.leading, 50) }
-                            Button {
-                                withAnimation(.smooth) { everyAgent = true }
-                            } label: {
-                                Text(restText(rest.count, period))
-                                    .font(.subheadline).foregroundStyle(.secondary)
-                                    .frame(maxWidth: .infinity, alignment: .leading)
-                                    .padding(.leading, 50).padding(.trailing, 16).padding(.vertical, 12)
-                                    .contentShape(.rect)
-                            }
-                            .buttonStyle(.plain)
-                            .accessibilityIdentifier("more-agents")
-                        }
                     }
                 }
                 if let note = sourcesNote(work) {
@@ -236,13 +220,6 @@ struct OverviewView: View {
                         }
                     }
                 }
-                card {
-                    row(open: { model.drawerOpen = true }) {
-                        Text("View All Sessions").frame(maxWidth: .infinity, alignment: .leading)
-                    }
-                }
-                .padding(.top, 6)
-                .accessibilityIdentifier("all-sessions")
             }
             .padding(.horizontal, 16)
         } header: {
@@ -264,14 +241,6 @@ struct OverviewView: View {
         case .today: "Where Today’s Work Came From and Went"
         case .week: "Where the Last 7 Days’ Work Came From and Went"
         case .month: "Where the Last 30 Days’ Work Came From and Went"
-        }
-    }
-
-    private func restText(_ n: Int, _ p: WorkPeriod) -> String {
-        switch p {
-        case .today: String(localized: "\(n) more agents haven’t worked today")
-        case .week: String(localized: "\(n) more agents haven’t worked in the last 7 days")
-        case .month: String(localized: "\(n) more agents haven’t worked in the last 30 days")
         }
     }
 
