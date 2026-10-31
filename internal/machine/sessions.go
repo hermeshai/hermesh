@@ -1387,13 +1387,20 @@ func (s *Sessions) prepare(l *live) {
 	}
 	if needWorktree {
 		l.mu.Lock()
-		baseRef := l.row.BaseCommit
+		baseRef, branch := l.row.BaseCommit, l.row.Branch
 		l.mu.Unlock()
 		if baseRef == "" {
 			baseRef = proj.DefaultBaseRef
 		}
 		wtStart := time.Now()
-		base, branch, err := s.ws.Create(ctx, proj.Path, baseRef, id)
+		base := baseRef
+		if branch != "" {
+			// The directory can disappear while the branch still holds earlier
+			// turns. Restore that work without changing the session's base.
+			err = s.ws.Restore(ctx, proj.Path, id)
+		} else {
+			base, branch, err = s.ws.Create(ctx, proj.Path, baseRef, id)
+		}
 		mWorktree.Since(wtStart)
 		if err != nil {
 			fail(err)
@@ -1767,10 +1774,21 @@ func (s *Sessions) finishTurn(l *live, e provider.Event, status sessionv1.Sessio
 		mSnapshotSkipped.Inc()
 		l.mu.Lock()
 		commit = l.lastCommit
-		if commit == "" {
-			commit = l.row.BaseCommit
-		}
+		base := l.row.BaseCommit
 		l.mu.Unlock()
+		// After a restart or unarchive, the in-memory last commit is empty.
+		// A reply without edits must still keep the earlier turns' snapshot.
+		if commit == "" && !inPlace && !s.ws.none {
+			for prev := turn - 1; prev > 0; prev-- {
+				commit, err = s.st.TurnCommit(id, prev)
+				if err != nil || commit != "" {
+					break
+				}
+			}
+		}
+		if commit == "" && err == nil {
+			commit = base
+		}
 		turnStat = &sessionv1.DiffStat{}
 	}
 	switch {

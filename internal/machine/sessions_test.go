@@ -197,6 +197,49 @@ const (
 	crashed = sessionv1.SessionStatus_SESSION_STATUS_CRASHED
 )
 
+// A missing checkout is restored from the session branch, not its original
+// base. Cover both checkout implementations and stale git registration.
+func TestResumeMissingWorktree(t *testing.T) {
+	for _, fallback := range []bool{false, true} {
+		for _, stale := range []bool{false, true} {
+			t.Run(fmt.Sprintf("fallback=%v/stale=%v", fallback, stale), func(t *testing.T) {
+				h := newHarness(t, DefaultLimits())
+				proj, _ := h.n.st.Project("demo")
+				if fallback {
+					gitOut(t, proj.Path, "config", "extensions.worktreeConfig", "true")
+				}
+				id := h.start("write previous.txt keep this work\nsay first")
+				ref := h.wait(id, idle).ProviderSessionRef
+				h.stopProcess(id)
+				row, _ := h.n.st.Session(id)
+				branchHead := strings.TrimSpace(gitOut(t, proj.Path, "rev-parse", row.Branch))
+				if stale {
+					if err := os.RemoveAll(h.s.ws.Path(id)); err != nil {
+						t.Fatal(err)
+					}
+				} else if err := h.s.ws.Remove(context.Background(), proj.Path, id); err != nil {
+					t.Fatal(err)
+				}
+				h.send(id, "resumed")
+				h.wait(id, idle)
+				if got := h.lastTurn(id).Result; got != "resumed: "+ref {
+					t.Fatalf("conversation not resumed: %q", got)
+				}
+				if b, err := os.ReadFile(filepath.Join(h.s.ws.Path(id), "previous.txt")); err != nil || !strings.Contains(string(b), "keep this work") {
+					t.Fatalf("previous turn lost: %q %v", b, err)
+				}
+				after, _ := h.n.st.Session(id)
+				if after.BaseCommit != row.BaseCommit || after.Branch != row.Branch || after.Progress.TurnCount != 2 {
+					t.Fatalf("session metadata changed: before %+v, after %+v", row, after)
+				}
+				if got := strings.TrimSpace(gitOut(t, proj.Path, "rev-parse", row.Branch)); got != branchHead {
+					t.Fatalf("session branch moved from %s to %s", branchHead, got)
+				}
+			})
+		}
+	}
+}
+
 // A crash in the middle of a turn keeps the session; the next message
 // resumes the same provider session.
 func TestCrashMidTurnIsResumable(t *testing.T) {
@@ -590,8 +633,9 @@ func TestActiveSessionsCountTurnsInProgress(t *testing.T) {
 // the live table and stored, so an unarchive right after it works.
 func TestArchiveIsDoneWhenItReturns(t *testing.T) {
 	h := newHarness(t, DefaultLimits())
-	id := h.start("say one")
+	id := h.start("write previous.txt preserved\nsay one")
 	h.wait(id, idle)
+	commit := h.lastTurn(id).Commit
 	if _, err := h.s.Archive(context.Background(), h.p, id); err != nil {
 		t.Fatal(err)
 	}
@@ -606,6 +650,13 @@ func TestArchiveIsDoneWhenItReturns(t *testing.T) {
 	}
 	h.send(id, "say two")
 	h.wait(id, idle)
+	if got := h.lastTurn(id); got.Commit != commit || got.DiffStat.GetFilesChanged() != 0 {
+		t.Fatalf("a reply after unarchive lost the previous snapshot: %v", got)
+	}
+	diff, err := h.s.Diff(context.Background(), h.p, &sessionv1.GetDiffRequest{SessionId: id})
+	if err != nil || !strings.Contains(diff.GetDiff(), "previous.txt") {
+		t.Fatalf("cumulative diff after unarchive: %v %v", diff, err)
+	}
 }
 
 // Archiving removes the agent's temporary directory and keeps the
