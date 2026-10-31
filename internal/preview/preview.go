@@ -243,7 +243,7 @@ func grantCard(g *identityv1.Grant, h Hints, reissue, confirmed bool, w words) C
 	lines := []string{
 		w.f("Projects: %s", scope(g.ProjectIds, w)),
 		w.f("Machines: %s", scope(machines, w)),
-		w.f("Coding agents: %s", scope(g.Agents, w)),
+		w.f("Coding agents: %s", scope(agentTitles(g.Agents), w)),
 		w.f("Expires: %s", g.ExpiresAt.AsTime().Local().Format(w.f(time.DateOnly))),
 	}
 	if g.TaskVisibility == identityv1.TaskVisibility_TASK_VISIBILITY_ALL {
@@ -277,7 +277,7 @@ func admin(c *identityv1.AdminCommand, h Hints, typ string, w words) (Card, erro
 	switch x := c.Command.(type) {
 	case *identityv1.AdminCommand_AddProject:
 		p := x.AddProject
-		lines := []string{w.f("Project: %s", p.ProjectId), w.f("Directory: %s", p.Path), w.f("Coding agents: %s", scope(p.Agents, w))}
+		lines := []string{w.f("Project: %s", p.ProjectId), w.f("Directory: %s", p.Path), w.f("Coding agents: %s", scope(agentTitles(p.Agents), w))}
 		if p.Workspace == identityv1.Workspace_WORKSPACE_IN_PLACE {
 			lines = append(lines, w.f("In place: agents change the directory's files directly"))
 		}
@@ -295,7 +295,7 @@ func admin(c *identityv1.AdminCommand, h Hints, typ string, w words) (Card, erro
 		return Card{Title: w.f("Rename %s to “%s”", target, x.SetName.Name)}, nil
 	case *identityv1.AdminCommand_SetAgentDefaults:
 		d := x.SetAgentDefaults
-		return Card{Title: w.f("Set the model %s runs with on %s", d.Agent, target),
+		return Card{Title: w.f("Set the model %s runs with on %s", agentTitle(d.Agent), target),
 			Lines: []string{w.f("Model: %s", cmpOr(d.Model, w.f("its own"))), w.f("Reasoning effort: %s", cmpOr(d.Effort, w.f("its own"))), w.f("Speed: %s", d.Speed.String())}}, nil
 	}
 	return Card{}, &Refused{typ, "an unknown command"}
@@ -306,6 +306,52 @@ func scope(ids []string, w words) string {
 		return w.f("all")
 	}
 	return strings.Join(ids, w.f(", "))
+}
+
+// agentTitle names a coding agent as people know it, by the id a grant
+// names, as HermeshKit's codingAgentTitle does.
+func agentTitle(id string) string {
+	switch id {
+	case "claude":
+		return "Claude Code"
+	case "codex":
+		return "Codex"
+	case "gemini":
+		return "Gemini CLI"
+	case "cursor":
+		return "Cursor"
+	case "copilot":
+		return "Copilot CLI"
+	case "opencode":
+		return "OpenCode"
+	case "qwen":
+		return "Qwen Code"
+	case "goose":
+		return "Goose"
+	case "auggie":
+		return "Augment"
+	case "kimi":
+		return "Kimi"
+	case "kiro":
+		return "Kiro"
+	case "qoder":
+		return "Qoder"
+	case "deepseek":
+		return "DeepSeek Harness"
+	case "codebuddy":
+		return "CodeBuddy Code"
+	case "grok":
+		return "Grok"
+	}
+	return id
+}
+
+func agentTitles(ids []string) []string {
+	out := make([]string, len(ids))
+	for i, id := range ids {
+		out[i] = agentTitle(id)
+	}
+	return out
 }
 
 func cmpOr(a, b string) string {
