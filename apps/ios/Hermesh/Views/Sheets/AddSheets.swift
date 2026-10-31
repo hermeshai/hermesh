@@ -150,12 +150,14 @@ func connectMessage(_ status: StatusResponse, agent: String) -> String {
         """)
 }
 
-/// Add a machine: its system, then how: the app (a Mac or a Windows PC,
-/// which then signs in to this account or joins this server) or the command
-/// to run there (Linux has only this; send it to the Mac by AirDrop),
-/// install.sh's or install.ps1's in PowerShell. Then approve its request here.
+/// Add a machine: its system as three tiles, then how: the app (a Mac or a
+/// Windows PC, which then signs in to this account or joins this server) or
+/// the command to run there (Linux has only this; send it to the Mac by
+/// AirDrop), install.sh's or install.ps1's in PowerShell; the steps numbered
+/// in one card. What it waits for, and typing a pairing code instead, at the
+/// bottom; with a code to scan, "Can't Scan?" offers both other ways.
 struct AddMachineSheet: View {
-    enum System: Hashable { case mac, windows, linux }
+    enum System: Hashable, CaseIterable { case mac, windows, linux }
 
     @Environment(AppModel.self) private var model
     @State private var forThisPhone = false
@@ -168,6 +170,8 @@ struct AddMachineSheet: View {
     static let download = "hermesh.io/download"
     private var windows: Bool { system == .windows }
     private var viaApp: Bool { app && system != .linux }
+    /// The command with a code to scan: on the official service, from another computer.
+    private var scans: Bool { !viaApp && model.status.hosted && !forThisPhone }
     private var install: String { windows ? "irm \(Self.installScript) | iex" : Self.install }
     /// The command with this account's address in it: the machine's request
     /// comes here by itself, to compare its verification code.
@@ -177,92 +181,42 @@ struct AddMachineSheet: View {
 
     var body: some View {
         NavigationStack {
-            List {
-                Section {
-                    VStack(spacing: 10) {
-                        Picker("That machine’s system", selection: $system) {
-                            Text("Mac").tag(System.mac)
-                            Text("Windows").tag(System.windows)
-                            Text("Linux").tag(System.linux)
-                        }
-                        Picker("How to install", selection: Binding(get: { viaApp }, set: { app = $0 })) {
-                            Text("Install the App").tag(true)
-                            Text("Terminal Command").tag(false)
-                        }
-                        .disabled(system == .linux)
+            ScrollView {
+                VStack(alignment: .leading, spacing: 14) {
+                    systems
+                    Picker("How to install", selection: Binding(get: { viaApp }, set: { app = $0; forThisPhone = false })) {
+                        Text("Install the App").tag(true)
+                        Text("Terminal Command").tag(false)
                     }
                     .pickerStyle(.segmented)
-                    .listRowBackground(Color.clear).listRowInsets(EdgeInsets())
-                } footer: {
-                    Text("Agents use Claude Code and Codex on it.")
-                }
-                if viaApp {
-                    Section {
-                        MonoBox(text: Self.download)
-                        CopyShareButtons(text: "https://\(Self.download)", shareTitle: "Send…")
-                            .listRowBackground(Color.clear).listRowInsets(EdgeInsets())
-                    } header: {
-                        windows ? Text("1. On that PC, open") : Text("1. On that Mac, open")
-                    }
-                    if model.status.hosted {
-                        Section {
-                            waiting
-                            Button("Enter a pairing code instead…") { model.sheet = .enterCode }
-                        } header: {
-                            Text("2. Install it, open it, and sign in with the same account")
-                        }
-                    } else {
-                        Section {
-                            MonoBox(text: model.status.connectAddress)
-                            CopyShareButtons(text: model.status.connectAddress, shareTitle: "Send…")
-                                .listRowBackground(Color.clear).listRowInsets(EdgeInsets())
-                        } header: {
-                            Text("2. Install it, open it, and join")
-                        }
-                        Section {
-                            waiting
-                            Button("Enter a pairing code instead…") { model.sheet = .enterCode }
-                        }
-                    }
-                } else if model.status.hosted {
-                    commandSection(install, footer: windows ? "In PowerShell, as the user you code as. It shows a code." : "As the user you code as. It shows a code.")
-                    Section {
-                        Button {
-                            model.sheet = .scan
-                        } label: {
-                            Label("Scan the Code", systemImage: "qrcode.viewfinder").frame(maxWidth: .infinity)
-                        }
-                        .buttonStyle(.glassProminent).controlSize(.large)
-                        .listRowBackground(Color.clear).listRowInsets(EdgeInsets())
-                        .accessibilityIdentifier("scan")
-                        Button("Enter the pairing code instead…") { model.sheet = .enterCode }
-                    } header: {
-                        Text("2. Scan the code it shows")
-                    }
-                    Section {
-                        if forThisPhone {
-                            MonoBox(text: pinned)
-                            CopyShareButtons(text: pinned, shareTitle: "Send…")
-                                .listRowBackground(Color.clear).listRowInsets(EdgeInsets())
+                    .disabled(system == .linux)
+                    Group {
+                        if system == .linux {
+                            Text("Linux has no app: install it with the command.") + Text(verbatim: " ") + Text("Agents use Claude Code and Codex on it.")
                         } else {
-                            Button("Terminal on this iPhone? Copy a Command for This Account") { forThisPhone = true }
-                                .font(.footnote)
-                        }
-                    } footer: {
-                        if forThisPhone {
-                            Text("With nothing to scan: its request comes here by itself. Compare the verification code.")
+                            Text("Agents use Claude Code and Codex on it.")
                         }
                     }
-                } else {
-                    commandSection(pinned, footer: windows
-                        ? "In PowerShell, as the user you code as on that PC (Windows 10 or later). It installs Hermesh, runs it in the background, and shows a verification code."
-                        : "As the user you code as on that machine. It installs Hermesh, runs it in the background, and shows a verification code.")
-                    Section {
+                    .font(.footnote).foregroundStyle(.secondary).padding(.horizontal, 4)
+                    steps
+                        .padding(16)
+                        .background(Color(.secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+                }
+                .padding(.horizontal, 16).padding(.top, 8).padding(.bottom, 20)
+                .animation(.smooth(duration: 0.25), value: system)
+                .animation(.smooth(duration: 0.25), value: viaApp)
+            }
+            .background(Color(.systemGroupedBackground))
+            .safeAreaInset(edge: .bottom) {
+                if !scans {
+                    HStack(spacing: 12) {
                         waiting
-                        Button("Enter a pairing code instead…") { model.sheet = .enterCode }
-                    } header: {
-                        Text("2. Approve it here")
+                        Spacer(minLength: 8)
+                        Button("Enter a Pairing Code") { model.sheet = .enterCode }.font(.subheadline)
                     }
+                    .padding(.horizontal, 20).padding(.vertical, 14)
+                    .background(Color(.systemGroupedBackground))
+                    .overlay(alignment: .top) { Divider() }
                 }
             }
             .navigationTitle("Add a Machine")
@@ -271,27 +225,184 @@ struct AddMachineSheet: View {
         }
     }
 
-    private func commandSection(_ command: String, footer: LocalizedStringKey) -> some View {
-        Section {
-            MonoBox(text: command)
-            CopyShareButtons(text: command, shareTitle: "Send…")
-                .listRowBackground(Color.clear).listRowInsets(EdgeInsets())
-        } header: {
-            Text("1. On that machine, run")
-        } footer: {
-            Text(footer)
+    /// That machine's system, as three tiles: Mac, Windows and Linux.
+    private var systems: some View {
+        HStack(spacing: 10) {
+            ForEach(System.allCases, id: \.self) { s in
+                let on = system == s
+                Button {
+                    system = s
+                    forThisPhone = false
+                } label: {
+                    VStack(spacing: 8) {
+                        Group {
+                            switch s {
+                            case .mac: Image(systemName: "apple.logo").font(.system(size: 22))
+                            case .windows: WindowsLogo().frame(width: 19, height: 19)
+                            case .linux: Image(systemName: "apple.terminal").font(.system(size: 20))
+                            }
+                        }
+                        .frame(height: 24)
+                        Text(verbatim: name(s)).font(.subheadline)
+                    }
+                    .frame(maxWidth: .infinity).frame(height: 78)
+                    .foregroundStyle(on ? .primary : .secondary)
+                    .background(on ? Color(.tertiarySystemGroupedBackground) : Color(.secondarySystemGroupedBackground),
+                                in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+                    .overlay {
+                        if on { RoundedRectangle(cornerRadius: 18, style: .continuous).strokeBorder(.primary.opacity(0.5), lineWidth: 1.5) }
+                    }
+                    .contentShape(.rect)
+                }
+                .buttonStyle(.plain)
+                .accessibilityAddTraits(on ? .isSelected : [])
+                .accessibilityIdentifier("system-\(name(s))")
+            }
+        }
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel("That machine’s system")
+    }
+
+    private func name(_ s: System) -> String {
+        switch s {
+        case .mac: "Mac"
+        case .windows: "Windows"
+        case .linux: "Linux"
+        }
+    }
+
+    /// The steps, numbered, in one card.
+    @ViewBuilder private var steps: some View {
+        VStack(alignment: .leading, spacing: 18) {
+            if viaApp {
+                step(1, windows ? "On that PC, open" : "On that Mac, open") { link(Self.download, copy: "https://\(Self.download)") }
+                if model.status.hosted {
+                    step(2, "Install it, open it, and sign in with the same account")
+                } else {
+                    step(2, "Install it, open it, and join") { link(model.status.connectAddress, copy: model.status.connectAddress) }
+                }
+            } else if scans {
+                step(1, "On that machine, run") {
+                    command(install, footer: windows ? "In PowerShell, as the user you code as. It shows a code." : "As the user you code as. It shows a code.")
+                }
+                step(2, "Scan the code it shows") {
+                    Button {
+                        model.sheet = .scan
+                    } label: {
+                        Label("Scan the Code", systemImage: "qrcode.viewfinder").frame(maxWidth: .infinity)
+                    }
+                    .buttonStyle(.glassProminent).controlSize(.large)
+                    .accessibilityIdentifier("scan")
+                    Menu("Can’t Scan?") {
+                        Button("Enter a Pairing Code", systemImage: "keyboard") { model.sheet = .enterCode }
+                        Button("Install from a Terminal on This iPhone", systemImage: "apple.terminal") { forThisPhone = true }
+                    }
+                    .font(.footnote)
+                    .frame(maxWidth: .infinity)
+                    .accessibilityIdentifier("cant-scan")
+                }
+            } else {
+                step(1, "On that machine, run") {
+                    command(pinned, footer: forThisPhone
+                        ? "With nothing to scan: its request comes here by itself. Compare the verification code."
+                        : windows
+                        ? "In PowerShell, as the user you code as on that PC (Windows 10 or later). It installs Hermesh, runs it in the background, and shows a verification code."
+                        : "As the user you code as on that machine. It installs Hermesh, runs it in the background, and shows a verification code.")
+                }
+                step(2, "Approve it here")
+            }
+        }
+    }
+
+    private func step(_ n: Int, _ title: LocalizedStringKey) -> some View {
+        step(n, title) { EmptyView() }
+    }
+
+    private func step(_ n: Int, _ title: LocalizedStringKey, @ViewBuilder content: () -> some View) -> some View {
+        HStack(alignment: .top, spacing: 12) {
+            Text(verbatim: "\(n)").font(.caption.weight(.semibold)).foregroundStyle(.secondary)
+                .frame(width: 22, height: 22)
+                .background(Color(.tertiarySystemFill), in: .circle)
+            VStack(alignment: .leading, spacing: 10) {
+                Text(title).font(.subheadline).frame(minHeight: 22)
+                content()
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+        }
+    }
+
+    /// An address to open or join there, with Copy and Send.
+    private func link(_ text: String, copy: String) -> some View {
+        HStack(spacing: 8) {
+            Text(text).font(.subheadline.monospaced()).lineLimit(1).truncationMode(.middle).textSelection(.enabled)
+                .padding(.horizontal, 12).padding(.vertical, 10)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(Color(.systemGroupedBackground), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+            CopyIcons(text: copy)
+        }
+    }
+
+    /// A command to run there, what to know of it, and Copy and Send.
+    private func command(_ text: String, footer: LocalizedStringKey) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text(text).font(.footnote.monospaced()).textSelection(.enabled)
+                .padding(12).frame(maxWidth: .infinity, alignment: .leading)
+                .background(Color(.systemGroupedBackground), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+            HStack(alignment: .top, spacing: 8) {
+                Text(footer).font(.footnote).foregroundStyle(.secondary)
+                Spacer(minLength: 0)
+                CopyIcons(text: text, size: 34)
+            }
         }
     }
 
     @ViewBuilder private var waiting: some View {
         // The app joins as a machine only, or as a trusted device (which is a machine too).
         if let p = model.pairings.first(where: { $0.kind == .machine || $0.kind == .device }) {
-            Button(PairingText.title(p)) { model.sheet = .pairing(p.code) }
+            Button(PairingText.title(p)) { model.sheet = .pairing(p.code) }.font(.subheadline).lineLimit(2)
         } else {
             HStack(spacing: 10) {
                 WaitingMark(size: 22)
-                Text("Waiting for that machine to connect…").foregroundStyle(.secondary)
+                Text("Waiting for that machine to connect…").font(.subheadline).foregroundStyle(.secondary)
             }
+        }
+    }
+}
+
+/// Copy and Send as two small glass circles.
+struct CopyIcons: View {
+    @Environment(AppModel.self) private var model
+    let text: String
+    var size: CGFloat = 40
+
+    var body: some View {
+        HStack(spacing: 8) {
+            Button {
+                UIPasteboard.general.string = text
+                model.show(String(localized: "Copied"))
+            } label: {
+                Image(systemName: "doc.on.doc").frame(width: size, height: size).contentShape(.circle)
+            }
+            .glassEffect(.regular.interactive(), in: .circle)
+            .accessibilityLabel("Copy")
+            ShareLink(item: text) {
+                Image(systemName: "square.and.arrow.up").frame(width: size, height: size).contentShape(.circle)
+            }
+            .glassEffect(.regular.interactive(), in: .circle)
+            .accessibilityLabel("Send…")
+        }
+        .buttonStyle(.plain)
+        .font(.subheadline)
+        .foregroundStyle(.primary)
+    }
+}
+
+/// The Windows logo: four panes.
+private struct WindowsLogo: View {
+    var body: some View {
+        Grid(horizontalSpacing: 1.5, verticalSpacing: 1.5) {
+            GridRow { Rectangle(); Rectangle() }
+            GridRow { Rectangle(); Rectangle() }
         }
     }
 }

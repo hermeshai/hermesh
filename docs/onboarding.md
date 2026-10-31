@@ -187,35 +187,39 @@ Get Started                                    ⋯
 ### 5.3 Add a Machine
 
 ```
-Add a Machine
-[ Mac | Windows | Linux ]
+Add a Machine                                              ✕
+[  Mac  ] [ Windows ] [ Linux ]      tiles: the Apple and Windows logos, a terminal
 [ Install the App | Terminal Command ]      Linux: the app is greyed out
 Agents use Claude Code and Codex on it.
 
-The app (a Mac or a PC):
-1. On that Mac, open
-   hermesh.io/download
-   [Copy]  [Send…]
-2. Install it, open it, and sign in with the same account
-   (an own server: "…and join", with its address to copy)
-   Waiting for it to connect…
+┌ The app (a Mac or a PC) ─────────────────────────────────┐
+│ ① On that Mac, open                                      │
+│   hermesh.io/download                       (copy) (send)│
+│ ② Install it, open it, and sign in with the same account │
+│   (an own server: "…and join", with its address)         │
+└──────────────────────────────────────────────────────────┘
+Waiting for that machine to connect…      Enter a Pairing Code
 
-The command:
-1. On that machine, run
-   curl -fsSL https://github.com/hermeshai/hermesh/releases/latest/download/install.sh | sh
-   [Copy]  [Share…]
-   As the user you code as. It shows a code.
-
-2. [Scan the Code]
-   Enter the pairing code instead…
-
-Terminal on this iPhone? Copy a Command for This Account
+┌ The command ─────────────────────────────────────────────┐
+│ ① On that machine, run                                   │
+│   curl -fsSL https://github.com/hermeshai/hermesh/…/install.sh | sh
+│   As the user you code as. It shows a code. (copy) (send)│
+│ ② Scan the code it shows                                 │
+│   [ Scan the Code ]                                      │
+│   Can't Scan? → Enter a Pairing Code                     │
+│                 Install from a Terminal on This iPhone   │
+└──────────────────────────────────────────────────────────┘
 ```
 
 - **The system, then how.** A Mac and a Windows PC have the app as well as
   the command; Linux has only the command, which the picker shows by
-  greying out the app. The desktop app's sheet is the same, with the
-  system as three tiles and the waiting line beside Done.
+  greying out the app. The system is three tiles on the iPhone as in the
+  desktop app's sheet, the steps numbered in one card, and what is waited
+  for at the bottom (beside Done on the desktop).
+- **Can't scan?** On the official service the command shows a code to
+  scan. Typing its pairing code, or a terminal on this very iPhone (the
+  command then carries this account's address, and the request comes here
+  by itself), are behind one "Can't Scan?" menu, not lines of their own.
 - **The app's way** names a page to open on that computer, not a download
   here: the installer belongs on the other machine. `hermesh.io/download`
   offers the build for its system and chip. That app then signs in to the

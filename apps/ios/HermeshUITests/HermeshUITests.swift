@@ -548,17 +548,25 @@ final class HermeshUITests: XCTestCase {
         add.tap()
         // A Mac, with the app by default: the page to open on it, then this server to join.
         XCTAssertTrue(text("hermesh.io/download").waitForExistence(timeout: 10), "the download page")
-        XCTAssertTrue(text("2. 安装后打开，加入").exists, "an own server: join it from the app")
+        XCTAssertTrue(text("安装后打开，加入").exists, "an own server: join it from the app")
         XCTAssertFalse(text("install.sh").exists)
+        let mac = XCTAttachment(screenshot: app.screenshot())
+        mac.name = "add a machine, a Mac with the app"
+        mac.lifetime = .keepAlways
+        self.add(mac)
         app.segmentedControls.buttons["终端命令"].tap()
         XCTAssertTrue(text("install.sh | sh -s -- ").waitForExistence(timeout: 5), "the command with this server's address")
         // A Windows PC: install.ps1 in PowerShell.
-        app.segmentedControls.buttons["Windows"].tap()
+        tap("system-Windows")
         XCTAssertTrue(text("install.ps1))) ").waitForExistence(timeout: 5), "the PowerShell command")
         // Linux has no app: the command only.
-        app.segmentedControls.buttons["Linux"].tap()
+        tap("system-Linux")
         XCTAssertTrue(text("install.sh | sh -s -- ").waitForExistence(timeout: 5))
         XCTAssertFalse(app.segmentedControls.buttons["安装应用"].isEnabled, "no app for Linux")
+        let linux = XCTAttachment(screenshot: app.screenshot())
+        linux.name = "add a machine, Linux"
+        linux.lifetime = .keepAlways
+        self.add(linux)
         tap("close")
     }
 
