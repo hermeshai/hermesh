@@ -240,17 +240,17 @@ struct CodeTiles: View {
     }
 }
 
-/// The digits to type on what was just approved, as large as the width
-/// allows: each one its own tile, sharing the row.
+/// The digits to type on what was just approved: each one its own tile,
+/// centred, read at a glance from the other screen.
 struct DigitTiles: View {
     let digits: String
 
     var body: some View {
         HStack(spacing: 12) {
             ForEach(Array(digits.enumerated()), id: \.offset) { _, d in
-                Text(String(d)).font(.system(size: 88, weight: .semibold, design: .rounded)).monospacedDigit()
-                    .frame(maxWidth: .infinity).frame(height: 136)
-                    .background(.fill.tertiary, in: RoundedRectangle(cornerRadius: 28, style: .continuous))
+                Text(String(d)).font(.system(size: 56, weight: .semibold, design: .rounded)).monospacedDigit()
+                    .frame(width: 80, height: 96)
+                    .background(.fill.tertiary, in: RoundedRectangle(cornerRadius: 22, style: .continuous))
             }
         }
         .accessibilityElement(children: .combine)

@@ -330,6 +330,9 @@ struct PairingSheet: View {
         } else if let connected {
             FirstTask(clientID: connected.id, name: connected.name) { dismiss() }
                 .fittedSheet()
+        } else if let joining {
+            MachineJoining(machineID: joining.id, name: joining.name, digits: joining.digits) { dismiss() }
+                .fittedSheet()
         } else if let p = pairing, p.kind == .device {
             DeviceCard(pairing: p, busy: busy, approve: { approve(p) }, deny: { deny(p) }, close: { dismiss() })
                 .fittedSheet()
@@ -343,9 +346,7 @@ struct PairingSheet: View {
     private var form: some View {
         NavigationStack {
             Group {
-                if let joining {
-                    MachineJoining(machineID: joining.id, name: joining.name, digits: joining.digits) { dismiss() }
-                } else if let p = pairing {
+                if let p = pairing {
                     form(p)
                 } else {
                     ContentUnavailableView("This request is gone", systemImage: "checkmark.circle", description: Text("It may have been approved elsewhere, or it expired."))
@@ -629,8 +630,9 @@ private struct ClientCard: View {
     }
 }
 
-/// After a machine is approved: the two digits to type on it, when it asked
-/// for them, until it connects; then that it joined, and its page.
+/// After a machine is approved, as a card like a device's: the two digits
+/// to type on it, when it asked for them, until it connects; then that it
+/// joined, and its page.
 struct MachineJoining: View {
     @Environment(AppModel.self) private var model
     let machineID: String
@@ -642,37 +644,33 @@ struct MachineJoining: View {
     private var joined: Bool { model.machines.contains { $0.machineID == machineID && $0.online } }
 
     var body: some View {
-        VStack(spacing: 16) {
-            Spacer()
+        VStack(spacing: 0) {
             if joined {
-                Image(systemName: "checkmark.circle.fill").font(.system(size: 60)).foregroundStyle(.green)
-                Text("“\(name)” joined").font(.title2.bold()).multilineTextAlignment(.center)
+                Image(systemName: "checkmark.circle.fill").font(.system(size: 58)).foregroundStyle(.green)
+                Text("“\(name)” joined").font(.title2.bold()).multilineTextAlignment(.center).padding(.top, 16)
                     .accessibilityIdentifier("machine-joined")
-                Text("Add projects to it on its page.").foregroundStyle(.secondary)
-                Spacer()
-                Button {
+                Text("Add projects to it on its page.").font(.subheadline).foregroundStyle(.secondary).padding(.top, 4)
+                CardButton(title: "Open \(name)") {
                     close()
                     model.path.append(.machine(machineID))
-                } label: {
-                    Text("Open \(name)").frame(maxWidth: .infinity)
                 }
-                .buttonStyle(.glassProminent).controlSize(.large)
                 .accessibilityIdentifier("open-machine")
-                Button("Done") { close() }
+                .padding(.top, 26)
             } else {
                 if digits.isEmpty {
-                    WaitingMark(size: 64)
+                    WaitingMark(size: 58)
                 } else {
                     Text("Type these digits on “\(name)”").font(.title2.bold()).multilineTextAlignment(.center)
-                    DigitTiles(digits: digits)
-                    Text("They prove the approval came from your own device.").font(.subheadline).foregroundStyle(.secondary)
+                    DigitTiles(digits: digits).padding(.top, 22)
+                    Text("They prove the approval came from your own device.")
+                        .font(.subheadline).foregroundStyle(.secondary).multilineTextAlignment(.center).padding(.top, 14)
                 }
                 HStack(spacing: 8) {
-                    WaitingMark(size: 20)
-                    Text("Waiting for “\(name)” to connect…").foregroundStyle(.secondary)
+                    WaitingMark(size: 16)
+                    Text("Waiting for “\(name)” to connect…")
                 }
-                .padding(.top, 8)
-                Spacer()
+                .font(.footnote).foregroundStyle(.secondary)
+                .padding(.top, 22)
                 if long {
                     Button("It didn’t join? Remove it", role: .destructive) {
                         Task {
@@ -680,11 +678,13 @@ struct MachineJoining: View {
                             close()
                         }
                     }
+                    .padding(.top, 14)
                 }
-                Button("Done") { close() }
             }
         }
-        .padding(28)
+        .frame(maxWidth: .infinity)
+        .padding(.horizontal, 26).padding(.top, 64).padding(.bottom, 6) // the title below the close button
+        .overlay(alignment: .topTrailing) { CardCloseButton(action: close).padding(16) }
         .task {
             try? await Task.sleep(for: .seconds(120))
             long = true
