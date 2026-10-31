@@ -542,6 +542,9 @@ final class HermeshUITests: XCTestCase {
         for id in ["machine-row-owner-mac", "flow-client-bot"] {
             let row = app.descendants(matching: .any)[id].firstMatch
             XCTAssertTrue(row.waitForExistence(timeout: 20), id)
+            // The overview is longer than the screen: the row in view first.
+            for _ in 0..<4 where !row.isHittable { app.swipeUp() }
+            for _ in 0..<8 where !row.isHittable { app.swipeDown() }
             row.coordinate(withNormalizedOffset: CGVector(dx: 0.2, dy: 0.5))
                 .press(forDuration: 0.05, thenDragTo: row.coordinate(withNormalizedOffset: CGVector(dx: 0.9, dy: 0.5)))
             XCTAssertTrue(app.descendants(matching: .any)["drawer-dim"].waitForExistence(timeout: 5), "the menu opens from \(id)")
