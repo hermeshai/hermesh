@@ -385,6 +385,7 @@ struct OverviewView: View {
                     }
                 }
                 .font(.subheadline).foregroundStyle(.secondary).monospacedDigit()
+                Image(systemName: "chevron.right").font(.caption.weight(.semibold)).foregroundStyle(.tertiary)
             }
             .padding(.horizontal, 14).frame(minHeight: 48)
             .contentShape(.rect)
