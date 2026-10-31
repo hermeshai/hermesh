@@ -234,8 +234,8 @@ What MSIX would have given and Setup.exe doesn't: files that no program of the u
 ### 6.3 Programs without the app
 
 - Release assets add `hermeshd`, `hermeshdw` and `hermesh` for `windows-amd64` and `windows-arm64` (`.exe`), in the signed checksum list.
-- `install.ps1` (Windows PowerShell 5.1) mirrors `install.sh`: a machine by default, `-Cli`, `-Device`. It installs into `%LOCALAPPDATA%\Programs\Hermesh\bin`, adds that folder to the user's PATH, checks the signed checksum list (ECDSA, through .NET), registers the logon task, then runs `hermeshd pair`.
-- Updating while the daemon runs: rename the running program aside (Windows allows it), write the new one, restart the daemon, delete the old file later.
+- `install.ps1` (Windows PowerShell 5.1) mirrors `install.sh`: a machine by default, or `-Cli`. It has no `-Device`: a Windows trusted device is the app, whose protected signer keeps the key in the TPM behind Windows Hello (§7.3); one set up in a terminal would have a passphrase only, below what decision 4 asks of a PC. It installs into `%LOCALAPPDATA%\Programs\Hermesh\bin`, adds that folder to the user's PATH, checks the signed checksum list (ECDSA, through .NET), registers the logon task, then runs `hermeshd pair`.
+- Updating while the daemon runs: rename the running program aside (Windows allows it), write the new one, restart the daemon, delete the old file later. Machines update themselves this way too (machine-updates.md §5.5).
 - One PC, one daemon: the installer refuses machine mode where the app's daemon is registered, and the app takes over a daemon that `install.ps1` set up (it registers the logon task again, with `--owner`).
 
 ### 6.4 Code signing
@@ -406,13 +406,10 @@ Checked on a Windows 11 arm64 VM (2026-10-31), with the MSIX package of then: th
 Left for later, each its own change:
 
 - Preview vectors shared by the Go and Swift signers (desktop-app.md §5.6).
-- Settings saying that elevation needs no consent here ("Never notify") and recommending Administrator protection.
-- The rest of the desktop suite on Windows (its specs read the Mac's words and menus).
-- `TestSessionList` now and then misses a session of the other machine on `windows-latest` (the owner's replica, with no error logged): to look into before `windows-e2e` may fail the run.
-- `install.ps1 -Device`: a trusted device without the app.
-- Machines that update themselves (docs/machine-updates.md): a Windows machine doesn't yet (`service.Supervised` is false there); its programs are replaced while they run by renaming them aside (§6.3).
-- Add Machine in the apps offers `install.sh` only; a Windows machine's command (`install.ps1`) is in hermeshd.md.
-- Mica behind the sidebar, Windows 11's type sizes and radii.
+- Administrator protection (Windows 11 24H2 and later, where Microsoft offers it) asks for Windows Hello at every elevation, which closes the UAC-bypass row of §7.4: recommended to owners here. The app says nothing of it yet: whether a PC has it, and where it is turned on, isn't settled enough to point at. It does warn, in Account & Devices, when User Account Control is off or set to Never notify.
+- The Mac's desktop specs that stay off Windows: their menu bar, Touch ID, moving to Applications, the process limit (health), and tests whose mechanics are Unix's (a proxy on a Unix socket, stopping a machine by its process group, a Codex that is a shell script). Eight specs run there (`windowsSpecs`, e2e/desktop_test.go).
+- A session now and then missing from a list on `windows-latest`: the sidebar of `sessionlist.spec.ts` lacked one session after its older page (neither page had it), and `TestSessionList` waited on the owner for one. Both point at the owner's replica, slow runners showing it; to look into, so `sessionlist` stays off Windows until then (`TestSessionList` logs what is missing).
+- Mica behind the sidebar, Windows 11's type sizes and radii: a demo for the owner first (their sizes are written out in each rule, not tokens).
 
 ## Appendix: sources
 

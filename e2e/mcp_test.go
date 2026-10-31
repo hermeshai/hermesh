@@ -262,7 +262,8 @@ func TestMCPGateway(t *testing.T) {
 		t.Fatalf("the session's worktree: %v", wts)
 	}
 	wt := wts[0]
-	if b, _ := os.ReadFile(filepath.Join(wt, "README.md")); string(b) != "# demo\n" {
+	// As git checks it out: Windows' git (core.autocrlf) writes CRLF.
+	if b, _ := os.ReadFile(filepath.Join(wt, "README.md")); strings.ReplaceAll(string(b), "\r\n", "\n") != "# demo\n" {
 		t.Fatalf("the worktree is not at the tag: README %q", b)
 	}
 	if b, err := os.ReadFile(filepath.Join(wt, "Config", "Signing.local.xcconfig")); err != nil || string(b) != "DEVELOPMENT_TEAM = T123\n" {

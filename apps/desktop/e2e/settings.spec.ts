@@ -5,7 +5,7 @@ import http from "node:http";
 import type { AddressInfo } from "node:net";
 import os from "node:os";
 import path from "node:path";
-import { answerMenu, cli, fixture, gitRepo, launch, pickAnswers, snap } from "./app";
+import { answerMenu, cli, fixture, gitRepo, launch, onWindows, pickAnswers, snap, thisComputer } from "./app";
 
 // The settings window: a window of its own (⌘,), laid out as System
 // Settings, for what is set up once and changed rarely.
@@ -264,6 +264,7 @@ test("an agent's page sets up waking it: three steps, a pasted block split, a wr
 });
 
 test("an app just updated finds the previous hermeshd, which keeps no doorbells; once that is restarted, the agent's page has them", async () => {
+  test.skip(onWindows, "its proxy listens on a Unix socket");
   // The daemon through a proxy: first as the previous version (no
   // ListWakes), then, its connections dropped as a restart drops them, as
   // itself.
@@ -309,7 +310,7 @@ test("settings 机器 opens this Mac: its sharing, its agents each opening a pag
   await expect(nav(settings, "机器")).toHaveAttribute("aria-current", "page");
   const panel = page_(settings, "机器");
   const mac = panel.getByRole("list", { name: "机器" }).getByRole("button", { name: /^owner-mac/ });
-  await expect(mac).toContainText("这台 Mac");
+  await expect(mac).toContainText(thisComputer);
   await snap(settings, "settings-machines");
   await mac.click();
   await expect(panel.getByRole("switch", { name: "安全可信地共享本机 agent" })).toHaveAttribute("aria-checked", "true");
@@ -387,6 +388,7 @@ test("settings 机器 opens this Mac: its sharing, its agents each opening a pag
 });
 
 test("settings 机器: Codex's page sets the model, effort and speed its sessions run with, its own until set, for Hermesh only", async () => {
+  test.skip(onWindows, "the fixture's Codex is a shell script");
   const { app, page } = await launch();
   const settings = await openSettings(app, page, "machines");
   const panel = page_(settings, "机器");
@@ -451,7 +453,7 @@ test("settings 账号与设备 shows the identity, the trusted devices and, fold
   const panel = page_(settings, "账号与设备");
   const devices = panel.getByRole("list", { name: "可信设备" });
   await expect(devices).toContainText("test-mac");
-  await expect(devices).toContainText("这台 Mac");
+  await expect(devices).toContainText(thisComputer);
   await expect(devices.getByRole("button", { name: "移除…" })).toHaveCount(0);
   await expect(panel).not.toContainText(status.ownerId);
   await snap(settings, "settings-account");
@@ -477,7 +479,7 @@ test("settings 账号与设备 shows the identity, the trusted devices and, fold
 
   // Still a trusted device: signing out only explains how.
   await panel.getByRole("button", { name: "退出登录…" }).click();
-  const dialog = settings.getByRole("dialog", { name: "让这台 Mac 退出登录？" });
+  const dialog = settings.getByRole("dialog", { name: onWindows ? "让这台电脑退出登录？" : "让这台 Mac 退出登录？" });
   await expect(dialog).toContainText("先在你的另一台可信设备上");
   await dialog.getByRole("button", { name: "好" }).click();
   await expect(dialog).toBeHidden();

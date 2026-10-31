@@ -103,13 +103,21 @@ type history struct {
 	Turns []string `json:"turns"`
 }
 
-func load(sid string) (*history, error) {
-	b, err := os.ReadFile(filepath.Join(stateDir, sid+".json"))
-	if err != nil {
-		return nil, err
+// load reads a session's history. Another process of the session may be
+// writing it, and Windows lets a reader see it half written: a moment
+// later it's whole.
+func load(sid string) (h *history, err error) {
+	for range 20 {
+		var b []byte
+		if b, err = os.ReadFile(filepath.Join(stateDir, sid+".json")); err == nil {
+			h = &history{}
+			if err = json.Unmarshal(b, h); err == nil {
+				return h, nil
+			}
+		}
+		time.Sleep(25 * time.Millisecond)
 	}
-	var h history
-	return &h, json.Unmarshal(b, &h)
+	return nil, err
 }
 
 func save(sid string, h *history) {

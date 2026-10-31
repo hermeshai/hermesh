@@ -239,7 +239,8 @@ func TestStoppedRestoreKeepsBranch(t *testing.T) {
 			if err := w.Restore(ctx, repo, "s_1"); err != nil {
 				t.Fatalf("retry restore: %v", err)
 			}
-			if b, err := os.ReadFile(filepath.Join(w.Path("s_1"), "previous.txt")); err != nil || string(b) != "keep me\n" {
+			// As git checks it out: Windows' git (core.autocrlf) writes CRLF.
+			if b, err := os.ReadFile(filepath.Join(w.Path("s_1"), "previous.txt")); err != nil || strings.ReplaceAll(string(b), "\r\n", "\n") != "keep me\n" {
 				t.Fatalf("previous work: %q %v", b, err)
 			}
 		})
