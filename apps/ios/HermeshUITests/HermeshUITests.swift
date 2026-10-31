@@ -642,10 +642,11 @@ final class HermeshUITests: XCTestCase {
         try waitFor("all of Gemini CLI's turns again") { gemini.label.contains("1 台机器") ? true : nil }
         let mac = app.descendants(matching: .any)["machine-row-owner-mac"].firstMatch
         XCTAssertTrue(mac.exists && mac.label.contains("在线"), mac.label)
-        // View All Sessions, at the end of the page, opens the menu; usage is in the account.
-        app.swipeUp()
-        press(app.descendants(matching: .any)["all-sessions"].firstMatch)
-        XCTAssertTrue(app.descendants(matching: .any)["drawer-dim"].waitForExistence(timeout: 5), "the menu opens")
+        // Every coding agent is listed, the idle ones too: no fold.
+        let agentRows = app.descendants(matching: .any).matching(NSPredicate(format: "identifier BEGINSWITH 'coding-agent-'"))
+        XCTAssertTrue(agentRows.count > 1 && !app.descendants(matching: .any)["more-agents"].exists, "every agent, nothing folded: \(agentRows.count)")
+        // Usage is in the account, from the menu.
+        openMenu()
         tap("account")
         // Usage in place: the numbers and the weeks of days, no page to open.
         XCTAssertTrue(app.descendants(matching: .any)["usage"].firstMatch.waitForExistence(timeout: 20), "usage")
