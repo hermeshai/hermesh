@@ -116,15 +116,27 @@ struct AccountSheet: View {
     }
 
     /// The service this iPhone belongs to, as Settings shows the account at
-    /// its top: the mark, which service and where, and whether it is reached.
+    /// its top: on the official service the account, its picture and the
+    /// service; on a server of one's own the mark and where it is; and
+    /// whether it is reached.
     private var service: some View {
-        HStack(spacing: 14) {
-            Mark(size: 38)
-                .frame(width: 60, height: 60)
-                .background(Color(.tertiarySystemFill), in: RoundedRectangle(cornerRadius: 15, style: .continuous))
+        let account = model.status.hosted && !model.status.account.isEmpty
+        return HStack(spacing: 14) {
+            if account {
+                AccountPicture(status: model.status).frame(width: 60, height: 60)
+            } else {
+                Mark(size: 38)
+                    .frame(width: 60, height: 60)
+                    .background(Color(.tertiarySystemFill), in: RoundedRectangle(cornerRadius: 15, style: .continuous))
+            }
             VStack(alignment: .leading, spacing: 3) {
-                Text(model.status.hosted ? "Hermesh service" : "Your own server").font(.title3.weight(.semibold))
-                Text(host).font(.subheadline).foregroundStyle(.secondary).lineLimit(1)
+                if account {
+                    Text(model.status.account).font(.title3.weight(.semibold)).lineLimit(1).truncationMode(.middle)
+                    Text("Hermesh service").font(.subheadline).foregroundStyle(.secondary)
+                } else {
+                    Text(model.status.hosted ? "Hermesh service" : "Your own server").font(.title3.weight(.semibold))
+                    Text(host).font(.subheadline).foregroundStyle(.secondary).lineLimit(1)
+                }
                 HStack(spacing: 5) {
                     Circle().fill(model.status.relayConnected ? Color.green : .secondary).frame(width: 7, height: 7)
                     Text(model.status.relayConnected ? "Connected" : "Not connected")
@@ -222,8 +234,9 @@ struct SettingsIcon: View {
     }
 }
 
-/// One appearance to choose, as Display & Brightness shows them: a small
-/// phone in it (System half light, half dark), its name and a check.
+/// One appearance to choose, as Display & Brightness shows them, kept low:
+/// the top of a small phone in it (System half light, half dark), its name
+/// and a check.
 struct AppearanceOption: View {
     let tag: String
     let title: LocalizedStringKey
@@ -234,13 +247,14 @@ struct AppearanceOption: View {
         Button {
             withAnimation(.smooth) { selection = tag }
         } label: {
-            VStack(spacing: 10) {
+            VStack(spacing: 7) {
                 phone
-                    .frame(width: 62, height: 118)
-                    .overlay(RoundedRectangle(cornerRadius: 13, style: .continuous).strokeBorder(on ? Color.accentColor : Color.primary.opacity(0.12), lineWidth: on ? 2.5 : 1))
+                    .frame(width: 62, height: 72)
+                    .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                    .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous).strokeBorder(on ? Color.accentColor : Color.primary.opacity(0.12), lineWidth: on ? 2.5 : 1))
                 Text(title).font(.subheadline)
                 Image(systemName: on ? "checkmark.circle.fill" : "circle")
-                    .font(.title3)
+                    .font(.body)
                     .foregroundStyle(on ? Color.accentColor : Color.secondary.opacity(0.5))
             }
             .frame(maxWidth: .infinity)
@@ -265,23 +279,23 @@ struct AppearanceOption: View {
         }
     }
 
-    /// A screen: a title, and a few rows on cards.
+    /// A screen, its top: a title, and two rows on cards.
     private func screen(dark: Bool) -> some View {
         let bg = dark ? Color.black : Color(white: 0.95)
         let card = dark ? Color(white: 0.17) : .white
         let ink = dark ? Color(white: 0.55) : Color(white: 0.72)
-        return RoundedRectangle(cornerRadius: 13, style: .continuous)
+        return RoundedRectangle(cornerRadius: 12, style: .continuous)
             .fill(bg)
             .overlay(alignment: .top) {
                 VStack(alignment: .leading, spacing: 5) {
                     Capsule().fill(ink).frame(width: 24, height: 5)
-                    ForEach(0 ..< 3, id: \.self) { i in
+                    ForEach(0 ..< 2, id: \.self) { i in
                         RoundedRectangle(cornerRadius: 4, style: .continuous).fill(card)
                             .frame(height: i == 0 ? 26 : 18)
                             .overlay(alignment: .leading) { Capsule().fill(ink).frame(width: i == 0 ? 26 : 20, height: 3).padding(.leading, 5) }
                     }
                 }
-                .padding(.horizontal, 7).padding(.top, 14)
+                .padding(.horizontal, 7).padding(.top, 10)
             }
     }
 }
