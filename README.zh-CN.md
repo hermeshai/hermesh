@@ -25,7 +25,7 @@
   <a href="https://hermesh.io">hermesh.io</a> ·
   <a href="#安全架构">安全架构</a> ·
   <a href="#自建服务器">自建服务器</a> ·
-  <a href="docs/assets/hermesh.mp4">50 秒演示视频</a> ·
+  <a href="docs/assets/hermesh.mp4">85 秒演示视频</a> ·
   <a href="README.md">English</a>
 </p>
 

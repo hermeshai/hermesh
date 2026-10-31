@@ -25,7 +25,7 @@
   <a href="https://hermesh.io">hermesh.io</a> ·
   <a href="#security">Security</a> ·
   <a href="#run-your-own-server">Self-host</a> ·
-  <a href="docs/assets/hermesh.mp4">Watch 50s demo</a> ·
+  <a href="docs/assets/hermesh.mp4">Watch 85s demo</a> ·
   <a href="README.zh-CN.md">简体中文</a>
 </p>
 
