@@ -54,9 +54,8 @@ type freshOwner struct {
 
 // windowsSpecs are the specs that run on Windows too (docs/windows.md §14);
 // the others are the Mac's (its menu bar, Touch ID, moving to
-// Applications, the process limit), and sessionlist now and then misses a
-// session on windows-latest, as TestSessionList did.
-var windowsSpecs = map[string]bool{"windows": true, "shell": true, "motion": true, "search": true, "overview": true, "sheets": true, "settings": true, "session": true}
+// Applications, the process limit).
+var windowsSpecs = map[string]bool{"windows": true, "shell": true, "motion": true, "search": true, "overview": true, "sheets": true, "settings": true, "session": true, "sessionlist": true}
 
 // TestDesktop runs the desktop app's end-to-end tests: Playwright drives
 // the real Electron app (apps/desktop/e2e) against sessions in every state

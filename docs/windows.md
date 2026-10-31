@@ -407,8 +407,7 @@ Left for later, each its own change:
 
 - Preview vectors shared by the Go and Swift signers (desktop-app.md §5.6).
 - Administrator protection (Windows 11 24H2 and later, where Microsoft offers it) asks for Windows Hello at every elevation, which closes the UAC-bypass row of §7.4: recommended to owners here. The app says nothing of it yet: whether a PC has it, and where it is turned on, isn't settled enough to point at. It does warn, in Account & Devices, when User Account Control is off or set to Never notify.
-- The Mac's desktop specs that stay off Windows: their menu bar, Touch ID, moving to Applications, the process limit (health), and tests whose mechanics are Unix's (a proxy on a Unix socket, stopping a machine by its process group, a Codex that is a shell script). Eight specs run there (`windowsSpecs`, e2e/desktop_test.go).
-- A session now and then missing from a list on `windows-latest`: the sidebar of `sessionlist.spec.ts` lacked one session after its older page (neither page had it), and `TestSessionList` waited on the owner for one. Both point at the owner's replica, slow runners showing it; to look into, so `sessionlist` stays off Windows until then (`TestSessionList` logs what is missing).
+- The Mac's desktop specs that stay off Windows: their menu bar, Touch ID, moving to Applications, the process limit (health), and tests whose mechanics are Unix's (a proxy on a Unix socket, stopping a machine by its process group, a Codex that is a shell script). Nine specs run there (`windowsSpecs`, e2e/desktop_test.go).
 
 ## Appendix: sources
 
