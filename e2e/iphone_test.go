@@ -437,7 +437,7 @@ func newIPhoneControl(t *testing.T, w *ownerMac, sessions map[string]string) str
 		title := r.URL.Query().Get("title")
 		var lines []string
 		for i := 1; i <= 40; i++ {
-			lines = append(lines, fmt.Sprintf("say 第 %d 段：这一段话写得很长，好让整个对话比屏幕高得多，打开时应当直接看到最后一段。", i))
+			lines = append(lines, fmt.Sprintf(`say 第 %d 段：这一段话写得很长，好让整个对话比屏幕高得多，打开时应当直接看到最后一段。\n\n`, i)) // a paragraph each
 		}
 		s, res := w.startSession(2*time.Minute, "--agent", "gemini", "--title", title, "--prompt", strings.Join(append(lines, "say 这是最后一段"), "\n"), "--wait")
 		if s.SessionID == "" {
