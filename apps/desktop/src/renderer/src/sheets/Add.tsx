@@ -8,15 +8,25 @@ import { Icon } from "../icons";
 import { useStore } from "../store";
 import { ErrorLine, useAction, useWaitForPairings } from "./common";
 
+const releases = "https://github.com/hermeshai/hermesh/releases/latest/download";
+
+/** The command that makes a computer a machine of this account: install.sh's, or install.ps1's in PowerShell. */
+function addMachineCommand(windows: boolean, address: string) {
+  return windows
+    ? `& ([scriptblock]::Create((irm ${releases}/install.ps1))) ${address}`
+    : `curl -fsSL ${releases}/install.sh | sh -s -- ${address}`;
+}
+
 /**
- * Add Machine: one command on that machine. Its request then opens the
- * approval here, with the code its terminal shows compared in the signer's
- * window.
+ * Add Machine: one command on that machine (a Mac or Linux one, or a
+ * Windows one's PowerShell). Its request then opens the approval here, with
+ * the code its terminal shows compared in the signer's window.
  */
 export function AddMachineSheet() {
   const { t } = useTranslation("sheets");
   const st = useStore();
-  const command = `curl -fsSL https://github.com/hermeshai/hermesh/releases/latest/download/install.sh | sh -s -- ${st.status?.connectAddress ?? ""}`;
+  const [windows, setWindows] = useState(false);
+  const command = addMachineCommand(windows, st.status?.connectAddress ?? "");
   const [before] = useState(() => new Set(st.pairings.map((p) => p.code)));
   const arrived = st.pairings.find((p) => p.kind === PairingKind.MACHINE && !before.has(p.code))?.code;
   useWaitForPairings();
@@ -33,6 +43,10 @@ export function AddMachineSheet() {
       <h3 id="sheet-title">{t("addMachine.title")}</h3>
       <p className="sub">{t("addMachine.sub")}</p>
       <div className="fhead">{t("addMachine.step1")}</div>
+      <div className="seg" role="group" aria-label={t("addMachine.system")} style={{ marginBottom: 8 }}>
+        <button type="button" className={windows ? "" : "on"} aria-pressed={!windows} onClick={() => setWindows(false)}>{t("addMachine.unix")}</button>
+        <button type="button" className={windows ? "on" : ""} aria-pressed={windows} onClick={() => setWindows(true)}>Windows</button>
+      </div>
       <div className="msgbox sel-text" style={{ paddingRight: 80 }}>
         {command}
         <button className="btn sm" onClick={copy}>
@@ -40,7 +54,7 @@ export function AddMachineSheet() {
           {t("copy")}
         </button>
       </div>
-      <p className="sub" style={{ marginTop: 8 }}>{t("addMachine.hint")}</p>
+      <p className="sub" style={{ marginTop: 8 }}>{t(windows ? "addMachine.hintWindows" : "addMachine.hint")}</p>
       <div className="fhead" style={{ marginTop: 6 }}>{t("addMachine.step2")}</div>
       <div className="waitline">
         <Mark size={40} variant="wait" />

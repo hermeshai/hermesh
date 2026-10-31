@@ -168,7 +168,7 @@ test("connecting an agent: the message to send, its request, what it may use, ap
   await app.close();
 });
 
-test("adding a machine: its install command, then the code its terminal shows, approved here", async () => {
+test("adding a machine: its install command (a Mac or Linux one, or a Windows one), then the code its terminal shows, approved here", async () => {
   const name = `build-${process.pid}`;
   const { app, page } = await launch();
   const st = await api<Status>(page, "GetStatus");
@@ -177,6 +177,12 @@ test("adding a machine: its install command, then the code its terminal shows, a
   await expect(sheet.getByRole("heading", { name: "添加机器" })).toBeVisible();
   await expect(sheet).toContainText(`install.sh | sh -s -- ${st.connectAddress}`);
   await snap(page, "sheet-add-machine");
+  // A Windows PC runs install.ps1 in PowerShell.
+  await sheet.getByRole("button", { name: "Windows" }).click();
+  await expect(sheet).toContainText(`(irm https://github.com/hermeshai/hermesh/releases/latest/download/install.ps1))) ${st.connectAddress}`);
+  await expect(sheet).toContainText("在 PowerShell 里");
+  await snap(page, "sheet-add-machine-windows");
+  await sheet.getByRole("button", { name: "macOS 或 Linux" }).click();
   await sheet.getByRole("button", { name: "没带连接地址？输入配对码…" }).click();
   await expect(sheet.getByRole("heading", { name: "输入配对码" })).toBeVisible();
 
