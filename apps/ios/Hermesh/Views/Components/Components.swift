@@ -133,6 +133,27 @@ struct Mark: View {
     }
 }
 
+/// The mark and the name, as the brand's horizontal logo lays them out:
+/// the mark 1.5 times the letters' cap height, 0.42 of it apart, the
+/// letters' top a little below the mark's. height is the mark's.
+struct Wordmark: View {
+    var height: CGFloat = 22
+
+    var body: some View {
+        // In the logo's units, the mark 100 high (its beams fill 86 of
+        // Mark's 104).
+        let u = height / 100
+        HStack(alignment: .top, spacing: 42 * u) {
+            Mark(size: height * 104 / 86).frame(width: height, height: height)
+            Image("Wordmark").renderingMode(.template).resizable().scaledToFit()
+                .frame(height: 70.2 * u).padding(.top, 19.3 * u)
+        }
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("Hermesh")
+        .accessibilityAddTraits(.isHeader)
+    }
+}
+
 /// A verification code in three groups of four, large and monospaced, for
 /// comparing with what the other side shows.
 struct CodeTiles: View {

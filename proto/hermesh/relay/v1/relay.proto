@@ -332,8 +332,8 @@ service OwnerControlService {
   // it is refused, and shown the order in that time.
   rpc EraseOwner(EraseOwnerRequest) returns (EraseOwnerResponse);
   // The account this owner belongs to, as its devices may show it: a
-  // center's account's email ("" for a self-hosted relay). Erasing
-  // everything has the owner type it to confirm.
+  // center's account's email and picture ("" for a self-hosted relay).
+  // Erasing everything has the owner type the email to confirm.
   rpc GetAccount(GetAccountRequest) returns (GetAccountResponse);
   // The address of this relay's MCP gateway, with the key in its path:
   // only the owner's devices learn it (docs/mcp-gateway.md §13).
@@ -556,6 +556,10 @@ message GetAccountRequest {}
 
 message GetAccountResponse {
   string account = 1;
+  // The account's picture, from the provider it signs in with (GitHub,
+  // Google): a URL for its devices to show ("" when it has none, and on a
+  // self-hosted relay).
+  string avatar_url = 2;
 }
 
 message GetMCPRequest {}

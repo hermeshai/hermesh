@@ -1,9 +1,10 @@
+import HermeshProto
 import HermeshSessions
 import SwiftUI
 
 /// The side menu: search at the top, the three places (Overview, Grants,
 /// Machines), then the sessions by state as the Mac's sidebar lists them,
-/// and at the bottom the account.
+/// and at the bottom the account, its picture alone.
 struct DrawerView: View {
     @Environment(AppModel.self) private var model
     let width: CGFloat
@@ -16,7 +17,7 @@ struct DrawerView: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: 2) {
                     HStack {
-                        Text("Hermesh").font(.largeTitle.bold())
+                        Wordmark()
                         Spacer()
                         Button {
                             model.sheet = .search
@@ -50,8 +51,8 @@ struct DrawerView: View {
     private var places: some View {
         VStack(spacing: 2) {
             place(.overview, "Overview", "square.grid.2x2")
-            place(.grants, "Grants", "checkmark.shield")
-            place(.machines, "Machines", "desktopcomputer")
+            place(.grants, "Grants", "key.horizontal")
+            place(.machines, "Machines", "server.rack")
         }
     }
 
@@ -59,8 +60,13 @@ struct DrawerView: View {
         Button {
             model.open(r)
         } label: {
-            Label(title, systemImage: icon).font(.body).frame(maxWidth: .infinity, alignment: .leading)
-                .padding(.horizontal, 16).frame(height: 48)
+            // The symbols in one column as wide, so the titles start on one line.
+            HStack(spacing: 12) {
+                Image(systemName: icon).frame(width: 28)
+                Text(title)
+            }
+            .font(.body).frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.horizontal, 16).frame(height: 48)
         }
         .buttonStyle(RowStyle(selected: model.root == r))
         .padding(.horizontal, 10)
@@ -137,9 +143,10 @@ struct DrawerView: View {
             Button {
                 model.sheet = .account
             } label: {
-                Image(systemName: "person.fill")
-                    .font(.body.weight(.medium)).foregroundStyle(.white).frame(width: button, height: button)
-                    .background(LinearGradient(colors: [Color(red: 0.03, green: 0.57, blue: 0.70), Color(red: 0.18, green: 0.42, blue: 0.94), Color(red: 0.43, green: 0.24, blue: 0.94)], startPoint: .topLeading, endPoint: .bottomTrailing), in: .circle)
+                AccountPicture(status: model.status).frame(width: 44, height: 44)
+                    .padding(4)
+                    .glassEffect(.regular.interactive(), in: .circle)
+                    .contentShape(.circle)
             }
             .buttonStyle(.plain)
             .accessibilityLabel("Account and devices")
@@ -148,6 +155,40 @@ struct DrawerView: View {
         }
         .padding(.horizontal, 16).padding(.bottom, 8).padding(.top, 24)
         .background(LinearGradient(colors: [Color(.menuBackground).opacity(0), Color(.menuBackground)], startPoint: .top, endPoint: .center))
+    }
+}
+
+/// Who this iPhone belongs to, in a circle: on the official service the
+/// account's picture (from GitHub or Google), else its initial; on a server
+/// of one's own, a server.
+private struct AccountPicture: View {
+    let status: Hermesh_Local_V1_GetStatusResponse
+
+    var body: some View {
+        if status.hosted, let url = URL(string: status.accountAvatarURL), url.scheme == "https" {
+            AsyncImage(url: url) { phase in
+                if let image = phase.image {
+                    image.resizable().scaledToFill()
+                } else {
+                    initial
+                }
+            }
+            .clipShape(.circle)
+        } else if status.hosted {
+            initial
+        } else {
+            badge(Image(systemName: "server.rack").font(.body.weight(.semibold)))
+        }
+    }
+
+    private var initial: some View {
+        badge(status.account.first.map { Text(String($0).uppercased()).font(.title3.weight(.semibold)) }
+            ?? Text(Image(systemName: "person.fill")).font(.body.weight(.medium)))
+    }
+
+    private func badge(_ content: some View) -> some View {
+        content.foregroundStyle(.white).frame(maxWidth: .infinity, maxHeight: .infinity)
+            .background(LinearGradient(colors: [Color(red: 0.03, green: 0.57, blue: 0.70), Color(red: 0.18, green: 0.42, blue: 0.94), Color(red: 0.43, green: 0.24, blue: 0.94)], startPoint: .topLeading, endPoint: .bottomTrailing), in: .circle)
     }
 }
 
