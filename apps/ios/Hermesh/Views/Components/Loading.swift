@@ -1,7 +1,8 @@
 import SwiftUI
 
 // Waiting, in the brand's motion (as packages/ui's mark.tsx and brand.css):
-// motion only says what is happening, it only ever uses the mark, and every
+// motion only says what is happening, it uses the mark (or, in a card read
+// for the first time, the card's own shapes: Skeleton), and every
 // animation is the mark's locked shape at rest. A wait under 400 ms shows
 // nothing; once shown, a loader stays at least 500 ms; with Reduce Motion
 // nothing moves, the mark breathes instead.
@@ -144,6 +145,46 @@ struct InlineLoader: View {
         .foregroundStyle(.secondary)
         .accessibilityElement(children: .combine)
     }
+}
+
+/// What a card shows while it is read for the first time: its shapes, in
+/// placeholder grey (Skeleton.grey), a soft light sweeping across them
+/// every 1.5 s; with Reduce Motion they breathe instead. It shows at once,
+/// holding the card's place, and goes as soon as what it stands for comes.
+struct Skeleton: ViewModifier {
+    var active = true
+    static let grey = Color(.systemGray5)
+    @Environment(\.colorScheme) private var scheme
+    @Environment(\.accessibilityReduceMotion) private var still
+
+    func body(content: Content) -> some View {
+        if active {
+            TimelineView(.animation) { timeline in
+                let t = timeline.date.timeIntervalSinceReferenceDate
+                if still {
+                    let p = (t / 1.2).truncatingRemainder(dividingBy: 2)
+                    content.opacity(0.55 + 0.45 * (p > 1 ? 2 - p : p))
+                } else {
+                    content.overlay {
+                        GeometryReader { g in
+                            let w = g.size.width
+                            LinearGradient(colors: [.clear, .white.opacity(scheme == .dark ? 0.12 : 0.75), .clear], startPoint: .leading, endPoint: .trailing)
+                                .frame(width: w / 2)
+                                .offset(x: w * (1.5 * (t / 1.5).truncatingRemainder(dividingBy: 1) - 0.5))
+                        }
+                        .mask(content)
+                    }
+                }
+            }
+        } else {
+            content
+        }
+    }
+}
+
+extension View {
+    /// Its shapes as a skeleton while active.
+    func skeleton(_ active: Bool = true) -> some View { modifier(Skeleton(active: active)) }
 }
 
 /// Waiting for the other side (another device, a machine to connect): the

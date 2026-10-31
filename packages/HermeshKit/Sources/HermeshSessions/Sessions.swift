@@ -93,6 +93,19 @@ public func resetSessions(_ held: [Session], _ reset: [Session], next: SessionCu
     return mergeSessions(kept, reset)
 }
 
+/// The machines a watch message gives, each one being read again (syncing),
+/// which the core gives no state until then, with the state it was last
+/// shown with (its coding agents, paused…), as its sessions are held: the
+/// app came back to the front, or was launched again.
+public func holdingState(_ machines: [Hermesh_Local_V1_Machine], known: [Hermesh_Local_V1_Machine]) -> [Hermesh_Local_V1_Machine] {
+    machines.map { m in
+        guard m.syncing, !m.hasStatus, let k = known.first(where: { $0.machineID == m.machineID }), k.hasStatus else { return m }
+        var held = m
+        held.status = k.status
+        return held
+    }
+}
+
 /// The cursor naming s as where a page ends.
 public func cursorAt(_ s: Session) -> SessionCursor {
     var c = SessionCursor()

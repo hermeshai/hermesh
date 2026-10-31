@@ -645,6 +645,7 @@ final class HermeshUITests: XCTestCase {
         // Every coding agent is listed, the idle ones too: no fold.
         let agentRows = app.descendants(matching: .any).matching(NSPredicate(format: "identifier BEGINSWITH 'coding-agent-'"))
         XCTAssertTrue(agentRows.count > 1 && !app.descendants(matching: .any)["more-agents"].exists, "every agent, nothing folded: \(agentRows.count)")
+        XCTAssertFalse(app.descendants(matching: .any)["agents-loading"].exists, "no skeleton once the coding agents are known")
         // Usage is in the account, from the menu.
         openMenu()
         tap("account")
@@ -813,10 +814,14 @@ final class HermeshUITests: XCTestCase {
 
     /// To the home screen and back, slowly and at once, a few times: each
     /// time the app is current again, and on the way it never says its Mac
-    /// can't be reached (it stayed online).
+    /// can't be reached (it stayed online), nor drops the coding agents the
+    /// overview showed while it reads the Mac again.
     func backAndForth() throws {
         let line = app.descendants(matching: .any)["sync-line"].firstMatch
         let unreachable = app.descendants(matching: .any)["unreachable"].firstMatch
+        let agentRows = app.descendants(matching: .any).matching(NSPredicate(format: "identifier BEGINSWITH 'coding-agent-'"))
+        let agents = agentRows.count
+        XCTAssertTrue(agents > 1, "the overview's coding agents: \(agents)")
         for away: UInt32 in [3, 0, 0, 3] {
             XCUIDevice.shared.press(.home)
             sleep(away)
@@ -825,6 +830,7 @@ final class HermeshUITests: XCTestCase {
             let deadline = Date().addingTimeInterval(30)
             repeat {
                 XCTAssertFalse(unreachable.exists, "the Mac shown unreachable on the way back")
+                XCTAssertEqual(agentRows.count, agents, "the coding agents held while the Mac is read again")
             } while line.exists && Date() < deadline
             XCTAssertFalse(line.exists, "current again")
             XCTAssertTrue(app.descendants(matching: .any)["machine-row-owner-mac"].exists)
