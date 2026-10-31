@@ -1,7 +1,10 @@
 import { SessionStatus } from "@hermesh/proto/session";
 import { app, autoUpdater, BrowserWindow, net, powerMonitor } from "electron";
+import { createHash, verify } from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
+import { Readable } from "node:stream";
+import { pipeline } from "node:stream/promises";
 import enNotes from "../locales/en/releases.json";
 import zhNotes from "../locales/zh-CN/releases.json";
 import { feedNotes, nextCheckDelay, nextUpdate, releaseCatalog, squirrelFailure, type ReleaseNote, type Update, type UpdateEvent, type UpdateInfo } from "../shared/update";
@@ -11,13 +14,21 @@ import { platform } from "./platform";
 import { showSigner, signerBusy, signerListeners } from "./signer";
 import { showUpdates } from "./windows";
 
-// Squirrel verifies the Developer ID signature and installs on quit. All checks
-// are quiet; opening the update window is always a deliberate user action.
+// Squirrel.Mac verifies the Developer ID signature and installs on quit. The
+// Windows app is unsigned: its feed is signed with the release key, and names
+// the package's hash; the app checks both, and Squirrel.Windows installs the
+// package from a folder of the app's beside the running version, which the
+// next start runs (docs/windows.md §6.2). All checks are quiet; opening the
+// update window is always a deliberate user action.
 declare const __HERMESH_UPDATE_FEED__: string;
 declare const __HERMESH_RELEASE_VERSION__: string;
-const feedURL = `${__HERMESH_UPDATE_FEED__ || "https://github.com/hermeshai/hermesh/releases/latest/download"}/RELEASES-darwin-${process.arch}.json`;
-// Squirrel.Mac only: the Microsoft Store updates the Windows app (docs/windows.md §6.2).
-const supported = app.isPackaged && platform.token === "mac";
+declare const __HERMESH_RELEASE_PUBKEY__: string;
+const feedURL = `${__HERMESH_UPDATE_FEED__ || "https://github.com/hermeshai/hermesh/releases/latest/download"}/RELEASES-${process.platform}-${process.arch}.json`;
+// The Windows app installed by its Setup.exe only (not development and test runs).
+const supported = app.isPackaged && (platform.token === "mac" || platform.installed);
+/** The Windows feed's package: where, its SHA-256, and Squirrel's RELEASES line for it. */
+type WindowsPackage = { url: string; sha256: string; releases: string };
+let windowsPackage: WindowsPackage | undefined;
 let update: Update = { state: supported ? "idle" : "unsupported" };
 export const updateListeners = new Set<() => void>();
 const bundled = releaseCatalog(enNotes, zhNotes, __HERMESH_RELEASE_VERSION__);
@@ -122,8 +133,11 @@ export function startUpdater() {
   });
   signerListeners.add(changed);
   if (!supported) return;
-  try { autoUpdater.setFeedURL({ url: feedURL, serverType: "json" }); }
-  catch (e) { console.warn("updates off:", e); update = { state: "unsupported" }; return; }
+  // Windows: set to the downloaded package's folder (startDownload).
+  if (platform.token === "mac") {
+    try { autoUpdater.setFeedURL({ url: feedURL, serverType: "json" }); }
+    catch (e) { console.warn("updates off:", e); update = { state: "unsupported" }; return; }
+  }
   autoUpdater.on("update-available", () => apply({ type: "download" }));
   autoUpdater.on("update-downloaded", (_e, _notes, name) => {
     prefs().failures = 0;
@@ -155,8 +169,11 @@ export async function check() {
   try {
     const res = await net.fetch(feedURL, { cache: "no-store", signal: AbortSignal.timeout(30_000) });
     if (!res.ok && res.status !== 404) throw new Error(`${feedURL}: HTTP ${res.status}`);
-    const feed = res.status === 404 ? { currentRelease: "" } : await res.json();
+    const body = res.status === 404 ? "" : await res.text();
+    if (body && platform.token === "win") await verifyFeed(body);
+    const feed = body ? JSON.parse(body) : { currentRelease: "" };
     if (typeof feed.currentRelease !== "string") throw new Error("Invalid update feed: currentRelease is missing");
+    if (platform.token === "win") windowsPackage = feed.package;
     const remoteNotes = feedNotes(feed.hermeshNotes);
     notes = [...remoteNotes, ...bundled.filter((n) => !remoteNotes.some((r) => r.version === n.version))];
     prefs().checkedAt = Date.now();
@@ -171,8 +188,48 @@ export async function check() {
   }
 }
 function startDownload() {
-  try { autoUpdater.checkForUpdates(); }
-  catch (e) { failed("download", e instanceof Error ? e.message : String(e)); }
+  const fail = (e: unknown) => failed("download", e instanceof Error ? e.message : String(e));
+  if (platform.token === "mac") {
+    try { autoUpdater.checkForUpdates(); }
+    catch (e) { fail(e); }
+    return;
+  }
+  void downloadPackage().then((dir) => {
+    autoUpdater.setFeedURL({ url: dir });
+    autoUpdater.checkForUpdates();
+  }).catch(fail);
+}
+
+/** The Windows feed, signed by the release key (.sig: openssl's DER signature), or an error. */
+async function verifyFeed(body: string) {
+  const res = await net.fetch(`${feedURL}.sig`, { cache: "no-store", signal: AbortSignal.timeout(30_000) });
+  if (!res.ok) throw new Error(`${feedURL}.sig: HTTP ${res.status}`);
+  if (!verify("sha256", Buffer.from(body), __HERMESH_RELEASE_PUBKEY__, Buffer.from(await res.arrayBuffer()))) {
+    throw new Error("The update feed is not signed by the release key");
+  }
+}
+
+/**
+ * Downloads the Windows feed's package into a folder of its own, with its
+ * RELEASES, as Squirrel reads an update from a folder; its hash must be
+ * the feed's.
+ */
+async function downloadPackage(): Promise<string> {
+  const p = windowsPackage;
+  const name = p?.releases.split(/\s+/)[1];
+  if (!p || !name || !/^[\w.-]+\.nupkg$/.test(name)) throw new Error("Invalid update feed: package is missing");
+  const dir = path.join(app.getPath("userData"), "update");
+  fs.rmSync(dir, { recursive: true, force: true });
+  fs.mkdirSync(dir, { recursive: true });
+  const res = await net.fetch(p.url, { cache: "no-store" });
+  if (!res.ok || !res.body) throw new Error(`${p.url}: HTTP ${res.status}`);
+  const hash = createHash("sha256");
+  const body = Readable.fromWeb(res.body as import("node:stream/web").ReadableStream);
+  body.on("data", (chunk: Buffer) => hash.update(chunk));
+  await pipeline(body, fs.createWriteStream(path.join(dir, name)));
+  if (hash.digest("hex") !== p.sha256) throw new Error(`${p.url}: not the package the feed names`);
+  fs.writeFileSync(path.join(dir, "RELEASES"), p.releases);
+  return dir;
 }
 export function download() {
   if (update.state !== "available") return;

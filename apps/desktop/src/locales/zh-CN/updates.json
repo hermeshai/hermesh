@@ -48,6 +48,7 @@
   "install": {
     "heading": "安装",
     "mac": "**在 Mac 上**，用来批准、也能跑编码 agent：Apple 芯片下载 `Hermesh-macos-arm64.dmg`，Intel 下载 `Hermesh-macos-x64.dmg`",
+    "windows": "**在 Windows 11 电脑上**，用来批准、也能跑编码 agent：下载 `Hermesh-windows-x64-setup.exe`，Arm 电脑下载 `Hermesh-windows-arm64-setup.exe`。安装包还没有签名，Windows 会先提示一次，点“更多信息 › 仍要运行”即可安装",
     "machine": "**在给编码 agent 用的机器上**（Linux 或 macOS）：`{{command}}`",
     "device": "**在只用来批准的 Linux 电脑上**：同一条命令，结尾改成 `sh -s -- --device`",
     "cli": "**给你的 agent 用的命令行**：同一条命令，结尾改成 `sh -s -- --cli`",

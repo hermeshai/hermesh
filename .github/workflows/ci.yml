@@ -121,26 +121,26 @@ jobs:
         run: go test ./e2e -run '^TestDesktop$' -count=1 -v -timeout 30m
       - name: package
         run: node apps/desktop/scripts/package-win.mjs
-      - name: install it and find its programs
+      - name: install it, open it, uninstall it
         shell: pwsh
+        run: apps/desktop/scripts/check-windows-setup.ps1 dist/Hermesh-windows-x64-setup.exe
+      # Two builds, the older updating to the newer from a feed signed with a key of the test's.
+      - name: update between two builds
+        shell: bash
         run: |
-          reg add "HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\AppModelUnlock" /t REG_DWORD /f /v AllowDevelopmentWithoutDevLicense /d 1
-          Add-AppxPackage -Register dist\Hermesh-windows-x64\AppxManifest.xml
-          $p = Get-AppxPackage Hermesh
-          $p | Format-List Name, Version, InstallLocation
-          # Aliases don't start in the runner's session (as winget's don't there): they exist, and the programs run.
-          foreach ($cli in 'hermesh', 'hermeshd') {
-            if (-not (Test-Path "$env:LOCALAPPDATA\Microsoft\WindowsApps\$cli.exe")) { throw "no $cli alias" }
-            & (Join-Path $p.InstallLocation "bin\$cli.exe") version
-            if ($LASTEXITCODE -ne 0) { throw "$cli" }
-          }
-          # Opened as people open it, the app starts its daemon, which serves its pipe.
-          Start-Process "shell:AppsFolder\$($p.PackageFamilyName)!Hermesh"
-          $pipe = "$env:LOCALAPPDATA\Hermesh\run\hermeshd.pipe"
-          for ($i = 0; $i -lt 60 -and -not (Test-Path $pipe); $i++) { Start-Sleep 1 }
-          Get-CimInstance Win32_Process | Where-Object { $_.Name -match '^(Hermesh|hermeshdw)\.exe$' } | Format-Table ProcessId, CommandLine -Wrap
-          if (-not (Test-Path $pipe)) { throw "the app started no daemon" }
+          openssl ecparam -name prime256v1 -genkey -noout -out "$RUNNER_TEMP/test.key"
+          openssl ec -in "$RUNNER_TEMP/test.key" -pubout -out "$RUNNER_TEMP/test.pub"
+          export HERMESH_UPDATE_FEED=http://127.0.0.1:8765 HERMESH_RELEASE_URL=http://127.0.0.1:8765
+          export HERMESH_RELEASE_PUBKEY_FILE="$RUNNER_TEMP/test.pub" RELEASE_SIGNING_KEY_FILE="$RUNNER_TEMP/test.key"
+          VERSION=0.0.1 HERMESH_DIST=dist/older node apps/desktop/scripts/package-win.mjs
+          VERSION=0.0.2 HERMESH_DIST=dist/newer node apps/desktop/scripts/package-win.mjs
+          pwsh -File apps/desktop/scripts/check-windows-update.ps1 dist/older/Hermesh-windows-x64-setup.exe dist/newer 0.0.2
+      # For Windows on Arm PCs and VMs (this runner can't run it).
+      - name: package for arm64
+        run: node apps/desktop/scripts/package-win.mjs
+        env:
+          HERMESH_ARCH: arm64
       - uses: actions/upload-artifact@v4
         with:
-          name: Hermesh-windows-x64
-          path: dist/Hermesh-windows-x64.msix
+          name: Hermesh-windows-setup
+          path: dist/Hermesh-windows-*-setup.exe

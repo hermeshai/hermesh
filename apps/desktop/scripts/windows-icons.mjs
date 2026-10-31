@@ -137,27 +137,9 @@ function ico(images) {
   return Buffer.concat([head, ...images.map((i) => i.png)]);
 }
 
-/**
- * Writes the package's logos into assets (Square44x44Logo and the others,
- * with the scale and target-size variants Windows picks from through
- * resources.pri) and the program's icon to icoPath.
- */
-export function windowsIcons(assets, icoPath) {
+/** Writes the program's icon (Hermesh.exe's, its shortcuts' and Setup.exe's) to icoPath. */
+export function windowsIcons(icoPath) {
   const mark = readPNG(fs.readFileSync(path.join(desktop, "build/AppIcon.icon/Assets/mark.png")));
   const icon = master(mark);
-  // Tiles: the square fills them, with the margin Windows expects of a tile's content.
-  const tile = master(mark, { margin: 0.2 });
-  fs.mkdirSync(assets, { recursive: true });
-  const write = (name, img, size) => fs.writeFileSync(path.join(assets, name), scaled(img, size));
-  for (const s of [100, 125, 150, 200, 400]) {
-    write(`Square44x44Logo.scale-${s}.png`, icon, Math.round(44 * s / 100));
-    write(`Square150x150Logo.scale-${s}.png`, tile, Math.round(150 * s / 100));
-    write(`StoreLogo.scale-${s}.png`, icon, Math.round(50 * s / 100));
-  }
-  for (const t of [16, 20, 24, 30, 32, 36, 40, 48, 60, 64, 72, 80, 96, 256]) {
-    write(`Square44x44Logo.targetsize-${t}.png`, icon, t);
-    write(`Square44x44Logo.targetsize-${t}_altform-unplated.png`, icon, t);
-    write(`Square44x44Logo.targetsize-${t}_altform-lightunplated.png`, icon, t);
-  }
   fs.writeFileSync(icoPath, ico([16, 24, 32, 48, 64, 128, 256].map((size) => ({ size, png: scaled(icon, size) }))));
 }

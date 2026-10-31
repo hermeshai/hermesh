@@ -2,7 +2,8 @@
 # Checks that a release's files are all there and right, before anyone can
 # install them: every program in the signed checksum list (signed by the
 # release key, each hash matching), the version, install.sh and install.ps1
-# with the key, and the Mac app with feeds naming this version's zip. The release
+# with the key, the Mac app with feeds naming this version's zip, and the
+# Windows app with signed feeds naming this version's package. The release
 # workflow runs it on the draft before publishing, and again on the
 # published files before promoting (docs/development.md, Releasing).
 #   scripts/release-check.sh <dir> <version, with or without v>
@@ -47,5 +48,17 @@ for arch in arm64 x64; do
   need "RELEASES-darwin-$arch.json"
   grep -q "\"currentRelease\": \"$VERSION\"" "$DIR/RELEASES-darwin-$arch.json" || fail "RELEASES-darwin-$arch.json is not for $VERSION"
   grep -q "/releases/download/v$VERSION/Hermesh-macos-$arch.zip\"" "$DIR/RELEASES-darwin-$arch.json" || fail "RELEASES-darwin-$arch.json names another zip"
+done
+need Hermesh.ico
+for arch in arm64 x64; do
+  need "Hermesh-windows-$arch-setup.exe"
+  need "Hermesh-windows-$arch.nupkg"
+  feed="$DIR/RELEASES-win32-$arch.json"
+  need "RELEASES-win32-$arch.json"
+  need "RELEASES-win32-$arch.json.sig"
+  openssl dgst -sha256 -verify "$PUB" -signature "$feed.sig" "$feed" >/dev/null 2>&1 || fail "RELEASES-win32-$arch.json is not signed by the release key"
+  grep -q "\"currentRelease\": \"$VERSION\"" "$feed" || fail "RELEASES-win32-$arch.json is not for $VERSION"
+  grep -q "/releases/download/v$VERSION/Hermesh-windows-$arch.nupkg\"" "$feed" || fail "RELEASES-win32-$arch.json names another package"
+  grep -q "\"sha256\": \"$($sum "$DIR/Hermesh-windows-$arch.nupkg" | cut -d' ' -f1)\"" "$feed" || fail "Hermesh-windows-$arch.nupkg is not the package RELEASES-win32-$arch.json names"
 done
 echo "✓ release v$VERSION is complete"

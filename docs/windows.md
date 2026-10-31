@@ -20,7 +20,7 @@ A Windows PC does what a Mac does, in three steps that are each useful alone:
 
 1. **One product.** One protocol, one UI codebase, one set of flows. Windows is a set of adapters, not a fork.
 2. **Named seams.** Everything that differs between operating systems sits behind a few named seams (§4, §5.1), each a Go package or a TypeScript module with one implementation per OS, chosen at build time (Go build tags) or once at start (Electron main). Code outside the seams does not branch on `runtime.GOOS` or `process.platform`.
-3. **Windows' own mechanisms.** Named pipes, job objects, the registry's environment, startup tasks, toasts, the window caption overlay. Hermesh itself needs no Git Bash, MSYS, Cygwin or WSL; no `sh -c`, no signals.
+3. **Windows' own mechanisms.** Named pipes, job objects, the registry's environment, logon tasks, toasts, the window caption overlay. Hermesh itself needs no Git Bash, MSYS, Cygwin or WSL; no `sh -c`, no signals.
 4. **Contract tests on every OS.** Each seam has one test suite that runs on macOS, Linux and Windows in CI. Windows joins CI before any Windows feature does, so Unix-only code cannot creep back.
 5. **Promise only what the OS enforces.** The trust boundary is stated per OS (§7.1). Where Windows enforces less than macOS, the product says so.
 6. **Stable paths for what others run.** Agents' hooks, terminals and scheduled tasks name programs by paths that survive updates.
@@ -33,7 +33,7 @@ The processes on a Windows PC that is both a machine and a trusted device:
  │ Hermesh.exe        window · tray · toasts    │         │ hermesh-signer.exe    │
  │   │ named pipe, this user only               │         │ in Program Files      │
  │   ▼                                          │  pipe   │ TPM key · panel ·     │
- │ hermeshd           startup task, supervised  │◀────────│ Windows Hello         │
+ │ hermeshd           logon task, supervised    │◀────────│ Windows Hello         │
  │   │ a job object per session                 │         └───────────────────────┘
  │   ▼                                          │
  │ claude · codex · ACP agents, and their tools │
@@ -79,10 +79,10 @@ One package, `internal/paths`, says where everything is; `cmd/hermeshd`, `intern
 | Local endpoints | `<data>/run/*.sock` (a short fallback in the temp folder) | same | named pipes whose names are in `<data>\run\*.pipe` (§4.2) |
 | CLI: agents' identity and state | `~/.config/hermesh` | same | `%LOCALAPPDATA%\Hermesh\cli` |
 | App profile | `<data>/desktop` | same | `<data>\desktop` |
-| Programs | `Hermesh.app/Contents/Helpers`, or `~/.local/bin` (`install.sh`) | `~/.local/bin` | the package's execution aliases (§6.1), or `%LOCALAPPDATA%\Programs\Hermesh\bin` (`install.ps1`) |
+| Programs | `Hermesh.app/Contents/Helpers`, or `~/.local/bin` (`install.sh`) | `~/.local/bin` | `%LOCALAPPDATA%\Programs\Hermesh\bin`, on PATH: the app copies its programs there (§6.1), as `install.ps1` downloads them |
 
 - **Local, never Roaming.** A domain profile copies Roaming AppData to the user's other PCs, and device keys must stay on one.
-- **One folder.** The CLI moves in too (today's code would pick `%USERPROFILE%\.config\hermesh`), so MSIX has a single folder to keep out of virtualization (§6.1), and erasing has a single folder to remove.
+- **One folder.** The CLI moves in too (today's code would pick `%USERPROFILE%\.config\hermesh`), so erasing has a single folder to remove.
 - On Windows, paths compare case-insensitively (projects, worktrees), and the worktrees Hermesh creates set `core.longpaths`.
 
 ### 4.2 Local endpoints
@@ -120,7 +120,7 @@ KillGroup(pgid int)            // end it gently, then for sure (also at recovery
 ### 4.4 The background service
 
 - **A windowless twin.** A console program started at logon opens a console window. So Windows has `hermeshd.exe` (console, every command) and `hermeshdw.exe` (the same code built with `-H windowsgui`, for `run` only), as Python has `python.exe` and `pythonw.exe`.
-- **Started at logon:** by the package's startup task when the app installed it (§6.1), or by a Task Scheduler logon task for this user when `install.ps1` did (`hermeshd service install`). Both are per user and need no administrator. The app also starts the daemon when it finds it not running (after an update), unless the owner switched its startup task off: then it says so and links to Settings › Apps › Startup, as the Mac app does for Login Items.
+- **Started at logon** by a Task Scheduler logon task of this user's, which needs no administrator: `hermeshd service install`, which `install.ps1` runs for a machine, and the app with `--owner` for its own daemon (the owner's, and the PC's machine). The app registers the task again whenever it finds the daemon not answering, so it takes over a machine that `install.ps1` set up.
 - **Kept running.** Task Scheduler's restart-on-failure does not cover a program that starts and later exits, so `hermeshdw run` supervises: it runs the daemon as its child in a kill-on-close job, and restarts it with backoff when it exits unexpectedly. That is what `KeepAlive` and `Restart=on-failure` do elsewhere.
 - **Stopped and restarted through the control endpoint**, since there is no SIGTERM: `hermeshd service restart`, and the app after an update, ask the daemon to exit with "restart", and the supervisor starts it again from the current program.
 - **Logoff and shutdown** reach a windowless program as window messages, not console events: `hermeshdw` keeps a message-only window and stops cleanly on `WM_ENDSESSION`.
@@ -165,11 +165,11 @@ KillGroup(pgid int)            // end it gently, then for sure (also at recovery
 
 | | macOS | Windows |
 |---|---|---|
-| Daemon | `SMAppService` agent; `launchctl kickstart` | The package's startup task, or the app when it isn't running (one supervisor per data folder); a restart ends the supervisor, whose job ends the daemon, and starts it again |
-| Open Hermesh at login | `mainAppService` | The user's Run value, through Electron's login item API: the package writes the real registry, and Startup apps lists and switches it. (Reading the package's own startup task through PowerShell's WinRT left the switch waiting on a real PC.) |
+| Daemon | `SMAppService` agent; `launchctl kickstart` | The logon task, which the app registers (`hermeshd service install --owner`); a restart ends the task, whose supervisor's job ends the daemon, and runs it again |
+| Open Hermesh at login | `mainAppService` | The user's Run value, through Electron's login item API, naming the Hermesh.exe above the versions; Startup apps lists and switches it |
 | Signer | `Hermesh Signer.app`, the app's child | A protected system component, not the app's child (§7.3); set up before the first root key (`readySigner`) |
-| Updates | Squirrel.Mac | MSIX, through the same `autoUpdater` and the same JSON feed (§6.2) |
-| First launch | Move to Applications | Nothing: the package is installed |
+| Updates | Squirrel.Mac | Squirrel.Windows, through the same `autoUpdater`, from a signed feed (§6.2) |
+| First launch | Move to Applications | Nothing: Setup.exe installed it; the installer's events (install, update, uninstall) start the app to set itself up and quit |
 | Login commands (`codex login`) | A `.command` file in Terminal | A Windows Terminal tab (`wt.exe`), else PowerShell; a command table per OS, still chosen by key |
 | System links | Activity Monitor; Login Items | Task Manager; `ms-settings:startupapps` |
 | Computer name | `scutil --get ComputerName` | `os.hostname()`, the device name |
@@ -182,8 +182,8 @@ KillGroup(pgid int)            // end it gently, then for sure (also at recovery
 - **Menus.** Windows has no menu bar at the top of the screen, and the caption overlay leaves no room for one in the window. The command list in `menu.ts` stays the one source: on Windows it becomes the window's hidden menu (its accelerators keep working) and a menu button at the top of the sidebar. Context menus stay native.
 - **Shortcut labels** come from the accelerators (`CmdOrCtrl+K` → `⌘K` or `Ctrl+K`; `src/shared/keys.ts`), not from `⌘` written in the renderer. The two that differ get Windows keys of their own: the sidebar Ctrl+B, the info panel Ctrl+Shift+I (never Ctrl+Alt, which is AltGr on many keyboards).
 - **Notification area.** An icon in light and dark versions, for the taskbar's theme. A left click opens the panel above it, a right click a native menu. Closing the last window keeps Hermesh there, since notifications come from main; today, off macOS, it quits.
-- **Notifications** are toasts, as the Mac's notifications are, under the package's identity; a click opens what it tells of while the app runs (it stays in the notification area). Buttons and replies (Electron 41 and later) can come to both.
-- **Deep links** come from the package's `hermesh:` protocol declaration, through `second-instance` as today.
+- **Notifications** are toasts, as the Mac's notifications are, under the app's AppUserModelID (`com.hermesh.app`, its Start menu shortcut's); a click opens what it tells of while the app runs (it stays in the notification area). Buttons and replies (Electron 41 and later) can come to both.
+- **Deep links:** the app registers `hermesh:` for the user, naming the Hermesh.exe above the versions, and links come through `second-instance` as today.
 
 ### 5.3 Words
 
@@ -195,45 +195,48 @@ The app shows paths of machines of every OS, so it reads each by that machine's 
 
 ## 6. Packaging, updates and signing
 
-### 6.1 MSIX
+### 6.1 Setup.exe
 
-The app ships as an MSIX package, installed per user without an administrator.
+The app ships as a per-user Squirrel.Windows installer, `Hermesh-windows-<arch>-setup.exe`, from the GitHub release (and the website, which links there). It needs no administrator, and no signature (§6.4): Windows warns once, through SmartScreen, before it runs. (The plan was an MSIX package through the Microsoft Store, which would have signed it; the owner chose to distribute it themselves, and an MSIX package installs only when signed.)
 
-Why MSIX:
+Setup.exe installs into `%LOCALAPPDATA%\HermeshApp` (Squirrel removes that folder on uninstall, so it isn't `Hermesh`, the data folder): a folder per version, and above them `Hermesh.exe`, which starts the newest, and `Update.exe`, which installs updates and uninstalls. Squirrel starts the app with an event, before anything else, for it to set itself up and quit (`installerEvent`, `platform/win.ts`):
 
-- **Files no program of the user can change.** A package's files live where only Windows writes. For an app that guards trust that matters: no program of the user can replace hermeshd, or the signer the app installs (§7.3).
-- **Declared, not scripted:** the daemon's startup task at logon, which the owner can turn off in Settings, as Login Items on a Mac; execution aliases (`hermesh.exe` and `hermeshd.exe` on PATH at a stable path, for hooks and terminals); the `hermesh:` protocol; the toast activator.
-- **A clean uninstall.** Windows removes the files, startup tasks and aliases, and stops the package's processes. The data folder stays, as it does when a Mac app goes to the Trash.
-- **Signed for free.** A package installs only when signed, and the Microsoft Store, whose registration is free, signs what it distributes (§6.4). Should a signed download from GitHub come later, Electron's `autoUpdater` installs MSIX updates too (since Electron 41, backported to 39.5 and 40.2), from the same JSON feed as Squirrel.Mac.
+| Event | The app |
+|---|---|
+| Install | A Start menu shortcut at the top of All apps (with the app's AppUserModelID, for toasts); `%LOCALAPPDATA%\Programs\Hermesh\bin` on the user's PATH |
+| Updated | That folder on PATH, still |
+| Uninstall | Ends its running copies (Squirrel ends none, and their files could not go), removes hermeshd's logon task (`hermeshd service uninstall`), the shortcut, the PATH entry, the `hermesh:` link, Open at login and the programs' folder. The data folder stays, as a Mac app's does, and so does the signer in Program Files, which only an administrator removes |
 
-Package context, handled:
+What these do goes to `<data>\logs\setup.log`, where nobody sees the app's output. Each start, the app then:
 
-1. **No private copies.** The package turns write virtualization off for files and the registry (`desktop6`, with the `unvirtualizedResources` capability): the data folder is the real one, which the CLI and programs outside the package see.
-2. **Agents write where they would anyway.** With no virtualization, what they install and change lands in the real AppData and registry, so they need not break away from the package (`PROC_THREAD_ATTRIBUTE_DESKTOP_APP_POLICY` stays the fallback should the Store refuse the capability).
-3. **hermeshd and the CLI stay in the package.** hermeshd is stopped and replaced with it. The CLI, started through its alias, writes only into the data folder and into the agents' own settings under the user's profile, neither of them virtualized.
+- **Places its programs where they stay.** Each version has a folder of its own, but hooks, terminals and the logon task name programs by paths that survive updates (§2, principle 6). So the app copies `hermeshd.exe`, `hermeshdw.exe` and `hermesh.exe` into `%LOCALAPPDATA%\Programs\Hermesh\bin`, the folder `install.ps1` uses, unless they are there already; a running program moves aside first, as `install.ps1` does (§6.3).
+- **Registers `hermesh:`** for the user, naming the `Hermesh.exe` above the versions.
+- **Runs hermeshd** from the logon task, registering it again (`hermeshd service install --owner`) when the daemon doesn't answer.
 
 ```
-Hermesh.exe, resources\app.asar    Electron: main, preload and the page
-bin\hermeshd.exe                   console, every command; alias hermeshd
-bin\hermeshdw.exe                  windowless; the daemon's startup task
-bin\hermesh.exe                    the agents' CLI; alias hermesh
-bin\hermesh-signer.exe             copied into Program Files when this PC becomes a trusted device (§7.3)
+%LOCALAPPDATA%\HermeshApp\
+  Hermesh.exe, Update.exe                  start the newest version; update and uninstall
+  app-<version>\Hermesh.exe, resources\    Electron: main, preload and the page
+  app-<version>\bin\hermeshd.exe, hermeshdw.exe, hermesh.exe
+  app-<version>\bin\hermesh-signer.exe     copied into Program Files when this PC becomes a trusted device (§7.3)
+%LOCALAPPDATA%\Programs\Hermesh\bin\       hermeshd.exe, hermeshdw.exe (the logon task), hermesh.exe: on PATH
 ```
 
-If spike S1 fails, the fallback is a per-user Squirrel.Windows installer: it installs unsigned (after SmartScreen's warning), Electron's `autoUpdater` speaks it too, and its folder per version suits a daemon that keeps running while the app updates.
+What MSIX would have given and Setup.exe doesn't: files that no program of the user can change (here a program running as the user can replace the app's files, as it can replace the CLI that `install.sh` installs; §7.4), and declarations instead of the steps above.
 
 ### 6.2 Updates
 
-- The app comes from the Microsoft Store (§6.4), and the Store updates it.
-- The rules of desktop-app.md §6.5 still hold where the app has a say: never a restart under the owner. Windows registers a new version once the package's processes have exited, and hermeshd is one of them, so an update must wait under the Mac's guard: while an approval is pending, or a session on this PC is queued, preparing, running or waiting for an answer. S1 checks whether the Store waits for the package's processes or ends them, and whether the app can hold an update until the guard allows it (`StoreContext`). If the Store ends them, hermeshd moves out of the package: the app keeps a copy in `%LOCALAPPDATA%\Hermesh\bin` under the logon task that `install.ps1` uses (§6.3), and restarts it under the guard.
-- A package installed from GitHub would need a signature (§6.4). It would update through Electron's MSIX updater, from `RELEASES-win32-<arch>.json` shaped like the darwin feed; `src/shared/update.ts` stays independent of the engine for that.
+- **A signed feed.** Squirrel.Mac checks the app's Developer ID signature; the Windows app has none. So each architecture's feed, `RELEASES-win32-<arch>.json`, is signed with the release key, which signs the checksum list too (`.sig`, openssl's DER signature), and the app carries the public key (a build-time constant, as the feed's address is). The feed names this version (`currentRelease`), its highlights (`hermeshNotes`, as the darwin feed has them) and its package: the `.nupkg`'s address, its SHA-256 and Squirrel's `RELEASES` line for it.
+- **Downloaded by the app.** The app reads the feed as on the Mac, checks its signature, downloads the package into `<data>\desktop\update`, checks its hash, writes the `RELEASES` line beside it, and points `autoUpdater` (Squirrel.Windows) at that folder. Squirrel installs the version beside the running one, at once; the app runs it from its next start, as Restart to Update does under the Mac's guard (desktop-app.md §6.5): never a restart under the owner.
+- **hermeshd after an update.** The new version places its programs (§6.1); hermeshd keeps running the old ones, which moved aside, until the app restarts it as on the Mac: once no approval is pending and no session on this PC is queued, preparing, running or waiting for an answer.
+- **Tested end to end** (`check-windows-update.ps1`, in CI): an older build, installed from its Setup.exe, finds, downloads and installs a newer one from a feed signed with a key of the test's, and opened again runs it, with hermeshd restarted on the new programs.
 
 ### 6.3 Programs without the app
 
 - Release assets add `hermeshd`, `hermeshdw` and `hermesh` for `windows-amd64` and `windows-arm64` (`.exe`), in the signed checksum list.
 - `install.ps1` (Windows PowerShell 5.1) mirrors `install.sh`: a machine by default, `-Cli`, `-Device`. It installs into `%LOCALAPPDATA%\Programs\Hermesh\bin`, adds that folder to the user's PATH, checks the signed checksum list (ECDSA, through .NET), registers the logon task, then runs `hermeshd pair`.
 - Updating while the daemon runs: rename the running program aside (Windows allows it), write the new one, restart the daemon, delete the old file later.
-- One PC, one daemon: the installer refuses machine mode where the app's daemon is registered, and the app offers to take over a daemon that `install.ps1` set up.
+- One PC, one daemon: the installer refuses machine mode where the app's daemon is registered, and the app takes over a daemon that `install.ps1` set up (it registers the logon task again, with `--owner`).
 
 ### 6.4 Code signing
 
@@ -242,7 +245,7 @@ The owner's decision (§12, decision 3): Hermesh's Windows programs are released
 - **Unsigned programs run.** Downloaded through a browser, a program first meets SmartScreen's "Windows protected your PC", where More info, then Run anyway, starts it. `install.ps1` downloads with PowerShell, which should leave no such mark (S6).
 - **Smart App Control**, on where Windows 11 turned it on after a fresh install, blocks unsigned programs outright; its owner has to turn it off. Defender is also quicker to suspect new, unsigned Go programs.
 - **The protected signer's** one UAC prompt says "Unknown publisher".
-- **An MSIX package installs only when signed.** So the app goes through the Microsoft Store, which signs what it distributes, for free, and whose installs skip SmartScreen.
+- **The app's Setup.exe** meets SmartScreen the same way, once; its updates don't (the app downloads them itself), and they are checked against the signed feed (§6.2).
 - **Later, without changing anything else:** SignPath Foundation (free for open-source projects) or a certificate, if warnings or Smart App Control keep people out.
 
 What signing would take, checked 2026-10-30:
@@ -260,10 +263,10 @@ What signing would take, checked 2026-10-30:
 
 ### 6.5 Build and CI
 
-- `package-win.mjs` builds the package's files on any system (the page, main, Go for the target, the fuses the Mac has) and, on Windows with its SDK, the `.msix`; `windows-icons.mjs` draws the logos and the program's icon from the Mac icon's mark. `build-app.mjs` stays the Mac's.
+- `package-win.mjs` builds the app's files on any system (the page, main, Go for the target, the fuses the Mac has) and, on Windows, Setup.exe, the update's package and its feed, signed when given the release key (electron-winstaller); `windows-icons.mjs` draws the program's icon from the Mac icon's mark. `build-app.mjs` stays the Mac's.
 - The Go programs carry version resources and the icon: Task Manager, Startup apps and Defender show them.
-- `ci.yml`: `windows` runs the Go unit tests, `TestWindowsInstall` and `TestWindowsSigner`; `windows-e2e` the whole Go suite; `windows-app` the desktop spec for Windows, then packs the app, installs it in Developer Mode and runs its aliases. First of all (W0) came a compile check, `GOOS=windows go vet ./...`.
-- `release.yml`: a Windows job per architecture builds the package, installs it on the runner (signed with a test certificate trusted there only), runs the packaged smoke test, and submits the package to the Store.
+- `ci.yml`: `windows` runs the Go unit tests, `TestWindowsInstall` and `TestWindowsSigner`; `windows-e2e` the whole Go suite; `windows-app` the desktop spec for Windows, then makes Setup.exe and installs, opens and uninstalls it (`check-windows-setup.ps1`), updates between two builds (`check-windows-update.ps1`), and makes the arm64 Setup.exe for Arm PCs and VMs. First of all (W0) came a compile check, `GOOS=windows go vet ./...`.
+- `release.yml`: a Windows job per architecture makes Setup.exe, the package and the feed, signed with the release key; on x64 it installs, opens and uninstalls the app; it uploads them, with the icon Installed apps shows (`Hermesh.ico`). `release-check.sh` checks the feeds' signatures, versions and packages' hashes.
 
 ## 7. A trusted device on Windows
 
@@ -304,6 +307,7 @@ Standard (non-administrator) accounts get no protected signer; their trusted dev
 | Attack | Result | Why |
 |---|---|---|
 | A coding agent on this PC, not elevated | Can ask; cannot sign or change the panel | The key and the signer are at high integrity |
+| A program running as the owner before the signer is set up or updated | Can swap the app's copy of the signer, which the owner's one UAC prompt then installs | The app's files are the user's (Setup.exe, §6.1; MSIX's would not have been); once signed (§6.4), the elevated setup can check the signer's publisher |
 | A coding agent that elevates without consent (a UAC bypass) | Can sign as the owner while elevated | UAC is not a formal boundary; Administrator protection makes it harder; removing this device from another one ends it |
 | Malware running as administrator | The same | An administrator owns the PC |
 | Another, non-administrator user of the PC | Nothing | The key, the pipes and the data folder admit only this user |
@@ -325,7 +329,7 @@ Every phase ends with its tests green, end-to-end tests included (AGENTS.md §4)
 |---|---|---|
 | W0. Seams (built) | `internal/paths` and `internal/localipc`, holding today's Unix code, with their contract tests; the process, health, lock and hook code split by OS; Windows files that compile and report "not supported yet"; `GOOS=windows go vet ./...` in `make lint` | Every current test passes; the Windows vet passes in CI |
 | W1. A Windows machine (built) | The Windows halves of the seams; agents on Windows (locations, shims, hooks); health; `fakeacp` for Windows; `.exe` release assets; `install.ps1`; Windows in hermeshd.md; the Go suite on `windows-latest` | On a clean Windows 11, `install.ps1` pairs from the iPhone, and Claude Code and Codex sessions start, answer, interrupt, show diffs and archive; `make e2e` passes on `windows-latest`; `make e2e-real` passes on a Windows 11 VM |
-| W2. The app (built; §14) | `platform/win.ts`; window, tray, notifications, menus, shortcut labels, words, paths; MSIX, feed, signing, release job; the desktop e2e suite on Windows. The first run joins as a machine only, approved from another trusted device | `TestDesktop` passes on `windows-latest`; the packaged test installs the signed package and finds the daemon, the aliases and the protocol; an update between two signed builds works |
+| W2. The app (built; §14) | `platform/win.ts`; window, tray, notifications, menus, shortcut labels, words, paths; Setup.exe, signed feed, release job; the desktop e2e suite on Windows. The first run joins as a machine only, approved from another trusted device | `TestDesktop` passes on `windows-latest`; the packaged test installs the signed package and finds the daemon, the aliases and the protocol; an update between two signed builds works |
 | W3. A trusted device (built; §14) | Preview vectors; `internal/signer`; `hermesh-signer.exe` and its protected setup; the TPM key; Windows Hello; signer status and show through the daemon; the refusals of §7.3 | Approve, renew, add device, remove device and join pass e2e on Windows with the test signer; a medium-integrity program can neither open the key nor touch the signer; a checklist with real Windows Hello hardware passes |
 | Later | WSL distributions as machines from the app; machines that run with nobody logged on; a Linux desktop app on the same seams and signer core | Per their own plans |
 
@@ -337,7 +341,7 @@ Each answers yes before the phase that needs it, or this document changes.
 
 | Spike | Questions | Before |
 |---|---|---|
-| S1. MSIX | The daemon's startup task at logon; aliases on PATH; the protocol; toast buttons while the app is quit; Store updates: whether they wait for the package's processes or end them, and whether the app can hold one (`StoreContext`); the Store's review of a package with startup tasks, aliases and full trust; the data folder's exclusion, seen from a program outside the package; agents breaking away from it. Fallback: Squirrel.Windows | W2 |
+| S1. MSIX (dropped with the Store, §6.1) | The daemon's startup task at logon; aliases on PATH; the protocol; toast buttons while the app is quit; Store updates: whether they wait for the package's processes or end them, and whether the app can hold one (`StoreContext`); the Store's review of a package with startup tasks, aliases and full trust; the data folder's exclusion, seen from a program outside the package; agents breaking away from it. Fallback: Squirrel.Windows | W2 |
 | S2. Pipes | Electron main ↔ hermeshd over a pipe: unary calls, `Watch`, cancellation; another local user refused; the name file across daemon restarts | W1 |
 | S3. Jobs | Creating a process with the job and handle lists from Go; a whole tree (Claude Code → PowerShell or bash → node → its children) ends on Stop and when hermeshd dies; inside the package; with Codex's own sandbox processes | W1 |
 | S4. Agents | Claude Code, native, with and without Git Bash, in stream-json; which shell runs hooks for Claude Code and for Codex, and a user name with a space; Claude Code's inbox on Windows; Codex's app-server and sandbox under our job; where the Codex app keeps its CLI | W1 |
@@ -353,8 +357,8 @@ Each answers yes before the phase that needs it, or this document changes.
 | Real agents | `make e2e-real` on a Windows 11 VM: Claude Code, with and without Git Bash, and Codex |
 | Desktop end-to-end | Playwright drives the app on `windows-latest`, in Chinese as on the Mac; a test-only language switch stands in for `-AppleLanguages` |
 | Install | `TestWindowsInstall`: `install.ps1` as a fresh user pairs and runs a session; run again, it updates while the daemon runs |
-| Packaged | Installs the package (test-signed on the runner); checks the aliases, the startup task, the protocol and the pipe's security; launches; uninstalls |
-| Updates | Two builds, the newer installed over the older while a session runs: the update waits for the guard, and the daemon comes back on the new version |
+| Packaged | `check-windows-setup.ps1`: installs from Setup.exe; checks the shortcut, PATH, the programs, the logon task and the protocol; opens the app, which starts its daemon; uninstalls, and checks what went and that the data folder stays |
+| Updates | `check-windows-update.ps1`: two builds, the older finding, checking and installing the newer from a signed feed; opened again, the app is the newer one, and the daemon comes back on its programs |
 | Signer | The test signer (a software key) in every e2e test; security tests: a medium-integrity program cannot use the key or touch the signer; a checklist with real Windows Hello hardware for each release |
 
 ## 12. Decisions
@@ -364,7 +368,7 @@ Taken by the owner on 2026-10-30: function first, and as much security as Window
 | # | Decision | Decided |
 |---|---|---|
 | 1 | Which Windows | Windows 11 22H2 or later, x64 and arm64, for the app and the trusted device; machines also on Windows 10 22H2 and Server 2019 or later, best effort |
-| 2 | Packaging | MSIX, through the Microsoft Store, which signs it (§6.1, §6.4); a per-user Squirrel.Windows installer if S1 fails |
+| 2 | Packaging | A per-user Squirrel.Windows Setup.exe, unsigned, from GitHub and the website, updated from a feed signed with the release key (§6.1, §6.2); decided 2026-10-31, in place of MSIX through the Microsoft Store |
 | 3 | Signing | None: open-source releases, unsigned like the Linux binaries and checked through the signed checksum list; SignPath or a certificate later if warnings keep people out |
 | 4 | The trusted device | The protected signer on administrator accounts, with coding agents allowed on the same PC; the risk that remains (§7.4) is each owner's to accept; standard accounts approve from another device |
 | 5 | WSL | Distributions are Linux machines; the app's "Add as a machine" later |
@@ -374,10 +378,9 @@ Taken by the owner on 2026-10-30: function first, and as much security as Window
 
 | Cost or risk | Mitigation |
 |---|---|
-| MSIX's package context surprises a daemon and its agents | S1 before W2; agents break away; the data folder stays real; the Squirrel fallback |
 | Agents' Windows support moves fast (Codex still called its own experimental in 2026) | Locations as data; real-agent tests on a VM before each release |
 | UAC is not a formal security boundary | Said in §7; refused with UAC off; Administrator protection recommended; a device removed elsewhere stops signing |
-| Unsigned programs meet SmartScreen and Smart App Control | The Store for the app; SignPath or a certificate later, without other changes |
+| Unsigned programs meet SmartScreen and Smart App Control | Said where the app is downloaded (the release's text); updates come through the app, past SmartScreen; SignPath or a certificate later, without other changes |
 | Defender and SmartScreen distrust new Go programs | Signing; version resources; reporting false positives to Microsoft |
 | Antivirus scanning slows worktrees and builds | Worktrees on a Dev Drive, later |
 | Mac-first work breaks Windows | Windows in CI from W0; a contract suite per seam |
@@ -386,23 +389,22 @@ Taken by the owner on 2026-10-30: function first, and as much security as Window
 
 ## 14. Built, then checked on a real PC
 
-All of W0 to W3 is built (2026-10-30). CI checks on `windows-latest` what it can: the Go suite, `install.ps1`, the signer over its pipe with a test key, the desktop spec for Windows against the real daemon, and the package's manifest (MakeAppx). What only a real PC shows, checked in one pass:
+All of W0 to W3 is built (2026-10-30). CI checks on `windows-latest` what it can: the Go suite, `install.ps1`, the signer over its pipe with a test key, the desktop spec for Windows against the real daemon, and the app installed, opened, updated and uninstalled from its Setup.exe. What only a real PC shows, checked in one pass:
 
 | Check | How |
 |---|---|
-| The app installed from its package | Developer Mode, `Add-AppxPackage -Register <files>\AppxManifest.xml`: Start lists Hermesh, `hermesh` and `hermeshd` run from any terminal, a `hermesh:` link opens the app |
-| The daemon at logon | Sign out and in: the startup task starts hermeshd; Startup apps lists "Hermesh background service", and "Hermesh" once Open Hermesh at login is on |
+| The app installed from its Setup.exe | Downloaded through a browser: SmartScreen's warning, once; Start lists Hermesh, `hermesh` and `hermeshd` run from a new terminal, a `hermesh:` link opens the app |
+| The daemon at logon | Sign out and in: the logon task starts hermeshd; Startup apps lists "Hermesh" once Open Hermesh at login is on |
 | The window | Caption buttons over the top band, the menu button, Ctrl shortcuts, the words of a PC, light and dark |
 | The notification area | The icon in the taskbar's colours, the panel above it, the right-click menu; closing the window keeps the app |
 | Joining as a machine only | Approved from the iPhone or a Mac; sessions run from there |
 | The protected signer (S5) | Make this PC a trusted device: one UAC prompt, the task under Task Scheduler, the TPM key; approve a pairing with the panel and Windows Hello; a program not elevated cannot sign (it has no PIN) nor click the panel |
 | The refusals | A standard account, User Account Control off, Windows Hello not set up |
 
-Checked on a Windows 11 arm64 VM (2026-10-31): the app from its package, its window and its start; the signer's setup with one UAC prompt, the TPM key, the panel and Windows Hello, and the refusal without Windows Hello; joining as a trusted device, being removed, and joining as a machine only. Not yet: a standard account, User Account Control off, a program not elevated trying the key and the panel, and a `hermesh:` link.
+Checked on a Windows 11 arm64 VM (2026-10-31), with the MSIX package of then: the app from its package, its window and its start; the signer's setup with one UAC prompt, the TPM key, the panel and Windows Hello, and the refusal without Windows Hello; joining as a trusted device, being removed, and joining as a machine only. Not yet: a standard account, User Account Control off, a program not elevated trying the key and the panel, a `hermesh:` link, and everything about Setup.exe on a real PC.
 
 Left for later, each its own change:
 
-- The Microsoft Store: the reserved name and publisher, the review of the restricted capabilities, and updates (S1, §6.2).
 - Preview vectors shared by the Go and Swift signers (desktop-app.md §5.6).
 - Settings saying that elevation needs no consent here ("Never notify") and recommending Administrator protection.
 - The rest of the desktop suite on Windows (its specs read the Mac's words and menus).
