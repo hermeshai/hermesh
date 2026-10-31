@@ -112,7 +112,8 @@ func (p *Provider) Discover(ctx context.Context) provider.Info {
 	info.Binary = bin
 	ctx, cancel := context.WithTimeout(ctx, 20*time.Second)
 	defer cancel()
-	out, problem, detail := provider.Probe(ctx, append(provider.ProbeEnv(p.PathEnv), env...), bin, append(pre, "--version")...)
+	env = append(provider.ProbeEnv(p.PathEnv), env...)
+	out, problem, detail := provider.Probe(ctx, env, bin, append(pre, "--version")...)
 	if problem != provider.ProblemNone {
 		info.Problem, info.Detail = problem, detail
 		return info
@@ -122,6 +123,9 @@ func (p *Provider) Discover(ctx context.Context) provider.Info {
 	// ACP has no way to ask for the login state before a session; a
 	// missing login fails the session with the agent's own message.
 	info.LoggedIn = true
+	if p.Name() == "antigravity" {
+		info.LoggedIn = antigravityConfigured(env)
+	}
 	return info
 }
 
@@ -154,6 +158,9 @@ func (p *Provider) Start(ctx context.Context, spec provider.StartSpec) (provider
 	go s.read()
 	fail := func(err error) (provider.Session, error) {
 		proc.Stop(time.Second)
+		if p.Name() == "antigravity" && provider.FailureOf(err, sessionv1.FailureKind_FAILURE_KIND_UNKNOWN).Kind == sessionv1.FailureKind_FAILURE_KIND_AUTH {
+			err = provider.Fail(sessionv1.FailureKind_FAILURE_KIND_AUTH, err.Error()+"; run `hermesh agent login antigravity` on this machine to sign in")
+		}
 		return nil, fmt.Errorf("%s: %w", p.Name(), err)
 	}
 	// No limit of its own: node-based agents can take a while to boot and
@@ -234,6 +241,13 @@ func (p *Provider) Start(ctx context.Context, spec provider.StartSpec) (provider
 		s.sessionID = spec.ResumeRef
 	default:
 		return fail(provider.Fail(sessionv1.FailureKind_FAILURE_KIND_RESUME_REJECTED, "the agent cannot resume sessions"))
+	}
+	if p.Name() == "antigravity" {
+		// A saved auto-edit/YOLO mode must not bypass Hermesh's gate, including
+		// when resuming a session whose mode was changed in another client.
+		if _, err := s.call(ctx, "session/set_mode", map[string]any{"sessionId": s.sessionID, "modeId": "default"}); err != nil {
+			return fail(fmt.Errorf("set permission mode: %w", err))
+		}
 	}
 	s.emit(provider.Event{Kind: provider.EventRef, Ref: s.sessionID})
 	if spec.Model != "" {
@@ -889,11 +903,17 @@ func rawText(raw json.RawMessage) string {
 		return str
 	}
 	var o struct {
-		Output string `json:"output"`
-		Stdout string `json:"stdout"`
+		Output         string `json:"output"`
+		Stdout         string `json:"stdout"`
+		CombinedOutput string `json:"combinedOutput"` // Antigravity terminal result
 	}
-	if json.Unmarshal(raw, &o) == nil && o.Output+o.Stdout != "" {
-		return o.Output + o.Stdout
+	if json.Unmarshal(raw, &o) == nil {
+		if o.Output+o.Stdout != "" {
+			return o.Output + o.Stdout
+		}
+		if o.CombinedOutput != "" {
+			return o.CombinedOutput
+		}
 	}
 	return string(raw)
 }
@@ -980,10 +1000,15 @@ func Classify(tc toolCall) provider.ToolAction {
 
 func command(raw json.RawMessage) string {
 	var in struct {
-		Command json.RawMessage `json:"command"`
+		Command     json.RawMessage `json:"command"`
+		CommandLine string          `json:"CommandLine"`  // Antigravity permission request
+		ShellLine   string          `json:"command_line"` // Antigravity tool update
 	}
-	if json.Unmarshal(raw, &in) != nil || len(in.Command) == 0 {
+	if json.Unmarshal(raw, &in) != nil {
 		return ""
+	}
+	if len(in.Command) == 0 {
+		return firstNonEmpty(in.CommandLine, in.ShellLine)
 	}
 	var str string
 	if json.Unmarshal(in.Command, &str) == nil {

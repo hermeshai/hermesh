@@ -1,6 +1,8 @@
 {
   "unreleased": {
-    "improvements": [],
+    "improvements": [
+      "Use Google Antigravity through its official ACP server: sign in with `hermesh agent login antigravity`, select it for projects and grants, and run multi-turn sessions with tool approvals and resume."
+    ],
     "fixes": []
   },
   "0.1.1": {

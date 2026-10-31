@@ -27,7 +27,7 @@ export type TrayView = { state: "ok" | "down" | "setup" | "daemon"; online: numb
 export type TrayAction = "attention" | "running" | "open" | "settings" | "quit" | "install";
 
 /** Fixed commands the page may ask to run in Terminal (by key, never by text). */
-export type TerminalCommand = "codexLogin" | "claudeLogin";
+export type TerminalCommand = "codexLogin" | "claudeLogin" | "antigravityLogin";
 
 export type Bridge = {
   platform: string;

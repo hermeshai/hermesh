@@ -664,8 +664,9 @@ func providers() map[string]provider.Provider {
 
 // installPages are where the coding agents Hermesh checks are installed from.
 var installPages = map[string]string{
-	"claude": "https://github.com/anthropics/claude-code",
-	"codex":  "https://github.com/openai/codex",
+	"claude":      "https://github.com/anthropics/claude-code",
+	"codex":       "https://github.com/openai/codex",
+	"antigravity": "https://github.com/agentclientprotocol/registry/blob/main/antigravity-acp/agent.json",
 }
 
 func report(name string, i provider.Info) bool {
@@ -674,7 +675,11 @@ func report(name string, i provider.Info) bool {
 		fmt.Printf("  %-10s not installed: %s\n", name, installPages[name])
 		return false
 	case !i.LoggedIn:
-		fmt.Printf("  %-10s %s, NOT SIGNED IN → run `%s` once as this user (on a server it prints a link to open on any device)\n", name, i.Version, name)
+		command := name
+		if name == "antigravity" {
+			command = "hermesh agent login antigravity"
+		}
+		fmt.Printf("  %-10s %s, NOT SIGNED IN → run `%s` once as this user (on a server it prints a link to open on any device)\n", name, i.Version, command)
 		return false
 	default:
 		fmt.Printf("  %-10s %s, signed in\n", name, i.Version)

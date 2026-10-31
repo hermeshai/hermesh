@@ -46,6 +46,7 @@ export function command(c: Command) {
 const terminalCommands: Record<TerminalCommand, string> = {
   codexLogin: "codex login",
   claudeLogin: "claude",
+  antigravityLogin: "hermesh agent login antigravity",
 };
 
 export function registerIPC() {

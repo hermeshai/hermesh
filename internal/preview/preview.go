@@ -318,6 +318,8 @@ func agentTitle(id string) string {
 		return "Codex"
 	case "gemini":
 		return "Gemini CLI"
+	case "antigravity":
+		return "Antigravity"
 	case "cursor":
 		return "Cursor"
 	case "copilot":
