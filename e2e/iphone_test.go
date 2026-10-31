@@ -432,6 +432,23 @@ func newIPhoneControl(t *testing.T, w *ownerMac, sessions map[string]string) str
 		mu.Unlock()
 		reply(rw, map[string]string{"id": s.SessionID})
 	})
+	// A finished session much taller than the screen, its last words "这是最后一段".
+	mux.HandleFunc("POST /long", func(rw http.ResponseWriter, r *http.Request) {
+		title := r.URL.Query().Get("title")
+		var lines []string
+		for i := 1; i <= 40; i++ {
+			lines = append(lines, fmt.Sprintf("say 第 %d 段：这一段话写得很长，好让整个对话比屏幕高得多，打开时应当直接看到最后一段。", i))
+		}
+		s, res := w.startSession(2*time.Minute, "--agent", "gemini", "--title", title, "--prompt", strings.Join(append(lines, "say 这是最后一段"), "\n"), "--wait")
+		if s.SessionID == "" {
+			http.Error(rw, "start: "+res.stdout+res.stderr, 500)
+			return
+		}
+		mu.Lock()
+		sessions[title] = s.SessionID
+		mu.Unlock()
+		reply(rw, map[string]string{"id": s.SessionID})
+	})
 	// An agent asks to connect (hermesh auth login), for the iPhone to approve.
 	mux.HandleFunc("POST /agent", func(rw http.ResponseWriter, r *http.Request) {
 		home := filepath.Join(t.TempDir(), "agent")

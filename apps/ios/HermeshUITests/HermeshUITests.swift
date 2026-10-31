@@ -23,6 +23,7 @@ final class HermeshUITests: XCTestCase {
         try XCTContext.runActivity(named: "interrupts a running session") { _ in try interrupt() }
         try XCTContext.runActivity(named: "shows a reply as the agent writes it") { _ in try streamedReply() }
         try XCTContext.runActivity(named: "shows a conversation as the Mac does: Markdown, code, and tool details folded") { _ in try richConversation() }
+        try XCTContext.runActivity(named: "a long conversation opens at its last message") { _ in try opensAtTheEnd() }
         try XCTContext.runActivity(named: "archives a session and undoes it") { _ in try archiveAndUndo() }
         try XCTContext.runActivity(named: "lays the session list out from the view menu") { _ in try viewMenu() }
         try XCTContext.runActivity(named: "renames a session from its row, and deletes another once confirmed") { _ in try renameAndDelete() }
@@ -170,6 +171,16 @@ final class HermeshUITests: XCTestCase {
         let copy = app.buttons["拷贝"]
         XCTAssertTrue(copy.waitForExistence(timeout: 5), "Copy")
         copy.tap()
+    }
+
+    func opensAtTheEnd() throws {
+        _ = try control("long?title=\("长对话".addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed)!)", method: "POST")
+        openFromMenu(session: "长对话")
+        let last = app.staticTexts.containing(NSPredicate(format: "label CONTAINS %@", "这是最后一段")).firstMatch
+        try waitFor("the last message in view", timeout: 20) { last.exists && last.isHittable ? true : nil }
+        sleep(2) // and still there once all of it is laid out
+        XCTAssertTrue(last.isHittable, "the last message still in view")
+        XCTAssertFalse(app.staticTexts.containing(NSPredicate(format: "label CONTAINS %@", "第 1 段")).firstMatch.isHittable, "the first out of view")
     }
 
     func archiveAndUndo() throws {
