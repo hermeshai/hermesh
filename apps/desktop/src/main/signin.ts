@@ -75,7 +75,8 @@ const links: string[] = [];
 /** A hermesh:// link the app was opened with: a link code (only while signing in) or an owner to join. */
 export function receiveLink(url: string) {
   const l = parseAppLink(url);
-  if (!l) return;
+  // Any other hermesh: link (hermesh://open) brings the app forward, as opening it would.
+  if (!l) return void (app.isReady() && showMain());
   if (l.kind === "link") {
     const p = current();
     if (!p) return; // not ours, or not now

@@ -197,7 +197,7 @@ The app shows paths of machines of every OS, so it reads each by that machine's 
 
 ### 6.1 Setup.exe
 
-The app ships as a per-user Squirrel.Windows installer, `Hermesh-windows-<arch>-setup.exe`, from the GitHub release (and the website, which links there). It needs no administrator, and no signature (§6.4): Windows warns once, through SmartScreen, before it runs. (The plan was an MSIX package through the Microsoft Store, which would have signed it; the owner chose to distribute it themselves, and an MSIX package installs only when signed.)
+The app ships as a per-user Squirrel.Windows installer, `Hermesh-windows-<arch>-setup.exe`, from the GitHub release (and the website, which links there). It needs no administrator, and no signature (§6.4): Windows warns once, through SmartScreen, before it runs. While it installs it shows the mark on the icon's dark fill, a thin bar running under it, and no words, since it can't pick the person's language (`windows-splash.mjs` draws it). (The plan was an MSIX package through the Microsoft Store, which would have signed it; the owner chose to distribute it themselves, and an MSIX package installs only when signed.)
 
 Setup.exe installs into `%LOCALAPPDATA%\HermeshApp` (Squirrel removes that folder on uninstall, so it isn't `Hermesh`, the data folder): a folder per version, and above them `Hermesh.exe`, which starts the newest, and `Update.exe`, which installs updates and uninstalls. Squirrel starts the app with an event, before anything else, for it to set itself up and quit (`installerEvent`, `platform/win.ts`):
 

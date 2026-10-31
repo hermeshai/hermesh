@@ -12,7 +12,7 @@ test.skip(process.platform !== "win32", "Windows only");
 
 type Hook = { tray(): { view: { state: string } }; mainWindow(): { close(): void } | undefined };
 
-test("a PC's words and Ctrl shortcuts, the menu button, the notification area, and staying there without a window", async () => {
+test("a PC's words and Ctrl shortcuts, the menu button, the notification area, staying there without a window, and a link bringing it back", async () => {
   const { app, page } = await launch();
   await expect(page.locator("html")).toHaveAttribute("data-platform", "win");
   const map = page.getByRole("region", { name: "链路" });
@@ -25,6 +25,9 @@ test("a PC's words and Ctrl shortcuts, the menu button, the notification area, a
   await expect.poll(() => app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows().length)).toBe(0);
   // Still there: its notification area's icon still follows the daemon.
   expect(await app.evaluate(() => (globalThis as unknown as { hermeshTest: Hook }).hermeshTest.tray().view.state)).toBe("ok");
+  // A hermesh: link, opened again as Windows does (a second Hermesh.exe), brings the window back.
+  await app.evaluate(({ app }) => app.emit("second-instance", {}, ["Hermesh.exe", "hermesh://open"]));
+  await expect.poll(() => app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows().filter((w) => w.isVisible()).length)).toBe(1);
   await app.close();
 });
 
