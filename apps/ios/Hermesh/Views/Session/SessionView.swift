@@ -16,6 +16,8 @@ struct SessionView: View {
     @State private var draft = ""
     /// Whether the conversation shows its end, so it follows what comes.
     @State private var atEnd = true
+    /// The owner is scrolling (dragging, or the list still moving from it).
+    @State private var scrolling = false
     @State private var confirmInterrupt = false
     @State private var renaming = false
     @State private var deleting = false
@@ -75,9 +77,15 @@ struct SessionView: View {
             .padding(.top, 13).padding(.bottom, 21)
         }
         // Open at the end, and stay there as it grows unless the owner scrolled up.
+        // Only the owner's scrolling moves it off the end: right after the
+        // events come in a batch the end is briefly out of view, and that
+        // left a conversation opened part way up.
         .defaultScrollAnchor(.bottom, for: .initialOffset)
         .defaultScrollAnchor(atEnd ? .bottom : .top, for: .sizeChanges)
-        .onScrollGeometryChange(for: Bool.self) { g in g.visibleRect.maxY > g.contentSize.height - 80 } action: { _, end in atEnd = end }
+        .onScrollPhaseChange { _, phase in scrolling = phase == .interacting || phase == .decelerating }
+        .onScrollGeometryChange(for: Bool.self) { g in g.visibleRect.maxY > g.contentSize.height - 80 } action: { _, end in
+            if scrolling { atEnd = end }
+        }
         .overlay { // in the middle of the screen, not where the scroll ends
             if events.isEmpty && !caughtUp(s) { unread(s) }
         }
@@ -268,6 +276,7 @@ struct SessionView: View {
     /// together are shown together: a long conversation read at once is laid
     /// out a few times, not once per event.
     private func follow() async {
+        atEnd = true
         events = model.conversations.events(id)
         draft = ""
         rebuild(running: model.session(id)?.isActive ?? false)
