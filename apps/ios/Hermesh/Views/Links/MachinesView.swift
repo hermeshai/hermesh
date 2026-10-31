@@ -271,7 +271,7 @@ struct MachineView: View {
                             Text(version).lineLimit(1).truncationMode(.middle)
                             if isOlder(version) {
                                 Button("Update") { help = .update }
-                                    .buttonStyle(.bordered).buttonBorderShape(.capsule).controlSize(.small)
+                                    .buttonStyle(.glass)
                                     .accessibilityIdentifier("machine-update")
                             }
                         }

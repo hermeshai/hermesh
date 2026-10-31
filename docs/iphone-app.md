@@ -28,6 +28,16 @@ UIKit container (`SideMenuController`): the page moves as one view, on a
 spring timed to the system's push, and keeps its large title's margin. Controls use Liquid Glass
 (`glassEffect`, `.glass` buttons); sheets use detents.
 
+Buttons come in four sizes, each by what it does, never sized by hand
+(a height of its own made Connect Your Agent's Copy twice a main action's):
+
+| Size | What it is | How |
+|---|---|---|
+| Main action | The one action that ends a card, page or panel (Copy, Scan the Code, Continue, Approve and Deny, Answer) | Across the width, the system's large size (about 50 pt), a capsule: `.glassProminent`, or `.glass` beside it; `CardButton`, `GuideButton` |
+| Row action | An action at the end of a row (Verify, Renew…, Turn On…, Add…, Update) | As wide as its words, the regular size (about 34 pt), `.glass`; `.glassProminent` for the one that matters most in its list |
+| Icon | Close, Copy and Send beside an address or a command | A glass circle: Close 32 pt inside its glass (`CardCloseButton`), Copy and Send 36 pt (`CopyIcons`) |
+| Link | A way out or in that is not the main one (Send…, Can't Scan?, Enter a Pairing Code) | Text in the accent, no background |
+
 ## 2. How it is built
 
 ```

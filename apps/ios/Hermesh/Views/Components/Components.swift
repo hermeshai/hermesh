@@ -272,9 +272,9 @@ struct CardButton: View {
                 if let systemImage { Image(systemName: systemImage) }
                 Text(title)
             }
-            .font(.headline).frame(maxWidth: .infinity).frame(height: 36)
+            .frame(maxWidth: .infinity)
         }
-        .buttonStyle(.glassProminent).controlSize(.large)
+        .buttonStyle(.glassProminent).controlSize(.large) // the large size, as every main action's: no height of its own
     }
 }
 
