@@ -610,7 +610,7 @@ final class HermeshUITests: XCTestCase {
         let today = app.descendants(matching: .any)["working-today"]
         XCTAssertTrue(today.waitForExistence(timeout: 20))
         let inToday = { (s: String) in today.descendants(matching: .any).matching(NSPredicate(format: "label CONTAINS %@", s)).count > 0 }
-        try waitFor("nothing runs, today's work counted") { inToday("个活跃会话") && inToday("0 个运行中") && inToday("已完成") ? true : nil }
+        try waitFor("nothing runs, today's work counted") { inToday("个会话运行过") && inToday("0 个运行中") && inToday("已完成") ? true : nil }
         XCTAssertTrue(text("今日任务来源与去向").exists, "the flow")
         // The last 7 days, from the segmented control where the title was; then today again.
         let period = app.segmentedControls["work-period"]
@@ -662,7 +662,7 @@ final class HermeshUITests: XCTestCase {
         gemini.coordinate(withNormalizedOffset: .zero).withOffset(CGVector(dx: 50 + (width - 64) * (hour + 0.5) / 24, dy: gemini.frame.height - 14)).tap()
         let heat = app.descendants(matching: .any)["heat-tip"].firstMatch
         XCTAssertTrue(heat.waitForExistence(timeout: 5), "the cell's popover")
-        XCTAssertTrue(heat.label.contains("Gemini CLI") && heat.label.contains("个活跃会话"), heat.label)
+        XCTAssertTrue(heat.label.contains("Gemini CLI") && heat.label.contains("个会话运行过"), heat.label)
         app.otherElements["PopoverDismissRegion"].firstMatch.tap()
         XCTAssertTrue(heat.waitForNonExistence(timeout: 5), "a tap elsewhere closes it")
         // What runs now opens the menu, which lists the sessions; usage is in the account, from there.
