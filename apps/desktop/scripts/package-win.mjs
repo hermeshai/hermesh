@@ -36,6 +36,7 @@ import { releaseCatalog } from "../src/shared/update.ts";
 import enNotes from "../src/locales/en/releases.json" with { type: "json" };
 import zhNotes from "../src/locales/zh-CN/releases.json" with { type: "json" };
 import { windowsIcons } from "./windows-icons.mjs";
+import { installSplash } from "./windows-splash.mjs";
 
 const desktop = path.resolve(import.meta.dirname, "..");
 const root = path.resolve(desktop, "../..");
@@ -125,6 +126,8 @@ if (onWindows) {
   for (const ext of ["exe", "dll"]) fs.copyFileSync(path.join(vendor, `7z-${process.arch}.${ext}`), path.join(vendor, `7z.${ext}`));
   const out = path.join(dist, `squirrel-${arch}`);
   fs.rmSync(out, { recursive: true, force: true });
+  const splash = path.join(tmp, "installing.gif");
+  installSplash(splash);
   await createWindowsInstaller({
     appDirectory: layout,
     outputDirectory: out,
@@ -137,6 +140,8 @@ if (onWindows) {
     exe: "Hermesh.exe",
     version,
     setupIcon: ico,
+    // What Setup.exe shows while it installs (Squirrel's own is an old editor's).
+    loadingGif: splash,
     // Apps › Installed apps shows it; Squirrel downloads it while installing (the release carries it).
     iconUrl: "https://github.com/hermeshai/hermesh/releases/latest/download/Hermesh.ico",
     // The template takes Electron's files only.
