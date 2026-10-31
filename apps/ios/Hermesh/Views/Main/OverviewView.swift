@@ -901,19 +901,20 @@ struct HeatAxis: View {
             let gap = Self.gap(n)
             let cell = (g.size.width - gap * CGFloat(n - 1)) / CGFloat(n)
             let start = { (i: Int) in i >= n ? g.size.width : CGFloat(i) * (cell + gap) }
-            ZStack(alignment: .topLeading) {
-                Color.clear
-                ForEach(marks(n), id: \.0) { i, label in
-                    if abs(i - now) > n / 5 {
-                        Text(label).fixedSize()
-                            .alignmentGuide(.leading) { d in i == 0 ? 0 : i >= n ? d.width : d.width / 2 }
-                            .offset(x: start(i))
-                    }
-                }
-                Text(nowText).fixedSize().fontWeight(.semibold).foregroundStyle(Color.accentColor)
-                    .alignmentGuide(.leading) { d in now * 5 > n * 4 ? d.width - 8 : now * 20 < n * 3 ? 8 : d.width / 2 }
-                    .offset(x: start(now) + cell / 2)
+            let w = g.size.width
+            // Each label in a box placed by its middle: the first's text at the start, the last's at the end.
+            let place = { (x: CGFloat, width: CGFloat) -> (CGFloat, Alignment) in
+                x - width / 2 < 0 ? (width / 2, .leading) : x + width / 2 > w ? (w - width / 2, .trailing) : (x, .center)
             }
+            ForEach(marks(n), id: \.0) { i, label in
+                if abs(i - now) > n / 5 {
+                    let (x, a) = place(i == 0 ? 0 : i >= n ? w : start(i), 40)
+                    Text(label).frame(width: 40, alignment: a).position(x: x, y: 7)
+                }
+            }
+            let (x, a) = place(start(now) + cell / 2, 90)
+            Text(nowText).fontWeight(.semibold).foregroundStyle(Color.accentColor)
+                .frame(width: 90, alignment: a).position(x: x, y: 7)
         }
         .frame(height: 14)
         .font(.caption2).foregroundStyle(.tertiary).monospacedDigit()
