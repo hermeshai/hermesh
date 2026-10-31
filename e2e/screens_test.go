@@ -4,7 +4,10 @@ import (
 	"context"
 	"encoding/json"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"runtime"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -13,31 +16,111 @@ import (
 )
 
 // TestScreens takes the screenshots of the website's download page
-// (hermesh-cloud web/console/public/download): the desktop app in a demo
-// world, in Chinese and in English, dark. HERMESH_SCREENS_OUT=<dir> runs it;
-// the pictures land in <dir>/<lang>/.
+// (hermesh-cloud web/console/src/components/download-shots): the desktop
+// app and the iPhone app (on a Simulator) in a demo world, in Chinese and
+// in English, dark. HERMESH_SCREENS_OUT=<dir> runs it; the pictures land in
+// <dir>/<lang>/. HERMESH_SCREENS_ONLY=desktop|iphone takes one app's.
 func TestScreens(t *testing.T) {
 	out := os.Getenv("HERMESH_SCREENS_OUT")
 	if testing.Short() || out == "" {
 		t.Skip("set HERMESH_SCREENS_OUT=<dir> to take the download page's screenshots")
 	}
+	only := os.Getenv("HERMESH_SCREENS_ONLY")
+	desktop, iphone := only != "iphone", only != "desktop" && runtime.GOOS == "darwin"
 	dir, _ := filepath.Abs(filepath.Join("apps", "desktop"))
 	app := filepath.Join(t.TempDir(), "app")
-	if r := run(t, []string{"HERMESH_DESKTOP_OUT=" + app}, 5*time.Minute, "pnpm", "--dir", dir, "build"); r.code != 0 {
-		t.Fatalf("build: %+v", r)
+	if desktop {
+		if r := run(t, []string{"HERMESH_DESKTOP_OUT=" + app}, 5*time.Minute, "pnpm", "--dir", dir, "build"); r.code != 0 {
+			t.Fatalf("build: %+v", r)
+		}
+	}
+	var device, derived string
+	if iphone {
+		device, derived = simulator(t), filepath.Join(t.TempDir(), "derived")
+		run(t, nil, time.Minute, "xcrun", "simctl", "ui", device, "appearance", "dark")
+		run(t, nil, time.Minute, "xcrun", "simctl", "status_bar", device, "override", "--time", "9:41", "--batteryState", "charged", "--batteryLevel", "100", "--cellularBars", "4", "--wifiBars", "3")
 	}
 	for _, lang := range []string{"zh", "en"} {
 		t.Run(lang, func(t *testing.T) {
 			f := demoWorld(t, demoScripts[lang])
-			file := filepath.Join(t.TempDir(), "fixture.json")
-			b, _ := json.Marshal(f)
-			os.WriteFile(file, b, 0o644)
-			env := []string{"HERMESH_E2E_FIXTURE=" + file, "HERMESH_DESKTOP_OUT=" + app, "HERMESH_PW_OUT=" + filepath.Join(t.TempDir(), "results"),
-				"HERMESH_SCREENS_DEMO=" + lang, "HERMESH_SCREENS=" + filepath.Join(out, lang)}
-			if r := run(t, env, 10*time.Minute, "pnpm", "--dir", dir, "exec", "playwright", "test", "screens.spec.ts"); r.code != 0 {
-				t.Fatalf("playwright:\n%s\n%s", r.stdout, r.stderr)
+			if desktop {
+				file := filepath.Join(t.TempDir(), "fixture.json")
+				b, _ := json.Marshal(f)
+				os.WriteFile(file, b, 0o644)
+				env := []string{"HERMESH_E2E_FIXTURE=" + file, "HERMESH_DESKTOP_OUT=" + app, "HERMESH_PW_OUT=" + filepath.Join(t.TempDir(), "results"),
+					"HERMESH_SCREENS_DEMO=" + lang, "HERMESH_SCREENS=" + filepath.Join(out, lang)}
+				if r := run(t, env, 10*time.Minute, "pnpm", "--dir", dir, "exec", "playwright", "test", "screens.spec.ts"); r.code != 0 {
+					t.Fatalf("playwright:\n%s\n%s", r.stdout, r.stderr)
+				}
+			}
+			if iphone {
+				iphoneScreens(t, f, lang, device, derived, filepath.Join(out, lang))
 			}
 		})
+	}
+}
+
+// iphoneScreens has the iPhone app join the demo world on the Simulator
+// and take its screenshots (HermeshUITests/ScreensUITests), then copies
+// them from the result bundle to out as <name>.png.
+func iphoneScreens(t *testing.T, f desktopFixture, lang, device, derived, out string) {
+	// A first run each time: no app set up already.
+	for _, id := range []string{"io.hermesh.ios", "io.hermesh.ios.uitests.xctrunner"} {
+		exec.Command("xcrun", "simctl", "uninstall", device, id).Run()
+	}
+	var shown string
+	for title := range f.Sessions {
+		if strings.Contains(title, "#142") {
+			shown = title
+		}
+	}
+	// The control serves the MCP address too, which the relay has with --mcp.
+	w := f.owner
+	if !slices.Contains(w.relayArgs, "--mcp") {
+		w.relayArgs = append(w.relayArgs, "--mcp")
+		w.restartRelay()
+		eventually(t, 30*time.Second, "the machines back on the relay", func() bool {
+			r := w.cli(30*time.Second, "project", "list")
+			return r.code == 0 && strings.Contains(r.stdout, "mac-mini/ios-app") && !strings.Contains(r.stdout, "offline")
+		})
+	}
+	control := newIPhoneControl(t, w, f.Sessions)
+	results := filepath.Join(t.TempDir(), "results.xcresult")
+	ios, _ := filepath.Abs(filepath.Join("apps", "ios"))
+	env := []string{"TEST_RUNNER_HERMESH_E2E_CONTROL=" + control, "TEST_RUNNER_HERMESH_SCREENS_LANG=" + lang, "TEST_RUNNER_HERMESH_SCREENS_SESSION=" + shown}
+	if r := run(t, env, 20*time.Minute, "xcodebuild", "test", "-project", filepath.Join(ios, "Hermesh.xcodeproj"), "-scheme", "Hermesh",
+		"-destination", "platform=iOS Simulator,id="+device, "-derivedDataPath", derived, "-resultBundlePath", results,
+		"-parallel-testing-enabled", "NO", "-only-testing:HermeshUITests/ScreensUITests/testScreens"); r.code != 0 {
+		summary := run(t, nil, time.Minute, "xcrun", "xcresulttool", "get", "test-results", "tests", "--path", results).stdout
+		t.Fatalf("UI test failed (result bundle %s):\n%s\n%s", results, failureMessages(summary), tail(r.stdout, 40))
+	}
+	exported := t.TempDir()
+	if r := run(t, nil, time.Minute, "xcrun", "xcresulttool", "export", "attachments", "--path", results, "--output-path", exported); r.code != 0 {
+		t.Fatalf("export attachments: %+v", r)
+	}
+	var manifest []struct {
+		Attachments []struct{ ExportedFileName, SuggestedHumanReadableName string }
+	}
+	b, _ := os.ReadFile(filepath.Join(exported, "manifest.json"))
+	json.Unmarshal(b, &manifest)
+	os.MkdirAll(out, 0o755)
+	n := 0
+	for _, test := range manifest {
+		for _, a := range test.Attachments {
+			name, _, _ := strings.Cut(a.SuggestedHumanReadableName, "_")
+			if !strings.HasPrefix(name, "iphone-") {
+				continue
+			}
+			png, err := os.ReadFile(filepath.Join(exported, a.ExportedFileName))
+			if err != nil {
+				t.Fatal(err)
+			}
+			os.WriteFile(filepath.Join(out, name+".png"), png, 0o644)
+			n++
+		}
+	}
+	if n == 0 {
+		t.Fatalf("no screenshots in the result bundle:\n%s", b)
 	}
 }
 
