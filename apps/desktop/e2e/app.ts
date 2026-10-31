@@ -34,7 +34,8 @@ export const fixture: Fixture = JSON.parse(fs.readFileSync(process.env.HERMESH_E
 export async function launch(
   socket = fixture.socket,
   // systemColors: pages see the app's own light or dark (Playwright makes them light otherwise).
-  o: { systemLanguages?: string[]; profile?: string; systemColors?: boolean; env?: Record<string, string> } = {},
+  // dark: the app in dark (the download page's screenshots).
+  o: { systemLanguages?: string[]; profile?: string; systemColors?: boolean; dark?: boolean; env?: Record<string, string> } = {},
 ): Promise<{ app: ElectronApplication; page: Page }> {
   const languages = o.systemLanguages ?? ["zh-Hans"];
   const app = await electron.launch({
@@ -47,7 +48,7 @@ export async function launch(
       HERMESH_USER_DATA: o.profile ?? fs.mkdtempSync(path.join(os.tmpdir(), "hmdesk-")),
       ...o.env,
     },
-    ...(o.systemColors ? { colorScheme: null } : {}),
+    ...(o.systemColors ? { colorScheme: null } : o.dark ? { colorScheme: "dark" as const } : {}),
   });
   const page = await app.firstWindow();
   return { app, page };
