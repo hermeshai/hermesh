@@ -150,26 +150,6 @@
         }
       }
     },
-    "%@ opens a sign-in and approval page; its request then shows up on this iPhone for you to verify and approve.": {
-      "localizations": {
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "%@ 会打开登录和授权页面；它的连接请求会出现在这台 iPhone 上，由你核对并批准。"
-          }
-        }
-      }
-    },
-    "%@ opens an approval page; its request then shows up on this iPhone for you to verify and approve.": {
-      "localizations": {
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "%@ 会打开授权页面；它的连接请求会出现在这台 iPhone 上，由你核对并批准。"
-          }
-        }
-      }
-    },
     "%@ sent %lld turns": {
       "localizations": {
         "zh-Hans": {
@@ -981,16 +961,6 @@
         }
       }
     },
-    "Add a connector in %@": {
-      "localizations": {
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "在 %@ 里添加连接器"
-          }
-        }
-      }
-    },
     "Add a project": {
       "localizations": {
         "zh-Hans": {
@@ -1017,6 +987,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "在它的页面上为它添加项目。"
+          }
+        }
+      }
+    },
+    "Add this connector in %@": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "在 %@ 里添加这个连接器"
           }
         }
       }
@@ -1937,6 +1917,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "连接地址"
+          }
+        }
+      }
+    },
+    "Connector": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "连接器"
           }
         }
       }
@@ -3620,6 +3610,16 @@
         }
       }
     },
+    "Message": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "发一段话"
+          }
+        }
+      }
+    },
     "Message from %@": {
       "localizations": {
         "zh-Hans": {
@@ -4260,6 +4260,16 @@
         }
       }
     },
+    "Once connected, its request shows up here.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "连接后，请求会出现在这里"
+          }
+        }
+      }
+    },
     "Once disconnected, it loses access at once; running sessions are interrupted, and the sessions themselves stay.": {
       "localizations": {
         "zh-Hans": {
@@ -4270,12 +4280,12 @@
         }
       }
     },
-    "Once it runs the commands, its request to connect shows up here.": {
+    "Once it runs it, its request shows up here.": {
       "localizations": {
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "它运行这段话里的命令后，连接请求会出现在这里。"
+            "value": "它运行后，请求会出现在这里"
           }
         }
       }
@@ -4406,16 +4416,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "系统"
-          }
-        }
-      }
-    },
-    "Or send this to %@": {
-      "localizations": {
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "或者把这段话发给 %@"
           }
         }
       }
@@ -6831,6 +6831,16 @@
         }
       }
     },
+    "Way": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "方式"
+          }
+        }
+      }
+    },
     "Web console": {
       "localizations": {
         "zh-Hans": {
@@ -7040,16 +7050,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "你的账号：用它再登录，就是全新开始"
-          }
-        }
-      }
-    },
-    "Your agent": {
-      "localizations": {
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "你的 Agent"
           }
         }
       }
