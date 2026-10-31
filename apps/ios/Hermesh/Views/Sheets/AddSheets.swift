@@ -160,6 +160,7 @@ struct AddMachineSheet: View {
     enum System: Hashable, CaseIterable { case mac, windows, linux }
 
     @Environment(AppModel.self) private var model
+    @Environment(\.dismiss) private var dismiss
     @State private var forThisPhone = false
     @State private var system = System.mac
     @State private var app = true
@@ -180,49 +181,40 @@ struct AddMachineSheet: View {
     }
 
     var body: some View {
-        NavigationStack {
-            ScrollView {
-                VStack(alignment: .leading, spacing: 14) {
-                    systems
-                    Picker("How to install", selection: Binding(get: { viaApp }, set: { app = $0; forThisPhone = false })) {
-                        Text("Install the App").tag(true)
-                        Text("Terminal Command").tag(false)
-                    }
-                    .pickerStyle(.segmented)
-                    .disabled(system == .linux)
-                    Group {
-                        if system == .linux {
-                            Text("Linux has no app: install it with the command.") + Text(verbatim: " ") + Text("Agents use Claude Code and Codex on it.")
-                        } else {
-                            Text("Agents use Claude Code and Codex on it.")
-                        }
-                    }
-                    .font(.footnote).foregroundStyle(.secondary).padding(.horizontal, 4)
-                    steps
-                        .padding(16)
-                        .background(Color(.secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 18, style: .continuous))
-                }
-                .padding(.horizontal, 16).padding(.top, 8).padding(.bottom, 20)
-                .animation(.smooth(duration: 0.25), value: system)
-                .animation(.smooth(duration: 0.25), value: viaApp)
+        VStack(alignment: .leading, spacing: 14) {
+            Text("Add a Machine").font(.title2.bold()).frame(maxWidth: .infinity).padding(.bottom, 8)
+            systems
+            Picker("How to install", selection: Binding(get: { viaApp }, set: { app = $0; forThisPhone = false })) {
+                Text("Install the App").tag(true)
+                Text("Terminal Command").tag(false)
             }
-            .background(Color(.systemGroupedBackground))
-            .safeAreaInset(edge: .bottom) {
-                if !scans {
-                    HStack(spacing: 12) {
-                        waiting
-                        Spacer(minLength: 8)
-                        Button("Enter a Pairing Code") { model.sheet = .enterCode }.font(.subheadline)
-                    }
-                    .padding(.horizontal, 20).padding(.vertical, 14)
-                    .background(Color(.systemGroupedBackground))
-                    .overlay(alignment: .top) { Divider() }
+            .pickerStyle(.segmented)
+            .disabled(system == .linux)
+            Group {
+                if system == .linux {
+                    Text("Linux has no app: install it with the command.") + Text(verbatim: " ") + Text("Agents use Claude Code and Codex on it.")
+                } else {
+                    Text("Agents use Claude Code and Codex on it.")
                 }
             }
-            .navigationTitle("Add a Machine")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar { CloseButton() }
+            .font(.footnote).foregroundStyle(.secondary).padding(.horizontal, 4)
+            steps
+                .padding(16)
+                .background(.fill.tertiary, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+            if !scans {
+                HStack(spacing: 12) {
+                    waiting
+                    Spacer(minLength: 8)
+                    Button("Enter a Pairing Code") { model.sheet = .enterCode }.font(.subheadline)
+                }
+                .padding(.horizontal, 4).padding(.top, 4)
+            }
         }
+        .padding(.horizontal, 20).padding(.top, 44).padding(.bottom, 12)
+        .animation(.smooth(duration: 0.25), value: system)
+        .animation(.smooth(duration: 0.25), value: viaApp)
+        .overlay(alignment: .topTrailing) { CardCloseButton { dismiss() }.padding(16) }
+        .fittedSheet()
     }
 
     /// That machine's system, as three tiles: Mac, Windows and Linux.
@@ -247,7 +239,7 @@ struct AddMachineSheet: View {
                     }
                     .frame(maxWidth: .infinity).frame(height: 78)
                     .foregroundStyle(on ? .primary : .secondary)
-                    .background(on ? Color(.tertiarySystemGroupedBackground) : Color(.secondarySystemGroupedBackground),
+                    .background(on ? AnyShapeStyle(.fill.secondary) : AnyShapeStyle(.fill.tertiary),
                                 in: RoundedRectangle(cornerRadius: 18, style: .continuous))
                     .overlay {
                         if on { RoundedRectangle(cornerRadius: 18, style: .continuous).strokeBorder(.primary.opacity(0.5), lineWidth: 1.5) }
@@ -337,7 +329,7 @@ struct AddMachineSheet: View {
             Text(text).font(.subheadline.monospaced()).lineLimit(1).truncationMode(.middle).textSelection(.enabled)
                 .padding(.horizontal, 12).padding(.vertical, 10)
                 .frame(maxWidth: .infinity, alignment: .leading)
-                .background(Color(.systemGroupedBackground), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+                .background(.background, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
             CopyIcons(text: copy)
         }
     }
@@ -347,7 +339,7 @@ struct AddMachineSheet: View {
         VStack(alignment: .leading, spacing: 8) {
             Text(text).font(.footnote.monospaced()).textSelection(.enabled)
                 .padding(12).frame(maxWidth: .infinity, alignment: .leading)
-                .background(Color(.systemGroupedBackground), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+                .background(.background, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
             HStack(alignment: .top, spacing: 8) {
                 Text(footer).font(.footnote).foregroundStyle(.secondary)
                 Spacer(minLength: 0)
