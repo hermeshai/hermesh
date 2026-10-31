@@ -67,7 +67,7 @@ func TestSessionList(t *testing.T) {
 	}
 	var wg sync.WaitGroup
 	var mu sync.Mutex
-	started := map[string]string{} // session ID: project
+	started := map[string]bool{}
 	sem := make(chan struct{}, 8)
 	for i := range 30 {
 		project := []string{"owner-mac/demo", "vps-1/demo"}[i%2]
@@ -79,7 +79,7 @@ func TestSessionList(t *testing.T) {
 				t.Errorf("session %d: %+v", i, r)
 			}
 			mu.Lock()
-			started[s.SessionID] = project
+			started[s.SessionID] = true
 			mu.Unlock()
 		})
 	}
@@ -87,34 +87,19 @@ func TestSessionList(t *testing.T) {
 	if t.Failed() {
 		t.FailNow()
 	}
+	// Each start made its own session (CLIs started together once made
+	// the same idempotency key on Windows).
+	if len(started) != 30 {
+		t.Fatalf("30 starts made %d sessions", len(started))
+	}
 	// The owner's replica hears of the last ones from vps-1's watch, a
-	// moment after the agent saw them finish. Which ones it lacks after 15
-	// s goes to the log (windows-latest now and then lacks one for longer).
+	// moment after the agent saw them finish.
 	var all *localv1.ListSessionsResponse
 	var err error
-	listed := func() bool {
+	eventually(t, 15*time.Second, "all sessions listed", func() bool {
 		all, err = w.app.client.ListSessions(ctx, &localv1.ListSessionsRequest{})
 		return len(all.GetSessions()) == 31
-	}
-	for end := time.Now().Add(15 * time.Second); !listed() && time.Now().Before(end); {
-		time.Sleep(100 * time.Millisecond)
-	}
-	if len(all.GetSessions()) != 31 {
-		seen := map[string]bool{}
-		for _, s := range all.GetSessions() {
-			seen[s.SessionId] = true
-			if _, ok := started[s.SessionId]; !ok {
-				t.Logf("after 15 s the owner lists %s on %s, %s", s.SessionId, s.MachineId, s.Status)
-			}
-		}
-		for id, project := range started {
-			if !seen[id] {
-				t.Logf("after 15 s the owner doesn't list %s (%s)", id, project)
-			}
-		}
-		t.Logf("after 15 s the owner lists %d sessions (%v unreachable, %v)", len(all.GetSessions()), all.GetUnreachable(), err)
-		eventually(t, 60*time.Second, "all sessions listed", listed)
-	}
+	})
 	if err != nil || len(all.Sessions) != 31 || len(all.Unreachable) != 0 {
 		t.Fatalf("all sessions: %d %v %v", len(all.GetSessions()), all.GetUnreachable(), err)
 	}

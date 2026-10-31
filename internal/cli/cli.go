@@ -2,6 +2,7 @@ package cli
 
 import (
 	"context"
+	"crypto/rand"
 	"errors"
 	"fmt"
 	"io"
@@ -322,6 +323,11 @@ func ids(machines []machineRef) []string {
 	return out
 }
 
-func newIdempotencyKey() string { return strings.ToLower(ulid.Make().String()) }
+// newIdempotencyKey draws from crypto/rand: ulid.Make's entropy is seeded
+// from the clock, the same in processes started in one tick of a coarse
+// clock (Windows'), and two such `session start`s were taken for one.
+func newIdempotencyKey() string {
+	return strings.ToLower(ulid.MustNew(ulid.Now(), rand.Reader).String())
+}
 
 func timestampOf(t time.Time) *timestamppb.Timestamp { return timestamppb.New(t) }
