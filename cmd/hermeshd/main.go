@@ -311,23 +311,41 @@ to that owner's devices by itself. Then it installs the background service.`,
 			}
 			infos := n.Discover(ctx)
 			n.Close()
+			var noServiceWhy error // said last, where it is seen
+			pid, up := 0, false
 			if !noService || restart {
 				bin, _ := os.Executable()
 				switch err := service.Install(bin, dataDir, filepath.Join(dataDir, "logs")); {
-				case errors.Is(err, service.ErrNoSystemd):
-					fmt.Println("No background service:", err)
 				case err != nil:
-					fmt.Fprintln(os.Stderr, "Could not install the background service:", err)
-					fmt.Fprintln(os.Stderr, "Run `hermeshd run` manually or fix the error and run `hermeshd service install`.")
+					// Online now all the same, until the computer restarts.
+					noServiceWhy = err
+					if pid, err = service.RunInBackground(bin, dataDir); err != nil {
+						fmt.Fprintln(os.Stderr, "Could not start hermeshd in the background either:", err)
+					}
+					up = err == nil
 				case runtime.GOOS == "linux":
 					fmt.Println("✓ Background service on: starts with the server, keeps running after you log out")
+					up = true
 				default:
 					fmt.Println("✓ Background service on")
+					up = true
+				}
+			}
+			// The agents as the running hermeshd finds them, in its own
+			// environment, which may lack what this terminal has.
+			local, fromService := infos, false
+			if up {
+				if c, ok := serviceCheck(cmd.Context(), dataDir); ok {
+					infos, fromService = c.Agents, true
 				}
 			}
 			fmt.Println("\nCoding agents")
 			ready := false
 			for _, name := range []string{"claude", "codex"} {
+				if i := infos[name]; fromService && local[name].LoggedIn && i.Available && !i.LoggedIn {
+					fmt.Printf("  %-10s %s, signed in in this terminal but NOT for hermeshd → export what signs it in from ~/.profile, then run `hermeshd service restart`\n", name, i.Version)
+					continue
+				}
 				ready = report(name, infos[name]) || ready
 			}
 			for _, a := range acp.Agents {
@@ -340,6 +358,17 @@ to that owner's devices by itself. Then it installs the background service.`,
 			}
 			fmt.Printf("\nNext\n  add a project   hermeshd project add ~/code/app   (or in the Hermesh app)\n  check it all    hermeshd doctor\n  its log         %s\n  every command   hermeshd --help\n",
 				logHint(filepath.Join(dataDir, "logs", "hermeshd.log"), true))
+			if noServiceWhy != nil {
+				why, fix := noServiceWhy.Error(), "fix that, then run `hermeshd service install`"
+				if errors.Is(noServiceWhy, service.ErrNoSystemd) {
+					why, fix = "this system has no systemd for this user (a container, or WSL)", "make `hermeshd run` the container's command, or start it at boot yourself"
+				}
+				fmt.Fprintf(os.Stderr, "\n⚠ No background service: %s\n", why)
+				if !up {
+					return errors.New("hermeshd is not running: this machine is offline; " + fix + ", or run `hermeshd run`")
+				}
+				fmt.Fprintf(os.Stderr, "  hermeshd runs now (pid %d), but won't start again after a restart: %s\n", pid, fix)
+			}
 			return nil
 		},
 	}
@@ -581,6 +610,18 @@ func machineCheck(ctx context.Context, dataDir string, open func() (*machine.Mac
 	}
 	defer n.Close()
 	return n.Check(ctx), false, nil
+}
+
+// serviceCheck asks the hermeshd that just started for its check, once it
+// listens.
+func serviceCheck(ctx context.Context, dataDir string) (machine.Check, bool) {
+	var c machine.Check
+	for deadline := time.Now().Add(15 * time.Second); time.Now().Before(deadline); time.Sleep(300 * time.Millisecond) {
+		if out, ok, err := machine.ControlRequest(ctx, filepath.Join(dataDir, "machine"), "GET", "/check", nil); ok {
+			return c, err == nil && json.Unmarshal(out, &c) == nil
+		}
+	}
+	return c, false
 }
 
 // askDiagnostics asks the hermeshd serving sock for its diagnostics.

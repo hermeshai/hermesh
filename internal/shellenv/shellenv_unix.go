@@ -10,6 +10,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"strings"
 	"syscall"
 )
@@ -32,21 +33,30 @@ func shell() string {
 	return "/bin/sh"
 }
 
-// resolve reads the login shell's PATH: the merged PATH, why the shell's
-// could not be read, and whether that was for want of processes.
-func resolve() (string, string, bool) {
+// resolve reads the login shell's PATH and environment: the merged PATH,
+// the shell's other variables, why the shell's could not be read, and
+// whether that was for want of processes.
+func resolve() (string, []string, string, bool) {
 	cur := os.Getenv("PATH")
 	sh := shell()
 	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
-	cmd := exec.CommandContext(ctx, sh, "-lic", `printf '__HERMESH_PATH__%s' "$PATH"`)
+	cmd := exec.CommandContext(ctx, sh, "-lic", `printf '__HERMESH_PATH__%s__HERMESH_ENV__' "$PATH"; env -0; printf '__HERMESH_END__'`)
 	var stderr bytes.Buffer
 	cmd.Stderr = &stderr
 	out, err := cmd.Output()
-	var parts []string
+	var parts, env []string
 	problem, short := "", false
 	if _, p, ok := strings.Cut(string(out), "__HERMESH_PATH__"); err == nil && ok {
+		p, vars, _ := strings.Cut(p, "__HERMESH_ENV__")
 		parts = append(parts, filepath.SplitList(strings.TrimSpace(p))...)
+		vars, _, _ = strings.Cut(vars, "__HERMESH_END__")
+		for _, kv := range strings.Split(vars, "\x00") {
+			// The shell's own, not the terminal's.
+			if name, _, ok := strings.Cut(kv, "="); ok && name != "" && !slices.Contains([]string{"PATH", "PWD", "OLDPWD", "SHLVL", "_"}, name) {
+				env = append(env, kv)
+			}
+		}
 	} else {
 		problem = describe(ctx, sh, err, stderr.String())
 		short = errors.Is(err, syscall.EAGAIN) || strings.Contains(stderr.String(), "fork failed")
@@ -62,7 +72,7 @@ func resolve() (string, string, bool) {
 			out2 = append(out2, p)
 		}
 	}
-	return strings.Join(out2, string(filepath.ListSeparator)), problem, short
+	return strings.Join(out2, string(filepath.ListSeparator)), env, problem, short
 }
 
 func describe(ctx context.Context, sh string, err error, stderr string) string {

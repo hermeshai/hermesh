@@ -3,6 +3,7 @@
 package service
 
 import (
+	"bytes"
 	"errors"
 	"fmt"
 	"os"
@@ -10,6 +11,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
+	"syscall"
 	"time"
 )
 
@@ -61,9 +63,11 @@ func Install(bin, dataDir, logDir string, args ...string) error {
 		if err := os.WriteFile(path, []byte(unit), 0o644); err != nil {
 			return err
 		}
-		for _, args := range [][]string{{"--user", "daemon-reload"}, {"--user", "enable", "--now", "hermeshd.service"}} {
+		// enable and start, not enable --now: that needs systemd 220, and
+		// Synology DSM 7 has 219.
+		for _, args := range [][]string{{"--user", "daemon-reload"}, {"--user", "enable", "hermeshd.service"}, {"--user", "start", "hermeshd.service"}} {
 			if out, err := exec.Command("systemctl", args...).CombinedOutput(); err != nil {
-				return fmt.Errorf("systemctl %s: %v: %s", strings.Join(args, " "), err, out)
+				return fmt.Errorf("systemctl %s: %v: %s", strings.Join(args, " "), err, bytes.TrimSpace(out))
 			}
 		}
 		if lingerErr != nil {
@@ -82,7 +86,8 @@ func Uninstall() error {
 		return nil
 	case "linux":
 		userBus()
-		exec.Command("systemctl", "--user", "disable", "--now", "hermeshd.service").Run()
+		exec.Command("systemctl", "--user", "stop", "hermeshd.service").Run()
+		exec.Command("systemctl", "--user", "disable", "hermeshd.service").Run()
 		os.Remove(systemdUnit())
 		exec.Command("systemctl", "--user", "daemon-reload").Run()
 		return nil
@@ -129,10 +134,14 @@ func userBus() error {
 	if os.Getenv("XDG_RUNTIME_DIR") == "" {
 		os.Setenv("XDG_RUNTIME_DIR", fmt.Sprintf("/run/user/%d", os.Getuid()))
 	}
-	bus := filepath.Join(os.Getenv("XDG_RUNTIME_DIR"), "bus")
+	run := os.Getenv("XDG_RUNTIME_DIR")
 	for i := 0; i < 50; i++ { // the manager lingering just started
-		if _, err := os.Stat(bus); err == nil {
-			return nil
+		// systemctl reaches it by the manager's own socket, the only one
+		// on systemd 219 without a user D-Bus.
+		for _, sock := range []string{"bus", "systemd/private"} {
+			if _, err := os.Stat(filepath.Join(run, sock)); err == nil {
+				return nil
+			}
 		}
 		time.Sleep(100 * time.Millisecond)
 	}
@@ -253,6 +262,20 @@ func unitArgs(args []string) string {
 		b.WriteString(a + " ")
 	}
 	return b.String()
+}
+
+// RunInBackground starts `bin run` for the machine in dataDir apart from
+// this terminal, for a computer where no service could be installed: it
+// runs until the computer restarts.
+func RunInBackground(bin, dataDir string) (int, error) {
+	cmd := exec.Command(bin, "run", "--data-dir", dataDir) // it writes its own log
+	cmd.SysProcAttr = &syscall.SysProcAttr{Setsid: true}
+	if err := cmd.Start(); err != nil {
+		return 0, err
+	}
+	pid := cmd.Process.Pid
+	cmd.Process.Release()
+	return pid, nil
 }
 
 // Supervise is for Windows: launchd and systemd keep hermeshd running.

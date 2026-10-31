@@ -2,6 +2,7 @@ package service
 
 import (
 	"bytes"
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
@@ -179,6 +180,9 @@ func fromUTF16(b []byte) string {
 	}
 	return strings.TrimPrefix(string(utf16.Decode(u)), "\uFEFF")
 }
+
+// RunInBackground is for Linux and macOS: Setup.exe installs the logon task.
+func RunInBackground(bin, dataDir string) (int, error) { return 0, errors.ErrUnsupported }
 
 // Supervise runs exe with args, the daemon, in a job of its own (it ends
 // with the supervisor), and starts it again whenever it exits but for

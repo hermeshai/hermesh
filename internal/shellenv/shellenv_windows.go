@@ -22,8 +22,9 @@ func Source() string { return "the registry's Environment" }
 
 // resolve builds the PATH a new terminal would get: the machine's, then
 // the user's (as Windows builds it), then this process's, then the usual
-// install folders. No program is started.
-func resolve() (string, string, bool) {
+// install folders. No program is started; this process's environment is
+// a new terminal's already, so there is no login environment.
+func resolve() (string, []string, string, bool) {
 	var parts []string
 	problem := ""
 	for _, k := range []struct {
@@ -58,7 +59,7 @@ func resolve() (string, string, bool) {
 			out = append(out, p)
 		}
 	}
-	return strings.Join(out, string(filepath.ListSeparator)), problem, false
+	return strings.Join(out, string(filepath.ListSeparator)), nil, problem, false
 }
 
 func registryPath(root registry.Key, path string) (string, error) {
