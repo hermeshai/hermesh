@@ -556,6 +556,19 @@ final class HermeshUITests: XCTestCase {
         XCTAssertTrue(text("Cursor 今天没派活").exists, "the agent approved, which sent nothing")
         let gemini = app.descendants(matching: .any)["coding-agent-gemini"].firstMatch
         XCTAssertTrue(gemini.exists && gemini.label.contains("空闲") && gemini.label.contains("1 台机器"), gemini.label)
+        // Tapping the band between them says how much: bot to Gemini CLI, its turns and tokens.
+        let bands = app.descendants(matching: .any)["flow-bands"].firstMatch
+        XCTAssertTrue(bands.exists && bands.label.contains("bot → Gemini CLI"), bands.label)
+        bands.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).tap()
+        let tip = app.descendants(matching: .any)["flow-tip"].firstMatch
+        XCTAssertTrue(tip.waitForExistence(timeout: 5), "the band's popover")
+        XCTAssertTrue(tip.label.contains("bot → Gemini CLI") && tip.label.contains("轮") && tip.label.contains("token"), tip.label)
+        let shot = XCTAttachment(screenshot: app.screenshot())
+        shot.name = "flow tip"
+        shot.lifetime = .keepAlways
+        add(shot)
+        app.otherElements["PopoverDismissRegion"].firstMatch.tap()
+        XCTAssertTrue(tip.waitForNonExistence(timeout: 5), "a tap elsewhere closes it")
         // Picking bot says what it sent each coding agent; picking it again lets go.
         press(bot)
         try waitFor("what bot sent Gemini CLI") { gemini.label.contains("bot 派来") ? true : nil }

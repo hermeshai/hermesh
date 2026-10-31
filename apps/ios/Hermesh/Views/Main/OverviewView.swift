@@ -408,12 +408,15 @@ enum FlowPick: Hashable {
 /// the agents on the right, their logos at the bands' ends, each band as
 /// thick as its turns; the turns once, under each agent. Tapping a side
 /// picks it, its bands in the accent and the rest faint; tapping it again
-/// lets go. Under it, the clients that sent nothing.
+/// lets go. Tapping a band says, in a popover, who sent how much to whom.
+/// Under it, the clients that sent nothing.
 struct FlowCard: View {
     let flow: WorkFlow
     @Binding var picked: FlowPick?
     let clientName: (String) -> String
     let idle: [String]
+    /// The band whose popover shows.
+    @State private var tipped: Int?
 
     private let rowHeight: CGFloat = 52
 
@@ -430,22 +433,49 @@ struct FlowCard: View {
                 let layout = FlowLayout(flow: flow, width: g.size.width, height: rows * rowHeight)
                 ZStack(alignment: .topLeading) {
                     Canvas { ctx, _ in
-                        for (b, band) in zip(flow.bands, layout.bands) {
+                        for (i, band) in layout.bands.enumerated() {
                             var p = Path()
                             p.move(to: CGPoint(x: layout.left, y: band.from))
                             p.addCurve(to: CGPoint(x: layout.right, y: band.to),
                                        control1: CGPoint(x: (layout.left + layout.right) / 2, y: band.from),
                                        control2: CGPoint(x: (layout.left + layout.right) / 2, y: band.to))
-                            ctx.stroke(p, with: .color(color(b)), lineWidth: band.width)
+                            ctx.stroke(p, with: .color(color(i)), lineWidth: band.width)
                         }
                     }
+                    // Under the names, so they keep their taps: a tap on a band opens its popover.
+                    Color.clear
+                        .frame(width: g.size.width, height: rows * rowHeight)
+                        .contentShape(.rect)
+                        .onTapGesture(coordinateSpace: .local) { at in
+                            let i = layout.band(at: at)
+                            withAnimation(.smooth) { tipped = i == tipped ? nil : i }
+                        }
+                        .accessibilityElement()
+                        .accessibilityLabel(flow.bands.map { "\(title(client: $0.client)) → \(title(agent: $0.agent)), \(String(localized: "\($0.turns) turns"))" }.joined(separator: "; "))
+                        .accessibilityIdentifier("flow-bands")
+                    if let i = tipped, i < flow.bands.count {
+                        let b = flow.bands[i]
+                        Color.clear.frame(width: 1, height: 1)
+                            .position(layout.middle(of: i))
+                            .popover(isPresented: Binding(get: { tipped == i }, set: { if !$0 { tipped = nil } })) {
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text(verbatim: "\(title(client: b.client)) → \(title(agent: b.agent))").font(.subheadline.weight(.semibold))
+                                    Text("\(b.turns) turns · \(tokensText(b.tokens)) tokens").font(.footnote).foregroundStyle(.secondary).monospacedDigit()
+                                }
+                                .padding(.horizontal, 14).padding(.vertical, 10)
+                                .accessibilityElement(children: .combine)
+                                .accessibilityIdentifier("flow-tip")
+                                .presentationCompactAdaptation(.popover)
+                            }
+                            .id(i)
+                    }
                     ForEach(Array(flow.clients.enumerated()), id: \.element.id) { i, n in
-                        node(n, pick: .client(n.id), name: n.id.isEmpty ? String(localized: "\(n.count) more") : AgentLogo.name(clientName(n.id)), logo: n.id.isEmpty ? nil : clientName(n.id), trailing: true)
+                        node(n, pick: .client(n.id), name: title(client: n.id), logo: n.id.isEmpty ? nil : clientName(n.id), trailing: true)
                             .frame(width: layout.nodeWidth, height: 44)
                             .position(x: layout.nodeWidth / 2, y: layout.clientY[i])
                     }
                     ForEach(Array(flow.agents.enumerated()), id: \.element.id) { i, n in
-                        node(n, pick: .agent(n.id), name: n.id.isEmpty ? String(localized: "\(n.count) more") : agentTitle(n.id), logo: n.id.isEmpty ? nil : n.id)
+                        node(n, pick: .agent(n.id), name: title(agent: n.id), logo: n.id.isEmpty ? nil : n.id)
                             .frame(width: layout.nodeWidth, height: 44)
                             .position(x: g.size.width - layout.nodeWidth / 2, y: layout.agentY[i])
                     }
@@ -458,6 +488,16 @@ struct FlowCard: View {
         }
         .padding(.horizontal, 18).padding(.vertical, 14)
         .background(Color(.secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 26, style: .continuous))
+    }
+
+    /// A client's name, or how many the rest together are.
+    private func title(client id: String) -> String {
+        id.isEmpty ? String(localized: "\(flow.clients.last?.count ?? 0) more") : AgentLogo.name(clientName(id))
+    }
+
+    /// A coding agent's name, or how many the rest together are.
+    private func title(agent id: String) -> String {
+        id.isEmpty ? String(localized: "\(flow.agents.last?.count ?? 0) more") : agentTitle(id)
     }
 
     /// A client (its logo trailing, next to its bands) or an agent (its
@@ -507,9 +547,13 @@ struct FlowCard: View {
         }
     }
 
-    private func color(_ b: WorkFlow.Band) -> Color {
+    /// A band's colour: the one tapped, or those of what is picked, in the
+    /// accent and the rest faint.
+    private func color(_ i: Int) -> Color {
+        // The asset's colour, not the tint: a popover dims the tint of what is under it.
+        if let tipped { return i == tipped ? Color("AccentColor").opacity(0.55) : Color.primary.opacity(0.05) }
         guard let picked else { return Color.primary.opacity(0.16) }
-        return touches(b, picked) ? Color.accentColor.opacity(0.55) : Color.primary.opacity(0.05)
+        return touches(flow.bands[i], picked) ? Color.accentColor.opacity(0.55) : Color.primary.opacity(0.05)
     }
 }
 
@@ -562,6 +606,27 @@ struct FlowLayout {
             for b in mine { to[b] = y + widths[b] / 2; y += widths[b] }
         }
         bands = flow.bands.indices.map { BandLine(from: from[$0], to: to[$0], width: widths[$0]) }
+    }
+
+    /// A point along band i's curve, t from its client (0) to its agent (1).
+    func point(_ i: Int, _ t: CGFloat) -> CGPoint {
+        let b = bands[i], m = (left + right) / 2, u = 1 - t
+        let x = u * u * u * left + 3 * u * u * t * m + 3 * u * t * t * m + t * t * t * right
+        let y = (u * u * u + 3 * u * u * t) * b.from + (3 * u * t * t + t * t * t) * b.to
+        return CGPoint(x: x, y: y)
+    }
+
+    func middle(of i: Int) -> CGPoint { point(i, 0.5) }
+
+    /// The band under a tap, or close enough to it for a finger; nil for none.
+    func band(at p: CGPoint) -> Int? {
+        var best: (i: Int, d: CGFloat)?
+        for i in bands.indices {
+            let d = stride(from: 0, through: 1, by: 0.025).map { point(i, CGFloat($0)) }
+                .map { hypot($0.x - p.x, $0.y - p.y) }.min()! - bands[i].width / 2
+            if d < 14, d < best?.d ?? .infinity { best = (i, d) }
+        }
+        return best?.i
     }
 }
 

@@ -148,6 +148,11 @@ func ask(_ s: inout Session) {
     #expect(g.clients.map(\.id) == ["a", "b", ""] && g.clients.map(\.turns) == [10, 5, 1] && g.clients.last?.count == 2)
     #expect(g.bands.contains(.init(client: "", agent: "cc", turns: 1)) && g.bands.contains(.init(client: "", agent: "cx", turns: 0)))
     #expect(WorkFlow([]).clients.isEmpty && WorkFlow([]).bands.isEmpty)
+
+    // A band joined from several pairs adds up their tokens too (what tapping it says).
+    let h = WorkFlow([.init(createdBy: "a", agent: "cc", sessions: 1, turns: 2, tokens: 300), .init(createdBy: "b", agent: "cc", sessions: 1, turns: 1, tokens: 200),
+                      .init(createdBy: "c", agent: "cc", sessions: 1, turns: 1, tokens: 50), .init(createdBy: "d", agent: "cc", sessions: 1, turns: 1, tokens: 25)])
+    #expect(h.bands.first { $0.client == "" }.map { ($0.turns, $0.tokens) } ?? (0, 0) == (2, 75))
 }
 
 @Test func turnsAndQuestions() {
