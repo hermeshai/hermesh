@@ -64,7 +64,7 @@ function webPreferences() {
     contextIsolation: true,
     nodeIntegration: false,
     spellcheck: false,
-    additionalArguments: [`--hermesh-user=${os.userInfo().username}`, `--hermesh-version=${app.getVersion()}`, `--hermesh-lang=${language()}`],
+    additionalArguments: [`--hermesh-user=${os.userInfo().username}`, `--hermesh-version=${app.getVersion()}`, `--hermesh-lang=${language()}`, `--hermesh-material=${platform.material ? 1 : 0}`],
   };
 }
 

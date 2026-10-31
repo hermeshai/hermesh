@@ -207,12 +207,15 @@ const signerTask = () => `Hermesh Signer (${(process.env.USERNAME ?? "").replace
 const signerRefusals = { 3: "main:signer.notAdmin", 4: "main:signer.uacOff", 5: "main:signer.noTPM", 1223: "main:signer.declined" } as const;
 
 const symbols = () => (nativeTheme.shouldUseDarkColors ? "#ffffff" : "#1a1a1a");
+/** Mica, behind the sidebar as macOS's vibrancy is: Windows 11 22H2 (build 22621) and later. */
+const mica = Number(os.release().split(".")[2] ?? 0) >= 22621;
 /** The caption buttons as high as the top band: the first run's (48 px) or the toolbar's (44 px). */
 const buttonsHeight = (kind: WindowKind) => (kind === "onboarding" ? 48 : 44);
 
 export const win: Platform = {
   token: "win",
   installed,
+  material: mica,
 
   // Setup.exe installs the app where it runs.
   settle() {
@@ -362,8 +365,10 @@ export const win: Platform = {
     // The page's own background from the first frame (--win), for no white flash in the dark.
     const backgroundColor = nativeTheme.shouldUseDarkColors ? "#1e1e21" : "#ffffff";
     if (kind === "panel") return { backgroundColor };
-    // Windows draws the caption buttons over the page's top band, whose toolbar rows are the drag area.
-    return { titleBarStyle: "hidden", titleBarOverlay: { color: "#00000000", symbolColor: symbols(), height: buttonsHeight(kind) }, backgroundColor };
+    // Windows draws the caption buttons over the page's top band, whose toolbar rows are the drag area;
+    // Mica shows where the page is clear (the sidebar), as on the Mac.
+    const material = mica && kind !== "auxiliary" ? { backgroundMaterial: "mica" as const, backgroundColor: "#00000000" } : { backgroundColor };
+    return { titleBarStyle: "hidden", titleBarOverlay: { color: "#00000000", symbolColor: symbols(), height: buttonsHeight(kind) }, ...material };
   },
 
   placeButtons(win, kind) {

@@ -24,6 +24,7 @@ async function ask<T>(channel: string, ...args: unknown[]): Promise<T> {
 
 const bridge: Bridge = {
   platform: process.platform,
+  material: arg("material") === "1",
   userName: arg("user"),
   version: arg("version"),
   language: arg("lang") as Language,

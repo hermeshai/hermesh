@@ -14,9 +14,9 @@ import { useStore } from "./store";
 export function MainWindow() {
   const st = useStore();
   useCommands();
-  // On macOS the window's sidebar material shows through the sidebar (the first-run pages stay opaque).
+  // The window's material shows through the sidebar, macOS's or Windows 11's (the first-run pages stay opaque).
   useEffect(() => {
-    if (window.hermesh?.platform !== "darwin") return;
+    if (!window.hermesh?.material) return;
     document.documentElement.classList.add("vibrant");
     return () => document.documentElement.classList.remove("vibrant");
   }, []);
