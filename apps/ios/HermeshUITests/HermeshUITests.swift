@@ -488,6 +488,15 @@ final class HermeshUITests: XCTestCase {
         let mcp = app.buttons["mcpAddress"]
         XCTAssertTrue(mcp.waitForExistence(timeout: 10), "the MCP address in the account")
         XCTAssertTrue(mcp.label.contains("MCP 地址") && mcp.label.contains(address), mcp.label)
+        // At the end, together and alike: signing out and erasing everything.
+        app.swipeUp()
+        let erase = app.buttons["erase-everything"]
+        XCTAssertTrue(erase.waitForExistence(timeout: 5) && app.buttons["退出登录…"].exists, "the buttons at the end")
+        XCTAssertEqual(erase.frame.width, app.buttons["退出登录…"].frame.width, accuracy: 1, "one width")
+        let end = XCTAttachment(screenshot: app.screenshot())
+        end.name = "account end"
+        end.lifetime = .keepAlways
+        add(end)
         tap("close")
     }
 

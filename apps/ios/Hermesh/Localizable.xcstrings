@@ -4234,6 +4234,16 @@
         }
       }
     },
+    "Open the web console?": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "打开网页控制台？"
+          }
+        }
+      }
+    },
     "Open “%@”?": {
       "localizations": {
         "zh-Hans": {
@@ -4790,6 +4800,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "正在跑的会话照常进行，这里不再开始新的。"
+          }
+        }
+      }
+    },
+    "Safari opens %@, the web console: your machines and grants in any browser, and revoking access in an emergency.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "将在 Safari 中打开 %@，也就是网页控制台：在任何浏览器里查看机器和授权，紧急时撤销访问。"
           }
         }
       }
