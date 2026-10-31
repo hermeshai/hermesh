@@ -35,3 +35,16 @@ export function agentTiles(agents: AgentStatus[]): AgentStatus[] {
   const rank = (a: AgentStatus) => (a.available && a.loggedIn ? 0 : a.available ? 1 : 2);
   return agents.filter((a) => a.available || suggestedAgents.includes(a.name)).sort((a, b) => rank(a) - rank(b) || a.name.localeCompare(b.name));
 }
+
+/**
+ * A model as people call it: the name its agent gives it (Codex's display
+ * names, Claude Code's aliases), else a Claude model's ID read out
+ * ("claude-opus-5-5" → "Opus 5.5"), else the ID itself.
+ */
+export function modelTitle(id: string, models: AgentStatus["models"] = []): string {
+  const named = models.find((m) => m.id === id)?.name;
+  if (named) return named;
+  const c = /^claude-([a-z]+)-(\d+)(?:-(\d{1,2}))?(?:-\d{8})?(\[1m\])?$/.exec(id);
+  if (!c) return id;
+  return `${c[1][0].toUpperCase()}${c[1].slice(1)} ${c[2]}${c[3] ? `.${c[3]}` : ""}${c[4] ? " (1M)" : ""}`;
+}

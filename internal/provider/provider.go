@@ -142,6 +142,9 @@ type Event struct {
 	Kind EventKind
 
 	Ref string // EventRef
+	// EventRef: the model and reasoning effort the agent says it runs
+	// with, when it says (Claude Code tells only the model).
+	Model, Effort string
 
 	Text string // AgentMessage, AgentDraft, TurnCompleted (result), Error
 

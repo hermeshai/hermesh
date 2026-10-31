@@ -236,13 +236,15 @@ func (p *Provider) Start(ctx context.Context, spec provider.StartSpec) (provider
 		Thread struct {
 			ID string `json:"id"`
 		} `json:"thread"`
+		Model           string `json:"model"`
+		ReasoningEffort string `json:"reasoningEffort"`
 	}
 	json.Unmarshal(res, &tr)
 	if tr.Thread.ID == "" {
 		return fail(errors.New("codex did not return a thread id"))
 	}
 	s.threadID = tr.Thread.ID
-	s.emit(provider.Event{Kind: provider.EventRef, Ref: s.threadID})
+	s.emit(provider.Event{Kind: provider.EventRef, Ref: s.threadID, Model: tr.Model, Effort: tr.ReasoningEffort})
 	if err := s.send(ctx, provider.Input{Text: spec.Prompt, Images: spec.Images}); err != nil {
 		return fail(err)
 	}

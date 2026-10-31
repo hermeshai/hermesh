@@ -1,6 +1,7 @@
 package machine
 
 import (
+	"cmp"
 	"context"
 	"crypto/rand"
 	"encoding/json"
@@ -1564,6 +1565,9 @@ func (s *Sessions) onEvent(l *live, ps provider.Session, e provider.Event) {
 	case provider.EventRef:
 		l.mu.Lock()
 		l.row.ProviderRef = e.Ref
+		if e.Model != "" {
+			l.row.AgentModel, l.row.AgentEffort = e.Model, e.Effort
+		}
 		row := snapshotRow(l.row)
 		l.mu.Unlock()
 		s.w.put(writeOp{row: row})
@@ -2130,7 +2134,8 @@ func (s *Sessions) toProto(r *sessionRow) *sessionv1.Session {
 	return &sessionv1.Session{SessionId: r.ID, MachineId: s.machineID, ProjectId: r.ProjectID, Agent: r.Agent,
 		Status: r.Status, CreatedBy: r.CreatedBy, Progress: proto.Clone(r.Progress).(*sessionv1.SessionProgress),
 		ProviderSessionRef: r.ProviderRef, CreatedAt: timestamppb.New(r.CreatedAt), UpdatedAt: timestamppb.New(r.UpdatedAt),
-		Error: r.Error, Branch: r.Branch, Workspace: r.Workspace, Result: r.Result, Title: r.Title, CreatedAs: r.Conversation}
+		Error: r.Error, Branch: r.Branch, Workspace: r.Workspace, Result: r.Result, Title: r.Title, CreatedAs: r.Conversation,
+		Model: cmp.Or(r.AgentModel, r.Model), Effort: cmp.Or(r.Effort, r.AgentEffort)}
 }
 
 // Janitor enforces timeouts and stops idle agent processes (their sessions

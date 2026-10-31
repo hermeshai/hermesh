@@ -103,6 +103,33 @@ func mustAbs(t *testing.T, p string) string {
 	return a
 }
 
+// Claude Code's init line names the session and the model it runs on
+// (2.1.312: the full ID, e.g. "claude-haiku-5-5", whatever alias it was
+// given); it does not name the reasoning effort.
+func TestInitReportsModel(t *testing.T) {
+	scripted(t)
+	dir := t.TempDir()
+	bin := filepath.Join(dir, "claude")
+	script := "#!/bin/sh\nread init\nread prompt\n" +
+		`echo '{"type":"system","subtype":"init","session_id":"c1e9","model":"claude-haiku-5-5","per_turn_effort_active":true}'` + "\nsleep 1\n"
+	if err := os.WriteFile(bin, []byte(script), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	s, err := (&Provider{Binary: bin}).Start(context.Background(), provider.StartSpec{WorkDir: dir, Prompt: "hi", Model: "haiku", Env: os.Environ()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+	select {
+	case e := <-s.Events():
+		if e.Kind != provider.EventRef || e.Ref != "c1e9" || e.Model != "claude-haiku-5-5" || e.Effort != "" {
+			t.Fatalf("first event: %+v", e)
+		}
+	case <-time.After(10 * time.Second):
+		t.Fatal("timed out")
+	}
+}
+
 // A message steered after Claude finished the turn's model calls is run as
 // one more Claude turn (two results, as Claude Code 2.1.292 does): Hermesh
 // reports one turn, ending with the last result.

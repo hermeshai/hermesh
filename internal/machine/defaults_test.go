@@ -2,6 +2,8 @@ package machine
 
 import (
 	"context"
+	"fmt"
+	"path/filepath"
 	"testing"
 
 	identityv1 "github.com/hermeshai/hermesh/gen/go/hermesh/identity/v1"
@@ -75,6 +77,41 @@ func TestAgentDefaults(t *testing.T) {
 	} {
 		if set(d) == nil {
 			t.Errorf("%v accepted", d)
+		}
+	}
+}
+
+// TestSessionModel: a session shows the model the agent reported over the
+// one Hermesh passed it (an alias), and the effort Hermesh passed over the
+// agent's own; both are kept across a restart.
+func TestSessionModel(t *testing.T) {
+	st, err := OpenStore(filepath.Join(t.TempDir(), "hermeshd.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+	s := &Sessions{machineID: "m"}
+	for i, c := range []struct {
+		row                   sessionRow
+		wantModel, wantEffort string
+	}{
+		{sessionRow{Model: "opus", Effort: "high", AgentModel: "claude-opus-5-5"}, "claude-opus-5-5", "high"},
+		{sessionRow{AgentModel: "gpt-6-astra", AgentEffort: "xhigh"}, "gpt-6-astra", "xhigh"},
+		{sessionRow{Effort: "low", AgentModel: "gpt-6-astra", AgentEffort: "xhigh"}, "gpt-6-astra", "low"},
+		{sessionRow{Model: "sonnet"}, "sonnet", ""}, // not started yet
+		{sessionRow{}, "", ""},
+	} {
+		r := c.row
+		r.ID, r.Progress = fmt.Sprint("s", i), &sessionv1.SessionProgress{}
+		if err := putSession(st.db, &r); err != nil {
+			t.Fatal(err)
+		}
+		got, err := st.Session(r.ID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if p := s.toProto(got); p.Model != c.wantModel || p.Effort != c.wantEffort {
+			t.Errorf("%+v shows %q/%q, want %q/%q", c.row, p.Model, p.Effort, c.wantModel, c.wantEffort)
 		}
 	}
 }

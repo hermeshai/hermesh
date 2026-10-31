@@ -1821,6 +1821,16 @@
         }
       }
     },
+    "Context": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "上下文"
+          }
+        }
+      }
+    },
     "Continue": {
       "localizations": {
         "zh-Hans": {
@@ -2287,6 +2297,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "改为输入配对码…"
+          }
+        }
+      }
+    },
+    "Environment": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "环境"
           }
         }
       }

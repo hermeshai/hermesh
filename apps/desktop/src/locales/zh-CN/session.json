@@ -84,6 +84,10 @@
     "openInFinder": "在访达中打开",
     "openInExplorer": "在文件资源管理器中打开",
     "openInTerminal": "在终端中打开",
-    "notRepo": "不是 Git 仓库"
+    "notRepo": "不是 Git 仓库",
+    "context": "上下文",
+    "model": "模型 <b>{{model}}</b>",
+    "effort": "推理强度 <b>{{effort}}</b>",
+    "sameAs": "跟随 {{agent}}"
   }
 }

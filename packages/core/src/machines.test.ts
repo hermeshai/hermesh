@@ -1,9 +1,21 @@
 import { create } from "@bufbuild/protobuf";
 import { AgentStatusSchema } from "@hermesh/proto/machine";
 import { describe, expect, test } from "vitest";
-import { agentTiles, folderName, isAbsolutePath, platformTitle } from "./machines";
+import { agentTiles, folderName, isAbsolutePath, modelTitle, platformTitle } from "./machines";
 
 describe("machines", () => {
+  test("models read as their agent names them, Claude's IDs as people call them", () => {
+    const codex = create(AgentStatusSchema, { models: [{ id: "gpt-6-astra", name: "GPT-6 Astra" }, { id: "opus", name: "Opus" }] }).models;
+    expect(modelTitle("gpt-6-astra", codex)).toBe("GPT-6 Astra");
+    expect(modelTitle("opus", codex)).toBe("Opus");
+    expect(modelTitle("claude-opus-5-5")).toBe("Opus 5.5");
+    expect(modelTitle("claude-haiku-5-5")).toBe("Haiku 5.5");
+    expect(modelTitle("claude-fable-5-1[1m]")).toBe("Fable 5.1 (1M)");
+    expect(modelTitle("claude-sonnet-4-20250514")).toBe("Sonnet 4");
+    expect(modelTitle("claude-3-5-sonnet-20241022")).toBe("claude-3-5-sonnet-20241022");
+    expect(modelTitle("gemini-3-pro")).toBe("gemini-3-pro");
+  });
+
   test("platforms read as OS and architecture", () => {
     expect(platformTitle("darwin/arm64")).toBe("macOS · arm64");
     expect(platformTitle("linux/amd64")).toBe("Linux · amd64");

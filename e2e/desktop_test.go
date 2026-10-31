@@ -146,7 +146,7 @@ func desktopWorld(t *testing.T, fresh, limited, wake bool) desktopFixture {
 	codex := filepath.Join(t.TempDir(), "codex")
 	os.WriteFile(codex, []byte(fmt.Sprintf("#!/bin/sh\ncase \"$1\" in --version) echo \"codex-cli 0.48.0\";; login) echo \"Not logged in\"; exit 1;; app-server) exec %q;; esac\n",
 		filepath.Join(binaries(t), "fakecodex"))), 0o755)
-	env := []string{"HERMESH_GEMINI_BIN=" + fake, "FAKE_ACP_STATE=" + filepath.Join(t.TempDir(), "fakeacp")}
+	env := []string{"HERMESH_GEMINI_BIN=" + fake, "FAKE_ACP_STATE=" + filepath.Join(t.TempDir(), "fakeacp"), "FAKE_ACP_MODELS=gemini-3-pro"}
 	if runtime.GOOS != "windows" { // a shell script
 		env = append(env, "HERMESH_CODEX_BIN="+codex)
 	}
@@ -230,12 +230,13 @@ func inPlaceSessions(t *testing.T, f desktopFixture) {
 }
 
 // desktopSessions starts a session in every state the app shows and
-// returns their ids by title.
+// returns their ids by title. Its agent must take the model gemini-3-pro
+// (FAKE_ACP_MODELS).
 func desktopSessions(t *testing.T, w *ownerMac) map[string]string {
 	ids := map[string]string{}
-	start := func(title, prompt string, wait bool) string {
+	start := func(title, prompt string, wait bool, more ...string) string {
 		t.Helper()
-		args := []string{"--agent", "gemini", "--title", title, "--prompt", prompt}
+		args := append([]string{"--agent", "gemini", "--title", title, "--prompt", prompt}, more...)
 		if wait {
 			args = append(args, "--wait")
 		}
@@ -246,7 +247,8 @@ func desktopSessions(t *testing.T, w *ownerMac) map[string]string {
 		ids[title] = s.SessionID
 		return s.SessionID
 	}
-	done := start("写 hello", "say 先写文件\nwrite hello.txt hello\nshell echo ran > ran.txt\nsay 好了", true)
+	// The one named a model (for its context card); the others follow the agent's own.
+	done := start("写 hello", "say 先写文件\nwrite hello.txt hello\nshell echo ran > ran.txt\nsay 好了", true, "--model", "gemini-3-pro")
 	if s, r := w.send(time.Minute, done, "write hello.txt hello again\nsay 改好了"); s.Status != "idle" {
 		t.Fatalf("second turn: %+v", r)
 	}

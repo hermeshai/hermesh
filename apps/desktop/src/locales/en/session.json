@@ -84,6 +84,10 @@
     "openInFinder": "Open in Finder",
     "openInExplorer": "Open in File Explorer",
     "openInTerminal": "Open in Terminal",
-    "notRepo": "Not a git repository"
+    "notRepo": "Not a git repository",
+    "context": "Context",
+    "model": "Model <b>{{model}}</b>",
+    "effort": "Reasoning effort <b>{{effort}}</b>",
+    "sameAs": "Same as {{agent}}"
   }
 }

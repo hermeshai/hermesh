@@ -995,6 +995,22 @@ public nonisolated struct Hermesh_Session_V1_Session: @unchecked Sendable {
     set {_uniqueStorage()._createdAs = newValue}
   }
 
+  /// The model it runs on: the one the agent reported when it started
+  /// (Claude Code and Codex), else the one Hermesh passed it; "" until
+  /// known.
+  public var model: String {
+    get {_storage._model}
+    set {_uniqueStorage()._model = newValue}
+  }
+
+  /// The reasoning effort Hermesh passed, else the agent's own as it
+  /// reported it (Codex); "": the agent's own setting, which it does not
+  /// report (Claude Code).
+  public var effort: String {
+    get {_storage._effort}
+    set {_uniqueStorage()._effort = newValue}
+  }
+
   public var unknownFields = SwiftProtobuf.UnknownStorage()
 
   public init() {}
@@ -2973,7 +2989,7 @@ nonisolated extension Hermesh_Session_V1_QuestionResolved: SwiftProtobuf.Message
 
 nonisolated extension Hermesh_Session_V1_Session: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
   public static let protoMessageName: String = _protobuf_package + ".Session"
-  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{3}session_id\0\u{3}machine_id\0\u{3}project_id\0\u{1}agent\0\u{2}\u{2}status\0\u{3}created_by\0\u{1}progress\0\u{3}provider_session_ref\0\u{3}created_at\0\u{3}updated_at\0\u{1}error\0\u{1}branch\0\u{1}workspace\0\u{1}result\0\u{1}title\0\u{3}created_as\0\u{b}preset\0\u{c}\u{5}\u{1}")
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{3}session_id\0\u{3}machine_id\0\u{3}project_id\0\u{1}agent\0\u{2}\u{2}status\0\u{3}created_by\0\u{1}progress\0\u{3}provider_session_ref\0\u{3}created_at\0\u{3}updated_at\0\u{1}error\0\u{1}branch\0\u{1}workspace\0\u{1}result\0\u{1}title\0\u{3}created_as\0\u{1}model\0\u{1}effort\0\u{b}preset\0\u{c}\u{5}\u{1}")
 
   fileprivate class _StorageClass {
     var _sessionID: String = String()
@@ -2992,6 +3008,8 @@ nonisolated extension Hermesh_Session_V1_Session: SwiftProtobuf.Message, SwiftPr
     var _result: String = String()
     var _title: String = String()
     var _createdAs: String = String()
+    var _model: String = String()
+    var _effort: String = String()
 
       // This property is used as the initial default value for new instances of the type.
       // The type itself is protecting the reference to its storage via CoW semantics.
@@ -3018,6 +3036,8 @@ nonisolated extension Hermesh_Session_V1_Session: SwiftProtobuf.Message, SwiftPr
       _result = source._result
       _title = source._title
       _createdAs = source._createdAs
+      _model = source._model
+      _effort = source._effort
     }
   }
 
@@ -3052,6 +3072,8 @@ nonisolated extension Hermesh_Session_V1_Session: SwiftProtobuf.Message, SwiftPr
         case 15: try { try decoder.decodeSingularStringField(value: &_storage._result) }()
         case 16: try { try decoder.decodeSingularStringField(value: &_storage._title) }()
         case 17: try { try decoder.decodeSingularStringField(value: &_storage._createdAs) }()
+        case 18: try { try decoder.decodeSingularStringField(value: &_storage._model) }()
+        case 19: try { try decoder.decodeSingularStringField(value: &_storage._effort) }()
         default: break
         }
       }
@@ -3112,6 +3134,12 @@ nonisolated extension Hermesh_Session_V1_Session: SwiftProtobuf.Message, SwiftPr
       if !_storage._createdAs.isEmpty {
         try visitor.visitSingularStringField(value: _storage._createdAs, fieldNumber: 17)
       }
+      if !_storage._model.isEmpty {
+        try visitor.visitSingularStringField(value: _storage._model, fieldNumber: 18)
+      }
+      if !_storage._effort.isEmpty {
+        try visitor.visitSingularStringField(value: _storage._effort, fieldNumber: 19)
+      }
     }
     try unknownFields.traverse(visitor: &visitor)
   }
@@ -3137,6 +3165,8 @@ nonisolated extension Hermesh_Session_V1_Session: SwiftProtobuf.Message, SwiftPr
         if _storage._result != rhs_storage._result {return false}
         if _storage._title != rhs_storage._title {return false}
         if _storage._createdAs != rhs_storage._createdAs {return false}
+        if _storage._model != rhs_storage._model {return false}
+        if _storage._effort != rhs_storage._effort {return false}
         return true
       }
       if !storagesAreEqual {return false}
