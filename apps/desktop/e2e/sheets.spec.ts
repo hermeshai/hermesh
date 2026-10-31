@@ -208,7 +208,7 @@ test("adding a machine: its system, then the app or a command (Linux: the comman
 
   // Copy puts the whole command on the clipboard.
   await sheet.getByRole("button", { name: "拷贝" }).click();
-  expect(await app.evaluate(({ clipboard }) => clipboard.readText())).toBe(`curl -fsSL https://github.com/hermeshai/hermesh/releases/latest/download/install.sh | sh -s -- ${st.connectAddress}`);
+  await expect.poll(() => app.evaluate(({ clipboard }) => clipboard.readText())).toBe(`curl -fsSL https://github.com/hermeshai/hermesh/releases/latest/download/install.sh | sh -s -- ${st.connectAddress}`);
 
   await sheet.getByRole("button", { name: "输入配对码…" }).click();
   await expect(sheet.getByRole("heading", { name: "输入配对码" })).toBeVisible();

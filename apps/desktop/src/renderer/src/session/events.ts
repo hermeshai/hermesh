@@ -68,7 +68,9 @@ export function useSessionEvents(sessionId: string, last: bigint): Conversation 
               caughtUp = true;
               clearTimeout(timer);
               flush();
-            } else timer ??= setTimeout(flush, 30);
+              // Before then, not in 30 ms batches, which a slow stream (Windows)
+              // shows as pieces; a second on, what came shows anyway.
+            } else timer ??= setTimeout(flush, caughtUp ? 30 : 1000);
           }
         } catch {
           // Broken or cancelled; picked up again below unless the page moved on.
