@@ -55,71 +55,81 @@ struct PersonalAgentKind: Identifiable, Hashable {
     ]
 }
 
-/// Connect a personal agent: the connector URL for agents that take one,
-/// or a message to send it so it installs Hermesh and asks to connect. Its
-/// request then shows up here to approve.
+/// Connect a personal agent, as a card like the request it leads to: which
+/// agent, then the connector URL for agents that take one or a message to
+/// send it, to copy or send. Its request then shows up here to approve.
 struct ConnectAgentSheet: View {
     @Environment(AppModel.self) private var model
+    @Environment(\.dismiss) private var dismiss
     @State private var kind = PersonalAgentKind.all[0]
-    @State private var other = ""
+    @State private var byConnector = true
 
     var body: some View {
-        NavigationStack {
-            List {
-                Section("Your agent") {
-                    ScrollView(.horizontal) {
-                        HStack(spacing: 8) {
-                            ForEach(PersonalAgentKind.all) { k in
-                                Button {
-                                    kind = k
-                                } label: {
-                                    HStack(spacing: 8) {
-                                        if let l = k.logo { AgentLogo(id: l, size: 26) }
-                                        Text(k.name)
-                                    }
-                                    .padding(.leading, 6).padding(.trailing, 14).frame(height: 40)
-                                    .background(.fill.tertiary, in: .capsule)
-                                    .overlay(Capsule().strokeBorder(kind == k ? Color.accentColor : .clear, lineWidth: 2))
-                                }
-                                .buttonStyle(.plain)
-                            }
+        let connector = mcpConnectorAddress(model.status)
+        let canConnector = kind.mcp && !connector.isEmpty
+        let useConnector = canConnector && byConnector
+        let text = useConnector ? connector : connectMessage(model.status, agent: kind.name)
+        VStack(spacing: 0) {
+            Text("Connect Your Agent").font(.title2.bold())
+            HStack(spacing: 0) {
+                ForEach(PersonalAgentKind.all) { k in
+                    Button {
+                        kind = k
+                    } label: {
+                        VStack(spacing: 6) {
+                            AgentLogo(id: k.logo ?? k.name, size: 48)
+                                .padding(4)
+                                .overlay(RoundedRectangle(cornerRadius: 48 * 0.26 + 4, style: .continuous)
+                                    .strokeBorder(kind == k ? Color.accentColor : .clear, lineWidth: 2))
+                            Text(k.name).font(.caption).fontWeight(kind == k ? .semibold : .regular)
+                                .foregroundStyle(kind == k ? .primary : .secondary).lineLimit(1)
                         }
+                        .frame(maxWidth: .infinity).contentShape(.rect)
                     }
-                    .scrollIndicators(.hidden)
-                    .listRowInsets(EdgeInsets(top: 8, leading: 12, bottom: 8, trailing: 12))
-                }
-                if kind.mcp && !connector.isEmpty {
-                    Section {
-                        MonoBox(text: connector)
-                        CopyShareButtons(text: connector, shareTitle: "Send…")
-                            .listRowBackground(Color.clear).listRowInsets(EdgeInsets())
-                    } header: {
-                        Text("Add a connector in \(kind.name)")
-                    } footer: {
-                        // An own server has no sign-in: its address's key is what lets an app ask.
-                        Text(model.status.hosted
-                            ? "\(kind.name) opens a sign-in and approval page; its request then shows up on this iPhone for you to verify and approve."
-                            : "\(kind.name) opens an approval page; its request then shows up on this iPhone for you to verify and approve.")
-                    }
-                }
-                Section {
-                    MonoBox(text: message)
-                    CopyShareButtons(text: message, shareTitle: "Send…")
-                        .listRowBackground(Color.clear).listRowInsets(EdgeInsets())
-                } header: {
-                    Text(kind.mcp && !connector.isEmpty ? "Or send this to \(kind.name)" : "Send this to \(kind.name)")
-                } footer: {
-                    Text("Once it runs the commands, its request to connect shows up here.")
+                    .buttonStyle(.plain)
+                    .accessibilityLabel(k.name)
+                    .accessibilityAddTraits(kind == k ? .isSelected : [])
+                    .accessibilityIdentifier("agent-\(k.id)")
                 }
             }
-            .navigationTitle("Connect Your Agent")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar { CloseButton() }
+            .padding(.top, 22)
+            if canConnector {
+                Picker("Way", selection: $byConnector) {
+                    Text("Connector").tag(true)
+                    Text("Message").tag(false)
+                }
+                .pickerStyle(.segmented).labelsHidden()
+                .padding(.top, 22)
+            }
+            Text(useConnector ? "Add this connector in \(kind.name)" : "Send this to \(kind.name)")
+                .font(.subheadline).foregroundStyle(.secondary).padding(.top, 22)
+            // An own server's message is its steps, long: the box scrolls past a few lines.
+            ScrollView {
+                Text(text).font(useConnector ? .footnote.monospaced() : .callout).textSelection(.enabled)
+                    .padding(14).frame(maxWidth: .infinity, alignment: .leading)
+            }
+            .scrollBounceBehavior(.basedOnSize)
+            .frame(maxHeight: 220)
+            .background(.fill.tertiary, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+                .padding(.top, 10)
+                .accessibilityIdentifier("connect-text")
+            HStack(spacing: 8) {
+                WaitingMark(size: 16)
+                Text(useConnector ? "Once connected, its request shows up here." : "Once it runs it, its request shows up here.")
+            }
+            .font(.footnote).foregroundStyle(.secondary)
+            .padding(.top, 14)
+            CardButton(title: "Copy", systemImage: "doc.on.doc") {
+                UIPasteboard.general.string = text
+                model.show(String(localized: "Copied"))
+            }
+            .padding(.top, 22)
+            ShareLink(item: text) { Text("Send…") }.padding(.top, 14)
         }
+        .padding(.horizontal, 26).padding(.top, 44).padding(.bottom, 6)
+        .overlay(alignment: .topTrailing) { CardCloseButton { dismiss() }.padding(16) }
+        .fittedSheet()
     }
-
-    private var message: String { connectMessage(model.status, agent: kind.name) }
-    private var connector: String { mcpConnectorAddress(model.status) }
 }
 
 /// What to send a personal agent so it connects. On the official service,

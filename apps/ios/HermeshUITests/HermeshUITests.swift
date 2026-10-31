@@ -568,11 +568,28 @@ final class HermeshUITests: XCTestCase {
         let connect = app.buttons["连接 agent…"]
         XCTAssertTrue(connect.waitForExistence(timeout: 5), "the New menu")
         connect.tap()
-        XCTAssertTrue(app.navigationBars["连接你的 Agent"].waitForExistence(timeout: 10), "the Connect Your Agent sheet")
+        XCTAssertTrue(text("连接你的 Agent").waitForExistence(timeout: 10), "the Connect Your Agent card")
         // Claude, picked first, takes a connector: this server's address, not the official one.
         XCTAssertTrue(text(address).waitForExistence(timeout: 10), "the MCP address with its key")
         XCTAssertFalse(text("https://mcp.hermesh.io/mcp").exists, "the official service's address on an own server")
-        XCTAssertTrue(text("或者把这段话发给 Claude").exists)
+        XCTAssertTrue(text("在 Claude 里添加这个连接器").exists)
+        let shot = XCTAttachment(screenshot: app.screenshot())
+        shot.name = "connect Claude, connector"
+        shot.lifetime = .keepAlways
+        add(shot)
+        // Or a message to send it, one way at a time.
+        app.segmentedControls.buttons["发一段话"].tap()
+        XCTAssertTrue(text("把这段话发给 Claude").waitForExistence(timeout: 5))
+        XCTAssertTrue(text("hermesh auth login").exists, "an own server's steps")
+        XCTAssertFalse(text(address).exists, "the connector is gone")
+        // Grok Bot takes no connector: the message only.
+        tap("agent-grok")
+        XCTAssertTrue(text("把这段话发给 Grok Bot").waitForExistence(timeout: 5))
+        XCTAssertFalse(app.segmentedControls.firstMatch.exists, "no connector to choose")
+        let grok = XCTAttachment(screenshot: app.screenshot())
+        grok.name = "connect Grok Bot"
+        grok.lifetime = .keepAlways
+        add(grok)
         tap("close")
     }
 
