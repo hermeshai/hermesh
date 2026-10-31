@@ -262,7 +262,8 @@ message GetStatusResponse {
   // nor signs until SignIn.
   bool signed_out = 15;
   // The account this profile belongs to, as the center named it when it
-  // was set up, joined or signed in (for display only).
+  // was set up, joined or signed in, or since it last connected (for
+  // display only).
   string account = 16;
   // This device erased everything (EraseEverything, or an erase order from
   // another): what it did, until another setup.

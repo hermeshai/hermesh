@@ -344,7 +344,8 @@ public nonisolated struct Hermesh_Local_V1_GetStatusResponse: @unchecked Sendabl
   }
 
   /// The account this profile belongs to, as the center named it when it
-  /// was set up, joined or signed in (for display only).
+  /// was set up, joined or signed in, or since it last connected (for
+  /// display only).
   public var account: String {
     get {_storage._account}
     set {_uniqueStorage()._account = newValue}

@@ -5,12 +5,13 @@ import SwiftUI
 import UserNotifications
 
 /// The account, laid out as iOS Settings: the service this iPhone belongs
-/// to, usage (the days in a grid), appearance, notifications and about;
-/// signing out last. The trusted devices are on the Machines page.
+/// to (its web console a tap away), usage (the days in a grid), appearance,
+/// notifications and about; signing out and erasing everything last. The trusted devices are on the Machines page.
 struct AccountSheet: View {
     @Environment(AppModel.self) private var model
     @Environment(\.scenePhase) private var scenePhase
     @State private var signingOut = false
+    @State private var erasing = false
     @State private var notifications: UNAuthorizationStatus?
     @AppStorage("appearance") private var appearance = "system"
 
@@ -59,37 +60,22 @@ struct AccountSheet: View {
                                 .accessibilityIdentifier("mcpAddress")
                         }
                     }
-                    if !model.status.consoleURL.isEmpty, let url = URL(string: model.status.consoleURL) {
-                        Link(destination: url) {
-                            HStack {
-                                VStack(alignment: .leading, spacing: 2) {
-                                    Text("Web console").foregroundStyle(.primary)
-                                    Text("Machines and grants in any browser; emergency revocation").font(.footnote).foregroundStyle(.secondary)
-                                }
-                                Spacer()
-                                Image(systemName: "arrow.up.right").font(.footnote.weight(.semibold)).foregroundStyle(.tertiary)
-                            }
-                        }
-                    }
                     LabeledContent("Version", value: model.status.version)
                 } header: {
                     Text("About")
                 }
+                // What ends: signing this iPhone out, and erasing everything (its own page).
                 Section {
                     Button("Sign Out…", role: .destructive) { signingOut = true }
                         .frame(maxWidth: .infinity)
-                }
-                if !model.status.removed {
-                    Section {
-                        NavigationLink {
-                            EraseView()
-                        } label: {
-                            Text("Erase Everything…").foregroundStyle(.red)
-                        }
-                        .accessibilityIdentifier("erase-everything")
+                    if !model.status.removed {
+                        Button("Erase Everything…", role: .destructive) { erasing = true }
+                            .frame(maxWidth: .infinity)
+                            .accessibilityIdentifier("erase-everything")
                     }
                 }
             }
+            .navigationDestination(isPresented: $erasing) { EraseView() }
             .navigationTitle("Account and Devices")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar { CloseButton() }
@@ -117,8 +103,8 @@ struct AccountSheet: View {
 
     /// The service this iPhone belongs to, as Settings shows the account at
     /// its top: on the official service the account, its picture and the
-    /// service; on a server of one's own the mark and where it is; and
-    /// whether it is reached.
+    /// service; on a server of one's own the mark and where it is; whether
+    /// it is reached; and a way to the web console.
     private var service: some View {
         let account = model.status.hosted && !model.status.account.isEmpty
         return HStack(spacing: 14) {
@@ -143,9 +129,21 @@ struct AccountSheet: View {
                 }
                 .font(.footnote).foregroundStyle(.secondary)
             }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .accessibilityElement(children: .combine)
+            // The service's web console, where it has one.
+            if let url = URL(string: model.status.consoleURL), !model.status.consoleURL.isEmpty {
+                Link(destination: url) {
+                    Image(systemName: "arrow.up.right").font(.subheadline.weight(.semibold))
+                        .frame(width: 36, height: 36)
+                        .background(Color(.tertiarySystemFill), in: .circle)
+                }
+                .buttonStyle(.borderless)
+                .accessibilityLabel("Web console")
+                .accessibilityIdentifier("web-console")
+            }
         }
         .padding(.vertical, 4)
-        .accessibilityElement(children: .combine)
     }
 
     private func readNotifications() async {

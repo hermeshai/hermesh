@@ -652,7 +652,8 @@ type GetStatusResponse struct {
 	// nor signs until SignIn.
 	SignedOut bool `protobuf:"varint,15,opt,name=signed_out,json=signedOut,proto3" json:"signed_out,omitempty"`
 	// The account this profile belongs to, as the center named it when it
-	// was set up, joined or signed in (for display only).
+	// was set up, joined or signed in, or since it last connected (for
+	// display only).
 	Account string `protobuf:"bytes,16,opt,name=account,proto3" json:"account,omitempty"`
 	// This device erased everything (EraseEverything, or an erase order from
 	// another): what it did, until another setup.

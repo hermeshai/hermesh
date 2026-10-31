@@ -465,6 +465,7 @@ final class HermeshUITests: XCTestCase {
         XCTAssertTrue(system.waitForExistence(timeout: 20))
         XCTAssertTrue(system.isSelected && system.label == "跟随系统", system.label)
         XCTAssertLessThan(system.frame.height, 140, "kept low")
+        XCTAssertFalse(app.buttons["web-console"].exists, "a server of one's own has no web console")
         let shot = XCTAttachment(screenshot: app.screenshot())
         shot.name = "account"
         shot.lifetime = .keepAlways
