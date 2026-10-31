@@ -4,6 +4,7 @@ package provider
 
 import (
 	"context"
+	"errors"
 	"os"
 	"os/exec"
 	"strconv"
@@ -39,7 +40,8 @@ func TestRunCommand(t *testing.T) {
 			if err != nil || !strings.HasSuffix(strings.Fields(string(out))[0], strings.TrimPrefix(dir, "/private")) || strings.Fields(string(out))[1] != "7" || strings.TrimSpace(string(errOut)) != "warn" {
 				t.Fatalf("out=%q err=%q %v", out, errOut, err)
 			}
-			if _, _, err := RunCommand(ctx, "sh", []string{"-c", "exit 4"}, "", nil); err == nil || !strings.Contains(err.Error(), "exit status 4") {
+			var exit interface{ ExitCode() int }
+			if _, _, err := RunCommand(ctx, "sh", []string{"-c", "exit 4"}, "", nil); !errors.As(err, &exit) || exit.ExitCode() != 4 || !strings.Contains(err.Error(), "exit status 4") {
 				t.Fatalf("exit: %v", err)
 			}
 			tctx, cancel := context.WithTimeout(ctx, 200*time.Millisecond)

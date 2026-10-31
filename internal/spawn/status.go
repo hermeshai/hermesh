@@ -9,6 +9,11 @@ import (
 // ErrHelperGone: the spawn helper has exited; spawn in-process instead.
 var ErrHelperGone = errors.New("spawn helper exited")
 
+type exitError int
+
+func (e exitError) Error() string { return fmt.Sprintf("exit status %d", e) }
+func (e exitError) ExitCode() int { return int(e) }
+
 // ExitErr turns a wait status into nil (success) or an error worded like
 // os/exec's.
 func ExitErr(ws syscall.WaitStatus) error {
@@ -20,6 +25,6 @@ func ExitErr(ws syscall.WaitStatus) error {
 	case ws.Exited() && ws.ExitStatus() == 0:
 		return nil
 	default:
-		return fmt.Errorf("exit status %d", ws.ExitStatus())
+		return exitError(ws.ExitStatus())
 	}
 }

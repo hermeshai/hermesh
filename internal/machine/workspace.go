@@ -87,7 +87,7 @@ func gitUnlimited(ctx context.Context, dir string, args ...string) (string, erro
 	<-gitSem
 	gitHistogram(args).Since(start)
 	if err != nil {
-		return string(out), fmt.Errorf("git %s: %v: %s", strings.Join(args, " "), err, strings.TrimSpace(string(errb)))
+		return string(out), fmt.Errorf("git %s: %w: %s", strings.Join(args, " "), err, strings.TrimSpace(string(errb)))
 	}
 	return string(out), nil
 }
@@ -179,6 +179,12 @@ func resolveRef(ctx context.Context, repo, ref string) (string, error) {
 	return strings.TrimSpace(out), err
 }
 
+type baseRefError struct{ ref string }
+
+func (e *baseRefError) Error() string {
+	return fmt.Sprintf("base ref %q does not resolve to a commit in the local repository", e.ref)
+}
+
 // Create adds a worktree for sessionID at baseRef and returns the base
 // commit and branch name. Sessions write disjoint paths and refs, so
 // concurrent adds are safe; git's own lock files guard the shared bits and
@@ -193,14 +199,25 @@ func (w *Workspace) Create(ctx context.Context, repo, baseRef, sessionID string)
 	if strings.HasPrefix(baseRef, "-") {
 		return "", "", fmt.Errorf("invalid base ref %q", baseRef)
 	}
+	// Resolve before creating anything, then use this commit in both paths
+	// so a moving branch cannot change the requested base during checkout.
+	base, err = git(ctx, repo, "rev-parse", "--verify", "--quiet", "--end-of-options", baseRef+"^{commit}")
+	if err != nil {
+		var exit interface{ ExitCode() int }
+		if errors.As(err, &exit) && exit.ExitCode() == 1 {
+			return "", "", &baseRefError{ref: baseRef}
+		}
+		return "", "", fmt.Errorf("resolve base ref %q: %w", baseRef, err)
+	}
+	base = strings.TrimSpace(base)
 	branch = "hermesh/" + sessionID
 	if err := os.MkdirAll(w.root, 0o700); err != nil {
 		return "", "", err
 	}
 	if common := plainGitDir(repo); common != "" {
-		err = w.addWorktree(ctx, repo, common, baseRef, branch, sessionID, false)
+		err = w.addWorktree(ctx, repo, common, base, branch, sessionID, false)
 	} else {
-		err = w.gitWorktreeAdd(ctx, repo, baseRef, branch, sessionID, false)
+		err = w.gitWorktreeAdd(ctx, repo, base, branch, sessionID, false)
 	}
 	if err != nil {
 		return "", "", fmt.Errorf("create worktree at %q: %w", baseRef, err)

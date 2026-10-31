@@ -1,6 +1,7 @@
-import { FailureKind, SessionStatus } from "@hermesh/proto/session";
+import { create } from "@bufbuild/protobuf";
+import { FailureKind, FailureSchema, SessionStatus } from "@hermesh/proto/session";
 import { describe, expect, test } from "vitest";
-import { agoText, clockText, elapsedSeconds, failureHeadline, listTime, minutesLeft, phaseText, shortTime, tokensText, toolSummary } from "./text";
+import { agoText, clockText, elapsedSeconds, failureAdvice, failureHeadline, listTime, minutesLeft, phaseText, shortTime, tokensText, toolSummary } from "./text";
 import { at, now, progressOf, session } from "./testing";
 
 describe("text", () => {
@@ -37,6 +38,12 @@ describe("text", () => {
     expect(listTime(at(-86400), now)).toBe("昨天");
     expect(listTime(at(-3 * 86400), now)).toBe("周五");
     expect(listTime(at(-20 * 86400), now)).toBe("9月29日");
+  });
+
+  test("a missing worktree base explains which ref failed and how to retry", () => {
+    const failure = create(FailureSchema, { kind: FailureKind.BASE_REF_UNAVAILABLE, message: 'Project "movieclaw": base ref "ios-v0.12.2" unavailable.' });
+    expect(failureHeadline(failure.kind, "Codex")).toBe("无法创建工作目录：本地基准引用不可用");
+    expect(failureAdvice(failure)).toBe(`${failure.message} 请确认基准引用名称，或将对应分支/tag 同步到项目的本地仓库，再在本会话发送一条消息重试原始任务。`);
   });
 
   test("a morning hour has two digits", () => {

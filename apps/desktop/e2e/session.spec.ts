@@ -18,6 +18,29 @@ async function status(title: string): Promise<string> {
   return JSON.parse(await cli("session", "get", fixture.sessions[title], "-o", "json")).session.status;
 }
 
+for (const language of ["zh-Hans", "en"]) {
+  test(`a missing worktree base shows the project, ref and recovery advice (${language})`, async () => {
+    const title = `缺少基准引用-${language}`;
+    const started = JSON.parse(await cli("session", "start", "--project", "demo", "--agent", "gemini", "--title", title, "--base", "ios-v0.12.2", "--prompt", "say original task", "-o", "json"));
+    const id = started.session.session_id;
+    await expect.poll(async () => JSON.parse(await cli("session", "get", id, "-o", "json")).session.status).toBe("crashed");
+    const { app, page } = await launch(fixture.socket, { systemLanguages: [language] });
+    try {
+      await page.getByRole("list", { name: language === "en" ? "Sessions" : "会话", exact: true }).getByText(title, { exact: true }).click();
+      const failure = page.getByRole("alert");
+      await expect(failure).toContainText(language === "en" ? "The worktree’s base ref is unavailable locally" : "无法创建工作目录：本地基准引用不可用");
+      await expect(failure).toContainText('project "demo"');
+      await expect(failure).toContainText('base ref "ios-v0.12.2"');
+      await expect(failure).toContainText(language === "en" ? "sync the corresponding branch/tag" : "将对应分支/tag 同步到项目的本地仓库");
+      await expect(failure).toContainText(language === "en" ? "in this session to retry the original task" : "在本会话发送一条消息重试原始任务");
+      await expect(failure).not.toContainText(language === "en" ? "Hermesh Settings" : "Hermesh 设置");
+      await expect(failure).not.toContainText("git branch");
+    } finally {
+      await app.close();
+    }
+  });
+}
+
 test("a finished session shows both turns, what the agent did, and that it is done", async () => {
   const { app, page } = await launch();
   await open(page, "写 hello");

@@ -146,6 +146,9 @@ public nonisolated enum Hermesh_Session_V1_FailureKind: SwiftProtobuf.Enum, Swif
 
   /// Someone interrupted the turn on purpose (the session goes on).
   case interrupted // = 17
+
+  /// The worktree's base ref does not resolve to a local commit.
+  case baseRefUnavailable // = 18
   case UNRECOGNIZED(Int)
 
   public init() {
@@ -172,6 +175,7 @@ public nonisolated enum Hermesh_Session_V1_FailureKind: SwiftProtobuf.Enum, Swif
     case 15: self = .startFailed
     case 16: self = .unknown
     case 17: self = .interrupted
+    case 18: self = .baseRefUnavailable
     default: self = .UNRECOGNIZED(rawValue)
     }
   }
@@ -196,6 +200,7 @@ public nonisolated enum Hermesh_Session_V1_FailureKind: SwiftProtobuf.Enum, Swif
     case .startFailed: return 15
     case .unknown: return 16
     case .interrupted: return 17
+    case .baseRefUnavailable: return 18
     case .UNRECOGNIZED(let i): return i
     }
   }
@@ -220,6 +225,7 @@ public nonisolated enum Hermesh_Session_V1_FailureKind: SwiftProtobuf.Enum, Swif
     .startFailed,
     .unknown,
     .interrupted,
+    .baseRefUnavailable,
   ]
 
 }
@@ -1905,7 +1911,7 @@ nonisolated extension Hermesh_Session_V1_SessionStatus: SwiftProtobuf._ProtoName
 }
 
 nonisolated extension Hermesh_Session_V1_FailureKind: SwiftProtobuf._ProtoNameProviding {
-  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{2}\0FAILURE_KIND_UNSPECIFIED\0\u{1}FAILURE_KIND_AUTH\0\u{1}FAILURE_KIND_QUOTA\0\u{1}FAILURE_KIND_RATE_LIMIT\0\u{1}FAILURE_KIND_PROVIDER_ERROR\0\u{1}FAILURE_KIND_NETWORK\0\u{1}FAILURE_KIND_CONTEXT_OVERFLOW\0\u{1}FAILURE_KIND_MODEL_UNAVAILABLE\0\u{1}FAILURE_KIND_INVALID_REQUEST\0\u{1}FAILURE_KIND_REFUSED\0\u{1}FAILURE_KIND_LIMIT_REACHED\0\u{1}FAILURE_KIND_RESUME_REJECTED\0\u{1}FAILURE_KIND_AGENT_CRASHED\0\u{1}FAILURE_KIND_STALLED\0\u{1}FAILURE_KIND_TIMEOUT\0\u{1}FAILURE_KIND_START_FAILED\0\u{1}FAILURE_KIND_UNKNOWN\0\u{1}FAILURE_KIND_INTERRUPTED\0")
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{2}\0FAILURE_KIND_UNSPECIFIED\0\u{1}FAILURE_KIND_AUTH\0\u{1}FAILURE_KIND_QUOTA\0\u{1}FAILURE_KIND_RATE_LIMIT\0\u{1}FAILURE_KIND_PROVIDER_ERROR\0\u{1}FAILURE_KIND_NETWORK\0\u{1}FAILURE_KIND_CONTEXT_OVERFLOW\0\u{1}FAILURE_KIND_MODEL_UNAVAILABLE\0\u{1}FAILURE_KIND_INVALID_REQUEST\0\u{1}FAILURE_KIND_REFUSED\0\u{1}FAILURE_KIND_LIMIT_REACHED\0\u{1}FAILURE_KIND_RESUME_REJECTED\0\u{1}FAILURE_KIND_AGENT_CRASHED\0\u{1}FAILURE_KIND_STALLED\0\u{1}FAILURE_KIND_TIMEOUT\0\u{1}FAILURE_KIND_START_FAILED\0\u{1}FAILURE_KIND_UNKNOWN\0\u{1}FAILURE_KIND_INTERRUPTED\0\u{1}FAILURE_KIND_BASE_REF_UNAVAILABLE\0")
 }
 
 nonisolated extension Hermesh_Session_V1_QuestionResolution: SwiftProtobuf._ProtoNameProviding {

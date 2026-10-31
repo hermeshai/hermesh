@@ -117,13 +117,15 @@ export function failureTitle(k: FailureKind): string {
       return t("failure.timeout");
     case FailureKind.START_FAILED:
       return t("failure.startFailed");
+    case FailureKind.BASE_REF_UNAVAILABLE:
+      return t("failure.baseRefUnavailable");
     default:
       return t("failure.other");
   }
 }
 
 type Headline = "auth" | "quota" | "rateLimit" | "providerError" | "network" | "contextOverflow" | "modelUnavailable" | "invalidRequest" | "refused" |
-  "limitReached" | "resumeRejected" | "agentCrashed" | "stalled" | "timeout" | "startFailed" | "other";
+  "limitReached" | "resumeRejected" | "agentCrashed" | "stalled" | "timeout" | "startFailed" | "baseRefUnavailable" | "other";
 
 const headlines: Partial<Record<FailureKind, Headline>> = {
   [FailureKind.AUTH]: "auth",
@@ -141,6 +143,7 @@ const headlines: Partial<Record<FailureKind, Headline>> = {
   [FailureKind.STALLED]: "stalled",
   [FailureKind.TIMEOUT]: "timeout",
   [FailureKind.START_FAILED]: "startFailed",
+  [FailureKind.BASE_REF_UNAVAILABLE]: "baseRefUnavailable",
 };
 
 /** A failure told of the coding agent, in a sentence ("Codex couldn’t start"): the title of the card a failed session ends with. */
@@ -171,6 +174,8 @@ export function failureAdvice(f: Failure): string {
       return t("advice.resume");
     case FailureKind.START_FAILED:
       return t("advice.startFailed");
+    case FailureKind.BASE_REF_UNAVAILABLE:
+      return `${f.message} ${t("advice.baseRefUnavailable")}`;
     default:
       return f.hint;
   }

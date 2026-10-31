@@ -92,6 +92,7 @@ public func failureTitle(_ k: FailureKind) -> String {
     case .stalled: String(localized: "No progress for a long time", bundle: .module)
     case .timeout: String(localized: "Took too long", bundle: .module)
     case .startFailed: String(localized: "Couldn’t start the agent", bundle: .module)
+    case .baseRefUnavailable: String(localized: "Base ref unavailable locally", bundle: .module)
     default: String(localized: "Failed", bundle: .module)
     }
 }
@@ -115,6 +116,7 @@ public func failureHeadline(_ k: FailureKind, agent: String) -> String {
     case .stalled: String(localized: "\(agent) made no progress for a long time", bundle: .module)
     case .timeout: String(localized: "This turn ran past its time limit", bundle: .module)
     case .startFailed: String(localized: "\(agent) couldn’t start", bundle: .module)
+    case .baseRefUnavailable: String(localized: "The worktree’s base ref is unavailable locally", bundle: .module)
     default: String(localized: "\(agent) ran into an error", bundle: .module)
     }
 }
@@ -130,6 +132,7 @@ public func failureAdvice(_ f: Failure) -> String {
     case .limitReached: String(localized: "Say “continue” to let it go on.", bundle: .module)
     case .agentCrashed, .stalled: String(localized: "The next message resumes the session.", bundle: .module)
     case .startFailed: String(localized: "Open that machine’s page in Hermesh Settings to see what keeps it from starting agents.", bundle: .module)
+    case .baseRefUnavailable: f.message + " " + String(localized: "Check the base ref name, or sync the corresponding branch/tag into the project’s local repository. Then send another message in this session to retry the original task.", bundle: .module)
     default: f.hint
     }
 }

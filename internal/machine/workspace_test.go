@@ -2,6 +2,7 @@ package machine
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
@@ -136,6 +137,87 @@ func TestWorktreeLifecycle(t *testing.T) {
 			}
 			gitOut(t, repo, "worktree", "prune")
 			gitOut(t, repo, "fsck", "--no-progress")
+		})
+	}
+}
+
+// Missing refs and refs to non-commits are reported before any worktree
+// state is created; a broken repository is a different kind of failure.
+func TestWorktreeBaseValidation(t *testing.T) {
+	for _, fallback := range []bool{false, true} {
+		t.Run(fmt.Sprint(fallback), func(t *testing.T) {
+			repo := testRepo(t)
+			if fallback {
+				gitOut(t, repo, "config", "extensions.worktreeConfig", "true")
+			}
+			gitOut(t, repo, "tag", "blob-tag", strings.TrimSpace(gitOut(t, repo, "rev-parse", "HEAD:a.txt")))
+			for _, ref := range []string{"missing", "blob-tag"} {
+				w := NewWorkspace(filepath.Join(t.TempDir(), "worktrees"))
+				_, _, err := w.Create(context.Background(), repo, ref, "s_bad")
+				var baseErr *baseRefError
+				if !errors.As(err, &baseErr) || baseErr.ref != ref {
+					t.Fatalf("base %q: %v", ref, err)
+				}
+				if _, err := os.Stat(w.root); !os.IsNotExist(err) {
+					t.Fatalf("failed validation created the worktree root: %v", err)
+				}
+				if _, err := os.Stat(filepath.Join(repo, ".git", "refs", "heads", "hermesh", "s_bad")); !os.IsNotExist(err) {
+					t.Fatalf("failed validation left a branch: %v", err)
+				}
+			}
+			w := NewWorkspace(filepath.Join(t.TempDir(), "worktrees"))
+			_, _, err := w.Create(context.Background(), t.TempDir(), "HEAD", "s_broken")
+			var baseErr *baseRefError
+			if err == nil || errors.As(err, &baseErr) {
+				t.Fatalf("a broken repository was reported as a missing base: %v", err)
+			}
+		})
+	}
+}
+
+// Move the source branch immediately after Git resolves it, before the
+// worktree is created: both checkout paths must still use that commit.
+func TestWorktreePinsBaseCommit(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("shell wrapper")
+	}
+	realGit := gitBin()
+	for _, fallback := range []bool{false, true} {
+		t.Run(fmt.Sprint(fallback), func(t *testing.T) {
+			repo := testRepo(t)
+			if fallback {
+				gitOut(t, repo, "config", "extensions.worktreeConfig", "true")
+			}
+			first := strings.TrimSpace(gitOut(t, repo, "rev-parse", "HEAD"))
+			gitOut(t, repo, "branch", "moving", first)
+			gitOut(t, repo, "-c", "user.name=t", "-c", "user.email=t@t", "commit", "--allow-empty", "-m", "next")
+			next := strings.TrimSpace(gitOut(t, repo, "rev-parse", "HEAD"))
+			t.Setenv("HERMESH_TEST_GIT", realGit)
+			t.Setenv("HERMESH_TEST_NEXT_COMMIT", next)
+			wrapper := filepath.Join(t.TempDir(), "git")
+			if err := os.WriteFile(wrapper, []byte(`#!/bin/sh
+"$HERMESH_TEST_GIT" "$@"
+result=$?
+for arg in "$@"; do
+  if [ "$arg" = 'moving^{commit}' ] && [ "$result" = 0 ]; then
+    "$HERMESH_TEST_GIT" update-ref refs/heads/moving "$HERMESH_TEST_NEXT_COMMIT" || exit 1
+  fi
+done
+exit "$result"
+`), 0o755); err != nil {
+				t.Fatal(err)
+			}
+			original := gitBin
+			gitBin = func() string { return wrapper }
+			t.Cleanup(func() { gitBin = original })
+			w := NewWorkspace(filepath.Join(t.TempDir(), "worktrees"))
+			base, _, err := w.Create(context.Background(), repo, "moving", "s_pinned")
+			if err != nil || base != first || strings.TrimSpace(gitOut(t, w.Path("s_pinned"), "rev-parse", "HEAD")) != first {
+				t.Fatalf("checkout did not keep the resolved commit: %q, %v", base, err)
+			}
+			if got := strings.TrimSpace(gitOut(t, repo, "rev-parse", "moving")); got != next {
+				t.Fatalf("source branch did not move: %s", got)
+			}
 		})
 	}
 }

@@ -139,6 +139,8 @@ enum FailureKind {
   FAILURE_KIND_UNKNOWN = 16;
   // Someone interrupted the turn on purpose (the session goes on).
   FAILURE_KIND_INTERRUPTED = 17;
+  // The worktree's base ref does not resolve to a local commit.
+  FAILURE_KIND_BASE_REF_UNAVAILABLE = 18;
 }
 
 message Failure {

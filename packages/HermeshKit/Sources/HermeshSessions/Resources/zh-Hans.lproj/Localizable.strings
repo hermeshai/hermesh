@@ -60,6 +60,9 @@
 "Reading" = "正在读取";
 "Request rejected" = "请求被拒绝";
 "Open that machine’s page in Hermesh Settings to see what keeps it from starting agents." = "在 Hermesh 设置里打开这台机器的页面，看看是什么让它启动不了 agent。";
+"Base ref unavailable locally" = "本地基准引用不可用";
+"The worktree’s base ref is unavailable locally" = "无法创建工作目录：本地基准引用不可用";
+"Check the base ref name, or sync the corresponding branch/tag into the project’s local repository. Then send another message in this session to retry the original task." = "请确认基准引用名称，或将对应分支/tag 同步到项目的本地仓库，再在本会话发送一条消息重试原始任务。";
 "Running" = "运行中";
 "Running %@" = "执行 %@";
 "Say “continue” to let it go on." = "发“继续”让它接着做。";
