@@ -140,16 +140,24 @@ func connectMessage(_ status: StatusResponse, agent: String) -> String {
         """)
 }
 
-/// Add a machine: the command to run there (send it to the Mac by AirDrop),
-/// install.sh's, or install.ps1's in a Windows PC's PowerShell, then approve
-/// its request here.
+/// Add a machine: its system, then how: the app (a Mac or a Windows PC,
+/// which then signs in to this account or joins this server) or the command
+/// to run there (Linux has only this; send it to the Mac by AirDrop),
+/// install.sh's or install.ps1's in PowerShell. Then approve its request here.
 struct AddMachineSheet: View {
+    enum System: Hashable { case mac, windows, linux }
+
     @Environment(AppModel.self) private var model
     @State private var forThisPhone = false
-    @State private var windows = false
+    @State private var system = System.mac
+    @State private var app = true
 
     static let install = "curl -fsSL https://github.com/hermeshai/hermesh/releases/latest/download/install.sh | sh"
     static let installScript = "https://github.com/hermeshai/hermesh/releases/latest/download/install.ps1"
+    /// Where that Mac or PC gets the app: the site picks the build for it.
+    static let download = "hermesh.io/download"
+    private var windows: Bool { system == .windows }
+    private var viaApp: Bool { app && system != .linux }
     private var install: String { windows ? "irm \(Self.installScript) | iex" : Self.install }
     /// The command with this account's address in it: the machine's request
     /// comes here by itself, to compare its verification code.
@@ -161,16 +169,52 @@ struct AddMachineSheet: View {
         NavigationStack {
             List {
                 Section {
-                    Picker("That machine’s system", selection: $windows) {
-                        Text("macOS or Linux").tag(false)
-                        Text("Windows").tag(true)
+                    VStack(spacing: 10) {
+                        Picker("That machine’s system", selection: $system) {
+                            Text("Mac").tag(System.mac)
+                            Text("Windows").tag(System.windows)
+                            Text("Linux").tag(System.linux)
+                        }
+                        Picker("How to install", selection: Binding(get: { viaApp }, set: { app = $0 })) {
+                            Text("Install the App").tag(true)
+                            Text("Terminal Command").tag(false)
+                        }
+                        .disabled(system == .linux)
                     }
                     .pickerStyle(.segmented)
                     .listRowBackground(Color.clear).listRowInsets(EdgeInsets())
                 } footer: {
-                    Text("A Linux server, a cloud host, a Mac mini or a Windows PC can each be a machine.")
+                    Text("Agents use Claude Code and Codex on it.")
                 }
-                if model.status.hosted {
+                if viaApp {
+                    Section {
+                        MonoBox(text: Self.download)
+                        CopyShareButtons(text: "https://\(Self.download)", shareTitle: "Send…")
+                            .listRowBackground(Color.clear).listRowInsets(EdgeInsets())
+                    } header: {
+                        windows ? Text("1. On that PC, open") : Text("1. On that Mac, open")
+                    }
+                    if model.status.hosted {
+                        Section {
+                            waiting
+                            Button("Enter a pairing code instead…") { model.sheet = .enterCode }
+                        } header: {
+                            Text("2. Install it, open it, and sign in with the same account")
+                        }
+                    } else {
+                        Section {
+                            MonoBox(text: model.status.connectAddress)
+                            CopyShareButtons(text: model.status.connectAddress, shareTitle: "Send…")
+                                .listRowBackground(Color.clear).listRowInsets(EdgeInsets())
+                        } header: {
+                            Text("2. Install it, open it, and join")
+                        }
+                        Section {
+                            waiting
+                            Button("Enter a pairing code instead…") { model.sheet = .enterCode }
+                        }
+                    }
+                } else if model.status.hosted {
                     commandSection(install, footer: windows ? "In PowerShell, as the user you code as. It shows a code." : "As the user you code as. It shows a code.")
                     Section {
                         Button {
@@ -230,7 +274,8 @@ struct AddMachineSheet: View {
     }
 
     @ViewBuilder private var waiting: some View {
-        if let p = model.pairings.first(where: { $0.kind == .machine }) {
+        // The app joins as a machine only, or as a trusted device (which is a machine too).
+        if let p = model.pairings.first(where: { $0.kind == .machine || $0.kind == .device }) {
             Button(PairingText.title(p)) { model.sheet = .pairing(p.code) }
         } else {
             HStack(spacing: 10) {

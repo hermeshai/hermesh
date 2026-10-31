@@ -17,57 +17,127 @@ function addMachineCommand(windows: boolean, address: string) {
     : `curl -fsSL ${releases}/install.sh | sh -s -- ${address}`;
 }
 
+/** Where that Mac or PC gets the app: the site picks the build for it. */
+const downloadPage = "hermesh.io/download";
+
+type MachineOs = "mac" | "windows" | "linux";
+
 /**
- * Add Machine: one command on that machine (a Mac or Linux one, or a
- * Windows one's PowerShell). Its request then opens the approval here, with
- * the code its terminal shows compared in the signer's window.
+ * Add Machine: pick that machine's system, then how: the app (a Mac or a
+ * Windows PC, which then signs in to this account or joins this server) or
+ * one command in its terminal (Linux has only this). Its request then opens
+ * the approval here, with the code it shows compared in the signer's window.
  */
 export function AddMachineSheet() {
   const { t } = useTranslation("sheets");
   const st = useStore();
-  const [windows, setWindows] = useState(false);
-  const command = addMachineCommand(windows, st.status?.connectAddress ?? "");
+  const [os, setOs] = useState<MachineOs>("mac");
+  const [app, setApp] = useState(true);
+  const address = st.status?.connectAddress ?? "";
+  const windows = os === "windows";
+  const viaApp = app && os !== "linux";
+  const command = addMachineCommand(windows, address);
   const [before] = useState(() => new Set(st.pairings.map((p) => p.code)));
-  const arrived = st.pairings.find((p) => p.kind === PairingKind.MACHINE && !before.has(p.code))?.code;
+  // The app joins as a machine only, or as a trusted device (which is a machine too).
+  const arrived = st.pairings.find((p) => (p.kind === PairingKind.MACHINE || p.kind === PairingKind.DEVICE) && !before.has(p.code))?.code;
   useWaitForPairings();
   const { set } = st;
   useEffect(() => {
     if (arrived) set({ sheet: { kind: "pairing", code: arrived } });
   }, [arrived, set]);
-  const copy = () => {
-    navigator.clipboard.writeText(command).catch(() => {});
+  const copy = (text: string) => {
+    navigator.clipboard.writeText(text).catch(() => {});
     st.show(t("copied"));
   };
+  const copyButton = (text: string) => (
+    <button className="btn sm" onClick={() => copy(text)}>
+      <Icon name="copy" />
+      {t("copy")}
+    </button>
+  );
   return (
     <>
       <h3 id="sheet-title">{t("addMachine.title")}</h3>
       <p className="sub">{t("addMachine.sub")}</p>
-      <div className="fhead">{t("addMachine.step1")}</div>
-      <div className="seg" role="group" aria-label={t("addMachine.system")} style={{ marginBottom: 8 }}>
-        <button type="button" className={windows ? "" : "on"} aria-pressed={!windows} onClick={() => setWindows(false)}>{t("addMachine.unix")}</button>
-        <button type="button" className={windows ? "on" : ""} aria-pressed={windows} onClick={() => setWindows(true)}>Windows</button>
+      <div className="os-pick" role="group" aria-label={t("addMachine.system")}>
+        {(["mac", "windows", "linux"] as const).map((o) => (
+          <button key={o} type="button" className={o === os ? "os on" : "os"} aria-pressed={o === os} onClick={() => setOs(o)}>
+            <OsIcon os={o} />
+            {o === "mac" ? "Mac" : o === "windows" ? "Windows" : "Linux"}
+          </button>
+        ))}
       </div>
-      <div className="msgbox sel-text" style={{ paddingRight: 80 }}>
-        {command}
-        <button className="btn sm" onClick={copy}>
-          <Icon name="copy" />
-          {t("copy")}
+      <div className="seg" role="group" aria-label={t("addMachine.how")}>
+        <button type="button" className={viaApp ? "on" : ""} aria-pressed={viaApp} disabled={os === "linux"} onClick={() => setApp(true)}>
+          {t("addMachine.app")}
+          {os === "linux" && <span className="tag">{t("addMachine.noApp")}</span>}
         </button>
+        <button type="button" className={viaApp ? "" : "on"} aria-pressed={!viaApp} onClick={() => setApp(false)}>{t("addMachine.command")}</button>
       </div>
-      <p className="sub" style={{ marginTop: 8 }}>{t(windows ? "addMachine.hintWindows" : "addMachine.hint")}</p>
-      <div className="fhead" style={{ marginTop: 6 }}>{t("addMachine.step2")}</div>
-      <div className="waitline">
-        <Mark size={40} variant="wait" />
-        <div>
-          <b>{t("addMachine.waiting")}</b>
-          <span>{t("addMachine.waitingDetail")}</span>
-        </div>
+      <div className="am-panel">
+        {viaApp ? (
+          <>
+            <div className="am-step">
+              <span className="am-n">1</span>
+              {t(windows ? "addMachine.openOnPc" : "addMachine.openOnMac")}
+              <span className="am-chip sel-text">{downloadPage}</span>
+              {copyButton(`https://${downloadPage}`)}
+            </div>
+            <div className="am-step">
+              <span className="am-n">2</span>
+              {st.status?.hosted ? (
+                t("addMachine.signIn")
+              ) : (
+                <>
+                  {t("addMachine.join")}
+                  <span className="am-chip sel-text">{address}</span>
+                  {copyButton(address)}
+                </>
+              )}
+            </div>
+          </>
+        ) : (
+          <>
+            <div className="am-cmdh">
+              {t(windows ? "addMachine.powershell" : "addMachine.terminal")}
+              {copyButton(command)}
+            </div>
+            <div className="am-code sel-text">{command}</div>
+          </>
+        )}
       </div>
       <div className="sheet-foot">
-        <button className="link left" onClick={() => st.set({ sheet: { kind: "enterCode" } })}>{t("addMachine.enterCode")}</button>
+        <span className="am-wait left">
+          <Mark size={20} variant="wait" />
+          {t("addMachine.waiting")}
+        </span>
+        <button className="link" onClick={() => st.set({ sheet: { kind: "enterCode" } })}>{t("addMachine.enterCode")}</button>
         <button className="btn" onClick={() => st.set({ sheet: null })}>{t("done")}</button>
       </div>
     </>
+  );
+}
+
+function OsIcon({ os }: { os: MachineOs }) {
+  if (os === "windows")
+    return (
+      <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+        <rect x="3" y="3" width="8.4" height="8.4" rx="1" />
+        <rect x="12.6" y="3" width="8.4" height="8.4" rx="1" />
+        <rect x="3" y="12.6" width="8.4" height="8.4" rx="1" />
+        <rect x="12.6" y="12.6" width="8.4" height="8.4" rx="1" />
+      </svg>
+    );
+  if (os === "linux")
+    return (
+      <svg viewBox="0 0 24 24" fill="currentColor" fillRule="evenodd" aria-hidden="true">
+        <path d="M12 2.5c-2.6 0-4 2-4 4.8 0 1.4-.6 2.6-1.6 4C5 13.1 4 15 4 17c0 1.2.5 2 1.4 2.4L7 20.5c.6.4 1.6 1 2.7 1h4.6c1.1 0 2.1-.6 2.7-1l1.6-1.1c.9-.4 1.4-1.2 1.4-2.4 0-2-1-3.9-2.4-5.7-1-1.4-1.6-2.6-1.6-4 0-2.8-1.4-4.8-4-4.8zM8.6 15.6a3.4 4 0 1 0 6.8 0a3.4 4 0 1 0-6.8 0zM9.9 6.7a.9 1.1 0 1 0 1.8 0a.9 1.1 0 1 0-1.8 0zM12.3 6.7a.9 1.1 0 1 0 1.8 0a.9 1.1 0 1 0-1.8 0z" />
+      </svg>
+    );
+  return (
+    <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+      <path d="M16.4 12.6c0-2.2 1.8-3.3 1.9-3.3-1-1.5-2.6-1.7-3.2-1.7-1.4-.1-2.6.8-3.3.8-.7 0-1.7-.8-2.9-.8-1.5 0-2.8.9-3.6 2.2-1.5 2.7-.4 6.6 1.1 8.8.7 1.1 1.6 2.2 2.7 2.2 1.1 0 1.5-.7 2.8-.7 1.3 0 1.7.7 2.9.7 1.2 0 1.9-1.1 2.6-2.1.8-1.2 1.2-2.4 1.2-2.5 0 0-2.3-.9-2.2-3.6zM14.2 6.1c.6-.7 1-1.8.9-2.8-.9 0-1.9.6-2.5 1.3-.6.6-1 1.7-.9 2.7.9.1 1.9-.5 2.5-1.2z" />
+    </svg>
   );
 }
 

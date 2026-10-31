@@ -188,8 +188,19 @@ Get Started                                    ⋯
 
 ```
 Add a Machine
-A Linux server, a cloud host or a Mac mini can each be a machine.
+[ Mac | Windows | Linux ]
+[ Install the App | Terminal Command ]      Linux: the app is greyed out
+Agents use Claude Code and Codex on it.
 
+The app (a Mac or a PC):
+1. On that Mac, open
+   hermesh.io/download
+   [Copy]  [Send…]
+2. Install it, open it, and sign in with the same account
+   (an own server: "…and join", with its address to copy)
+   Waiting for it to connect…
+
+The command:
 1. On that machine, run
    curl -fsSL https://github.com/hermeshai/hermesh/releases/latest/download/install.sh | sh
    [Copy]  [Share…]
@@ -201,6 +212,15 @@ A Linux server, a cloud host or a Mac mini can each be a machine.
 Terminal on this iPhone? Copy a Command for This Account
 ```
 
+- **The system, then how.** A Mac and a Windows PC have the app as well as
+  the command; Linux has only the command, which the picker shows by
+  greying out the app. The desktop app's sheet is the same, with the
+  system as three tiles and the waiting line beside Done.
+- **The app's way** names a page to open on that computer, not a download
+  here: the installer belongs on the other machine. `hermesh.io/download`
+  offers the build for its system and chip. That app then signs in to the
+  same account (or joins the own server), as a trusted device or a machine
+  only (trusted-devices.md 4.7); either request opens here.
 - The command is the same for everyone, so it can come from this sheet,
   from hermesh.io or from the README, on whatever computer has the
   terminal.

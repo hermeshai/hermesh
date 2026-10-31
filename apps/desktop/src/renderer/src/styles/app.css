@@ -530,6 +530,21 @@ html.blurred .ctitle h2,html.blurred .set-top h1,html.blurred .update-title{colo
 .msgbox{position:relative;background:var(--code);border-radius:var(--r-card);padding:12px 14px;font-family:var(--mono);font-size:12px;line-height:1.65;white-space:pre-wrap;color:var(--l1);box-shadow:inset 0 0 0 .5px var(--sep)}
 .msgbox .btn{position:absolute;top:10px;right:10px}
 .waitline{display:flex;align-items:center;gap:14px;padding:16px 0}
+/* Add Machine: that machine's system, how to install, then the steps or the command (sheets/Add.tsx). */
+.os-pick{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin-bottom:12px}
+.os{height:70px;border:0;border-radius:var(--r-card);background:transparent;box-shadow:inset 0 0 0 .5px var(--l4);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;color:var(--l2);font-size:12.5px}
+.os:hover{background:var(--fill)}
+.os.on{background:var(--fill2);box-shadow:inset 0 0 0 1px var(--l3);color:var(--l1)}
+.os svg{width:22px;height:22px}
+.seg button:disabled{color:var(--l3)}
+.seg .tag{font-size:10.5px;color:var(--l3)}
+.am-panel{background:var(--win2);border-radius:var(--r-card);padding:14px;margin-top:12px;min-height:66px;display:flex;flex-direction:column;gap:10px}
+.am-step{display:flex;align-items:center;gap:8px;flex-wrap:wrap;min-height:24px}
+.am-n{width:18px;height:18px;border-radius:50%;background:var(--fill2);color:var(--l2);font-size:11px;font-weight:600;display:flex;align-items:center;justify-content:center;flex:none}
+.am-chip{font-family:var(--mono);font-size:12px;padding:2px 8px;border-radius:6px;background:var(--code);box-shadow:inset 0 0 0 .5px var(--sep)}
+.am-cmdh{display:flex;align-items:center;justify-content:space-between;font-size:12px;color:var(--l2)}
+.am-code{font-family:var(--mono);font-size:12px;line-height:1.65;color:var(--l1);word-break:break-all}
+.am-wait{display:flex;align-items:center;gap:8px;font-size:12.5px;color:var(--l2)}
 .waitline b{display:block;font-weight:600}
 .waitline span{font-size:12.5px;color:var(--l2)}
 .scope{background:var(--win2);border-radius:var(--r-panel)}

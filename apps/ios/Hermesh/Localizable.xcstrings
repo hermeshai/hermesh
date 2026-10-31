@@ -601,12 +601,32 @@
     "+%lld": {
       "shouldTranslate": false
     },
+    "1. On that Mac, open": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "1. 在那台 Mac 上打开"
+          }
+        }
+      }
+    },
     "1. On that machine, run": {
       "localizations": {
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
             "value": "1. 在那台机器上运行"
+          }
+        }
+      }
+    },
+    "1. On that PC, open": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "1. 在那台电脑上打开"
           }
         }
       }
@@ -647,6 +667,26 @@
           "stringUnit": {
             "state": "translated",
             "value": "2. 在这里批准"
+          }
+        }
+      }
+    },
+    "2. Install it, open it, and join": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "2. 安装后打开，加入"
+          }
+        }
+      }
+    },
+    "2. Install it, open it, and sign in with the same account": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "2. 安装后打开，用同一个账号登录"
           }
         }
       }
@@ -697,16 +737,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "8 分钟前"
-          }
-        }
-      }
-    },
-    "A Linux server, a cloud host, a Mac mini or a Windows PC can each be a machine.": {
-      "localizations": {
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Linux 服务器、云主机、Mac mini 或 Windows 电脑都可以作为机器。"
           }
         }
       }
@@ -1067,6 +1097,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "agent 用“机器名/项目”找到项目。批准后，再在它的页面里添加项目，并在授权里勾选谁能用。"
+          }
+        }
+      }
+    },
+    "Agents use Claude Code and Codex on it.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "agent 会在那台机器上跑 Claude Code、Codex。"
           }
         }
       }
@@ -2824,6 +2864,16 @@
         }
       }
     },
+    "How to install": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "安装方式"
+          }
+        }
+      }
+    },
     "How to Reconnect": {
       "localizations": {
         "zh-Hans": {
@@ -3020,6 +3070,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "在 Mac 上安装 Hermesh"
+          }
+        }
+      }
+    },
+    "Install the App": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "安装应用"
           }
         }
       }
@@ -3414,6 +3474,9 @@
         }
       }
     },
+    "Linux": {
+      "shouldTranslate": false
+    },
     "Loading earlier sessions…": {
       "localizations": {
         "zh-Hans": {
@@ -3443,6 +3506,9 @@
           }
         }
       }
+    },
+    "Mac": {
+      "shouldTranslate": false
     },
     "MCP address": {
       "localizations": {
@@ -5585,6 +5651,16 @@
     "Tech Demos": {
       "shouldTranslate": false
     },
+    "Terminal Command": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "终端命令"
+          }
+        }
+      }
+    },
     "Terminal on this iPhone? Copy a Command for This Account": {
       "localizations": {
         "zh-Hans": {
@@ -7074,16 +7150,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "macOS 没让 Hermesh 读这个文件夹。在那台 Mac 的「系统设置 › 隐私与安全性 › 文件与文件夹」里允许。"
-          }
-        }
-      }
-    },
-    "macOS or Linux": {
-      "localizations": {
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "macOS 或 Linux"
           }
         }
       }
