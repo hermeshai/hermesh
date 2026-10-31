@@ -51,7 +51,8 @@ func TestIPhone(t *testing.T) {
 	}
 
 	fake := filepath.Join(binaries(t), "fakeacp")
-	w := newOwnerMac(t, []string{"HERMESH_GEMINI_BIN=" + fake, "FAKE_ACP_STATE=" + filepath.Join(t.TempDir(), "fakeacp"), "FAKE_ACP_MODELS=gemini-3-pro"},
+	w := newOwnerMac(t, []string{"HERMESH_GEMINI_BIN=" + fake, "FAKE_ACP_STATE=" + filepath.Join(t.TempDir(), "fakeacp"), "FAKE_ACP_MODELS=gemini-3-pro",
+		"HERMESH_ANTIGRAVITY_BIN=" + fake, "GEMINI_HOME=" + t.TempDir()},
 		&localv1.GrantSpec{Agents: []string{"gemini"}})
 	sessions := desktopSessions(t, w)
 	device := simulator(t)

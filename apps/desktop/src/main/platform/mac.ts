@@ -102,6 +102,10 @@ export const mac: Platform = {
   openElevationSettings() {},
 
   runInTerminal(c: TerminalCommand, command: string) {
+    if (c === "antigravityLogin" && app.isPackaged) {
+      const bin = path.join(process.resourcesPath, "..", "Helpers", "hermesh");
+      command = `'${bin.replaceAll("'", "'\\''")}' agent login antigravity`;
+    }
     // A .command file opens in Terminal and runs there, in the person's login shell.
     const dir = path.join(os.homedir(), "Library", "Caches", "Hermesh");
     fs.mkdirSync(dir, { recursive: true });

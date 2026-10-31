@@ -60,6 +60,7 @@ var (
 	resume    = os.Getenv("FAKE_ACP_RESUME")
 	authID    = os.Getenv("FAKE_ACP_AUTH")
 	authed    = false
+	mode      string
 	nextID    = 1000
 	waiting   = map[string]chan msg{}
 	waitMu    sync.Mutex
@@ -201,7 +202,18 @@ func handle(m msg) {
 			replyErr(m.ID, -32000, "unknown auth method "+p.MethodID)
 			return
 		}
+		if os.Getenv("FAKE_ACP_AUTH_WAIT") == "1" {
+			fmt.Fprintln(os.Stderr, "Open https://example.test/login to sign in")
+			time.Sleep(30 * time.Second)
+		}
 		authed = true
+		reply(m.ID, map[string]any{})
+	case "session/set_mode":
+		var params struct {
+			ModeID string `json:"modeId"`
+		}
+		json.Unmarshal(m.Params, &params)
+		mode = params.ModeID
 		reply(m.ID, map[string]any{})
 	case "session/new":
 		if needAuth {
@@ -262,6 +274,10 @@ func handle(m msg) {
 		}
 		replyErr(m.ID, -32602, "unknown model "+p.ModelID)
 	case "session/prompt":
+		if os.Getenv("FAKE_ACP_REQUIRE_MODE") == "1" && mode != "default" {
+			replyErr(m.ID, -32602, "permission mode was not reset")
+			return
+		}
 		select { // drop a stale cancel
 		case <-cancelled:
 		default:

@@ -535,6 +535,7 @@ public func codingAgentTitle(_ name: String) -> String {
     case "claude": return "Claude Code"
     case "codex": return "Codex"
     case "gemini": return "Gemini CLI"
+    case "antigravity": return "Antigravity"
     case "cursor": return "Cursor"
     case "copilot": return "Copilot CLI"
     case "opencode": return "OpenCode"

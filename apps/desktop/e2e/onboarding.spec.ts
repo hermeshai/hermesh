@@ -121,11 +121,12 @@ test("a relay of one's own: welcome, authorize, set up this Mac, add a project, 
   const release = (agent: string) => fs.writeFileSync(path.join(fresh.gate!, agent), "");
   const searching = page.getByRole("status").filter({ has: page.getByRole("heading", { name: "正在查找本机上的编码 Agent" }) });
   await expect(searching).toBeVisible({ timeout: 30_000 });
-  await expect(searching.locator(".ag-sweep > span")).toHaveCount(15);
+  await expect(searching.locator(".ag-sweep > span")).toHaveCount(16);
   await expect(page.getByRole("button", { name: "稍后设置" })).toBeEnabled();
   await snap(page, "first-04-searching");
   release("codex");
   release("gemini");
+  release("antigravity");
   // Every coding agent Hermesh supports: the installed ones with their state, the rest greyed.
   await expect(page.getByRole("heading", { name: "检查和管理可用的 Agent" })).toBeVisible({ timeout: 30_000 });
   await expect(searching).toHaveCount(0);
@@ -149,6 +150,12 @@ test("a relay of one's own: welcome, authorize, set up this Mac, add a project, 
   // Each opens its own page, as in settings; Codex's says how to log in. The steps' buttons stay below.
   const agentPage = (name: string) => page.getByRole("region", { name });
   const back = () => page.getByRole("button", { name: "所有 Agent" }).click();
+  const antigravity = agents.getByRole("listitem", { name: "Antigravity" });
+  await expect(antigravity).toContainText("还没登录");
+  await antigravity.getByRole("button", { name: /^Antigravity/ }).click();
+  await expect(agentPage("Antigravity").getByText("hermesh agent login antigravity")).toBeVisible();
+  await expect(agentPage("Antigravity").getByRole("button", { name: "在终端运行" })).toBeVisible();
+  await back();
   await codex.getByRole("button", { name: /^Codex/ }).click();
   await expect(agentPage("Codex").getByText("codex login")).toBeVisible();
   await expect(agentPage("Codex").getByRole("button", { name: "在终端运行" })).toBeVisible();

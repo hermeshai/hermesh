@@ -184,6 +184,7 @@ public func agentTitle(_ id: String) -> String {
     case "claude": "Claude Code"
     case "codex": "Codex"
     case "gemini": "Gemini CLI"
+    case "antigravity": "Antigravity"
     case "cursor": "Cursor"
     case "copilot": "Copilot CLI"
     case "opencode": "OpenCode"

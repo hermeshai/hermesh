@@ -9,6 +9,7 @@
 //   Contents/MacOS/Hermesh                          Electron (this app)
 //   Contents/Resources/app.asar                     main, preload and the page
 //   Contents/Helpers/hermeshd                       the Go daemon, a LaunchAgent
+//   Contents/Helpers/hermesh                        the CLI (including agent login)
 //   Contents/Helpers/Hermesh Signer.app             the native signer
 //   Contents/Library/LaunchAgents/com.hermesh.app.daemon.plist
 //
@@ -70,14 +71,16 @@ fs.writeFileSync(
 const arch = process.env.HERMESH_ARCH || "universal";
 if (!["universal", "arm64", "x64"].includes(arch)) throw new Error(`HERMESH_ARCH: ${arch}`);
 const goArchs = arch === "universal" ? ["arm64", "amd64"] : [arch === "x64" ? "amd64" : "arm64"];
-step(`building hermeshd (${arch})`);
-for (const arch of goArchs) {
-  sh("go", ["build", "-trimpath", "-ldflags", `-s -w -X github.com/hermeshai/hermesh/internal/machine.Version=${version}`, "-o", path.join(tmp, `hermeshd-${arch}`), "./cmd/hermeshd"], {
-    cwd: root,
-    env: { ...process.env, GOOS: "darwin", GOARCH: arch, CGO_ENABLED: "0" },
-  });
+for (const name of ["hermeshd", "hermesh"]) {
+  step(`building ${name} (${arch})`);
+  for (const arch of goArchs) {
+    sh("go", ["build", "-trimpath", "-ldflags", `-s -w -X github.com/hermeshai/hermesh/internal/machine.Version=${version}`, "-o", path.join(tmp, `${name}-${arch}`), `./cmd/${name}`], {
+      cwd: root,
+      env: { ...process.env, GOOS: "darwin", GOARCH: arch, CGO_ENABLED: "0" },
+    });
+  }
+  sh("lipo", ["-create", "-output", path.join(tmp, name), ...goArchs.map((a) => path.join(tmp, `${name}-${a}`))]);
 }
-sh("lipo", ["-create", "-output", path.join(tmp, "hermeshd"), ...goArchs.map((a) => path.join(tmp, `hermeshd-${a}`))]);
 
 step("building Hermesh Signer.app");
 sh(path.join(root, "apps/signer/macos/scripts/build-signer.sh"), [tmp], { env: { ...process.env, HERMESH_SIGNING_IDENTITY: identity, VERSION: version } });
@@ -125,10 +128,16 @@ for (const f of fs.readdirSync(path.join(contents, "Resources"))) {
 step("adding hermeshd, the signer and the LaunchAgent");
 fs.mkdirSync(path.join(contents, "Helpers"), { recursive: true });
 fs.mkdirSync(path.join(contents, "Library/LaunchAgents"), { recursive: true });
-fs.copyFileSync(path.join(tmp, "hermeshd"), path.join(contents, "Helpers/hermeshd"));
-fs.chmodSync(path.join(contents, "Helpers/hermeshd"), 0o755);
+for (const name of ["hermeshd", "hermesh"]) {
+  fs.copyFileSync(path.join(tmp, name), path.join(contents, "Helpers", name));
+  fs.chmodSync(path.join(contents, "Helpers", name), 0o755);
+}
 sh("ditto", [signerApp, path.join(contents, "Helpers/Hermesh Signer.app")]);
 fs.copyFileSync(path.join(desktop, "build/com.hermesh.app.daemon.plist"), path.join(contents, "Library/LaunchAgents/com.hermesh.app.daemon.plist"));
+// A changed launch configuration makes ServiceManagement re-evaluate its
+// cached launch constraint when replacing a development or older build.
+sh("/usr/libexec/PlistBuddy", ["-c", "Add :EnvironmentVariables dict", "-c", `Add :EnvironmentVariables:HERMESH_APP_VERSION string ${version}`,
+  path.join(contents, "Library/LaunchAgents/com.hermesh.app.daemon.plist")]);
 fs.copyFileSync(path.join(icons, "Assets.car"), path.join(contents, "Resources/Assets.car"));
 
 step("flipping Electron fuses");
@@ -146,7 +155,9 @@ await flipFuses(path.join(contents, "MacOS/Hermesh"), {
 step(`signing with: ${identity}`);
 // hermeshd needs no entitlements; the signer was signed with its own (and its profile) when built.
 const timestamp = identity === "-" ? "--timestamp=none" : "--timestamp";
-sh("codesign", ["--force", "--options", "runtime", timestamp, "--sign", identity, path.join(contents, "Helpers/hermeshd")]);
+for (const name of ["hermeshd", "hermesh"]) {
+  sh("codesign", ["--force", "--options", "runtime", timestamp, "--sign", identity, path.join(contents, "Helpers", name)]);
+}
 await sign({
   app,
   identity,

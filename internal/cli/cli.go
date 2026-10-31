@@ -144,7 +144,7 @@ func (a *app) root(defaultOutput string) *cobra.Command {
 	// copied instructions may still use it.
 	login := a.loginCmd()
 	login.Hidden = true
-	root.AddCommand(a.authCmd(), login, a.projectCmd(), a.sessionCmd(), a.messageCmd(), &cobra.Command{Use: "version", Short: "Show this CLI's version", Args: cobra.NoArgs,
+	root.AddCommand(a.authCmd(), login, a.agentCmd(), a.projectCmd(), a.sessionCmd(), a.messageCmd(), &cobra.Command{Use: "version", Short: "Show this CLI's version", Args: cobra.NoArgs,
 		RunE: func(c *cobra.Command, _ []string) error {
 			if a.output == "json" {
 				return a.report(c.OutOrStdout(), nil, field{"version", machine.Version})

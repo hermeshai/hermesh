@@ -172,7 +172,7 @@ hermesh message hook claude --install                      # 或 codex：在对�
 
 **负责派活的统筹 Agent：** 所有支持 MCP 的云端助手或编辑器（如 ChatGPT、Claude.ai、Grok Bot、Muse、Cursor），以及任何能调用 [`hermesh` CLI](docs/cli.md) 的 Agent。
 
-**负责干活的编码 Agent（运行在你的机器上）：** 原生支持 Claude Code 和 Codex；并通过 [Agent Client Protocol (ACP)](https://agentclientprotocol.com) 支持 Gemini CLI、Cursor、GitHub Copilot CLI、OpenCode、Qwen Code、Goose、Augment、Kimi、Kiro、Qoder、Grok、DeepSeek Harness 和 CodeBuddy Code。
+**负责干活的编码 Agent（运行在你的机器上）：** 原生支持 Claude Code 和 Codex；并通过 [Agent Client Protocol (ACP)](https://agentclientprotocol.com) 支持 Gemini CLI、Google Antigravity、Cursor、GitHub Copilot CLI、OpenCode、Qwen Code、Goose、Augment、Kimi、Kiro、Qoder、Grok、DeepSeek Harness 和 CodeBuddy Code。
 
 <details>
 <summary>Hermesh 如何调用各个编码 Agent</summary>
@@ -182,6 +182,7 @@ hermesh message hook claude --install                      # 或 codex：在对�
 | `claude` | Claude Code | `claude -p` (`stream-json`) |
 | `codex` | Codex | `codex app-server` |
 | `gemini` | Gemini CLI | `gemini --acp` |
+| `antigravity` | Google Antigravity | 官方 `agy_acp_server.par` / `.exe`；[安装与登录](docs/antigravity.md) |
 | `cursor` | Cursor | `cursor-agent acp` |
 | `copilot` | GitHub Copilot CLI | `copilot --acp` |
 | `opencode` | OpenCode | `opencode acp` |
@@ -193,6 +194,8 @@ hermesh message hook claude --install                      # 或 codex：在对�
 | `codebuddy` | CodeBuddy Code | `codebuddy --acp` |
 
 每个 ACP 会话都以常驻进程方式运行，支持多轮对话、中途打断与恢复，且所有工具调用和权限请求都会交由 Hermesh 处理。由于 ACP 协议不支持预先检查登录状态，使用前请先以机器上的对应系统用户运行一次该 CLI 完成登录。已安装且在授权允许范围内的编码 Agent 会自动出现在 `hermesh project list` 中。
+
+Antigravity 需要安装独立的官方 ACP 服务，并在机器上运行 `hermesh agent login antigravity`；桌面应用或普通 `agy` CLI 不能替代它。详见[安装说明](docs/antigravity.md)。
 
 </details>
 

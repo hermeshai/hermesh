@@ -190,6 +190,7 @@ function defaultsText(a: AgentStatus, t: T): string {
 const logins: Record<string, { key: TerminalCommand; text: string }> = {
   codex: { key: "codexLogin", text: "codex login" },
   claude: { key: "claudeLogin", text: "claude" },
+  antigravity: { key: "antigravityLogin", text: "hermesh agent login antigravity" },
 };
 
 /**

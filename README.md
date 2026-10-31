@@ -172,7 +172,7 @@ A Mac or Windows PC can serve as both a trusted device and an execution machine 
 
 **Orchestrating agents (task dispatchers):** Any MCP-compatible assistant (ChatGPT, Claude.ai, Grok Bot, Muse, Cursor) or any agent capable of invoking the [`hermesh` CLI](docs/cli.md).
 
-**Coding agents (task executors):** Claude Code and Codex natively, plus Gemini CLI, Cursor, GitHub Copilot CLI, OpenCode, Qwen Code, Goose, Augment, Kimi, Kiro, Qoder, Grok, DeepSeek Harness, and CodeBuddy Code via the [Agent Client Protocol (ACP)](https://agentclientprotocol.com).
+**Coding agents (task executors):** Claude Code and Codex natively, plus Gemini CLI, Google Antigravity, Cursor, GitHub Copilot CLI, OpenCode, Qwen Code, Goose, Augment, Kimi, Kiro, Qoder, Grok, DeepSeek Harness, and CodeBuddy Code via the [Agent Client Protocol (ACP)](https://agentclientprotocol.com).
 
 <details>
 <summary>How Hermesh integrates with each coding agent</summary>
@@ -182,6 +182,7 @@ A Mac or Windows PC can serve as both a trusted device and an execution machine 
 | `claude` | Claude Code | `claude -p` (`stream-json`) |
 | `codex` | Codex | `codex app-server` |
 | `gemini` | Gemini CLI | `gemini --acp` |
+| `antigravity` | Google Antigravity | Official `agy_acp_server.par` / `.exe`; [install and sign in](docs/antigravity.md) |
 | `cursor` | Cursor | `cursor-agent acp` |
 | `copilot` | GitHub Copilot CLI | `copilot --acp` |
 | `opencode` | OpenCode | `opencode acp` |
@@ -193,6 +194,8 @@ A Mac or Windows PC can serve as both a trusted device and an execution machine 
 | `codebuddy` | CodeBuddy Code | `codebuddy --acp` |
 
 Each ACP session runs as a long-lived process supporting multi-turn conversation, interruption, and resumption, with all tool calls and permission prompts surfaced through Hermesh. Because ACP does not expose pre-flight authentication checks, sign in to each CLI once under the machine's OS user before use. Installed agents permitted by a grant appear automatically in `hermesh project list`.
+
+For Antigravity, install the separate official ACP server and run `hermesh agent login antigravity` on the machine; the desktop app and `agy` CLI are not substitutes. See [the setup guide](docs/antigravity.md).
 
 </details>
 

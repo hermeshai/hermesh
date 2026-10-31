@@ -305,11 +305,13 @@ func newFreshOwner(t *testing.T, w *ownerMac, name string, gated, bare bool) fre
 	claude := stub("claude", wait("claude")+`case "$1" in --version) echo "2.1.4 (Claude Code)";; auth) echo '{"loggedIn":true}';; esac`+"\n")
 	codex := stub("codex", wait("codex")+fmt.Sprintf(`case "$1" in --version) echo "codex-cli 0.48.0";; login) echo "Not logged in"; exit 1;; app-server) exec %q;; esac`, filepath.Join(w.bin, "fakecodex"))+"\n")
 	gemini := stub("gemini", wait("gemini")+fmt.Sprintf("exec %q \"$@\"\n", filepath.Join(w.bin, "fakeacp")))
+	antigravity := stub("antigravity", wait("antigravity")+fmt.Sprintf("exec %q \"$@\"\n", filepath.Join(w.bin, "fakeacp")))
 	sockDir, _ := os.MkdirTemp(shortTemp, "hm")
 	t.Cleanup(func() { os.RemoveAll(sockDir) })
 	sock := filepath.Join(sockDir, "o.sock")
 	env := []string{"HERMESH_CLAUDE_BIN=" + claude, "HERMESH_CODEX_BIN=" + codex,
-		"HERMESH_GEMINI_BIN=" + gemini, "FAKE_ACP_STATE=" + filepath.Join(tmp, "fakeacp")}
+		"HERMESH_GEMINI_BIN=" + gemini, "FAKE_ACP_STATE=" + filepath.Join(tmp, "fakeacp"),
+		"HERMESH_ANTIGRAVITY_BIN=" + antigravity, "GEMINI_HOME=" + filepath.Join(tmp, "gemini")}
 	if bare {
 		missing := filepath.Join(tmp, "not-installed") // no such file
 		env = []string{"HERMESH_CLAUDE_BIN=" + missing, "HERMESH_CODEX_BIN=" + missing}

@@ -97,7 +97,7 @@ struct MachineAgentView: View {
             if !a.loggedIn {
                 Section {
                     Label("Sign in to \(title) first so Hermesh can use it.", systemImage: "exclamationmark.triangle").foregroundStyle(.orange)
-                    if let command = ["claude": "claude", "codex": "codex login"][agent] {
+                    if let command = ["claude": "claude", "codex": "codex login", "antigravity": "hermesh agent login antigravity"][agent] {
                         Text("On \(m.machineName), run \(Text(command).monospaced()) in Terminal").font(.subheadline).foregroundStyle(.secondary)
                         Text("On a server without a browser, it shows a link: open it on this iPhone.").font(.subheadline).foregroundStyle(.secondary)
                     }

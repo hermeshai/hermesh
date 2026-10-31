@@ -1,6 +1,7 @@
 package e2e
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -9,6 +10,7 @@ import (
 	"time"
 
 	localv1 "github.com/hermeshai/hermesh/gen/go/hermesh/local/v1"
+	"github.com/hermeshai/hermesh/internal/provider/acp"
 )
 
 // TestACPAgents drives ACP agents (Gemini and Cursor, played by a scripted
@@ -111,6 +113,79 @@ func TestACPAgents(t *testing.T) {
 	}
 	if r := cli(30*time.Second, "session", "events", s1.SessionID, "--limit", "1000"); strings.Contains(r.stdout, "replayed") {
 		t.Fatalf("the replayed history was logged as new events:\n%s", r.stdout)
+	}
+}
+
+// Antigravity uses Google's separate ACP server. Exercise its registered name
+// through the relay, owner and CLI, including permission-gated edits and resume.
+func TestAntigravityACP(t *testing.T) {
+	if testing.Short() {
+		t.Skip("e2e")
+	}
+	for _, real := range []bool{false, true} {
+		name := "scripted"
+		if real {
+			name = "real"
+		}
+		t.Run(name, func(t *testing.T) {
+			var env []string
+			if real {
+				if os.Getenv("HERMESH_REAL_CLI") != "1" {
+					t.Skip("set HERMESH_REAL_CLI=1")
+				}
+				for _, p := range acp.Providers("") {
+					if p.Name() == "antigravity" {
+						i := p.Discover(context.Background())
+						if !i.Available || !i.LoggedIn {
+							t.Skipf("Antigravity ACP not ready: %+v", i)
+						}
+						env = append(env, "HERMESH_ANTIGRAVITY_BIN="+i.Binary)
+					}
+				}
+			} else {
+				gemini := t.TempDir()
+				os.Mkdir(filepath.Join(gemini, "antigravity-acp"), 0o700)
+				os.WriteFile(filepath.Join(gemini, "antigravity-acp", "settings.json"), []byte(`{"auth":{"type":"oauth-personal"}}`), 0o600)
+				env = []string{"GEMINI_HOME=" + gemini, "HERMESH_ANTIGRAVITY_BIN=" + filepath.Join(binaries(t), "fakeacp"),
+					"FAKE_ACP_STATE=" + t.TempDir(), "FAKE_ACP_RESUME=resume", "FAKE_ACP_REQUIRE_MODE=1"}
+			}
+			w := newOwnerMac(t, env, &localv1.GrantSpec{Agents: []string{"antigravity"}})
+			if r := w.cli(30*time.Second, "project", "list"); r.code != 0 || !strings.Contains(r.stdout, "antigravity") {
+				t.Fatalf("discovery: %+v", r)
+			}
+			prompt := "write agy.txt official-acp\nshell echo acp-shell-ok\nsay done"
+			if real {
+				prompt = "Create agy.txt containing exactly official-acp. Then run the shell command echo acp-shell-ok. Reply done. Do not make any other changes."
+			}
+			s, r := w.startSession(3*time.Minute, "--agent", "antigravity", "--wait", "--prompt", prompt)
+			if r.code != 0 || s.Status != "idle" {
+				t.Fatalf("first turn: %+v", r)
+			}
+			if d := w.cli(30*time.Second, "session", "diff", s.SessionID); d.code != 0 || !strings.Contains(d.stdout, "+official-acp") {
+				t.Fatalf("diff: %+v", d)
+			}
+			if _, err := os.Stat(filepath.Join(w.repo, "agy.txt")); err == nil {
+				t.Fatal("modified the owner's checkout")
+			}
+			if e := w.cli(30*time.Second, "session", "events", s.SessionID, "--limit", "1000"); !strings.Contains(e.stdout, "acp-shell-ok") {
+				t.Fatalf("tool output: %+v", e)
+			}
+			prompt = "history"
+			want := "history: 2 turns"
+			if real {
+				prompt, want = "What file did you just create? Reply with only its file name, without using any tools.", "agy.txt"
+			}
+			if r := w.cli(3*time.Minute, "session", "send", s.SessionID, "--wait", "--message", prompt); r.code != 0 || !strings.Contains(r.stdout, want) {
+				t.Fatalf("follow-up: %+v", r)
+			}
+			w.restartOwner(false)
+			if !real {
+				want = "history: 3 turns"
+			}
+			if r := w.cli(3*time.Minute, "session", "send", s.SessionID, "--wait", "--message", prompt); r.code != 0 || !strings.Contains(r.stdout, want) {
+				t.Fatalf("resume after daemon restart: %+v", r)
+			}
+		})
 	}
 }
 

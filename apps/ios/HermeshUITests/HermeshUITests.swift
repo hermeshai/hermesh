@@ -49,6 +49,16 @@ final class HermeshUITests: XCTestCase {
         try XCTContext.runActivity(named: "a question arrives as a notification and opens its session") { _ in try notification() }
     }
 
+    func testAntigravitySetup() throws {
+        try join()
+        try machine()
+        let agent = app.buttons["agent-antigravity"]
+        XCTAssertTrue(agent.waitForExistence(timeout: 20))
+        XCTAssertTrue(agent.label.contains("Antigravity"), agent.label)
+        agent.tap()
+        XCTAssertTrue(app.staticTexts.containing(NSPredicate(format: "label CONTAINS %@", "hermesh agent login antigravity")).firstMatch.waitForExistence(timeout: 20))
+    }
+
     // MARK: Steps
 
     func join() throws {

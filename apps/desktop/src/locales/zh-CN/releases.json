@@ -1,6 +1,8 @@
 {
   "unreleased": {
-    "improvements": [],
+    "improvements": [
+      "通过官方 ACP 服务使用 Google Antigravity：运行 `hermesh agent login antigravity` 登录，在项目和授权中选择它，支持工具审批、多轮对话与恢复。"
+    ],
     "fixes": []
   },
   "0.1.1": {

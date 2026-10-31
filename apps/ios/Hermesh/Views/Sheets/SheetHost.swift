@@ -169,7 +169,7 @@ struct DiffView: View {
 // MARK: Scope
 
 /// The coding agents a grant can name; matches machine.AgentNames in hermeshd.
-let codingAgentIDs = ["claude", "codex", "gemini", "cursor", "copilot", "opencode", "qwen", "goose", "auggie", "kimi", "kiro", "qoder", "deepseek", "codebuddy", "grok"]
+let codingAgentIDs = ["claude", "codex", "gemini", "antigravity", "cursor", "copilot", "opencode", "qwen", "goose", "auggie", "kimi", "kiro", "qoder", "deepseek", "codebuddy", "grok"]
 
 /// A personal agent's scope as the owner chooses it: projects (or all),
 /// coding agents and lifetime.
