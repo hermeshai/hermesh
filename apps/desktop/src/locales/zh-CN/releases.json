@@ -1,18 +1,29 @@
 {
   "unreleased": {
+    "improvements": [],
+    "fixes": []
+  },
+  "0.1.1": {
     "improvements": [
+      "Hermesh 支持 Windows 11：用安装程序装好应用，用 Windows Hello 批准；在应用里或用一条 PowerShell 命令把 PC 加成机器。应用和 PC 上的机器都会自动更新。",
+      "机器会自己保持最新：有新版本时，等没有会话在工作再安装。`hermeshd update` 立即更新，`hermeshd update auto off` 关掉自动更新。这个版本之前装的机器需要再运行一次安装命令。",
+      "iPhone 的概览可以看今天、7 天或 30 天：运行过的会话、轮次和 token，哪个 agent 把任务交给了哪个编码 agent，以及每个编码 agent 每天的情况。Mac 和 iPhone 上的用量都按同一份数字统计。",
       "iPhone 首次打开只问一件事：第一次用，还是已经在别的设备上用 Hermesh。第一次用时会先讲清管理密钥是做什么的、打开通知，再带你设置电脑、准备编码 agent、连接 agent 并完成第一个任务。",
-      "iPhone 上的会话和 Mac 上一样好读：回复带格式，代码高亮，工具调用折叠成一行，打开对话就停在最后一条消息。",
-      "agent 开了新会话时，iPhone 会通知你：标题、谁开的、在哪台机器上。可以在账号 → 通知里关掉。",
-      "自建服务器只要一条 `docker run`，镜像在 Docker Hub（hermeshai/hermesh-relay）：用 `-e` 配置，服务器重启后自动起来，ARM 服务器也能用。README 写清了要准备什么。",
-      "没有域名？可以直接用 IP 地址连自己的服务器（HTTP）。继续之前，app 会说明哪些信息不加密。",
-      "自建服务器的 MCP 地址（给 Claude、ChatGPT 用）带有密钥，只有你能接入应用：在 Mac 的设置 → 账号与设备 → 高级，或 iPhone 的账号与设备里复制。",
-      "加入已有 Hermesh 的 Mac 只设置它自己：首次运行到准备好编码 agent 就结束。"
+      "iPhone 上的会话和 Mac 上一样好读：回复带格式，代码高亮，工具调用折叠成一行；打开对话停在最后一条消息，有新内容时跟着滚到底。两端的会话信息都会显示模型和推理强度。",
+      "agent 开了新会话时，Mac 和 iPhone 都会通知你：标题、谁开的、在哪台机器上。不想要的话，在各自通知设置里关掉「新会话」。",
+      "添加机器先选系统（Mac、Windows 或 Linux），再选安装应用或终端命令。iPhone 上添加项目可以直接浏览机器上的文件夹。Mac 上的请求改为在右下角以卡片等待，不再挡住手头的工作。",
+      "可以给每个 agent 起名字、选图标：应用的 logo、首字母，或者你自己的图片。",
+      "自建服务器只要一条 `docker run`，镜像在 Docker Hub（hermeshai/hermesh-relay），ARM 服务器也能用；没有域名也可以用 IP 地址走 HTTP。它给 Claude、ChatGPT 用的 MCP 地址带有密钥，只有你能接入应用。",
+      "会话的 worktree 会带上仓库 .worktreeinclude 里列出的、不进 git 的文件，比如 .env。Linux 安装命令默认装给 root，也可以指定别的用户。"
     ],
     "fixes": [
       "服务器的 Docker 镜像能正常启动了：之前一启动就报 “unable to open database file”。",
       "在自建服务器上，别人未经你批准接入的应用不再能挤掉你自己的应用，闲置一天也会自动结束。",
-      "iPhone 上的「开始使用」完成后，重新连接也不会再冒出来。"
+      "会话启动慢（电脑很忙、仓库很大）时不会再被中途停掉，启动失败也不会留下挡住会话的 worktree。",
+      "会话的 worktree 丢了会从它的分支恢复，开始以来的改动在重启后也还在。",
+      "机器离线时，打开对话会说明原因，不再是空白页；之前读过的内容照样显示。",
+      "iPhone 切回 app 时不会再卡在“正在连接 Hermesh…”；「开始使用」完成后，重新连接也不会再冒出来。",
+      "加入已有 Hermesh 的 Mac 只设置它自己：首次运行到准备好编码 agent 就结束。"
     ]
   },
   "0.1.1-beta.5": {
