@@ -94,7 +94,7 @@ struct DrawerView: View {
         }
         if !running.isEmpty {
             header("In Progress")
-            ForEach(running, id: \.sessionID) { s in item(s) { ProgressView().controlSize(.small) } }
+            ForEach(running, id: \.sessionID) { s in item(s, running: true) { EmptyView() } }
         }
         if !recent.isEmpty {
             header("Recent")
@@ -117,21 +117,25 @@ struct DrawerView: View {
         Text(title).font(.footnote).foregroundStyle(.secondary).padding(.horizontal, 26).padding(.top, 20).padding(.bottom, 6)
     }
 
-    private func item(_ s: Session, @ViewBuilder mark: () -> some View) -> some View {
+    private func item(_ s: Session, running: Bool = false, @ViewBuilder mark: () -> some View) -> some View {
         let selected: Bool = { if case .session(let id) = model.root { return id == s.sessionID && model.path.isEmpty } else { return false } }()
         return Button {
             model.open(.session(s.sessionID))
         } label: {
-            row(s.displayTitle, mark: mark)
+            row(s.displayTitle, running: running, mark: mark)
         }
         .buttonStyle(RowStyle(selected: selected))
         .padding(.horizontal, 10)
         .accessibilityIdentifier("drawer-session-\(s.displayTitle)")
     }
 
-    private func row(_ title: String, @ViewBuilder mark: () -> some View) -> some View {
+    /// A running session's title shimmers, as on the Mac; it has no mark.
+    private func row(_ title: String, running: Bool = false, @ViewBuilder mark: () -> some View) -> some View {
         HStack(spacing: 12) {
-            Text(title).lineLimit(1).frame(maxWidth: .infinity, alignment: .leading)
+            Group {
+                if running { ShimmerText(title, paused: !model.drawerOpen) } else { Text(title) }
+            }
+            .lineLimit(1).frame(maxWidth: .infinity, alignment: .leading)
             mark().frame(width: 18)
         }
         .padding(.horizontal, 16).frame(height: 44)
@@ -155,6 +159,39 @@ struct DrawerView: View {
         .padding(.horizontal, 16).padding(.bottom, 8).padding(.top, 24)
         .background(LinearGradient(colors: [Color(.menuBackground).opacity(0), Color(.menuBackground)], startPoint: .top, endPoint: .center))
     }
+}
+
+/// A title that shimmers, as the Mac's sidebar has a running session's
+/// (app.css .stitle.run): a fainter band crosses it from left to right in
+/// 3 s, then it rests 1.2 s. With Reduce Motion it stays still.
+private struct ShimmerText: View {
+    let title: String
+    /// While no one sees it (the menu closed): it does not draw.
+    let paused: Bool
+    @Environment(\.accessibilityReduceMotion) private var still
+
+    init(_ title: String, paused: Bool) {
+        self.title = title
+        self.paused = paused
+    }
+
+    var body: some View {
+        if still {
+            Text(title)
+        } else {
+            TimelineView(.animation(paused: paused)) { timeline in
+                // The band's middle runs from half the title's width before it to half after; it is 0.72 of it wide.
+                let t = timeline.date.timeIntervalSinceReferenceDate.truncatingRemainder(dividingBy: 4.2)
+                let x = -0.5 + 2 * ease(min(t / 3, 1))
+                Text(title).foregroundStyle(LinearGradient(
+                    colors: [Color(.label), Color(.tertiaryLabel), Color(.label)],
+                    startPoint: UnitPoint(x: x - 0.36, y: 0.5), endPoint: UnitPoint(x: x + 0.36, y: 0.5)))
+            }
+        }
+    }
+
+    /// CSS's ease-in-out, near enough.
+    private func ease(_ x: Double) -> Double { x < 0.5 ? 4 * x * x * x : 1 - pow(-2 * x + 2, 3) / 2 }
 }
 
 /// A row of the menu: highlighted while selected, and under the finger

@@ -94,6 +94,10 @@ final class HermeshUITests: XCTestCase {
         XCTAssertTrue(account.exists)
         XCTAssertEqual(account.frame.width, account.frame.height, accuracy: 1, "round")
         XCTAssertLessThan(account.frame.width, 60, "the picture alone")
+        // A running session's title shimmers, as on the Mac: no spinner beside it.
+        let running = drawer.descendants(matching: .any)["drawer-session-跑很久"]
+        XCTAssertTrue(running.waitForExistence(timeout: 20), "the running session in the menu")
+        XCTAssertEqual(running.activityIndicators.count, 0, "no spinner")
         let shot = XCTAttachment(screenshot: app.screenshot())
         shot.name = "menu"
         shot.lifetime = .keepAlways
