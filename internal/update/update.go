@@ -39,8 +39,34 @@ var (
 	testInterval = ""
 )
 
-// Programs are the programs an update replaces, where they are.
-var Programs = []string{"hermeshd", "hermesh"}
+// Programs are the programs an update replaces, where they are (Windows:
+// with hermeshdw, the windowless hermeshd its service runs).
+var Programs = programs()
+
+func programs() []string {
+	if runtime.GOOS == "windows" {
+		return []string{"hermeshd.exe", "hermeshdw.exe", "hermesh.exe"}
+	}
+	return []string{"hermeshd", "hermesh"}
+}
+
+// asset is a program's file in a release: hermeshd-linux-arm64,
+// hermeshd-windows-amd64.exe.
+func asset(name string) string {
+	base := strings.TrimSuffix(name, ".exe")
+	return base + "-" + runtime.GOOS + "-" + runtime.GOARCH + name[len(base):]
+}
+
+// newPath and previousPath are where a program's next and last versions
+// wait beside it, keeping its extension (Windows runs .exe files only).
+func newPath(dir, name string) string { return sibling(dir, name, "new") }
+
+func previousPath(dir, name string) string { return sibling(dir, name, "previous") }
+
+func sibling(dir, name, what string) string {
+	base := strings.TrimSuffix(name, ".exe")
+	return filepath.Join(dir, "."+base+"."+what+name[len(base):])
+}
 
 // Release is a signed release: its version and its files' hashes.
 type Release struct {
@@ -134,15 +160,20 @@ func Dir() (string, error) {
 	if strings.Contains(exe, ".app/Contents/") {
 		return "", errors.New("this hermeshd is part of the Hermesh app, which updates itself")
 	}
+	// The Windows app copies its programs into the folder install.ps1 uses,
+	// and updates them itself (docs/windows.md §6.2).
 	if runtime.GOOS == "windows" {
-		return "", errors.New("updating is not on Windows yet; run the install command again")
+		if _, err := os.Stat(filepath.Join(os.Getenv("LOCALAPPDATA"), "HermeshApp", "Update.exe")); err == nil {
+			return "", errors.New("this hermeshd is the Hermesh app's, which updates it")
+		}
 	}
 	return filepath.Dir(exe), nil
 }
 
 // Install puts r's programs in dir over the ones there, keeping each old
 // one as .<name>.previous. Each new program must start and say r's version
-// before any is replaced.
+// before any is replaced. On Windows a running program can't be replaced,
+// only renamed: the old one moves aside instead.
 func Install(ctx context.Context, dataDir, dir string, r *Release) ([]string, error) {
 	lock, err := flock.Acquire(filepath.Join(dataDir, "update"))
 	if err != nil {
@@ -161,17 +192,31 @@ func Install(ctx context.Context, dataDir, dir string, r *Release) ([]string, er
 	for _, name := range names {
 		if err := download(ctx, dir, name, r); err != nil {
 			for _, n := range names {
-				os.Remove(filepath.Join(dir, "."+n+".new"))
+				os.Remove(newPath(dir, n))
 			}
 			return nil, err
 		}
 	}
 	for _, name := range names {
 		path := filepath.Join(dir, name)
-		prev := filepath.Join(dir, "."+name+".previous")
+		prev := previousPath(dir, name)
 		os.Remove(prev)
-		os.Link(path, prev)
-		if err := os.Rename(filepath.Join(dir, "."+name+".new"), path); err != nil {
+		if runtime.GOOS == "windows" {
+			older, _ := filepath.Glob(prev + ".*")
+			for _, o := range older {
+				os.Remove(o) // unless it runs
+			}
+			// The one before may still run (the service's supervisor):
+			// it stays, and this one moves beside it.
+			if err := os.Rename(path, prev); err != nil {
+				if err := os.Rename(path, fmt.Sprintf("%s.%d", prev, time.Now().UnixNano())); err != nil {
+					return nil, err
+				}
+			}
+		} else {
+			os.Link(path, prev)
+		}
+		if err := os.Rename(newPath(dir, name), path); err != nil {
 			return nil, err
 		}
 	}
@@ -179,19 +224,19 @@ func Install(ctx context.Context, dataDir, dir string, r *Release) ([]string, er
 }
 
 func download(ctx context.Context, dir, name string, r *Release) error {
-	asset := name + "-" + runtime.GOOS + "-" + runtime.GOARCH
-	want := r.sums[asset]
+	file := asset(name)
+	want := r.sums[file]
 	if want == "" {
-		return fmt.Errorf("%s is not in the release's signed checksum list", asset)
+		return fmt.Errorf("%s is not in the release's signed checksum list", file)
 	}
-	body, err := fetch(ctx, releases+"/download/v"+r.Version+"/"+asset, 512<<20)
+	body, err := fetch(ctx, releases+"/download/v"+r.Version+"/"+file, 512<<20)
 	if err != nil {
 		return err
 	}
 	if h := sha256.Sum256(body); hex.EncodeToString(h[:]) != want {
-		return fmt.Errorf("%s does not match its checksum", asset)
+		return fmt.Errorf("%s does not match its checksum", file)
 	}
-	tmp := filepath.Join(dir, "."+name+".new")
+	tmp := newPath(dir, name)
 	if err := os.WriteFile(tmp, body, 0o755); err != nil {
 		return fmt.Errorf("cannot write %s: %w", dir, err)
 	}

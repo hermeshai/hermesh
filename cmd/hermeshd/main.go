@@ -185,6 +185,9 @@ A computer that runs no coding agents can approve instead: hermeshd device.`}
 				if !service.Supervised(dataDir) {
 					return
 				}
+				if _, err := update.Dir(); err != nil { // the Windows app's, which updates it
+					return
+				}
 				var cancel context.CancelFunc
 				ctx, cancel = context.WithCancel(ctx)
 				go func() {

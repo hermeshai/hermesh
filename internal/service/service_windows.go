@@ -112,9 +112,15 @@ func AtBoot() bool { return Installed() }
 
 func Installed() bool { return schtasks("/Query", "/TN", taskName()) == nil }
 
-// Supervised: a Windows machine does not update itself yet
-// (docs/machine-updates.md), so its daemon never stops for one.
-func Supervised(string) bool { return false }
+// supervisorEnv marks a daemon its supervisor started: the logon task's.
+const supervisorEnv = "HERMESH_SUPERVISED"
+
+// Supervised reports whether this process is the installed service's
+// daemon for dataDir, which its supervisor starts again when it exits
+// after an update (docs/machine-updates.md).
+func Supervised(dataDir string) bool {
+	return os.Getenv(supervisorEnv) == "1" && InstalledFor(dataDir)
+}
 
 // InstalledFor reports whether the installed service runs the machine in
 // dataDir.
@@ -176,7 +182,8 @@ func fromUTF16(b []byte) string {
 
 // Supervise runs exe with args, the daemon, in a job of its own (it ends
 // with the supervisor), and starts it again whenever it exits but for
-// a clean stop (exit status 0): soon at first, then backing off. One
+// a clean stop (exit status 0): soon at first, then backing off. A clean
+// stop after an update replaced exe starts the new program at once. One
 // supervisor runs per data directory: the logon task's and the app's
 // may start together, and the second one leaves.
 func Supervise(dataDir, exe string, args []string) error {
@@ -188,8 +195,14 @@ func Supervise(dataDir, exe string, args []string) error {
 	backoff := time.Second
 	for {
 		began := time.Now()
+		before, _ := os.Stat(exe)
 		code, err := runInJob(exe, args)
 		if err == nil && code == 0 {
+			// Not os.SameFile: on Windows it reads the file ID by path when
+			// asked, so before would be the new program too.
+			if after, _ := os.Stat(exe); before != nil && after != nil && (!after.ModTime().Equal(before.ModTime()) || after.Size() != before.Size()) {
+				continue // updated
+			}
 			return nil
 		}
 		if time.Since(began) > time.Minute {
@@ -213,6 +226,7 @@ func runInJob(exe string, args []string) (int, error) {
 		return 0, err
 	}
 	cmd := exec.Command(exe, args...)
+	cmd.Env = append(os.Environ(), supervisorEnv+"=1")
 	cmd.SysProcAttr = &syscall.SysProcAttr{CreationFlags: windows.CREATE_SUSPENDED | windows.CREATE_NO_WINDOW}
 	if err := cmd.Start(); err != nil {
 		return 0, err

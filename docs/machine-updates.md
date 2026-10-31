@@ -6,7 +6,7 @@ Status: accepted 2026-10-30 with the owner's decisions (§9), and built. The com
 
 A machine installed with `install.sh` (Linux, or a Mac without the app) stays on the latest release without anyone logging in to it, and its owner can update it on demand with one command. Before, the only way was to run the install command again, which on a paired machine stopped the service and started a new pairing, then `hermeshd service restart`.
 
-**Not in scope:** the Mac app, which updates itself with the `hermeshd` it bundles ([desktop-app.md](desktop-app.md) §6.5); Windows, whose installer follows [windows.md](windows.md) §6.3 and gets the same commands when it is built; apt/yum packages (§2); updating a machine from the iPhone (§8).
+**Not in scope:** the Mac app, which updates itself with the `hermeshd` it bundles ([desktop-app.md](desktop-app.md) §6.5), and so does the Windows app ([windows.md](windows.md) §6.2); apt/yum packages (§2); updating a machine from the iPhone (§8). A Windows machine that `install.ps1` set up updates as §5.5 says.
 
 ## 2. What others do
 
@@ -87,6 +87,13 @@ Looking for an update reads three small files from `https://github.com/hermeshai
 
 `update/update.json` in the data directory, written by both the command and the daemon (no database, since the daemon holds the store): whether automatic updates are on (default on), the last check and its result, and the last update (from, to, when). The log says each check that finds something and each update.
 
+### 5.5 On Windows
+
+- **Three programs**, with `.exe`: `hermeshd`, `hermeshdw` (the windowless one the logon task runs) and `hermesh`, from `<name>-windows-<arch>.exe`. Each waits beside its program as `.<name>.new.exe`, since Windows runs `.exe` files only.
+- **Replaced by renaming.** A running program can't be replaced, only renamed: the old one becomes `.<name>.previous.exe`. The supervisor runs the `hermeshdw.exe` of its logon, which stays in use until the next logon, so a later update moves the one before it beside it with a number (`.hermeshdw.previous.exe.<n>`), and removes the others.
+- **Restarted by the supervisor.** The logon task's supervisor (`hermeshdw run --supervise`, windows.md §4.4) starts the daemon with `HERMESH_SUPERVISED=1`, which is how the daemon knows it is the installed service. After an update the daemon stops cleanly, and the supervisor, seeing its program's file changed (its time or size), starts the new one instead of stopping too.
+- **Not the app's.** The Windows app copies its programs into the same folder; where it is installed (`%LOCALAPPDATA%\HermeshApp\Update.exe`), hermeshd leaves them to it: `hermeshd update` says so, and the background updater doesn't run.
+
 ## 6. Security
 
 - A compromised download server or network can make a machine install only something signed by the release key, and only a version higher than its own; replaying an older signed release does nothing.
@@ -96,6 +103,7 @@ Looking for an update reads three small files from `https://github.com/hermeshai
 ## 7. Tests
 
 - **Unit** (`internal/update`): signature, version and hash checks, refusing a lower version and an app bundle, the rename and `.previous`, the schedule and the guard with a fake clock.
+- **TestWindowsUpdate** (end to end, on `windows-latest`): `install.ps1` installs A from the test's releases and pairs; B published, the machine updates itself and its supervisor starts B; with automatic updates off, `hermeshd update --yes` installs C.
 - **TestLinuxUpdate** (`HERMESH_DOCKER=1`, end to end): a systemd Ubuntu container logged in as root, a relay on the Mac, and three signed releases A < B < C served by the test over HTTP (test builds name its address and a test key).
   1. The install command installs A and pairs the machine.
   2. B is published while a session runs: the machine stays on A. The session ends: the machine restarts itself on B, and the owner's device sees B in the machine's status, with the same machine ID.
