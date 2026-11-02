@@ -142,3 +142,18 @@ func call(_ kind: String, _ summary: String, id: String? = nil, name: String = "
     r.preview = true
     #expect(partialOutput(r))
 }
+
+@Test func interrupterIsWhoTheMachineRecorded() {
+    var f = Failure()
+    f.kind = .interrupted
+    f.message = "interrupted by owner"
+    #expect(interrupter(f) == "owner")
+    f.message = "interrupted by c_abc"
+    #expect(interrupter(f) == "c_abc")
+    f.message = "agent revoked"
+    #expect(interrupter(f) == nil)
+    f.kind = .rateLimit
+    f.message = "interrupted by owner"
+    #expect(interrupter(f) == nil)
+    #expect(interrupter(nil) == nil)
+}

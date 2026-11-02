@@ -8,7 +8,7 @@ import {
   type SessionEvent,
 } from "@hermesh/proto/session";
 import { describe, expect, test } from "vitest";
-import { isInterruption, resolutionTitle, transcript, turnStartedAt } from "./transcript";
+import { interrupter, isInterruption, resolutionTitle, transcript, turnStartedAt } from "./transcript";
 import { at } from "./testing";
 
 let seq = 0n;
@@ -75,5 +75,12 @@ describe("transcript", () => {
     expect(isInterruption({ kind: FailureKind.INTERRUPTED } as never)).toBe(true);
     expect(isInterruption({ kind: FailureKind.RATE_LIMIT } as never)).toBe(false);
     expect(isInterruption(undefined)).toBe(false);
+  });
+
+  test("who interrupted", () => {
+    expect(interrupter({ kind: FailureKind.INTERRUPTED, message: "interrupted by owner" } as never)).toBe("owner");
+    expect(interrupter({ kind: FailureKind.INTERRUPTED, message: "interrupted by c_abc" } as never)).toBe("c_abc");
+    expect(interrupter({ kind: FailureKind.INTERRUPTED, message: "agent revoked" } as never)).toBeUndefined();
+    expect(interrupter({ kind: FailureKind.RATE_LIMIT, message: "interrupted by owner" } as never)).toBeUndefined();
   });
 });

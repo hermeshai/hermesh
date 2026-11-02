@@ -362,6 +362,23 @@ test("a running session shows what it does, and 打断 stops the turn", async ()
   await app.close();
 });
 
+test("a session its agent stops as it starts says the agent interrupted it, not that it failed", async () => {
+  const title = "刚开始就打断";
+  const id = JSON.parse(await cli("session", "start", "--project", "demo", "--agent", "gemini", "--title", title, "--prompt", "say 不会说", "-o", "json")).session.session_id;
+  await cli("session", "interrupt", id);
+  await expect.poll(async () => JSON.parse(await cli("session", "get", id, "-o", "json")).session.status).toBe("idle");
+  const { app, page } = await launch();
+  try {
+    await page.getByRole("list", { name: "会话" }).getByText(title, { exact: true }).click();
+    const log = page.getByRole("log", { name: "对话" });
+    await expect(log).toContainText("bot 打断了这一轮。会话还在，bot 再发消息就会接着做。");
+    await expect(log).not.toContainText("出错了");
+    await expect(page.getByRole("alert")).toHaveCount(0);
+  } finally {
+    await app.close();
+  }
+});
+
 test("tool details stay folded until opened, a failed one and a running one too", async () => {
   await cli("session", "start", "--project", "demo", "--agent", "gemini", "--title", "命令失败", "--prompt", "shell ls no-such-file\nshell sleep 1800");
   const { app, page } = await launch();

@@ -111,6 +111,12 @@ export function isInterruption(f: Failure | undefined): boolean {
   return f?.kind === FailureKind.INTERRUPTED;
 }
 
+/** Who stopped an interrupted turn, as the machine recorded it: "owner" or an agent's client id. */
+export function interrupter(f: Failure | undefined): string | undefined {
+  const prefix = "interrupted by ";
+  return isInterruption(f) && f!.message.startsWith(prefix) ? f!.message.slice(prefix.length) : undefined;
+}
+
 /**
  * How a question was settled. name: who answered, by the id the machine
  * recorded (the owner is "You").
