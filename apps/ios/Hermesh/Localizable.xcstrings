@@ -70,6 +70,16 @@
         }
       }
     },
+    "%@ interrupted this turn. The session stays; when %@ sends another message, it continues.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%1$@ 打断了这一轮。会话还在，%2$@ 再发消息就会接着做。"
+          }
+        }
+      }
+    },
     "%@ is offline": {
       "localizations": {
         "zh-Hans": {
