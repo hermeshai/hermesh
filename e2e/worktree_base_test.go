@@ -52,7 +52,8 @@ func TestMissingBaseRefRetry(t *testing.T) {
 			if r.code != 0 || s.Status != "idle" || s.Result != "started from the release" {
 				t.Fatalf("base on the remote only: %+v\n%s", s, r.stdout+r.stderr)
 			}
-			if b, err := os.ReadFile(filepath.Join(w.worktree(s.SessionID), "release.txt")); err != nil || string(b) != "released\n" {
+			// As git checks it out: Windows' git (core.autocrlf) writes CRLF.
+			if b, err := os.ReadFile(filepath.Join(w.worktree(s.SessionID), "release.txt")); err != nil || strings.ReplaceAll(string(b), "\r\n", "\n") != "released\n" {
 				t.Fatalf("the worktree is not at the pushed commit: %q, %v", b, err)
 			}
 			if !hasTag(pushed) || hasTag(unasked) {
