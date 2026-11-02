@@ -20,6 +20,8 @@
 	</array>
 	<key>HermeshKeychainGroup</key>
 	<string>$(AppIdentifierPrefix)io.hermesh.ios.shared</string>
+	<key>ITSAppUsesNonExemptEncryption</key>
+	<false/>
 	<key>UIBackgroundModes</key>
 	<array>
 		<string>remote-notification</string>
