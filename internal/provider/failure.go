@@ -63,7 +63,7 @@ var kinds = map[sessionv1.FailureKind]kindInfo{
 	sessionv1.FailureKind_FAILURE_KIND_PROVIDER_ERROR:       {true, "the provider returned a server error; send the message again later"},
 	sessionv1.FailureKind_FAILURE_KIND_NETWORK:              {true, "the connection to the provider failed; send the message again"},
 	sessionv1.FailureKind_FAILURE_KIND_CONTEXT_OVERFLOW:     {false, "the conversation no longer fits the model's context; the next message continues in a fresh context (work in the worktree is kept)"},
-	sessionv1.FailureKind_FAILURE_KIND_MODEL_UNAVAILABLE:    {false, "the model does not exist or this account cannot use it; start a session with another model"},
+	sessionv1.FailureKind_FAILURE_KIND_MODEL_UNAVAILABLE:    {false, "the model does not exist or this account cannot use it; start a session with another model, one of the agent's models `hermesh project list -o json` shows"},
 	sessionv1.FailureKind_FAILURE_KIND_INVALID_REQUEST:      {false, "the provider rejected the request; change the message"},
 	sessionv1.FailureKind_FAILURE_KIND_REFUSED:              {false, "the model refused the task; rephrase it"},
 	sessionv1.FailureKind_FAILURE_KIND_LIMIT_REACHED:        {false, "the turn hit the agent's step or token limit; send \"continue\" to go on"},

@@ -42,6 +42,14 @@ type place struct {
 type placeAgent struct {
 	Name    string `json:"name"`
 	Version string `json:"version"`
+	// The models it offers there, for session start --model (empty when
+	// it names none).
+	Models []placeModel `json:"models"`
+}
+
+type placeModel struct {
+	ID   string `json:"id"`
+	Name string `json:"name"`
 }
 
 // offlineMachine is a machine this client cannot reach now: offline (not
@@ -186,7 +194,11 @@ func (a *app) usableAgents(st *machinev1.MachineStatus, p *machinev1.Project) []
 	out := []placeAgent{}
 	for _, ag := range st.GetAgents() {
 		if ag.Available && ag.LoggedIn && identity.Allows(a.g.Agents, ag.Name) && (len(p.Agents) == 0 || slices.Contains(p.Agents, ag.Name)) {
-			out = append(out, placeAgent{Name: ag.Name, Version: ag.Version})
+			pa := placeAgent{Name: ag.Name, Version: ag.Version, Models: []placeModel{}}
+			for _, m := range ag.Models {
+				pa.Models = append(pa.Models, placeModel{ID: m.Id, Name: m.Name})
+			}
+			out = append(out, pa)
 		}
 	}
 	return out

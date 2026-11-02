@@ -378,8 +378,16 @@ func (s *Sessions) Start(ctx context.Context, p *Principal, req *sessionv1.Start
 	if why := s.outOfProcesses(); why != "" {
 		return nil, cerr(connect.CodeUnavailable, "this machine can't start programs now: %s; start the session on another machine, or ask the owner to quit what holds them", why)
 	}
-	if info := s.info(req.Agent); !info.Available {
+	info := s.info(req.Agent)
+	if !info.Available {
 		return nil, cerr(connect.CodeFailedPrecondition, "%s", unavailable(req.Agent, info))
+	}
+	if req.Model != "" && info.AllModels && !slices.ContainsFunc(info.Models, func(m provider.Model) bool { return m.ID == req.Model }) {
+		var ids []string
+		for _, m := range info.Models {
+			ids = append(ids, m.ID)
+		}
+		return nil, cerr(connect.CodeInvalidArgument, "%s on this machine has no model %q (one of: %s)", req.Agent, req.Model, strings.Join(ids, ", "))
 	}
 	if strings.TrimSpace(req.Prompt) == "" && len(req.Attachments) == 0 {
 		return nil, cerr(connect.CodeInvalidArgument, "prompt is empty")
