@@ -109,7 +109,7 @@ Note the two kinds of failure: `session get` itself succeeds (`ok: true`) but th
 
 ### Project
 
-`project` (address), `machine`, `machine_id`, `project_id`, `description`, `path`, `workspace`, `base` (the base branch of a worktree project, `""` for an in-place project), `active_sessions`, `platform`, `agents` (each `name`, `version`: the coding agents this agent may run in the project, installed and logged in there and set up for the project), `state` (`ready`, `paused`, `full` (only on a machine run with `--max-sessions`), `no_agent`, `unknown`).
+`project` (address), `machine`, `machine_id`, `project_id`, `description`, `path`, `workspace`, `base` (the base branch of a worktree project, `""` for an in-place project), `active_sessions`, `platform`, `agents` (each `name`, `version`, `models` (each `id`, `name`: the models it offers there, empty when it names none): the coding agents this agent may run in the project, installed and logged in there and set up for the project), `state` (`ready`, `paused`, `full` (only on a machine run with `--max-sessions`), `no_agent`, `unknown`).
 
 **Offline** (offline machines): `machine`, `machine_id`, `last_seen`, `error` (`""` when the machine isn't connected to the relay; the reason when the relay says it is online but connecting failed).
 

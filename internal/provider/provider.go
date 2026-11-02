@@ -27,6 +27,9 @@ type Info struct {
 	// (Claude Code and Codex), for picking a machine's defaults.
 	Models []Model
 	Own    Settings
+	// AllModels: Models are every model it takes here (Codex lists its
+	// own), so a session naming another can be refused before it starts.
+	AllModels bool
 }
 
 // Model is one model an agent offers.

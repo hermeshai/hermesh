@@ -71,6 +71,7 @@ func (p *Provider) Discover(ctx context.Context) provider.Info {
 		info.LoggedIn = true
 	}
 	info.Models, info.Own, _ = catalog(ctx, env, bin)
+	info.AllModels = len(info.Models) > 0
 	return info
 }
 

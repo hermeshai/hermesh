@@ -4,8 +4,10 @@ import (
 	"context"
 	"fmt"
 	"path/filepath"
+	"strings"
 	"testing"
 
+	"connectrpc.com/connect"
 	identityv1 "github.com/hermeshai/hermesh/gen/go/hermesh/identity/v1"
 	sessionv1 "github.com/hermeshai/hermesh/gen/go/hermesh/session/v1"
 	"github.com/hermeshai/hermesh/internal/provider"
@@ -113,5 +115,43 @@ func TestSessionModel(t *testing.T) {
 		if p := s.toProto(got); p.Model != c.wantModel || p.Effort != c.wantEffort {
 			t.Errorf("%+v shows %q/%q, want %q/%q", c.row, p.Model, p.Effort, c.wantModel, c.wantEffort)
 		}
+	}
+}
+
+// catalog is an agent that lists every model it takes, as Codex does.
+type catalog struct{ recorder }
+
+func (c *catalog) Discover(ctx context.Context) provider.Info {
+	i := c.recorder.Discover(ctx)
+	i.Models, i.AllModels = []provider.Model{{ID: "gpt-big"}, {ID: "gpt-small"}}, true
+	return i
+}
+
+// TestUnknownModel: a session naming a model the agent does not list is
+// refused before it starts, with the models it does; one naming a listed
+// model starts. An agent that lists only some of its models (Claude Code's
+// aliases) takes any.
+func TestUnknownModel(t *testing.T) {
+	h := newHarnessWith(t, DefaultLimits(), map[string]provider.Provider{"codex": &catalog{}})
+	ctx := context.Background()
+	start := func(agent, model string) error {
+		_, err := h.s.Start(ctx, h.p, &sessionv1.StartSessionRequest{ProjectId: "demo", Agent: agent, Prompt: "say one", Model: model})
+		return err
+	}
+	err := start("codex", "aurora")
+	if connect.CodeOf(err) != connect.CodeInvalidArgument || !strings.Contains(err.Error(), `no model "aurora" (one of: gpt-big, gpt-small)`) {
+		t.Fatalf("unknown model: %v", err)
+	}
+	h.s.mu.Lock()
+	made := len(h.s.live)
+	h.s.mu.Unlock()
+	if made != 0 {
+		t.Fatal("a session was made for an unknown model")
+	}
+	if err := start("codex", "gpt-small"); err != nil {
+		t.Fatalf("listed model: %v", err)
+	}
+	if err := start("fake", "aurora"); err != nil {
+		t.Fatalf("an agent without a full list: %v", err)
 	}
 }

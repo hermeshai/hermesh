@@ -59,6 +59,32 @@ esac
 		t.Fatalf("own %v, defaults %v", own, a.Defaults)
 	}
 
+	// An agent picking a model sees the ones Codex offers in the project
+	// list; one it does not offer is refused before a session starts, with
+	// the ones it does.
+	var places struct {
+		Projects []struct {
+			Agents []struct {
+				Name   string
+				Models []struct{ ID, Name string }
+			}
+		}
+	}
+	if r := w.cli(30*time.Second, "project", "list", "-o", "json"); json.Unmarshal([]byte(r.stdout), &places) != nil || len(places.Projects) != 1 ||
+		len(places.Projects[0].Agents) != 1 || len(places.Projects[0].Agents[0].Models) != 2 || places.Projects[0].Agents[0].Models[1].ID != "gpt-fake-small" {
+		t.Fatalf("project list: %+v", r)
+	}
+	var failed struct {
+		Error struct{ Kind, Message string }
+	}
+	if _, r := w.startSession(30*time.Second, "--agent", "codex", "--prompt", "hi", "--model", "aurora"); r.code == 0 || json.Unmarshal([]byte(r.stdout), &failed) != nil ||
+		failed.Error.Kind != "usage" || !strings.Contains(failed.Error.Message, `codex on this machine has no model "aurora" (one of: gpt-fake-big, gpt-fake-small)`) {
+		t.Fatalf("unknown model: %+v", r)
+	}
+	if b, _ := os.ReadFile(log); len(b) != 0 {
+		t.Fatalf("codex started a thread for an unknown model: %s", b)
+	}
+
 	set := func(d *identityv1.AgentDefaults) {
 		t.Helper()
 		if _, err := w.app.client.SetAgentDefaults(ctx, &localv1.SetAgentDefaultsRequest{MachineId: machineID, Defaults: d}); err != nil {
