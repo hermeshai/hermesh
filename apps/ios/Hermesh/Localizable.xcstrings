@@ -1463,6 +1463,16 @@
         }
       }
     },
+    "By Project": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "按项目"
+          }
+        }
+      }
+    },
     "By Status": {
       "localizations": {
         "zh-Hans": {

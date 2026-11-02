@@ -83,6 +83,7 @@
     "show": "Show",
     "byStatus": "By Status",
     "byDate": "By Date",
+    "byProject": "By Project",
     "byAgent": "By Agent",
     "byMachine": "By Machine",
     "lastActive": "Last Active",

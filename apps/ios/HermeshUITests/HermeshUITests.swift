@@ -216,12 +216,16 @@ final class HermeshUITests: XCTestCase {
     }
 
     func viewMenu() throws {
-        // Still on 全部会话. By status (the default), then by date.
+        // Still on 全部会话. By status (the default), then by date, by project.
         XCTAssertTrue(app.descendants(matching: .any)["group-已结束"].waitForExistence(timeout: 10))
         tap("view-options")
         menuItem("分组").tap()
         menuItem("按日期").tap()
         XCTAssertTrue(app.descendants(matching: .any)["group-今天"].waitForExistence(timeout: 10), "grouped by date")
+        tap("view-options")
+        menuItem("分组").tap()
+        menuItem("按项目").tap()
+        XCTAssertTrue(app.descendants(matching: .any)["group-demo"].waitForExistence(timeout: 10), "grouped by project")
         tap("view-options")
         menuItem("分组").tap()
         menuItem("按状态").tap()

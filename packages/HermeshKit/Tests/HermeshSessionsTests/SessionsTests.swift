@@ -56,9 +56,11 @@ func ask(_ s: inout Session) {
         == ["earlier", "week", "yesterday", "today"])
 }
 
-@Test func byAgentAndByMachine() {
-    let all = [session("a", .idle, agent: "gemini", machine: "m2"), session("b", .idle, agent: "claude", machine: "m1"),
-               session("c", .idle, agent: "codex", machine: "m3")]
+@Test func byProjectByAgentAndByMachine() {
+    let all = [session("a", .idle, updated: -10, project: "web", agent: "gemini", machine: "m2"), session("b", .idle, updated: -20, project: "api", agent: "claude", machine: "m1"),
+               session("c", .idle, updated: -30, project: "web", agent: "codex", machine: "m3")]
+    let projects = sessionSections(all, view: SessionListLayout(group: .project), archived: false, now: now)
+    #expect(projects.map(\.key) == ["api", "web"] && projects[1].sessions.map(\.sessionID) == ["a", "c"])
     #expect(sessionSections(all, view: SessionListLayout(group: .agent), archived: false, now: now).map(\.key) == ["claude", "codex", "gemini"])
     #expect(sessionSections(all, view: SessionListLayout(group: .machine), archived: false, now: now, machines: ["m2", "m1"]).map(\.key) == ["m2", "m1", "m3"])
 }

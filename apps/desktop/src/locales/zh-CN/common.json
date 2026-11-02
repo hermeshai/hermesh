@@ -81,6 +81,7 @@
     "show": "显示",
     "byStatus": "按状态",
     "byDate": "按日期",
+    "byProject": "按项目",
     "byAgent": "按 Agent",
     "byMachine": "按机器",
     "lastActive": "最后活跃时间",
