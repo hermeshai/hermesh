@@ -100,14 +100,16 @@ type owner struct {
 	asked    chan []preview.Card
 	failures chan error
 	shown    chan struct{}
+	matched  chan preview.Match
 }
 
 func (o *owner) Approve(_ context.Context, cards []preview.Card) (bool, error) {
 	o.asked <- cards
 	return o.approve.Load(), nil
 }
-func (o *owner) Failed(err error) { o.failures <- err }
-func (o *owner) Show()            { o.shown <- struct{}{} }
+func (o *owner) Failed(err error)        { o.failures <- err }
+func (o *owner) Show()                   { o.shown <- struct{}{} }
+func (o *owner) Matched(m preview.Match) { o.matched <- m }
 
 func grantRequest(t *testing.T, label, keyID, batch string) *localv1.SigningRequest {
 	t.Helper()
@@ -122,7 +124,7 @@ func grantRequest(t *testing.T, label, keyID, batch string) *localv1.SigningRequ
 
 // The signer creates a root key, shows a batch once and signs all of it,
 // refuses what the owner declines, brings its approval forward when asked,
-// and deletes a key.
+// shows the digits of a device it admitted, and deletes a key.
 func TestRun(t *testing.T) {
 	d := &daemon{reqs: make(chan *localv1.SigningRequest, 8), completed: make(chan *localv1.CompleteSigningRequestRequest, 8)}
 	mux := http.NewServeMux()
@@ -130,7 +132,7 @@ func TestRun(t *testing.T) {
 	srv := httptest.NewServer(mux)
 	defer srv.Close()
 	keys := &softKeys{keys: map[string]*identity.SoftwareKey{}, deleted: make(chan string, 1)}
-	o := &owner{asked: make(chan []preview.Card, 4), failures: make(chan error, 4), shown: make(chan struct{}, 1)}
+	o := &owner{asked: make(chan []preview.Card, 4), failures: make(chan error, 4), shown: make(chan struct{}, 1), matched: make(chan preview.Match, 1)}
 	o.approve.Store(true)
 	ctx, cancel := context.WithCancel(context.Background())
 	done := make(chan struct{})
@@ -193,6 +195,24 @@ func TestRun(t *testing.T) {
 	case <-o.shown:
 	case <-time.After(10 * time.Second):
 		t.Fatal("not shown")
+	}
+
+	o.approve.Store(true)
+	body, _ := proto.MarshalOptions{Deterministic: true}.Marshal(&identityv1.RootCert{OwnerId: "o_x", Version: 2,
+		RootKeys: []*identityv1.RootKey{{PublicKey: created.PublicKey, Label: "iPhone"}}})
+	typ := identity.MessageType(&identityv1.RootCert{})
+	d.reqs <- &localv1.SigningRequest{RequestId: "device", Type: typ, Body: body, Message: identity.SigningInput(typ, body), RootKeyId: keyID}
+	if c := next(); c.RequestId != "device" || c.Rejected {
+		t.Fatalf("device: %v", c)
+	}
+	<-o.asked
+	select {
+	case m := <-o.matched:
+		if m.Label != "iPhone" || m.Digits != identity.JoinMatchCode(body) {
+			t.Fatalf("matched %+v", m)
+		}
+	case <-time.After(10 * time.Second):
+		t.Fatal("no digits shown")
 	}
 
 	d.reqs <- &localv1.SigningRequest{RequestId: "gone", DeleteRootKey: true, RootKeyId: keyID}

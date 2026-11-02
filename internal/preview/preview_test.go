@@ -128,6 +128,37 @@ func TestCards(t *testing.T) {
 	}
 }
 
+// TestJoinMatch: the digits of a root cert that adds a device, named by the
+// devices before it; of a machine cert that asked for them; none for a
+// removal, a first setup or a machine that did not ask.
+func TestJoinMatch(t *testing.T) {
+	old, added := spki(t), spki(t)
+	root := request(t, &identityv1.RootCert{OwnerId: "o_x", Version: 2, RootKeys: []*identityv1.RootKey{{PublicKey: old, Label: "pc"}, {PublicKey: added, Label: "iPhone"}}})
+	before := Hints{Devices: map[string]string{identity.Fingerprint(old): "pc"}}
+	if m := JoinMatch([]*localv1.SigningRequest{root}, before); m == nil || *m != (Match{Label: "iPhone", Digits: identity.JoinMatchCode(root.Body)}) {
+		t.Fatalf("a device added: %+v", m)
+	}
+	if m := JoinMatch([]*localv1.SigningRequest{root}, Hints{}); m == nil || m.Label != "" || m.Digits != identity.JoinMatchCode(root.Body) {
+		t.Fatalf("devices not listed: %+v", m)
+	}
+	after := Hints{Devices: map[string]string{identity.Fingerprint(old): "pc", identity.Fingerprint(added): "iPhone"}}
+	if m := JoinMatch([]*localv1.SigningRequest{root}, after); m != nil {
+		t.Fatalf("nothing added: %+v", m)
+	}
+	first := request(t, &identityv1.RootCert{OwnerId: "o_x", Version: 1, RootKeys: []*identityv1.RootKey{{PublicKey: old, Label: "pc"}}})
+	if m := JoinMatch([]*localv1.SigningRequest{first}, Hints{}); m != nil {
+		t.Fatalf("first setup: %+v", m)
+	}
+	machine := request(t, &identityv1.MachineCert{OwnerId: "o_x", MachineId: "m_1", MachinePublicKey: spki(t)})
+	if m := JoinMatch([]*localv1.SigningRequest{machine}, before); m != nil {
+		t.Fatalf("a machine that did not ask: %+v", m)
+	}
+	machine.ShowMatch = true
+	if m := JoinMatch([]*localv1.SigningRequest{machine}, before); m == nil || *m != (Match{Digits: identity.JoinMatchCode(machine.Body), Machine: true}) {
+		t.Fatalf("a machine that asked: %+v", m)
+	}
+}
+
 // Every text a card shows has its Chinese, with the same verbs, and the
 // Chinese file holds nothing the cards don't use.
 func TestWords(t *testing.T) {
