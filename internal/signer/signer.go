@@ -34,7 +34,9 @@ type Keys interface {
 }
 
 // Owner is the person the signer asks. One that has a Language()
-// (en, zh-CN) is shown what is signed in it.
+// (en, zh-CN) is shown what is signed in it; one that has a
+// Matched(preview.Match) is shown, once a batch is signed, the two digits
+// to type on the device or machine it admits.
 type Owner interface {
 	// Approve shows what a batch signs, and whether the owner approves it.
 	Approve(ctx context.Context, cards []preview.Card) (bool, error)
@@ -119,7 +121,8 @@ func handle(ctx context.Context, c localv1connect.LocalServiceClient, keys Keys,
 	if l, ok := owner.(interface{ Language() string }); ok {
 		lang = l.Language()
 	}
-	cards, err := preview.Cards(batch, hints(ctx, c), lang)
+	h := hints(ctx, c)
+	cards, err := preview.Cards(batch, h, lang)
 	if err != nil {
 		return err
 	}
@@ -141,6 +144,13 @@ func handle(ctx context.Context, c localv1connect.LocalServiceClient, keys Keys,
 	for i, r := range batch {
 		if _, err := c.CompleteSigningRequest(ctx, &localv1.CompleteSigningRequestRequest{RequestId: r.RequestId, Signature: sigs[i]}); err != nil {
 			return err
+		}
+	}
+	// A panel shows the digits to type on what joins; the terminal's
+	// command prints them itself (hermeshd device approve).
+	if m, ok := owner.(interface{ Matched(preview.Match) }); ok {
+		if match := preview.JoinMatch(batch, h); match != nil {
+			m.Matched(*match)
 		}
 	}
 	return nil

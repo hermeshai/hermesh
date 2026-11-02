@@ -61,6 +61,45 @@ func Cards(reqs []*localv1.SigningRequest, h Hints, lang string) ([]Card, error)
 	return out, nil
 }
 
+// Match is the two digits to type on a device or machine that joins,
+// which prove to it the approval is its owner's (docs/trusted-devices.md
+// 4.2).
+type Match struct {
+	// Label is the device's name, "" for a machine or when the trusted
+	// devices could not be listed.
+	Label   string
+	Digits  string
+	Machine bool
+}
+
+// JoinMatch is the two digits a batch's signed bytes give, if it admits a
+// device (a root cert that adds one) or a machine that asked for them;
+// HermeshKit's SigningPreview.joinMatchCode.
+func JoinMatch(reqs []*localv1.SigningRequest, h Hints) *Match {
+	for _, r := range reqs {
+		switch r.Type {
+		case identity.MessageType(&identityv1.MachineCert{}):
+			if r.ShowMatch {
+				return &Match{Digits: identity.JoinMatchCode(r.Body), Machine: true}
+			}
+		case identity.MessageType(&identityv1.RootCert{}):
+			c := &identityv1.RootCert{}
+			if strict(r, c) != nil || c.Version < 2 {
+				continue
+			}
+			if h.Devices == nil {
+				return &Match{Digits: identity.JoinMatchCode(r.Body)}
+			}
+			for _, k := range c.RootKeys {
+				if _, ok := h.Devices[identity.Fingerprint(k.PublicKey)]; !ok {
+					return &Match{Label: k.Label, Digits: identity.JoinMatchCode(r.Body)}
+				}
+			}
+		}
+	}
+	return nil
+}
+
 // strict parses the body as m and refuses one that does not re-serialize to
 // exactly those bytes (an unknown field, or an encoding hermeshd would not
 // produce): what is shown is then all that is signed.

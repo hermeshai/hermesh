@@ -78,6 +78,31 @@ func (p *drawnPanel) Failed(err error) {
 	})
 }
 
+// Matched shows the two digits to type on the device or machine a batch
+// just admitted, and returns at once.
+func (p *drawnPanel) Matched(m preview.Match) {
+	v := &view{p: p, match: &m, focus: "ok"}
+	go onOwnThread(func() {
+		if v.show() != nil {
+			title, why := p.w.matchText(m)
+			p.fallback.dialog(title, m.Digits+"\n\n"+why, "", false)
+		}
+	})
+}
+
+// matchText is what the digits' window says: where to type them, and what
+// that does.
+func (w words) matchText(m preview.Match) (title, why string) {
+	title, why = w.MatchDevice, w.JoinsDevice
+	if m.Machine {
+		title, why = w.MatchMachine, w.JoinsMachine
+	}
+	if m.Label != "" {
+		title = fmt.Sprintf(w.MatchOn, m.Label)
+	}
+	return title, why
+}
+
 // Show brings the open window forward.
 func (p *drawnPanel) Show() {
 	p.mu.Lock()
@@ -125,7 +150,8 @@ func (r rect) has(x, y int) bool { return x >= r.x && y >= r.y && x < r.x+r.w &&
 // op draws a part of the panel; dy is how far the content has scrolled.
 type op func(c *canvas, dy int)
 
-// view is one window of the panel: a batch to approve, or why one failed.
+// view is one window of the panel: a batch to approve, why one failed, or
+// the digits to type on what one admitted.
 type view struct {
 	p     *drawnPanel
 	cards []preview.Card
@@ -133,6 +159,7 @@ type view struct {
 	failed  bool
 	message string
 	noHello bool
+	match   *preview.Match
 
 	mu        sync.Mutex
 	hwnd      uintptr
@@ -402,6 +429,8 @@ func (v *view) layout() {
 	var ops []op
 	if v.failed {
 		v.contentH, ops = v.errorContent(c)
+	} else if v.match != nil {
+		v.contentH, ops = v.matchContent(c)
 	} else {
 		v.contentH, ops = v.confirmContent(c)
 	}
@@ -458,7 +487,7 @@ func (v *view) confirmContent(c *canvas) (int, []op) {
 	}
 	if hero != nil {
 		if hero.Code != "" {
-			put(v.code(c, hero.Code, true)(c, x, y, w))
+			put(v.code(c, hero.Code, []string{v.p.w.CodeLabel, v.p.w.Match})(c, x, y, w))
 		}
 		lines := hero.Lines
 		if own {
@@ -530,11 +559,12 @@ func (v *view) para(c *canvas, ops *[]op, fontName, s string, x, y, w int, lh fl
 	return len(lines) * step
 }
 
-// code is a verification code in tiles on the aurora, with what to do
-// with it under (big), or alone (in a card).
-func (v *view) code(c *canvas, code string, big bool) block {
+// code is a verification code in tiles on the aurora, with its caption
+// under (what it is, what to do with it), or alone (in a card: none).
+func (v *view) code(c *canvas, code string, caption []string) block {
 	return func(c *canvas, x, y, w int) (int, []op) {
 		th := v.th
+		big := caption != nil
 		groups := strings.FieldsFunc(code, func(r rune) bool { return r == '-' || r == ' ' })
 		pad, gap := v.px(10), v.px(8)
 		f, tilePad := v.fonts["mono"], v.px(10)
@@ -565,11 +595,11 @@ func (v *view) code(c *canvas, code string, big bool) block {
 		}
 		if big {
 			cap, capBold := v.fonts["caption"], v.fonts["captionBold"]
-			match := v.p.w.Match
-			mw := c.width(capBold, match)
+			label, hint := caption[0], caption[1]
+			hw := c.width(capBold, hint)
 			o = append(o, func(c *canvas, dy int) {
-				c.text(cap, x+pad, footY-dy, v.p.w.CodeLabel, th.fg3)
-				c.text(capBold, x+w-pad-mw, footY-dy, match, th.fg)
+				c.text(cap, x+pad, footY-dy, label, th.fg3)
+				c.text(capBold, x+w-pad-hw, footY-dy, hint, th.fg)
 			})
 		}
 		return h, o
@@ -637,7 +667,7 @@ func (v *view) cardBox(c *canvas, cd preview.Card, withCode bool, x, y, w int) (
 	h += v.para(c, &o, "bold", cd.Title, ix, y+h, iw, 1.35, th.fg, false)
 	if withCode && cd.Code != "" {
 		h += v.px(10)
-		ch, co := v.code(c, cd.Code, false)(c, ix, y+h, iw)
+		ch, co := v.code(c, cd.Code, nil)(c, ix, y+h, iw)
 		o = append(o, co...)
 		h += ch + v.px(6)
 	}
@@ -672,6 +702,22 @@ func (v *view) errorContent(c *canvas) (int, []op) {
 	return y + max(v.px(32), h) + v.px(24), o
 }
 
+// matchContent is the two digits, as the Mac's panel shows them: where to
+// type them and what that does, then the digits in tiles.
+func (v *view) matchContent(c *canvas) (int, []op) {
+	th := v.th
+	x, w := v.px(32), v.px(456)
+	top := v.px(20)
+	o := []op{func(c *canvas, dy int) { v.shield(c, x+w/2-v.px(20), top-dy) }}
+	y := top + v.px(40) + v.px(8)
+	title, why := v.p.w.matchText(*v.match)
+	y += v.para(c, &o, "title", title, x, y, w, 1.35, th.fg, true) + v.px(8)
+	y += v.para(c, &o, "body", why, x+(w-v.px(420))/2, y, v.px(420), 1.6, th.fg2, true) + v.px(18)
+	digits := strings.Join(strings.Split(v.match.Digits, ""), "-")
+	h, co := v.code(c, digits, []string{v.p.w.Digits, ""})(c, x, y, w)
+	return y + h + v.px(24), append(o, co...)
+}
+
 // footer: a note at the left, the buttons at the right.
 func (v *view) footer(c *canvas) op {
 	th := v.th
@@ -683,7 +729,7 @@ func (v *view) footer(c *canvas) op {
 		primary   bool
 	}
 	var buttons []button
-	if v.failed {
+	if v.failed || v.match != nil {
 		if v.noHello {
 			buttons = append(buttons, button{"signin", v.p.w.OpenSignIn, false})
 		}
@@ -707,7 +753,7 @@ func (v *view) footer(c *canvas) op {
 	return func(c *canvas, _ int) {
 		c.rect(0, top, v.w, h, th.bar)
 		c.rect(0, top, v.w, max(1, v.px(1)), th.line)
-		if !v.failed {
+		if !v.failed && v.match == nil {
 			mx, my := v.px(24), top+(h-v.px(20))/2
 			note := v.p.w.HelloAfter
 			if v.waiting {
@@ -902,7 +948,7 @@ func (v *view) focusable() []string {
 	if v.waiting {
 		return nil
 	}
-	if v.failed {
+	if v.failed || v.match != nil {
 		if v.noHello {
 			return []string{"signin", "ok"}
 		}
@@ -951,7 +997,7 @@ func (v *view) activate(id string) {
 func (v *view) escape() {
 	switch {
 	case v.waiting:
-	case v.failed:
+	case v.failed, v.match != nil:
 		v.finish(false, nil)
 	default:
 		v.finish(false, signer.ErrRefused)

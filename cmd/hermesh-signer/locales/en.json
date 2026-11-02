@@ -16,5 +16,11 @@
   "helloAfter": "Windows Hello confirms after you approve",
   "wait": "Confirm it's you in Windows Hello…",
   "openSignIn": "Open Sign-in Options",
-  "ok": "OK"
+  "ok": "OK",
+  "matchOn": "Enter these two digits on “%s”",
+  "matchDevice": "Enter these two digits on the new device",
+  "matchMachine": "Enter these two digits on the new machine",
+  "joinsDevice": "Once you do, it becomes a trusted device, just like this PC.",
+  "joinsMachine": "Once you do, it joins as a machine: it runs tasks and approves nothing.",
+  "digits": "Two digits"
 }
