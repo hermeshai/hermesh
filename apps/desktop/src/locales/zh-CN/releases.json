@@ -1,9 +1,20 @@
 {
   "unreleased": {
-    "improvements": [
-      "通过官方 ACP 服务使用 Google Antigravity：运行 `hermesh agent login antigravity` 登录，在项目和授权中选择它，支持工具审批、多轮对话与恢复。"
-    ],
+    "improvements": [],
     "fixes": []
+  },
+  "0.1.2": {
+    "improvements": [
+      "通过官方 ACP 服务使用 Google Antigravity：运行 `hermesh agent login antigravity` 登录，在项目和授权中选择它，支持工具审批、多轮对话与恢复。",
+      "在 Linux 上安装时，会询问 Hermesh 把数据（会话、日志和 worktree）放在哪里，并显示剩余空间。在群晖 NAS 上会列出各个存储空间，并推荐剩余空间最多的那个。",
+      "iPhone 的欢迎页说明了 Hermesh 是做什么的：云端和你电脑上的 agent 互相交接工作。刚批准的机器上要输入的两位数字，现在和其他卡片一样显示在卡片里。",
+      "Mac 应用、iPhone 应用和命令行的中英文措辞更清晰。"
+    ],
+    "fixes": [
+      "作为可信设备的 PC，批准 iPhone 或机器时会显示要在对方输入的两位数字，加入流程可以顺利完成。",
+      "在群晖 DSM 7（systemd 219）等较旧的 Linux 系统上，新配对的机器不会再一直离线。编码 agent 能读到你 `~/.profile` 里的变量（例如 `CLAUDE_CONFIG_DIR` 或代理），配对时如果 Hermesh 没在运行也会明确提示。",
+      "如果会话的基准分支或标签不在项目的本地仓库里，会立即停下并说明怎么解决；再发一条消息即可重试。"
+    ]
   },
   "0.1.1": {
     "improvements": [
