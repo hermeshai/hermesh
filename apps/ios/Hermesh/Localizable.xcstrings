@@ -6775,16 +6775,6 @@
         }
       }
     },
-    "Waiting for you · %@": {
-      "localizations": {
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "等你回答 · %@"
-          }
-        }
-      }
-    },
     "Waiting for your Mac to sign in…": {
       "localizations": {
         "zh-Hans": {

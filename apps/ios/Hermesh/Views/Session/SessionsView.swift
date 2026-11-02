@@ -2,10 +2,10 @@ import HermeshProto
 import HermeshSessions
 import SwiftUI
 
-/// Every session, laid out as the Mac's sidebar: grouped, sorted by last
-/// activity, with or without each row's metadata (the view menu), each
-/// group collapsible; archived sessions on request. Swipe or long-press a
-/// row to rename, archive or delete it.
+/// Every session, laid out as the Mac's sidebar and drawn as the menu's
+/// lists: grouped, sorted by last activity, with or without each row's
+/// metadata (the view menu), each group collapsible; archived sessions on
+/// request. Swipe or long-press a row to rename, archive or delete it.
 struct SessionsView: View {
     @Environment(AppModel.self) private var model
 
@@ -15,11 +15,8 @@ struct SessionsView: View {
         List {
             ForEach(sections) { section in
                 let open = !model.collapsed.contains(section.id)
+                // The heading is a row, not a section header: it scrolls away as the menu's do.
                 Section {
-                    if open {
-                        ForEach(section.sessions, id: \.sessionID) { s in SessionListRow(session: s) }
-                    }
-                } header: {
                     Button {
                         withAnimation(.snappy) {
                             if open { model.collapsed.insert(section.id) } else { model.collapsed.remove(section.id) }
@@ -31,13 +28,21 @@ struct SessionsView: View {
                             Image(systemName: "chevron.down").font(.caption2.weight(.semibold)).foregroundStyle(.tertiary)
                                 .rotationEffect(.degrees(open ? 0 : -90))
                         }
+                        .font(.footnote).foregroundStyle(.secondary)
+                        .padding(.horizontal, 26).padding(.top, 20).padding(.bottom, 6)
                         .frame(maxWidth: .infinity, alignment: .leading)
                         .contentShape(.rect)
                     }
                     .buttonStyle(.plain)
+                    .listRowInsets(EdgeInsets())
+                    .listRowSeparator(.hidden)
+                    .listRowBackground(Color.clear)
                     .accessibilityAddTraits(.isHeader)
                     .accessibilityValue(open ? Text("Expanded") : Text("Collapsed"))
                     .accessibilityIdentifier("group-\(title(section))")
+                    if open {
+                        ForEach(section.sessions, id: \.sessionID) { s in SessionListRow(session: s) }
+                    }
                 }
             }
             Section {
@@ -61,9 +66,13 @@ struct SessionsView: View {
                     }
                 }
                 .font(.footnote).foregroundStyle(.secondary).frame(maxWidth: .infinity)
+                .padding(.top, 14)
+                .listRowSeparator(.hidden)
                 .listRowBackground(Color.clear)
             }
         }
+        .listStyle(.plain)
+        .listSectionSpacing(0)
         .navigationTitle("Sessions")
         .rootToolbar()
         .toolbar {
@@ -91,17 +100,20 @@ struct ScopedSessionsView: View {
         let list = model.sessions.filter { filter.matches($0) && $0.status != .archived }.sorted { $0.updatedDate > $1.updatedDate }
         List {
             if list.isEmpty {
-                Text("No sessions").foregroundStyle(.secondary).frame(maxWidth: .infinity).listRowBackground(Color.clear)
+                Text("No sessions").foregroundStyle(.secondary).frame(maxWidth: .infinity)
+                    .listRowSeparator(.hidden).listRowBackground(Color.clear)
             }
             ForEach(list, id: \.sessionID) { s in SessionListRow(session: s) }
         }
+        .listStyle(.plain)
         .navigationTitle(title)
         .navigationBarTitleDisplayMode(.inline)
     }
 }
 
-/// A session in a list: opens it; swipe for Archive and Delete, long-press
-/// for Rename, Archive and Delete (the Mac's ⋯ menu).
+/// A session in a list, drawn as the menu's rows (no card, no lines, a
+/// capsule under the finger): opens it; swipe for Archive and Delete,
+/// long-press for Rename, Archive and Delete (the Mac's ⋯ menu).
 struct SessionListRow: View {
     @Environment(AppModel.self) private var model
     let session: Session
@@ -110,8 +122,10 @@ struct SessionListRow: View {
 
     var body: some View {
         Button { model.openSession(session.sessionID) } label: { SessionRow(session: session, metadata: model.listView.metadata) }
-            .buttonStyle(.plain)
-            .listRowInsets(EdgeInsets())
+            .buttonStyle(RowStyle(selected: false))
+            .listRowInsets(EdgeInsets(top: 0, leading: 10, bottom: 0, trailing: 10))
+            .listRowSeparator(.hidden)
+            .listRowBackground(Color.clear)
             .swipeActions(edge: .trailing) {
                 // Not role: .destructive, which takes the row away before the confirmation shows.
                 Button("Delete", systemImage: "trash") { deleting = true }.tint(.red)

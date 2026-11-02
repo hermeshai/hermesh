@@ -201,6 +201,18 @@ public func agentTitle(_ id: String) -> String {
     }
 }
 
+/// A coding agent's short name, for dense lines (the Mac's codingAgentShort).
+public func agentShortTitle(_ id: String) -> String {
+    switch id {
+    case "claude": "Claude"
+    case "copilot": "Copilot"
+    case "codebuddy": "CodeBuddy"
+    case "deepseek": "DeepSeek"
+    case "gemini": "Gemini"
+    default: agentTitle(id)
+    }
+}
+
 /// A model as people call it: the name its agent gives it (Codex's display
 /// names, Claude Code's aliases), else a Claude model's ID read out
 /// ("claude-opus-5-5" → "Opus 5.5"), else the ID itself.
