@@ -17,9 +17,12 @@ var Agents = []Agent{
 	{Name: "kimi", Command: "kimi", Args: []string{"acp"}},
 	{Name: "kiro", Command: "kiro-cli", Args: []string{"acp"}, DesktopApps: []string{"Kiro.app"}},
 	{Name: "qoder", Command: "qodercli", Args: []string{"--acp"}, DesktopApps: []string{"Qoder.app"}},
-	// The DSH Desktop app keeps its own dsh, with no `dsh` command.
-	{Name: "deepseek", Command: "dsh", Args: []string{"--profile", "acp"}, Apps: []App{{Bundle: "DSH Desktop.app",
-		Exec: "Contents/MacOS/DSH Desktop", Script: "Contents/Resources/app.asar.unpacked/lib/desktop-cli.js"}}},
+	// The DSH desktop apps keep their own dsh, with no `dsh` command; the
+	// Windows one's script is inside its app.asar (tested on 0.2.1-rc.5).
+	{Name: "deepseek", Command: "dsh", Args: []string{"--profile", "acp"}, Apps: []App{
+		{Bundle: "DSH Desktop.app", Exec: "Contents/MacOS/DSH Desktop", Script: "Contents/Resources/app.asar.unpacked/lib/desktop-cli.js"},
+		{Bundle: "DeepSeek Harness", Exec: "DeepSeek Harness.exe", Script: "resources/app.asar/dsh/node_modules/@deepseek-ai/dsh/lib/bin.js"},
+	}},
 	{Name: "codebuddy", Command: "codebuddy", Args: []string{"--acp"}},
 	{Name: "grok", Command: "grok", Args: []string{"--no-auto-update", "agent", "stdio"}, Auth: []string{"cached_token", "xai.api_key"}},
 }
