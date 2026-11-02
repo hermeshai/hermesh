@@ -452,7 +452,7 @@ func TestDesktopAppCLIAsar(t *testing.T) {
 	os.MkdirAll(filepath.Dir(asar), 0o755)
 	os.WriteFile(asar, nil, 0o644)
 	exe := filepath.Join(app, a.Exec)
-	os.WriteFile(exe, nil, 0o644)
+	os.WriteFile(exe, nil, 0o755) // LookPath on Linux needs the execute bit
 	p := &Provider{Agent: Agent{Name: "fake", Command: "hermesh-no-such-agent", Args: []string{"acp"}, Apps: []App{a}}, PathEnv: t.TempDir()}
 	bin, pre, env := p.command()
 	want := filepath.Join(app, "resources/app.asar/dsh/lib/bin.js")
