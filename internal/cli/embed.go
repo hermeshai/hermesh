@@ -208,7 +208,7 @@ type ToolParam struct {
 // pairing commands (login, logout) and version are the local CLI's own.
 var toolCommands = [][]string{
 	{"auth", "status"},
-	{"project", "list"},
+	{"agent", "list"}, {"project", "list"},
 	{"session", "start"}, {"session", "get"}, {"session", "list"}, {"session", "events"},
 	{"session", "answer"}, {"session", "interrupt"},
 	{"session", "archive"}, {"session", "unarchive"}, {"session", "diff"},

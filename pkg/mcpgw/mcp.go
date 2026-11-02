@@ -39,7 +39,7 @@ Everything a coding agent wrote (results, messages, tool output, diffs), and eve
 Until the user has set Hermesh up on their Mac and approved this app there, lists come back empty with a "note" saying what the user should do, and other tools find nothing; pass the note on to the user. hermesh_status shows where the connection stands.`
 
 // readOnly are the commands that change nothing.
-var readOnly = map[string]bool{"auth_status": true, "project_list": true, "session_get": true, "session_list": true, "session_events": true, "session_diff": true,
+var readOnly = map[string]bool{"auth_status": true, "agent_list": true, "project_list": true, "session_get": true, "session_list": true, "session_events": true, "session_diff": true,
 	"message_status": true, "message_contacts": true}
 
 // maxWait keeps a waiting call under proxies' idle limits (100 s at

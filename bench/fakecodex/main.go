@@ -103,7 +103,8 @@ func main() {
 		case "model/list":
 			efforts := []any{map[string]any{"reasoningEffort": "low"}, map[string]any{"reasoningEffort": "high"}}
 			reply(m.ID, map[string]any{"data": []any{
-				map[string]any{"id": "gpt-fake-big", "displayName": "GPT-Fake-Big", "isDefault": true, "defaultReasoningEffort": "high", "supportedReasoningEfforts": efforts},
+				map[string]any{"id": "gpt-fake-big", "displayName": "GPT-Fake-Big", "isDefault": true, "defaultReasoningEffort": "high",
+					"supportedReasoningEfforts": append(efforts, map[string]any{"reasoningEffort": "xhigh"})},
 				map[string]any{"id": "gpt-fake-small", "displayName": "GPT-Fake-Small", "defaultReasoningEffort": "low", "supportedReasoningEfforts": efforts},
 			}})
 		case "config/read":

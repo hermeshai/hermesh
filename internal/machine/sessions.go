@@ -382,12 +382,12 @@ func (s *Sessions) Start(ctx context.Context, p *Principal, req *sessionv1.Start
 	if !info.Available {
 		return nil, cerr(connect.CodeFailedPrecondition, "%s", unavailable(req.Agent, info))
 	}
-	if req.Model != "" && info.AllModels && !slices.ContainsFunc(info.Models, func(m provider.Model) bool { return m.ID == req.Model }) {
-		var ids []string
-		for _, m := range info.Models {
-			ids = append(ids, m.ID)
-		}
-		return nil, cerr(connect.CodeInvalidArgument, "%s on this machine has no model %q (one of: %s)", req.Agent, req.Model, strings.Join(ids, ", "))
+	// The client's model and effort, else the machine's defaults; what
+	// neither sets follows the agent's own configuration.
+	set := s.defaults(req.Agent)
+	set.Model, set.Effort = cmp.Or(req.Model, set.Model), cmp.Or(req.Effort, set.Effort)
+	if err := checkSettings(req.Agent, info, req.Model, req.Effort, cmp.Or(set.Model, info.Own.Model)); err != nil {
+		return nil, err
 	}
 	if strings.TrimSpace(req.Prompt) == "" && len(req.Attachments) == 0 {
 		return nil, cerr(connect.CodeInvalidArgument, "prompt is empty")
@@ -407,12 +407,6 @@ func (s *Sessions) Start(ctx context.Context, p *Principal, req *sessionv1.Start
 	title := provider.CleanTitle(req.Title)
 	if title == "" {
 		title = provider.CleanTitle(req.Prompt)
-	}
-	// The client's model, else the machine's defaults; what neither sets
-	// follows the agent's own configuration.
-	set := s.defaults(req.Agent)
-	if req.Model != "" {
-		set.Model = req.Model
 	}
 	r := &sessionRow{ID: id, ProjectID: req.ProjectId, Agent: req.Agent,
 		Status: sessionv1.SessionStatus_SESSION_STATUS_QUEUED, CreatedBy: p.ClientID, GrantID: g.GrantId, Model: set.Model, Effort: set.Effort, Speed: set.Speed,
