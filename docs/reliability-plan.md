@@ -200,6 +200,8 @@ Today only normalized events refresh `lastEvent`. But Codex reasoning, command o
 
 In order: `Interrupt` (wait at most 5 seconds to see whether a TurnCompleted arrives normally) → kill the process group → snapshot → enter INTERRUPTED as in §2.2.
 
+Before the process goes, the watchdog records what it was doing (since 2026-11-03): the programs still running under the agent, newest first with their arguments (an MCP server starting, a credential prompt, a download; read from the process table on macOS and Linux, not listed on Windows), and the last lines of its stderr. A short form is added to the failure's message ("…; running: uvx some-mcp-server, …; stderr: …"), redacted like every message; the machine's log gets the full list with "stopping a stalled turn". Without it a stall that kills the process leaves nothing to tell its cause by.
+
 ---
 
 ## 4. Process and pipe robustness (P8–P10)
@@ -218,6 +220,7 @@ In order: `Interrupt` (wait at most 5 seconds to see whether a TurnCompleted arr
   - `hermesh_watchdog_fired_total{window}`
   - `hermesh_resume_total{agent,outcome=resumed|rejected_fresh|failed_kept}`
 - **Audit**: record the kind for every failed turn.
+- **Machine log** (`hermeshd.log`): each agent process start ("agent started": session, agent, pid, resumed, how long the start took), every failed turn other than an interruption ("turn failed": kind and message), an agent process that exits during a turn (with the end of its stderr), a stalled turn with what it was running, and a base ref fetched from a remote. No prompt text.
 - **`hermesh status`**: the session list shows the failure category. `hermeshd doctor` shows counts of each failure kind over the last 24 hours.
 
 ---

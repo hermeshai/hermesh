@@ -28,10 +28,10 @@ for (const language of ["zh-Hans", "en"]) {
     try {
       await page.getByRole("list", { name: language === "en" ? "Sessions" : "会话", exact: true }).getByText(title, { exact: true }).click();
       const failure = page.getByRole("alert");
-      await expect(failure).toContainText(language === "en" ? "The worktree’s base ref is unavailable locally" : "无法创建工作目录：本地基准引用不可用");
+      await expect(failure).toContainText(language === "en" ? "The worktree’s base ref was not found" : "无法创建工作目录：找不到基准引用");
       await expect(failure).toContainText('project "demo"');
       await expect(failure).toContainText('base ref "ios-v0.12.2"');
-      await expect(failure).toContainText(language === "en" ? "sync the corresponding branch/tag" : "将对应分支/tag 同步到项目的本地仓库");
+      await expect(failure).toContainText(language === "en" ? "is on the project’s remote" : "项目的远端仓库里有这个分支或 tag");
       await expect(failure).toContainText(language === "en" ? "in this session to retry the original task" : "在本会话发送一条消息重试原始任务");
       await expect(failure).not.toContainText(language === "en" ? "Hermesh Settings" : "Hermesh 设置");
       await expect(failure).not.toContainText("git branch");

@@ -3,6 +3,8 @@
 package provider
 
 import (
+	"cmp"
+	"slices"
 	"sync"
 	"syscall"
 	"time"
@@ -106,6 +108,33 @@ func (t *tracked) update(procs []procInfo) {
 			}
 		}
 	}
+}
+
+// running returns the arguments of the descendants alive now, the newest
+// first.
+func (t *tracked) running() [][]string {
+	procs := listProcs()
+	t.update(procs)
+	alive := map[int]int64{}
+	for _, p := range procs {
+		alive[p.pid] = p.start
+	}
+	var live []procInfo
+	tracker.mu.Lock()
+	for pid, st := range t.known {
+		if alive[pid] == st {
+			live = append(live, procInfo{pid: pid, start: st})
+		}
+	}
+	tracker.mu.Unlock()
+	slices.SortFunc(live, func(a, b procInfo) int { return cmp.Or(cmp.Compare(b.start, a.start), cmp.Compare(b.pid, a.pid)) })
+	var cmds [][]string
+	for _, p := range live {
+		if args := procArgs(p.pid); len(args) > 0 {
+			cmds = append(cmds, args)
+		}
+	}
+	return cmds
 }
 
 // stop kills every remembered descendant still alive and stops tracking.

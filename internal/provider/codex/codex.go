@@ -301,7 +301,8 @@ func (s *session) LastActivity() time.Time {
 	}
 	return time.Time{}
 }
-func (s *session) Close() error { s.proc.Stop(3 * time.Second); return nil }
+func (s *session) Diagnose() provider.Diagnosis { return s.proc.Diagnose() }
+func (s *session) Close() error                 { s.proc.Stop(3 * time.Second); return nil }
 
 func (s *session) emit(e provider.Event) {
 	select {

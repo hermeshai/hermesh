@@ -49,7 +49,7 @@
     "stalled": "长时间无进展",
     "timeout": "超过时长上限",
     "startFailed": "无法启动 agent",
-    "baseRefUnavailable": "本地基准引用不可用",
+    "baseRefUnavailable": "找不到基准引用",
     "other": "失败"
   },
   "advice": {
@@ -61,7 +61,7 @@
     "limitReached": "发送“继续”即可接着执行。",
     "resume": "再次发送消息即可恢复会话。",
     "startFailed": "请在 Hermesh 设置中打开该机器的详情页，排查无法启动 Agent 的原因。",
-    "baseRefUnavailable": "请确认基准引用名称，或将对应分支/tag 同步到项目的本地仓库，再在本会话发送一条消息重试原始任务。"
+    "baseRefUnavailable": "请确认基准引用名称，以及项目的远端仓库里有这个分支或 tag（机器会从那里拉取），再在本会话发送一条消息重试原始任务。"
   },
   "headline": {
     "auth": "{{agent}} 未登录",
@@ -79,7 +79,7 @@
     "stalled": "{{agent}} 长时间没有进展",
     "timeout": "本轮执行已超时",
     "startFailed": "{{agent}} 未能启动",
-    "baseRefUnavailable": "无法创建工作目录：本地基准引用不可用",
+    "baseRefUnavailable": "无法创建工作目录：找不到基准引用",
     "other": "{{agent}} 出错了"
   },
   "notice": {

@@ -231,6 +231,9 @@ type Session interface {
 	// output that becomes no event (zero: none yet). The kernel's liveness
 	// checks use it.
 	LastActivity() time.Time
+	// Diagnose says what the agent's process is doing now, for the report
+	// of a stall.
+	Diagnose() Diagnosis
 }
 
 type Provider interface {
