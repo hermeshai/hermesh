@@ -178,7 +178,7 @@ func (a *app) startCmd() *cobra.Command {
 	f := cmd.Flags()
 	f.StringVar(&project, "project", "", "where to work: machine/project as hermesh project list shows it, or the project alone when only one machine has it")
 	f.StringVar(&agent, "agent", "claude", "coding agent to run: claude, codex, or an ACP agent (gemini, cursor, copilot, ...); hermesh project list shows those available")
-	f.StringVar(&base, "base", "", "base git ref of the session's worktree (worktree projects only; default: the project's)")
+	f.StringVar(&base, "base", "", "base git ref of the session's worktree (worktree projects only; default: the project's); fetched from the project's remote when the machine lacks it")
 	f.StringVar(&model, "model", "", "model to run (default: the one the owner set for the agent on that machine, else the agent's own)")
 	f.StringVar(&prompt, "prompt", "", "prompt text")
 	f.StringVar(&promptFile, "prompt-file", "", "read the prompt from a file (- for stdin)")
@@ -355,15 +355,25 @@ func (a *app) getSession(ctx context.Context, c *peer.Client, ref machineRef, id
 	return n.Session.GetSession(ctx, &sessionv1.GetSessionRequest{SessionId: id})
 }
 
-// failureName is the CLI spelling of a failure kind ("rate_limit").
+// failureName is the CLI spelling of a failure kind ("rate_limit"). A kind
+// newer than this build (from a newer machine) is "unknown"; the failure's
+// message, hint and retryable still say what to do.
 func failureName(k sessionv1.FailureKind) string {
 	if k == sessionv1.FailureKind_FAILURE_KIND_UNSPECIFIED {
 		return ""
 	}
+	if _, ok := sessionv1.FailureKind_name[int32(k)]; !ok {
+		return "unknown"
+	}
 	return strings.ToLower(strings.TrimPrefix(k.String(), "FAILURE_KIND_"))
 }
 
+// statusName is the CLI spelling of a status; one newer than this build is
+// "unknown".
 func statusName(s sessionv1.SessionStatus) string {
+	if _, ok := sessionv1.SessionStatus_name[int32(s)]; !ok {
+		return "unknown"
+	}
 	return strings.ToLower(strings.TrimPrefix(s.String(), "SESSION_STATUS_"))
 }
 

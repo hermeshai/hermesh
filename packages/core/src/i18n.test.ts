@@ -21,8 +21,8 @@ describe("English", () => {
     expect(failureHeadline(FailureKind.START_FAILED, "Codex")).toBe("Codex couldn’t start");
     expect(failureHeadline(FailureKind.UNSPECIFIED, "Codex")).toBe("Codex ran into an error");
     const failure = create(FailureSchema, { kind: FailureKind.BASE_REF_UNAVAILABLE, message: 'Project "movieclaw": base ref "ios-v0.12.2" unavailable.' });
-    expect(failureHeadline(failure.kind, "Codex")).toBe("The worktree’s base ref is unavailable locally");
-    expect(failureAdvice(failure)).toBe(`${failure.message} Check the base ref name, or sync the corresponding branch/tag into the project’s local repository. Then send another message in this session to retry the original task.`);
+    expect(failureHeadline(failure.kind, "Codex")).toBe("The worktree’s base ref was not found");
+    expect(failureAdvice(failure)).toBe(`${failure.message} Check the base ref name, and that the branch or tag is on the project’s remote (the machine fetches it from there). Then send another message in this session to retry the original task.`);
   });
 
   test("times", () => {

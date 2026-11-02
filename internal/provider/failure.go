@@ -73,7 +73,7 @@ var kinds = map[sessionv1.FailureKind]kindInfo{
 	sessionv1.FailureKind_FAILURE_KIND_TIMEOUT:              {false, "the turn exceeded the machine's time limit; send the message again to continue"},
 	sessionv1.FailureKind_FAILURE_KIND_START_FAILED:         {false, "the agent could not be started; run `hermeshd doctor` on the machine"},
 	sessionv1.FailureKind_FAILURE_KIND_INTERRUPTED:          {false, "the turn was stopped on purpose; send a message to go on in this session"},
-	sessionv1.FailureKind_FAILURE_KIND_BASE_REF_UNAVAILABLE: {false, "check the base ref name or sync the corresponding branch/tag into the project's local repository, then send another message in the same session to retry the original task"},
+	sessionv1.FailureKind_FAILURE_KIND_BASE_REF_UNAVAILABLE: {false, "check the base ref name, and that the branch or tag is on the project's remote (the machine fetches it from there), then send another message in the same session to retry the original task"},
 	sessionv1.FailureKind_FAILURE_KIND_UNKNOWN:              {false, ""},
 }
 

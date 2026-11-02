@@ -47,7 +47,7 @@ func parameterDescription(t cli.Tool, p cli.ToolParam) string {
 	case "agent":
 		return "Coding agent name from the project's agents in project_list (for example claude or codex)"
 	case "base":
-		return "Branch, tag or commit the session's worktree is checked out from (worktree projects only; default: the project's base from project_list)"
+		return "Branch, tag or commit the session's worktree is checked out from (worktree projects only; default: the project's base from project_list); one the machine's repository lacks is fetched from its remote"
 	case "prompt":
 		return "Required non-empty prompt text; omitting it or passing an empty string does not create a session"
 	case "message":
