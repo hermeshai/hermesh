@@ -45,9 +45,8 @@ enum SheetKind: Identifiable, Hashable {
     case addDevice
     case addProject(String, String) // machine id, coding agent
     case search
-    /// An agent's doorbell: set one up (for one bot of several: named), or,
-    /// with a wake, see and change it.
-    case wake(String, String, Wake?, named: Bool = false) // client id, the agent's name
+    /// An agent's doorbell: see and change it.
+    case wake(String, String, Wake) // client id, the agent's name
 
     var id: Self { self }
 }

@@ -76,7 +76,7 @@ type Config struct {
 	SetupURL string
 	// WakePage is where an owner sets up a doorbell from an agent's link:
 	// the code follows it (e.g. https://hermesh.io/w/). Empty for none: the
-	// owner sets doorbells up in the Mac app.
+	// link is hermesh://wake?code=…, which the Hermesh app on a computer opens.
 	WakePage string
 	// VerifiedClients are the hosts whose Client ID Metadata Documents are
 	// shown as verified (default: claude.ai, chatgpt.com, openai.com).

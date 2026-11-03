@@ -82,7 +82,7 @@ export type Bridge = {
   elevatesSilently(): Promise<boolean>;
   /** Opens the system's User Account Control settings. */
   openElevationSettings(): void;
-  /** hermesh:// links the app received (sign-in and join), also those that came before the page subscribed. */
+  /** hermesh:// links the app received (sign-in, join and wake), also those that came before the page subscribed. */
   onLink(cb: (url: string) => void): () => void;
   /** What the main process does on its own: notifications and the menu bar (stored in the app's profile). */
   getPreferences(): Promise<Preferences>;
