@@ -123,35 +123,41 @@ type catalog struct{ recorder }
 
 func (c *catalog) Discover(ctx context.Context) provider.Info {
 	i := c.recorder.Discover(ctx)
-	i.Models, i.AllModels = []provider.Model{{ID: "gpt-big"}, {ID: "gpt-small"}}, true
+	i.Models = []provider.Model{{ID: "gpt-big", Efforts: []string{"low", "high", "xhigh"}}, {ID: "gpt-small", Efforts: []string{"low", "high"}}}
+	i.AllModels = true
 	return i
 }
 
-// TestUnknownModel: a session naming a model the agent does not list is
-// refused before it starts, with the models it does; one naming a listed
-// model starts. An agent that lists only some of its models (Claude Code's
-// aliases) takes any.
-func TestUnknownModel(t *testing.T) {
+// TestModelAndEffort: a session naming a model the agent does not list, or
+// an effort its model does not take, is refused before it starts, with the
+// ones there are; listed ones start. Without a model, any listed model's
+// effort is taken. An agent that lists only some of its models (Claude
+// Code's aliases) takes any model; one that lists none takes no effort.
+func TestModelAndEffort(t *testing.T) {
 	h := newHarnessWith(t, DefaultLimits(), map[string]provider.Provider{"codex": &catalog{}})
 	ctx := context.Background()
-	start := func(agent, model string) error {
-		_, err := h.s.Start(ctx, h.p, &sessionv1.StartSessionRequest{ProjectId: "demo", Agent: agent, Prompt: "say one", Model: model})
-		return err
+	start := func(agent, model, effort string) (*sessionv1.Session, error) {
+		return h.s.Start(ctx, h.p, &sessionv1.StartSessionRequest{ProjectId: "demo", Agent: agent, Prompt: "say one", Model: model, Effort: effort})
 	}
-	err := start("codex", "aurora")
-	if connect.CodeOf(err) != connect.CodeInvalidArgument || !strings.Contains(err.Error(), `no model "aurora" (one of: gpt-big, gpt-small)`) {
-		t.Fatalf("unknown model: %v", err)
+	for _, c := range []struct{ agent, model, effort, refusal string }{
+		{"codex", "aurora", "", `codex on this machine has no model "aurora" (one of: gpt-big, gpt-small)`},
+		{"codex", "gpt-small", "xhigh", `codex's model gpt-small has no reasoning effort "xhigh" (one of: low, high)`},
+		{"codex", "", "max", `codex has no reasoning effort "max" (one of: low, high, xhigh)`},
+		{"fake", "", "high", "fake on this machine takes no reasoning effort"},
+	} {
+		if _, err := start(c.agent, c.model, c.effort); connect.CodeOf(err) != connect.CodeInvalidArgument || !strings.Contains(err.Error(), c.refusal) {
+			t.Fatalf("%+v: %v", c, err)
+		}
 	}
 	h.s.mu.Lock()
 	made := len(h.s.live)
 	h.s.mu.Unlock()
 	if made != 0 {
-		t.Fatal("a session was made for an unknown model")
+		t.Fatal("a session was made for a refused model or effort")
 	}
-	if err := start("codex", "gpt-small"); err != nil {
-		t.Fatalf("listed model: %v", err)
-	}
-	if err := start("fake", "aurora"); err != nil {
-		t.Fatalf("an agent without a full list: %v", err)
+	for _, c := range []struct{ agent, model, effort string }{{"codex", "gpt-small", "high"}, {"codex", "", "xhigh"}, {"fake", "aurora", ""}} {
+		if s, err := start(c.agent, c.model, c.effort); err != nil || s.Effort != c.effort {
+			t.Fatalf("%+v: %v %v", c, s, err)
+		}
 	}
 }
