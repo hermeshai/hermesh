@@ -30,7 +30,7 @@ final class HermeshUITests: XCTestCase {
         try XCTContext.runActivity(named: "shows a session's context and what it changed") { _ in try diff() }
         try XCTContext.runActivity(named: "approves an agent asking to connect") { _ in try approveAgent() }
         try XCTContext.runActivity(named: "renews a grant") { _ in try renew() }
-        try XCTContext.runActivity(named: "sets up waking an agent, after a first ring that catches a wrong key") { _ in try wake() }
+        try XCTContext.runActivity(named: "shows waking only for an agent that asked, and gives it another URL and key after a ring that catches a wrong key") { _ in try wake() }
         try XCTContext.runActivity(named: "renames an agent, and back") { _ in try renameAgent() }
         try XCTContext.runActivity(named: "shows a machine and its projects") { _ in try machine() }
         try XCTContext.runActivity(named: "marks the trusted devices among the machines") { _ in try devices() }
@@ -351,19 +351,29 @@ final class HermeshUITests: XCTestCase {
     }
 
     func wake() throws {
-        let url = try control("webhook")["url"] as! String
         openMenu()
         app.buttons["授权"].tap()
         let grant = app.buttons["grant-bot"]
         XCTAssertTrue(grant.waitForExistence(timeout: 20))
         grant.tap()
-        let add = app.buttons["wake-add"]
-        for _ in 0..<5 where !add.exists { app.swipeUp() }
-        tap("wake-add", timeout: 30)
-        // No name to give: one doorbell wakes the agent. The bot makes its routine when asked.
-        tap("wake-copy")
-        XCTAssertTrue(text("让 bot 建一个定时任务").exists)
-        tap("wake-made")
+        // Not every agent can be woken: nothing to set up here until the bot asks.
+        XCTAssertTrue(app.buttons["rename-agent"].waitForExistence(timeout: 20))
+        for _ in 0..<3 { app.swipeUp() }
+        XCTAssertTrue(app.buttons["disconnect"].waitForExistence(timeout: 10))
+        XCTAssertFalse(text("新消息提醒").exists)
+        // The bot asks, and its link is opened on the Mac, where its routine's URL and key show.
+        _ = try control("wake", method: "POST")
+        app.navigationBars.buttons.element(boundBy: 0).tap()
+        grant.tap()
+        let row = app.buttons["wake-"]
+        for _ in 0..<5 where !row.exists { app.swipeUp() }
+        XCTAssertTrue(row.waitForExistence(timeout: 20))
+        XCTAssertTrue(row.label.contains("已开"), row.label)
+        XCTAssertTrue(row.label.contains("叫醒 bot"), row.label)
+        // Here it can be given another URL and key; a wrong key is caught by the first ring and not kept.
+        let url = try control("webhook")["url"] as! String
+        row.tap()
+        tap("wake-replace")
         let field = app.textFields["wake-url"]
         XCTAssertTrue(field.waitForExistence(timeout: 10))
         field.tap()
@@ -372,7 +382,6 @@ final class HermeshUITests: XCTestCase {
         key.tap()
         key.typeText("wrong")
         tap("wake-check")
-        // A wrong key: the first ring says so, and nothing is kept.
         let reason = app.staticTexts["wake-reason"]
         XCTAssertTrue(reason.waitForExistence(timeout: 30))
         XCTAssertTrue(reason.label.contains("密钥不对"), reason.label)
@@ -382,13 +391,9 @@ final class HermeshUITests: XCTestCase {
         tap("wake-check")
         XCTAssertTrue(app.staticTexts["wake-ok"].waitForExistence(timeout: 30))
         tap("wake-done")
-        let row = app.buttons["wake-"]
-        for _ in 0..<5 where !row.exists { app.swipeUp() }
         XCTAssertTrue(row.waitForExistence(timeout: 20))
-        XCTAssertTrue(row.label.contains("已开"), row.label)
-        XCTAssertTrue(row.label.contains("叫醒 bot"), row.label)
         let calls = try control("webhook")["calls"] as? [String] ?? []
-        XCTAssertEqual(calls, ["hermesh.check  Bearer wrong", "hermesh.check  Bearer crsr_ok"])
+        XCTAssertEqual(calls, ["hermesh.check  Bearer crsr_ok", "hermesh.check  Bearer wrong", "hermesh.check  Bearer crsr_ok"])
     }
 
     /// On the agent's page, after wake(): its grant signed again with another name.

@@ -8,11 +8,12 @@ import { t } from "./i18n";
 export const officialCenter = "https://hermesh.io";
 
 /** A hermesh:// link the app was opened with. */
-export type AppLink = { kind: "link"; code: string } | { kind: "join"; owner: string };
+export type AppLink = { kind: "link"; code: string } | { kind: "join"; owner: string } | { kind: "wake"; code: string };
 
 /**
- * hermesh://link?code=… (the browser sign-in came back with a link code)
- * or hermesh://join?owner=… (the account already has an owner: join it).
+ * hermesh://link?code=… (the browser sign-in came back with a link code),
+ * hermesh://join?owner=… (the account already has an owner: join it)
+ * or hermesh://wake?code=… (an agent's wake link, docs/agent-names.md §7.2).
  */
 export function parseAppLink(s: string): AppLink | null {
   let u: URL;
@@ -29,6 +30,10 @@ export function parseAppLink(s: string): AppLink | null {
   if (u.host === "join") {
     const owner = u.searchParams.get("owner");
     return owner ? { kind: "join", owner } : null;
+  }
+  if (u.host === "wake") {
+    const code = u.searchParams.get("code");
+    return code ? { kind: "wake", code } : null;
   }
   return null;
 }

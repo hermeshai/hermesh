@@ -187,12 +187,7 @@
   },
   "wake": {
     "title": "Wake on New Messages",
-    "none": "Not set up",
-    "noneOwn": "Wake all of {{agent}}",
-    "setUp": "Set Up…",
-    "note": "Bots like Grok Bot aren’t always online. Once set up, Hermesh wakes the bot whenever a session it started finishes or another agent messages it.",
-    "perBotAsk": " Multiple bots on this connection?",
-    "perBot": "Set up each bot…",
+    "note": "Hermesh calls its routine to wake it when a session it started finishes or another agent writes to it. For another bot on this connection, ask that bot.",
     "row": "Wake {{name}}",
     "on": "On",
     "broken": "Not Working",
