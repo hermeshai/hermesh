@@ -394,7 +394,7 @@ Pairing uses two public HTTPS endpoints (the applicant has no credentials yet at
 
 ### 4.2 Routing
 
-A single-process in-memory map: `machine_id → connection`. If the same machine_id connects again, the newest connection is kept. No abstraction for horizontal scaling.
+A single-process in-memory map: `machine_id → connection`. If the same machine_id connects again, the newest connection is kept. A self-hosted relay is this one process. The hosted center runs the same relay on several nodes through `relay.Cluster` (`pkg/relay/cluster.go`): each node keeps its own map, the cluster says which node holds a machine and what the other nodes changed, and a tunnel to a machine on another node is forwarded there.
 
 ---
 
