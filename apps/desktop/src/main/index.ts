@@ -54,7 +54,7 @@ function serve() {
   });
 }
 
-// hermesh:// links (sign-in and join): macOS hands them to the running app;
+// hermesh:// links (sign-in, join and wake): macOS hands them to the running app;
 // Windows and Linux start a second instance with the link as an argument.
 // Only the installed app takes the scheme, not development and test runs.
 const linkArg = (argv: string[]) => argv.find((a) => a.startsWith("hermesh://"));

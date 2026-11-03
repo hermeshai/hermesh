@@ -333,18 +333,28 @@ func TestMCPInbox(t *testing.T) {
 		return d.OK && strings.Contains(string(d.raw), `"kind":"mcp"`) && !strings.Contains(string(d.raw), `"has_inbox":false`)
 	})
 
-	// The assistant asks to be woken; the owner sets its webhook up, with
-	// the key the webhook wants, on the Mac: the key never passes through
-	// the model (docs/agent-names.md §7.2).
+	// The assistant asks to be woken; the owner opens its link in the Mac
+	// app and sets its webhook up there, with the key the webhook wants: the
+	// key never passes through the model (docs/agent-names.md §7.2).
 	d := callTool(t, session, "message_wake", nil)
-	if !d.OK || !strings.Contains(string(d.raw), "Settings → Access") {
+	var asked struct {
+		Wake      struct{ Link string }
+		TellOwner string `json:"tell_owner"`
+	}
+	json.Unmarshal(d.raw, &asked)
+	code, isAppLink := strings.CutPrefix(asked.Wake.Link, "hermesh://wake?code=")
+	if !d.OK || !isAppLink || !strings.Contains(asked.TellOwner, "Hermesh app") {
 		t.Fatalf("message_wake on a relay without a console: %s", d.raw)
 	}
 	self := selfAddress(t, session)
+	opened, err := w.app.client.OpenWakeLink(ctx, &localv1.OpenWakeLinkRequest{Code: code})
+	if err != nil || opened.ClientId != self || opened.Name != "" {
+		t.Fatalf("the owner opening the link: %v %v", opened, err)
+	}
 	h := &hook{}
 	srv := httptest.NewServer(h)
 	defer srv.Close()
-	set, err := w.app.client.SetWake(ctx, &localv1.SetWakeRequest{ClientId: self, Url: srv.URL + "/wake", Authorization: "Bearer k1"})
+	set, err := w.app.client.SetWake(ctx, &localv1.SetWakeRequest{Code: code, Url: srv.URL + "/wake", Authorization: "Bearer k1"})
 	if err != nil || !set.Check.Ok || set.Wake.State != "on" || !strings.HasPrefix(set.SigningSecret, "whsec_") {
 		t.Fatalf("the owner's SetWake: %v %v", set, err)
 	}
@@ -573,9 +583,15 @@ func TestWake(t *testing.T) {
 		return !strings.Contains(w.cli(30*time.Second, "project", "list").stdout, "offline")
 	})
 
-	// The bot asks; with no console on this relay, it's told the Mac app.
+	// The bot asks; with no console on this relay, its link opens the app.
 	r := run(t, append(slices.Clone(grok), "HERMESH_AS=Tech Demos"), 30*time.Second, hermesh, "message", "wake", "-o", "json")
-	if r.code != 0 || !strings.Contains(r.stdout, "Settings → Access → grok → Wake") || !strings.Contains(r.stdout, `\"tech-demos\"`) {
+	var asked struct {
+		Wake      struct{ Link string }
+		TellOwner string `json:"tell_owner"`
+	}
+	json.Unmarshal([]byte(r.stdout), &asked)
+	code, isAppLink := strings.CutPrefix(asked.Wake.Link, "hermesh://wake?code=")
+	if r.code != 0 || !isAppLink || !strings.Contains(asked.TellOwner, "Hermesh app") {
 		t.Fatalf("message wake: %+v", r)
 	}
 
@@ -609,13 +625,21 @@ func TestWake(t *testing.T) {
 	}))
 	defer routine.Close()
 	grokID := contactAddress(t, w, w.cliEnv, "grok")
-	bad, err := w.app.client.SetWake(ctx, &localv1.SetWakeRequest{ClientId: grokID, Name: "Tech Demos", Url: routine.URL, Authorization: "Bearer wrong"})
+	// The owner opens the link: it names the bot and the name.
+	if o, err := w.app.client.OpenWakeLink(ctx, &localv1.OpenWakeLinkRequest{Code: code}); err != nil || o.ClientId != grokID || o.Name != "tech-demos" {
+		t.Fatalf("OpenWakeLink: %v %v", o, err)
+	}
+	bad, err := w.app.client.SetWake(ctx, &localv1.SetWakeRequest{Code: code, Url: routine.URL, Authorization: "Bearer wrong"})
 	if err != nil || bad.Check.Ok || bad.Wake != nil || !strings.Contains(bad.Check.Reason, "the key is wrong") {
 		t.Fatalf("a wrong key must fail the check and not be kept: %v %v", bad, err)
 	}
-	set, err := w.app.client.SetWake(ctx, &localv1.SetWakeRequest{ClientId: grokID, Name: "Tech Demos", Url: routine.URL, Authorization: "Bearer crsr_key"})
+	// The link still works after a failed check, and once only.
+	set, err := w.app.client.SetWake(ctx, &localv1.SetWakeRequest{Code: code, Url: routine.URL, Authorization: "Bearer crsr_key"})
 	if err != nil || !set.Check.Ok || set.Wake.Name != "tech-demos" {
 		t.Fatalf("SetWake: %v %v", set, err)
+	}
+	if _, err := w.app.client.OpenWakeLink(ctx, &localv1.OpenWakeLinkRequest{Code: code}); err == nil {
+		t.Fatal("a used wake link must not open again")
 	}
 	if l, err := w.app.client.ListWakes(ctx, &localv1.ListWakesRequest{ClientId: grokID}); err != nil || len(l.Wakes) != 1 || l.Wakes[0].State != "on" {
 		t.Fatalf("ListWakes: %v %v", l, err)

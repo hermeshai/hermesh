@@ -72,7 +72,7 @@ export function cancelSignIn() {
 // loaded yet when the browser starts the app with one).
 const links: string[] = [];
 
-/** A hermesh:// link the app was opened with: a link code (only while signing in) or an owner to join. */
+/** A hermesh:// link the app was opened with: a link code (only while signing in), an owner to join or a wake link. */
 export function receiveLink(url: string) {
   const l = parseAppLink(url);
   // Any other hermesh: link (hermesh://open) brings the app forward, as opening it would.
