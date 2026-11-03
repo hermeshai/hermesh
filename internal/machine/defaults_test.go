@@ -134,7 +134,8 @@ func (c *catalog) Discover(ctx context.Context) provider.Info {
 // effort is taken. An agent that lists only some of its models (Claude
 // Code's aliases) takes any model; one that lists none takes no effort.
 func TestModelAndEffort(t *testing.T) {
-	h := newHarnessWith(t, DefaultLimits(), map[string]provider.Provider{"codex": &catalog{}})
+	codex := &catalog{}
+	h := newHarnessWith(t, DefaultLimits(), map[string]provider.Provider{"codex": codex})
 	ctx := context.Background()
 	start := func(agent, model, effort string) (*sessionv1.Session, error) {
 		return h.s.Start(ctx, h.p, &sessionv1.StartSessionRequest{ProjectId: "demo", Agent: agent, Prompt: "say one", Model: model, Effort: effort})
@@ -156,8 +157,15 @@ func TestModelAndEffort(t *testing.T) {
 		t.Fatal("a session was made for a refused model or effort")
 	}
 	for _, c := range []struct{ agent, model, effort string }{{"codex", "gpt-small", "high"}, {"codex", "", "xhigh"}, {"fake", "aurora", ""}} {
-		if s, err := start(c.agent, c.model, c.effort); err != nil || s.Effort != c.effort {
-			t.Fatalf("%+v: %v %v", c, s, err)
+		s, err := start(c.agent, c.model, c.effort)
+		if err != nil {
+			t.Fatalf("%+v: %v", c, err)
+		}
+		h.wait(s.SessionId, idle)
+	}
+	for i, effort := range []string{"high", "xhigh"} {
+		if s := codex.spec(i); s.Effort != effort {
+			t.Fatalf("start %d ran with effort %q, want %q", i, s.Effort, effort)
 		}
 	}
 }
