@@ -273,19 +273,28 @@ func (m *messageService) Send(ctx context.Context, req *relayv1.SendSealedReques
 
 var errInboxFull = errors.New("inbox_full: the recipient's inbox is full until it takes its messages")
 
-// nudgeInbox wakes the inbox's watchers and the message hook.
+// nudgeInbox wakes the inbox's watchers, on every node, and the message
+// hook.
 func (s *Server) nudgeInbox(t *tenant, inbox string, ring *string) {
+	s.wakeInbox(t, inbox)
 	s.mu.Lock()
+	hook := s.messageHook
+	s.mu.Unlock()
+	if hook != nil {
+		go hook(t.ownerID, inbox, ring)
+	}
+	s.publish(t.ownerID, Event{Kind: EventInbox, ID: inbox})
+}
+
+// wakeInbox wakes the inbox's watchers on this node.
+func (s *Server) wakeInbox(t *tenant, inbox string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	for ch := range t.inboxWatchers[inbox] {
 		select {
 		case ch <- struct{}{}:
 		default:
 		}
-	}
-	hook := s.messageHook
-	s.mu.Unlock()
-	if hook != nil {
-		go hook(t.ownerID, inbox, ring)
 	}
 }
 
@@ -366,14 +375,28 @@ func (m *messageService) Watch(ctx context.Context, _ *relayv1.WatchInboxRequest
 		delete(t.inboxWatchers[inbox], ch)
 		s.mu.Unlock()
 	}()
+	var check <-chan time.Time
+	if s.cluster != nil {
+		// Another node took a message, and its event got lost: look now and
+		// then.
+		tk := time.NewTicker(clusterCheck)
+		defer tk.Stop()
+		check = tk.C
+	}
 	for {
-		if err := stream.Send(&relayv1.WatchInboxResponse{Waiting: uint32(s.InboxWaiting(t.ownerID, inbox))}); err != nil {
+		n := s.InboxWaiting(t.ownerID, inbox)
+		if err := stream.Send(&relayv1.WatchInboxResponse{Waiting: uint32(n)}); err != nil {
 			return err
 		}
-		select {
-		case <-ctx.Done():
-			return nil
-		case <-ch:
+		for waiting := true; waiting; {
+			select {
+			case <-ctx.Done():
+				return nil
+			case <-ch:
+				waiting = false
+			case <-check:
+				waiting = s.InboxWaiting(t.ownerID, inbox) == n
+			}
 		}
 	}
 }
@@ -424,6 +447,7 @@ func (o *ownerControl) PublishCards(ctx context.Context, req *relayv1.PublishCar
 		}
 	}
 	o.s.wakeOwner(t)
+	o.s.publish(t.ownerID, Event{Kind: EventLists})
 	return &relayv1.PublishCardsResponse{}, nil
 }
 

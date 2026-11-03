@@ -392,6 +392,11 @@ type window struct {
 var limits sync.Map // connection id → *window
 
 func (g *Gateway) limit(id string, start bool) string {
+	if g.cfg.Shared != nil {
+		if why, err := g.sharedLimit(id, start); err == nil {
+			return why
+		}
+	}
 	v, _ := limits.LoadOrStore(id, &window{})
 	w := v.(*window)
 	w.mu.Lock()
@@ -419,4 +424,17 @@ func (g *Gateway) limit(id string, start bool) string {
 		w.start = append(w.start, now)
 	}
 	return ""
+}
+
+// sharedLimit is limit counted on every node of a center on several.
+func (g *Gateway) sharedLimit(id string, start bool) (string, error) {
+	if ok, err := g.cfg.Shared.Allow("mcp-calls", id, 120, time.Minute); err != nil || !ok {
+		return "too many calls: at most 120 a minute per connection", err
+	}
+	if start {
+		if ok, err := g.cfg.Shared.Allow("mcp-sessions", id, 20, time.Hour); err != nil || !ok {
+			return "too many sessions started: at most 20 an hour per connection", err
+		}
+	}
+	return "", nil
 }

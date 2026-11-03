@@ -23,6 +23,7 @@ import (
 	"slices"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/coder/websocket"
@@ -81,6 +82,9 @@ type Config struct {
 	// Pusher sends notifications to the owners' iPhones (push.go); nil
 	// sends none.
 	Pusher Pusher
+	// Cluster joins this relay to the other nodes of a relay on several
+	// (cluster.go); nil: one process.
+	Cluster Cluster
 }
 
 type Server struct {
@@ -88,21 +92,26 @@ type Server struct {
 	log     *slog.Logger
 	store   Backend
 	sqlite  *Store // self-hosted only
+	cluster Cluster
 	relayID string
-	limiter *rateLimiter
+	limiter *limiter
 	// noticeLimit bounds the notices each machine sends.
-	noticeLimit *rateLimiter
+	noticeLimit *limiter
 	pushMem     memoryPush
 	// The post office (messages.go): its store when the Backend has none,
 	// its limits, and what hears of each message it takes in.
 	messageMem   memoryMessages
-	messageLimit *rateLimiter
-	pairLimit    *rateLimiter
+	messageLimit *limiter
+	pairLimit    *limiter
 	messageHook  func(ownerID, inbox string, ring *string)
 	ownerHook    func(ownerID string)
 	eraseHooks   []func(ownerID string)
 	doorbells    Doorbells
 	expiredAt    time.Time
+	// draining: this node is leaving the others (Drain).
+	draining atomic.Bool
+	stop     chan struct{}
+	stopOnce sync.Once
 
 	mu      sync.Mutex
 	tenants map[string]*tenant
@@ -125,6 +134,10 @@ type tenant struct {
 	ownerWatchers map[chan struct{}]struct{}
 	// inboxWatchers are woken when a message arrives for their inbox.
 	inboxWatchers map[string]map[chan struct{}]struct{}
+	// On a node of several: the Backend's version of the root chain and
+	// revocations held here, and when the tenant was last loaded or used.
+	version uint64
+	used    time.Time
 }
 
 type peer struct {
@@ -139,6 +152,9 @@ type peer struct {
 	deviceCert *identityv1.Signed
 	sess       *yamux.Session
 	remote     string
+	// epoch tells this connection from the subject's others on every node.
+	epoch string
+	since time.Time
 }
 
 func New(cfg Config) (*Server, error) {
@@ -157,9 +173,11 @@ func New(cfg Config) (*Server, error) {
 	if cfg.PairingsPerMinute == 0 {
 		cfg.PairingsPerMinute = 10
 	}
-	s := &Server{cfg: cfg, log: cfg.Logger, store: cfg.Backend, tenants: map[string]*tenant{}, limiter: newRateLimiter(cfg.PairingsPerMinute, time.Minute),
-		noticeLimit: newRateLimiter(noticesPerMinute, time.Minute), messageLimit: newRateLimiter(messagesPerMinute, time.Minute),
-		pairLimit: newRateLimiter(pairPerHour, time.Hour)}
+	s := &Server{cfg: cfg, log: cfg.Logger, store: cfg.Backend, cluster: cfg.Cluster, tenants: map[string]*tenant{}, stop: make(chan struct{})}
+	s.limiter = s.newLimiter("pairing", cfg.PairingsPerMinute, time.Minute)
+	s.noticeLimit = s.newLimiter("notices", noticesPerMinute, time.Minute)
+	s.messageLimit = s.newLimiter("messages", messagesPerMinute, time.Minute)
+	s.pairLimit = s.newLimiter("message-pairs", pairPerHour, time.Hour)
 	if s.store == nil {
 		if cfg.Hosted {
 			return nil, errors.New("a hosted relay needs a Backend")
@@ -194,10 +212,22 @@ func New(cfg Config) (*Server, error) {
 		}
 	}
 	s.registerMetrics()
+	if s.cluster != nil {
+		if s.sqlite != nil {
+			return nil, errors.New("a self-hosted relay runs as one process")
+		}
+		if err := s.cluster.Start(clusterNode{s}); err != nil {
+			return nil, err
+		}
+		go s.clusterLoop()
+	}
 	return s, nil
 }
 
-func (s *Server) Close() error { return s.store.Close() }
+func (s *Server) Close() error {
+	s.stopOnce.Do(func() { close(s.stop) })
+	return s.store.Close()
+}
 
 var (
 	mAdmission         = metrics.Default.Histogram("hermesh_relay_admission_seconds")
@@ -255,6 +285,9 @@ func (s *Server) singleOwner() string {
 func (s *Server) loadTenant(ownerID string) (*tenant, error) {
 	s.mu.Lock()
 	t := s.tenants[ownerID]
+	if t != nil {
+		t.used = time.Now()
+	}
 	s.mu.Unlock()
 	if t != nil {
 		return t, nil
@@ -262,8 +295,18 @@ func (s *Server) loadTenant(ownerID string) (*tenant, error) {
 	if s.sqlite != nil && s.singleOwner() != "" && ownerID != s.singleOwner() {
 		return nil, nil
 	}
+	if s.cluster != nil {
+		// Heard first, read second: a change after the read comes as an event.
+		if err := s.cluster.Subscribe(ownerID); err != nil {
+			s.log.Warn("hearing an owner's events", "owner", ownerID, "err", err)
+		}
+	}
+	version := s.ownerVersion(ownerID)
 	rc, err := s.store.RootChain(ownerID)
 	if err != nil || rc == nil {
+		if s.cluster != nil {
+			s.cluster.Unsubscribe(ownerID)
+		}
 		return nil, err
 	}
 	trust := identity.NewTrust(ownerID)
@@ -276,7 +319,8 @@ func (s *Server) loadTenant(ownerID string) (*tenant, error) {
 	}
 	t = &tenant{ownerID: ownerID, trust: trust, machines: map[string]*peer{}, peers: map[*peer]struct{}{},
 		reported: map[string]*relayv1.ReportStatusRequest{}, lastSeen: map[string]time.Time{},
-		watchers: map[string]map[chan *relayv1.MachineUpdate]struct{}{}, revocations: rev, ownerWatchers: map[chan struct{}]struct{}{}}
+		watchers: map[string]map[chan *relayv1.MachineUpdate]struct{}{}, revocations: rev, ownerWatchers: map[chan struct{}]struct{}{},
+		version: version, used: time.Now()}
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if cur := s.tenants[ownerID]; cur != nil {
@@ -326,6 +370,14 @@ func (s *Server) RegisterOwner(rootChain *identityv1.RootChain) (string, error) 
 // acceptRootChain installs a longer root chain for t and tells its machines.
 func (s *Server) acceptRootChain(t *tenant, c *identityv1.RootChain) error {
 	defer s.wakeOwner(t)
+	if s.cluster != nil {
+		// Another node may have stored a longer one than this node holds.
+		if rc, err := s.store.RootChain(t.ownerID); err == nil && rc != nil {
+			if caught, err := t.trust.AcceptRootChain(rc); err == nil && caught {
+				s.chainChanged(t)
+			}
+		}
+	}
 	changed, err := t.trust.AcceptRootChain(c)
 	if err != nil || !changed {
 		return err
@@ -333,6 +385,14 @@ func (s *Server) acceptRootChain(t *tenant, c *identityv1.RootChain) error {
 	if err := s.store.SetRootChain(t.ownerID, t.trust.RootChain()); err != nil {
 		return err
 	}
+	s.chainChanged(t)
+	s.publish(t.ownerID, Event{Kind: EventChain})
+	return nil
+}
+
+// chainChanged tells the owner's machines of a longer root chain, and
+// disconnects the trusted devices it removed.
+func (s *Server) chainChanged(t *tenant) {
 	s.broadcastMachineUpdate(t, &relayv1.MachineUpdate{Update: &relayv1.MachineUpdate_RootChain{RootChain: t.trust.RootChain()}})
 	// A removed device gets no more notices.
 	s.broadcastPushTargets(t)
@@ -356,7 +416,6 @@ func (s *Server) acceptRootChain(t *tenant, c *identityv1.RootChain) error {
 		s.log.Info("disconnecting a removed device", "owner", t.ownerID)
 		p.sess.Close()
 	}
-	return nil
 }
 
 func (s *Server) Handler() http.Handler {
@@ -368,7 +427,13 @@ func (s *Server) Handler() http.Handler {
 // Mount adds the relay endpoints to mux.
 func (s *Server) Mount(mux *http.ServeMux) {
 	mux.HandleFunc("/v1/connect", s.handleConnect)
-	mux.HandleFunc("/healthz", func(w http.ResponseWriter, _ *http.Request) { io.WriteString(w, "ok\n") })
+	mux.HandleFunc("/healthz", func(w http.ResponseWriter, _ *http.Request) {
+		if s.draining.Load() {
+			http.Error(w, "draining", http.StatusServiceUnavailable)
+			return
+		}
+		io.WriteString(w, "ok\n")
+	})
 	mux.Handle(relayv1connect.NewRelayPublicServiceHandler(&publicService{s: s}))
 }
 
@@ -376,6 +441,11 @@ func (s *Server) Mount(mux *http.ServeMux) {
 // Admission.
 
 func (s *Server) handleConnect(w http.ResponseWriter, r *http.Request) {
+	if s.draining.Load() {
+		// A load balancer without health checks tries the next node.
+		http.Error(w, "this node is leaving; connect again", http.StatusServiceUnavailable)
+		return
+	}
 	ws, err := websocket.Accept(w, r, &websocket.AcceptOptions{Subprotocols: []string{"hermesh.v1"}})
 	if err != nil {
 		return
@@ -418,6 +488,7 @@ func (s *Server) handleConnect(w http.ResponseWriter, r *http.Request) {
 		go keepAlive(sess, cfg.KeepAliveInterval, ownerQuiet)
 	}
 	p.sess, p.remote = sess, r.RemoteAddr
+	p.epoch, p.since = identity.RandomCode(16), time.Now()
 	s.register(p)
 	defer s.unregister(p)
 	if p.role == relayv1.Role_ROLE_OWNER {
@@ -508,6 +579,7 @@ func (s *Server) admit(h *relayv1.Hello, nonce []byte) (*peer, error) {
 	if t.trust.RootVersion() != before {
 		s.store.SetRootChain(t.ownerID, t.trust.RootChain())
 		s.broadcastMachineUpdate(t, &relayv1.MachineUpdate{Update: &relayv1.MachineUpdate_RootChain{RootChain: t.trust.RootChain()}})
+		s.publish(t.ownerID, Event{Kind: EventChain})
 	}
 	want := map[relayv1.Role]identity.SubjectKind{
 		relayv1.Role_ROLE_MACHINE: identity.SubjectMachine,
@@ -637,6 +709,13 @@ func (s *Server) register(p *peer) {
 	if old != nil {
 		old.sess.Close()
 	}
+	if s.cluster != nil {
+		if err := s.cluster.Connected(t.ownerID, s.presenceOf(p)); err != nil {
+			s.log.Warn("recording a connection", "owner", t.ownerID, "subject", p.subject.ID, "err", err)
+		}
+		s.wakeOwner(t) // the lists read the record
+		s.publish(t.ownerID, Event{Kind: EventPresence, ID: p.subject.ID, Epoch: p.epoch})
+	}
 	s.store.LogConnection(t.ownerID, int(p.role), p.subject.ID, p.remote, "connect")
 	s.log.Info("peer connected", "owner", t.ownerID, "role", p.role, "subject", p.subject.ID, "remote", p.remote)
 }
@@ -652,6 +731,13 @@ func (s *Server) unregister(p *peer) {
 	s.wakeOwnerLocked(t)
 	s.mu.Unlock()
 	p.sess.Close()
+	if s.cluster != nil {
+		if err := s.cluster.Disconnected(t.ownerID, s.presenceOf(p)); err != nil {
+			s.log.Warn("recording a disconnection", "owner", t.ownerID, "subject", p.subject.ID, "err", err)
+		}
+		s.wakeOwner(t)
+		s.publish(t.ownerID, Event{Kind: EventPresence})
+	}
 	s.store.LogConnection(t.ownerID, int(p.role), p.subject.ID, p.remote, "disconnect")
 	s.log.Info("peer disconnected", "owner", t.ownerID, "role", p.role, "subject", p.subject.ID)
 }
@@ -734,8 +820,17 @@ func (s *Server) handleTunnel(p *peer, st net.Conn, machineID string) {
 	machine := p.t.machines[machineID] // only this owner's machines
 	s.mu.Unlock()
 	if machine == nil {
+		if s.cluster != nil {
+			s.forwardTunnel(p, st, machineID)
+		}
 		return
 	}
+	s.spliceToMachine(st, machine, machineID, p.role, p.subject.ID)
+}
+
+// spliceToMachine opens a tunnel stream on a machine's connection for a
+// principal and splices st with it.
+func (s *Server) spliceToMachine(st net.Conn, machine *peer, machineID string, role relayv1.Role, subjectID string) {
 	openStart := time.Now()
 	ns, err := machine.sess.OpenStream()
 	if err != nil {
@@ -748,7 +843,7 @@ func (s *Server) handleTunnel(p *peer, st net.Conn, machineID string) {
 	defer ns.Close()
 	tid := identity.RandomCode(12)
 	hdr := &relayv1.StreamHeader{Kind: relayv1.StreamKind_STREAM_KIND_TUNNEL, MachineId: machineID,
-		PrincipalRole: p.role, SubjectId: p.subject.ID, TunnelId: tid, TraceId: tid}
+		PrincipalRole: role, SubjectId: subjectID, TunnelId: tid, TraceId: tid}
 	if err := transport.WriteFrame(ns, hdr); err != nil {
 		return
 	}
@@ -791,29 +886,41 @@ func (s *Server) ApplyRevocations(ownerID string, in *identityv1.RevocationList)
 
 func (s *Server) applyRevocations(t *tenant, in *identityv1.RevocationList) error {
 	defer s.wakeOwner(t)
-	s.mu.Lock()
-	cur := proto.Clone(t.revocations).(*identityv1.RevocationList)
-	s.mu.Unlock()
 	in = proto.Clone(in).(*identityv1.RevocationList)
 	in.OwnerId = t.ownerID
-	MergeRevocations(cur, in)
 	grants, err := s.store.Grants(t.ownerID)
 	if err != nil {
 		return err
 	}
-	// An agent whose machines are all removed can reach nothing: revoke it
-	// too. Revoking only lowers permissions, so it needs no root signature.
-	removed := setOf(cur.RevokedMachineIds)
-	var stranded []string
-	for _, sg := range grants {
-		g := &identityv1.Grant{}
-		if identity.Unverified(sg, g) == nil && len(g.MachineIds) > 0 && len(liveMachines(g.MachineIds, removed)) == 0 {
-			stranded = append(stranded, g.GrantId)
+	merge := func(cur *identityv1.RevocationList) {
+		MergeRevocations(cur, in)
+		// An agent whose machines are all removed can reach nothing: revoke
+		// it too. Revoking only lowers permissions, so it needs no root
+		// signature.
+		removed := setOf(cur.RevokedMachineIds)
+		var stranded []string
+		for _, sg := range grants {
+			g := &identityv1.Grant{}
+			if identity.Unverified(sg, g) == nil && len(g.MachineIds) > 0 && len(liveMachines(g.MachineIds, removed)) == 0 {
+				stranded = append(stranded, g.GrantId)
+			}
 		}
+		MergeRevocations(cur, &identityv1.RevocationList{RevokedGrantIds: stranded})
 	}
-	MergeRevocations(cur, &identityv1.RevocationList{RevokedGrantIds: stranded})
-	if err := s.store.SetRevocations(t.ownerID, cur); err != nil {
-		return err
+	var cur *identityv1.RevocationList
+	if u, ok := s.store.(RevocationsUpdater); ok {
+		// Merged into what is stored: another node may have revoked meanwhile.
+		if cur, err = u.UpdateRevocations(t.ownerID, merge); err != nil {
+			return err
+		}
+	} else {
+		s.mu.Lock()
+		cur = proto.Clone(t.revocations).(*identityv1.RevocationList)
+		s.mu.Unlock()
+		merge(cur)
+		if err := s.store.SetRevocations(t.ownerID, cur); err != nil {
+			return err
+		}
 	}
 	for _, id := range in.RevokedMachineIds {
 		s.store.DeleteMachineCert(t.ownerID, id)
@@ -849,6 +956,7 @@ func (s *Server) applyRevocations(t *tenant, in *identityv1.RevocationList) erro
 	}
 	s.broadcastMachineUpdate(t, &relayv1.MachineUpdate{Update: &relayv1.MachineUpdate_Revocations{Revocations: cur}})
 	s.pushGrants(t)
+	s.publish(t.ownerID, Event{Kind: EventRevocations})
 	return nil
 }
 
@@ -927,6 +1035,27 @@ func (s *Server) machineEntries(t *tenant, filter func(string) bool, onlineOnly 
 	if err != nil {
 		return nil, err
 	}
+	if lp, ok := s.clusterPresence(t.ownerID); ok {
+		var out []*relayv1.MachineEntry
+		for id, c := range certs {
+			if filter != nil && !filter(id) {
+				continue
+			}
+			m, online := lp.machines[id]
+			if onlineOnly && !online {
+				continue
+			}
+			e := &relayv1.MachineEntry{MachineCert: c, Online: online, Name: m.Name, Version: m.Version}
+			if seen, ok := lp.seen[id]; ok {
+				if !online {
+					e.Name, e.Version = seen.Name, seen.Version
+				}
+				e.LastSeen = timestamppb.New(seen.At)
+			}
+			out = append(out, e)
+		}
+		return out, nil
+	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	var out []*relayv1.MachineEntry
@@ -964,10 +1093,15 @@ func (s *Server) clientEntries(t *tenant) ([]*relayv1.ClientEntry, error) {
 		return nil, err
 	}
 	online := map[string]bool{}
+	lp, everywhere := s.clusterPresence(t.ownerID)
 	s.mu.Lock()
-	for p := range t.peers {
-		if p.role == relayv1.Role_ROLE_CLIENT {
-			online[p.subject.ID] = true
+	if everywhere {
+		online = lp.clients
+	} else {
+		for p := range t.peers {
+			if p.role == relayv1.Role_ROLE_CLIENT {
+				online[p.subject.ID] = true
+			}
 		}
 	}
 	rev := t.revocations
@@ -1121,6 +1255,9 @@ func (s *Server) OwnerReachable(ownerID string) bool {
 
 // OwnerOnline reports whether one of the owner's devices is connected.
 func (s *Server) OwnerOnline(ownerID string) bool {
+	if lp, ok := s.clusterPresence(ownerID); ok {
+		return lp.owner
+	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	t := s.tenants[ownerID]
@@ -1136,8 +1273,39 @@ func (s *Server) OwnerOnline(ownerID string) bool {
 }
 
 // ForgetOwner drops a hosted owner the embedding server has deleted from
-// its backend: its devices are disconnected, and admitted no more.
+// its backend: its devices are disconnected, and admitted no more, on
+// every node.
 func (s *Server) ForgetOwner(ownerID string) {
+	s.forget(ownerID)
+	if s.cluster != nil {
+		s.publish(ownerID, Event{Kind: EventForgotten})
+		s.cluster.Unsubscribe(ownerID)
+	}
+}
+
+// Drain makes this node of several leave the others: /healthz fails from
+// now on, so that the load balancer sends it nothing new, and its
+// connections close spread over spread, to reconnect to the other nodes a
+// few at a time.
+func (s *Server) Drain(spread time.Duration) {
+	s.draining.Store(true)
+	s.mu.Lock()
+	var peers []*peer
+	for _, t := range s.tenants {
+		for p := range t.peers {
+			peers = append(peers, p)
+		}
+	}
+	s.mu.Unlock()
+	s.log.Info("draining", "connections", len(peers), "over", spread)
+	for _, p := range peers {
+		p.sess.Close()
+		time.Sleep(spread / time.Duration(len(peers)))
+	}
+}
+
+// forget drops an owner on this node.
+func (s *Server) forget(ownerID string) {
 	s.mu.Lock()
 	t := s.tenants[ownerID]
 	delete(s.tenants, ownerID)
@@ -1185,6 +1353,27 @@ func (r *rateLimiter) Allow(key string) bool {
 	}
 	r.hits[key] = append(h, now)
 	return true
+}
+
+// limiter is a rateLimiter counted on every node of a cluster, and on this
+// node alone while the cluster can't count.
+type limiter struct {
+	name    string
+	local   *rateLimiter
+	cluster Cluster
+}
+
+func (s *Server) newLimiter(name string, n int, window time.Duration) *limiter {
+	return &limiter{name: name, local: newRateLimiter(n, window), cluster: s.cluster}
+}
+
+func (l *limiter) Allow(key string) bool {
+	if l.cluster != nil {
+		if ok, err := l.cluster.Allow(l.name, key, l.local.n, l.local.window); err == nil {
+			return ok
+		}
+	}
+	return l.local.Allow(key)
 }
 
 func constantTimeEqual(a, b string) bool {

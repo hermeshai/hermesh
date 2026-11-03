@@ -423,11 +423,29 @@ func (g *Gateway) ringSoon(key string, fresh bool) {
 		wait = 0
 	}
 	time.AfterFunc(wait, func() {
+		if !g.claimRing(key) {
+			// Another node rang it within the minute: look again later.
+			r.mu.Lock()
+			st.pending = false
+			r.mu.Unlock()
+			time.AfterFunc(ringRecheck, func() { g.ringSoon(key, false) })
+			return
+		}
 		r.mu.Lock()
 		st.pending, st.last = false, g.cfg.Now()
 		r.mu.Unlock()
 		g.ring(key)
 	})
+}
+
+// ringRecheck: a ring another node made within the minute is tried again
+// this much later.
+const ringRecheck = 20 * time.Second
+
+// claimRing takes a doorbell's minute on every node: at most one ring a
+// minute, whichever node took the messages.
+func (g *Gateway) claimRing(key string) bool {
+	return g.cfg.Shared == nil || g.cfg.Shared.Claim("ring:"+key, time.Minute)
 }
 
 // ringAgainDue rings the doorbells whose messages still wait 15 minutes,
