@@ -993,47 +993,60 @@ struct UnreachableNotice: View {
     }
 }
 
-/// A session in a list: its state, title, what it is doing or who started it, and when.
-/// Without its metadata (the list's view menu), its state and title alone.
+/// A session in a list, as the Mac's sidebar and the menu show it: its title
+/// (shimmering while it runs), and at its end a dot and a word for a state
+/// that is not plain (waiting, failed, preparing…); under it who started it,
+/// the coding agent and the project, and when. Without its metadata (the
+/// list's view menu), the first line alone, as tall as the menu's rows.
 struct SessionRow: View {
     @Environment(AppModel.self) private var model
     let session: Session
     var metadata = true
 
     var body: some View {
-        HStack(alignment: .center, spacing: 12) {
-            StatusDot(session: session)
-            VStack(alignment: .leading, spacing: 2) {
+        VStack(alignment: .leading, spacing: 3) {
+            HStack(spacing: 8) {
                 Group {
-                    if session.isActive { ShimmerText(session.displayTitle, paused: false) } else { Text(session.displayTitle) }
+                    if session.isActive && !session.needsAttention { ShimmerText(session.displayTitle, paused: false) } else { Text(session.displayTitle) }
                 }
-                .lineLimit(1)
-                if metadata { second.font(.subheadline).lineLimit(1) }
+                .foregroundStyle(session.status == .archived ? .secondary : .primary)
+                .lineLimit(1).frame(maxWidth: .infinity, alignment: .leading)
+                if let state {
+                    HStack(spacing: 6) {
+                        if session.needsAttention { Circle().fill(session.status == .waitingInput ? .orange : .red).frame(width: 8, height: 8) }
+                        Text(state)
+                    }
+                    .font(.footnote).foregroundStyle(.secondary)
+                }
             }
-            .frame(maxWidth: .infinity, alignment: .leading)
-            if metadata { trailing.font(.subheadline).foregroundStyle(.secondary).monospacedDigit() }
+            if metadata {
+                HStack(spacing: 8) {
+                    Text("\(model.grantLabel(session)) · \(agentShortTitle(session.agent)) · \(session.projectID)")
+                        .lineLimit(1).frame(maxWidth: .infinity, alignment: .leading)
+                    time.monospacedDigit()
+                }
+                .font(.footnote).foregroundStyle(.secondary)
+            }
         }
-        .padding(.horizontal, 16).padding(.vertical, 11)
+        .padding(.horizontal, 16).padding(.vertical, metadata ? 9 : 0)
+        .frame(minHeight: 44)
         .contentShape(.rect)
         .accessibilityElement(children: .combine)
         .accessibilityIdentifier("session-\(session.displayTitle)")
     }
 
-    @ViewBuilder private var second: some View {
-        let grant = model.grantLabel(session)
-        if session.isActive {
-            Text(phaseText(session)).foregroundStyle(.secondary)
-        } else if session.status == .waitingInput {
-            Text("Waiting for you · \(grant)").foregroundStyle(.orange)
-        } else if session.isFailed {
-            Text("\(session.progress.hasLastFailure ? failureTitle(session.progress.lastFailure.kind) : String(localized: "Failed")) · \(grant)").foregroundStyle(.red)
-        } else {
-            Text("\(grant) · \(session.projectID)").foregroundStyle(.secondary)
+    /// The Mac's RowStatus: nothing for a plain running, idle or archived session.
+    private var state: String? {
+        if session.isFailed && session.status != .crashed && session.status != .waitingInput { return String(localized: "Failed") }
+        switch session.status {
+        case .waitingInput, .crashed, .preparing, .queued, .unspecified: return statusTitle(session.status)
+        default: return nil
         }
     }
 
-    @ViewBuilder private var trailing: some View {
-        if session.isActive, let start = session.turnStartedDate {
+    /// How long a running turn has run, else when the session last changed.
+    @ViewBuilder private var time: some View {
+        if session.status == .running, let start = session.turnStartedDate {
             Text(start, style: .timer)
         } else {
             Text(listTime(session.updatedDate, now: model.now))

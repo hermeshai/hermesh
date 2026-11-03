@@ -162,9 +162,9 @@ struct DrawerView: View {
 }
 
 
-/// A row of the menu: highlighted while selected, and under the finger
-/// from the moment it touches down.
-private struct RowStyle: ButtonStyle {
+/// A row of the menu and of the session lists: highlighted while selected,
+/// and under the finger from the moment it touches down.
+struct RowStyle: ButtonStyle {
     let selected: Bool
 
     func makeBody(configuration: Configuration) -> some View {
