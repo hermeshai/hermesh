@@ -82,6 +82,7 @@ struct SessionsView: View {
 
     private func title(_ s: SessionSection) -> String {
         switch s.grouping {
+        case .project: s.key
         case .agent: agentTitle(s.key)
         case .machine: model.machineName(s.key)
         default: SessionBucket(rawValue: s.key)?.title ?? s.key
@@ -243,6 +244,7 @@ struct ViewMenu: View {
         switch g {
         case .status: "By Status"
         case .date: "By Date"
+        case .project: "By Project"
         case .agent: "By Agent"
         case .machine: "By Machine"
         }

@@ -149,7 +149,7 @@ public func relistedCursor(loaded: SessionCursor?, first: SessionCursor?) -> Ses
 
 /// How the session list groups its sessions.
 public enum SessionGrouping: String, CaseIterable, Codable, Sendable {
-    case status, date, agent, machine
+    case status, date, project, agent, machine
 }
 
 /// How the session list is laid out: its grouping, which way it sorts by
@@ -229,7 +229,7 @@ public struct SessionFilter: Equatable, Sendable {
 public struct SessionSection: Identifiable {
     /// The grouping, or nil for the archived sessions' own section.
     public let grouping: SessionGrouping?
-    /// A state or a day (a SessionBucket's raw value), a coding agent, or a machine id.
+    /// A state or a day (a SessionBucket's raw value), a project, a coding agent, or a machine id.
     public let key: String
     public let sessions: [Session]
     public var id: String { "\(grouping?.rawValue ?? "archived"):\(key)" }
@@ -239,8 +239,8 @@ public struct SessionSection: Identifiable {
 
 /// The list as the view lays it out, each section sorted by last activity.
 /// States keep their order (needs you, running, done); days follow the sort;
-/// coding agents go by name, machines in the order given (unknown ones
-/// last). Archived sessions, when shown, are a section of their own at the end.
+/// projects and coding agents go by name, machines in the order given
+/// (unknown ones last). Archived sessions, when shown, are a section of their own at the end.
 public func sessionSections(_ sessions: [Session], view: SessionListLayout, archived: Bool, now: Date, machines: [String] = [],
                             calendar: Calendar = .current) -> [SessionSection] {
     var by: [String: [Session]] = [:]
@@ -253,6 +253,7 @@ public func sessionSections(_ sessions: [Session], view: SessionListLayout, arch
         let k = switch view.group {
         case .status: statusOf(s).rawValue
         case .date: dayOf(s, now: now, calendar: calendar).rawValue
+        case .project: s.projectID
         case .agent: s.agent
         case .machine: s.machineID
         }
@@ -262,6 +263,7 @@ public func sessionSections(_ sessions: [Session], view: SessionListLayout, arch
     let order: [String] = switch view.group {
     case .status: [SessionBucket.attention, .active, .done].map(\.rawValue)
     case .date: (view.newestFirst ? days : days.reversed()).map(\.rawValue)
+    case .project: by.keys.sorted { $0.localizedStandardCompare($1) == .orderedAscending }
     case .agent: by.keys.sorted { agentTitle($0).localizedStandardCompare(agentTitle($1)) == .orderedAscending }
     case .machine: by.keys.sorted { (machines.firstIndex(of: $0) ?? .max, $0) < (machines.firstIndex(of: $1) ?? .max, $1) }
     }
