@@ -67,7 +67,7 @@ type Config struct {
 	// presence and admission.
 	Relay *relay.Server
 	// RelayHandler serves the relay's endpoints; the gateway's clients dial
-	// it in-process. Default: Relay.Handler().
+	// it in-process. Default: Relay.InProcessHandler().
 	RelayHandler http.Handler
 	Backend      Backend
 	Vault        Vault
@@ -180,7 +180,7 @@ func New(cfg Config) (*Gateway, error) {
 		cfg.Logger = slog.Default()
 	}
 	if cfg.RelayHandler == nil {
-		cfg.RelayHandler = cfg.Relay.Handler()
+		cfg.RelayHandler = cfg.Relay.InProcessHandler()
 	}
 	if cfg.SetupURL == "" {
 		cfg.SetupURL = "https://github.com/hermeshai/hermesh/releases/latest"
