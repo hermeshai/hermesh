@@ -168,7 +168,7 @@ test("an agent's name and icon change together: an app's logo, or a picture of t
   await app.close();
 });
 
-test("an agent's page sets up waking it: three steps, a pasted block split, a wrong key caught, then it wakes for every name, shows its rings, and stops", async () => {
+test("only an agent that asked to be woken has a wake group: its link opens the setup, a pasted block split, a wrong key caught, then it wakes for every name, shows its rings, and stops", async () => {
   // The bot's routine: a webhook that takes one key.
   const calls: { type?: string; as?: string; raw: string }[] = [];
   const server = http.createServer((req, res) => {
@@ -183,28 +183,33 @@ test("an agent's page sets up waking it: three steps, a pasted block split, a wr
   await new Promise<void>((r) => server.listen(0, "127.0.0.1", r));
   const url = `http://127.0.0.1:${(server.address() as AddressInfo).port}/hook`;
   const { app, page } = await launch();
+  // The bot asks to be woken (message wake); its owner opens the link it gives, as macOS hands the app a hermesh:// link.
+  const askedLink = async (...as: string[]) => {
+    const link: string = JSON.parse(await cli(...as, "message", "wake", "-o", "json")).wake.link;
+    expect(link).toMatch(/^hermesh:\/\/wake\?code=/);
+    await app.evaluate(({ app }, l) => app.emit("open-url", { preventDefault() {} }, l), link);
+  };
   try {
     const settings = await openSettings(app, page);
-    await nav(settings, "授权").click();
     const grants = page_(settings, "授权");
-    await grants.getByRole("list", { name: "授权" }).getByRole("button", { name: /bot/ }).click();
+    const openBot = async () => {
+      await nav(settings, "通用").click();
+      await nav(settings, "授权").click();
+      await grants.getByRole("list", { name: "授权" }).getByRole("button", { name: /bot/ }).click();
+      await expect(grants.getByText("能用什么")).toBeVisible();
+    };
+    await openBot();
     const wake = grants.getByRole("list", { name: "新消息提醒" });
-    await expect(wake).toContainText("还没设置");
+    // Nothing to set up from here: not every agent can be woken.
+    await expect(wake).toHaveCount(0);
+    await expect(grants.getByRole("button", { name: "设置…" })).toHaveCount(0);
 
-    // No name to give: one doorbell wakes the agent, whichever bot of it the messages are for.
-    await wake.getByRole("button", { name: "设置…" }).click();
-    const dialog = settings.getByRole("dialog");
-    await expect(dialog).toContainText("第 1 步，共 3 步");
-    await expect(dialog.getByRole("heading", { name: "让 bot 建一个定时任务" })).toBeVisible();
-    // Grok Bot's routines are made by asking the bot: what is copied asks it.
-    await expect(dialog.locator(".wk-msg")).toContainText("帮我建一个定时任务，只由 Webhook 触发");
-    await dialog.getByRole("button", { name: "复制这段话" }).click();
-    await expect(dialog.getByRole("button", { name: "再复制一次" })).toBeVisible();
-    await dialog.getByText("它建好后去哪找？").click();
-    await expect(dialog).toContainText("详情 → 定时任务");
-    await snap(settings, "settings-wake-routine");
-    await dialog.getByRole("button", { name: "建好了" }).click();
-
+    await askedLink();
+    const dialog = page.getByRole("dialog");
+    await expect(dialog).toContainText("第 1 步，共 2 步");
+    await expect(dialog.getByRole("heading", { name: "叫醒 bot" })).toBeVisible();
+    await expect(dialog).toContainText("bot 已经建好一个只由 Webhook 触发的定时任务");
+    await snap(page, "main-wake-link");
     // Grok's Webhook section pasted whole: the URL and key go to their boxes.
     await dialog.getByLabel("地址（POST to）").fill(`POST to\n${url}\nkey\nwrong`);
     await expect(dialog.getByLabel("地址（POST to）")).toHaveValue(url);
@@ -219,8 +224,10 @@ test("an agent's page sets up waking it: three steps, a pasted block split, a wr
     await expect(dialog).toContainText("设置好了");
     await expect(dialog).toContainText("以后有新消息，Hermesh 都会这样叫醒它");
     expect(calls.map((c) => c.type)).toEqual(["hermesh.check", "hermesh.check"]);
-    await snap(settings, "settings-wake-ok");
+    await snap(page, "main-wake-ok");
     await dialog.getByRole("button", { name: "完成" }).click();
+
+    await openBot();
     const row = wake.getByRole("button", { name: /叫醒 bot/ });
     await expect(row).toContainText("已开");
     await expect(row).toContainText("叫醒过");
@@ -232,31 +239,28 @@ test("an agent's page sets up waking it: three steps, a pasted block split, a wr
     await expect.poll(() => calls.find((c) => c.type === "hermesh.message")?.as, { timeout: 30_000 }).toBe("tech-demos");
     expect(calls.map((c) => c.raw).join()).not.toContain("the review is ready");
 
-    // Its rings, newest first; then it stops.
+    // Its rings, newest first; then it stops, and the group goes with it.
     await row.click();
-    await expect(dialog.getByRole("heading", { name: "叫醒 bot" })).toBeVisible();
-    const recent = dialog.getByRole("list", { name: "最近几次" });
+    const sheet = settings.getByRole("dialog");
+    await expect(sheet.getByRole("heading", { name: "叫醒 bot" })).toBeVisible();
+    const recent = sheet.getByRole("list", { name: "最近几次" });
     await expect(recent.getByRole("listitem").first()).toContainText("tech-demos 有新消息 · 收到了");
     await expect(recent).toContainText("试一次 · 收到了");
     await snap(settings, "settings-wake-manage");
-    await dialog.getByRole("button", { name: "停止叫醒…" }).click();
+    await sheet.getByRole("button", { name: "停止叫醒…" }).click();
     await settings.getByRole("dialog", { name: "不再叫醒 bot？" }).getByRole("button", { name: "停止叫醒" }).click();
-    await expect(wake).toContainText("还没设置");
+    await expect(wake).toHaveCount(0);
 
-    // A bot with a doorbell of its own leaves the agent's to set up still.
-    await api(page, "SetWake", { clientId: (await api<{ clients: { clientId: string; label: string }[] }>(page, "ListClients")).clients.find((c) => c.label === "bot")!.clientId, name: "Research", url, authorization: "Bearer crsr_test" });
-    await nav(settings, "通用").click();
-    await nav(settings, "授权").click();
-    await grants.getByRole("list", { name: "授权" }).getByRole("button", { name: /bot/ }).click();
+    // One bot of several sharing the connection asks for itself: its link names it.
+    await askedLink("--as", "Research");
+    await expect(dialog.getByRole("heading", { name: "叫醒 research" })).toBeVisible();
+    await dialog.getByLabel("地址（POST to）").fill(`${url} crsr_test`);
+    await dialog.getByRole("button", { name: "叫醒一次试试" }).click();
+    await expect(dialog).toContainText("设置好了");
+    await dialog.getByRole("button", { name: "完成" }).click();
+    await openBot();
     await expect(wake.getByRole("button", { name: /叫醒 research/ })).toBeVisible();
-    await expect(wake).toContainText("叫醒整个 bot");
-    await expect(wake.getByRole("button", { name: "设置…", exact: true })).toBeVisible();
-
-    // A connection that several bots share can wake each on its own: then it asks which.
-    await grants.getByRole("button", { name: "给每个 bot 单独设置…" }).click();
-    await expect(dialog).toContainText("第 1 步，共 4 步");
-    await expect(dialog.getByRole("textbox", { name: "bot 的名字" })).toBeVisible();
-    await dialog.getByRole("button", { name: "取消" }).click();
+    await expect(wake.getByRole("button")).toHaveCount(1);
   } finally {
     await app.close();
     server.close();
@@ -286,6 +290,9 @@ test("an app just updated finds the previous hermeshd, which keeps no doorbells;
   const socket = path.join(fs.mkdtempSync(path.join(os.tmpdir(), "hmw-")), "d.sock");
   await new Promise<void>((r) => proxy.listen(socket, r));
   const { app, page } = await launch(socket);
+  // The bot has a doorbell (kept though nothing answers its webhook).
+  const bot = (await api<{ clients: { clientId: string; label: string }[] }>(page, "ListClients")).clients.find((c) => c.label === "bot")!.clientId;
+  await api(page, "SetWake", { clientId: bot, url: "http://127.0.0.1:9/hook", keep: true });
   try {
     const settings = await openSettings(app, page);
     await nav(settings, "授权").click();
@@ -296,9 +303,9 @@ test("an app just updated finds the previous hermeshd, which keeps no doorbells;
 
     previous = false;
     proxy.closeAllConnections();
-    await expect(grants.getByRole("list", { name: "新消息提醒" })).toBeVisible();
-    await expect(grants.getByRole("button", { name: "设置…", exact: true })).toBeVisible();
+    await expect(grants.getByRole("list", { name: "新消息提醒" }).getByRole("button", { name: /叫醒 bot/ })).toBeVisible();
   } finally {
+    await api(page, "ClearWake", { clientId: bot }).catch(() => {});
     await app.close();
     proxy.close();
   }

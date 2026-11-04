@@ -20,7 +20,7 @@ struct SheetHost: View {
         case .addDevice: AddDeviceSheet()
         case .addProject(let machine, let agent): AddProjectSheet(machineID: machine, agent: agent)
         case .search: SearchSheet()
-        case .wake(let client, let agent, let wake, let named): WakeSheet(clientID: client, agent: agent, existing: wake, named: named)
+        case .wake(let client, let agent, let wake): WakeSheet(clientID: client, agent: agent, existing: wake)
         }
     }
 }
