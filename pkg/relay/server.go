@@ -155,6 +155,8 @@ type peer struct {
 	// epoch tells this connection from the subject's others on every node.
 	epoch string
 	since time.Time
+	// inProcess: this server's own MCP gateway (InProcessHandler).
+	inProcess bool
 }
 
 func New(cfg Config) (*Server, error) {
@@ -424,6 +426,19 @@ func (s *Server) Handler() http.Handler {
 	return mux
 }
 
+type inProcessKey struct{}
+
+// InProcessHandler is Handler for a client in this process, the server's
+// own MCP gateway. A draining node goes on admitting it and leaves its
+// connections open (Drain): the gateway still serves the tool calls a load
+// balancer sends here until the node stops.
+func (s *Server) InProcessHandler() http.Handler {
+	h := s.Handler()
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		h.ServeHTTP(w, r.WithContext(context.WithValue(r.Context(), inProcessKey{}, true)))
+	})
+}
+
 // Mount adds the relay endpoints to mux.
 func (s *Server) Mount(mux *http.ServeMux) {
 	mux.HandleFunc("/v1/connect", s.handleConnect)
@@ -441,7 +456,8 @@ func (s *Server) Mount(mux *http.ServeMux) {
 // Admission.
 
 func (s *Server) handleConnect(w http.ResponseWriter, r *http.Request) {
-	if s.draining.Load() {
+	inProcess := r.Context().Value(inProcessKey{}) != nil
+	if s.draining.Load() && !inProcess {
 		// A load balancer without health checks tries the next node.
 		http.Error(w, "this node is leaving; connect again", http.StatusServiceUnavailable)
 		return
@@ -488,7 +504,7 @@ func (s *Server) handleConnect(w http.ResponseWriter, r *http.Request) {
 		go keepAlive(sess, cfg.KeepAliveInterval, ownerQuiet)
 	}
 	p.sess, p.remote = sess, r.RemoteAddr
-	p.epoch, p.since = identity.RandomCode(16), time.Now()
+	p.epoch, p.since, p.inProcess = identity.RandomCode(16), time.Now(), inProcess
 	s.register(p)
 	defer s.unregister(p)
 	if p.role == relayv1.Role_ROLE_OWNER {
@@ -1284,16 +1300,18 @@ func (s *Server) ForgetOwner(ownerID string) {
 }
 
 // Drain makes this node of several leave the others: /healthz fails from
-// now on, so that the load balancer sends it nothing new, and its
-// connections close spread over spread, to reconnect to the other nodes a
-// few at a time.
+// now on, so that the load balancer sends it no new device, and the
+// devices' connections close spread over spread, to reconnect to the other
+// nodes a few at a time.
 func (s *Server) Drain(spread time.Duration) {
 	s.draining.Store(true)
 	s.mu.Lock()
 	var peers []*peer
 	for _, t := range s.tenants {
 		for p := range t.peers {
-			peers = append(peers, p)
+			if !p.inProcess {
+				peers = append(peers, p)
+			}
 		}
 	}
 	s.mu.Unlock()
