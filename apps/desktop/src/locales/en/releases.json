@@ -1,9 +1,29 @@
 {
   "unreleased": {
-    "improvements": [
-      "Use Google Antigravity through its official ACP server: sign in with `hermesh agent login antigravity`, select it for projects and grants, and run multi-turn sessions with tool approvals and resume."
-    ],
+    "improvements": [],
     "fixes": []
+  },
+  "0.1.3": {
+    "improvements": [
+      "When a coding agent stalls or a turn runs past its time limit, the failure now says what it was doing: which programs it had running, such as an MCP server that was starting (on macOS and Linux), and the last lines it printed. The machine’s log also records each agent start and each failed turn."
+    ],
+    "fixes": [
+      "A session whose base branch or tag isn’t on the machine yet, such as a tag your CI just pushed, now fetches it from the project’s remote instead of failing. If no remote has it, the failure says which remotes were checked or why fetching failed.",
+      "When a machine runs a newer version than the `hermesh` command or your own server’s MCP, a failure or status they don’t know yet shows as `unknown` instead of a bare number."
+    ]
+  },
+  "0.1.2": {
+    "improvements": [
+      "Use Google Antigravity through its official ACP server: sign in with `hermesh agent login antigravity`, select it for projects and grants, and run multi-turn sessions with tool approvals and resume.",
+      "Installing on Linux asks where Hermesh keeps its data (sessions, logs and worktrees) and shows the free space. On a Synology NAS it offers the storage volumes and recommends the one with the most room.",
+      "On the iPhone, the welcome page shows what Hermesh is for: agents in the cloud and on your computers handing work to each other. The two digits to type on a machine you just approved show in a card, like the other cards.",
+      "Clearer wording across the Mac app, the iPhone app and the commands, in English and Chinese."
+    ],
+    "fixes": [
+      "A PC that is a trusted device now shows the two digits to type on an iPhone or machine it approves, so the join can finish.",
+      "On older Linux systems such as Synology DSM 7 (systemd 219), a newly paired machine no longer stays offline. Coding agents get the variables from your `~/.profile` (such as `CLAUDE_CONFIG_DIR` or a proxy), and pairing says when Hermesh is not running.",
+      "A session whose base branch or tag isn’t in the project’s local repository stops at once and says how to fix it; send another message to retry."
+    ]
   },
   "0.1.1": {
     "improvements": [

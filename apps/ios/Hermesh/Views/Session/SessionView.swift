@@ -408,26 +408,37 @@ struct StepView: View {
             }
         case .turnEnd(_, let end, _):
             if end.isError, isInterruption(end.hasFailure ? end.failure : nil) {
-                let byOwner = end.failure.message == "interrupted by owner"
-                Text(byOwner ? String(localized: "You interrupted this turn. The session stays; when \(grant) sends another message, it continues.")
-                    : String(localized: "This turn was interrupted. The session stays; when \(grant) sends another message, it continues."))
-                    .font(.footnote).foregroundStyle(.secondary).multilineTextAlignment(.center)
-                    .padding(.horizontal, 12).padding(.vertical, 5)
-                    .background(Palette.fill, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
-                    .frame(maxWidth: .infinity)
+                interruptNote(end.failure)
             } else if end.isError, !(session.isFailed && sameFailure(session.progress.lastFailure, end.failure)) {
                 // The session's current failure is told once, at the end; an earlier one (a later turn went on) in one quiet line.
                 FailLine(title: String(localized: "Turn \(end.turn) failed: \(failureTitle(end.failure.kind))"), message: end.failure.message)
             }
             // A turn that went well needs no line: the next message shows it went on.
         case .error(_, let e):
-            // The session's current failure is told once, at the end.
-            if !(session.isFailed && e.hasFailure && sameFailure(session.progress.lastFailure, e.failure)) {
+            // Stopped before its turn began (queued or starting): an interruption, not a failure.
+            if e.hasFailure, isInterruption(e.failure) {
+                interruptNote(e.failure)
+            } else if !(session.isFailed && e.hasFailure && sameFailure(session.progress.lastFailure, e.failure)) {
+                // The session's current failure is told once, at the end.
                 FailLine(title: e.hasFailure ? String(localized: "Failed: \(failureTitle(e.failure.kind))") : String(localized: "Failed"), message: e.message)
             }
         case .tool:
             EmptyView()
         }
+    }
+
+    /// A turn stopped on purpose: by you, by one of your agents, or by Hermesh.
+    private func interruptNote(_ f: Failure) -> some View {
+        let by = interrupter(f)
+        let label = model.clients.first { $0.clientID == by }?.label
+        let text = by == "owner" ? String(localized: "You interrupted this turn. The session stays; when \(grant) sends another message, it continues.")
+            : label.map { String(localized: "\(AgentLogo.name($0)) interrupted this turn. The session stays; when \(grant) sends another message, it continues.") }
+            ?? String(localized: "This turn was interrupted. The session stays; when \(grant) sends another message, it continues.")
+        return Text(text)
+            .font(.footnote).foregroundStyle(.secondary).multilineTextAlignment(.center)
+            .padding(.horizontal, 12).padding(.vertical, 5)
+            .background(Palette.fill, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+            .frame(maxWidth: .infinity)
     }
 
     /// The long-press menu of a message: Copy, and when the owner sent it.

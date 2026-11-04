@@ -45,13 +45,15 @@ func (s *Server) wakeOwner(t *tenant) {
 	s.wakeOwnerLocked(t)
 }
 
-// wakeOwnerID wakes the watchers of ownerID's tenant, if it is loaded.
+// wakeOwnerID wakes the watchers of ownerID's tenant, if it is loaded, on
+// every node.
 func (s *Server) wakeOwnerID(ownerID string) {
 	s.mu.Lock()
-	defer s.mu.Unlock()
 	if t := s.tenants[ownerID]; t != nil {
 		s.wakeOwnerLocked(t)
 	}
+	s.mu.Unlock()
+	s.publish(ownerID, Event{Kind: EventLists})
 }
 
 func (o *ownerControl) WatchOwner(ctx context.Context, _ *relayv1.WatchOwnerRequest, stream *connect.ServerStream[relayv1.OwnerUpdate]) error {

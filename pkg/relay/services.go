@@ -393,6 +393,15 @@ func (n *machineControl) ReportStatus(ctx context.Context, req *relayv1.ReportSt
 	p.t.reported[p.subject.ID] = &relayv1.ReportStatusRequest{Name: req.Name, Version: req.Version}
 	n.s.wakeOwnerLocked(p.t)
 	n.s.mu.Unlock()
+	if c := n.s.cluster; c != nil {
+		pr := n.s.presenceOf(p)
+		pr.Name, pr.Version = req.Name, req.Version
+		if err := c.Reported(p.t.ownerID, pr); err != nil {
+			n.s.log.Warn("recording a machine's report", "owner", p.t.ownerID, "machine", p.subject.ID, "err", err)
+		}
+		n.s.wakeOwner(p.t)
+		n.s.publish(p.t.ownerID, Event{Kind: EventPresence})
+	}
 	return &relayv1.ReportStatusResponse{}, nil
 }
 
@@ -577,6 +586,7 @@ func (o *ownerControl) CompletePairing(ctx context.Context, req *relayv1.Complet
 			return nil, err
 		}
 		defer s.pushGrants(t)
+		defer s.publish(t.ownerID, Event{Kind: EventGrants})
 	case identityv1.PairingKind_PAIRING_KIND_DEVICE:
 		// The device's root key is in the chain the approving device
 		// published first; the credential is that chain's newest cert.
@@ -595,6 +605,7 @@ func (o *ownerControl) CompletePairing(ctx context.Context, req *relayv1.Complet
 		return nil, errf(connect.CodeInvalidArgument, "bad pairing kind")
 	}
 	defer s.wakeOwner(t)
+	defer s.publish(t.ownerID, Event{Kind: EventLists})
 	return &relayv1.CompletePairingResponse{}, s.store.CompletePairing(row.Code, req.Credential)
 }
 
@@ -626,6 +637,7 @@ func (o *ownerControl) PublishGrant(ctx context.Context, req *relayv1.PublishGra
 		return nil, err
 	}
 	o.s.pushGrants(t)
+	o.s.publish(t.ownerID, Event{Kind: EventGrants})
 	return &relayv1.PublishGrantResponse{}, nil
 }
 
@@ -647,6 +659,7 @@ func (o *ownerControl) PublishMachineCert(ctx context.Context, req *relayv1.Publ
 		}
 	}
 	o.s.mu.Unlock()
+	o.s.publish(t.ownerID, Event{Kind: EventCert, ID: nc.MachineId})
 	return &relayv1.PublishMachineCertResponse{}, nil
 }
 

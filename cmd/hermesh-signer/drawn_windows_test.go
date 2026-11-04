@@ -245,3 +245,36 @@ func TestDrawnPanelFailed(t *testing.T) {
 		}
 	}
 }
+
+// TestDrawnPanelMatched shows the two digits to type on what joined, and
+// OK closes them.
+func TestDrawnPanelMatched(t *testing.T) {
+	for _, c := range []struct {
+		name  string
+		match preview.Match
+		dark  bool
+	}{{"match", preview.Match{Label: "yipengfei 的 iPhone", Digits: "42"}, false}, {"match-dark", preview.Match{Label: "yipengfei 的 iPhone", Digits: "42"}, true},
+		{"match-machine", preview.Match{Digits: "07", Machine: true}, false}} {
+		t.Run(c.name, func(t *testing.T) {
+			p := testPanel(c.dark, nil)
+			p.Matched(c.match)
+			v := shown(t, p)
+			shot(t, v, c.name)
+			if _, ok := v.targets["approve"]; ok {
+				t.Fatal("the digits ask for approval")
+			}
+			key(v, 0x0D) // Enter: OK
+			for end := time.Now().Add(5 * time.Second); ; time.Sleep(50 * time.Millisecond) {
+				p.mu.Lock()
+				open := p.open
+				p.mu.Unlock()
+				if open == nil {
+					break
+				}
+				if time.Now().After(end) {
+					t.Fatal("OK did not close it")
+				}
+			}
+		})
+	}
+}

@@ -197,6 +197,13 @@ func TestMCPGateway(t *testing.T) {
 	}
 
 	// The tools are the CLI's commands, with its documents.
+	if doc = callTool(t, session, "agent_list", nil); !doc.OK || !strings.Contains(string(doc.raw), `"agent":"claude"`) || !strings.Contains(string(doc.raw), `"default_effort"`) {
+		t.Fatalf("agent_list: %s", doc.raw)
+	}
+	if doc = callTool(t, session, "session_start", map[string]any{"project": "demo", "effort": "high", "prompt": "hi"}); doc.OK || doc.Error.Kind != "usage" ||
+		!strings.Contains(doc.Error.Message, "takes no reasoning effort") {
+		t.Fatalf("session_start with an effort the agent does not take: %s", doc.raw)
+	}
 	if doc = callTool(t, session, "session_start", map[string]any{"project": "demo"}); doc.OK || doc.Error.Kind != "usage" {
 		t.Fatalf("session_start without a prompt: %s", doc.raw)
 	}

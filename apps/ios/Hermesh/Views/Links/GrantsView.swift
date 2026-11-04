@@ -139,7 +139,7 @@ struct GrantView: View {
             } footer: {
                 Text("Disconnecting revokes access immediately and stops any running sessions. Past session history is kept.")
             }
-            if let wakes { WakesSection(client: c, wakes: wakes) }
+            if let wakes, !wakes.isEmpty { WakesSection(client: c, wakes: wakes) }
         }
         .navigationTitle(AgentLogo.name(c.label))
         // Its doorbells, again whenever a sheet closes: one may have changed them.
@@ -163,7 +163,9 @@ struct GrantView: View {
 
 /// An agent's doorbells (docs/agent-names.md §7): the webhook Hermesh calls
 /// to wake the agent when messages wait for it, and, for a connection several
-/// bots share, one per bot. Left out where the relay keeps none.
+/// bots share, one per bot. Only an agent that can be woken asks for one (its
+/// wake link opens the setup on a computer), so the section shows only once
+/// it has one.
 struct WakesSection: View {
     @Environment(AppModel.self) private var model
     let client: Client
@@ -188,18 +190,10 @@ struct WakesSection: View {
                 }
                 .accessibilityIdentifier("wake-\(w.name)")
             }
-            // The agent's own, which wakes it for every name without one, while it has none.
-            if !wakes.contains(where: { $0.name.isEmpty }) {
-                Button(wakes.isEmpty ? String(localized: "Set Up…") : String(localized: "Wake All of \(agent)…")) {
-                    model.sheet = .wake(client.clientID, agent, nil)
-                }
-                .accessibilityIdentifier("wake-add")
-            }
-            Button("Set up each bot…") { model.sheet = .wake(client.clientID, agent, nil, named: true) }.accessibilityIdentifier("wake-per-bot")
         } header: {
             Text("Wake on New Messages")
         } footer: {
-            Text("Bots such as Grok Bot aren’t always running. Once this is set up, Hermesh wakes this one when a session it started finishes or another agent writes to it. Several bots on one connection can each be set up on their own.")
+            Text("Hermesh calls its routine to wake it when a session it started finishes or another agent writes to it. For another bot on this connection, ask that bot.")
         }
     }
 

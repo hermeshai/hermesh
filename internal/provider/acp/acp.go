@@ -593,6 +593,7 @@ func (s *session) Done() <-chan struct{}         { return s.proc.Done() }
 func (s *session) Err() error                    { return s.proc.Err() }
 func (s *session) Pgid() int                     { return s.proc.Pgid() }
 func (s *session) LastActivity() time.Time       { return s.proc.LastOutput() }
+func (s *session) Diagnose() provider.Diagnosis  { return s.proc.Diagnose() }
 func (s *session) Close() error                  { s.proc.Stop(3 * time.Second); return nil }
 
 func (s *session) emit(e provider.Event) {

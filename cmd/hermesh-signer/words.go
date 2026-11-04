@@ -16,6 +16,7 @@ type words struct {
 	Title, Approve, Deny, Several, Code, Hello, NotSigned, NoHello              string
 	CodeLabel, Match, OwnCaption, Along, Details, HideDetails, HelloAfter, Wait string
 	OpenSignIn, OK                                                              string
+	MatchOn, MatchDevice, MatchMachine, JoinsDevice, JoinsMachine, Digits       string
 }
 
 func loadWords(lang string) words {

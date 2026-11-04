@@ -17,6 +17,7 @@
     "agentAsked": "Agent asked:",
     "interruptedByYou": "You interrupted this turn. The session remains open, and {{grant}} can send another message to continue.",
     "interrupted": "This turn was interrupted. The session remains open, and {{grant}} can send another message to continue.",
+    "interruptedBy": "{{name}} interrupted this turn. The session remains open, and {{grant}} can send another message to continue.",
     "turnFailed": "Turn {{turn}} failed: {{title}}",
     "copy": "Copy",
     "inProgress": "In progress",

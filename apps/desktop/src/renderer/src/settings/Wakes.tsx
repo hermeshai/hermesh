@@ -12,9 +12,10 @@ import { GoRow } from "./common";
 
 /**
  * An agent's doorbells (docs/agent-names.md §7), on its Access page: the
- * webhook Hermesh calls to wake the agent when messages wait for it, set up
- * in a sheet, and, for a connection several bots share, one per bot. A relay
- * without the MCP gateway keeps none: the group is left out.
+ * webhook Hermesh calls to wake the agent when messages wait for it, and, for
+ * a connection several bots share, one per bot. Only an agent that can be
+ * woken asks for one (its wake link opens the setup), so the group shows
+ * only once it has one. A relay without the MCP gateway keeps none.
  */
 export function Wakes({ c }: { c: Client }) {
   const { t } = useTranslation("settings");
@@ -35,9 +36,9 @@ export function Wakes({ c }: { c: Client }) {
   useEffect(() => {
     if (!st.sheet && up) load();
   }, [st.sheet, load, up]);
-  if (!kept || !wakes) return null;
+  if (!kept || !wakes?.length) return null;
   const agent = agentName(c.label);
-  const open = (w?: Wake, named?: boolean) => st.set({ sheet: { kind: "wake", clientId: c.clientId, agent, wake: w, named } });
+  const open = (w: Wake) => st.set({ sheet: { kind: "wake", clientId: c.clientId, agent, wake: w } });
   return (
     <>
       <div>
@@ -59,21 +60,9 @@ export function Wakes({ c }: { c: Client }) {
               </GoRow>
             );
           })}
-          {/* The agent's own, which wakes it for every name without one, while it has none. */}
-          {!wakes.some((w) => w.name === "") && (
-            <div className="frow">
-              <span className="fl">{wakes.length ? t("wake.noneOwn", { agent }) : t("wake.none")}</span>
-              <span className="fv">
-                <button className="btn sm" onClick={() => open()}>{t("wake.setUp")}</button>
-              </span>
-            </div>
-          )}
         </div>
       </div>
-      <p className="set-note">
-        {t("wake.note")}
-        {t("wake.perBotAsk")} <button className="link" onClick={() => open(undefined, true)}>{t("wake.perBot")}</button>
-      </p>
+      <p className="set-note">{t("wake.note")}</p>
     </>
   );
 }

@@ -31,9 +31,11 @@ export type Sheet =
   /** details: from LookupPairing, until the poll lists the request. */
   | { kind: "pairing"; code: string; details?: PairingDetails }
   | { kind: "scope"; clientId: string; renew: boolean }
-  /** An agent's doorbell (docs/agent-names.md §7): set one up, or, with wake, see and change it. */
-  // named: a doorbell for one bot of several, which asks for its name.
-  | { kind: "wake"; clientId: string; agent: string; wake?: Wake; named?: boolean }
+  /**
+   * An agent's doorbell (docs/agent-names.md §7): with wake, see and change it;
+   * with code, set one up from the agent's wake link (name: the bot it is for).
+   */
+  | { kind: "wake"; clientId: string; agent: string; wake?: Wake; code?: string; name?: string }
   | { kind: "confirm"; title: string; message: string; button: string; run: () => Promise<unknown>; done?: string }
   /** Erase Everything (docs/erase-everything.md). */
   | { kind: "erase" };

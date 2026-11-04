@@ -337,6 +337,19 @@ func newIPhoneControl(t *testing.T, w *ownerMac, sessions map[string]string) str
 		defer mu.Unlock()
 		reply(rw, map[string]any{"url": hook.URL + "/routine", "calls": append([]string{}, hookCalls...)})
 	})
+	// The bot asks to be woken, and its owner opens the link on the Mac, as
+	// the Mac app does, with the routine's URL and key.
+	mux.HandleFunc("POST /wake", func(rw http.ResponseWriter, _ *http.Request) {
+		var asked struct{ Wake struct{ Link string } }
+		json.Unmarshal([]byte(run(t, w.cliEnv, 30*time.Second, filepath.Join(w.bin, "hermesh"), "message", "wake", "-o", "json").stdout), &asked)
+		code, _ := strings.CutPrefix(asked.Wake.Link, "hermesh://wake?code=")
+		set, err := w.app.client.SetWake(context.Background(), &localv1.SetWakeRequest{Code: code, Url: hook.URL + "/routine", Authorization: "Bearer crsr_ok"})
+		if err != nil || !set.Check.Ok {
+			http.Error(rw, fmt.Sprintf("wake: %v %v", set, err), 500)
+			return
+		}
+		reply(rw, map[string]string{})
+	})
 	// The relay down (up=0) or back (up=1): the app shows what it kept.
 	mux.HandleFunc("POST /relay", func(rw http.ResponseWriter, r *http.Request) {
 		if r.URL.Query().Get("up") == "1" {

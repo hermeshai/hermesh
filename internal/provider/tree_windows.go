@@ -5,8 +5,9 @@ package provider
 
 type tracked struct{}
 
-func track(pid int) *tracked { return &tracked{} }
-func (t *tracked) stop() int { return 0 }
+func track(pid int) *tracked           { return &tracked{} }
+func (t *tracked) stop() int           { return 0 }
+func (t *tracked) running() [][]string { return nil }
 
 // KillTree has nothing to do: when a daemon exits, its jobs end their
 // processes.

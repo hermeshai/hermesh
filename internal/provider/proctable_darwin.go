@@ -1,10 +1,31 @@
 package provider
 
 import (
+	"bytes"
+	"encoding/binary"
 	"os"
 
 	"golang.org/x/sys/unix"
 )
+
+// procArgs returns pid's arguments (nil when they cannot be read). The
+// kernel gives argc, the executable's path, padding, then the arguments.
+func procArgs(pid int) []string {
+	b, err := unix.SysctlRaw("kern.procargs2", pid)
+	if err != nil || len(b) < 4 {
+		return nil
+	}
+	argc := int(binary.NativeEndian.Uint32(b))
+	_, b, _ = bytes.Cut(b[4:], []byte{0})
+	b = bytes.TrimLeft(b, "\x00")
+	var args []string
+	for len(args) < argc && len(b) > 0 {
+		var arg []byte
+		arg, b, _ = bytes.Cut(b, []byte{0})
+		args = append(args, string(arg))
+	}
+	return args
+}
 
 // listProcs returns this user's processes.
 func listProcs() []procInfo {

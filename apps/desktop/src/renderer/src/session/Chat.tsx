@@ -4,7 +4,7 @@ import type { Client, Machine } from "@hermesh/proto/local";
 import { FailureKind, SessionStatus, type Failure, type Session, type SessionEvent, type ToolCall, type ToolResult } from "@hermesh/proto/session";
 import {
   agoText, clockText, dateOf, elapsedSeconds, codingAgentTitle, createdDate, currentTurn, failureAdvice, failureHeadline, failureTitle, groupSteps, isActive, isArchivable, isFailed,
-  isInterruption, isInterruptible, pendingQuestion, phaseText, replyEnds, resolutionTitle, statusTitle, stepSummary, toolObject, toolSummary, toolVerb, transcript,
+  interrupter, isInterruption, isInterruptible, pendingQuestion, phaseText, replyEnds, resolutionTitle, statusTitle, stepSummary, toolObject, toolSummary, toolVerb, transcript,
   turnStartedAt, turnTimeLine, type Step,
 } from "@hermesh/core";
 import { AgentLogo, Mark, agentName } from "@hermesh/ui";
@@ -239,10 +239,7 @@ function RowView({ it, end, sessionId, failure, clients, grant, previous }: RowP
       );
     case "turnEnd": {
       const end = it.end;
-      if (end.isError && isInterruption(end.failure)) {
-        const byOwner = end.failure?.message === "interrupted by owner";
-        return <div className="tnote">{t(byOwner ? "chat.interruptedByYou" : "chat.interrupted", { grant })}</div>;
-      }
+      if (end.isError && isInterruption(end.failure)) return <InterruptNote failure={end.failure} clients={clients} grant={grant} />;
       if (end.isError) {
         // The session's current failure is told once, at the end; an earlier one (a later turn went on) in one quiet line.
         if (sameFailure(failure, end.failure)) return null;
@@ -265,10 +262,21 @@ function RowView({ it, end, sessionId, failure, clients, grant, previous }: RowP
       );
     case "error": {
       const e = it.error;
+      // Stopped before its turn began (queued or starting): an interruption, not a failure.
+      if (isInterruption(e.failure)) return <InterruptNote failure={e.failure} clients={clients} grant={grant} />;
       if (sameFailure(failure, e.failure)) return null; // told once, at the end
       return <FailLine title={e.failure ? t("chat.failedWith", { title: failureTitle(e.failure.kind) }) : t("chat.failed")} message={e.message} />;
     }
   }
+}
+
+/** A turn stopped on purpose: by you, by one of your agents, or by Hermesh. */
+function InterruptNote({ failure, clients, grant }: { failure: Failure | undefined; clients: Client[]; grant: string }) {
+  const { t } = useTranslation("session");
+  const by = interrupter(failure);
+  if (by === "owner") return <div className="tnote">{t("chat.interruptedByYou", { grant })}</div>;
+  const label = clients.find((c) => c.clientId === by)?.label;
+  return <div className="tnote">{label ? t("chat.interruptedBy", { name: agentName(label), grant }) : t("chat.interrupted", { grant })}</div>;
 }
 
 /** A time line before a turn, for the first one and after a pause. */

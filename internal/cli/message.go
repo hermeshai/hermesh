@@ -1120,14 +1120,12 @@ func (a *app) messageWakeCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			tell := fmt.Sprintf("In the Hermesh app on the Mac: Settings → Access → %s → Wake on New Messages → Set Up…, with the routine's URL and key", a.g.ClientLabel)
-			if a.as != "" {
-				tell += fmt.Sprintf(", for the name %q", a.as)
+			// A console page opens signed in; a hermesh:// link in the app (pkg/mcpgw WakeTell).
+			where := "signed in to Hermesh"
+			if strings.HasPrefix(res.Link, "hermesh://") {
+				where = "on the computer with the Hermesh app (Mac or Windows)"
 			}
-			if res.Link != "" {
-				tell = fmt.Sprintf("Open %s, signed in to Hermesh, and paste the webhook's URL and key there (the link works once, for 30 minutes)", res.Link)
-			}
-			tell += "."
+			tell := fmt.Sprintf("Open %s %s, and paste the webhook's URL and key there (the link works once, for 30 minutes).", res.Link, where)
 			if a.output == "json" {
 				return a.report(cmd.OutOrStdout(), nil, field{"wake", object{{"link", res.Link}, {"expires_at", timeJSON(res.ExpiresAt.AsTime())}}}, field{"tell_owner", tell})
 			}
