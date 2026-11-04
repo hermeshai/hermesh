@@ -4,8 +4,10 @@ import (
 	"context"
 	"fmt"
 	"path/filepath"
+	"strings"
 	"testing"
 
+	"connectrpc.com/connect"
 	identityv1 "github.com/hermeshai/hermesh/gen/go/hermesh/identity/v1"
 	sessionv1 "github.com/hermeshai/hermesh/gen/go/hermesh/session/v1"
 	"github.com/hermeshai/hermesh/internal/provider"
@@ -112,6 +114,58 @@ func TestSessionModel(t *testing.T) {
 		}
 		if p := s.toProto(got); p.Model != c.wantModel || p.Effort != c.wantEffort {
 			t.Errorf("%+v shows %q/%q, want %q/%q", c.row, p.Model, p.Effort, c.wantModel, c.wantEffort)
+		}
+	}
+}
+
+// catalog is an agent that lists every model it takes, as Codex does.
+type catalog struct{ recorder }
+
+func (c *catalog) Discover(ctx context.Context) provider.Info {
+	i := c.recorder.Discover(ctx)
+	i.Models = []provider.Model{{ID: "gpt-big", Efforts: []string{"low", "high", "xhigh"}}, {ID: "gpt-small", Efforts: []string{"low", "high"}}}
+	i.AllModels = true
+	return i
+}
+
+// TestModelAndEffort: a session naming a model the agent does not list, or
+// an effort its model does not take, is refused before it starts, with the
+// ones there are; listed ones start. Without a model, any listed model's
+// effort is taken. An agent that lists only some of its models (Claude
+// Code's aliases) takes any model; one that lists none takes no effort.
+func TestModelAndEffort(t *testing.T) {
+	codex := &catalog{}
+	h := newHarnessWith(t, DefaultLimits(), map[string]provider.Provider{"codex": codex})
+	ctx := context.Background()
+	start := func(agent, model, effort string) (*sessionv1.Session, error) {
+		return h.s.Start(ctx, h.p, &sessionv1.StartSessionRequest{ProjectId: "demo", Agent: agent, Prompt: "say one", Model: model, Effort: effort})
+	}
+	for _, c := range []struct{ agent, model, effort, refusal string }{
+		{"codex", "aurora", "", `codex on this machine has no model "aurora" (one of: gpt-big, gpt-small)`},
+		{"codex", "gpt-small", "xhigh", `codex's model gpt-small has no reasoning effort "xhigh" (one of: low, high)`},
+		{"codex", "", "max", `codex has no reasoning effort "max" (one of: low, high, xhigh)`},
+		{"fake", "", "high", "fake on this machine takes no reasoning effort"},
+	} {
+		if _, err := start(c.agent, c.model, c.effort); connect.CodeOf(err) != connect.CodeInvalidArgument || !strings.Contains(err.Error(), c.refusal) {
+			t.Fatalf("%+v: %v", c, err)
+		}
+	}
+	h.s.mu.Lock()
+	made := len(h.s.live)
+	h.s.mu.Unlock()
+	if made != 0 {
+		t.Fatal("a session was made for a refused model or effort")
+	}
+	for _, c := range []struct{ agent, model, effort string }{{"codex", "gpt-small", "high"}, {"codex", "", "xhigh"}, {"fake", "aurora", ""}} {
+		s, err := start(c.agent, c.model, c.effort)
+		if err != nil {
+			t.Fatalf("%+v: %v", c, err)
+		}
+		h.wait(s.SessionId, idle)
+	}
+	for i, effort := range []string{"high", "xhigh"} {
+		if s := codex.spec(i); s.Effort != effort {
+			t.Fatalf("start %d ran with effort %q, want %q", i, s.Effort, effort)
 		}
 	}
 }

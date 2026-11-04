@@ -176,6 +176,9 @@ message StartSessionRequest {
   // The starter's own conversation (a Claude Code session id, a Codex
   // thread): the session's news goes to it (docs/agent-messages.md §6.2).
   string conversation = 11;
+  // Reasoning effort, one the model offers (AgentModel.efforts); unset:
+  // the machine's default for the agent, else the agent's own.
+  string effort = 12;
 }
 
 // Attachment is a file sent with a message (at most 20 files and 32 MiB

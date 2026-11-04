@@ -175,6 +175,99 @@ func TestWorktreeBaseValidation(t *testing.T) {
 	}
 }
 
+// A base ref pushed after the project was cloned is fetched by itself: a
+// tag, a branch, a <remote>/<branch> or a commit id, from the first remote
+// that has it, and nothing else. One that no remote has, or that is no ref
+// name, changes nothing and says which remotes were asked and why one
+// could not be.
+func TestFetchRef(t *testing.T) {
+	ctx := context.Background()
+	seed := testRepo(t)
+	upstream := filepath.Join(t.TempDir(), "upstream.git")
+	gitOut(t, seed, "clone", "-q", "--bare", seed, upstream)
+	gitOut(t, upstream, "config", "uploadpack.allowReachableSHA1InWant", "true")
+	repo := filepath.Join(t.TempDir(), "repo")
+	gitOut(t, seed, "clone", "-q", upstream, repo)
+	head := strings.TrimSpace(gitOut(t, repo, "rev-parse", "HEAD"))
+	branch := strings.TrimSpace(gitOut(t, repo, "symbolic-ref", "--short", "HEAD"))
+
+	other := filepath.Join(t.TempDir(), "other")
+	gitOut(t, seed, "clone", "-q", upstream, other)
+	commit := func(msg string) string {
+		gitOut(t, other, "-c", "user.name=t", "-c", "user.email=t@t", "commit", "-q", "--allow-empty", "-m", msg)
+		return strings.TrimSpace(gitOut(t, other, "rev-parse", "HEAD"))
+	}
+	release, feature, hidden, byID := commit("release"), commit("feature"), commit("hidden"), commit("by id")
+	gitOut(t, other, "tag", "v1", release)
+	gitOut(t, other, "tag", "unasked", release)
+	gitOut(t, other, "-c", "user.name=t", "-c", "user.email=t@t", "tag", "-a", "-m", "notes", "v1-notes", release)
+	gitOut(t, other, "push", "-q", "origin", "v1", "unasked", "v1-notes", feature+":refs/heads/feature", hidden+":refs/heads/hidden", byID+":refs/heads/by-id")
+
+	w := NewWorkspace(filepath.Join(t.TempDir(), "worktrees"))
+	for _, c := range []struct{ ref, local, commit string }{
+		{byID, byID, byID},
+		{"v1", "refs/tags/v1", release},
+		{"v1-notes", "refs/tags/v1-notes", release},
+		{"feature", "refs/remotes/origin/feature", feature},
+		{"origin/hidden", "refs/remotes/origin/hidden", hidden},
+	} {
+		local, remote, err := w.FetchRef(ctx, repo, c.ref)
+		if err != nil || local != c.local || remote != "origin" {
+			t.Fatalf("%s: %q from %q, %v", c.ref, local, remote, err)
+		}
+		if got := strings.TrimSpace(gitOut(t, repo, "rev-parse", local+"^{commit}")); got != c.commit {
+			t.Fatalf("%s: fetched %s, want %s", c.ref, got, c.commit)
+		}
+	}
+	if exec.Command("git", "-C", repo, "rev-parse", "--verify", "--quiet", "refs/tags/unasked").Run() == nil {
+		t.Fatal("a tag nobody asked for was fetched")
+	}
+	if local, _, err := w.FetchRef(ctx, repo, "v1"); err != nil || local != "v1" {
+		t.Fatalf("a ref fetched meanwhile: %q, %v", local, err)
+	}
+
+	missing := func(ref string) *baseRefError {
+		t.Helper()
+		_, _, err := w.FetchRef(ctx, repo, ref)
+		var be *baseRefError
+		if !errors.As(err, &be) {
+			t.Fatalf("%s: %v", ref, err)
+		}
+		return be
+	}
+	for _, ref := range []string{"nope", "x:refs/heads/" + branch, branch + "~1", "upstream/" + branch} {
+		if be := missing(ref); !be.looked || be.fetch != nil || len(be.remotes) != 1 || !strings.HasSuffix(be.Error(), "or on its remote origin") {
+			t.Fatalf("%s: %+v %v", ref, be, be)
+		}
+	}
+	if got := strings.TrimSpace(gitOut(t, repo, "rev-parse", "refs/heads/"+branch)); got != head || gitOut(t, repo, "status", "--porcelain") != "" {
+		t.Fatal("the project's branch or checkout changed")
+	}
+
+	// origin is gone: the next remote has it, and when none does the error
+	// says what origin's failure was.
+	gitOut(t, repo, "remote", "set-url", "origin", filepath.Join(t.TempDir(), "gone.git"))
+	gitOut(t, repo, "remote", "add", "mirror", upstream)
+	gitOut(t, other, "tag", "v2", release)
+	gitOut(t, other, "push", "-q", "origin", "v2")
+	if local, remote, err := w.FetchRef(ctx, repo, "v2"); err != nil || local != "refs/tags/v2" || remote != "mirror" {
+		t.Fatalf("v2 through the mirror: %q from %q, %v", local, remote, err)
+	}
+	if be := missing("nope"); be.fetch == nil || !strings.Contains(be.Error(), "fetching it failed: origin: ") || strings.Contains(be.Error(), "mirror:") {
+		t.Fatalf("an unreachable remote: %v", be)
+	}
+
+	// Nowhere to fetch from, or here but not a commit: nothing to fetch.
+	alone := testRepo(t)
+	if _, _, err := w.FetchRef(ctx, alone, "v1"); err == nil || !strings.HasSuffix(err.Error(), "which has no remote to fetch it from") {
+		t.Fatalf("no remote: %v", err)
+	}
+	gitOut(t, repo, "tag", "blob-tag", strings.TrimSpace(gitOut(t, repo, "rev-parse", "HEAD:a.txt")))
+	if be := missing("blob-tag"); be.looked {
+		t.Fatalf("a local tag of a blob was looked for upstream: %v", be)
+	}
+}
+
 // Move the source branch immediately after Git resolves it, before the
 // worktree is created: both checkout paths must still use that commit.
 func TestWorktreePinsBaseCommit(t *testing.T) {

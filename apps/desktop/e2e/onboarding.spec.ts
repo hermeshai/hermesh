@@ -692,7 +692,7 @@ test("erasing everything: what it erases, the server's address typed, Touch ID, 
   const sheet = settings.getByRole("dialog", { name: "全部清空 Hermesh？" });
   await expect(sheet).toContainText("erase-mac 这台 Mac");
   await expect(sheet).toContainText(`自己的服务器 · ${host}`);
-  await expect(sheet).not.toContainText("机器");
+  await expect(sheet).not.toContainText("解除配对");
   await expect(sheet).toContainText("有未提交改动的 worktree：挪到一边保留");
   // Escape doesn't close it; the button waits for the server's address.
   await settings.keyboard.press("Escape");

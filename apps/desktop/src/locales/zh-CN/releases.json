@@ -1,9 +1,29 @@
 {
   "unreleased": {
-    "improvements": [
-      "通过官方 ACP 服务使用 Google Antigravity：运行 `hermesh agent login antigravity` 登录，在项目和授权中选择它，支持工具审批、多轮对话与恢复。"
-    ],
+    "improvements": [],
     "fixes": []
+  },
+  "0.1.3": {
+    "improvements": [
+      "编码 agent 长时间没有进展或超过时长上限时，失败信息会说明它当时在做什么：它还有哪些程序在运行（比如正在启动的 MCP 服务器，限 macOS 和 Linux），以及它最后输出的几行。机器的日志也会记下每次 agent 启动和每一轮失败。"
+    ],
+    "fixes": [
+      "会话的基准分支或标签还不在这台机器上时（比如 CI 刚推送的标签），现在会从项目的远端仓库拉取，不再直接失败。远端也没有的话，失败信息会说明查了哪些远端，或者拉取为什么失败。",
+      "机器的版本比 `hermesh` 命令或自建服务器的 MCP 新时，它们还不认识的失败类型或状态会显示为 `unknown`，不再是一个数字。"
+    ]
+  },
+  "0.1.2": {
+    "improvements": [
+      "通过官方 ACP 服务使用 Google Antigravity：运行 `hermesh agent login antigravity` 登录，在项目和授权中选择它，支持工具审批、多轮对话与恢复。",
+      "在 Linux 上安装时，会询问 Hermesh 把数据（会话、日志和 worktree）放在哪里，并显示剩余空间。在群晖 NAS 上会列出各个存储空间，并推荐剩余空间最多的那个。",
+      "iPhone 的欢迎页说明了 Hermesh 是做什么的：云端和你电脑上的 agent 互相交接工作。刚批准的机器上要输入的两位数字，现在和其他卡片一样显示在卡片里。",
+      "Mac 应用、iPhone 应用和命令行的中英文措辞更清晰。"
+    ],
+    "fixes": [
+      "作为可信设备的 PC，批准 iPhone 或机器时会显示要在对方输入的两位数字，加入流程可以顺利完成。",
+      "在群晖 DSM 7（systemd 219）等较旧的 Linux 系统上，新配对的机器不会再一直离线。编码 agent 能读到你 `~/.profile` 里的变量（例如 `CLAUDE_CONFIG_DIR` 或代理），配对时如果 Hermesh 没在运行也会明确提示。",
+      "如果会话的基准分支或标签不在项目的本地仓库里，会立即停下并说明怎么解决；再发一条消息即可重试。"
+    ]
   },
   "0.1.1": {
     "improvements": [

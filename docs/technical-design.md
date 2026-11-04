@@ -320,7 +320,7 @@ A revoked client leaves the owner's list: the relay forgets its grant, and the r
 **F7 Manage machines**: add or remove projects, pause or resume accepting new sessions, rename, set a coding agent's defaults. The app builds an AdminCommand and sends it to the machine over the end-to-end channel, authenticated as one of the owner's trusted devices:
 - projects, pausing, the name and agent defaults are settings, not permissions (a grant is already full trust on the machine; projects and the name tell agents what to use), so they go unsigned, without Touch ID; the machine accepts them only from a trusted device, never from an agent or the relay.
 
-**Agent defaults**: for Claude Code and Codex, each machine keeps the model, reasoning effort and (Codex) speed their sessions run with when the client starting one names no model (`AgentDefaults`, set in the app on the agent's row of the machine page). Empty fields follow the agent's own configuration; a model the client names wins over the default model, the default effort and speed still apply. They are resolved when a session starts and stored with it, so a resumed process runs as the session began. Hermesh passes them per session (`--model`/`--effort` for Claude Code; `model`, `config.model_reasoning_effort` and `serviceTier` in Codex's `thread/start`) and never edits the agents' own configuration files. To pick from, a check of the agents also reports the models each offers (Claude Code's aliases; Codex's `model/list`) and Codex's own configuration (`config/read`), so the app can say what following it means.
+**Agent defaults**: for Claude Code and Codex, each machine keeps the model, reasoning effort and (Codex) speed their sessions run with when the client starting one names no model (`AgentDefaults`, set in the app on the agent's row of the machine page). Empty fields follow the agent's own configuration; a model the client names wins over the default model, the default effort and speed still apply. They are resolved when a session starts and stored with it, so a resumed process runs as the session began. Hermesh passes them per session (`--model`/`--effort` for Claude Code; `model`, `config.model_reasoning_effort` and `serviceTier` in Codex's `thread/start`) and never edits the agents' own configuration files. To pick from, a check of the agents also reports the models each offers (Claude Code's aliases; Codex's `model/list`) and Codex's own configuration (`config/read`), so the app can say what following it means. Clients see the same models, with each model's reasoning efforts and what a session runs with by default, in `agent list`, and may name a model and an effort when starting a session (the client's wins over the defaults). Since Codex's list is every model it takes there, a session naming another Codex model is refused before it starts, with the ones it offers; Claude Code's aliases are not all it takes, so its model names are not checked. An effort must be one the session's model takes (for a model Hermesh does not list, one any listed model takes), and an agent that lists none takes no effort.
 
 **Machine names**: a machine is identified by its key (machine_id); its name is a label. It names itself when it pairs (its operator's `--name`, else its host name); a name chosen in the approval window is set on it once it connects, and the owner can rename it at any time. Agents address projects as `name/project`, and the relay could relabel machines in the list it hands out, so the name the agent holds a machine to is the one the machine presents in the end-to-end handshake (`Credentials.machine_name`, authenticated by that handshake): a machine that calls itself something else than the list said is not used.
 
@@ -394,7 +394,7 @@ Pairing uses two public HTTPS endpoints (the applicant has no credentials yet at
 
 ### 4.2 Routing
 
-A single-process in-memory map: `machine_id → connection`. If the same machine_id connects again, the newest connection is kept. No abstraction for horizontal scaling.
+A single-process in-memory map: `machine_id → connection`. If the same machine_id connects again, the newest connection is kept. A self-hosted relay is this one process. The hosted center runs the same relay on several nodes through `relay.Cluster` (`pkg/relay/cluster.go`): each node keeps its own map, the cluster says which node holds a machine and what the other nodes changed, and a tunnel to a machine on another node is forwarded there.
 
 ---
 
@@ -437,6 +437,7 @@ message StartSessionRequest {
   string prompt = 4;
   string base_ref = 5;          // optional
   string model = 6;             // optional; unset: the machine's default for the agent, else the agent's own
+  string effort = 12;           // optional; one the model takes; unset: as for model
 }
 
 message Session {
@@ -652,6 +653,7 @@ stateDiagram-v2
   - When not specified on add: a git repository root uses `WORKTREE`, and any other directory (including a subdirectory of a repository) uses `IN_PLACE`. Specifying `WORKTREE` for a non-git directory is refused.
   - At session start the project's mode and directory at that moment are recorded, so later changes to the project do not affect existing sessions.
 - **Creation**: first rev-parse to get `base_commit`, then run `git -C <repo> worktree add -b hermesh/<session_id> <data>/worktrees/<session_id> <base_commit>`. Git write operations on the same repository are serialized. The baseline is the committed version and does not include the user's uncommitted changes.
+- **A base the repository lacks** (since 2026-11-03): a tag CI pushed or a branch pushed from another computer is not in the local repository until someone fetches. Before failing, the daemon fetches that ref alone from the repository's remotes, origin first: a tag or branch of that name (a branch lands in `refs/remotes/<remote>/`), a `<remote>/<branch>`, or a full commit id (servers that allow it); no other tags, no submodules, never a prompt for credentials (an answer it would need is an error), in the login shell's environment (its proxy), each remote command limited to 2 minutes, one fetch per repository at a time. A name that is no valid ref is never fetched, so it cannot be read as a refspec. The project's branches, checkout and uncommitted changes are untouched. When no remote has it, the session fails with `BASE_REF_UNAVAILABLE`, saying which remotes were asked or why one could not be.
 - **Local files** (since 2026-10-31): a checkout has only tracked files, so settings kept out of git (signing configuration, `.env`) are missing from a new worktree. If the repository root has a `.worktreeinclude` (gitignore syntax, the same file Claude Code reads), the ignored files it names are copied from the project directory into the worktree when it is created and again when it is restored; a named file git does not ignore is left out, so snapshots never commit one, and a file the session already has is kept. When every pattern has a path, git looks only there; a bare name such as `.env` makes it walk the whole tree. A failed copy is logged and does not stop the session. Agents starting sessions through MCP are told to pass `base` for another branch, tag or commit rather than have the agent make its own worktree, which would have none of these files.
 - **Per-turn snapshot commits**: after each turn, the daemon runs:
 
@@ -756,9 +758,10 @@ Hermesh.app/
 hermesh auth login <connection-address> [--name N]           # pairing (section 3.5); rerun after an interruption to show the same pairing code; rerun after revocation or expiry to apply again as a new agent
 hermesh auth status                               # diagnostics: local identity, grant, relay connection, whether the grant is up to date
 hermesh auth logout                               # delete the local key and grant (revocation is done by the owner in the app or console)
+hermesh agent list [--machine N] [--agent A]      # the coding agents this agent may run on each machine, with each model's reasoning efforts and the default model and effort
 hermesh project list [--machine N]                # a flat list: every place work can happen, written as machine/project, with description, path, base branch, number of sessions in progress, platform, usable coding agents and whether a session can be opened; exit code 4 when no machine is reachable
 hermesh session start --project machine/project --agent claude|codex
-                      [--base REF] [--model M]
+                      [--base REF] [--model M] [--effort E]
                       (--prompt TEXT | --prompt-file F, F of - reads stdin)
                       [--wait [--timeout D]] [--idempotency-key K]     # background by default: returns immediately; use session get for progress and results
 hermesh session get|interrupt|archive|unarchive <session_id>   # get: status, progress, questions; after a turn ends it includes the full result

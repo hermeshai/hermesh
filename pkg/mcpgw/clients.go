@@ -262,6 +262,11 @@ func (g *Gateway) handleRegister(w http.ResponseWriter, r *http.Request) {
 
 // allowRegistration: at most 10 registrations per address per hour.
 func (g *Gateway) allowRegistration(ip string) bool {
+	if g.cfg.Shared != nil {
+		if ok, err := g.cfg.Shared.Allow("mcp-registrations", ip, 10, time.Hour); err == nil {
+			return ok
+		}
+	}
 	g.mu.Lock()
 	defer g.mu.Unlock()
 	now := g.cfg.Now()

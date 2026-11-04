@@ -42,8 +42,8 @@ describe("text", () => {
 
   test("a missing worktree base explains which ref failed and how to retry", () => {
     const failure = create(FailureSchema, { kind: FailureKind.BASE_REF_UNAVAILABLE, message: 'Project "movieclaw": base ref "ios-v0.12.2" unavailable.' });
-    expect(failureHeadline(failure.kind, "Codex")).toBe("无法创建工作目录：本地基准引用不可用");
-    expect(failureAdvice(failure)).toBe(`${failure.message} 请确认基准引用名称，或将对应分支/tag 同步到项目的本地仓库，再在本会话发送一条消息重试原始任务。`);
+    expect(failureHeadline(failure.kind, "Codex")).toBe("无法创建工作目录：找不到基准引用");
+    expect(failureAdvice(failure)).toBe(`${failure.message} 请确认基准引用名称，以及项目的远端仓库里有这个分支或 tag（机器会从那里拉取），再在本会话发送一条消息重试原始任务。`);
   });
 
   test("a morning hour has two digits", () => {

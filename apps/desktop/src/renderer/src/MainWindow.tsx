@@ -1,5 +1,8 @@
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 import { useTranslation } from "react-i18next";
+import { parseAppLink } from "@hermesh/core";
+import { agentName } from "@hermesh/ui";
+import { local } from "./api";
 import { Overview } from "./Overview";
 import { RequestCards } from "./RequestCards";
 import { SearchPalette } from "./Search";
@@ -9,7 +12,7 @@ import { Sidebar } from "./Sidebar";
 import { useCommands } from "./commands";
 import { Icon } from "./icons";
 import { platform } from "./platform";
-import { useStore } from "./store";
+import { errorText, useStore } from "./store";
 
 export function MainWindow() {
   const st = useStore();
@@ -36,6 +39,22 @@ export function MainWindow() {
         if (c.startsWith("searchMachine:")) set({ searching: true, searchFor: { machine: c.slice("searchMachine:".length) } });
       }),
     [set],
+  );
+  // An agent's wake link (hermesh://wake?code=…, docs/agent-names.md §7.2): its setup, at the routine's URL and key.
+  const clients = useRef(st.clients);
+  clients.current = st.clients;
+  const { show } = st;
+  useEffect(
+    () =>
+      window.hermesh?.onLink((url) => {
+        const l = parseAppLink(url);
+        if (l?.kind !== "wake") return;
+        local.openWakeLink({ code: l.code }).then((o) => {
+          const c = clients.current.find((x) => x.clientId === o.clientId);
+          set({ sheet: { kind: "wake", clientId: o.clientId, agent: c ? agentName(c.label) : o.clientId, code: l.code, name: o.name } });
+        }, (e) => show(errorText(e)));
+      }),
+    [set, show],
   );
   return (
     <div className={`mainwrap ${st.sidebar ? "" : "noside"}`}>

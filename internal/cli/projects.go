@@ -179,17 +179,23 @@ func (a *app) listPlaces(ctx context.Context, c *peer.Client, machines []machine
 	return out, errs
 }
 
-// usableAgents are the coding agents this agent may run in a project:
-// installed and logged in on its machine, in the grant, and set up for the
-// project (a project with no agents is for all).
+// usableAgents are the coding agents this agent may run in a project: ones
+// it may run on the machine that are set up for the project (a project with
+// no agents is for all).
 func (a *app) usableAgents(st *machinev1.MachineStatus, p *machinev1.Project) []placeAgent {
 	out := []placeAgent{}
 	for _, ag := range st.GetAgents() {
-		if ag.Available && ag.LoggedIn && identity.Allows(a.g.Agents, ag.Name) && (len(p.Agents) == 0 || slices.Contains(p.Agents, ag.Name)) {
+		if a.mayRun(ag) && (len(p.Agents) == 0 || slices.Contains(p.Agents, ag.Name)) {
 			out = append(out, placeAgent{Name: ag.Name, Version: ag.Version})
 		}
 	}
 	return out
+}
+
+// mayRun: the agent is installed and logged in on its machine, and in the
+// grant.
+func (a *app) mayRun(ag *machinev1.AgentStatus) bool {
+	return ag.Available && ag.LoggedIn && identity.Allows(a.g.Agents, ag.Name)
 }
 
 // warmProject warms the machine an address names, or every machine when

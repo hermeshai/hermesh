@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"github.com/hermeshai/hermesh/internal/provider"
+	"github.com/hermeshai/hermesh/internal/shellenv"
 	"github.com/hermeshai/hermesh/pkg/metrics"
 	"io"
 	"os"
@@ -77,19 +78,44 @@ func git(ctx context.Context, dir string, args ...string) (string, error) {
 // machine makes them slow, and stopping one only wastes it. The session's
 // start limits them (Limits.StartTimeout).
 func gitUnlimited(ctx context.Context, dir string, args ...string) (string, error) {
+	out, errb, err := runGit(ctx, dir, os.Environ(), args)
+	if err != nil {
+		return out, fmt.Errorf("git %s: %w: %s", strings.Join(args, " "), err, errb)
+	}
+	return out, nil
+}
+
+// gitRemote runs a git command that reaches a remote, in the login shell's
+// environment (a proxy, an ssh agent). A credential it would prompt for is
+// an error, and its error is what git said last.
+func gitRemote(ctx context.Context, dir string, args ...string) (string, error) {
+	ctx, cancel := context.WithTimeout(ctx, remoteTimeout)
+	defer cancel()
+	out, errb, err := runGit(ctx, dir, shellenv.Environ(), args)
+	switch {
+	case err == nil:
+		return out, nil
+	case ctx.Err() == context.DeadlineExceeded:
+		return out, fmt.Errorf("no answer in %s", remoteTimeout)
+	case errb != "":
+		return out, errors.New(errb[strings.LastIndexByte(errb, '\n')+1:])
+	}
+	return out, err
+}
+
+const remoteTimeout = 2 * time.Minute
+
+func runGit(ctx context.Context, dir string, env []string, args []string) (out, errb string, err error) {
 	full := append([]string{"-c", "core.hooksPath=/dev/null", "-c", "commit.gpgsign=false", "-c", "gc.auto=0", "-c", "maintenance.auto=false"}, args...)
-	env := append(os.Environ(), "GIT_TERMINAL_PROMPT=0", "GIT_OPTIONAL_LOCKS=0")
+	env = append(env, "GIT_TERMINAL_PROMPT=0", "GIT_OPTIONAL_LOCKS=0")
 	waitStart := time.Now()
 	gitSem <- struct{}{}
 	mGitWait.Since(waitStart)
 	start := time.Now()
-	out, errb, err := provider.RunCommand(ctx, gitBin(), full, dir, env)
+	o, e, err := provider.RunCommand(ctx, gitBin(), full, dir, env)
 	<-gitSem
 	gitHistogram(args).Since(start)
-	if err != nil {
-		return string(out), fmt.Errorf("git %s: %w: %s", strings.Join(args, " "), err, strings.TrimSpace(string(errb)))
-	}
-	return string(out), nil
+	return string(o), strings.TrimSpace(string(e)), err
 }
 
 // gitBin is the git binary itself: on macOS /usr/bin/git is an xcrun shim
@@ -179,10 +205,30 @@ func resolveRef(ctx context.Context, repo, ref string) (string, error) {
 	return strings.TrimSpace(out), err
 }
 
-type baseRefError struct{ ref string }
+type baseRefError struct {
+	ref     string
+	looked  bool     // FetchRef looked for it on the remotes
+	remotes []string // the remotes it asked
+	fetch   error    // why some of them could not be asked
+}
 
 func (e *baseRefError) Error() string {
-	return fmt.Sprintf("base ref %q does not resolve to a commit in the local repository", e.ref)
+	return fmt.Sprintf("base ref %q does not resolve to a commit in the local repository%s", e.ref, e.upstream())
+}
+
+// upstream says what the remotes had to say, after "in the local repository".
+func (e *baseRefError) upstream() string {
+	switch {
+	case !e.looked:
+		return ""
+	case e.fetch != nil:
+		return ", and fetching it failed: " + strings.ReplaceAll(e.fetch.Error(), "\n", "; ")
+	case len(e.remotes) == 0:
+		return ", which has no remote to fetch it from"
+	case len(e.remotes) == 1:
+		return " or on its remote " + e.remotes[0]
+	}
+	return " or on its remotes " + strings.Join(e.remotes, ", ")
 }
 
 // Create adds a worktree for sessionID at baseRef and returns the base
@@ -224,6 +270,136 @@ func (w *Workspace) Create(ctx context.Context, repo, baseRef, sessionID string)
 	}
 	base, err = resolveRef(ctx, repo, "refs/heads/"+branch)
 	return base, branch, err
+}
+
+// FetchRef fetches a base ref the local repository lacks from its remotes,
+// origin first: a ref that exists upstream only, as a release tag CI
+// pushed or a branch pushed from another computer. It looks for a tag or
+// a branch of that name, a <remote>/<branch>, or a full commit id, and
+// fetches that ref alone (no other tags, no submodules). It returns what a
+// worktree can start from and the remote it came from, or a *baseRefError
+// naming the remotes it asked and why any of them could not be.
+func (w *Workspace) FetchRef(ctx context.Context, repo, baseRef string) (local, remote string, err error) {
+	if w.none || strings.HasPrefix(baseRef, "-") {
+		return "", "", &baseRefError{ref: baseRef}
+	}
+	// One fetch per repository at a time, apart from the checkout lock (a
+	// fetch can take long). A start that waited may find the ref here now.
+	unlock := w.lock("fetch " + repo)
+	defer unlock()
+	if isCommit(ctx, repo, baseRef) {
+		return baseRef, "", nil
+	}
+	if _, err := git(ctx, repo, "rev-parse", "--verify", "--quiet", "--end-of-options", baseRef+"^{object}"); err == nil {
+		return "", "", &baseRefError{ref: baseRef} // here, but not a commit
+	}
+	out, err := git(ctx, repo, "remote")
+	if err != nil {
+		return "", "", err
+	}
+	remotes := strings.Fields(out)
+	if i := slices.Index(remotes, "origin"); i > 0 {
+		remotes = append([]string{"origin"}, slices.Delete(remotes, i, i+1)...)
+	}
+	missing := &baseRefError{ref: baseRef, looked: true, remotes: remotes}
+	var failed []error
+	fetch := func(r string, refspec string) bool {
+		_, err := gitRemote(ctx, repo, "fetch", "--quiet", "--no-tags", "--no-recurse-submodules", r, refspec)
+		if err != nil {
+			failed = append(failed, fmt.Errorf("%s: %w", r, err))
+		}
+		return err == nil
+	}
+	for _, r := range remotes {
+		wants := slices.DeleteFunc(upstreamRefs(baseRef, r, remotes), func(u upstreamRef) bool {
+			return u.dst != "" && !validRefs(ctx, repo, u.src, u.dst)
+		})
+		switch {
+		case len(wants) == 0:
+			continue
+		case wants[0].dst == "": // a commit id, which most servers serve
+			if fetch(r, baseRef) && isCommit(ctx, repo, baseRef) {
+				return baseRef, r, nil
+			}
+			continue
+		}
+		args := []string{"ls-remote", r}
+		for _, u := range wants {
+			args = append(args, u.src)
+		}
+		out, err := gitRemote(ctx, repo, args...)
+		if err != nil {
+			failed = append(failed, fmt.Errorf("%s: %w", r, err))
+			continue
+		}
+		there := map[string]bool{}
+		for _, line := range strings.Split(out, "\n") {
+			if _, name, ok := strings.Cut(line, "\t"); ok {
+				there[strings.TrimSpace(name)] = true
+			}
+		}
+		for _, u := range wants {
+			if !there[u.src] {
+				continue
+			}
+			refspec := u.src + ":" + u.dst
+			if strings.HasPrefix(u.dst, "refs/remotes/") { // follows the remote, as git fetch's own refspec does
+				refspec = "+" + refspec
+			}
+			if fetch(r, refspec) && isCommit(ctx, repo, u.dst) {
+				return u.dst, r, nil
+			}
+			break
+		}
+	}
+	missing.fetch = errors.Join(failed...)
+	return "", "", missing
+}
+
+// upstreamRef is a ref FetchRef looks for: src on the remote, kept as dst
+// here ("" for a commit id, which needs no ref).
+type upstreamRef struct{ src, dst string }
+
+var commitID = regexp.MustCompile(`^([0-9a-f]{40}|[0-9a-f]{64})$`)
+
+// upstreamRefs are where baseRef may be on remote r, as git would resolve
+// it here: a tag before a branch.
+func upstreamRefs(baseRef, r string, remotes []string) []upstreamRef {
+	switch {
+	case commitID.MatchString(baseRef):
+		return []upstreamRef{{baseRef, ""}}
+	case strings.HasPrefix(baseRef, "refs/tags/"):
+		return []upstreamRef{{baseRef, baseRef}}
+	case strings.HasPrefix(baseRef, "refs/heads/"):
+		return []upstreamRef{{baseRef, "refs/remotes/" + r + "/" + strings.TrimPrefix(baseRef, "refs/heads/")}}
+	case strings.HasPrefix(baseRef, "refs/"):
+		return nil
+	}
+	for _, other := range remotes {
+		if b, ok := strings.CutPrefix(baseRef, other+"/"); ok { // a branch of that remote only
+			if other != r {
+				return nil
+			}
+			return []upstreamRef{{"refs/heads/" + b, "refs/remotes/" + r + "/" + b}}
+		}
+	}
+	return []upstreamRef{{"refs/tags/" + baseRef, "refs/tags/" + baseRef}, {"refs/heads/" + baseRef, "refs/remotes/" + r + "/" + baseRef}}
+}
+
+// validRefs reports whether every name is a well-formed ref (so none can
+// be read as a refspec or an option).
+func validRefs(ctx context.Context, repo string, names ...string) bool {
+	for _, n := range names {
+		if _, err := git(ctx, repo, "check-ref-format", n); err != nil {
+			return false
+		}
+	}
+	return true
+}
+
+func isCommit(ctx context.Context, repo, ref string) bool {
+	_, err := git(ctx, repo, "rev-parse", "--verify", "--quiet", "--end-of-options", ref+"^{commit}")
+	return err == nil
 }
 
 // Restore checks the session's branch out again at its worktree path,

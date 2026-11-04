@@ -111,6 +111,13 @@ public func durationText(_ seconds: Double) -> String {
 /// The turn was stopped on purpose (by the owner or the agent), not by a failure.
 public func isInterruption(_ f: Failure?) -> Bool { f?.kind == .interrupted }
 
+/// Who stopped an interrupted turn, as the machine recorded it: "owner" or an agent's client id.
+public func interrupter(_ f: Failure?) -> String? {
+    let prefix = "interrupted by "
+    guard let f, isInterruption(f), f.message.hasPrefix(prefix) else { return nil }
+    return String(f.message.dropFirst(prefix.count))
+}
+
 /// How a question was settled. name: who answered, by the id the machine recorded (the owner is "You").
 public func resolutionTitle(_ r: QuestionResolved, name: (String) -> String = { $0 }) -> String {
     let you = r.by == "owner"

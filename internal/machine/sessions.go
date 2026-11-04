@@ -378,8 +378,16 @@ func (s *Sessions) Start(ctx context.Context, p *Principal, req *sessionv1.Start
 	if why := s.outOfProcesses(); why != "" {
 		return nil, cerr(connect.CodeUnavailable, "this machine can't start programs now: %s; start the session on another machine, or ask the owner to quit what holds them", why)
 	}
-	if info := s.info(req.Agent); !info.Available {
+	info := s.info(req.Agent)
+	if !info.Available {
 		return nil, cerr(connect.CodeFailedPrecondition, "%s", unavailable(req.Agent, info))
+	}
+	// The client's model and effort, else the machine's defaults; what
+	// neither sets follows the agent's own configuration.
+	set := s.defaults(req.Agent)
+	set.Model, set.Effort = cmp.Or(req.Model, set.Model), cmp.Or(req.Effort, set.Effort)
+	if err := checkSettings(req.Agent, info, req.Model, req.Effort, cmp.Or(set.Model, info.Own.Model)); err != nil {
+		return nil, err
 	}
 	if strings.TrimSpace(req.Prompt) == "" && len(req.Attachments) == 0 {
 		return nil, cerr(connect.CodeInvalidArgument, "prompt is empty")
@@ -399,12 +407,6 @@ func (s *Sessions) Start(ctx context.Context, p *Principal, req *sessionv1.Start
 	title := provider.CleanTitle(req.Title)
 	if title == "" {
 		title = provider.CleanTitle(req.Prompt)
-	}
-	// The client's model, else the machine's defaults; what neither sets
-	// follows the agent's own configuration.
-	set := s.defaults(req.Agent)
-	if req.Model != "" {
-		set.Model = req.Model
 	}
 	r := &sessionRow{ID: id, ProjectID: req.ProjectId, Agent: req.Agent,
 		Status: sessionv1.SessionStatus_SESSION_STATUS_QUEUED, CreatedBy: p.ClientID, GrantID: g.GrantId, Model: set.Model, Effort: set.Effort, Speed: set.Speed,
@@ -1402,13 +1404,23 @@ func (s *Sessions) prepare(l *live) {
 			err = s.ws.Restore(ctx, proj.Path, id)
 		} else {
 			base, branch, err = s.ws.Create(ctx, proj.Path, baseRef, id)
+			if errors.As(err, new(*baseRefError)) {
+				// Missing here may only mean not fetched yet (a tag CI pushed, a
+				// branch pushed from elsewhere): fetch that ref alone, start from it.
+				fetchStart := time.Now()
+				var local, remote string
+				if local, remote, err = s.ws.FetchRef(ctx, proj.Path, baseRef); err == nil {
+					s.log.Info("fetched the base ref", "session", id, "ref", baseRef, "remote", remote, "took", time.Since(fetchStart).Round(time.Millisecond))
+					base, branch, err = s.ws.Create(ctx, proj.Path, local, id)
+				}
+			}
 		}
 		mWorktree.Since(wtStart)
 		if err != nil {
 			var baseErr *baseRefError
 			if errors.As(err, &baseErr) {
 				err = provider.Fail(sessionv1.FailureKind_FAILURE_KIND_BASE_REF_UNAVAILABLE,
-					fmt.Sprintf("Cannot create the worktree for project %q: base ref %q does not resolve to a commit in local repository %q.", proj.ID, baseErr.ref, proj.Path))
+					fmt.Sprintf("Cannot create the worktree for project %q: base ref %q does not resolve to a commit in local repository %q%s.", proj.ID, baseErr.ref, proj.Path, baseErr.upstream()))
 			}
 			fail(err)
 			return
@@ -1500,8 +1512,9 @@ func (s *Sessions) prepare(l *live) {
 	}
 	mProcs.Add(1)
 	l.pending, l.resume = message{}, false
-	turn := l.turn
+	turn, took := l.turn, time.Since(l.prepStarted).Round(time.Millisecond)
 	l.mu.Unlock()
+	s.log.Info("agent started", "session", id, "agent", agent, "pid", ps.Pgid(), "resumed", spec.ResumeRef != "", "took", took)
 	s.setStatus(l, sessionv1.SessionStatus_SESSION_STATUS_RUNNING, "")
 	if !restarting { // a restarted turn was already announced
 		s.emit(l, &sessionv1.SessionEvent{Kind: &sessionv1.SessionEvent_TurnStarted{TurnStarted: &sessionv1.TurnStarted{Turn: turn, Asker: prompt.by}}})
@@ -1547,6 +1560,7 @@ func (s *Sessions) pump(l *live, ps provider.Session) {
 		if err := ps.Err(); err != nil {
 			msg += ": " + err.Error()
 		}
+		s.log.Warn("agent process exited during a turn", "session", l.id, "pid", ps.Pgid(), "err", ps.Err())
 		s.interruptTurn(l, ps, &provider.Failure{Kind: sessionv1.FailureKind_FAILURE_KIND_AGENT_CRASHED, Message: msg})
 	}
 	s.dispatch()
@@ -1771,6 +1785,9 @@ func (s *Sessions) finishTurn(l *live, e provider.Event, status sessionv1.Sessio
 		}
 		tc.Failure = f.Proto()
 		countFailure(l.row.Agent, tc.Failure.Kind)
+		if tc.Failure.Kind != sessionv1.FailureKind_FAILURE_KIND_INTERRUPTED {
+			s.log.Warn("turn failed", "session", id, "turn", turn, "kind", tc.Failure.Kind.String(), "message", tc.Failure.Message)
+		}
 	}
 	var commit string
 	var turnStat *sessionv1.DiffStat
@@ -2188,7 +2205,17 @@ func (s *Sessions) Janitor(ctx context.Context) {
 				s.expireQuestions(l, now)
 			case sessionv1.SessionStatus_SESSION_STATUS_RUNNING:
 				if f := s.stalled(l, ps, now); f != nil {
-					s.log.Warn("stopping a stalled turn", "session", l.id, "reason", f.Message)
+					// What it was doing goes with the failure, or nobody can tell
+					// once the process is gone.
+					var d provider.Diagnosis
+					reason := f.Message
+					if ps != nil {
+						d = ps.Diagnose()
+						if what := d.String(); what != "" {
+							f.Message += "; " + what
+						}
+					}
+					s.log.Warn("stopping a stalled turn", "session", l.id, "reason", reason, "running", strings.Join(d.Running, ", "), "stderr", d.Stderr)
 					mWatchdog.Inc()
 					s.interruptTurn(l, ps, f)
 				}

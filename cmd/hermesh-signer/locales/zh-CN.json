@@ -16,5 +16,11 @@
   "helloAfter": "批准后用 Windows Hello 确认",
   "wait": "请在 Windows Hello 中确认是你本人…",
   "openSignIn": "打开登录选项",
-  "ok": "好"
+  "ok": "好",
+  "matchOn": "在「%s」上输入这两位数字",
+  "matchDevice": "在新设备上输入这两位数字",
+  "matchMachine": "在新机器上输入这两位数字",
+  "joinsDevice": "输入后，该设备即可像这台电脑一样成为你的可信设备。",
+  "joinsMachine": "输入后，该设备将作为执行机器加入：仅运行任务，不具备批准权限。",
+  "digits": "两位数字"
 }

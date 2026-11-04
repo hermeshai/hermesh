@@ -67,7 +67,7 @@ type Config struct {
 	// presence and admission.
 	Relay *relay.Server
 	// RelayHandler serves the relay's endpoints; the gateway's clients dial
-	// it in-process. Default: Relay.Handler().
+	// it in-process. Default: Relay.InProcessHandler().
 	RelayHandler http.Handler
 	Backend      Backend
 	Vault        Vault
@@ -76,7 +76,7 @@ type Config struct {
 	SetupURL string
 	// WakePage is where an owner sets up a doorbell from an agent's link:
 	// the code follows it (e.g. https://hermesh.io/w/). Empty for none: the
-	// owner sets doorbells up in the Mac app.
+	// link is hermesh://wake?code=…, which the Hermesh app on a computer opens.
 	WakePage string
 	// VerifiedClients are the hosts whose Client ID Metadata Documents are
 	// shown as verified (default: claude.ai, chatgpt.com, openai.com).
@@ -91,6 +91,29 @@ type Config struct {
 	WebhookClient *http.Client
 	// Now is the clock (tests).
 	Now func() time.Time
+
+	// CSRFKey keys the consent page's CSRF tokens; empty: a random one,
+	// which only this process knows.
+	CSRFKey []byte
+	// Shared is what this gateway shares with the other nodes of a center
+	// on several; nil: this process alone.
+	Shared Shared
+}
+
+// Shared is what the gateways of a center on several nodes share: locks,
+// leases and counters. Its errors leave each node to itself.
+type Shared interface {
+	// Lock takes a lock held across the nodes for at most ttl, waiting for
+	// it until ctx ends.
+	Lock(ctx context.Context, name string, ttl time.Duration) (unlock func(), err error)
+	// Lead takes or keeps the lease name for this node for ttl; false while
+	// another node holds it.
+	Lead(name string, ttl time.Duration) bool
+	// Claim takes name for ttl unless anyone holds it.
+	Claim(name string, ttl time.Duration) bool
+	// Allow counts a use of limit by key: false once n uses fell in one
+	// window.
+	Allow(limit, key string, n int, window time.Duration) (bool, error)
 }
 
 // Limits.
@@ -111,6 +134,10 @@ const (
 	maxConnections = 10
 	maxWaiting     = 10
 	keyCacheTTL    = 10 * time.Minute
+	// loopEvery spaces the loop's rounds; connLockTTL bounds how long a
+	// connection's state change holds its lock on every node.
+	loopEvery   = 5 * time.Second
+	connLockTTL = 30 * time.Second
 )
 
 type Gateway struct {
@@ -153,7 +180,7 @@ func New(cfg Config) (*Gateway, error) {
 		cfg.Logger = slog.Default()
 	}
 	if cfg.RelayHandler == nil {
-		cfg.RelayHandler = cfg.Relay.Handler()
+		cfg.RelayHandler = cfg.Relay.InProcessHandler()
 	}
 	if cfg.SetupURL == "" {
 		cfg.SetupURL = "https://github.com/hermeshai/hermesh/releases/latest"
@@ -173,7 +200,11 @@ func New(cfg Config) (*Gateway, error) {
 	g := &Gateway{cfg: cfg, log: cfg.Logger, db: cfg.Backend, issuer: issuer, resource: resource, secret: make([]byte, 32),
 		tools: cli.Tools(), keys: map[string]cachedKey{}, peers: map[string]*keptPeer{}, connLocks: map[string]*sync.Mutex{}, dcr: map[string][]time.Time{},
 		stop: make(chan struct{}), done: make(chan struct{})}
-	rand.Read(g.secret)
+	if len(cfg.CSRFKey) > 0 {
+		g.secret = cfg.CSRFKey
+	} else {
+		rand.Read(g.secret)
+	}
 	g.relay = inProcessClient(cfg.RelayHandler)
 	switch b := cfg.Backend.(type) {
 	case *SQLBackend:
@@ -234,7 +265,7 @@ func (g *Gateway) Mount(mux *http.ServeMux) {
 // and no longer used ended, peers no longer used closed.
 func (g *Gateway) loop() {
 	defer close(g.done)
-	t := time.NewTicker(5 * time.Second)
+	t := time.NewTicker(loopEvery)
 	defer t.Stop()
 	sweep := time.NewTicker(10 * time.Minute)
 	defer sweep.Stop()
@@ -243,10 +274,15 @@ func (g *Gateway) loop() {
 		case <-g.stop:
 			return
 		case <-t.C:
-			g.advanceWaiting(context.Background())
+			if g.lead() {
+				g.advanceWaiting(context.Background())
+			}
 			g.ringAgainDue()
 			g.closeIdlePeers(false)
 		case <-sweep.C:
+			if !g.lead() {
+				continue
+			}
 			if err := g.db.Sweep(context.Background(), g.cfg.Now()); err != nil {
 				g.log.Warn("mcp sweep", "err", err)
 			}
@@ -347,8 +383,14 @@ func (g *Gateway) csrfToken(authzID string) string {
 	return base64.RawURLEncoding.EncodeToString(m.Sum(nil))
 }
 
-// connLock serialises the state changes of one connection.
-func (g *Gateway) connLock(id string) *sync.Mutex {
+// lead reports whether this node does the work one node does for all: the
+// loop's waiting connections and sweep (always, without other nodes).
+func (g *Gateway) lead() bool {
+	return g.cfg.Shared == nil || g.cfg.Shared.Lead("mcp-loop", 3*loopEvery)
+}
+
+// connLock serialises the state changes of one connection, on every node.
+func (g *Gateway) connLock(id string) sync.Locker {
 	g.mu.Lock()
 	defer g.mu.Unlock()
 	l := g.connLocks[id]
@@ -356,7 +398,37 @@ func (g *Gateway) connLock(id string) *sync.Mutex {
 		l = &sync.Mutex{}
 		g.connLocks[id] = l
 	}
-	return l
+	if g.cfg.Shared == nil {
+		return l
+	}
+	return &sharedLock{local: l, shared: g.cfg.Shared, name: "mcpconn:" + id, log: g.log}
+}
+
+// sharedLock is a connection's lock on this node, then on every node. While
+// the nodes can't share it, each node holds its own.
+type sharedLock struct {
+	local  *sync.Mutex
+	shared Shared
+	name   string
+	log    *slog.Logger
+	unlock func()
+}
+
+func (l *sharedLock) Lock() {
+	l.local.Lock()
+	ctx, cancel := context.WithTimeout(context.Background(), connLockTTL)
+	defer cancel()
+	unlock, err := l.shared.Lock(ctx, l.name, connLockTTL)
+	if err != nil {
+		l.log.Warn("mcp: taking a connection's lock on every node", "lock", l.name, "err", err)
+		unlock = func() {}
+	}
+	l.unlock = unlock
+}
+
+func (l *sharedLock) Unlock() {
+	l.unlock()
+	l.local.Unlock()
 }
 
 func (g *Gateway) resourceMetadataURL() string {
