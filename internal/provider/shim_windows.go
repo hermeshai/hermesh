@@ -50,10 +50,19 @@ func isFile(p string) bool {
 // to the shim's folder.
 var npmTarget = regexp.MustCompile(`"%dp0%\\([^"]+)"`)
 
+// voltaRun is all a Volta shim does: Volta runs the program the shim is
+// named for. Volta 2.0.2's format is the only one besides npm's we have
+// tested; pnpm's and yarn's shims are their own, refused as batch files.
+var voltaRun = regexp.MustCompile(`(?m)^volta run %~n0 %\*\r?$`)
+
+// lookVolta finds Volta where the shim's "volta" is found: on the PATH.
+var lookVolta = func() string { return LookPath("volta", shellenv.Path()) }
+
 // startable is what runs bin with args. cmd.exe reads the command line of
 // a .cmd or .bat file by rules no quoting of arguments can satisfy, so such
 // a file never runs: an npm shim gives way to the program it starts (node
-// and its script, or a native program), and anything else is refused.
+// and its script, or a native program), a Volta shim to Volta itself, which
+// resolves the program the shim is named for, and anything else is refused.
 func startable(bin string, args []string) (string, []string, error) {
 	if !strings.ContainsAny(bin, `\/`) {
 		if p := LookPath(bin, shellenv.Path()); p != "" {
@@ -71,9 +80,16 @@ func startable(bin string, args []string) (string, []string, error) {
 	if err != nil {
 		return "", nil, err
 	}
+	if voltaRun.Match(b) {
+		v := lookVolta()
+		if v == "" {
+			return "", nil, fmt.Errorf("%s is a Volta shim, and volta is not on the PATH", bin)
+		}
+		return v, append([]string{"run", strings.TrimSuffix(filepath.Base(bin), filepath.Ext(bin))}, args...), nil
+	}
 	m := npmTarget.FindAllStringSubmatch(string(b), -1)
 	if len(m) == 0 {
-		return "", nil, fmt.Errorf("%s is a batch file, which Hermesh does not run (it follows npm's shims only)", bin)
+		return "", nil, fmt.Errorf("%s is a batch file, which Hermesh does not run (it follows npm's and Volta's shims only)", bin)
 	}
 	dir := filepath.Dir(bin)
 	target := filepath.Join(dir, m[len(m)-1][1])

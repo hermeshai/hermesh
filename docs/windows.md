@@ -142,7 +142,7 @@ KillGroup(pgid int)            // end it gently, then for sure (also at recovery
 | ACP agents | Their npm shims, resolved (below) |
 
 - **Lookup** follows `PATHEXT` and does not look for executable bits.
-- **Never `.cmd`, `.bat` or `.ps1`.** `cmd.exe`'s quoting cannot carry arbitrary arguments safely. npm's shims are resolved to the program they start (node and its script, or a native binary), the shape `acp.command` already returns for app bundles (a binary plus leading arguments). Anything else is refused, saying why.
+- **Never `.cmd`, `.bat` or `.ps1`.** `cmd.exe`'s quoting cannot carry arbitrary arguments safely. npm's shims are resolved to the program they start (node and its script, or a native binary), the shape `acp.command` already returns for app bundles (a binary plus leading arguments); Volta's (`volta run %~n0 %*`) to Volta itself, which resolves the program the shim is named for. Anything else is refused, saying why.
 - **Git.** Worktrees need Git for Windows; a missing git is a machine problem with its fix (`winget install Git.Git`).
 - **Claude Code** uses Git Bash for its shell tool when Git for Windows is installed, PowerShell otherwise; nothing for Hermesh to do. It has no sandbox on native Windows.
 - **Codex** brings its own Windows sandbox; S4 checks it under our job.
