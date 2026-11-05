@@ -3,6 +3,24 @@
     "improvements": [],
     "fixes": []
   },
+  "0.1.4": {
+    "improvements": [
+      "The session list can be grouped by project, on the Mac and the iPhone: choose By Project from the view menu’s Group.",
+      "iPhone: Try It First on the welcome page opens a simulated workspace, so you can look around the app before signing in. Nothing in it reaches a real account or machine.",
+      "iPhone: All Sessions now looks like the menu’s lists and the Mac’s sidebar, with each session’s state, who started it, its coding agent, its project and when.",
+      "iPhone: choosing coding agents for an agent now works as on the Mac. It lists the ones ready on your machines and has a switch for all of them, including ones installed later.",
+      "A new grant now covers every coding agent, including ones installed later, on the iPhone, the Mac and Windows. You can still narrow it.",
+      "`agent list` shows the models each coding agent offers, the reasoning efforts each model takes and the defaults. `session start` takes `--effort`, and a model or effort the agent doesn’t offer is refused before the session starts, naming the ones it does.",
+      "Wake on New Messages now appears on an agent’s page once the bot has set it up and sent you its link, on the Mac, Windows and iPhone. On your own server the link opens in the desktop app.",
+      "Windows: the DSH desktop app’s own `dsh` now runs as a coding agent, and coding agents installed through Volta are found."
+    ],
+    "fixes": [
+      "Mac: when the Mac was busy, sessions could take minutes to start and then show as crashed, because the machine’s background service ran at a very low priority. It now runs at a normal program’s priority, and the app applies this by itself after updating.",
+      "New ChatGPT connections to the MCP gateway failed after a change on ChatGPT’s side. They work again.",
+      "A session interrupted while queued or starting no longer shows as failed. It now says it was interrupted and who stopped it.",
+      "iPhone: giving an agent all coding agents no longer narrows the grant to today’s list, and a choice made in Change What It Can Use is no longer undone when you come back from the picker."
+    ]
+  },
   "0.1.3": {
     "improvements": [
       "When a coding agent stalls or a turn runs past its time limit, the failure now says what it was doing: which programs it had running, such as an MCP server that was starting (on macOS and Linux), and the last lines it printed. The machine’s log also records each agent start and each failed turn."
