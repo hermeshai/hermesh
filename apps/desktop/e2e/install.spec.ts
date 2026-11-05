@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { snap } from "./app";
+import { cli, fixture, snap } from "./app";
 
 import { installer, type Hook } from "./install-app";
 
@@ -57,6 +57,32 @@ for (const move of ["cancel", "error"] as const) {
     await Promise.all([app.waitForEvent("close"), app.evaluate(() => (globalThis as unknown as Hook).installTest.respond(0))]);
   });
 }
+
+test("hermeshd of another version: once no session is busy, launchd loads its job again from the plist now in the bundle, without blocking on its exit", async () => {
+  const app = await installer(true);
+  const page = await app.firstWindow();
+  await expect(page.getByRole("list", { name: "会话" })).toContainText("写 hello");
+  const seen = () => app.evaluate(() => {
+    const { launchctl, loginItems } = (globalThis as unknown as Hook).installTest;
+    return { launchctl, loginItems };
+  });
+  const advance = () => app.evaluate(() => (globalThis as unknown as Hook).installTest.advance(30_000));
+  // A session runs and another waits for an answer: restarting would end their turns.
+  await advance();
+  expect(await seen()).toMatchObject({ launchctl: [], loginItems: [{ openAtLogin: true }] });
+  await cli("session", "interrupt", fixture.sessions["跑很久"]);
+  await cli("session", "interrupt", fixture.sessions["选颜色"]);
+  await expect.poll(async () => {
+    await advance();
+    return (await seen()).loginItems.length;
+  }).toBe(2);
+  const { launchctl, loginItems } = await seen();
+  // A kickstart would run the new binary under the plist launchd loaded. Registering again blocks while the old process exits, so the app waits for that first.
+  expect(launchctl.map(([verb]) => verb)).toEqual(["bootout", "print", "print"]);
+  expect(new Set(launchctl.map(([, job]) => job)).size).toBe(1);
+  expect(launchctl[0][1]).toMatch(/^gui\/\d+\/com\.hermesh\.app\.daemon$/);
+  expect(loginItems[1]).toEqual({ type: "agentService", serviceName: "com.hermesh.app.daemon.plist", openAtLogin: true });
+});
 
 test("from Applications the app starts normally; update errors explain recovery and fold technical details", async () => {
   const app = await installer(true);

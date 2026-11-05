@@ -123,6 +123,9 @@ func Supervised(dataDir string) bool {
 	return os.Getenv(supervisorEnv) == "1" && InstalledFor(dataDir)
 }
 
+// ReloadOldJob is for launchd, which keeps a job as it loaded it.
+func ReloadOldJob(dataDir string) (bool, error) { return false, nil }
+
 // InstalledFor reports whether the installed service runs the machine in
 // dataDir.
 func InstalledFor(dataDir string) bool {

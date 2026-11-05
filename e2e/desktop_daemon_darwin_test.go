@@ -112,6 +112,69 @@ func TestDesktopServiceInstallPriority(t *testing.T) {
 	}
 }
 
+// A Mac whose service an older version installed gets the new job by itself:
+// an update replaces only the program, and launchd keeps the job it loaded, so
+// the new program rewrites the plist and has launchd load it again.
+func TestDesktopServiceReloadsOldJob(t *testing.T) {
+	if testing.Short() {
+		t.Skip("e2e")
+	}
+	const label = "com.hermesh.daemon"
+	domain := launchdDomain(t)
+	target := domain + "/" + label
+	if exec.Command("launchctl", "print", target).Run() == nil {
+		t.Skip("this Mac runs the real service")
+	}
+	bin, home, data := filepath.Join(binaries(t), "hermeshd"), t.TempDir(), t.TempDir()
+	log := filepath.Join(data, "launchd.log")
+	// As versions before ae3256f wrote it, but for the home folder: launchd
+	// gives the job the real one, where it would not find this plist.
+	plist := filepath.Join(home, "Library", "LaunchAgents", label+".plist")
+	old := fmt.Sprintf(`<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key><string>%s</string>
+  <key>ProgramArguments</key>
+  <array><string>%s</string><string>run</string><string>--data-dir</string><string>%s</string></array>
+  <key>EnvironmentVariables</key><dict><key>HOME</key><string>%s</string></dict>
+  <key>RunAtLoad</key><true/>
+  <key>KeepAlive</key><true/>
+  <key>ProcessType</key><string>Background</string>
+  <key>StandardOutPath</key><string>%s</string>
+  <key>StandardErrorPath</key><string>%s</string>
+</dict>
+</plist>
+`, label, bin, data, home, log, log)
+	if err := os.MkdirAll(filepath.Dir(plist), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(plist, []byte(old), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if out, err := exec.Command("launchctl", "bootstrap", domain, plist).CombinedOutput(); err != nil {
+		t.Fatalf("launchctl bootstrap: %v: %s", err, out)
+	}
+	t.Cleanup(func() {
+		run(t, homeEnv(home), 30*time.Second, bin, "service", "uninstall", "--data-dir", data)
+		if t.Failed() {
+			b, _ := os.ReadFile(log)
+			t.Logf("==== hermeshd under launchd ====\n%s", b)
+		}
+	})
+	eventually(t, time.Minute, "launchd running the job as interactive", func() bool {
+		out, _ := exec.Command("launchctl", "print", target).Output()
+		return strings.Contains(string(out), "spawn type = interactive")
+	})
+	b, err := os.ReadFile(plist)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := strings.Replace(old, "<string>Background</string>", "<string>Interactive</string>", 1); string(b) != want {
+		t.Fatalf("the plist:\n%s\nwant only its ProcessType changed:\n%s", b, want)
+	}
+}
+
 // launchdDomain is where launchd runs this user's LaunchAgents.
 func launchdDomain(t *testing.T) string {
 	t.Helper()

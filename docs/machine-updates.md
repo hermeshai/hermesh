@@ -81,6 +81,7 @@ Looking for an update reads three small files from `https://github.com/hermeshai
 - Runs inside `hermeshd run`, machine or Linux trusted device, only when the process is the installed service for its data directory (systemd's `INVOCATION_ID`, launchd's `XPC_SERVICE_NAME`, `service.Supervised`): the service manager is what starts the new version. In a container or under `nohup` it never runs; `hermeshd update --check` still works there.
 - Checks 5 to 15 minutes after start, then every 6 hours with up to an hour's jitter, so a release does not reach every machine at once.
 - With a newer version found, it waits for the guard (§3.1), looking again every 10 minutes, then installs (§5.2) and exits; systemd (`Restart=always`) and launchd (`KeepAlive`) start the new program.
+- launchd keeps a job as it loaded it, and an update replaces only the program. So on a Mac whose service an older version installed as a Background job, the new program corrects the plist when it starts and has launchd load the job again (`service.ReloadOldJob`).
 - A failed check or download is logged and tried again at the next check. Nothing is ever shown on a device for it.
 
 ### 5.4 State

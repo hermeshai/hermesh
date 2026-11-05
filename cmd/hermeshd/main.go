@@ -162,6 +162,18 @@ A computer that runs no coding agents can approve instead: hermeshd device.`}
 			if n := rlimit.RaiseNoFile(); n > 0 { // Windows has no such limit
 				log.Info("open file limit", "soft", n)
 			}
+			switch reloading, err := service.ReloadOldJob(dataDir); {
+			case err != nil:
+				log.Warn("updating the service's launchd job", "err", err)
+			case reloading:
+				log.Info("launchd is loading the service's updated job")
+				select {
+				case <-ctx.Done():
+					return nil
+				case <-time.After(time.Minute):
+					log.Warn("launchd did not load the service's updated job; it applies at the next login")
+				}
+			}
 			if exe, err := os.Executable(); err == nil && spawn.Supported {
 				// Spawning from small helpers keeps agent start cost flat
 				// as this process accumulates descriptors (see spawn.Helper).
