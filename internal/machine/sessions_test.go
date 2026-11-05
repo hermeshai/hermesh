@@ -737,6 +737,30 @@ func TestListEventsPages(t *testing.T) {
 	}
 }
 
+// An event counts as soon as session get shows it, though events are stored
+// in batches: a page read right after has it.
+func TestListEventsHasWhatGetShows(t *testing.T) {
+	h := newHarness(t, DefaultLimits())
+	id := h.start("say hi")
+	h.wait(id, idle)
+	h.s.mu.Lock()
+	l := h.s.live[id]
+	h.s.mu.Unlock()
+	for range 200 {
+		h.s.emit(l, &sessionv1.SessionEvent{Kind: &sessionv1.SessionEvent_AgentMessage{AgentMessage: &sessionv1.AgentMessage{Text: "x"}}})
+		l.mu.Lock()
+		want := l.row.Progress.LastEventSeq
+		l.mu.Unlock()
+		res, err := h.s.ListEvents(h.p, &sessionv1.ListEventsRequest{SessionId: id, Limit: 1})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got := res.Events[0].Seq; got != want {
+			t.Fatalf("the latest event is %d, session get says %d", got, want)
+		}
+	}
+}
+
 // With no cap, the default, every session starts at once: none waits queued.
 func TestNoSessionCapByDefault(t *testing.T) {
 	h := newHarness(t, DefaultLimits())
