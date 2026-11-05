@@ -186,18 +186,40 @@ struct DiffView: View {
 /// The coding agents a grant can name; matches machine.AgentNames in hermeshd.
 let codingAgentIDs = ["claude", "codex", "gemini", "antigravity", "cursor", "copilot", "opencode", "qwen", "goose", "auggie", "kimi", "kiro", "qoder", "deepseek", "codebuddy", "grok"]
 
+/// The coding agents ready on some machine.
+func readyAgents(_ machines: [Machine]) -> [String] {
+    let ready = Set(machines.flatMap { $0.status.agents.filter(\.available).map(\.name) })
+    return codingAgentIDs.filter(ready.contains)
+}
+
 /// A personal agent's scope as the owner chooses it: projects (or all),
 /// coding agents and lifetime.
 struct ScopeChoice: Equatable {
     var allProjects = false
     /// "machineID/projectID".
     var projects: Set<String> = []
-    var agents: Set<String> = ["claude", "codex"]
+    /// Every coding agent, including ones installed later.
+    var allAgents = true
+    var agents: Set<String> = []
     var ttlDays = 30
 
     static let ttlChoices = [7, 30, 90]
 
-    var complete: Bool { (allProjects || !projects.isEmpty) && !agents.isEmpty }
+    var complete: Bool { (allProjects || !projects.isEmpty) && (allAgents || !agents.isEmpty) }
+
+    var agentsText: String {
+        if allAgents { return String(localized: "All coding agents") }
+        if agents.isEmpty { return String(localized: "None yet") }
+        return listText(codingAgentIDs.filter(agents.contains).map(agentTitle))
+    }
+
+    /// A new grant's coding agents: Claude Code and Codex where they are
+    /// ready, else every ready one; with none ready, all of them.
+    mutating func useDefaultAgents(ready: [String]) {
+        let usual = ready.filter(["claude", "codex"].contains)
+        allAgents = ready.isEmpty
+        agents = Set(usual.isEmpty ? ready : usual)
+    }
 
     var projectsText: String {
         if allProjects { return String(localized: "All projects") }
@@ -207,7 +229,7 @@ struct ScopeChoice: Equatable {
 
     var spec: GrantSpec {
         var s = GrantSpec()
-        s.agents = agents.sorted()
+        s.agents = allAgents ? ["*"] : agents.sorted()
         s.ttlDays = UInt32(ttlDays)
         if !allProjects {
             let pairs = projects.map { $0.split(separator: "/", maxSplits: 1).map(String.init) }
@@ -225,7 +247,8 @@ struct ScopeChoice: Equatable {
         let named = client.spec.agents.filter { $0 != "*" }
         allProjects = machines.isEmpty && ids.isEmpty
         projects = Set(all.filter { (machines.isEmpty || machines.contains($0.machineID)) && (ids.isEmpty || ids.contains($0.projectID)) }.map { "\($0.machineID)/\($0.projectID)" })
-        agents = Set(named.isEmpty ? codingAgentIDs : named)
+        allAgents = named.isEmpty
+        agents = Set(named)
     }
 }
 
@@ -247,8 +270,9 @@ struct ScopeRows: View {
             NavigationLink {
                 AgentPicker(scope: $scope)
             } label: {
-                LabeledContent("Coding agents", value: listText(codingAgentIDs.filter(scope.agents.contains).map(agentTitle)))
+                LabeledContent("Coding agents", value: scope.agentsText)
             }
+            .accessibilityIdentifier("scope-agents")
             if showsTTL {
                 Picker("Valid for", selection: $scope.ttlDays) {
                     ForEach(ScopeChoice.ttlChoices, id: \.self) { d in Text("\(d) days").tag(d) }
@@ -299,23 +323,79 @@ struct ProjectPicker: View {
 }
 
 struct AgentPicker: View {
+    @Environment(AppModel.self) private var model
     @Binding var scope: ScopeChoice
+    /// Chosen when it opened: they stay listed, even when not ready, while the owner changes them.
+    @State private var kept: Set<String>
+    @State private var scanning = true
+
+    init(scope: Binding<ScopeChoice>) {
+        _scope = scope
+        _kept = State(initialValue: scope.wrappedValue.agents)
+    }
 
     var body: some View {
-        List(codingAgentIDs, id: \.self) { a in
-            Button {
-                if scope.agents.contains(a) { scope.agents.remove(a) } else { scope.agents.insert(a) }
-            } label: {
-                HStack(spacing: 12) {
-                    AgentLogo(id: a, size: 24)
-                    Text(agentTitle(a))
-                    Spacer()
-                    if scope.agents.contains(a) { Image(systemName: "checkmark").foregroundStyle(Color.accentColor) }
+        let ready = readyAgents(model.machines)
+        let listed = codingAgentIDs.filter { ready.contains($0) || kept.contains($0) }
+        List {
+            Section {
+                Toggle("All coding agents (including ones installed later)", isOn: $scope.allAgents)
+                    .accessibilityIdentifier("all-agents")
+            }
+            if !scope.allAgents {
+                Section {
+                    ForEach(listed, id: \.self) { a in
+                        Button {
+                            if scope.agents.contains(a) { scope.agents.remove(a) } else { scope.agents.insert(a) }
+                        } label: {
+                            HStack(spacing: 12) {
+                                AgentLogo(id: a, size: 24)
+                                Text(agentTitle(a))
+                                Spacer()
+                                if scope.agents.contains(a) { Image(systemName: "checkmark").foregroundStyle(Color.accentColor) }
+                            }
+                        }
+                        .foregroundStyle(.primary)
+                        .accessibilityIdentifier("scope-agent-\(a)")
+                    }
+                    if listed.isEmpty {
+                        if scanning {
+                            HStack(spacing: 10) {
+                                ProgressView()
+                                Text("Scanning your machines…").foregroundStyle(.secondary)
+                            }
+                        } else {
+                            Text("No coding agent found on your machines.").foregroundStyle(.secondary)
+                        }
+                    }
                 }
             }
-            .foregroundStyle(.primary)
         }
         .navigationTitle("Coding Agents")
+        .task {
+            await model.recheckUnlisted()
+            scanning = false
+        }
+    }
+}
+
+/// A new grant's coding agents follow the default as the machines report
+/// theirs, until the owner changes them.
+struct NewGrantAgents: ViewModifier {
+    @Environment(AppModel.self) private var model
+    @Binding var scope: ScopeChoice
+    @State private var applied: [String] = []
+
+    func body(content: Content) -> some View {
+        content
+            .task { await model.recheckUnlisted() }
+            .task(id: readyAgents(model.machines)) {
+                let ready = readyAgents(model.machines)
+                var before = scope
+                before.useDefaultAgents(ready: applied)
+                if before == scope { scope.useDefaultAgents(ready: ready) }
+                applied = ready
+            }
     }
 }
 
@@ -358,6 +438,7 @@ struct PairingSheet: View {
                 .fittedSheet()
         } else if let p = pairing, p.kind == .client {
             ClientCard(pairing: p, report: selfReport(p), scope: $scope, busy: busy, approve: { approve(p) }, deny: { deny(p) }, close: { dismiss() })
+                .modifier(NewGrantAgents(scope: $scope))
         } else {
             form
         }
@@ -613,7 +694,9 @@ private struct ClientCard: View {
             NavigationLink(value: Page.agents) {
                 row("Coding agents") {
                     let chosen = codingAgentIDs.filter(scope.agents.contains)
-                    if chosen.isEmpty {
+                    if scope.allAgents {
+                        Text(scope.agentsText)
+                    } else if chosen.isEmpty {
                         Text("Choose…").foregroundStyle(Color.accentColor)
                     } else {
                         HStack(spacing: 4) {
@@ -837,7 +920,7 @@ struct ScopeSheet: View {
     @Environment(\.dismiss) private var dismiss
     let grantID: String
     @State private var scope = ScopeChoice()
-    @State private var initialized = false
+    @State private var loadedWith: Bool?
     @State private var busy = false
 
     var body: some View {
@@ -870,11 +953,11 @@ struct ScopeSheet: View {
                         .disabled(busy || !scope.complete)
                     }
                 }
-                .task(id: model.isDemo ? model.hasWorld : model.projects.isEmpty) {
-                    if model.isDemo {
-                        guard model.hasWorld, !initialized else { return }
-                        initialized = true
-                    }
+                .task(id: model.isDemo ? model.hasWorld : !model.projects.isEmpty) { // again once the projects came (the first Watch after a launch)
+                    let ready = model.isDemo ? model.hasWorld : !model.projects.isEmpty
+                    // Not on coming back from a picker: it would undo the choice.
+                    guard loadedWith != ready, ready || !model.isDemo else { return }
+                    loadedWith = ready
                     scope = ScopeChoice(client: c, projects: model.projects)
                 }
             }

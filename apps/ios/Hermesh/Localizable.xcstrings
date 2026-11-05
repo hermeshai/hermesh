@@ -1083,6 +1083,16 @@
         }
       }
     },
+    "All coding agents (including ones installed later)": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "所有编码 agent（包括以后安装的）"
+          }
+        }
+      }
+    },
     "All machines (including ones that join later)": {
       "localizations": {
         "zh-Hans": {
@@ -3834,6 +3844,16 @@
         }
       }
     },
+    "No coding agent found on your machines.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "你的机器上还没有找到编码 agent。"
+          }
+        }
+      }
+    },
     "No coding agent found on this machine.": {
       "localizations": {
         "zh-Hans": {
@@ -5100,6 +5120,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "正在扫描 %@…"
+          }
+        }
+      }
+    },
+    "Scanning your machines…": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "正在查找你的机器…"
           }
         }
       }

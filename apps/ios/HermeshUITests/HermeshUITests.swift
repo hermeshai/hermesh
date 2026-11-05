@@ -320,6 +320,18 @@ final class HermeshUITests: XCTestCase {
         all.switches.firstMatch.exists ? all.switches.firstMatch.tap() : all.tap()
         app.navigationBars.buttons.element(boundBy: 0).tap()
         XCTAssertTrue(text("所有项目").waitForExistence(timeout: 10), "the card shows the choice")
+        tap("scope-agents")
+        XCTAssertTrue(app.buttons["scope-agent-gemini"].waitForExistence(timeout: 20), "an agent on the machine is listed")
+        XCTAssertFalse(app.buttons["scope-agent-qoder"].exists, "one not installed is not")
+        let picker = XCTAttachment(screenshot: app.screenshot())
+        picker.name = "agent picker"
+        picker.lifetime = .keepAlways
+        add(picker)
+        let allAgents = app.switches["all-agents"]
+        allAgents.switches.firstMatch.exists ? allAgents.switches.firstMatch.tap() : allAgents.tap()
+        XCTAssertFalse(app.buttons["scope-agent-gemini"].waitForExistence(timeout: 2), "with all of them, nothing to pick")
+        app.navigationBars.buttons.element(boundBy: 0).tap()
+        XCTAssertTrue(text("所有编码 agent").waitForExistence(timeout: 10), "the card shows the choice")
         tap("approve")
         XCTAssertTrue(text("「Cursor」已连接").waitForExistence(timeout: 30), "approved")
         XCTAssertTrue(app.buttons["copy-prompt"].exists, "the first task to copy")
@@ -329,6 +341,33 @@ final class HermeshUITests: XCTestCase {
         add(connected)
         tap("close")
         try waitFor("the agent is connected") { (try self.control("agent")["connected"] as? Bool) == true ? true : nil }
+        XCTAssertEqual(try control("grant?label=Cursor")["agents"] as? [String], ["*"], "all coding agents, including ones installed later")
+        try narrowAgents()
+    }
+
+    /// A grant for all coding agents opens as that, and can name some instead.
+    func narrowAgents() throws {
+        openMenu()
+        app.buttons["授权"].tap()
+        let grant = app.buttons["grant-Cursor"]
+        XCTAssertTrue(grant.waitForExistence(timeout: 20))
+        grant.tap()
+        let change = app.buttons["change-scope"]
+        for _ in 0..<5 where !change.exists { app.swipeUp() }
+        tap("change-scope")
+        let agents = app.buttons["scope-agents"]
+        XCTAssertTrue(agents.waitForExistence(timeout: 10))
+        XCTAssertTrue(agents.label.contains("所有编码 agent"), agents.label)
+        agents.tap()
+        let allAgents = app.switches["all-agents"]
+        XCTAssertTrue(allAgents.waitForExistence(timeout: 10))
+        XCTAssertEqual(allAgents.value as? String, "1", "stays all")
+        allAgents.switches.firstMatch.exists ? allAgents.switches.firstMatch.tap() : allAgents.tap()
+        tap("scope-agent-gemini")
+        app.navigationBars.buttons.element(boundBy: 0).tap()
+        try waitFor("the choice stays after coming back", timeout: 10) { agents.label.contains("Gemini CLI") ? true : nil }
+        app.navigationBars.buttons["保存"].tap()
+        try waitFor("the grant names Gemini CLI") { (try self.control("grant?label=Cursor")["agents"] as? [String]) == ["gemini"] ? true : nil }
     }
 
     func renew() throws {

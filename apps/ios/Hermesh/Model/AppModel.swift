@@ -931,6 +931,14 @@ final class AppModel {
         } catch { report(error) }
     }
 
+    /// A machine looks for its coding agents when asked: a page that needs
+    /// them asks those with none listed (just joined, or just restarted).
+    func recheckUnlisted() async {
+        for m in machines where m.online && m.status.agents.isEmpty {
+            await recheck(machine: m.machineID)
+        }
+    }
+
     func removeDevice(_ d: Device) async {
         guard let api else { return }
         do {
