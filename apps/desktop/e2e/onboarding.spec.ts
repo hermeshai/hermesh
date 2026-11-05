@@ -332,6 +332,7 @@ test("browser sign-in: the link brings the authorization page, the center's rela
   await expect(page.getByText("「Grok Bot」能用什么")).toBeVisible();
   const agentsRow = page.getByRole("group", { name: "编码 agent" });
   await agentsRow.getByRole("button", { name: "修改" }).click();
+  await agentsRow.getByRole("checkbox", { name: "所有编码 agent（包括以后安装的）" }).click();
   await agentsRow.getByRole("checkbox", { name: "Gemini CLI" }).click();
   await snap(page, "first-10-scope");
   await page.getByRole("button", { name: "批准" }).click();
@@ -405,7 +406,7 @@ test("a Mac with no coding agent: an agent's request may use every one, includin
   const loggedIn = new Promise<number | null>((r) => login.on("exit", r));
   await expect(page.getByText("「Muse」能用什么")).toBeVisible({ timeout: 30_000 });
 
-  // Not Claude Code and Codex this Mac doesn't have: every coding agent, the only choice there is.
+  // Every coding agent, the default and the only choice there is: this Mac has none.
   const agentsRow = page.getByRole("group", { name: "编码 agent" });
   await expect(agentsRow).toContainText("所有编码 agent（包括以后安装的）");
   await agentsRow.getByRole("button", { name: "修改" }).click();

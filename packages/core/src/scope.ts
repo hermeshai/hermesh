@@ -21,7 +21,7 @@ export const ttlChoices = [7, 30, 90] as const;
 
 /** A new grant's scope. */
 export function defaultScope(): ScopeChoice {
-  return { allProjects: false, projects: new Set(), allAgents: false, agents: new Set(["claude", "codex"]), ttlDays: 30 };
+  return { allProjects: false, projects: new Set(), allAgents: true, agents: new Set(), ttlDays: 30 };
 }
 
 /** A grant's scope; "*" (or nothing) means all, as a relay may store it. */
