@@ -165,7 +165,7 @@ KillGroup(pgid int)            // end it gently, then for sure (also at recovery
 
 | | macOS | Windows |
 |---|---|---|
-| Daemon | `SMAppService` agent; `launchctl kickstart` | The logon task, which the app registers (`hermeshd service install --owner`); a restart ends the task, whose supervisor's job ends the daemon, and runs it again |
+| Daemon | `SMAppService` agent; `launchctl bootout`, then registered again | The logon task, which the app registers (`hermeshd service install --owner`); a restart ends the task, whose supervisor's job ends the daemon, and runs it again |
 | Open Hermesh at login | `mainAppService` | The user's Run value, through Electron's login item API, naming the Hermesh.exe above the versions; Startup apps lists and switches it |
 | Signer | `Hermesh Signer.app`, the app's child | A protected system component, not the app's child (§7.3); set up before the first root key (`readySigner`) |
 | Updates | Squirrel.Mac | Squirrel.Windows, through the same `autoUpdater`, from a signed feed (§6.2) |

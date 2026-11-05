@@ -45,11 +45,26 @@ export const mac: Platform = {
     if (installed) app.setLoginItemSettings({ ...agent, openAtLogin: true });
   },
 
-  /** Restarts the LaunchAgent: launchd stops it with SIGTERM and starts it again from the bundle. */
+  /**
+   * Restarts the LaunchAgent from the bundle, plist included. launchd keeps a job as it
+   * loaded it: a kickstart would run the new binary under the old plist. Booting the job
+   * out (SIGTERM) leaves it registered and allowed, and registering again loads the plist.
+   * Registering blocks until the old process has exited, so that waits for its exit.
+   */
   restartDaemon(why) {
     if (!installed) return;
     console.warn(`restarting hermeshd: ${why}`);
-    execFile("launchctl", ["kickstart", "-k", `gui/${process.getuid?.()}/com.hermesh.app.daemon`], (err) => err && console.warn("restarting hermeshd:", err));
+    const job = `gui/${process.getuid?.()}/com.hermesh.app.daemon`;
+    const deadline = Date.now() + 15_000; // launchd kills it 5 s after the SIGTERM
+    const whenGone = () => execFile("launchctl", ["print", job], (notLoaded) => {
+      if (notLoaded) app.setLoginItemSettings({ ...agent, openAtLogin: true });
+      else if (Date.now() < deadline) setTimeout(whenGone, 200);
+      else execFile("launchctl", ["kickstart", "-k", job], (err) => err && console.warn("restarting hermeshd:", err));
+    });
+    execFile("launchctl", ["bootout", job], (err) => {
+      if (err) console.warn("restarting hermeshd:", err);
+      whenGone();
+    });
   },
 
   /** The owner turned hermeshd off in System Settings › Login Items (or never allowed it): it does not run until they do. */

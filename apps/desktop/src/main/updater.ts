@@ -256,7 +256,7 @@ export function install() {
 
 // hermeshd is a LaunchAgent and keeps running while the app is replaced,
 // so a new app may find the previous version's daemon: restart it, once,
-// to run the binary now in the bundle. Not during a turn on this Mac: the
+// to run the binary and plist now in the bundle. Not during a turn on this Mac: the
 // restart would end it (the sessions themselves survive), so it waits for
 // them to finish. It looks again 30 s after first seeing the old version,
 // once the app has heard about the sessions too.

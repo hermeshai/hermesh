@@ -7,6 +7,7 @@ export type Hook = {
   installTest: {
     dialogs: { message: string; detail: string; buttons: string[]; defaultId: number; cancelId: number }[];
     loginItems: unknown[];
+    launchctl: string[][];
     protocols: string[];
     moved: number;
     respond(response: number): void;
@@ -52,7 +53,7 @@ export async function installer(inApplications = false, move: "success" | "cance
     delete process.env.HERMESH_DATA_DIR;
     delete process.env.HERMESH_SOCKET;
     Object.defineProperty(app, "isPackaged", { get: () => true });
-    const state = globalThis.installTest = { dialogs: [], loginItems: [], protocols: [], moved: 0, feedFails: false, latest: "0.0.0", feedRequests: 0, holdFeed: false, downloads: 0, installs: 0, signerSignals: [], online: true, badNotes: false, longNotes: false, links: [] };
+    const state = globalThis.installTest = { dialogs: [], loginItems: [], launchctl: [], protocols: [], moved: 0, feedFails: false, latest: "0.0.0", feedRequests: 0, holdFeed: false, downloads: 0, installs: 0, signerSignals: [], online: true, badNotes: false, longNotes: false, links: [] };
     net.isOnline = () => state.online;
     shell.openExternal = async (url) => { state.links.push(url); };
     // Advance only long scheduling timers; daemon polling and renderer clocks remain real.
@@ -88,10 +89,16 @@ export async function installer(inApplications = false, move: "success" | "cance
     const { PassThrough } = require("node:stream");
     const fs = require("node:fs"), cp = require("node:child_process");
     const exists = fs.existsSync, spawn = cp.spawn, execFile = cp.execFile;
+    // launchd: a job booted out is still there for one look, while it exits.
+    let looksUntilGone = Infinity;
     cp.execFile = (bin, ...args) => {
       if (bin !== "launchctl") return execFile(bin, ...args);
+      const [argv] = args;
+      state.launchctl.push(argv);
+      if (argv[0] === "bootout") looksUntilGone = 1;
+      const gone = argv[0] === "print" && looksUntilGone-- <= 0;
       const callback = args.at(-1);
-      if (typeof callback === "function") setImmediate(() => callback(null, "", ""));
+      if (typeof callback === "function") setImmediate(() => callback(gone ? new Error("not loaded") : null, "", ""));
       return new EventEmitter();
     };
     fs.existsSync = (p) => String(p).endsWith("/HermeshSigner") || exists(p);

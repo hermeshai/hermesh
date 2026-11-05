@@ -228,6 +228,41 @@ WantedBy=default.target
 `, bin, unitArgs(args), dataDir)
 }
 
+// ReloadOldJob updates the launchd job an older version installed, when this
+// process is that service for dataDir. An update replaces only the program and
+// launchd keeps the job as it loaded it, so this corrects the plist and has
+// launchd load it again, which stops this process: true means wait for that.
+func ReloadOldJob(dataDir string) (bool, error) {
+	if runtime.GOOS != "darwin" || !Supervised(dataDir) {
+		return false, nil
+	}
+	const background, interactive = "<key>ProcessType</key><string>Background</string>", "<key>ProcessType</key><string>Interactive</string>"
+	path := launchdPlist()
+	b, err := os.ReadFile(path)
+	if err != nil {
+		return false, err
+	}
+	if !bytes.Contains(b, []byte(background)) {
+		return false, nil
+	}
+	if err := os.WriteFile(path, bytes.Replace(b, []byte(background), []byte(interactive), 1), 0o644); err != nil {
+		return false, err
+	}
+	// In a session of its own, since launchd ends the job's process group.
+	// bootstrap fails while the old process is still exiting.
+	cmd := exec.Command("/bin/sh", "-c", `launchctl bootout "$1/$2"
+for i in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15; do
+  launchctl bootstrap "$1" "$3" && exit 0
+  sleep 1
+done
+exit 1`, "sh", fmt.Sprintf("gui/%d", os.Getuid()), label, path)
+	cmd.SysProcAttr = &syscall.SysProcAttr{Setsid: true}
+	if err := cmd.Start(); err != nil {
+		return false, err
+	}
+	return true, cmd.Process.Release()
+}
+
 // Supervised reports whether this process is the installed service for
 // dataDir, which starts it again when it exits.
 func Supervised(dataDir string) bool {
