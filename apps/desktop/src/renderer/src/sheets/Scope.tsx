@@ -18,16 +18,10 @@ function readyAgents(st: Store): string[] {
   return codingAgentIds.filter((a) => ready.has(a));
 }
 
-/**
- * A new agent's scope: every project on this Mac, and Claude Code and Codex
- * where they are ready (else every ready agent); with none ready, every
- * coding agent, including ones installed later.
- */
+/** A new agent's scope: every project on this Mac, and every coding agent, including ones installed later. */
 export function newScope(st: Store): ScopeChoice {
   const here = st.projects.filter((p) => p.machineId === st.status?.localMachineId).map(key);
-  const ready = readyAgents(st);
-  const usual = ready.filter((a) => defaultScope().agents.has(a));
-  return { ...defaultScope(), allProjects: st.projects.length === 0, projects: new Set(here), allAgents: ready.length === 0, agents: new Set(usual.length ? usual : ready) };
+  return { ...defaultScope(), allProjects: st.projects.length === 0, projects: new Set(here) };
 }
 
 function projectsText(st: Store, s: ScopeChoice): string {

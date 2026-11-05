@@ -22,8 +22,12 @@ describe("scope", () => {
     expect([...n.agents]).toEqual(["claude"]);
   });
 
+  test("a new grant is for every coding agent", () => {
+    expect(scopeSpec(defaultScope()).agents).toEqual(["*"]);
+  });
+
   test("the spec a scope asks for", () => {
-    const s = { ...defaultScope(), projects: new Set(["m2/web", "m1/app"]), agents: new Set(["codex", "claude"]) };
+    const s = { ...defaultScope(), projects: new Set(["m2/web", "m1/app"]), allAgents: false, agents: new Set(["codex", "claude"]) };
     expect(scopeComplete(s)).toBe(true);
     const spec = scopeSpec(s);
     expect([spec.machineIds, spec.projectIds, spec.agents, spec.ttlDays]).toEqual([

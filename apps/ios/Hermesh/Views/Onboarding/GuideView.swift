@@ -487,11 +487,7 @@ struct GuideApprovalSheet: View {
                 if let joining {
                     GuideJoining(label: joining.label, digits: joining.digits, machineID: joining.machineID) { dismiss() }
                 } else if let p = pairing {
-                    if p.kind == .client {
-                        form(p).modifier(NewGrantAgents(scope: $scope))
-                    } else {
-                        form(p)
-                    }
+                    form(p)
                 } else {
                     ContentUnavailableView("This request is gone", systemImage: "checkmark.circle", description: Text("It may have been approved elsewhere, or it expired."))
                 }

@@ -132,8 +132,10 @@ test("connecting an agent: the message to send, its request, what it may use, ap
   await projects.getByRole("button", { name: "好" }).click();
   const agents = sheet.getByRole("group", { name: "编码 agent" });
   await agents.getByRole("button", { name: "修改" }).click();
+  const allAgents = agents.getByRole("checkbox", { name: "所有编码 agent（包括以后安装的）" });
+  await expect(allAgents).toBeChecked(); // the default
+  await allAgents.setChecked(false);
   await agents.getByRole("checkbox", { name: "Gemini CLI" }).setChecked(true);
-  for (const box of await agents.getByRole("checkbox").all()) if (!(await box.textContent())?.includes("Gemini")) await box.setChecked(false);
   await sheet.getByRole("group", { name: "有效期" }).getByRole("button", { name: "30 天" }).click();
   await agents.getByRole("button", { name: "好" }).click();
   await expect(projects).toContainText("owner-mac 上的 demo");

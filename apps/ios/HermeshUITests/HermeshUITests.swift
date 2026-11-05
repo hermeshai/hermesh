@@ -320,14 +320,18 @@ final class HermeshUITests: XCTestCase {
         all.switches.firstMatch.exists ? all.switches.firstMatch.tap() : all.tap()
         app.navigationBars.buttons.element(boundBy: 0).tap()
         XCTAssertTrue(text("所有项目").waitForExistence(timeout: 10), "the card shows the choice")
+        XCTAssertTrue(text("所有编码 agent").exists, "all coding agents, unless the owner narrows it")
         tap("scope-agents")
+        let allAgents = app.switches["all-agents"]
+        XCTAssertTrue(allAgents.waitForExistence(timeout: 10))
+        XCTAssertEqual(allAgents.value as? String, "1", "on by default")
+        allAgents.switches.firstMatch.exists ? allAgents.switches.firstMatch.tap() : allAgents.tap()
         XCTAssertTrue(app.buttons["scope-agent-gemini"].waitForExistence(timeout: 20), "an agent on the machine is listed")
         XCTAssertFalse(app.buttons["scope-agent-qoder"].exists, "one not installed is not")
         let picker = XCTAttachment(screenshot: app.screenshot())
         picker.name = "agent picker"
         picker.lifetime = .keepAlways
         add(picker)
-        let allAgents = app.switches["all-agents"]
         allAgents.switches.firstMatch.exists ? allAgents.switches.firstMatch.tap() : allAgents.tap()
         XCTAssertFalse(app.buttons["scope-agent-gemini"].waitForExistence(timeout: 2), "with all of them, nothing to pick")
         app.navigationBars.buttons.element(boundBy: 0).tap()

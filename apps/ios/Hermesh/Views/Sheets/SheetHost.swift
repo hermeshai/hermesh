@@ -213,14 +213,6 @@ struct ScopeChoice: Equatable {
         return listText(codingAgentIDs.filter(agents.contains).map(agentTitle))
     }
 
-    /// A new grant's coding agents: Claude Code and Codex where they are
-    /// ready, else every ready one; with none ready, all of them.
-    mutating func useDefaultAgents(ready: [String]) {
-        let usual = ready.filter(["claude", "codex"].contains)
-        allAgents = ready.isEmpty
-        agents = Set(usual.isEmpty ? ready : usual)
-    }
-
     var projectsText: String {
         if allProjects { return String(localized: "All projects") }
         if projects.isEmpty { return String(localized: "None yet") }
@@ -379,26 +371,6 @@ struct AgentPicker: View {
     }
 }
 
-/// A new grant's coding agents follow the default as the machines report
-/// theirs, until the owner changes them.
-struct NewGrantAgents: ViewModifier {
-    @Environment(AppModel.self) private var model
-    @Binding var scope: ScopeChoice
-    @State private var applied: [String] = []
-
-    func body(content: Content) -> some View {
-        content
-            .task { await model.recheckUnlisted() }
-            .task(id: readyAgents(model.machines)) {
-                let ready = readyAgents(model.machines)
-                var before = scope
-                before.useDefaultAgents(ready: applied)
-                if before == scope { scope.useDefaultAgents(ready: ready) }
-                applied = ready
-            }
-    }
-}
-
 // MARK: Pairing
 
 /// A request to connect: who asks, the verification code to compare, and
@@ -438,7 +410,6 @@ struct PairingSheet: View {
                 .fittedSheet()
         } else if let p = pairing, p.kind == .client {
             ClientCard(pairing: p, report: selfReport(p), scope: $scope, busy: busy, approve: { approve(p) }, deny: { deny(p) }, close: { dismiss() })
-                .modifier(NewGrantAgents(scope: $scope))
         } else {
             form
         }

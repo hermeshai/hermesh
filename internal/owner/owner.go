@@ -1197,7 +1197,7 @@ func defaultSpec(spec *localv1.GrantSpec) *localv1.GrantSpec {
 		s.ProjectIds = []string{"*"}
 	}
 	if len(s.Agents) == 0 {
-		s.Agents = []string{"claude", "codex"}
+		s.Agents = []string{"*"}
 	}
 	if s.TaskVisibility == identityv1.TaskVisibility_TASK_VISIBILITY_UNSPECIFIED {
 		s.TaskVisibility = identityv1.TaskVisibility_TASK_VISIBILITY_OWN
