@@ -86,7 +86,7 @@ func TestSendWhileRunningSteersTheTurn(t *testing.T) {
 // answer to its message.
 func TestSendWhileRunningQueuesNextTurn(t *testing.T) {
 	h := newHarnessWith(t, DefaultLimits(), map[string]provider.Provider{"nosteer": noSteer{}})
-	sess, err := h.s.Start(context.Background(), h.p, &sessionv1.StartSessionRequest{ProjectId: "demo", Agent: "nosteer", Prompt: "say one\nsleep 300ms\nsay first"})
+	sess, err := h.s.Start(context.Background(), h.p, &sessionv1.StartSessionRequest{ProjectId: "demo", Agent: "nosteer", Prompt: "say one\nsleep 3s\nsay first"}) // time for both messages, on a slow runner too
 	if err != nil {
 		t.Fatal(err)
 	}
