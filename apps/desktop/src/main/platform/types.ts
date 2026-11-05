@@ -19,7 +19,7 @@ export interface Platform {
   settle(): Promise<boolean>;
   /** The installer started this run to set the app up or remove it (Windows): it does that and quits. */
   installerEvent(): boolean;
-  /** Takes hermesh:// links (sign-in and join). */
+  /** Takes hermesh:// links (sign-in, join and wake). */
   registerLinks(): void;
   /** Makes hermeshd start by itself, and start now if it does not run. */
   registerDaemon(): void;

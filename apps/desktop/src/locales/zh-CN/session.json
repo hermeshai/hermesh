@@ -17,6 +17,7 @@
     "agentAsked": "agent 提问：",
     "interruptedByYou": "你打断了这一轮。会话还在，{{grant}} 再发消息就会接着做。",
     "interrupted": "这一轮被打断了。会话还在，{{grant}} 再发消息就会接着做。",
+    "interruptedBy": "{{name}} 打断了这一轮。会话还在，{{grant}} 再发消息就会接着做。",
     "turnFailed": "第 {{turn}} 轮出错：{{title}}",
     "copy": "拷贝",
     "inProgress": "进行中",

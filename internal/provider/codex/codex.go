@@ -71,6 +71,7 @@ func (p *Provider) Discover(ctx context.Context) provider.Info {
 		info.LoggedIn = true
 	}
 	info.Models, info.Own, _ = catalog(ctx, env, bin)
+	info.AllModels = len(info.Models) > 0
 	return info
 }
 
@@ -301,7 +302,8 @@ func (s *session) LastActivity() time.Time {
 	}
 	return time.Time{}
 }
-func (s *session) Close() error { s.proc.Stop(3 * time.Second); return nil }
+func (s *session) Diagnose() provider.Diagnosis { return s.proc.Diagnose() }
+func (s *session) Close() error                 { s.proc.Stop(3 * time.Second); return nil }
 
 func (s *session) emit(e provider.Event) {
 	select {

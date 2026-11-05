@@ -27,6 +27,9 @@ type Info struct {
 	// (Claude Code and Codex), for picking a machine's defaults.
 	Models []Model
 	Own    Settings
+	// AllModels: Models are every model it takes here (Codex lists its
+	// own), so a session naming another can be refused before it starts.
+	AllModels bool
 }
 
 // Model is one model an agent offers.
@@ -231,6 +234,9 @@ type Session interface {
 	// output that becomes no event (zero: none yet). The kernel's liveness
 	// checks use it.
 	LastActivity() time.Time
+	// Diagnose says what the agent's process is doing now, for the report
+	// of a stall.
+	Diagnose() Diagnosis
 }
 
 type Provider interface {

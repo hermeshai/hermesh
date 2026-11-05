@@ -128,6 +128,9 @@ func (s *session) LastActivity() time.Time {
 	return s.last
 }
 
+// Diagnose has nothing to see: the fake runs in this process.
+func (s *session) Diagnose() provider.Diagnosis { return provider.Diagnosis{} }
+
 func (s *session) Send(_ context.Context, in provider.Input) error {
 	select {
 	case s.inbox <- in:

@@ -438,6 +438,10 @@ public nonisolated struct Hermesh_Session_V1_StartSessionRequest: Sendable {
   /// thread): the session's news goes to it (docs/agent-messages.md §6.2).
   public var conversation: String = String()
 
+  /// Reasoning effort, one the model offers (AgentModel.efforts); unset:
+  /// the machine's default for the agent, else the agent's own.
+  public var effort: String = String()
+
   public var unknownFields = SwiftProtobuf.UnknownStorage()
 
   public init() {}
@@ -1983,7 +1987,7 @@ nonisolated extension Hermesh_Session_V1_Failure: SwiftProtobuf.Message, SwiftPr
 
 nonisolated extension Hermesh_Session_V1_StartSessionRequest: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
   public static let protoMessageName: String = _protobuf_package + ".StartSessionRequest"
-  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{3}idempotency_key\0\u{3}project_id\0\u{1}agent\0\u{1}prompt\0\u{3}base_ref\0\u{1}model\0\u{2}\u{2}attachments\0\u{3}question_timeout_seconds\0\u{1}title\0\u{1}conversation\0\u{b}preset\0\u{c}\u{7}\u{1}")
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{3}idempotency_key\0\u{3}project_id\0\u{1}agent\0\u{1}prompt\0\u{3}base_ref\0\u{1}model\0\u{2}\u{2}attachments\0\u{3}question_timeout_seconds\0\u{1}title\0\u{1}conversation\0\u{1}effort\0\u{b}preset\0\u{c}\u{7}\u{1}")
 
   public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
     while let fieldNumber = try decoder.nextFieldNumber() {
@@ -2001,6 +2005,7 @@ nonisolated extension Hermesh_Session_V1_StartSessionRequest: SwiftProtobuf.Mess
       case 9: try { try decoder.decodeSingularUInt32Field(value: &self._questionTimeoutSeconds) }()
       case 10: try { try decoder.decodeSingularStringField(value: &self.title) }()
       case 11: try { try decoder.decodeSingularStringField(value: &self.conversation) }()
+      case 12: try { try decoder.decodeSingularStringField(value: &self.effort) }()
       default: break
       }
     }
@@ -2041,6 +2046,9 @@ nonisolated extension Hermesh_Session_V1_StartSessionRequest: SwiftProtobuf.Mess
     if !self.conversation.isEmpty {
       try visitor.visitSingularStringField(value: self.conversation, fieldNumber: 11)
     }
+    if !self.effort.isEmpty {
+      try visitor.visitSingularStringField(value: self.effort, fieldNumber: 12)
+    }
     try unknownFields.traverse(visitor: &visitor)
   }
 
@@ -2055,6 +2063,7 @@ nonisolated extension Hermesh_Session_V1_StartSessionRequest: SwiftProtobuf.Mess
     if lhs._questionTimeoutSeconds != rhs._questionTimeoutSeconds {return false}
     if lhs.title != rhs.title {return false}
     if lhs.conversation != rhs.conversation {return false}
+    if lhs.effort != rhs.effort {return false}
     if lhs.unknownFields != rhs.unknownFields {return false}
     return true
   }

@@ -64,6 +64,7 @@ export function listSections(st: Store, now: Date): SessionSection[] {
 }
 
 function sectionTitle(st: Store, sec: SessionSection): string {
+  if (sec.grouping === "project") return sec.key;
   if (sec.grouping === "agent") return codingAgentTitle(sec.key);
   if (sec.grouping === "machine") return st.machines.find((m) => m.machineId === sec.key)?.local ? i18n.t("overview:thisMac") : machineName(st, sec.key);
   return bucketTitle(sec.key as SessionBucket);
@@ -538,7 +539,7 @@ function ListViewMenu() {
     st.set({ view: { ...v, ...patch } });
     close(true);
   };
-  const groups = { status: t("listView.byStatus"), date: t("listView.byDate"), agent: t("listView.byAgent"), machine: t("listView.byMachine") };
+  const groups = { status: t("listView.byStatus"), date: t("listView.byDate"), project: t("listView.byProject"), agent: t("listView.byAgent"), machine: t("listView.byMachine") };
   const panes: { id: ViewPane; label: string; value: string }[] = [
     { id: "group", label: t("listView.group"), value: groups[v.group] },
     { id: "sort", label: t("listView.sort"), value: t(v.newestFirst ? "listView.newestFirst" : "listView.oldestFirst") },

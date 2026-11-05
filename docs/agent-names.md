@@ -3,7 +3,8 @@
 Status: designed and reviewed 2026-10-27 (§12); steps 1 to 3 (§11) built the
 same day (§13): the Mac app, the iPhone app and the console's link page.
 After the owner's first real Grok test, simplified for one bot (§14): read
-§14 before §7, which it changes.
+§14 before §7, which it changes. Since 2026-11-04 only the bot starts a
+setup (§15).
 It builds on
 [agent-messages.md](agent-messages.md) (steps 1–3, built) and replaces its
 §6.3 doorbell setup.
@@ -227,9 +228,10 @@ Two ways in, one setup:
   one use, bound to the agent and the name. The owner opens it signed in to
   the console, on any device, as with a pairing link (`/p/<code>`); the
   page is the setup below, from step 3. A self-hosted relay has no console:
-  its link says to use the Mac app.
-- **The owner starts.** In the Mac app: Settings → Access → the agent →
-  Wake → a name, or Add… with the bot's name.
+  its link is `hermesh://wake?code=<code>`, which the Hermesh app on the
+  owner's computer opens (§15).
+- ~~**The owner starts.**~~ Gone since 2026-11-04 (§15): most agents can't be
+  woken, so the apps offer no setup of their own.
 
 The setup, one step per screen, the same in the Mac app and on the link's
 page:
@@ -488,3 +490,31 @@ whether or not the sender knew of it; the rings the owner sees; a pasted
 header), `TestMCPInbox` (the summary), the desktop e2e `settings`, `TestIPhone`
 and the console's `wake.spec.ts`.
 
+## 15. Only the bot starts (2026-11-04)
+
+Every agent's page offered "Wake on New Messages → Set Up…", and its first
+step asked the owner to send the bot a message asking for a routine. Only
+a bot whose platform can start it by a webhook (today a Grok Bot routine)
+can do that; Claude, ChatGPT, Muse or an agent on a computer can't, so the
+section confused owners of every other agent. Nothing the owner's devices
+see tells such a bot apart (Grok Bot signs in as Cursor; names are the
+owner's), so the bot says so itself:
+
+- **Only the bot starts a setup**: asked by its owner, it makes its routine
+  and calls `message_wake` (`message wake` with the CLI), as its
+  description already said, and hands over the link. A bot that can't be
+  woken says so, and reads its messages the next time its owner talks to it.
+- **The section shows only for an agent with a doorbell**, on the Mac,
+  Windows and the iPhone: see, wake once, give another URL and key, stop.
+  "Set Up…", "Wake All of …" and "Set up each bot…" are gone: another bot of
+  a shared connection asks for itself (`as`), and its link names it.
+- **A link opens the setup at the URL and key.** On the official service,
+  the console's page (`/w/<code>`). On a self-hosted relay,
+  `hermesh://wake?code=<code>`: the Mac or Windows app opens the setup on
+  its main window (`OpenWakeLink`, then `SetWake` with the code). The
+  iPhone takes no wake links: the routine's URL and key show in Grok's
+  desktop app only.
+
+Tested by `TestWake` and `TestMCPInbox` (the link, opened once), the desktop
+e2e `settings` (no section before the bot asks; its link opens the setup;
+a name of its own) and `TestIPhone` (no section before; another URL and key).

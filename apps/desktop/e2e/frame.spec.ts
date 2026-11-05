@@ -222,12 +222,17 @@ test("the view menu groups, sorts and shows the list from submenus, opaque over 
   expect(background).toMatch(/^rgb\(/); // no alpha: the list doesn't show through
   await menu.getByRole("menuitem", { name: /分组/ }).hover();
   const group = page.getByRole("menu", { name: "分组" });
-  await expect(group.getByRole("menuitemradio")).toHaveText(["按状态", "按日期", "按 Agent", "按机器"]);
+  await expect(group.getByRole("menuitemradio")).toHaveText(["按状态", "按日期", "按项目", "按 Agent", "按机器"]);
   await expect(group.getByRole("menuitemradio", { name: "按状态" })).toHaveAttribute("aria-checked", "true");
   await snap(page, "view-menu");
   await group.getByRole("menuitemradio", { name: "按 Agent" }).click();
   await expect(menu).toHaveCount(0);
   await expect(list.getByRole("group", { name: "Gemini CLI" })).toContainText("写 hello");
+  // By project: a group for each, named as the project.
+  await button.click();
+  await menu.getByRole("menuitem", { name: /分组/ }).hover();
+  await group.getByRole("menuitemradio", { name: "按项目" }).click();
+  await expect(list.getByRole("group", { name: "demo" })).toContainText("写 hello");
 
   // From the keyboard: → opens a submenu, ↓ moves, ↩ chooses.
   await page.mouse.move(0, 0);

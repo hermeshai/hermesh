@@ -423,11 +423,29 @@ func (g *Gateway) ringSoon(key string, fresh bool) {
 		wait = 0
 	}
 	time.AfterFunc(wait, func() {
+		if !g.claimRing(key) {
+			// Another node rang it within the minute: look again later.
+			r.mu.Lock()
+			st.pending = false
+			r.mu.Unlock()
+			time.AfterFunc(ringRecheck, func() { g.ringSoon(key, false) })
+			return
+		}
 		r.mu.Lock()
 		st.pending, st.last = false, g.cfg.Now()
 		r.mu.Unlock()
 		g.ring(key)
 	})
+}
+
+// ringRecheck: a ring another node made within the minute is tried again
+// this much later.
+const ringRecheck = 20 * time.Second
+
+// claimRing takes a doorbell's minute on every node: at most one ring a
+// minute, whichever node took the messages.
+func (g *Gateway) claimRing(key string) bool {
+	return g.cfg.Shared == nil || g.cfg.Shared.Claim("ring:"+key, time.Minute)
 }
 
 // ringAgainDue rings the doorbells whose messages still wait 15 minutes,
@@ -738,11 +756,12 @@ func (g *Gateway) WakeLink(ctx context.Context, ownerID, inbox, name string) (*r
 	if err := g.doorbells.PutWakeLink(ctx, &WakeLink{CodeHash: hashCode(code), OwnerID: ownerID, Inbox: inbox, Name: name, ExpiresAt: expires}); err != nil {
 		return nil, err
 	}
-	res := &relayv1.WakeLinkResponse{ExpiresAt: timestamppb.New(expires)}
+	// Without a console page, the link opens the Hermesh app on the owner's computer.
+	link := "hermesh://wake?code=" + code
 	if g.cfg.WakePage != "" {
-		res.Link = g.cfg.WakePage + code
+		link = g.cfg.WakePage + code
 	}
-	return res, nil
+	return &relayv1.WakeLinkResponse{Link: link, ExpiresAt: timestamppb.New(expires)}, nil
 }
 
 // openLink is a live wake link of the owner's.
@@ -921,20 +940,23 @@ func (g *Gateway) wakeTool(ctx context.Context, req *mcp.CallToolRequest) (*mcp.
 	if err != nil {
 		return docResult(failure(1, "internal", err.Error(), "", true)), nil
 	}
-	tell := fmt.Sprintf("In the Hermesh app on the Mac: Settings → Access → %s → Wake → Add…, with the routine's webhook URL and key", c.ClientName)
-	if name != "" {
-		tell += fmt.Sprintf(", for the name %q", name)
-	}
-	if res.Link != "" {
-		tell = fmt.Sprintf("Open %s, signed in to Hermesh, and paste the routine's webhook URL and key there (the link works once, for 30 minutes)", res.Link)
-	}
 	wake := map[string]any{"link": res.Link, "expires_at": res.ExpiresAt.AsTime().UTC().Format(time.RFC3339)}
-	out := map[string]any{"ok": true, "exit_code": 0, "error": nil, "wake": wake, "tell_owner": tell + "."}
+	out := map[string]any{"ok": true, "exit_code": 0, "error": nil, "wake": wake, "tell_owner": WakeTell(res.Link)}
 	if name != "" {
 		out["as"] = name
 	}
 	b, _ := json.MarshalIndent(out, "", "  ")
 	return docResult(b), nil
+}
+
+// WakeTell is what an agent tells its owner about a wake link: a console
+// page opens signed in, a hermesh:// link in the Hermesh app.
+func WakeTell(link string) string {
+	where := "signed in to Hermesh"
+	if strings.HasPrefix(link, "hermesh://") {
+		where = "on the computer with the Hermesh app (Mac or Windows)"
+	}
+	return fmt.Sprintf("Open %s %s, and paste the routine's webhook URL and key there (the link works once, for 30 minutes).", link, where)
 }
 
 // doorbellStatus is what hermesh_status says of the doorbell of a name.

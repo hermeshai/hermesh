@@ -67,12 +67,15 @@ describe("session list", () => {
     expect(oldest.map((s) => s.key)).toEqual(["earlier", "week", "yesterday", "today"]);
   });
 
-  test("by coding agent, by name; by machine, in the order given", () => {
+  test("by project and by coding agent, by name; by machine, in the order given", () => {
     const all = [
-      session("a", SessionStatus.IDLE, { agent: "gemini", machine: "m2", updated: -10 }),
-      session("b", SessionStatus.IDLE, { agent: "claude", machine: "m1", updated: -20 }),
-      session("c", SessionStatus.IDLE, { agent: "codex", machine: "m3", updated: -30 }),
+      session("a", SessionStatus.IDLE, { project: "web", agent: "gemini", machine: "m2", updated: -10 }),
+      session("b", SessionStatus.IDLE, { project: "api", agent: "claude", machine: "m1", updated: -20 }),
+      session("c", SessionStatus.IDLE, { project: "web", agent: "codex", machine: "m3", updated: -30 }),
     ];
+    const projects = sessionSections(all, sessionView({ group: "project" }), { archived: false, now });
+    expect(projects.map((s) => s.key)).toEqual(["api", "web"]);
+    expect(ids(projects[1].sessions)).toEqual(["a", "c"]);
     expect(sessionSections(all, sessionView({ group: "agent" }), { archived: false, now }).map((s) => s.key)).toEqual(["claude", "codex", "gemini"]);
     expect(sessionSections(all, sessionView({ group: "machine" }), { archived: false, now, machines: ["m2", "m1"] }).map((s) => s.key)).toEqual(["m2", "m1", "m3"]);
   });
