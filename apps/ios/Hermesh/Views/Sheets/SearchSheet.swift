@@ -12,7 +12,7 @@ struct SearchSheet: View {
     @State private var query = ""
     @State private var tokens: [SearchState] = []
     @State private var searching = false
-    @State private var recent = RecentSearches.load()
+    @State private var recent: [String] = []
 
     var body: some View {
         let q = query.trimmingCharacters(in: .whitespaces)
@@ -31,7 +31,10 @@ struct SearchSheet: View {
             }
             .searchSuggestions { completions(q) }
             .onSubmit(of: .search) { remember(q) }
-            .task { searching = true }
+            .task {
+                if !model.isDemo { recent = RecentSearches.load() }
+                searching = true
+            }
             .onChange(of: searching) { if !searching { dismiss() } }
             .toolbar { CloseButton() }
         }
@@ -139,13 +142,13 @@ struct SearchSheet: View {
 
     private func remember(_ q: String) {
         guard !q.isEmpty else { return }
-        recent = RecentSearches.add(q, to: recent)
+        recent = RecentSearches.add(q, to: recent, persistent: !model.isDemo)
     }
 
     /// One recent search, or (nil) all of them.
     private func forget(_ q: String?) {
         recent = q.map { q in recent.filter { $0 != q } } ?? []
-        RecentSearches.save(recent)
+        if !model.isDemo { RecentSearches.save(recent) }
     }
 }
 
@@ -200,9 +203,9 @@ enum RecentSearches {
 
     static func save(_ list: [String]) { UserDefaults.standard.set(list, forKey: key) }
 
-    static func add(_ q: String, to list: [String]) -> [String] {
+    static func add(_ q: String, to list: [String], persistent: Bool = true) -> [String] {
         let next = Array(([q] + list.filter { $0 != q }).prefix(8))
-        save(next)
+        if persistent { save(next) }
         return next
     }
 }

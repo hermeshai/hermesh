@@ -267,7 +267,8 @@ final class Signer {
 
     /// Names and "before" values for the cards, from the owner's lists.
     private func hints() async -> SigningPreview.Hints {
-        guard let api else { return .init() }
+        guard let core = api else { return .init() }
+        let api = AppAPI(live: core)
         async let devices = try? api.devices()
         async let machines = try? api.machines()
         async let clients = try? api.clients()

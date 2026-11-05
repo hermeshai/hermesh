@@ -7321,6 +7321,316 @@
     "−%lld": {
       "shouldTranslate": false
     },
+    "A sample project for exploring Hermesh": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "用于体验 Hermesh 的示例项目"
+          }
+        }
+      }
+    },
+    "Add a welcome page": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "添加欢迎页面"
+          }
+        }
+      }
+    },
+    "Add a welcome page and test it.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "添加欢迎页面并测试。"
+          }
+        }
+      }
+    },
+    "Build a welcome page for our sample project. Ask me which greeting to use.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "为示例项目创建欢迎页面，并询问我应该使用哪句问候语。"
+          }
+        }
+      }
+    },
+    "Choose a greeting": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "选择问候语"
+          }
+        }
+      }
+    },
+    "Connect an agent and enable a machine with a project first, or exit and reopen the demo to start again.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "请先连接 Agent，并启用一台有项目的机器；也可以退出并重新进入演示以重置。"
+          }
+        }
+      }
+    },
+    "Demo Mode": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "演示模式"
+          }
+        }
+      }
+    },
+    "Demo Mode · All changes are simulated": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "演示模式 · 所有改动均为模拟"
+          }
+        }
+      }
+    },
+    "Demo Workspace": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "演示工作区"
+          }
+        }
+      }
+    },
+    "Exit Demo": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "退出演示"
+          }
+        }
+      }
+    },
+    "Explore Hermesh": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "体验 Hermesh"
+          }
+        }
+      }
+    },
+    "Greeting": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "问候语"
+          }
+        }
+      }
+    },
+    "Hello from the demo agent! This response is simulated.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "演示 Agent 向你问好！这是模拟回复。"
+          }
+        }
+      }
+    },
+    "I’ve checked the sample project. Choose a greeting below, and I’ll update the page and run its tests.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "已检查示例项目。请在下方选择问候语，我会更新页面并运行测试。"
+          }
+        }
+      }
+    },
+    "Run Demo Task": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "运行演示任务"
+          }
+        }
+      }
+    },
+    "Simulated data · No real tasks run": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "模拟数据 · 不会执行真实任务"
+          }
+        }
+      }
+    },
+    "Start a simulated task to try it:": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "启动一个模拟任务来体验："
+          }
+        }
+      }
+    },
+    "The sample page now says “%@”. Both example tests passed. Open Session Info to inspect the changes. This is a simulated result; no code was run.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "示例页面现在显示“%@”。两项示例测试均通过。打开会话信息可查看改动。这是模拟结果，没有执行真实代码。"
+          }
+        }
+      }
+    },
+    "The simulated task was stopped.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "模拟任务已停止。"
+          }
+        }
+      }
+    },
+    "This action needs a real connection. Exit the demo to set up your own workspace.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "此操作需要真实连接。退出演示后可设置你自己的工作区。"
+          }
+        }
+      }
+    },
+    "Try a task, answer the agent’s question, then inspect its changes. Machines, approvals and results here are simulated.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "启动任务、回答 Agent 的问题，再查看代码改动。这里的机器、审批和执行结果均为模拟。"
+          }
+        }
+      }
+    },
+    "Updated the sample welcome page.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "已更新示例欢迎页面。"
+          }
+        }
+      }
+    },
+    "Use Add Machine or Connect Agent to create a demo request.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "请通过添加机器或连接 Agent 创建演示请求。"
+          }
+        }
+      }
+    },
+    "Which greeting should the sample app show?": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "示例应用应该显示哪句问候语？"
+          }
+        }
+      }
+    },
+    "Demo device added": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "已添加演示设备"
+          }
+        }
+      }
+    },
+    "It now appears in Machines. No physical device was paired.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "你可以在机器列表中看到它，并未配对真实设备。"
+          }
+        }
+      }
+    },
+    "Start Using Hermesh": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "开始使用"
+          }
+        }
+      }
+    },
+    "Connect your computer and agents": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "连接你的电脑和 Agent"
+          }
+        }
+      }
+    },
+    "Try It First": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "先体验一下"
+          }
+        }
+      }
+    },
+    "Explore sample tasks without signing in": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "无需登录，探索示例任务"
+          }
+        }
+      }
+    },
+    "A sample code is filled in. Tap Find to try approving a simulated machine.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "已填入示例配对码。点击“查找”，体验批准模拟机器加入的流程。"
+          }
+        }
+      }
+    },
     "Hermesh calls its routine to wake it when a session it started finishes or another agent writes to it. For another bot on this connection, ask that bot.": {
       "localizations": {
         "zh-Hans": {

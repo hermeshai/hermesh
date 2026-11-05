@@ -118,7 +118,9 @@ final class AppModel {
     /// The overview's range, and the work counted over each range asked,
     /// kept so switching shows the last count at once.
     var workPeriod = WorkPeriod(rawValue: UserDefaults.standard.string(forKey: "workPeriod") ?? "") ?? .today {
-        didSet { UserDefaults.standard.set(workPeriod.rawValue, forKey: "workPeriod") }
+        didSet {
+            if !isDemo { UserDefaults.standard.set(workPeriod.rawValue, forKey: "workPeriod") }
+        }
     }
     var work: [WorkPeriod: RangeWork] = [:]
     var now = Date()
@@ -129,7 +131,9 @@ final class AppModel {
     /// Since when the relay has not been reached, while it is not.
     var relayDownSince: Date?
     /// The last conversations opened.
-    @ObservationIgnored let conversations = Conversations()
+    @ObservationIgnored let conversations: Conversations
+    let isDemo: Bool
+    var demoAppearance = "system"
 
     /// Why what shows is not current, while it is not (the sync line).
     var sync: Sync? {
@@ -186,13 +190,17 @@ final class AppModel {
     /// A hermesh:// link the app was opened with, for onboarding.
     var onboardingLink: URL?
 
-    init() {
+    init(demo: DemoService? = nil) {
+        isDemo = demo != nil
+        conversations = Conversations(persistent: demo == nil)
+        if let demo { api = AppAPI(demo: demo); return }
         listView = Self.saved("listView") ?? SessionListLayout()
         showArchived = Self.saved("showArchived") ?? false
         collapsed = Self.saved("collapsed") ?? []
     }
 
     private func save(_ v: some Encodable, _ key: String) {
+        guard !isDemo else { return }
         UserDefaults.standard.set(try? JSONEncoder().encode(v), forKey: "sessions." + key)
     }
 
@@ -200,7 +208,7 @@ final class AppModel {
         UserDefaults.standard.data(forKey: "sessions." + key).flatMap { try? JSONDecoder().decode(T.self, from: $0) }
     }
 
-    @ObservationIgnored private(set) var api: LocalAPI?
+    @ObservationIgnored private(set) var api: AppAPI?
     @ObservationIgnored private var cursor: SessionCursor?
     @ObservationIgnored private var watchTask: Task<Void, Never>?
     @ObservationIgnored private var clockTask: Task<Void, Never>?
@@ -217,14 +225,20 @@ final class AppModel {
     // MARK: Lifecycle
 
     func start() async {
+        if isDemo {
+            await refreshStatus()
+            phase = .ready
+            begin()
+            return
+        }
         if api == nil {
             do {
-                api = try Core.start()
+                api = AppAPI(live: try Core.start())
             } catch {
                 phase = .failed(error.localizedDescription)
                 return
             }
-            signer.start(api!)
+            signer.start(api!.live!)
             let kept = restoreWorld()
             if kept != nil { phase = .ready } // shown at once; the status, which the core has at hand, confirms it
             watchNetwork()
@@ -253,6 +267,7 @@ final class AppModel {
     /// The app came to the front: keep everything current.
     func foreground() {
         active = true
+        if isDemo { begin(); return }
         // Back from the background, a new Watch begins: what shows is not
         // current until its first message. Only inactive meanwhile (the
         // Notification Center pulled part way, say), the Watch went on.
@@ -277,6 +292,7 @@ final class AppModel {
         watchTask = nil
         clockTask = nil
         workTask = nil
+        if isDemo { return }
         if phase == .ready { saveWorld(now: true) }
         Core.pause()
     }
@@ -322,6 +338,7 @@ final class AppModel {
     /// now: written before this returns, as the app leaves the front (it may
     /// be suspended right after); else off the main thread.
     private func saveWorld(now: Bool = false) {
+        guard !isDemo else { return }
         saveTask?.cancel()
         var w = Hermesh_Local_V1_WatchResponse()
         w.reset = true
@@ -346,6 +363,7 @@ final class AppModel {
 
     /// Keeps it a little after the last change, while the app is in front.
     private func saveSoon() {
+        guard !isDemo else { return }
         saveTask?.cancel()
         saveTask = Task {
             try? await Task.sleep(for: .seconds(3))
@@ -382,10 +400,11 @@ final class AppModel {
 
     /// The push token, when notifications are allowed (each launch: tokens change).
     func askForNotifications() async {
+        guard !isDemo else { return }
         let s = await UNUserNotificationCenter.current().notificationSettings()
         if s.authorizationStatus == .authorized || s.authorizationStatus == .provisional {
             Push.shared.requestToken()
-            await Push.shared.register(api: api)
+            await Push.shared.register(api: api?.live)
         }
     }
 
@@ -451,6 +470,15 @@ final class AppModel {
     }
 
     // MARK: Keeping current
+
+    func runDemoTask(client: String? = nil) {
+        guard let demo = api?.demo else { return }
+        do {
+            let id = try demo.runTask(client: client ?? clients.first(where: { !$0.revoked })?.clientID ?? "")
+            sheet = nil
+            openSession(id)
+        } catch { report(error) }
+    }
 
     func refreshStatus() async {
         if let s = try? await api?.status() { status = s }
@@ -650,7 +678,7 @@ final class AppModel {
     /// The owner changed which notifications they want: tell the machines
     /// (they encrypt and send them; see Push).
     func notificationPrefsChanged() {
-        Task { await Push.shared.register(api: api) }
+        Task { await Push.shared.register(api: api?.live) }
     }
 
     // MARK: Actions

@@ -487,12 +487,17 @@ struct EnterCodeSheet: View {
                     TextField("Pairing code", text: $code).font(.body.monospaced()).textInputAutocapitalization(.characters).autocorrectionDisabled()
                         .accessibilityIdentifier("pairing-code")
                 } footer: {
-                    if let error { Text(error).foregroundStyle(.red) } else {
+                    if let error { Text(error).foregroundStyle(.red) } else if model.isDemo {
+                        Text("A sample code is filled in. Tap Find to try approving a simulated machine.")
+                    } else {
                         Text("The code a machine or agent shows in its terminal. Its request then opens here, to approve.")
                     }
                 }
             }
             .navigationTitle("Enter a Pairing Code")
+            .task {
+                if code.isEmpty, let demo = model.api?.demo { code = demo.pairing(.machine) }
+            }
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 CloseButton()

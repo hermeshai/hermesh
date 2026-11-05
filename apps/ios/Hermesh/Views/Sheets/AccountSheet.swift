@@ -19,6 +19,10 @@ struct AccountSheet: View {
     @State private var notifications: UNAuthorizationStatus?
     @AppStorage("appearance") private var appearance = "system"
 
+    private var appearanceSelection: Binding<String> {
+        model.isDemo ? Binding(get: { model.demoAppearance }, set: { model.demoAppearance = $0 }) : $appearance
+    }
+
     var body: some View {
         NavigationStack {
             List {
@@ -32,25 +36,27 @@ struct AccountSheet: View {
                 }
                 Section {
                     HStack(spacing: 0) {
-                        AppearanceOption(tag: "system", title: "System", selection: $appearance)
-                        AppearanceOption(tag: "light", title: "Light", selection: $appearance)
-                        AppearanceOption(tag: "dark", title: "Dark", selection: $appearance)
+                        AppearanceOption(tag: "system", title: "System", selection: appearanceSelection)
+                        AppearanceOption(tag: "light", title: "Light", selection: appearanceSelection)
+                        AppearanceOption(tag: "dark", title: "Dark", selection: appearanceSelection)
                     }
                     .padding(.vertical, 8)
                 } header: {
                     Text("Appearance")
                 }
-                Section {
-                    NavigationLink {
-                        NotificationsView()
-                    } label: {
-                        LabeledContent {
-                            Text(notifications.map { [.authorized, .provisional, .ephemeral].contains($0) } == true ? "On" : "Off")
+                if !model.isDemo {
+                    Section {
+                        NavigationLink {
+                            NotificationsView()
                         } label: {
-                            Label { Text("Notifications") } icon: { SettingsIcon(symbol: "bell.badge.fill", color: .red) }
+                            LabeledContent {
+                                Text(notifications.map { [.authorized, .provisional, .ephemeral].contains($0) } == true ? "On" : "Off")
+                            } label: {
+                                Label { Text("Notifications") } icon: { SettingsIcon(symbol: "bell.badge.fill", color: .red) }
+                            }
                         }
+                        .accessibilityIdentifier("notifications")
                     }
-                    .accessibilityIdentifier("notifications")
                 }
                 Section {
                     // The official service shows no connection address: agents
@@ -69,11 +75,13 @@ struct AccountSheet: View {
                     Text("About")
                 }
                 // What ends: signing this iPhone out, and erasing everything (its own page).
-                Section {
-                    Button(role: .destructive) { signingOut = true } label: { endRow("Sign Out…") }
-                    if !model.status.removed {
-                        Button(role: .destructive) { erasing = true } label: { endRow("Erase Everything…") }
-                            .accessibilityIdentifier("erase-everything")
+                if !model.isDemo {
+                    Section {
+                        Button(role: .destructive) { signingOut = true } label: { endRow("Sign Out…") }
+                        if !model.status.removed {
+                            Button(role: .destructive) { erasing = true } label: { endRow("Erase Everything…") }
+                                .accessibilityIdentifier("erase-everything")
+                        }
                     }
                 }
             }
@@ -91,7 +99,7 @@ struct AccountSheet: View {
             .navigationBarTitleDisplayMode(.inline)
             .toolbar { CloseButton() }
             // The app takes the choice too; this sheet shows it at once.
-            .preferredColorScheme(appearance == "light" ? .light : appearance == "dark" ? .dark : nil)
+            .preferredColorScheme(appearanceSelection.wrappedValue == "light" ? .light : appearanceSelection.wrappedValue == "dark" ? .dark : nil)
             // Again when back from the notifications page or from Settings.
             .onAppear { Task { await readNotifications() } }
             .onChange(of: scenePhase) { if scenePhase == .active { Task { await readNotifications() } } }

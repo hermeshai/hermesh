@@ -10,6 +10,9 @@ import SwiftProtobuf
 final class Conversations {
     /// How many are kept.
     private let keeps = 10
+    private let persistent: Bool
+
+    init(persistent: Bool = true) { self.persistent = persistent }
     private var held: [String: [SessionEvent]] = [:]
     /// Most recently opened last.
     private var order: [String] = []
@@ -24,7 +27,7 @@ final class Conversations {
             touch(id)
             return e
         }
-        guard let data = try? Data(contentsOf: file(id)), let r = try? Hermesh_Local_V1_ListSessionEventsResponse(serializedBytes: data) else { return [] }
+        guard persistent, let data = try? Data(contentsOf: file(id)), let r = try? Hermesh_Local_V1_ListSessionEventsResponse(serializedBytes: data) else { return [] }
         held[id] = r.events
         touch(id)
         return r.events
@@ -36,6 +39,7 @@ final class Conversations {
         defer { touch(id) }
         if let kept = held[id], kept.last?.seq == events.last?.seq, kept.count == events.count { return } // kept already
         held[id] = events
+        guard persistent else { return }
         var r = Hermesh_Local_V1_ListSessionEventsResponse()
         r.events = events
         guard let data = try? r.serializedData() else { return }
@@ -50,14 +54,14 @@ final class Conversations {
     func forget(_ id: String) {
         held[id] = nil
         order.removeAll { $0 == id }
-        try? FileManager.default.removeItem(at: file(id))
+        if persistent { try? FileManager.default.removeItem(at: file(id)) }
     }
 
     /// Forgets them all: the phone left the owner.
     func forgetAll() {
         held = [:]
         order = []
-        try? FileManager.default.removeItem(at: directory)
+        if persistent { try? FileManager.default.removeItem(at: directory) }
     }
 
     private func touch(_ id: String) {

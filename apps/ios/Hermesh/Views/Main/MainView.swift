@@ -12,7 +12,7 @@ struct MainView: View {
     var body: some View {
         @Bindable var model = model
         SideMenu(model: model, open: $model.drawerOpen, panAnywhere: model.path.isEmpty)
-            .ignoresSafeArea()
+            .ignoresSafeArea(edges: model.isDemo ? .top : .all)
             .sheet(item: $model.sheet) { sheet in
                 SheetHost(kind: sheet).environment(model)
             }
