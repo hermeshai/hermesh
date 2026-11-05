@@ -38,6 +38,33 @@ Buttons come in four sizes, each by what it does, never sized by hand
 | Icon | Close, Copy and Send beside an address or a command | A glass circle: Close 32 pt inside its glass (`CardCloseButton`), Copy and Send 36 pt (`CopyIcons`) |
 | Link | A way out or in that is not the main one (Send…, Can't Scan?, Enter a Pairing Code) | Text in the accent, no background |
 
+### Public demo
+
+The welcome page offers three choices: “Start Using Hermesh”, “Already using
+it on another device”, and “Try It First”. “Try It First” opens a disposable
+sample workspace without signing in, pairing a computer or
+installing a coding agent. The normal screens show simulated machines,
+projects, grants and conversations. “Run Demo Task” starts a question;
+answering or declining it produces simulated tool output, a result and a
+code diff. Adding machines, approving agents and managing projects also
+work within this sample workspace.
+
+The persistent banner and sheet footer identify simulated data. Exit Demo
+returns to onboarding; reopening starts fresh. The signed-in account page
+has no demo entry.
+`AppAPI` routes demo calls to `DemoService` in memory, with no fallback to
+the real core. Its model, conversation cache, search history and settings
+are separate from the real workspace. `DemoUITests` exercises the public
+entry and core flows. The [review acceptance matrix](ios-demo-review.md)
+records the 15 UI scenarios and their execution boundaries. The first-run
+end-to-end test also checks that the signed-in account page has no demo entry.
+
+For App Review notes: open the app, tap **Try It First**, then **Run Demo Task**.
+Choose a greeting and tap **Answer**. Open **Session Info** to inspect the
+simulated changes; the menu also exposes machines and grants. No login,
+external hardware, pairing code or external service is required for this
+demo.
+
 ## 2. How it is built
 
 ```

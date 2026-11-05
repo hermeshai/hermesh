@@ -4,20 +4,35 @@ import SwiftUI
 
 /// Shows the sheet the model asks for.
 struct SheetHost: View {
+    @Environment(AppModel.self) private var model
     let kind: SheetKind
 
     var body: some View {
+        content
+            .safeAreaInset(edge: .bottom) {
+                if model.isDemo {
+                    Text("Demo Mode · All changes are simulated")
+                        .font(.caption).foregroundStyle(.secondary).padding(8).frame(maxWidth: .infinity).background(.regularMaterial)
+                }
+            }
+    }
+
+    @ViewBuilder private var content: some View {
         switch kind {
         case .account: AccountSheet()
         case .pairing(let code): PairingSheet(code: code)
         case .sessionInfo(let id): SessionInfoSheet(id: id)
         case .renew(let grant): RenewSheet(grantID: grant)
         case .scope(let grant): ScopeSheet(grantID: grant)
-        case .connectAgent: ConnectAgentSheet()
-        case .addMachine: AddMachineSheet()
+        case .connectAgent:
+            if model.isDemo { DemoPairingSheet(kind: .client) } else { ConnectAgentSheet() }
+        case .addMachine:
+            if model.isDemo { DemoPairingSheet(kind: .machine) } else { AddMachineSheet() }
         case .enterCode: EnterCodeSheet()
-        case .scan: ScanSheet()
-        case .addDevice: AddDeviceSheet()
+        case .scan:
+            if model.isDemo { DemoPairingSheet(kind: .machine) } else { ScanSheet() }
+        case .addDevice:
+            if model.isDemo { DemoPairingSheet(kind: .device) } else { AddDeviceSheet() }
         case .addProject(let machine, let agent): AddProjectSheet(machineID: machine, agent: agent)
         case .search: SearchSheet()
         case .wake(let client, let agent, let wake): WakeSheet(clientID: client, agent: agent, existing: wake)
@@ -326,7 +341,12 @@ struct PairingSheet: View {
 
     var body: some View {
         if let device {
-            MatchSheet(label: device.label, digits: device.digits)
+            if model.isDemo {
+                NavigationStack {
+                    ContentUnavailableView("Demo device added", systemImage: "checkmark.shield", description: Text("It now appears in Machines. No physical device was paired."))
+                        .toolbar { CloseButton() }
+                }
+            } else { MatchSheet(label: device.label, digits: device.digits) }
         } else if let connected {
             FirstTask(clientID: connected.id, name: connected.name) { dismiss() }
                 .fittedSheet()
@@ -727,7 +747,7 @@ struct FirstTask: View {
                 }
             Text("“\(name)” is connected").font(.title2.bold()).multilineTextAlignment(.center).padding(.top, 16)
                 .accessibilityIdentifier("client-connected")
-            Text("Send it this to try it:").font(.subheadline).foregroundStyle(.secondary).padding(.top, 4)
+            Text(model.isDemo ? "Start a simulated task to try it:" : "Send it this to try it:").font(.subheadline).foregroundStyle(.secondary).padding(.top, 4)
             Text(prompt).font(.callout).textSelection(.enabled)
                 .padding(14).frame(maxWidth: .infinity, alignment: .leading)
                 .background(.fill.tertiary, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
@@ -738,13 +758,20 @@ struct FirstTask: View {
             }
             .font(.footnote).foregroundStyle(.secondary)
             .padding(.top, 14)
-            CardButton(title: "Copy", systemImage: "doc.on.doc") {
-                UIPasteboard.general.string = prompt
-                model.show(String(localized: "Copied"))
+            if model.isDemo {
+                CardButton(title: "Run Demo Task", systemImage: "play.fill") {
+                    model.runDemoTask(client: clientID)
+                    close()
+                }.accessibilityIdentifier("run-demo-task").padding(.top, 22)
+            } else {
+                CardButton(title: "Copy", systemImage: "doc.on.doc") {
+                    UIPasteboard.general.string = prompt
+                    model.show(String(localized: "Copied"))
+                }
+                .accessibilityIdentifier("copy-prompt")
+                .padding(.top, 22)
+                ShareLink(item: prompt) { Text("Send…") }.padding(.top, 14)
             }
-            .accessibilityIdentifier("copy-prompt")
-            .padding(.top, 22)
-            ShareLink(item: prompt) { Text("Send…") }.padding(.top, 14)
         }
         .padding(.horizontal, 26).padding(.top, 44).padding(.bottom, 6)
         .overlay(alignment: .topTrailing) { CardCloseButton(action: close).padding(16) }
@@ -810,6 +837,7 @@ struct ScopeSheet: View {
     @Environment(\.dismiss) private var dismiss
     let grantID: String
     @State private var scope = ScopeChoice()
+    @State private var initialized = false
     @State private var busy = false
 
     var body: some View {
@@ -831,7 +859,7 @@ struct ScopeSheet: View {
                             busy = true
                             var spec = scope.spec
                             spec.label = c.label
-                            spec.ttlDays = UInt32(max(1, c.daysLeft(now: Date())))
+                            spec.ttlDays = model.isDemo ? 0 : UInt32(max(1, c.daysLeft(now: Date())))
                             spec.taskVisibility = c.spec.taskVisibility
                             spec.maxConcurrentSessions = c.spec.maxConcurrentSessions
                             Task {
@@ -842,7 +870,11 @@ struct ScopeSheet: View {
                         .disabled(busy || !scope.complete)
                     }
                 }
-                .task(id: model.projects.isEmpty) { // again once the projects came (the first Watch after a launch)
+                .task(id: model.isDemo ? model.hasWorld : model.projects.isEmpty) {
+                    if model.isDemo {
+                        guard model.hasWorld, !initialized else { return }
+                        initialized = true
+                    }
                     scope = ScopeChoice(client: c, projects: model.projects)
                 }
             }

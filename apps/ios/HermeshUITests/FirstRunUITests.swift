@@ -17,6 +17,16 @@ extension HermeshUITests {
         try XCTContext.runActivity(named: "connects an agent, and its first session shows its answer") { _ in try firstTask() }
         try XCTContext.runActivity(named: "says this iPhone alone can approve, until hidden") { _ in try onlyDevice() }
         try XCTContext.runActivity(named: "keeps Get Started away while the machine reconnects") { _ in try reconnect() }
+        XCTContext.runActivity(named: "keeps the demo entry out of the signed-in account") { _ in
+            openMenu()
+            tap("account")
+            XCTAssertTrue(app.buttons["appearance-system"].waitForExistence(timeout: 10))
+            XCTAssertFalse(app.buttons["try-demo"].exists)
+            let shot = XCTAttachment(screenshot: app.screenshot())
+            shot.name = "account-without-demo"; shot.lifetime = .keepAlways; add(shot)
+            tap("close")
+            app.buttons["概览"].tap()
+        }
         try XCTContext.runActivity(named: "erases everything, and opens on its first run saying what was done") { _ in
             try eraseEverything(URL(string: world["relay"] as! String)!)
         }

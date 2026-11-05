@@ -30,7 +30,14 @@ struct OverviewView: View {
             VStack(alignment: .leading, spacing: 26) {
                 UnreachableNotice()
                 if model.hasWorld {
-                    GetStarted()
+                    if model.isDemo {
+                        VStack(alignment: .leading, spacing: 10) {
+                            Text("Explore Hermesh").font(.title2.bold())
+                            Text("Try a task, answer the agent’s question, then inspect its changes. Machines, approvals and results here are simulated.").foregroundStyle(.secondary)
+                            Button("Run Demo Task", systemImage: "play.fill") { model.runDemoTask() }
+                                .buttonStyle(.borderedProminent).accessibilityIdentifier("run-demo-task")
+                        }.padding(.horizontal, 20)
+                    } else { GetStarted() }
                     todo
                     working
                 } else { // nothing kept yet: the first launch, or after joining
@@ -51,7 +58,7 @@ struct OverviewView: View {
         .onDisappear { model.overviewShown = false }
         .refreshable { await model.loadWork() }
         .task(id: phase) {
-            guard phase == .active else { return }
+            guard phase == .active, !model.isDemo else { return }
             notificationsOff = await UNUserNotificationCenter.current().notificationSettings().authorizationStatus == .denied
         }
     }
@@ -77,7 +84,7 @@ struct OverviewView: View {
     /// Once the first machine joins, while this phone is the only device that
     /// can approve.
     private var onlyDevice: Bool {
-        !hideSecondDevice && !model.machines.isEmpty && model.devices.count == 1 && model.devices[0].thisDevice
+        !model.isDemo && !hideSecondDevice && !model.machines.isEmpty && model.devices.count == 1 && model.devices[0].thisDevice
     }
 
     @ViewBuilder private var todo: some View {

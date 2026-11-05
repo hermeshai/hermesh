@@ -17,6 +17,8 @@ struct FolderBrowser: View {
     @State private var failure: String?
     @State private var tooOld = false
     @AppStorage("showHiddenFolders") private var hidden = false
+    @State private var demoHidden = false
+    private var hiddenSelection: Binding<Bool> { model.isDemo ? $demoHidden : $hidden }
     @State private var typing = false
     @State private var typed = ""
     @State private var asking: Hermesh_Machine_V1_Folder?
@@ -79,7 +81,7 @@ struct FolderBrowser: View {
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
                 Menu {
-                    Toggle("Show Hidden Folders", isOn: $hidden)
+                    Toggle("Show Hidden Folders", isOn: hiddenSelection)
                     Button("Type a Path…", systemImage: "character.cursor.ibeam") { typing = true }
                 } label: {
                     Label("More", systemImage: "ellipsis")
@@ -87,7 +89,7 @@ struct FolderBrowser: View {
                 .accessibilityIdentifier("folder-menu")
             }
         }
-        .task(id: hidden) { await load() }
+        .task(id: hiddenSelection.wrappedValue) { await load() }
         .alert("Type a Path", isPresented: $typing) {
             TextField("~/code/my-app", text: $typed).textInputAutocapitalization(.never).autocorrectionDisabled()
             Button("Cancel", role: .cancel) {}
@@ -125,7 +127,7 @@ struct FolderBrowser: View {
     private func load() async {
         failure = nil
         do {
-            listing = try await model.api?.folders(machine: machineID, path: path, hidden: hidden)
+            listing = try await model.api?.folders(machine: machineID, path: path, hidden: hiddenSelection.wrappedValue)
         } catch let e as APIError where e.code == "unimplemented" {
             tooOld = true
             failure = String(localized: "Hermesh on \(machine) is too old to browse its folders. Update it there, or type a path.")

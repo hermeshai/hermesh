@@ -405,6 +405,7 @@ func newIPhoneControl(t *testing.T, w *ownerMac, sessions map[string]string) str
 		}
 		s, res := w.startSession(2*time.Minute, "--agent", "gemini", "--title", title, "--prompt", "say "+say, "--wait")
 		if s.SessionID == "" {
+			t.Logf("start session %q failed: exit=%d stdout=%s stderr=%s", title, res.code, res.stdout, res.stderr)
 			http.Error(rw, "start: "+res.stdout+res.stderr, 500)
 			return
 		}

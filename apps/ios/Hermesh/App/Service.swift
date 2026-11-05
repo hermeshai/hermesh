@@ -1,6 +1,38 @@
 import Foundation
 import HermeshKit
 import HermeshProto
+import SwiftProtobuf
+
+/// The same messages drive both the real core and the in-memory demo.
+final class AppAPI {
+    let live: LocalAPI?
+    let demo: DemoService?
+
+    init(live: LocalAPI) { self.live = live; demo = nil }
+    init(demo: DemoService) { self.demo = demo; live = nil }
+
+    func call<Req: SwiftProtobuf.Message, Res: SwiftProtobuf.Message>(_ method: String, _ req: Req, as _: Res.Type = Res.self, timeout: Int = 10) async throws -> Res {
+        if let live { return try await live.call(method, req, as: Res.self, timeout: timeout) }
+        guard let demo else { throw CancellationError() }
+        return try Res(jsonUTF8Data: demo.call(method, req.jsonUTF8Data()))
+    }
+
+    func stream<Req: SwiftProtobuf.Message, Res: SwiftProtobuf.Message>(_ method: String, _ req: Req, as _: Res.Type = Res.self) -> AsyncThrowingStream<Res, Error> {
+        if let live { return live.stream(method, req, as: Res.self) }
+        return AsyncThrowingStream { continuation in
+            guard let demo else { continuation.finish(); return }
+            let task = Task {
+                do {
+                    for try await data in try demo.stream(method, req.jsonUTF8Data()) {
+                        continuation.yield(try Res(jsonUTF8Data: data))
+                    }
+                    continuation.finish()
+                } catch { continuation.finish(throwing: error) }
+            }
+            continuation.onTermination = { _ in task.cancel() }
+        }
+    }
+}
 
 // LocalService's messages by shorter names, and its calls typed.
 
@@ -23,7 +55,7 @@ typealias WakeRing = Hermesh_Local_V1_WakeRing
 /// How long a call that waits for Face ID may take.
 let signingTimeout = 180
 
-extension LocalAPI {
+extension AppAPI {
     func status() async throws -> StatusResponse { try await call("GetStatus", Hermesh_Local_V1_GetStatusRequest()) }
 
     func listSessions(limit: UInt32 = 50, before: Hermesh_Session_V1_SessionCursor? = nil) async throws -> Hermesh_Local_V1_ListSessionsResponse {

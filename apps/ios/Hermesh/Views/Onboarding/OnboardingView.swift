@@ -36,6 +36,7 @@ struct OnboardingView: View {
         case notifications(guided: Bool)
     }
 
+    @State private var showingDemo = false
     @State private var step: Step = .welcome
     @State private var forward = true
     /// The card chosen on the first page: already using Hermesh elsewhere.
@@ -107,9 +108,11 @@ struct OnboardingView: View {
             .frame(maxHeight: .infinity, alignment: .top)
             if let error { Text(error).font(.footnote).foregroundStyle(.red).multilineTextAlignment(.center).frame(maxWidth: .infinity).padding(.horizontal, 28).padding(.bottom, 12) }
             GuideCard {
-                GuideChoice(systemImage: "sparkle", accent: true, title: Text("First time using Hermesh"), id: "start-new") { signIn(joining: false) }
+                GuideChoice(systemImage: "sparkle", accent: true, title: Text("Start Using Hermesh"), subtitle: Text("Connect your computer and agents"), id: "start-new") { signIn(joining: false) }
                 GuideDivider()
                 GuideChoice(systemImage: "laptopcomputer.and.iphone", title: Text("Already using it on another device"), id: "start-join") { signIn(joining: true) }
+                GuideDivider()
+                GuideChoice(systemImage: "play.circle", title: Text("Try It First"), subtitle: Text("Explore sample tasks without signing in"), id: "try-demo") { showingDemo = true }
             }
             .disabled(busy)
             Button("Use Your Own Server…") { go(.ownServer) }
@@ -117,6 +120,7 @@ struct OnboardingView: View {
                 .accessibilityIdentifier("own-server")
         }
         .padding(.bottom, 8)
+        .fullScreenCover(isPresented: $showingDemo) { DemoView() }
     }
 
     private var ownServer: some View {

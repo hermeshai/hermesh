@@ -1060,8 +1060,11 @@ final class HermeshUITests: XCTestCase {
         var out: [String: Any] = [:]
         var failure: Error?
         let done = expectation(description: path)
-        URLSession.shared.dataTask(with: req) { data, _, error in
-            if let data, let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any] { out = obj } else { failure = error ?? URLError(.badServerResponse) }
+        URLSession.shared.dataTask(with: req) { data, response, error in
+            if let response = response as? HTTPURLResponse, !(200..<300).contains(response.statusCode) {
+                failure = NSError(domain: "HermeshE2EControl", code: response.statusCode,
+                                  userInfo: [NSLocalizedDescriptionKey: "\(path): \(String(data: data ?? Data(), encoding: .utf8) ?? "")"])
+            } else if let data, let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any] { out = obj } else { failure = error ?? URLError(.badServerResponse) }
             done.fulfill()
         }.resume()
         wait(for: [done], timeout: 70)

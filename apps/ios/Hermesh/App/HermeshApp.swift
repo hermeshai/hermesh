@@ -48,7 +48,7 @@ final class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCent
 
     func application(_ application: UIApplication, didRegisterForRemoteNotificationsWithDeviceToken deviceToken: Data) {
         Push.shared.token = deviceToken.map { String(format: "%02x", $0) }.joined()
-        Task { await Push.shared.register(api: AppModel.shared.api) }
+        Task { await Push.shared.register(api: AppModel.shared.api?.live) }
     }
 
     func application(_ application: UIApplication, didFailToRegisterForRemoteNotificationsWithError error: Error) {}
