@@ -539,6 +539,50 @@ func TestMCPStrangers(t *testing.T) {
 
 // mcpAddress is the relay's MCP address as the owner's apps show it,
 // once the owner's hermeshd has asked the relay for it.
+// TestMCPChatGPTClient connects the way ChatGPT does: its real client_id, so
+// the relay fetches ChatGPT's live metadata document, and its real redirect,
+// where the browser stops. It needs chatgpt.com, so it runs only with
+// HERMESH_REAL_CHATGPT=1.
+func TestMCPChatGPTClient(t *testing.T) {
+	if testing.Short() || os.Getenv("HERMESH_REAL_CHATGPT") != "1" {
+		t.Skip("set HERMESH_REAL_CHATGPT=1")
+	}
+	bin := binaries(t)
+	port := freePort(t)
+	relayData := filepath.Join(t.TempDir(), "relay")
+	relay := start(t, "relay", nil, filepath.Join(bin, "hermesh-relay"), "serve", "--mcp", "--data-dir", relayData, "--listen", fmt.Sprintf("127.0.0.1:%d", port))
+	t.Cleanup(func() {
+		if t.Failed() {
+			t.Logf("==== relay output ====\n%s", relay.output())
+		}
+	})
+	eventually(t, 20*time.Second, "relay up", func() bool { return strings.Contains(relay.output(), "relay listening") })
+	address := strings.TrimSpace(run(t, nil, 10*time.Second, filepath.Join(bin, "hermesh-relay"), "mcp-url", "--data-dir", relayData).stdout)
+
+	app := newOAuthApp(t, address, "ChatGPT")
+	app.clientID = "https://chatgpt.com/oauth/client.json"
+	app.redirect = "https://chatgpt.com/connector_platform_oauth_redirect"
+	app.hc.CheckRedirect = func(req *http.Request, _ []*http.Request) error {
+		if req.URL.Host == "chatgpt.com" {
+			return http.ErrUseLastResponse
+		}
+		return nil
+	}
+	page := app.authorize()
+	if !strings.Contains(page, "Connect ChatGPT to Hermesh") || !strings.Contains(page, "Verified app") {
+		t.Fatalf("consent page:\n%s", page)
+	}
+	tokens := app.finish(app.connect(page))
+	tools, err := app.mcpSession(tokens.Access).ListTools(context.Background(), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(tools.Tools) == 0 {
+		t.Fatal("no tools")
+	}
+	app.refresh(tokens.Refresh)
+}
+
 func mcpAddress(t *testing.T, app *testApp) string {
 	t.Helper()
 	var u string
