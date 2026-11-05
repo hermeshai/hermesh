@@ -57,6 +57,11 @@ type freshOwner struct {
 // Applications, the process limit).
 var windowsSpecs = map[string]bool{"windows": true, "shell": true, "motion": true, "search": true, "overview": true, "sheets": true, "settings": true, "session": true, "sessionlist": true}
 
+// These specs read back what they copied. The clipboard is the whole
+// computer's, so they run one at a time, before the specs that run side by
+// side (a parallel subtest starts only when the serial ones are done).
+var clipboardSpecs = map[string]bool{"health": true, "session": true, "settings": true, "sheets": true}
+
 // TestDesktop runs the desktop app's end-to-end tests: Playwright drives
 // the real Electron app (apps/desktop/e2e) against sessions in every state
 // the app shows, played by a scripted ACP agent through the real relay,
@@ -108,7 +113,9 @@ func TestDesktop(t *testing.T) {
 			continue
 		}
 		t.Run(name, func(t *testing.T) {
-			t.Parallel()
+			if !clipboardSpecs[name] {
+				t.Parallel()
+			}
 			f := desktopWorld(t, name == "onboarding", name == "health", name == "settings")
 			if name == "session" {
 				f.OtherMac = otherMacSession(t, f)
