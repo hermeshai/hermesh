@@ -178,6 +178,43 @@ func TestEscapedDescendantsDieWithAgent(t *testing.T) {
 	})
 }
 
+// A silent agent says what it is doing: the programs under it, newest
+// first with their arguments, and the end of its stderr, credentials
+// redacted.
+func TestDiagnose(t *testing.T) {
+	procModes(t, func(t *testing.T) {
+		p := startSh(t, `echo "starting" >&2; /bin/sleep 61 & sleep 0.3; /bin/sh -c '/bin/sleep 62; :' & sleep 0.3
+echo "waiting for the keychain, api_key=abcd1234efgh5678" >&2; echo ready; wait`)
+		defer p.Stop(time.Second)
+		ready := make(chan struct{})
+		go p.Lines(func(b []byte) {
+			if string(b) == "ready" {
+				close(ready)
+			}
+		})
+		select {
+		case <-ready:
+		case <-time.After(10 * time.Second):
+			t.Fatal("not ready")
+		}
+		d := p.Diagnose()
+		want := []string{"sleep 62", "sh -c /bin/sleep 62; :", "sleep 61"}
+		if strings.Join(d.Running, "\n") != strings.Join(want, "\n") {
+			t.Fatalf("running %q", d.Running)
+		}
+		if d.Stderr != "starting | waiting for the keychain, api_key=[redacted]" {
+			t.Fatalf("stderr %q", d.Stderr)
+		}
+		if s := d.String(); s != "running: sleep 62, sh -c /bin/sleep 62; :, sleep 61; stderr: "+d.Stderr {
+			t.Fatalf("summary %q", s)
+		}
+	})
+	many := Diagnosis{Running: []string{"a", "b", "c", "d", "e", "f", "g"}, Stderr: strings.Repeat("x", 1000)}
+	if s := many.String(); !strings.HasPrefix(s, "running: a, b, c, d, e and 2 more; stderr: …x") || len(s) > 400 {
+		t.Fatalf("long summary %q", s)
+	}
+}
+
 // KillTree (recovery after a daemon crash) reaches descendants that left
 // the group of an agent it never tracked.
 func TestKillTree(t *testing.T) {

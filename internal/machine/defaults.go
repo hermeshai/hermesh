@@ -3,6 +3,10 @@ package machine
 import (
 	"errors"
 	"regexp"
+	"slices"
+	"strings"
+
+	"connectrpc.com/connect"
 
 	identityv1 "github.com/hermeshai/hermesh/gen/go/hermesh/identity/v1"
 	machinev1 "github.com/hermeshai/hermesh/gen/go/hermesh/machine/v1"
@@ -61,6 +65,44 @@ func (n *Machine) agentDefaults(agent string) provider.Settings {
 	defer n.mu.Unlock()
 	d := n.defaults[agent]
 	return provider.Settings{Model: d.GetModel(), Effort: d.GetEffort(), Speed: d.GetSpeed()}
+}
+
+// checkSettings refuses a model or reasoning effort the agent does not
+// offer here, naming the ones it does. Only an agent that lists every model
+// it takes (Codex) has its model checked; an effort must be one the model
+// the session runs offers (runs: "" or unlisted, one any listed model does).
+func checkSettings(agent string, i provider.Info, model, effort, runs string) error {
+	if model != "" && i.AllModels && !slices.ContainsFunc(i.Models, func(m provider.Model) bool { return m.ID == model }) {
+		var ids []string
+		for _, m := range i.Models {
+			ids = append(ids, m.ID)
+		}
+		return cerr(connect.CodeInvalidArgument, "%s on this machine has no model %q (one of: %s)", agent, model, strings.Join(ids, ", "))
+	}
+	if effort == "" {
+		return nil
+	}
+	var efforts []string
+	if k := slices.IndexFunc(i.Models, func(m provider.Model) bool { return m.ID == runs }); k >= 0 {
+		efforts = i.Models[k].Efforts
+	} else {
+		for _, m := range i.Models {
+			for _, e := range m.Efforts {
+				if !slices.Contains(efforts, e) {
+					efforts = append(efforts, e)
+				}
+			}
+		}
+	}
+	switch {
+	case len(efforts) == 0:
+		return cerr(connect.CodeInvalidArgument, "%s on this machine takes no reasoning effort", agent)
+	case !slices.Contains(efforts, effort) && runs != "":
+		return cerr(connect.CodeInvalidArgument, "%s's model %s has no reasoning effort %q (one of: %s)", agent, runs, effort, strings.Join(efforts, ", "))
+	case !slices.Contains(efforts, effort):
+		return cerr(connect.CodeInvalidArgument, "%s has no reasoning effort %q (one of: %s)", agent, effort, strings.Join(efforts, ", "))
+	}
+	return nil
 }
 
 // agentModels fills in what a's status says of models: the ones it offers,

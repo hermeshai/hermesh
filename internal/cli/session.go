@@ -114,7 +114,7 @@ func readPrompt(flag, text, file string, files int) (string, error) {
 }
 
 func (a *app) startCmd() *cobra.Command {
-	var project, agent, base, model, prompt, promptFile, title, idem string
+	var project, agent, base, model, effort, prompt, promptFile, title, idem string
 	var questionTimeout time.Duration
 	var files []string
 	var wait bool
@@ -156,7 +156,7 @@ func (a *app) startCmd() *cobra.Command {
 			}
 			return a.onMachine(ctx, c, ref, func(c *peer.Client, n *peer.Machine, ref machineRef) error {
 				res, err := n.Session.StartSession(ctx, &sessionv1.StartSessionRequest{IdempotencyKey: idem, ProjectId: projectID,
-					Agent: agent, Prompt: text, BaseRef: base, Model: model, Attachments: atts, QuestionTimeoutSeconds: qt, Title: title,
+					Agent: agent, Prompt: text, BaseRef: base, Model: model, Effort: effort, Attachments: atts, QuestionTimeoutSeconds: qt, Title: title,
 					Conversation: a.as})
 				if connect.CodeOf(err) == connect.CodeNotFound {
 					return &exitError{code: exitUsage, kind: "not_found", err: err, hint: "see `hermesh project list`"}
@@ -178,8 +178,9 @@ func (a *app) startCmd() *cobra.Command {
 	f := cmd.Flags()
 	f.StringVar(&project, "project", "", "where to work: machine/project as hermesh project list shows it, or the project alone when only one machine has it")
 	f.StringVar(&agent, "agent", "claude", "coding agent to run: claude, codex, or an ACP agent (gemini, cursor, copilot, ...); hermesh project list shows those available")
-	f.StringVar(&base, "base", "", "base git ref of the session's worktree (worktree projects only; default: the project's)")
-	f.StringVar(&model, "model", "", "model to run (default: the one the owner set for the agent on that machine, else the agent's own)")
+	f.StringVar(&base, "base", "", "base git ref of the session's worktree (worktree projects only; default: the project's); fetched from the project's remote when the machine lacks it")
+	f.StringVar(&model, "model", "", "model to run, one hermesh agent list shows for the agent (default: the one the owner set for the agent on that machine, else the agent's own)")
+	f.StringVar(&effort, "effort", "", "reasoning effort, one hermesh agent list shows for the model (default: the one the owner set for the agent on that machine, else the agent's own)")
 	f.StringVar(&prompt, "prompt", "", "prompt text")
 	f.StringVar(&promptFile, "prompt-file", "", "read the prompt from a file (- for stdin)")
 	f.StringVar(&title, "title", "", "a short title for session lists (default: the first line of the prompt)")
@@ -355,15 +356,25 @@ func (a *app) getSession(ctx context.Context, c *peer.Client, ref machineRef, id
 	return n.Session.GetSession(ctx, &sessionv1.GetSessionRequest{SessionId: id})
 }
 
-// failureName is the CLI spelling of a failure kind ("rate_limit").
+// failureName is the CLI spelling of a failure kind ("rate_limit"). A kind
+// newer than this build (from a newer machine) is "unknown"; the failure's
+// message, hint and retryable still say what to do.
 func failureName(k sessionv1.FailureKind) string {
 	if k == sessionv1.FailureKind_FAILURE_KIND_UNSPECIFIED {
 		return ""
 	}
+	if _, ok := sessionv1.FailureKind_name[int32(k)]; !ok {
+		return "unknown"
+	}
 	return strings.ToLower(strings.TrimPrefix(k.String(), "FAILURE_KIND_"))
 }
 
+// statusName is the CLI spelling of a status; one newer than this build is
+// "unknown".
 func statusName(s sessionv1.SessionStatus) string {
+	if _, ok := sessionv1.SessionStatus_name[int32(s)]; !ok {
+		return "unknown"
+	}
 	return strings.ToLower(strings.TrimPrefix(s.String(), "SESSION_STATUS_"))
 }
 

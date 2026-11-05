@@ -228,6 +228,58 @@ func (p *Proc) Done() <-chan struct{} { return p.done }
 func (p *Proc) Err() error            { return p.err }
 func (p *Proc) StderrTail() string    { return p.stderr.String() }
 
+// Diagnosis is what an agent's process is doing, for the report of a
+// stall: the programs still running under it, newest first (what it may
+// be waiting for: an MCP server starting, a credential prompt, a
+// download), and the last lines of its stderr. Windows lists no programs.
+type Diagnosis struct {
+	Running []string
+	Stderr  string
+}
+
+// Diagnose looks at the process now.
+func (p *Proc) Diagnose() Diagnosis {
+	var d Diagnosis
+	for _, args := range p.tree.running() {
+		cmd := strings.Join(append([]string{filepath.Base(args[0])}, args[1:]...), " ")
+		d.Running = append(d.Running, clip(Redact(cmd), 200))
+	}
+	d.Stderr = Redact(lastLines(strings.TrimSpace(p.stderr.String()), 10))
+	return d
+}
+
+// String is d on one line for a failure message: the newest programs and
+// the end of stderr.
+func (d Diagnosis) String() string {
+	var parts []string
+	if n := len(d.Running); n > 0 {
+		s := "running: " + strings.Join(d.Running[:min(n, 5)], ", ")
+		if n > 5 {
+			s += fmt.Sprintf(" and %d more", n-5)
+		}
+		parts = append(parts, s)
+	}
+	if d.Stderr != "" {
+		s := d.Stderr
+		if i := len(s) - 300; i > 0 {
+			for i < len(s) && !utf8.RuneStart(s[i]) {
+				i++
+			}
+			s = "…" + s[i:]
+		}
+		parts = append(parts, "stderr: "+s)
+	}
+	return strings.Join(parts, "; ")
+}
+
+// clip cuts s to n bytes, marking the cut.
+func clip(s string, n int) string {
+	if t, cut := Truncate(s, n); cut {
+		return t + "…"
+	}
+	return s
+}
+
 // Stop closes stdin, then terminates the process group: SIGTERM, wait,
 // SIGKILL, and a few extra sweeps for stragglers.
 func (p *Proc) Stop(grace time.Duration) {

@@ -203,6 +203,11 @@ VERSION=0.1.1 ASC_KEY_ID=<key id> ASC_ISSUER_ID=<issuer id> apps/ios/scripts/tes
 
 The build number is the commit count unless `BUILD` says otherwise.
 
+Info.plist answers export compliance (`ITSAppUsesNonExemptEncryption`
+false): the app uses only standard algorithms (TLS, HPKE with X25519 and
+AES-GCM, ECDSA P-256) and is not distributed in France, so a new build
+needs no questions answered before testers get it.
+
 ## 7. Not now
 
 Sign in with Apple and App Store review, an iPad layout, widgets and Live

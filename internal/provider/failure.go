@@ -63,7 +63,7 @@ var kinds = map[sessionv1.FailureKind]kindInfo{
 	sessionv1.FailureKind_FAILURE_KIND_PROVIDER_ERROR:       {true, "the provider returned a server error; send the message again later"},
 	sessionv1.FailureKind_FAILURE_KIND_NETWORK:              {true, "the connection to the provider failed; send the message again"},
 	sessionv1.FailureKind_FAILURE_KIND_CONTEXT_OVERFLOW:     {false, "the conversation no longer fits the model's context; the next message continues in a fresh context (work in the worktree is kept)"},
-	sessionv1.FailureKind_FAILURE_KIND_MODEL_UNAVAILABLE:    {false, "the model does not exist or this account cannot use it; start a session with another model"},
+	sessionv1.FailureKind_FAILURE_KIND_MODEL_UNAVAILABLE:    {false, "the model does not exist or this account cannot use it; start a session with another model, one `hermesh agent list` shows for the agent"},
 	sessionv1.FailureKind_FAILURE_KIND_INVALID_REQUEST:      {false, "the provider rejected the request; change the message"},
 	sessionv1.FailureKind_FAILURE_KIND_REFUSED:              {false, "the model refused the task; rephrase it"},
 	sessionv1.FailureKind_FAILURE_KIND_LIMIT_REACHED:        {false, "the turn hit the agent's step or token limit; send \"continue\" to go on"},
@@ -73,7 +73,7 @@ var kinds = map[sessionv1.FailureKind]kindInfo{
 	sessionv1.FailureKind_FAILURE_KIND_TIMEOUT:              {false, "the turn exceeded the machine's time limit; send the message again to continue"},
 	sessionv1.FailureKind_FAILURE_KIND_START_FAILED:         {false, "the agent could not be started; run `hermeshd doctor` on the machine"},
 	sessionv1.FailureKind_FAILURE_KIND_INTERRUPTED:          {false, "the turn was stopped on purpose; send a message to go on in this session"},
-	sessionv1.FailureKind_FAILURE_KIND_BASE_REF_UNAVAILABLE: {false, "check the base ref name or sync the corresponding branch/tag into the project's local repository, then send another message in the same session to retry the original task"},
+	sessionv1.FailureKind_FAILURE_KIND_BASE_REF_UNAVAILABLE: {false, "check the base ref name, and that the branch or tag is on the project's remote (the machine fetches it from there), then send another message in the same session to retry the original task"},
 	sessionv1.FailureKind_FAILURE_KIND_UNKNOWN:              {false, ""},
 }
 

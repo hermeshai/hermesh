@@ -59,6 +59,44 @@ esac
 		t.Fatalf("own %v, defaults %v", own, a.Defaults)
 	}
 
+	// An agent picking a model and reasoning effort sees the ones Codex
+	// offers, and what a session runs with by default, in the agent list;
+	// a model it does not offer, or an effort the model does not take, is
+	// refused before a session starts, with the ones there are.
+	var listed struct {
+		Agents []struct {
+			Agent, Machine string
+			DefaultModel   string `json:"default_model"`
+			DefaultEffort  string `json:"default_effort"`
+			Models         []struct {
+				ID      string
+				Efforts []string
+			}
+		}
+	}
+	if r := w.cli(30*time.Second, "agent", "list", "--agent", "codex", "-o", "json"); json.Unmarshal([]byte(r.stdout), &listed) != nil || len(listed.Agents) != 1 {
+		t.Fatalf("agent list: %+v", r)
+	}
+	if ag := listed.Agents[0]; ag.Agent != "codex" || ag.Machine != "owner-mac" || ag.DefaultModel != "gpt-fake-big" || ag.DefaultEffort != "high" || len(ag.Models) != 2 ||
+		strings.Join(ag.Models[0].Efforts, ",") != "low,high,xhigh" || ag.Models[1].ID != "gpt-fake-small" || strings.Join(ag.Models[1].Efforts, ",") != "low,high" {
+		t.Fatalf("listed: %+v", ag)
+	}
+	refused := func(want string, args ...string) {
+		t.Helper()
+		var failed struct {
+			Error struct{ Kind, Message string }
+		}
+		if _, r := w.startSession(30*time.Second, append([]string{"--agent", "codex", "--prompt", "hi"}, args...)...); r.code == 0 || json.Unmarshal([]byte(r.stdout), &failed) != nil ||
+			failed.Error.Kind != "usage" || !strings.Contains(failed.Error.Message, want) {
+			t.Fatalf("%v: %+v", args, r)
+		}
+	}
+	refused(`codex on this machine has no model "aurora" (one of: gpt-fake-big, gpt-fake-small)`, "--model", "aurora")
+	refused(`codex's model gpt-fake-small has no reasoning effort "xhigh" (one of: low, high)`, "--model", "gpt-fake-small", "--effort", "xhigh")
+	if b, _ := os.ReadFile(log); len(b) != 0 {
+		t.Fatalf("codex started a thread for a refused model or effort: %s", b)
+	}
+
 	set := func(d *identityv1.AgentDefaults) {
 		t.Helper()
 		if _, err := w.app.client.SetAgentDefaults(ctx, &localv1.SetAgentDefaultsRequest{MachineId: machineID, Defaults: d}); err != nil {
@@ -112,6 +150,14 @@ esac
 	}
 	if got := shown(started); got != "gpt-fake-big low" {
 		t.Fatalf("shown with the agent's model: %q", got)
+	}
+
+	// The agent's effort, for the model it names, wins over the default.
+	if p := last("--model", "gpt-fake-big", "--effort", "xhigh"); p["model"] != "gpt-fake-big" || p["config"].(map[string]any)["model_reasoning_effort"] != "xhigh" {
+		t.Fatalf("the agent's effort: %v", p)
+	}
+	if got := shown(started); got != "gpt-fake-big xhigh" {
+		t.Fatalf("shown with the agent's effort: %q", got)
 	}
 
 	set(&identityv1.AgentDefaults{Agent: "codex"})

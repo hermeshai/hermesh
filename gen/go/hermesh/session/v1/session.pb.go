@@ -482,7 +482,10 @@ type StartSessionRequest struct {
 	Title string `protobuf:"bytes,10,opt,name=title,proto3" json:"title,omitempty"`
 	// The starter's own conversation (a Claude Code session id, a Codex
 	// thread): the session's news goes to it (docs/agent-messages.md §6.2).
-	Conversation  string `protobuf:"bytes,11,opt,name=conversation,proto3" json:"conversation,omitempty"`
+	Conversation string `protobuf:"bytes,11,opt,name=conversation,proto3" json:"conversation,omitempty"`
+	// Reasoning effort, one the model offers (AgentModel.efforts); unset:
+	// the machine's default for the agent, else the agent's own.
+	Effort        string `protobuf:"bytes,12,opt,name=effort,proto3" json:"effort,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -583,6 +586,13 @@ func (x *StartSessionRequest) GetTitle() string {
 func (x *StartSessionRequest) GetConversation() string {
 	if x != nil {
 		return x.Conversation
+	}
+	return ""
+}
+
+func (x *StartSessionRequest) GetEffort() string {
+	if x != nil {
+		return x.Effort
 	}
 	return ""
 }
@@ -4236,7 +4246,7 @@ const file_hermesh_session_v1_session_proto_rawDesc = "" +
 	"\x13retry_after_seconds\x18\x04 \x01(\rR\x11retryAfterSeconds\x12\x12\n" +
 	"\x04hint\x18\x05 \x01(\tR\x04hint\x12\x1f\n" +
 	"\vhttp_status\x18\x06 \x01(\rR\n" +
-	"httpStatus\"\xa2\x03\n" +
+	"httpStatus\"\xba\x03\n" +
 	"\x13StartSessionRequest\x12'\n" +
 	"\x0fidempotency_key\x18\x01 \x01(\tR\x0eidempotencyKey\x12\x1d\n" +
 	"\n" +
@@ -4249,7 +4259,8 @@ const file_hermesh_session_v1_session_proto_rawDesc = "" +
 	"\x18question_timeout_seconds\x18\t \x01(\rH\x00R\x16questionTimeoutSeconds\x88\x01\x01\x12\x14\n" +
 	"\x05title\x18\n" +
 	" \x01(\tR\x05title\x12\"\n" +
-	"\fconversation\x18\v \x01(\tR\fconversationB\x1b\n" +
+	"\fconversation\x18\v \x01(\tR\fconversation\x12\x16\n" +
+	"\x06effort\x18\f \x01(\tR\x06effortB\x1b\n" +
 	"\x19_question_timeout_secondsJ\x04\b\a\x10\bR\x06preset\"S\n" +
 	"\n" +
 	"Attachment\x12\x12\n" +

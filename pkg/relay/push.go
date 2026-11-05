@@ -166,6 +166,7 @@ func (o *ownerControl) RegisterPush(ctx context.Context, req *relayv1.RegisterPu
 		return nil, err
 	}
 	o.s.broadcastPushTargets(t)
+	o.s.publish(t.ownerID, Event{Kind: EventPush})
 	return &relayv1.RegisterPushResponse{}, nil
 }
 

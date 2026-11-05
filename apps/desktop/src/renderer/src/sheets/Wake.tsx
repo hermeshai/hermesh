@@ -9,19 +9,13 @@ import { useNow, useStore, type Sheet } from "../store";
 import { ErrorLine, useAction } from "./common";
 
 // An agent's doorbell (docs/agent-names.md §7): the webhook Hermesh calls
-// when messages wait for the agent, or one of its bots. Setting one up is
-// three steps, one per screen: the message that has the bot make its routine
-// (Grok Bot's routines are made by asking the bot), the routine's URL and key,
-// and a first ring. A doorbell for one bot of several asks for its name
-// first. The key goes from here to Hermesh's vault; neither the bot nor its
-// model ever sees it.
+// when messages wait for the agent, or one of its bots. Only a bot that can
+// be woken asks for one: it makes its routine, then hands its owner a wake
+// link (hermesh://wake?code=…), which opens this sheet at two steps, the
+// routine's URL and key, and a first ring. The key goes from here to
+// Hermesh's vault; neither the bot nor its model ever sees it.
 
-type Step = "name" | "routine" | "webhook" | "check" | "manage";
-
-/** What the bot is sent to make its routine: the same for every bot, as the ring says whose messages wait. */
-export function routineMessage(): string {
-  return i18n.t("sheets:wake.message");
-}
+type Step = "webhook" | "check" | "manage";
 
 /** Why a webhook didn't take a call, from its answer: the reason Hermesh gave, in the app's words. */
 export function wakeReason(status: number, reason: string): string {
@@ -75,19 +69,19 @@ export function WakeSheet({ sheet }: { sheet: Extract<Sheet, { kind: "wake" }> }
   const { t } = useTranslation("sheets");
   const st = useStore();
   const now = useNow(30_000);
-  const order: Step[] = sheet.named ? ["name", "routine", "webhook", "check"] : ["routine", "webhook", "check"];
-  const [step, setStep] = useState<Step>(sheet.wake ? "manage" : order[0]);
+  // Steps only for setting one up from a link; changing one's URL and key is a page of its own.
+  const order: Step[] = sheet.code ? ["webhook", "check"] : [];
+  const [step, setStep] = useState<Step>(sheet.wake ? "manage" : "webhook");
   const [wake, setWake] = useState(sheet.wake);
-  const [name, setName] = useState(sheet.wake?.name ?? "");
+  const name = sheet.wake?.name ?? sheet.name ?? "";
   const [url, setURL] = useState("");
   const [key, setKey] = useState("");
-  const [copied, setCopied] = useState(false);
   const [check, setCheck] = useState<WakeCheck>();
   const [saved, setSaved] = useState(false);
   const [secret, setSecret] = useState("");
   const act = useAction();
   const close = () => st.set({ sheet: null });
-  const who = name.trim() || sheet.agent;
+  const who = name || sheet.agent;
   const replacing = !!sheet.wake;
   // As it is now: it may have rung since the list was read.
   useEffect(() => {
@@ -103,7 +97,9 @@ export function WakeSheet({ sheet }: { sheet: Extract<Sheet, { kind: "wake" }> }
     setStep("check");
     setCheck(undefined);
     await act.go(async () => {
-      const res = await local.setWake({ clientId: sheet.clientId, name: name.trim(), url: url.trim(), authorization: bearer(key), keep });
+      // From a link, the link names the agent and the name (and works once).
+      const to = sheet.code ? { code: sheet.code } : { clientId: sheet.clientId, name };
+      const res = await local.setWake({ ...to, url: url.trim(), authorization: bearer(key), keep });
       setCheck(res.check);
       setSaved(!!res.wake);
       setSecret(res.signingSecret);
@@ -126,10 +122,6 @@ export function WakeSheet({ sheet }: { sheet: Extract<Sheet, { kind: "wake" }> }
         run: () => local.clearWake({ clientId: sheet.clientId, name }),
       },
     });
-  const copy = () => {
-    navigator.clipboard.writeText(routineMessage()).catch(() => {});
-    setCopied(true);
-  };
   // Either box takes both at once.
   const paste = (text: string, into: "url" | "key") => {
     const p = splitWebhook(text);
@@ -186,49 +178,18 @@ export function WakeSheet({ sheet }: { sheet: Extract<Sheet, { kind: "wake" }> }
   return (
     <>
       {kicker}
-      {step === "name" && (
-        <>
-          <h3 id="sheet-title">{t("wake.nameTitle")}</h3>
-          <p className="sub">{t("wake.nameSub")}</p>
-          <input className="field" aria-label={t("wake.nameLabel")} placeholder={t("wake.namePlaceholder")} value={name} maxLength={60} autoFocus
-            onChange={(e) => setName(e.target.value)} onKeyDown={(e) => e.key === "Enter" && name.trim() && setStep("routine")} />
-          <div className="sheet-foot">
-            <button className="btn" onClick={close}>{t("cancel")}</button>
-            <button className="btn primary" disabled={!name.trim()} onClick={() => setStep("routine")}>{t("wake.next")}</button>
-          </div>
-        </>
-      )}
-      {step === "routine" && (
-        <>
-          <h3 id="sheet-title">{name.trim() ? t("wake.routineTitleNamed", { name: name.trim() }) : t("wake.routineTitle")}</h3>
-          <p className="sub">{t("wake.routineSub")}</p>
-          <button className={`btn wk-big ${copied ? "" : "primary"}`} onClick={copy}>
-            <Icon name={copied ? "check" : "copy"} />
-            {copied ? t("wake.copyAgain") : t("wake.copyMessage")}
-          </button>
-          <div className="msgbox wk-msg">{routineMessage()}</div>
-          <details className="wk-how">
-            <summary>{t("wake.how")}</summary>
-            <p>{t("wake.howSteps")}</p>
-          </details>
-          <div className="sheet-foot">
-            {sheet.named ? <button className="btn left" onClick={() => setStep("name")}>{t("wake.back")}</button> : <button className="btn left" onClick={close}>{t("cancel")}</button>}
-            <button className={`btn ${copied ? "primary" : ""}`} onClick={() => setStep("webhook")}>{t("wake.made")}</button>
-          </div>
-        </>
-      )}
       {step === "webhook" && (
         <>
-          <h3 id="sheet-title">{t("wake.webhookTitle")}</h3>
-          <p className="sub">{t("wake.webhookSub")}</p>
+          <h3 id="sheet-title">{sheet.code ? t("wake.linkTitle", { name: who }) : t("wake.webhookTitle")}</h3>
+          <p className="sub">{sheet.code ? t("wake.linkSub", { agent: who }) : t("wake.webhookSub")}</p>
           <label className="wk-lab" htmlFor="wk-url">{t("wake.url")}</label>
           <input id="wk-url" className="field mono" placeholder="https://…" value={url} autoFocus onChange={(e) => paste(e.target.value, "url")} />
           <label className="wk-lab" htmlFor="wk-key">{t("wake.key")}</label>
           <input id="wk-key" className="field" type="password" placeholder={t("wake.keyPlaceholder")} value={key} onChange={(e) => paste(e.target.value, "key")}
             onKeyDown={(e) => e.key === "Enter" && url.trim() && save(false)} />
-          <p className="sheet-note muted">{t("wake.pasteNote")}</p>
+          <p className="sheet-note muted">{sheet.code ? `${t("wake.webhookSub")} ${t("wake.pasteNote")}` : t("wake.pasteNote")}</p>
           <div className="sheet-foot">
-            <button className="btn left" onClick={() => setStep(replacing ? "manage" : "routine")}>{t("wake.back")}</button>
+            {replacing ? <button className="btn left" onClick={() => setStep("manage")}>{t("wake.back")}</button> : <button className="btn left" onClick={close}>{t("cancel")}</button>}
             <button className="btn primary" disabled={!url.trim()} onClick={() => save(false)}>{t("wake.tryNow")}</button>
           </div>
         </>

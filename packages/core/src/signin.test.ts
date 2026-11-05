@@ -19,6 +19,8 @@ describe("sign-in", () => {
     expect(parseAppLink("hermesh://join?owner=o_123")).toEqual({ kind: "join", owner: "o_123" });
     expect(parseAppLink("hermesh://link")).toBeNull();
     expect(parseAppLink("hermesh://join?owner=")).toBeNull();
+    expect(parseAppLink("hermesh://wake?code=abc234")).toEqual({ kind: "wake", code: "abc234" });
+    expect(parseAppLink("hermesh://wake")).toBeNull();
     expect(parseAppLink("hermesh://other?code=x")).toBeNull();
     expect(parseAppLink("https://link?code=x")).toBeNull();
     expect(parseAppLink("not a url")).toBeNull();
