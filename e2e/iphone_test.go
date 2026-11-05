@@ -576,7 +576,7 @@ func newIPhoneControl(t *testing.T, w *ownerMac, sessions map[string]string) str
 	mux.HandleFunc("GET /pushed", func(rw http.ResponseWriter, _ *http.Request) {
 		reply(rw, map[string]int{"pushed": int(pushed.Load())})
 	})
-	// A grant's days left, by its label.
+	// A grant's days left and coding agents, by its label.
 	mux.HandleFunc("GET /grant", func(rw http.ResponseWriter, r *http.Request) {
 		res, err := w.app.client.ListClients(ctx, &localv1.ListClientsRequest{})
 		if err != nil {
@@ -585,7 +585,7 @@ func newIPhoneControl(t *testing.T, w *ownerMac, sessions map[string]string) str
 		}
 		for _, c := range res.Clients {
 			if c.Label == r.URL.Query().Get("label") && !c.Revoked {
-				reply(rw, map[string]any{"days": int(time.Until(c.ExpiresAt.AsTime()).Hours() / 24), "version": c.GrantVersion})
+				reply(rw, map[string]any{"days": int(time.Until(c.ExpiresAt.AsTime()).Hours() / 24), "version": c.GrantVersion, "agents": c.Spec.GetAgents()})
 				return
 			}
 		}

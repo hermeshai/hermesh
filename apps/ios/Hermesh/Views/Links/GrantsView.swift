@@ -133,7 +133,7 @@ struct GrantView: View {
                 LabeledContent("Fingerprint", value: c.fingerprint).font(.body.monospaced())
             }
             Section {
-                Button("Change What It Can Use…") { model.sheet = .scope(c.grantID) }
+                Button("Change What It Can Use…") { model.sheet = .scope(c.grantID) }.accessibilityIdentifier("change-scope")
                 Button("Renew…") { model.sheet = .renew(c.grantID) }.accessibilityIdentifier("renew")
                 Button("Disconnect…", role: .destructive) { confirmDisconnect = true }.accessibilityIdentifier("disconnect")
             } footer: {
