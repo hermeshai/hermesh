@@ -38,8 +38,11 @@ type clientMetadata struct {
 	ClientURI               string   `json:"client_uri"`
 	RedirectURIs            []string `json:"redirect_uris"`
 	TokenEndpointAuthMethod string   `json:"token_endpoint_auth_method"`
-	GrantTypes              []string `json:"grant_types"`
-	ResponseTypes           []string `json:"response_types"`
+	// TokenEndpointAuthMethods is every method the client can use; ChatGPT
+	// prefers private_key_jwt here but also offers none.
+	TokenEndpointAuthMethods []string `json:"token_endpoint_auth_methods_supported"`
+	GrantTypes               []string `json:"grant_types"`
+	ResponseTypes            []string `json:"response_types"`
 }
 
 // client returns the client a client_id names, fetching its metadata
@@ -108,7 +111,7 @@ func (g *Gateway) fetchCIMD(ctx context.Context, clientID string) (*Client, erro
 	if m.ClientName == "" || len(m.RedirectURIs) == 0 {
 		return nil, errors.New("the client's metadata document lacks client_name or redirect_uris")
 	}
-	if m.TokenEndpointAuthMethod != "" && m.TokenEndpointAuthMethod != "none" {
+	if m.TokenEndpointAuthMethod != "" && m.TokenEndpointAuthMethod != "none" && !slices.Contains(m.TokenEndpointAuthMethods, "none") {
 		return nil, fmt.Errorf("client authentication %q is not supported; public clients only", m.TokenEndpointAuthMethod)
 	}
 	for _, r := range m.RedirectURIs {

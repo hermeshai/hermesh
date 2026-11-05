@@ -483,9 +483,27 @@ func TestClientMetadataDocuments(t *testing.T) {
 	if res.StatusCode != 200 || !strings.Contains(page, "Connect Good App to Hermesh") || !strings.Contains(page, "Verified app") {
 		t.Fatalf("CIMD client: %d\n%s", res.StatusCode, page)
 	}
+	// ChatGPT's document: private_key_jwt by default, none also supported.
+	// It connects as a public client, and an assertion it may send anyway
+	// changes nothing.
+	chatgpt := put("/chatgpt.json", `{"client_id":"$ID","client_name":"ChatGPT","redirect_uris":["https://app.example/callback"],"token_endpoint_auth_method":"private_key_jwt","token_endpoint_auth_methods_supported":["none","private_key_jwt"],"token_endpoint_auth_signing_alg":"RS256","jwks_uri":"https://app.example/jwks.json"}`)
+	for name, extra := range map[string]url.Values{
+		"public":         {},
+		"with assertion": {"client_assertion_type": {"urn:ietf:params:oauth:client-assertion-type:jwt-bearer"}, "client_assertion": {"a.b.c"}},
+	} {
+		form := url.Values{"grant_type": {"authorization_code"}, "code": {b.consentCode(chatgpt, redirect)}, "client_id": {chatgpt},
+			"redirect_uri": {redirect}, "code_verifier": {verifier}}
+		for k, v := range extra {
+			form[k] = v
+		}
+		if status, tok := f.token(form); status != 200 || tok["access_token"] == nil {
+			t.Fatalf("ChatGPT's document, %s: %d %v", name, status, tok)
+		}
+	}
 	for name, body := range map[string]string{
 		"other client_id":   `{"client_id":"https://elsewhere.example/c.json","client_name":"X","redirect_uris":["https://app.example/callback"]}`,
 		"confidential":      `{"client_id":"$ID","client_name":"X","redirect_uris":["https://app.example/callback"],"token_endpoint_auth_method":"client_secret_basic"}`,
+		"confidential only": `{"client_id":"$ID","client_name":"X","redirect_uris":["https://app.example/callback"],"token_endpoint_auth_method":"private_key_jwt","token_endpoint_auth_methods_supported":["private_key_jwt"]}`,
 		"no redirect_uris":  `{"client_id":"$ID","client_name":"X"}`,
 		"http redirect":     `{"client_id":"$ID","client_name":"X","redirect_uris":["http://app.example/callback"]}`,
 		"too large":         `{"client_id":"$ID","client_name":"` + strings.Repeat("x", maxCIMDBytes) + `","redirect_uris":["https://app.example/callback"]}`,

@@ -245,7 +245,10 @@ gateway fetches the document when it first sees the URL and on cache expiry:
 - No redirects. 5 s timeout. At most 16 KiB. JSON only.
 - `client_id` in the document must equal the URL byte for byte;
   `client_name` and `redirect_uris` are required;
-  `token_endpoint_auth_method` must be absent or `none`.
+  `token_endpoint_auth_method` must be absent or `none`, or
+  `token_endpoint_auth_methods_supported` must include `none` (ChatGPT prefers
+  `private_key_jwt` but offers `none`). The client is public either way; a
+  `client_assertion` it sends is ignored.
 - Cache per HTTP caching headers, clamped to [5 min, 24 h]. A failed refetch
   keeps the cached document until its clamp runs out.
 - **Verified clients:** a document whose URL host is in `VerifiedClients`
