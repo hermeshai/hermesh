@@ -1209,6 +1209,11 @@ func (s *Sessions) ListEvents(p *Principal, req *sessionv1.ListEventsRequest) (*
 	case limit > 1000:
 		return nil, cerr(connect.CodeInvalidArgument, "at most 1000 events per page")
 	}
+	// Events are stored in batches: wait for those already emitted, so a
+	// caller that saw a turn end (session get) reads that turn's last events.
+	if err := s.w.sync(writeOp{}); err != nil {
+		return nil, err
+	}
 	evs, before, after, err := s.st.EventPage(req.SessionId, req.AfterSeq, req.BeforeSeq, limit)
 	if err != nil {
 		return nil, err

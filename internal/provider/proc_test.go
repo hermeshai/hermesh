@@ -197,7 +197,11 @@ echo "waiting for the keychain, api_key=abcd1234efgh5678" >&2; echo ready; wait`
 		case <-time.After(10 * time.Second):
 			t.Fatal("not ready")
 		}
+		// Stderr comes on a pipe of its own: "ready" says nothing of it.
 		d := p.Diagnose()
+		for deadline := time.Now().Add(10 * time.Second); !strings.Contains(d.Stderr, "keychain") && time.Now().Before(deadline); d = p.Diagnose() {
+			time.Sleep(10 * time.Millisecond)
+		}
 		want := []string{"sleep 62", "sh -c /bin/sleep 62; :", "sleep 61"}
 		if strings.Join(d.Running, "\n") != strings.Join(want, "\n") {
 			t.Fatalf("running %q", d.Running)
