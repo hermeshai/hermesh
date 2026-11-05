@@ -6,9 +6,26 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"testing"
 	"time"
 )
+
+// The job Install writes and the one the Mac app ships are the same kind, and
+// e2e TestDesktopDaemonUnderLoad runs the app's under launchd.
+func TestLaunchdJobsAreInteractive(t *testing.T) {
+	const want = "<key>ProcessType</key><string>Interactive</string>"
+	if text := plistText("/bin/hermeshd", "/data", "/logs", nil); !strings.Contains(text, want) {
+		t.Errorf("the job Install writes has no %s:\n%s", want, text)
+	}
+	app, err := os.ReadFile(filepath.Join("..", "..", "apps", "desktop", "build", "com.hermesh.app.daemon.plist"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(app), want) {
+		t.Errorf("the app's job has no %s:\n%s", want, app)
+	}
+}
 
 // InstalledFor finds the service by the data directory Install gave it, and
 // not by another one that only starts the same.

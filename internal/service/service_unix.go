@@ -190,7 +190,10 @@ func Installed() bool {
 	return err == nil
 }
 
-// plistText is the launchd job Install writes.
+// plistText is the launchd job Install writes. It is Interactive, as the Mac
+// app's own job is, because git and the agents hermeshd starts inherit it and
+// do what the person asked for: launchd's other types hold them back
+// (docs/technical-design.md §6.1).
 func plistText(bin, dataDir, logDir string, args []string) string {
 	return fmt.Sprintf(`<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
@@ -201,7 +204,7 @@ func plistText(bin, dataDir, logDir string, args []string) string {
   <array><string>%s</string><string>run</string>%s<string>--data-dir</string><string>%s</string></array>
   <key>RunAtLoad</key><true/>
   <key>KeepAlive</key><true/>
-  <key>ProcessType</key><string>Background</string>
+  <key>ProcessType</key><string>Interactive</string>
   <key>StandardOutPath</key><string>%s</string>
   <key>StandardErrorPath</key><string>%s</string>
 </dict>
