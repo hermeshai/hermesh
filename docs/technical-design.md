@@ -529,6 +529,7 @@ message SessionEvent {
 | Linux (VPS) | install.sh writes a systemd user service and runs `loginctl enable-linger` | Same as above; runs as the user it is installed for, root included; the installer asks as root |
 
 - Runs in user space, because it needs the user's CLI login state and home directory.
+- On a Mac, runs at the priority of a program the person runs (launchd `ProcessType` Interactive), because git and the agents it starts inherit it: as a Background job (priority 4), busy loops at nice 5 starved their checkouts past `StartTimeout`, and Standard still holds them at priority 20.
 - A pidfile plus flock ensures a single instance.
 - Data directory: `~/Library/Application Support/Hermesh/` on macOS, `$XDG_DATA_HOME/hermesh/` on Linux.
 
