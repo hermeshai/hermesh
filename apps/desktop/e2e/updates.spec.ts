@@ -72,6 +72,8 @@ test("background discovery stays quiet; details, snooze and automatic download s
   await clickMenu(app, "checkForUpdates");
   expect(await requests(app)).toBe(2);
   await progress.getByRole("button", { name: "关闭", exact: true }).click();
+  // Gone first: a window still closing is the one the menu would show, and it then closes.
+  await expect.poll(() => app.windows().filter((p) => p.url().endsWith("#updates")).length).toBe(0);
   await app.evaluate(({ autoUpdater }) => autoUpdater.emit("update-downloaded", {}, "", "1.2.0"));
   // Snoozing applies to this version, including when it finishes downloading.
   await expect(main.getByRole("button", { name: /更新已就绪/ })).toHaveCount(0);
