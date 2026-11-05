@@ -440,3 +440,23 @@ func TestDesktopAppCLI(t *testing.T) {
 		t.Fatalf("events: %+v", evs)
 	}
 }
+
+// A Windows app installs under the user's Programs, and its script sits
+// inside the app.asar archive, which only the app's own Node reads.
+func TestDesktopAppCLIAsar(t *testing.T) {
+	local := t.TempDir()
+	t.Setenv("LOCALAPPDATA", local)
+	a := App{Bundle: "Fake Harness", Exec: "Fake Harness.exe", Script: "resources/app.asar/dsh/lib/bin.js"}
+	app := filepath.Join(local, "Programs", a.Bundle)
+	asar := filepath.Join(app, "resources", "app.asar")
+	os.MkdirAll(filepath.Dir(asar), 0o755)
+	os.WriteFile(asar, nil, 0o644)
+	exe := filepath.Join(app, a.Exec)
+	os.WriteFile(exe, nil, 0o755) // LookPath on Linux needs the execute bit
+	p := &Provider{Agent: Agent{Name: "fake", Command: "hermesh-no-such-agent", Args: []string{"acp"}, Apps: []App{a}}, PathEnv: t.TempDir()}
+	bin, pre, env := p.command()
+	want := filepath.Join(app, "resources/app.asar/dsh/lib/bin.js")
+	if bin != exe || len(pre) != 1 || pre[0] != want || len(env) != 1 || env[0] != "ELECTRON_RUN_AS_NODE=1" {
+		t.Fatalf("command: %q %q %q", bin, pre, env)
+	}
+}

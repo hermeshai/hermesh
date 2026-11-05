@@ -46,9 +46,10 @@ type Agent struct {
 	Auth []string
 }
 
-// App is a desktop app (macOS, Electron) that keeps the agent's CLI as a
-// script its executable runs as Node; paths are inside the .app, which is
-// looked for in ~/Applications, then /Applications.
+// App is a desktop app (Electron, macOS or Windows) that keeps the agent's
+// CLI as a script its executable runs as Node; paths are inside the app's
+// folder, looked for in the user's Applications (a Mac's) or Programs
+// (Windows), then the system's.
 type App struct {
 	Bundle, Exec, Script string
 }
@@ -85,16 +86,41 @@ func (p *Provider) command() (bin string, pre, env []string) {
 		return bin, nil, nil
 	}
 	home, _ := os.UserHomeDir()
+	dirs := []string{filepath.Join(home, "Applications"), "/Applications"}
+	if local := os.Getenv("LOCALAPPDATA"); local != "" {
+		dirs = append(dirs, filepath.Join(local, "Programs")) // the user's Windows installs
+	}
+	if pf := os.Getenv("ProgramFiles"); pf != "" {
+		dirs = append(dirs, pf) // the machine's Windows ones
+	}
 	for _, a := range p.Apps {
-		for _, dir := range []string{filepath.Join(home, "Applications"), "/Applications"} {
+		for _, dir := range dirs {
 			app := filepath.Join(dir, a.Bundle)
 			exe, script := filepath.Join(app, a.Exec), filepath.Join(app, a.Script)
-			if _, err := os.Stat(script); err == nil && provider.LookPath("", "", exe) != "" {
+			if scriptThere(script) && provider.LookPath("", "", exe) != "" {
 				return exe, []string{script}, []string{"ELECTRON_RUN_AS_NODE=1"}
 			}
 		}
 	}
 	return "", nil, nil
+}
+
+// scriptThere: the script is on disk, or inside an .asar archive, which
+// only the app's own Node (ELECTRON_RUN_AS_NODE) reads; running it then
+// says when the path inside is wrong.
+func scriptThere(script string) bool {
+	if _, err := os.Stat(script); err == nil {
+		return true
+	}
+	for dir := filepath.Dir(script); ; dir = filepath.Dir(dir) {
+		if strings.HasSuffix(filepath.Base(dir), ".asar") {
+			st, err := os.Stat(dir)
+			return err == nil && !st.IsDir()
+		}
+		if dir == filepath.Dir(dir) {
+			return false
+		}
+	}
 }
 
 var versionRE = regexp.MustCompile(`\d+\.\d+\.\d+[-\w.]*`)
