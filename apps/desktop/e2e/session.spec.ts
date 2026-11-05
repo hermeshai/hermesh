@@ -93,8 +93,11 @@ test("a finished session shows both turns, what the agent did, and that it is do
     const copy = msg.getByRole("button", { name: "拷贝" });
     await page.mouse.move(0, 0);
     await expect(copy.locator("..")).toHaveCSS("opacity", "0");
-    await msg.hover();
-    await expect(copy.locator("..")).toHaveCSS("opacity", "1");
+    // Hover again if it goes, as it has on a busy Windows runner.
+    await expect(async () => {
+      await msg.hover();
+      await expect(copy.locator("..")).toHaveCSS("opacity", "1", { timeout: 2_000 });
+    }).toPass({ timeout: 15_000 });
     const m = (await msg.boundingBox())!;
     const c = (await copy.boundingBox())!;
     expect(c.y).toBeGreaterThanOrEqual(m.y + m.height);
@@ -364,7 +367,7 @@ test("a running session shows what it does, and 打断 stops the turn", async ()
 
 test("a session its agent stops as it starts says the agent interrupted it, not that it failed", async () => {
   const title = "刚开始就打断";
-  const id = JSON.parse(await cli("session", "start", "--project", "demo", "--agent", "gemini", "--title", title, "--prompt", "say 不会说", "-o", "json")).session.session_id;
+  const id = JSON.parse(await cli("session", "start", "--project", "demo", "--agent", "gemini", "--title", title, "--prompt", "sleep 1800s\nsay 不会说", "-o", "json")).session.session_id;
   await cli("session", "interrupt", id);
   await expect.poll(async () => JSON.parse(await cli("session", "get", id, "-o", "json")).session.status).toBe("idle");
   const { app, page } = await launch();
