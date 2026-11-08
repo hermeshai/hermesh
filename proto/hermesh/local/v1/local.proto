@@ -132,6 +132,11 @@ service LocalService {
   // Drops a message this device keeps, undelivered: one her keeps refusing
   // then stops holding back that assistant's later ones.
   rpc DeleteHerWaiting(DeleteHerWaitingRequest) returns (DeleteHerWaitingResponse);
+  // What this device keeps of a machine's Her, to show at once and while
+  // the machine is offline (docs/her-server.md §7): Her and the end of
+  // Her's conversation, as the HerOpen streams that followed them last
+  // carried them here.
+  rpc GetHerConversation(GetHerConversationRequest) returns (GetHerConversationResponse);
   // A file on this device into an assistant's folder on a machine.
   rpc HerUpload(HerUploadRequest) returns (HerUploadResponse);
   // A file from an assistant's folder on a machine into a folder here.
@@ -1227,6 +1232,21 @@ message HerWaiting {
   google.protobuf.Timestamp created_at = 6;
   // Why the last try failed, when one did.
   string error = 7;
+}
+
+message GetHerConversationRequest {
+  string machine_id = 1;
+}
+
+message GetHerConversationResponse {
+  // Her, the machine's default assistant, as bots/subscribe lists the
+  // assistants (her's BotSummary, as JSON); empty when this device keeps
+  // nothing of the machine's Her.
+  bytes bot = 1;
+  // Her's conversation as bots/open gives it (her's SessionSnapshot, as
+  // JSON), holding what the Her entry shows of its last 100 messages and
+  // no earlier history; empty when none is kept.
+  bytes snapshot = 2;
 }
 
 message HerUploadRequest {

@@ -2,6 +2,7 @@ package owner
 
 import (
 	"context"
+	"errors"
 
 	"connectrpc.com/connect"
 
@@ -60,6 +61,17 @@ func (l *localService) DeleteHerWaiting(ctx context.Context, req *localv1.Delete
 		return nil, err
 	}
 	return &localv1.DeleteHerWaitingResponse{}, nil
+}
+
+func (l *localService) GetHerConversation(ctx context.Context, req *localv1.GetHerConversationRequest) (*localv1.GetHerConversationResponse, error) {
+	if req.MachineId == "" {
+		return nil, connect.NewError(connect.CodeInvalidArgument, errors.New("no machine"))
+	}
+	bot, snapshot, err := l.o().st.herKept(req.MachineId)
+	if err != nil {
+		return nil, err
+	}
+	return &localv1.GetHerConversationResponse{Bot: bot, Snapshot: snapshot}, nil
 }
 
 func (l *localService) HerUpload(ctx context.Context, req *localv1.HerUploadRequest) (*localv1.HerUploadResponse, error) {
