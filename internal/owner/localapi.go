@@ -72,11 +72,12 @@ func (d *Device) kickAfterWrites(next connect.UnaryFunc) connect.UnaryFunc {
 }
 
 // writes says whether a call may change what the screens show: any but a
-// read, and but talking to Her and moving her files, which they don't show.
+// read, and but talking to Her, moving her files and dropping a message
+// kept for her, which they don't show.
 func writes(procedure string) bool {
 	name := procedure[strings.LastIndex(procedure, "/")+1:]
 	switch name {
-	case "HerCall", "HerSend", "HerUpload", "HerDownload":
+	case "HerCall", "HerSend", "HerUpload", "HerDownload", "DeleteHerWaiting":
 		return false
 	}
 	return !strings.HasPrefix(name, "Get") && !strings.HasPrefix(name, "List") && !strings.HasPrefix(name, "Lookup")

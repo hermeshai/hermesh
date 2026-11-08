@@ -55,6 +55,13 @@ func (l *localService) ListHerWaiting(ctx context.Context, req *localv1.ListHerW
 	return &localv1.ListHerWaitingResponse{Waiting: list}, nil
 }
 
+func (l *localService) DeleteHerWaiting(ctx context.Context, req *localv1.DeleteHerWaitingRequest) (*localv1.DeleteHerWaitingResponse, error) {
+	if err := l.o().DeleteHerWaiting(req.MachineId, req.Id); err != nil {
+		return nil, err
+	}
+	return &localv1.DeleteHerWaitingResponse{}, nil
+}
+
 func (l *localService) HerUpload(ctx context.Context, req *localv1.HerUploadRequest) (*localv1.HerUploadResponse, error) {
 	path, err := l.o().HerUpload(ctx, req.MachineId, req.BotId, req.LocalPath)
 	if err != nil {

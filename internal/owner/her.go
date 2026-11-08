@@ -529,7 +529,7 @@ func (o *Owner) flushWaiting(ctx context.Context) {
 			return
 		}
 		if err == nil {
-			err = o.st.deleteHerWaiting(w.Id)
+			_, err = o.st.deleteHerWaiting(w.MachineId, w.Id)
 		} else {
 			stuck[bot] = true
 			if errors.As(err, new(unreachable)) {
@@ -542,6 +542,23 @@ func (o *Owner) flushWaiting(ctx context.Context) {
 			o.log.Warn("Her's waiting message not kept", "id", w.Id, "err", err)
 		}
 	}
+}
+
+// DeleteHerWaiting drops a message kept here, undelivered; the assistant's
+// later ones, which waited behind it, are tried at once.
+func (o *Owner) DeleteHerWaiting(machineID, id string) error {
+	if machineID == "" || id == "" {
+		return connect.NewError(connect.CodeInvalidArgument, errors.New("a waiting message is named by its machine and its id"))
+	}
+	gone, err := o.st.deleteHerWaiting(machineID, id)
+	if err != nil {
+		return err
+	}
+	if !gone {
+		return connect.NewError(connect.CodeNotFound, fmt.Errorf("no message %s waits for %s", id, machineID))
+	}
+	o.wakeHer()
+	return nil
 }
 
 // ---------------------------------------------------------------------------
@@ -735,9 +752,15 @@ func (s *store) updateHerWaiting(w *localv1.HerWaiting) error {
 	return err
 }
 
-func (s *store) deleteHerWaiting(id string) error {
-	_, err := s.db.Exec(`DELETE FROM her_waiting WHERE id=?`, id)
-	return err
+// deleteHerWaiting drops one of a machine's waiting messages; gone says
+// whether there was one.
+func (s *store) deleteHerWaiting(machineID, id string) (gone bool, err error) {
+	res, err := s.db.Exec(`DELETE FROM her_waiting WHERE id=? AND machine_id=?`, id, machineID)
+	if err != nil {
+		return false, err
+	}
+	n, err := res.RowsAffected()
+	return n > 0, err
 }
 
 // herWaiting lists the messages waiting, oldest first: a machine's (all

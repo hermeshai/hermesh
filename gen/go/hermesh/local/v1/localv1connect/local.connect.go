@@ -152,6 +152,9 @@ const (
 	// LocalServiceListHerWaitingProcedure is the fully-qualified name of the LocalService's
 	// ListHerWaiting RPC.
 	LocalServiceListHerWaitingProcedure = "/hermesh.local.v1.LocalService/ListHerWaiting"
+	// LocalServiceDeleteHerWaitingProcedure is the fully-qualified name of the LocalService's
+	// DeleteHerWaiting RPC.
+	LocalServiceDeleteHerWaitingProcedure = "/hermesh.local.v1.LocalService/DeleteHerWaiting"
 	// LocalServiceHerUploadProcedure is the fully-qualified name of the LocalService's HerUpload RPC.
 	LocalServiceHerUploadProcedure = "/hermesh.local.v1.LocalService/HerUpload"
 	// LocalServiceHerDownloadProcedure is the fully-qualified name of the LocalService's HerDownload
@@ -342,6 +345,9 @@ type LocalServiceClient interface {
 	// The messages this device keeps for a machine's assistants until it is
 	// back, oldest first.
 	ListHerWaiting(context.Context, *v1.ListHerWaitingRequest) (*v1.ListHerWaitingResponse, error)
+	// Drops a message this device keeps, undelivered: one her keeps refusing
+	// then stops holding back that assistant's later ones.
+	DeleteHerWaiting(context.Context, *v1.DeleteHerWaitingRequest) (*v1.DeleteHerWaitingResponse, error)
 	// A file on this device into an assistant's folder on a machine.
 	HerUpload(context.Context, *v1.HerUploadRequest) (*v1.HerUploadResponse, error)
 	// A file from an assistant's folder on a machine into a folder here.
@@ -666,6 +672,12 @@ func NewLocalServiceClient(httpClient connect.HTTPClient, baseURL string, opts .
 			connect.WithSchema(localServiceMethods.ByName("ListHerWaiting")),
 			connect.WithClientOptions(opts...),
 		),
+		deleteHerWaiting: connect.NewClient[v1.DeleteHerWaitingRequest, v1.DeleteHerWaitingResponse](
+			httpClient,
+			baseURL+LocalServiceDeleteHerWaitingProcedure,
+			connect.WithSchema(localServiceMethods.ByName("DeleteHerWaiting")),
+			connect.WithClientOptions(opts...),
+		),
 		herUpload: connect.NewClient[v1.HerUploadRequest, v1.HerUploadResponse](
 			httpClient,
 			baseURL+LocalServiceHerUploadProcedure,
@@ -888,6 +900,7 @@ type localServiceClient struct {
 	herCall                *connect.Client[v1.HerCallRequest, v12.CallResponse]
 	herSend                *connect.Client[v1.HerSendRequest, v1.HerSendResponse]
 	listHerWaiting         *connect.Client[v1.ListHerWaitingRequest, v1.ListHerWaitingResponse]
+	deleteHerWaiting       *connect.Client[v1.DeleteHerWaitingRequest, v1.DeleteHerWaitingResponse]
 	herUpload              *connect.Client[v1.HerUploadRequest, v1.HerUploadResponse]
 	herDownload            *connect.Client[v1.HerDownloadRequest, v1.HerDownloadResponse]
 	getHerConsole          *connect.Client[v1.GetHerConsoleRequest, v1.GetHerConsoleResponse]
@@ -1294,6 +1307,15 @@ func (c *localServiceClient) ListHerWaiting(ctx context.Context, req *v1.ListHer
 	return nil, err
 }
 
+// DeleteHerWaiting calls hermesh.local.v1.LocalService.DeleteHerWaiting.
+func (c *localServiceClient) DeleteHerWaiting(ctx context.Context, req *v1.DeleteHerWaitingRequest) (*v1.DeleteHerWaitingResponse, error) {
+	response, err := c.deleteHerWaiting.CallUnary(ctx, connect.NewRequest(req))
+	if response != nil {
+		return response.Msg, err
+	}
+	return nil, err
+}
+
 // HerUpload calls hermesh.local.v1.LocalService.HerUpload.
 func (c *localServiceClient) HerUpload(ctx context.Context, req *v1.HerUploadRequest) (*v1.HerUploadResponse, error) {
 	response, err := c.herUpload.CallUnary(ctx, connect.NewRequest(req))
@@ -1652,6 +1674,9 @@ type LocalServiceHandler interface {
 	// The messages this device keeps for a machine's assistants until it is
 	// back, oldest first.
 	ListHerWaiting(context.Context, *v1.ListHerWaitingRequest) (*v1.ListHerWaitingResponse, error)
+	// Drops a message this device keeps, undelivered: one her keeps refusing
+	// then stops holding back that assistant's later ones.
+	DeleteHerWaiting(context.Context, *v1.DeleteHerWaitingRequest) (*v1.DeleteHerWaitingResponse, error)
 	// A file on this device into an assistant's folder on a machine.
 	HerUpload(context.Context, *v1.HerUploadRequest) (*v1.HerUploadResponse, error)
 	// A file from an assistant's folder on a machine into a folder here.
@@ -1972,6 +1997,12 @@ func NewLocalServiceHandler(svc LocalServiceHandler, opts ...connect.HandlerOpti
 		connect.WithSchema(localServiceMethods.ByName("ListHerWaiting")),
 		connect.WithHandlerOptions(opts...),
 	)
+	localServiceDeleteHerWaitingHandler := connect.NewUnaryHandlerSimple(
+		LocalServiceDeleteHerWaitingProcedure,
+		svc.DeleteHerWaiting,
+		connect.WithSchema(localServiceMethods.ByName("DeleteHerWaiting")),
+		connect.WithHandlerOptions(opts...),
+	)
 	localServiceHerUploadHandler := connect.NewUnaryHandlerSimple(
 		LocalServiceHerUploadProcedure,
 		svc.HerUpload,
@@ -2234,6 +2265,8 @@ func NewLocalServiceHandler(svc LocalServiceHandler, opts ...connect.HandlerOpti
 			localServiceHerSendHandler.ServeHTTP(w, r)
 		case LocalServiceListHerWaitingProcedure:
 			localServiceListHerWaitingHandler.ServeHTTP(w, r)
+		case LocalServiceDeleteHerWaitingProcedure:
+			localServiceDeleteHerWaitingHandler.ServeHTTP(w, r)
 		case LocalServiceHerUploadProcedure:
 			localServiceHerUploadHandler.ServeHTTP(w, r)
 		case LocalServiceHerDownloadProcedure:
@@ -2471,6 +2504,10 @@ func (UnimplementedLocalServiceHandler) HerSend(context.Context, *v1.HerSendRequ
 
 func (UnimplementedLocalServiceHandler) ListHerWaiting(context.Context, *v1.ListHerWaitingRequest) (*v1.ListHerWaitingResponse, error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("hermesh.local.v1.LocalService.ListHerWaiting is not implemented"))
+}
+
+func (UnimplementedLocalServiceHandler) DeleteHerWaiting(context.Context, *v1.DeleteHerWaitingRequest) (*v1.DeleteHerWaitingResponse, error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("hermesh.local.v1.LocalService.DeleteHerWaiting is not implemented"))
 }
 
 func (UnimplementedLocalServiceHandler) HerUpload(context.Context, *v1.HerUploadRequest) (*v1.HerUploadResponse, error) {
