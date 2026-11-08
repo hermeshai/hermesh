@@ -3,20 +3,23 @@ import { initReactI18next } from "react-i18next";
 import enConsole from "./locales/en/console.json" with { type: "json" };
 import enCustomize from "./locales/en/customize.json" with { type: "json" };
 import enSettings from "./locales/en/settings.json" with { type: "json" };
+import enYours from "./locales/en/yours.json" with { type: "json" };
 import zhConsole from "./locales/zh-CN/console.json" with { type: "json" };
 import zhCustomize from "./locales/zh-CN/customize.json" with { type: "json" };
 import zhSettings from "./locales/zh-CN/settings.json" with { type: "json" };
+import zhYours from "./locales/zh-CN/yours.json" with { type: "json" };
 
 // The console's text, by namespace: console (the frame, Overview, Defaults, Instructions,
-// Browser), customize (Connectors and Skills) and settings (Models and Web search). English
-// holds every key; zh-CN translates them (locales.test.ts). The language is the browser's.
+// Browser), customize (Connectors and Skills), settings (Models and Web search) and yours (the
+// owner's Chrome, on the Browser page). English holds every key; zh-CN translates them
+// (locales.test.ts). The language is the browser's.
 
 export const languages = ["zh-CN", "en"] as const;
 export type Language = (typeof languages)[number];
 
 export const resources = {
-  en: { console: enConsole, customize: enCustomize, settings: enSettings },
-  "zh-CN": { console: zhConsole, customize: zhCustomize, settings: zhSettings },
+  en: { console: enConsole, customize: enCustomize, settings: enSettings, yours: enYours },
+  "zh-CN": { console: zhConsole, customize: zhCustomize, settings: zhSettings, yours: zhYours },
 } satisfies Record<Language, Record<string, object>>;
 
 declare module "i18next" {
@@ -50,7 +53,7 @@ i18n.use(initReactI18next).init({
   fallbackLng: "en",
   supportedLngs: languages,
   resources,
-  ns: ["console", "customize", "settings"],
+  ns: ["console", "customize", "settings", "yours"],
   defaultNS: "console",
   initAsync: false,
   interpolation: { escapeValue: false },

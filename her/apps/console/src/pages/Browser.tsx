@@ -4,11 +4,12 @@ import { PageTop } from "../components";
 import { errorText } from "../format";
 import { useConfig, useHer } from "../her";
 import { Icon } from "../icons";
+import { YourBrowser } from "../yours/YourBrowser";
 import { siteKey, siteLevels, siteOrigin, sitesOf, type SiteLevel } from "./settings";
 
-// Browser: the sites Her may open without asking (`[browser] sites` of her's user file), each with its level, which can be
-// changed or removed, and a site added by hand. "All sites" comes first; Her's "Always allow"
-// adds sites here too.
+// Browser: the owner's own Chrome (YourBrowser), then the sites Her may open without asking
+// (`[browser] sites` of her's user file), each with its level, which can be changed or removed, and a site added by hand.
+// "All sites" comes first; Her's "Always allow" adds sites here too.
 
 export function BrowserPage() {
   const { t } = useTranslation();
@@ -45,6 +46,7 @@ export function BrowserPage() {
       <PageTop title={t("nav.browser")} />
       <div className="set-body">
         <div className="form browser-set">
+          <YourBrowser rpc={her.rpc} />
           <section>
             <h3 className="fhead">{t("browser.sites")}</h3>
             <div className="fgroup">
