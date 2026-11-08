@@ -272,6 +272,42 @@ Rules that keep the parts apart:
 - **The console ships with her, not with the apps.** A new her brings its
   own console, so no app can be out of step with a setting.
 
+### 4.4 Computer use on a Mac Her Server
+
+her's desktop tools (`cua_*`) run `agent-desktop`, which reads and operates
+other apps through macOS's Accessibility API and takes screenshots of their
+windows. macOS grants both to the process it holds responsible for
+agent-desktop. launchd makes each job its own responsible process and
+children inherit it, so on a Mac Her Server that is **hermeshd**, the
+LaunchAgent: not Hermesh.app, her or agent-desktop. Checked on macOS 27.2:
+the LaunchAgent is its own responsible process, and tccd's log attributes
+agent-desktop, started by her started by Hermesh 0.1.4's hermeshd, to
+hermeshd.
+
+What the owner allows, in System Settings › Privacy & Security, once per
+Mac:
+
+| Permission | Needed for | Switch on | Listed as |
+|---|---|---|---|
+| Accessibility (Device Control and Data Access from macOS 27) | every desktop tool but `cua_apps` | **hermeshd** | the program itself, `Hermesh.app/Contents/Helpers/hermeshd`, held to its identifier and Hermesh's team, so updates keep it |
+| Screen & System Audio Recording | `cua_screenshot` and acting at a point of one | **Hermesh** | the app: for this permission macOS gives a helper inside an app the app's switch |
+
+- The first check under hermeshd lists hermeshd under Accessibility,
+  switched off, without a prompt. Hermesh is listed under Screen Recording
+  once the app tried to capture, which the Mac app does when the owner asks.
+  A grant counts from the next call; nothing restarts.
+- agent-desktop serves each `--session` namespace from one background
+  process, whoever started it, and keeps it some minutes after the last call.
+  macOS holds the process that started it responsible for it, and once that
+  process is gone, agent-desktop itself. her names its namespaces after its
+  own process, so it never reaches one left from before hermeshd restarted.
+- her's tool results say what to switch on. `desktop/status` reports both
+  permissions as agent-desktop finds them from inside her, which nothing
+  else can: the app's own checks answer for Hermesh.app. The Mac app shows
+  them under Computer use (§9.1).
+- On another Mac that is a Her Server, the owner switches them on at that
+  Mac.
+
 ## 5. Call flows
 
 ### 5.1 Talking to an assistant
@@ -409,6 +445,7 @@ changing that needs a relay release (§12).
 | `bots/*`: assistants, their routines, unread marks | Her entry | Allowed | No |
 | `session/op` and session events: prompts, approvals, answers, stopping | Her entry | Allowed | No |
 | `models/list` | Her entry, console | Allowed | No |
+| `desktop/status`: whether computer use can work there (§4.4) | Her entry | Allowed | No |
 | `config/*`, `connections/*`, `credentials/*`, `mcp/*`, `skills/*`, `web_search/*`, `browser/allow`, `browser/status`, `browser/use_extension` | Console | Allowed | No |
 | `doc/*`, `deck/*`, `docx/*` and the other `browser/*` methods: desktop document panels and a built-in browser, which Hermesh does not have | Nobody | Not forwarded | No |
 
@@ -611,6 +648,10 @@ An assistant's own settings panel holds its name,
 avatar, model, thinking level and approval mode, and lets the owner clear
 its conversation or delete it. Environment-wide settings are in the console.
 
+When the environment is this Mac, the Her entry's settings also show
+Computer use: the two permissions of §4.4 as her finds them, with a button
+for each missing one that opens its pane of System Settings.
+
 ### 9.2 First run
 
 While no machine runs Her, the Her entry shows the first run:
@@ -768,6 +809,9 @@ Test:
   redirects.
 - How large a file may go through the relay.
 - The format of an environment's backup and export.
+- Whether computer use is on by default on a Mac Her Server: her turns its
+  tools on by itself only while the desktop app it was built with was connected, so
+  today they need `[desktop] enabled = true` there.
 
 ## 14. Options considered
 
