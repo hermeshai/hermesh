@@ -1,0 +1,141 @@
+/* Models and Web search:
+   grouped lists, each row a mark, the name over its state, and its action. */
+
+.mrow{min-height:52px}
+.mrow .btn{flex:none;height:26px;padding:0 12px;font-size:12px}
+.mrow .provider-brand{width:28px;height:28px}
+.mrow .brand-initial{border-radius:var(--r-sm);font-size:13px}
+.mrow .fn .badge{margin-left:6px;vertical-align:1px}
+.mrow-add{width:100%;border:0;border-top:.5px solid var(--sep);background:none;font:inherit;font-size:13px;color:var(--accent-t);text-align:left;gap:12px;border-radius:0 0 var(--r-card) var(--r-card)}
+.mrow-add:first-child{border-top:0;border-radius:var(--r-card)}
+.mrow-add:hover{background:var(--fill)}
+.mrow-add:disabled{opacity:.5}
+.mrow-add .ic{width:14px;height:14px;margin:0 7px;color:var(--accent-t)}
+.mrow-err{margin:6px 4px 0;font-size:12px;line-height:1.5;color:var(--red)}
+
+/* A provider's mark: its own, or its initial on a tile. */
+.provider-brand{width:29px;height:29px;display:inline-flex;align-items:center;justify-content:center;flex:none;color:var(--l1)}
+.provider-brand svg{width:100%;height:100%}
+.brand-initial{border-radius:var(--r-md);background:var(--fill2);color:var(--l1);font-size:15px;font-weight:650}
+
+/* The sheet that adds a provider: its title and close button, the tiles, then the key's form. */
+.models-add .sheet-in{padding:0}
+.models-add-body{padding:6px 22px 24px}
+.models-add .sub{margin:0 0 14px;color:var(--l2);font-size:12.5px}
+.provider-dialog-top{display:flex;justify-content:space-between;align-items:center;gap:10px;padding:22px 22px 8px}
+.provider-dialog-top>span{font-size:15px;font-weight:600;color:var(--l1)}
+.provider-icon-button{margin-left:auto;display:grid;place-items:center;border:0;border-radius:50%;background:var(--fill2);width:25px;height:25px;padding:0;color:var(--l2);transition:background .15s,color .15s;flex:none}
+.provider-icon-button:hover{background:var(--fill3);color:var(--l1)}
+.provider-icon-button .ic{width:12px;height:12px;stroke-width:2.7}
+.provider-tiles{display:grid;grid-template-columns:repeat(auto-fill,minmax(128px,1fr));grid-auto-rows:1fr;gap:11px}
+.provider-choice{appearance:none;display:flex;flex-direction:column;border:1px solid var(--sep);border-radius:var(--r-lg);background:var(--win);min-width:0;padding:16px 14px 13px;text-align:left;transition:border-color .15s,transform .15s}
+.provider-choice:hover:not(:disabled){border-color:var(--accent);background:var(--accent-bg);transform:translateY(-1px)}
+.provider-choice:disabled{opacity:.48}
+.provider-choice.added:disabled{opacity:1}
+.provider-choice.added .provider-wordmark{opacity:.48}
+.provider-wordmark{display:flex;flex-direction:column;align-items:flex-start;gap:11px;min-width:0}
+.provider-wordmark strong{font-size:14px;line-height:1.3;font-weight:650;letter-spacing:-.3px}
+.provider-choice-meta{display:flex;justify-content:space-between;align-items:center;gap:5px;margin-top:auto;padding-top:10px;color:var(--l3);font-size:10.5px}
+.provider-choice-meta .ic{width:12px;height:12px}
+@media (prefers-reduced-motion:reduce){.provider-choice{transition:none}}
+.connection-card{border:1px solid var(--sep);border-radius:var(--r-xl);overflow:hidden;background:var(--win)}
+.connection-provider{display:flex;align-items:center;gap:13px;padding:23px 23px 12px}
+.connection-provider-name{flex:1}
+.connection-provider-name h4{font-size:16px;margin:0 0 3px}
+.connection-provider-name p{font-size:12px;color:var(--l2);margin:0}
+.connection-card-footer{display:flex;justify-content:space-between;align-items:center;gap:12px;padding:15px 23px;background:var(--win2);border-top:1px solid var(--sep)}
+.connection-card-footer>span{display:flex;align-items:center;gap:6px;color:var(--l2);font-size:11.5px}
+.connection-card-footer>span .ic{width:13px;height:13px}
+.key-entry .provider-brand{width:40px;height:40px}
+.key-entry .brand-initial{border-radius:var(--r-md);font-size:19px}
+.provider-form{padding:6px 23px 8px}
+.provider-form label{display:block;font-size:12px;font-weight:550;margin-bottom:12px}
+.provider-form label>a{float:right;display:inline-flex;align-items:center;gap:4px;font-weight:400;color:var(--accent-t);text-decoration:none}
+.provider-form label>a:hover{text-decoration:underline}
+.provider-form label>a .ic{width:12px;height:12px}
+.provider-form .field{display:block;width:100%;height:38px;margin-top:7px;font-size:13px;border-radius:var(--r-sm);padding:0 11px}
+.provider-form-note{color:var(--l3);font-size:11px;line-height:1.7;margin:0 0 12px}
+.key-entry .err{color:var(--red);font-size:12px;margin:0 0 12px}
+.key-actions{display:flex;gap:8px}
+
+/* Manage models: a provider's models, each with its menu switch. */
+.models-manage .sheet-in{padding:0}
+.models-manage .provider-dialog-top{padding:22px 22px 12px}
+.models-manage .provider-dialog-top .provider-brand{width:24px;height:24px}
+.mm-bar{display:flex;gap:8px;padding:0 22px}
+.mm-bar .field{flex:1;min-width:0;height:30px;font-size:13px}
+.mm-bar .btn{flex:none;height:30px;padding:0 12px;font-size:12px}
+.mm-status{margin:8px 22px 4px;font-size:12px;color:var(--l3)}
+.models-manage .mrow-err{margin:4px 22px}
+.mm-list{max-height:min(420px,60vh);overflow-y:auto;margin:6px 0 0;padding:0 14px 18px}
+.mm-row{display:flex;align-items:center;gap:12px;padding:9px 8px;border-radius:var(--r-md)}
+.mm-row:hover{background:var(--fill)}
+.mm-row.off .mm-name{color:var(--l2)}
+.mm-main{flex:1;min-width:0}
+.mm-name{font-size:13px;color:var(--l1);display:flex;align-items:center;gap:6px;flex-wrap:wrap}
+.mm-meta{font-size:11px;color:var(--l3);margin-top:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.mm-tag{font-size:10px;line-height:16px;padding:0 5px;border-radius:var(--r-xs);background:var(--fill2);color:var(--l2)}
+.mm-tag.warn{background:var(--orange-bg);color:var(--orange)}
+.mm-tag.new{background:var(--accent-bg);color:var(--accent-t)}
+.mm-empty{margin:14px 8px;font-size:12px;color:var(--l3)}
+.mm-list:has(+.mm-foot){padding-bottom:8px}
+.mm-foot{display:flex;align-items:flex-start;gap:13px;padding:8px 22px;border-top:.5px solid var(--sep)}
+.mm-foot .plan-details{flex:1;min-width:0}
+.mm-foot .btn{height:26px;padding:0 12px;font-size:12px}
+
+/* Token Plans: their entry, the marks in place of one mark, and how one connects. */
+.fgroup+.plan-entry-group{margin-top:var(--sp-1)}
+.plan-entry{width:100%;border:0;border-radius:var(--r-card);background:none;font:inherit;color:var(--l1);text-align:left}
+.fgroup>.frow.plan-entry{min-height:52px}
+.plan-entry:hover{background:var(--fill)}
+.plan-entry>.ic{width:14px;height:14px;color:var(--l3)}
+.plan-marks{display:flex;flex:none}
+.plan-mark{display:grid;place-items:center;width:28px;height:28px;border-radius:var(--r-sm);background:var(--win);box-shadow:0 0 0 1.5px var(--win2)}
+.plan-mark+.plan-mark{margin-left:-4px}
+.plan-mark .provider-brand{width:16px;height:16px}
+.plan-details{font-size:12px;line-height:1.55;color:var(--l2)}
+.plan-details summary{display:inline-flex;align-items:center;gap:4px;height:26px}
+.plan-details summary::-webkit-details-marker{display:none}
+.plan-details summary:hover{color:var(--l1)}
+.plan-details summary .ic{width:12px;height:12px;transition:transform .15s var(--ease-out)}
+.plan-details[open] summary .ic{transform:rotate(90deg)}
+.plan-details dl{display:grid;grid-template-columns:auto minmax(0,1fr);gap:4px 13px;margin:4px 0 0}
+.plan-details dt{color:var(--l3)}
+.plan-details dd{margin:0;overflow-wrap:anywhere;user-select:text}
+.plan-details p{margin:8px 0;color:var(--l3)}
+.key-entry .plan-details{margin:-4px 0 8px}
+
+/* Web Search: the order is the setting, so a grip on every row; what cannot be used yet stays in its place, greyed. */
+.search-set .mrow{position:relative}
+.search-set .tb{flex:none}
+.ws-dim{opacity:.5;pointer-events:none}
+.ws-mark{width:28px;height:28px;flex:none;border-radius:var(--r-sm);display:flex;align-items:center;justify-content:center;overflow:hidden}
+.ws-mark img{display:block;width:100%;height:100%;object-fit:contain}
+.ws-mark.inset{background:#fff;box-shadow:inset 0 0 0 .5px var(--sep)}
+.ws-mark.inset img{width:20px;height:20px}
+.search-set .mrow.ws-row{padding-left:6px;gap:8px}
+.ws-row .ws-mark,.ws-row .provider-brand{margin-right:4px}
+.ws-grip{width:20px;height:28px;flex:none;display:flex;align-items:center;justify-content:center;padding:0;border:0;background:none;border-radius:var(--r-xs);color:var(--l3);cursor:grab;touch-action:none}
+.ws-grip:hover{color:var(--l1)}
+.ws-grip:focus-visible{outline:none;color:var(--l1);box-shadow:0 0 0 2px var(--accent-bg)}
+.ws-grip .ic{width:14px;height:14px}
+.ws-row.ws-off .ws-mark,.ws-row.ws-off .provider-brand,.ws-row.ws-off .fn{opacity:.5}
+.ws-row .fn .badge{margin-left:6px;vertical-align:1px}
+.search-set .fgroup .frow.ws-row.dragging{z-index:5;background:var(--win2);border-radius:var(--r-md);box-shadow:0 0 0 .5px var(--menu-bd),0 8px 24px rgba(0,0,0,.18)}
+.ws-row.dragging,.ws-row.dragging .ws-grip{cursor:grabbing}
+.ws-moving,.ws-moving *{cursor:grabbing!important;user-select:none}
+.ws-intro{margin:0 4px 8px;color:var(--l2);font-size:12px;line-height:1.55}
+.ws-row .sw,.ws-slot{margin-left:5px}
+.ws-slot{width:34px;flex:none}
+.ws-none{color:var(--orange)}
+.ws-sheet-head{display:flex;gap:13px;align-items:center;margin-bottom:13px}
+.ws-sheet-head h3{margin:0 0 2px}
+.ws-sheet-head p{margin:0;color:var(--l2);font-size:12.5px;line-height:1.5}
+.ws-key{display:flex;flex-direction:column;gap:6px;font-size:12.5px;color:var(--l2)}
+.ws-key-h{display:flex;justify-content:space-between;align-items:center}
+.ws-key-h .link{display:inline-flex;align-items:center;gap:3px}
+.ws-key-h .link .ic{width:12px;height:12px}
+.ws-key .field{height:30px}
+.ws-err{margin:8px 0 0;font-size:12.5px;color:var(--red)}
+.ws-lock{display:inline-flex;align-items:center;gap:4px;color:var(--l3);font-size:12px}
+.ws-lock .ic{width:12px;height:12px}

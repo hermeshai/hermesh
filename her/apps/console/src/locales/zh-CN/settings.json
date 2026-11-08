@@ -1,0 +1,208 @@
+{
+  "models": {
+    "subscription": "使用订阅",
+    "subscriptionNote": "使用对应账户的订阅额度，API Key 单独计费。",
+    "chatgpt": {
+      "forget": "忘记账户",
+      "note": "使用 ChatGPT 账户登录",
+      "waiting": "等待在浏览器里登录…",
+      "expired": "登录已失效，请重新登录",
+      "openBrowser": "打开浏览器",
+      "origin": "ChatGPT 订阅",
+      "signedIn": "已登录 ChatGPT",
+      "notStarted": "登录没有开始"
+    },
+    "api": "API 与自定义服务",
+    "add": "添加 API 服务",
+    "close": "关闭",
+    "connect": "登录",
+    "disconnect": "断开",
+    "remove": "移除",
+    "confirmRemove": "确认移除",
+    "cancel": "取消",
+    "replaceKey": "更换密钥…",
+    "state": {
+      "readyShown": "已连接 · 显示 {{shown}} / 共 {{count}} 个模型"
+    },
+    "source": {
+      "stored": "凭据库",
+      "env": "环境变量 {{env}}",
+      "config": "models.toml",
+      "command": "命令提供"
+    },
+    "elsewhere": {
+      "env": "在这台机器上 her 的环境里设置，要移除请删掉 {{env}}",
+      "config": "在这台机器的 ~/.her/models.toml 里设置，要移除请编辑该文件"
+    },
+    "shownOf": "显示 {{shown}} / 共 {{count}} 个模型",
+    "manage": {
+      "open": "管理模型",
+      "title": "{{name}} 的模型",
+      "search": "搜索模型",
+      "refresh": "刷新列表",
+      "refreshing": "正在刷新…",
+      "updated": "{{when}}更新",
+      "shownOf": "菜单显示 {{shown}} 个，共 {{count}} 个",
+      "source": {
+        "provider": "来自服务商的模型列表",
+        "catalog": "来自公开模型目录",
+        "unsupported": "服务商不提供模型列表",
+        "config": "来自 models.toml"
+      },
+      "failed": "上次刷新失败：{{message}}",
+      "unknown": "参数未知",
+      "deprecated": "已停用",
+      "new": "新",
+      "context": "上下文 {{size}}",
+      "price": "每百万 token {{price}}",
+      "inMenu": "在模型菜单里显示 {{name}}",
+      "none": "没有匹配的模型"
+    },
+    "plans": {
+      "title": "Token Plan",
+      "added": "已接入",
+      "subtitle": "连接你已有的模型套餐",
+      "connect": "接入 Token Plan",
+      "chooseNote": "选择已订阅的服务，下一步填写 API Key。",
+      "details": "连接详情",
+      "endpoint": "接入地址",
+      "protocol": "接口协议",
+      "catalog": "模型目录",
+      "dynamicCatalog": "从套餐服务获取，可刷新",
+      "seedCatalog": "套餐预置目录，随 Her 更新",
+      "catalogNote": "预置模型不代表账户已获得访问权限，实际可用范围以你的套餐为准。",
+      "getKey": "获取密钥",
+      "keyPlaceholder": "粘贴这个套餐的 API Key",
+      "removeNote": "从这个环境移除保存的密钥，不会取消服务商的套餐订阅。",
+      "unverified": "密钥已保存，尚未验证连接；首次模型请求时验证。",
+      "replaced": "密钥已更换",
+      "replaceTitle": "更换密钥",
+      "products": {
+        "bailian-token-plan": {
+          "name": "百炼 Token Plan",
+          "note": "阿里云 · 多模型套餐"
+        },
+        "tencent-token-plan": {
+          "name": "腾讯云 Token Plan",
+          "note": "通用与 Hy 套餐共用密钥"
+        },
+        "volcengine-agent-plan": {
+          "name": "火山方舟 Agent Plan",
+          "note": "Agent Plan 专属密钥"
+        },
+        "volcengine-coding-plan": {
+          "name": "火山方舟 Coding Plan",
+          "note": "Coding Plan 专属密钥"
+        },
+        "zai-coding-plan": {
+          "name": "Z.ai GLM Coding Plan",
+          "note": "国际站账户"
+        },
+        "zhipu-coding-plan": {
+          "name": "智谱 GLM Coding Plan",
+          "note": "中国站账户"
+        }
+      }
+    }
+  },
+  "key": {
+    "subtitle": "粘贴这个服务商的 API Key",
+    "where": "保存在这个环境的机器上，只有 Her 会读取",
+    "back": "返回",
+    "save": "保存",
+    "saving": "正在保存…",
+    "placeholder": "粘贴 {{env}}",
+    "fromEnv": "已从环境变量 {{env}} 读到密钥；这里保存的密钥只在它不存在时使用。",
+    "rejected": "密钥无效：{{message}}",
+    "unverified": "暂时无法向服务商验证这个密钥，已先保存",
+    "models_other": "{{count}} 个模型"
+  },
+  "search": {
+    "master": "允许模型联网搜索",
+    "masterNote": "需要时模型会自己搜索。搜索词会发给下面列表里的服务。",
+    "masterOn": "联网搜索已开启",
+    "masterOff": "联网搜索已关闭",
+    "services": "搜索服务",
+    "intro": "从上到下，先用第一个可用的；失败就换下一个。拖动调整顺序。",
+    "current": "正在用",
+    "noneLeft": "所有服务都关了，模型现在搜不了。",
+    "grip": "拖动调整 {{name}} 的顺序，也可以用上下键",
+    "gripTitle": "拖动调整顺序",
+    "use": "使用 {{name}}",
+    "usedTitle": "搜索时会用它",
+    "skippedTitle": "搜索时跳过",
+    "connect": "去连接",
+    "addKey": "添加密钥",
+    "more": "更多",
+    "test": "测试搜索",
+    "replaceKey": "更换密钥",
+    "removeKey": "移除密钥",
+    "needsAccount": "要先在“模型”里连接 {{name}}",
+    "fromEnv": "用环境变量 {{env}} 里的密钥",
+    "failed": "{{what}} · {{when}}",
+    "usedNext": "。这次用了下一个",
+    "failure": {
+      "auth_failed": "密钥被拒绝了",
+      "quota_exhausted": "额度用完了",
+      "rate_limited": "限流了",
+      "unreachable": "连不上",
+      "bad_response": "回答读不了"
+    },
+    "why": {
+      "auth_failed": "密钥被拒绝",
+      "quota_exhausted": "额度用完了",
+      "rate_limited": "在限流",
+      "unreachable": "连不上",
+      "bad_response": "回答读不了"
+    },
+    "worked_other": "{{name}} 可用 · {{count}} 条结果 · {{seconds}} 秒",
+    "testFailed": "{{name}} 没测通：{{why}}",
+    "movedFirst": "，已排到最前",
+    "savedUntested": "密钥已保存，暂时没测通",
+    "refused": "{{name}} 拒绝了这个密钥，没有保存。",
+    "removeTitle": "移除 {{name}} 的密钥？",
+    "removeNote": "密钥会从凭据库删除，这一行搜索时会跳过。",
+    "removeNoteFree": "密钥会从凭据库删除，之后继续用免费额度。",
+    "remove": "移除",
+    "removed": "已移除密钥，{{name}} 这一行搜索时会跳过",
+    "removedFree": "已移除密钥，继续用免费额度",
+    "addTitle": "添加 {{name}} 密钥",
+    "replaceTitle": "更换 {{name}} 密钥",
+    "apiKey": "API Key",
+    "getKey": "去 {{name}} 获取",
+    "keychain": "密钥保存在凭据库",
+    "cancel": "取消",
+    "saveAndTest": "保存并测试",
+    "testing": "正在测试…",
+    "sources": {
+      "deepseek": {
+        "desc": "和模型共用密钥 · $0.75/千次"
+      },
+      "exa": {
+        "desc": "免费额度，不用密钥",
+        "keyed": "已添加密钥 · $4/千次，每月 $10 免费",
+        "sheet": "不加密钥也能用。加了之后用你自己的额度，限额更高。"
+      },
+      "parallel": {
+        "desc": "免费额度，不用密钥",
+        "keyed": "已添加密钥，限额更高",
+        "sheet": "不加密钥也能用。加了之后限额更高。"
+      },
+      "tavily": {
+        "desc": "每月 1000 次免费，需要密钥",
+        "keyed": "已添加密钥 · 每月 1000 次免费",
+        "sheet": "每月 1000 次免费，之后每次约 $0.008。"
+      },
+      "brave": {
+        "desc": "每月 $5 免费额度，需要密钥",
+        "keyed": "已添加密钥 · 每月 $5 免费额度",
+        "sheet": "每月 $5 免费额度，约 1000 次。注册时要绑卡。"
+      },
+      "bocha": {
+        "desc": "中文内容，需要密钥",
+        "keyed": "已添加密钥",
+        "sheet": "面向中文内容的搜索服务。"
+      }
+    }
+  }
+}

@@ -1,0 +1,292 @@
+/* Connectors and Skills.
+   The pages draw on base.css (buttons, switches, segments, menus, sheets); their own parts are
+   named cz-. Every distance is a step of the scale 8 / 13 / 21 / 34 / 55, each the one before
+   times φ: 8 inside a part, 13 between parts, 21 between groups, 34 to the page's edges. */
+
+.cz-sect{animation:fadein .3s cubic-bezier(.2,0,0,1);max-width:760px}
+.cz-sect+.cz-sect{margin-top:var(--sp-3)}
+/* A group's heading: the settings' .fhead, with its count as the sidebar's. */
+.cz .fhead{display:flex;align-items:center;gap:6px;font-weight:400;margin:0 0 var(--sp-1)}
+.cz .fhead .n{color:var(--l3);font-weight:500;font-variant-numeric:tabular-nums}
+.cz .fhead .hint{color:var(--l3);margin-left:2px}
+.cz-anote{display:flex;align-items:center;gap:8px;font-size:12.5px;color:var(--l2);background:var(--fill);border-radius:var(--r-md);padding:8px 13px;margin-bottom:var(--sp-1)}
+.cz-anote>.ic{color:var(--orange)}
+.cz-anote>span{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.cz-anote .link{margin-left:auto;flex:none}
+.cz-anote code{font-family:var(--mono);font-size:11.5px;color:var(--l1)}
+.cz-wait{display:flex;align-items:center;gap:8px;color:var(--l2);font-size:12.5px;padding:var(--sp-3) 4px}
+
+.cz-tile{width:32px;height:32px;border-radius:var(--r-md);background:var(--fill2);color:var(--l2);display:flex;align-items:center;justify-content:center;flex:none;font-weight:650;font-size:12.5px;letter-spacing:-.02em}
+.cz-tile .ic{width:17px;height:17px;stroke-width:1.5}
+.cz-tile.xl{width:52px;height:52px;border-radius:var(--r-lg);font-size:17px}
+.cz-tile.xl .ic{width:26px;height:26px;stroke-width:1.3}
+/* A logo (customize-design §10.10). One that is a tile fills the shape, nothing around it, under
+   a hairline that keeps a white icon's edge on a light page and a black one's on a dark page;
+   one with its own rounded corners keeps them, unlined. A mark sits on the plain plate, which
+   turns light under a dark mark in the dark and dark under a light mark in the light. */
+.cz-tile.logo{position:relative;overflow:hidden;background:none}
+.cz-tile.logo img{position:absolute;display:block;max-width:none}
+.cz-tile.logo::after{content:"";position:absolute;inset:0;border-radius:inherit;box-shadow:inset 0 0 0 .5px rgba(0,0,0,.1);pointer-events:none}
+.cz-tile.logo.cut::after{content:none}
+.cz-tile.glyph img{display:block;object-fit:contain}
+.cz-tile.glyph.light{background:#2c2c30}
+@media (prefers-color-scheme:dark){
+  .cz-tile.logo::after{box-shadow:inset 0 0 0 .5px rgba(255,255,255,.12)}
+  .cz-tile.glyph.light{background:var(--fill2)}
+  .cz-tile.glyph.dark{background:#f2f2f4}
+}
+
+/* The lists: one to a row, no panels, a hairline between rows, the content flush with the
+   group's heading. The row under the pointer lights up as a rounded block reaching 12 past the
+   text, and the lines beside it give way to it. Each row is the mark, the name over one line of
+   what it does, then on the right its state, its switch and its menu. */
+.cz-rows{display:flex;flex-direction:column}
+.cz-row{position:relative;display:flex;align-items:center;gap:var(--sp-2);min-height:58px;margin:0 -12px;padding:9px 8px 9px 12px;border-radius:var(--r-lg);transition:background .12s}
+.cz-row+.cz-row::before{content:"";position:absolute;top:0;left:12px;right:12px;height:.5px;background:var(--sep);transition:opacity .12s}
+.cz-row:hover{background:var(--fill)}
+.cz-row:hover::before,.cz-row:hover+.cz-row::before{opacity:0}
+.cz-row.off .cz-tile,.cz-row.off .rt{opacity:.5}
+.cz-row .rt{flex:1;min-width:0}
+.cz-row .rn{display:flex;align-items:center;gap:6px;font-size:13px;font-weight:500;line-height:18px;min-width:0}
+.cz-row .nm{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.cz-row .rd{font-size:12px;color:var(--l2);margin-top:2px;line-height:17px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.cz-row .rd.mono{font-family:var(--mono);font-size:11.5px}
+.cz-row .ra{display:flex;align-items:center;gap:8px;flex:none;margin-left:var(--sp-1)}
+.cz-st{display:inline-flex;align-items:center;gap:5px;font-size:11.5px;color:var(--l2);white-space:nowrap;font-variant-numeric:tabular-nums}
+.cz-st.ok{color:var(--green)}
+.cz-st.bad{color:var(--red)}
+.cz-st.warn{color:var(--orange)}
+.cz-st .link{font-size:11.5px}
+.cz-st .dotc{width:6px;height:6px}
+.mini-spin.cz-spin{width:10px;height:10px}
+.cz-more{width:26px;height:26px;border-radius:var(--r-sm);border:0;background:none;color:var(--l2);display:flex;align-items:center;justify-content:center;padding:0;flex:none}
+.cz-more:hover,.cz-more.open{background:var(--fill2);color:var(--l1)}
+.cz-more-slot{width:26px;flex:none}
+
+.cz-empty{display:flex;flex-direction:column;align-items:center;text-align:center;padding:var(--sp-5) var(--sp-3);border-radius:var(--r-lg);background:var(--win2);color:var(--l2);gap:6px;font-size:12.5px}
+.cz-empty>.ic{width:26px;height:26px;color:var(--l3);stroke-width:1.3;margin-bottom:4px}
+.cz-empty b{color:var(--l1);font-weight:500;font-size:13px}
+.cz-empty .acts{display:flex;gap:8px;margin-top:var(--sp-1)}
+
+/* A menu's items: what each does under its name. */
+.cz-menu .mi.tall{align-items:flex-start;padding:2px 10px 2px 9px;gap:10px}
+.cz-menu .mi.tall>.ic{margin-top:7px}
+.vmenu.cz-menu .mi .two{padding:6px 0}
+
+/* An item's page (customize-design §10.12, §10.13): one column, at most 852 wide so a line stays
+   readable. The logo and name with the item's controls at the right, the facts in a row, a note
+   when one is due, what it does, then the tools a line each or the files. No boxes and no rules;
+   the spacing is the structure: 8 within a group, 21 between the groups of the head, 34 between
+   the head and the list. */
+.cz-dpage{max-width:852px}
+.cz-dacts{display:flex;align-items:center;gap:var(--sp-1);margin-left:auto;padding-left:var(--sp-3)}
+.cz-swl{display:inline-flex;align-items:center;gap:var(--sp-1);height:28px;padding:0 var(--sp-1);font-size:13px;color:var(--l2)}
+.cz-dacts .cz-more{width:28px;height:28px;margin-right:-6px}
+.cz-dhead{animation:fadein .35s cubic-bezier(.2,0,0,1)}
+.cz-dtitle{display:flex;align-items:center;gap:var(--sp-2);margin-top:var(--sp-1)}
+.cz-dtitle .cz-tile.xl{width:48px;height:48px;font-size:19px;box-shadow:0 1px 2px rgba(0,0,0,.1)}
+.cz-dtitle h1{margin:0;font-size:26px;font-weight:650;letter-spacing:-.5px;line-height:32px;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.cz-dtitle .badge{margin:2px 0 0 -3px}
+.cz-facts{display:flex;flex-wrap:wrap;gap:var(--sp-3) var(--sp-4);margin-top:var(--sp-3)}
+.cz-fact{min-width:0}
+/* The address or command takes the rest of the row and ends in … rather than wrapping alone. */
+.cz-fact.grow{flex:1 1 240px}
+.cz-fact .k{font-size:11.5px;line-height:16px;color:var(--l3)}
+.cz-fact .v{display:flex;align-items:center;gap:6px;margin-top:3px;font-size:13px;line-height:22px;color:var(--l1);white-space:nowrap}
+.cz-fact .v.cz-st.ok{color:var(--green)}
+.cz-fact .v.cz-st.bad{color:var(--red)}
+.cz-fact .v.cz-st.warn{color:var(--orange)}
+.cz-fact .v .cut{min-width:0;overflow:hidden;text-overflow:ellipsis;user-select:text;-webkit-user-select:text}
+.cz-fact .v .sub{color:var(--l3)}
+.cz-ghost{width:20px;height:20px;margin-left:-2px;flex:none;border:0;border-radius:var(--r-xs);background:none;color:var(--l3);display:grid;place-items:center;padding:0;opacity:0;transition:opacity .15s,background .15s,color .15s}
+.cz-fact:hover .cz-ghost,.cz-ghost:focus-visible{opacity:1}
+.cz-ghost:hover{background:var(--fill2);color:var(--l1)}
+.cz-ghost .ic{width:12px;height:12px}
+.cz-note{display:flex;align-items:center;gap:var(--sp-2);margin-top:var(--sp-3);padding:var(--sp-2) var(--sp-2) var(--sp-2) 15px;border-radius:var(--r-lg);background:var(--fill);font-size:13px;line-height:20px;animation:fadein .25s cubic-bezier(.2,0,0,1)}
+.cz-note>.ic{align-self:flex-start;margin-top:2px;width:15px;height:15px;color:var(--l3)}
+.cz-note .tx{flex:1;min-width:0;color:var(--l2)}
+.cz-note .tx b{display:block;font-weight:550;color:var(--l1)}
+.cz-note .tx code{font-family:var(--mono);font-size:12px;background:var(--fill2);padding:1px 5px;border-radius:var(--r-xs);color:var(--l1)}
+.cz-note .err{display:block;margin-top:3px;font-family:var(--mono);font-size:11.5px;line-height:17px;overflow-wrap:anywhere;user-select:text;-webkit-user-select:text}
+.cz-note.warn{background:var(--orange-bg)}.cz-note.warn>.ic{color:var(--orange)}
+.cz-note.bad{background:var(--red-bg)}.cz-note.bad>.ic{color:var(--red)}
+.cz-note .btn{flex:none}
+.cz-note-wait{display:flex;align-items:center;gap:var(--sp-1);flex:none;font-size:12.5px;color:var(--l2)}
+.cz-dtools{margin-top:var(--sp-4);animation:fadein .45s cubic-bezier(.2,0,0,1)}
+.cz-th{display:flex;align-items:baseline;gap:7px;margin-bottom:var(--sp-1)}
+.cz-th h2{margin:0;font-size:15px;font-weight:600;letter-spacing:-.1px}
+.cz-th .n{font-size:13px;color:var(--l3);font-variant-numeric:tabular-nums}
+.cz-th .right{margin-left:auto;display:flex;align-items:baseline;gap:var(--sp-1);font-size:12px;color:var(--l3)}
+.cz-th .link{font-size:12px}
+.cz-tool{display:flex;align-items:baseline;gap:var(--sp-3);padding:7px 12px;margin:0 -12px;border-radius:var(--r-md);font-size:13px;line-height:22px;transition:background .12s}
+.cz-tool:hover,.cz-tool.open{background:var(--fill)}
+.cz-tool .tn{width:172px;flex:none;font-family:var(--mono);font-size:12.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.cz-tool .td{flex:1;min-width:0;color:var(--l2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.cz-tool.open .td{white-space:normal;color:var(--l1);user-select:text;-webkit-user-select:text}
+.cz-dempty{margin:var(--sp-1) 0 0;font-size:13px;color:var(--l3)}
+/* Off: the page steps back; the controls at the top do not. */
+.cz-dpage.off .cz-dtitle .cz-tile{opacity:.45}
+.cz-dpage.off .cz-facts,.cz-dpage.off .cz-tlist,.cz-dpage.off .cz-contents{opacity:.5}
+@media (prefers-reduced-motion:reduce){.cz-dhead,.cz-note,.cz-dtools,.cz-dfiles{animation:none}}
+
+.mini-spin.cz-spin-solid{width:12px;height:12px;border-color:color-mix(in srgb,var(--win) 35%,transparent);border-top-color:var(--win)}
+.btn.primary .mini-spin.cz-spin-solid{border-color:rgba(255,255,255,.35);border-top-color:#fff}
+.cz-code{margin:0;font-family:var(--mono);font-size:12px;line-height:1.7;color:var(--l1);background:var(--code);border-radius:var(--r-md);box-shadow:inset 0 0 0 .5px var(--sep);padding:14px 16px;white-space:pre-wrap;overflow-wrap:anywhere;user-select:text;-webkit-user-select:text}
+.cz-code .fm{color:var(--l2)}
+/* What the item does, set as one more fact: the facts' small grey label over the text. */
+.cz-dsum{margin-top:var(--sp-3)}
+.cz-dsum .k{font-size:11.5px;line-height:16px;color:var(--l3)}
+.cz-dsum p{margin:3px 0 0;max-width:680px;font-size:13px;line-height:22px;color:var(--l1);user-select:text;-webkit-user-select:text;cursor:text}
+/* A skill's note: nothing to act on, so no box; a caption under the facts. */
+.cz-aside{margin:var(--sp-1) 0 0;max-width:600px;font-size:12px;line-height:18px;color:var(--l3)}
+.cz-aside code{font-family:var(--mono);font-size:11.5px;color:var(--l2)}
+/* A skill's files, under the facts as a connector's tools are: the folder as a tree and the open
+   file side by side in one frame, of a fixed height, so a long file never stretches the page. */
+.cz-dfiles{margin-top:var(--sp-4);animation:fadein .45s cubic-bezier(.2,0,0,1)}
+.cz-contents{display:grid;grid-template-columns:clamp(176px,26%,220px) minmax(0,1fr);height:clamp(320px,calc(100vh - 140px),640px);border-radius:var(--r-lg);box-shadow:inset 0 0 0 .5px var(--sep)}
+.cz-contents.single{grid-template-columns:minmax(0,1fr)}
+.cz-tree{display:flex;flex-direction:column;gap:1px;min-width:0;min-height:0;overflow-y:auto;padding:var(--sp-1);border-right:.5px solid var(--sep)}
+.cz-trow{display:flex;align-items:center;gap:5px;height:28px;flex:none;padding-right:8px;border:0;border-radius:var(--r-sm);background:none;font-size:13px;color:var(--l1);text-align:left;min-width:0}
+.cz-trow span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.cz-trow .ic{width:12px;height:12px;flex:none;color:var(--l3)}
+.cz-tsp{width:12px;flex:none}
+.cz-trow:hover{background:var(--fill)}
+.cz-trow.on{background:var(--fill2);font-weight:500}
+.cz-viewer{display:flex;flex-direction:column;min-width:0;min-height:0}
+.cz-vbody{flex:1;min-height:0;overflow:auto}
+.cz-vbar{display:flex;align-items:center;flex:none;gap:var(--sp-1);height:44px;padding:0 var(--sp-1) 0 var(--sp-3)}
+.cz-vbar .mono{flex:1;min-width:0;font-size:12px;color:var(--l2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.cz-vbar .seg button{padding:0 7px}
+.cz-vbar .seg .ic{width:14px;height:14px}
+.cz-vmd{padding:0 var(--sp-3) var(--sp-3);font-size:14px;line-height:1.65}
+.cz-vbody>.cz-code{background:none;box-shadow:none;border-radius:0;padding:0 var(--sp-3) var(--sp-3)}
+.cz-vbody>.cz-wait,.cz-vnote{padding:0 var(--sp-3) var(--sp-3)}
+.cz-vnote{font-size:12.5px;color:var(--l2)}
+/* An image at its own size, at most the frame's width, on a checkerboard so a transparent one
+   still shows its edges; a click shows it over the window. */
+.cz-vimg{display:block;max-width:100%;margin:0 var(--sp-3);padding:0;border:0;border-radius:var(--r-md);background:repeating-conic-gradient(var(--fill2) 0 25%,transparent 0 50%) 0 0/16px 16px;box-shadow:inset 0 0 0 .5px var(--sep);overflow:hidden;cursor:zoom-in;line-height:0}
+.cz-vimg img{display:block;max-width:100%;height:auto}
+.cz-vnote.cut{padding-bottom:var(--sp-1);font-size:12px;color:var(--l3)}
+@media (max-width:720px){.cz-contents{grid-template-columns:minmax(0,1fr);grid-template-rows:auto minmax(0,1fr)}.cz-tree{max-height:160px;border-right:0;border-bottom:.5px solid var(--sep)}}
+.cz-errbox{font-family:var(--mono);font-size:11.5px;line-height:1.5;color:var(--red);background:var(--red-bg);border-radius:var(--r-md);padding:9px 13px;white-space:pre-wrap;overflow-wrap:anywhere;user-select:text;-webkit-user-select:text}
+/* A note in a sheet: what a choice will do. */
+.cz-callout{display:flex;gap:9px;align-items:flex-start;font-size:12.5px;color:var(--l2);background:var(--fill);border-radius:var(--r-md);padding:9px 13px;line-height:1.55}
+.cz-callout>.ic{margin-top:2px;color:var(--l3)}
+.cz-callout.warn>.ic{color:var(--orange)}
+.seg.cz-segsm button{height:22px;padding:0 11px;font-size:12px}
+
+/* Sheets: adding a connector, uploading a skill, skills that did not load. */
+.cz-sheet .cz-form{display:flex;flex-direction:column;gap:var(--sp-2)}
+.cz-fi{display:flex;flex-direction:column;gap:6px}
+.cz-fi>label{font-size:12px;color:var(--l2);display:flex;align-items:center;gap:6px}
+.cz-fi .note{font-size:11.5px;color:var(--l3)}
+.cz-ferr{font-size:11.5px;color:var(--red)}
+.cz-kvs{display:flex;flex-direction:column;gap:6px}
+.cz-kvrow{display:grid;grid-template-columns:1fr 1.6fr 24px 24px;gap:6px;align-items:center}
+.cz-lock{width:24px;height:24px;border:0;border-radius:var(--r-sm);background:none;color:var(--l3);display:flex;align-items:center;justify-content:center;padding:0}
+.cz-lock:hover{background:var(--fill2);color:var(--l1)}
+.cz-lock.on{color:var(--accent-t);background:var(--accent-bg)}
+.cz-lock .ic{width:13px;height:13px}
+.cz-addrow{align-self:flex-start;font-size:12.5px;display:flex;gap:4px;align-items:center}
+.cz-addrow .ic{width:12px;height:12px}
+.cz-drop{border:1.5px dashed var(--fill3);border-radius:var(--r-lg);padding:34px 21px;display:flex;flex-direction:column;align-items:center;gap:8px;color:var(--l2);text-align:center;transition:background .15s,border-color .15s}
+.cz-drop.over{border-color:var(--accent);background:var(--accent-bg)}
+.cz-drop>.ic{width:30px;height:30px;color:var(--l3);stroke-width:1.3}
+.cz-drop b{color:var(--l1);font-weight:500;font-size:14px}
+.cz-drop small{font-size:12px;color:var(--l3)}
+.btn.cz-pick{margin-top:6px}
+.cz-parsed{display:flex;gap:12px;align-items:flex-start;background:var(--win2);border-radius:var(--r-lg);padding:var(--sp-2)}
+.cz-parsed .pt{flex:1;min-width:0}
+.cz-parsed b{font-weight:500}
+.cz-parsed p{margin:3px 0 0;font-size:12.5px;color:var(--l2);line-height:1.5}
+.cz-parsed .badge{display:inline-flex;align-items:center;gap:4px;flex:none}
+.cz-parsed .badge .ic{width:11px;height:11px;stroke-width:3}
+.cz-dlabel{font-size:12px;color:var(--l2);margin:var(--sp-3) 0 var(--sp-1)}
+.cz-target{display:flex;align-items:center;gap:8px;font-size:12.5px;color:var(--l2);background:var(--win2);border-radius:var(--r-md);padding:9px 13px}
+.cz-target .ic{color:var(--l3)}
+.cz-target .mono{font-size:11.5px;color:var(--l1);overflow-wrap:anywhere}
+.cz-gap{margin-top:10px}
+.cz-broken{display:flex;flex-direction:column;gap:8px}
+.cz-sheet .fgroup .frow{gap:12px;padding:9px 13px}
+.cz-sheet .fgroup .frow>.fl{width:72px;color:var(--l2);font-size:12.5px}
+.cz-sheet .fgroup .frow>.fv{justify-content:flex-start;text-align:left;color:var(--l1);overflow-wrap:anywhere}
+.cz-sheet .fgroup .frow>.fv.mono{font-size:12px}
+.cz-sheet .sub .mono{font-size:11.5px}
+.sheet.cz-sheet .sub{margin-bottom:var(--sp-3)}
+.sheet.cz-sheet .sheet-foot{margin-top:var(--sp-3)}
+
+/* Add Connector (§10.9; the look is docs/desktop/connector-add-demo.html). The title and the
+   buttons stay put; the form between them scrolls when it must. */
+.sheet.cz-add{overflow:hidden}
+.sheet.cz-add .sheet-in{padding:0;display:flex;flex-direction:column;max-height:calc(100vh - 80px)}
+.sheet.cz-add h3{margin:0;padding:var(--sp-3) var(--sp-3) var(--sp-2)}
+.cz-add-body{flex:1;min-height:0;overflow-y:auto;padding:0 var(--sp-3) var(--sp-3);animation:fadein .25s cubic-bezier(.2,0,0,1)}
+.sheet.cz-add .sheet-foot{flex:none;margin:0;padding:var(--sp-2) var(--sp-3);border-top:.5px solid var(--sep)}
+.sheet.cz-add .sheet-foot .note{font-size:12px;color:var(--l3)}
+/* The settings: a grouped form, a label on the left and its control on the right, rows on a hairline. */
+.cz-gh{font-size:12px;color:var(--l2);margin:var(--sp-3) 2px 6px}
+.cz-add .fgroup .frow{gap:var(--sp-2);padding:7px 13px;min-height:40px}
+.cz-add .frow>.fl{width:96px;color:var(--l1);white-space:nowrap}
+.cz-add .fgroup .frow>.fv{flex-wrap:nowrap;justify-content:flex-end;text-align:right}
+.cz-add .frow>.fv .field{max-width:260px}
+.cz-add .frow.stack{flex-direction:column;align-items:stretch;gap:var(--sp-1);padding:10px 13px}
+.cz-add .frow.stack>.fl{width:auto}
+.cz-add .cz-two{display:grid;grid-template-columns:1fr 1fr;gap:6px;max-width:260px}
+.cz-advgroup{margin-top:var(--sp-1)}
+.cz-fn{margin:7px 2px 0;font-size:11.5px;color:var(--l2);line-height:1.55}
+.cz-fn .det{color:var(--accent-t)}
+code.cz-code{font-family:var(--mono);font-size:11px;color:var(--l2);background:var(--fill2);padding:1px 5px;border-radius:var(--r-xs);white-space:nowrap;box-shadow:none}
+.cz-trust{margin:var(--sp-3) 2px 0;font-size:11.5px;color:var(--l3);line-height:1.55}
+/* A pop-up button: the choice, and the up-down chevrons. */
+.cz-pop{height:24px;display:inline-flex;align-items:center;gap:6px;padding:0 5px 0 9px;border:0;border-radius:var(--r-sm);background:var(--btn);box-shadow:var(--btn-sh);font-size:12.5px;color:var(--l1);max-width:280px;white-space:nowrap}
+.cz-pop .lbl{overflow:hidden;text-overflow:ellipsis}
+.cz-pop .chev{width:13px;height:13px;color:var(--l2)}
+.cz-pop .badge{height:17px;padding:0 5px;font-size:10.5px;gap:2px}
+.cz-pop .badge .ic{width:10px;height:10px;stroke-width:3.3}
+.cz-pop.open{box-shadow:var(--btn-sh),0 0 0 3px var(--accent-bg)}
+.cz-menu .mi.tall>.ck{margin-top:8px}
+.cz-menu .mi .badge{height:16px;padding:0 5px;font-size:10px}
+.cz-menu{max-width:340px}
+textarea.field.cz-grow{height:auto;min-height:30px;padding:6px 9px;line-height:18px;resize:none;display:block}
+.cz-detect{display:flex;align-items:center;gap:6px;font-size:11.5px;color:var(--l2);min-height:16px}
+.cz-detect .ic{width:13px;height:13px}
+.cz-detect.bad{color:var(--red)}
+.cz-detect b{font-weight:500;color:var(--l1)}
+.cz-summary{display:flex;align-items:center;gap:var(--sp-2);padding:11px var(--sp-2);border-radius:var(--r-lg);background:var(--win2)}
+.cz-summary .t{flex:1;min-width:0}
+.cz-summary .n{font-weight:500;display:flex;align-items:center;gap:6px}
+.cz-summary .a{font-size:11.5px;color:var(--l2);margin-top:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.cz-steps-h{font-size:12.5px;color:var(--l2);margin:var(--sp-3) 0 6px;display:flex;align-items:center;gap:var(--sp-1)}
+.cz-steps{border-radius:var(--r-lg);background:var(--win2);padding:2px 0}
+.cz-steps .stp{display:flex;align-items:center;gap:12px;min-height:50px;padding:8px var(--sp-2)}
+.cz-steps .stp+.stp{border-top:.5px solid var(--sep)}
+.cz-steps .si{width:18px;height:18px;flex:none;display:flex;align-items:center;justify-content:center}
+.cz-steps .si .mini-spin{width:16px;height:16px}
+.cz-steps .ring{width:16px;height:16px;border-radius:50%;box-shadow:inset 0 0 0 1.5px var(--fill3)}
+.cz-steps .done,.cz-steps .fail,.cz-steps .skip{width:18px;height:18px;border-radius:50%;display:flex;align-items:center;justify-content:center}
+.cz-steps .done{background:var(--green);color:#fff}
+.cz-steps .fail{background:var(--red);color:#fff}
+.cz-steps .skip{background:var(--fill2);color:var(--l3)}
+.cz-steps .si .ic{width:11px;height:11px;stroke-width:3.6}
+.cz-steps .st{flex:1;min-width:0}
+.cz-steps .st b{font-weight:400;display:block}
+.cz-steps .st small{display:block;font-size:11.5px;color:var(--l2);margin-top:2px;overflow-wrap:anywhere}
+.cz-steps .stp.wait .st b{color:var(--l3)}
+.cz-steps .bs{display:flex;gap:4px;flex-wrap:wrap;justify-content:flex-end;max-width:46%}
+.cz-fold{display:flex;align-items:center;gap:6px;border:0;background:none;padding:0;font-size:12px;color:var(--l2);margin:var(--sp-3) 2px 0}
+.cz-fold .ic{width:13px;height:13px;color:var(--l2);transition:transform .15s}
+.cz-fold.open .ic{transform:rotate(90deg)}
+.cz-fold small{color:var(--l3);font-size:12px}
+.cz-fold small::before{content:"·";margin-right:6px}
+.cz-cmdline{display:flex;gap:6px;flex-wrap:wrap;font-family:var(--mono);font-size:11.5px;color:var(--l2)}
+.cz-cmdline .tok{background:var(--fill2);border-radius:var(--r-xs);padding:1px 5px}
+.cz-cmdline .tok.p{color:var(--l1)}
+.cz-center{display:flex;flex-direction:column;align-items:center;text-align:center;gap:8px;padding:var(--sp-4) var(--sp-3) var(--sp-2)}
+.cz-center .big{width:44px;height:44px;border-radius:50%;display:flex;align-items:center;justify-content:center;margin-bottom:6px}
+.cz-center .big.ok{background:var(--green);color:#fff}
+.cz-center .big.ok .ic{width:22px;height:22px;stroke-width:3.3}
+.cz-center .big .mini-spin{width:30px;height:30px;border-width:2.5px}
+.cz-center b{font-size:15px;font-weight:600}
+.cz-center p{margin:0;color:var(--l2);font-size:12.5px;line-height:1.55;max-width:420px}
+.cz-toolchips{display:flex;flex-wrap:wrap;gap:6px;justify-content:center;margin-top:var(--sp-1)}
+.cz-toolchips span{font-family:var(--mono);font-size:11px;padding:3px 8px;border-radius:var(--r-xs);background:var(--fill2);color:var(--l2)}
