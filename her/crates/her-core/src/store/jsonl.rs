@@ -684,7 +684,7 @@ mod tests {
         let mut header = SessionHeader::new(NEWER.into(), work.clone());
         header.bot = Some(super::super::BotRef {
             id: "b1".into(),
-            name: "HerBot".into(),
+            name: "Her".into(),
         });
         let bot = store.create(&header).unwrap();
         assert_eq!(ids(&store, 10, None), [OLDER], "not written yet");

@@ -307,10 +307,10 @@ mod tests {
             bot_prompt_file: Some(file),
             ..Config::default()
         };
-        let bot = base_section(&PromptProfile::Bot { name: "HerBot".into() }, &config).unwrap();
-        assert!(bot.starts_with("You are HerBot, testing.\n\nActing with care:"));
+        let bot = base_section(&PromptProfile::Bot { name: "Her".into() }, &config).unwrap();
+        assert!(bot.starts_with("You are Her, testing.\n\nActing with care:"));
         let session = base_section(&PromptProfile::Session, &config).unwrap();
-        assert!(session.starts_with("You are Her"));
+        assert!(session.starts_with("You are Her, a general-purpose agent"));
     }
 
     #[test]
