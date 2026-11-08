@@ -421,6 +421,7 @@ func TestHerTwoEnvironments(t *testing.T) {
 	mock := startHerMock(t, mockBin)
 	console := herConsole(t)
 	w := newOwnerMac(t, herEnv(her, console, herHome(t, mock.models), mock.base), &localv1.GrantSpec{})
+	t.Cleanup(w.owner.stop) // so that it stops her, as in TestHerOnThisMac
 	c := w.app.client
 	ctx := context.Background()
 	mac := localMachine(t, c)
