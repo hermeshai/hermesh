@@ -12,9 +12,12 @@ use her_rpc::Incoming;
 use her_rpc::IncomingRx;
 use serde_json::Value;
 use serde_json::json;
+use std::collections::HashMap;
 use std::path::Path;
 use std::time::Duration;
 use tokio::io::AsyncBufReadExt;
+use tokio::io::AsyncReadExt;
+use tokio::io::AsyncWriteExt;
 
 fn project(env: &TestEnv, name: &str) -> std::path::PathBuf {
     let dir = env.workspace(name);
@@ -271,6 +274,77 @@ async fn oauth_login_resumes_cancels_and_replaces_only_a_changed_resource() {
     assert_eq!(second.oauth_counts().1, 1);
     client.request("mcp/logout", json!({"name":"resume"})).await.unwrap();
     assert!(!credentials(&env).contains("mcp-oauth.resume"));
+    drop(client);
+    common::exit_code(&mut child).await;
+}
+
+/// Plays the client's device: the browser lands on its port with the redirect, which it answers
+/// and reads.
+async fn catch_redirect(device: tokio::net::TcpListener) -> HashMap<String, String> {
+    let (mut stream, _) = device.accept().await.unwrap();
+    let mut head = Vec::new();
+    let mut chunk = [0u8; 4096];
+    while !head.windows(4).any(|w| w == b"\r\n\r\n") {
+        let n = stream.read(&mut chunk).await.unwrap();
+        assert!(n > 0, "the browser hung up");
+        head.extend_from_slice(&chunk[..n]);
+    }
+    stream.write_all(b"HTTP/1.1 200 OK\r\nContent-Length: 6\r\nConnection: close\r\n\r\ncaught").await.unwrap();
+    let head = String::from_utf8_lossy(&head);
+    let target = head.lines().next().unwrap().split(' ').nth(1).unwrap();
+    her_mock::mcp_auth::form(target.split_once('?').unwrap().1)
+}
+
+/// A sign-in that starts and ends on a machine without a browser (her-server.md §5.4): the
+/// browser goes back to the client's device, and the client brings what it caught to her.
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn the_client_completes_a_sign_in_whose_browser_is_on_its_device() {
+    let env = TestEnv::new("manual", "").await;
+    let schema = common::SchemaCheck::new(&["McpLoginResult"]);
+    let mock = oauth_server(true).await;
+    let (mut child, client, mut rx) = env.spawn_rpc(&["serve", "--stdio"]);
+    common::native_init(&client).await;
+    client.request("mcp/list", json!({})).await.unwrap();
+    let login = |redirect: &str| json!({"name": "far", "server": {"name": "far", "url": mock.url(), "auth": "oauth"}, "redirect_uri": redirect});
+
+    // Only an address on the client's own device is taken.
+    for elsewhere in ["https://evil.example/callback", "http://192.168.1.20:8080/callback", "http://127.0.0.1/callback"] {
+        let refused = client.request("mcp/login", login(elsewhere)).await.unwrap_err();
+        assert_eq!(refused.code, -32602, "{elsewhere}: {refused:?}");
+    }
+
+    let device = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let redirect = format!("http://127.0.0.1:{}/callback", device.local_addr().unwrap().port());
+    let started = client.request("mcp/login", login(&redirect)).await.unwrap();
+    schema.check("McpLoginResult", &started);
+    assert_eq!(started["client"], "registration");
+    let caught = tokio::spawn(catch_redirect(device));
+    let (status, page) = her_mock::mcp_auth::browse(started["authorize_url"].as_str().unwrap()).await.unwrap();
+    assert!(status.contains("200") && page == "caught", "{status}\n{page}");
+    let query = caught.await.unwrap();
+    let complete = |state: &str| json!({"login_id": started["login_id"], "code": query["code"], "state": state, "iss": query["iss"]});
+
+    // A state that is not this sign-in's is refused, and the sign-in waits on.
+    let refused = client.request("mcp/login_complete", complete("wrong")).await.unwrap_err();
+    assert_eq!(refused.code, -32602, "{refused:?}");
+    client.request("mcp/login_complete", complete(&query["state"])).await.unwrap();
+    let changed = loop {
+        let changed = until(&mut rx, "mcp/changed", &mut Vec::new()).await;
+        if changed.get("login_id").is_some() {
+            break changed;
+        }
+    };
+    assert_eq!((changed["login_id"].clone(), changed.get("login_error")), (started["login_id"].clone(), None), "{changed:#}");
+    assert!(credentials(&env).contains("mcp-oauth.far"), "the token stays on this machine");
+    // It is over: completing it again finds nothing waiting.
+    let again = client.request("mcp/login_complete", complete(&query["state"])).await.unwrap_err();
+    assert_eq!(again.code, -32602, "{again:?}");
+
+    // Added, the server connects with the token.
+    let edit = json!({"key_path": "mcp_servers.far", "value": {"url": mock.url(), "auth": "oauth"}});
+    client.request("config/write", json!({"layer": "user", "edits": [edit]})).await.unwrap();
+    let checked = client.request("mcp/check", json!({"name": "far"})).await.unwrap();
+    assert_eq!((checked["server"]["status"]["state"].as_str(), checked["server"]["auth_state"].as_str()), (Some("ok"), Some("logged_in")), "{checked:#}");
     drop(client);
     common::exit_code(&mut child).await;
 }

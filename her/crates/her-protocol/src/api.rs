@@ -42,6 +42,8 @@ pub mod method {
     pub const SESSION_DELETE: &str = "session/delete";
     pub const RESOURCE_READ: &str = "resource/read";
     pub const CHATGPT_LOGIN: &str = "chatgpt/login";
+    /// Finishes a `chatgpt/login` that was given a `redirect_uri`.
+    pub const CHATGPT_COMPLETE: &str = "chatgpt/complete";
     pub const CHATGPT_STATUS: &str = "chatgpt/status";
     pub const CHATGPT_CANCEL: &str = "chatgpt/cancel";
     pub const CHATGPT_LOGOUT: &str = "chatgpt/logout";
@@ -173,6 +175,8 @@ pub mod method {
     pub const MCP_PROBE_PROGRESS: &str = "mcp/probe_progress";
     pub const MCP_LOGIN: &str = "mcp/login";
     pub const MCP_LOGIN_CANCEL: &str = "mcp/login_cancel";
+    /// Finishes an `mcp/login` that was given a `redirect_uri`.
+    pub const MCP_LOGIN_COMPLETE: &str = "mcp/login_complete";
     pub const CONNECTORS_INSTALL: &str = "connectors/install";
     pub const MCP_LOGOUT: &str = "mcp/logout";
     /// This connection shows embedded browsers (browser-design §8.3.1), or lends the user's
@@ -1743,3 +1747,23 @@ pub struct ChatGptStatus {
 #[derive(Clone, Debug, Serialize, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct ChatGptCancelParams { pub login_id: String }
+/// `chatgpt/login`: starts signing in. Without `redirect_uri`, her catches the browser's
+/// redirect on its own machine; with it, the browser goes back to the client's device, and
+/// `chatgpt/complete` brings what the redirect carried.
+#[derive(Clone, Debug, Serialize, Deserialize, JsonSchema)]
+pub struct ChatGptLoginParams {
+    /// A loopback address on the client's device (RFC 8252): `http://127.0.0.1:<port>/…`,
+    /// `http://[::1]:<port>/…` or `http://localhost:<port>/…`.
+    #[serde(default, skip_serializing_if = "Option::is_none")] pub redirect_uri: Option<String>,
+}
+/// `chatgpt/complete`: finishes a sign-in started with a `redirect_uri`, with what its redirect
+/// carried. It answers once the sign-in has ended.
+#[derive(Clone, Debug, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct ChatGptCompleteParams {
+    pub login_id: String,
+    pub code: String,
+    pub state: String,
+    /// The redirect's `client_id`, when it has one: ChatGPT names there the client it registered.
+    #[serde(default, skip_serializing_if = "Option::is_none")] pub client_id: Option<String>,
+}

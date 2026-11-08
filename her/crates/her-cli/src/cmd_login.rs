@@ -236,7 +236,7 @@ async fn choose_model(server: &Server, home: &her_core::HerHome, provider_id: &s
 async fn chatgpt_login(overrides: &[String], model: Option<String>, interactive: bool) -> anyhow::Result<u8> {
     let (server, _guard) = cmd_serve::start(overrides)?;
     let chatgpt = server.connections().chatgpt.clone();
-    let started = chatgpt.start().await?;
+    let started = chatgpt.start(None).await?;
     if let Some(url) = &started.authorize_url {
         // Print the address for terminals without a browser; never launch a shell with it.
         eprintln!("Sign in to ChatGPT in your browser:\n{url}");

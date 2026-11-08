@@ -20,6 +20,7 @@ use std::time::UNIX_EPOCH;
 
 pub use client::ClientChoice;
 pub use client::choose_kind;
+pub use login::Completion;
 pub use login::LoginRequest;
 pub use login::PendingLogin;
 pub use login::start_login;

@@ -634,7 +634,9 @@ pub struct McpProbeResult {
 }
 
 /// `mcp/login`: starts signing in to a server. With `server`, the server is not in the
-/// configuration yet: the token is saved under `name`, and adding it comes after.
+/// configuration yet: the token is saved under `name`, and adding it comes after. With
+/// `redirect_uri`, the browser goes back to the client's device, and `mcp/login_complete` brings
+/// what the redirect carried.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 pub struct McpLoginParams {
     pub name: String,
@@ -646,6 +648,25 @@ pub struct McpLoginParams {
     /// usual order (mcp-design D-182).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub client: Option<McpOAuthClientKind>,
+    /// A loopback address on the client's device (RFC 8252): `http://127.0.0.1:<port>/…`,
+    /// `http://[::1]:<port>/…` or `http://localhost:<port>/…`. Not for connectors that sign in
+    /// through their own program.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub redirect_uri: Option<String>,
+}
+
+/// `mcp/login_complete`: finishes a sign-in started with a `redirect_uri`, with what its
+/// redirect carried. It answers once the token is saved; `mcp/changed { login_id }` follows, as
+/// for any sign-in.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+pub struct McpLoginCompleteParams {
+    pub login_id: String,
+    pub code: String,
+    pub state: String,
+    /// The redirect's `iss` (RFC 9207), when it has one: needed when the authorization server
+    /// says it sends one.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub iss: Option<String>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]

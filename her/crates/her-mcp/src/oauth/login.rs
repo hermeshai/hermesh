@@ -1,5 +1,6 @@
 //! The authorization code flow with PKCE (S256) and a loopback redirect on 127.0.0.1 (RFC
-//! 8252), the token exchange with `resource` (RFC 8707), and refreshing.
+//! 8252), or on the client's own device, which hands back what the redirect carried; the token
+//! exchange with `resource` (RFC 8707), and refreshing.
 
 use base64::Engine;
 use base64::engine::general_purpose::URL_SAFE_NO_PAD;
@@ -14,6 +15,7 @@ use tokio::io::AsyncReadExt;
 use tokio::io::AsyncWriteExt;
 use tokio::net::TcpListener;
 use tokio::net::TcpStream;
+use tokio::sync::mpsc;
 use tokio::sync::oneshot;
 use tokio_util::sync::CancellationToken;
 
@@ -41,6 +43,10 @@ pub struct LoginRequest {
     pub http: reqwest::Client,
     /// The identity the person chose, when the server allows it.
     pub prefer: Option<McpOAuthClientKind>,
+    /// A loopback address on the client's device, already checked, for a sign-in whose browser
+    /// is there: nothing listens here, and [`Completion::complete`] brings what the redirect
+    /// carried.
+    pub redirect_uri: Option<String>,
 }
 
 /// A sign-in waiting for the browser to come back.
@@ -50,6 +56,7 @@ pub struct PendingLogin {
     pub client: McpOAuthClientKind,
     done: oneshot::Receiver<Result<(), String>>,
     cancel: CancellationToken,
+    completion: Option<Completion>,
 }
 
 impl PendingLogin {
@@ -68,6 +75,44 @@ impl PendingLogin {
     /// Ends the wait; the browser then finds nothing listening.
     pub fn canceller(&self) -> CancellationToken {
         self.cancel.clone()
+    }
+
+    /// How the client finishes a sign-in started with a `redirect_uri`; `None` when her listens
+    /// for the browser itself.
+    pub fn completion(&self) -> Option<Completion> {
+        self.completion.clone()
+    }
+}
+
+/// What a redirect to the client's device carried, and where the outcome goes.
+type Redirected = (Redirect, oneshot::Sender<Result<(), String>>);
+
+struct Redirect {
+    code: String,
+    state: String,
+    iss: Option<String>,
+}
+
+/// Finishes a sign-in started with a `redirect_uri`, with what its redirect carried.
+#[derive(Clone)]
+pub struct Completion {
+    state: String,
+    redirects: mpsc::Sender<Redirected>,
+}
+
+impl Completion {
+    /// Whether `state` is this sign-in's.
+    pub fn matches(&self, state: &str) -> bool {
+        self.state == state
+    }
+
+    /// Hands over the redirect's `code`, `state` and `iss`, and waits for the tokens to be
+    /// saved. A state that is not the sign-in's leaves it waiting, as a stray callback does.
+    pub async fn complete(&self, code: String, state: String, iss: Option<String>) -> Result<(), String> {
+        let ended = || "the sign-in has ended".to_string();
+        let (outcome, answer) = oneshot::channel();
+        self.redirects.send((Redirect { code, state, iss }, outcome)).await.map_err(|_| ended())?;
+        answer.await.unwrap_or_else(|_| Err(ended()))
     }
 }
 
@@ -131,7 +176,8 @@ pub async fn start_login(req: LoginRequest) -> Result<PendingLogin, String> {
             meta.issuer
         )
     })?;
-    // A reused registration keeps its redirect URI, port and all; otherwise any free port.
+    // A reused registration keeps its redirect URI, port and all; otherwise any free port. A
+    // sign-in whose browser is on the client's device uses the address it was given.
     let previous = match (&kind, &req.paths) {
         (McpOAuthClientKind::Registration, Some(paths)) => {
             let (paths, issuer) = (paths.clone(), meta.issuer.clone());
@@ -139,16 +185,21 @@ pub async fn start_login(req: LoginRequest) -> Result<PendingLogin, String> {
         }
         _ => None,
     };
-    let reuse_port = previous.as_ref().and_then(|(reg, _)| Url::parse(&reg.redirect_uri).ok()).and_then(|u| u.port());
-    let listener = match reuse_port {
-        Some(port) => match TcpListener::bind(("127.0.0.1", port)).await {
-            Ok(listener) => listener,
-            Err(_) => TcpListener::bind(("127.0.0.1", 0)).await.map_err(|e| format!("cannot listen for the sign-in: {e}"))?,
-        },
-        None => TcpListener::bind(("127.0.0.1", 0)).await.map_err(|e| format!("cannot listen for the sign-in: {e}"))?,
+    let (listener, redirect_uri) = match req.redirect_uri.clone() {
+        Some(uri) => (None, uri),
+        None => {
+            let reuse_port = previous.as_ref().and_then(|(reg, _)| Url::parse(&reg.redirect_uri).ok()).and_then(|u| u.port());
+            let listener = match reuse_port {
+                Some(port) => match TcpListener::bind(("127.0.0.1", port)).await {
+                    Ok(listener) => listener,
+                    Err(_) => TcpListener::bind(("127.0.0.1", 0)).await.map_err(|e| format!("cannot listen for the sign-in: {e}"))?,
+                },
+                None => TcpListener::bind(("127.0.0.1", 0)).await.map_err(|e| format!("cannot listen for the sign-in: {e}"))?,
+            };
+            let port = listener.local_addr().map_err(|e| e.to_string())?.port();
+            (Some(listener), format!("http://127.0.0.1:{port}/callback"))
+        }
     };
-    let port = listener.local_addr().map_err(|e| e.to_string())?.port();
-    let redirect_uri = format!("http://127.0.0.1:{port}/callback");
     let choice = match kind {
         McpOAuthClientKind::Managed => return Err("managed CLI authorization is handled by the connector runtime".into()),
         McpOAuthClientKind::Own => {
@@ -213,8 +264,19 @@ pub async fn start_login(req: LoginRequest) -> Result<PendingLogin, String> {
         http: req.http.clone(),
         paths: req.paths.clone(),
     };
-    tokio::spawn(serve_callback(listener, exchange, tx, cancel.clone()));
-    Ok(PendingLogin { authorize_url: authorize.to_string(), client: kind, done, cancel })
+    let completion = match listener {
+        Some(listener) => {
+            tokio::spawn(serve_callback(listener, exchange, tx, cancel.clone()));
+            None
+        }
+        None => {
+            let (redirects, received) = mpsc::channel(4);
+            let completion = Completion { state: exchange.state.clone(), redirects };
+            tokio::spawn(await_redirect(received, exchange, tx, cancel.clone()));
+            Some(completion)
+        }
+    };
+    Ok(PendingLogin { authorize_url: authorize.to_string(), client: kind, done, cancel, completion })
 }
 
 struct Exchange {
@@ -354,44 +416,7 @@ async fn serve_callback(listener: TcpListener, ex: Exchange, done: oneshot::Send
             respond(&mut stream, "400 Bad Request", &page_failed("回调里没有授权码。")).await;
             continue;
         };
-        let pairs = [
-            ("grant_type", "authorization_code"),
-            ("code", code.as_str()),
-            ("redirect_uri", ex.redirect_uri.as_str()),
-            ("code_verifier", ex.verifier.as_str()),
-            ("resource", ex.resource.as_str()),
-        ];
-        let exchanged = token_request(&ex.http, &ex.meta.token_endpoint, &ex.client.client_id, ex.client.client_secret.as_deref(), &pairs).await;
-        let saved = match exchanged {
-            Ok(t) => {
-                let base = StoredToken {
-                    access_token: String::new(),
-                    refresh_token: None,
-                    expires_at: None,
-                    scope: None,
-                    resource: ex.resource.clone(),
-                    issuer: ex.meta.issuer.clone(),
-                    token_endpoint: ex.meta.token_endpoint.clone(),
-                    revocation_endpoint: ex.meta.revocation_endpoint.clone(),
-                    client_id: ex.client.client_id.clone(),
-                    client_secret: ex.client.client_secret.clone(),
-                };
-                let token = apply(base, t);
-                let server = ex.server.clone();
-                tokio::task::spawn_blocking(move || super::save(&server, &token)).await.map_err(|e| e.to_string()).and_then(|r| r)
-            }
-            Err(err) => {
-                // A registration the server forgot: register again next time.
-                if err.starts_with("invalid_client")
-                    && ex.client.kind == McpOAuthClientKind::Registration
-                    && let Some(paths) = ex.paths.clone()
-                {
-                    let issuer = ex.meta.issuer.clone();
-                    let _ = tokio::task::spawn_blocking(move || client::forget(&paths, &issuer)).await;
-                }
-                Err(err)
-            }
-        };
+        let saved = redeem(&ex, code).await;
         match &saved {
             Ok(()) => respond(&mut stream, "200 OK", PAGE_OK).await,
             Err(err) => respond(&mut stream, "200 OK", &page_failed(err)).await,
@@ -399,6 +424,74 @@ async fn serve_callback(listener: TcpListener, ex: Exchange, done: oneshot::Send
         break saved;
     };
     let _ = done.send(result);
+}
+
+/// A sign-in whose browser is on the client's device: what the redirect carried comes from the
+/// client, through [`Completion::complete`].
+async fn await_redirect(mut redirects: mpsc::Receiver<Redirected>, ex: Exchange, done: oneshot::Sender<Result<(), String>>, cancel: CancellationToken) {
+    let result = loop {
+        let (redirect, outcome) = tokio::select! {
+            _ = cancel.cancelled() => return,
+            next = redirects.recv() => match next {
+                Some(next) => next,
+                None => return,
+            },
+        };
+        if redirect.state != ex.state {
+            let _ = outcome.send(Err("the state does not belong to this sign-in".into()));
+            continue;
+        }
+        let result = if ex.meta.authorization_response_iss_parameter_supported && redirect.iss.as_ref() != Some(&ex.meta.issuer) {
+            Err("the redirect came from another authorization server (iss does not match)".into())
+        } else {
+            redeem(&ex, &redirect.code).await
+        };
+        let _ = outcome.send(result.clone());
+        break result;
+    };
+    let _ = done.send(result);
+}
+
+/// Trades the code for tokens and saves them under the server's name.
+async fn redeem(ex: &Exchange, code: &str) -> Result<(), String> {
+    let pairs = [
+        ("grant_type", "authorization_code"),
+        ("code", code),
+        ("redirect_uri", ex.redirect_uri.as_str()),
+        ("code_verifier", ex.verifier.as_str()),
+        ("resource", ex.resource.as_str()),
+    ];
+    let exchanged = token_request(&ex.http, &ex.meta.token_endpoint, &ex.client.client_id, ex.client.client_secret.as_deref(), &pairs).await;
+    match exchanged {
+        Ok(t) => {
+            let base = StoredToken {
+                access_token: String::new(),
+                refresh_token: None,
+                expires_at: None,
+                scope: None,
+                resource: ex.resource.clone(),
+                issuer: ex.meta.issuer.clone(),
+                token_endpoint: ex.meta.token_endpoint.clone(),
+                revocation_endpoint: ex.meta.revocation_endpoint.clone(),
+                client_id: ex.client.client_id.clone(),
+                client_secret: ex.client.client_secret.clone(),
+            };
+            let token = apply(base, t);
+            let server = ex.server.clone();
+            tokio::task::spawn_blocking(move || super::save(&server, &token)).await.map_err(|e| e.to_string()).and_then(|r| r)
+        }
+        Err(err) => {
+            // A registration the server forgot: register again next time.
+            if err.starts_with("invalid_client")
+                && ex.client.kind == McpOAuthClientKind::Registration
+                && let Some(paths) = ex.paths.clone()
+            {
+                let issuer = ex.meta.issuer.clone();
+                let _ = tokio::task::spawn_blocking(move || client::forget(&paths, &issuer)).await;
+            }
+            Err(err)
+        }
+    }
 }
 
 #[cfg(test)]

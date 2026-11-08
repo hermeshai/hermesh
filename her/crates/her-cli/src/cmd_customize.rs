@@ -254,6 +254,7 @@ async fn sign_in(home: &HerHome, ws: &Workspace, name: &str, config: &her_protoc
         paths: Some(her_mcp::oauth::OAuthPaths { her_home: home.root().to_path_buf() }),
         http,
         prefer: None,
+        redirect_uri: None,
     })
     .await
     .map_err(|e| anyhow::anyhow!("cannot sign in to {name}: {e}"))?;

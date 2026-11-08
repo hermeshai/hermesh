@@ -860,3 +860,53 @@ async fn earlier_request_failure_does_not_overwrite_a_new_validation() {
     ));
     assert!(snapshot.connections[0].diagnostic.is_none());
 }
+
+/// A ChatGPT sign-in whose browser is on the client's device: nothing listens here, and only the
+/// sign-in's own state is taken. The exchange itself is the fixture's, in chatgpt-e2e.mjs.
+#[tokio::test]
+async fn a_chatgpt_sign_in_for_another_device_takes_only_its_own_state() {
+    use her_protocol::api::ChatGptLoginState;
+    let dir = tempfile::tempdir().unwrap();
+    let chatgpt = chatgpt::ChatGpt::new(dir.path(), &registry());
+    let redirect = "http://127.0.0.1:9/callback";
+    let started = chatgpt.start(Some(redirect.into())).await.unwrap();
+    assert!(matches!(started.state, ChatGptLoginState::Pending));
+    let id = started.login_id.clone().unwrap();
+    let authorize = url::Url::parse(started.authorize_url.as_deref().unwrap()).unwrap();
+    let query: std::collections::HashMap<String, String> =
+        authorize.query_pairs().into_owned().collect();
+    assert_eq!(query["redirect_uri"], redirect);
+    // Asked again for the same address, it is the same sign-in; any other waits its turn.
+    let again = chatgpt.start(Some(redirect.into())).await.unwrap();
+    assert_eq!(again.login_id.as_deref(), Some(id.as_str()));
+    for other in [Some("http://127.0.0.1:10/callback".to_string()), None] {
+        let busy = chatgpt.start(other).await.err().unwrap();
+        assert_eq!(busy.code, "connection_busy");
+    }
+    // A state that is not this sign-in's changes nothing.
+    let wrong = chatgpt
+        .finish(&id, "code", "wrong", None)
+        .await
+        .err()
+        .unwrap();
+    assert_eq!(wrong.code, "invalid_state");
+    assert!(matches!(
+        chatgpt.status().unwrap().state,
+        ChatGptLoginState::Pending
+    ));
+    let unknown = chatgpt
+        .finish("another", "code", &query["state"], None)
+        .await;
+    assert_eq!(unknown.err().unwrap().code, "not_found");
+    // Cancelled, it ends as a sign-in on this machine does; finishing it then only says so.
+    chatgpt.cancel(&id).unwrap();
+    let ended = chatgpt
+        .finish(&id, "code", &query["state"], None)
+        .await
+        .unwrap();
+    assert!(
+        matches!(ended.state, ChatGptLoginState::Cancelled),
+        "{:?}",
+        ended.state
+    );
+}

@@ -235,7 +235,7 @@ fn is_loopback(uri: &str) -> bool {
 }
 
 /// `a=b&c=d`, percent-decoded.
-pub(crate) fn form(text: &str) -> HashMap<String, String> {
+pub fn form(text: &str) -> HashMap<String, String> {
     text.split('&')
         .filter(|p| !p.is_empty())
         .map(|pair| {

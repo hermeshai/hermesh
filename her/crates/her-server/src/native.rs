@@ -420,12 +420,27 @@ impl NativeProtocol {
                 Err(err) => conn.send_error(Some(id), &err),
             },
             method::CHATGPT_STATUS => conn.send(reply(id, server.0.connections.chatgpt.status().map_err(crate::connections::rpc_error))),
-            method::CHATGPT_LOGIN | method::CHATGPT_LOGOUT => {
-                let reply_id = id.clone(); let login = method_name == method::CHATGPT_LOGIN;
+            method::CHATGPT_LOGIN => {
+                // Without params, as before: her catches the redirect itself.
+                let redirect = her_rpc::params::<Option<her_protocol::api::ChatGptLoginParams>>(params)
+                    .and_then(|p| p.and_then(|p| p.redirect_uri).map(|uri| crate::customize::loopback_redirect(&uri)).transpose());
+                match redirect {
+                    Ok(redirect) => {
+                        let reply_id = id.clone();
+                        self.spawn(id.clone(), conn, async move {
+                            Some(reply(&reply_id, server.0.connections.chatgpt.start(redirect).await.map_err(crate::connections::rpc_error)))
+                        });
+                    }
+                    Err(err) => conn.send_error(Some(id), &err),
+                }
+            }
+            method::CHATGPT_COMPLETE => self.call(id, params, conn, |server, p: her_protocol::api::ChatGptCompleteParams| async move {
+                server.0.connections.chatgpt.finish(&p.login_id, &p.code, &p.state, p.client_id.as_deref()).await.map_err(crate::connections::rpc_error)
+            }),
+            method::CHATGPT_LOGOUT => {
+                let reply_id = id.clone();
                 self.spawn(id.clone(), conn, async move {
-                    let chatgpt = &server.0.connections.chatgpt;
-                    let result = if login { chatgpt.start().await } else { chatgpt.logout().await };
-                    Some(reply(&reply_id, result.map_err(crate::connections::rpc_error)))
+                    Some(reply(&reply_id, server.0.connections.chatgpt.logout().await.map_err(crate::connections::rpc_error)))
                 });
             }
             method::CHATGPT_CANCEL => {
@@ -537,6 +552,7 @@ impl NativeProtocol {
             method::MCP_PROBE_CANCEL => self.call(id, params, conn, |server, p: McpProbeCancelParams| async move { server.mcp_probe_cancel(p).await }),
             method::MCP_LOGIN => self.call(id, params, conn, |server, p: McpLoginParams| async move { server.mcp_login(p).await }),
             method::MCP_LOGIN_CANCEL => self.call(id, params, conn, |server, p: McpLogoutParams| async move { server.mcp_login_cancel(p).await }),
+            method::MCP_LOGIN_COMPLETE => self.call(id, params, conn, |server, p: McpLoginCompleteParams| async move { server.mcp_login_complete(p).await }),
             method::CONNECTORS_INSTALL => self.call(id, params, conn, |server, p: ConnectorInstallParams| async move { server.connector_install(p).await }),
             method::BROWSER_HOST => {
                 use her_protocol::api::BrowserHostKind;
