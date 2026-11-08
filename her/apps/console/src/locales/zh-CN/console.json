@@ -8,7 +8,8 @@
     "search": "联网搜索",
     "browser": "浏览器",
     "instructions": "指令",
-    "defaults": "默认设置"
+    "defaults": "默认设置",
+    "data": "数据"
   },
   "conn": {
     "connecting": "正在连接 Her…",
@@ -87,6 +88,15 @@
     "revert": "还原",
     "saved": "指令已保存",
     "cleared": "指令已清除"
+  },
+  "data": {
+    "title": "这个环境的数据",
+    "desc": "下载为一个 .zip 文件",
+    "export": "导出",
+    "exporting": "正在导出…",
+    "exported": "已导出 {{name}}",
+    "holds": "包含：助手和它们做的文件、对话、定时任务、指令、设置和技能。",
+    "leaves": "不包含：密钥和登录信息，它们留在这台机器上（模型 API 密钥、ChatGPT 和连接器的登录、浏览器的 Cookie），也不包含缓存和日志。"
   },
   "browser": {
     "sites": "网站权限",

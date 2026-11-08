@@ -1,14 +1,15 @@
 import { expect, test, type Page } from "@playwright/test";
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { startStandIn, type StandIn } from "../scripts/stand-in.ts";
-import { zip } from "./zip.ts";
+import { unzip, zip } from "./zip.ts";
 
 // The console as the owner uses it, in a headless browser, against hermeshd's routes (the
 // stand-in) and a real her: a model from an API key, the defaults new assistants start with,
 // instructions, a connector by address with its tools, a skill uploaded and turned off, a web
-// search key, a site allowed. What the page says is checked, and what her wrote in its files.
+// search key, a site allowed, the data exported without the keys. What the page says is checked,
+// and what her wrote in its files.
 
 let site: StandIn;
 test.beforeAll(async () => {
@@ -161,6 +162,23 @@ test("an environment set up from its console", async ({ page }) => {
     await expect(page.getByText("example.com: Open and Act")).toBeVisible();
     await expect(page.getByLabel("Permission for example.com")).toHaveValue("act");
     await expect.poll(() => read("config.toml")).toContain('"https://example.com" = "act"');
+  });
+
+  await test.step("the environment's data exported as a .zip, without its keys", async () => {
+    await nav(page, "Data");
+    await expect(page.getByText(/^Left out: keys and sign-ins/)).toBeVisible();
+    const downloading = page.waitForEvent("download");
+    await page.getByRole("button", { name: "Export", exact: true }).click();
+    const download = await downloading;
+    expect(download.suggestedFilename()).toMatch(/^her-export-\d{8}-\d{6}\.zip$/);
+    await expect(page.getByText(`Exported ${download.suggestedFilename()}`)).toBeVisible();
+    const files = unzip(readFileSync(await download.path()));
+    expect(Object.keys(files)).toEqual(expect.arrayContaining(["config.toml", "models.toml", "skills/weekly-notes/SKILL.md"]));
+    expect(files["config.toml"].toString()).toContain("[mcp_servers.sim]");
+    expect(Object.keys(files).filter((f) => f.startsWith("credentials") || f.startsWith("uploads/"))).toEqual([]);
+    expect(read("credentials.toml")).toContain("tvly-e2e");
+    for (const [name, bytes] of Object.entries(files)) expect(bytes.includes("sk-e2e") || bytes.includes("tvly-e2e"), `${name} holds a key`).toBe(false);
+    expect(readdirSync(path.join(site.home, "exports"))).toEqual([]);
   });
 
   await test.step("the overview says what is set up", async () => {

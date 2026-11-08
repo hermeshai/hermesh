@@ -7,6 +7,7 @@ import { SkillsPage } from "./customize/Skills";
 import { useHer } from "./her";
 import { Icon, type IconName } from "./icons";
 import { BrowserPage } from "./pages/Browser";
+import { DataPage } from "./pages/Data";
 import { DefaultsPage } from "./pages/Defaults";
 import { InstructionsPage } from "./pages/Instructions";
 import { ModelsPage } from "./pages/Models";
@@ -27,6 +28,7 @@ const pages = [
   { id: "browser", icon: "web" },
   { id: "instructions", icon: "text" },
   { id: "defaults", icon: "toggles" },
+  { id: "data", icon: "database" },
 ] as const satisfies readonly { id: string; icon: IconName }[];
 
 export type Page = (typeof pages)[number]["id"];
@@ -91,6 +93,7 @@ export function App() {
         {page === "browser" && <BrowserPage />}
         {page === "instructions" && <InstructionsPage />}
         {page === "defaults" && <DefaultsPage go={go} />}
+        {page === "data" && <DataPage />}
       </main>
       <ToastView />
       <AskSheet />
