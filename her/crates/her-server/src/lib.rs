@@ -45,6 +45,7 @@ mod desktop_status;
 mod docs;
 mod docx_host;
 mod words;
+mod export;
 mod files;
 mod models;
 mod peer;

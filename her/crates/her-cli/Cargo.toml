@@ -59,3 +59,4 @@ flate2.workspace = true
 tar.workspace = true
 ring.workspace = true
 parking_lot.workspace = true
+zip.workspace = true
