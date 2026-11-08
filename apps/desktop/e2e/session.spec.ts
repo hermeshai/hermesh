@@ -565,7 +565,8 @@ test("formulas, diagrams, callouts, folds, footnotes and tables show as the repl
   await table.locator("table").hover();
   await expect.poll(() => tools.evaluate((el) => getComputedStyle(el).opacity)).toBe("1");
   await tools.getByRole("button", { name: "拷贝表格" }).click();
-  await expect.poll(() => app.evaluate(({ clipboard }) => clipboard.readText())).toBe("指标\t本期\t上期\n收入\t123.45\t98.76");
+  // Windows' clipboard ends its lines with CRLF.
+  await expect.poll(() => app.evaluate(({ clipboard }) => clipboard.readText()).then((text) => text.replace(/\r\n/g, "\n"))).toBe("指标\t本期\t上期\n收入\t123.45\t98.76");
   await tools.getByRole("button", { name: "展开" }).click();
   await expect(page.locator("dialog[open]")).toBeVisible();
   await page.keyboard.press("Escape");
