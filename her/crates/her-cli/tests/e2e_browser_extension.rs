@@ -337,6 +337,63 @@ async fn the_extension_and_her_agree_on_a_bridge_version_or_say_which_to_update(
     let _ = tokio::time::timeout(Duration::from_secs(20), service.wait()).await;
 }
 
+/// A service on a socket of its own, as Hermesh runs her: the host that `install --socket`
+/// registered, started as Chrome starts it (the manifest's program, with the extension's origin
+/// and none of our environment), reaches that service. Nothing listens on the home's socket.
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn a_host_registered_for_a_socket_of_its_own_reaches_that_service() {
+    let env = TestEnv::new("manual", "").await;
+    let profile = env.work().join("chrome-profile");
+    let sockets = tempfile::tempdir().unwrap();
+    let socket = sockets.path().join("her.sock");
+    let installed = env
+        .her(&["browser", "extension", "install", "--user-data-dir", profile.to_str().unwrap(), "--socket", socket.to_str().unwrap()])
+        .output()
+        .await
+        .unwrap();
+    assert!(installed.status.success(), "{}", String::from_utf8_lossy(&installed.stderr));
+    let manifest: Value =
+        serde_json::from_str(&std::fs::read_to_string(profile.join("NativeMessagingHosts/com.hermesh.browser.json")).unwrap()).unwrap();
+    let launcher = manifest["path"].as_str().unwrap().to_string();
+    assert!(std::fs::read_to_string(&launcher).unwrap().contains(&format!("--socket '{}'", socket.display())));
+
+    let mut service = env.her(&["serve", "--listen", &format!("unix://{}", socket.display())]).spawn().unwrap();
+    for _ in 0..1200 {
+        if UnixStream::connect(&socket).await.is_ok() {
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(25)).await;
+    }
+    let stream = UnixStream::connect(&socket).await.expect("the service listens");
+    let (read, write) = stream.into_split();
+    let (client, incoming) = Client::connect(read, write);
+    native_init(&client).await;
+    let _demux = Demux::spawn(incoming);
+    assert!(!env.home.path().join("run").join("her.sock").exists());
+
+    let mut host = tokio::process::Command::new(&launcher)
+        .arg(format!("chrome-extension://{EXTENSION_ID}/"))
+        .env_clear()
+        .env("HOME", env.user_home())
+        .env("PATH", "/usr/bin:/bin")
+        .stdin(std::process::Stdio::piped())
+        .stdout(std::process::Stdio::piped())
+        .kill_on_drop(true)
+        .spawn()
+        .unwrap();
+    let hello = json!({"hello": {"browser": "Google Chrome 141", "extension_version": "0.2.1", "bridge": {"min": 1, "max": 2}}});
+    host.stdin.as_mut().unwrap().write_all(&frame(&hello)).await.unwrap();
+    let said = next_status(host.stdout.as_mut().unwrap()).await;
+    assert_eq!(said["status"], "connected", "{said}");
+    let status = status_until(&client, "the extension", |s| s.get("extension").is_some()).await;
+    assert_eq!(status["extension"]["browser"], "Google Chrome 141", "{status}");
+    assert_eq!(status["extension"]["extension_version"], "0.2.1", "{status}");
+
+    host.kill().await.unwrap();
+    client.request("server/shutdown", json!({})).await.unwrap();
+    let _ = tokio::time::timeout(Duration::from_secs(20), service.wait()).await;
+}
+
 // ---- The tabs' lifetime and the connection's (browser-design §8.4.7) ----
 
 /// A service on `socket`, and a client that follows the browsers' status.

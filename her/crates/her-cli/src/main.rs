@@ -398,6 +398,9 @@ enum BrowserCommand {
     /// The Native Messaging host that Chrome starts for the Hermesh extension
     #[command(hide = true)]
     NativeHost {
+        /// The her service's socket, when it is not $HER_HOME/run/her.sock
+        #[arg(long, value_name = "PATH")]
+        socket: Option<PathBuf>,
         /// What Chrome passes: the extension's origin, and on Windows the parent window
         #[arg(trailing_var_arg = true, allow_hyphen_values = true)]
         args: Vec<String>,
@@ -415,6 +418,10 @@ enum ExtensionCommand {
         /// Register for this browser user data directory only
         #[arg(long, value_name = "DIR")]
         user_data_dir: Option<PathBuf>,
+        /// The socket of the her service the host connects to, when it is not
+        /// $HER_HOME/run/her.sock (a service started with --listen unix://PATH)
+        #[arg(long, value_name = "PATH")]
+        socket: Option<PathBuf>,
     },
     /// Remove what install wrote
     Uninstall,
@@ -894,12 +901,12 @@ async fn run(overrides: &[String], command: Command) -> anyhow::Result<u8> {
             command: BrowserCommand::Install,
         } => cmd_info::browser_install().await,
         Command::Browser {
-            command: BrowserCommand::NativeHost { .. },
-        } => cmd_browser::native_host().await,
+            command: BrowserCommand::NativeHost { socket, .. },
+        } => cmd_browser::native_host(socket).await,
         Command::Browser {
             command: BrowserCommand::Extension { command },
         } => match command {
-            ExtensionCommand::Install { extension_ids, user_data_dir } => cmd_browser::install(&extension_ids, user_data_dir),
+            ExtensionCommand::Install { extension_ids, user_data_dir, socket } => cmd_browser::install(&extension_ids, user_data_dir, socket),
             ExtensionCommand::Uninstall => cmd_browser::uninstall(),
             ExtensionCommand::Status { json } => cmd_browser::status(json),
         },
@@ -1311,6 +1318,7 @@ mod parsing_tests {
             &["her", "mcp", "list", "--json"],
             &["her", "mcp", "add", "tools", "--", "npx", "--yes", "tools"],
             &["her", "browser", "native-host", "chrome-extension://abc/", "--parent-window=0"],
+            &["her", "browser", "native-host", "--socket", "/tmp/her.sock", "chrome-extension://abc/"],
         ];
         for line in lines {
             assert!(parse_plain(&os(line)).is_some(), "{line:?}");
@@ -1384,5 +1392,14 @@ mod parsing_tests {
         let cli = Cli::try_parse_from(["her", "mcp", "get", "example", "-c", "thinking=low"]).unwrap();
         assert_eq!(cli.overrides, ["thinking=low"]);
         assert!(matches!(cli.command, Command::Mcp { command: Some(McpCommand::Get { name, .. }), .. } if name == "example"));
+    }
+
+    #[test]
+    fn the_host_takes_its_socket_and_what_chrome_passes_after_it() {
+        // The launcher's line, then what Chrome adds (on Windows also the parent window).
+        let cli = Cli::try_parse_from(["her", "browser", "native-host", "--socket", "/s/her.sock", "chrome-extension://abc/", "--parent-window=0"]).unwrap();
+        let Command::Browser { command: BrowserCommand::NativeHost { socket, args } } = cli.command else { panic!("not the host") };
+        assert_eq!(socket, Some(PathBuf::from("/s/her.sock")));
+        assert_eq!(args, ["chrome-extension://abc/", "--parent-window=0"]);
     }
 }
