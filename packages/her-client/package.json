@@ -1,0 +1,21 @@
+{
+  "name": "@hermesh/her-client",
+  "private": true,
+  "type": "module",
+  "description": "Client logic for the her native protocol, free of any platform or UI framework",
+  "exports": {
+    ".": "./src/index.ts",
+    "./mock": "./src/mock/index.ts"
+  },
+  "scripts": {
+    "test": "node --test src/*.test.ts src/mock/*.test.ts",
+    "typecheck": "tsc -p ."
+  },
+  "dependencies": {
+    "@hermesh/her-protocol": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/node": "24.10.1",
+    "typescript": "5.9.3"
+  }
+}

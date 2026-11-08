@@ -1,0 +1,10 @@
+{
+  "extends": "../../tsconfig.base.json",
+  // Node runs these sources as they are (node --test): type-only imports say so, and
+  // nothing needs compiling.
+  "compilerOptions": {
+    "verbatimModuleSyntax": true,
+    "erasableSyntaxOnly": true
+  },
+  "include": ["src"]
+}
