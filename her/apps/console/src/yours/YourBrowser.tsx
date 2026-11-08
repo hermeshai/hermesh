@@ -9,11 +9,8 @@ import "./yours.css";
 // through the Hermesh extension and used by Her, with the one thing to do about it: connect it
 // (a guide: add the extension, then wait for it to connect, then use it), use it, stop using it,
 // or pick which of several to use. Links open with window.open: the console may be on another
-// device than the Mac. The site permissions are the section's other part.
-//
-// Mount it on the Browser page, above the site permissions, with the page's connection:
-//   <YourBrowser rpc={useHer().rpc} />
-// and give i18n.ts its strings as the namespace "yours" (locales/en/yours.json, locales/zh-CN/yours.json).
+// device than the Mac. The site permissions are the section's other part, below it on the
+// Browser page. Its text is the namespace "yours".
 
 /** The extension's page in the Chrome Web Store, once it is published (her/apps/chrome-extension/store/listing.md); until then the guide loads it from its folder. */
 export const STORE_URL = "";

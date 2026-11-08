@@ -71,6 +71,7 @@ const allowed = new Set([
   "web_search/test",
   "browser/allow",
   "browser/status",
+  "browser/use_extension",
   "models/refresh",
   "models/show",
 ]);
@@ -85,7 +86,7 @@ const writable: Node = {
   approval_mode: any,
   instructions: { extra: any },
   web_search: any,
-  browser: { enabled: any, default: any, sites: any },
+  browser: { enabled: any, default: any, sites: any, extension: any },
   mcp_servers: {
     "*": {
       name: any,

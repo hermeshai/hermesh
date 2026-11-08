@@ -56,7 +56,10 @@ var writable = node{
 	"approval_mode":   nil, // permission_mode's old name
 	"instructions":    {"extra": nil},
 	"web_search":      nil,
-	"browser":         {"enabled": nil, "default": nil, "sites": nil},
+	// browser.extension: whether Her uses the owner's own Chrome, which only
+	// connects once the owner has added the Hermesh extension to it by hand
+	// on that Mac; that step is the decision, so no root key is asked.
+	"browser": {"enabled": nil, "default": nil, "sites": nil, "extension": nil},
 	// Connectors by address.
 	"mcp_servers": {"*": {"name": nil, "url": nil, "transport": nil, "headers": nil, "bearer_token_env_var": nil, "auth": nil, "oauth": nil,
 		"enabled": nil, "exposure": nil, "description": nil, "direct_tools": nil, "enabled_tools": nil, "disabled_tools": nil,

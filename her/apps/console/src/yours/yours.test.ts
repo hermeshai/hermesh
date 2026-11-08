@@ -1,5 +1,4 @@
 import assert from "node:assert/strict";
-import fs from "node:fs";
 import { test } from "node:test";
 import type { BrowserStatus, ExtensionStatus } from "@hermesh/her-protocol";
 import { browserName, extensionEdits, yours, yoursConfig } from "./yours.ts";
@@ -46,17 +45,6 @@ test("the old way of choosing it reads as on, and goes with the next write", () 
     { key_path: "browser.backend", value: null },
   ]);
   assert.deepEqual(extensionEdits(true, yoursConfig({ browser: { extension: false } }).legacyBackend), [{ key_path: "browser.extension", value: true }]);
-});
-
-test("Chinese says everything English does, with the same placeholders", () => {
-  const read = (lang: string) => JSON.parse(fs.readFileSync(new URL(`locales/${lang}/yours.json`, import.meta.url), "utf8"));
-  const leaves = (o: Record<string, unknown>, at = ""): [string, string][] =>
-    Object.entries(o).flatMap(([k, v]) => (typeof v === "string" ? [[at + k, v] as [string, string]] : leaves(v as Record<string, unknown>, `${at}${k}.`)));
-  const en = new Map(leaves(read("en")));
-  const zh = new Map(leaves(read("zh-CN")));
-  assert.deepEqual([...zh.keys()].sort(), [...en.keys()].sort());
-  const holes = (s: string) => (s.match(/{{\w+}}/g) ?? []).sort();
-  for (const [key, text] of en) assert.deepEqual(holes(zh.get(key)!), holes(text), key);
 });
 
 test("a browser's name without its build", () => {

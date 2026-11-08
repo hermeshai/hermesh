@@ -540,7 +540,9 @@ permissions do ([trusted-devices.md](trusted-devices.md) §4.6):
 
 Everything else in the Her entry and the console uses the device key. A
 console never signs: it asks, and the app's signer shows exactly what will
-be signed.
+be signed. Letting Her use the owner's own Chrome is one of these: it
+connects only after the owner adds the Hermesh extension to that Chrome by
+hand on the Mac, and that step is the decision.
 
 **How a console is reached**, in this order:
 
