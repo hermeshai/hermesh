@@ -263,7 +263,6 @@ pub fn document() -> Value {
         (method::BROWSER_STATUS, None, name::<api::BrowserStatus>(g)),
         (method::BROWSER_SITE_ICON, Some(name::<api::BrowserSiteIconParams>(g)), name::<api::BrowserSiteIconResult>(g)),
         (method::DESKTOP_STATUS, None, name::<api::DesktopStatus>(g)),
-        (method::DATA_EXPORT, None, name::<api::DataExportResult>(g)),
         (method::BROWSER_REVEAL, Some(name::<api::BrowserRevealParams>(g)), name::<api::Empty>(g)),
         (method::BROWSER_CLOSE_TABS, Some(name::<api::BrowserCloseTabsParams>(g)), name::<api::Empty>(g)),
         (method::BROWSER_ALLOW, Some(name::<api::BrowserSessionParams>(g)), name::<api::Empty>(g)),
@@ -420,7 +419,7 @@ pub fn document() -> Value {
 /// the desktop app and the extension host.
 pub fn stability(name: &str) -> &'static str {
     const INTERNAL: &[&str] = &["browser/host", "browser/cdp", "browser/extension", "browser/control", "browser/request", "docx/host", "docx/serialize"];
-    const EXPERIMENTAL: &[&str] = &["connections/", "connectors/", "doc/", "docx/", "pptx/", "bots/", "browser/", "routines/", "bot/", "connector/", "desktop/", "data/"];
+    const EXPERIMENTAL: &[&str] = &["connections/", "connectors/", "doc/", "docx/", "pptx/", "bots/", "browser/", "routines/", "bot/", "connector/", "desktop/"];
     if INTERNAL.contains(&name) {
         "internal"
     } else if EXPERIMENTAL.iter().any(|prefix| name.starts_with(prefix)) {

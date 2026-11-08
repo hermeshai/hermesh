@@ -1830,7 +1830,6 @@ dependencies = [
  "tracing-appender",
  "tracing-subscriber",
  "unicode-width",
- "zip",
 ]
 
 [[package]]
@@ -2098,7 +2097,6 @@ dependencies = [
  "tracing",
  "url",
  "uuid",
- "zip",
 ]
 
 [[package]]

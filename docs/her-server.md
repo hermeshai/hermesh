@@ -456,7 +456,6 @@ changing that needs a relay release (§12).
 | `models/list` | Her entry, console | Allowed | No |
 | `desktop/status`: whether computer use can work there (§4.4) | Her entry | Allowed | No |
 | `config/*`, `connections/*`, `credentials/*`, `mcp/*`, `skills/*`, `web_search/*`, `browser/allow`, `browser/status`, `browser/use_extension` | Console | Allowed | No |
-| `data/export`: an archive of the environment's data (§7) | hermeshd's export route, for the console | Not forwarded: hermeshd asks for it itself | No |
 | `doc/*`, `deck/*`, `docx/*` and the other `browser/*` methods: desktop document panels and a built-in browser, which Hermesh does not have | Nobody | Not forwarded | No |
 
 Types are in [schema.json](../her/crates/her-protocol/schema.json), and the
@@ -477,10 +476,7 @@ The protos are the contract; this is their outline.
   - `Upload` and `Download` move files into and out of an assistant's folder.
   - The console is plain HTTP on the same tunnel connection: its files under
     `/her/console/`, server-sent events at `/her/console/events`, and
-    JSON-RPC requests at `/her/console/rpc`. `GET /her/console/export` has
-    her write an archive of the environment's data (`data/export`), sends it
-    as a download and removes it from the machine; it serves only the file
-    her says it wrote in `~/.her/exports/`, never a path the request names.
+    JSON-RPC requests at `/her/console/rpc`.
 - [identity.proto](../proto/hermesh/identity/v1/identity.proto): three
   root-signed `AdminCommand`s. `SetHer` turns Her on or off for a machine;
   `SetHerAssistantMode` sets an assistant's permission mode, the only way to
@@ -568,22 +564,8 @@ What `~/.her` holds on a Her Server:
   bots/<id>/         an assistant: bot.json, its avatar, its folder
   sessions/          conversations, as JSON lines, by date
   skills/            installed skills; .system/ holds the built-in ones
-  her.db             routines and their runs
   credentials.toml   secrets, on Linux only (the Keychain on macOS)
 ```
-
-An export (the console's Data page, her's `data/export`) is a .zip of the
-environment's own data in those places: `config.toml`, `models.toml`,
-`AGENTS.md`, `bots/`, `sessions/`, `chats/` (the folders of conversations
-without a project), the skills the owner added and a copy of `her.db`. her
-names what goes in, so nothing else in `~/.her` goes with it: not the
-credential store, the tokens of model connections and connectors
-(`connections/`, `connectors/`, `mcp/`), the browser's profiles and cookies,
-caches, logs or staged uploads, and no link is followed. Settings refer to
-the secrets they use by name (`${credential:…}`), so the archive names them
-without holding them; a key someone wrote into a settings file by hand goes
-as written. hermeshd sends the archive to the owner's device and removes it
-from the machine (§6.2).
 
 ## 8. Security
 
@@ -752,12 +734,12 @@ Sections:
 | Skills | Installed skills: turn on or off, add by upload, remove, read |
 | Web search | The search provider and its key |
 | Browser | The sites Her may open without asking; on a Mac, whether the owner's own Chrome is connected through the Hermesh extension, and used |
-| Data | Export: the environment's data as one .zip, downloaded to the device the console is open on, keys and sign-ins left out (§7). Backup and restore later |
 
 There is no overview, no defaults for new assistants and no instructions for
 all of them: the apps show Her alone, whose model, thinking and permissions
 are in Her's own settings in the app, and hermeshd refuses those settings
-from the console.
+from the console. Exporting an environment's data, with backup and restore,
+is phase 4.
 
 ## 11. What we build
 
@@ -799,7 +781,7 @@ Test: this Mac and a Linux cloud machine as two environments.
 
 1. Files both ways, with previews and saving.
 2. The rest of the console: Connectors (with sign-in), Skills (upload), Web
-   search, Browser, export.
+   search, Browser. Export moved to phase 4.
 3. Sign-ins started on the Her Server (§5.4), for ChatGPT and for MCP
    connectors.
 4. Routines in conversations.
@@ -829,8 +811,8 @@ Test, from the iPhone alone:
 
 1. A Linux install command that sets up hermeshd with her and pairs the
    machine, as Add Machine does.
-2. Backup of an environment, and restoring it on the same machine after
-   starting over.
+2. Export and backup of an environment, and restoring it on the same
+   machine after starting over.
 3. The console in any browser, approved by a trusted device scanning a
    code.
 
@@ -865,7 +847,7 @@ Test:
 - Sign-in from the iPhone for providers that accept only loopback
   redirects.
 - How large a file may go through the relay.
-- The format of an environment's backup.
+- The format of an environment's backup and export.
 
 ## 14. Options considered
 
