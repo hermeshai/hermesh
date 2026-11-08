@@ -43,6 +43,10 @@ test("callouts and fixed disclosure directives preserve content", () => {
   assert.ok(html.includes('<details data-title="More">'));
   assert.ok(html.includes('Details'));
 });
+test("text that only looks like a directive stays as written", () => {
+  const html = render("Next runs at 19:56. Meet at 10:30am, ratio 3:2, a:b[c]{d=e}\n\n::leaf\n\nand **bold:x**.");
+  for (const kept of ["19:56.", "10:30am", "3:2", "a:b[c]{d=e}", "::leaf", "bold:x"]) assert.ok(html.includes(kept), `${kept} in ${html}`);
+});
 test("footnotes and backreferences use a message namespace", () => {
   const html = render('A[^1]\n\n[^1]: source');
   assert.ok(html.includes('href="#msg1-user-content-fn-1"'));
