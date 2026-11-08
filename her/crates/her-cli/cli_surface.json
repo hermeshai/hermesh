@@ -118,6 +118,7 @@
     "HER_APPROVAL": { "job": "setting-override", "stability": "deprecated", "remove_in": "0.3.0" },
     "HER_CREDENTIAL_STORE": { "job": "environment", "stability": "stable" },
     "HER_NO_BROWSER": { "job": "environment", "stability": "stable" },
+    "HER_DESKTOP": { "job": "environment", "stability": "internal" },
     "HER_MODEL_CATALOG_URL": { "job": "environment", "stability": "stable" },
     "HER_LANG": { "job": "environment", "stability": "stable" },
     "HER_LOG": { "job": "diagnostics", "stability": "stable" },
