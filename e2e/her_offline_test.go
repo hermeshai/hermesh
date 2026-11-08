@@ -3,6 +3,7 @@ package e2e
 import (
 	"context"
 	"encoding/json"
+	"os/exec"
 	"strings"
 	"testing"
 	"time"
@@ -10,17 +11,24 @@ import (
 	localv1 "github.com/hermeshai/hermesh/gen/go/hermesh/local/v1"
 )
 
-// herServer is the hermeshd of env's machine, as newHerEnvironment started
-// it.
-func herServer(t *testing.T, env *herEnvironment) *proc {
+// takeOffline stops env's machine as a service is stopped, so that it stops
+// her: the hermeshd newHerEnvironment started on this computer, or the Linux
+// machine's container, whose first process is its hermeshd.
+func takeOffline(t *testing.T, env *herEnvironment) {
 	t.Helper()
+	if env.container != "" {
+		if out, err := exec.Command("docker", "stop", env.container).CombinedOutput(); err != nil {
+			t.Fatalf("docker stop: %v %s", err, out)
+		}
+		return
+	}
 	for _, p := range env.w.logs {
 		if p.name == "her-server" {
-			return p
+			p.stop()
+			return
 		}
 	}
 	t.Fatal("no her-server")
-	return nil
 }
 
 // keptConversation is what GetHerConversation gives: Her, and Her's
@@ -109,8 +117,8 @@ func TestHerOfflineConversation(t *testing.T) {
 
 	// The machine goes away (its hermeshd stops, and her with it), then this
 	// Mac's hermeshd stops and starts again.
-	herServer(t, env).stop()
-	eventually(t, time.Minute, "her-server offline", func() bool {
+	takeOffline(t, env)
+	eventually(t, time.Minute, "the machine offline", func() bool {
 		m := listedMachine(t, env.c, env.machine)
 		return m != nil && !m.Online
 	})
