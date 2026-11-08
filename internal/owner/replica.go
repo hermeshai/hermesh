@@ -632,6 +632,7 @@ func (r *replica) follow(s *sources, id string, f *feed, started chan struct{}) 
 		r.machinesChangedLocked(s)
 		r.mu.Unlock()
 		done()
+		r.o.wakeHer() // it answers: messages may wait for it
 	}
 	var err error
 	if f.local {
@@ -1023,6 +1024,17 @@ func (r *replica) feeds(fn func(map[string]*feed)) {
 	} else {
 		fn(nil)
 	}
+}
+
+// offline says whether the relay last listed the machine offline (false
+// while the sources are stopped: not known).
+func (r *replica) offline(machineID string) bool {
+	off := false
+	r.feeds(func(feeds map[string]*feed) {
+		f := feeds[machineID]
+		off = f != nil && !f.online
+	})
+	return off
 }
 
 // listed is a copy of a relay list, as last polled.

@@ -12,6 +12,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/hermeshai/hermesh/gen/go/hermesh/her/v1/herv1connect"
 	identityv1 "github.com/hermeshai/hermesh/gen/go/hermesh/identity/v1"
 	"github.com/hermeshai/hermesh/gen/go/hermesh/machine/v1/machinev1connect"
 	relayv1 "github.com/hermeshai/hermesh/gen/go/hermesh/relay/v1"
@@ -55,8 +56,23 @@ type Machine struct {
 	Session sessionv1connect.SessionServiceClient
 	Info    machinev1connect.MachineServiceClient
 	Admin   machinev1connect.MachineAdminServiceClient
+	Her     herv1connect.HerServiceClient
 	h2      *transport.H2Client
 }
+
+// newMachine is the typed clients for machineID over h2, its tunnel.
+func newMachine(machineID, name string, h2 *transport.H2Client) *Machine {
+	const base = "https://machine"
+	return &Machine{MachineID: machineID, Name: name, h2: h2,
+		Session: sessionv1connect.NewSessionServiceClient(h2, base, transport.ClientNoCompression),
+		Info:    machinev1connect.NewMachineServiceClient(h2, base, transport.ClientNoCompression),
+		Admin:   machinev1connect.NewMachineAdminServiceClient(h2, base, transport.ClientNoCompression),
+		Her:     herv1connect.NewHerServiceClient(h2, base, transport.ClientNoCompression)}
+}
+
+// HTTP is the tunnel's HTTP/2 client, for the machine's plain HTTP routes
+// (Her's console): requests go to "https://machine/…".
+func (n *Machine) HTTP() *http.Client { return n.h2.Client }
 
 func (d *Dialer) Connect(ctx context.Context) (*Client, error) {
 	td := &transport.Dialer{RelayURL: d.RelayURL, Role: d.Role, Key: d.Key, Credentials: d.Credentials, HTTPClient: d.HTTPClient, Pipeline: d.Pipeline}
@@ -223,11 +239,7 @@ func (c *Client) dialMachine(ctx context.Context, machineID string) (*Machine, e
 		tc.Close()
 		return nil, err
 	}
-	const base = "https://machine"
-	n := &Machine{MachineID: machineID, Name: sub.MachineName, h2: h2,
-		Session: sessionv1connect.NewSessionServiceClient(h2, base, transport.ClientNoCompression),
-		Info:    machinev1connect.NewMachineServiceClient(h2, base, transport.ClientNoCompression),
-		Admin:   machinev1connect.NewMachineAdminServiceClient(h2, base, transport.ClientNoCompression)}
+	n := newMachine(machineID, sub.MachineName, h2)
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	if c.gen != gen {

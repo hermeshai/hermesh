@@ -115,6 +115,16 @@ type Owner struct {
 	// wiping: the profile is being erased (once, however many refusals
 	// asked).
 	wiping bool
+
+	// Her (her.go). herWake has the waiting messages tried now; herSeen
+	// is each machine's Her as last seen, kept in the store.
+	herWake chan struct{}
+	herMu   sync.Mutex
+	herSeen map[string]*machinev1.HerStatus
+	// herReach, when set, is how tests reach a machine's HerService.
+	herReach  func(ctx context.Context, machineID string) (herMachine, error)
+	consoleMu sync.Mutex
+	console   *herConsole // serving the consoles, once asked for one
 }
 
 const (
@@ -148,12 +158,13 @@ func openProfile(cfg Config, hub *signHub) (*Owner, error) {
 		lock.Release()
 		return nil, err
 	}
-	o := &Owner{cfg: cfg, log: cfg.Logger, st: st, lock: lock, hub: hub}
+	o := &Owner{cfg: cfg, log: cfg.Logger, st: st, lock: lock, hub: hub, herWake: make(chan struct{}, 1)}
 	o.rep = newReplica(o)
 	return o, o.load()
 }
 
 func (o *Owner) load() error {
+	o.herSeen, _ = o.st.herStatuses()
 	account, _ := o.st.get(kAccount)
 	o.account = string(account)
 	seen, _ := o.st.get(kSeenOnline)
@@ -232,6 +243,7 @@ func (o *Owner) Run(ctx context.Context) {
 		}
 	}
 	go o.namePending(ctx)
+	go o.deliverWaiting(ctx)
 	o.stayConnected(ctx)
 	o.mu.Lock()
 	if o.client != nil && o.client != o.kept {
@@ -1606,6 +1618,7 @@ func (o *Owner) RemoveMachine(ctx context.Context, machineID string) error {
 	if _, err := ctl.Revoke(ctx, &relayv1.RevokeRequest{Revocations: &identityv1.RevocationList{OwnerId: o.ownerID, RevokedMachineIds: []string{machineID}}}); err != nil {
 		return err
 	}
+	o.forgetHer(machineID)
 	if o.Status().LocalMachineId == machineID {
 		o.SetLocalMachine(ctx, false, "")
 	}

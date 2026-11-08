@@ -54,12 +54,11 @@ func (d *Device) LocalHandler() http.Handler {
 }
 
 // kickAfterWrites tells the screens (Watch) to look again after a call that
-// may have changed what they show: any but a read.
+// may have changed what they show (writes).
 func (d *Device) kickAfterWrites(next connect.UnaryFunc) connect.UnaryFunc {
 	return func(ctx context.Context, req connect.AnyRequest) (connect.AnyResponse, error) {
 		res, err := next(ctx, req)
-		name := req.Spec().Procedure[strings.LastIndex(req.Spec().Procedure, "/")+1:]
-		if !strings.HasPrefix(name, "Get") && !strings.HasPrefix(name, "List") && !strings.HasPrefix(name, "Lookup") {
+		if writes(req.Spec().Procedure) {
 			d.mu.Lock()
 			for _, o := range d.profiles {
 				o.rep.mu.Lock()
@@ -70,6 +69,17 @@ func (d *Device) kickAfterWrites(next connect.UnaryFunc) connect.UnaryFunc {
 		}
 		return res, err
 	}
+}
+
+// writes says whether a call may change what the screens show: any but a
+// read, and but talking to Her and moving her files, which they don't show.
+func writes(procedure string) bool {
+	name := procedure[strings.LastIndex(procedure, "/")+1:]
+	switch name {
+	case "HerCall", "HerSend", "HerUpload", "HerDownload":
+		return false
+	}
+	return !strings.HasPrefix(name, "Get") && !strings.HasPrefix(name, "List") && !strings.HasPrefix(name, "Lookup")
 }
 
 // localService serves the current profile (profiles.go).
@@ -250,13 +260,16 @@ func (l *localService) ListMachines(ctx context.Context, _ *localv1.ListMachines
 		if err != nil {
 			return nil, err
 		}
-		return &localv1.ListMachinesResponse{Machines: l.o().onlyMachineList(m)}, nil
+		machines := l.o().onlyMachineList(m)
+		l.o().withHer(machines)
+		return &localv1.ListMachinesResponse{Machines: machines}, nil
 	}
 	machines, err := l.o().machines(ctx)
 	if err != nil {
 		return nil, err
 	}
 	l.o().machineStatus(machines)
+	l.o().withHer(machines)
 	return &localv1.ListMachinesResponse{Machines: machines}, nil
 }
 
