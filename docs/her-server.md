@@ -667,6 +667,11 @@ What changes, because Her may run on another computer than the app:
 - **Files.** Her's files are on its Her Server: the app previews or saves
   them through the tunnel, and files dragged into a conversation are
   uploaded there.
+- **What was said, kept.** The page opens with Her and Her's conversation
+  as this device keeps them (§7) until her answers, and shows them while the
+  environment is offline, under the line of §9.3, after the app restarts
+  too. That copy is read-only: questions and approvals wait for the
+  machine, and what the owner writes waits on the device (§5.5).
 - **Not carried over**: the switch between bot mode and session mode (the
   apps have Hermesh's own sessions), the list of assistants and making
   them, the built-in browser (Her browses on its Her Server), and the
@@ -755,7 +760,9 @@ through the real apps and the relay.
    - Her's settings;
    - the first run.
 6. Offline handling: cached conversations, messages kept on the device
-   until the machine is back, macOS notifications.
+   until the machine is back, macOS notifications. The cached conversations
+   are built: the owner-role hermeshd keeps each environment's (§7), and the
+   Mac app shows them until her answers and while the machine is offline.
 7. her: the default assistant named Her; new assistants ask by default.
 
 Test: this Mac and a Linux cloud machine as two environments.

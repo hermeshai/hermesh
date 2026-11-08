@@ -6,6 +6,7 @@ import { local } from "../api";
 import { errorText } from "../store";
 import { herAdapter } from "./adapter";
 import { reachable } from "./environments";
+import { keptFrom, type Kept } from "./kept";
 
 // Her's connections while the Her page shows an environment (docs/her-server.md
 // §5.1): one for the environment, which follows its assistants (bots/subscribe)
@@ -243,6 +244,26 @@ export function useConversation(machine: Machine, bot: BotSummary | undefined, s
   if (got.key === key) return { view: got.view, session: got.session, rpc: got.rpc, noModel: got.noModel, loadEarlier };
   const kept = keptViews.get(key);
   return { view: kept?.view ?? null, session: kept?.session ?? null, rpc: null, noModel: false, loadEarlier };
+}
+
+/**
+ * What hermeshd keeps of the environment's Her (kept.ts), asked for when the
+ * page shows the environment: what the page shows while the environment has
+ * nothing of its own yet, such as after the app restarted.
+ */
+export function useKept(machineId: string): Kept | null {
+  const [got, setGot] = useState<{ id: string; kept: Kept | null }>({ id: machineId, kept: null });
+  useEffect(() => {
+    let stop = false;
+    local.getHerConversation({ machineId }).then(
+      (r) => !stop && setGot({ id: machineId, kept: keptFrom(r) }),
+      () => {},
+    );
+    return () => {
+      stop = true;
+    };
+  }, [machineId]);
+  return got.id === machineId ? got.kept : null;
 }
 
 /**

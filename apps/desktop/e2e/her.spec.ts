@@ -1,4 +1,7 @@
 import { expect, test } from "@playwright/test";
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
 import { fixture, launch, snap } from "./app";
 
 // The Her entry (docs/her-server.md §9), as the owner uses it, against her
@@ -6,7 +9,8 @@ import { fixture, launch, snap } from "./app";
 // it needs her built. One story, as its steps build on each other: the first
 // run on this Mac, Her's settings, a chat, the console, work-mac added as a
 // second environment and switched between, then work-mac offline: what was
-// read stays, and what is written waits on this Mac.
+// read stays, after the app restarts too, and what is written waits on this
+// Mac.
 
 type Hook = { notifications(): { id: string; title: string; body: string; click(): void }[] };
 
@@ -15,7 +19,8 @@ const mockSend = (reply: string) => `[[mock:send:${reply}]] hi`;
 
 test("Her: the first run, a chat, the console, a second environment, and one gone offline", async () => {
   test.setTimeout(300_000);
-  const { app, page } = await launch();
+  const profile = fs.mkdtempSync(path.join(os.tmpdir(), "hmdesk-"));
+  let { app, page } = await launch(fixture.socket, { profile });
   const posted = () =>
     app.evaluate(() => (globalThis as unknown as { hermeshTest: Hook }).hermeshTest.notifications().map((n) => ({ id: n.id, title: n.title, body: n.body })));
   const log = page.getByRole("log", { name: "对话" });
@@ -98,5 +103,14 @@ test("Her: the first run, a chat, the console, a second environment, and one gon
   await expect(waiting).toContainText("等 work-mac 在线后送达");
   await waiting.getByRole("button", { name: "丢弃" }).click();
   await expect(waiting).toBeHidden();
+
+  // The app restarts while work-mac is away: what was said there still shows, as this Mac's hermeshd
+  // keeps it, under the same line.
+  await app.close();
+  ({ app, page } = await launch(fixture.socket, { profile }));
+  await page.getByRole("button", { name: /^Her 助手/ }).click();
+  await expect(page.getByText(/^work-mac 离线 · .+在线$/)).toBeVisible({ timeout: 30_000 });
+  await expect(page.getByRole("log", { name: "对话" })).toContainText("来自 work-mac");
+  await snap(page, "her-offline-restarted");
   await app.close();
 });
