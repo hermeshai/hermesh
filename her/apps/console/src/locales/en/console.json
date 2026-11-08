@@ -8,7 +8,8 @@
     "search": "Web Search",
     "browser": "Browser",
     "instructions": "Instructions",
-    "defaults": "Defaults"
+    "defaults": "Defaults",
+    "data": "Data"
   },
   "conn": {
     "connecting": "Connecting to Her…",
@@ -93,6 +94,15 @@
     "revert": "Revert",
     "saved": "Instructions saved",
     "cleared": "Instructions removed"
+  },
+  "data": {
+    "title": "This environment's data",
+    "desc": "Downloaded as one .zip file",
+    "export": "Export",
+    "exporting": "Exporting…",
+    "exported": "Exported {{name}}",
+    "holds": "In it: the assistants and the files they made, conversations, routines, instructions, settings and skills.",
+    "leaves": "Left out: keys and sign-ins, which stay on this machine (model API keys, the ChatGPT and connector sign-ins, the browser's cookies), and caches and logs."
   },
   "browser": {
     "sites": "Site permissions",

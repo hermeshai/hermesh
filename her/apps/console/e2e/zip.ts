@@ -1,4 +1,4 @@
-import { crc32 } from "node:zlib";
+import { crc32, inflateRawSync } from "node:zlib";
 
 /** A .zip of `files` (path → text), stored without compression: a skill's archive, as a download brings one. */
 export function zip(files: Record<string, string>): Buffer {
@@ -47,4 +47,22 @@ export function zip(files: Record<string, string>): Buffer {
   end.writeUInt32LE(directory.length, 12);
   end.writeUInt32LE(offset, 16);
   return Buffer.concat([...locals, directory, end]);
+}
+
+/** The files of a .zip (path → bytes), stored or deflated, found through its central directory: an export, as it downloads. */
+export function unzip(archive: Buffer): Record<string, Buffer> {
+  const end = archive.lastIndexOf(Buffer.from([0x50, 0x4b, 0x05, 0x06]));
+  const files: Record<string, Buffer> = {};
+  let at = archive.readUInt32LE(end + 16);
+  for (let n = archive.readUInt16LE(end + 10); n > 0; n--) {
+    const method = archive.readUInt16LE(at + 10);
+    const size = archive.readUInt32LE(at + 20);
+    const nameLength = archive.readUInt16LE(at + 28);
+    const local = archive.readUInt32LE(at + 42);
+    const start = local + 30 + archive.readUInt16LE(local + 26) + archive.readUInt16LE(local + 28);
+    const data = archive.subarray(start, start + size);
+    files[archive.toString("utf8", at + 46, at + 46 + nameLength)] = method === 8 ? inflateRawSync(data) : data;
+    at += 46 + nameLength + archive.readUInt16LE(at + 30) + archive.readUInt16LE(at + 32);
+  }
+  return files;
 }
