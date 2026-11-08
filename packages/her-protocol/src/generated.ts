@@ -658,6 +658,21 @@ export type ChatGptCancelParams = {
   login_id: string;
 };
 
+/** `chatgpt/complete`: finishes a sign-in started with a `redirect_uri`, with what its redirect carried. It answers once the sign-in has ended. */
+export type ChatGptCompleteParams = {
+  /** The redirect's `client_id`, when it has one: ChatGPT names there the client it registered. */
+  client_id?: string | null;
+  code: string;
+  login_id: string;
+  state: string;
+};
+
+/** `chatgpt/login`: starts signing in. Without `redirect_uri`, her catches the browser's redirect on its own machine; with it, the browser goes back to the client's device, and `chatgpt/complete` brings what the redirect carried. */
+export type ChatGptLoginParams = {
+  /** A loopback address on the client's device (RFC 8252): `http://127.0.0.1:<port>/…`, `http://[::1]:<port>/…` or `http://localhost:<port>/…`. */
+  redirect_uri?: string | null;
+};
+
 /** Only public login progress crosses RPC. OAuth tokens stay in the kernel credential store. */
 export type ChatGptLoginState = "idle" | "pending" | "connected" | "failed" | "cancelled";
 
@@ -2809,12 +2824,23 @@ export type McpListResult = {
   warnings?: string[];
 };
 
-/** `mcp/login`: starts signing in to a server. With `server`, the server is not in the configuration yet: the token is saved under `name`, and adding it comes after. */
+/** `mcp/login_complete`: finishes a sign-in started with a `redirect_uri`, with what its redirect carried. It answers once the token is saved; `mcp/changed { login_id }` follows, as for any sign-in. */
+export type McpLoginCompleteParams = {
+  code: string;
+  /** The redirect's `iss` (RFC 9207), when it has one: needed when the authorization server says it sends one. */
+  iss?: string | null;
+  login_id: string;
+  state: string;
+};
+
+/** `mcp/login`: starts signing in to a server. With `server`, the server is not in the configuration yet: the token is saved under `name`, and adding it comes after. With `redirect_uri`, the browser goes back to the client's device, and `mcp/login_complete` brings what the redirect carried. */
 export type McpLoginParams = {
   /** The identity the person chose; used when the authorization server allows it, else the usual order (mcp-design D-182). */
   client?: McpOAuthClientKind | null;
   cwd?: string | null;
   name: string;
+  /** A loopback address on the client's device (RFC 8252): `http://127.0.0.1:<port>/…`, `http://[::1]:<port>/…` or `http://localhost:<port>/…`. Not for connectors that sign in through their own program. */
+  redirect_uri?: string | null;
   server?: McpServerConfig | null;
 };
 
@@ -4626,7 +4652,8 @@ export interface Methods {
   "browser/status": [Record<string, never>, BrowserStatus];
   "browser/use_extension": [BrowserUseExtensionParams, Empty];
   "chatgpt/cancel": [ChatGptCancelParams, ChatGptStatus];
-  "chatgpt/login": [Record<string, never>, ChatGptStatus];
+  "chatgpt/complete": [ChatGptCompleteParams, ChatGptStatus];
+  "chatgpt/login": [ChatGptLoginParams, ChatGptStatus];
   "chatgpt/logout": [Record<string, never>, ChatGptStatus];
   "chatgpt/status": [Record<string, never>, ChatGptStatus];
   "config/read": [ConfigReadParams, ConfigReadResult];
@@ -4695,6 +4722,7 @@ export interface Methods {
   "mcp/list": [McpListParams, McpListResult];
   "mcp/login": [McpLoginParams, McpLoginResult];
   "mcp/login_cancel": [McpLogoutParams, Empty];
+  "mcp/login_complete": [McpLoginCompleteParams, Empty];
   "mcp/logout": [McpLogoutParams, Empty];
   "mcp/probe": [McpProbeParams, McpProbeResult];
   "mcp/probe_cancel": [McpProbeCancelParams, Empty];
