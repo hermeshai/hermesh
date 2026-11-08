@@ -309,6 +309,12 @@ Mac:
   them under Computer use (§9.1).
 - On another Mac that is a Her Server, the owner switches them on at that
   Mac.
+- Computer use is on by default on a Mac Her Server: hermeshd starts her
+  with `HER_DESKTOP=on`, so her's tools are on unless the owner's
+  configuration sets `[desktop] enabled = false`. Nothing works until the
+  owner switches the two permissions on, and Her asks once per app and
+  conversation before it reads or acts in an app `[desktop.apps]` doesn't
+  allow.
 
 ## 5. Call flows
 
@@ -658,9 +664,10 @@ holds "Manage this environment" (the console). Her's settings panel holds its na
 approval mode, whether it notifies, and lets the owner clear its
 conversation. Environment-wide settings are in the console.
 
-When the environment is this Mac, the Her entry's settings also show
-Computer use: the two permissions of §4.4 as her finds them, with a button
-for each missing one that opens its pane of System Settings.
+Settings › Machines shows, for this Mac while Her is on there, Computer
+use: the two permissions of §4.4 as her finds them, with a button for each
+missing one that opens its pane of System Settings. They belong to the Mac,
+not to an assistant.
 
 ### 9.2 First run
 
@@ -818,9 +825,6 @@ Test:
   redirects.
 - How large a file may go through the relay.
 - The format of an environment's backup and export.
-- Whether computer use is on by default on a Mac Her Server: her turns its
-  tools on by itself only while the desktop app it was built with was connected, so
-  today they need `[desktop] enabled = true` there.
 
 ## 14. Options considered
 

@@ -38,12 +38,13 @@ func TestHerComputerUse(t *testing.T) {
 	}
 	mock := startHerMock(t, mockBin)
 	home := herHome(t, mock.models)
-	// Computer use on, and Finder's window read without asking.
+	// Finder's window read without asking. Computer use itself is on by
+	// default on a Mac (desktop/status says so below).
 	config, err := os.OpenFile(filepath.Join(home, "config.toml"), os.O_APPEND|os.O_WRONLY, 0)
 	if err != nil {
 		t.Fatal(err)
 	}
-	fmt.Fprintf(config, "\n[desktop]\nenabled = true\nexecutable = %q\n\n[desktop.apps]\n\"com.apple.finder\" = \"allow\"\n", program)
+	fmt.Fprintf(config, "\n[desktop]\nexecutable = %q\n\n[desktop.apps]\n\"com.apple.finder\" = \"allow\"\n", program)
 	config.Close()
 	w := newOwnerMac(t, herEnv(her, herConsole(t), home, mock.base), &localv1.GrantSpec{})
 	c := w.app.client

@@ -11,6 +11,8 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"runtime"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -164,6 +166,11 @@ func (h *Host) supervise(ctx context.Context, done chan struct{}) {
 // serve runs her once: until it stops, or ctx ends and it is stopped.
 func (h *Host) serve(ctx context.Context) error {
 	env := h.cfg.Env()
+	if runtime.GOOS == "darwin" && !slices.ContainsFunc(env, func(kv string) bool { return strings.HasPrefix(kv, "HER_DESKTOP=") }) {
+		// Computer use is on unless the owner's configuration turns it off:
+		// macOS asks the owner for its permissions first (docs/her-server.md §4.4).
+		env = append(env, "HER_DESKTOP=on")
+	}
 	home, _ := os.UserHomeDir()
 	h.mu.Lock()
 	h.home = herHome(env, home)
