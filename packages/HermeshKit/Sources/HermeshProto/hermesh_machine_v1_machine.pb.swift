@@ -622,6 +622,10 @@ public nonisolated struct Hermesh_Machine_V1_HerLatest: Sendable {
 
   public var kind: Hermesh_Machine_V1_HerLatestKind = .unspecified
 
+  /// The owner muted the assistant (her's BotSummary.muted): no device
+  /// notifies them of it.
+  public var muted: Bool = false
+
   public var unknownFields = SwiftProtobuf.UnknownStorage()
 
   public init() {}
@@ -1808,7 +1812,7 @@ nonisolated extension Hermesh_Machine_V1_HerStatus: SwiftProtobuf.Message, Swift
 
 nonisolated extension Hermesh_Machine_V1_HerLatest: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
   public static let protoMessageName: String = _protobuf_package + ".HerLatest"
-  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{3}bot_id\0\u{3}bot_name\0\u{1}text\0\u{1}at\0\u{1}kind\0")
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{3}bot_id\0\u{3}bot_name\0\u{1}text\0\u{1}at\0\u{1}kind\0\u{1}muted\0")
 
   public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
     while let fieldNumber = try decoder.nextFieldNumber() {
@@ -1821,6 +1825,7 @@ nonisolated extension Hermesh_Machine_V1_HerLatest: SwiftProtobuf.Message, Swift
       case 3: try { try decoder.decodeSingularStringField(value: &self.text) }()
       case 4: try { try decoder.decodeSingularMessageField(value: &self._at) }()
       case 5: try { try decoder.decodeSingularEnumField(value: &self.kind) }()
+      case 6: try { try decoder.decodeSingularBoolField(value: &self.muted) }()
       default: break
       }
     }
@@ -1846,6 +1851,9 @@ nonisolated extension Hermesh_Machine_V1_HerLatest: SwiftProtobuf.Message, Swift
     if self.kind != .unspecified {
       try visitor.visitSingularEnumField(value: self.kind, fieldNumber: 5)
     }
+    if self.muted != false {
+      try visitor.visitSingularBoolField(value: self.muted, fieldNumber: 6)
+    }
     try unknownFields.traverse(visitor: &visitor)
   }
 
@@ -1855,6 +1863,7 @@ nonisolated extension Hermesh_Machine_V1_HerLatest: SwiftProtobuf.Message, Swift
     if lhs.text != rhs.text {return false}
     if lhs._at != rhs._at {return false}
     if lhs.kind != rhs.kind {return false}
+    if lhs.muted != rhs.muted {return false}
     if lhs.unknownFields != rhs.unknownFields {return false}
     return true
   }

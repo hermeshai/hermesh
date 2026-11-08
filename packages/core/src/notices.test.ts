@@ -1,9 +1,11 @@
 import { clone, create } from "@bufbuild/protobuf";
 import { PairingKind } from "@hermesh/proto/identity";
-import { PairingDetailsSchema } from "@hermesh/proto/local";
+import { MachineSchema, PairingDetailsSchema } from "@hermesh/proto/local";
+import { HerLatestKind, HerLatestSchema, HerStatusSchema } from "@hermesh/proto/machine";
+import { timestampFromDate } from "@bufbuild/protobuf/wkt";
 import { DiffStatSchema, FailureKind, FailureSchema, SessionSchema, SessionStatus } from "@hermesh/proto/session";
 import { describe, expect, test } from "vitest";
-import { filterNotices, noticeDiff, noticeSnapshot, noticeSnapshots, pairingNotice, type NoticeItem } from "./notices";
+import { filterNotices, herNotices, herSnapshots, noticeDiff, noticeSnapshot, noticeSnapshots, pairingNotice, type NoticeItem } from "./notices";
 import { ask, at, progressOf, session } from "./testing";
 
 const grant = () => "Grok Bot";
@@ -103,5 +105,57 @@ describe("pairing notices", () => {
     expect(pairingNotice(p(PairingKind.DEVICE)).title).toBe("「gpu-box」想成为你的可信设备");
     // Without a verification code, the pairing code is what both sides show.
     expect(pairingNotice(p(PairingKind.CLIENT, "")).body).toBe("核对码 ABCD-EFGH。点击比对并批准，如不认识请拒绝。");
+  });
+});
+
+describe("Her notices", () => {
+  type Latest = { bot?: string; name?: string; text: string; seconds: number; kind?: HerLatestKind; muted?: boolean };
+  /** A machine running Her, with `unread` and its newest message. */
+  const env = (id: string, name: string, unread: number, latest: Latest | null, enabled = true) =>
+    create(MachineSchema, {
+      machineId: id,
+      machineName: name,
+      online: true,
+      her: create(HerStatusSchema, {
+        enabled,
+        running: true,
+        unread,
+        latest: latest
+          ? create(HerLatestSchema, {
+              botId: latest.bot ?? "her",
+              botName: latest.name ?? "Her",
+              text: latest.text,
+              at: timestampFromDate(at(latest.seconds)),
+              kind: latest.kind ?? HerLatestKind.MESSAGE,
+              muted: latest.muted ?? false,
+            })
+          : undefined,
+      }),
+    });
+
+  test("a new message that grows the unread count is noticed once, named by its assistant", () => {
+    const before = [env("m1", "Mac mini", 0, { text: "早", seconds: -600 })];
+    const after = [env("m1", "Mac mini", 1, { name: "研究员", bot: "b2", text: "查好了，见附件", seconds: 0 })];
+    expect(herNotices(herSnapshots(before), after)).toEqual([{ machineId: "m1", botId: "b2", title: "研究员", body: "查好了，见附件" }]);
+    // Looked at again: no news.
+    expect(herNotices(herSnapshots(after), after)).toEqual([]);
+  });
+
+  test("with two environments, the title names the environment too; an approval says it waits", () => {
+    const before = [env("m1", "Mac mini", 0, null), env("m2", "cloud", 2, { text: "旧的", seconds: -60 })];
+    const after = [env("m1", "Mac mini", 0, null), env("m2", "cloud", 3, { text: "重启 nginx", seconds: 0, kind: HerLatestKind.APPROVAL })];
+    expect(herNotices(herSnapshots(before), after)).toEqual([{ machineId: "m2", botId: "her", title: "Her · cloud", body: "等你批准：重启 nginx" }]);
+  });
+
+  test("no news: an environment seen for the first time, a muted assistant, unread that fell or stayed, the same message, Her turned off", () => {
+    const first = [env("m1", "Mac mini", 4, { text: "以前的", seconds: -60 })];
+    expect(herNotices(new Map(), first)).toEqual([]);
+    const before = herSnapshots(first);
+    expect(herNotices(before, [env("m1", "Mac mini", 5, { text: "别吵我", seconds: 0, muted: true })])).toEqual([]);
+    expect(herNotices(before, [env("m1", "Mac mini", 0, { text: "新的", seconds: 0 })])).toEqual([]);
+    expect(herNotices(before, [env("m1", "Mac mini", 4, { text: "新的", seconds: 0 })])).toEqual([]);
+    expect(herNotices(before, [env("m1", "Mac mini", 5, { text: "以前的", seconds: -60 })])).toEqual([]);
+    expect(herNotices(before, [env("m1", "Mac mini", 5, { text: "新的", seconds: 0 }, false)])).toEqual([]);
+    expect(herSnapshots([env("m1", "Mac mini", 5, null, false)]).size).toBe(0);
   });
 });

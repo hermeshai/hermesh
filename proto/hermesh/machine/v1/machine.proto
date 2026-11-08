@@ -197,6 +197,9 @@ message HerLatest {
   string text = 3;
   google.protobuf.Timestamp at = 4;
   HerLatestKind kind = 5;
+  // The owner muted the assistant (her's BotSummary.muted): no device
+  // notifies them of it.
+  bool muted = 6;
 }
 
 enum HerLatestKind {

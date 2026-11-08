@@ -90,7 +90,10 @@
     "failedBody": "{{grant}} · {{agent}} · {{project}}。{{advice}}",
     "turnDoneTitle": "「{{title}}」第 {{turn}} 轮完成",
     "noChanges": "没有改动文件",
-    "changes_other": "{{count}} 个文件 +{{insertions}} −{{deletions}}"
+    "changes_other": "{{count}} 个文件 +{{insertions}} −{{deletions}}",
+    "herName": "Her",
+    "herTitle": "{{name}} · {{environment}}",
+    "herApproval": "等你批准：{{text}}"
   },
   "pairing": {
     "machine": "机器「{{label}}」想加入",

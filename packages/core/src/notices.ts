@@ -1,6 +1,7 @@
 import { create } from "@bufbuild/protobuf";
 import { PairingKind } from "@hermesh/proto/identity";
-import type { PairingDetails } from "@hermesh/proto/local";
+import type { Machine, PairingDetails } from "@hermesh/proto/local";
+import { HerLatestKind, type HerLatest } from "@hermesh/proto/machine";
 import { FailureSchema, SessionStatus, type Session } from "@hermesh/proto/session";
 import { codingAgentTitle } from "./agents";
 import { t } from "./i18n";
@@ -136,6 +137,54 @@ export function filterNotices(items: NoticeItem[], prefs: Partial<NoticePrefs>):
         return prefs.notifyTurnDone ?? false;
     }
   });
+}
+
+/** An environment's Her as it was at the last look: what it had unread, and its newest message. */
+export interface HerSnapshot {
+  unread: number;
+  latest: string;
+}
+
+const latestKey = (l: HerLatest | undefined) => (l ? `${l.botId}\0${l.at?.seconds ?? 0}\0${l.at?.nanos ?? 0}\0${l.text}` : "");
+
+/** Each environment's snapshot, by its machine id (docs/her-server.md §9.3). */
+export function herSnapshots(machines: Machine[]): Map<string, HerSnapshot> {
+  const out = new Map<string, HerSnapshot>();
+  for (const m of machines) if (m.her?.enabled) out.set(m.machineId, { unread: m.her.unread, latest: latestKey(m.her.latest) });
+  return out;
+}
+
+export interface HerNotice {
+  machineId: string;
+  botId: string;
+  title: string;
+  body: string;
+}
+
+/**
+ * The notices since the last look: an environment whose unread count grew
+ * with a newer message from an assistant. An environment seen for the first
+ * time is no news (what it had before the look), nor is a muted assistant.
+ * The title names the assistant, and its environment too when there is
+ * more than one.
+ */
+export function herNotices(previous: ReadonlyMap<string, HerSnapshot>, machines: Machine[]): HerNotice[] {
+  const environments = machines.filter((m) => m.her?.enabled);
+  const out: HerNotice[] = [];
+  for (const m of environments) {
+    const before = previous.get(m.machineId);
+    const her = m.her!;
+    const latest = her.latest;
+    if (!before || !latest || latest.muted || her.unread <= before.unread || latestKey(latest) === before.latest) continue;
+    const name = latest.botName || t("notice.herName");
+    out.push({
+      machineId: m.machineId,
+      botId: latest.botId,
+      title: environments.length > 1 ? t("notice.herTitle", { name, environment: m.machineName }) : name,
+      body: latest.kind === HerLatestKind.APPROVAL ? t("notice.herApproval", { text: latest.text }) : latest.text,
+    });
+  }
+  return out;
 }
 
 /** A pending pairing request, as the menu bar and its notification name it. */
