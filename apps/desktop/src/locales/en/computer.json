@@ -1,0 +1,15 @@
+{
+  "title": "Computer use",
+  "intro": "Her can read and operate the other apps on this Mac once macOS allows it.",
+  "off": "Computer use is off in this environment.",
+  "missing": "A part of computer use is missing: reinstall Hermesh.",
+  "accessibility": "Accessibility",
+  "deviceControl": "Device Control and Data Access",
+  "accessibilityDesc": "Reads windows, and clicks and types in them; computer use needs it. Switch on hermeshd, the Hermesh service that runs Her.",
+  "screen": "Screen Recording",
+  "screenAudio": "Screen & System Audio Recording",
+  "screenDesc": "For screenshots of windows. Switch on Hermesh.",
+  "granted": "Allowed",
+  "open": "Open System Settings",
+  "note": "Come back once it's on: this updates by itself."
+}

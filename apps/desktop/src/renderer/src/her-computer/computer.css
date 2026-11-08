@@ -1,0 +1,4 @@
+/* Computer use in the Her entry's settings (ComputerUse.tsx). */
+.cu .cu-text{flex:1;min-width:0}
+.cu .cu-state{flex:none;color:var(--l2);font-size:12.5px}
+.cu .cu-note{margin:6px 4px 0;color:var(--l2);font-size:12px}

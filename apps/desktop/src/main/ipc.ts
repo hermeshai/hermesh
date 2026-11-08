@@ -2,6 +2,7 @@ import { app, BrowserWindow, dialog, ipcMain, Menu, shell, type IpcMainEvent, ty
 import path from "node:path";
 import type { Command, MenuItem, MenuState, Preferences, TerminalCommand } from "../shared/bridge";
 import { i18n } from "../shared/i18n";
+import { openComputerPermission } from "./computer";
 import { herConsoleURL, saveHerFile } from "./her";
 import { preferences, setPreferences, world } from "./notify";
 import { platform } from "./platform";
@@ -189,6 +190,8 @@ export function registerIPC() {
   ipcMain.handle("daemon-needs-approval", (e) => trusted(e) && platform.daemonNeedsApproval());
   ipcMain.on("open-login-items", (e) => trusted(e) && platform.openLoginItems());
   ipcMain.on("open-activity-monitor", (e) => trusted(e) && platform.openProcessMonitor());
+  // Her's computer use: a permission's pane of System Settings (main/computer.ts).
+  ipcMain.on("open-computer-permission", (e, kind: unknown) => trusted(e) && void openComputerPermission(kind));
   // A folder only, opened by the system's file browser or a terminal there: never a file or an app run.
   ipcMain.on("open-folder", (e, dir: unknown, to: unknown) => {
     if (trusted(e) && (to === "files" || to === "terminal") && typeof dir === "string" && path.isAbsolute(dir)) platform.openFolder(path.normalize(dir), to);
