@@ -4,33 +4,34 @@ import type { Machine } from "@hermesh/proto/local";
 import type { Environment } from "./connection";
 
 // What every part of the Her page shares: the environment shown, its
-// connection, the assistant on screen, and the page's own state.
+// connection, Her (its default assistant), and the page's own state.
 
-/** Which of an assistant's routines is open, in the panel beside its conversation. */
+/** Which of Her's routines is open, in the panel beside the conversation. */
 export type RoutinesRoute = { routine?: string; run?: string };
 
-/** The one place beside the conversation: an assistant's settings, or its routines. */
+/** The one place beside the conversation: Her's settings, or its routines. */
 export type Panel = null | { kind: "settings" } | { kind: "routines"; route: RoutinesRoute };
 
-/** A sheet over the page: a new assistant, another environment, or full access for an assistant (signed). */
-export type HerSheet = null | { kind: "new" } | { kind: "add" } | { kind: "access"; bot: BotSummary };
+/** A sheet over the page: another environment, or full access for Her (signed). */
+export type HerSheet = null | { kind: "add" } | { kind: "access"; bot: BotSummary };
 
 export type Her = {
   /** The environment shown: a machine Her is on for. */
   machine: Machine;
   /** Every environment. */
   envs: Machine[];
+  /** Shows another environment. */
+  choose: (machineId: string) => void;
   env: Environment;
-  /** The assistant on screen. */
+  /**
+   * Her: the environment's default assistant, the one the apps show for now
+   * (docs/her-server.md §9.1). Others her may hold are left alone.
+   */
   bot: BotSummary | undefined;
-  selectBot: (id: string) => void;
   panel: Panel;
   setPanel: (p: Panel) => void;
   sheet: HerSheet;
   setSheet: (s: HerSheet) => void;
-  /** The assistant whose name is being edited in the list. */
-  renaming: string | null;
-  setRenaming: (id: string | null) => void;
   /** A request on the environment's connection; fails while it is down. */
   call: <M extends keyof Methods & string>(method: M, params: Methods[M][0]) => Promise<Methods[M][1]>;
   /** An action whose failure becomes a toast; resolves to whether it worked. */

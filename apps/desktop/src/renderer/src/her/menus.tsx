@@ -339,19 +339,3 @@ export function ModelRows({ model, thinking, below, onModel, onThinking }: {
     </div>
   );
 }
-
-/** Why a model chosen for an assistant can't answer in its environment yet, with the way to its console; nothing when it can. */
-export function ModelBlocked({ model }: { model: string | null }) {
-  const { t } = useTranslation("her");
-  const her = useHer();
-  const entry = her.env.models.models.find((m) => m.id === model);
-  if (entry?.available || !her.env.botsLoaded) return null;
-  return (
-    <p className="set-note bmodel-why">
-      {entry ? t("model.notHere", { name: her.machine.machineName }) : t("model.none")}{" "}
-      <button type="button" className="link" onClick={her.openConsole}>
-        {t("model.openConsole")}
-      </button>
-    </p>
-  );
-}

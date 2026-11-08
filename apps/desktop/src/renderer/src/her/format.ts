@@ -1,4 +1,4 @@
-import { hourMinute, isYesterday, modelName, monthDay, sameDay, weekday, withinWeek, workSummary, type ToolView, type WorkItem } from "@hermesh/her-client";
+import { hourMinute, isYesterday, modelName, monthDay, sameDay, weekday, withinWeek, type ToolView } from "@hermesh/her-client";
 import type { ModelSummary, ModelsListResult, PermissionMode, ThinkingLevel } from "@hermesh/her-protocol";
 import { i18n } from "../../../shared/i18n";
 
@@ -67,11 +67,6 @@ export function toolVerb(tool: ToolView): string {
   return t(`steps.${tool.category}.${live ? "doing" : "done"}`);
 }
 
-/** A group's line: "Read 2 files, ran 3 commands", kinds in the order they first appear. */
-export function workText(items: WorkItem[]): string {
-  return workSummary(items).map(({ kind, count }) => t(`steps.${kind}.count`, { count })).join(t("steps.separator"));
-}
-
 /** The verb for asking to do a step: "Run", "Edit". */
 export function toolDo(category: ToolView["category"]): string {
   return t(`steps.${category}.do`);
@@ -98,11 +93,6 @@ export function offersThinking(m: ModelSummary | undefined, l: ThinkingLevel): b
 export function thinkingFor(m: ModelSummary | undefined, current: ThinkingLevel | null): ThinkingLevel {
   if (current && current !== "default" && offersThinking(m, current)) return current;
   return m?.default_thinking ?? "default";
-}
-
-/** A new assistant's level on its model: the one chosen when the model offers it, else the level the model starts with. */
-export function draftThinking(m: ModelSummary | undefined, chosen: ThinkingLevel | null): ThinkingLevel {
-  return chosen !== null && offersThinking(m, chosen) ? chosen : (m?.default_thinking ?? "default");
 }
 
 /** A model's name as its provider lists it, else its short reference. */

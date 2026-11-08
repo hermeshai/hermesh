@@ -90,11 +90,9 @@ function run(st: Store, c: Command) {
       return open(st, arg);
     case "pairing":
       return frontRequest(st, arg);
-    case "her": {
-      // A notification's assistant: the Her entry at it, in its environment.
-      const [machine, bot] = arg.split("/");
-      return st.set({ selection: { kind: "her", machine, bot: bot || undefined } });
-    }
+    case "her":
+      // A notification's: the Her entry, in its environment.
+      return st.set({ selection: { kind: "her", machine: arg } });
   }
 }
 

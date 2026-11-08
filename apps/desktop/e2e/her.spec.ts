@@ -4,9 +4,9 @@ import { fixture, launch, snap } from "./app";
 // The Her entry (docs/her-server.md §9), as the owner uses it, against her
 // itself with her-mock as its models. Run by TestDesktopHer, not TestDesktop:
 // it needs her built. One story, as its steps build on each other: the first
-// run on this Mac, a chat, the console, work-mac added as a second
-// environment and switched between, then work-mac offline: what was read
-// stays, and what is written waits on this Mac.
+// run on this Mac, Her's settings, a chat, the console, work-mac added as a
+// second environment and switched between, then work-mac offline: what was
+// read stays, and what is written waits on this Mac.
 
 type Hook = { notifications(): { id: string; title: string; body: string; click(): void }[] };
 
@@ -34,8 +34,16 @@ test("Her: the first run, a chat, the console, a second environment, and one gon
   // This Mac: the test's signer signs SetHer, as Touch ID would. Her runs there with the mock's model, and greets.
   await choices.getByRole("listitem").filter({ hasText: "这台 Mac" }).getByRole("button", { name: "开启 Her" }).click();
   await expect(page.getByText(/^你好，我是 .+，在 .+ 上为你做事/)).toBeVisible({ timeout: 120_000 });
-  await expect(page.getByRole("list", { name: "助手" }).getByRole("listitem")).toHaveCount(1);
+  // The page is the conversation with Her alone: its name at the top, no list of assistants, no menu of
+  // environments while there is one.
+  await expect(page.locator(".her-id")).toContainText("Her");
+  await expect(page.locator(".her-env")).toHaveCount(0);
   await snap(page, "her-greeting");
+  // Her's settings, beside the conversation: a new assistant asks before risky steps.
+  await page.getByRole("button", { name: "助手设置" }).click();
+  await expect(page.getByRole("complementary", { name: "助手设置" })).toContainText("询问权限");
+  await page.getByRole("button", { name: "助手设置" }).click();
+  await expect(page.getByRole("complementary", { name: "助手设置" })).toBeHidden();
 
   // A chat: the message, then Her's reply in a bubble of its own.
   await send(mockSend("你好，主人"));
@@ -55,13 +63,13 @@ test("Her: the first run, a chat, the console, a second environment, and one gon
   await consolePage.close();
 
   // A second environment: work-mac, from ⋯ › 添加环境…. The page goes there once Her runs on it, and the
-  // switcher shows over the list.
+  // environment shows beside Her's name, as a menu of both.
   await page.getByRole("button", { name: "更多" }).click();
   await page.getByRole("menuitem", { name: "添加环境…" }).click();
   const sheet = page.getByRole("dialog", { name: "添加环境" });
   await sheet.getByRole("listitem").filter({ hasText: "work-mac" }).getByRole("button", { name: "开启 Her" }).click();
   await expect(sheet).toBeHidden();
-  const switcher = page.locator(".her-switch");
+  const switcher = page.locator(".her-env");
   await expect(switcher).toContainText("work-mac", { timeout: 120_000 });
   await expect(page.getByText(/^你好，我是 .+，在 work-mac 上为你做事/)).toBeVisible({ timeout: 120_000 });
   await send(mockSend("来自 work-mac"));

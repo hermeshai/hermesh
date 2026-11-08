@@ -10,8 +10,9 @@ Linux machines the owner turns Her on for. Each Her Server is a
 self-contained **environment**, with its own **assistants**, conversations,
 model logins, connectors and skills, all managed in that environment's own
 web **console**. The Hermesh apps only converse. They have one entry, **Her**
-(Her 助手 in Chinese), where the owner picks an environment and an assistant
-and talks, the way one picks where a session runs in Claude. Everything
+(Her 助手 in Chinese), where the owner picks an environment and talks with
+Her, the way one picks where a session runs in Claude: her holds more
+assistants, but the apps show Her alone for now (§9.1). Everything
 travels end to end through the **relay**, which only connects: it sees
 presence, names, versions and sealed bytes, never content.
 
@@ -45,7 +46,7 @@ The decisions:
 | Her | The agent, and the default assistant of every Her Server | Her |
 | Her Server | A machine Her is turned on for, where hermeshd runs her. A role, not a program or a kind of hardware | Shown as an environment |
 | Environment | A Her Server as the apps show it | The machine's name, such as "Mac mini" |
-| Assistant | A named bot on a Her Server (her's `bots/*`). It has its own conversation, memory, folder, routines, model, thinking level and approval mode, and shares its environment's logins, connectors and skills | Assistant (助手) |
+| Assistant | A named bot on a Her Server (her's `bots/*`). It has its own conversation, memory, folder, routines, model, thinking level and approval mode, and shares its environment's logins, connectors and skills. The apps show one for now, Her | Assistant (助手) |
 | Conversation | An assistant's one ongoing chat: a her session | |
 | Sub-agent | A worker an assistant starts for part of a task. Never listed | Progress lines |
 | Routine | Instructions an assistant runs on a schedule | Routine (定时任务) |
@@ -54,7 +55,7 @@ The decisions:
 | Skill | A `SKILL.md` package installed on a Her Server | Skill (技能) |
 | Credential | A secret in a Her Server's credential store: the Keychain on macOS, `~/.her/credentials.toml` on Linux | |
 | Console | A server's web pages for managing it | "Manage this environment" |
-| Her entry | The apps' one place for Her: assistants and their conversations | Her (Her 助手) |
+| Her entry | The apps' one place for Her: the conversation with Her, environment by environment | Her (Her 助手) |
 | Tunnel | The end-to-end TLS connection from a trusted device to a machine, carried by the relay | |
 | Post office | The relay's store of sealed messages for whoever is offline, kept up to 30 days. Not used by Her yet (§5.5) | |
 | Notice | An event a machine seals to a phone's notice key; the relay hands it to Apple's push service ([iphone-app.md](iphone-app.md) §3) | A notification |
@@ -98,7 +99,8 @@ never collides with the first.
 **Rules.**
 
 - Every Her Server has exactly one default assistant, Her. It can't be
-  deleted but can be renamed. Others are added and deleted freely.
+  deleted but can be renamed. her lets others be added and deleted freely;
+  the apps show Her alone for now and leave any others alone (§9.1).
 - Nothing links two environments: no shared assistants, settings or
   conversations.
 - An owner connects through one relay, and every environment is reached
@@ -613,40 +615,48 @@ hand on the Mac, and that step is the decision.
 One entry in each app, for conversation only. In the Mac app it is one item
 in the sidebar under Overview and Search. The rest of the app is unchanged.
 
-What the page has:
+**One assistant for now.** her holds as many assistants as are made
+(`bots/*`), but the apps show one, Her: each environment's default
+assistant. There is no list of assistants and no adding or deleting them;
+any others her holds are left alone. The page is the conversation with Her,
+full width.
 
-- the assistant list;
-- adding and editing assistants, and the default assistant;
+What the page has, for that one assistant:
+
 - the conversation: messages, files, questions with buttons, the last
   bubble while it works, messages sent in a row, its steps, the moving
   avatar;
 - the approval window and the input box;
-- the blank page of a new assistant;
+- the blank page, where Her greets;
+- Her's settings;
 - menus, unread marks and alerts;
 - routines.
 
 What changes, because Her may run on another computer than the app:
 
-- **Environments.** The assistant list shows one environment at a time,
-  with a switcher above it. Each environment shows whether it is online and
-  its unread count. The app remembers the last one. With a single
-  environment, the switcher is hidden.
-- **Models.** An assistant picks only from the models its environment can
-  already use. Adding a key or a login is in the console, and the model menu
-  links there.
-- **Permissions.** New assistants ask before risky steps, and switching one
-  to full access needs Touch ID. Full access is never the default, because a Her Server reads web pages and
+- **Environments.** One at a time. The page's top bar holds Her's avatar
+  and name, and beside them, when there are two or more environments, the
+  environment shown as a quiet menu ("Her · Mac mini"): each environment
+  with whether it is online and its unread count, then Add Environment.
+  With a single environment no menu shows. The app remembers the last one.
+- **Models.** Her picks only from the models its environment can already
+  use. Adding a key or a login is in the console, and the model menu links
+  there.
+- **Permissions.** Her asks before risky steps, and switching it to full
+  access needs Touch ID. Full access is never the default, because a Her Server reads web pages and
   messages from anyone.
 - **Files.** Her's files are on its Her Server: the app previews or saves
   them through the tunnel, and files dragged into a conversation are
   uploaded there.
 - **Not carried over**: the switch between bot mode and session mode (the
-  apps have Hermesh's own sessions), the built-in browser (Her browses on its
-  Her Server), and the document panels beside the conversation.
+  apps have Hermesh's own sessions), the list of assistants and making
+  them, the built-in browser (Her browses on its Her Server), and the
+  document panels beside the conversation.
 
-An assistant's own settings panel holds its name,
-avatar, model, thinking level and approval mode, and lets the owner clear
-its conversation or delete it. Environment-wide settings are in the console.
+On the right of the top bar: Her's routines, Her's settings and ⋯, which
+holds "Manage this environment" (the console). Her's settings panel holds its name, avatar, model, thinking level and
+approval mode, whether it notifies, and lets the owner clear its
+conversation. Environment-wide settings are in the console.
 
 When the environment is this Mac, the Her entry's settings also show
 Computer use: the two permissions of §4.4 as her finds them, with a button
@@ -718,12 +728,11 @@ through the real apps and the relay.
    with the allowlist.
 4. The console through the tunnel, with Overview, Models (API keys, plus
    the ChatGPT sign-in on a Mac Her Server) and Defaults.
-5. The Mac app's Her entry:
-   - the environment switcher;
-   - the assistant list;
+5. The Mac app's Her entry, with Her alone (§9.1):
+   - the environment switcher, beside Her's name;
    - the conversation: messages, questions, the approval window, steps,
      the busy state, the input box, unread marks;
-   - each assistant's settings;
+   - Her's settings;
    - the first run.
 6. Offline handling: cached conversations, messages kept on the device
    until the machine is back, macOS notifications.

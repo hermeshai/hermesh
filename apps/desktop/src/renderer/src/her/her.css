@@ -4,23 +4,9 @@
 .her{--pill:var(--win);--pill-bd:var(--menu-bd);--bot-reply:var(--win2);--bot-user:var(--bub);position:relative;display:flex;flex:1;min-width:0;min-height:0}
 @media (prefers-color-scheme:dark){.her{--pill:var(--win2)}}
 
-/* Edge to edge: the list of assistants in a column of its own, one hairline from the conversation; both tops are the
-   window's 44 px band, and one hairline runs under them. */
-.her-side{width:264px;flex:none;display:flex;flex-direction:column;min-height:0;border-right:.5px solid var(--sep);background:var(--win)}
-.her-top{height:44px;flex:none;display:flex;align-items:center;gap:2px;padding:0 8px 0 14px;border-bottom:.5px solid var(--sep)}
-.noside .her-top{padding-left:7px}
-.her-title{font-size:14px;font-weight:500;padding-left:6px;white-space:nowrap}
-.her-gap{flex:1}
-.her-top .tb:disabled{opacity:.42}
-/* The environment switcher: the one shown, with a dot that is green while it is online. */
-.her-switch{display:flex;align-items:center;gap:7px;min-width:0;height:28px;padding:0 7px;border:0;border-radius:var(--r-md);background:none;font:inherit;font-size:14px;font-weight:500;color:var(--l1)}
-.her-switch:hover,.her-switch.on{background:var(--fill2)}
-.her-switch-n{min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.her-switch .ic{color:var(--l2);flex:none}
-.her-list{flex:1;overflow-y:auto;min-height:0;padding:6px 8px 8px;display:flex;flex-direction:column;gap:2px;scrollbar-width:thin}
-.her-main{flex:1;min-width:0;display:flex;min-height:0}
-.her-main .scol{flex:1;min-width:0;display:flex;flex-direction:column;min-height:0;position:relative}
-.her-col{flex:1;min-width:0;display:flex;flex-direction:column;min-height:0}
+/* Edge to edge: the conversation with Her takes the page, its top the window's 44 px band; Her's settings and
+   routines open beside it, one hairline apart. */
+.her .scol{flex:1;min-width:0;display:flex;flex-direction:column;min-height:0;position:relative}
 .her-head{position:relative}
 .her .set-note{margin:8px 4px 0;color:var(--l2);font-size:12px}
 .her .form>.set-note{margin-top:-13px}
@@ -53,30 +39,17 @@
 .bav.busy.mark>.hm-mark,.bav.busy .ch{animation:live-breathe 2.4s ease-in-out infinite}
 @media (prefers-reduced-motion:reduce){.bav.busy>svg,.bav.busy.mark>.hm-mark,.bav.busy .ch{animation:none}}
 
-/* The list: a row per assistant, as a chat app's. Its two lines are 36 high, the avatar's height. */
-.brow{display:flex;align-items:center;gap:10px;width:100%;padding:6px 8px;border-radius:var(--r-md);outline-offset:-2px}
-.brow:hover{background:var(--fill)}
-.brow.sel{background:var(--side-sel)}
-.bmain{flex:1;min-width:0}
-.bl1{position:relative;display:flex;align-items:center;gap:5px;height:20px}
-.bname{flex:0 1 auto;min-width:0;font-size:14px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.bpin{width:12px;height:12px;color:var(--l3);flex:none}
-.btime{margin-left:auto;flex:none;padding-left:6px;font-size:12px;color:var(--l3);font-variant-numeric:tabular-nums}
-.bl2{display:flex;align-items:center;gap:8px;height:16px;font-size:12px;color:var(--l2)}
-.bprev{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.btag{color:var(--orange)}
-.bbadge{flex:none;min-width:16px;height:16px;padding:0 5px;border-radius:var(--r-sm);background:var(--accent);color:#fff;font-size:10.5px;font-weight:600;line-height:16px;text-align:center;font-variant-numeric:tabular-nums}
-.brow .srename{margin:0;height:20px}
-
-/* The top of an assistant's page: its avatar and name in the middle, as in a chat app. They open its settings,
-   which a hover shows with an arrow; the arrow takes no room, so they stay centred without it. */
-.bhead{position:absolute;left:50%;transform:translateX(-50%);display:flex;align-items:center;gap:8px;height:30px;padding:0 24px;max-width:calc(100% - 200px);border:0;background:none;border-radius:var(--r-md);font:inherit;color:var(--l1)}
-.bhead:hover,.bhead[aria-expanded="true"]{background:var(--fill)}
-.bhead-n{font-size:14px;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.bhead-go{position:absolute;right:6px;width:14px;height:14px;color:var(--l2);opacity:0;transition:opacity .12s var(--ease-out)}
-.bhead:hover .bhead-go,.bhead:focus-visible .bhead-go,.bhead[aria-expanded="true"] .bhead-go{opacity:1}
+/* The page's top: Her's avatar and name in the middle, as in a chat app, and beside them the environment, a quiet
+   menu, when Her runs on more than one machine. The buttons sit at the bar's right end. */
+.her-id{position:absolute;left:50%;transform:translateX(-50%);display:flex;align-items:center;gap:8px;height:30px;max-width:calc(100% - 300px);min-width:0;color:var(--l1)}
+.her-id-n{flex:none;font-size:14px;font-weight:500;white-space:nowrap}
+.her-id-sep{flex:none;margin:0 -2px;color:var(--l3)}
+.her-env{display:flex;align-items:center;gap:4px;min-width:0;height:26px;padding:0 6px;border:0;border-radius:var(--r-md);background:none;font:inherit;font-size:14px;color:var(--l2)}
+.her-env:hover,.her-env.on{background:var(--fill);color:var(--l1)}
+.her-env-n{min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.her-env .ic{flex:none}
 .bhead-gap{flex:1}
-html.blurred .bhead-n{color:var(--l2)}
+html.blurred .her-id-n{color:var(--l2)}
 
 /* The one place beside the conversation: an assistant's settings or its routines. */
 .her-panel{width:340px;flex:none;display:flex;flex-direction:column;min-height:0;background:var(--win);border-left:.5px solid var(--sep);animation:bpn-in .18s var(--ease-out)}
@@ -315,7 +288,8 @@ span.shimmer{display:inline-block;max-width:100%;vertical-align:bottom}
 .her-menu .mi{min-height:28px;height:auto}
 .her-menu .mi .two{display:flex;flex-direction:column;padding:5px 0;gap:1px;white-space:normal;min-width:0}
 .her-menu .mi .two>span{font-size:11.5px;color:var(--l2)}
-.her-menu .mi .bbadge{margin-left:auto}
+/* An environment's unread messages and approvals, in its row. */
+.her-menu .mi .bbadge{flex:none;margin-left:auto;min-width:16px;height:16px;padding:0 5px;border-radius:var(--r-sm);background:var(--accent);color:#fff;font-size:10.5px;font-weight:600;line-height:16px;text-align:center;font-variant-numeric:tabular-nums}
 .her-menu .mmodels{display:contents}
 .her-menu .mlist{max-height:min(348px,55vh);overflow-y:auto;margin:0 -5px;padding:0 5px}
 .her-menu .mgh{position:sticky;top:0;z-index:1;display:flex;align-items:center;width:100%;padding:6px 9px 3px;background:var(--menu-solid);font-size:11.5px;color:var(--l3);white-space:nowrap}
@@ -329,24 +303,17 @@ span.shimmer{display:inline-block;max-width:100%;vertical-align:bottom}
 .mb .lbl{overflow:hidden;text-overflow:ellipsis;max-width:200px}
 .mb .strong{color:var(--l1)}
 
-/* Making an assistant: a name, an avatar and a model. */
-.bsheet .sub{margin-bottom:var(--sp-3)}
-.bs-top{display:flex;align-items:center;gap:var(--sp-2);margin-bottom:var(--sp-3)}
-.bs-name{flex:1;display:flex;flex-direction:column;gap:var(--sp-1);font-size:12px;color:var(--l2)}
-.bs-name .field{height:30px;font-size:14px}
-.bs-k{margin:0 0 var(--sp-1);font-size:12px;color:var(--l2)}
+/* An avatar's characters, the first character of its name, and its colours. */
 .bs-shapes{display:flex;flex-wrap:wrap;gap:var(--sp-1);margin-bottom:var(--sp-2)}
 .bs-shape{padding:0;border:0;background:none;line-height:0}
 .bs-shape.on{outline:1.5px solid var(--accent);outline-offset:2px}
 .bs-hues{display:flex;gap:10px;padding:2px}
 .bs-hue{width:18px;height:18px;padding:0;border:0;border-radius:50%;background:var(--h)}
 .bs-hue.on{box-shadow:0 0 0 2px var(--win),0 0 0 3.5px var(--l1)}
-.bs-k.bs-model{margin-top:var(--sp-3)}
 .bmodel .frow>.fl{width:auto}
 .bmodel .frow>.fv{flex-wrap:nowrap}
 .bmodel .mb{margin-right:-7px}
 .bmodel .mb .lbl{max-width:200px}
-.bmodel-why{margin:var(--sp-1) 0 0}
 
 /* Routines: their line in the chat, the clock's dot, and the panel. */
 .rtn-line{align-self:center;display:inline-flex;align-items:center;gap:6px;max-width:100%;margin:13px 0;padding:0 8px;height:22px;border:0;border-radius:var(--r-sm);background:none;font-size:12px;line-height:16px;color:var(--l3);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
