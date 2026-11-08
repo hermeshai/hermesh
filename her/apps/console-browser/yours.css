@@ -1,0 +1,25 @@
+/* The owner's Chrome in the Browser section (YourBrowser.tsx), with the console's tokens and
+   controls; what they don't have: the badge beside the name, the guide's steps. */
+
+.frow .fn.yours-name{display:flex;align-items:center;gap:6px}
+.yours-name>span:first-child{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.yours-name .badge{flex:none}
+.yours-several{margin-top:var(--sp-1,4px)}
+.yours-account{color:var(--l2)}
+
+.yours-guide{width:480px}
+.yours-guide-top{display:flex;align-items:center;justify-content:space-between;margin:-4px -8px 12px 0}
+.yours-guide-top h3{margin:0}
+.yours-steps{display:flex;gap:18px;list-style:none;margin:0 0 16px;padding:0;color:var(--l3);font-size:12px}
+.yours-steps li{display:flex;align-items:center;gap:6px}
+.yours-steps li.now,.yours-steps li.done{color:var(--l1)}
+.yours-num{width:18px;height:18px;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;background:var(--fill2);font-size:11px}
+.yours-steps li.now .yours-num{background:var(--accent);color:#fff}
+.yours-steps li.done .yours-num{background:var(--green-bg);color:var(--green)}
+.yours-num .ic{width:12px;height:12px}
+.yours-howto{margin:0 0 4px;padding-left:20px;line-height:1.6}
+.yours-howto li{margin-bottom:4px}
+.yours-howto code{font-family:var(--mono);font-size:12px;background:var(--code);border-radius:var(--r-xs);padding:1px 5px;white-space:nowrap}
+.yours-waiting,.yours-done{display:flex;align-items:center;gap:8px}
+.yours-count{margin-left:auto;color:var(--l3);font-variant-numeric:tabular-nums}
+.yours-guide .yours-done{color:var(--green)}
