@@ -25,6 +25,12 @@ importers:
       '@hermesh/core':
         specifier: workspace:*
         version: link:../../packages/core
+      '@hermesh/her-client':
+        specifier: workspace:*
+        version: link:../../packages/her-client
+      '@hermesh/her-protocol':
+        specifier: workspace:*
+        version: link:../../packages/her-protocol
       '@hermesh/proto':
         specifier: workspace:*
         version: link:../../packages/proto

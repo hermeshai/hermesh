@@ -139,7 +139,7 @@ function template(): MenuItemConstructorOptions[] {
     {
       label: t("view.title"),
       submenu: [
-        item("overview", t("view.overview"), "overview", main, { accelerator: "CmdOrCtrl+1", type: "checkbox", checked: st.main && !s }),
+        item("overview", t("view.overview"), "overview", main, { accelerator: "CmdOrCtrl+1", type: "checkbox", checked: st.main && !s && !st.her }),
         item("nextAttention", t("view.nextAttention"), "nextAttention", main, { accelerator: "CmdOrCtrl+2" }),
         item("nextActive", t("view.nextActive"), "nextActive", main, { accelerator: "CmdOrCtrl+3" }),
         sep,

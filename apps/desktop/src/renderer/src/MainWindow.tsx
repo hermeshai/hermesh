@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+import { lazy, Suspense, useEffect, useRef } from "react";
 import { useTranslation } from "react-i18next";
 import { parseAppLink } from "@hermesh/core";
 import { agentName } from "@hermesh/ui";
@@ -13,6 +13,9 @@ import { useCommands } from "./commands";
 import { Icon } from "./icons";
 import { platform } from "./platform";
 import { errorText, useStore } from "./store";
+
+// Her's page and its client load when it is first shown.
+const HerPage = lazy(() => import("./her/HerPage"));
 
 export function MainWindow() {
   const st = useStore();
@@ -60,7 +63,15 @@ export function MainWindow() {
     <div className={`mainwrap ${st.sidebar ? "" : "noside"}`}>
       <Sidebar />
       <section className="content">
-        {session ? <SessionPage s={session} /> : <Overview />}
+        {session ? (
+          <SessionPage s={session} />
+        ) : st.selection.kind === "her" && !st.status?.machineOnly ? (
+          <Suspense fallback={<div className="ctool drag" />}>
+            <HerPage />
+          </Suspense>
+        ) : (
+          <Overview />
+        )}
         <RequestCards />
       </section>
       {st.searching && <SearchPalette key={JSON.stringify(st.searchFor)} />}

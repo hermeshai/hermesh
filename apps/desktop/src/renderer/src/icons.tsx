@@ -58,6 +58,14 @@ const paths: Record<string, string> = {
   chip: "<rect x=\"3.8\" y=\"3.8\" width=\"8.4\" height=\"8.4\" rx=\"1.8\"/><rect x=\"6.4\" y=\"6.4\" width=\"3.2\" height=\"3.2\" rx=\".6\"/><path d=\"M6.2 1.8v2M9.8 1.8v2M6.2 12.2v2M9.8 12.2v2M1.8 6.2h2M1.8 9.8h2M12.2 6.2h2M12.2 9.8h2\"/>",
   gauge: "<path d=\"M2.4 11.6a5.9 5.9 0 1 1 11.2 0\"/><path d=\"M8 10.4l2.8-3.8\"/><circle cx=\"8\" cy=\"10.4\" r=\"1.1\"/>",
   link: "<path d=\"M6.8 9.2a2.6 2.6 0 0 0 3.7 0l2.2-2.2a2.6 2.6 0 0 0-3.7-3.7l-.8.8M9.2 6.8a2.6 2.6 0 0 0-3.7 0L3.3 9a2.6 2.6 0 0 0 3.7 3.7l.8-.8\"/>",
+  // A speech bubble with a pair of eyes, as Her's assistants have: the Her entry.
+  her: "<path d=\"M3.6 2.9h8.8c1 0 1.8.8 1.8 1.8v5.1c0 1-.8 1.8-1.8 1.8H8.6l-3 2.3v-2.3h-2c-1 0-1.8-.8-1.8-1.8V4.7c0-1 .8-1.8 1.8-1.8z\"/><path d=\"M6.3 6.1v1.6M9.7 6.1v1.6\"/>",
+  arrowUp: "<path d=\"M8 13V3M4.2 6.8L8 3l3.8 3.8\"/>",
+  chevL: "<path d=\"M9.7 4.5L6.2 8l3.5 3.5\"/>",
+  doc: "<path d=\"M4.2 1.9h5l2.6 2.6v8.6c0 .6-.4 1-1 1H4.2c-.6 0-1-.4-1-1V2.9c0-.6.4-1 1-1z\"/><path d=\"M9.2 1.9v2.6h2.6\"/>",
+  pin: "<path d=\"M6 2.4h4l-.6 3.4 2 2v1H3.6v-1l2-2z\"/><path d=\"M8 8.8v4.8\"/>",
+  play: "<path d=\"M5 3.4v9.2L12.4 8z\"/>",
+  retry: "<path d=\"M12.8 7.6a4.8 4.8 0 1 1-1.4-3.4\"/><path d=\"M12 2.4v2.8H9.2\"/>",
 };
 
 export type IconName = keyof typeof paths;

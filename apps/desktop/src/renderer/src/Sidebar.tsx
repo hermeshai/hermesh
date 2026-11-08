@@ -11,6 +11,7 @@ import { local } from "./api";
 import { AppMenuButton } from "./MainWindow";
 import { StatusDot } from "./components";
 import { Icon } from "./icons";
+import { unreadCount } from "./her/environments";
 import { expiringClients } from "./overview/Attention";
 import { keys, ownKeys } from "./platform";
 import { useNow, useStore, type Store } from "./store";
@@ -111,6 +112,7 @@ export function Sidebar() {
           <span>{t("sidebar.search")}</span>
           <span className="kbd">{keys("CmdOrCtrl+K")}</span>
         </button>
+        {!st.status?.machineOnly && <HerItem />}
       </nav>
       <div className="side-list" role="list" aria-label={t("sidebar.sessions")} ref={list}>
         {sections.map((sec) => {
@@ -158,6 +160,24 @@ export function Sidebar() {
       <UpdateReminder />
       <AccountMenu />
     </aside>
+  );
+}
+
+/**
+ * The Her entry (docs/her-server.md §9.1): what its assistants sent the owner and they have not read, over
+ * every environment, as Watch brings each machine's Her; the page opens Her's connections itself.
+ */
+function HerItem() {
+  const st = useStore();
+  const { t } = useTranslation("common");
+  const unread = unreadCount(st.machines);
+  const sel = st.selection.kind === "her";
+  return (
+    <button className={`nav-i ${sel ? "sel" : ""}`} onClick={() => !sel && st.set({ selection: { kind: "her" } })}>
+      <Icon name="her" />
+      <span>{t("sidebar.her")}</span>
+      {unread > 0 && <span className="cnt" aria-label={t("sidebar.herUnread", { count: unread })}>{unread}</span>}
+    </button>
   );
 }
 

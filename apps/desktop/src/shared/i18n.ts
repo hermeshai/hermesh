@@ -1,6 +1,7 @@
 import { i18n, languages, pickLanguage, type CoreResources, type Language } from "@hermesh/core";
 import enCommon from "../locales/en/common.json" with { type: "json" };
 import enFirstrun from "../locales/en/firstrun.json" with { type: "json" };
+import enHer from "../locales/en/her.json" with { type: "json" };
 import enMain from "../locales/en/main.json" with { type: "json" };
 import enOverview from "../locales/en/overview.json" with { type: "json" };
 import enSession from "../locales/en/session.json" with { type: "json" };
@@ -10,6 +11,7 @@ import zhUpdates from "../locales/zh-CN/updates.json" with { type: "json" };
 import enSheets from "../locales/en/sheets.json" with { type: "json" };
 import zhCommon from "../locales/zh-CN/common.json" with { type: "json" };
 import zhFirstrun from "../locales/zh-CN/firstrun.json" with { type: "json" };
+import zhHer from "../locales/zh-CN/her.json" with { type: "json" };
 import zhMain from "../locales/zh-CN/main.json" with { type: "json" };
 import zhOverview from "../locales/zh-CN/overview.json" with { type: "json" };
 import zhSession from "../locales/zh-CN/session.json" with { type: "json" };
@@ -22,8 +24,8 @@ import { windowsWords } from "./words";
 // part of the app. English holds every key; zh-CN translates them.
 
 export const resources = {
-  en: { main: enMain, common: enCommon, firstrun: enFirstrun, overview: enOverview, session: enSession, settings: enSettings, sheets: enSheets, updates: enUpdates },
-  "zh-CN": { main: zhMain, common: zhCommon, firstrun: zhFirstrun, overview: zhOverview, session: zhSession, settings: zhSettings, sheets: zhSheets, updates: zhUpdates },
+  en: { main: enMain, common: enCommon, firstrun: enFirstrun, her: enHer, overview: enOverview, session: enSession, settings: enSettings, sheets: enSheets, updates: enUpdates },
+  "zh-CN": { main: zhMain, common: zhCommon, firstrun: zhFirstrun, her: zhHer, overview: zhOverview, session: zhSession, settings: zhSettings, sheets: zhSheets, updates: zhUpdates },
 } satisfies Record<Language, Record<string, object>>;
 
 for (const lng of languages) {

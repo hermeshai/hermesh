@@ -21,6 +21,7 @@ export function useCommands() {
   const s = selected(st);
   const state: MenuState = {
     main: true,
+    her: st.selection.kind === "her",
     session: s
       ? {
           interruptible: isInterruptible(s),
@@ -38,7 +39,7 @@ export function useCommands() {
   };
   const key = JSON.stringify(state);
   useEffect(() => window.hermesh?.setMenuState(JSON.parse(key)), [key]);
-  useEffect(() => () => window.hermesh?.setMenuState({ main: false, session: null, sidebar: true, undo: false }), []);
+  useEffect(() => () => window.hermesh?.setMenuState({ main: false, her: false, session: null, sidebar: true, undo: false }), []);
 }
 
 function selected(st: Store): Session | undefined {
@@ -89,6 +90,11 @@ function run(st: Store, c: Command) {
       return open(st, arg);
     case "pairing":
       return frontRequest(st, arg);
+    case "her": {
+      // A notification's assistant: the Her entry at it, in its environment.
+      const [machine, bot] = arg.split("/");
+      return st.set({ selection: { kind: "her", machine, bot: bot || undefined } });
+    }
   }
 }
 

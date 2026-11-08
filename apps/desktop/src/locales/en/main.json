@@ -89,5 +89,7 @@
     "noTPM": "This PC doesn’t have a TPM 2.0 security chip to store your owner key.",
     "failed": "Hermesh’s signer couldn’t be set up (error {{code}}).",
     "notRunning": "Hermesh’s signer didn’t start. Please try again."
-  }
+  },
+  "herConsole": "Her Console — {{name}}",
+  "herConsoleBad": "The console’s address isn’t one Hermesh opens."
 }

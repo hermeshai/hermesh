@@ -1,8 +1,9 @@
 import { language } from "@hermesh/core";
-import { app, BrowserWindow, screen, shell, type WebContents } from "electron";
+import { app, BrowserWindow, screen, session, shell, type WebContents } from "electron";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { consoleURL, inConsole, opensOutside } from "../shared/herConsole";
 import { i18n } from "../shared/i18n";
 import { platform } from "./platform";
 
@@ -184,6 +185,59 @@ function showAuxiliary(route: "updates" | "about" | "whats-new", title: string) 
 export const showUpdates = () => showAuxiliary("updates", i18n.t("updates:title"));
 export const showAbout = () => showAuxiliary("about", i18n.t("main:menu.app.about"));
 export const showWhatsNew = () => showAuxiliary("whats-new", i18n.t("updates:whatsNew"));
+
+const consoles = new Map<string, BrowserWindow>();
+
+/**
+ * A machine's Her console (docs/her-server.md §5.3), in a window of its own: the page her ships,
+ * served by this computer's hermeshd on 127.0.0.1 (`address`, GetHerConsole). It is not one of the
+ * app's pages: no preload, sandboxed, in a session of its own that grants no permission. It stays on
+ * the console's origin; https links, and the sign-in pages it opens, go to the default browser.
+ */
+export async function showHerConsole(machineId: string, title: string, address: () => Promise<string>) {
+  const url = consoleURL(await address());
+  if (!url) throw new Error(i18n.t("main:herConsoleBad"));
+  const open = consoles.get(machineId);
+  if (open && !open.isDestroyed()) {
+    // hermeshd started again meanwhile: the console is at another port and token.
+    if (!open.webContents.getURL().startsWith(url.href)) open.loadURL(url.href);
+    open.show();
+    open.focus();
+    return;
+  }
+  const partition = `her-console-${machineId}`;
+  const ses = session.fromPartition(partition);
+  ses.setPermissionRequestHandler((_wc, _permission, grant) => grant(false));
+  ses.setPermissionCheckHandler(() => false);
+  const win = new BrowserWindow({
+    width: 1040,
+    height: 720,
+    minWidth: 720,
+    minHeight: 480,
+    show: false,
+    title,
+    webPreferences: { sandbox: true, contextIsolation: true, nodeIntegration: false, partition, spellcheck: false },
+  });
+  consoles.set(machineId, win);
+  const wc = win.webContents;
+  win.on("page-title-updated", (e) => e.preventDefault());
+  wc.on("will-navigate", (e, to) => {
+    if (inConsole(url, to)) return;
+    e.preventDefault();
+    if (opensOutside(to)) shell.openExternal(to);
+  });
+  wc.on("will-redirect", (e, to) => {
+    if (!inConsole(url, to)) e.preventDefault();
+  });
+  wc.on("will-attach-webview", (e) => e.preventDefault());
+  wc.setWindowOpenHandler(({ url: to }) => {
+    if (opensOutside(to)) shell.openExternal(to);
+    return { action: "deny" };
+  });
+  win.once("ready-to-show", () => win.show());
+  win.on("closed", () => consoles.delete(machineId));
+  win.loadURL(url.href);
+}
 
 /** Only the update and release history windows can fit themselves; longer notes scroll. */
 export function sizeUpdates(sender: WebContents, height: unknown) {

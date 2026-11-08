@@ -1,4 +1,4 @@
-import { contextBridge, ipcRenderer, webFrame } from "electron";
+import { contextBridge, ipcRenderer, webFrame, webUtils } from "electron";
 import type { Language } from "../shared/i18n";
 import type { Bridge, Command, MenuItem, MenuState, Preferences, TerminalCommand, TrayAction, TrayView } from "../shared/bridge";
 import type { UpdateInfo } from "../shared/update";
@@ -41,6 +41,15 @@ const bridge: Bridge = {
   waitForPairings: (on: boolean) => ipcRenderer.send("wait-pairings", on === true),
   openExternal: (url: string) => ipcRenderer.send("open-external", url),
   pickDirectory: () => ipcRenderer.invoke("pick-directory"),
+  pathForFile: (file: File) => {
+    try {
+      return webUtils.getPathForFile(file);
+    } catch {
+      return "";
+    }
+  },
+  openHerConsole: (machineId: string) => ask("her-console", machineId),
+  saveHerFile: (machineId: string, botId: string, path: string) => ask("her-save-file", machineId, botId, path),
   runInTerminal: (c: TerminalCommand) => ipcRenderer.send("run-in-terminal", c),
   setWindowMode: (m: "onboarding" | "main") => ipcRenderer.send("window-mode", m),
   signIn: (center: string) => ask("sign-in", center),
