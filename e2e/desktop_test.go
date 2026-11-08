@@ -153,6 +153,14 @@ func TestDesktop(t *testing.T) {
 // HERMESH_DESKTOP_GREP picks tests by name.
 //
 //	go test ./e2e -run TestDesktopHer -v -timeout 30m
+//
+// With HERMESH_DESKTOP_PREVIEW=<seconds> it keeps the world up instead, for
+// a person to try the Her entry against it; HERMESH_HER_MODEL (e.g.
+// deepseek/deepseek-flash) makes her use a real model, its key taken from
+// the environment (e.g. DEEPSEEK_API_KEY):
+//
+//	HERMESH_DESKTOP_PREVIEW=3600 go test ./e2e -run TestDesktopHer -v -timeout 70m
+//	HERMESH_SOCKET=<socket it prints> pnpm --dir apps/desktop dev
 func TestDesktopHer(t *testing.T) {
 	if testing.Short() {
 		t.Skip("e2e")
@@ -161,6 +169,11 @@ func TestDesktopHer(t *testing.T) {
 		t.Skip("pnpm not installed")
 	}
 	f := desktopHerWorld(t)
+	if secs, _ := strconv.Atoi(os.Getenv("HERMESH_DESKTOP_PREVIEW")); secs > 0 {
+		t.Logf("Her's world is ready (this Mac and work-mac, Her on for neither); open the app with:\nHERMESH_SOCKET=%s pnpm --dir apps/desktop dev", f.Socket)
+		time.Sleep(time.Duration(secs) * time.Second)
+		return
+	}
 	dir, _ := filepath.Abs(filepath.Join("apps", "desktop"))
 	out := filepath.Join(t.TempDir(), "app")
 	if r := run(t, []string{"HERMESH_DESKTOP_OUT=" + out, "VERSION=0.1.0-rc7"}, 5*time.Minute, "pnpm", "--dir", dir, "build"); r.code != 0 {
@@ -193,12 +206,20 @@ func desktopHerWorld(t *testing.T) desktopFixture {
 	her, mockBin := herBinaries(t)
 	mock := startHerMock(t, mockBin)
 	console := herConsole(t)
-	w := newOwnerMac(t, herEnv(her, console, herHome(t, mock.models), mock.base), &localv1.GrantSpec{})
+	macHome, workHome := herHome(t, mock.models), herHome(t, mock.models)
+	if model := os.Getenv("HERMESH_HER_MODEL"); model != "" {
+		for _, h := range []string{macHome, workHome} {
+			if err := os.WriteFile(filepath.Join(h, "config.toml"), []byte(fmt.Sprintf("model = %q\n", model)), 0o600); err != nil {
+				t.Fatal(err)
+			}
+		}
+	}
+	w := newOwnerMac(t, herEnv(her, console, macHome, mock.base), &localv1.GrantSpec{})
 	home, err := w.app.client.GetStatus(context.Background(), &localv1.GetStatusRequest{})
 	if err != nil {
 		t.Fatal(err)
 	}
-	work, _ := w.otherMac("work-mac", herEnv(her, console, herHome(t, mock.models), mock.base))
+	work, _ := w.otherMac("work-mac", herEnv(her, console, workHome, mock.base))
 	daemon := w.logs[len(w.logs)-1] // the one otherMac started
 	w.joinTyped(work, home, "work-mac")
 	return desktopFixture{Socket: w.sock, Sessions: map[string]string{}, CLI: filepath.Join(w.bin, "hermesh"), CLIEnv: w.cliEnv, OtherMac: daemon.cmd.Process.Pid, owner: w}
