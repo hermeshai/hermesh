@@ -1,240 +1,597 @@
-# Her Server: Her runs on machines you own, the apps only talk to it
+# Her Server: architecture and plan
 
-Status: decided 2026-11-08, not built. Revised the same day: the apps only
-converse, each server has its own console, and an owner may run several Her
-Servers from the start. The kernel is in [her/](../her/README.md).
+Status: final design, 2026-11-08. Nothing is built yet. This replaces the
+earlier drafts of this document. The kernel is in [her/](../her/README.md).
 
-Her is the agent built into Hermesh. It runs on Her Servers: macOS or Linux
-machines the owner chooses. Each Her Server is an environment of its own,
-with its assistants, conversations, model logins, connectors and skills, and
-a web console to manage them. The apps only converse: one entry, Her 助手,
-where the owner picks an environment and an assistant and talks, as one picks
-where a session runs in Claude. The relay stays what it is: it knows which
-machines are online, their names and versions, and keeps sealed messages for
-whoever is away. It never sees what Her says or does.
+## 0. Summary
 
-## 1. Why
+Her is the agent built into Hermesh. It runs on **Her Servers**: macOS or
+Linux machines the owner turns Her on for. Each Her Server is a
+self-contained **environment**, with its own **assistants**, conversations,
+model logins, connectors and skills, all managed in that environment's own
+web **console**. The Hermesh apps only converse. They have one entry, **Her**
+(Her 助手 in Chinese), where the owner picks an environment and an assistant
+and talks, the way one picks where a session runs in Claude. Everything
+travels end to end through the **relay**, which only connects: it sees
+presence, names, versions and sealed bytes, never content.
 
-An agent used from several devices needs the same conversation on every
-device, settings that don't wait for every app's release, and work that goes
-on while the devices sleep. Owners also want to keep some things apart: work
-and personal data, or a Mac's apps and an always-on Linux machine. The
-shapes considered:
+The decisions:
 
-| Shape | What goes wrong |
-|---|---|
-| Her on every machine, by itself | Every machine needs a setup nobody asked for, and Windows machines can't run her |
-| The relay stores conversations and settings, as Claude's Remote Control keeps transcripts on Anthropic's servers | In plaintext it breaks Hermesh's promise that the relay sees no content. Encrypted, it needs an account-wide data key, rotation when a device is removed, and a recovery key |
-| Hermesh runs Her for its users | Hermesh would see everything, and would carry the compute, the isolation between users and the liability |
-| Her's settings inside the apps | Every new setting waits for the Mac, iPhone and Windows releases; an older app can't show a newer server's settings; the same screens are written once per app |
-| **Her Servers the owner chooses, each with its own console; the apps only converse** | Each environment is set up on its own, with its own model login. Work at night needs a machine that stays on |
+1. **Clients converse, servers keep.** Conversations, memory, files,
+   settings and secrets live on the Her Server. The apps hold a cache.
+2. **One or more Her Servers per owner**, each self-contained, picked in the
+   app as an environment. Nothing is shared or synced between them.
+3. **Each server has its own console.** A Her Server's console manages its
+   environment. The relay's console (hermesh.io, on the official service)
+   manages the relay. They are never merged.
+4. **hermeshd runs her** (`her serve --stdio`) and forwards her's own
+   JSON-RPC, with an allowlist by caller. Hermesh adds file transfer, the
+   console's HTTP and Her's status.
+5. **Keys decide.** Only the owner's trusted devices reach Her. Actions
+   that need the root key are signed in the apps, with Touch ID.
+6. **Coding agents and the rest of Hermesh don't change.**
 
-Each environment keeps one ChatGPT login of its own, so the token rotation
-that breaks a login shared between machines never comes up. A conversation
-lives in one environment, which every device reads. Settings ship with the
-server that has them, so no app can be out of step with them. And the relay
-learns nothing new.
+## 1. Names
 
-## 2. Decision
+| Name | What it is | In the apps |
+|---|---|---|
+| Owner | The person, identified by the root chain of their trusted devices (`owner_id`), not by an account | |
+| Trusted device | One of the owner's devices with a root key in its Secure Enclave: the Mac app, the iPhone app. It approves, signs and reads | |
+| Machine | A computer paired to the owner, running hermeshd's machine role, with a machine certificate | Its name: the hostname by default, renamable |
+| Relay | The service every device and machine dials out to: admission, routing of tunnels, the post office, notices. The official one at hermesh.io, or a self-hosted one | "Official service" or "your own server" (自己的服务器), as today |
+| hermeshd | Hermesh's daemon. The owner role runs on trusted devices (built into the Mac app, and a library, `hermesh-mobile`, in the iPhone app). The machine role runs on every machine | |
+| her | The agent kernel, a Rust program ([her/](../her/README.md)) | |
+| Her | The agent, and the default assistant of every Her Server | Her |
+| Her Server | A machine Her is turned on for, where hermeshd runs her. A role, not a program or a kind of hardware | Shown as an environment |
+| Environment | A Her Server as the apps show it | The machine's name, such as "Mac mini" |
+| Assistant | A named bot on a Her Server (her's `bots/*`). It has its own conversation, memory, folder, routines, model, thinking level and approval mode, and shares its environment's logins, connectors and skills | Assistant (助手) |
+| Conversation | An assistant's one ongoing chat: a her session | |
+| Sub-agent | A worker an assistant starts for part of a task. Never listed | Progress lines |
+| Routine | Instructions an assistant runs on a schedule | Routine (定时任务) |
+| Model connection | How an environment reaches models: an API key, or a login such as ChatGPT | |
+| Connector | An MCP server configured on a Her Server | Connector (连接器) |
+| Skill | A `SKILL.md` package installed on a Her Server | Skill (技能) |
+| Credential | A secret in a Her Server's credential store: the Keychain on macOS, `~/.her/credentials.toml` on Linux | |
+| Console | A server's web pages for managing it | "Manage this environment" |
+| Her entry | The apps' one place for Her: assistants and their conversations | Her (Her 助手) |
+| Tunnel | The end-to-end TLS connection from a trusted device to a machine, carried by the relay | |
+| Post office | The relay's store of sealed messages for whoever is offline, kept up to 30 days | "Waiting" |
+| Notice | An event a machine seals to a phone's notice key; the relay hands it to Apple's push service ([iphone-app.md](iphone-app.md) §3) | A notification |
+| Agent | A coding agent, or a connected AI with a grant, as today. Can't reach Her in this version | As today |
 
-**Her runs on Her Servers, machines of the owner's, each a self-contained
-environment with its own console. The apps only converse, and reach each
-environment end to end through the relay. The relay only connects.**
+The apps never call an environment a "server": Chinese already uses 服务器
+for the self-hosted Hermesh service, and many owners will run both on one
+cloud machine. "Agent" stays the word for coding agents and connected AIs,
+so Her's bots are "assistants" (助手).
 
-1. **Her Servers.** Any macOS or Linux machine paired to the owner can run
-   Her once the owner turns it on for that machine: a cloud server, a NAS, a
-   mini PC, or a Mac through the Mac app's built-in hermeshd. One or more;
-   most owners have one. Windows can't yet (the kernel has no Windows code),
-   and iOS never can (no processes, no background work).
-2. **Each Her Server is an environment of its own**: its assistants (Her and
-   any the owner adds), their conversations, memory, files and routines, its
-   model logins and credentials, connectors (MCP servers), skills,
-   instructions and permissions (§4). Nothing is shared or synced between
-   environments.
-3. **The apps only converse.** One entry, Her 助手, built on FinxWork's bot
-   design (§7). Picking an environment and an assistant is the only choice
-   there.
-4. **Each server has its own web console.** A Her Server's console manages
-   that environment (§5.3). The relay's console is the hermesh.io console on
-   the official service. They are never merged, even on one machine: the
-   relay must never see Her's content, and the two often run on different
-   machines.
-5. **The relay only connects**: presence, names and versions as for every
-   machine, and sealed messages while a Her Server is offline (the post
-   office, [agent-messages.md](agent-messages.md) §5). A self-hosted relay
-   works the same way.
-6. **Keys decide** who reaches a Her Server and its console (§8). Anything
-   that needs the root key (Touch ID) is signed in the apps.
-7. **hermeshd runs her** as a child (`her serve --stdio`), supervised and
-   updated like the coding agents. It forwards her's own protocol (§5.2) and
-   serves the console through the end-to-end tunnel.
-8. **Coding agents don't change.** Claude Code, Codex and the rest still run
-   on each machine, and the rest of the apps stays as it is.
+## 2. Entities and relationships
 
-## 3. Names
+```mermaid
+erDiagram
+    OWNER ||--|{ TRUSTED_DEVICE : approves
+    OWNER ||--o{ MACHINE : pairs
+    OWNER }o--|| RELAY : "connects through"
+    MACHINE ||--o| HER_SERVER : "can be"
+    HER_SERVER ||--|{ ASSISTANT : hosts
+    HER_SERVER ||--|| CONSOLE : serves
+    HER_SERVER ||--o{ MODEL_CONNECTION : keeps
+    HER_SERVER ||--o{ CONNECTOR : keeps
+    HER_SERVER ||--o{ SKILL : keeps
+    ASSISTANT ||--|| CONVERSATION : has
+    ASSISTANT ||--o{ ROUTINE : runs
+    CONVERSATION ||--o{ SUB_AGENT : starts
+    TRUSTED_DEVICE ||--o{ ENVIRONMENT_CACHE : "keeps, one per Her Server"
+```
 
-- **Her**: the agent, and the default assistant of every Her Server (her's
-  default bot, today named `HerBot` in
-  [bots.rs](../her/crates/her-server/src/bots.rs); to be renamed Her).
-- **Assistant** (助手): a named bot on a Her Server. The apps say 助手, since
-  "agent" already means coding agents and connected AIs in Hermesh, and her
-  calls its own sub-agents agents too.
-- **Her Server**: a machine running Her. A role any machine can take, not a
-  program or a kind of hardware. It stays a machine like the others and can
-  run coding agents too.
-- **Environment**: a Her Server as the apps show it, named after its machine
-  (the hostname by default, renamable): "Mac mini". The apps don't say
-  "server" (服务器) for it, since they already use that word for the
-  self-hosted Hermesh service ("使用自己的服务器…").
-- **Console**: a server's web pages for managing it.
+**Identifiers.**
 
-## 4. Where things live
+- An environment is its machine's `machine_id` (`m_…`), and its name is the
+  machine's.
+- An assistant is `machine_id` plus her's bot id. Her is the bot marked
+  `default`.
+- A conversation is the assistant's her session id.
+
+Everything an app keeps carries the `machine_id`, so a second environment
+never collides with the first.
+
+**Rules.**
+
+- Every Her Server has exactly one default assistant, Her. It can't be
+  deleted but can be renamed. Others are added and deleted freely.
+- Nothing links two environments: no shared assistants, settings or
+  conversations.
+- An owner connects through one relay, and every environment is reached
+  through it.
+
+## 3. Network
+
+```mermaid
+flowchart TB
+    subgraph Devices["Owner's trusted devices"]
+        MacApp["Mac app<br/>Her entry, console view<br/>hermeshd owner role"]
+        PhoneApp["iPhone app<br/>Her entry, console view<br/>owner role library"]
+    end
+    subgraph RelayBox["Relay: hermesh.io or self-hosted"]
+        Route["admission; tunnels<br/>passed through unread"]
+        PostOffice["post office"]
+        NoticeOut["notices"]
+    end
+    subgraph Servers["Her Servers"]
+        subgraph HS1["Mac mini, macOS"]
+            D1["hermeshd machine role"] --> K1["her serve"]
+        end
+        subgraph HS2["Cloud machine, Linux"]
+            D2["hermeshd machine role"] --> K2["her serve"]
+        end
+    end
+    subgraph Outside["Services on the internet"]
+        Models["Model providers"]
+        Remote["Remote connectors, MCP"]
+        APNs["Apple push service,<br/>to the iPhone"]
+    end
+    MacApp ---|"TLS, dialed out"| Route
+    PhoneApp ---|"TLS, dialed out"| Route
+    Route ---|"TLS, dialed out"| D1
+    Route ---|"TLS, dialed out"| D2
+    K1 -->|"HTTPS"| Models
+    K2 -->|"HTTPS"| Models
+    K2 -->|"HTTPS"| Remote
+    NoticeOut --> APNs
+```
+
+- **Everything dials out.** No device or machine opens a port, and a Her
+  Server needs no public address.
+- **Tunnels.** The tunnels run inside those connections: TLS 1.3, with
+  both sides pinned to the owner's root chain
+  ([technical-design.md](technical-design.md) §3.7). The relay forwards
+  bytes it can't read.
+- **On the same Mac.** A Mac app on a Mac that is a Her Server reaches her
+  in process through its own hermeshd, never through the relay.
+- **Models and connectors.** Her calls model providers and remote connectors
+  straight from the Her Server, over that machine's own internet connection.
+  The relay is not on that path.
+- **What the relay sees**: which devices and machines are online, their
+  names and versions, tunnel bytes, sealed post-office messages and sealed
+  notices. Never a conversation, a setting or a secret.
+
+## 4. Components and modules
+
+### 4.1 What runs where
+
+| Machine | Runs | Her role |
+|---|---|---|
+| Mac with the Mac app | The app; hermeshd with the owner role and the machine role; her when Her is on for this Mac | Client, and optionally a Her Server |
+| Mac that is only a machine ([trusted-devices.md](trusted-devices.md) §4.7) | The app in machine-only mode, hermeshd's machine role; her when Her is on | Optionally a Her Server |
+| Linux machine | hermeshd as a systemd user unit; her when Her is on | Optionally a Her Server |
+| Windows machine | hermeshd, coding agents | None yet: her has no Windows code |
+| iPhone | The app, with the owner role as a library | Client only |
+| Relay host | `hermesh-relay`; on the official service also the hermesh.io console (in hermesh-cloud) | None |
+
+### 4.2 Inside a Her Server
+
+```mermaid
+flowchart TB
+    Tunnel["tunnel server, internal/machine"]
+    subgraph Host["Her host in hermeshd, new: internal/herhost"]
+        ConsoleHTTP["console HTTP"]
+        Gate["allowlist by caller"]
+        Files["file transfer"]
+        Super["supervisor: start, restart, update"]
+    end
+    subgraph Kernel["her"]
+        Serve["her serve: her-cli, her-server"]
+        Core["her-core: agent loop, tools,<br/>assistants, routines, skills"]
+        Conn["her-connections: model logins"]
+        Llm["her-llm: models, credential store"]
+        Mcp["her-mcp: connectors"]
+        Browser["her-browser: headless Chrome"]
+    end
+    ConsoleApp["console web app, ships with her"]
+    Home[("~/.her")]
+    Tunnel --> ConsoleHTTP
+    Tunnel --> Gate
+    Tunnel --> Files
+    ConsoleHTTP -->|"static files"| ConsoleApp
+    ConsoleHTTP --> Gate
+    Gate -->|"JSON-RPC on stdio"| Serve
+    Super -->|"spawns"| Serve
+    Serve --> Core
+    Serve --> Conn
+    Core --> Llm
+    Core --> Mcp
+    Core --> Browser
+    Conn --> Llm
+    Core --> Home
+    Files --> Home
+```
+
+The Her host also turns her's notifications (a reply, a question, an
+approval waiting) into notices sealed to the owner's phones (§5.1).
+
+### 4.3 Code modules
+
+```mermaid
+flowchart TB
+    subgraph AppsLayer["Apps"]
+        Desktop["apps/desktop<br/>Her entry, new"]
+        IOS["apps/ios<br/>Her entry, new"]
+    end
+    subgraph ClientPkgs["Client packages"]
+        CorePkg["packages/core"]
+        HerTS["packages/her, new<br/>TypeScript types from her's schema"]
+        Kit["packages/HermeshKit<br/>with HerProtocol, new"]
+    end
+    subgraph GoLayer["Go"]
+        Hermeshd["cmd/hermeshd"]
+        Mobile["cmd/hermesh-mobile"]
+        Machine["internal/machine"]
+        Owner["internal/owner<br/>with a Her client and cache, new"]
+        HerHost["internal/herhost, new"]
+        Peer["internal/peer"]
+        Proto["proto/hermesh<br/>with her/v1, new"]
+        RelayCmd["cmd/hermesh-relay"]
+    end
+    subgraph RustLayer["her"]
+        HerBin["her: her-cli"]
+        ConsoleApp["apps/console, new"]
+        HerProtocol["her-protocol: schema.json"]
+    end
+    Desktop --> CorePkg
+    Desktop --> HerTS
+    Desktop -->|"LocalService"| Hermeshd
+    IOS --> Kit
+    Kit -->|"LocalService"| Mobile
+    Hermeshd --> Machine
+    Hermeshd --> Owner
+    Mobile --> Owner
+    Machine --> HerHost
+    Machine --> Proto
+    Owner --> Proto
+    Owner --> Peer
+    Peer -->|"TLS"| RelayCmd
+    HerHost -->|"spawns; JSON-RPC on stdio"| HerBin
+    HerHost -->|"serves"| ConsoleApp
+    HerTS -.->|"generated from"| HerProtocol
+    Kit -.->|"generated from"| HerProtocol
+    ConsoleApp -.->|"types from"| HerProtocol
+```
+
+Rules that keep the parts apart:
+
+- **Go never links Rust.** hermeshd talks to her only as a child process,
+  over JSON-RPC on stdio. her stays buildable and testable on its own
+  (`cargo test` in her/).
+- **The apps never talk to her directly.** They always go through their
+  owner-role hermeshd (LocalService), which goes in process or through a
+  tunnel.
+- **her's protocol is the one contract for Her.** The apps' and the
+  console's types are generated from `schema.json`. Hermesh's protobuf
+  carries only Hermesh's own things: machines, presence, whether Her is on,
+  and the tunnel's Her service.
+- **The console ships with her, not with the apps.** A new her brings its
+  own console, so no app can be out of step with a setting.
+
+## 5. Call flows
+
+### 5.1 Talking to an assistant
+
+```mermaid
+sequenceDiagram
+    actor U as Owner
+    participant App as Mac app, Her entry
+    participant O as hermeshd, owner role
+    participant R as Relay
+    participant M as hermeshd, Her Server
+    participant H as her
+    participant P as Model provider
+    U->>App: writes a message
+    App->>O: LocalService HerCall, session/op prompt
+    O->>R: tunnel bytes
+    R->>M: tunnel bytes
+    M->>M: allowlist: an owner device may prompt
+    M->>H: session/op
+    H->>P: model request
+    P-->>H: reply, streamed
+    H-->>M: events: steps, send_to_user, approvals
+    M-->>O: HerSubscribe events, through the relay
+    O-->>App: events, and the environment's cache is updated
+    M->>R: notice sealed to each phone that asked
+    R->>R: hands it to Apple's push service
+```
+
+An approval works the same way back: the app answers with `session/op`
+(approval), which takes the same path to her.
+
+### 5.2 Turning Her on for a machine
+
+The first run of the Her entry, and "Add environment" later.
+
+```mermaid
+sequenceDiagram
+    actor U as Owner
+    participant App as Mac app
+    participant S as Signer, Touch ID
+    participant M as hermeshd, chosen machine
+    participant H as her
+    U->>App: picks a machine to run Her
+    App->>S: AdminCommand SetHer enabled
+    S-->>App: signed with the root key
+    App->>M: ApplyAdminCommand, through the tunnel
+    M->>M: verifies the root signature
+    M->>H: starts her serve
+    M-->>App: HerStatus running, no model yet
+    App->>App: opens that environment's console
+    U->>App: enters an API key in the console
+    App->>H: credentials/set, through the tunnel
+    H-->>App: model ready
+    App-->>U: Her says hello
+```
+
+### 5.3 Opening the console
+
+```mermaid
+sequenceDiagram
+    participant W as Console window in the Mac app
+    participant O as hermeshd, owner role
+    participant M as hermeshd, Her Server
+    participant H as her
+    W->>O: GET the local console address, with its token
+    O->>M: HTTP under /her/console/, through the tunnel
+    M-->>O: the console's files, from her's install
+    O-->>W: page
+    W->>O: a settings call, such as mcp/list
+    O->>M: through the tunnel
+    M->>H: JSON-RPC, after the allowlist
+    H-->>W: result, the same way back
+```
+
+The owner-role hermeshd serves the console to the Mac app on a loopback
+address guarded by a token it hands the app. The iPhone app loads it in a
+web view through a URL scheme handler of its own. Either way, the console
+acts as the device that opened it: no password, no open port.
+
+### 5.4 Signing in on a remote Her Server
+
+```mermaid
+sequenceDiagram
+    participant C as Console page
+    participant App as App
+    participant H as her, on the Her Server
+    participant B as Browser on the owner's device
+    participant Pr as Provider
+    C->>H: connections/connect or mcp/login, redirect on the device
+    H-->>C: authorization URL and login id, the PKCE verifier kept
+    C->>App: open it and catch the callback
+    App->>B: opens the URL
+    B->>Pr: the owner signs in
+    Pr-->>B: redirect to the device's loopback port, with a code
+    B->>App: code and state
+    App->>H: complete the login with the code, through the tunnel
+    H->>Pr: exchanges the code with the verifier
+    H->>H: keeps the tokens in its credential store
+    H-->>C: connected
+```
+
+Tokens are made on the Her Server and never leave it. On a Mac that is the
+Her Server, her's own loopback callback works as it does today, and none of
+this is needed.
+
+### 5.5 A Her Server offline
+
+```mermaid
+sequenceDiagram
+    participant App as App
+    participant O as hermeshd, owner role
+    participant R as Relay, post office
+    participant M as hermeshd, Her Server
+    participant H as her
+    App->>O: prompt, while the environment is offline
+    O->>R: Send, sealed to the Her Server
+    O-->>App: shown as waiting
+    Note over M: comes back online
+    M->>R: Fetch
+    R-->>M: the sealed message
+    M->>H: session/op prompt
+    M->>R: Ack, handled
+    H-->>App: the reply, as in 5.1
+```
+
+The post office is the one in
+[agent-messages.md](agent-messages.md) §5: messages to a machine's sessions
+already wait there while the machine is away.
+
+## 6. Interfaces
+
+### 6.1 her's protocol, by caller
+
+| Methods | Used by | Owner's devices | Agents |
+|---|---|---|---|
+| `bots/*`: assistants, their routines, unread marks | Her entry | Allowed | No |
+| `session/op` and session events: prompts, approvals, answers, stopping | Her entry | Allowed | No |
+| `models/list` | Her entry, console | Allowed | No |
+| `config/*`, `connections/*`, `credentials/*`, `mcp/*`, `skills/*`, `web_search/*`, `browser/allow` | Console | Allowed | No |
+| `doc/*`, `deck/*`, `docx/*` and the other `browser/*` methods: FinxWork's desktop panels and built-in browser | Nobody | Not forwarded | No |
+
+Types are in [schema.json](../her/crates/her-protocol/schema.json), and the
+reference is [protocol-reference.md](../her/docs/cli/protocol-reference.md).
+Declaring them again in protobuf would make a second contract to keep in
+step, so hermeshd forwards them.
+
+### 6.2 Additions to Hermesh's protocol
+
+```proto
+// identity.proto: an AdminCommand, signed by a trusted device's root key.
+message SetHer {
+  bool enabled = 1;
+}
+
+// machine.proto: in GetInfoResponse and the Watch stream.
+message HerStatus {
+  bool enabled = 1;        // the owner turned Her on for this machine
+  bool running = 2;        // her is up
+  string version = 3;      // her's version
+  bool model_ready = 4;    // at least one model connection works
+  string unsupported = 5;  // why this machine can't run Her (Windows), or empty
+}
+
+// her/v1/her.proto: through the tunnel, from an owner device to a Her Server.
+service HerService {
+  rpc Call(HerCallRequest) returns (HerCallResponse);            // one her JSON-RPC request, allowlisted
+  rpc Subscribe(HerSubscribeRequest) returns (stream HerEvent);  // her's notifications for what the caller opened
+  rpc Upload(stream FileChunk) returns (UploadResponse);         // into an assistant's folder
+  rpc Download(DownloadRequest) returns (stream FileChunk);      // a file an assistant made
+}
+// The console is plain HTTP on the same tunnel connection, under /her/console/.
+```
+
+LocalService gains the same four calls, addressed by `machine_id`, and a
+local console address for the Mac app.
+
+### 6.3 Changes in her
+
+1. **Assistants.** Rename the default bot to Her (today `HerBot` in
+   [bots.rs](../her/crates/her-server/src/bots.rs)). New assistants ask
+   before risky steps instead of starting with full access.
+2. **Remote sign-in.** `connections/connect` and `mcp/login` accept a
+   redirect on the client's device and return the authorization request. A
+   new call completes it with the code. her keeps the PKCE verifier and does
+   the exchange (§5.4).
+3. **Files.** A prompt's input is text and images today. Other files are
+   uploaded into the assistant's folder, and the message names them.
+   `skills/install` installs from an uploaded archive.
+4. **The console.** A web app in `her/apps/console`, built from FinxWork's
+   Customize page and released with her.
+5. **Updates.** Inside Hermesh nothing calls `her upgrade`: hermeshd ships
+   her and updates it.
+
+### 6.4 Packaging and updates
+
+- **macOS**: her sits inside the Mac app's bundle beside hermeshd.
+  **Linux**: her ships in the hermeshd package, built static with musl as
+  her's CI already does, for x86_64 and arm64.
+- **One version.** A Hermesh release carries a her build and its console.
+  hermeshd's self-update updates all three together.
+- **Started only when needed.** hermeshd starts her only on a machine Her
+  is on for, as the machine's user, so her's home is that user's `~/.her`.
+
+## 7. Data
 
 | What | Each Her Server | Owner's devices | Relay |
 |---|---|---|---|
-| Assistants, conversations, memory, files Her makes, routines | The only copy, in `~/.her` | A cache of recent messages per environment, to open at once and read offline | Nothing |
-| Model logins, API keys, connector tokens | Its credential store | Status only: connected, which account, until when | Nothing |
-| Connectors, skills, instructions, default permissions | `~/.her`: the user layer of `config.toml`, `skills/` | Nothing | Nothing |
-| Whether a machine runs Her | Its machine settings, signed by a trusted device | The signed setting | The signed setting, which it can't change |
+| Assistants, conversations, memory, files Her makes, routines | The only copy, in `~/.her` | Recent messages per environment, to open at once and read offline | Nothing |
+| Model logins, API keys, connector tokens | The credential store | Status only: connected, which account, until when | Nothing |
+| Connectors, skills, instructions, default permissions | `~/.her` | Nothing | Nothing |
+| Whether a machine runs Her | Its machine settings, signed | The signed setting | The signed setting, which it can't change |
 | Messages written while a Her Server is offline | Taken when it is back | Shown as waiting | Sealed, until taken (at most 30 days) |
-| Presence | | | Online or offline, name, version, as for every machine |
+| Presence | | | Online or offline, name, version |
 
-## 5. Connections, the API and the console
+The owner-role hermeshd keeps each environment's recent messages as its
+replica keeps sessions ([state-sync.md](state-sync.md) §4), so an assistant
+opens at once and an offline environment still shows what was said.
 
-### 5.1 Paths
+What `~/.her` holds on a Her Server:
 
 ```
-Mac app ─ local IPC ─ hermeshd (owner) ─┬─ this Mac runs Her: in process ─ her
-                                        └─ relay ─ E2E tunnel ─ hermeshd (each Her Server) ─ her
-iPhone app ───────────── relay ─ E2E tunnel ─ hermeshd (each Her Server) ─ her
+~/.her/
+  config.toml        connectors, web search, instructions: the user layer
+  models.toml        model providers and models
+  bots/<id>/         an assistant: bot.json, its avatar, its folder
+  sessions/          conversations, as JSON lines, by date
+  skills/            installed skills; .system/ holds the built-in ones
+  credentials.toml   secrets, on Linux only (the Keychain on macOS)
 ```
 
-The relay and the tunnel are the ones every machine uses today
-([technical-design.md](technical-design.md) §3.7). A Her Server dials out,
-so it needs no public address and no open port. A Mac app on a Her Server
-itself never goes through the relay to it. Direct connections on a local
-network are later work (§9).
+## 8. Security
 
-### 5.2 Forward her's protocol
+**Keys decide, not accounts.**
 
-her already has the methods the apps and the console need, made for
-FinxWork's desktop app: assistants and their conversations (`bots/*`,
-`session/op` and its events), configuration (`config/*`), model connections
-(`connections/*`, `models/*`), secrets (`credentials/*`), connectors
-(`mcp/*`), skills (`skills/*`), web search keys (`web_search/*`) and browser
-site permissions (`browser/*`), each with a change notification. Their types
-are in [schema.json](../her/crates/her-protocol/schema.json) and the
-reference is [protocol-reference.md](../her/docs/cli/protocol-reference.md).
+- A Her Server is one of the owner's machines, paired with a certificate a
+  trusted device signed. On every connection it checks the other side
+  itself, against the owner's root chain it pins. The relay's admission only
+  keeps out abuse.
+- Only the owner's trusted devices reach Her and its console, plus the Her
+  Server's own app. Agents can't.
+- A new device becomes trusted only when one of the owner's devices approves
+  it ([trusted-devices.md](trusted-devices.md) §4.2). Someone holding the
+  owner's account alone reaches nothing.
 
-Declaring some sixty methods again in protobuf would make a second contract
-to keep in step with the kernel. So each Her Server's hermeshd forwards
-her's JSON-RPC over the tunnel, with:
+**Accounts.**
 
-- **An allowlist by caller.** Her 助手 in the apps gets the assistants and
-  their conversations. The console gets the settings methods. Agents with
-  grants get none in this version. The methods of FinxWork's document panels
-  (`doc/*`, `deck/*`, `docx/*`) are not forwarded.
-- **Files**: upload to and download from a Her Server, for attachments in
-  conversations and for installing skills (`skills/install` takes a path on
-  the Her Server's disk).
-- **Status**: whether her runs, its version, whether a model is set up.
+- On the official relay the owner signs in to hermesh.io. The account lets
+  the relay put the owner's devices and machines together, and lets a new
+  device find its owner. It is not a key.
+- With a self-hosted relay there is no hermesh.io account: devices join with
+  the connection address.
+- A Her Server goes by keys alone, so it works the same with either relay.
 
-Hermesh's own state (machines, presence, which machines run Her) stays in
-protobuf, as today. The apps take her's types from `schema.json`: TypeScript
-for the Mac app, Swift for the iPhone app.
+**What needs the root key (Touch ID)**, as other changes that add
+permissions do ([trusted-devices.md](trusted-devices.md) §4.6):
 
-### 5.3 The console
+- turning Her on or off for a machine;
+- adding a connector started as a command on the Her Server;
+- switching an assistant to full access.
 
-A web app that ships with her, built on FinxWork's Customize page (whose
-renderer already builds for a plain browser, today against a mock server),
-served by the Her Server's hermeshd. It manages that environment: model logins and API keys,
-connectors, skills, web search, browser sites, instructions, the default
-permissions of new assistants, export.
+Everything else in the Her entry and the console uses the device key. A
+console never signs: it asks, and the app's signer shows exactly what will
+be signed.
 
-How it is reached, in order:
+**How a console is reached**, in this order:
 
-1. **From the Hermesh app** (first): "Manage this environment" opens it
-   through the tunnel, as the conversation goes. No password, no open port:
-   it acts as the owner's device that opened it. On a Mac that runs Her, at a
-   local address.
-2. **From any browser** (later): a trusted device scans a code the page
-   shows and approves that browser for a limited time, as a phone approves a
-   web chat session. Still a device's approval, never a password.
-3. **From the internet without the app** (later): the relay forwards the
+1. From the Hermesh app, through the tunnel (§5.3). This is the first step.
+2. Later: any browser, approved by a trusted device that scans a code the
+   page shows, for a limited time.
+3. Later: from the internet without the app. The relay forwards the
    encrypted connection without opening it, to a name and certificate of the
    Her Server's own, as Home Assistant's remote access works.
 
-A change that needs the root key is not signed in the page: the console
-asks, and the app's signer shows exactly what will be signed and asks for
-Touch ID, as signing requests from hermeshd work today.
+**Threats.**
 
-### 5.4 Offline
+- **A compromised relay** can't read conversations, settings or secrets,
+  and can't add an environment or send the apps to another machine, since
+  whether a machine runs Her is signed. It can withhold traffic, as it can
+  today.
+- **A compromised Her Server** gives away that environment's data and
+  credentials, and nothing of the others. It needs no open port, updates
+  itself like every machine, and should use disk encryption.
+- **Every device lost.** The owner starts over as today
+  ([trusted-devices.md](trusted-devices.md) §4.5) and pairs the machines
+  again. Each environment's assistants, conversations and settings are on its
+  machine, and pairing again must keep them.
+- **One owner per Her Server.** Sharing Her with other people is not in
+  this design.
 
-- The owner's hermeshd keeps the recent conversations of every environment,
-  as the replica keeps sessions ([state-sync.md](state-sync.md) §4). An
-  assistant opens at once, and an offline environment still shows what was
-  said.
-- A message written while a Her Server is offline waits at the post office
-  and reaches it when it is back. The app shows it as waiting.
-- Replies reach the iPhone as notices sealed to the phone, as a machine's do
-  today ([iphone-app.md](iphone-app.md) §3). With more than one environment,
-  a notice names the environment too.
+## 9. The apps
 
-## 6. Settings: where each is changed
-
-| Setting | Where |
-|---|---|
-| Which machines run Her | The app, signed by a trusted device: Her 助手's first run, "Add environment", or Settings → Machines |
-| Model logins, API keys, connectors, skills, web search, browser sites, instructions, default permissions for new assistants | That environment's console |
-| An assistant's name, avatar, model, thinking, approvals, clearing its conversation, deleting it | The app, in the assistant's settings panel (§7.1) |
-| Routines | The conversation, as FinxWork's routine design has them |
-
-**Secrets and sign-ins.** Typed secrets (API keys, connector tokens) go to
-the Her Server with `credentials/set` and never come back; pages and apps
-show only their status. Sign-ins start and end on the Her Server: her's
-ChatGPT login and its MCP sign-ins (PKCE with a loopback redirect on
-127.0.0.1) wait for a browser to call back to the machine running her, which
-a server with no screen can't do. So the Her Server makes the authorization
-request and keeps its PKCE verifier; the owner's browser signs in, the
-callback is caught on the owner's device, and the authorization code goes to
-the Her Server end to end, which exchanges it. Tokens are made on the Her
-Server and never leave it.
-
-**Who may change what.** From another device, only the owner's trusted
-devices, with their device key over the tunnel, as they read sessions
-today. Changes that let Her do more on a Her Server need the root key
-(Touch ID), as other changes that add permissions do
-([trusted-devices.md](trusted-devices.md) §4.6): a connector started as a
-command, an assistant switched to full access. On a Her Server itself, its
-own app and console may change them too: whoever uses that machine can edit
-`~/.her` anyway. Agents can't change them.
-
-## 7. The apps
-
-### 7.1 Her 助手
+### 9.1 The Her entry
 
 One entry in each app, for conversation only. In the Mac app it is one item
-in the sidebar under Overview and Search; the rest of the app is unchanged.
-Its pages and behaviour are FinxWork's bot mode: the assistant list, adding
-and editing assistants, the default assistant, the conversation with its
-messages, files, questions, the last bubble while it works, messages sent in
-a row, its steps, the moving avatar, the approval window, the input box, the
-blank page of a new assistant, menus, unread marks and alerts, and routines.
+in the sidebar under Overview and Search. The rest of the app is unchanged.
+
+Its pages and behaviour are FinxWork's bot mode:
+
+- the assistant list;
+- adding and editing assistants, and the default assistant;
+- the conversation: messages, files, questions with buttons, the last
+  bubble while it works, messages sent in a row, its steps, the moving
+  avatar;
+- the approval window and the input box;
+- the blank page of a new assistant;
+- menus, unread marks and alerts;
+- routines.
 
 What changes, because FinxWork assumed Her ran on the same Mac:
 
-- **Environments.** The assistant list shows one environment at a time, with
-  a switcher above it, as Claude lets one pick where a session runs. Each
-  environment shows whether it is online and its unread count. The app
-  remembers the last one. With a single environment the switcher is not
-  shown.
+- **Environments.** The assistant list shows one environment at a time,
+  with a switcher above it. Each environment shows whether it is online and
+  its unread count. The app remembers the last one. With a single
+  environment, the switcher is hidden.
 - **Models.** An assistant picks only from the models its environment can
-  already use. Adding a key or a login is in the console; the model menu
+  already use. Adding a key or a login is in the console, and the model menu
   links there.
-- **Permissions.** New assistants ask before risky steps. Switching one to
-  full access needs Touch ID (§6). FinxWork gives every bot full access by
-  default; that is not carried over, because a Her Server reads web pages
-  and messages from anyone.
+- **Permissions.** New assistants ask before risky steps, and switching one
+  to full access needs Touch ID. FinxWork gives every bot full access by
+  default; that is not carried over, because a Her Server reads web pages and
+  messages from anyone.
 - **Files.** Her's files are on its Her Server: the app previews or saves
   them through the tunnel, and files dragged into a conversation are
   uploaded there.
@@ -242,98 +599,175 @@ What changes, because FinxWork assumed Her ran on the same Mac:
   apps have Hermesh's own sessions), the built-in browser (Her browses on its
   Her Server), and the document panels beside the conversation.
 
-### 7.2 First run
+An assistant's own settings panel (FinxWork's bot settings) holds its name,
+avatar, model, thinking level and approval mode, and lets the owner clear
+its conversation or delete it. Environment-wide settings are in the console.
 
-In Her 助手, while no machine runs Her:
+### 9.2 First run
 
-1. Choose where Her runs: this Mac (it goes offline while the Mac sleeps), a
-   Mac or Linux machine already paired (Windows machines shown as not yet
-   supported), or a new server (an install command, paired as Add Machine
-   does). Touch ID turns Her on there.
-2. That environment's console opens to connect a model: sign in to ChatGPT,
+While no machine runs Her, the Her entry shows the first run:
+
+1. **Choose where Her runs.** The choices are this Mac (Her goes offline
+   while the Mac sleeps), a Mac or Linux machine already paired, or a new
+   server (an install command, paired as Add Machine does). Windows machines
+   are shown as not yet supported. Touch ID turns Her on there.
+2. **Connect a model** in that environment's console: sign in to ChatGPT,
    or enter an API key.
-3. Her greets the owner.
+3. **Her says hello.**
 
-"Add environment" in the switcher runs the same two steps for another
-machine.
+"Add environment" in the switcher runs the same steps for another machine.
 
-### 7.3 States
+### 9.3 States
 
-- **Offline environment**: its cached conversations, a line such as "Mac
-  mini offline · seen 3 min ago", messages waiting.
-- **Expired login**: a card in the conversation; the fix is in the console.
-- **Notifications** while the app is in the background, naming the
-  assistant, and the environment when there is more than one.
+- **An environment is offline.** Its cached conversations stay readable,
+  with a line such as "Mac mini offline · seen 3 min ago", and messages
+  written meanwhile show as waiting.
+- **A login expired.** A card appears in the conversation; the fix is in
+  the console.
+- **Notifications** arrive while the app is in the background. They name
+  the assistant, and the environment too when there is more than one.
 
-### 7.4 iPhone app
+### 9.4 iPhone app
 
-The same design, written in Swift (FinxWork has no iPhone app). Sign-ins
-catch their callback in the app; files come from the Files app or the share
-sheet.
+The same design, written in Swift, since FinxWork has no iPhone app.
 
-## 8. Who can reach Her, and security
+- The console opens in a web view.
+- Notices cover Her's replies, questions and approvals, with actions.
+- Sign-ins catch their callback in the app.
+- Files come from the Files app or the share sheet.
 
-- **Keys decide, not accounts.** A Her Server is one of the owner's
-  machines, paired with a certificate a trusted device signed. On every
-  connection it checks the other side itself, against the owner's root chain
-  it pins ([technical-design.md](technical-design.md) §3.7); the relay's
-  admission only keeps out abuse. So only the owner's trusted devices reach
-  Her and its console, and the Her Server's own app. A new device becomes
-  trusted only when one of the owner's devices approves it
-  ([trusted-devices.md](trusted-devices.md) §4.2): someone holding the
-  owner's account alone reaches nothing. Agents can't reach Her in this
-  version.
-- **Accounts.** On the official relay the owner signs in to hermesh.io. The
-  account lets the relay put the owner's devices and machines together and
-  lets a new device find its owner; it is not a key. With a self-hosted relay
-  there is no hermesh.io account: devices join with the connection address.
-  A Her Server goes by keys alone, so it works the same with either relay.
-- **One owner per Her Server.** Sharing Her with other people is not in this
-  version (§9).
-- **Every device lost.** The owner starts over as today
-  ([trusted-devices.md](trusted-devices.md) §4.5) and pairs the machines
-  again. Each environment's assistants, conversations and settings are on its
-  machine, and pairing it again must keep them.
-- **A compromised relay** can't read conversations or settings, and can't
-  add an environment or send the apps to another machine, since whether a
-  machine runs Her is signed. It can withhold traffic, as it can today.
-- **A compromised Her Server** gives away that environment's data and
-  credentials, and nothing of the others. It needs no open port, updates
-  itself like every machine, and should use disk encryption.
+## 10. The console
 
-## 9. Not doing now
+A web app per Her Server, built from FinxWork's Customize page. Its
+renderer already builds for a plain browser, today against a mock server.
+Sections:
+
+| Section | What it does |
+|---|---|
+| Overview | her's version, whether a model is ready, disk used |
+| Models | Model connections: API keys, sign-ins such as ChatGPT; the default model |
+| Connectors | MCP servers: add by address, sign in, see their tools; connectors started as commands need Touch ID |
+| Skills | Installed skills: turn on or off, add by upload, remove, read |
+| Web search | The search provider and its key |
+| Browser | The sites Her may open without asking |
+| Instructions | What every assistant of this environment is told |
+| Defaults | The model and approval mode new assistants start with |
+| Data | Export; backup and restore later |
+
+## 11. What we build
+
+Each phase ends with an end-to-end test made from what a person does,
+through the real apps and the relay.
+
+### Phase 1: Her in two environments, from the Mac app
+
+1. hermeshd ships her on macOS and Linux, runs it when Her is on, and
+   reports `HerStatus`.
+2. Turning Her on or off for a machine (`SetHer`, Touch ID), from the first
+   run, "Add environment" and Settings → Machines.
+3. `HerService` through the tunnel and in process (`Call`, `Subscribe`),
+   with the allowlist.
+4. The console through the tunnel, with Overview, Models (API keys, plus
+   the ChatGPT sign-in on a Mac Her Server) and Defaults.
+5. The Mac app's Her entry:
+   - the environment switcher;
+   - the assistant list;
+   - the conversation: messages, questions, the approval window, steps,
+     the busy state, the input box, unread marks;
+   - each assistant's settings;
+   - the first run.
+6. Offline handling: cached conversations, messages waiting at the post
+   office, macOS notifications.
+7. her: the default assistant named Her; new assistants ask by default.
+
+Test: this Mac and a Linux cloud machine as two environments.
+
+- Turn Her on for both.
+- Enter an API key in each console.
+- Talk to Her in each, and switch between them.
+- Take the Linux machine offline, write to it, bring it back, and get the
+  reply.
+- Switching an assistant to full access asks for Touch ID.
+
+### Phase 2: everything an environment can do
+
+1. Files both ways, with previews and saving.
+2. The rest of the console: Connectors (with sign-in), Skills (upload), Web
+   search, Browser, Instructions, export.
+3. Sign-ins started on the Her Server (§5.4), for ChatGPT and for MCP
+   connectors.
+4. Routines in conversations, as FinxWork's routine design has them.
+
+Test, on the Linux environment:
+
+- Sign in to ChatGPT from the Mac.
+- Add a connector that needs a sign-in, and install a skill by upload.
+- Have Her use them in a conversation.
+- Leave a routine to run at night and see its result arrive.
+
+### Phase 3: the iPhone app
+
+1. The Her entry in Swift.
+2. The console in a web view.
+3. Notices for Her's replies, questions and approvals.
+4. Sign-ins with the app's callback.
+
+Test, from the iPhone alone:
+
+- Talk to both environments.
+- Answer an approval from a notification.
+- Change an assistant's model.
+- Open the console.
+
+### Phase 4: Her Servers anyone can set up
+
+1. A Linux install command that sets up hermeshd with her and pairs the
+   machine, as Add Machine does.
+2. Export and backup of an environment, and restoring it on the same
+   machine after starting over.
+3. The console in any browser, approved by a trusted device scanning a
+   code.
+
+Test:
+
+- A fresh cloud machine becomes an environment with one command from the
+  app's instructions.
+- Backing it up, wiping it and restoring it keeps its assistants and
+  conversations.
+
+## 12. Not doing now
 
 - Her working on the owner's other machines (starting coding sessions,
   reading files there) through Hermesh's tools.
 - Environments talking to each other, sharing settings, or moving a
-  conversation from one to another. Copying the settings of one environment
-  into a new one, secrets left out, may come later.
-- Windows as a Her Server; computer use on Linux (her's desktop tools use
-  the macOS accessibility API).
+  conversation between them. Copying one environment's settings into a new
+  one, secrets left out, may come later.
+- Windows as a Her Server, and computer use on Linux: her's desktop tools
+  use the macOS accessibility API.
 - Hermesh running Her for its users.
 - Sharing Her with other people, such as a family or a team.
-- The console in any browser and from the internet without the app (§5.3).
+- The console from the internet without the app (§8).
 - A console for the self-hosted relay.
 - Direct connections on a local network.
 
-## 10. Open questions
+## 13. Open questions
 
 - Sign-in from the iPhone for providers that accept only loopback
   redirects.
 - How large a file may go through the relay.
-- The backup and export format of `~/.her`.
+- The format of an environment's backup and export.
 
-## 11. Steps
+## 14. Options considered
 
-Each step ends with an end-to-end test made from what a person does,
-through the real apps and the relay.
+| Shape | Why not |
+|---|---|
+| Her on every machine, by itself | Every machine needs a setup nobody asked for, and Windows machines can't run her |
+| The relay stores conversations and settings, as Claude's Remote Control keeps transcripts on Anthropic's servers | In plaintext it breaks Hermesh's promise that the relay sees no content. Encrypted, it needs an account-wide data key, rotation when a device is removed, and a recovery key |
+| Hermesh runs Her for its users | Hermesh would see everything, and would carry the compute, the isolation between users and the liability |
+| Her's settings inside the apps | Every new setting waits for the Mac, iPhone and Windows releases; an older app can't show a newer server's settings; the same screens are written once per app |
+| A second contract for Her in protobuf | Some sixty of her's methods declared twice, kept in step by hand |
+| **Her Servers the owner chooses, each with its own console; the apps only converse** | Chosen. Each environment is set up on its own, with its own model login, and work at night needs a machine that stays on |
 
-1. hermeshd runs her on macOS and Linux; turning Her on for a machine,
-   signed; forwarding with the allowlist; the console through the tunnel,
-   with models and API keys; Her 助手 in the Mac app with FinxWork's bot
-   pages and the environment switcher, tested with this Mac and a Linux
-   machine as two environments.
-2. Files; the rest of the console (connectors, skills, web search);
-   sign-ins started on the Her Server; routines.
-3. The iPhone app.
-4. The Linux install command, export and backup.
+Each environment keeps one ChatGPT login of its own. A login shared between
+machines breaks when one of them rotates its refresh token, which can't
+happen here.
