@@ -4,6 +4,7 @@ import (
 	"errors"
 	"os"
 	"regexp"
+	"slices"
 	"strconv"
 	"strings"
 	"testing"
@@ -125,6 +126,47 @@ func TestCards(t *testing.T) {
 	add := &identityv1.AdminCommand{TargetMachineId: "m_1", Command: &identityv1.AdminCommand_AddProject{AddProject: &identityv1.AddProject{ProjectId: "app", Path: "~/app"}}}
 	if cs, err := Cards([]*localv1.SigningRequest{request(t, add)}, Hints{MachineNames: map[string]string{"m_1": "vps-1"}}, "en"); err != nil || cs[0].Title != "Add project “app” to machine vps-1" {
 		t.Fatalf("add project: %+v %v", cs, err)
+	}
+}
+
+// Her's commands say what they let Her do on the machine: run there, an
+// assistant act without asking (warned), a command start there, shown as it
+// will run; an approval mode this version doesn't know is refused.
+func TestHerCards(t *testing.T) {
+	h := Hints{MachineNames: map[string]string{"m_1": "vps-1"}}
+	admin := func(c *identityv1.AdminCommand) *localv1.SigningRequest {
+		c.TargetMachineId = "m_1"
+		return request(t, c)
+	}
+	on := admin(&identityv1.AdminCommand{Command: &identityv1.AdminCommand_SetHer{SetHer: &identityv1.SetHer{Enabled: true}}})
+	full := admin(&identityv1.AdminCommand{Command: &identityv1.AdminCommand_SetHerAssistantMode{SetHerAssistantMode: &identityv1.SetHerAssistantMode{BotId: "b1", PermissionMode: "bypass-permissions"}}})
+	asks := admin(&identityv1.AdminCommand{Command: &identityv1.AdminCommand_SetHerAssistantMode{SetHerAssistantMode: &identityv1.SetHerAssistantMode{BotId: "b1", PermissionMode: "manual"}}})
+	connector := admin(&identityv1.AdminCommand{Command: &identityv1.AdminCommand_SetHerCommandConnector{SetHerCommandConnector: &identityv1.SetHerCommandConnector{
+		Name: "files", Command: "npx", Args: []string{"-y", "my server"}, Env: map[string]string{"B": "2", "A": "line\nbreak"}}}})
+	cs, err := Cards([]*localv1.SigningRequest{on, full, asks, connector}, h, "en")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cs[0].Title != "Turn Her on for machine vps-1" || !strings.Contains(cs[0].Why, "run commands") {
+		t.Fatalf("Her on: %+v", cs[0])
+	}
+	if cs[1].Title != "Give an assistant of Her full access on machine vps-1" || cs[1].Warning == "" || !slices.Contains(cs[1].Lines, "Assistant ID: b1") {
+		t.Fatalf("full access: %+v", cs[1])
+	}
+	if cs[2].Title != "Set how an assistant of Her acts on machine vps-1" || cs[2].Warning != "" || !slices.Contains(cs[2].Lines, "Approval mode: asks before each file change and command") {
+		t.Fatalf("asking first: %+v", cs[2])
+	}
+	if want := []string{`Command: npx -y "my server"`, `Environment: A="line\nbreak"`, "Environment: B=2"}; cs[3].Title != "Let Her start connector “files” on machine vps-1" ||
+		!slices.Equal(cs[3].Lines, want) || cs[3].Warning == "" {
+		t.Fatalf("a connector: %+v", cs[3])
+	}
+	unknown := admin(&identityv1.AdminCommand{Command: &identityv1.AdminCommand_SetHerAssistantMode{SetHerAssistantMode: &identityv1.SetHerAssistantMode{BotId: "b1", PermissionMode: "yolo"}}})
+	var refused *Refused
+	if _, err := Cards([]*localv1.SigningRequest{unknown}, h, "en"); !errors.As(err, &refused) {
+		t.Fatalf("an unknown mode: %v", err)
+	}
+	if cs, err := Cards([]*localv1.SigningRequest{connector}, h, "zh-CN"); err != nil || cs[0].Title != "允许 Her 在机器 vps-1上启动连接器“files”" {
+		t.Fatalf("in Chinese: %+v %v", cs, err)
 	}
 }
 

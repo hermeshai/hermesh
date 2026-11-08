@@ -8,9 +8,12 @@ package preview
 import (
 	"bytes"
 	"fmt"
+	"maps"
 	"slices"
+	"strconv"
 	"strings"
 	"time"
+	"unicode"
 
 	"google.golang.org/protobuf/proto"
 
@@ -336,8 +339,61 @@ func admin(c *identityv1.AdminCommand, h Hints, typ string, w words) (Card, erro
 		d := x.SetAgentDefaults
 		return Card{Title: w.f("Set the model %s runs with on %s", agentTitle(d.Agent), target),
 			Lines: []string{w.f("Model: %s", cmpOr(d.Model, w.f("its own"))), w.f("Reasoning effort: %s", cmpOr(d.Effort, w.f("its own"))), w.f("Speed: %s", d.Speed.String())}}, nil
+	case *identityv1.AdminCommand_SetHer:
+		if x.SetHer.Enabled {
+			return Card{Title: w.f("Turn Her on for %s", target),
+				Why: w.f("Her runs there as the machine's user and keeps her conversations, settings and logins on it. Her assistants can read and write files, run commands and reach the internet there; new ones ask before risky steps.")}, nil
+		}
+		return Card{Title: w.f("Turn Her off for %s", target), Why: w.f("Her stops there; her conversations, settings and logins stay on the machine.")}, nil
+	case *identityv1.AdminCommand_SetHerAssistantMode:
+		m := x.SetHerAssistantMode
+		mode, ok := map[string]string{
+			"manual":             w.f("asks before each file change and command"),
+			"accept-edits":       w.f("changes files without asking, asks before other commands"),
+			"bypass-permissions": w.f("full access, asks before nothing"),
+		}[m.PermissionMode]
+		if !ok {
+			return Card{}, &Refused{typ, "an unknown approval mode"}
+		}
+		lines := []string{w.f("Assistant ID: %s", m.BotId), w.f("Approval mode: %s", mode)}
+		if m.PermissionMode != "bypass-permissions" {
+			return Card{Title: w.f("Set how an assistant of Her acts on %s", target), Lines: lines}, nil
+		}
+		return Card{Title: w.f("Give an assistant of Her full access on %s", target), Lines: lines,
+			Why:     w.f("It runs any command and changes any file there without asking, protected paths included; only deny rules and deleting a critical path still stop it."),
+			Warning: w.f("What it reads, such as web pages and messages, can steer it. Approve only if you accept that.")}, nil
+	case *identityv1.AdminCommand_SetHerCommandConnector:
+		c := x.SetHerCommandConnector
+		if c.Remove {
+			return Card{Title: w.f("Remove Her's connector “%s” from %s", c.Name, target), Why: w.f("Her no longer starts it there.")}, nil
+		}
+		lines := []string{w.f("Command: %s", commandLine(c.Command, c.Args))}
+		for _, k := range slices.Sorted(maps.Keys(c.Env)) {
+			lines = append(lines, w.f("Environment: %s=%s", quoted(k), quoted(c.Env[k])))
+		}
+		return Card{Title: w.f("Let Her start connector “%s” on %s", c.Name, target), Lines: lines,
+			Why:     w.f("Her runs this command there as the machine's user whenever her assistants use the connector: it can do anything that user can, read and change files, run programs and reach the network."),
+			Warning: w.f("Approve only if you know this command and trust where it comes from.")}, nil
 	}
 	return Card{}, &Refused{typ, "an unknown command"}
+}
+
+// commandLine is a command and its arguments as a shell shows them.
+func commandLine(command string, args []string) string {
+	parts := []string{quoted(command)}
+	for _, a := range args {
+		parts = append(parts, quoted(a))
+	}
+	return strings.Join(parts, " ")
+}
+
+// quoted is s, quoted when it is empty or holds spaces, quotes or
+// characters that don't show, so that what is shown is all there is.
+func quoted(s string) string {
+	if s == "" || strings.ContainsFunc(s, func(r rune) bool { return unicode.IsSpace(r) || !unicode.IsPrint(r) || strings.ContainsRune(`"'\`, r) }) {
+		return strconv.Quote(s)
+	}
+	return s
 }
 
 func scope(ids []string, w words) string {

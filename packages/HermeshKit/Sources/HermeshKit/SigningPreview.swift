@@ -204,8 +204,8 @@ public enum SigningPreview {
     /// Parses body as M, dropping fields this signer does not know; what
     /// was parsed must then re-serialize to exactly the bytes to be signed,
     /// so a body with an unknown field (or any encoding hermeshd would not
-    /// produce) is refused. hermeshd marshals deterministically, and the
-    /// signed types have no maps.
+    /// produce) is refused. hermeshd marshals deterministically, a map's
+    /// entries sorted by key (a connector's environment), as this does.
     public static func strict<M: SwiftProtobuf.Message>(_ r: SigningRequest, _: M.Type) throws -> M {
         var options = BinaryDecodingOptions()
         options.discardUnknownFields = true
@@ -215,7 +215,9 @@ public enum SigningPreview {
         } catch {
             throw Refusal.unparseable(r.type)
         }
-        guard let again: Data = try? m.serializedBytes(), again == r.body else { throw Refusal.unknownFields(r.type) }
+        var encoding = BinaryEncodingOptions()
+        encoding.useDeterministicOrdering = true
+        guard let again: Data = try? m.serializedBytes(options: encoding), again == r.body else { throw Refusal.unknownFields(r.type) }
         return m
     }
 
@@ -445,12 +447,68 @@ public enum SigningPreview {
             }
             return Card(type: type, title: String(localized: "Set the model \(agent) runs with on \(target)", bundle: .module), who: who, lines: lines,
                         why: String(localized: "Once approved, its sessions there that name no model run with these; the agent’s own configuration is not changed.", bundle: .module))
-        case .setHer, .setHerAssistantMode, .setHerCommandConnector:
-            // Her's commands (docs/her-server.md §8) are refused until they have a preview.
-            throw Refusal.unsupported(type)
+        case .setHer(let h):
+            return h.enabled
+                ? Card(type: type, title: String(localized: "Turn Her on for \(target)", bundle: .module), who: who, lines: [],
+                       why: String(localized: "Once approved, Her runs on the machine as its user and keeps her conversations, settings and logins there. Her assistants can read and write files, run commands and reach the internet on it; new ones ask before risky steps.", bundle: .module))
+                : Card(type: type, title: String(localized: "Turn Her off for \(target)", bundle: .module), who: who, lines: [],
+                       why: String(localized: "Once approved, Her stops on the machine; her conversations, settings and logins stay there.", bundle: .module))
+        case .setHerAssistantMode(let m):
+            let mode: String
+            switch m.permissionMode {
+            case "manual": mode = String(localized: "Ask before each file change and command", bundle: .module)
+            case "accept-edits": mode = String(localized: "Change files without asking; ask before other commands", bundle: .module)
+            case "bypass-permissions": mode = String(localized: "Full access: ask before nothing", bundle: .module)
+            default: throw Refusal.unsupported(type)
+            }
+            let lines = [String(localized: "Assistant ID: \(m.botID)", bundle: .module), String(localized: "Approval mode: \(mode)", bundle: .module)]
+            guard m.permissionMode == "bypass-permissions" else {
+                return Card(type: type, title: String(localized: "Set how an assistant of Her acts on \(target)", bundle: .module), who: who, lines: lines,
+                            why: String(localized: "Once approved, the assistant works in this approval mode from its next step.", bundle: .module))
+            }
+            return Card(type: type, title: String(localized: "Give an assistant of Her full access on \(target)", bundle: .module), who: who, lines: lines,
+                        why: String(localized: "Once approved, it runs any command and changes any file on the machine without asking, protected paths included; only deny rules and deleting a critical path still stop it.", bundle: .module),
+                        warning: String(localized: "What it reads, such as web pages and messages, can steer it. Approve only if you accept that.", bundle: .module))
+        case .setHerCommandConnector(let c):
+            if c.remove {
+                return Card(type: type, title: String(localized: "Remove Her’s connector “\(c.name)” from \(target)", bundle: .module), who: who, lines: [],
+                            why: String(localized: "Once approved, Her no longer starts it on the machine.", bundle: .module))
+            }
+            let command = ([c.command] + c.args).map(quoted).joined(separator: " ")
+            let env = c.env.keys.sorted().map { String(localized: "Environment: \(quoted($0))=\(quoted(c.env[$0] ?? ""))", bundle: .module) }
+            return Card(type: type, title: String(localized: "Let Her start connector “\(c.name)” on \(target)", bundle: .module), who: who,
+                        lines: [String(localized: "Command: \(command)", bundle: .module)] + env,
+                        why: String(localized: "Once approved, Her runs this command on the machine as its user whenever her assistants use the connector. It can do anything that user can: read and change files, run programs and reach the network.", bundle: .module),
+                        warning: String(localized: "Approve only if you know this command and trust where it comes from.", bundle: .module))
         case .none:
             throw Refusal.unsupported(type)
         }
+    }
+
+    /// s as a shell shows it: quoted, what doesn't show escaped, when it is
+    /// empty or holds spaces, quotes or characters that don't show, so that
+    /// what is shown is all there is.
+    static func quoted(_ s: String) -> String {
+        func unseen(_ c: Unicode.Scalar) -> Bool {
+            switch c.properties.generalCategory {
+            case .control, .format, .privateUse, .surrogate, .unassigned, .lineSeparator, .paragraphSeparator, .spaceSeparator: return true
+            default: return false
+            }
+        }
+        guard s.isEmpty || s.unicodeScalars.contains(where: { unseen($0) || "\"'\\".unicodeScalars.contains($0) }) else { return s }
+        var out = "\""
+        for c in s.unicodeScalars {
+            switch c {
+            case "\"": out += "\\\""
+            case "\\": out += "\\\\"
+            case "\n": out += "\\n"
+            case "\t": out += "\\t"
+            case "\r": out += "\\r"
+            case " ": out += " "
+            default: out += unseen(c) ? "\\u{\(String(c.value, radix: 16))}" : String(c)
+            }
+        }
+        return out + "\""
     }
 
     /// The two digits to show after signing root cert r, when it adds a

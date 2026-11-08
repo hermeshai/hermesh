@@ -94,3 +94,53 @@ private func request<M: SwiftProtobuf.Message>(_ m: M) -> SigningRequest {
     #expect(c.why.contains("can’t be undone") && c.warning != nil)
     #expect(c.ids == ["Owner identity ID: o_x", "Erase ID: e1"])
 }
+
+/// An admin command for machine m_1, marshaled as hermeshd does (a map's
+/// entries sorted by key).
+private func admin(_ build: (inout Hermesh_Identity_V1_AdminCommand) -> Void) -> SigningRequest {
+    var a = Hermesh_Identity_V1_AdminCommand()
+    a.ownerID = "o_x"
+    a.targetMachineID = "m_1"
+    build(&a)
+    var options = BinaryEncodingOptions()
+    options.useDeterministicOrdering = true
+    var r = SigningRequest()
+    r.type = SigningPreview.adminCommand
+    r.body = try! a.serializedBytes(options: options)
+    r.message = SigningPreview.signingInput(type: r.type, body: r.body)
+    return r
+}
+
+/// Her's commands say what they let Her do on the machine: full access is
+/// warned, a connector shows its command as it will run and its
+/// environment, sorted; an approval mode this version doesn't know is
+/// refused.
+@Test func herCommands() throws {
+    let hints = SigningPreview.Hints(machineNames: ["m_1": "box"])
+    #expect(try SigningPreview.card(admin { $0.setHer.enabled = true }, hints).title == "Turn Her on for machine “box”")
+    #expect(try SigningPreview.card(admin { $0.setHer = .init() }, hints).title == "Turn Her off for machine “box”")
+    let full = try SigningPreview.card(admin {
+        $0.setHerAssistantMode.botID = "b1"
+        $0.setHerAssistantMode.permissionMode = "bypass-permissions"
+    }, hints)
+    #expect(full.title == "Give an assistant of Her full access on machine “box”")
+    #expect(full.warning != nil && full.lines.contains("Assistant ID: b1"))
+    let asks = try SigningPreview.card(admin { $0.setHerAssistantMode.permissionMode = "accept-edits" }, hints)
+    #expect(asks.warning == nil && asks.lines.contains("Approval mode: Change files without asking; ask before other commands"))
+    #expect(throws: Refusal.unsupported(SigningPreview.adminCommand)) {
+        try SigningPreview.card(admin { $0.setHerAssistantMode.permissionMode = "yolo" })
+    }
+    let connector = try SigningPreview.card(admin {
+        $0.setHerCommandConnector.name = "files"
+        $0.setHerCommandConnector.command = "npx"
+        $0.setHerCommandConnector.args = ["-y", "my server"]
+        $0.setHerCommandConnector.env = ["B": "2", "A": "line\nbreak", "C": "3"]
+    }, hints)
+    #expect(connector.title == "Let Her start connector “files” on machine “box”" && connector.warning != nil)
+    #expect(connector.lines == ["Command: npx -y \"my server\"", "Environment: A=\"line\\nbreak\"", "Environment: B=2", "Environment: C=3"])
+    let removed = try SigningPreview.card(admin {
+        $0.setHerCommandConnector.name = "files"
+        $0.setHerCommandConnector.remove = true
+    }, hints)
+    #expect(removed.title == "Remove Her’s connector “files” from machine “box”")
+}

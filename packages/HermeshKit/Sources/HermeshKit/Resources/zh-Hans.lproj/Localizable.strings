@@ -19,18 +19,24 @@
 "All" = "全部";
 /* Label of a card row with a limit beyond the defaults */
 "Also" = "另外";
+"Approval mode: %@" = "审批方式：%@";
 "Approve a new machine" = "批准一台新机器加入";
 "Approve only if that device is in your hands." = "只在那台设备就在你手上时批准。";
+"Approve only if you know this command and trust where it comes from." = "请确认你了解这条命令、信任它的来源再批准。";
 "Approve only if you started erasing everything yourself." = "只在是你自己发起的全部清空时批准。";
 "Approve “%@” to connect to your computer" = "批准「%@」连接你的电脑";
+"Ask before each file change and command" = "每次修改文件、运行命令前都先询问";
+"Assistant ID: %@" = "助手 ID：%@";
 "Available coding agents: %@" = "可用的编码 Agent：%@";
 "Base branch: %@" = "基准分支：%@";
 "Can also see other personal agents’ sessions in these projects" = "还能看到这些项目里其他个人 agent 的会话";
+"Change files without asking; ask before other commands" = "修改文件无需询问；运行其他命令前先询问";
 "Change the access of personal agent “%@”" = "修改个人 agent「%@」的权限";
 "Coding agents" = "编码 Agent";
 "Coding agents it can run: %@" = "可调用的编码 agent：%@";
 "Coding agents: %@" = "编码 agent：%@";
 "Coding agents: %@ → %@" = "编码 agent：%1$@ → %2$@";
+"Command: %@" = "命令：%@";
 "Connects through %@, which holds its key" = "经由 %@ 连接，由它保管密钥";
 "Create your owner identity" = "创建你的管理身份";
 "Create your owner key" = "生成你的管理密钥";
@@ -41,6 +47,7 @@
 "Device name: %@" = "设备名：%@";
 "Device “%@”" = "设备「%@」";
 "Directory: %@" = "目录：%@";
+"Environment: %@=%@" = "环境变量：%1$@=%2$@";
 "Erase ID: %@" = "清空 ID：%@";
 "Erase everything in your Hermesh" = "清空你的 Hermesh 的全部内容";
 "Expires" = "有效期";
@@ -48,14 +55,17 @@
 "Expires: %@ (before the change: %@)" = "有效期：至 %1$@（修改前至 %2$@）";
 "Fast" = "快速";
 "Fingerprint: %@" = "指纹：%@";
+"Full access: ask before nothing" = "完全权限：任何操作都不询问";
 "Full trust: in the chosen projects, it can do anything you can." = "完全信任：它在所选项目里能做你本人能做的一切。";
 "Full trust: on the chosen machines, this personal agent can do anything you can, including reading credentials and accessing the network." = "完全信任：这个个人 agent 在所选机器上能做你本人能做的一切，包括读取凭据和访问网络。";
+"Give an assistant of Her full access on %@" = "给 Her 在%@上的一个助手完全权限";
 "Hermesh can’t show this request in full (%@)." = "Hermesh 无法完整显示这个请求（%@）。";
 "Hermesh doesn’t recognize this kind of request (%@)." = "Hermesh 不认识这种请求（%@）。";
 "If the verification code doesn’t match, this isn’t the machine in front of you." = "核对码对不上，说明这不是你面前的那台机器。";
 "In place: agents change the files in this directory directly" = "原地工作：agent 直接改这个目录里的文件";
 "Issue this Mac a certificate for end-to-end connections" = "给这台 Mac 签发端到端连接证书";
 "Issue this iPhone a certificate for end-to-end connections" = "给这台 iPhone 签发端到端连接证书";
+"Let Her start connector “%@” on %@" = "允许 Her 在%2$@上启动连接器「%1$@」";
 "Machine ID %@…" = "机器 ID %@…";
 "Machine ID: %@" = "机器 ID：%@";
 "Machine “%@” (already yours)" = "机器「%@」（已经是你的机器）";
@@ -65,6 +75,10 @@
 "Model: %@" = "模型：%@";
 "New settings:" = "修改后的设置：";
 "On these machines: %@" = "在这些机器上：%@";
+"Once approved, Her no longer starts it on the machine." = "批准后，Her 将不再在这台机器上启动它。";
+"Once approved, Her runs on the machine as its user and keeps her conversations, settings and logins there. Her assistants can read and write files, run commands and reach the internet on it; new ones ask before risky steps." = "批准后，Her 将以这台机器的用户身份在上面运行，对话、设置和登录信息都保存在这台机器上。Her 的助手可在这台机器上读写文件、运行命令、访问网络；新助手遇到有风险的操作会先征求你的同意。";
+"Once approved, Her runs this command on the machine as its user whenever her assistants use the connector. It can do anything that user can: read and change files, run programs and reach the network." = "批准后，每当 Her 的助手用到这个连接器，Her 都会以这台机器的用户身份运行这条命令。它能做这个用户能做的一切：读写文件、运行程序、访问网络。";
+"Once approved, Her stops on the machine; her conversations, settings and logins stay there." = "批准后，Her 将在这台机器上停止运行；对话、设置和登录信息仍保存在这台机器上。";
 "Once approved, Hermesh on all your trusted devices and machines, this Mac included, erases its keys, sessions and settings, and your agents are disconnected. This can’t be undone." = "批准后，你所有可信设备和机器（包括这台 Mac）上的 Hermesh 都将清除密钥、会话和设置，所有 Agent 也会断开连接。此操作无法撤销。";
 "Once approved, Hermesh on all your trusted devices and machines, this iPhone included, erases its keys, sessions and settings, and your agents are disconnected. This can’t be undone." = "批准后，你所有可信设备和机器（包括这台 iPhone）上的 Hermesh 都将清除密钥、会话和设置，所有 Agent 也会断开连接。此操作无法撤销。";
 "Once approved, Hermesh on this Mac uses it for end-to-end encrypted connections to your machines, to view and manage your sessions and machines." = "批准后，这台 Mac 上的 Hermesh 将使用该证书与你的各台机器建立端到端加密连接，用于查看和管理会话与机器。";
@@ -74,7 +88,9 @@
 "Once approved, it can no longer approve anything, and its own machine is removed with it; this iPhone reissues the machine and personal agent credentials it signed." = "批准后，该设备将立即失去批准权限，其关联的执行机器也会一并移除；此前由该设备签发的机器和个人 Agent 凭证将改由这台 iPhone 重新签发。";
 "Once approved, it keeps the same access, now signed by this Mac; the old version stops working." = "批准后，原有权限保持不变，改由这台 Mac 重新签名，旧版本随即失效。";
 "Once approved, it keeps the same access, now signed by this iPhone; the old version stops working." = "批准后，原有权限保持不变，改由这台 iPhone 重新签名，旧版本随即失效。";
+"Once approved, it runs any command and changes any file on the machine without asking, protected paths included; only deny rules and deleting a critical path still stop it." = "批准后，它在这台机器上运行任何命令、修改任何文件都不再询问，受保护的路径也不例外；只有禁止规则和删除关键路径仍会拦住它。";
 "Once approved, its sessions there that name no model run with these; the agent’s own configuration is not changed." = "批准后，该机器上未指定模型的会话将默认使用这些设置，不会改动 Agent 自身的配置。";
+"Once approved, the assistant works in this approval mode from its next step." = "批准后，这个助手从下一步起按这种审批方式工作。";
 "Once approved, the list above becomes your trusted devices." = "批准后，你的可信设备将按上方列表生效。";
 "Once approved, the machine accepts new sessions again." = "批准后，这台机器将恢复接收新会话。";
 "Once approved, the machine accepts no new sessions until you resume it, which you can do at any time." = "批准后，这台机器将暂停接收新会话，你可以随时恢复。";
@@ -99,6 +115,7 @@
 "Reasoning effort: %@" = "推理强度：%@";
 "Reissue the certificate of machine “%@”" = "重新签发机器「%@」的证书";
 "Reissue the grant of “%@”" = "重新签发「%@」的授权";
+"Remove Her’s connector “%@” from %@" = "从%2$@移除 Her 的连接器「%1$@」";
 "Remove project “%@” from %@" = "从%2$@删除项目「%1$@」";
 "Remove trusted device “%@”" = "移除可信设备「%@」";
 "Rename %@ to “%@”" = "把%1$@改名为「%2$@」";
@@ -111,6 +128,7 @@
 "Same as %@" = "跟随 %@";
 "Separate worktrees for git repositories; other directories in place" = "git 仓库用独立 worktree，其他目录原地工作";
 "Sessions at once: up to %lld" = "最多同时运行 %lld 个会话";
+"Set how an assistant of Her acts on %@" = "设置 Her 在%@上的一个助手的审批方式";
 "Set the model %@ runs with on %@" = "设置%2$@上 %1$@ 用的模型";
 "Share the agents on this Mac" = "共享这台 Mac 上的 agent";
 "Speed: %@" = "速度：%@";
@@ -121,6 +139,8 @@
 "This sends a join request to your existing devices. Check the same code on one of them and approve, and this Mac becomes a trusted device." = "将向你已有的设备发送加入请求。在已有设备上核对相同的核对码并批准后，这台 Mac 即可成为可信设备。";
 "This sends a join request to your existing devices. Check the same code on one of them and approve, and this iPhone becomes a trusted device." = "将向你已有的设备发送加入请求。在已有设备上核对相同的核对码并批准后，这台 iPhone 即可成为可信设备。";
 "Trusted devices" = "可信设备";
+"Turn Her off for %@" = "在%@上关闭 Her";
+"Turn Her on for %@" = "在%@上开启 Her";
 "Unknown program" = "未知程序";
 "Unnamed device" = "未命名设备";
 "Until %@" = "至 %@";
@@ -130,6 +150,7 @@
 "Uses your owner key to make it a trusted device too, able to approve agents, machines and new devices just like this Mac." = "使用你的管理密钥将其设为可信设备，使其能像这台 Mac 一样批准 Agent、机器和新设备。";
 "Uses your owner key to make it a trusted device too, able to approve agents, machines and new devices just like this iPhone." = "使用你的管理密钥将其设为可信设备，使其能像这台 iPhone 一样批准 Agent、机器和新设备。";
 "Version %lld" = "第 %lld 版";
+"What it reads, such as web pages and messages, can steer it. Approve only if you accept that." = "它读到的网页、消息等内容可能左右它的行为。请确认你接受这一点再批准。";
 /* %@ is a request type */
 "What would be signed doesn’t match what would be shown (%@)." = "要签名的内容和要显示的内容不一致（%@）。";
 "Workspace: %@" = "工作方式：%@";
