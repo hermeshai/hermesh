@@ -149,8 +149,8 @@ func TestDesktop(t *testing.T) {
 // her.spec.ts) against her itself, with her-mock as its model service: the
 // first run on this Mac, a chat, work-mac added as a second environment and
 // switched to, and work-mac going offline. It needs her built (cargo build
-// in her/, or HERMESH_HER and HERMESH_HER_MOCK), so it is not one of
-// TestDesktop's specs. HERMESH_DESKTOP_GREP picks tests by name.
+// in her/, or HERMESH_HER_BIN), so it is not one of TestDesktop's specs.
+// HERMESH_DESKTOP_GREP picks tests by name.
 //
 //	go test ./e2e -run TestDesktopHer -v -timeout 30m
 func TestDesktopHer(t *testing.T) {
