@@ -108,7 +108,7 @@ fn missing_credentials(server: &Server, cwd: &std::path::Path) -> Option<String>
 async fn sign_in_with_chatgpt(server: &Server) -> Result<(), RpcError> {
     use her_protocol::api::ChatGptLoginState;
     let chatgpt = server.connections().chatgpt.clone();
-    let started = chatgpt.start().await.map_err(|err| auth_required(err.to_string()))?;
+    let started = chatgpt.start(None).await.map_err(|err| auth_required(err.to_string()))?;
     if let Some(url) = &started.authorize_url {
         her_core::open_in_browser(url);
     }

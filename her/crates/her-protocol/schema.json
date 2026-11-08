@@ -110,6 +110,12 @@
       "$ref": "#/definitions/ChatGptCancelParams"
     },
     {
+      "$ref": "#/definitions/ChatGptCompleteParams"
+    },
+    {
+      "$ref": "#/definitions/ChatGptLoginParams"
+    },
+    {
       "$ref": "#/definitions/ChatGptStatus"
     },
     {
@@ -432,6 +438,9 @@
     },
     {
       "$ref": "#/definitions/McpListResult"
+    },
+    {
+      "$ref": "#/definitions/McpLoginCompleteParams"
     },
     {
       "$ref": "#/definitions/McpLoginParams"
@@ -3324,6 +3333,47 @@
       "required": [
         "login_id"
       ],
+      "type": "object"
+    },
+    "ChatGptCompleteParams": {
+      "additionalProperties": false,
+      "description": "`chatgpt/complete`: finishes a sign-in started with a `redirect_uri`, with what its redirect carried. It answers once the sign-in has ended.",
+      "properties": {
+        "client_id": {
+          "description": "The redirect's `client_id`, when it has one: ChatGPT names there the client it registered.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "code": {
+          "type": "string"
+        },
+        "login_id": {
+          "type": "string"
+        },
+        "state": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "code",
+        "login_id",
+        "state"
+      ],
+      "type": "object"
+    },
+    "ChatGptLoginParams": {
+      "description": "`chatgpt/login`: starts signing in. Without `redirect_uri`, her catches the browser's redirect on its own machine; with it, the browser goes back to the client's device, and `chatgpt/complete` brings what the redirect carried.",
+      "properties": {
+        "redirect_uri": {
+          "description": "A loopback address on the client's device (RFC 8252): `http://127.0.0.1:<port>/…`, `http://[::1]:<port>/…` or `http://localhost:<port>/…`.",
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
       "type": "object"
     },
     "ChatGptLoginState": {
@@ -12587,8 +12637,35 @@
       ],
       "type": "object"
     },
+    "McpLoginCompleteParams": {
+      "description": "`mcp/login_complete`: finishes a sign-in started with a `redirect_uri`, with what its redirect carried. It answers once the token is saved; `mcp/changed { login_id }` follows, as for any sign-in.",
+      "properties": {
+        "code": {
+          "type": "string"
+        },
+        "iss": {
+          "description": "The redirect's `iss` (RFC 9207), when it has one: needed when the authorization server says it sends one.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "login_id": {
+          "type": "string"
+        },
+        "state": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "code",
+        "login_id",
+        "state"
+      ],
+      "type": "object"
+    },
     "McpLoginParams": {
-      "description": "`mcp/login`: starts signing in to a server. With `server`, the server is not in the configuration yet: the token is saved under `name`, and adding it comes after.",
+      "description": "`mcp/login`: starts signing in to a server. With `server`, the server is not in the configuration yet: the token is saved under `name`, and adding it comes after. With `redirect_uri`, the browser goes back to the client's device, and `mcp/login_complete` brings what the redirect carried.",
       "properties": {
         "client": {
           "anyOf": [
@@ -12609,6 +12686,13 @@
         },
         "name": {
           "type": "string"
+        },
+        "redirect_uri": {
+          "description": "A loopback address on the client's device (RFC 8252): `http://127.0.0.1:<port>/…`, `http://[::1]:<port>/…` or `http://localhost:<port>/…`. Not for connectors that sign in through their own program.",
+          "type": [
+            "string",
+            "null"
+          ]
         },
         "server": {
           "anyOf": [
@@ -20159,7 +20243,12 @@
       "params": "ChatGptCancelParams",
       "result": "ChatGptStatus"
     },
+    "chatgpt/complete": {
+      "params": "ChatGptCompleteParams",
+      "result": "ChatGptStatus"
+    },
     "chatgpt/login": {
+      "params": "ChatGptLoginParams",
       "result": "ChatGptStatus"
     },
     "chatgpt/logout": {
@@ -20429,6 +20518,10 @@
       "params": "McpLogoutParams",
       "result": "Empty"
     },
+    "mcp/login_complete": {
+      "params": "McpLoginCompleteParams",
+      "result": "Empty"
+    },
     "mcp/logout": {
       "params": "McpLogoutParams",
       "result": "Empty"
@@ -20637,6 +20730,7 @@
       "browser/status": "experimental",
       "browser/use_extension": "experimental",
       "chatgpt/cancel": "stable",
+      "chatgpt/complete": "stable",
       "chatgpt/login": "stable",
       "chatgpt/logout": "stable",
       "chatgpt/status": "stable",
@@ -20706,6 +20800,7 @@
       "mcp/list": "stable",
       "mcp/login": "stable",
       "mcp/login_cancel": "stable",
+      "mcp/login_complete": "stable",
       "mcp/logout": "stable",
       "mcp/probe": "stable",
       "mcp/probe_cancel": "stable",

@@ -52,6 +52,8 @@ pub(crate) struct State {
     logins: Mutex<HashMap<String, tokio_util::sync::CancellationToken>>,
     /// The latest browser step survives a renderer reload, including initial URL creation.
     login_results: Mutex<HashMap<String, LoginAttempt>>,
+    /// Sign-ins started with a `redirect_uri`, by login id, for `mcp/login_complete`.
+    completions: Mutex<HashMap<String, her_mcp::oauth::Completion>>,
 }
 
 type LoginResponse = tokio::sync::watch::Receiver<Option<Result<McpLoginResult, String>>>;
@@ -60,7 +62,27 @@ type LoginResponse = tokio::sync::watch::Receiver<Option<Result<McpLoginResult, 
 struct LoginAttempt {
     config: her_protocol::McpServerConfig,
     client: Option<McpOAuthClientKind>,
+    redirect_uri: Option<String>,
     response: LoginResponse,
+}
+
+/// A `redirect_uri` on the client's device, as RFC 8252 allows: `http://127.0.0.1:<port>/…`,
+/// `http://[::1]:<port>/…` or `http://localhost:<port>/…`. It is returned as parsed, so the
+/// address the provider is given is the one that was checked.
+pub(crate) fn loopback_redirect(uri: &str) -> Result<String, RpcError> {
+    let refused = || RpcError::invalid_params(format!("redirect_uri must be http://127.0.0.1:<port>/…, http://[::1]:<port>/… or http://localhost:<port>/…, not {uri}"));
+    let url = url::Url::parse(uri).map_err(|_| refused())?;
+    let loopback = match url.host() {
+        Some(url::Host::Ipv4(ip)) => ip == std::net::Ipv4Addr::LOCALHOST,
+        Some(url::Host::Ipv6(ip)) => ip == std::net::Ipv6Addr::LOCALHOST,
+        Some(url::Host::Domain(name)) => name == "localhost",
+        None => false,
+    };
+    let plain = url.username().is_empty() && url.password().is_none() && url.fragment().is_none();
+    if url.scheme() != "http" || !loopback || url.port().is_none_or(|port| port == 0) || !plain {
+        return Err(refused());
+    }
+    Ok(url.into())
 }
 
 async fn login_result(mut pending: LoginResponse) -> Result<McpLoginResult, RpcError> {
@@ -644,6 +666,7 @@ impl Server {
     /// `mcp/login` (mcp-design §13.8): starts a sign-in and returns the address for the
     /// browser; `mcp/changed { name, login_id }` says how it ended.
     pub async fn mcp_login(&self, params: McpLoginParams) -> Result<McpLoginResult, RpcError> {
+        let redirect_uri = params.redirect_uri.as_deref().map(loopback_redirect).transpose()?;
         let server = self.clone();
         let cwd = params.cwd.clone();
         let ws = tokio::task::spawn_blocking(move || server.workspace(cwd.as_deref())).await.map_err(blocking_error)??;
@@ -653,6 +676,9 @@ impl Server {
         };
         if config.name != params.name { return Err(RpcError::invalid_params("连接器名称不匹配")); }
         let managed = if config.connector.is_some() {
+            if redirect_uri.is_some() {
+                return Err(RpcError::invalid_params(format!("{} signs in through its own program on this machine, which takes no redirect_uri", params.name)));
+            }
             Some(her_core::connectors::for_server(self.0.home.root(), &config).ok_or_else(|| RpcError::invalid_params("托管连接器配置已改变，请重新安装"))?)
         } else {
             if config.url.is_none() { return Err(RpcError::invalid_params(format!("{} is not a remote server", params.name))); }
@@ -667,7 +693,7 @@ impl Server {
         if cancelled { self.wait_for_login_end(&params.name).await?; }
         let existing = self.customize().login_results.lock().get(&params.name).cloned();
         if let Some(existing) = existing {
-            if existing.config == config && existing.client == params.client {
+            if existing.config == config && existing.client == params.client && existing.redirect_uri == redirect_uri {
                 drop(startup);
                 return login_result(existing.response).await;
             }
@@ -678,7 +704,7 @@ impl Server {
         let token = tokio_util::sync::CancellationToken::new();
         let (progress, response) = tokio::sync::watch::channel(None);
         self.customize().logins.lock().insert(params.name.clone(), token.clone());
-        self.customize().login_results.lock().insert(params.name.clone(), LoginAttempt { config: config.clone(), client: params.client, response: response.clone() });
+        self.customize().login_results.lock().insert(params.name.clone(), LoginAttempt { config: config.clone(), client: params.client, redirect_uri: redirect_uri.clone(), response: response.clone() });
         let server = self.clone();
         let name = params.name.clone();
         tokio::spawn(async move {
@@ -721,11 +747,15 @@ impl Server {
                         own, metadata_url: ws.config.mcp.client_metadata_url.clone(),
                         paths: Some(her_mcp::oauth::OAuthPaths { her_home: server.0.home.root().to_path_buf() }),
                         http: server.0.llm.http_client().map_err(|e| e.to_string())?, prefer: params.client,
+                        redirect_uri,
                     };
                     let pending = tokio::select! {
                         _ = token.cancelled() => return Err("已取消登录".into()),
                         result = tokio::time::timeout(std::time::Duration::from_secs(60), her_mcp::oauth::start_login(request)) => result.map_err(|_| "获取授权链接超时，请重试")??,
                     };
+                    if let Some(completion) = pending.completion() {
+                        server.customize().completions.lock().insert(login_id.clone(), completion);
+                    }
                     progress.send_replace(Some(Ok(McpLoginResult { authorize_url: pending.authorize_url.clone(), login_id: login_id.clone(), client: pending.client })));
                     let cancel_provider = pending.canceller();
                     let wait = pending.wait(LOGIN_WAIT);
@@ -746,6 +776,7 @@ impl Server {
             {
                 let mut results = server.customize().login_results.lock();
                 server.customize().logins.lock().remove(&name);
+                server.customize().completions.lock().remove(&login_id);
                 results.remove(&name);
             }
             let mut changed = json!({ "name": name, "login_id": login_id });
@@ -754,6 +785,18 @@ impl Server {
         });
         drop(startup);
         login_result(response).await
+    }
+
+    /// `mcp/login_complete`: finishes a sign-in started with a `redirect_uri`, with what its
+    /// redirect carried, once the token is saved. `mcp/changed` follows, as for any sign-in.
+    pub async fn mcp_login_complete(&self, p: McpLoginCompleteParams) -> Result<Empty, RpcError> {
+        let completion = self.customize().completions.lock().get(&p.login_id).cloned();
+        let completion = completion.ok_or_else(|| RpcError::invalid_params(format!("no sign-in started with a redirect_uri is waiting as {}", p.login_id)))?;
+        if !completion.matches(&p.state) {
+            return Err(RpcError::invalid_params("the state does not belong to this sign-in"));
+        }
+        completion.complete(p.code, p.state, p.iss).await.map_err(|e| RpcError::with_kind(error_code::MCP_LOGIN_FAILED, "mcp_login_failed", e))?;
+        Ok(Empty {})
     }
 
     /// `mcp/logout`: revokes and deletes a server's tokens, and ends a sign-in in progress.
@@ -841,4 +884,46 @@ fn workspace_paths(dir: &Path) -> Vec<(PathBuf, bool)> {
         (dir.join(".agents").join("skills"), true),
         (dir.join(".claude").join("skills"), true),
     ]
+}
+
+#[cfg(test)]
+mod tests {
+    use super::loopback_redirect;
+
+    #[test]
+    fn a_redirect_must_be_a_loopback_address_with_a_port() {
+        for (given, kept) in [
+            ("http://127.0.0.1:53682/callback", "http://127.0.0.1:53682/callback"),
+            ("http://[::1]:8080/cb?from=app", "http://[::1]:8080/cb?from=app"),
+            ("http://localhost:1455/auth/callback", "http://localhost:1455/auth/callback"),
+            ("http://LOCALHOST:1455", "http://localhost:1455/"),
+            // Spelled oddly, it is sent as checked.
+            ("http://127.1:9000/cb", "http://127.0.0.1:9000/cb"),
+            ("http://127.0.0.1:9000\\@evil.example/", "http://127.0.0.1:9000/@evil.example/"),
+        ] {
+            assert_eq!(loopback_redirect(given).as_deref(), Ok(kept), "{given}");
+        }
+        for refused in [
+            "https://127.0.0.1:53682/callback",
+            "https://evil.example/callback",
+            "http://evil.example:8080/callback",
+            "http://192.168.1.20:8080/callback",
+            "http://127.0.0.2:8080/callback",
+            "http://localhost.evil.example:8080/callback",
+            "http://127.0.0.1.evil.example:8080/",
+            "http://127.0.0.1/callback",
+            "http://127.0.0.1:80/callback",
+            "http://127.0.0.1:0/callback",
+            "http://user@127.0.0.1:8080/callback",
+            "http://evil.example@127.0.0.1:8080/",
+            "http://127.0.0.1:8080@evil.example/",
+            "http://127.0.0.1:8080/callback#fragment",
+            "app://callback",
+            "127.0.0.1:8080/callback",
+            "",
+        ] {
+            let error = loopback_redirect(refused).expect_err(refused);
+            assert_eq!(error.code, her_rpc::code::INVALID_PARAMS, "{refused}");
+        }
+    }
 }

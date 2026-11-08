@@ -12,7 +12,8 @@ Protocol version 2. Generated from `her protocol schema` by `tools/gen-protocol-
 | `auth/delete` | `AuthDeleteParams` | `Empty` | Parameters of `auth/delete`. |
 | `auth/set` | `AuthSetParams` | `AuthSetResult` | Parameters of `auth/set`. |
 | `chatgpt/cancel` | `ChatGptCancelParams` | `ChatGptStatus` |  |
-| `chatgpt/login` | — | `ChatGptStatus` |  |
+| `chatgpt/complete` | `ChatGptCompleteParams` | `ChatGptStatus` | `chatgpt/complete`: finishes a sign-in started with a `redirect_uri`, with what its redirect carried. It answers once the sign-in has ended. |
+| `chatgpt/login` | `ChatGptLoginParams` | `ChatGptStatus` | `chatgpt/login`: starts signing in. Without `redirect_uri`, her catches the browser's redirect on its own machine; with it, the browser goes back to the client's device, and `chatgpt/complete` brings what the redirect carried. |
 | `chatgpt/logout` | — | `ChatGptStatus` |  |
 | `chatgpt/status` | — | `ChatGptStatus` |  |
 | `config/read` | `ConfigReadParams` | `ConfigReadResult` |  |
@@ -47,8 +48,9 @@ Protocol version 2. Generated from `her protocol schema` by `tools/gen-protocol-
 | `initialize` | `InitializeParams` | `InitializeResult` |  |
 | `mcp/check` | `McpServerParams` | `McpCheckResult` |  |
 | `mcp/list` | `McpListParams` | `McpListResult` |  |
-| `mcp/login` | `McpLoginParams` | `McpLoginResult` | `mcp/login`: starts signing in to a server. With `server`, the server is not in the configuration yet: the token is saved under `name`, and adding it comes after. |
+| `mcp/login` | `McpLoginParams` | `McpLoginResult` | `mcp/login`: starts signing in to a server. With `server`, the server is not in the configuration yet: the token is saved under `name`, and adding it comes after. With `redirect_uri`, the browser goes back to the client's device, and `mcp/login_complete` brings what the redirect carried. |
 | `mcp/login_cancel` | `McpLogoutParams` | `Empty` |  |
+| `mcp/login_complete` | `McpLoginCompleteParams` | `Empty` | `mcp/login_complete`: finishes a sign-in started with a `redirect_uri`, with what its redirect carried. It answers once the token is saved; `mcp/changed { login_id }` follows, as for any sign-in. |
 | `mcp/logout` | `McpLogoutParams` | `Empty` |  |
 | `mcp/probe` | `McpProbeParams` | `McpProbeResult` | `mcp/probe`: checks a server before it is added, writing nothing (mcp-design §13.6). |
 | `mcp/probe_cancel` | `McpProbeCancelParams` | `Empty` |  |

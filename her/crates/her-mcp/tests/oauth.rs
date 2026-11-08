@@ -194,6 +194,7 @@ async fn sign_in(name: &str, url: &str, home: &Path, own: Option<McpOAuthClient>
         paths: Some(OAuthPaths { her_home: home.to_path_buf() }),
         http: http_client(),
         prefer: None,
+        redirect_uri: None,
     })
     .await
     .unwrap();
@@ -271,6 +272,7 @@ async fn the_metadata_document_and_the_users_own_client() {
         paths: Some(OAuthPaths { her_home: home.clone() }),
         http: http_client(),
         prefer: None,
+        redirect_uri: None,
     })
     .await
     .unwrap();
@@ -287,9 +289,75 @@ async fn the_metadata_document_and_the_users_own_client() {
         paths: None,
         http: http_client(),
         prefer: None,
+        redirect_uri: None,
     })
     .await
     .err()
     .unwrap();
     assert!(err.contains("oauth.client_id"), "{err}");
+}
+
+/// A sign-in whose browser is on the client's device (her-server.md §5.4): nothing listens
+/// here, and the client hands back what the redirect carried.
+#[tokio::test]
+async fn a_sign_in_for_another_device_is_completed_with_what_its_redirect_carried() {
+    store();
+    let dir = tempfile::tempdir().unwrap();
+    let home = dir.path().join("her");
+    let mock = her_mock::mcp::serve_http("127.0.0.1:0", oauth_options(false, true, 3600)).await.unwrap();
+    // Port 9 (discard): nothing answers there, so following the redirect would fail.
+    let redirect = "http://127.0.0.1:9/callback";
+    let start = |server: &str| {
+        oauth::start_login(LoginRequest {
+            server: server.into(),
+            url: mock.url(),
+            own: None,
+            metadata_url: None,
+            paths: Some(OAuthPaths { her_home: home.clone() }),
+            http: http_client(),
+            prefer: None,
+            redirect_uri: Some(redirect.into()),
+        })
+    };
+    // Where the authorization server sends the browser, read without following it: her's client
+    // follows no redirect.
+    let browser = http_client();
+    let redirected = |authorize: String| {
+        let browser = browser.clone();
+        async move {
+            let response = browser.get(&authorize).send().await.unwrap();
+            let location = response.headers()["location"].to_str().unwrap().to_string();
+            assert!(location.starts_with(&format!("{redirect}?")), "{location}");
+            let query: HashMap<String, String> = reqwest::Url::parse(&location).unwrap().query_pairs().into_owned().collect();
+            query
+        }
+    };
+
+    let pending = start("far").await.unwrap();
+    assert_eq!(pending.client, McpOAuthClientKind::Registration);
+    let completion = pending.completion().expect("a sign-in for another device");
+    let query = redirected(pending.authorize_url.clone()).await;
+    // A state that is not this sign-in's is refused, and the sign-in waits on.
+    assert!(!completion.matches("wrong"));
+    let refused = completion.complete(query["code"].clone(), "wrong".into(), query.get("iss").cloned()).await;
+    assert!(refused.is_err_and(|e| e.contains("state")));
+    assert!(completion.matches(&query["state"]));
+    completion.complete(query["code"].clone(), query["state"].clone(), query.get("iss").cloned()).await.unwrap();
+    pending.wait(Duration::from_secs(10)).await.unwrap();
+    assert!(oauth::signed_in("far", &mock.url()));
+    let saved = std::fs::read_to_string(home.join("mcp/oauth-clients.json")).unwrap();
+    assert!(saved.contains(redirect), "the client is registered for the device's address: {saved}");
+    // Once it has ended, nothing more is taken.
+    assert!(completion.complete(query["code"].clone(), query["state"].clone(), None).await.is_err());
+
+    // The server says it names itself in the redirect (RFC 9207): without its name, the code may
+    // be another server's, and the sign-in fails.
+    let pending = start("unnamed").await.unwrap();
+    let completion = pending.completion().unwrap();
+    let query = redirected(pending.authorize_url.clone()).await;
+    let failed = completion.complete(query["code"].clone(), query["state"].clone(), None).await;
+    assert!(failed.is_err_and(|e| e.contains("iss")));
+    assert!(pending.wait(Duration::from_secs(10)).await.is_err());
+    assert!(!oauth::signed_in("unnamed", &mock.url()));
+    assert_eq!(mock.oauth_counts().0, 1, "the registration for the device's address is reused");
 }

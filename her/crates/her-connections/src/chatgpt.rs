@@ -87,6 +87,17 @@ struct Login {
     state: ChatGptLoginState,
     message: Option<String>,
     cancel: CancellationToken,
+    remote: Option<Remote>,
+}
+/// A sign-in whose browser goes back to the client's device, which brings what the redirect
+/// carried to [`ChatGpt::finish`].
+struct Remote {
+    redirect_uri: String,
+    state: String,
+    /// Hands the redirect's query to the waiting sign-in, once.
+    callback: Option<tokio::sync::oneshot::Sender<std::collections::HashMap<String, String>>>,
+    /// Cancelled once the sign-in has ended, however it ended.
+    ended: CancellationToken,
 }
 pub struct ChatGpt {
     dir: PathBuf,
@@ -332,14 +343,25 @@ impl ChatGpt {
             .http_client()
             .map_err(|_| ConnectionError::unavailable())
     }
-    pub async fn start(self: &Arc<Self>) -> Result<ChatGptStatus> {
-        if self
+    /// Starts signing in. With `redirect_uri`, a loopback address on the client's device that the
+    /// caller checked, the browser goes back there: nothing listens here, and the client brings
+    /// what the redirect carried to [`Self::finish`].
+    pub async fn start(self: &Arc<Self>, redirect_uri: Option<String>) -> Result<ChatGptStatus> {
+        let pending = self
             .login
             .lock()
             .as_ref()
-            .is_some_and(|l| matches!(l.state, ChatGptLoginState::Pending))
-        {
-            return self.status();
+            .filter(|l| matches!(l.state, ChatGptLoginState::Pending))
+            .map(|l| l.remote.as_ref().map(|r| r.redirect_uri.clone()));
+        match pending {
+            Some(redirect) if redirect == redirect_uri => return self.status(),
+            Some(_) => {
+                return Err(failure(
+                    "connection_busy",
+                    "Another ChatGPT sign-in is waiting; cancel it first",
+                ));
+            }
+            None => {}
         }
         let login_lock = self.lock_file("login.lock")?;
         login_lock.try_lock().map_err(|_| {
@@ -348,21 +370,27 @@ impl ChatGpt {
                 "A ChatGPT sign-in is already running in another window or process",
             )
         })?;
-        let listener = tokio::net::TcpListener::bind((std::net::Ipv4Addr::LOCALHOST, 0))
-            .await
-            .map_err(|_| {
-                failure(
-                    "callback_unavailable",
-                    "Cannot open the local ChatGPT sign-in callback",
-                )
-            })?;
-        let redirect = format!(
-            "http://127.0.0.1:{}/auth/callback",
-            listener
-                .local_addr()
-                .map_err(|_| ConnectionError::unavailable())?
-                .port()
-        );
+        let (listener, redirect) = match &redirect_uri {
+            Some(uri) => (None, uri.clone()),
+            None => {
+                let listener = tokio::net::TcpListener::bind((std::net::Ipv4Addr::LOCALHOST, 0))
+                    .await
+                    .map_err(|_| {
+                        failure(
+                            "callback_unavailable",
+                            "Cannot open the local ChatGPT sign-in callback",
+                        )
+                    })?;
+                let redirect = format!(
+                    "http://127.0.0.1:{}/auth/callback",
+                    listener
+                        .local_addr()
+                        .map_err(|_| ConnectionError::unavailable())?
+                        .port()
+                );
+                (Some(listener), redirect)
+            }
+        };
         let state = random();
         let nonce = random();
         let verifier = random();
@@ -404,21 +432,39 @@ impl ChatGpt {
         }
         let id = uuid::Uuid::new_v4().to_string();
         let cancel = CancellationToken::new();
+        let (callback, answer) = tokio::sync::oneshot::channel();
+        let ended = CancellationToken::new();
         *self.login.lock() = Some(Login {
             id: id.clone(),
             url: url.into(),
             state: ChatGptLoginState::Pending,
             message: None,
             cancel: cancel.clone(),
+            remote: redirect_uri.map(|redirect_uri| Remote {
+                redirect_uri,
+                state: state.clone(),
+                callback: Some(callback),
+                ended: ended.clone(),
+            }),
         });
         let this = self.clone();
         tokio::spawn(async move {
+            // Dropped after the lock, so whoever waits for the end can sign in again at once.
+            let _ended = ended.drop_guard();
             let _login_lock = login_lock;
+            let wait = async {
+                match listener {
+                    Some(listener) => this.callback(listener, &state).await,
+                    None => answer
+                        .await
+                        .map_err(|_| failure("cancelled", "ChatGPT sign-in cancelled")),
+                }
+            };
             // Cancellation only stops the callback wait. Once exchanging a rotating credential,
             // finish its atomic save rather than losing a refresh token in the middle of a write.
             let result = tokio::select! {
                 _=cancel.cancelled()=>Err(failure("cancelled","ChatGPT sign-in cancelled")),
-                r=tokio::time::timeout(Duration::from_secs(600),this.callback(listener,&state))=>r.unwrap_or_else(|_|Err(failure("login_timeout","ChatGPT sign-in timed out"))),
+                r=tokio::time::timeout(Duration::from_secs(600),wait)=>r.unwrap_or_else(|_|Err(failure("login_timeout","ChatGPT sign-in timed out"))),
             };
             let result = match result {
                 Ok(query) => {
@@ -524,6 +570,49 @@ impl ChatGpt {
                 .ok_or_else(|| failure("not_found", "Sign-in attempt no longer exists"))?;
             l.cancel.cancel();
         }
+        self.status()
+    }
+    /// Finishes a sign-in started with a `redirect_uri`, with what its redirect carried, as the
+    /// local callback does; answers once the sign-in has ended. A state that is not the
+    /// sign-in's changes nothing.
+    pub async fn finish(
+        &self,
+        id: &str,
+        code: &str,
+        state: &str,
+        client_id: Option<&str>,
+    ) -> Result<ChatGptStatus> {
+        let ended = {
+            let mut login = self.login.lock();
+            let l = login
+                .as_mut()
+                .filter(|l| l.id == id)
+                .ok_or_else(|| failure("not_found", "Sign-in attempt no longer exists"))?;
+            let remote = l.remote.as_mut().ok_or_else(|| {
+                failure(
+                    "invalid_request",
+                    "This sign-in was not started with a redirect_uri",
+                )
+            })?;
+            if remote.state != state {
+                return Err(failure(
+                    "invalid_state",
+                    "The state does not belong to this sign-in",
+                ));
+            }
+            if let Some(callback) = remote.callback.take() {
+                let mut query = std::collections::HashMap::from([
+                    ("code".to_string(), code.to_string()),
+                    ("state".to_string(), state.to_string()),
+                ]);
+                if let Some(client) = client_id {
+                    query.insert("client_id".into(), client.into());
+                }
+                let _ = callback.send(query);
+            }
+            remote.ended.clone()
+        };
+        ended.cancelled().await;
         self.status()
     }
     async fn post_token(&self, form: &[(&str, &str)]) -> Result<Value> {
