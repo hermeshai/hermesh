@@ -173,6 +173,26 @@ func makeVectors(t *testing.T) []vector {
 			Hints: vectorHints{MachineNames: machines}, Cards: []vectorCard{{Shows: []string{"Codex", "vps-1", "gpt-5-codex", "high"}}}},
 		{Name: "everything erased", Requests: []vectorRequest{req(&identityv1.EraseOrder{OwnerId: "o_x", EraseId: "e1"})},
 			Cards: []vectorCard{{Shows: []string{"e1"}}}},
+		{Name: "Her turned on", Requests: []vectorRequest{req(admin(&identityv1.AdminCommand{Command: &identityv1.AdminCommand_SetHer{SetHer: &identityv1.SetHer{Enabled: true}}}))},
+			Hints: vectorHints{MachineNames: machines}, Cards: []vectorCard{{Shows: []string{"Turn Her on", "vps-1"}}}},
+		{Name: "Her turned off", Requests: []vectorRequest{req(admin(&identityv1.AdminCommand{Command: &identityv1.AdminCommand_SetHer{SetHer: &identityv1.SetHer{}}}))},
+			Hints: vectorHints{MachineNames: machines}, Cards: []vectorCard{{Shows: []string{"Turn Her off", "vps-1"}}}},
+		{Name: "an assistant given full access", Requests: []vectorRequest{req(admin(&identityv1.AdminCommand{Command: &identityv1.AdminCommand_SetHerAssistantMode{
+			SetHerAssistantMode: &identityv1.SetHerAssistantMode{BotId: "bot-7", PermissionMode: "bypass-permissions"}}}))},
+			Hints: vectorHints{MachineNames: machines}, Cards: []vectorCard{{Shows: []string{"full access", "bot-7", "vps-1"}}}},
+		{Name: "an assistant asking first", Requests: []vectorRequest{req(admin(&identityv1.AdminCommand{Command: &identityv1.AdminCommand_SetHerAssistantMode{
+			SetHerAssistantMode: &identityv1.SetHerAssistantMode{BotId: "bot-7", PermissionMode: "manual"}}}))},
+			Hints: vectorHints{MachineNames: machines}, Cards: []vectorCard{{Shows: []string{"bot-7", "vps-1"}}}},
+		{Name: "a connector started as a command", Requests: []vectorRequest{req(admin(&identityv1.AdminCommand{Command: &identityv1.AdminCommand_SetHerCommandConnector{
+			SetHerCommandConnector: &identityv1.SetHerCommandConnector{Name: "github", Command: "npx", Args: []string{"-y", "@modelcontextprotocol/server-github"},
+				Env: map[string]string{"GITHUB_TOKEN": "t0ken", "DEBUG": "1"}}}}))},
+			Hints: vectorHints{MachineNames: machines},
+			Cards: []vectorCard{{Shows: []string{"github", "vps-1", "npx -y @modelcontextprotocol/server-github", "GITHUB_TOKEN=t0ken", "DEBUG=1"}}}},
+		{Name: "a connector removed", Requests: []vectorRequest{req(admin(&identityv1.AdminCommand{Command: &identityv1.AdminCommand_SetHerCommandConnector{
+			SetHerCommandConnector: &identityv1.SetHerCommandConnector{Name: "github", Remove: true}}}))},
+			Hints: vectorHints{MachineNames: machines}, Cards: []vectorCard{{Shows: []string{"github", "vps-1"}}}},
+		{Name: "refused: an approval mode it doesn't know", Requests: []vectorRequest{req(admin(&identityv1.AdminCommand{Command: &identityv1.AdminCommand_SetHerAssistantMode{
+			SetHerAssistantMode: &identityv1.SetHerAssistantMode{BotId: "bot-7", PermissionMode: "yolo"}}}))}, Refused: true},
 		{Name: "refused: what would be signed isn't what is shown", Requests: []vectorRequest{mismatch}, Refused: true},
 		{Name: "refused: a field this version doesn't know", Requests: []vectorRequest{unknownField}, Refused: true},
 		{Name: "refused: a kind of request it doesn't know", Requests: []vectorRequest{req(&identityv1.RevocationList{OwnerId: "o_x"})}, Refused: true},

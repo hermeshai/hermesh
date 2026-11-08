@@ -279,6 +279,153 @@
     ]
   },
   {
+    "name": "Her turned on",
+    "requests": [
+      {
+        "type": "hermesh.identity.v1.AdminCommand",
+        "body": "GgNtXzGCAQIIAQ=="
+      }
+    ],
+    "hints": {
+      "machineNames": {
+        "m_1": "vps-1"
+      }
+    },
+    "cards": [
+      {
+        "shows": [
+          "Turn Her on",
+          "vps-1"
+        ]
+      }
+    ]
+  },
+  {
+    "name": "Her turned off",
+    "requests": [
+      {
+        "type": "hermesh.identity.v1.AdminCommand",
+        "body": "GgNtXzGCAQA="
+      }
+    ],
+    "hints": {
+      "machineNames": {
+        "m_1": "vps-1"
+      }
+    },
+    "cards": [
+      {
+        "shows": [
+          "Turn Her off",
+          "vps-1"
+        ]
+      }
+    ]
+  },
+  {
+    "name": "an assistant given full access",
+    "requests": [
+      {
+        "type": "hermesh.identity.v1.AdminCommand",
+        "body": "GgNtXzGKARsKBWJvdC03EhJieXBhc3MtcGVybWlzc2lvbnM="
+      }
+    ],
+    "hints": {
+      "machineNames": {
+        "m_1": "vps-1"
+      }
+    },
+    "cards": [
+      {
+        "shows": [
+          "full access",
+          "bot-7",
+          "vps-1"
+        ]
+      }
+    ]
+  },
+  {
+    "name": "an assistant asking first",
+    "requests": [
+      {
+        "type": "hermesh.identity.v1.AdminCommand",
+        "body": "GgNtXzGKAQ8KBWJvdC03EgZtYW51YWw="
+      }
+    ],
+    "hints": {
+      "machineNames": {
+        "m_1": "vps-1"
+      }
+    },
+    "cards": [
+      {
+        "shows": [
+          "bot-7",
+          "vps-1"
+        ]
+      }
+    ]
+  },
+  {
+    "name": "a connector started as a command",
+    "requests": [
+      {
+        "type": "hermesh.identity.v1.AdminCommand",
+        "body": "GgNtXzGSAVkKBmdpdGh1YhIDbnB4GgIteRojQG1vZGVsY29udGV4dHByb3RvY29sL3NlcnZlci1naXRodWIiCgoFREVCVUcSATEiFQoMR0lUSFVCX1RPS0VOEgV0MGtlbg=="
+      }
+    ],
+    "hints": {
+      "machineNames": {
+        "m_1": "vps-1"
+      }
+    },
+    "cards": [
+      {
+        "shows": [
+          "github",
+          "vps-1",
+          "npx -y @modelcontextprotocol/server-github",
+          "GITHUB_TOKEN=t0ken",
+          "DEBUG=1"
+        ]
+      }
+    ]
+  },
+  {
+    "name": "a connector removed",
+    "requests": [
+      {
+        "type": "hermesh.identity.v1.AdminCommand",
+        "body": "GgNtXzGSAQoKBmdpdGh1YigB"
+      }
+    ],
+    "hints": {
+      "machineNames": {
+        "m_1": "vps-1"
+      }
+    },
+    "cards": [
+      {
+        "shows": [
+          "github",
+          "vps-1"
+        ]
+      }
+    ]
+  },
+  {
+    "name": "refused: an approval mode it doesn't know",
+    "requests": [
+      {
+        "type": "hermesh.identity.v1.AdminCommand",
+        "body": "GgNtXzGKAQ0KBWJvdC03EgR5b2xv"
+      }
+    ],
+    "hints": {},
+    "refused": true
+  },
+  {
     "name": "refused: what would be signed isn't what is shown",
     "requests": [
       {
