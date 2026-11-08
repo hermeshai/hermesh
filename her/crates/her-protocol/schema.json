@@ -161,6 +161,9 @@
       "$ref": "#/definitions/CredentialsSetParams"
     },
     {
+      "$ref": "#/definitions/DataExportResult"
+    },
+    {
       "$ref": "#/definitions/DeckChangedParams"
     },
     {
@@ -4543,6 +4546,26 @@
         "CNY"
       ],
       "type": "string"
+    },
+    "DataExportResult": {
+      "description": "The result of `data/export`: a .zip of what her keeps in its home for its assistants, conversations and settings, in the places the home keeps them, and nothing that signs anything in: no credential store, no tokens of a model connection or a connector, no browser profile, no cache or log. The file is the caller's to take and remove; one a day old goes when the next is written.",
+      "properties": {
+        "bytes": {
+          "description": "Its size.",
+          "format": "uint64",
+          "minimum": 0.0,
+          "type": "integer"
+        },
+        "path": {
+          "description": "The archive, in `exports/` of her's home.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "bytes",
+        "path"
+      ],
+      "type": "object"
     },
     "DataLabels": {
       "additionalProperties": false,
@@ -20362,6 +20385,9 @@
       "params": "CredentialsSetParams",
       "result": "Empty"
     },
+    "data/export": {
+      "result": "DataExportResult"
+    },
     "deck/check": {
       "params": "DeckCheckParams",
       "result": "DeckCheckResult"
@@ -20808,6 +20834,7 @@
       "connectors/install": "experimental",
       "credentials/delete": "stable",
       "credentials/set": "stable",
+      "data/export": "experimental",
       "deck/check": "stable",
       "deck/close": "stable",
       "deck/copy": "stable",

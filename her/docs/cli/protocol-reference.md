@@ -123,6 +123,7 @@ Protocol version 2. Generated from `her protocol schema` by `tools/gen-protocol-
 | `connections/remove` | `ConnectionIdParams` | `ConnectionsSnapshot` |  |
 | `connections/retry` | `ConnectionIdParams` | `ConnectionsSnapshot` |  |
 | `connectors/install` | `ConnectorInstallParams` | `ConnectorInstallResult` | Install a curated connector. No arbitrary download URLs or commands are accepted. |
+| `data/export` | — | `DataExportResult` | The result of `data/export`: a .zip of what her keeps in its home for its assistants, conversations and settings, in the places the home keeps them, and nothing that signs anything in: no credential store, no tokens of a model connection or a connector, no browser profile, no cache or log. The file is the caller's to take and remove; one a day old goes when the next is written. |
 | `desktop/status` | — | `DesktopStatus` | The result of `desktop/status`: whether computer use can work where her runs. |
 | `doc/apply` | `DocApplyParams` | `DocApplyResult` |  |
 | `doc/autofill` | `DocAutofillParams` | `DocApplyResult` | `doc/autofill`: Excel's fill handle dragged from `source` to `target` (the source with the rows or columns the drag added on one side), as one edit. Numbers, dates, text ending in a number and the built-in lists (周一, 一月, Jan…) carry on as a series; anything else, and formulas moved as Excel moves them, repeats. |

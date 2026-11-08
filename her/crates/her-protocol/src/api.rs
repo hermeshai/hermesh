@@ -193,6 +193,8 @@ pub mod method {
     /// Whether computer use can work where her runs: its switch, agent-desktop, and the system's
     /// permissions as agent-desktop finds them.
     pub const DESKTOP_STATUS: &str = "desktop/status";
+    /// Writes an archive of this her's own data, without a secret, and says where it is.
+    pub const DATA_EXPORT: &str = "data/export";
     /// This connection writes .docx files from the kernel's Word documents (word-design §2): a
     /// later host replaces the one before it, and the host leaves with its connection.
     pub const DOCX_HOST: &str = "docx/host";
@@ -572,6 +574,19 @@ pub enum DesktopPermission {
     Unknown,
     /// Computer use is for macOS only.
     Unsupported,
+}
+
+/// The result of `data/export`: a .zip of what her keeps in its home for its assistants,
+/// conversations and settings, in the places the home keeps them, and nothing that signs anything
+/// in: no credential store, no tokens of a model connection or a connector, no browser profile, no
+/// cache or log. The file is the caller's to take and remove; one a day old goes when the next is
+/// written.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+pub struct DataExportResult {
+    /// The archive, in `exports/` of her's home.
+    pub path: PathBuf,
+    /// Its size.
+    pub bytes: u64,
 }
 
 /// Parameters of `browser/reveal`.
