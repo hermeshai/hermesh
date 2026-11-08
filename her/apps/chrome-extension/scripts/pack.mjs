@@ -1,13 +1,13 @@
 // Packs the extension for the Chrome Web Store (browser-design D-219):
-// dist/hermesh-extension-<version>.zip, holding what loads (manifest.json, src/, icons/, _locales/)
-// without tests, types or the manifest's "key", which the store does not take.
+// her/apps/chrome-extension/dist/hermesh-extension-<version>.zip, holding what loads (manifest.json,
+// src/, icons/, _locales/) without tests, types or the manifest's "key", which the store does not take.
 //
-//   pnpm --filter @her/chrome-extension store-zip [--key path/to/key.pem]
+//   node her/apps/chrome-extension/scripts/pack.mjs [--key path/to/key.pem]
 //
 // --key puts the private key in the zip as key.pem. Only for the very first upload, and only
 // if you have the key behind the manifest's "key": the store then keeps the ID
 // igeolfcjdhlfopmimahmhleloehmfkdc. Without it the store picks another ID; put that in
-// STORE_EXTENSION_ID (crates/her-cli/src/cmd_browser.rs) so her lets it start the host.
+// STORE_EXTENSION_ID (her/crates/her-cli/src/cmd_browser.rs) so her lets it start the host.
 //
 // Raise "version" in manifest.json before each upload: the store refuses a version it has.
 

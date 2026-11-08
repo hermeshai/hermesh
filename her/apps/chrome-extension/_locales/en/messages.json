@@ -1,4 +1,7 @@
 {
+  "extDescription": {
+    "message": "Lets Her, the assistant in Hermesh, work in tabs it opens in your Chrome, with your sign-ins. It never sees your other tabs."
+  },
   "statusConnected": {
     "message": "Connected"
   },
@@ -9,19 +12,19 @@
     "message": "Connecting…"
   },
   "statusNotOpen": {
-    "message": "Hermesh is not open"
+    "message": "Her is not running"
   },
   "statusMissing": {
     "message": "Not set up on this computer"
   },
   "hintMissing": {
-    "message": "Install Hermesh, then connect your browser in its Settings."
+    "message": "Install Hermesh and turn on Her for this computer."
   },
   "hintStandby": {
-    "message": "The agent uses another browser or profile."
+    "message": "Her uses another browser or profile."
   },
   "hintNotOpen": {
-    "message": "Open it to let the agent use this browser."
+    "message": "Open Hermesh to let Her use this browser."
   },
   "openApp": {
     "message": "Open Hermesh"
@@ -54,10 +57,10 @@
     "message": "Stop"
   },
   "offer": {
-    "message": "Hand this tab to Hermesh"
+    "message": "Hand this tab to Her"
   },
   "offerNote": {
-    "message": "The agent will be able to read and use this tab."
+    "message": "Her will be able to read and use this tab."
   },
   "groupWaiting": {
     "message": "Waiting · $1"
@@ -72,7 +75,7 @@
     "message": "Hermesh: connecting"
   },
   "titleNotOpen": {
-    "message": "Hermesh is not open"
+    "message": "Hermesh: Her is not running"
   },
   "titleMissing": {
     "message": "Hermesh is not set up on this computer"
@@ -81,10 +84,10 @@
     "message": "Hermesh: needs an update"
   },
   "titleWaiting": {
-    "message": "Hermesh is waiting for you"
+    "message": "Her is waiting for you"
   },
   "statusStuck": {
-    "message": "Can't reach Hermesh"
+    "message": "Can't reach Her"
   },
   "statusUpdateExtension": {
     "message": "The extension needs an update"

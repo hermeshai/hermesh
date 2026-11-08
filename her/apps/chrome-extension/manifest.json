@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Hermesh",
-  "description": "Lets the Hermesh agent use the tabs it opens in your Chrome, with your sign-ins.",
+  "description": "__MSG_extDescription__",
   "version": "0.2.1",
   "default_locale": "en",
   "minimum_chrome_version": "125",

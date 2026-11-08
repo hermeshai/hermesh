@@ -9,3 +9,5 @@ node_modules/
 # PPT corpus samples and reference renders (tools/ppt-corpus/README.md)
 /tools/ppt-corpus/corpus/
 /tools/ppt-corpus/out/
+# The extension's package for the Chrome Web Store (apps/chrome-extension/scripts/pack.mjs)
+/apps/chrome-extension/dist/

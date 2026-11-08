@@ -1,4 +1,7 @@
 {
+  "extDescription": {
+    "message": "让 Hermesh 内置的助手 Her 在你的 Chrome 里打开标签页，使用你的登录状态；它看不到你自己的标签页。"
+  },
   "statusConnected": {
     "message": "已连接"
   },
@@ -9,19 +12,19 @@
     "message": "正在连接…"
   },
   "statusNotOpen": {
-    "message": "Hermesh 没有打开"
+    "message": "Her 没有在运行"
   },
   "statusMissing": {
     "message": "这台电脑还没有设置"
   },
   "hintMissing": {
-    "message": "安装 Hermesh，然后在它的设置里连接你的浏览器。"
+    "message": "安装 Hermesh，并为这台电脑打开 Her。"
   },
   "hintStandby": {
-    "message": "智能体正在用另一个浏览器或配置文件。"
+    "message": "Her 正在用另一个浏览器或配置文件。"
   },
   "hintNotOpen": {
-    "message": "打开后，智能体才能用这个浏览器。"
+    "message": "打开 Hermesh，Her 才能用这个浏览器。"
   },
   "openApp": {
     "message": "打开 Hermesh"
@@ -54,10 +57,10 @@
     "message": "停止"
   },
   "offer": {
-    "message": "把这个标签页交给 Hermesh"
+    "message": "把这个标签页交给 Her"
   },
   "offerNote": {
-    "message": "智能体将能读取和操作这个标签页。"
+    "message": "Her 将能读取和操作这个标签页。"
   },
   "groupWaiting": {
     "message": "等你 · $1"
@@ -72,7 +75,7 @@
     "message": "Hermesh：正在连接"
   },
   "titleNotOpen": {
-    "message": "Hermesh 没有打开"
+    "message": "Hermesh：Her 没有在运行"
   },
   "titleMissing": {
     "message": "这台电脑还没有设置 Hermesh"
@@ -81,10 +84,10 @@
     "message": "Hermesh：需要更新"
   },
   "titleWaiting": {
-    "message": "Hermesh 在等你"
+    "message": "Her 在等你"
   },
   "statusStuck": {
-    "message": "连不上 Hermesh"
+    "message": "连不上 Her"
   },
   "statusUpdateExtension": {
     "message": "扩展需要更新"
