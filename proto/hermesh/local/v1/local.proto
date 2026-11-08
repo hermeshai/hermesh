@@ -129,6 +129,9 @@ service LocalService {
   // The messages this device keeps for a machine's assistants until it is
   // back, oldest first.
   rpc ListHerWaiting(ListHerWaitingRequest) returns (ListHerWaitingResponse);
+  // Drops a message this device keeps, undelivered: one her keeps refusing
+  // then stops holding back that assistant's later ones.
+  rpc DeleteHerWaiting(DeleteHerWaitingRequest) returns (DeleteHerWaitingResponse);
   // A file on this device into an assistant's folder on a machine.
   rpc HerUpload(HerUploadRequest) returns (HerUploadResponse);
   // A file from an assistant's folder on a machine into a folder here.
@@ -1205,6 +1208,14 @@ message ListHerWaitingRequest {
 message ListHerWaitingResponse {
   repeated HerWaiting waiting = 1;
 }
+
+message DeleteHerWaitingRequest {
+  string machine_id = 1;
+  // HerWaiting.id.
+  string id = 2;
+}
+
+message DeleteHerWaitingResponse {}
 
 // HerWaiting is a message this device keeps until its machine is back.
 message HerWaiting {

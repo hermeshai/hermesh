@@ -468,6 +468,18 @@ func TestHerTwoEnvironments(t *testing.T) {
 	if err != nil || len(list.Waiting) != 1 || list.Waiting[0].Id != sent.Waiting.Id {
 		t.Fatalf("waiting: %v %v", list, err)
 	}
+	// A second one, thought better of: dropped, it never goes.
+	dropped, err := c.HerSend(ctx, &localv1.HerSendRequest{MachineId: linux, BotId: linuxBot.ID, Text: mockSend("never mind")})
+	if err != nil || dropped.Waiting == nil {
+		t.Fatalf("a second message: %v %v", dropped, err)
+	}
+	if _, err := c.DeleteHerWaiting(ctx, &localv1.DeleteHerWaitingRequest{MachineId: linux, Id: dropped.Waiting.Id}); err != nil {
+		t.Fatalf("DeleteHerWaiting: %v", err)
+	}
+	list, err = c.ListHerWaiting(ctx, &localv1.ListHerWaitingRequest{MachineId: linux})
+	if err != nil || len(list.Waiting) != 1 || list.Waiting[0].Id != sent.Waiting.Id {
+		t.Fatalf("waiting after dropping one: %v %v", list, err)
+	}
 
 	// Back: the message goes, the waiting list empties, and her answers.
 	if out, err := exec.Command("docker", "unpause", name).CombinedOutput(); err != nil {

@@ -46,6 +46,7 @@ type herSide struct {
 	uploads map[string]string // by assistant/name
 	files   map[string]string // what Download serves, by path
 	failBot string            // bots/open fails for this assistant
+	refuse  string            // her refuses a call that holds this
 	silent  bool              // Open never answers: the machine froze
 }
 
@@ -82,6 +83,9 @@ func (h *herSide) Call(_ context.Context, req *herv1.CallRequest) (*herv1.CallRe
 	h.mu.Lock()
 	defer h.mu.Unlock()
 	h.ops = append(h.ops, req.ConnectionId+" "+req.Request.Method+" "+string(req.Request.Params))
+	if h.refuse != "" && strings.Contains(string(req.Request.Params), h.refuse) {
+		return &herv1.CallResponse{Response: &herv1.Response{Error: &herv1.Error{Code: -32602, Message: "her won't take it"}}}, nil
+	}
 	return &herv1.CallResponse{Response: &herv1.Response{Result: []byte("{}")}}, nil
 }
 
@@ -307,6 +311,70 @@ func TestHerWaitingRefused(t *testing.T) {
 	}
 	if list, _ := o.st.herWaiting("", ""); len(list) != 2 {
 		t.Fatalf("kept the refused one: %v", list)
+	}
+}
+
+// A waiting message her keeps refusing can be dropped: the assistant's later
+// ones, held behind it, are then tried at once and go; the dropped one never
+// does. Only a message kept for the machine named is dropped.
+func TestHerDeleteWaiting(t *testing.T) {
+	h := &herSide{refuse: "too big"}
+	d, o, down, _ := herOwner(t, h)
+	l := &localService{d: d}
+	ctx := context.Background()
+	send := func(text string) *localv1.HerWaiting {
+		t.Helper()
+		res, err := o.HerSend(ctx, &localv1.HerSendRequest{MachineId: "m_1", BotId: "b1", Text: text})
+		if err != nil || res.Waiting == nil {
+			t.Fatalf("send %q: %v %v", text, res, err)
+		}
+		return res.Waiting
+	}
+	down.Store(true)
+	refused, later := send("too big"), send("fine")
+	down.Store(false)
+	o.flushWaiting(ctx)
+	if list, _ := o.st.herWaiting("m_1", ""); len(list) != 2 || !strings.Contains(list[0].Error, "her won't take it") {
+		t.Fatalf("waiting: %v", list)
+	}
+	select { // what sending woke
+	case <-o.herWake:
+	default:
+	}
+	if _, err := l.DeleteHerWaiting(ctx, &localv1.DeleteHerWaitingRequest{MachineId: "m_1", Id: refused.Id}); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case <-o.herWake:
+	default:
+		t.Fatal("the later ones are not tried at once")
+	}
+	o.flushWaiting(ctx)
+	if got := h.prompts(t); !equal(got, []string{"conv-b1: too big", "conv-b1: fine"}) {
+		t.Fatalf("handed %q", got)
+	}
+	if list, _ := o.st.herWaiting("", ""); len(list) != 0 {
+		t.Fatalf("still waiting: %v", list)
+	}
+
+	down.Store(true)
+	kept := send("for m_1")
+	for _, c := range []struct {
+		req  *localv1.DeleteHerWaitingRequest
+		code connect.Code
+	}{
+		{&localv1.DeleteHerWaitingRequest{MachineId: "m_1", Id: refused.Id}, connect.CodeNotFound}, // dropped already
+		{&localv1.DeleteHerWaitingRequest{MachineId: "m_1", Id: later.Id}, connect.CodeNotFound},   // delivered
+		{&localv1.DeleteHerWaitingRequest{MachineId: "m_2", Id: kept.Id}, connect.CodeNotFound},    // another machine's
+		{&localv1.DeleteHerWaitingRequest{MachineId: "m_1"}, connect.CodeInvalidArgument},          // no id
+		{&localv1.DeleteHerWaitingRequest{Id: kept.Id}, connect.CodeInvalidArgument},               // no machine
+	} {
+		if _, err := l.DeleteHerWaiting(ctx, c.req); connect.CodeOf(err) != c.code {
+			t.Errorf("%v: %v, want %v", c.req, err, c.code)
+		}
+	}
+	if list, _ := o.st.herWaiting("m_1", ""); len(list) != 1 || list[0].Id != kept.Id {
+		t.Fatalf("waiting: %v", list)
 	}
 }
 
@@ -840,6 +908,7 @@ func TestHerWrites(t *testing.T) {
 		localv1connect.LocalServiceHerDownloadProcedure:            false,
 		localv1connect.LocalServiceListHerWaitingProcedure:         false,
 		localv1connect.LocalServiceGetHerConsoleProcedure:          false,
+		localv1connect.LocalServiceDeleteHerWaitingProcedure:       false,
 		localv1connect.LocalServiceSetHerProcedure:                 true,
 		localv1connect.LocalServiceSetHerAssistantModeProcedure:    true,
 		localv1connect.LocalServiceSetHerCommandConnectorProcedure: true,
