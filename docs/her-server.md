@@ -215,8 +215,29 @@ its own app may change them too: whoever uses that machine can edit
 The same conversation and settings. Sign-ins use the app's own callback
 (§6.3); files come from the Files app or the share sheet.
 
-## 8. Security
+## 8. Who can reach Her, and security
 
+- **Keys decide, not accounts.** The Her Server is one of the owner's
+  machines, paired with a certificate a trusted device signed. On every
+  connection it checks the other side itself, against the owner's root
+  chain it pins ([technical-design.md](technical-design.md) §3.7); the
+  relay's admission only keeps out abuse. So only the owner's trusted
+  devices reach Her, and the Her Server's own app. A new device becomes
+  trusted only when one of the owner's devices approves it
+  ([trusted-devices.md](trusted-devices.md) §4.2): someone holding the
+  owner's account alone reaches nothing. Agents can't reach Her in this
+  version.
+- **Accounts.** On the official relay the owner signs in to hermesh.io. The
+  account lets the relay put the owner's devices and machines together and
+  lets a new device find its owner; it is not a key. With a self-hosted relay
+  there is no hermesh.io account: devices join with the connection address.
+  The Her Server goes by keys alone, so it works the same with either relay.
+- **One owner per Her Server.** Sharing Her with other people is not in this
+  version (§9).
+- **Every device lost.** The owner starts over as today
+  ([trusted-devices.md](trusted-devices.md) §4.5) and pairs the machine
+  again. Her's conversation and settings are on that machine, and pairing it
+  again must keep them.
 - **A compromised relay** can't read the conversation or settings, and
   can't send the apps to another machine, since the Her Server setting is
   signed. It can withhold traffic, as it can today.
@@ -224,7 +245,6 @@ The same conversation and settings. Sign-ins use the app's own callback
   credentials. It needs no open port, updates itself like every machine, and
   should use disk encryption. This is the trade for keeping everything on a
   machine the owner controls.
-- **Agents** can't reach Her in this version.
 
 ## 9. Not doing now
 
@@ -234,6 +254,7 @@ The same conversation and settings. Sign-ins use the app's own callback
 - Windows as a Her Server; computer use on Linux (her's desktop tools use
   the macOS accessibility API).
 - Hermesh running Her for its users.
+- Sharing Her with other people, such as a family or a team.
 - Direct connections on a local network.
 
 ## 10. Open questions
