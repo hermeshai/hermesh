@@ -165,7 +165,8 @@ export function ChatGptConnection() {
           </>
         )}
       </div>
-      {(error || status?.message) && (
+      {/* A sign-in the owner cancelled needs no word: her's says so in English. */}
+      {(error || (status?.state !== "cancelled" && status?.message)) && (
         <p className="mrow-err" role="status">
           {error || status?.message}
         </p>
