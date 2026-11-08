@@ -7,9 +7,23 @@ function walk(node: Node, fn: (node: Node) => void) {
   if ("children" in node) for (const child of node.children) walk(child as Node, fn);
 }
 
+type Positioned = { type: string; position?: { start: { offset?: number }; end: { offset?: number } } };
+
 /** Fixed components only; directives never enable arbitrary HTML or scripts. */
 export function contentExtensions() {
-  return (tree: Root) => walk(tree, (node) => {
+  return (tree: Root, file: { value?: unknown }) => walk(tree, (node) => {
+    // Only `:::details` means something here: `:name` and `::name` stay as written, so
+    // "19:56" or "3:2" keep what follows the colon.
+    if ("children" in node && typeof file.value === "string") {
+      const source = file.value;
+      node.children = node.children.map((child) => {
+        const { type, position } = child as unknown as Positioned;
+        const [start, end] = [position?.start.offset, position?.end.offset];
+        if ((type !== "textDirective" && type !== "leafDirective") || start === undefined || end === undefined) return child;
+        const text = { type: "text", value: source.slice(start, end) };
+        return (type === "textDirective" ? text : { type: "paragraph", children: [text] }) as RootContent;
+      }) as typeof node.children;
+    }
     if (node.type === "blockquote") {
       const first = node.children[0];
       const text = first?.type === "paragraph" ? first.children[0] : undefined;
