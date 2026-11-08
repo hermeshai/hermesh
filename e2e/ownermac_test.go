@@ -21,6 +21,7 @@ import (
 type ownerMac struct {
 	t          *testing.T
 	bin, tmp   string
+	hermeshd   string // the owner's hermeshd when not bin's, from its next start
 	repo       string
 	daemonEnv  []string
 	daemonArgs []string
@@ -164,6 +165,9 @@ func (w *ownerMac) worktree(id string) string {
 func (w *ownerMac) startOwner() {
 	args := append([]string{"run", "--owner", "--data-dir", filepath.Join(w.tmp, "owner-mac"), "--socket", w.sock}, w.daemonArgs...)
 	bin := filepath.Join(w.bin, "hermeshd")
+	if w.hermeshd != "" {
+		bin = w.hermeshd
+	}
 	if w.nproc > 0 {
 		args = append([]string{"-c", fmt.Sprintf(`ulimit -u %d && exec "$0" "$@"`, w.nproc), bin}, args...)
 		bin = "/bin/sh"

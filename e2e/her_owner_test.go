@@ -35,21 +35,29 @@ func herBinaries(t *testing.T) (her, mock string) {
 	if runtime.GOOS == "windows" {
 		t.Skip("her has no Windows build")
 	}
-	check := func(p, name, env string) string {
-		if _, err := os.Stat(p); err != nil {
-			t.Skipf("no %s (%v): build her (cargo build in her/) or set %s", name, err, env)
-		}
-		return p
-	}
-	her = os.Getenv("HERMESH_HER_BIN")
-	if her == "" {
-		her, _ = filepath.Abs(filepath.Join("her", "target", "debug", "her"))
-	}
+	her = herBinary(t, "HERMESH_HER_BIN", "her")
 	mock = os.Getenv("HERMESH_HER_MOCK")
 	if mock == "" {
 		mock = filepath.Join(filepath.Dir(her), "her-mock")
 	}
-	return check(her, "her", "HERMESH_HER_BIN"), check(mock, "her-mock", "HERMESH_HER_MOCK")
+	if _, err := os.Stat(mock); err != nil {
+		t.Skipf("no her-mock (%v): build her (cargo build in her/) or set HERMESH_HER_MOCK", err)
+	}
+	return her, mock
+}
+
+// herBinary is $env, else the debug build of name in her/target; the test
+// is skipped without it.
+func herBinary(t *testing.T, env, name string) string {
+	t.Helper()
+	p := os.Getenv(env)
+	if p == "" {
+		p, _ = filepath.Abs(filepath.Join("her", "target", "debug", name))
+	}
+	if _, err := os.Stat(p); err != nil {
+		t.Skipf("no %s (%v): build her (cargo build in her/) or set %s", name, err, env)
+	}
+	return p
 }
 
 // herMock is her-mock serving models: base is its address, models the
