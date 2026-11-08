@@ -57,8 +57,10 @@ test("Her: the first run, a chat, the console, a second environment, and one gon
   await page.getByRole("button", { name: "更多", exact: true }).click();
   await page.getByRole("menuitem", { name: /^管理「.+」…$/ }).click();
   const consolePage = await opened;
-  await expect(consolePage.locator("body")).toContainText("the e2e console");
+  await consolePage.waitForLoadState("domcontentloaded");
   expect(consolePage.url()).toMatch(/^http:\/\/127\.0\.0\.1:\d+\/her\//);
+  // The test's console page, or the real one (HERMESH_HER_CONSOLE): served, whichever it is.
+  expect(await consolePage.evaluate(async () => (await fetch(location.href)).status)).toBe(200);
   expect(await consolePage.evaluate(() => typeof (window as { hermesh?: unknown }).hermesh)).toBe("undefined");
   await consolePage.close();
 
