@@ -1,8 +1,7 @@
 // The console's routes beside her's JSON-RPC, served next to the console's files, so they are
-// addressed relative to the page: a file goes up to the Her Server, and its data comes down
-// (hermeshd on the machine); a sign-in's redirect is caught on the owner's device, and a
-// connector started as a command is signed there (hermeshd on the device, docs/her-server.md
-// §5.4, §8).
+// addressed relative to the page: a file goes up to the Her Server (hermeshd on the machine);
+// a sign-in's redirect is caught on the owner's device, and a connector started as a command
+// is signed there (hermeshd on the device, docs/her-server.md §5.4, §8).
 
 /** Why a route said no: the text it answered, or the `error` of its JSON. */
 async function refusal(r: Response): Promise<Error> {
@@ -32,17 +31,6 @@ export async function upload(file: Blob, name: string): Promise<string> {
     body: file,
   });
   return (await json<{ path: string }>(r)).path;
-}
-
-/**
- * An archive of the Her Server's data, which hermeshd there has her write, sends, then removes:
- * its bytes, and the name the file came with.
- */
-export async function exportData(): Promise<{ blob: Blob; name: string }> {
-  const r = await fetch("./export");
-  if (!r.ok) throw await refusal(r);
-  const name = /filename="?([^";]+)"?/.exec(r.headers.get("Content-Disposition") ?? "")?.[1] ?? "her-export.zip";
-  return { blob: await r.blob(), name };
 }
 
 /** A catcher waiting on the owner's device, and the address a sign-in sends the browser back to. */

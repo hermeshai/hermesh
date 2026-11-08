@@ -5,13 +5,10 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"io"
-	"mime"
 	"net/http"
 	"os"
 	"path/filepath"
-	"strconv"
 	"time"
 
 	"connectrpc.com/connect"
@@ -40,8 +37,6 @@ func (h *Host) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		h.rpc(w, r)
 	case "/her/console/upload":
 		h.stage(w, r)
-	case "/her/console/export":
-		h.export(w, r)
 	default:
 		h.files(w, r)
 	}
@@ -218,75 +213,6 @@ func (h *Host) stage(w http.ResponseWriter, r *http.Request) {
 	}
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]string{"path": path})
-}
-
-// export sends an archive of her's data that her writes for this request
-// (data/export: what it keeps for its assistants, conversations and
-// settings, without the keys and sign-ins), then removes it from the
-// machine, sent whole or not. The request names nothing: only a file her
-// says it wrote in her home's exports/ is served.
-func (h *Host) export(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodGet {
-		http.Error(w, "GET only", http.StatusMethodNotAllowed)
-		return
-	}
-	c, err := h.dial(r.Context(), false)
-	if err != nil {
-		httpError(w, err)
-		return
-	}
-	defer c.Close()
-	res, err := c.call(r.Context(), "data/export", nil)
-	if err := answered("data/export", res, err); err != nil {
-		httpError(w, err)
-		return
-	}
-	var made struct {
-		Path string `json:"path"`
-	}
-	json.Unmarshal(res.Result, &made)
-	h.mu.Lock()
-	home := h.home
-	h.mu.Unlock()
-	path, err := exported(home, made.Path)
-	if err != nil {
-		httpError(w, err)
-		return
-	}
-	defer os.Remove(path)
-	f, err := os.Open(path)
-	if err != nil {
-		httpError(w, err)
-		return
-	}
-	defer f.Close()
-	st, err := f.Stat()
-	if err != nil {
-		httpError(w, err)
-		return
-	}
-	w.Header().Set("Content-Type", "application/zip")
-	w.Header().Set("Content-Disposition", mime.FormatMediaType("attachment", map[string]string{"filename": filepath.Base(path)}))
-	w.Header().Set("Content-Length", strconv.FormatInt(st.Size(), 10))
-	w.Header().Set("Cache-Control", "no-store")
-	io.Copy(w, f)
-}
-
-// exported is p, where her says it wrote an archive, its symlinks resolved,
-// when that is a file directly in her home's exports/.
-func exported(home, p string) (string, error) {
-	dir, err := filepath.EvalSymlinks(filepath.Join(home, "exports"))
-	if err != nil {
-		return "", err
-	}
-	q, err := filepath.EvalSymlinks(p)
-	if err != nil {
-		return "", err
-	}
-	if st, err := os.Lstat(q); err != nil || !st.Mode().IsRegular() || filepath.Dir(q) != dir {
-		return "", connect.NewError(connect.CodePermissionDenied, fmt.Errorf("%s is not an archive in her's exports", p))
-	}
-	return q, nil
 }
 
 // httpError answers with a refusal of hermeshd's own: a connect error's code

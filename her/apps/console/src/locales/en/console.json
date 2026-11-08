@@ -5,8 +5,7 @@
     "connectors": "Connectors",
     "skills": "Skills",
     "search": "Web Search",
-    "browser": "Browser",
-    "data": "Data"
+    "browser": "Browser"
   },
   "conn": {
     "connecting": "Connecting to Her…",
@@ -28,15 +27,6 @@
     "hoursAgo_one": "{{count}} hr ago",
     "hoursAgo_other": "{{count}} hr ago",
     "yesterday": "yesterday"
-  },
-  "data": {
-    "title": "This environment's data",
-    "desc": "Downloaded as one .zip file",
-    "export": "Export",
-    "exporting": "Exporting…",
-    "exported": "Exported {{name}}",
-    "holds": "In it: the assistants and the files they made, conversations, routines, instructions, settings and skills.",
-    "leaves": "Left out: keys and sign-ins, which stay on this machine (model API keys, the ChatGPT and connector sign-ins, the browser's cookies), and caches and logs."
   },
   "browser": {
     "sites": "Site permissions",

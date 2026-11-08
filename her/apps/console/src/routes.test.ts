@@ -1,10 +1,10 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { catchRedirect, caught, exportData, signCommandConnector, upload } from "./routes.ts";
+import { catchRedirect, caught, signCommandConnector, upload } from "./routes.ts";
 import { signInRemotely } from "./signin.ts";
 
 // The console's own routes, against fetch as the test plays hermeshd (the machine's for
-// upload and export, the owner's device's for signin and command-connector).
+// upload, the owner's device's for signin and command-connector).
 
 type Asked = { url: string; method: string; headers: Record<string, string>; body: unknown };
 
@@ -35,20 +35,6 @@ test("upload: the bytes go up beside the page, the name percent-encoded; the ans
   assert.equal(asked[0].body, file);
   fakeFetch(() => text("The file is larger than 50 MiB.", 413));
   await assert.rejects(upload(file, "big.zip"), /^Error: The file is larger than 50 MiB\.$/);
-});
-
-test("export: the archive comes down from beside the page, with the name hermeshd gave it; a refusal is its text", async () => {
-  const asked = fakeFetch(
-    () => new Response("PK\x03\x04 data", { headers: { "Content-Type": "application/zip", "Content-Disposition": "attachment; filename=her-export-20261108-090000.zip" } }),
-  );
-  const got = await exportData();
-  assert.deepEqual([asked[0].url, asked[0].method], ["./export", "GET"]);
-  assert.equal(got.name, "her-export-20261108-090000.zip");
-  assert.equal(await got.blob.text(), "PK\x03\x04 data");
-  fakeFetch(() => new Response("PK", { headers: { "Content-Disposition": 'attachment; filename="her export.zip"' } }));
-  assert.equal((await exportData()).name, "her export.zip");
-  fakeFetch(() => text("her's data/export: cannot write the archive: no space left on device", 400));
-  await assert.rejects(exportData(), /^Error: her's data\/export: cannot write the archive: no space left on device$/);
 });
 
 test("signin: a catcher on the device, then what it caught, asked again while pending and after a lost request", async () => {

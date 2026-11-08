@@ -1,6 +1,6 @@
 import { spawn, type ChildProcess } from "node:child_process";
 import { randomBytes } from "node:crypto";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
 import { connect, type Socket } from "node:net";
 import type { AddressInfo } from "node:net";
@@ -12,7 +12,7 @@ import { PROTOCOL_VERSION } from "@hermesh/her-protocol";
 // The console's routes as hermeshd serves them, in front of a real `her serve --listen unix://…`
 // (as packages/her-client/src/http.e2e.test.ts stands in for hermeshd in front of the mock her):
 // the machine's /her/console/ (the built console, events, rpc with hermeshd's allowlist and its
-// limits on config/write, upload, export) and, on the same address, what the owner's device adds
+// limits on config/write, upload) and, on the same address, what the owner's device adds
 // (signin, which catches a sign-in's redirect on 127.0.0.1, and command-connector, applied
 // here at once where the device would ask its signer first). The model service, the search
 // services and an MCP server are her-mock's. Mirrors internal/herhost/allow.go and console.go
@@ -369,20 +369,6 @@ export async function startStandIn(opts: { port?: number; bin?: string; dist?: s
         const file = path.join(dir, `${randomBytes(8).toString("hex")}-${name}`);
         writeFileSync(file, await body(req));
         return send(res, 200, { path: file });
-      }
-
-      if (route === "export" && req.method === "GET") {
-        // hermeshd asks her itself (data/export is off the allowlist), sends only a file her wrote in its exports/, then removes it.
-        const own = await HerConnection.open(socketPath);
-        const answer = await own.call("data/export", {});
-        own.close();
-        if (answer.error) return refuse(res, 400, `her's data/export: ${(answer.error as { message: string }).message}`);
-        const file = realpathSync((answer.result as { path: string }).path);
-        if (path.dirname(file) !== realpathSync(path.join(home, "exports"))) return refuse(res, 403, `${file} is not an archive in her's exports`);
-        const bytes = readFileSync(file);
-        rmSync(file);
-        res.writeHead(200, { "Content-Type": "application/zip", "Content-Disposition": `attachment; filename=${path.basename(file)}`, "Cache-Control": "no-store" }).end(bytes);
-        return;
       }
 
       if (route === "signin" && req.method === "POST") {

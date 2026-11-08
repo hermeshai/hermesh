@@ -960,14 +960,6 @@ export type CredentialsSetParams = {
 
 export type Currency = "USD" | "CNY";
 
-/** The result of `data/export`: a .zip of what her keeps in its home for its assistants, conversations and settings, in the places the home keeps them, and nothing that signs anything in: no credential store, no tokens of a model connection or a connector, no browser profile, no cache or log. The file is the caller's to take and remove; one a day old goes when the next is written. */
-export type DataExportResult = {
-  /** Its size. */
-  bytes: number;
-  /** The archive, in `exports/` of her's home. */
-  path: string;
-};
-
 export type DataLabels = {
   category?: boolean;
   number_format?: string | null;
@@ -4691,7 +4683,6 @@ export interface Methods {
   "connectors/install": [ConnectorInstallParams, ConnectorInstallResult];
   "credentials/delete": [CredentialsDeleteParams, Empty];
   "credentials/set": [CredentialsSetParams, Empty];
-  "data/export": [Record<string, never>, DataExportResult];
   "deck/check": [DeckCheckParams, DeckCheckResult];
   "deck/close": [DeckIdParams, Empty];
   "deck/copy": [DeckCopyParams, DeckCopyResult];
