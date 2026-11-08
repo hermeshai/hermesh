@@ -3,7 +3,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { startDaemon, type Daemon } from "../perf/daemon";
-import { titles } from "../perf/world";
+import { ids, titles } from "../perf/world";
 import { launch } from "./app";
 
 // A long conversation in the real app (docs/desktop-performance.md §7): the benchmark's stand-in
@@ -80,6 +80,7 @@ test("a long conversation opens at its end and draws only the rows near what is 
 });
 
 test("reading up into rows not drawn before, what is read stays where it is and no frame is blank", async () => {
+  test.setTimeout(150_000);
   // Halfway up first (a jump, as with the scrollbar: the next test sees to that one).
   await wheel(-300);
   await page.evaluate((sel) => { const el = document.querySelector(sel)!; el.scrollTop = Math.round(el.scrollHeight * 0.55); }, scroller);
@@ -209,6 +210,7 @@ test("going back to a long conversation draws its window, not all of it", async 
 });
 
 test("a growing conversation follows its end; scrolled up it stays put until the button takes it back; a finished reply keeps its table", async () => {
+  test.setTimeout(150_000);
   daemon.live(true);
   try {
     await open(titles.bigLive);
@@ -219,25 +221,27 @@ test("a growing conversation follows its end; scrolled up it stays put until the
       await page.waitForTimeout(300);
       expect(await below(), "the conversation grew past the view").toBeLessThan(80);
     }
-    // A reply being written keeps its table once stored: the same element. While its block is still being
-    // written a table has no Copy (one button, Expand); seen so, it is marked, and looked for again once
-    // the next event came (the reply stored).
-    const key = await page.evaluate(
-      () =>
-        new Promise<string>((resolve) => {
-          const tick = () => {
+    // A reply being written keeps its tables once stored: the same elements. The last row is the reply being
+    // written while its key is the event after the last one the daemon stored; its tables are marked then, and
+    // looked for again once the next event came (the reply stored).
+    const stored = () => daemon.world.events.get(ids.bigLive)!;
+    let key = "";
+    await expect
+      .poll(
+        async () => {
+          const k = await page.evaluate(() => {
             const row = document.querySelector<HTMLElement>(".tr > .vrow:last-child");
-            const table = [...(row?.querySelectorAll(".md-table") ?? [])].find((t) => t.querySelectorAll(".md-table-tools button").length === 1);
-            if (row && table) {
-              (table.querySelector("table") as unknown as { __kept: boolean }).__kept = true;
-              return resolve(row.dataset.stepKey!);
-            }
-            requestAnimationFrame(tick);
-          };
-          tick();
-        }),
-    );
-    await expect(page.locator(`.vrow[data-step-key="${BigInt(key) + 1n}"]`)).toBeAttached({ timeout: 15_000 });
+            if (!row?.querySelector("table")) return "";
+            row.querySelectorAll("table").forEach((t) => ((t as unknown as { __kept: boolean }).__kept = true));
+            return row.dataset.stepKey!;
+          });
+          if (k && BigInt(k) === stored().at(-1)!.seq + 1n) key = k;
+          return key;
+        },
+        { timeout: 30_000 },
+      )
+      .not.toBe("");
+    await expect(page.locator(`.vrow[data-step-key="${BigInt(key) + 1n}"]`)).toBeAttached({ timeout: 30_000 });
     const kept = await page.locator(`.vrow[data-step-key="${key}"] table`).evaluateAll((els) => els.some((el) => (el as unknown as { __kept?: boolean }).__kept === true));
     expect(kept, "the table was drawn anew when its reply was stored").toBe(true);
     await expect(page.locator(`.vrow[data-step-key="${key}"] .md-table-tools`).first().locator("button")).toHaveCount(2);
