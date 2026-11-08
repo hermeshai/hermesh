@@ -409,7 +409,7 @@ changing that needs a relay release (§12).
 | `bots/*`: assistants, their routines, unread marks | Her entry | Allowed | No |
 | `session/op` and session events: prompts, approvals, answers, stopping | Her entry | Allowed | No |
 | `models/list` | Her entry, console | Allowed | No |
-| `config/*`, `connections/*`, `credentials/*`, `mcp/*`, `skills/*`, `web_search/*`, `browser/allow` | Console | Allowed | No |
+| `config/*`, `connections/*`, `credentials/*`, `mcp/*`, `skills/*`, `web_search/*`, `browser/allow`, `browser/status`, `browser/use_extension` | Console | Allowed | No |
 | `doc/*`, `deck/*`, `docx/*` and the other `browser/*` methods: desktop document panels and a built-in browser, which Hermesh does not have | Nobody | Not forwarded | No |
 
 Types are in [schema.json](../her/crates/her-protocol/schema.json), and the
@@ -474,6 +474,12 @@ The protos are the contract; this is their outline.
   hermeshd's self-update updates all three together.
 - **Started only when needed.** hermeshd starts her only on a machine Her
   is on for, as the machine's user, so her's home is that user's `~/.her`.
+- **The owner's own Chrome, on a Mac.** While Her is on, hermeshd registers
+  the her it ships as the Hermesh extension's native host for the Chromium
+  browsers installed (`her browser extension install --socket` with her's
+  socket), again at every start so it follows her after an update, and
+  takes it back when Her is turned off. The extension then lends Her the
+  owner's Chrome, with its sign-ins (her/apps/chrome-extension).
 
 ## 7. Data
 
@@ -649,7 +655,7 @@ Sections:
 | Connectors | MCP servers: add by address, sign in, see their tools; connectors started as commands need Touch ID |
 | Skills | Installed skills: turn on or off, add by upload, remove, read |
 | Web search | The search provider and its key |
-| Browser | The sites Her may open without asking |
+| Browser | The sites Her may open without asking; on a Mac, whether the owner's own Chrome is connected through the Hermesh extension, and used |
 | Instructions | What every assistant of this environment is told |
 | Defaults | The model and approval mode new assistants start with |
 | Data | Export; backup and restore later |

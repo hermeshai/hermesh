@@ -38,6 +38,29 @@ func Bin(t testing.TB) string {
 	return bin
 }
 
+// Fake is a her that only notes how it is run, a line per run in the file
+// calls: its HER_HOME, then its arguments. Its `serve` stays up without
+// answering.
+func Fake(t testing.TB) (bin, calls string) {
+	t.Helper()
+	dir := t.TempDir()
+	bin, calls = filepath.Join(dir, "her"), filepath.Join(dir, "calls")
+	script := "#!/bin/sh\necho \"$HER_HOME $*\" >> '" + calls + "'\n[ \"$1\" = serve ] && exec sleep 60\nexit 0\n"
+	if err := os.WriteFile(bin, []byte(script), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	return bin, calls
+}
+
+// Calls are the runs a Fake her noted so far.
+func Calls(calls string) []string {
+	b, _ := os.ReadFile(calls)
+	if len(b) == 0 {
+		return nil
+	}
+	return strings.Split(strings.TrimSpace(string(b)), "\n")
+}
+
 var baseURL = regexp.MustCompile(`base_url = "(http://[^"]+)/v1"`)
 
 // Home starts her-mock, makes a HER_HOME whose model is its mock/mock-1,

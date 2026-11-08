@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"slices"
 	"strings"
 	"syscall"
 	"testing"
@@ -89,6 +90,43 @@ func TestHerSetting(t *testing.T) {
 	}
 	if _, err := n.execAdmin(context.Background(), setHer(false)); err != nil || n.Status().Her.Enabled {
 		t.Fatalf("off: %v %v", err, n.Status().Her)
+	}
+}
+
+// With HerExtensionHost, turning Her on registers her with the browsers for
+// the machine's socket, and turning it off takes that back; closing the
+// machine (hermeshd stopping) leaves it.
+func TestHerExtensionHost(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("her does not run on Windows")
+	}
+	bin, calls := hertest.Fake(t)
+	t.Setenv("HER_HOME", "/hers")
+	dir := t.TempDir()
+	n, err := Open(Config{DataDir: dir, HerBin: bin, Providers: map[string]provider.Provider{}, HerExtensionHost: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx := context.Background()
+	install, uninstall := "/hers browser extension install --socket "+paths.Her(dir), "/hers browser extension uninstall"
+	has := func(line string) func() bool {
+		return func() bool { return slices.Contains(hertest.Calls(calls), line) }
+	}
+	if _, err := n.execAdmin(ctx, setHer(true)); err != nil {
+		t.Fatal(err)
+	}
+	waitFor(t, "her registered", has(install))
+	if _, err := n.execAdmin(ctx, setHer(false)); err != nil || !has(uninstall)() {
+		t.Fatalf("Her off: %v %q", err, hertest.Calls(calls))
+	}
+	os.Remove(calls)
+	if _, err := n.execAdmin(ctx, setHer(true)); err != nil {
+		t.Fatal(err)
+	}
+	waitFor(t, "her registered again", has(install))
+	n.Close()
+	if has(uninstall)() {
+		t.Fatalf("closing the machine unregistered her: %q", hertest.Calls(calls))
 	}
 }
 

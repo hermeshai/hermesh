@@ -28,7 +28,7 @@ func init() {
 		"mcp/login_complete", "mcp/login_cancel", "mcp/logout", "mcp/probe", "mcp/probe_cancel", "mcp/tools",
 		"skills/list", "skills/read", "skills/files", "skills/install", "skills/remove", "skills/set_enabled",
 		"web_search/status", "web_search/set_key", "web_search/test", "browser/allow", "browser/status",
-		"models/refresh", "models/show",
+		"browser/use_extension", "models/refresh", "models/show",
 	} {
 		allowed[m] = true
 	}

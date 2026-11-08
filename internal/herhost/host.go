@@ -33,6 +33,9 @@ type Config struct {
 	// Version is hermeshd's, for her's client_info.
 	Version string
 	Logger  *slog.Logger
+	// ExtensionHost: while Her is on, the browsers here start this her as
+	// the Hermesh extension's host, for Socket (extension.go).
+	ExtensionHost bool
 }
 
 // Host keeps one her running while Her is on.
@@ -85,6 +88,21 @@ func (h *Host) Start() {
 func (h *Host) Stop() {
 	h.op.Lock()
 	defer h.op.Unlock()
+	h.halt()
+}
+
+// Off stops her for Her turned off: the browsers no longer start her for
+// the extension either. (hermeshd stopping only Stops.)
+func (h *Host) Off() {
+	h.op.Lock()
+	defer h.op.Unlock()
+	h.halt()
+	if h.cfg.ExtensionHost {
+		h.extension(context.Background(), "uninstall")
+	}
+}
+
+func (h *Host) halt() {
 	h.mu.Lock()
 	stop, done := h.stop, h.done
 	h.mu.Unlock()
@@ -114,6 +132,9 @@ func (h *Host) Status() *machinev1.HerStatus {
 
 func (h *Host) supervise(ctx context.Context, done chan struct{}) {
 	defer close(done)
+	if h.cfg.ExtensionHost {
+		h.extension(ctx, "install", "--socket", h.cfg.Socket)
+	}
 	wait := time.Second
 	for {
 		start := time.Now()

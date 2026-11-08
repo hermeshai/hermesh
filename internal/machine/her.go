@@ -57,7 +57,7 @@ func (n *Machine) setHer(on bool) (string, error) {
 	n.herOn = on
 	n.mu.Unlock()
 	if !on {
-		n.her.Stop()
+		n.her.Off()
 		return "Her is off", nil
 	}
 	if why := n.herUnsupported(); why != "" {
