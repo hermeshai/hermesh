@@ -1,0 +1,16 @@
+# her
+
+> An AI agent for the terminal, editors and programs. `her exec --json "TASK"` runs one task and prints one JSON result; the answer is in `final_output`.
+
+## Docs
+
+- [Quickstart](quickstart.md): install, connect a model, first task
+- [Scripting](scripting.md): her exec, the result object, exit codes, CI, environment variables
+- [Models](models.md): every way to connect a model
+- [Tools](tools.md): the tools, components, MCP servers, Skills
+- [Permissions](permissions.md): modes, rules, protected paths, project trust
+- [ACP](acp.md): editors
+- [JSON-RPC](json-rpc.md): programs that drive her
+- [Protocol reference](protocol-reference.md): every method
+- [Privacy](privacy.md): every network access, what is stored
+- [Troubleshooting](troubleshooting.md): her doctor, common messages

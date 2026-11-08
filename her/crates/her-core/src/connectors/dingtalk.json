@@ -1,0 +1,29 @@
+{
+  "schema_version": 1,
+  "id": "dingtalk",
+  "name": "钉钉",
+  "version": "1.0.66",
+  "license": "Apache-2.0",
+  "source": "https://github.com/DingTalk-Real-AI/dingtalk-workspace-cli",
+  "description": "通过钉钉官方 DWS 访问文档、日程、待办、通讯录等已授权的办公能力。",
+  "tool_description": "Run DingTalk Workspace CLI with an argument array, without the leading dws. Start with [\"--help\"] and then the relevant subcommand's --help to discover current commands and parameters; never guess them. Prefer --format json where supported. Use only the user's authorized DingTalk account. Login and account configuration are managed in Connectors. For operations that send, modify or delete data, confirm the intended target and content with the user first.",
+  "config_env": "DWS_CONFIG_DIR",
+  "storage_env": "DWS_KEYCHAIN_DIR",
+  "auth": {
+    "kind": "cli_browser",
+    "login": ["auth", "login", "--force", "--no-browser"],
+    "status": ["auth", "status", "--format", "json"],
+    "logout": ["auth", "logout"],
+    "status_field": "authenticated",
+    "authorize_origin": "https://login.dingtalk.com",
+    "authorize_path": "/oauth2/auth"
+  },
+  "blocked_commands": ["auth", "pat", "config", "profile", "profiles", "upgrade", "update", "self-update", "plugin", "skills", "skill", "mcp", "completion", "event"],
+  "blocked_flags": ["--config", "--config-dir", "--profile", "--client-id", "--client-secret", "--token", "--access-token", "--auth-proxy", "--endpoint", "--base-url"],
+  "artifacts": {
+    "macos-aarch64": {"url":"https://github.com/DingTalk-Real-AI/dingtalk-workspace-cli/releases/download/v1.0.66/dws-darwin-arm64.tar.gz", "sha256":"5dabdf00c849c512c65150853a9c8c2d677ab9d809242d4b6304b2433049e7cb", "entry":"dws"},
+    "macos-x86_64": {"url":"https://github.com/DingTalk-Real-AI/dingtalk-workspace-cli/releases/download/v1.0.66/dws-darwin-amd64.tar.gz", "sha256":"313b64b136b3e9d41cbfaaa25677f1ba79d51223527e870a9ac6d34f0747d741", "entry":"dws"},
+    "linux-aarch64": {"url":"https://github.com/DingTalk-Real-AI/dingtalk-workspace-cli/releases/download/v1.0.66/dws-linux-arm64.tar.gz", "sha256":"4d6bd477d5b47d2595baa9adf718e3d38f6d2532614873e4f670cd84adf88096", "entry":"dws"},
+    "linux-x86_64": {"url":"https://github.com/DingTalk-Real-AI/dingtalk-workspace-cli/releases/download/v1.0.66/dws-linux-amd64.tar.gz", "sha256":"27cd2821e1f6523d1eeaf5688c23502bddbdd858cf82e32c197853065418bef8", "entry":"dws"}
+  }
+}

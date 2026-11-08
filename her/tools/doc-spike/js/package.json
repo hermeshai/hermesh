@@ -1,0 +1,2 @@
+{ "name": "doc-spike-js", "private": true, "type": "module",
+  "dependencies": { "pdfjs-dist": "5.4.296", "@napi-rs/canvas": "0.1.80" } }

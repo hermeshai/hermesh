@@ -1,0 +1,5 @@
+description = "A three-step form: details, a select and a radio, then a checkbox and submit"
+prompt = "On {base}/ order the Team plan, billed yearly, for Grace Hopper (grace@navy.example), shipped to Canada. Accept the terms and place the order."
+[[expect]]
+request = "POST /api/order"
+fields = { name = "Grace Hopper", email = "grace@navy.example", country = "CA", plan = "team", billing = "yearly", terms = "on" }

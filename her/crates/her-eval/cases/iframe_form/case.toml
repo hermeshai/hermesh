@@ -1,0 +1,5 @@
+description = "The form to fill is inside an iframe"
+prompt = "On {base}/ book a table for 4 people under the name Turing using the booking widget."
+[[expect]]
+request = "POST /api/booking"
+fields = { name = "Turing", guests = "4" }

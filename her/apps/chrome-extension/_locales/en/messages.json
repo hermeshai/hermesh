@@ -1,0 +1,119 @@
+{
+  "statusConnected": {
+    "message": "Connected"
+  },
+  "statusStandby": {
+    "message": "Not in use"
+  },
+  "statusConnecting": {
+    "message": "Connecting…"
+  },
+  "statusNotOpen": {
+    "message": "Hermesh is not open"
+  },
+  "statusMissing": {
+    "message": "Not set up on this computer"
+  },
+  "hintMissing": {
+    "message": "Install Hermesh, then connect your browser in its Settings."
+  },
+  "hintStandby": {
+    "message": "The agent uses another browser or profile."
+  },
+  "hintNotOpen": {
+    "message": "Open it to let the agent use this browser."
+  },
+  "openApp": {
+    "message": "Open Hermesh"
+  },
+  "useThis": {
+    "message": "Use this browser"
+  },
+  "tabs": {
+    "message": "$1 tabs"
+  },
+  "oneTab": {
+    "message": "1 tab"
+  },
+  "working": {
+    "message": "Working"
+  },
+  "approval": {
+    "message": "Waiting for your approval in Hermesh"
+  },
+  "finished": {
+    "message": "Finished"
+  },
+  "back": {
+    "message": "Back to conversation"
+  },
+  "done": {
+    "message": "I'm done"
+  },
+  "stop": {
+    "message": "Stop"
+  },
+  "offer": {
+    "message": "Hand this tab to Hermesh"
+  },
+  "offerNote": {
+    "message": "The agent will be able to read and use this tab."
+  },
+  "groupWaiting": {
+    "message": "Waiting · $1"
+  },
+  "titleConnected": {
+    "message": "Hermesh: connected"
+  },
+  "titleStandby": {
+    "message": "Hermesh: not in use"
+  },
+  "titleConnecting": {
+    "message": "Hermesh: connecting"
+  },
+  "titleNotOpen": {
+    "message": "Hermesh is not open"
+  },
+  "titleMissing": {
+    "message": "Hermesh is not set up on this computer"
+  },
+  "titleOutdated": {
+    "message": "Hermesh: needs an update"
+  },
+  "titleWaiting": {
+    "message": "Hermesh is waiting for you"
+  },
+  "statusStuck": {
+    "message": "Can't reach Hermesh"
+  },
+  "statusUpdateExtension": {
+    "message": "The extension needs an update"
+  },
+  "statusUpdateHer": {
+    "message": "Hermesh needs an update"
+  },
+  "hintStuck": {
+    "message": "Opening Hermesh repairs the connection. Then retry."
+  },
+  "hintUpdateExtension": {
+    "message": "It reconnects by itself afterwards, and your tabs stay as they are."
+  },
+  "hintUpdateHer": {
+    "message": "Open it and update. It reconnects by itself afterwards."
+  },
+  "retry": {
+    "message": "Try again"
+  },
+  "update": {
+    "message": "Update extension"
+  },
+  "waitingOne": {
+    "message": "1 thing needs you"
+  },
+  "waiting": {
+    "message": "$1 things need you"
+  },
+  "titleStuck": {
+    "message": "Hermesh: can't connect"
+  }
+}

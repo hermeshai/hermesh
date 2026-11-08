@@ -1,0 +1,257 @@
+{
+  "version": 1,
+  "id": "macro",
+  "title": "宏观研究：通胀、增长与利率情景",
+  "synthetic": true,
+  "turns": 1,
+  "steps": [
+    {
+      "id": "scope",
+      "observation": "确定截至日期、经济体、单位与资料版本，随后检索统计证据。",
+      "calls": [
+        {
+          "tool": "research_search",
+          "input": {
+            "query": "SIM economy inflation growth policy",
+            "as_of": "2026-09-30"
+          },
+          "output": {
+            "sources": [
+              "fixture://macro/cpi-v2",
+              "fixture://macro/gdp-v1",
+              "fixture://macro/policy-v1"
+            ]
+          },
+          "is_error": false
+        }
+      ]
+    },
+    {
+      "id": "evidence",
+      "observation": "并行获取通胀、产出、政策数据；所有数字均为合成测试数据。",
+      "calls": [
+        {
+          "tool": "research_fetch",
+          "input": {
+            "uri": "fixture://macro/cpi-v2"
+          },
+          "output": {
+            "source": "fixture://macro/cpi-v2",
+            "vintage": "2026-09-30",
+            "unit": "percent_yoy",
+            "headline": [
+              3.6,
+              3.2,
+              2.8
+            ],
+            "core": [
+              3.8,
+              3.5,
+              3.3
+            ]
+          },
+          "is_error": false
+        },
+        {
+          "tool": "research_fetch",
+          "input": {
+            "uri": "fixture://macro/gdp-v1"
+          },
+          "output": {
+            "source": "fixture://macro/gdp-v1",
+            "unit": "percent_annualized",
+            "real_growth": [
+              2.4,
+              1.9,
+              1.2
+            ],
+            "revision_pp": -0.2
+          },
+          "is_error": false
+        },
+        {
+          "tool": "research_fetch",
+          "input": {
+            "uri": "fixture://macro/policy-v1"
+          },
+          "output": {
+            "source": "fixture://macro/policy-v1",
+            "policy_rate": 4.5,
+            "target_inflation": 2.0,
+            "unemployment": 4.6
+          },
+          "is_error": false
+        }
+      ]
+    },
+    {
+      "id": "normalize",
+      "observation": "引用已返回的数据版本，保留同比和年化口径，计算通胀变化。",
+      "calls": [
+        {
+          "tool": "finance_calculate",
+          "input": {
+            "operation": "difference",
+            "a": {
+              "$ref": "1/0/headline/2"
+            },
+            "b": {
+              "$ref": "1/0/headline/0"
+            }
+          },
+          "output": {
+            "value": -0.8,
+            "unit": "percentage_points"
+          },
+          "is_error": false
+        }
+      ]
+    },
+    {
+      "id": "real_rate",
+      "observation": "用政策利率和核心通胀估计事后实际利率。",
+      "calls": [
+        {
+          "tool": "finance_calculate",
+          "input": {
+            "operation": "difference",
+            "a": {
+              "$ref": "1/2/policy_rate"
+            },
+            "b": {
+              "$ref": "1/0/core/2"
+            }
+          },
+          "output": {
+            "value": 1.2,
+            "unit": "percentage_points"
+          },
+          "is_error": false
+        }
+      ]
+    },
+    {
+      "id": "scenarios",
+      "observation": "增长放缓而核心通胀仍高于目标，构建基准、上行、下行情景。",
+      "calls": [
+        {
+          "tool": "macro_scenarios",
+          "input": {
+            "inflation_change": {
+              "$ref": "2/0/value"
+            },
+            "real_rate": {
+              "$ref": "3/0/value"
+            },
+            "growth": {
+              "$ref": "1/1/real_growth/2"
+            }
+          },
+          "output": {
+            "base": {
+              "probability": 0.6,
+              "rate_change_bp": -25
+            },
+            "inflation_up": {
+              "probability": 0.25,
+              "rate_change_bp": 0
+            },
+            "growth_down": {
+              "probability": 0.15,
+              "rate_change_bp": -75
+            }
+          },
+          "is_error": false
+        }
+      ]
+    },
+    {
+      "id": "stress",
+      "observation": "对概率和政策冲击进行加权，检查总概率为 1。",
+      "calls": [
+        {
+          "tool": "finance_calculate",
+          "input": {
+            "operation": "weighted",
+            "values": [
+              -25,
+              0,
+              -75
+            ],
+            "weights": [
+              0.6,
+              0.25,
+              0.15
+            ]
+          },
+          "output": {
+            "value": -26.25,
+            "weight_sum": 1.0
+          },
+          "is_error": false
+        }
+      ]
+    },
+    {
+      "id": "review",
+      "observation": "审查数据时效、修订风险与情景敏感性。",
+      "calls": [
+        {
+          "tool": "research_review",
+          "input": {
+            "sources": {
+              "$ref": "0/0/sources"
+            },
+            "expected_rate_change_bp": {
+              "$ref": "5/0/value"
+            }
+          },
+          "output": {
+            "citations_valid": true,
+            "limitations": [
+              "synthetic data",
+              "annualized growth is not yoy",
+              "policy path is scenario dependent"
+            ],
+            "passed": true
+          },
+          "is_error": false
+        }
+      ]
+    },
+    {
+      "id": "publish",
+      "observation": "仅在来源与计算通过审查后保存研究报告。",
+      "calls": [
+        {
+          "tool": "artifact_write",
+          "input": {
+            "path": "reports/macro.json",
+            "headline": "Disinflation with slowing growth",
+            "rate_change_bp": {
+              "$ref": "5/0/value"
+            },
+            "sources": {
+              "$ref": "0/0/sources"
+            }
+          },
+          "output": {
+            "path": "reports/macro.json",
+            "saved": true,
+            "scenario": "macro"
+          },
+          "is_error": false
+        }
+      ]
+    }
+  ],
+  "summary": {
+    "conclusion": "合成经济体通胀回落、增长放缓；情景加权政策变动 -26.25bp。",
+    "citations": [
+      "fixture://macro/cpi-v2",
+      "fixture://macro/gdp-v1",
+      "fixture://macro/policy-v1"
+    ],
+    "artifact": "reports/macro.json"
+  }
+}

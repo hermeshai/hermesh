@@ -1,0 +1,96 @@
+diff --git a/packages/pptx/src/render/browserFrameImages.test.ts b/packages/pptx/src/render/browserFrameImages.test.ts
+index 4479a2f..985556c 100644
+--- a/packages/pptx/src/render/browserFrameImages.test.ts
++++ b/packages/pptx/src/render/browserFrameImages.test.ts
+@@ -30,3 +30,15 @@ test('a decode limit resizes large pictures while the default cache keeps them w
+     expect(calls).toEqual([{ resizeWidth: 512, resizeHeight: 256 }, null]);
+   } finally { thumbnails.dispose(); slides.dispose(); }
+ });
++
++test('a host decoder is used for frame images', async () => {
++  const bytes = png(20, 10);
++  const source = { width: 20, height: 10 } as unknown as CanvasImageSource;
++  const calls: Uint8Array[] = [];
++  const images = browserFrameImages({ decodeImage: async (input) => { calls.push(input); return source; } });
++  const resolve = images.resolve({ media: new Map([['picture', bytes]]) });
++  try {
++    expect(await resolve('picture')).toBe(source);
++    expect(calls).toEqual([bytes]);
++  } finally { resolve.release(); images.dispose(); }
++});
+diff --git a/packages/pptx/src/render/browserFrameImages.ts b/packages/pptx/src/render/browserFrameImages.ts
+index 48115e3..84c7b5d 100644
+--- a/packages/pptx/src/render/browserFrameImages.ts
++++ b/packages/pptx/src/render/browserFrameImages.ts
+@@ -10,8 +10,8 @@ interface CachedImage {
+   closed: boolean;
+ }
+ 
+-export function browserFrameImages(options: { maxDimension?: number } = {}) {
+-  return createBrowserFrameImages((bytes, message) => decodeBrowserPresentationImage(bytes, message, options));
++export function browserFrameImages(options: { maxDimension?: number; decodeImage?: (bytes: Uint8Array, errorMessage: string) => Promise<CanvasImageSource> } = {}) {
++  return createBrowserFrameImages(options.decodeImage ?? ((bytes, message) => decodeBrowserPresentationImage(bytes, message, options)));
+ }
+ 
+ export function createBrowserFrameImages(decode: (bytes: Uint8Array, errorMessage: string) => Promise<CanvasImageSource>): {
+diff --git a/packages/pptx-react/src/PptxEditor.tsx b/packages/pptx-react/src/PptxEditor.tsx
+index f6c0a1d..888eef7 100644
+--- a/packages/pptx-react/src/PptxEditor.tsx
++++ b/packages/pptx-react/src/PptxEditor.tsx
+@@ -220,6 +220,7 @@ export interface PptxDocumentChange {
+ }
+ 
+ export interface PptxAsyncPresentationProps {
++  decodeImage?: (bytes: Uint8Array, errorMessage: string) => Promise<CanvasImageSource>;
+   /** Receives the version after a committed edit changes the presentation. */
+   onDocumentChange?: (change: PptxDocumentChange) => void;
+   /** Whether Save also downloads a copy. Defaults to true without onSave, false with it. */
+diff --git a/packages/pptx-react/src/worker/commandFramePainter.ts b/packages/pptx-react/src/worker/commandFramePainter.ts
+index 8c6c9d7..3a74b3b 100644
+--- a/packages/pptx-react/src/worker/commandFramePainter.ts
++++ b/packages/pptx-react/src/worker/commandFramePainter.ts
+@@ -11,9 +11,9 @@ export type { CommandFrameRaster, CommandFrameLease } from './commandFrameRaster
+ export { applyPrimitiveTransform } from '../../../../shared/office-session/render/pptxSlideRaster';
+ export { decodeCommandDisplayList } from '@betteroffice/pptx/worker';
+ 
+-export function createCommandFrameImages(options: { maxDimension?: number; reuse?: object } = {}) {
++export function createCommandFrameImages(options: { maxDimension?: number; reuse?: object; decodeImage?: (bytes: Uint8Array, errorMessage: string) => Promise<CanvasImageSource> } = {}) {
+   return createSlideRasterImages<HTMLCanvasElement, SlideDisplayList>({
+-    images: () => browserFrameImages({ maxDimension: options.maxDimension }), frameAssetIds, reuse: options.reuse });
++    images: () => browserFrameImages({ maxDimension: options.maxDimension, decodeImage: options.decodeImage }), frameAssetIds, reuse: options.reuse });
+ }
+ export type CommandFrameImages = ReturnType<typeof createCommandFrameImages>;
+ 
+diff --git a/packages/pptx-react/src/worker/usePeerlessPresentation.ts b/packages/pptx-react/src/worker/usePeerlessPresentation.ts
+index 4cf7d29..6891800 100644
+--- a/packages/pptx-react/src/worker/usePeerlessPresentation.ts
++++ b/packages/pptx-react/src/worker/usePeerlessPresentation.ts
+@@ -98,7 +98,7 @@ export function usePeerlessPresentation(
+     initialUpdate.current = update;
+   }
+   const fileGeneration = useMemo(() => ({}), [props.file, fonts, props.defaultFonts, props.clientId, Boolean(collaboration),
+-    collaboration?.roomId, collaboration?.clientId, initialUpdate.current]);
++    collaboration?.roomId, collaboration?.clientId, initialUpdate.current, props.decodeImage]);
+   const warnFonts = useFontWarning(fileGeneration);
+   const latestFile = useRef(fileGeneration);
+   latestFile.current = fileGeneration;
+@@ -130,8 +130,8 @@ export function usePeerlessPresentation(
+     let framePainter: ReturnType<typeof createCommandFramePainter> | undefined;
+     let displayedPainter: ReturnType<typeof createCommandFramePainter> | undefined;
+     let echoPainter: ReturnType<typeof createLocalEchoPainter> | undefined;
+-    const images = createCommandFrameImages();
+-    const thumbnailImages = createCommandFrameImages({ maxDimension: THUMBNAIL_IMAGE_DIMENSION, reuse: images });
++    const images = createCommandFrameImages({ decodeImage: props.decodeImage });
++    const thumbnailImages = createCommandFrameImages({ maxDimension: THUMBNAIL_IMAGE_DIMENSION, reuse: images, decodeImage: props.decodeImage });
+     const paintFonts = createPptxPaintFontForwarder();
+     let activeImages: ReturnType<typeof images.pin> | undefined;
+     let fatal: PptxWorkerEditorFailedError | undefined;
+@@ -638,7 +638,7 @@ export function usePeerlessPresentation(
+             if (!token.scale) return;
+             let preparedEcho: ReturnType<typeof createLocalEchoPainter> | undefined;
+             const render = pptxWorkerRenderClients.get(owner);
+-            const factory: typeof createCommandFramePainter = render?.supported && !peerlessEchoStores.has(original)
++            const factory: typeof createCommandFramePainter = render?.supported && !props.decodeImage && !peerlessEchoStores.has(original)
+               ? (target, options) => createWorkerFramePainter(target, render, { ...options, mainFirstFrame: true })
+               : peerlessPainterFactories.frame;
+             framePainter = factory(surface, {

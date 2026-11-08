@@ -1,0 +1,284 @@
+# Built-in providers, and corrections to the public model catalog.
+#
+# A provider says how to reach it and how it speaks: endpoint, authentication, `compat`. Which
+# models it offers comes from its own model list. Each model's details come from the public
+# catalog (catalog/public, refreshed by `cargo run -p her-llm --example sync_catalog`): the row
+# of this channel (`catalog_id`), else the row of the model's maker.
+# Model entries here fix what the catalog lacks or gets wrong; say why next to each. A provider's
+# first entry is also the model a session starts on when this is the first usable provider and no
+# `model` is configured: pick one that suits everyday work, neither the dearest nor the weakest.
+# `thinking_format` is how the channel's thinking switch and budget are sent; left out, a model
+# can still be given its named efforts. Override or extend anything in ~/.her/models.toml.
+# Prices are per million tokens in the provider's currency (or the entry's `currency`); the
+# catalog's are US dollars. See docs/kernel/model-catalog-design.md.
+
+[providers.deepseek]
+name = "DeepSeek"
+api = "openai-chat"
+base_url = "https://api.deepseek.com"
+api_key_env = "DEEPSEEK_API_KEY"
+currency = "CNY"
+catalog_id = "deepseek"
+compat = { max_tokens_field = "max_tokens", thinking_format = "deepseek" }
+
+# The catalog names them after a dated build; her shows the product names.
+[[providers.deepseek.models]]
+id = "deepseek-flash"
+name = "DeepSeek-V4.1-Flash"
+
+[[providers.deepseek.models]]
+id = "deepseek-v4-pro"
+name = "DeepSeek-V4-Pro"
+
+# The same account through the Anthropic-compatible endpoint: it shares DeepSeek's list.
+[providers.deepseek-anthropic]
+name = "DeepSeek (Anthropic-compatible endpoint)"
+api = "anthropic-messages"
+base_url = "https://api.deepseek.com/anthropic"
+api_key_env = "DEEPSEEK_API_KEY"
+currency = "CNY"
+catalog_id = "deepseek"
+list_from = "deepseek"
+
+[[providers.deepseek-anthropic.models]]
+id = "deepseek-flash"
+name = "DeepSeek-V4.1-Flash"
+
+[providers.openai]
+name = "OpenAI"
+api = "openai-chat"
+base_url = "https://api.openai.com/v1"
+api_key_env = "OPENAI_API_KEY"
+catalog_id = "openai"
+compat = { system_role = "developer", thinking_format = "openai", prompt_cache_key = true }
+
+[[providers.openai.models]]
+id = "gpt-6.1-terra"
+
+[providers.anthropic]
+name = "Anthropic"
+api = "anthropic-messages"
+base_url = "https://api.anthropic.com"
+api_key_env = "ANTHROPIC_API_KEY"
+catalog_id = "anthropic"
+
+[[providers.anthropic.models]]
+id = "claude-sonnet-5-5"
+
+# Gemini through its OpenAI-compatible endpoint. Its tool calls carry a signature that later turns
+# send back (`extra_content`, kept as ToolCall::provider_data).
+[providers.google]
+name = "Google Gemini"
+api = "openai-chat"
+base_url = "https://generativelanguage.googleapis.com/v1beta/openai"
+api_key_env = "GEMINI_API_KEY"
+catalog_id = "google"
+compat = { thinking_format = "openai" }
+
+[[providers.google.models]]
+id = "gemini-3.8-flash"
+
+[providers.qwen]
+name = "Qwen (Alibaba Cloud Model Studio)"
+api = "openai-chat"
+base_url = "https://dashscope.aliyuncs.com/compatible-mode/v1"
+api_key_env = "DASHSCOPE_API_KEY"
+currency = "CNY"
+catalog_id = "alibaba-cn"
+compat = { thinking_format = "qwen", max_tokens_field = "max_tokens" }
+
+[[providers.qwen.models]]
+id = "qwen3.8-max"
+
+[providers.kimi]
+name = "Moonshot Kimi"
+api = "openai-chat"
+base_url = "https://api.moonshot.cn/v1"
+api_key_env = "MOONSHOT_API_KEY"
+currency = "CNY"
+catalog_id = "moonshotai-cn"
+compat = { thinking_format = "deepseek", max_tokens_field = "max_tokens" }
+
+[[providers.kimi.models]]
+id = "kimi-k3.1-pro"
+
+[providers.glm]
+name = "Zhipu GLM"
+api = "openai-chat"
+base_url = "https://open.bigmodel.cn/api/paas/v4"
+api_key_env = "ZHIPUAI_API_KEY"
+currency = "CNY"
+catalog_id = "zhipuai"
+compat = { thinking_format = "zai", max_tokens_field = "max_tokens" }
+
+[[providers.glm.models]]
+id = "glm-5.3"
+
+[providers.openrouter]
+name = "OpenRouter"
+api = "openai-chat"
+base_url = "https://openrouter.ai/api/v1"
+api_key_env = "OPENROUTER_API_KEY"
+catalog_id = "openrouter"
+compat = { thinking_format = "openrouter" }
+
+[[providers.openrouter.models]]
+id = "anthropic/claude-sonnet-5.5"
+
+[providers.ollama]
+name = "Ollama (local)"
+api = "openai-chat"
+base_url = "http://localhost:11434/v1"
+auth = "none"
+list_details = "ollama"
+compat = { max_tokens_field = "max_tokens" }
+
+# Subscription products have independent credentials and plan-only endpoints. Public catalogs
+# describe their models, never the plan's membership or token prices. Seed lists are the
+# documented plan models, not the ordinary API catalog. See docs/kernel/token-plans.md.
+[providers.bailian-token-plan]
+name = "Bailian Token Plan"
+api = "openai-chat"
+base_url = "https://token-plan.cn-beijing.maas.aliyuncs.com/compatible-mode/v1"
+api_key_env = "BAILIAN_TOKEN_PLAN_API_KEY"
+catalog_id = "alibaba-token-plan-cn"
+plan = { key_url = "https://bailian.console.aliyun.com/cn-beijing/subscription/overview" }
+compat = { thinking_format = "qwen", max_tokens_field = "max_tokens" }
+
+[[providers.bailian-token-plan.models]]
+id = "qwen3.8-max"
+name = "Qwen3.8-Max"
+
+# The switch of its models is not documented, so a level "off" comes only from an effort `none`.
+[providers.tencent-token-plan]
+name = "Tencent Cloud Token Plan"
+api = "openai-chat"
+base_url = "https://tokenhub.tencentmaas.com/plan/v3"
+api_key_env = "TENCENT_TOKEN_PLAN_API_KEY"
+catalog_id = "tencent-token-plan"
+list_models = false
+plan = { key_url = "https://console.cloud.tencent.com/tokenhub" }
+compat = { max_tokens_field = "max_tokens" }
+
+[[providers.tencent-token-plan.models]]
+id = "tc-code-latest"
+name = "Auto (General Token Plan)"
+
+[[providers.tencent-token-plan.models]]
+id = "hy3"
+name = "Hy3 (Hy Token Plan)"
+
+[[providers.tencent-token-plan.models]]
+id = "hy4-preview"
+
+[[providers.tencent-token-plan.models]]
+id = "glm-5.3"
+name = "GLM-5.3"
+
+[[providers.tencent-token-plan.models]]
+id = "glm-5.3-flash"
+name = "GLM-5.3-Flash"
+
+[[providers.tencent-token-plan.models]]
+id = "deepseek/deepseek-flash"
+name = "DeepSeek-V4.1-Flash"
+
+[[providers.tencent-token-plan.models]]
+id = "deepseek/deepseek-v4-pro"
+name = "DeepSeek-V4-Pro"
+
+[[providers.tencent-token-plan.models]]
+id = "kimi-k3"
+name = "Kimi K3"
+
+[[providers.tencent-token-plan.models]]
+id = "minimax-m3"
+name = "MiniMax-M3"
+
+[[providers.tencent-token-plan.models]]
+id = "mimo-v2.6-flash"
+name = "MiMo-V2.6-Flash"
+
+[providers.volcengine-agent-plan]
+name = "Volcengine Ark Agent Plan"
+api = "openai-chat"
+base_url = "https://ark.cn-beijing.volces.com/api/plan/v3"
+api_key_env = "VOLCENGINE_AGENT_PLAN_API_KEY"
+list_models = false
+plan = { key_url = "https://ark.volcengine.com/region:cn-beijing/openManagement" }
+compat = { thinking_format = "deepseek", max_tokens_field = "max_tokens" }
+
+# The catalog does not know this routing name; the numbers are the plan's documented ones.
+[[providers.volcengine-agent-plan.models]]
+id = "ark-code-latest"
+name = "Ark Auto"
+context_window = 256000
+max_output_tokens = 32768
+input = ["text", "image"]
+
+# The catalog only lists its dated builds. Levels: Ark's chat parameters for doubao-seed-2-1.
+[[providers.volcengine-agent-plan.models]]
+id = "doubao-seed-2.1-pro"
+name = "Doubao Seed 2.1 Pro"
+context_window = 1024000
+max_output_tokens = 65536
+input = ["text", "image"]
+reasoning = true
+thinking = ["off", "minimal", "low", "medium", "high", "xhigh", "max"]
+
+# Ark's documented window for this plan; the catalog's row for the model is the maker's.
+[[providers.volcengine-agent-plan.models]]
+id = "glm-5.3"
+name = "GLM-5.3"
+context_window = 1024000
+max_output_tokens = 65536
+
+[providers.volcengine-coding-plan]
+name = "Volcengine Ark Coding Plan"
+api = "openai-chat"
+base_url = "https://ark.cn-beijing.volces.com/api/coding/v3"
+api_key_env = "VOLCENGINE_CODING_PLAN_API_KEY"
+catalog_id = "volcengine-coding-plan"
+list_models = false
+plan = { key_url = "https://ark.volcengine.com/region:cn-beijing/openManagement" }
+compat = { thinking_format = "deepseek", max_tokens_field = "max_tokens" }
+
+# The catalog does not know this routing name; the numbers are the plan's documented ones.
+[[providers.volcengine-coding-plan.models]]
+id = "ark-code-latest"
+name = "Ark Auto"
+context_window = 256000
+max_output_tokens = 32768
+input = ["text", "image"]
+
+[providers.zai-coding-plan]
+name = "Z.ai GLM Coding Plan"
+api = "openai-chat"
+base_url = "https://api.z.ai/api/coding/paas/v4"
+api_key_env = "ZAI_CODING_PLAN_API_KEY"
+catalog_id = "zai-coding-plan"
+list_models = false
+plan = { key_url = "https://z.ai/manage-apikey/apikey-list" }
+compat = { thinking_format = "zai", max_tokens_field = "max_tokens", replay_thinking = true }
+
+[[providers.zai-coding-plan.models]]
+id = "glm-5.3"
+
+[[providers.zai-coding-plan.models]]
+id = "glm-5.3-flash"
+
+[providers.zhipu-coding-plan]
+name = "Zhipu GLM Coding Plan"
+api = "openai-chat"
+base_url = "https://open.bigmodel.cn/api/coding/paas/v4"
+api_key_env = "ZHIPU_CODING_PLAN_API_KEY"
+catalog_id = "zhipuai-coding-plan"
+list_models = false
+plan = { key_url = "https://www.bigmodel.cn/glm-coding" }
+compat = { thinking_format = "zai", max_tokens_field = "max_tokens", replay_thinking = true }
+
+[[providers.zhipu-coding-plan.models]]
+id = "glm-5.3"
+
+[[providers.zhipu-coding-plan.models]]
+id = "glm-5.3-flash"

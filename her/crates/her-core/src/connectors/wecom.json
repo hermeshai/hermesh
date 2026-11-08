@@ -1,0 +1,106 @@
+{
+  "schema_version": 1,
+  "id": "wecom",
+  "name": "企业微信",
+  "version": "1.3.4",
+  "license": "MIT",
+  "source": "https://github.com/WecomTeam/wecom-cli",
+  "description": "通过企业微信官方 CLI 扫码绑定智能机器人，使用企业开放的办公能力。",
+  "tool_description": "Run the official WeCom CLI with an argument array, without the leading wecom-cli. Start with [\"--help\"] and inspect the relevant command --help or --schema; never guess commands or parameters. Available capabilities depend on the bound bot and enterprise policies. Auth and credentials are managed in Connectors. Confirm intended recipients and content before sending messages, modifying or deleting data.",
+  "config_env": "WECOM_CLI_CONFIG_DIR",
+  "storage_env": "WECOM_CLI_TMP_DIR",
+  "auth": {
+    "kind": "cli_browser",
+    "login": [
+      "auth",
+      "init",
+      "--noninteractive",
+      "--no-browser"
+    ],
+    "status": [
+      "auth",
+      "show",
+      "--status"
+    ],
+    "logout_files": [
+      "credentials.enc",
+      "bot.enc",
+      "token.enc"
+    ],
+    "status_text": true,
+    "status_value": "authorized",
+    "authorize_origin": "https://work.weixin.qq.com",
+    "authorize_path": "/ai/qc/gen"
+  },
+  "blocked_commands": [
+    "skills-install",
+    "profile",
+    "skill",
+    "uninstall",
+    "auth",
+    "self-update",
+    "doctor",
+    "profiles",
+    "install",
+    "upgrade",
+    "pat",
+    "config",
+    "init",
+    "bind",
+    "mcp",
+    "skills",
+    "completion",
+    "update",
+    "event",
+    "plugin"
+  ],
+  "blocked_flags": [
+    "--config",
+    "--config-dir",
+    "--profile",
+    "--client-id",
+    "--client-secret",
+    "--token",
+    "--access-token",
+    "--auth-proxy",
+    "--endpoint",
+    "--base-url",
+    "--app-id",
+    "--app-secret",
+    "--api-base-url"
+  ],
+  "artifacts": {
+    "macos-aarch64": {
+      "url": "https://registry.npmjs.org/@wecom/cli-darwin-arm64/-/cli-darwin-arm64-1.3.4.tgz",
+      "sha256": "5bde6ec46fba8a52d3cc6d738619866bb5e3042b82a41dab2825212cee10a7bb",
+      "entry": "package/bin/wecom-cli",
+      "notices": [
+        "package/LICENSE"
+      ]
+    },
+    "macos-x86_64": {
+      "url": "https://registry.npmjs.org/@wecom/cli-darwin-x64/-/cli-darwin-x64-1.3.4.tgz",
+      "sha256": "7ff30a0ac12a0c1a186851746515d6687faf52df799abbc60dde8b18d336710f",
+      "entry": "package/bin/wecom-cli",
+      "notices": [
+        "package/LICENSE"
+      ]
+    },
+    "linux-aarch64": {
+      "url": "https://registry.npmjs.org/@wecom/cli-linux-arm64/-/cli-linux-arm64-1.3.4.tgz",
+      "sha256": "833ab8efe327d7194a0107696104c63e56af9221db624dc181bf4f6bf8d91eba",
+      "entry": "package/bin/wecom-cli",
+      "notices": [
+        "package/LICENSE"
+      ]
+    },
+    "linux-x86_64": {
+      "url": "https://registry.npmjs.org/@wecom/cli-linux-x64/-/cli-linux-x64-1.3.4.tgz",
+      "sha256": "d3abb09509d2f786e5dbfde40f8c8469fcdcde8b491a37a9be3a23af85875cf9",
+      "entry": "package/bin/wecom-cli",
+      "notices": [
+        "package/LICENSE"
+      ]
+    }
+  }
+}

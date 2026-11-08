@@ -1,0 +1,52 @@
+//! Tool layer: the tool contract, the registry, the execution environment and the built-in
+//! tools (read, write, edit, bash).
+
+pub mod ansi;
+pub mod builtin;
+pub mod de;
+pub mod env;
+pub mod files;
+pub mod image;
+pub mod local_env;
+pub mod registry;
+pub mod text;
+pub mod tool;
+pub mod truncate;
+pub mod typed;
+
+pub use builtin::BashTool;
+pub use builtin::DEFAULT_TOOLS;
+pub use builtin::builtin_registry;
+pub use builtin::builtin_tools;
+pub use env::CaptureConfig;
+pub use env::CapturedOutput;
+pub use env::Environment;
+pub use env::ExecOutput;
+pub use env::ExecRequest;
+pub use env::OsInfo;
+pub use files::FileStamp;
+pub use files::FileTracker;
+pub use files::PathLocks;
+pub use local_env::LocalEnvironment;
+pub use registry::RegistryError;
+pub use registry::ToolRegistry;
+pub use tool::Authority;
+pub use tool::PageTarget;
+pub use tool::ProgressSink;
+pub use tool::SessionState;
+pub use tool::Tool;
+pub use tool::ToolCategory;
+pub use tool::ToolCtx;
+pub use tool::ToolDescription;
+pub use tool::ToolError;
+pub use tool::ToolKind;
+pub use tool::ToolOrigin;
+pub use tool::ToolOutput;
+pub use truncate::OutputLimits;
+pub use truncate::SavedOutput;
+pub use truncate::bytes_for_tokens;
+pub use truncate::cap_result;
+pub use truncate::tokens_for_bytes;
+pub use typed::Typed;
+pub use typed::TypedTool;
+pub use typed::parameters_schema;

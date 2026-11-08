@@ -1,0 +1,5 @@
+description = "Fill a login form and submit it"
+prompt = "Open {base}/ and sign in with the username ada and the password lovelace-1843."
+[[expect]]
+request = "POST /api/login"
+fields = { username = "ada", password = "lovelace-1843" }

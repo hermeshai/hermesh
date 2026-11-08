@@ -1,0 +1,77 @@
+name: her startup
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - 'her/crates/**'
+      - 'her/Cargo.*'
+      - 'her/rust-toolchain.toml'
+      - 'her/tools/bench/**'
+      - 'her/tools/kernel-simulation.sh'
+      - '.github/workflows/her-startup.yml'
+  pull_request:
+    paths:
+      - 'her/crates/**'
+      - 'her/Cargo.*'
+      - 'her/rust-toolchain.toml'
+      - 'her/tools/bench/**'
+      - 'her/tools/kernel-simulation.sh'
+      - '.github/workflows/her-startup.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: her-startup-${{ github.ref }}
+  cancel-in-progress: true
+
+defaults:
+  run:
+    working-directory: her
+
+jobs:
+  linux:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install benchmark and static linker
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y hyperfine musl-tools
+          rustup target add x86_64-unknown-linux-musl
+      - name: Verify persisted summaries and compiled assets
+        run: cargo test -p her-core -p her-llm --lib
+      # The gate and the measurements depend on this build alone: a failed test does not hide
+      # them, and a failed build skips them instead of running them without a binary.
+      - name: Build the static binary and startup launcher
+        id: build
+        if: ${{ !cancelled() }}
+        run: |
+          cargo build --profile dist --target x86_64-unknown-linux-musl -p her-cli --bin her
+          cc -O2 -Wall -Wextra -Werror tools/bench/startup_launcher.c -o target/startup-launcher
+      - name: Gate local commands on page faults and their fastest run
+        if: ${{ !cancelled() && steps.build.outcome == 'success' }}
+        run: bash tools/kernel-simulation.sh cli-startup
+      - name: Measure real task startup separately
+        if: ${{ !cancelled() && steps.build.outcome == 'success' }}
+        run: |
+          python3 tools/bench/bench_startup.py \
+            --her candidate=target/x86_64-unknown-linux-musl/dist/her \
+            --launcher target/startup-launcher --runs 100 --warmup 10 \
+            --json target/simulation-results/first-model-request.json
+      - name: Measure ACP and socket startup through first model request
+        if: ${{ !cancelled() && steps.build.outcome == 'success' }}
+        run: |
+          python3 tools/bench/bench_protocol_startup.py \
+            --her candidate=target/x86_64-unknown-linux-musl/dist/her \
+            --launcher target/startup-launcher --runs 100 --warmup 10 \
+            --json target/simulation-results/protocol-startup.json
+      - name: Upload measurements including failures
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: her-startup
+          path: her/target/simulation-results/*.json

@@ -1,0 +1,4 @@
+.venv/
+.state/
+jobs/
+__pycache__/

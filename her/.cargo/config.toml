@@ -1,0 +1,11 @@
+[env]
+# IronCalc's time-zone tables hold about 30,000 string pointers. A static PIE relocates them when it
+# starts, whatever the command, and macOS rebases them: about 260 page faults and 1 MiB of private
+# memory in every process. The engine runs in UTC and Excel's NOW() takes no zone, so they stay out.
+# See D-99 in docs/kernel/technical-design.md.
+CHRONO_TZ_TIMEZONE_FILTER = "^UTC$"
+
+# The bundled SQLite, without what the service's database does not use: every command pays for the
+# size at start-up (routine-design §3.6). Full-text search comes back with what needs it. Only
+# options that hold for the amalgamation: most other SQLITE_OMIT_* need SQLite's own sources.
+LIBSQLITE3_FLAGS = "-USQLITE_ENABLE_FTS3 -USQLITE_ENABLE_FTS3_PARENTHESIS -USQLITE_ENABLE_FTS5 -USQLITE_ENABLE_RTREE -USQLITE_ENABLE_DBSTAT_VTAB -USQLITE_ENABLE_LOAD_EXTENSION -USQLITE_ENABLE_COLUMN_METADATA -USQLITE_ENABLE_STAT4 -USQLITE_SOUNDEX -USQLITE_ENABLE_API_ARMOR -DSQLITE_OMIT_LOAD_EXTENSION -DSQLITE_OMIT_JSON -DSQLITE_OMIT_DEPRECATED -DSQLITE_OMIT_SHARED_CACHE -DSQLITE_OMIT_PROGRESS_CALLBACK -DSQLITE_DQS=0 -DSQLITE_LIKE_DOESNT_MATCH_BLOBS -DSQLITE_DEFAULT_MEMSTATUS=0 -DSQLITE_MAX_EXPR_DEPTH=0"

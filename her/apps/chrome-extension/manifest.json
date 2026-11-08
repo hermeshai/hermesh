@@ -1,0 +1,37 @@
+{
+  "manifest_version": 3,
+  "name": "Hermesh",
+  "description": "Lets the Hermesh agent use the tabs it opens in your Chrome, with your sign-ins.",
+  "version": "0.2.1",
+  "default_locale": "en",
+  "minimum_chrome_version": "125",
+  "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAozajEYBqZRmSs764tDSZjchUQqEpZf64jsq4a6SBYo1eCT5IzTeiKtbMwqboTXWD58/wcZU+tHTpvHX/SRngNJRZrxydxsh6EJ69+7CzSYAL0mJt7xFE87nI+/eolzBEpDN6o8gS6kNkTakqbNq3JulvcilGdWS5TobJ1wDIBpG8h0m3TlOJTZXa60Bztz+axHbFVr929m0kYsIVN38oJb/TAWnuze2f5vmiElHt7hHIyzSYfR6UsF/MPOd6llmCPqG7F0VJ//kRhP5225ymR81lDmcgj92a+NC2vvoXdG4IdCrDXwbjr+tHv4bWINMIeMNioNW/N1j4iIUJ+sHtZQIDAQAB",
+  "permissions": [
+    "debugger",
+    "nativeMessaging",
+    "tabs",
+    "tabGroups",
+    "alarms",
+    "storage",
+    "identity",
+    "identity.email"
+  ],
+  "background": {
+    "service_worker": "src/background.js",
+    "type": "module"
+  },
+  "action": {
+    "default_title": "Hermesh",
+    "default_popup": "src/popup.html",
+    "default_icon": {
+      "16": "icons/16.png",
+      "32": "icons/32.png"
+    }
+  },
+  "icons": {
+    "16": "icons/16.png",
+    "32": "icons/32.png",
+    "48": "icons/48.png",
+    "128": "icons/128.png"
+  }
+}

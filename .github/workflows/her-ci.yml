@@ -1,0 +1,63 @@
+name: her
+
+# The her kernel (her/): its own Rust workspace, tested apart from the Go code.
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - 'her/**'
+      - '.github/workflows/her-ci.yml'
+  pull_request:
+    paths:
+      - 'her/**'
+      - '.github/workflows/her-ci.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: her-ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  # The PDFium release the document tests run against.
+  PDFIUM_TAG: chromium/8076
+
+defaults:
+  run:
+    working-directory: her
+
+jobs:
+  test:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04, macos-15]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - name: PDFium for the document tests
+        run: |
+          case "$RUNNER_OS" in
+            Linux) archive=pdfium-linux-x64.tgz; lib=libpdfium.so ;;
+            macOS) archive=pdfium-mac-arm64.tgz; lib=libpdfium.dylib ;;
+          esac
+          mkdir -p "$RUNNER_TEMP/pdfium"
+          curl -fsSL "https://github.com/bblanchon/pdfium-binaries/releases/download/$PDFIUM_TAG/$archive" | tar xz -C "$RUNNER_TEMP/pdfium"
+          echo "HER_PDFIUM=$RUNNER_TEMP/pdfium/lib/$lib" >> "$GITHUB_ENV"
+      - name: Rust tests, every crate
+        run: cargo test --workspace --no-fail-fast
+      - name: Word saved through the desktop app's serializer
+        run: HER_WORD_SAVE=desktop cargo test -p her-server --lib docx_host -- --ignored
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: The public build compiles and the generated reference is current
+        run: |
+          cargo check -p her-cli --no-default-features
+          node tools/gen-protocol-docs.mjs --check
+          sh tools/check-public.sh
+      - name: Browser extension tests
+        run: node --test apps/chrome-extension/src/*.test.js

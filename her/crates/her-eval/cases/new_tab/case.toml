@@ -1,0 +1,4 @@
+description = "The information is on a page that opens in a new tab"
+prompt = "On {base}/ open the release notes for version 2.4 and tell me the codename of that release."
+[[expect]]
+answer = "Kestrel"

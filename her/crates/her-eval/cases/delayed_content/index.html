@@ -1,0 +1,14 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><title>Reports</title></head>
+<body>
+  <h1>Monthly report</h1>
+  <button onclick="start()">Generate report</button>
+  <div id="out" aria-live="polite"></div>
+<script>
+function start() {
+  const out = document.getElementById('out');
+  out.textContent = 'Generating… this takes a few seconds.';
+  setTimeout(() => { out.textContent = 'Done. Confirmation code: RPT-58213'; }, 4000);
+}
+</script>
+</body></html>

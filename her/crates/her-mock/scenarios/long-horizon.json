@@ -1,0 +1,85 @@
+{
+  "version": 1,
+  "id": "long-horizon",
+  "title": "220 轮连续账本核对，每轮依赖前一轮余额",
+  "synthetic": true,
+  "turns": 220,
+  "steps": [
+    {
+      "id": "read",
+      "observation": "读取上轮已提交余额和本轮交易，检查跨轮状态。",
+      "calls": [
+        {
+          "tool": "ledger_read",
+          "input": {
+            "period": "$turn"
+          },
+          "output": {
+            "period": "$turn",
+            "opening": "$opening",
+            "delta": "$delta",
+            "entries": [
+              {
+                "id": "$turn",
+                "amount": "$delta"
+              }
+            ]
+          },
+          "is_error": false
+        }
+      ]
+    },
+    {
+      "id": "reconcile",
+      "observation": "使用工具返回的期初余额及交易计算本轮期末。",
+      "calls": [
+        {
+          "tool": "ledger_reconcile",
+          "input": {
+            "period": "$turn",
+            "opening": {
+              "$ref": "0/0/opening"
+            },
+            "delta": {
+              "$ref": "0/0/delta"
+            }
+          },
+          "output": {
+            "period": "$turn",
+            "closing": "$closing",
+            "balanced": true
+          },
+          "is_error": false
+        }
+      ]
+    },
+    {
+      "id": "commit",
+      "observation": "核对成功后提交检查点，供下一轮续接。",
+      "calls": [
+        {
+          "tool": "ledger_commit",
+          "input": {
+            "period": "$turn",
+            "closing": {
+              "$ref": "1/0/closing"
+            },
+            "balanced": {
+              "$ref": "1/0/balanced"
+            }
+          },
+          "output": {
+            "period": "$turn",
+            "closing": "$closing",
+            "committed": true
+          },
+          "is_error": false
+        }
+      ]
+    }
+  ],
+  "summary": {
+    "conclusion": "本轮账本已核对并提交。",
+    "closing": "$closing"
+  }
+}
