@@ -226,6 +226,7 @@ func (d *Device) Close() {
 	d.mu.Lock()
 	defer d.mu.Unlock()
 	for _, o := range d.profiles {
+		o.closeConsole()
 		o.st.db.Close()
 		o.lock.Release()
 	}
