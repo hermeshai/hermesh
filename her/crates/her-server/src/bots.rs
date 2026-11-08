@@ -49,8 +49,8 @@ use crate::mirror::SessionMirror;
 use crate::server::ResumeOverrides;
 use crate::server::Server;
 
-/// The name every user's first bot has (PRD DD-108).
-const DEFAULT_NAME: &str = "HerBot";
+/// The name every user's first bot has. One made under the earlier name, HerBot, keeps it.
+const DEFAULT_NAME: &str = "Her";
 /// Characters in a name, once trimmed.
 const NAME_MAX: usize = 20;
 /// Characters of a message kept for the list.

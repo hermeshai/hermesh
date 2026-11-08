@@ -125,7 +125,7 @@ async fn a_bot_talks_in_messages_and_its_row_follows() {
     schema.check("BotsResult", &listed);
     let bots = listed["bots"].as_array().unwrap();
     assert_eq!(bots.len(), 1);
-    assert_eq!((bots[0]["name"].as_str(), bots[0]["default"].as_bool()), (Some("HerBot"), Some(true)));
+    assert_eq!((bots[0]["name"].as_str(), bots[0]["default"].as_bool()), (Some("Her"), Some(true)));
     assert_eq!(bots[0]["avatar"], json!({"kind": "mark"}));
 
     let created = client
@@ -764,6 +764,26 @@ async fn a_bot_saved_with_an_old_character_stays_in_the_list() {
     let row = listed["bots"].as_array().unwrap().iter().find(|b| b["id"] == id).expect("the old bot is still listed");
     assert_eq!(row["name"], "老朋友");
     assert_eq!(row["avatar"], json!({"kind": "char", "shape": "lid", "hue": "teal"}));
+}
+
+/// The default bot was named HerBot before it was named Her: one saved then keeps its name, and
+/// no second default bot is made.
+#[tokio::test]
+async fn a_default_bot_saved_as_herbot_keeps_its_name() {
+    let env = TestEnv::new("manual", "").await;
+    let id = "0193f0aa-0000-7000-8000-000000000002";
+    let dir = env.home.path().join("bots").join(id);
+    std::fs::create_dir_all(&dir).unwrap();
+    let saved = json!({"version": 1, "id": id, "name": "HerBot", "avatar": {"kind": "mark"}, "default": true, "created_at": "2026-11-03T14:05:00Z"});
+    std::fs::write(dir.join("bot.json"), saved.to_string()).unwrap();
+
+    let (_child, client, incoming) = env.spawn_rpc(&["serve", "--stdio"]);
+    native_init(&client).await;
+    let _wire = route(incoming);
+    let listed = client.request("bots/subscribe", Value::Null).await.unwrap();
+    let bots = listed["bots"].as_array().unwrap();
+    assert_eq!(bots.len(), 1, "{bots:#?}");
+    assert_eq!((bots[0]["id"].as_str(), bots[0]["name"].as_str(), bots[0]["default"].as_bool()), (Some(id), Some("HerBot"), Some(true)));
 }
 
 /// The head of a PNG: enough to tell what it is and how large.
