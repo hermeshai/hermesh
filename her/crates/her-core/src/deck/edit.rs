@@ -432,7 +432,7 @@ pub(crate) struct EditArgs {
     deck: String,
     /// The changes, made together as one change the user can take back. At most 256.
     edits: Vec<DeckOp>,
-    /// What the changes do, in the user's words ("按 Q3 财报更新第 3 页的营收"); shown with the change.
+    /// What the changes do, in the user's words ("按新排期更新第 3 页的时间表"); shown with the change.
     #[serde(default)]
     note: Option<String>,
 }

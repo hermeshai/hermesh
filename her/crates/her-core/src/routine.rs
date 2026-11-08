@@ -238,7 +238,7 @@ struct ManageArgs {
     /// What to do on each run, in the user's language, written as an intent rather than fixed tool steps. A run cannot see this conversation, message the user or change routines: its report comes back to you, and you do those. Say what to check, what is worth reporting, when to report nothing, what to do if the check fails, when the job is finished, and where to keep anything the next run needs.
     #[serde(default)]
     prompt: Option<String>,
-    /// 5-field cron in the user's local time, using the time they said ("8am" is "0 8 * * *"). Prefix CRON_TZ=<IANA zone> when the time belongs elsewhere, such as a market's hours. Or one moment, which runs once and finishes by itself: "in 20m" or "2026-11-10 09:00". Work that must be ready by a time starts early enough to finish.
+    /// 5-field cron in the user's local time, using the time they said ("8am" is "0 8 * * *"). Prefix CRON_TZ=<IANA zone> when the time belongs elsewhere, such as a meeting in another city. Or one moment, which runs once and finishes by itself: "in 20m" or "2026-11-10 09:00". Work that must be ready by a time starts early enough to finish.
     #[serde(default)]
     schedule: Option<String>,
     /// The schedule as the user would say it, in their language. The user sees this. Required on create and whenever schedule changes.

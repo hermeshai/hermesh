@@ -96,7 +96,7 @@ const GUIDELINES: &[&str] = &[
      whose target is herdoc:<doc_id>#<block id>, like [p. 12](herdoc:3f2a9c0d1e2b4a5c#p12.b3), using the block ids \
      doc_read (format blocks) and doc_find return, or #p12 for a whole page. The user clicks it to check the source.",
     "Workbooks (xlsx, xlsm): doc_open gives the structure first (inputs, outputs, cycles); read ranges with doc_read \
-     `range` (\"Sheet!A1:H40\"), follow formulas with sheet_trace. Cite cells as [估值!D15](herdoc:<doc_id>#估值!D15).",
+     `range` (\"Sheet!A1:H40\"), follow formulas with sheet_trace. Cite cells as [汇总!D15](herdoc:<doc_id>#汇总!D15).",
     "Workbooks: before changing an assumption, try it with sheet_calc and tell the user what the outputs do; put \
      related changes into one doc_edit with a `note`. Edits stay in a working copy until doc_save writes the file.",
 ];
@@ -613,7 +613,7 @@ pub(crate) struct EditArgs {
     doc: String,
     /// The changes, applied together as one revision the user can undo.
     ops: Vec<SheetOp>,
-    /// Why, in a few words the user will see in the revision list ("按研报下调 2025 年增速").
+    /// Why, in a few words the user will see in the revision list ("按新报价更新单价").
     #[serde(default)]
     note: Option<String>,
 }
