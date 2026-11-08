@@ -45,7 +45,7 @@ jobs:
             macOS) archive=pdfium-mac-arm64.tgz; lib=libpdfium.dylib ;;
           esac
           mkdir -p "$RUNNER_TEMP/pdfium"
-          curl -fsSL "https://github.com/bblanchon/pdfium-binaries/releases/download/$PDFIUM_TAG/$archive" | tar xz -C "$RUNNER_TEMP/pdfium"
+          curl -fsSL --retry 5 --retry-all-errors --retry-delay 10 "https://github.com/bblanchon/pdfium-binaries/releases/download/$PDFIUM_TAG/$archive" | tar xz -C "$RUNNER_TEMP/pdfium"
           echo "HER_PDFIUM=$RUNNER_TEMP/pdfium/lib/$lib" >> "$GITHUB_ENV"
       - name: Rust tests, every crate
         run: cargo test --workspace --no-fail-fast
