@@ -82,8 +82,12 @@ test("Her: the first run, a chat, the console, a second environment, and one gon
   await send(mockSend("来自 work-mac"));
   await expect(log).toContainText("来自 work-mac", { timeout: 60_000 });
 
-  // Back to this Mac, its own conversation; then to work-mac again.
+  // Back to this Mac, its own conversation; then to work-mac again. The menu opens under the
+  // switcher, inside the window.
   await switcher.click();
+  const [button, menu] = await Promise.all([switcher.boundingBox(), page.getByRole("menu").boundingBox()]);
+  expect(Math.abs(menu!.x - button!.x)).toBeLessThan(2);
+  expect(menu!.x + menu!.width).toBeLessThanOrEqual(page.viewportSize()?.width ?? (await page.evaluate(() => innerWidth)));
   await page.getByRole("menuitemradio").filter({ hasNotText: "work-mac" }).click();
   await expect(log).toContainText("你好，主人");
   await expect(log).not.toContainText("来自 work-mac");
