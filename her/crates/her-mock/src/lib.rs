@@ -22,18 +22,18 @@
 //! | `retry` | HTTP 500 for the first request of the prompt, then a reply |
 //! | `fail` | HTTP 400 (a request error that is not retried) |
 //! | `cut` | a reply that stops with finish_reason `length` |
-//! | `skill:NAME` | follows a skill: read the SKILL.md that the system prompt lists for NAME, then each `references/…` file (read) and `scripts/…` script (`sh`) its text names in backticks, resolved against the skill's directory, then `skill done` |
-//! | `invoked` | follows the `<skill>` block that a `/name` put into the prompt, the same way, then `invoked done` |
+//! | `skill:NAME` | follows a skill: read the SKILL.md that the system prompt lists for NAME, then each `references/…` file (read) and `scripts/…` script (`sh`) its text names in backticks, resolved against the skill's directory, then `skill done`; in a bot's conversation, `skill done: <the last result>` sent with `end_turn` |
+//! | `invoked` | follows the `<skill>` block that a `/name` put into the prompt, the same way, then `invoked done`; in a bot's conversation, sent with `end_turn`, with the last result after a colon when it read or ran something |
 //! | `context` | `skills in context: NAME, …` for the `<skill>` blocks in user messages, or `none` |
 //! | `agent:LABEL` | a coding task in seven requests (see [`agent_step`]) |
 //! | `fanout:K[:LABEL]` | K `spawn_agent` calls with wait=true, each running `agent`, then a summary |
 //! | `read:PATH` | a read of PATH, then `read done` |
 //! | `browser:URL` | `browser_navigate` to URL, a click on the first button of the page, then `browser done: <the click's result>` |
 //! | `churn:N[:SEED]` | N tool turns in one task, each picked at random: read, write or edit `notes/state.txt`, append to `notes/log.txt`, search with grep, find or rg, read part of a file; then `churn done` (see [`churn_step`]) |
-//! | `mcp:SERVER:PROJECT` | `tool_search` for the vault tool, `call_tool` on `mcp__SERVER__vault_reveal_code`, then `mcp done: <its result>` |
-//! | `mcp_direct:SERVER:PROJECT` | a direct call of `mcp__SERVER__vault_reveal_code`, then `mcp done: <its result>` |
+//! | `mcp:SERVER:PROJECT` | `tool_search` for the vault tool, `call_tool` on `mcp__SERVER__vault_reveal_code`, then `mcp done: <its result>`, sent with `end_turn` in a bot's conversation |
+//! | `mcp_direct:SERVER:PROJECT` | a direct call of `mcp__SERVER__vault_reveal_code`, then `mcp done: <its result>`, the same way |
 //! | `sheet:PATH` | a workbook session through `call_tool`: `doc_open` PATH, `doc_read` the inputs, `sheet_calc` WACC at 9%, `doc_edit` it, `sheet_trace` what reads it, `doc_save`; then `sheet done` |
-//! | `mcp_env:SERVER:VAR` | `call_tool` on `mcp__SERVER__env` for VAR (the server's environment), then `mcp done: <its result>` |
+//! | `mcp_env:SERVER:VAR` | `call_tool` on `mcp__SERVER__env` for VAR (the server's environment), then `mcp done: <its result>`, the same way |
 //! | `send[:TEXT]` | a bot's `send_to_user` of TEXT (else the prompt) with `end_turn` |
 //! | `attach:PATH[,PATH…]` | a bot's `send_to_user` of those files with `end_turn` |
 //! | `ask:QUESTION\|A\|B…` | a bot's `send_to_user` of that question and its answers |
@@ -538,17 +538,28 @@ fn answer_latest(messages: &[Value]) -> Step {
     Step::calls(vec![("send_to_user", json!({ "text": format!("回复：{}", last_user_text(messages)), "end_turn": true }))])
 }
 
+/// A scenario's last words: text, or in a bot's conversation, where only `send_to_user` reaches
+/// the owner, sent with `end_turn`.
+fn last_words(bot: bool, text: String) -> Plan {
+    if bot {
+        Plan::Step(Step::calls(vec![("send_to_user", json!({ "text": text, "end_turn": true }))]))
+    } else {
+        Plan::Step(Step::text(text))
+    }
+}
+
 fn now_us() -> u128 {
     SystemTime::now().duration_since(UNIX_EPOCH).map_or(0, |d| d.as_micros())
 }
 
-fn plan(shared: &Shared, messages: &[Value], name: &str, arg: &str, prompt: &str, step: usize) -> Plan {
+/// `bot`: a bot's conversation, which offers `send_to_user`.
+fn plan(shared: &Shared, messages: &[Value], name: &str, arg: &str, prompt: &str, step: usize, bot: bool) -> Plan {
     let n = |default: usize| arg.parse().unwrap_or(default);
     let done = |label: &str| Plan::Step(Step::text(format!("{label} done")));
     match name {
         "sim" => simulation::plan(messages, arg),
-        "skill" => skill_step(messages, arg, step),
-        "invoked" => invoked_step(prompt, step),
+        "skill" => skill_step(messages, arg, step, bot),
+        "invoked" => invoked_step(messages, prompt, step, bot),
         "context" => Plan::Step(Step::text(skills_in_context(messages))),
         "echo" => Plan::Step(Step::text(format!("echo: {prompt}"))),
         "think" => Plan::Step(Step {
@@ -631,7 +642,7 @@ fn plan(shared: &Shared, messages: &[Value], name: &str, arg: &str, prompt: &str
                 ("mcp", 0) => Plan::Step(Step::calls(vec![("tool_search", json!({ "query": "vault release code" }))])),
                 ("mcp", 1) => Plan::Step(Step::calls(vec![("call_tool", json!({ "name": tool, "arguments": arguments }))])),
                 ("mcp_direct", 0) => Plan::Step(Step::calls(vec![(tool.as_str(), arguments)])),
-                _ => Plan::Step(Step::text(format!("mcp done: {}", last_tool_result(messages)))),
+                _ => last_words(bot, format!("mcp done: {}", last_tool_result(messages))),
             }
         }
         "sheet" => {
@@ -651,7 +662,7 @@ fn plan(shared: &Shared, messages: &[Value], name: &str, arg: &str, prompt: &str
             let (server, var) = arg.split_once(':').unwrap_or((arg, "PATH"));
             match step {
                 0 => Plan::Step(Step::calls(vec![("call_tool", json!({ "name": format!("mcp__{server}__env"), "arguments": { "name": var } }))])),
-                _ => Plan::Step(Step::text(format!("mcp done: {}", last_tool_result(messages)))),
+                _ => last_words(bot, format!("mcp done: {}", last_tool_result(messages))),
             }
         }
         "web_search" => match step {
@@ -964,7 +975,7 @@ fn plan(shared: &Shared, messages: &[Value], name: &str, arg: &str, prompt: &str
 
 /// A model following the skill `name`: first the SKILL.md that the catalog in the system
 /// prompt lists, then what its text names in backticks, as the catalog's instructions say.
-fn skill_step(messages: &[Value], name: &str, step: usize) -> Plan {
+fn skill_step(messages: &[Value], name: &str, step: usize, bot: bool) -> Plan {
     let system = messages
         .first()
         .filter(|m| matches!(m.get("role").and_then(Value::as_str), Some("system" | "developer")))
@@ -976,7 +987,7 @@ fn skill_step(messages: &[Value], name: &str, step: usize) -> Plan {
         .and_then(|at| system[at + marker.len()..].split('"').next())
         .map(|path| path.replace("&quot;", "\"").replace("&lt;", "<").replace("&gt;", ">").replace("&amp;", "&"))
     else {
-        return Plan::Step(Step::text(format!("no skill named {name}")));
+        return last_words(bot, format!("no skill named {name}"));
     };
     if step == 0 {
         return Plan::Step(Step::calls(vec![("read", json!({ "path": path }))]));
@@ -993,15 +1004,17 @@ fn skill_step(messages: &[Value], name: &str, step: usize) -> Plan {
     let dir = std::path::Path::new(&path).parent().map(|d| d.display().to_string()).unwrap_or_default();
     match skill_actions(&body, &dir).into_iter().nth(step - 1) {
         Some(action) => Plan::Step(Step::calls(vec![action])),
+        // A bot's owner sees what the skill gave: the last file read or script run.
+        None if bot => last_words(bot, format!("skill done: {}", last_tool_result(messages))),
         None => Plan::Step(Step::text("skill done")),
     }
 }
 
 /// A model following a skill that the user invoked with `/name`: the instructions are already
 /// in the prompt, inside a `<skill>` block that says which directory relative paths start from.
-fn invoked_step(prompt: &str, step: usize) -> Plan {
+fn invoked_step(messages: &[Value], prompt: &str, step: usize, bot: bool) -> Plan {
     let Some(start) = prompt.find("<skill name=\"") else {
-        return Plan::Step(Step::text("no skill in the message"));
+        return last_words(bot, "no skill in the message".into());
     };
     let block = &prompt[start..];
     let block = &block[..block.find("</skill>").unwrap_or(block.len())];
@@ -1013,7 +1026,9 @@ fn invoked_step(prompt: &str, step: usize) -> Plan {
         .unwrap_or_default();
     match skill_actions(block, &dir).into_iter().nth(step) {
         Some(action) => Plan::Step(Step::calls(vec![action])),
-        None => Plan::Step(Step::text("invoked done")),
+        // A bot's owner sees what the skill gave, when it named something to read or run.
+        None if bot && step > 0 => last_words(bot, format!("invoked done: {}", last_tool_result(messages))),
+        None => last_words(bot, "invoked done".into()),
     }
 }
 
@@ -1286,12 +1301,13 @@ async fn respond_chat(stream: &mut TcpStream, body: &[u8], shared: &Shared) -> i
             shared.stats.record_controls(&request);
             let messages = request.get("messages").and_then(Value::as_array).map(Vec::as_slice).unwrap_or_default();
             let (name, arg, prompt, step) = directive(messages);
+            let bot = offers_tool(&request, "send_to_user");
             let plan = match check_plan(&request, messages) {
                 Some(plan) => plan,
                 // An assistant's conversation with no directive: it answers the latest message,
                 // as a model does, instead of writing text nobody sees.
-                None if name == "text" && step == 0 && offers_tool(&request, "send_to_user") => Plan::Step(answer_latest(messages)),
-                None => plan(shared, messages, &name, &arg, &prompt, step),
+                None if name == "text" && step == 0 && bot => Plan::Step(answer_latest(messages)),
+                None => plan(shared, messages, &name, &arg, &prompt, step, bot),
             };
             (name, plan)
         }
@@ -1423,6 +1439,30 @@ mod tests {
         assert_eq!(call_of(Plan::Step(answer_latest(&messages))), ("send_to_user", json!({"text": "回复：hi", "end_turn": true})));
     }
 
+    fn shared() -> Shared {
+        Shared {
+            options: MockOptions::default(),
+            stats: Stats::default(),
+            next_call: AtomicU64::new(1),
+            retried: Mutex::new(HashMap::new()),
+            search: search::SearchState::default(),
+        }
+    }
+
+    #[test]
+    fn in_a_bot_an_mcp_call_ends_with_its_result_sent() {
+        let messages = [
+            json!({"role": "user", "content": "[[mock:mcp:vault:Apollo]] go"}),
+            json!({"role": "assistant", "content": null}),
+            json!({"role": "tool", "content": "mcp__vault__vault_reveal_code"}),
+            json!({"role": "assistant", "content": null}),
+            json!({"role": "tool", "content": "Release code for Apollo: FX-1"}),
+        ];
+        let last = |bot| call_of(plan(&shared(), &messages, "mcp", "vault:Apollo", "go", 2, bot));
+        assert_eq!(last(false), ("text", json!("mcp done: Release code for Apollo: FX-1")));
+        assert_eq!(last(true), ("send_to_user", json!({"text": "mcp done: Release code for Apollo: FX-1", "end_turn": true})));
+    }
+
     fn call_of(plan: Plan) -> (&'static str, Value) {
         match plan {
             Plan::Step(mut step) => match step.parts.pop() {
@@ -1442,26 +1482,37 @@ mod tests {
         let user = json!({"role": "user", "content": "[[mock:skill:report]] go"});
         let mut messages = vec![system.clone(), user.clone()];
         assert_eq!(
-            call_of(skill_step(&messages, "report", 0)),
+            call_of(skill_step(&messages, "report", 0, false)),
             ("read", json!({"path": "/u/.agents/skills/report/SKILL.md"}))
         );
         messages.push(json!({"role": "assistant", "content": null}));
         messages.push(json!({"role": "tool", "content": "Read `references/a.md`, then run `scripts/b.sh`."}));
         assert_eq!(
-            call_of(skill_step(&messages, "report", 1)),
+            call_of(skill_step(&messages, "report", 1, false)),
             ("read", json!({"path": "/u/.agents/skills/report/references/a.md"}))
         );
         assert_eq!(
-            call_of(skill_step(&messages, "report", 2)),
+            call_of(skill_step(&messages, "report", 2, false)),
             ("bash", json!({"command": "sh '/u/.agents/skills/report/scripts/b.sh'"}))
         );
-        assert_eq!(call_of(skill_step(&messages, "report", 3)), ("text", json!("skill done")));
-        assert_eq!(call_of(skill_step(&[system.clone(), user], "other", 0)), ("text", json!("no skill named other")));
+        assert_eq!(call_of(skill_step(&messages, "report", 3, false)), ("text", json!("skill done")));
+        assert_eq!(call_of(skill_step(&[system.clone(), user.clone()], "other", 0, false)), ("text", json!("no skill named other")));
+
+        // In a bot's conversation the owner is sent what the skill gave: its last result.
+        for result in ["a's notes", "b's report"] {
+            messages.push(json!({"role": "assistant", "content": null}));
+            messages.push(json!({"role": "tool", "content": result}));
+        }
+        let sent = |text: &str| ("send_to_user", json!({"text": text, "end_turn": true}));
+        assert_eq!(call_of(skill_step(&messages, "report", 3, true)), sent("skill done: b's report"));
+        assert_eq!(call_of(skill_step(&[system.clone(), user], "other", 0, true)), sent("no skill named other"));
 
         let prompt = "<skill name=\"report\">\nRelative paths in this skill are relative to /u/s/report.\n\n\
                       Run `scripts/b.sh`.\n</skill>\n\nthis week";
-        assert_eq!(call_of(invoked_step(prompt, 0)), ("bash", json!({"command": "sh '/u/s/report/scripts/b.sh'"})));
-        assert_eq!(call_of(invoked_step(prompt, 1)), ("text", json!("invoked done")));
+        assert_eq!(call_of(invoked_step(&[], prompt, 0, false)), ("bash", json!({"command": "sh '/u/s/report/scripts/b.sh'"})));
+        assert_eq!(call_of(invoked_step(&[], prompt, 1, false)), ("text", json!("invoked done")));
+        let ran = [json!({"role": "user", "content": prompt}), json!({"role": "assistant", "content": null}), json!({"role": "tool", "content": "b's report"})];
+        assert_eq!(call_of(invoked_step(&ran, prompt, 1, true)), sent("invoked done: b's report"));
 
         // Only user messages count: the catalog in the system prompt does not.
         let kept = json!({"role": "user", "content": "kept\n\n<skill name=\"a\">x</skill>\n\n<skill name=\"b\">y</skill>"});
