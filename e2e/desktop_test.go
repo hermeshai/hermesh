@@ -7,6 +7,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"runtime"
 	"strconv"
 	"strings"
@@ -16,6 +17,7 @@ import (
 	identityv1 "github.com/hermeshai/hermesh/gen/go/hermesh/identity/v1"
 	localv1 "github.com/hermeshai/hermesh/gen/go/hermesh/local/v1"
 	"github.com/hermeshai/hermesh/internal/provider/acp"
+	"github.com/hermeshai/hermesh/internal/shellenv"
 	"github.com/hermeshai/hermesh/pkg/identity"
 )
 
@@ -147,17 +149,19 @@ func TestDesktop(t *testing.T) {
 
 // TestDesktopHer runs the Her entry's end-to-end test (apps/desktop/e2e/
 // her.spec.ts) against her itself, with her-mock as its model service: the
-// first run on this Mac, a chat, work-mac added as a second environment and
-// switched to, and work-mac going offline. It needs her built (cargo build
-// in her/, or HERMESH_HER_BIN), so it is not one of TestDesktop's specs.
-// HERMESH_DESKTOP_GREP picks tests by name.
+// first run on this Mac, a chat, work-mac added as a second environment,
+// given a model through Her's onboarding and switched to, and work-mac going
+// offline. It needs her built (cargo build in her/, or HERMESH_HER_BIN), so
+// it is not one of TestDesktop's specs. HERMESH_DESKTOP_GREP picks tests by
+// name.
 //
 //	go test ./e2e -run TestDesktopHer -v -timeout 30m
 //
 // With HERMESH_DESKTOP_PREVIEW=<seconds> it keeps the world up instead, for
 // a person to try the Her entry against it; HERMESH_HER_MODEL (e.g.
-// deepseek/deepseek-flash) makes her use a real model, its key taken from
-// the environment (e.g. DEEPSEEK_API_KEY):
+// deepseek/deepseek-flash) makes this Mac's her use a real model, its key
+// taken from the environment (e.g. DEEPSEEK_API_KEY), while work-mac's
+// starts with none, for the onboarding:
 //
 //	HERMESH_DESKTOP_PREVIEW=3600 go test ./e2e -run TestDesktopHer -v -timeout 70m
 //	HERMESH_SOCKET=<socket it prints> pnpm --dir apps/desktop dev
@@ -200,18 +204,34 @@ func TestDesktopHer(t *testing.T) {
 // desktopHerWorld is an owner Mac whose hermeshd can run Her (her, her-mock
 // serving its models, the e2e console), and work-mac, a second Mac that is a
 // machine only and can run it too, each with a home of its own for her: two
-// machines to become environments, Her on for neither yet. OtherMac is
-// work-mac's daemon, for the spec to take offline.
+// machines to become environments, Her on for neither yet. This Mac's her
+// has her-mock's model; work-mac's has none that works, as a new server's:
+// her-mock answers there in DeepSeek's place and takes a key, as DeepSeek
+// does (the onboarding offers the providers people know best, all in her's
+// own catalog, so a provider named after her-mock would not be among them),
+// and nothing names a model. OtherMac is work-mac's daemon, for the spec to
+// take offline.
 func desktopHerWorld(t *testing.T) desktopFixture {
 	her, mockBin := herBinaries(t)
 	mock := startHerMock(t, mockBin)
 	console := herConsole(t)
-	macHome, workHome := herHome(t, mock.models), herHome(t, mock.models)
+	macHome, workHome := herHome(t, mock.models), t.TempDir()
 	if model := os.Getenv("HERMESH_HER_MODEL"); model != "" {
-		for _, h := range []string{macHome, workHome} {
-			if err := os.WriteFile(filepath.Join(h, "config.toml"), []byte(fmt.Sprintf("model = %q\n", model)), 0o600); err != nil {
-				t.Fatal(err)
-			}
+		if err := os.WriteFile(filepath.Join(macHome, "config.toml"), []byte(fmt.Sprintf("model = %q\n", model)), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	base := regexp.MustCompile(`base_url = "([^"]+)"`).FindStringSubmatch(mock.models)[1]
+	if err := os.WriteFile(filepath.Join(workHome, "models.toml"), []byte(fmt.Sprintf("[providers.deepseek]\nbase_url = %q\n", base)), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	// Nor a key from this computer: work-mac's her has none of the provider
+	// keys, or the model, this process or the login shell (which hermeshd
+	// reads for her) may have.
+	workEnv := herEnv(her, console, workHome, mock.base)
+	for _, kv := range shellenv.Environ() {
+		if name, _, _ := strings.Cut(kv, "="); strings.HasSuffix(name, "_API_KEY") || name == "HER_MODEL" {
+			workEnv = append(workEnv, name+"=")
 		}
 	}
 	w := newOwnerMac(t, herEnv(her, console, macHome, mock.base), &localv1.GrantSpec{})
@@ -220,7 +240,7 @@ func desktopHerWorld(t *testing.T) desktopFixture {
 	if err != nil {
 		t.Fatal(err)
 	}
-	work, _ := w.otherMac("work-mac", herEnv(her, console, workHome, mock.base))
+	work, _ := w.otherMac("work-mac", workEnv)
 	daemon := w.logs[len(w.logs)-1] // the one otherMac started
 	t.Cleanup(daemon.stop)
 	w.joinTyped(work, home, "work-mac")

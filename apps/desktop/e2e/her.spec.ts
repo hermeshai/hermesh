@@ -8,9 +8,9 @@ import { fixture, launch, snap } from "./app";
 // itself with her-mock as its models. Run by TestDesktopHer, not TestDesktop:
 // it needs her built. One story, as its steps build on each other: the first
 // run on this Mac, Her's settings, a chat, the console, work-mac added as a
-// second environment and switched between, then work-mac offline: what was
-// read stays, after the app restarts too, and what is written waits on this
-// Mac.
+// second environment, with no model until Her's onboarding connects one, and
+// switched between, then work-mac offline: what was read stays, after the app
+// restarts too, and what is written waits on this Mac.
 
 type Hook = { notifications(): { id: string; title: string; body: string; click(): void }[] };
 
@@ -78,12 +78,72 @@ test("Her: the first run, a chat, the console, a second environment, and one gon
   await expect(sheet).toBeHidden();
   const switcher = page.locator(".her-env");
   await expect(switcher).toContainText("work-mac", { timeout: 120_000 });
-  await expect(page.getByText(/^你好，我是 .+，在 work-mac 上为你做事/)).toBeVisible({ timeout: 120_000 });
+  // work-mac has no model yet: Her speaks first, the app writing for it, with the two ways to connect one.
+  // The composer waits until then.
+  await expect(log.getByText(/^你好，我是 .+，在 work-mac 上为你做事。开始之前，我需要接上一个模型/)).toBeVisible({ timeout: 120_000 });
+  await expect(log).toContainText("Key 和登录都只留在 work-mac 上");
+  await expect(composer).toBeDisabled();
+  await expect(composer).toHaveAttribute("placeholder", "接上模型后就能回复你");
+  await snap(page, "her-onboarding");
+
+  // ChatGPT: her's sign-in page opens in the browser (here, the stand-in records it), coming back to this
+  // Mac's hermeshd, and opens again when asked. Another way stops it, and Her offers both ways again.
+  await app.evaluate(({ shell }) => {
+    const opened: string[] = [];
+    Object.assign(globalThis, { opened });
+    shell.openExternal = async (url: string) => void opened.push(url);
+  });
+  const browser = () => app.evaluate(() => (globalThis as unknown as { opened: string[] }).opened);
+  await log.getByRole("button", { name: "用 ChatGPT 登录" }).click();
+  await expect(log.locator(".um").filter({ hasText: "用 ChatGPT 登录" })).toBeVisible();
+  await expect(log).toContainText("我在浏览器里打开了 ChatGPT 的登录页，登录完回到这里就好。");
+  await expect.poll(browser, { timeout: 60_000 }).toHaveLength(1);
+  const [signInPage] = await browser();
+  expect(signInPage).toMatch(/^https:\/\//);
+  expect(new URL(signInPage).searchParams.get("redirect_uri")).toMatch(/^http:\/\/127\.0\.0\.1:\d+\/auth\/callback$/);
+  await log.getByRole("button", { name: "重新打开登录页" }).click();
+  await expect.poll(browser).toEqual([signInPage, signInPage]);
+  await log.getByRole("button", { name: "换一种方式" }).click();
+  await expect(log).toContainText("登录已取消。可以再试一次，或者换成填写 API Key。", { timeout: 30_000 });
+  await expect(log.getByRole("button", { name: "重新打开登录页" })).toHaveCount(0);
+
+  // An API key: which provider (the best known first, at most five, the rest in the console), then the key,
+  // in a field of its own. A key the provider refuses (her-mock, in DeepSeek's place, refuses this one) is
+  // said in Her's words, and asked for again.
+  await log.getByRole("button", { name: "填写 API Key" }).click();
+  await expect(log).toContainText("用哪家的？");
+  await expect(log.getByRole("button", { name: "其他服务…" })).toBeVisible();
+  await expect(log.locator(".ob-pill")).toHaveCount(6);
+  await log.getByRole("button", { name: "DeepSeek", exact: true }).click();
+  await expect(log).toContainText("把 DeepSeek 的 API Key 贴在下面。它只存进 work-mac 的凭据库，不会出现在对话里，也不会发给模型。");
+  await log.getByRole("button", { name: "去 DeepSeek 获取 Key" }).click();
+  await expect.poll(browser).toContain("https://platform.deepseek.com/api_keys");
+  const key = () => log.getByLabel("DeepSeek 的 API Key");
+  await expect(key()).toHaveAttribute("type", "password");
+  await expect(key()).toHaveAttribute("autocomplete", "off");
+  await key().fill("sk-rejected");
+  await key().press("Enter");
+  await expect(log).toContainText("这个 Key 没通过 DeepSeek 的检查：Authentication Fails, Your api key is invalid。再贴一次？", { timeout: 30_000 });
+  await expect(key()).toHaveValue("");
+  // One it takes: Her says which model it talks with, the onboarding folds into one line above, and the
+  // composer opens. The key is in none of it.
+  await key().fill("sk-e2e-good-key");
+  await log.getByRole("button", { name: "保存" }).click();
+  await expect(log.getByText(/^好了，我会用 .+ 和你聊，想换可以去助手设置。有什么要我做的？$/)).toBeVisible({ timeout: 60_000 });
+  await expect(log).toContainText("已接上 DeepSeek");
+  await expect(log).not.toContainText("用哪家的？");
+  await expect(composer).toBeEnabled();
+  await expect(composer).toHaveAttribute("placeholder", /^发消息给 /);
+  for (const secret of ["sk-e2e-good-key", "sk-rejected"]) {
+    await expect(page.locator("body")).not.toContainText(secret);
+  }
+  await expect(composer).toHaveValue("");
+  await snap(page, "her-onboarding-done");
   await send(mockSend("来自 work-mac"));
   await expect(log).toContainText("来自 work-mac", { timeout: 60_000 });
 
-  // Back to this Mac, its own conversation; then to work-mac again. The menu opens under the
-  // switcher, inside the window.
+  // Back to this Mac, its own conversation, with no onboarding of its own; then to work-mac again, which
+  // keeps its line. The menu opens under the switcher, inside the window.
   await switcher.click();
   const [button, menu] = await Promise.all([switcher.boundingBox(), page.getByRole("menu").boundingBox()]);
   expect(Math.abs(menu!.x - button!.x)).toBeLessThan(2);
@@ -91,9 +151,11 @@ test("Her: the first run, a chat, the console, a second environment, and one gon
   await page.getByRole("menuitemradio").filter({ hasNotText: "work-mac" }).click();
   await expect(log).toContainText("你好，主人");
   await expect(log).not.toContainText("来自 work-mac");
+  await expect(log).not.toContainText("已接上");
   await switcher.click();
   await page.getByRole("menuitemradio").filter({ hasText: "work-mac" }).click();
   await expect(log).toContainText("来自 work-mac");
+  await expect(log).toContainText("已接上 DeepSeek");
   await snap(page, "her-two-environments");
 
   // work-mac goes offline: what was read stays, under a line that says when it was last seen.
