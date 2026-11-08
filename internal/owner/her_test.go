@@ -562,6 +562,216 @@ func TestHerConsole(t *testing.T) {
 	}
 }
 
+// signins drives the console's sign-in calls against o's console.
+type signins struct {
+	t    *testing.T
+	base string
+}
+
+func newSignins(t *testing.T, o *Owner) *signins {
+	base, err := o.GetHerConsole("m_1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	return &signins{t: t, base: base}
+}
+
+func (s *signins) start(path string) (id, redirect string) {
+	s.t.Helper()
+	resp, err := http.Post(s.base+"signin", "application/json", strings.NewReader(`{"path":"`+path+`"}`))
+	if err != nil {
+		s.t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	var got struct {
+		ID          string `json:"id"`
+		RedirectURI string `json:"redirect_uri"`
+	}
+	json.NewDecoder(resp.Body).Decode(&got)
+	if resp.StatusCode != 200 || got.ID == "" || !strings.HasPrefix(got.RedirectURI, "http://127.0.0.1:") || !strings.HasSuffix(got.RedirectURI, path) {
+		s.t.Fatalf("start: %d %+v", resp.StatusCode, got)
+	}
+	return got.ID, got.RedirectURI
+}
+
+func (s *signins) poll(id string) (int, map[string]any) {
+	resp, err := http.Get(s.base + "signin/" + id)
+	if err != nil {
+		s.t.Error(err)
+		return 0, nil
+	}
+	defer resp.Body.Close()
+	var got map[string]any
+	json.NewDecoder(resp.Body).Decode(&got)
+	return resp.StatusCode, got
+}
+
+// browse is the browser coming back from the provider.
+func browse(t *testing.T, u, lang string) string {
+	t.Helper()
+	req, _ := http.NewRequest(http.MethodGet, u, nil)
+	if lang != "" {
+		req.Header.Set("Accept-Language", lang)
+	}
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	b, _ := io.ReadAll(resp.Body)
+	if resp.StatusCode != 200 || !strings.HasPrefix(resp.Header.Get("Content-Type"), "text/html") {
+		t.Fatalf("%s: %d %s", u, resp.StatusCode, b)
+	}
+	return string(b)
+}
+
+// A sign-in started on a machine comes back to this device: the console
+// asks for a catcher, the browser lands on it once and is told to go back
+// to Hermesh in its language, and the console collects what it brought,
+// once, as soon as it comes.
+func TestHerSignin(t *testing.T) {
+	defer func(d time.Duration) { signinWait = d }(signinWait)
+	signinWait = time.Second
+	_, o, _, _ := herOwner(t, &herSide{})
+	s := newSignins(t, o)
+	id, redirect := s.start("/auth/callback")
+	if code, got := s.poll(id); code != 200 || got["pending"] != true {
+		t.Fatalf("before the browser came back: %d %v", code, got)
+	}
+	polled := make(chan map[string]any, 1)
+	go func() {
+		_, got := s.poll(id)
+		polled <- got
+	}()
+	time.Sleep(100 * time.Millisecond) // the poll waits
+	if page := browse(t, redirect+"?code=abc&state=xyz", "zh-CN,zh;q=0.9,en;q=0.8"); !strings.Contains(page, "回到 Hermesh") {
+		t.Fatalf("page: %s", page)
+	}
+	select {
+	case got := <-polled:
+		if got["code"] != "abc" || got["state"] != "xyz" || len(got) != 2 {
+			t.Fatalf("collected %v", got)
+		}
+	case <-time.After(500 * time.Millisecond):
+		t.Fatal("the poll did not hear of the redirect as it came")
+	}
+	if code, got := s.poll(id); code != http.StatusNotFound {
+		t.Fatalf("told twice: %d %v", code, got)
+	}
+	deadline := time.Now().Add(5 * time.Second)
+	for { // it caught its one redirect: it no longer listens
+		resp, err := http.Get(redirect)
+		if err != nil {
+			break
+		}
+		resp.Body.Close()
+		if time.Now().After(deadline) {
+			t.Fatal("the catcher still listens")
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+
+	id, redirect = s.start("/callback")
+	if page := browse(t, redirect+"?error=access_denied&error_description=No+thanks", ""); !strings.Contains(page, "You can close this window and go back to Hermesh.") {
+		t.Fatalf("page: %s", page)
+	}
+	if _, got := s.poll(id); got["error"] != "access_denied: No thanks" {
+		t.Fatalf("a refusal: %v", got)
+	}
+	_, redirect = s.start("/cb")
+	if resp, err := http.Get(strings.TrimSuffix(redirect, "/cb") + "/favicon.ico"); err != nil || resp.StatusCode != http.StatusNotFound {
+		t.Fatalf("another path: %v %v", resp, err)
+	}
+	for _, body := range []string{`{"path":"auth"}`, `{"path":"/a?b"}`, `nonsense`} {
+		resp, err := http.Post(s.base+"signin", "application/json", strings.NewReader(body))
+		if err != nil || resp.StatusCode != http.StatusBadRequest {
+			t.Errorf("%s: %v %v", body, resp, err)
+		}
+	}
+	if code, _ := s.poll("unknown"); code != http.StatusNotFound {
+		t.Errorf("an unknown sign-in: %d", code)
+	}
+}
+
+// A catcher nobody comes back to gives up, and says so.
+func TestHerSigninGivesUp(t *testing.T) {
+	defer func(d time.Duration) { signinGiveUp = d }(signinGiveUp)
+	signinGiveUp = 100 * time.Millisecond
+	_, o, _, _ := herOwner(t, &herSide{})
+	s := newSignins(t, o)
+	id, redirect := s.start("/auth/callback")
+	if code, got := s.poll(id); code != 200 || !strings.Contains(fmt.Sprint(got["error"]), "in time") {
+		t.Fatalf("gave up: %d %v", code, got)
+	}
+	if resp, err := http.Get(redirect); err == nil {
+		resp.Body.Close()
+		t.Fatal("it still listens")
+	}
+}
+
+// The console can't sign: a connector started as a command goes through
+// the console's address, which asks this device's signer and waits; why it
+// didn't happen comes back in a few words.
+func TestHerConsoleCommandConnector(t *testing.T) {
+	_, o, _, _ := herOwner(t, &herSide{})
+	k, _ := identity.GenerateKey()
+	o.rootPub = k.Public()
+	asked, stop := o.hub.watch(false)
+	defer stop()
+	base, _ := o.GetHerConsole("m_1")
+	post := func(body string) (int, string) {
+		resp, err := http.Post(base+"command-connector", "application/json", strings.NewReader(body))
+		if err != nil {
+			t.Error(err)
+			return 0, ""
+		}
+		defer resp.Body.Close()
+		b, _ := io.ReadAll(resp.Body)
+		return resp.StatusCode, string(b)
+	}
+	const body = `{"name":"github","command":"npx","args":["-y","server-github"],"env":{"GITHUB_TOKEN":"t0ken"},"remove":false}`
+	want := &identityv1.SetHerCommandConnector{Name: "github", Command: "npx", Args: []string{"-y", "server-github"}, Env: map[string]string{"GITHUB_TOKEN": "t0ken"}}
+	for _, sign := range []bool{false, true} {
+		type answer struct {
+			code int
+			text string
+		}
+		done := make(chan answer, 1)
+		go func() {
+			code, text := post(body)
+			done <- answer{code, text}
+		}()
+		var r *localv1.SigningRequest
+		select {
+		case r = <-asked:
+		case <-time.After(5 * time.Second):
+			t.Fatal("the signer is not asked")
+		}
+		cmd := &identityv1.AdminCommand{}
+		if proto.Unmarshal(r.Body, cmd) != nil || cmd.TargetMachineId != "m_1" || !proto.Equal(cmd.GetSetHerCommandConnector(), want) {
+			t.Fatalf("signs %v", cmd)
+		}
+		if !sign {
+			o.hub.complete(&localv1.CompleteSigningRequestRequest{RequestId: r.RequestId, Rejected: true})
+			if a := <-done; a.code != http.StatusForbidden || !strings.Contains(a.text, "declined") {
+				t.Fatalf("declined: %+v", a)
+			}
+			continue
+		}
+		sig, _ := k.SignMessage(r.Message)
+		o.hub.complete(&localv1.CompleteSigningRequestRequest{RequestId: r.RequestId, Signature: sig})
+		// Signed, it goes nowhere: this device has no relay to send it through.
+		if a := <-done; a.code < 400 || !strings.Contains(a.text, "not set up") {
+			t.Fatalf("not sent: %+v", a)
+		}
+	}
+	for _, bad := range []string{`{"name":"x"}`, `{"command":"y"}`, `nonsense`} {
+		if code, text := post(bad); code != http.StatusBadRequest {
+			t.Errorf("%s: %d %s", bad, code, text)
+		}
+	}
+}
+
 // Talking to Her and moving her files change nothing the screens show:
 // they are not told to look again; changing Her's settings does tell them.
 func TestHerWrites(t *testing.T) {

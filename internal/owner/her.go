@@ -2,16 +2,12 @@ package owner
 
 import (
 	"context"
-	"crypto/rand"
-	"crypto/subtle"
-	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
 	"io/fs"
 	"log"
-	"net"
 	"net/http"
 	"net/http/httputil"
 	"os"
@@ -664,70 +660,6 @@ func createFree(dir, name string) (*os.File, error) {
 		if !errors.Is(err, fs.ErrExist) {
 			return f, err
 		}
-	}
-}
-
-// ---------------------------------------------------------------------------
-// The console (§5.3): served to this device's apps on 127.0.0.1, under a
-// token only they are told.
-
-type herConsole struct {
-	srv   *http.Server
-	base  string // http://127.0.0.1:<port>
-	token string
-}
-
-// GetHerConsole is the address of a machine's console here.
-func (o *Owner) GetHerConsole(machineID string) (string, error) {
-	if machineID == "" || strings.Contains(machineID, "/") {
-		return "", connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("no machine %q", machineID))
-	}
-	o.consoleMu.Lock()
-	defer o.consoleMu.Unlock()
-	if o.console == nil {
-		ln, err := net.Listen("tcp", "127.0.0.1:0")
-		if err != nil {
-			return "", err
-		}
-		b := make([]byte, 32)
-		rand.Read(b)
-		c := &herConsole{base: "http://" + ln.Addr().String(), token: hex.EncodeToString(b)}
-		c.srv = &http.Server{Handler: o.serveConsole(c.token), ReadHeaderTimeout: 10 * time.Second}
-		go c.srv.Serve(ln)
-		o.console = c
-	}
-	return fmt.Sprintf("%s/her/%s/%s/", o.console.base, machineID, o.console.token), nil
-}
-
-// serveConsole serves /her/<machine_id>/<token>/… as the machine's
-// /her/console/….
-func (o *Owner) serveConsole(token string) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		rest, _ := strings.CutPrefix(r.URL.Path, "/her/")
-		machineID, rest, _ := strings.Cut(rest, "/")
-		got, rest, ok := strings.Cut(rest, "/")
-		if !ok || subtle.ConstantTimeCompare([]byte(got), []byte(token)) != 1 {
-			http.NotFound(w, r)
-			return
-		}
-		h, err := o.herOn(r.Context(), machineID)
-		if err != nil {
-			http.Error(w, err.Error(), http.StatusBadGateway)
-			return
-		}
-		r = r.Clone(r.Context())
-		r.URL.Path, r.URL.RawPath = "/her/console/"+rest, ""
-		h.HerConsole().ServeHTTP(w, r)
-	})
-}
-
-// closeConsole stops serving the consoles.
-func (o *Owner) closeConsole() {
-	o.consoleMu.Lock()
-	defer o.consoleMu.Unlock()
-	if o.console != nil {
-		o.console.srv.Close()
-		o.console = nil
 	}
 }
 
