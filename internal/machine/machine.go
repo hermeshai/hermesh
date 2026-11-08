@@ -52,6 +52,9 @@ type Config struct {
 	// HerBin is the her program (docs/her-server.md), "" when this machine
 	// has none; HerConsole is the folder of her's console.
 	HerBin, HerConsole string
+	// HerExtensionHost: while Her is on, the browsers here start her for the
+	// Hermesh extension, which lends her the owner's own Chrome.
+	HerExtensionHost bool
 }
 
 func DefaultProviders() map[string]provider.Provider {
@@ -176,7 +179,7 @@ func Open(cfg Config) (*Machine, error) {
 		infos: map[string]provider.Info{}, defaults: map[string]*identityv1.AgentDefaults{}, tunnels: map[*tunnel]struct{}{}, adminSeen: map[string]time.Time{}, grantSeen: map[string]uint64{},
 		statusKick: make(chan struct{}, 1), revocations: &identityv1.RevocationList{MinGrantVersions: map[string]uint64{}}}
 	n.her = herhost.New(herhost.Config{Bin: cfg.HerBin, ConsoleDir: cfg.HerConsole, Socket: paths.Her(cfg.DataDir), Env: shellenv.Environ,
-		Version: Version, Logger: n.log})
+		Version: Version, Logger: n.log, ExtensionHost: cfg.HerExtensionHost})
 	if n.audit, err = OpenAudit(filepath.Join(cfg.DataDir, "audit"), key); err != nil {
 		return nil, err
 	}

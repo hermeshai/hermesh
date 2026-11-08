@@ -135,7 +135,7 @@ A computer that runs no coding agents can approve instead: hermeshd device.`}
 		}
 		her := herBin()
 		return machine.Config{DataDir: filepath.Join(dataDir, "machine"), Logger: logger(verbose), Providers: providers(), Limits: lim, WorkspaceMode: workspaceMode,
-			HerBin: her, HerConsole: herConsole(her)}
+			HerBin: her, HerConsole: herConsole(her), HerExtensionHost: herExtensionHost()}
 	}
 	openMachine := func() (*machine.Machine, error) { return machine.Open(machineConfig()) }
 
@@ -697,6 +697,14 @@ func herBin() string {
 		return ""
 	}
 	return bin
+}
+
+// herExtensionHost: whether the owner's own Chrome reaches her through the
+// Hermesh extension, the browsers starting her as its host while Her is on.
+// On a Mac, for the her the app ships, never one $HERMESH_HER_BIN names (tests
+// and development), which would take the owner's Chrome to that one's home.
+func herExtensionHost() bool {
+	return runtime.GOOS == "darwin" && os.Getenv("HERMESH_HER_BIN") == ""
 }
 
 // herConsole is the folder of her's console: $HERMESH_HER_CONSOLE, else

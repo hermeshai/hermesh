@@ -3,6 +3,7 @@ package main
 import (
 	"os"
 	"path/filepath"
+	"runtime"
 	"testing"
 )
 
@@ -48,5 +49,18 @@ func TestHerLookup(t *testing.T) {
 	os.MkdirAll(filepath.Join(app, "Helpers", "console"), 0o755)
 	if got := herConsole(bundled); got != filepath.Join(app, "Helpers", "console") {
 		t.Fatalf("herConsole with console/ beside her = %q", got)
+	}
+}
+
+// The browsers start the her the Mac app ships for the extension, never one
+// HERMESH_HER_BIN names, as tests do.
+func TestHerExtensionHost(t *testing.T) {
+	t.Setenv("HERMESH_HER_BIN", "")
+	if got := herExtensionHost(); got != (runtime.GOOS == "darwin") {
+		t.Fatalf("the shipped her on %s: %v", runtime.GOOS, got)
+	}
+	t.Setenv("HERMESH_HER_BIN", "/dev/her")
+	if herExtensionHost() {
+		t.Fatal("a her of HERMESH_HER_BIN is registered with the browsers")
 	}
 }
