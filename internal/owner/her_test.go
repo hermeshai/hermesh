@@ -10,6 +10,7 @@ import (
 	"net"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -66,10 +67,12 @@ func (h *herSide) Open(ctx context.Context, req *herv1.OpenRequest, s *connect.S
 	}
 	silent := h.silent
 	h.mu.Unlock()
-	if !silent {
-		if err := s.Send(&herv1.OpenEvent{Kind: &herv1.OpenEvent_Opened{Opened: opened}}); err != nil {
-			return err
-		}
+	if silent {
+		<-ctx.Done() // the caller's deadline, which connect passes on
+		return ctx.Err()
+	}
+	if err := s.Send(&herv1.OpenEvent{Kind: &herv1.OpenEvent_Opened{Opened: opened}}); err != nil {
+		return err
 	}
 	<-ctx.Done()
 	return nil
@@ -644,13 +647,14 @@ func TestHerSignin(t *testing.T) {
 		polled <- got
 	}()
 	time.Sleep(100 * time.Millisecond) // the poll waits
-	if page := browse(t, redirect+"?code=abc&state=xyz", "zh-CN,zh;q=0.9,en;q=0.8"); !strings.Contains(page, "回到 Hermesh") {
+	if page := browse(t, redirect+"?code=abc&state=xyz&client_id=app_1&iss=https%3A%2F%2Fauth.example&scope=x", "zh-CN,zh;q=0.9,en;q=0.8"); !strings.Contains(page, "回到 Hermesh") {
 		t.Fatalf("page: %s", page)
 	}
 	select {
 	case got := <-polled:
-		if got["code"] != "abc" || got["state"] != "xyz" || len(got) != 2 {
-			t.Fatalf("collected %v", got)
+		want := map[string]any{"code": "abc", "state": "xyz", "client_id": "app_1", "iss": "https://auth.example"}
+		if fmt.Sprint(got) != fmt.Sprint(want) {
+			t.Fatalf("collected %v, want %v", got, want)
 		}
 	case <-time.After(500 * time.Millisecond):
 		t.Fatal("the poll did not hear of the redirect as it came")
@@ -675,7 +679,7 @@ func TestHerSignin(t *testing.T) {
 	if page := browse(t, redirect+"?error=access_denied&error_description=No+thanks", ""); !strings.Contains(page, "You can close this window and go back to Hermesh.") {
 		t.Fatalf("page: %s", page)
 	}
-	if _, got := s.poll(id); got["error"] != "access_denied: No thanks" {
+	if _, got := s.poll(id); fmt.Sprint(got) != fmt.Sprint(map[string]any{"error": "access_denied", "error_description": "No thanks"}) {
 		t.Fatalf("a refusal: %v", got)
 	}
 	_, redirect = s.start("/cb")
@@ -690,6 +694,60 @@ func TestHerSignin(t *testing.T) {
 	}
 	if code, _ := s.poll("unknown"); code != http.StatusNotFound {
 		t.Errorf("an unknown sign-in: %d", code)
+	}
+}
+
+// Sign-ins come back to the same port, kept, while it is free: another one
+// that waits meanwhile gets a port of its own; when something else took the
+// kept one, a new one is kept from then on.
+func TestHerSigninKeepsItsPort(t *testing.T) {
+	_, o, _, _ := herOwner(t, &herSide{})
+	s := newSignins(t, o)
+	port := func(redirect string) string {
+		u, err := url.Parse(redirect)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return u.Port()
+	}
+	done := func(id, redirect string) {
+		browse(t, redirect+"?code=c&state=s", "")
+		if _, got := s.poll(id); got["code"] != "c" {
+			t.Fatalf("collected %v", got)
+		}
+	}
+	id, redirect := s.start("/auth/callback")
+	kept := port(redirect)
+	done(id, redirect)
+	id, redirect = s.start("/callback")
+	if port(redirect) != kept {
+		t.Fatalf("port %s, then %s", kept, port(redirect))
+	}
+	other, otherRedirect := s.start("/callback") // while the first waits
+	if port(otherRedirect) == kept {
+		t.Fatal("two sign-ins on one port")
+	}
+	done(id, redirect)
+	done(other, otherRedirect)
+	id, redirect = s.start("/callback")
+	if port(redirect) != kept {
+		t.Fatalf("the kept port %s was given up for %s", kept, port(redirect))
+	}
+	done(id, redirect)
+
+	squatter, err := net.Listen("tcp", "127.0.0.1:"+kept)
+	if err != nil {
+		t.Fatal(err)
+	}
+	id, redirect = s.start("/callback")
+	moved := port(redirect)
+	done(id, redirect)
+	squatter.Close()
+	if moved == kept {
+		t.Fatal("a port something else holds")
+	}
+	if id, redirect = s.start("/callback"); port(redirect) != moved {
+		t.Fatalf("the new port %s is not kept: %s", moved, port(redirect))
 	}
 }
 

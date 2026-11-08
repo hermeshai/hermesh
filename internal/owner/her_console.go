@@ -11,6 +11,7 @@ import (
 	"io"
 	"net"
 	"net/http"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -30,6 +31,7 @@ type herConsole struct {
 	srv   *http.Server
 	base  string // http://127.0.0.1:<port>
 	token string
+	st    *store // the owner's: the port sign-ins come back to
 
 	mu      sync.Mutex
 	signins map[string]*herSignin // by id
@@ -47,7 +49,7 @@ func (o *Owner) GetHerConsole(machineID string) (string, error) {
 		if err != nil {
 			return "", err
 		}
-		c := &herConsole{base: "http://" + ln.Addr().String(), token: randomHex(32), signins: map[string]*herSignin{}}
+		c := &herConsole{base: "http://" + ln.Addr().String(), token: randomHex(32), st: o.st, signins: map[string]*herSignin{}}
 		c.srv = &http.Server{Handler: o.serveConsole(c), ReadHeaderTimeout: 10 * time.Second}
 		go c.srv.Serve(ln)
 		o.console = c
@@ -125,8 +127,13 @@ func writeJSON(w http.ResponseWriter, code int, v any) {
 //	POST <base>signin {"path": "/auth/callback"}
 //	     → {"id": "…", "redirect_uri": "http://127.0.0.1:<port>/auth/callback"}
 //	GET  <base>signin/<id>
-//	     → {"pending": true}, {"code": "…", "state": "…"} or {"error": "…"};
-//	       a result is told once
+//	     → {"pending": true}; or what the redirect brought, told once:
+//	       {"code", "state", "client_id", "iss"} as present, or
+//	       {"error", "error_description"}
+//
+// The port stays the same from one sign-in to the next while it is free
+// (kSigninPort): a provider that registers a client per redirect (an MCP
+// server) then registers one.
 
 // signinWait is how long a poll waits for the redirect; signinGiveUp how
 // long a catcher waits for the browser (variables for the tests).
@@ -135,13 +142,18 @@ var (
 	signinGiveUp = 10 * time.Minute
 )
 
+// kSigninPort: the port sign-ins come back to on this device.
+const kSigninPort = "her_signin_port"
+
 // herSignin catches one redirect on 127.0.0.1.
 type herSignin struct {
 	path   string
+	port   string
+	ln     net.Listener
 	srv    *http.Server
 	once   sync.Once
-	done   chan struct{}     // closed once result is set
-	result map[string]string // {"code", "state"} or {"error"}
+	done   chan struct{}     // closed once result is set, the port let go
+	result map[string]string // what the redirect brought
 }
 
 func (s *herSignin) finish(result map[string]string) {
@@ -149,6 +161,15 @@ func (s *herSignin) finish(result map[string]string) {
 		s.result = result
 		close(s.done)
 	})
+}
+
+func (s *herSignin) ended() bool {
+	select {
+	case <-s.done:
+		return true
+	default:
+		return false
+	}
 }
 
 // ServeHTTP takes the browser's visit to the redirect, keeps what it
@@ -159,16 +180,21 @@ func (s *herSignin) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	q := r.URL.Query()
-	switch msg := q.Get("error"); {
-	case msg != "":
-		if d := q.Get("error_description"); d != "" {
-			msg += ": " + d
+	result := map[string]string{}
+	keep := func(keys ...string) {
+		for _, k := range keys {
+			if q.Has(k) {
+				result[k] = q.Get(k)
+			}
 		}
-		s.finish(map[string]string{"error": msg})
+	}
+	switch {
+	case q.Get("error") != "":
+		keep("error", "error_description")
 	case q.Get("code") != "":
-		s.finish(map[string]string{"code": q.Get("code"), "state": q.Get("state")})
+		keep("code", "state", "client_id", "iss")
 	default:
-		s.finish(map[string]string{"error": "the sign-in came back without a code"})
+		result["error"] = "the sign-in came back without a code"
 	}
 	page := signinPage("en", "You can close this window and go back to Hermesh.")
 	if strings.HasPrefix(strings.ToLower(strings.TrimSpace(r.Header.Get("Accept-Language"))), "zh") {
@@ -176,7 +202,9 @@ func (s *herSignin) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	io.WriteString(w, page)
+	s.ln.Close()                            // the port is free for the next sign-in
 	go s.srv.Shutdown(context.Background()) // once this answer is out
+	s.finish(result)
 }
 
 func signinPage(lang, text string) string {
@@ -192,23 +220,52 @@ func (c *herConsole) startSignin(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "a sign-in needs the path its redirect goes to, such as /auth/callback"})
 		return
 	}
-	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	c.mu.Lock() // one sign-in starts at a time: it takes the kept port, or knows who has it
+	ln, err := c.listenSigninLocked()
 	if err != nil {
+		c.mu.Unlock()
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
 		return
 	}
-	s := &herSignin{path: req.Path, done: make(chan struct{})}
+	s := &herSignin{path: req.Path, port: portOf(ln), ln: ln, done: make(chan struct{})}
 	s.srv = &http.Server{Handler: s, ReadHeaderTimeout: 10 * time.Second}
+	id := randomHex(16)
+	c.signins[id] = s
+	c.mu.Unlock()
 	go s.srv.Serve(ln)
 	time.AfterFunc(signinGiveUp, func() {
 		s.srv.Close()
 		s.finish(map[string]string{"error": "no sign-in came back in time"})
 	})
-	id := randomHex(16)
-	c.mu.Lock()
-	c.signins[id] = s
-	c.mu.Unlock()
-	writeJSON(w, http.StatusOK, map[string]string{"id": id, "redirect_uri": "http://" + ln.Addr().String() + req.Path})
+	writeJSON(w, http.StatusOK, map[string]string{"id": id, "redirect_uri": "http://127.0.0.1:" + s.port + req.Path})
+}
+
+func portOf(ln net.Listener) string { return strconv.Itoa(ln.Addr().(*net.TCPAddr).Port) }
+
+// listenSigninLocked listens on the port kept for sign-ins; when something
+// else took it, on a new one, kept from then on; while another sign-in of
+// this device waits on it, on a new one for this sign-in alone.
+func (c *herConsole) listenSigninLocked() (net.Listener, error) {
+	kept, _ := c.st.get(kSigninPort)
+	if len(kept) > 0 {
+		if ln, err := net.Listen("tcp", "127.0.0.1:"+string(kept)); err == nil {
+			return ln, nil
+		}
+	}
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		return nil, err
+	}
+	for _, s := range c.signins {
+		if s.port == string(kept) && !s.ended() {
+			return ln, nil
+		}
+	}
+	if err := c.st.set(kSigninPort, []byte(portOf(ln))); err != nil {
+		ln.Close()
+		return nil, err
+	}
+	return ln, nil
 }
 
 func (c *herConsole) pollSignin(w http.ResponseWriter, r *http.Request, id string) {
