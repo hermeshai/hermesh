@@ -1804,6 +1804,21 @@ export type Delta = {
   type: "tool_call_args";
 };
 
+/** A system permission as agent-desktop finds it from inside her. macOS asks it of the process it holds responsible for her: the terminal app, or hermeshd when Hermesh runs her. */
+export type DesktopPermission = "granted" | "denied" | "unknown" | "unsupported";
+
+/** The result of `desktop/status`: whether computer use can work where her runs. */
+export type DesktopStatus = {
+  /** Reading and operating windows: every desktop tool needs it. */
+  accessibility: DesktopPermission;
+  /** The computer use tools are on: `desktop.enabled`, else while a desktop app is connected. */
+  enabled: boolean;
+  /** The agent-desktop her runs; none found, absent. */
+  program?: string | null;
+  /** Screenshots of windows. */
+  screen_recording: DesktopPermission;
+};
+
 export type DetachReason = "overflow" | "closed" | "unloaded";
 
 export type DiagnosticCategory = "layout" | "consistency" | "content" | "data" | "accessibility" | "file";
@@ -4689,6 +4704,7 @@ export interface Methods {
   "deck/template_profile": [DeckTemplateProfileParams, TemplateProfile];
   "deck/undo": [DeckUndoParams, DeckUndoResult];
   "deck/view": [DeckViewParams, DeckViewResult];
+  "desktop/status": [Record<string, never>, DesktopStatus];
   "doc/apply": [DocApplyParams, DocApplyResult];
   "doc/autofill": [DocAutofillParams, DocApplyResult];
   "doc/cells": [DocCellsParams, DocCellsResult];

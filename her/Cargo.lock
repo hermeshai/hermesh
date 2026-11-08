@@ -2076,6 +2076,7 @@ dependencies = [
  "her-browser",
  "her-connections",
  "her-core",
+ "her-desktop",
  "her-docs",
  "her-llm",
  "her-mcp",

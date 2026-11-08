@@ -17,6 +17,7 @@ her-browser.workspace = true
 her-docs.workspace = true
 her-word.workspace = true
 her-core.workspace = true
+her-desktop.workspace = true
 her-llm.workspace = true
 her-mcp.workspace = true
 her-protocol.workspace = true

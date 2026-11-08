@@ -275,6 +275,9 @@
       "$ref": "#/definitions/DeckViewResult"
     },
     {
+      "$ref": "#/definitions/DesktopStatus"
+    },
+    {
       "$ref": "#/definitions/DiagnosticRule"
     },
     {
@@ -8384,6 +8387,62 @@
           "type": "object"
         }
       ]
+    },
+    "DesktopPermission": {
+      "description": "A system permission as agent-desktop finds it from inside her. macOS asks it of the process it holds responsible for her: the terminal app, or hermeshd when Hermesh runs her.",
+      "oneOf": [
+        {
+          "enum": [
+            "granted",
+            "denied"
+          ],
+          "type": "string"
+        },
+        {
+          "description": "agent-desktop is missing or could not tell.",
+          "enum": [
+            "unknown"
+          ],
+          "type": "string"
+        },
+        {
+          "description": "Computer use is for macOS only.",
+          "enum": [
+            "unsupported"
+          ],
+          "type": "string"
+        }
+      ]
+    },
+    "DesktopStatus": {
+      "description": "The result of `desktop/status`: whether computer use can work where her runs.",
+      "properties": {
+        "accessibility": {
+          "$ref": "#/definitions/DesktopPermission",
+          "description": "Reading and operating windows: every desktop tool needs it."
+        },
+        "enabled": {
+          "description": "The computer use tools are on: `desktop.enabled`, else while a desktop app is connected.",
+          "type": "boolean"
+        },
+        "program": {
+          "description": "The agent-desktop her runs; none found, absent.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "screen_recording": {
+          "$ref": "#/definitions/DesktopPermission",
+          "description": "Screenshots of windows."
+        }
+      },
+      "required": [
+        "accessibility",
+        "enabled",
+        "screen_recording"
+      ],
+      "type": "object"
     },
     "DetachReason": {
       "oneOf": [
@@ -20387,6 +20446,9 @@
       "params": "DeckViewParams",
       "result": "DeckViewResult"
     },
+    "desktop/status": {
+      "result": "DesktopStatus"
+    },
     "doc/apply": {
       "params": "DocApplyParams",
       "result": "DocApplyResult"
@@ -20767,6 +20829,7 @@
       "deck/template_profile": "stable",
       "deck/undo": "stable",
       "deck/view": "stable",
+      "desktop/status": "experimental",
       "doc/apply": "experimental",
       "doc/autofill": "experimental",
       "doc/cells": "experimental",
