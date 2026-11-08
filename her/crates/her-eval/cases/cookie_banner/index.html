@@ -1,0 +1,21 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><title>The Weekly Byte</title>
+<style>
+#overlay{position:fixed;inset:0;background:rgba(0,0,0,.6);display:flex;align-items:flex-end;justify-content:center}
+#banner{background:#fff;padding:20px;margin:20px;max-width:600px}
+</style></head>
+<body>
+  <h1>The Weekly Byte</h1>
+  <p>Tech news, once a week.</p>
+  <form method="post" action="/api/subscribe">
+    <label>Email <input name="email" type="email"></label>
+    <button type="submit">Subscribe</button>
+  </form>
+  <div id="overlay">
+    <div id="banner" role="dialog" aria-label="Cookie consent">
+      <p>We use cookies to improve your experience.</p>
+      <button onclick="document.getElementById('overlay').remove()">Reject non-essential</button>
+      <button onclick="document.getElementById('overlay').remove()">Accept all</button>
+    </div>
+  </div>
+</body></html>

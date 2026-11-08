@@ -1,0 +1,19 @@
+[package]
+name = "her-rpc"
+description = "JSON-RPC 2.0 over newline-delimited JSON: framing, envelopes, errors and a client."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+
+[dependencies]
+bytes.workspace = true
+memchr.workspace = true
+parking_lot.workspace = true
+serde.workspace = true
+serde_json = { workspace = true, features = ["raw_value"] }
+thiserror.workspace = true
+tokio.workspace = true
+
+[lints]
+workspace = true

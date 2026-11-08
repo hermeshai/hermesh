@@ -1,0 +1,5 @@
+description = "A consent overlay covers the page until it is dismissed"
+prompt = "On {base}/ subscribe to the newsletter with the email linus@kernel.example."
+[[expect]]
+request = "POST /api/subscribe"
+fields = { email = "linus@kernel.example" }

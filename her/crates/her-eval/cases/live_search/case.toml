@@ -1,0 +1,8 @@
+description = "Results appear only as you type in a search box"
+prompt = "On {base}/ find the book \"Structure and Interpretation of Computer Programs\" and borrow it."
+[[expect]]
+request = "POST /api/borrow"
+fields = { id = "b-317" }
+[[forbid]]
+request = "POST /api/borrow"
+fields = { id = "b-318" }

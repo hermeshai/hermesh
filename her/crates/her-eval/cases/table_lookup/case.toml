@@ -1,0 +1,4 @@
+description = "Read a table and answer from it"
+prompt = "On {base}/ find the cheapest product that is in stock. Reply with its SKU only."
+[[expect]]
+answer = "KX-4471"

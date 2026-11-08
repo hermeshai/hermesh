@@ -1,0 +1,277 @@
+{
+  "version": 1,
+  "id": "financial",
+  "title": "财务研究：三表勾稽、现金流与压力分析",
+  "synthetic": true,
+  "turns": 1,
+  "steps": [
+    {
+      "id": "statements",
+      "observation": "并行提取三张报表，保持币种和单位一致。",
+      "calls": [
+        {
+          "tool": "research_fetch",
+          "input": {
+            "uri": "fixture://atlas/income"
+          },
+          "output": {
+            "revenue": 1200,
+            "net_income": 120,
+            "interest": 20,
+            "ebit": 200,
+            "unit": "USD million"
+          },
+          "is_error": false
+        },
+        {
+          "tool": "research_fetch",
+          "input": {
+            "uri": "fixture://atlas/balance"
+          },
+          "output": {
+            "assets": 1500,
+            "liabilities": 900,
+            "equity": 600,
+            "cash_open": 80,
+            "cash_close": 100,
+            "current_assets": 500,
+            "current_liabilities": 250
+          },
+          "is_error": false
+        },
+        {
+          "tool": "research_fetch",
+          "input": {
+            "uri": "fixture://atlas/cashflow"
+          },
+          "output": {
+            "operating": 180,
+            "investing": -100,
+            "financing": -60,
+            "capex": 100
+          },
+          "is_error": false
+        }
+      ]
+    },
+    {
+      "id": "balance_check",
+      "observation": "资产必须等于负债加权益。",
+      "calls": [
+        {
+          "tool": "finance_calculate",
+          "input": {
+            "operation": "balance_check",
+            "assets": {
+              "$ref": "0/1/assets"
+            },
+            "liabilities": {
+              "$ref": "0/1/liabilities"
+            },
+            "equity": {
+              "$ref": "0/1/equity"
+            }
+          },
+          "output": {
+            "difference": 0,
+            "balanced": true
+          },
+          "is_error": false
+        }
+      ]
+    },
+    {
+      "id": "cash_check",
+      "observation": "三类现金流净额必须与现金余额变动一致。",
+      "calls": [
+        {
+          "tool": "cash_reconcile",
+          "input": {
+            "opening": {
+              "$ref": "0/1/cash_open"
+            },
+            "closing": {
+              "$ref": "0/1/cash_close"
+            },
+            "flows": [
+              180,
+              -100,
+              -60
+            ]
+          },
+          "output": {
+            "net_flow": 20,
+            "difference": 0,
+            "balanced": true
+          },
+          "is_error": false
+        }
+      ]
+    },
+    {
+      "id": "earnings_quality",
+      "observation": "比较经营现金流与净利润。",
+      "calls": [
+        {
+          "tool": "finance_calculate",
+          "input": {
+            "operation": "ratio",
+            "numerator": {
+              "$ref": "0/2/operating"
+            },
+            "denominator": {
+              "$ref": "0/0/net_income"
+            }
+          },
+          "output": {
+            "value": 1.5
+          },
+          "is_error": false
+        }
+      ]
+    },
+    {
+      "id": "liquidity",
+      "observation": "计算流动比率与利息保障倍数。",
+      "calls": [
+        {
+          "tool": "finance_calculate",
+          "input": {
+            "operation": "ratio",
+            "numerator": {
+              "$ref": "0/1/current_assets"
+            },
+            "denominator": {
+              "$ref": "0/1/current_liabilities"
+            }
+          },
+          "output": {
+            "value": 2.0
+          },
+          "is_error": false
+        },
+        {
+          "tool": "finance_calculate",
+          "input": {
+            "operation": "ratio",
+            "numerator": {
+              "$ref": "0/0/ebit"
+            },
+            "denominator": {
+              "$ref": "0/0/interest"
+            }
+          },
+          "output": {
+            "value": 10.0
+          },
+          "is_error": false
+        }
+      ]
+    },
+    {
+      "id": "free_cashflow",
+      "observation": "经营现金流减资本开支，获得可支配现金流。",
+      "calls": [
+        {
+          "tool": "finance_calculate",
+          "input": {
+            "operation": "difference",
+            "a": {
+              "$ref": "0/2/operating"
+            },
+            "b": {
+              "$ref": "0/2/capex"
+            }
+          },
+          "output": {
+            "value": 80
+          },
+          "is_error": false
+        }
+      ]
+    },
+    {
+      "id": "stress",
+      "observation": "经营现金流下降 30% 时重新计算自由现金流。",
+      "calls": [
+        {
+          "tool": "cash_stress",
+          "input": {
+            "operating": {
+              "$ref": "0/2/operating"
+            },
+            "decline": 0.3,
+            "capex": {
+              "$ref": "0/2/capex"
+            }
+          },
+          "output": {
+            "stressed_operating": 126,
+            "free_cashflow": 26,
+            "positive": true
+          },
+          "is_error": false
+        }
+      ]
+    },
+    {
+      "id": "review",
+      "observation": "所有勾稽检查通过后形成财务结论。",
+      "calls": [
+        {
+          "tool": "research_review",
+          "input": {
+            "balance_ok": {
+              "$ref": "1/0/balanced"
+            },
+            "cash_ok": {
+              "$ref": "2/0/balanced"
+            },
+            "cash_conversion": {
+              "$ref": "3/0/value"
+            },
+            "stressed_fcf": {
+              "$ref": "6/0/free_cashflow"
+            }
+          },
+          "output": {
+            "passed": true,
+            "limitations": [
+              "synthetic data",
+              "no off balance sheet obligations modeled"
+            ]
+          },
+          "is_error": false
+        }
+      ]
+    },
+    {
+      "id": "publish",
+      "observation": "保存三表检查与压力分析证据。",
+      "calls": [
+        {
+          "tool": "artifact_write",
+          "input": {
+            "path": "reports/financial.json",
+            "free_cashflow": {
+              "$ref": "5/0/value"
+            },
+            "stressed_fcf": {
+              "$ref": "6/0/free_cashflow"
+            }
+          },
+          "output": {
+            "saved": true,
+            "path": "reports/financial.json",
+            "scenario": "financial"
+          },
+          "is_error": false
+        }
+      ]
+    }
+  ],
+  "summary": {
+    "conclusion": "三表勾稽通过；自由现金流 80，压力情景 26，现金利润比 1.5。",
+    "artifact": "reports/financial.json"
+  }
+}

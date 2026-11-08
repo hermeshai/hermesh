@@ -1,0 +1,84 @@
+/* The extension's page, built as the app's menus are: inset rows on a 4px frame, one column of
+   glyphs and one of text, so everything on the page starts on the same two lines. Values follow
+   apps/desktop's tokens.css. */
+:root {
+  --bg: #f8f8fa; --l1: rgba(0, 0, 0, .86); --l2: rgba(0, 0, 0, .54); --l3: rgba(0, 0, 0, .32); --sep: rgba(0, 0, 0, .075);
+  --fill: rgba(0, 0, 0, .045); --fill2: rgba(0, 0, 0, .075);
+  --accent: #1f6bff; --green: #17924f; --green-bg: rgba(23, 146, 79, .11); --orange: #d0700a; --orange-bg: rgba(230, 126, 10, .12); --red: #d7333f; --red-bg: rgba(215, 51, 63, .1);
+  --ease-out: cubic-bezier(.2, 0, 0, 1);
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #2c2c30; --l1: rgba(255, 255, 255, .88); --l2: rgba(255, 255, 255, .55); --l3: rgba(255, 255, 255, .32); --sep: rgba(255, 255, 255, .09);
+    --fill: rgba(255, 255, 255, .05); --fill2: rgba(255, 255, 255, .085);
+    --green: #3fcf86; --green-bg: rgba(63, 207, 134, .14); --orange: #ffab3d; --orange-bg: rgba(255, 171, 61, .14); --red: #ff6670; --red-bg: rgba(255, 102, 112, .13);
+    color-scheme: dark;
+  }
+}
+* { box-sizing: border-box; }
+body {
+  margin: 0; width: 280px; background: var(--bg); color: var(--l1); font-size: 13px; line-height: 18px;
+  font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Inter", "PingFang SC", "Noto Sans SC", "Microsoft YaHei", sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+/* Holds the size of one line until the first answer, so the popup opens once rather than twice. */
+#root { min-height: 42px; padding: 4px; }
+#root.in { animation: in .14s var(--ease-out); }
+@keyframes in { from { opacity: 0; transform: translateY(-2px); } }
+
+button { border: 0; padding: 0; font: inherit; color: inherit; background: none; cursor: default; }
+button:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+
+/* The two columns. */
+.head, .open { display: flex; align-items: center; gap: 8px; padding: 7px 9px; }
+/* As tall as a line of text: on a row of several lines it stays with the first. */
+.open { align-items: flex-start; }
+.glyph { flex: none; display: grid; place-items: center; width: 16px; height: 18px; color: var(--l2); }
+.glyph svg { display: block; width: 14px; height: 14px; fill: none; stroke: currentColor; stroke-width: 1.75; stroke-linecap: round; stroke-linejoin: round; }
+.glyph.done { color: var(--l3); }
+.hint, .acts { padding: 0 9px 0 33px; }
+
+.head { font-weight: 500; }
+.dot { display: block; width: 7px; height: 7px; border-radius: 50%; background: var(--l3); box-shadow: 0 0 0 3px var(--fill); }
+.dot.on { background: var(--green); box-shadow: 0 0 0 3px var(--green-bg); }
+.dot.warn { background: var(--orange); box-shadow: 0 0 0 3px var(--orange-bg); }
+.dot.bad { background: var(--red); box-shadow: 0 0 0 3px var(--red-bg); }
+.dot.busy { animation: breathe 1.4s ease-in-out infinite; }
+@keyframes breathe { 50% { opacity: .4; } }
+.spin { display: block; width: 12px; height: 12px; border-radius: 50%; border: 1.5px solid var(--fill2); border-top-color: var(--l2); animation: spin .9s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
+
+.hint { margin: -3px 0 0; color: var(--l2); font-size: 12px; text-wrap: pretty; }
+.hint:last-child { margin-bottom: 6px; }
+.acts { margin: 8px 0 6px; }
+.primary {
+  height: 26px; padding: 0 13px; border-radius: 6px; background: var(--accent); color: #fff; white-space: nowrap;
+  box-shadow: 0 1px 2px rgba(40, 60, 200, .3); transition: filter .12s;
+}
+.primary:hover { filter: brightness(1.06); }
+.primary:active { filter: brightness(.93); }
+.primary:focus-visible { outline-offset: 2px; }
+
+.sep { height: .5px; margin: 4px 9px; background: var(--sep); }
+.row { position: relative; }
+.open { width: 100%; border-radius: 6px; text-align: left; transition: background-color .12s; }
+.open:hover { background: var(--fill); }
+.open:active { background: var(--fill2); }
+.text { flex: 1; min-width: 0; }
+.text b { display: block; font-weight: 400; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.line { display: block; font-size: 12px; color: var(--l2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.line.whole { white-space: normal; text-wrap: pretty; }
+.arrow { flex: none; align-self: center; display: block; width: 14px; height: 14px; margin-right: -2px; fill: none; stroke: var(--l3); stroke-width: 1.75; stroke-linecap: round; stroke-linejoin: round; transition: transform .16s var(--ease-out), stroke .12s; }
+.open:hover .arrow { stroke: var(--l2); transform: translateX(1px); }
+
+/* The composer's square, small, beside the row's arrow; red as it is pointed at. */
+.row:has(.stop) .text { padding-right: 26px; }
+.stop { position: absolute; top: 50%; right: 29px; margin-top: -11px; display: grid; place-items: center; width: 22px; height: 22px; border-radius: 6px; color: var(--l2); transition: background-color .12s, color .12s; }
+.stop svg { display: block; width: 8px; height: 8px; fill: currentColor; }
+.stop:hover { background: var(--fill2); color: var(--red); }
+
+@media (prefers-reduced-motion: reduce) {
+  #root.in, .dot.busy { animation: none; }
+  .spin { animation-duration: 3s; }
+}

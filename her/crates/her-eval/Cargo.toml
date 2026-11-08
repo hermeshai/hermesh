@@ -1,0 +1,25 @@
+[package]
+name = "her-eval"
+description = "Evaluation of the browser tools with real models: local fixture sites, `her exec` runs, checks on what the site received and on the answer."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+
+[[bin]]
+name = "her-eval"
+path = "src/main.rs"
+
+[dependencies]
+anyhow.workspace = true
+clap.workspace = true
+parking_lot.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+tempfile.workspace = true
+tokio = { workspace = true, features = ["net"] }
+toml.workspace = true
+url.workspace = true
+
+[lints]
+workspace = true

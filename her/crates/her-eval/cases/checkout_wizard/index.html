@@ -1,0 +1,54 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><title>Checkout</title>
+<style>.step{display:none}.step.on{display:block}</style></head>
+<body>
+  <h1>Checkout</h1>
+  <form id="f" method="post" action="/api/order">
+    <section class="step on" id="s1">
+      <h2>Step 1 of 3: Your details</h2>
+      <label>Full name <input name="name"></label><br>
+      <label>Email <input name="email" type="email"></label><br>
+      <label>Country
+        <select name="country">
+          <option value="">Choose…</option>
+          <option value="US">United States</option>
+          <option value="CA">Canada</option>
+          <option value="MX">Mexico</option>
+        </select>
+      </label><br>
+      <button type="button" onclick="go(2)">Next</button>
+      <p id="e1" role="alert"></p>
+    </section>
+    <section class="step" id="s2">
+      <h2>Step 2 of 3: Plan</h2>
+      <fieldset><legend>Plan</legend>
+        <label><input type="radio" name="plan" value="solo"> Solo</label>
+        <label><input type="radio" name="plan" value="team"> Team</label>
+        <label><input type="radio" name="plan" value="org"> Organization</label>
+      </fieldset>
+      <fieldset><legend>Billing</legend>
+        <label><input type="radio" name="billing" value="monthly" checked> Monthly</label>
+        <label><input type="radio" name="billing" value="yearly"> Yearly</label>
+      </fieldset>
+      <button type="button" onclick="go(1)">Back</button>
+      <button type="button" onclick="go(3)">Next</button>
+    </section>
+    <section class="step" id="s3">
+      <h2>Step 3 of 3: Confirm</h2>
+      <label><input type="checkbox" name="terms"> I accept the terms of service</label><br>
+      <button type="button" onclick="go(2)">Back</button>
+      <button type="submit">Place order</button>
+    </section>
+  </form>
+<script>
+function go(n) {
+  const f = document.getElementById('f');
+  if (n === 2 && (!f.name.value || !f.email.value || !f.country.value)) {
+    document.getElementById('e1').textContent = 'Please fill in every field.';
+    return;
+  }
+  document.querySelectorAll('.step').forEach(s => s.classList.remove('on'));
+  document.getElementById('s' + n).classList.add('on');
+}
+</script>
+</body></html>

@@ -1,0 +1,165 @@
+{
+  "version": 1,
+  "id": "coding",
+  "title": "编程：定位分页边界错误并验证修复",
+  "synthetic": true,
+  "turns": 1,
+  "steps": [
+    {
+      "id": "inspect",
+      "observation": "读取问题和源文件，定位分页偏移。",
+      "calls": [
+        {
+          "tool": "repo_read",
+          "input": {
+            "path": "issue.json"
+          },
+          "output": {
+            "issue": "page 1 skips the first item",
+            "expected": [
+              0,
+              1
+            ],
+            "actual": [
+              1,
+              2
+            ]
+          },
+          "is_error": false
+        },
+        {
+          "tool": "repo_read",
+          "input": {
+            "path": "src/page.py"
+          },
+          "output": {
+            "revision": "r0",
+            "content": "def page(items, n, size):\n    start = (n - 1) * size + 1\n    return items[start:start + size]\n"
+          },
+          "is_error": false
+        }
+      ]
+    },
+    {
+      "id": "reproduce",
+      "observation": "先运行回归测试，确认故障可重复。",
+      "calls": [
+        {
+          "tool": "repo_test",
+          "input": {
+            "revision": {
+              "$ref": "0/1/revision"
+            },
+            "suite": "pagination"
+          },
+          "output": {
+            "passed": false,
+            "failed": [
+              "first_page",
+              "last_page"
+            ],
+            "exit_code": 1
+          },
+          "is_error": true
+        }
+      ]
+    },
+    {
+      "id": "patch",
+      "observation": "确认测试失败后修复偏移，并验证旧版本以避免过期写入。",
+      "calls": [
+        {
+          "tool": "repo_patch",
+          "input": {
+            "path": "src/page.py",
+            "expected_revision": {
+              "$ref": "0/1/revision"
+            },
+            "old": "(n - 1) * size + 1",
+            "new": "(n - 1) * size"
+          },
+          "output": {
+            "revision": "r1",
+            "changed": 1
+          },
+          "is_error": false
+        }
+      ]
+    },
+    {
+      "id": "regression",
+      "observation": "在新版本运行首页、尾页、空输入和不整除案例。",
+      "calls": [
+        {
+          "tool": "repo_test",
+          "input": {
+            "revision": {
+              "$ref": "2/0/revision"
+            },
+            "suite": "pagination"
+          },
+          "output": {
+            "passed": true,
+            "tests": 4,
+            "exit_code": 0
+          },
+          "is_error": false
+        }
+      ]
+    },
+    {
+      "id": "review",
+      "observation": "检查最终差异，确认只修复边界计算。",
+      "calls": [
+        {
+          "tool": "repo_diff",
+          "input": {
+            "from": "r0",
+            "to": {
+              "$ref": "2/0/revision"
+            }
+          },
+          "output": {
+            "files": [
+              "src/page.py"
+            ],
+            "removed": "start = (n - 1) * size + 1",
+            "added": "start = (n - 1) * size"
+          },
+          "is_error": false
+        }
+      ]
+    },
+    {
+      "id": "publish",
+      "observation": "测试通过后保存修复报告和版本证据。",
+      "calls": [
+        {
+          "tool": "artifact_write",
+          "input": {
+            "path": "reports/coding.json",
+            "revision": {
+              "$ref": "2/0/revision"
+            },
+            "tests": {
+              "$ref": "3/0/tests"
+            },
+            "files": {
+              "$ref": "4/0/files"
+            }
+          },
+          "output": {
+            "saved": true,
+            "path": "reports/coding.json",
+            "scenario": "coding"
+          },
+          "is_error": false
+        }
+      ]
+    }
+  ],
+  "summary": {
+    "conclusion": "分页偏移修复为 (n - 1) * size；4 项回归通过。",
+    "artifact": "reports/coding.json"
+  }
+}

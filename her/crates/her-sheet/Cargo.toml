@@ -1,0 +1,24 @@
+[package]
+name = "her-sheet"
+description = "Spreadsheets (docs/desktop/spreadsheet-design.md): read xlsx/xlsm, change cells by splicing the original XML, and check every write before it is handed back."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+
+[dependencies]
+calamine.workspace = true
+# Not used here: it turns on the filter for IronCalc's copy (technical design D-99).
+chrono-tz.workspace = true
+encoding_rs.workspace = true
+ironcalc_base.workspace = true
+quick-xml.workspace = true
+serde.workspace = true
+thiserror.workspace = true
+zip.workspace = true
+
+[dev-dependencies]
+serde_json.workspace = true
+
+[lints]
+workspace = true

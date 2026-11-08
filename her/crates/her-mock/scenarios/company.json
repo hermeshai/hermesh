@@ -1,0 +1,266 @@
+{
+  "version": 1,
+  "id": "company",
+  "title": "企业研究：合成企业 Atlas 的竞争力与估值",
+  "synthetic": true,
+  "turns": 1,
+  "steps": [
+    {
+      "id": "discover",
+      "observation": "明确企业、报告期和竞争对手，定位一手材料。",
+      "calls": [
+        {
+          "tool": "research_search",
+          "input": {
+            "company": "SIM:ATLAS",
+            "period": "FY2025"
+          },
+          "output": {
+            "sources": [
+              "fixture://atlas/annual",
+              "fixture://atlas/segments",
+              "fixture://atlas/peers"
+            ]
+          },
+          "is_error": false
+        }
+      ]
+    },
+    {
+      "id": "filings",
+      "observation": "并行读取年报、分部和可比公司材料。",
+      "calls": [
+        {
+          "tool": "research_fetch",
+          "input": {
+            "uri": "fixture://atlas/annual"
+          },
+          "output": {
+            "source": "fixture://atlas/annual",
+            "currency": "USD",
+            "unit": "million",
+            "revenue": 1200,
+            "revenue_prior": 1000,
+            "ebitda": 240,
+            "debt": 400,
+            "cash": 100,
+            "shares": 50
+          },
+          "is_error": false
+        },
+        {
+          "tool": "research_fetch",
+          "input": {
+            "uri": "fixture://atlas/segments"
+          },
+          "output": {
+            "source": "fixture://atlas/segments",
+            "recurring_revenue": 840,
+            "largest_customer_pct": 18,
+            "retention_pct": 112
+          },
+          "is_error": false
+        },
+        {
+          "tool": "research_fetch",
+          "input": {
+            "uri": "fixture://atlas/peers"
+          },
+          "output": {
+            "source": "fixture://atlas/peers",
+            "ev_ebitda": [
+              8,
+              10,
+              12
+            ],
+            "median": 10
+          },
+          "is_error": false
+        }
+      ]
+    },
+    {
+      "id": "growth",
+      "observation": "从已核验年报计算收入增长率。",
+      "calls": [
+        {
+          "tool": "finance_calculate",
+          "input": {
+            "operation": "growth",
+            "current": {
+              "$ref": "1/0/revenue"
+            },
+            "prior": {
+              "$ref": "1/0/revenue_prior"
+            }
+          },
+          "output": {
+            "value": 0.2
+          },
+          "is_error": false
+        }
+      ]
+    },
+    {
+      "id": "quality",
+      "observation": "计算经常性收入占比并保留客户集中度风险。",
+      "calls": [
+        {
+          "tool": "finance_calculate",
+          "input": {
+            "operation": "ratio",
+            "numerator": {
+              "$ref": "1/1/recurring_revenue"
+            },
+            "denominator": {
+              "$ref": "1/0/revenue"
+            }
+          },
+          "output": {
+            "value": 0.7
+          },
+          "is_error": false
+        }
+      ]
+    },
+    {
+      "id": "enterprise_value",
+      "observation": "使用可比公司中位数，避免将企业价值直接当作股权价值。",
+      "calls": [
+        {
+          "tool": "finance_calculate",
+          "input": {
+            "operation": "product",
+            "a": {
+              "$ref": "1/0/ebitda"
+            },
+            "b": {
+              "$ref": "1/2/median"
+            }
+          },
+          "output": {
+            "value": 2400
+          },
+          "is_error": false
+        }
+      ]
+    },
+    {
+      "id": "equity_bridge",
+      "observation": "从企业价值扣净债务，按稀释股数估算每股价值。",
+      "calls": [
+        {
+          "tool": "equity_valuation",
+          "input": {
+            "enterprise_value": {
+              "$ref": "4/0/value"
+            },
+            "debt": {
+              "$ref": "1/0/debt"
+            },
+            "cash": {
+              "$ref": "1/0/cash"
+            },
+            "shares": {
+              "$ref": "1/0/shares"
+            }
+          },
+          "output": {
+            "equity_value": 2100,
+            "per_share": 42
+          },
+          "is_error": false
+        }
+      ]
+    },
+    {
+      "id": "sensitivity",
+      "observation": "对估值倍数做敏感性分析。",
+      "calls": [
+        {
+          "tool": "equity_sensitivity",
+          "input": {
+            "ebitda": {
+              "$ref": "1/0/ebitda"
+            },
+            "multiples": [
+              8,
+              10,
+              12
+            ],
+            "net_debt": 300,
+            "shares": 50
+          },
+          "output": {
+            "per_share": [
+              32.4,
+              42,
+              51.6
+            ]
+          },
+          "is_error": false
+        }
+      ]
+    },
+    {
+      "id": "risk_review",
+      "observation": "增长、复购与估值需要结合客户集中度解释。",
+      "calls": [
+        {
+          "tool": "research_review",
+          "input": {
+            "sources": {
+              "$ref": "0/0/sources"
+            },
+            "customer_concentration_pct": {
+              "$ref": "1/1/largest_customer_pct"
+            },
+            "range": {
+              "$ref": "6/0/per_share"
+            }
+          },
+          "output": {
+            "passed": true,
+            "risks": [
+              "customer concentration",
+              "multiple compression",
+              "synthetic peer sample"
+            ]
+          },
+          "is_error": false
+        }
+      ]
+    },
+    {
+      "id": "publish",
+      "observation": "保存可追溯的估值表和风险结论。",
+      "calls": [
+        {
+          "tool": "artifact_write",
+          "input": {
+            "path": "reports/company.json",
+            "per_share": {
+              "$ref": "5/0/per_share"
+            },
+            "range": {
+              "$ref": "6/0/per_share"
+            },
+            "sources": {
+              "$ref": "0/0/sources"
+            }
+          },
+          "output": {
+            "path": "reports/company.json",
+            "saved": true,
+            "scenario": "company"
+          },
+          "is_error": false
+        }
+      ]
+    }
+  ],
+  "summary": {
+    "conclusion": "Atlas 合成估值中枢 42，敏感性区间 32.4–51.6；收入增长 20%，经常性占比 70%。",
+    "artifact": "reports/company.json"
+  }
+}

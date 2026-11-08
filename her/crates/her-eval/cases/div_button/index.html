@@ -1,0 +1,19 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><title>Mugs</title>
+<style>
+.card{border:1px solid #ccc;padding:12px;margin:8px;width:220px;display:inline-block}
+.add{background:#222;color:#fff;padding:6px 10px;cursor:pointer;display:inline-block}
+</style></head>
+<body>
+  <h1>Mugs</h1>
+  <div class="card"><div>Red Mug</div><div>$8</div><div class="add" onclick="add('red-mug')">Add to cart</div></div>
+  <div class="card"><div>Blue Mug</div><div>$9</div><div class="add" onclick="add('blue-mug')">Add to cart</div></div>
+  <div class="card"><div>Green Mug</div><div>$9</div><div class="add" onclick="add('green-mug')">Add to cart</div></div>
+  <p id="status"></p>
+<script>
+function add(item) {
+  fetch('/api/cart', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({item})})
+    .then(() => { document.getElementById('status').textContent = 'Added ' + item + ' to the cart.'; });
+}
+</script>
+</body></html>

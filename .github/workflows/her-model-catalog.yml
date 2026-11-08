@@ -1,0 +1,49 @@
+# Weekly sync of her's public model catalog snapshot (her/crates/her-llm/catalog/public).
+# Opens a pull request when upstream changed; models removed upstream are named in its title
+# so they are looked at before merging.
+name: her model catalog
+
+on:
+  schedule:
+    - cron: "17 2 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+
+concurrency:
+  group: her-model-catalog
+  cancel-in-progress: false
+
+defaults:
+  run:
+    working-directory: her
+
+jobs:
+  sync:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - name: Sync the snapshot
+        run: cargo run -q -p her-llm --example sync_catalog | tee report.txt
+      - name: Open a pull request
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if git diff --quiet -- crates/her-llm/catalog/public; then
+            echo "no change"
+            exit 0
+          fi
+          branch="her-model-catalog/$(date -u +%Y-%m-%d)"
+          title="her model catalog: weekly sync"
+          if grep -q "removed upstream" report.txt; then title="$title (models removed upstream)"; fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git checkout -b "$branch"
+          git add crates/her-llm/catalog/public
+          git commit -m "$title"
+          git push origin "$branch"
+          { echo '```'; cat report.txt; echo '```'; } > body.md
+          gh pr create --title "$title" --body-file body.md

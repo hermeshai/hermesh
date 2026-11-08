@@ -1,0 +1,10 @@
+{
+  "name": "@her/chrome-extension",
+  "private": true,
+  "type": "module",
+  "description": "The Hermesh extension: lends the user's Chrome to her's browser tools (docs/kernel/browser-design.md \u00a78.4). Load this folder unpacked; no build step.",
+  "scripts": {
+    "test": "node --test src/*.test.js",
+    "store-zip": "node scripts/pack.mjs"
+  }
+}

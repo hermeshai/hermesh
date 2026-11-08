@@ -1,0 +1,20 @@
+[package]
+name = "her-slide"
+description = "PowerPoint decks: render, read, find and replace text, and save surgically (BetterOffice)."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+
+[dependencies]
+her-protocol.workspace = true
+betteroffice-pptx.workspace = true
+encoding_rs.workspace = true
+thiserror.workspace = true
+zip.workspace = true
+
+[dev-dependencies]
+png.workspace = true
+
+[lints]
+workspace = true

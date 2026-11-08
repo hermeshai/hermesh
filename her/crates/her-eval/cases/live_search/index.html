@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><title>Library</title></head>
+<body>
+  <h1>City Library</h1>
+  <label>Search the catalog <input id="q" type="search" placeholder="Title or author"></label>
+  <ul id="results"></ul>
+<script>
+const books = [
+  {id: 'b-101', title: 'The Art of Computer Programming', author: 'Knuth'},
+  {id: 'b-317', title: 'Structure and Interpretation of Computer Programs', author: 'Abelson, Sussman'},
+  {id: 'b-318', title: 'Structure and Interpretation of Classical Mechanics', author: 'Sussman, Wisdom'},
+  {id: 'b-422', title: 'Programming Pearls', author: 'Bentley'},
+];
+document.getElementById('q').addEventListener('input', e => {
+  const q = e.target.value.trim().toLowerCase();
+  const ul = document.getElementById('results');
+  ul.innerHTML = '';
+  if (q.length < 3) return;
+  for (const b of books.filter(b => (b.title + ' ' + b.author).toLowerCase().includes(q))) {
+    const li = document.createElement('li');
+    li.textContent = b.title + ' — ' + b.author + ' ';
+    const btn = document.createElement('button');
+    btn.textContent = 'Borrow';
+    btn.onclick = () => fetch('/api/borrow', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({id: b.id})})
+      .then(() => { li.append(' ✓ borrowed'); });
+    li.append(btn);
+    ul.append(li);
+  }
+});
+</script>
+</body></html>

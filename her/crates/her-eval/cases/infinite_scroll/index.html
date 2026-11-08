@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><title>Events</title>
+<style>li{height:90px;border-bottom:1px solid #ddd}</style></head>
+<body>
+  <h1>Upcoming events</h1>
+  <ul id="list"></ul>
+  <p id="more">Loading more…</p>
+<script>
+const names = ['Rust meetup', 'Design review', 'Open mic', 'Board games', 'Book club', 'Yoga', 'Hack night', 'Quiz'];
+let next = 1;
+function load() {
+  const ul = document.getElementById('list');
+  for (const end = next + 12; next < end && next <= 48; next++) {
+    const li = document.createElement('li');
+    const name = next === 37 ? 'Compiler night' : names[next % names.length] + ' #' + next;
+    li.textContent = name + ' ';
+    const btn = document.createElement('button');
+    btn.textContent = 'Reserve';
+    const id = next;
+    btn.onclick = () => fetch('/api/reserve', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({event: String(id)})})
+      .then(() => li.append(' ✓ reserved'));
+    li.append(btn);
+    ul.append(li);
+  }
+  if (next > 48) document.getElementById('more').remove();
+}
+load();
+new IntersectionObserver(entries => { if (entries[0].isIntersecting) setTimeout(load, 300); })
+  .observe(document.getElementById('more'));
+</script>
+</body></html>

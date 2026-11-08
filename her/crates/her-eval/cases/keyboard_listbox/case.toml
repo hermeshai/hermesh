@@ -1,0 +1,5 @@
+description = "A custom listbox that only responds to the keyboard"
+prompt = "On {base}/ set the shipping speed to Overnight and save."
+[[expect]]
+request = "POST /api/shipping"
+fields = { speed = "overnight" }

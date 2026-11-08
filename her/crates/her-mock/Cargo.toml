@@ -1,0 +1,28 @@
+[package]
+name = "her-mock"
+description = "A scriptable OpenAI-compatible model service for end-to-end and load tests."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+
+[[bin]]
+name = "her-mock"
+path = "src/main.rs"
+
+[[bin]]
+name = "her-mcp-server"
+path = "src/bin/her-mcp-server.rs"
+
+[dependencies]
+base64.workspace = true
+ring.workspace = true
+parking_lot.workspace = true
+serde_json.workspace = true
+url.workspace = true
+chrono.workspace = true
+serde.workspace = true
+tokio = { workspace = true, features = ["io-std", "net"] }
+
+[lints]
+workspace = true

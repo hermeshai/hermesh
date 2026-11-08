@@ -1,0 +1,11 @@
+/target
+**/*.rs.bk
+__pycache__/
+*.pyc
+node_modules/
+
+# Local [patch] of the BetterOffice fork (crates/her-slide/README.md)
+/.cargo/config.toml
+# PPT corpus samples and reference renders (tools/ppt-corpus/README.md)
+/tools/ppt-corpus/corpus/
+/tools/ppt-corpus/out/

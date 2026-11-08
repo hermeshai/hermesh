@@ -1,0 +1,61 @@
+[package]
+name = "her-cli"
+description = "The her command-line interface."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+
+[[bin]]
+name = "her"
+path = "src/main.rs"
+
+[features]
+default = ["local-accounts"]
+# The public release is built without this: --no-default-features.
+local-accounts = ["her-connections/local-accounts"]
+
+[dependencies]
+crossterm.workspace = true
+unicode-width.workspace = true
+toml_edit.workspace = true
+base64.workspace = true
+strsim.workspace = true
+toml.workspace = true
+tempfile.workspace = true
+tokio-util.workspace = true
+clap_complete.workspace = true
+anyhow.workspace = true
+chrono.workspace = true
+clap.workspace = true
+futures.workspace = true
+her-acp.workspace = true
+her-browser.workspace = true
+her-docs.workspace = true
+her-core.workspace = true
+her-llm.workspace = true
+her-connections.workspace = true
+her-mcp.workspace = true
+her-protocol.workspace = true
+her-server.workspace = true
+her-tools.workspace = true
+libc.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+tokio = { workspace = true, features = ["io-std", "net"] }
+tracing.workspace = true
+tracing-appender.workspace = true
+tracing-subscriber.workspace = true
+
+[dev-dependencies]
+agent-client-protocol-schema.workspace = true
+her-eval.workspace = true
+her-mock.workspace = true
+her-sheet.workspace = true
+encoding_rs.workspace = true
+her-rpc.workspace = true
+jsonschema.workspace = true
+flate2.workspace = true
+tar.workspace = true
+ring.workspace = true
+parking_lot.workspace = true

@@ -1,0 +1,193 @@
+{
+  "max_tokens": 32000,
+  "messages": [
+    {
+      "content": [
+        {
+          "text": "first",
+          "type": "text"
+        },
+        {
+          "text": "second \"quoted\"",
+          "type": "text"
+        }
+      ],
+      "role": "user"
+    },
+    {
+      "content": [
+        {
+          "signature": "reasoning_content",
+          "thinking": "plan the reads",
+          "type": "thinking"
+        },
+        {
+          "text": "I will read",
+          "type": "text"
+        },
+        {
+          "id": "call_1",
+          "input": {
+            "path": "a.txt"
+          },
+          "name": "read",
+          "type": "tool_use"
+        },
+        {
+          "id": "call 2!",
+          "input": {
+            "command": "ls -la",
+            "timeout": 5
+          },
+          "name": "bash",
+          "type": "tool_use"
+        }
+      ],
+      "role": "assistant"
+    },
+    {
+      "content": [
+        {
+          "content": [
+            {
+              "text": "file a\n\tline 2",
+              "type": "text"
+            }
+          ],
+          "tool_use_id": "call_1",
+          "type": "tool_result"
+        },
+        {
+          "content": [
+            {
+              "text": "listing",
+              "type": "text"
+            }
+          ],
+          "is_error": true,
+          "tool_use_id": "call 2!",
+          "type": "tool_result"
+        },
+        {
+          "source": {
+            "data": "AAAA",
+            "media_type": "image/png",
+            "type": "base64"
+          },
+          "type": "image"
+        }
+      ],
+      "role": "user"
+    },
+    {
+      "content": [
+        {
+          "data": "opaque-data",
+          "type": "redacted_thinking"
+        },
+        {
+          "text": "done",
+          "type": "text"
+        }
+      ],
+      "role": "assistant"
+    },
+    {
+      "content": [
+        {
+          "source": {
+            "data": "BBBB",
+            "media_type": "image/jpeg",
+            "type": "base64"
+          },
+          "type": "image"
+        },
+        {
+          "text": "what is this?",
+          "type": "text"
+        }
+      ],
+      "role": "user"
+    },
+    {
+      "content": [
+        {
+          "id": "call_3",
+          "input": {},
+          "name": "read",
+          "type": "tool_use"
+        }
+      ],
+      "role": "assistant"
+    },
+    {
+      "content": [
+        {
+          "content": [
+            {
+              "text": "(no output)",
+              "type": "text"
+            }
+          ],
+          "tool_use_id": "call_3",
+          "type": "tool_result"
+        }
+      ],
+      "role": "user"
+    },
+    {
+      "content": [
+        {
+          "text": "thanks",
+          "type": "text"
+        }
+      ],
+      "role": "user"
+    }
+  ],
+  "model": "test-model",
+  "output_config": {
+    "effort": "medium"
+  },
+  "stream": true,
+  "system": [
+    {
+      "text": "You are a test.\nBe brief.",
+      "type": "text"
+    }
+  ],
+  "thinking": {
+    "display": "summarized",
+    "type": "adaptive"
+  },
+  "tool_choice": {
+    "type": "none"
+  },
+  "tools": [
+    {
+      "description": "Read a file.",
+      "input_schema": {
+        "properties": {
+          "path": {
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "name": "read"
+    },
+    {
+      "description": "Run a command.",
+      "input_schema": {
+        "properties": {
+          "command": {
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "name": "bash"
+    }
+  ],
+  "top_p": 0.9
+}

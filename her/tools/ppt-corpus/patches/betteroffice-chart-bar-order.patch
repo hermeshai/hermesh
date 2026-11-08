@@ -1,0 +1,100 @@
+--- a/crates/ooxml-drawingml/src/chart/geometry.rs
++++ b/crates/ooxml-drawingml/src/chart/geometry.rs
+@@ -4090,7 +4090,11 @@
+             }
+             let (start, end) = spans.get(ser_idx).copied().unwrap_or((0.0, 0.0));
+             let lane = if family.stacking() == Stacking::None {
+-                ser_idx as f64
++                if horizontal {
++                    (family.series.len() - 1 - ser_idx) as f64
++                } else {
++                    ser_idx as f64
++                }
+             } else {
+                 0.0
+             };
+@@ -5442,7 +5446,7 @@
+             })
+             .unwrap_or_default()
+     } else {
+-        series
++        let mut entries: Vec<_> = series
+             .iter()
+             .enumerate()
+             .map(|(i, series)| {
+@@ -5454,7 +5458,29 @@
+                     series_color(Some(series), i),
+                 )
+             })
+-            .collect()
++            .collect();
++        if chart.plot_groups.is_empty() {
++            if chart.chart_type == "bar"
++                && !matches!(
++                    chart.series.first().and_then(|series| series.grouping),
++                    Some("stacked" | "percentStacked")
++                )
++            {
++                entries.reverse();
++            }
++        } else {
++            let mut start = 0;
++            for group in &chart.plot_groups {
++                let end = (start + group.series.len()).min(entries.len());
++                if group.chart_type.unwrap_or(chart.chart_type) == "bar"
++                    && !matches!(group.grouping, Some("stacked" | "percentStacked"))
++                {
++                    entries[start..end].reverse();
++                }
++                start = end;
++            }
++        }
++        entries
+     }
+ }
+ 
+@@ -11111,6 +11137,44 @@
+             reversed[0].1 < reversed[1].1,
+             "a maxMin category axis puts the first category back on top: {reversed:?}"
+         );
++    }
++
++    #[test]
++    fn clustered_horizontal_bars_and_legend_follow_powerpoint_series_order() {
++        let data = source(&[1.0]);
++        for grouped_chart in [false, true] {
++            for legend_position in ["bottom", "right"] {
++                let mut chart = PlotChart {
++                    chart_type: "bar",
++                    legend: Some(PlotLegend {
++                        overlay: false,
++                        position: Some(legend_position),
++                        visible: Some(true),
++                    }),
++                    ..PlotChart::default()
++                };
++                let entries = vec![series("North", &data), series("South", &data)];
++                if grouped_chart {
++                    chart.plot_groups = vec![group("bar", entries)];
++                } else {
++                    chart.series = entries;
++                }
++                let ops = plot_chart(&chart, rect());
++                let bars = bars(&ops);
++                assert_eq!(bars.len(), 2);
++                assert!(
++                    bars[0].1 > bars[1].1,
++                    "first series should be below the second: {bars:?}"
++                );
++                let north = text_at(&ops, "North");
++                let south = text_at(&ops, "South");
++                if legend_position == "bottom" {
++                    assert!(south.1 < north.1);
++                } else {
++                    assert!(south.2 < north.2);
++                }
++            }
++        }
+     }
+ 
+     #[test]

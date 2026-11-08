@@ -1,0 +1,142 @@
+{
+  "max_completion_tokens": 1000,
+  "messages": [
+    {
+      "content": "You are a test.\nBe brief.",
+      "role": "developer"
+    },
+    {
+      "content": "first\nsecond \"quoted\"",
+      "role": "user"
+    },
+    {
+      "content": "I will read",
+      "role": "assistant",
+      "tool_calls": [
+        {
+          "function": {
+            "arguments": "{\"path\":\"a.txt\"}",
+            "name": "read"
+          },
+          "id": "call_1",
+          "type": "function"
+        },
+        {
+          "function": {
+            "arguments": "{\"command\":\"ls -la\",\"timeout\":5}",
+            "name": "bash"
+          },
+          "id": "call 2!",
+          "type": "function"
+        }
+      ]
+    },
+    {
+      "content": "file a\n\tline 2",
+      "name": "read",
+      "role": "tool",
+      "tool_call_id": "call_1"
+    },
+    {
+      "content": [
+        {
+          "text": "listing",
+          "type": "text"
+        },
+        {
+          "image_url": {
+            "url": "data:image/png;base64,AAAA"
+          },
+          "type": "image_url"
+        }
+      ],
+      "name": "read",
+      "role": "tool",
+      "tool_call_id": "call 2!"
+    },
+    {
+      "content": "done",
+      "role": "assistant"
+    },
+    {
+      "content": [
+        {
+          "image_url": {
+            "url": "data:image/jpeg;base64,BBBB"
+          },
+          "type": "image_url"
+        },
+        {
+          "text": "what is this?",
+          "type": "text"
+        }
+      ],
+      "role": "user"
+    },
+    {
+      "content": null,
+      "role": "assistant",
+      "tool_calls": [
+        {
+          "function": {
+            "arguments": "{}",
+            "name": "read"
+          },
+          "id": "call_3",
+          "type": "function"
+        }
+      ]
+    },
+    {
+      "content": "(no output)",
+      "name": "read",
+      "role": "tool",
+      "tool_call_id": "call_3"
+    },
+    {
+      "content": "thanks",
+      "role": "user"
+    }
+  ],
+  "model": "test-model",
+  "prompt_cache_key": "session-1",
+  "reasoning_effort": "low",
+  "stream": true,
+  "temperature": 0.5,
+  "tool_choice": "none",
+  "tools": [
+    {
+      "function": {
+        "description": "Read a file.",
+        "name": "read",
+        "parameters": {
+          "properties": {
+            "path": {
+              "type": "string"
+            }
+          },
+          "type": "object"
+        },
+        "strict": true
+      },
+      "type": "function"
+    },
+    {
+      "function": {
+        "description": "Run a command.",
+        "name": "bash",
+        "parameters": {
+          "properties": {
+            "command": {
+              "type": "string"
+            }
+          },
+          "type": "object"
+        },
+        "strict": true
+      },
+      "type": "function"
+    }
+  ],
+  "top_p": 0.9
+}

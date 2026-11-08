@@ -1,0 +1,8 @@
+description = "Click a control that is a styled div with an onclick handler, not a button"
+prompt = "On {base}/ add the Blue Mug to the cart."
+[[expect]]
+request = "POST /api/cart"
+fields = { item = "blue-mug" }
+[[forbid]]
+request = "POST /api/cart"
+fields = { item = "red-mug" }

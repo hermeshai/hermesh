@@ -1,0 +1,198 @@
+[workspace]
+resolver = "3"
+members = [
+    "crates/her-llm",
+    "crates/her-connections",
+    "crates/her-tools",
+    "crates/her-protocol",
+    "crates/her-core",
+    "crates/her-cli",
+    "crates/her-rpc",
+    "crates/her-server",
+    "crates/her-acp",
+    "crates/her-mock",
+    "crates/her-mcp",
+    "crates/her-browser",
+    "crates/her-desktop",
+    "crates/her-docs",
+    "crates/her-sheet",
+    "crates/her-bench",
+    "crates/her-eval",
+    "crates/her-slide",
+    "crates/her-word",
+]
+
+[workspace.package]
+version = "0.2.0"
+edition = "2024"
+rust-version = "1.89"
+publish = false
+
+[workspace.dependencies]
+her-llm = { path = "crates/her-llm" }
+her-connections = { path = "crates/her-connections", default-features = false }
+her-tools = { path = "crates/her-tools" }
+her-protocol = { path = "crates/her-protocol" }
+her-core = { path = "crates/her-core" }
+her-rpc = { path = "crates/her-rpc" }
+her-server = { path = "crates/her-server" }
+her-acp = { path = "crates/her-acp" }
+her-mock = { path = "crates/her-mock" }
+her-mcp = { path = "crates/her-mcp" }
+her-browser = { path = "crates/her-browser" }
+her-desktop = { path = "crates/her-desktop" }
+her-docs = { path = "crates/her-docs" }
+her-sheet = { path = "crates/her-sheet" }
+her-eval = { path = "crates/her-eval" }
+her-slide = { path = "crates/her-slide" }
+her-word = { path = "crates/her-word" }
+
+agent-client-protocol-schema = { version = "1.13", default-features = false }
+anyhow = "1"
+async-stream = "0.3"
+async-trait = "0.1"
+# PPT engine: our fork of BetterOffice (openooxml/betteroffice), branch finx/0.5. On top of
+# upstream a45ba76 the fork carries fixes upstream does not have yet:
+#   77a1364 pptx-render: wrap preset-shape text to the preset's text rect
+#   169980a pptx-raster: synthesize bold for faces with no bold weight
+#   b9b1102 pptx: draw East Asian text in its a:ea face
+#   fc15642..b4ce385 charts (auto axis unit, one-series title, pie placement, axis strokes,
+#     legend margin), full-width punctuation, run-level a:ea and chart text in +mn-ea,
+#     Latin line breaking without an East Asian lang
+#   b73babb pptx: save after delete_slide (fonts over the session's slides)
+#   330266fb pptx-react: editor chrome reads --bo-editor-* custom properties
+# Back to upstream once all of these are merged there and a release carries them. No font packs
+# (fonts-latin, fonts-intl, fonts-cjk): every face comes from the machine (her-slide's
+# SystemFonts). Local work against a checkout of the fork: crates/her-slide/README.md.
+betteroffice-pptx = { git = "https://github.com/Eliseowzy/betteroffice", rev = "aac46417ba2f2e5a924d3427af28606ea932c408", default-features = false, features = ["raster", "fonts"] }
+# Word on the same fork: the editing session (Yrs) and rasterization of saved bytes.
+betteroffice-docx = { git = "https://github.com/Eliseowzy/betteroffice", rev = "aac46417ba2f2e5a924d3427af28606ea932c408", default-features = false, features = ["raster", "fonts"] }
+docx-edit = { package = "betteroffice-docx-edit", git = "https://github.com/Eliseowzy/betteroffice", rev = "aac46417ba2f2e5a924d3427af28606ea932c408" }
+ooxml-metafile = { package = "betteroffice-metafile", git = "https://github.com/Eliseowzy/betteroffice", rev = "aac46417ba2f2e5a924d3427af28606ea932c408", features = ["svg"] }
+# The .docx written from the session in Rust: the fork's port of the JS engine's saveYrsDocx.
+docx-native-save = { package = "betteroffice-docx-native-save", git = "https://github.com/Eliseowzy/betteroffice", rev = "aac46417ba2f2e5a924d3427af28606ea932c408" }
+base64 = "0.22"
+bytes = "1"
+calamine = "0.38"
+chrono = { version = "0.4", default-features = false, features = ["clock", "std"] }
+# IronCalc's time zones. Named here only for `filter-by-regex`: `.cargo/config.toml` keeps UTC out of ~600 zones.
+chrono-tz = { version = "0.10", default-features = false, features = ["filter-by-regex"] }
+clap = { version = "4", features = ["derive"] }
+crossterm = { version = "0.29", default-features = false, features = ["events", "bracketed-paste"] }
+unicode-width = "0.2"
+dirs = "6"
+eventsource-stream = "0.2"
+futures = "0.3"
+flate2 = "1"
+ironcalc_base = "0.9"
+tar = "0.4"
+libc = "0.2"
+md-5 = "0.10"
+memchr = "2"
+# Time zones for schedules. No `perf-inline` or `tz-fat`: a schedule is worked out a few times a minute.
+jiff = { version = "0.2", default-features = false, features = ["std", "tz-system", "tzdb-bundle-platform", "tzdb-zoneinfo", "tzdb-concatenated"] }
+parking_lot = "0.12"
+png = "0.18"
+quick-xml = "0.42"
+rand = "0.9"
+ring = "0.17"
+reqwest = { version = "0.12", default-features = false, features = [
+    "charset",
+    "gzip",
+    "http2",
+    "json",
+    "rustls-tls-manual-roots-no-provider",
+    "stream",
+] }
+rustls = { version = "0.23", default-features = false, features = ["ring", "std", "tls12"] }
+rustls-platform-verifier = "0.7"
+schemars = "0.8"
+serde = { version = "1", features = ["derive", "rc"] }
+serde_json = { version = "1", features = ["raw_value"] }
+serde_ignored = "0.1"
+strsim = "0.11"
+clap_complete = "4"
+similar = "2"
+encoding_rs = "0.8"
+thiserror = "2"
+rusqlite = { version = "0.41", features = ["bundled"] }
+tokio = { version = "1", features = [
+    "fs",
+    "io-util",
+    "macros",
+    "process",
+    "rt-multi-thread",
+    "signal",
+    "sync",
+    "time",
+] }
+tokio-util = "0.7"
+toml = "0.9"
+toml_edit = "0.25"
+tracing = "0.1"
+tracing-appender = "0.2"
+tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt"] }
+url = "2"
+uuid = { version = "1", features = ["v4", "v7"] }
+zip = { version = "9", default-features = false, features = ["deflate"] }
+notify = "8"
+yaml-rust2 = { version = "0.13", default-features = false }
+
+# Test-only
+jsonschema = { version = "0.60", default-features = false }
+tempfile = "3"
+wiremock = "0.6"
+
+[workspace.lints.clippy]
+print_stdout = "deny"
+print_stderr = "deny"
+
+# Debug info: line tables for the workspace's own crates (a RUST_BACKTRACE still shows file:line; a
+# debugger loses variables and types) and none for dependencies. The full DWARF default, with the loose
+# object files macOS keeps for it, let one `target` grow past 150 GiB (docs/kernel/technical-design.md §15).
+[profile.dev]
+debug = "line-tables-only"
+
+[profile.dev.package."*"]
+debug = false
+
+# memchr scans the lines of read and edit; unoptimized, tests on large files take seconds.
+[profile.dev.package.memchr]
+opt-level = 3
+
+# her-sheet's tests inflate, parse and deflate whole workbooks thousands of times; unoptimized
+# they take minutes.
+[profile.dev.package.her-sheet]
+opt-level = 3
+
+[profile.dev.package.zlib-rs]
+opt-level = 3
+
+[profile.dev.package.crc32fast]
+opt-level = 3
+
+[profile.dev.package.quick-xml]
+opt-level = 3
+
+[profile.dev.package.calamine]
+opt-level = 3
+
+[profile.dev.package.zip]
+opt-level = 3
+
+[profile.release]
+lto = "thin"
+codegen-units = 4
+
+# Builds for distribution: `cargo build --profile dist`. About 25% smaller than `release`, at
+# roughly twice the build time; start-up time is the same within measurement noise.
+[profile.dist]
+inherits = "release"
+lto = "fat"
+codegen-units = 1
+
+[patch.crates-io]
+# IronCalc 0.9.1 with our patches (AGGREGATE, TEXTJOIN, a fixed INFO("release")), one commit each on
+# https://github.com/Eliseowzy/IronCalc/tree/finx/0.9.1. Drop this once an upstream release has them.
+ironcalc_base = { git = "https://github.com/Eliseowzy/IronCalc", rev = "58e6c4869046cada533543f1dd7efdbfd3f0476a" }
+

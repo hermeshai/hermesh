@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><title>Shipping</title>
+<style>[role=option][aria-selected=true]{background:#cde}</style></head>
+<body>
+  <h1>Shipping preferences</h1>
+  <p id="hint">Use the arrow keys to choose, then press Enter to save.</p>
+  <ul role="listbox" tabindex="0" aria-label="Shipping speed" aria-describedby="hint" id="lb" aria-activedescendant="o-standard">
+    <li role="option" id="o-standard" data-v="standard" aria-selected="true">Standard</li>
+    <li role="option" id="o-express" data-v="express" aria-selected="false">Express</li>
+    <li role="option" id="o-overnight" data-v="overnight" aria-selected="false">Overnight</li>
+  </ul>
+  <p id="saved" aria-live="polite"></p>
+<script>
+const lb = document.getElementById('lb');
+const opts = [...lb.querySelectorAll('[role=option]')];
+let i = 0;
+function show() {
+  opts.forEach((o, j) => o.setAttribute('aria-selected', String(i === j)));
+  lb.setAttribute('aria-activedescendant', opts[i].id);
+}
+lb.addEventListener('keydown', e => {
+  if (e.key === 'ArrowDown') { i = Math.min(i + 1, opts.length - 1); show(); e.preventDefault(); }
+  if (e.key === 'ArrowUp') { i = Math.max(i - 1, 0); show(); e.preventDefault(); }
+  if (e.key === 'Enter') {
+    fetch('/api/shipping', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({speed: opts[i].dataset.v})})
+      .then(() => { document.getElementById('saved').textContent = 'Saved: ' + opts[i].textContent; });
+  }
+});
+</script>
+</body></html>

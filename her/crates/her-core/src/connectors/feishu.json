@@ -1,0 +1,125 @@
+{
+  "schema_version": 1,
+  "id": "feishu",
+  "name": "飞书",
+  "version": "1.0.98",
+  "license": "MIT",
+  "source": "https://github.com/larksuite/cli",
+  "description": "通过飞书官方 CLI 访问已授权的文档、消息、日历和任务。",
+  "tool_description": "Run the official Feishu CLI with an argument array, without the leading lark-cli. Start with [\"--help\"] then the relevant subcommand help; never guess commands or parameters. Prefer structured JSON and user identity (--as user) where supported. Login and app configuration are managed in Connectors. Confirm target and content with the user before sending, modifying or deleting data.",
+  "config_env": "LARKSUITE_CLI_CONFIG_DIR",
+  "storage_env": "LARKSUITE_CLI_DATA_DIR",
+  "auth": {
+    "kind": "cli_browser",
+    "setup": {
+      "command": [
+        "config",
+        "init",
+        "--new",
+        "--brand",
+        "feishu",
+        "--lang",
+        "zh_cn"
+      ],
+      "config_file": "config.json",
+      "authorize_origin": "https://open.feishu.cn",
+      "authorize_path": "/page/cli"
+    },
+    "login": [
+      "auth",
+      "login",
+      "--recommend",
+      "--json"
+    ],
+    "status": [
+      "auth",
+      "status",
+      "--json"
+    ],
+    "logout": [
+      "auth",
+      "logout",
+      "--json"
+    ],
+    "status_field": "identity",
+    "status_value": "user",
+    "authorize_origin": "https://accounts.feishu.cn",
+    "authorize_path": "/oauth/v1/device/verify",
+    "url_field": "verification_uri_complete",
+    "partial_success": {
+      "exit_code": 3,
+      "event": "authorization_complete",
+      "warning_type": "missing_scope"
+    }
+  },
+  "blocked_commands": [
+    "auth",
+    "pat",
+    "config",
+    "profile",
+    "profiles",
+    "upgrade",
+    "update",
+    "self-update",
+    "plugin",
+    "skills",
+    "skill",
+    "mcp",
+    "completion",
+    "event",
+    "doctor",
+    "install",
+    "uninstall",
+    "init",
+    "bind"
+  ],
+  "blocked_flags": [
+    "--config",
+    "--config-dir",
+    "--profile",
+    "--client-id",
+    "--client-secret",
+    "--token",
+    "--access-token",
+    "--auth-proxy",
+    "--endpoint",
+    "--base-url",
+    "--app-id",
+    "--app-secret",
+    "--api-base-url"
+  ],
+  "artifacts": {
+    "macos-aarch64": {
+      "url": "https://github.com/larksuite/cli/releases/download/v1.0.98/lark-cli-1.0.98-darwin-arm64.tar.gz",
+      "sha256": "ee4a3209bbf8b74ea5c00a07d0da89b79f5e7f6abfd518a8b2d78a7a4f7e3f40",
+      "entry": "lark-cli",
+      "notices": [
+        "LICENSE"
+      ]
+    },
+    "macos-x86_64": {
+      "url": "https://github.com/larksuite/cli/releases/download/v1.0.98/lark-cli-1.0.98-darwin-amd64.tar.gz",
+      "sha256": "44a4ff98e969385fc4bb4d701735ba319307e50560fa6c4c956178d70ccc3525",
+      "entry": "lark-cli",
+      "notices": [
+        "LICENSE"
+      ]
+    },
+    "linux-aarch64": {
+      "url": "https://github.com/larksuite/cli/releases/download/v1.0.98/lark-cli-1.0.98-linux-arm64.tar.gz",
+      "sha256": "f798b26ce4b369d70411945e7f66bbe4382c411bc47d81950a662de7b69b41ed",
+      "entry": "lark-cli",
+      "notices": [
+        "LICENSE"
+      ]
+    },
+    "linux-x86_64": {
+      "url": "https://github.com/larksuite/cli/releases/download/v1.0.98/lark-cli-1.0.98-linux-amd64.tar.gz",
+      "sha256": "4a12dcb7a0aab25986d8bcd046cb45b08278531a9aac3a12b53cf3d94738fe80",
+      "entry": "lark-cli",
+      "notices": [
+        "LICENSE"
+      ]
+    }
+  }
+}
