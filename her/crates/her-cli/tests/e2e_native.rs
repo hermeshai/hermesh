@@ -532,6 +532,32 @@ async fn wait_for_socket(path: &Path) {
     panic!("the service did not start");
 }
 
+/// Clients that go away before their answers leave the service up: on Linux, writing to their
+/// socket raised SIGPIPE, which her's default for commands made fatal.
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn clients_gone_before_their_answers_leave_the_service_up() {
+    let env = TestEnv::new("manual", "").await;
+    let socket = env.home.path().join("run").join("t.sock");
+    let url = format!("unix://{}", socket.display());
+    let mut service = env.her(&["serve", "--listen", &url]).spawn().unwrap();
+    wait_for_socket(&socket).await;
+    let init = json!({"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {"protocol_version": 2, "client_info": {"name": "e2e"}}});
+    for _ in 0..20 {
+        let mut stream = UnixStream::connect(&socket).await.unwrap();
+        let mut burst = format!("{init}\n");
+        for id in 2..50 {
+            burst.push_str(&format!("{}\n", json!({"jsonrpc": "2.0", "id": id, "method": "models/list", "params": {}})));
+        }
+        stream.write_all(burst.as_bytes()).await.unwrap();
+        drop(stream);
+    }
+    tokio::time::sleep(Duration::from_millis(500)).await;
+    assert!(service.try_wait().unwrap().is_none(), "the service exited");
+    let (client, _incoming) = connect(&socket).await;
+    client.request("models/list", json!({})).await.unwrap();
+    service.kill().await.unwrap();
+}
+
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn unix_service_shares_sessions_between_clients() {
     let env = TestEnv::new("manual", "").await;
