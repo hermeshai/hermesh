@@ -105,7 +105,7 @@ func TestDesktop(t *testing.T) {
 	specs, _ := filepath.Glob(filepath.Join(dir, "e2e", "*.spec.ts"))
 	for _, spec := range specs {
 		name := strings.TrimSuffix(filepath.Base(spec), ".spec.ts")
-		if name == "packaged" || name == "update" { // TestDesktopPackaged, TestDesktopUpdate
+		if name == "packaged" || name == "update" || name == "her" { // TestDesktopPackaged, TestDesktopUpdate, TestDesktopHer
 			continue
 		}
 		// Windows runs its own spec and those ported to it (docs/windows.md §11).
@@ -143,6 +143,65 @@ func TestDesktop(t *testing.T) {
 			}
 		})
 	}
+}
+
+// TestDesktopHer runs the Her entry's end-to-end test (apps/desktop/e2e/
+// her.spec.ts) against her itself, with her-mock as its model service: the
+// first run on this Mac, a chat, work-mac added as a second environment and
+// switched to, and work-mac going offline. It needs her built (cargo build
+// in her/, or HERMESH_HER and HERMESH_HER_MOCK), so it is not one of
+// TestDesktop's specs. HERMESH_DESKTOP_GREP picks tests by name.
+//
+//	go test ./e2e -run TestDesktopHer -v -timeout 30m
+func TestDesktopHer(t *testing.T) {
+	if testing.Short() {
+		t.Skip("e2e")
+	}
+	if _, err := exec.LookPath("pnpm"); err != nil {
+		t.Skip("pnpm not installed")
+	}
+	f := desktopHerWorld(t)
+	dir, _ := filepath.Abs(filepath.Join("apps", "desktop"))
+	out := filepath.Join(t.TempDir(), "app")
+	if r := run(t, []string{"HERMESH_DESKTOP_OUT=" + out, "VERSION=0.1.0-rc7"}, 5*time.Minute, "pnpm", "--dir", dir, "build"); r.code != 0 {
+		t.Fatalf("build: %+v", r)
+	}
+	if r := run(t, nil, 5*time.Minute, "node", filepath.Join(dir, "node_modules", "electron", "install.js")); r.code != 0 {
+		t.Fatalf("electron install: %+v", r)
+	}
+	file := filepath.Join(t.TempDir(), "fixture.json")
+	b, _ := json.Marshal(f)
+	os.WriteFile(file, b, 0o644)
+	args := []string{"--dir", dir, "exec", "playwright", "test", "her.spec.ts"}
+	if g := os.Getenv("HERMESH_DESKTOP_GREP"); g != "" {
+		args = append(args, "--grep", g)
+	}
+	env := []string{"HERMESH_E2E_FIXTURE=" + file, "HERMESH_DESKTOP_OUT=" + out, "HERMESH_PW_OUT=" + filepath.Join(t.TempDir(), "results")}
+	if r := run(t, env, 15*time.Minute, "pnpm", args...); r.code != 0 {
+		t.Fatalf("playwright:\n%s\n%s", r.stdout, r.stderr)
+	} else {
+		t.Log(r.stdout)
+	}
+}
+
+// desktopHerWorld is an owner Mac whose hermeshd can run Her (her, her-mock
+// serving its models, the e2e console), and work-mac, a second Mac that is a
+// machine only and can run it too, each with a home of its own for her: two
+// machines to become environments, Her on for neither yet. OtherMac is
+// work-mac's daemon, for the spec to take offline.
+func desktopHerWorld(t *testing.T) desktopFixture {
+	her, mockBin := herBinaries(t)
+	mock := startHerMock(t, mockBin)
+	console := herConsole(t)
+	w := newOwnerMac(t, herEnv(her, console, herHome(t, mock.models), mock.base), &localv1.GrantSpec{})
+	home, err := w.app.client.GetStatus(context.Background(), &localv1.GetStatusRequest{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	work, _ := w.otherMac("work-mac", herEnv(her, console, herHome(t, mock.models), mock.base))
+	daemon := w.logs[len(w.logs)-1] // the one otherMac started
+	w.joinTyped(work, home, "work-mac")
+	return desktopFixture{Socket: w.sock, Sessions: map[string]string{}, CLI: filepath.Join(w.bin, "hermesh"), CLIEnv: w.cliEnv, OtherMac: daemon.cmd.Process.Pid, owner: w}
 }
 
 // desktopWorld is an owner Mac with a session in every state the app
