@@ -403,31 +403,29 @@ func httpDo(t *testing.T, method, url, body string) (int, string) {
 	return resp.StatusCode, string(b)
 }
 
-// TestHerTwoEnvironments has Her on this Mac and on a Linux machine in
-// Docker (standing in for a cloud server), talks to each, then writes to
-// the Linux one while it is frozen: the message waits on this device, and
-// arrives, answered, once the machine is back (docs/her-server.md §11,
-// phase 1). HERMESH_DOCKER=1, and HERMESH_HER_LINUX: a Linux build of her
-// for the container (alpine), static with musl.
-func TestHerTwoEnvironments(t *testing.T) {
+// herLinuxBinary is HERMESH_HER_LINUX, a Linux build of her for a container
+// (alpine), static with musl; the test is skipped without it, or without
+// HERMESH_DOCKER=1.
+func herLinuxBinary(t *testing.T) string {
+	t.Helper()
 	if os.Getenv("HERMESH_DOCKER") != "1" {
 		t.Skip("set HERMESH_DOCKER=1")
 	}
-	herLinux := os.Getenv("HERMESH_HER_LINUX")
-	if _, err := os.Stat(herLinux); herLinux == "" || err != nil {
+	her := os.Getenv("HERMESH_HER_LINUX")
+	if _, err := os.Stat(her); her == "" || err != nil {
 		t.Skip("set HERMESH_HER_LINUX to a Linux build of her")
 	}
-	her, mockBin := herBinaries(t)
-	mock := startHerMock(t, mockBin)
-	console := herConsole(t)
-	w := newOwnerMac(t, herEnv(her, console, herHome(t, mock.models), mock.base), &localv1.GrantSpec{})
-	t.Cleanup(w.owner.stop) // so that it stops her, as in TestHerOnThisMac
-	c := w.app.client
-	ctx := context.Background()
-	mac := localMachine(t, c)
+	return her
+}
 
-	// The Linux machine: its hermeshd, cross-compiled, and her, with the
-	// mock reached as the container reaches this computer.
+// startLinuxHer starts a Linux machine in Docker, standing in for a cloud
+// server, and pairs it to the owner Mac as linux-her: its hermeshd,
+// cross-compiled, and her, with her's home at /data/her and the mock
+// reached as the container reaches this computer (host.docker.internal).
+// dockerArgs go to docker run. It returns the machine's id and its
+// container, once it is online.
+func startLinuxHer(t *testing.T, w *ownerMac, her string, mock *herMock, console string, dockerArgs ...string) (machineID, container string) {
+	t.Helper()
 	tmp := t.TempDir()
 	linuxBin := filepath.Join(tmp, "linux")
 	build := exec.Command("go", "build", "-o", filepath.Join(linuxBin, "hermeshd"), "./cmd/hermeshd")
@@ -444,10 +442,11 @@ func TestHerTwoEnvironments(t *testing.T) {
 		"exec /opt/hermesh/hermeshd run --data-dir /data",
 	}, " && ")
 	args := []string{"run", "--rm", "-d", "--name", name, "--add-host", "host.docker.internal:host-gateway",
-		"-v", linuxBin + ":/opt/hermesh:ro", "-v", herLinux + ":/opt/her/her:ro", "-v", console + ":/opt/her/console:ro", "-v", linuxHome + ":/herinit:ro"}
+		"-v", linuxBin + ":/opt/hermesh:ro", "-v", her + ":/opt/her/her:ro", "-v", console + ":/opt/her/console:ro", "-v", linuxHome + ":/herinit:ro"}
 	for _, e := range herEnv("/opt/her/her", "/opt/her/console", "/data/her", mockForLinux) {
 		args = append(args, "-e", e)
 	}
+	args = append(args, dockerArgs...)
 	if out, err := exec.Command("docker", append(args, "alpine:3", "sh", "-c", script)...).CombinedOutput(); err != nil {
 		t.Fatalf("docker run: %v %s", err, out)
 	}
@@ -466,18 +465,40 @@ func TestHerTwoEnvironments(t *testing.T) {
 		}
 		return m != nil
 	})
-	approved, err := c.ApproveMachinePairing(ctx, &localv1.ApproveMachinePairingRequest{Code: code, MachineName: "linux-her"})
+	c := w.app.client
+	approved, err := c.ApproveMachinePairing(context.Background(), &localv1.ApproveMachinePairingRequest{Code: code, MachineName: "linux-her"})
 	if err != nil {
 		t.Fatal(err)
 	}
-	linux := approved.MachineId
+	eventually(t, 60*time.Second, "linux machine online", func() bool {
+		m := listedMachine(t, c, approved.MachineId)
+		return m != nil && m.Online && m.Status != nil
+	})
+	return approved.MachineId, name
+}
+
+// TestHerTwoEnvironments has Her on this Mac and on a Linux machine in
+// Docker (standing in for a cloud server), talks to each, then writes to
+// the Linux one while it is frozen: the message waits on this device, and
+// arrives, answered, once the machine is back (docs/her-server.md §11,
+// phase 1). HERMESH_DOCKER=1, and HERMESH_HER_LINUX (herLinuxBinary).
+func TestHerTwoEnvironments(t *testing.T) {
+	herLinux := herLinuxBinary(t)
+	her, mockBin := herBinaries(t)
+	mock := startHerMock(t, mockBin)
+	console := herConsole(t)
+	w := newOwnerMac(t, herEnv(her, console, herHome(t, mock.models), mock.base), &localv1.GrantSpec{})
+	t.Cleanup(w.owner.stop) // so that it stops her, as in TestHerOnThisMac
+	c := w.app.client
+	ctx := context.Background()
+	mac := localMachine(t, c)
+	linux, name := startLinuxHer(t, w, herLinux, mock, console)
 	online := func(want bool) func() bool {
 		return func() bool {
 			m := listedMachine(t, c, linux)
 			return m != nil && m.Online == want && (!want || m.Status != nil)
 		}
 	}
-	eventually(t, 60*time.Second, "linux machine online", online(true))
 
 	// Two environments, each with its own Her.
 	turnHerOn(t, c, mac)

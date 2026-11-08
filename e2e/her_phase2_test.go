@@ -9,8 +9,10 @@ import (
 	"image"
 	"image/png"
 	"io"
+	"net"
 	"net/http"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"regexp"
 	"slices"
@@ -32,15 +34,19 @@ import (
 // console's HTTP), the relay and the end-to-end tunnel to the machine's
 // hermeshd, which runs her.
 
-// herEnvironment is Her on one of the owner's machines other than this Mac,
-// a second hermeshd on this computer standing in for the cloud machine.
+// herEnvironment is Her on one of the owner's machines other than this Mac:
+// a second hermeshd on this computer standing in for the cloud machine, or
+// with HERMESH_DOCKER=1 a Linux machine in Docker (startLinuxHer).
 type herEnvironment struct {
-	w       *ownerMac
-	c       localv1connect.LocalServiceClient
-	machine string // its machine id
-	home    string // her's home there
-	console string // its console on this Mac (GetHerConsole), ending in "/"
-	bot     herBot // Her, its default assistant
+	w         *ownerMac
+	c         localv1connect.LocalServiceClient
+	machine   string // its machine id
+	home      string // her's home there
+	console   string // its console on this Mac (GetHerConsole), ending in "/"
+	bot       herBot // Her, its default assistant
+	container string // the Linux machine's container; "" for the hermeshd on this computer
+	mac       string // this computer, as the machine reaches it
+	mcpServer string // her-mcp-server in the container, when there is a Linux one
 }
 
 // newHerEnvironment pairs the machine to the owner Mac, as Add Machine pairs
@@ -51,38 +57,30 @@ func newHerEnvironment(t *testing.T) *herEnvironment {
 	if testing.Short() {
 		t.Skip("e2e")
 	}
+	docker := os.Getenv("HERMESH_DOCKER") == "1"
+	var herLinux string
+	if docker {
+		herLinux = herLinuxBinary(t)
+	}
 	her, mockBin := herBinaries(t)
 	mock := startHerMock(t, mockBin)
 	w := newOwnerMac(t, nil, &localv1.GrantSpec{})
-	// Its home as the machine names it, symbolic links resolved (/private/var
-	// on macOS).
-	home, err := filepath.EvalSymlinks(herHome(t, mock.models))
-	if err != nil {
-		t.Fatal(err)
-	}
-	env := &herEnvironment{w: w, c: w.app.client, home: home}
+	env := &herEnvironment{w: w, c: w.app.client, mac: "127.0.0.1"}
 	ctx := context.Background()
-
-	daemon := filepath.Join(w.bin, "hermeshd")
-	data := filepath.Join(w.tmp, "her-server")
-	pair := start(t, "pair her-server", nil, daemon, "pair", w.addr, "--name", "her-server", "--no-service", "--data-dir", data)
-	approved, err := env.c.ApproveMachinePairing(ctx, &localv1.ApproveMachinePairingRequest{Code: pair.pairingCode(t), MachineName: "her-server"})
-	if err != nil {
-		t.Fatal(err)
+	if docker {
+		// With her-mcp-server, when there is a Linux one beside her, for
+		// connectors started as commands.
+		var args []string
+		p := filepath.Join(filepath.Dir(herLinux), "her-mcp-server")
+		if _, err := os.Stat(p); err == nil {
+			env.mcpServer = "/opt/her/her-mcp-server"
+			args = []string{"-v", p + ":" + env.mcpServer + ":ro"}
+		}
+		env.machine, env.container = startLinuxHer(t, w, herLinux, mock, herConsole(t), args...)
+		env.home, env.mac = "/data/her", "host.docker.internal"
+	} else {
+		env.machine, env.home = startHerServer(t, w, her, mock)
 	}
-	if code := pair.wait(t, 30*time.Second); code != 0 {
-		t.Fatalf("pair: %s", pair.output())
-	}
-	env.machine = approved.MachineId
-	server := start(t, "her-server", herEnv(her, herConsole(t), env.home, mock.base), daemon, "run", "--data-dir", data)
-	w.logs = append(w.logs, server)
-	// Stopped as a service is, so that it stops her: killed, it would leave
-	// her running, in a process group of its own.
-	t.Cleanup(server.stop)
-	eventually(t, 30*time.Second, "her-server online", func() bool {
-		m := listedMachine(t, env.c, env.machine)
-		return m != nil && m.Online && m.Status != nil
-	})
 
 	turnHerOn(t, env.c, env.machine)
 	env.bot = defaultBot(t, env.c, env.machine)
@@ -92,6 +90,49 @@ func newHerEnvironment(t *testing.T) *herEnvironment {
 	}
 	env.console = con.Url
 	return env
+}
+
+// startHerServer starts a second hermeshd on this computer, standing in for
+// the cloud machine, and pairs it to the owner Mac as Add Machine pairs a
+// server. It returns the machine's id and her's home there, once it is
+// online.
+func startHerServer(t *testing.T, w *ownerMac, her string, mock *herMock) (machineID, home string) {
+	t.Helper()
+	// Its home as the machine names it, symbolic links resolved (/private/var
+	// on macOS).
+	home, err := filepath.EvalSymlinks(herHome(t, mock.models))
+	if err != nil {
+		t.Fatal(err)
+	}
+	c := w.app.client
+	daemon := filepath.Join(w.bin, "hermeshd")
+	data := filepath.Join(w.tmp, "her-server")
+	pair := start(t, "pair her-server", nil, daemon, "pair", w.addr, "--name", "her-server", "--no-service", "--data-dir", data)
+	approved, err := c.ApproveMachinePairing(context.Background(), &localv1.ApproveMachinePairingRequest{Code: pair.pairingCode(t), MachineName: "her-server"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if code := pair.wait(t, 30*time.Second); code != 0 {
+		t.Fatalf("pair: %s", pair.output())
+	}
+	server := start(t, "her-server", herEnv(her, herConsole(t), home, mock.base), daemon, "run", "--data-dir", data)
+	w.logs = append(w.logs, server)
+	// Stopped as a service is, so that it stops her: killed, it would leave
+	// her running, in a process group of its own.
+	t.Cleanup(server.stop)
+	eventually(t, 30*time.Second, "her-server online", func() bool {
+		m := listedMachine(t, c, approved.MachineId)
+		return m != nil && m.Online && m.Status != nil
+	})
+	return approved.MachineId, home
+}
+
+// onMachine runs a command on the machine and returns its output.
+func (env *herEnvironment) onMachine(args ...string) ([]byte, error) {
+	if env.container != "" {
+		args = append([]string{"docker", "exec", env.container}, args...)
+	}
+	return exec.Command(args[0], args[1:]...).Output()
 }
 
 // herMCPServer is her-mock's MCP test server, her-mcp-server, which
@@ -105,6 +146,32 @@ func herMCPServer(t *testing.T) string {
 	}
 	return p
 }
+
+// mcpServerThere is her-mcp-server where the machine can start it, for a
+// connector started as a command: this computer's, or the Linux one in the
+// container.
+func (env *herEnvironment) mcpServerThere(t *testing.T) string {
+	t.Helper()
+	if env.container == "" {
+		return herMCPServer(t)
+	}
+	if env.mcpServer == "" {
+		t.Skip("no her-mcp-server beside HERMESH_HER_LINUX: build it for Linux with her (cargo build -p her-mock --bin her-mcp-server)")
+	}
+	return env.mcpServer
+}
+
+// browser is the owner's browser on this Mac. The Linux machine in Docker
+// reaches this computer as host.docker.internal, so services here give it
+// addresses there; the browser follows them to this computer, as a public
+// name would lead both to the same service.
+var browser = &http.Client{Transport: &http.Transport{DialContext: func(ctx context.Context, network, addr string) (net.Conn, error) {
+	if host, port, err := net.SplitHostPort(addr); err == nil && host == "host.docker.internal" {
+		addr = net.JoinHostPort("127.0.0.1", port)
+	}
+	var d net.Dialer
+	return d.DialContext(ctx, network, addr)
+}}}
 
 // askHer sends Her a message in her conversation, as the Her entry does,
 // approves what she asks to do on the way, and waits for her to send the
@@ -523,11 +590,12 @@ func TestHerConnectorSignIn(t *testing.T) {
 	mcpServer := herMCPServer(t)
 	env := newHerEnvironment(t)
 	// The connector's service, with OAuth: it registers a client for the
-	// redirect and approves at once, standing in for the person.
-	tracker := start(t, "tracker", nil, mcpServer, "--http", "127.0.0.1:0", "--oauth", "--no-metadata-document", "--name", "tracker")
+	// redirect and approves at once, standing in for the person. It runs on
+	// this computer, under the name the machine reaches it by.
+	tracker := start(t, "tracker", nil, mcpServer, "--http", "127.0.0.1:0", "--public-host", env.mac, "--oauth", "--no-metadata-document", "--name", "tracker")
 	var address string
 	eventually(t, 20*time.Second, "the tracker's address", func() bool {
-		address = regexp.MustCompile(`http://127\.0\.0\.1:\d+/mcp`).FindString(tracker.output())
+		address = regexp.MustCompile(`http://\S+/mcp`).FindString(tracker.output())
 		return address != ""
 	})
 	page := openConsolePage(t, env.console)
@@ -558,7 +626,7 @@ func TestHerConnectorSignIn(t *testing.T) {
 
 	// The browser: the service approves and redirects to this Mac's catcher,
 	// which tells the person to go back to Hermesh.
-	res, err := http.Get(login.AuthorizeURL)
+	res, err := browser.Get(login.AuthorizeURL)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -599,7 +667,7 @@ func TestHerConnectorSignIn(t *testing.T) {
 	if page.call("mcp/check", map[string]string{"name": "tracker"}, &after); after.Server.Status.State != "ok" || after.Server.AuthState != "logged_in" || !after.has("echo") {
 		t.Fatalf("after signing in: %+v", after)
 	}
-	if b, _ := os.ReadFile(filepath.Join(env.home, "credentials.toml")); !bytes.Contains(b, []byte("mcp-oauth.tracker")) {
+	if b, _ := env.onMachine("cat", filepath.Join(env.home, "credentials.toml")); !bytes.Contains(b, []byte("mcp-oauth.tracker")) {
 		t.Fatalf("no token in the Her Server's credential store: %q", b)
 	}
 
@@ -617,8 +685,8 @@ func TestHerConnectorSignIn(t *testing.T) {
 // goes through this Mac's hermeshd, which has its signer sign it, and her
 // then starts it and speaks MCP with it (docs/her-server.md §8).
 func TestHerCommandConnector(t *testing.T) {
-	mcpServer := herMCPServer(t)
 	env := newHerEnvironment(t)
+	mcpServer := env.mcpServerThere(t)
 	page := openConsolePage(t, env.console)
 	connectors := func() map[string]any {
 		s, _ := page.config()["mcp_servers"].(map[string]any)
@@ -720,8 +788,8 @@ func TestHerSkillUpload(t *testing.T) {
 	if dry.Skill.Name != "weekly-report" || dry.Target != target {
 		t.Fatalf("dry run: %+v", dry)
 	}
-	if _, err := os.Stat(target); !os.IsNotExist(err) {
-		t.Fatalf("a dry run wrote %s: %v", target, err)
+	if _, err := env.onMachine("test", "-e", target); err == nil {
+		t.Fatalf("a dry run wrote %s", target)
 	}
 
 	// Installed, for every assistant of the environment.
@@ -733,7 +801,7 @@ func TestHerSkillUpload(t *testing.T) {
 	if s.Path != filepath.Join(target, "SKILL.md") || s.Scope != "user" || s.State != "active" {
 		t.Fatalf("the installed skill: %+v (installed as %+v)", s, installed.Skill)
 	}
-	if b, err := os.ReadFile(filepath.Join(target, "references", "format.md")); err != nil || !bytes.Contains(b, []byte("blocked")) {
+	if b, err := env.onMachine("cat", filepath.Join(target, "references", "format.md")); err != nil || !bytes.Contains(b, []byte("blocked")) {
 		t.Fatalf("its files: %q %v", b, err)
 	}
 
