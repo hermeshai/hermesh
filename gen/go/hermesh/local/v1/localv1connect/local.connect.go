@@ -8,9 +8,10 @@ import (
 	connect "connectrpc.com/connect"
 	context "context"
 	errors "errors"
+	v12 "github.com/hermeshai/hermesh/gen/go/hermesh/her/v1"
 	v1 "github.com/hermeshai/hermesh/gen/go/hermesh/local/v1"
 	v11 "github.com/hermeshai/hermesh/gen/go/hermesh/machine/v1"
-	v12 "github.com/hermeshai/hermesh/gen/go/hermesh/session/v1"
+	v13 "github.com/hermeshai/hermesh/gen/go/hermesh/session/v1"
 	http "net/http"
 	strings "strings"
 )
@@ -134,6 +135,31 @@ const (
 	// LocalServiceGetDiagnosticsProcedure is the fully-qualified name of the LocalService's
 	// GetDiagnostics RPC.
 	LocalServiceGetDiagnosticsProcedure = "/hermesh.local.v1.LocalService/GetDiagnostics"
+	// LocalServiceSetHerProcedure is the fully-qualified name of the LocalService's SetHer RPC.
+	LocalServiceSetHerProcedure = "/hermesh.local.v1.LocalService/SetHer"
+	// LocalServiceSetHerAssistantModeProcedure is the fully-qualified name of the LocalService's
+	// SetHerAssistantMode RPC.
+	LocalServiceSetHerAssistantModeProcedure = "/hermesh.local.v1.LocalService/SetHerAssistantMode"
+	// LocalServiceSetHerCommandConnectorProcedure is the fully-qualified name of the LocalService's
+	// SetHerCommandConnector RPC.
+	LocalServiceSetHerCommandConnectorProcedure = "/hermesh.local.v1.LocalService/SetHerCommandConnector"
+	// LocalServiceHerOpenProcedure is the fully-qualified name of the LocalService's HerOpen RPC.
+	LocalServiceHerOpenProcedure = "/hermesh.local.v1.LocalService/HerOpen"
+	// LocalServiceHerCallProcedure is the fully-qualified name of the LocalService's HerCall RPC.
+	LocalServiceHerCallProcedure = "/hermesh.local.v1.LocalService/HerCall"
+	// LocalServiceHerSendProcedure is the fully-qualified name of the LocalService's HerSend RPC.
+	LocalServiceHerSendProcedure = "/hermesh.local.v1.LocalService/HerSend"
+	// LocalServiceListHerWaitingProcedure is the fully-qualified name of the LocalService's
+	// ListHerWaiting RPC.
+	LocalServiceListHerWaitingProcedure = "/hermesh.local.v1.LocalService/ListHerWaiting"
+	// LocalServiceHerUploadProcedure is the fully-qualified name of the LocalService's HerUpload RPC.
+	LocalServiceHerUploadProcedure = "/hermesh.local.v1.LocalService/HerUpload"
+	// LocalServiceHerDownloadProcedure is the fully-qualified name of the LocalService's HerDownload
+	// RPC.
+	LocalServiceHerDownloadProcedure = "/hermesh.local.v1.LocalService/HerDownload"
+	// LocalServiceGetHerConsoleProcedure is the fully-qualified name of the LocalService's
+	// GetHerConsole RPC.
+	LocalServiceGetHerConsoleProcedure = "/hermesh.local.v1.LocalService/GetHerConsole"
 	// LocalServiceListProjectsProcedure is the fully-qualified name of the LocalService's ListProjects
 	// RPC.
 	LocalServiceListProjectsProcedure = "/hermesh.local.v1.LocalService/ListProjects"
@@ -296,6 +322,33 @@ type LocalServiceClient interface {
 	// something does not work: versions, health, PATH and each coding agent.
 	// Nothing leaves the Mac unless they do.
 	GetDiagnostics(context.Context, *v1.GetDiagnosticsRequest) (*v1.GetDiagnosticsResponse, error)
+	// Her (docs/her-server.md). A machine's Her is Machine.her. Each call
+	// goes in process when the machine is this Mac, else through the tunnel.
+	// Turns Her on or off for a machine: signed by this device's root key.
+	SetHer(context.Context, *v1.SetHerRequest) (*v1.SetHerResponse, error)
+	// How freely an assistant acts; "bypass-permissions" is signed by the root
+	// key, the other modes are not.
+	SetHerAssistantMode(context.Context, *v1.SetHerAssistantModeRequest) (*v1.SetHerAssistantModeResponse, error)
+	// Adds, changes or removes a connector her starts as a command on a
+	// machine: signed by the root key.
+	SetHerCommandConnector(context.Context, *v1.SetHerCommandConnectorRequest) (*v1.SetHerCommandConnectorResponse, error)
+	// Opens a her connection on a machine (hermesh.her.v1.HerService.Open).
+	HerOpen(context.Context, *v1.HerOpenRequest) (*connect.ServerStreamForClient[v12.OpenEvent], error)
+	// One her request on a machine (hermesh.her.v1.HerService.Call).
+	HerCall(context.Context, *v1.HerCallRequest) (*v12.CallResponse, error)
+	// A message to an assistant that is delivered now, or kept on this device
+	// and delivered when the machine is back (docs/her-server.md §5.5).
+	HerSend(context.Context, *v1.HerSendRequest) (*v1.HerSendResponse, error)
+	// The messages this device keeps for a machine's assistants until it is
+	// back, oldest first.
+	ListHerWaiting(context.Context, *v1.ListHerWaitingRequest) (*v1.ListHerWaitingResponse, error)
+	// A file on this device into an assistant's folder on a machine.
+	HerUpload(context.Context, *v1.HerUploadRequest) (*v1.HerUploadResponse, error)
+	// A file from an assistant's folder on a machine into a folder here.
+	HerDownload(context.Context, *v1.HerDownloadRequest) (*v1.HerDownloadResponse, error)
+	// The address of a machine's Her console, served by this hermeshd on
+	// 127.0.0.1 with a token in its path.
+	GetHerConsole(context.Context, *v1.GetHerConsoleRequest) (*v1.GetHerConsoleResponse, error)
 	// Projects.
 	ListProjects(context.Context, *v1.ListProjectsRequest) (*v1.ListProjectsResponse, error)
 	AddProject(context.Context, *v1.AddProjectRequest) (*v1.AddProjectResponse, error)
@@ -321,11 +374,11 @@ type LocalServiceClient interface {
 	// online machine while anyone watches). A watcher that falls behind is
 	// ended (RESOURCE_EXHAUSTED) and should watch again.
 	WatchSessions(context.Context, *v1.WatchSessionsRequest) (*connect.ServerStreamForClient[v1.WatchSessionsResponse], error)
-	StreamSessionEvents(context.Context, *v1.StreamSessionEventsRequest) (*connect.ServerStreamForClient[v12.SessionEvent], error)
+	StreamSessionEvents(context.Context, *v1.StreamSessionEventsRequest) (*connect.ServerStreamForClient[v13.SessionEvent], error)
 	// A session's events by seq, as hermesh.session.v1.SessionService.ListEvents.
 	ListSessionEvents(context.Context, *v1.ListSessionEventsRequest) (*v1.ListSessionEventsResponse, error)
 	// A tool's whole output (hermesh.session.v1.SessionService.ReadToolOutput).
-	ReadToolOutput(context.Context, *v1.ReadToolOutputRequest) (*connect.ServerStreamForClient[v12.ToolOutputChunk], error)
+	ReadToolOutput(context.Context, *v1.ReadToolOutputRequest) (*connect.ServerStreamForClient[v13.ToolOutputChunk], error)
 	InterruptSession(context.Context, *v1.InterruptSessionRequest) (*v1.SessionResponse, error)
 	ArchiveSession(context.Context, *v1.ArchiveSessionRequest) (*v1.SessionResponse, error)
 	UnarchiveSession(context.Context, *v1.UnarchiveSessionRequest) (*v1.SessionResponse, error)
@@ -333,7 +386,7 @@ type LocalServiceClient interface {
 	DeleteSession(context.Context, *v1.DeleteSessionRequest) (*v1.DeleteSessionResponse, error)
 	RenameSession(context.Context, *v1.RenameSessionRequest) (*v1.SessionResponse, error)
 	AnswerQuestion(context.Context, *v1.AnswerQuestionRequest) (*v1.AnswerQuestionResponse, error)
-	GetDiff(context.Context, *v1.GetDiffRequest) (*v12.GetDiffResponse, error)
+	GetDiff(context.Context, *v1.GetDiffRequest) (*v13.GetDiffResponse, error)
 	// QueryWork counts the work done over a range, by hour or day, from what
 	// this device holds of every machine's counts: no machine is asked
 	// (docs/work-stats.md §7).
@@ -571,6 +624,66 @@ func NewLocalServiceClient(httpClient connect.HTTPClient, baseURL string, opts .
 			connect.WithSchema(localServiceMethods.ByName("GetDiagnostics")),
 			connect.WithClientOptions(opts...),
 		),
+		setHer: connect.NewClient[v1.SetHerRequest, v1.SetHerResponse](
+			httpClient,
+			baseURL+LocalServiceSetHerProcedure,
+			connect.WithSchema(localServiceMethods.ByName("SetHer")),
+			connect.WithClientOptions(opts...),
+		),
+		setHerAssistantMode: connect.NewClient[v1.SetHerAssistantModeRequest, v1.SetHerAssistantModeResponse](
+			httpClient,
+			baseURL+LocalServiceSetHerAssistantModeProcedure,
+			connect.WithSchema(localServiceMethods.ByName("SetHerAssistantMode")),
+			connect.WithClientOptions(opts...),
+		),
+		setHerCommandConnector: connect.NewClient[v1.SetHerCommandConnectorRequest, v1.SetHerCommandConnectorResponse](
+			httpClient,
+			baseURL+LocalServiceSetHerCommandConnectorProcedure,
+			connect.WithSchema(localServiceMethods.ByName("SetHerCommandConnector")),
+			connect.WithClientOptions(opts...),
+		),
+		herOpen: connect.NewClient[v1.HerOpenRequest, v12.OpenEvent](
+			httpClient,
+			baseURL+LocalServiceHerOpenProcedure,
+			connect.WithSchema(localServiceMethods.ByName("HerOpen")),
+			connect.WithClientOptions(opts...),
+		),
+		herCall: connect.NewClient[v1.HerCallRequest, v12.CallResponse](
+			httpClient,
+			baseURL+LocalServiceHerCallProcedure,
+			connect.WithSchema(localServiceMethods.ByName("HerCall")),
+			connect.WithClientOptions(opts...),
+		),
+		herSend: connect.NewClient[v1.HerSendRequest, v1.HerSendResponse](
+			httpClient,
+			baseURL+LocalServiceHerSendProcedure,
+			connect.WithSchema(localServiceMethods.ByName("HerSend")),
+			connect.WithClientOptions(opts...),
+		),
+		listHerWaiting: connect.NewClient[v1.ListHerWaitingRequest, v1.ListHerWaitingResponse](
+			httpClient,
+			baseURL+LocalServiceListHerWaitingProcedure,
+			connect.WithSchema(localServiceMethods.ByName("ListHerWaiting")),
+			connect.WithClientOptions(opts...),
+		),
+		herUpload: connect.NewClient[v1.HerUploadRequest, v1.HerUploadResponse](
+			httpClient,
+			baseURL+LocalServiceHerUploadProcedure,
+			connect.WithSchema(localServiceMethods.ByName("HerUpload")),
+			connect.WithClientOptions(opts...),
+		),
+		herDownload: connect.NewClient[v1.HerDownloadRequest, v1.HerDownloadResponse](
+			httpClient,
+			baseURL+LocalServiceHerDownloadProcedure,
+			connect.WithSchema(localServiceMethods.ByName("HerDownload")),
+			connect.WithClientOptions(opts...),
+		),
+		getHerConsole: connect.NewClient[v1.GetHerConsoleRequest, v1.GetHerConsoleResponse](
+			httpClient,
+			baseURL+LocalServiceGetHerConsoleProcedure,
+			connect.WithSchema(localServiceMethods.ByName("GetHerConsole")),
+			connect.WithClientOptions(opts...),
+		),
 		listProjects: connect.NewClient[v1.ListProjectsRequest, v1.ListProjectsResponse](
 			httpClient,
 			baseURL+LocalServiceListProjectsProcedure,
@@ -655,7 +768,7 @@ func NewLocalServiceClient(httpClient connect.HTTPClient, baseURL string, opts .
 			connect.WithSchema(localServiceMethods.ByName("WatchSessions")),
 			connect.WithClientOptions(opts...),
 		),
-		streamSessionEvents: connect.NewClient[v1.StreamSessionEventsRequest, v12.SessionEvent](
+		streamSessionEvents: connect.NewClient[v1.StreamSessionEventsRequest, v13.SessionEvent](
 			httpClient,
 			baseURL+LocalServiceStreamSessionEventsProcedure,
 			connect.WithSchema(localServiceMethods.ByName("StreamSessionEvents")),
@@ -667,7 +780,7 @@ func NewLocalServiceClient(httpClient connect.HTTPClient, baseURL string, opts .
 			connect.WithSchema(localServiceMethods.ByName("ListSessionEvents")),
 			connect.WithClientOptions(opts...),
 		),
-		readToolOutput: connect.NewClient[v1.ReadToolOutputRequest, v12.ToolOutputChunk](
+		readToolOutput: connect.NewClient[v1.ReadToolOutputRequest, v13.ToolOutputChunk](
 			httpClient,
 			baseURL+LocalServiceReadToolOutputProcedure,
 			connect.WithSchema(localServiceMethods.ByName("ReadToolOutput")),
@@ -709,7 +822,7 @@ func NewLocalServiceClient(httpClient connect.HTTPClient, baseURL string, opts .
 			connect.WithSchema(localServiceMethods.ByName("AnswerQuestion")),
 			connect.WithClientOptions(opts...),
 		),
-		getDiff: connect.NewClient[v1.GetDiffRequest, v12.GetDiffResponse](
+		getDiff: connect.NewClient[v1.GetDiffRequest, v13.GetDiffResponse](
 			httpClient,
 			baseURL+LocalServiceGetDiffProcedure,
 			connect.WithSchema(localServiceMethods.ByName("GetDiff")),
@@ -768,6 +881,16 @@ type localServiceClient struct {
 	listMachineFolders     *connect.Client[v1.ListMachineFoldersRequest, v11.ListFoldersResponse]
 	testMachineAgent       *connect.Client[v1.TestMachineAgentRequest, v11.TestAgentResponse]
 	getDiagnostics         *connect.Client[v1.GetDiagnosticsRequest, v1.GetDiagnosticsResponse]
+	setHer                 *connect.Client[v1.SetHerRequest, v1.SetHerResponse]
+	setHerAssistantMode    *connect.Client[v1.SetHerAssistantModeRequest, v1.SetHerAssistantModeResponse]
+	setHerCommandConnector *connect.Client[v1.SetHerCommandConnectorRequest, v1.SetHerCommandConnectorResponse]
+	herOpen                *connect.Client[v1.HerOpenRequest, v12.OpenEvent]
+	herCall                *connect.Client[v1.HerCallRequest, v12.CallResponse]
+	herSend                *connect.Client[v1.HerSendRequest, v1.HerSendResponse]
+	listHerWaiting         *connect.Client[v1.ListHerWaitingRequest, v1.ListHerWaitingResponse]
+	herUpload              *connect.Client[v1.HerUploadRequest, v1.HerUploadResponse]
+	herDownload            *connect.Client[v1.HerDownloadRequest, v1.HerDownloadResponse]
+	getHerConsole          *connect.Client[v1.GetHerConsoleRequest, v1.GetHerConsoleResponse]
 	listProjects           *connect.Client[v1.ListProjectsRequest, v1.ListProjectsResponse]
 	addProject             *connect.Client[v1.AddProjectRequest, v1.AddProjectResponse]
 	removeProject          *connect.Client[v1.RemoveProjectRequest, v1.RemoveProjectResponse]
@@ -782,16 +905,16 @@ type localServiceClient struct {
 	openWakeLink           *connect.Client[v1.OpenWakeLinkRequest, v1.OpenWakeLinkResponse]
 	listSessions           *connect.Client[v1.ListSessionsRequest, v1.ListSessionsResponse]
 	watchSessions          *connect.Client[v1.WatchSessionsRequest, v1.WatchSessionsResponse]
-	streamSessionEvents    *connect.Client[v1.StreamSessionEventsRequest, v12.SessionEvent]
+	streamSessionEvents    *connect.Client[v1.StreamSessionEventsRequest, v13.SessionEvent]
 	listSessionEvents      *connect.Client[v1.ListSessionEventsRequest, v1.ListSessionEventsResponse]
-	readToolOutput         *connect.Client[v1.ReadToolOutputRequest, v12.ToolOutputChunk]
+	readToolOutput         *connect.Client[v1.ReadToolOutputRequest, v13.ToolOutputChunk]
 	interruptSession       *connect.Client[v1.InterruptSessionRequest, v1.SessionResponse]
 	archiveSession         *connect.Client[v1.ArchiveSessionRequest, v1.SessionResponse]
 	unarchiveSession       *connect.Client[v1.UnarchiveSessionRequest, v1.SessionResponse]
 	deleteSession          *connect.Client[v1.DeleteSessionRequest, v1.DeleteSessionResponse]
 	renameSession          *connect.Client[v1.RenameSessionRequest, v1.SessionResponse]
 	answerQuestion         *connect.Client[v1.AnswerQuestionRequest, v1.AnswerQuestionResponse]
-	getDiff                *connect.Client[v1.GetDiffRequest, v12.GetDiffResponse]
+	getDiff                *connect.Client[v1.GetDiffRequest, v13.GetDiffResponse]
 	queryWork              *connect.Client[v1.QueryWorkRequest, v1.QueryWorkResponse]
 	registerPush           *connect.Client[v1.RegisterPushRequest, v1.RegisterPushResponse]
 }
@@ -1112,6 +1235,92 @@ func (c *localServiceClient) GetDiagnostics(ctx context.Context, req *v1.GetDiag
 	return nil, err
 }
 
+// SetHer calls hermesh.local.v1.LocalService.SetHer.
+func (c *localServiceClient) SetHer(ctx context.Context, req *v1.SetHerRequest) (*v1.SetHerResponse, error) {
+	response, err := c.setHer.CallUnary(ctx, connect.NewRequest(req))
+	if response != nil {
+		return response.Msg, err
+	}
+	return nil, err
+}
+
+// SetHerAssistantMode calls hermesh.local.v1.LocalService.SetHerAssistantMode.
+func (c *localServiceClient) SetHerAssistantMode(ctx context.Context, req *v1.SetHerAssistantModeRequest) (*v1.SetHerAssistantModeResponse, error) {
+	response, err := c.setHerAssistantMode.CallUnary(ctx, connect.NewRequest(req))
+	if response != nil {
+		return response.Msg, err
+	}
+	return nil, err
+}
+
+// SetHerCommandConnector calls hermesh.local.v1.LocalService.SetHerCommandConnector.
+func (c *localServiceClient) SetHerCommandConnector(ctx context.Context, req *v1.SetHerCommandConnectorRequest) (*v1.SetHerCommandConnectorResponse, error) {
+	response, err := c.setHerCommandConnector.CallUnary(ctx, connect.NewRequest(req))
+	if response != nil {
+		return response.Msg, err
+	}
+	return nil, err
+}
+
+// HerOpen calls hermesh.local.v1.LocalService.HerOpen.
+func (c *localServiceClient) HerOpen(ctx context.Context, req *v1.HerOpenRequest) (*connect.ServerStreamForClient[v12.OpenEvent], error) {
+	return c.herOpen.CallServerStream(ctx, connect.NewRequest(req))
+}
+
+// HerCall calls hermesh.local.v1.LocalService.HerCall.
+func (c *localServiceClient) HerCall(ctx context.Context, req *v1.HerCallRequest) (*v12.CallResponse, error) {
+	response, err := c.herCall.CallUnary(ctx, connect.NewRequest(req))
+	if response != nil {
+		return response.Msg, err
+	}
+	return nil, err
+}
+
+// HerSend calls hermesh.local.v1.LocalService.HerSend.
+func (c *localServiceClient) HerSend(ctx context.Context, req *v1.HerSendRequest) (*v1.HerSendResponse, error) {
+	response, err := c.herSend.CallUnary(ctx, connect.NewRequest(req))
+	if response != nil {
+		return response.Msg, err
+	}
+	return nil, err
+}
+
+// ListHerWaiting calls hermesh.local.v1.LocalService.ListHerWaiting.
+func (c *localServiceClient) ListHerWaiting(ctx context.Context, req *v1.ListHerWaitingRequest) (*v1.ListHerWaitingResponse, error) {
+	response, err := c.listHerWaiting.CallUnary(ctx, connect.NewRequest(req))
+	if response != nil {
+		return response.Msg, err
+	}
+	return nil, err
+}
+
+// HerUpload calls hermesh.local.v1.LocalService.HerUpload.
+func (c *localServiceClient) HerUpload(ctx context.Context, req *v1.HerUploadRequest) (*v1.HerUploadResponse, error) {
+	response, err := c.herUpload.CallUnary(ctx, connect.NewRequest(req))
+	if response != nil {
+		return response.Msg, err
+	}
+	return nil, err
+}
+
+// HerDownload calls hermesh.local.v1.LocalService.HerDownload.
+func (c *localServiceClient) HerDownload(ctx context.Context, req *v1.HerDownloadRequest) (*v1.HerDownloadResponse, error) {
+	response, err := c.herDownload.CallUnary(ctx, connect.NewRequest(req))
+	if response != nil {
+		return response.Msg, err
+	}
+	return nil, err
+}
+
+// GetHerConsole calls hermesh.local.v1.LocalService.GetHerConsole.
+func (c *localServiceClient) GetHerConsole(ctx context.Context, req *v1.GetHerConsoleRequest) (*v1.GetHerConsoleResponse, error) {
+	response, err := c.getHerConsole.CallUnary(ctx, connect.NewRequest(req))
+	if response != nil {
+		return response.Msg, err
+	}
+	return nil, err
+}
+
 // ListProjects calls hermesh.local.v1.LocalService.ListProjects.
 func (c *localServiceClient) ListProjects(ctx context.Context, req *v1.ListProjectsRequest) (*v1.ListProjectsResponse, error) {
 	response, err := c.listProjects.CallUnary(ctx, connect.NewRequest(req))
@@ -1235,7 +1444,7 @@ func (c *localServiceClient) WatchSessions(ctx context.Context, req *v1.WatchSes
 }
 
 // StreamSessionEvents calls hermesh.local.v1.LocalService.StreamSessionEvents.
-func (c *localServiceClient) StreamSessionEvents(ctx context.Context, req *v1.StreamSessionEventsRequest) (*connect.ServerStreamForClient[v12.SessionEvent], error) {
+func (c *localServiceClient) StreamSessionEvents(ctx context.Context, req *v1.StreamSessionEventsRequest) (*connect.ServerStreamForClient[v13.SessionEvent], error) {
 	return c.streamSessionEvents.CallServerStream(ctx, connect.NewRequest(req))
 }
 
@@ -1249,7 +1458,7 @@ func (c *localServiceClient) ListSessionEvents(ctx context.Context, req *v1.List
 }
 
 // ReadToolOutput calls hermesh.local.v1.LocalService.ReadToolOutput.
-func (c *localServiceClient) ReadToolOutput(ctx context.Context, req *v1.ReadToolOutputRequest) (*connect.ServerStreamForClient[v12.ToolOutputChunk], error) {
+func (c *localServiceClient) ReadToolOutput(ctx context.Context, req *v1.ReadToolOutputRequest) (*connect.ServerStreamForClient[v13.ToolOutputChunk], error) {
 	return c.readToolOutput.CallServerStream(ctx, connect.NewRequest(req))
 }
 
@@ -1308,7 +1517,7 @@ func (c *localServiceClient) AnswerQuestion(ctx context.Context, req *v1.AnswerQ
 }
 
 // GetDiff calls hermesh.local.v1.LocalService.GetDiff.
-func (c *localServiceClient) GetDiff(ctx context.Context, req *v1.GetDiffRequest) (*v12.GetDiffResponse, error) {
+func (c *localServiceClient) GetDiff(ctx context.Context, req *v1.GetDiffRequest) (*v13.GetDiffResponse, error) {
 	response, err := c.getDiff.CallUnary(ctx, connect.NewRequest(req))
 	if response != nil {
 		return response.Msg, err
@@ -1423,6 +1632,33 @@ type LocalServiceHandler interface {
 	// something does not work: versions, health, PATH and each coding agent.
 	// Nothing leaves the Mac unless they do.
 	GetDiagnostics(context.Context, *v1.GetDiagnosticsRequest) (*v1.GetDiagnosticsResponse, error)
+	// Her (docs/her-server.md). A machine's Her is Machine.her. Each call
+	// goes in process when the machine is this Mac, else through the tunnel.
+	// Turns Her on or off for a machine: signed by this device's root key.
+	SetHer(context.Context, *v1.SetHerRequest) (*v1.SetHerResponse, error)
+	// How freely an assistant acts; "bypass-permissions" is signed by the root
+	// key, the other modes are not.
+	SetHerAssistantMode(context.Context, *v1.SetHerAssistantModeRequest) (*v1.SetHerAssistantModeResponse, error)
+	// Adds, changes or removes a connector her starts as a command on a
+	// machine: signed by the root key.
+	SetHerCommandConnector(context.Context, *v1.SetHerCommandConnectorRequest) (*v1.SetHerCommandConnectorResponse, error)
+	// Opens a her connection on a machine (hermesh.her.v1.HerService.Open).
+	HerOpen(context.Context, *v1.HerOpenRequest, *connect.ServerStream[v12.OpenEvent]) error
+	// One her request on a machine (hermesh.her.v1.HerService.Call).
+	HerCall(context.Context, *v1.HerCallRequest) (*v12.CallResponse, error)
+	// A message to an assistant that is delivered now, or kept on this device
+	// and delivered when the machine is back (docs/her-server.md §5.5).
+	HerSend(context.Context, *v1.HerSendRequest) (*v1.HerSendResponse, error)
+	// The messages this device keeps for a machine's assistants until it is
+	// back, oldest first.
+	ListHerWaiting(context.Context, *v1.ListHerWaitingRequest) (*v1.ListHerWaitingResponse, error)
+	// A file on this device into an assistant's folder on a machine.
+	HerUpload(context.Context, *v1.HerUploadRequest) (*v1.HerUploadResponse, error)
+	// A file from an assistant's folder on a machine into a folder here.
+	HerDownload(context.Context, *v1.HerDownloadRequest) (*v1.HerDownloadResponse, error)
+	// The address of a machine's Her console, served by this hermeshd on
+	// 127.0.0.1 with a token in its path.
+	GetHerConsole(context.Context, *v1.GetHerConsoleRequest) (*v1.GetHerConsoleResponse, error)
 	// Projects.
 	ListProjects(context.Context, *v1.ListProjectsRequest) (*v1.ListProjectsResponse, error)
 	AddProject(context.Context, *v1.AddProjectRequest) (*v1.AddProjectResponse, error)
@@ -1448,11 +1684,11 @@ type LocalServiceHandler interface {
 	// online machine while anyone watches). A watcher that falls behind is
 	// ended (RESOURCE_EXHAUSTED) and should watch again.
 	WatchSessions(context.Context, *v1.WatchSessionsRequest, *connect.ServerStream[v1.WatchSessionsResponse]) error
-	StreamSessionEvents(context.Context, *v1.StreamSessionEventsRequest, *connect.ServerStream[v12.SessionEvent]) error
+	StreamSessionEvents(context.Context, *v1.StreamSessionEventsRequest, *connect.ServerStream[v13.SessionEvent]) error
 	// A session's events by seq, as hermesh.session.v1.SessionService.ListEvents.
 	ListSessionEvents(context.Context, *v1.ListSessionEventsRequest) (*v1.ListSessionEventsResponse, error)
 	// A tool's whole output (hermesh.session.v1.SessionService.ReadToolOutput).
-	ReadToolOutput(context.Context, *v1.ReadToolOutputRequest, *connect.ServerStream[v12.ToolOutputChunk]) error
+	ReadToolOutput(context.Context, *v1.ReadToolOutputRequest, *connect.ServerStream[v13.ToolOutputChunk]) error
 	InterruptSession(context.Context, *v1.InterruptSessionRequest) (*v1.SessionResponse, error)
 	ArchiveSession(context.Context, *v1.ArchiveSessionRequest) (*v1.SessionResponse, error)
 	UnarchiveSession(context.Context, *v1.UnarchiveSessionRequest) (*v1.SessionResponse, error)
@@ -1460,7 +1696,7 @@ type LocalServiceHandler interface {
 	DeleteSession(context.Context, *v1.DeleteSessionRequest) (*v1.DeleteSessionResponse, error)
 	RenameSession(context.Context, *v1.RenameSessionRequest) (*v1.SessionResponse, error)
 	AnswerQuestion(context.Context, *v1.AnswerQuestionRequest) (*v1.AnswerQuestionResponse, error)
-	GetDiff(context.Context, *v1.GetDiffRequest) (*v12.GetDiffResponse, error)
+	GetDiff(context.Context, *v1.GetDiffRequest) (*v13.GetDiffResponse, error)
 	// QueryWork counts the work done over a range, by hour or day, from what
 	// this device holds of every machine's counts: no machine is asked
 	// (docs/work-stats.md §7).
@@ -1694,6 +1930,66 @@ func NewLocalServiceHandler(svc LocalServiceHandler, opts ...connect.HandlerOpti
 		connect.WithSchema(localServiceMethods.ByName("GetDiagnostics")),
 		connect.WithHandlerOptions(opts...),
 	)
+	localServiceSetHerHandler := connect.NewUnaryHandlerSimple(
+		LocalServiceSetHerProcedure,
+		svc.SetHer,
+		connect.WithSchema(localServiceMethods.ByName("SetHer")),
+		connect.WithHandlerOptions(opts...),
+	)
+	localServiceSetHerAssistantModeHandler := connect.NewUnaryHandlerSimple(
+		LocalServiceSetHerAssistantModeProcedure,
+		svc.SetHerAssistantMode,
+		connect.WithSchema(localServiceMethods.ByName("SetHerAssistantMode")),
+		connect.WithHandlerOptions(opts...),
+	)
+	localServiceSetHerCommandConnectorHandler := connect.NewUnaryHandlerSimple(
+		LocalServiceSetHerCommandConnectorProcedure,
+		svc.SetHerCommandConnector,
+		connect.WithSchema(localServiceMethods.ByName("SetHerCommandConnector")),
+		connect.WithHandlerOptions(opts...),
+	)
+	localServiceHerOpenHandler := connect.NewServerStreamHandlerSimple(
+		LocalServiceHerOpenProcedure,
+		svc.HerOpen,
+		connect.WithSchema(localServiceMethods.ByName("HerOpen")),
+		connect.WithHandlerOptions(opts...),
+	)
+	localServiceHerCallHandler := connect.NewUnaryHandlerSimple(
+		LocalServiceHerCallProcedure,
+		svc.HerCall,
+		connect.WithSchema(localServiceMethods.ByName("HerCall")),
+		connect.WithHandlerOptions(opts...),
+	)
+	localServiceHerSendHandler := connect.NewUnaryHandlerSimple(
+		LocalServiceHerSendProcedure,
+		svc.HerSend,
+		connect.WithSchema(localServiceMethods.ByName("HerSend")),
+		connect.WithHandlerOptions(opts...),
+	)
+	localServiceListHerWaitingHandler := connect.NewUnaryHandlerSimple(
+		LocalServiceListHerWaitingProcedure,
+		svc.ListHerWaiting,
+		connect.WithSchema(localServiceMethods.ByName("ListHerWaiting")),
+		connect.WithHandlerOptions(opts...),
+	)
+	localServiceHerUploadHandler := connect.NewUnaryHandlerSimple(
+		LocalServiceHerUploadProcedure,
+		svc.HerUpload,
+		connect.WithSchema(localServiceMethods.ByName("HerUpload")),
+		connect.WithHandlerOptions(opts...),
+	)
+	localServiceHerDownloadHandler := connect.NewUnaryHandlerSimple(
+		LocalServiceHerDownloadProcedure,
+		svc.HerDownload,
+		connect.WithSchema(localServiceMethods.ByName("HerDownload")),
+		connect.WithHandlerOptions(opts...),
+	)
+	localServiceGetHerConsoleHandler := connect.NewUnaryHandlerSimple(
+		LocalServiceGetHerConsoleProcedure,
+		svc.GetHerConsole,
+		connect.WithSchema(localServiceMethods.ByName("GetHerConsole")),
+		connect.WithHandlerOptions(opts...),
+	)
 	localServiceListProjectsHandler := connect.NewUnaryHandlerSimple(
 		LocalServiceListProjectsProcedure,
 		svc.ListProjects,
@@ -1924,6 +2220,26 @@ func NewLocalServiceHandler(svc LocalServiceHandler, opts ...connect.HandlerOpti
 			localServiceTestMachineAgentHandler.ServeHTTP(w, r)
 		case LocalServiceGetDiagnosticsProcedure:
 			localServiceGetDiagnosticsHandler.ServeHTTP(w, r)
+		case LocalServiceSetHerProcedure:
+			localServiceSetHerHandler.ServeHTTP(w, r)
+		case LocalServiceSetHerAssistantModeProcedure:
+			localServiceSetHerAssistantModeHandler.ServeHTTP(w, r)
+		case LocalServiceSetHerCommandConnectorProcedure:
+			localServiceSetHerCommandConnectorHandler.ServeHTTP(w, r)
+		case LocalServiceHerOpenProcedure:
+			localServiceHerOpenHandler.ServeHTTP(w, r)
+		case LocalServiceHerCallProcedure:
+			localServiceHerCallHandler.ServeHTTP(w, r)
+		case LocalServiceHerSendProcedure:
+			localServiceHerSendHandler.ServeHTTP(w, r)
+		case LocalServiceListHerWaitingProcedure:
+			localServiceListHerWaitingHandler.ServeHTTP(w, r)
+		case LocalServiceHerUploadProcedure:
+			localServiceHerUploadHandler.ServeHTTP(w, r)
+		case LocalServiceHerDownloadProcedure:
+			localServiceHerDownloadHandler.ServeHTTP(w, r)
+		case LocalServiceGetHerConsoleProcedure:
+			localServiceGetHerConsoleHandler.ServeHTTP(w, r)
 		case LocalServiceListProjectsProcedure:
 			localServiceListProjectsHandler.ServeHTTP(w, r)
 		case LocalServiceAddProjectProcedure:
@@ -2129,6 +2445,46 @@ func (UnimplementedLocalServiceHandler) GetDiagnostics(context.Context, *v1.GetD
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("hermesh.local.v1.LocalService.GetDiagnostics is not implemented"))
 }
 
+func (UnimplementedLocalServiceHandler) SetHer(context.Context, *v1.SetHerRequest) (*v1.SetHerResponse, error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("hermesh.local.v1.LocalService.SetHer is not implemented"))
+}
+
+func (UnimplementedLocalServiceHandler) SetHerAssistantMode(context.Context, *v1.SetHerAssistantModeRequest) (*v1.SetHerAssistantModeResponse, error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("hermesh.local.v1.LocalService.SetHerAssistantMode is not implemented"))
+}
+
+func (UnimplementedLocalServiceHandler) SetHerCommandConnector(context.Context, *v1.SetHerCommandConnectorRequest) (*v1.SetHerCommandConnectorResponse, error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("hermesh.local.v1.LocalService.SetHerCommandConnector is not implemented"))
+}
+
+func (UnimplementedLocalServiceHandler) HerOpen(context.Context, *v1.HerOpenRequest, *connect.ServerStream[v12.OpenEvent]) error {
+	return connect.NewError(connect.CodeUnimplemented, errors.New("hermesh.local.v1.LocalService.HerOpen is not implemented"))
+}
+
+func (UnimplementedLocalServiceHandler) HerCall(context.Context, *v1.HerCallRequest) (*v12.CallResponse, error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("hermesh.local.v1.LocalService.HerCall is not implemented"))
+}
+
+func (UnimplementedLocalServiceHandler) HerSend(context.Context, *v1.HerSendRequest) (*v1.HerSendResponse, error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("hermesh.local.v1.LocalService.HerSend is not implemented"))
+}
+
+func (UnimplementedLocalServiceHandler) ListHerWaiting(context.Context, *v1.ListHerWaitingRequest) (*v1.ListHerWaitingResponse, error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("hermesh.local.v1.LocalService.ListHerWaiting is not implemented"))
+}
+
+func (UnimplementedLocalServiceHandler) HerUpload(context.Context, *v1.HerUploadRequest) (*v1.HerUploadResponse, error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("hermesh.local.v1.LocalService.HerUpload is not implemented"))
+}
+
+func (UnimplementedLocalServiceHandler) HerDownload(context.Context, *v1.HerDownloadRequest) (*v1.HerDownloadResponse, error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("hermesh.local.v1.LocalService.HerDownload is not implemented"))
+}
+
+func (UnimplementedLocalServiceHandler) GetHerConsole(context.Context, *v1.GetHerConsoleRequest) (*v1.GetHerConsoleResponse, error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("hermesh.local.v1.LocalService.GetHerConsole is not implemented"))
+}
+
 func (UnimplementedLocalServiceHandler) ListProjects(context.Context, *v1.ListProjectsRequest) (*v1.ListProjectsResponse, error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("hermesh.local.v1.LocalService.ListProjects is not implemented"))
 }
@@ -2185,7 +2541,7 @@ func (UnimplementedLocalServiceHandler) WatchSessions(context.Context, *v1.Watch
 	return connect.NewError(connect.CodeUnimplemented, errors.New("hermesh.local.v1.LocalService.WatchSessions is not implemented"))
 }
 
-func (UnimplementedLocalServiceHandler) StreamSessionEvents(context.Context, *v1.StreamSessionEventsRequest, *connect.ServerStream[v12.SessionEvent]) error {
+func (UnimplementedLocalServiceHandler) StreamSessionEvents(context.Context, *v1.StreamSessionEventsRequest, *connect.ServerStream[v13.SessionEvent]) error {
 	return connect.NewError(connect.CodeUnimplemented, errors.New("hermesh.local.v1.LocalService.StreamSessionEvents is not implemented"))
 }
 
@@ -2193,7 +2549,7 @@ func (UnimplementedLocalServiceHandler) ListSessionEvents(context.Context, *v1.L
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("hermesh.local.v1.LocalService.ListSessionEvents is not implemented"))
 }
 
-func (UnimplementedLocalServiceHandler) ReadToolOutput(context.Context, *v1.ReadToolOutputRequest, *connect.ServerStream[v12.ToolOutputChunk]) error {
+func (UnimplementedLocalServiceHandler) ReadToolOutput(context.Context, *v1.ReadToolOutputRequest, *connect.ServerStream[v13.ToolOutputChunk]) error {
 	return connect.NewError(connect.CodeUnimplemented, errors.New("hermesh.local.v1.LocalService.ReadToolOutput is not implemented"))
 }
 
@@ -2221,7 +2577,7 @@ func (UnimplementedLocalServiceHandler) AnswerQuestion(context.Context, *v1.Answ
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("hermesh.local.v1.LocalService.AnswerQuestion is not implemented"))
 }
 
-func (UnimplementedLocalServiceHandler) GetDiff(context.Context, *v1.GetDiffRequest) (*v12.GetDiffResponse, error) {
+func (UnimplementedLocalServiceHandler) GetDiff(context.Context, *v1.GetDiffRequest) (*v13.GetDiffResponse, error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("hermesh.local.v1.LocalService.GetDiff is not implemented"))
 }
 

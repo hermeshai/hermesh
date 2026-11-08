@@ -3,6 +3,7 @@ syntax = "proto3";
 package hermesh.local.v1;
 
 import "google/protobuf/timestamp.proto";
+import "hermesh/her/v1/her.proto";
 import "hermesh/identity/v1/identity.proto";
 import "hermesh/machine/v1/machine.proto";
 import "hermesh/session/v1/session.proto";
@@ -107,6 +108,34 @@ service LocalService {
   // something does not work: versions, health, PATH and each coding agent.
   // Nothing leaves the Mac unless they do.
   rpc GetDiagnostics(GetDiagnosticsRequest) returns (GetDiagnosticsResponse);
+
+  // Her (docs/her-server.md). A machine's Her is Machine.her. Each call
+  // goes in process when the machine is this Mac, else through the tunnel.
+  // Turns Her on or off for a machine: signed by this device's root key.
+  rpc SetHer(SetHerRequest) returns (SetHerResponse);
+  // How freely an assistant acts; "bypass-permissions" is signed by the root
+  // key, the other modes are not.
+  rpc SetHerAssistantMode(SetHerAssistantModeRequest) returns (SetHerAssistantModeResponse);
+  // Adds, changes or removes a connector her starts as a command on a
+  // machine: signed by the root key.
+  rpc SetHerCommandConnector(SetHerCommandConnectorRequest) returns (SetHerCommandConnectorResponse);
+  // Opens a her connection on a machine (hermesh.her.v1.HerService.Open).
+  rpc HerOpen(HerOpenRequest) returns (stream hermesh.her.v1.OpenEvent);
+  // One her request on a machine (hermesh.her.v1.HerService.Call).
+  rpc HerCall(HerCallRequest) returns (hermesh.her.v1.CallResponse);
+  // A message to an assistant that is delivered now, or kept on this device
+  // and delivered when the machine is back (docs/her-server.md §5.5).
+  rpc HerSend(HerSendRequest) returns (HerSendResponse);
+  // The messages this device keeps for a machine's assistants until it is
+  // back, oldest first.
+  rpc ListHerWaiting(ListHerWaitingRequest) returns (ListHerWaitingResponse);
+  // A file on this device into an assistant's folder on a machine.
+  rpc HerUpload(HerUploadRequest) returns (HerUploadResponse);
+  // A file from an assistant's folder on a machine into a folder here.
+  rpc HerDownload(HerDownloadRequest) returns (HerDownloadResponse);
+  // The address of a machine's Her console, served by this hermeshd on
+  // 127.0.0.1 with a token in its path.
+  rpc GetHerConsole(GetHerConsoleRequest) returns (GetHerConsoleResponse);
 
   // Projects.
   rpc ListProjects(ListProjectsRequest) returns (ListProjectsResponse);
@@ -682,6 +711,10 @@ message Machine {
   // to, or catching up after a while away. What is shown of it meanwhile
   // is last known. Set in Watch only.
   bool syncing = 10;
+  // Her on the machine: from its status while it answers, the last known
+  // while it is offline, so an environment stays listed
+  // (docs/her-server.md §5.5). Unset for a machine never seen running Her.
+  hermesh.machine.v1.HerStatus her = 11;
 }
 
 message ListMachinesRequest {}
@@ -1109,4 +1142,114 @@ message QueryWorkResponse {
 message GetDiffRequest {
   string session_id = 1;
   uint32 turn = 2;
+}
+
+// Her (docs/her-server.md).
+
+message SetHerRequest {
+  string machine_id = 1;
+  bool enabled = 2;
+}
+
+message SetHerResponse {}
+
+message SetHerAssistantModeRequest {
+  string machine_id = 1;
+  // her's bot id.
+  string bot_id = 2;
+  // "manual", "accept-edits" or "bypass-permissions".
+  string permission_mode = 3;
+}
+
+message SetHerAssistantModeResponse {}
+
+message SetHerCommandConnectorRequest {
+  string machine_id = 1;
+  hermesh.identity.v1.SetHerCommandConnector connector = 2;
+}
+
+message SetHerCommandConnectorResponse {}
+
+message HerOpenRequest {
+  string machine_id = 1;
+  hermesh.her.v1.OpenRequest open = 2;
+}
+
+message HerCallRequest {
+  string machine_id = 1;
+  hermesh.her.v1.CallRequest call = 2;
+}
+
+message HerSendRequest {
+  string machine_id = 1;
+  // her's bot id.
+  string bot_id = 2;
+  string text = 3;
+  // Files on this device to upload into the assistant's folder first; the
+  // message names where they landed.
+  repeated string local_paths = 4;
+}
+
+message HerSendResponse {
+  // Delivered now; otherwise kept on this device as `waiting`.
+  bool delivered = 1;
+  HerWaiting waiting = 2;
+}
+
+message ListHerWaitingRequest {
+  string machine_id = 1;
+  // Only this assistant's; empty: all of the machine's.
+  string bot_id = 2;
+}
+
+message ListHerWaitingResponse {
+  repeated HerWaiting waiting = 1;
+}
+
+// HerWaiting is a message this device keeps until its machine is back.
+message HerWaiting {
+  string id = 1;
+  string machine_id = 2;
+  string bot_id = 3;
+  string text = 4;
+  repeated string local_paths = 5;
+  google.protobuf.Timestamp created_at = 6;
+  // Why the last try failed, when one did.
+  string error = 7;
+}
+
+message HerUploadRequest {
+  string machine_id = 1;
+  string bot_id = 2;
+  // Absolute.
+  string local_path = 3;
+}
+
+message HerUploadResponse {
+  // Where it is on the machine (hermesh.her.v1.UploadResponse.path).
+  string path = 1;
+}
+
+message HerDownloadRequest {
+  string machine_id = 1;
+  string bot_id = 2;
+  // On the machine: absolute, or relative to the assistant's folder.
+  string path = 3;
+  // An existing folder here, absolute; the file gets a number added when
+  // its name is taken.
+  string local_dir = 4;
+}
+
+message HerDownloadResponse {
+  string local_path = 1;
+}
+
+message GetHerConsoleRequest {
+  string machine_id = 1;
+}
+
+message GetHerConsoleResponse {
+  // http://127.0.0.1:<port>/her/<machine_id>/<token>/ while this hermeshd
+  // runs; anything under it is the machine's /her/console/.
+  string url = 1;
 }

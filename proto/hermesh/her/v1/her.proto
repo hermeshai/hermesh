@@ -1,0 +1,136 @@
+syntax = "proto3";
+
+package hermesh.her.v1;
+
+// HerService is served by a machine's hermeshd over the end-to-end tunnel,
+// to the owner's devices only: agents get PermissionDenied
+// (docs/her-server.md §5, §6). While Her is on for the machine, hermeshd keeps
+// one her running (`her serve --listen unix://…`) and carries her's own
+// JSON-RPC (her/crates/her-protocol/schema.json): each Open stream is a her
+// connection of its own, and only the methods of the allowlist pass (§6.1).
+//
+// The machine also serves her's console as plain HTTP on the same tunnel
+// connection, to the owner's devices only:
+//   GET  /her/console/…        the console's files, from her's install
+//   GET  /her/console/events   server-sent events on a her connection of its
+//                              own: first `opened` {"connection_id": "…"},
+//                              then one event per her notification, its
+//                              data the notification's JSON-RPC message
+//   POST /her/console/rpc      one JSON-RPC request (body) on the connection
+//                              the `Her-Connection` header names, or on one
+//                              of its own; the answer is the response's JSON
+service HerService {
+  // Opens a her connection and keeps it while the stream lasts. The first
+  // event is `opened`: the connection's id and what each setup request
+  // returned. Then her's notifications on that connection (bots/changed,
+  // session/event, …), as her sends them.
+  rpc Open(OpenRequest) returns (stream OpenEvent);
+  // One her request: on the connection connection_id names, so that it can
+  // act on what that connection opened (session/op on a conversation
+  // bots/open loaded), or on a connection of its own when empty.
+  rpc Call(CallRequest) returns (CallResponse);
+  // A file into an assistant's folder (~/.her/bots/<id>/files): `start`
+  // first, then the bytes.
+  rpc Upload(stream UploadRequest) returns (UploadResponse);
+  // A file from an assistant's folder: `start` first, then the bytes.
+  rpc Download(DownloadRequest) returns (stream DownloadResponse);
+}
+
+// A JSON-RPC request of her's.
+message Request {
+  string method = 1;
+  // The params object as JSON (UTF-8); empty for none.
+  bytes params = 2;
+}
+
+// What a request came back with: its result, or her's error.
+message Response {
+  // The result as JSON; empty when error is set.
+  bytes result = 1;
+  Error error = 2;
+}
+
+// A JSON-RPC error. hermeshd's own refusals (a method off the allowlist, her
+// not running) come back as connect errors, not as this.
+message Error {
+  int32 code = 1;
+  string message = 2;
+  // The error's data as JSON, when her sent any.
+  bytes data = 3;
+}
+
+message OpenRequest {
+  // Sent in order once the connection is set up, such as bots/subscribe, or
+  // bots/open for one assistant's conversation. Each passes the allowlist.
+  repeated Request setup = 1;
+}
+
+message OpenEvent {
+  oneof kind {
+    Opened opened = 1;
+    Notification notification = 2;
+  }
+}
+
+message Opened {
+  string connection_id = 1;
+  // One per setup request, in order.
+  repeated Response responses = 2;
+}
+
+// A JSON-RPC notification of her's.
+message Notification {
+  string method = 1;
+  // The params as JSON.
+  bytes params = 2;
+}
+
+message CallRequest {
+  // A connection an Open stream holds; empty: a connection of its own.
+  string connection_id = 1;
+  Request request = 2;
+}
+
+message CallResponse {
+  Response response = 1;
+}
+
+message UploadRequest {
+  oneof part {
+    UploadStart start = 1;
+    bytes data = 2;
+  }
+}
+
+message UploadStart {
+  string bot_id = 1;
+  // The file's name, without folders. It lands in the assistant's folder
+  // under uploads/, with a number added when the name is taken.
+  string name = 2;
+  // In bytes; the upload fails when the bytes don't add up to it.
+  uint64 size = 3;
+}
+
+message UploadResponse {
+  // Where the file is on the machine, absolute: what a message to the
+  // assistant names (docs/her-server.md §6.3).
+  string path = 1;
+}
+
+message DownloadRequest {
+  string bot_id = 1;
+  // Absolute, or relative to the assistant's folder; inside that folder.
+  string path = 2;
+}
+
+message DownloadResponse {
+  oneof part {
+    DownloadStart start = 1;
+    bytes data = 2;
+  }
+}
+
+message DownloadStart {
+  string name = 1;
+  uint64 size = 2;
+}

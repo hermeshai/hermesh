@@ -162,6 +162,50 @@ message MachineStatus {
   // What keeps this machine from working as it should (none while healthy),
   // so every screen of the owner can say what is wrong and how to fix it.
   repeated MachineProblem problems = 13;
+  // Her on this machine (docs/her-server.md §6.2). Sent to the owner's
+  // devices only, never to agents.
+  HerStatus her = 14;
+}
+
+// HerStatus is Her on a machine, as its hermeshd last saw her.
+message HerStatus {
+  // The owner turned Her on for this machine (SetHer).
+  bool enabled = 1;
+  // her is running and answers.
+  bool running = 2;
+  // her's version.
+  string version = 3;
+  // At least one model connection works, so the assistants can answer.
+  bool model_ready = 4;
+  // Why this machine can't run Her ("windows", "no her"), or empty.
+  string unsupported = 5;
+  // Messages and approval requests the owner has not looked at, over all
+  // assistants, as her counts them (bots/read).
+  uint32 unread = 6;
+  // The newest message from an assistant, for a notification.
+  HerLatest latest = 7;
+  // Why her is not running although Her is on, or empty.
+  string error = 8;
+}
+
+// HerLatest is the newest thing an assistant sent the owner.
+message HerLatest {
+  // her's bot id, and the assistant's name.
+  string bot_id = 1;
+  string bot_name = 2;
+  // Its first words, at most 200 characters.
+  string text = 3;
+  google.protobuf.Timestamp at = 4;
+  HerLatestKind kind = 5;
+}
+
+enum HerLatestKind {
+  HER_LATEST_KIND_UNSPECIFIED = 0;
+  HER_LATEST_KIND_MESSAGE = 1;
+  // It asks the owner to choose.
+  HER_LATEST_KIND_QUESTION = 2;
+  // It waits for an approval.
+  HER_LATEST_KIND_APPROVAL = 3;
 }
 
 message MachineProblem {
