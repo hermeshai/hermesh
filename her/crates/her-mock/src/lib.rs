@@ -8,7 +8,7 @@
 //!
 //! | Scenario | Steps |
 //! |---|---|
-//! | `text` (no directive) | a short reply in three chunks |
+//! | `text` (no directive) | a short reply in three chunks; in a bot's conversation (send_to_user offered), send_to_user "回复：…" |
 //! | `echo` | `echo: <the prompt without the directive>` in small chunks |
 //! | `think` | reasoning, then a reply |
 //! | `long:N` | N small text chunks |
@@ -522,6 +522,14 @@ fn last_tool_result(messages: &[Value]) -> String {
         .find(|m| m.get("role").and_then(Value::as_str) == Some("tool"))
         .map(content_text)
         .unwrap_or_default()
+}
+
+/// Whether the request lets the model call the tool `name`.
+fn offers_tool(request: &Value, name: &str) -> bool {
+    request
+        .get("tools")
+        .and_then(Value::as_array)
+        .is_some_and(|tools| tools.iter().any(|t| t.pointer("/function/name").and_then(Value::as_str) == Some(name)))
 }
 
 /// A bot's whole answer to the latest message, a report or the owner's.
@@ -1266,6 +1274,9 @@ async fn respond_chat(stream: &mut TcpStream, body: &[u8], shared: &Shared) -> i
             let (name, arg, prompt, step) = directive(messages);
             let plan = match check_plan(&request, messages) {
                 Some(plan) => plan,
+                // An assistant's conversation with no directive: it answers the latest message,
+                // as a model does, instead of writing text nobody sees.
+                None if name == "text" && step == 0 && offers_tool(&request, "send_to_user") => Plan::Step(answer_latest(messages)),
                 None => plan(shared, messages, &name, &arg, &prompt, step),
             };
             (name, plan)
@@ -1384,6 +1395,18 @@ mod tests {
         let messages = vec![json!({"role": "user", "content": [{"type": "text", "text": "[[mock:long:7]]"}]})];
         let (name, arg, _, step) = directive(&messages);
         assert_eq!((name.as_str(), arg.as_str(), step), ("long", "7", 0));
+    }
+
+    #[test]
+    fn a_bot_without_a_directive_answers_with_send_to_user() {
+        let messages = vec![json!({"role": "user", "content": "hi"})];
+        let (name, _, _, step) = directive(&messages);
+        assert_eq!((name.as_str(), step), ("text", 0));
+        let bot = json!({"tools": [{"type": "function", "function": {"name": "send_to_user"}}]});
+        assert!(offers_tool(&bot, "send_to_user"));
+        assert!(!offers_tool(&json!({"tools": [{"type": "function", "function": {"name": "read"}}]}), "send_to_user"));
+        assert!(!offers_tool(&json!({}), "send_to_user"));
+        assert_eq!(call_of(Plan::Step(answer_latest(&messages))), ("send_to_user", json!({"text": "回复：hi", "end_turn": true})));
     }
 
     fn call_of(plan: Plan) -> (&'static str, Value) {
