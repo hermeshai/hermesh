@@ -106,6 +106,30 @@ func herMCPServer(t *testing.T) string {
 	return p
 }
 
+// askHer sends Her a message in her conversation, as the Her entry does,
+// approves what she asks to do on the way, and waits for her to send the
+// owner a message with want in it. It returns the tools she asked to use
+// and what she sent.
+func askHer(t *testing.T, env *herEnvironment, text, want string) (asked []string, said string) {
+	t.Helper()
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+	defer cancel()
+	stream, op, session := openAssistant(t, ctx, env)
+	defer stream.Close()
+	if res, err := env.c.HerSend(ctx, &localv1.HerSendRequest{MachineId: env.machine, BotId: env.bot.ID, Text: text}); err != nil || !res.Delivered {
+		t.Fatalf("HerSend: %v %v", res, err)
+	}
+	e := untilEvent(t, stream, "Her's answer with "+want, func(e herEvent) bool {
+		if e.Type == "approval_requested" {
+			asked = append(asked, e.Name)
+			herCall(t, env, op.ConnectionId, "session/op", map[string]any{"session_id": session,
+				"op": map[string]any{"type": "approval", "call_id": e.CallID, "decision": map[string]string{"type": "approve"}}})
+		}
+		return e.sentText(want)
+	})
+	return asked, e.Args.Text
+}
+
 // openAssistant opens an assistant's conversation as the Her entry follows
 // it: a HerOpen stream holding a connection with bots/open, without the
 // events that only animate a reply. It returns the conversation too.
@@ -493,7 +517,8 @@ func TestHerFilesBothWays(t *testing.T) {
 // address in the console, signed in from this Mac: the sign-in starts on the
 // Her Server, the browser comes back to this Mac's hermeshd, and the console
 // brings what the redirect carried to her, who exchanges it and keeps the
-// token (docs/her-server.md §5.4, §11 phase 2.2–2.3).
+// token; then Her uses it in a conversation (docs/her-server.md §5.4, §11
+// phase 2.2–2.3).
 func TestHerConnectorSignIn(t *testing.T) {
 	mcpServer := herMCPServer(t)
 	env := newHerEnvironment(t)
@@ -577,6 +602,14 @@ func TestHerConnectorSignIn(t *testing.T) {
 	if b, _ := os.ReadFile(filepath.Join(env.home, "credentials.toml")); !bytes.Contains(b, []byte("mcp-oauth.tracker")) {
 		t.Fatalf("no token in the Her Server's credential store: %q", b)
 	}
+
+	// Her uses it in a conversation: she calls its tool, which is not
+	// read-only, once the owner approves, and her answer carries what the
+	// tool gave.
+	asked, said := askHer(t, env, "[[mock:mcp:tracker:Apollo]] What is Apollo's release code?", "mcp done: Release code for Apollo: FX-")
+	if !slices.Equal(asked, []string{"call_tool"}) {
+		t.Fatalf("Her asked to use %v before answering %q", asked, said)
+	}
 }
 
 // TestHerCommandConnector: the console can't add a connector started as a
@@ -632,7 +665,8 @@ func TestHerCommandConnector(t *testing.T) {
 
 // TestHerSkillUpload: a skill, zipped on this Mac, uploaded through the
 // console and installed on the Her Server: checked first without writing,
-// then installed, listed, and turned off (docs/her-server.md §10 "Skills").
+// then installed, listed, used by Her in a conversation, and turned off
+// (docs/her-server.md §10 "Skills").
 func TestHerSkillUpload(t *testing.T) {
 	env := newHerEnvironment(t)
 	page := openConsolePage(t, env.console)
@@ -701,6 +735,12 @@ func TestHerSkillUpload(t *testing.T) {
 	}
 	if b, err := os.ReadFile(filepath.Join(target, "references", "format.md")); err != nil || !bytes.Contains(b, []byte("blocked")) {
 		t.Fatalf("its files: %q %v", b, err)
+	}
+
+	// Her uses it in a conversation: she reads its SKILL.md, then the file it
+	// names, and her answer carries what the skill gave.
+	if asked, said := askHer(t, env, "[[mock:skill:weekly-report]] Write this week's report.", "skill done: "); !strings.Contains(said, "Done, doing, blocked.") {
+		t.Fatalf("Her's answer: %q (asked to use %v)", said, asked)
 	}
 
 	// Turned off.
