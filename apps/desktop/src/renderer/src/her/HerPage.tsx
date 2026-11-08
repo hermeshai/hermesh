@@ -7,7 +7,7 @@ import { Mark } from "@hermesh/ui";
 import { errorText, useNow, useStore } from "../store";
 import type { SendOp } from "./Approval";
 import { AssistantPanel } from "./AssistantPanel";
-import { useConversation, useEnvironment, useWaiting } from "./connection";
+import { useConversation, useEnvironment, useKept, useWaiting } from "./connection";
 import { HerContext, useHer, type Her, type HerSheet, type Panel } from "./context";
 import { Conversation, putInComposer, showRun } from "./Conversation";
 import { environments, envState, pickEnvironment } from "./environments";
@@ -61,12 +61,15 @@ function Environment({ machine, envs, choose }: { machine: Machine; envs: Machin
   const st = useStore();
   const { show } = st;
   const env = useEnvironment(machine);
+  const kept = useKept(machine.machineId);
   const waiting = useWaiting(machine);
   const [panel, setPanel] = useState<Panel>(null);
   const [sheet, setSheet] = useState<HerSheet>(null);
   const id = machine.machineId;
-  const bot = env.bots.find((b) => b.default);
-  const conv = useConversation(machine, bot, show);
+  // Until her answers, and while the machine is offline: Her and the conversation as this Mac keeps them.
+  const bot = env.bots.find((b) => b.default) ?? kept?.bot;
+  const live = useConversation(machine, bot, show);
+  const conv = live.view || !kept?.view ? live : { ...live, view: kept.view, session: kept.session };
   // Delivered meanwhile: what waits is asked for again as Her changes.
   const refreshWaiting = waiting.refresh;
   const anyWaiting = waiting.list.length > 0;
