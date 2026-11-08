@@ -1,4 +1,4 @@
-import { openCallTransport, type CallError, type OpenEvent } from "./calls.ts";
+import { openCallTransport, type CallError, type ConnectionEvent } from "./calls.ts";
 import type { Transport } from "./rpc.ts";
 
 // her through a console's HTTP, as hermeshd serves it (proto/hermesh/her/v1/her.proto): a
@@ -29,11 +29,11 @@ export function httpTransport(baseUrl: string): Transport & { close(): void } {
  * The events of an EventSource as a stream. It ends at the first error: an EventSource that
  * reconnects by itself would be on another connection, without what this one had opened.
  */
-async function* events(url: string, signal: AbortSignal): AsyncGenerator<OpenEvent> {
+async function* events(url: string, signal: AbortSignal): AsyncGenerator<ConnectionEvent> {
   const source = new EventSource(url);
-  const queue: (OpenEvent | null)[] = [];
+  const queue: (ConnectionEvent | null)[] = [];
   let wake = () => {};
-  const push = (e: OpenEvent | null) => {
+  const push = (e: ConnectionEvent | null) => {
     queue.push(e);
     wake();
   };
