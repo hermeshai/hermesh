@@ -1,11 +1,13 @@
 import { app, BrowserWindow, dialog, ipcMain, Menu, shell, type IpcMainEvent, type IpcMainInvokeEvent, type WebContents } from "electron";
 import path from "node:path";
 import type { Command, MenuItem, MenuState, Preferences, TerminalCommand } from "../shared/bridge";
-import { preferences, setPreferences } from "./notify";
+import { i18n } from "../shared/i18n";
+import { herConsoleURL, saveHerFile } from "./her";
+import { preferences, setPreferences, world } from "./notify";
 import { platform } from "./platform";
 import { cancelSignIn, completeSignIn, connectURL, errorMessage, signIn, signInPending, takeLinks } from "./signin";
 import { catchUp, check, download, install, openUpdates, returnToApproval, setAutoDownload, snooze, updateInfo } from "./updater";
-import { mainWindow, ours, setMode, showMain, showSettings, showWhatsNew, sizeUpdates } from "./windows";
+import { mainWindow, ours, setMode, showHerConsole, showMain, showSettings, showWhatsNew, sizeUpdates } from "./windows";
 
 // The page's requests to the main process (see shared/bridge.ts). Each
 // handler checks the request comes from one of our own pages.
@@ -13,7 +15,7 @@ function trusted(e: IpcMainEvent | IpcMainInvokeEvent): boolean {
   return !!e.senderFrame && ours(e.senderFrame.url);
 }
 
-const noMenuState: MenuState = { main: false, session: null, sidebar: true, undo: false };
+const noMenuState: MenuState = { main: false, her: false, session: null, sidebar: true, undo: false };
 let menuState = noMenuState;
 export const currentMenuState = () => menuState;
 export const menuStateListeners = new Set<() => void>();
@@ -158,6 +160,26 @@ export function registerIPC() {
   ipcMain.handle("elevates-silently", answer(platform.elevatesSilently));
   ipcMain.on("open-elevation-settings", (e) => trusted(e) && platform.openElevationSettings());
   ipcMain.handle("take-links", answer(takeLinks));
+
+  // Her (main/her.ts): a machine's console in its own window, and an assistant's file saved to Downloads.
+  const id = (v: unknown) => (typeof v === "string" && v !== "" ? v : null);
+  ipcMain.handle(
+    "her-console",
+    answer((machineId: unknown) => {
+      const m = id(machineId);
+      if (!m) throw new Error("no machine");
+      const name = world.machines.find((x) => x.machineId === m)?.machineName ?? m;
+      return showHerConsole(m, i18n.t("main:herConsole", { name }), () => herConsoleURL(m));
+    }),
+  );
+  ipcMain.handle(
+    "her-save-file",
+    answer((machineId: unknown, botId: unknown, file: unknown) => {
+      const [m, b, p] = [id(machineId), id(botId), id(file)];
+      if (!m || !b || !p) throw new Error("no file");
+      return saveHerFile(m, b, p);
+    }),
+  );
 
   // Notifications, the menu bar and opening at login (main/notify.ts, main/platform).
   ipcMain.handle("preferences", (e) => (trusted(e) ? preferences() : null));

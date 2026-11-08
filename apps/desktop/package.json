@@ -9,7 +9,7 @@
     "dev": "electron-vite dev",
     "build": "electron-vite build",
     "typecheck": "tsc -p tsconfig.json",
-    "test": "node --test src/shared/*.test.ts src/renderer/src/session/*.test.ts src/renderer/src/session/markdown/*.test.ts scripts/*.test.mjs",
+    "test": "node --test src/shared/*.test.ts src/renderer/src/session/*.test.ts src/renderer/src/session/markdown/*.test.ts src/renderer/src/her/*.test.ts scripts/*.test.mjs",
     "test:e2e": "playwright test",
     "perf": "electron-vite build && playwright test -c perf"
   },
@@ -19,6 +19,8 @@
     "@connectrpc/connect-node": "2.2.0",
     "@connectrpc/connect-web": "2.2.0",
     "@hermesh/core": "workspace:*",
+    "@hermesh/her-client": "workspace:*",
+    "@hermesh/her-protocol": "workspace:*",
     "@hermesh/proto": "workspace:*",
     "@hermesh/ui": "workspace:*",
     "i18next": "26.4.2",

@@ -43,7 +43,9 @@
     "notConnected": "未连接",
     "disconnectedGrant": "已断开的 Agent",
     "archived": "已归档「{{title}}」",
-    "unarchived": "已取消归档「{{title}}」"
+    "unarchived": "已取消归档「{{title}}」",
+    "her": "Her 助手",
+    "herUnread_other": "Her 有 {{count}} 条未读"
   },
   "accountMenu": {
     "settings": "设置…",

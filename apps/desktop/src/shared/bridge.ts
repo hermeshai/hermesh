@@ -13,7 +13,9 @@ export type Command =
   | "newGrant" | "addMachine" | "addProject" | "enterCode"
   | "answer" | "interrupt" | "archive" | "unarchive" | "copySessionId"
   | `open:${string}` | `pairing:${string}`
-  | `searchGrant:${string}` | `searchMachine:${string}` | "undo" | "upgrade";
+  | `searchGrant:${string}` | `searchMachine:${string}` | "undo" | "upgrade"
+  /** The Her entry at an environment's assistant: `her:<machine id>/<bot id>` (a notification's). */
+  | `her:${string}`;
 
 /**
  * What the menu bar panel shows (main/tray.ts): whether this Mac reaches the
@@ -60,6 +62,12 @@ export type Bridge = {
   waitForPairings(on: boolean): void;
   openExternal(url: string): void;
   pickDirectory(): Promise<string | null>;
+  /** Where a file given to the page (picked, dropped, pasted) is on this computer; empty for one that is not a file there. */
+  pathForFile(file: File): string;
+  /** A machine's Her console, in a window of its own (docs/her-server.md §5.3). */
+  openHerConsole(machineId: string): Promise<void>;
+  /** Saves a file from an assistant's folder on its machine to Downloads, and shows it there. */
+  saveHerFile(machineId: string, botId: string, path: string): Promise<void>;
   runInTerminal(c: TerminalCommand): void;
   /** The compact first-run window, or the main window. */
   setWindowMode(mode: "onboarding" | "main"): void;
@@ -148,6 +156,8 @@ export type LoginItem = { on: boolean; needsApproval: boolean };
 
 export type MenuState = {
   main: boolean;
+  /** The Her entry shows. */
+  her: boolean;
   session: null | {
     interruptible: boolean;
     answerable: boolean;

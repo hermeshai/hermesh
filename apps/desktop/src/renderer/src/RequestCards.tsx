@@ -65,7 +65,7 @@ export function frontRequest(st: Store, code: string) {
   st.set({ frontRequest: code, dismissed: st.dismissed.filter((c) => c !== code) });
 }
 
-/** How far up the cards sit: over a session's bar at the bottom, when one shows. */
+/** How far up the cards sit: over a session's bar at the bottom, or the Her entry's composer, when one shows. */
 function useAboveBottomBar(): number {
   const [bottom, setBottom] = useState(20);
   useEffect(() => {
@@ -74,7 +74,7 @@ function useAboveBottomBar(): number {
     let bar: Element | null = null;
     const sizes = new ResizeObserver(() => measure());
     const measure = () => {
-      const now = content.querySelector(".cbar");
+      const now = content.querySelector(".cbar, .her-main .cmp-col");
       if (now !== bar) {
         if (bar) sizes.unobserve(bar);
         if (now) sizes.observe(now);

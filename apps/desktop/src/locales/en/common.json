@@ -45,7 +45,10 @@
     "notConnected": "Not connected",
     "disconnectedGrant": "Disconnected agent",
     "archived": "Archived “{{title}}”",
-    "unarchived": "Unarchived “{{title}}”"
+    "unarchived": "Unarchived “{{title}}”",
+    "her": "Her",
+    "herUnread_one": "{{count}} unread from Her",
+    "herUnread_other": "{{count}} unread from Her"
   },
   "accountMenu": {
     "settings": "Settings…",

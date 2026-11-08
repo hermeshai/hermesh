@@ -1,6 +1,6 @@
 import { createClient } from "@connectrpc/connect";
 import { createConnectTransport } from "@connectrpc/connect-node";
-import { applyWatch, emptyWorld, filterNotices, noticeDiff, noticeSnapshots, pairingNotice, withKnownState, type NoticeSnapshot } from "@hermesh/core";
+import { applyWatch, emptyWorld, filterNotices, herNotices, herSnapshots, noticeDiff, noticeSnapshots, pairingNotice, withKnownState, type HerSnapshot, type NoticeSnapshot } from "@hermesh/core";
 import { LocalService, type Client, type GetStatusResponse, type Machine, type PairingDetails } from "@hermesh/proto/local";
 import type { Session } from "@hermesh/proto/session";
 import { app, nativeTheme, Notification } from "electron";
@@ -10,6 +10,7 @@ import type { Command, Preferences } from "../shared/bridge";
 import { i18n, languages, type Language } from "../shared/i18n";
 import { command } from "./ipc";
 import { socketPath } from "./paths";
+import { mainWindow } from "./windows";
 
 // What reaches the owner while no window may be open: the main process
 // follows hermeshd itself (LocalService.Watch: everything once, then each
@@ -110,6 +111,26 @@ function noticeSessions() {
   since ??= look;
 }
 
+// What Her's assistants send (docs/her-server.md §9.3), from each machine's
+// Her as Watch brings it: notified while the main window is not in front,
+// unless the assistant is muted, and clicked, opening the Her entry at it.
+// An environment whose messages were all read, here or on another device,
+// takes its notifications back. Nothing before the first look is news.
+let herSeen: Map<string, HerSnapshot> | undefined;
+
+function noticeHer() {
+  if (herSeen) {
+    const looking = mainWindow()?.isFocused() ?? false;
+    for (const n of herNotices(herSeen, world.machines)) {
+      if (!looking) post(`her-${n.machineId}-${n.botId}`, n.title, n.body, `her:${n.machineId}/${n.botId}`);
+    }
+    for (const m of world.machines) {
+      if (m.her?.enabled && m.her.unread === 0) for (const p of posted.filter((x) => x.id.startsWith(`her-${m.machineId}-`))) withdraw(p.id);
+    }
+  }
+  herSeen = herSnapshots(world.machines);
+}
+
 // Every pending request is notified (it cannot be switched off), and
 // withdrawn once it is gone: answered here or elsewhere, or expired.
 const pairingId = (code: string) => `pairing-${code}`;
@@ -147,6 +168,7 @@ export function watch() {
           world.sessions = withKnownState(w.sessions, w.machines);
           world.pairings = world.status?.initialized ? w.pairings : [];
           if (w.sessions !== before.sessions || w.machines !== before.machines) noticeSessions();
+          if (w.machines !== before.machines) noticeHer();
           if (w.pairings !== before.pairings) noticePairings();
           if (w !== before) changed();
         }
