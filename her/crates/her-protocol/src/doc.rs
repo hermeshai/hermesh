@@ -266,7 +266,7 @@ pub enum CellInput {
     Text(String),
 }
 
-/// One change to a spreadsheet (spreadsheet-design §4.3).
+/// One change to a spreadsheet.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize, JsonSchema)]
 #[serde(tag = "op", rename_all = "snake_case")]
 pub enum SheetOp {

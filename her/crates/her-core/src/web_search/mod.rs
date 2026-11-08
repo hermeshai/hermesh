@@ -84,7 +84,7 @@ static SPEC: LazyLock<ToolSpec> = LazyLock::new(|| ToolSpec {
             "allowed_domains": {
                 "type": "array",
                 "items": { "type": "string" },
-                "description": "Only return pages from these sites, such as [\"sec.gov\"]. Subdomains count."
+                "description": "Only return pages from these sites, such as [\"wikipedia.org\"]. Subdomains count."
             },
             "blocked_domains": {
                 "type": "array",
@@ -140,7 +140,7 @@ fn understand(args: Args, today: NaiveDate) -> Result<SearchRequest, ToolError> 
     let domains = |given: Vec<String>, from_query: Vec<String>, what: &str| -> Result<Vec<String>, ToolError> {
         let mut out: Vec<String> = Vec::new();
         for raw in given.into_iter().chain(from_query) {
-            let domain = pipeline::normalize_domain(&raw).ok_or_else(|| ToolError::InvalidArgs(format!("{what}: \"{raw}\" is not a domain such as sec.gov")))?;
+            let domain = pipeline::normalize_domain(&raw).ok_or_else(|| ToolError::InvalidArgs(format!("{what}: \"{raw}\" is not a domain such as wikipedia.org")))?;
             if !out.contains(&domain) {
                 out.push(domain);
             }

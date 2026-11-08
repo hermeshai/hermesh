@@ -17200,7 +17200,7 @@
       "type": "object"
     },
     "SheetOp": {
-      "description": "One change to a spreadsheet (spreadsheet-design §4.3).",
+      "description": "One change to a spreadsheet.",
       "oneOf": [
         {
           "description": "A value, kept as given: text stays text (`\"000001\"`, `\"=abc\"`).",

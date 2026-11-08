@@ -254,7 +254,7 @@
       "additionalProperties": false,
       "properties": {
         "allowed_domains": {
-          "description": "Only return pages from these sites, such as [\"sec.gov\"]. Subdomains count.",
+          "description": "Only return pages from these sites, such as [\"wikipedia.org\"]. Subdomains count.",
           "items": {
             "type": "string"
           },
@@ -455,13 +455,13 @@
         },
         "note": {
           "default": null,
-          "description": "Why, in a few words the user will see in the revision list (\"按研报下调 2025 年增速\").",
+          "description": "Why, in a few words the user will see in the revision list (\"按新报价更新单价\").",
           "type": "string"
         },
         "ops": {
           "description": "The changes, applied together as one revision the user can undo.",
           "items": {
-            "description": "One change to a spreadsheet (spreadsheet-design §4.3).",
+            "description": "One change to a spreadsheet.",
             "oneOf": [
               {
                 "description": "A value, kept as given: text stays text (`\"000001\"`, `\"=abc\"`).",
@@ -579,7 +579,7 @@
         "ops": {
           "description": "The changes to try, as for doc_edit.",
           "items": {
-            "description": "One change to a spreadsheet (spreadsheet-design §4.3).",
+            "description": "One change to a spreadsheet.",
             "oneOf": [
               {
                 "description": "A value, kept as given: text stays text (`\"000001\"`, `\"=abc\"`).",
@@ -1433,7 +1433,7 @@
         },
         "note": {
           "default": null,
-          "description": "What the changes do, in the user's words (\"按 Q3 财报更新第 3 页的营收\"); shown with the change.",
+          "description": "What the changes do, in the user's words (\"按新排期更新第 3 页的时间表\"); shown with the change.",
           "type": "string"
         }
       },
