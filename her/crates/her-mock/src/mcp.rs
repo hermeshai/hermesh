@@ -29,7 +29,6 @@ use serde_json::json;
 use std::collections::HashMap;
 use std::io;
 use std::io::Write as _;
-use std::net::SocketAddr;
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::sync::atomic::AtomicI64;
@@ -75,6 +74,9 @@ pub struct McpTestOptions {
     pub auth: McpTestAuth,
     /// Over HTTP: the 2024-11-05 HTTP+SSE transport at `/sse` (`POST /sse` answers 405).
     pub legacy_sse: bool,
+    /// Over HTTP: the host clients reach it by, in its URL and the addresses its sign-in gives,
+    /// as for a client in a container; the address it listens on when `None`.
+    pub public_host: Option<String>,
     /// Offer only the evidence-driven scenario tools.
     pub simulation: bool,
     pub simulation_delay_ms: u64,
@@ -92,6 +94,7 @@ impl Default for McpTestOptions {
             own_process: false,
             auth: McpTestAuth::None,
             legacy_sse: false,
+            public_host: None,
             simulation: false,
             simulation_delay_ms: 0,
         }
@@ -452,7 +455,6 @@ where
 /// An MCP server on HTTP, serving in the background.
 pub struct McpHttpServer {
     accept: tokio::task::JoinHandle<()>,
-    addr: SocketAddr,
     state: Arc<State>,
 }
 
@@ -464,7 +466,7 @@ impl McpHttpServer {
     /// The MCP endpoint: `/mcp`, or `/sse` for the older transport.
     pub fn url(&self) -> String {
         let path = if self.state.options.legacy_sse { "sse" } else { "mcp" };
-        format!("http://{}/{path}", self.addr)
+        format!("{}/{path}", self.state.base.lock())
     }
 
     pub fn simulation(&self) -> &crate::simulation::ToolService { &self.state.simulation }
@@ -495,7 +497,10 @@ pub async fn serve_http(addr: &str, options: McpTestOptions) -> io::Result<McpHt
     let listener = TcpListener::bind(addr).await?;
     let addr = listener.local_addr()?;
     let state = State::new(options);
-    *state.base.lock() = format!("http://{addr}");
+    *state.base.lock() = match &state.options.public_host {
+        Some(host) => format!("http://{host}:{}", addr.port()),
+        None => format!("http://{addr}"),
+    };
     let sessions = Arc::new(AtomicU64::new(0));
     let accept_state = state.clone();
     let accept = tokio::spawn(async move {
@@ -505,7 +510,7 @@ pub async fn serve_http(addr: &str, options: McpTestOptions) -> io::Result<McpHt
             tokio::spawn(serve_http_connection(stream, accept_state.clone(), sessions.clone()));
         }
     });
-    Ok(McpHttpServer { addr, state, accept })
+    Ok(McpHttpServer { state, accept })
 }
 
 pub(crate) struct HttpRequest {
@@ -727,5 +732,18 @@ mod tests {
         let names: std::collections::HashSet<&str> = tools.iter().filter_map(|t| t["name"].as_str()).collect();
         assert_eq!(names.len(), 300);
         assert_eq!(vault_code("Apollo"), vault_code(" apollo "));
+    }
+
+    #[tokio::test]
+    async fn a_public_host_names_the_server_in_its_url_and_its_sign_in() {
+        let options = McpTestOptions { public_host: Some("host.docker.internal".into()), auth: McpTestAuth::OAuth(Default::default()), ..Default::default() };
+        let server = serve_http("127.0.0.1:0", options).await.unwrap();
+        let url = server.url();
+        let port = url.strip_prefix("http://host.docker.internal:").and_then(|rest| rest.strip_suffix("/mcp")).unwrap_or_else(|| panic!("{url}"));
+        let (status, body) = crate::mcp_auth::browse(&format!("http://127.0.0.1:{port}/.well-known/oauth-protected-resource/mcp")).await.unwrap();
+        assert!(status.contains(" 200 "), "{status}");
+        let metadata: Value = serde_json::from_str(&body).unwrap();
+        assert_eq!(metadata["resource"], url.as_str());
+        assert_eq!(metadata["authorization_servers"], json!([format!("http://host.docker.internal:{port}")]));
     }
 }
