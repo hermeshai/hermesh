@@ -1,7 +1,8 @@
 # Her Server: architecture and plan
 
-Status: final design, 2026-11-08. Nothing is built yet. This replaces the
-earlier drafts of this document. The kernel is in [her/](../her/README.md).
+Status: final design, 2026-11-08. Phases 1 and 2 are built (§11); phases 3
+and 4 are not. This replaces the earlier drafts of this document. The kernel
+is in [her/](../her/README.md).
 
 ## 0. Summary
 
