@@ -69,6 +69,22 @@ func TestSnapshot(t *testing.T) {
 	}
 	s.changed(bots(t, `[{"id":"q","name":"Quiet","unread":1,"last":{"from":"bot","text":"","file":"report.pdf","ts":"2026-11-08T12:01:00Z"}}]`), nil, now)
 	latest("q", "Quiet", "report.pdf", msg)
+	if s.latest.Muted {
+		t.Fatal("an assistant the owner didn't mute isn't muted")
+	}
+
+	// Muted: what it sends says so, so no device alerts; muting the one that
+	// sent the newest message marks that message too.
+	s.changed(bots(t, `[{"id":"q","name":"Quiet","unread":1,"muted":true,"last":{"from":"bot","text":"","file":"report.pdf","ts":"2026-11-08T12:01:00Z"}}]`), nil, now)
+	latest("q", "Quiet", "report.pdf", msg)
+	if !s.latest.Muted {
+		t.Fatal("muting the newest message's assistant marks it muted")
+	}
+	s.changed(bots(t, `[{"id":"q","name":"Quiet","unread":2,"muted":true,"last":{"from":"bot","text":"again","ts":"2026-11-08T12:02:00Z"}}]`), nil, now)
+	latest("q", "Quiet", "again", msg)
+	if !s.latest.Muted {
+		t.Fatal("a muted assistant's new message is muted")
+	}
 }
 
 func TestModelReady(t *testing.T) {
