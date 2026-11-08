@@ -1,0 +1,179 @@
+// Generates src/generated.ts from the kernel's protocol schema
+// (her/crates/her-protocol/schema.json, written by `her protocol schema`), so the
+// TypeScript types never drift from the Rust ones (desktop-kernel-integration §9.2).
+//
+// It covers the JSON Schema that schemars produces for serde types: objects,
+// tagged enums (oneOf), string enums, Option (anyOf with null, or a type list
+// with "null"), maps (additionalProperties), arrays and references.
+//
+//   node scripts/generate.mjs          writes src/generated.ts
+//   node scripts/generate.mjs --check  fails when src/generated.ts is out of date
+
+import { readFileSync, writeFileSync } from "node:fs";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
+
+const here = dirname(fileURLToPath(import.meta.url));
+const schemaPath = join(here, "../../../her/crates/her-protocol/schema.json");
+const outPath = join(here, "../src/generated.ts");
+
+const schema = JSON.parse(readFileSync(schemaPath, "utf8"));
+const defs = schema.definitions;
+
+const refName = (ref) => ref.replace("#/definitions/", "");
+const isNull = (s) => s && s.type === "null";
+
+/** Every definition a schema refers to, transitively. */
+function reachable(roots) {
+  const seen = new Set();
+  const walk = (s) => {
+    if (!s || typeof s !== "object") return;
+    if (Array.isArray(s)) return s.forEach(walk);
+    if (s.$ref) {
+      const name = refName(s.$ref);
+      if (!seen.has(name)) {
+        seen.add(name);
+        walk(defs[name]);
+      }
+    }
+    for (const value of Object.values(s)) if (typeof value === "object") walk(value);
+  };
+  roots.forEach((name) => walk({ $ref: `#/definitions/${name}` }));
+  return seen;
+}
+
+// What clients send. A field with a serde default is always serialized (schemars marks the
+// skipped ones without a default), so in what the server sends it is always there; in what a
+// client sends it may be left out.
+const inputs = reachable([
+  ...Object.values(schema["x-methods"]).flatMap((m) => (m.params ? [m.params] : [])),
+  ...Object.values(schema["x-client-notifications"]),
+  ...Object.values(schema["x-server-requests"] ?? {}).map((r) => r.result),
+  "Op",
+]);
+let sentByServer = false;
+
+function doc(text, indent) {
+  if (!text) return "";
+  const lines = text.trim().split("\n");
+  if (lines.length === 1) return `${indent}/** ${lines[0]} */\n`;
+  return `${indent}/**\n${lines.map((l) => `${indent} * ${l}`.trimEnd()).join("\n")}\n${indent} */\n`;
+}
+
+function union(parts) {
+  const unique = [...new Set(parts)];
+  return unique.length === 1 ? unique[0] : unique.join(" | ");
+}
+
+function paren(t) {
+  return /[|&]/.test(t) && !/^\{[\s\S]*\}$/.test(t) ? `(${t})` : t;
+}
+
+/** The TypeScript type of a schema. */
+function ts(s, indent) {
+  if (s === true || s === undefined) return "unknown";
+  if (s === false) return "never";
+  if (s.$ref) return refName(s.$ref);
+  if (s.const !== undefined) return JSON.stringify(s.const);
+  if (s.enum) return union(s.enum.map((v) => JSON.stringify(v)));
+  const variants = s.oneOf ?? s.anyOf;
+  if (variants && !s.properties) {
+    const rest = variants.filter((v) => !isNull(v));
+    const types = rest.map((v) => ts(v, indent));
+    if (rest.length < variants.length) types.push("null");
+    return union(types);
+  }
+  if (Array.isArray(s.type)) {
+    return union(s.type.map((t) => ts({ ...s, type: t }, indent)));
+  }
+  switch (s.type) {
+    case "string":
+      return "string";
+    case "integer":
+    case "number":
+      return "number";
+    case "boolean":
+      return "boolean";
+    case "null":
+      return "null";
+    case "array":
+      return `${paren(ts(s.items, indent))}[]`;
+    case "object":
+    case undefined:
+      if (s.properties || variants) return object(s, indent);
+      if (s.additionalProperties !== undefined && s.additionalProperties !== false) {
+        return `{ [key: string]: ${ts(s.additionalProperties, indent)} }`;
+      }
+      return s.type === "object" ? "{ [key: string]: unknown }" : "unknown";
+  }
+  return "unknown";
+}
+
+/** An object type; with oneOf next to properties (a flattened enum, like Event), their intersection. */
+function object(s, indent) {
+  const inner = `${indent}  `;
+  const required = new Set(s.required ?? []);
+  const fields = Object.entries(s.properties ?? {}).map(([name, prop]) => {
+    const key = /^[A-Za-z_$][\w$]*$/.test(name) ? name : JSON.stringify(name);
+    const always = required.has(name) || (sentByServer && prop.default !== undefined);
+    const optional = always ? "" : "?";
+    return `${doc(prop.description, inner)}${inner}${key}${optional}: ${ts(prop, inner)};`;
+  });
+  const body = fields.length ? `{\n${fields.join("\n")}\n${indent}}` : "{}";
+  const variants = s.oneOf ?? s.anyOf;
+  if (!variants) return body;
+  const alternatives = variants.map((v) => paren(ts(v, indent)));
+  return fields.length ? `${body} & (${alternatives.join(" | ")})` : union(alternatives);
+}
+
+const names = Object.keys(defs).sort();
+let out = `// Generated by scripts/generate.mjs from her/crates/her-protocol/schema.json. Do not edit:
+// change the Rust types, run \`HER_UPDATE_SNAPSHOTS=1 cargo test -p her-protocol\` in her/, then
+// \`node packages/her-protocol/scripts/generate.mjs\`.
+
+/** The protocol version this client speaks (\`initialize\`). */
+export const PROTOCOL_VERSION = ${schema["x-protocol-version"]} as const;
+`;
+
+for (const name of names) {
+  sentByServer = !inputs.has(name);
+  out += `\n${doc(defs[name].description, "")}export type ${name} = ${ts(defs[name], "")};\n`;
+}
+
+const noParams = "Record<string, never>";
+out += `\n/** Requests: [params, result]. */\nexport interface Methods {\n`;
+for (const [method, entry] of Object.entries(schema["x-methods"]).sort(([a], [b]) => a.localeCompare(b))) {
+  out += `  ${JSON.stringify(method)}: [${entry.params ?? noParams}, ${entry.result}];\n`;
+}
+out += `}\n`;
+out += `\n/** Requests the server sends, which the client answers: [params, result]. */\nexport interface ServerRequests {\n`;
+for (const [method, entry] of Object.entries(schema["x-server-requests"] ?? {}).sort(([a], [b]) => a.localeCompare(b))) {
+  out += `  ${JSON.stringify(method)}: [${entry.params}, ${entry.result}];\n`;
+}
+out += `}\n`;
+for (const [title, key] of [
+  ["ServerNotifications", "x-server-notifications"],
+  ["ClientNotifications", "x-client-notifications"],
+]) {
+  out += `\n/** Notifications: their params. */\nexport interface ${title} {\n`;
+  for (const [method, params] of Object.entries(schema[key]).sort(([a], [b]) => a.localeCompare(b))) {
+    out += `  ${JSON.stringify(method)}: ${params};\n`;
+  }
+  out += `}\n`;
+}
+const codes = Object.entries(schema["x-error-codes"]).sort(([a], [b]) => Number(b) - Number(a));
+out += `\n/** JSON-RPC error codes and the \`kind\` their data carries. */\nexport const RPC_ERROR_KINDS = {\n`;
+for (const [code, kind] of codes) out += `  ${JSON.stringify(code)}: ${JSON.stringify(kind)},\n`;
+out += `} as const;\n\nexport type RpcErrorKind = (typeof RPC_ERROR_KINDS)[keyof typeof RPC_ERROR_KINDS];\n`;
+
+if (process.argv.includes("--check")) {
+  const current = readFileSync(outPath, "utf8");
+  if (current !== out) {
+    console.error("src/generated.ts is out of date; run `node packages/her-protocol/scripts/generate.mjs`");
+    process.exit(1);
+  }
+  console.log("generated.ts matches schema.json");
+} else {
+  writeFileSync(outPath, out);
+  console.log(`wrote ${outPath} (${names.length} types)`);
+}
