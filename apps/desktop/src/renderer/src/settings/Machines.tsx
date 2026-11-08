@@ -97,6 +97,31 @@ function ShareRow() {
   );
 }
 
+/**
+ * Her on a machine (docs/her-server.md §11, phase 1): turned on or off with Touch ID (SetHer); its
+ * assistants, conversations and settings stay there when it is off. Windows can't run her yet.
+ */
+function HerRow({ m }: { m: Machine }) {
+  const { t } = useTranslation("settings");
+  const st = useStore();
+  // The switch's new state while hermeshd and the signer work on it.
+  const [pending, setPending] = useState<boolean | null>(null);
+  const on = pending ?? m.her?.enabled ?? false;
+  const unsupported = m.her?.unsupported ?? "";
+  const windows = unsupported === "windows" || (m.status?.platform ?? "").split("/")[0] === "windows";
+  const set = async (v: boolean) => {
+    setPending(v);
+    await st.run(() => local.setHer({ machineId: m.machineId, enabled: v }));
+    setPending(null);
+  };
+  const desc = windows ? t("machines.herWindows") : unsupported ? t("machines.herUnsupported", { reason: unsupported }) : t("machines.herDesc");
+  return (
+    <SRow title={t("machines.herRun")} desc={desc}>
+      <Switch on={on} label={t("machines.herRun")} set={set} disabled={pending !== null || (!on && (windows || unsupported !== "")) || (!m.online && !m.local)} />
+    </SRow>
+  );
+}
+
 function MachineDetail({ m, ask, open }: { m: Machine; ask: (a: Ask) => void; open: (agent: string) => void }) {
   const { t } = useTranslation("settings");
   const st = useStore();
@@ -195,6 +220,15 @@ function MachineDetail({ m, ask, open }: { m: Machine; ask: (a: Ask) => void; op
           </div>
         </div>
       </div>
+      {/* Turning Her on is signed with the root key, which a machine only does not hold. */}
+      {!st.status?.machineOnly && (
+        <div>
+          <div className="fhead">{t("machines.her")}</div>
+          <div className="fgroup">
+            <HerRow m={m} />
+          </div>
+        </div>
+      )}
       <div className="set-acts">
         <button className="btn" onClick={rename}>{t("machines.rename")}</button>
         {/* What to send when something doesn't work; only this Mac's is at hand. */}
