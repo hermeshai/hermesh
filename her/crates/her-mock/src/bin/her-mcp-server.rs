@@ -5,7 +5,8 @@
 //! `--http ADDR` (Streamable HTTP instead of stdio; prints the URL). Over HTTP:
 //! `--sse` (the older HTTP+SSE transport), `--token TOKEN` (a fixed bearer token),
 //! `--oauth` (an OAuth authorization server beside it), with `--no-metadata-document`,
-//! `--no-registration` and `--token-ttl SECONDS`.
+//! `--no-registration` and `--token-ttl SECONDS`; `--public-host HOST` (the host clients reach
+//! it by, in its URL and its sign-in's addresses).
 
 use her_mock::mcp::McpTestOptions;
 use her_mock::mcp_auth::McpTestAuth;
@@ -35,6 +36,7 @@ async fn main() -> std::io::Result<()> {
             "--http" => http = Some(value()),
             "--simulation" => options.simulation = true,
             "--sse" => options.legacy_sse = true,
+            "--public-host" => options.public_host = Some(value()),
             "--token" => options.auth = McpTestAuth::Token(value()),
             "--oauth" => oauth = Some(oauth.unwrap_or_default()),
             "--no-metadata-document" => oauth.get_or_insert_with(OAuthOptions::default).metadata_document = false,
