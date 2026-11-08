@@ -1,0 +1,51 @@
+{
+  "title": "Your Chrome",
+  "connectTitle": "Connect Your Chrome",
+  "badge": {
+    "on": "In use",
+    "chosen": "Chosen",
+    "ready": "Connected",
+    "lost": "Not connected",
+    "outdated": "Needs update"
+  },
+  "off": "Let Her open sites that need your sign-ins in your own Chrome, on the Mac Her runs on.",
+  "on": "Sites that need your accounts open in your Chrome.",
+  "ready": "The extension is connected, but Her doesn't use it yet.",
+  "lost": "The extension is not connected. Check that Chrome is open on the Mac Her runs on, and that Hermesh is on in its extensions page.",
+  "refused": "Hermesh was just updated; the extension is moving to the new version and will connect in a few seconds.",
+  "refusedStuck": "The extension is still running the old program. Click its reload button on Chrome's extensions page.",
+  "outdated": {
+    "extension": "The extension in {{name}} is too old. It updates by itself; to update it now, choose “Update extension” in its menu.",
+    "her": "The extension is newer than this Hermesh; update Hermesh on the Mac Her runs on."
+  },
+  "connect": "Connect",
+  "use": "Use",
+  "reconnect": "Reconnect…",
+  "disconnect": "Stop Using",
+  "useThis": "Use This",
+  "guide": {
+    "title": "Connect Your Chrome",
+    "close": "Close",
+    "steps": {
+      "install": "Add extension",
+      "wait": "Connect"
+    },
+    "store": "Add the Hermesh extension to Chrome on the Mac Her runs on. You only do this once.",
+    "addToChrome": "Add to Chrome",
+    "install": "Add the Hermesh extension to Chrome on the Mac Her runs on. You only do this once:",
+    "howto": {
+      "open": "In Chrome, open the extensions page:",
+      "developer": "Turn on “Developer mode” at the top right of the page, and leave it on: Chrome may turn the extension off without it.",
+      "load": "Click “Load unpacked” and choose the extension's folder in Hermesh's source:"
+    },
+    "already": "Added it before? Find Hermesh on the extensions page and click its reload button.",
+    "added": "I've Added It",
+    "waiting": "Waiting for the extension in Chrome to connect…",
+    "countdown": "{{count}}s",
+    "waitHint": "Still not connected? Check that Chrome is open, then on its extensions page find Hermesh, make sure its switch is on, and click its reload button.",
+    "back": "Back",
+    "done": "Connected to {{name}}",
+    "doneHint": "Sites that need your accounts now open in your Chrome, in every conversation from its next step. Turn it off here at any time; closing the “debugging” bar at the top of Chrome also takes a tab back.",
+    "finish": "Done"
+  }
+}
