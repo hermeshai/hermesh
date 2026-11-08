@@ -52,12 +52,7 @@ var commandKeys = map[string]bool{"command": true, "args": true, "env": true, "e
 // and a setting her adds later must not slip through. A key maps to what may
 // be written in it, nil to anything; "*" stands for any key.
 var writable = node{
-	"model":           nil,
-	"thinking":        nil,
-	"permission_mode": nil, // short of full access
-	"approval_mode":   nil, // permission_mode's old name
-	"instructions":    {"extra": nil},
-	"web_search":      nil,
+	"web_search": nil,
 	// browser.extension: whether Her uses the owner's own Chrome, which only
 	// connects once the owner has added the Hermesh extension to it by hand
 	// on that Mac; that step is the decision, so no root key is asked.
@@ -119,10 +114,7 @@ func refuse(method string, params any) error {
 			if err != nil {
 				return connect.NewError(connect.CodeInvalidArgument, err)
 			}
-			switch {
-			case len(keys) == 1 && (keys[0] == "permission_mode" || keys[0] == "approval_mode") && fullAccess(e["value"]):
-				return denied("only SetHerAssistantMode, signed by the owner's root key, gives an assistant full access")
-			case !writes(keys, e["value"], e["merge"] == "upsert"):
+			if !writes(keys, e["value"], e["merge"] == "upsert") {
 				return denied("the owner's devices may not change %s: settings that let Her do more on this machine need the owner's root key", path)
 			}
 		}

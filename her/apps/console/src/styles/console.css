@@ -21,25 +21,6 @@
 /* While a connection to Her is being made again. */
 .conn-bar{display:flex;align-items:center;gap:8px;padding:7px 21px;font-size:12.5px;color:var(--l2);background:var(--fill);border-bottom:.5px solid var(--sep)}
 
-/* Overview: a line per part, each opening its page. */
-.ov-line{padding:0;min-height:44px;gap:0}
-.ov-go{flex:1;min-width:0;display:flex;align-items:center;gap:12px;align-self:stretch;padding:9px 14px;border:0;background:none;text-align:left;border-radius:inherit}
-.fgroup>.ov-line:first-child .ov-go{border-radius:var(--r-card) var(--r-card) 0 0}
-.fgroup>.ov-line:last-child .ov-go{border-radius:0 0 var(--r-card) var(--r-card)}
-.ov-go:hover{background:var(--fill)}
-.ov-go .fn{flex:none;width:120px}
-.ov-go .fv{flex:1;min-width:0;display:flex;justify-content:flex-end;color:var(--l2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.ov-go .chev{color:var(--l3)}
-.ov-line>.btn{margin-right:14px}
-.ov-state{display:inline-flex;align-items:center;gap:6px}
-.ov-state.ok{color:var(--green)}
-.ov-state.warn{color:var(--orange)}
-.overview .frow>.fv{color:var(--l2)}
-
-/* Instructions: one large field. */
-.instructions{max-width:760px;gap:0}
-textarea.field.ins-text{height:auto;min-height:320px;padding:12px 14px;resize:vertical;line-height:1.6;font-size:13.5px;border-radius:var(--r-card)}
-
 /* Browser: a site per row, an icon, the site, its level, a trash button; a row to add one. */
 .browser-set .site-icon{width:28px;height:28px;flex:none;border-radius:var(--r-sm);background:var(--fill);color:var(--l2);display:flex;align-items:center;justify-content:center}
 .browser-set .site-icon .ic{width:15px;height:15px}
@@ -59,5 +40,4 @@ textarea.field.ins-text{height:auto;min-height:320px;padding:12px 14px;resize:ve
   .nav-i{width:auto;flex:none}
   .set-body{padding:16px 16px 34px}
   .set-top{padding:0 16px}
-  .ov-go .fn{width:auto}
 }

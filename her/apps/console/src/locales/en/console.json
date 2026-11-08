@@ -1,14 +1,11 @@
 {
   "nav": {
     "label": "Pages",
-    "overview": "Overview",
     "models": "Models",
     "connectors": "Connectors",
     "skills": "Skills",
     "search": "Web Search",
     "browser": "Browser",
-    "instructions": "Instructions",
-    "defaults": "Defaults",
     "data": "Data"
   },
   "conn": {
@@ -20,7 +17,6 @@
   "undo": "Undo",
   "cancel": "Cancel",
   "close": "Close",
-  "save": "Save",
   "error": {
     "disconnected": "The connection to Her was lost",
     "notConnected": "Not connected to Her yet"
@@ -32,68 +28,6 @@
     "hoursAgo_one": "{{count}} hr ago",
     "hoursAgo_other": "{{count}} hr ago",
     "yesterday": "yesterday"
-  },
-  "overview": {
-    "model": "Model",
-    "ready": "Ready · {{name}}",
-    "noModel": "No model yet",
-    "connect": "Connect a Model",
-    "none": "None",
-    "connectors_one": "{{count}} connector",
-    "connectors_other": "{{count}} connectors",
-    "connectorsAttention_one": "{{count}} connector · {{attention}} needs attention",
-    "connectorsAttention_other": "{{count}} connectors · {{attention}} need attention",
-    "skills_one": "{{count}} on",
-    "skills_other": "{{count}} on",
-    "searchOff": "Off",
-    "searchVia": "Through {{name}}",
-    "searchNone": "No service can search",
-    "sites_one": "{{count}} site allowed",
-    "sites_other": "{{count}} sites allowed",
-    "noSites": "Asks before each site",
-    "instructionsSet": "Set",
-    "version": "Version"
-  },
-  "defaults": {
-    "model": "Model",
-    "noModel": "No model yet",
-    "connect": "Connect one",
-    "thinking": "Thinking",
-    "approval": "Approvals",
-    "note": "New assistants start with these; each can change them in its own settings. Full access is turned on for one assistant at a time, in the app, with Touch ID.",
-    "saved": "Saved. New assistants start with it."
-  },
-  "thinking": {
-    "default": "Default",
-    "off": "Off",
-    "on": "On",
-    "minimal": "Minimal",
-    "low": "Low",
-    "medium": "Medium",
-    "high": "High",
-    "xhigh": "Extra high",
-    "max": "Max"
-  },
-  "permission": {
-    "manual": {
-      "title": "Ask Permissions",
-      "desc": "Asks before changing files or running commands"
-    },
-    "accept-edits": {
-      "title": "Accept Edits",
-      "desc": "Changes files in its folder without asking; asks before commands"
-    },
-    "bypass-permissions": {
-      "title": "Full Access",
-      "desc": "Runs everything without asking, except deny rules, ask rules and deleting critical paths"
-    }
-  },
-  "instructions": {
-    "placeholder": "For example: Answer in English, briefly. When unsure, ask before acting.",
-    "note": "Every assistant of this environment is told this, besides its own instructions.",
-    "revert": "Revert",
-    "saved": "Instructions saved",
-    "cleared": "Instructions removed"
   },
   "data": {
     "title": "This environment's data",
