@@ -24,10 +24,13 @@ import (
 	machinev1 "github.com/hermeshai/hermesh/gen/go/hermesh/machine/v1"
 	sessionv1 "github.com/hermeshai/hermesh/gen/go/hermesh/session/v1"
 	"github.com/hermeshai/hermesh/internal/flock"
+	"github.com/hermeshai/hermesh/internal/herhost"
+	"github.com/hermeshai/hermesh/internal/paths"
 	"github.com/hermeshai/hermesh/internal/provider"
 	"github.com/hermeshai/hermesh/internal/provider/acp"
 	"github.com/hermeshai/hermesh/internal/provider/claude"
 	"github.com/hermeshai/hermesh/internal/provider/codex"
+	"github.com/hermeshai/hermesh/internal/shellenv"
 	"github.com/hermeshai/hermesh/pkg/identity"
 	"github.com/hermeshai/hermesh/pkg/transport"
 )
@@ -46,6 +49,9 @@ type Config struct {
 	// SelfErase: a machine on its own (not a trusted device's) stops with
 	// ErrErased when its owner erased everything, to be erased (Erase).
 	SelfErase bool
+	// HerBin is the her program (docs/her-server.md), "" when this machine
+	// has none; HerConsole is the folder of her's console.
+	HerBin, HerConsole string
 }
 
 func DefaultProviders() map[string]provider.Provider {
@@ -122,6 +128,9 @@ type Machine struct {
 	inboxWake chan struct{}
 	// tools is the sessions' own tools socket (sessiontools.go).
 	tools sessionTools
+	// her runs her while Her is on (her.go); herOn is the owner's setting.
+	her   *herhost.Host
+	herOn bool
 }
 
 const (
@@ -166,6 +175,8 @@ func Open(cfg Config) (*Machine, error) {
 	n := &Machine{cfg: cfg, log: cfg.Logger, st: st, key: key, lock: lock, inboxWake: make(chan struct{}, 1), machineID: identity.MachineID(identity.MarshalPublicKey(key.Public())),
 		infos: map[string]provider.Info{}, defaults: map[string]*identityv1.AgentDefaults{}, tunnels: map[*tunnel]struct{}{}, adminSeen: map[string]time.Time{}, grantSeen: map[string]uint64{},
 		statusKick: make(chan struct{}, 1), revocations: &identityv1.RevocationList{MinGrantVersions: map[string]uint64{}}}
+	n.her = herhost.New(herhost.Config{Bin: cfg.HerBin, ConsoleDir: cfg.HerConsole, Socket: paths.Her(cfg.DataDir), Env: shellenv.Environ,
+		Version: Version, Logger: n.log})
 	if n.audit, err = OpenAudit(filepath.Join(cfg.DataDir, "audit"), key); err != nil {
 		return nil, err
 	}
@@ -189,6 +200,8 @@ func Open(cfg Config) (*Machine, error) {
 
 func (n *Machine) loadState() error {
 	n.loadDefaults()
+	on, _ := n.st.Get(kHer)
+	n.herOn = string(on) == "1"
 	owner, _ := n.st.Get(kOwnerID)
 	relay, _ := n.st.Get(kRelayURL)
 	n.ownerID, n.relayURL = string(owner), string(relay)
@@ -226,6 +239,7 @@ func (n *Machine) loadState() error {
 }
 
 func (n *Machine) Close() error {
+	n.her.Stop()
 	n.sessions.w.close()
 	err := n.st.Close()
 	n.audit.Close()
@@ -421,6 +435,7 @@ func (n *Machine) Status() *machinev1.MachineStatus {
 	n.mu.Unlock()
 	st.RunningSessions = uint32(n.sessions.Running())
 	st.Sessions = n.sessions.Counts()
+	st.Her = n.herStatus()
 	return st
 }
 
@@ -436,6 +451,7 @@ func (n *Machine) Run(ctx context.Context) error {
 	go n.sessions.CountWork(ctx)
 	go n.serveSessionTools(ctx)
 	go n.serveControl(ctx)
+	n.startHer()
 	n.log.Info("hermeshd machine running", "machine", n.machineID, "name", n.Name(), "relay", n.relayURL)
 	n.runLink(ctx)
 	n.mu.Lock()

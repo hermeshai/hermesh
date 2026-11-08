@@ -132,7 +132,9 @@ A computer that runs no coding agents can approve instead: hermeshd device.`}
 				*o.dst = o.v
 			}
 		}
-		return machine.Config{DataDir: filepath.Join(dataDir, "machine"), Logger: logger(verbose), Providers: providers(), Limits: lim, WorkspaceMode: workspaceMode}
+		her := herBin()
+		return machine.Config{DataDir: filepath.Join(dataDir, "machine"), Logger: logger(verbose), Providers: providers(), Limits: lim, WorkspaceMode: workspaceMode,
+			HerBin: her, HerConsole: herConsole(her)}
 	}
 	openMachine := func() (*machine.Machine, error) { return machine.Open(machineConfig()) }
 
@@ -672,6 +674,36 @@ func providers() map[string]provider.Provider {
 		}
 	}
 	return ps
+}
+
+// herBin is the her program (docs/her-server.md §6.4): $HERMESH_HER_BIN, as
+// HERMESH_<AGENT>_BIN is a coding agent's, else her beside this program (in
+// the Mac app both are in Contents/Helpers); "" when there is none.
+func herBin() string {
+	bin := os.Getenv("HERMESH_HER_BIN")
+	if bin == "" {
+		exe, err := os.Executable()
+		if err != nil {
+			return ""
+		}
+		if exe, err = filepath.EvalSymlinks(exe); err != nil {
+			return ""
+		}
+		bin = filepath.Join(filepath.Dir(exe), "her")
+	}
+	if st, err := os.Stat(bin); err != nil || st.IsDir() {
+		return ""
+	}
+	return bin
+}
+
+// herConsole is the folder of her's console: $HERMESH_HER_CONSOLE, else
+// console/ beside her.
+func herConsole(her string) string {
+	if dir := os.Getenv("HERMESH_HER_CONSOLE"); dir != "" || her == "" {
+		return dir
+	}
+	return filepath.Join(filepath.Dir(her), "console")
 }
 
 // installPages are where the coding agents Hermesh checks are installed from.
