@@ -1168,6 +1168,16 @@ fn main() -> ExitCode {
         Ok(cli) => cli,
         Err(err) => return usage_error(err, &args),
     };
+    // A server on a socket outlives its clients: one that goes away while her writes to it must
+    // cost that connection an error, not the process. Linux raises SIGPIPE for a socket; macOS's
+    // sockets don't, which hid it.
+    #[cfg(unix)]
+    if matches!(command, Command::Serve { listen: Some(_), .. }) {
+        // SAFETY: still before any thread is started.
+        unsafe {
+            libc::signal(libc::SIGPIPE, libc::SIG_IGN);
+        }
+    }
     let result = setup::load_mcp_config(&mcp_config).and_then(|()| match command {
         // Local commands skip the async runtime: starting it costs more than they do.
         Command::Sessions { list, action: None } | Command::Sessions { action: Some(SessionsAction::List(list)), .. } => {
