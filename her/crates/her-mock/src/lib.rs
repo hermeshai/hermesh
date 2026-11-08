@@ -49,7 +49,7 @@
 //! | `relay_note:SECONDS` | as `relay_slow`, with a sub-agent that runs `note:SECONDS:3 月的数据整月缺失。` |
 //! | `note_session:SECONDS` | the same in a session: `spawn_agent`, `交给子智能体了。`, then `回复：<the latest message>` for whatever comes next |
 //! | `note:SECONDS:TEXT` | half a second later, a sub-agent's `send_message` of TEXT to `main`, then a bash call running `sleep SECONDS`, then `写完了。` |
-//! | `routine:NAME\|SCHEDULE\|RUN` | a bot's `manage_routine` create, with RUN as the routine's prompt in brackets (`[[mock:RUN]]`); then, for its result and for each report that wakes it, `转告：<the text>` sent with `end_turn` |
+//! | `routine:NAME\|SCHEDULE\|RUN` | a bot's `manage_routine` create, with RUN as the routine's prompt in brackets (`[[mock:RUN]]`); then `转告：<its result>` sent with `end_turn`, and for each report that wakes it, what the run found, sent with `end_turn` |
 //! | `say:TEXT` | TEXT, as it is |
 //!
 //! [`MockOptions`] adds a gateway's latency: a pause before the first chunk of every reply
@@ -538,6 +538,14 @@ fn answer_latest(messages: &[Value]) -> Step {
     Step::calls(vec![("send_to_user", json!({ "text": format!("回复：{}", last_user_text(messages)), "end_turn": true }))])
 }
 
+/// What a routine's report found: the text inside `<routine_report …>`, without the tags or what
+/// the kernel says after them. `None` for anything else.
+fn routine_found(text: &str) -> Option<&str> {
+    let (_, rest) = text.strip_prefix("<routine_report ")?.split_once('>')?;
+    let (found, _) = rest.split_once("</routine_report>")?;
+    Some(found.trim())
+}
+
 /// A scenario's last words: text, or in a bot's conversation, where only `send_to_user` reaches
 /// the owner, sent with `end_turn`.
 fn last_words(bot: bool, text: String) -> Plan {
@@ -856,9 +864,11 @@ fn plan(shared: &Shared, messages: &[Value], name: &str, arg: &str, prompt: &str
                 )]))
             }
             _ => {
-                // What came last, but for what the kernel adds to keep the model up to date.
+                // What came last, but for what the kernel adds to keep the model up to date. Of a
+                // report, only what the run found, as a model passes it on.
                 let text = messages.iter().rev().map(content_text).find(|text| !text.starts_with("<environment_update>")).unwrap_or_default();
-                Plan::Step(Step::calls(vec![("send_to_user", json!({ "text": format!("转告：{text}"), "end_turn": true }))]))
+                let text = routine_found(&text).map_or_else(|| format!("转告：{text}"), str::to_string);
+                Plan::Step(Step::calls(vec![("send_to_user", json!({ "text": text, "end_turn": true }))]))
             }
         },
         // A bot that never sends, reminded or not (bot-design §3.11).
@@ -1461,6 +1471,24 @@ mod tests {
         let last = |bot| call_of(plan(&shared(), &messages, "mcp", "vault:Apollo", "go", 2, bot));
         assert_eq!(last(false), ("text", json!("mcp done: Release code for Apollo: FX-1")));
         assert_eq!(last(true), ("send_to_user", json!({"text": "mcp done: Release code for Apollo: FX-1", "end_turn": true})));
+    }
+
+    #[test]
+    fn a_bot_passes_on_what_its_routine_found() {
+        let arg = "Stretch|in 1m|say:Time to stretch.";
+        let mut messages = vec![
+            json!({"role": "user", "content": format!("[[mock:routine:{arg}]] remind me")}),
+            json!({"role": "assistant", "content": null}),
+            json!({"role": "tool", "content": "Saved routine \"Stretch\" (id r_1)."}),
+        ];
+        let told = |messages: &[Value], step| call_of(plan(&shared(), messages, "routine", arg, "remind me", step, true));
+        assert_eq!(told(&messages, 1), ("send_to_user", json!({"text": "转告：Saved routine \"Stretch\" (id r_1).", "end_turn": true})));
+        // The report wakes it: the tags and what the kernel says after them stay out.
+        messages.push(json!({"role": "assistant", "content": null}));
+        messages.push(json!({"role": "user", "content": "<routine_report routine=\"Stretch\" id=\"r_1\" scheduled=\"Sun 2026-11-08 20:00\" \
+            ran=\"Sun 2026-11-08 20:00\">\nTime to stretch.\n</routine_report>\nThis routine is the user's own request: pass on what it found."}));
+        messages.push(json!({"role": "user", "content": "<environment_update>\nTime: Sun 2026-11-08 20:00\n</environment_update>"}));
+        assert_eq!(told(&messages, 2), ("send_to_user", json!({"text": "Time to stretch.", "end_turn": true})));
     }
 
     fn call_of(plan: Plan) -> (&'static str, Value) {
