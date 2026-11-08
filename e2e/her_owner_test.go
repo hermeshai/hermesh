@@ -27,24 +27,29 @@ import (
 // Her on the owner's machines (docs/her-server.md), as the Mac app uses it:
 // her with a home of its own, and her-mock as its model service.
 
-// herBinaries are her and her-mock for this computer: HERMESH_HER and
-// HERMESH_HER_MOCK, else the debug builds in her/target.
+// herBinaries are her and her-mock for this computer: HERMESH_HER_BIN, as
+// internal/herhost's tests take it, else the debug build in her/target; and
+// HERMESH_HER_MOCK, else the her-mock beside that her.
 func herBinaries(t *testing.T) (her, mock string) {
 	t.Helper()
 	if runtime.GOOS == "windows" {
 		t.Skip("her has no Windows build")
 	}
-	find := func(env, name string) string {
-		p := os.Getenv(env)
-		if p == "" {
-			p, _ = filepath.Abs(filepath.Join("her", "target", "debug", name))
-		}
+	check := func(p, name, env string) string {
 		if _, err := os.Stat(p); err != nil {
 			t.Skipf("no %s (%v): build her (cargo build in her/) or set %s", name, err, env)
 		}
 		return p
 	}
-	return find("HERMESH_HER", "her"), find("HERMESH_HER_MOCK", "her-mock")
+	her = os.Getenv("HERMESH_HER_BIN")
+	if her == "" {
+		her, _ = filepath.Abs(filepath.Join("her", "target", "debug", "her"))
+	}
+	mock = os.Getenv("HERMESH_HER_MOCK")
+	if mock == "" {
+		mock = filepath.Join(filepath.Dir(her), "her-mock")
+	}
+	return check(her, "her", "HERMESH_HER_BIN"), check(mock, "her-mock", "HERMESH_HER_MOCK")
 }
 
 // herMock is her-mock serving models: base is its address, models the
