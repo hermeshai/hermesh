@@ -36,4 +36,17 @@ func TestHerLookup(t *testing.T) {
 	if got := herConsole(""); got != "" {
 		t.Fatalf("herConsole without her = %q", got)
 	}
+
+	// In the Mac app her is in Contents/Helpers, and its console in
+	// Contents/Resources; console/ beside her still comes first.
+	app := filepath.Join(t.TempDir(), "Hermesh.app", "Contents")
+	os.MkdirAll(filepath.Join(app, "Resources", "console"), 0o755)
+	bundled := filepath.Join(app, "Helpers", "her")
+	if got := herConsole(bundled); got != filepath.Join(app, "Resources", "console") {
+		t.Fatalf("herConsole in the app = %q", got)
+	}
+	os.MkdirAll(filepath.Join(app, "Helpers", "console"), 0o755)
+	if got := herConsole(bundled); got != filepath.Join(app, "Helpers", "console") {
+		t.Fatalf("herConsole with console/ beside her = %q", got)
+	}
 }

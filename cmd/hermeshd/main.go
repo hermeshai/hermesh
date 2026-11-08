@@ -700,12 +700,22 @@ func herBin() string {
 }
 
 // herConsole is the folder of her's console: $HERMESH_HER_CONSOLE, else
-// console/ beside her.
+// console/ beside her, else the Mac app's Contents/Resources/console (her is
+// in Contents/Helpers, where a signed bundle holds only code).
 func herConsole(her string) string {
 	if dir := os.Getenv("HERMESH_HER_CONSOLE"); dir != "" || her == "" {
 		return dir
 	}
-	return filepath.Join(filepath.Dir(her), "console")
+	dir := filepath.Join(filepath.Dir(her), "console")
+	if app := filepath.Join(filepath.Dir(her), "..", "Resources", "console"); !isDir(dir) && isDir(app) {
+		return app
+	}
+	return dir
+}
+
+func isDir(path string) bool {
+	st, err := os.Stat(path)
+	return err == nil && st.IsDir()
 }
 
 // installPages are where the coding agents Hermesh checks are installed from.
