@@ -90,9 +90,14 @@ func herHome(t *testing.T, models string) string {
 	return home
 }
 
-// herConsole is a console's files: an index.html that says it is the test's.
+// herConsole is a console's files: $HERMESH_HER_CONSOLE, such as the real
+// one built (her/apps/console/dist), else an index.html that says it is the
+// test's.
 func herConsole(t *testing.T) string {
 	t.Helper()
+	if dir := os.Getenv("HERMESH_HER_CONSOLE"); dir != "" {
+		return dir
+	}
 	dir := t.TempDir()
 	if err := os.WriteFile(filepath.Join(dir, "index.html"), []byte("<!doctype html><title>Her console</title>the e2e console\n"), 0o644); err != nil {
 		t.Fatal(err)
