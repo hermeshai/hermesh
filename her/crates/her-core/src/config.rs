@@ -251,7 +251,8 @@ pub enum AppLevel {
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct DesktopSettings {
     /// Computer use. Not set: on while the desktop app is connected, as the built-in browser is
-    /// (docs/desktop/computer-use-design.md); the user's own switch otherwise.
+    /// (docs/desktop/computer-use-design.md), or when `HER_DESKTOP=on`; the user's own switch
+    /// otherwise.
     pub enabled: Option<bool>,
     pub executable: Option<PathBuf>,
     /// Keyed by lowercased bundle id or name.
@@ -284,8 +285,10 @@ impl DesktopSettings {
     }
 
     /// Whether the computer use tools are on, `app` saying whether the desktop app is connected.
+    /// `HER_DESKTOP=on` turns them on where nothing is set: a host that runs her on a Mac, where
+    /// macOS asks the owner for the permissions first (Hermesh, docs/her-server.md §4.4).
     pub fn on(&self, app: bool) -> bool {
-        self.enabled.unwrap_or(app)
+        self.enabled.unwrap_or(app || std::env::var_os("HER_DESKTOP").is_some_and(|v| v == "on"))
     }
 
     /// The configured level of `app`, by bundle id or name.

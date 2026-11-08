@@ -11,6 +11,8 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
+	"slices"
 	"strings"
 	"syscall"
 	"testing"
@@ -284,6 +286,32 @@ func TestHostSaysWhyHerFails(t *testing.T) {
 	_, err := h.Call(context.Background(), &herv1.CallRequest{Request: &herv1.Request{Method: "models/list"}})
 	if code(t, err, connect.CodeUnavailable); !strings.Contains(err.Error(), "the keychain is locked") {
 		t.Fatal(err)
+	}
+}
+
+// On a Mac her runs with computer use on unless the owner's configuration
+// turns it off (HER_DESKTOP=on); hermeshd's own HER_DESKTOP wins, and
+// elsewhere none is set.
+func TestHostTurnsComputerUseOnOnAMac(t *testing.T) {
+	bin := filepath.Join(t.TempDir(), "her")
+	os.WriteFile(bin, []byte("#!/bin/sh\necho \"her: desktop ${HER_DESKTOP-unset}\" >&2\nexit 3\n"), 0o755)
+	without := func() []string {
+		return slices.DeleteFunc(os.Environ(), func(kv string) bool { return strings.HasPrefix(kv, "HER_DESKTOP=") })
+	}
+	for _, c := range []struct {
+		env  func() []string
+		want string
+	}{
+		{without, map[bool]string{true: "on", false: "unset"}[runtime.GOOS == "darwin"]},
+		{func() []string { return append(without(), "HER_DESKTOP=off") }, "off"},
+	} {
+		h := New(Config{Bin: bin, Socket: shortSocket(t), Env: c.env})
+		h.Start()
+		eventually(t, func() bool { return strings.Contains(h.Status().Error, "her: desktop ") })
+		if err := h.Status().Error; !strings.Contains(err, "her: desktop "+c.want) {
+			t.Errorf("want HER_DESKTOP %s: %s", c.want, err)
+		}
+		h.Stop()
 	}
 }
 
