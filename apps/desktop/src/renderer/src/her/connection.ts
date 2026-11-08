@@ -94,6 +94,7 @@ export function useEnvironment(machine: Machine): Environment {
     return () => {
       stop = true;
       transport.close();
+      setState((s) => (s.id === id && s.rpc === client ? { ...s, rpc: null } : s));
     };
   }, [id, live, running, attempt]);
   return state.id === id ? state : { ...fromKept(id) };
@@ -234,6 +235,7 @@ export function useConversation(machine: Machine, bot: BotSummary | undefined, s
       earlier.current = async () => {};
       cancelAnimationFrame(frame);
       transport.close();
+      setGot((g) => (g.key === key && g.rpc === client ? { ...g, rpc: null } : g));
     };
   }, [id, botId, live, running, modelReady, generation, attempt]);
 

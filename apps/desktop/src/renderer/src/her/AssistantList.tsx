@@ -8,6 +8,7 @@ import { botContextMenu } from "./actions";
 import { NameField } from "./AssistantPanel";
 import { BotAvatar } from "./Avatar";
 import { useHer, type Her } from "./context";
+import { reachable } from "./environments";
 import { shortTime } from "./format";
 
 /**
@@ -27,7 +28,7 @@ export function AssistantList() {
       {her.env.bots.map((b) => (
         <BotRow key={b.id} b={b} sel={b.id === her.bot?.id} renaming={her.renaming === b.id} page={latest} />
       ))}
-      {!her.env.botsLoaded && her.env.bots.length === 0 && (
+      {!her.env.botsLoaded && her.env.bots.length === 0 && reachable(her.machine) && (
         <div className="loadrow">
           <span className="mini-spin" />
           {t("list.loading")}
