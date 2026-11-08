@@ -264,7 +264,8 @@ func (o *Owner) SetHerAssistantMode(ctx context.Context, machineID, botID, mode 
 // ---------------------------------------------------------------------------
 // Her's protocol, passed on.
 
-// HerOpen opens a her connection on a machine and passes on what it sends.
+// HerOpen opens a her connection on a machine and passes on what it sends,
+// keeping what it says of Her here (her_conversation.go).
 func (o *Owner) HerOpen(ctx context.Context, machineID string, req *herv1.OpenRequest, send func(*herv1.OpenEvent) error) error {
 	h, err := o.herOn(ctx, machineID)
 	if err != nil {
@@ -273,7 +274,14 @@ func (o *Owner) HerOpen(ctx context.Context, machineID string, req *herv1.OpenRe
 	if req == nil {
 		req = &herv1.OpenRequest{}
 	}
-	return h.HerOpen(ctx, req, send)
+	f := &herFollower{o: o, machine: machineID, setup: req.Setup}
+	return h.HerOpen(ctx, req, func(e *herv1.OpenEvent) error {
+		if err := send(e); err != nil {
+			return err
+		}
+		f.see(e)
+		return nil
+	})
 }
 
 // HerCall sends one her request to a machine.
@@ -696,6 +704,7 @@ func (o *Owner) withHer(machines []*localv1.Machine) {
 }
 
 // keepHer keeps a machine's Her as it answered, once Her was on there.
+// Turned off there, what was said there is no longer kept.
 func (o *Owner) keepHer(machineID string, her *machinev1.HerStatus) {
 	if her == nil {
 		return
@@ -710,6 +719,11 @@ func (o *Owner) keepHer(machineID string, her *machinev1.HerStatus) {
 	b, _ := proto.Marshal(her)
 	if _, err := o.st.db.Exec(`INSERT INTO her_status(machine_id,status) VALUES(?,?) ON CONFLICT(machine_id) DO UPDATE SET status=excluded.status`, machineID, b); err != nil {
 		o.log.Warn("Her's status not kept", "machine", machineID, "err", err)
+	}
+	if !her.Enabled {
+		if err := o.st.dropHerKept(machineID); err != nil {
+			o.log.Warn("forgetting Her's conversation", "machine", machineID, "err", err)
+		}
 	}
 }
 
@@ -785,7 +799,8 @@ func (s *store) herWaiting(machineID, botID string) ([]*localv1.HerWaiting, erro
 }
 
 // forgetHer forgets what this device kept of a removed machine's Her: its
-// waiting messages can't be delivered now.
+// waiting messages can't be delivered now, and what was said there is not
+// shown.
 func (o *Owner) forgetHer(machineID string) {
 	o.herMu.Lock()
 	defer o.herMu.Unlock()
@@ -794,6 +809,9 @@ func (o *Owner) forgetHer(machineID string) {
 		if _, err := o.st.db.Exec(q, machineID); err != nil {
 			o.log.Warn("forgetting a removed machine's Her", "machine", machineID, "err", err)
 		}
+	}
+	if err := o.st.dropHerKept(machineID); err != nil {
+		o.log.Warn("forgetting a removed machine's Her", "machine", machineID, "err", err)
 	}
 }
 

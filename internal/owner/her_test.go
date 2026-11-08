@@ -909,6 +909,7 @@ func TestHerWrites(t *testing.T) {
 		localv1connect.LocalServiceListHerWaitingProcedure:         false,
 		localv1connect.LocalServiceGetHerConsoleProcedure:          false,
 		localv1connect.LocalServiceDeleteHerWaitingProcedure:       false,
+		localv1connect.LocalServiceGetHerConversationProcedure:     false,
 		localv1connect.LocalServiceSetHerProcedure:                 true,
 		localv1connect.LocalServiceSetHerAssistantModeProcedure:    true,
 		localv1connect.LocalServiceSetHerCommandConnectorProcedure: true,

@@ -489,8 +489,9 @@ The protos are the contract; this is their outline.
   each machine's Her as last seen, so an offline environment stays listed.
   LocalService gains `SetHer`, `SetHerAssistantMode`,
   `SetHerCommandConnector`, `HerOpen`, `HerCall`, `HerSend`,
-  `ListHerWaiting`, `HerUpload`, `HerDownload` (files go by path on the
-  device) and `GetHerConsole` (a 127.0.0.1 address with a token).
+  `ListHerWaiting`, `GetHerConversation` (what the device keeps of an
+  environment's Her, §7), `HerUpload`, `HerDownload` (files go by path on
+  the device) and `GetHerConsole` (a 127.0.0.1 address with a token).
 
 ### 6.3 Changes in her
 
@@ -537,9 +538,21 @@ The protos are the contract; this is their outline.
 | Messages written while a Her Server is offline | Delivered when it is back | Kept on the device that wrote them, shown as waiting | Nothing |
 | Presence | | | Online or offline, name, version |
 
-The owner-role hermeshd keeps each environment's recent messages as its
-replica keeps sessions ([state-sync.md](state-sync.md) §4), so an assistant
-opens at once and an offline environment still shows what was said.
+The owner-role hermeshd keeps each environment's recent messages in its
+`owner.db`, so the Her entry opens at once and an offline environment still
+shows what was said, after a restart too. For each machine it keeps Her, as
+`bots/subscribe` and `bots/changed` last listed the assistants, and the end
+of Her's conversation as the entry shows it, in her's own snapshot JSON.
+That is its last 100 messages: the owner's, the reports delivered into it
+by sub-agents and routines, and Her's, holding only the calls that sent the
+owner something (`send_to_user`, `manage_routine`); with those calls'
+results and how each task ended. Her's own steps and earlier history are
+left out. hermeshd takes it from the `HerOpen` streams it passes on while
+the entry follows them (`bots/open`'s snapshot, then the conversation's
+events), so her is asked nothing more, and serves it as
+`GetHerConversation`. What Her says while no window follows the
+conversation is kept once the entry opens it again. It all goes when the
+machine is removed or Her is turned off there.
 
 What `~/.her` holds on a Her Server:
 
