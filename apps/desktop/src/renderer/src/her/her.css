@@ -40,8 +40,9 @@
 @media (prefers-reduced-motion:reduce){.bav.busy>svg,.bav.busy.mark>.hm-mark,.bav.busy .ch{animation:none}}
 
 /* The page's top: Her's avatar and name in the middle, as in a chat app, and beside them the environment, a quiet
-   menu, when Her runs on more than one machine. The buttons sit at the bar's right end. */
-.her-id{position:absolute;left:50%;transform:translateX(-50%);display:flex;align-items:center;gap:8px;height:30px;max-width:calc(100% - 300px);min-width:0;color:var(--l1)}
+   menu, when Her runs on more than one machine. The buttons sit at the bar's right end. Centred without a transform:
+   one would hold the environment's fixed menu, which then opened that far to the right. */
+.her-id{position:absolute;left:0;right:0;width:fit-content;margin:0 auto;display:flex;align-items:center;gap:8px;height:30px;max-width:calc(100% - 300px);min-width:0;color:var(--l1)}
 .her-id-n{flex:none;font-size:14px;font-weight:500;white-space:nowrap}
 .her-id-sep{flex:none;margin:0 -2px;color:var(--l3)}
 .her-env{display:flex;align-items:center;gap:4px;min-width:0;height:26px;padding:0 6px;border:0;border-radius:var(--r-md);background:none;font:inherit;font-size:14px;color:var(--l2)}
