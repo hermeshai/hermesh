@@ -51,8 +51,8 @@ type herEnvironment struct {
 
 // newHerEnvironment pairs the machine to the owner Mac, as Add Machine pairs
 // a server, turns Her on there (signed by the test's signer) and opens its
-// console.
-func newHerEnvironment(t *testing.T) *herEnvironment {
+// console. herVars are more of her's environment there.
+func newHerEnvironment(t *testing.T, herVars ...string) *herEnvironment {
 	t.Helper()
 	if testing.Short() {
 		t.Skip("e2e")
@@ -76,10 +76,13 @@ func newHerEnvironment(t *testing.T) *herEnvironment {
 			env.mcpServer = "/opt/her/her-mcp-server"
 			args = []string{"-v", p + ":" + env.mcpServer + ":ro"}
 		}
+		for _, v := range herVars {
+			args = append(args, "-e", v)
+		}
 		env.machine, env.container = startLinuxHer(t, w, herLinux, mock, herConsole(t), args...)
 		env.home, env.mac = "/data/her", "host.docker.internal"
 	} else {
-		env.machine, env.home = startHerServer(t, w, her, mock)
+		env.machine, env.home = startHerServer(t, w, her, mock, herVars...)
 	}
 
 	turnHerOn(t, env.c, env.machine)
@@ -96,7 +99,7 @@ func newHerEnvironment(t *testing.T) *herEnvironment {
 // the cloud machine, and pairs it to the owner Mac as Add Machine pairs a
 // server. It returns the machine's id and her's home there, once it is
 // online.
-func startHerServer(t *testing.T, w *ownerMac, her string, mock *herMock) (machineID, home string) {
+func startHerServer(t *testing.T, w *ownerMac, her string, mock *herMock, herVars ...string) (machineID, home string) {
 	t.Helper()
 	// Its home as the machine names it, symbolic links resolved (/private/var
 	// on macOS).
@@ -115,7 +118,7 @@ func startHerServer(t *testing.T, w *ownerMac, her string, mock *herMock) (machi
 	if code := pair.wait(t, 30*time.Second); code != 0 {
 		t.Fatalf("pair: %s", pair.output())
 	}
-	server := start(t, "her-server", herEnv(her, herConsole(t), home, mock.base), daemon, "run", "--data-dir", data)
+	server := start(t, "her-server", append(herEnv(her, herConsole(t), home, mock.base), herVars...), daemon, "run", "--data-dir", data)
 	w.logs = append(w.logs, server)
 	// Stopped as a service is, so that it stops her: killed, it would leave
 	// her running, in a process group of its own.
@@ -677,6 +680,113 @@ func TestHerConnectorSignIn(t *testing.T) {
 	asked, said := askHer(t, env, "[[mock:mcp:tracker:Apollo]] What is Apollo's release code?", "mcp done: Release code for Apollo: FX-")
 	if !slices.Equal(asked, []string{"call_tool"}) {
 		t.Fatalf("Her asked to use %v before answering %q", asked, said)
+	}
+}
+
+// chatGPTFixture runs her's ChatGPT fixture (her-connections'
+// tests/chatgpt-fixture.mjs) on this computer, standing in for OpenAI's
+// sign-in and models, and returns its address, http://127.0.0.1:<port>.
+func chatGPTFixture(t *testing.T) string {
+	t.Helper()
+	node, err := exec.LookPath("node")
+	if err != nil {
+		t.Skip("no node to run her's ChatGPT fixture")
+	}
+	fixture, _ := filepath.Abs(filepath.Join("her", "crates", "her-connections", "tests", "chatgpt-fixture.mjs"))
+	p := start(t, "chatgpt fixture", nil, node, "--input-type=module", "-e", `const f = await (await import(process.argv[1])).fixture();
+process.on("SIGTERM", () => f.close().then(() => process.exit(0)));
+console.log("fixture at " + f.base);`, fixture)
+	t.Cleanup(p.stop) // so that it removes its folder
+	var at []string
+	eventually(t, 20*time.Second, "the fixture's address", func() bool {
+		at = regexp.MustCompile(`fixture at (http://127\.0\.0\.1:\d+)`).FindStringSubmatch(p.output())
+		return at != nil
+	})
+	return at[1]
+}
+
+// TestHerChatGPTSignIn: signing in to ChatGPT from this Mac, for the
+// environment: her makes the authorization request on the Her Server, the
+// browser here signs in and comes back to this Mac's hermeshd, and the
+// console brings what the redirect carried to her, who exchanges it, keeps
+// the tokens there and takes the account's models (docs/her-server.md §5.4,
+// §11 phase 2.3). her's ChatGPT fixture stands in for OpenAI; her takes its
+// address (HER_TEST_CHATGPT_BASE, a loopback address) only as a debug build.
+func TestHerChatGPTSignIn(t *testing.T) {
+	fixture := chatGPTFixture(t)
+	env := newHerEnvironment(t, "HER_TEST_CHATGPT_BASE="+fixture)
+	if env.container != "" {
+		// In the container, that loopback address is forwarded to this
+		// computer, where the fixture runs.
+		port := fixture[strings.LastIndex(fixture, ":")+1:]
+		if out, err := exec.Command("docker", "exec", "-d", env.container, "nc", "-lk", "-s", "127.0.0.1", "-p", port, "-e", "nc", "host.docker.internal", port).CombinedOutput(); err != nil {
+			t.Fatalf("forwarding the fixture's address: %v %s", err, out)
+		}
+	}
+	page := openConsolePage(t, env.console)
+
+	// The browser is to come back to this Mac, where hermeshd catches it.
+	code, body := httpDo(t, http.MethodPost, env.console+"signin", `{"path":"/auth/callback"}`)
+	var signin struct {
+		ID          string `json:"id"`
+		RedirectURI string `json:"redirect_uri"`
+	}
+	if json.Unmarshal([]byte(body), &signin); code != http.StatusOK || signin.ID == "" {
+		t.Fatalf("signin: %d %s", code, body)
+	}
+	var started struct {
+		LoginID      string `json:"login_id"`
+		AuthorizeURL string `json:"authorize_url"`
+	}
+	page.call("chatgpt/login", map[string]string{"redirect_uri": signin.RedirectURI}, &started)
+	if !strings.HasPrefix(started.AuthorizeURL, fixture+"/") {
+		page.call("chatgpt/cancel", map[string]string{"login_id": started.LoginID}, nil)
+		t.Skipf("her there signs in at %s: only a debug build takes HER_TEST_CHATGPT_BASE", started.AuthorizeURL)
+	}
+
+	// The browser: the fixture lets the account in and sends it back to this
+	// Mac's catcher.
+	res, err := browser.Get(started.AuthorizeURL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	landed, _ := io.ReadAll(res.Body)
+	res.Body.Close()
+	if res.StatusCode != http.StatusOK || !strings.Contains(string(landed), "go back to Hermesh") || !strings.HasPrefix(res.Request.URL.String(), signin.RedirectURI+"?") {
+		t.Fatalf("the browser: %d at %s: %s", res.StatusCode, res.Request.URL, landed)
+	}
+	code, body = httpDo(t, http.MethodGet, env.console+"signin/"+signin.ID, "")
+	var caught struct {
+		Code     string `json:"code"`
+		State    string `json:"state"`
+		ClientID string `json:"client_id"`
+	}
+	if json.Unmarshal([]byte(body), &caught); code != http.StatusOK || caught.Code == "" || caught.State == "" || caught.ClientID == "" {
+		t.Fatalf("what the redirect brought: %d %s", code, body)
+	}
+
+	// her exchanges it there: connected, with the account's models, and the
+	// tokens in the Her Server's credential store (a file in this test).
+	var done struct {
+		State      string `json:"state"`
+		Account    string `json:"account"`
+		Message    string `json:"message"`
+		Connection struct {
+			Models []struct {
+				ID string `json:"id"`
+			} `json:"models"`
+		} `json:"connection"`
+	}
+	page.call("chatgpt/complete", map[string]string{"login_id": started.LoginID, "code": caught.Code, "state": caught.State, "client_id": caught.ClientID}, &done)
+	var models []string
+	for _, m := range done.Connection.Models {
+		models = append(models, m.ID)
+	}
+	if done.State != "connected" || done.Account != "tester@example.invalid" || !slices.Contains(models, "gpt-test") {
+		t.Fatalf("after signing in: %+v", done)
+	}
+	if b, _ := env.onMachine("cat", filepath.Join(env.home, "connections", "chatgpt", "tokens.toml")); !bytes.Contains(b, []byte("chatgpt-api-")) {
+		t.Fatal("no ChatGPT tokens in the Her Server's credential store")
 	}
 }
 
