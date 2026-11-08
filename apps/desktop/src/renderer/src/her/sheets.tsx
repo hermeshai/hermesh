@@ -1,18 +1,16 @@
-import { useLayoutEffect, useMemo, useState, type CSSProperties, type ReactNode } from "react";
+import { useLayoutEffect, type CSSProperties, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { useTranslation } from "react-i18next";
-import type { Avatar as AvatarSpec, AvatarHue, AvatarInput, AvatarShape, BotSummary, ThinkingLevel } from "@hermesh/her-protocol";
+import type { Avatar as AvatarSpec, AvatarHue, AvatarShape, BotSummary } from "@hermesh/her-protocol";
 import { local } from "../api";
 import { ErrorLine, SignerWaiting, useAction } from "../sheets/common";
 import { useStore } from "../store";
 import { Avatar, hues, shapes } from "./Avatar";
 import { useHer } from "./context";
-import { draftThinking, offersThinking } from "./format";
-import { ModelBlocked, ModelRows } from "./menus";
 import "../sheets/sheets.css";
 
-// The Her page's sheets: a new assistant, full access for one (signed), and
-// another environment (Setup.tsx). They are the app's sheets in look and keys.
+// The Her page's sheets: full access for Her (signed), and another environment
+// (Setup.tsx). They are the app's sheets in look and keys.
 
 /** A sheet over the Her page; Esc closes it unless it waits (`busy`). */
 export function HerDialog({ label, width, busy = false, onClose, children }: { label: string; width: number; busy?: boolean; onClose: () => void; children: ReactNode }) {
@@ -38,107 +36,6 @@ const pick = <T,>(list: T[]) => list[Math.floor(Math.random() * list.length)];
 
 /** At most 20 characters, as her keeps names. */
 export const NAME_MAX = 20;
-
-/**
- * Making an assistant: a name, an avatar, and the model it
- * answers with and how hard it thinks, from those its environment can use. It comes with a character
- * and a colour picked at random and the environment's default model on show, so a name and ↩ make one.
- * New assistants ask before risky steps (docs/her-server.md §9.1).
- */
-export function NewAssistantSheet() {
-  const { t } = useTranslation("her");
-  const her = useHer();
-  const initial = useMemo<AvatarSpec>(() => ({ kind: "char", shape: pick(shapes), hue: pick(hueNames) }), []);
-  const [name, setName] = useState("");
-  const [avatar, setAvatar] = useState<AvatarSpec>(initial);
-  const [png, setPng] = useState<string | null>(null);
-  const [chosenModel, setChosenModel] = useState<string | null>(null);
-  const [chosenLevel, setChosenLevel] = useState<ThinkingLevel | null>(null);
-  const act = useAction();
-  const [pictureError, setPictureError] = useState("");
-  const models = her.env.models;
-  const model = chosenModel ?? models.defaults?.model ?? models.models.find((m) => m.available && m.shown)?.id ?? null;
-  const entry = models.models.find((m) => m.id === model);
-  const thinking = draftThinking(entry, chosenLevel);
-  const close = () => her.setSheet(null);
-  const hue = avatar.kind === "char" || avatar.kind === "mono" ? avatar.hue : initial.kind === "char" ? initial.hue : "slate";
-  const trimmed = name.trim();
-  const ready = trimmed !== "" && Array.from(trimmed).length <= NAME_MAX && !!entry?.available && !act.busy && her.env.rpc !== null;
-  const upload = async () => {
-    const got = await pickPicture();
-    if (!got) return;
-    setPictureError("error" in got ? t(got.error === "too_large" ? "sheet.tooLarge" : "sheet.unreadable") : "");
-    if ("error" in got) return;
-    setPng(got.png);
-    setAvatar({ kind: "image", rev: 0 });
-  };
-  const submit = async () => {
-    if (!ready) return;
-    const given: AvatarInput = png ? { kind: "image", png } : avatar.kind === "image" ? { kind: "char", shape: pick(shapes), hue } : avatar;
-    const ok = await act.go(async () => {
-      const r = await her.call("bots/create", { name: trimmed, avatar: given, model, thinking });
-      her.selectBot(r.bot.id);
-    });
-    if (ok) close();
-  };
-  return (
-    <HerDialog label={t("sheet.newTitle")} width={440} busy={act.busy} onClose={close}>
-      <form
-        className="bsheet"
-        onSubmit={(e) => {
-          e.preventDefault();
-          void submit();
-        }}
-      >
-        <h3 id="sheet-title">{t("sheet.newTitle")}</h3>
-        <p className="sub">{t("sheet.sub")}</p>
-        <div className="bs-top">
-          <Avatar spec={avatar} name={trimmed} size={64} preview={png ? `data:image/png;base64,${png}` : undefined} />
-          <label className="bs-name">
-            <span>{t("sheet.name")}</span>
-            <input className="field" value={name} autoFocus maxLength={NAME_MAX} placeholder={t("sheet.placeholder")} autoComplete="off" spellCheck={false} onChange={(e) => setName(e.target.value)} />
-          </label>
-        </div>
-        <div className="bs-k">{t("sheet.avatar")}</div>
-        <AvatarChoices
-          avatar={avatar}
-          hue={hue}
-          name={trimmed}
-          onChoose={(spec) => {
-            setAvatar(spec);
-            setPng(null);
-          }}
-        />
-        <div className="bs-k bs-model">{t("panel.model")}</div>
-        <ModelRows
-          model={model}
-          thinking={thinking}
-          onModel={(ref) => {
-            const next = models.models.find((m) => m.id === ref);
-            const kept = thinking !== "default" && offersThinking(next, thinking) ? thinking : null;
-            setChosenModel(ref);
-            setChosenLevel(kept);
-            return draftThinking(next, kept);
-          }}
-          onThinking={setChosenLevel}
-        />
-        <ModelBlocked model={model} />
-        <ErrorLine text={act.error || pictureError} />
-        <div className="sheet-foot">
-          <button type="button" className="link left" onClick={() => void upload()}>
-            {t("sheet.upload")}
-          </button>
-          <button type="button" className="btn" onClick={close}>
-            {t("sheet.cancel")}
-          </button>
-          <button type="submit" className="btn primary" disabled={!ready}>
-            {t("sheet.create")}
-          </button>
-        </div>
-      </form>
-    </HerDialog>
-  );
-}
 
 /** The characters, the first character of its name, and the colours; `mark` adds the Hermesh mark, Her's. */
 export function AvatarChoices({ avatar, hue, name, mark = false, onChoose }: { avatar: AvatarSpec; hue: AvatarHue; name: string; mark?: boolean; onChoose: (spec: Exclude<AvatarSpec, { kind: "image" }>) => void }) {

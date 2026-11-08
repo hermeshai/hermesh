@@ -20,8 +20,8 @@ export type Data = {
   devices: Device[];
 };
 
-/** her: the Her entry, at an environment (a machine id) and an assistant when one was chosen there. */
-export type Selection = { kind: "overview" } | { kind: "session"; id: string } | { kind: "her"; machine?: string; bot?: string };
+/** her: the Her entry, at an environment (a machine id) when one was chosen. */
+export type Selection = { kind: "overview" } | { kind: "session"; id: string } | { kind: "her"; machine?: string };
 
 export type Sheet =
   | { kind: "newGrant" }

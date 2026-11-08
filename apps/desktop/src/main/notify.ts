@@ -122,7 +122,7 @@ function noticeHer() {
   if (herSeen) {
     const looking = mainWindow()?.isFocused() ?? false;
     for (const n of herNotices(herSeen, world.machines)) {
-      if (!looking) post(`her-${n.machineId}-${n.botId}`, n.title, n.body, `her:${n.machineId}/${n.botId}`);
+      if (!looking) post(`her-${n.machineId}-${n.botId}`, n.title, n.body, `her:${n.machineId}`);
     }
     for (const m of world.machines) {
       if (m.her?.enabled && m.her.unread === 0) for (const p of posted.filter((x) => x.id.startsWith(`her-${m.machineId}-`))) withdraw(p.id);

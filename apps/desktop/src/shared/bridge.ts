@@ -14,7 +14,7 @@ export type Command =
   | "answer" | "interrupt" | "archive" | "unarchive" | "copySessionId"
   | `open:${string}` | `pairing:${string}`
   | `searchGrant:${string}` | `searchMachine:${string}` | "undo" | "upgrade"
-  /** The Her entry at an environment's assistant: `her:<machine id>/<bot id>` (a notification's). */
+  /** The Her entry at an environment: `her:<machine id>` (a notification's). */
   | `her:${string}`;
 
 /**

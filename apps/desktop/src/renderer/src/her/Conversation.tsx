@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
-import { botChat, botWorking, busyBubble, pendingApproval, routineDot, type BotItem, type SessionView, type WorkingAgent } from "@hermesh/her-client";
-import type { BotSummary, Op } from "@hermesh/her-protocol";
+import { botChat, busyBubble, pendingApproval, type BotItem, type WorkingAgent } from "@hermesh/her-client";
+import type { BotSummary } from "@hermesh/her-protocol";
 import type { HerWaiting } from "@hermesh/proto/local";
 import { agoText } from "@hermesh/core";
 import { local } from "../api";
@@ -12,107 +12,50 @@ import { ContentScope } from "../session/scope";
 import { useVirtualRows, type VirtualRow } from "../session/useVirtualRows";
 import { errorText, useNow, useStore } from "../store";
 import { Approval, type SendOp } from "./Approval";
-import { AssistantPanel } from "./AssistantPanel";
 import { addAttachments, toInput, type Attachment } from "./attachments";
 import { BotAvatar } from "./Avatar";
 import { Composer, Tile } from "./Composer";
-import { useConversation } from "./connection";
+import type { Conversation as Conv } from "./connection";
 import { useHer } from "./context";
 import { envState, type EnvState } from "./environments";
 import { FailureCard, PastFailure } from "./Failure";
 import { messageTime, momentText, thingsText, timeLine } from "./format";
 import { Question, SentFiles, type FileScope } from "./Messages";
-import { RoutinesPanel } from "./RoutinesPanel";
 import { splitAttached, waitingFor, type WaitingItem } from "./waiting";
 
 /** A pause before a time line (bot-mode-design §6.6). */
 const PAUSE = 10 * 60_000;
 
-/** The text that goes in an assistant's composer from beside it (the routines panel), by environment and assistant. */
+/** The text that goes in Her's composer from beside it (the routines panel), by environment. */
 const composerText = new Map<string, (text: string) => void>();
 
-/** How each conversation on screen brings a routine run's message into view (it may have to draw it first). */
+/** How the conversation on screen brings a routine run's message into view (it may have to draw it first), by environment. */
 const runShowers = new Map<string, (run: string) => void>();
 
+/** Puts text in the composer of an environment's conversation, ready to type on. */
+export const putInComposer = (machineId: string, text: string) => composerText.get(machineId)?.(text);
+
+/** Brings a routine run's message into view in an environment's conversation, and flashes it. */
+export const showRun = (machineId: string, run: string) => runShowers.get(machineId)?.(run);
+
 /**
- * An assistant's page: its avatar and name in the
- * middle of the top, as in a chat app, which open its settings; its routines beside them; the
- * conversation in bubbles on both sides, and the composer. The assistant says only what it sends.
- * Offline, what was read stays readable, and what is written meanwhile waits on this Mac.
+ * The conversation with Her, under the page's top
+ * bar: bubbles on both sides, and the composer. Her says only what it sends. Offline, what was read
+ * stays readable, and what is written meanwhile waits on this Mac.
  */
-export function Conversation({ bot, waiting, onWaiting }: { bot: BotSummary; waiting: HerWaiting[]; onWaiting: () => void }) {
-  const { t } = useTranslation("her");
-  const st = useStore();
+export function Conversation({ bot, conv, op, waiting, onWaiting }: { bot: BotSummary; conv: Conv; op: SendOp; waiting: HerWaiting[]; onWaiting: () => void }) {
   const her = useHer();
-  const conv = useConversation(her.machine, bot, st.show);
-  const { view, session, rpc } = conv;
   useMarkRead(bot);
-  const op: SendOp = useCallback(
-    async (o: Op) => {
-      if (!rpc || !session) {
-        st.show(t("env.notConnected", { name: her.machine.machineName }));
-        return false;
-      }
-      try {
-        await rpc.request("session/op", { session_id: session, op: o });
-        return true;
-      } catch (e) {
-        st.show(errorText(e));
-        return false;
-      }
-    },
-    [rpc, session, her.machine.machineName],
-  );
-  const busy = botWorking(bot);
-  const panel = her.panel;
-  const dot = routineDot(bot.routines);
-  const key = `${her.machine.machineId}/${bot.id}`;
   const state = envState(her.machine);
   return (
-    <div className={`her-main ${panel ? "bgopen" : ""}`}>
-      <div className="scol">
-        <div className="ctool drag her-head">
-          <button className="bhead" title={t("head.settings")} aria-expanded={panel?.kind === "settings"} onClick={() => her.setPanel(panel?.kind === "settings" ? null : { kind: "settings" })}>
-            <BotAvatar bot={bot} size={22} busy={busy} />
-            <span className="bhead-n">{bot.name}</span>
-            <Icon name="chevR" className="bhead-go" />
-          </button>
-          <span className="bhead-gap" />
-          <button
-            className={`tb rtn-btn ${panel?.kind === "routines" ? "on" : ""}`}
-            title={t("routines.title")}
-            aria-label={t("routines.title")}
-            aria-pressed={panel?.kind === "routines"}
-            onClick={() => her.setPanel(panel?.kind === "routines" ? null : { kind: "routines", route: {} })}
-          >
-            <Icon name="clock" />
-            {dot && <i className={`rtn-dot ${dot === "running" ? "run" : ""}`} />}
-          </button>
+    <ContentScope value={`${her.machine.machineId}/${conv.session ?? ""}`}>
+      <div className="dwrap">
+        <div className="dmain">
+          <OfflineLine state={state} />
+          <BotChat bot={bot} conv={conv} op={op} state={state} waiting={waiting} onWaiting={onWaiting} />
         </div>
-        <ContentScope value={`${key}/${session ?? ""}`}>
-          <div className="dwrap">
-            <div className="dmain">
-              <OfflineLine state={state} />
-              <BotChat bot={bot} conv={conv} op={op} state={state} waiting={waiting} onWaiting={onWaiting} />
-            </div>
-          </div>
-        </ContentScope>
       </div>
-      {panel?.kind === "settings" && <AssistantPanel bot={bot} view={view} op={op} onClose={() => her.setPanel(null)} />}
-      {panel?.kind === "routines" && (
-        <RoutinesPanel
-          bot={bot}
-          view={view}
-          route={panel.route}
-          onDraft={(text) => {
-            her.setPanel(null);
-            composerText.get(key)?.(text);
-          }}
-          onShowBubble={(run) => runShowers.get(key)?.(run)}
-          onClose={() => her.setPanel(null)}
-        />
-      )}
-    </div>
+    </ContentScope>
   );
 }
 
@@ -169,7 +112,7 @@ function botRows(items: Item[]): BotRow[] {
 
 function BotChat({ bot, conv, op, state, waiting, onWaiting }: {
   bot: BotSummary;
-  conv: ReturnType<typeof useConversation>;
+  conv: Conv;
   op: SendOp;
   state: EnvState;
   waiting: HerWaiting[];
@@ -270,7 +213,7 @@ function BotChat({ bot, conv, op, state, waiting, onWaiting }: {
   const held = useRef(0);
   held.current = rows.length;
   useEffect(() => () => void (held.current >= HEAVY_ROWS && releaseAfterLeaving()), []);
-  const key = `${her.machine.machineId}/${bot.id}`;
+  const key = her.machine.machineId;
   const { scrollToKey } = virtual;
   useEffect(() => {
     const show = (run: string) => {
@@ -373,7 +316,7 @@ function EmptyPage({ bot, state, loading }: { bot: BotSummary; state: EnvState; 
   const her = useHer();
   if (loading) return <div className="bempty"><span className="mini-spin" /></div>;
   const name = her.machine.machineName;
-  const line = state.kind === "offline" ? t("chat.unread", { name }) : bot.default ? t("chat.greeting", { name: bot.name, environment: name }) : t("chat.empty");
+  const line = state.kind === "offline" ? t("chat.unread", { name }) : t("chat.greeting", { name: bot.name, environment: name });
   return (
     <div className="bempty">
       <BotAvatar bot={bot} size={64} />
@@ -609,7 +552,7 @@ const handed = new WeakSet<object>();
  */
 function Dock({ bot, conv, op, state, waiting, onWaiting, onHeight }: {
   bot: BotSummary;
-  conv: ReturnType<typeof useConversation>;
+  conv: Conv;
   op: SendOp;
   state: EnvState;
   waiting: boolean;
@@ -620,7 +563,7 @@ function Dock({ bot, conv, op, state, waiting, onWaiting, onHeight }: {
   const st = useStore();
   const her = useHer();
   const view = conv.view;
-  const key = `${her.machine.machineId}/${bot.id}`;
+  const key = her.machine.machineId;
   const asking = view && conv.rpc ? pendingApproval(view) : null;
   const [draft, setDraft] = useState(() => drafts.get(key) ?? { text: "", attachments: [] });
   const change = (d: { text: string; attachments: Attachment[] }) => {
@@ -641,7 +584,7 @@ function Dock({ bot, conv, op, state, waiting, onWaiting, onHeight }: {
     const put = (text: string) => {
       const d = drafts.get(key) ?? { text: "", attachments: [] };
       change({ ...d, text: d.text.trim() ? `${d.text.trim()}\n${text}` : text });
-      requestAnimationFrame(() => document.querySelector<HTMLElement>(".her-main .cmp-in")?.focus());
+      requestAnimationFrame(() => document.querySelector<HTMLElement>(".her .cmp-in")?.focus());
     };
     composerText.set(key, put);
     return () => {

@@ -1,12 +1,10 @@
 {
   "page": {
-    "label": "Her 助手",
-    "title": "Her 助手",
-    "newAssistant": "新建助手",
     "more": "更多",
     "manage": "管理「{{name}}」…",
     "addEnvironment": "添加环境…",
-    "environments": "环境"
+    "environments": "环境",
+    "environment": "环境：{{name}}"
   },
   "env": {
     "online": "在线",
@@ -38,17 +36,9 @@
     "signer": "在签名窗口里确认，在 {{name}} 上开启 Her。",
     "turningOn": "正在开启 Her…"
   },
-  "list": {
-    "label": "助手",
-    "loading": "正在载入…"
-  },
   "line": {
-    "waiting": "[待确认]",
     "agents": "正在处理{{things}}",
-    "typing": "正在输入…",
-    "empty": "还没说过话",
-    "image": "[图片]",
-    "file": "[文件] {{name}}"
+    "typing": "正在输入…"
   },
   "head": {
     "settings": "助手设置"
@@ -69,7 +59,6 @@
   "chat": {
     "log": "对话",
     "placeholder": "发消息给 {{name}}",
-    "empty": "第一句话告诉它要帮你做什么。以后有事随时发，一次发几件也行。",
     "greeting": "你好，我是 {{name}}，在 {{environment}} 上为你做事。有什么需要直接告诉我，一次说几件也行。",
     "unread": "这段对话保存在 {{name}} 上，连上后会自动显示。",
     "copy": "拷贝",
@@ -125,19 +114,12 @@
     "gone": "不在模型列表中",
     "thinkingDefault": "由服务商决定",
     "thinkingChanged": "{{model}} 没有「{{from}}」档，思考强度改为「{{to}}」",
-    "notHere": "这个模型在 {{name}} 上还不能用。",
-    "none": "选一个模型才能开始。",
     "openConsole": "打开控制台"
   },
   "sheet": {
-    "newTitle": "新建助手",
-    "sub": "起个名字，挑个头像，选好模型。要它做什么，直接在对话里说。有风险的操作它会先问你。",
-    "name": "名字",
-    "placeholder": "比如：研究员",
     "avatar": "头像",
     "upload": "上传图片…",
     "cancel": "取消",
-    "create": "创建",
     "mono": "名字的第一个字",
     "monoSample": "字",
     "mark": "Hermesh 标志",
@@ -172,10 +154,7 @@
     "done": "{{name}} 已开启完全访问"
   },
   "menu": {
-    "pin": "置顶",
-    "unpin": "取消置顶",
-    "rename": "重命名",
-    "delete": "删除助手"
+    "rename": "重命名"
   },
   "clear": {
     "title": "清空和「{{name}}」的聊天记录？",
@@ -183,25 +162,20 @@
     "button": "清空",
     "done": "已清空聊天记录"
   },
-  "delete": {
-    "title": "删除「{{name}}」？",
-    "message": "它的聊天记录、做出来的文件和手上的事都会一起删除。",
-    "button": "删除",
-    "done": "已删除「{{name}}」"
-  },
   "panel": {
     "close": "关闭",
     "avatar": "更换头像",
     "nameHint": "双击修改名字",
     "model": "模型设定",
-    "modelNote": "只影响这个助手。模型和 Key 在环境的控制台里添加。",
+    "modelNote": "模型和 Key 在这个环境的控制台里添加。",
     "permission": "权限",
     "permissionMode": "权限模式",
-    "permissionNote": "{{desc}}。只对这个助手生效，它创建的智能体和定时任务也按这个权限运行，你不在时也一样。完全访问要用 Touch ID 确认。",
+    "permissionNote": "{{desc}}。Her 创建的智能体和定时任务也按这个权限运行，你不在时也一样。完全访问要用 Touch ID 确认。",
     "notifications": "通知",
     "muted": "免打扰",
     "mutedNote": "所有设备都不发它的通知。列表里的未读照常显示。",
-    "clear": "清空聊天记录"
+    "clear": "清空聊天记录",
+    "permissionNote_win": "{{desc}}。Her 创建的智能体和定时任务也按这个权限运行，你不在时也一样。完全访问要用 Windows Hello 确认。"
   },
   "approval": {
     "label": "等你批准",
@@ -304,19 +278,51 @@
     "max": "最高"
   },
   "steps": {
-    "read": { "done": "已读取", "doing": "正在读取", "do": "读取", "count_other": "读取了 {{count}} 个文件" },
-    "edit": { "done": "已修改", "doing": "正在修改", "do": "修改", "count_other": "修改了 {{count}} 个文件" },
-    "delete": { "done": "已删除", "doing": "正在删除", "do": "删除", "count_other": "删除了 {{count}} 个文件" },
-    "move": { "done": "已移动", "doing": "正在移动", "do": "移动", "count_other": "移动了 {{count}} 个文件" },
-    "search": { "done": "已搜索", "doing": "正在搜索", "do": "搜索", "count_other": "搜索了 {{count}} 次" },
-    "execute": { "done": "已运行", "doing": "正在运行", "do": "运行", "count_other": "运行了 {{count}} 条命令" },
-    "fetch": { "done": "已访问", "doing": "正在访问", "do": "访问", "count_other": "访问了 {{count}} 个网页" },
-    "other": { "done": "已调用", "doing": "正在调用", "do": "调用", "count_other": "调用了 {{count}} 个工具" },
-    "denied": { "done": "已拒绝", "count_other": "拒绝了 {{count}} 次" },
-    "thinking": { "count_other": "思考了 {{count}} 次" },
+    "read": {
+      "done": "已读取",
+      "doing": "正在读取",
+      "do": "读取"
+    },
+    "edit": {
+      "done": "已修改",
+      "doing": "正在修改",
+      "do": "修改"
+    },
+    "delete": {
+      "done": "已删除",
+      "doing": "正在删除",
+      "do": "删除"
+    },
+    "move": {
+      "done": "已移动",
+      "doing": "正在移动",
+      "do": "移动"
+    },
+    "search": {
+      "done": "已搜索",
+      "doing": "正在搜索",
+      "do": "搜索"
+    },
+    "execute": {
+      "done": "已运行",
+      "doing": "正在运行",
+      "do": "运行"
+    },
+    "fetch": {
+      "done": "已访问",
+      "doing": "正在访问",
+      "do": "访问"
+    },
+    "other": {
+      "done": "已调用",
+      "doing": "正在调用",
+      "do": "调用"
+    },
+    "denied": {
+      "done": "已拒绝"
+    },
     "cancelled": "未执行",
     "awaiting": "待批准",
-    "separator": "，",
     "thought": "思考",
     "thinkingHidden": "服务商没有公开这段推理"
   },

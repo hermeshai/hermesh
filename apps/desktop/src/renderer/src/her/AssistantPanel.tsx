@@ -5,7 +5,6 @@ import type { AvatarHue, AvatarInput, BotSummary, PermissionMode } from "@hermes
 import { local } from "../api";
 import { Icon } from "../icons";
 import { useStore } from "../store";
-import { clearBotChat, runBotAction } from "./actions";
 import type { SendOp } from "./Approval";
 import { BotAvatar } from "./Avatar";
 import { useHer } from "./context";
@@ -16,16 +15,27 @@ import { AvatarChoices, NAME_MAX, pickPicture } from "./sheets";
 const modes: PermissionMode[] = ["manual", "accept-edits", "bypass-permissions"];
 
 /**
- * An assistant's settings, opened from its name at the top
- * of its page: its avatar and name, changed where they are; the model it answers with, from those its
- * environment can use, and how hard it thinks; what it may do without asking (full access is signed,
- * docs/her-server.md §8); whether it alerts; clearing its chat; deleting it, unless it is Her. What the
- * whole environment does is in its console.
+ * Her's settings, beside the conversation: its avatar and
+ * name, changed where they are; the model it answers with, from those its environment can use, and how
+ * hard it thinks; what it may do without asking (full access is signed, docs/her-server.md §8); whether
+ * it alerts; clearing its chat. What the whole environment does is in its console.
  */
 export function AssistantPanel({ bot, view, op, onClose }: { bot: BotSummary; view: SessionView | null; op: SendOp; onClose: () => void }) {
   const { t } = useTranslation("her");
   const st = useStore();
   const her = useHer();
+  // Clearing the chat is asked first, and what stays is said (bot-mode-design §6.5.1).
+  const clear = () =>
+    st.set({
+      sheet: {
+        kind: "confirm",
+        title: t("clear.title", { name: bot.name }),
+        message: t("clear.message"),
+        button: t("clear.button"),
+        run: () => her.call("bots/clear", { bot_id: bot.id }),
+        done: t("clear.done"),
+      },
+    });
   return (
     <aside className="her-panel bpn" aria-label={t("head.settings")}>
       <div className="her-panel-top drag">
@@ -57,14 +67,9 @@ export function AssistantPanel({ bot, view, op, onClose }: { bot: BotSummary; vi
             <p className="set-note">{t("panel.mutedNote")}</p>
           </section>
           <section className="fgroup">
-            <button className="frow bpn-end" onClick={() => clearBotChat(st, her, bot)}>
+            <button className="frow bpn-end" onClick={clear}>
               {t("panel.clear")}
             </button>
-            {!bot.default && (
-              <button className="frow bpn-end" onClick={() => runBotAction(st, her, bot, "delete")}>
-                {t("menu.delete")}
-              </button>
-            )}
           </section>
         </div>
       </div>
@@ -136,7 +141,7 @@ function BotName({ bot }: { bot: BotSummary }) {
 }
 
 /** A name edited in place: ↩ or leaving keeps what is written (end gets it), Esc puts it back (end gets null). */
-export function NameField({ initial, className, end }: { initial: string; className: string; end: (name: string | null) => void }) {
+function NameField({ initial, className, end }: { initial: string; className: string; end: (name: string | null) => void }) {
   const { t } = useTranslation("her");
   const [value, setValue] = useState(initial);
   const done = useRef(false);

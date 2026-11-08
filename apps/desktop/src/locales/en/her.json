@@ -1,12 +1,10 @@
 {
   "page": {
-    "label": "Her",
-    "title": "Her",
-    "newAssistant": "New Assistant",
     "more": "More",
     "manage": "Manage “{{name}}”…",
     "addEnvironment": "Add Environment…",
-    "environments": "Environments"
+    "environments": "Environments",
+    "environment": "Environment: {{name}}"
   },
   "env": {
     "online": "Online",
@@ -38,17 +36,9 @@
     "signer": "Confirm in the signer to turn on Her on {{name}}.",
     "turningOn": "Turning on Her…"
   },
-  "list": {
-    "label": "Assistants",
-    "loading": "Loading…"
-  },
   "line": {
-    "waiting": "[Needs you]",
     "agents": "Working on {{things}}",
-    "typing": "Typing…",
-    "empty": "No messages yet",
-    "image": "[Image]",
-    "file": "[File] {{name}}"
+    "typing": "Typing…"
   },
   "head": {
     "settings": "Assistant Settings"
@@ -69,7 +59,6 @@
   "chat": {
     "log": "Conversation",
     "placeholder": "Message {{name}}",
-    "empty": "Tell it what to help with in your first message. Write any time after that, several things at once if you like.",
     "greeting": "Hi, I'm {{name}}. I work on {{environment}}. Tell me what you need, several things at once if you like.",
     "unread": "This conversation is kept on {{name}}. It shows once the machine is back.",
     "copy": "Copy",
@@ -125,19 +114,12 @@
     "gone": "Not in the model list",
     "thinkingDefault": "The provider decides",
     "thinkingChanged": "{{model}} has no “{{from}}” level; thinking is now “{{to}}”",
-    "notHere": "This model doesn't work on {{name}} yet.",
-    "none": "Choose a model to start.",
     "openConsole": "Open Console"
   },
   "sheet": {
-    "newTitle": "New Assistant",
-    "sub": "Give it a name, pick an avatar and choose a model. Tell it what to do in the conversation. It asks before risky steps.",
-    "name": "Name",
-    "placeholder": "For example: Researcher",
     "avatar": "Avatar",
     "upload": "Upload Image…",
     "cancel": "Cancel",
-    "create": "Create",
     "mono": "First letter of the name",
     "monoSample": "A",
     "mark": "The Hermesh mark",
@@ -172,10 +154,7 @@
     "done": "{{name}} has full access"
   },
   "menu": {
-    "pin": "Pin",
-    "unpin": "Unpin",
-    "rename": "Rename",
-    "delete": "Delete Assistant"
+    "rename": "Rename"
   },
   "clear": {
     "title": "Clear your chat with “{{name}}”?",
@@ -183,25 +162,20 @@
     "button": "Clear",
     "done": "Chat cleared"
   },
-  "delete": {
-    "title": "Delete “{{name}}”?",
-    "message": "Its chat history, the files it made and the work it is doing go with it.",
-    "button": "Delete",
-    "done": "Deleted “{{name}}”"
-  },
   "panel": {
     "close": "Close",
     "avatar": "Change Avatar",
     "nameHint": "Double-click to rename",
     "model": "Model",
-    "modelNote": "Applies to this assistant only. Models and keys are added in the environment's console.",
+    "modelNote": "Models and keys are added in the environment’s console.",
     "permission": "Permissions",
     "permissionMode": "Permission mode",
-    "permissionNote": "{{desc}}. Applies to this assistant only; the agents and scheduled tasks it starts run with it too, while you are away as well. Full access is confirmed with Touch ID.",
+    "permissionNote": "{{desc}}. The agents and scheduled tasks Her starts run with it too, while you are away as well. Full access is confirmed with Touch ID.",
     "notifications": "Notifications",
     "muted": "Mute",
     "mutedNote": "No notifications from it, on any device. Unread still shows in the list.",
-    "clear": "Clear Chat"
+    "clear": "Clear Chat",
+    "permissionNote_win": "{{desc}}. The agents and scheduled tasks Her starts run with it too, while you are away as well. Full access is confirmed with Windows Hello."
   },
   "approval": {
     "label": "Waiting for your approval",
@@ -306,19 +280,51 @@
     "max": "Max"
   },
   "steps": {
-    "read": { "done": "Read", "doing": "Reading", "do": "Read", "count_one": "Read {{count}} file", "count_other": "Read {{count}} files" },
-    "edit": { "done": "Edited", "doing": "Editing", "do": "Edit", "count_one": "Edited {{count}} file", "count_other": "Edited {{count}} files" },
-    "delete": { "done": "Deleted", "doing": "Deleting", "do": "Delete", "count_one": "Deleted {{count}} file", "count_other": "Deleted {{count}} files" },
-    "move": { "done": "Moved", "doing": "Moving", "do": "Move", "count_one": "Moved {{count}} file", "count_other": "Moved {{count}} files" },
-    "search": { "done": "Searched", "doing": "Searching", "do": "Search", "count_one": "Searched once", "count_other": "Searched {{count}} times" },
-    "execute": { "done": "Ran", "doing": "Running", "do": "Run", "count_one": "Ran {{count}} command", "count_other": "Ran {{count}} commands" },
-    "fetch": { "done": "Fetched", "doing": "Fetching", "do": "Fetch", "count_one": "Fetched {{count}} page", "count_other": "Fetched {{count}} pages" },
-    "other": { "done": "Called", "doing": "Calling", "do": "Call", "count_one": "Called {{count}} tool", "count_other": "Called {{count}} tools" },
-    "denied": { "done": "Denied", "count_one": "Denied {{count}} call", "count_other": "Denied {{count}} calls" },
-    "thinking": { "count_one": "Thought once", "count_other": "Thought {{count}} times" },
+    "read": {
+      "done": "Read",
+      "doing": "Reading",
+      "do": "Read"
+    },
+    "edit": {
+      "done": "Edited",
+      "doing": "Editing",
+      "do": "Edit"
+    },
+    "delete": {
+      "done": "Deleted",
+      "doing": "Deleting",
+      "do": "Delete"
+    },
+    "move": {
+      "done": "Moved",
+      "doing": "Moving",
+      "do": "Move"
+    },
+    "search": {
+      "done": "Searched",
+      "doing": "Searching",
+      "do": "Search"
+    },
+    "execute": {
+      "done": "Ran",
+      "doing": "Running",
+      "do": "Run"
+    },
+    "fetch": {
+      "done": "Fetched",
+      "doing": "Fetching",
+      "do": "Fetch"
+    },
+    "other": {
+      "done": "Called",
+      "doing": "Calling",
+      "do": "Call"
+    },
+    "denied": {
+      "done": "Denied"
+    },
     "cancelled": "Not run",
     "awaiting": "Needs approval:",
-    "separator": ", ",
     "thought": "Thought",
     "thinkingHidden": "The provider keeps this reasoning private"
   },
