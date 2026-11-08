@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"os"
 	"os/exec"
@@ -22,6 +23,7 @@ import (
 	localv1 "github.com/hermeshai/hermesh/gen/go/hermesh/local/v1"
 	"github.com/hermeshai/hermesh/gen/go/hermesh/local/v1/localv1connect"
 	machinev1 "github.com/hermeshai/hermesh/gen/go/hermesh/machine/v1"
+	"github.com/hermeshai/hermesh/internal/paths"
 )
 
 // Her on the owner's machines (docs/her-server.md), as the Mac app uses it:
@@ -273,11 +275,14 @@ func talk(t *testing.T, c localv1connect.LocalServiceClient, machineID, botID, r
 // TestHerOnThisMac turns Her on for the owner Mac's own machine and uses
 // her as the Mac app does, in process: a message and her reply, files both
 // ways, the console with its JSON-RPC and a sign-in coming back to this Mac,
-// and what the machine refuses.
+// what the machine refuses, and her stopping with this Mac's hermeshd.
 func TestHerOnThisMac(t *testing.T) {
 	her, mockBin := herBinaries(t)
 	mock := startHerMock(t, mockBin)
 	w := newOwnerMac(t, herEnv(her, herConsole(t), herHome(t, mock.models), mock.base), &localv1.GrantSpec{})
+	// Stopped as a service is, so that it stops her: killed, it would leave
+	// her running, in a process group of its own.
+	t.Cleanup(w.owner.stop)
 	c := w.app.client
 	ctx := context.Background()
 	mac := localMachine(t, c)
@@ -364,6 +369,23 @@ func TestHerOnThisMac(t *testing.T) {
 			t.Fatalf("command connector %s: %d %s", body, code, text)
 		}
 	}
+
+	// This Mac's hermeshd stops as its service does (the app quitting, an
+	// update), and her stops with it.
+	cur, _ := os.ReadFile(filepath.Join(w.tmp, "owner-mac", "owner", "current"))
+	sock := paths.Her(filepath.Join(w.tmp, "owner-mac", "owner", "profiles", string(cur), "machine"))
+	answers := func() bool {
+		conn, err := net.Dial("unix", sock)
+		if err == nil {
+			conn.Close()
+		}
+		return err == nil
+	}
+	if !answers() {
+		t.Fatalf("her does not answer at %s", sock)
+	}
+	w.owner.stop()
+	eventually(t, 5*time.Second, "her stopped with this Mac's hermeshd", func() bool { return !answers() })
 }
 
 func httpDo(t *testing.T, method, url, body string) (int, string) {

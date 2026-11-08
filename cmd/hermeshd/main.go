@@ -58,6 +58,22 @@ func logger(verbose bool) *slog.Logger {
 	return slog.New(slog.NewTextHandler(logOut, &slog.HandlerOptions{Level: lvl}))
 }
 
+// serveUntilStopped runs run in the background and serve until ctx ends,
+// or serve fails and stop ends it, then waits for run to return. The owner
+// role's run stops this computer's machine, and her with it: her has a
+// process group of its own and would outlive hermeshd.
+func serveUntilStopped(ctx context.Context, stop context.CancelFunc, run func(context.Context), serve func(context.Context) error) error {
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		run(ctx)
+	}()
+	err := serve(ctx)
+	stop()
+	<-done
+	return err
+}
+
 // openLogFile sends logs to <dataDir>/logs/hermeshd.log as well (launchd
 // and SMAppService give the daemon no terminal).
 func openLogFile(dataDir string) {
@@ -223,9 +239,8 @@ A computer that runs no coding agents can approve instead: hermeshd device.`}
 				if noMachine { // a Linux trusted device
 					autoUpdate(func() int { return 0 })
 				}
-				go o.Run(ctx)
 				log.Info("serving local API", "socket", socket)
-				return o.ServeLocal(ctx, socket)
+				return serveUntilStopped(ctx, stop, o.Run, func(ctx context.Context) error { return o.ServeLocal(ctx, socket) })
 			}
 			cfg := machineConfig()
 			cfg.SelfErase = true

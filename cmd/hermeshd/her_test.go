@@ -1,11 +1,43 @@
 package main
 
 import (
+	"context"
+	"errors"
 	"os"
 	"path/filepath"
 	"runtime"
+	"sync/atomic"
 	"testing"
+	"time"
 )
+
+// The owner role's run, which stops this computer's machine and her with
+// it, has returned before hermeshd goes on to exit: once it is asked to
+// stop, and when serving fails at once.
+func TestServeUntilStopped(t *testing.T) {
+	for _, failing := range []bool{false, true} {
+		ctx, stop := context.WithCancel(context.Background())
+		var stopped atomic.Bool
+		run := func(ctx context.Context) {
+			<-ctx.Done()
+			time.Sleep(50 * time.Millisecond) // stopping the machine and her
+			stopped.Store(true)
+		}
+		serve := func(ctx context.Context) error {
+			if failing {
+				return errors.New("the socket is taken")
+			}
+			<-ctx.Done()
+			return nil
+		}
+		if !failing {
+			time.AfterFunc(10*time.Millisecond, stop) // SIGTERM
+		}
+		if err := serveUntilStopped(ctx, stop, run, serve); (err != nil) != failing || !stopped.Load() {
+			t.Fatalf("failing %v: returned %v with the run stopped: %v", failing, err, stopped.Load())
+		}
+	}
+}
 
 // her is HERMESH_HER_BIN's or the one beside hermeshd, when it is there;
 // its console is HERMESH_HER_CONSOLE's or console/ beside her.
