@@ -456,7 +456,8 @@ func (o *Owner) herDeliver(ctx context.Context, w *localv1.HerWaiting) error {
 	err = onBot(octx, h, w.BotId, func(conn, session string) error {
 		return herOp(octx, h, conn, session, map[string]any{"type": "prompt", "input": []any{map[string]any{"type": "text", "text": text}}})
 	})
-	if err != nil && octx.Err() != nil && ctx.Err() == nil {
+	// Out of time, here or at the machine (connect passes the deadline on).
+	if err != nil && ctx.Err() == nil && (octx.Err() != nil || connect.CodeOf(err) == connect.CodeDeadlineExceeded) {
 		if r, ok := h.(herRemote); ok {
 			r.forget() // it stopped answering: dial again next time
 		}
