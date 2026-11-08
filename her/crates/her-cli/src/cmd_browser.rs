@@ -4,7 +4,8 @@
 //!
 //! The host relays between two framings. Chrome speaks Native Messaging on stdin and stdout:
 //! a 4-byte length in native byte order, then that much JSON. The her service speaks the
-//! native protocol on its Unix socket: the host calls `browser/host {kind: "extension"}` and
+//! native protocol on its Unix socket (`$HER_HOME/run/her.sock`, or the one `--socket` names,
+//! as for the her that Hermesh runs on its own socket): the host calls `browser/host {kind: "extension"}` and
 //! then carries CDP in `browser/cdp` notifications, as the desktop app does. To the extension
 //! it sends `{stream, data}` (one CDP message of the browser numbered `stream`, as a JSON
 //! object), or `{stream, part, more}` pieces of one that is over Chrome's 1 MB limit (parts of
@@ -72,12 +73,12 @@ impl std::error::Error for Refused {}
 
 // ---- The host ----
 
-/// `her browser native-host`: runs until Chrome closes stdin. Nothing but messages may go
-/// to stdout.
-pub async fn native_host() -> anyhow::Result<u8> {
+/// `her browser native-host`: runs until Chrome closes stdin, relaying to the service on
+/// `socket` (else the home's). Nothing but messages may go to stdout.
+pub async fn native_host(socket: Option<PathBuf>) -> anyhow::Result<u8> {
     let home = setup::home()?;
     let _guard = setup::init_logging(&home);
-    let socket = home.root().join("run").join("her.sock");
+    let socket = socket.unwrap_or_else(|| home.root().join("run").join("her.sock"));
     tracing::info!(socket = %socket.display(), "extension host started");
 
     let (to_chrome, mut outbox) = mpsc::unbounded_channel::<String>();
@@ -414,12 +415,13 @@ fn manifest_path(user_data_dir: &Path) -> PathBuf {
 }
 
 /// The script Chrome runs: Chrome passes no environment of ours and allows no arguments in
-/// the manifest, so the script holds both.
-fn launcher_script(exe: &Path, home: &Path) -> String {
+/// the manifest, so the script holds both, and the service's socket when it is not the home's.
+fn launcher_script(exe: &Path, home: &Path, socket: Option<&Path>) -> String {
     let quote = |path: &Path| format!("'{}'", path.display().to_string().replace('\'', r"'\''"));
+    let socket = socket.map(|s| format!(" --socket {}", quote(s))).unwrap_or_default();
     format!(
         "#!/bin/sh\n# Written by `her browser extension install`: Chrome runs this for the Hermesh extension.\n\
-         HER_HOME={} exec {} browser native-host \"$@\"\n",
+         HER_HOME={} exec {} browser native-host{socket} \"$@\"\n",
         quote(home),
         quote(exe)
     )
@@ -427,14 +429,16 @@ fn launcher_script(exe: &Path, home: &Path) -> String {
 
 /// `her browser extension install`: the launcher script, and a manifest for every
 /// Chromium-family browser on this machine (or for one user data directory).
-pub fn install(extension_ids: &[String], user_data_dir: Option<PathBuf>) -> anyhow::Result<u8> {
+pub fn install(extension_ids: &[String], user_data_dir: Option<PathBuf>, socket: Option<PathBuf>) -> anyhow::Result<u8> {
     use std::os::unix::fs::PermissionsExt as _;
     let home = setup::home()?;
     let exe = std::env::current_exe().context("cannot find the her program")?;
     let exe = std::fs::canonicalize(&exe).unwrap_or(exe);
+    // Chrome starts the host in a folder of its own.
+    let socket = socket.map(std::path::absolute).transpose()?;
     let launcher = home.browser_dir().join("native-host");
     std::fs::create_dir_all(home.browser_dir())?;
-    std::fs::write(&launcher, launcher_script(&exe, home.root()))?;
+    std::fs::write(&launcher, launcher_script(&exe, home.root(), socket.as_deref()))?;
     std::fs::set_permissions(&launcher, std::fs::Permissions::from_mode(0o755))?;
 
     let mut ids: Vec<&str> = vec![EXTENSION_ID];
@@ -468,6 +472,9 @@ pub fn install(extension_ids: &[String], user_data_dir: Option<PathBuf>) -> anyh
         println!("{name}: {}", path.display());
     }
     println!("host: {}", launcher.display());
+    if let Some(socket) = &socket {
+        println!("service: {}", socket.display());
+    }
     println!(
         "Next: load the Hermesh extension in Chrome, and set extension = true under [browser] in {}.",
         home.root().join("config.toml").display()
@@ -614,7 +621,9 @@ mod tests {
     fn status_says_what_a_manifest_points_at() {
         let dir = tempfile::tempdir().unwrap();
         let launcher = dir.path().join("native-host");
-        std::fs::write(&launcher, launcher_script(Path::new("/Apps/Her Work/her"), dir.path())).unwrap();
+        std::fs::write(&launcher, launcher_script(Path::new("/Apps/Her Work/her"), dir.path(), None)).unwrap();
+        assert_eq!(launcher_program(&launcher), Some(PathBuf::from("/Apps/Her Work/her")));
+        std::fs::write(&launcher, launcher_script(Path::new("/Apps/Her Work/her"), dir.path(), Some(Path::new("/s/her.sock")))).unwrap();
         assert_eq!(launcher_program(&launcher), Some(PathBuf::from("/Apps/Her Work/her")));
         let manifest = dir.path().join("m.json");
         let write = |path: &Path| std::fs::write(&manifest, json!({"path": path}).to_string()).unwrap();
@@ -630,7 +639,16 @@ mod tests {
 
     #[test]
     fn the_launcher_quotes_its_paths() {
-        let script = launcher_script(Path::new("/Apps/Her Work/her"), Path::new("/Users/o'brien/.her"));
+        let script = launcher_script(Path::new("/Apps/Her Work/her"), Path::new("/Users/o'brien/.her"), None);
         assert!(script.contains("HER_HOME='/Users/o'\\''brien/.her' exec '/Apps/Her Work/her' browser native-host \"$@\""), "{script}");
+        // Hermesh's her listens in its own folder, which has a space on a Mac.
+        let socket = Path::new("/Users/o'brien/Library/Application Support/Hermesh/machine/her/her.sock");
+        let script = launcher_script(Path::new("/Apps/Hermesh.app/Contents/Helpers/her"), Path::new("/Users/o'brien/.her"), Some(socket));
+        assert!(
+            script.contains(
+                "exec '/Apps/Hermesh.app/Contents/Helpers/her' browser native-host --socket '/Users/o'\\''brien/Library/Application Support/Hermesh/machine/her/her.sock' \"$@\""
+            ),
+            "{script}"
+        );
     }
 }
