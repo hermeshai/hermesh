@@ -43,7 +43,8 @@
       "notConnected": "Can’t reach Hermesh. Showing last synced messages.",
       "offline": "{{name}} is offline. Showing last synced messages.",
       "noAnswer": "{{name}} isn’t responding. Showing last synced messages."
-    }
+    },
+    "toBottom": "Jump to the latest"
   },
   "control": {
     "label": "This turn",
@@ -90,5 +91,31 @@
     "model": "Model <b>{{model}}</b>",
     "effort": "Reasoning effort <b>{{effort}}</b>",
     "sameAs": "Same as {{agent}}"
+  },
+  "markdown": {
+    "table": "Data table",
+    "copyTable": "Copy table",
+    "copyAsMarkdown": "Copy as Markdown",
+    "copied": "Copied",
+    "copyFailed": "Could not copy. Try again.",
+    "expand": "Expand",
+    "close": "Close",
+    "tableOpen": "Table opened · Return",
+    "details": "Details",
+    "diagram": "Diagram",
+    "source": "Source",
+    "exportSvg": "Export SVG",
+    "diagramFailed": "This diagram could not be rendered. Its source is shown below the controls.",
+    "rendering": "Rendering diagram…",
+    "footnotes": "Footnotes",
+    "backToReference": "Back to reference"
+  },
+  "content": {
+    "copy": "Copy",
+    "copied": "Copied",
+    "hidden": "Hidden characters",
+    "hiddenTip": "This code has characters you can't see. Check it before you paste it.",
+    "copyCode": "Copy Code",
+    "copyCommand": "Copy Command"
   }
 }

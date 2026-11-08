@@ -1,0 +1,24 @@
+/* Bundled variable fonts: available offline and under the app's self-only CSP.
+   Upstream URLs, checksums and SIL OFL licenses live beside the font assets. */
+@font-face {
+  font-family: "Google Sans Flex";
+  src: url("../assets/fonts/google-sans-flex.ttf") format("truetype");
+  font-style: oblique 0deg 10deg;
+  font-weight: 100 1000;
+  font-stretch: 25% 151%;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Google Sans Code";
+  src: url("../assets/fonts/google-sans-code.ttf") format("truetype");
+  font-style: normal;
+  font-weight: 300 800;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Google Sans Code";
+  src: url("../assets/fonts/google-sans-code-italic.ttf") format("truetype");
+  font-style: italic;
+  font-weight: 300 800;
+  font-display: swap;
+}

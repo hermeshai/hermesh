@@ -314,7 +314,7 @@ Every phase ends with its tests green. The current app keeps working until phase
 |---|---|
 | About 300 MB on disk (today: 62 MB) and about 130 MB idle | Destroy renderers on close (the menu bar panel's 30 s after it hides); measure with `app.getAppMetrics()` in CI |
 | Electron majors every ~8 weeks; only 3 are supported | Upgrade at least twice a year; fuses and the e2e suite catch regressions |
-| Not quite native: web form controls | Native menus, system font, platform tokens (§6.4) |
+| Not quite native: web form controls | Native menus, one bundled typeface (Google Sans Flex), platform tokens (§6.4) |
 | Nested bundle with its own provisioning profile makes packaging more complex | Spike S2 first; Codex ships the same shape |
 | Two UIs during the transition | No new SwiftUI features; cutover in phase 5 |
 | The signer protocol must be implemented again per OS | Platform-neutral stream; golden vectors (§5.6) |

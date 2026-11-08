@@ -26,6 +26,8 @@ export default defineConfig({
   },
   renderer: {
     plugins: [react(), tailwindcss()],
+    // The code highlighter's worker loads each language when first shown: an ES module worker, which can split.
+    worker: { format: "es" },
     // One React: @hermesh/ui's own node_modules may link another copy (the
     // hermesh-cloud workspace installs the package too).
     resolve: { dedupe: ["react", "react-dom"] },

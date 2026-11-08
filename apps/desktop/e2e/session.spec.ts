@@ -463,9 +463,14 @@ test("an agent's Markdown shows as GitHub shows it, without HTML, images or unsa
   await expect(md.getByRole("cell", { name: "1", exact: true })).toBeVisible();
   await expect(md.locator("li li")).toHaveText("里层");
   await expect(md.locator("del")).toHaveText("旧的");
-  // A block that names its language is in GitHub's colours, light or dark with the app; one that doesn't stays plain.
+  // A block that names its language is coloured, light or dark with the app; one that doesn't stays plain.
+  // Each has a bar with its language and Copy.
   const go = md.locator("pre code").first();
   await expect(go).toHaveText('func main() { fmt.Println("hi") }');
+  const bar = md.locator(".cblock").first().locator(".cb-h");
+  await expect(bar.locator(".cb-lang")).toHaveText("go");
+  await bar.getByRole("button", { name: "拷贝" }).click();
+  await expect.poll(() => app.evaluate(({ clipboard }) => clipboard.readText())).toBe('func main() { fmt.Println("hi") }');
   await expect(go.locator(".hl")).toBeVisible();
   expect(await go.locator(".hl span span").evaluateAll((els) => new Set(els.map((el) => getComputedStyle(el).color)).size)).toBeGreaterThan(2);
   const themed = await go.getByText("func", { exact: true }).evaluate((el) => {
@@ -484,9 +489,92 @@ test("an agent's Markdown shows as GitHub shows it, without HTML, images or unsa
   await expect(md.locator("img")).toHaveCount(0);
   await expect(md).toContainText("图");
   await expect(md).toContainText("<b>原样</b>");
-  // The agent's words are 15 on 21.
-  expect(await md.evaluate((el) => [getComputedStyle(el).fontSize, getComputedStyle(el).lineHeight])).toEqual(["15px", "21px"]);
+  // The agent's words are 14.5 on 1.625, in Google Sans Flex.
+  expect(await md.evaluate((el) => [getComputedStyle(el).fontSize, getComputedStyle(el).lineHeight])).toEqual(["14.5px", "23.5625px"]);
+  expect(await md.evaluate((el) => getComputedStyle(el).fontFamily)).toMatch(/^"Google Sans Flex"/);
+  expect(await page.evaluate(() => document.fonts.check('14px "Google Sans Flex"') && document.fonts.check('13px "Google Sans Code"'))).toBe(true);
   await snap(page, "session-markdown");
+  await app.close();
+});
+
+test("formulas, diagrams, callouts, folds, footnotes and tables show as the reply means them", async () => {
+  const reply = [
+    "公式 \\(x_i^2 + \\frac{a}{b}\\)，金额 $100 和 $200 保持原文。颜色 `#1F6BFF`。",
+    "",
+    "$$",
+    "E = mc^2",
+    "$$",
+    "",
+    "> [!NOTE]",
+    "> 这是提示。",
+    "",
+    ':::details{title="展开计算说明"}',
+    "折叠起来的内容。",
+    ":::",
+    "",
+    "引用一处来源[^1]。",
+    "",
+    "[^1]: 来源说明",
+    "",
+    "| 指标 | 本期 | 上期 |",
+    "|:---|---:|---:|",
+    "| 收入 | 123.45 | 98.76 |",
+    "",
+    "```mermaid",
+    "flowchart LR",
+    " A[读取] --> B{检查}",
+    " B --> C[报告]",
+    "```",
+    "",
+    "```sh",
+    "echo ​hi",
+    "```",
+  ].join("\\n");
+  await cli("session", "start", "--project", "demo", "--agent", "gemini", "--title", "富文本", "--prompt", `say ${reply}`, "--wait");
+  const { app, page } = await launch();
+  await open(page, "富文本");
+  const md = page.getByRole("log", { name: "对话" }).locator(".md");
+  // Formulas render (a subscript smaller than its base); prices stay words.
+  await expect(md.locator(".katex")).toHaveCount(2);
+  await expect(md.locator(".katex-display")).toHaveCount(1);
+  await expect(md).toContainText("$100 和 $200");
+  const [sub, base] = await md.locator(".katex").first().evaluate((k) => [parseFloat(getComputedStyle(k.querySelector(".msupsub .mord")!).fontSize), parseFloat(getComputedStyle(k).fontSize)]);
+  expect(sub).toBeLessThan(base * 0.8);
+  await expect(md.locator("code .md-color")).toHaveCount(1);
+  await expect(md.locator(".md-callout[data-kind=note]")).toContainText("这是提示。");
+  // A fold opens and shuts.
+  const fold = md.locator("details.md-details");
+  await expect(fold.locator("summary")).toHaveText("展开计算说明");
+  await expect(fold.getByText("折叠起来的内容。")).toBeHidden();
+  await fold.locator("summary").click();
+  await expect(fold.getByText("折叠起来的内容。")).toBeVisible();
+  // A footnote's mark goes to its note.
+  await md.locator("[data-footnote-ref]").click();
+  expect(await page.evaluate(() => document.activeElement?.closest(".footnotes") !== null)).toBe(true);
+  // A diagram draws as a picture, its source a click away.
+  const diagram = md.locator(".md-diagram");
+  await expect.poll(() => diagram.locator(".md-diagram-svg").evaluate((el) => !!el.shadowRoot?.querySelector("svg")), { timeout: 20_000 }).toBe(true);
+  await diagram.getByRole("button", { name: "源码" }).click();
+  await expect(diagram.locator(".cblock code")).toContainText("flowchart LR");
+  await diagram.getByRole("button", { name: "图形" }).click();
+  await expect(diagram.locator(".md-diagram-svg")).toBeVisible();
+  // A table's tools show under the pointer: Copy gives a sheet tabs, Expand shows it large until Escape.
+  const table = md.locator(".md-table");
+  const tools = table.locator(".md-table-tools");
+  expect(await tools.evaluate((el) => getComputedStyle(el).opacity)).toBe("0");
+  await table.locator("table").hover();
+  await expect.poll(() => tools.evaluate((el) => getComputedStyle(el).opacity)).toBe("1");
+  await tools.getByRole("button", { name: "拷贝表格" }).click();
+  await expect.poll(() => app.evaluate(({ clipboard }) => clipboard.readText())).toBe("指标\t本期\t上期\n收入\t123.45\t98.76");
+  await tools.getByRole("button", { name: "展开" }).click();
+  await expect(page.locator("dialog[open]")).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect(page.locator("dialog[open]")).toHaveCount(0);
+  // A shell's block holding a character that does not show says so.
+  const sh = md.locator(".cblock").filter({ hasText: "echo" });
+  await expect(sh.locator(".cb-lang")).toHaveText("sh");
+  await expect(sh.locator(".cb-warn")).toHaveText("含隐藏字符");
+  await snap(page, "session-markdown-rich");
   await app.close();
 });
 
@@ -521,10 +609,12 @@ test("a reply shows as the agent writes it, never as raw Markdown, and stays whe
   await expect(ctl).toBeVisible();
   await expect(log.getByRole("table")).toBeVisible();
   await expect(log.locator("pre code")).toHaveText("func main() {}");
+  await log.locator(".cblock").evaluate((el) => ((el as unknown as { __kept: boolean }).__kept = true));
   await snap(page, "session-streaming");
-  // The stored message replaces it when the turn ends: the same, not a second one.
+  // The stored message replaces it when the turn ends: the same, not a second one, and its code block not drawn anew.
   await expect(ctl).toHaveCount(0);
   await expect(agent).toHaveCount(2);
+  expect(await log.locator(".cblock").evaluate((el) => (el as unknown as { __kept?: boolean }).__kept === true)).toBe(true);
   await expect(agent.last().locator("strong")).toHaveText("这一段很长很长的加粗文字会跨过好几次刷新");
   expect(await page.evaluate(() => (window as unknown as { __raw: string[] }).__raw)).toEqual([]);
 

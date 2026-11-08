@@ -8,6 +8,7 @@ import { useStore } from "./store";
 import { Chat } from "./session/Chat";
 import { useSessionEvents } from "./session/events";
 import { Inspector } from "./session/Inspector";
+import "./session/markdown/markdown.css";
 import "./session/session.css";
 
 // A session: its conversation, the bottom control area while a turn is

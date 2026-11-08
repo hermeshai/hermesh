@@ -2,8 +2,15 @@
 :root{
   /* Type and corners the Windows look changes (below): the body's text, and controls, boxes, cards and panels. */
   --fs-text:13px;--fs-text-l:13.5px;--r-ctl:7px;--r-box:10px;--r-card:12px;--r-panel:14px;
-  --font:-apple-system,BlinkMacSystemFont,"SF Pro Text","Inter","PingFang SC","Hiragino Sans GB","Noto Sans SC","Microsoft YaHei",sans-serif;
-  --mono:"SF Mono",ui-monospace,Menlo,"JetBrains Mono",Consolas,monospace;
+  /* The bundled typefaces (styles/fonts.css), the same on every platform: Google Sans Flex, a little narrow, and Google Sans Code. */
+  --font:"Google Sans Flex","Google Sans",system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Noto Sans SC","Microsoft YaHei",sans-serif;
+  --mono:"Google Sans Code",ui-monospace,"SF Mono",Menlo,Monaco,Consolas,monospace;
+  --font-weight-normal:400;--font-weight-medium:450;--font-weight-semibold:550;--font-weight-bold:650;
+  --font-axes:"ROND" 0,"slnt" 0,"wdth" 92;
+  /* The conversation: its column, and the size of what is said in it. */
+  --conversation-width:768px;--chat-size:14.5px;
+  /* Corners of the conversation's content: what sits inside a control, controls, rows, cards, bubbles. */
+  --r-xs:4px;--r-sm:6px;--r-md:8px;--r-lg:10px;--r-xl:12px;
   --page:#e8eaf0;--page-fg:#1b1c22;--page-fg2:#62646f;--page-btn:rgba(20,24,40,.07);
   --wall-a:#c7dbf4;--wall-b:#86abe3;--wall-1:rgba(8,145,178,.45);--wall-2:rgba(109,60,240,.32);--wall-3:rgba(47,107,240,.22);
   --mb-fg:rgba(0,0,0,.86);--mb-bg:rgba(255,255,255,.30);--mb-hl:rgba(0,0,0,.10);
@@ -50,14 +57,14 @@
 }}
 *{box-sizing:border-box}
 html,body{height:100%}
-body{margin:0;background:var(--win);color:var(--l1);font-family:var(--font);font-size:var(--fs-text);line-height:1.38;-webkit-font-smoothing:antialiased;user-select:none;-webkit-user-select:none;cursor:default;overflow:hidden}
+body{margin:0;background:var(--win);color:var(--l1);font-family:var(--font);font-size:var(--fs-text);font-weight:var(--font-weight-normal);font-variation-settings:var(--font-axes);font-optical-sizing:auto;font-variant-ligatures:no-contextual;line-height:1.38;-webkit-font-smoothing:antialiased;user-select:none;-webkit-user-select:none;cursor:default;overflow:hidden}
 #root{height:100%}
 /* macOS: the window's sidebar material shows through the sidebar; everything else stays opaque. */
 html.vibrant,html.vibrant body{background:transparent}
 html.vibrant .side{background:var(--side-tint)}
 html.vibrant .grp-h{position:static;background:transparent}
-/* Windows (docs/windows.md §5.2): its own type, no traffic lights, and room for the caption buttons Windows draws over the top band's right end. */
-html[data-platform=win]{--font:"Segoe UI Variable Text","Segoe UI","Microsoft YaHei UI","Microsoft YaHei",sans-serif;--caption:calc(100vw - env(titlebar-area-x, 0px) - env(titlebar-area-width, calc(100vw - 138px)))}
+/* Windows (docs/windows.md §5.2): no traffic lights, and room for the caption buttons Windows draws over the top band's right end. */
+html[data-platform=win]{--caption:calc(100vw - env(titlebar-area-x, 0px) - env(titlebar-area-width, calc(100vw - 138px)))}
 .tl-room{width:62px;flex:none}
 /* Windows 11's type and corners: 14 px body text; 4 px controls and rows, 8 px boxes, cards and panels. */
 html[data-platform=win]{--fs-text:14px;--fs-text-l:14.5px;--r-ctl:4px;--r-box:8px;--r-card:8px;--r-panel:8px}
@@ -120,6 +127,11 @@ button{font:inherit;color:inherit}
 .dotc.on{background:var(--green)}
 .dotc.warn{background:var(--orange)}
 .mono{font-family:var(--mono)}
+/* Code keeps its own face's axes and weight; fields take the window's type; headings are rounder and wider. */
+:where(code,pre,kbd,.mono,.cblock,.tool .cmd,.tool .out){font-variation-settings:normal;font-weight:400}
+:where(input,textarea,select){font-family:var(--font);font-variation-settings:inherit}
+:where(h1,h2){font-variation-settings:"ROND" 20,"slnt" 0,"wdth" 100}
+:where(h3,h4,h5,h6){font-variation-settings:"ROND" 20,"slnt" 0,"wdth" 94}
 .muted{color:var(--l2)}
 .faint{color:var(--l3)}
 .tnum{font-variant-numeric:tabular-nums}
@@ -337,25 +349,29 @@ html.blurred .ctitle h2,html.blurred .set-top h1,html.blurred .update-title{colo
 .insp-facts .insp-gear{margin:0 -4px 0 auto;height:24px;min-width:24px;padding:0 4px}
 .insp-facts .insp-gear:hover .ic{color:var(--l1)}
 .ilinks{display:flex;flex-direction:column;gap:5px;align-items:flex-start;font-size:12px}
-/* The conversation: a 730-wide column, at least 34 from the edges; lines close together, blocks apart. */
-.dbody{max-width:798px;margin:0 auto;padding:var(--sp-3) var(--sp-4) 40px}
+/* A centered 768px conversation with 16px gutters; reply text is inset 8px. */
+.dbody{max-width:calc(var(--conversation-width) + 32px);margin:0 auto;padding:24px 16px 40px}
 .tr{display:flex;flex-direction:column;gap:var(--sp-2)}
+/* A conversation row's own box (useVirtualRows measures it): its parts (a time line and a message) as far apart
+   as rows are. The space for rows not drawn is never what the browser keeps in place while things above change. */
+.vrow{display:flex;flex-direction:column;gap:var(--sp-2)}
+.vspace{flex:none;overflow-anchor:none}
 /* A time line before a turn, only after a pause: centred, no rule. */
 .tdiv{align-self:center;font-size:11.5px;color:var(--l3);margin:10px 0 2px}
-/* The one who started the session speaks in a dark bubble on the right; the agent writes plain text across the page. */
-.um{position:relative;align-self:flex-end;max-width:78%;margin-top:var(--sp-1)}
-.um .bub{background:var(--bub);color:var(--bub-fg);border-radius:18px;padding:9px 15px;font-size:15px;line-height:21px}
-.am{position:relative;font-size:15px;line-height:21px;color:var(--msg)}
+/* The one who started the session speaks in a bubble on the right; the agent writes plain text across the page. */
+.um{position:relative;align-self:flex-end;max-width:80%;margin-top:var(--sp-1)}
+.um .bub{background:var(--bub);color:var(--bub-fg);border-radius:var(--r-xl);padding:9px 15px;font-size:var(--chat-size);line-height:1.625;white-space:pre-wrap;overflow-wrap:anywhere}
+.am{position:relative;font-size:var(--chat-size);line-height:1.625;color:var(--msg)}
 /* A message, and a turn's reply at its end, keep room below (blocks apart); when and copy show there on hover, under the bubble's right edge or the text's left. */
 .um,.am.end{margin-bottom:var(--sp-3)}
-.msg-act{position:absolute;top:100%;padding-top:2px;display:flex;align-items:center;gap:2px;opacity:0;transition:opacity .15s}
+.msg-act{position:absolute;top:100%;padding-top:3px;display:flex;align-items:center;gap:4px;opacity:0;transition:opacity .15s}
 .um .msg-act{right:2px}
-.am .msg-act{left:-5px;flex-direction:row-reverse}
+.am .msg-act{left:-2px;flex-direction:row-reverse}
 .um:hover .msg-act,.am:hover .msg-act,.msg-act:focus-within{opacity:1}
-.msg-act .tb{height:24px;min-width:24px;padding:0 5px;border-radius:var(--r-ctl);color:var(--l3)}
-.msg-act .tb:hover{color:var(--l1)}
-.msg-act .ic.sm{width:14px;height:14px}
-.msg-time{font-size:12px;color:var(--l3);white-space:nowrap;padding:0 4px}
+.msg-act .tb{height:26px;min-width:26px;padding:0;display:inline-flex;align-items:center;justify-content:center;border-radius:var(--r-sm);color:var(--l3)}
+.msg-act .tb:hover{color:var(--l1);background:var(--fill)}
+.msg-act .ic.sm{width:15px;height:15px}
+.msg-time{font-size:12px;line-height:26px;color:var(--l3);white-space:nowrap;padding:0 2px;font-variant-numeric:tabular-nums}
 .md{overflow-wrap:anywhere}
 .md>*{margin:0}
 .md>*+*{margin-top:12px}
@@ -374,13 +390,24 @@ html.blurred .ctitle h2,html.blurred .set-top h1,html.blurred .update-title{colo
 .md th{font-weight:600}
 .md li::marker{color:var(--l3)}
 .md blockquote{border-left:2px solid var(--fill3);padding-left:12px;color:var(--l2)}
-.md code{font-family:var(--mono);font-size:var(--fs-text);background:var(--fill2);padding:1px 5px;border-radius:5px}
-.md pre{background:var(--code);border-radius:var(--r-box);padding:10px 12px;overflow-x:auto;box-shadow:inset 0 0 0 .5px var(--sep)}
+.md code{font-family:var(--mono);font-size:13px;background:var(--fill2);padding:1px 5px;border-radius:var(--r-xs)}
+.md pre{background:var(--code);border-radius:var(--r-md);padding:10px 12px;overflow-x:auto;box-shadow:inset 0 0 0 .5px var(--sep)}
 .md pre code{background:none;padding:0;font-size:12.5px;line-height:1.55;white-space:pre}
 /* Shiki's tokens carry both themes' colours; the app's colour scheme picks one. */
 .hl span{color:light-dark(var(--shiki-light),var(--shiki-dark))}
 .md a{color:var(--accent-t);text-decoration:none}
 .md a:hover{text-decoration:underline}
+/* A code block: a bar with its language and buttons over the code, in one box. */
+.md .cblock{background:var(--code);border-radius:var(--r-md);box-shadow:inset 0 0 0 .5px var(--sep);overflow:hidden}
+.md .cblock pre{margin:0;background:none;box-shadow:none;border-radius:0;padding:8px 12px 10px}
+.cb-h{display:flex;align-items:center;gap:8px;height:30px;padding:0 5px 0 12px;border-bottom:.5px solid var(--sep);font-size:12px;color:var(--l2)}
+.cb-lang{display:inline-flex;align-items:center;gap:5px;font-family:var(--mono);font-size:11.5px}
+.cb-lang .ic,.cb-warn .ic{width:13px;height:13px}
+.cb-warn{display:inline-flex;align-items:center;gap:4px;color:var(--orange)}
+.cb-acts{margin-left:auto;display:flex;gap:2px}
+.cb-b{height:22px;padding:0 7px;border:0;border-radius:var(--r-sm);background:none;display:inline-flex;align-items:center;gap:4px;font:inherit;font-size:12px;color:var(--l2)}
+.cb-b:hover{background:var(--fill2);color:var(--l1)}
+.cb-b .ic{width:13px;height:13px}
 /* Tool steps: a grey line in the body's size, no icon; a small caret after it opens it. */
 .tool{border-radius:9px;font-size:14px}
 .tool .th{display:flex;align-items:center;gap:6px;padding:2px 0;border-radius:6px;border:0;background:none;max-width:100%;text-align:left;color:var(--l2)}

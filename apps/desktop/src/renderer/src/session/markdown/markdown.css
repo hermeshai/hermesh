@@ -1,0 +1,116 @@
+/* The conversation's reading surface: an agent's Markdown, its code, tables, formulas and diagrams.
+   UI sizes remain independent of content sizes. */
+:root {
+  --md-size:var(--chat-size); --md-leading:1.625; --md-code-size:13px;
+  --md-fg:var(--msg); --md-muted:var(--l2); --md-link:var(--accent-fg);
+  --md-prose-width:752px; --md-rich-width:752px;
+}
+.md{font:var(--font-weight-normal) var(--md-size)/var(--md-leading) var(--font);font-variation-settings:var(--font-axes);color:var(--md-fg);min-width:0;overflow-wrap:anywhere}
+.md>*{margin:0}
+.md>*+*{margin-top:8px}
+.md :is(h1,h2,h3,h4,h5,h6){font-weight:var(--font-weight-medium);line-height:1.5;scroll-margin-top:32px;text-wrap:pretty}
+.md :is(h1,h2,h3,h4,h5,h6):not(:first-child){margin-top:1.5em}
+.md h1{font-size:20px;line-height:28px;font-weight:var(--font-weight-semibold)}.md h2{font-size:18px;line-height:28px;font-weight:var(--font-weight-semibold)}.md h3{font-size:16px;line-height:24px}.md h4,.md h5,.md h6{font-size:14px;line-height:20px}
+.md :is(h1,h2){letter-spacing:-.015em}
+.md :is(h3,h4,h5,h6){letter-spacing:-.008em}
+.md :is(strong,b){font-weight:490}
+.md :is(h1,h2,h3,h4,h5,h6) :is(strong,b){font-weight:650}
+.md :is(strong,b) code{font-weight:600}
+.md p{text-wrap:pretty}
+.md ul,.md ol{padding-inline-start:1.5em}
+.md li+li{margin-top:.3em}.md li>p+p{margin-top:.65em}
+.md li>:is(ul,ol){margin-top:.35em}.md ul ul{list-style-type:circle}.md ul ul ul{list-style-type:square}
+.md li::marker{color:var(--md-muted)}
+.md li.task-list-item{margin-left:0;position:relative}
+.md li.task-list-item>input{position:absolute;inset-inline-start:-1.4em;top:.4em;accent-color:var(--accent)}
+.md blockquote{padding-inline-start:.85em;border-inline-start:3px solid var(--fill3);border-left-width:3px;color:var(--md-muted)}
+.md blockquote>*{margin:0}.md blockquote>*+*{margin-top:.65em}
+.md .md-callout{padding:12px 16px;border:1px solid var(--sep);border-inline-start:3px solid var(--md-link);border-radius:var(--r-sm);color:var(--md-fg);background:var(--win2)}
+.md .md-callout[data-kind=warning]{border-inline-start-color:var(--warn)}
+.md .md-callout[data-kind=caution]{border-inline-start-color:var(--danger)}
+.md .md-callout[data-kind=tip]{border-inline-start-color:var(--ok)}
+.md a{color:var(--md-link);text-underline-offset:3px}
+.md a:focus-visible,.md summary:focus-visible,.md-tools button:focus-visible,.md-table-scroll:focus-visible{outline:2px solid var(--accent);outline-offset:3px}
+.md code{font-weight:400;font-variation-settings:normal;font-size:.9em;box-decoration-break:clone;-webkit-box-decoration-break:clone;overflow-wrap:anywhere}
+.md pre code{font-size:var(--md-code-size);line-height:1.6;overflow-wrap:normal}
+.md pre{tab-size:4}
+.md .cblock pre{max-height:520px;overscroll-behavior:contain}
+.md-color{display:inline-block;width:.75em;height:.75em;margin-inline-end:.35em;border-radius:2px;box-shadow:0 0 0 1px var(--field-bd)}
+.md-details{border:1px solid var(--sep);border-radius:var(--r-md);padding:10px 14px}
+.md-details>summary{font-weight:600;color:var(--md-link)}
+.md-details[open]>summary{margin-bottom:.75em}
+.md-details>*+*{margin-top:.65em}
+.md .footnotes{font-size:.875em;color:var(--md-muted);border-top:1px solid var(--sep);padding-top:1em}
+.md .footnotes .sr-only{position:absolute;width:1px;height:1px;padding:0;overflow:hidden;clip-path:inset(50%);white-space:nowrap}
+.md sup{line-height:0}
+.md-table{overflow:visible;min-width:0;max-width:100%}
+.md-table-box{position:relative;width:fit-content;max-width:100%}
+.md-table-scroll{overflow:auto;max-height:520px;border:1px solid var(--sep);border-radius:var(--r-sm);overscroll-behavior-x:contain}
+.md table{font-size:14px;line-height:1.6;font-variant-numeric:tabular-nums}
+.md :is(th,td){box-sizing:border-box;padding:8px 12px;min-width:104px;border-bottom:1px solid var(--sep);vertical-align:top}
+.md th{position:sticky;top:0;background:var(--win2);z-index:1;font-weight:600}
+.md tbody tr:last-child td{border-bottom:0}
+.md td[align=right],.md td[style*="right"]{white-space:nowrap}
+/* A number's width is its own; only text that wraps needs a floor. */
+.md :is(th,td):is([align=right],[style*="right"]){min-width:64px}
+.md-tools{display:flex;align-items:center;flex-wrap:wrap;gap:4px;padding:5px 0;color:var(--md-muted);font:12px/1.5 var(--font)}
+.md-tools button,.md-table-return{font:inherit;color:var(--md-link);border:0;border-radius:var(--r-xs);background:none;padding:4px 7px}
+.md-tools button:hover{background:var(--fill)}
+.md-tools>span[role=status]{margin-inline-start:auto}
+/* Shown when wanted: the table itself stays a plain table. Over the header's far end
+   where nothing else is free (a narrow window); beside the table in a conversation,
+   so looking at a table never covers it. */
+.md-table-box>.md-table-tools{position:absolute;z-index:2;top:7px;inset-inline-end:7px;flex-wrap:nowrap;gap:2px;padding:0;border-radius:var(--r-xs);background:var(--win2);opacity:0;transition:opacity .15s}
+.md-table-box:hover>.md-table-tools,.md-table-tools:focus-within{opacity:1}
+.md-table-tools button{display:grid;place-items:center;width:24px;height:24px;padding:0;color:var(--l3)}
+.md-table-tools button:hover{color:var(--l1)}
+.md-table-tools .ic{width:14px;height:14px}
+.md-expanded .md-table-tools{justify-content:flex-end;padding-bottom:8px}
+.md-expanded table{width:100%}
+.md-diagram{border:1px solid var(--sep);border-radius:var(--r-md);padding:8px 12px;background:var(--win);min-width:0}
+.md-diagram .cblock{margin-top:8px}
+.md-diagram-svg{overflow:auto;min-height:80px;padding:12px 0}
+.md-diagram-loading{min-height:120px;display:grid;place-items:center;color:var(--md-muted)}
+.md-render-note{font-size:13px;color:var(--md-muted)}
+/* A table or a diagram shown large, over the window. */
+.md-dialog{margin:auto;border:0;padding:0;max-width:calc(100vw - 48px);max-height:calc(100vh - 80px);overflow-y:auto;color:var(--l1);background:var(--win);border-radius:var(--r-xl);box-shadow:0 0 0 .5px var(--menu-bd),0 20px 60px rgba(0,0,0,.35);animation:sheet .22s cubic-bezier(.2,0,0,1)}
+.md-dialog:focus-visible{outline:none}
+.md-dialog::backdrop{background:var(--scrim);animation:fade .2s}
+.md-expanded{max-width:calc(100vw - 48px);max-height:calc(100vh - 48px)}
+.md-expanded .md-dialog-in{padding:16px;overflow:auto}
+.md-expanded .md-table-scroll{max-height:calc(100vh - 150px)}
+.md-expanded .md-diagram-svg{max-height:calc(100vh - 140px)}
+.md .katex{font-size:1.05em}
+.md .katex-display{overflow:auto;max-width:100%;padding:6px 0;margin:.8em 0}
+.md .katex-error{color:inherit!important;font-family:var(--mono);font-size:.9em;white-space:pre-wrap}
+/* Replies and rich blocks share the centered conversation column, including with the info card shown.
+   No scrollbar lane: prose and the control area share the same center. */
+.cscroll.markdown-chat{scrollbar-width:none}
+.cscroll.markdown-chat::-webkit-scrollbar{display:none}
+.markdown-chat{container-type:inline-size}
+.markdown-chat>.dbody{max-width:calc(var(--conversation-width) + 32px)}
+.markdown-chat .vrow>.am{width:100%;padding-inline:8px;align-self:center}
+.markdown-chat .am>.md>*{max-width:var(--md-prose-width);margin-inline:auto}
+.markdown-chat .am>.msg-act{left:6px}
+/* Cards and steps take the column; time lines and notes stay centred, as small as their words. */
+.markdown-chat .tr>:not(.vrow,.vspace),.markdown-chat .vrow>:not(.am,.tdiv,.tnote){max-width:var(--conversation-width);width:100%;align-self:center}
+.markdown-chat .vrow>.um{width:auto;align-self:flex-end;max-width:min(80%,var(--conversation-width))}
+.markdown-chat .am>.md>.md-wide{width:100%;max-width:var(--md-rich-width)}
+/* A table keeps the prose's left edge and grows to the right, so writing it never slides it.
+   The end margin is its tools' place. */
+.markdown-chat .am>.md>.md-table{width:auto;max-width:none;margin-inline:max(0px,calc((100% - var(--md-prose-width))/2)) 28px}
+.markdown-chat .md-table-box>.md-table-tools{top:0;inset-inline:100% auto;flex-direction:column;padding-inline-start:4px;background:none}
+@container(max-width:600px){
+  .markdown-chat .am>.md>.md-wide{width:100%;max-width:100%;margin-inline-start:0}
+  .markdown-chat .am>.md>.md-table{margin-inline-end:0}
+  .markdown-chat .md-table-box>.md-table-tools{top:7px;inset-inline:auto 7px;flex-direction:row;padding-inline-start:0;background:var(--win2)}
+}
+/* Scrolled well up a long conversation: a button back to its end, over the control area when a turn is live. */
+.tobottom{position:absolute;left:50%;bottom:calc(var(--dock, 0px) + 12px + var(--sp-3));z-index:5;width:30px;height:30px;margin-left:-15px;border:0;border-radius:var(--r-lg);background:var(--glass);box-shadow:var(--glass-sh);-webkit-backdrop-filter:blur(20px) saturate(1.6);backdrop-filter:blur(20px) saturate(1.6);color:var(--l1);display:flex;align-items:center;justify-content:center;opacity:0;transform:translateY(6px);pointer-events:none;transition:opacity .18s var(--ease-out),transform .18s var(--ease-out)}
+.tobottom.on{opacity:1;transform:none;pointer-events:auto}
+.tobottom:hover{background:var(--menu-solid)}
+.tobottom .ic{width:15px;height:15px}
+.dwrap.dock .tobottom{left:calc(50% - 135px)}
+/* Rows away from what is in sight are not drawn at all (useVirtualRows): no content-visibility on replies,
+   which would skip drawn rows just outside the view and have them measured at a placeholder's height. */
+@media print{.md-tools{display:none}.md-table-scroll{overflow:visible;max-height:none}.md-wide{width:100%!important;margin:0!important}}

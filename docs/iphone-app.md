@@ -95,8 +95,8 @@ packages/HermeshKit/         Swift package shared with the Mac signer
   SwiftUI views (`Views/Session/Markdown.swift`), with the Mac app's rules:
   a single newline breaks the line, a bare link stops where Chinese text
   starts, raw HTML stays text, images show their alt text, only http and
-  https links open. A reply being written renders block by block as on the
-  Mac (`splitBlocks` in HermeshSessions). Code is coloured by the Mac
+  https links open. A reply being written renders block by block
+  (`splitBlocks` in HermeshSessions). Code is coloured by the Mac
   app's own Shiki with the same GitHub themes, run in JavaScriptCore
   (`Code.swift`): `build-highlighter.sh` (an Xcode build phase) bundles it
   from `apps/desktop`'s dependencies into `Highlighter/` in the app, each

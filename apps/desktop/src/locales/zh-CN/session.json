@@ -43,7 +43,8 @@
       "notConnected": "暂时连不上 Hermesh，这里是上次读到的内容。",
       "offline": "{{name}} 离线了，这里是上次读到的内容。",
       "noAnswer": "{{name}} 暂时没有回应，这里是上次读到的内容。"
-    }
+    },
+    "toBottom": "回到底部"
   },
   "control": {
     "label": "这一轮",
@@ -90,5 +91,31 @@
     "model": "模型 <b>{{model}}</b>",
     "effort": "推理强度 <b>{{effort}}</b>",
     "sameAs": "跟随 {{agent}}"
+  },
+  "markdown": {
+    "table": "数据表格",
+    "copyTable": "拷贝表格",
+    "copyAsMarkdown": "拷贝为 Markdown",
+    "copied": "已拷贝",
+    "copyFailed": "拷贝失败，请重试",
+    "expand": "展开",
+    "close": "关闭",
+    "tableOpen": "表格已展开 · 返回",
+    "details": "展开详情",
+    "diagram": "图形",
+    "source": "源码",
+    "exportSvg": "导出 SVG",
+    "diagramFailed": "此图无法渲染，已在操作栏下方显示源码。",
+    "rendering": "正在绘制图形…",
+    "footnotes": "脚注",
+    "backToReference": "返回引用位置"
+  },
+  "content": {
+    "copy": "拷贝",
+    "copied": "已拷贝",
+    "hidden": "含隐藏字符",
+    "hiddenTip": "这段代码里有看不见的字符，粘贴前请检查",
+    "copyCode": "拷贝代码",
+    "copyCommand": "拷贝命令"
   }
 }
