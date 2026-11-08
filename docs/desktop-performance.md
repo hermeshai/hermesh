@@ -192,7 +192,7 @@ page changes nothing but its clocks. Both tests fail on the code before.
   apart from the clocks. Fewer moving things is the only way lower.
 - **Opening the long conversation** is dominated by streaming its 258 KB of
   events (the stand-in daemon, written in JS, is slower at this than
-  hermeshd) and laying out about 1,700 rows once.
+  hermeshd); only a window of its rows is laid out (§7).
 - **Memory**: the renderer's footprint is mostly allocator and V8 regions
   around a 9 MB heap; nothing grows with use. Going lower would mean V8 flags
   that trade CPU for memory.
@@ -205,7 +205,82 @@ page changes nothing but its clocks. Both tests fail on the code before.
   them to the page at launch) would remove it, but needs a migration for
   existing installs.
 
-## 7. Measuring on a laptop
+## 7. Long conversations and the reading surface
+
+Since 2026-11-08: a conversation page built for conversations of thousands
+of messages.
+
+**Only the rows near what is in sight are drawn** (`session/useVirtualRows.ts`,
+`session/virtual.ts`). Each row sits in a `.vrow` box in the list's flow;
+rows away from the view are stood in for by a `.vspace` as tall as they are
+(measured heights, else the average of their kind). The window reaches a
+screen past the view each way, moves by whole steps of 8 rows, and is placed
+again only when it no longer reaches half a screen past the view or a row of
+it is more than three screens away; placing happens in the next frame, never
+render to render. Rows and spaces are one flat keyed list, so a row keeps its
+element (and a selection in it) however the window changes. Rows that would
+draw nothing are left out (an empty row would still take a gap). The rows of
+a selection and the focused row stay drawn; what a row has open (a group of
+calls, a failure's details, a diagram's source) is kept per session while it
+is not drawn (`useRowState`). Following the end, keeping the place while rows
+above get their real heights (the browser's scroll anchoring, with the row at
+the top of the view held as a fallback) work as with every row drawn. Only
+the person going up leaves the end; scrolled well up, a button goes back.
+
+A window is never placed again before the one placed last is drawn: placing
+takes new guesses for the rows not measured, which the page shows only with
+that window, so a scroll in between saw the page and the guesses disagree by
+thousands of pixels and put the window screens away for a frame, taking the
+reply being written off the page.
+
+**The reply being written is the row its stored message will be** (keyed by
+the next event's seq, [reply-streaming.md](reply-streaming.md)), and its
+Markdown is one component throughout: parsed in AST-aware slices, settled
+blocks memoised, the last one closed while open (`remend`). Finishing a reply
+moves nothing and draws its code, tables and diagrams once.
+
+**Code is coloured in a worker** (`session/markdown/highlight.worker.ts`),
+line by line as it streams in, with the grammar state of the completed lines
+kept (32 blocks, 2 MiB); blocks over 200 KiB or with 10,000-character lines
+stay plain, and a worker that takes over 2.5 s is stopped. Formulas (KaTeX)
+and diagrams (Mermaid, strict, no configuration or links from the reply) are
+loaded only when a reply has one; diagrams render one at a time and are kept
+(30).
+
+**Memory goes back** after leaving a conversation of 200 rows or more (3 s
+after, once the next page settled) and after the window has been hidden for
+30 s: `webFrame.clearCache` (`renderer/src/memory.ts`). Never while a page is
+in use: the caches refill at a cost.
+
+The long finished conversation of the benchmark (361 rows) now holds 351
+elements in its list where it held 4,641. The benchmark, before (789b196)
+and after, one run each (interactions the median of three):
+
+| Metric | Before | After |
+|---|---|---|
+| Open the 2,700-event conversation | 172.8 ms | **35.8 ms** |
+| Clicks, input to frame (p50 / max) | 56 / 200 ms | **48 / 96 ms** |
+| Switch to another session / back to 概览 | 31.7 / 63.4 ms | 28.5 / 51.7 ms |
+| Heap after visiting 21 sessions | 27.2 MB | **16.9 MB** |
+| Startup to the overview with its data | 672.6 ms | 652.6 ms |
+| Long running conversation growing: renderer busy | 20.4 % | 21.0 % |
+| Scrolling the long conversation fast: fps / slow frames / p99 | 119.2 / 2 / 9.4 ms | 117.6 / 4 / 16.7 ms |
+| Renderer footprint 3 s after startup | 116 MB | 140 MB |
+
+What it costs: scrolled fast (400 px every 50 ms), rows come into the window
+as it moves, and a frame now and then takes two vsyncs (none over 50 ms); the
+bundled variable typeface (Google Sans Flex, same day) holds about 24 MB more
+outside the JS heap, which did not grow. The steady CPU numbers moved about
+as much as the floor's own did between the runs. `e2e/conversation.spec.ts` checks
+it against the benchmark's stand-in daemon: opening at the end with a window
+of rows; reading up with the wheel moves what is read by at most 2 px and
+never shows a blank middle; a group of calls opened stays open six screens
+away and back; a selection over several screens stays whole; the top and the
+end show rows within two frames; going back draws a window; a growing
+conversation follows its end, stays put when scrolled up until the button,
+and keeps the table of a reply as it is stored.
+
+## 8. Measuring on a laptop
 
 - Absolute CPU numbers move with what else the machine does (the floor's own
   animation ranged 4–12 % between runs). Compare runs made the same way:

@@ -51,6 +51,8 @@ export type Bridge = {
   showAppMenu(x: number, y: number): void;
   /** Shows a native menu at the pointer; resolves to the chosen item's id. */
   popupMenu(items: MenuItem[]): Promise<string | null>;
+  /** Tells the renderer memory is short (webFrame.clearCache): it drops caches and gives back what its allocators keep (renderer/src/memory.ts). */
+  releaseMemory(): void;
   onCommand(cb: (c: Command) => void): () => void;
   /** Tells the app menu what the page shows, so its items enable and check right. */
   setMenuState(state: MenuState): void;

@@ -1,68 +1,120 @@
-import { memo } from "react";
+import { Component, createContext, lazy, memo, Suspense, useContext, useEffect, useId, useMemo, useRef, useState, type ReactNode } from "react";
+import { useTranslation } from "react-i18next";
 import ReactMarkdown, { type Components } from "react-markdown";
 import remarkGfm from "remark-gfm";
 import remend from "remend";
-import { splitBlocks, withoutOpenTable } from "@hermesh/core";
-import { Code } from "./Code";
+import remarkMath from "remark-math";
+import remarkDirective from "remark-directive";
+import type { PluggableList } from "unified";
+import { createMarkdownSlices, pendingText } from "./markdown/parse";
+import { anchors, contentExtensions } from "./markdown/plugins";
+import { texMath } from "./markdown/tex";
+import { MarkdownTable } from "./markdown/Table";
+import { CodeBlock, InlineCode, Link } from "./content";
+import { DraftContext } from "./scope";
+
+const MermaidBlock = lazy(() => import("./markdown/Mermaid"));
+const SourceContext = createContext("");
 
 /**
- * An agent's reply as GitHub Markdown, rendered as React elements (raw HTML
- * stays text). Links open in the browser, http and https only; images show
- * their alt text, so a reply never loads anything.
+ * An agent's reply as GitHub Markdown with formulas, diagrams, callouts and footnotes, rendered as
+ * React elements (raw HTML stays text, images show their alt text, so a reply never loads anything).
+ * One component tree throughout streaming and completion: AST-aware slices keep settled blocks
+ * memoized, and the block still being written is closed (remend) so nothing shows as raw Markdown
+ * on its way (docs/reply-streaming.md); document-scoped references take the whole-document path.
  */
-export function Markdown({ text }: { text: string }) {
+export function Markdown({ text, streaming = false }: { text: string; streaming?: boolean }) {
+  const prefix = useId();
+  const split = useRef(createMarkdownSlices());
+  const blocks = useMemo(() => split.current(text, streaming), [text, streaming]);
   return (
     <div className="md sel-text">
-      <ReactMarkdown remarkPlugins={plugins} components={components}>
-        {text}
-      </ReactMarkdown>
-    </div>
-  );
-}
-
-/**
- * A reply the agent is still writing (docs/reply-streaming.md): its
- * finished blocks as they will stay, each parsed once, then the last one
- * with what is still open closed (remend), or without a table that has no
- * delimiter row yet, so nothing shows as raw Markdown on its way.
- */
-export function DraftMarkdown({ text }: { text: string }) {
-  const blocks = splitBlocks(text);
-  const last = withoutOpenTable(blocks.pop() ?? "");
-  return (
-    <div className="md sel-text">
-      {blocks.map((b, i) => (
-        <Block key={i} text={b} />
+      {blocks.map((block) => (
+        <Block key={block.id} text={block.text} pending={block.pending} prefix={prefix} offset={block.id} />
       ))}
-      {last.trim() !== "" && <Block key={blocks.length} text={remend(last, { linkMode: "text-only", katex: false })} />}
     </div>
   );
 }
 
-const Block = memo(function Block({ text }: { text: string }) {
+const Block = memo(function Block({ text, pending, prefix, offset }: { text: string; pending: boolean; prefix: string; offset: number }) {
+  const { t } = useTranslation("session");
+  const [mathPlugin, setMathPlugin] = useState<PluggableList>([]);
+  const hasMath = /\$\$|```math|~~~math|\\[([]/.test(text);
+  useEffect(() => {
+    if (!hasMath) return;
+    let live = true;
+    Promise.all([import("rehype-katex"), import("katex/dist/katex.min.css")])
+      .then(([module]) => {
+        if (live) setMathPlugin([[module.default, { output: "htmlAndMathml", throwOnError: false, strict: "ignore", trust: false, maxExpand: 1000, maxSize: 20, errorColor: "inherit" }]]);
+      })
+      .catch(() => {});
+    return () => {
+      live = false;
+    };
+  }, [hasMath]);
+  const rehypePlugins = useMemo<PluggableList>(() => [...mathPlugin, [anchors, { prefix, block: offset }]], [mathPlugin, prefix, offset]);
+  const shown = pending ? remend(pendingText(text), { linkMode: "text-only", katex: true }) : text;
   return (
-    <ReactMarkdown remarkPlugins={plugins} components={components}>
-      {text}
-    </ReactMarkdown>
+    <DraftContext.Provider value={pending}>
+      <SourceContext.Provider value={text}>
+        <RenderBoundary source={text}>
+          <ReactMarkdown
+            remarkPlugins={plugins}
+            rehypePlugins={rehypePlugins}
+            components={components}
+            remarkRehypeOptions={{ footnoteLabel: t("markdown.footnotes"), footnoteBackLabel: t("markdown.backToReference") }}
+          >
+            {shown}
+          </ReactMarkdown>
+        </RenderBoundary>
+      </SourceContext.Provider>
+    </DraftContext.Provider>
   );
 });
 
+/** A block that fails to render shows its source instead, until its source changes. */
+class RenderBoundary extends Component<{ source: string; children: ReactNode }, { failed: boolean }> {
+  state = { failed: false };
+  static getDerivedStateFromError() {
+    return { failed: true };
+  }
+  componentDidUpdate(previous: { source: string }) {
+    if (this.state.failed && previous.source !== this.props.source) this.setState({ failed: false });
+  }
+  render() {
+    return this.state.failed ? <pre>{this.props.source}</pre> : this.props.children;
+  }
+}
+
 const web = /^https?:\/\//i;
 
+type HNode = { type: string; tagName?: string; value?: string; properties?: Record<string, unknown>; children?: HNode[] };
+const textOf = (n: HNode): string => (n.type === "text" ? (n.value ?? "") : (n.children ?? []).map(textOf).join(""));
+
+/** A `pre`'s code: its language (from `language-*`) and text. */
+function codeOf(pre: HNode | undefined): { lang: string; text: string } | null {
+  const code = pre?.children?.find((c) => c.type === "element" && c.tagName === "code");
+  if (!code) return null;
+  const names = code.properties?.className;
+  const lang = (Array.isArray(names) ? names : [names]).map((c) => /^language-(\S+)/.exec(String(c ?? ""))?.[1]).find(Boolean) ?? "";
+  return { lang, text: textOf(code).replace(/\n$/, "") };
+}
+
 const components: Components = {
-  a: ({ href, children }) =>
-    href && web.test(href) ? <a href={href} target="_blank" rel="noreferrer">{children}</a> : <span>{children}</span>,
-  img: ({ alt }) => <span>{alt}</span>,
-  // A fenced block that names its language is coloured; inline code and other blocks stay plain.
-  code: ({ className, children }) => {
-    const lang = /^language-(\S+)/.exec(className ?? "")?.[1];
-    return <code className={className}>{lang && typeof children === "string" ? <Code text={children.replace(/\n$/, "")} lang={lang} /> : children}</code>;
+  a: ({ href, children, node, ...props }) => {
+    if (href?.startsWith("#")) return <Anchor href={href} {...props}>{children}</Anchor>;
+    return <Link href={href}>{children}</Link>;
   },
-  table: ({ children }) => (
-    <div className="md-table">
-      <table>{children}</table>
-    </div>
-  ),
+  img: ({ alt }) => <span>{alt}</span>,
+  // Inline code only: a block's is drawn by its `pre`, coloured when it names its language.
+  code: ({ children }) => <InlineCode>{children}</InlineCode>,
+  pre: ({ node, children }) => {
+    const code = codeOf(node as HNode | undefined);
+    if (code?.lang.toLowerCase() === "mermaid") return <Suspense fallback={<CodeBlock lang="mermaid" text={code.text} />}><MermaidBlock text={code.text} /></Suspense>;
+    return code ? <CodeBlock lang={code.lang} text={code.text} /> : <pre>{children}</pre>;
+  },
+  table: ({ children, node }) => <Table sourceStart={node?.position?.start.offset} sourceEnd={node?.position?.end.offset}>{children}</Table>,
+  details: ({ children, node }) => <Disclosure title={String(node?.properties?.dataTitle ?? node?.properties?.["data-title"] ?? "")}>{children}</Disclosure>,
 };
 
 type Node = { type: string; value?: string; url?: string; children?: Node[] };
@@ -87,7 +139,7 @@ function chatText() {
           });
           continue;
         }
-        const label = c.type === "link" && c.children?.length === 1 && c.children[0].type === "text" ? c.children[0].value ?? "" : "";
+        const label = c.type === "link" && c.children?.length === 1 && c.children[0].type === "text" ? (c.children[0].value ?? "") : "";
         const cut = label.search(wide);
         if (cut > 0 && (web.test(label) || label.startsWith("www."))) {
           const shown = label.slice(0, cut);
@@ -104,4 +156,49 @@ function chatText() {
   };
 }
 
-const plugins = [remarkGfm, chatText];
+const plugins: PluggableList = [[remarkGfm, { singleTilde: false }], [remarkMath, { singleDollarTextMath: false }], remarkDirective, texMath, contentExtensions, chatText];
+
+function Table({ children, sourceStart, sourceEnd }: { children: ReactNode; sourceStart?: number; sourceEnd?: number }) {
+  const source = useContext(SourceContext);
+  return <MarkdownTable source={source.slice(sourceStart, sourceEnd)}>{children}</MarkdownTable>;
+}
+
+function Disclosure({ title, children }: { title: string; children: ReactNode }) {
+  const { t } = useTranslation("session");
+  return (
+    <details className="md-details">
+      <summary>{title || t("markdown.details")}</summary>
+      {children}
+    </details>
+  );
+}
+
+/** A link within the reply (a footnote, a heading): it scrolls there, opening what folds it. */
+function Anchor({ href, children, ...props }: { href: string; children?: ReactNode } & React.AnchorHTMLAttributes<HTMLAnchorElement>) {
+  const draft = useContext(DraftContext);
+  return (
+    <a
+      {...props}
+      href={draft ? undefined : href}
+      onClick={(e) => {
+        e.preventDefault();
+        if (draft) return;
+        const root = e.currentTarget.closest(".md");
+        let id = href.slice(1);
+        try {
+          id = decodeURIComponent(id);
+        } catch {
+          /* literal fragment */
+        }
+        const target = root?.querySelector<HTMLElement>(`[id="${CSS.escape(id)}"], [data-heading="${CSS.escape(id)}"]`);
+        if (!target) return;
+        for (let parent = target.parentElement; parent && parent !== root; parent = parent.parentElement) if (parent instanceof HTMLDetailsElement) parent.open = true;
+        target.scrollIntoView({ block: "center", behavior: matchMedia("(prefers-reduced-motion: reduce)").matches ? "instant" : "smooth" });
+        target.tabIndex = -1;
+        target.focus({ preventScroll: true });
+      }}
+    >
+      {children}
+    </a>
+  );
+}

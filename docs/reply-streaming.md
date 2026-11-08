@@ -149,30 +149,32 @@ lines, not yet against a live Claude Code.
   asks with `partial: true` and keeps the draft apart from the events: a
   `whole` draft replaces it, other drafts append, any stored event clears it. Draft
   changes ride the existing 30 ms batch, so one render per batch at most.
-- **Rendering.** The draft shows after the last row as a growing agent
-  message, with the same type and colour as a finished one. The
-  conversation follows it while the owner is at the end (the scroll effect
-  also depends on the draft's length). No per-word fade-in, no cursor: the
-  quiet style the app keeps.
+- **Rendering.** The draft is the conversation's last row, keyed as its
+  stored message will be (the event after the last one), with the same type
+  and colour as a finished one; when the stored message arrives it takes the
+  same row, so nothing is drawn anew and nothing jumps. The conversation
+  follows it while the owner is at the end. No per-word fade-in, no cursor:
+  the quiet style the app keeps.
 - **Unfinished Markdown.** react-markdown parses a growing text correctly at
   every step but shows its unfinished parts raw: `**bol`, `[link](htt`, a
-  table header before its `|---|` row. Two small layers fix this:
-  1. **Blocks** (`splitBlocks` in [draft.ts](../packages/core/src/draft.ts)).
-     Split the draft at blank lines followed by an unindented line, outside
-     code fences (an indented line may go on a list item). Finished blocks
-     render through a memoised block, so a tick re-parses only the last one,
-     not the whole reply.
+  table header before its `|---|` row. The reply is one `Markdown` component
+  from its first piece to its stored message
+  ([Markdown.tsx](../apps/desktop/src/renderer/src/session/Markdown.tsx)):
+  1. **Slices** (`createMarkdownSlices` in
+     [parse.ts](../apps/desktop/src/renderer/src/session/markdown/parse.ts)).
+     The text is cut at the top-level blocks the Markdown parser itself
+     finds; finished ones render through a memoised block, so a tick
+     re-parses only the last two. A real reference definition (`[a]:`,
+     `[^a]:`) makes the reply parse as a whole.
   2. **The last block.** Close what is open with
      [`remend`](https://www.npmjs.com/package/remend) 1.4.0 (Vercel's
      "self-healing markdown", the piece Streamdown uses for this): dangling
-     `**`, `*`, `` ` ``, `~~`; an unfinished link shows its text only
-     (`linkMode: "text-only"`); math is off. A table at the end of the block
-     is held back until its delimiter row has every column
-     (`withoutOpenTable`), so it appears as a table once and never as text
-     with pipes. An open code fence already renders as code.
-
-  The stored message, when it arrives, renders through the same `Markdown`,
-  so it looks the same and nothing jumps.
+     `**`, `*`, `` ` ``, `~~`, `$$`; an unfinished link shows its text only
+     (`linkMode: "text-only"`). A table's lines are held back until its
+     delimiter row is whole (`pendingText`), so it appears as a table and
+     never as text with pipes; its columns then only grow while it is
+     written. An open code fence already renders as code; inside the block
+     still being written, links, Copy and diagrams wait.
 
 ## 7. iPhone app
 
