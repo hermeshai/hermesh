@@ -80,11 +80,6 @@ const allowed = new Set([
 type Node = { [key: string]: Node | null };
 const any = null;
 const writable: Node = {
-  model: any,
-  thinking: any,
-  permission_mode: any,
-  approval_mode: any,
-  instructions: { extra: any },
   web_search: any,
   browser: { enabled: any, default: any, sites: any, extension: any },
   mcp_servers: {
@@ -109,7 +104,6 @@ const writable: Node = {
     },
   },
 };
-const safeModes = new Set(["manual", "accept-edits", "ask", "read-only", "auto-edit"]);
 const commandKeys = new Set(["command", "args", "env", "env_vars", "cwd", "connector"]);
 
 /** Whether an edit setting `keys` to `value` changes only what `writable` allows (allow.go's `writes`). */
@@ -164,8 +158,6 @@ function refusal(method: string, params: Record<string, unknown> | undefined): s
       } catch (err) {
         return (err as Error).message;
       }
-      if (keys.length === 1 && (keys[0] === "permission_mode" || keys[0] === "approval_mode") && typeof e.value === "string" && !safeModes.has(e.value))
-        return "only SetHerAssistantMode, signed by the owner's root key, gives an assistant full access";
       if (!writes(keys, e.value, e.merge === "upsert")) return `the owner's devices may not change ${e.key_path}: settings that let Her do more on this machine need the owner's root key`;
     }
   if ((method === "mcp/probe" || method === "mcp/login") && Object.keys((params?.server ?? {}) as object).some((k) => commandKeys.has(k)))

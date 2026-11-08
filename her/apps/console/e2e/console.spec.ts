@@ -6,10 +6,9 @@ import { startStandIn, type StandIn } from "../scripts/stand-in.ts";
 import { unzip, zip } from "./zip.ts";
 
 // The console as the owner uses it, in a headless browser, against hermeshd's routes (the
-// stand-in) and a real her: a model from an API key, the defaults new assistants start with,
-// instructions, a connector by address with its tools, a skill uploaded and turned off, a web
-// search key, a site allowed, the data exported without the keys. What the page says is checked,
-// and what her wrote in its files.
+// stand-in) and a real her: a model from an API key, a connector by address with its tools, a
+// skill uploaded and turned off, a web search key, a site allowed, the data exported without the
+// keys. What the page says is checked, and what her wrote in its files.
 
 let site: StandIn;
 test.beforeAll(async () => {
@@ -33,9 +32,8 @@ test("an environment set up from its console", async ({ page }) => {
   page.on("pageerror", (e) => errors.push(e.message));
   await page.goto(site.url);
 
-  await test.step("an API key makes a model ready", async () => {
-    await expect(page.getByText("No model yet")).toBeVisible();
-    await page.getByRole("button", { name: "Connect a Model" }).click();
+  await test.step("an API key connects a model service, on the page the console opens on", async () => {
+    await expect(page.getByRole("navigation", { name: "Pages" }).getByRole("button", { name: "Models", exact: true })).toHaveAttribute("aria-current", "page");
     await page.getByRole("button", { name: "Add API Service" }).click();
     const sheet = page.getByRole("dialog", { name: "Add API Service" });
     await sheet.locator(".provider-choice", { hasText: "Mock" }).click();
@@ -43,33 +41,6 @@ test("an environment set up from its console", async ({ page }) => {
     await sheet.getByRole("button", { name: "Save" }).click();
     await expect(sheet).toBeHidden();
     await expect(page.locator(".mrow", { hasText: "Mock" })).toContainText("Credential store");
-    await nav(page, "Overview");
-    await expect(page.getByText("Ready · Mock model")).toBeVisible();
-  });
-
-  await test.step("the defaults: a model, its thinking, and an approval mode short of full access", async () => {
-    await nav(page, "Defaults");
-    await expect(page.getByLabel("Approvals").locator("option")).toHaveText(["Ask Permissions", "Accept Edits"]);
-    await page.getByLabel("Model").selectOption({ label: "DeepSeek Flash (mock catalog)" });
-    await expect(page.getByLabel("Thinking").locator("option")).toHaveText(["Default", "Low", "High", "Max"]);
-    await page.getByLabel("Thinking").selectOption("high");
-    await page.getByLabel("Approvals").selectOption("accept-edits");
-    await expect(page.getByText("Changes files in its folder without asking; asks before commands")).toBeVisible();
-    await expect.poll(() => read("config.toml")).toMatch(/^model = "mock\/deepseek-flash"$/m);
-    expect(read("config.toml")).toMatch(/^thinking = "high"$/m);
-    expect(read("config.toml")).toMatch(/^permission_mode = "accept-edits"$/m);
-    await expect(page.getByLabel("Model")).toHaveValue("mock/deepseek-flash");
-  });
-
-  await test.step("instructions every assistant is told", async () => {
-    await nav(page, "Instructions");
-    await page.getByRole("textbox", { name: "Instructions" }).fill("Answer briefly, and sign every email as Her.");
-    await page.getByRole("button", { name: "Save", exact: true }).click();
-    await expect(page.getByText("Instructions saved")).toBeVisible();
-    await expect.poll(() => read("config.toml")).toContain('extra = "Answer briefly, and sign every email as Her."');
-    await page.reload();
-    await expect(page.getByRole("textbox", { name: "Instructions" })).toHaveValue("Answer briefly, and sign every email as Her.");
-    await expect(page.getByRole("button", { name: "Save", exact: true })).toBeDisabled();
   });
 
   await test.step("a connector added by address, checked, its tools listed", async () => {
@@ -179,15 +150,6 @@ test("an environment set up from its console", async ({ page }) => {
     expect(read("credentials.toml")).toContain("tvly-e2e");
     for (const [name, bytes] of Object.entries(files)) expect(bytes.includes("sk-e2e") || bytes.includes("tvly-e2e"), `${name} holds a key`).toBe(false);
     expect(readdirSync(path.join(site.home, "exports"))).toEqual([]);
-  });
-
-  await test.step("the overview says what is set up", async () => {
-    await nav(page, "Overview");
-    await expect(page.getByText("Ready · DeepSeek Flash (mock catalog)")).toBeVisible();
-    await expect(page.locator(".ov-line", { hasText: "Connectors" })).toContainText("2 connectors");
-    await expect(page.locator(".ov-line", { hasText: "Web Search" })).toContainText("Through Tavily");
-    await expect(page.locator(".ov-line", { hasText: "Browser" })).toContainText("1 site allowed");
-    await expect(page.locator(".ov-line", { hasText: "Instructions" })).toContainText("Set");
   });
 
   await test.step("a dropped connection is opened again, and the page goes on working", async () => {

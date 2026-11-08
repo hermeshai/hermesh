@@ -1,14 +1,11 @@
 {
   "nav": {
     "label": "页面",
-    "overview": "概览",
     "models": "模型",
     "connectors": "连接器",
     "skills": "技能",
     "search": "联网搜索",
     "browser": "浏览器",
-    "instructions": "指令",
-    "defaults": "默认设置",
     "data": "数据"
   },
   "conn": {
@@ -20,7 +17,6 @@
   "undo": "撤销",
   "cancel": "取消",
   "close": "关闭",
-  "save": "保存",
   "error": {
     "disconnected": "和 Her 的连接断开了",
     "notConnected": "还没有连上 Her"
@@ -30,64 +26,6 @@
     "minutesAgo_other": "{{count}} 分钟前",
     "hoursAgo_other": "{{count}} 小时前",
     "yesterday": "昨天"
-  },
-  "overview": {
-    "model": "模型",
-    "ready": "可以使用 · {{name}}",
-    "noModel": "还没有模型",
-    "connect": "连接模型",
-    "none": "无",
-    "connectors_other": "{{count}} 个连接器",
-    "connectorsAttention_other": "{{count}} 个连接器 · {{attention}} 个需要处理",
-    "skills_other": "已启用 {{count}} 个",
-    "searchOff": "已关闭",
-    "searchVia": "使用 {{name}}",
-    "searchNone": "没有可用的搜索服务",
-    "sites_other": "允许 {{count}} 个网站",
-    "noSites": "每个网站都先询问",
-    "instructionsSet": "已设置",
-    "version": "版本"
-  },
-  "defaults": {
-    "model": "模型",
-    "noModel": "还没有模型",
-    "connect": "去连接",
-    "thinking": "思考",
-    "approval": "审批",
-    "note": "新助手以这些设置开始，每个助手都可以在自己的设置里修改。完全访问只能在应用里用触控 ID 为单个助手打开。",
-    "saved": "已保存，新助手将以此开始。"
-  },
-  "thinking": {
-    "default": "默认",
-    "off": "不思考",
-    "on": "思考",
-    "minimal": "最少",
-    "low": "低",
-    "medium": "中",
-    "high": "高",
-    "xhigh": "超高",
-    "max": "最高"
-  },
-  "permission": {
-    "manual": {
-      "title": "询问权限",
-      "desc": "修改文件、运行命令前都先问你"
-    },
-    "accept-edits": {
-      "title": "自动接受编辑",
-      "desc": "它文件夹里的文件直接修改，运行命令前先问你"
-    },
-    "bypass-permissions": {
-      "title": "完全访问",
-      "desc": "除拒绝规则、询问规则和删除关键路径外，一律直接执行"
-    }
-  },
-  "instructions": {
-    "placeholder": "例如：用中文简短回答。拿不准的时候，先问再做。",
-    "note": "这个环境的每个助手除了自己的指令，都会读到这段话。",
-    "revert": "还原",
-    "saved": "指令已保存",
-    "cleared": "指令已清除"
   },
   "data": {
     "title": "这个环境的数据",

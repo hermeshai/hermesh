@@ -9,9 +9,9 @@ import zhCustomize from "./locales/zh-CN/customize.json" with { type: "json" };
 import zhSettings from "./locales/zh-CN/settings.json" with { type: "json" };
 import zhYours from "./locales/zh-CN/yours.json" with { type: "json" };
 
-// The console's text, by namespace: console (the frame, Overview, Defaults, Instructions,
-// Browser, Data), customize (Connectors and Skills), settings (Models and Web search) and yours (the
-// owner's Chrome, on the Browser page). English holds every key; zh-CN translates them
+// The console's text, by namespace: console (the frame, Browser, Data), customize (Connectors
+// and Skills), settings (Models and Web search) and yours (the owner's Chrome, on the Browser
+// page). English holds every key; zh-CN translates them
 // (locales.test.ts). The language is the browser's.
 
 export const languages = ["zh-CN", "en"] as const;

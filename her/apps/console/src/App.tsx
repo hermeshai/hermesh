@@ -8,10 +8,7 @@ import { useHer } from "./her";
 import { Icon, type IconName } from "./icons";
 import { BrowserPage } from "./pages/Browser";
 import { DataPage } from "./pages/Data";
-import { DefaultsPage } from "./pages/Defaults";
-import { InstructionsPage } from "./pages/Instructions";
 import { ModelsPage } from "./pages/Models";
-import { OverviewPage } from "./pages/Overview";
 import { SearchPage } from "./pages/Search";
 
 // The console's frame, as the Mac app's settings window: the pages in a sidebar, the page on
@@ -20,14 +17,11 @@ import { SearchPage } from "./pages/Search";
 // needs nothing from the server but its files.
 
 const pages = [
-  { id: "overview", icon: "grid" },
   { id: "models", icon: "chip" },
   { id: "connectors", icon: "plug" },
   { id: "skills", icon: "read" },
   { id: "search", icon: "search" },
   { id: "browser", icon: "web" },
-  { id: "instructions", icon: "text" },
-  { id: "defaults", icon: "toggles" },
   { id: "data", icon: "database" },
 ] as const satisfies readonly { id: string; icon: IconName }[];
 
@@ -35,7 +29,7 @@ export type Page = (typeof pages)[number]["id"];
 
 function route(hash: string): { page: Page; item: string | null } {
   const [p, ...rest] = hash.replace(/^#/, "").split("/");
-  const page = pages.find((x) => x.id === p)?.id ?? "overview";
+  const page = pages.find((x) => x.id === p)?.id ?? "models";
   return { page, item: rest.length ? decodeURIComponent(rest.join("/")) : null };
 }
 
@@ -85,14 +79,11 @@ export function App() {
             {lost ?? t("conn.connecting")}
           </div>
         )}
-        {page === "overview" && <OverviewPage go={go} />}
         {page === "models" && <ModelsPage />}
         {page === "connectors" && <ConnectorsPage item={item} go={open} />}
         {page === "skills" && <SkillsPage item={item} go={open} />}
         {page === "search" && <SearchPage go={go} />}
         {page === "browser" && <BrowserPage />}
-        {page === "instructions" && <InstructionsPage />}
-        {page === "defaults" && <DefaultsPage go={go} />}
         {page === "data" && <DataPage />}
       </main>
       <ToastView />

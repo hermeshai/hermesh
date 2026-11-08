@@ -2,7 +2,6 @@
 // and the few the console adds, drawn the same way.
 
 const paths = {
-  grid: '<rect x="2.8" y="2.8" width="3.9" height="3.9" rx="1.1"/><rect x="9.3" y="2.8" width="3.9" height="3.9" rx="1.1"/><rect x="2.8" y="9.3" width="3.9" height="3.9" rx="1.1"/><rect x="9.3" y="9.3" width="3.9" height="3.9" rx="1.1"/>',
   search: '<circle cx="7" cy="7" r="4.4"/><path d="M10.3 10.3l3.4 3.4"/>',
   plus: '<path d="M8 3v10M3 8h10"/>',
   minus: '<path d="M3 8h10"/>',
@@ -20,7 +19,6 @@ const paths = {
   web: '<circle cx="8" cy="8" r="6"/><path d="M2 8h12M8 2c-2 2.2-2 9.8 0 12M8 2c2 2.2 2 9.8 0 12"/>',
   lock: '<rect x="3.2" y="7" width="9.6" height="6.8" rx="1.6"/><path d="M5.3 7V5.2a2.7 2.7 0 0 1 5.4 0V7"/>',
   warn: '<path d="M8 2.2l6.2 11H1.8z"/><path d="M8 6.4v3.2M8 11.4v.1"/>',
-  toggles: '<rect x="1.8" y="2.8" width="12.4" height="4.4" rx="2.2"/><rect x="1.8" y="8.8" width="12.4" height="4.4" rx="2.2"/><circle cx="11.9" cy="5" r="1.2"/><circle cx="4.1" cy="11" r="1.2"/>',
   chip: '<rect x="3.8" y="3.8" width="8.4" height="8.4" rx="1.8"/><rect x="6.4" y="6.4" width="3.2" height="3.2" rx=".6"/><path d="M6.2 1.8v2M9.8 1.8v2M6.2 12.2v2M9.8 12.2v2M1.8 6.2h2M1.8 9.8h2M12.2 6.2h2M12.2 9.8h2"/>',
   // The console's own.
   plug: '<path d="M6 1.8v3M10 1.8v3"/><path d="M4.2 4.8h7.6v2.6a3.8 3.8 0 0 1-7.6 0z"/><path d="M8 11.2v3"/>',
@@ -36,7 +34,6 @@ const paths = {
   updown: '<path d="M5.2 6L8 3.2 10.8 6M5.2 10L8 12.8 10.8 10"/>',
   unlock: '<rect x="3.2" y="7" width="9.6" height="6.8" rx="1.6"/><path d="M5.3 7V5.2a2.7 2.7 0 0 1 5.2-1"/>',
   grip: '<g fill="currentColor" stroke="none"><circle cx="6" cy="4" r=".95"/><circle cx="10" cy="4" r=".95"/><circle cx="6" cy="8" r=".95"/><circle cx="10" cy="8" r=".95"/><circle cx="6" cy="12" r=".95"/><circle cx="10" cy="12" r=".95"/></g>',
-  text: '<path d="M2.8 3.6h10.4M2.8 6.5h10.4M2.8 9.4h10.4M2.8 12.3h6.4"/>',
 };
 
 export type IconName = keyof typeof paths;

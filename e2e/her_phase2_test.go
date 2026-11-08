@@ -1004,9 +1004,13 @@ func TestHerConsoleSettings(t *testing.T) {
 		value any
 		ok    bool
 	}{
-		{"instructions.extra", "Answer in plain English.", true},
-		{"model", "mock/mock-1", true},
-		{"permission_mode", "accept-edits", true},
+		{"web_search.enabled", false, true},
+		{`browser.sites."https://example.com"`, "navigate", true},
+		// The apps show Her alone, whose settings are her own: no defaults
+		// for new assistants, no instructions for all of them.
+		{"instructions.extra", "Answer in plain English.", false},
+		{"model", "openai/gpt-5", false},
+		{"permission_mode", "accept-edits", false},
 		{"permission_mode", "bypass-permissions", false},
 		{"tools.bash", map[string]any{"pass_provider_keys": true}, false},
 		{"system_prompt_file", "/tmp/another-prompt.md", false},
@@ -1022,9 +1026,13 @@ func TestHerConsoleSettings(t *testing.T) {
 
 	// What was taken is her's configuration now; nothing refused reached it.
 	cfg := page.config()
+	search, _ := cfg["web_search"].(map[string]any)
+	browser, _ := cfg["browser"].(map[string]any)
+	sites, _ := browser["sites"].(map[string]any)
 	instructions, _ := cfg["instructions"].(map[string]any)
 	tools, _ := cfg["tools"].(map[string]any)
-	if instructions["extra"] != "Answer in plain English." || cfg["model"] != "mock/mock-1" || cfg["permission_mode"] != "accept-edits" ||
+	if search["enabled"] != false || sites["https://example.com"] != "navigate" ||
+		instructions["extra"] != nil || cfg["model"] == "openai/gpt-5" || cfg["permission_mode"] != nil ||
 		tools["bash"] != nil || cfg["system_prompt_file"] != nil {
 		b, _ := json.Marshal(cfg)
 		t.Fatalf("her's configuration: %s", b)

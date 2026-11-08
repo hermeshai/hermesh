@@ -538,7 +538,7 @@ The protos are the contract; this is their outline.
 |---|---|---|---|
 | Assistants, conversations, memory, files Her makes, routines | The only copy, in `~/.her` | Recent messages per environment, to open at once and read offline | Nothing |
 | Model logins, API keys, connector tokens | The credential store | Status only: connected, which account, until when | Nothing |
-| Connectors, skills, instructions, default permissions | `~/.her` | Nothing | Nothing |
+| Connectors, skills, web search and browser settings | `~/.her` | Nothing | Nothing |
 | Whether a machine runs Her | Its machine settings, signed | The signed setting | The signed setting, which it can't change |
 | Messages written while a Her Server is offline | Delivered when it is back | Kept on the device that wrote them, shown as waiting | Nothing |
 | Presence | | | Online or offline, name, version |
@@ -563,7 +563,7 @@ What `~/.her` holds on a Her Server:
 
 ```
 ~/.her/
-  config.toml        connectors, web search, instructions: the user layer
+  config.toml        connectors, web search, the browser: the user layer
   models.toml        model providers and models
   bots/<id>/         an assistant: bot.json, its avatar, its folder
   sessions/          conversations, as JSON lines, by date
@@ -747,15 +747,17 @@ Sections:
 
 | Section | What it does |
 |---|---|
-| Overview | her's version, whether a model is ready, disk used |
-| Models | Model connections: API keys, sign-ins such as ChatGPT; the default model |
+| Models | Model connections: API keys, sign-ins such as ChatGPT |
 | Connectors | MCP servers: add by address, sign in, see their tools; connectors started as commands need Touch ID |
 | Skills | Installed skills: turn on or off, add by upload, remove, read |
 | Web search | The search provider and its key |
 | Browser | The sites Her may open without asking; on a Mac, whether the owner's own Chrome is connected through the Hermesh extension, and used |
-| Instructions | What every assistant of this environment is told |
-| Defaults | The model and approval mode new assistants start with |
 | Data | Export: the environment's data as one .zip, downloaded to the device the console is open on, keys and sign-ins left out (§7). Backup and restore later |
+
+There is no overview, no defaults for new assistants and no instructions for
+all of them: the apps show Her alone, whose model, thinking and permissions
+are in Her's own settings in the app, and hermeshd refuses those settings
+from the console.
 
 ## 11. What we build
 
@@ -770,8 +772,8 @@ through the real apps and the relay.
    run, "Add environment" and Settings → Machines.
 3. `HerService` through the tunnel and in process (`Open`, `Call`),
    with the allowlist.
-4. The console through the tunnel, with Overview, Models (API keys, plus
-   the ChatGPT sign-in on a Mac Her Server) and Defaults.
+4. The console through the tunnel, with Models (API keys, plus the ChatGPT
+   sign-in on a Mac Her Server).
 5. The Mac app's Her entry, with Her alone (§9.1):
    - the environment switcher, beside Her's name;
    - the conversation: messages, questions, the approval window, steps,
@@ -797,7 +799,7 @@ Test: this Mac and a Linux cloud machine as two environments.
 
 1. Files both ways, with previews and saving.
 2. The rest of the console: Connectors (with sign-in), Skills (upload), Web
-   search, Browser, Instructions, export.
+   search, Browser, export.
 3. Sign-ins started on the Her Server (§5.4), for ChatGPT and for MCP
    connectors.
 4. Routines in conversations.

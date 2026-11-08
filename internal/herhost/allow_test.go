@@ -71,13 +71,6 @@ func TestConfigWrite(t *testing.T) {
 		name, params string
 		code         connect.Code // 0: allowed
 	}{
-		{"the model", write(`{"key_path":"model","value":"openai/gpt-5"}`), 0},
-		{"thinking", write(`{"key_path":"thinking","value":"high"}`), 0},
-		{"asking first by default", write(`{"key_path":"permission_mode","value":"manual"}`), 0},
-		{"accepting edits by default", write(`{"key_path":"permission_mode","value":"accept-edits"}`), 0},
-		{"the default mode removed", write(`{"key_path":"permission_mode","value":null}`), 0},
-		{"the old key, asking", write(`{"key_path":"approval_mode","value":"ask"}`), 0},
-		{"instructions", write(`{"key_path":"instructions.extra","value":"Answer in French."}`), 0},
 		{"web search", write(`{"key_path":"web_search.enabled","value":false}`, `{"key_path":"web_search.order","value":["brave"]}`), 0},
 		{"web search, whole", write(`{"key_path":"web_search","value":{"enabled":true,"disabled":["exa"]}}`), 0},
 		{"a site the browser may open", write(`{"key_path":"browser.sites.\"https://example.com\"","value":"navigate"}`), 0},
@@ -90,8 +83,15 @@ func TestConfigWrite(t *testing.T) {
 		{"a connector's tools", write(`{"key_path":"mcp_servers.gh","merge":"upsert","value":{"disabled_tools":["delete_repo"],"exposure":"direct"}}`), 0},
 		{"a connector removed", write(`{"key_path":"mcp_servers.fs","value":null}`), 0},
 		{"the connectors, whole", write(`{"key_path":"mcp_servers","value":{"gh":{"url":"https://x"}}}`), 0},
-		{"in a project's layer", `{"layer":"user_project","cwd":"/p","edits":[{"key_path":"model","value":"mock/mock-1"}]}`, 0},
+		{"in a project's layer", `{"layer":"user_project","cwd":"/p","edits":[{"key_path":"web_search.enabled","value":false}]}`, 0},
 
+		// What a new assistant starts with, and what every assistant is told: the
+		// apps show Her alone, whose settings are her own.
+		{"the default model", write(`{"key_path":"model","value":"openai/gpt-5"}`), no},
+		{"the default thinking", write(`{"key_path":"thinking","value":"high"}`), no},
+		{"asking first by default", write(`{"key_path":"permission_mode","value":"manual"}`), no},
+		{"the old key, asking", write(`{"key_path":"approval_mode","value":"ask"}`), no},
+		{"instructions", write(`{"key_path":"instructions.extra","value":"Answer in French."}`), no},
 		{"bash's shell", write(`{"key_path":"tools.bash.shell","value":"/tmp/evil"}`), no},
 		{"bash", write(`{"key_path":"tools.bash","value":{"pass_provider_keys":true}}`), no},
 		{"the tools on", write(`{"key_path":"tools.enabled","value":["bash"]}`), no},
@@ -120,7 +120,7 @@ func TestConfigWrite(t *testing.T) {
 		{"a command's environment", write(`{"key_path":"mcp_servers.fs.env.PATH","value":"/tmp"}`), no},
 		{"a command behind quotes", write(`{"key_path":"\"mcp_servers\".\"fs\".command","value":"sh"}`), no},
 		{"a curated connector", write(`{"key_path":"mcp_servers.gh.connector","value":"github"}`), no},
-		{"a command after a harmless edit", write(`{"key_path":"model","value":"mock/mock-1"}`, `{"key_path":"mcp_servers.fs.cwd","value":"/"}`), no},
+		{"a command after a harmless edit", write(`{"key_path":"web_search.enabled","value":true}`, `{"key_path":"mcp_servers.fs.cwd","value":"/"}`), no},
 		{"full access by default", write(`{"key_path":"permission_mode","value":"bypass-permissions"}`), no},
 		{"full access by default, old key", write(`{"key_path":"approval_mode","value":"full-auto"}`), no},
 		{"full access in a project's layer", `{"layer":"user_project","cwd":"/p","edits":[{"key_path":"permission_mode","value":"bypass-permissions"}]}`, no},
