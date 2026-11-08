@@ -9,7 +9,7 @@
     "dev": "electron-vite dev",
     "build": "electron-vite build",
     "typecheck": "tsc -p tsconfig.json",
-    "test": "node --test src/shared/*.test.ts src/renderer/src/session/*.test.ts src/renderer/src/session/markdown/*.test.ts",
+    "test": "node --test src/shared/*.test.ts src/renderer/src/session/*.test.ts src/renderer/src/session/markdown/*.test.ts scripts/*.test.mjs",
     "test:e2e": "playwright test",
     "perf": "electron-vite build && playwright test -c perf"
   },

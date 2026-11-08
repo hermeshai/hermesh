@@ -737,8 +737,12 @@ Replaced on 2026-10-19 by the hybrid design in [desktop-app.md](desktop-app.md):
 Hermesh.app/
 ├── Contents/MacOS/Hermesh                    # Electron: windows, menu bar, notifications, API gateway
 ├── Contents/Resources/app.asar               # main process and the page (React)
+├── Contents/Resources/console                # Her's console, which hermeshd serves (her-server.md)
 ├── Contents/Helpers/hermeshd                 # the same Go binary as on other machines (LaunchAgent)
+├── Contents/Helpers/her                      # Her's kernel, which hermeshd runs while Her is on for this Mac
+├── Contents/Helpers/agent-desktop            # desktop control for her's computer use, with its helper
 ├── Contents/Helpers/Hermesh Signer.app       # root key (Secure Enclave), confirmation panel, Touch ID
+├── Contents/Frameworks/libpdfium.dylib       # PDFium, for her's document tools
 └── Contents/Library/LaunchAgents/…plist      # SMAppService.agent registers the built-in hermeshd
 ```
 

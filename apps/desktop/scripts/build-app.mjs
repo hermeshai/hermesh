@@ -8,12 +8,19 @@
 // The bundle (docs/desktop-app.md §1):
 //   Contents/MacOS/Hermesh                          Electron (this app)
 //   Contents/Resources/app.asar                     main, preload and the page
+//   Contents/Resources/console                      Her's console (her/apps/console), which hermeshd serves
+//   Contents/Resources/model-connection-licenses    notices of her's model connections (her/crates/her-connections/licenses)
+//   Contents/Resources/third-party-licenses         licences of her's deck engine and fonts, and of PDFium
 //   Contents/Helpers/hermeshd                       the Go daemon, a LaunchAgent
 //   Contents/Helpers/hermesh                        the CLI (including agent login)
+//   Contents/Helpers/her                            Her's kernel (her/), which hermeshd runs from beside itself (docs/her-server.md §6.4)
+//   Contents/Helpers/agent-desktop                  desktop control, which her's desktop tools find beside her,
+//   Contents/Helpers/agent-desktop-macos-helper       and its helper (scripts/agent-desktop.mjs: a pinned release, checked)
 //   Contents/Helpers/Hermesh Signer.app             the native signer
+//   Contents/Frameworks/libpdfium.dylib             PDFium, which her's document worker finds there (scripts/pdfium.mjs: a pinned release, checked)
 //   Contents/Library/LaunchAgents/com.hermesh.app.daemon.plist
 //
-// Needs Go, Node, Xcode and python3 (for dmgbuild, kept in node_modules/.cache).
+// Needs Go, Rust (rustup), Node, Xcode and python3 (for dmgbuild, kept in node_modules/.cache).
 //
 // Environment:
 //   HERMESH_SIGNING_IDENTITY   signing identity; default the first "Developer ID Application", else ad-hoc
@@ -34,6 +41,8 @@ import { notarize } from "@electron/notarize";
 import { execFileSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
+import { agentDesktopBinaries, agentDesktopFiles, agentDesktopRelease } from "./agent-desktop.mjs";
+import { pdfiumFor, pdfiumLibrary, pdfiumRelease } from "./pdfium.mjs";
 import { releaseCatalog, releaseFeed } from "../src/shared/update.ts";
 import enNotes from "../src/locales/en/releases.json" with { type: "json" };
 import zhNotes from "../src/locales/zh-CN/releases.json" with { type: "json" };
@@ -82,6 +91,35 @@ for (const name of ["hermeshd", "hermesh"]) {
   sh("lipo", ["-create", "-output", path.join(tmp, name), ...goArchs.map((a) => path.join(tmp, `${name}-${a}`))]);
 }
 
+// her as her's own releases build it (her/tools/release): the dist profile, and without
+// local-accounts, which borrows other apps' sign-ins on this computer.
+const archs = arch === "universal" ? ["arm64", "x64"] : [arch];
+const triples = { arm64: "aarch64-apple-darwin", x64: "x86_64-apple-darwin" };
+const herRoot = path.join(root, "her");
+step(`building her (${arch})`);
+sh("rustup", ["target", "add", ...archs.map((a) => triples[a])], { cwd: herRoot });
+for (const a of archs) {
+  sh("cargo", ["build", "--profile", "dist", "--locked", "-p", "her-cli", "--bin", "her", "--no-default-features", "--target", triples[a]], { cwd: herRoot });
+}
+fat(archs.map((a) => path.join(herRoot, "target", triples[a], "dist/her")), path.join(tmp, "her"));
+
+step(`fetching PDFium ${pdfiumRelease.tag} and agent-desktop ${agentDesktopRelease.version}`);
+const cache = path.join(desktop, "node_modules/.cache");
+const pdfium = archs.map((a) => pdfiumFor(a, path.join(cache, "pdfium")));
+fat(pdfium.map((dir) => path.join(dir, "lib", pdfiumLibrary)), path.join(tmp, pdfiumLibrary));
+const desktopTools = archs.map((a) => agentDesktopBinaries(a, path.join(cache, "agent-desktop")));
+for (const name of agentDesktopFiles) fat(desktopTools.map((files) => files[name]), path.join(tmp, name));
+
+// Her's console (docs/her-server.md §6.3), until it is written: the app then ships without it.
+const consoleApp = path.join(herRoot, "apps/console");
+const hasConsole = fs.existsSync(path.join(consoleApp, "package.json"));
+if (hasConsole) {
+  step("building Her's console");
+  sh("pnpm", ["--dir", consoleApp, "build"]);
+} else {
+  console.warn("⚠️  her/apps/console is not there yet: this app has no Her console (hermeshd says it is not installed).");
+}
+
 step("building Hermesh Signer.app");
 sh(path.join(root, "apps/signer/macos/scripts/build-signer.sh"), [tmp], { env: { ...process.env, HERMESH_SIGNING_IDENTITY: identity, VERSION: version } });
 const signerApp = path.join(tmp, "Hermesh Signer.app");
@@ -125,13 +163,27 @@ for (const f of fs.readdirSync(path.join(contents, "Resources"))) {
   if (f.endsWith(".lproj") && !["en.lproj", "zh_CN.lproj"].includes(f)) fs.rmSync(path.join(contents, "Resources", f), { recursive: true });
 }
 
-step("adding hermeshd, the signer and the LaunchAgent");
+step("adding hermeshd, her, the signer and the LaunchAgent");
 fs.mkdirSync(path.join(contents, "Helpers"), { recursive: true });
 fs.mkdirSync(path.join(contents, "Library/LaunchAgents"), { recursive: true });
-for (const name of ["hermeshd", "hermesh"]) {
+// Programs go in Helpers and the library in Frameworks, where her looks after its own folder
+// (her-docs); what is not code goes in Resources, since codesign takes every file in those for code.
+const helpers = ["hermeshd", "hermesh", "her", ...agentDesktopFiles];
+for (const name of helpers) {
   fs.copyFileSync(path.join(tmp, name), path.join(contents, "Helpers", name));
   fs.chmodSync(path.join(contents, "Helpers", name), 0o755);
 }
+const library = path.join(contents, "Frameworks", pdfiumLibrary);
+fs.copyFileSync(path.join(tmp, pdfiumLibrary), library);
+fs.chmodSync(library, 0o755);
+if (hasConsole) fs.cpSync(path.join(consoleApp, "dist"), path.join(contents, "Resources/console"), { recursive: true });
+fs.cpSync(path.join(herRoot, "crates/her-connections/licenses"), path.join(contents, "Resources/model-connection-licenses"), { recursive: true });
+const licenses = path.join(contents, "Resources/third-party-licenses");
+fs.cpSync(path.join(herRoot, "crates/her-slide/licenses"), licenses, { recursive: true });
+// her carries Carlito and Caladea inside it (her-slide's fonts.rs), and their licence with them.
+for (const name of ["OFL-Carlito.txt", "OFL-Caladea.txt"]) fs.copyFileSync(path.join(herRoot, "crates/her-slide/fonts", name), path.join(licenses, name));
+fs.cpSync(path.join(pdfium[0], "licenses"), path.join(licenses, "PDFium"), { recursive: true });
+fs.copyFileSync(path.join(pdfium[0], "LICENSE"), path.join(licenses, "PDFium/pdfium-binaries.txt"));
 sh("ditto", [signerApp, path.join(contents, "Helpers/Hermesh Signer.app")]);
 fs.copyFileSync(path.join(desktop, "build/com.hermesh.app.daemon.plist"), path.join(contents, "Library/LaunchAgents/com.hermesh.app.daemon.plist"));
 // A changed launch configuration makes ServiceManagement re-evaluate its
@@ -154,9 +206,14 @@ await flipFuses(path.join(contents, "MacOS/Hermesh"), {
 
 step(`signing with: ${identity}`);
 // hermeshd needs no entitlements; the signer was signed with its own (and its profile) when built.
+// Nor do her and agent-desktop: they read and write the user's files, start processes and open
+// connections, which the hardened runtime allows, and the accessibility API and screen capture are
+// TCC permissions. her loads PDFium, signed below with the bundle, which the hardened runtime's
+// library validation lets in only from the same team ID: an ad-hoc her goes without it.
 const timestamp = identity === "-" ? "--timestamp=none" : "--timestamp";
-for (const name of ["hermeshd", "hermesh"]) {
-  sh("codesign", ["--force", "--options", "runtime", timestamp, "--sign", identity, path.join(contents, "Helpers", name)]);
+for (const name of helpers) {
+  const runtime = name === "her" && identity === "-" ? [] : ["--options", "runtime"];
+  sh("codesign", ["--force", ...runtime, timestamp, "--sign", identity, path.join(contents, "Helpers", name)]);
 }
 await sign({
   app,
@@ -169,6 +226,20 @@ await sign({
   optionsForFile: () => ({ hardenedRuntime: identity !== "-", entitlements: path.join(desktop, "build/app.entitlements") }),
 });
 sh("codesign", ["--verify", "--strict", "--deep", app]);
+for (const file of [...helpers.map((name) => path.join(contents, "Helpers", name)), library]) sh("codesign", ["--verify", "--strict", file]);
+// As signed, where this Mac can run them: her opens a PDF with the bundle's PDFium (no HER_PDFIUM,
+// a home without one), and agent-desktop answers.
+if (archs.includes(process.arch)) {
+  const home = fs.mkdtempSync(path.join(tmp, "home-"));
+  const { HER_PDFIUM: _, ...env } = { ...process.env, HOME: home, HER_HOME: path.join(home, ".her") };
+  const her = path.join(contents, "Helpers/her");
+  step(`checking ${execFileSync(her, ["--version"], { env, encoding: "utf8" }).trim()}, PDFium and agent-desktop`);
+  fs.writeFileSync(path.join(home, "check.pdf"), minimalPdf());
+  const opened = JSON.parse(execFileSync(her, ["doc-worker"], { input: JSON.stringify({ op: "open", handle: 1, path: path.join(home, "check.pdf") }) + "\n", env, cwd: home, encoding: "utf8" }).split("\n")[0]);
+  if (opened.ok?.pages !== 1) throw new Error(`the bundled her cannot open a PDF: ${JSON.stringify(opened)}`);
+  const said = JSON.parse(out(path.join(contents, "Helpers/agent-desktop"), ["version"]).split("\n").pop());
+  if (said.data?.version !== agentDesktopRelease.version) throw new Error(`the bundled agent-desktop says ${JSON.stringify(said)}, not ${agentDesktopRelease.version}`);
+}
 
 const auth = process.env.HERMESH_NOTARY_PROFILE
   ? { keychainProfile: process.env.HERMESH_NOTARY_PROFILE }
@@ -210,6 +281,28 @@ if (arch !== "universal") {
 }
 if (identity === "-") console.warn("⚠️  ad-hoc signature: the LaunchAgent (SMAppService) and Gatekeeper need a Developer ID signature.");
 else if (!auth) console.warn("⚠️  signed but not notarized: others who download it will be blocked the first time they open it.");
+
+/** `files`, one per architecture of this build in `archs`' order, as one Mach-O file `to` holding exactly those. */
+function fat(files, to) {
+  sh("lipo", ["-create", "-output", to, ...files]);
+  const want = archs.map((a) => ({ arm64: "arm64", x64: "x86_64" })[a]).sort().join(" ");
+  const got = out("lipo", ["-archs", to]).split(/\s+/).sort().join(" ");
+  if (got !== want) throw new Error(`${to} holds ${got}, not ${want}`);
+}
+
+/** A one-page PDF, for checking the bundle's PDFium. */
+function minimalPdf() {
+  const objects = ["<< /Type /Catalog /Pages 2 0 R >>", "<< /Type /Pages /Kids [3 0 R] /Count 1 >>", "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 200 200] >>"];
+  let pdf = "%PDF-1.4\n";
+  const offsets = objects.map((o, i) => {
+    const at = pdf.length;
+    pdf += `${i + 1} 0 obj\n${o}\nendobj\n`;
+    return at;
+  });
+  const xref = pdf.length;
+  pdf += `xref\n0 ${objects.length + 1}\n0000000000 65535 f \n${offsets.map((o) => `${String(o).padStart(10, "0")} 00000 n \n`).join("")}`;
+  return pdf + `trailer\n<< /Size ${objects.length + 1} /Root 1 0 R >>\nstartxref\n${xref}\n%%EOF\n`;
+}
 
 /** dmgbuild (build/dmg/requirements.txt, pinned with hashes) in a virtual environment of its own, kept between builds. */
 function dmgbuild() {
