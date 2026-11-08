@@ -2,12 +2,15 @@ package herhost
 
 import (
 	"encoding/json"
+	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 )
@@ -64,6 +67,7 @@ func TestConsoleRefusals(t *testing.T) {
 		{"POST", "/her/console/rpc", `{"jsonrpc":"2.0","id":1,"method":"models/list"}`, 400}, // Her is off
 		{"GET", "/her/console/events", ``, 400},
 		{"POST", "/her/console/upload", `x`, 400},
+		{"GET", "/her/console/export", ``, 400},
 	} {
 		w := serve(h, c.method, c.path, c.body, "Her-File-Name", "x.txt")
 		if w.Code != c.status || !strings.HasPrefix(w.Header().Get("Content-Type"), "text/plain") || w.Body.Len() == 0 {
@@ -131,6 +135,73 @@ func TestConsoleUpload(t *testing.T) {
 	}
 	if left, _ := filepath.Glob(filepath.Join(staged, "*-big.zip")); len(left) != 0 {
 		t.Fatalf("left %v", left)
+	}
+}
+
+// The console's export: her writes the archive, which comes down as a
+// download and is then removed from the machine. Nothing else is served: not
+// a file her names outside her home's exports/, nor one a link there leads
+// to, and those stay where they are. her failing says why; data/export is not
+// open to the console's JSON-RPC, as only this route asks for it.
+func TestConsoleExport(t *testing.T) {
+	noHerHere(t)
+	home := t.TempDir()
+	exports := filepath.Join(home, "exports")
+	os.MkdirAll(exports, 0o700)
+	secret := filepath.Join(home, "credentials.toml")
+	os.WriteFile(secret, []byte("model-key"), 0o600)
+	link := filepath.Join(exports, "her-export-link.zip")
+	os.Symlink(secret, link)
+	var mu sync.Mutex
+	var answer string // what her answers to data/export
+	sock := fakeHer(t, func(req map[string]any, c net.Conn) {
+		mu.Lock()
+		defer mu.Unlock()
+		fmt.Fprintf(c, `{"jsonrpc":"2.0","id":%v,%s}`+"\n", req["id"], answer)
+	})
+	h := New(Config{Socket: sock, Version: "test"})
+	h.stop, h.home, h.snap = func() {}, home, newSnapshot("9.9", nil)
+	export := func(said string) *httptest.ResponseRecorder {
+		mu.Lock()
+		answer = said
+		mu.Unlock()
+		return serve(h, "GET", "/her/console/export", "")
+	}
+	wrote := func(path string) string { return `"result":{"path":` + mustJSON(t, path) + `,"bytes":16}` }
+
+	archive := filepath.Join(exports, "her-export-20261108-090000.zip")
+	os.WriteFile(archive, []byte("PK\x03\x04 the archive"), 0o600)
+	w := export(wrote(archive))
+	if w.Code != 200 || w.Body.String() != "PK\x03\x04 the archive" || w.Header().Get("Content-Type") != "application/zip" ||
+		w.Header().Get("Content-Disposition") != "attachment; filename=her-export-20261108-090000.zip" ||
+		w.Header().Get("Content-Length") != "16" || w.Header().Get("Cache-Control") != "no-store" {
+		t.Fatalf("%d %v %q", w.Code, w.Header(), w.Body)
+	}
+	if _, err := os.Stat(archive); !os.IsNotExist(err) {
+		t.Fatalf("the archive is still on the machine: %v", err)
+	}
+
+	for _, p := range []string{secret, filepath.Join(exports, "..", "credentials.toml"), link, exports} {
+		if w := export(wrote(p)); w.Code != http.StatusForbidden || strings.Contains(w.Body.String(), "model-key") {
+			t.Errorf("her naming %s: %d %q", p, w.Code, w.Body)
+		}
+	}
+	if b, _ := os.ReadFile(secret); string(b) != "model-key" {
+		t.Fatal("a file outside exports/ was removed")
+	}
+	if _, err := os.Lstat(link); err != nil {
+		t.Fatalf("the link was removed: %v", err)
+	}
+
+	w = export(`"error":{"code":-32603,"message":"cannot write the archive: no space left on device"}`)
+	if w.Code != http.StatusBadRequest || !strings.Contains(w.Body.String(), "no space left on device") {
+		t.Fatalf("%d %q", w.Code, w.Body)
+	}
+	if w := serve(h, "POST", "/her/console/rpc", `{"jsonrpc":"2.0","id":1,"method":"data/export"}`); w.Code != http.StatusForbidden {
+		t.Fatalf("data/export through rpc: %d %q", w.Code, w.Body)
+	}
+	if w := serve(h, "POST", "/her/console/export", ""); w.Code != http.StatusMethodNotAllowed {
+		t.Fatalf("POST: %d", w.Code)
 	}
 }
 
