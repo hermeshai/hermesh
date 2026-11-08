@@ -215,12 +215,14 @@ func desktopHerWorld(t *testing.T) desktopFixture {
 		}
 	}
 	w := newOwnerMac(t, herEnv(her, console, macHome, mock.base), &localv1.GrantSpec{})
+	t.Cleanup(w.owner.stop) // stopped as a service is, so that it stops her
 	home, err := w.app.client.GetStatus(context.Background(), &localv1.GetStatusRequest{})
 	if err != nil {
 		t.Fatal(err)
 	}
 	work, _ := w.otherMac("work-mac", herEnv(her, console, workHome, mock.base))
 	daemon := w.logs[len(w.logs)-1] // the one otherMac started
+	t.Cleanup(daemon.stop)
 	w.joinTyped(work, home, "work-mac")
 	return desktopFixture{Socket: w.sock, Sessions: map[string]string{}, CLI: filepath.Join(w.bin, "hermesh"), CLIEnv: w.cliEnv, OtherMac: daemon.cmd.Process.Pid, owner: w}
 }
