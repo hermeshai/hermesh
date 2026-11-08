@@ -149,10 +149,13 @@ jobs:
           fi
       - name: build, sign, notarize
         run: VERSION="${GITHUB_REF_NAME#v}" HERMESH_ARCH=${{ matrix.arch }} node apps/desktop/scripts/build-app.mjs
-      # The runner is Apple silicon: it can run the arm64 app.
+      # The runner is Apple silicon: it can run the arm64 app. her-mock is the
+      # model service of its Her (TestDesktopPackagedHer).
       - name: check the packaged app
         if: matrix.arch == 'arm64'
-        run: HERMESH_DESKTOP_APP="$PWD/dist/Hermesh.app" HERMESH_DESKTOP_DMG="$PWD/dist/Hermesh-macos-arm64.dmg" go test ./e2e -run TestDesktopPackaged -count=1 -v -timeout 15m
+        run: |
+          (cd her && cargo build --locked -p her-mock --bin her-mock)
+          HERMESH_DESKTOP_APP="$PWD/dist/Hermesh.app" HERMESH_DESKTOP_DMG="$PWD/dist/Hermesh-macos-arm64.dmg" go test ./e2e -run TestDesktopPackaged -count=1 -v -timeout 15m
       - name: clean up signing keychain and key
         if: always()
         run: |
