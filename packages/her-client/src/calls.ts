@@ -7,8 +7,11 @@ import type { Transport } from "./rpc.ts";
 // into the NDJSON pipe RpcClient reads, so a page talks to her through hermeshd as it would
 // to her directly.
 
-/** What a connection's stream carries: its id first, then her's notifications. */
-export type ConnectionEvent = { opened: { connectionId: string } } | { notification: { method: string; params: unknown } };
+/**
+ * What a connection's stream carries: its id first, with what each setup request returned,
+ * then her's notifications.
+ */
+export type ConnectionEvent = { opened: { connectionId: string; responses?: CallResult[] } } | { notification: { method: string; params: unknown } };
 
 /** A JSON-RPC error of her's. */
 export type CallError = { code: number; message: string; data?: unknown };
@@ -16,10 +19,13 @@ export type CallError = { code: number; message: string; data?: unknown };
 /** How a call came back: her's result, or her's error. */
 export type CallResult = { result: unknown } | { error: CallError };
 
+/** A request sent as a connection opens (bots/subscribe, bots/open), before any notification of it. */
+export type SetupRequest = { method: string; params: unknown };
+
 /** hermeshd's side of a connection. */
 export interface CallAdapter {
-  /** Opens a connection. The stream ends when the connection does; `signal` ends it. */
-  open(signal: AbortSignal): AsyncIterable<ConnectionEvent>;
+  /** Opens a connection, sending `setup` on it first. The stream ends when the connection does; `signal` ends it. */
+  open(signal: AbortSignal, setup: SetupRequest[]): AsyncIterable<ConnectionEvent>;
   /** One request on the connection `connectionId` names. A throw: it or its answer was lost. */
   call(connectionId: string, method: string, params: unknown): Promise<CallResult>;
 }
@@ -64,9 +70,13 @@ const initialized: InitializeResult = {
  *
  * A call's answer and the stream's notifications travel apart, so an event her sent after
  * answering (a session's events after the snapshot `bots/open` returned) can arrive before
- * the answer does.
+ * the answer does. What must come first goes in `setup`: its answers reach `onOpened` with
+ * the connection's id, before any notification is passed on.
  */
-export function openCallTransport(adapter: CallAdapter): Transport & { close(): void } {
+export function openCallTransport(
+  adapter: CallAdapter,
+  o: { setup?: SetupRequest[]; onOpened?: (responses: CallResult[]) => void } = {},
+): Transport & { close(): void } {
   const texts = new Set<(text: string) => void>();
   const closes = new Set<() => void>();
   const abort = new AbortController();
@@ -92,10 +102,12 @@ export function openCallTransport(adapter: CallAdapter): Transport & { close(): 
 
   void (async () => {
     try {
-      for await (const e of adapter.open(abort.signal)) {
+      for await (const e of adapter.open(abort.signal, o.setup ?? [])) {
         if (closed) break;
-        if ("opened" in e) opened(e.opened.connectionId);
-        else deliver({ method: e.notification.method, params: e.notification.params });
+        if ("opened" in e) {
+          o.onOpened?.(e.opened.responses ?? []);
+          opened(e.opened.connectionId);
+        } else deliver({ method: e.notification.method, params: e.notification.params });
       }
     } catch {
       // A stream that fails has ended all the same.
