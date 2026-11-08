@@ -1,0 +1,15 @@
+{
+  "title": "电脑操控",
+  "intro": "macOS 允许后，Her 能读取和操作这台 Mac 上的其他应用。",
+  "off": "这个环境里电脑操控是关着的。",
+  "missing": "电脑操控的组件缺失，请重新安装 Hermesh。",
+  "accessibility": "辅助功能",
+  "deviceControl": "设备控制和数据访问",
+  "accessibilityDesc": "读取窗口内容并执行点击、输入，电脑操控必须要有。打开 hermeshd 的开关，它是运行 Her 的 Hermesh 服务。",
+  "screen": "屏幕录制",
+  "screenAudio": "录屏与系统录音",
+  "screenDesc": "给窗口截图时需要。打开 Hermesh 的开关。",
+  "granted": "已允许",
+  "open": "打开系统设置",
+  "note": "打开开关后回到这里，状态会自动刷新。"
+}

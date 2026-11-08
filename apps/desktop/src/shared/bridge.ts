@@ -31,6 +31,9 @@ export type TrayAction = "attention" | "running" | "open" | "settings" | "quit" 
 /** Fixed commands the page may ask to run in Terminal (by key, never by text). */
 export type TerminalCommand = "codexLogin" | "claudeLogin" | "antigravityLogin";
 
+/** A macOS permission Her's computer use needs on this Mac (docs/her-server.md §4.4). */
+export type ComputerPermission = "accessibility" | "screen";
+
 export type Bridge = {
   platform: string;
   /** The window's material shows through the sidebar (macOS's vibrancy, Windows 11's Mica). */
@@ -39,6 +42,10 @@ export type Bridge = {
   version: string;
   /** The app's language, chosen by the main process for this run (main/language.ts). */
   language: Language;
+  /** macOS's major version, 0 elsewhere: System Settings names its lists by it. */
+  macos: number;
+  /** Opens the pane of System Settings where the owner allows a computer use permission (main/computer.ts). */
+  openComputerPermission(kind: ComputerPermission): void;
   /** The settings window, on a tab ("grants"), optionally with an item in it selected ("machines/<machine id>", "grants/<grant id>"). */
   openSettings(tab?: string): void;
   /** In the settings window: another tab was asked for while it is open ("grants", "machines/<id>"). */

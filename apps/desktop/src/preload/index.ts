@@ -1,6 +1,6 @@
 import { contextBridge, ipcRenderer, webFrame, webUtils } from "electron";
 import type { Language } from "../shared/i18n";
-import type { Bridge, Command, MenuItem, MenuState, Preferences, TerminalCommand, TrayAction, TrayView } from "../shared/bridge";
+import type { Bridge, Command, ComputerPermission, MenuItem, MenuState, Preferences, TerminalCommand, TrayAction, TrayView } from "../shared/bridge";
 import type { UpdateInfo } from "../shared/update";
 
 // The only things the page gets from outside its sandbox. Data comes from
@@ -28,6 +28,8 @@ const bridge: Bridge = {
   userName: arg("user"),
   version: arg("version"),
   language: arg("lang") as Language,
+  macos: process.platform === "darwin" ? Number.parseInt(process.getSystemVersion(), 10) : 0,
+  openComputerPermission: (kind: ComputerPermission) => ipcRenderer.send("open-computer-permission", kind),
   openSettings: (tab?: string) => ipcRenderer.send("open-settings", tab),
   onSettingsTab: (cb: (tab: string) => void) => listen("settings-tab", cb),
   onWindowFocus: (cb: (focused: boolean) => void) => listen("window-focus", cb),
