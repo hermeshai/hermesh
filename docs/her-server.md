@@ -366,9 +366,9 @@ sequenceDiagram
     M->>M: verifies the root signature
     M->>H: starts her serve
     M-->>App: HerStatus running, no model yet
-    App->>App: opens that environment's console
-    U->>App: enters an API key in the console
-    App->>H: credentials/set, through the tunnel
+    App-->>U: Her asks for a model, the app writing for it
+    U->>App: pastes an API key, or signs in to ChatGPT (5.4)
+    App->>H: auth/set, through the tunnel
     H-->>App: model ready
     App-->>U: Her says hello
 ```
@@ -696,9 +696,11 @@ While no machine runs Her, the Her entry shows the first run:
    while the Mac sleeps), a Mac or Linux machine already paired, or a new
    server (an install command, paired as Add Machine does). Windows machines
    are shown as not yet supported. Touch ID turns Her on there.
-2. **Connect a model** in that environment's console: sign in to ChatGPT,
-   or enter an API key.
-3. **Her says hello.**
+2. **Connect a model**, in the conversation: Her speaks first (the app
+   writes for it, since no model can yet, and keeps none of it in her's
+   conversation) and offers signing in to ChatGPT or entering an API key
+   there. Other services are in the environment's console.
+3. **Her says hello**, naming the model it talks with.
 
 "Add environment" in the switcher runs the same steps for another machine.
 

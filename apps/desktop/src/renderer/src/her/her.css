@@ -171,6 +171,28 @@ span.shimmer{display:inline-block;max-width:100%;vertical-align:bottom}
 .wb-r{min-width:0;font-size:14px;line-height:21px;color:var(--l2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 @media (prefers-reduced-motion:reduce){.dots i,.dots.quiet i{animation:none;opacity:.6;transition:none}.wb-w{animation:none}}
 
+/* The onboarding while no model works (ModelOnboarding.tsx): Her's bubbles as the app writes them, quiet pills under the
+   last one, and a key's field. Once a model answers, one line stays, over Her's first words. */
+.ob{display:flex;flex-direction:column;gap:var(--sp-2)}
+.ob-pills{display:flex;flex-wrap:wrap;gap:6px;max-width:min(640px,100%);margin-top:8px}
+.ob-pill{height:28px;padding:0 12px;border:0;border-radius:999px;background:none;box-shadow:inset 0 0 0 .5px var(--l4);font:inherit;font-size:13px;color:var(--l1);white-space:nowrap}
+.ob-pill:hover{background:var(--fill)}
+.ob-pill:active{background:var(--fill2)}
+.ob-pill:disabled{opacity:.42}
+.ob-note{margin:7px 2px 0;font-size:12px;color:var(--l3)}
+.ob-detail{display:block;margin-top:2px;font-size:12.5px;line-height:1.5;color:var(--l2)}
+.ob-raw{display:inline-flex;align-items:center;gap:4px;margin-top:5px;padding:2px 0;border:0;background:none;font:inherit;font-size:12px;color:var(--l3)}
+.ob-raw:hover{color:var(--l2)}
+.ob-raw .chev{width:12px;height:12px;transition:transform .15s}
+.ob-raw .chev.open{transform:rotate(90deg)}
+.bm-b>.fc-raw{margin-top:6px;max-width:min(560px,100%)}
+.ob-key{display:flex;align-items:center;gap:8px;width:min(420px,100%);margin-top:8px}
+.ob-key .field{flex:1;min-width:0;height:30px;border-radius:var(--r-sm)}
+.ob-key .btn{height:30px;padding:0 14px}
+.ob-get{margin:7px 2px 0;font-size:12px}
+.ob-fold{align-self:center;display:inline-flex;align-items:center;gap:5px;margin:4px 0 2px;font-size:12px;color:var(--l3)}
+.ob-fold .ic{width:13px;height:13px}
+
 /* A new assistant's empty page: its avatar, its name, one line on how to start. */
 .bempty{display:flex;flex-direction:column;align-items:center;text-align:center;gap:var(--sp-1);padding-top:14vh}
 .bempty h3{margin:var(--sp-2) 0 0;font-size:20px;font-weight:600}
@@ -237,6 +259,8 @@ span.shimmer{display:inline-block;max-width:100%;vertical-align:bottom}
 .cmp-in::placeholder{color:var(--l3)}
 .cmp-plus{width:32px;height:32px;border-radius:var(--r-sm);border:0;background:none;color:var(--l2);display:flex;align-items:center;justify-content:center;flex:none}
 .cmp-plus:hover{background:var(--fill2);color:var(--l1)}
+.cmp-plus:disabled{opacity:.42;pointer-events:none}
+.cmp:has(.cmp-in:disabled){cursor:default}
 .cmp-plus .ic{width:18px;height:18px;stroke-width:2.25}
 .send{width:32px;height:32px;border-radius:var(--r-sm);border:0;background:var(--accent);color:#fff;display:flex;align-items:center;justify-content:center;flex:none;box-shadow:0 1px 2px rgba(40,60,200,.3);transition:background .15s}
 .send:disabled{color:var(--l3);background:var(--fill2);box-shadow:none}

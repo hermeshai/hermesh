@@ -21,6 +21,8 @@ import { envState, type EnvState } from "./environments";
 import { FailureCard, PastFailure } from "./Failure";
 import { messageTime, momentText, thingsText, timeLine } from "./format";
 import { Question, SentFiles, type FileScope } from "./Messages";
+import { Onboarding, useOnboarding } from "./ModelOnboarding";
+import { onboardingAfter, withOnboarding } from "./onboarding";
 import { splitAttached, waitingFor, type WaitingItem } from "./waiting";
 
 /** A pause before a time line (bot-mode-design §6.6). */
@@ -93,13 +95,16 @@ function useMarkRead(bot: BotSummary) {
   }, [bot.id, unread, connected]);
 }
 
-type Item = BotItem | WaitingItem;
+/** The onboarding while no model works there (ModelOnboarding.tsx), as one row of the conversation. */
+type OnboardingItem = { kind: "onboarding"; key: string; ts: number };
+
+type Item = BotItem | WaitingItem | OnboardingItem;
 
 /** A row of the conversation: its item, the time of the one before, and whether it sits close to its neighbours. */
 type BotRow = VirtualRow & { item: Item; previous: number | undefined; side: "um" | "bm" | null; joinPrev: boolean; joinNext: boolean };
 
 /** Each kind's height until rows of it are measured: only how long the scrollbar is depends on it. */
-const rowHeights: Record<string, number> = { user: 56, waiting: 70, bot: 96, attachment: 160, question: 120, routine: 40, deck_edit: 0, failure: 60 };
+const rowHeights: Record<string, number> = { user: 56, waiting: 70, bot: 96, attachment: 160, question: 120, routine: 40, deck_edit: 0, failure: 60, onboarding: 160 };
 
 /** Which bubble an item draws: the owner's, the assistant's, or neither (a line of its own). */
 const sideOf = (item: Item): BotRow["side"] => (item.kind === "user" || item.kind === "waiting" ? "um" : item.kind === "bot" || item.kind === "attachment" || item.kind === "question" ? "bm" : null);
@@ -126,7 +131,18 @@ function BotChat({ bot, conv, op, state, waiting, onWaiting }: {
     () => waitingFor(waiting, bot.id, chat.flatMap((i) => (i.kind === "user" ? [{ text: i.text, ts: i.ts }] : []))),
     [waiting, bot.id, chat],
   );
-  const items = useMemo<Item[]>(() => [...chat, ...kept], [chat, kept]);
+  const said = useMemo(() => [...chat, ...kept], [chat, kept]);
+  // No model works there: Her's onboarding, the app speaking for Her, until the conversation opens on one.
+  const noModel = state.kind === "noModel" || conv.noModel;
+  const flow = useOnboarding(her.machine.machineId, {
+    confirmed: conv.noModel,
+    reported: state.kind === "noModel",
+    opened: state.kind === "ready" && conv.rpc && view && !conv.noModel ? view.info.model : null,
+    session,
+    last: chat.at(-1)?.key ?? null,
+  });
+  const after = onboardingAfter(flow, { noModel, session, last: said.at(-1)?.key ?? null });
+  const items = useMemo<Item[]>(() => withOnboarding<Item, OnboardingItem>(said, after, { kind: "onboarding", key: "onboarding", ts: flow?.at ?? 0 }), [said, after, flow?.at]);
   const busy = view ? busyBubble(view) : null;
   const [dock, setDock] = useState(0);
   const scroll = useRef<HTMLDivElement>(null);
@@ -271,6 +287,8 @@ function BotChat({ bot, conv, op, state, waiting, onWaiting }: {
         );
       case "failure":
         return item.last ? <FailureCard key={item.key} error={item.error} working={working} model={view?.info.model} op={op} stateId={`failure:${item.key}`} /> : <PastFailure key={item.key} error={item.error} stateId={`failure:${item.key}`} />;
+      case "onboarding":
+        return flow && <Onboarding key={item.key} flow={flow} bot={bot} />;
       default:
         return null;
     }
@@ -285,7 +303,8 @@ function BotChat({ bot, conv, op, state, waiting, onWaiting }: {
             </div>
           )}
           {empty ? (
-            <EmptyPage bot={bot} state={state} loading={!view && state.kind === "ready" && !conv.noModel} />
+            // Without a model, Her waits for her's word before it greets (the onboarding).
+            <EmptyPage bot={bot} state={state} loading={(!view && state.kind === "ready" && !conv.noModel) || noModel} />
           ) : (
             <div className="tr bots" role="log" aria-label={t("chat.log")} ref={setList} data-rows={rows.length}>
               {virtual.parts.flatMap((part) =>
@@ -619,10 +638,9 @@ function Dock({ bot, conv, op, state, waiting, onWaiting, onHeight }: {
       change({ text: [sent.text, d.text].filter(Boolean).join("\n"), attachments: addAttachments(sent.attachments, d.attachments) });
     }
   };
+  // Without a model, the onboarding in the conversation says what to do; the composer waits.
   const above = asking ? (
     <Approval key={`${asking.agent?.id ?? ""}/${asking.approval.call_id}`} view={view!} op={op} />
-  ) : noModel ? (
-    <StateNote icon="key" title={t("env.noModel.title", { name })} body={t("env.noModel.body", { name })} action={t("model.openConsole")} onAction={her.openConsole} />
   ) : state.kind === "starting" ? (
     <StateNote icon="clock" title={t("env.starting", { name })} />
   ) : state.kind === "failed" ? (
@@ -638,13 +656,13 @@ function Dock({ bot, conv, op, state, waiting, onWaiting, onHeight }: {
       onAttachments={(attachments) => change({ ...draft, attachments })}
       onSend={() => void send()}
       canSend={!noModel}
-      placeholder={t("chat.placeholder", { name: bot.name })}
+      placeholder={noModel ? t("onboard.placeholder") : t("chat.placeholder", { name: bot.name })}
     />
   );
 }
 
-/** What keeps the environment from answering, above the composer in an approval's shape, with the way out. */
-function StateNote({ icon, title, body, action, onAction }: { icon: string; title: string; body?: string; action?: string; onAction?: () => void }) {
+/** What keeps the environment from answering, above the composer in an approval's shape. */
+function StateNote({ icon, title, body }: { icon: string; title: string; body?: string }) {
   return (
     <div className="knote" role="status">
       <div className="knote-h">
@@ -652,14 +670,6 @@ function StateNote({ icon, title, body, action, onAction }: { icon: string; titl
         <b>{title}</b>
       </div>
       {body && <p className="knote-b sel-text">{body}</p>}
-      {action && (
-        <div className="appr-f">
-          <span className="appr-sp" />
-          <button className="btn primary" onClick={onAction}>
-            {action}
-          </button>
-        </div>
-      )}
     </div>
   );
 }

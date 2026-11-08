@@ -13,11 +13,7 @@
     "offlineSeen": "{{name}} offline · seen {{ago}}",
     "notConnected": "{{name}} can't be reached right now",
     "starting": "Her is starting on {{name}}…",
-    "failed": "Her couldn't start on {{name}}",
-    "noModel": {
-      "title": "Connect a model on {{name}}",
-      "body": "Sign in to ChatGPT or enter an API key in this environment's console. Keys and logins stay on {{name}}."
-    }
+    "failed": "Her couldn't start on {{name}}"
   },
   "setup": {
     "title": "Choose where Her runs",
@@ -79,6 +75,34 @@
     "copyError": "Copy Error",
     "copiedError": "Error copied",
     "failedPast": "This task didn't finish: {{title}}"
+  },
+  "onboard": {
+    "greeting": "Hi, I'm {{name}}. I work on {{machine}}. Before we start, I need a model to think and answer with. Signing in with your ChatGPT account is quickest, or you can enter an API key.",
+    "chatgpt": "Sign In with ChatGPT",
+    "key": "Enter an API Key",
+    "stays": "Keys and sign-ins stay on {{machine}}",
+    "placeholder": "I can reply once a model is connected",
+    "browser": "I've opened ChatGPT's sign-in page in your browser. Come back here once you've signed in.",
+    "reopen": "Open Sign-In Page Again",
+    "otherWay": "Try Another Way",
+    "signedIn": "Connected to ChatGPT ({{account}}).",
+    "signedInPlain": "Connected to ChatGPT.",
+    "signInCancelled": "Sign-in cancelled. You can try again, or enter an API key instead.",
+    "signInFailed": "I couldn't connect to ChatGPT this time. You can try again, or enter an API key instead.",
+    "whichProvider": "Which provider?",
+    "otherServices": "Other Services…",
+    "pasteKey": "Paste your {{provider}} API key below. It's kept only in {{machine}}'s credential store: it won't show in our conversation, and it's never sent to the model.",
+    "keyLabel": "{{provider}} API key",
+    "keyPlaceholder": "API Key",
+    "save": "Save",
+    "checking": "Checking…",
+    "getKey": "Get a key from {{provider}}",
+    "keyRejected": "{{provider}} didn't accept this key: {{message}}. Paste it again?",
+    "keyRejectedPlain": "{{provider}} didn't accept this key. Paste it again?",
+    "keyFailed": "I couldn't save the key on {{machine}}. Try again?",
+    "keyUnverified": "Saved. I couldn't check the key with {{provider}} yet, so let's carry on.",
+    "done": "All set. I'll talk with you using {{model}}; you can change it in Assistant Settings. What can I do for you?",
+    "connected": "Connected to {{name}}"
   },
   "waiting": {
     "until": "Delivered when {{name}} is back",

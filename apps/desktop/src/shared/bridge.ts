@@ -1,3 +1,4 @@
+import type { ChatGptSignIn } from "./herSignin";
 import type { Language, LanguageChoice } from "./i18n";
 import type { UpdateInfo } from "./update";
 
@@ -75,6 +76,12 @@ export type Bridge = {
   openHerConsole(machineId: string): Promise<void>;
   /** Saves a file from an assistant's folder on its machine to Downloads, and shows it there. */
   saveHerFile(machineId: string, botId: string, path: string): Promise<void>;
+  /** Signs in to ChatGPT for a machine's Her in the browser (shared/herSignin.ts); resolves once it ended. */
+  signInHerChatGpt(machineId: string): Promise<ChatGptSignIn>;
+  /** Opens the browser again at the sign-in under way for a machine. */
+  reopenHerChatGpt(machineId: string): void;
+  /** Stops the sign-in under way for a machine: it ends cancelled. */
+  cancelHerChatGpt(machineId: string): void;
   runInTerminal(c: TerminalCommand): void;
   /** The compact first-run window, or the main window. */
   setWindowMode(mode: "onboarding" | "main"): void;
