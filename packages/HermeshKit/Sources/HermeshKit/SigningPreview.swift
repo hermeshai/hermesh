@@ -445,6 +445,9 @@ public enum SigningPreview {
             }
             return Card(type: type, title: String(localized: "Set the model \(agent) runs with on \(target)", bundle: .module), who: who, lines: lines,
                         why: String(localized: "Once approved, its sessions there that name no model run with these; the agent’s own configuration is not changed.", bundle: .module))
+        case .setHer, .setHerAssistantMode, .setHerCommandConnector:
+            // Her's commands (docs/her-server.md §8) are refused until they have a preview.
+            throw Refusal.unsupported(type)
         case .none:
             throw Refusal.unsupported(type)
         }

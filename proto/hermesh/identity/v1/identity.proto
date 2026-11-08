@@ -217,6 +217,9 @@ message AdminCommand {
     SetPaused set_paused = 13;
     SetName set_name = 14;
     AgentDefaults set_agent_defaults = 15;
+    SetHer set_her = 16;
+    SetHerAssistantMode set_her_assistant_mode = 17;
+    SetHerCommandConnector set_her_command_connector = 18;
   }
   reserved 12;
   reserved "rename_machine";
@@ -246,6 +249,36 @@ message SetName {
 
 message SetPaused {
   bool paused = 1;
+}
+
+// SetHer turns Her on or off for the machine (docs/her-server.md §5.2): on, its
+// hermeshd keeps her running; off, it stops her and keeps her data. Root-signed
+// only, never a setting.
+message SetHer {
+  bool enabled = 1;
+}
+
+// SetHerAssistantMode sets how freely one of Her's assistants acts: her's
+// permission mode ("manual", "accept-edits", "bypass-permissions"). The
+// machine refuses "bypass-permissions" any other way (docs/her-server.md §8).
+message SetHerAssistantMode {
+  // her's bot id.
+  string bot_id = 1;
+  string permission_mode = 2;
+}
+
+// SetHerCommandConnector adds, changes or removes a connector that her starts
+// as a command on the machine: an MCP server over stdio in her's user
+// configuration. The console can add connectors by address only
+// (docs/her-server.md §8).
+message SetHerCommandConnector {
+  // The connector's name in her's configuration.
+  string name = 1;
+  string command = 2;
+  repeated string args = 3;
+  map<string, string> env = 4;
+  // Removes the connector of that name; the other fields are ignored.
+  bool remove = 5;
 }
 
 // AgentDefaults is what a coding agent's sessions on the machine run with

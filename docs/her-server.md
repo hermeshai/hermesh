@@ -24,8 +24,9 @@ The decisions:
 3. **Each server has its own console.** A Her Server's console manages its
    environment. The relay's console (hermesh.io, on the official service)
    manages the relay. They are never merged.
-4. **hermeshd runs her** (`her serve --stdio`) and forwards her's own
-   JSON-RPC, with an allowlist by caller. Hermesh adds file transfer, the
+4. **hermeshd runs her** (`her serve --listen unix://…`), opens a her
+   connection for each client stream and forwards her's own JSON-RPC, with an
+   allowlist by caller. Hermesh adds file transfer, the
    console's HTTP and Her's status.
 5. **Keys decide.** Only the owner's trusted devices reach Her. Actions
    that need the root key are signed in the apps, with Touch ID.
@@ -55,7 +56,7 @@ The decisions:
 | Console | A server's web pages for managing it | "Manage this environment" |
 | Her entry | The apps' one place for Her: assistants and their conversations | Her (Her 助手) |
 | Tunnel | The end-to-end TLS connection from a trusted device to a machine, carried by the relay | |
-| Post office | The relay's store of sealed messages for whoever is offline, kept up to 30 days | "Waiting" |
+| Post office | The relay's store of sealed messages for whoever is offline, kept up to 30 days. Not used by Her yet (§5.5) | |
 | Notice | An event a machine seals to a phone's notice key; the relay hands it to Apple's push service ([iphone-app.md](iphone-app.md) §3) | A notification |
 | Agent | A coding agent, or a connected AI with a grant, as today. Can't reach Her in this version | As today |
 
@@ -193,7 +194,7 @@ flowchart TB
     Tunnel --> Files
     ConsoleHTTP -->|"static files"| ConsoleApp
     ConsoleHTTP --> Gate
-    Gate -->|"JSON-RPC on stdio"| Serve
+    Gate -->|"JSON-RPC on a Unix socket"| Serve
     Super -->|"spawns"| Serve
     Serve --> Core
     Serve --> Conn
@@ -249,7 +250,7 @@ flowchart TB
     Owner --> Proto
     Owner --> Peer
     Peer -->|"TLS"| RelayCmd
-    HerHost -->|"spawns; JSON-RPC on stdio"| HerBin
+    HerHost -->|"spawns; JSON-RPC on a Unix socket"| HerBin
     HerHost -->|"serves"| ConsoleApp
     HerTS -.->|"generated from"| HerProtocol
     Kit -.->|"generated from"| HerProtocol
@@ -259,7 +260,7 @@ flowchart TB
 Rules that keep the parts apart:
 
 - **Go never links Rust.** hermeshd talks to her only as a child process,
-  over JSON-RPC on stdio. her stays buildable and testable on its own
+  over JSON-RPC on a Unix socket only it can open. her stays buildable and testable on its own
   (`cargo test` in her/).
 - **The apps never talk to her directly.** They always go through their
   owner-role hermeshd (LocalService), which goes in process or through a
@@ -293,7 +294,7 @@ sequenceDiagram
     H->>P: model request
     P-->>H: reply, streamed
     H-->>M: events: steps, send_to_user, approvals
-    M-->>O: HerSubscribe events, through the relay
+    M-->>O: HerOpen events, through the relay
     O-->>App: events, and the environment's cache is updated
     M->>R: notice sealed to each phone that asked
     R->>R: hands it to Apple's push service
@@ -382,23 +383,22 @@ this is needed.
 sequenceDiagram
     participant App as App
     participant O as hermeshd, owner role
-    participant R as Relay, post office
     participant M as hermeshd, Her Server
     participant H as her
-    App->>O: prompt, while the environment is offline
-    O->>R: Send, sealed to the Her Server
-    O-->>App: shown as waiting
+    App->>O: HerSend, while the environment is offline
+    O->>O: keeps the message on this device
+    O-->>App: waiting
     Note over M: comes back online
-    M->>R: Fetch
-    R-->>M: the sealed message
-    M->>H: session/op prompt
-    M->>R: Ack, handled
+    O->>M: delivers it, through the tunnel
+    M->>H: bots/open, then session/op prompt
     H-->>App: the reply, as in 5.1
 ```
 
-The post office is the one in
-[agent-messages.md](agent-messages.md) §5: messages to a machine's sessions
-already wait there while the machine is away.
+The device that wrote a message keeps it (`HerSend`, `ListHerWaiting`) and
+delivers it once the machine answers again. The relay's post office
+([agent-messages.md](agent-messages.md) §5) would deliver it even after the
+device goes away, but today it takes no messages from owner devices, and
+changing that needs a relay release (§12).
 
 ## 6. Interfaces
 
@@ -419,33 +419,33 @@ step, so hermeshd forwards them.
 
 ### 6.2 Additions to Hermesh's protocol
 
-```proto
-// identity.proto: an AdminCommand, signed by a trusted device's root key.
-message SetHer {
-  bool enabled = 1;
-}
+The protos are the contract; this is their outline.
 
-// machine.proto: in GetInfoResponse and the Watch stream.
-message HerStatus {
-  bool enabled = 1;        // the owner turned Her on for this machine
-  bool running = 2;        // her is up
-  string version = 3;      // her's version
-  bool model_ready = 4;    // at least one model connection works
-  string unsupported = 5;  // why this machine can't run Her (Windows), or empty
-}
-
-// her/v1/her.proto: through the tunnel, from an owner device to a Her Server.
-service HerService {
-  rpc Call(HerCallRequest) returns (HerCallResponse);            // one her JSON-RPC request, allowlisted
-  rpc Subscribe(HerSubscribeRequest) returns (stream HerEvent);  // her's notifications for what the caller opened
-  rpc Upload(stream FileChunk) returns (UploadResponse);         // into an assistant's folder
-  rpc Download(DownloadRequest) returns (stream FileChunk);      // a file an assistant made
-}
-// The console is plain HTTP on the same tunnel connection, under /her/console/.
-```
-
-LocalService gains the same four calls, addressed by `machine_id`, and a
-local console address for the Mac app.
+- [her/v1/her.proto](../proto/hermesh/her/v1/her.proto): `HerService`,
+  served by a machine to the owner's devices only.
+  - `Open` opens a her connection, runs its setup requests (such as
+    `bots/subscribe` or `bots/open`), then streams her's notifications on it.
+  - `Call` sends one request on a connection an `Open` holds, or on one of
+    its own.
+  - `Upload` and `Download` move files into and out of an assistant's folder.
+  - The console is plain HTTP on the same tunnel connection: its files under
+    `/her/console/`, server-sent events at `/her/console/events`, and
+    JSON-RPC requests at `/her/console/rpc`.
+- [identity.proto](../proto/hermesh/identity/v1/identity.proto): three
+  root-signed `AdminCommand`s. `SetHer` turns Her on or off for a machine;
+  `SetHerAssistantMode` sets an assistant's permission mode, the only way to
+  reach `bypass-permissions`; `SetHerCommandConnector` manages connectors
+  started as commands.
+- [machine.proto](../proto/hermesh/machine/v1/machine.proto): `HerStatus` in
+  `MachineStatus`. Besides enabled, running, version, a ready model and
+  errors, it carries the unread count and the newest message, so the
+  sidebar and notifications need no stream of their own. Agents never get it.
+- [local.proto](../proto/hermesh/local/v1/local.proto): `Machine.her` keeps
+  each machine's Her as last seen, so an offline environment stays listed.
+  LocalService gains `SetHer`, `SetHerAssistantMode`,
+  `SetHerCommandConnector`, `HerOpen`, `HerCall`, `HerSend`,
+  `ListHerWaiting`, `HerUpload`, `HerDownload` (files go by path on the
+  device) and `GetHerConsole` (a 127.0.0.1 address with a token).
 
 ### 6.3 Changes in her
 
@@ -482,7 +482,7 @@ local console address for the Mac app.
 | Model logins, API keys, connector tokens | The credential store | Status only: connected, which account, until when | Nothing |
 | Connectors, skills, instructions, default permissions | `~/.her` | Nothing | Nothing |
 | Whether a machine runs Her | Its machine settings, signed | The signed setting | The signed setting, which it can't change |
-| Messages written while a Her Server is offline | Taken when it is back | Shown as waiting | Sealed, until taken (at most 30 days) |
+| Messages written while a Her Server is offline | Delivered when it is back | Kept on the device that wrote them, shown as waiting | Nothing |
 | Presence | | | Online or offline, name, version |
 
 The owner-role hermeshd keeps each environment's recent messages as its
@@ -665,7 +665,7 @@ through the real apps and the relay.
    reports `HerStatus`.
 2. Turning Her on or off for a machine (`SetHer`, Touch ID), from the first
    run, "Add environment" and Settings → Machines.
-3. `HerService` through the tunnel and in process (`Call`, `Subscribe`),
+3. `HerService` through the tunnel and in process (`Open`, `Call`),
    with the allowlist.
 4. The console through the tunnel, with Overview, Models (API keys, plus
    the ChatGPT sign-in on a Mac Her Server) and Defaults.
@@ -676,8 +676,8 @@ through the real apps and the relay.
      the busy state, the input box, unread marks;
    - each assistant's settings;
    - the first run.
-6. Offline handling: cached conversations, messages waiting at the post
-   office, macOS notifications.
+6. Offline handling: cached conversations, messages kept on the device
+   until the machine is back, macOS notifications.
 7. her: the default assistant named Her; new assistants ask by default.
 
 Test: this Mac and a Linux cloud machine as two environments.
@@ -748,6 +748,10 @@ Test:
 - Sharing Her with other people, such as a family or a team.
 - The console from the internet without the app (§8).
 - A console for the self-hosted relay.
+- Messages to an offline Her Server waiting at the relay's post office, so
+  they arrive even after the device that wrote them goes away: the relay
+  takes no messages from owner devices yet, and the official relay would
+  need a release.
 - Direct connections on a local network.
 
 ## 13. Open questions

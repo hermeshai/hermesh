@@ -716,6 +716,30 @@ public nonisolated struct Hermesh_Identity_V1_AdminCommand: Sendable {
     set {command = .setAgentDefaults(newValue)}
   }
 
+  public var setHer: Hermesh_Identity_V1_SetHer {
+    get {
+      if case .setHer(let v)? = command {return v}
+      return Hermesh_Identity_V1_SetHer()
+    }
+    set {command = .setHer(newValue)}
+  }
+
+  public var setHerAssistantMode: Hermesh_Identity_V1_SetHerAssistantMode {
+    get {
+      if case .setHerAssistantMode(let v)? = command {return v}
+      return Hermesh_Identity_V1_SetHerAssistantMode()
+    }
+    set {command = .setHerAssistantMode(newValue)}
+  }
+
+  public var setHerCommandConnector: Hermesh_Identity_V1_SetHerCommandConnector {
+    get {
+      if case .setHerCommandConnector(let v)? = command {return v}
+      return Hermesh_Identity_V1_SetHerCommandConnector()
+    }
+    set {command = .setHerCommandConnector(newValue)}
+  }
+
   public var unknownFields = SwiftProtobuf.UnknownStorage()
 
   public nonisolated enum OneOf_Command: Equatable, Sendable {
@@ -724,6 +748,9 @@ public nonisolated struct Hermesh_Identity_V1_AdminCommand: Sendable {
     case setPaused(Hermesh_Identity_V1_SetPaused)
     case setName(Hermesh_Identity_V1_SetName)
     case setAgentDefaults(Hermesh_Identity_V1_AgentDefaults)
+    case setHer(Hermesh_Identity_V1_SetHer)
+    case setHerAssistantMode(Hermesh_Identity_V1_SetHerAssistantMode)
+    case setHerCommandConnector(Hermesh_Identity_V1_SetHerCommandConnector)
 
   }
 
@@ -789,6 +816,65 @@ public nonisolated struct Hermesh_Identity_V1_SetPaused: Sendable {
   // methods supported on all messages.
 
   public var paused: Bool = false
+
+  public var unknownFields = SwiftProtobuf.UnknownStorage()
+
+  public init() {}
+}
+
+/// SetHer turns Her on or off for the machine (docs/her-server.md §5.2): on, its
+/// hermeshd keeps her running; off, it stops her and keeps her data. Root-signed
+/// only, never a setting.
+public nonisolated struct Hermesh_Identity_V1_SetHer: Sendable {
+  // SwiftProtobuf.Message conformance is added in an extension below. See the
+  // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
+  // methods supported on all messages.
+
+  public var enabled: Bool = false
+
+  public var unknownFields = SwiftProtobuf.UnknownStorage()
+
+  public init() {}
+}
+
+/// SetHerAssistantMode sets how freely one of Her's assistants acts: her's
+/// permission mode ("manual", "accept-edits", "bypass-permissions"). The
+/// machine refuses "bypass-permissions" any other way (docs/her-server.md §8).
+public nonisolated struct Hermesh_Identity_V1_SetHerAssistantMode: Sendable {
+  // SwiftProtobuf.Message conformance is added in an extension below. See the
+  // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
+  // methods supported on all messages.
+
+  /// her's bot id.
+  public var botID: String = String()
+
+  public var permissionMode: String = String()
+
+  public var unknownFields = SwiftProtobuf.UnknownStorage()
+
+  public init() {}
+}
+
+/// SetHerCommandConnector adds, changes or removes a connector that her starts
+/// as a command on the machine: an MCP server over stdio in her's user
+/// configuration. The console can add connectors by address only
+/// (docs/her-server.md §8).
+public nonisolated struct Hermesh_Identity_V1_SetHerCommandConnector: Sendable {
+  // SwiftProtobuf.Message conformance is added in an extension below. See the
+  // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
+  // methods supported on all messages.
+
+  /// The connector's name in her's configuration.
+  public var name: String = String()
+
+  public var command: String = String()
+
+  public var args: [String] = []
+
+  public var env: Dictionary<String,String> = [:]
+
+  /// Removes the connector of that name; the other fields are ignored.
+  public var remove: Bool = false
 
   public var unknownFields = SwiftProtobuf.UnknownStorage()
 
@@ -1729,7 +1815,7 @@ nonisolated extension Hermesh_Identity_V1_EraseAck: SwiftProtobuf.Message, Swift
 
 nonisolated extension Hermesh_Identity_V1_AdminCommand: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
   public static let protoMessageName: String = _protobuf_package + ".AdminCommand"
-  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{3}owner_id\0\u{3}command_id\0\u{3}target_machine_id\0\u{3}expires_at\0\u{4}\u{6}add_project\0\u{3}remove_project\0\u{4}\u{2}set_paused\0\u{3}set_name\0\u{3}set_agent_defaults\0\u{b}rename_machine\0\u{c}\u{c}\u{1}")
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{3}owner_id\0\u{3}command_id\0\u{3}target_machine_id\0\u{3}expires_at\0\u{4}\u{6}add_project\0\u{3}remove_project\0\u{4}\u{2}set_paused\0\u{3}set_name\0\u{3}set_agent_defaults\0\u{3}set_her\0\u{3}set_her_assistant_mode\0\u{3}set_her_command_connector\0\u{b}rename_machine\0\u{c}\u{c}\u{1}")
 
   public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
     while let fieldNumber = try decoder.nextFieldNumber() {
@@ -1806,6 +1892,45 @@ nonisolated extension Hermesh_Identity_V1_AdminCommand: SwiftProtobuf.Message, S
           self.command = .setAgentDefaults(v)
         }
       }()
+      case 16: try {
+        var v: Hermesh_Identity_V1_SetHer?
+        var hadOneofValue = false
+        if let current = self.command {
+          hadOneofValue = true
+          if case .setHer(let m) = current {v = m}
+        }
+        try decoder.decodeSingularMessageField(value: &v)
+        if let v = v {
+          if hadOneofValue {try decoder.handleConflictingOneOf()}
+          self.command = .setHer(v)
+        }
+      }()
+      case 17: try {
+        var v: Hermesh_Identity_V1_SetHerAssistantMode?
+        var hadOneofValue = false
+        if let current = self.command {
+          hadOneofValue = true
+          if case .setHerAssistantMode(let m) = current {v = m}
+        }
+        try decoder.decodeSingularMessageField(value: &v)
+        if let v = v {
+          if hadOneofValue {try decoder.handleConflictingOneOf()}
+          self.command = .setHerAssistantMode(v)
+        }
+      }()
+      case 18: try {
+        var v: Hermesh_Identity_V1_SetHerCommandConnector?
+        var hadOneofValue = false
+        if let current = self.command {
+          hadOneofValue = true
+          if case .setHerCommandConnector(let m) = current {v = m}
+        }
+        try decoder.decodeSingularMessageField(value: &v)
+        if let v = v {
+          if hadOneofValue {try decoder.handleConflictingOneOf()}
+          self.command = .setHerCommandConnector(v)
+        }
+      }()
       default: break
       }
     }
@@ -1848,6 +1973,18 @@ nonisolated extension Hermesh_Identity_V1_AdminCommand: SwiftProtobuf.Message, S
     case .setAgentDefaults?: try {
       guard case .setAgentDefaults(let v)? = self.command else { preconditionFailure() }
       try visitor.visitSingularMessageField(value: v, fieldNumber: 15)
+    }()
+    case .setHer?: try {
+      guard case .setHer(let v)? = self.command else { preconditionFailure() }
+      try visitor.visitSingularMessageField(value: v, fieldNumber: 16)
+    }()
+    case .setHerAssistantMode?: try {
+      guard case .setHerAssistantMode(let v)? = self.command else { preconditionFailure() }
+      try visitor.visitSingularMessageField(value: v, fieldNumber: 17)
+    }()
+    case .setHerCommandConnector?: try {
+      guard case .setHerCommandConnector(let v)? = self.command else { preconditionFailure() }
+      try visitor.visitSingularMessageField(value: v, fieldNumber: 18)
     }()
     case nil: break
     }
@@ -2005,6 +2142,121 @@ nonisolated extension Hermesh_Identity_V1_SetPaused: SwiftProtobuf.Message, Swif
 
   public static func ==(lhs: Hermesh_Identity_V1_SetPaused, rhs: Hermesh_Identity_V1_SetPaused) -> Bool {
     if lhs.paused != rhs.paused {return false}
+    if lhs.unknownFields != rhs.unknownFields {return false}
+    return true
+  }
+}
+
+nonisolated extension Hermesh_Identity_V1_SetHer: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
+  public static let protoMessageName: String = _protobuf_package + ".SetHer"
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{1}enabled\0")
+
+  public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
+    while let fieldNumber = try decoder.nextFieldNumber() {
+      // The use of inline closures is to circumvent an issue where the compiler
+      // allocates stack space for every case branch when no optimizations are
+      // enabled. https://github.com/apple/swift-protobuf/issues/1034
+      switch fieldNumber {
+      case 1: try { try decoder.decodeSingularBoolField(value: &self.enabled) }()
+      default: break
+      }
+    }
+  }
+
+  public func traverse<V: SwiftProtobuf.Visitor>(visitor: inout V) throws {
+    if self.enabled != false {
+      try visitor.visitSingularBoolField(value: self.enabled, fieldNumber: 1)
+    }
+    try unknownFields.traverse(visitor: &visitor)
+  }
+
+  public static func ==(lhs: Hermesh_Identity_V1_SetHer, rhs: Hermesh_Identity_V1_SetHer) -> Bool {
+    if lhs.enabled != rhs.enabled {return false}
+    if lhs.unknownFields != rhs.unknownFields {return false}
+    return true
+  }
+}
+
+nonisolated extension Hermesh_Identity_V1_SetHerAssistantMode: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
+  public static let protoMessageName: String = _protobuf_package + ".SetHerAssistantMode"
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{3}bot_id\0\u{3}permission_mode\0")
+
+  public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
+    while let fieldNumber = try decoder.nextFieldNumber() {
+      // The use of inline closures is to circumvent an issue where the compiler
+      // allocates stack space for every case branch when no optimizations are
+      // enabled. https://github.com/apple/swift-protobuf/issues/1034
+      switch fieldNumber {
+      case 1: try { try decoder.decodeSingularStringField(value: &self.botID) }()
+      case 2: try { try decoder.decodeSingularStringField(value: &self.permissionMode) }()
+      default: break
+      }
+    }
+  }
+
+  public func traverse<V: SwiftProtobuf.Visitor>(visitor: inout V) throws {
+    if !self.botID.isEmpty {
+      try visitor.visitSingularStringField(value: self.botID, fieldNumber: 1)
+    }
+    if !self.permissionMode.isEmpty {
+      try visitor.visitSingularStringField(value: self.permissionMode, fieldNumber: 2)
+    }
+    try unknownFields.traverse(visitor: &visitor)
+  }
+
+  public static func ==(lhs: Hermesh_Identity_V1_SetHerAssistantMode, rhs: Hermesh_Identity_V1_SetHerAssistantMode) -> Bool {
+    if lhs.botID != rhs.botID {return false}
+    if lhs.permissionMode != rhs.permissionMode {return false}
+    if lhs.unknownFields != rhs.unknownFields {return false}
+    return true
+  }
+}
+
+nonisolated extension Hermesh_Identity_V1_SetHerCommandConnector: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
+  public static let protoMessageName: String = _protobuf_package + ".SetHerCommandConnector"
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{1}name\0\u{1}command\0\u{1}args\0\u{1}env\0\u{1}remove\0")
+
+  public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
+    while let fieldNumber = try decoder.nextFieldNumber() {
+      // The use of inline closures is to circumvent an issue where the compiler
+      // allocates stack space for every case branch when no optimizations are
+      // enabled. https://github.com/apple/swift-protobuf/issues/1034
+      switch fieldNumber {
+      case 1: try { try decoder.decodeSingularStringField(value: &self.name) }()
+      case 2: try { try decoder.decodeSingularStringField(value: &self.command) }()
+      case 3: try { try decoder.decodeRepeatedStringField(value: &self.args) }()
+      case 4: try { try decoder.decodeMapField(fieldType: SwiftProtobuf._ProtobufMap<SwiftProtobuf.ProtobufString,SwiftProtobuf.ProtobufString>.self, value: &self.env) }()
+      case 5: try { try decoder.decodeSingularBoolField(value: &self.remove) }()
+      default: break
+      }
+    }
+  }
+
+  public func traverse<V: SwiftProtobuf.Visitor>(visitor: inout V) throws {
+    if !self.name.isEmpty {
+      try visitor.visitSingularStringField(value: self.name, fieldNumber: 1)
+    }
+    if !self.command.isEmpty {
+      try visitor.visitSingularStringField(value: self.command, fieldNumber: 2)
+    }
+    if !self.args.isEmpty {
+      try visitor.visitRepeatedStringField(value: self.args, fieldNumber: 3)
+    }
+    if !self.env.isEmpty {
+      try visitor.visitMapField(fieldType: SwiftProtobuf._ProtobufMap<SwiftProtobuf.ProtobufString,SwiftProtobuf.ProtobufString>.self, value: self.env, fieldNumber: 4)
+    }
+    if self.remove != false {
+      try visitor.visitSingularBoolField(value: self.remove, fieldNumber: 5)
+    }
+    try unknownFields.traverse(visitor: &visitor)
+  }
+
+  public static func ==(lhs: Hermesh_Identity_V1_SetHerCommandConnector, rhs: Hermesh_Identity_V1_SetHerCommandConnector) -> Bool {
+    if lhs.name != rhs.name {return false}
+    if lhs.command != rhs.command {return false}
+    if lhs.args != rhs.args {return false}
+    if lhs.env != rhs.env {return false}
+    if lhs.remove != rhs.remove {return false}
     if lhs.unknownFields != rhs.unknownFields {return false}
     return true
   }
