@@ -1,10 +1,10 @@
 {
   "definition": "Minor page faults of one fresh process, spawn to exit: the median of 50 runs of the static dist build on the CI's Linux runner (bench_cli.py). A command without a number is only reported. Set a number about 5% above what the command measures, because changes elsewhere move the binary's layout and with it a few faults. Raising a number needs a reason below.",
-  "reason": "CI run 41986118445 (binary b182cf613216, EPYC 9V45) measured 241, 365, 364 and 302; these are 5% above. Runners agree: one binary took the same medians on EPYC 7763 and 9V45. The numbers include the Excel engine's static data that a static PIE relocates at start, after its time-zone tables were cut to UTC (technical design D-99). 2026-11-06: raised with the standalone CLI (D-554), which the owner accepted, on top of what the PPT editor had already added to main. A dedicated host measured main at 254, 373, 364, 272 and the merge at 275, 387, 375, 278. These are estimates: the host's numbers moved to CI's scale by the difference seen before, plus 5%. Replace them with a real CI run's. 2026-11-06: replaced with the first real CI run of the PPT editor merge (run 42183876362: 321, 444, 447, 367), plus 5%; the deck group and its engine are linked into the CLI.",
+  "reason": "CI run 41986118445 (binary b182cf613216, EPYC 9V45) measured 241, 365, 364 and 302; these are 5% above. Runners agree: one binary took the same medians on EPYC 7763 and 9V45. The numbers include the Excel engine's static data that a static PIE relocates at start, after its time-zone tables were cut to UTC (technical design D-99). 2026-11-06: raised with the standalone CLI (D-554), which the owner accepted, on top of what the PPT editor had already added to main. A dedicated host measured main at 254, 373, 364, 272 and the merge at 275, 387, 375, 278. These are estimates: the host's numbers moved to CI's scale by the difference seen before, plus 5%. Replace them with a real CI run's. 2026-11-06: replaced with the first real CI run of the PPT editor merge (run 42183876362: 321, 444, 447, 367), plus 5%; the deck group and its engine are linked into the CLI. 2026-11-08: her, the kernel copied into Hermesh, measured 377, 500, 510 and 420 in its first CI run here (run 42472363855, the static dist build with the time-zone filter of her/.cargo/config.toml applied); these are 5% above, the baseline of her in this repository.",
   "page_faults": {
-    "help": 337,
-    "status": 466,
-    "doctor": 469,
-    "sessions": 385
+    "help": 396,
+    "status": 525,
+    "doctor": 536,
+    "sessions": 441
   }
 }

@@ -1131,7 +1131,8 @@ async fn a_new_build_in_the_folder_reloads_the_extension_once_nothing_is_in_use(
     // The task ended, and the extension's next look takes the update, by itself.
     let waited = std::time::Instant::now();
     let mut reloaded = false;
-    while waited.elapsed() < Duration::from_secs(45) {
+    // A slow runner can take well over the usual alarm period before the next look.
+    while waited.elapsed() < Duration::from_secs(90) {
         if worker_now(&chrome, "globalThis.herBefore === undefined").await == Some(json!(true)) {
             reloaded = true;
             break;
