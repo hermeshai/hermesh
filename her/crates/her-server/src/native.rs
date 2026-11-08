@@ -668,6 +668,10 @@ impl NativeProtocol {
                 server.watch_browser(conn);
                 conn.send(reply(id, Ok::<_, RpcError>(server.browser_status())));
             }
+            method::DESKTOP_STATUS => {
+                let reply_id = id.clone();
+                self.spawn(id.clone(), conn, async move { Some(reply(&reply_id, server.desktop_status().await)) });
+            }
             method::BROWSER_SITE_ICON => self.call(id, params, conn, |server, p: BrowserSiteIconParams| async move { Ok::<_, RpcError>(server.site_icon(p).await) }),
             method::MCP_LOGOUT => self.call(id, params, conn, |server, p: McpLogoutParams| async move { server.mcp_logout(p).await }),
             method::SKILLS_LIST => match her_rpc::params::<SkillsListParams>(params) {

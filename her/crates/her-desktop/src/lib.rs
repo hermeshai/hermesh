@@ -155,17 +155,68 @@ fn timeout_for(args: &[String]) -> Duration {
     own.map_or(CALL_TIMEOUT, |ms| Duration::from_millis(ms) + DEADLINE_MARGIN)
 }
 
-/// `--session` takes 1–64 letters, digits, `-` and `_`.
+/// A system permission as the CLI finds it where it runs: macOS grants it to the process it holds
+/// responsible for the CLI, such as the terminal app, or hermeshd when Hermesh runs her.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Permission {
+    Granted,
+    Denied,
+    /// The CLI could not tell.
+    Unknown,
+}
+
+/// What computer use needs of the system: Accessibility for everything, Screen Recording for
+/// screenshots.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct Permissions {
+    pub accessibility: Permission,
+    pub screen_recording: Permission,
+}
+
+/// The permissions, by the CLI's `permissions`, which never asks: macOS only lists the
+/// responsible process under Accessibility, switched off, for the user to switch on.
+pub async fn permissions(program: &Path) -> Result<Permissions, DesktopError> {
+    let run = Command::new(program)
+        .args(["--session", &namespace("status"), "permissions"])
+        .stdin(Stdio::null())
+        .stderr(Stdio::null())
+        .kill_on_drop(true)
+        .output();
+    let out = tokio::time::timeout(CALL_TIMEOUT, run)
+        .await
+        .map_err(|_| DesktopError::Timeout(CALL_TIMEOUT.as_secs()))?
+        .map_err(|e| DesktopError::Spawn(e.to_string()))?;
+    Ok(parse_permissions(&parse_envelope(&String::from_utf8_lossy(&out.stdout))?))
+}
+
+/// `permissions`' data: each permission's `state`.
+pub fn parse_permissions(data: &Value) -> Permissions {
+    let state = |key: &str| match data.pointer(&format!("/{key}/state")).and_then(Value::as_str) {
+        Some("granted" | "not_required") => Permission::Granted,
+        Some("denied") => Permission::Denied,
+        _ => Permission::Unknown,
+    };
+    Permissions {
+        accessibility: state("accessibility"),
+        screen_recording: state("screen_recording"),
+    }
+}
+
+/// `--session` takes 1–64 letters, digits, `-` and `_`. The name starts with this process's id:
+/// the CLI serves each namespace from one background process, whoever started it, and that
+/// process outlives its caller, so a her started again must not reach one started by the her
+/// before it, which macOS would then hold responsible for itself (docs/her-server.md §4.4).
 fn namespace(session: &str) -> String {
+    let prefix = format!("her{}-", std::process::id());
     let mut name: String = session
         .chars()
         .map(|c| if c.is_ascii_alphanumeric() || c == '-' || c == '_' { c } else { '_' })
-        .take(59)
+        .take(64 - prefix.len())
         .collect();
     if name.is_empty() {
         name.push('_');
     }
-    format!("her-{name}")
+    format!("{prefix}{name}")
 }
 
 /// The `data` of the envelope on the last non-empty line, or its error.
@@ -200,8 +251,10 @@ pub const PERMISSION_DENIED: &str = "PERM_DENIED";
 /// What the model can do about an error, with the desktop tools.
 fn next_step(code: &str, error: &Value) -> Option<&'static str> {
     let kind = error.pointer("/details/kind").and_then(Value::as_str).unwrap_or("");
+    let message = error.get("message").and_then(Value::as_str).unwrap_or("");
     Some(match code {
-        PERMISSION_DENIED => PERMISSION_HINT,
+        PERMISSION_DENIED if message.contains("Screen Recording") => SCREEN_RECORDING_HINT,
+        PERMISSION_DENIED => ACCESSIBILITY_HINT,
         _ if kind == "window_without_accessibility_element" => OPAQUE_HINT,
         "ACTION_NOT_SUPPORTED" => "The element cannot do that. Take a cua_screenshot and use click_at or type_text.",
         "POLICY_DENIED" => "This needs physical input: take a cua_screenshot, then cua_act with click_at, type_text or press.",
@@ -233,9 +286,16 @@ fn without_cli(text: &str) -> Option<String> {
     (!kept.is_empty()).then_some(kept)
 }
 
-const PERMISSION_HINT: &str = "The user has to grant it: in Hermesh, Settings › Desktop control; elsewhere, \
-    System Settings › Privacy & Security, for the app that started her. Tell the user and stop; do not retry until \
-    they say it is done.";
+// macOS asks these of the process it holds responsible for her: the terminal app, or, when
+// Hermesh runs her, hermeshd, its LaunchAgent, whose Screen Recording switch is the Hermesh app's
+// (docs/her-server.md §4.4).
+const ACCESSIBILITY_HINT: &str = "The user has to allow it in System Settings › Privacy & Security › Accessibility \
+    (Device Control and Data Access on macOS 27 and later), by switching on the program that runs her: hermeshd \
+    when Hermesh runs her, else the terminal app. Tell the user and stop; do not retry until they say it is done.";
+
+const SCREEN_RECORDING_HINT: &str = "The user has to allow it in System Settings › Privacy & Security › Screen & \
+    System Audio Recording, by switching on the app that runs her: Hermesh when Hermesh runs her, else the \
+    terminal app. Tell the user; until then, read windows with cua_snapshot.";
 
 /// `w-1 "Untitled", w-2 "Notes"`: the candidate windows of an ambiguous target.
 fn windows(error: &Value) -> Option<String> {
@@ -586,8 +646,46 @@ mod tests {
         assert!(matches!(parse_envelope(""), Err(DesktopError::BadOutput(_))));
         let denied = r#"{"error":{"code":"PERM_DENIED","message":"Accessibility permission not granted","suggestion":"Run 'agent-desktop permissions --guide'."},"ok":false}"#;
         let err = parse_envelope(denied).unwrap_err().to_string();
-        assert!(err.starts_with("PERM_DENIED: Accessibility permission not granted The user has to grant it"), "{err}");
+        assert!(err.starts_with("PERM_DENIED: Accessibility permission not granted The user has to allow it"), "{err}");
+        assert!(err.contains("Privacy & Security › Accessibility (Device Control and Data Access"), "{err}");
+        assert!(err.contains("program that runs her: hermeshd when Hermesh runs her"), "{err}");
         assert!(!err.contains("--guide"), "the model is not sent to run the CLI's guide: {err}");
+        let no_screen = r#"{"error":{"code":"PERM_DENIED","message":"Screen Recording permission not granted","suggestion":"Grant Screen Recording permission and retry"},"ok":false}"#;
+        let err = parse_envelope(no_screen).unwrap_err().to_string();
+        assert!(err.contains("Screen & System Audio Recording, by switching on the app that runs her: Hermesh when"), "{err}");
+        assert!(err.contains("cua_snapshot") && !err.contains("hermeshd"), "Screen Recording is the Hermesh app's switch: {err}");
+    }
+
+    #[test]
+    fn permissions_as_the_cli_finds_them() {
+        let data = json!({"accessibility": {"state": "denied", "suggestion": "Run agent-desktop permissions --guide."},
+            "automation": {"state": "unknown"}, "screen_recording": {"state": "granted"}});
+        assert_eq!(
+            parse_permissions(&data),
+            Permissions { accessibility: Permission::Denied, screen_recording: Permission::Granted }
+        );
+        let odd = parse_permissions(&json!({"accessibility": {"state": "not_determined"}, "screen_recording": {"state": "not_required"}}));
+        assert_eq!((odd.accessibility, odd.screen_recording), (Permission::Unknown, Permission::Granted));
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn permissions_run_the_cli_once() {
+        use std::os::unix::fs::PermissionsExt;
+        let dir = tempfile::tempdir().unwrap();
+        let program = dir.path().join(PROGRAM);
+        // In this process's own namespace, like every call.
+        let args = format!("--session {} permissions", namespace("status"));
+        let answer = |envelope: &str| {
+            std::fs::write(&program, format!("#!/bin/sh\n[ \"$*\" = \"{args}\" ] || exit 3\necho '{envelope}'\n")).unwrap();
+            std::fs::set_permissions(&program, std::fs::Permissions::from_mode(0o755)).unwrap();
+        };
+        answer(r#"{"command":"permissions","data":{"accessibility":{"state":"granted"},"screen_recording":{"state":"denied"}},"ok":true}"#);
+        let found = permissions(&program).await.unwrap();
+        assert_eq!((found.accessibility, found.screen_recording), (Permission::Granted, Permission::Denied));
+        answer(r#"{"error":{"code":"INTERNAL","message":"AX call failed"},"ok":false}"#);
+        assert!(matches!(permissions(&program).await, Err(DesktopError::Command { .. })));
+        assert!(matches!(permissions(Path::new("/nonexistent/agent-desktop")).await, Err(DesktopError::Spawn(_))));
     }
 
     #[test]
@@ -670,11 +768,12 @@ mod tests {
     }
 
     #[test]
-    fn namespaces_are_safe_names() {
-        assert_eq!(namespace("019a-b2"), "her-019a-b2");
-        assert_eq!(namespace("a/b c"), "her-a_b_c");
-        assert_eq!(namespace(""), "her-_");
-        assert!(namespace(&"x".repeat(100)).len() <= 64);
+    fn namespaces_are_safe_names_of_this_process() {
+        let pid = std::process::id();
+        assert_eq!(namespace("019a-b2"), format!("her{pid}-019a-b2"));
+        assert_eq!(namespace("a/b c"), format!("her{pid}-a_b_c"));
+        assert_eq!(namespace(""), format!("her{pid}-_"));
+        assert_eq!(namespace(&"x".repeat(100)).len(), 64);
     }
 
     #[test]

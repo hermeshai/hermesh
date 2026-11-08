@@ -41,6 +41,7 @@ mod connections;
 mod customize;
 mod db;
 mod decks;
+mod desktop_status;
 mod docs;
 mod docx_host;
 mod words;

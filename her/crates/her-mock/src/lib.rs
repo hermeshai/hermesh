@@ -45,6 +45,7 @@
 //! | `told:SECONDS:TEXT` | a bot's sub-agent: `send_to_user` of TEXT, `sleep SECONDS`, then its report |
 //! | `check` | `tool_search`, `call_tool` on `list_agents`, its result sent with `end_turn`, then as `relay_slow` |
 //! | `stop_all` | the same with `stop_agents` and `all`, ahead of any message |
+//! | `cua:TOOL[:APP]` | `tool_search` for the desktop tools, `call_tool` on `cua_TOOL` (APP as its `app`), then `cua done: <its result>` sent with `end_turn` |
 //! | `relay_note:SECONDS` | as `relay_slow`, with a sub-agent that runs `note:SECONDS:3 月的数据整月缺失。` |
 //! | `note_session:SECONDS` | the same in a session: `spawn_agent`, `交给子智能体了。`, then `回复：<the latest message>` for whatever comes next |
 //! | `note:SECONDS:TEXT` | half a second later, a sub-agent's `send_message` of TEXT to `main`, then a bash call running `sleep SECONDS`, then `写完了。` |
@@ -792,6 +793,19 @@ fn plan(shared: &Shared, messages: &[Value], name: &str, arg: &str, prompt: &str
                 }),
                 1 => Plan::Step(Step::calls(vec![("bash", json!({ "command": format!("sleep {seconds}") }))])),
                 _ => Plan::Step(Step::text("写完了。".to_string())),
+            }
+        }
+        // Computer use: its tools are deferred too.
+        "cua" => {
+            let (tool, arguments) = match arg.split_once(':') {
+                Some((tool, app)) => (tool, json!({ "app": app })),
+                None => (arg, json!({})),
+            };
+            match step {
+                0 => Plan::Step(Step::calls(vec![("tool_search", json!({ "query": "cua desktop apps" }))])),
+                1 => Plan::Step(Step::calls(vec![("call_tool", json!({ "name": format!("cua_{tool}"), "arguments": arguments }))])),
+                2 => Plan::Step(Step::calls(vec![("send_to_user", json!({ "text": format!("cua done: {}", last_tool_result(messages)), "end_turn": true }))])),
+                _ => done("cua"),
             }
         }
         // Asked how the agents stand, or to stop them: the tools are deferred (bot-turn-design §5.3).

@@ -20,6 +20,8 @@ func init() {
 		"bots/avatar", "bots/clear", "bots/delete", "bots/routine", "bots/routine_delete", "bots/routine_run",
 		"bots/routine_run_now", "bots/routine_runs", "bots/routine_set_enabled", "bots/routine_stop",
 		"session/op", "session/history", "session/detach", "models/list", "files/list", "files/read",
+		// Whether computer use can work there, with macOS's permissions as her finds them.
+		"desktop/status",
 		// The console: models, connectors, skills, web search, the browser.
 		"config/read", "config/write", "connections/list", "connections/discover", "connections/connect",
 		"connections/disconnect", "connections/remove", "connections/retry", "connections/models",

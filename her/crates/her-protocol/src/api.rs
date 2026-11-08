@@ -190,6 +190,9 @@ pub mod method {
     pub const BROWSER_CHANGED: &str = "browser/changed";
     /// A site's icon, for the lists of sites the browsers may open (browser-design §10.1).
     pub const BROWSER_SITE_ICON: &str = "browser/site_icon";
+    /// Whether computer use can work where her runs: its switch, agent-desktop, and the system's
+    /// permissions as agent-desktop finds them.
+    pub const DESKTOP_STATUS: &str = "desktop/status";
     /// This connection writes .docx files from the kernel's Word documents (word-design §2): a
     /// later host replaces the one before it, and the host leaves with its connection.
     pub const DOCX_HOST: &str = "docx/host";
@@ -542,6 +545,33 @@ pub struct BrowserStatus {
     /// Sessions waiting for the user's own browser to connect.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub waiting: Vec<String>,
+}
+
+/// The result of `desktop/status`: whether computer use can work where her runs.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+pub struct DesktopStatus {
+    /// The computer use tools are on: `desktop.enabled`, else while a desktop app is connected.
+    pub enabled: bool,
+    /// The agent-desktop her runs; none found, absent.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub program: Option<PathBuf>,
+    /// Reading and operating windows: every desktop tool needs it.
+    pub accessibility: DesktopPermission,
+    /// Screenshots of windows.
+    pub screen_recording: DesktopPermission,
+}
+
+/// A system permission as agent-desktop finds it from inside her. macOS asks it of the process
+/// it holds responsible for her: the terminal app, or hermeshd when Hermesh runs her.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum DesktopPermission {
+    Granted,
+    Denied,
+    /// agent-desktop is missing or could not tell.
+    Unknown,
+    /// Computer use is for macOS only.
+    Unsupported,
 }
 
 /// Parameters of `browser/reveal`.
