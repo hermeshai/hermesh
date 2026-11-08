@@ -9,7 +9,8 @@ import { addAttachments, fromFiles, pastedAttachments, pickFiles, type Attachmen
  * written. ↩ sends, ⇧↩ breaks the line, nothing is sent while an input method
  * composes. What is attached shows as tiles above the text; files dragged
  * anywhere over the window come here. An approval, or a card that says what
- * waits, sits above it.
+ * waits, sits above it. While nothing can be sent (no model yet), nothing is
+ * written either.
  */
 export function Composer({ above, onHeight, value, onChange, onSend, placeholder, canSend = true, attachments, onAttachments }: {
   above?: ReactNode;
@@ -89,7 +90,7 @@ export function Composer({ above, onHeight, value, onChange, onSend, placeholder
             </div>
           )}
           <div className="cmp-row">
-            <button className="cmp-plus" title={t("composer.addFiles")} aria-label={t("composer.addFiles")} onClick={() => void pickFiles().then(attach)}>
+            <button className="cmp-plus" title={t("composer.addFiles")} aria-label={t("composer.addFiles")} disabled={!canSend} onClick={() => void pickFiles().then(attach)}>
               <Icon name="plus" />
             </button>
             <textarea
@@ -97,6 +98,7 @@ export function Composer({ above, onHeight, value, onChange, onSend, placeholder
               className="cmp-in"
               rows={1}
               value={value}
+              disabled={!canSend}
               placeholder={placeholder}
               aria-label={t("composer.label")}
               spellCheck={false}

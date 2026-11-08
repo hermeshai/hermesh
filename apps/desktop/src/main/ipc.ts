@@ -3,7 +3,7 @@ import path from "node:path";
 import type { Command, MenuItem, MenuState, Preferences, TerminalCommand } from "../shared/bridge";
 import { i18n } from "../shared/i18n";
 import { openComputerPermission } from "./computer";
-import { herConsoleURL, saveHerFile } from "./her";
+import { cancelHerChatGpt, herConsoleURL, reopenHerChatGpt, saveHerFile, signInHerChatGpt } from "./her";
 import { preferences, setPreferences, world } from "./notify";
 import { platform } from "./platform";
 import { cancelSignIn, completeSignIn, connectURL, errorMessage, signIn, signInPending, takeLinks } from "./signin";
@@ -162,7 +162,8 @@ export function registerIPC() {
   ipcMain.on("open-elevation-settings", (e) => trusted(e) && platform.openElevationSettings());
   ipcMain.handle("take-links", answer(takeLinks));
 
-  // Her (main/her.ts): a machine's console in its own window, and an assistant's file saved to Downloads.
+  // Her (main/her.ts): a machine's console in its own window, an assistant's file saved to Downloads, and
+  // signing in to ChatGPT for a machine's Her.
   const id = (v: unknown) => (typeof v === "string" && v !== "" ? v : null);
   ipcMain.handle(
     "her-console",
@@ -181,6 +182,22 @@ export function registerIPC() {
       return saveHerFile(m, b, p);
     }),
   );
+  ipcMain.handle(
+    "her-chatgpt",
+    answer((machineId: unknown) => {
+      const m = id(machineId);
+      if (!m) throw new Error("no machine");
+      return signInHerChatGpt(m);
+    }),
+  );
+  ipcMain.on("her-chatgpt-reopen", (e, machineId: unknown) => {
+    const m = id(machineId);
+    if (trusted(e) && m) reopenHerChatGpt(m);
+  });
+  ipcMain.on("her-chatgpt-cancel", (e, machineId: unknown) => {
+    const m = id(machineId);
+    if (trusted(e) && m) cancelHerChatGpt(m);
+  });
 
   // Notifications, the menu bar and opening at login (main/notify.ts, main/platform).
   ipcMain.handle("preferences", (e) => (trusted(e) ? preferences() : null));

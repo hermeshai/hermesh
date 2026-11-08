@@ -13,11 +13,7 @@
     "offlineSeen": "{{name}} 离线 · {{ago}}在线",
     "notConnected": "现在连不上 {{name}}",
     "starting": "Her 正在 {{name}} 上启动…",
-    "failed": "Her 没能在 {{name}} 上启动",
-    "noModel": {
-      "title": "在 {{name}} 上连接一个模型",
-      "body": "在这个环境的控制台里登录 ChatGPT，或者填入 API Key。Key 和登录都留在 {{name}} 上。"
-    }
+    "failed": "Her 没能在 {{name}} 上启动"
   },
   "setup": {
     "title": "选择 Her 在哪里运行",
@@ -79,6 +75,34 @@
     "copyError": "拷贝报错",
     "copiedError": "已拷贝报错",
     "failedPast": "这一轮没完成：{{title}}"
+  },
+  "onboard": {
+    "greeting": "你好，我是 {{name}}，在 {{machine}} 上为你做事。开始之前，我需要接上一个模型来思考和回答：用你的 ChatGPT 账户登录最快，也可以填一个 API Key。",
+    "chatgpt": "用 ChatGPT 登录",
+    "key": "填写 API Key",
+    "stays": "Key 和登录都只留在 {{machine}} 上",
+    "placeholder": "接上模型后就能回复你",
+    "browser": "我在浏览器里打开了 ChatGPT 的登录页，登录完回到这里就好。",
+    "reopen": "重新打开登录页",
+    "otherWay": "换一种方式",
+    "signedIn": "接上了 ChatGPT（{{account}}）。",
+    "signedInPlain": "接上了 ChatGPT。",
+    "signInCancelled": "登录已取消。可以再试一次，或者换成填写 API Key。",
+    "signInFailed": "这次没能接上 ChatGPT。可以再试一次，或者换成填写 API Key。",
+    "whichProvider": "用哪家的？",
+    "otherServices": "其他服务…",
+    "pasteKey": "把 {{provider}} 的 API Key 贴在下面。它只存进 {{machine}} 的凭据库，不会出现在对话里，也不会发给模型。",
+    "keyLabel": "{{provider}} 的 API Key",
+    "keyPlaceholder": "API Key",
+    "save": "保存",
+    "checking": "正在检查…",
+    "getKey": "去 {{provider}} 获取 Key",
+    "keyRejected": "这个 Key 没通过 {{provider}} 的检查：{{message}}。再贴一次？",
+    "keyRejectedPlain": "这个 Key 没通过 {{provider}} 的检查。再贴一次？",
+    "keyFailed": "没能把 Key 存到 {{machine}} 上。再试一次？",
+    "keyUnverified": "存好了，不过暂时没法向 {{provider}} 确认这个 Key 能用，先接着往下走。",
+    "done": "好了，我会用 {{model}} 和你聊，想换可以去助手设置。有什么要我做的？",
+    "connected": "已接上 {{name}}"
   },
   "waiting": {
     "until": "等 {{name}} 在线后送达",
