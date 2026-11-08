@@ -20,6 +20,7 @@ type bot struct {
 	Name    string  `json:"name"`
 	Unread  uint32  `json:"unread"`
 	Waiting *string `json:"waiting"`
+	Muted   bool    `json:"muted"`
 	Last    *struct {
 		From string `json:"from"`
 		Text string `json:"text"`
@@ -58,9 +59,9 @@ func (s *snapshot) changed(bots []bot, deleted []string, now time.Time) {
 			s.latest = latest(b, machinev1.HerLatestKind_HER_LATEST_KIND_APPROVAL, *b.Waiting, now)
 		case b.Last != nil && b.Last.From == "bot" && (!had || old.Last == nil || *old.Last != *b.Last):
 			s.latest = lastMessage(b)
-		case s.latest != nil && s.latest.BotId == b.ID && s.latest.BotName != b.Name:
+		case s.latest != nil && s.latest.BotId == b.ID && (s.latest.BotName != b.Name || s.latest.Muted != b.Muted):
 			l := proto.Clone(s.latest).(*machinev1.HerLatest)
-			l.BotName = b.Name
+			l.BotName, l.Muted = b.Name, b.Muted
 			s.latest = l
 		}
 	}
@@ -112,7 +113,7 @@ func latest(b bot, kind machinev1.HerLatestKind, text string, at time.Time) *mac
 	if r := []rune(text); len(r) > latestText {
 		text = string(r[:latestText])
 	}
-	return &machinev1.HerLatest{BotId: b.ID, BotName: b.Name, Text: text, At: timestamppb.New(at), Kind: kind}
+	return &machinev1.HerLatest{BotId: b.ID, BotName: b.Name, Text: text, At: timestamppb.New(at), Kind: kind, Muted: b.Muted}
 }
 
 // modelReady: whether models/list's result has a model whose provider's
