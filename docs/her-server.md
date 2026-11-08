@@ -360,14 +360,14 @@ sequenceDiagram
     participant H as her, on the Her Server
     participant B as Browser on the owner's device
     participant Pr as Provider
-    C->>H: connections/connect or mcp/login, redirect on the device
+    C->>H: chatgpt/login or mcp/login, redirect on the device
     H-->>C: authorization URL and login id, the PKCE verifier kept
     C->>App: open it and catch the callback
     App->>B: opens the URL
     B->>Pr: the owner signs in
     Pr-->>B: redirect to the device's loopback port, with a code
     B->>App: code and state
-    App->>H: complete the login with the code, through the tunnel
+    App->>H: chatgpt/complete or mcp/login_complete, through the tunnel
     H->>Pr: exchanges the code with the verifier
     H->>H: keeps the tokens in its credential store
     H-->>C: connected
@@ -452,10 +452,12 @@ The protos are the contract; this is their outline.
 1. **Assistants.** Rename the default bot to Her (today `HerBot` in
    [bots.rs](../her/crates/her-server/src/bots.rs)). New assistants ask
    before risky steps instead of starting with full access.
-2. **Remote sign-in.** `connections/connect` and `mcp/login` accept a
-   redirect on the client's device and return the authorization request. A
-   new call completes it with the code. her keeps the PKCE verifier and does
-   the exchange (§5.4).
+2. **Remote sign-in.** `chatgpt/login` and `mcp/login` take an optional
+   `redirect_uri` on the client's device (loopback only) and return the
+   authorization request without listening. `chatgpt/complete` and
+   `mcp/login_complete` finish it with the code (and `client_id` or `iss`
+   when the redirect carried them). her keeps the PKCE verifier and does the
+   exchange (§5.4).
 3. **Files.** A prompt's input is text and images today. Other files are
    uploaded into the assistant's folder, and the message names them.
    `skills/install` installs from an uploaded archive.
