@@ -1,0 +1,33 @@
+{
+  "name": "@hermesh/her-console",
+  "private": true,
+  "type": "module",
+  "description": "Her's console: the web pages that manage one Her Server, served by hermeshd at /her/console/ (docs/her-server.md §10)",
+  "scripts": {
+    "build": "vite build",
+    "dev": "node scripts/dev-server.ts",
+    "test": "node --test src/*.test.ts src/*/*.test.ts",
+    "e2e": "vite build && playwright test",
+    "typecheck": "tsc -p ."
+  },
+  "dependencies": {
+    "@hermesh/her-client": "workspace:*",
+    "@hermesh/her-protocol": "workspace:*",
+    "@hermesh/ui": "workspace:*",
+    "i18next": "26.4.2",
+    "react": "19.3.1",
+    "react-dom": "19.3.1",
+    "react-i18next": "17.0.15",
+    "react-markdown": "10.1.0",
+    "remark-gfm": "4.0.1"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.64.1",
+    "@types/node": "24.10.1",
+    "@types/react": "19.2.7",
+    "@types/react-dom": "19.2.3",
+    "@vitejs/plugin-react": "6.1.2",
+    "typescript": "5.9.3",
+    "vite": "8.3.4"
+  }
+}

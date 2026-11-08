@@ -1,0 +1,192 @@
+/* The Mac app's look (apps/desktop/src/renderer/src/styles/app.css): its tokens in light and
+   dark, its typefaces, and the controls every page draws with. The brand's colours, curves
+   and spacing scale (--accent, --ease-out, --sp-1…5) come from @hermesh/ui/brand.css. */
+
+@font-face {
+  font-family: "Google Sans Flex";
+  src: url("../assets/fonts/google-sans-flex.ttf") format("truetype");
+  font-style: oblique 0deg 10deg;
+  font-weight: 100 1000;
+  font-stretch: 25% 151%;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Google Sans Code";
+  src: url("../assets/fonts/google-sans-code.ttf") format("truetype");
+  font-style: normal;
+  font-weight: 300 800;
+  font-display: swap;
+}
+
+:root{
+  --fs-text:13px;--fs-text-l:13.5px;--r-ctl:7px;--r-box:10px;--r-card:12px;--r-panel:14px;
+  --font:"Google Sans Flex","Google Sans",system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Noto Sans SC","Microsoft YaHei",sans-serif;
+  --mono:"Google Sans Code",ui-monospace,"SF Mono",Menlo,Monaco,Consolas,monospace;
+  --font-weight-normal:400;--font-weight-medium:450;--font-weight-semibold:550;--font-weight-bold:650;
+  --font-axes:"ROND" 0,"slnt" 0,"wdth" 92;
+  --r-xs:4px;--r-sm:6px;--r-md:8px;--r-lg:10px;--r-xl:12px;
+  --win:#ffffff;--win2:#f4f4f7;--win3:#ebebf0;
+  --side:#f4f4f7;
+  --l1:rgba(0,0,0,.86);--l2:rgba(0,0,0,.54);--l3:rgba(0,0,0,.32);--l4:rgba(0,0,0,.14);
+  --sep:rgba(0,0,0,.075);--fill:rgba(0,0,0,.045);--fill2:rgba(0,0,0,.075);--fill3:rgba(0,0,0,.12);
+  --sel:rgba(61,91,255,.12);--sel-fg:#2a45d8;--side-sel:rgba(0,0,0,.075);
+  --accent-t:var(--accent-fg);--accent-bg:rgba(61,91,255,.10);
+  --green:var(--ok);--green-bg:rgba(23,146,79,.11);--orange:var(--warn);--orange-bg:rgba(230,126,10,.12);--red:var(--danger);--red-bg:rgba(215,51,63,.10);
+  --btn:#ffffff;--btn-sh:0 0 0 .5px rgba(0,0,0,.14),0 1px 1.5px rgba(0,0,0,.08);
+  --seg-on:#ffffff;--field:#ffffff;--field-bd:rgba(0,0,0,.16);
+  --menu:rgba(248,248,250,.80);--menu-solid:#f8f8fa;--menu-bd:rgba(0,0,0,.10);
+  --code:#f6f7fa;--scrim:rgba(0,0,0,.18);
+  color-scheme:light;
+}
+@media (prefers-color-scheme:dark){:root{
+  --win:#1e1e21;--win2:#29292d;--win3:#323237;
+  --side:#25252a;
+  --l1:rgba(255,255,255,.88);--l2:rgba(255,255,255,.55);--l3:rgba(255,255,255,.32);--l4:rgba(255,255,255,.14);
+  --sep:rgba(255,255,255,.09);--fill:rgba(255,255,255,.05);--fill2:rgba(255,255,255,.085);--fill3:rgba(255,255,255,.14);
+  --sel:rgba(91,121,255,.24);--sel-fg:#a9b7ff;--side-sel:rgba(255,255,255,.1);
+  --accent-bg:rgba(91,121,255,.16);
+  --green-bg:rgba(63,207,134,.14);--orange-bg:rgba(255,171,61,.14);--red-bg:rgba(255,102,112,.13);
+  --btn:rgba(255,255,255,.12);--btn-sh:0 0 0 .5px rgba(255,255,255,.08);
+  --seg-on:rgba(255,255,255,.22);--field:rgba(255,255,255,.06);--field-bd:rgba(255,255,255,.16);
+  --menu:rgba(44,44,48,.80);--menu-solid:#2c2c30;--menu-bd:rgba(255,255,255,.12);
+  --code:#18181b;--scrim:rgba(0,0,0,.35);
+  color-scheme:dark;
+}}
+
+*{box-sizing:border-box}
+html,body{height:100%}
+body{margin:0;background:var(--win);color:var(--l1);font-family:var(--font);font-size:var(--fs-text);font-weight:var(--font-weight-normal);font-variation-settings:var(--font-axes);font-optical-sizing:auto;font-variant-ligatures:no-contextual;line-height:1.38;-webkit-font-smoothing:antialiased;user-select:none;-webkit-user-select:none;cursor:default;overflow:hidden}
+#root{height:100%}
+input,textarea,.sel-text{user-select:text;-webkit-user-select:text}
+:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
+@keyframes fadein{from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:none}}
+@keyframes spin{to{transform:rotate(360deg)}}
+@keyframes fade{from{opacity:0}}
+button{font:inherit;color:inherit}
+.ic{width:16px;height:16px;fill:none;stroke:currentColor;stroke-width:1.25;stroke-linecap:round;stroke-linejoin:round;flex:none;display:block}
+.ic.sm{width:13px;height:13px}
+.hm-mark{display:block;overflow:visible;flex:none}
+:where(code,pre,kbd,.mono){font-variation-settings:normal;font-weight:400}
+:where(input,textarea,select){font-family:var(--font);font-variation-settings:inherit}
+:where(h1,h2){font-variation-settings:"ROND" 20,"slnt" 0,"wdth" 100}
+:where(h3,h4,h5,h6){font-variation-settings:"ROND" 20,"slnt" 0,"wdth" 94}
+.mono{font-family:var(--mono)}
+.grow{flex:1}
+.ok{color:var(--green)}.warn{color:var(--orange)}
+
+/* Controls. Pointers as macOS has them: the pointing hand for text links only; every control keeps the arrow. */
+.btn{height:26px;padding:0 13px;border-radius:999px;border:0;background:var(--btn);box-shadow:var(--btn-sh);font-size:var(--fs-text);display:inline-flex;align-items:center;justify-content:center;gap:6px;white-space:nowrap;color:var(--l1);flex:none}
+.btn:hover{filter:brightness(.98)}
+.btn:active{filter:brightness(.93)}
+.btn.primary{background:var(--accent);color:#fff;box-shadow:0 1px 2px rgba(40,60,200,.3)}
+.btn.danger{color:var(--red)}
+.btn.primary.danger{background:var(--red);color:#fff;box-shadow:none}
+.btn.sm{height:22px;padding:0 10px;font-size:12px}
+.btn:disabled{opacity:.42;pointer-events:none}
+.btn .ic{width:14px;height:14px}
+.link,a[href]{cursor:pointer}
+.link:disabled{cursor:default}
+.link{border:0;background:none;padding:0;color:var(--accent-t);font-size:inherit;text-decoration:none}
+.link:hover{text-decoration:underline}
+.sw{width:34px;height:20px;border-radius:999px;border:0;background:var(--fill3);position:relative;flex:none;transition:background .2s}
+.sw::after{content:"";position:absolute;top:2px;left:2px;width:16px;height:16px;border-radius:50%;background:#fff;box-shadow:0 1px 2px rgba(0,0,0,.3);transition:transform .2s cubic-bezier(.2,0,0,1)}
+.sw.on{background:var(--accent)}
+.sw.on::after{transform:translateX(14px)}
+.sw:disabled{opacity:.5}
+.seg{display:inline-flex;background:var(--fill2);border-radius:999px;padding:2px;gap:1px;flex:none}
+.seg button{border:0;background:transparent;height:24px;padding:0 13px;border-radius:999px;font-size:12.5px;display:flex;align-items:center;gap:5px;white-space:nowrap}
+.seg button.on{background:var(--seg-on);box-shadow:0 1px 2px rgba(0,0,0,.14)}
+.field{height:26px;border-radius:var(--r-ctl);border:0;box-shadow:inset 0 0 0 1px var(--field-bd);background:var(--field);padding:0 9px;font-size:var(--fs-text);color:var(--l1);outline:none;width:100%}
+.field:focus{box-shadow:inset 0 0 0 1px var(--accent),0 0 0 3px var(--accent-bg)}
+.field.bad{box-shadow:inset 0 0 0 1px var(--red),0 0 0 3px var(--red-bg)}
+.field:disabled{opacity:.6}
+.psel{appearance:none;-webkit-appearance:none;border:0;background-color:var(--fill2);color:var(--l1);height:24px;border-radius:var(--r-ctl);padding:0 24px 0 9px;font:inherit;font-size:12px;width:100%;background-image:linear-gradient(45deg,transparent 50%,currentColor 50%),linear-gradient(135deg,currentColor 50%,transparent 50%);background-position:calc(100% - 13px) 10px,calc(100% - 9px) 10px;background-size:4px 4px;background-repeat:no-repeat}
+.psel:disabled{opacity:.5}
+.tb{height:28px;min-width:28px;border:0;background:transparent;border-radius:8px;display:flex;align-items:center;justify-content:center;color:var(--l2);gap:5px;padding:0 6px}
+.tb:hover{background:var(--fill2);color:var(--l1)}
+.dotc{width:7px;height:7px;border-radius:50%;background:var(--l3);flex:none;display:inline-block}
+.dotc.on{background:var(--green)}
+.dotc.warn{background:var(--orange)}
+.dotc.bad{background:var(--red)}
+.badge{display:inline-flex;align-items:center;height:18px;padding:0 7px;border-radius:var(--r-xs);background:var(--fill2);font-size:11px;color:var(--l2);white-space:nowrap}
+.badge.ok{background:var(--green-bg);color:var(--green)}
+.badge.warn{background:var(--orange-bg);color:var(--orange)}
+.badge.acc{background:var(--accent-bg);color:var(--accent-t)}
+.mini-spin{width:12px;height:12px;border-radius:50%;border:1.6px solid var(--fill3);border-top-color:var(--accent);animation:spin .8s linear infinite;flex:none;display:inline-block}
+
+/* Grouped rows, as System Settings has them. */
+.form{display:flex;flex-direction:column;gap:21px}
+.fgroup{background:var(--win2);border-radius:var(--r-card)}
+.frow{display:flex;align-items:center;gap:12px;padding:9px 14px;min-height:44px;border-top:.5px solid var(--sep)}
+.frow:first-child{border-top:0}
+.frow>label,.frow>.fl{flex:none;width:120px;color:var(--l1)}
+.frow>.fv{flex:1;min-width:0;display:flex;align-items:center;gap:8px;justify-content:flex-end;color:var(--l2);text-align:right;flex-wrap:wrap}
+.frow>.ic{color:var(--l2)}
+.frow .ft{flex:1;min-width:0}
+.frow .fn{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.frow .fdesc{font-size:11.5px;color:var(--l2);margin-top:2px}
+.frow .fdesc.warn{color:var(--orange)}
+.frow>.psel{width:auto;max-width:55%}
+.fv-side{display:inline-flex;align-items:center;gap:6px;flex:none;color:var(--l2);font-size:12.5px}
+.fhead{font-size:12px;font-weight:400;color:var(--l2);margin:0 0 6px 4px}
+.set-note{margin:8px 4px 0;color:var(--l2);font-size:12px;line-height:1.55}
+.set-note.warn{color:var(--orange)}
+
+/* Menus: opaque, as they sit over the page. */
+.vmenu{position:fixed;z-index:30;min-width:176px;background:var(--menu-solid);border-radius:var(--r-card);box-shadow:0 0 0 .5px var(--menu-bd),0 12px 32px rgba(0,0,0,.24),0 2px 6px rgba(0,0,0,.08);padding:5px;outline:none;animation:fadein .14s cubic-bezier(.2,0,0,1)}
+.vmenu .mi{display:flex;align-items:center;gap:8px;width:100%;min-height:28px;padding:0 8px 0 9px;border:0;border-radius:var(--r-ctl);background:none;text-align:left;outline:none;white-space:nowrap}
+.vmenu .mi:focus{background:var(--fill2)}
+.vmenu .mi>.ic{color:var(--l2)}
+.vmenu .ck{width:14px;display:flex;flex:none;color:var(--accent-t)}
+.vmenu .msep{height:.5px;background:var(--sep);margin:5px 9px}
+.vmenu .mh{font-size:11.5px;color:var(--l2);padding:6px 9px 3px}
+.vmenu .mi.danger{color:var(--red)}
+.vmenu .mi.danger>.ic{color:var(--red)}
+.vmenu .mi:disabled{color:var(--l3)}
+.vmenu .mi .two{display:flex;flex-direction:column;white-space:normal}
+.vmenu .mi .two>span:last-child{font-size:11.5px;color:var(--l2);line-height:1.45}
+.vmenu .mi .l1{display:flex;align-items:center;gap:6px}
+
+/* A toast at the bottom of the window. */
+.toast{position:fixed;left:50%;bottom:22px;transform:translateX(-50%);background:var(--menu);backdrop-filter:blur(30px);-webkit-backdrop-filter:blur(30px);box-shadow:0 0 0 .5px var(--menu-bd),0 10px 30px rgba(0,0,0,.2);border-radius:var(--r-xl);padding:8px 10px 8px 16px;display:flex;align-items:center;gap:12px;font-size:13px;z-index:60;animation:pop2 .25s cubic-bezier(.2,0,0,1);width:max-content;max-width:min(560px,calc(100% - 32px))}
+.toast>span{min-width:0;overflow-wrap:anywhere;display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:3;overflow:hidden}
+.toast>.ic,.toast>.btn{flex:none}
+.toast .ic{color:var(--green)}
+.toast.bad .ic{color:var(--red)}
+@keyframes pop2{from{opacity:0;transform:translate(-50%,8px)}}
+
+/* Sheets: native dialogs, near the top as the Mac app's sheets are. */
+.sheet{margin:60px auto auto;border:0;padding:0;max-width:calc(100vw - 32px);max-height:calc(100vh - 80px);overflow-y:auto;color:var(--l1);background:var(--win);border-radius:18px;box-shadow:0 0 0 .5px var(--menu-bd),0 20px 60px rgba(0,0,0,.35);animation:sheet .22s cubic-bezier(.2,0,0,1)}
+.sheet:focus-visible{outline:none}
+.sheet::backdrop{background:var(--scrim);animation:fade .2s}
+.sheet-in{padding:22px 24px 18px}
+@keyframes sheet{from{opacity:0;transform:translateY(-12px)}}
+.sheet h3{margin:0 0 4px;font-size:15px;font-weight:600}
+.sheet .sub{margin:0 0 14px;color:var(--l2);font-size:12.5px;line-height:1.55}
+.sheet-foot{display:flex;justify-content:flex-end;gap:8px;margin-top:18px;align-items:center}
+.sheet-foot .left{margin-right:auto}
+.sheet.lightbox{margin:auto;background:transparent;box-shadow:none;max-width:calc(100vw - 48px)}
+.sheet.lightbox .sheet-in{padding:0}
+.sheet.lightbox img{display:block;max-width:calc(100vw - 48px);max-height:calc(100vh - 48px);border-radius:var(--r-md)}
+
+/* Markdown, as the Mac app's conversation sets it. */
+.md{overflow-wrap:anywhere;user-select:text;-webkit-user-select:text}
+.md>*{margin:0}
+.md>*+*{margin-top:12px}
+.md :is(h1,h2,h3,h4,h5,h6){font-weight:600;line-height:1.4}
+.md h1{font-size:18px}.md h2{font-size:16.5px}.md :is(h3,h4,h5,h6){font-size:15px}
+.md ul,.md ol{padding-left:20px}
+.md li+li,.md li>:is(ul,ol){margin-top:4px}
+.md hr{border:0;border-top:.5px solid var(--sep)}
+.md table{border-collapse:collapse;font-size:13px;line-height:20px}
+.md :is(th,td){padding:6px 14px 6px 0;border-bottom:.5px solid var(--sep);text-align:left;vertical-align:top}
+.md th{font-weight:600}
+.md blockquote{border-left:2px solid var(--fill3);padding-left:12px;color:var(--l2)}
+.md code{font-family:var(--mono);font-size:12.5px;background:var(--fill2);padding:1px 5px;border-radius:var(--r-xs)}
+.md pre{background:var(--code);border-radius:var(--r-md);padding:10px 12px;overflow-x:auto;box-shadow:inset 0 0 0 .5px var(--sep)}
+.md pre code{background:none;padding:0;font-size:12px;line-height:1.55;white-space:pre}
+.md a{color:var(--accent-t);text-decoration:none}
+.md a:hover{text-decoration:underline}
+.md img{max-width:100%}
+
+@media (prefers-reduced-motion:reduce){*,*::before,*::after{animation-duration:.01ms!important;animation-iteration-count:1!important;transition-duration:.01ms!important}}

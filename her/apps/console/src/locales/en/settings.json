@@ -1,0 +1,210 @@
+{
+  "models": {
+    "subscription": "Use a subscription",
+    "subscriptionNote": "Uses each account’s subscription allowance. API keys are billed separately.",
+    "chatgpt": {
+      "forget": "Forget Account",
+      "note": "Sign in with your ChatGPT account",
+      "waiting": "Waiting for the sign-in in the browser…",
+      "expired": "Signed out. Sign in again.",
+      "openBrowser": "Open Browser",
+      "origin": "ChatGPT subscription",
+      "signedIn": "Signed in to ChatGPT",
+      "notStarted": "The sign-in did not start"
+    },
+    "api": "API & custom services",
+    "add": "Add API Service",
+    "close": "Close",
+    "connect": "Sign In",
+    "disconnect": "Disconnect",
+    "remove": "Remove",
+    "confirmRemove": "Remove",
+    "cancel": "Cancel",
+    "replaceKey": "Replace Key…",
+    "state": {
+      "readyShown": "Connected · {{shown}} of {{count}} models shown"
+    },
+    "source": {
+      "stored": "Credential store",
+      "env": "Environment variable {{env}}",
+      "config": "models.toml",
+      "command": "From a command"
+    },
+    "elsewhere": {
+      "env": "Set in the environment of her on this machine; remove {{env}} there",
+      "config": "Set in ~/.her/models.toml on this machine; edit that file to remove it"
+    },
+    "shownOf": "{{shown}} of {{count}} models shown",
+    "manage": {
+      "open": "Manage Models",
+      "title": "{{name}} models",
+      "search": "Search models",
+      "refresh": "Refresh List",
+      "refreshing": "Refreshing…",
+      "updated": "updated {{when}}",
+      "shownOf": "{{shown}} of {{count}} in the menu",
+      "source": {
+        "provider": "from the provider's model list",
+        "catalog": "from the public model catalog",
+        "unsupported": "the provider has no model list",
+        "config": "from models.toml"
+      },
+      "failed": "Last refresh failed: {{message}}",
+      "unknown": "Details unknown",
+      "deprecated": "Retired",
+      "new": "New",
+      "context": "{{size}} context",
+      "price": "{{price}} per million tokens",
+      "inMenu": "Show {{name}} in the model menu",
+      "none": "No matching models"
+    },
+    "plans": {
+      "title": "Token Plan",
+      "added": "Added",
+      "subtitle": "Connect your existing model plan",
+      "connect": "Connect Token Plan",
+      "chooseNote": "Select your subscription, then enter its API key.",
+      "details": "Connection details",
+      "endpoint": "Endpoint",
+      "protocol": "Protocol",
+      "catalog": "Models",
+      "dynamicCatalog": "Fetched from the plan service; refreshable",
+      "seedCatalog": "Plan presets, updated with Her",
+      "catalogNote": "Preset models do not confirm account access. Availability depends on your subscription.",
+      "getKey": "Get API key",
+      "keyPlaceholder": "Paste the API key for this plan",
+      "removeNote": "Removes the saved key from this environment. Your subscription with the provider stays active.",
+      "unverified": "API key saved, connection not verified yet; the first model request will verify it.",
+      "replaced": "API key replaced",
+      "replaceTitle": "Replace Key",
+      "products": {
+        "bailian-token-plan": {
+          "name": "Bailian Token Plan",
+          "note": "Alibaba Cloud · multi-model"
+        },
+        "tencent-token-plan": {
+          "name": "Tencent Cloud Token Plan",
+          "note": "General and Hy share a key"
+        },
+        "volcengine-agent-plan": {
+          "name": "Volcengine Ark Agent Plan",
+          "note": "Agent Plan key only"
+        },
+        "volcengine-coding-plan": {
+          "name": "Volcengine Ark Coding Plan",
+          "note": "Coding Plan key only"
+        },
+        "zai-coding-plan": {
+          "name": "Z.ai GLM Coding Plan",
+          "note": "International account"
+        },
+        "zhipu-coding-plan": {
+          "name": "Zhipu GLM Coding Plan",
+          "note": "China account"
+        }
+      }
+    }
+  },
+  "key": {
+    "subtitle": "Paste this provider's API key",
+    "where": "Kept on this environment's machine; only Her reads it",
+    "back": "Back",
+    "save": "Save",
+    "saving": "Saving…",
+    "placeholder": "Paste {{env}}",
+    "fromEnv": "A key was found in {{env}}; a key saved here is used only when that variable is not set.",
+    "rejected": "The key was refused: {{message}}",
+    "unverified": "The key could not be checked with the provider right now; it is saved",
+    "models_one": "{{count}} model",
+    "models_other": "{{count}} models"
+  },
+  "search": {
+    "master": "Let the model search the web",
+    "masterNote": "The model searches when it needs to. What it searches for is sent to the services below.",
+    "masterOn": "Web search is on",
+    "masterOff": "Web search is off",
+    "services": "Search services",
+    "intro": "From the top down, the first one that can be used goes first; if it fails, the next. Drag to change the order.",
+    "current": "In use",
+    "noneLeft": "Every service is off, so the model can't search right now.",
+    "grip": "Drag to move {{name}}, or use the up and down keys",
+    "gripTitle": "Drag to change the order",
+    "use": "Use {{name}}",
+    "usedTitle": "Searches use it",
+    "skippedTitle": "Searches skip it",
+    "connect": "Connect",
+    "addKey": "Add Key",
+    "more": "More",
+    "test": "Test Search",
+    "replaceKey": "Replace Key",
+    "removeKey": "Remove Key",
+    "needsAccount": "Connect {{name}} under Models first",
+    "fromEnv": "Key from the environment variable {{env}}",
+    "failed": "{{what}} · {{when}}",
+    "usedNext": ". The next one was used",
+    "failure": {
+      "auth_failed": "Key rejected",
+      "quota_exhausted": "Out of quota",
+      "rate_limited": "Was limiting requests",
+      "unreachable": "Could not be reached",
+      "bad_response": "Sent an unreadable answer"
+    },
+    "why": {
+      "auth_failed": "key rejected",
+      "quota_exhausted": "out of quota",
+      "rate_limited": "limiting requests",
+      "unreachable": "could not be reached",
+      "bad_response": "unreadable answer"
+    },
+    "worked_one": "{{name}} works · {{count}} result · {{seconds}} s",
+    "worked_other": "{{name}} works · {{count}} results · {{seconds}} s",
+    "testFailed": "{{name}} did not work: {{why}}",
+    "movedFirst": ", moved to the top",
+    "savedUntested": "Key saved, but the test did not get through",
+    "refused": "{{name}} refused this key. It was not saved.",
+    "removeTitle": "Remove the {{name}} key?",
+    "removeNote": "The key is deleted from the credential store, and searches skip this service.",
+    "removeNoteFree": "The key is deleted from the credential store, and searches go on with the free tier.",
+    "remove": "Remove",
+    "removed": "Key removed. Searches skip {{name}}",
+    "removedFree": "Key removed. Searches go on with the free tier",
+    "addTitle": "Add {{name}} Key",
+    "replaceTitle": "Replace {{name}} Key",
+    "apiKey": "API Key",
+    "getKey": "Get one from {{name}}",
+    "keychain": "Kept in the credential store",
+    "cancel": "Cancel",
+    "saveAndTest": "Save and Test",
+    "testing": "Testing…",
+    "sources": {
+      "deepseek": {
+        "desc": "Shares your model key · $0.75 per 1,000"
+      },
+      "exa": {
+        "desc": "Free tier, no key needed",
+        "keyed": "Key added · $4 per 1,000, $10 free a month",
+        "sheet": "Works without a key. With one it uses your own credit, at higher limits."
+      },
+      "parallel": {
+        "desc": "Free tier, no key needed",
+        "keyed": "Key added, higher limits",
+        "sheet": "Works without a key. With one the limits are higher."
+      },
+      "tavily": {
+        "desc": "1,000 free a month, needs a key",
+        "keyed": "Key added · 1,000 free a month",
+        "sheet": "1,000 searches free a month, then about $0.008 each."
+      },
+      "brave": {
+        "desc": "$5 free a month, needs a key",
+        "keyed": "Key added · $5 free a month",
+        "sheet": "$5 free a month, about 1,000 searches. Signing up needs a card."
+      },
+      "bocha": {
+        "desc": "Chinese content, needs a key",
+        "keyed": "Key added",
+        "sheet": "A search service for Chinese content."
+      }
+    }
+  }
+}
