@@ -112,6 +112,7 @@ irm https://github.com/hermeshai/hermesh/releases/latest/download/install.ps1 | 
   curl -fsSL https://github.com/hermeshai/hermesh/releases/latest/download/install.sh | sh -s -- --device
   ```
   如果这是你的第一台设备，它会通过浏览器显示的验证码完成登录，并用你设置的口令加密保护管理密钥。后续有新机器或 Agent 请求加入时，运行 `hermeshd approve` 即可审批。
+- **卸载：** 以安装时的用户运行 `hermeshd uninstall`，它会先列出要删除的内容并请你确认，然后解除机器配对，删除后台服务、数据、CLI 设置和两个程序。你的项目目录不受影响。
 - 后台服务完整命令说明：[docs/hermeshd.md](docs/hermeshd.md)。
 
 </details>

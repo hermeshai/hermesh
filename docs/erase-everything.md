@@ -177,6 +177,9 @@ unchanged: it signs nothing, so it erases nothing on a device.
   uncommitted changes kept); its service, when one runs it, taken away. It
   asks first (`--yes` for scripts), refuses while `hermeshd run` holds the
   machine, and on a trusted device points to the next command.
+- `hermeshd uninstall` goes further on a Linux or macOS command-line
+  install: it erases as `hermeshd erase` does, then removes the data
+  directory, the CLI's settings and the programs ([hermeshd.md](hermeshd.md)).
 - `hermeshd device erase-everything` is Erase Everything on a trusted
   device without an app (a Linux trusted device): the same list of what it
   erases and what stays, the account's email (or the server's address)

@@ -112,6 +112,7 @@ Scan the QR code with your phone (or select **Enter Pairing Code…** in the des
   curl -fsSL https://github.com/hermeshai/hermesh/releases/latest/download/install.sh | sh -s -- --device
   ```
   If this is your first device, it signs you in via a browser verification code and encrypts your owner key with a passphrase. Use `hermeshd approve` to approve pending pairing requests.
+- **Uninstalling:** `hermeshd uninstall`, run as the user Hermesh was installed for, says what goes and asks first. Then it unpairs the machine and removes its service, its data, the CLI's settings and both programs. Your project folders stay.
 - Full daemon reference: [docs/hermeshd.md](docs/hermeshd.md).
 
 </details>

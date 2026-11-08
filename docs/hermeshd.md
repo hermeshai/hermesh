@@ -116,10 +116,29 @@ Hermesh up.
 
 ## Removing Hermesh
 
+On Linux and macOS, as the user Hermesh was installed for (after a root
+install for another user: `su - <user>` first):
+
 ```bash
-hermeshd service uninstall
-rm -rf ~/.local/bin/hermeshd ~/.local/bin/hermesh ~/.local/share/hermesh
+hermeshd uninstall
 ```
+
+It lists what goes and asks first (`--yes` for scripts):
+
+- the machine, unpaired: your devices stop listing it (if the server
+  can't be reached, it says so; remove the machine in the app then);
+- the background service, stopped and removed;
+- the data directory, and where it links to (a Synology volume's
+  `@hermesh-<uid>`): sessions, logs, the worktrees Hermesh made;
+- the agents' CLI key and settings (`~/.config/hermesh`);
+- `hermeshd`, and `hermesh` beside it.
+
+Your project folders and repositories stay. Worktrees with uncommitted
+changes move to `~/hermesh-kept-worktrees`. Lingering, which the installer
+turned on, stays: it says how to turn it off. It refuses on a trusted
+device until it has left (`hermeshd device leave`), and while `hermeshd
+run` runs outside the service. After `--cli` only, there is no hermeshd:
+`rm -rf ~/.local/bin/hermesh ~/.config/hermesh`.
 
 On Windows, in PowerShell:
 
