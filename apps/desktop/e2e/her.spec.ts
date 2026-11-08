@@ -40,9 +40,9 @@ test("Her: the first run, a chat, the console, a second environment, and one gon
   await expect(page.locator(".her-env")).toHaveCount(0);
   await snap(page, "her-greeting");
   // Her's settings, beside the conversation: a new assistant asks before risky steps.
-  await page.getByRole("button", { name: "助手设置" }).click();
+  await page.getByRole("button", { name: "助手设置", exact: true }).click();
   await expect(page.getByRole("complementary", { name: "助手设置" })).toContainText("询问权限");
-  await page.getByRole("button", { name: "助手设置" }).click();
+  await page.getByRole("button", { name: "助手设置", exact: true }).click();
   await expect(page.getByRole("complementary", { name: "助手设置" })).toBeHidden();
 
   // A chat: the message, then Her's reply in a bubble of its own.
@@ -54,7 +54,7 @@ test("Her: the first run, a chat, the console, a second environment, and one gon
 
   // The console, from ⋯: a window of its own at this Mac's hermeshd, which is none of the app's pages.
   const opened = app.waitForEvent("window");
-  await page.getByRole("button", { name: "更多" }).click();
+  await page.getByRole("button", { name: "更多", exact: true }).click();
   await page.getByRole("menuitem", { name: /^管理「.+」…$/ }).click();
   const consolePage = await opened;
   await expect(consolePage.locator("body")).toContainText("the e2e console");
@@ -64,7 +64,7 @@ test("Her: the first run, a chat, the console, a second environment, and one gon
 
   // A second environment: work-mac, from ⋯ › 添加环境…. The page goes there once Her runs on it, and the
   // environment shows beside Her's name, as a menu of both.
-  await page.getByRole("button", { name: "更多" }).click();
+  await page.getByRole("button", { name: "更多", exact: true }).click();
   await page.getByRole("menuitem", { name: "添加环境…" }).click();
   const sheet = page.getByRole("dialog", { name: "添加环境" });
   await sheet.getByRole("listitem").filter({ hasText: "work-mac" }).getByRole("button", { name: "开启 Her" }).click();

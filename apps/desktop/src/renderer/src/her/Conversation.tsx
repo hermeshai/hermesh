@@ -75,8 +75,9 @@ function OfflineLine({ state }: { state: EnvState }) {
 }
 
 /**
- * Nothing is unread while the owner looks: the assistant on screen and the window in front. What comes
- * meanwhile is unread until they are back (bots/read).
+ * Nothing is unread while the owner looks: Her on screen and the window in front, as the main process
+ * says it (main.tsx keeps html.blurred; document.hasFocus can be told otherwise, by a test's driver
+ * for one). What comes meanwhile is unread until they are back (bots/read), and notified.
  */
 function useMarkRead(bot: BotSummary) {
   const her = useHer();
@@ -84,12 +85,11 @@ function useMarkRead(bot: BotSummary) {
   const connected = her.env.rpc !== null;
   useEffect(() => {
     const read = () => {
-      if ((bot.unread ?? 0) === 0 || !document.hasFocus() || !connected) return;
+      if ((bot.unread ?? 0) === 0 || document.documentElement.classList.contains("blurred") || !connected) return;
       her.call("bots/read", { bot_id: bot.id }).catch(() => {});
     };
     read();
-    window.addEventListener("focus", read);
-    return () => window.removeEventListener("focus", read);
+    return window.hermesh?.onWindowFocus((focused) => focused && read());
   }, [bot.id, unread, connected]);
 }
 
