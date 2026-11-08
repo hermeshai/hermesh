@@ -51,7 +51,8 @@ type world struct {
 	rootChain *identityv1.RootChain
 }
 
-func newWorld(t *testing.T) *world {
+// newWorld builds it; opts change the machines' configuration.
+func newWorld(t *testing.T, opts ...func(*machine.Config)) *world {
 	t.Helper()
 	ctx, cancel := context.WithCancel(context.Background())
 	t.Cleanup(cancel)
@@ -87,8 +88,12 @@ func newWorld(t *testing.T) *world {
 	w.trust = identity.NewTrust(ownerID)
 
 	for i, name := range []string{"alpha", "beta"} {
-		n, err := machine.Open(machine.Config{DataDir: filepath.Join(tmp, name), Logger: quiet,
-			Providers: map[string]provider.Provider{"claude": fake.Provider{}, "codex": fake.Provider{}}})
+		cfg := machine.Config{DataDir: filepath.Join(tmp, name), Logger: quiet,
+			Providers: map[string]provider.Provider{"claude": fake.Provider{}, "codex": fake.Provider{}}}
+		for _, o := range opts {
+			o(&cfg)
+		}
+		n, err := machine.Open(cfg)
 		if err != nil {
 			t.Fatal(err)
 		}

@@ -136,7 +136,7 @@ func (n *Machine) Watch(ctx context.Context, p *Principal, req *machinev1.WatchR
 			first.DeletedSessionIds = n.sessions.deletedSince(p, req.HeldAt.AsTime())
 		}
 	}
-	status := n.Status()
+	status := n.statusFor(p)
 	first.Status = status
 	work := n.sessions.st.WorkSeq()
 	first.WorkSeq = uint64(work)
@@ -156,7 +156,7 @@ func (n *Machine) Watch(ctx context.Context, p *Principal, req *machinev1.WatchR
 		if err != nil {
 			return err
 		}
-		if st := n.Status(); !proto.Equal(st, status) {
+		if st := n.statusFor(p); !proto.Equal(st, status) {
 			status, m.Status = st, st
 		}
 		ws := n.sessions.st.WorkSeq()

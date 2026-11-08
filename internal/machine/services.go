@@ -124,7 +124,7 @@ func (s *machineService) GetInfo(ctx context.Context, req *machinev1.GetInfoRequ
 	default:
 		s.n.CheckAgents(false, AgentsOnce)
 	}
-	return &machinev1.GetInfoResponse{MachineId: s.n.machineID, MachineName: s.n.Name(), Status: s.n.Status()}, nil
+	return &machinev1.GetInfoResponse{MachineId: s.n.machineID, MachineName: s.n.Name(), Status: s.n.statusFor(principalFrom(ctx))}, nil
 }
 
 func (s *machineService) Watch(ctx context.Context, req *machinev1.WatchRequest, stream *connect.ServerStream[machinev1.WatchResponse]) error {
@@ -379,6 +379,10 @@ func (n *Machine) execAdmin(ctx context.Context, cmd *identityv1.AdminCommand) (
 			}
 		}
 		return "paused=" + v, nil
+	case *identityv1.AdminCommand_SetHer:
+		return n.setHer(c.SetHer.Enabled)
+	case *identityv1.AdminCommand_SetHerAssistantMode, *identityv1.AdminCommand_SetHerCommandConnector:
+		return n.execHer(ctx, cmd)
 	}
 	return "", connect.NewError(connect.CodeInvalidArgument, errors.New("unknown admin command"))
 }
