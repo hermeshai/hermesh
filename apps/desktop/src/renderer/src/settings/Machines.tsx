@@ -7,6 +7,7 @@ import { Mark } from "@hermesh/ui";
 import { AgentList, AgentPage, sortAgents } from "../AgentList";
 import { useCheckAgents } from "../agents";
 import { local } from "../api";
+import { ComputerUse } from "../her-computer/ComputerUse";
 import { Problems } from "../health";
 import { Icon } from "../icons";
 import { useNow, useStore, type Store } from "../store";
@@ -229,6 +230,8 @@ function MachineDetail({ m, ask, open }: { m: Machine; ask: (a: Ask) => void; op
           </div>
         </div>
       )}
+      {/* What macOS lets Her's desktop tools do here: the Mac's permissions (macOS checks hermeshd), not an assistant's. */}
+      {m.local && m.her?.enabled && <ComputerUse machineId={m.machineId} />}
       <div className="set-acts">
         <button className="btn" onClick={rename}>{t("machines.rename")}</button>
         {/* What to send when something doesn't work; only this Mac's is at hand. */}
