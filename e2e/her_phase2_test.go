@@ -747,14 +747,15 @@ func TestHerRoutine(t *testing.T) {
 		t.Fatalf("asked to approve: %v; the routine made: %q", asked, routine)
 	}
 
-	// About a minute later, with nobody asking.
+	// About a minute later, with nobody asking: what the run found, as Her
+	// passes it on.
 	untilEvent(t, stream, "the routine's report, passed on", func(e herEvent) bool {
-		return e.sentText(`<routine_report routine="Stretch"`) && strings.Contains(e.Args.Text, "Time to stretch.")
+		return e.Type == "tool_started" && e.Name == "send_to_user" && e.Args.Text == "Time to stretch."
 	})
 	eventually(t, 30*time.Second, "the report as Her's latest message", func() bool {
 		l := listedMachine(t, env.c, env.machine).GetHer().GetLatest()
 		return l.GetBotId() == env.bot.ID && l.GetKind() == machinev1.HerLatestKind_HER_LATEST_KIND_MESSAGE &&
-			strings.Contains(l.GetText(), `<routine_report routine="Stretch"`)
+			l.GetText() == "Time to stretch."
 	})
 	var runs struct {
 		Runs []struct {

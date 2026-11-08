@@ -168,9 +168,7 @@ async fn a_routine_said_in_the_chat_runs_at_its_time_and_the_bot_tells_the_user(
     // At its time, with nobody asking: a task that the letter started, and no agent in sight.
     let events = until_event(&mut wire, ended).await;
     let told = sent(&events);
-    assert_eq!(told.len(), 1, "{told:?}");
-    assert!(told[0].starts_with("转告：<routine_report routine=\"报价\""), "{told:?}");
-    assert!(told[0].contains("跌到 290 了。"), "{told:?}");
+    assert_eq!(told, ["跌到 290 了。"], "only what the run found");
     assert!(events.iter().any(|e| e["type"] == "task_started" && e["trigger"] == "mail"), "{events:?}");
     assert!(events.iter().all(|e| !e["type"].as_str().unwrap_or("").starts_with("agent_")), "{events:?}");
     let mail = &events.iter().find(|e| e["type"] == "message_completed" && e["mail"].is_object()).expect("the letter")["mail"];
