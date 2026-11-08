@@ -91,7 +91,10 @@
     "turnDoneTitle": "“{{title}}” finished turn {{turn}}",
     "noChanges": "No files changed",
     "changes_one": "{{count}} file +{{insertions}} −{{deletions}}",
-    "changes_other": "{{count}} files +{{insertions}} −{{deletions}}"
+    "changes_other": "{{count}} files +{{insertions}} −{{deletions}}",
+    "herName": "Her",
+    "herTitle": "{{name}} · {{environment}}",
+    "herApproval": "Waiting for your approval: {{text}}"
   },
   "pairing": {
     "machine": "Machine “{{label}}” wants to join",

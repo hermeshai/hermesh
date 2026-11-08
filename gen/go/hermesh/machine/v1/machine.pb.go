@@ -1268,9 +1268,12 @@ type HerLatest struct {
 	BotId   string `protobuf:"bytes,1,opt,name=bot_id,json=botId,proto3" json:"bot_id,omitempty"`
 	BotName string `protobuf:"bytes,2,opt,name=bot_name,json=botName,proto3" json:"bot_name,omitempty"`
 	// Its first words, at most 200 characters.
-	Text          string                 `protobuf:"bytes,3,opt,name=text,proto3" json:"text,omitempty"`
-	At            *timestamppb.Timestamp `protobuf:"bytes,4,opt,name=at,proto3" json:"at,omitempty"`
-	Kind          HerLatestKind          `protobuf:"varint,5,opt,name=kind,proto3,enum=hermesh.machine.v1.HerLatestKind" json:"kind,omitempty"`
+	Text string                 `protobuf:"bytes,3,opt,name=text,proto3" json:"text,omitempty"`
+	At   *timestamppb.Timestamp `protobuf:"bytes,4,opt,name=at,proto3" json:"at,omitempty"`
+	Kind HerLatestKind          `protobuf:"varint,5,opt,name=kind,proto3,enum=hermesh.machine.v1.HerLatestKind" json:"kind,omitempty"`
+	// The owner muted the assistant (her's BotSummary.muted): no device
+	// notifies them of it.
+	Muted         bool `protobuf:"varint,6,opt,name=muted,proto3" json:"muted,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -1338,6 +1341,13 @@ func (x *HerLatest) GetKind() HerLatestKind {
 		return x.Kind
 	}
 	return HerLatestKind_HER_LATEST_KIND_UNSPECIFIED
+}
+
+func (x *HerLatest) GetMuted() bool {
+	if x != nil {
+		return x.Muted
+	}
+	return false
 }
 
 type MachineProblem struct {
@@ -2582,13 +2592,14 @@ const file_hermesh_machine_v1_machine_proto_rawDesc = "" +
 	"\vunsupported\x18\x05 \x01(\tR\vunsupported\x12\x16\n" +
 	"\x06unread\x18\x06 \x01(\rR\x06unread\x125\n" +
 	"\x06latest\x18\a \x01(\v2\x1d.hermesh.machine.v1.HerLatestR\x06latest\x12\x14\n" +
-	"\x05error\x18\b \x01(\tR\x05error\"\xb4\x01\n" +
+	"\x05error\x18\b \x01(\tR\x05error\"\xca\x01\n" +
 	"\tHerLatest\x12\x15\n" +
 	"\x06bot_id\x18\x01 \x01(\tR\x05botId\x12\x19\n" +
 	"\bbot_name\x18\x02 \x01(\tR\abotName\x12\x12\n" +
 	"\x04text\x18\x03 \x01(\tR\x04text\x12*\n" +
 	"\x02at\x18\x04 \x01(\v2\x1a.google.protobuf.TimestampR\x02at\x125\n" +
-	"\x04kind\x18\x05 \x01(\x0e2!.hermesh.machine.v1.HerLatestKindR\x04kind\"\xcd\x01\n" +
+	"\x04kind\x18\x05 \x01(\x0e2!.hermesh.machine.v1.HerLatestKindR\x04kind\x12\x14\n" +
+	"\x05muted\x18\x06 \x01(\bR\x05muted\"\xcd\x01\n" +
 	"\x0eMachineProblem\x12:\n" +
 	"\x04kind\x18\x01 \x01(\x0e2&.hermesh.machine.v1.MachineProblemKindR\x04kind\x12\x12\n" +
 	"\x04used\x18\x02 \x01(\x04R\x04used\x12\x14\n" +
