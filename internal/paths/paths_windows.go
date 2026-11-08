@@ -32,3 +32,7 @@ func Control(dataDir string) string { return filepath.Join(dataDir, "run", "cont
 
 // Tools is where the sessions of the machine machineID reach their tools.
 func Tools(dataDir, machineID string) string { return filepath.Join(dataDir, "run", "tools.pipe") }
+
+// Her is where her would listen; her does not run on Windows yet
+// (docs/her-server.md §12).
+func Her(dataDir string) string { return filepath.Join(dataDir, "her", "her.sock") }

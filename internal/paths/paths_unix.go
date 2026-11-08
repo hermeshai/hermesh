@@ -63,3 +63,17 @@ func Tools(dataDir, machineID string) string {
 	}
 	return p
 }
+
+// Her is where the machine with this data directory reaches her
+// (docs/her-server.md): a socket in a directory of its own, which her makes
+// private. her refuses a path over 103 bytes; a long data directory's is
+// named after the directory, so two machines of one user never share it.
+func Her(dataDir string) string {
+	p := filepath.Join(dataDir, "her", "her.sock")
+	if len(p) > 100 {
+		abs, _ := filepath.Abs(dataDir)
+		h := sha256.Sum256([]byte(abs))
+		p = filepath.Join(os.TempDir(), fmt.Sprintf("hermesh-her-%d-%x", os.Getuid(), h[:8]), "her.sock")
+	}
+	return p
+}
