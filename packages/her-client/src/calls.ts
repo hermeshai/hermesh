@@ -8,7 +8,7 @@ import type { Transport } from "./rpc.ts";
 // to her directly.
 
 /** What a connection's stream carries: its id first, then her's notifications. */
-export type OpenEvent = { opened: { connectionId: string } } | { notification: { method: string; params: unknown } };
+export type ConnectionEvent = { opened: { connectionId: string } } | { notification: { method: string; params: unknown } };
 
 /** A JSON-RPC error of her's. */
 export type CallError = { code: number; message: string; data?: unknown };
@@ -19,7 +19,7 @@ export type CallResult = { result: unknown } | { error: CallError };
 /** hermeshd's side of a connection. */
 export interface CallAdapter {
   /** Opens a connection. The stream ends when the connection does; `signal` ends it. */
-  open(signal: AbortSignal): AsyncIterable<OpenEvent>;
+  open(signal: AbortSignal): AsyncIterable<ConnectionEvent>;
   /** One request on the connection `connectionId` names. A throw: it or its answer was lost. */
   call(connectionId: string, method: string, params: unknown): Promise<CallResult>;
 }

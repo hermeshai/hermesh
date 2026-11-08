@@ -1,16 +1,16 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { PROTOCOL_VERSION } from "@hermesh/her-protocol";
-import { openCallTransport, type CallAdapter, type CallResult, type OpenEvent } from "./calls.ts";
+import { openCallTransport, type CallAdapter, type CallResult, type ConnectionEvent } from "./calls.ts";
 import { RpcClient, RpcError } from "./rpc.ts";
 
 /** hermeshd as the test plays it: each connection's stream, and each call, answered when the test says. */
 function hermeshd() {
-  const streams: { push(e: OpenEvent): void; end(): void; fail(e: Error): void; signal: AbortSignal }[] = [];
+  const streams: { push(e: ConnectionEvent): void; end(): void; fail(e: Error): void; signal: AbortSignal }[] = [];
   const calls: { connectionId: string; method: string; params: unknown; answer(r: CallResult): void; lose(e: Error): void }[] = [];
   const adapter: CallAdapter = {
     open(signal) {
-      const queue: OpenEvent[] = [];
+      const queue: ConnectionEvent[] = [];
       let over: Error | true | null = null;
       let wake = () => {};
       const stop = (why: Error | true) => {
