@@ -59,8 +59,10 @@ public struct HerProvider: Equatable, Sendable {
     public var names: [String: String]
     /// "api_key", "connection", "command" or "none".
     public var auth: String
-    /// A token plan: added in the console.
+    /// A Token Plan: a model plan the owner subscribes to, with a key of its own.
     public var plan: Bool
+    /// A Token Plan's page for its key.
+    public var keyPage: URL?
 
     /// Its name in the app's language (zh-Hans takes `zh`), else its own.
     public func name(language: String) -> String {
@@ -87,7 +89,7 @@ public struct HerModels: Equatable, Sendable {
         providers = (j["providers"].array ?? []).compactMap { p in
             p["id"].string.map {
                 HerProvider(id: $0, name: p["name"].string ?? $0, names: (p["names"].object ?? [:]).compactMapValues(\.string),
-                            auth: p["auth"].string ?? "", plan: !p["plan"].isNull)
+                            auth: p["auth"].string ?? "", plan: !p["plan"].isNull, keyPage: p["plan"]["key_url"].string.flatMap(URL.init(string:)))
             }
         }
     }

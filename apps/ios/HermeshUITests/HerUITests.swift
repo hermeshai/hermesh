@@ -3,7 +3,7 @@ import XCTest
 /// Her on the iPhone (docs/her-server.md §9), as a person uses her, against
 /// the owner Mac's her, whose model is her-mock (TestIPhone, iphoneHerEnv):
 /// Her turned on for the Mac with Face ID, her onboarding connecting a model
-/// with an API key, a chat, a question, an approval, and the Mac gone
+/// with a Token Plan, a chat, a question, an approval, and the Mac gone
 /// offline, where a message waits on the iPhone until it is back. her-mock
 /// answers a message by its directive (e2e/her_owner_test.go).
 ///
@@ -13,7 +13,7 @@ extension HermeshUITests {
         guard ProcessInfo.processInfo.environment["HERMESH_E2E_HER"] != nil else { throw XCTSkip("run by TestIPhone with her built (HERMESH_E2E_HER)") }
         try XCTContext.runActivity(named: "joins the owner by its connection address") { _ in try join() }
         try XCTContext.runActivity(named: "Her is first in the menu, and is turned on for the Mac with Face ID") { _ in try herTurnOn() }
-        try XCTContext.runActivity(named: "with no model, Her speaks first and connects one with an API key") { _ in try herOnboarding() }
+        try XCTContext.runActivity(named: "with no model, Her speaks first, offers the ways, and connects a Token Plan") { _ in try herOnboarding() }
         try XCTContext.runActivity(named: "a chat: the message, then Her's reply") { _ in try herChat() }
         try XCTContext.runActivity(named: "her name opens her settings, a page of their own") { _ in try herSettings() }
         try XCTContext.runActivity(named: "a question: a tapped answer is the owner's message") { _ in try herQuestion() }
@@ -43,20 +43,41 @@ extension HermeshUITests {
         XCTAssertTrue(text("Key 和登录都只留在 owner-mac 上").exists)
         let composer = app.descendants(matching: .any)["her-composer"].firstMatch
         XCTAssertTrue(composer.exists && !composer.isEnabled, "the composer waits for a model")
+        // The ways, in a list, each saying what it takes.
+        for way in ["chatgpt", "plan", "key"] { XCTAssertTrue(app.buttons["her-choice-\(way)"].exists, way) }
+        XCTAssertTrue(text("已订阅的模型套餐，如百炼、火山方舟、智谱 GLM").exists)
         herShot("Her: no model yet")
+        // An API key: which provider, then its key, the provider checked in its list.
         app.buttons["填写 API Key"].tap()
         XCTAssertTrue(text("用哪家的？").waitForExistence(timeout: 10))
         app.buttons["DeepSeek"].tap()
         XCTAssertTrue(text("把 DeepSeek 的 API Key 贴在下面").waitForExistence(timeout: 10))
+        XCTAssertTrue(app.buttons["her-choice-deepseek"].isSelected, "the provider picked is checked")
         let key = app.secureTextFields["her-key"]
         XCTAssertTrue(key.waitForExistence(timeout: 10))
+        // Another way: Her asks which at once; a Token Plan instead, each plan with the line that tells it from
+        // the others, then its key, the page to get one being the plan's own. her-mock stands in for Tencent
+        // Cloud's plan (iphoneHerEnv).
+        tap("her-other-way")
+        XCTAssertTrue(text("好，换哪种方式？").waitForExistence(timeout: 10))
+        XCTAssertFalse(key.exists, "the key is no longer asked for")
+        app.buttons["接入 Token Plan"].tap()
+        XCTAssertTrue(text("接入哪个套餐？").waitForExistence(timeout: 10))
+        XCTAssertTrue(text("Coding Plan 专属密钥").exists)
+        app.buttons["腾讯云 Token Plan"].tap()
+        XCTAssertTrue(text("把 腾讯云 Token Plan 的 API Key 贴在下面").waitForExistence(timeout: 10))
+        XCTAssertTrue(app.buttons["去 腾讯云 Token Plan 获取 Key"].exists, "the plan's own page")
+        XCTAssertTrue(key.waitForExistence(timeout: 10))
+        // Picked, the conversation goes to its end: the key's field is there to tap.
+        try waitFor("the key's field in view") { key.isHittable ? true : nil }
+        herShot("Her: a Token Plan's key")
         key.tap()
-        key.typeText("sk-e2e-good-key")
+        key.typeText("sk-e2e-plan-key")
         tap("her-key-save")
         // Connected: one quiet line above, Her's first words, and the composer opens. The key is in none of it.
         XCTAssertTrue(text("好了，我会用").waitForExistence(timeout: 120), "Her's first words")
-        XCTAssertTrue(text("已接上 DeepSeek").exists)
-        XCTAssertFalse(text("sk-e2e-good-key").exists)
+        XCTAssertTrue(text("已接上 腾讯云 Token Plan").exists)
+        XCTAssertFalse(text("sk-e2e-plan-key").exists)
         try waitFor("the composer opens") { composer.isEnabled ? true : nil }
         herShot("Her: a model connected")
     }

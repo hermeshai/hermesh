@@ -8261,12 +8261,12 @@
         }
       }
     },
-    "Hi, I’m %@. I work on %@. Before we start, I need a model to think and answer with. Signing in with your ChatGPT account is quickest, or you can enter an API key.": {
+    "Hi, I’m %@. I work on %@. Before we start, I need a model to think and answer with. Pick a way to connect one.": {
       "localizations": {
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "你好，我是 %1$@，在 %2$@ 上为你做事。开始之前，我需要接上一个模型来思考和回答：用你的 ChatGPT 账户登录最快，也可以填一个 API Key。"
+            "value": "你好，我是 %1$@，在 %2$@ 上为你做事。开始之前，我需要接上一个模型来思考和回答，选一种方式吧。"
           }
         }
       }
@@ -8301,22 +8301,32 @@
         }
       }
     },
-    "I couldn’t connect to ChatGPT this time. You can try again, or enter an API key instead.": {
+    "I couldn’t connect to ChatGPT this time. You can try again, or pick another way.": {
       "localizations": {
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "这次没能接上 ChatGPT。可以再试一次，或者换成填写 API Key。"
+            "value": "这次没能接上 ChatGPT。可以再试一次，或者换一种方式。"
           }
         }
       }
     },
-    "Sign-in cancelled. You can try again, or enter an API key instead.": {
+    "Sign-in cancelled. You can try again, or pick another way.": {
       "localizations": {
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "登录已取消。可以再试一次，或者换成填写 API Key。"
+            "value": "登录已取消。可以再试一次，或者换一种方式。"
+          }
+        }
+      }
+    },
+    "Sure. Which way instead?": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "好，换哪种方式？"
           }
         }
       }
@@ -8327,6 +8337,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "用哪家的？"
+          }
+        }
+      }
+    },
+    "Which plan?": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "接入哪个套餐？"
           }
         }
       }
@@ -8381,6 +8401,16 @@
         }
       }
     },
+    "Saved. A plan’s key can only be checked on the first reply.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "存好了。套餐的 Key 要到第一次回复时才能确认能不能用。"
+          }
+        }
+      }
+    },
     "Sign In with ChatGPT": {
       "localizations": {
         "zh-Hans": {
@@ -8391,12 +8421,52 @@
         }
       }
     },
+    "Use your ChatGPT subscription; you sign in in your browser": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "用你的 ChatGPT 订阅，在浏览器里登录"
+          }
+        }
+      }
+    },
+    "Connect a Token Plan": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "接入 Token Plan"
+          }
+        }
+      }
+    },
+    "A model plan you subscribe to, such as Bailian, Volcengine Ark or GLM": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "已订阅的模型套餐，如百炼、火山方舟、智谱 GLM"
+          }
+        }
+      }
+    },
     "Enter an API Key": {
       "localizations": {
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
             "value": "填写 API Key"
+          }
+        }
+      }
+    },
+    "A key from DeepSeek, OpenAI, Anthropic and others": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "DeepSeek、OpenAI、Anthropic 等服务商的 Key"
           }
         }
       }
@@ -8417,6 +8487,126 @@
           "stringUnit": {
             "state": "translated",
             "value": "Key 和登录都只留在 %@ 上"
+          }
+        }
+      }
+    },
+    "Bailian Token Plan": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "百炼 Token Plan"
+          }
+        }
+      }
+    },
+    "Alibaba Cloud · multi-model": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "阿里云 · 多模型套餐"
+          }
+        }
+      }
+    },
+    "Tencent Cloud Token Plan": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "腾讯云 Token Plan"
+          }
+        }
+      }
+    },
+    "General and Hy share a key": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "通用与 Hy 套餐共用密钥"
+          }
+        }
+      }
+    },
+    "Volcengine Ark Agent Plan": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "火山方舟 Agent Plan"
+          }
+        }
+      }
+    },
+    "Agent Plan key only": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Agent Plan 专属密钥"
+          }
+        }
+      }
+    },
+    "Volcengine Ark Coding Plan": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "火山方舟 Coding Plan"
+          }
+        }
+      }
+    },
+    "Coding Plan key only": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Coding Plan 专属密钥"
+          }
+        }
+      }
+    },
+    "Z.ai GLM Coding Plan": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Z.ai GLM Coding Plan"
+          }
+        }
+      }
+    },
+    "International account": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "国际站账户"
+          }
+        }
+      }
+    },
+    "Zhipu GLM Coding Plan": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "智谱 GLM Coding Plan"
+          }
+        }
+      }
+    },
+    "China account": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "中国站账户"
           }
         }
       }

@@ -94,6 +94,39 @@ import Testing
     #expect(herKeyPage("deepseek")?.host == "platform.deepseek.com" && herKeyPage("zhipu") == nil)
 }
 
+@Test func theOnboardingOffersATokenPlanAndAnotherWayAtEachStep() {
+    var f = HerOnboarding(at: Date(timeIntervalSince1970: 1))
+    f.choosePlan()
+    #expect(f.step == .plan && f.said == [.greeting, .ownerPlan, .whichPlan] && f.controls == [2: .plans])
+    f.pickProvider("tencent-token-plan")
+    #expect(f.step == .key && f.controls == [2: .plans, 4: .key], "the plans stay under their question")
+    // Another way, while a key is asked for: Her asks which at once, with the ways.
+    f.otherWay()
+    #expect(f.step == .choose && f.provider == nil && Array(f.said.suffix(2)) == [.ownerOtherWay, .whichWay] && f.controls == [6: .ways])
+    f.chooseKey()
+    f.otherWay()
+    #expect(f.step == .choose && f.said.last == .whichWay, "from the providers too")
+    f.choosePlan()
+    f.pickProvider("zhipu-coding-plan")
+    f.checking()
+    f.otherWay()
+    #expect(f.step == .checking, "not while a key is checked")
+    f.keySaved(verified: false)
+    #expect(f.connected == .key(provider: "zhipu-coding-plan") && f.said.last == .keyUnverified(provider: "zhipu-coding-plan"))
+
+    let providers = HerModels(["providers": [
+        ["id": "zhipu-coding-plan", "name": "Zhipu GLM Coding Plan", "auth": "api_key", "plan": ["key_url": "https://www.bigmodel.cn/glm-coding"]],
+        ["id": "new-plan", "name": "Another Plan", "auth": "api_key", "plan": ["key_url": "https://example.invalid/keys"]],
+        ["id": "deepseek", "name": "DeepSeek", "auth": "api_key"],
+        ["id": "bailian-token-plan", "name": "Bailian Token Plan", "auth": "api_key", "plan": ["key_url": "https://bailian.console.aliyun.com/cn-beijing/subscription/overview"]],
+        ["id": "aaa-plan", "name": "AAA Plan", "auth": "api_key", "plan": [:]],
+    ]]).providers
+    #expect(herPlanChoices(providers).map(\.id) == ["bailian-token-plan", "zhipu-coding-plan", "aaa-plan", "new-plan"], "the console's order, then by name")
+    let zhipu = providers[0]
+    #expect(zhipu.plan && herKeyPage(zhipu.id, plan: zhipu.keyPage)?.absoluteString == "https://www.bigmodel.cn/glm-coding", "a plan's own page")
+    #expect(providers[4].keyPage == nil && !providers[2].plan)
+}
+
 @Test func environmentsAndWhereHerCanRun() {
     func machine(_ id: String, _ name: String, online: Bool = true, platform: String = "darwin/arm64", her: (Hermesh_Machine_V1_HerStatus) -> Hermesh_Machine_V1_HerStatus = { $0 }) -> HerMachine {
         .with { $0.machineID = id; $0.machineName = name; $0.online = online; $0.status.platform = platform; $0.her = her(.init()) }
