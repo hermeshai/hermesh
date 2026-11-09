@@ -36,7 +36,7 @@
     "howto": {
       "open": "In Chrome, open the extensions page:",
       "developer": "Turn on “Developer mode” at the top right of the page, and leave it on: Chrome may turn the extension off without it.",
-      "load": "Click “Load unpacked” and choose the extension's folder in Hermesh's source:"
+      "load": "Click “Load unpacked”, press ⇧⌘G in the window that opens, and paste the folder Hermesh keeps the extension in:"
     },
     "already": "Added it before? Find Hermesh on the extensions page and click its reload button.",
     "added": "I've Added It",

@@ -9,6 +9,8 @@
 //   Contents/MacOS/Hermesh                          Electron (this app)
 //   Contents/Resources/app.asar                     main, preload and the page
 //   Contents/Resources/console                      Her's console (her/apps/console), which hermeshd serves
+//   Contents/Resources/chrome-extension             the Hermesh extension (her/apps/chrome-extension), which hermeshd copies where
+//                                                     the console's guide has the owner load it from
 //   Contents/Resources/model-connection-licenses    notices of her's model connections (her/crates/her-connections/licenses)
 //   Contents/Resources/third-party-licenses         licences of her's deck engine and fonts, and of PDFium
 //   Contents/Helpers/hermeshd                       the Go daemon, a LaunchAgent
@@ -177,6 +179,17 @@ const library = path.join(contents, "Frameworks", pdfiumLibrary);
 fs.copyFileSync(path.join(tmp, pdfiumLibrary), library);
 fs.chmodSync(library, 0o755);
 if (hasConsole) fs.cpSync(path.join(consoleApp, "dist"), path.join(contents, "Resources/console"), { recursive: true });
+// What loads, as the store's zip has it (her/apps/chrome-extension/scripts/pack.mjs), but keeping the
+// manifest's "key": unpacked, the extension then has the ID her lets start the host.
+const extension = path.join(herRoot, "apps/chrome-extension");
+fs.mkdirSync(path.join(contents, "Resources/chrome-extension"));
+fs.copyFileSync(path.join(extension, "manifest.json"), path.join(contents, "Resources/chrome-extension/manifest.json"));
+for (const dir of ["src", "icons", "_locales"]) {
+  fs.cpSync(path.join(extension, dir), path.join(contents, "Resources/chrome-extension", dir), {
+    recursive: true,
+    filter: (f) => !f.endsWith(".test.js") && !f.endsWith(".d.ts") && path.basename(f) !== ".DS_Store",
+  });
+}
 fs.cpSync(path.join(herRoot, "crates/her-connections/licenses"), path.join(contents, "Resources/model-connection-licenses"), { recursive: true });
 const licenses = path.join(contents, "Resources/third-party-licenses");
 fs.cpSync(path.join(herRoot, "crates/her-slide/licenses"), licenses, { recursive: true });
