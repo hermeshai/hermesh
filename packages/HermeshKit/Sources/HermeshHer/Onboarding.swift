@@ -4,31 +4,31 @@ import Foundation
 // (docs/her-server.md §9.2, the Mac's onboarding.ts): Her speaks first, but
 // no model can speak yet, so the app writes every message on Her's behalf
 // and never sends any of it to her or keeps it in her's conversation. Here:
-// what is said, the steps between, and the providers offered. The page
-// words and draws it.
+// what is said, the steps between, and the providers and Token Plans
+// offered. The page words and draws it.
 
 public struct HerOnboarding: Equatable, Sendable {
     /// A message of the onboarding: Her's, as the app writes it, or what the owner chose.
     public enum Said: Equatable, Sendable {
-        case greeting, browser, signInCancelled, whichProvider
+        case greeting, browser, signInCancelled, whichProvider, whichPlan, whichWay
         case signedIn(account: String?)
         case signInFailed(String), keyFailed(String)
         case pasteKey(provider: String), keyUnverified(provider: String)
         case keyRejected(provider: String, message: String)
-        case ownerChatGPT, ownerKey, ownerOtherWay
+        case ownerChatGPT, ownerPlan, ownerKey, ownerOtherWay
         case ownerProvider(String)
 
         public var byOwner: Bool {
             switch self {
-            case .ownerChatGPT, .ownerKey, .ownerOtherWay, .ownerProvider: true
+            case .ownerChatGPT, .ownerPlan, .ownerKey, .ownerOtherWay, .ownerProvider: true
             default: false
             }
         }
     }
 
-    /// Choosing a way; the ChatGPT sign-in under way, or being stopped; choosing a provider; its key asked for, or
-    /// being checked; connected, until the conversation opens on a model; done.
-    public enum Step: Equatable, Sendable { case choose, signingIn, stopping, provider, key, checking, connecting, done }
+    /// Choosing a way; the ChatGPT sign-in under way, or being stopped; choosing a provider for a key, or a Token
+    /// Plan; its key asked for, or being checked; connected, until the conversation opens on a model; done.
+    public enum Step: Equatable, Sendable { case choose, signingIn, stopping, provider, plan, key, checking, connecting, done }
 
     public enum Connected: Equatable, Sendable {
         case chatGPT
@@ -47,7 +47,7 @@ public struct HerOnboarding: Equatable, Sendable {
     public private(set) var step = Step.choose
     /// When it began; once done, when that was.
     public private(set) var at: Date
-    /// The provider whose key is asked for.
+    /// The provider (or Token Plan) whose key is asked for.
     public private(set) var provider: String?
     public private(set) var connected: Connected?
     public private(set) var done: Done?
@@ -62,11 +62,19 @@ public struct HerOnboarding: Equatable, Sendable {
         said += [.ownerChatGPT, .browser]
     }
 
-    /// Another way, while the sign-in is under way: it is stopped, and Her answers once it has.
+    /// Another way: while the sign-in is under way, it is stopped, and Her answers once it has; while a provider, a
+    /// Token Plan or a key is asked for, Her asks which way at once.
     public mutating func otherWay() {
-        guard step == .signingIn else { return }
-        step = .stopping
-        said.append(.ownerOtherWay)
+        switch step {
+        case .signingIn:
+            step = .stopping
+            said.append(.ownerOtherWay)
+        case .provider, .plan, .key:
+            step = .choose
+            provider = nil
+            said += [.ownerOtherWay, .whichWay]
+        default: return
+        }
     }
 
     public mutating func signInEnded(_ r: HerSignInEnd) {
@@ -85,15 +93,21 @@ public struct HerOnboarding: Equatable, Sendable {
         }
     }
 
+    public mutating func choosePlan() {
+        guard step == .choose else { return }
+        step = .plan
+        said += [.ownerPlan, .whichPlan]
+    }
+
     public mutating func chooseKey() {
         guard step == .choose else { return }
         step = .provider
         said += [.ownerKey, .whichProvider]
     }
 
-    /// A provider picked: from the question, or another one while a key is asked for.
+    /// A provider or a Token Plan picked: from the question, or another one while a key is asked for.
     public mutating func pickProvider(_ id: String) {
-        guard step == .provider || step == .key else { return }
+        guard step == .provider || step == .plan || step == .key else { return }
         step = .key
         provider = id
         said += [.ownerProvider(id), .pasteKey(provider: id)]
@@ -131,19 +145,22 @@ public struct HerOnboarding: Equatable, Sendable {
         done = Done(model: model, session: session, after: after)
     }
 
-    /// What goes under one of Her's messages: the two ways, the sign-in's, the providers, or the key's field.
-    public enum Control: Equatable, Sendable { case ways, browser, providers, key }
+    /// What goes under one of Her's messages: the ways, the sign-in's, the providers, the Token Plans, or the key's field.
+    public enum Control: Equatable, Sendable { case ways, browser, providers, plans, key }
 
-    /// Which of Her's messages get controls, by index: Her's last; while a key is asked for, its question keeps the providers.
+    /// Which of Her's messages get controls, by index: Her's last; while a key is asked for, its question keeps its choices.
     public var controls: [Int: Control] {
         let last = said.count - 1
         switch step {
         case .choose: return [last: .ways]
         case .signingIn: return [last: .browser]
         case .provider: return [last: .providers]
+        case .plan: return [last: .plans]
         case .key, .checking:
             var at = [last: Control.key]
-            if let question = said.lastIndex(of: .whichProvider) { at[question] = .providers }
+            if let question = said.lastIndex(where: { $0 == .whichProvider || $0 == .whichPlan }) {
+                at[question] = said[question] == .whichPlan ? .plans : .providers
+            }
             return at
         default: return [:]
         }
@@ -169,9 +186,18 @@ public func herKeyChoices(_ providers: [HerProvider]) -> [HerProvider] {
         .prefix(5))
 }
 
-/// Where keys are made, for the providers the app knows.
-public func herKeyPage(_ provider: String) -> URL? {
-    [
+/// The Token Plans in the console's order (her/apps/console providers.tsx), then by name.
+private let plans = ["bailian-token-plan", "tencent-token-plan", "volcengine-agent-plan", "volcengine-coding-plan", "zai-coding-plan", "zhipu-coding-plan"]
+
+/// The Token Plans offered: all that her knows.
+public func herPlanChoices(_ providers: [HerProvider]) -> [HerProvider] {
+    let rank = { (p: HerProvider) in plans.firstIndex(of: p.id) ?? plans.count }
+    return providers.filter(\.plan).sorted { rank($0) != rank($1) ? rank($0) < rank($1) : $0.name.localizedStandardCompare($1.name) == .orderedAscending }
+}
+
+/// Where a key is made: a Token Plan's own page, else the one the app knows for the provider.
+public func herKeyPage(_ provider: String, plan: URL? = nil) -> URL? {
+    plan ?? [
         "deepseek": "https://platform.deepseek.com/api_keys",
         "openai": "https://platform.openai.com/api-keys",
         "anthropic": "https://console.anthropic.com/settings/keys",

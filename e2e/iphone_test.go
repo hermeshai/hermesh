@@ -130,8 +130,9 @@ func TestIPhone(t *testing.T) {
 // iphoneHerEnv is what the owner Mac's hermeshd needs to run Her for the
 // iPhone (testHer): her, the e2e console, and a home for her with no model
 // that works, as a new server's (work-mac in desktopHerWorld): her-mock
-// answers in DeepSeek's place and takes a key, so Her's onboarding connects
-// it. Nil, and testHer skipped, without her built.
+// answers in DeepSeek's place and in Tencent Cloud Token Plan's and takes a
+// key, so Her's onboarding connects one. Nil, and testHer skipped, without
+// her built.
 func iphoneHerEnv(t *testing.T) []string {
 	her := os.Getenv("HERMESH_HER_BIN")
 	if her == "" {
@@ -150,7 +151,7 @@ func iphoneHerEnv(t *testing.T) []string {
 	mock := startHerMock(t, mockBin)
 	home := t.TempDir()
 	base := regexp.MustCompile(`base_url = "([^"]+)"`).FindStringSubmatch(mock.models)[1]
-	if err := os.WriteFile(filepath.Join(home, "models.toml"), []byte(fmt.Sprintf("[providers.deepseek]\nbase_url = %q\n", base)), 0o600); err != nil {
+	if err := os.WriteFile(filepath.Join(home, "models.toml"), []byte(fmt.Sprintf("[providers.deepseek]\nbase_url = %q\n\n[providers.tencent-token-plan]\nbase_url = %q\n", base, base)), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	env := herEnv(her, herConsole(t), home, mock.base)

@@ -76,6 +76,14 @@ struct HerConversation: View {
             if !Task.isCancelled { chat.beginOnboarding() }
         }
         .onChange(of: chat.noModel, initial: true) { if chat.noModel { chat.beginOnboarding() } }
+        // A choice in the onboarding is the owner's word: the conversation goes to its end, where Her answers it
+        // (a key's field, say), even when the owner had scrolled up to a long list's first choices.
+        .onChange(of: chat.flow?.said.filter(\.byOwner).count ?? 0) { _, chose in
+            if chose > 0 {
+                atEnd = true
+                position.scrollTo(edge: .bottom)
+            }
+        }
         .onChange(of: openedModel) {
             if let m = openedModel { chat.flow?.finish(model: m, session: chat.live?.sessionID, after: said.last?.key, at: .now) }
         }
