@@ -8,19 +8,20 @@ import { Icon } from "../icons";
 import { SidebarToggle } from "../MainWindow";
 import { ErrorLine, SignerWaiting, useAction } from "../sheets/common";
 import { useStore } from "../store";
-import { herChoices, type Choice } from "./environments";
+import { herChoices, newServer, type Choice } from "./environments";
 
 /**
  * Where Her runs (docs/her-server.md §9.2): this Mac, or another of the owner's Macs and Linux machines;
- * Windows machines show, not to be chosen yet; a new server is added as Add Machine does. Touch ID turns
- * Her on there (SetHer, signed by the root key). The first run of the Her entry, and Add Environment.
+ * Windows machines show, not to be chosen yet; a new server is added as Add Machine does, and offered
+ * first once it is paired (fresh). Touch ID turns Her on there (SetHer, signed by the root key). The first
+ * run of the Her entry, and Add Environment.
  */
-export function Setup({ onDone, onNewServer }: { onDone: (machineId: string) => void; onNewServer: () => void }) {
+export function Setup({ onDone, onNewServer, fresh }: { onDone: (machineId: string) => void; onNewServer: () => void; fresh?: string }) {
   const { t } = useTranslation("her");
   const st = useStore();
   const act = useAction();
   const [chosen, setChosen] = useState<Machine | null>(null);
-  const choices = herChoices(st.machines);
+  const choices = herChoices(st.machines).sort((a, b) => Number(b.machine.machineId === fresh) - Number(a.machine.machineId === fresh));
   const turnOn = async (m: Machine) => {
     setChosen(m);
     if (await act.go(() => local.setHer({ machineId: m.machineId, enabled: true }))) onDone(m.machineId);
@@ -29,7 +30,7 @@ export function Setup({ onDone, onNewServer }: { onDone: (machineId: string) => 
     <div className="her-setup">
       <div className="her-choices" role="list" aria-label={t("setup.title")}>
         {choices.map((c) => (
-          <ChoiceRow key={c.machine.machineId} c={c} busy={act.busy} onTurnOn={() => void turnOn(c.machine)} />
+          <ChoiceRow key={c.machine.machineId} c={c} fresh={c.machine.machineId === fresh} busy={act.busy} onTurnOn={() => void turnOn(c.machine)} />
         ))}
         <div className="her-choice" role="listitem">
           <span className="her-choice-i">
@@ -50,7 +51,7 @@ export function Setup({ onDone, onNewServer }: { onDone: (machineId: string) => 
   );
 }
 
-function ChoiceRow({ c, busy, onTurnOn }: { c: Choice<Machine>; busy: boolean; onTurnOn: () => void }) {
+function ChoiceRow({ c, fresh, busy, onTurnOn }: { c: Choice<Machine>; fresh: boolean; busy: boolean; onTurnOn: () => void }) {
   const { t } = useTranslation("her");
   const m = c.machine;
   const platform = m.status?.platform ?? "";
@@ -58,6 +59,7 @@ function ChoiceRow({ c, busy, onTurnOn }: { c: Choice<Machine>; busy: boolean; o
     c.why === "windows" ? t("setup.windows")
     : c.why === "offline" ? t("setup.offline")
     : c.why === "unsupported" ? t("setup.unsupported", { detail: c.detail })
+    : fresh ? t("setup.paired")
     : m.local ? t("setup.thisMacDesc")
     : platform ? platformTitle(platform)
     : "";
@@ -85,6 +87,9 @@ export function FirstRun({ onDone }: { onDone: (machineId: string) => void }) {
   const st = useStore();
   // Turned on: the machine says so through Watch in a moment, and the page becomes the environment's.
   const [waiting, setWaiting] = useState(false);
+  // The machines there when A New Server was chosen: one paired since is offered first.
+  const [before, setBefore] = useState<ReadonlySet<string>>();
+  const fresh = before && newServer(st.machines, before);
   return (
     <div className="her-first">
       <div className="ctool drag">
@@ -105,7 +110,11 @@ export function FirstRun({ onDone }: { onDone: (machineId: string) => void }) {
               setWaiting(true);
               onDone(id);
             }}
-            onNewServer={() => st.set({ sheet: { kind: "addMachine" } })}
+            onNewServer={() => {
+              setBefore(new Set(st.machines.map((m) => m.machineId)));
+              st.set({ sheet: { kind: "addMachine" } });
+            }}
+            fresh={fresh?.machineId}
           />
         )}
       </div>

@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import type { Machine } from "@hermesh/proto/local";
-import { environments, envState, herChoices, pickEnvironment, unreadCount } from "./environments.ts";
+import { environments, envState, herChoices, newServer, pickEnvironment, unreadCount } from "./environments.ts";
 
 type Her = NonNullable<Machine["her"]>;
 
@@ -74,4 +74,13 @@ test("the first run offers this Mac first, then machines that can run Her, then 
   assert.equal(herChoices([machine("l", "this", { local: true, platform: "windows/amd64" })])[0].why, "windows");
   // Her says it can't run there, whatever the platform says.
   assert.equal(herChoices([machine("x", "box", { her: { unsupported: "windows" } })])[0].why, "windows");
+});
+
+test("a new server is offered once it is paired, online and able to run Her; never a machine there before", () => {
+  const before = new Set(["l", "c"]);
+  const there = [machine("l", "this", { local: true, platform: "darwin/arm64" }), machine("c", "cloud", { platform: "linux/amd64" })];
+  assert.equal(newServer(there, before), undefined);
+  assert.equal(newServer([...there, machine("n", "her-1", { online: false, platform: "linux/amd64" })], before), undefined);
+  assert.equal(newServer([...there, machine("n", "her-1", { platform: "linux/amd64", her: { unsupported: "no her" } })], before), undefined);
+  assert.equal(newServer([...there, machine("n", "her-1", { platform: "linux/amd64", her: {} })], before)?.machineId, "n");
 });
