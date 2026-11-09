@@ -23,8 +23,10 @@ struct HerConversation: View {
     /// The top shows, where earlier messages are read.
     @State private var topSeen = false
     @Environment(\.accessibilityReduceMotion) private var still
-    /// A file Her sent, brought here to preview and save.
+    /// A file Her sent, brought here for Quick Look to preview and save.
     @State private var preview: URL?
+    /// Markdown or code Her sent, brought here to read on a page of the app's.
+    @State private var page: HerFileText?
 
     /// No model works there: Her's onboarding, the app speaking for her, until the conversation opens on one.
     private var noModel: Bool { state == .noModel || chat.noModel }
@@ -52,7 +54,7 @@ struct HerConversation: View {
                             .accessibilityIdentifier("her-earlier")
                     }
                     ForEach(Array(rows.enumerated()), id: \.element.key) { i, row in
-                        HerRow(chat: chat, row: row, previous: i > 0 ? rows[i - 1] : nil, machine: machine, preview: $preview)
+                        HerRow(chat: chat, row: row, previous: i > 0 ? rows[i - 1] : nil, machine: machine, preview: $preview, page: $page)
                     }
                     if busy { HerTyping().padding(.top, rows.isEmpty ? 0 : herGap(joined: rows.last?.side == .her)) }
                 }
@@ -99,6 +101,7 @@ struct HerConversation: View {
             }
         }
         .quickLookPreview($preview)
+        .sheet(item: $page) { HerFilePage(file: $0) }
         // Her's onboarding: begun when her says no model works there, or HerStatus says so for a while (it says
         // Her runs a moment before her has listed her models); done once the conversation opens on a model.
         .task(id: state == .noModel) {
@@ -146,6 +149,7 @@ private struct HerRow: View {
     let previous: HerItem?
     let machine: HerMachine
     @Binding var preview: URL?
+    @Binding var page: HerFileText?
 
     var body: some View {
         let line = row.kind == .onboarding ? nil : turnTimeLine(date(row.ts), previous: previous.map { date($0.ts) }, now: model.now)
@@ -188,7 +192,7 @@ private struct HerRow: View {
         case .attachment(let files, let text):
             VStack(alignment: .leading, spacing: 6) {
                 if let text { HerWords(text: text) }
-                HerFiles(chat: chat, files: files, preview: $preview)
+                HerFiles(chat: chat, files: files, preview: $preview, page: $page)
             }
         case .question(let text, let options, let open):
             HerQuestion(chat: chat, text: text, options: options, open: open)
@@ -302,11 +306,12 @@ struct HerChip: View {
 }
 
 /// What Her sent as files: her pictures, read from the machine, then her other files in one list in her bubble, each
-/// brought here to preview and save when tapped.
+/// brought here when tapped, to read on a page of the app's (Markdown, code) or for Quick Look to preview and save.
 private struct HerFiles: View {
     let chat: HerChat
     let files: [HerFile]
     @Binding var preview: URL?
+    @Binding var page: HerFileText?
     @State private var opening: String?
 
     var body: some View {
@@ -362,7 +367,13 @@ private struct HerFiles: View {
         guard opening == nil else { return }
         opening = f.path
         Task {
-            preview = await chat.download(f)
+            if let url = await chat.download(f) {
+                if let kind = HerFileKind(name: f.name, size: f.size), let text = try? String(contentsOf: url, encoding: .utf8) {
+                    page = HerFileText(url: url, text: text, kind: kind)
+                } else {
+                    preview = url
+                }
+            }
             opening = nil
         }
     }

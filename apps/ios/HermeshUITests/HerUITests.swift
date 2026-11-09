@@ -3,7 +3,7 @@ import XCTest
 /// Her on the iPhone (docs/her-server.md §9), as a person uses her, against
 /// the owner Mac's her, whose model is her-mock (TestIPhone, iphoneHerEnv):
 /// Her turned on for the Mac with Face ID, her onboarding connecting a model
-/// with a Token Plan, a chat, a question, an approval, and the Mac gone
+/// with a Token Plan, a chat, a question, files she sends, an approval, and the Mac gone
 /// offline, where a message waits on the iPhone until it is back. her-mock
 /// answers a message by its directive (e2e/her_owner_test.go).
 ///
@@ -17,6 +17,7 @@ extension HermeshUITests {
         try XCTContext.runActivity(named: "a chat: the message, then Her's reply") { _ in try herChat() }
         try XCTContext.runActivity(named: "her name opens her settings, a page of their own") { _ in try herSettings() }
         try XCTContext.runActivity(named: "a question: a tapped answer is the owner's message") { _ in try herQuestion() }
+        try XCTContext.runActivity(named: "files Her sent: Markdown reads as the conversation renders it, code in its colours") { _ in try herFiles() }
         try XCTContext.runActivity(named: "an approval in the composer's place, allowed once") { _ in try herApproval() }
         try XCTContext.runActivity(named: "the Mac offline: what was said stays, and a message waits here until it is back") { _ in try herOffline() }
         try XCTContext.runActivity(named: "opened on its last messages, earlier ones are read at the top") { _ in try herEarlier() }
@@ -133,6 +134,34 @@ extension HermeshUITests {
         // The answer is the owner's message, and the answers fold away.
         XCTAssertTrue(app.staticTexts["蓝"].waitForExistence(timeout: 30), "the owner's answer")
         XCTAssertTrue(app.buttons["红"].waitForNonExistence(timeout: 30), "the answers fold away")
+    }
+
+    func herFiles() throws {
+        // A note in Markdown and a Go file, made in her folder (as her model would), then sent.
+        _ = try control("her-files", method: "POST")
+        herSend("[[mock:attach:notes.md,main.go]] hi")
+        let note = app.buttons["her-file-notes.md"]
+        XCTAssertTrue(note.waitForExistence(timeout: 60), "the files Her sent")
+        // The note on a page of its own, as the conversation renders Markdown: no marks, a table, code.
+        note.tap()
+        let page = app.descendants(matching: .any)["her-file-page"].firstMatch
+        XCTAssertTrue(page.waitForExistence(timeout: 60), "the note's page")
+        XCTAssertTrue(app.staticTexts["周报"].waitForExistence(timeout: 10), "its heading")
+        XCTAssertFalse(text("# 周报").exists || text("**").exists, "none of its marks")
+        XCTAssertTrue(app.staticTexts["已完成"].exists, "its table")
+        XCTAssertTrue(page.descendants(matching: .any)["code-block"].exists, "its code")
+        XCTAssertTrue(app.descendants(matching: .any)["her-file-share"].firstMatch.exists, "shared or saved from there")
+        herShot("Her: a Markdown file")
+        tap("close")
+        XCTAssertTrue(page.waitForNonExistence(timeout: 10))
+        // The Go file: its lines, not Quick Look's page with nothing on it.
+        app.buttons["her-file-main.go"].tap()
+        XCTAssertTrue(page.waitForExistence(timeout: 60), "the Go file's page")
+        XCTAssertTrue(app.staticTexts["package main"].waitForExistence(timeout: 10), "its first line")
+        XCTAssertTrue(text("fmt.Println(\"你好\")").exists, "its code")
+        herShot("Her: a Go file")
+        tap("close")
+        XCTAssertTrue(page.waitForNonExistence(timeout: 10))
     }
 
     func herApproval() throws {
