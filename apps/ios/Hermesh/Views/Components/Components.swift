@@ -367,4 +367,7 @@ enum Palette {
     /// The owner's messages: near black on the right in the light, a faint white in the dark.
     static let bubble = Color(UIColor { $0.userInterfaceStyle == .dark ? UIColor(white: 1, alpha: 0.09) : UIColor(white: 0, alpha: 0.86) })
     static let bubbleText = Color(UIColor { $0.userInterfaceStyle == .dark ? UIColor(white: 1, alpha: 0.88) : .white })
+    /// Her's messages, on the left: a shade off the page (the Mac's --bot-reply), with a hairline.
+    static let reply = Color(UIColor { $0.userInterfaceStyle == .dark ? UIColor(white: 1, alpha: 0.06)
+        : UIColor(red: 0xf4 / 255, green: 0xf4 / 255, blue: 0xf7 / 255, alpha: 1) })
 }

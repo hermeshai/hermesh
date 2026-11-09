@@ -5,9 +5,9 @@ import QuickLook
 import SwiftUI
 
 /// The conversation with Her (the Mac's Conversation.tsx): the owner's
-/// messages on the right in the dark bubble, what Her sent across the page,
-/// and under it the composer, or an approval Her waits for. Her says only
-/// what she sends. Offline, what was read stays readable, and what is
+/// messages on the right in the dark bubble, what Her sent on the left in
+/// hers, and under it the composer, or an approval Her waits for. Her says
+/// only what she sends. Offline, what was read stays readable, and what is
 /// written meanwhile waits on this iPhone.
 struct HerConversation: View {
     @Environment(AppModel.self) private var model
@@ -35,14 +35,16 @@ struct HerConversation: View {
         let busy = chat.live.map(herBusy) ?? false
         let asking = chat.convUp ? chat.live.flatMap(herPendingApproval) : nil
         ScrollView {
-            VStack(alignment: .leading, spacing: 14) {
+            VStack(alignment: .leading, spacing: 0) {
                 ForEach(Array(rows.enumerated()), id: \.element.key) { i, row in
                     HerRow(chat: chat, row: row, previous: i > 0 ? rows[i - 1] : nil, machine: machine, preview: $preview)
                 }
-                if busy { HerTyping() }
+                if busy { HerTyping().padding(.top, rows.isEmpty ? 0 : herGap(joined: rows.last?.side == .her)) }
             }
             .padding(.horizontal, 20).padding(.top, 13).padding(.bottom, 21)
         }
+        // Nothing drawn under the top: the conversation scrolls under Her's mark and the menu button as it is.
+        .scrollEdgeEffectHidden(true, for: .top)
         // As a session's page: open at the end, and stay there as it grows unless the owner scrolled up.
         .scrollPosition($position)
         .defaultScrollAnchor(.bottom, for: .initialOffset)
@@ -90,6 +92,23 @@ struct HerConversation: View {
     }
 }
 
+/// Which bubble a message is in: the owner's, Her's, or neither (a line of its own, the onboarding).
+private enum HerSide { case owner, her }
+
+private extension HerItem {
+    var side: HerSide? {
+        switch kind {
+        case .user, .waiting: .owner
+        case .her, .attachment, .question, .card: .her
+        case .failure, .onboarding: nil
+        }
+    }
+}
+
+/// The room above a message: close under one from the same side, as a run of them reads as one; apart where the
+/// side changes.
+func herGap(joined: Bool) -> CGFloat { joined ? 6 : 21 }
+
 /// A row of the conversation, with a time line before it after a pause.
 private struct HerRow: View {
     @Environment(AppModel.self) private var model
@@ -100,12 +119,14 @@ private struct HerRow: View {
     @Binding var preview: URL?
 
     var body: some View {
+        let line = row.kind == .onboarding ? nil : turnTimeLine(date(row.ts), previous: previous.map { date($0.ts) }, now: model.now)
         VStack(alignment: .leading, spacing: 8) {
-            if row.kind != .onboarding, let line = turnTimeLine(date(row.ts), previous: previous.map { date($0.ts) }, now: model.now) {
+            if let line {
                 Text(line).font(.caption).foregroundStyle(.tertiary).frame(maxWidth: .infinity).padding(.top, 6)
             }
             content
         }
+        .padding(.top, previous.map { herGap(joined: line == nil && row.side != nil && row.side == $0.side) } ?? 0)
     }
 
     private func date(_ ms: Double) -> Date { Date(timeIntervalSince1970: ms / 1000) }
@@ -136,14 +157,14 @@ private struct HerRow: View {
         case .her(let text):
             HerWords(text: text)
         case .attachment(let files, let text):
-            VStack(alignment: .leading, spacing: 10) {
+            VStack(alignment: .leading, spacing: 6) {
                 if let text { HerWords(text: text) }
                 HerFiles(chat: chat, files: files, preview: $preview)
             }
         case .question(let text, let options, let open):
             HerQuestion(chat: chat, text: text, options: options, open: open)
         case .card(let raw, let text):
-            VStack(alignment: .leading, spacing: 10) {
+            VStack(alignment: .leading, spacing: 6) {
                 if let text { HerWords(text: text) }
                 HerSecureCard(chat: chat, card: HerCard(raw), machine: machine)
             }
@@ -189,16 +210,33 @@ struct HerBubble: View {
     }
 }
 
-/// Her's words, in Markdown, across the page.
+/// Her's words, in Markdown, in her bubble on the left.
 struct HerWords: View {
     let text: String
 
     var body: some View {
         MarkdownText(text: text)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .contentShape(Rectangle())
+            .padding(.horizontal, 14).padding(.vertical, 9)
+            .herReply()
             .contextMenu { Button("Copy", systemImage: "doc.on.doc") { UIPasteboard.general.string = text } }
+            .accessibilityElement(children: .contain)
+            .accessibilityIdentifier("her-reply")
+            .herSide()
     }
+}
+
+extension View {
+    /// Her's bubble, as the Mac draws hers: a shade off the page, with a hairline.
+    func herReply() -> some View {
+        let shape = RoundedRectangle(cornerRadius: 18, style: .continuous)
+        return background(Palette.reply, in: shape)
+            .overlay(shape.strokeBorder(Palette.separator, lineWidth: 0.5))
+            .clipShape(shape)
+            .contentShape(.contextMenuPreview, shape)
+    }
+
+    /// On the left, short of the right edge as the owner's bubble is of the left.
+    func herSide() -> some View { padding(.trailing, 48).frame(maxWidth: .infinity, alignment: .leading) }
 }
 
 /// A file named in a message, as a small chip.
@@ -223,8 +261,8 @@ struct HerChip: View {
     }
 }
 
-/// What Her sent as files: her pictures, read from the machine, then her other files, each brought here to preview
-/// and save when tapped.
+/// What Her sent as files: her pictures, read from the machine, then her other files in one list in her bubble, each
+/// brought here to preview and save when tapped.
 private struct HerFiles: View {
     let chat: HerChat
     let files: [HerFile]
@@ -245,32 +283,37 @@ private struct HerFiles: View {
                         }
                     }
                     .frame(maxWidth: 300, maxHeight: 360, alignment: .leading)
-                    .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+                    .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
                 }
                 .buttonStyle(.plain)
                 .accessibilityLabel(f.name)
                 .task(id: f.path) { await chat.loadPicture(f.path) }
             }
-            ForEach(others, id: \.path) { f in
-                Button { open(f) } label: {
-                    HStack(spacing: 10) {
-                        Image(systemName: "doc.text").font(.title3).foregroundStyle(.secondary)
-                            .frame(width: 34, height: 40)
-                            .background(Palette.fill2, in: RoundedRectangle(cornerRadius: 7, style: .continuous))
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text(f.name).font(.subheadline.weight(.medium)).lineLimit(1).truncationMode(.middle)
-                            Text(ByteCountFormatter.string(fromByteCount: Int64(f.size), countStyle: .file)).font(.caption).foregroundStyle(.secondary)
+            if !others.isEmpty {
+                VStack(spacing: 0) {
+                    ForEach(Array(others.enumerated()), id: \.element.path) { i, f in
+                        if i > 0 { Divider().padding(.leading, 56) }
+                        Button { open(f) } label: {
+                            HStack(spacing: 10) {
+                                Image(systemName: "doc.text").font(.title3).foregroundStyle(.secondary)
+                                    .frame(width: 34, height: 40)
+                                    .background(Palette.fill2, in: RoundedRectangle(cornerRadius: 7, style: .continuous))
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text(f.name).font(.subheadline.weight(.medium)).lineLimit(1).truncationMode(.middle)
+                                    Text(ByteCountFormatter.string(fromByteCount: Int64(f.size), countStyle: .file)).font(.caption).foregroundStyle(.secondary)
+                                }
+                                Spacer(minLength: 0)
+                                if opening == f.path { ProgressView() }
+                            }
+                            .padding(.horizontal, 12).padding(.vertical, 9)
+                            .contentShape(.rect)
                         }
-                        Spacer(minLength: 0)
-                        if opening == f.path { ProgressView() }
+                        .buttonStyle(HerChoiceStyle())
+                        .accessibilityIdentifier("her-file-\(f.name)")
                     }
-                    .padding(.horizontal, 12).padding(.vertical, 9)
-                    .frame(maxWidth: 300)
-                    .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous).strokeBorder(Palette.separator))
-                    .contentShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
                 }
-                .buttonStyle(.plain)
-                .accessibilityIdentifier("her-file-\(f.name)")
+                .frame(maxWidth: 300)
+                .herReply()
             }
         }
     }
@@ -285,8 +328,8 @@ private struct HerFiles: View {
     }
 }
 
-/// A question, with answers to tap if they can be listed. A tapped answer is the owner's message like any other;
-/// once they said anything, the options fold away.
+/// A question in her bubble, with its answers under it as rows to tap if they can be listed (the Mac's). A tapped
+/// answer is the owner's message like any other; once they said anything, the answers fold away.
 private struct HerQuestion: View {
     let chat: HerChat
     let text: String
@@ -295,22 +338,34 @@ private struct HerQuestion: View {
     @State private var sending = false
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            HerWords(text: text)
-            if open && !options.isEmpty {
-                HerWrap(spacing: 8) {
+        let asking = open && !options.isEmpty
+        VStack(alignment: .leading, spacing: 0) {
+            MarkdownText(text: text).padding(.horizontal, 14).padding(.vertical, 9)
+            if asking {
+                VStack(spacing: 0) {
                     ForEach(options, id: \.self) { label in
-                        Button(label) {
+                        Divider()
+                        Button {
                             sending = true
                             Task { if !(await chat.say(label)) { sending = false } }
+                        } label: {
+                            Text(label).frame(maxWidth: .infinity, alignment: .leading)
+                                .padding(.horizontal, 14).padding(.vertical, 11)
+                                .contentShape(.rect)
                         }
-                        .buttonStyle(HerPill())
+                        .buttonStyle(HerChoiceStyle())
                     }
                 }
                 .disabled(sending || !chat.convUp)
                 .transition(.opacity)
             }
         }
+        .frame(maxWidth: asking ? .infinity : nil, alignment: .leading)
+        .herReply()
+        .contextMenu { Button("Copy", systemImage: "doc.on.doc") { UIPasteboard.general.string = text } }
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("her-question")
+        .herSide()
         .animation(.easeOut(duration: 0.25), value: open)
     }
 }
@@ -327,7 +382,7 @@ struct HerPill: ButtonStyle {
     }
 }
 
-/// The last thing while Her is at work: three dots.
+/// The last thing while Her is at work: three dots, in her bubble.
 struct HerTyping: View {
     @Environment(\.accessibilityReduceMotion) private var still
 
@@ -342,7 +397,8 @@ struct HerTyping: View {
             }
         }
         .padding(.horizontal, 14).padding(.vertical, 11)
-        .background(Palette.fill, in: .capsule)
+        .background(Palette.reply, in: .capsule)
+        .overlay(Capsule().strokeBorder(Palette.separator, lineWidth: 0.5))
         .accessibilityElement()
         .accessibilityLabel(Text("Typing…"))
         .accessibilityIdentifier("her-typing")
