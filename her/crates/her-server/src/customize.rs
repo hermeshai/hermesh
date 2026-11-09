@@ -568,7 +568,7 @@ impl Server {
     // ---- MCP servers ----
 
     /// Open sessions' view of the workspace's servers.
-    fn live_mcp(&self, dir: &Path) -> HashMap<String, views::Live> {
+    pub(crate) fn live_mcp(&self, dir: &Path) -> HashMap<String, views::Live> {
         let mut live: HashMap<String, views::Live> = HashMap::new();
         for hub in self.hubs() {
             if !hub.shared.summary.lock().cwd.starts_with(dir) {
@@ -621,6 +621,16 @@ impl Server {
     /// `mcp/probe` (mcp-design §13.6): checks a server that is not added yet. Each step goes
     /// to the calling connection as `mcp/probe_progress`.
     pub async fn mcp_probe(&self, params: McpProbeParams, conn: &ConnHandle) -> Result<McpProbeResult, RpcError> {
+        let (conn, probe_id) = (conn.clone(), params.probe_id.clone());
+        let progress: her_mcp::probe::ProgressFn = Arc::new(move |step: &McpProbeStep| {
+            let params = McpProbeProgressParams { probe_id: probe_id.clone(), step: step.clone() };
+            conn.send(her_rpc::notification(method::MCP_PROBE_PROGRESS, &params));
+        });
+        self.probe(params, progress).await
+    }
+
+    /// Checks a server that is not added yet, each step to `progress`; `mcp/probe_cancel` stops it.
+    pub(crate) async fn probe(&self, params: McpProbeParams, progress: her_mcp::probe::ProgressFn) -> Result<McpProbeResult, RpcError> {
         let mut config = params.server.clone();
         config.enabled = None;
         config.validate().map_err(RpcError::invalid_params)?;
@@ -632,11 +642,6 @@ impl Server {
         if let Some(old) = self.customize().probes.lock().insert(params.probe_id.clone(), cancel.clone()) {
             old.cancel();
         }
-        let (conn, probe_id) = (conn.clone(), params.probe_id.clone());
-        let progress: her_mcp::probe::ProgressFn = Arc::new(move |step: &McpProbeStep| {
-            let params = McpProbeProgressParams { probe_id: probe_id.clone(), step: step.clone() };
-            conn.send(her_rpc::notification(method::MCP_PROBE_PROGRESS, &params));
-        });
         let ctx = her_mcp::probe::ProbeContext {
             server: her_mcp::ServerContext {
                 http: self.0.llm.http_client().ok(),
@@ -780,8 +785,10 @@ impl Server {
                 results.remove(&name);
             }
             let mut changed = json!({ "name": name, "login_id": login_id });
-            if let Err(error) = outcome { changed["login_error"] = json!(error); }
+            if let Err(error) = &outcome { changed["login_error"] = json!(error); }
             server.notify(Topic::Mcp, method::MCP_CHANGED, changed);
+            // A secure card that waits for this sign-in ends with it (docs/her-secure-cards.md §6).
+            server.card_sign_in_ended(&name, outcome).await;
         });
         drop(startup);
         login_result(response).await

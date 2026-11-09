@@ -44,6 +44,9 @@ pub struct SessionMirror {
     agents: Vec<AgentMirror>,
     /// Prompts waiting for the running task, oldest first.
     queued: Vec<QueuedInput>,
+    /// Secure cards shown and not ended, oldest first: their ids, and what a bot's row says while
+    /// each waits (docs/her-secure-cards.md §3.5).
+    cards: Vec<(String, String)>,
 }
 
 /// A sub-agent: what `agent_started` and `agent_status` said, and its own session as its
@@ -65,6 +68,14 @@ struct AgentMirror {
 impl SessionMirror {
     pub fn new(info: SessionInfo, transcript: Vec<TranscriptItem>) -> Self {
         let failed = last_task_failed(&transcript);
+        let mut cards = Vec::new();
+        for item in &transcript {
+            match item {
+                TranscriptItem::ToolResult { result, .. } => cards.extend(card_shown(result)),
+                TranscriptItem::CardResolved { card_id, .. } => cards.retain(|(id, _)| id != card_id),
+                _ => {}
+            }
+        }
         Self {
             info,
             last_seq: 0,
@@ -76,6 +87,7 @@ impl SessionMirror {
             mcp_servers: std::collections::BTreeMap::new(),
             agents: Vec::new(),
             queued: Vec::new(),
+            cards,
         }
     }
 
@@ -124,6 +136,11 @@ impl SessionMirror {
             .and_then(|task| task.approvals.first())
             .map(|a| a.summary.as_str())
             .or_else(|| self.agents.iter().filter(|a| a.status == AgentStatus::Running).find_map(|a| a.session.first_approval()))
+    }
+
+    /// What the oldest card waiting for the owner says: the words above it, else its title.
+    pub fn first_card(&self) -> Option<&str> {
+        self.cards.first().map(|(_, waits)| waits.as_str())
     }
 
     pub fn approval_pending(&self, call_id: &str) -> bool {
@@ -293,6 +310,7 @@ impl SessionMirror {
                 }
             }
             EventMsg::ToolCompleted { call_id, result } => {
+                self.cards.extend(card_shown(result));
                 self.transcript.push(TranscriptItem::ToolResult {
                     call_id: call_id.clone(),
                     result: result.clone(),
@@ -336,6 +354,15 @@ impl SessionMirror {
                 task_id, usage, reason, ..
             } => self.end_task(event.ts, task_id, TaskOutcome::Completed, Some(*reason), None, usage),
             EventMsg::QueueChanged { queued } => self.queued = queued.clone(),
+            // A device that opens the conversation later draws the card ended.
+            EventMsg::CardChanged { card_id, state, note } if state.is_ended() => {
+                self.cards.retain(|(id, _)| id != card_id);
+                self.transcript.push(TranscriptItem::CardResolved {
+                    card_id: card_id.clone(),
+                    outcome: *state,
+                    note: note.clone().unwrap_or_else(|| state.as_str().to_string()),
+                });
+            }
             // What was spent stays in `usage`; the rest is as the new branch has it.
             EventMsg::SessionRewound {
                 message_id, removed_agents, ..
@@ -520,6 +547,15 @@ impl AgentMirror {
             active_task: own.active_task,
         }
     }
+}
+
+/// A card `send_to_user` showed: its id, and what a bot's row says while it waits.
+fn card_shown(result: &her_llm::ToolResultMessage) -> Option<(String, String)> {
+    if result.tool_name != her_core::bot::SEND_TO_USER || result.is_error {
+        return None;
+    }
+    let (card, text) = her_core::bot::shown_card(result.details.as_ref()?.as_str())?;
+    Some((card.id, text.filter(|text| !text.trim().is_empty()).unwrap_or(card.title)))
 }
 
 /// Whether the last task of these items failed.

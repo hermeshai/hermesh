@@ -553,6 +553,7 @@ impl NativeProtocol {
             method::MCP_LOGIN => self.call(id, params, conn, |server, p: McpLoginParams| async move { server.mcp_login(p).await }),
             method::MCP_LOGIN_CANCEL => self.call(id, params, conn, |server, p: McpLogoutParams| async move { server.mcp_login_cancel(p).await }),
             method::MCP_LOGIN_COMPLETE => self.call(id, params, conn, |server, p: McpLoginCompleteParams| async move { server.mcp_login_complete(p).await }),
+            method::CARDS_ANSWER => self.call(id, params, conn, |server, p: her_protocol::card::CardsAnswerParams| async move { server.cards_answer(p).await }),
             method::CONNECTORS_INSTALL => self.call(id, params, conn, |server, p: ConnectorInstallParams| async move { server.connector_install(p).await }),
             method::BROWSER_HOST => {
                 use her_protocol::api::BrowserHostKind;

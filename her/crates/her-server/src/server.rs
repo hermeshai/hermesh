@@ -165,6 +165,9 @@ pub(crate) struct Inner {
     pub(crate) bots: Arc<crate::bots::Registry>,
     /// Their routines (crate::routines).
     pub(crate) routines: Arc<crate::routines::Routines>,
+    /// The connectors Her's conversation reaches, and its cards that wait for a sign-in
+    /// (crate::cards).
+    pub(crate) connectors: Arc<crate::cards::Connectors>,
 }
 
 impl Server {
@@ -204,6 +207,7 @@ impl Server {
             feed: Arc::new(ListFeed::default()),
             bots,
             routines,
+            connectors: Arc::default(),
             defaults,
             store: Arc::new(JsonlStore::new(options.home.sessions_dir())),
             home: options.home,
@@ -231,6 +235,7 @@ impl Server {
             docx_watchers: Default::default(),
         }));
         server.0.routines.bind(Arc::downgrade(&server.0));
+        server.0.connectors.bind(Arc::downgrade(&server.0));
         let weak = Arc::downgrade(&server.0);
         connections.on_change(Arc::new(move || {
             if let Some(inner) = weak.upgrade() { Server(inner).models_changed(); }
@@ -586,6 +591,7 @@ impl Server {
         deps.words = Some(self.0.words.clone());
         deps.mcp_servers = self.session_mcp_servers(&workspace, &overrides.mcp_servers);
         deps.routines = header.bot.is_some().then(|| self.0.routines.clone() as Arc<dyn her_core::routine::RoutineHost>);
+        deps.connectors = header.bot.is_some().then(|| self.0.connectors.clone() as Arc<dyn her_core::connect::ConnectorHost>);
         let base = match self.0.store.summary(&SessionRef::Path(location.clone())) {
             Ok(found) => SummaryBase {
                 updated_at: last_active(&found),
