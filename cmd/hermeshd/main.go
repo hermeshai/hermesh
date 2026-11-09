@@ -112,7 +112,7 @@ A computer that runs no coding agents can approve instead: hermeshd device.`}
 	var debugAddr string
 	var maxSessions int
 	var idleProcessTTL time.Duration
-	var idleTimeout, toolTimeout, turnTimeout time.Duration
+	var idleTimeout, toolTimeout, turnTimeout, retryDelay time.Duration
 	var runFlagSet func(name string) bool // whether a `run` flag was given
 	var workspaceMode string
 	machineConfig := func() machine.Config {
@@ -127,7 +127,8 @@ A computer that runs no coding agents can approve instead: hermeshd device.`}
 			flag string
 			v    time.Duration
 			dst  *time.Duration
-		}{{"idle-timeout", idleTimeout, &lim.IdleTimeout}, {"tool-timeout", toolTimeout, &lim.ToolTimeout}, {"turn-timeout", turnTimeout, &lim.TurnTimeout}} {
+		}{{"idle-timeout", idleTimeout, &lim.IdleTimeout}, {"tool-timeout", toolTimeout, &lim.ToolTimeout}, {"turn-timeout", turnTimeout, &lim.TurnTimeout},
+			{"retry-delay", retryDelay, &lim.RetryDelay}} {
 			if runFlagSet != nil && runFlagSet(o.flag) {
 				*o.dst = o.v
 			}
@@ -254,6 +255,7 @@ A computer that runs no coding agents can approve instead: hermeshd device.`}
 	run.Flags().DurationVar(&idleTimeout, "idle-timeout", 0, "stop a turn whose agent writes nothing for this long while no tool runs (default 15m; 0: never)")
 	run.Flags().DurationVar(&toolTimeout, "tool-timeout", 0, "stop a turn whose agent writes nothing for this long while a tool runs (default 2h; 0: never)")
 	run.Flags().DurationVar(&turnTimeout, "turn-timeout", 0, "stop a turn that runs longer than this even while it makes progress (default: no limit)")
+	run.Flags().DurationVar(&retryDelay, "retry-delay", 0, "a turn stopped by a rate limit or a model at capacity goes on by itself after this long, then 4 and 10 times as long, before it fails (default 30s; 0: it fails at once)")
 	runFlagSet = run.Flags().Changed
 
 	var name string

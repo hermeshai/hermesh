@@ -136,7 +136,7 @@ As long as we hold a provider session pointer (`ProviderRef`) that is still vali
 
 | Event | Now | Changed to |
 |---|---|---|
-| Provider reports this turn failed (rate limit, 5xx…) | IDLE + `is_error` | Unchanged, with `failure` added |
+| Provider reports this turn failed (rate limit, 5xx…) | IDLE + `is_error` | Unchanged, with `failure` added; a rate limit is first retried within the turn (§2.5) |
 | Process exits midway through the turn | **FAILED** | With a ref: snapshot the worktree first, then after `TurnCompleted{failure: AGENT_CRASHED}` enter **INTERRUPTED**. Without a ref (died on the first turn): still FAILED |
 | Watchdog fires (stalled) | **FAILED** | Interrupt first, then kill the process group, then as above, with kind `STALLED` |
 | Turn exceeds the total duration limit | **FAILED** | As above, with kind `TIMEOUT` |
@@ -170,6 +170,16 @@ Draft of the continuity notice:
 
 - Claude must recognize `terminal_reason=prompt_too_long` and treat it as a failure even when `is_error=false`.
 - After receiving `CONTEXT_OVERFLOW`, mark the session as "ref invalid": the next message switches to a new session plus the continuity notice, as in §2.3. The `hint` must say so.
+
+### 2.5 Rate limits retry within the turn (2026-11-09)
+
+Some agents give up on a rate limit at once: Codex retries a model at capacity (`serverOverloaded`, "Selected model is at capacity") only when the server sends a Retry-After, so without one the turn fails and the agent that started the session had to send it again. The machine now retries a turn that ends with `RATE_LIMIT` (any agent):
+
+- The turn does not end. Its agent process goes, and an `ErrorEvent` with the failure says when it goes on: "… (retrying in 30s, 1 of 3)". After the wait the machine resumes the provider session (as a restart, §2.3: no new `TurnStarted`) with a short note telling the agent its reply was cut off and to continue from where it stopped. The original prompt is not sent again: the conversation already has it and the work done so far.
+- Waits are `--retry-delay` (default 30s), then 4 and 10 times as long. When they run out, the turn ends with the rate limit as before. Nobody hears of a failure until then: news (`TurnCompleted`) goes out once, for the turn's real end. `--retry-delay 0` turns retries off.
+- While it waits the session stays `running` (the watchdog leaves it alone). A message from the turn's asker starts the retry at once, with the message after the note; an interrupt ends the turn, interrupted.
+- The agent's model is never switched, though Codex's message suggests it.
+- Codex sends a turn's failure twice, as an `error` notification (`willRetry: false`) and in `turn/completed`; the adapter reports it once, at the turn's end, so each retry shows one line.
 
 ---
 

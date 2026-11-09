@@ -270,8 +270,11 @@ type session struct {
 	threadID string
 	turnID   string
 	lastMsg  string
-	usage    provider.Usage
-	closed   bool
+	// turnErr is the turn's failure from an "error" notification, which
+	// turn/completed reports again.
+	turnErr *turnError
+	usage   provider.Usage
+	closed  bool
 	// questions waiting for an answer: asked asynchronously in a message
 	// (answered by steering the turn) or blocking (requestUserInput,
 	// answered by replying to the request).
@@ -638,7 +641,7 @@ func (s *session) handleNotification(method string, params json.RawMessage) {
 		}
 		if json.Unmarshal(params, &p) == nil && p.Turn.ID != "" {
 			s.mu.Lock()
-			s.turnID = p.Turn.ID
+			s.turnID, s.turnErr = p.Turn.ID, nil
 			s.mu.Unlock()
 		}
 	case "turn/completed":
@@ -650,12 +653,15 @@ func (s *session) handleNotification(method string, params json.RawMessage) {
 		}
 		json.Unmarshal(params, &p)
 		s.mu.Lock()
-		last, usage := s.lastMsg, s.usage
-		s.turnID = "" // nothing left to interrupt
+		last, usage, turnErr := s.lastMsg, s.usage, s.turnErr
+		s.turnID, s.turnErr = "", nil // nothing left to interrupt
 		s.mu.Unlock()
 		e := provider.Event{Kind: provider.EventTurnCompleted, Text: last, Usage: usage}
 		if p.Turn.Status != "completed" {
 			e.IsError = true
+			if p.Turn.Error == nil {
+				p.Turn.Error = turnErr
+			}
 			if p.Turn.Error != nil {
 				e.Text = p.Turn.Error.Message
 				e.Failure = p.Turn.Error.failure()
@@ -670,15 +676,17 @@ func (s *session) handleNotification(method string, params json.RawMessage) {
 			WillRetry bool      `json:"willRetry"`
 		}
 		if json.Unmarshal(params, &p) == nil && p.Error.Message != "" {
-			// Also the retries ("Reconnecting... waiting for network"):
-			// the caller sees what the agent is stuck on.
-			f := p.Error.failure()
-			text := p.Error.Message
-			if p.WillRetry {
-				text = strings.TrimSpace(text + " " + p.Error.AdditionalDetails)
-				f.Message = text
+			if !p.WillRetry { // the turn's failure: told once, as the turn ends
+				s.mu.Lock()
+				s.turnErr = &p.Error
+				s.mu.Unlock()
+				return
 			}
-			s.emit(provider.Event{Kind: provider.EventError, Text: text, Failure: f})
+			// Its retries ("Reconnecting... waiting for network"): the
+			// caller sees what the agent is stuck on.
+			f := p.Error.failure()
+			f.Message = strings.TrimSpace(p.Error.Message + " " + p.Error.AdditionalDetails)
+			s.emit(provider.Event{Kind: provider.EventError, Text: f.Message, Failure: f})
 		}
 	}
 }

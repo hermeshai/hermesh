@@ -192,7 +192,7 @@ func Classify(text string) sessionv1.FailureKind {
 		"insufficient_balance", "credit balance", "out of credits", "quota", "billing", "you've hit your limit", "you’ve hit your limit"):
 		return sessionv1.FailureKind_FAILURE_KIND_QUOTA
 	case codeCapacity.MatchString(lower) || containsAny(lower, "rate limit", "rate_limit", "ratelimitexceeded", "too many requests",
-		"overloaded", "serveroverloaded", "no capacity", "capacity exceeded", "resource_exhausted", "resource exhausted"):
+		"overloaded", "serveroverloaded", "no capacity", "at capacity", "capacity exceeded", "resource_exhausted", "resource exhausted"):
 		return sessionv1.FailureKind_FAILURE_KIND_RATE_LIMIT
 	case code5xx.MatchString(lower) || containsAny(lower, "internal server error", "internalservererror", "server had an error",
 		"service unavailable", "bad gateway", "gateway timeout"):

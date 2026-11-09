@@ -22,6 +22,7 @@ func TestClassify(t *testing.T) {
 		// Provider error examples.
 		{`API Error: 429 {"type":"error","error":{"type":"rate_limit_error"}}`, sessionv1.FailureKind_FAILURE_KIND_RATE_LIMIT},
 		{"API Error: 529 Overloaded", sessionv1.FailureKind_FAILURE_KIND_RATE_LIMIT},
+		{"Selected model is at capacity. Please try a different model.", sessionv1.FailureKind_FAILURE_KIND_RATE_LIMIT}, // Codex ServerOverloaded
 		{"403 concurrent request limit exceeded; access token", sessionv1.FailureKind_FAILURE_KIND_RATE_LIMIT},
 		{"API Error: 403 You've reached your monthly usage limit", sessionv1.FailureKind_FAILURE_KIND_QUOTA},
 		{"You've hit your limit · resets 5pm", sessionv1.FailureKind_FAILURE_KIND_QUOTA},

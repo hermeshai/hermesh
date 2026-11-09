@@ -48,11 +48,16 @@ type Limits struct {
 	ToolTimeout        time.Duration
 	TurnTimeout        time.Duration
 	IdleProcessTTL     time.Duration
+	// RetryDelay is how long a turn that failed on a rate limit (or a
+	// model at capacity) waits before it goes on by itself in the same
+	// conversation; the next waits are retryFactors times as long, then
+	// the turn fails (0: it fails at once).
+	RetryDelay time.Duration
 }
 
 func DefaultLimits() Limits {
 	return Limits{StartTimeout: 10 * time.Minute, FirstOutputTimeout: 3 * time.Minute, IdleTimeout: 15 * time.Minute, ToolTimeout: 2 * time.Hour,
-		IdleProcessTTL: 10 * time.Minute}
+		IdleProcessTTL: 10 * time.Minute, RetryDelay: 30 * time.Second}
 }
 
 type PrincipalKind int
@@ -184,8 +189,13 @@ type live struct {
 	resumedStart bool
 	finishing    bool
 	// restarting re-runs the current turn in a fresh provider session
-	// (the resume was refused before the turn did anything).
+	// (the resume was refused before the turn did anything), or resumes
+	// it after a rate limit (retryLater).
 	restarting bool
+	// retries counts the times the current turn went on by itself after a
+	// rate limit; retryTimer waits for the next (nil: not waiting).
+	retries    int
+	retryTimer *time.Timer
 	// lostContext says why the provider conversation was dropped; the next
 	// fresh provider session is told (see continuityNotice).
 	lostContext string
@@ -619,9 +629,17 @@ func (s *Sessions) take(ctx context.Context, l *live, m message) (string, error)
 			return "turn", s.nextTurn(ctx, l, m)
 		case sessionv1.SessionStatus_SESSION_STATUS_QUEUED: // not started: one prompt
 			l.pending = l.pending.join(m)
+			restarting := l.restarting
 			l.mu.Unlock()
+			if restarting { // a restarted turn records no prompt of its own
+				s.emitUser(l, m)
+			}
 			return "joined", nil
 		case sessionv1.SessionStatus_SESSION_STATUS_RUNNING:
+			if l.retryTimer != nil { // waiting to retry after a rate limit: now, with m
+				s.startRetry(l, m)
+				return "joined", nil
+			}
 			ps := l.sess
 			if ps == nil || l.finishing {
 				break
@@ -824,7 +842,7 @@ func (s *Sessions) nextTurn(ctx context.Context, l *live, m message) error {
 	l.turnStarted, l.lastEvent, l.awaitingFirst = time.Now(), time.Now(), true
 	l.row.Progress.TurnStartedAt = timestamppb.Now()
 	l.lastProgress, l.lastErr = time.Now(), nil
-	l.turnMsg, l.turnTools, l.resumedStart, l.finishing = m, 0, false, false
+	l.turnMsg, l.turnTools, l.resumedStart, l.finishing, l.retries = m, 0, false, false, 0
 	turn := l.turn
 	// Running before the agent has the message: a fast agent may finish
 	// the turn, and the session go idle, before Send returns.
@@ -1505,6 +1523,7 @@ func (s *Sessions) prepare(l *live) {
 	l.procStarted = time.Now()
 	if !restarting {
 		l.turn++
+		l.retries = 0
 	}
 	l.turnStarted, l.lastEvent, l.awaitingFirst = time.Now(), time.Now(), true
 	if !restarting || l.row.Progress.TurnStartedAt == nil { // a restarted turn is the same turn
@@ -1646,7 +1665,14 @@ func (s *Sessions) onEvent(l *live, ps provider.Session, e provider.Event) {
 		l.mu.Unlock()
 		s.emit(l, &sessionv1.SessionEvent{Kind: &sessionv1.SessionEvent_Error{Error: &sessionv1.ErrorEvent{Message: e.Text, Failure: f.Proto()}}})
 	case provider.EventTurnCompleted:
+		if e.IsError && e.Failure == nil { // as the turn reports it (finishTurn)
+			e.Failure = &provider.Failure{Kind: provider.Classify(e.Text), Message: e.Text}
+		}
 		switch e.Failure.GetKind() {
+		case sessionv1.FailureKind_FAILURE_KIND_RATE_LIMIT:
+			if s.retryLater(l, ps, e.Failure) {
+				return
+			}
 		case sessionv1.FailureKind_FAILURE_KIND_RESUME_REJECTED:
 			l.mu.Lock()
 			retry := l.resumedStart && l.turnTools == 0
@@ -1753,6 +1779,74 @@ func (s *Sessions) restartFresh(l *live, ps provider.Session, f *provider.Failur
 	s.dispatch()
 }
 
+// retryFactors scale Limits.RetryDelay, one per automatic retry of a turn.
+var retryFactors = []time.Duration{1, 4, 10}
+
+// retryNote is what the agent is told when its turn goes on by itself
+// (the fake provider knows it by "automatic retry").
+const retryNote = "[Hermesh] Your last reply was stopped by a rate limit or capacity error from the model provider. This is an automatic retry: continue from where you stopped."
+
+// retryLater keeps a turn that failed on a rate limit going: some agents
+// give up on one at once (Codex on a model at capacity). The agent process
+// goes; after a wait the conversation is resumed and told to continue,
+// still in this turn, so nobody hears of the failure unless the retries
+// run out. false: the turn fails now.
+func (s *Sessions) retryLater(l *live, ps provider.Session, f *provider.Failure) bool {
+	s.storeDraft(l) // a reply cut short stays as far as it got
+	l.mu.Lock()
+	n := l.retries
+	if s.limits.RetryDelay <= 0 || n >= len(retryFactors) || l.finishing || l.sess != ps || l.row.ProviderRef == "" {
+		l.mu.Unlock()
+		return false
+	}
+	wait := s.limits.RetryDelay * retryFactors[n]
+	l.retries++
+	l.sess, l.row.Pgid = nil, 0
+	l.tools = map[string]string{}
+	var t *time.Timer
+	t = time.AfterFunc(wait, func() {
+		l.mu.Lock()
+		if l.retryTimer != t { // the turn ended, or a message started the retry
+			l.mu.Unlock()
+			return
+		}
+		s.startRetry(l, message{})
+	})
+	l.retryTimer = t
+	l.mu.Unlock()
+	go ps.Close()
+	in := strings.TrimSuffix(wait.String(), "m0s")
+	if in != wait.String() {
+		in += "m"
+	}
+	msg := fmt.Sprintf("%s (retrying in %s, %d of %d)", strings.TrimSpace(f.Message), in, n+1, len(retryFactors))
+	pf := f.Proto()
+	pf.Hint = "the machine retries the turn by itself; wait for the turn to end instead of sending the message again"
+	s.emit(l, &sessionv1.SessionEvent{Kind: &sessionv1.SessionEvent_Error{Error: &sessionv1.ErrorEvent{Message: msg, Failure: pf}}})
+	return true
+}
+
+// startRetry resumes the turn waiting to retry, with m when a message came
+// meanwhile. It is called with l.mu held and releases it.
+func (s *Sessions) startRetry(l *live, m message) {
+	l.retryTimer.Stop()
+	l.retryTimer = nil
+	// The note records no message of its own, even if a failed start keeps
+	// it for the next turn.
+	p := message{text: retryNote, quiet: true}
+	withM := m.text != "" || len(m.files) > 0
+	if withM {
+		p = p.join(m)
+	}
+	l.pending, l.resume, l.restarting, l.queuedAt = p, true, true, time.Now()
+	l.mu.Unlock()
+	if withM { // a restarted turn records no prompt of its own
+		s.emitUser(l, m)
+	}
+	s.setStatus(l, sessionv1.SessionStatus_SESSION_STATUS_QUEUED, "retrying after a rate limit")
+	s.dispatch()
+}
+
 // completeTurn finishes the turn with the agent's result.
 func (s *Sessions) completeTurn(l *live, e provider.Event, status sessionv1.SessionStatus) {
 	l.mu.Lock()
@@ -1773,6 +1867,10 @@ func (s *Sessions) finishTurn(l *live, e provider.Event, status sessionv1.Sessio
 	s.dropQuestions(l)
 	l.mu.Lock()
 	l.resumedStart = false
+	if l.retryTimer != nil { // ended (interrupted) while waiting to retry
+		l.retryTimer.Stop()
+		l.retryTimer = nil
+	}
 	id, turn, repo := l.row.ID, l.turn, l.repo
 	// In place: no snapshots, the directory and its git are the owner's.
 	inPlace := l.row.Workspace == identityv1.Workspace_WORKSPACE_IN_PLACE
@@ -2245,7 +2343,7 @@ func (s *Sessions) Janitor(ctx context.Context) {
 // gets the tool window, since many tools are silent while they work.
 func (s *Sessions) stalled(l *live, ps provider.Session, now time.Time) *provider.Failure {
 	l.mu.Lock()
-	if l.finishing {
+	if l.finishing || l.retryTimer != nil { // waiting to retry is not a stall
 		l.mu.Unlock()
 		return nil
 	}
