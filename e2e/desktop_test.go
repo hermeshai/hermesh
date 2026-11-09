@@ -162,7 +162,7 @@ func desktopWorld(t *testing.T, fresh, limited, wake bool) desktopFixture {
 	if runtime.GOOS != "windows" { // a shell script
 		env = append(env, "HERMESH_CODEX_BIN="+codex)
 	}
-	w := newOwnerMac(t, env, &localv1.GrantSpec{Agents: []string{"gemini"}})
+	w := newOwnerMac(t, env, &localv1.GrantSpec{Agents: []string{"gemini"}}, "--retry-delay", "0") // its rate limit fails at once
 	if wake {
 		w.relay.stop()
 		w.relayArgs = append(w.relayArgs, "--mcp")
