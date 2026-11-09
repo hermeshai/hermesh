@@ -5,7 +5,7 @@ import QuickLook
 import SwiftUI
 
 /// The conversation with Her (the Mac's Conversation.tsx): the owner's
-/// messages on the right in the dark bubble, what Her sent on the left in
+/// messages on the right in the blue bubble, what Her sent on the left in
 /// hers, and under it the composer, or an approval Her waits for. Her says
 /// only what she sends. Offline, what was read stays readable, and what is
 /// written meanwhile waits on this iPhone.
@@ -176,7 +176,7 @@ private struct HerRow: View {
     }
 }
 
-/// The owner's message: its pictures and files above its words, in the dark bubble on the right.
+/// The owner's message: its pictures and files above its words, in the blue bubble on the right.
 struct HerBubble: View {
     let text: String
     let images: [HerImage]
@@ -216,6 +216,7 @@ struct HerWords: View {
 
     var body: some View {
         MarkdownText(text: text)
+            .herFill()
             .padding(.horizontal, 14).padding(.vertical, 9)
             .herReply()
             .contextMenu { Button("Copy", systemImage: "doc.on.doc") { UIPasteboard.general.string = text } }
@@ -235,8 +236,18 @@ extension View {
             .contentShape(.contextMenuPreview, shape)
     }
 
-    /// On the left, short of the right edge as the owner's bubble is of the left.
-    func herSide() -> some View { padding(.trailing, 48).frame(maxWidth: .infinity, alignment: .leading) }
+    /// Her's side: from the left, to 20 short of the page's right margin, where all she sends ends (a messenger's
+    /// proportion, most of the page).
+    func herSide() -> some View { padding(.trailing, 20).frame(maxWidth: .infinity, alignment: .leading) }
+
+    /// Words that wrap take the whole of Her's side, so her bubbles of more than a line all end on one edge rather
+    /// than at each one's longest line; words that fit on a line keep a bubble as wide as they are.
+    func herFill() -> some View {
+        ViewThatFits(in: .horizontal) {
+            self
+            frame(maxWidth: .infinity, alignment: .leading)
+        }
+    }
 }
 
 /// A file named in a message, as a small chip.
@@ -312,8 +323,8 @@ private struct HerFiles: View {
                         .accessibilityIdentifier("her-file-\(f.name)")
                     }
                 }
-                .frame(maxWidth: 300)
                 .herReply()
+                .herSide()
             }
         }
     }
@@ -340,7 +351,7 @@ private struct HerQuestion: View {
     var body: some View {
         let asking = open && !options.isEmpty
         VStack(alignment: .leading, spacing: 0) {
-            MarkdownText(text: text).padding(.horizontal, 14).padding(.vertical, 9)
+            MarkdownText(text: text).herFill().padding(.horizontal, 14).padding(.vertical, 9)
             if asking {
                 VStack(spacing: 0) {
                     ForEach(options, id: \.self) { label in

@@ -326,7 +326,7 @@ struct SessionView: View {
 }
 
 /// One row of the conversation, as on the Mac: the owner on the right in a
-/// dark bubble, the agent's words across the page, its tool calls as quiet
+/// blue bubble, the agent's words across the page, its tool calls as quiet
 /// grey lines folded until opened.
 struct StepView: View {
     @Environment(AppModel.self) private var model

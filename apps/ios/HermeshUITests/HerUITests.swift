@@ -91,6 +91,15 @@ extension HermeshUITests {
         XCTAssertTrue(bubble.exists, "her bubble")
         XCTAssertTrue(bubble.frame.contains(words.frame) && words.frame.minX - bubble.frame.minX >= 10, "\(words.frame) in \(bubble.frame)")
         XCTAssertLessThan(bubble.frame.maxX, app.frame.midX, "on the left")
+        // One of more than a line takes the whole of Her's side, ending where her first words (as long) do, whatever
+        // each one's longest line.
+        herSend("[[mock:send:这一段回复比较长，会折成好几行。多行的气泡都一样宽，右边停在同一条线上，不随每一行的字数变。]] hi")
+        let replies = app.descendants(matching: .any).matching(identifier: "her-reply")
+        let long = replies.containing(NSPredicate(format: "label BEGINSWITH %@", "这一段回复比较长")).firstMatch
+        XCTAssertTrue(long.waitForExistence(timeout: 60), "the long reply")
+        let first = replies.containing(NSPredicate(format: "label BEGINSWITH %@", "好了，我会用")).firstMatch
+        XCTAssertEqual(long.frame.maxX, first.frame.maxX, accuracy: 1, "one edge for bubbles of more than a line")
+        XCTAssertGreaterThan(long.frame.width, app.frame.width * 0.8, "most of the page")
         herShot("Her: a chat")
     }
 
