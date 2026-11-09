@@ -203,6 +203,7 @@ type herBot struct {
 	ID      string `json:"id"`
 	Name    string `json:"name"`
 	Default bool   `json:"default"`
+	Typing  bool   `json:"typing"`
 	Last    *struct {
 		Text string `json:"text"`
 	} `json:"last"`

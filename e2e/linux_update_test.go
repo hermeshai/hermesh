@@ -13,6 +13,7 @@ import (
 	"encoding/json"
 	"encoding/pem"
 	"fmt"
+	"maps"
 	"net"
 	"net/http"
 	"os"
@@ -53,75 +54,11 @@ func TestLinuxUpdate(t *testing.T) {
 	bin := binaries(t)
 	tmp := t.TempDir()
 	ctx := context.Background()
-
-	// The releases, at an address the container reaches.
-	ln, err := net.Listen("tcp", "127.0.0.1:0")
-	if err != nil {
-		t.Fatal(err)
-	}
-	releasesURL := fmt.Sprintf("http://host.docker.internal:%d/releases", ln.Addr().(*net.TCPAddr).Port)
-	var mu sync.Mutex
-	latest := ""
-	go http.Serve(ln, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		mu.Lock()
-		l := latest
-		mu.Unlock()
-		path := strings.Replace(r.URL.Path, "/releases/latest/download/", "/releases/download/v"+l+"/", 1)
-		version, name, ok := strings.Cut(strings.TrimPrefix(path, "/releases/download/v"), "/")
-		if !ok || l == "" {
-			http.NotFound(w, r)
-			return
-		}
-		http.ServeFile(w, r, filepath.Join(tmp, "releases", version, filepath.Base(name)))
-	}))
-	t.Cleanup(func() { ln.Close() })
-	publish := func(v string) {
-		mu.Lock()
-		latest = v
-		mu.Unlock()
-	}
-
-	key, _ := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
-	der, _ := x509.MarshalPKIXPublicKey(&key.PublicKey)
-	script, err := os.ReadFile("scripts/install.sh")
-	if err != nil {
-		t.Fatal(err)
-	}
-	pub := strings.TrimSpace(string(pem.EncodeToMemory(&pem.Block{Type: "PUBLIC KEY", Bytes: der})))
+	releases := newTestReleases(t)
 	for _, v := range []string{"0.0.1", "0.0.2", "0.0.3"} {
-		dir := filepath.Join(tmp, "releases", v)
-		os.MkdirAll(dir, 0o755)
-		// As scripts/release.sh builds a release, but naming the test's
-		// releases and key.
-		ldflags := "-X github.com/hermeshai/hermesh/internal/machine.Version=" + v +
-			" -X github.com/hermeshai/hermesh/internal/update.releases=" + releasesURL +
-			" -X github.com/hermeshai/hermesh/internal/update.publicKey=" + base64.StdEncoding.EncodeToString(der) +
-			" -X github.com/hermeshai/hermesh/internal/update.testInterval=2s"
-		var sums bytes.Buffer
-		for _, b := range []string{"hermeshd", "hermesh"} {
-			asset := b + "-linux-" + runtime.GOARCH
-			cmd := exec.Command("go", "build", "-ldflags", ldflags, "-o", filepath.Join(dir, asset), "./cmd/"+b)
-			cmd.Env = append(os.Environ(), "GOOS=linux", "GOARCH="+runtime.GOARCH, "CGO_ENABLED=0")
-			if out, err := cmd.CombinedOutput(); err != nil {
-				t.Fatalf("build %s %s: %v %s", b, v, err, out)
-			}
-			raw, _ := os.ReadFile(filepath.Join(dir, asset))
-			h := sha256.Sum256(raw)
-			fmt.Fprintf(&sums, "%s  %s\n", hex.EncodeToString(h[:]), asset)
-		}
-		h := sha256.Sum256([]byte(v + "\n"))
-		fmt.Fprintf(&sums, "%s  version\n", hex.EncodeToString(h[:]))
-		digest := sha256.Sum256(sums.Bytes())
-		sig, _ := ecdsa.SignASN1(rand.Reader, key, digest[:])
-		for name, body := range map[string][]byte{
-			"version":           []byte(v + "\n"),
-			"checksums.txt":     sums.Bytes(),
-			"checksums.txt.sig": sig,
-			"install.sh":        bytes.Replace(script, []byte("__HERMESH_RELEASE_PUBKEY__"), []byte(pub), 1),
-		} {
-			os.WriteFile(filepath.Join(dir, name), body, 0o644)
-		}
+		releases.add(t, v, nil)
 	}
+	publish := releases.publish
 	publish("0.0.1")
 
 	// The owner, on a relay here.
@@ -143,32 +80,7 @@ func TestLinuxUpdate(t *testing.T) {
 	address := strings.Replace(setup.ConnectAddress, "127.0.0.1", "host.docker.internal", 1)
 
 	// The server.
-	build := exec.Command("docker", "build", "-t", "hermesh-e2e-linux-server:1", "-")
-	build.Stdin = strings.NewReader(linuxServerImage)
-	if out, err := build.CombinedOutput(); err != nil {
-		t.Fatalf("docker build: %v %s", err, out)
-	}
-	name := fmt.Sprintf("hermesh-update-%d", time.Now().UnixNano())
-	if out, err := exec.Command("docker", "run", "-d", "--name", name, "--hostname", "vps-1", "--privileged", "--cgroupns=host",
-		"-v", "/sys/fs/cgroup:/sys/fs/cgroup:rw", "--tmpfs", "/run", "--tmpfs", "/run/lock",
-		"--add-host", "host.docker.internal:host-gateway", "hermesh-e2e-linux-server:1").CombinedOutput(); err != nil {
-		t.Fatalf("docker run: %v %s", err, out)
-	}
-	sh := func(script string) (string, error) {
-		out, err := exec.Command("docker", "exec", name, "sh", "-c", script).CombinedOutput()
-		return strings.TrimSpace(string(out)), err
-	}
-	t.Cleanup(func() {
-		if t.Failed() {
-			out, _ := sh("journalctl --no-pager -n 60; tail -n 80 /root/.local/share/hermesh/logs/hermeshd.log")
-			t.Logf("==== journal and log ====\n%s", out)
-		}
-		exec.Command("docker", "rm", "-f", name).Run()
-	})
-	eventually(t, 60*time.Second, "systemd up", func() bool {
-		out, _ := sh("systemctl is-system-running")
-		return out == "running" || out == "degraded"
-	})
+	name, sh := startLinuxServer(t, "hermesh-update", "vps-1")
 	// A project, and the scripted coding agents for the service.
 	if out, err := sh(`git config --global user.email t@t && git config --global user.name t &&
 		mkdir -p /srv/demo && cd /srv/demo && git init -q -b main && echo hi > README.md && git add -A && git commit -qm init &&
@@ -180,7 +92,7 @@ func TestLinuxUpdate(t *testing.T) {
 	// 1. The piped install command in a terminal: accept root and choose
 	// a data folder with spaces. Later commands and updates must find it
 	// without an environment variable or a --data-dir argument.
-	installCmd := "curl -fsSL " + releasesURL + "/latest/download/install.sh | HERMESH_DOWNLOAD_BASE=" + releasesURL + "/latest/download sh -s -- " + address + " --name vps-1"
+	installCmd := releases.installCommand(address + " --name vps-1")
 	install := exec.Command("docker", "exec", "-i", name, "script", "-q", "-e", "-c", installCmd, "/dev/null")
 	input, err := install.StdinPipe()
 	if err != nil {
@@ -305,6 +217,134 @@ func TestLinuxUpdate(t *testing.T) {
 		t.Fatalf("restore data: %v %s", err, out)
 	}
 	eventually(t, 60*time.Second, "the same machine back after its data returns", func() bool { return machineVersion() == "0.0.3" })
+}
+
+// testReleases are signed releases served as GitHub serves them, at url, an
+// address a container reaches; publish makes one the latest.
+type testReleases struct {
+	dir, url string
+	key      *ecdsa.PrivateKey
+	mu       sync.Mutex
+	latest   string
+}
+
+func newTestReleases(t *testing.T) *testReleases {
+	r := &testReleases{dir: t.TempDir()}
+	r.key, _ = ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	r.url = fmt.Sprintf("http://host.docker.internal:%d/releases", ln.Addr().(*net.TCPAddr).Port)
+	go http.Serve(ln, http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+		r.mu.Lock()
+		l := r.latest
+		r.mu.Unlock()
+		path := strings.Replace(req.URL.Path, "/releases/latest/download/", "/releases/download/v"+l+"/", 1)
+		version, name, ok := strings.Cut(strings.TrimPrefix(path, "/releases/download/v"), "/")
+		if !ok || l == "" {
+			http.NotFound(w, req)
+			return
+		}
+		http.ServeFile(w, req, filepath.Join(r.dir, version, filepath.Base(name)))
+	}))
+	t.Cleanup(func() { ln.Close() })
+	return r
+}
+
+// add makes release v as scripts/release.sh builds one, but naming the
+// test's releases and key: hermeshd and hermesh for Linux, and files.
+func (r *testReleases) add(t *testing.T, v string, files map[string][]byte) {
+	t.Helper()
+	dir := filepath.Join(r.dir, v)
+	os.MkdirAll(dir, 0o755)
+	der, _ := x509.MarshalPKIXPublicKey(&r.key.PublicKey)
+	ldflags := "-X github.com/hermeshai/hermesh/internal/machine.Version=" + v +
+		" -X github.com/hermeshai/hermesh/internal/update.releases=" + r.url +
+		" -X github.com/hermeshai/hermesh/internal/update.publicKey=" + base64.StdEncoding.EncodeToString(der) +
+		" -X github.com/hermeshai/hermesh/internal/update.testInterval=2s"
+	for _, b := range []string{"hermeshd", "hermesh"} {
+		asset := b + "-linux-" + runtime.GOARCH
+		cmd := exec.Command("go", "build", "-ldflags", ldflags, "-o", filepath.Join(dir, asset), "./cmd/"+b)
+		cmd.Env = append(os.Environ(), "GOOS=linux", "GOARCH="+runtime.GOARCH, "CGO_ENABLED=0")
+		if out, err := cmd.CombinedOutput(); err != nil {
+			t.Fatalf("build %s %s: %v %s", b, v, err, out)
+		}
+	}
+	files = maps.Clone(files)
+	if files == nil {
+		files = map[string][]byte{}
+	}
+	files["version"] = []byte(v + "\n")
+	for name, body := range files {
+		os.WriteFile(filepath.Join(dir, name), body, 0o644)
+	}
+	entries, _ := os.ReadDir(dir)
+	var sums bytes.Buffer
+	for _, e := range entries {
+		raw, _ := os.ReadFile(filepath.Join(dir, e.Name()))
+		h := sha256.Sum256(raw)
+		fmt.Fprintf(&sums, "%s  %s\n", hex.EncodeToString(h[:]), e.Name())
+	}
+	digest := sha256.Sum256(sums.Bytes())
+	sig, _ := ecdsa.SignASN1(rand.Reader, r.key, digest[:])
+	script, err := os.ReadFile("scripts/install.sh")
+	if err != nil {
+		t.Fatal(err)
+	}
+	pub := strings.TrimSpace(string(pem.EncodeToMemory(&pem.Block{Type: "PUBLIC KEY", Bytes: der})))
+	for name, body := range map[string][]byte{
+		"checksums.txt":     sums.Bytes(),
+		"checksums.txt.sig": sig,
+		"install.sh":        bytes.Replace(script, []byte("__HERMESH_RELEASE_PUBKEY__"), []byte(pub), 1),
+	} {
+		os.WriteFile(filepath.Join(dir, name), body, 0o644)
+	}
+}
+
+func (r *testReleases) publish(v string) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.latest = v
+}
+
+// installCommand is the install command of the latest release, with args.
+func (r *testReleases) installCommand(args string) string {
+	return "curl -fsSL " + r.url + "/latest/download/install.sh | HERMESH_DOWNLOAD_BASE=" + r.url + "/latest/download sh -s -- " + args
+}
+
+// startLinuxServer starts a fresh Ubuntu server with systemd running (its
+// container named prefix-…, hostname host) and returns its name and a way
+// to run a shell script there.
+func startLinuxServer(t *testing.T, prefix, host string) (string, func(string) (string, error)) {
+	t.Helper()
+	build := exec.Command("docker", "build", "-t", "hermesh-e2e-linux-server:1", "-")
+	build.Stdin = strings.NewReader(linuxServerImage)
+	if out, err := build.CombinedOutput(); err != nil {
+		t.Fatalf("docker build: %v %s", err, out)
+	}
+	name := fmt.Sprintf("%s-%d", prefix, time.Now().UnixNano())
+	if out, err := exec.Command("docker", "run", "-d", "--name", name, "--hostname", host, "--privileged", "--cgroupns=host",
+		"-v", "/sys/fs/cgroup:/sys/fs/cgroup:rw", "--tmpfs", "/run", "--tmpfs", "/run/lock",
+		"--add-host", "host.docker.internal:host-gateway", "hermesh-e2e-linux-server:1").CombinedOutput(); err != nil {
+		t.Fatalf("docker run: %v %s", err, out)
+	}
+	sh := func(script string) (string, error) {
+		out, err := exec.Command("docker", "exec", name, "sh", "-c", script).CombinedOutput()
+		return strings.TrimSpace(string(out)), err
+	}
+	t.Cleanup(func() {
+		if t.Failed() {
+			out, _ := sh("journalctl --no-pager -n 60; tail -n 80 /root/.local/share/hermesh/logs/hermeshd.log")
+			t.Logf("==== journal and log ====\n%s", out)
+		}
+		exec.Command("docker", "rm", "-f", name).Run()
+	})
+	eventually(t, 60*time.Second, "systemd up", func() bool {
+		out, _ := sh("systemctl is-system-running")
+		return out == "running" || out == "degraded"
+	})
+	return name, sh
 }
 
 // syncBuffer is a bytes.Buffer written by a command and read by the test.
