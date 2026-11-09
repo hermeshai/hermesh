@@ -11,6 +11,8 @@
 //	tokens <in> <out>   the turn's usage (default 10 and 5)
 //	sleep <duration>    pause
 //	fail <text>         end the turn with an error
+//	fail-times <n> <t>  end the turn with error t the first n times this
+//	                    line runs in the conversation, then go on
 //	crash               the process exits mid-turn
 //	hang                no output until stopped
 //	tool-sleep <d>      a shell tool that runs for d without output
@@ -37,6 +39,10 @@
 //	                    session's creator); its result is the turn's
 //
 // Steer appends a script to the running turn, run before it completes.
+//
+// Hermesh's automatic retry after a rate limit (a prompt saying "automatic
+// retry") runs the conversation's last script again, then the rest of the
+// prompt: the agent goes on with what it was doing.
 //
 // HERMESH_FAKE_SCRIPTS names a JSON object of prompts and their scripts: a
 // prompt ending in one of them runs its script instead, so a demo world's
@@ -67,6 +73,10 @@ import (
 
 type Provider struct{}
 
+// Per conversation (provider ref), across its processes: the last script
+// it ran, and how often each fail-times line has failed.
+var lastScripts, failTimes sync.Map
+
 func (Provider) Name() string { return "fake" }
 
 func (Provider) Discover(context.Context) provider.Info {
@@ -81,11 +91,11 @@ func (Provider) Start(ctx context.Context, spec provider.StartSpec) (provider.Se
 			}
 		}
 	}
-	s := &session{spec: spec, events: make(chan provider.Event, 64), done: make(chan struct{}), inbox: make(chan provider.Input, 4), interrupt: make(chan struct{}, 1)}
 	ref := spec.ResumeRef
 	if ref == "" {
 		ref = spec.NewRef
 	}
+	s := &session{spec: spec, ref: ref, events: make(chan provider.Event, 64), done: make(chan struct{}), inbox: make(chan provider.Input, 4), interrupt: make(chan struct{}, 1)}
 	s.events <- provider.Event{Kind: provider.EventRef, Ref: ref}
 	s.inbox <- provider.Input{Text: spec.Prompt, Images: spec.Images}
 	go s.run(ctx)
@@ -94,6 +104,7 @@ func (Provider) Start(ctx context.Context, spec provider.StartSpec) (provider.Se
 
 type session struct {
 	spec      provider.StartSpec
+	ref       string
 	events    chan provider.Event
 	done      chan struct{}
 	inbox     chan provider.Input
@@ -229,6 +240,13 @@ func (s *session) turn(ctx context.Context, in provider.Input) {
 			}
 		}
 	}
+	if strings.Contains(prompt, "automatic retry") {
+		if last, ok := lastScripts.Load(s.ref); ok {
+			prompt = last.(string) + "\n" + prompt
+		}
+	} else {
+		lastScripts.Store(s.ref, prompt)
+	}
 	defer func() {
 		s.mu.Lock()
 		s.inTurn, s.steered = false, nil
@@ -340,6 +358,16 @@ func (s *session) script(ctx context.Context, prompt string) (last string, ended
 		case "fail":
 			s.emit(provider.Event{Kind: provider.EventTurnCompleted, Text: arg, IsError: true})
 			return "", true
+		case "fail-times":
+			n, text, _ := strings.Cut(arg, " ")
+			times, _ := strconv.Atoi(n)
+			key := s.ref + "\x00" + line
+			v, _ := failTimes.LoadOrStore(key, 0)
+			if v.(int) < times {
+				failTimes.Store(key, v.(int)+1)
+				s.emit(provider.Event{Kind: provider.EventTurnCompleted, Text: text, IsError: true})
+				return "", true
+			}
 		case "crash":
 			s.exit(errors.New("exit status 1: fake crash"))
 			return "", true
