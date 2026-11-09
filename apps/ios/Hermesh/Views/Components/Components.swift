@@ -371,3 +371,45 @@ enum Palette {
     static let reply = Color(UIColor { $0.userInterfaceStyle == .dark ? UIColor(white: 1, alpha: 0.06)
         : UIColor(red: 0xf4 / 255, green: 0xf4 / 255, blue: 0xf7 / 255, alpha: 1) })
 }
+
+/// Back to a conversation's end, once it was scrolled well up from it (the Mac's): an arrow in a glass circle.
+struct ToEndButton: View {
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            Image(systemName: "arrow.down").font(.body.weight(.semibold)).frame(width: 44, height: 44)
+                .glassEffect(.regular.interactive(), in: .circle)
+                .contentShape(.circle)
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(Text("Back to the Bottom"))
+        .accessibilityIdentifier("to-end")
+    }
+}
+
+extension View {
+    /// The button back to the end, centred 12 over this (what is at the bottom of a conversation, or nothing),
+    /// while `away`: it takes no room, so nothing moves as it comes and goes.
+    func toEndButton(_ away: Bool, action: @escaping () -> Void) -> some View {
+        overlay(alignment: .top) {
+            ZStack {
+                if away { ToEndButton(action: action).transition(.opacity.combined(with: .offset(y: 6))) }
+            }
+            .frame(height: 44)
+            .alignmentGuide(.top) { $0[.bottom] + 12 }
+            .animation(.easeOut(duration: 0.18), value: away)
+        }
+    }
+}
+
+/// How far a conversation is scrolled up from its end. Its offset counts from the top of what stands over the page's
+/// top (a header), and containerSize is what shows between that and what stands over its bottom (the composer, the
+/// keyboard); visibleRect counts both as seen, the end 80 points and more off (measured on an iPhone: at the end,
+/// offset 244, content 1019, container 616, insets 158 and 99).
+nonisolated func fromEnd(_ g: ScrollGeometry) -> CGFloat {
+    g.contentSize.height - g.containerSize.height - g.contentInsets.top - g.contentOffset.y
+}
+
+/// Far enough up from a conversation's end to show the button back (the Mac's 240).
+nonisolated func scrolledAway(_ g: ScrollGeometry) -> Bool { fromEnd(g) > 240 }

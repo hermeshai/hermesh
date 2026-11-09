@@ -17,6 +17,8 @@ public struct HerSession: Equatable, Sendable {
     public var permissionMode: String
     public var lastSeq: Int
     public var entries: [HerEntry]
+    /// Where earlier history begins (session/history's cursor), while there is more than the snapshot's last items.
+    public var before: String?
     /// The task under way.
     public var live: HerLive?
     /// The last task failed, and none ran since.
@@ -47,6 +49,7 @@ public struct HerSession: Equatable, Sendable {
         permissionMode = ""
         lastSeq = s["last_seq"].int ?? 0
         entries = (s["transcript"]["items"].array ?? []).map(HerEntry.init)
+        before = s["transcript"]["before"].string
         cards = [:]
         agents = []
         queued = (s["queued"].array ?? []).compactMap(HerQueued.init)
@@ -64,6 +67,13 @@ public struct HerSession: Equatable, Sendable {
             live = nil
         }
         if live == nil, case .taskEnd("failed", let error, _)? = entries.last { failure = error } else { failure = nil }
+    }
+
+    /// Earlier history (session/history's TranscriptPage) put before what it has, with the cursor to what came before
+    /// that page (packages/her-client's withHistory).
+    public mutating func prepend(history page: JSON) {
+        entries = (page["items"].array ?? []).map(HerEntry.init) + entries
+        before = page["before"].string
     }
 
     /// The conversation after an event (her's Event); one it has already (its seq at or below what it holds) changes nothing.

@@ -60,6 +60,8 @@ final class HerChat {
     var pictures: [String: UIImage?] = [:]
     /// What the owner wrote and has not sent.
     var draft = HerDraft()
+    /// Earlier history is being read.
+    private(set) var paging = false
     /// The connections are open.
     private(set) var envUp = false
     private(set) var convUp = false
@@ -132,7 +134,9 @@ final class HerChat {
         while !Task.isCancelled {
             let c = HerConnection(local: HerTunnel(api: live), machineID: machineID)
             var opened: String?
-            let open: JSON = ["bot_id": .string(botID), "events": ["exclude": ["text_delta", "thinking_delta", "tool_call_delta", "tool_progress"]]]
+            // Its last items, earlier ones read as it is scrolled up (earlier()).
+            let open: JSON = ["bot_id": .string(botID), "events": ["exclude": ["text_delta", "thinking_delta", "tool_call_delta", "tool_progress"]],
+                              "history_limit": testWindow]
             do {
                 events: for try await e in c.open(setup: [("bots/open", open)]) {
                     switch e {
@@ -165,6 +169,24 @@ final class HerChat {
             failures += 1
             await pause(failures)
         }
+    }
+
+    /// Reads the page of the conversation before what it shows (session/history), while there is more and her is up;
+    /// one at a time, and a page that comes after the conversation was opened again is dropped.
+    func earlier() async {
+        guard !paging, let conv, convUp, let s = live, let cursor = s.before else { return }
+        paging = true
+        defer { paging = false }
+        guard let page = try? await conv.call("session/history", ["session_id": .string(s.sessionID), "before": .string(cursor), "limit": testWindow]),
+              live?.sessionID == s.sessionID, live?.before == cursor else { return }
+        live?.prepend(history: page)
+    }
+
+    /// How many items her sends at a time, the last ones and each earlier page: her's 100, or a test's few (HerUITests,
+    /// -HerHistoryLimit), so a short conversation is longer than they.
+    private var testWindow: JSON {
+        let n = UserDefaults.standard.integer(forKey: "HerHistoryLimit")
+        return n > 0 ? .number(Double(n)) : nil
     }
 
     /// A request on the environment's connection; fails while it is down.

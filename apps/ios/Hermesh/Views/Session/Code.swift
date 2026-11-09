@@ -1,10 +1,10 @@
 import JavaScriptCore
 import SwiftUI
 
-/// Code in GitHub's colours, light or dark with the app: the Mac app's
-/// Shiki, run in JavaScriptCore (scripts/highlighter). Plain until its
+/// Code in the Mac app's colours, light or dark with the app: its Shiki and
+/// its theme, run in JavaScriptCore (scripts/highlighter). Plain until its
 /// language has loaded, each one the first time it is shown, and plain for
-/// a language Shiki doesn't know.
+/// a language Shiki doesn't know or code too long to colour quickly.
 struct CodeText: View {
     let text: String
     let lang: String
@@ -79,6 +79,10 @@ nonisolated final class Highlighter: @unchecked Sendable {
 
     func lines(_ code: String, lang: String) async -> Lines? {
         if let hit = cached(code, lang: lang) { return hit }
+        // As the Mac: code over 200 KiB, or with a line over 10,000 characters, stays plain rather than holding the queue.
+        if code.utf8.count > 200 * 1024 || code.split(separator: "\n", omittingEmptySubsequences: false).contains(where: { $0.count > 10_000 }) {
+            return nil
+        }
         return await withCheckedContinuation { done in
             queue.async {
                 let lines = self.run(code, lang: lang)

@@ -163,6 +163,14 @@ final class HermeshUITests: XCTestCase {
         XCTAssertTrue(app.staticTexts["第一项"].exists, "the list")
         XCTAssertTrue(app.staticTexts["a.go"].exists && app.staticTexts["新增"].exists, "the table")
         XCTAssertTrue(app.staticTexts["func main() {}"].exists, "the code")
+        // The code under a bar with its language and a button that copies it, as on the Mac.
+        let code = app.descendants(matching: .any)["code-block"].firstMatch
+        XCTAssertTrue(code.exists && code.staticTexts["go"].exists, "the code's language")
+        let copyCode = code.buttons["code-copy"]
+        XCTAssertEqual(copyCode.label, "拷贝代码")
+        copyCode.tap()
+        try waitFor("the code copied") { copyCode.label == "已拷贝" ? true : nil }
+        try waitFor("ready to copy again", timeout: 5) { copyCode.label == "拷贝代码" ? true : nil }
         XCTAssertTrue(app.links["https://example.com"].exists, "a bare link, up to the Chinese text")
         // Two commands in a row: one folded line, opened to a row each; a row opens to its whole output.
         let row = app.buttons.containing(NSPredicate(format: "label CONTAINS %@", "seq 1 3000")).firstMatch
@@ -199,6 +207,13 @@ final class HermeshUITests: XCTestCase {
         sleep(2) // and still there once all of it is laid out
         XCTAssertTrue(last.isHittable, "the last message still in view")
         XCTAssertTrue(first.exists && !first.isHittable, "the first out of view")
+        // Scrolled well up, a button brings it back to its end, and goes.
+        let toEnd = app.buttons["to-end"]
+        XCTAssertFalse(toEnd.exists, "none at the end")
+        app.swipeDown()
+        XCTAssertTrue(toEnd.waitForExistence(timeout: 5), "the button back to the end")
+        toEnd.tap()
+        try waitFor("back at the end") { last.isHittable && !toEnd.exists ? true : nil }
     }
 
     func archiveAndUndo() throws {

@@ -1,10 +1,12 @@
-// Code in GitHub's colours for the iPhone app: the desktop app's Shiki,
-// run in JavaScriptCore (Code.swift). Each language is read the first time
-// it is shown, through readLanguage, which Swift provides.
+// Code in the desktop app's colours for the iPhone app: its Shiki and its
+// theme, run in JavaScriptCore (Code.swift). Each language is read the first
+// time it is shown, through readLanguage, which Swift provides.
 import { createHighlighterCoreSync } from "shiki/core";
 import { createJavaScriptRegexEngine } from "shiki/engine/javascript";
-import dark from "shiki/themes/github-dark-default.mjs";
-import light from "shiki/themes/github-light-default.mjs";
+import { themes } from "../../../desktop/src/renderer/src/session/markdown/theme.ts";
+
+const light = themes.find((t) => t.type === "light");
+const dark = themes.find((t) => t.type === "dark");
 
 const highlighter = createHighlighterCoreSync({ themes: [light, dark], langs: [], engine: createJavaScriptRegexEngine({ forgiving: true }) });
 /** Each language's id by its id and aliases. */

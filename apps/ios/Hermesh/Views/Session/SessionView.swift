@@ -16,6 +16,9 @@ struct SessionView: View {
     @State private var draft = ""
     /// Whether the conversation shows its end, so it follows what comes.
     @State private var atEnd = true
+    /// Whether it was scrolled well up from its end, where a button brings it back.
+    @State private var away = false
+    @Environment(\.accessibilityReduceMotion) private var still
     /// The owner is scrolling (dragging, or the list still moving from it).
     @State private var scrolling = false
     @State private var position = ScrollPosition(edge: .bottom)
@@ -86,21 +89,30 @@ struct SessionView: View {
         .scrollPosition($position)
         .defaultScrollAnchor(.bottom, for: .initialOffset)
         .onScrollPhaseChange { _, phase in scrolling = phase == .interacting || phase == .decelerating }
-        .onScrollGeometryChange(for: Bool.self) { g in g.visibleRect.maxY > g.contentSize.height - 80 } action: { _, end in
+        .onScrollGeometryChange(for: Bool.self) { fromEnd($0) < 80 } action: { _, end in
             if scrolling { atEnd = end }
         }
         .onScrollGeometryChange(for: CGFloat.self) { $0.contentSize.height } action: { _, _ in
             if atEnd && !scrolling { position.scrollTo(edge: .bottom) }
         }
+        .onScrollGeometryChange(for: Bool.self, of: scrolledAway) { _, far in away = far }
         .overlay { // in the middle of the screen, not where the scroll ends
             if events.isEmpty && !caughtUp(s) { unread(s) }
         }
         .scrollDismissesKeyboard(.interactively)
         .safeAreaInset(edge: .bottom) {
-            if let q = s.pendingQuestion {
-                QuestionPanel(session: s, question: q).id(q.questionID)
-            } else if s.isInterruptible {
-                controlBar(s)
+            // A stack, there even with nothing in it, for the button back to the end to stand on.
+            VStack(spacing: 0) {
+                if let q = s.pendingQuestion {
+                    QuestionPanel(session: s, question: q).id(q.questionID)
+                } else if s.isInterruptible {
+                    controlBar(s)
+                }
+            }
+            .frame(maxWidth: .infinity)
+            .toEndButton(away) {
+                atEnd = true
+                withAnimation(still ? nil : .smooth) { position.scrollTo(edge: .bottom) }
             }
         }
         .toolbar {
