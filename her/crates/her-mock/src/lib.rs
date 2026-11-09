@@ -50,7 +50,7 @@
 //! | `note_session:SECONDS` | the same in a session: `spawn_agent`, `交给子智能体了。`, then `回复：<the latest message>` for whatever comes next |
 //! | `note:SECONDS:TEXT` | half a second later, a sub-agent's `send_message` of TEXT to `main`, then a bash call running `sleep SECONDS`, then `写完了。` |
 //! | `routine:NAME\|SCHEDULE\|RUN` | a bot's `manage_routine` create, with RUN as the routine's prompt in brackets (`[[mock:RUN]]`); then `转告：<its result>` sent with `end_turn`, and for each report that wakes it, what the run found, sent with `end_turn` |
-//! | `connect:NAME[\|URL]` | Her's `call_tool` on `connector_connect` (`name` NAME, `url` URL); then `send_to_user` of the card it prepared (`type` card); when how the card ended wakes her, `转告：<its note>` sent with `end_turn` |
+//! | `connect:NAME[\|URL]` | Her's `call_tool` on `connector_connect` (`name` NAME, `url` URL); then `send_to_user` of the card it prepared (`type` card); when how the card ended wakes her: if it is done, `call_tool` on the connector's `echo` (`mcp__NAME__echo`); then `转告：<its note>`, with what `echo` said on a line of its own, sent with `end_turn` |
 //! | `say:TEXT` | TEXT, as it is |
 //!
 //! [`MockOptions`] adds a gateway's latency: a pause before the first chunk of every reply
@@ -547,11 +547,12 @@ fn routine_found(text: &str) -> Option<&str> {
     Some(found.trim())
 }
 
-/// The note of the latest card's end the model read: what `<card …>` holds.
-fn card_note(messages: &[Value]) -> Option<String> {
+/// How the latest card the model read of ended, and its note: what `<card … outcome="…">` holds.
+fn card_end(messages: &[Value]) -> Option<(String, String)> {
     messages.iter().rev().map(content_text).find_map(|text| {
-        let (_, rest) = text.strip_prefix("<card ")?.split_once('>')?;
-        Some(rest.strip_suffix("</card>")?.to_string())
+        let (tag, rest) = text.strip_prefix("<card ")?.split_once('>')?;
+        let outcome = tag.split_once("outcome=\"")?.1.split('"').next()?.to_string();
+        Some((outcome, rest.strip_suffix("</card>")?.to_string()))
     })
 }
 
@@ -897,7 +898,19 @@ fn plan(shared: &Shared, messages: &[Value], name: &str, arg: &str, prompt: &str
                     None => last_words(bot, format!("接不上：{result}")),
                 }
             }
-            _ => last_words(bot, format!("转告：{}", card_note(messages).unwrap_or_default())),
+            _ => {
+                let (outcome, note) = card_end(messages).unwrap_or_default();
+                let tried = messages.last().and_then(|m| m.get("role")).and_then(Value::as_str) == Some("tool");
+                let name = arg.split('|').next().unwrap_or(arg);
+                if outcome == "done" && !tried {
+                    // The connector works in the turn its card's end woke.
+                    Plan::Step(Step::calls(vec![("call_tool", json!({ "name": format!("mcp__{name}__echo"), "arguments": { "text": "接上了" } }))]))
+                } else if tried {
+                    last_words(bot, format!("转告：{note}\n{}", last_tool_result(messages)))
+                } else {
+                    last_words(bot, format!("转告：{note}"))
+                }
+            }
         },
         // A bot that never sends, reminded or not (bot-design §3.11).
         "mute" => Plan::Step(Step::text("写了字，没有发。".to_string())),
@@ -1532,7 +1545,15 @@ mod tests {
         messages.push(json!({"role": "assistant", "content": null}));
         messages.push(json!({"role": "tool", "content": "Shown to the owner."}));
         messages.push(json!({"role": "user", "content": "<card id=\"c_k3j9x2m4qa\" kind=\"connect\" outcome=\"done\">Tracker connected: 3 tools (echo, env, sleep).</card>"}));
-        assert_eq!(step(&messages, 2), ("send_to_user", json!({"text": "转告：Tracker connected: 3 tools (echo, env, sleep).", "end_turn": true})));
+        // Done: it tries the connector first, then passes the note on with what it said.
+        assert_eq!(step(&messages, 2), ("call_tool", json!({"name": "mcp__tracker__echo", "arguments": {"text": "接上了"}})));
+        messages.push(json!({"role": "assistant", "content": null}));
+        messages.push(json!({"role": "tool", "content": "接上了"}));
+        assert_eq!(step(&messages, 3), ("send_to_user", json!({"text": "转告：Tracker connected: 3 tools (echo, env, sleep).\n接上了", "end_turn": true})));
+        // Declined: the note alone.
+        messages.push(json!({"role": "assistant", "content": null}));
+        messages.push(json!({"role": "user", "content": "<card id=\"c_2\" kind=\"connect\" outcome=\"declined\">The owner declined.</card>"}));
+        assert_eq!(step(&messages, 4), ("send_to_user", json!({"text": "转告：The owner declined.", "end_turn": true})));
     }
 
     fn call_of(plan: Plan) -> (&'static str, Value) {

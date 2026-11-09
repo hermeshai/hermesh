@@ -154,11 +154,18 @@ impl Her {
     }
 
     /// Waits for the card to end in `state`, then for Her to pass on its note; returns the note.
+    /// A connector the card connected works in the turn its end wakes: Her tries it first.
     async fn passed_on(&mut self, card: &Value, state: &'static str) -> String {
         let events = until(&mut self.wire, changed_to(card["id"].as_str().unwrap(), state)).await;
         let note = events.last().unwrap()["note"].as_str().expect("her words on the card").to_string();
         let told = until(&mut self.wire, ended).await;
-        assert_eq!(sent(&told), [format!("转告：{note}")]);
+        if state == "done" {
+            let tried = told.iter().find(|e| e["type"] == "tool_completed" && e["result"]["tool_name"] == "call_tool").expect("Her used the connector");
+            assert_eq!(tried["result"]["is_error"], false, "{tried}");
+            assert_eq!(sent(&told), [format!("转告：{note}\necho: 接上了")]);
+        } else {
+            assert_eq!(sent(&told), [format!("转告：{note}")]);
+        }
         note
     }
 
@@ -293,7 +300,8 @@ async fn her_connects_an_oauth_connector_on_a_card() {
     let again = her.answer(&card, json!({"decision": "approve", "ops": card["ops"]})).await.unwrap();
     assert_eq!(again["state"], "sign_in");
 
-    // The device signs in; the card is done once the connector lists its tools, and Her passes it on.
+    // The device signs in; the card is done once the connector lists its tools, and Her, woken,
+    // uses it and passes it on, all in the conversation as it was loaded.
     sign_in(&her.client, "tracker").await;
     let note = her.passed_on(&card, "done").await;
     assert!(note.starts_with("Tracker connected: ") && note.contains("echo"), "{note}");
@@ -309,15 +317,8 @@ async fn her_connects_an_oauth_connector_on_a_card() {
     let opened = her.client.request("bots/open", json!({"bot_id": her.bot})).await.unwrap();
     let resolved = opened["snapshot"]["transcript"]["items"].as_array().unwrap().iter().find(|i| i["type"] == "card_resolved").cloned();
     assert_eq!(resolved, Some(json!({"type": "card_resolved", "card_id": id, "outcome": "done", "note": note})));
-    her.client.request("session/close", json!({"session_id": her.session})).await.unwrap();
-    let opened = her.client.request("bots/open", json!({"bot_id": her.bot})).await.unwrap();
-    her.session = opened["session_id"].as_str().unwrap().to_string();
-    assert!(opened["snapshot"]["transcript"]["items"].as_array().unwrap().iter().any(|i| i["type"] == "card_resolved" && i["card_id"] == id.as_str()));
-
-    // Loaded again, Her's conversation uses the connector.
-    her.say("[[mock:mcp_env:tracker:HER_CARDS_TEST]] read it").await;
-    let told = sent(&her.approving().await).join("\n");
-    assert!(told.starts_with("mcp done: ") && !told.contains("MCP server"), "{told}");
+    let logs = files(&env.home.path().join("sessions"));
+    assert!(logs.iter().any(|(_, text)| text.contains(&her.session) && text.contains(&format!("\"type\":\"card_resolved\",\"card_id\":\"{id}\""))));
 
     // Its sign-in gone, and the token the conversation holds refused, a call says how to have
     // the owner sign in again.

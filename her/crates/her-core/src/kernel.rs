@@ -533,17 +533,16 @@ fn link_routines(session: &Session, host: Option<Arc<dyn RoutineHost>>, bot: Opt
     }
 }
 
-/// The MCP servers of a main session, or `None` without any. Not started yet: status
-/// events need the session's emitter.
+/// The MCP servers of a main session, or `None` without any. Her's own conversation has them
+/// even without any yet: it takes up a connector the owner connects on a card. Not started yet:
+/// status events need the session's emitter.
 fn mcp_manager(deps: &KernelDeps, config: &Config, project_root: Option<PathBuf>) -> Option<Arc<McpManager>> {
-    if deps.mcp_servers.is_empty() {
+    let grows = deps.connectors.is_some();
+    if deps.mcp_servers.is_empty() && !grows {
         return None;
     }
     // Only remote servers need HTTP; local-only setups skip creating the client.
-    let http = deps
-        .mcp_servers
-        .iter()
-        .any(|s| s.is_enabled() && s.url.is_some())
+    let http = (grows || deps.mcp_servers.iter().any(|s| s.is_enabled() && s.url.is_some()))
         .then(|| deps.llm.http_client().ok())
         .flatten();
     McpManager::new(
@@ -553,6 +552,7 @@ fn mcp_manager(deps: &KernelDeps, config: &Config, project_root: Option<PathBuf>
         deps.env.workspace_roots().to_vec(),
         deps.env.cwd().to_path_buf(),
         project_root,
+        grows,
     )
 }
 
@@ -1036,6 +1036,17 @@ impl Kernel {
             }
         }
         Some(cards)
+    }
+
+    /// Her's conversation takes up a connector added after it started, which the owner just
+    /// connected on a card: its tools are there from the next turn on. False when the session
+    /// has no MCP servers to add to (MCP is turned off).
+    pub fn add_mcp_server(&self, server: her_protocol::McpServerConfig) -> bool {
+        let Some(mcp) = self.session.upgrade().and_then(|session| session.mcp.clone()) else {
+            return false;
+        };
+        mcp.add(server);
+        true
     }
 
     /// Stops a routine's run. False when none of that id is under way.

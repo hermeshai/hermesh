@@ -337,7 +337,8 @@ async fn authorization_controls_config_writes_and_runtime_startup() {
             None,
             vec![],
             dir.path().to_path_buf(),
-            None
+            None,
+            false
         )
         .is_none()
     );
@@ -367,7 +368,8 @@ async fn authorization_controls_config_writes_and_runtime_startup() {
             None,
             vec![],
             dir.path().to_path_buf(),
-            None
+            None,
+            false
         )
         .is_none()
     );
