@@ -706,3 +706,22 @@ func TestOwnerGoneForgetsConnectionsAndDoorbells(t *testing.T) {
 		t.Fatalf("another owner's doorbells: %+v", d)
 	}
 }
+
+// Her's own Client ID Metadata Document is served at the issuer, with only
+// the fields it has, and the gateway knows it without fetching it: Her signs
+// in as this client, from a loopback port of the moment, as a verified app.
+func TestHerClientMetadataDocument(t *testing.T) {
+	f := newFixture(t, func(c *Config) { c.Issuer = "https://hermesh.test" })
+	b := f.browser()
+	res, body := b.get(f.srv.URL + "/oauth/client.json")
+	var doc map[string]any
+	json.Unmarshal([]byte(body), &doc)
+	if res.StatusCode != 200 || doc["client_id"] != "https://hermesh.test/oauth/client.json" || doc["client_name"] != "Her" ||
+		doc["token_endpoint_auth_method"] != "none" || strings.Contains(body, "null") {
+		t.Fatalf("document: %d %s", res.StatusCode, body)
+	}
+	res, page := b.get(f.authorizeURL("https://hermesh.test/oauth/client.json", "http://127.0.0.1:63251/callback", nil))
+	if res.StatusCode != 200 || !strings.Contains(page, "Connect Her to Hermesh") || !strings.Contains(page, "Verified app") {
+		t.Fatalf("authorize: %d\n%s", res.StatusCode, page)
+	}
+}
