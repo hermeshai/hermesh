@@ -43,6 +43,14 @@ export function envState(m: Pick<Machine, "local" | "online" | "lastSeen" | "her
   return { kind: "ready" };
 }
 
+/**
+ * A server added since the first run's New Server was chosen (before: the machines then), once Her can be
+ * turned on there: offered first, as the owner added it for Her.
+ */
+export function newServer<M extends Env & Pick<Machine, "status">>(machines: M[], before: ReadonlySet<string>): M | undefined {
+  return herChoices(machines).find((c) => !c.why && !before.has(c.machine.machineId))?.machine;
+}
+
 /** A machine the first run (and Add Environment) offers, and why it can't be chosen when it can't. */
 export type Choice<M> = { machine: M; why: null | "windows" | "offline" | "unsupported"; detail?: string };
 

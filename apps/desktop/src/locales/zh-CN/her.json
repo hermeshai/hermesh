@@ -30,7 +30,8 @@
     "add": "添加…",
     "turnOn": "开启 Her",
     "signer": "在签名窗口里确认，在 {{name}} 上开启 Her。",
-    "turningOn": "正在开启 Her…"
+    "turningOn": "正在开启 Her…",
+    "paired": "刚刚配对"
   },
   "line": {
     "agents": "正在处理{{things}}",

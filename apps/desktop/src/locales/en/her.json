@@ -30,7 +30,8 @@
     "add": "Add…",
     "turnOn": "Turn On Her",
     "signer": "Confirm in the signer to turn on Her on {{name}}.",
-    "turningOn": "Turning on Her…"
+    "turningOn": "Turning on Her…",
+    "paired": "Paired just now"
   },
   "line": {
     "agents": "Working on {{things}}",
