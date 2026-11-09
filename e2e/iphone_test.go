@@ -10,6 +10,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"runtime"
 	"strconv"
 	"strings"
@@ -20,6 +21,7 @@ import (
 
 	identityv1 "github.com/hermeshai/hermesh/gen/go/hermesh/identity/v1"
 	localv1 "github.com/hermeshai/hermesh/gen/go/hermesh/local/v1"
+	"github.com/hermeshai/hermesh/internal/shellenv"
 	"github.com/hermeshai/hermesh/pkg/identity"
 	"github.com/hermeshai/hermesh/pkg/relay"
 )
@@ -35,6 +37,8 @@ import (
 //
 // It needs Xcode and takes a few minutes; it runs when HERMESH_IPHONE_E2E
 // is set (CI leaves it out), with HERMESH_IPHONE_GREP to pick UI tests.
+// With her built (cargo build in her/, or HERMESH_HER_BIN), the Mac can run
+// Her too, with no model yet, for testHer (HERMESH_IPHONE_GREP=testHer).
 func TestIPhone(t *testing.T) {
 	if testing.Short() || runtime.GOOS != "darwin" {
 		t.Skip("e2e on macOS")
@@ -51,9 +55,13 @@ func TestIPhone(t *testing.T) {
 	}
 
 	fake := filepath.Join(binaries(t), "fakeacp")
-	w := newOwnerMac(t, []string{"HERMESH_GEMINI_BIN=" + fake, "FAKE_ACP_STATE=" + filepath.Join(t.TempDir(), "fakeacp"), "FAKE_ACP_MODELS=gemini-3-pro",
-		"HERMESH_ANTIGRAVITY_BIN=" + fake, "GEMINI_HOME=" + t.TempDir()},
+	her := iphoneHerEnv(t)
+	w := newOwnerMac(t, append([]string{"HERMESH_GEMINI_BIN=" + fake, "FAKE_ACP_STATE=" + filepath.Join(t.TempDir(), "fakeacp"), "FAKE_ACP_MODELS=gemini-3-pro",
+		"HERMESH_ANTIGRAVITY_BIN=" + fake, "GEMINI_HOME=" + t.TempDir()}, her...),
 		&localv1.GrantSpec{Agents: []string{"gemini"}})
+	if her != nil {
+		t.Cleanup(func() { w.owner.stop() }) // stopped as a service is, so that it stops her (the daemon of the moment)
+	}
 	sessions := desktopSessions(t, w)
 	device := simulator(t)
 	// Notifications: the relay spools them, and this test hands each to the
@@ -100,7 +108,11 @@ func TestIPhone(t *testing.T) {
 	}
 	os.MkdirAll(filepath.Join(folders, "notes"), 0o755)
 	// xcodebuild hands TEST_RUNNER_-prefixed variables to the UI tests.
-	r := run(t, []string{"TEST_RUNNER_HERMESH_E2E_CONTROL=" + control, "TEST_RUNNER_HERMESH_E2E_FOLDERS=" + folders}, 30*time.Minute, "xcodebuild", args...)
+	runner := []string{"TEST_RUNNER_HERMESH_E2E_CONTROL=" + control, "TEST_RUNNER_HERMESH_E2E_FOLDERS=" + folders}
+	if her != nil {
+		runner = append(runner, "TEST_RUNNER_HERMESH_E2E_HER=1")
+	}
+	r := run(t, runner, 30*time.Minute, "xcodebuild", args...)
 	if r.code != 0 {
 		summary := run(t, nil, time.Minute, "xcrun", "xcresulttool", "get", "test-results", "tests", "--path", results).stdout
 		t.Fatalf("UI tests failed (result bundle %s):\n%s\n---- last output ----\n%s\n%s", results, failureMessages(summary), tail(r.stdout, 40), tail(r.stderr, 40))
@@ -110,6 +122,42 @@ func TestIPhone(t *testing.T) {
 		t.Fatalf("the project added on the iPhone: %+v", r)
 	}
 	checkIPhoneStrings(t, dir, derived)
+}
+
+// iphoneHerEnv is what the owner Mac's hermeshd needs to run Her for the
+// iPhone (testHer): her, the e2e console, and a home for her with no model
+// that works, as a new server's (work-mac in desktopHerWorld): her-mock
+// answers in DeepSeek's place and takes a key, so Her's onboarding connects
+// it. Nil, and testHer skipped, without her built.
+func iphoneHerEnv(t *testing.T) []string {
+	her := os.Getenv("HERMESH_HER_BIN")
+	if her == "" {
+		her, _ = filepath.Abs(filepath.Join("her", "target", "debug", "her"))
+	}
+	mockBin := os.Getenv("HERMESH_HER_MOCK")
+	if mockBin == "" {
+		mockBin = filepath.Join(filepath.Dir(her), "her-mock")
+	}
+	for _, p := range []string{her, mockBin} {
+		if _, err := os.Stat(p); err != nil {
+			t.Logf("Her is left out (%v): build her (cargo build in her/) for testHer", err)
+			return nil
+		}
+	}
+	mock := startHerMock(t, mockBin)
+	home := t.TempDir()
+	base := regexp.MustCompile(`base_url = "([^"]+)"`).FindStringSubmatch(mock.models)[1]
+	if err := os.WriteFile(filepath.Join(home, "models.toml"), []byte(fmt.Sprintf("[providers.deepseek]\nbase_url = %q\n", base)), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	env := herEnv(her, herConsole(t), home, mock.base)
+	// Nor a key or model from this computer, which the login shell may have.
+	for _, kv := range shellenv.Environ() {
+		if name, _, _ := strings.Cut(kv, "="); strings.HasSuffix(name, "_API_KEY") || name == "HER_MODEL" {
+			env = append(env, name+"=")
+		}
+	}
+	return env
 }
 
 // checkIPhoneStrings: every string the build found in the app and its
