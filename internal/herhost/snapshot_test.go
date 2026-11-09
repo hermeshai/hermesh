@@ -87,6 +87,43 @@ func TestSnapshot(t *testing.T) {
 	}
 }
 
+// A secure card open waits for the owner as an approval does (her's
+// BotSummary.waiting: Her's words with it, else its title): it is the newest
+// while it waits, another assistant changing meanwhile included; once it
+// ends, the newest message is again, until Her says how it went.
+func TestSnapshotCard(t *testing.T) {
+	s := newSnapshot("0.2.0", bots(t, `[
+		{"id":"her","name":"Her","last":{"from":"bot","text":"hello","ts":"2026-11-09T09:00:00Z"}},
+		{"id":"w","name":"Writer","last":{"from":"bot","text":"draft ready","ts":"2026-11-09T08:00:00Z"}}]`))
+	latest := func(id, text string, kind machinev1.HerLatestKind) {
+		t.Helper()
+		if l := s.latest; l == nil || l.BotId != id || l.Text != text || l.Kind != kind {
+			t.Fatalf("latest %v, want %s %q %v", l, id, text, kind)
+		}
+	}
+	msg, approval := machinev1.HerLatestKind_HER_LATEST_KIND_MESSAGE, machinev1.HerLatestKind_HER_LATEST_KIND_APPROVAL
+	now := time.Now()
+	said := `"last":{"from":"bot","text":"I need Notion for this.","ts":"2026-11-09T10:00:00Z"}`
+
+	// Her's words come first as her message, then as the card waiting.
+	s.changed(bots(t, `[{"id":"her","name":"Her","unread":1,"typing":true,`+said+`}]`), nil, now)
+	latest("her", "I need Notion for this.", msg)
+	s.changed(bots(t, `[{"id":"her","name":"Her","unread":1,"waiting":"I need Notion for this.",`+said+`}]`), nil, now)
+	latest("her", "I need Notion for this.", approval)
+	s.changed(bots(t, `[{"id":"w","name":"Writer","unread":1,"last":{"from":"bot","text":"draft ready","ts":"2026-11-09T08:00:00Z"}}]`), nil, now)
+	latest("her", "I need Notion for this.", approval)
+
+	// It ends: no longer waiting.
+	s.changed(bots(t, `[{"id":"her","name":"Her","unread":1,`+said+`}]`), nil, now)
+	latest("her", "I need Notion for this.", msg)
+
+	// A card without words waits by its title, until Her says how it went.
+	s.changed(bots(t, `[{"id":"her","name":"Her","unread":1,"waiting":"Connect Notion",`+said+`}]`), nil, now)
+	latest("her", "Connect Notion", approval)
+	s.changed(bots(t, `[{"id":"her","name":"Her","unread":2,"last":{"from":"bot","text":"Notion is connected.","ts":"2026-11-09T10:05:00Z"}}]`), nil, now)
+	latest("her", "Notion is connected.", msg)
+}
+
 func TestModelReady(t *testing.T) {
 	for result, want := range map[string]bool{
 		`{"models":[{"id":"a/x","available":false},{"id":"b/y","available":true}]}`: true,
