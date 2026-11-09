@@ -8,12 +8,14 @@ operations are real. Full daemon/service coverage lives in LinuxUpdate.
 
 import errno
 import hashlib
+import io
 import os
 from pathlib import Path
 import pty
 import select
 import signal
 import subprocess
+import tarfile
 import tempfile
 import time
 import unittest
@@ -40,21 +42,15 @@ class InstallerTest(unittest.TestCase):
         self.command("id", 'echo 1000')
         self.command("df", 'printf "Filesystem 1024-blocks Used Available Capacity Mounted\\nfixture 100000000 0 90000000 0%% /\\n"')
 
-        key = self.root / "key.pem"
+        self.key = self.root / "key.pem"
         subprocess.run(["openssl", "ecparam", "-name", "prime256v1", "-genkey",
-                        "-noout", "-out", str(key)], check=True, capture_output=True)
-        pub = subprocess.check_output(["openssl", "pkey", "-in", str(key), "-pubout"],
+                        "-noout", "-out", str(self.key)], check=True, capture_output=True)
+        pub = subprocess.check_output(["openssl", "pkey", "-in", str(self.key), "-pubout"],
                                       stderr=subprocess.DEVNULL).decode().strip()
         fixture = b'#!/bin/sh\nprintf "PAIRING %s\\n" "$*"\n'
-        sums = ""
+        self.sums = {}
         for binary in ("hermeshd", "hermesh"):
-            name = f"{binary}-linux-amd64"
-            (self.release / name).write_bytes(fixture)
-            sums += f"{hashlib.sha256(fixture).hexdigest()}  {name}\n"
-        (self.release / "checksums.txt").write_text(sums)
-        subprocess.run(["openssl", "dgst", "-sha256", "-sign", str(key), "-out",
-                        str(self.release / "checksums.txt.sig"),
-                        str(self.release / "checksums.txt")], check=True, capture_output=True)
+            self.publish(f"{binary}-linux-amd64", fixture)
         self.script = self.root / "install.sh"
         self.source = Path(__file__).with_name("install.sh").read_text().replace(
             "__HERMESH_RELEASE_PUBKEY__", pub)
@@ -62,6 +58,26 @@ class InstallerTest(unittest.TestCase):
         self.source = self.source.replace("/proc/mounts", str(self.root / "mounts"))
         # Relocate NAS fixtures without requiring root or mounting host disks.
         self.source = self.source.replace(r"\/volume", str(self.root).replace("/", r"\/") + r"\/volume")
+
+    def publish(self, name, data):
+        """Puts a file in the release, and in its signed checksum list."""
+        (self.release / name).write_bytes(data)
+        self.sums[name] = hashlib.sha256(data).hexdigest()
+        (self.release / "checksums.txt").write_text("".join(f"{h}  {n}\n" for n, h in self.sums.items()))
+        subprocess.run(["openssl", "dgst", "-sha256", "-sign", str(self.key), "-out",
+                        str(self.release / "checksums.txt.sig"),
+                        str(self.release / "checksums.txt")], check=True, capture_output=True)
+
+    def publish_her(self, index):
+        """her for Linux and her console, as release.sh makes it (tar -C dist .)."""
+        self.publish("her-linux-amd64", b"#!/bin/sh\necho her 0.2.0\n")
+        archive = io.BytesIO()
+        with tarfile.open(fileobj=archive, mode="w:gz") as tar:
+            for name, data in (("./index.html", index), ("./assets/app.js", b"app")):
+                info = tarfile.TarInfo(name)
+                info.size = len(data)
+                tar.addfile(info, io.BytesIO(data))
+        self.publish("her-console.tar.gz", archive.getvalue())
 
     def command(self, name, body):
         path = self.mock / name
@@ -224,6 +240,32 @@ class InstallerTest(unittest.TestCase):
         self.assertNotIn(str(self.root / "volume3"), output)
         self.assertNotIn(str(self.root / "volume4"), output)
         self.assertEqual(self.entry.resolve(), self.root / "volume1/@hermesh-1000")
+
+    def test_her_and_its_console_beside_hermeshd(self):
+        bin = self.home / ".local/bin"
+        code, output = self.run_install(terminal=False)
+        self.assertEqual(code, 0, output)
+        self.assertFalse((bin / "her").exists(), "a release without her")
+        self.publish_her(b"console one")
+        code, output = self.run_install(terminal=False)
+        self.assertEqual(code, 0, output)
+        self.assertTrue(os.access(bin / "her", os.X_OK), output)
+        self.assertEqual((bin / "her-console/index.html").read_bytes(), b"console one")
+        # Again with another console: it replaces the old one whole.
+        (bin / "her-console/stale.js").write_text("old")
+        self.publish_her(b"console two")
+        code, output = self.run_install(terminal=False)
+        self.assertEqual(code, 0, output)
+        self.assertEqual((bin / "her-console/index.html").read_bytes(), b"console two")
+        self.assertFalse((bin / "her-console/stale.js").exists())
+
+    def test_cli_and_device_have_no_her(self):
+        self.publish_her(b"console")
+        for args in ("--cli", "--device"):
+            code, output = self.run_install(terminal=False, args=args)
+            self.assertEqual(code, 0, output)
+            self.assertFalse((self.home / ".local/bin/her").exists(), args)
+            self.assertFalse((self.home / ".local/bin/her-console").exists(), args)
 
     def test_cli_does_not_ask_for_daemon_data(self):
         code, output = self.run_install(args="--cli")

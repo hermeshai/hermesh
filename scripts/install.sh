@@ -1,7 +1,8 @@
 #!/bin/sh
 # Hermesh installer. Downloads release binaries from GitHub Releases,
 # verifies them against a signed checksum list, installs them under
-# ~/.local/bin and (for machines) starts pairing.
+# ~/.local/bin (a Linux machine: with her and her-console/, Her's kernel and
+# its console) and (for machines) starts pairing.
 #
 #   Add a machine:   curl -fsSL https://github.com/hermeshai/hermesh/releases/latest/download/install.sh | sh -s -- [connection address]
 #                    (without one: $HERMESH_CENTER, else the official center https://hermesh.io)
@@ -289,6 +290,21 @@ openssl dgst -sha256 -verify "$TMP/pub.pem" -signature "$TMP/checksums.txt.sig" 
 sha256() {
   if command -v sha256sum >/dev/null; then sha256sum "$1" | cut -d' ' -f1; else shasum -a 256 "$1" | cut -d' ' -f1; fi
 }
+# fetch downloads a release file into $TMP, checked against the signed list.
+fetch() {
+  echo "› downloading $1"
+  curl -fsSL "$BASE/$1" -o "$TMP/$1"
+  want="$(grep " $1\$" "$TMP/checksums.txt" | cut -d' ' -f1)"
+  [ -n "$want" ] || die "$1 is not in the signed checksum list"
+  [ "$(sha256 "$TMP/$1")" = "$want" ] || die "$1 checksum mismatch"
+}
+put() { # file, where: installed for the user Hermesh is for
+  if [ -n "$AS" ]; then
+    install -m 0755 -o "$FOR_USER" -g "$(id -gn "$FOR_USER")" "$1" "$2"
+  else
+    install -m 0755 "$1" "$2"
+  fi
+}
 
 [ "$MODE" = cli ] || prepare_data_dir
 
@@ -298,18 +314,22 @@ else
   mkdir -p "$BIN_DIR"
 fi
 for b in $BINS; do
-  asset="$b-$OS-$ARCH"
-  echo "› downloading $asset"
-  curl -fsSL "$BASE/$asset" -o "$TMP/$asset"
-  want="$(grep " $asset\$" "$TMP/checksums.txt" | cut -d' ' -f1)"
-  [ -n "$want" ] || die "$asset is not in the signed checksum list"
-  [ "$(sha256 "$TMP/$asset")" = "$want" ] || die "$asset checksum mismatch"
-  if [ -n "$AS" ]; then
-    install -m 0755 -o "$FOR_USER" -g "$(id -gn "$FOR_USER")" "$TMP/$asset" "$BIN_DIR/$b"
-  else
-    install -m 0755 "$TMP/$asset" "$BIN_DIR/$b"
-  fi
+  fetch "$b-$OS-$ARCH"
+  put "$TMP/$b-$OS-$ARCH" "$BIN_DIR/$b"
 done
+# Her's kernel and its console, beside hermeshd, which runs them while Her
+# is on for this machine (docs/her-server.md §6.4): from a release that has
+# them for this system.
+if [ "$MODE" = machine ] && grep -q " her-$OS-$ARCH\$" "$TMP/checksums.txt"; then
+  fetch "her-$OS-$ARCH"
+  fetch her-console.tar.gz
+  mkdir "$TMP/her-console"
+  tar -xzf "$TMP/her-console.tar.gz" -C "$TMP/her-console"
+  put "$TMP/her-$OS-$ARCH" "$BIN_DIR/her"
+  rm -rf "$BIN_DIR/her-console"
+  cp -R "$TMP/her-console" "$BIN_DIR/her-console"
+  [ -z "$AS" ] || chown -R "$FOR_USER:$(id -gn "$FOR_USER")" "$BIN_DIR/her-console"
+fi
 echo "✓ installed to $BIN_DIR"
 if [ -z "$AS" ]; then
   case ":$PATH:" in
