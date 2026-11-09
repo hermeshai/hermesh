@@ -318,7 +318,7 @@ func TestHerOnThisMac(t *testing.T) {
 		t.Fatalf("models/list through the console: %d %s", code, body)
 	}
 
-	// What the machine lets no device do: FinxWork's document panels, and
+	// What the machine lets no device do: desktop document panels, and
 	// full access without a signature.
 	_, err = c.HerCall(ctx, &localv1.HerCallRequest{MachineId: mac, Call: &herv1.CallRequest{Request: herSetup("doc/open", map[string]string{"path": "/tmp/x.xlsx"})}})
 	if connect.CodeOf(err) != connect.CodePermissionDenied {

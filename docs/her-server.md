@@ -410,7 +410,7 @@ changing that needs a relay release (§12).
 | `session/op` and session events: prompts, approvals, answers, stopping | Her entry | Allowed | No |
 | `models/list` | Her entry, console | Allowed | No |
 | `config/*`, `connections/*`, `credentials/*`, `mcp/*`, `skills/*`, `web_search/*`, `browser/allow` | Console | Allowed | No |
-| `doc/*`, `deck/*`, `docx/*` and the other `browser/*` methods: FinxWork's desktop panels and built-in browser | Nobody | Not forwarded | No |
+| `doc/*`, `deck/*`, `docx/*` and the other `browser/*` methods: desktop document panels and a built-in browser, which Hermesh does not have | Nobody | Not forwarded | No |
 
 Types are in [schema.json](../her/crates/her-protocol/schema.json), and the
 reference is [protocol-reference.md](../her/docs/cli/protocol-reference.md).
@@ -461,8 +461,7 @@ The protos are the contract; this is their outline.
 3. **Files.** A prompt's input is text and images today. Other files are
    uploaded into the assistant's folder, and the message names them.
    `skills/install` installs from an uploaded archive.
-4. **The console.** A web app in `her/apps/console`, built from FinxWork's
-   Customize page and released with her.
+4. **The console.** A web app in `her/apps/console`, released with her.
 5. **Updates.** Inside Hermesh nothing calls `her upgrade`: hermeshd ships
    her and updates it.
 
@@ -569,7 +568,7 @@ be signed.
 One entry in each app, for conversation only. In the Mac app it is one item
 in the sidebar under Overview and Search. The rest of the app is unchanged.
 
-Its pages and behaviour are FinxWork's bot mode:
+What the page has:
 
 - the assistant list;
 - adding and editing assistants, and the default assistant;
@@ -581,7 +580,7 @@ Its pages and behaviour are FinxWork's bot mode:
 - menus, unread marks and alerts;
 - routines.
 
-What changes, because FinxWork assumed Her ran on the same Mac:
+What changes, because Her may run on another computer than the app:
 
 - **Environments.** The assistant list shows one environment at a time,
   with a switcher above it. Each environment shows whether it is online and
@@ -591,8 +590,7 @@ What changes, because FinxWork assumed Her ran on the same Mac:
   already use. Adding a key or a login is in the console, and the model menu
   links there.
 - **Permissions.** New assistants ask before risky steps, and switching one
-  to full access needs Touch ID. FinxWork gives every bot full access by
-  default; that is not carried over, because a Her Server reads web pages and
+  to full access needs Touch ID. Full access is never the default, because a Her Server reads web pages and
   messages from anyone.
 - **Files.** Her's files are on its Her Server: the app previews or saves
   them through the tunnel, and files dragged into a conversation are
@@ -601,7 +599,7 @@ What changes, because FinxWork assumed Her ran on the same Mac:
   apps have Hermesh's own sessions), the built-in browser (Her browses on its
   Her Server), and the document panels beside the conversation.
 
-An assistant's own settings panel (FinxWork's bot settings) holds its name,
+An assistant's own settings panel holds its name,
 avatar, model, thinking level and approval mode, and lets the owner clear
 its conversation or delete it. Environment-wide settings are in the console.
 
@@ -631,7 +629,7 @@ While no machine runs Her, the Her entry shows the first run:
 
 ### 9.4 iPhone app
 
-The same design, written in Swift, since FinxWork has no iPhone app.
+The same design, written in Swift.
 
 - The console opens in a web view.
 - Notices cover Her's replies, questions and approvals, with actions.
@@ -640,7 +638,7 @@ The same design, written in Swift, since FinxWork has no iPhone app.
 
 ## 10. The console
 
-A web app per Her Server, built from FinxWork's Customize page. Its
+A web app per Her Server. Its
 renderer already builds for a plain browser, today against a mock server.
 Sections:
 
@@ -698,7 +696,7 @@ Test: this Mac and a Linux cloud machine as two environments.
    search, Browser, Instructions, export.
 3. Sign-ins started on the Her Server (§5.4), for ChatGPT and for MCP
    connectors.
-4. Routines in conversations, as FinxWork's routine design has them.
+4. Routines in conversations.
 
 Test, on the Linux environment:
 
