@@ -2770,6 +2770,8 @@ export type LastMessage = {
   from: Speaker;
   /** The images it carried. */
   images?: number;
+  /** A bot's question: the user is to decide. */
+  question?: boolean;
   /** The start of its text as written (at most 1000 characters): the client takes the line to show from it, as it does for the conversation. */
   text: string;
   /** RFC 3339. */

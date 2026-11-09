@@ -283,7 +283,8 @@ impl Registry {
                     if !her_core::bot::sends_files(args)
                         && let Some(text) = her_core::bot::words_of(args)
                     {
-                        bot.file.summary.last = Some(last(Speaker::Bot, text, 0, None, event.ts));
+                        let question = her_core::bot::asks(args);
+                        bot.file.summary.last = Some(LastMessage { question, ..last(Speaker::Bot, text, 0, None, event.ts) });
                         bot.file.summary.unread += 1;
                         kept = true;
                     }
@@ -363,6 +364,7 @@ fn last(from: Speaker, text: &str, images: u32, file: Option<String>, ts: her_ll
         text: text.chars().take(TEXT_MAX).collect(),
         images,
         file,
+        question: false,
         ts: list::rfc3339(ts),
     }
 }

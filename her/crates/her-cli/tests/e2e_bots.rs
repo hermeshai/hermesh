@@ -824,6 +824,7 @@ async fn files_and_questions_show_in_the_bots_row_and_count_as_unread() {
     assert_eq!(row["last"]["text"], "");
     assert_eq!(row["last"]["images"], 1);
     assert_eq!(row["last"]["file"], "report.pdf");
+    assert!(row["last"].get("question").is_none());
     assert_eq!(row["unread"], 1);
 
     // A question: its words, and the task ends with no reminder.
@@ -832,6 +833,7 @@ async fn files_and_questions_show_in_the_bots_row_and_count_as_unread() {
     assert_eq!(sent(&events), ["send to whom?"]);
     let row = until_row(&mut wire, &bot, |b| b["last"]["text"] == "send to whom?").await;
     assert!(row["last"].get("file").is_none());
+    assert_eq!(row["last"]["question"], true, "the row says it is a question");
     assert_eq!(row["unread"], 2);
 
     // A wrong path: nothing to see, nothing unread.

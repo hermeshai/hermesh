@@ -147,6 +147,15 @@ pub fn shown_card(details: &str) -> Option<(Card, Option<String>)> {
     Some((card, details.get("text").and_then(Value::as_str).map(str::to_string)))
 }
 
+/// Whether a call asks the user to decide: by its type, or without one by the answers it offers
+/// (bot-design §3.12).
+pub fn asks(args: &Value) -> bool {
+    match args.get("type").and_then(Value::as_str) {
+        Some(kind) => kind == "question",
+        None => args.get("options").and_then(Value::as_array).is_some_and(|options| !options.is_empty()),
+    }
+}
+
 /// What a message of files carried, from its result's details (bot-design §3.12): its words, how
 /// many images, and the name of its first other file. None for any other message.
 pub fn attachment_summary(details: &str) -> Option<(String, u32, Option<String>)> {
@@ -375,5 +384,18 @@ impl TypedTool for SendToUser {
             }
         };
         Ok(if args.end_turn { output.ending_task() } else { output })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_question_is_known_by_its_type_or_its_answers() {
+        assert!(asks(&json!({ "type": "question", "text": "Which one?" })));
+        assert!(asks(&json!({ "text": "Which one?", "options": [{ "label": "A" }] })));
+        assert!(!asks(&json!({ "text": "Done.", "options": [] })));
+        assert!(!asks(&json!({ "type": "text", "text": "Done.", "options": [{ "label": "A" }] })));
     }
 }

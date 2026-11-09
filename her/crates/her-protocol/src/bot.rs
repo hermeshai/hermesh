@@ -92,6 +92,9 @@ pub struct LastMessage {
     /// A bot's message of files: the name of the first that is not an image.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub file: Option<String>,
+    /// A bot's question: the user is to decide.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub question: bool,
     /// RFC 3339.
     pub ts: String,
 }
