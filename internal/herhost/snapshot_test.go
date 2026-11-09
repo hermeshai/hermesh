@@ -149,3 +149,47 @@ func TestSnapshotQuestion(t *testing.T) {
 		t.Fatalf("latest %v", l)
 	}
 }
+
+// What the owner's devices are told of, as notices.ts herNotices tells it on
+// the Mac: an assistant's new message, question or approval waiting, as the
+// unread count grows; not her first snapshot, the owner's own message, the
+// same newest again, a rename, what was read meanwhile, a muted assistant,
+// nor a newest that comes back.
+func TestSnapshotNews(t *testing.T) {
+	first := `[{"id":"her","name":"Her","unread":1,"last":{"from":"bot","text":"old news","ts":"2026-11-09T09:00:00Z"}},{"id":"q","name":"Quiet","muted":true}]`
+	s := newSnapshot("0.2.0", bots(t, first))
+	now := time.Now()
+	news := func(rows string, want string, kind machinev1.HerLatestKind) {
+		t.Helper()
+		n := s.changed(bots(t, rows), nil, now)
+		switch {
+		case want == "" && n != nil:
+			t.Fatalf("news %v after %s", n, rows)
+		case want != "" && (n == nil || n.Text != want || n.Kind != kind || n.BotName == ""):
+			t.Fatalf("news %v after %s, want %q %v", n, rows, want, kind)
+		}
+	}
+	msg, question, approval := machinev1.HerLatestKind_HER_LATEST_KIND_MESSAGE, machinev1.HerLatestKind_HER_LATEST_KIND_QUESTION, machinev1.HerLatestKind_HER_LATEST_KIND_APPROVAL
+
+	news(first, "", 0)
+	reply := `"last":{"from":"bot","text":"Three things today.","ts":"2026-11-09T10:00:00Z"}`
+	news(`[{"id":"her","name":"Her","unread":2,`+reply+`}]`, "Three things today.", msg)
+	news(`[{"id":"her","name":"Her","unread":2,"typing":true,`+reply+`}]`, "", 0)
+	news(`[{"id":"her","name":"Her","unread":2,"last":{"from":"user","text":"thanks","ts":"2026-11-09T10:01:00Z"}}]`, "", 0)
+	news(`[{"id":"her","name":"Her","unread":3,"last":{"from":"bot","text":"Send it now?","question":true,"ts":"2026-11-09T10:02:00Z"}}]`, "Send it now?", question)
+	asked := `"last":{"from":"bot","text":"Send it now?","question":true,"ts":"2026-11-09T10:02:00Z"}`
+	news(`[{"id":"her","name":"Her","unread":4,"waiting":"touch sent.txt",`+asked+`}]`, "touch sent.txt", approval)
+	// Approved: the question is the newest again, and was told already.
+	news(`[{"id":"her","name":"Her","unread":4,`+asked+`}]`, "", 0)
+	news(`[{"id":"her","name":"Herself","unread":4,`+asked+`}]`, "", 0)
+	// Read on a device meanwhile: what comes with fewer unread is no news.
+	news(`[{"id":"her","name":"Herself","unread":0,"last":{"from":"bot","text":"Sent.","ts":"2026-11-09T10:03:00Z"}}]`, "", 0)
+	news(`[{"id":"q","name":"Quiet","muted":true,"unread":1,"last":{"from":"bot","text":"psst","ts":"2026-11-09T10:04:00Z"}}]`, "", 0)
+	// A card's words come as her message; the card waiting by them is that message again.
+	said := `"last":{"from":"bot","text":"I need Notion for this.","ts":"2026-11-09T10:05:00Z"}`
+	news(`[{"id":"her","name":"Herself","unread":1,`+said+`}]`, "I need Notion for this.", msg)
+	news(`[{"id":"her","name":"Herself","unread":1,"waiting":"I need Notion for this.",`+said+`}]`, "", 0)
+	if n := s.changed(nil, []string{"her"}, now); n != nil {
+		t.Fatalf("news %v after a deletion", n)
+	}
+}

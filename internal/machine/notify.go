@@ -10,6 +10,7 @@ import (
 	"google.golang.org/protobuf/types/known/timestamppb"
 
 	identityv1 "github.com/hermeshai/hermesh/gen/go/hermesh/identity/v1"
+	machinev1 "github.com/hermeshai/hermesh/gen/go/hermesh/machine/v1"
 	relayv1 "github.com/hermeshai/hermesh/gen/go/hermesh/relay/v1"
 	sessionv1 "github.com/hermeshai/hermesh/gen/go/hermesh/session/v1"
 	"github.com/hermeshai/hermesh/internal/provider"
@@ -21,7 +22,8 @@ import (
 // trusted device that asked for that kind (its push registration, signed by
 // its device key, which a root key certifies) and hands the ciphertext to
 // the relay for the push service. The relay never sees what it says. A
-// new session is announced too (only agents start sessions).
+// new session is announced too (only agents start sessions), and so is
+// what Her has for the owner while she runs here.
 
 // pushTarget is a verified push registration.
 type pushTarget struct {
@@ -113,7 +115,6 @@ func (n *Machine) sessionNotice(s noticeSession, e *sessionv1.SessionEvent) {
 		return
 	}
 	n.notices.mu.Lock()
-	targets := n.notices.targets
 	if n.notices.sent == nil {
 		n.notices.sent = map[string]string{}
 	}
@@ -123,20 +124,46 @@ func (n *Machine) sessionNotice(s noticeSession, e *sessionv1.SessionEvent) {
 	}
 	n.notices.sent[s.id] = nt.Kind
 	n.notices.mu.Unlock()
+	n.notify(nt, s.id, func() {
+		nt.Grant = n.knownClients()[s.createdBy].Label
+		nt.Machine = n.Name()
+	})
+}
+
+// herNotice tells the owner's devices of what Her's newest became
+// (herhost.Config.Notice): her reply, a question, or what waits for the
+// owner.
+func (n *Machine) herNotice(l *machinev1.HerLatest) {
+	nt := &sessionv1.Notice{Kind: "her", At: l.At, HerKind: "message", MachineId: n.machineID, BotId: l.BotId, BotName: l.BotName, Text: l.Text}
+	switch l.Kind {
+	case machinev1.HerLatestKind_HER_LATEST_KIND_QUESTION:
+		nt.HerKind = "question"
+	case machinev1.HerLatestKind_HER_LATEST_KIND_APPROVAL:
+		nt.HerKind = "approval"
+	}
+	n.notify(nt, "her:"+l.BotId, func() { nt.Machine = n.Name() })
+}
+
+// notify seals nt to the notice key of each device that asked for its
+// kind, completed by fill once one did, and hands the ciphertexts to the
+// relay.
+func (n *Machine) notify(nt *sessionv1.Notice, thread string, fill func()) {
+	n.notices.mu.Lock()
+	targets := n.notices.targets
+	n.notices.mu.Unlock()
 	var out []*relayv1.SealedNotice
 	for _, t := range targets {
 		if !t.kinds[nt.Kind] {
 			continue
 		}
 		if len(out) == 0 {
-			nt.Grant = n.knownClients()[s.createdBy].Label
-			nt.Machine = n.Name()
+			fill()
 		}
 		sealed, err := identity.SealNotice(t.key, nt)
 		if err != nil {
 			continue
 		}
-		out = append(out, &relayv1.SealedNotice{DeviceKeyId: t.keyID, Sealed: sealed, Kind: nt.Kind, Thread: s.id})
+		out = append(out, &relayv1.SealedNotice{DeviceKeyId: t.keyID, Sealed: sealed, Kind: nt.Kind, Thread: thread})
 	}
 	n.mu.Lock()
 	conn := n.conn
@@ -155,7 +182,7 @@ func (n *Machine) sessionNotice(s noticeSession, e *sessionv1.SessionEvent) {
 			_, err = c.Notify(ctx, &relayv1.NotifyRequest{Notices: out})
 		}
 		if err != nil {
-			n.log.Debug("notice not sent", "session", s.id, "err", err)
+			n.log.Debug("notice not sent", "kind", nt.Kind, "thread", thread, "err", err)
 		}
 	}()
 }

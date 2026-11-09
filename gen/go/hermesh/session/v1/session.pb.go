@@ -799,7 +799,8 @@ func (x *StartSessionResponse) GetSession() *Session {
 // without reading it.
 type Notice struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
-	// "question", "failure", "turn_done", "session_started" or "pairing".
+	// "question", "failure", "turn_done", "session_started", "pairing" or
+	// "her".
 	Kind string                 `protobuf:"bytes,1,opt,name=kind,proto3" json:"kind,omitempty"`
 	At   *timestamppb.Timestamp `protobuf:"bytes,2,opt,name=at,proto3" json:"at,omitempty"`
 	// A session's notice.
@@ -824,8 +825,17 @@ type Notice struct {
 	PairingLabel     string         `protobuf:"bytes,15,opt,name=pairing_label,json=pairingLabel,proto3" json:"pairing_label,omitempty"`
 	VerificationCode string         `protobuf:"bytes,16,opt,name=verification_code,json=verificationCode,proto3" json:"verification_code,omitempty"`
 	PairingCode      string         `protobuf:"bytes,17,opt,name=pairing_code,json=pairingCode,proto3" json:"pairing_code,omitempty"`
-	unknownFields    protoimpl.UnknownFields
-	sizeCache        protoimpl.SizeCache
+	// kind "her": what an assistant of Her's on the machine (machine names
+	// it) has for the owner, as HerLatest says it: "message", "question" (it
+	// asks the owner to choose) or "approval" (it waits for an approval or a
+	// secure card), and its first words.
+	HerKind       string `protobuf:"bytes,18,opt,name=her_kind,json=herKind,proto3" json:"her_kind,omitempty"`
+	MachineId     string `protobuf:"bytes,19,opt,name=machine_id,json=machineId,proto3" json:"machine_id,omitempty"`
+	BotId         string `protobuf:"bytes,20,opt,name=bot_id,json=botId,proto3" json:"bot_id,omitempty"`
+	BotName       string `protobuf:"bytes,21,opt,name=bot_name,json=botName,proto3" json:"bot_name,omitempty"`
+	Text          string `protobuf:"bytes,22,opt,name=text,proto3" json:"text,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
 }
 
 func (x *Notice) Reset() {
@@ -973,6 +983,41 @@ func (x *Notice) GetVerificationCode() string {
 func (x *Notice) GetPairingCode() string {
 	if x != nil {
 		return x.PairingCode
+	}
+	return ""
+}
+
+func (x *Notice) GetHerKind() string {
+	if x != nil {
+		return x.HerKind
+	}
+	return ""
+}
+
+func (x *Notice) GetMachineId() string {
+	if x != nil {
+		return x.MachineId
+	}
+	return ""
+}
+
+func (x *Notice) GetBotId() string {
+	if x != nil {
+		return x.BotId
+	}
+	return ""
+}
+
+func (x *Notice) GetBotName() string {
+	if x != nil {
+		return x.BotName
+	}
+	return ""
+}
+
+func (x *Notice) GetText() string {
+	if x != nil {
+		return x.Text
 	}
 	return ""
 }
@@ -4277,7 +4322,7 @@ const file_hermesh_session_v1_session_proto_rawDesc = "" +
 	"\x06sha256\x18\x05 \x01(\tR\x06sha256\x12\x14\n" +
 	"\x05image\x18\x06 \x01(\bR\x05image\"M\n" +
 	"\x14StartSessionResponse\x125\n" +
-	"\asession\x18\x01 \x01(\v2\x1b.hermesh.session.v1.SessionR\asession\"\x84\x05\n" +
+	"\asession\x18\x01 \x01(\v2\x1b.hermesh.session.v1.SessionR\asession\"\x84\x06\n" +
 	"\x06Notice\x12\x12\n" +
 	"\x04kind\x18\x01 \x01(\tR\x04kind\x12*\n" +
 	"\x02at\x18\x02 \x01(\v2\x1a.google.protobuf.TimestampR\x02at\x12\x1d\n" +
@@ -4297,7 +4342,13 @@ const file_hermesh_session_v1_session_proto_rawDesc = "" +
 	"\fpairing_kind\x18\x0e \x01(\x0e2 .hermesh.identity.v1.PairingKindR\vpairingKind\x12#\n" +
 	"\rpairing_label\x18\x0f \x01(\tR\fpairingLabel\x12+\n" +
 	"\x11verification_code\x18\x10 \x01(\tR\x10verificationCode\x12!\n" +
-	"\fpairing_code\x18\x11 \x01(\tR\vpairingCode\"m\n" +
+	"\fpairing_code\x18\x11 \x01(\tR\vpairingCode\x12\x19\n" +
+	"\bher_kind\x18\x12 \x01(\tR\aherKind\x12\x1d\n" +
+	"\n" +
+	"machine_id\x18\x13 \x01(\tR\tmachineId\x12\x15\n" +
+	"\x06bot_id\x18\x14 \x01(\tR\x05botId\x12\x19\n" +
+	"\bbot_name\x18\x15 \x01(\tR\abotName\x12\x12\n" +
+	"\x04text\x18\x16 \x01(\tR\x04text\"m\n" +
 	"\bDiffStat\x12#\n" +
 	"\rfiles_changed\x18\x01 \x01(\rR\ffilesChanged\x12\x1e\n" +
 	"\n" +
