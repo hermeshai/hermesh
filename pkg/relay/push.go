@@ -33,8 +33,8 @@ type Push struct {
 	Environment string
 	// The APNs JSON payload.
 	Payload []byte
-	// Urgent notices (a question, a request to connect) are sent at once
-	// and break through Focus as time-sensitive; others may wait.
+	// Urgent notices (a question, a request to connect, Her's messages,
+	// which the owner waits for) are sent at once; others may wait.
 	Urgent bool
 	// Groups one session's notifications.
 	Thread string
@@ -226,9 +226,12 @@ func (s *Server) notifyPairing(ownerID, code string, pr *identityv1.PairingReque
 func (s *Server) deliver(pt *relayv1.PushTarget, sealed []byte, kind, thread string) {
 	reg := &identityv1.PushRegistration{}
 	identity.Unverified(pt.Registration, reg)
-	urgent := kind == "question" || kind == "pairing"
+	// A question or a request to connect also breaks through Focus as
+	// time-sensitive; Her says too much for that.
+	timeSensitive := kind == "question" || kind == "pairing"
+	urgent := timeSensitive || kind == "her"
 	level := "active"
-	if urgent {
+	if timeSensitive {
 		level = "time-sensitive"
 	}
 	payload, _ := json.Marshal(map[string]any{

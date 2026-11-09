@@ -118,8 +118,8 @@ func (a *APNs) Push(ctx context.Context, p Push) error {
 }
 
 // Spool writes each notification to a file in Dir as JSON ({"token",
-// "environment", "payload"}), for tests: a Simulator gets them with `xcrun
-// simctl push`.
+// "environment", "payload", "urgent"}), for tests: a Simulator gets them
+// with `xcrun simctl push`.
 type Spool struct{ Dir string }
 
 var spoolSafe = regexp.MustCompile(`[^A-Za-z0-9_-]`)
@@ -128,7 +128,7 @@ func (s Spool) Push(_ context.Context, p Push) error {
 	if err := os.MkdirAll(s.Dir, 0o700); err != nil {
 		return err
 	}
-	b, _ := json.Marshal(map[string]any{"token": p.Token, "environment": p.Environment, "payload": json.RawMessage(p.Payload)})
+	b, _ := json.Marshal(map[string]any{"token": p.Token, "environment": p.Environment, "payload": json.RawMessage(p.Payload), "urgent": p.Urgent})
 	name := fmt.Sprintf("%d-%s.json", time.Now().UnixNano(), spoolSafe.ReplaceAllString(p.Thread, ""))
 	tmp := filepath.Join(s.Dir, "."+name+".tmp")
 	if err := os.WriteFile(tmp, b, 0o600); err != nil {

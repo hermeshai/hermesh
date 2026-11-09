@@ -25,6 +25,7 @@ import (
 type spooled struct {
 	Token       string `json:"token"`
 	Environment string `json:"environment"`
+	Urgent      bool   `json:"urgent"`
 	Payload     struct {
 		Aps struct {
 			Alert             map[string]string `json:"alert"`
@@ -253,7 +254,9 @@ func TestPushHerNotices(t *testing.T) {
 	notices := func() (out []*sessionv1.Notice) {
 		t.Helper()
 		for _, s := range readSpool(t, spool, seen) {
-			if s.Token != "abc123" || s.Payload.Hermesh.K != "her" || s.Payload.Aps.MutableContent != 1 || s.Payload.Aps.ThreadID == "" {
+			// Sent at once, as the owner waits for her; but not time-sensitive, which would break through Focus.
+			if s.Token != "abc123" || s.Payload.Hermesh.K != "her" || s.Payload.Aps.MutableContent != 1 || s.Payload.Aps.ThreadID == "" ||
+				!s.Urgent || s.Payload.Aps.InterruptionLevel != "active" {
 				t.Fatalf("payload: %+v", s)
 			}
 			sealed, _ := base64.StdEncoding.DecodeString(s.Payload.Hermesh.N)
