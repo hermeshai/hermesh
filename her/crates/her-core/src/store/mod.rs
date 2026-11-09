@@ -15,6 +15,7 @@ use std::path::PathBuf;
 pub use entry::AgentOrigin;
 pub use entry::AgentSpawnedEntry;
 pub use entry::BotRef;
+pub use entry::CardResolvedEntry;
 pub use entry::CompactionEntry;
 pub use entry::SystemPromptEntry;
 pub use entry::Entry;

@@ -94,7 +94,8 @@ impl crate::session::Session {
             (None, false) => {}
         }
         let docs = self.tool_state.get::<crate::docs::DocsHandle>().is_some();
-        *self.deferred.lock() = Arc::new(crate::deferred::Deferred::of(&settings, self.browser_pool.is_some(), embedded, docs, self.agent_role));
+        let connectors = self.tool_state.get::<crate::connect::ConnectorLink>().is_some();
+        *self.deferred.lock() = Arc::new(crate::deferred::Deferred::of(&settings, self.browser_pool.is_some(), embedded, docs, self.agent_role, connectors));
         *self.base_tools.lock() = crate::mcp::base_tools(&self.core_tools, self.mcp.as_ref(), &self.deferred, &self.mcp_shown);
         if self.refresh_tools(true) {
             self.record_system_prompt();

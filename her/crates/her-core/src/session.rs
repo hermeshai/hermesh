@@ -48,6 +48,7 @@ use crate::hooks::SessionView;
 use crate::mcp::McpManager;
 use crate::mcp::tools::Shown;
 use crate::skills::SkillRef;
+use crate::store::CardResolvedEntry;
 use crate::store::Entry;
 use crate::store::EntryKind;
 use crate::store::SessionWriter;
@@ -111,8 +112,8 @@ pub(crate) struct SessionState {
     pub(crate) estimate_ratio: f64,
     /// Where measuring the largest turn stopped; see `budget`.
     pub(crate) turn_scan: crate::budget::TurnScan,
-    /// Sub-agents' reports and messages not yet in the history, oldest first.
-    pub(crate) inbox: VecDeque<Mail>,
+    /// Sub-agents' reports and messages, and how cards ended, not yet in the history, oldest first.
+    pub(crate) inbox: VecDeque<Delivery>,
     /// What sub-agents told the user during the running task, which joins the history at its next
     /// boundary (agent-messaging-design §17).
     pub(crate) told: Vec<Told>,
@@ -195,9 +196,12 @@ impl SessionState {
 
     /// A waiting report would start a task now. Stopping the bot's work holds back the reports
     /// of that work; a routine's is a new thing the owner asked for, and it would be lost with
-    /// the session if it waited (routine-design §2.4).
+    /// the session if it waited (routine-design §2.4). So is how a card the owner answered ended.
     pub(crate) fn has_waking_mail(&self) -> bool {
-        self.inbox.iter().any(|mail| mail.wake && (!self.hold || mail.info.kind == MailKind::Routine))
+        self.inbox.iter().any(|delivery| match delivery {
+            Delivery::Mail(mail) => mail.wake && (!self.hold || mail.info.kind == MailKind::Routine),
+            Delivery::Card(_) => true,
+        })
     }
 
     /// Whether `id` is a message of the user's on the current branch, which `resend` may name.
@@ -221,12 +225,20 @@ fn is_user_message(entry: &Entry) -> bool {
     matches!(&entry.kind, EntryKind::Message { message: Message::User(_), .. })
 }
 
+/// What waits in a session's inbox: a sub-agent's or a routine run's mail, or how a card ended.
+pub(crate) enum Delivery {
+    Mail(Mail),
+    Card(Box<CardResolvedEntry>),
+}
+
 /// Messages from inside the process, handled by the submission loop in order with the ops.
 /// They travel boxed: a channel keeps a block of 32 slots for as long as it lives, and slots
 /// sized for a mail would cost every session 4 KiB.
 pub(crate) enum Internal {
     /// A sub-agent's report for this session.
     Mail(Mail),
+    /// How one of its cards ended.
+    Card(Box<CardResolvedEntry>),
     /// The main session's permissions changed; a sub-agent takes them over.
     Permissions {
         mode: PermissionMode,
@@ -490,17 +502,27 @@ impl Session {
         }
     }
 
-    /// Writes what sub-agents told the user and the waiting reports and messages into the history,
-    /// oldest first. True when a routine's is among them.
+    /// Writes what sub-agents told the user and the waiting reports, messages and cards' ends into
+    /// the history, oldest first. True when a routine's report or a card's end is among them.
     pub(crate) fn deliver_mail(&self) -> bool {
-        let mails: Vec<Mail> = {
+        let deliveries: Vec<Delivery> = {
             let mut guard = self.state.lock();
             let state = &mut *guard;
             self.write_all_told(state);
             state.inbox.drain(..).collect()
         };
-        let routine = mails.iter().any(|mail| mail.info.kind == MailKind::Routine);
-        for mail in mails {
+        let new = deliveries.iter().any(|delivery| match delivery {
+            Delivery::Mail(mail) => mail.info.kind == MailKind::Routine,
+            Delivery::Card(_) => true,
+        });
+        for delivery in deliveries {
+            let mail = match delivery {
+                Delivery::Mail(mail) => mail,
+                Delivery::Card(card) => {
+                    self.record(EntryKind::CardResolved(card));
+                    continue;
+                }
+            };
             let message = Message::from(mail.message);
             let info = Box::new(mail.info.clone());
             let entry = self.record(match mail.info.kind {
@@ -516,7 +538,7 @@ impl Session {
                 skills: Vec::new(),
             });
         }
-        routine
+        new
     }
 
     /// Sends `Idle` once nothing is left to do: no task, no queued input, no report that
@@ -655,9 +677,9 @@ impl Session {
         let id = state.history.new_id();
         let marker = state.history.rewind(id, parent, before_first, now_ms());
         self.writer.append(marker);
-        state.inbox.retain(|mail| !removed.contains(&mail.info.from.id));
+        state.inbox.retain(|delivery| !matches!(delivery, Delivery::Mail(mail) if removed.contains(&mail.info.from.id)));
         for mail in again.into_iter().rev() {
-            state.inbox.push_front(mail);
+            state.inbox.push_front(Delivery::Mail(mail));
         }
         // New input ends the hold after an interruption.
         state.hold = false;

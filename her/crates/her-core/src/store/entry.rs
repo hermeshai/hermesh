@@ -210,6 +210,9 @@ pub enum EntryKind {
     /// whatever the system prompt says; a word right after the message mostly settles it
     /// (bot-design §3.14).
     ReplyNudge,
+    /// A bot's session: how a secure card ended, which the model reads as `<card …>`
+    /// (docs/her-secure-cards.md §3.4). Never a value the owner typed.
+    CardResolved(Box<CardResolvedEntry>),
     /// A kind written by a later version. It keeps its place in the branch, so the entries
     /// after it still link up; nothing else reads it.
     #[serde(other, skip_serializing)]
@@ -256,6 +259,18 @@ pub struct SystemPromptEntry {
     /// A bot's session: which `bot.md` the text comes from (bot-turn-design §8).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub template: Option<String>,
+}
+
+/// The data of an [`EntryKind::CardResolved`]. Its kind and outcome are kept as words, so that a
+/// log with the kinds and outcomes of a later version still reads.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct CardResolvedEntry {
+    pub card_id: String,
+    pub kind: String,
+    /// The state it ended in.
+    pub outcome: String,
+    /// her's words on how it went.
+    pub note: String,
 }
 
 /// The data of an [`EntryKind::AgentSpawned`].
@@ -379,6 +394,7 @@ mod tests {
             r#"{"id":"2787b9a5","parent":"2787b9a4","ts":1793224073147,"type":"compaction","seq":3,"reason":"threshold","summary":"s","retained":[],"skills":[{"name":"review","path":"/p/.her/skills/review/SKILL.md","content":"<skill>"}],"model":"m/x","usage":{"input":1,"output":2,"cache_read":0,"cache_write":0,"cost":{"currency":"USD","input":0.0,"output":0.0,"cache_read":0.0,"cache_write":0.0,"total":0.0}},"tokens_before":9,"tokens_after":3}"#,
             r#"{"id":"2787b9a2","parent":"2787b9a1","ts":1793224073144,"type":"settings","model":"m/x","thinking":"high","permission_mode":"manual"}"#,
             r#"{"id":"2787b9a6","parent":"2787b9a5","ts":1793224073148,"type":"date","date":"2026-11-03"}"#,
+            r#"{"id":"2787b9a8","parent":"2787b9a6","ts":1793224073149,"type":"card_resolved","card_id":"c_k3j9x2m4qa","kind":"connect","outcome":"done","note":"Notion connected: 14 tools (notion_search, …)."}"#,
         ];
         for line in lines {
             let entry: Entry = serde_json::from_str(line).unwrap_or_else(|e| panic!("{e}: {line}"));

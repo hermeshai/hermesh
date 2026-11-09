@@ -75,6 +75,7 @@ fn deps(api: &Arc<ScriptedApi>, work: &Path, home: &HerHome, host: Option<Arc<dy
         decks: None,
         words: None,
         routines: host,
+        connectors: None,
     }
 }
 

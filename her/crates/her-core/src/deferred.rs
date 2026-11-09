@@ -66,8 +66,9 @@ const SUB_AGENT_AGENTS_SUMMARY: &str = "See the other agents in this session";
 impl Deferred {
     /// The groups `settings` turn on; `pool` says whether the process has browsers, `app`
     /// whether the desktop app is connected, `docs` whether it keeps documents, `agents` what this
-    /// session is among agents.
-    pub(crate) fn of(settings: &SystemSettings, pool: bool, app: bool, docs: bool, agents: AgentRole) -> Self {
+    /// session is among agents, `connectors` whether it is Her's own conversation, which may ask
+    /// the owner for a connector.
+    pub(crate) fn of(settings: &SystemSettings, pool: bool, app: bool, docs: bool, agents: AgentRole, connectors: bool) -> Self {
         let mut groups = Vec::new();
         if settings.web_search.enabled {
             groups.push(Group {
@@ -139,12 +140,19 @@ impl Deferred {
             }),
             AgentRole::None => {}
         }
+        if connectors {
+            groups.push(Group {
+                name: crate::connect::GROUP,
+                summary: crate::connect::GROUP_SUMMARY.into(),
+                tools: crate::connect::tools(),
+            });
+        }
         Self { groups }
     }
 
     /// The names of the groups `of` would make, without making their tools: their definitions take
     /// time and memory that `her status` has no use for.
-    pub(crate) fn names_of(settings: &SystemSettings, pool: bool, app: bool, docs: bool, agents: AgentRole) -> Vec<&'static str> {
+    pub(crate) fn names_of(settings: &SystemSettings, pool: bool, app: bool, docs: bool, agents: AgentRole, connectors: bool) -> Vec<&'static str> {
         let mut names = Vec::new();
         if settings.web_search.enabled {
             names.push(crate::web_search::GROUP);
@@ -162,6 +170,9 @@ impl Deferred {
         }
         if agents != AgentRole::None {
             names.push(AGENTS);
+        }
+        if connectors {
+            names.push(crate::connect::GROUP);
         }
         names
     }
@@ -196,16 +207,16 @@ mod tests {
             config.browser.enabled = Some(browser);
             config.desktop.enabled = Some(desktop);
             let settings = SystemSettings::of(&config);
-            for role in [super::AgentRole::Main, super::AgentRole::None] {
-                let made: Vec<&str> = Deferred::of(&settings, true, false, true, role).groups.iter().map(|g| g.name).collect();
-                assert_eq!(made, Deferred::names_of(&settings, true, false, true, role));
+            for (role, connectors) in [(super::AgentRole::Main, true), (super::AgentRole::None, false)] {
+                let made: Vec<&str> = Deferred::of(&settings, true, false, true, role, connectors).groups.iter().map(|g| g.name).collect();
+                assert_eq!(made, Deferred::names_of(&settings, true, false, true, role, connectors));
             }
         }
     }
 
     #[test]
     fn document_catalog_advertises_workbook_support() {
-        let deferred = Deferred::of(&SystemSettings::of(&Config::default()), false, false, true, super::AgentRole::None);
+        let deferred = Deferred::of(&SystemSettings::of(&Config::default()), false, false, true, super::AgentRole::None, false);
         let doc = deferred.group("doc").expect("document group");
         assert!(doc.summary.contains("XLSX"));
         assert!(doc.summary.contains("cell ranges"));

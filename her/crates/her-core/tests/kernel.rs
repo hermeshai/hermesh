@@ -68,6 +68,7 @@ fn deps(api: &Arc<ScriptedApi>, work: &Path, home: &HerHome) -> KernelDeps {
         decks: None,
         words: None,
         routines: None,
+        connectors: None,
     }
 }
 

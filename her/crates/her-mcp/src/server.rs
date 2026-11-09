@@ -440,7 +440,7 @@ impl McpServer {
             _ => Failure::Retry,
         };
         let message = match (&err, failure) {
-            (McpError::AuthRequired, Failure::Login) => format!("{err}; sign in with `her mcp login {}` or from the 自定义 page", self.config.name),
+            (McpError::AuthRequired, Failure::Login) => format!("{err}; {}", crate::oauth::sign_in_way(&self.config.name)),
             _ => err.to_string(),
         };
         (message, failure)
