@@ -7681,22 +7681,22 @@
         }
       }
     },
-    "Update Hermesh to answer this card": {
+    "Update Hermesh to answer this request": {
       "localizations": {
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "更新 Hermesh 后才能回答这张卡片"
+            "value": "更新 Hermesh 后才能处理这个请求"
           }
         }
       }
     },
-    "Couldn’t connect %@": {
+    "Couldn’t connect to %@": {
       "localizations": {
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "没能接入 %@"
+            "value": "没能连接 %@"
           }
         }
       }
@@ -7711,12 +7711,12 @@
         }
       }
     },
-    "Replaced by a newer card": {
+    "Replaced by a newer request": {
       "localizations": {
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "已被新卡片替代"
+            "value": "已被新的请求替代"
           }
         }
       }
@@ -7746,7 +7746,7 @@
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "已接入 %1$@ · %2$lld 个工具"
+            "value": "已连接 %1$@ · %2$lld 个工具"
           }
         }
       }
@@ -7756,67 +7756,67 @@
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "已接入 %@"
+            "value": "已连接 %@"
           }
         }
       }
     },
-    "Her can use its tools; what she sends it leaves this machine": {
+    "Once connected, Her can use its tools and sends them what they need. Only connect services you trust.": {
       "localizations": {
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "Her 能用它的工具，发给它的内容会离开这台机器"
+            "value": "连接后，Her 可以使用它提供的工具，用到时会把相关内容发给它。只连接你信任的服务。"
           }
         }
       }
     },
-    "Secure Card · %@": {
+    "MCP Connection · %@": {
       "localizations": {
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "安全卡 · %@"
+            "value": "MCP 连接 · %@"
           }
         }
       }
     },
-    "You didn’t ask for this": {
+    "You didn’t request this": {
       "localizations": {
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "这不是你要求的"
+            "value": "不是你发起的"
           }
         }
       }
     },
-    "Sign in to %@ again": {
+    "Her needs to sign in to %@ again": {
       "localizations": {
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "重新登录 %@"
+            "value": "Her 需要重新登录 %@"
           }
         }
       }
     },
-    "Connect %@": {
+    "Her wants to connect to %@": {
       "localizations": {
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "接入 %@"
+            "value": "Her 想连接 %@"
           }
         }
       }
     },
-    "Waiting for you to sign in in the browser…": {
+    "Waiting for you to sign in and authorize in your browser…": {
       "localizations": {
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "等你在浏览器里登录…"
+            "value": "等你在浏览器里登录并授权…"
           }
         }
       }
@@ -7841,22 +7841,22 @@
         }
       }
     },
-    "Sign In": {
+    "Sign In Again": {
       "localizations": {
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "登录"
+            "value": "重新登录"
           }
         }
       }
     },
-    "Connect": {
+    "Authorize": {
       "localizations": {
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "接入"
+            "value": "授权连接"
           }
         }
       }

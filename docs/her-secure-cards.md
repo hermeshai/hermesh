@@ -241,15 +241,16 @@ this card", and nothing else.
 ## 4. The cards in the Mac app
 
 - **Where:** in the conversation, under Her's bubble with her `text`.
-- **One look that only the apps draw:** a lock, "Secure card", and the
-  machine it is for. A message's Markdown can't draw it, since cards come
-  from `details`, not from text.
+- **One look that only the apps draw:** a lock, what the card asks for
+  ("MCP Connection" for `connect`), and the machine it is for. A message's
+  Markdown can't draw it, since cards come from `details`, not from text.
+  "Secure card" is the design's name, never shown.
 - The first-run onboarding's key field and a card's masked field are one
   component.
 
 | Card | What it shows | Buttons |
 |---|---|---|
-| `connect` | "Connect Notion · mcp.notion.com"; what it lets Her do; a masked field per header; then "Sign in to Notion" and "Waiting for you to sign in in the browser…" | Connect · Cancel; then Open sign-in · Reopen · Cancel |
+| `connect` | "Her wants to connect to Notion", then **mcp.notion.com** (the address, large); what it lets Her do and to connect only services one trusts; a masked field per header; then "Waiting for you to sign in and authorize in your browser…" ("Her needs to sign in to Notion again" when it signs in again) | Authorize (Sign In Again) · Deny; then Reopen · Cancel |
 | `site_login` | "Sign in to **github.com**" (the origin, large); a field per page field, passwords and codes masked; "Typed into this page once, never kept" | Send · Skip |
 | Ended | One line: "✓ Notion connected · 14 tools", "Filled in", "Declined", "Out of date", "Answered on iPhone" | None |
 
