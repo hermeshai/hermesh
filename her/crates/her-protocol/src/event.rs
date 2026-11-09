@@ -299,6 +299,14 @@ pub enum EventMsg {
         agent_id: String,
         event: Box<Event>,
     },
+    /// A secure card's state changed (docs/her-secure-cards.md §3.5). `note` is her's words: why
+    /// it waits for another try, or how it ended.
+    CardChanged {
+        card_id: String,
+        state: crate::card::CardState,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        note: Option<String>,
+    },
     /// What fills the context window now: the answer to `/context`.
     ContextReported {
         report: ContextReport,

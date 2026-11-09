@@ -98,6 +98,9 @@ pub async fn probe(config: McpServerConfig, ctx: ProbeContext) -> McpProbeResult
             McpProbeKind::Local => local(config, &ctx, &steps, &info).await,
             McpProbeKind::Remote => remote(config, &ctx, &steps, &info).await,
         };
+        if result.error.is_none() {
+            result.server_name = info.lock().as_ref().map(|said| said.title.clone().unwrap_or_else(|| said.name.clone())).filter(|name| !name.trim().is_empty());
+        }
         // The logo, once the server answered: what it declares, else its website's. A slow
         // website does not hold up the check: the lookup goes on and keeps what it finds.
         if result.error.is_none()
@@ -126,6 +129,7 @@ fn failed(kind: McpProbeKind, steps: Vec<McpProbeStep>, error: String) -> McpPro
         suggested: McpProbeSuggestion { auth: McpSuggestedAuth::None, client: None },
         tools: Vec::new(),
         icon: None,
+        server_name: None,
         error: Some(error),
     }
 }
@@ -179,6 +183,7 @@ async fn local(config: McpServerConfig, ctx: &ProbeContext, steps: &Arc<Steps>, 
                 suggested: McpProbeSuggestion { auth: McpSuggestedAuth::None, client: None },
                 tools: summaries(&tools),
                 icon: None,
+                server_name: None,
                 error: None,
             }
         }
@@ -288,6 +293,7 @@ async fn remote(mut config: McpServerConfig, ctx: &ProbeContext, steps: &Arc<Ste
         suggested: McpProbeSuggestion { auth: suggested, client: None },
         tools: summaries(&tools),
         icon: None,
+        server_name: None,
         error: None,
     };
     if (200..300).contains(&status) {
@@ -362,6 +368,7 @@ async fn remote(mut config: McpServerConfig, ctx: &ProbeContext, steps: &Arc<Ste
         suggested: McpProbeSuggestion { auth: suggested, client },
         tools: Vec::new(),
         icon: None,
+        server_name: None,
         error: None,
     }
 }

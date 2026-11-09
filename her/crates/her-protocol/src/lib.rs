@@ -5,6 +5,7 @@
 
 pub mod api;
 pub mod bot;
+pub mod card;
 pub mod customize;
 pub mod deck;
 pub mod doc;

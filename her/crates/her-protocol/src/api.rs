@@ -12,6 +12,7 @@ use serde_json::Value;
 use std::path::PathBuf;
 use std::sync::Arc;
 
+use crate::card::CardState;
 use crate::event::AgentStatus;
 use crate::event::CompletionReason;
 use crate::event::ErrorInfo;
@@ -235,6 +236,8 @@ pub mod method {
     pub const BOTS_ROUTINE_RUN_NOW: &str = "bots/routine_run_now";
     pub const BOTS_ROUTINE_STOP: &str = "bots/routine_stop";
     pub const BOTS_ROUTINE_DELETE: &str = "bots/routine_delete";
+    /// The owner's answer to a secure card (docs/her-secure-cards.md §3.3).
+    pub const CARDS_ANSWER: &str = "cards/answer";
     /// Brings a session's tab in the user's own browser to the front (browser-design §8.4.7).
     pub const BROWSER_REVEAL: &str = "browser/reveal";
     /// Closes a session's tabs in the user's own browser, or one of them.
@@ -327,6 +330,8 @@ pub mod error_code {
     /// `session/new`, `bots/open`: no model was asked for, none is configured and no provider is
     /// connected.
     pub const NO_MODEL: i64 = -32046;
+    /// `cards/answer`: the card has ended (done, declined, failed, expired or replaced).
+    pub const CARD_ENDED: i64 = -32047;
 
     /// Every code with its `kind`, standard JSON-RPC codes included.
     pub const ALL: &[(i64, &str)] = &[
@@ -374,6 +379,7 @@ pub mod error_code {
         (ROUTINE_BUSY, "routine_busy"),
         (ROUTINES_UNAVAILABLE, "routines_unavailable"),
         (NO_MODEL, "no_model"),
+        (CARD_ENDED, "card_ended"),
     ];
 }
 
@@ -1137,6 +1143,8 @@ pub enum TranscriptItem {
         usage: Option<UsageTotals>,
         ts: Timestamp,
     },
+    /// How a secure card ended; it follows the `send_to_user` result that showed the card.
+    CardResolved { card_id: String, outcome: CardState, note: String },
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]

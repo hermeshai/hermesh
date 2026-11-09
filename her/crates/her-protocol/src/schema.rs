@@ -15,6 +15,7 @@ use crate::api;
 use crate::api::error_code;
 use crate::api::method;
 use crate::bot;
+use crate::card;
 use crate::customize;
 use crate::deck;
 use crate::docx;
@@ -321,6 +322,7 @@ pub fn document() -> Value {
         (method::BOTS_ROUTINE_RUN_NOW, Some(name::<bot::BotRoutineParams>(g)), name::<api::Empty>(g)),
         (method::BOTS_ROUTINE_STOP, Some(name::<bot::BotRoutineParams>(g)), name::<api::Empty>(g)),
         (method::BOTS_ROUTINE_DELETE, Some(name::<bot::BotRoutineParams>(g)), name::<api::Empty>(g)),
+        (method::CARDS_ANSWER, Some(name::<card::CardsAnswerParams>(g)), name::<card::CardsAnswerResult>(g)),
     ];
     let client_notifications = [
         (method::CANCEL_REQUEST, name::<api::CancelRequestParams>(g)),
@@ -360,8 +362,9 @@ pub fn document() -> Value {
     // Requests the server sends to a client, which answers them.
     let server_requests = [(method::DOCX_SERIALIZE, name::<api::DocxSerializeParams>(g), name::<api::DocxSerializeResult>(g))];
     // Also used on their own: `her exec --output stream-json` lines and `--ops-stdin` lines.
-    // The deck's rule ids, for clients to name checks (`DeckDiagnostic.rule` is a string).
-    let standalone = [name::<Event>(g), name::<Op>(g), name::<deck::DiagnosticRule>(g)];
+    // The deck's rule ids, for clients to name checks (`DeckDiagnostic.rule` is a string). A
+    // secure card, which `send_to_user`'s result details carry.
+    let standalone = [name::<Event>(g), name::<Op>(g), name::<deck::DiagnosticRule>(g), name::<card::Card>(g)];
 
     let reference = |name: &str| json!({ "$ref": format!("#/definitions/{name}") });
     let mut methods_doc = Map::new();
@@ -419,7 +422,7 @@ pub fn document() -> Value {
 /// the desktop app and the extension host.
 pub fn stability(name: &str) -> &'static str {
     const INTERNAL: &[&str] = &["browser/host", "browser/cdp", "browser/extension", "browser/control", "browser/request", "docx/host", "docx/serialize"];
-    const EXPERIMENTAL: &[&str] = &["connections/", "connectors/", "doc/", "docx/", "pptx/", "bots/", "browser/", "routines/", "bot/", "connector/", "desktop/"];
+    const EXPERIMENTAL: &[&str] = &["connections/", "connectors/", "doc/", "docx/", "pptx/", "bots/", "browser/", "routines/", "bot/", "connector/", "desktop/", "cards/"];
     if INTERNAL.contains(&name) {
         "internal"
     } else if EXPERIMENTAL.iter().any(|prefix| name.starts_with(prefix)) {

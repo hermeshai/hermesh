@@ -145,6 +145,9 @@ export type ApprovalDecision = {
 
 export type ArrowHead = "none" | "triangle" | "stealth" | "diamond" | "oval" | "arrow";
 
+/** What began the task that made the card: the owner's message, or something else that reached Her (a routine's report, a card's outcome, a sub-agent's report), which the owner did not ask for. */
+export type AskedBy = "owner" | "her";
+
 export type AssistantContent = {
   text: string;
   type: "text";
@@ -512,6 +515,60 @@ export type CandidateSource = "template" | "structure" | "data";
 /** What a document supports (§4.5); toolbars and tool descriptions follow it. */
 export type Capability = "view" | "text" | "search" | "outline" | "edit_values" | "edit_formulas" | "cells" | "calc";
 
+/** A card as the apps draw it. */
+export type Card = {
+  asked_by: AskedBy;
+  body: ConnectBody;
+  /** RFC 3339: 24 hours after the card was prepared. */
+  expires_at: string;
+  /** `c_` and 10 random letters and digits. It means something only in its session. */
+  id: string;
+  kind: CardKind;
+  /** The console calls approving makes, in order, as the console sends them. A value the owner types stands as the whole string `"<value:FIELD_ID>"`. */
+  ops: CardOp[];
+  /** In English: for a kind the app does not know, and for notifications. Apps draw the kinds they know from `body`, in the owner's language. */
+  title: string;
+};
+
+export type CardAnswer = {
+  decision: "approve";
+  ops: CardOp[];
+} | {
+  decision: "decline";
+};
+
+/** A value the owner types into the card. */
+export type CardField = {
+  id: string;
+  label: string;
+  /** Masked as it is typed. */
+  secret: boolean;
+};
+
+export type CardKind = "connect";
+
+/** One console call: its method and its params. */
+export type CardOp = {
+  method: string;
+  params: unknown;
+};
+
+/** Where a card stands. Ended: done, declined, failed, expired, replaced. */
+export type CardState = "done" | "declined" | "failed" | "expired" | "open" | "working" | "sign_in" | "retry" | "replaced";
+
+/** Parameters of `cards/answer`, which only the owner's devices may call. */
+export type CardsAnswerParams = {
+  answer: CardAnswer;
+  card_id: string;
+  session_id: string;
+};
+
+/** Result of `cards/answer`. */
+export type CardsAnswerResult = {
+  note?: string | null;
+  state: CardState;
+};
+
 /** The skill catalog in the system prompt. */
 export type CatalogInfo = {
   budget: number;
@@ -786,6 +843,22 @@ export type ConfigWriteResult = {
 };
 
 export type ConfigWriteStatus = "ok" | "overridden";
+
+/** A `connect` card's body. */
+export type ConnectBody = {
+  /** Values the owner types. */
+  fields: CardField[];
+  /** The URL's host, which the card shows large. */
+  host: string;
+  /** The connector's name. */
+  name: string;
+  /** An existing connector signs in again; `ops` is empty then. */
+  reconnect: boolean;
+  /** What the server calls itself, when the check found out. */
+  server_name?: string | null;
+  sign_in: SignIn;
+  url: string;
+};
 
 export type ConnectionConnectParams = {
   adapter_id: string;
@@ -2409,6 +2482,11 @@ export type Event = {
   event: Event;
   type: "agent_event";
 } | {
+  card_id: string;
+  note?: string | null;
+  state: CardState;
+  type: "card_changed";
+} | {
   report: ContextReport;
   type: "context_reported";
 } | {
@@ -2927,6 +3005,8 @@ export type McpProbeResult = {
   /** The service's logo as a `data:` URI: the icon the server declares, else its website's. */
   icon?: string | null;
   kind: McpProbeKind;
+  /** What the server calls itself, when it got as far as saying. */
+  server_name?: string | null;
   steps: McpProbeStep[];
   suggested: McpProbeSuggestion;
   /** The server's tools, when the probe got that far. */
@@ -3976,6 +4056,8 @@ export type SheetOp = {
   sheet: string;
 };
 
+export type SignIn = "none" | "oauth";
+
 /** Permission for the browser tools on one origin, for the rest of the session (docs/kernel/browser-design.md §7.3). */
 export type SiteGrant = {
   authority: GrantAuthority;
@@ -4511,6 +4593,11 @@ export type TranscriptItem = {
   ts: number;
   type: "task_end";
   usage?: UsageTotals | null;
+} | {
+  card_id: string;
+  note: string;
+  outcome: CardState;
+  type: "card_resolved";
 };
 
 export type TranscriptPage = {
@@ -4666,6 +4753,7 @@ export interface Methods {
   "browser/site_icon": [BrowserSiteIconParams, BrowserSiteIconResult];
   "browser/status": [Record<string, never>, BrowserStatus];
   "browser/use_extension": [BrowserUseExtensionParams, Empty];
+  "cards/answer": [CardsAnswerParams, CardsAnswerResult];
   "chatgpt/cancel": [ChatGptCancelParams, ChatGptStatus];
   "chatgpt/complete": [ChatGptCompleteParams, ChatGptStatus];
   "chatgpt/login": [ChatGptLoginParams, ChatGptStatus];
@@ -4856,6 +4944,7 @@ export const RPC_ERROR_KINDS = {
   "-32044": "routine_busy",
   "-32045": "routines_unavailable",
   "-32046": "no_model",
+  "-32047": "card_ended",
   "-32600": "invalid_request",
   "-32601": "method_not_found",
   "-32602": "invalid_params",
