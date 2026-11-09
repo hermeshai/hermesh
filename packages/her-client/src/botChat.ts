@@ -5,8 +5,9 @@ import { baseName } from "./text.ts";
 
 // A bot's conversation as Bot mode shows it (docs/kernel/bot-design.md §3.4):
 // the owner's messages, each message the bot sent with send_to_user (words,
-// files or a question, §3.12), what its sub-agents told the owner, which reads
-// the same (agent-messaging-design §17), and failures, in the order they were sent.
+// files, a question, §3.12, or a secure card), what its sub-agents told the
+// owner, which reads the same (agent-messaging-design §17), and failures, in
+// the order they were sent.
 // What the bot did and wrote for itself does not show. An approval is no part of it:
 // it pops up above the composer, as on a session's page.
 
@@ -40,6 +41,8 @@ export type BotItem =
   | { kind: "attachment"; key: string; files: BotFile[]; text?: string; ts: number; source?: RoutineSource }
   /** A question, with answers to tap if they can be listed; open: they can still be tapped. */
   | { kind: "question"; key: string; text: string; options: string[]; open: boolean; ts: number; source?: RoutineSource }
+  /** A secure card her made for the owner to answer (docs/her-secure-cards.md), with the bot's words if it had any; `card` is the result's, validated where it is shown. */
+  | { kind: "card"; key: string; card: unknown; text?: string; ts: number; source?: RoutineSource }
   /** What the bot did to a routine, as a line in the chat. */
   | ({ kind: "routine"; key: string; ts: number } & RoutineChange)
   /** A change the bot made to a deck (deck_edit) or a Word document (docx_edit, docx_review), shown where the owner looks so it can be taken back; `details` is the tool's, validated where it is shown. */
@@ -70,7 +73,11 @@ function sendTimes(v: SessionView): Map<string, number> {
   return at;
 }
 
-type Sent = { kind: "bot"; text: string } | { kind: "attachment"; files: BotFile[]; text?: string } | { kind: "question"; text: string; options: string[]; open: boolean };
+type Sent =
+  | { kind: "bot"; text: string }
+  | { kind: "attachment"; files: BotFile[]; text?: string }
+  | { kind: "question"; text: string; options: string[]; open: boolean }
+  | { kind: "card"; card: unknown; text?: string };
 
 const some = (list: unknown): list is unknown[] => Array.isArray(list) && list.length > 0;
 
@@ -93,13 +100,17 @@ function filesOf(tool: ToolView): BotFile[] {
 
 /**
  * What a send_to_user call sent the owner. Words and questions show from the call's start: failed,
- * refused and cancelled ones did not reach them. Files show once they were found to be there.
+ * refused and cancelled ones did not reach them. Files and cards show once her let them through.
  */
 function delivered(item: WorkItem): Sent | null {
   if (item.kind !== "tool" || item.tool.name !== SEND_TO_USER) return null;
   const { state, args } = item.tool;
   if (state === "failed" || state === "denied" || state === "cancelled" || state === "streaming") return null;
   const text = typeof args.text === "string" && args.text.trim() !== "" ? args.text : null;
+  if (args.type === "card") {
+    const card = state === "done" ? detailsOf(item.tool.result).card : undefined;
+    return card ? { kind: "card", card, ...(text !== null ? { text } : {}) } : null;
+  }
   // Without a type, what a call carries says what it is.
   if (args.type === "attachment" || (args.type === undefined && some(args.files))) {
     const files = state === "done" ? filesOf(item.tool) : [];

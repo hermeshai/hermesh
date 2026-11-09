@@ -16,6 +16,8 @@ export type Fixture = {
   otherMac: number;
   /** On Windows, the folder of an older signer, as if set up. */
   oldSigner?: string;
+  /** A connector's service that signs in with OAuth, for Her to ask for on a secure card (TestDesktopHer). */
+  connector?: string;
 };
 
 /** Loaded first in every launch: the app's windows open without taking focus. */

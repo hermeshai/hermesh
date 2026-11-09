@@ -104,6 +104,27 @@
     "done": "好了，我会用 {{model}} 和你聊，想换可以去助手设置。有什么要我做的？",
     "connected": "已接上 {{name}}"
   },
+  "card": {
+    "secure": "安全卡",
+    "connect": "接入 {{name}}",
+    "reconnect": "重新登录 {{name}}",
+    "what": "Her 能用它的工具，发给它的内容会离开这台机器",
+    "notAsked": "这不是你要求的",
+    "connectButton": "接入",
+    "signIn": "登录",
+    "connecting": "正在接入…",
+    "cancel": "取消",
+    "waiting": "等你在浏览器里登录…",
+    "reopen": "重新打开登录页",
+    "done": "已接入 {{name}}",
+    "doneTools_other": "已接入 {{name}} · {{count}} 个工具",
+    "declined": "已拒绝",
+    "failed": "没能接入 {{name}}",
+    "expired": "已过期",
+    "replaced": "已被新卡片替代",
+    "elsewhere": "已在别的设备上处理",
+    "update": "更新 Hermesh 后才能回答这张卡片"
+  },
   "waiting": {
     "until": "等 {{name}} 在线后送达",
     "failed": "没能送达：{{error}}",

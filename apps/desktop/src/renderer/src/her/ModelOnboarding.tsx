@@ -287,9 +287,34 @@ function Hers({ text, detail = "", fresh, children }: { text: string; detail?: s
 }
 
 /**
- * A provider's key, written where only her gets it (auth/set): a password field that nothing
- * fills or remembers, emptied as it is saved. ↩ saves.
+ * A secret the owner types for her alone (a provider's key, a secure card's value): a password
+ * field that nothing fills, remembers or corrects. Whoever holds the value empties it once sent.
  */
+export function SecretInput({ label, placeholder, value, onChange, disabled, autoFocus }: {
+  label: string;
+  placeholder?: string;
+  value: string;
+  onChange: (value: string) => void;
+  disabled?: boolean;
+  autoFocus?: boolean;
+}) {
+  return (
+    <input
+      className="field"
+      type="password"
+      autoComplete="off"
+      spellCheck={false}
+      autoFocus={autoFocus}
+      disabled={disabled}
+      aria-label={label}
+      placeholder={placeholder}
+      value={value}
+      onChange={(e) => onChange(e.target.value)}
+    />
+  );
+}
+
+/** A provider's key, written where only her gets it (auth/set), emptied as it is saved. ↩ saves. */
 function KeyField({ provider, name, busy, onSave }: { provider: string; name: string; busy: boolean; onSave: (key: string) => void }) {
   const { t } = useTranslation("her");
   const [key, setKey] = useState("");
@@ -309,18 +334,7 @@ function KeyField({ provider, name, busy, onSave }: { provider: string; name: st
           save();
         }}
       >
-        <input
-          className="field"
-          type="password"
-          autoComplete="off"
-          spellCheck={false}
-          autoFocus
-          disabled={busy}
-          aria-label={t("onboard.keyLabel", { provider: name })}
-          placeholder={t("onboard.keyPlaceholder")}
-          value={key}
-          onChange={(e) => setKey(e.target.value)}
-        />
+        <SecretInput autoFocus disabled={busy} label={t("onboard.keyLabel", { provider: name })} placeholder={t("onboard.keyPlaceholder")} value={key} onChange={setKey} />
         <button type="submit" className="btn primary" disabled={busy || !key.trim()}>
           {busy ? t("onboard.checking") : t("onboard.save")}
         </button>

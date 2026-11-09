@@ -104,6 +104,28 @@
     "done": "All set. I'll talk with you using {{model}}; you can change it in Assistant Settings. What can I do for you?",
     "connected": "Connected to {{name}}"
   },
+  "card": {
+    "secure": "Secure Card",
+    "connect": "Connect {{name}}",
+    "reconnect": "Sign in to {{name}} again",
+    "what": "Her can use its tools; what she sends it leaves this machine",
+    "notAsked": "You didn't ask for this",
+    "connectButton": "Connect",
+    "signIn": "Sign In",
+    "connecting": "Connecting…",
+    "cancel": "Cancel",
+    "waiting": "Waiting for you to sign in in the browser…",
+    "reopen": "Open Sign-In Page Again",
+    "done": "{{name}} connected",
+    "doneTools_one": "{{name}} connected · {{count}} tool",
+    "doneTools_other": "{{name}} connected · {{count}} tools",
+    "declined": "Declined",
+    "failed": "Couldn't connect {{name}}",
+    "expired": "Expired",
+    "replaced": "Replaced by a newer card",
+    "elsewhere": "Answered on another device",
+    "update": "Update Hermesh to answer this card"
+  },
   "waiting": {
     "until": "Delivered when {{name}} is back",
     "failed": "Not delivered: {{error}}",

@@ -38,6 +38,9 @@ type desktopFixture struct {
 	// On Windows, the folder of an older signer, as if set up, for the app
 	// to offer its own (empty elsewhere).
 	OldSigner string `json:"oldSigner,omitempty"`
+	// The address of a connector's service that signs in with OAuth, for
+	// Her to ask for on a secure card (empty when none).
+	Connector string `json:"connector,omitempty"`
 	owner     *ownerMac
 }
 
@@ -210,11 +213,19 @@ func TestDesktopHer(t *testing.T) {
 // does (the onboarding offers the providers people know best, all in her's
 // own catalog, so a provider named after her-mock would not be among them),
 // and nothing names a model. OtherMac is work-mac's daemon, for the spec to
-// take offline.
+// take offline. Connector is a connector's service on this computer, for
+// Her to ask for on a secure card: with OAuth, it registers a client for the
+// redirect and approves at once, standing in for the person.
 func desktopHerWorld(t *testing.T) desktopFixture {
 	her, mockBin := herBinaries(t)
 	mock := startHerMock(t, mockBin)
 	console := herConsole(t)
+	tracker := start(t, "tracker", nil, herMCPServer(t), "--http", "127.0.0.1:0", "--oauth", "--no-metadata-document", "--name", "tracker")
+	var connector string
+	eventually(t, 20*time.Second, "the tracker's address", func() bool {
+		connector = regexp.MustCompile(`http://\S+/mcp`).FindString(tracker.output())
+		return connector != ""
+	})
 	macHome, workHome := herHome(t, mock.models), t.TempDir()
 	if model := os.Getenv("HERMESH_HER_MODEL"); model != "" {
 		if err := os.WriteFile(filepath.Join(macHome, "config.toml"), []byte(fmt.Sprintf("model = %q\n", model)), 0o600); err != nil {
@@ -244,7 +255,7 @@ func desktopHerWorld(t *testing.T) desktopFixture {
 	daemon := w.logs[len(w.logs)-1] // the one otherMac started
 	t.Cleanup(daemon.stop)
 	w.joinTyped(work, home, "work-mac")
-	return desktopFixture{Socket: w.sock, Sessions: map[string]string{}, CLI: filepath.Join(w.bin, "hermesh"), CLIEnv: w.cliEnv, OtherMac: daemon.cmd.Process.Pid, owner: w}
+	return desktopFixture{Socket: w.sock, Sessions: map[string]string{}, CLI: filepath.Join(w.bin, "hermesh"), CLIEnv: w.cliEnv, OtherMac: daemon.cmd.Process.Pid, Connector: connector, owner: w}
 }
 
 // desktopWorld is an owner Mac with a session in every state the app

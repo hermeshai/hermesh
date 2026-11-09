@@ -14,6 +14,7 @@ import { errorText, useNow, useStore } from "../store";
 import { Approval, type SendOp } from "./Approval";
 import { addAttachments, toInput, type Attachment } from "./attachments";
 import { BotAvatar } from "./Avatar";
+import { cardOf } from "./cards";
 import { Composer, Tile } from "./Composer";
 import type { Conversation as Conv } from "./connection";
 import { useHer } from "./context";
@@ -23,6 +24,7 @@ import { messageTime, momentText, thingsText, timeLine } from "./format";
 import { Question, SentFiles, type FileScope } from "./Messages";
 import { Onboarding, useOnboarding } from "./ModelOnboarding";
 import { onboardingAfter, withOnboarding } from "./onboarding";
+import { SecureCard } from "./SecureCard";
 import { splitAttached, waitingFor, type WaitingItem } from "./waiting";
 
 /** A pause before a time line (bot-mode-design §6.6). */
@@ -104,10 +106,10 @@ type Item = BotItem | WaitingItem | OnboardingItem;
 type BotRow = VirtualRow & { item: Item; previous: number | undefined; side: "um" | "bm" | null; joinPrev: boolean; joinNext: boolean };
 
 /** Each kind's height until rows of it are measured: only how long the scrollbar is depends on it. */
-const rowHeights: Record<string, number> = { user: 56, waiting: 70, bot: 96, attachment: 160, question: 120, routine: 40, deck_edit: 0, failure: 60, onboarding: 160 };
+const rowHeights: Record<string, number> = { user: 56, waiting: 70, bot: 96, attachment: 160, question: 120, card: 240, routine: 40, deck_edit: 0, failure: 60, onboarding: 160 };
 
 /** Which bubble an item draws: the owner's, the assistant's, or neither (a line of its own). */
-const sideOf = (item: Item): BotRow["side"] => (item.kind === "user" || item.kind === "waiting" ? "um" : item.kind === "bot" || item.kind === "attachment" || item.kind === "question" ? "bm" : null);
+const sideOf = (item: Item): BotRow["side"] => (item.kind === "user" || item.kind === "waiting" ? "um" : item.kind === "bot" || item.kind === "attachment" || item.kind === "question" || item.kind === "card" ? "bm" : null);
 
 /** The rows: two bubbles in a row from the same side, with no time line between (one shows after a pause), sit close. */
 function botRows(items: Item[]): BotRow[] {
@@ -285,6 +287,22 @@ function BotChat({ bot, conv, op, state, waiting, onWaiting }: {
             />
           </BotMessage>
         );
+      case "card": {
+        // Her's words in her bubble, the card under them; the card alone when she wrote none.
+        const card = cardOf(item.card);
+        const drawn = card && view && <SecureCard card={card} view={view} rpc={conv.rpc} session={session} />;
+        return (
+          <BotMessage key={item.key} item={item} fresh={fresh(item.key)} line={line} copy={item.text} after={item.text !== undefined ? drawn : undefined}>
+            {item.text !== undefined ? (
+              <div className="bbub">
+                <Markdown text={item.text} />
+              </div>
+            ) : (
+              drawn
+            )}
+          </BotMessage>
+        );
+      }
       case "failure":
         return item.last ? <FailureCard key={item.key} error={item.error} working={working} model={view?.info.model} op={op} stateId={`failure:${item.key}`} /> : <PastFailure key={item.key} error={item.error} stateId={`failure:${item.key}`} />;
       case "onboarding":
@@ -458,10 +476,10 @@ function CopyButton({ text }: { text: string }) {
   );
 }
 
-type SentItem = Extract<BotItem, { kind: "bot" | "attachment" | "question" }>;
+type SentItem = Extract<BotItem, { kind: "bot" | "attachment" | "question" | "card" }>;
 
-/** A message from the assistant: what it sent, with its time and buttons beside it on hover. */
-function BotMessage({ item, fresh, line, copy, children }: { item: SentItem; fresh: boolean; line: ReactNode; copy?: string; children: ReactNode }) {
+/** A message from the assistant: what it sent, with its time and buttons beside it on hover; `after`, under it. */
+function BotMessage({ item, fresh, line, copy, after, children }: { item: SentItem; fresh: boolean; line: ReactNode; copy?: string; after?: ReactNode; children: ReactNode }) {
   const { t } = useTranslation("her");
   const her = useHer();
   const source = item.source;
@@ -489,6 +507,7 @@ function BotMessage({ item, fresh, line, copy, children }: { item: SentItem; fre
               )}
             </div>
           </div>
+          {after}
         </div>
       </div>
     </>
