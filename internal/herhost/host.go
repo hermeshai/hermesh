@@ -38,6 +38,9 @@ type Config struct {
 	// ExtensionHost: while Her is on, the browsers here start this her as
 	// the Hermesh extension's host, for Socket (extension.go).
 	ExtensionHost bool
+	// Notice is told of each newest the owner's devices tell of (snapshot's
+	// changed): her reply, a question, or what waits for the owner.
+	Notice func(*machinev1.HerLatest)
 }
 
 // Host keeps one her running while Her is on.
@@ -267,8 +270,11 @@ func (h *Host) watch(ctx context.Context, mon *conn, p *provider.Proc) error {
 				}
 				if json.Unmarshal(n.params, &c) == nil {
 					h.mu.Lock()
-					snap.changed(c.Bots, c.Deleted, time.Now())
+					news := snap.changed(c.Bots, c.Deleted, time.Now())
 					h.mu.Unlock()
+					if news != nil && h.cfg.Notice != nil {
+						h.cfg.Notice(news)
+					}
 				}
 			case "models/changed":
 				select {

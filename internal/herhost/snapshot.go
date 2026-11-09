@@ -54,8 +54,11 @@ func newSnapshot(version string, bots []bot) *snapshot {
 // her says it was written. What an assistant waits for the owner to answer
 // (waiting: an approval, or a secure card open, by Her's words with it,
 // else its title) is the newest while it waits, and gives way to the newest
-// message once it no longer does.
-func (s *snapshot) changed(bots []bot, deleted []string, now time.Time) {
+// message once it no longer does. It returns the newest when the owner's
+// devices tell of it, as notices.ts herNotices does: it is another one, the
+// unread count grew with it, and its assistant isn't muted.
+func (s *snapshot) changed(bots []bot, deleted []string, now time.Time) *machinev1.HerLatest {
+	before, unread := s.latest, s.unread()
 	for _, b := range bots {
 		old, had := s.bots[b.ID]
 		s.bots[b.ID] = b
@@ -78,6 +81,11 @@ func (s *snapshot) changed(bots []bot, deleted []string, now time.Time) {
 			s.latest = s.newest()
 		}
 	}
+	l := s.latest
+	if l == nil || l.Muted || s.unread() <= unread || before != nil && l.BotId == before.BotId && l.At.AsTime().Equal(before.At.AsTime()) && l.Text == before.Text {
+		return nil
+	}
+	return proto.Clone(l).(*machinev1.HerLatest)
 }
 
 // newest is the newest message of an assistant's, by its time.

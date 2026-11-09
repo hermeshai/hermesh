@@ -525,7 +525,8 @@ public nonisolated struct Hermesh_Session_V1_Notice: @unchecked Sendable {
   // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
   // methods supported on all messages.
 
-  /// "question", "failure", "turn_done", "session_started" or "pairing".
+  /// "question", "failure", "turn_done", "session_started", "pairing" or
+  /// "her".
   public var kind: String {
     get {_storage._kind}
     set {_uniqueStorage()._kind = newValue}
@@ -628,6 +629,35 @@ public nonisolated struct Hermesh_Session_V1_Notice: @unchecked Sendable {
   public var pairingCode: String {
     get {_storage._pairingCode}
     set {_uniqueStorage()._pairingCode = newValue}
+  }
+
+  /// kind "her": what an assistant of Her's on the machine (machine names
+  /// it) has for the owner, as HerLatest says it: "message", "question" (it
+  /// asks the owner to choose) or "approval" (it waits for an approval or a
+  /// secure card), and its first words.
+  public var herKind: String {
+    get {_storage._herKind}
+    set {_uniqueStorage()._herKind = newValue}
+  }
+
+  public var machineID: String {
+    get {_storage._machineID}
+    set {_uniqueStorage()._machineID = newValue}
+  }
+
+  public var botID: String {
+    get {_storage._botID}
+    set {_uniqueStorage()._botID = newValue}
+  }
+
+  public var botName: String {
+    get {_storage._botName}
+    set {_uniqueStorage()._botName = newValue}
+  }
+
+  public var text: String {
+    get {_storage._text}
+    set {_uniqueStorage()._text = newValue}
   }
 
   public var unknownFields = SwiftProtobuf.UnknownStorage()
@@ -2200,7 +2230,7 @@ nonisolated extension Hermesh_Session_V1_StartSessionResponse: SwiftProtobuf.Mes
 
 nonisolated extension Hermesh_Session_V1_Notice: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
   public static let protoMessageName: String = _protobuf_package + ".Notice"
-  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{1}kind\0\u{1}at\0\u{3}session_id\0\u{1}title\0\u{1}grant\0\u{1}agent\0\u{1}project\0\u{1}machine\0\u{1}question\0\u{1}failure\0\u{3}failure_message\0\u{1}turn\0\u{3}diff_stat\0\u{3}pairing_kind\0\u{3}pairing_label\0\u{3}verification_code\0\u{3}pairing_code\0")
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{1}kind\0\u{1}at\0\u{3}session_id\0\u{1}title\0\u{1}grant\0\u{1}agent\0\u{1}project\0\u{1}machine\0\u{1}question\0\u{1}failure\0\u{3}failure_message\0\u{1}turn\0\u{3}diff_stat\0\u{3}pairing_kind\0\u{3}pairing_label\0\u{3}verification_code\0\u{3}pairing_code\0\u{3}her_kind\0\u{3}machine_id\0\u{3}bot_id\0\u{3}bot_name\0\u{1}text\0")
 
   fileprivate class _StorageClass {
     var _kind: String = String()
@@ -2220,6 +2250,11 @@ nonisolated extension Hermesh_Session_V1_Notice: SwiftProtobuf.Message, SwiftPro
     var _pairingLabel: String = String()
     var _verificationCode: String = String()
     var _pairingCode: String = String()
+    var _herKind: String = String()
+    var _machineID: String = String()
+    var _botID: String = String()
+    var _botName: String = String()
+    var _text: String = String()
 
       // This property is used as the initial default value for new instances of the type.
       // The type itself is protecting the reference to its storage via CoW semantics.
@@ -2247,6 +2282,11 @@ nonisolated extension Hermesh_Session_V1_Notice: SwiftProtobuf.Message, SwiftPro
       _pairingLabel = source._pairingLabel
       _verificationCode = source._verificationCode
       _pairingCode = source._pairingCode
+      _herKind = source._herKind
+      _machineID = source._machineID
+      _botID = source._botID
+      _botName = source._botName
+      _text = source._text
     }
   }
 
@@ -2282,6 +2322,11 @@ nonisolated extension Hermesh_Session_V1_Notice: SwiftProtobuf.Message, SwiftPro
         case 15: try { try decoder.decodeSingularStringField(value: &_storage._pairingLabel) }()
         case 16: try { try decoder.decodeSingularStringField(value: &_storage._verificationCode) }()
         case 17: try { try decoder.decodeSingularStringField(value: &_storage._pairingCode) }()
+        case 18: try { try decoder.decodeSingularStringField(value: &_storage._herKind) }()
+        case 19: try { try decoder.decodeSingularStringField(value: &_storage._machineID) }()
+        case 20: try { try decoder.decodeSingularStringField(value: &_storage._botID) }()
+        case 21: try { try decoder.decodeSingularStringField(value: &_storage._botName) }()
+        case 22: try { try decoder.decodeSingularStringField(value: &_storage._text) }()
         default: break
         }
       }
@@ -2345,6 +2390,21 @@ nonisolated extension Hermesh_Session_V1_Notice: SwiftProtobuf.Message, SwiftPro
       if !_storage._pairingCode.isEmpty {
         try visitor.visitSingularStringField(value: _storage._pairingCode, fieldNumber: 17)
       }
+      if !_storage._herKind.isEmpty {
+        try visitor.visitSingularStringField(value: _storage._herKind, fieldNumber: 18)
+      }
+      if !_storage._machineID.isEmpty {
+        try visitor.visitSingularStringField(value: _storage._machineID, fieldNumber: 19)
+      }
+      if !_storage._botID.isEmpty {
+        try visitor.visitSingularStringField(value: _storage._botID, fieldNumber: 20)
+      }
+      if !_storage._botName.isEmpty {
+        try visitor.visitSingularStringField(value: _storage._botName, fieldNumber: 21)
+      }
+      if !_storage._text.isEmpty {
+        try visitor.visitSingularStringField(value: _storage._text, fieldNumber: 22)
+      }
     }
     try unknownFields.traverse(visitor: &visitor)
   }
@@ -2371,6 +2431,11 @@ nonisolated extension Hermesh_Session_V1_Notice: SwiftProtobuf.Message, SwiftPro
         if _storage._pairingLabel != rhs_storage._pairingLabel {return false}
         if _storage._verificationCode != rhs_storage._verificationCode {return false}
         if _storage._pairingCode != rhs_storage._pairingCode {return false}
+        if _storage._herKind != rhs_storage._herKind {return false}
+        if _storage._machineID != rhs_storage._machineID {return false}
+        if _storage._botID != rhs_storage._botID {return false}
+        if _storage._botName != rhs_storage._botName {return false}
+        if _storage._text != rhs_storage._text {return false}
         return true
       }
       if !storagesAreEqual {return false}

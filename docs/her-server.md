@@ -809,7 +809,11 @@ Test, on the Linux environment:
 
 1. The Her entry in Swift.
 2. The console in a web view.
-3. Notices for Her's replies, questions and approvals.
+3. Notices for Her's replies, questions and approvals. The notices are
+   built, without actions yet: the Her Server's hermeshd seals a notice of
+   kind `her` to each iPhone that asked for it whenever the Mac app would
+   notify (`HerStatus.latest` new, unread grown, the assistant not muted),
+   and the app words it as the Mac does.
 4. Sign-ins with the app's callback.
 
 Test, from the iPhone alone:
