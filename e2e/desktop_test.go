@@ -41,7 +41,10 @@ type desktopFixture struct {
 	// The address of a connector's service that signs in with OAuth, for
 	// Her to ask for on a secure card (empty when none).
 	Connector string `json:"connector,omitempty"`
-	owner     *ownerMac
+	// her's ChatGPT fixture, standing in for OpenAI, for the app to open
+	// its sign-in page (empty when none).
+	ChatGPT string `json:"chatgpt,omitempty"`
+	owner   *ownerMac
 }
 
 // freshOwner is an owner daemon not set up yet: its socket, a relay of its
@@ -110,7 +113,7 @@ func TestDesktop(t *testing.T) {
 	specs, _ := filepath.Glob(filepath.Join(dir, "e2e", "*.spec.ts"))
 	for _, spec := range specs {
 		name := strings.TrimSuffix(filepath.Base(spec), ".spec.ts")
-		if name == "packaged" || name == "update" || name == "her" { // TestDesktopPackaged, TestDesktopUpdate, TestDesktopHer
+		if name == "packaged" || name == "update" || name == "her" || name == "her-chatgpt" { // TestDesktopPackaged, TestDesktopUpdate, TestDesktopHer, TestDesktopHerChatGPT
 			continue
 		}
 		// Windows runs its own spec and those ported to it (docs/windows.md §11).
@@ -181,6 +184,41 @@ func TestDesktopHer(t *testing.T) {
 		time.Sleep(time.Duration(secs) * time.Second)
 		return
 	}
+	herSpec(t, f, "her.spec.ts")
+}
+
+// TestDesktopHerChatGPT runs apps/desktop/e2e/her-chatgpt.spec.ts: on this
+// Mac, whose her has no model yet, Her's onboarding signs in to ChatGPT all
+// the way. her's ChatGPT fixture stands in for OpenAI, as in
+// TestHerChatGPTSignIn: her takes its address only as a debug build.
+//
+//	go test ./e2e -run TestDesktopHerChatGPT -v -timeout 30m
+func TestDesktopHerChatGPT(t *testing.T) {
+	if testing.Short() {
+		t.Skip("e2e")
+	}
+	if _, err := exec.LookPath("pnpm"); err != nil {
+		t.Skip("pnpm not installed")
+	}
+	her, mockBin := herBinaries(t)
+	mock := startHerMock(t, mockBin)
+	chatgpt := chatGPTFixture(t)
+	env := append(herEnv(her, herConsole(t), t.TempDir(), mock.base), "HER_TEST_CHATGPT_BASE="+chatgpt)
+	// No model or provider key from this computer, as for work-mac in desktopHerWorld.
+	for _, kv := range shellenv.Environ() {
+		if name, _, _ := strings.Cut(kv, "="); strings.HasSuffix(name, "_API_KEY") || name == "HER_MODEL" {
+			env = append(env, name+"=")
+		}
+	}
+	w := newOwnerMac(t, env, &localv1.GrantSpec{})
+	t.Cleanup(w.owner.stop) // stopped as a service is, so that it stops her
+	herSpec(t, desktopFixture{Socket: w.sock, Sessions: map[string]string{}, CLI: filepath.Join(w.bin, "hermesh"), CLIEnv: w.cliEnv, ChatGPT: chatgpt, owner: w}, "her-chatgpt.spec.ts")
+}
+
+// herSpec builds the app and runs one of the Her entry's specs against f.
+// HERMESH_DESKTOP_GREP picks tests by name.
+func herSpec(t *testing.T, f desktopFixture, spec string) {
+	t.Helper()
 	dir, _ := filepath.Abs(filepath.Join("apps", "desktop"))
 	out := filepath.Join(t.TempDir(), "app")
 	if r := run(t, []string{"HERMESH_DESKTOP_OUT=" + out, "VERSION=0.1.0-rc7"}, 5*time.Minute, "pnpm", "--dir", dir, "build"); r.code != 0 {
@@ -192,7 +230,7 @@ func TestDesktopHer(t *testing.T) {
 	file := filepath.Join(t.TempDir(), "fixture.json")
 	b, _ := json.Marshal(f)
 	os.WriteFile(file, b, 0o644)
-	args := []string{"--dir", dir, "exec", "playwright", "test", "her.spec.ts"}
+	args := []string{"--dir", dir, "exec", "playwright", "test", spec}
 	if g := os.Getenv("HERMESH_DESKTOP_GREP"); g != "" {
 		args = append(args, "--grep", g)
 	}

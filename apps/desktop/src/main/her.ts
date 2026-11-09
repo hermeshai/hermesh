@@ -71,9 +71,14 @@ function reopen(key: string) {
   if (page) shell.openExternal(page).catch(() => {});
 }
 
+// Development builds only: her's ChatGPT fixture, a loopback address, stands in for OpenAI (as her takes
+// HER_TEST_CHATGPT_BASE only as a debug build).
+const testChatGpt = !app.isPackaged ? process.env.HERMESH_TEST_CHATGPT_BASE : undefined;
+
 /** Signs in to ChatGPT for a machine's Her (shared/herSignin.ts): only an https page goes to the browser. */
 export function signInHerChatGpt(machineId: string): Promise<ChatGptSignIn> {
-  return signInFor(machineId, machineId, opensOutside, signInChatGpt);
+  const opens = (url: string) => opensOutside(url) || (!!testChatGpt && url.startsWith(`${testChatGpt}/`));
+  return signInFor(machineId, machineId, opens, signInChatGpt);
 }
 
 /** Opens the browser again at the ChatGPT sign-in under way for a machine. */
