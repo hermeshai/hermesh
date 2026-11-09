@@ -147,6 +147,12 @@ describe("Her notices", () => {
     expect(herNotices(herSnapshots(before), after)).toEqual([{ machineId: "m2", botId: "her", title: "Her · cloud", body: "等你批准：重启 nginx" }]);
   });
 
+  test("a question says it waits for an answer", () => {
+    const before = [env("m1", "Mac mini", 0, { text: "早", seconds: -600 })];
+    const after = [env("m1", "Mac mini", 1, { text: "现在就发吗？", seconds: 0, kind: HerLatestKind.QUESTION })];
+    expect(herNotices(herSnapshots(before), after)).toEqual([{ machineId: "m1", botId: "her", title: "Her", body: "等你回答：现在就发吗？" }]);
+  });
+
   test("no news: an environment seen for the first time, a muted assistant, unread that fell or stayed, the same message, Her turned off", () => {
     const first = [env("m1", "Mac mini", 4, { text: "以前的", seconds: -60 })];
     expect(herNotices(new Map(), first)).toEqual([]);

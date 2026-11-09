@@ -181,7 +181,12 @@ export function herNotices(previous: ReadonlyMap<string, HerSnapshot>, machines:
       machineId: m.machineId,
       botId: latest.botId,
       title: environments.length > 1 ? t("notice.herTitle", { name, environment: m.machineName }) : name,
-      body: latest.kind === HerLatestKind.APPROVAL ? t("notice.herApproval", { text: latest.text }) : latest.text,
+      body:
+        latest.kind === HerLatestKind.APPROVAL
+          ? t("notice.herApproval", { text: latest.text })
+          : latest.kind === HerLatestKind.QUESTION
+            ? t("notice.herQuestion", { text: latest.text })
+            : latest.text,
     });
   }
   return out;

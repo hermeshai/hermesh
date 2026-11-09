@@ -26,6 +26,8 @@ type bot struct {
 		Text string `json:"text"`
 		File string `json:"file"`
 		Ts   string `json:"ts"`
+		// Question: it asks the owner, with send_to_user's question.
+		Question bool `json:"question"`
 	} `json:"last"`
 }
 
@@ -100,8 +102,8 @@ func (s *snapshot) unread() uint32 {
 	return n
 }
 
-// lastMessage is b's last message as HerLatest; a message of files without
-// words names its first file.
+// lastMessage is b's last message as HerLatest, a question as one; a message
+// of files without words names its first file.
 func lastMessage(b bot) *machinev1.HerLatest {
 	at, err := time.Parse(time.RFC3339, b.Last.Ts)
 	if err != nil {
@@ -111,7 +113,11 @@ func lastMessage(b bot) *machinev1.HerLatest {
 	if text == "" {
 		text = b.Last.File
 	}
-	return latest(b, machinev1.HerLatestKind_HER_LATEST_KIND_MESSAGE, text, at)
+	kind := machinev1.HerLatestKind_HER_LATEST_KIND_MESSAGE
+	if b.Last.Question {
+		kind = machinev1.HerLatestKind_HER_LATEST_KIND_QUESTION
+	}
+	return latest(b, kind, text, at)
 }
 
 func latest(b bot, kind machinev1.HerLatestKind, text string, at time.Time) *machinev1.HerLatest {
