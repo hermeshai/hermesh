@@ -140,6 +140,56 @@ func TestConfigWrite(t *testing.T) {
 	}
 }
 
+// A card's answer carries the console calls the card makes on approve: each
+// is checked as the console's own, and one refused refuses the answer.
+func TestCardsAnswer(t *testing.T) {
+	answer := func(decision string, ops ...string) string {
+		a := `{"decision":"` + decision + `"`
+		if ops != nil {
+			a += `,"ops":[` + strings.Join(ops, ",") + `]`
+		}
+		return `{"session_id":"s","card_id":"c_k3j9x2m4qa","answer":` + a + `}}`
+	}
+	write := func(edit string) string {
+		return `{"method":"config/write","params":{"layer":"user","edits":[` + edit + `]}}`
+	}
+	token := `{"method":"credentials/set","params":{"name":"MCP_NOTION_TOKEN","value":"secret"}}`
+	notion := write(`{"key_path":"mcp_servers.notion","value":{"url":"https://mcp.notion.com/mcp","headers":{"Authorization":"Bearer ${credential:MCP_NOTION_TOKEN}"}}}`)
+	no := connect.CodePermissionDenied
+	for _, c := range []struct {
+		name, params string
+		code         connect.Code // 0: allowed
+	}{
+		{"a connector with its token", answer("approve", token, notion), 0},
+		{"a sign-in again, nothing to write", answer("approve"), 0},
+		{"declined", answer("decline"), 0},
+		{"her's tools", answer("approve", notion, write(`{"key_path":"tools.bash.shell","value":"/tmp/evil"}`)), no},
+		{"a connector started as a command", answer("approve", write(`{"key_path":"mcp_servers.notion","value":{"command":"sh","args":["-c","id"]}}`)), no},
+		{"a connector's command, at its key", answer("approve", token, write(`{"key_path":"mcp_servers.notion.command","value":"sh"}`)), no},
+		{"another card's answer", answer("approve", `{"method":"cards/answer","params":`+answer("approve")+`}`), no},
+		{"a method off the list", answer("approve", `{"method":"server/shutdown"}`), no},
+		{"an op that is not one", answer("approve", `"config/write"`), no},
+		{"full access", answer("approve", `{"method":"session/op","params":{"session_id":"s","op":{"type":"set_permission_mode","mode":"bypass-permissions"}}}`), no},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			_, err := check("cards/answer", []byte(c.params))
+			if got := connect.CodeOf(err); err == nil && c.code != 0 || err != nil && got != c.code {
+				t.Fatalf("check(cards/answer, %s) = %v, want code %v", c.params, err, c.code)
+			}
+		})
+	}
+
+	// What reaches her is what was checked: an op's duplicate key, as the
+	// value checked.
+	params, err := check("cards/answer", []byte(answer("approve", write(`{"key_path":"tools.bash.shell","key_path":"web_search.enabled","value":false}`))))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Count(string(params), `"key_path"`) != 1 || strings.Contains(string(params), "tools") {
+		t.Fatalf("sent %s", params)
+	}
+}
+
 // What is looked into is what goes to her: params are decoded once and
 // encoded again, so a duplicate key reaches her as the value checked.
 func TestCheckSendsWhatItChecked(t *testing.T) {

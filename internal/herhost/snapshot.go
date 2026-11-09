@@ -49,7 +49,10 @@ func newSnapshot(version string, bots []bot) *snapshot {
 }
 
 // changed takes a bots/changed: what changed in it is the newest, whenever
-// her says it was written.
+// her says it was written. What an assistant waits for the owner to answer
+// (waiting: an approval, or a secure card open, by Her's words with it,
+// else its title) is the newest while it waits, and gives way to the newest
+// message once it no longer does.
 func (s *snapshot) changed(bots []bot, deleted []string, now time.Time) {
 	for _, b := range bots {
 		old, had := s.bots[b.ID]
@@ -59,6 +62,8 @@ func (s *snapshot) changed(bots []bot, deleted []string, now time.Time) {
 			s.latest = latest(b, machinev1.HerLatestKind_HER_LATEST_KIND_APPROVAL, *b.Waiting, now)
 		case b.Last != nil && b.Last.From == "bot" && (!had || old.Last == nil || *old.Last != *b.Last):
 			s.latest = lastMessage(b)
+		case b.Waiting == nil && s.latest != nil && s.latest.BotId == b.ID && s.latest.Kind == machinev1.HerLatestKind_HER_LATEST_KIND_APPROVAL:
+			s.latest = s.newest()
 		case s.latest != nil && s.latest.BotId == b.ID && (s.latest.BotName != b.Name || s.latest.Muted != b.Muted):
 			l := proto.Clone(s.latest).(*machinev1.HerLatest)
 			l.BotName, l.Muted = b.Name, b.Muted

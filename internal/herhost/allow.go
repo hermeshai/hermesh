@@ -20,6 +20,8 @@ func init() {
 		"bots/avatar", "bots/clear", "bots/delete", "bots/routine", "bots/routine_delete", "bots/routine_run",
 		"bots/routine_run_now", "bots/routine_runs", "bots/routine_set_enabled", "bots/routine_stop",
 		"session/op", "session/history", "session/detach", "models/list", "files/list", "files/read",
+		// The owner's answer to a secure card (docs/her-secure-cards.md §3.3).
+		"cards/answer",
 		// Whether computer use can work there, with macOS's permissions as her finds them.
 		"desktop/status",
 		// The console: models, connectors, skills, web search, the browser.
@@ -79,7 +81,7 @@ func check(method string, params []byte) (json.RawMessage, error) {
 		return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("the params of %s are not JSON", method))
 	}
 	switch method {
-	case "session/op", "config/write", "mcp/probe", "mcp/login":
+	case "session/op", "config/write", "mcp/probe", "mcp/login", "cards/answer":
 	default:
 		return params, nil
 	}
@@ -122,6 +124,22 @@ func refuse(method string, params any) error {
 		// Probing a server starts it.
 		if runsCommand(p["server"]) {
 			return denied("only SetHerCommandConnector, signed by the owner's root key, adds or changes a connector started as a command")
+		}
+	case "cards/answer":
+		// What a card does on approve is console calls, each checked as the
+		// console's are: a card never changes more than the console could.
+		answer, _ := p["answer"].(map[string]any)
+		ops, _ := answer["ops"].([]any)
+		for _, op := range ops {
+			op, _ := op.(map[string]any)
+			m, _ := op["method"].(string)
+			if m == "cards/answer" {
+				return denied("a card's op can't answer a card")
+			}
+			params, _ := json.Marshal(op["params"])
+			if _, err := check(m, params); err != nil {
+				return err
+			}
 		}
 	}
 	return nil
