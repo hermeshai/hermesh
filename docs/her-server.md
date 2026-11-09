@@ -440,7 +440,10 @@ sequenceDiagram
 ```
 
 The device that wrote a message keeps it (`HerSend`, `ListHerWaiting`) and
-delivers it once the machine answers again. The relay's post office
+delivers it once the machine answers again. Its files go by their path on
+the device; a pasted picture, which has none, is kept by hermeshd with the
+message, uploaded as a file too, and deleted once the message is delivered
+or dropped. The relay's post office
 ([agent-messages.md](agent-messages.md) §5) would deliver it even after the
 device goes away, but today it takes no messages from owner devices, and
 changing that needs a relay release (§12).

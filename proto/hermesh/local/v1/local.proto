@@ -1196,6 +1196,16 @@ message HerSendRequest {
   // Files on this device to upload into the assistant's folder first; the
   // message names where they landed.
   repeated string local_paths = 4;
+  // Pictures pasted rather than picked from a file: kept on this device
+  // with the message, uploaded as files too, and deleted once it is
+  // delivered or dropped.
+  repeated HerPicture pictures = 5;
+}
+
+message HerPicture {
+  // Its name, as pasted ("image.png").
+  string name = 1;
+  bytes data = 2;
 }
 
 message HerSendResponse {

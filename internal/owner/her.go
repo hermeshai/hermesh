@@ -12,6 +12,7 @@ import (
 	"net/http/httputil"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"time"
 
@@ -398,7 +399,7 @@ func (o *Owner) HerSend(ctx context.Context, req *localv1.HerSendRequest) (*loca
 	switch {
 	case req.MachineId == "" || req.BotId == "":
 		return nil, connect.NewError(connect.CodeInvalidArgument, errors.New("a message goes to a machine's assistant"))
-	case req.Text == "" && len(req.LocalPaths) == 0:
+	case req.Text == "" && len(req.LocalPaths) == 0 && len(req.Pictures) == 0:
 		return nil, connect.NewError(connect.CodeInvalidArgument, errors.New("an empty message"))
 	}
 	for _, p := range req.LocalPaths {
@@ -409,14 +410,26 @@ func (o *Owner) HerSend(ctx context.Context, req *localv1.HerSendRequest) (*loca
 		f.Close()
 	}
 	w := &localv1.HerWaiting{Id: "hw_" + strings.ToLower(ulid.Make().String()), MachineId: req.MachineId, BotId: req.BotId, Text: req.Text,
-		LocalPaths: req.LocalPaths, CreatedAt: timestamppb.Now()}
-	before, err := o.st.herWaiting(req.MachineId, req.BotId)
+		LocalPaths: slices.Clone(req.LocalPaths), CreatedAt: timestamppb.Now()}
+	if err := o.keepPictures(w, req.Pictures); err != nil {
+		return nil, err
+	}
+	sent, err := o.herSendNow(ctx, w)
+	if err != nil || sent.Delivered {
+		o.dropPictures(w.Id)
+	}
+	return sent, err
+}
+
+// herSendNow delivers w now, or keeps it to deliver later.
+func (o *Owner) herSendNow(ctx context.Context, w *localv1.HerWaiting) (*localv1.HerSendResponse, error) {
+	before, err := o.st.herWaiting(w.MachineId, w.BotId)
 	if err != nil {
 		return nil, err
 	}
 	switch {
 	case len(before) > 0:
-	case o.rep.offline(req.MachineId):
+	case o.rep.offline(w.MachineId):
 		w.Error = "offline"
 	default:
 		err := o.herDeliver(ctx, w)
@@ -537,6 +550,7 @@ func (o *Owner) flushWaiting(ctx context.Context) {
 		}
 		if err == nil {
 			_, err = o.st.deleteHerWaiting(w.MachineId, w.Id)
+			o.dropPictures(w.Id)
 		} else {
 			stuck[bot] = true
 			if errors.As(err, new(unreachable)) {
@@ -564,8 +578,53 @@ func (o *Owner) DeleteHerWaiting(machineID, id string) error {
 	if !gone {
 		return connect.NewError(connect.CodeNotFound, fmt.Errorf("no message %s waits for %s", id, machineID))
 	}
+	o.dropPictures(id)
 	o.wakeHer()
 	return nil
+}
+
+// herPictureMax is the largest picture kept with a message, as the Mac app
+// takes them (apps/desktop's attachments.ts).
+const herPictureMax = 10 << 20
+
+// herPictures is where pasted pictures wait with their message, one folder
+// each, so that each keeps its own name when it is uploaded.
+func (o *Owner) herPictures() string { return filepath.Join(o.cfg.DataDir, "her-pictures") }
+
+// keepPictures keeps w's pasted pictures here, as files w names.
+func (o *Owner) keepPictures(w *localv1.HerWaiting, pictures []*localv1.HerPicture) error {
+	for i, p := range pictures {
+		if len(p.Data) == 0 || len(p.Data) > herPictureMax {
+			o.dropPictures(w.Id)
+			return connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("a picture of %d bytes: at most %d", len(p.Data), herPictureMax))
+		}
+		name := filepath.Base(p.Name)
+		if name == "." || name == string(filepath.Separator) {
+			name = "picture"
+		}
+		path := filepath.Join(o.herPictures(), fmt.Sprintf("%s-%d", w.Id, i), name)
+		err := os.MkdirAll(filepath.Dir(path), 0o700)
+		if err == nil {
+			err = os.WriteFile(path, p.Data, 0o600)
+		}
+		if err != nil {
+			o.dropPictures(w.Id)
+			return err
+		}
+		w.LocalPaths = append(w.LocalPaths, path)
+	}
+	return nil
+}
+
+// dropPictures deletes the pictures kept with the message id, once it was
+// delivered or dropped.
+func (o *Owner) dropPictures(id string) {
+	dirs, _ := filepath.Glob(filepath.Join(o.herPictures(), id+"-*"))
+	for _, dir := range dirs {
+		if err := os.RemoveAll(dir); err != nil {
+			o.log.Warn("a picture kept with a message to Her not deleted", "dir", dir, "err", err)
+		}
+	}
 }
 
 // ---------------------------------------------------------------------------

@@ -1009,3 +1009,48 @@ func TestHerThroughLocalService(t *testing.T) {
 		t.Fatalf("an unknown machine: %v", err)
 	}
 }
+
+// A pasted picture waits with its message, kept here as a file of its own
+// name, goes to the assistant's folder with it, and is deleted once the
+// message is delivered, or dropped.
+func TestHerSendKeepsPictures(t *testing.T) {
+	h := &herSide{}
+	_, o, down, _ := herOwner(t, h)
+	ctx := context.Background()
+	down.Store(true)
+	res, err := o.HerSend(ctx, &localv1.HerSendRequest{MachineId: "m_1", BotId: "b1", Pictures: []*localv1.HerPicture{{Name: "image.png", Data: []byte("png")}}})
+	if err != nil || res.Waiting == nil || len(res.Waiting.LocalPaths) != 1 {
+		t.Fatalf("send: %v %v", res, err)
+	}
+	kept := res.Waiting.LocalPaths[0]
+	if b, err := os.ReadFile(kept); err != nil || string(b) != "png" || filepath.Base(kept) != "image.png" {
+		t.Fatalf("kept %s: %q %v", kept, b, err)
+	}
+	down.Store(false)
+	o.flushWaiting(ctx)
+	if h.uploads["b1/image.png"] != "png" {
+		t.Fatalf("uploaded: %v", h.uploads)
+	}
+	if got := h.prompts(t); len(got) != 1 || !strings.Contains(got[0], "/uploads/image.png") {
+		t.Fatalf("handed %q", got)
+	}
+	if left, _ := os.ReadDir(o.herPictures()); len(left) != 0 {
+		t.Fatalf("pictures left after delivery: %v", left)
+	}
+
+	down.Store(true)
+	res, err = o.HerSend(ctx, &localv1.HerSendRequest{MachineId: "m_1", BotId: "b1", Text: "this one", Pictures: []*localv1.HerPicture{{Name: "a.png", Data: []byte("a")}}})
+	if err != nil || res.Waiting == nil {
+		t.Fatalf("send: %v %v", res, err)
+	}
+	if err := o.DeleteHerWaiting("m_1", res.Waiting.Id); err != nil {
+		t.Fatal(err)
+	}
+	if left, _ := os.ReadDir(o.herPictures()); len(left) != 0 {
+		t.Fatalf("pictures left after dropping: %v", left)
+	}
+	big := make([]byte, herPictureMax+1)
+	if _, err := o.HerSend(ctx, &localv1.HerSendRequest{MachineId: "m_1", BotId: "b1", Pictures: []*localv1.HerPicture{{Name: "big.png", Data: big}}}); connect.CodeOf(err) != connect.CodeInvalidArgument {
+		t.Fatalf("a picture too large: %v", err)
+	}
+}
