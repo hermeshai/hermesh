@@ -229,6 +229,10 @@ type herEvent struct {
 		IsError  bool            `json:"is_error"`
 		Details  json.RawMessage `json:"details"`
 	} `json:"result"`
+	// card_changed's: the card, its state and her's words on it.
+	CardID string `json:"card_id"`
+	State  string `json:"state"`
+	Note   string `json:"note"`
 }
 
 // sentText: whether e is the assistant sending the owner a message with s
