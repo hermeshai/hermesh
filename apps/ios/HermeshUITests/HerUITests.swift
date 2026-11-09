@@ -15,6 +15,7 @@ extension HermeshUITests {
         try XCTContext.runActivity(named: "Her is first in the menu, and is turned on for the Mac with Face ID") { _ in try herTurnOn() }
         try XCTContext.runActivity(named: "with no model, Her speaks first and connects one with an API key") { _ in try herOnboarding() }
         try XCTContext.runActivity(named: "a chat: the message, then Her's reply") { _ in try herChat() }
+        try XCTContext.runActivity(named: "her name opens her settings, a page of their own") { _ in try herSettings() }
         try XCTContext.runActivity(named: "a question: a tapped answer is the owner's message") { _ in try herQuestion() }
         try XCTContext.runActivity(named: "an approval in the composer's place, allowed once") { _ in try herApproval() }
         try XCTContext.runActivity(named: "the Mac offline: what was said stays, and a message waits here until it is back") { _ in try herOffline() }
@@ -64,6 +65,22 @@ extension HermeshUITests {
         herSend("[[mock:send:你好，主人]] hi")
         XCTAssertTrue(app.staticTexts["你好，主人"].waitForExistence(timeout: 60), "Her's reply")
         herShot("Her: a chat")
+    }
+
+    func herSettings() throws {
+        // Her's mark and name over the conversation, which scrolls under them; no button beside them.
+        let name = app.buttons["her-name"]
+        XCTAssertTrue(name.exists && name.label.contains("Her"), name.label)
+        XCTAssertFalse(app.buttons["her-settings"].exists, "no button beside them")
+        name.tap()
+        // Where she runs, her model, and how freely she acts.
+        XCTAssertTrue(text("运行在").waitForExistence(timeout: 10), "her settings")
+        XCTAssertTrue(app.descendants(matching: .any)["her-environment"].firstMatch.label.contains("owner-mac"))
+        XCTAssertTrue(text("模型").exists && app.buttons["先问我"].exists && app.buttons["完全访问"].exists)
+        XCTAssertTrue(text("在另一台机器上开启 Her").exists && text("清空对话").exists)
+        herShot("Her: settings")
+        app.navigationBars.buttons.element(boundBy: 0).tap()
+        XCTAssertTrue(app.descendants(matching: .any)["her-composer"].firstMatch.waitForExistence(timeout: 10), "back to the conversation")
     }
 
     func herQuestion() throws {

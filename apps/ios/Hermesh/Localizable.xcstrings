@@ -8481,16 +8481,6 @@
         }
       }
     },
-    "On %@": {
-      "localizations": {
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "在 %@ 上"
-          }
-        }
-      }
-    },
     "Before Acting": {
       "localizations": {
         "zh-Hans": {
@@ -8711,26 +8701,6 @@
         }
       }
     },
-    "Assistant Settings": {
-      "localizations": {
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "助手设置"
-          }
-        }
-      }
-    },
-    "Add Environment…": {
-      "localizations": {
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "添加环境…"
-          }
-        }
-      }
-    },
     "%@ · %u unread": {
       "localizations": {
         "zh-Hans": {
@@ -8763,6 +8733,26 @@
     },
     "Her": {
       "shouldTranslate": false
+    },
+    "Runs On": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "运行在"
+          }
+        }
+      }
+    },
+    "Opens Her’s settings": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "打开 Her 的设置"
+          }
+        }
+      }
     }
   },
   "version": "1.0"
