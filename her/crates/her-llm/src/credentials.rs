@@ -232,12 +232,26 @@ impl FileStore {
         }
     }
 
-    fn write(&self, table: &toml::Table) -> Result<(), String> {
-        use std::io::Write as _;
-        let text = toml::to_string(table).map_err(|e| e.to_string())?;
+    /// Keeps every other writer out, in this process or another (`her serve`, the `her` command),
+    /// until the file returned is dropped: each reads the keys, changes one and writes them back,
+    /// and two at once would lose one change.
+    fn lock(&self) -> Result<std::fs::File, String> {
         if let Some(dir) = self.path.parent() {
             std::fs::create_dir_all(dir).map_err(|e| e.to_string())?;
         }
+        let path = self.path.with_extension("lock");
+        let mut options = std::fs::OpenOptions::new();
+        options.write(true).create(true).truncate(false);
+        #[cfg(unix)]
+        std::os::unix::fs::OpenOptionsExt::mode(&mut options, 0o600);
+        let file = options.open(&path).map_err(|e| format!("{}: {e}", path.display()))?;
+        file.lock().map_err(|e| format!("{}: {e}", path.display()))?;
+        Ok(file)
+    }
+
+    fn write(&self, table: &toml::Table) -> Result<(), String> {
+        use std::io::Write as _;
+        let text = toml::to_string(table).map_err(|e| e.to_string())?;
         // A temporary file of its own: writers at the same time (token refreshes) must not rename
         // one another's away.
         let tmp = self.path.with_extension(format!("{:016x}.tmp", rand::random::<u64>()));
@@ -264,12 +278,14 @@ impl CredentialStore for FileStore {
     }
 
     fn set(&self, provider: &str, key: &str) -> Result<(), String> {
+        let _writing = self.lock()?;
         let mut table = self.read()?;
         table.insert(provider.to_string(), toml::Value::String(key.to_string()));
         self.write(&table)
     }
 
     fn delete(&self, provider: &str) -> Result<(), String> {
+        let _writing = self.lock()?;
         let mut table = self.read()?;
         if table.remove(provider).is_some() {
             self.write(&table)?;
@@ -304,7 +320,8 @@ mod tests {
         let _ = std::fs::remove_dir_all(dir);
     }
 
-    /// Refreshed tokens are saved from several tasks at once: no write may fail for another's.
+    /// Refreshed tokens are saved from several tasks at once: no write may fail for another's, nor
+    /// lose another's key.
     #[test]
     fn writers_at_the_same_time_all_succeed() {
         let dir = tempfile_dir();
@@ -318,8 +335,12 @@ mod tests {
         for writer in writers {
             writer.join().unwrap().unwrap();
         }
-        let left: Vec<_> = std::fs::read_dir(&dir).unwrap().map(|e| e.unwrap().file_name()).collect();
-        assert_eq!(left, ["credentials.toml"], "no temporary file is left");
+        for n in 0..8 {
+            assert_eq!(store.get(&format!("mcp-oauth.s{n}")).unwrap().as_deref(), Some("t49"), "writer {n}'s key");
+        }
+        let mut left: Vec<_> = std::fs::read_dir(&dir).unwrap().map(|e| e.unwrap().file_name()).collect();
+        left.sort();
+        assert_eq!(left, ["credentials.lock", "credentials.toml"], "no temporary file is left");
         let _ = std::fs::remove_dir_all(dir);
     }
 
