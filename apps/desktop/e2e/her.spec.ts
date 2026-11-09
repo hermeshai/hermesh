@@ -62,8 +62,9 @@ test("Her: the first run, a chat, a secure card, the console, a second environme
   await snap(page, "her-chat");
 
   // A connector Her asks for on a secure card (docs/her-secure-cards.md §4): the fixture's service, which signs in
-  // with OAuth. Under Her's words, the card says what it connects, its address large, and what that lets Her do;
-  // nothing changes until the owner answers, and the composer stays open meanwhile. Connect adds it, and its sign-in
+  // with OAuth. Under Her's words, the card says it is an MCP connection, what Her wants to connect to, its address
+  // large, what that lets Her do and to connect only what one trusts; nothing changes until the owner answers, and
+  // the composer stays open meanwhile. Authorizing adds it, and its sign-in
   // opens in the browser (here, the stand-in records it), coming back to this Mac's hermeshd, and opens again when
   // asked. The service approves at once: the card folds into one line with the connector's tools.
   await app.evaluate(({ shell }) => {
@@ -74,15 +75,17 @@ test("Her: the first run, a chat, a secure card, the console, a second environme
   const pages = () => app.evaluate(() => (globalThis as unknown as { pages: string[] }).pages);
   const service = new URL(fixture.connector ?? "");
   await send(mockConnect("tracker", service.href));
-  const card = log.getByRole("group", { name: "安全卡" });
-  await expect(card).toContainText("接入 Tracker", { timeout: 60_000 });
+  const card = log.getByRole("group", { name: "MCP 连接" });
+  await expect(card.locator(".sc-h")).toContainText("MCP 连接", { timeout: 60_000 });
+  await expect(card).toContainText("Her 想连接 Tracker");
   await expect(card.locator(".sc-t b")).toContainText(service.hostname);
-  await expect(card).toContainText("Her 能用它的工具，发给它的内容会离开这台机器");
-  await expect(card).not.toContainText("这不是你要求的");
+  await expect(card).toContainText("连接后，Her 可以使用它提供的工具，用到时会把相关内容发给它。只连接你信任的服务。");
+  await expect(card).not.toContainText("不是你发起的");
+  await expect(card.getByRole("button", { name: "拒绝" })).toBeVisible();
   await expect(composer).toBeEnabled();
   await snap(page, "her-card");
-  await card.getByRole("button", { name: "接入", exact: true }).click();
-  await expect(card).toContainText("等你在浏览器里登录…", { timeout: 30_000 });
+  await card.getByRole("button", { name: "授权连接" }).click();
+  await expect(card).toContainText("等你在浏览器里登录并授权…", { timeout: 30_000 });
   await expect.poll(pages, { timeout: 30_000 }).toHaveLength(1);
   const [authorize] = await pages();
   const back = new URL(authorize).searchParams.get("redirect_uri") ?? "";
@@ -93,7 +96,7 @@ test("Her: the first run, a chat, a secure card, the console, a second environme
   const landed = await fetch(authorize);
   expect(landed.ok).toBe(true);
   expect(landed.url.startsWith(`${back}?`)).toBe(true);
-  await expect(log.locator(".sc-end.done")).toHaveText(/^已接入 Tracker · \d+ 个工具$/, { timeout: 60_000 });
+  await expect(log.locator(".sc-end.done")).toHaveText(/^已连接 Tracker · \d+ 个工具$/, { timeout: 60_000 });
   await expect(card).toHaveCount(0);
   // her-mock hears how it went, and says so.
   await expect(log.locator(".bm .bbub").last()).toContainText(/tracker/i, { timeout: 60_000 });

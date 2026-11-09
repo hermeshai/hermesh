@@ -7,8 +7,8 @@ import { cardNow, cardShown, connectBody, filled, type Card, type CardAnswer, ty
 import { useHer } from "./context";
 import { SecretInput } from "./ModelOnboarding";
 
-// A secure card under Her's bubble (docs/her-secure-cards.md §4): a lock, "Secure card" and the
-// environment it is for, drawn by the app alone, as a message's words can't. A `connect` card
+// A secure card under Her's bubble (docs/her-secure-cards.md §4): a lock, what it asks for ("MCP
+// connection") and the environment it is for, drawn by the app alone, as a message's words can't. A `connect` card
 // asks to add a connector (or sign in to one again): the owner's values go into the answer and
 // leave the page as it is sent; a sign-in then runs here, in the main process. Once it ended, one
 // line stays.
@@ -111,10 +111,10 @@ export function SecureCard({ card, view, rpc, session }: { card: Card; view: Ses
   };
 
   return (
-    <div className="scard" role="group" aria-label={t("card.secure")}>
+    <div className="scard" role="group" aria-label={t("card.mcp")}>
       <div className="sc-h">
         <Icon name="lock" />
-        <span>{t("card.secure")}</span>
+        <span>{t("card.mcp")}</span>
         <span>·</span>
         <span className="sc-env">{her.machine.machineName}</span>
         {card.asked_by === "her" && (
@@ -162,7 +162,7 @@ export function SecureCard({ card, view, rpc, session }: { card: Card; view: Ses
           )}
           <div className="sc-f">
             <button type="button" className="btn" disabled={busy || !rpc} onClick={cancel}>
-              {t("card.cancel")}
+              {t("card.deny")}
             </button>
             <button type="submit" className="btn primary" disabled={busy || !ready || !rpc}>
               {shown.busy ? t("card.connecting") : body.reconnect ? t("card.signIn") : t("card.connectButton")}

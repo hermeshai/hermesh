@@ -3,11 +3,11 @@ import HermeshKit
 import SwiftUI
 
 /// A secure card under Her's words (docs/her-secure-cards.md §4): a lock,
-/// "Secure Card" and the machine it is for, drawn by the app alone, as a
-/// message's words can't be. A `connect` card asks to add a connector (or
-/// sign in to one again): what the owner types goes into the answer and
-/// leaves the page as it is sent; a sign-in then runs on this iPhone. Once
-/// it ended, one line stays.
+/// what it asks for ("MCP Connection") and the machine it is for, drawn by
+/// the app alone, as a message's words can't be. A `connect` card asks to
+/// add a connector (or sign in to one again): what the owner types goes
+/// into the answer and leaves the page as it is sent; a sign-in then runs
+/// on this iPhone. Once it ended, one line stays.
 struct HerSecureCard: View {
     @Environment(AppModel.self) private var model
     let chat: HerChat
@@ -38,16 +38,16 @@ struct HerSecureCard: View {
             // Nothing typed stays once the form is gone.
             .onChange(of: shown) { if case .form = shown {} else { values = [:] } }
         } else {
-            Label("Update Hermesh to answer this card", systemImage: "lock").font(.footnote).foregroundStyle(.secondary)
+            Label("Update Hermesh to answer this request", systemImage: "lock").font(.footnote).foregroundStyle(.secondary)
         }
     }
 
     private func ended(_ outcome: String, tools: Int?, name: String) -> some View {
         let text: String = switch outcome {
         case "done": tools.map { String(localized: "\(name) connected · \($0) tools") } ?? String(localized: "\(name) connected")
-        case "failed": String(localized: "Couldn’t connect \(name)")
+        case "failed": String(localized: "Couldn’t connect to \(name)")
         case "declined": String(localized: "Declined")
-        case "replaced": String(localized: "Replaced by a newer card")
+        case "replaced": String(localized: "Replaced by a newer request")
         case "elsewhere": String(localized: "Answered on another device")
         default: String(localized: "Expired")
         }
@@ -62,21 +62,23 @@ struct HerSecureCard: View {
         return VStack(alignment: .leading, spacing: 10) {
             HStack(spacing: 5) {
                 Image(systemName: "lock.fill")
-                Text("Secure Card · \(machine.machineName)")
+                Text("MCP Connection · \(machine.machineName)")
                 if card.askedBy == "her" {
-                    Label("You didn’t ask for this", systemImage: "exclamationmark.triangle").foregroundStyle(.orange)
+                    Label("You didn’t request this", systemImage: "exclamationmark.triangle").foregroundStyle(.orange)
                 }
             }
             .font(.caption).foregroundStyle(.secondary)
-            HStack(alignment: .firstTextBaseline, spacing: 6) {
-                Text(connect.reconnect ? String(localized: "Sign in to \(name) again") : String(localized: "Connect \(name)")).font(.headline)
-                Text(connect.host).font(.subheadline).foregroundStyle(.secondary).textSelection(.enabled)
+            // Who wants to connect to what, then the address, large: where what Her sends goes.
+            VStack(alignment: .leading, spacing: 2) {
+                Text(connect.reconnect ? String(localized: "Her needs to sign in to \(name) again") : String(localized: "Her wants to connect to \(name)"))
+                    .font(.subheadline).foregroundStyle(.secondary)
+                Text(connect.host).font(.headline).textSelection(.enabled)
             }
-            Text("Her can use its tools; what she sends it leaves this machine").font(.subheadline).foregroundStyle(.secondary)
+            Text("Once connected, Her can use its tools and sends them what they need. Only connect services you trust.").font(.subheadline).foregroundStyle(.secondary)
             if shown == .signIn {
                 HStack(spacing: 8) {
                     ProgressView()
-                    Text("Waiting for you to sign in in the browser…")
+                    Text("Waiting for you to sign in and authorize in your browser…")
                 }
                 .font(.subheadline).foregroundStyle(.secondary)
                 HStack(spacing: 8) {
@@ -94,7 +96,7 @@ struct HerSecureCard: View {
                 }
                 if case .form(let note?, _) = shown { Text(note).font(.footnote).foregroundStyle(.red).textSelection(.enabled) }
                 HStack(spacing: 8) {
-                    Button { cancel(card, signingIn: false) } label: { Text("Cancel").frame(maxWidth: .infinity) }
+                    Button { cancel(card, signingIn: false) } label: { Text("Deny").frame(maxWidth: .infinity) }
                         .buttonStyle(.glass)
                     Button {
                         let typed = Dictionary(uniqueKeysWithValues: connect.fields.map { ($0.id, (values[$0.id] ?? "").trimmingCharacters(in: .whitespaces)) })
@@ -102,7 +104,7 @@ struct HerSecureCard: View {
                         chat.signInStarted.remove(card.id)
                         answer(card, card.approve(typed))
                     } label: {
-                        Text(busy ? String(localized: "Connecting…") : connect.reconnect ? String(localized: "Sign In") : String(localized: "Connect")).frame(maxWidth: .infinity)
+                        Text(busy ? String(localized: "Connecting…") : connect.reconnect ? String(localized: "Sign In Again") : String(localized: "Authorize")).frame(maxWidth: .infinity)
                     }
                     .buttonStyle(.glassProminent)
                     .disabled(busy || !ready)
