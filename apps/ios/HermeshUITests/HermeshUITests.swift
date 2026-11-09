@@ -292,7 +292,8 @@ final class HermeshUITests: XCTestCase {
         XCTAssertTrue(context.exists, "the context")
         XCTAssertTrue(modelRow.exists, "its model")
         XCTAssertTrue(text("推理强度").exists && text("跟随 Gemini CLI").exists, "its reasoning effort")
-        let file = text("hello.txt")
+        // The file's row among the changes, not the conversation behind the sheet, which names it too.
+        let file = app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "hello.txt")).firstMatch
         XCTAssertTrue(file.waitForExistence(timeout: 20), "the changed file is listed")
         file.tap()
         XCTAssertTrue(app.staticTexts.containing(NSPredicate(format: "label CONTAINS %@", "hello again")).firstMatch.waitForExistence(timeout: 10), "its diff")

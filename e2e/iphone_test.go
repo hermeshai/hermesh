@@ -58,7 +58,7 @@ func TestIPhone(t *testing.T) {
 	her := iphoneHerEnv(t)
 	w := newOwnerMac(t, append([]string{"HERMESH_GEMINI_BIN=" + fake, "FAKE_ACP_STATE=" + filepath.Join(t.TempDir(), "fakeacp"), "FAKE_ACP_MODELS=gemini-3-pro",
 		"HERMESH_ANTIGRAVITY_BIN=" + fake, "GEMINI_HOME=" + t.TempDir()}, her...),
-		&localv1.GrantSpec{Agents: []string{"gemini"}})
+		&localv1.GrantSpec{Agents: []string{"gemini"}}, "--retry-delay", "0") // its rate limit fails at once
 	if her != nil {
 		t.Cleanup(func() { w.owner.stop() }) // stopped as a service is, so that it stops her (the daemon of the moment)
 	}
@@ -95,10 +95,12 @@ func TestIPhone(t *testing.T) {
 	}
 	args := []string{"test", "-project", filepath.Join(dir, "Hermesh.xcodeproj"), "-scheme", "Hermesh",
 		"-destination", "platform=iOS Simulator,id=" + device, "-derivedDataPath", derived, "-resultBundlePath", results,
-		"-parallel-testing-enabled", "NO", "-only-testing:HermeshUITests/HermeshUITests/testTheIPhoneApp"}
+		"-parallel-testing-enabled", "NO"}
+	only := "testTheIPhoneApp"
 	if g := os.Getenv("HERMESH_IPHONE_GREP"); g != "" {
-		args = append(args[:len(args)-1], "-only-testing:HermeshUITests/HermeshUITests/"+g)
+		only = g
 	}
+	args = append(args, "-only-testing:HermeshUITests/HermeshUITests/"+only)
 	// Folders for Add a Project to browse to: a repository by the name of
 	// the project there already, with a second branch, and a plain folder.
 	folders, _ := filepath.EvalSymlinks(t.TempDir())
@@ -118,7 +120,8 @@ func TestIPhone(t *testing.T) {
 		t.Fatalf("UI tests failed (result bundle %s):\n%s\n---- last output ----\n%s\n%s", results, failureMessages(summary), tail(r.stdout, 40), tail(r.stderr, 40))
 	}
 	t.Log(tail(r.stdout, 30))
-	if r := w.cli(30*time.Second, "project", "list"); !strings.Contains(r.stdout, "owner-mac/demo-2") {
+	// testTheIPhoneApp adds a project; the other tests none.
+	if r := w.cli(30*time.Second, "project", "list"); only == "testTheIPhoneApp" && !strings.Contains(r.stdout, "owner-mac/demo-2") {
 		t.Fatalf("the project added on the iPhone: %+v", r)
 	}
 	checkIPhoneStrings(t, dir, derived)
