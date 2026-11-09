@@ -59,7 +59,10 @@ func TestDesktopPackagedHer(t *testing.T) {
 	}
 	app := filepath.Join(bundle, "Contents")
 	mock := startHerMock(t, herBinary(t, "HERMESH_HER_MOCK", "her-mock"))
-	var env []string
+	// A home of its own: running the her beside it, the app's hermeshd has the
+	// browsers start that her for the extension, which must not take this
+	// computer's own Chrome (herExtensionHost in cmd/hermeshd).
+	env := []string{"HOME=" + t.TempDir()}
 	for _, kv := range herEnv("", "", herHome(t, mock.models), mock.base) {
 		if !strings.HasPrefix(kv, "HERMESH_HER_") {
 			env = append(env, kv)
@@ -68,6 +71,7 @@ func TestDesktopPackagedHer(t *testing.T) {
 	w := newOwnerMac(t, env, &localv1.GrantSpec{})
 	w.hermeshd = filepath.Join(app, "Helpers", "hermeshd")
 	w.restartOwner(false)
+	t.Cleanup(func() { w.owner.stop() }) // stopped as a service is, so that it stops her
 	c := w.app.client
 	mac := localMachine(t, c)
 	turnHerOn(t, c, mac)
