@@ -38,10 +38,6 @@ func init() {
 	}
 }
 
-// safeModes are the permission modes short of full access, with the names
-// her took before protocol version 2 ("full-auto" was full access).
-var safeModes = map[string]bool{"manual": true, "accept-edits": true, "ask": true, "read-only": true, "auto-edit": true}
-
 // commandKeys are what an MCP server started as a command runs: the program,
 // its arguments, environment and folder, or one of her's curated connectors.
 var commandKeys = map[string]bool{"command": true, "args": true, "env": true, "env_vars": true, "cwd": true, "connector": true}
@@ -102,11 +98,6 @@ func check(method string, params []byte) (json.RawMessage, error) {
 func refuse(method string, params any) error {
 	p, _ := params.(map[string]any)
 	switch method {
-	case "session/op":
-		op, _ := p["op"].(map[string]any)
-		if t := op["type"]; (t == "set_permission_mode" || t == "set_approval_mode") && fullAccess(op["mode"]) {
-			return denied("only SetHerAssistantMode, signed by the owner's root key, gives an assistant full access")
-		}
 	case "config/write":
 		edits, _ := p["edits"].([]any)
 		for _, e := range edits {
@@ -143,13 +134,6 @@ func refuse(method string, params any) error {
 		}
 	}
 	return nil
-}
-
-// fullAccess: whether mode, a permission mode's name, is full access or one
-// her may take as it (none: a mode left out).
-func fullAccess(mode any) bool {
-	s, ok := mode.(string)
-	return ok && !safeModes[s]
 }
 
 func runsCommand(server any) bool {

@@ -153,11 +153,13 @@ answered:
 	call(t, h, "", "models/list", nil)
 	_, err := h.Call(ctx, &herv1.CallRequest{ConnectionId: "gone", Request: &herv1.Request{Method: "models/list"}})
 	code(t, err, connect.CodeNotFound)
-	_, err = h.Call(ctx, &herv1.CallRequest{ConnectionId: opened.ConnectionId, Request: &herv1.Request{Method: "session/op",
-		Params: []byte(`{"session_id":"` + open.SessionID + `","op":{"type":"set_permission_mode","mode":"bypass-permissions"}}`)}})
-	code(t, err, connect.CodePermissionDenied)
+	// Full access, as the owner's devices set it: on the conversation.
+	if _, err := h.Call(ctx, &herv1.CallRequest{ConnectionId: opened.ConnectionId, Request: &herv1.Request{Method: "session/op",
+		Params: []byte(`{"session_id":"` + open.SessionID + `","op":{"type":"set_permission_mode","mode":"bypass-permissions"}}`)}}); err != nil {
+		t.Fatal(err)
+	}
 
-	// SetHerAssistantMode's way, the only one to full access.
+	// SetHerAssistantMode's way, which older devices sign.
 	if err := h.AssistantMode(ctx, botID, "bypass-permissions"); err != nil {
 		t.Fatal(err)
 	}

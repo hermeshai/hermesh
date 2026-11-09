@@ -196,7 +196,6 @@
     "title": "Give “{{name}}” full access?",
     "body": "It acts on {{environment}} without asking you, and so do the agents and scheduled tasks it starts. Her reads web pages and messages from anyone, so turn this on only if you trust everything on that machine to it.",
     "button": "Turn On Full Access",
-    "signer": "Confirm in the signer to give {{name}} full access on {{environment}}.",
     "done": "{{name}} has full access"
   },
   "menu": {

@@ -622,10 +622,11 @@ What `~/.her` holds on a Her Server:
 permissions do ([trusted-devices.md](trusted-devices.md) §4.6):
 
 - turning Her on or off for a machine;
-- adding a connector started as a command on the Her Server;
-- switching an assistant to full access.
+- adding a connector started as a command on the Her Server.
 
-Everything else in the Her entry and the console uses the device key. A
+Everything else in the Her entry and the console uses the device key,
+switching an assistant to full access included: the owner chooses it, on a
+sheet that says what it means (decided 2026-11-09). A
 console never signs: it asks, and the app's signer shows exactly what will
 be signed. Letting Her use the owner's own Chrome is one of these: it
 connects only after the owner adds the Hermesh extension to that Chrome by
@@ -690,8 +691,8 @@ What changes, because Her may run on another computer than the app:
 - **Models.** Her picks only from the models its environment can already
   use. Adding a key or a login is in the console, and the model menu links
   there.
-- **Permissions.** Her asks before risky steps, and switching it to full
-  access needs Touch ID. Full access is never the default, because a Her Server reads web pages and
+- **Permissions.** Her asks before risky steps; full access is the owner's
+  choice, confirmed once on a sheet. Full access is never the default, because a Her Server reads web pages and
   messages from anyone.
 - **Files.** Her's files are on its Her Server: the app previews or saves
   them through the tunnel, and files dragged into a conversation are
@@ -806,7 +807,7 @@ Test: this Mac and a Linux cloud machine as two environments.
 - Talk to Her in each, and switch between them.
 - Take the Linux machine offline, write to it, bring it back, and get the
   reply.
-- Switching an assistant to full access asks for Touch ID.
+- Switching an assistant to full access asks the owner to confirm it.
 
 ### Phase 2: everything an environment can do
 

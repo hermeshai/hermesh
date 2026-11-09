@@ -3,7 +3,7 @@ import { createPortal } from "react-dom";
 import { useTranslation } from "react-i18next";
 import type { Avatar as AvatarSpec, AvatarHue, AvatarShape, BotSummary } from "@hermesh/her-protocol";
 import { local } from "../api";
-import { ErrorLine, SignerWaiting, useAction } from "../sheets/common";
+import { ErrorLine, useAction } from "../sheets/common";
 import { useStore } from "../store";
 import { Avatar, hues, shapes } from "./Avatar";
 import { useHer } from "./context";
@@ -108,9 +108,8 @@ export function pickPicture(): Promise<{ png: string } | { error: "too_large" | 
 }
 
 /**
- * Full access for an assistant (docs/her-server.md §8): it acts without asking on its machine, and
- * so do the agents and routines it starts. A Her Server reads web pages and messages from anyone, so
- * this is signed with the root key: Touch ID in the signer's window.
+ * Full access for an assistant: it acts without asking on its machine, and so do the agents and
+ * routines it starts. The owner says so here once, knowing what it means; nothing is signed.
  */
 export function AccessSheet({ bot }: { bot: BotSummary }) {
   const { t } = useTranslation("her");
@@ -128,7 +127,6 @@ export function AccessSheet({ bot }: { bot: BotSummary }) {
     <HerDialog label={t("access.title", { name: bot.name })} width={460} busy={act.busy} onClose={close}>
       <h3 id="sheet-title">{t("access.title", { name: bot.name })}</h3>
       <p className="sub">{t("access.body", { environment: her.machine.machineName })}</p>
-      {act.busy && <SignerWaiting detail={t("access.signer", { name: bot.name, environment: her.machine.machineName })} />}
       <ErrorLine text={act.error} />
       <div className="sheet-foot">
         <button className="btn" onClick={close} disabled={act.busy}>

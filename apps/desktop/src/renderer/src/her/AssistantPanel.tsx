@@ -187,8 +187,8 @@ function ModelSection({ view, op }: { view: SessionView; op: SendOp }) {
 }
 
 /**
- * What this assistant may do without asking. Asking more is set at once; full access asks first and
- * is signed (AccessSheet). What it starts follows it, and the note says so.
+ * What this assistant may do without asking. Asking more is set at once; full access asks first
+ * (AccessSheet). What it starts follows it, and the note says so.
  */
 function PermissionSection({ bot, mode }: { bot: BotSummary; mode: PermissionMode }) {
   const { t } = useTranslation("her");
