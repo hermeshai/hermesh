@@ -62,8 +62,8 @@ func uninstallCommand(dataDir *string) *cobra.Command {
 
 // uninstall removes Hermesh for this user: the machine in dataDir,
 // unpaired, the service, dataDir (and where it links to), the CLI's home
-// and the programs, hermeshd at bin and hermesh beside it. ask, when not
-// nil, asks first.
+// and the programs, hermeshd at bin and hermesh, her and her-console/
+// beside it. Her's own data, ~/.her, stays. ask, when not nil, asks first.
 func uninstall(ctx context.Context, w io.Writer, ask func(string) (string, error), dataDir, bin string) error {
 	home, _ := os.UserHomeDir()
 	realHome := home
@@ -107,6 +107,12 @@ func uninstall(ctx context.Context, w io.Writer, ask func(string) (string, error
 	if p := filepath.Join(filepath.Dir(bin), "hermesh"); exists(p) {
 		programs = append([]string{p}, programs...)
 	}
+	for _, name := range []string{"her", "her-console"} {
+		if p := filepath.Join(filepath.Dir(bin), name); exists(p) {
+			programs = append(programs, p)
+		}
+	}
+	herHome := filepath.Join(home, ".her")
 	keepDir := filepath.Join(home, "hermesh-kept-worktrees")
 
 	name := os.Getenv("USER")
@@ -137,6 +143,9 @@ func uninstall(ctx context.Context, w io.Writer, ask func(string) (string, error
 	}
 	fmt.Fprintf(w, "  • the programs: %s\n", strings.Join(programs, ", "))
 	fmt.Fprintln(w, "Stays: your project folders and repositories, branches included.")
+	if exists(herHome) {
+		fmt.Fprintf(w, "Stays too: Her's assistants, conversations and settings, in %s; delete it yourself to remove them.\n", herHome)
+	}
 	if isMachine {
 		fmt.Fprintf(w, "Worktrees with uncommitted changes move to %s.\n", keepDir)
 	}
@@ -188,7 +197,7 @@ func uninstall(ctx context.Context, w io.Writer, ask func(string) (string, error
 		return err
 	}
 	for _, p := range programs {
-		if err := os.Remove(p); err != nil && !errors.Is(err, os.ErrNotExist) {
+		if err := os.RemoveAll(p); err != nil {
 			return err
 		}
 	}

@@ -36,6 +36,33 @@ func fakeInstall(t *testing.T) (data, real, cli, bin string) {
 	return data, real, cli, bin
 }
 
+// her and its console go with the programs; Her's data stays, and it says
+// so.
+func TestUninstallRemovesHerAndKeepsHerData(t *testing.T) {
+	data, _, _, bin := fakeInstall(t)
+	her, console, herHome := filepath.Join(filepath.Dir(bin), "her"), filepath.Join(filepath.Dir(bin), "her-console"), filepath.Join(os.Getenv("HOME"), ".her")
+	os.WriteFile(her, []byte("x"), 0o755)
+	os.MkdirAll(filepath.Join(console, "assets"), 0o755)
+	os.WriteFile(filepath.Join(console, "index.html"), []byte("x"), 0o644)
+	os.MkdirAll(herHome, 0o700)
+	os.WriteFile(filepath.Join(herHome, "config.toml"), []byte("x"), 0o600)
+	var out bytes.Buffer
+	if err := uninstall(context.Background(), &out, nil, data, bin); err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{bin + ", " + her + ", " + console, "Her's assistants, conversations and settings, in " + herHome} {
+		if !strings.Contains(out.String(), want) {
+			t.Errorf("output lacks %q:\n%s", want, out.String())
+		}
+	}
+	if exists(her) || exists(console) {
+		t.Error("her or its console is still there")
+	}
+	if !exists(filepath.Join(herHome, "config.toml")) {
+		t.Error("Her's data removed")
+	}
+}
+
 func TestUninstallRemovesEverythingAfterAsking(t *testing.T) {
 	data, real, cli, bin := fakeInstall(t)
 	var asked string

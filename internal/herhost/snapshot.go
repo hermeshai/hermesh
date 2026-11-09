@@ -2,6 +2,7 @@ package herhost
 
 import (
 	"encoding/json"
+	"slices"
 	"time"
 
 	"google.golang.org/protobuf/proto"
@@ -29,6 +30,15 @@ type bot struct {
 		// Question: it asks the owner, with send_to_user's question.
 		Question bool `json:"question"`
 	} `json:"last"`
+	// At work: a turn, sub-agents, a routine's run.
+	Typing        bool      `json:"typing"`
+	AgentsWorking uint32    `json:"agents_working"`
+	Routines      []routine `json:"routines"`
+}
+
+// routine is what the snapshot keeps of her's RoutineSummary.
+type routine struct {
+	Running bool `json:"running"`
 }
 
 type snapshot struct {
@@ -100,6 +110,17 @@ func (s *snapshot) newest() *machinev1.HerLatest {
 		}
 	}
 	return out
+}
+
+// busy counts the assistants at work, whose work restarting her would stop.
+func (s *snapshot) busy() int {
+	n := 0
+	for _, b := range s.bots {
+		if b.Typing || b.AgentsWorking > 0 || slices.ContainsFunc(b.Routines, func(r routine) bool { return r.Running }) {
+			n++
+		}
+	}
+	return n
 }
 
 func (s *snapshot) unread() uint32 {
