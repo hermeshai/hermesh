@@ -71,7 +71,7 @@ func TestPushNotices(t *testing.T) {
 	}
 	fake := filepath.Join(binaries(t), "fakeacp")
 	w := newOwnerMac(t, []string{"HERMESH_GEMINI_BIN=" + fake, "FAKE_ACP_STATE=" + filepath.Join(t.TempDir(), "fakeacp")},
-		&localv1.GrantSpec{Agents: []string{"gemini"}})
+		&localv1.GrantSpec{Agents: []string{"gemini"}}, "--retry-delay", "0") // its rate limit fails at once
 	spool := filepath.Join(t.TempDir(), "push")
 	w.relayArgs = append(w.relayArgs, "--push-spool", spool)
 	w.restartRelay()
