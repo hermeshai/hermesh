@@ -622,6 +622,8 @@ final class HermeshUITests: XCTestCase {
         let code = app.buttons["输入配对码…"]
         XCTAssertTrue(code.waitForExistence(timeout: 5), "the New menu")
         XCTAssertTrue(app.buttons["连接 agent…"].exists)
+        // A tap while the menu still opens is lost.
+        try waitFor("the New menu, open") { code.isHittable ? true : nil }
         code.tap()
         XCTAssertTrue(app.navigationBars["输入配对码"].waitForExistence(timeout: 10), "the pairing code sheet")
         tap("close")
@@ -743,9 +745,10 @@ final class HermeshUITests: XCTestCase {
         XCTAssertFalse(app.descendants(matching: .any)["agents-loading"].exists, "no skeleton once the coding agents are known")
         // Tapping a heat cell (now's: Gemini CLI worked this hour) says whose it is, when, and its sessions.
         if !gemini.isHittable { app.swipeUp() }
-        let width = gemini.frame.width
+        // The hour's cell among the day's 24, in the row's tap area under its name, wherever that lies.
+        let cells = gemini.descendants(matching: .other).firstMatch
         let hour = CGFloat(Calendar.current.component(.hour, from: Date()))
-        gemini.coordinate(withNormalizedOffset: .zero).withOffset(CGVector(dx: 50 + (width - 64) * (hour + 0.5) / 24, dy: gemini.frame.height - 14)).tap()
+        cells.coordinate(withNormalizedOffset: CGVector(dx: (hour + 0.5) / 24, dy: 0.5)).tap()
         let heat = app.descendants(matching: .any)["heat-tip"].firstMatch
         XCTAssertTrue(heat.waitForExistence(timeout: 5), "the cell's popover")
         XCTAssertTrue(heat.label.contains("Gemini CLI") && heat.label.contains("个会话运行过"), heat.label)
