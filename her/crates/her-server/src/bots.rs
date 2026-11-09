@@ -329,7 +329,8 @@ impl Registry {
             }
             bot.typing = mirror.busy();
             bot.agents_working = mirror.agents_working();
-            bot.waiting = mirror.first_approval().map(str::to_string);
+            // A secure card waits for the owner as an approval does.
+            bot.waiting = mirror.first_approval().or(mirror.first_card()).map(str::to_string);
             bot.failed = mirror.state() == SessionState::Failed;
             (kept || before != (bot.typing, bot.agents_working, bot.waiting.clone(), bot.failed), kept)
         };
@@ -627,6 +628,7 @@ impl Server {
         deps.words = Some(self.0.words.clone());
         deps.mcp_servers = self.session_mcp_servers(&workspace, &[]);
         deps.routines = Some(self.0.routines.clone());
+        deps.connectors = Some(self.0.connectors.clone());
         let options = StartOptions {
             model,
             thinking: thinking.unwrap_or(workspace.config.thinking),

@@ -50,6 +50,7 @@
 //! | `note_session:SECONDS` | the same in a session: `spawn_agent`, `交给子智能体了。`, then `回复：<the latest message>` for whatever comes next |
 //! | `note:SECONDS:TEXT` | half a second later, a sub-agent's `send_message` of TEXT to `main`, then a bash call running `sleep SECONDS`, then `写完了。` |
 //! | `routine:NAME\|SCHEDULE\|RUN` | a bot's `manage_routine` create, with RUN as the routine's prompt in brackets (`[[mock:RUN]]`); then `转告：<its result>` sent with `end_turn`, and for each report that wakes it, what the run found, sent with `end_turn` |
+//! | `connect:NAME[\|URL]` | Her's `call_tool` on `connector_connect` (`name` NAME, `url` URL); then `send_to_user` of the card it prepared (`type` card); when how the card ended wakes her, `转告：<its note>` sent with `end_turn` |
 //! | `say:TEXT` | TEXT, as it is |
 //!
 //! [`MockOptions`] adds a gateway's latency: a pause before the first chunk of every reply
@@ -546,6 +547,14 @@ fn routine_found(text: &str) -> Option<&str> {
     Some(found.trim())
 }
 
+/// The note of the latest card's end the model read: what `<card …>` holds.
+fn card_note(messages: &[Value]) -> Option<String> {
+    messages.iter().rev().map(content_text).find_map(|text| {
+        let (_, rest) = text.strip_prefix("<card ")?.split_once('>')?;
+        Some(rest.strip_suffix("</card>")?.to_string())
+    })
+}
+
 /// A scenario's last words: text, or in a bot's conversation, where only `send_to_user` reaches
 /// the owner, sent with `end_turn`.
 fn last_words(bot: bool, text: String) -> Plan {
@@ -870,6 +879,25 @@ fn plan(shared: &Shared, messages: &[Value], name: &str, arg: &str, prompt: &str
                 let text = routine_found(&text).map_or_else(|| format!("转告：{text}"), str::to_string);
                 Plan::Step(Step::calls(vec![("send_to_user", json!({ "text": text, "end_turn": true }))]))
             }
+        },
+        // Her asks the owner for a connector on a secure card (docs/her-secure-cards.md §6).
+        "connect" => match step {
+            0 => {
+                let (name, url) = arg.split_once('|').unwrap_or((arg, ""));
+                let mut arguments = json!({ "name": name });
+                if !url.is_empty() {
+                    arguments["url"] = json!(url);
+                }
+                Plan::Step(Step::calls(vec![("call_tool", json!({ "name": "connector_connect", "arguments": arguments }))]))
+            }
+            1 => {
+                let result = last_tool_result(messages);
+                match result.split("Card ").nth(1).and_then(|rest| rest.split_whitespace().next()) {
+                    Some(card) => Plan::Step(Step::calls(vec![("send_to_user", json!({ "type": "card", "card": card, "text": "这件事要用到它，请在卡片上确认。" }))])),
+                    None => last_words(bot, format!("接不上：{result}")),
+                }
+            }
+            _ => last_words(bot, format!("转告：{}", card_note(messages).unwrap_or_default())),
         },
         // A bot that never sends, reminded or not (bot-design §3.11).
         "mute" => Plan::Step(Step::text("写了字，没有发。".to_string())),
@@ -1489,6 +1517,22 @@ mod tests {
             ran=\"Sun 2026-11-08 20:00\">\nTime to stretch.\n</routine_report>\nThis routine is the user's own request: pass on what it found."}));
         messages.push(json!({"role": "user", "content": "<environment_update>\nTime: Sun 2026-11-08 20:00\n</environment_update>"}));
         assert_eq!(told(&messages, 2), ("send_to_user", json!({"text": "Time to stretch.", "end_turn": true})));
+    }
+
+    #[test]
+    fn her_asks_for_a_connector_on_a_card_and_passes_on_how_it_ended() {
+        let arg = "tracker|http://127.0.0.1:9/mcp";
+        let mut messages = vec![json!({"role": "user", "content": format!("[[mock:connect:{arg}]] connect it")})];
+        let step = |messages: &[Value], step| call_of(plan(&shared(), messages, "connect", arg, "connect it", step, true));
+        assert_eq!(step(&messages, 0), ("call_tool", json!({"name": "connector_connect", "arguments": {"name": "tracker", "url": "http://127.0.0.1:9/mcp"}})));
+        messages.push(json!({"role": "assistant", "content": null}));
+        messages.push(json!({"role": "tool", "content": "Nothing changed yet. Card c_k3j9x2m4qa asks the owner to connect tracker (http://127.0.0.1:9/mcp) and sign in."}));
+        let (name, args) = step(&messages, 1);
+        assert_eq!((name, args["type"].as_str(), args["card"].as_str()), ("send_to_user", Some("card"), Some("c_k3j9x2m4qa")));
+        messages.push(json!({"role": "assistant", "content": null}));
+        messages.push(json!({"role": "tool", "content": "Shown to the owner."}));
+        messages.push(json!({"role": "user", "content": "<card id=\"c_k3j9x2m4qa\" kind=\"connect\" outcome=\"done\">Tracker connected: 3 tools (echo, env, sleep).</card>"}));
+        assert_eq!(step(&messages, 2), ("send_to_user", json!({"text": "转告：Tracker connected: 3 tools (echo, env, sleep).", "end_turn": true})));
     }
 
     fn call_of(plan: Plan) -> (&'static str, Value) {

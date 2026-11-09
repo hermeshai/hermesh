@@ -134,6 +134,12 @@ pub(crate) enum HubCmd {
         reply: oneshot::Sender<Option<Result<oneshot::Receiver<her_core::routine::RunOutcome>, String>>>,
     },
     StopRun { run_id: String },
+    /// The conversation's secure cards, `card_id` taken back from its history if need be; `None`
+    /// when it has none.
+    Cards {
+        card_id: String,
+        reply: oneshot::Sender<Option<Arc<her_core::cards::Cards>>>,
+    },
     /// A run started here has ended.
     RunEnded,
 }
@@ -619,6 +625,9 @@ impl Hub {
                 if let Some(kernel) = &self.kernel {
                     kernel.stop_run(&run_id);
                 }
+            }
+            HubCmd::Cards { card_id, reply } => {
+                let _ = reply.send(self.kernel.as_ref().and_then(|kernel| kernel.cards(&card_id)));
             }
             HubCmd::RunEnded => {
                 self.shared.routine_runs.fetch_sub(1, Ordering::Relaxed);
