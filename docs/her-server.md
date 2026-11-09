@@ -1,8 +1,9 @@
 # Her Server: architecture and plan
 
-Status: final design, 2026-11-08. Phases 1 and 2 are built (§11); phases 3
-and 4 are not. This replaces the earlier drafts of this document. The kernel
-is in [her/](../her/README.md).
+Status: final design, 2026-11-08. Phases 1 and 2 are built (§11), and the
+first step of phase 4, the Linux install command (§6.4); phase 3 and the
+rest of phase 4 are not. This replaces the earlier drafts of this document.
+The kernel is in [her/](../her/README.md).
 
 ## 0. Summary
 
@@ -517,13 +518,30 @@ The protos are the contract; this is their outline.
 
 ### 6.4 Packaging and updates
 
-- **macOS**: her sits inside the Mac app's bundle beside hermeshd.
-  **Linux**: her ships in the hermeshd package, built static with musl as
-  her's CI already does, for x86_64 and arm64.
-- **One version.** A Hermesh release carries a her build and its console.
-  hermeshd's self-update updates all three together.
+- **macOS**: her sits inside the Mac app's bundle beside hermeshd, in
+  `Contents/Helpers`, and its console in `Contents/Resources/console`.
+- **Linux**: a Hermesh release carries her for Linux, `her-linux-amd64` and
+  `her-linux-arm64`, built static with musl and without local-accounts, as
+  the Mac app's, and the console, `her-console.tar.gz`, all in the signed
+  checksum list with the other programs. On a machine (not `--cli` or
+  `--device`), `install.sh` puts her beside hermeshd in `~/.local/bin` and
+  the console in `her-console/` there, where hermeshd finds them.
+- **One version.** hermeshd's self-update, `hermeshd update` and the
+  background updater ([machine-updates.md](machine-updates.md)), replaces
+  hermeshd, hermesh, her and the console together from one release, and
+  hermeshd starting again starts her again. It waits while Her's assistants
+  are at work (a turn, sub-agents, a routine's run), as for sessions. A
+  machine installed before her shipped gets it by running the install
+  command again; until then it shows as unable to run Her.
 - **Started only when needed.** hermeshd starts her only on a machine Her
   is on for, as the machine's user, so her's home is that user's `~/.her`.
+  `hermeshd doctor` and `status` say whether her is installed, its version,
+  and whether Her is on and running; `hermeshd uninstall` removes her and
+  the console, and leaves `~/.her`.
+- **What a Linux server lacks.** Chrome and her's PDF component aren't
+  installed: Her works without them; only her's browser and PDF tools need
+  them. Where Chrome is installed and her runs as root, her starts it
+  without its sandbox (`--no-sandbox`), as Chrome refuses root otherwise.
 - **The owner's own Chrome, on a Mac.** While Her is on, hermeshd registers
   the her it ships as the Hermesh extension's native host for the Chromium
   browsers installed (`her browser extension install --socket` with her's
@@ -704,8 +722,9 @@ While no machine runs Her, the Her entry shows the first run:
 
 1. **Choose where Her runs.** The choices are this Mac (Her goes offline
    while the Mac sleeps), a Mac or Linux machine already paired, or a new
-   server (an install command, paired as Add Machine does). Windows machines
-   are shown as not yet supported. Touch ID turns Her on there.
+   server (an install command, paired as Add Machine does; once paired, it
+   comes first, marked as just paired). Windows machines are shown as not
+   yet supported. Touch ID turns Her on there.
 2. **Connect a model**, in the conversation: Her speaks first (the app
    writes for it, since no model can yet, and keeps none of it in her's
    conversation) and offers signing in to ChatGPT or entering an API key
@@ -826,7 +845,8 @@ Test, from the iPhone alone:
 ### Phase 4: Her Servers anyone can set up
 
 1. A Linux install command that sets up hermeshd with her and pairs the
-   machine, as Add Machine does.
+   machine, as Add Machine does. Built (§6.4), with updates and uninstall;
+   `TestLinuxHer` is its test, on a fresh Ubuntu server in Docker.
 2. Export and backup of an environment, and restoring it on the same
    machine after starting over.
 3. The console in any browser, approved by a trusted device scanning a

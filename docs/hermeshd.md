@@ -13,6 +13,10 @@ curl -fsSL https://github.com/hermeshai/hermesh/releases/latest/download/install
 - It installs `hermeshd` and `hermesh` in `~/.local/bin` and runs
   `hermeshd pair`: scan the code it shows with Hermesh on your iPhone (or
   enter it in the app), then type the two digits your device shows.
+- On Linux it also installs `her` and `her-console/` there (not with
+  `--cli` or `--device`), Her's kernel and its console. They run only once
+  you turn Her on for this machine in the Hermesh app
+  ([her-server.md](her-server.md)), keeping Her's data in `~/.her`.
 - As root, it says it installs for root: press Enter, or type another
   user to install for (creating it if needed). From then on, run the
   commands as that user: `su - dev`.
@@ -43,7 +47,8 @@ curl -fsSL https://github.com/hermeshai/hermesh/releases/latest/download/install
 ## Updates
 
 Hermesh updates itself: every few hours it looks for a new release and,
-once no session is running, installs it and restarts its service. It only
+once no session is running and Her is not at work, installs it (her and
+its console too, where they are) and restarts its service. It only
 installs a release signed by the Hermesh release key, and never goes back
 to an older version ([machine-updates.md](machine-updates.md)).
 
@@ -82,8 +87,8 @@ irm https://github.com/hermeshai/hermesh/releases/latest/download/install.ps1 | 
 
 | Command | Does |
 |---|---|
-| `hermeshd doctor` | Checks the pairing, the coding agents, the service and the relay, and says what to fix (exit 1 when something is wrong) |
-| `hermeshd status` | The machine, whether it is connected, the service, updates and the projects |
+| `hermeshd doctor` | Checks the pairing, the coding agents, the service and the relay, and says what to fix (exit 1 when something is wrong); and how Her is |
+| `hermeshd status` | The machine, whether it is connected, the service, updates, Her (installed, which version, on, running) and the projects |
 | `hermeshd project add <folder>` | Lets agents work in a folder: a separate worktree per session, or `--in-place`; `--agents claude` limits it |
 | `hermeshd project list`, `project remove <name>` | The projects; removing one leaves its folder |
 | `hermeshd service status` | Whether the service runs and starts at boot, and where its log is |
@@ -131,13 +136,15 @@ It lists what goes and asks first (`--yes` for scripts):
 - the data directory, and where it links to (a Synology volume's
   `@hermesh-<uid>`): sessions, logs, the worktrees Hermesh made;
 - the agents' CLI key and settings (`~/.config/hermesh`);
-- `hermeshd`, and `hermesh` beside it.
+- `hermeshd`, and `hermesh`, `her` and `her-console/` beside it.
 
-Your project folders and repositories stay. Worktrees with uncommitted
-changes move to `~/hermesh-kept-worktrees`. Lingering, which the installer
-turned on, stays: it says how to turn it off. It refuses on a trusted
-device until it has left (`hermeshd device leave`), and while `hermeshd
-run` runs outside the service. After `--cli` only, there is no hermeshd:
+Your project folders and repositories stay, and so does `~/.her`, Her's
+assistants, conversations and settings: delete it yourself to remove
+them. Worktrees with uncommitted changes move to
+`~/hermesh-kept-worktrees`. Lingering, which the installer turned on,
+stays: it says how to turn it off. It refuses on a trusted device until
+it has left (`hermeshd device leave`), and while `hermeshd run` runs
+outside the service. After `--cli` only, there is no hermeshd:
 `rm -rf ~/.local/bin/hermesh ~/.config/hermesh`.
 
 On Windows, in PowerShell:
