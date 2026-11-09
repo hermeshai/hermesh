@@ -12376,6 +12376,10 @@
           "minimum": 0.0,
           "type": "integer"
         },
+        "question": {
+          "description": "A bot's question: the user is to decide.",
+          "type": "boolean"
+        },
         "text": {
           "description": "The start of its text as written (at most 1000 characters): the client takes the line to show from it, as it does for the conversation.",
           "type": "string"
