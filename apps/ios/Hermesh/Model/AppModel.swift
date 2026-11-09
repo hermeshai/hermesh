@@ -9,13 +9,13 @@ import UserNotifications
 
 /// Where the side menu leads.
 enum Root: Hashable {
-    case overview, grants, machines, sessions
+    case her, overview, grants, machines, sessions
     case session(String)
 
-    /// A page with a large title (the overview's and a session's are in the bar).
+    /// A page with a large title (Her's, the overview's and a session's are in the bar).
     var titleLarge: Bool {
         switch self {
-        case .overview, .session: false
+        case .her, .overview, .session: false
         default: true
         }
     }
@@ -132,6 +132,8 @@ final class AppModel {
     var relayDownSince: Date?
     /// The last conversations opened.
     @ObservationIgnored let conversations: Conversations
+    /// The Her entry: the environment shown, and each one's chat.
+    let her: HerPlace
     let isDemo: Bool
     var demoAppearance = "system"
 
@@ -193,6 +195,7 @@ final class AppModel {
     init(demo: DemoService? = nil) {
         isDemo = demo != nil
         conversations = Conversations(persistent: demo == nil)
+        her = HerPlace(persistent: demo == nil)
         if let demo { api = AppAPI(demo: demo); return }
         listView = Self.saved("listView") ?? SessionListLayout()
         showArchived = Self.saved("showArchived") ?? false
@@ -464,9 +467,12 @@ final class AppModel {
         }
     }
 
-    /// A Her notice tapped: the app opens on the page it was on, until the
-    /// Her entry (docs/her-server.md §9.1) opens that machine's Her here.
-    func openHer(machineID: String) {}
+    /// A Her notice tapped: that machine's Her (docs/her-server.md §9.1).
+    func openHer(machineID: String) {
+        sheet = nil
+        her.machine = machineID
+        open(.her)
+    }
 
     private func begin() {
         guard api != nil, watchTask == nil else { return }

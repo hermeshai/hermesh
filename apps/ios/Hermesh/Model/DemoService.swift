@@ -328,6 +328,8 @@ final class DemoService {
             // A simulated check only: never open the URL or store its authorization.
             return try encoded(Hermesh_Local_V1_SetWakeResponse.with { $0.wake = wake; $0.check = .with { $0.ok = true; $0.status = 200 } })
         case "ClearWake": wakes.removeAll { $0.clientID == string("clientId") && $0.name == string("name") }
+        // No machine runs Her in the demo: nothing is kept of her, and nothing waits for her.
+        case "GetHerConversation", "ListHerWaiting": break
         default: throw APIError(code: "unimplemented", message: String(localized: "This action needs a real connection. Exit the demo to set up your own workspace."))
         }
         return try object()

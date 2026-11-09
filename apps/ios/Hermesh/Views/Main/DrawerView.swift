@@ -1,3 +1,4 @@
+import HermeshHer
 import HermeshSessions
 import SwiftUI
 
@@ -49,6 +50,7 @@ struct DrawerView: View {
 
     private var places: some View {
         VStack(spacing: 2) {
+            herPlace
             place(.overview, "Overview", "square.grid.2x2")
             place(.grants, "Grants", "key.horizontal")
             place(.machines, "Machines", "server.rack")
@@ -69,6 +71,31 @@ struct DrawerView: View {
         }
         .buttonStyle(RowStyle(selected: model.root == r))
         .padding(.horizontal, 10)
+    }
+
+    /// Her, first, as on the Mac: her mark, and what she sent that is unread.
+    private var herPlace: some View {
+        let unread = herUnread(model.machines)
+        return Button {
+            model.open(.her)
+        } label: {
+            HStack(spacing: 12) {
+                Mark(size: 26).frame(width: 28)
+                Text("Her")
+                Spacer(minLength: 0)
+                if unread > 0 {
+                    Text("\(unread)").font(.caption.weight(.semibold)).monospacedDigit().foregroundStyle(.white)
+                        .padding(.horizontal, 6).frame(minWidth: 20, minHeight: 20)
+                        .background(Color.accentColor, in: .capsule)
+                }
+            }
+            .font(.body).frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.horizontal, 16).frame(height: 48)
+        }
+        .buttonStyle(RowStyle(selected: model.root == .her))
+        .padding(.horizontal, 10)
+        .accessibilityLabel(unread > 0 ? Text("Her, \(unread) unread") : Text("Her"))
+        .accessibilityIdentifier("her-place")
     }
 
     @ViewBuilder private var lists: some View {
