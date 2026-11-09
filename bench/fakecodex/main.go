@@ -13,6 +13,9 @@
 //	FAKE_CODEX_START_MS      time thread/start takes to answer (default 0)
 //	FAKE_CODEX_FAIL_START    a file: while it exists, thread/start removes
 //	                         it and Codex exits, as one dying at its start
+//	FAKE_CODEX_OVERLOADED    a file holding a count: while it is above 0, a
+//	                         turn fails after its commands as Codex's does on
+//	                         a model at capacity, and the count goes down
 //
 // model/list offers gpt-fake-big (the default) and gpt-fake-small;
 // config/read answers FAKE_CODEX_CONFIG, a JSON object (default {});
@@ -232,6 +235,15 @@ func runTurn(st *state, turnID, prompt string, cancel chan struct{}) {
 			}
 		}
 	}
+	if overloaded() {
+		e := map[string]any{"message": "Selected model is at capacity. Please try a different model.", "codexErrorInfo": "serverOverloaded", "additionalDetails": nil}
+		st.mu.Lock()
+		thread := st.thread
+		st.mu.Unlock()
+		notify("error", map[string]any{"error": e, "willRetry": false, "threadId": thread, "turnId": turnID})
+		notify("turn/completed", map[string]any{"turn": map[string]any{"id": turnID, "status": "failed", "error": e}})
+		return
+	}
 	for i := 0; i < writes; i++ {
 		id := st.item()
 		name := fmt.Sprintf("fake-%s-%d.txt", turnID, i)
@@ -262,4 +274,20 @@ func runTurn(st *state, turnID, prompt string, cancel chan struct{}) {
 	notify("item/completed", map[string]any{"item": map[string]any{"id": msgID, "type": "agentMessage", "text": final}})
 	notify("thread/tokenUsage/updated", map[string]any{"tokenUsage": map[string]any{"total": map[string]any{"inputTokens": 100, "outputTokens": 50}}})
 	notify("turn/completed", map[string]any{"turn": map[string]any{"id": turnID, "status": "completed"}})
+}
+
+// overloaded counts FAKE_CODEX_OVERLOADED down: whether this turn fails on
+// a model at capacity.
+func overloaded() bool {
+	f := os.Getenv("FAKE_CODEX_OVERLOADED")
+	if f == "" {
+		return false
+	}
+	b, _ := os.ReadFile(f)
+	n, _ := strconv.Atoi(strings.TrimSpace(string(b)))
+	if n <= 0 {
+		return false
+	}
+	os.WriteFile(f, []byte(strconv.Itoa(n-1)), 0o644)
+	return true
 }

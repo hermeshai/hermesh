@@ -24,7 +24,7 @@ func TestAgentDrivesCLI(t *testing.T) {
 	if testing.Short() {
 		t.Skip("e2e")
 	}
-	w := newOwnerMac(t, []string{"HERMESH_FAKE_PROVIDERS=1"}, &localv1.GrantSpec{})
+	w := newOwnerMac(t, []string{"HERMESH_FAKE_PROVIDERS=1"}, &localv1.GrantSpec{}, "--retry-delay", "50ms")
 	agent := func(stdin string, timeout time.Duration, args ...string) result {
 		t.Helper()
 		ctx, cancel := context.WithTimeout(context.Background(), timeout)
