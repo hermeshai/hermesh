@@ -43,21 +43,58 @@ jobs:
             false) echo "::error::$TAG is published already; tag a new version"; exit 1 ;;
             *) gh release create "$TAG" --draft --prerelease --verify-tag --title "$TAG" --notes-file "$RUNNER_TEMP/notes.md" ;;
           esac
+  # her for Linux (docs/her-server.md §6.4), static with musl and without
+  # local-accounts as the Mac app's, built on a runner of each architecture
+  # in rust:alpine with her's toolchain; the binaries job signs it.
+  her:
+    strategy:
+      matrix:
+        include:
+          - arch: amd64
+            runner: ubuntu-24.04
+          - arch: arm64
+            runner: ubuntu-24.04-arm
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: build her
+        run: |
+          toolchain="$(sed -n 's/^channel = "\(.*\)"/\1/p' her/rust-toolchain.toml)"
+          docker run --rm -v "$PWD/her:/src" -w /src -e RUSTUP_TOOLCHAIN="$toolchain-$(uname -m)-unknown-linux-musl" "rust:$toolchain-alpine" \
+            sh -c 'apk add --no-cache build-base perl linux-headers git >/dev/null && cargo build --profile dist --locked -p her-cli --bin her --no-default-features'
+          cp her/target/dist/her her-linux-${{ matrix.arch }}
+          ./her-linux-${{ matrix.arch }} --version
+      - uses: actions/upload-artifact@v4
+        with:
+          name: her-linux-${{ matrix.arch }}
+          path: her-linux-${{ matrix.arch }}
+          if-no-files-found: error
   binaries:
-    needs: notes
+    needs: [notes, her]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
         with:
           go-version-file: go.mod
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - name: her console
+        run: corepack enable && pnpm install --frozen-lockfile --filter "@hermesh/her-console..." && pnpm --dir her/apps/console build
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: her-linux-*
+          path: ${{ runner.temp }}/her
+          merge-multiple: true
       - name: build and sign
         env:
           RELEASE_SIGNING_KEY: ${{ secrets.RELEASE_SIGNING_KEY }}
         run: |
           umask 077
           printf '%s\n' "$RELEASE_SIGNING_KEY" > /tmp/release.key
-          VERSION=${GITHUB_REF_NAME} RELEASE_SIGNING_KEY_FILE=/tmp/release.key ./scripts/release.sh
+          VERSION=${GITHUB_REF_NAME} RELEASE_SIGNING_KEY_FILE=/tmp/release.key \
+            HER_LINUX_AMD64="$RUNNER_TEMP/her/her-linux-amd64" HER_LINUX_ARM64="$RUNNER_TEMP/her/her-linux-arm64" HER_CONSOLE=her/apps/console/dist ./scripts/release.sh
           rm -f /tmp/release.key
       - run: gh release upload "$TAG" dist/release/* --clobber
   # This version's image, on ghcr.io; promoting the release copies it to
