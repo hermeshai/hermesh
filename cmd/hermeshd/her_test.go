@@ -9,6 +9,8 @@ import (
 	"sync/atomic"
 	"testing"
 	"time"
+
+	machinev1 "github.com/hermeshai/hermesh/gen/go/hermesh/machine/v1"
 )
 
 // The owner role's run, which stops this computer's machine and her with
@@ -40,7 +42,7 @@ func TestServeUntilStopped(t *testing.T) {
 }
 
 // her is HERMESH_HER_BIN's or the one beside hermeshd, when it is there;
-// its console is HERMESH_HER_CONSOLE's or console/ beside her.
+// its console is HERMESH_HER_CONSOLE's or her-console/ beside her.
 func TestHerLookup(t *testing.T) {
 	her := filepath.Join(t.TempDir(), "her")
 	os.WriteFile(her, []byte("#!/bin/sh\n"), 0o755)
@@ -49,7 +51,7 @@ func TestHerLookup(t *testing.T) {
 	if got := herBin(); got != her {
 		t.Fatalf("herBin = %q", got)
 	}
-	if got := herConsole(her); got != filepath.Join(filepath.Dir(her), "console") {
+	if got := herConsole(her); got != filepath.Join(filepath.Dir(her), "her-console") {
 		t.Fatalf("herConsole = %q", got)
 	}
 	t.Setenv("HERMESH_HER_CONSOLE", "/opt/console")
@@ -71,16 +73,16 @@ func TestHerLookup(t *testing.T) {
 	}
 
 	// In the Mac app her is in Contents/Helpers, and its console in
-	// Contents/Resources; console/ beside her still comes first.
+	// Contents/Resources; her-console/ beside her still comes first.
 	app := filepath.Join(t.TempDir(), "Hermesh.app", "Contents")
 	os.MkdirAll(filepath.Join(app, "Resources", "console"), 0o755)
 	bundled := filepath.Join(app, "Helpers", "her")
 	if got := herConsole(bundled); got != filepath.Join(app, "Resources", "console") {
 		t.Fatalf("herConsole in the app = %q", got)
 	}
-	os.MkdirAll(filepath.Join(app, "Helpers", "console"), 0o755)
-	if got := herConsole(bundled); got != filepath.Join(app, "Helpers", "console") {
-		t.Fatalf("herConsole with console/ beside her = %q", got)
+	os.MkdirAll(filepath.Join(app, "Helpers", "her-console"), 0o755)
+	if got := herConsole(bundled); got != filepath.Join(app, "Helpers", "her-console") {
+		t.Fatalf("herConsole with her-console/ beside her = %q", got)
 	}
 }
 
@@ -94,5 +96,33 @@ func TestHerExtensionHost(t *testing.T) {
 	t.Setenv("HERMESH_HER_BIN", "/dev/her")
 	if herExtensionHost() {
 		t.Fatal("a her of HERMESH_HER_BIN is registered with the browsers")
+	}
+}
+
+// doctor and status say whether her is installed, which, whether Her is on
+// and whether her runs.
+func TestHerLine(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("her has no Windows build")
+	}
+	her := filepath.Join(t.TempDir(), "her")
+	os.WriteFile(her, []byte("#!/bin/sh\necho her 0.2.0\n"), 0o755)
+	t.Setenv("HERMESH_HER_BIN", her)
+	for _, c := range []struct {
+		st   *machinev1.HerStatus
+		up   bool
+		want string
+	}{
+		{&machinev1.HerStatus{Unsupported: "no her"}, true, "not installed"},
+		{&machinev1.HerStatus{Unsupported: "windows"}, true, "can't run here (windows)"},
+		{&machinev1.HerStatus{}, true, "0.2.0, off"},
+		{&machinev1.HerStatus{Enabled: true, Running: true, Version: "0.2.0"}, true, "0.2.0, on, running"},
+		{&machinev1.HerStatus{Enabled: true, Error: "her stopped: exit status 1"}, true, "0.2.0, on, NOT RUNNING: her stopped: exit status 1"},
+		{&machinev1.HerStatus{Enabled: true}, true, "0.2.0, on, starting"},
+		{&machinev1.HerStatus{Enabled: true}, false, "0.2.0, on"},
+	} {
+		if got := herLine(c.st, c.up); got != c.want {
+			t.Errorf("herLine(%v, %v) = %q, want %q", c.st, c.up, got, c.want)
+		}
 	}
 }

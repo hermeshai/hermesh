@@ -12,6 +12,7 @@ import (
 	"net"
 	"net/http"
 	"os"
+	"os/exec"
 	"os/signal"
 	"path/filepath"
 	"runtime"
@@ -24,6 +25,7 @@ import (
 
 	localv1 "github.com/hermeshai/hermesh/gen/go/hermesh/local/v1"
 	"github.com/hermeshai/hermesh/gen/go/hermesh/local/v1/localv1connect"
+	machinev1 "github.com/hermeshai/hermesh/gen/go/hermesh/machine/v1"
 	relayv1 "github.com/hermeshai/hermesh/gen/go/hermesh/relay/v1"
 	"github.com/hermeshai/hermesh/gen/go/hermesh/relay/v1/relayv1connect"
 	"github.com/hermeshai/hermesh/internal/connaddr"
@@ -440,6 +442,7 @@ to that owner's devices by itself. Then it installs the background service.`,
 				}
 			}
 			ok = serviceLine(running) && ok
+			fmt.Printf("her          %s\n", herLine(c.Her, running))
 			switch {
 			case running && c.Connected:
 				fmt.Printf("relay        connected (%s)\n", c.RelayURL)
@@ -486,6 +489,7 @@ to that owner's devices by itself. Then it installs the background service.`,
 			fmt.Printf("machine   %s · %s · Hermesh %s\n", c.MachineID, paired, c.Version)
 			serviceLine(running)
 			fmt.Printf("updates      %s\n", update.Line(dataDir))
+			fmt.Printf("her          %s\n", herLine(c.Her, running))
 			fmt.Println()
 			list, _, _ := projects.Find([]string{"list"})
 			return list.RunE(cmd, nil)
@@ -583,8 +587,9 @@ in), a LaunchAgent on macOS, a Task Scheduler logon task on Windows.
 		Use:   "update",
 		Short: "Update Hermesh here to the latest release and restart the service",
 		Long: `Update hermeshd and hermesh, where they are installed, to the latest signed
-release, and restart the background service. When that would stop a
-session, it asks first.
+release, and restart the background service; her and its console, Her's,
+when they are installed beside them. When that would stop a session, it
+asks first.
 
 Hermesh also updates itself when no session is running, unless
 "hermeshd update auto off" turned that off.`,
@@ -723,17 +728,44 @@ func herExtensionHost() bool {
 }
 
 // herConsole is the folder of her's console: $HERMESH_HER_CONSOLE, else
-// console/ beside her, else the Mac app's Contents/Resources/console (her is
-// in Contents/Helpers, where a signed bundle holds only code).
+// her-console/ beside her, where the install command puts it, else the Mac
+// app's Contents/Resources/console (her is in Contents/Helpers, where a
+// signed bundle holds only code).
 func herConsole(her string) string {
 	if dir := os.Getenv("HERMESH_HER_CONSOLE"); dir != "" || her == "" {
 		return dir
 	}
-	dir := filepath.Join(filepath.Dir(her), "console")
+	dir := filepath.Join(filepath.Dir(her), "her-console")
 	if app := filepath.Join(filepath.Dir(her), "..", "Resources", "console"); !isDir(dir) && isDir(app) {
 		return app
 	}
 	return dir
+}
+
+// herLine is how Her is here, for doctor and status: her's version where it
+// is installed, whether Her is on, and whether her runs (up: hermeshd does).
+func herLine(st *machinev1.HerStatus, up bool) string {
+	switch why := st.GetUnsupported(); {
+	case why == "no her":
+		return "not installed"
+	case why != "":
+		return "can't run here (" + why + ")"
+	}
+	line := "installed"
+	if out, err := exec.Command(herBin(), "--version").Output(); err == nil {
+		line = strings.TrimPrefix(strings.TrimSpace(string(out)), "her ")
+	}
+	switch {
+	case !st.GetEnabled():
+		return line + ", off"
+	case st.GetRunning():
+		return line + ", on, running"
+	case st.GetError() != "":
+		return line + ", on, NOT RUNNING: " + st.GetError()
+	case up:
+		return line + ", on, starting"
+	}
+	return line + ", on"
 }
 
 func isDir(path string) bool {

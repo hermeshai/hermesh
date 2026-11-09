@@ -193,3 +193,23 @@ func TestSnapshotNews(t *testing.T) {
 		t.Fatalf("news %v after a deletion", n)
 	}
 }
+
+// Assistants at work, whose work an update waits for: a turn (an approval
+// waiting is in one), sub-agents, a routine's run; none once it is done.
+func TestSnapshotBusy(t *testing.T) {
+	s := newSnapshot("0.2.0", bots(t, `[{"id":"her","name":"Her"},{"id":"w","name":"Writer","routines":[{"id":"r","running":false}]}]`))
+	busy := func(rows string, want int) {
+		t.Helper()
+		s.changed(bots(t, rows), nil, time.Now())
+		if got := s.busy(); got != want {
+			t.Fatalf("busy %d after %s, want %d", got, rows, want)
+		}
+	}
+	if s.busy() != 0 {
+		t.Fatalf("busy %d at first", s.busy())
+	}
+	busy(`[{"id":"her","name":"Her","typing":true}]`, 1)
+	busy(`[{"id":"w","name":"Writer","routines":[{"id":"r","running":true}]}]`, 2)
+	busy(`[{"id":"her","name":"Her","agents_working":2}]`, 2)
+	busy(`[{"id":"her","name":"Her"},{"id":"w","name":"Writer","routines":[{"id":"r"}]}]`, 0)
+}

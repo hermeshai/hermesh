@@ -135,6 +135,17 @@ func (h *Host) Status() *machinev1.HerStatus {
 	return st
 }
 
+// Busy counts her's assistants at work (a turn, sub-agents, a routine's
+// run), as last seen: restarting her would stop their work.
+func (h *Host) Busy() int {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	if h.snap == nil {
+		return 0
+	}
+	return h.snap.busy()
+}
+
 func (h *Host) supervise(ctx context.Context, done chan struct{}) {
 	defer close(done)
 	if h.cfg.ExtensionHost {
