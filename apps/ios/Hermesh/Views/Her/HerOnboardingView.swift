@@ -32,6 +32,7 @@ struct HerOnboardingView: View {
                                     Text(text(s)).lineSpacing(3)
                                     if let detail = detail(s) { Text(detail).font(.caption).foregroundStyle(.secondary).lineLimit(4).textSelection(.enabled) }
                                 }
+                                .herFill()
                                 .padding(.horizontal, 14).padding(.vertical, 9)
                                 .herReply()
                                 .herSide()
@@ -153,7 +154,7 @@ struct HerOnboardingView: View {
             otherWay(busy: busy)
         case .key:
             if let p = flow.provider {
-                HerKeyField(chat: chat, page: herKeyPage(p, plan: chat.models.provider(p)?.keyPage), name: provider(p), busy: busy)
+                HerKeyField(chat: chat, page: herKeyPage(p, plan: chat.models.provider(p)?.keyPage), name: provider(p), busy: busy).herSide()
             }
         }
     }
@@ -203,6 +204,7 @@ private struct HerConnectChoices: View {
             }
         }
         .herReply()
+        .herSide()
     }
 }
 

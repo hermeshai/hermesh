@@ -118,6 +118,7 @@ struct HerSecureCard: View {
         .herReply()
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("her-card")
+        .herSide()
     }
 
     private func cancel(_ card: HerCard, signingIn: Bool) {

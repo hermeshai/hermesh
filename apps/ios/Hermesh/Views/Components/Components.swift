@@ -364,9 +364,9 @@ enum Palette {
     /// Code blocks and tool output.
     static let code = Color(UIColor { $0.userInterfaceStyle == .dark ? UIColor(red: 0x18 / 255, green: 0x18 / 255, blue: 0x1b / 255, alpha: 1)
         : UIColor(red: 0xf6 / 255, green: 0xf7 / 255, blue: 0xfa / 255, alpha: 1) })
-    /// The owner's messages: near black on the right in the light, a faint white in the dark.
-    static let bubble = Color(UIColor { $0.userInterfaceStyle == .dark ? UIColor(white: 1, alpha: 0.09) : UIColor(white: 0, alpha: 0.86) })
-    static let bubbleText = Color(UIColor { $0.userInterfaceStyle == .dark ? UIColor(white: 1, alpha: 0.88) : .white })
+    /// The owner's messages, on the right: the brand's blue (the app's accent), set apart from what answers them.
+    static let bubble = Color.accentColor
+    static let bubbleText = Color.white
     /// Her's messages, on the left: a shade off the page (the Mac's --bot-reply), with a hairline.
     static let reply = Color(UIColor { $0.userInterfaceStyle == .dark ? UIColor(white: 1, alpha: 0.06)
         : UIColor(red: 0xf4 / 255, green: 0xf4 / 255, blue: 0xf7 / 255, alpha: 1) })
