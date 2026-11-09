@@ -98,6 +98,11 @@ pub(crate) fn save(server: &str, token: &StoredToken) -> Result<(), String> {
     her_llm::credentials::set(&credential_name(server), &text)
 }
 
+/// How someone signs in to `server` again: the words an error that needs a sign-in ends with.
+pub fn sign_in_way(server: &str) -> String {
+    format!("sign in with `her mcp login {server}` or from the 自定义 page")
+}
+
 /// Whether `server` has tokens for `url`.
 pub fn signed_in(server: &str, url: &str) -> bool {
     load(server).is_some_and(|t| t.resource == url)
@@ -158,7 +163,7 @@ impl TokenSource {
     }
 
     fn sign_in_hint(&self, why: &str) -> McpError {
-        McpError::NeedsLogin(format!("{why}; sign in with `her mcp login {}` or from the 自定义 page", self.server))
+        McpError::NeedsLogin(format!("{why}; {}", sign_in_way(&self.server)))
     }
 
     async fn stored(&self) -> Result<StoredToken, McpError> {

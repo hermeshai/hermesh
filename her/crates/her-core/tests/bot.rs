@@ -69,6 +69,7 @@ fn deps(api: &Arc<ScriptedApi>, work: &Path, home: &HerHome) -> KernelDeps {
         decks: None,
         words: None,
         routines: None,
+        connectors: None,
     }
 }
 
@@ -1486,7 +1487,7 @@ async fn the_tools_parameters_are_flat_with_a_plain_enum() {
     let tool = requests[0].tools.iter().find(|t| t.name == "send_to_user").unwrap();
     let schema = &tool.parameters;
     assert_eq!(schema["properties"]["type"]["type"], "string");
-    assert_eq!(schema["properties"]["type"]["enum"], json!(["text", "attachment", "question"]));
+    assert_eq!(schema["properties"]["type"]["enum"], json!(["text", "attachment", "question", "card"]));
     assert!(schema.get("required").is_none_or(|r| r.as_array().unwrap().is_empty()), "{schema}");
     assert_eq!(schema["properties"]["files"]["items"]["required"], json!(["path"]));
     assert_eq!(schema["properties"]["options"]["items"]["required"], json!(["label"]));

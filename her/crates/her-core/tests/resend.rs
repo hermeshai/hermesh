@@ -98,6 +98,7 @@ fn deps(api: &Arc<ScriptedApi>, work: &Path, home: &HerHome, hooks: Vec<Arc<dyn 
         decks: None,
         words: None,
         routines: None,
+        connectors: None,
     }
 }
 

@@ -22,7 +22,7 @@ use crate::system::SystemSettings;
 /// connects, and the ones it would have with other settings, marked by what they need.
 pub fn builtin(config: &Config) -> Vec<ToolEntry> {
     let settings = SystemSettings::of(config);
-    let on = Deferred::of(&settings, true, false, true, AgentRole::Main);
+    let on = Deferred::of(&settings, true, false, true, AgentRole::Main, false);
     let mut list = Vec::new();
     let all = her_tools::builtin_registry(BashTool::default());
     for spec in all.iter_specs() {
@@ -101,7 +101,7 @@ pub fn summary(config: &Config) -> (usize, Vec<&'static str>) {
     } else {
         AgentRole::None
     };
-    let groups = Deferred::names_of(&settings, true, false, true, role);
+    let groups = Deferred::names_of(&settings, true, false, true, role, false);
     (config.enabled_tools.len(), groups)
 }
 

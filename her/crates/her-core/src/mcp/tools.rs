@@ -489,7 +489,19 @@ impl Tool for CallTool {
             Some(Target::Builtin(tool)) => tool.execute(inner(&args), ctx).await,
             Some(Target::Mcp(server, tool, _)) => {
                 let arguments = args.get("arguments").cloned().unwrap_or(Value::Null);
-                her_mcp::tool::call(&server, &tool, arguments, ctx).await
+                let connectors = ctx.session_state.get::<crate::connect::ConnectorLink>().is_some();
+                let mut output = her_mcp::tool::call(&server, &tool, arguments, ctx).await?;
+                // A call that failed for want of a sign-in: Her's own conversation has the owner sign
+                // in again on a card (docs/her-secure-cards.md §2.2).
+                if output.is_error && connectors {
+                    let (way, again) = (her_mcp::oauth::sign_in_way(server.name()), format!("have the owner sign in again with connector_connect {{name: \"{}\"}}", server.name()));
+                    for content in &mut output.content {
+                        if let her_llm::UserContent::Text { text } = content {
+                            *text = text.replace(&way, &again);
+                        }
+                    }
+                }
+                Ok(output)
             }
             None => Ok(ToolOutput::error(format!("Unknown tool '{name}'. Use tool_search to find tools."))),
         }

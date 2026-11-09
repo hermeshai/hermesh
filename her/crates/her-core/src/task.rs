@@ -41,10 +41,12 @@ use crate::compaction;
 use crate::compaction::CompactError;
 use crate::hooks::TurnDecision;
 use crate::session::ActiveTask;
+use crate::session::Delivery;
 use crate::session::Input;
 use crate::session::Resend;
 use crate::session::Session;
 use crate::session::SessionState;
+use crate::store::CardResolvedEntry;
 use crate::store::EntryKind;
 use crate::store::TaskStatus;
 use crate::tool_exec;
@@ -226,7 +228,7 @@ pub(crate) fn on_mail(session: &Arc<Session>, mail: Mail) {
     let wake = {
         let mut state = session.state.lock();
         if kept {
-            state.inbox.push_back(mail);
+            state.inbox.push_back(Delivery::Mail(mail));
         }
         state.active_task.is_none() && state.has_waking_mail()
     };
@@ -237,6 +239,19 @@ pub(crate) fn on_mail(session: &Arc<Session>, mail: Mail) {
         start(session, Work::Prompt(None), TaskTrigger::Mail);
     } else {
         session.check_idle();
+    }
+}
+
+/// A card of the session ended. Its end joins the history at the next turn boundary, or starts a
+/// task when nothing runs, even after the bot's work was stopped (docs/her-secure-cards.md §3.4).
+pub(crate) fn on_card(session: &Arc<Session>, card: Box<CardResolvedEntry>) {
+    let wake = {
+        let mut state = session.state.lock();
+        state.inbox.push_back(Delivery::Card(card));
+        state.active_task.is_none()
+    };
+    if wake {
+        start(session, Work::Prompt(None), TaskTrigger::Mail);
     }
 }
 
@@ -337,6 +352,9 @@ fn launch(session: &Arc<Session>, task: TaskCtx, work: Work, trigger: TaskTrigge
 }
 
 async fn task_main(session: Arc<Session>, task: TaskCtx, work: Work, trigger: TaskTrigger) {
+    if let Some(cards) = session.tool_state.get::<crate::cards::Cards>() {
+        cards.task_started(trigger);
+    }
     session.emit(EventMsg::TaskStarted {
         task_id: task.id.clone(),
         trigger,
@@ -383,6 +401,9 @@ async fn task_main(session: Arc<Session>, task: TaskCtx, work: Work, trigger: Ta
 }
 
 async fn finish_task(session: &Arc<Session>, task: &TaskCtx, outcome: TaskOutcome, recorded: bool) {
+    if let Some(cards) = session.tool_state.get::<crate::cards::Cards>() {
+        cards.task_ended();
+    }
     let (status, error, reason) = match &outcome {
         TaskOutcome::Completed { reason, .. } => (TaskStatus::Completed, None, Some(*reason)),
         TaskOutcome::Failed(error) => (TaskStatus::Failed, Some(error.clone()), None),

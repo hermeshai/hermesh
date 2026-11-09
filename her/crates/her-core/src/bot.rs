@@ -1,10 +1,12 @@
 //! Bots (bot-design): a bot is a name, an avatar and one session. Its session has one tool
 //! of its own, `send_to_user`, the only way what it writes reaches the user: words, files and
-//! images, or a question with answers to tap (§3.12).
+//! images, a question with answers to tap (§3.12), or a secure card a tool prepared
+//! (docs/her-secure-cards.md §2.1).
 
 use async_trait::async_trait;
 use her_llm::Message;
 use her_protocol::AgentStatus;
+use her_protocol::card::Card;
 use her_tools::Environment;
 use her_tools::Tool;
 use her_tools::ToolCategory;
@@ -25,6 +27,7 @@ use std::io;
 use std::path::Path;
 use std::sync::Arc;
 
+use crate::cards::Cards;
 use crate::files::MAX_IMAGE;
 use crate::history::History;
 use crate::store::EntryKind;
@@ -102,7 +105,7 @@ pub(crate) fn owed(history: &History) -> Owed {
             }
             // A stopped agent's report wakes nobody, and nobody waits for it.
             EntryKind::Mail { mail, .. } => worked |= mail.status != AgentStatus::Interrupted,
-            EntryKind::AgentMessage { .. } => worked = true,
+            EntryKind::AgentMessage { .. } | EntryKind::CardResolved(_) => worked = true,
             _ => {}
         }
     }
@@ -136,6 +139,14 @@ pub fn sends_files(args: &Value) -> bool {
     }
 }
 
+/// The card a message showed and the words above it, from its result's details. None for any
+/// other message.
+pub fn shown_card(details: &str) -> Option<(Card, Option<String>)> {
+    let mut details: Value = serde_json::from_str(details).ok()?;
+    let card = serde_json::from_value(details.get_mut("card")?.take()).ok()?;
+    Some((card, details.get("text").and_then(Value::as_str).map(str::to_string)))
+}
+
 /// What a message of files carried, from its result's details (bot-design §3.12): its words, how
 /// many images, and the name of its first other file. None for any other message.
 pub fn attachment_summary(details: &str) -> Option<(String, u32, Option<String>)> {
@@ -157,6 +168,7 @@ enum MessageType {
     Text,
     Attachment,
     Question,
+    Card,
 }
 
 #[derive(Debug, Deserialize, JsonSchema)]
@@ -173,7 +185,7 @@ struct OptionArg {
 
 #[derive(Debug, Deserialize, JsonSchema)]
 pub(crate) struct SendArgs {
-    /// What this message is. text (the default): words, rendered as Markdown. attachment: one or more files or images, with the message that goes with them, however long. question: a question, when you need the user to decide; it ends your turn and their answer comes back as their next message; send any background first as a text message.
+    /// What this message is. text (the default): words, rendered as Markdown. attachment: one or more files or images, with the message that goes with them, however long. question: a question, when you need the user to decide; it ends your turn and their answer comes back as their next message; send any background first as a text message. card: a card a tool prepared for the user to answer, with your words above it; it ends your turn, and you hear how it ends.
     #[serde(default, rename = "type")]
     kind: Option<MessageType>,
     /// The message. For attachment, the message shown above the files. For question, the question in one sentence.
@@ -185,10 +197,16 @@ pub(crate) struct SendArgs {
     /// For question, answers the user can tap, each worded the way they would say it. Leave it out when the answers cannot be listed.
     #[serde(default)]
     options: Option<Vec<OptionArg>>,
+    /// For card, the card's id, as the tool that prepared it gave.
+    #[serde(default)]
+    card: Option<String>,
     /// True on your last message, once your work for now is done: the turn ends right after it. Leave it out for a first reply or an update while you keep working.
     #[serde(default)]
     end_turn: bool,
 }
+
+/// What the model hears of a card it showed: the owner's answer comes later, as a `<card>` message.
+const CARD_SHOWN: &str = "Shown to the owner. You will hear how it ends; until then, don't say it is done.";
 
 /// Enough of a file for an image's size in its header.
 const IMAGE_HEAD: u64 = 256 * 1024;
@@ -277,12 +295,15 @@ impl TypedTool for SendToUser {
         }
         let files = args.files.unwrap_or_default();
         let options = args.options.unwrap_or_default();
+        let card = args.card.as_deref().map(str::trim).filter(|id| !id.is_empty());
         let sent = ToolOutput::text("Sent.");
         // Without a type, what it carries says what it is.
         let kind = args.kind.unwrap_or(if !files.is_empty() {
             MessageType::Attachment
         } else if !options.is_empty() {
             MessageType::Question
+        } else if card.is_some() {
+            MessageType::Card
         } else {
             MessageType::Text
         });
@@ -291,6 +312,9 @@ impl TypedTool for SendToUser {
         }
         if kind != MessageType::Question && !options.is_empty() {
             return Err(invalid("options goes with type question"));
+        }
+        if kind != MessageType::Card && card.is_some() {
+            return Err(invalid("card goes with type card"));
         }
         let output = match kind {
             MessageType::Text => {
@@ -335,6 +359,19 @@ impl TypedTool for SendToUser {
                     }
                 }
                 return Ok(sent.ending_task());
+            }
+            MessageType::Card => {
+                let id = card.ok_or_else(|| invalid("card is required with type card: the id the tool that prepared it gave"))?;
+                let cards = ctx
+                    .session_state
+                    .get::<Cards>()
+                    .ok_or_else(|| invalid(format!("no card {id} was prepared in this task: prepare one with the tool that makes it")))?;
+                let card = cards.show(id).map_err(invalid)?;
+                let mut said = json!({ "card": card });
+                if let Some(text) = text {
+                    said["text"] = json!(text);
+                }
+                return Ok(ToolOutput::text(CARD_SHOWN).with_details(said).ending_task());
             }
         };
         Ok(if args.end_turn { output.ending_task() } else { output })

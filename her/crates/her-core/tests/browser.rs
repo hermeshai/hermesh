@@ -202,6 +202,7 @@ async fn harness_config(mode: PermissionMode, interactive: bool, sites: &[(&str,
         decks: None,
         words: None,
         routines: None,
+        connectors: None,
     };
     let options = StartOptions {
         model: "test/scripted".into(),

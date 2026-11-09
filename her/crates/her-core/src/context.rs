@@ -13,6 +13,7 @@ use std::borrow::Cow;
 use std::sync::Arc;
 
 use crate::history::History;
+use crate::store::CardResolvedEntry;
 use crate::store::Entry;
 use crate::store::EntryKind;
 use crate::store::ExpandedSkill;
@@ -86,6 +87,15 @@ pub fn undelivered_message(ts: Timestamp) -> UserMessage {
                    for any of it, call send_to_user with it now; otherwise end your turn without writing anything.\n</reply_reminder>"
                 .into(),
         }],
+        ts,
+    }
+}
+
+/// The user message that tells a bot how a secure card ended (docs/her-secure-cards.md §3.4).
+pub fn card_message(card: &CardResolvedEntry, ts: Timestamp) -> UserMessage {
+    let text = format!("<card id=\"{}\" kind=\"{}\" outcome=\"{}\">{}</card>", card.card_id, card.kind, card.outcome, card.note);
+    UserMessage {
+        content: vec![UserContent::Text { text }],
         ts,
     }
 }
@@ -216,7 +226,7 @@ pub fn branch_messages(branch: &[&Entry]) -> Vec<Message> {
 }
 
 /// The message an entry adds to the context; `ts` is the entry's. A delivered report, a new
-/// date, a bot's new name, its routines and its reply reminders are user messages; a user message that mentions
+/// date, a bot's new name, its routines, its reply reminders and how its cards ended are user messages; a user message that mentions
 /// skills carries their instructions first (docs/kernel/skill-design.md §6.3.4).
 pub fn entry_message(kind: &EntryKind, ts: Timestamp) -> Option<Cow<'_, Message>> {
     match kind {
@@ -230,6 +240,7 @@ pub fn entry_message(kind: &EntryKind, ts: Timestamp) -> Option<Cow<'_, Message>
         EntryKind::Unanswered { routine } => Some(Cow::Owned(Message::from(unanswered_message(*routine, ts)))),
         EntryKind::Undelivered => Some(Cow::Owned(Message::from(undelivered_message(ts)))),
         EntryKind::ReplyNudge => Some(Cow::Owned(Message::from(reply_nudge_message(ts)))),
+        EntryKind::CardResolved(card) => Some(Cow::Owned(Message::from(card_message(card, ts)))),
         _ => None,
     }
 }

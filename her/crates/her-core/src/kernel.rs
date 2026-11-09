@@ -44,6 +44,9 @@ use crate::deferred::AgentRole;
 use crate::approval::ApprovalPolicy;
 use crate::bot;
 use crate::bot::BotIdentity;
+use crate::cards::Cards;
+use crate::connect::ConnectorHost;
+use crate::connect::ConnectorLink;
 use crate::browser::BrowserHandle;
 use crate::desktop::DesktopHandle;
 use crate::config::Config;
@@ -111,6 +114,9 @@ pub struct KernelDeps {
     /// The service's routines (routine-design §4.3), for a bot's session. Without it the bot's
     /// `manage_routine` says they are not available.
     pub routines: Option<Arc<dyn RoutineHost>>,
+    /// The service's connectors, for Her's own conversation: it gets the `connectors` group and
+    /// may ask the owner on a secure card (docs/her-secure-cards.md §2.2).
+    pub connectors: Option<Arc<dyn ConnectorHost>>,
 }
 
 pub struct StartOptions {
@@ -225,8 +231,9 @@ fn launch(launch: Launch) -> (Kernel, Arc<Session>) {
     let pool = launch.deps.browser_pool.clone();
     let embedded = pool.as_ref().is_some_and(|p| p.has_host());
     let role = launch.role;
+    let connectors = launch.deps.connectors.is_some();
     let deferred: crate::deferred::DeferredCell =
-        Arc::new(Mutex::new(Arc::new(crate::deferred::Deferred::of(&settings, pool.is_some(), embedded, launch.deps.docs.is_some(), role))));
+        Arc::new(Mutex::new(Arc::new(crate::deferred::Deferred::of(&settings, pool.is_some(), embedded, launch.deps.docs.is_some(), role, connectors))));
     let base_tools = mcp::base_tools(&launch.deps.tools, launch.mcp.as_ref(), &deferred, &shown);
     let skill_roots =
         crate::protected::skill_locations(&launch.config.skills, &launch.home, launch.deps.env.cwd());
@@ -251,6 +258,10 @@ fn launch(launch: Launch) -> (Kernel, Arc<Session>) {
         tool_state.insert(Arc::new(DesktopHandle::new(settings.desktop.clone(), launch.root_id.clone())));
     }
     let emitter = Arc::new(Emitter::new(event_tx));
+    if let Some(host) = &launch.deps.connectors {
+        tool_state.insert(Arc::new(ConnectorLink { host: host.clone() }));
+        tool_state.insert(Arc::new(Cards::new(emitter.clone(), internal_tx.clone())));
+    }
     if let Some(decks) = &launch.deps.decks {
         tool_state.insert(Arc::new(crate::deck::DecksHandle { store: decks.clone(), session: launch.root_id.clone() }));
     }
@@ -558,7 +569,7 @@ struct BuiltPrompt {
 /// The deferred built-in tools a session starts with, for the catalog in its first prompt.
 fn starting_deferred(deps: &KernelDeps, system: &SystemCell, tree: bool) -> crate::deferred::Deferred {
     let embedded = deps.browser_pool.as_ref().is_some_and(|p| p.has_host());
-    crate::deferred::Deferred::of(&system.get(), deps.browser_pool.is_some(), embedded, deps.docs.is_some(), main_role(tree))
+    crate::deferred::Deferred::of(&system.get(), deps.browser_pool.is_some(), embedded, deps.docs.is_some(), main_role(tree), deps.connectors.is_some())
 }
 
 /// The tools a session starts with, before MCP: what its prompt describes. The browsers' and
@@ -1012,6 +1023,21 @@ impl Kernel {
         tree.start_run(run)
     }
 
+    /// The session's secure cards, with `card_id` taken back from the history when it was shown
+    /// before the session was loaded and has not ended (docs/her-secure-cards.md §3.4). None in a
+    /// session that has no cards.
+    pub fn cards(&self, card_id: &str) -> Option<Arc<Cards>> {
+        let session = self.session.upgrade()?;
+        let cards = session.tool_state.get::<Cards>()?;
+        if !cards.has(card_id) {
+            let found = crate::cards::unresolved(&session.state.lock().history, card_id);
+            if let Some(card) = found {
+                cards.take_back(card);
+            }
+        }
+        Some(cards)
+    }
+
     /// Stops a routine's run. False when none of that id is under way.
     pub fn stop_run(&self, run_id: &str) -> bool {
         self.session.upgrade().is_some_and(|session| session.agents.as_ref().is_some_and(|tree| tree.stop_run(run_id)))
@@ -1188,6 +1214,7 @@ async fn submission_loop(
             }
             Some(message) = internal.recv() => match *message {
                 Internal::Mail(mail) => task::on_mail(&session, mail),
+                Internal::Card(card) => task::on_card(&session, card),
                 Internal::Permissions { mode, rules, grants } => session.apply_permissions(mode, rules, grants),
             },
         }
@@ -1263,6 +1290,12 @@ pub(crate) fn transcript_of<'a>(branch: impl IntoIterator<Item = &'a Entry>) -> 
                 skills: Vec::new(),
                 mail: Some(mail.clone()),
             }),
+            EntryKind::CardResolved(card) => Some(TranscriptItem::CardResolved {
+                card_id: card.card_id.clone(),
+                // A later version's outcome is left out.
+                outcome: serde_json::from_value(serde_json::Value::String(card.outcome.clone())).ok()?,
+                note: card.note.clone(),
+            }),
             EntryKind::Task {
                 task_id,
                 status,
@@ -1313,7 +1346,7 @@ mod tests {
     #[test]
     fn computer_use_is_on_with_the_desktop_app_unless_turned_off() {
         let mut settings = SystemSettings::of(&Config::default());
-        let has = |settings: &SystemSettings, app: bool| crate::deferred::Deferred::of(settings, false, app, false, crate::deferred::AgentRole::None).find("cua_snapshot").is_some();
+        let has = |settings: &SystemSettings, app: bool| crate::deferred::Deferred::of(settings, false, app, false, crate::deferred::AgentRole::None, false).find("cua_snapshot").is_some();
         assert!(has(&settings, true), "the desktop app connected");
         assert!(!has(&settings, false), "the command line");
         settings.desktop.enabled = Some(false);
