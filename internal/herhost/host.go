@@ -135,6 +135,7 @@ func (h *Host) Status() *machinev1.HerStatus {
 func (h *Host) supervise(ctx context.Context, done chan struct{}) {
 	defer close(done)
 	if h.cfg.ExtensionHost {
+		h.placeExtension()
 		h.extension(ctx, "install", "--socket", h.cfg.Socket)
 	}
 	wait := time.Second

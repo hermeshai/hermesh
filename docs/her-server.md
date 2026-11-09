@@ -527,6 +527,13 @@ The protos are the contract; this is their outline.
   socket), again at every start so it follows her after an update, and
   takes it back when Her is turned off. The extension then lends Her the
   owner's Chrome, with its sign-ins (her/apps/chrome-extension).
+  - The app ships the extension in `Contents/Resources/chrome-extension`.
+  - At every start, hermeshd copies it to
+    `~/Library/Application Support/Hermesh/Chrome Extension`, unless the
+    copy is the same already.
+  - The console's guide has the owner load it from that folder, until it is
+    in the Chrome Web Store. The manifest carries the extension's key, so
+    its ID doesn't depend on the folder.
 
 ## 7. Data
 

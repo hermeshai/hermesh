@@ -15,8 +15,9 @@ import "./yours.css";
 /** The extension's page in the Chrome Web Store, once it is published (her/apps/chrome-extension/store/listing.md); until then the guide loads it from its folder. */
 export const STORE_URL = "";
 
-/** The folder to load the extension from until it is in the store. */
-const EXTENSION_FOLDER = "her/apps/chrome-extension";
+/** The folder to load the extension from until it is in the store: hermeshd keeps a copy of the app's
+ * there (internal/herhost/extension.go, ExtensionFolder). */
+const EXTENSION_FOLDER = "~/Library/Application Support/Hermesh/Chrome Extension";
 
 /** How long a refused host gets to exit and come back as the current program. */
 const REFUSED_STUCK_MS = 10_000;
