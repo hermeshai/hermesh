@@ -223,6 +223,12 @@ function BotChat({ bot, conv, op, state, waiting, onWaiting }: {
     atEnd.current = true;
     el.scrollTo({ top: el.scrollHeight, behavior: matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth" });
   };
+  // A choice in the onboarding is the owner's word: the conversation goes to its end, where Her answers
+  // it (a key's field, say), even when the owner had scrolled up to a long list's first choices.
+  const chose = flow?.said.filter((s) => s.who === "owner").length ?? 0;
+  useLayoutEffect(() => {
+    if (chose) toEnd();
+  }, [chose]);
 
   const empty = items.length === 0 && !busy;
   const working = busy?.agents.length ?? 0;

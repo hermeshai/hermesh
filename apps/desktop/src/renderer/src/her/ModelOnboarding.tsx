@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
+import { useEffect, useId, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import type { BotSummary } from "@hermesh/her-protocol";
 import { Icon } from "../icons";
@@ -9,6 +9,7 @@ import {
   checking,
   chooseChatGpt,
   chooseKey,
+  choosePlan,
   clause,
   connectedName,
   controls,
@@ -20,6 +21,7 @@ import {
   keySaved,
   otherWay,
   pickProvider,
+  planChoices,
   providerName,
   signInEnded,
   start,
@@ -28,8 +30,8 @@ import {
 } from "./onboarding";
 
 // The onboarding in Her's conversation while no model works there (onboarding.ts): Her's
-// bubbles and the owner's, quiet pills under Her's last one, and a field for a key that goes
-// to her and nowhere else. Each environment has its own, kept while the app runs; an answer
+// bubbles and the owner's, a quiet list of choices under Her's last one, and a field for a key
+// that goes to her and nowhere else. Each environment has its own, kept while the app runs; an answer
 // that comes once another environment shows goes to its own.
 
 const flows = new Map<string, Flow>();
@@ -97,9 +99,12 @@ export function Onboarding({ flow, bot }: { flow: Flow; bot: BotSummary }) {
   const machine = her.machine.machineName;
   const { models } = her.env;
   const lang = i18n.language;
-  const name = (provider: string) => {
-    const p = models.providers.find((x) => x.id === provider);
-    return p ? providerName(p, lang) : provider;
+  const provider = (id: string) => models.providers.find((x) => x.id === id);
+  // A Token Plan by the name the app gives it (her's catalog names them in English only).
+  const name = (id: string) => {
+    const p = provider(id);
+    if (!p) return id;
+    return p.plan ? t(`plans.${p.id}.name` as "plans.bailian-token-plan.name", { defaultValue: p.name }) : providerName(p, lang);
   };
   // What is said while it shows slides in.
   const shown = useRef(flow.step === "done" ? Infinity : flow.said.length);
@@ -109,7 +114,7 @@ export function Onboarding({ flow, bot }: { flow: Flow; bot: BotSummary }) {
       <div className="ob">
         <div className="ob-fold">
           <Icon name="check" className="sm" />
-          <span>{t("onboard.connected", { name: connectedName(flow, models.providers, lang) })}</span>
+          <span>{t("onboard.connected", { name: connectedName(flow, name) })}</span>
         </div>
         <Hers fresh={shown.current !== Infinity} text={t("onboard.done", { model: modelTitle(flow.done!.model, models) })} />
       </div>
@@ -155,6 +160,10 @@ export function Onboarding({ flow, bot }: { flow: Flow; bot: BotSummary }) {
         return t("onboard.signInCancelled");
       case "whichProvider":
         return t("onboard.whichProvider");
+      case "whichPlan":
+        return t("onboard.whichPlan");
+      case "whichWay":
+        return t("onboard.whichWay");
       case "pasteKey":
         return t("onboard.pasteKey", { provider: name(s.provider), machine });
       case "keyRejected":
@@ -162,9 +171,12 @@ export function Onboarding({ flow, bot }: { flow: Flow; bot: BotSummary }) {
       case "keyFailed":
         return t("onboard.keyFailed", { machine });
       case "keyUnverified":
-        return t("onboard.keyUnverified", { provider: name(s.provider) });
+        // A Token Plan's key is checked only by the first reply (her has nothing to ask before).
+        return provider(s.provider)?.plan ? t("onboard.planUnverified") : t("onboard.keyUnverified", { provider: name(s.provider) });
       case "chatgpt":
         return t("onboard.chatgpt");
+      case "plan":
+        return t("onboard.plan");
       case "key":
         return t("onboard.key");
       case "otherWay":
@@ -177,20 +189,29 @@ export function Onboarding({ flow, bot }: { flow: Flow; bot: BotSummary }) {
   const detail = (s: Said) => (s.what === "signInFailed" || s.what === "keyFailed" ? s.detail : s.what === "keyRejected" && folds(s.message) ? s.message : "");
 
   const busy = flow.step === "checking";
+  const asked = flow.step === "key" || busy ? flow.provider : undefined;
+  const plans = planChoices(models.providers);
+  const pick = (p: string) => update(id, (f) => pickProvider(f, p));
+  const other = (
+    <button className="link ob-get" disabled={busy} onClick={() => update(id, otherWay)}>
+      {t("onboard.otherWay")}
+    </button>
+  );
   const at = controls(flow);
   const control = (i: number, s: Said): ReactNode => {
     switch (at.get(i)) {
       case "ways":
         return (
           <>
-            <div className="ob-pills">
-              <button className="ob-pill" onClick={signIn}>
-                {t("onboard.chatgpt")}
-              </button>
-              <button className="ob-pill" onClick={() => update(id, chooseKey)}>
-                {t("onboard.key")}
-              </button>
-            </div>
+            <Choices
+              label={t("onboard.ways")}
+              rows={[
+                { id: "chatgpt", title: t("onboard.chatgpt"), note: t("onboard.chatgptNote"), onPick: signIn },
+                // An older her has no Token Plans.
+                ...(plans.length ? [{ id: "plan", title: t("onboard.plan"), note: t("onboard.planNote"), onPick: () => update(id, choosePlan) }] : []),
+                { id: "key", title: t("onboard.key"), note: t("onboard.keyNote"), onPick: () => update(id, chooseKey) },
+              ]}
+            />
             {s.what === "greeting" && <p className="ob-note">{t("onboard.stays", { machine })}</p>}
           </>
         );
@@ -207,19 +228,39 @@ export function Onboarding({ flow, bot }: { flow: Flow; bot: BotSummary }) {
         );
       case "providers":
         return (
-          <div className="ob-pills">
-            {keyChoices(models.providers).map((p) => (
-              <button key={p.id} className="ob-pill" disabled={busy} onClick={() => update(id, (f) => pickProvider(f, p.id))}>
-                {providerName(p, lang)}
-              </button>
-            ))}
-            <button className="ob-pill" disabled={busy} onClick={her.openConsole}>
-              {t("onboard.otherServices")}
-            </button>
-          </div>
+          <>
+            <Choices
+              label={t("onboard.providers")}
+              disabled={busy}
+              rows={[
+                ...keyChoices(models.providers).map((p) => ({ id: p.id, title: name(p.id), current: p.id === asked, onPick: () => pick(p.id) })),
+                { id: "", title: t("onboard.otherServices"), icon: "ext" as const, onPick: her.openConsole },
+              ]}
+            />
+            {other}
+          </>
+        );
+      case "plans":
+        return (
+          <>
+            <Choices
+              label={t("onboard.plans")}
+              disabled={busy}
+              rows={plans.map((p) => ({
+                id: p.id,
+                title: name(p.id),
+                note: t(`plans.${p.id}.note` as "plans.bailian-token-plan.note", { defaultValue: "" }),
+                current: p.id === asked,
+                onPick: () => pick(p.id),
+              }))}
+            />
+            {other}
+          </>
         );
       case "key":
-        return flow.provider ? <KeyField key={i} provider={flow.provider} name={name(flow.provider)} busy={busy} onSave={(key) => void save(key)} /> : null;
+        return flow.provider ? (
+          <KeyField key={i} name={name(flow.provider)} page={keyPage(flow.provider, provider(flow.provider)?.plan)} busy={busy} onSave={(key) => void save(key)} />
+        ) : null;
       default:
         return null;
     }
@@ -256,6 +297,39 @@ export function Onboarding({ flow, bot }: { flow: Flow; bot: BotSummary }) {
         </div>
       )}
     </div>
+  );
+}
+
+type Choice = { id: string; title: string; note?: string; current?: boolean; icon?: "ext"; onPick: () => void };
+
+/**
+ * What to connect, as a quiet list under Her's message: a name, a line under it when the names
+ * alone don't tell the choices apart, a check on the one picked.
+ */
+function Choices({ label, rows, disabled }: { label: string; rows: Choice[]; disabled?: boolean }) {
+  return (
+    <div className="ob-list" role="group" aria-label={label}>
+      {rows.map((r) => (
+        <ChoiceRow key={r.id || r.title} row={r} disabled={disabled} />
+      ))}
+    </div>
+  );
+}
+
+function ChoiceRow({ row, disabled }: { row: Choice; disabled?: boolean }) {
+  const note = useId();
+  return (
+    <button className="ob-row" aria-label={row.title} aria-describedby={row.note ? note : undefined} aria-current={row.current || undefined} disabled={disabled} onClick={row.onPick}>
+      <span className="ob-row-t">
+        <span className="ob-row-n">{row.title}</span>
+        {row.note && (
+          <span id={note} className="ob-row-d">
+            {row.note}
+          </span>
+        )}
+      </span>
+      <Icon name={row.current ? "check" : (row.icon ?? "chevR")} className="sm" />
+    </button>
   );
 }
 
@@ -315,10 +389,9 @@ export function SecretInput({ label, placeholder, value, onChange, disabled, aut
 }
 
 /** A provider's key, written where only her gets it (auth/set), emptied as it is saved. ↩ saves. */
-function KeyField({ provider, name, busy, onSave }: { provider: string; name: string; busy: boolean; onSave: (key: string) => void }) {
+function KeyField({ name, page, busy, onSave }: { name: string; page?: string; busy: boolean; onSave: (key: string) => void }) {
   const { t } = useTranslation("her");
   const [key, setKey] = useState("");
-  const page = keyPage(provider);
   const save = () => {
     const k = key.trim();
     if (!k || busy) return;

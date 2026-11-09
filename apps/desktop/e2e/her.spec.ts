@@ -120,16 +120,19 @@ test("Her: the first run, a chat, a secure card, the console, a second environme
   await expect(sheet).toBeHidden();
   const switcher = page.locator(".her-env");
   await expect(switcher).toContainText("work-mac", { timeout: 120_000 });
-  // work-mac has no model yet: Her speaks first, the app writing for it, with the two ways to connect one.
-  // The composer waits until then.
+  // work-mac has no model yet: Her speaks first, the app writing for it, with the ways to connect one in a
+  // list, each saying what it takes. The composer waits until then.
   await expect(log.getByText(/^你好，我是 .+，在 work-mac 上为你做事。开始之前，我需要接上一个模型/)).toBeVisible({ timeout: 120_000 });
+  const ways = log.getByRole("group", { name: "接入方式" });
+  await expect(ways.getByRole("button")).toHaveText([/^用 ChatGPT 登录/, /^接入 Token Plan/, /^填写 API Key/]);
+  await expect(ways.getByRole("button", { name: "接入 Token Plan" })).toHaveAccessibleDescription("已订阅的模型套餐，如百炼、火山方舟、智谱 GLM");
   await expect(log).toContainText("Key 和登录都只留在 work-mac 上");
   await expect(composer).toBeDisabled();
   await expect(composer).toHaveAttribute("placeholder", "接上模型后就能回复你");
   await snap(page, "her-onboarding");
 
   // ChatGPT: her's sign-in page opens in the browser (here, the stand-in records it), coming back to this
-  // Mac's hermeshd, and opens again when asked. Another way stops it, and Her offers both ways again.
+  // Mac's hermeshd, and opens again when asked. Another way stops it, and Her offers the ways again.
   await app.evaluate(({ shell }) => {
     const opened: string[] = [];
     Object.assign(globalThis, { opened });
@@ -146,7 +149,7 @@ test("Her: the first run, a chat, a secure card, the console, a second environme
   await log.getByRole("button", { name: "重新打开登录页" }).click();
   await expect.poll(browser).toEqual([signInPage, signInPage]);
   await log.getByRole("button", { name: "换一种方式" }).click();
-  await expect(log).toContainText("登录已取消。可以再试一次，或者换成填写 API Key。", { timeout: 30_000 });
+  await expect(log).toContainText("登录已取消。可以再试一次，或者换一种方式。", { timeout: 30_000 });
   await expect(log.getByRole("button", { name: "重新打开登录页" })).toHaveCount(0);
 
   // An API key: which provider (the best known first, at most five, the rest in the console), then the key,
@@ -154,9 +157,11 @@ test("Her: the first run, a chat, a secure card, the console, a second environme
   // said in Her's words, and asked for again.
   await log.getByRole("button", { name: "填写 API Key" }).click();
   await expect(log).toContainText("用哪家的？");
-  await expect(log.getByRole("button", { name: "其他服务…" })).toBeVisible();
-  await expect(log.locator(".ob-pill")).toHaveCount(6);
-  await log.getByRole("button", { name: "DeepSeek", exact: true }).click();
+  const providers = log.getByRole("group", { name: "服务商" });
+  await expect(providers.getByRole("button")).toHaveCount(6);
+  await expect(providers.getByRole("button").last()).toHaveAccessibleName("其他服务…");
+  await providers.getByRole("button", { name: "DeepSeek", exact: true }).click();
+  await expect(providers.getByRole("button", { name: "DeepSeek", exact: true })).toHaveAttribute("aria-current", "true");
   await expect(log).toContainText("把 DeepSeek 的 API Key 贴在下面。它只存进 work-mac 的凭据库，不会出现在对话里，也不会发给模型。");
   await log.getByRole("button", { name: "去 DeepSeek 获取 Key" }).click();
   await expect.poll(browser).toContain("https://platform.deepseek.com/api_keys");
@@ -167,16 +172,39 @@ test("Her: the first run, a chat, a secure card, the console, a second environme
   await key().press("Enter");
   await expect(log).toContainText("这个 Key 没通过 DeepSeek 的检查：Authentication Fails, Your api key is invalid。再贴一次？", { timeout: 30_000 });
   await expect(key()).toHaveValue("");
+
+  // Another way, Her asks which at once; then a Token Plan: which plan (each with a line telling it from the
+  // others), then its key, the page to get one being the plan's own. her-mock stands in for Tencent Cloud's
+  // plan, whose key only a reply can check.
+  await log.getByRole("button", { name: "换一种方式" }).click();
+  await expect(log).toContainText("好，换哪种方式？");
+  await expect(key()).toHaveCount(0);
+  await log.getByRole("group", { name: "接入方式" }).getByRole("button", { name: "接入 Token Plan" }).click();
+  await expect(log).toContainText("接入哪个套餐？");
+  const plans = log.getByRole("group", { name: "Token Plan" });
+  await expect(plans.getByRole("button")).toHaveCount(6);
+  await expect(plans.getByRole("button").first()).toHaveAccessibleName("百炼 Token Plan");
+  await expect(plans.getByRole("button", { name: "火山方舟 Coding Plan" })).toHaveAccessibleDescription("Coding Plan 专属密钥");
+  await plans.getByRole("button", { name: "腾讯云 Token Plan" }).click();
+  await expect(log).toContainText("把 腾讯云 Token Plan 的 API Key 贴在下面。");
+  // Picked, the conversation goes to its end: the key's field shows above the composer, whatever the
+  // click scrolled to first.
+  const planKey = log.getByLabel("腾讯云 Token Plan 的 API Key");
+  const bottom = async () => ((b) => b.y + b.height)((await planKey.boundingBox())!);
+  await expect.poll(async () => (await bottom()) <= (await page.locator(".cmp-col").boundingBox())!.y).toBe(true);
+  await snap(page, "her-onboarding-plan");
+  await log.getByRole("button", { name: "去 腾讯云 Token Plan 获取 Key" }).click();
+  await expect.poll(browser).toContain("https://console.cloud.tencent.com/tokenhub");
   // One it takes: Her says which model it talks with, the onboarding folds into one line above, and the
-  // composer opens. The key is in none of it.
-  await key().fill("sk-e2e-good-key");
+  // composer opens. No key is in any of it.
+  await planKey.fill("sk-e2e-plan-key");
   await log.getByRole("button", { name: "保存" }).click();
   await expect(log.getByText(/^好了，我会用 .+ 和你聊，想换可以去助手设置。有什么要我做的？$/)).toBeVisible({ timeout: 60_000 });
-  await expect(log).toContainText("已接上 DeepSeek");
-  await expect(log).not.toContainText("用哪家的？");
+  await expect(log).toContainText("已接上 腾讯云 Token Plan");
+  await expect(log).not.toContainText("接入哪个套餐？");
   await expect(composer).toBeEnabled();
   await expect(composer).toHaveAttribute("placeholder", /^发消息给 /);
-  for (const secret of ["sk-e2e-good-key", "sk-rejected"]) {
+  for (const secret of ["sk-e2e-plan-key", "sk-rejected"]) {
     await expect(page.locator("body")).not.toContainText(secret);
   }
   await expect(composer).toHaveValue("");
@@ -197,7 +225,7 @@ test("Her: the first run, a chat, a secure card, the console, a second environme
   await switcher.click();
   await page.getByRole("menuitemradio").filter({ hasText: "work-mac" }).click();
   await expect(log).toContainText("来自 work-mac");
-  await expect(log).toContainText("已接上 DeepSeek");
+  await expect(log).toContainText("已接上 腾讯云 Token Plan");
   await snap(page, "her-two-environments");
 
   // work-mac goes offline: what was read stays, under a line that says when it was last seen.
