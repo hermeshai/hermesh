@@ -238,15 +238,19 @@ impl FileStore {
         if let Some(dir) = self.path.parent() {
             std::fs::create_dir_all(dir).map_err(|e| e.to_string())?;
         }
-        let tmp = self.path.with_extension("tmp");
+        // A temporary file of its own: writers at the same time (token refreshes) must not rename
+        // one another's away.
+        let tmp = self.path.with_extension(format!("{:016x}.tmp", rand::random::<u64>()));
         let mut options = std::fs::OpenOptions::new();
         options.write(true).create(true).truncate(true);
         #[cfg(unix)]
         std::os::unix::fs::OpenOptionsExt::mode(&mut options, 0o600);
         let mut file = options.open(&tmp).map_err(|e| format!("{}: {e}", tmp.display()))?;
-        file.write_all(text.as_bytes()).map_err(|e| e.to_string())?;
-        file.sync_all().map_err(|e| e.to_string())?;
-        std::fs::rename(&tmp, &self.path).map_err(|e| e.to_string())
+        let written = file.write_all(text.as_bytes()).and_then(|()| file.sync_all()).and_then(|()| std::fs::rename(&tmp, &self.path));
+        if written.is_err() {
+            let _ = std::fs::remove_file(&tmp);
+        }
+        written.map_err(|e| e.to_string())
     }
 }
 
@@ -297,6 +301,25 @@ mod tests {
         store.delete("deepseek").unwrap();
         assert_eq!(store.get("deepseek").unwrap(), None);
         assert_eq!(store.get("anthropic").unwrap().as_deref(), Some("sk-2"));
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    /// Refreshed tokens are saved from several tasks at once: no write may fail for another's.
+    #[test]
+    fn writers_at_the_same_time_all_succeed() {
+        let dir = tempfile_dir();
+        let store = std::sync::Arc::new(FileStore { path: dir.join("credentials.toml") });
+        let writers: Vec<_> = (0..8)
+            .map(|n| {
+                let store = store.clone();
+                std::thread::spawn(move || (0..50).map(|i| store.set(&format!("mcp-oauth.s{n}"), &format!("t{i}"))).collect::<Result<Vec<_>, _>>())
+            })
+            .collect();
+        for writer in writers {
+            writer.join().unwrap().unwrap();
+        }
+        let left: Vec<_> = std::fs::read_dir(&dir).unwrap().map(|e| e.unwrap().file_name()).collect();
+        assert_eq!(left, ["credentials.toml"], "no temporary file is left");
         let _ = std::fs::remove_dir_all(dir);
     }
 
