@@ -1,5 +1,6 @@
-{"provider":"tencent-tokenhub","fetched_at":"2026-11-04T04:40:45Z","models":[
+{"provider":"tencent-tokenhub","fetched_at":"2026-11-09T09:47:03Z","models":[
 {"id":"hy3","name":"Hy3","context_window":192000,"max_output_tokens":128000,"reasoning":true,"reasoning_options":[{"type":"toggle"},{"type":"effort","values":["none","high"]}],"input":["text"],"output":["text"],"tool_call":true,"released":"2026-07-06","cost":{"input":0.0,"output":0.0,"cache_read":0.0,"cache_write":0.0}},
 {"id":"hy3-preview","name":"Hy3 preview","context_window":256000,"max_output_tokens":64000,"reasoning":true,"reasoning_options":[{"type":"toggle"},{"type":"effort","values":["low","medium","high"]}],"input":["text"],"output":["text"],"tool_call":true,"released":"2026-04-20","cost":{"input":0.0,"output":0.0,"cache_read":0.0,"cache_write":0.0}},
+{"id":"hy4","name":"Hy4","context_window":983010,"max_output_tokens":65536,"reasoning":true,"reasoning_options":[{"type":"effort","values":["none","high"]}],"input":["text","image"],"output":["text"],"tool_call":true,"released":"2026-11-04","cost":{"input":0.834,"output":2.501,"cache_read":0.042,"cache_write":0.0}},
 {"id":"hy4-preview","name":"Hy4 preview","context_window":1024000,"max_output_tokens":64000,"reasoning":true,"reasoning_options":[{"type":"toggle"},{"type":"effort","values":["none","high"]}],"input":["text"],"output":["text"],"tool_call":true,"released":"2026-08-28","cost":{"input":0.834,"output":2.501,"cache_read":0.042,"cache_write":0.0}}
 ]}
