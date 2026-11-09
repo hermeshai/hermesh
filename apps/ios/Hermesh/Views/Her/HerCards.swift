@@ -115,8 +115,7 @@ struct HerSecureCard: View {
         .controlSize(.large)
         .disabled(!chat.convUp)
         .padding(14)
-        .background(Palette.fill, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
-        .overlay(RoundedRectangle(cornerRadius: 18, style: .continuous).strokeBorder(Palette.separator))
+        .herReply()
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("her-card")
     }

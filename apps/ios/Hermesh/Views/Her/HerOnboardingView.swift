@@ -13,25 +13,35 @@ struct HerOnboardingView: View {
     @Environment(\.locale) private var locale
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 14) {
+        VStack(alignment: .leading, spacing: 0) {
             if let done = flow.done {
                 Label("Connected to \(connectedName(done))", systemImage: "checkmark")
                     .font(.footnote).foregroundStyle(.secondary).frame(maxWidth: .infinity)
                 HerWords(text: String(localized: "All set. I’ll talk with you using \(chat.models.title(done.model)); you can change it in Assistant Settings. What can I do for you?"))
+                    .padding(.top, 13)
             } else {
                 let controls = flow.controls
                 ForEach(Array(flow.said.enumerated()), id: \.offset) { i, s in
-                    if s.byOwner {
-                        HerBubble(text: text(s), images: [], files: [])
-                    } else {
-                        VStack(alignment: .leading, spacing: 10) {
-                            Text(text(s)).frame(maxWidth: .infinity, alignment: .leading)
-                            if let detail = detail(s) { Text(detail).font(.caption).foregroundStyle(.secondary).lineLimit(4).textSelection(.enabled) }
-                            if let c = controls[i] { control(c, under: s) }
+                    Group {
+                        if s.byOwner {
+                            HerBubble(text: text(s), images: [], files: [])
+                        } else {
+                            // Her's words in her bubble, an error's words with them; what can be done under it.
+                            VStack(alignment: .leading, spacing: 8) {
+                                VStack(alignment: .leading, spacing: 4) {
+                                    Text(text(s)).lineSpacing(3)
+                                    if let detail = detail(s) { Text(detail).font(.caption).foregroundStyle(.secondary).lineLimit(4).textSelection(.enabled) }
+                                }
+                                .padding(.horizontal, 14).padding(.vertical, 9)
+                                .herReply()
+                                .herSide()
+                                if let c = controls[i] { control(c, under: s) }
+                            }
                         }
                     }
+                    .padding(.top, i == 0 ? 0 : herGap(joined: s.byOwner == flow.said[i - 1].byOwner))
                 }
-                if flow.step == .connecting { HerTyping() }
+                if flow.step == .connecting { HerTyping().padding(.top, herGap(joined: flow.said.last?.byOwner == false)) }
             }
         }
         .accessibilityElement(children: .contain)
@@ -192,14 +202,12 @@ private struct HerConnectChoices: View {
                 .accessibilityIdentifier("her-choice-\(r.id)")
             }
         }
-        .background(Palette.fill, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
-        .overlay(RoundedRectangle(cornerRadius: 18, style: .continuous).strokeBorder(Palette.separator))
-        .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+        .herReply()
     }
 }
 
-/// A row of the choices: under the finger from the moment it touches down.
-private struct HerChoiceStyle: ButtonStyle {
+/// A row of a list in Her's messages (choices, answers, files): under the finger from the moment it touches down.
+struct HerChoiceStyle: ButtonStyle {
     func makeBody(configuration: Configuration) -> some View {
         configuration.label.foregroundStyle(.primary).background(configuration.isPressed ? Palette.fill2 : .clear)
     }

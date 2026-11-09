@@ -84,7 +84,13 @@ extension HermeshUITests {
 
     func herChat() throws {
         herSend("[[mock:send:你好，主人]] hi")
-        XCTAssertTrue(app.staticTexts["你好，主人"].waitForExistence(timeout: 60), "Her's reply")
+        let words = app.staticTexts["你好，主人"]
+        XCTAssertTrue(words.waitForExistence(timeout: 60), "Her's reply")
+        // In her bubble on the left, as on the Mac: the words inset in it, and a short reply's bubble just as wide.
+        let bubble = app.descendants(matching: .any).matching(identifier: "her-reply").containing(NSPredicate(format: "label == %@", "你好，主人")).firstMatch
+        XCTAssertTrue(bubble.exists, "her bubble")
+        XCTAssertTrue(bubble.frame.contains(words.frame) && words.frame.minX - bubble.frame.minX >= 10, "\(words.frame) in \(bubble.frame)")
+        XCTAssertLessThan(bubble.frame.maxX, app.frame.midX, "on the left")
         herShot("Her: a chat")
     }
 
@@ -109,6 +115,10 @@ extension HermeshUITests {
         let blue = app.buttons["蓝"]
         XCTAssertTrue(blue.waitForExistence(timeout: 60), "the answers to tap")
         XCTAssertTrue(app.buttons["红"].exists && text("要哪种颜色？").exists)
+        // The answers are rows in the question's bubble.
+        let question = app.descendants(matching: .any)["her-question"].firstMatch
+        XCTAssertTrue(question.frame.contains(blue.frame) && question.frame.contains(app.buttons["红"].frame), "\(blue.frame) in \(question.frame)")
+        herShot("Her: a question")
         blue.tap()
         // The answer is the owner's message, and the answers fold away.
         XCTAssertTrue(app.staticTexts["蓝"].waitForExistence(timeout: 30), "the owner's answer")
@@ -127,6 +137,8 @@ extension HermeshUITests {
         tap("her-allow-once")
         XCTAssertTrue(app.staticTexts.matching(NSPredicate(format: "label BEGINSWITH %@", "做完了")).firstMatch.waitForExistence(timeout: 60), "Her's word once it ran")
         XCTAssertTrue(panel.waitForNonExistence(timeout: 10))
+        // Longer than the screen by now: it scrolls under her mark, with nothing drawn behind it.
+        herShot("Her: under her mark")
     }
 
     func herOffline() throws {
