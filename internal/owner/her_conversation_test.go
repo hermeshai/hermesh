@@ -145,6 +145,7 @@ func keptOf(t *testing.T, d *Device) (bot string, items []string, snapshot map[s
 			MessageID string `json:"message_id"`
 			CallID    string `json:"call_id"`
 			TaskID    string `json:"task_id"`
+			CardID    string `json:"card_id"`
 			Outcome   string `json:"outcome"`
 			Message   struct {
 				Role    string `json:"role"`
@@ -174,6 +175,8 @@ func keptOf(t *testing.T, d *Device) (bot string, items []string, snapshot map[s
 			items = append(items, "result "+it.CallID)
 		case it.Type == "task_end":
 			items = append(items, "end "+it.TaskID+" "+it.Outcome)
+		case it.Type == "card_resolved":
+			items = append(items, "card "+it.CardID+" "+it.Outcome)
 		}
 	}
 	return bot, items, snapshot
@@ -335,5 +338,34 @@ func TestHerConversationForgotten(t *testing.T) {
 	}
 	if _, err := (&localService{d: d}).GetHerConversation(context.Background(), &localv1.GetHerConversationRequest{}); err == nil {
 		t.Fatal("no machine: no error")
+	}
+}
+
+// A secure card's end is kept, as her's history has it or as a
+// card_changed says it live, so a device opening Her's conversation
+// offline draws the card ended; its steps on the way aren't.
+func TestHerConversationCardEnded(t *testing.T) {
+	h := &herScript{results: map[string]string{"bots/subscribe": `{"bots":[` + herBotJSON + `]}`}}
+	d, o := scriptedOwner(t, t.TempDir(), h)
+	defer d.Close()
+	herFollow(t, o, herSubscribe)
+	h.results["bots/open"] = herOpened("conv-her", 4,
+		herUserMsg("u1", "connect notion"),
+		herAssistantMsg("a1", "c1:send_to_user"),
+		herToolResult("c1"),
+		`{"type":"card_resolved","card_id":"c_old","outcome":"declined","note":""}`,
+	)
+	h.notes = []*herv1.Notification{
+		herSessionEvent("conv-her", 5, "card_changed", `"card_id":"c_new","state":"sign_in"`),
+		herSessionEvent("conv-her", 6, "card_changed", `"card_id":"c_new","state":"done","note":"Notion connected: 14 tools"`),
+	}
+	herFollow(t, o, herOpenBot("her"))
+	want := "user u1|assistant a1 c1:send_to_user|result c1|card c_old declined|card c_new done"
+	_, items, snapshot := keptOf(t, d)
+	if strings.Join(items, "|") != want {
+		t.Fatalf("kept %q\nwant %s", items, want)
+	}
+	if !strings.Contains(string(snapshot["transcript"]), `"note":"Notion connected: 14 tools"`) {
+		t.Fatalf("the card's note is not kept: %s", snapshot["transcript"])
 	}
 }

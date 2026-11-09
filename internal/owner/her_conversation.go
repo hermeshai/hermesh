@@ -188,6 +188,9 @@ func (c *herConversation) apply(event json.RawMessage) bool {
 		c.items = c.items[:max(at, 0)]
 		return true
 	}
+	if e.Type == "card_changed" {
+		return c.cardEnded(fields)
+	}
 	h, ok := herHistory[e.Type]
 	if !ok {
 		return false
@@ -209,6 +212,29 @@ func (c *herConversation) apply(event json.RawMessage) bool {
 	return true
 }
 
+// cardEnded keeps a secure card's end, which a card_changed to an ended
+// state says live, as the item her's history has for it (card_resolved):
+// opened later, the card shows how it ended (docs/her-secure-cards.md §3.4).
+func (c *herConversation) cardEnded(fields map[string]json.RawMessage) bool {
+	var state string
+	if json.Unmarshal(fields["state"], &state) != nil || !herCardEnds[state] {
+		return false
+	}
+	item := map[string]json.RawMessage{"type": json.RawMessage(`"card_resolved"`), "card_id": fields["card_id"], "outcome": fields["state"], "note": fields["note"]}
+	if item["note"] == nil {
+		item["note"] = json.RawMessage(`""`)
+	}
+	b, err := json.Marshal(item)
+	if err != nil || !c.add(b) {
+		return false
+	}
+	c.trim()
+	return true
+}
+
+// herCardEnds are the states a secure card ends in.
+var herCardEnds = map[string]bool{"done": true, "declined": true, "failed": true, "expired": true, "replaced": true}
+
 // add adds item as far as the Her entry shows it, and says whether it does.
 func (c *herConversation) add(item json.RawMessage) bool {
 	shown, messageID := c.shown(item)
@@ -222,7 +248,7 @@ func (c *herConversation) add(item json.RawMessage) bool {
 // message's id, or nil (packages/her-client's botChat): the owner's
 // messages and what reached them from sub-agents and routines; the
 // assistant's with only the calls that sent the owner something (herSends),
-// and those calls' results; how each task ended.
+// and those calls' results; how each task and each secure card ended.
 func (c *herConversation) shown(item json.RawMessage) (json.RawMessage, string) {
 	var it struct {
 		Type      string `json:"type"`
@@ -237,7 +263,7 @@ func (c *herConversation) shown(item json.RawMessage) (json.RawMessage, string) 
 		return nil, ""
 	}
 	switch {
-	case it.Type == "task_end", it.Type == "tool_result" && c.calls[it.CallID]:
+	case it.Type == "task_end", it.Type == "card_resolved", it.Type == "tool_result" && c.calls[it.CallID]:
 		return item, ""
 	case it.Type == "message" && it.Message.Role == "user":
 		return item, it.MessageID
