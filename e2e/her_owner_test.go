@@ -337,26 +337,12 @@ func TestHerOnThisMac(t *testing.T) {
 		t.Fatalf("models/list through the console: %d %s", code, body)
 	}
 
-	// What the machine lets no device do: desktop document panels, and
-	// full access without a signature.
+	// What the machine lets no device do: desktop document panels.
 	_, err = c.HerCall(ctx, &localv1.HerCallRequest{MachineId: mac, Call: &herv1.CallRequest{Request: herSetup("doc/open", map[string]string{"path": "/tmp/x.xlsx"})}})
 	if connect.CodeOf(err) != connect.CodePermissionDenied {
 		t.Fatalf("doc/open: %v", err)
 	}
-	octx, cancel := context.WithTimeout(ctx, time.Minute)
-	defer cancel()
-	stream, op := herOpen(t, octx, c, mac, herSetup("bots/open", map[string]string{"bot_id": bot.ID}))
-	var conv struct {
-		SessionID string `json:"session_id"`
-	}
-	json.Unmarshal(op.Responses[0].Result, &conv)
-	_, err = c.HerCall(ctx, &localv1.HerCallRequest{MachineId: mac, Call: &herv1.CallRequest{ConnectionId: op.ConnectionId,
-		Request: herSetup("session/op", map[string]any{"session_id": conv.SessionID, "op": map[string]string{"type": "set_permission_mode", "mode": "bypass-permissions"}})}})
-	if connect.CodeOf(err) != connect.CodePermissionDenied {
-		t.Fatalf("full access unsigned: %v", err)
-	}
-	stream.Close()
-	// Asking more goes unsigned; full access is signed, here by the test's signer.
+	// An assistant's mode, full access too, goes unsigned: the owner chose it.
 	for _, mode := range []string{"accept-edits", "bypass-permissions", "manual"} {
 		if _, err := c.SetHerAssistantMode(ctx, &localv1.SetHerAssistantModeRequest{MachineId: mac, BotId: bot.ID, PermissionMode: mode}); err != nil {
 			t.Fatalf("%s: %v", mode, err)

@@ -9,9 +9,10 @@ import (
 )
 
 // The allowlist (docs/her-server.md §6.1): the Her entry's and the
-// console's methods pass, anything else is refused; full access and
-// connectors started as commands are refused however they are written,
-// since only root-signed commands give them.
+// console's methods pass, anything else is refused; connectors started as
+// commands are refused however they are written, since only root-signed
+// commands give them. An assistant's full access is the owner's choice,
+// made on any of their devices.
 func TestCheck(t *testing.T) {
 	for _, c := range []struct {
 		name, method, params string
@@ -37,12 +38,7 @@ func TestCheck(t *testing.T) {
 
 		{"asking first", "session/op", `{"session_id":"s","op":{"type":"set_permission_mode","mode":"manual"}}`, 0},
 		{"accepting edits", "session/op", `{"session_id":"s","op":{"type":"set_permission_mode","mode":"accept-edits"}}`, 0},
-		{"full access", "session/op", `{"session_id":"s","op":{"type":"set_permission_mode","mode":"bypass-permissions"}}`, connect.CodePermissionDenied},
-		{"full access by its old name", "session/op", `{"session_id":"s","op":{"type":"set_permission_mode","mode":"full-auto"}}`, connect.CodePermissionDenied},
-		{"full access by the op's old name", "session/op", `{"session_id":"s","op":{"type":"set_approval_mode","mode":"bypass-permissions"}}`, connect.CodePermissionDenied},
-		{"a mode her may yet take as full access", "session/op", `{"session_id":"s","op":{"type":"set_permission_mode","mode":"auto"}}`, connect.CodePermissionDenied},
-		{"full access behind a duplicate key", "session/op", `{"session_id":"s","op":{"type":"set_permission_mode","mode":"manual","mode":"bypass-permissions"}}`, connect.CodePermissionDenied},
-		{"full access escaped", "session/op", strings.ReplaceAll(`{"session_id":"s","op":{"type":"set_permission_mode","mo#u0064e":"bypass-permissions"}}`, "#", string(rune(92))), connect.CodePermissionDenied},
+		{"full access", "session/op", `{"session_id":"s","op":{"type":"set_permission_mode","mode":"bypass-permissions"}}`, 0},
 
 		{"probing a server by address", "mcp/probe", `{"probe_id":"p","server":{"url":"https://example.com/mcp"}}`, 0},
 		{"probing a command, which starts it", "mcp/probe", `{"probe_id":"p","server":{"command":"sh","args":["-c","id"]}}`, connect.CodePermissionDenied},
@@ -169,7 +165,6 @@ func TestCardsAnswer(t *testing.T) {
 		{"another card's answer", answer("approve", `{"method":"cards/answer","params":`+answer("approve")+`}`), no},
 		{"a method off the list", answer("approve", `{"method":"server/shutdown"}`), no},
 		{"an op that is not one", answer("approve", `"config/write"`), no},
-		{"full access", answer("approve", `{"method":"session/op","params":{"session_id":"s","op":{"type":"set_permission_mode","mode":"bypass-permissions"}}}`), no},
 	} {
 		t.Run(c.name, func(t *testing.T) {
 			_, err := check("cards/answer", []byte(c.params))

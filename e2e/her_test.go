@@ -179,10 +179,9 @@ func TestHer(t *testing.T) {
 		return st.Latest.GetText() == "hello" && st.Latest.GetBotId() == bot && st.Latest.GetKind() == machinev1.HerLatestKind_HER_LATEST_KIND_MESSAGE && st.Unread > 0
 	})
 
-	// What only the root key may do.
+	// What only the root key may do; an assistant's full access is the
+	// owner's choice on any of their devices, and older ones sign it.
 	_, err = call("", "server/shutdown", ``)
-	refused(err)
-	_, err = call(opened.ConnectionId, "session/op", `{"session_id":"`+open.SessionID+`","op":{"type":"set_permission_mode","mode":"bypass-permissions"}}`)
 	refused(err)
 	_, err = call("", "config/write", `{"layer":"user","edits":[{"key_path":"mcp_servers.notes","value":{"command":"/bin/cat"}}]}`)
 	refused(err)

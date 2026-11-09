@@ -438,17 +438,19 @@ func TestHerFiles(t *testing.T) {
 	}
 }
 
-// Asking an assistant to ask first goes on its conversation, unsigned. Full
-// access, turning Her on and connectors started as commands are signed by
-// the root key, and never sent unsigned.
+// An assistant's mode goes on its conversation, unsigned, full access too:
+// the owner chose it. Turning Her on and connectors started as commands are
+// signed by the root key, and never sent unsigned.
 func TestHerAssistantModeAndSignedCommands(t *testing.T) {
 	h := &herSide{}
 	_, o, _, _ := herOwner(t, h)
 	ctx := context.Background()
-	if err := o.SetHerAssistantMode(ctx, "m_1", "b1", "accept-edits"); err != nil {
-		t.Fatal(err)
+	for _, mode := range []string{"accept-edits", "bypass-permissions"} {
+		if err := o.SetHerAssistantMode(ctx, "m_1", "b1", mode); err != nil {
+			t.Fatal(err)
+		}
 	}
-	if got := h.prompts(t); !equal(got, []string{"conv-b1: set_permission_mode accept-edits"}) {
+	if got := h.prompts(t); !equal(got, []string{"conv-b1: set_permission_mode accept-edits", "conv-b1: set_permission_mode bypass-permissions"}) {
 		t.Fatalf("handed %q", got)
 	}
 	if err := o.SetHerAssistantMode(ctx, "m_1", "b1", "yolo"); connect.CodeOf(err) != connect.CodeInvalidArgument {
@@ -466,9 +468,6 @@ func TestHerAssistantModeAndSignedCommands(t *testing.T) {
 		want proto.Message
 		got  func(*identityv1.AdminCommand) proto.Message
 	}{
-		{"full access", func() error { return o.SetHerAssistantMode(ctx, "m_1", "b1", "bypass-permissions") },
-			&identityv1.SetHerAssistantMode{BotId: "b1", PermissionMode: "bypass-permissions"},
-			func(c *identityv1.AdminCommand) proto.Message { return c.GetSetHerAssistantMode() }},
 		{"Her on", func() error { return o.SetHer(ctx, "m_1", true) }, &identityv1.SetHer{Enabled: true},
 			func(c *identityv1.AdminCommand) proto.Message { return c.GetSetHer() }},
 		{"a connector", func() error { return o.SetHerCommandConnector(ctx, "m_1", connector) }, connector,
@@ -494,7 +493,7 @@ func TestHerAssistantModeAndSignedCommands(t *testing.T) {
 			t.Fatalf("%s: %v", c.name, err)
 		}
 	}
-	if got := h.prompts(t); len(got) != 1 {
+	if got := h.prompts(t); len(got) != 2 {
 		t.Fatalf("sent unsigned: %q", got)
 	}
 	if err := o.SetHerCommandConnector(ctx, "m_1", &identityv1.SetHerCommandConnector{Name: "x"}); connect.CodeOf(err) != connect.CodeInvalidArgument {
@@ -515,7 +514,6 @@ func TestHerOnAMachineOnly(t *testing.T) {
 	ctx := context.Background()
 	for name, err := range map[string]error{
 		"Her on":      o.SetHer(ctx, "m_1", true),
-		"full access": o.SetHerAssistantMode(ctx, "m_1", "b1", "bypass-permissions"),
 		"a connector": o.SetHerCommandConnector(ctx, "m_1", &identityv1.SetHerCommandConnector{Name: "x", Command: "y"}),
 	} {
 		if connect.CodeOf(err) != connect.CodeFailedPrecondition || !strings.Contains(err.Error(), "a trusted device has to") {
@@ -523,8 +521,10 @@ func TestHerOnAMachineOnly(t *testing.T) {
 		}
 	}
 	// The rest goes to its own machine, in process: not running here.
-	if err := o.SetHerAssistantMode(ctx, "m_1", "b1", "manual"); connect.CodeOf(err) != connect.CodeUnavailable {
-		t.Errorf("asking first: %v", err)
+	for _, mode := range []string{"manual", "bypass-permissions"} {
+		if err := o.SetHerAssistantMode(ctx, "m_1", "b1", mode); connect.CodeOf(err) != connect.CodeUnavailable {
+			t.Errorf("%s: %v", mode, err)
+		}
 	}
 }
 

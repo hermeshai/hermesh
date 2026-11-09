@@ -30,9 +30,9 @@ import (
 
 // Her (docs/her-server.md): the owner's side of Her on its machines. Every
 // call goes to the machine's HerService: this device's own in process,
-// another through its tunnel. Turning Her on, connectors started as
-// commands and full access for an assistant are admin commands signed by
-// the root key (§8); the rest goes with this device's own key.
+// another through its tunnel. Turning Her on and connectors started as
+// commands are admin commands signed by the root key (§8); the rest goes
+// with this device's own key, an assistant's full access included.
 
 // herMachine is HerService on one machine: *machine.Local for this
 // device's own, herRemote for another.
@@ -196,7 +196,7 @@ func (r herRemote) HerConsole() http.Handler {
 }
 
 // ---------------------------------------------------------------------------
-// Signed: turning Her on, connectors started as commands, full access.
+// Signed: turning Her on, connectors started as commands.
 
 // errNoRootKey refuses, on a computer that is only a machine, what only the
 // owner key of a trusted device signs.
@@ -233,23 +233,14 @@ func (o *Owner) SetHerCommandConnector(ctx context.Context, machineID string, c 
 	return err
 }
 
-// SetHerAssistantMode sets how freely an assistant acts. Full access is
-// signed by the root key; asking more goes on the assistant's conversation,
-// as the apps do.
+// SetHerAssistantMode sets how freely an assistant acts, on its
+// conversation, as the apps do: full access too, as the owner chose it.
 func (o *Owner) SetHerAssistantMode(ctx context.Context, machineID, botID, mode string) error {
 	if botID == "" {
 		return connect.NewError(connect.CodeInvalidArgument, errors.New("no assistant"))
 	}
 	switch mode {
-	case "manual", "accept-edits":
-	case "bypass-permissions":
-		if _, ok, _ := o.onlyMachine(); ok {
-			return errNoRootKey("give an assistant full access")
-		}
-		_, err := o.admin(ctx, machineID, func(c *identityv1.AdminCommand) {
-			c.Command = &identityv1.AdminCommand_SetHerAssistantMode{SetHerAssistantMode: &identityv1.SetHerAssistantMode{BotId: botID, PermissionMode: mode}}
-		})
-		return err
+	case "manual", "accept-edits", "bypass-permissions":
 	default:
 		return connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("unknown permission mode %q", mode))
 	}
