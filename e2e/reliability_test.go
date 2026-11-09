@@ -17,7 +17,7 @@ func TestReliability(t *testing.T) {
 	if testing.Short() {
 		t.Skip("e2e")
 	}
-	w := newOwnerMac(t, []string{"HERMESH_FAKE_PROVIDERS=1"}, &localv1.GrantSpec{}, "--idle-timeout", "1500ms")
+	w := newOwnerMac(t, []string{"HERMESH_FAKE_PROVIDERS=1"}, &localv1.GrantSpec{}, "--idle-timeout", "1500ms", "--retry-delay", "50ms")
 
 	s, r := w.startSession(time.Minute, "--agent", "claude", "--wait", "--prompt", "say hello")
 	if r.code != 0 || s.Status != "idle" || s.Ref == "" {
