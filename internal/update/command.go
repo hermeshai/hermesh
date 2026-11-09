@@ -61,7 +61,7 @@ func Run(ctx context.Context, in io.Reader, out io.Writer, dataDir string, check
 		return err
 	}
 	Edit(dataDir, func(s *State) { s.From, s.To, s.Updated, s.Available = current, r.Version, time.Now(), "" })
-	fmt.Fprintf(out, "✓ verified %s\n", strings.Join(names, " and "))
+	fmt.Fprintf(out, "✓ verified %s\n", and(names))
 	fmt.Fprintf(out, "✓ installed in %s\n", tilde(dir))
 	switch {
 	case service.Running():
@@ -139,6 +139,14 @@ func machineCheck(ctx context.Context, dataDir string) (c machine.Check, ok bool
 		json.Unmarshal(b, &c)
 	}
 	return c, ok && err == nil
+}
+
+// and lists names in a sentence: "a, b and c".
+func and(names []string) string {
+	if len(names) < 2 {
+		return strings.Join(names, "")
+	}
+	return strings.Join(names[:len(names)-1], ", ") + " and " + names[len(names)-1]
 }
 
 func tilde(dir string) string {

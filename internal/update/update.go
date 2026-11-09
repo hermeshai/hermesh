@@ -4,7 +4,9 @@
 package update
 
 import (
+	"archive/tar"
 	"bytes"
+	"compress/gzip"
 	"context"
 	"crypto/ecdsa"
 	"crypto/sha256"
@@ -40,15 +42,23 @@ var (
 )
 
 // Programs are the programs an update replaces, where they are (Windows:
-// with hermeshdw, the windowless hermeshd its service runs).
+// with hermeshdw, the windowless hermeshd its service runs; elsewhere with
+// her, Her's kernel, which hermeshd runs from beside itself).
 var Programs = programs()
 
 func programs() []string {
 	if runtime.GOOS == "windows" {
 		return []string{"hermeshd.exe", "hermeshdw.exe", "hermesh.exe"}
 	}
-	return []string{"hermeshd", "hermesh"}
+	return []string{"hermeshd", "hermesh", "her"}
 }
+
+// herConsole is the folder of her's console beside her, and
+// herConsoleAsset its archive in a release (docs/her-server.md §6.4).
+const (
+	herConsole      = "her-console"
+	herConsoleAsset = "her-console.tar.gz"
+)
 
 // asset is a program's file in a release: hermeshd-linux-arm64,
 // hermeshd-windows-amd64.exe.
@@ -171,9 +181,11 @@ func Dir() (string, error) {
 }
 
 // Install puts r's programs in dir over the ones there, keeping each old
-// one as .<name>.previous. Each new program must start and say r's version
-// before any is replaced. On Windows a running program can't be replaced,
-// only renamed: the old one moves aside instead.
+// one as .<name>.previous, and her's console with them. Each new program
+// must start and say r's version (her: start) before any is replaced. her
+// and its console go only from a release that carries them. On Windows a
+// running program can't be replaced, only renamed: the old one moves aside
+// instead.
 func Install(ctx context.Context, dataDir, dir string, r *Release) ([]string, error) {
 	lock, err := flock.Acquire(filepath.Join(dataDir, "update"))
 	if err != nil {
@@ -182,17 +194,20 @@ func Install(ctx context.Context, dataDir, dir string, r *Release) ([]string, er
 	defer lock.Release()
 	var names []string
 	for _, name := range Programs {
-		if _, err := os.Stat(filepath.Join(dir, name)); err == nil {
+		if _, err := os.Stat(filepath.Join(dir, name)); err == nil && (name != "her" || r.sums[asset(name)] != "") {
 			names = append(names, name)
 		}
 	}
 	if names == nil {
 		return nil, fmt.Errorf("no Hermesh programs in %s", dir)
 	}
+	if st, err := os.Stat(filepath.Join(dir, herConsole)); err == nil && st.IsDir() && r.sums[herConsoleAsset] != "" {
+		names = append(names, herConsole)
+	}
 	for _, name := range names {
 		if err := download(ctx, dir, name, r); err != nil {
 			for _, n := range names {
-				os.Remove(newPath(dir, n))
+				os.RemoveAll(newPath(dir, n))
 			}
 			return nil, err
 		}
@@ -200,8 +215,12 @@ func Install(ctx context.Context, dataDir, dir string, r *Release) ([]string, er
 	for _, name := range names {
 		path := filepath.Join(dir, name)
 		prev := previousPath(dir, name)
-		os.Remove(prev)
-		if runtime.GOOS == "windows" {
+		os.RemoveAll(prev)
+		if name == herConsole { // a folder, moved aside whole
+			if err := os.Rename(path, prev); err != nil {
+				return nil, err
+			}
+		} else if runtime.GOOS == "windows" {
 			older, _ := filepath.Glob(prev + ".*")
 			for _, o := range older {
 				os.Remove(o) // unless it runs
@@ -223,8 +242,12 @@ func Install(ctx context.Context, dataDir, dir string, r *Release) ([]string, er
 	return names, nil
 }
 
+// download puts name's next version beside it, checked.
 func download(ctx context.Context, dir, name string, r *Release) error {
 	file := asset(name)
+	if name == herConsole {
+		file = herConsoleAsset
+	}
 	want := r.sums[file]
 	if want == "" {
 		return fmt.Errorf("%s is not in the release's signed checksum list", file)
@@ -237,16 +260,68 @@ func download(ctx context.Context, dir, name string, r *Release) error {
 		return fmt.Errorf("%s does not match its checksum", file)
 	}
 	tmp := newPath(dir, name)
+	if name == herConsole {
+		os.RemoveAll(tmp)
+		if err := unpack(body, tmp); err != nil {
+			return fmt.Errorf("cannot unpack %s: %w", file, err)
+		}
+		return nil
+	}
 	if err := os.WriteFile(tmp, body, 0o755); err != nil {
 		return fmt.Errorf("cannot write %s: %w", dir, err)
 	}
 	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
 	defer cancel()
+	if name == "her" { // her has a version of its own
+		if out, err := exec.CommandContext(ctx, tmp, "--version").Output(); err != nil {
+			return fmt.Errorf("the downloaded her does not start: %v %s", err, bytes.TrimSpace(out))
+		}
+		return nil
+	}
 	out, err := exec.CommandContext(ctx, tmp, "version").Output()
 	if err != nil || strings.TrimSpace(string(out)) != r.Version {
 		return fmt.Errorf("the downloaded %s does not start as %s: %v %s", name, r.Version, err, bytes.TrimSpace(out))
 	}
 	return nil
+}
+
+// unpack writes the folders and files of a .tar.gz into dir.
+func unpack(body []byte, dir string) error {
+	zr, err := gzip.NewReader(bytes.NewReader(body))
+	if err != nil {
+		return err
+	}
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		return err
+	}
+	tr := tar.NewReader(zr)
+	for {
+		h, err := tr.Next()
+		if err == io.EOF {
+			return nil
+		}
+		if err != nil {
+			return err
+		}
+		name := filepath.FromSlash(h.Name)
+		if !filepath.IsLocal(name) {
+			return fmt.Errorf("%q is outside the archive's folder", h.Name)
+		}
+		path := filepath.Join(dir, name)
+		switch h.Typeflag {
+		case tar.TypeDir:
+			err = os.MkdirAll(path, 0o755)
+		case tar.TypeReg:
+			var b []byte
+			if b, err = io.ReadAll(tr); err == nil {
+				os.MkdirAll(filepath.Dir(path), 0o755)
+				err = os.WriteFile(path, b, 0o644)
+			}
+		}
+		if err != nil {
+			return err
+		}
+	}
 }
 
 // State is what the updater keeps in <data dir>/update/update.json.
