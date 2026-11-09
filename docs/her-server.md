@@ -52,7 +52,7 @@ The decisions:
 | Conversation | An assistant's one ongoing chat: a her session | |
 | Sub-agent | A worker an assistant starts for part of a task. Never listed | Progress lines |
 | Routine | Instructions an assistant runs on a schedule | Routine (定时任务) |
-| Model connection | How an environment reaches models: an API key, or a login such as ChatGPT | |
+| Model connection | How an environment reaches models: an API key, a Token Plan's key, or a login such as ChatGPT | |
 | Connector | An MCP server configured on a Her Server | Connector (连接器) |
 | Skill | A `SKILL.md` package installed on a Her Server | Skill (技能) |
 | Credential | A secret in a Her Server's credential store: the Keychain on macOS, `~/.her/credentials.toml` on Linux | |
@@ -728,8 +728,10 @@ While no machine runs Her, the Her entry shows the first run:
    yet supported. Touch ID turns Her on there.
 2. **Connect a model**, in the conversation: Her speaks first (the app
    writes for it, since no model can yet, and keeps none of it in her's
-   conversation) and offers signing in to ChatGPT or entering an API key
-   there. Other services are in the environment's console.
+   conversation) and offers the ways in a list: signing in to ChatGPT, a
+   Token Plan (a model plan the owner subscribes to), or an API key, each
+   then asking which plan or provider and its key there. Any step can go
+   back to another way. Other services are in the environment's console.
 3. **Her says hello**, naming the model it talks with.
 
 "Add environment" in the switcher runs the same steps for another machine.

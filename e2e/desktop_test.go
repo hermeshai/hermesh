@@ -250,7 +250,7 @@ func herSpec(t *testing.T, f desktopFixture, spec string) {
 // her-mock answers there in DeepSeek's place and takes a key, as DeepSeek
 // does (the onboarding offers the providers people know best, all in her's
 // own catalog, so a provider named after her-mock would not be among them),
-// and nothing names a model. OtherMac is work-mac's daemon, for the spec to
+// and in Tencent Cloud Token Plan's, and nothing names a model. OtherMac is work-mac's daemon, for the spec to
 // take offline. Connector is a connector's service on this computer, for
 // Her to ask for on a secure card: with OAuth, it registers a client for the
 // redirect and approves at once, standing in for the person.
@@ -271,7 +271,7 @@ func desktopHerWorld(t *testing.T) desktopFixture {
 		}
 	}
 	base := regexp.MustCompile(`base_url = "([^"]+)"`).FindStringSubmatch(mock.models)[1]
-	if err := os.WriteFile(filepath.Join(workHome, "models.toml"), []byte(fmt.Sprintf("[providers.deepseek]\nbase_url = %q\n", base)), 0o600); err != nil {
+	if err := os.WriteFile(filepath.Join(workHome, "models.toml"), []byte(fmt.Sprintf("[providers.deepseek]\nbase_url = %q\n\n[providers.tencent-token-plan]\nbase_url = %q\n", base, base)), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	// Nor a key from this computer: work-mac's her has none of the provider

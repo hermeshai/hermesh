@@ -1,5 +1,5 @@
 import { RpcError } from "@hermesh/her-client";
-import type { ProviderSummary } from "@hermesh/her-protocol";
+import type { ProviderSummary, TokenPlanSummary } from "@hermesh/her-protocol";
 
 // Her's onboarding while the environment shown has no model that works (docs/her-server.md
 // §9.2): Her speaks first, but no model can speak yet, so the app writes every message on
@@ -9,27 +9,27 @@ import type { ProviderSummary } from "@hermesh/her-protocol";
 
 /** A message of the onboarding: Her's, as the app writes it, or what the owner chose. */
 export type Said =
-  | { who: "her"; what: "greeting" | "browser" | "signInCancelled" | "whichProvider" }
+  | { who: "her"; what: "greeting" | "browser" | "signInCancelled" | "whichProvider" | "whichPlan" | "whichWay" }
   | { who: "her"; what: "signedIn"; account?: string }
   | { who: "her"; what: "signInFailed" | "keyFailed"; detail: string }
   | { who: "her"; what: "pasteKey" | "keyUnverified"; provider: string }
   | { who: "her"; what: "keyRejected"; provider: string; message: string }
-  | { who: "owner"; what: "chatgpt" | "key" | "otherWay" }
+  | { who: "owner"; what: "chatgpt" | "plan" | "key" | "otherWay" }
   | { who: "owner"; what: "provider"; provider: string };
 
 /**
  * Where it is: choosing a way; the browser's ChatGPT sign-in under way, or being stopped; choosing
- * a provider; its key asked for, or being checked; connected, until the conversation opens on a
- * model; done.
+ * a provider for a key, or a Token Plan; its key asked for, or being checked; connected, until the
+ * conversation opens on a model; done.
  */
-export type Step = "choose" | "signingIn" | "stopping" | "provider" | "key" | "checking" | "connecting" | "done";
+export type Step = "choose" | "signingIn" | "stopping" | "provider" | "plan" | "key" | "checking" | "connecting" | "done";
 
 export type Flow = {
   said: Said[];
   step: Step;
   /** When it began; once done, when that was. */
   at: number;
-  /** The provider whose key is asked for. */
+  /** The provider (or Token Plan) whose key is asked for. */
   provider?: string;
   /** What it connected. */
   connected?: { kind: "chatgpt" } | { kind: "key"; provider: string };
@@ -50,10 +50,14 @@ export function chooseChatGpt(f: Flow): Flow {
   return { ...f, step: "signingIn", said: [...f.said, { who: "owner", what: "chatgpt" }, { who: "her", what: "browser" }] };
 }
 
-/** Another way, while the browser's sign-in is under way: it is stopped, and Her answers once it has. */
+/**
+ * Another way: while the browser's sign-in is under way, it is stopped, and Her answers once it
+ * has; while a provider, a Token Plan or a key is asked for, Her asks which way at once.
+ */
 export function otherWay(f: Flow): Flow {
-  if (f.step !== "signingIn") return f;
-  return { ...f, step: "stopping", said: [...f.said, { who: "owner", what: "otherWay" }] };
+  if (f.step === "signingIn") return { ...f, step: "stopping", said: [...f.said, { who: "owner", what: "otherWay" }] };
+  if (f.step !== "provider" && f.step !== "plan" && f.step !== "key") return f;
+  return { ...f, step: "choose", provider: undefined, said: [...f.said, { who: "owner", what: "otherWay" }, { who: "her", what: "whichWay" }] };
 }
 
 export function signInEnded(f: Flow, r: SignInEnd): Flow {
@@ -63,14 +67,19 @@ export function signInEnded(f: Flow, r: SignInEnd): Flow {
   return { ...f, step: "choose", said: [...f.said, said] };
 }
 
+export function choosePlan(f: Flow): Flow {
+  if (f.step !== "choose") return f;
+  return { ...f, step: "plan", said: [...f.said, { who: "owner", what: "plan" }, { who: "her", what: "whichPlan" }] };
+}
+
 export function chooseKey(f: Flow): Flow {
   if (f.step !== "choose") return f;
   return { ...f, step: "provider", said: [...f.said, { who: "owner", what: "key" }, { who: "her", what: "whichProvider" }] };
 }
 
-/** A provider picked: from the question, or another one while a key is asked for. */
+/** A provider or a Token Plan picked: from the question, or another one while a key is asked for. */
 export function pickProvider(f: Flow, provider: string): Flow {
-  if (f.step !== "provider" && f.step !== "key") return f;
+  if (f.step !== "provider" && f.step !== "plan" && f.step !== "key") return f;
   return { ...f, step: "key", provider, said: [...f.said, { who: "owner", what: "provider", provider }, { who: "her", what: "pasteKey", provider }] };
 }
 
@@ -96,10 +105,10 @@ export function finish(f: Flow, d: { model: string; session: string | null; afte
   return { ...f, step: "done", at: d.at, done: { model: d.model, session: d.session, after: d.after } };
 }
 
-/** What goes under one of Her's messages: the two ways, the sign-in's, the providers, or the key's field. */
-export type Control = "ways" | "browser" | "providers" | "key";
+/** What goes under one of Her's messages: the ways, the sign-in's, the providers, the Token Plans, or the key's field. */
+export type Control = "ways" | "browser" | "providers" | "plans" | "key";
 
-/** Which of Her's messages get controls, by index: Her's last; while a key is asked for, its question keeps the providers. */
+/** Which of Her's messages get controls, by index: Her's last; while a key is asked for, its question keeps its choices. */
 export function controls(f: Flow): Map<number, Control> {
   const at = new Map<number, Control>();
   const last = f.said.length - 1;
@@ -113,10 +122,13 @@ export function controls(f: Flow): Map<number, Control> {
     case "provider":
       at.set(last, "providers");
       break;
+    case "plan":
+      at.set(last, "plans");
+      break;
     case "key":
     case "checking": {
-      const question = f.said.findLastIndex((s) => s.what === "whichProvider");
-      if (question >= 0) at.set(question, "providers");
+      const question = f.said.findLastIndex((s) => s.what === "whichProvider" || s.what === "whichPlan");
+      if (question >= 0) at.set(question, f.said[question].what === "whichPlan" ? "plans" : "providers");
       at.set(last, "key");
       break;
     }
@@ -128,7 +140,7 @@ export function controls(f: Flow): Map<number, Control> {
 const known = ["deepseek", "openai", "anthropic", "google", "gemini", "kimi", "qwen", "glm"];
 const rank = (p: ProviderSummary) => (known.includes(p.id) ? known.indexOf(p.id) : known.length);
 
-/** How many providers are offered; the others, and the Token Plans, are in the console. */
+/** How many providers are offered for a key; the others are in the console. Every Token Plan is offered. */
 export const OFFERED = 5;
 
 /**
@@ -140,6 +152,15 @@ export function keyChoices(providers: ProviderSummary[]): ProviderSummary[] {
     .filter((p) => p.auth === "api_key" && !p.plan && p.id !== "deepseek-anthropic")
     .sort((a, b) => rank(a) - rank(b) || a.name.localeCompare(b.name))
     .slice(0, OFFERED);
+}
+
+/** The Token Plans in the console's order (her/apps/console providers.tsx), then by name. */
+const plans = ["bailian-token-plan", "tencent-token-plan", "volcengine-agent-plan", "volcengine-coding-plan", "zai-coding-plan", "zhipu-coding-plan"];
+const planRank = (p: ProviderSummary) => (plans.includes(p.id) ? plans.indexOf(p.id) : plans.length);
+
+/** The Token Plans offered: all that her knows. */
+export function planChoices(providers: ProviderSummary[]): ProviderSummary[] {
+  return providers.filter((p) => p.plan).sort((a, b) => planRank(a) - planRank(b) || a.name.localeCompare(b.name));
 }
 
 /** A provider's name in the app's language (zh-CN takes `zh`), else its own. */
@@ -155,7 +176,8 @@ const keyPages: Record<string, string> = {
   google: "https://aistudio.google.com/apikey",
 };
 
-export const keyPage = (provider: string): string | undefined => keyPages[provider];
+/** Where a key is made: a Token Plan's own page, else the one the app knows for the provider. */
+export const keyPage = (provider: string, plan?: Pick<TokenPlanSummary, "key_url"> | null): string | undefined => plan?.key_url || keyPages[provider];
 
 /** Whether an error's own words are long enough to fold away under Her's. */
 export const folds = (text: string) => text.length > 60 || text.includes("\n");
@@ -163,12 +185,13 @@ export const folds = (text: string) => text.length > 60 || text.includes("\n");
 /** An error's words to go inside Her's sentence: without their full stop. */
 export const clause = (text: string) => text.trim().replace(/[.。!！]+$/, "");
 
-/** What the onboarding's line says is connected: ChatGPT, or the provider whose key was saved, else the provider of the model Her talks with. */
-export function connectedName(f: Flow, providers: Pick<ProviderSummary, "id" | "name" | "names">[], language: string): string {
+/**
+ * What the onboarding's line says is connected: ChatGPT, or the provider (or Token Plan) whose key
+ * was saved, else the provider of the model Her talks with; `name` names a provider by its id.
+ */
+export function connectedName(f: Flow, name: (provider: string) => string): string {
   if (f.connected?.kind === "chatgpt") return "ChatGPT";
-  const id = f.connected?.kind === "key" ? f.connected.provider : (f.done?.model.split("/")[0] ?? "");
-  const p = providers.find((x) => x.id === id);
-  return p ? providerName(p, language) : id;
+  return name(f.connected?.kind === "key" ? f.connected.provider : (f.done?.model.split("/")[0] ?? ""));
 }
 
 /**

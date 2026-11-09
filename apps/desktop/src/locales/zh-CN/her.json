@@ -78,9 +78,14 @@
     "failedPast": "这一轮没完成：{{title}}"
   },
   "onboard": {
-    "greeting": "你好，我是 {{name}}，在 {{machine}} 上为你做事。开始之前，我需要接上一个模型来思考和回答：用你的 ChatGPT 账户登录最快，也可以填一个 API Key。",
+    "greeting": "你好，我是 {{name}}，在 {{machine}} 上为你做事。开始之前，我需要接上一个模型来思考和回答，选一种方式吧。",
+    "ways": "接入方式",
     "chatgpt": "用 ChatGPT 登录",
+    "chatgptNote": "用你的 ChatGPT 订阅，在浏览器里登录",
+    "plan": "接入 Token Plan",
+    "planNote": "已订阅的模型套餐，如百炼、火山方舟、智谱 GLM",
     "key": "填写 API Key",
+    "keyNote": "DeepSeek、OpenAI、Anthropic 等服务商的 Key",
     "stays": "Key 和登录都只留在 {{machine}} 上",
     "placeholder": "接上模型后就能回复你",
     "browser": "我在浏览器里打开了 ChatGPT 的登录页，登录完回到这里就好。",
@@ -88,10 +93,14 @@
     "otherWay": "换一种方式",
     "signedIn": "接上了 ChatGPT（{{account}}）。",
     "signedInPlain": "接上了 ChatGPT。",
-    "signInCancelled": "登录已取消。可以再试一次，或者换成填写 API Key。",
-    "signInFailed": "这次没能接上 ChatGPT。可以再试一次，或者换成填写 API Key。",
+    "signInCancelled": "登录已取消。可以再试一次，或者换一种方式。",
+    "signInFailed": "这次没能接上 ChatGPT。可以再试一次，或者换一种方式。",
+    "whichWay": "好，换哪种方式？",
     "whichProvider": "用哪家的？",
+    "providers": "服务商",
     "otherServices": "其他服务…",
+    "whichPlan": "接入哪个套餐？",
+    "plans": "Token Plan",
     "pasteKey": "把 {{provider}} 的 API Key 贴在下面。它只存进 {{machine}} 的凭据库，不会出现在对话里，也不会发给模型。",
     "keyLabel": "{{provider}} 的 API Key",
     "keyPlaceholder": "API Key",
@@ -102,8 +111,35 @@
     "keyRejectedPlain": "这个 Key 没通过 {{provider}} 的检查。再贴一次？",
     "keyFailed": "没能把 Key 存到 {{machine}} 上。再试一次？",
     "keyUnverified": "存好了，不过暂时没法向 {{provider}} 确认这个 Key 能用，先接着往下走。",
+    "planUnverified": "存好了。套餐的 Key 要到第一次回复时才能确认能不能用。",
     "done": "好了，我会用 {{model}} 和你聊，想换可以去助手设置。有什么要我做的？",
     "connected": "已接上 {{name}}"
+  },
+  "plans": {
+    "bailian-token-plan": {
+      "name": "百炼 Token Plan",
+      "note": "阿里云 · 多模型套餐"
+    },
+    "tencent-token-plan": {
+      "name": "腾讯云 Token Plan",
+      "note": "通用与 Hy 套餐共用密钥"
+    },
+    "volcengine-agent-plan": {
+      "name": "火山方舟 Agent Plan",
+      "note": "Agent Plan 专属密钥"
+    },
+    "volcengine-coding-plan": {
+      "name": "火山方舟 Coding Plan",
+      "note": "Coding Plan 专属密钥"
+    },
+    "zai-coding-plan": {
+      "name": "Z.ai GLM Coding Plan",
+      "note": "国际站账户"
+    },
+    "zhipu-coding-plan": {
+      "name": "智谱 GLM Coding Plan",
+      "note": "中国站账户"
+    }
   },
   "card": {
     "secure": "安全卡",

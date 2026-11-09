@@ -6,6 +6,7 @@ import {
   checking,
   chooseChatGpt,
   chooseKey,
+  choosePlan,
   clause,
   connectedName,
   controls,
@@ -18,6 +19,7 @@ import {
   onboardingAfter,
   otherWay,
   pickProvider,
+  planChoices,
   providerName,
   signInEnded,
   start,
@@ -28,10 +30,14 @@ import {
 /** A provider as models/list gives it: one that takes a key unless said. */
 const provider = (id: string, name: string, o: Partial<ProviderSummary> = {}): ProviderSummary => ({ id, name, auth: "api_key", credential: "missing", ...o });
 
+/** A Token Plan as models/list gives it. */
+const plan = (id: string, name: string, key_url = `https://example.invalid/${id}`): ProviderSummary =>
+  provider(id, name, { plan: { api: "openai-chat", base_url: "https://example.invalid", dynamic_models: false, key_url } });
+
 /** What was said, as "her:what" and "owner:what". */
 const said = (f: Flow) => f.said.map((s) => `${s.who}:${s.what}`);
 
-test("Her greets with the two ways, and the owner's choice of ChatGPT opens the browser", () => {
+test("Her greets with the ways, and the owner's choice of ChatGPT opens the browser", () => {
   const f = start(1);
   assert.deepEqual(said(f), ["her:greeting"]);
   assert.deepEqual([...controls(f)], [[0, "ways"]]);
@@ -43,7 +49,7 @@ test("Her greets with the two ways, and the owner's choice of ChatGPT opens the 
   assert.equal(chooseChatGpt(signing), signing);
 });
 
-test("a ChatGPT sign-in connects, fails or is stopped; the last two offer both ways again", () => {
+test("a ChatGPT sign-in connects, fails or is stopped; the last two offer the ways again", () => {
   const signing = chooseChatGpt(start(1));
   const connected = signInEnded(signing, { state: "connected", account: "me@example.com" });
   assert.equal(connected.step, "connecting");
@@ -70,6 +76,45 @@ test("a ChatGPT sign-in connects, fails or is stopped; the last two offer both w
   // An end that comes once the onboarding is past the sign-in changes nothing.
   assert.equal(signInEnded(stopped, { state: "failed", message: "late" }), stopped);
   assert.equal(otherWay(stopped), stopped);
+});
+
+test("a Token Plan: which plan, then its key; the plans stay under their question while it is asked", () => {
+  const asking = choosePlan(start(1));
+  assert.equal(asking.step, "plan");
+  assert.deepEqual(said(asking), ["her:greeting", "owner:plan", "her:whichPlan"]);
+  assert.deepEqual([...controls(asking)], [[2, "plans"]]);
+  assert.equal(choosePlan(asking), asking);
+  const key = pickProvider(asking, "bailian-token-plan");
+  assert.equal(key.step, "key");
+  assert.deepEqual(said(key).slice(-2), ["owner:provider", "her:pasteKey"]);
+  assert.deepEqual([...controls(key)].sort(), [
+    [2, "plans"],
+    [4, "key"],
+  ]);
+  const saved = keySaved(checking(key), false);
+  assert.deepEqual(saved.connected, { kind: "key", provider: "bailian-token-plan" });
+  assert.deepEqual(saved.said.at(-1), { who: "her", what: "keyUnverified", provider: "bailian-token-plan" });
+});
+
+test("another way, while a provider, a plan or a key is asked for: Her asks which way at once, and the question there keeps its own choices", () => {
+  const key = pickProvider(chooseKey(start(1)), "deepseek");
+  for (const f of [chooseKey(start(1)), choosePlan(start(1)), key]) {
+    const back = otherWay(f);
+    assert.equal(back.step, "choose");
+    assert.equal(back.provider, undefined);
+    assert.deepEqual(said(back).slice(-2), ["owner:otherWay", "her:whichWay"]);
+    assert.deepEqual([...controls(back)], [[back.said.length - 1, "ways"]]);
+  }
+  // From an API key to a Token Plan: the plans' question is the one asked last.
+  const planKey = pickProvider(choosePlan(otherWay(key)), "zhipu-coding-plan");
+  const question = planKey.said.findLastIndex((s) => s.what === "whichPlan");
+  assert.deepEqual([...controls(planKey)].sort((a, b) => a[0] - b[0]), [
+    [question, "plans"],
+    [planKey.said.length - 1, "key"],
+  ]);
+  // Not while a key is checked.
+  const busy = checking(key);
+  assert.equal(otherWay(busy), busy);
 });
 
 test("an API key: which provider, then its key; the providers stay under their question while it is asked", () => {
@@ -171,6 +216,20 @@ test("the providers offered: the best known first, then by name, without Token P
   assert.deepEqual(keyChoices([]), []);
 });
 
+test("the Token Plans offered: all of them, in the console's order, then by name", () => {
+  const all = [
+    plan("zhipu-coding-plan", "Zhipu GLM Coding Plan"),
+    plan("new-plan", "Another Plan"),
+    plan("bailian-token-plan", "Bailian Token Plan"),
+    provider("deepseek", "DeepSeek"),
+    plan("volcengine-coding-plan", "Volcengine Ark Coding Plan"),
+    plan("aaa-plan", "AAA Plan"),
+    plan("tencent-token-plan", "Tencent Cloud Token Plan"),
+  ];
+  assert.deepEqual(planChoices(all).map((p) => p.id), ["bailian-token-plan", "tencent-token-plan", "volcengine-coding-plan", "zhipu-coding-plan", "aaa-plan", "new-plan"]);
+  assert.deepEqual(planChoices([provider("deepseek", "DeepSeek")]), []);
+});
+
 test("a provider's name in the app's language, else its own; the key pages the app knows", () => {
   const kimi = provider("kimi", "Moonshot Kimi", { names: { zh: "月之暗面 Kimi", en: "Kimi" } });
   assert.equal(providerName(kimi, "zh-CN"), "月之暗面 Kimi");
@@ -182,6 +241,8 @@ test("a provider's name in the app's language, else its own; the key pages the a
   assert.equal(keyPage("google"), "https://aistudio.google.com/apikey");
   assert.equal(keyPage("kimi"), undefined);
   assert.equal(keyPage("mock"), undefined);
+  // A Token Plan's own page.
+  assert.equal(keyPage("bailian-token-plan", { key_url: "https://bailian.console.aliyun.com/cn-beijing/subscription/overview" }), "https://bailian.console.aliyun.com/cn-beijing/subscription/overview");
 });
 
 test("an error's own words go inside Her's sentence when short, and fold away when long", () => {
@@ -194,15 +255,18 @@ test("an error's own words go inside Her's sentence when short, and fold away wh
 });
 
 test("what the line says is connected: ChatGPT, the provider of the key, else the provider of Her's model", () => {
-  const providers = [provider("deepseek", "DeepSeek"), provider("local-chatgpt-api-0123456789ab", "ChatGPT", { auth: "connection" }), provider("kimi", "Moonshot Kimi", { names: { zh: "Kimi" } })];
+  const names: Record<string, string> = { deepseek: "DeepSeek", kimi: "Kimi", "bailian-token-plan": "百炼 Token Plan" };
+  const name = (id: string) => names[id] ?? id;
   const done = (f: Flow, model: string) => finish(f, { model, session: "s", after: null, at: 2 });
   const signed = signInEnded(chooseChatGpt(start(1)), { state: "connected" });
-  assert.equal(connectedName(done(signed, "local-chatgpt-api-0123456789ab/gpt-5"), providers, "en"), "ChatGPT");
+  assert.equal(connectedName(done(signed, "local-chatgpt-api-0123456789ab/gpt-5"), name), "ChatGPT");
   const keyed = keySaved(checking(pickProvider(chooseKey(start(1)), "kimi")), true);
-  assert.equal(connectedName(done(keyed, "kimi/kimi-k3.1-pro"), providers, "zh-CN"), "Kimi");
+  assert.equal(connectedName(done(keyed, "kimi/kimi-k3.1-pro"), name), "Kimi");
+  const planned = keySaved(checking(pickProvider(choosePlan(start(1)), "bailian-token-plan")), false);
+  assert.equal(connectedName(done(planned, "bailian-token-plan/qwen3.8-max"), name), "百炼 Token Plan");
   // Set up in the console: the provider of the model the conversation opened on.
-  assert.equal(connectedName(done(start(1), "deepseek/deepseek-flash"), providers, "en"), "DeepSeek");
-  assert.equal(connectedName(done(start(1), "custom/model"), providers, "en"), "custom");
+  assert.equal(connectedName(done(start(1), "deepseek/deepseek-flash"), name), "DeepSeek");
+  assert.equal(connectedName(done(start(1), "custom/model"), name), "custom");
 });
 
 test("the onboarding's place: last while under way, where it was once done, in its own conversation only", () => {
