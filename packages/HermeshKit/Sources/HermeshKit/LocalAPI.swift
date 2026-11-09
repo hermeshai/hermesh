@@ -110,6 +110,28 @@ public final class LocalAPI: @unchecked Sendable {
         }
     }
 
+    // MARK: Plain HTTP on loopback
+
+    /// A request to a port on this device's loopback, without a token: the
+    /// Her console's sign-in routes (GetHerConsole), which wait a while
+    /// before they answer. Cancelling the task ends it.
+    public static func loopback(port: Int, method: String, path: String, body: Data = Data(), timeout: Int = 40) async throws -> (status: Int, body: Data) {
+        let conn = HTTPOverUnix()
+        return try await withTaskCancellationHandler {
+            try await withCheckedThrowingContinuation { (k: CheckedContinuation<(status: Int, body: Data), Error>) in
+                Thread.detachNewThread {
+                    defer { conn.release() }
+                    k.resume(with: Result {
+                        let (status, headers) = try conn.open(endpoint: .loopback(port: port, token: ""), method: method, path: path, contentType: "application/json", body: body, timeout: timeout)
+                        return (status, try conn.readAll(headers: headers))
+                    })
+                }
+            }
+        } onCancel: {
+            conn.close()
+        }
+    }
+
     static func parseError(_ data: Data, status: Int, headers: [String: String]) -> APIError {
         if let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
             return APIError(code: obj["code"] as? String ?? "http_\(status)", message: obj["message"] as? String ?? "")
@@ -158,14 +180,14 @@ final class HTTPOverUnix: @unchecked Sendable {
         }
     }
 
-    func open(endpoint: LocalEndpoint, path: String, contentType: String, body: Data, timeout: Int? = nil) throws -> (Int, [String: String]) {
+    func open(endpoint: LocalEndpoint, method: String = "POST", path: String, contentType: String, body: Data, timeout: Int? = nil) throws -> (Int, [String: String]) {
         let s: Int32
         var auth = ""
         switch endpoint {
         case .unix(let socketPath): s = try Self.connectUnix(socketPath)
         case .loopback(let port, let token):
             s = try Self.connectLoopback(port)
-            auth = "Authorization: Bearer \(token)\r\n"
+            if !token.isEmpty { auth = "Authorization: Bearer \(token)\r\n" }
         }
         var on: Int32 = 1
         setsockopt(s, SOL_SOCKET, SO_NOSIGPIPE, &on, socklen_t(MemoryLayout<Int32>.size))
@@ -181,7 +203,7 @@ final class HTTPOverUnix: @unchecked Sendable {
         }
         fd = s
         lock.unlock()
-        var req = "POST \(path) HTTP/1.1\r\nHost: hermesh\r\n\(auth)Content-Type: \(contentType)\r\nConnect-Protocol-Version: 1\r\nContent-Length: \(body.count)\r\n\r\n"
+        var req = "\(method) \(path) HTTP/1.1\r\nHost: hermesh\r\n\(auth)Content-Type: \(contentType)\r\nConnect-Protocol-Version: 1\r\nContent-Length: \(body.count)\r\n\r\n"
         return try exchange(req: &req, contentType: contentType, body: body)
     }
 

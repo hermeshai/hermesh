@@ -12,6 +12,7 @@ let package = Package(
         .library(name: "HermeshProto", targets: ["HermeshProto"]),
         .library(name: "HermeshKit", targets: ["HermeshKit"]),
         .library(name: "HermeshSessions", targets: ["HermeshSessions"]),
+        .library(name: "HermeshHer", targets: ["HermeshHer"]),
     ],
     dependencies: [
         .package(url: "https://github.com/apple/swift-protobuf.git", from: "1.38.0"),
@@ -35,6 +36,19 @@ let package = Package(
             dependencies: ["HermeshProto", .product(name: "SwiftProtobuf", package: "swift-protobuf")],
             path: "Sources/HermeshSessions",
             resources: [.process("Resources")],
+            swiftSettings: [.swiftLanguageMode(.v5)]
+        ),
+        // What the iPhone's Her entry reads of her's protocol (docs/her-server.md §9).
+        .target(
+            name: "HermeshHer",
+            dependencies: ["HermeshProto", .product(name: "SwiftProtobuf", package: "swift-protobuf")],
+            path: "Sources/HermeshHer",
+            swiftSettings: [.swiftLanguageMode(.v5)]
+        ),
+        .testTarget(
+            name: "HermeshHerTests",
+            dependencies: ["HermeshHer", "HermeshProto"],
+            path: "Tests/HermeshHerTests",
             swiftSettings: [.swiftLanguageMode(.v5)]
         ),
         .testTarget(
