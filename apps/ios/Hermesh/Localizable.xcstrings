@@ -1973,6 +1973,16 @@
         }
       }
     },
+    "Copy Code": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "拷贝代码"
+          }
+        }
+      }
+    },
     "Copy Link": {
       "localizations": {
         "zh-Hans": {
@@ -8197,6 +8207,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "丢弃"
+          }
+        }
+      }
+    },
+    "Back to the Bottom": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "回到底部"
           }
         }
       }

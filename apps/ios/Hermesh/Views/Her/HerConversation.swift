@@ -18,6 +18,11 @@ struct HerConversation: View {
     @State private var atEnd = true
     @State private var scrolling = false
     @State private var position = ScrollPosition(edge: .bottom)
+    /// Whether it was scrolled well up from its end, where a button brings it back.
+    @State private var away = false
+    /// The top shows, where earlier messages are read.
+    @State private var topSeen = false
+    @Environment(\.accessibilityReduceMotion) private var still
     /// A file Her sent, brought here to preview and save.
     @State private var preview: URL?
 
@@ -34,14 +39,31 @@ struct HerConversation: View {
         let rows = herWithOnboarding(said + waiting, place, at: chat.flow?.at ?? .now)
         let busy = chat.live.map(herBusy) ?? false
         let asking = chat.convUp ? chat.live.flatMap(herPendingApproval) : nil
-        ScrollView {
-            VStack(alignment: .leading, spacing: 0) {
-                ForEach(Array(rows.enumerated()), id: \.element.key) { i, row in
-                    HerRow(chat: chat, row: row, previous: i > 0 ? rows[i - 1] : nil, machine: machine, preview: $preview)
+        ScrollViewReader { proxy in
+            ScrollView {
+                VStack(alignment: .leading, spacing: 0) {
+                    // Earlier messages (her opens it on its last 100), read once this shows at the top, as on the Mac.
+                    if chat.live?.before != nil {
+                        ProgressView().frame(maxWidth: .infinity).padding(.bottom, 21)
+                            .onScrollVisibilityChange(threshold: 0.1) { seen in
+                                topSeen = seen
+                                if seen { Task { await chat.earlier() } }
+                            }
+                            .accessibilityIdentifier("her-earlier")
+                    }
+                    ForEach(Array(rows.enumerated()), id: \.element.key) { i, row in
+                        HerRow(chat: chat, row: row, previous: i > 0 ? rows[i - 1] : nil, machine: machine, preview: $preview)
+                    }
+                    if busy { HerTyping().padding(.top, rows.isEmpty ? 0 : herGap(joined: rows.last?.side == .her)) }
                 }
-                if busy { HerTyping().padding(.top, rows.isEmpty ? 0 : herGap(joined: rows.last?.side == .her)) }
+                .padding(.horizontal, 20).padding(.top, 13).padding(.bottom, 21)
             }
-            .padding(.horizontal, 20).padding(.top, 13).padding(.bottom, 21)
+            // Earlier messages put above what was first: it stays where it was, unless the end is followed.
+            .onChange(of: said.first?.key) { old, _ in
+                if let old, !atEnd, said.contains(where: { $0.key == old }) { proxy.scrollTo(old, anchor: .top) }
+            }
+            // A page read while the top still shows: the next one.
+            .onChange(of: chat.live?.before) { if topSeen { Task { await chat.earlier() } } }
         }
         // Nothing drawn under the top: the conversation scrolls under Her's mark and the menu button as it is.
         .scrollEdgeEffectHidden(true, for: .top)
@@ -49,12 +71,13 @@ struct HerConversation: View {
         .scrollPosition($position)
         .defaultScrollAnchor(.bottom, for: .initialOffset)
         .onScrollPhaseChange { _, phase in scrolling = phase == .interacting || phase == .decelerating }
-        .onScrollGeometryChange(for: Bool.self) { g in g.visibleRect.maxY > g.contentSize.height - 80 } action: { _, end in
+        .onScrollGeometryChange(for: Bool.self) { fromEnd($0) < 80 } action: { _, end in
             if scrolling { atEnd = end }
         }
         .onScrollGeometryChange(for: CGFloat.self) { $0.contentSize.height } action: { _, _ in
             if atEnd && !scrolling { position.scrollTo(edge: .bottom) }
         }
+        .onScrollGeometryChange(for: Bool.self, of: scrolledAway) { _, far in away = far }
         .scrollDismissesKeyboard(.interactively)
         .overlay {
             if rows.isEmpty && !busy { HerEmpty(chat: chat, machine: machine, loading: noModel || (chat.session == nil && state == .ready)) }
@@ -63,10 +86,16 @@ struct HerConversation: View {
             if case .offline(let seen) = state { HerOfflineLine(name: machine.machineName, seen: seen) }
         }
         .safeAreaInset(edge: .bottom) {
-            if let asking {
-                HerApprovalPanel(chat: chat, approval: asking.approval, agent: asking.agent, waiting: asking.waiting).id(asking.approval.callID)
-            } else {
-                HerComposer(chat: chat, machine: machine, state: state, noModel: noModel, direct: state == .ready && chat.convUp && waiting.isEmpty)
+            Group {
+                if let asking {
+                    HerApprovalPanel(chat: chat, approval: asking.approval, agent: asking.agent, waiting: asking.waiting).id(asking.approval.callID)
+                } else {
+                    HerComposer(chat: chat, machine: machine, state: state, noModel: noModel, direct: state == .ready && chat.convUp && waiting.isEmpty)
+                }
+            }
+            .toEndButton(away) {
+                atEnd = true
+                withAnimation(still ? nil : .smooth) { position.scrollTo(edge: .bottom) }
             }
         }
         .quickLookPreview($preview)
@@ -215,7 +244,7 @@ struct HerWords: View {
     let text: String
 
     var body: some View {
-        MarkdownText(text: text)
+        MarkdownText(text: text, style: .bubble)
             .herFill()
             .padding(.horizontal, 14).padding(.vertical, 9)
             .herReply()
@@ -351,7 +380,7 @@ private struct HerQuestion: View {
     var body: some View {
         let asking = open && !options.isEmpty
         VStack(alignment: .leading, spacing: 0) {
-            MarkdownText(text: text).herFill().padding(.horizontal, 14).padding(.vertical, 9)
+            MarkdownText(text: text, style: .bubble).herFill().padding(.horizontal, 14).padding(.vertical, 9)
             if asking {
                 VStack(spacing: 0) {
                     ForEach(options, id: \.self) { label in

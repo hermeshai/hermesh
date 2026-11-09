@@ -29,6 +29,20 @@ func snapshot(_ items: [JSON], task: JSON = nil, seq: Int = 10, queued: JSON = [
     HerSession(snapshot: snapshotJSON(items, task: task, seq: seq, queued: queued, agents: agents))!
 }
 
+@Test func earlierHistoryGoesBeforeWhatTheSnapshotHas() {
+    let json: JSON = ["session": info, "last_seq": 10, "transcript": ["items": [said("u3", "third", ts: 3000)], "before": "i2"], "active_task": nil,
+                      "usage": ["per_model": [:]], "queued": [], "agents": []]
+    var v = HerSession(snapshot: json)!
+    #expect(v.before == "i2")
+    v.prepend(history: ["items": [said("u2", "second", ts: 2000)], "before": "i1"])
+    #expect(v.before == "i1")
+    v.prepend(history: ["items": [said("u1", "first", ts: 1000)], "before": nil])
+    #expect(v.before == nil, "the first page has nothing before it")
+    #expect(herChat(v).map(\.key) == ["u1", "u2", "u3"])
+    // A snapshot of a whole conversation has no cursor.
+    #expect(snapshot([said("u1", "first", ts: 1000)]).before == nil)
+}
+
 @Test func snapshotShowsTheOwnerAndWhatHerSent() {
     let v = snapshot([
         said("u1", "list my tasks", ts: 1000),

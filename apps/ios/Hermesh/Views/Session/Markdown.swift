@@ -37,15 +37,19 @@ struct DraftMarkdownText: View {
     }
 }
 
-/// The type a reply is set in: an agent's own (the body) or a message
-/// between agents (a size down, as on the Mac).
+/// The type a reply is set in: an agent's own (the body), Her's in her
+/// bubble, or a message between agents (a size down, as on the Mac).
 struct MarkdownStyle {
     var font: Font
     var code: Font
     var table: Font
     var gap: CGFloat
+    /// What a fenced block is set on.
+    var codeGround = Palette.code
 
     static let reply = MarkdownStyle(font: .body, code: .subheadline.monospaced(), table: .subheadline, gap: 12)
+    /// In Her's bubble, as on the Mac: blocks closer, and code on the page's own ground so it stands out from the bubble.
+    static let bubble = MarkdownStyle(font: .body, code: .subheadline.monospaced(), table: .subheadline, gap: 9, codeGround: Color(.systemBackground))
     static let small = MarkdownStyle(font: .subheadline, code: .footnote.monospaced(), table: .footnote, gap: 9)
 }
 
@@ -172,11 +176,16 @@ private struct MarkdownBlocks: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: style.gap) {
-            ForEach(Array(blocks.enumerated()), id: \.offset) { _, b in
-                BlockView(block: b, style: style)
+            ForEach(Array(blocks.enumerated()), id: \.offset) { i, b in
+                // A heading after other blocks starts a part: more room above it, as on the Mac.
+                BlockView(block: b, style: style).padding(.top, i > 0 && b.isHeading ? 8 : 0)
             }
         }
     }
+}
+
+private extension MarkdownBlock {
+    var isHeading: Bool { if case .heading = self { true } else { false } }
 }
 
 private struct BlockView: View {
@@ -203,22 +212,28 @@ private struct BlockView: View {
             }
             .padding(.leading, 4)
         case .code(let lang, let text):
-            FencedCode(text: text, lang: lang, font: style.code)
+            FencedCode(text: text, lang: lang, font: style.code, ground: style.codeGround)
         case .quote(let blocks):
             MarkdownBlocks(blocks: blocks, style: style)
                 .foregroundStyle(.secondary)
                 .padding(.leading, 12)
                 .overlay(alignment: .leading) { Rectangle().fill(Palette.fill3).frame(width: 2) }
         case .table(let head, let rows):
-            ScrollView(.horizontal, showsIndicators: false) {
-                Grid(alignment: .topLeading, horizontalSpacing: 14, verticalSpacing: 0) {
-                    GridRow { ForEach(Array(head.enumerated()), id: \.offset) { _, c in cell(c).fontWeight(.semibold) } }
-                    ForEach(Array(rows.enumerated()), id: \.offset) { _, r in
-                        GridRow { ForEach(Array(r.enumerated()), id: \.offset) { _, c in cell(c) } }
-                    }
+            // In a box with its header shaded and its numbers in columns, as on the Mac; as wide as it is, and
+            // scrolling sideways once wider than the page.
+            let table = Grid(alignment: .topLeading, horizontalSpacing: 0, verticalSpacing: 0) {
+                GridRow { ForEach(Array(head.enumerated()), id: \.offset) { _, c in cell(c, last: rows.isEmpty).fontWeight(.semibold).background(Palette.fill) } }
+                ForEach(Array(rows.enumerated()), id: \.offset) { i, r in
+                    GridRow { ForEach(Array(r.enumerated()), id: \.offset) { _, c in cell(c, last: i == rows.count - 1) } }
                 }
             }
-            .font(style.table)
+            .font(style.table).monospacedDigit()
+            .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+            .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous).strokeBorder(Palette.separator, lineWidth: 0.5))
+            ViewThatFits(in: .horizontal) {
+                table
+                ScrollView(.horizontal, showsIndicators: false) { table }
+            }
         case .rule:
             Rectangle().fill(Palette.separator).frame(height: 0.5)
         }
@@ -232,11 +247,12 @@ private struct BlockView: View {
         }
     }
 
-    private func cell(_ s: AttributedString) -> some View {
+    /// A cell of a table, a hairline under it but in the last row.
+    private func cell(_ s: AttributedString, last: Bool) -> some View {
         Text(styled(s)).lineSpacing(2).fixedSize(horizontal: false, vertical: true)
-            .padding(.vertical, 6)
-            .frame(maxWidth: 320, alignment: .leading)
-            .overlay(alignment: .bottom) { Rectangle().fill(Palette.separator).frame(height: 0.5) }
+            .padding(.horizontal, 12).padding(.vertical, 7)
+            .frame(maxWidth: 320, maxHeight: .infinity, alignment: .topLeading)
+            .overlay(alignment: .bottom) { if !last { Rectangle().fill(Palette.separator).frame(height: 0.5) } }
     }
 
     /// Inline code in the code face, on a grey ground.
@@ -250,25 +266,63 @@ private struct BlockView: View {
     }
 }
 
-/// A fenced block: coloured when it names its language, scrolling sideways
-/// rather than wrapping, as on the Mac. Long-press copies it.
+/// A fenced block, as on the Mac: a bar with its language (a shell's with a
+/// terminal mark) and Copy, then the code, coloured when it names its
+/// language, scrolling sideways rather than wrapping.
 struct FencedCode: View {
     let text: String
     let lang: String
     let font: Font
+    var ground = Palette.code
+    /// Just copied: the button shows a check a moment.
+    @State private var copied = false
 
     var body: some View {
-        ScrollView(.horizontal, showsIndicators: false) {
-            Group {
-                if lang.isEmpty { SwiftUI.Text(text) } else { CodeText(text: text, lang: lang) }
+        VStack(alignment: .leading, spacing: 0) {
+            HStack(spacing: 5) {
+                if !lang.isEmpty {
+                    if Self.shells.contains(lang.lowercased()) { Image(systemName: "terminal") }
+                    Text(lang).font(.caption.monospaced())
+                }
+                Spacer(minLength: 8)
+                Button {
+                    UIPasteboard.general.string = text
+                    copied = true
+                } label: {
+                    Label("Copy", systemImage: copied ? "checkmark" : "doc.on.doc")
+                        .padding(.horizontal, 10).frame(maxHeight: .infinity).contentShape(.rect)
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel(copied ? Text("Copied") : Text("Copy Code"))
+                .accessibilityIdentifier("code-copy")
             }
-            .font(font).lineSpacing(4)
-            .fixedSize()
-            .padding(.horizontal, 12).padding(.vertical, 10)
+            .font(.caption).foregroundStyle(.secondary)
+            .padding(.leading, 12)
+            .frame(height: 30)
+            .overlay(alignment: .bottom) { Rectangle().fill(Palette.separator).frame(height: 0.5) }
+            ScrollView(.horizontal, showsIndicators: false) {
+                Group {
+                    if lang.isEmpty { SwiftUI.Text(text) } else { CodeText(text: text, lang: lang) }
+                }
+                .font(font).lineSpacing(4)
+                .fixedSize()
+                .padding(.horizontal, 12).padding(.vertical, 10)
+            }
+            .textSelection(.enabled)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Palette.code, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+        .background(ground, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
         .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous).strokeBorder(Palette.separator, lineWidth: 0.5))
-        .textSelection(.enabled)
+        .task(id: copied) {
+            guard copied else { return }
+            try? await Task.sleep(for: .seconds(1.5))
+            copied = false
+        }
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("code-block")
     }
+
+    /// Languages of commands to run, not code to read (the Mac's list).
+    static let shells: Set<String> = ["bash", "sh", "zsh", "shell", "shellscript", "console", "terminal", "fish", "ksh", "csh", "tcsh",
+                                      "powershell", "pwsh", "ps1", "cmd", "bat", "batch"]
 }

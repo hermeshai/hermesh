@@ -19,6 +19,7 @@ extension HermeshUITests {
         try XCTContext.runActivity(named: "a question: a tapped answer is the owner's message") { _ in try herQuestion() }
         try XCTContext.runActivity(named: "an approval in the composer's place, allowed once") { _ in try herApproval() }
         try XCTContext.runActivity(named: "the Mac offline: what was said stays, and a message waits here until it is back") { _ in try herOffline() }
+        try XCTContext.runActivity(named: "opened on its last messages, earlier ones are read at the top") { _ in try herEarlier() }
     }
 
     func herTurnOn() throws {
@@ -148,6 +149,16 @@ extension HermeshUITests {
         XCTAssertTrue(panel.waitForNonExistence(timeout: 10))
         // Longer than the screen by now: it scrolls under her mark, with nothing drawn behind it.
         herShot("Her: under her mark")
+        // Scrolled well up, a button brings the conversation back to its end, and goes.
+        let toEnd = app.buttons["to-end"]
+        XCTAssertFalse(toEnd.exists, "none at the end")
+        app.swipeDown()
+        app.swipeDown()
+        XCTAssertTrue(toEnd.waitForExistence(timeout: 5), "the button back to the end")
+        herShot("Her: scrolled up")
+        toEnd.tap()
+        let done = app.staticTexts.matching(NSPredicate(format: "label BEGINSWITH %@", "做完了")).firstMatch
+        try waitFor("back at the end") { done.isHittable && !toEnd.exists ? true : nil }
     }
 
     func herOffline() throws {
@@ -165,6 +176,23 @@ extension HermeshUITests {
         XCTAssertTrue(app.staticTexts["回来了"].waitForExistence(timeout: 180), "delivered once the Mac is back, and answered")
         XCTAssertTrue(waiting.waitForNonExistence(timeout: 60))
         XCTAssertFalse(line.exists)
+    }
+
+    func herEarlier() throws {
+        // Opened again on its last few messages (her sends 100; a test's window of 4, -HerHistoryLimit), the first
+        // ones are no longer there, until it is scrolled up to its top, where they are read.
+        app.terminate()
+        app.launchArguments += ["-HerHistoryLimit", "4"]
+        app.launch()
+        openMenu()
+        app.descendants(matching: .any)["drawer"].buttons["her-place"].tap()
+        let first = app.staticTexts["你好，主人"]
+        XCTAssertTrue(app.staticTexts["回来了"].waitForExistence(timeout: 60), "the last reply")
+        XCTAssertTrue(app.descendants(matching: .any)["her-composer"].firstMatch.waitForExistence(timeout: 30))
+        XCTAssertTrue(first.waitForNonExistence(timeout: 30), "only the last few messages")
+        for _ in 0 ..< 6 where !first.exists { app.swipeDown() }
+        XCTAssertTrue(first.waitForExistence(timeout: 30), "the first ones, read at the top")
+        herShot("Her: earlier messages read")
     }
 
     // MARK: Helpers
