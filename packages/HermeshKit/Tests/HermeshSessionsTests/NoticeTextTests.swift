@@ -50,3 +50,24 @@ import UserNotifications
     let p = filled { $0.kind = "pairing"; $0.pairingKind = .client; $0.pairingLabel = "Cursor"; $0.verificationCode = "AAAA-BBBB-CCCC"; $0.pairingCode = "X" }
     #expect(p.title == "“Cursor” wants to connect to your computer" && p.body.contains("AAAA-BBBB-CCCC") && p.userInfo["pairing"] as? String == "X")
 }
+
+@Test func herNoticesNameTheAssistantAndItsMachineWhenThereAreSeveral() {
+    func filled(environments: Int = 1, _ edit: (inout Notice) -> Void) -> UNMutableNotificationContent {
+        var n = Notice()
+        n.kind = "her"
+        n.machineID = "m_1"
+        n.machine = "Mac mini"
+        n.botID = "b1"
+        n.botName = "Writer"
+        edit(&n)
+        let c = UNMutableNotificationContent()
+        NoticeText.fill(c, with: n, herEnvironments: environments)
+        return c
+    }
+    let m = filled { $0.herKind = "message"; $0.text = "Draft ready." }
+    #expect(m.title == "Writer" && m.body == "Draft ready." && m.threadIdentifier == "her:m_1:b1" && m.userInfo["her"] as? String == "m_1")
+    let q = filled(environments: 2) { $0.herKind = "question"; $0.text = "Send it now?" }
+    #expect(q.title == "Writer · Mac mini" && q.body == "Waiting for your answer: Send it now?")
+    let a = filled { $0.herKind = "approval"; $0.text = "touch sent.txt"; $0.botName = "" }
+    #expect(a.title == "Her" && a.body == "Waiting for your approval: touch sent.txt")
+}

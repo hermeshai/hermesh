@@ -100,6 +100,8 @@
 "%lld files +%lld −%lld" = "%1$lld 个文件 +%2$lld −%3$lld";
 "A machine calling itself “%@” wants to join" = "一台自称「%@」的机器想加入";
 "No file changes" = "没有改动文件";
+"Waiting for your answer: %@" = "等你回答：%@";
+"Waiting for your approval: %@" = "等你批准：%@";
 "Verification code %@. Open Hermesh to compare it and approve; if you don’t know it, deny it." = "核对码 %@。请打开 Hermesh 比对并批准；如不认识请拒绝。";
 "“%@” failed" = "「%@」出错了";
 "“%@” wants to become your trusted device" = "「%@」想成为你的可信设备";
