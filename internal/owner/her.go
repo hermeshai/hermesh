@@ -466,8 +466,7 @@ func (o *Owner) herDeliver(ctx context.Context, w *localv1.HerWaiting) error {
 	return onTheWay(ctx, err)
 }
 
-// attached is a message followed by where the files sent with it are, as
-// FinxWork names attachments.
+// attached is a message followed by where the files sent with it are.
 func attached(text string, paths []string) string {
 	var b strings.Builder
 	b.WriteString(text)
