@@ -172,7 +172,9 @@ const KEPT_ENV: &[&str] = &[
     "PROGRAMFILES",
 ];
 
-fn arguments(options: &LaunchOptions) -> Vec<String> {
+/// The browser's arguments; `root`: her runs as root on Linux (a server's), where Chrome won't
+/// start with its sandbox.
+fn arguments(options: &LaunchOptions, root: bool) -> Vec<String> {
     let mut args = vec![
         "--remote-debugging-pipe".to_string(),
         format!("--user-data-dir={}", options.user_data_dir.display()),
@@ -189,6 +191,9 @@ fn arguments(options: &LaunchOptions) -> Vec<String> {
     ];
     if options.headless {
         args.push("--headless=new".into());
+    }
+    if root {
+        args.push("--no-sandbox".into());
     }
     args.push("about:blank".into());
     args
@@ -221,7 +226,8 @@ fn spawn(executable: &Path, options: &LaunchOptions) -> Result<Launched, Browser
     let child_write = browser_writes.as_raw_fd();
     let mut command = tokio::process::Command::new(executable);
     command
-        .args(arguments(options))
+        // SAFETY: geteuid(2) only reads the process's effective user ID.
+        .args(arguments(options, cfg!(target_os = "linux") && unsafe { libc::geteuid() } == 0))
         .env_clear()
         .envs(KEPT_ENV.iter().filter_map(|name| std::env::var_os(name).map(|value| (name, value))))
         .stdin(std::process::Stdio::null())
@@ -359,14 +365,18 @@ mod tests {
 
     #[test]
     fn headless_and_profile_arguments() {
-        let args = arguments(&LaunchOptions {
+        let options = LaunchOptions {
             executable: None,
             user_data_dir: PathBuf::from("/tmp/p"),
             headless: true,
-        });
+        };
+        let args = arguments(&options, false);
         assert!(args.contains(&"--remote-debugging-pipe".to_string()));
         assert!(args.contains(&"--user-data-dir=/tmp/p".to_string()));
         assert!(args.contains(&"--headless=new".to_string()));
         assert!(!args.iter().any(|a| a.starts_with("--remote-debugging-port")));
+        assert!(!args.contains(&"--no-sandbox".to_string()));
+        // As root, without the sandbox Chrome refuses to start in.
+        assert!(arguments(&options, true).contains(&"--no-sandbox".to_string()));
     }
 }
