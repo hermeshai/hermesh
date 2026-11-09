@@ -107,6 +107,15 @@
       "$ref": "#/definitions/CancelRequestParams"
     },
     {
+      "$ref": "#/definitions/Card"
+    },
+    {
+      "$ref": "#/definitions/CardsAnswerParams"
+    },
+    {
+      "$ref": "#/definitions/CardsAnswerResult"
+    },
+    {
       "$ref": "#/definitions/ChatGptCancelParams"
     },
     {
@@ -1277,6 +1286,14 @@
         "diamond",
         "oval",
         "arrow"
+      ],
+      "type": "string"
+    },
+    "AskedBy": {
+      "description": "What began the task that made the card: the owner's message, or something else that reached Her (a routine's report, a card's outcome, a sub-agent's report), which the owner did not ask for.",
+      "enum": [
+        "owner",
+        "her"
       ],
       "type": "string"
     },
@@ -2688,6 +2705,222 @@
         }
       ]
     },
+    "Card": {
+      "description": "A card as the apps draw it.",
+      "properties": {
+        "asked_by": {
+          "$ref": "#/definitions/AskedBy"
+        },
+        "body": {
+          "$ref": "#/definitions/ConnectBody"
+        },
+        "expires_at": {
+          "description": "RFC 3339: 24 hours after the card was prepared.",
+          "type": "string"
+        },
+        "id": {
+          "description": "`c_` and 10 random letters and digits. It means something only in its session.",
+          "type": "string"
+        },
+        "kind": {
+          "$ref": "#/definitions/CardKind"
+        },
+        "ops": {
+          "description": "The console calls approving makes, in order, as the console sends them. A value the owner types stands as the whole string `\"<value:FIELD_ID>\"`.",
+          "items": {
+            "$ref": "#/definitions/CardOp"
+          },
+          "type": "array"
+        },
+        "title": {
+          "description": "In English: for a kind the app does not know, and for notifications. Apps draw the kinds they know from `body`, in the owner's language.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "asked_by",
+        "body",
+        "expires_at",
+        "id",
+        "kind",
+        "ops",
+        "title"
+      ],
+      "type": "object"
+    },
+    "CardAnswer": {
+      "oneOf": [
+        {
+          "description": "`ops` are the card's, each `\"<value:ID>\"` replaced by what the owner typed.",
+          "properties": {
+            "decision": {
+              "enum": [
+                "approve"
+              ],
+              "type": "string"
+            },
+            "ops": {
+              "items": {
+                "$ref": "#/definitions/CardOp"
+              },
+              "type": "array"
+            }
+          },
+          "required": [
+            "decision",
+            "ops"
+          ],
+          "type": "object"
+        },
+        {
+          "properties": {
+            "decision": {
+              "enum": [
+                "decline"
+              ],
+              "type": "string"
+            }
+          },
+          "required": [
+            "decision"
+          ],
+          "type": "object"
+        }
+      ]
+    },
+    "CardField": {
+      "description": "A value the owner types into the card.",
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "label": {
+          "type": "string"
+        },
+        "secret": {
+          "description": "Masked as it is typed.",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "id",
+        "label",
+        "secret"
+      ],
+      "type": "object"
+    },
+    "CardKind": {
+      "oneOf": [
+        {
+          "description": "A connector added by its address, or one that signs in again.",
+          "enum": [
+            "connect"
+          ],
+          "type": "string"
+        }
+      ]
+    },
+    "CardOp": {
+      "description": "One console call: its method and its params.",
+      "properties": {
+        "method": {
+          "type": "string"
+        },
+        "params": true
+      },
+      "required": [
+        "method",
+        "params"
+      ],
+      "type": "object"
+    },
+    "CardState": {
+      "description": "Where a card stands. Ended: done, declined, failed, expired, replaced.",
+      "oneOf": [
+        {
+          "enum": [
+            "done",
+            "declined",
+            "failed",
+            "expired"
+          ],
+          "type": "string"
+        },
+        {
+          "description": "Shown, waiting for the owner.",
+          "enum": [
+            "open"
+          ],
+          "type": "string"
+        },
+        {
+          "description": "Approved: her carries it out.",
+          "enum": [
+            "working"
+          ],
+          "type": "string"
+        },
+        {
+          "description": "The device signs in now.",
+          "enum": [
+            "sign_in"
+          ],
+          "type": "string"
+        },
+        {
+          "description": "It did not work (a refused token, a failed sign-in): the owner may approve again with new values, or decline.",
+          "enum": [
+            "retry"
+          ],
+          "type": "string"
+        },
+        {
+          "description": "A newer card for the same thing took its place.",
+          "enum": [
+            "replaced"
+          ],
+          "type": "string"
+        }
+      ]
+    },
+    "CardsAnswerParams": {
+      "description": "Parameters of `cards/answer`, which only the owner's devices may call.",
+      "properties": {
+        "answer": {
+          "$ref": "#/definitions/CardAnswer"
+        },
+        "card_id": {
+          "type": "string"
+        },
+        "session_id": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "answer",
+        "card_id",
+        "session_id"
+      ],
+      "type": "object"
+    },
+    "CardsAnswerResult": {
+      "description": "Result of `cards/answer`.",
+      "properties": {
+        "note": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "state": {
+          "$ref": "#/definitions/CardState"
+        }
+      },
+      "required": [
+        "state"
+      ],
+      "type": "object"
+    },
     "CatalogInfo": {
       "description": "The skill catalog in the system prompt.",
       "properties": {
@@ -3847,6 +4080,52 @@
           "type": "string"
         }
       ]
+    },
+    "ConnectBody": {
+      "description": "A `connect` card's body.",
+      "properties": {
+        "fields": {
+          "description": "Values the owner types.",
+          "items": {
+            "$ref": "#/definitions/CardField"
+          },
+          "type": "array"
+        },
+        "host": {
+          "description": "The URL's host, which the card shows large.",
+          "type": "string"
+        },
+        "name": {
+          "description": "The connector's name.",
+          "type": "string"
+        },
+        "reconnect": {
+          "description": "An existing connector signs in again; `ops` is empty then.",
+          "type": "boolean"
+        },
+        "server_name": {
+          "description": "What the server calls itself, when the check found out.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "sign_in": {
+          "$ref": "#/definitions/SignIn"
+        },
+        "url": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "fields",
+        "host",
+        "name",
+        "reconnect",
+        "sign_in",
+        "url"
+      ],
+      "type": "object"
     },
     "ConnectionConnectParams": {
       "additionalProperties": false,
@@ -10878,6 +11157,35 @@
           "type": "object"
         },
         {
+          "description": "A secure card's state changed (docs/her-secure-cards.md §3.5). `note` is her's words: why it waits for another try, or how it ended.",
+          "properties": {
+            "card_id": {
+              "type": "string"
+            },
+            "note": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "state": {
+              "$ref": "#/definitions/CardState"
+            },
+            "type": {
+              "enum": [
+                "card_changed"
+              ],
+              "type": "string"
+            }
+          },
+          "required": [
+            "card_id",
+            "state",
+            "type"
+          ],
+          "type": "object"
+        },
+        {
           "description": "What fills the context window now: the answer to `/context`.",
           "properties": {
             "report": {
@@ -12999,6 +13307,13 @@
         },
         "kind": {
           "$ref": "#/definitions/McpProbeKind"
+        },
+        "server_name": {
+          "description": "What the server calls itself, when it got as far as saying.",
+          "type": [
+            "string",
+            "null"
+          ]
         },
         "steps": {
           "items": {
@@ -17424,6 +17739,23 @@
         }
       ]
     },
+    "SignIn": {
+      "oneOf": [
+        {
+          "enum": [
+            "none"
+          ],
+          "type": "string"
+        },
+        {
+          "description": "The device runs the sign-in (`mcp/login`, `mcp/login_complete`) once the card says `sign_in`.",
+          "enum": [
+            "oauth"
+          ],
+          "type": "string"
+        }
+      ]
+    },
     "SiteGrant": {
       "description": "Permission for the browser tools on one origin, for the rest of the session (docs/kernel/browser-design.md §7.3).",
       "properties": {
@@ -19632,6 +19964,33 @@
             "type"
           ],
           "type": "object"
+        },
+        {
+          "description": "How a secure card ended; it follows the `send_to_user` result that showed the card.",
+          "properties": {
+            "card_id": {
+              "type": "string"
+            },
+            "note": {
+              "type": "string"
+            },
+            "outcome": {
+              "$ref": "#/definitions/CardState"
+            },
+            "type": {
+              "enum": [
+                "card_resolved"
+              ],
+              "type": "string"
+            }
+          },
+          "required": [
+            "card_id",
+            "note",
+            "outcome",
+            "type"
+          ],
+          "type": "object"
         }
       ]
     },
@@ -20177,6 +20536,7 @@
     "-32044": "routine_busy",
     "-32045": "routines_unavailable",
     "-32046": "no_model",
+    "-32047": "card_ended",
     "-32600": "invalid_request",
     "-32601": "method_not_found",
     "-32602": "invalid_params",
@@ -20297,6 +20657,10 @@
     "browser/use_extension": {
       "params": "BrowserUseExtensionParams",
       "result": "Empty"
+    },
+    "cards/answer": {
+      "params": "CardsAnswerParams",
+      "result": "CardsAnswerResult"
     },
     "chatgpt/cancel": {
       "params": "ChatGptCancelParams",
@@ -20791,6 +21155,7 @@
       "browser/site_icon": "experimental",
       "browser/status": "experimental",
       "browser/use_extension": "experimental",
+      "cards/answer": "experimental",
       "chatgpt/cancel": "stable",
       "chatgpt/complete": "stable",
       "chatgpt/login": "stable",

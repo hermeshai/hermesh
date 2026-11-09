@@ -628,6 +628,9 @@ pub struct McpProbeResult {
     /// The service's logo as a `data:` URI: the icon the server declares, else its website's.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub icon: Option<String>,
+    /// What the server calls itself, when it got as far as saying.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub server_name: Option<String>,
     /// Why the probe failed; absent when it passed.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub error: Option<String>,
