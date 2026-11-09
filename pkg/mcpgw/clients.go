@@ -72,8 +72,34 @@ func (g *Gateway) client(ctx context.Context, clientID string) (*Client, error) 
 	return fresh, nil
 }
 
-// fetchCIMD fetches and checks a Client ID Metadata Document.
+// herClient is her's own Client ID Metadata Document, which the gateway
+// serves at <issuer>/oauth/client.json (her/crates/her-core/src/mcp/mod.rs,
+// CLIENT_METADATA_URL): Her signs in to MCP servers as this client, from the
+// computer she runs on or the owner's device, so on loopback redirects.
+func (g *Gateway) herClient() clientMetadata {
+	is := g.issuer.String()
+	return clientMetadata{ClientID: is + "/oauth/client.json", ClientName: "Her", ClientURI: is,
+		RedirectURIs: []string{"http://127.0.0.1/callback", "http://localhost/callback"}, TokenEndpointAuthMethod: "none",
+		GrantTypes: []string{"authorization_code", "refresh_token"}, ResponseTypes: []string{"code"}}
+}
+
+// handleHerClient serves it, as other servers' authorization servers read
+// it: only the fields it has.
+func (g *Gateway) handleHerClient(w http.ResponseWriter, _ *http.Request) {
+	c := g.herClient()
+	writeJSON(w, http.StatusOK, map[string]any{"client_id": c.ClientID, "client_name": c.ClientName, "client_uri": c.ClientURI,
+		"redirect_uris": c.RedirectURIs, "grant_types": c.GrantTypes, "response_types": c.ResponseTypes,
+		"token_endpoint_auth_method": c.TokenEndpointAuthMethod})
+}
+
+// fetchCIMD fetches and checks a Client ID Metadata Document; her's own,
+// the gateway knows without fetching it.
 func (g *Gateway) fetchCIMD(ctx context.Context, clientID string) (*Client, error) {
+	if her := g.herClient(); clientID == her.ClientID {
+		now := g.cfg.Now()
+		return &Client{ID: clientID, Source: "cimd", Name: her.ClientName, URI: her.ClientURI, RedirectURIs: her.RedirectURIs,
+			Verified: true, CacheUntil: now.Add(maxCIMDCache), CreatedAt: now}, nil
+	}
 	u, err := url.Parse(clientID)
 	if err != nil || u.Scheme != "https" || u.Host == "" || u.User != nil || u.Fragment != "" || u.Path == "" || u.Path == "/" ||
 		u.Port() != "" && u.Port() != "443" && !g.allowAnyPort() {

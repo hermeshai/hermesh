@@ -248,6 +248,7 @@ func (g *Gateway) Mount(mux *http.ServeMux) {
 	mux.HandleFunc("POST /oauth/token", g.handleToken)
 	mux.HandleFunc("POST /oauth/register", g.handleRegister)
 	mux.HandleFunc("POST /oauth/revoke", g.handleRevoke)
+	mux.HandleFunc("GET /oauth/client.json", g.handleHerClient)
 	mux.HandleFunc("GET /oauth/consent", g.handleConsentPage)
 	mux.HandleFunc("POST /oauth/consent", g.handleConsentAction)
 	mux.HandleFunc("GET /oauth/consent/status", g.handleConsentStatus)
