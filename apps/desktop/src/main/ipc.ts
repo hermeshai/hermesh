@@ -3,7 +3,7 @@ import path from "node:path";
 import type { Command, MenuItem, MenuState, Preferences, TerminalCommand } from "../shared/bridge";
 import { i18n } from "../shared/i18n";
 import { openComputerPermission } from "./computer";
-import { cancelHerChatGpt, herConsoleURL, reopenHerChatGpt, saveHerFile, signInHerChatGpt } from "./her";
+import { cancelHerChatGpt, cancelHerConnector, herConsoleURL, reopenHerChatGpt, reopenHerConnector, saveHerFile, signInHerChatGpt, signInHerConnector } from "./her";
 import { preferences, setPreferences, world } from "./notify";
 import { platform } from "./platform";
 import { cancelSignIn, completeSignIn, connectURL, errorMessage, signIn, signInPending, takeLinks } from "./signin";
@@ -163,7 +163,7 @@ export function registerIPC() {
   ipcMain.handle("take-links", answer(takeLinks));
 
   // Her (main/her.ts): a machine's console in its own window, an assistant's file saved to Downloads, and
-  // signing in to ChatGPT for a machine's Her.
+  // signing in to ChatGPT, or to a connector a secure card connects, for a machine's Her.
   const id = (v: unknown) => (typeof v === "string" && v !== "" ? v : null);
   ipcMain.handle(
     "her-console",
@@ -197,6 +197,22 @@ export function registerIPC() {
   ipcMain.on("her-chatgpt-cancel", (e, machineId: unknown) => {
     const m = id(machineId);
     if (trusted(e) && m) cancelHerChatGpt(m);
+  });
+  ipcMain.handle(
+    "her-connector",
+    answer((machineId: unknown, name: unknown) => {
+      const [m, n] = [id(machineId), id(name)];
+      if (!m || !n) throw new Error("no connector");
+      return signInHerConnector(m, n);
+    }),
+  );
+  ipcMain.on("her-connector-reopen", (e, machineId: unknown, name: unknown) => {
+    const [m, n] = [id(machineId), id(name)];
+    if (trusted(e) && m && n) reopenHerConnector(m, n);
+  });
+  ipcMain.on("her-connector-cancel", (e, machineId: unknown, name: unknown) => {
+    const [m, n] = [id(machineId), id(name)];
+    if (trusted(e) && m && n) cancelHerConnector(m, n);
   });
 
   // Notifications, the menu bar and opening at login (main/notify.ts, main/platform).

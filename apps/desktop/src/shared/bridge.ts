@@ -1,4 +1,4 @@
-import type { ChatGptSignIn } from "./herSignin";
+import type { ChatGptSignIn, ConnectorSignIn } from "./herSignin";
 import type { Language, LanguageChoice } from "./i18n";
 import type { UpdateInfo } from "./update";
 
@@ -82,6 +82,12 @@ export type Bridge = {
   reopenHerChatGpt(machineId: string): void;
   /** Stops the sign-in under way for a machine: it ends cancelled. */
   cancelHerChatGpt(machineId: string): void;
+  /** Signs in to a connector of a machine's Her in the browser, for a secure card (shared/herSignin.ts); resolves once it ended. */
+  signInHerConnector(machineId: string, name: string): Promise<ConnectorSignIn>;
+  /** Opens the browser again at a connector's sign-in under way. */
+  reopenHerConnector(machineId: string, name: string): void;
+  /** Stops a connector's sign-in under way: it ends cancelled, on her's side too. */
+  cancelHerConnector(machineId: string, name: string): void;
   runInTerminal(c: TerminalCommand): void;
   /** The compact first-run window, or the main window. */
   setWindowMode(mode: "onboarding" | "main"): void;

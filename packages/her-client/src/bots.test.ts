@@ -272,6 +272,23 @@ test("the latest question can be tapped until the owner says anything", () => {
   assert.deepEqual(none.options, [], "answers that cannot be listed: the question alone");
 });
 
+test("a secure card shows once her let it through, with the bot's words; its changes are kept by id", () => {
+  const card = { id: "c_k3j9x2m4qa", kind: "connect", title: "Connect Notion" };
+  const showCall: AssistantContent = { type: "tool_call", id: "c1", name: "send_to_user", arguments: { type: "card", card: card.id, text: "我需要 Notion。" } };
+  const begun: EventMsg[] = [{ type: "task_started", task_id: "t1" }, user("u1", "看看 Notion", 10_000), assistant("a1", [showCall], 11_000), started("c1")];
+  assert.deepEqual(shape(play(begun)), ["user:看看 Notion"], "not before her made it");
+  const shown: EventMsg = { type: "tool_completed", call_id: "c1", result: { call_id: "c1", tool_name: "send_to_user", content: [{ type: "text", text: "Shown to the owner." }], is_error: false, ts: 0, details: { card, text: "我需要 Notion。" } } };
+  const v = play([...begun, shown]);
+  const item = botChat(v)[1];
+  assert.ok(item.kind === "card");
+  assert.deepEqual({ card: item.card, text: item.text, ts: item.ts }, { card, text: "我需要 Notion。", ts: 11_000 });
+  assert.deepEqual(shape(play([...begun, done("c1", "send_to_user", "invalid arguments: no such card", true)])), ["user:看看 Notion"], "a refused card shows nothing");
+
+  const changed = play([...begun, shown, { type: "card_changed", card_id: card.id, state: "working" } as unknown as EventMsg, { type: "card_changed", card_id: card.id, state: "done", note: "Notion connected: 14 tools" } as unknown as EventMsg]);
+  assert.deepEqual(changed.cards, { [card.id]: { state: "done", note: "Notion connected: 14 tools" } });
+  assert.deepEqual(v.cards, {});
+});
+
 test("images sit in rows of two or three, the rows of two first, never one alone", () => {
   assert.deepEqual([1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map(imageRows), [[1], [2], [3], [2, 2], [2, 3], [3, 3], [2, 2, 3], [2, 3, 3], [3, 3, 3], [2, 2, 3, 3]]);
   assert.deepEqual(imageRows(0), []);

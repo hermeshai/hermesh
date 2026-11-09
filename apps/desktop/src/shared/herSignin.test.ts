@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { signInChatGpt, type SignInDeps } from "./herSignin.ts";
+import { connectorPage, signInChatGpt, signInConnector, type SignInDeps } from "./herSignin.ts";
 
 const base = "http://127.0.0.1:53111/her/m_1/4f2a/";
 const redirect = "http://127.0.0.1:53999/auth/callback";
@@ -98,4 +98,50 @@ test("a failure on the way cancels her's side and is thrown, as is the catcher's
   refusing.deps.fetch = (async () => Response.json({ error: "a sign-in needs the path its redirect goes to" }, { status: 400 })) as typeof fetch;
   await assert.rejects(signInChatGpt(refusing.deps), /a sign-in needs the path/);
   assert.deepEqual(refusing.calls, []);
+});
+
+const mcpStarted = { authorize_url: "https://mcp.notion.com/authorize?state=s2", login_id: "M1", client: "registered" };
+
+test("a connector's sign-in: her's mcp/login with the catcher's address, the page in the browser, what came back to her", async () => {
+  const w = world([{ pending: true }, { code: "c0de", state: "s2", iss: "https://mcp.notion.com" }], { "mcp/login": mcpStarted });
+  assert.deepEqual(await signInConnector(w.deps, "notion"), { state: "connected" });
+  assert.deepEqual(w.asked[0], { method: "POST", url: `${base}signin`, body: JSON.stringify({ path: "/callback" }) });
+  assert.deepEqual(w.opened, [mcpStarted.authorize_url]);
+  assert.deepEqual(w.calls, [
+    { method: "mcp/login", params: { name: "notion", redirect_uri: redirect } },
+    { method: "mcp/login_complete", params: { login_id: "M1", code: "c0de", state: "s2", iss: "https://mcp.notion.com" } },
+  ]);
+});
+
+test("a connector's sign-in refused, stopped, or failing on the way cancels it on her's side by the connector's name", async () => {
+  const refused = world([{ error: "access_denied", error_description: "The user denied access" }], { "mcp/login": mcpStarted });
+  assert.deepEqual(await signInConnector(refused.deps, "notion"), { state: "failed", message: "The user denied access" });
+  assert.deepEqual(refused.calls.slice(1), [{ method: "mcp/login_cancel", params: { name: "notion" } }]);
+
+  const stopped = world([{ pending: true }], { "mcp/login": mcpStarted });
+  const done = signInConnector(stopped.deps, "notion");
+  while (stopped.asked.length < 3) await new Promise((r) => setTimeout(r, 1));
+  stopped.stop.abort();
+  assert.deepEqual(await done, { state: "cancelled" });
+  assert.deepEqual(stopped.calls.map((c) => c.method), ["mcp/login", "mcp/login_cancel"]);
+
+  const unfinished = world([{ code: "c0de", state: "s2" }], { "mcp/login": mcpStarted, "mcp/login_complete": new Error("the state is not this sign-in's") });
+  await assert.rejects(signInConnector(unfinished.deps, "notion"), /not this sign-in's/);
+  assert.deepEqual(unfinished.calls.map((c) => c.method), ["mcp/login", "mcp/login_complete", "mcp/login_cancel"]);
+
+  // her refusing to start one: nothing opens, nothing to cancel.
+  const unknown = world([], { "mcp/login": new Error("no connector named notion") });
+  await assert.rejects(signInConnector(unknown.deps, "notion"), /no connector named notion/);
+  assert.deepEqual(unknown.opened, []);
+  assert.deepEqual(unknown.calls.map((c) => c.method), ["mcp/login"]);
+});
+
+test("a connector's sign-in page opens when it is https, or http on this machine's loopback", () => {
+  assert.ok(connectorPage("https://mcp.notion.com/authorize?x=1"));
+  assert.ok(connectorPage("http://127.0.0.1:8123/authorize"));
+  assert.ok(connectorPage("http://localhost:8123/authorize"));
+  assert.ok(connectorPage("http://[::1]:8123/authorize"));
+  assert.ok(!connectorPage("http://mcp.notion.com/authorize"));
+  assert.ok(!connectorPage("file:///etc/passwd"));
+  assert.ok(!connectorPage("not a url"));
 });

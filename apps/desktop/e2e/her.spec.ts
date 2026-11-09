@@ -7,17 +7,21 @@ import { fixture, launch, snap } from "./app";
 // The Her entry (docs/her-server.md §9), as the owner uses it, against her
 // itself with her-mock as its models. Run by TestDesktopHer, not TestDesktop:
 // it needs her built. One story, as its steps build on each other: the first
-// run on this Mac, Her's settings, a chat, the console, work-mac added as a
-// second environment, with no model until Her's onboarding connects one, and
-// switched between, then work-mac offline: what was read stays, after the app
-// restarts too, and what is written waits on this Mac.
+// run on this Mac, Her's settings, a chat, a connector Her asks for on a
+// secure card, the console, work-mac added as a second environment, with no
+// model until Her's onboarding connects one, and switched between, then
+// work-mac offline: what was read stays, after the app restarts too, and what
+// is written waits on this Mac.
 
 type Hook = { notifications(): { id: string; title: string; body: string; click(): void }[] };
 
 /** her-mock answers a message that starts so by sending the owner `reply` (e2e/her_owner_test.go, mockSend). */
 const mockSend = (reply: string) => `[[mock:send:${reply}]] hi`;
 
-test("Her: the first run, a chat, the console, a second environment, and one gone offline", async () => {
+/** her-mock answers a message that starts so by asking to connect `url` as `name` on a secure card, and says how it went once it ended. */
+const mockConnect = (name: string, url: string) => `[[mock:connect:${name}|${url}]] hi`;
+
+test("Her: the first run, a chat, a secure card, the console, a second environment, and one gone offline", async () => {
   test.setTimeout(300_000);
   const profile = fs.mkdtempSync(path.join(os.tmpdir(), "hmdesk-"));
   let { app, page } = await launch(fixture.socket, { profile });
@@ -56,6 +60,44 @@ test("Her: the first run, a chat, the console, a second environment, and one gon
   // The window is behind (tests open it so): the reply is unread, and notified, by the assistant's name.
   await expect.poll(posted, { timeout: 60_000 }).toContainEqual(expect.objectContaining({ title: expect.stringMatching(/^Her/), body: "你好，主人" }));
   await snap(page, "her-chat");
+
+  // A connector Her asks for on a secure card (docs/her-secure-cards.md §4): the fixture's service, which signs in
+  // with OAuth. Under Her's words, the card says what it connects, its address large, and what that lets Her do;
+  // nothing changes until the owner answers, and the composer stays open meanwhile. Connect adds it, and its sign-in
+  // opens in the browser (here, the stand-in records it), coming back to this Mac's hermeshd, and opens again when
+  // asked. The service approves at once: the card folds into one line with the connector's tools.
+  await app.evaluate(({ shell }) => {
+    const pages: string[] = [];
+    Object.assign(globalThis, { pages });
+    shell.openExternal = async (url: string) => void pages.push(url);
+  });
+  const pages = () => app.evaluate(() => (globalThis as unknown as { pages: string[] }).pages);
+  const service = new URL(fixture.connector ?? "");
+  await send(mockConnect("tracker", service.href));
+  const card = log.getByRole("group", { name: "安全卡" });
+  await expect(card).toContainText("接入 Tracker", { timeout: 60_000 });
+  await expect(card.locator(".sc-t b")).toContainText(service.hostname);
+  await expect(card).toContainText("Her 能用它的工具，发给它的内容会离开这台机器");
+  await expect(card).not.toContainText("这不是你要求的");
+  await expect(composer).toBeEnabled();
+  await snap(page, "her-card");
+  await card.getByRole("button", { name: "接入", exact: true }).click();
+  await expect(card).toContainText("等你在浏览器里登录…", { timeout: 30_000 });
+  await expect.poll(pages, { timeout: 30_000 }).toHaveLength(1);
+  const [authorize] = await pages();
+  const back = new URL(authorize).searchParams.get("redirect_uri") ?? "";
+  expect(back).toMatch(/^http:\/\/127\.0\.0\.1:\d+\/callback$/);
+  await card.getByRole("button", { name: "重新打开登录页" }).click();
+  await expect.poll(pages).toEqual([authorize, authorize]);
+  // The owner's browser: the service approves and redirects to this Mac's catcher.
+  const landed = await fetch(authorize);
+  expect(landed.ok).toBe(true);
+  expect(landed.url.startsWith(`${back}?`)).toBe(true);
+  await expect(log.locator(".sc-end.done")).toHaveText(/^已接入 Tracker · \d+ 个工具$/, { timeout: 60_000 });
+  await expect(card).toHaveCount(0);
+  // her-mock hears how it went, and says so.
+  await expect(log.locator(".bm .bbub").last()).toContainText(/tracker/i, { timeout: 60_000 });
+  await snap(page, "her-card-done");
 
   // The console, from ⋯: a window of its own at this Mac's hermeshd, which is none of the app's pages.
   const opened = app.waitForEvent("window");

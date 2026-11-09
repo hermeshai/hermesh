@@ -29,6 +29,12 @@ export interface Notice {
   ts: number;
 }
 
+/** A secure card's state as its last `card_changed` said it, with her's words (docs/her-secure-cards.md §3.5). */
+export interface CardChange {
+  state: string;
+  note?: string;
+}
+
 /** A tool call as tool_started describes it (or the client's own reading of its arguments). */
 export interface ToolDescription {
   category: ToolCategory;
@@ -126,6 +132,8 @@ export interface SessionView {
   agents: AgentView[];
   /** The last answer to `/context`, and when it came. */
   asked?: { report: ContextReport; at: number };
+  /** Secure cards whose state changed since the view attached, by card id: how they stood before is in the history. */
+  cards: Record<string, CardChange>;
   closed: boolean;
 }
 
@@ -195,6 +203,7 @@ export function fromSnapshot(s: SessionSnapshot): SessionView {
     queued: s.queued ?? [],
     notices: [],
     agents: (s.agents ?? []).map((a) => agentFrom(s.session, a)),
+    cards: {},
     closed: false,
   };
 }
@@ -289,6 +298,11 @@ export function callTarget(name: string, args: unknown): { name: string; args: R
 }
 
 function step(v: SessionView, e: Event): SessionView {
+  // A secure card's change, read by its fields until her-protocol's types have the event.
+  const card = e as { type: string; card_id?: unknown; state?: unknown; note?: unknown };
+  if (card.type === "card_changed" && typeof card.card_id === "string" && typeof card.state === "string") {
+    return { ...v, cards: { ...v.cards, [card.card_id]: { state: card.state, ...(typeof card.note === "string" && { note: card.note }) } } };
+  }
   switch (e.type) {
     case "session_started":
       return { ...v, info: { ...settings(v.info, e.model, e.thinking, e.permission_mode, e.context_window), cwd: e.cwd, session_file: e.session_file } };
