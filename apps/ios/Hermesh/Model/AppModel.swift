@@ -459,8 +459,14 @@ final class AppModel {
             drawerOpen = false
             if !sessions.contains(where: { $0.sessionID == session }) { await listFirstPage() }
             open(.session(session))
+        } else if let machine = info["her"] as? String {
+            openHer(machineID: machine)
         }
     }
+
+    /// A Her notice tapped: the app opens on the page it was on, until the
+    /// Her entry (docs/her-server.md §9.1) opens that machine's Her here.
+    func openHer(machineID: String) {}
 
     private func begin() {
         guard api != nil, watchTask == nil else { return }

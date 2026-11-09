@@ -12,10 +12,31 @@ public enum NoticeKey {
     /// ($(AppIdentifierPrefix)io.hermesh.ios.shared).
     static var group: String? { Bundle.main.object(forInfoDictionaryKey: "HermeshKeychainGroup") as? String }
 
-    private static func query() -> [CFString: Any] {
-        var q: [CFString: Any] = [kSecClass: kSecClassGenericPassword, kSecAttrService: "com.hermesh.notice", kSecAttrAccount: "notice"]
+    private static func query(_ account: String = "notice") -> [CFString: Any] {
+        var q: [CFString: Any] = [kSecClass: kSecClassGenericPassword, kSecAttrService: "com.hermesh.notice", kSecAttrAccount: account]
         if let group, !group.hasPrefix("$") { q[kSecAttrAccessGroup] = group }
         return q
+    }
+
+    /// How many of the owner's machines run Her, as the app last saw them,
+    /// for the extension: a Her notice names its machine when there are
+    /// several (NoticeText).
+    public static var herEnvironments: Int {
+        get {
+            var q = query("her-environments")
+            q[kSecReturnData] = true
+            var item: CFTypeRef?
+            guard SecItemCopyMatching(q as CFDictionary, &item) == errSecSuccess, let d = item as? Data else { return 1 }
+            return Int(String(decoding: d, as: UTF8.self)) ?? 1
+        }
+        set {
+            guard newValue != herEnvironments else { return }
+            SecItemDelete(query("her-environments") as CFDictionary)
+            var add = query("her-environments")
+            add[kSecValueData] = Data(String(newValue).utf8)
+            add[kSecAttrAccessible] = kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly
+            SecItemAdd(add as CFDictionary, nil)
+        }
     }
 
     /// The key, created on first use.

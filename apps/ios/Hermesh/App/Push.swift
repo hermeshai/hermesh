@@ -37,16 +37,21 @@ final class Push {
         return env
     }()
 
-    /// Registers (again) with what the owner wants to hear about.
+    /// Registers (again) with what the owner wants to hear about, Her
+    /// always (as on the Mac), and keeps how many machines run Her for the
+    /// extension (each time the app comes to the front).
     func register(api: LocalAPI?) async {
         guard let api, let token else { return }
+        if let r: Hermesh_Local_V1_ListMachinesResponse = try? await api.call("ListMachines", Hermesh_Local_V1_ListMachinesRequest()) {
+            NoticeKey.herEnvironments = r.machines.filter(\.her.enabled).count
+        }
         do {
             var r = Hermesh_Local_V1_RegisterPushRequest()
             r.token = token
             r.environment = Self.environment
             r.noticePublicKey = try NoticeKey.load().publicKey.rawRepresentation
             let prefs = NotificationPrefs.current
-            r.kinds = [prefs.sessionsStarted ? "session_started" : nil, prefs.questions ? "question" : nil, prefs.failures ? "failure" : nil, prefs.turnsDone ? "turn_done" : nil].compactMap { $0 }
+            r.kinds = [prefs.sessionsStarted ? "session_started" : nil, prefs.questions ? "question" : nil, prefs.failures ? "failure" : nil, prefs.turnsDone ? "turn_done" : nil, "her"].compactMap { $0 }
             let _: Hermesh_Local_V1_RegisterPushResponse = try await api.call("RegisterPush", r, timeout: 20)
         } catch {
             // Tried again when the app next starts.

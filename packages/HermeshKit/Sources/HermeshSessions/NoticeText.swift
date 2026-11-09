@@ -6,9 +6,11 @@ public typealias Notice = Hermesh_Session_V1_Notice
 
 /// A notice's words on the lock screen, as the app says them. The relay
 /// and Apple carry only the notice's ciphertext; the notification extension
-/// opens it and fills the notification with this.
+/// opens it and fills the notification with this. herEnvironments: how many
+/// of the owner's machines run Her (a Her notice names its machine when
+/// there are several, as the Mac's do).
 public enum NoticeText {
-    public static func fill(_ c: UNMutableNotificationContent, with n: Notice) {
+    public static func fill(_ c: UNMutableNotificationContent, with n: Notice, herEnvironments: Int = 1) {
         var info = c.userInfo
         info["session"] = n.sessionID
         c.threadIdentifier = n.kind == "pairing" ? "pairing" : n.sessionID
@@ -43,6 +45,16 @@ public enum NoticeText {
             c.body = String(localized: "Verification code \(n.verificationCode). Open Hermesh to compare it and approve; if you don’t know it, deny it.", bundle: .module)
             c.interruptionLevel = .timeSensitive
             info["pairing"] = n.pairingCode
+        case "her":
+            let name = n.botName.isEmpty ? "Her" : n.botName
+            c.title = herEnvironments > 1 ? "\(name) · \(n.machine)" : name
+            switch n.herKind {
+            case "approval": c.body = String(localized: "Waiting for your approval: \(n.text)", bundle: .module)
+            case "question": c.body = String(localized: "Waiting for your answer: \(n.text)", bundle: .module)
+            default: c.body = n.text
+            }
+            c.threadIdentifier = "her:\(n.machineID):\(n.botID)"
+            info["her"] = n.machineID
         default:
             break
         }
