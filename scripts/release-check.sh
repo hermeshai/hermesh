@@ -1,7 +1,8 @@
 #!/bin/sh
 # Checks that a release's files are all there and right, before anyone can
 # install them: every program in the signed checksum list (signed by the
-# release key, each hash matching), the version, install.sh and install.ps1
+# release key, each hash matching), her for Linux and her console with
+# them, the version, install.sh and install.ps1
 # with the key, the Mac app with feeds naming this version's zip, and the
 # Windows app with signed feeds naming this version's package. The release
 # workflow runs it on the draft before publishing, and again on the
@@ -29,6 +30,10 @@ for os in darwin linux; do
       grep -q "  $cmd-$os-$arch\$" "$DIR/checksums.txt" || fail "$cmd-$os-$arch is not in checksums.txt"
     done
   done
+done
+for f in her-linux-arm64 her-linux-amd64 her-console.tar.gz; do
+  need "$f"
+  grep -q "  $f\$" "$DIR/checksums.txt" || fail "$f is not in checksums.txt"
 done
 for arch in arm64 amd64; do
   for cmd in hermeshd hermeshdw hermesh; do

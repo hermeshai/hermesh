@@ -2,9 +2,13 @@
 # Builds release assets into dist/release: binaries for darwin/linux/windows
 # on arm64/amd64, their version, a signed checksum list and install.sh with
 # the public key. Windows also gets hermeshdw, hermeshd without a console
-# window, which its background service runs (docs/windows.md §4.4).
+# window, which its background service runs (docs/windows.md §4.4). Linux
+# also gets her, Her's kernel, and her console, built beforehand, which
+# install.sh puts beside hermeshd (docs/her-server.md §6.4).
 #   RELEASE_SIGNING_KEY_FILE  path to the ECDSA P-256 private key (PEM)
 #   VERSION                   e.g. v0.1.0
+#   HER_LINUX_AMD64, HER_LINUX_ARM64  her for Linux, static with musl
+#   HER_CONSOLE               her console's built files (her/apps/console/dist)
 set -euo pipefail
 cd "$(dirname "$0")/.."
 VERSION="${VERSION:?set VERSION}"
@@ -24,9 +28,12 @@ for arch in arm64 amd64; do
   done
   GOOS=windows GOARCH=$arch CGO_ENABLED=0 go build -trimpath -ldflags "$LDFLAGS -H windowsgui" -o "$OUT/hermeshdw-windows-$arch.exe" ./cmd/hermeshd
 done
+[ -z "${HER_LINUX_AMD64:-}" ] || install -m 0755 "$HER_LINUX_AMD64" "$OUT/her-linux-amd64"
+[ -z "${HER_LINUX_ARM64:-}" ] || install -m 0755 "$HER_LINUX_ARM64" "$OUT/her-linux-arm64"
+[ -z "${HER_CONSOLE:-}" ] || COPYFILE_DISABLE=1 tar -czf "$OUT/her-console.tar.gz" -C "$HER_CONSOLE" .
 # The version, signed with the programs, for installed ones to update (docs/machine-updates.md).
 printf '%s\n' "${VERSION#v}" > "$OUT/version"
-(cd "$OUT" && (command -v sha256sum >/dev/null && sha256sum hermesh* version || shasum -a 256 hermesh* version) > checksums.txt)
+(cd "$OUT" && (command -v sha256sum >/dev/null && sha256sum her* version || shasum -a 256 her* version) > checksums.txt)
 openssl dgst -sha256 -sign "${RELEASE_SIGNING_KEY_FILE:?set RELEASE_SIGNING_KEY_FILE}" -out "$OUT/checksums.txt.sig" "$OUT/checksums.txt"
 PUBKEY_FILE="${RELEASE_PUBKEY_FILE:-scripts/release-pubkey.pem}"
 openssl dgst -sha256 -verify "$PUBKEY_FILE" -signature "$OUT/checksums.txt.sig" "$OUT/checksums.txt"
