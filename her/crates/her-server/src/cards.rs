@@ -8,6 +8,7 @@ use std::sync::OnceLock;
 use std::sync::Weak;
 
 use async_trait::async_trait;
+use her_core::Workspace;
 use her_core::cards::Cards;
 use her_core::connect::ConnectorHost;
 use her_core::connect::ConnectorInfo;
@@ -225,14 +226,16 @@ impl Server {
             self.connectors().signing_in.lock().insert(card.body.name.clone(), (session.to_string(), card.id.clone()));
             return (CardState::SignIn, None);
         }
-        self.connected(card).await
+        self.connected(session, card).await
     }
 
-    /// Done once the connector connects and lists its tools; another try with why it did not.
-    async fn connected(&self, card: &Card) -> (CardState, Option<String>) {
+    /// Done once the connector connects and lists its tools, and Her's conversation has it; another
+    /// try with why it did not.
+    async fn connected(&self, session: &str, card: &Card) -> (CardState, Option<String>) {
         let name = her_core::connect::display_name(&card.body.name);
         match self.mcp_check(McpServerParams { name: card.body.name.clone(), cwd: None }).await {
             Ok(checked) if checked.server.status.state == McpStatusState::Ok => {
+                self.add_to_conversation(session, &card.body.name).await;
                 let mut named: Vec<&str> = checked.tools.iter().take(NAMED_TOOLS).map(|tool| tool.name.as_str()).collect();
                 if checked.tools.len() > NAMED_TOOLS {
                     named.push("…");
@@ -242,6 +245,29 @@ impl Server {
             }
             Ok(checked) => (CardState::Retry, Some(format!("{name} did not connect: {}", checked.server.status.error.unwrap_or_else(|| "no answer".into())))),
             Err(err) => (CardState::Retry, Some(format!("{name} did not connect: {}", err.message))),
+        }
+    }
+
+    /// Her's conversation takes up the connector as the configuration has it now, so that the turn
+    /// the card's end wakes can use it.
+    async fn add_to_conversation(&self, session: &str, connector: &str) {
+        let Some(hub) = self.hub(session) else {
+            return;
+        };
+        let cwd = hub.shared.summary.lock().cwd.clone();
+        let (server, connector) = (self.clone(), connector.to_string());
+        let config = tokio::task::spawn_blocking(move || {
+            let workspace = Workspace::open(&server.0.home, &cwd, &server.0.overrides).ok()?;
+            server.session_mcp_servers(&workspace, &[]).into_iter().find(|s| s.name == connector)
+        })
+        .await
+        .ok()
+        .flatten();
+        if let Some(config) = config {
+            let (reply, added) = oneshot::channel();
+            if hub.send(HubCmd::AddMcpServer { server: Box::new(config), reply }).await.is_ok() {
+                let _ = added.await;
+            }
         }
     }
 
@@ -293,7 +319,7 @@ impl Server {
             return;
         };
         let (to, note) = match outcome {
-            Ok(()) => self.connected(&card).await,
+            Ok(()) => self.connected(&session, &card).await,
             Err(error) => (CardState::Retry, Some(format!("The sign-in did not finish: {error}"))),
         };
         let _ = cards.set(&id, &[CardState::SignIn], to, note);

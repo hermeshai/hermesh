@@ -134,6 +134,11 @@ pub(crate) enum HubCmd {
         reply: oneshot::Sender<Option<Result<oneshot::Receiver<her_core::routine::RunOutcome>, String>>>,
     },
     StopRun { run_id: String },
+    /// Her's conversation takes up a connector the owner just connected on a card.
+    AddMcpServer {
+        server: Box<her_protocol::McpServerConfig>,
+        reply: oneshot::Sender<()>,
+    },
     /// The conversation's secure cards, `card_id` taken back from its history if need be; `None`
     /// when it has none.
     Cards {
@@ -625,6 +630,12 @@ impl Hub {
                 if let Some(kernel) = &self.kernel {
                     kernel.stop_run(&run_id);
                 }
+            }
+            HubCmd::AddMcpServer { server, reply } => {
+                if let Some(kernel) = &self.kernel {
+                    kernel.add_mcp_server(*server);
+                }
+                let _ = reply.send(());
             }
             HubCmd::Cards { card_id, reply } => {
                 let _ = reply.send(self.kernel.as_ref().and_then(|kernel| kernel.cards(&card_id)));
