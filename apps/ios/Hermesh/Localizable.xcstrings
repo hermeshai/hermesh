@@ -7670,6 +7670,1099 @@
           }
         }
       }
+    },
+    "Her, %lld unread": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Her，%lld 条未读"
+          }
+        }
+      }
+    },
+    "Update Hermesh to answer this card": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "更新 Hermesh 后才能回答这张卡片"
+          }
+        }
+      }
+    },
+    "Couldn’t connect %@": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "没能接入 %@"
+          }
+        }
+      }
+    },
+    "Declined": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "已拒绝"
+          }
+        }
+      }
+    },
+    "Replaced by a newer card": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "已被新卡片替代"
+          }
+        }
+      }
+    },
+    "Answered on another device": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "已在别的设备上处理"
+          }
+        }
+      }
+    },
+    "Expired": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "已过期"
+          }
+        }
+      }
+    },
+    "%@ connected · %lld tools": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "已接入 %1$@ · %2$lld 个工具"
+          }
+        }
+      }
+    },
+    "%@ connected": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "已接入 %@"
+          }
+        }
+      }
+    },
+    "Her can use its tools; what she sends it leaves this machine": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Her 能用它的工具，发给它的内容会离开这台机器"
+          }
+        }
+      }
+    },
+    "Secure Card · %@": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "安全卡 · %@"
+          }
+        }
+      }
+    },
+    "You didn’t ask for this": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "这不是你要求的"
+          }
+        }
+      }
+    },
+    "Sign in to %@ again": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "重新登录 %@"
+          }
+        }
+      }
+    },
+    "Connect %@": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "接入 %@"
+          }
+        }
+      }
+    },
+    "Waiting for you to sign in in the browser…": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "等你在浏览器里登录…"
+          }
+        }
+      }
+    },
+    "Open Sign-In Page Again": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "重新打开登录页"
+          }
+        }
+      }
+    },
+    "Connecting…": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "正在接入…"
+          }
+        }
+      }
+    },
+    "Sign In": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "登录"
+          }
+        }
+      }
+    },
+    "Connect": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "接入"
+          }
+        }
+      }
+    },
+    "Can’t reach %@ right now": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "现在连不上 %@"
+          }
+        }
+      }
+    },
+    "Her is starting on %@…": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Her 正在 %@ 上启动…"
+          }
+        }
+      }
+    },
+    "Her couldn’t start on %@": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Her 没能在 %@ 上启动"
+          }
+        }
+      }
+    },
+    "Add Photos or Files": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "添加照片或文件"
+          }
+        }
+      }
+    },
+    "I can reply once a model is connected": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "接上模型后就能回复你"
+          }
+        }
+      }
+    },
+    "Message %@": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "发消息给 %@"
+          }
+        }
+      }
+    },
+    "Send": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "发送"
+          }
+        }
+      }
+    },
+    "Photos": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "照片"
+          }
+        }
+      }
+    },
+    "Files": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "文件"
+          }
+        }
+      }
+    },
+    "Photo": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "照片"
+          }
+        }
+      }
+    },
+    "Sub-agent · %@": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "子智能体 · %@"
+          }
+        }
+      }
+    },
+    "1 of %lld": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "第 1 / %lld 项"
+          }
+        }
+      }
+    },
+    "Allow Her to use %@?": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "允许 Her 使用 %@？"
+          }
+        }
+      }
+    },
+    "Run a script on %@?": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "在 %@ 上运行脚本？"
+          }
+        }
+      }
+    },
+    "Run this command?": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "运行这条命令？"
+          }
+        }
+      }
+    },
+    "Read %@?": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "读取 %@？"
+          }
+        }
+      }
+    },
+    "Edit %@?": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "修改 %@？"
+          }
+        }
+      }
+    },
+    "Delete %@?": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "删除 %@？"
+          }
+        }
+      }
+    },
+    "Move %@?": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "移动 %@？"
+          }
+        }
+      }
+    },
+    "Search %@?": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "搜索 %@？"
+          }
+        }
+      }
+    },
+    "Fetch %@?": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "访问 %@？"
+          }
+        }
+      }
+    },
+    "Call %@?": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "调用 %@？"
+          }
+        }
+      }
+    },
+    "Always Allow": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "一直允许"
+          }
+        }
+      }
+    },
+    "Browsing and acting on this site won’t ask again; kept in this environment.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "在这个网站上浏览和操作都不再询问，记在这个环境里。"
+          }
+        }
+      }
+    },
+    "Won’t ask again for this in this conversation.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "这段对话里不再询问这件事。"
+          }
+        }
+      }
+    },
+    "Commands starting with “%@” won’t ask again in this conversation.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "这段对话里以「%@」开头的命令不再询问。"
+          }
+        }
+      }
+    },
+    "Calls like this one won’t ask again in this conversation.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "这段对话里同类的调用不再询问。"
+          }
+        }
+      }
+    },
+    "Allow Once": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "这次允许"
+          }
+        }
+      }
+    },
+    "%lld more lines": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "还有 %lld 行"
+          }
+        }
+      }
+    },
+    "Remove %@": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "移除 %@"
+          }
+        }
+      }
+    },
+    "This task didn’t finish": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "这一轮没完成"
+          }
+        }
+      }
+    },
+    "Delivered when %@ is back": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "等 %@ 在线后送达"
+          }
+        }
+      }
+    },
+    "Not delivered: %@": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "没能送达：%@"
+          }
+        }
+      }
+    },
+    "Discard": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "丢弃"
+          }
+        }
+      }
+    },
+    "Typing…": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "正在输入…"
+          }
+        }
+      }
+    },
+    "Hi, I’m %@. I work on %@. Tell me what you need, several things at once if you like.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "你好，我是 %1$@，在 %2$@ 上为你做事。有什么需要直接告诉我，一次说几件也行。"
+          }
+        }
+      }
+    },
+    "This conversation is kept on %@. It shows once the machine is back.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "这段对话保存在 %@ 上，连上后会自动显示。"
+          }
+        }
+      }
+    },
+    "%@ offline · seen %@": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%1$@ 离线 · %2$@在线"
+          }
+        }
+      }
+    },
+    "All set. I’ll talk with you using %@; you can change it in Assistant Settings. What can I do for you?": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "好了，我会用 %@ 和你聊，想换可以去助手设置。有什么要我做的？"
+          }
+        }
+      }
+    },
+    "Connected to %@": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "已接上 %@"
+          }
+        }
+      }
+    },
+    "Hi, I’m %@. I work on %@. Before we start, I need a model to think and answer with. Signing in with your ChatGPT account is quickest, or you can enter an API key.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "你好，我是 %1$@，在 %2$@ 上为你做事。开始之前，我需要接上一个模型来思考和回答：用你的 ChatGPT 账户登录最快，也可以填一个 API Key。"
+          }
+        }
+      }
+    },
+    "I’ve opened ChatGPT’s sign-in page. Come back here once you’ve signed in.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "我打开了 ChatGPT 的登录页，登录完回到这里就好。"
+          }
+        }
+      }
+    },
+    "Connected to ChatGPT (%@).": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "接上了 ChatGPT（%@）。"
+          }
+        }
+      }
+    },
+    "Connected to ChatGPT.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "接上了 ChatGPT。"
+          }
+        }
+      }
+    },
+    "I couldn’t connect to ChatGPT this time. You can try again, or enter an API key instead.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "这次没能接上 ChatGPT。可以再试一次，或者换成填写 API Key。"
+          }
+        }
+      }
+    },
+    "Sign-in cancelled. You can try again, or enter an API key instead.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "登录已取消。可以再试一次，或者换成填写 API Key。"
+          }
+        }
+      }
+    },
+    "Which provider?": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "用哪家的？"
+          }
+        }
+      }
+    },
+    "Paste your %@ API key below. It’s kept only in %@’s credential store: it won’t show in our conversation, and it’s never sent to the model.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "把 %1$@ 的 API Key 贴在下面。它只存进 %2$@ 的凭据库，不会出现在对话里，也不会发给模型。"
+          }
+        }
+      }
+    },
+    "%@ didn’t accept this key. Paste it again?": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "这个 Key 没通过 %@ 的检查。再贴一次？"
+          }
+        }
+      }
+    },
+    "%@ didn’t accept this key: %@. Paste it again?": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "这个 Key 没通过 %1$@ 的检查：%2$@。再贴一次？"
+          }
+        }
+      }
+    },
+    "I couldn’t save the key on %@. Try again?": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "没能把 Key 存到 %@ 上。再试一次？"
+          }
+        }
+      }
+    },
+    "Saved. I couldn’t check the key with %@ yet, so let’s carry on.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "存好了，不过暂时没法向 %@ 确认这个 Key 能用，先接着往下走。"
+          }
+        }
+      }
+    },
+    "Sign In with ChatGPT": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "用 ChatGPT 登录"
+          }
+        }
+      }
+    },
+    "Enter an API Key": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "填写 API Key"
+          }
+        }
+      }
+    },
+    "Try Another Way": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "换一种方式"
+          }
+        }
+      }
+    },
+    "Keys and sign-ins stay on %@": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Key 和登录都只留在 %@ 上"
+          }
+        }
+      }
+    },
+    "Get a key from %@": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "去 %@ 获取 Key"
+          }
+        }
+      }
+    },
+    "%@ API key": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ 的 API Key"
+          }
+        }
+      }
+    },
+    "Checking…": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "正在检查…"
+          }
+        }
+      }
+    },
+    "API Key": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "API Key"
+          }
+        }
+      }
+    },
+    "Give “%@” full access?": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "让「%@」完全访问？"
+          }
+        }
+      }
+    },
+    "Clear your chat with “%@”?": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "清空和「%@」的聊天记录？"
+          }
+        }
+      }
+    },
+    "On %@": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "在 %@ 上"
+          }
+        }
+      }
+    },
+    "Before Acting": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "做事前"
+          }
+        }
+      }
+    },
+    "Ask Me": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "先问我"
+          }
+        }
+      }
+    },
+    "Full Access": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "完全访问"
+          }
+        }
+      }
+    },
+    "The agents and scheduled tasks Her starts work the same way, while you are away as well.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Her 创建的智能体和定时任务也按这个权限运行，你不在时也一样。"
+          }
+        }
+      }
+    },
+    "Off, no device notifies you of Her; what is unread still shows.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "关掉后，所有设备都不发 Her 的通知，未读照常显示。"
+          }
+        }
+      }
+    },
+    "Turn On Her on Another Machine…": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "在另一台机器上开启 Her…"
+          }
+        }
+      }
+    },
+    "Clear Conversation": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "清空对话"
+          }
+        }
+      }
+    },
+    "Chat cleared": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "已清空聊天记录"
+          }
+        }
+      }
+    },
+    "The chat history is cleared and the work it is doing stops. Its files, scheduled tasks and settings stay.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "聊天记录会清空，它正在做的事会停止。文件、定时任务和设置都保留。"
+          }
+        }
+      }
+    },
+    "Turn On Full Access": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "开启完全访问"
+          }
+        }
+      }
+    },
+    "It acts on %@ without asking you, and so do the agents and scheduled tasks it starts. Her reads web pages and messages from anyone, so turn this on only if you trust everything on that machine to it.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "它在 %@ 上做任何事都不再问你，它创建的智能体和定时任务也一样。Her 会读网页和别人发来的消息，所以只在你放心把那台机器上的一切交给它时开启。"
+          }
+        }
+      }
+    },
+    "%@ has full access": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ 已开启完全访问"
+          }
+        }
+      }
+    },
+    "Her runs on one of your Macs or Linux servers. Add one in Machines first.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Her 在你的 Mac 或 Linux 服务器上运行。先在“机器”里添加一台。"
+          }
+        }
+      }
+    },
+    "Windows isn’t supported yet": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Windows 暂不支持"
+          }
+        }
+      }
+    },
+    "Offline · seen %@": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "离线 · %@在线"
+          }
+        }
+      }
+    },
+    "Can’t run Her: %@": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "不能运行 Her：%@"
+          }
+        }
+      }
+    },
+    "Online · %@": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "在线 · %@"
+          }
+        }
+      }
+    },
+    "Turn On Her": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "开启 Her"
+          }
+        }
+      }
+    },
+    "Choose where Her runs": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "选择 Her 在哪里运行"
+          }
+        }
+      }
+    },
+    "Her’s conversations, files and model keys stay on that machine. You can add other machines later.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "对话、文件和模型的 Key 都只留在那台机器上。以后可以再加别的机器。"
+          }
+        }
+      }
+    },
+    "Add an Environment": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "添加环境"
+          }
+        }
+      }
+    },
+    "Her’s conversations, files and model keys stay on that machine.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "对话、文件和模型的 Key 都只留在那台机器上。"
+          }
+        }
+      }
+    },
+    "Assistant Settings": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "助手设置"
+          }
+        }
+      }
+    },
+    "Add Environment…": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "添加环境…"
+          }
+        }
+      }
+    },
+    "%@ · %u unread": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%1$@ · %2$u 条未读"
+          }
+        }
+      }
+    },
+    "Her’s conversation is kept on that machine; it shows here once the machine is back.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Her 的对话保存在那台机器上，连上后会显示在这里。"
+          }
+        }
+      }
+    },
+    "Her’s conversation is kept on that machine; it shows here once the machine is back. Last online %@.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Her 的对话保存在那台机器上，连上后会显示在这里。上次在线：%@。"
+          }
+        }
+      }
+    },
+    "Her": {
+      "shouldTranslate": false
     }
   },
   "version": "1.0"

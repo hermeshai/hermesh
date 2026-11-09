@@ -10,6 +10,7 @@
 		D0CBAA91C3D9B6287E36D725 /* HermeshKit in Frameworks */ = {isa = PBXBuildFile; productRef = CA58F41DB714CCA58E4C53F5 /* HermeshKit */; };
 		86AC8F9E5D0563AB542BD55A /* HermeshProto in Frameworks */ = {isa = PBXBuildFile; productRef = 268F62350FE5702012D12E3E /* HermeshProto */; };
 		92221C33D4F49D3218F13C49 /* HermeshSessions in Frameworks */ = {isa = PBXBuildFile; productRef = B1704967309B24A9B09642A8 /* HermeshSessions */; };
+		7C1E4A2B9D3F5E6A8B0C1D2E /* HermeshHer in Frameworks */ = {isa = PBXBuildFile; productRef = 7C1E4A2B9D3F5E6A8B0C1D2F /* HermeshHer */; };
 		5A2E8C1D7B3F4A6E9D0C1B21 /* Markdown in Frameworks */ = {isa = PBXBuildFile; productRef = 5A2E8C1D7B3F4A6E9D0C1B22 /* Markdown */; };
 		AC5CF953EA41B71635B8C74F /* HermeshCore.xcframework in Frameworks */ = {isa = PBXBuildFile; fileRef = C4E5471B18E1D53967B5E0B6 /* HermeshCore.xcframework */; };
 		BB78A56E18B6F9A93275E716 /* HermeshKit in Frameworks */ = {isa = PBXBuildFile; productRef = C3FC6D868C2678A25C71BCE0 /* HermeshKit */; };
@@ -105,6 +106,7 @@
 				D0CBAA91C3D9B6287E36D725 /* HermeshKit in Frameworks */,
 				86AC8F9E5D0563AB542BD55A /* HermeshProto in Frameworks */,
 				92221C33D4F49D3218F13C49 /* HermeshSessions in Frameworks */,
+				7C1E4A2B9D3F5E6A8B0C1D2E /* HermeshHer in Frameworks */,
 				5A2E8C1D7B3F4A6E9D0C1B21 /* Markdown in Frameworks */,
 				AC5CF953EA41B71635B8C74F /* HermeshCore.xcframework in Frameworks */,
 			);
@@ -186,6 +188,7 @@
 				CA58F41DB714CCA58E4C53F5 /* HermeshKit */,
 				268F62350FE5702012D12E3E /* HermeshProto */,
 				B1704967309B24A9B09642A8 /* HermeshSessions */,
+				7C1E4A2B9D3F5E6A8B0C1D2F /* HermeshHer */,
 				5A2E8C1D7B3F4A6E9D0C1B22 /* Markdown */,
 			);
 			productName = Hermesh;
@@ -673,6 +676,11 @@
 			isa = XCSwiftPackageProductDependency;
 			package = A46A1BCE0B67C45BEC8F435B /* XCLocalSwiftPackageReference "../../packages/HermeshKit" */;
 			productName = HermeshSessions;
+		};
+		7C1E4A2B9D3F5E6A8B0C1D2F /* HermeshHer */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = A46A1BCE0B67C45BEC8F435B /* XCLocalSwiftPackageReference "../../packages/HermeshKit" */;
+			productName = HermeshHer;
 		};
 		C3FC6D868C2678A25C71BCE0 /* HermeshKit */ = {
 			isa = XCSwiftPackageProductDependency;

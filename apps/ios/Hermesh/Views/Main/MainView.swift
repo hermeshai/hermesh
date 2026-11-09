@@ -56,6 +56,7 @@ private struct PageView: View {
 
     @ViewBuilder private var rootPage: some View {
         switch model.root {
+        case .her: HerView()
         case .overview: OverviewView()
         case .grants: GrantsView()
         case .machines: MachinesView()
