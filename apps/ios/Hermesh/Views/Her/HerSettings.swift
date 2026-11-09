@@ -4,107 +4,121 @@ import HermeshProto
 import HermeshSessions
 import SwiftUI
 
-/// Her's settings, as the iPhone has them (the Mac's AssistantPanel, cut to
-/// what is used on a phone): the model she answers with, among those her
-/// environment can use; whether she asks before acting or has full access;
-/// her notifications; clearing her conversation. Models, connectors and the
-/// rest of an environment are set on the Mac.
+/// Her's settings, a page of their own (the Mac's AssistantPanel, cut to
+/// what is used on a phone): where she runs, and her other environments; the
+/// model she answers with, among those her environment can use; whether she
+/// asks before acting or has full access; her notifications; another machine
+/// to run her on; clearing her conversation. Models, connectors and the rest
+/// of an environment are set on the Mac.
 struct HerSettings: View {
     @Environment(AppModel.self) private var model
     @Environment(\.dismiss) private var dismiss
-    let chat: HerChat
-    let machine: HerMachine
-    /// Her runs on this machine alone: another can be added from here.
-    let single: Bool
-    let onAdd: () -> Void
     @State private var clearing = false
     @State private var fullAccess = false
+    @State private var adding = false
 
     var body: some View {
+        let envs = herEnvironments(model.machines)
+        if let machine = herPick(envs, remembered: model.her.machine) {
+            let chat = model.her.chat(machine.machineID, model: model)
+            form(chat, machine: machine, envs: envs)
+                .herConnections(chat, machine: machine)
+        }
+    }
+
+    private func form(_ chat: HerChat, machine: HerMachine, envs: [HerMachine]) -> some View {
         let bot = chat.bot
-        NavigationStack {
-            Form {
+        return Form {
+            Section {
+                VStack(spacing: 10) {
+                    HerAvatar(size: 88)
+                    Text(bot?.name ?? "Her").font(.title2.weight(.semibold))
+                }
+                .frame(maxWidth: .infinity)
+                .listRowBackground(Color.clear)
+            }
+            Section {
+                if envs.count > 1 {
+                    Picker("Runs On", selection: Binding(get: { machine.machineID }, set: { model.her.machine = $0 })) {
+                        ForEach(envs, id: \.machineID) { e in
+                            let reach = herReachable(e) ? String(localized: "Online") : String(localized: "Offline")
+                            Text(e.machineName)
+                            Text(e.her.unread > 0 ? String(localized: "\(reach) · \(e.her.unread) unread") : reach)
+                        }
+                    }
+                    .accessibilityIdentifier("her-environment")
+                } else {
+                    LabeledContent("Runs On", value: machine.machineName)
+                        .accessibilityIdentifier("her-environment")
+                }
+                Button("Turn On Her on Another Machine…") { adding = true }
+            }
+            if let s = chat.live {
                 Section {
-                    VStack(spacing: 6) {
-                        Mark(size: 56)
-                        Text(bot?.name ?? "Her").font(.title3.weight(.semibold))
-                        Text("On \(machine.machineName)").font(.subheadline).foregroundStyle(.secondary)
-                    }
-                    .frame(maxWidth: .infinity)
-                    .listRowBackground(Color.clear)
-                }
-                if let s = chat.live {
-                    Section {
-                        Picker("Model", selection: Binding(get: { s.model }, set: { m in Task { await chat.op(["type": "set_model", "model": .string(m)]) } })) {
-                            ForEach(chat.models.menu(current: s.model), id: \.id) { m in
-                                Text(chat.models.provider(m.provider).map { "\(m.name) · \($0.name)" } ?? m.name).tag(m.id)
-                            }
+                    Picker("Model", selection: Binding(get: { s.model }, set: { m in Task { await chat.op(["type": "set_model", "model": .string(m)]) } })) {
+                        ForEach(chat.models.menu(current: s.model), id: \.id) { m in
+                            Text(chat.models.provider(m.provider).map { "\(m.name) · \($0.name)" } ?? m.name).tag(m.id)
                         }
-                        .accessibilityIdentifier("her-model")
-                        LabeledContent("Before Acting") {
-                            Picker("Before Acting", selection: Binding(get: { s.permissionMode == "bypass-permissions" }, set: { full in
-                                if full { fullAccess = true } else if s.permissionMode == "bypass-permissions" { setMode("manual") }
-                            })) {
-                                Text("Ask Me").tag(false)
-                                Text("Full Access").tag(true)
-                            }
-                            .pickerStyle(.segmented).fixedSize()
+                    }
+                    .accessibilityIdentifier("her-model")
+                    LabeledContent("Before Acting") {
+                        Picker("Before Acting", selection: Binding(get: { s.permissionMode == "bypass-permissions" }, set: { full in
+                            if full { fullAccess = true } else if s.permissionMode == "bypass-permissions" { setMode("manual", chat: chat, machine: machine) }
+                        })) {
+                            Text("Ask Me").tag(false)
+                            Text("Full Access").tag(true)
                         }
-                        .accessibilityIdentifier("her-mode")
-                    } footer: {
-                        Text("The agents and scheduled tasks Her starts work the same way, while you are away as well.")
+                        .pickerStyle(.segmented).fixedSize()
                     }
-                }
-                if let bot {
-                    Section {
-                        Toggle("Notifications", isOn: Binding(get: { !bot.muted }, set: { on in
-                            Task {
-                                do { _ = try await chat.call("bots/update", ["bot_id": .string(bot.id), "muted": .bool(!on)]) } catch { model.show(error.localizedDescription) }
-                            }
-                        }))
-                    } footer: {
-                        Text("Off, no device notifies you of Her; what is unread still shows.")
-                    }
-                }
-                if single {
-                    Section { Button("Turn On Her on Another Machine…") { onAdd() } }
-                }
-                if bot != nil {
-                    Section {
-                        Button("Clear Conversation", role: .destructive) { clearing = true }
-                    }
+                    .accessibilityIdentifier("her-mode")
+                } footer: {
+                    Text("The agents and scheduled tasks Her starts work the same way, while you are away as well.")
                 }
             }
-            // What stays is said before it goes.
-            .confirmationDialog("Clear your chat with “\(bot?.name ?? "Her")”?", isPresented: $clearing, titleVisibility: .visible) {
-                Button("Clear", role: .destructive) {
-                    guard let bot else { return }
-                    Task {
-                        do {
-                            _ = try await chat.call("bots/clear", ["bot_id": .string(bot.id)])
-                            model.show(String(localized: "Chat cleared"))
-                            dismiss()
-                        } catch { model.show(error.localizedDescription) }
-                    }
+            if let bot {
+                Section {
+                    Toggle("Notifications", isOn: Binding(get: { !bot.muted }, set: { on in
+                        Task {
+                            do { _ = try await chat.call("bots/update", ["bot_id": .string(bot.id), "muted": .bool(!on)]) } catch { model.show(error.localizedDescription) }
+                        }
+                    }))
+                } footer: {
+                    Text("Off, no device notifies you of Her; what is unread still shows.")
                 }
-            } message: {
-                Text("The chat history is cleared and the work it is doing stops. Its files, scheduled tasks and settings stay.")
-            }
-            .navigationTitle("Assistant Settings")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar { ToolbarItem(placement: .confirmationAction) { Button("Done") { dismiss() } } }
-            // What full access means, before it is turned on (the Mac's AccessSheet).
-            .confirmationDialog("Give “\(bot?.name ?? "Her")” full access?", isPresented: $fullAccess, titleVisibility: .visible) {
-                Button("Turn On Full Access", role: .destructive) { setMode("bypass-permissions") }
-            } message: {
-                Text("It acts on \(machine.machineName) without asking you, and so do the agents and scheduled tasks it starts. Her reads web pages and messages from anyone, so turn this on only if you trust everything on that machine to it.")
+                Section {
+                    Button("Clear Conversation", role: .destructive) { clearing = true }
+                }
             }
         }
-        .presentationDetents([.medium, .large])
+        .listSectionSpacing(.compact)
+        .contentMargins(.top, 0, for: .scrollContent)
+        .navigationBarTitleDisplayMode(.inline)
+        // What stays is said before it goes.
+        .confirmationDialog("Clear your chat with “\(bot?.name ?? "Her")”?", isPresented: $clearing, titleVisibility: .visible) {
+            Button("Clear", role: .destructive) {
+                guard let bot else { return }
+                Task {
+                    do {
+                        _ = try await chat.call("bots/clear", ["bot_id": .string(bot.id)])
+                        model.show(String(localized: "Chat cleared"))
+                        dismiss()
+                    } catch { model.show(error.localizedDescription) }
+                }
+            }
+        } message: {
+            Text("The chat history is cleared and the work it is doing stops. Its files, scheduled tasks and settings stay.")
+        }
+        // What full access means, before it is turned on (the Mac's AccessSheet).
+        .confirmationDialog("Give “\(bot?.name ?? "Her")” full access?", isPresented: $fullAccess, titleVisibility: .visible) {
+            Button("Turn On Full Access", role: .destructive) { setMode("bypass-permissions", chat: chat, machine: machine) }
+        } message: {
+            Text("It acts on \(machine.machineName) without asking you, and so do the agents and scheduled tasks it starts. Her reads web pages and messages from anyone, so turn this on only if you trust everything on that machine to it.")
+        }
+        .sheet(isPresented: $adding) { HerAddSheet().environment(model) }
     }
 
     /// How freely Her acts (SetHerAssistantMode): her conversation says so once it is set.
-    private func setMode(_ mode: String) {
+    private func setMode(_ mode: String, chat: HerChat, machine: HerMachine) {
         guard let bot = chat.bot, let api = model.api else { return }
         var r = Hermesh_Local_V1_SetHerAssistantModeRequest()
         r.machineID = machine.machineID

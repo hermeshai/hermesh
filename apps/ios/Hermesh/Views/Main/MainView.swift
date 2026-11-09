@@ -35,6 +35,7 @@ private struct PageView: View {
                     case .machineAgent(let machine, let agent): MachineAgentView(machineID: machine, agent: agent).syncSubtitle()
                     case .grantSessions(let id): ScopedSessionsView(filter: SessionFilter(grant: id), title: String(localized: "“\(model.clients.first { $0.clientID == id }?.label ?? "")” Sessions")).syncSubtitle()
                     case .machineSessions(let id): ScopedSessionsView(filter: SessionFilter(machine: id), title: String(localized: "Sessions on \(model.machineName(id))")).syncSubtitle()
+                    case .herSettings: HerSettings()
                     }
                 }
         }
