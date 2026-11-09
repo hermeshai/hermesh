@@ -641,11 +641,11 @@ function Dock({ bot, conv, op, state, waiting, onWaiting, onHeight }: {
         for (const a of sent.attachments) if (a.kind === "file") uploaded.push((await local.herUpload({ machineId: her.machine.machineId, botId: bot.id, localPath: a.path })).path);
         // While it answers, a message waits for the step under way and is answered next.
         ok = await op({ type: "prompt", input: toInput(sent.text, sent.attachments, uploaded), mode: view?.live ? "steer" : undefined });
-      } else if (sent.attachments.some((a) => a.kind === "image" && !a.local)) {
-        st.show(t("waiting.noPictures", { name }));
       } else {
-        const paths = sent.attachments.map((a) => (a.kind === "file" ? a.path : a.local!));
-        await local.herSend({ machineId: her.machine.machineId, botId: bot.id, text: sent.text.trim(), localPaths: paths });
+        // Files go by their path here; a pasted picture, which has none, is kept by hermeshd with the message.
+        const paths = sent.attachments.flatMap((a) => (a.kind === "file" ? [a.path] : a.local ? [a.local] : []));
+        const pictures = sent.attachments.flatMap((a) => (a.kind === "image" && !a.local ? [{ name: a.name, data: Uint8Array.from(atob(a.data), (c) => c.charCodeAt(0)) }] : []));
+        await local.herSend({ machineId: her.machine.machineId, botId: bot.id, text: sent.text.trim(), localPaths: paths, pictures });
         onWaiting();
         ok = true;
       }

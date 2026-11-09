@@ -128,8 +128,7 @@
   "waiting": {
     "until": "等 {{name}} 在线后送达",
     "failed": "没能送达：{{error}}",
-    "discard": "丢弃",
-    "noPictures": "图片要等 {{name}} 在线才能发。可以作为文件添加，或者到时再发。"
+    "discard": "丢弃"
   },
   "files": {
     "save": "把 {{name}} 存到“下载”",

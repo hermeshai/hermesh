@@ -129,8 +129,7 @@
   "waiting": {
     "until": "Delivered when {{name}} is back",
     "failed": "Not delivered: {{error}}",
-    "discard": "Discard",
-    "noPictures": "Pictures go once {{name}} is back. Attach them as files, or send them then."
+    "discard": "Discard"
   },
   "files": {
     "save": "Save {{name}} to Downloads",
