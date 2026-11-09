@@ -184,7 +184,8 @@ struct DrawerView: View {
             Spacer()
         }
         .padding(.horizontal, 16).padding(.bottom, 8).padding(.top, 24)
-        .background(LinearGradient(colors: [Color(.menuBackground).opacity(0), Color(.menuBackground)], startPoint: .top, endPoint: .center))
+        // The fade only shows: a row under it (All Sessions, once the list is long) still takes a tap.
+        .background(LinearGradient(colors: [Color(.menuBackground).opacity(0), Color(.menuBackground)], startPoint: .top, endPoint: .center).allowsHitTesting(false))
     }
 }
 
