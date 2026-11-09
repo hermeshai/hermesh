@@ -33,7 +33,7 @@ use std::sync::Arc;
 use crate::cards::Cards;
 
 pub(crate) const GROUP: &str = "connectors";
-pub(crate) const GROUP_SUMMARY: &str = "connect an app or service the task needs, or sign in to one again. The owner approves on a card";
+pub(crate) const GROUP_SUMMARY: &str = "add a connector (an MCP server) by its address, when the owner asks to install or connect one or the task needs an app or service; or sign in to one again. You do it yourself; the owner approves on a card";
 
 const GUIDELINES: &[&str] = &[
     "Nothing changes until the owner answers the card: never say a connector is connected before you hear it is.",

@@ -86,8 +86,10 @@ Others do the same:
     cached.
   - `connectors` is one line of `<deferred_tools>`:
 
-    > connectors: connect an app or service the task needs, or sign in to one
-    > again. The owner approves on a card.
+    > connectors: add a connector (an MCP server) by its address, when the
+    > owner asks to install or connect one or the task needs an app or
+    > service; or sign in to one again. You do it yourself; the owner
+    > approves on a card
 
   - `tool_search {server: "connectors"}` returns its two tools and their
     guidelines. `call_tool` runs them.

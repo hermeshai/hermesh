@@ -228,7 +228,7 @@ async fn a_card_is_prepared_shown_and_its_end_wakes_her() {
     assert_eq!(h.api.requests().len(), 2);
     // The group is in the catalog, and the result tells the model how to show the card.
     let first = &h.api.requests()[0];
-    assert!(first.system.contains("connectors: connect an app or service the task needs, or sign in to one again. The owner approves on a card"), "{}", first.system);
+    assert!(first.system.contains("connectors: add a connector (an MCP server) by its address, when the owner asks to install or connect one or the task needs an app or service; or sign in to one again. You do it yourself; the owner approves on a card"), "{}", first.system);
     let prepared = text_of(&h.api.requests()[1].messages.last().unwrap().clone());
     assert!(prepared.starts_with(&format!("Nothing changed yet. Card {} asks the owner to connect notion ({URL}) and sign in.", card.id)), "{prepared}");
 
