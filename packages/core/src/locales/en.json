@@ -94,7 +94,8 @@
     "changes_other": "{{count}} files +{{insertions}} −{{deletions}}",
     "herName": "Her",
     "herTitle": "{{name}} · {{environment}}",
-    "herApproval": "Waiting for your approval: {{text}}"
+    "herApproval": "Waiting for your approval: {{text}}",
+    "herQuestion": "Waiting for your answer: {{text}}"
   },
   "pairing": {
     "machine": "Machine “{{label}}” wants to join",

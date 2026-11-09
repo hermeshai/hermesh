@@ -136,3 +136,16 @@ func TestModelReady(t *testing.T) {
 		}
 	}
 }
+
+// A question Her asks is the newest as a question, so a device can say she
+// waits for an answer; her next message is a message again.
+func TestSnapshotQuestion(t *testing.T) {
+	s := newSnapshot("0.2.0", bots(t, `[{"id":"her","name":"Her","unread":1,"last":{"from":"bot","text":"Send it now?","question":true,"ts":"2026-11-09T09:00:00Z"}}]`))
+	if l := s.latest; l == nil || l.Text != "Send it now?" || l.Kind != machinev1.HerLatestKind_HER_LATEST_KIND_QUESTION {
+		t.Fatalf("latest %v", l)
+	}
+	s.changed(bots(t, `[{"id":"her","name":"Her","unread":2,"last":{"from":"bot","text":"Sent.","ts":"2026-11-09T09:01:00Z"}}]`), nil, time.Now())
+	if l := s.latest; l.Text != "Sent." || l.Kind != machinev1.HerLatestKind_HER_LATEST_KIND_MESSAGE {
+		t.Fatalf("latest %v", l)
+	}
+}
