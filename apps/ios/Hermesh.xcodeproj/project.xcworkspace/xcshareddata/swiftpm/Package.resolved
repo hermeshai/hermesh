@@ -1,5 +1,5 @@
 {
-  "originHash" : "a60300ed2ef1e41c30844321c5e00803a6b3f4da18a2cea61c824b462b2ed107",
+  "originHash" : "92652f05dc86d1ee73e93be53943f4bc74742e2f1c212aea2d602227fb940304",
   "pins" : [
     {
       "identity" : "swift-cmark",
@@ -26,6 +26,15 @@
       "state" : {
         "revision" : "3d537cb81aef272a03cb3be815439e9bf0eb3bd3",
         "version" : "1.39.0"
+      }
+    },
+    {
+      "identity" : "swiftmath",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/mgriebling/SwiftMath.git",
+      "state" : {
+        "revision" : "fa8244ed032f4a1ade4cb0571bf87d2f1a9fd2d7",
+        "version" : "1.7.3"
       }
     }
   ],

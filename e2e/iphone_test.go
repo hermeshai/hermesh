@@ -512,12 +512,14 @@ func newIPhoneControl(t *testing.T, w *ownerMac, sessions map[string]string) str
 		reply(rw, map[string]string{"id": s.SessionID})
 	})
 	// A finished session with what a conversation shows: two commands in a
-	// row (one with a long output), a reply in Markdown with code, and a
-	// command that failed.
+	// row (one with a long output), a reply in Markdown with code, math and
+	// a diagram, and a command that failed.
 	mux.HandleFunc("POST /rich", func(rw http.ResponseWriter, r *http.Request) {
 		title := r.URL.Query().Get("title")
 		text := strings.Join([]string{"## 计划", "先看 **加粗的文字** 和 `main.go`。", "", "- 第一项", "- 第二项", "",
-			"| 文件 | 改动 |", "|---|---|", "| a.go | 新增 |", "", "```go", "func main() {}", "```", "", "详见 https://example.com，然后继续。"}, `\n`)
+			"| 文件 | 改动 |", "|---|---|", "| a.go | 新增 |", "", "```go", "func main() {}", "```", "",
+			"质能关系 \\(E = mc^2\\) 成立。", "", "$$", "x^2 + y^2 = z^2", "$$", "",
+			"```mermaid", "flowchart LR", "    A[开始] --> B[结束]", "```", "", "详见 https://example.com，然后继续。"}, `\n`)
 		s, res := w.startSession(2*time.Minute, "--agent", "gemini", "--title", title, "--prompt",
 			"shell seq 1 3000\nshell echo 改好了\nsay "+text+"\nshell ls no-such-file", "--wait")
 		if s.SessionID == "" {

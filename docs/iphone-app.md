@@ -77,7 +77,8 @@ apps/ios/
 ├── HermeshNotifications/    the notification service extension
 ├── HermeshUITests/          the end-to-end UI tests (run by e2e/iphone_test.go)
 ├── scripts/build-core.sh    builds HermeshCore.xcframework
-└── scripts/build-highlighter.sh  bundles the Mac app's Shiki for JavaScriptCore (code colours)
+├── scripts/build-highlighter.sh  bundles the Mac app's Shiki for JavaScriptCore (code colours)
+└── scripts/build-diagram.sh  bundles the Mac app's Mermaid and the page it draws on (diagrams)
 packages/HermeshKit/         Swift package shared with the Mac signer
 ├── HermeshProto             generated protobuf types
 ├── HermeshKit               LocalService client, signing preview, notice key
@@ -101,6 +102,19 @@ packages/HermeshKit/         Swift package shared with the Mac signer
   (`Code.swift`): `build-highlighter.sh` (an Xcode build phase) bundles it
   from `apps/desktop`'s dependencies into `Highlighter/` in the app, each
   language's grammar a file of its own, read the first time it is shown.
+  Math reads as on the Mac (`\( … \)`, `\[ … \]`, `$$ … $$` and a
+  fenced `math` block; `liftMath` in HermeshSessions takes it out of the
+  source before Markdown is parsed) and is typeset on the phone by SwiftMath
+  (`Math.swift`): each formula is drawn once as a picture that takes the
+  text's colour, on the text's baseline in a line or centred when set apart,
+  and shows as its source when it cannot be typeset. A fenced `mermaid`
+  block is drawn by the Mac app's Mermaid with the Mac's settings
+  (`Diagram.swift`), on one web page that is never shown and loads nothing:
+  `build-diagram.sh` (an Xcode build phase) bundles it into `Diagram/` in
+  the app. A diagram comes back as a PDF and shows as a picture, with its
+  source a tap away; a tap opens it large to pinch and to share. While a
+  reply is being written a diagram stays its source, and one that cannot be
+  drawn shows its source.
   A file Her sends that is Markdown, or code in a language Shiki knows by
   its extension, opens on a page of the app's (`HerFilePage.swift`), laid
   out as it scrolls; anything else opens in Quick Look, which shows
