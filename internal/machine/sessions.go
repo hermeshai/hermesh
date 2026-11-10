@@ -958,6 +958,7 @@ func (s *Sessions) Archive(ctx context.Context, p *Principal, id string) (*sessi
 			os.RemoveAll(s.ws.Path(id))
 		}
 	}
+	s.archiveInAgent(ctx, row, true)
 	if changed {
 		s.statusChanged(l, sessionv1.SessionStatus_SESSION_STATUS_ARCHIVED, "archived by "+p.ID())
 	}
@@ -1000,6 +1001,7 @@ func (s *Sessions) Unarchive(ctx context.Context, p *Principal, id string) (*ses
 			s.log.Warn("copying .worktreeinclude files", "session", id, "err", err)
 		}
 	}
+	s.archiveInAgent(ctx, r, false)
 	seq, _ := s.st.MaxSeq(id)
 	r.Status = sessionv1.SessionStatus_SESSION_STATUS_IDLE
 	r.Progress.Phase = phaseOf(r.Status)
@@ -1018,6 +1020,21 @@ func (s *Sessions) Unarchive(ctx context.Context, p *Principal, id string) (*ses
 	l.mu.Lock()
 	defer l.mu.Unlock()
 	return s.toProto(l.row), nil
+}
+
+// archiveInAgent archives (or unarchives) the session's conversation in the
+// agent's own apps, where it has one (Codex), so their lists keep to the
+// sessions in use. A failure only leaves those lists as they were.
+func (s *Sessions) archiveInAgent(ctx context.Context, r *sessionRow, archived bool) {
+	a, ok := s.providers[r.Agent].(provider.Archiver)
+	if !ok || r.ProviderRef == "" {
+		return
+	}
+	ctx, cancel := context.WithTimeout(ctx, 15*time.Second)
+	defer cancel()
+	if err := a.Archive(ctx, r.ProviderRef, archived); err != nil {
+		s.log.Warn("archiving in the agent's apps", "session", r.ID, "archived", archived, "err", err)
+	}
 }
 
 // deleteWait bounds how long Delete waits for an interrupted turn to stop.
@@ -1085,12 +1102,14 @@ func (s *Sessions) Rename(ctx context.Context, p *Principal, id, title string) (
 		return nil, err
 	}
 	var row *sessionRow
+	var ps provider.Session
 	if l != nil {
 		l.mu.Lock()
 		l.row.Title = title
 		c := *l.row
 		c.Progress = proto.Clone(l.row.Progress).(*sessionv1.SessionProgress)
 		row = &c
+		ps = l.sess
 		l.mu.Unlock()
 	} else {
 		r.Title = title
@@ -1098,6 +1117,13 @@ func (s *Sessions) Rename(ctx context.Context, p *Principal, id, title string) (
 	}
 	if err := s.w.sync(writeOp{row: row}); err != nil {
 		return nil, err
+	}
+	// A running agent takes the new name now; one started later, at its
+	// start.
+	if t, ok := ps.(provider.Titler); ok {
+		if err := t.SetTitle(ctx, title); err != nil {
+			s.log.Warn("renaming in the agent's apps", "session", id, "err", err)
+		}
 	}
 	s.audit.Log(AuditRecord{Kind: "session.rename", Subject: p.ID(), Session: id, Decision: "allow"})
 	return s.toProto(row), nil
@@ -1462,7 +1488,7 @@ func (s *Sessions) prepare(l *live) {
 	gate := s.gate(l)
 	l.mu.Lock()
 	spec := provider.StartSpec{WorkDir: l.row.Worktree, TempDir: tmp, Prompt: prompt.text, Images: prompt.input().Images, ReadDirs: []string{files}, Model: l.row.Model,
-		Effort: l.row.Effort, Speed: l.row.Speed, Env: append(shellenv.Env(tmp), "HERMESH_SESSION="+id), Gate: gate}
+		Effort: l.row.Effort, Speed: l.row.Speed, Title: l.row.Title, Env: append(shellenv.Env(tmp), "HERMESH_SESSION="+id), Gate: gate}
 	if s.mcp != nil {
 		spec.MCPServers = s.mcp(l.id)
 	}

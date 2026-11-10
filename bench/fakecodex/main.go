@@ -16,6 +16,12 @@
 //	FAKE_CODEX_OVERLOADED    a file holding a count: while it is above 0, a
 //	                         turn fails after its commands as Codex's does on
 //	                         a model at capacity, and the count goes down
+//	FAKE_CODEX_THREADS       a directory keeping threads' names and archived
+//	                         state across processes, as Codex does:
+//	                         thread/name/set, thread/archive and
+//	                         thread/unarchive answer as Codex 0.167 does, and
+//	                         thread/resume refuses an archived thread; each
+//	                         of these calls is appended to calls in it
 //
 // model/list offers gpt-fake-big (the default) and gpt-fake-small;
 // config/read answers FAKE_CODEX_CONFIG, a JSON object (default {});
@@ -74,6 +80,60 @@ func send(v any) {
 
 func reply(id json.RawMessage, result any) { send(map[string]any{"id": id, "result": result}) }
 func notify(method string, params any)     { send(map[string]any{"method": method, "params": params}) }
+func fail(id json.RawMessage, message string) {
+	send(map[string]any{"id": id, "error": map[string]any{"code": -32600, "message": message}})
+}
+
+// threads answers thread/name/set, thread/archive and thread/unarchive, and
+// refuses to resume an archived thread, keeping state in FAKE_CODEX_THREADS.
+// It reports whether it answered (a resume it lets through is not).
+func threads(m msg) bool {
+	dir := os.Getenv("FAKE_CODEX_THREADS")
+	if dir == "" {
+		return false
+	}
+	var p struct {
+		ThreadID string `json:"threadId"`
+		Name     string `json:"name"`
+	}
+	json.Unmarshal(m.Params, &p)
+	if f, err := os.OpenFile(filepath.Join(dir, "calls"), os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o644); err == nil {
+		fmt.Fprintln(f, strings.TrimSpace(m.Method+" "+p.ThreadID+" "+p.Name))
+		f.Close()
+	}
+	archived := filepath.Join(dir, p.ThreadID+".archived")
+	_, err := os.Stat(archived)
+	isArchived := err == nil
+	switch m.Method {
+	case "thread/resume":
+		if !isArchived {
+			return false
+		}
+		fail(m.ID, fmt.Sprintf("session %s is archived. Run `codex unarchive %s` to unarchive it first.", p.ThreadID, p.ThreadID))
+	case "thread/archive":
+		if isArchived {
+			fail(m.ID, "no rollout found for thread id "+p.ThreadID)
+			return true
+		}
+		os.WriteFile(archived, nil, 0o644)
+		reply(m.ID, map[string]any{})
+	case "thread/unarchive":
+		if !isArchived {
+			fail(m.ID, "no archived rollout found for thread id "+p.ThreadID)
+			return true
+		}
+		os.Remove(archived)
+		reply(m.ID, map[string]any{"thread": map[string]any{"id": p.ThreadID}})
+	case "thread/name/set":
+		if isArchived {
+			fail(m.ID, "no rollout found for thread id "+p.ThreadID)
+			return true
+		}
+		os.WriteFile(filepath.Join(dir, p.ThreadID+".name"), []byte(p.Name), 0o644)
+		reply(m.ID, map[string]any{})
+	}
+	return true
+}
 
 type state struct {
 	mu       sync.Mutex
@@ -98,6 +158,12 @@ func main() {
 		var m msg
 		if json.Unmarshal(sc.Bytes(), &m) != nil {
 			continue
+		}
+		switch m.Method {
+		case "thread/resume", "thread/archive", "thread/unarchive", "thread/name/set":
+			if threads(m) {
+				continue
+			}
 		}
 		switch m.Method {
 		case "initialize":
