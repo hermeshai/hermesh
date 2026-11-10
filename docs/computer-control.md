@@ -160,7 +160,8 @@ length-prefixed messages:
   frame reordering, no periodic keyframes: a keyframe only at the start and
   when the receiver asks. If the encoder is still busy when a new frame
   arrives, the new frame is dropped, never queued. Longest edge 1920 px,
-  30 frames a second, 1–6 Mbit/s as the network allows.
+  60 frames a second (at 30 the picture was some 25 ms later, §8), and
+  0.4–8 Mbit/s as the network allows.
 - **Input**: CGEvent. Positions arrive as fractions of the display, so they
   don't depend on the encoded size. `text` is typed as Unicode, whatever
   input source the Mac has selected.
@@ -292,12 +293,26 @@ key.
 
 Each step ends with an end-to-end test made from what a person does.
 
-**Step 0: the real screen, on one Wi-Fi.** Measure glass to glass with a
-millisecond clock on the Mac's screen. Find out: can the lock screen be
-typed into from the login session; does macOS's recurring screen-recording
-confirmation interrupt a running capture. Not done yet: the tests below
-run against the helper's test picture, since capturing the real screen
-needs the two permissions for whatever starts hermeshd.
+**Step 0: the real screen.** Done by hand on 2026-11-10, with the iPhone
+app in the Simulator on the Mac it controlled (so with no network between
+the two), hermeshd started from a shell that had the two permissions:
+
+- The Mac's desktop came up in the app and followed the screen.
+- A tap put the Mac's pointer where it mapped to, to the point; typing
+  from the phone reached a TextEdit document, and Command-A, delete and
+  Command-S from the key row did what they do (the saved file had the
+  text); a long press opened the context menu; a long press and drag moved
+  a window by the distance dragged; two fingers scrolled; trackpad mode
+  moved the Mac's pointer; the page turned on its side.
+- Glass to glass, a millisecond clock on the Mac against the phone's own:
+  39–76 ms at 30 frames a second (median 64), 29–47 ms at 60 (median 38),
+  which is why it captures at 60. The helper took 2–6 % of a core.
+- macOS asked once whether to let the app "bypass the system private
+  window picker". The picture kept coming while the question stood.
+
+Still to find out: whether the lock screen can be typed into from the
+login session, how often that question returns, and the delay over a real
+network and on an iPhone.
 
 **Step 1: the Mac side.** Built: `hermesh-screen` (apps/screen/macos), the
 sender (internal/screen), `ScreenService`, the `screen` state in the
@@ -355,8 +370,10 @@ owner or is working on the desktop, more than one display, the clipboard.
 
 - The lock screen: whether input posted from the login session reaches it.
 - macOS's recurring confirmation for screen recording, on a Mac nobody is
-  sitting at. Her's screenshots face the same question. The long-term
-  answer may be Apple's persistent content capture entitlement.
+  sitting at: it did not stop a capture under way (§8), but how often it
+  returns and what it does to a session that starts later is not known.
+  Her's screenshots face the same question. The long-term answer may be
+  Apple's persistent content capture entitlement.
 - Whether pion's receiver holds up on a poor network, or the iPhone side
   should use libwebrtc.
 - The hosted relay: opening the port and naming each node's TURN address.

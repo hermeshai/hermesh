@@ -222,7 +222,7 @@ func (h *Host) open(ctx context.Context, req *screenv1.ConnectRequest) (*hostSes
 		return nil, err
 	}
 	go s.readHelper(stdout)
-	s.toHelper(KindStart, map[string]any{"max_edge": 1920, "fps": 30, "bitrate": startBitrate, "pointer": req.Pointer})
+	s.toHelper(KindStart, map[string]any{"max_edge": 1920, "fps": 60, "bitrate": startBitrate, "pointer": req.Pointer})
 	return s, nil
 }
 
