@@ -154,7 +154,7 @@ export async function startDaemon(socket: string): Promise<Daemon> {
       }, 100),
       setInterval(() => {
         if (!writing()) return;
-        const piece = [`检查 \`sessions.ts\` 的第 ${step} 处，`, "**这里** 要改成按块渲染，", "| 文件 | 改动 |\n|---|---|\n| a.ts | 新增 |\n\n", "然后继续。\n\n"][pieces++ % 4];
+        const piece = [`检查 \`sessions.ts\` 的第 ${step} 处，`, "**这里** 要改成按块渲染：\n\n", "| 文件 | 改动 |\n|---|---|\n| a.ts | 新增 |\n\n", "然后继续。\n\n"][pieces++ % 4];
         draft += piece;
         const e = create(SessionEventSchema, { kind: { case: "agentDraft", value: { text: piece } } });
         followers.get(ids.bigLive)?.forEach((f) => f(e));
