@@ -747,6 +747,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(target_os = "macos")] // the machine's fonts are read where macOS keeps them
     fn faces_are_sized_and_oversized_ones_are_skipped() {
         let sizes: Vec<u64> = installed().values().flatten().map(|f| f.size).collect();
         assert!(sizes.iter().any(|&s| s > 0));
@@ -763,6 +764,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(target_os = "macos")] // the machine's fonts are read where macOS keeps them
     fn office_and_macos_families_are_found_by_name() {
         assert!(installed_face("Arial", false, false).is_some());
         assert!(installed_face("Times New Roman", true, true).is_some());
@@ -830,6 +832,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(target_os = "macos")] // the machine's fonts are read where macOS keeps them
     fn the_menu_lists_installed_families_but_not_hidden_ones() {
         let families = SystemFonts::new().unwrap().families();
         assert!(families.iter().any(|f| f.family == "Helvetica Neue"), "{families:?}");

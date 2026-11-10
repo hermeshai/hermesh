@@ -641,8 +641,12 @@ async fn the_main_session_goes_on_while_a_sub_agent_asks() {
     h.script("writer", Script::tool_call("w1", "write", json!({ "path": "x.txt", "content": "hi" })));
     h.script("writer", Script::text("wrote x.txt"));
     h.prompt("write x").await;
-    let (asking, _) = h.until_asked().await;
-    h.until(|m| matches!(m, EventMsg::TaskCompleted { .. })).await;
+    // The writer's question and the end of this turn come in either order.
+    let events = h.until(|m| matches!(m, EventMsg::TaskCompleted { .. })).await;
+    let asking = match events.iter().find_map(|e| asked(&e.msg)) {
+        Some(asking) => asking,
+        None => h.until_asked().await.0,
+    };
 
     h.prompt("something else").await;
     let events = h.until(|m| matches!(m, EventMsg::TaskCompleted { .. })).await;

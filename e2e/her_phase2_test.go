@@ -15,6 +15,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"regexp"
+	"runtime"
 	"slices"
 	"strings"
 	"testing"
@@ -717,6 +718,9 @@ console.log("fixture at " + f.base);`, fixture)
 // §11 phase 2.3). her's ChatGPT fixture stands in for OpenAI; her takes its
 // address (HER_TEST_CHATGPT_BASE, a loopback address) only as a debug build.
 func TestHerChatGPTSignIn(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("her has no Windows build") // before its fixture starts
+	}
 	fixture := chatGPTFixture(t)
 	env := newHerEnvironment(t, "HER_TEST_CHATGPT_BASE="+fixture)
 	if env.container != "" {

@@ -168,6 +168,9 @@ func TestUninstallTrustedDevice(t *testing.T) {
 	if testing.Short() {
 		t.Skip("e2e")
 	}
+	if runtime.GOOS == "windows" {
+		t.Skip("on Windows, Hermesh is uninstalled in Settings › Apps")
+	}
 	w := newOwnerMac(t, nil, &localv1.GrantSpec{})
 	// A copy: uninstall would remove the hermeshd it runs as.
 	daemon := filepath.Join(t.TempDir(), "hermeshd")

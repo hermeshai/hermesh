@@ -41,7 +41,7 @@ func uninstallCommand(dataDir *string) *cobra.Command {
 				bin = b
 			}
 			if strings.Contains(bin, ".app/Contents/") {
-				return errors.New("this hermeshd is Hermesh.app's: erase Hermesh in the app (Settings › Account & Devices), then move the app to the Trash")
+				return errors.New("this hermeshd is the Hermesh app's: erase Hermesh in the app (Settings › Account & Devices), then move the app to the Trash")
 			}
 			ask := func(prompt string) (string, error) {
 				t, err := newTerminal()
