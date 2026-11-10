@@ -11,4 +11,5 @@ inputs:
       - proto/hermesh/session
       - proto/hermesh/identity
       - proto/hermesh/machine
+      - proto/hermesh/screen
       - proto/hermesh/options

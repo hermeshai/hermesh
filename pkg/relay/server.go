@@ -85,6 +85,9 @@ type Config struct {
 	// Cluster joins this relay to the other nodes of a relay on several
 	// (cluster.go); nil: one process.
 	Cluster Cluster
+	// TURN runs the STUN and TURN server Computer Control finds its paths
+	// with (turn.go); nil runs none.
+	TURN *TURNConfig
 }
 
 type Server struct {
@@ -107,6 +110,7 @@ type Server struct {
 	ownerHook    func(ownerID string)
 	eraseHooks   []func(ownerID string)
 	doorbells    Doorbells
+	turn         *turnServer // nil without one (turn.go)
 	expiredAt    time.Time
 	// draining: this node is leaving the others (Drain).
 	draining atomic.Bool
@@ -214,6 +218,14 @@ func New(cfg Config) (*Server, error) {
 		}
 	}
 	s.registerMetrics()
+	if cfg.TURN != nil {
+		t, err := startTURN(*cfg.TURN)
+		if err != nil {
+			return nil, err
+		}
+		s.turn = t
+		s.log.Info("STUN and TURN listening", "addr", cfg.TURN.Listen, "host", cfg.TURN.Host)
+	}
 	if s.cluster != nil {
 		if s.sqlite != nil {
 			return nil, errors.New("a self-hosted relay runs as one process")
@@ -228,6 +240,9 @@ func New(cfg Config) (*Server, error) {
 
 func (s *Server) Close() error {
 	s.stopOnce.Do(func() { close(s.stop) })
+	if s.turn != nil {
+		s.turn.srv.Close()
+	}
 	return s.store.Close()
 }
 

@@ -68,6 +68,9 @@ const (
 	// MachineControlServiceNotifyProcedure is the fully-qualified name of the MachineControlService's
 	// Notify RPC.
 	MachineControlServiceNotifyProcedure = "/hermesh.relay.v1.MachineControlService/Notify"
+	// MachineControlServiceGetScreenServersProcedure is the fully-qualified name of the
+	// MachineControlService's GetScreenServers RPC.
+	MachineControlServiceGetScreenServersProcedure = "/hermesh.relay.v1.MachineControlService/GetScreenServers"
 	// ClientControlServiceWhoAmIProcedure is the fully-qualified name of the ClientControlService's
 	// WhoAmI RPC.
 	ClientControlServiceWhoAmIProcedure = "/hermesh.relay.v1.ClientControlService/WhoAmI"
@@ -140,6 +143,9 @@ const (
 	// OwnerControlServiceOpenWakeLinkProcedure is the fully-qualified name of the OwnerControlService's
 	// OpenWakeLink RPC.
 	OwnerControlServiceOpenWakeLinkProcedure = "/hermesh.relay.v1.OwnerControlService/OpenWakeLink"
+	// OwnerControlServiceGetScreenServersProcedure is the fully-qualified name of the
+	// OwnerControlService's GetScreenServers RPC.
+	OwnerControlServiceGetScreenServersProcedure = "/hermesh.relay.v1.OwnerControlService/GetScreenServers"
 	// MessageServiceRegisterProcedure is the fully-qualified name of the MessageService's Register RPC.
 	MessageServiceRegisterProcedure = "/hermesh.relay.v1.MessageService/Register"
 	// MessageServiceContactsProcedure is the fully-qualified name of the MessageService's Contacts RPC.
@@ -371,6 +377,9 @@ type MachineControlServiceClient interface {
 	// Notices for the owner's trusted devices, each sealed to one of them
 	// (PushTargets): the relay hands them to the push service.
 	Notify(context.Context, *v1.NotifyRequest) (*v1.NotifyResponse, error)
+	// Where Computer Control looks for a path to the owner's device
+	// (docs/computer-control.md §7).
+	GetScreenServers(context.Context, *v1.GetScreenServersRequest) (*v1.GetScreenServersResponse, error)
 }
 
 // NewMachineControlServiceClient constructs a client for the hermesh.relay.v1.MachineControlService
@@ -408,15 +417,22 @@ func NewMachineControlServiceClient(httpClient connect.HTTPClient, baseURL strin
 			connect.WithSchema(machineControlServiceMethods.ByName("Notify")),
 			connect.WithClientOptions(opts...),
 		),
+		getScreenServers: connect.NewClient[v1.GetScreenServersRequest, v1.GetScreenServersResponse](
+			httpClient,
+			baseURL+MachineControlServiceGetScreenServersProcedure,
+			connect.WithSchema(machineControlServiceMethods.ByName("GetScreenServers")),
+			connect.WithClientOptions(opts...),
+		),
 	}
 }
 
 // machineControlServiceClient implements MachineControlServiceClient.
 type machineControlServiceClient struct {
-	reportStatus *connect.Client[v1.ReportStatusRequest, v1.ReportStatusResponse]
-	watchUpdates *connect.Client[v1.WatchUpdatesRequest, v1.MachineUpdate]
-	leave        *connect.Client[v1.LeaveRequest, v1.LeaveResponse]
-	notify       *connect.Client[v1.NotifyRequest, v1.NotifyResponse]
+	reportStatus     *connect.Client[v1.ReportStatusRequest, v1.ReportStatusResponse]
+	watchUpdates     *connect.Client[v1.WatchUpdatesRequest, v1.MachineUpdate]
+	leave            *connect.Client[v1.LeaveRequest, v1.LeaveResponse]
+	notify           *connect.Client[v1.NotifyRequest, v1.NotifyResponse]
+	getScreenServers *connect.Client[v1.GetScreenServersRequest, v1.GetScreenServersResponse]
 }
 
 // ReportStatus calls hermesh.relay.v1.MachineControlService.ReportStatus.
@@ -451,6 +467,15 @@ func (c *machineControlServiceClient) Notify(ctx context.Context, req *v1.Notify
 	return nil, err
 }
 
+// GetScreenServers calls hermesh.relay.v1.MachineControlService.GetScreenServers.
+func (c *machineControlServiceClient) GetScreenServers(ctx context.Context, req *v1.GetScreenServersRequest) (*v1.GetScreenServersResponse, error) {
+	response, err := c.getScreenServers.CallUnary(ctx, connect.NewRequest(req))
+	if response != nil {
+		return response.Msg, err
+	}
+	return nil, err
+}
+
 // MachineControlServiceHandler is an implementation of the hermesh.relay.v1.MachineControlService
 // service.
 type MachineControlServiceHandler interface {
@@ -464,6 +489,9 @@ type MachineControlServiceHandler interface {
 	// Notices for the owner's trusted devices, each sealed to one of them
 	// (PushTargets): the relay hands them to the push service.
 	Notify(context.Context, *v1.NotifyRequest) (*v1.NotifyResponse, error)
+	// Where Computer Control looks for a path to the owner's device
+	// (docs/computer-control.md §7).
+	GetScreenServers(context.Context, *v1.GetScreenServersRequest) (*v1.GetScreenServersResponse, error)
 }
 
 // NewMachineControlServiceHandler builds an HTTP handler from the service implementation. It
@@ -497,6 +525,12 @@ func NewMachineControlServiceHandler(svc MachineControlServiceHandler, opts ...c
 		connect.WithSchema(machineControlServiceMethods.ByName("Notify")),
 		connect.WithHandlerOptions(opts...),
 	)
+	machineControlServiceGetScreenServersHandler := connect.NewUnaryHandlerSimple(
+		MachineControlServiceGetScreenServersProcedure,
+		svc.GetScreenServers,
+		connect.WithSchema(machineControlServiceMethods.ByName("GetScreenServers")),
+		connect.WithHandlerOptions(opts...),
+	)
 	return "/hermesh.relay.v1.MachineControlService/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case MachineControlServiceReportStatusProcedure:
@@ -507,6 +541,8 @@ func NewMachineControlServiceHandler(svc MachineControlServiceHandler, opts ...c
 			machineControlServiceLeaveHandler.ServeHTTP(w, r)
 		case MachineControlServiceNotifyProcedure:
 			machineControlServiceNotifyHandler.ServeHTTP(w, r)
+		case MachineControlServiceGetScreenServersProcedure:
+			machineControlServiceGetScreenServersHandler.ServeHTTP(w, r)
 		default:
 			http.NotFound(w, r)
 		}
@@ -530,6 +566,10 @@ func (UnimplementedMachineControlServiceHandler) Leave(context.Context, *v1.Leav
 
 func (UnimplementedMachineControlServiceHandler) Notify(context.Context, *v1.NotifyRequest) (*v1.NotifyResponse, error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("hermesh.relay.v1.MachineControlService.Notify is not implemented"))
+}
+
+func (UnimplementedMachineControlServiceHandler) GetScreenServers(context.Context, *v1.GetScreenServersRequest) (*v1.GetScreenServersResponse, error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("hermesh.relay.v1.MachineControlService.GetScreenServers is not implemented"))
 }
 
 // ClientControlServiceClient is a client for the hermesh.relay.v1.ClientControlService service.
@@ -720,6 +760,9 @@ type OwnerControlServiceClient interface {
 	ClearWake(context.Context, *v1.ClearWakeRequest) (*v1.ClearWakeResponse, error)
 	// What a wake link (an agent's `message wake`) is for.
 	OpenWakeLink(context.Context, *v1.OpenWakeLinkRequest) (*v1.OpenWakeLinkResponse, error)
+	// Where Computer Control looks for a path to a machine
+	// (docs/computer-control.md §7).
+	GetScreenServers(context.Context, *v1.GetScreenServersRequest) (*v1.GetScreenServersResponse, error)
 }
 
 // NewOwnerControlServiceClient constructs a client for the hermesh.relay.v1.OwnerControlService
@@ -859,6 +902,12 @@ func NewOwnerControlServiceClient(httpClient connect.HTTPClient, baseURL string,
 			connect.WithSchema(ownerControlServiceMethods.ByName("OpenWakeLink")),
 			connect.WithClientOptions(opts...),
 		),
+		getScreenServers: connect.NewClient[v1.GetScreenServersRequest, v1.GetScreenServersResponse](
+			httpClient,
+			baseURL+OwnerControlServiceGetScreenServersProcedure,
+			connect.WithSchema(ownerControlServiceMethods.ByName("GetScreenServers")),
+			connect.WithClientOptions(opts...),
+		),
 	}
 }
 
@@ -885,6 +934,7 @@ type ownerControlServiceClient struct {
 	checkWake           *connect.Client[v1.CheckWakeRequest, v1.CheckWakeResponse]
 	clearWake           *connect.Client[v1.ClearWakeRequest, v1.ClearWakeResponse]
 	openWakeLink        *connect.Client[v1.OpenWakeLinkRequest, v1.OpenWakeLinkResponse]
+	getScreenServers    *connect.Client[v1.GetScreenServersRequest, v1.GetScreenServersResponse]
 }
 
 // GetPairingRequest calls hermesh.relay.v1.OwnerControlService.GetPairingRequest.
@@ -1072,6 +1122,15 @@ func (c *ownerControlServiceClient) OpenWakeLink(ctx context.Context, req *v1.Op
 	return nil, err
 }
 
+// GetScreenServers calls hermesh.relay.v1.OwnerControlService.GetScreenServers.
+func (c *ownerControlServiceClient) GetScreenServers(ctx context.Context, req *v1.GetScreenServersRequest) (*v1.GetScreenServersResponse, error) {
+	response, err := c.getScreenServers.CallUnary(ctx, connect.NewRequest(req))
+	if response != nil {
+		return response.Msg, err
+	}
+	return nil, err
+}
+
 // OwnerControlServiceHandler is an implementation of the hermesh.relay.v1.OwnerControlService
 // service.
 type OwnerControlServiceHandler interface {
@@ -1126,6 +1185,9 @@ type OwnerControlServiceHandler interface {
 	ClearWake(context.Context, *v1.ClearWakeRequest) (*v1.ClearWakeResponse, error)
 	// What a wake link (an agent's `message wake`) is for.
 	OpenWakeLink(context.Context, *v1.OpenWakeLinkRequest) (*v1.OpenWakeLinkResponse, error)
+	// Where Computer Control looks for a path to a machine
+	// (docs/computer-control.md §7).
+	GetScreenServers(context.Context, *v1.GetScreenServersRequest) (*v1.GetScreenServersResponse, error)
 }
 
 // NewOwnerControlServiceHandler builds an HTTP handler from the service implementation. It returns
@@ -1261,6 +1323,12 @@ func NewOwnerControlServiceHandler(svc OwnerControlServiceHandler, opts ...conne
 		connect.WithSchema(ownerControlServiceMethods.ByName("OpenWakeLink")),
 		connect.WithHandlerOptions(opts...),
 	)
+	ownerControlServiceGetScreenServersHandler := connect.NewUnaryHandlerSimple(
+		OwnerControlServiceGetScreenServersProcedure,
+		svc.GetScreenServers,
+		connect.WithSchema(ownerControlServiceMethods.ByName("GetScreenServers")),
+		connect.WithHandlerOptions(opts...),
+	)
 	return "/hermesh.relay.v1.OwnerControlService/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case OwnerControlServiceGetPairingRequestProcedure:
@@ -1305,6 +1373,8 @@ func NewOwnerControlServiceHandler(svc OwnerControlServiceHandler, opts ...conne
 			ownerControlServiceClearWakeHandler.ServeHTTP(w, r)
 		case OwnerControlServiceOpenWakeLinkProcedure:
 			ownerControlServiceOpenWakeLinkHandler.ServeHTTP(w, r)
+		case OwnerControlServiceGetScreenServersProcedure:
+			ownerControlServiceGetScreenServersHandler.ServeHTTP(w, r)
 		default:
 			http.NotFound(w, r)
 		}
@@ -1396,6 +1466,10 @@ func (UnimplementedOwnerControlServiceHandler) ClearWake(context.Context, *v1.Cl
 
 func (UnimplementedOwnerControlServiceHandler) OpenWakeLink(context.Context, *v1.OpenWakeLinkRequest) (*v1.OpenWakeLinkResponse, error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("hermesh.relay.v1.OwnerControlService.OpenWakeLink is not implemented"))
+}
+
+func (UnimplementedOwnerControlServiceHandler) GetScreenServers(context.Context, *v1.GetScreenServersRequest) (*v1.GetScreenServersResponse, error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("hermesh.relay.v1.OwnerControlService.GetScreenServers is not implemented"))
 }
 
 // MessageServiceClient is a client for the hermesh.relay.v1.MessageService service.
