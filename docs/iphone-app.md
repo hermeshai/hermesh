@@ -97,10 +97,14 @@ packages/HermeshKit/         Swift package shared with the Mac signer
   starts, raw HTML stays text, images show their alt text, only http and
   https links open. A reply being written renders block by block
   (`splitBlocks` in HermeshSessions). Code is coloured by the Mac
-  app's own Shiki with the same GitHub themes, run in JavaScriptCore
+  app's own Shiki and themes, run in JavaScriptCore
   (`Code.swift`): `build-highlighter.sh` (an Xcode build phase) bundles it
   from `apps/desktop`'s dependencies into `Highlighter/` in the app, each
   language's grammar a file of its own, read the first time it is shown.
+  A file Her sends that is Markdown, or code in a language Shiki knows by
+  its extension, opens on a page of the app's (`HerFilePage.swift`), laid
+  out as it scrolls; anything else opens in Quick Look, which shows
+  Markdown with its marks and such code not at all.
 - **The signer.** The root key lives in the Secure Enclave, usable after Face
   ID (`userPresence`); the Simulator has no Secure Enclave for such keys and
   uses a software key. As on the Mac, there is one per profile the owner role

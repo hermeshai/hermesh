@@ -34,13 +34,7 @@ struct CodeText: View {
         var out = AttributedString()
         for (i, line) in colored.lines.enumerated() {
             if i > 0 { out += AttributedString("\n") }
-            for t in line {
-                var run = AttributedString(t.text)
-                if let c = scheme == .dark ? t.dark : t.light { run.foregroundColor = c }
-                if t.style & 1 != 0 { run.inlinePresentationIntent = .emphasized }
-                if t.style & 2 != 0 { run.inlinePresentationIntent = (run.inlinePresentationIntent ?? []).union(.stronglyEmphasized) }
-                out += run
-            }
+            out += Highlighter.text(line, dark: scheme == .dark)
         }
         out += AttributedString(text.dropFirst(colored.text.count))
         return out
@@ -74,6 +68,27 @@ nonisolated final class Highlighter: @unchecked Sendable {
     private var loaded = false
 
     private init() { cache.countLimit = 200 }
+
+    /// The names it knows a language by, ids and aliases: "go", "rs", "yml", "dockerfile".
+    static let languages: Set<String> = {
+        guard let index = Bundle.main.url(forResource: "Highlighter", withExtension: nil)?.appendingPathComponent("langs/index.json"),
+              let data = try? Data(contentsOf: index),
+              let names = try? JSONSerialization.jsonObject(with: data) as? [String: String] else { return [] }
+        return Set(names.keys)
+    }()
+
+    /// A line's tokens in their colours, light or dark, italic and bold as Shiki says.
+    static func text(_ line: [Token], dark: Bool) -> AttributedString {
+        var out = AttributedString()
+        for t in line {
+            var run = AttributedString(t.text)
+            if let c = dark ? t.dark : t.light { run.foregroundColor = c }
+            if t.style & 1 != 0 { run.inlinePresentationIntent = .emphasized }
+            if t.style & 2 != 0 { run.inlinePresentationIntent = (run.inlinePresentationIntent ?? []).union(.stronglyEmphasized) }
+            out += run
+        }
+        return out
+    }
 
     func cached(_ code: String, lang: String) -> Lines? { cache.object(forKey: key(code, lang))?.lines }
 

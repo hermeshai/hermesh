@@ -432,6 +432,36 @@ func newIPhoneControl(t *testing.T, w *ownerMac, sessions map[string]string) str
 		}
 		reply(rw, map[string]string{})
 	})
+	// Files for Her to send (testHer), where her assistant keeps its own: a
+	// note in Markdown and a Go file, as a model writes them there.
+	mux.HandleFunc("POST /her-files", func(rw http.ResponseWriter, _ *http.Request) {
+		var home string
+		for _, kv := range w.daemonEnv {
+			if v, ok := strings.CutPrefix(kv, "HER_HOME="); ok {
+				home = v
+			}
+		}
+		bots, _ := filepath.Glob(filepath.Join(home, "bots", "*", "bot.json"))
+		if home == "" || len(bots) == 0 {
+			http.Error(rw, "no assistant in "+home, 500)
+			return
+		}
+		files := map[string]string{
+			"notes.md": "# 周报\n\n本周完成了 **三件事**：\n\n- 修好登录\n- 加了 `--retry`\n\n| 事项 | 状态 |\n|---|---|\n| 登录 | 已完成 |\n\n```go\nfunc main() {}\n```\n",
+			"main.go":  "package main\n\nimport \"fmt\"\n\nfunc main() {\n\tfmt.Println(\"你好\")\n}\n",
+		}
+		for _, bot := range bots {
+			dir := filepath.Join(filepath.Dir(bot), "files")
+			os.MkdirAll(dir, 0o700)
+			for name, text := range files {
+				if err := os.WriteFile(filepath.Join(dir, name), []byte(text), 0o600); err != nil {
+					http.Error(rw, err.Error(), 500)
+					return
+				}
+			}
+		}
+		reply(rw, map[string]int{"assistants": len(bots)})
+	})
 	mux.HandleFunc("GET /digits", func(rw http.ResponseWriter, _ *http.Request) {
 		mu.Lock()
 		defer mu.Unlock()

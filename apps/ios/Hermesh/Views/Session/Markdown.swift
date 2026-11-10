@@ -10,9 +10,11 @@ import SwiftUI
 struct MarkdownText: View {
     let text: String
     var style: MarkdownStyle = .reply
+    /// Its blocks laid out as they scroll into view (a file's page), not all at once (a reply).
+    var lazy = false
 
     var body: some View {
-        MarkdownBlocks(blocks: parsed(text), style: style)
+        MarkdownBlocks(blocks: parsed(text), style: style, lazy: lazy)
     }
 }
 
@@ -173,13 +175,20 @@ private func linked(_ text: AttributedString, _ destination: String) -> Attribut
 private struct MarkdownBlocks: View {
     let blocks: [MarkdownBlock]
     let style: MarkdownStyle
+    var lazy = false
 
     var body: some View {
-        VStack(alignment: .leading, spacing: style.gap) {
-            ForEach(Array(blocks.enumerated()), id: \.offset) { i, b in
-                // A heading after other blocks starts a part: more room above it, as on the Mac.
-                BlockView(block: b, style: style).padding(.top, i > 0 && b.isHeading ? 8 : 0)
-            }
+        if lazy {
+            LazyVStack(alignment: .leading, spacing: style.gap) { rows }
+        } else {
+            VStack(alignment: .leading, spacing: style.gap) { rows }
+        }
+    }
+
+    private var rows: some View {
+        ForEach(Array(blocks.enumerated()), id: \.offset) { i, b in
+            // A heading after other blocks starts a part: more room above it, as on the Mac.
+            BlockView(block: b, style: style).padding(.top, i > 0 && b.isHeading ? 8 : 0)
         }
     }
 }
