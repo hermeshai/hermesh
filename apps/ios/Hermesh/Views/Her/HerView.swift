@@ -25,6 +25,8 @@ struct HerView: View {
 private struct HerPage: View {
     @Environment(AppModel.self) private var model
     @Environment(\.scenePhase) private var phase
+    /// With the bars on the side, the menu button is in the system's bar, as on every page; the top is still hers.
+    @Environment(\.barsOnTheSide) private var sideBars
     let machine: HerMachine
 
     var body: some View {
@@ -37,7 +39,8 @@ private struct HerPage: View {
                 HerStatus(machine: machine, state: state)
             }
         }
-        .toolbar(.hidden, for: .navigationBar)
+        .toolbar(sideBars ? .visible : .hidden, for: .navigationBar)
+        .toolbar { if sideBars { MenuToolbarItem() } }
         .safeAreaBar(edge: .top) { header(chat) }
         .onAppear { model.her.machine = machine.machineID }
         .herConnections(chat, machine: machine)
@@ -47,9 +50,11 @@ private struct HerPage: View {
 
     private func header(_ chat: HerChat) -> some View {
         ZStack(alignment: .top) {
-            HStack {
-                HerMenuButton()
-                Spacer()
+            if !sideBars && !model.menuBeside {
+                HStack {
+                    HerMenuButton()
+                    Spacer()
+                }
             }
             Button {
                 model.path.append(.herSettings)

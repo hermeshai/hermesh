@@ -89,7 +89,8 @@ final class HermeshUITests: XCTestCase {
         XCTAssertTrue(finish.waitForExistence(timeout: 30), "joined")
         XCTAssertTrue(text("打开通知").exists)
         allowNotifications(after: finish)
-        XCTAssertTrue(app.navigationBars["概览"].waitForExistence(timeout: 30), "the overview")
+        // The overview, by its menu button: its bar is at the top, or on the side (iPhone Duo).
+        XCTAssertTrue(app.buttons["menu"].waitForExistence(timeout: 30), "the overview")
         try waitFor("this iPhone registers for notifications") { (try self.control("registered")["devices"] as? Int ?? 0) > 0 ? true : nil }
     }
 

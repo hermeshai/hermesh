@@ -218,7 +218,7 @@ struct HerFirstRun: View {
             .padding(.horizontal, 20).padding(.top, 8)
         }
         .navigationBarTitleDisplayMode(.inline)
-        .toolbar { ToolbarItem(placement: .topBarLeading) { MenuButton() } }
+        .toolbar { MenuToolbarItem() }
     }
 }
 

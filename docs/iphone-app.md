@@ -28,6 +28,25 @@ UIKit container (`SideMenuController`): the page moves as one view, on a
 spring timed to the system's push, and keeps its large title's margin. Controls use Liquid Glass
 (`glassEffect`, `.glass` buttons); sheets use detents.
 
+The container arranges the two in one of three ways, by the screen it has,
+never by the device (iPhone Duo's displays and poses, and whatever else
+gives an iPhone app those sizes):
+
+| The screen | The menu and the page |
+|---|---|
+| Compact width, bars along the top (an iPhone) | The page slides aside by the menu's width and stays in view, a dimmed card that closes the menu |
+| Compact width, bars on the side (iPhone Duo closed: `verticalBarEdge`) | That strip of the screen is the bars' in every state, so a page beside the menu would lie under them: the menu takes the whole page's place. It has the bar then, Close at its top, where the page has the menu button, and Search under it (its own Search button goes) |
+| Regular width (iPhone Duo open) | Side by side, a hairline between them; no menu button, no drag, and what would open the menu does nothing |
+
+Changing from one to another (the device opened, closed or turned) leaves the
+menu closed. The bars themselves are the system's: every page's buttons are
+toolbar items, which iOS stands on the side where it does so. Two views draw
+their own top and read `barsOnTheSide` for it: Her's page keeps her picture
+and name at its top and leaves its menu button to the system's bar; search,
+which closes by its field, drops its second Close. In the demo the container
+keeps the screen's full width (the bar takes none of it), or the system would
+find no page at the bar's edge and leave the bars along the top.
+
 Buttons come in four sizes, each by what it does, never sized by hand
 (a height of its own made Connect Your Agent's Copy twice a main action's):
 
@@ -222,6 +241,15 @@ as the Mac signer does (docs/desktop-app.md §6.6).
   diff, approves and renews an agent, visits a machine and the devices,
   searches, and answers a notification delivered with `simctl push`.
   `HERMESH_IPHONE_RESULTS=<path>.xcresult` keeps the result bundle.
+- `DuoUITests` (the demo world, no relay): every root page, a session, the
+  menu and the sheets, upright and on its side, in the pose the Simulator is
+  in when it runs; it checks that the menu shows as the table above says, and
+  with `HERMESH_DUO_SHOTS=<dir>` keeps a screenshot of each page, named after
+  `HERMESH_DUO_POSE`. Poses are set in Device Hub (XCUITest and `simctl`
+  cannot fold the device). `HermeshUITests/testDuo` does the same against
+  TestIPhone's world kept up with `HERMESH_IPHONE_PREVIEW`: the app joined,
+  a question, and Her's page with a conversation. Run on the iPhone Duo
+  Simulator closed (2026-11-11); open and half-folded are not yet run.
 
 ## 6. Installing on an iPhone
 

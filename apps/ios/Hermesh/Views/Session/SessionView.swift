@@ -126,7 +126,7 @@ struct SessionView: View {
                     }
                 }
             }
-            if model.path.isEmpty { ToolbarItem(placement: .topBarLeading) { MenuButton() } }
+            if model.path.isEmpty { MenuToolbarItem() }
             ToolbarItemGroup(placement: .topBarTrailing) {
                 Button("Session Info", systemImage: "info.circle") { model.sheet = .sessionInfo(s.sessionID) }
                     .accessibilityIdentifier("session-info")
