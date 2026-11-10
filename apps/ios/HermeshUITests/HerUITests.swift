@@ -15,6 +15,7 @@ extension HermeshUITests {
         try XCTContext.runActivity(named: "Her is first in the menu, and is turned on for the Mac with Face ID") { _ in try herTurnOn() }
         try XCTContext.runActivity(named: "with no model, Her speaks first, offers the ways, and connects a Token Plan") { _ in try herOnboarding() }
         try XCTContext.runActivity(named: "a chat: the message, then Her's reply") { _ in try herChat() }
+        try XCTContext.runActivity(named: "the plus beside the field: what it adds opens out of it, the field staying") { _ in try herAdd() }
         try XCTContext.runActivity(named: "her name opens her settings, a page of their own") { _ in try herSettings() }
         try XCTContext.runActivity(named: "a question: a tapped answer is the owner's message") { _ in try herQuestion() }
         try XCTContext.runActivity(named: "files Her sent: Markdown reads as the conversation renders it, code in its colours") { _ in try herFiles() }
@@ -103,6 +104,24 @@ extension HermeshUITests {
         XCTAssertEqual(long.frame.maxX, first.frame.maxX, accuracy: 1, "one edge for bubbles of more than a line")
         XCTAssertGreaterThan(long.frame.width, app.frame.width * 0.8, "most of the page")
         herShot("Her: a chat")
+    }
+
+    func herAdd() throws {
+        // The plus is a glass of its own beside the field, as Messages has it: its menu opens out of it alone, and
+        // the field stays in view.
+        let composer = app.descendants(matching: .any)["her-composer"].firstMatch
+        let plus = app.descendants(matching: .any)["her-attach"].firstMatch
+        XCTAssertTrue(plus.exists && composer.exists)
+        XCTAssertLessThan(plus.frame.maxX, composer.frame.minX, "beside the field, not in it")
+        tap("her-attach")
+        XCTAssertTrue(app.buttons["照片"].waitForExistence(timeout: 10) && app.buttons["文件"].exists, "what can be added")
+        XCTAssertTrue(composer.exists, "the field stays")
+        sleep(1) // the menu settled, for the picture
+        herShot("Her: adding photos or files")
+        // Tapped away, the menu goes, and the plus is back beside the field.
+        app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.25)).tap()
+        XCTAssertTrue(app.buttons["文件"].waitForNonExistence(timeout: 10), "the menu gone")
+        XCTAssertTrue(plus.waitForExistence(timeout: 10) && composer.exists)
     }
 
     func herSettings() throws {
