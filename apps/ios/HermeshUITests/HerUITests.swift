@@ -107,21 +107,32 @@ extension HermeshUITests {
     }
 
     func herAdd() throws {
-        // The plus is a glass of its own beside the field, as Messages has it: its menu opens out of it alone, and
-        // the field stays in view.
+        // The plus is in the composer, on the field's row with Send; a small popover opens out of it, and the
+        // field stays in view.
         let composer = app.descendants(matching: .any)["her-composer"].firstMatch
         let plus = app.descendants(matching: .any)["her-attach"].firstMatch
-        XCTAssertTrue(plus.exists && composer.exists)
-        XCTAssertLessThan(plus.frame.maxX, composer.frame.minX, "beside the field, not in it")
+        let send = app.buttons["her-send"]
+        XCTAssertTrue(plus.exists && composer.exists && send.exists)
+        XCTAssertLessThan(plus.frame.maxX, composer.frame.minX, "before the field")
+        XCTAssertEqual(plus.frame.midY, send.frame.midY, accuracy: 1, "on the row with Send, in the composer")
         tap("her-attach")
         XCTAssertTrue(app.buttons["照片"].waitForExistence(timeout: 10) && app.buttons["文件"].exists, "what can be added")
         XCTAssertTrue(composer.exists, "the field stays")
         sleep(1) // the menu settled, for the picture
         herShot("Her: adding photos or files")
-        // Tapped away, the menu goes, and the plus is back beside the field.
+        // Tapped away, the menu goes, and the plus is back.
         app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.25)).tap()
         XCTAssertTrue(app.buttons["文件"].waitForNonExistence(timeout: 10), "the menu gone")
         XCTAssertTrue(plus.waitForExistence(timeout: 10) && composer.exists)
+        // Files opens the Files browser once the popover has gone.
+        tap("her-attach")
+        XCTAssertTrue(app.buttons["文件"].waitForExistence(timeout: 10))
+        app.buttons["文件"].tap()
+        XCTAssertTrue(app.buttons["文件"].waitForNonExistence(timeout: 10), "the popover gone")
+        let cancel = app.buttons["取消"]
+        XCTAssertTrue(cancel.waitForExistence(timeout: 15), "the Files browser")
+        cancel.tap()
+        XCTAssertTrue(cancel.waitForNonExistence(timeout: 10) && composer.exists)
     }
 
     func herSettings() throws {
