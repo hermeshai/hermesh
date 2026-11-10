@@ -1,14 +1,14 @@
 import { useEffect, useState, type CSSProperties, type ReactNode } from "react";
 import { initialOf } from "@hermesh/her-client";
 import type { Avatar as AvatarSpec, AvatarHue, AvatarShape, BotSummary } from "@hermesh/her-protocol";
-import { Mark } from "@hermesh/ui";
+import { Cat } from "./Cat";
 import { useHer } from "./context";
 
 // An assistant's face: a circle of
 // one clear colour with a faint drift in it, with a pair of eyes on it, the
-// first character of its name, the Hermesh mark (Her's), or an uploaded
-// picture. Its colour is its own, the same in both themes, like a photo.
-// While it is busy the eyes look around and blink, a mark or letter breathes.
+// first character of its name, or an uploaded picture; Her's is her cat, with
+// no ground of its own. Its colour is its own, the same in both themes, like a
+// photo. While it is busy the eyes look around and blink, a letter breathes.
 
 /** Clear but not loud, each the middle of its avatar's gradient. The eyes and letter are a deep shade of it (her.css). */
 export const hues: Record<AvatarHue, string> = {
@@ -49,7 +49,7 @@ const faces: Record<AvatarShape, ReactNode> = {
   odd: <>{dot(L, 3.9)}{dot(R, 2.3)}</>,
 };
 
-export type AvatarSize = 22 | 28 | 36 | 64 | 72;
+export type AvatarSize = 22 | 28 | 36 | 56 | 64 | 72;
 
 /** Uploaded pictures, by environment, assistant and version: fetched once (`bots/avatar`). */
 const pictures = new Map<string, Promise<string>>();
@@ -84,8 +84,8 @@ export function Avatar({ spec, name, size, busy = false, bot, preview }: { spec:
   switch (spec.kind) {
     case "mark":
       return (
-        <span className={`${cls} mark hm-dark`} aria-hidden="true">
-          <Mark size={Math.round(size * 0.62)} />
+        <span className={`bav s${size} cat-av`} aria-hidden="true">
+          <Cat small={size <= 28} busy={busy} />
         </span>
       );
     case "image": {

@@ -1,0 +1,11 @@
+/* Her's cat (Cat.tsx): she breathes from the ground up and blinks; busy, she bobs and looks from side to side. */
+.cat{display:block;overflow:visible}
+.cat .cat-body{transform-box:fill-box;transform-origin:50% 100%;animation:cat-breathe 3.4s ease-in-out infinite}
+.cat .eye{transform-box:fill-box;transform-origin:center;animation:cat-blink 4.8s infinite}
+.cat.busy .cat-body{animation:cat-bob .8s ease-in-out infinite}
+.cat.busy .cat-eyes{animation:cat-look 2.4s ease-in-out infinite}
+@keyframes cat-breathe{0%,100%{transform:none}50%{transform:scale(1.02,.975)}}
+@keyframes cat-blink{0%,45%,49%,100%{transform:none}47%{transform:scaleY(.1)}}
+@keyframes cat-bob{0%,100%{transform:none}50%{transform:scale(1.03,.96)}}
+@keyframes cat-look{0%,100%{transform:translate(-2.5px,-2.5px)}50%{transform:translate(2.5px,-2.5px)}}
+@media (prefers-reduced-motion:reduce){.cat .cat-body,.cat .eye,.cat .cat-eyes{animation:none}}

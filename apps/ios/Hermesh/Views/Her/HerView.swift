@@ -55,7 +55,7 @@ private struct HerPage: View {
                 model.path.append(.herSettings)
             } label: {
                 VStack(spacing: -16) {
-                    HerAvatar(size: 72)
+                    HerAvatar(size: 72, busy: chat.live.map(herBusy) ?? false)
                     Text(chat.bot?.name ?? "Her")
                         .font(.system(size: 17, weight: .semibold))
                         .padding(.horizontal, 16).padding(.vertical, 8)
@@ -100,21 +100,6 @@ private struct HerConnections: ViewModifier {
 
 extension View {
     func herConnections(_ chat: HerChat, machine: HerMachine) -> some View { modifier(HerConnections(chat: chat, machine: machine)) }
-}
-
-/// Her's avatar: the Hermesh mark on the app icon's dark ground, round.
-struct HerAvatar: View {
-    var size: CGFloat
-
-    var body: some View {
-        // The mark 64% of the icon, as on the app icon (its beams fill 86 of Mark's 104).
-        Mark(size: size * 0.64 * 104 / 86)
-            .environment(\.colorScheme, .dark)
-            .frame(width: size, height: size)
-            .background(LinearGradient(colors: [Color(white: 0.17), Color(red: 0.06, green: 0.06, blue: 0.08)], startPoint: .top, endPoint: .bottom), in: .circle)
-            .overlay(Circle().strokeBorder(.white.opacity(0.08)))
-            .accessibilityHidden(true)
-    }
 }
 
 /// The menu button, as root pages have it in their bar: Her's page draws its own top.

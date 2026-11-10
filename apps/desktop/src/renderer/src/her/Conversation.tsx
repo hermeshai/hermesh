@@ -13,7 +13,6 @@ import { useVirtualRows, type VirtualRow } from "../session/useVirtualRows";
 import { errorText, useNow, useStore } from "../store";
 import { Approval, type SendOp } from "./Approval";
 import { addAttachments, toInput, type Attachment } from "./attachments";
-import { BotAvatar } from "./Avatar";
 import { cardOf } from "./cards";
 import { Composer, Tile } from "./Composer";
 import type { Conversation as Conv } from "./connection";
@@ -353,7 +352,7 @@ function BotChat({ bot, conv, op, state, waiting, onWaiting }: {
   );
 }
 
-/** A new assistant's page, or one whose conversation can't be read now: its avatar, its name, and a line. Her greets. */
+/** A new assistant's page, or one whose conversation can't be read now: a line, under its avatar and name at the page's top. Her greets. */
 function EmptyPage({ bot, state, loading }: { bot: BotSummary; state: EnvState; loading: boolean }) {
   const { t } = useTranslation("her");
   const her = useHer();
@@ -362,8 +361,6 @@ function EmptyPage({ bot, state, loading }: { bot: BotSummary; state: EnvState; 
   const line = state.kind === "offline" ? t("chat.unread", { name }) : t("chat.greeting", { name: bot.name, environment: name });
   return (
     <div className="bempty">
-      <BotAvatar bot={bot} size={64} />
-      <h3>{bot.name}</h3>
       <p>{line}</p>
     </div>
   );

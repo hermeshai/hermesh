@@ -39,7 +39,7 @@ test("the sidebar keeps one rhythm, one heading per group and a quiet foot", asy
   const search = await box(page.getByRole("button", { name: /^搜索/ }));
   expect(overview.height).toBe(32);
   expect(search.y - overview.y).toBe(34);
-  const her = await box(page.getByRole("button", { name: /^Her 助手/ }));
+  const her = await box(page.locator(".side-nav").getByRole("button", { name: /^Her/ }));
   expect(her.y - search.y).toBe(34);
   // The first heading's text sits a row and a breath (~17px) below the last button.
   const heading = list.locator(".grp-h").first();

@@ -9,10 +9,11 @@ import { reachable } from "./environments";
 import { menuKeys } from "./menus";
 
 /**
- * The Her page's top (docs/her-server.md §9.1): Her's avatar and name in the middle, as in a chat
- * app, and the environment beside them as a quiet menu when Her runs on more than one machine; on the
- * right, Her's routines and settings, which open beside the conversation, and ⋯: the environment's
- * console, and another environment while there is no menu of them.
+ * The Her page's top (docs/her-server.md §9.1), as on the iPhone: Her's avatar in the middle, larger than a bar's,
+ * its name on a capsule over the avatar's lower edge, and in the capsule the environment as a quiet
+ * menu when Her runs on more than one machine; the conversation scrolls under them. On the right,
+ * Her's routines and settings, which open beside the conversation, and ⋯: the environment's console,
+ * and another environment while there is no menu of them.
  */
 export function TopBar() {
   const { t } = useTranslation("her");
@@ -25,9 +26,11 @@ export function TopBar() {
     <div className="ctool drag her-head">
       <SidebarToggle />
       <div className="her-id">
-        {bot ? <BotAvatar bot={bot} size={22} busy={botWorking(bot)} /> : <Avatar spec={{ kind: "mark" }} name="" size={22} />}
-        <span className="her-id-n">{bot?.name ?? "Her"}</span>
-        {her.envs.length > 1 && <EnvSwitch />}
+        {bot ? <BotAvatar bot={bot} size={56} busy={botWorking(bot)} /> : <Avatar spec={{ kind: "mark" }} name="" size={56} />}
+        <div className="her-cap">
+          <span className="her-id-n">{bot?.name ?? "Her"}</span>
+          {her.envs.length > 1 && <EnvSwitch />}
+        </div>
       </div>
       <span className="bhead-gap" />
       {bot && (

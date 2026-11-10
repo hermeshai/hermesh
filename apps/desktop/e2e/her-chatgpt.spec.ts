@@ -18,7 +18,7 @@ test("Her: the onboarding signs in to ChatGPT", async () => {
   const log = page.getByRole("log", { name: "对话" });
   const composer = page.getByRole("textbox", { name: "消息" });
 
-  await page.getByRole("button", { name: /^Her 助手/ }).click();
+  await page.locator(".side-nav").getByRole("button", { name: /^Her/ }).click();
   await page.getByRole("list", { name: "选择 Her 在哪里运行" }).getByRole("listitem").filter({ hasText: "这台 Mac" }).getByRole("button", { name: "开启 Her" }).click();
   await expect(log.getByText(/^你好，我是 .+开始之前，我需要接上一个模型/)).toBeVisible({ timeout: 120_000 });
   await expect(composer).toBeDisabled();
