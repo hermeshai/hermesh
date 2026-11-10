@@ -196,8 +196,11 @@ type StartSpec struct {
 	ResumeRef string
 	// NewRef is the session id to use for a new Claude session.
 	NewRef string
-	Env    []string
-	Gate   Gate
+	// Title is the session's title, for agents whose own apps list their
+	// sessions by name (Codex).
+	Title string
+	Env   []string
+	Gate  Gate
 	// MCPServers are tools Hermesh gives the agent, as stdio MCP servers:
 	// the session's messages (docs/agent-messages.md §7.4).
 	MCPServers []MCPServer
@@ -243,6 +246,19 @@ type Provider interface {
 	Name() string
 	Discover(ctx context.Context) Info
 	Start(ctx context.Context, spec StartSpec) (Session, error)
+}
+
+// Titler is a Session that can rename its conversation in the agent's own
+// apps while it runs (Codex).
+type Titler interface {
+	SetTitle(ctx context.Context, title string) error
+}
+
+// Archiver is a Provider whose own apps list its conversations: archiving
+// a session there too keeps those lists to the sessions still in use
+// (Codex). ref is the session's provider reference.
+type Archiver interface {
+	Archive(ctx context.Context, ref string, archived bool) error
 }
 
 // Markdown that CleanTitle drops from a title: a line that is only a code

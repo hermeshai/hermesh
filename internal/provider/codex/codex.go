@@ -75,22 +75,21 @@ func (p *Provider) Discover(ctx context.Context) provider.Info {
 	return info
 }
 
-// catalog asks Codex's app server for the models it offers and the
-// configuration its sessions follow unless told otherwise.
-func catalog(ctx context.Context, env []string, bin string) ([]provider.Model, provider.Settings, error) {
-	var own provider.Settings
+// appServer runs a short-lived `codex app-server`, initialized, and calls
+// do with a function that makes one request and decodes its result into v.
+func appServer(ctx context.Context, env []string, bin string, do func(call func(method string, params, v any) error) error) error {
 	cmd := provider.Command(ctx, bin, "app-server")
 	cmd.Env = env
 	in, err := cmd.StdinPipe()
 	if err != nil {
-		return nil, own, err
+		return err
 	}
 	out, err := cmd.StdoutPipe()
 	if err != nil {
-		return nil, own, err
+		return err
 	}
 	if err := cmd.Start(); err != nil {
-		return nil, own, err
+		return err
 	}
 	defer cmd.Wait()
 	defer in.Close()
@@ -122,8 +121,51 @@ func catalog(ctx context.Context, env []string, bin string) ([]provider.Model, p
 		return fmt.Errorf("codex app-server ended before answering %s", method)
 	}
 	if err := call("initialize", map[string]any{"clientInfo": map[string]any{"name": "hermesh", "version": "0.1.0"}}, &struct{}{}); err != nil {
-		return nil, own, err
+		return err
 	}
+	return do(call)
+}
+
+// Archive archives (or unarchives) a session's thread in Codex, so the
+// Codex apps list only the threads of sessions still in use. Codex refuses
+// to archive a thread twice, or to unarchive one that is not archived:
+// either way the thread is already as asked.
+func (p *Provider) Archive(ctx context.Context, ref string, archived bool) error {
+	bin := p.binary()
+	if bin == "" {
+		return errors.New("codex not found")
+	}
+	method := "thread/unarchive"
+	if archived {
+		method = "thread/archive"
+	}
+	return appServer(ctx, provider.ProbeEnv(p.PathEnv), bin, func(call func(string, any, any) error) error {
+		err := call(method, map[string]any{"threadId": ref}, &struct{}{})
+		if alreadySo(err) {
+			return nil
+		}
+		return err
+	})
+}
+
+// alreadySo: Codex's answer to archiving an archived thread ("no rollout
+// found") or unarchiving one that is not ("no archived rollout found").
+func alreadySo(err error) bool {
+	return err != nil && strings.Contains(err.Error(), "rollout found")
+}
+
+// catalog asks Codex's app server for the models it offers and the
+// configuration its sessions follow unless told otherwise.
+func catalog(ctx context.Context, env []string, bin string) (models []provider.Model, own provider.Settings, err error) {
+	err = appServer(ctx, env, bin, func(call func(string, any, any) error) error {
+		models, own, err = catalogFrom(call)
+		return err
+	})
+	return models, own, err
+}
+
+func catalogFrom(call func(method string, params, v any) error) ([]provider.Model, provider.Settings, error) {
+	var own provider.Settings
 	var list struct {
 		Data []struct {
 			ID, DisplayName           string
@@ -225,6 +267,11 @@ func (p *Provider) Start(ctx context.Context, spec provider.StartSpec) (provider
 	if spec.ResumeRef != "" {
 		method = "thread/resume"
 		params["threadId"] = spec.ResumeRef
+		// Codex resumes no archived thread: one archived with its session,
+		// or by the user in the Codex app, comes back first. An error is
+		// left to the resume to report (a thread not archived, or a Codex
+		// without the method).
+		s.call(ctx, "thread/unarchive", map[string]any{"threadId": spec.ResumeRef})
 	}
 	res, err := s.call(ctx, method, params)
 	if err != nil {
@@ -246,6 +293,10 @@ func (p *Provider) Start(ctx context.Context, spec provider.StartSpec) (provider
 	}
 	s.threadID = tr.Thread.ID
 	s.emit(provider.Event{Kind: provider.EventRef, Ref: s.threadID, Model: tr.Model, Effort: tr.ReasoningEffort})
+	if spec.Title != "" {
+		// The Codex apps list the thread by this name, not by its directory.
+		s.SetTitle(ctx, spec.Title)
+	}
 	if err := s.send(ctx, provider.Input{Text: spec.Prompt, Images: spec.Images}); err != nil {
 		return fail(err)
 	}
@@ -409,6 +460,14 @@ func (s *session) Interrupt(ctx context.Context) error {
 	cctx, cancel := context.WithTimeout(ctx, 10*time.Second)
 	defer cancel()
 	_, err := s.call(cctx, "turn/interrupt", map[string]any{"threadId": s.threadID, "turnId": tid})
+	return err
+}
+
+// SetTitle names the thread in the Codex apps.
+func (s *session) SetTitle(ctx context.Context, title string) error {
+	cctx, cancel := context.WithTimeout(ctx, 10*time.Second)
+	defer cancel()
+	_, err := s.call(cctx, "thread/name/set", map[string]any{"threadId": s.threadID, "name": title})
 	return err
 }
 
