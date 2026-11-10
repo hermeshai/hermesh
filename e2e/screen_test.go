@@ -5,12 +5,17 @@ package e2e
 import (
 	"bufio"
 	"context"
+	"encoding/binary"
 	"encoding/json"
 	"fmt"
+	"math"
 	"net"
 	"net/http"
 	"os"
+	"os/exec"
+	"path/filepath"
 	"runtime"
+	"sort"
 	"strings"
 	"testing"
 	"time"
@@ -238,4 +243,170 @@ func TestScreen(t *testing.T) {
 		t.Errorf("the phone was told %q", why)
 	}
 	eventually(t, 30*time.Second, "nobody in control", func() bool { v, ok := viewer(); return ok && v == "" })
+}
+
+// TestScreenLatency measures where the picture's delay comes from, against
+// this Mac's real screen (HERMESH_SCREEN_REAL=1, which needs Screen
+// Recording for whatever starts the test): the Mac's hermeshd stamps each
+// frame at every stage (HERMESH_SCREEN_TRACE), the phone's core adds its
+// own, and this test, reading the stream as the app does, the last. It
+// prints each stage's delay. Something must move on the screen meanwhile:
+// HERMESH_SCREEN_TICKER names a program to run for that (a clock, say).
+// HERMESH_SCREEN_POINTER names one that prints "display <w> <h>" and then
+// "<µs since 1970> <x> <y>" each time the Mac's pointer moves: with it the
+// test also measures the way back, from the app sending a pointer move to
+// the Mac's pointer being there (it moves the real pointer about).
+//
+//	HERMESH_SCREEN_REAL=1 HERMESH_SCREEN_TICKER=/path/to/clock go test ./e2e -run TestScreenLatency -v
+func TestScreenLatency(t *testing.T) {
+	if os.Getenv("HERMESH_SCREEN_REAL") == "" || runtime.GOOS != "darwin" {
+		t.Skip("set HERMESH_SCREEN_REAL=1 to measure against this Mac's screen")
+	}
+	trace := filepath.Join(t.TempDir(), "trace.csv")
+	env, _ := screenEnv(t)
+	w := newOwnerMac(t, append([]string{"HERMESH_FAKE_PROVIDERS=1", "HERMESH_SCREEN_TRACE=1"}, env...), &localv1.GrantSpec{})
+	ctx := context.Background()
+	st, err := w.app.client.GetStatus(ctx, &localv1.GetStatusRequest{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	root, _ := identity.GenerateKey()
+	t.Setenv("HERMESH_SCREEN_TRACE", trace) // the phone's core, started next
+	m := joinMobile(t, w, st.RelayUrl, t.TempDir(), root)
+	s := openScreen(t, m, screenMachine(t, m))
+	if ticker := os.Getenv("HERMESH_SCREEN_TICKER"); ticker != "" {
+		c := exec.Command(ticker, "14")
+		if err := c.Start(); err != nil {
+			t.Fatal(err)
+		}
+		defer c.Process.Kill()
+	}
+	// Read as the app does, noting when each frame was in hand, by the name its header carries.
+	read := map[int64]int64{}
+	var path string
+	began := time.Now()
+	for time.Since(began) < 13*time.Second {
+		s.conn.SetReadDeadline(time.Now().Add(20 * time.Second))
+		k, p, err := screenrtc.ReadMessage(s.r)
+		if err != nil {
+			t.Fatalf("reading the screen: %v", err)
+		}
+		switch k {
+		case screenrtc.KindVideo:
+			read[int64(binary.BigEndian.Uint64(p[1:9]))] = time.Now().UnixMicro()
+		case screenrtc.KindStatus:
+			var status struct{ Phase, Path, Local, Remote, Error string }
+			json.Unmarshal(p, &status)
+			if status.Phase == "connected" {
+				path = fmt.Sprintf("%s: %s to %s", status.Path, status.Local, status.Remote)
+			}
+		}
+	}
+	pointer := measurePointer(t, s)
+	s.conn.Close()
+	t.Logf("path: %s", path)
+	if pointer != "" {
+		t.Log(pointer)
+	}
+	b, err := os.ReadFile(trace)
+	if err != nil {
+		t.Fatalf("%d frames read, none of them traced: %v", len(read), err)
+	}
+	stages := []string{"screen → captured", "captured → encoded", "encoded → sent", "sent → received", "received → handed on", "handed on → read by the app", "screen → read by the app"}
+	samples := make([][]float64, len(stages))
+	var sizes float64
+	var first, last int64
+	n := 0
+	for _, line := range strings.Split(strings.TrimSpace(string(b)), "\n") {
+		var d, c, e, snt, r, h int64
+		var size int
+		var key bool
+		if _, err := fmt.Sscanf(line, "%d,%d,%d,%d,%d,%d,%d,%t", &d, &c, &e, &snt, &r, &h, &size, &key); err != nil || d == 0 {
+			continue // a keyframe made again from the last picture has no screen time
+		}
+		a, ok := read[snt]
+		if !ok || snt-began.UnixMicro() < 2_000_000 { // the first two seconds: the session settles
+			continue
+		}
+		for i, v := range []int64{c - d, e - c, snt - e, r - snt, h - r, a - h, a - d} {
+			samples[i] = append(samples[i], float64(v)/1000)
+		}
+		sizes += float64(size)
+		if first == 0 {
+			first = snt
+		}
+		last = snt
+		n++
+	}
+	if n < 30 {
+		t.Fatalf("only %d frames measured: nothing moved on the screen?", n)
+	}
+	t.Logf("%d frames in %.1f s (%.0f a second), %.1f kB each on average", n, float64(last-first)/1e6, float64(n-1)/(float64(last-first)/1e6), sizes/float64(n)/1000)
+	t.Logf("%-30s %8s %8s %8s", "stage (ms)", "median", "90%", "worst")
+	for i, name := range stages {
+		v := samples[i]
+		sort.Float64s(v)
+		t.Logf("%-30s %8.1f %8.1f %8.1f", name, v[len(v)/2], v[len(v)*9/10], v[len(v)-1])
+	}
+}
+
+// measurePointer times the owner's input on its way to the Mac: pointer
+// moves sent as the app sends them, and when the Mac's pointer got to each.
+func measurePointer(t *testing.T, s *screenStream) string {
+	tool := os.Getenv("HERMESH_SCREEN_POINTER")
+	if tool == "" {
+		return ""
+	}
+	c := exec.Command(tool, "8")
+	out, _ := c.StdoutPipe()
+	if err := c.Start(); err != nil {
+		t.Fatal(err)
+	}
+	defer c.Process.Kill()
+	sc := bufio.NewScanner(out)
+	var width int
+	if !sc.Scan() {
+		t.Fatal("the pointer tool said nothing")
+	}
+	fmt.Sscanf(sc.Text(), "display %d", &width)
+	seen := map[int][]int64{} // by x, each time the pointer got there
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		for sc.Scan() {
+			var at int64
+			var x, y int
+			if _, err := fmt.Sscanf(sc.Text(), "%d %d %d", &at, &x, &y); err == nil {
+				seen[x] = append(seen[x], at)
+			}
+		}
+	}()
+	time.Sleep(500 * time.Millisecond)
+	sent := map[int]int64{}
+	for i := range 40 {
+		fx := 0.30 + float64(i)*0.008
+		b, _ := proto.Marshal(&screenv1.Input{Event: &screenv1.Input_Move{Move: &screenv1.Move{X: fx, Y: 0.55}}})
+		sent[int(math.Round(fx*float64(width-1)))] = time.Now().UnixMicro()
+		if err := screenrtc.WriteMessage(s.conn, screenrtc.KindMove, b); err != nil {
+			t.Fatal(err)
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
+	time.Sleep(500 * time.Millisecond)
+	c.Process.Kill()
+	<-done
+	var ms []float64
+	for x, at := range sent {
+		for _, got := range seen[x] {
+			if got >= at-1000 { // not an earlier visit to the same place
+				ms = append(ms, float64(got-at)/1000)
+				break
+			}
+		}
+	}
+	if len(ms) < 10 {
+		return fmt.Sprintf("the way back: only %d of %d pointer moves seen", len(ms), len(sent))
+	}
+	sort.Float64s(ms)
+	return fmt.Sprintf("the way back, a pointer move from the app to the Mac's pointer: median %.1f ms, 90%% %.1f, worst %.1f (%d of %d moves)", ms[len(ms)/2], ms[len(ms)*9/10], ms[len(ms)-1], len(ms), len(sent))
 }

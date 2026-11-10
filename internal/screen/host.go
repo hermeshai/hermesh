@@ -9,6 +9,7 @@ import (
 	"errors"
 	"io"
 	"log/slog"
+	"os"
 	"os/exec"
 	"sync"
 	"time"
@@ -42,6 +43,8 @@ type HostConfig struct {
 // Host serves this machine's screen to one viewer at a time.
 type Host struct {
 	cfg HostConfig
+	// trace: frames carry the times they passed each stage (trace.go).
+	trace bool
 
 	mu  sync.Mutex
 	cur *hostSession
@@ -51,7 +54,7 @@ func NewHost(cfg HostConfig) *Host {
 	if cfg.Log == nil {
 		cfg.Log = slog.Default()
 	}
-	return &Host{cfg: cfg}
+	return &Host{cfg: cfg, trace: os.Getenv("HERMESH_SCREEN_TRACE") != ""}
 }
 
 // Available says whether this machine can show its screen.
@@ -222,7 +225,9 @@ func (h *Host) open(ctx context.Context, req *screenv1.ConnectRequest) (*hostSes
 		return nil, err
 	}
 	go s.readHelper(stdout)
-	s.toHelper(KindStart, map[string]any{"max_edge": 1920, "fps": 60, "bitrate": startBitrate, "pointer": req.Pointer})
+	// Up to 120 frames a second, which a 120 Hz screen gives and a 60 Hz one halves by itself: the
+	// picture on the phone is then 4 ms younger on average than at 60 (docs/computer-control.md §5).
+	s.toHelper(KindStart, map[string]any{"max_edge": 1920, "fps": 120, "bitrate": startBitrate, "pointer": req.Pointer})
 	return s, nil
 }
 
@@ -340,7 +345,7 @@ func (s *hostSession) readHelper(stdout io.Reader) {
 		}
 		switch k {
 		case KindVideo:
-			if len(p) <= VideoHeader {
+			if len(p) <= helperVideoHeader {
 				continue
 			}
 			now := time.Now()
@@ -348,8 +353,14 @@ func (s *hostSession) readHelper(stdout io.Reader) {
 			d := now.Sub(s.last)
 			s.last = now
 			s.mu.Unlock()
+			data := p[helperVideoHeader:]
+			if s.h.trace {
+				t := helperStamps(p)
+				t.Sent = now.UnixMicro()
+				data = withTrace(data, t)
+			}
 			// Only that timestamps differ matters: the viewer shows a frame when it has it.
-			s.track.WriteSample(media.Sample{Data: p[VideoHeader:], Duration: min(max(d, time.Millisecond), time.Second)})
+			s.track.WriteSample(media.Sample{Data: data, Duration: min(max(d, time.Millisecond), time.Second)})
 		case KindFormat:
 			var f struct{ Width, Height uint32 }
 			if json.Unmarshal(p, &f) == nil {

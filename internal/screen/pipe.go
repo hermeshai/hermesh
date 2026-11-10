@@ -32,7 +32,7 @@ const (
 	KindPointer  Kind = 'c' // JSON: shown
 	// From the helper, and from the core to the app.
 	KindFormat Kind = 'f' // JSON: width, height
-	KindVideo  Kind = 'v' // 1 byte of flags (1: keyframe), 8 bytes of capture time (µs), Annex B
+	KindVideo  Kind = 'v' // 1 byte of flags (1: keyframe), the times (see below), Annex B
 	KindState  Kind = 'e' // from the helper JSON: error, detail, can_control; to the app a ScreenEvent
 	KindLog    Kind = 'l'
 	// Between the core and the app only.
@@ -42,8 +42,14 @@ const (
 
 const maxMessage = 16 << 20
 
-// VideoHeader is what precedes the Annex B bytes of a KindVideo message.
+// VideoHeader is what precedes the Annex B bytes of a KindVideo message to
+// the app: the flags, and 8 bytes that name the frame when its path is
+// measured (the time it left the machine, in µs; zero otherwise).
 const VideoHeader = 9
+
+// helperVideoHeader is what precedes them from the helper: the flags, and
+// when the frame was on screen, captured and encoded (µs since 1970).
+const helperVideoHeader = 25
 
 // WriteMessage writes one message, in one Write.
 func WriteMessage(w io.Writer, k Kind, payload []byte) error {

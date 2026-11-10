@@ -42,7 +42,12 @@ func newAPI(estimate func(cc.BandwidthEstimator)) (*webrtc.API, error) {
 	i := &interceptor.Registry{}
 	if estimate != nil {
 		f, err := cc.NewInterceptor(func() (cc.BandwidthEstimator, error) {
-			return gcc.NewSendSideBWE(gcc.SendSideBWEInitialBitrate(startBitrate), gcc.SendSideBWEMinBitrate(minBitrate), gcc.SendSideBWEMaxBitrate(maxBitrate))
+			// No pacer: pion's hands packets on every 5 ms, which holds each
+			// frame back 2.7 ms at the median (docs/computer-control.md §5).
+			// A frame is a few kilobytes and leaves at once; the encoder's
+			// bitrate, not a queue here, is what follows the network.
+			return gcc.NewSendSideBWE(gcc.SendSideBWEInitialBitrate(startBitrate), gcc.SendSideBWEMinBitrate(minBitrate), gcc.SendSideBWEMaxBitrate(maxBitrate),
+				gcc.SendSideBWEPacer(gcc.NewNoOpPacer()))
 		})
 		if err != nil {
 			return nil, err

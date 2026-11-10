@@ -12,12 +12,34 @@ enum Kind: UInt8 {
     case pointer = 0x63  // c: JSON PointerMessage, whether the picture shows the pointer
     // From the helper.
     case format = 0x66  // f: JSON FormatMessage
-    case video = 0x76  // v: 1 byte of flags (1 = keyframe), 8 bytes of capture time (µs), Annex B
+    case video = 0x76  // v: 1 byte of flags (1 = keyframe), three times of 8 bytes (Stamps), Annex B
     case state = 0x65  // e: JSON StateMessage
     case log = 0x6C  // l: text
 }
 
 let maxMessage = 16 << 20
+
+/// When a frame passed each stage here, in microseconds since 1970, for
+/// measuring where the picture's delay comes from (zero: not known).
+struct Stamps {
+    /// The screen showed what the frame holds.
+    var displayed: UInt64 = 0
+    /// The frame was handed to this program.
+    var captured: UInt64 = 0
+    /// It came out of the encoder.
+    var encoded: UInt64 = 0
+
+    static func now() -> UInt64 { UInt64(Date().timeIntervalSince1970 * 1_000_000) }
+
+    /// The wall time of a moment on the Mach clock (the display's).
+    static func wall(machTime: UInt64) -> UInt64 {
+        var tb = mach_timebase_info_data_t()
+        mach_timebase_info(&tb)
+        let ago = Int64(mach_absolute_time()) - Int64(machTime)
+        let micros = ago * Int64(tb.numer) / Int64(tb.denom) / 1000
+        return UInt64(Int64(now()) - micros)
+    }
+}
 
 /// Output writes whole messages to stdout, one at a time.
 final class Output {

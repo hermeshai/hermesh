@@ -3,9 +3,12 @@ package owner
 import (
 	"bufio"
 	"context"
+	"encoding/binary"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
+	"os"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -161,12 +164,18 @@ func (d *Device) serveScreen(w http.ResponseWriter, r *http.Request) {
 	lost := make(chan struct{}, 1)
 	v, err := screen.Dial(ctx, screen.ViewerConfig{
 		Connect: o.screenConnect(machineID), Name: q.Get("name"), Pointer: q.Get("pointer") != "0", Servers: o.screenServers(ctx),
-		Frame: func(key bool, data []byte) {
+		Frame: func(key bool, data []byte, t *screen.Trace) {
 			b := make([]byte, screen.VideoHeader, screen.VideoHeader+len(data))
 			if key {
 				b[0] = 1
 			}
+			if t != nil {
+				binary.BigEndian.PutUint64(b[1:], uint64(t.Sent))
+			}
 			send(screen.KindVideo, append(b, data...))
+			if t != nil {
+				traceFrame(t, time.Now().UnixMicro())
+			}
 		},
 		Event: func(ev *screenv1.ScreenEvent) {
 			if b, err := proto.Marshal(ev); err == nil {
@@ -228,6 +237,25 @@ func (d *Device) serveScreen(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 }
+
+// traceFrame adds a line to the file $HERMESH_SCREEN_TRACE names, for a
+// frame whose path is measured (screen.Trace): when it passed each stage,
+// and when the app had been handed it.
+func traceFrame(t *screen.Trace, handed int64) {
+	traceOnce.Do(func() {
+		if path := os.Getenv("HERMESH_SCREEN_TRACE"); path != "" {
+			traceFile, _ = os.OpenFile(path, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0o600)
+		}
+	})
+	if traceFile != nil {
+		fmt.Fprintf(traceFile, "%d,%d,%d,%d,%d,%d,%d,%t\n", t.Displayed, t.Captured, t.Encoded, t.Sent, t.Received, handed, t.Bytes, t.Key)
+	}
+}
+
+var (
+	traceOnce sync.Once
+	traceFile *os.File
+)
 
 // errorText is an error as the app shows it: a connect error's message
 // without its code.
