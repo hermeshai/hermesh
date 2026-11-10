@@ -27,6 +27,8 @@ use tokio::sync::mpsc;
 struct Wire {
     bots: mpsc::UnboundedReceiver<Value>,
     events: mpsc::UnboundedReceiver<Value>,
+    /// Every event `until` took: a timeout says where the test stood.
+    taken: Vec<String>,
 }
 
 fn route(mut incoming: IncomingRx) -> Wire {
@@ -47,14 +49,18 @@ fn route(mut incoming: IncomingRx) -> Wire {
             }
         }
     });
-    Wire { bots, events }
+    Wire { bots, events, taken: Vec::new() }
 }
 
 /// Events until one matches `stop`, inclusive.
 async fn until(wire: &mut Wire, stop: impl Fn(&Value) -> bool) -> Vec<Value> {
     let mut seen = Vec::new();
     loop {
-        let event = tokio::time::timeout(WAIT, wire.events.recv()).await.expect("timed out waiting for an event").expect("closed");
+        let Ok(event) = tokio::time::timeout(WAIT, wire.events.recv()).await else {
+            panic!("timed out waiting for an event, after:\n{}", wire.taken.join("\n"));
+        };
+        let event = event.expect("closed");
+        wire.taken.push(event.to_string());
         let done = stop(&event);
         seen.push(event);
         if done {
