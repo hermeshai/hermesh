@@ -13,8 +13,8 @@ use crate::instructions::InstructionFile;
 const BASE_PROMPT: &str = include_str!("prompts/base.md");
 const BOT_PROMPT: &str = include_str!("prompts/bot.md");
 const SHARED: [(&str, &str); 2] = [
-    ("{{numbers_and_data}}", include_str!("prompts/shared/numbers_and_data.md")),
     ("{{acting_with_care}}", include_str!("prompts/shared/acting_with_care.md")),
+    ("{{who_you_are}}", include_str!("prompts/shared/who_you_are.md")),
 ];
 /// How to write files and commands for the desktop app, which turns them into controls
 /// (content-actions-design §9.1).
@@ -283,7 +283,7 @@ mod tests {
         };
         let session = build(&PromptProfile::Session);
         let bot = build(&PromptProfile::Bot { name: "研究员".into() });
-        assert!(bot.starts_with("You are 研究员, one of the user's bots in Hermesh."));
+        assert!(bot.starts_with("You are 研究员, the user's assistant."));
         assert!(bot.contains("The user sees only what you send with send_to_user."));
         for text in [&session, &bot] {
             assert!(!text.contains("{{"), "every mark is filled in");

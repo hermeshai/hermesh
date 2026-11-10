@@ -163,7 +163,7 @@ async fn a_bot_talks_in_messages_and_its_row_follows() {
 
     // Its prompt is a bot's, with its name, and it works in its folder.
     let (_, log) = logs(env.home.path()).into_iter().find(|(_, text)| text.contains(&session)).expect("the log");
-    assert!(log.contains("You are 研究员, one of the user's bots in Hermesh."));
+    assert!(log.contains("You are 研究员, the user's assistant."));
     let folder = env.home.path().join("bots").join(&bot).join("files");
     assert!(log.contains(&format!("\"cwd\":\"{}", std::fs::canonicalize(&folder).unwrap().display())));
 }
