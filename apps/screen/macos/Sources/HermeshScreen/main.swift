@@ -28,12 +28,14 @@ while let a = args.next() {
 }
 
 signal(SIGPIPE, SIG_IGN)
+
 let out = Output()
-let input = Input(logPath: inputLog)
 var encoder: Encoder?
 var capture: Capture?
 var source: TestSource?
 var awake: IOPMAssertionID = 0
+
+let input = Input(logPath: inputLog)
 
 func canControl() -> Bool { inputLog != nil || Input.canControl }
 
@@ -71,19 +73,26 @@ func start(_ m: StartMessage) {
     }
 }
 
-let work = DispatchQueue(label: "hermesh.screen.main")
-Thread.detachNewThread {
+let work = DispatchQueue(label: "hermesh.screen.main", qos: .userInteractive)
+// The owner's input is read on a thread the system runs at once, as it does a person's own.
+let reader = Thread {
     readMessages { kind, payload in
+        if kind == .input {
+            // Straight on, without waiting for whatever else is being set up.
+            input.handle(Data(payload))
+            return
+        }
         work.sync {
             switch kind {
             case .start:
                 if let m = try? JSONDecoder().decode(StartMessage.self, from: payload) { start(m) }
             case .bitrate:
-                if let m = try? JSONDecoder().decode(BitrateMessage.self, from: payload) { encoder?.setBitrate(m.bps) }
+                if let m = try? JSONDecoder().decode(BitrateMessage.self, from: payload) {
+                    encoder?.setBitrate(m.bps)
+                    capture?.follow(bitrate: m.bps)
+                }
             case .keyframe:
                 if let capture { capture.keyframe() } else { encoder?.requestKeyframe() }
-            case .input:
-                input.handle(Data(payload))
             case .pointer:
                 if let m = try? JSONDecoder().decode(PointerMessage.self, from: payload) { capture?.showPointer(m.shown) }
             default:
@@ -92,7 +101,9 @@ Thread.detachNewThread {
         }
     }
     // hermeshd closed the pipe, or is gone.
-    work.sync { input.releaseAll() }
+    input.releaseAll()
     exit(0)
 }
+reader.qualityOfService = .userInteractive
+reader.start()
 dispatchMain()

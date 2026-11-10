@@ -96,6 +96,24 @@ final class ScreenSurfaceView: UIView {
 
     // MARK: The view
 
+    /// While the picture shows, an iPhone whose screen can refresh 120 times a
+    /// second does (the app's Info.plist allows it): a frame then waits half
+    /// as long for the next refresh as at 60. The link does nothing else.
+    private var fullRate: CADisplayLink?
+
+    override func didMoveToWindow() {
+        super.didMoveToWindow()
+        fullRate?.invalidate()
+        fullRate = nil
+        guard window != nil else { return }
+        let link = CADisplayLink(target: self, selector: #selector(refreshed))
+        link.preferredFrameRateRange = CAFrameRateRange(minimum: 80, maximum: 120, preferred: 120)
+        link.add(to: .main, forMode: .common)
+        fullRate = link
+    }
+
+    @objc private func refreshed() {}
+
     override func layoutSubviews() {
         super.layoutSubviews()
         minScale = min(bounds.width / contentSize.width, bounds.height / contentSize.height)

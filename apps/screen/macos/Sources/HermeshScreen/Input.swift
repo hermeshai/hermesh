@@ -16,13 +16,39 @@ final class Input {
             log = FileHandle(forWritingAtPath: logPath)
         } else {
             log = nil
+            // The first event posted takes some 20 ms to reach the window server; let it be this one,
+            // a move to where the pointer is already, and not the owner's first touch.
+            if Input.canControl, let here = CGEvent(source: nil)?.location {
+                CGEvent(mouseEventSource: source, mouseType: .mouseMoved, mouseCursorPosition: here, mouseButton: .left)?.post(tap: .cghidEventTap)
+            }
         }
     }
 
     static var canControl: Bool { CGPreflightPostEventAccess() }
 
+    /// The main display's place among the screens. Asking the window server
+    /// for it with every event made one in ten wait 3 ms and more behind its
+    /// other work, some 60 ms: it is asked off to the side, a second apart at
+    /// most, and events use the answer last had.
+    private let boundsLock = NSLock()
+    private var bounds = CGDisplayBounds(CGMainDisplayID())
+    private var boundsAsked = Date()
+
+    private func displayBounds() -> CGRect {
+        boundsLock.lock()
+        defer { boundsLock.unlock() }
+        if Date().timeIntervalSince(boundsAsked) > 1 {
+            boundsAsked = Date()
+            DispatchQueue.global(qos: .utility).async { [self] in
+                let b = CGDisplayBounds(CGMainDisplayID())
+                boundsLock.lock(); bounds = b; boundsLock.unlock()
+            }
+        }
+        return bounds
+    }
+
     private func point(_ x: Double?, _ y: Double?) -> CGPoint {
-        let b = CGDisplayBounds(CGMainDisplayID())
+        let b = displayBounds()
         let fx = min(1, max(0, x ?? 0)), fy = min(1, max(0, y ?? 0))
         return CGPoint(x: b.minX + fx * (b.width - 1), y: b.minY + fy * (b.height - 1))
     }

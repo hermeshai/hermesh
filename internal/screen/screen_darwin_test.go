@@ -65,7 +65,7 @@ func TestSession(t *testing.T) {
 	defer cancel()
 	v, err := Dial(ctx, ViewerConfig{
 		Connect: h.Connect, Name: "test phone", Pointer: true,
-		Frame: func(key bool, data []byte) {
+		Frame: func(key bool, data []byte, _ *Trace) {
 			mu.Lock()
 			defer mu.Unlock()
 			if frames == 0 {
@@ -133,8 +133,12 @@ func TestSession(t *testing.T) {
 	mu.Lock()
 	before := keys
 	mu.Unlock()
-	h.cur.keyframe()
-	waitFor(t, "another keyframe", get(func() bool { return keys > before }))
+	waitFor(t, "another keyframe", func() bool {
+		h.cur.keyframe() // asked again, as a viewer does: one that follows another too closely is passed over
+		mu.Lock()
+		defer mu.Unlock()
+		return keys > before
+	})
 
 	// The viewer's network changed: it finds a path again on the session
 	// it has, and the picture goes on.

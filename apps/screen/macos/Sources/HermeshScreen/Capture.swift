@@ -13,6 +13,8 @@ final class Capture: NSObject, SCStreamOutput, SCStreamDelegate {
     /// The picture last captured (on queue): a still screen sends no frames,
     /// and a keyframe asked for meanwhile is made from this.
     private var last: CVImageBuffer?
+    /// Frames a second: the most the viewer asked for, and what is captured now.
+    private var most = 60, rate = 60
 
     init(out: Output, encoder: Encoder) {
         self.out = out
@@ -31,6 +33,8 @@ final class Capture: NSObject, SCStreamOutput, SCStreamDelegate {
         let k = min(1, Double(maxEdge) / max(pw, ph))
         config.width = max(2, Int(pw * k) / 2 * 2)
         config.height = max(2, Int(ph * k) / 2 * 2)
+        most = fps
+        rate = fps
         config.minimumFrameInterval = CMTime(value: 1, timescale: CMTimeScale(fps))
         config.pixelFormat = kCVPixelFormatType_420YpCbCr8BiPlanarVideoRange
         config.showsCursor = pointer
@@ -48,6 +52,20 @@ final class Capture: NSObject, SCStreamOutput, SCStreamDelegate {
         keyframe()
     }
 
+    /// follow captures fewer frames a second when the network carries less,
+    /// so that what gets through makes fewer, clearer frames; and more again
+    /// once it carries comfortably more than where it stepped down.
+    func follow(bitrate bps: Int) {
+        var want = rate
+        if bps < 800_000 { want = 30 } else if bps < 1_800_000 { want = min(rate, 60) }
+        if bps >= 2_200_000 { want = most } else if bps >= 1_000_000 { want = max(want, 60) }
+        want = min(want, most)
+        guard want != rate else { return }
+        rate = want
+        config.minimumFrameInterval = CMTime(value: 1, timescale: CMTimeScale(want))
+        stream?.updateConfiguration(config) { _ in }
+    }
+
     /// keyframe sends one now, from the last picture when the screen is still.
     func keyframe() {
         encoder.requestKeyframe()
@@ -62,7 +80,9 @@ final class Capture: NSObject, SCStreamOutput, SCStreamDelegate {
               let raw = list.first?[.status] as? Int, SCFrameStatus(rawValue: raw) == .complete
         else { return }
         last = image
-        encoder.encode(image, time: sample.presentationTimeStamp)
+        var stamps = Stamps(captured: Stamps.now())
+        if let shown = list.first?[.displayTime] as? UInt64 { stamps.displayed = Stamps.wall(machTime: shown) }
+        encoder.encode(image, time: sample.presentationTimeStamp, stamps: stamps)
     }
 
     func stream(_ stream: SCStream, didStopWithError error: Error) {
@@ -108,7 +128,8 @@ final class TestSource {
             memset(uv, 128, CVPixelBufferGetBytesPerRowOfPlane(pb, 1) * (h / 2))
         }
         CVPixelBufferUnlockBaseAddress(pb, [])
-        encoder.encode(pb, time: CMTime(value: CMTimeValue(frame), timescale: CMTimeScale(fps)))
+        let now = Stamps.now()
+        encoder.encode(pb, time: CMTime(value: CMTimeValue(frame), timescale: CMTimeScale(fps)), stamps: Stamps(displayed: now, captured: now))
         frame += 1
     }
 }

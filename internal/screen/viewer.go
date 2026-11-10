@@ -3,7 +3,10 @@ package screen
 import (
 	"context"
 	"errors"
+	"fmt"
+	"net"
 	"os"
+	"strconv"
 	"sync"
 	"time"
 
@@ -25,8 +28,9 @@ type ViewerConfig struct {
 	Pointer bool
 	// Servers are the relay's STUN and TURN servers, when it has any.
 	Servers []*relayv1.IceServer
-	// Frame gets each frame, whole and in order, as Annex B.
-	Frame func(key bool, data []byte)
+	// Frame gets each frame, whole and in order, as Annex B; and, while the
+	// machine measures the picture's path, when it passed each stage.
+	Frame func(key bool, data []byte, trace *Trace)
 	// Event gets what the machine reports: the picture's size, its state.
 	Event func(*screenv1.ScreenEvent)
 	// Status gets the connection's state as it changes, and every few seconds.
@@ -41,6 +45,11 @@ type Status struct {
 	Path string `json:"path,omitempty"`
 	// RTT is the round trip to the machine, in milliseconds.
 	RTT int `json:"rtt_ms,omitempty"`
+	// Local and Remote are the two ends of the path in use, each as its kind
+	// and address ("host 192.168.1.5:50123", "srflx …", "relay …"), for
+	// telling what a slow session goes through.
+	Local  string `json:"local,omitempty"`
+	Remote string `json:"remote,omitempty"`
 }
 
 // Viewer is a session with a machine, seen from the device.
@@ -177,7 +186,11 @@ func (v *Viewer) receive(t *webrtc.TrackRemote) {
 		}
 		for _, f := range a.push(p, time.Now()) {
 			if v.cfg.Frame != nil {
-				v.cfg.Frame(f.key, f.data)
+				data, trace := takeTrace(f.data)
+				if trace != nil {
+					trace.Bytes, trace.Key = len(data), f.key
+				}
+				v.cfg.Frame(f.key, data, trace)
 			}
 		}
 	}
@@ -189,28 +202,34 @@ func (v *Viewer) status(phase string) {
 	}
 	st := Status{Phase: phase}
 	if phase == "connected" {
-		st.Path, st.RTT = v.path()
+		v.path(&st)
 	}
 	v.cfg.Status(st)
 }
 
-// path is how the packets travel now, and the round trip that way.
-func (v *Viewer) path() (string, int) {
+// path fills in how the packets travel now, and the round trip that way.
+func (v *Viewer) path(st *Status) {
+	st.Path = "direct"
 	stats := v.pc.GetStats()
 	for _, s := range stats {
 		pair, ok := s.(webrtc.ICECandidatePairStats)
 		if !ok || !pair.Nominated || pair.State != webrtc.StatsICECandidatePairStateSucceeded {
 			continue
 		}
-		path := "direct"
-		for _, id := range []string{pair.LocalCandidateID, pair.RemoteCandidateID} {
-			if c, ok := stats[id].(webrtc.ICECandidateStats); ok && c.CandidateType == webrtc.ICECandidateTypeRelay {
-				path = "relay"
+		end := func(id string) string {
+			c, ok := stats[id].(webrtc.ICECandidateStats)
+			if !ok {
+				return ""
 			}
+			if c.CandidateType == webrtc.ICECandidateTypeRelay {
+				st.Path = "relay"
+			}
+			return fmt.Sprintf("%s %s", c.CandidateType, net.JoinHostPort(c.IP, strconv.Itoa(int(c.Port))))
 		}
-		return path, int(pair.CurrentRoundTripTime * 1000)
+		st.Local, st.Remote = end(pair.LocalCandidateID), end(pair.RemoteCandidateID)
+		st.RTT = int(pair.CurrentRoundTripTime * 1000)
+		return
 	}
-	return "direct", 0
 }
 
 // watch reports the path and the round trip while connected.

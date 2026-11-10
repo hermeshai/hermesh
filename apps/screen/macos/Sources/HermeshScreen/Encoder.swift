@@ -4,8 +4,8 @@ import VideoToolbox
 
 /// Encoder turns pictures into H.264 for a viewer that shows each frame as
 /// it arrives: real time, no reordering, a keyframe only at the start and
-/// when asked. A picture that arrives while the one before is still being
-/// encoded is dropped, never queued.
+/// when asked. A picture that arrives while the two before it are still
+/// being encoded is dropped, never queued.
 final class Encoder {
     private let out: Output
     private var session: VTCompressionSession?
@@ -53,10 +53,12 @@ final class Encoder {
         return s
     }
 
-    func encode(_ image: CVImageBuffer, time: CMTime) {
+    func encode(_ image: CVImageBuffer, time: CMTime, stamps: Stamps = Stamps()) {
         let w = CVPixelBufferGetWidth(image), h = CVPixelBufferGetHeight(image)
         lock.lock()
-        if busy > 0 { lock.unlock(); return }
+        // The encoder takes some 9 ms a frame whatever its settings, more than a 120 Hz screen's 8.3 ms
+        // between frames, and works on two at once: a third waits for the next picture instead.
+        if busy > 1 { lock.unlock(); return }
         if session == nil || w != width || h != height {
             if let s = session { VTCompressionSessionInvalidate(s) }
             session = makeSession(width: w, height: h)
@@ -76,7 +78,7 @@ final class Encoder {
         let status = VTCompressionSessionEncodeFrame(s, imageBuffer: image, presentationTimeStamp: time, duration: .invalid, frameProperties: props, infoFlagsOut: nil) { [weak self] status, _, sample in
             guard let self else { return }
             self.lock.lock(); self.busy -= 1; self.lock.unlock()
-            if status == noErr, let sample { self.emit(sample) } else if status != noErr { self.requestKeyframe() }
+            if status == noErr, let sample { self.emit(sample, stamps) } else if status != noErr { self.requestKeyframe() }
         }
         if status != noErr {
             lock.lock(); busy -= 1; wantKey = true
@@ -87,17 +89,18 @@ final class Encoder {
     }
 
     /// emit writes one access unit as Annex B, with the parameter sets before a keyframe.
-    private func emit(_ sample: CMSampleBuffer) {
+    private func emit(_ sample: CMSampleBuffer, _ stamps: Stamps) {
         guard let block = CMSampleBufferGetDataBuffer(sample), let format = CMSampleBufferGetFormatDescription(sample) else { return }
         var key = true
         if let list = CMSampleBufferGetSampleAttachmentsArray(sample, createIfNecessary: false) as? [[CFString: Any]], let first = list.first {
             key = !((first[kCMSampleAttachmentKey_NotSync] as? Bool) ?? false)
         }
         let start: [UInt8] = [0, 0, 0, 1]
-        let micros = UInt64(max(0, CMTimeGetSeconds(CMSampleBufferGetPresentationTimeStamp(sample))) * 1_000_000)
         var payload = Data(capacity: CMBlockBufferGetDataLength(block) + 128)
         payload.append(key ? 1 : 0)
-        for shift in stride(from: 56, through: 0, by: -8) { payload.append(UInt8((micros >> UInt64(shift)) & 0xFF)) }
+        for t in [stamps.displayed, stamps.captured, Stamps.now()] {
+            for shift in stride(from: 56, through: 0, by: -8) { payload.append(UInt8((t >> UInt64(shift)) & 0xFF)) }
+        }
         if key {
             var count = 0
             CMVideoFormatDescriptionGetH264ParameterSetAtIndex(format, parameterSetIndex: 0, parameterSetPointerOut: nil, parameterSetSizeOut: nil, parameterSetCountOut: &count, nalUnitHeaderLengthOut: nil)

@@ -159,11 +159,14 @@ length-prefixed messages:
 - **Encode**: VideoToolbox, H.264, low-latency rate control, real time, no
   frame reordering, no periodic keyframes: a keyframe only at the start and
   when the receiver asks. If the encoder is still busy when a new frame
-  arrives, the new frame is dropped, never queued. Longest edge 1920 px,
-  60 frames a second (at 30 the picture was some 25 ms later, §8), and
-  0.4–8 Mbit/s as the network allows.
-- **Input**: CGEvent. Positions arrive as fractions of the display, so they
-  don't depend on the encoded size. `text` is typed as Unicode, whatever
+  arrives while two are being encoded, it is dropped, never queued.
+  Longest edge 1920 px; up to 120 frames a second, 60 below 1.8 Mbit/s and
+  30 below 0.8 (§5.1 has what each rate costs in delay); 0.4–8 Mbit/s as
+  the network allows.
+- **Input**: CGEvent, posted as each message is read, on a thread of its
+  own. Positions arrive as fractions of the display, so they don't depend
+  on the encoded size; the display's bounds are kept, not asked for with
+  every event (§5.1). `text` is typed as Unicode, whatever
   input source the Mac has selected.
 - **Keyframes on request**: the helper keeps the last picture, so a
   keyframe asked for while the screen is still is made from it.
@@ -223,6 +226,59 @@ Targets from glass to glass: under 50 ms on one Wi-Fi, 80–120 ms on a
 direct path across networks. Through TURN it is the direct figure plus the
 detour to the relay.
 
+### 5.1 Measured
+
+On 2026-11-10, with the iPhone app in the Simulator on the Mac it showed:
+no network between the two (ICE chose host addresses of the same
+computer), the Mac's screen at 120 Hz, the Simulator's at 60, a clock on
+the Mac redrawn at every refresh. `TestScreenLatency` (e2e) prints the
+stages; the helper stamps each frame as it passes and hermeshd sends the
+stamps along (`HERMESH_SCREEN_TRACE`).
+
+The picture, from the Mac's screen showing a frame to the app having it:
+
+| Stage | Median | 90% | What decides it |
+|---|---|---|---|
+| Screen to captured | 0 ms | 0.2 | ScreenCaptureKit hands a frame over as it is shown |
+| Captured to encoded | 8.8 ms | 9.4 | The hardware encoder: the same whatever the profile, with or without a flush or a zero frame delay; 6.9 ms at 1280 wide, 5.1 at 960; 15 ms without the low-latency mode |
+| Encoded to sent | 0.0 ms | 0.1 | The pipe to hermeshd |
+| Sent to whole on the phone | 0.3 ms | 0.5 | Was 2.7 (5.0): pion's pacer hands packets on every 5 ms. It is off |
+| The core to the app | 0.1 ms | 0.2 | A loopback connection |
+| **In all** | **7.7 ms** | 9.7 | Was 10.5 at 60 frames a second with the pacer |
+
+Then the app decodes (2.4 ms) and the frame waits for the screen's next
+refresh: 8 ms on average at 60 Hz, 4 at 120.
+
+End to end, a millisecond clock on the Mac read in the phone's picture
+against the phone's own clock in the same screenshot. This number has some
+12 ms in it that are not this feature's: the Mac's own delay from a
+program drawing to its screen showing it.
+
+| Change | Median behind |
+|---|---|
+| 30 frames a second, the display layer decoding, the pacer on | 64 ms |
+| 60 frames a second | 38 ms |
+| The pacer off | 35 ms |
+| The app decodes and sets the layer's contents on the thread that has the frame | 28 ms |
+| Up to 120 frames a second, two at once in the encoder | 23 ms |
+
+The way back, from the app sending a pointer move to hermeshd's helper
+having posted it: 0.4 ms. It was 3–5 ms for many and 20–70 ms for one in
+ten while the helper asked the window server for the display's bounds with
+every event; it now keeps them. After that the window server takes 1–4 ms
+to hand a posted move on, and now and then 40, with or without this
+feature.
+
+What is left, and what would move it:
+
+- The encoder's 9 ms is the floor at this size. A smaller picture while
+  things move would take 2–4 ms off and cost sharpness.
+- The wait for the phone's refresh halves on an iPhone whose screen
+  refreshes 120 times a second: the page asks for that rate while it shows
+  (not measurable in the Simulator).
+- Over a network the path's own delay is added, and through TURN the
+  detour to the relay.
+
 ## 6. On the iPhone
 
 ### 6.1 Gestures
@@ -259,8 +315,10 @@ key.
 - Full screen, both orientations. The picture starts fitted to the screen.
 - One small bar: connection quality (the round trip, and "Relayed" when
   the packets go through the relay), the mode button, keyboard, close.
-- Frames are shown with `AVSampleBufferDisplayLayer`, each marked to
-  display at once.
+- A frame is decoded (VideoToolbox) on the thread that brings it and set
+  as a layer's contents there, in a transaction of its own: 6 ms sooner
+  than `AVSampleBufferDisplayLayer` showing it (§5.1).
+- The page asks for the screen's full refresh rate while it shows.
 - The Go core hands frames to Swift, and takes input back, over a local
   binary stream: the app opens `/screen/<machine_id>` beside LocalService
   and the connection becomes messages both ways (internal/owner/screen.go).
@@ -305,8 +363,8 @@ the two), hermeshd started from a shell that had the two permissions:
   a window by the distance dragged; two fingers scrolled; trackpad mode
   moved the Mac's pointer; the page turned on its side.
 - Glass to glass, a millisecond clock on the Mac against the phone's own:
-  39–76 ms at 30 frames a second (median 64), 29–47 ms at 60 (median 38),
-  which is why it captures at 60. The helper took 2–6 % of a core.
+  39–76 ms at 30 frames a second (median 64), 29–47 ms at 60 (median 38);
+  after the changes of §5.1, 23 ms. The helper took 2–6 % of a core.
 - macOS asked once whether to let the app "bypass the system private
   window picker". The picture kept coming while the question stood.
 
