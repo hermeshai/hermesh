@@ -20,62 +20,74 @@ struct HerComposer: View {
     @State private var pickingFiles = false
     @State private var sending = false
     @FocusState private var focused: Bool
+    /// A line of the field, as it lays out the body's.
+    @ScaledMetric(relativeTo: .body) private var line: CGFloat = 23
 
     var body: some View {
         let draft = chat.draft
         VStack(alignment: .leading, spacing: 8) {
             if let note { Label(note, systemImage: "clock").font(.footnote).foregroundStyle(.secondary).padding(.horizontal, 12) }
-            VStack(alignment: .leading, spacing: 6) {
-                if !draft.photos.isEmpty || !draft.files.isEmpty {
-                    ScrollView(.horizontal) {
-                        HStack(spacing: 6) {
-                            ForEach(draft.photos) { p in
-                                ZStack(alignment: .topTrailing) {
-                                    if let picture = UIImage(data: p.data) {
-                                        Image(uiImage: picture).resizable().scaledToFill().frame(width: 56, height: 56)
-                                            .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+            HStack(alignment: .bottom, spacing: 8) {
+                // Its own glass beside the field, as Messages has it: the menu opens out of the plus alone, and the
+                // field stays in view (a menu opening out of the field's glass took the whole field away meanwhile).
+                Menu {
+                    Button("Photos", systemImage: "photo.on.rectangle") { pickingPhotos = true }
+                    Button("Files", systemImage: "folder") { pickingFiles = true }
+                } label: {
+                    // As tall as the field with one line: its line and padding (or Send), in the field's padding.
+                    let side = max(line + 16, 36) + 12
+                    Image(systemName: "plus").font(.title3.weight(.medium))
+                        .frame(width: side, height: side)
+                        .glassEffect(.regular.interactive(), in: .circle)
+                        .contentShape(.circle)
+                }
+                .tint(.primary)
+                .accessibilityLabel(Text("Add Photos or Files"))
+                .accessibilityIdentifier("her-attach")
+                VStack(alignment: .leading, spacing: 6) {
+                    if !draft.photos.isEmpty || !draft.files.isEmpty {
+                        ScrollView(.horizontal) {
+                            HStack(spacing: 6) {
+                                ForEach(draft.photos) { p in
+                                    ZStack(alignment: .topTrailing) {
+                                        if let picture = UIImage(data: p.data) {
+                                            Image(uiImage: picture).resizable().scaledToFill().frame(width: 56, height: 56)
+                                                .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                                        }
+                                        Button { chat.draft.photos.removeAll { $0.id == p.id } } label: {
+                                            Image(systemName: "xmark.circle.fill").symbolRenderingMode(.palette).foregroundStyle(.white, .black.opacity(0.55))
+                                        }
+                                        .padding(3)
+                                        .accessibilityLabel(Text("Remove \(p.name)"))
                                     }
-                                    Button { chat.draft.photos.removeAll { $0.id == p.id } } label: {
-                                        Image(systemName: "xmark.circle.fill").symbolRenderingMode(.palette).foregroundStyle(.white, .black.opacity(0.55))
-                                    }
-                                    .padding(3)
-                                    .accessibilityLabel(Text("Remove \(p.name)"))
                                 }
+                                ForEach(draft.files) { f in HerChip(name: f.name) { chat.draft.files.removeAll { $0.id == f.id } } }
                             }
-                            ForEach(draft.files) { f in HerChip(name: f.name) { chat.draft.files.removeAll { $0.id == f.id } } }
+                            .padding(.horizontal, 6).padding(.top, 6)
                         }
-                        .padding(.horizontal, 6).padding(.top, 6)
+                        .scrollIndicators(.hidden)
                     }
-                    .scrollIndicators(.hidden)
+                    HStack(alignment: .bottom, spacing: 8) {
+                        TextField(noModel ? String(localized: "I can reply once a model is connected") : String(localized: "Message \(chat.bot?.name ?? "Her")"),
+                                  text: $chat.draft.text, axis: .vertical)
+                            .lineLimit(1 ... 6)
+                            .focused($focused)
+                            .padding(.vertical, 8)
+                            .padding(.leading, 10)
+                            .accessibilityIdentifier("her-composer")
+                        Button { send() } label: {
+                            Image(systemName: "arrow.up").font(.body.weight(.semibold)).frame(width: 36, height: 36)
+                                .foregroundStyle(canSend ? Color(.systemBackground) : Color.secondary)
+                                .background(canSend ? Color.primary : Palette.fill3, in: .circle)
+                        }
+                        .disabled(!canSend)
+                        .accessibilityLabel(Text("Send"))
+                        .accessibilityIdentifier("her-send")
+                    }
                 }
-                HStack(alignment: .bottom, spacing: 8) {
-                    Menu {
-                        Button("Photos", systemImage: "photo.on.rectangle") { pickingPhotos = true }
-                        Button("Files", systemImage: "folder") { pickingFiles = true }
-                    } label: {
-                        Image(systemName: "plus").font(.body.weight(.medium)).frame(width: 36, height: 36)
-                            .background(Palette.fill2, in: .circle)
-                    }
-                    .accessibilityLabel(Text("Add Photos or Files"))
-                    .accessibilityIdentifier("her-attach")
-                    TextField(noModel ? String(localized: "I can reply once a model is connected") : String(localized: "Message \(chat.bot?.name ?? "Her")"),
-                              text: $chat.draft.text, axis: .vertical)
-                        .lineLimit(1 ... 6)
-                        .focused($focused)
-                        .padding(.vertical, 8)
-                        .accessibilityIdentifier("her-composer")
-                    Button { send() } label: {
-                        Image(systemName: "arrow.up").font(.body.weight(.semibold)).frame(width: 36, height: 36)
-                            .foregroundStyle(canSend ? Color(.systemBackground) : Color.secondary)
-                            .background(canSend ? Color.primary : Palette.fill3, in: .circle)
-                    }
-                    .disabled(!canSend)
-                    .accessibilityLabel(Text("Send"))
-                    .accessibilityIdentifier("her-send")
-                }
+                .padding(6)
+                .glassEffect(.regular, in: RoundedRectangle(cornerRadius: 24, style: .continuous))
             }
-            .padding(6)
-            .glassEffect(.regular, in: RoundedRectangle(cornerRadius: 24, style: .continuous))
             .disabled(noModel)
             .opacity(noModel ? 0.6 : 1)
         }
