@@ -193,6 +193,10 @@ of it.
   MCP clients can't reach it.
 - The device key is enough, as for Her's full access; the phone asks for
   Face ID each time the page opens.
+- On a device, the picture is served to the iPhone app alone, on its
+  core's loopback port behind the app's token. A computer's hermeshd does
+  not serve it on its local socket, where any program of the user's could
+  otherwise open another machine's screen.
 - While a session lasts, the Mac app's menu bar panel says which device is
   in control and offers Stop (`LocalService.StopScreen`). macOS shows its
   own screen-recording mark too.

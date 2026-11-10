@@ -50,7 +50,6 @@ func (d *Device) ServeLocal(ctx context.Context, sockPath string) error {
 func (d *Device) LocalHandler() http.Handler {
 	mux := http.NewServeMux()
 	mux.Handle(localv1connect.NewLocalServiceHandler(&localService{d: d}, connect.WithInterceptors(connect.UnaryInterceptorFunc(d.kickAfterWrites))))
-	mux.HandleFunc("/screen/", d.serveScreen)
 	return mux
 }
 
