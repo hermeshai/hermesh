@@ -229,7 +229,7 @@ struct ScreenControlView: View {
     /// The connection's quality in a word the owner can act on: a number while
     /// direct, and that it goes through the relay when it does.
     private var quality: String {
-        guard session.live, session.link.phase == "connected" else {
+        guard session.link.phase == "connected" else {
             return session.link.phase == "reconnecting" ? String(localized: "Reconnecting…") : String(localized: "Connecting…")
         }
         let ms = max(1, session.link.rtt_ms ?? 1)

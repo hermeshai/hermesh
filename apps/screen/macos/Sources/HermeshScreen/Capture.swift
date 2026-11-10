@@ -10,6 +10,9 @@ final class Capture: NSObject, SCStreamOutput, SCStreamDelegate {
     private let queue = DispatchQueue(label: "hermesh.screen.capture")
     private var stream: SCStream?
     private var config = SCStreamConfiguration()
+    /// The picture last captured (on queue): a still screen sends no frames,
+    /// and a keyframe asked for meanwhile is made from this.
+    private var last: CVImageBuffer?
 
     init(out: Output, encoder: Encoder) {
         self.out = out
@@ -31,7 +34,7 @@ final class Capture: NSObject, SCStreamOutput, SCStreamDelegate {
         config.minimumFrameInterval = CMTime(value: 1, timescale: CMTimeScale(fps))
         config.pixelFormat = kCVPixelFormatType_420YpCbCr8BiPlanarVideoRange
         config.showsCursor = pointer
-        config.queueDepth = 3
+        config.queueDepth = 5 // one of them is kept as the last picture
         let s = SCStream(filter: filter, configuration: config, delegate: self)
         try s.addStreamOutput(self, type: .screen, sampleHandlerQueue: queue)
         try await s.startCapture()
@@ -42,7 +45,15 @@ final class Capture: NSObject, SCStreamOutput, SCStreamDelegate {
     func showPointer(_ shown: Bool) {
         config.showsCursor = shown
         stream?.updateConfiguration(config) { _ in }
+        keyframe()
+    }
+
+    /// keyframe sends one now, from the last picture when the screen is still.
+    func keyframe() {
         encoder.requestKeyframe()
+        queue.async { [self] in
+            if let last { encoder.encode(last, time: CMClockGetTime(CMClockGetHostTimeClock())) }
+        }
     }
 
     func stream(_ stream: SCStream, didOutputSampleBuffer sample: CMSampleBuffer, of type: SCStreamOutputType) {
@@ -50,6 +61,7 @@ final class Capture: NSObject, SCStreamOutput, SCStreamDelegate {
               let list = CMSampleBufferGetSampleAttachmentsArray(sample, createIfNecessary: false) as? [[SCStreamFrameInfo: Any]],
               let raw = list.first?[.status] as? Int, SCFrameStatus(rawValue: raw) == .complete
         else { return }
+        last = image
         encoder.encode(image, time: sample.presentationTimeStamp)
     }
 

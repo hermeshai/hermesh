@@ -166,6 +166,8 @@ const (
 	// LocalServiceGetHerConsoleProcedure is the fully-qualified name of the LocalService's
 	// GetHerConsole RPC.
 	LocalServiceGetHerConsoleProcedure = "/hermesh.local.v1.LocalService/GetHerConsole"
+	// LocalServiceStopScreenProcedure is the fully-qualified name of the LocalService's StopScreen RPC.
+	LocalServiceStopScreenProcedure = "/hermesh.local.v1.LocalService/StopScreen"
 	// LocalServiceListProjectsProcedure is the fully-qualified name of the LocalService's ListProjects
 	// RPC.
 	LocalServiceListProjectsProcedure = "/hermesh.local.v1.LocalService/ListProjects"
@@ -363,6 +365,10 @@ type LocalServiceClient interface {
 	// The address of a machine's Her console, served by this hermeshd on
 	// 127.0.0.1 with a token in its path.
 	GetHerConsole(context.Context, *v1.GetHerConsoleRequest) (*v1.GetHerConsoleResponse, error)
+	// Ends the Computer Control session on this computer's own machine, if
+	// one is under way (docs/computer-control.md §4.3): the Mac's menu bar
+	// names the device in control and offers this.
+	StopScreen(context.Context, *v1.StopScreenRequest) (*v1.StopScreenResponse, error)
 	// Projects.
 	ListProjects(context.Context, *v1.ListProjectsRequest) (*v1.ListProjectsResponse, error)
 	AddProject(context.Context, *v1.AddProjectRequest) (*v1.AddProjectResponse, error)
@@ -710,6 +716,12 @@ func NewLocalServiceClient(httpClient connect.HTTPClient, baseURL string, opts .
 			connect.WithSchema(localServiceMethods.ByName("GetHerConsole")),
 			connect.WithClientOptions(opts...),
 		),
+		stopScreen: connect.NewClient[v1.StopScreenRequest, v1.StopScreenResponse](
+			httpClient,
+			baseURL+LocalServiceStopScreenProcedure,
+			connect.WithSchema(localServiceMethods.ByName("StopScreen")),
+			connect.WithClientOptions(opts...),
+		),
 		listProjects: connect.NewClient[v1.ListProjectsRequest, v1.ListProjectsResponse](
 			httpClient,
 			baseURL+LocalServiceListProjectsProcedure,
@@ -919,6 +931,7 @@ type localServiceClient struct {
 	herUpload              *connect.Client[v1.HerUploadRequest, v1.HerUploadResponse]
 	herDownload            *connect.Client[v1.HerDownloadRequest, v1.HerDownloadResponse]
 	getHerConsole          *connect.Client[v1.GetHerConsoleRequest, v1.GetHerConsoleResponse]
+	stopScreen             *connect.Client[v1.StopScreenRequest, v1.StopScreenResponse]
 	listProjects           *connect.Client[v1.ListProjectsRequest, v1.ListProjectsResponse]
 	addProject             *connect.Client[v1.AddProjectRequest, v1.AddProjectResponse]
 	removeProject          *connect.Client[v1.RemoveProjectRequest, v1.RemoveProjectResponse]
@@ -1367,6 +1380,15 @@ func (c *localServiceClient) GetHerConsole(ctx context.Context, req *v1.GetHerCo
 	return nil, err
 }
 
+// StopScreen calls hermesh.local.v1.LocalService.StopScreen.
+func (c *localServiceClient) StopScreen(ctx context.Context, req *v1.StopScreenRequest) (*v1.StopScreenResponse, error) {
+	response, err := c.stopScreen.CallUnary(ctx, connect.NewRequest(req))
+	if response != nil {
+		return response.Msg, err
+	}
+	return nil, err
+}
+
 // ListProjects calls hermesh.local.v1.LocalService.ListProjects.
 func (c *localServiceClient) ListProjects(ctx context.Context, req *v1.ListProjectsRequest) (*v1.ListProjectsResponse, error) {
 	response, err := c.listProjects.CallUnary(ctx, connect.NewRequest(req))
@@ -1713,6 +1735,10 @@ type LocalServiceHandler interface {
 	// The address of a machine's Her console, served by this hermeshd on
 	// 127.0.0.1 with a token in its path.
 	GetHerConsole(context.Context, *v1.GetHerConsoleRequest) (*v1.GetHerConsoleResponse, error)
+	// Ends the Computer Control session on this computer's own machine, if
+	// one is under way (docs/computer-control.md §4.3): the Mac's menu bar
+	// names the device in control and offers this.
+	StopScreen(context.Context, *v1.StopScreenRequest) (*v1.StopScreenResponse, error)
 	// Projects.
 	ListProjects(context.Context, *v1.ListProjectsRequest) (*v1.ListProjectsResponse, error)
 	AddProject(context.Context, *v1.AddProjectRequest) (*v1.AddProjectResponse, error)
@@ -2056,6 +2082,12 @@ func NewLocalServiceHandler(svc LocalServiceHandler, opts ...connect.HandlerOpti
 		connect.WithSchema(localServiceMethods.ByName("GetHerConsole")),
 		connect.WithHandlerOptions(opts...),
 	)
+	localServiceStopScreenHandler := connect.NewUnaryHandlerSimple(
+		LocalServiceStopScreenProcedure,
+		svc.StopScreen,
+		connect.WithSchema(localServiceMethods.ByName("StopScreen")),
+		connect.WithHandlerOptions(opts...),
+	)
 	localServiceListProjectsHandler := connect.NewUnaryHandlerSimple(
 		LocalServiceListProjectsProcedure,
 		svc.ListProjects,
@@ -2310,6 +2342,8 @@ func NewLocalServiceHandler(svc LocalServiceHandler, opts ...connect.HandlerOpti
 			localServiceHerDownloadHandler.ServeHTTP(w, r)
 		case LocalServiceGetHerConsoleProcedure:
 			localServiceGetHerConsoleHandler.ServeHTTP(w, r)
+		case LocalServiceStopScreenProcedure:
+			localServiceStopScreenHandler.ServeHTTP(w, r)
 		case LocalServiceListProjectsProcedure:
 			localServiceListProjectsHandler.ServeHTTP(w, r)
 		case LocalServiceAddProjectProcedure:
@@ -2561,6 +2595,10 @@ func (UnimplementedLocalServiceHandler) HerDownload(context.Context, *v1.HerDown
 
 func (UnimplementedLocalServiceHandler) GetHerConsole(context.Context, *v1.GetHerConsoleRequest) (*v1.GetHerConsoleResponse, error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("hermesh.local.v1.LocalService.GetHerConsole is not implemented"))
+}
+
+func (UnimplementedLocalServiceHandler) StopScreen(context.Context, *v1.StopScreenRequest) (*v1.StopScreenResponse, error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("hermesh.local.v1.LocalService.StopScreen is not implemented"))
 }
 
 func (UnimplementedLocalServiceHandler) ListProjects(context.Context, *v1.ListProjectsRequest) (*v1.ListProjectsResponse, error) {

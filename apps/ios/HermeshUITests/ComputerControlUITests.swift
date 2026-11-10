@@ -107,7 +107,7 @@ extension HermeshUITests {
         XCUIDevice.shared.orientation = .landscapeLeft
         try waitFor("the page on its side") { surface.frame.width > surface.frame.height ? true : nil }
         XCTAssertEqual(surface.value as? String, "live", "the picture stays")
-        herShot("Computer Control: on its side")
+        XCTAssertEqual(surface.frame.size, app.frame.size, "the picture's page takes the whole screen")
         XCUIDevice.shared.orientation = .portrait
         try waitFor("upright again") { surface.frame.width < surface.frame.height ? true : nil }
         tap("screen-close")

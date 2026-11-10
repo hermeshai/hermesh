@@ -81,7 +81,7 @@ Thread.detachNewThread {
             case .bitrate:
                 if let m = try? JSONDecoder().decode(BitrateMessage.self, from: payload) { encoder?.setBitrate(m.bps) }
             case .keyframe:
-                encoder?.requestKeyframe()
+                if let capture { capture.keyframe() } else { encoder?.requestKeyframe() }
             case .input:
                 input.handle(Data(payload))
             case .pointer:
