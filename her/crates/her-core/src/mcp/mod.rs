@@ -180,12 +180,12 @@ impl McpManager {
 
     /// Adds a server configured after the session started, and connects it once the session
     /// has: the owner just connected it on a card (docs/her-secure-cards.md §6). A name the
-    /// session has already is left alone.
-    pub(crate) fn add(&self, config: McpServerConfig) {
+    /// session has already is left alone. Returns the server under that name.
+    pub(crate) fn add(&self, config: McpServerConfig) -> Arc<McpServer> {
         let server = {
             let mut servers = self.servers.lock();
-            if servers.iter().any(|s| s.name() == config.name) {
-                return;
+            if let Some(had) = servers.iter().find(|s| s.name() == config.name) {
+                return had.clone();
             }
             self.exposure.lock().push(config.exposure.unwrap_or(self.default_exposure));
             let server = McpServer::new(config, self.ctx.clone());
@@ -199,6 +199,12 @@ impl McpManager {
         if self.events.lock().is_some() {
             server.connect();
         }
+        server
+    }
+
+    /// How long a turn waits for a server still connecting.
+    pub(crate) fn startup_wait(&self) -> Duration {
+        self.startup_wait
     }
 
     pub(crate) fn servers(&self) -> Arc<Vec<Arc<McpServer>>> {
