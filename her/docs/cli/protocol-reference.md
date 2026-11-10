@@ -115,6 +115,7 @@ Protocol version 2. Generated from `her protocol schema` by `tools/gen-protocol-
 | `browser/site_icon` | `BrowserSiteIconParams` | `BrowserSiteIconResult` | Parameters of `browser/site_icon`. |
 | `browser/status` | — | `BrowserStatus` | The result of `browser/status`, and the parameters of `browser/changed`. |
 | `browser/use_extension` | `BrowserUseExtensionParams` | `Empty` | Parameters of `browser/use_extension`. |
+| `cards/answer` | `CardsAnswerParams` | `CardsAnswerResult` | Parameters of `cards/answer`, which only the owner's devices may call. |
 | `connections/connect` | `ConnectionConnectParams` | `ConnectionsSnapshot` |  |
 | `connections/disconnect` | `ConnectionIdParams` | `ConnectionsSnapshot` |  |
 | `connections/discover` | — | `ConnectionsDiscoveryResult` |  |
@@ -223,6 +224,7 @@ Protocol version 2. Generated from `her protocol schema` by `tools/gen-protocol-
 | -32044 | `routine_busy` |
 | -32045 | `routines_unavailable` |
 | -32046 | `no_model` |
+| -32047 | `card_ended` |
 | -32600 | `invalid_request` |
 | -32601 | `method_not_found` |
 | -32602 | `invalid_params` |
