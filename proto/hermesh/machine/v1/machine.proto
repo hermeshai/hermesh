@@ -165,6 +165,18 @@ message MachineStatus {
   // Her on this machine (docs/her-server.md §6.2). Sent to the owner's
   // devices only, never to agents.
   HerStatus her = 14;
+  // Computer Control on this machine (docs/computer-control.md). Sent to
+  // the owner's devices only, never to agents.
+  ScreenStatus screen = 15;
+}
+
+// ScreenStatus is whether the owner's devices can see and operate this
+// machine's screen (hermesh.screen.v1.ScreenService).
+message ScreenStatus {
+  // The machine is a Mac and has the helper that captures its screen.
+  bool available = 1;
+  // The device in control now, as it named itself; empty when none is.
+  string viewer = 2;
 }
 
 // HerStatus is Her on a machine, as its hermeshd last saw her.

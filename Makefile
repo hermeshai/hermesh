@@ -58,4 +58,4 @@ release:
 	./scripts/release.sh
 
 clean:
-	rm -rf bin dist apps/desktop/out apps/signer/macos/.build packages/HermeshKit/.build apps/ios/build
+	rm -rf bin dist apps/desktop/out apps/signer/macos/.build apps/screen/macos/.build packages/HermeshKit/.build apps/ios/build

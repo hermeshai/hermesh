@@ -16,6 +16,7 @@ import (
 	identityv1 "github.com/hermeshai/hermesh/gen/go/hermesh/identity/v1"
 	"github.com/hermeshai/hermesh/gen/go/hermesh/machine/v1/machinev1connect"
 	relayv1 "github.com/hermeshai/hermesh/gen/go/hermesh/relay/v1"
+	"github.com/hermeshai/hermesh/gen/go/hermesh/screen/v1/screenv1connect"
 	"github.com/hermeshai/hermesh/gen/go/hermesh/session/v1/sessionv1connect"
 	"github.com/hermeshai/hermesh/pkg/identity"
 	"github.com/hermeshai/hermesh/pkg/transport"
@@ -57,6 +58,7 @@ type Machine struct {
 	Info    machinev1connect.MachineServiceClient
 	Admin   machinev1connect.MachineAdminServiceClient
 	Her     herv1connect.HerServiceClient
+	Screen  screenv1connect.ScreenServiceClient
 	h2      *transport.H2Client
 }
 
@@ -67,7 +69,8 @@ func newMachine(machineID, name string, h2 *transport.H2Client) *Machine {
 		Session: sessionv1connect.NewSessionServiceClient(h2, base, transport.ClientNoCompression),
 		Info:    machinev1connect.NewMachineServiceClient(h2, base, transport.ClientNoCompression),
 		Admin:   machinev1connect.NewMachineAdminServiceClient(h2, base, transport.ClientNoCompression),
-		Her:     herv1connect.NewHerServiceClient(h2, base, transport.ClientNoCompression)}
+		Her:     herv1connect.NewHerServiceClient(h2, base, transport.ClientNoCompression),
+		Screen:  screenv1connect.NewScreenServiceClient(h2, base, transport.ClientNoCompression)}
 }
 
 // HTTP is the tunnel's HTTP/2 client, for the machine's plain HTTP routes

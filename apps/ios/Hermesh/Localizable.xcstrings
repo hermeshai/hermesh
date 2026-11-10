@@ -8993,6 +8993,206 @@
           }
         }
       }
+    },
+    "%@ can’t show its screen": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ 无法显示屏幕"
+          }
+        }
+      }
+    },
+    "%@ can’t show its screen yet": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ 还不能显示屏幕"
+          }
+        }
+      }
+    },
+    "%@ is offline.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ 已离线。"
+          }
+        }
+      }
+    },
+    "%lld ms": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld ms"
+          }
+        }
+      }
+    },
+    "Computer Control": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "电脑操控"
+          }
+        }
+      }
+    },
+    "Connecting to %@…": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "正在连接 %@…"
+          }
+        }
+      }
+    },
+    "Control %@": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "操控 %@"
+          }
+        }
+      }
+    },
+    "Direct Touch": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "直接触控"
+          }
+        }
+      }
+    },
+    "Hide Keyboard": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "收起键盘"
+          }
+        }
+      }
+    },
+    "Keyboard": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "键盘"
+          }
+        }
+      }
+    },
+    "On that Mac, open System Settings › Privacy & Security › Screen & System Audio Recording and turn on Hermesh. Then connect again.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "在那台 Mac 上打开「系统设置 › 隐私与安全性 › 录屏与系统录音」，开启 Hermesh，然后重新连接。"
+          }
+        }
+      }
+    },
+    "Reconnect": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "重新连接"
+          }
+        }
+      }
+    },
+    "Reconnecting…": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "正在重新连接…"
+          }
+        }
+      }
+    },
+    "Relayed · %lld ms": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "中转 · %lld ms"
+          }
+        }
+      }
+    },
+    "See %@’s screen and operate it from here.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "在这里查看并操作 %@ 的屏幕。"
+          }
+        }
+      }
+    },
+    "The session ended": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "连接已结束"
+          }
+        }
+      }
+    },
+    "Trackpad Mode": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "触控板模式"
+          }
+        }
+      }
+    },
+    "You can watch, not control: on %@, turn on Accessibility for hermeshd.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "现在只能观看，不能操作：请在 %@ 上为 hermeshd 开启「辅助功能」。"
+          }
+        }
+      }
+    },
+    "Another device took over, or the session was stopped on that Mac.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "另一台设备接管了操控，或者这次操控在那台 Mac 上被停止了。"
+          }
+        }
+      }
+    },
+    "The connection to %@ was lost.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "与 %@ 的连接断开了。"
+          }
+        }
+      }
     }
   },
   "version": "1.0"

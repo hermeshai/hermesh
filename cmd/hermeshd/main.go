@@ -153,7 +153,8 @@ A computer that runs no coding agents can approve instead: hermeshd device.`}
 		}
 		her := herBin()
 		return machine.Config{DataDir: filepath.Join(dataDir, "machine"), Logger: logger(verbose), Providers: providers(), Limits: lim, WorkspaceMode: workspaceMode,
-			HerBin: her, HerConsole: herConsole(her), HerExtensionHost: herExtensionHost()}
+			HerBin: her, HerConsole: herConsole(her), HerExtensionHost: herExtensionHost(),
+			ScreenBin: screenBin(), ScreenArgs: strings.Fields(os.Getenv("HERMESH_SCREEN_ARGS"))}
 	}
 	openMachine := func() (*machine.Machine, error) { return machine.Open(machineConfig()) }
 
@@ -712,6 +713,32 @@ func herBin() string {
 			return ""
 		}
 		bin = filepath.Join(filepath.Dir(exe), "her")
+	}
+	if st, err := os.Stat(bin); err != nil || st.IsDir() {
+		return ""
+	}
+	return bin
+}
+
+// screenBin is the helper Computer Control shows this Mac's screen with
+// (docs/computer-control.md §4.1): $HERMESH_SCREEN_BIN, else hermesh-screen
+// beside this program (Contents/Helpers in the Mac app); "" when there is
+// none, and on other systems. $HERMESH_SCREEN_ARGS are passed to it (the
+// tests' picture in place of the screen).
+func screenBin() string {
+	if runtime.GOOS != "darwin" {
+		return ""
+	}
+	bin := os.Getenv("HERMESH_SCREEN_BIN")
+	if bin == "" {
+		exe, err := os.Executable()
+		if err != nil {
+			return ""
+		}
+		if exe, err = filepath.EvalSymlinks(exe); err != nil {
+			return ""
+		}
+		bin = filepath.Join(filepath.Dir(exe), "hermesh-screen")
 	}
 	if st, err := os.Stat(bin); err != nil || st.IsDir() {
 		return ""

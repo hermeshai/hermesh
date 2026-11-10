@@ -56,8 +56,9 @@ func TestIPhone(t *testing.T) {
 
 	fake := filepath.Join(binaries(t), "fakeacp")
 	her := iphoneHerEnv(t)
-	w := newOwnerMac(t, append([]string{"HERMESH_GEMINI_BIN=" + fake, "FAKE_ACP_STATE=" + filepath.Join(t.TempDir(), "fakeacp"), "FAKE_ACP_MODELS=gemini-3-pro",
-		"HERMESH_ANTIGRAVITY_BIN=" + fake, "GEMINI_HOME=" + t.TempDir()}, her...),
+	screen, _ := screenEnv(t) // the Mac's screen for testComputerControl: the helper's test picture
+	w := newOwnerMac(t, append(append([]string{"HERMESH_GEMINI_BIN=" + fake, "FAKE_ACP_STATE=" + filepath.Join(t.TempDir(), "fakeacp"), "FAKE_ACP_MODELS=gemini-3-pro",
+		"HERMESH_ANTIGRAVITY_BIN=" + fake, "GEMINI_HOME=" + t.TempDir()}, her...), screen...),
 		&localv1.GrantSpec{Agents: []string{"gemini"}}, "--retry-delay", "0") // its rate limit fails at once
 	if her != nil {
 		t.Cleanup(func() { w.owner.stop() }) // stopped as a service is, so that it stops her (the daemon of the moment)
@@ -461,6 +462,18 @@ func newIPhoneControl(t *testing.T, w *ownerMac, sessions map[string]string) str
 			}
 		}
 		reply(rw, map[string]int{"assistants": len(bots)})
+	})
+	// What the Mac's screen helper was sent (testComputerControl): the input
+	// it would have posted, a JSON object a line (screenEnv).
+	mux.HandleFunc("GET /screen", func(rw http.ResponseWriter, _ *http.Request) {
+		var log string
+		for _, kv := range w.daemonEnv {
+			if _, path, ok := strings.Cut(kv, "--input-log "); ok && strings.HasPrefix(kv, "HERMESH_SCREEN_ARGS=") {
+				log = path
+			}
+		}
+		b, _ := os.ReadFile(log)
+		reply(rw, map[string]string{"input": string(b)})
 	})
 	mux.HandleFunc("GET /digits", func(rw http.ResponseWriter, _ *http.Request) {
 		mu.Lock()
