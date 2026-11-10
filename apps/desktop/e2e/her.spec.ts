@@ -34,8 +34,10 @@ test("Her: the first run, a chat, a secure card, the console, a second environme
     await composer.press("Enter");
   };
 
-  // The sidebar's Her entry. Her runs nowhere yet: its first run asks where, this Mac or work-mac.
-  await page.getByRole("button", { name: /^Her 助手/ }).click();
+  // The sidebar's Her entry, by her name alone. Her runs nowhere yet: its first run asks where, this Mac or
+  // work-mac.
+  await expect(page.locator(".side-nav").getByRole("button", { name: /^Her/ })).toHaveText("Her");
+  await page.locator(".side-nav").getByRole("button", { name: /^Her/ }).click();
   await expect(page.getByRole("heading", { name: "选择 Her 在哪里运行" })).toBeVisible();
   const choices = page.getByRole("list", { name: "选择 Her 在哪里运行" });
   await expect(choices.getByRole("listitem").filter({ hasText: "work-mac" }).getByRole("button", { name: "开启 Her" })).toBeVisible({ timeout: 60_000 });
@@ -47,6 +49,17 @@ test("Her: the first run, a chat, a secure card, the console, a second environme
   // environments while there is one.
   await expect(page.locator(".her-id")).toContainText("Her");
   await expect(page.locator(".her-env")).toHaveCount(0);
+  // As on the iPhone: Her's cat in the middle, larger than a bar's, its name on a capsule over the cat's lower
+  // edge, and the greeting clear of both, with no second avatar in the page.
+  const cat = await page.locator(".her-id .bav.cat-av").boundingBox();
+  const cap = await page.locator(".her-cap").boundingBox();
+  const hello = await page.getByText(/^你好，我是 .+，在 .+ 上为你做事/).boundingBox();
+  expect(cat!.width).toBe(56);
+  expect(cap!.y).toBeLessThan(cat!.y + cat!.height);
+  expect(cap!.y + cap!.height).toBeGreaterThan(cat!.y + cat!.height);
+  expect(Math.abs(cat!.x + cat!.width / 2 - (cap!.x + cap!.width / 2))).toBeLessThan(1);
+  expect(hello!.y).toBeGreaterThan(cap!.y + cap!.height);
+  await expect(page.locator(".dbody .bav")).toHaveCount(0);
   await snap(page, "her-greeting");
   // Her's settings, beside the conversation: a new assistant asks before risky steps.
   await page.getByRole("button", { name: "助手设置", exact: true }).click();
@@ -247,7 +260,7 @@ test("Her: the first run, a chat, a secure card, the console, a second environme
   // keeps it, under the same line.
   await app.close();
   ({ app, page } = await launch(fixture.socket, { profile }));
-  await page.getByRole("button", { name: /^Her 助手/ }).click();
+  await page.locator(".side-nav").getByRole("button", { name: /^Her/ }).click();
   await expect(page.getByText(/^work-mac 离线 · .+在线$/)).toBeVisible({ timeout: 30_000 });
   await expect(page.getByRole("log", { name: "对话" })).toContainText("来自 work-mac");
   await snap(page, "her-offline-restarted");

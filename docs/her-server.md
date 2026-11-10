@@ -12,8 +12,8 @@ Linux machines the owner turns Her on for. Each Her Server is a
 self-contained **environment**, with its own **assistants**, conversations,
 model logins, connectors and skills, all managed in that environment's own
 web **console**. The Hermesh apps only converse. They have one entry, **Her**
-(Her 助手 in Chinese), where the owner picks an environment and talks with
-Her, the way one picks where a session runs in Claude: her holds more
+(so named in every language), where the owner picks an environment
+and talks with Her, the way one picks where a session runs in Claude: her holds more
 assistants, but the apps show Her alone for now (§9.1). Everything
 travels end to end through the **relay**, which only connects: it sees
 presence, names, versions and sealed bytes, never content.
@@ -57,7 +57,7 @@ The decisions:
 | Skill | A `SKILL.md` package installed on a Her Server | Skill (技能) |
 | Credential | A secret in a Her Server's credential store: the Keychain on macOS, `~/.her/credentials.toml` on Linux | |
 | Console | A server's web pages for managing it | "Manage this environment" |
-| Her entry | The apps' one place for Her: the conversation with Her, environment by environment | Her (Her 助手) |
+| Her entry | The apps' one place for Her: the conversation with Her, environment by environment | Her |
 | Tunnel | The end-to-end TLS connection from a trusted device to a machine, carried by the relay | |
 | Post office | The relay's store of sealed messages for whoever is offline, kept up to 30 days. Not used by Her yet (§5.5) | |
 | Notice | An event a machine seals to a phone's notice key; the relay hands it to Apple's push service ([iphone-app.md](iphone-app.md) §3) | A notification |
@@ -683,11 +683,14 @@ What the page has, for that one assistant:
 
 What changes, because Her may run on another computer than the app:
 
-- **Environments.** One at a time. The page's top bar holds Her's avatar
-  and name, and beside them, when there are two or more environments, the
-  environment shown as a quiet menu ("Her · Mac mini"): each environment
-  with whether it is online and its unread count, then Add Environment.
-  With a single environment no menu shows. The app remembers the last one.
+- **Environments.** One at a time. At the page's top, in the middle, is
+  Her's avatar, larger than a bar's, with its name on a capsule over the avatar's lower
+  edge, on the Mac as on the iPhone; the conversation scrolls under them.
+  On the Mac, when there are two or more environments, the capsule also
+  holds the environment shown as a quiet menu ("Her · Mac mini"): each
+  environment with whether it is online and its unread count, then Add
+  Environment. With a single environment no menu shows. The app remembers
+  the last one.
 - **Models.** Her picks only from the models its environment can already
   use. Adding a key or a login is in the console, and the model menu links
   there.
