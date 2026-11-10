@@ -1,7 +1,6 @@
 # Computer control: the owner's hands on a Her Server's Mac
 
-Status: design, 2026-11-10. Nothing is built. The gesture model (§6.1) is
-being chosen with an interactive demo; the rest is agreed.
+Status: design, agreed 2026-11-10. Nothing is built.
 
 ## 0. Summary
 
@@ -137,14 +136,15 @@ length-prefixed messages:
 
 | To the helper | From the helper |
 |---|---|
-| `start` (display, longest edge, frame rate) | `format` (size, parameter sets) |
+| `start` (display, longest edge, frame rate, pointer drawn or not) | `format` (size, parameter sets) |
 | `bitrate`, `keyframe` | `frame` (one access unit, capture time, key or not) |
 | `pointer`, `button`, `wheel`, `key`, `text` | `state` (locked, display asleep, permission missing) |
 | `stop` | |
 
-- **Capture**: ScreenCaptureKit, the main display, the pointer drawn into
-  the picture. Frames arrive only when the screen changes, so a still
-  screen costs nothing.
+- **Capture**: ScreenCaptureKit, the main display. The pointer is drawn
+  into the picture for direct touch and left out for trackpad mode, where
+  the phone draws its own (§6.1). Frames arrive only when the screen
+  changes, so a still screen costs nothing.
 - **Encode**: VideoToolbox, H.264, low-latency rate control, real time, no
   frame reordering, no periodic keyframes: a keyframe only at the start and
   when the receiver asks. If the encoder is still busy when a new frame
@@ -203,7 +203,8 @@ detour to the relay.
 
 ### 6.1 Gestures
 
-Two models are in the demo. The first version ships one.
+Two modes. **Direct touch is the default**; a pointer button in the bar
+switches to trackpad mode and back, and the app remembers the choice.
 
 | Gesture | Direct touch | Trackpad |
 |---|---|---|
@@ -217,8 +218,10 @@ Two models are in the demo. The first version ships one.
 
 Direct touch needs no learning and suits "look, tap a button, type a few
 words". It can't hover, so anything that appears only under the pointer is
-out of reach. Trackpad can, and hits small targets without zooming, with
-the pointer drawn on the phone so it moves with no delay.
+out of reach. Trackpad can, and hits small targets without zooming. Its
+pointer is drawn on the phone, so it moves with no delay; at first it is
+always a plain arrow, and the Mac's pointer shapes (the text bar, the
+hand) come later (§8, step 4).
 
 ### 6.2 Typing
 
@@ -230,7 +233,8 @@ key.
 ### 6.3 The page
 
 - Full screen, both orientations. The picture starts fitted to the screen.
-- One small bar: connection quality, keyboard, close. It can be collapsed.
+- One small bar: connection quality, the mode button, keyboard, close. It
+  can be collapsed.
 - Frames are shown with `AVSampleBufferDisplayLayer`, each marked to
   display at once.
 - The Go core hands frames to Swift, and takes input back, over a local
@@ -269,12 +273,13 @@ capture. If the delay misses the target, the design changes here.
   releases held keys.
 
 **Step 2: the iPhone side.** The receiver in the core, the local binary
-stream, the page, gestures, keyboard, the row in Her's settings.
+stream, the page, both gesture modes, keyboard, the row in Her's settings.
 
 - Test, in the Simulator against an owner Mac with the test source: open
   Computer Control from Her's settings, see the first frame, tap, and find
   a click at the matching position on the Mac side; type Chinese and find
-  the text.
+  the text; switch to trackpad mode, drag, tap, and find the click where
+  the pointer went.
 
 **Step 3: any network.** STUN and TURN in the relay, credentials, ICE
 restart when the network changes, reconnecting.
@@ -282,8 +287,8 @@ restart when the network changes, reconnecting.
 - Test: with direct paths blocked, the session still connects, through
   TURN; switching the phone's network mid-session keeps the picture.
 
-**Step 4: finish.** The pointer drawn on the phone, the second gesture
-model, a card in the conversation that opens the page when Her needs the
+**Step 4: finish.** The Mac's pointer shapes and position sent to the
+phone, a card in the conversation that opens the page when Her needs the
 owner or is working on the desktop, more than one display, the clipboard.
 
 ## 9. Not doing now
