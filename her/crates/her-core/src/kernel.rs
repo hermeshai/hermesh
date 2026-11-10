@@ -1039,14 +1039,14 @@ impl Kernel {
     }
 
     /// Her's conversation takes up a connector added after it started, which the owner just
-    /// connected on a card: its tools are there from the next turn on. False when the session
-    /// has no MCP servers to add to (MCP is turned off).
-    pub fn add_mcp_server(&self, server: her_protocol::McpServerConfig) -> bool {
-        let Some(mcp) = self.session.upgrade().and_then(|session| session.mcp.clone()) else {
-            return false;
-        };
-        mcp.add(server);
-        true
+    /// connected on a card: its tools are there from the next turn on. The future ends once it
+    /// has connected, or failed, or after the MCP startup wait: the turn the card's end wakes then
+    /// knows its tools. `None` when the session has no MCP servers to add to (MCP is turned off).
+    pub fn add_mcp_server(&self, server: her_protocol::McpServerConfig) -> Option<impl Future<Output = ()> + Send + 'static> {
+        let mcp = self.session.upgrade().and_then(|session| session.mcp.clone())?;
+        let server = mcp.add(server);
+        let deadline = std::time::Instant::now() + mcp.startup_wait();
+        Some(async move { server.wait_settled(deadline).await })
     }
 
     /// Stops a routine's run. False when none of that id is under way.

@@ -248,8 +248,9 @@ impl Server {
         }
     }
 
-    /// Her's conversation takes up the connector as the configuration has it now, so that the turn
-    /// the card's end wakes can use it.
+    /// Her's conversation takes up the connector as the configuration has it now, and connects
+    /// it, so that the turn the card's end wakes knows its tools: one it does not know yet would
+    /// wait for the owner's approval.
     async fn add_to_conversation(&self, session: &str, connector: &str) {
         let Some(hub) = self.hub(session) else {
             return;
@@ -265,8 +266,10 @@ impl Server {
         .flatten();
         if let Some(config) = config {
             let (reply, added) = oneshot::channel();
-            if hub.send(HubCmd::AddMcpServer { server: Box::new(config), reply }).await.is_ok() {
-                let _ = added.await;
+            if hub.send(HubCmd::AddMcpServer { server: Box::new(config), reply }).await.is_ok()
+                && let Ok(Some(settled)) = added.await
+            {
+                settled.await;
             }
         }
     }
