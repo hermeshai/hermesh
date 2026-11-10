@@ -32,6 +32,10 @@ import (
 // To the app: KindVideo (a frame), KindState (a ScreenEvent), KindStatus
 // (screenStatus as JSON). From the app: KindInput and KindMove (an Input),
 // KindKeyframe (it can't show the frames it has).
+//
+// It is served to the iPhone app, which asks for Face ID first, and not on
+// a computer's local socket, where every program of the user's could open
+// another machine's screen.
 
 // screenStatus is the connection's state for the app: screen.Status, and
 // the reason once it failed.
@@ -89,6 +93,10 @@ func (o *Owner) screenServers(ctx context.Context) []*relayv1.IceServer {
 	}
 	return res.Servers
 }
+
+// ScreenHandler serves /screen/<machine_id>, for a caller that provides its
+// own listener and access control (the iPhone app's loopback server).
+func (d *Device) ScreenHandler() http.Handler { return http.HandlerFunc(d.serveScreen) }
 
 func (d *Device) serveScreen(w http.ResponseWriter, r *http.Request) {
 	machineID := strings.TrimPrefix(r.URL.Path, "/screen/")
