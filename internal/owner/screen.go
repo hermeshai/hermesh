@@ -14,6 +14,7 @@ import (
 	"connectrpc.com/connect"
 	"google.golang.org/protobuf/proto"
 
+	localv1 "github.com/hermeshai/hermesh/gen/go/hermesh/local/v1"
 	relayv1 "github.com/hermeshai/hermesh/gen/go/hermesh/relay/v1"
 	screenv1 "github.com/hermeshai/hermesh/gen/go/hermesh/screen/v1"
 	"github.com/hermeshai/hermesh/internal/screen"
@@ -57,6 +58,20 @@ func (o *Owner) screenConnect(machineID string) func(context.Context, *screenv1.
 		}
 		return res, err
 	}
+}
+
+// StopScreen ends the Computer Control session on this computer's own
+// machine, if it has one and a session is under way.
+func (l *localService) StopScreen(context.Context, *localv1.StopScreenRequest) (*localv1.StopScreenResponse, error) {
+	o := l.o()
+	m, _, _ := o.onlyMachine()
+	if m == nil {
+		m = o.local()
+	}
+	if m != nil {
+		m.StopScreen()
+	}
+	return &localv1.StopScreenResponse{}, nil
 }
 
 // screenServers are the relay's STUN and TURN servers; none when it runs

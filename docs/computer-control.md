@@ -1,6 +1,8 @@
 # Computer control: the owner's hands on a Her Server's Mac
 
-Status: design, agreed 2026-11-10. Nothing is built.
+Status: agreed 2026-11-10. Steps 1 to 3 of §8 are built: the Mac side, the
+iPhone side and the relay's STUN and TURN. Step 0's questions about the
+real screen (§10) and step 4 are open.
 
 ## 0. Summary
 
@@ -101,30 +103,39 @@ sequenceDiagram
     participant R as Relay
     participant D as hermeshd
     participant H as hermesh-screen
-    P->>D: ScreenService.Connect, through the tunnel
-    D->>H: start, first display
-    D-->>P: offer, with the picture's size
-    P-->>D: answer
-    P-->>D: candidates
-    D-->>P: candidates
+    P->>R: GetScreenServers
+    Note over P: gathers its candidates
+    P->>D: ScreenService.Connect with the offer, through the tunnel
+    D->>R: GetScreenServers
+    D->>H: start
+    Note over D: gathers its candidates
+    D-->>P: the answer
     Note over P,D: connectivity checks, direct first
     D->>P: video, RTP over UDP
     P->>D: input, data channels
     Note over P,R: a path through TURN is used only if no direct one works
 ```
 
+- **One call each way.** The phone gathers all its candidates, then sends
+  its offer in `ScreenService.Connect`; the Mac gathers its own and
+  answers. Nothing is trickled, so there is no stream to keep open, and a
+  session lasts as long as the connection between the two does. A viewer
+  that never arrives is given up on after 20 seconds.
 - **Candidates**: local addresses (same Wi-Fi), IPv6 addresses, addresses
   seen by the relay's STUN, and the relay's TURN address. ICE picks the
-  best that works and moves to another when the network changes
-  (ICE restart; the handshake stream stays open for it).
+  best that works. When the phone's network changes it sends a new offer
+  for the same session (`session_id`), which restarts ICE.
 - **Trust**: the DTLS fingerprints travel in the offer and answer, inside
   the tunnel, which is already pinned to the owner's root chain. A relay
   that forwards the packets sees SRTP and DTLS, nothing else.
-- **TURN credentials** are short-lived and given by the relay only to
-  admitted devices and machines, over their existing connection.
-- **One controller at a time** per Mac. A second `Connect` ends the first.
-- Every message, frame and input event carries the session's number.
-  Anything from an earlier session is dropped.
+- **TURN credentials** last an hour and are given by the relay only to
+  admitted devices and machines, over their existing connection
+  (`GetScreenServers`).
+- **One controller at a time** per Mac. A second `Connect` ends the first,
+  which is told so.
+- The offer asks for one video track and opens two data channels: `input`
+  (ordered, reliable: `Input` from the phone, `ScreenEvent` from the Mac)
+  and `pointer` (unordered, nothing sent twice: pointer moves).
 
 ## 4. On the Mac
 
@@ -136,10 +147,10 @@ length-prefixed messages:
 
 | To the helper | From the helper |
 |---|---|
-| `start` (display, longest edge, frame rate, pointer drawn or not) | `format` (size, parameter sets) |
-| `bitrate`, `keyframe` | `frame` (one access unit, capture time, key or not) |
-| `pointer`, `button`, `wheel`, `key`, `text` | `state` (locked, display asleep, permission missing) |
-| `stop` | |
+| `start` (longest edge, frame rate, bitrate, pointer drawn or not) | `format` (the picture's size) |
+| `bitrate`, `keyframe` | `video` (one frame as Annex B, capture time, key or not) |
+| `input` (a move, a button, the wheel, a key, text) | `state` (why there is no picture; whether input can be posted) |
+| `pointer` (drawn or not, from now on) | `log` |
 
 - **Capture**: ScreenCaptureKit, the main display. The pointer is drawn
   into the picture for direct touch and left out for trackpad mode, where
@@ -153,8 +164,11 @@ length-prefixed messages:
 - **Input**: CGEvent. Positions arrive as fractions of the display, so they
   don't depend on the encoded size. `text` is typed as Unicode, whatever
   input source the Mac has selected.
-- **Leaving clean**: on `stop`, and when stdin closes for any reason, the
-  helper releases every key and button it holds down and exits.
+- **Keyframes on request**: the helper keeps the last picture, so a
+  keyframe asked for while the screen is still is made from it.
+- **Leaving clean**: when stdin closes, for any reason, the helper releases
+  every button it holds down and exits. Keys are pressed and released in
+  one step, so none is ever held.
 - **Awake**: a session wakes the display and keeps it awake while it lasts.
 
 ### 4.2 Permissions
@@ -179,8 +193,13 @@ of it.
   MCP clients can't reach it.
 - The device key is enough, as for Her's full access; the phone asks for
   Face ID each time the page opens.
-- While a session lasts, the menu bar item says which device is in control
-  and offers Stop. macOS shows its own screen-recording mark too.
+- While a session lasts, the Mac app's menu bar panel says which device is
+  in control and offers Stop (`LocalService.StopScreen`). macOS shows its
+  own screen-recording mark too.
+- Each new session is a record in the machine's audit log, with the
+  device's name.
+- Without Accessibility the picture still comes: the owner can watch, and
+  the page says what to turn on to control.
 
 ## 5. Not lagging
 
@@ -233,59 +252,83 @@ key.
 ### 6.3 The page
 
 - Full screen, both orientations. The picture starts fitted to the screen.
-- One small bar: connection quality, the mode button, keyboard, close. It
-  can be collapsed.
+- One small bar: connection quality (the round trip, and "Relayed" when
+  the packets go through the relay), the mode button, keyboard, close.
 - Frames are shown with `AVSampleBufferDisplayLayer`, each marked to
   display at once.
 - The Go core hands frames to Swift, and takes input back, over a local
-  binary stream. Today's JSON stream is too costly for video.
-- Leaving the page or the app closes the session.
+  binary stream: the app opens `/screen/<machine_id>` beside LocalService
+  and the connection becomes messages both ways (internal/owner/screen.go).
+- When the decoder loses its place (the app was away), the app asks for a
+  keyframe through the core.
+- Leaving the page closes the session. In the background it ends, and it
+  opens again when the app is back in front with the page still up.
 
 ## 7. In the relay
 
-- A STUN responder and a TURN server ([pion/turn](https://github.com/pion/turn))
-  inside `hermesh-relay`, on one UDP port, with TCP as a fallback. A
-  self-hosted relay publishes that port beside 443.
-- TURN credentials come from the relay's control service, short-lived, to
-  admitted peers only.
-- The relay counts forwarded bytes, as it does for tunnels. It stores
-  nothing about a session.
+- A STUN and TURN server ([pion/turn](https://github.com/pion/turn))
+  inside `hermesh-relay`, on one port, UDP and TCP:
+  `--turn-listen :3478` (`HERMESH_RELAY_TURN_LISTEN`) turns it on, and
+  `--turn-host` (`HERMESH_RELAY_TURN_HOST`) names the address devices and
+  machines reach it by, the relay's own by default. A self-hosted relay
+  publishes that port beside 443:
+  `-p 3478:3478/udp -p 3478:3478/tcp -e HERMESH_RELAY_TURN_LISTEN=:3478`.
+- TURN credentials come from the relay's control services
+  (`GetScreenServers`), last an hour, and go to admitted devices and
+  machines only.
+- A relay on the internet forwards to public addresses only, and to its
+  own, where the two ends' packets meet: never into the network it runs in.
+- The relay counts the bytes that pass the port
+  (`hermesh_relay_turn_bytes_total`). It stores nothing about a session.
 - Without the port the feature still works wherever a direct path exists.
+- A relay on several nodes runs a TURN server on each, named by that
+  node's own address.
 
 ## 8. What we build
 
 Each step ends with an end-to-end test made from what a person does.
 
-**Step 0: a throwaway check, on one Wi-Fi.** Helper to pion to the iPhone,
-nothing else. Measure glass to glass with a millisecond clock on the Mac's
-screen. Find out: can the lock screen be typed into from the login
-session; does the helper get both permissions as hermeshd's child; does
-macOS's recurring screen-recording confirmation interrupt a running
-capture. If the delay misses the target, the design changes here.
+**Step 0: the real screen, on one Wi-Fi.** Measure glass to glass with a
+millisecond clock on the Mac's screen. Find out: can the lock screen be
+typed into from the login session; does macOS's recurring screen-recording
+confirmation interrupt a running capture. Not done yet: the tests below
+run against the helper's test picture, since capturing the real screen
+needs the two permissions for whatever starts hermeshd.
 
-**Step 1: the Mac side.** `hermesh-screen`, the sender in hermeshd,
-`ScreenService`, the `screen` state in `GetInfo`, the menu bar notice.
+**Step 1: the Mac side.** Built: `hermesh-screen` (apps/screen/macos), the
+sender (internal/screen), `ScreenService`, the `screen` state in the
+machine's status, the menu bar notice with Stop.
 
-- Test: the helper has a test source (a moving pattern that carries a
-  frame number) and can write the input it receives to a file instead of
-  posting it. Through a real relay, a Go receiver connects, sees frames
-  advance, sends a click and text, and finds them in the file. Closing
-  releases held keys.
+- `go test ./internal/screen`: the frames put back together in order
+  through loss and reordering; a session against the real helper, which
+  shows a test picture (`--test-source`) and writes the input it gets to a
+  file (`--input-log`) instead of posting it: frames from a keyframe on, a
+  keyframe on request, input, a new path on a live session, a second
+  viewer taking over, a viewer that never arrives, the helper gone at the
+  end.
 
-**Step 2: the iPhone side.** The receiver in the core, the local binary
-stream, the page, both gesture modes, keyboard, the row in Her's settings.
+**Step 2: the iPhone side.** Built: the receiver in the core, the local
+binary stream, the page, both gesture modes, the keyboard, the row in
+Her's settings.
 
-- Test, in the Simulator against an owner Mac with the test source: open
-  Computer Control from Her's settings, see the first frame, tap, and find
-  a click at the matching position on the Mac side; type Chinese and find
-  the text; switch to trackpad mode, drag, tap, and find the click where
-  the pointer went.
+- `go test ./e2e -run TestScreen`: an iPhone's core, joined as a trusted
+  device, opens the Mac's screen through a relay; the Mac's app sees who
+  is in control and stops it, and the phone is told.
+- `HERMESH_IPHONE_E2E=1 HERMESH_IPHONE_GREP=testComputerControl go test
+  ./e2e -run TestIPhone`: in the Simulator, the row in Her's settings
+  opens the page, the picture comes, a tap clicks where it lands and a
+  long press is the right button, the keyboard types Chinese, esc and
+  Command-C, trackpad mode clicks where its pointer went, the page turns
+  with the phone, Close ends it.
 
-**Step 3: any network.** STUN and TURN in the relay, credentials, ICE
-restart when the network changes, reconnecting.
+**Step 3: any network.** Built: STUN and TURN in the relay, credentials,
+ICE restart when the path breaks.
 
-- Test: with direct paths blocked, the session still connects, through
-  TURN; switching the phone's network mid-session keeps the picture.
+- `go test ./e2e -run TestScreenThroughTURN`: with the phone taking no
+  direct path, the session connects through the relay's TURN server and
+  says it is relayed.
+- Not tested end to end: a phone that changes networks mid-session (the
+  restart itself is, in internal/screen).
 
 **Step 4: finish.** The Mac's pointer shapes and position sent to the
 phone, a card in the conversation that opens the page when Her needs the
@@ -312,6 +355,9 @@ owner or is working on the desktop, more than one display, the clipboard.
   answer may be Apple's persistent content capture entitlement.
 - Whether pion's receiver holds up on a poor network, or the iPhone side
   should use libwebrtc.
+- The hosted relay: opening the port and naming each node's TURN address.
+- A limit on what one owner may send through TURN.
+- The menu bar notice has no test that drives the Mac app.
 - Where a second TURN node should be, once the detour through the first
   one is measured.
 

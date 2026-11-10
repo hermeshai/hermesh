@@ -19,6 +19,7 @@ is never a machine: nothing runs on it, and it hosts no agent.
 | Grants | Agents and MCP connections: approve, renew, rename, disconnect, pause; each grant's sessions on a page of their own |
 | Machines | The machines, a green shield on those that are trusted devices too, then the other trusted devices (which approve but run nothing; remove one with a swipe), each machine opening its page: its coding agents (signed in, projects, defaults), projects no installed agent may use, taking no new sessions, its sessions, rename, remove. A coding agent opens its own page: signing in, the default model, reasoning effort and (Codex) speed as menus in place, and its projects, each with a menu to change how agents work there or stop using it; Add a Project… for this agent. Three levels at most |
 | Account | Laid out as iOS Settings: the service and whether it is reached; usage in place (the last 30 days, active days, streak, the weeks of days); appearance as three small phones (the system's, light, dark); Notifications on a page of their own; about (on an own server the connection address and, when it serves MCP, its MCP address, each copied with a tap; the web console; the version); sign out |
+| Computer Control | From Her's settings, on a Mac that runs her: that Mac's screen, full screen, operated by touch, after Face ID ([computer-control.md](computer-control.md) §6) |
 | New | The Overview's top right: Connect an Agent…, Add a Machine…, Enter a Pairing Code… |
 
 Navigation is a side menu that slides in from the left (a drag anywhere on a
@@ -222,6 +223,8 @@ as the Mac signer does (docs/desktop-app.md §6.6).
   diff, approves and renews an agent, visits a machine and the devices,
   searches, and answers a notification delivered with `simctl push`.
   `HERMESH_IPHONE_RESULTS=<path>.xcresult` keeps the result bundle.
+  `HERMESH_IPHONE_GREP=testComputerControl` runs Computer Control alone,
+  against the Mac's screen helper showing its test picture.
 
 ## 6. Installing on an iPhone
 

@@ -5,6 +5,7 @@ import glyph1x from "../../resources/menuBarIconTemplate.png?inline";
 import glyph2x from "../../resources/menuBarIconTemplate@2x.png?inline";
 import type { TrayAction, TrayView } from "../shared/bridge";
 import { i18n } from "../shared/i18n";
+import { stopScreen } from "./her";
 import { command } from "./ipc";
 import { preferences, world, worldListeners } from "./notify";
 import { platform } from "./platform";
@@ -12,8 +13,9 @@ import { install, updateInfo, updateListeners } from "./updater";
 import { ours, showMain, showSettings, trayPanel } from "./windows";
 
 // The menu bar extra: a panel under the icon with how many sessions need the
-// owner and how many run, whether agents can reach this Mac, settings and
-// quit, also while no window is open. On Windows the same panel opens above
+// owner and how many run, whether agents can reach this Mac, which of the
+// owner's devices operates its screen (Computer Control) with a button to
+// stop it, settings and quit, also while no window is open. On Windows the same panel opens above
 // the notification area's icon, and a right click opens a short menu
 // (docs/windows.md §5.2).
 
@@ -98,6 +100,7 @@ function view(): TrayView {
     attention: attention().length + world.pairings.length,
     running: running().length,
     update: u.state === "ready" ? u.version : "",
+    control: world.machines.find((m) => m.local)?.status?.screen?.viewer ?? "",
   };
 }
 
@@ -162,6 +165,7 @@ function act(a: TrayAction) {
   if (a === "open") return showMain();
   if (a === "settings") return showSettings();
   if (a === "install") return install();
+  if (a === "stopControl") return void stopScreen().catch(() => {});
   if (a === "quit") return app.quit();
 }
 

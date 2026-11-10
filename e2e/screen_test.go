@@ -96,6 +96,22 @@ func (s *screenStream) live(t *testing.T) string {
 	return path
 }
 
+// ended reads the stream until the session has ended, and returns why.
+func (s *screenStream) ended(t *testing.T) string {
+	t.Helper()
+	s.conn.SetReadDeadline(time.Now().Add(30 * time.Second))
+	for {
+		k, p, err := screenrtc.ReadMessage(s.r)
+		if err != nil {
+			t.Fatalf("the stream closed with no reason given: %v", err)
+		}
+		var status struct{ Phase, Error string }
+		if k == screenrtc.KindStatus && json.Unmarshal(p, &status) == nil && status.Phase == "failed" {
+			return status.Error
+		}
+	}
+}
+
 // screenMachine waits until the phone sees a machine that can show its
 // screen, and returns its id.
 func screenMachine(t *testing.T, m *mobileCore) string {
@@ -139,6 +155,17 @@ func TestScreenThroughTURN(t *testing.T) {
 	if path := s.live(t); path != "relay" {
 		t.Fatalf("path: %q, want relay", path)
 	}
+	// The app leaves: the session ends on the Mac.
+	viewer := func() string {
+		res, err := w.app.client.ListMachines(ctx, &localv1.ListMachinesRequest{})
+		if err != nil || len(res.Machines) != 1 {
+			return "?"
+		}
+		return res.Machines[0].Status.GetScreen().GetViewer()
+	}
+	eventually(t, 30*time.Second, "the Mac's app sees who is in control", func() bool { return viewer() == "test-iphone" })
+	s.conn.Close()
+	eventually(t, 30*time.Second, "the session ended on the Mac", func() bool { return viewer() == "" })
 }
 
 // Computer Control end to end, but for the app's page: an iPhone's core,
@@ -199,8 +226,16 @@ func TestScreen(t *testing.T) {
 		return strings.Contains(string(b), `"down":true`) && strings.Contains(string(b), "你好")
 	})
 	eventually(t, 30*time.Second, "the Mac says who is in control", func() bool { v, _ := viewer(); return v == "test-iphone" })
-
-	// The app leaves: the session ends on the Mac.
-	s.conn.Close()
-	eventually(t, 30*time.Second, "the session ended on the Mac", func() bool { v, ok := viewer(); return ok && v == "" })
+	// The Mac's own app sees it too (its menu bar names the device), and stops it there: the phone is told why.
+	eventually(t, 30*time.Second, "the Mac's app sees who is in control", func() bool {
+		res, err := w.app.client.ListMachines(ctx, &localv1.ListMachinesRequest{})
+		return err == nil && len(res.Machines) == 1 && res.Machines[0].Local && res.Machines[0].Status.GetScreen().GetViewer() == "test-iphone"
+	})
+	if _, err := w.app.client.StopScreen(ctx, &localv1.StopScreenRequest{}); err != nil {
+		t.Fatal(err)
+	}
+	if why := s.ended(t); why != "the machine ended the session" {
+		t.Errorf("the phone was told %q", why)
+	}
+	eventually(t, 30*time.Second, "nobody in control", func() bool { v, ok := viewer(); return ok && v == "" })
 }
