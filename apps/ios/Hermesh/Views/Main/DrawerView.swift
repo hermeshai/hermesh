@@ -7,30 +7,55 @@ import SwiftUI
 /// and at the bottom the account, its picture alone.
 struct DrawerView: View {
     @Environment(AppModel.self) private var model
-    let width: CGFloat
     /// The size of the menu's buttons: the system's toolbar buttons, and the
     /// smallest target the HIG asks for.
     private let button: CGFloat = 44
 
+    /// Where the system stands the bars on the side (iPhone Duo closed), the menu takes the page's place and the
+    /// bar is the menu's: Close at its top, where the page has the menu button, then Search.
+    @Environment(\.barsOnTheSide) private var sideBars
+
     var body: some View {
+        if sideBars {
+            NavigationStack {
+                menu.toolbar {
+                    ToolbarItem(placement: .cancellationAction) {
+                        Button("Close the menu", systemImage: "xmark") { model.drawerOpen = false }
+                            .accessibilityIdentifier("menu-close")
+                    }
+                    ToolbarItem(placement: .topBarTrailing) {
+                        Button("Search", systemImage: "magnifyingglass") { model.sheet = .search }
+                            .accessibilityIdentifier("search")
+                    }
+                }
+            }
+        } else {
+            menu
+        }
+    }
+
+    private var menu: some View {
         ZStack(alignment: .bottom) {
             ScrollView {
                 VStack(alignment: .leading, spacing: 2) {
                     HStack {
                         Wordmark()
                         Spacer()
-                        Button {
-                            model.sheet = .search
-                        } label: {
-                            // The button's size itself: the .glass button style pads its label.
-                            Image(systemName: "magnifyingglass").font(.body.weight(.medium)).frame(width: button, height: button)
-                                .glassEffect(.regular.interactive(), in: .circle)
-                                .contentShape(.circle)
+                        if !sideBars {
+                            Button {
+                                model.sheet = .search
+                            } label: {
+                                // The button's size itself: the .glass button style pads its label.
+                                Image(systemName: "magnifyingglass").font(.body.weight(.medium)).frame(width: button, height: button)
+                                    .glassEffect(.regular.interactive(), in: .circle)
+                                    .contentShape(.circle)
+                            }
+                            .buttonStyle(.plain)
+                            .accessibilityLabel("Search")
+                            .accessibilityIdentifier("search")
                         }
-                        .buttonStyle(.plain)
-                        .accessibilityLabel("Search")
-                        .accessibilityIdentifier("search")
                     }
+                    .frame(minHeight: button)
                     .padding(.leading, 24).padding(.trailing, 16).padding(.bottom, 14)
                     places
                     lists
@@ -41,8 +66,7 @@ struct DrawerView: View {
             .scrollIndicators(.hidden)
             bottomBar
         }
-        .frame(width: width)
-        .frame(maxHeight: .infinity)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(Color(.menuBackground))
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("drawer")
@@ -160,7 +184,7 @@ struct DrawerView: View {
     private func row(_ title: String, running: Bool = false, @ViewBuilder mark: () -> some View) -> some View {
         HStack(spacing: 12) {
             Group {
-                if running { ShimmerText(title, paused: !model.drawerOpen) } else { Text(title) }
+                if running { ShimmerText(title, paused: !model.drawerOpen && !model.menuBeside) } else { Text(title) }
             }
             .lineLimit(1).frame(maxWidth: .infinity, alignment: .leading)
             mark().frame(width: 18)

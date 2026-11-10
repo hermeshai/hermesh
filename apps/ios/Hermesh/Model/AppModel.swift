@@ -180,6 +180,8 @@ final class AppModel {
     /// The root page scrolled far enough that its title is small.
     var rootTitleSmall = false
     var drawerOpen = false
+    /// The menu stands beside the page (regular width), always in view: no button opens it.
+    var menuBeside = false
     var sheet: SheetKind?
     /// How the session list is laid out, whether it shows archived sessions,
     /// and its collapsed sections ("grouping:key"); kept on this iPhone.
