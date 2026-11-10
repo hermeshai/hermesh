@@ -247,7 +247,7 @@ test("a growing conversation follows its end; scrolled up it stays put until the
     await expect(page.locator(`.vrow[data-step-key="${key}"] .md-table-tools`).first().locator("button")).toHaveCount(2);
     // Up while it grows: it stays where the person went, and the way back shows.
     await wheel(-240, 6);
-    await page.waitForTimeout(300);
+    await settle(); // a slow runner may scroll by the last tick later
     const away = await scrollTop();
     await page.waitForTimeout(3000);
     expect(await below()).toBeGreaterThan(240);
