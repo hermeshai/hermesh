@@ -1,0 +1,54 @@
+<!doctype html>
+<!-- The page the iPhone app draws Mermaid diagrams on, off screen (Views/Session/Diagram.swift):
+     the desktop app's Mermaid and its settings (session/markdown/mermaid-render.ts), so a diagram
+     looks the same on both. It loads nothing but the script beside it. -->
+<html>
+<head>
+<meta charset="utf-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' 'unsafe-inline'; style-src 'unsafe-inline'">
+<style>
+  html, body { margin: 0; padding: 0; }
+  svg { display: block; }
+  .node rect, .node polygon, .node circle, .node path { filter: none !important; }
+  .node rect { rx: 8px; ry: 8px; }
+</style>
+<script src="mermaid.min.js"></script>
+</head>
+<body>
+<div id="out"></div>
+<script>
+  let serial = 0;
+  // Draws a diagram at its own size and says how large it is.
+  async function draw(source, dark) {
+    mermaid.initialize({
+      startOnLoad: false, securityLevel: "strict", suppressErrorRendering: true,
+      theme: "base", maxTextSize: 20000, maxEdges: 400,
+      htmlLabels: false, fontFamily: 'system-ui, "PingFang SC", sans-serif',
+      themeVariables: {
+        darkMode: dark, background: dark ? "#18181B" : "#FFFFFF",
+        primaryColor: dark ? "#232833" : "#F6F7FA", primaryTextColor: dark ? "#E8ECF4" : "#0B1633",
+        primaryBorderColor: dark ? "#7AB0FF" : "#1A5CE6", lineColor: dark ? "#9AA3B5" : "#626775",
+        secondaryColor: dark ? "#29292D" : "#F4F4F7", tertiaryColor: dark ? "#323237" : "#EBEBF0",
+        fontSize: "14px", edgeLabelBackground: dark ? "#18181B" : "#FFFFFF",
+      },
+      flowchart: { htmlLabels: false, useMaxWidth: false, padding: 16 },
+      sequence: { useMaxWidth: false },
+    });
+    const { svg } = await mermaid.render(`hermesh-diagram-${++serial}`, source);
+    const out = document.getElementById("out");
+    document.body.style.background = dark ? "#18181B" : "#FFFFFF";
+    out.innerHTML = svg;
+    const drawn = out.firstElementChild;
+    // Some kinds of diagram come as wide as the page: give each the size it was drawn at.
+    const box = drawn.viewBox.baseVal;
+    if (box && box.width > 0 && box.height > 0) {
+      drawn.setAttribute("width", box.width);
+      drawn.setAttribute("height", box.height);
+      drawn.style.maxWidth = "none";
+    }
+    const size = drawn.getBoundingClientRect();
+    return { width: Math.ceil(size.width), height: Math.ceil(size.height) };
+  }
+</script>
+</body>
+</html>

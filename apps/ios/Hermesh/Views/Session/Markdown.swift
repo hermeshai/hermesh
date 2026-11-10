@@ -33,7 +33,7 @@ struct DraftMarkdownText: View {
                 MarkdownBlocks(blocks: parsed(b), style: .reply)
             }
             if !last.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                MarkdownBlocks(blocks: parsed(last), style: .reply)
+                MarkdownBlocks(blocks: parsed(last), style: .reply, draft: true)
             }
         }
     }
@@ -48,11 +48,14 @@ struct MarkdownStyle {
     var gap: CGFloat
     /// What a fenced block is set on.
     var codeGround = Palette.code
+    /// The sizes of `font` and `table`, for math set beside them.
+    var size = UIFont.TextStyle.body
+    var tableSize = UIFont.TextStyle.subheadline
 
     static let reply = MarkdownStyle(font: .body, code: .subheadline.monospaced(), table: .subheadline, gap: 12)
     /// In Her's bubble, as on the Mac: blocks closer, and code on the page's own ground so it stands out from the bubble.
     static let bubble = MarkdownStyle(font: .body, code: .subheadline.monospaced(), table: .subheadline, gap: 9, codeGround: Color(.systemBackground))
-    static let small = MarkdownStyle(font: .subheadline, code: .footnote.monospaced(), table: .footnote, gap: 9)
+    static let small = MarkdownStyle(font: .subheadline, code: .footnote.monospaced(), table: .footnote, gap: 9, size: .subheadline, tableSize: .footnote)
 }
 
 // MARK: Blocks
@@ -65,6 +68,10 @@ indirect enum MarkdownBlock {
     case quote([MarkdownBlock])
     case table(head: [AttributedString], rows: [[AttributedString]])
     case rule
+    /// Math set apart from the text: its TeX.
+    case math(String)
+    /// A Mermaid diagram: its source.
+    case diagram(String)
 }
 
 struct MarkdownItem {
@@ -78,7 +85,9 @@ struct MarkdownItem {
 
 @MainActor private func parsed(_ text: String) -> [MarkdownBlock] {
     if let hit = parsedReplies[text] { return hit }
-    let blocks = Array(Document(parsing: text).blockChildren.compactMap(block))
+    // Math comes out of the source before Markdown reads it, and goes back in after (HermeshSessions' Math.swift).
+    let lifted = liftMath(text)
+    let blocks = Array(Document(parsing: lifted.text).blockChildren.compactMap(block)).flatMap { withMath($0, lifted.spans) }
     if parsedReplies.count > 400 { parsedReplies.removeAll() }
     parsedReplies[text] = blocks
     return blocks
@@ -98,6 +107,78 @@ private func block(_ m: Markup) -> MarkdownBlock? {
     case let h as HTMLBlock: return .paragraph(AttributedString(h.rawHTML.trimmingCharacters(in: .newlines)))
     default: return nil
     }
+}
+
+/// A block with its math and diagrams in place: the marks `liftMath` left become runs that carry
+/// their TeX, math set apart leaves its paragraph for a block of its own, and a fenced block of
+/// math or Mermaid becomes one. Code keeps what was written.
+private func withMath(_ block: MarkdownBlock, _ spans: [MathSpan]) -> [MarkdownBlock] {
+    switch block {
+    case .paragraph(let s):
+        let text = withMath(s, spans)
+        guard text.runs.contains(where: { $0[MathAttribute.self]?.display == true }) else { return [.paragraph(text)] }
+        var out: [MarkdownBlock] = []
+        var from = text.startIndex
+        func flush(_ to: AttributedString.Index) {
+            let part = trimmed(text[from..<to])
+            if !part.characters.isEmpty { out.append(.paragraph(part)) }
+        }
+        for run in text.runs {
+            guard let span = run[MathAttribute.self], span.display else { continue }
+            flush(run.range.lowerBound)
+            out.append(.math(span.tex))
+            from = run.range.upperBound
+        }
+        flush(text.endIndex)
+        return out
+    case .heading(let level, let s): return [.heading(level: level, withMath(s, spans))]
+    case .list(let ordered, let start, let items):
+        return [.list(ordered: ordered, start: start, items: items.map { MarkdownItem(checked: $0.checked, blocks: $0.blocks.flatMap { withMath($0, spans) }) })]
+    case .code(let lang, let text):
+        let source = loweringMath(text, spans)
+        switch lang.lowercased() {
+        case "mermaid": return [.diagram(source)]
+        case "math": return [source.count <= maxMathLength ? .math(source) : .code(lang: "latex", text: source)]
+        default: return [.code(lang: lang, text: source)]
+        }
+    case .quote(let blocks): return [.quote(blocks.flatMap { withMath($0, spans) })]
+    case .table(let head, let rows): return [.table(head: head.map { withMath($0, spans) }, rows: rows.map { $0.map { withMath($0, spans) } })]
+    case .rule, .math, .diagram: return [block]
+    }
+}
+
+private func withMath(_ text: AttributedString, _ spans: [MathSpan]) -> AttributedString {
+    let pieces = mathPieces(String(text.characters))
+    guard pieces.contains(where: { if case .math = $0 { true } else { false } }) else { return text }
+    var out = AttributedString()
+    var at = text.startIndex
+    for piece in pieces {
+        switch piece {
+        case .text(let s):
+            let to = text.characters.index(at, offsetBy: s.count)
+            out += AttributedString(text[at..<to])
+            at = to
+        case .math(let n):
+            // The mark: its two ends and its number.
+            let to = text.characters.index(at, offsetBy: String(n).count + 2)
+            if spans.indices.contains(n) {
+                var math = AttributedString(spans[n].tex)
+                math[MathAttribute.self] = spans[n]
+                out += math
+            }
+            at = to
+        }
+    }
+    return out
+}
+
+/// Text without the line ends and spaces around it.
+private func trimmed(_ text: AttributedSubstring) -> AttributedString {
+    var from = text.startIndex
+    var to = text.endIndex
+    while from < to, text.characters[from].isWhitespace { from = text.characters.index(after: from) }
+    while from < to, text.characters[text.characters.index(before: to)].isWhitespace { to = text.characters.index(before: to) }
+    return AttributedString(text[from..<to])
 }
 
 private func item(_ i: ListItem) -> MarkdownItem {
@@ -176,6 +257,8 @@ private struct MarkdownBlocks: View {
     let blocks: [MarkdownBlock]
     let style: MarkdownStyle
     var lazy = false
+    /// Still being written: a diagram waits as its source until it is whole.
+    var draft = false
 
     var body: some View {
         if lazy {
@@ -188,7 +271,7 @@ private struct MarkdownBlocks: View {
     private var rows: some View {
         ForEach(Array(blocks.enumerated()), id: \.offset) { i, b in
             // A heading after other blocks starts a part: more room above it, as on the Mac.
-            BlockView(block: b, style: style).padding(.top, i > 0 && b.isHeading ? 8 : 0)
+            BlockView(block: b, style: style, draft: draft).padding(.top, i > 0 && b.isHeading ? 8 : 0)
         }
     }
 }
@@ -200,13 +283,16 @@ private extension MarkdownBlock {
 private struct BlockView: View {
     let block: MarkdownBlock
     let style: MarkdownStyle
+    var draft = false
+    /// Math is drawn at the text's size, so it is drawn again when that changes.
+    @Environment(\.dynamicTypeSize) private var typeSize
 
     var body: some View {
         switch block {
         case .paragraph(let s):
-            Text(styled(s)).font(style.font).lineSpacing(3).fixedSize(horizontal: false, vertical: true)
+            text(s, style.size).font(style.font).lineSpacing(3).fixedSize(horizontal: false, vertical: true)
         case .heading(let level, let s):
-            Text(styled(s)).font(level == 1 ? .title3.weight(.semibold) : .headline).fixedSize(horizontal: false, vertical: true)
+            text(s, level == 1 ? .title3 : .headline).font(level == 1 ? .title3.weight(.semibold) : .headline).fixedSize(horizontal: false, vertical: true)
                 .accessibilityAddTraits(.isHeader)
         case .list(let ordered, let start, let items):
             VStack(alignment: .leading, spacing: 4) {
@@ -214,7 +300,7 @@ private struct BlockView: View {
                     HStack(alignment: .firstTextBaseline, spacing: 6) {
                         marker(ordered ? "\(start + i)." : nil, checked: it.checked).frame(minWidth: 14, alignment: .leading)
                         VStack(alignment: .leading, spacing: 6) {
-                            ForEach(Array(it.blocks.enumerated()), id: \.offset) { _, b in BlockView(block: b, style: style) }
+                            ForEach(Array(it.blocks.enumerated()), id: \.offset) { _, b in BlockView(block: b, style: style, draft: draft) }
                         }
                     }
                 }
@@ -223,7 +309,7 @@ private struct BlockView: View {
         case .code(let lang, let text):
             FencedCode(text: text, lang: lang, font: style.code, ground: style.codeGround)
         case .quote(let blocks):
-            MarkdownBlocks(blocks: blocks, style: style)
+            MarkdownBlocks(blocks: blocks, style: style, draft: draft)
                 .foregroundStyle(.secondary)
                 .padding(.leading, 12)
                 .overlay(alignment: .leading) { Rectangle().fill(Palette.fill3).frame(width: 2) }
@@ -245,6 +331,25 @@ private struct BlockView: View {
             }
         case .rule:
             Rectangle().fill(Palette.separator).frame(height: 0.5)
+        case .math(let tex):
+            MathBlock(tex: tex, style: style)
+        case .diagram(let source):
+            if draft {
+                FencedCode(text: source, lang: "mermaid", font: style.code, ground: style.codeGround)
+            } else {
+                DiagramBlock(source: source, style: style)
+            }
+        }
+    }
+
+    /// A line of text: inline code in its face, math drawn at the size of the text beside it.
+    /// A picture in a line has no words of its own, so a line with math reads out with its TeX.
+    @ViewBuilder private func text(_ s: AttributedString, _ size: UIFont.TextStyle) -> some View {
+        let line = mathText(styled(s), size: MathSetter.size(size), code: style.code)
+        if s.runs.contains(where: { $0[MathAttribute.self] != nil }) {
+            line.accessibilityLabel(SwiftUI.Text(verbatim: String(s.characters)))
+        } else {
+            line
         }
     }
 
@@ -258,7 +363,7 @@ private struct BlockView: View {
 
     /// A cell of a table, a hairline under it but in the last row.
     private func cell(_ s: AttributedString, last: Bool) -> some View {
-        Text(styled(s)).lineSpacing(2).fixedSize(horizontal: false, vertical: true)
+        text(s, style.tableSize).lineSpacing(2).fixedSize(horizontal: false, vertical: true)
             .padding(.horizontal, 12).padding(.vertical, 7)
             .frame(maxWidth: 320, maxHeight: .infinity, alignment: .topLeading)
             .overlay(alignment: .bottom) { if !last { Rectangle().fill(Palette.separator).frame(height: 0.5) } }

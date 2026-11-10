@@ -2173,6 +2173,16 @@
         }
       }
     },
+    "Diagram": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "图形"
+          }
+        }
+      }
+    },
     "Did the work": {
       "localizations": {
         "zh-Hans": {
@@ -3192,6 +3202,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "它没有回复。"
+          }
+        }
+      }
+    },
+    "This diagram could not be drawn.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "此图无法绘制。"
           }
         }
       }
@@ -5498,6 +5518,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "出了点问题"
+          }
+        }
+      }
+    },
+    "Source": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "源码"
           }
         }
       }

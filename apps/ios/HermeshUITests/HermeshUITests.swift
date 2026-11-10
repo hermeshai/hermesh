@@ -172,6 +172,23 @@ final class HermeshUITests: XCTestCase {
         try waitFor("the code copied") { copyCode.label == "已拷贝" ? true : nil }
         try waitFor("ready to copy again", timeout: 5) { copyCode.label == "拷贝代码" ? true : nil }
         XCTAssertTrue(app.links["https://example.com"].exists, "a bare link, up to the Chinese text")
+        // Math typeset as on the Mac, in its line and set apart: never its TeX with the marks around it.
+        XCTAssertTrue(app.staticTexts["质能关系 E = mc^2 成立。"].exists, "math in the line, read out as its TeX")
+        XCTAssertEqual(app.descendants(matching: .any)["math-block"].firstMatch.label, "x^2 + y^2 = z^2", "math set apart")
+        // A Mermaid diagram drawn, its source a tap away, and opened large.
+        let diagram = app.descendants(matching: .any)["diagram-block"].firstMatch
+        let drawn = diagram.buttons["diagram-image"]
+        XCTAssertTrue(drawn.waitForExistence(timeout: 30), "the diagram drawn")
+        press(diagram.buttons["diagram-source"])
+        XCTAssertTrue(diagram.staticTexts.matching(NSPredicate(format: "label CONTAINS %@", "flowchart LR")).firstMatch.waitForExistence(timeout: 5), "its source")
+        XCTAssertFalse(drawn.exists)
+        press(diagram.buttons["diagram-source"])
+        XCTAssertTrue(drawn.waitForExistence(timeout: 5), "the diagram again")
+        press(drawn)
+        let large = app.descendants(matching: .any)["diagram-page"].firstMatch
+        XCTAssertTrue(large.waitForExistence(timeout: 5), "the diagram opened large")
+        press(app.buttons["完成"].firstMatch)
+        try waitFor("the diagram closed", timeout: 5) { large.exists ? nil : true }
         // Two commands in a row: one folded line, opened to a row each; a row opens to its whole output.
         let row = app.buttons.containing(NSPredicate(format: "label CONTAINS %@", "seq 1 3000")).firstMatch
         XCTAssertFalse(row.exists, "folded")
