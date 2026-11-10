@@ -193,10 +193,10 @@ async fn a_bot_talks_through_send_to_user_and_ends_its_turn() {
 
     // A bot's own prompt, and its tool.
     let system = &requests[0].system;
-    assert!(system.starts_with("You are 研究员, one of the user's bots in Hermesh."), "{system}");
+    assert!(system.starts_with("You are 研究员, the user's assistant."), "{system}");
     assert!(!system.contains("You are Her"));
     assert!(!system.contains("{{"), "every mark is filled in");
-    assert!(system.contains("Numbers and data:") && system.contains("Acting with care:"));
+    assert!(system.contains("Never make things up:") && system.contains("Acting with care:"));
     let names: Vec<&str> = requests[0].tools.iter().map(|t| t.name.as_str()).collect();
     assert_eq!(names, ["read", "write", "edit", "bash", "spawn_agent", "send_message", "send_to_user", "manage_routine", "tool_search", "call_tool"]);
     // Its sub-agents always work in the background: there is no waiting to choose
@@ -718,7 +718,7 @@ async fn a_new_name_is_told_once() {
     let count = |i: usize| requests[i].messages.iter().filter(|m| texts(m) == update).count();
     assert_eq!((count(0), count(1), count(2)), (0, 1, 1), "told at the second task, then kept");
     // The system prompt stays as it was.
-    assert!(requests[2].system.starts_with("You are Her, one of the user's bots"));
+    assert!(requests[2].system.starts_with("You are Her, the user's assistant"));
     let store = JsonlStore::new(h.home.sessions_dir());
     let (_, entries) = store.read(&SessionRef::Id(h.kernel.session_id().to_string())).unwrap();
     let names: Vec<&str> = entries
@@ -969,7 +969,7 @@ async fn until_told_in_log(h: &Harness) {
 
 /// What the bot's own requests were, not its agent's.
 fn bots_requests(h: &Harness) -> Vec<her_llm::Context> {
-    h.api.requests().into_iter().filter(|r| r.system.starts_with("You are Her, one of the user's bots")).collect()
+    h.api.requests().into_iter().filter(|r| r.system.starts_with("You are Her, the user's assistant")).collect()
 }
 
 const HEARD: &str = "<sent_to_user from=\"sales\">\n3 月的数据整月缺失，我先按其余 11 个月做。\n</sent_to_user>";
@@ -1161,7 +1161,7 @@ async fn a_new_bot_prompt_reaches_a_resumed_bot_once() {
     kernel.run(prompt("还在吗")).await.unwrap();
     kernel.shutdown().await;
     assert_eq!(prompts(), 1);
-    assert!(h.api.requests().last().unwrap().system.starts_with("You are Her, one of the user's bots"));
+    assert!(h.api.requests().last().unwrap().system.starts_with("You are Her, the user's assistant"));
 
     // A new one: the next request uses it, under the name in the header.
     let config = || Config {
@@ -1209,7 +1209,7 @@ async fn a_resumed_bot_keeps_send_to_user_and_learns_its_new_name() {
     assert_eq!(sent(&result.events), ["我叫运维。"]);
     let requests = h.api.requests();
     let last = requests.last().unwrap();
-    assert!(last.system.starts_with("You are Her, one of the user's bots"), "the logged prompt");
+    assert!(last.system.starts_with("You are Her, the user's assistant"), "the logged prompt");
     assert!(last.tools.iter().any(|t| t.name == "send_to_user"));
     let update = "<environment_update>\nyour name: 运维\n</environment_update>";
     assert!(last.messages.iter().any(|m| texts(m) == update));
