@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"os"
 	"runtime"
 
 	"connectrpc.com/connect"
@@ -67,6 +68,9 @@ func (n *Machine) setHer(on, erase bool) (string, error) {
 	}
 	n.mu.Lock()
 	n.herOn = on
+	if on {
+		n.herData = true
+	}
 	n.mu.Unlock()
 	if !on {
 		// Her's access to the owner's computers ends with her
@@ -81,6 +85,9 @@ func (n *Machine) setHer(on, erase bool) (string, error) {
 		if err := n.her.Erase(); err != nil {
 			return HerOff + ", but her data stays: " + err.Error(), nil
 		}
+		n.mu.Lock()
+		n.herData = false
+		n.mu.Unlock()
 		return HerErased, nil
 	}
 	if why := n.herUnsupported(); why != "" {
@@ -89,6 +96,43 @@ func (n *Machine) setHer(on, erase bool) (string, error) {
 	n.her.Start()
 	n.startHerLink()
 	return "Her is on", nil
+}
+
+// herHomeExists reports whether her home is there.
+func (n *Machine) herHomeExists() bool {
+	_, err := os.Stat(n.her.Home())
+	return err == nil
+}
+
+// HerData is where her data is on the machine in cfg (not running), when
+// Her was on there once and it is still there: for `hermeshd uninstall`
+// and `hermeshd erase` to ask whether it goes too.
+func HerData(cfg Config) (home string, ok bool, err error) {
+	n, err := Open(cfg)
+	if err != nil {
+		return "", false, err
+	}
+	defer n.Close()
+	n.mu.Lock()
+	ok = n.herData
+	n.mu.Unlock()
+	return n.her.Home(), ok, nil
+}
+
+// stopHerRemoved turns Her off, keeping her data, on a machine its owner
+// removed: no device can reach her any more (docs/her-server.md §5.6).
+func (n *Machine) stopHerRemoved() {
+	n.mu.Lock()
+	on := n.herOn
+	n.mu.Unlock()
+	if !on {
+		return
+	}
+	if _, err := n.setHer(false, false); err != nil {
+		n.log.Warn("Her not turned off on a removed machine", "err", err)
+		return
+	}
+	n.log.Info("Her is off: this machine is no longer its owner's; her data stays")
 }
 
 // EraseHer erases her data for Erase Everything (docs/erase-everything.md),
@@ -109,16 +153,17 @@ func EraseHer(cfg Config) error {
 // herStatus is HerStatus as hermeshd last saw her: never a request to her.
 func (n *Machine) herStatus() *machinev1.HerStatus {
 	n.mu.Lock()
-	on := n.herOn
+	on, data := n.herOn, n.herData
 	n.mu.Unlock()
 	if why := n.herUnsupported(); why != "" {
-		return &machinev1.HerStatus{Enabled: on, Unsupported: why}
+		return &machinev1.HerStatus{Enabled: on, Unsupported: why, Data: data}
 	}
 	st := n.her.Status()
 	st.Enabled = on
 	st.ClientPublicKey = n.herClientKey()
 	n.mu.Lock()
 	st.Mesh = n.mesh.grant != nil
+	st.Data = n.herData
 	n.mu.Unlock()
 	return st
 }

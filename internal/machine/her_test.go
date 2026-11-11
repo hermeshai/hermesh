@@ -113,30 +113,69 @@ func TestHerErased(t *testing.T) {
 	cfg := Config{DataDir: dir, Providers: map[string]provider.Provider{}}
 	mkHome()
 
-	// Never on here: Erase Everything leaves a her of the user's own.
+	// Never on here: Erase Everything leaves a her of the user's own, and
+	// the machine tells of no data of Her's.
 	if err := EraseHer(cfg); err != nil || gone() {
 		t.Fatalf("Her never on: %v, home gone %v", err, gone())
 	}
+	if h, ok, err := HerData(cfg); err != nil || ok || h != home {
+		t.Fatalf("HerData, Her never on: %q %v %v", h, ok, err)
+	}
 	n := openHerMachine(t, dir, "")
 	ctx := context.Background()
+	if n.Status().Her.Data {
+		t.Fatal("data of a Her never on")
+	}
 	if _, err := n.execAdmin(ctx, erase(true)); connect.CodeOf(err) != connect.CodeInvalidArgument || n.Status().Her.Enabled {
 		t.Fatalf("on with erase: %v", err)
 	}
 	if _, err := n.execAdmin(ctx, setHer(true)); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := n.execAdmin(ctx, setHer(false)); err != nil || gone() {
-		t.Fatalf("off: %v, home gone %v", err, gone())
+	if _, err := n.execAdmin(ctx, setHer(false)); err != nil || gone() || !n.Status().Her.Data {
+		t.Fatalf("off: %v, home gone %v, %v", err, gone(), n.Status().Her)
+	}
+	n.Close()
+	// Kept across a restart, and told to uninstall and erase.
+	if h, ok, err := HerData(cfg); err != nil || !ok || h != home {
+		t.Fatalf("HerData, her data kept: %q %v %v", h, ok, err)
+	}
+	n = openHerMachine(t, dir, "")
+	if !n.Status().Her.Data {
+		t.Fatal("her data kept, after a restart")
 	}
 	msg, err := n.execAdmin(ctx, erase(false))
-	if err != nil || msg != HerErased || !gone() || n.Status().Her.Enabled {
-		t.Fatalf("off with erase: %q %v, home gone %v", msg, err, gone())
+	if err != nil || msg != HerErased || !gone() || n.Status().Her.Enabled || n.Status().Her.Data {
+		t.Fatalf("off with erase: %q %v, home gone %v, %v", msg, err, gone(), n.Status().Her)
 	}
 	n.Close()
 
 	mkHome()
 	if err := EraseHer(cfg); err != nil || !gone() {
 		t.Fatalf("Her once on: %v, home gone %v", err, gone())
+	}
+}
+
+// A machine its owner removed turns Her off, her data staying.
+func TestHerOffOnARemovedMachine(t *testing.T) {
+	home := filepath.Join(t.TempDir(), "her")
+	t.Setenv("HER_HOME", home)
+	t.Setenv("HER_CREDENTIAL_STORE", "file")
+	os.MkdirAll(home, 0o700)
+	dir := t.TempDir()
+	n := openHerMachine(t, dir, "")
+	if _, err := n.execAdmin(context.Background(), setHer(true)); err != nil {
+		t.Fatal(err)
+	}
+	n.stopHerRemoved()
+	if st := n.Status().Her; st.Enabled || !st.Data {
+		t.Fatalf("removed: %v", st)
+	}
+	n.Close()
+	n = openHerMachine(t, dir, "")
+	defer n.Close()
+	if st := n.Status().Her; st.Enabled {
+		t.Fatalf("removed, after a restart: %v", st)
 	}
 }
 

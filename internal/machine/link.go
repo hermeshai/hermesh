@@ -40,6 +40,9 @@ func (n *Machine) runLink(ctx context.Context) {
 		n.refused = gone(err)
 		refused := n.refused
 		n.mu.Unlock()
+		if refused {
+			n.stopHerRemoved()
+		}
 		if refused && n.cfg.SelfErase && n.checkErase(ctx) {
 			n.mu.Lock()
 			n.erased = true

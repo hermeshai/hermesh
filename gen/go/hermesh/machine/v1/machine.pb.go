@@ -1243,7 +1243,11 @@ type HerStatus struct {
 	ClientPublicKey []byte `protobuf:"bytes,9,opt,name=client_public_key,json=clientPublicKey,proto3" json:"client_public_key,omitempty"`
 	// Her holds a grant this machine accepts: she can use the owner's
 	// computers and agents.
-	Mesh          bool `protobuf:"varint,10,opt,name=mesh,proto3" json:"mesh,omitempty"`
+	Mesh bool `protobuf:"varint,10,opt,name=mesh,proto3" json:"mesh,omitempty"`
+	// Her was on here once and her data is still on the machine: turned on
+	// again she carries on, or it can be erased (SetHer erase,
+	// docs/her-server.md §5.6).
+	Data          bool `protobuf:"varint,11,opt,name=data,proto3" json:"data,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -1344,6 +1348,13 @@ func (x *HerStatus) GetClientPublicKey() []byte {
 func (x *HerStatus) GetMesh() bool {
 	if x != nil {
 		return x.Mesh
+	}
+	return false
+}
+
+func (x *HerStatus) GetData() bool {
+	if x != nil {
+		return x.Data
 	}
 	return false
 }
@@ -2764,7 +2775,7 @@ const file_hermesh_machine_v1_machine_proto_rawDesc = "" +
 	"started_at\"D\n" +
 	"\fScreenStatus\x12\x1c\n" +
 	"\tavailable\x18\x01 \x01(\bR\tavailable\x12\x16\n" +
-	"\x06viewer\x18\x02 \x01(\tR\x06viewer\"\xc1\x02\n" +
+	"\x06viewer\x18\x02 \x01(\tR\x06viewer\"\xd5\x02\n" +
 	"\tHerStatus\x12\x18\n" +
 	"\aenabled\x18\x01 \x01(\bR\aenabled\x12\x18\n" +
 	"\arunning\x18\x02 \x01(\bR\arunning\x12\x18\n" +
@@ -2777,7 +2788,8 @@ const file_hermesh_machine_v1_machine_proto_rawDesc = "" +
 	"\x05error\x18\b \x01(\tR\x05error\x12*\n" +
 	"\x11client_public_key\x18\t \x01(\fR\x0fclientPublicKey\x12\x12\n" +
 	"\x04mesh\x18\n" +
-	" \x01(\bR\x04mesh\"\xca\x01\n" +
+	" \x01(\bR\x04mesh\x12\x12\n" +
+	"\x04data\x18\v \x01(\bR\x04data\"\xca\x01\n" +
 	"\tHerLatest\x12\x15\n" +
 	"\x06bot_id\x18\x01 \x01(\tR\x05botId\x12\x19\n" +
 	"\bbot_name\x18\x02 \x01(\tR\abotName\x12\x12\n" +

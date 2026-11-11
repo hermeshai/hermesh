@@ -147,6 +147,8 @@ type Machine struct {
 	// iceServers are the relay's STUN and TURN servers, kept for it (screen.go).
 	iceServers screenhost.Servers
 	herOn      bool
+	// herData: Her was on here once and her home is still there (HerStatus.data).
+	herData bool
 	// mesh is Her as one of the owner's agents (her_mesh.go).
 	mesh herMesh
 }
@@ -222,6 +224,7 @@ func (n *Machine) loadState() error {
 	n.loadDefaults()
 	on, _ := n.st.Get(kHer)
 	n.herOn = string(on) == "1"
+	n.herData = len(on) > 0 && n.herHomeExists()
 	owner, _ := n.st.Get(kOwnerID)
 	relay, _ := n.st.Get(kRelayURL)
 	n.ownerID, n.relayURL = string(owner), string(relay)

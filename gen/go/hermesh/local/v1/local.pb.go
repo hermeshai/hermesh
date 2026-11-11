@@ -4946,8 +4946,11 @@ func (x *GetDiagnosticsResponse) GetText() string {
 }
 
 type RemoveMachineRequest struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	MachineId     string                 `protobuf:"bytes,1,opt,name=machine_id,json=machineId,proto3" json:"machine_id,omitempty"`
+	state     protoimpl.MessageState `protogen:"open.v1"`
+	MachineId string                 `protobuf:"bytes,1,opt,name=machine_id,json=machineId,proto3" json:"machine_id,omitempty"`
+	// Her's data on the machine is erased first (SetHer erase, signed), while
+	// it answers (docs/her-server.md §5.6).
+	EraseHer      bool `protobuf:"varint,2,opt,name=erase_her,json=eraseHer,proto3" json:"erase_her,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -4987,6 +4990,13 @@ func (x *RemoveMachineRequest) GetMachineId() string {
 		return x.MachineId
 	}
 	return ""
+}
+
+func (x *RemoveMachineRequest) GetEraseHer() bool {
+	if x != nil {
+		return x.EraseHer
+	}
+	return false
 }
 
 type RemoveMachineResponse struct {
@@ -9816,10 +9826,11 @@ const file_hermesh_local_v1_local_proto_rawDesc = "" +
 	"\x05agent\x18\x02 \x01(\tR\x05agent\"\x17\n" +
 	"\x15GetDiagnosticsRequest\",\n" +
 	"\x16GetDiagnosticsResponse\x12\x12\n" +
-	"\x04text\x18\x01 \x01(\tR\x04text\"5\n" +
+	"\x04text\x18\x01 \x01(\tR\x04text\"R\n" +
 	"\x14RemoveMachineRequest\x12\x1d\n" +
 	"\n" +
-	"machine_id\x18\x01 \x01(\tR\tmachineId\"\x17\n" +
+	"machine_id\x18\x01 \x01(\tR\tmachineId\x12\x1b\n" +
+	"\terase_her\x18\x02 \x01(\bR\beraseHer\"\x17\n" +
 	"\x15RemoveMachineResponse\"\xfd\x01\n" +
 	"\aProject\x12\x1d\n" +
 	"\n" +

@@ -1758,6 +1758,10 @@ public nonisolated struct Hermesh_Local_V1_RemoveMachineRequest: Sendable {
 
   public var machineID: String = String()
 
+  /// Her's data on the machine is erased first (SetHer erase, signed), while
+  /// it answers (docs/her-server.md §5.6).
+  public var eraseHer: Bool = false
+
   public var unknownFields = SwiftProtobuf.UnknownStorage()
 
   public init() {}
@@ -6485,7 +6489,7 @@ nonisolated extension Hermesh_Local_V1_GetDiagnosticsResponse: SwiftProtobuf.Mes
 
 nonisolated extension Hermesh_Local_V1_RemoveMachineRequest: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
   public static let protoMessageName: String = _protobuf_package + ".RemoveMachineRequest"
-  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{3}machine_id\0")
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{3}machine_id\0\u{3}erase_her\0")
 
   public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
     while let fieldNumber = try decoder.nextFieldNumber() {
@@ -6494,6 +6498,7 @@ nonisolated extension Hermesh_Local_V1_RemoveMachineRequest: SwiftProtobuf.Messa
       // enabled. https://github.com/apple/swift-protobuf/issues/1034
       switch fieldNumber {
       case 1: try { try decoder.decodeSingularStringField(value: &self.machineID) }()
+      case 2: try { try decoder.decodeSingularBoolField(value: &self.eraseHer) }()
       default: break
       }
     }
@@ -6503,11 +6508,15 @@ nonisolated extension Hermesh_Local_V1_RemoveMachineRequest: SwiftProtobuf.Messa
     if !self.machineID.isEmpty {
       try visitor.visitSingularStringField(value: self.machineID, fieldNumber: 1)
     }
+    if self.eraseHer != false {
+      try visitor.visitSingularBoolField(value: self.eraseHer, fieldNumber: 2)
+    }
     try unknownFields.traverse(visitor: &visitor)
   }
 
   public static func ==(lhs: Hermesh_Local_V1_RemoveMachineRequest, rhs: Hermesh_Local_V1_RemoveMachineRequest) -> Bool {
     if lhs.machineID != rhs.machineID {return false}
+    if lhs.eraseHer != rhs.eraseHer {return false}
     if lhs.unknownFields != rhs.unknownFields {return false}
     return true
   }
