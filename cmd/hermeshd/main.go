@@ -749,10 +749,11 @@ func screenBin() string {
 
 // herExtensionHost: whether the owner's own Chrome reaches her through the
 // Hermesh extension, the browsers starting her as its host while Her is on.
-// On a Mac, for the her the app ships, never one $HERMESH_HER_BIN names (tests
-// and development), which would take the owner's Chrome to that one's home.
+// On a Mac and on Linux, for the her Hermesh ships, never one
+// $HERMESH_HER_BIN names (tests and development), which would take the
+// owner's Chrome to that one's home.
 func herExtensionHost() bool {
-	return runtime.GOOS == "darwin" && os.Getenv("HERMESH_HER_BIN") == ""
+	return runtime.GOOS != "windows" && os.Getenv("HERMESH_HER_BIN") == ""
 }
 
 // herConsole is the folder of her's console: $HERMESH_HER_CONSOLE, else

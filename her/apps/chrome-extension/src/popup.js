@@ -30,8 +30,32 @@ function icon(name, className = "") {
   return svg;
 }
 
+/** What the page does itself: the worker it would ask is the one not answering. */
+function local(action) {
+  if (action.do !== "reload") return false;
+  chrome.runtime.reload();
+  return true;
+}
+
 const act = (action) => chrome.runtime.sendMessage(action).then(draw);
-const closing = (action) => () => chrome.runtime.sendMessage(action).then(() => window.close());
+const closing = (action) => () => local(action) || chrome.runtime.sendMessage(action).then(() => window.close());
+
+/** A worker that starts answers in well under this; past it the page says so rather than stay empty. */
+const ANSWER_WITHIN = 2000;
+
+/**
+ * The worker's state, or null when it does not answer: no worker to receive, or no reply in time.
+ * An answer that comes after all draws the page again.
+ */
+async function ask() {
+  let timer;
+  const late = new Promise((resolve) => (timer = setTimeout(resolve, ANSWER_WITHIN, null)));
+  const answer = chrome.runtime.sendMessage({ get: "state" }).then((state) => state ?? null, () => null);
+  const state = await Promise.race([answer, late]);
+  clearTimeout(timer);
+  if (state === null) void answer.then((s) => s && draw());
+  return state;
+}
 
 function primary(label, onclick) {
   return el("div", { className: "acts" }, el("button", { className: "primary", onclick, textContent: label }));
@@ -76,7 +100,7 @@ let drawn = null;
 
 async function draw() {
   const turn = ++drawing;
-  const state = await chrome.runtime.sendMessage({ get: "state" });
+  const state = await ask();
   if (turn !== drawing) return;
   const said = JSON.stringify(state);
   if (said === drawn) return;

@@ -650,6 +650,18 @@ pub struct BrowserStatus {
     /// Sessions waiting for the user's own browser to connect.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub waiting: Vec<String>,
+    /// The system the agent runs on (`macos`, `linux`): where the user's own browser is, so a
+    /// client can say how to add the extension there.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub os: String,
+    /// The browser the built-in browser starts where `browser.executable` names none: a
+    /// Chromium-family browser installed there, else her's own; absent when there is none.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub program: Option<PathBuf>,
+    /// Whether the built-in browser shows a window where `browser.headless` is auto: there is a
+    /// display, and no remote shell started the agent.
+    #[serde(default)]
+    pub window: bool,
 }
 
 /// The result of `desktop/status`: whether computer use can work where her runs.

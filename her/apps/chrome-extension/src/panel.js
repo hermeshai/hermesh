@@ -12,8 +12,13 @@ function connected(state) {
   return { dot: "on", title: "statusConnected" };
 }
 
-/** The top of the page. `action.closes`: the page closes on it, as what it does happens elsewhere. */
+/**
+ * The top of the page. `action.closes`: the page closes on it, as what it does happens elsewhere.
+ * No state: the worker did not answer (it failed to start, or Chrome stopped it mid-update), and
+ * reloading the extension starts it again; the tabs stay.
+ */
 export function headline(state) {
+  if (!state) return { dot: "bad", title: "statusNoAnswer", hint: "hintNoAnswer", action: { label: "reload", do: "reload", closes: true } };
   switch (state.host) {
     case "connected":
       return connected(state);
@@ -34,11 +39,11 @@ export function headline(state) {
 
 /** The conversations to list: only a working connection can act on them, and who waits comes first. */
 export function listed(state) {
-  if (state.host !== "connected") return [];
+  if (state?.host !== "connected") return [];
   return [...state.sessions.filter(isWaiting), ...state.sessions.filter((s) => !isWaiting(s))];
 }
 
 /** Handing over a tab is the quiet thing to offer: not while anything else asks for the user. */
 export function offersTab(state) {
-  return state.host === "connected" && state.inUse && state.offerable && !state.sessions.some(isWaiting);
+  return state?.host === "connected" && state.inUse && state.offerable && !state.sessions.some(isWaiting);
 }

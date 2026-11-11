@@ -6,6 +6,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"time"
 
@@ -40,21 +41,49 @@ func (h *Host) extension(ctx context.Context, args ...string) {
 }
 
 // ExtensionFolder is where the console's guide has the owner load the
-// Hermesh extension from (her/apps/console/src/yours/YourBrowser.tsx): a
-// copy of the one the app ships beside her, in Contents/Resources, kept the
-// same at every Start, so an update reaches Chrome once it reloads the
+// Hermesh extension from (her/apps/console/src/yours/YourBrowser.tsx), kept
+// the same at every Start, so an update reaches Chrome once it reloads the
 // extension. The extension's manifest carries its key, so its ID doesn't
 // depend on the folder.
 func ExtensionFolder(home string) string {
-	return filepath.Join(home, "Library", "Application Support", "Hermesh", "Chrome Extension")
+	if runtime.GOOS == "darwin" {
+		return filepath.Join(home, "Library", "Application Support", "Hermesh", "Chrome Extension")
+	}
+	return filepath.Join(home, ".local", "share", "hermesh", "chrome-extension")
 }
 
-// placeExtension copies the app's extension to ExtensionFolder, unless it is
-// there already, as it is.
-func (h *Host) placeExtension() {
+// registerExtension has the browsers here start her as the extension's
+// host, and keeps the extension in ExtensionFolder: a copy of the one the
+// Mac app ships, or, where no app is around her (a Linux machine), the one
+// her carries, which her writes there itself.
+func (h *Host) registerExtension(ctx context.Context) {
+	args := []string{"install", "--socket", h.cfg.Socket}
+	if !h.placeExtension() {
+		if home := userHome(h.cfg.Env()); home != "" {
+			args = append(args, "--folder", ExtensionFolder(home))
+		}
+	}
+	h.extension(ctx, args...)
+}
+
+// userHome is the home her runs with: HOME of her environment.
+func userHome(env []string) string {
+	home := ""
+	for _, kv := range env {
+		if v, ok := strings.CutPrefix(kv, "HOME="); ok {
+			home = v
+		}
+	}
+	return home
+}
+
+// placeExtension copies the app's extension, in Contents/Resources beside
+// her, to ExtensionFolder, unless it is there already, as it is. False: no
+// app ships one here.
+func (h *Host) placeExtension() bool {
 	src := filepath.Join(filepath.Dir(h.cfg.Bin), "..", "Resources", "chrome-extension")
 	if _, err := os.Stat(filepath.Join(src, "manifest.json")); err != nil {
-		return
+		return false
 	}
 	home, err := os.UserHomeDir()
 	if err == nil {
@@ -63,6 +92,7 @@ func (h *Host) placeExtension() {
 	if err != nil {
 		h.log.Info("placing the Hermesh extension failed", "err", err)
 	}
+	return true
 }
 
 // syncFolder makes dst a copy of src, unless it is one already: written

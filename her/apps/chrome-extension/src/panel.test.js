@@ -27,6 +27,25 @@ test("every state says one thing and asks at most one", () => {
   }
 });
 
+test("a worker that does not answer still gets a line and a way out", () => {
+  const line = headline(null);
+  assert.equal(line.title, "statusNoAnswer");
+  assert.equal(line.action.do, "reload");
+  assert.deepEqual(listed(null), []);
+  assert.equal(offersTab(null), false);
+});
+
+test("every name the page shows is in each language", async () => {
+  const { readFileSync } = await import("node:fs");
+  const names = [null, ...["connecting", "not_open", "missing", "outdated"].map((host) => state({ host })), state({ host: "connecting", stuck: true }), state({ inUse: false })]
+    .map(headline)
+    .flatMap((l) => [l.title, l.hint, l.action?.label].filter(Boolean));
+  for (const lang of ["en", "zh_CN"]) {
+    const messages = JSON.parse(readFileSync(new URL(`../_locales/${lang}/messages.json`, import.meta.url), "utf8"));
+    for (const name of names) assert.ok(messages[name]?.message, `${lang}: ${name}`);
+  }
+});
+
 test("a connection only just lost is not a problem yet", () => {
   assert.equal(headline(state({ host: "connecting" })).action, undefined);
   assert.equal(headline(state({ host: "connecting", stuck: true })).action.do, "retry");

@@ -2,7 +2,7 @@
   "manifest_version": 3,
   "name": "Hermesh",
   "description": "__MSG_extDescription__",
-  "version": "0.2.1",
+  "version": "0.2.2",
   "default_locale": "en",
   "minimum_chrome_version": "125",
   "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAozajEYBqZRmSs764tDSZjchUQqEpZf64jsq4a6SBYo1eCT5IzTeiKtbMwqboTXWD58/wcZU+tHTpvHX/SRngNJRZrxydxsh6EJ69+7CzSYAL0mJt7xFE87nI+/eolzBEpDN6o8gS6kNkTakqbNq3JulvcilGdWS5TobJ1wDIBpG8h0m3TlOJTZXa60Bztz+axHbFVr929m0kYsIVN38oJb/TAWnuze2f5vmiElHt7hHIyzSYfR6UsF/MPOd6llmCPqG7F0VJ//kRhP5225ymR81lDmcgj92a+NC2vvoXdG4IdCrDXwbjr+tHv4bWINMIeMNioNW/N1j4iIUJ+sHtZQIDAQAB",

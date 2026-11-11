@@ -1,23 +1,20 @@
-import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import type { RpcClient } from "@hermesh/her-client";
-import type { BrowserStatus, ExtensionProblem, ExtensionStatus } from "@hermesh/her-protocol";
-import { browserName, extensionEdits, yours, yoursConfig, type YoursConfig } from "./yours";
+import type { ExtensionProblem, ExtensionStatus } from "@hermesh/her-protocol";
+import type { BrowserState } from "./useBrowser";
+import { browserName, extensionEdits, extensionFolder, herSystem, yours, yoursConfig, type HerSystem } from "./yours";
 import "./yours.css";
 
-// The console's Browser section, its first part: whether the owner's own Chrome, on the Mac Her runs on, is connected
+// The console's Browser section, its first part: whether the owner's own Chrome, on the Mac or Linux computer Her runs on, is connected
 // through the Hermesh extension and used by Her, with the one thing to do about it: connect it
 // (a guide: add the extension, then wait for it to connect, then use it), use it, stop using it,
 // or pick which of several to use. Links open with window.open: the console may be on another
-// device than the Mac. The site permissions are the section's other part, below it on the
+// device than that computer. The site permissions are the section's other part, below it on the
 // Browser page. Its text is the namespace "yours".
 
 /** The extension's page in the Chrome Web Store, once it is published (her/apps/chrome-extension/store/listing.md); until then the guide loads it from its folder. */
 export const STORE_URL = "";
-
-/** The folder to load the extension from until it is in the store: hermeshd keeps a copy of the app's
- * there (internal/herhost/extension.go, ExtensionFolder). */
-const EXTENSION_FOLDER = "~/Library/Application Support/Hermesh/Chrome Extension";
 
 /** How long a refused host gets to exit and come back as the current program. */
 const REFUSED_STUCK_MS = 10_000;
@@ -27,32 +24,13 @@ const WAIT_SECONDS = 5;
 
 const errorText = (e: unknown) => (e instanceof Error ? e.message : String(e));
 
-export function YourBrowser({ rpc }: { rpc: RpcClient | null }) {
+export function YourBrowser({ rpc, browser }: { rpc: RpcClient | null; browser: BrowserState }) {
   const { t } = useTranslation("yours");
-  const [status, setStatus] = useState<BrowserStatus | null>(null);
-  const [config, setConfig] = useState<YoursConfig | null>(null);
+  const { status, readConfig } = browser;
+  const config = useMemo(() => (browser.config === null ? null : yoursConfig(browser.config)), [browser.config]);
   const [guide, setGuide] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
-
-  // her's word on the browsers (browser/status, then browser/changed) and `[browser]`
-  // (config/read, then config/changed), on the page's connection.
-  const readConfig = useCallback(async () => {
-    if (rpc) setConfig(yoursConfig((await rpc.request("config/read", {})).config));
-  }, [rpc]);
-  useEffect(() => {
-    if (!rpc) return;
-    let live = true;
-    const offStatus = rpc.on("browser/changed", (s) => live && setStatus(s));
-    rpc.request("browser/status", {}).then((s) => live && setStatus(s), () => {});
-    readConfig().catch(() => {});
-    const offConfig = rpc.on("config/changed", () => void readConfig().catch(() => {}));
-    return () => {
-      live = false;
-      offStatus();
-      offConfig();
-    };
-  }, [rpc, readConfig]);
 
   /** Her uses the owner's Chrome, or stops: every conversation from its next step. */
   const legacy = config?.legacyBackend ?? false;
@@ -89,9 +67,13 @@ export function YourBrowser({ rpc }: { rpc: RpcClient | null }) {
 
   const { state } = y;
   const name = browserName(y.connected?.browser);
+  const system = herSystem(status);
+  const computer = t(`computer.${system}`);
   const desc =
     state === "lost" ? (y.refused ? (stuck ? "refusedStuck" : "refused") : "lost")
     : state === "outdated" ? (y.problem === "update_her" ? "outdated.her" : "outdated.extension")
+    // No Chromium-family browser at all where Her runs: a server without a desktop, say.
+    : state === "off" && status && !status.program ? "noChrome"
     : state;
   const badge = { on: "ok", ready: "acc", lost: "warn", outdated: "warn" } as const;
 
@@ -105,7 +87,7 @@ export function YourBrowser({ rpc }: { rpc: RpcClient | null }) {
               <span>{state === "on" || state === "ready" ? name : t("connectTitle")}</span>
               {state !== "off" && <span className={`badge ${badge[state]}`}>{t(`badge.${state}`)}</span>}
             </div>
-            <div className={`fdesc ${state === "lost" || state === "outdated" ? "warn" : ""}`}>{t(desc, { name: browserName(status?.extension?.browser) })}</div>
+            <div className={`fdesc ${state === "lost" || state === "outdated" ? "warn" : ""}`}>{t(desc, { name: browserName(status?.extension?.browser), computer })}</div>
           </div>
           {state === "off" && (
             <button className="btn primary" disabled={!rpc} onClick={() => setGuide(true)}>
@@ -153,7 +135,7 @@ export function YourBrowser({ rpc }: { rpc: RpcClient | null }) {
         </div>
       )}
       {error && <p className="set-note warn">{error}</p>}
-      {guide && <Guide connected={y.connected} problem={y.problem} onConnected={() => use(true)} onClose={() => setGuide(false)} />}
+      {guide && <Guide system={system} connected={y.connected} problem={y.problem} onConnected={() => use(true)} onClose={() => setGuide(false)} />}
     </section>
   );
 }
@@ -161,7 +143,7 @@ export function YourBrowser({ rpc }: { rpc: RpcClient | null }) {
 type Step = "install" | "wait" | "done";
 
 /** Connecting, one step at a time: adding the extension is the owner's; the rest happens by itself. */
-function Guide({ connected, problem, onConnected, onClose }: { connected: ExtensionStatus | null; problem: ExtensionProblem | null; onConnected: () => Promise<unknown>; onClose: () => void }) {
+function Guide({ system, connected, problem, onConnected, onClose }: { system: HerSystem; connected: ExtensionStatus | null; problem: ExtensionProblem | null; onConnected: () => Promise<unknown>; onClose: () => void }) {
   const { t } = useTranslation("yours");
   const [step, setStep] = useState<Step>("install");
   const [error, setError] = useState("");
@@ -193,6 +175,7 @@ function Guide({ connected, problem, onConnected, onClose }: { connected: Extens
   const order = ["install", "wait"] as const;
   const index = step === "done" ? order.length : order.indexOf(step);
   const name = browserName(connected?.browser);
+  const computer = t(`computer.${system}`);
 
   return (
     <Sheet label={t("guide.title")} onClose={onClose}>
@@ -214,7 +197,7 @@ function Guide({ connected, problem, onConnected, onClose }: { connected: Extens
       {step === "install" &&
         (STORE_URL ? (
           <>
-            <p className="sub">{t("guide.store")}</p>
+            <p className="sub">{t("guide.store", { computer })}</p>
             <div className="sheet-foot">
               <button className="btn primary" onClick={() => (window.open(STORE_URL, "_blank", "noopener"), setStep("wait"))}>
                 {t("guide.addToChrome")}
@@ -223,14 +206,14 @@ function Guide({ connected, problem, onConnected, onClose }: { connected: Extens
           </>
         ) : (
           <>
-            <p className="sub">{t("guide.install")}</p>
+            <p className="sub">{t("guide.install", { computer })}</p>
             <ol className="yours-howto">
               <li>
                 {t("guide.howto.open")} <code className="sel-text">chrome://extensions</code>
               </li>
               <li>{t("guide.howto.developer")}</li>
               <li>
-                {t("guide.howto.load")} <code className="sel-text">{EXTENSION_FOLDER}</code>
+                {t(`guide.howto.load.${system}`)} <code className="sel-text">{extensionFolder[system]}</code>
               </li>
             </ol>
             <p className="set-note">{t("guide.already")}</p>
@@ -247,7 +230,7 @@ function Guide({ connected, problem, onConnected, onClose }: { connected: Extens
           {error ? (
             <p className="set-note warn">{error}</p>
           ) : problem ? (
-            <p className="set-note warn">{t(problem === "update_her" ? "outdated.her" : "outdated.extension", { name })}</p>
+            <p className="set-note warn">{t(problem === "update_her" ? "outdated.her" : "outdated.extension", { name, computer })}</p>
           ) : (
             <p className="sub yours-waiting">
               <span className="mini-spin" />

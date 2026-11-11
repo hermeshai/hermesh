@@ -152,8 +152,7 @@ func (h *Host) Busy() int {
 func (h *Host) supervise(ctx context.Context, done chan struct{}) {
 	defer close(done)
 	if h.cfg.ExtensionHost {
-		h.placeExtension()
-		h.extension(ctx, "install", "--socket", h.cfg.Socket)
+		h.registerExtension(ctx)
 	}
 	wait := time.Second
 	for {

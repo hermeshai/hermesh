@@ -2,7 +2,7 @@
   "name": "@hermesh/her-chrome-extension",
   "private": true,
   "type": "module",
-  "description": "The Hermesh extension: lends the owner's own Chrome to Her's browser tools, on the Mac Her runs on (her browser native-host). Load this folder unpacked; no build step.",
+  "description": "The Hermesh extension: lends the owner's own Chrome to Her's browser tools, on the computer Her runs on (her browser native-host). Load this folder unpacked; no build step.",
   "scripts": {
     "test": "node --test src/*.test.js",
     "store-zip": "node scripts/pack.mjs"

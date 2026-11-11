@@ -490,6 +490,10 @@ export type BrowserStatus = {
   extension?: ExtensionStatus | null;
   /** Every extension connected, oldest first, when there is more than one. */
   extensions?: ExtensionStatus[];
+  /** The system the agent runs on (`macos`, `linux`): where the user's own browser is, so a client can say how to add the extension there. */
+  os?: string;
+  /** The browser the built-in browser starts where `browser.executable` names none: a Chromium-family browser installed there, else her's own; absent when there is none. */
+  program?: string | null;
   /** Why the last extension host was refused, until one connects. */
   refused?: string | null;
   /** Sessions the user took their browser back from. */
@@ -498,6 +502,8 @@ export type BrowserStatus = {
   tabs?: { [key: string]: YoursTab[] };
   /** Sessions waiting for the user's own browser to connect. */
   waiting?: string[];
+  /** Whether the built-in browser shows a window where `browser.headless` is auto: there is a display, and no remote shell started the agent. */
+  window: boolean;
 };
 
 /** Parameters of `browser/use_extension`. */

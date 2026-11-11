@@ -542,19 +542,39 @@ The protos are the contract; this is their outline.
   installed: Her works without them; only her's browser and PDF tools need
   them. Where Chrome is installed and her runs as root, her starts it
   without its sandbox (`--no-sandbox`), as Chrome refuses root otherwise.
-- **The owner's own Chrome, on a Mac.** While Her is on, hermeshd registers
-  the her it ships as the Hermesh extension's native host for the Chromium
-  browsers installed (`her browser extension install --socket` with her's
-  socket), again at every start so it follows her after an update, and
-  takes it back when Her is turned off. The extension then lends Her the
-  owner's Chrome, with its sign-ins (her/apps/chrome-extension).
-  - The app ships the extension in `Contents/Resources/chrome-extension`.
-  - At every start, hermeshd copies it to
-    `~/Library/Application Support/Hermesh/Chrome Extension`, unless the
-    copy is the same already.
+- **The built-in browser.** A Chrome of Her's own, without the owner's
+  sign-ins, is off on a Her Server until the owner turns it on in the
+  console's Browser page (`browser.enabled = true`; turning it off removes
+  the setting, as `false` would turn the owner's Chrome off too). her says
+  in `browser/status` which program it would start (`program`: one
+  installed there, else her's own from `her browser install`) and whether
+  with a window (`window`: there is a display); without a display, as on a
+  server, it runs headless. The page names the program, and where there is
+  none says to install Google Chrome there, with the commands on Linux.
+- **The owner's own Chrome, on a Mac or a Linux machine.** While Her is on,
+  hermeshd registers the her it ships as the Hermesh extension's native host
+  for the Chromium browsers installed (`her browser extension install
+  --socket` with her's socket), again at every start so it follows her after
+  an update, and takes it back when Her is turned off. The extension then
+  lends Her the owner's Chrome, with its sign-ins
+  (her/apps/chrome-extension). Chrome and her are on the same computer: a
+  server with no desktop has no Chrome of the owner's to lend.
+  - On a Mac, the app ships the extension in
+    `Contents/Resources/chrome-extension`, and at every start hermeshd
+    copies it to `~/Library/Application Support/Hermesh/Chrome Extension`,
+    unless the copy is the same already.
+  - On Linux no app is around her, so her carries the extension itself, and
+    at every start hermeshd has her write it to
+    `~/.local/share/hermesh/chrome-extension` (`--folder`), unless it is
+    there already.
   - The console's guide has the owner load it from that folder, until it is
-    in the Chrome Web Store. The manifest carries the extension's key, so
-    its ID doesn't depend on the folder.
+    in the Chrome Web Store. her tells the console which system it runs on
+    (`os` in `browser/status`), and the guide names that system's folder
+    and how to paste it. The manifest carries the extension's key, so its
+    ID doesn't depend on the folder.
+  - A browser installed after Her was turned on is registered at
+    hermeshd's next start. Chromium from snap or Flatpak keeps its hosts
+    elsewhere and isn't registered.
 
 ## 7. Data
 
@@ -771,7 +791,7 @@ Sections:
 | Connectors | MCP servers: add by address, sign in, see their tools; connectors started as commands need Touch ID |
 | Skills | Installed skills: turn on or off, add by upload, remove, read |
 | Web search | The search provider and its key |
-| Browser | The sites Her may open without asking; on a Mac, whether the owner's own Chrome is connected through the Hermesh extension, and used |
+| Browser | Whether the owner's own Chrome, on the computer Her runs on, is connected through the Hermesh extension, and used; the built-in browser, on or off, and the Chrome it starts; the sites Her may open without asking |
 
 There is no overview, no defaults for new assistants and no instructions for
 all of them: the apps show Her alone, whose model, thinking and permissions

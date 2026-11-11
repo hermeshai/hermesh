@@ -422,6 +422,9 @@ enum ExtensionCommand {
         /// $HER_HOME/run/her.sock (a service started with --listen unix://PATH)
         #[arg(long, value_name = "PATH")]
         socket: Option<PathBuf>,
+        /// Also write the Hermesh extension to this folder, to add to Chrome with "Load unpacked"
+        #[arg(long, value_name = "DIR")]
+        folder: Option<PathBuf>,
     },
     /// Remove what install wrote
     Uninstall,
@@ -906,7 +909,7 @@ async fn run(overrides: &[String], command: Command) -> anyhow::Result<u8> {
         Command::Browser {
             command: BrowserCommand::Extension { command },
         } => match command {
-            ExtensionCommand::Install { extension_ids, user_data_dir, socket } => cmd_browser::install(&extension_ids, user_data_dir, socket),
+            ExtensionCommand::Install { extension_ids, user_data_dir, socket, folder } => cmd_browser::install(&extension_ids, user_data_dir, socket, folder),
             ExtensionCommand::Uninstall => cmd_browser::uninstall(),
             ExtensionCommand::Status { json } => cmd_browser::status(json),
         },

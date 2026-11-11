@@ -297,7 +297,7 @@ export class CustomizeMock {
 
   /** Whether the person's own browser is on: the extension then answers, as if Chrome were open. */
   browserStatus() {
-    return { embedded: false, extension: this.system.browser.extension === true ? { browser: "Google Chrome 141.0.7390.54", extension_version: "0.1.0" } : null };
+    return { embedded: false, window: true, extension: this.system.browser.extension === true ? { browser: "Google Chrome 141.0.7390.54", extension_version: "0.1.0" } : null };
   }
 
   private isEnabled(s: Server): boolean {
