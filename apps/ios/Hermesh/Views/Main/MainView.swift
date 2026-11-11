@@ -12,7 +12,7 @@ struct MainView: View {
     var body: some View {
         @Bindable var model = model
         SideMenu(model: model, open: $model.drawerOpen, panAnywhere: model.path.isEmpty)
-            .ignoresSafeArea(edges: model.isDemo ? .top : .all)
+            .ignoresSafeArea(edges: model.isDemo ? [.top, .horizontal] : .all)
             .sheet(item: $model.sheet) { sheet in
                 SheetHost(kind: sheet).environment(model)
             }
@@ -77,30 +77,45 @@ private struct SideMenu: UIViewControllerRepresentable {
     let panAnywhere: Bool
 
     func makeUIViewController(context: Context) -> SideMenuController {
-        let width: CGFloat = 322
-        return SideMenuController(
-            menu: UIHostingController(rootView: DrawerView(width: width).environment(model)),
+        SideMenuController(
+            menu: UIHostingController(rootView: DrawerView().environment(model)),
             page: UIHostingController(rootView: PageView().environment(model)),
-            width: width)
+            width: 322)
     }
 
     func updateUIViewController(_ c: SideMenuController, context: Context) {
         c.panAnywhere = panAnywhere
         c.onChange = { open = $0 }
+        c.onBeside = { model.menuBeside = $0 }
         c.set(open: open)
     }
 }
 
 final class SideMenuController: UIViewController, UIGestureRecognizerDelegate {
+    /// How the menu and the page share the screen. An iPhone: the page
+    /// slides aside by the menu's width and stays in view, a card beside it
+    /// (drawer). Where the system stands the bars on the side (iPhone Duo
+    /// closed), that strip of the screen is the bars' in every state, and a
+    /// page beside the menu would lie under them: the menu takes the whole
+    /// page's place (cover). At regular width (iPhone Duo open) both show,
+    /// side by side (beside).
+    private enum Arrangement { case drawer, cover, beside }
+
     var panAnywhere = true
     var onChange: (Bool) -> Void = { _ in }
+    /// Told when the menu starts or stops standing beside the page.
+    var onBeside: (Bool) -> Void = { _ in }
     private let menu: UIViewController
     private let page: UIViewController
     private let width: CGFloat
     private let card = UIView() // moves, and casts the shadow
     private let clip = UIView() // rounds the page's corners
     private let dim = UIView() // fades the page back; a tap closes the menu
+    private let divider = UIView() // between the menu and the page, side by side
     private let radius: CGFloat = 44
+    private var arrangement = Arrangement.drawer
+    /// How far the page moves to show the menu.
+    private var travel: CGFloat
     private var isOpen = false
     private var startX: CGFloat = 0
     private var generation = 0
@@ -110,6 +125,7 @@ final class SideMenuController: UIViewController, UIGestureRecognizerDelegate {
         self.menu = menu
         self.page = page
         self.width = width
+        travel = width
         super.init(nibName: nil, bundle: nil)
     }
 
@@ -142,42 +158,95 @@ final class SideMenuController: UIViewController, UIGestureRecognizerDelegate {
         dim.accessibilityLabel = String(localized: "Close the menu")
         dim.accessibilityTraits = .button
         dim.accessibilityIdentifier = "drawer-dim"
+        divider.backgroundColor = .separator
+        divider.isHidden = true
+        view.addSubview(divider)
         // Closed, the shadow falls off the screen's left edge.
         card.layer.shadowColor = UIColor.black.cgColor
-        card.layer.shadowOpacity = 0.15
         card.layer.shadowRadius = 12
         card.layer.shadowOffset = CGSize(width: -6, height: 0)
         let pan = UIPanGestureRecognizer(target: self, action: #selector(pan(_:)))
         pan.delegate = self
         view.addGestureRecognizer(pan)
+        var traits: [UITrait] = [UITraitHorizontalSizeClass.self]
+        if #available(iOS 27.1, *) { traits += UITraitCollection.systemTraitsAffectingVerticalBarEdge }
+        registerForTraitChanges(traits) { (self: Self, _) in self.view.setNeedsLayout() }
         settle()
         apply(0)
+    }
+
+    /// The arrangement that fits the screen as it is.
+    private var fitting: Arrangement {
+        if traitCollection.horizontalSizeClass == .regular { return .beside }
+        if #available(iOS 27.1, *), traitCollection.verticalBarEdge != .unspecified { return .cover }
+        return .drawer
     }
 
     override func viewDidLayoutSubviews() {
         super.viewDidLayoutSubviews()
         let b = view.bounds
-        menu.view.bounds = CGRect(x: 0, y: 0, width: width, height: b.height)
-        menu.view.center = CGPoint(x: width / 2, y: b.midY)
+        let before = (arrangement, travel)
+        arrangement = fitting
+        // Covering, the menu is as wide as the screen (its safe area keeps it
+        // clear of the bars' strip), and the page leaves with its shadow.
+        let menuWidth = arrangement == .cover ? b.width : width
+        travel = arrangement == .cover ? b.width + 24 : width
+        let pageX = arrangement == .beside ? width : 0
+        let pageBounds = CGRect(x: 0, y: 0, width: b.width - pageX, height: b.height)
+        menu.view.bounds = CGRect(x: 0, y: 0, width: menuWidth, height: b.height)
+        menu.view.center = CGPoint(x: menuWidth / 2, y: b.midY)
         // Bounds and center: the card's transform moves it.
-        card.bounds = b
-        card.center = CGPoint(x: b.midX, y: b.midY)
-        card.layer.shadowPath = UIBezierPath(roundedRect: b, cornerRadius: radius).cgPath
-        clip.frame = b
-        page.view.frame = b
-        if card.transform.isIdentity { sideMargins = page.systemMinimumLayoutMargins }
-        dim.frame = b
+        card.bounds = pageBounds
+        card.center = CGPoint(x: pageX + pageBounds.midX, y: b.midY)
+        card.layer.shadowPath = UIBezierPath(roundedRect: pageBounds, cornerRadius: radius).cgPath
+        card.layer.shadowOpacity = arrangement == .beside ? 0 : 0.15
+        clip.frame = pageBounds
+        page.view.frame = pageBounds
+        if arrangement == .beside {
+            // The page starts beside the menu, not at the screen's edge: it keeps the screen's margins, as this view has them.
+            sideMargins = systemMinimumLayoutMargins
+            pinMargins()
+        } else if card.transform.isIdentity {
+            sideMargins = page.systemMinimumLayoutMargins
+        }
+        dim.frame = pageBounds
+        let hairline = 1 / max(traitCollection.displayScale, 1)
+        divider.frame = CGRect(x: width - hairline, y: 0, width: hairline, height: b.height)
+        divider.isHidden = arrangement != .beside
+        guard before != (arrangement, travel) else { return }
+        // Another arrangement (the device opened or closed, or turned): at rest in it, the menu closed.
+        generation += 1
+        for v in [card, menu.view!, dim] { v.layer.removeAllAnimations() }
+        settle()
+        if arrangement == .beside {
+            card.transform = .identity
+            menu.view.transform = .identity
+            menu.view.alpha = 1
+        } else {
+            apply(0)
+        }
+        let beside = arrangement == .beside, wasOpen = isOpen
+        isOpen = false
+        // After the layout pass: these write the app's state, which lays views out again.
+        DispatchQueue.main.async { [self] in
+            if wasOpen { onChange(false) }
+            onBeside(beside)
+        }
     }
 
-    /// Opens or closes the menu to match the app's state.
+    /// Opens or closes the menu to match the app's state. Beside the page it is always in view.
     func set(open: Bool) {
+        guard arrangement != .beside else {
+            if open { onChange(false) }
+            return
+        }
         guard open != isOpen else { return }
         animate(open: open, velocity: 0)
     }
 
     /// Lays the two out for p, from 0 (closed) to 1 (open).
     private func apply(_ p: CGFloat) {
-        card.transform = CGAffineTransform(translationX: width * p, y: 0)
+        card.transform = CGAffineTransform(translationX: travel * p, y: 0)
         menu.view.transform = CGAffineTransform(translationX: -width * 0.25 * (1 - p), y: 0)
         menu.view.alpha = 0.4 + 0.6 * p
         dim.alpha = p
@@ -215,7 +284,7 @@ final class SideMenuController: UIViewController, UIGestureRecognizerDelegate {
     private func stop() -> CGFloat {
         let x = card.layer.presentation()?.affineTransform().tx ?? card.transform.tx
         for v in [card, menu.view!, dim] { v.layer.removeAllAnimations() }
-        apply(x / width)
+        apply(x / travel)
         return x
     }
 
@@ -246,13 +315,13 @@ final class SideMenuController: UIViewController, UIGestureRecognizerDelegate {
             startX = stop()
             lift()
         case .changed:
-            apply(min(width, max(0, startX + g.translation(in: view).x)) / width)
+            apply(min(travel, max(0, startX + g.translation(in: view).x)) / travel)
         case .ended, .cancelled, .failed:
             let x = card.transform.tx
             let v = g.velocity(in: view).x
             // Where a flick would carry the page (UIScrollView's deceleration).
-            let open = g.state == .ended ? x + v * 0.998 / (1 - 0.998) / 1000 > width / 2 : isOpen
-            let left = (open ? width : 0) - x
+            let open = g.state == .ended ? x + v * 0.998 / (1 - 0.998) / 1000 > travel / 2 : isOpen
+            let left = (open ? travel : 0) - x
             animate(open: open, velocity: abs(left) < 1 ? 0 : v / left)
             onChange(open)
         default:
@@ -262,6 +331,7 @@ final class SideMenuController: UIViewController, UIGestureRecognizerDelegate {
 
     func gestureRecognizerShouldBegin(_ g: UIGestureRecognizer) -> Bool {
         guard let pan = g as? UIPanGestureRecognizer else { return true }
+        guard arrangement != .beside else { return false }
         let v = pan.velocity(in: view)
         guard abs(v.x) > abs(v.y) * 1.4 else { return false }
         return isOpen ? v.x < 0 : panAnywhere && v.x > 0
@@ -329,6 +399,23 @@ struct MenuButton: View {
     }
 }
 
+extension EnvironmentValues {
+    /// Whether the system stands this view's bars on the side, not along the top (iPhone Duo closed, or open and
+    /// on its side): what a view that draws its own top reads, to leave its buttons to the system's bar.
+    var barsOnTheSide: Bool {
+        if #available(iOS 27.1, *) { toolbarVerticalEdge != nil } else { false }
+    }
+}
+
+/// The menu button in a root page's bar; none while the menu stands beside the page.
+struct MenuToolbarItem: ToolbarContent {
+    @Environment(AppModel.self) private var model
+
+    var body: some ToolbarContent {
+        if !model.menuBeside { ToolbarItem(placement: .topBarLeading) { MenuButton() } }
+    }
+}
+
 extension View {
     /// The menu button on a root page, and the sync line in the middle of
     /// its bar: once the title is small, in its place; while it is large,
@@ -347,7 +434,7 @@ private struct RootToolbar: ViewModifier {
             }
             .onAppear { model.rootTitleSmall = false } // a root page shows from its top
             .toolbar {
-                ToolbarItem(placement: .topBarLeading) { MenuButton() }
+                MenuToolbarItem()
                 if (model.rootTitleSmall || !model.root.titleLarge) && model.shownSync != nil { ToolbarItem(placement: .principal) { SyncLine() } }
             }
     }
