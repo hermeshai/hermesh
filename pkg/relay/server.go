@@ -508,16 +508,18 @@ func (s *Server) handleConnect(w http.ResponseWriter, r *http.Request) {
 	mAdmissionsOK.Inc()
 	conn.SetDeadline(time.Time{})
 	cfg := transport.YamuxConfig()
-	if p.role == relayv1.Role_ROLE_OWNER {
-		cfg.EnableKeepAlive = false // keepAlive, more patient
-	}
-	sess, err := yamux.Server(conn, cfg)
+	cfg.EnableKeepAlive = false // keepAlive, which decides by how long the peer was quiet
+	heard := &heardConn{Conn: conn}
+	heard.at.Store(time.Now().UnixNano())
+	sess, err := yamux.Server(heard, cfg)
 	if err != nil {
 		return
 	}
+	quiet := peerQuiet
 	if p.role == relayv1.Role_ROLE_OWNER {
-		go keepAlive(sess, cfg.KeepAliveInterval, ownerQuiet)
+		quiet = ownerQuiet
 	}
+	go keepAlive(sess, heard.last, cfg.KeepAliveInterval, quiet)
 	p.sess, p.remote = sess, r.RemoteAddr
 	p.epoch, p.since, p.inProcess = identity.RandomCode(16), time.Now(), inProcess
 	s.register(p)
@@ -539,29 +541,67 @@ func (s *Server) handleConnect(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-// ownerQuiet is how long an owner device may leave the relay's pings
-// unanswered before its connection is closed. The iPhone app answers none
-// while it is suspended in the background, and with its connection kept
-// for a few minutes it comes back in a ping rather than a dial
-// (internal/owner connectOrKeep). Machines and agents are closed after
-// 30–45 s (yamux's keepalive), as whether a machine is online is shown.
+// ownerQuiet is how long an owner device may say nothing before its
+// connection is closed. The iPhone app answers no ping while it is
+// suspended in the background, and with its connection kept for a few
+// minutes it comes back in a ping rather than a dial (internal/owner
+// connectOrKeep).
 const ownerQuiet = 5 * time.Minute
 
-// keepAlive pings sess every interval, and closes it once quiet went by
-// since a ping was last answered.
-func keepAlive(sess *yamux.Session, every, quiet time.Duration) {
-	answered := time.Now()
+// peerQuiet is the same for machines and agents: whether a machine is
+// online is shown, and what is sent to one that is gone waits for nothing.
+// A machine that lost its network or fell asleep shows as offline this long
+// after it was last heard from (yamux's keepalive took 30–45 s).
+const peerQuiet = 20 * time.Second
+
+// heardConn notes when its peer was last heard from.
+type heardConn struct {
+	net.Conn
+	at atomic.Int64 // UnixNano
+}
+
+func (c *heardConn) Read(p []byte) (int, error) {
+	n, err := c.Conn.Read(p)
+	if n > 0 {
+		c.at.Store(time.Now().UnixNano())
+	}
+	return n, err
+}
+
+func (c *heardConn) last() time.Time { return time.Unix(0, c.at.Load()) }
+
+// keepAlive pings sess every interval, and closes it once a ping is not
+// answered and the peer was not heard from at all (heard: when it last
+// was) for quiet. Anything it sends counts: a peer on a busy link answers
+// late, but is there.
+func keepAlive(sess *yamux.Session, heard func() time.Time, every, quiet time.Duration) {
 	for {
 		select {
 		case <-sess.CloseChan():
 			return
 		case <-time.After(every):
 		}
-		if _, err := sess.Ping(); err == nil {
-			answered = time.Now()
-		} else if time.Since(answered) > quiet {
-			sess.Close()
-			return
+		sent := time.Now()
+		answered := make(chan struct{})
+		go func() {
+			if _, err := sess.Ping(); err == nil {
+				close(answered)
+			}
+		}()
+		for !heard().After(sent) {
+			left := time.Until(heard().Add(quiet))
+			if left <= 0 {
+				sess.Close()
+				return
+			}
+			select {
+			case <-sess.CloseChan():
+				return
+			case <-answered:
+			case <-time.After(min(left, time.Second)):
+				continue
+			}
+			break
 		}
 	}
 }

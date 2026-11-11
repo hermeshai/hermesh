@@ -27,8 +27,9 @@ func (f *frozen) Read(p []byte) (int, error) {
 
 // keptAlive connects a yamux client to a server kept alive with quiet, the
 // client frozen for frozenFor, and reports whether the server's session
-// is still open a while after it thawed.
-func keptAlive(t *testing.T, frozenFor, quiet time.Duration) bool {
+// is still open a while after it thawed. With busy, the client is heard
+// from all along (it sends, on a link too busy for its answers to pings).
+func keptAlive(t *testing.T, frozenFor, quiet time.Duration, busy bool) bool {
 	l, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
 		t.Fatal(err)
@@ -53,12 +54,18 @@ func keptAlive(t *testing.T, frozenFor, quiet time.Duration) bool {
 		t.Fatal(err)
 	}
 	defer client.Close()
-	server, err := yamux.Server(<-accepted, cfg)
+	heard := &heardConn{Conn: <-accepted}
+	heard.at.Store(time.Now().UnixNano())
+	server, err := yamux.Server(heard, cfg)
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer server.Close()
-	go keepAlive(server, 20*time.Millisecond, quiet)
+	last := heard.last
+	if busy {
+		last = time.Now
+	}
+	go keepAlive(server, last, 20*time.Millisecond, quiet)
 	time.Sleep(100 * time.Millisecond)
 	f.set.Store(true)
 	time.Sleep(frozenFor)
@@ -67,13 +74,18 @@ func keptAlive(t *testing.T, frozenFor, quiet time.Duration) bool {
 	return !server.IsClosed()
 }
 
-// An owner device that answers no ping for a while (the iPhone app
-// suspended) keeps its connection until quiet went by, and no longer.
+// A peer that says nothing for a while (the iPhone app suspended; a
+// machine asleep or off the network) keeps its connection until quiet went
+// by, and no longer. One whose answers to pings do not come, but that is
+// still heard from, keeps it.
 func TestKeepAlive(t *testing.T) {
-	if !keptAlive(t, 500*time.Millisecond, 2*time.Second) {
+	if !keptAlive(t, 500*time.Millisecond, 2*time.Second, false) {
 		t.Error("closed after a pause shorter than quiet")
 	}
-	if keptAlive(t, 1500*time.Millisecond, 500*time.Millisecond) {
+	if keptAlive(t, 1500*time.Millisecond, 500*time.Millisecond, false) {
 		t.Error("kept after a pause longer than quiet")
+	}
+	if !keptAlive(t, 1500*time.Millisecond, 500*time.Millisecond, true) {
+		t.Error("closed a peer that was heard from all along")
 	}
 }

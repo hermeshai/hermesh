@@ -5,6 +5,7 @@ import (
 	"net"
 	"net/http"
 	"sync"
+	"time"
 
 	"golang.org/x/net/http2"
 )
@@ -28,7 +29,27 @@ type H2Client struct {
 // NewH2Client starts an HTTP/2 client on c. Requests must use a base URL
 // like "http://peer" or "https://peer"; the host is ignored.
 func NewH2Client(c net.Conn) (*H2Client, error) {
-	t := &http2.Transport{AllowHTTP: true}
+	return newH2Client(c, &http2.Transport{AllowHTTP: true})
+}
+
+// A tunnel's far end can stop answering while its connection to the relay
+// still stands (a machine frozen or asleep, for the time the relay takes to
+// notice): after tunnelIdle with nothing read the client pings, and closes
+// the tunnel when no answer comes within tunnelPing. Only the client checks:
+// a machine keeps the tunnels of an iPhone suspended in the background, as
+// the relay keeps its connection (ownerQuiet in pkg/relay).
+var (
+	tunnelIdle = 15 * time.Second
+	tunnelPing = 5 * time.Second
+)
+
+// NewTunnelClient is NewH2Client for an end-to-end tunnel to a machine: it
+// also notices a machine that stopped answering.
+func NewTunnelClient(c net.Conn) (*H2Client, error) {
+	return newH2Client(c, &http2.Transport{AllowHTTP: true, ReadIdleTimeout: tunnelIdle, PingTimeout: tunnelPing})
+}
+
+func newH2Client(c net.Conn, t *http2.Transport) (*H2Client, error) {
 	cc, err := t.NewClientConn(c)
 	if err != nil {
 		return nil, err
