@@ -21,6 +21,33 @@ const mockSend = (reply: string) => `[[mock:send:${reply}]] hi`;
 /** her-mock answers a message that starts so by asking to connect `url` as `name` on a secure card, and says how it went once it ended. */
 const mockConnect = (name: string, url: string) => `[[mock:connect:${name}|${url}]] hi`;
 
+/** A PDF of one line of Helvetica (a standard font it does not embed) on each of its pages. */
+function pdf(lines: string[]): Buffer {
+  const pages = lines.map((_, i) => 4 + i * 2);
+  const objects = [
+    "<< /Type /Catalog /Pages 2 0 R >>",
+    `<< /Type /Pages /Kids [${pages.map((n) => `${n} 0 R`).join(" ")}] /Count ${lines.length} >>`,
+    "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>",
+    ...lines.flatMap((line, i) => {
+      const text = `BT /F1 24 Tf 72 700 Td (${line}) Tj ET`;
+      return [
+        `<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 3 0 R >> >> /Contents ${pages[i] + 1} 0 R >>`,
+        `<< /Length ${text.length} >>\nstream\n${text}\nendstream`,
+      ];
+    }),
+  ];
+  let out = "%PDF-1.4\n";
+  const offsets = objects.map((body, i) => {
+    const at = out.length;
+    out += `${i + 1} 0 obj\n${body}\nendobj\n`;
+    return at;
+  });
+  const xref = out.length;
+  out += `xref\n0 ${objects.length + 1}\n0000000000 65535 f \n${offsets.map((o) => `${String(o).padStart(10, "0")} 00000 n \n`).join("")}`;
+  out += `trailer\n<< /Size ${objects.length + 1} /Root 1 0 R >>\nstartxref\n${xref}\n%%EOF\n`;
+  return Buffer.from(out, "latin1");
+}
+
 test("Her: the first run, a chat, a secure card, the console, a second environment, and one gone offline", async () => {
   test.setTimeout(300_000);
   const profile = fs.mkdtempSync(path.join(os.tmpdir(), "hmdesk-"));
@@ -73,6 +100,56 @@ test("Her: the first run, a chat, a secure card, the console, a second environme
   // The window is behind (tests open it so): the reply is unread, and notified, by the assistant's name.
   await expect.poll(posted, { timeout: 60_000 }).toContainEqual(expect.objectContaining({ title: expect.stringMatching(/^Her/), body: "你好，主人" }));
   await snap(page, "her-chat");
+
+  // A PDF and a Markdown file, sent to Her with the composer's button and sent back (her-mock's attach): a tile
+  // of either, the owner's or Her's, opens it over the window instead of saving it to Downloads. The PDF shows
+  // its pages, which can be searched, gone through by their pictures and zoomed; the Markdown reads as written
+  // (its single line breaks are not a chat's), or as its source.
+  const files = fs.mkdtempSync(path.join(os.tmpdir(), "hmfiles-"));
+  fs.writeFileSync(path.join(files, "report.pdf"), pdf(["Hermesh preview page one", "The second page says hello"]));
+  fs.writeFileSync(path.join(files, "notes.md"), "# Notes\n\nline one\nline two\n\n- a point\n");
+  const errors: string[] = [];
+  page.on("console", (m) => m.type() === "error" && errors.push(m.text()));
+  const chooser = page.waitForEvent("filechooser");
+  await page.getByRole("button", { name: "添加文件" }).click();
+  await (await chooser).setFiles([path.join(files, "report.pdf"), path.join(files, "notes.md")]);
+  await send("[[mock:attach:uploads/report.pdf,uploads/notes.md]] 发回来");
+  const sentBack = log.locator(".batt");
+  await expect(sentBack.getByRole("button", { name: "查看 report.pdf" })).toBeVisible({ timeout: 60_000 });
+  await sentBack.getByRole("button", { name: "查看 report.pdf" }).click();
+  const preview = page.getByRole("dialog", { name: "report.pdf" });
+  await expect(preview.locator(".dcp-page")).toContainText("/ 2", { timeout: 30_000 });
+  await expect(preview.locator(".pdfViewer .page")).toHaveCount(2);
+  await expect(preview.locator(".textLayer").first()).toContainText("Hermesh preview page one", { timeout: 30_000 });
+  await preview.getByRole("button", { name: "在文档中搜索（⌘F）" }).click();
+  await preview.getByPlaceholder("搜索文档").fill("hello");
+  await preview.getByPlaceholder("搜索文档").press("Enter");
+  await expect(preview.locator(".dcp-count")).toHaveText("1/1");
+  await preview.getByRole("button", { name: "目录与页面" }).click();
+  await expect(preview.locator(".dcp-thumb")).toHaveCount(2);
+  await preview.locator(".dcp-thumb").nth(1).click();
+  await expect(preview.getByRole("textbox", { name: "页码" })).toHaveValue("2");
+  const scale = await preview.locator(".dcp-scale").textContent();
+  await preview.getByRole("button", { name: "放大" }).click();
+  await expect(preview.locator(".dcp-scale")).not.toHaveText(scale ?? "");
+  await snap(page, "her-preview-pdf");
+  // Esc closes the search first, then the preview.
+  await preview.getByPlaceholder("搜索文档").press("Escape");
+  await expect(preview.getByPlaceholder("搜索文档")).toBeHidden();
+  await preview.locator(".dcp-scroll").press("Escape");
+  await expect(preview).toBeHidden();
+  // The owner's own Markdown, from where it was uploaded on Her's machine.
+  await log.locator(".um").getByRole("button", { name: "查看 notes.md" }).click();
+  const notes = page.getByRole("dialog", { name: "notes.md" });
+  await expect(notes.getByRole("heading", { name: "Notes" })).toBeVisible({ timeout: 30_000 });
+  await expect(notes.locator(".md p").first()).toHaveText(/line one\s+line two/);
+  await expect(notes.locator(".md p br")).toHaveCount(0);
+  await snap(page, "her-preview-md");
+  await notes.getByRole("button", { name: "源码" }).click();
+  await expect(notes.locator(".fpv-text")).toContainText("# Notes");
+  await notes.getByRole("button", { name: "关闭预览" }).click();
+  await expect(notes).toBeHidden();
+  expect(errors.filter((e) => /Content Security Policy|pdf/i.test(e))).toEqual([]);
 
   // A connector Her asks for on a secure card (docs/her-secure-cards.md §4): the fixture's service, which signs in
   // with OAuth. Under Her's words, the card says it is an MCP connection, what Her wants to connect to, its address

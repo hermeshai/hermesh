@@ -2,6 +2,9 @@ import { createClient } from "@connectrpc/connect";
 import { createConnectTransport } from "@connectrpc/connect-node";
 import { LocalService } from "@hermesh/proto/local";
 import { app, shell } from "electron";
+import fs from "node:fs/promises";
+import os from "node:os";
+import path from "node:path";
 import { i18n } from "../shared/i18n";
 import { consoleURL, opensOutside } from "../shared/herConsole";
 import { connectorPage, signInChatGpt, signInConnector, type ChatGptSignIn, type ConnectorSignIn, type SignInDeps } from "../shared/herSignin";
@@ -32,6 +35,20 @@ export async function herConsoleURL(machineId: string): Promise<string> {
 export async function saveHerFile(machineId: string, botId: string, path: string): Promise<void> {
   const r = await localService().herDownload({ machineId, botId, path, localDir: app.getPath("downloads") });
   shell.showItemInFolder(r.localPath);
+}
+
+/**
+ * One of an assistant's files, to show in the window (a PDF): fetched into a folder of its own
+ * that is gone once its bytes are read, so a preview leaves nothing behind on this Mac.
+ */
+export async function readHerFile(machineId: string, botId: string, file: string): Promise<Uint8Array> {
+  const dir = await fs.mkdtemp(path.join(os.tmpdir(), "hermesh-preview-"));
+  try {
+    const r = await localService().herDownload({ machineId, botId, path: file, localDir: dir });
+    return new Uint8Array(await fs.readFile(r.localPath));
+  } finally {
+    await fs.rm(dir, { recursive: true, force: true });
+  }
 }
 
 /** A request to her on a machine, on a connection of its own (HerCall): its result, or her's error thrown. */

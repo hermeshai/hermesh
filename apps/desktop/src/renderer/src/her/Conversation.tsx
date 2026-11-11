@@ -20,7 +20,8 @@ import { useHer } from "./context";
 import { envState, type EnvState } from "./environments";
 import { FailureCard, PastFailure } from "./Failure";
 import { messageTime, momentText, thingsText, timeLine } from "./format";
-import { Question, SentFiles, type FileScope } from "./Messages";
+import { Question, SentFiles, useSaveFile, type FileScope } from "./Messages";
+import { FilePreview, previews } from "./preview/FilePreview";
 import { Onboarding, useOnboarding } from "./ModelOnboarding";
 import { onboardingAfter, withOnboarding } from "./onboarding";
 import { SecureCard } from "./SecureCard";
@@ -261,7 +262,7 @@ function BotChat({ bot, conv, op, state, waiting, onWaiting }: {
     const line = <TimeSince at={item.ts} previous={previous} />;
     switch (item.kind) {
       case "user":
-        return <UserBubble key={item.key} item={item} fresh={fresh(item.key)} line={line} />;
+        return <UserBubble key={item.key} item={item} fresh={fresh(item.key)} line={line} scope={files} />;
       case "waiting":
         return <WaitingBubble key={item.key} item={item} line={line} onDiscarded={onWaiting} />;
       case "routine":
@@ -381,8 +382,11 @@ function MessageTime({ at }: { at: number }) {
 /** A path's last part, a Mac's or a PC's. */
 const baseName = (path: string) => path.split(/[\\/]/).filter(Boolean).pop() ?? path;
 
-function UserBubble({ item, fresh, line }: { item: Extract<BotItem, { kind: "user" }>; fresh: boolean; line: ReactNode }) {
+function UserBubble({ item, fresh, line, scope }: { item: Extract<BotItem, { kind: "user" }>; fresh: boolean; line: ReactNode; scope: FileScope }) {
   const { t } = useTranslation("her");
+  const save = useSaveFile(scope.bot);
+  // A PDF or Markdown sent opens over the window, from where it was uploaded on the assistant's machine.
+  const [shown, setShown] = useState<string | null>(null);
   // A message hermeshd delivered names its files after its words.
   const said = item.files.length === 0 ? splitAttached(item.text) : { text: item.text, files: item.files };
   return (
@@ -395,10 +399,11 @@ function UserBubble({ item, fresh, line }: { item: Extract<BotItem, { kind: "use
               <Tile key={i} name={t("chat.image")} src={`data:${im.mime_type};base64,${im.data}`} />
             ))}
             {said.files.map((f) => (
-              <Tile key={f} name={baseName(f)} />
+              <Tile key={f} name={baseName(f)} views={previews(f)} onOpen={previews(f) ? () => setShown(f) : undefined} />
             ))}
           </div>
         )}
+        {shown && <FilePreview scope={scope} path={shown} name={baseName(shown)} onSave={() => void save(shown, baseName(shown))} onClose={() => setShown(null)} />}
         {said.text !== "" && <div className="bub sel-text">{said.text}</div>}
         <div className="msg-act">
           <span className="msg-meta">

@@ -6,10 +6,12 @@ import { Markdown } from "../session/Markdown";
 import { Lightbox, Tile } from "./Composer";
 import { useHer } from "./context";
 import { sizeText } from "./format";
+import { FilePreview, previews } from "./preview/FilePreview";
 
 // What an assistant sends besides words.
 // Its files are on its machine: pictures are read through the tunnel
-// to show (files/read), other files are saved to Downloads on this Mac
+// to show (files/read), a PDF or Markdown opens over the window
+// (preview/FilePreview), other files are saved to Downloads on this Mac
 // (HerDownload) and shown there.
 
 /** Where a conversation's files are read: its connection and session. */
@@ -55,6 +57,7 @@ export function SentFiles({ scope, files, text }: { scope: FileScope; files: Bot
   const images = files.filter((f) => f.image && pictures[f.path] !== null);
   const others = files.filter((f) => !images.includes(f));
   const save = useSaveFile(scope.bot);
+  const [shown, setShown] = useState<BotFile | null>(null);
   return (
     <div className="batt">
       {text !== undefined && (
@@ -66,10 +69,11 @@ export function SentFiles({ scope, files, text }: { scope: FileScope; files: Bot
       {others.length > 0 && (
         <div className="bfiles">
           {others.map((f, i) => (
-            <Tile key={i} name={f.name} meta={sizeText(f.size)} onOpen={() => void save(f.path, f.name)} />
+            <Tile key={i} name={f.name} meta={sizeText(f.size)} views={previews(f.name)} onOpen={() => (previews(f.name) ? setShown(f) : void save(f.path, f.name))} />
           ))}
         </div>
       )}
+      {shown && <FilePreview scope={scope} path={shown.path} name={shown.name} onSave={() => void save(shown.path, shown.name)} onClose={() => setShown(null)} />}
     </div>
   );
 }

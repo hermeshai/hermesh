@@ -16,7 +16,8 @@ import { startUpdater } from "./updater";
 import { devURL, mainWindow, showMain } from "./windows";
 
 const rendererDir = path.join(import.meta.dirname, "../renderer");
-const csp = "default-src 'self'; img-src 'self' data:; style-src 'self' 'unsafe-inline'; connect-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'";
+// pdf.js (a PDF over the window) decodes some images with WebAssembly and draws some through blob: URLs.
+const csp = "default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; img-src 'self' data: blob:; style-src 'self' 'unsafe-inline'; connect-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'";
 
 // The window profile lives in a folder of its own inside Hermesh's data
 // directory (Electron's default would be that directory itself, hermeshd's).
