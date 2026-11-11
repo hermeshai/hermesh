@@ -1,0 +1,246 @@
+//go:build unix
+
+package e2e
+
+import (
+	"context"
+	"encoding/json"
+	"fmt"
+	"os"
+	"os/exec"
+	"path/filepath"
+	"regexp"
+	"runtime"
+	"strings"
+	"testing"
+	"time"
+
+	"google.golang.org/protobuf/proto"
+
+	localv1 "github.com/hermeshai/hermesh/gen/go/hermesh/local/v1"
+	screenv1 "github.com/hermeshai/hermesh/gen/go/hermesh/screen/v1"
+	screenrtc "github.com/hermeshai/hermesh/internal/screen"
+	"github.com/hermeshai/hermesh/pkg/identity"
+)
+
+// linuxDesktops are the desktops TestLinuxScreen runs on, each in a
+// container with no screen: what it installs, and the commands that start
+// it and a terminal that writes what it is typed to /tmp/typed.txt (as the
+// user "me", in /tmp/run). The terminal opens after a moment, once the
+// session's keyboard exists: a container has no keyboard of its own.
+var linuxDesktops = []struct {
+	name, packages, start string
+	width, height         uint32
+}{
+	{"x11", "xvfb xterm font-misc-misc xsetroot",
+		`Xvfb :5 -noreset -screen 0 1600x900x24 >/tmp/run/x.log 2>&1 &
+sleep 1; export DISPLAY=:5; xsetroot -solid '#d02020'
+(sleep 4; xterm -u8 -geometry 80x20+500+300 -e sh -c 'stty raw -echo; dd bs=1 of=/tmp/typed.txt 2>/dev/null') &`, 1600, 900},
+	{"sway", "sway swaybg foot font-dejavu libcap-setcap",
+		`printf 'output * bg #2040d0 solid_color\noutput HEADLESS-1 resolution 1280x720\n' > /tmp/run/sway.conf
+WLR_BACKENDS=headless WLR_RENDERER=pixman WLR_LIBINPUT_NO_DEVICES=1 sway -c /tmp/run/sway.conf >/tmp/run/sway.log 2>&1 &
+sleep 2
+(sleep 4; WAYLAND_DISPLAY=$(cd /tmp/run && ls wayland-* | grep -v lock | head -1) foot sh -c 'stty raw -echo; dd bs=1 of=/tmp/typed.txt 2>/dev/null') &`, 1280, 720},
+	{"gnome", "mutter pipewire wireplumber foot font-dejavu mesa-dri-gallium",
+		`pipewire >/tmp/run/pw.log 2>&1 &
+sleep 0.5; wireplumber >/tmp/run/wp.log 2>&1 &
+mutter --wayland --headless --no-x11 --virtual-monitor 1280x720 >/tmp/run/mutter.log 2>&1 &
+sleep 3
+(sleep 4; WAYLAND_DISPLAY=wayland-0 foot -o key-bindings.clipboard-paste=Control+v sh -c 'stty raw -echo; dd bs=1 of=/tmp/typed.txt 2>/dev/null') &`, 1280, 720},
+}
+
+// TestLinuxScreen (HERMESH_DOCKER=1) is Computer Control on Linux end to end
+// (docs/computer-control-linux.md §10): on each desktop of linuxDesktops, a
+// Linux hermeshd in a container, with the helper beside it and its desktop
+// found by itself, is paired with the owner's Mac; an iPhone's core, joined
+// as a trusted device, sees that it can show its screen and opens it through
+// the relay. The picture comes from a keyframe on at the desktop's size,
+// what the phone types (Chinese among it) reaches the terminal there, and
+// `hermeshd screen stop` at the machine ends the session, the phone told why.
+//
+// The helper is HERMESH_SCREEN_LINUX, else built in Docker (linuxScreenHelper).
+func TestLinuxScreen(t *testing.T) {
+	if os.Getenv("HERMESH_DOCKER") != "1" {
+		t.Skip("set HERMESH_DOCKER=1")
+	}
+	helper := linuxScreenHelper(t)
+	linuxBin := t.TempDir()
+	build := exec.Command("go", "build", "-o", filepath.Join(linuxBin, "hermeshd"), "./cmd/hermeshd")
+	build.Env = append(os.Environ(), "GOOS=linux", "GOARCH="+runtime.GOARCH, "CGO_ENABLED=0")
+	if out, err := build.CombinedOutput(); err != nil {
+		t.Fatalf("%v %s", err, out)
+	}
+	b, err := os.ReadFile(helper)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(linuxBin, "hermesh-screen"), b, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	w := newOwnerMac(t, []string{"HERMESH_FAKE_PROVIDERS=1"}, &localv1.GrantSpec{})
+	ctx := context.Background()
+	st, err := w.app.client.GetStatus(ctx, &localv1.GetStatusRequest{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	m := joinMobile(t, w, st.RelayUrl, t.TempDir(), func() *identity.SoftwareKey { k, _ := identity.GenerateKey(); return k }())
+	addr := strings.Replace(w.addr, "127.0.0.1", "host.docker.internal", 1)
+	for _, d := range linuxDesktops {
+		t.Run(d.name, func(t *testing.T) {
+			name := fmt.Sprintf("hermesh-e2e-screen-%s-%d", d.name, time.Now().UnixNano())
+			// The desktop and hermeshd run as the user, in one session bus; hermeshd's environment names no display, as under systemd.
+			session := filepath.Join(t.TempDir(), "session.sh")
+			os.WriteFile(session, []byte("export LANG=C.UTF-8 LC_ALL=C.UTF-8 XDG_RUNTIME_DIR=/tmp/run\nmkdir -p /tmp/run && chmod 700 /tmp/run\n"+d.start+
+				"\nenv -u DISPLAY -u WAYLAND_DISPLAY /opt/hermesh/hermeshd pair "+addr+" --name linux-"+d.name+" --no-service --data-dir /data\n"+
+				"exec env -u DISPLAY -u WAYLAND_DISPLAY /opt/hermesh/hermeshd run --data-dir /data\n"), 0o644)
+			script := strings.Join([]string{
+				"apk add --no-cache dbus python3 libstdc++ " + d.packages + " >/dev/null",
+				"(command -v setcap >/dev/null && setcap -r /usr/bin/sway 2>/dev/null; true)",
+				"mkdir -p /run/dbus && rm -f /usr/share/dbus-1/system-services/* && dbus-daemon --system --fork",
+				"adduser -D -u 1000 me && mkdir -p /data && chown me /data",
+				"exec su me -c 'dbus-run-session -- sh /opt/session.sh'",
+			}, " && ")
+			dockerRun := exec.Command("docker", "run", "--rm", "-d", "--name", name, "--shm-size=512m", "--add-host", "host.docker.internal:host-gateway",
+				"-v", linuxBin+":/opt/hermesh:ro", "-v", session+":/opt/session.sh:ro", "-e", "HERMESH_FAKE_PROVIDERS=1", "alpine:edge", "sh", "-c", script)
+			if out, err := dockerRun.CombinedOutput(); err != nil {
+				t.Fatalf("docker run: %v %s", err, out)
+			}
+			t.Cleanup(func() { exec.Command("docker", "rm", "-f", name).Run() })
+			logs := func() string { o, _ := exec.Command("docker", "logs", name).CombinedOutput(); return string(o) }
+			var code string
+			eventually(t, 3*time.Minute, "the Linux machine's pairing code", func() bool {
+				if m := codeRE.FindStringSubmatch(logs()); m != nil {
+					code = m[1]
+				}
+				return code != ""
+			})
+			approved, err := w.app.client.ApproveMachinePairing(ctx, &localv1.ApproveMachinePairingRequest{Code: code, MachineName: "linux-" + d.name})
+			if err != nil {
+				t.Fatalf("approve: %v\n%s", err, logs())
+			}
+			// The phone sees that the machine can show its screen.
+			eventually(t, 90*time.Second, "the Linux screen offered to the iPhone", func() bool {
+				res, err := m.client.ListMachines(ctx, &localv1.ListMachinesRequest{})
+				if err != nil {
+					return false
+				}
+				for _, mc := range res.Machines {
+					if mc.MachineId == approved.MachineId && mc.Status.GetScreen().GetAvailable() {
+						return true
+					}
+				}
+				return false
+			})
+			s := openScreen(t, m, approved.MachineId)
+			format, path := s.picture(t)
+			if format.GetWidth() != d.width || format.GetHeight() != d.height {
+				t.Errorf("format %v, want %dx%d", format, d.width, d.height)
+			}
+			t.Logf("connected: %s", path)
+			// A click on the terminal, then typing; Chinese reaches it too (on GNOME, pasted).
+			time.Sleep(4 * time.Second) // the terminal opens
+			for _, in := range []*screenv1.Input{
+				{Event: &screenv1.Input_Button{Button: &screenv1.Button{X: 0.5, Y: 0.5, Button: screenv1.MouseButton_MOUSE_BUTTON_LEFT, Down: true, Clicks: 1}}},
+				{Event: &screenv1.Input_Button{Button: &screenv1.Button{X: 0.5, Y: 0.5, Button: screenv1.MouseButton_MOUSE_BUTTON_LEFT, Clicks: 1}}},
+				{Event: &screenv1.Input_Text{Text: &screenv1.Text{Text: "Hello Linux "}}},
+				{Event: &screenv1.Input_Text{Text: &screenv1.Text{Text: "你好"}}},
+			} {
+				b, _ := proto.Marshal(in)
+				if err := screenrtc.WriteMessage(s.conn, screenrtc.KindInput, b); err != nil {
+					t.Fatal(err)
+				}
+				time.Sleep(300 * time.Millisecond)
+			}
+			typed := func() string {
+				o, _ := exec.Command("docker", "exec", name, "cat", "/tmp/typed.txt").Output()
+				return string(o)
+			}
+			eventually(t, 20*time.Second, "what the phone typed, in the terminal", func() bool { return typed() == "Hello Linux 你好" })
+			// The machine's user ends it there.
+			if out, err := exec.Command("docker", "exec", name, "su", "me", "-c", "/opt/hermesh/hermeshd screen stop --data-dir /data").CombinedOutput(); err != nil {
+				t.Fatalf("hermeshd screen stop: %v %s", err, out)
+			}
+			if why := s.ended(t); why != "the machine ended the session" {
+				t.Errorf("the phone was told %q", why)
+			}
+		})
+	}
+}
+
+// picture reads the stream until the picture has come (frames from a
+// keyframe on, the machine's report of its size) and the two ends are
+// connected, and returns the size and the path between them.
+func (s *screenStream) picture(t *testing.T) (*screenv1.Format, string) {
+	t.Helper()
+	var frames int
+	var firstKey bool
+	var format *screenv1.Format
+	path := ""
+	deadline := time.Now().Add(90 * time.Second)
+	for (frames < 1 || format == nil || path == "") && time.Now().Before(deadline) {
+		s.conn.SetReadDeadline(deadline)
+		k, p, err := screenrtc.ReadMessage(s.r)
+		if err != nil {
+			t.Fatalf("reading the screen: %v", err)
+		}
+		switch k {
+		case screenrtc.KindVideo:
+			if frames == 0 {
+				firstKey = p[0] == 1
+			}
+			frames++
+		case screenrtc.KindState:
+			var ev screenv1.ScreenEvent
+			if err := proto.Unmarshal(p, &ev); err != nil {
+				t.Fatal(err)
+			}
+			if f := ev.GetFormat(); f != nil {
+				format = f
+			}
+			if e := ev.GetState().GetError(); e != "" {
+				t.Fatalf("the machine can't show its screen: %s %s", e, ev.GetState().GetDetail())
+			}
+		case screenrtc.KindStatus:
+			var status struct{ Phase, Path, Error string }
+			json.Unmarshal(p, &status)
+			if status.Phase == "failed" {
+				t.Fatalf("the session failed: %s", status.Error)
+			}
+			if status.Phase == "connected" {
+				path = status.Path
+			}
+		}
+	}
+	if frames < 1 || !firstKey || path == "" || format == nil {
+		t.Fatalf("frames %d, first is a keyframe %v, path %q, format %v", frames, firstKey, path, format)
+	}
+	return format, path
+}
+
+// linuxScreenHelper is hermesh-screen for Linux on this computer's
+// architecture: $HERMESH_SCREEN_LINUX, else built in Docker from
+// apps/screen/linux, linked to musl dynamically (the containers are Alpine)
+// so it can load PipeWire.
+func linuxScreenHelper(t *testing.T) string {
+	t.Helper()
+	if bin := os.Getenv("HERMESH_SCREEN_LINUX"); bin != "" {
+		return bin
+	}
+	toml, err := os.ReadFile("apps/screen/linux/rust-toolchain.toml")
+	if err != nil {
+		t.Fatal(err)
+	}
+	toolchain := regexp.MustCompile(`channel = "(.+)"`).FindSubmatch(toml)[1]
+	src, _ := filepath.Abs("apps/screen/linux")
+	out := t.TempDir()
+	start := time.Now()
+	build := exec.Command("docker", "run", "--rm", "-v", src+":/src:ro", "-v", out+":/out", "-v", "hermesh-e2e-screen-target:/target",
+		"-v", "hermesh-e2e-cargo-registry:/usr/local/cargo/registry", "-e", "CARGO_TARGET_DIR=/target", "-e", "RUSTFLAGS=-C target-feature=-crt-static",
+		"-w", "/src", fmt.Sprintf("rust:%s-alpine", toolchain),
+		"sh", "-c", "apk add --no-cache build-base nasm >/dev/null && cargo build --locked --release && cp /target/release/hermesh-screen /out/")
+	if b, err := build.CombinedOutput(); err != nil {
+		t.Fatalf("building hermesh-screen for Linux: %v\n%s", err, b)
+	}
+	t.Logf("hermesh-screen for Linux built in %v", time.Since(start).Round(time.Second))
+	return filepath.Join(out, "hermesh-screen")
+}

@@ -1,0 +1,32 @@
+# hermesh-screen for Linux: what Computer Control needs of a Linux desktop
+# (docs/computer-control-linux.md). hermeshd starts it and talks to it over
+# stdin and stdout, as it does to the Mac's (apps/screen/macos); it has no
+# network.
+[package]
+name = "hermesh-screen"
+version = "0.1.0"
+edition = "2021"
+license = "Apache-2.0"
+publish = false
+
+[dependencies]
+fast_image_resize = "5"
+libc = "0.2"
+libloading = "0.8"
+openh264 = "0.9.10"
+openh264-sys2 = "0.9.10"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+wayland-client = "0.31"
+wayland-protocols-misc = { version = "0.3", features = ["client"] }
+wayland-protocols-wlr = { version = "0.3", features = ["client"] }
+x11rb = { version = "0.14", features = ["shm", "xtest", "xfixes", "damage", "randr"] }
+yuv = "0.8"
+zbus = "5"
+
+[profile.release]
+opt-level = 3
+lto = "thin"
+codegen-units = 4
+strip = true
+panic = "abort"

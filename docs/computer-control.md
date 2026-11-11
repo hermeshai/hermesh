@@ -434,7 +434,8 @@ owner or is working on the desktop, more than one display, the clipboard.
   there is no picture to capture.
 - The login window before anyone has logged in.
 - Windows and Linux machines. The wire doesn't depend on the Mac, so each
-  needs only its own helper.
+  needs only its own helper. Linux's plan is
+  [computer-control-linux.md](computer-control-linux.md).
 - Controlling from the Mac app.
 - Machines that aren't Her Servers.
 - Direct connections for anything but this.

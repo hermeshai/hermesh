@@ -13,6 +13,7 @@ node_modules/
 /apps/signer/macos/.swiftpm/
 /apps/screen/macos/.build/
 /apps/screen/macos/.swiftpm/
+/apps/screen/linux/target/
 /packages/HermeshKit/.build/
 /packages/HermeshKit/.swiftpm/
 /apps/ios/build/
