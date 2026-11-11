@@ -163,6 +163,14 @@ button{font:inherit;color:inherit}
 /* Sidebar titles a step brighter than other text in the dark, as small text on the material reads grey. */
 @media (prefers-color-scheme:dark){.side{--l1:rgba(255,255,255,.93)}}
 .noside .side{opacity:0;pointer-events:none}
+.mainwrap>.content{grid-column:2}
+/* No room for the sidebar beside the conversation, but asked for: over it, opaque, until a click beside it (layout.ts). */
+.mainwrap.peek .side{position:absolute;top:0;left:0;bottom:0;z-index:20;width:272px;opacity:1;pointer-events:auto;background:var(--side);
+  box-shadow:10px 0 30px rgba(0,0,0,.14);animation:peek-in .22s cubic-bezier(.2,0,0,1)}
+.peek-scrim{position:absolute;inset:0;z-index:19;background:rgba(0,0,0,.08);animation:scrim-in .2s}
+@keyframes scrim-in{from{opacity:0}}
+@keyframes peek-in{from{transform:translateX(-24px);opacity:0}}
+@media (prefers-reduced-motion:reduce){.mainwrap.peek .side{animation:none}}
 /* The sidebar toggle sits a step after the traffic lights (which end at x 72), as in Codex and Mail; hidden, the toolbar keeps it there. The list's view options end the row. */
 .side-top{height:44px;display:flex;align-items:center;justify-content:space-between;padding:0 8px 0 79px;flex:none}
 .tb{height:28px;min-width:28px;border:0;background:transparent;border-radius:8px;display:flex;align-items:center;justify-content:center;color:var(--l2);gap:5px;padding:0 6px}

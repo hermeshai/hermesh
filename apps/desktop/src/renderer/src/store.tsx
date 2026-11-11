@@ -3,6 +3,7 @@ import { ConnectError } from "@connectrpc/connect";
 import type { Client, Device, GetStatusResponse, Machine, PairingDetails, Project, Unreachable, Wake } from "@hermesh/proto/local";
 import type { Session } from "@hermesh/proto/session";
 import { sessionView, unreachableMachines, withKnownState, type SessionFilter, type SessionView } from "@hermesh/core";
+import type { Peek } from "./layout";
 import { useWorld } from "./useWorld";
 
 // What the window knows: the owner's world as hermeshd pushes it
@@ -47,6 +48,8 @@ type UI = {
   selection: Selection;
   inspector: boolean;
   sidebar: boolean;
+  /** What shows over the conversation for now, though there is no room for it beside it (layout.ts). */
+  peek: Peek;
   /** How the session list is laid out, and whether it shows archived sessions. */
   view: SessionView;
   archived: boolean;
@@ -69,6 +72,8 @@ type UI = {
 
 export type Store = Data &
   UI & {
+    /** The window's width, which lays it out (layout.ts). */
+    width: number;
     /** The sessions loaded so far: the newest page, older pages the list asked for, and every change since. */
     sessions: Session[];
     /** Moves when the counts of work changed (QueryWork). */
@@ -143,6 +148,7 @@ export function HermeshProvider({ children }: { children: ReactNode }) {
     selection: { kind: "overview" },
     inspector: saved("inspector", true),
     sidebar: true,
+    peek: null,
     view: sessionView(),
     archived: false,
     collapsed: [],
@@ -161,6 +167,12 @@ export function HermeshProvider({ children }: { children: ReactNode }) {
     try { localStorage.setItem("main-view", JSON.stringify({ selection: ui.selection, sidebar: ui.sidebar, view: ui.view, archived: ui.archived, collapsed: ui.collapsed })); }
     catch { /* Main-window context is optional when storage is unavailable. */ }
   }, [ui.selection, ui.sidebar, ui.view, ui.archived, ui.collapsed]);
+  const [width, setWidth] = useState(() => window.innerWidth);
+  useEffect(() => {
+    const resize = () => setWidth(window.innerWidth);
+    window.addEventListener("resize", resize);
+    return () => window.removeEventListener("resize", resize);
+  }, []);
   const toastTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
 
   // Watch brings every change; a step that waits on one (signing in) reads the status at once.
@@ -206,13 +218,14 @@ export function HermeshProvider({ children }: { children: ReactNode }) {
       loadOlderSessions: world.loadOlder,
       workVersion: world.workVersion,
       ...ui,
+      width,
       set,
       select,
       refresh,
       run,
       show,
     }),
-    [data, sessions, world.loaded, world.status, world.next, world.loadOlder, world.workVersion, ui, set, select, refresh, run, show],
+    [data, sessions, world.loaded, world.status, world.next, world.loadOlder, world.workVersion, ui, width, set, select, refresh, run, show],
   );
   return <Ctx.Provider value={store}>{children}</Ctx.Provider>;
 }

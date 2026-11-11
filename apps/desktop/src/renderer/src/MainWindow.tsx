@@ -11,6 +11,7 @@ import { SheetHost } from "./Sheets";
 import { Sidebar } from "./Sidebar";
 import { useCommands } from "./commands";
 import { Icon } from "./icons";
+import { layoutOf, setSidebar, usePeekEnd } from "./layout";
 import { platform } from "./platform";
 import { errorText, useStore } from "./store";
 
@@ -59,9 +60,24 @@ export function MainWindow() {
       }),
     [set, show],
   );
+  // A peek ends when it fits again, when another session or page is chosen, and with Esc.
+  usePeekEnd(st);
+  useEffect(() => {
+    set({ peek: null });
+  }, [st.selection, set]);
+  const peeking = st.peek !== null;
+  useEffect(() => {
+    if (!peeking) return;
+    const esc = (e: KeyboardEvent) => e.key === "Escape" && !e.defaultPrevented && set({ peek: null });
+    document.addEventListener("keydown", esc);
+    return () => document.removeEventListener("keydown", esc);
+  }, [peeking, set]);
+  const { sidebar } = layoutOf(st);
   return (
-    <div className={`mainwrap ${st.sidebar ? "" : "noside"}`}>
+    <div className={`mainwrap ${sidebar === "docked" ? "" : "noside"} ${sidebar === "over" ? "peek" : ""}`}>
       <Sidebar />
+      {/* Over the conversation, the sidebar goes again with a click beside it. */}
+      {sidebar === "over" && <div className="peek-scrim" onClick={() => setSidebar(st, false)} />}
       <section className="content">
         {session ? (
           <SessionPage s={session} />
@@ -85,12 +101,12 @@ export function MainWindow() {
 export function SidebarToggle() {
   const st = useStore();
   const { t } = useTranslation("common");
-  if (st.sidebar) return null;
+  if (layoutOf(st).sidebar !== "hidden") return null;
   return (
     <>
       <span className="tl-room" />
       <AppMenuButton />
-      <button className="tb" onClick={() => st.set({ sidebar: true })} aria-label={t("window.showSidebar")}>
+      <button className="tb" onClick={() => setSidebar(st, true)} aria-label={t("window.showSidebar")}>
         <Icon name="sidebar" />
       </button>
     </>
