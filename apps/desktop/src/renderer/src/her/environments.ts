@@ -31,6 +31,12 @@ export function unreadCount(envs: Pick<Machine, "her">[]): number {
  */
 export const lacksGrant = (her: Machine["her"]): boolean => !!her?.enabled && !her.mesh && her.clientPublicKey.length > 0;
 
+/**
+ * Her was on once and her data is still on the machine (docs/her-server.md §5.6): as the machine says while
+ * it answers, else as last seen. A machine older than HerStatus.data never says so.
+ */
+export const herDataKept = (m: Pick<Machine, "status" | "her">): boolean => (m.status?.her ?? m.her)?.data ?? false;
+
 /** What an environment's Her is doing, for its page. */
 export type EnvState =
   | { kind: "offline"; seen?: Date }

@@ -10,6 +10,7 @@ import { useCheckAgents } from "../agents";
 import { local } from "../api";
 import { ComputerUse } from "../her-computer/ComputerUse";
 import { Problems } from "../health";
+import { herDataKept } from "../her/environments";
 import { GrantLine } from "../her/GrantLine";
 import { Icon } from "../icons";
 import { useNow, useStore, type Store } from "../store";
@@ -119,11 +120,31 @@ function HerRow({ m }: { m: Machine }) {
     await st.run(() => local.setHer({ machineId: m.machineId, enabled: v }));
     setPending(null);
   };
+  const eraseData = () =>
+    st.set({
+      sheet: {
+        kind: "confirm",
+        title: t("machines.herEraseTitle", { name: m.machineName }),
+        message: t("machines.herEraseMessage", { name: m.machineName }),
+        button: t("machines.herEraseButton"),
+        run: () => local.setHer({ machineId: m.machineId, enabled: false, erase: true }),
+        done: t("machines.herErased", { name: m.machineName }),
+      },
+    });
   const desc = windows ? t("machines.herWindows") : unsupported ? t("machines.herUnsupported", { reason: unsupported }) : m.her?.enabled ? t("machines.herDesc") : <>{i18n.t("her:grant.runs")}<br />{i18n.t("her:grant.desc")}</>;
   return (
-    <SRow title={t("machines.herRun")} desc={desc}>
-      <Switch on={on} label={t("machines.herRun")} set={set} disabled={pending !== null || (!on && (windows || unsupported !== "")) || (!m.online && !m.local)} />
-    </SRow>
+    <>
+      <SRow title={t("machines.herRun")} desc={desc}>
+        <Switch on={on} label={t("machines.herRun")} set={set} disabled={pending !== null || (!on && (windows || unsupported !== "")) || (!m.online && !m.local)} />
+      </SRow>
+      {/* Off, her data kept (docs/her-server.md §5.6): erased while the machine answers. */}
+      {!on && herDataKept(m) && (
+        <div className="frow">
+          <span style={{ flex: 1 }}>{t("machines.herKept")}</span>
+          {(m.online || m.local) && <button className="btn sm" onClick={eraseData}>{t("machines.herErase")}</button>}
+        </div>
+      )}
+    </>
   );
 }
 
@@ -153,8 +174,10 @@ function MachineDetail({ m, ask, open }: { m: Machine; ask: (a: Ask) => void; op
         title: t("removeMachineTitle", { name: m.machineName }),
         message: t("machines.removeMessage"),
         button: t("removeButton"),
-        run: () => local.removeMachine({ machineId: m.machineId }),
+        run: (eraseHer) => local.removeMachine({ machineId: m.machineId, eraseHer }),
         done: t("removed", { name: m.machineName }),
+        // Her's data there can go too, while the machine answers (docs/her-server.md §5.6).
+        herData: m.her?.enabled || herDataKept(m) ? { name: m.machineName, offline: !m.online } : undefined,
       },
     });
   const copyDiagnostics = () =>

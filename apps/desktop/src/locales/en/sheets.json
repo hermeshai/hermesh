@@ -251,6 +251,7 @@
     "approve": "Confirm with Touch ID.",
     "approve_win": "Confirm with Windows Hello.",
     "done": "Her is off on “{{name}}”",
-    "erased": "Her is off on “{{name}}”, and her data is erased"
+    "erased": "Her is off on “{{name}}”, and her data is erased",
+    "offline": "“{{name}}” is offline, so Her’s data stays on it."
   }
 }

@@ -25,11 +25,7 @@ export function HerOffSheet({ sheet }: { sheet: Extract<Sheet, { kind: "herOff" 
     <>
       <h3 id="sheet-title">{t("herOff.title", { name })}</h3>
       <p className="sub">{t("herOff.sub")}</p>
-      <div className="fgroup">
-        <SRow title={t("herOff.erase")} desc={t("herOff.eraseDesc", { name })}>
-          <Switch on={erase} label={t("herOff.erase")} set={setErase} disabled={busy} />
-        </SRow>
-      </div>
+      <EraseHerData name={name} on={erase} set={setErase} disabled={busy} />
       {busy && <SignerWaiting detail={t("herOff.approve")} />}
       <ErrorLine text={error} />
       <div className="sheet-foot">
@@ -37,5 +33,17 @@ export function HerOffSheet({ sheet }: { sheet: Extract<Sheet, { kind: "herOff" 
         <button className={`btn primary${erase ? " destructive" : ""}`} disabled={busy} onClick={off}>{t(erase ? "herOff.buttonErase" : "herOff.button")}</button>
       </div>
     </>
+  );
+}
+
+/** The choice to erase Her's data on a machine too, off by default: turning her off, or removing the machine. */
+export function EraseHerData({ name, on, set, disabled }: { name: string; on: boolean; set: (on: boolean) => void; disabled: boolean }) {
+  const { t } = useTranslation("sheets");
+  return (
+    <div className="fgroup">
+      <SRow title={t("herOff.erase")} desc={t("herOff.eraseDesc", { name })}>
+        <Switch on={on} label={t("herOff.erase")} set={set} disabled={disabled} />
+      </SRow>
+    </div>
   );
 }

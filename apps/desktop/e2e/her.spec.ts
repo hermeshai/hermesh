@@ -13,7 +13,7 @@ import { fixture, launch, snap } from "./app";
 // work-mac offline: what was read stays, after the app restarts too, and what
 // is written waits on this Mac. Her's memory shows in her settings, as written,
 // and is cleared there. Last, Her is turned off on this Mac, her data kept,
-// then erased.
+// then erased; removing work-mac, offline, keeps hers.
 
 type Hook = { notifications(): { id: string; title: string; body: string; click(): void }[] };
 
@@ -378,8 +378,8 @@ test("Her: the first run, a chat, a secure card, the console, a second environme
   await snap(page, "her-offline-restarted");
 
   // Her turned off on this Mac from her settings (docs/her-server.md §5.6): the sheet says what stops and asks
-  // whether her data goes too, keeping it unless chosen. Kept, Her carries on once turned on again, from the
-  // switch in Settings › Machines; there, turned off and erased, she starts anew, asking for a model.
+  // whether her data goes too, keeping it unless chosen. Kept, Settings › Machines says so and Her carries on
+  // once turned on again from its switch; there, her data erased, she starts anew, asking for a model.
   await page.locator(".her-env").click();
   await page.getByRole("menuitemradio").filter({ hasNotText: "work-mac" }).click();
   await expect(page.getByRole("log", { name: "对话" })).toContainText("你好，主人", { timeout: 30_000 });
@@ -408,19 +408,36 @@ test("Her: the first run, a chat, a secure card, the console, a second environme
   await machines.getByRole("list", { name: "机器" }).getByRole("button").filter({ hasNotText: "work-mac" }).first().click();
   const run = machines.getByRole("switch", { name: "在这台机器上运行 Her" });
   await expect(run).toHaveAttribute("aria-checked", "false");
+  // Off, her data kept: the row under the switch says so, and offers to erase it.
+  const kept = machines.getByText("Her 的数据还在这台机器上，再次开启时接着用。");
+  const eraseData = machines.getByRole("button", { name: "清空数据…" });
+  await expect(kept).toBeVisible({ timeout: 30_000 });
+  await expect(eraseData).toBeVisible();
+  await kept.scrollIntoViewIfNeeded();
+  await snap(win, "her-data-kept");
   await run.click();
   await expect(run).toHaveAttribute("aria-checked", "true", { timeout: 60_000 });
   await expect(machines).toContainText("关闭时会问你是保留到下次，还是清空。");
+  await expect(kept).toBeHidden();
   await page.locator(".her-env").click({ timeout: 60_000 });
   await page.getByRole("menuitemradio").filter({ hasNotText: "work-mac" }).click();
   await expect(page.getByRole("log", { name: "对话" })).toContainText("你好，主人", { timeout: 60_000 });
 
+  // Turned off from the switch, her data kept, then erased from the row after asking: turned on again, she
+  // starts anew, asking for a model.
   await run.click();
   const offThere = win.getByRole("dialog", { name: /^在「.+」上关闭 Her？$/ });
-  await offThere.getByRole("switch", { name: "同时清空 Her 的数据" }).click();
-  await offThere.getByRole("button", { name: "关闭并清空" }).click();
+  await offThere.getByRole("button", { name: "关闭 Her" }).click();
   await expect(offThere).toBeHidden({ timeout: 30_000 });
-  await expect(win.locator(".toast")).toHaveText(/^已在「.+」上关闭 Her，并清空了她的数据$/);
+  await expect(run).toHaveAttribute("aria-checked", "false");
+  await eraseData.click({ timeout: 30_000 });
+  const sure = win.getByRole("dialog", { name: /^清空「.+」上 Her 的数据？$/ });
+  await expect(sure).toContainText(/删除「.+」上 Her 的助手、对话、记忆、定时任务、文件、连接器和模型登录，无法恢复。/);
+  await snap(win, "her-data-erase");
+  await sure.getByRole("button", { name: "清空", exact: true }).click();
+  await expect(sure).toBeHidden({ timeout: 30_000 });
+  await expect(win.locator(".toast")).toHaveText(/^已清空「.+」上 Her 的数据$/);
+  await expect(kept).toBeHidden({ timeout: 30_000 });
   await expect(run).toHaveAttribute("aria-checked", "false");
   await run.click();
   await expect(run).toHaveAttribute("aria-checked", "true", { timeout: 60_000 });
@@ -429,5 +446,26 @@ test("Her: the first run, a chat, a secure card, the console, a second environme
   const fresh = page.getByRole("log", { name: "对话" });
   await expect(fresh.getByText(/^你好，我是 .+，在 .+ 上为你做事。开始之前，我需要接上一个模型/)).toBeVisible({ timeout: 120_000 });
   await expect(fresh).not.toContainText("你好，主人");
+
+  // Turned off and erased at once, on the sheet: the machine says none of her data is left.
+  await run.click();
+  await offThere.getByRole("switch", { name: "同时清空 Her 的数据" }).click();
+  await offThere.getByRole("button", { name: "关闭并清空" }).click();
+  await expect(offThere).toBeHidden({ timeout: 30_000 });
+  await expect(win.locator(".toast")).toHaveText(/^已在「.+」上关闭 Her，并清空了她的数据$/);
+  await expect(run).toHaveAttribute("aria-checked", "false");
+  await expect(kept).toBeHidden({ timeout: 30_000 });
+
+  // Removing work-mac, where Her runs: offline, her data can't be erased there, and the dialog says it stays
+  // instead of offering to. Cancelled.
+  await win.getByRole("button", { name: "返回机器" }).click();
+  await machines.getByRole("list", { name: "机器" }).getByRole("button").filter({ hasText: "work-mac" }).click();
+  await machines.locator(".set-acts").getByRole("button", { name: "移除…" }).click();
+  const removing = win.getByRole("dialog", { name: "移除机器「work-mac」？" });
+  await expect(removing).toContainText("「work-mac」离线，Her 的数据会留在上面。");
+  await expect(removing.getByRole("switch")).toHaveCount(0);
+  await snap(win, "her-remove-offline");
+  await removing.getByRole("button", { name: "取消" }).click();
+  await expect(removing).toBeHidden();
   await app.close();
 });
