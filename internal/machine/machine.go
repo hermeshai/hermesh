@@ -279,15 +279,31 @@ func SanitizeName(s string) string {
 }
 
 // SetName sets the machine's name, a setting: the name it reports and
-// presents to agents on their end-to-end connections.
+// presents to agents on their end-to-end connections. An agent holds the
+// machine to the name it presented when the connection was made, so the
+// agents' connections made under another name are closed: one kept from
+// command to command (the MCP gateway's, the CLI link's) would go on saying
+// the old name, and the agent refuse the machine under its new one.
 func (n *Machine) SetName(name string) error {
 	name = SanitizeName(name)
 	if err := n.st.Set(kName, []byte(name)); err != nil {
 		return err
 	}
 	n.mu.Lock()
+	renamed := n.machineName != name
 	n.machineName = name
+	var close []*tunnel
+	if renamed {
+		for t := range n.tunnels {
+			if t.principal.Kind == PrincipalClient {
+				close = append(close, t)
+			}
+		}
+	}
 	n.mu.Unlock()
+	for _, t := range close {
+		t.conn.Close()
+	}
 	return nil
 }
 

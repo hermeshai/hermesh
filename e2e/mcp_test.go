@@ -243,6 +243,23 @@ func TestMCPGateway(t *testing.T) {
 		t.Fatalf("session_get of no session: %s", doc.raw)
 	}
 
+	// The Mac is renamed. The gateway keeps its tunnel to it from one call
+	// to the next, and the Mac presented its old name on that one: the Mac
+	// closes it, so the agent works under the new name at once (it held
+	// the Mac to the old one, and was refused, for as long as the tunnel
+	// was kept).
+	for _, name := range []string{"the-mac", "owner-mac"} {
+		if _, err := mac.client.RenameMachine(ctx, &localv1.RenameMachineRequest{MachineId: local.MachineId, MachineName: name}); err != nil {
+			t.Fatal(err)
+		}
+		eventually(t, 15*time.Second, "the agent lists the Mac as "+name, func() bool {
+			return strings.Contains(string(callTool(t, session, "project_list", nil).raw), `"`+name+`/demo"`)
+		})
+		if doc = callTool(t, session, "session_start", map[string]any{"project": name + "/demo", "prompt": "say renamed", "wait": true, "timeout": "45s"}); !doc.OK {
+			t.Fatalf("session_start on the Mac renamed %s: %s", name, doc.raw)
+		}
+	}
+
 	// A release from a tag: base checks the session's worktree out there,
 	// and the ignored signing settings .worktreeinclude names come along,
 	// out of the diff.
