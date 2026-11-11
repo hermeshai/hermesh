@@ -18,6 +18,8 @@
 //   Contents/Helpers/her                            Her's kernel (her/), which hermeshd runs from beside itself (docs/her-server.md §6.4)
 //   Contents/Helpers/agent-desktop                  desktop control, which her's desktop tools find beside her,
 //   Contents/Helpers/agent-desktop-macos-helper       and its helper (scripts/agent-desktop.mjs: a pinned release, checked)
+//   Contents/Helpers/hermesh-screen                 what Computer Control shows this Mac's screen with (apps/screen/macos), which
+//                                                     hermeshd runs from beside itself (docs/computer-control.md §4.1)
 //   Contents/Helpers/Hermesh Signer.app             the native signer
 //   Contents/Frameworks/libpdfium.dylib             PDFium, which her's document worker finds there (scripts/pdfium.mjs: a pinned release, checked)
 //   Contents/Library/LaunchAgents/com.hermesh.app.daemon.plist
@@ -122,6 +124,12 @@ if (hasConsole) {
   console.warn("⚠️  her/apps/console is not there yet: this app has no Her console (hermeshd says it is not installed).");
 }
 
+step(`building hermesh-screen (${arch})`);
+const screenRoot = path.join(root, "apps/screen/macos");
+const swiftArchs = archs.flatMap((a) => ["--arch", a === "x64" ? "x86_64" : "arm64"]);
+sh("swift", ["build", "-c", "release", "--product", "hermesh-screen", ...swiftArchs], { cwd: screenRoot });
+fs.copyFileSync(path.join(out("swift", ["build", "-c", "release", ...swiftArchs, "--show-bin-path", "--package-path", screenRoot]), "hermesh-screen"), path.join(tmp, "hermesh-screen"));
+
 step("building Hermesh Signer.app");
 sh(path.join(root, "apps/signer/macos/scripts/build-signer.sh"), [tmp], { env: { ...process.env, HERMESH_SIGNING_IDENTITY: identity, VERSION: version } });
 const signerApp = path.join(tmp, "Hermesh Signer.app");
@@ -170,7 +178,7 @@ fs.mkdirSync(path.join(contents, "Helpers"), { recursive: true });
 fs.mkdirSync(path.join(contents, "Library/LaunchAgents"), { recursive: true });
 // Programs go in Helpers and the library in Frameworks, where her looks after its own folder
 // (her-docs); what is not code goes in Resources, since codesign takes every file in those for code.
-const helpers = ["hermeshd", "hermesh", "her", ...agentDesktopFiles];
+const helpers = ["hermeshd", "hermesh", "her", "hermesh-screen", ...agentDesktopFiles];
 for (const name of helpers) {
   fs.copyFileSync(path.join(tmp, name), path.join(contents, "Helpers", name));
   fs.chmodSync(path.join(contents, "Helpers", name), 0o755);
@@ -219,7 +227,7 @@ await flipFuses(path.join(contents, "MacOS/Hermesh"), {
 
 step(`signing with: ${identity}`);
 // hermeshd needs no entitlements; the signer was signed with its own (and its profile) when built.
-// Nor do her and agent-desktop: they read and write the user's files, start processes and open
+// Nor do her, agent-desktop and hermesh-screen: they read and write the user's files, start processes and open
 // connections, which the hardened runtime allows, and the accessibility API and screen capture are
 // TCC permissions. her loads PDFium, signed below with the bundle, which the hardened runtime's
 // library validation lets in only from the same team ID: an ad-hoc her goes without it.

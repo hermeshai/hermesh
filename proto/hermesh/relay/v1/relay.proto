@@ -200,6 +200,27 @@ service MachineControlService {
   // Notices for the owner's trusted devices, each sealed to one of them
   // (PushTargets): the relay hands them to the push service.
   rpc Notify(NotifyRequest) returns (NotifyResponse);
+  // Where Computer Control looks for a path to the owner's device
+  // (docs/computer-control.md §7).
+  rpc GetScreenServers(GetScreenServersRequest) returns (GetScreenServersResponse);
+}
+
+message GetScreenServersRequest {}
+
+// The STUN and TURN servers this relay runs for Computer Control, with a
+// credential that lasts an hour; none when it runs none, and the two ends
+// then connect only where they reach each other directly. What passes
+// through them is sealed between the two ends.
+message GetScreenServersResponse {
+  repeated IceServer servers = 1;
+}
+
+// One server as WebRTC names it: its URLs ("stun:host:port",
+// "turn:host:port?transport=udp"), and for TURN the credential.
+message IceServer {
+  repeated string urls = 1;
+  string username = 2;
+  string credential = 3;
 }
 
 message LeaveRequest {}
@@ -355,6 +376,9 @@ service OwnerControlService {
   rpc ClearWake(ClearWakeRequest) returns (ClearWakeResponse);
   // What a wake link (an agent's `message wake`) is for.
   rpc OpenWakeLink(OpenWakeLinkRequest) returns (OpenWakeLinkResponse);
+  // Where Computer Control looks for a path to a machine
+  // (docs/computer-control.md §7).
+  rpc GetScreenServers(GetScreenServersRequest) returns (GetScreenServersResponse);
 }
 
 // Wake is a doorbell: a webhook rung when messages wait for an address. Its

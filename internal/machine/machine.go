@@ -30,6 +30,7 @@ import (
 	"github.com/hermeshai/hermesh/internal/provider/acp"
 	"github.com/hermeshai/hermesh/internal/provider/claude"
 	"github.com/hermeshai/hermesh/internal/provider/codex"
+	screenhost "github.com/hermeshai/hermesh/internal/screen"
 	"github.com/hermeshai/hermesh/internal/shellenv"
 	"github.com/hermeshai/hermesh/pkg/identity"
 	"github.com/hermeshai/hermesh/pkg/transport"
@@ -55,6 +56,11 @@ type Config struct {
 	// HerExtensionHost: while Her is on, the browsers here start her for the
 	// Hermesh extension, which lends her the owner's own Chrome.
 	HerExtensionHost bool
+	// ScreenBin is the helper Computer Control shows this machine's screen
+	// with (docs/computer-control.md), "" when it has none; ScreenArgs are
+	// passed to it (the tests' picture).
+	ScreenBin  string
+	ScreenArgs []string
 }
 
 func DefaultProviders() map[string]provider.Provider {
@@ -132,8 +138,10 @@ type Machine struct {
 	// tools is the sessions' own tools socket (sessiontools.go).
 	tools sessionTools
 	// her runs her while Her is on (her.go); herOn is the owner's setting.
-	her   *herhost.Host
-	herOn bool
+	her *herhost.Host
+	// screen shows this machine's screen to one of the owner's devices (screen.go).
+	screen *screenhost.Host
+	herOn  bool
 }
 
 const (
@@ -180,6 +188,7 @@ func Open(cfg Config) (*Machine, error) {
 		statusKick: make(chan struct{}, 1), revocations: &identityv1.RevocationList{MinGrantVersions: map[string]uint64{}}}
 	n.her = herhost.New(herhost.Config{Bin: cfg.HerBin, ConsoleDir: cfg.HerConsole, Socket: paths.Her(cfg.DataDir), Env: shellenv.Environ,
 		Version: Version, Logger: n.log, ExtensionHost: cfg.HerExtensionHost, Notice: n.herNotice})
+	n.screen = screenhost.NewHost(screenhost.HostConfig{Bin: cfg.ScreenBin, Args: cfg.ScreenArgs, Log: n.log, Servers: n.screenServers})
 	if n.audit, err = OpenAudit(filepath.Join(cfg.DataDir, "audit"), key); err != nil {
 		return nil, err
 	}
@@ -242,6 +251,7 @@ func (n *Machine) loadState() error {
 }
 
 func (n *Machine) Close() error {
+	n.screen.Stop()
 	n.her.Stop()
 	n.sessions.w.close()
 	err := n.st.Close()
@@ -439,6 +449,7 @@ func (n *Machine) Status() *machinev1.MachineStatus {
 	st.RunningSessions = uint32(n.sessions.Running())
 	st.Sessions = n.sessions.Counts()
 	st.Her = n.herStatus()
+	st.Screen = n.screenStatus()
 	return st
 }
 

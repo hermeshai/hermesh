@@ -16,6 +16,8 @@ struct HerSettings: View {
     @State private var clearing = false
     @State private var fullAccess = false
     @State private var adding = false
+    /// The Computer Control session on screen (docs/computer-control.md).
+    @State private var control: ScreenSession?
 
     var body: some View {
         let envs = herEnvironments(model.machines)
@@ -75,6 +77,23 @@ struct HerSettings: View {
                     Text("The agents and scheduled tasks Her starts work the same way, while you are away as well.")
                 }
             }
+            if machine.status.screen.available, model.api?.live != nil {
+                Section {
+                    Button { openControl(machine) } label: {
+                        HStack {
+                            Text("Computer Control").foregroundStyle(herReachable(machine) ? .primary : .secondary)
+                            Spacer()
+                            Image(systemName: "chevron.right").font(.footnote.weight(.semibold)).foregroundStyle(.tertiary)
+                        }
+                        .contentShape(.rect)
+                    }
+                    .buttonStyle(.plain)
+                    .disabled(!herReachable(machine))
+                    .accessibilityIdentifier("her-computer-control")
+                } footer: {
+                    Text(herReachable(machine) ? "See \(machine.machineName)’s screen and operate it from here." : "\(machine.machineName) is offline.")
+                }
+            }
             if let bot {
                 Section {
                     Toggle("Notifications", isOn: Binding(get: { !bot.muted }, set: { on in
@@ -115,6 +134,17 @@ struct HerSettings: View {
             Text("It acts on \(machine.machineName) without asking you, and so do the agents and scheduled tasks it starts. Her reads web pages and messages from anyone, so turn this on only if you trust everything on that machine to it.")
         }
         .sheet(isPresented: $adding) { HerAddSheet().environment(model) }
+        .fullScreenCover(isPresented: Binding(get: { control != nil }, set: { if !$0 { control = nil } })) {
+            if let control { ScreenControlView(session: control).environment(model) }
+        }
+    }
+
+    /// Computer Control opens once the owner is known to hold the phone.
+    private func openControl(_ machine: HerMachine) {
+        Task {
+            guard await Authentication.confirm(String(localized: "Control \(machine.machineName)")) != nil else { return }
+            control = ScreenSession(machineID: machine.machineID, machineName: machine.machineName)
+        }
     }
 
     /// How freely Her acts (SetHerAssistantMode): her conversation says so once it is set.

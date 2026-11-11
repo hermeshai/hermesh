@@ -9,12 +9,18 @@ import { socketPath } from "./paths";
 
 // What the main process asks hermeshd for Her itself, never for the page: a
 // console's address (its window is the main process's), a file of an
-// assistant's saved where the person looks for downloads, and a sign-in to
-// ChatGPT or to a connector, whose redirect comes back to this computer.
+// assistant's saved where the person looks for downloads, a sign-in to
+// ChatGPT or to a connector, whose redirect comes back to this computer, and
+// the end of a Computer Control session on the Mac she runs on.
 
 /** hermeshd's LocalService, where it is now (a pipe's name changes each time it starts on Windows). */
 function localService() {
   return createClient(LocalService, createConnectTransport({ baseUrl: "http://hermeshd", httpVersion: "1.1", useBinaryFormat: true, nodeOptions: { socketPath: socketPath() } }));
+}
+
+/** Ends the Computer Control session on this Mac, if one of the owner's devices has one (docs/computer-control.md §4.3). */
+export async function stopScreen(): Promise<void> {
+  await localService().stopScreen({});
 }
 
 /** A machine's console, served by this computer's hermeshd on 127.0.0.1 with a token in its path. */

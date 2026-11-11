@@ -10,7 +10,8 @@ import "./tray.css";
 /**
  * The menu bar panel (#tray): Hermesh and whether agents can reach this Mac,
  * how many sessions need the owner and how many run (each opens the first
- * one), then the main window, settings and quit. The main process works out
+ * one), the device operating this Mac's screen while one does, with Stop,
+ * then the main window, settings and quit. The main process works out
  * what it shows (main/tray.ts).
  */
 export function TrayPanel() {
@@ -50,6 +51,12 @@ export function TrayPanel() {
         <div className="tp-tiles">
           <Tile n={v.attention} label={t("tray.attention")} hot onClick={() => go("attention")} />
           <Tile n={v.running} label={t("tray.running")} onClick={() => go("running")} />
+        </div>
+      )}
+      {v?.control && (
+        <div className="tp-control" role="status">
+          <span>{t("tray.control", { name: v.control })}</span>
+          <button onClick={() => go("stopControl")}>{t("tray.stopControl")}</button>
         </div>
       )}
       {v?.update && (

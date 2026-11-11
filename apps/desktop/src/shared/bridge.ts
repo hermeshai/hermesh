@@ -24,10 +24,18 @@ export type Command =
  * background service; how many machines are online, how many sessions need
  * the owner (pairing requests included) and run; a downloaded update.
  */
-export type TrayView = { state: "ok" | "down" | "setup" | "daemon"; online: number; attention: number; running: number; update: string };
+export type TrayView = {
+  state: "ok" | "down" | "setup" | "daemon";
+  online: number;
+  attention: number;
+  running: number;
+  update: string;
+  /** The device that sees and operates this Mac's screen now (Computer Control), "" when none does. */
+  control: string;
+};
 
-/** The panel's buttons: the first session that needs the owner, the first that runs, the main window, settings, quit, check for updates and restart to update. */
-export type TrayAction = "attention" | "running" | "open" | "settings" | "quit" | "install";
+/** The panel's buttons: the first session that needs the owner, the first that runs, the main window, settings, quit, check for updates, restart to update, and ending Computer Control. */
+export type TrayAction = "attention" | "running" | "open" | "settings" | "quit" | "install" | "stopControl";
 
 /** Fixed commands the page may ask to run in Terminal (by key, never by text). */
 export type TerminalCommand = "codexLogin" | "claudeLogin" | "antigravityLogin";
