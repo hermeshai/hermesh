@@ -7,10 +7,13 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"log/slog"
 	"os"
 	"os/exec"
+	"runtime"
+	"slices"
 	"sync"
 	"time"
 
@@ -29,8 +32,11 @@ import (
 // HostConfig is what a machine's side needs.
 type HostConfig struct {
 	// Bin is the helper that captures, encodes and posts input
-	// (apps/screen/macos); "" on a machine that has none.
+	// (apps/screen/macos, apps/screen/linux); "" on a machine that has none.
 	Bin string
+	// Off is a file whose presence turns Computer Control off on this
+	// machine (`hermeshd screen off`); "" for none.
+	Off string
 	// Args are passed to the helper (the tests' picture and input log).
 	Args []string
 	Log  *slog.Logger
@@ -48,6 +54,22 @@ type Host struct {
 
 	mu  sync.Mutex
 	cur *hostSession
+
+	// What the helper last said of this desktop (Linux, where a desktop
+	// comes and goes with a login).
+	pmu     sync.Mutex
+	probed  time.Time
+	probing bool
+	desktop Desktop
+}
+
+// Desktop is what the helper says of this machine's desktop: the way it
+// would reach it, or why it can't.
+type Desktop struct {
+	Available bool   `json:"available"`
+	Way       string `json:"way"`
+	Error     string `json:"error"`
+	Detail    string `json:"detail"`
 }
 
 func NewHost(cfg HostConfig) *Host {
@@ -58,7 +80,69 @@ func NewHost(cfg HostConfig) *Host {
 }
 
 // Available says whether this machine can show its screen.
-func (h *Host) Available() bool { return h.cfg.Bin != "" }
+func (h *Host) Available() bool {
+	if h.cfg.Bin == "" || h.isOff() {
+		return false
+	}
+	if runtime.GOOS != "linux" {
+		return true
+	}
+	return h.Desktop().Available
+}
+
+func (h *Host) isOff() bool {
+	if h.cfg.Off == "" {
+		return false
+	}
+	_, err := os.Stat(h.cfg.Off)
+	return err == nil
+}
+
+// probeEvery is how long the helper's word on the desktop is kept.
+const probeEvery = 30 * time.Second
+
+// Desktop is what the helper said of this machine's desktop. On Linux it
+// asks the helper (--status), keeps the answer for a while and asks again
+// off to the side, the first time while the caller waits; while a session
+// lasts the answer stands. Elsewhere the helper always can.
+func (h *Host) Desktop() Desktop {
+	if h.cfg.Bin == "" {
+		return Desktop{Error: "no_helper"}
+	}
+	if slices.Contains(h.cfg.Args, "--test-source") {
+		return Desktop{Available: true, Way: "test"}
+	}
+	if runtime.GOOS != "linux" {
+		return Desktop{Available: true, Way: runtime.GOOS}
+	}
+	h.pmu.Lock()
+	first := h.probed.IsZero()
+	stale := time.Since(h.probed) > probeEvery && !h.probing && h.Viewer() == ""
+	if stale && !first {
+		h.probing = true
+		go h.probe()
+	}
+	h.pmu.Unlock()
+	if first {
+		h.probe()
+	}
+	h.pmu.Lock()
+	defer h.pmu.Unlock()
+	return h.desktop
+}
+
+func (h *Host) probe() {
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	var d Desktop
+	out, err := exec.CommandContext(ctx, h.cfg.Bin, "--status").Output()
+	if err != nil || json.Unmarshal(out, &d) != nil {
+		d = Desktop{Error: "helper", Detail: fmt.Sprint(err)}
+	}
+	h.pmu.Lock()
+	h.desktop, h.probed, h.probing = d, time.Now(), false
+	h.pmu.Unlock()
+}
 
 // Viewer is the device in control now, as it named itself; "" when none is.
 func (h *Host) Viewer() string {

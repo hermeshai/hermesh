@@ -64,6 +64,10 @@ func (n *Machine) serveControl(ctx context.Context) {
 	mux.HandleFunc("GET /check", func(w http.ResponseWriter, r *http.Request) {
 		json.NewEncoder(w).Encode(n.Check(r.Context()))
 	})
+	// `hermeshd screen stop`: the Computer Control session under way ends.
+	mux.HandleFunc("POST /screen/stop", func(w http.ResponseWriter, r *http.Request) {
+		n.screen.Stop()
+	})
 	srv := &http.Server{Handler: mux, ReadHeaderTimeout: 10 * time.Second}
 	go func() {
 		<-ctx.Done()
@@ -81,11 +85,12 @@ type Check struct {
 	Agents                                      map[string]provider.Info
 	Busy                                        int                  // sessions a restart would stop, Her's work among them
 	Her                                         *machinev1.HerStatus // as hermeshd last saw her
+	Screen                                      *ScreenCheck         // nil where Computer Control has no helper
 }
 
 func (n *Machine) Check(ctx context.Context) Check {
 	return Check{MachineID: n.MachineID(), Name: n.Name(), OwnerID: n.OwnerID(), RelayURL: n.RelayURL(), Version: Version,
-		Paired: n.Paired(), Connected: n.Connected(), Agents: n.Discover(ctx), Busy: n.Busy(), Her: n.herStatus()}
+		Paired: n.Paired(), Connected: n.Connected(), Agents: n.Discover(ctx), Busy: n.Busy(), Her: n.herStatus(), Screen: n.screenCheck()}
 }
 
 // Busy counts the sessions a restart would stop: queued, preparing,

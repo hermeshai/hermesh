@@ -2,12 +2,34 @@ package machine
 
 import (
 	"context"
+	"os"
+	"path/filepath"
 	"time"
 
 	machinev1 "github.com/hermeshai/hermesh/gen/go/hermesh/machine/v1"
 	relayv1 "github.com/hermeshai/hermesh/gen/go/hermesh/relay/v1"
 	screenv1 "github.com/hermeshai/hermesh/gen/go/hermesh/screen/v1"
+	screenhost "github.com/hermeshai/hermesh/internal/screen"
 )
+
+// ScreenOffPath is the file that turns Computer Control off on the machine
+// whose data directory is dataDir (`hermeshd screen off`).
+func ScreenOffPath(dataDir string) string { return filepath.Join(dataDir, "screen-off") }
+
+// ScreenCheck is Computer Control on this machine, for `hermeshd status`.
+type ScreenCheck struct {
+	Off     bool
+	Desktop screenhost.Desktop
+	Viewer  string
+}
+
+func (n *Machine) screenCheck() *ScreenCheck {
+	if n.cfg.ScreenBin == "" {
+		return nil
+	}
+	_, err := os.Stat(ScreenOffPath(n.cfg.DataDir))
+	return &ScreenCheck{Off: err == nil, Desktop: n.screen.Desktop(), Viewer: n.screen.Viewer()}
+}
 
 // Computer Control on this machine (docs/computer-control.md): ScreenService
 // on the owner's tunnels, answered by internal/screen.

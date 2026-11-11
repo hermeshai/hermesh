@@ -57,8 +57,8 @@ type Config struct {
 	// Hermesh extension, which lends her the owner's own Chrome.
 	HerExtensionHost bool
 	// ScreenBin is the helper Computer Control shows this machine's screen
-	// with (docs/computer-control.md), "" when it has none; ScreenArgs are
-	// passed to it (the tests' picture).
+	// with (docs/computer-control.md, docs/computer-control-linux.md), ""
+	// when it has none; ScreenArgs are passed to it (the tests' picture).
 	ScreenBin  string
 	ScreenArgs []string
 	// NewHerLink makes Her's link to the mesh (internal/herlink, which is
@@ -194,7 +194,7 @@ func Open(cfg Config) (*Machine, error) {
 	n.her = herhost.New(herhost.Config{Bin: cfg.HerBin, ConsoleDir: cfg.HerConsole, Socket: paths.Her(cfg.DataDir), Env: shellenv.Environ,
 		Version: Version, Logger: n.log, ExtensionHost: cfg.HerExtensionHost, Notice: n.herNotice, Mesh: n.herMeshNow})
 	n.openHerMesh()
-	n.screen = screenhost.NewHost(screenhost.HostConfig{Bin: cfg.ScreenBin, Args: cfg.ScreenArgs, Log: n.log, Servers: n.screenServers})
+	n.screen = screenhost.NewHost(screenhost.HostConfig{Bin: cfg.ScreenBin, Args: cfg.ScreenArgs, Off: ScreenOffPath(cfg.DataDir), Log: n.log, Servers: n.screenServers})
 	if n.audit, err = OpenAudit(filepath.Join(cfg.DataDir, "audit"), key); err != nil {
 		return nil, err
 	}

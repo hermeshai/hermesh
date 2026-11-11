@@ -445,6 +445,9 @@ to that owner's devices by itself. Then it installs the background service.`,
 			}
 			ok = serviceLine(running) && ok
 			fmt.Printf("her          %s\n", herLine(c.Her, running))
+			if c.Screen != nil {
+				fmt.Printf("screen       %s\n", screenLine(c.Screen))
+			}
 			switch {
 			case running && c.Connected:
 				fmt.Printf("relay        connected (%s)\n", c.RelayURL)
@@ -492,6 +495,9 @@ to that owner's devices by itself. Then it installs the background service.`,
 			serviceLine(running)
 			fmt.Printf("updates      %s\n", update.Line(dataDir))
 			fmt.Printf("her          %s\n", herLine(c.Her, running))
+			if c.Screen != nil {
+				fmt.Printf("screen       %s\n", screenLine(c.Screen))
+			}
 			fmt.Println()
 			list, _, _ := projects.Find([]string{"list"})
 			return list.RunE(cmd, nil)
@@ -621,7 +627,7 @@ Hermesh also updates itself when no session is running, unless
 			return shellenv.OnUserPath(args[1], args[0] == "add")
 		}}
 	root.AddCommand(deviceCommands(&dataDir)...)
-	root.AddCommand(eraseCommand(&dataDir), uninstallCommand(&dataDir))
+	root.AddCommand(eraseCommand(&dataDir), uninstallCommand(&dataDir), screenCommand(&dataDir, openMachine))
 	root.AddCommand(run, pair, doctor, status, audit, svc, upd, helper, messageMCP, userPath, projects,
 		&cobra.Command{Use: "version", Short: "Print the version", Args: cobra.NoArgs, Run: func(*cobra.Command, []string) { fmt.Println(machine.Version) }})
 	return root
@@ -721,13 +727,14 @@ func herBin() string {
 	return bin
 }
 
-// screenBin is the helper Computer Control shows this Mac's screen with
-// (docs/computer-control.md §4.1): $HERMESH_SCREEN_BIN, else hermesh-screen
-// beside this program (Contents/Helpers in the Mac app); "" when there is
-// none, and on other systems. $HERMESH_SCREEN_ARGS are passed to it (the
-// tests' picture in place of the screen).
+// screenBin is the helper Computer Control shows this machine's screen
+// with (docs/computer-control.md §4.1, docs/computer-control-linux.md):
+// $HERMESH_SCREEN_BIN, else hermesh-screen beside this program
+// (Contents/Helpers in the Mac app, where the install command puts it on
+// Linux); "" when there is none, and on other systems. $HERMESH_SCREEN_ARGS
+// are passed to it (the tests' picture in place of the screen).
 func screenBin() string {
-	if runtime.GOOS != "darwin" {
+	if runtime.GOOS != "darwin" && runtime.GOOS != "linux" {
 		return ""
 	}
 	bin := os.Getenv("HERMESH_SCREEN_BIN")
