@@ -132,8 +132,8 @@ private struct ScreenSurface: UIViewRepresentable {
 }
 
 /// Computer Control's page: the machine's screen, full screen, and one small
-/// bar with the connection's quality, the mode, the keyboard and Close
-/// (docs/computer-control.md §6.3).
+/// bar with the connection's quality, the mode, the keyboard and Close, which
+/// folds into a round button and moves to any edge (docs/computer-control.md §6.3).
 struct ScreenControlView: View {
     @Environment(AppModel.self) private var model
     @Environment(\.dismiss) private var dismiss
@@ -141,6 +141,8 @@ struct ScreenControlView: View {
     @State var session: ScreenSession
     /// The app went to the background with the session open: it opens again in front.
     @State private var away = false
+    /// The bar folded into a round button, as the owner left it last time.
+    @AppStorage("screen-bar-folded") private var folded = false
 
     var body: some View {
         ZStack {
@@ -179,7 +181,7 @@ struct ScreenControlView: View {
                     .accessibilityIdentifier("screen-watch-only")
             }
         }
-        .overlay(alignment: .bottomTrailing) { bar.padding(12) }
+        .overlay { bar }
         .statusBarHidden()
         .persistentSystemOverlays(.hidden)
         .defersSystemGestures(on: .all)
@@ -236,37 +238,62 @@ struct ScreenControlView: View {
         return session.link.path == "relay" ? String(localized: "Relayed · \(ms) ms") : String(localized: "\(ms) ms")
     }
 
+    /// The connection's colour: green while direct and quick, orange through
+    /// the relay or slow, grey until the picture comes.
+    private var health: Color {
+        guard session.link.phase == "connected", session.live else { return .gray }
+        return session.link.path == "relay" || (session.link.rtt_ms ?? 0) > 150 ? .orange : .green
+    }
+
+    /// The bar, or the round button it folds into; dragged to any edge (ScreenBarHost).
     private var bar: some View {
-        HStack(spacing: 2) {
-            HStack(spacing: 6) {
-                Circle()
-                    .fill(session.link.phase == "connected" && session.live ? (session.link.path == "relay" || (session.link.rtt_ms ?? 0) > 150 ? Color.orange : .green) : .gray)
-                    .frame(width: 7, height: 7)
-                Text(quality).font(.caption).monospacedDigit().foregroundStyle(.white.opacity(0.8))
+        ScreenBarHost(folded: $folded) { vertical in
+            let layout = vertical ? AnyLayout(VStackLayout(spacing: 2)) : AnyLayout(HStackLayout(spacing: 2))
+            layout {
+                Button { withAnimation(.snappy) { folded = true } } label: {
+                    Image(systemName: "arrow.down.right.and.arrow.up.left").frame(width: 38, height: 38)
+                }
+                .accessibilityLabel(Text("Hide Controls"))
+                .accessibilityIdentifier("screen-fold")
+                // Down a side the dot alone: its colour says how the connection is.
+                HStack(spacing: 6) {
+                    Circle().fill(health).frame(width: 7, height: 7)
+                    if !vertical { Text(quality).font(.caption).monospacedDigit().foregroundStyle(.white.opacity(0.8)) }
+                }
+                .padding(vertical ? .vertical : .horizontal, 6)
+                .accessibilityElement(children: .combine)
+                .accessibilityLabel(Text(quality))
+                .accessibilityIdentifier("screen-quality")
+                Button { session.mode = session.mode == .direct ? .trackpad : .direct } label: {
+                    Image(systemName: session.mode == .trackpad ? "cursorarrow.motionlines" : "hand.tap")
+                        .frame(width: 38, height: 38)
+                }
+                .accessibilityLabel(session.mode == .trackpad ? Text("Trackpad Mode") : Text("Direct Touch"))
+                .accessibilityIdentifier("screen-mode")
+                Button { session.keyboard.toggle() } label: {
+                    Image(systemName: session.keyboard ? "keyboard.fill" : "keyboard").frame(width: 38, height: 38)
+                }
+                .accessibilityLabel(Text("Keyboard"))
+                .accessibilityIdentifier("screen-keyboard")
+                Button { dismiss() } label: {
+                    Image(systemName: "xmark").frame(width: 38, height: 38)
+                }
+                .accessibilityLabel(Text("Close"))
+                .accessibilityIdentifier("screen-close")
             }
-            .padding(.leading, 12).padding(.trailing, 8)
-            .accessibilityElement(children: .combine)
-            .accessibilityIdentifier("screen-quality")
-            Button { session.mode = session.mode == .direct ? .trackpad : .direct } label: {
-                Image(systemName: session.mode == .trackpad ? "cursorarrow.motionlines" : "hand.tap")
-                    .frame(width: 40, height: 40)
+            .font(.system(size: 17))
+            .foregroundStyle(.white)
+            .padding(3)
+            .glassEffect(.regular.interactive(), in: .capsule)
+        } ball: {
+            Button { withAnimation(.snappy) { folded = false } } label: {
+                Circle().fill(health).frame(width: 10, height: 10)
+                    .frame(width: 44, height: 44)
             }
-            .accessibilityLabel(session.mode == .trackpad ? Text("Trackpad Mode") : Text("Direct Touch"))
-            .accessibilityIdentifier("screen-mode")
-            Button { session.keyboard.toggle() } label: {
-                Image(systemName: session.keyboard ? "keyboard.fill" : "keyboard").frame(width: 40, height: 40)
-            }
-            .accessibilityLabel(Text("Keyboard"))
-            .accessibilityIdentifier("screen-keyboard")
-            Button { dismiss() } label: {
-                Image(systemName: "xmark").frame(width: 40, height: 40)
-            }
-            .accessibilityLabel(Text("Close"))
-            .accessibilityIdentifier("screen-close")
+            .glassEffect(.regular.interactive(), in: .circle)
+            .accessibilityLabel(Text("Show Controls"))
+            .accessibilityValue(Text(quality))
+            .accessibilityIdentifier("screen-unfold")
         }
-        .font(.system(size: 17))
-        .foregroundStyle(.white)
-        .padding(4)
-        .glassEffect(.regular.interactive(), in: .capsule)
     }
 }
