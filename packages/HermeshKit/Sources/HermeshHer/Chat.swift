@@ -19,7 +19,7 @@ public struct HerItem: Equatable, Identifiable, Sendable {
     public var id: String { key }
 
     public enum Kind: Equatable, Sendable {
-        /// The owner's: its words, its pictures, the files it names. queued: sent while Her was busy, not in the conversation yet.
+        /// The owner's: its words, its pictures, the files it names (where they were uploaded on the machine). queued: sent while Her was busy, not in the conversation yet.
         case user(text: String, images: [HerImage], files: [String], queued: Bool)
         /// Words from Her, in Markdown.
         case her(String)
@@ -168,7 +168,7 @@ private func ownerKind(_ content: [HerUserContent], queued: Bool) -> HerItem.Kin
     }
     var text = words.joined(separator: "\n")
     if files.isEmpty { (text, files) = splitAttached(text) }
-    return .user(text: text, images: images, files: files.map(baseName), queued: queued)
+    return .user(text: text, images: images, files: files, queued: queued)
 }
 
 private func texts(_ content: [HerUserContent]) -> String {

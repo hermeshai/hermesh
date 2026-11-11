@@ -150,6 +150,8 @@ private struct HerRow: View {
     let machine: HerMachine
     @Binding var preview: URL?
     @Binding var page: HerFileText?
+    /// One of the owner's files being brought here.
+    @State private var opening: String?
 
     var body: some View {
         let line = row.kind == .onboarding ? nil : turnTimeLine(date(row.ts), previous: previous.map { date($0.ts) }, now: model.now)
@@ -164,10 +166,20 @@ private struct HerRow: View {
 
     private func date(_ ms: Double) -> Date { Date(timeIntervalSince1970: ms / 1000) }
 
+    /// One of the owner's files, from where it was uploaded on Her's machine.
+    private func open(_ path: String) {
+        guard opening == nil else { return }
+        opening = path
+        Task {
+            await openHerFile(chat: chat, path: path, preview: $preview, page: $page)
+            opening = nil
+        }
+    }
+
     @ViewBuilder private var content: some View {
         switch row.kind {
         case .user(let text, let images, let files, let queued):
-            HerBubble(text: text, images: images, files: files).opacity(queued ? 0.62 : 1)
+            HerBubble(text: text, images: images, files: files, opening: opening, open: open).opacity(queued ? 0.62 : 1)
         case .waiting(let id, let text, let files, let error):
             VStack(alignment: .trailing, spacing: 5) {
                 HerBubble(text: text, images: [], files: files).opacity(0.62)
@@ -209,11 +221,14 @@ private struct HerRow: View {
     }
 }
 
-/// The owner's message: its pictures and files above its words, in the blue bubble on the right.
+/// The owner's message: its pictures and files above its words, in the blue bubble on the right. With `open`, a
+/// file is tapped to read it, as one Her sent; `opening` is the one being brought here.
 struct HerBubble: View {
     let text: String
     let images: [HerImage]
     let files: [String]
+    var opening: String?
+    var open: ((String) -> Void)?
 
     var body: some View {
         VStack(alignment: .trailing, spacing: 6) {
@@ -225,7 +240,15 @@ struct HerBubble: View {
                                 .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
                         }
                     }
-                    ForEach(files, id: \.self) { HerChip(name: $0) }
+                    ForEach(files, id: \.self) { f in
+                        if let open {
+                            Button { open(f) } label: { HerChip(name: baseName(f), busy: opening == f) }
+                                .buttonStyle(.plain)
+                                .accessibilityIdentifier("her-sent-\(baseName(f))")
+                        } else {
+                            HerChip(name: baseName(f))
+                        }
+                    }
                 }
             }
             if !text.isEmpty {
@@ -286,11 +309,13 @@ extension View {
 /// A file named in a message, as a small chip.
 struct HerChip: View {
     let name: String
+    /// Being brought here to read.
+    var busy = false
     var action: (() -> Void)?
 
     var body: some View {
         HStack(spacing: 5) {
-            Image(systemName: "doc").foregroundStyle(.secondary)
+            if busy { ProgressView().controlSize(.mini) } else { Image(systemName: "doc").foregroundStyle(.secondary) }
             Text(name).lineLimit(1).truncationMode(.middle)
             if let action {
                 Button(action: action) { Image(systemName: "xmark.circle.fill").foregroundStyle(.tertiary) }
@@ -367,15 +392,21 @@ private struct HerFiles: View {
         guard opening == nil else { return }
         opening = f.path
         Task {
-            if let url = await chat.download(f) {
-                if let kind = HerFileKind(name: f.name, size: f.size), let text = try? String(contentsOf: url, encoding: .utf8) {
-                    page = HerFileText(url: url, text: text, kind: kind)
-                } else {
-                    preview = url
-                }
-            }
+            await openHerFile(chat: chat, path: f.path, preview: $preview, page: $page)
             opening = nil
         }
+    }
+}
+
+/// A file on Her's machine, brought here when tapped: Markdown and code to read on a page of the app's, the rest (a
+/// PDF, a document) for Quick Look to preview and save.
+@MainActor func openHerFile(chat: HerChat, path: String, preview: Binding<URL?>, page: Binding<HerFileText?>) async {
+    guard let url = await chat.download(path) else { return }
+    let size = (try? url.resourceValues(forKeys: [.fileSizeKey]).fileSize) ?? .max
+    if let kind = HerFileKind(name: url.lastPathComponent, size: size), let text = try? String(contentsOf: url, encoding: .utf8) {
+        page.wrappedValue = HerFileText(url: url, text: text, kind: kind)
+    } else {
+        preview.wrappedValue = url
     }
 }
 

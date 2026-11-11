@@ -100,7 +100,7 @@ func snapshot(_ items: [JSON], task: JSON = nil, seq: Int = 10, queued: JSON = [
     #expect(answered[1].kind == .question(text: "Which colour?", options: ["Blue", "Red"], open: false))
 }
 
-@Test func filesTheOwnerSentShowByName() {
+@Test func filesTheOwnerSentKeepWhereTheyWereUploaded() {
     let v = snapshot([
         ["type": "message", "message_id": "u1", "message": ["role": "user", "ts": 1, "content": [
             ["type": "text", "text": "look"], ["type": "image", "mime_type": "image/png", "data": "iVBO"], ["type": "text", "text": "Attached files:\n/b/uploads/a.txt\n/b/uploads/b.csv"],
@@ -108,8 +108,8 @@ func snapshot(_ items: [JSON], task: JSON = nil, seq: Int = 10, queued: JSON = [
         said("u2", "see these\n\nAttached files:\n- /b/uploads/c.pdf", ts: 2),
     ])
     let items = herChat(v)
-    #expect(items[0].kind == .user(text: "look", images: [HerImage(mime: "image/png", data: "iVBO")], files: ["a.txt", "b.csv"], queued: false))
-    #expect(items[1].kind == .user(text: "see these", images: [], files: ["c.pdf"], queued: false), "as hermeshd delivers a message with files")
+    #expect(items[0].kind == .user(text: "look", images: [HerImage(mime: "image/png", data: "iVBO")], files: ["/b/uploads/a.txt", "/b/uploads/b.csv"], queued: false))
+    #expect(items[1].kind == .user(text: "see these", images: [], files: ["/b/uploads/c.pdf"], queued: false), "as hermeshd delivers a message with files")
 }
 
 @Test func queuedMessagesComeLastAndFailuresSayWhichIsLast() {

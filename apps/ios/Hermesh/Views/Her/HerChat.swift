@@ -310,8 +310,8 @@ final class HerChat {
         return false
     }
 
-    /// A file Her sent, brought to this iPhone (HerDownload), to preview and save.
-    func download(_ file: HerFile) async -> URL? {
+    /// A file on Her's machine (one she sent, or one the owner sent her), brought to this iPhone (HerDownload), to preview and save.
+    func download(_ path: String) async -> URL? {
         guard let api, let bot else { return nil }
         do {
             let dir = FileManager.default.temporaryDirectory.appendingPathComponent("her/\(machineID)/\(UUID().uuidString)")
@@ -319,7 +319,7 @@ final class HerChat {
             var r = Hermesh_Local_V1_HerDownloadRequest()
             r.machineID = machineID
             r.botID = bot.id
-            r.path = file.path
+            r.path = path
             r.localDir = dir.path
             let res: Hermesh_Local_V1_HerDownloadResponse = try await api.call("HerDownload", r, timeout: 120)
             return URL(fileURLWithPath: res.localPath)

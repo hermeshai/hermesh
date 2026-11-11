@@ -37,6 +37,9 @@ extension HermeshUITests {
         // What turning her on means, from the bytes to be signed; Face ID approves.
         XCTAssertTrue(text("在机器「owner-mac」上开启 Her").waitForExistence(timeout: 30), "the signing sheet")
         herShot("Her: turning her on")
+        // Turning her on also lets her use the owner's computers, and the sheet says so: Approve is below the fold.
+        let approve = app.descendants(matching: .any)["sign-approve"].firstMatch
+        for _ in 0..<4 where !approve.exists { app.swipeUp() }
         tap("sign-approve")
     }
 
@@ -192,6 +195,25 @@ extension HermeshUITests {
         herShot("Her: a Go file")
         tap("close")
         XCTAssertTrue(page.waitForNonExistence(timeout: 10))
+        // Files the owner sent from the Mac open from the owner's bubble the same way: the note on its page, the
+        // PDF in Quick Look.
+        _ = try control("her-owner-files", method: "POST")
+        let plan = app.buttons["her-sent-plan.md"]
+        XCTAssertTrue(plan.waitForExistence(timeout: 60), "the files the owner sent")
+        plan.tap()
+        XCTAssertTrue(page.waitForExistence(timeout: 60), "the note's page")
+        XCTAssertTrue(app.staticTexts["计划"].waitForExistence(timeout: 10), "its heading")
+        XCTAssertFalse(text("# 计划").exists, "none of its marks")
+        herShot("Her: a Markdown file the owner sent")
+        tap("close")
+        XCTAssertTrue(page.waitForNonExistence(timeout: 10))
+        app.buttons["her-sent-report.pdf"].tap()
+        let quickLook = app.navigationBars.matching(NSPredicate(format: "identifier CONTAINS 'report'")).firstMatch
+        XCTAssertTrue(quickLook.waitForExistence(timeout: 60), "the PDF in Quick Look")
+        XCTAssertTrue(app.staticTexts["Quarterly report"].waitForExistence(timeout: 30), "its page")
+        herShot("Her: a PDF the owner sent")
+        app.buttons["QLOverlayDoneButtonAccessibilityIdentifier"].tap()
+        XCTAssertTrue(quickLook.waitForNonExistence(timeout: 10))
     }
 
     func herApproval() throws {

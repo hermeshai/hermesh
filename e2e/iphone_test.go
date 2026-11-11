@@ -463,6 +463,43 @@ func newIPhoneControl(t *testing.T, w *ownerMac, sessions map[string]string) str
 		}
 		reply(rw, map[string]int{"assistants": len(bots)})
 	})
+	// Files the owner sends Her from the Mac (testHer): a PDF and a note,
+	// uploaded into her assistant's folder and named in the message, as the
+	// Mac app sends them, for the iPhone to open from the owner's bubble.
+	mux.HandleFunc("POST /her-owner-files", func(rw http.ResponseWriter, _ *http.Request) {
+		ctx := context.Background()
+		var home, machine string
+		for _, kv := range w.daemonEnv {
+			if v, ok := strings.CutPrefix(kv, "HER_HOME="); ok {
+				home = v
+			}
+		}
+		bots, _ := filepath.Glob(filepath.Join(home, "bots", "*", "bot.json"))
+		if res, err := w.app.client.ListMachines(ctx, &localv1.ListMachinesRequest{}); err == nil {
+			for _, m := range res.Machines {
+				if m.GetHer().GetRunning() {
+					machine = m.MachineId
+				}
+			}
+		}
+		if machine == "" || len(bots) == 0 {
+			http.Error(rw, "no Her running", 500)
+			return
+		}
+		dir := w.t.TempDir()
+		files := map[string][]byte{"report.pdf": onePagePDF("Quarterly report"), "plan.md": []byte("# 计划\n\n第一步\n第二步\n")}
+		var paths []string
+		for name, b := range files {
+			paths = append(paths, filepath.Join(dir, name))
+			os.WriteFile(paths[len(paths)-1], b, 0o600)
+		}
+		sent, err := w.app.client.HerSend(ctx, &localv1.HerSendRequest{MachineId: machine, BotId: filepath.Base(filepath.Dir(bots[0])), Text: "[[mock:send:收到]] 看看这两份", LocalPaths: paths})
+		if err != nil || !sent.Delivered {
+			http.Error(rw, fmt.Sprintf("HerSend: %v %v", sent, err), 500)
+			return
+		}
+		reply(rw, map[string]bool{"delivered": true})
+	})
 	// What the Mac's screen helper was sent (testComputerControl): the input
 	// it would have posted, a JSON object a line (screenEnv).
 	mux.HandleFunc("GET /screen", func(rw http.ResponseWriter, _ *http.Request) {
@@ -696,4 +733,30 @@ func newIPhoneControl(t *testing.T, w *ownerMac, sessions map[string]string) str
 	go srv.Serve(ln)
 	t.Cleanup(func() { srv.Close() })
 	return fmt.Sprintf("http://%s", ln.Addr())
+}
+
+// onePagePDF is a PDF of one page with line on it, in Helvetica.
+func onePagePDF(line string) []byte {
+	text := fmt.Sprintf("BT /F1 24 Tf 72 700 Td (%s) Tj ET", line)
+	objects := []string{
+		"<< /Type /Catalog /Pages 2 0 R >>",
+		"<< /Type /Pages /Kids [3 0 R] /Count 1 >>",
+		"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 4 0 R >> >> /Contents 5 0 R >>",
+		"<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>",
+		fmt.Sprintf("<< /Length %d >>\nstream\n%s\nendstream", len(text), text),
+	}
+	var b strings.Builder
+	b.WriteString("%PDF-1.4\n")
+	offsets := make([]int, len(objects))
+	for i, o := range objects {
+		offsets[i] = b.Len()
+		fmt.Fprintf(&b, "%d 0 obj\n%s\nendobj\n", i+1, o)
+	}
+	xref := b.Len()
+	fmt.Fprintf(&b, "xref\n0 %d\n0000000000 65535 f \n", len(objects)+1)
+	for _, o := range offsets {
+		fmt.Fprintf(&b, "%010d 00000 n \n", o)
+	}
+	fmt.Fprintf(&b, "trailer\n<< /Size %d /Root 1 0 R >>\nstartxref\n%d\n%%%%EOF\n", len(objects)+1, xref)
+	return []byte(b.String())
 }
