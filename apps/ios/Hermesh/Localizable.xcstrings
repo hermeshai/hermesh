@@ -8721,6 +8721,136 @@
         }
       }
     },
+    "Memory": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "记忆"
+          }
+        }
+      }
+    },
+    "Remembered": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "记住的事"
+          }
+        }
+      }
+    },
+    "Nothing Yet": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "还没有"
+          }
+        }
+      }
+    },
+    "Your preferences, what you decide and where things are: Her notes them herself, and they stay when the chat is cleared. To change one, tell her.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "你的偏好、定下的事、东西放在哪，Her 会自己记下，清空对话也还在。要改哪条，直接跟 Her 说。"
+          }
+        }
+      }
+    },
+    "Clear Memory": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "清空记忆"
+          }
+        }
+      }
+    },
+    "Clear what “%@” remembers?": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "清空「%@」记住的事？"
+          }
+        }
+      }
+    },
+    "Its memory moves to the trash, and it stops remembering at once. The chat stays.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "记忆会移到废纸篓，它马上就不再记得。聊天记录保留。"
+          }
+        }
+      }
+    },
+    "Memory cleared": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "已清空记忆"
+          }
+        }
+      }
+    },
+    "Nothing Remembered Yet": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "还没有记下什么"
+          }
+        }
+      }
+    },
+    "Your preferences, what you decide and where things are: Her notes them herself. You can also say “Remember …”.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "你的偏好、定下的事、东西放在哪，Her 会自己记下；也可以直接说「记住……」。"
+          }
+        }
+      }
+    },
+    "This is what Her reads. To change something, tell her.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "这就是 Her 读到的内容。要改哪条，直接跟 Her 说。"
+          }
+        }
+      }
+    },
+    "Pages": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "页面"
+          }
+        }
+      }
+    },
+    "Can’t Read the Memory": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "读不到记忆"
+          }
+        }
+      }
+    },
     "Before Acting": {
       "localizations": {
         "zh-Hans": {

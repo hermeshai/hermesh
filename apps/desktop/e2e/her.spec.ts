@@ -11,7 +11,8 @@ import { fixture, launch, snap } from "./app";
 // secure card, the console, work-mac added as a second environment, with no
 // model until Her's onboarding connects one, and switched between, then
 // work-mac offline: what was read stays, after the app restarts too, and what
-// is written waits on this Mac.
+// is written waits on this Mac. Her's memory shows in her settings, as written,
+// and is cleared there.
 
 type Hook = { notifications(): { id: string; title: string; body: string; click(): void }[] };
 
@@ -88,11 +89,13 @@ test("Her: the first run, a chat, a secure card, the console, a second environme
   expect(hello!.y).toBeGreaterThan(cap!.y + cap!.height);
   await expect(page.locator(".dbody .bav")).toHaveCount(0);
   await snap(page, "her-greeting");
-  // Her's settings, beside the conversation: a new assistant asks before risky steps.
+  // Her's settings, beside the conversation: a new assistant asks before risky steps, and remembers nothing yet.
   await page.getByRole("button", { name: "助手设置", exact: true }).click();
-  await expect(page.getByRole("complementary", { name: "助手设置" })).toContainText("询问权限");
+  const settings = page.getByRole("complementary", { name: "助手设置" });
+  await expect(settings).toContainText("询问权限");
+  await expect(settings.getByRole("button", { name: /^记住的事/ })).toHaveText("记住的事还没有");
   await page.getByRole("button", { name: "助手设置", exact: true }).click();
-  await expect(page.getByRole("complementary", { name: "助手设置" })).toBeHidden();
+  await expect(settings).toBeHidden();
 
   // A chat: the message, then Her's reply in a bubble of its own.
   await send(mockSend("你好，主人"));
@@ -100,6 +103,28 @@ test("Her: the first run, a chat, a secure card, the console, a second environme
   // The window is behind (tests open it so): the reply is unread, and notified, by the assistant's name.
   await expect.poll(posted, { timeout: 60_000 }).toContainEqual(expect.objectContaining({ title: expect.stringMatching(/^Her/), body: "你好，主人" }));
   await snap(page, "her-chat");
+
+  // Her notes a rule (her-mock's remember), with no approval asked; her settings show it on the memory page,
+  // as written (a list, Markdown), and clear it there, after asking.
+  await send("[[mock:remember:- 回复一律用中文。(2026-11-11)]] 以后都用中文");
+  await expect(log).toContainText("记下了。", { timeout: 60_000 });
+  await page.getByRole("button", { name: "助手设置", exact: true }).click();
+  await expect(settings.getByRole("button", { name: /^记住的事/ })).toHaveText("记住的事");
+  await settings.getByRole("button", { name: /^记住的事/ }).click();
+  const memory = page.getByRole("complementary", { name: "记忆" });
+  await expect(memory.locator(".mem-doc li")).toHaveText("回复一律用中文。(2026-11-11)");
+  await expect(memory).toContainText("这就是它读到的内容");
+  await snap(page, "her-memory");
+  await memory.getByRole("button", { name: "返回" }).click();
+  await settings.getByRole("button", { name: "清空记忆" }).click();
+  const forget = page.getByRole("dialog", { name: "清空「Her」记住的事？" });
+  await expect(forget).toContainText("聊天记录保留");
+  await forget.getByRole("button", { name: "清空" }).click();
+  await expect(settings.getByRole("button", { name: /^记住的事/ })).toHaveText("记住的事还没有", { timeout: 30_000 });
+  await settings.getByRole("button", { name: /^记住的事/ }).click();
+  await expect(memory).toContainText("还没有记下什么");
+  await memory.getByRole("button", { name: "关闭" }).click();
+  await expect(memory).toBeHidden();
 
   // A PDF and a Markdown file, sent to Her with the composer's button and sent back (her-mock's attach): a tile
   // of either, the owner's or Her's, opens it over the window instead of saving it to Downloads. The PDF shows

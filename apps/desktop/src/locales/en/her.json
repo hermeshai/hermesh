@@ -274,6 +274,21 @@
     "button": "Clear",
     "done": "Chat cleared"
   },
+  "memoryClear": {
+    "title": "Clear what “{{name}}” remembers?",
+    "message": "Its memory moves to the trash, and it stops remembering at once. The chat stays.",
+    "button": "Clear",
+    "done": "Memory cleared"
+  },
+  "memory": {
+    "title": "Memory",
+    "back": "Back",
+    "pages": "Pages",
+    "note": "This is what it reads. To change something, tell it.",
+    "emptyTitle": "Nothing remembered yet",
+    "emptyBody": "Your preferences, what you decide and where things are: it notes them itself. You can also say “Remember …”.",
+    "failed": "Can’t read the memory: {{error}}"
+  },
   "panel": {
     "close": "Close",
     "avatar": "Change Avatar",
@@ -286,7 +301,12 @@
     "notifications": "Notifications",
     "muted": "Mute",
     "mutedNote": "No notifications from it, on any device. Unread still shows in the list.",
+    "memory": "Memory",
+    "memoryRow": "Remembered",
+    "memoryNone": "Nothing yet",
+    "memoryNote": "Your preferences, what you decide and where things are: it notes them itself, and they stay when the chat is cleared. To change one, tell it.",
     "clear": "Clear Chat",
+    "clearMemory": "Clear Memory",
     "permissionNote_win": "{{desc}}. The agents and scheduled tasks Her starts run with it too, while you are away as well. Full access is confirmed with Windows Hello."
   },
   "approval": {

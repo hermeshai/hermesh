@@ -7,14 +7,18 @@ import SwiftUI
 /// Her's settings, a page of their own (the Mac's AssistantPanel, cut to
 /// what is used on a phone): where she runs, and her other environments; the
 /// model she answers with, among those her environment can use; whether she
-/// asks before acting or has full access; her notifications; another machine
-/// to run her on; clearing her conversation. Models, connectors and the rest
+/// asks before acting or has full access; her notifications; what she
+/// remembers, on a page of its own (docs/her-memory.md); another machine
+/// to run her on; clearing her conversation or her memory. Models, connectors and the rest
 /// of an environment are set on the Mac. A Her that is on without her grant
 /// (docs/her-mesh.md §3.4) has one more row, which signs it.
 struct HerSettings: View {
     @Environment(AppModel.self) private var model
     @Environment(\.dismiss) private var dismiss
     @State private var clearing = false
+    @State private var forgetting = false
+    /// Her memory, for its row to say when there is nothing yet.
+    @State private var memory: HerMemory?
     @State private var fullAccess = false
     @State private var adding = false
     /// The Computer Control session on screen (docs/computer-control.md).
@@ -116,9 +120,26 @@ struct HerSettings: View {
                     Text("Off, no device notifies you of Her; what is unread still shows.")
                 }
                 Section {
+                    NavigationLink { HerMemoryPage(chat: chat, bot: bot.id) } label: {
+                        LabeledContent("Remembered") {
+                            if memory?.isEmpty == true { Text("Nothing Yet") }
+                        }
+                    }
+                    .accessibilityIdentifier("her-memory")
+                } header: {
+                    Text("Memory")
+                } footer: {
+                    Text("Your preferences, what you decide and where things are: Her notes them herself, and they stay when the chat is cleared. To change one, tell her.")
+                }
+                Section {
                     Button("Clear Conversation", role: .destructive) { clearing = true }
+                    Button("Clear Memory", role: .destructive) { forgetting = true }
+                        .accessibilityIdentifier("her-clear-memory")
                 }
             }
+        }
+        .task(id: bot?.id) {
+            if let bot { memory = try? await HerMemory.load(chat, bot: bot.id) }
         }
         .listSectionSpacing(.compact)
         .contentMargins(.top, 0, for: .scrollContent)
@@ -137,6 +158,21 @@ struct HerSettings: View {
             }
         } message: {
             Text("The chat history is cleared and the work it is doing stops. What it remembers, its files, scheduled tasks and settings stay.")
+        }
+        // Her memory goes to the trash, and she stops remembering at once; the chat stays.
+        .confirmationDialog("Clear what “\(bot?.name ?? "Her")” remembers?", isPresented: $forgetting, titleVisibility: .visible) {
+            Button("Clear", role: .destructive) {
+                guard let bot else { return }
+                Task {
+                    do {
+                        _ = try await chat.call("bots/memory_clear", ["bot_id": .string(bot.id)])
+                        memory = try? await HerMemory.load(chat, bot: bot.id)
+                        model.show(String(localized: "Memory cleared"))
+                    } catch { model.show(error.localizedDescription) }
+                }
+            }
+        } message: {
+            Text("Its memory moves to the trash, and it stops remembering at once. The chat stays.")
         }
         // What full access means, before it is turned on (the Mac's AccessSheet).
         .confirmationDialog("Give “\(bot?.name ?? "Her")” full access?", isPresented: $fullAccess, titleVisibility: .visible) {

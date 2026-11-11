@@ -83,6 +83,18 @@ html.blurred .her-id-n{color:var(--l2)}
 .bpn-end:first-child{border-top:0;border-top-left-radius:inherit;border-top-right-radius:inherit}
 .bpn-end:last-child{border-bottom-left-radius:inherit;border-bottom-right-radius:inherit}
 .bpn-end:hover{background:var(--fill)}
+/* A row that opens a page of the settings: the whole row, its value and chevron on the right. */
+.bpn-go{width:100%;border:0;background:none;font:inherit;text-align:left;color:inherit;border-radius:inherit}
+.bpn-go:hover{background:var(--fill)}
+.bpn-go .ic{width:14px;height:14px;color:var(--l3)}
+
+/* The memory as written (docs/her-memory.md): Markdown in the settings' type, its headings no larger than a label. */
+.mem-doc{padding:12px 16px;font-size:13px;line-height:1.6;overflow-wrap:anywhere}
+.mem-doc .md>*+*{margin-top:8px}
+.mem-doc .md :is(h1,h2,h3,h4,h5,h6){margin:14px 0 2px;font-size:13px;font-weight:600}
+.mem-doc .md>:is(h1,h2,h3,h4,h5,h6):first-child{margin-top:0}
+.mem-doc .md :is(ul,ol){padding-left:18px}
+.bfiles.mem-pages{width:100%}
 .bpn-pick{align-self:stretch;display:flex;flex-direction:column;align-items:flex-start;gap:12px;padding:12px 14px}
 .bpn-pick .bs-shapes{margin:0}
 

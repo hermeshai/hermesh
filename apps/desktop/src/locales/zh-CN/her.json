@@ -273,6 +273,21 @@
     "button": "清空",
     "done": "已清空聊天记录"
   },
+  "memoryClear": {
+    "title": "清空「{{name}}」记住的事？",
+    "message": "记忆会移到废纸篓，它马上就不再记得。聊天记录保留。",
+    "button": "清空",
+    "done": "已清空记忆"
+  },
+  "memory": {
+    "title": "记忆",
+    "back": "返回",
+    "pages": "页面",
+    "note": "这就是它读到的内容。要改哪条，直接跟它说。",
+    "emptyTitle": "还没有记下什么",
+    "emptyBody": "你的偏好、定下的事、东西放在哪，它会自己记下；也可以直接说「记住……」。",
+    "failed": "读不到记忆：{{error}}"
+  },
   "panel": {
     "close": "关闭",
     "avatar": "更换头像",
@@ -285,7 +300,12 @@
     "notifications": "通知",
     "muted": "免打扰",
     "mutedNote": "所有设备都不发它的通知。列表里的未读照常显示。",
+    "memory": "记忆",
+    "memoryRow": "记住的事",
+    "memoryNone": "还没有",
+    "memoryNote": "你的偏好、定下的事、东西放在哪，它会自己记下，清空聊天记录也还在。要改哪条，直接跟它说。",
     "clear": "清空聊天记录",
+    "clearMemory": "清空记忆",
     "permissionNote_win": "{{desc}}。Her 创建的智能体和定时任务也按这个权限运行，你不在时也一样。完全访问要用 Windows Hello 确认。"
   },
   "approval": {
