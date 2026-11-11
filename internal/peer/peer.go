@@ -237,7 +237,7 @@ func (c *Client) dialMachine(ctx context.Context, machineID string) (*Machine, e
 		raw.Close()
 		return nil, fmt.Errorf("connect to %s: %w", machineID, conn.Explain(err))
 	}
-	h2, err := transport.NewH2Client(tc)
+	h2, err := transport.NewTunnelClient(tc)
 	if err != nil {
 		tc.Close()
 		return nil, err

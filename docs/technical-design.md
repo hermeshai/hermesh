@@ -378,7 +378,11 @@ A revoked client leaves the owner's list: the relay forgets its grant, and the r
 
 - `coder/websocket` sends and receives binary messages, wrapped into a `net.Conn` with `websocket.NetConn`, with `hashicorp/yamux` running on top.
 - Convention: **whoever opens a stream is the HTTP client on that stream.**
-- yamux keepalive is 15 seconds: the relay closes a machine's or agent's connection once a ping goes unanswered for 30 seconds (30–45 seconds after it went quiet), an owner device's only after 5 minutes without an answer (`ownerQuiet`), so that the iPhone app, suspended in the background, comes back on the connection it kept; meanwhile it counts as online. Reconnects use exponential backoff with full jitter, from 1 second to 60 seconds; the backoff resets only after the connection has been stable for 60 seconds.
+- Both ends ping every 15 seconds, with pings of their own in place of yamux's keepalive (whose ping waits 30 seconds for its answer, so a dead connection stood for 30–45 seconds). Anything the other end sends counts as an answer, so a busy link is not taken for a dead one.
+  - The relay closes a machine's or agent's connection once it heard nothing from it for 20 seconds (`peerQuiet`), an owner device's only after 5 minutes (`ownerQuiet`), so that the iPhone app, suspended in the background, comes back on the connection it kept; meanwhile it counts as online.
+  - A machine, agent or owner device pings the relay once it heard nothing from it for 15 seconds and closes the connection when no answer comes within 8 seconds; when its clock shows it did not run for a while (the computer slept), it pings at once and waits 3 seconds (`RelayConn.watch`).
+  - An end-to-end tunnel's client pings the machine after 15 seconds with nothing read and closes the tunnel when no answer comes within 5 seconds (`NewTunnelClient`): a machine that stopped answering shows as unreachable without waiting for the relay.
+- Reconnects use exponential backoff with full jitter, from 1 second to 60 seconds; the backoff resets only after the connection has been stable for 60 seconds.
 - Every stream first writes a `StreamHeader` (4-byte big-endian length + protobuf, at most 64 KiB), followed by raw bytes.
 
 | StreamHeader.kind | Opened by | Purpose |

@@ -10,6 +10,7 @@ import (
 	"net/url"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/coder/websocket"
@@ -136,13 +137,17 @@ func (d *Dialer) Dial(ctx context.Context) (*RelayConn, error) {
 	}
 	// The relay reads nothing past Hello until it admits the peer, so the
 	// session may start writing before the answer.
-	admit := &admission{Conn: conn, done: make(chan struct{})}
-	sess, err := yamux.Client(admit, YamuxConfig())
+	admit := &admission{Conn: conn, done: make(chan struct{}), now: wallNow}
+	admit.read.Store(admit.now().UnixNano())
+	cfg := YamuxConfig()
+	cfg.EnableKeepAlive = false // watch, which gives up sooner
+	sess, err := yamux.Client(admit, cfg)
 	if err != nil {
 		conn.Close()
 		return nil, err
 	}
 	c := &RelayConn{sess: sess, admit: admit}
+	go c.watch(pingEvery, pingWithin, wakeTick, wakeGap, wakeWithin)
 	if !d.Pipeline {
 		if err := c.Admitted(dctx); err != nil {
 			c.Close()
@@ -159,6 +164,9 @@ type admission struct {
 	once sync.Once
 	done chan struct{}
 	err  error
+	// read is when the relay was last heard from (by now, in nanoseconds).
+	read atomic.Int64
+	now  func() time.Time
 }
 
 func (a *admission) Read(p []byte) (int, error) {
@@ -172,12 +180,74 @@ func (a *admission) Read(p []byte) (int, error) {
 			a.err = fmt.Errorf("%w: %s", ErrAdmission, res.Error)
 		default:
 			a.Conn.SetDeadline(time.Time{})
+			a.read.Store(a.now().UnixNano())
 		}
 	})
 	if a.err != nil {
 		return 0, a.err
 	}
-	return a.Conn.Read(p)
+	n, err := a.Conn.Read(p)
+	if n > 0 {
+		a.read.Store(a.now().UnixNano())
+	}
+	return n, err
+}
+
+// A connection to the relay can die without a word: the network changed,
+// or the computer slept and the relay closed its end meanwhile. Whatever
+// uses it then waits, and a machine shows as offline, until this end
+// notices. watch notices in place of yamux's keepalive, whose ping waits
+// ConnectionWriteTimeout (30 s) for its answer.
+var (
+	// pingEvery: the relay is pinged once nothing was heard from it for
+	// this long, and has pingWithin to answer.
+	pingEvery  = 15 * time.Second
+	pingWithin = 8 * time.Second
+	// wakeTick: how often watch looks at the clock. One that moved wakeGap
+	// further than that means the process did not run meanwhile (the
+	// computer slept, the app was suspended): the relay is pinged at once,
+	// and has wakeWithin to answer.
+	wakeTick   = 2 * time.Second
+	wakeGap    = 5 * time.Second
+	wakeWithin = 3 * time.Second
+	// wallNow is the wall clock: the monotonic one stops while the computer
+	// sleeps.
+	wallNow = func() time.Time { return time.Now().Round(0) }
+)
+
+// watch closes the connection once the relay stopped answering: a ping
+// went unanswered, and nothing else came from the relay either (a busy
+// link may answer late, but it still carries what the relay sends).
+func (c *RelayConn) watch(every, within, tick, gap, woken time.Duration) {
+	now := c.admit.now
+	t := time.NewTicker(tick)
+	defer t.Stop()
+	last := now()
+	for {
+		select {
+		case <-c.sess.CloseChan():
+			return
+		case <-t.C:
+		}
+		at := now()
+		woke := at.Sub(last) > tick+gap
+		last = at
+		wait := within
+		switch {
+		case woke:
+			wait = woken
+		case at.Sub(time.Unix(0, c.admit.read.Load())) < every:
+			continue
+		}
+		ctx, cancel := context.WithTimeout(context.Background(), wait)
+		err := c.Ping(ctx)
+		cancel()
+		if err != nil && c.admit.read.Load() <= at.UnixNano() {
+			c.sess.Close()
+			return
+		}
+		last = now() // the wait for the answer is no sleep
+	}
 }
 
 // Admitted waits for the relay's answer to Hello.

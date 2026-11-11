@@ -7,6 +7,8 @@ import (
 	"net"
 	"net/http"
 	"net/http/httptest"
+	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -37,6 +39,12 @@ func (c bufConn) Read(p []byte) (int, error) { return c.r.Read(p) }
 // fakeRelay answers Hello with ok after checking whether the peer already
 // sent more (pipelined reports it), then serves the control stream.
 func fakeRelay(t *testing.T, ok bool, pipelined chan<- bool) string {
+	return fakeRelayWith(t, ok, pipelined, 0)
+}
+
+// fakeRelayWith is fakeRelay with a relay that, with chatter, keeps sending
+// to the peer that often (it opens streams), as one busy with tunnels does.
+func fakeRelayWith(t *testing.T, ok bool, pipelined chan<- bool, chatter time.Duration) string {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		ws, err := websocket.Accept(w, r, &websocket.AcceptOptions{Subprotocols: []string{"hermesh.v1"}})
 		if err != nil {
@@ -69,6 +77,16 @@ func fakeRelay(t *testing.T, ok bool, pipelined chan<- bool) string {
 		sess, err := yamux.Server(bufConn{conn, br}, YamuxConfig())
 		if err != nil {
 			return
+		}
+		if chatter > 0 {
+			go func() {
+				for !sess.IsClosed() {
+					if st, err := sess.OpenStream(); err == nil {
+						st.Close()
+					}
+					time.Sleep(chatter)
+				}
+			}()
 		}
 		st, err := sess.AcceptStream()
 		if err != nil {
@@ -165,4 +183,140 @@ func TestPipelinedDial(t *testing.T) {
 			}
 		})
 	}
+}
+
+// quietLink is a TCP link to target whose directions can each go silent
+// without closing, as a dead network path does.
+type quietLink struct {
+	addr               string
+	toRelay, fromRelay atomic.Bool // silent
+}
+
+func newQuietLink(t *testing.T, target string) *quietLink {
+	l, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { l.Close() })
+	q := &quietLink{addr: l.Addr().String()}
+	pump := func(dst, src net.Conn, silent *atomic.Bool) {
+		defer dst.Close()
+		b := make([]byte, 32<<10)
+		for {
+			n, err := src.Read(b)
+			if n > 0 && !silent.Load() {
+				if _, err := dst.Write(b[:n]); err != nil {
+					return
+				}
+			}
+			if err != nil {
+				return
+			}
+		}
+	}
+	go func() {
+		for {
+			c, err := l.Accept()
+			if err != nil {
+				return
+			}
+			r, err := net.Dial("tcp", target)
+			if err != nil {
+				c.Close()
+				continue
+			}
+			go pump(r, c, &q.toRelay)
+			go pump(c, r, &q.fromRelay)
+		}
+	}()
+	return q
+}
+
+// A connection whose relay stopped answering closes itself: after a ping
+// went unanswered, or, when the clock shows the process did not run for a
+// while (the computer slept), at once. One whose relay answers stays, and
+// so does one whose pings get no answer while the relay is still heard (a
+// busy link).
+func TestWatch(t *testing.T) {
+	saved := []time.Duration{pingEvery, pingWithin, wakeTick, wakeGap, wakeWithin}
+	clock := wallNow
+	t.Cleanup(func() {
+		pingEvery, pingWithin, wakeTick, wakeGap, wakeWithin = saved[0], saved[1], saved[2], saved[3], saved[4]
+		wallNow = clock
+	})
+	var ahead atomic.Int64 // how far the wall clock jumped
+	wallNow = func() time.Time { return time.Now().Round(0).Add(time.Duration(ahead.Load())) }
+	wakeTick, wakeGap, wakeWithin = 20*time.Millisecond, time.Second, 200*time.Millisecond
+
+	connect := func(t *testing.T, chatter time.Duration) (*RelayConn, *quietLink) {
+		link := newQuietLink(t, strings.TrimPrefix(fakeRelayWith(t, true, make(chan bool, 1), chatter), "http://"))
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		conn, err := dialer(t, "http://"+link.addr, false).Dial(ctx)
+		if err != nil {
+			t.Fatal(err)
+		}
+		t.Cleanup(func() { conn.Close() })
+		return conn, link
+	}
+	closedWithin := func(conn *RelayConn, d time.Duration) bool {
+		select {
+		case <-conn.Done():
+			return true
+		case <-time.After(d):
+			return false
+		}
+	}
+
+	t.Run("a relay that answers", func(t *testing.T) {
+		pingEvery, pingWithin = 100*time.Millisecond, 200*time.Millisecond
+		conn, _ := connect(t, 0)
+		if closedWithin(conn, time.Second) {
+			t.Fatal("closed a connection whose relay answers")
+		}
+		ahead.Add(int64(time.Minute)) // back from sleep, the relay still there
+		if closedWithin(conn, time.Second) {
+			t.Fatal("closed a connection whose relay answers after a sleep")
+		}
+	})
+	t.Run("a relay gone silent", func(t *testing.T) {
+		pingEvery, pingWithin = 300*time.Millisecond, 200*time.Millisecond
+		conn, link := connect(t, 0)
+		link.toRelay.Store(true)
+		link.fromRelay.Store(true)
+		began := time.Now()
+		if !closedWithin(conn, 3*time.Second) {
+			t.Fatal("still open: the silent relay went unnoticed")
+		}
+		if took := time.Since(began); took < pingEvery {
+			t.Fatalf("closed after %v, before the relay was due a ping (%v)", took, pingEvery)
+		}
+	})
+	t.Run("a relay gone while the computer slept", func(t *testing.T) {
+		pingEvery, pingWithin = time.Minute, time.Minute // no ping is due
+		conn, link := connect(t, 0)
+		link.toRelay.Store(true)
+		link.fromRelay.Store(true)
+		if closedWithin(conn, 500*time.Millisecond) {
+			t.Fatal("closed with no ping due and no sleep")
+		}
+		ahead.Add(int64(time.Minute))
+		if !closedWithin(conn, 2*time.Second) {
+			t.Fatal("still open after the sleep: the relay was not asked at once")
+		}
+	})
+	t.Run("a busy link", func(t *testing.T) {
+		pingEvery, pingWithin = 100*time.Millisecond, 100*time.Millisecond
+		// The relay keeps sending, but the answers to this end's pings do
+		// not come: they never reach it.
+		conn, link := connect(t, 20*time.Millisecond)
+		link.toRelay.Store(true)
+		if closedWithin(conn, 2*time.Second) {
+			t.Fatal("closed a connection that still hears the relay")
+		}
+		link.fromRelay.Store(true) // and now nothing at all
+		if !closedWithin(conn, 2*time.Second) {
+			t.Fatal("still open with nothing heard from the relay")
+		}
+	})
 }
