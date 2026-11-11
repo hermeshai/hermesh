@@ -25,10 +25,10 @@ import (
 )
 
 // The control socket lets `hermeshd project …` change a running machine's
-// projects, and `hermeshd doctor` and `status` ask it how it is (the
-// machine holds its data directory). Projects are the machine's own
-// settings: whoever has a shell as this user can do as much already, so
-// only this user may connect.
+// projects, `hermeshd doctor` and `status` ask it how it is, and
+// `uninstall` and `erase` whether Her's data is kept (the machine holds its
+// data directory). Projects are the machine's own settings: whoever has a
+// shell as this user can do as much already, so only this user may connect.
 
 func (n *Machine) serveControl(ctx context.Context) {
 	path := paths.Control(n.cfg.DataDir)
@@ -67,6 +67,9 @@ func (n *Machine) serveControl(ctx context.Context) {
 	// `hermeshd screen stop`: the Computer Control session under way ends.
 	mux.HandleFunc("POST /screen/stop", func(w http.ResponseWriter, r *http.Request) {
 		n.screen.Stop()
+	})
+	mux.HandleFunc("GET /her-data", func(w http.ResponseWriter, r *http.Request) {
+		json.NewEncoder(w).Encode(n.herDataKept())
 	})
 	srv := &http.Server{Handler: mux, ReadHeaderTimeout: 10 * time.Second}
 	go func() {

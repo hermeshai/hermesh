@@ -2,12 +2,14 @@ package machine
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
 	"net/http"
 	"os"
 	"runtime"
+	"time"
 
 	"connectrpc.com/connect"
 
@@ -104,19 +106,38 @@ func (n *Machine) herHomeExists() bool {
 	return err == nil
 }
 
-// HerData is where her data is on the machine in cfg (not running), when
-// Her was on there once and it is still there: for `hermeshd uninstall`
-// and `hermeshd erase` to ask whether it goes too.
+// herDataKept is HerData, on the control socket.
+type herDataKept struct {
+	Home string
+	Kept bool
+}
+
+func (n *Machine) herDataKept() herDataKept {
+	n.mu.Lock()
+	defer n.mu.Unlock()
+	return herDataKept{Home: n.her.Home(), Kept: n.herData}
+}
+
+// HerData is where her data is on the machine in cfg, when Her was on there
+// once and it is still there: for `hermeshd uninstall` and `hermeshd erase`
+// to ask whether it goes too. A running machine (its service) is asked.
 func HerData(cfg Config) (home string, ok bool, err error) {
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	if out, running, err := ControlRequest(ctx, cfg.DataDir, "GET", "/her-data", nil); running {
+		var d herDataKept
+		if err == nil {
+			err = json.Unmarshal(out, &d)
+		}
+		return d.Home, d.Kept, err
+	}
 	n, err := Open(cfg)
 	if err != nil {
 		return "", false, err
 	}
 	defer n.Close()
-	n.mu.Lock()
-	ok = n.herData
-	n.mu.Unlock()
-	return n.her.Home(), ok, nil
+	d := n.herDataKept()
+	return d.Home, d.Kept, nil
 }
 
 // stopHerRemoved turns Her off, keeping her data, on a machine its owner

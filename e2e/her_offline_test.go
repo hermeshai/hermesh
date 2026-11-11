@@ -99,8 +99,9 @@ func (k keptConversation) said() []string {
 // TestHerOfflineConversation: the owner talks to Her on another machine,
 // which then goes away. Once this Mac's hermeshd has started again, with
 // nothing of it in memory, the Her entry still finds there what was said,
-// as the entry shows it, through LocalService; once the machine is removed,
-// nothing (docs/her-server.md §7, §11 phase 1.6).
+// as the entry shows it, through LocalService. Offline, the machine can't
+// be removed with her data erased; once removed, nothing is left here
+// (docs/her-server.md §5.6, §7, §11 phase 1.6).
 func TestHerOfflineConversation(t *testing.T) {
 	env := newHerEnvironment(t)
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Minute)
@@ -160,6 +161,11 @@ func TestHerOfflineConversation(t *testing.T) {
 	}
 	if at < len(want) {
 		t.Fatalf("kept %q\nwant, in order, %q", said, want)
+	}
+
+	// Offline, it can't erase her data: nothing is removed.
+	if _, err := c.RemoveMachine(ctx, &localv1.RemoveMachineRequest{MachineId: env.machine, EraseHer: true}); err == nil || listedMachine(t, c, env.machine) == nil {
+		t.Fatalf("removing the offline machine with her data: %v", err)
 	}
 
 	// Removed, the machine leaves nothing of its Her here.
