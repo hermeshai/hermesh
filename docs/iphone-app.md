@@ -35,12 +35,16 @@ gives an iPhone app those sizes):
 
 | The screen | The menu and the page |
 |---|---|
-| Compact width, bars along the top (an iPhone) | The page slides aside by the menu's width and stays in view, a dimmed card that closes the menu |
+| Compact width, bars along the top (an iPhone), or regular width upright (iPhone Duo open, upright) | The page slides aside by the menu's width and stays in view, a dimmed card that closes the menu |
 | Compact width, bars on the side (iPhone Duo closed: `verticalBarEdge`) | That strip of the screen is the bars' in every state, so a page beside the menu would lie under them: the menu takes the whole page's place. It has the bar then, Close at its top, where the page has the menu button, and Search under it (its own Search button goes) |
-| Regular width (iPhone Duo open) | Side by side, a hairline between them; no menu button, no drag, and what would open the menu does nothing |
+| Regular width, wider than tall (iPhone Duo open, on its side) | Side by side, a hairline between them, no drag. The menu's sidebar button (at its top's leading end) hides it, and the page then has the same button where the menu button is, to show it again; what would open the menu shows it. The hairline drags the menu between 240 and 400 pt wide (the page keeps 400). Hidden and width are kept on the iPhone |
 
 Changing from one to another (the device opened, closed or turned) leaves the
-menu closed. The bars themselves are the system's: every page's buttons are
+menu closed. Covering, a finger drags a picture of the page, and the menu
+keeps still: a view moving across the bars' strip has its safe area change on
+every frame, and SwiftUI laid the whole page out again each time (measured on
+an iPhone Duo: two thirds of the main thread while dragging). `DuoUITests/testMenuSwipe`
+measures the moves' hitches (`HERMESH_DUO_SWIPES=<n>`, on a device). The bars themselves are the system's: every page's buttons are
 toolbar items, which iOS stands on the side where it does so. Two views draw
 their own top and read `barsOnTheSide` for it: Her's page keeps her picture
 and name at its top and leaves its menu button to the system's bar; search,

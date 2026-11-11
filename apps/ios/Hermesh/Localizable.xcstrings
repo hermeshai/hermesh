@@ -2826,6 +2826,16 @@
         }
       }
     },
+    "Hide the menu": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "隐藏菜单"
+          }
+        }
+      }
+    },
     "High": {
       "localizations": {
         "zh-Hans": {

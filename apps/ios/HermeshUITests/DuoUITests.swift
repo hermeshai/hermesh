@@ -34,8 +34,68 @@ final class DuoUITests: XCTestCase {
         if window.width > window.height { walk("-side") } else { shot("overview-side") }
     }
 
+    /// The menu dragged open and shut by a finger, slowly, HERMESH_DUO_SWIPES times in each of three runs, its
+    /// hitches measured (on a real device, where the frames are what the owner sees).
+    func testMenuSwipe() throws {
+        guard let count = Int(ProcessInfo.processInfo.environment["HERMESH_DUO_SWIPES"] ?? "") else { throw XCTSkip("set HERMESH_DUO_SWIPES") }
+        app.activate() // the app already running stays so, for a trace attached to it
+        let demo = app.buttons["try-demo"]
+        if demo.waitForExistence(timeout: 5) { demo.tap() }
+        XCTAssertTrue(app.buttons["menu"].waitForExistence(timeout: 20), "a root page")
+        sleep(2)
+        let dim = app.descendants(matching: .any)["drawer-dim"]
+        // The menu's moves are signposted animation intervals: their hitches, as the frames the owner sees.
+        let options = XCTMeasureOptions()
+        options.iterationCount = 3
+        measure(metrics: [XCTOSSignpostMetric(subsystem: "io.hermesh.ios", category: "menu", name: "move")], options: options) {
+            for _ in 0..<count {
+                drag(from: 0.15, to: 0.95)
+                XCTAssertTrue(app.buttons["menu-close"].exists || (dim.exists && dim.isHittable), "the menu open")
+                drag(from: 0.9, to: 0.1)
+                XCTAssertTrue(app.buttons["menu"].isHittable, "the page back")
+            }
+        }
+    }
+
+    /// iPhone Duo open (unfolded by hand: Device Hub on the Simulator, or the device itself). On its side the
+    /// menu stands beside the page, drags narrower, hides and comes back; upright it slides over the page as on
+    /// an iPhone. Runs against the app as it is (the demo, or signed in), from Her's page, a root page.
+    func testOpen() throws {
+        guard ProcessInfo.processInfo.environment["HERMESH_DUO_OPEN"] != nil else { throw XCTSkip("set HERMESH_DUO_OPEN") }
+        app.activate()
+        let drawer = app.descendants(matching: .any)["drawer"], dim = app.descendants(matching: .any)["drawer-dim"]
+        XCUIDevice.shared.orientation = .landscapeLeft
+        sleep(2)
+        if app.buttons["menu"].exists { app.buttons["menu"].tap(); sleep(1) } // hidden when the test began
+        tap("her-place")
+        sleep(1)
+        XCTAssertTrue(drawer.exists && !app.buttons["menu"].exists, "on its side, the menu beside the page")
+        shot("open-side")
+        hideAndResize("-open")
+        XCUIDevice.shared.orientation = .portrait
+        sleep(2)
+        shot("open-upright")
+        XCTAssertTrue(app.buttons["menu"].waitForExistence(timeout: 5), "upright, the page has the menu button")
+        XCTAssertFalse(drawer.exists, "and the menu waits under it")
+        app.buttons["menu"].tap()
+        sleep(1)
+        XCTAssertTrue(dim.isHittable, "the page a card beside the menu")
+        shot("open-upright-menu")
+        dim.tap()
+        sleep(1)
+        XCTAssertTrue(app.buttons["menu"].isHittable, "the page back")
+    }
+
+    private func drag(from: CGFloat, to: CGFloat) {
+        let start = app.coordinate(withNormalizedOffset: CGVector(dx: from, dy: 0.5))
+        let end = app.coordinate(withNormalizedOffset: CGVector(dx: to, dy: 0.5))
+        start.press(forDuration: 0.05, thenDragTo: end, withVelocity: 300, thenHoldForDuration: 0.1)
+        sleep(1)
+    }
+
     private func walk(_ suffix: String) {
         shot("overview" + suffix)
+        hideAndResize(suffix)
         openMenu()
         shot("menu" + suffix)
         closeMenu()
@@ -85,6 +145,32 @@ final class DuoUITests: XCTestCase {
         tap("close")
     }
 
+    /// Beside the page, the menu's hairline drags it narrower, its sidebar button hides it, and the page's
+    /// button shows it again. Elsewhere there is nothing to do.
+    private func hideAndResize(_ suffix: String) {
+        let drawer = app.descendants(matching: .any)["drawer"]
+        guard !app.buttons["menu"].exists, drawer.exists else { return }
+        let width = drawer.frame.width
+        let hairline = app.coordinate(withNormalizedOffset: .zero).withOffset(CGVector(dx: width - 4, dy: app.frame.height / 2))
+        hairline.press(forDuration: 0.05, thenDragTo: hairline.withOffset(CGVector(dx: -60, dy: 0)))
+        sleep(1)
+        XCTAssertEqual(drawer.frame.width, width - 60, accuracy: 4, "the menu dragged narrower")
+        shot("menu-narrow" + suffix)
+        tap("menu-hide")
+        sleep(1)
+        XCTAssertFalse(drawer.exists, "the menu hidden")
+        XCTAssertTrue(app.buttons["menu"].isHittable, "the page's button to show it")
+        shot("menu-hidden" + suffix)
+        tap("menu")
+        sleep(1)
+        XCTAssertTrue(drawer.exists && !app.buttons["menu"].exists, "the menu beside the page again")
+        XCTAssertEqual(drawer.frame.width, width - 60, accuracy: 4, "as wide as it was left")
+        let back = app.coordinate(withNormalizedOffset: .zero).withOffset(CGVector(dx: width - 64, dy: app.frame.height / 2))
+        back.press(forDuration: 0.05, thenDragTo: back.withOffset(CGVector(dx: 60, dy: 0)))
+        sleep(1)
+        XCTAssertEqual(drawer.frame.width, width, accuracy: 4, "the menu dragged back")
+    }
+
     /// Search closes by its sheet's Close, or where there is none (bars on the side) by the field's own.
     private func closeSearch() {
         let field = app.searchFields.firstMatch, close = app.buttons["close"]
@@ -106,18 +192,19 @@ final class DuoUITests: XCTestCase {
     }
 
     /// Opens the menu from its button, and checks that it shows as the screen asks: beside the page with no
-    /// button (regular width), in the page's place with its own Close in the bar on the side (iPhone Duo closed),
-    /// or with the page a card beside it that closes it (an iPhone).
+    /// button (regular width, on its side), in the page's place with its own Close in the bar on the side (iPhone Duo closed),
+    /// or with the page a card beside it that closes it (an iPhone, iPhone Duo open and upright).
     private func openMenu() {
         let menu = app.buttons["menu"], drawer = app.descendants(matching: .any)["drawer"]
         let frame = app.frame
+        let dim = app.descendants(matching: .any)["drawer-dim"]
+        // Open already: a sheet from it was closed. (Covering, the page under the menu is hidden, its button too.)
+        if app.buttons["menu-close"].exists || (dim.exists && dim.isHittable) { return }
         guard menu.waitForExistence(timeout: 5) else {
             XCTAssertTrue(drawer.exists && drawer.frame.width < frame.width * 0.6, "no menu button: the menu stands beside the page")
             return
         }
-        XCTAssertLessThan(frame.width, 600, "a menu button at compact width only")
-        let dim = app.descendants(matching: .any)["drawer-dim"]
-        if app.buttons["menu-close"].exists || (dim.exists && dim.isHittable) { return } // open already: a sheet from it was closed
+        XCTAssertTrue(frame.width < 600 || frame.height > frame.width, "a menu button at compact width, or upright")
         let button = menu.frame
         let onTheSide = button.midX > frame.midX // in the bar on the trailing side, not at the top's leading end
         menu.tap()

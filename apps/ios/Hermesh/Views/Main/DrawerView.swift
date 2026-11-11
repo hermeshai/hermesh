@@ -39,6 +39,19 @@ struct DrawerView: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: 2) {
                     HStack {
+                        if model.menuBeside {
+                            // Where the page's button shows the menu again once it is hidden.
+                            Button {
+                                model.menuHidden = true
+                            } label: {
+                                Image(systemName: "sidebar.left").font(.body.weight(.medium)).frame(width: button, height: button)
+                                    .glassEffect(.regular.interactive(), in: .circle)
+                                    .contentShape(.circle)
+                            }
+                            .buttonStyle(.plain)
+                            .accessibilityLabel("Hide the menu")
+                            .accessibilityIdentifier("menu-hide")
+                        }
                         Wordmark()
                         Spacer()
                         if !sideBars {
@@ -56,7 +69,7 @@ struct DrawerView: View {
                         }
                     }
                     .frame(minHeight: button)
-                    .padding(.leading, 24).padding(.trailing, 16).padding(.bottom, 14)
+                    .padding(.leading, model.menuBeside ? 16 : 24).padding(.trailing, 16).padding(.bottom, 14)
                     places
                     lists
                 }
@@ -186,7 +199,7 @@ struct DrawerView: View {
     private func row(_ title: String, running: Bool = false, @ViewBuilder mark: () -> some View) -> some View {
         HStack(spacing: 12) {
             Group {
-                if running { ShimmerText(title, paused: !model.drawerOpen && !model.menuBeside) } else { Text(title) }
+                if running { ShimmerText(title, paused: !model.drawerOpen && !model.menuInView) } else { Text(title) }
             }
             .lineLimit(1).frame(maxWidth: .infinity, alignment: .leading)
             mark().frame(width: 18)
