@@ -9363,6 +9363,26 @@
           }
         }
       }
+    },
+    "Hide Controls": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "收起控制栏"
+          }
+        }
+      }
+    },
+    "Show Controls": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "展开控制栏"
+          }
+        }
+      }
     }
   },
   "version": "1.0"

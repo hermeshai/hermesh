@@ -314,8 +314,14 @@ key.
 ### 6.3 The page
 
 - Full screen, both orientations. The picture starts fitted to the screen.
-- One small bar: connection quality (the round trip, and "Relayed" when
-  the packets go through the relay), the mode button, keyboard, close.
+- One small bar: hide, connection quality (the round trip, and "Relayed"
+  when the packets go through the relay), the mode button, keyboard, close.
+  Hide folds it into a round button that keeps the quality's colour; a tap
+  opens it again where it is. Folded or not, it is dragged to any edge and
+  keeps to the one nearest where it is let go, never the middle of the
+  picture; against a side its buttons run down the page, which on a phone
+  held sideways puts the bar beside the picture, not over it. Upright and
+  sideways each remember their own place, and the app remembers the fold.
 - A frame is decoded (VideoToolbox) on the thread that brings it and set
   as a layer's contents there, in a transaction of its own: 6 ms sooner
   than `AVSampleBufferDisplayLayer` showing it (§5.1).

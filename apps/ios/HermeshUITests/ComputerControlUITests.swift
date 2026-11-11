@@ -19,6 +19,7 @@ extension HermeshUITests {
         try XCTContext.runActivity(named: "a tap clicks where it lands; a long press is the other button") { _ in try controlTouch() }
         try XCTContext.runActivity(named: "the phone's keyboard types text, and the keys a phone lacks") { _ in try controlKeyboard() }
         try XCTContext.runActivity(named: "trackpad mode: a finger moves the pointer, a tap clicks where it is") { _ in try controlTrackpad() }
+        try XCTContext.runActivity(named: "the bar folds into a round button, moves to another edge, and opens there") { _ in try controlBar() }
         try XCTContext.runActivity(named: "the page turns with the phone, and Close ends the session") { _ in try controlTurnAndClose() }
     }
 
@@ -74,7 +75,16 @@ extension HermeshUITests {
         app.buttons["screen-key-esc"].tap()
         try waitFor("esc on the Mac") { try screenEvents("key").contains { ($0["key"] as? String) == "NAMED_KEY_ESCAPE" } ? true : nil }
         // A modifier holds until the next key: Command, then C.
-        app.buttons["screen-key-command"].tap()
+        // Typing Chinese goes through the Simulator's hardware keyboard, which puts the on-screen keyboard
+        // away and brings it back: a tap while the row moves misses. Wait until it is still.
+        let command = app.buttons["screen-key-command"]
+        var last = CGRect.null
+        try waitFor("the row of keys at rest") {
+            let f = command.frame
+            defer { last = f }
+            return f == last ? true : nil
+        }
+        command.tap()
         keys.typeText("c")
         try waitFor("Command-C on the Mac") {
             try screenEvents("key").contains { ($0["character"] as? String) == "c" && ($0["command"] as? Bool) == true } ? true : nil
@@ -103,11 +113,40 @@ extension HermeshUITests {
         tap("screen-mode") // back to direct touch, which the app remembers
     }
 
+    func controlBar() throws {
+        let quality = app.descendants(matching: .any)["screen-quality"].firstMatch
+        let ball = app.buttons["screen-unfold"]
+        let before = try screenInput().count
+        herShot("Computer Control: the bar")
+        tap("screen-fold")
+        XCTAssertTrue(ball.waitForExistence(timeout: 5), "the round button")
+        XCTAssertFalse(quality.exists, "the bar folded away")
+        XCTAssertFalse(app.buttons["screen-close"].exists)
+        // Dragged towards the left side, it keeps to that edge.
+        ball.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
+            .press(forDuration: 0.05, thenDragTo: app.coordinate(withNormalizedOffset: CGVector(dx: 0.08, dy: 0.25)))
+        try waitFor("the button on the left") { ball.frame.minX < 30 && ball.frame.midY < app.frame.height / 2 ? true : nil }
+        herShot("Computer Control: the bar folded, moved")
+        XCTAssertEqual(try screenInput().count, before, "moving the bar did nothing on the Mac")
+        // Open there, it runs down the side.
+        ball.tap()
+        let close = app.buttons["screen-close"]
+        XCTAssertTrue(close.waitForExistence(timeout: 5), "the bar again")
+        let fold = app.buttons["screen-fold"]
+        XCTAssertGreaterThan(close.frame.minY, fold.frame.maxY, "its buttons one under the other")
+        XCTAssertLessThan(abs(close.frame.midX - fold.frame.midX), 2)
+        XCTAssertLessThan(fold.frame.minX, 30, "against the side it was left at")
+        herShot("Computer Control: the bar down the side")
+    }
+
     func controlTurnAndClose() throws {
         XCUIDevice.shared.orientation = .landscapeLeft
         try waitFor("the page on its side") { surface.frame.width > surface.frame.height ? true : nil }
         XCTAssertEqual(surface.value as? String, "live", "the picture stays")
         XCTAssertEqual(surface.frame.size, app.frame.size, "the picture's page takes the whole screen")
+        // On its side the bar has its own place, down the right side, beside the picture.
+        let close = app.buttons["screen-close"], fold = app.buttons["screen-fold"]
+        try waitFor("the bar down the right side") { close.frame.minY > fold.frame.maxY && fold.frame.minX > app.frame.width * 0.75 ? true : nil }
         XCUIDevice.shared.orientation = .portrait
         try waitFor("upright again") { surface.frame.width < surface.frame.height ? true : nil }
         tap("screen-close")
