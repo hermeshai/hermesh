@@ -11,7 +11,6 @@ import (
 	"net/url"
 	"os"
 	"os/exec"
-	"path/filepath"
 	"slices"
 	"strings"
 	"sync"
@@ -152,6 +151,7 @@ func (a *app) startLink() {
 		}
 		cmd := exec.Command(exe, "link")
 		cmd.Env = os.Environ()
+		cmd.Dir = os.TempDir() // not this command's folder, which it would keep in use
 		detach(cmd)
 		if cmd.Start() == nil {
 			cmd.Process.Release()
@@ -202,7 +202,7 @@ func runLink(ctx context.Context, home string, hc *http.Client, idle time.Durati
 	if err := a.load(); err != nil {
 		return nil
 	}
-	lock, err := flock.Acquire(filepath.Join(home, "link"))
+	lock, err := flock.Acquire(paths.LinkLock(home))
 	if err != nil {
 		return nil
 	}

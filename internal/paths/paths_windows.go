@@ -1,8 +1,11 @@
 package paths
 
 import (
+	"crypto/sha256"
+	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 )
 
 // Everything is in Local AppData, never Roaming: a domain profile copies
@@ -40,6 +43,16 @@ func Her(dataDir string) string { return filepath.Join(dataDir, "her", "her.sock
 // Link is where the CLI with this home keeps its relay connection between
 // commands (the CLI's link, docs/cli.md).
 func Link(cliHome string) string { return filepath.Join(cliHome, "link", "link.pipe") }
+
+// LinkLock is the folder whose lock says the link of this home runs. Not
+// in the home: Windows deletes no file a process has open, and the link
+// holds its lock while it runs, so a home with it could not be removed
+// (the link ends once its home is gone).
+func LinkLock(cliHome string) string {
+	abs, _ := filepath.Abs(cliHome)
+	h := sha256.Sum256([]byte(strings.ToLower(abs)))
+	return filepath.Join(localDir(), fmt.Sprintf("link-%x", h[:8]))
+}
 
 func localDir() string { return filepath.Join(localAppData(), "Hermesh", "run") }
 

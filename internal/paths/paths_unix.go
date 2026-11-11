@@ -91,6 +91,9 @@ func Link(cliHome string) string {
 	return p
 }
 
+// LinkLock is the folder whose lock says the link of this home runs.
+func LinkLock(cliHome string) string { return filepath.Join(cliHome, "link") }
+
 // localDir is this user's own folder in the temp directory (the same for
 // what launchd or systemd starts and for a shell), as LocalAPI's is.
 func localDir() string { return filepath.Join(os.TempDir(), fmt.Sprintf("hermesh-%d", os.Getuid())) }

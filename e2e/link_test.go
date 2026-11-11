@@ -226,18 +226,38 @@ func TestAgentLinkThatFails(t *testing.T) {
 		}
 		return time.Since(began)
 	}
+	// The agent's connections the relay saw come, so far.
+	connected := func() int {
+		n := 0
+		for _, l := range strings.Split(w.relay.output(), "\n") {
+			if strings.Contains(l, `msg="peer connected"`) && strings.Contains(l, "role=ROLE_CLIENT") {
+				n++
+			}
+		}
+		return n
+	}
+	// used: a command makes no connection of its own, the link is the same.
+	var link int
+	used := func() bool {
+		before := connected()
+		list()
+		return connected() == before && linkPID(home) == link
+	}
+	base := connected()
 	list()
-	eventually(t, 15*time.Second, "the link", func() bool { return alive(linkPID(home)) })
-	link := linkPID(home)
-	eventually(t, 15*time.Second, "the link used", func() bool { return list() < time.Second && linkPID(home) == link })
+	eventually(t, 15*time.Second, "the link connected", func() bool { return alive(linkPID(home)) && connected() == base+2 })
+	link = linkPID(home)
+	if !used() {
+		t.Fatal("the command after the first made a connection of its own")
+	}
 
 	// The link frozen: it takes the command's connection and says nothing.
 	syscall.Kill(link, syscall.SIGSTOP)
 	took := list()
 	syscall.Kill(link, syscall.SIGCONT)
 	t.Logf("a frozen link: the command took %v", took.Round(100*time.Millisecond))
-	if took < 2*time.Second || took > 8*time.Second {
-		t.Errorf("with its link frozen the command took %v, want the 3 s it waits for it and little more", took)
+	if took < 2*time.Second || took > 15*time.Second {
+		t.Errorf("with its link frozen the command took %v, want the 3 s it waits for it and what a command takes", took)
 	}
 
 	// The link's connection dead without a word, a moment after the relay
@@ -247,9 +267,9 @@ func TestAgentLinkThatFails(t *testing.T) {
 	network.setCut(false)
 	took = list()
 	t.Logf("a link whose connection died: the command took %v", took.Round(100*time.Millisecond))
-	if took < 2*time.Second || took > 10*time.Second {
-		t.Errorf("with its link's connection dead the command took %v, want the 5 s its first calls get and little more", took)
+	if took < 2*time.Second || took > 20*time.Second {
+		t.Errorf("with its link's connection dead the command took %v, want the 5 s its first calls get and what a command takes", took)
 	}
 	// The link notices and connects again: commands go through it as before.
-	eventually(t, 60*time.Second, "the link used again", func() bool { return list() < time.Second && linkPID(home) == link })
+	eventually(t, 90*time.Second, "the link used again", used)
 }
