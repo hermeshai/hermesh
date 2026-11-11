@@ -80,6 +80,9 @@ func TestRelayRoundTrips(t *testing.T) {
 		t.Skip("e2e")
 	}
 	w := newOwnerMac(t, []string{"HERMESH_FAKE_PROVIDERS=1"}, &localv1.GrantSpec{})
+	// A command that connects by itself, as the first one does and as any
+	// does without its link (TestAgentLink times the others).
+	w.cliEnv = append(w.cliEnv, "HERMESH_LINK=off")
 	s, r := w.startSession(time.Minute, "--wait", "--prompt", "say hi")
 	if r.code != 0 {
 		t.Fatalf("start: %+v", r)

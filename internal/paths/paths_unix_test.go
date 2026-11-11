@@ -33,3 +33,16 @@ func TestHerSocket(t *testing.T) {
 		t.Fatal(got)
 	}
 }
+
+// The CLI's link is next to the home's lock, and under the limit whatever
+// the home, one per home.
+func TestLinkSocket(t *testing.T) {
+	long := "/tmp/" + strings.Repeat("x", 120)
+	a, b := Link(long+"/a"), Link(long+"/b")
+	if a == b || len(a) > 100 || strings.HasPrefix(a, long) {
+		t.Fatalf("%s, %s", a, b)
+	}
+	if got := Link("/home/dev/.config/hermesh"); got != "/home/dev/.config/hermesh/link/link.sock" {
+		t.Fatal(got)
+	}
+}

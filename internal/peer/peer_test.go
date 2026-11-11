@@ -126,3 +126,87 @@ func TestMachineHer(t *testing.T) {
 		t.Fatalf("console: %d %q", resp.StatusCode, b)
 	}
 }
+
+// A client with a link reaches the relay's control services and its
+// machines through it, with no connection of its own, and holds a machine
+// to the name the link says it presented. Once the link fails the client
+// connects by itself, as one without.
+func TestLink(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	// The link's end: what it carries to, by where the command asked for.
+	mux := http.NewServeMux()
+	mux.Handle(herv1connect.NewHerServiceHandler(herCalls{}))
+	mux.HandleFunc("/whoami", func(w http.ResponseWriter, r *http.Request) { io.WriteString(w, "the relay, through the link") })
+	var asked []string
+	fails := false
+	key, _ := identity.GenerateKey()
+	d := &Dialer{RelayURL: admittingRelay(t), Role: relayv1.Role_ROLE_CLIENT, Key: key,
+		Credentials: func() *identityv1.Credentials { return &identityv1.Credentials{} },
+		Link: func(_ context.Context, machineID string) (net.Conn, string, error) {
+			asked = append(asked, machineID)
+			if fails {
+				return nil, "", io.ErrClosedPipe
+			}
+			linkSide, commandSide := net.Pipe()
+			go transport.ServeH2(ctx, linkSide, mux)
+			return commandSide, "box", nil
+		}}
+	c, err := d.Connect(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer c.Close()
+
+	hc, err := c.Control()
+	if err != nil || !c.Linked() {
+		t.Fatalf("control: %v (linked: %v)", err, c.Linked())
+	}
+	res, err := hc.Get("http://relay/whoami")
+	if err != nil {
+		t.Fatal(err)
+	}
+	b, _ := io.ReadAll(res.Body)
+	res.Body.Close()
+	if string(b) != "the relay, through the link" {
+		t.Fatalf("control call: %q", b)
+	}
+	n, err := c.Machine(ctx, "m_1")
+	if err != nil || n.Name != "box" {
+		t.Fatalf("machine: %+v %v", n, err)
+	}
+	if res, err := n.Her.Call(ctx, &herv1.CallRequest{Request: &herv1.Request{Method: "models/list"}}); err != nil || string(res.Response.Result) != `"models/list"` {
+		t.Fatalf("a call to the machine: %v %v", res, err)
+	}
+	if again, _ := c.Machine(ctx, "m_1"); again != n {
+		t.Fatal("the machine was reached anew")
+	}
+	if _, err := c.Control(); err != nil || len(asked) != 2 {
+		t.Fatalf("the link was asked %v, want once for the relay and once for the machine (%v)", asked, err)
+	}
+	select {
+	case <-c.Done():
+		t.Fatal("a client with a link has a connection of its own")
+	default:
+	}
+
+	// The link fails: the client connects to the relay itself.
+	fails = true
+	brief, stop := context.WithTimeout(ctx, time.Second)
+	defer stop()
+	if _, err := c.Machine(brief, "m_2"); err == nil { // the stand-in relay has no machines
+		t.Fatal("reached a machine nobody has")
+	}
+	if c.Linked() {
+		t.Fatal("still linked after the link failed")
+	}
+	if _, err := c.Control(); err != nil {
+		t.Fatalf("control, by itself: %v", err)
+	}
+	if err := c.Ping(ctx); err != nil {
+		t.Fatalf("the client's own connection: %v", err)
+	}
+	if got, _ := c.Machine(ctx, "m_1"); got != n {
+		t.Fatal("the machine reached through the link was dropped")
+	}
+}
