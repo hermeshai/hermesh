@@ -13,6 +13,7 @@ struct SearchSheet: View {
     @State private var tokens: [SearchState] = []
     @State private var searching = false
     @State private var recent: [String] = []
+    @Environment(\.barsOnTheSide) private var sideBars
 
     var body: some View {
         let q = query.trimmingCharacters(in: .whitespaces)
@@ -36,7 +37,8 @@ struct SearchSheet: View {
                 searching = true
             }
             .onChange(of: searching) { if !searching { dismiss() } }
-            .toolbar { CloseButton() }
+            // On the side, the bar shows while searching: its Close would be a second one under the field's.
+            .toolbar { if !sideBars { CloseButton() } }
         }
     }
 
