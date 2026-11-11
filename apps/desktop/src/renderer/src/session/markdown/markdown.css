@@ -75,7 +75,7 @@
 /* A table or a diagram shown large, over the window. */
 .md-dialog{margin:auto;border:0;padding:0;max-width:calc(100vw - 48px);max-height:calc(100vh - 80px);overflow-y:auto;color:var(--l1);background:var(--win);border-radius:var(--r-xl);box-shadow:0 0 0 .5px var(--menu-bd),0 20px 60px rgba(0,0,0,.35);animation:sheet .22s cubic-bezier(.2,0,0,1)}
 .md-dialog:focus-visible{outline:none}
-.md-dialog::backdrop{background:var(--scrim);animation:fade .2s}
+.md-dialog::backdrop{background:var(--scrim);-webkit-backdrop-filter:var(--scrim-blur);backdrop-filter:var(--scrim-blur);animation:fade .2s}
 .md-expanded{max-width:calc(100vw - 48px);max-height:calc(100vh - 48px)}
 .md-expanded .md-dialog-in{padding:16px;overflow:auto}
 .md-expanded .md-table-scroll{max-height:calc(100vh - 150px)}

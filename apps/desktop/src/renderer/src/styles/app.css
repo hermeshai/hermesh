@@ -28,7 +28,7 @@
   --glass:rgba(255,255,255,.72);--glass-sh:0 0 0 .5px rgba(0,0,0,.10),0 2px 8px rgba(0,0,0,.08);
   --shadow-win:0 0 0 .5px rgba(0,0,0,.20),0 24px 70px rgba(10,20,50,.30),0 8px 22px rgba(10,20,50,.14);
   --code:#f6f7fa;--add-bg:rgba(23,146,79,.10);--del-bg:rgba(215,51,63,.08);--add-fg:#127443;--del-fg:#b0232f;
-  --touch:#ff375f;--scrim:rgba(0,0,0,.18);--lg-bg:rgba(255,255,255,.62);--lg-hi:rgba(255,255,255,.95);--lg-edge:rgba(0,0,0,.08);
+  --touch:#ff375f;--scrim:rgba(0,0,0,.22);--scrim-blur:blur(12px) saturate(1.2);--lg-bg:rgba(255,255,255,.62);--lg-hi:rgba(255,255,255,.95);--lg-edge:rgba(0,0,0,.08);
   color-scheme:light;
 }
 @media (prefers-color-scheme:dark){:root{
@@ -52,7 +52,7 @@
   --glass:rgba(60,60,66,.62);--glass-sh:0 0 0 .5px rgba(255,255,255,.10),0 2px 10px rgba(0,0,0,.3);
   --shadow-win:0 0 0 .5px rgba(255,255,255,.14),0 24px 70px rgba(0,0,0,.6),0 8px 22px rgba(0,0,0,.35);
   --code:#18181b;--add-bg:rgba(63,207,134,.12);--del-bg:rgba(255,102,112,.11);--add-fg:#5fe0a0;--del-fg:#ff8c94;
-  --scrim:rgba(0,0,0,.35);--lg-bg:rgba(52,52,58,.58);--lg-hi:rgba(255,255,255,.14);--lg-edge:rgba(255,255,255,.12);
+  --scrim:rgba(0,0,0,.4);--lg-bg:rgba(52,52,58,.58);--lg-hi:rgba(255,255,255,.14);--lg-edge:rgba(255,255,255,.12);
   color-scheme:dark;
 }}
 *{box-sizing:border-box}
@@ -62,6 +62,9 @@ body{margin:0;background:var(--win);color:var(--l1);font-family:var(--font);font
 /* macOS: the window's sidebar material shows through the sidebar; everything else stays opaque. */
 html.vibrant,html.vibrant body{background:transparent}
 html.vibrant .side{background:var(--side-tint)}
+/* Under a dialog's blur the window is opaque: blurred over the see-through sidebar, its sharp text would show through the blur. */
+html.vibrant:has(dialog[open],.sheet-scrim,.scrim) body{background:var(--win)}
+html.vibrant:has(dialog[open],.sheet-scrim,.scrim) .side{background:var(--side)}
 html.vibrant .grp-h{position:static;background:transparent}
 /* Windows (docs/windows.md §5.2): no traffic lights, and room for the caption buttons Windows draws over the top band's right end. */
 html[data-platform=win]{--caption:calc(100vw - env(titlebar-area-x, 0px) - env(titlebar-area-width, calc(100vw - 138px)))}
@@ -484,7 +487,8 @@ html.blurred .ctitle h2,html.blurred .set-top h1,html.blurred .update-title{colo
 .frow .fdesc{font-size:11.5px;color:var(--l2);margin-top:2px}
 .fhead{font-size:12px;font-weight:600;color:var(--l2);margin:0 0 6px 4px}
 /* palette */
-.scrim{position:absolute;inset:0;background:var(--scrim);z-index:40;animation:fade .15s}
+/* Behind a dialog, the window goes dim and soft: 12px of blur costs no frames even under a streaming reply (measured 2026-11-12; 40px begins to show). */
+.scrim{position:absolute;inset:0;background:var(--scrim);-webkit-backdrop-filter:var(--scrim-blur);backdrop-filter:var(--scrim-blur);z-index:40;animation:fade .15s}
 @keyframes fade{from{opacity:0}}
 .pal{position:absolute;left:50%;top:84px;transform:translateX(-50%);width:660px;background:var(--menu);backdrop-filter:blur(40px) saturate(1.8);-webkit-backdrop-filter:blur(40px) saturate(1.8);border-radius:18px;box-shadow:0 0 0 .5px var(--menu-bd),0 24px 70px rgba(0,0,0,.35);z-index:41;overflow:hidden;animation:pop .16s cubic-bezier(.2,0,0,1)}
 @keyframes pop{from{opacity:0;transform:translateX(-50%) scale(.97)}}
@@ -521,7 +525,7 @@ html.blurred .ctitle h2,html.blurred .set-top h1,html.blurred .update-title{colo
 @keyframes pop2{from{opacity:0;transform:translate(-50%,8px)}}
 .toast .ic{color:var(--green)}
 /* sheets */
-.sheet-scrim{position:absolute;inset:0;background:var(--scrim);z-index:45;animation:fade .2s}
+.sheet-scrim{position:absolute;inset:0;background:var(--scrim);-webkit-backdrop-filter:var(--scrim-blur);backdrop-filter:var(--scrim-blur);z-index:45;animation:fade .2s}
 .sheet{position:absolute;left:50%;top:60px;transform:translateX(-50%);background:var(--win);border-radius:18px;box-shadow:0 0 0 .5px var(--menu-bd),0 20px 60px rgba(0,0,0,.35);z-index:46;padding:22px 24px 18px;animation:sheet .3s cubic-bezier(.2,0,0,1);max-height:calc(100% - 80px);overflow-y:auto}
 @keyframes sheet{from{opacity:0;transform:translate(-50%,-12px)}}
 .sheet h3{margin:0 0 4px;font-size:15px;font-weight:600}

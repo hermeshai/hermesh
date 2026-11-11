@@ -143,6 +143,10 @@ test("Her: the first run, a chat, a secure card, the console, a second environme
   await expect(sentBack.getByRole("button", { name: "查看 report.pdf" })).toBeVisible({ timeout: 60_000 });
   await sentBack.getByRole("button", { name: "查看 report.pdf" }).click();
   const preview = page.getByRole("dialog", { name: "report.pdf" });
+  // Behind it the window goes dim and soft, as behind every dialog.
+  expect(await preview.evaluate((el) => getComputedStyle(el, "::backdrop").backdropFilter)).toBe("blur(12px) saturate(1.2)");
+  // The see-through sidebar turns opaque under it, so the blur covers its text too.
+  await expect(page.locator(".side")).toHaveCSS("background-color", "rgb(244, 244, 247)");
   await expect(preview.locator(".dcp-page")).toContainText("/ 2", { timeout: 30_000 });
   await expect(preview.locator(".pdfViewer .page")).toHaveCount(2);
   await expect(preview.locator(".textLayer").first()).toContainText("Hermesh preview page one", { timeout: 30_000 });
