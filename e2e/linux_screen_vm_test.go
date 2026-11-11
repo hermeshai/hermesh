@@ -23,8 +23,9 @@ import (
 
 // TestLinuxScreenVM (HERMESH_LINUX_VM=<a Lima instance>) is Computer Control
 // on a real Linux desktop (docs/computer-control-linux.md §10): a virtual
-// machine whose user is logged in to its desktop (GNOME on Ubuntu, say),
-// with foot installed. The release build of the helper and a Linux hermeshd
+// machine whose user is logged in to its desktop (GNOME or Plasma on Ubuntu,
+// say), with foot installed; on Plasma `hermeshd screen allow` lets the
+// helper in first. The release build of the helper and a Linux hermeshd
 // go to ~/.local/bin there; `hermeshd pair` installs hermeshd as the systemd
 // user service it is, which finds the desktop by itself. An iPhone's core
 // opens the screen through the relay on this computer, a click and
@@ -130,7 +131,13 @@ func TestLinuxScreenVM(t *testing.T) {
 		return false
 	}
 	eventually(t, 2*time.Minute, "the desktop offered to the iPhone", offered)
-	t.Logf("hermeshd screen: %s", sh(time.Minute, "~/.local/bin/hermeshd screen --data-dir "+data))
+	way := sh(time.Minute, "~/.local/bin/hermeshd screen --data-dir "+data)
+	t.Logf("hermeshd screen: %s", way)
+	gnome := strings.Contains(way, "GNOME")
+	if strings.Contains(way, "portal") {
+		// Plasma asks at the computer the first time; its user lets Hermesh in for good.
+		t.Logf("hermeshd screen allow: %s", sh(time.Minute, session+" ~/.local/bin/hermeshd screen allow --data-dir "+data))
+	}
 	t.Logf("the service: %s", sh(time.Minute, "systemctl --user is-active hermeshd; loginctl show-user $(id -u) -p Linger"))
 
 	// A terminal, filling the screen, writes what reaches it.
@@ -155,9 +162,12 @@ func TestLinuxScreenVM(t *testing.T) {
 		out, _ := exec.Command("limactl", "shell", vm, "--", "cat", "/tmp/typed.txt").Output()
 		return string(out)
 	}
-	// Chinese is pasted on GNOME (§3.4): this terminal pastes with Ctrl+V.
+	// Chinese is pasted on GNOME, typed on Plasma (§3.4): this terminal pastes with Ctrl+V.
 	eventually(t, 20*time.Second, "what the phone typed, in the terminal", func() bool { return typed() == "Hello VM 你好" })
 
+	if !gnome {
+		return // what a locked screen does is GNOME's (docs/computer-control-linux.md §3.7)
+	}
 	// The screen locks: GNOME ends the session, the phone is told why, and so is a phone that connects then.
 	sh(time.Minute, "sudo loginctl lock-sessions")
 	if why := s.ended(t); why != screenrtc.ErrLocked {
