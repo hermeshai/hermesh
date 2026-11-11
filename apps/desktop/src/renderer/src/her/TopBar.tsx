@@ -11,9 +11,9 @@ import { menuKeys } from "./menus";
 /**
  * The Her page's top (docs/her-server.md §9.1), as on the iPhone: Her's avatar in the middle, larger than a bar's,
  * its name on a capsule over the avatar's lower edge, and in the capsule the environment as a quiet
- * menu when Her runs on more than one machine; the conversation scrolls under them. On the right,
- * Her's routines and settings, which open beside the conversation, and ⋯: the environment's console,
- * and another environment while there is no menu of them.
+ * menu when Her runs on more than one machine; the conversation scrolls under them. A click on the avatar or the name
+ * opens Her's settings beside the conversation, as a tap does on the iPhone. On the right, Her's routines, which open
+ * there too, and ⋯: the environment's console, and another environment while there is no menu of them.
  */
 export function TopBar() {
   const { t } = useTranslation("her");
@@ -26,23 +26,27 @@ export function TopBar() {
     <div className="ctool drag her-head">
       <SidebarToggle />
       <div className="her-id">
-        {bot ? <BotAvatar bot={bot} size={56} busy={botWorking(bot)} /> : <Avatar spec={{ kind: "mark" }} name="" size={56} />}
+        {bot ? (
+          <button className="her-id-av" title={t("head.settings")} aria-label={t("head.settings")} aria-pressed={panel?.kind === "settings"} onClick={() => toggle("settings")}>
+            <BotAvatar bot={bot} size={56} busy={botWorking(bot)} />
+          </button>
+        ) : (
+          <Avatar spec={{ kind: "mark" }} name="" size={56} />
+        )}
         <div className="her-cap">
-          <span className="her-id-n">{bot?.name ?? "Her"}</span>
+          {/* The avatar's button is the one for the keyboard and VoiceOver; the name is the same place for the mouse. */}
+          <span className={`her-id-n ${bot ? "no-drag" : ""}`} onClick={bot ? () => toggle("settings") : undefined}>
+            {bot?.name ?? "Her"}
+          </span>
           {her.envs.length > 1 && <EnvSwitch />}
         </div>
       </div>
       <span className="bhead-gap" />
       {bot && (
-        <>
-          <button className={`tb rtn-btn ${panel?.kind === "routines" ? "on" : ""}`} title={t("routines.title")} aria-label={t("routines.title")} aria-pressed={panel?.kind === "routines"} onClick={() => toggle("routines")}>
-            <Icon name="clock" />
-            {dot && <i className={`rtn-dot ${dot === "running" ? "run" : ""}`} />}
-          </button>
-          <button className={`tb ${panel?.kind === "settings" ? "on" : ""}`} title={t("head.settings")} aria-label={t("head.settings")} aria-pressed={panel?.kind === "settings"} onClick={() => toggle("settings")}>
-            <Icon name="toggles" />
-          </button>
-        </>
+        <button className={`tb rtn-btn ${panel?.kind === "routines" ? "on" : ""}`} title={t("routines.title")} aria-label={t("routines.title")} aria-pressed={panel?.kind === "routines"} onClick={() => toggle("routines")}>
+          <Icon name="clock" />
+          {dot && <i className={`rtn-dot ${dot === "running" ? "run" : ""}`} />}
+        </button>
       )}
       <MoreMenu />
     </div>

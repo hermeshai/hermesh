@@ -89,12 +89,17 @@ test("Her: the first run, a chat, a secure card, the console, a second environme
   expect(hello!.y).toBeGreaterThan(cap!.y + cap!.height);
   await expect(page.locator(".dbody .bav")).toHaveCount(0);
   await snap(page, "her-greeting");
-  // Her's settings, beside the conversation: a new assistant asks before risky steps, and remembers nothing yet.
-  await page.getByRole("button", { name: "助手设置", exact: true }).click();
+  // Her's settings, beside the conversation, as on the iPhone: the avatar opens them (no button of their own in the
+  // bar), the name too, both with the hand. A new assistant asks before risky steps, and remembers nothing yet.
+  const avatar = page.getByRole("button", { name: "助手设置", exact: true });
+  await expect(avatar.locator(".bav.cat-av")).toBeVisible();
+  await expect(page.locator(".her-head").getByRole("button", { name: "助手设置" })).toHaveCount(1);
+  for (const el of [avatar, page.locator(".her-id-n")]) expect(await el.evaluate((e) => getComputedStyle(e).cursor)).toBe("pointer");
+  await avatar.click();
   const settings = page.getByRole("complementary", { name: "助手设置" });
   await expect(settings).toContainText("询问权限");
   await expect(settings.getByRole("button", { name: /^记住的事/ })).toHaveText("记住的事还没有");
-  await page.getByRole("button", { name: "助手设置", exact: true }).click();
+  await page.locator(".her-id-n").click();
   await expect(settings).toBeHidden();
 
   // A chat: the message, then Her's reply in a bubble of its own.

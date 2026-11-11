@@ -53,6 +53,9 @@
 .her .her-note{position:relative;z-index:1;margin-top:36px}
 .her .her-note+.cscroll>.dbody{padding-top:24px}
 .her-id-n{flex:none;font-size:14px;font-weight:500;white-space:nowrap}
+/* Her's avatar and name open her settings: the hand says they can be clicked, as the owner asked. */
+.her-id-av{display:flex;padding:0;border:0;border-radius:50%;background:none;cursor:pointer}
+.her-id-n.no-drag{cursor:pointer}
 .her-id-sep{flex:none;margin:0 -2px;color:var(--l3)}
 .her-env{display:flex;align-items:center;gap:4px;min-width:0;height:26px;padding:0 6px;border:0;border-radius:var(--r-md);background:none;font:inherit;font-size:14px;color:var(--l2)}
 .her-env:hover,.her-env.on{background:var(--fill);color:var(--l1)}
