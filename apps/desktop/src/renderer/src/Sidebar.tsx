@@ -11,6 +11,7 @@ import { local } from "./api";
 import { AppMenuButton } from "./MainWindow";
 import { StatusDot } from "./components";
 import { Icon } from "./icons";
+import { setSidebar } from "./layout";
 import { unreadCount } from "./her/environments";
 import { expiringClients } from "./overview/Attention";
 import { keys, ownKeys } from "./platform";
@@ -96,7 +97,7 @@ export function Sidebar() {
     <aside className="side" aria-label={t("sidebar.label")}>
       <div className="side-top drag">
         <AppMenuButton />
-        <button className="tb" onClick={() => st.set({ sidebar: false })} title={`${t("window.hideSidebar")} ${keys(ownKeys.toggleSidebar)}`} aria-label={t("window.hideSidebar")}>
+        <button className="tb" onClick={() => setSidebar(st, false)} title={`${t("window.hideSidebar")} ${keys(ownKeys.toggleSidebar)}`} aria-label={t("window.hideSidebar")}>
           <Icon name="sidebar" />
         </button>
         <ListViewMenu />

@@ -29,7 +29,8 @@ function lastMode(): "onboarding" | "main" {
 
 const sizes = {
   onboarding: { width: 720, height: 660, minWidth: 720, minHeight: 600 },
-  main: { width: 1240, height: 800, minWidth: 980, minHeight: 620 },
+  // The conversation alone at the least; the info card and the sidebar give way before (renderer layout.ts).
+  main: { width: 1240, height: 800, minWidth: 480, minHeight: 620 },
 };
 
 /** Is url one of our own pages (the only pages that may call the main process)? */

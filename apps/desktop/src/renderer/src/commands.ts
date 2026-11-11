@@ -4,6 +4,7 @@ import { displayTitle, isActive, isArchivable, isInterruptible, needsAttention, 
 import type { Command, MenuState } from "../../shared/bridge";
 import { i18n } from "../../shared/i18n";
 import { local } from "./api";
+import { layoutOf, setCard, setSidebar } from "./layout";
 import { copySessionId, focusAnswer, interrupt } from "./session/actions";
 import { frontRequest } from "./RequestCards";
 import { archive, grantLabel, listSections } from "./Sidebar";
@@ -28,13 +29,13 @@ export function useCommands() {
           answerable: pendingQuestion(s) !== undefined,
           archivable: isArchivable(s),
           archived: s.status === SessionStatus.ARCHIVED,
-          inspector: st.inspector,
+          inspector: layoutOf(st).card !== "hidden",
           grant: s.createdBy,
           grantLabel: grantLabel(st, s),
           project: s.projectId,
         }
       : null,
-    sidebar: st.sidebar,
+    sidebar: layoutOf(st).sidebar !== "hidden",
     undo: st.toast?.undo !== undefined,
   };
   const key = JSON.stringify(state);
@@ -60,9 +61,9 @@ function run(st: Store, c: Command) {
     case "nextActive":
       return next(st, isActive);
     case "toggleInspector":
-      return s && st.set({ inspector: !st.inspector });
+      return s && setCard(st, layoutOf(st).card === "hidden");
     case "toggleSidebar":
-      return st.set({ sidebar: !st.sidebar });
+      return setSidebar(st, layoutOf(st).sidebar === "hidden");
     case "newGrant":
     case "addMachine":
     case "addProject":

@@ -2,6 +2,7 @@ import { useTranslation } from "react-i18next";
 import type { Session } from "@hermesh/proto/session";
 import { displayTitle } from "@hermesh/core";
 import { Icon } from "./icons";
+import { layoutOf, setCard } from "./layout";
 import { SidebarToggle } from "./MainWindow";
 import { keys, ownKeys } from "./platform";
 import { useStore } from "./store";
@@ -17,6 +18,9 @@ export function SessionPage({ s }: { s: Session }) {
   const { t } = useTranslation("session");
   const st = useStore();
   const { events, draft } = useSessionEvents(s.sessionId, s.progress?.lastEventSeq ?? 0n);
+  // The card keeps the conversation clear of it when there is room beside it; over the conversation (no room) it leaves it be.
+  const { card } = layoutOf(st);
+  const info = card !== "hidden";
   return (
     <>
       <div className="ctool drag">
@@ -26,20 +30,20 @@ export function SessionPage({ s }: { s: Session }) {
         </div>
         {/* A toolbar button as the sidebar's toggle is, highlighted while the info shows. */}
         <button
-          className={`tb ${st.inspector ? "on" : ""}`}
-          title={t(st.inspector ? "page.hideInfo" : "page.showInfo", { keys: keys(ownKeys.toggleInspector) })}
+          className={`tb ${info ? "on" : ""}`}
+          title={t(info ? "page.hideInfo" : "page.showInfo", { keys: keys(ownKeys.toggleInspector) })}
           aria-label={t("page.info")}
-          aria-pressed={st.inspector}
-          onClick={() => st.set({ inspector: !st.inspector })}
+          aria-pressed={info}
+          onClick={() => setCard(st, !info)}
         >
           <Icon name="infoCard" />
         </button>
       </div>
-      <div className={`dwrap ${st.inspector ? "dock" : ""}`}>
+      <div className={`dwrap ${card === "docked" ? "dock" : ""}`}>
         <div className="dmain">
           <Chat key={s.sessionId} s={s} events={events} draft={draft} />
         </div>
-        {st.inspector && <Inspector s={s} />}
+        {info && <Inspector s={s} />}
       </div>
     </>
   );

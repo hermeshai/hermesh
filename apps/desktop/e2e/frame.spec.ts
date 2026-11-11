@@ -375,3 +375,104 @@ test("a row's ⋯ menu renames in place, archives, and deletes once confirmed, i
   expect(await cli("session", "list")).not.toContain("还在跑的");
   await app.close();
 });
+
+// Narrowing the window, what is beside the conversation gives way, the right
+// side first: the info card, then the sidebar, until the conversation is
+// alone. What gave way can still be asked for: it shows over the conversation
+// for now, and goes with Esc, a click beside it or another choice. Widened
+// again, both are back as the owner had them.
+test("a narrow window hides the info card, then the sidebar; asked for, they show over the conversation", async () => {
+  const { app, page } = await launch();
+  const resize = async (width: number) => {
+    await app.evaluate(({ BrowserWindow }, w) => BrowserWindow.getAllWindows()[0].setSize(w, 800), width);
+    await expect.poll(() => page.evaluate(() => innerWidth)).toBe(width);
+  };
+  const main = page.locator(".mainwrap");
+  const sidebar = page.getByRole("complementary", { name: "边栏" });
+  const card = page.getByRole("complementary", { name: "会话信息" });
+  const info = page.getByRole("button", { name: "信息面板", exact: true });
+  const showSidebar = page.getByRole("button", { name: "显示边栏" });
+  const conversation = page.locator(".dmain");
+  const docked = async () => ({ sidebar: !(await main.getAttribute("class"))!.includes("noside"), card: await page.locator(".dwrap.dock").count() === 1 });
+
+  await resize(1240);
+  await page.getByRole("list", { name: "会话" }).getByText("写 hello", { exact: true }).click();
+  await expect(card).toBeVisible();
+  expect(await docked()).toEqual({ sidebar: true, card: true });
+
+  // 1000: no room for the card beside the conversation; the sidebar stays.
+  await resize(1000);
+  await expect(card).toHaveCount(0);
+  await expect(info).toHaveAttribute("aria-pressed", "false");
+  expect(await docked()).toEqual({ sidebar: true, card: false });
+  await expect(showSidebar).toHaveCount(0);
+  expect((await conversation.boundingBox())!.width).toBeGreaterThanOrEqual(560);
+  await snap(page, "layout-1000");
+  // Asked for, the card shows over the conversation, which keeps its width; Esc puts it away.
+  await info.click();
+  await expect(card).toBeVisible();
+  await expect(info).toHaveAttribute("aria-pressed", "true");
+  expect(await docked()).toEqual({ sidebar: true, card: false });
+  await snap(page, "layout-1000-card-over");
+  await page.keyboard.press("Escape");
+  await expect(card).toHaveCount(0);
+
+  // 700: the sidebar gives way too; the conversation has the window.
+  await resize(700);
+  await expect(showSidebar).toBeVisible();
+  expect(await docked()).toEqual({ sidebar: false, card: false });
+  await expect.poll(async () => Math.round((await conversation.boundingBox())!.width)).toBe(700);
+  await snap(page, "layout-700");
+  // Asked for, the sidebar shows over the conversation, which stays where it is; a click beside it puts it away.
+  await showSidebar.click();
+  await expect(main).toHaveClass(/\bpeek\b/);
+  await expect.poll(async () => Math.round((await sidebar.boundingBox())!.width)).toBe(272);
+  expect(Math.round((await conversation.boundingBox())!.width)).toBe(700);
+  await snap(page, "layout-700-sidebar-over");
+  await page.locator(".peek-scrim").click({ position: { x: 600, y: 400 } });
+  await expect(main).not.toHaveClass(/\bpeek\b/);
+  await expect(showSidebar).toBeVisible();
+  // Choosing something from it puts it away too.
+  await showSidebar.click();
+  await sidebar.getByRole("button", { name: /^概览/ }).click();
+  await expect(main).not.toHaveClass(/\bpeek\b/);
+  await expect(page.locator(".peek-scrim")).toHaveCount(0);
+  // As does choosing a session from it.
+  await showSidebar.click();
+  await page.getByRole("list", { name: "会话" }).getByText("写 hello", { exact: true }).click();
+  await expect(page.getByRole("heading", { name: "写 hello" })).toBeVisible();
+  await expect(main).not.toHaveClass(/\bpeek\b/);
+  // The card, asked for here, shows over the conversation too.
+  await info.click();
+  await expect(card).toBeVisible();
+  await snap(page, "layout-700-card-over");
+
+  // A peek ends once what it showed fits again; wide, both are back beside the conversation as they were.
+  await showSidebar.click();
+  await expect(main).toHaveClass(/\bpeek\b/);
+  await resize(1240);
+  await expect(main).not.toHaveClass(/\bpeek\b/);
+  await expect(card).toBeVisible();
+  expect(await docked()).toEqual({ sidebar: true, card: true });
+
+  // Hidden by the owner while there is room, the sidebar stays hidden; the card then has room down to the sidebar's own width.
+  await sidebar.getByRole("button", { name: "隐藏边栏" }).click();
+  await resize(900);
+  await expect(card).toBeVisible();
+  expect(await docked()).toEqual({ sidebar: false, card: true });
+  await showSidebar.click();
+  await expect(card).toHaveCount(0);
+  expect(await docked()).toEqual({ sidebar: true, card: false });
+
+  // The window goes no narrower than the conversation alone.
+  await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].setSize(300, 800));
+  await expect.poll(() => page.evaluate(() => innerWidth)).toBe(480);
+  await snap(page, "layout-480");
+  // The overview fits it too: nothing wider than the window.
+  await showSidebar.click();
+  await sidebar.getByRole("button", { name: /^概览/ }).click();
+  await expect(main).not.toHaveClass(/\bpeek\b/);
+  expect(await page.evaluate(() => [...document.querySelectorAll(".content *")].every((e) => e.closest(".u-heat") || e.getBoundingClientRect().right <= innerWidth + 1))).toBe(true);
+  await snap(page, "layout-480-overview");
+  await app.close();
+});
