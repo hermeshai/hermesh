@@ -1,7 +1,7 @@
 import { useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import type { SessionView } from "@hermesh/her-client";
-import type { AvatarHue, AvatarInput, BotSummary, PermissionMode } from "@hermesh/her-protocol";
+import type { AvatarHue, AvatarInput, BotMemoryResult, BotSummary, PermissionMode } from "@hermesh/her-protocol";
 import { local } from "../api";
 import { Icon } from "../icons";
 import { useStore } from "../store";
@@ -10,7 +10,9 @@ import { BotAvatar } from "./Avatar";
 import { useHer } from "./context";
 import { permissionDesc, permissionTitle } from "./format";
 import { GrantLine } from "./GrantLine";
+import { isEmpty, MemoryPage, useMemory } from "./Memory";
 import { MenuButton, MenuItem, ModelRows } from "./menus";
+import type { FileScope } from "./Messages";
 import { AvatarChoices, NAME_MAX, pickPicture } from "./sheets";
 
 const modes: PermissionMode[] = ["manual", "accept-edits", "bypass-permissions"];
@@ -19,12 +21,15 @@ const modes: PermissionMode[] = ["manual", "accept-edits", "bypass-permissions"]
  * Her's settings, beside the conversation: its avatar and
  * name, changed where they are; the model it answers with, from those its environment can use, and how
  * hard it thinks; what it may do without asking (full access is signed, docs/her-server.md §8); whether
- * it alerts; clearing its chat. What the whole environment does is in its console.
+ * it alerts; what it remembers (docs/her-memory.md), on a page of its own; clearing its chat or its memory.
+ * What the whole environment does is in its console.
  */
-export function AssistantPanel({ bot, view, op, onClose }: { bot: BotSummary; view: SessionView | null; op: SendOp; onClose: () => void }) {
+export function AssistantPanel({ bot, view, op, files, onClose }: { bot: BotSummary; view: SessionView | null; op: SendOp; files: FileScope; onClose: () => void }) {
   const { t } = useTranslation("her");
   const st = useStore();
   const her = useHer();
+  const memoryShown = her.panel?.kind === "settings" && her.panel.page === "memory";
+  const { memory, reload } = useMemory(bot);
   // Clearing the chat is asked first, and what stays is said (bot-mode-design §6.5.1).
   const clear = () =>
     st.set({
@@ -37,6 +42,19 @@ export function AssistantPanel({ bot, view, op, onClose }: { bot: BotSummary; vi
         done: t("clear.done"),
       },
     });
+  // The memory goes to the trash, and the assistant stops remembering at once; the chat stays.
+  const clearMemory = () =>
+    st.set({
+      sheet: {
+        kind: "confirm",
+        title: t("memoryClear.title", { name: bot.name }),
+        message: t("memoryClear.message"),
+        button: t("memoryClear.button"),
+        run: () => her.call("bots/memory_clear", { bot_id: bot.id }).then(reload),
+        done: t("memoryClear.done"),
+      },
+    });
+  if (memoryShown) return <MemoryPage bot={bot} files={files} onBack={() => her.setPanel({ kind: "settings" })} onClose={onClose} />;
   return (
     <aside className="her-panel bpn" aria-label={t("head.settings")}>
       <div className="her-panel-top drag">
@@ -67,14 +85,39 @@ export function AssistantPanel({ bot, view, op, onClose }: { bot: BotSummary; vi
             </div>
             <p className="set-note">{t("panel.mutedNote")}</p>
           </section>
+          <MemorySection memory={memory} />
           <section className="fgroup">
             <button className="frow bpn-end" onClick={clear}>
               {t("panel.clear")}
+            </button>
+            <button className="frow bpn-end" onClick={clearMemory}>
+              {t("panel.clearMemory")}
             </button>
           </section>
         </div>
       </div>
     </aside>
+  );
+}
+
+/** What it remembers: one row to its page, which says only when there is nothing yet. */
+function MemorySection({ memory }: { memory: BotMemoryResult | null }) {
+  const { t } = useTranslation("her");
+  const her = useHer();
+  return (
+    <section>
+      <h3 className="fhead">{t("panel.memory")}</h3>
+      <div className="fgroup">
+        <button className="frow bpn-go" onClick={() => her.setPanel({ kind: "settings", page: "memory" })}>
+          <span className="fl">{t("panel.memoryRow")}</span>
+          <span className="fv">
+            {memory && isEmpty(memory) && t("panel.memoryNone")}
+            <Icon name="chevR" />
+          </span>
+        </button>
+      </div>
+      <p className="set-note">{t("panel.memoryNote")}</p>
+    </section>
   );
 }
 

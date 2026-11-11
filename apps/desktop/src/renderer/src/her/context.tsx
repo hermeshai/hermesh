@@ -9,8 +9,8 @@ import type { Environment } from "./connection";
 /** Which of Her's routines is open, in the panel beside the conversation. */
 export type RoutinesRoute = { routine?: string; run?: string };
 
-/** The one place beside the conversation: Her's settings, or its routines. */
-export type Panel = null | { kind: "settings" } | { kind: "routines"; route: RoutinesRoute };
+/** The one place beside the conversation: Her's settings (or their memory page), or its routines. */
+export type Panel = null | { kind: "settings"; page?: "memory" } | { kind: "routines"; route: RoutinesRoute };
 
 /** A sheet over the page: another environment, or full access for Her (signed). */
 export type HerSheet = null | { kind: "add" } | { kind: "access"; bot: BotSummary };

@@ -1,6 +1,6 @@
 # Her's memory
 
-Status: the base (§3, §4, §5, §6) built 2026-11-11. What §8 lists is not
+Status: the base (§3–§7) built 2026-11-11. What §9 lists is not
 built. It builds on [her-server.md](her-server.md): an assistant has "its
 own conversation, memory, folder" (§3 there), and a Her Server holds the
 only copy (§7 there).
@@ -29,7 +29,7 @@ Three choices shape it:
 
 Left out: memory for sessions that are not an assistant's (coding sessions,
 the `her` command line), memory shared between assistants or between Her
-Servers, and everything in §8.
+Servers, and everything in §9.
 
 ## 2. What other agents do
 
@@ -225,7 +225,7 @@ reply sent again. `tools/bench/bot_memory.mjs` runs those cases.
 |---|---|---|---|
 | The assistant's main session | Yes | Yes, without asking in every permission mode | `protected::memory`: its own `memory/` is allowed before anything else is judged |
 | Its sub-agents and its routines' runs | Yes | No, in every mode | The same check: a path in any assistant's `memory/` that is not the session's own is denied, full access included. The refusal tells the agent to say in its report what the assistant should know |
-| The owner | Yes | Yes | The files are on the Her Server |
+| The owner | Yes | Through the assistant, or by clearing it all | Her's settings show it and clear it (§7); the files are on the Her Server |
 
 Only `write` and `edit` are judged this way. A shell command that writes
 there is judged like any other: it asks as a write to her's data directory,
@@ -239,9 +239,31 @@ What is not closed:
 - The assistant itself may note something harmful after reading a poisoned
   report. The rule in §5 is the only guard, and a rule in a prompt is not
   certain. This is why the owner must be able to see and remove what is kept
-  (§8).
+  (§7).
 
-## 7. Tests
+## 7. In the apps
+
+Her's settings, on the Mac and the iPhone, have a Memory section: one row
+that opens a page of its own, and says "Nothing yet" when nothing is kept,
+and a note on what Her keeps and that it stays when the chat is cleared.
+Clear Memory sits beside Clear Chat.
+
+- The page shows `MEMORY.md` as written, rendered as Markdown the way the
+  conversation renders it, then the other files of the folder, which open
+  as a file Her sent does. It does not parse the file into rows: what the
+  memory holds and how it is laid out is the assistant's prompt's business,
+  and may change, so the apps show whatever is there.
+- Nothing is edited on the page. A line is changed by telling Her.
+- Clear Memory asks first, then moves the folder to `trash/memory/` and
+  makes the conversation's prompt drop it at once, not at the next free
+  moment of §4.2. The chat stays.
+- Clearing the chat says that what Her remembers stays.
+
+Two methods carry it, which hermeshd lets the owner's devices call:
+`bots/memory` (the file as written, its path, the other files with when each
+changed) and `bots/memory_clear`.
+
+## 8. Tests
 
 - Kernel (`her-core/tests/memory.rs`, scripted model, real tools, real
   logs): the block at a conversation's start, with and without a file; a
@@ -255,12 +277,17 @@ What is not closed:
   `remember` and `recall`): a note, a cleared conversation that starts with
   it, and the notes in the trash with a deleted assistant.
 - End to end (`e2e/her_memory_test.go`, `TestHerMemory`): the same through
-  the owner's Mac, the relay and the tunnel to a Her Server.
+  the owner's Mac, the relay and the tunnel to a Her Server, reading and
+  clearing the memory as the apps do.
+- The apps: the desktop's Her test (`apps/desktop/e2e/her.spec.ts`, run by
+  `TestDesktopHer`) and the iPhone's (`HerUITests.herMemory`, run by
+  `TestIPhone`): the row says nothing is kept, Her notes a line, the page
+  shows it rendered, Clear Memory asks and empties it.
 
-## 8. Not built
+## 9. Not built
 
-- **Seeing and clearing it in the apps**: a notice in the conversation when
-  the assistant notes something, memory in Her's settings, and clearing it.
+- **A notice in the conversation** when the assistant notes something, a
+  quiet line like the one for a changed routine that opens the change.
 - **Erase Everything** does not reach `~/.her` today, memory included.
 - **Routine notes**: what a routine learns about its own job (what it saw
   last time, how the job is done) belongs to the routine, not to the

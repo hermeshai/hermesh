@@ -127,7 +127,9 @@ function Environment({ machine, envs, choose }: { machine: Machine; envs: Machin
           <TopBar />
           {bot ? <Conversation bot={bot} conv={conv} op={op} waiting={waiting.list} onWaiting={refreshWaiting} /> : <EnvStatus machine={machine} />}
         </div>
-        {bot && shown?.kind === "settings" && <AssistantPanel bot={bot} view={conv.view} op={op} onClose={() => setPanel(null)} />}
+        {bot && shown?.kind === "settings" && (
+          <AssistantPanel bot={bot} view={conv.view} op={op} files={{ rpc: conv.rpc, session: conv.session ?? "", bot: bot.id }} onClose={() => setPanel(null)} />
+        )}
         {bot && shown?.kind === "routines" && (
           <RoutinesPanel
             bot={bot}

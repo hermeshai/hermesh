@@ -3,7 +3,7 @@ import XCTest
 /// Her on the iPhone (docs/her-server.md §9), as a person uses her, against
 /// the owner Mac's her, whose model is her-mock (TestIPhone, iphoneHerEnv):
 /// Her turned on for the Mac with Face ID, her onboarding connecting a model
-/// with a Token Plan, a chat, a question, files she sends, an approval, and the Mac gone
+/// with a Token Plan, a chat, her settings and her memory, a question, files she sends, an approval, and the Mac gone
 /// offline, where a message waits on the iPhone until it is back. her-mock
 /// answers a message by its directive (e2e/her_owner_test.go).
 ///
@@ -17,6 +17,7 @@ extension HermeshUITests {
         try XCTContext.runActivity(named: "a chat: the message, then Her's reply") { _ in try herChat() }
         try XCTContext.runActivity(named: "the plus beside the field: what it adds opens out of it, the field staying") { _ in try herAdd() }
         try XCTContext.runActivity(named: "her name opens her settings, a page of their own") { _ in try herSettings() }
+        try XCTContext.runActivity(named: "what she notes shows in her settings as written, and is cleared there") { _ in try herMemory() }
         try XCTContext.runActivity(named: "a question: a tapped answer is the owner's message") { _ in try herQuestion() }
         try XCTContext.runActivity(named: "files Her sent: Markdown reads as the conversation renders it, code in its colours") { _ in try herFiles() }
         try XCTContext.runActivity(named: "an approval in the composer's place, allowed once") { _ in try herApproval() }
@@ -148,8 +149,42 @@ extension HermeshUITests {
         XCTAssertTrue(text("运行在").waitForExistence(timeout: 10), "her settings")
         XCTAssertTrue(app.descendants(matching: .any)["her-environment"].firstMatch.label.contains("owner-mac"))
         XCTAssertTrue(text("模型").exists && app.buttons["先问我"].exists && app.buttons["完全访问"].exists)
-        XCTAssertTrue(text("在另一台机器上开启 Her").exists && text("清空对话").exists)
+        XCTAssertTrue(text("在另一台机器上开启 Her").exists)
         herShot("Her: settings")
+        // Further down: her memory, a row of its own that says when there is nothing yet, then clearing.
+        app.swipeUp()
+        let memory = app.buttons["her-memory"]
+        XCTAssertTrue(memory.waitForExistence(timeout: 10), "the memory row")
+        XCTAssertTrue(text("还没有").waitForExistence(timeout: 10), memory.label)
+        XCTAssertTrue(text("清空对话").exists && app.buttons["her-clear-memory"].exists, "clearing the chat or the memory")
+        herShot("Her: settings, further down")
+        app.navigationBars.buttons.element(boundBy: 0).tap()
+        XCTAssertTrue(app.descendants(matching: .any)["her-composer"].firstMatch.waitForExistence(timeout: 10), "back to the conversation")
+    }
+
+    func herMemory() throws {
+        // Her notes a rule (her-mock's remember) with no approval asked, and says so.
+        herSend("[[mock:remember:- 回复一律用中文。(2026-11-11)]] 以后都用中文")
+        XCTAssertTrue(text("记下了。").waitForExistence(timeout: 60), "her reply")
+        // Her settings: the memory row opens the page, MEMORY.md as the conversation renders Markdown.
+        app.buttons["her-name"].tap()
+        XCTAssertTrue(text("运行在").waitForExistence(timeout: 10), "her settings")
+        app.swipeUp()
+        let row = app.buttons["her-memory"]
+        XCTAssertTrue(row.waitForExistence(timeout: 10), "the memory row")
+        row.tap()
+        XCTAssertTrue(text("回复一律用中文。(2026-11-11)").waitForExistence(timeout: 30), "the line, without its mark")
+        XCTAssertFalse(text("- 回复一律用中文。(2026-11-11)").exists, "rendered, not as written")
+        herShot("Her: memory")
+        app.navigationBars.buttons.element(boundBy: 0).tap()
+        // Clearing it asks first, then the row says there is nothing.
+        let clear = app.buttons["her-clear-memory"]
+        if !clear.waitForExistence(timeout: 5) { app.swipeUp() }
+        XCTAssertTrue(clear.waitForExistence(timeout: 10), "Clear Memory")
+        clear.tap()
+        XCTAssertTrue(text("清空「Her」记住的事？").waitForExistence(timeout: 10), "asked first")
+        app.buttons["清除"].firstMatch.tap()
+        XCTAssertTrue(text("还没有").waitForExistence(timeout: 30), "nothing remembered")
         app.navigationBars.buttons.element(boundBy: 0).tap()
         XCTAssertTrue(app.descendants(matching: .any)["her-composer"].firstMatch.waitForExistence(timeout: 10), "back to the conversation")
     }
@@ -159,9 +194,11 @@ extension HermeshUITests {
         let blue = app.buttons["蓝"]
         XCTAssertTrue(blue.waitForExistence(timeout: 60), "the answers to tap")
         XCTAssertTrue(app.buttons["红"].exists && text("要哪种颜色？").exists)
-        // The answers are rows in the question's bubble.
+        // The answers are rows in the question's bubble. Half a point of slack: the frames come in fractions of a
+        // point that do not add up exactly (a row ending at 442.00000000000007 in a bubble ending at 441.9999999).
         let question = app.descendants(matching: .any)["her-question"].firstMatch
-        XCTAssertTrue(question.frame.contains(blue.frame) && question.frame.contains(app.buttons["红"].frame), "\(blue.frame) in \(question.frame)")
+        let bubble = question.frame.insetBy(dx: -0.5, dy: -0.5)
+        XCTAssertTrue(bubble.contains(blue.frame) && bubble.contains(app.buttons["红"].frame), "\(blue.frame), \(app.buttons["红"].frame) in \(question.frame)")
         herShot("Her: a question")
         blue.tap()
         // The answer is the owner's message, and the answers fold away.
