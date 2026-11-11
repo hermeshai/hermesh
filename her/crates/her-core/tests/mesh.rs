@@ -289,7 +289,8 @@ async fn tool_search_gives_the_hosts_words_and_call_tool_runs_its_tools() {
     let (found, failed) = result_of(&result.events, "c1");
     assert!(!failed);
     assert!(found.starts_with(&format!("Group mesh: {SUMMARY}.\n  {GUIDELINE}\n- look: See what a workshop holds.\n")), "{found}");
-    assert!(found.contains(r#"{"properties":{"workshop":{"type":"string"}},"type":"object"}"#), "{found}");
+    // Key order follows serde_json's features, which the whole workspace's build can change.
+    assert!(found.contains(&group().tools[0].parameters.to_string()), "{found}");
     assert!(found.contains("- start: Start work in a workshop.") && found.contains("- broken: Never works."), "{found}");
     assert_eq!(result_of(&result.events, "c2"), ("look done".to_string(), false));
     assert_eq!(result_of(&result.events, "c3"), ("it broke".to_string(), true));
