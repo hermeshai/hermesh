@@ -16,6 +16,8 @@ pub const FORMAT: u8 = b'f';
 pub const VIDEO: u8 = b'v';
 pub const STATE: u8 = b'e';
 pub const LOG: u8 = b'l';
+/// To hermeshd: JSON {"text"}, what was copied on the machine.
+pub const CLIPBOARD: u8 = b'x';
 
 const MAX_MESSAGE: usize = 16 << 20;
 
@@ -137,6 +139,7 @@ pub struct Input {
     pub wheel: Option<Wheel>,
     pub key: Option<Key>,
     pub text: Option<Text>,
+    pub clipboard: Option<Clipboard>,
 }
 
 #[derive(Deserialize, Debug, Default, Clone, Copy)]
@@ -193,6 +196,19 @@ pub struct Key {
 pub struct Text {
     #[serde(default)]
     pub text: String,
+    /// How what can't be typed is pasted: "PASTE_TERMINAL", else as an app.
+    #[serde(default)]
+    pub paste: String,
+}
+
+/// The phone's clipboard, for the machine's: pasted as paste says
+/// ("PASTE_APP", "PASTE_TERMINAL"), or only put there.
+#[derive(Deserialize, Debug, Default)]
+pub struct Clipboard {
+    #[serde(default)]
+    pub text: String,
+    #[serde(default)]
+    pub paste: String,
 }
 
 #[cfg(test)]
@@ -218,5 +234,14 @@ mod tests {
         assert!(k.control && !k.shift && k.key == "NAMED_KEY_RETURN");
         let i: Input = serde_json::from_str(r#"{"text":{"text":"你好"}}"#).unwrap();
         assert_eq!(i.text.unwrap().text, "你好");
+        let i: Input =
+            serde_json::from_str(r#"{"text":{"text":"你好","paste":"PASTE_TERMINAL"}}"#).unwrap();
+        assert_eq!(i.text.unwrap().paste, "PASTE_TERMINAL");
+        let i: Input =
+            serde_json::from_str(r#"{"clipboard":{"text":"剪贴板","paste":"PASTE_APP"}}"#).unwrap();
+        let c = i.clipboard.unwrap();
+        assert_eq!((c.text.as_str(), c.paste.as_str()), ("剪贴板", "PASTE_APP"));
+        let i: Input = serde_json::from_str(r#"{"clipboard":{"text":"x"}}"#).unwrap();
+        assert_eq!(i.clipboard.unwrap().paste, "");
     }
 }

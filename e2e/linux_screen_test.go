@@ -27,27 +27,32 @@ import (
 // container with no screen: what it installs, and the commands that start
 // it and a terminal that writes what it is typed to /tmp/typed.txt (as the
 // user "me", in /tmp/run). The terminal opens after a moment, once the
-// session's keyboard exists: a container has no keyboard of its own.
+// session's keyboard exists: a container has no keyboard of its own. It
+// pastes the clipboard with Ctrl+Shift+V, as terminals do (xterm told so).
+// copy copies its first argument there as a program of that desktop does.
 var linuxDesktops = []struct {
-	name, packages, start string
-	width, height         uint32
-	way                   string // as `hermeshd screen` names it
+	name, packages, start, copy string
+	width, height               uint32
+	way                         string // as `hermeshd screen` names it
 }{
-	{"x11", "xvfb xterm font-misc-misc xsetroot",
+	{"x11", "xvfb xterm font-misc-misc xsetroot xclip",
 		`Xvfb :5 -noreset -screen 0 1600x900x24 >/tmp/run/x.log 2>&1 &
 sleep 1; export DISPLAY=:5; xsetroot -solid '#d02020'
-(sleep 4; xterm -u8 -geometry 80x20+500+300 -e sh -c 'stty raw -echo; dd bs=1 of=/tmp/typed.txt 2>/dev/null') &`, 1600, 900, "X11"},
-	{"sway", "sway swaybg foot font-dejavu libcap-setcap",
+(sleep 4; xterm -u8 -xrm 'XTerm*VT100.translations: #override Ctrl Shift <Key>V: insert-selection(CLIPBOARD)' -geometry 80x20+500+300 -e sh -c 'stty raw -echo; dd bs=1 of=/tmp/typed.txt 2>/dev/null') &`,
+		`printf %s "$1" | DISPLAY=:5 xclip -selection clipboard`, 1600, 900, "X11"},
+	{"sway", "sway swaybg foot font-dejavu libcap-setcap wl-clipboard",
 		`printf 'output * bg #2040d0 solid_color\noutput HEADLESS-1 resolution 1280x720\n' > /tmp/run/sway.conf
 WLR_BACKENDS=headless WLR_RENDERER=pixman WLR_LIBINPUT_NO_DEVICES=1 sway -c /tmp/run/sway.conf >/tmp/run/sway.log 2>&1 &
 sleep 2
-(sleep 4; WAYLAND_DISPLAY=$(cd /tmp/run && ls wayland-* | grep -v lock | head -1) foot sh -c 'stty raw -echo; dd bs=1 of=/tmp/typed.txt 2>/dev/null') &`, 1280, 720, "wlroots"},
-	{"gnome", "mutter pipewire wireplumber foot font-dejavu mesa-dri-gallium",
+(sleep 4; WAYLAND_DISPLAY=$(cd /tmp/run && ls wayland-* | grep -v lock | head -1) foot sh -c 'stty raw -echo; dd bs=1 of=/tmp/typed.txt 2>/dev/null') &`,
+		`printf %s "$1" | WAYLAND_DISPLAY=$(cd /tmp/run && ls wayland-* | grep -v lock | head -1) wl-copy`, 1280, 720, "wlroots"},
+	{"gnome", "mutter pipewire wireplumber foot font-dejavu mesa-dri-gallium wl-clipboard",
 		`pipewire >/tmp/run/pw.log 2>&1 &
 sleep 0.5; wireplumber >/tmp/run/wp.log 2>&1 &
 mutter --wayland --headless --no-x11 --virtual-monitor 1280x720 >/tmp/run/mutter.log 2>&1 &
 sleep 3
-(sleep 4; WAYLAND_DISPLAY=wayland-0 foot -o key-bindings.clipboard-paste=Control+v sh -c 'stty raw -echo; dd bs=1 of=/tmp/typed.txt 2>/dev/null') &`, 1280, 720, "GNOME"},
+(sleep 4; WAYLAND_DISPLAY=wayland-0 foot sh -c 'stty raw -echo; dd bs=1 of=/tmp/typed.txt 2>/dev/null') &`,
+		`printf %s "$1" | WAYLAND_DISPLAY=wayland-0 wl-copy`, 1280, 720, "GNOME"},
 }
 
 // TestLinuxScreen (HERMESH_DOCKER=1) is Computer Control on Linux end to end
@@ -56,8 +61,10 @@ sleep 3
 // found by itself, is paired with the owner's Mac; an iPhone's core, joined
 // as a trusted device, sees that it can show its screen and opens it through
 // the relay. The picture comes from a keyframe on at the desktop's size,
-// what the phone types (Chinese among it) reaches the terminal there, and
-// `hermeshd screen stop` at the machine ends the session, the phone told why.
+// what the phone types (Chinese among it) reaches the terminal there, so does
+// the phone's clipboard, pasted as a terminal pastes, and what a program
+// copies there reaches the phone; `hermeshd screen stop` at the machine ends
+// the session, the phone told why.
 // `hermeshd screen` says which way it uses; `hermeshd screen off` takes the
 // screen from the phone, and `on` gives it back.
 //
@@ -156,25 +163,39 @@ func TestLinuxScreen(t *testing.T) {
 				t.Errorf("format %v, want %dx%d", format, d.width, d.height)
 			}
 			t.Logf("connected: %s", path)
-			// A click on the terminal, then typing; Chinese reaches it too (on GNOME, pasted).
+			// A click on the terminal, then typing; Chinese reaches it too (on GNOME, pasted as a terminal pastes).
 			time.Sleep(4 * time.Second) // the terminal opens
-			for _, in := range []*screenv1.Input{
-				{Event: &screenv1.Input_Button{Button: &screenv1.Button{X: 0.5, Y: 0.5, Button: screenv1.MouseButton_MOUSE_BUTTON_LEFT, Down: true, Clicks: 1}}},
-				{Event: &screenv1.Input_Button{Button: &screenv1.Button{X: 0.5, Y: 0.5, Button: screenv1.MouseButton_MOUSE_BUTTON_LEFT, Clicks: 1}}},
-				{Event: &screenv1.Input_Text{Text: &screenv1.Text{Text: "Hello Linux "}}},
-				{Event: &screenv1.Input_Text{Text: &screenv1.Text{Text: "你好"}}},
-			} {
-				b, _ := proto.Marshal(in)
-				if err := screenrtc.WriteMessage(s.conn, screenrtc.KindInput, b); err != nil {
-					t.Fatal(err)
+			send := func(ins ...*screenv1.Input) {
+				for _, in := range ins {
+					b, _ := proto.Marshal(in)
+					if err := screenrtc.WriteMessage(s.conn, screenrtc.KindInput, b); err != nil {
+						t.Fatal(err)
+					}
+					time.Sleep(300 * time.Millisecond)
 				}
-				time.Sleep(300 * time.Millisecond)
 			}
+			send(
+				&screenv1.Input{Event: &screenv1.Input_Button{Button: &screenv1.Button{X: 0.5, Y: 0.5, Button: screenv1.MouseButton_MOUSE_BUTTON_LEFT, Down: true, Clicks: 1}}},
+				&screenv1.Input{Event: &screenv1.Input_Button{Button: &screenv1.Button{X: 0.5, Y: 0.5, Button: screenv1.MouseButton_MOUSE_BUTTON_LEFT, Clicks: 1}}},
+				&screenv1.Input{Event: &screenv1.Input_Text{Text: &screenv1.Text{Text: "Hello Linux "}}},
+				&screenv1.Input{Event: &screenv1.Input_Text{Text: &screenv1.Text{Text: "你好", Paste: screenv1.Paste_PASTE_TERMINAL}}},
+			)
 			typed := func() string {
 				o, _ := exec.Command("docker", "exec", name, "cat", "/tmp/typed.txt").Output()
 				return string(o)
 			}
 			eventually(t, 20*time.Second, "what the phone typed, in the terminal", func() bool { return typed() == "Hello Linux 你好" })
+			// The phone's clipboard, pasted as a terminal pastes.
+			send(&screenv1.Input{Event: &screenv1.Input_Clipboard{Clipboard: &screenv1.Clipboard{Text: "剪贴板 from phone", Paste: screenv1.Paste_PASTE_TERMINAL}}})
+			eventually(t, 20*time.Second, "the phone's clipboard, pasted in the terminal", func() bool { return typed() == "Hello Linux 你好剪贴板 from phone" })
+			// What a program copies there reaches the phone.
+			copied := "copied on linux-" + d.name + " 复制"
+			if out, err := exec.Command("docker", "exec", name, "su", "me", "-c", "export XDG_RUNTIME_DIR=/tmp/run; sh -c '"+d.copy+"' - '"+copied+"' >/dev/null 2>&1").CombinedOutput(); err != nil {
+				t.Fatalf("copying on the machine: %v %s", err, out)
+			}
+			if got := linuxCopied(t, s); got != copied {
+				t.Errorf("the phone was told %q was copied, want %q", got, copied)
+			}
 			if out := hermeshd("screen"); !strings.Contains(out, "test-iphone is in control") {
 				t.Errorf("hermeshd screen, in a session: %q", out)
 			}
@@ -240,6 +261,24 @@ func (s *screenStream) picture(t *testing.T) (*screenv1.Format, string) {
 		t.Fatalf("frames %d, first is a keyframe %v, path %q, format %v", frames, firstKey, path, format)
 	}
 	return format, path
+}
+
+// linuxCopied reads the stream until the machine tells what was copied
+// there, and returns it: the first it tells, so text the phone gave it
+// coming back fails the test.
+func linuxCopied(t *testing.T, s *screenStream) string {
+	t.Helper()
+	s.conn.SetReadDeadline(time.Now().Add(30 * time.Second))
+	for {
+		k, p, err := screenrtc.ReadMessage(s.r)
+		if err != nil {
+			t.Fatalf("waiting for what was copied on the machine: %v", err)
+		}
+		var ev screenv1.ScreenEvent
+		if k == screenrtc.KindState && proto.Unmarshal(p, &ev) == nil && ev.GetClipboard() != nil {
+			return ev.GetClipboard().GetText()
+		}
+	}
 }
 
 // linuxScreenHelper is hermesh-screen for Linux on this computer's

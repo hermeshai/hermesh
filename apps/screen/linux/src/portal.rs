@@ -14,9 +14,9 @@ use std::time::Duration;
 use zbus::blocking::{Connection, Proxy};
 use zbus::zvariant::{OwnedFd, OwnedObjectPath, OwnedValue, Value};
 
-use crate::keys;
 use crate::pipe::Input;
 use crate::video::Video;
+use crate::{clip, keys};
 use crate::{pipewire, Way};
 
 const DEST: &str = "org.freedesktop.portal.Desktop";
@@ -149,6 +149,8 @@ pub struct Portal {
     held: Vec<u32>,
     wheel: (f64, f64),
     clip: Option<(Proxy<'static>, Arc<Mutex<String>>)>,
+    /// Whether the desktop types any character given as a keysym.
+    keysyms_any: bool,
 }
 
 impl Portal {
@@ -209,7 +211,7 @@ impl Portal {
             },
             None,
         )?;
-        // The clipboard, for text no key types; asked for before the session starts.
+        // The clipboard, both ways and for text no key types; asked for before the session starts.
         let clip_proxy = Proxy::new_owned(conn.clone(), DEST, PATH, CLIP)
             .ok()
             .filter(|p| p.get_property::<u32>("version").is_ok());
@@ -297,7 +299,8 @@ impl Portal {
             devices,
             held: vec![],
             wheel: (0.0, 0.0),
-            clip: if keysyms_any { None } else { clip },
+            clip,
+            keysyms_any,
         };
         // The session's keyboard may come with its first key: a Shift, which types nothing, goes first.
         p.press(&[], keys::SHIFT_L);
@@ -348,11 +351,52 @@ impl Portal {
             &(&self.session, Self::none(), self.node, x, y),
         );
     }
+
+    /// set_clipboard makes text the session's clipboard, given to whoever
+    /// pastes.
+    fn set_clipboard(&self, text: &str) -> bool {
+        let Some((p, waiting)) = &self.clip else {
+            return false;
+        };
+        *waiting.lock().unwrap() = text.to_string();
+        clip::put(text);
+        let mimes: HashMap<&str, Value> =
+            HashMap::from([("mime_types", Value::from(clip::OFFERED.to_vec()))]);
+        p.call::<_, _, ()>("SetSelection", &(&self.session, mimes))
+            .is_ok()
+    }
 }
 
-/// serve_clipboard gives the text waiting to whoever pastes.
+/// serve_clipboard gives the text waiting to whoever pastes, and tells what
+/// others copy.
 fn serve_clipboard(p: Proxy<'static>, session: OwnedObjectPath) -> Arc<Mutex<String>> {
     let text = Arc::new(Mutex::new(String::new()));
+    if let Ok(changes) = p.receive_signal("SelectionOwnerChanged") {
+        let (p, session) = (p.clone(), session.clone());
+        std::thread::spawn(move || {
+            for m in changes {
+                let Ok((s, o)) = m
+                    .body()
+                    .deserialize::<(OwnedObjectPath, HashMap<String, OwnedValue>)>()
+                else {
+                    continue;
+                };
+                let ours = o
+                    .get("session_is_owner")
+                    .and_then(|v| bool::try_from(v.clone()).ok())
+                    .unwrap_or(false);
+                let offered = o.get("mime_types").map(clip::strings).unwrap_or_default();
+                let Some(mime) = clip::text_type(&offered).filter(|_| !ours && s == session) else {
+                    continue;
+                };
+                if let Ok(fd) = p.call::<_, _, OwnedFd>("SelectionRead", &(&session, mime)) {
+                    if let Some(t) = clip::read_text(fd.into()) {
+                        clip::copied(&t);
+                    }
+                }
+            }
+        });
+    }
     let t = text.clone();
     if let Ok(transfers) = p.receive_signal("SelectionTransfer") {
         std::thread::spawn(move || {
@@ -421,27 +465,20 @@ impl Way for Portal {
             }
         }
         if let Some(t) = &i.text {
-            match &self.clip {
-                Some((p, clip)) if !crate::mutter::plain(&t.text) => {
-                    *clip.lock().unwrap() = t.text.clone();
-                    let mimes: HashMap<&str, Value> = HashMap::from([(
-                        "mime_types",
-                        Value::from(vec![
-                            "text/plain;charset=utf-8",
-                            "text/plain",
-                            "UTF8_STRING",
-                        ]),
-                    )]);
-                    if p.call::<_, _, ()>("SetSelection", &(&self.session, mimes))
-                        .is_ok()
-                    {
-                        self.press(&[keys::CONTROL_L], 'v' as u32);
-                    }
+            if self.clip.is_some() && !self.keysyms_any && !crate::mutter::plain(&t.text) {
+                if self.set_clipboard(&t.text) {
+                    self.press(clip::text_paste_mods(&t.paste), 'v' as u32);
                 }
-                _ => {
-                    for c in t.text.chars() {
-                        self.press(&[], keys::of_char(c));
-                    }
+            } else {
+                for c in t.text.chars() {
+                    self.press(&[], keys::of_char(c));
+                }
+            }
+        }
+        if let Some(c) = &i.clipboard {
+            if self.set_clipboard(&c.text) {
+                if let Some(mods) = clip::paste_mods(&c.paste) {
+                    self.press(mods, 'v' as u32);
                 }
             }
         }
