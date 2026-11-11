@@ -13,6 +13,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"slices"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
@@ -20,7 +21,9 @@ import (
 
 	localv1 "github.com/hermeshai/hermesh/gen/go/hermesh/local/v1"
 	"github.com/hermeshai/hermesh/gen/go/hermesh/local/v1/localv1connect"
+	"github.com/hermeshai/hermesh/internal/flock"
 	"github.com/hermeshai/hermesh/internal/localipc"
+	"github.com/hermeshai/hermesh/internal/paths"
 	"github.com/hermeshai/hermesh/pkg/identity"
 	"google.golang.org/protobuf/proto"
 )
@@ -91,6 +94,7 @@ type proc struct {
 
 func start(t *testing.T, name string, env []string, bin string, args ...string) *proc {
 	t.Helper()
+	endLinks(t, env)
 	cmd := exec.Command(bin, args...)
 	cmd.Env = append(os.Environ(), env...)
 	ownGroup(cmd)
@@ -190,6 +194,7 @@ type result struct {
 
 func run(t *testing.T, env []string, timeout time.Duration, bin string, args ...string) result {
 	t.Helper()
+	endLinks(t, env)
 	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
 	cmd := exec.CommandContext(ctx, bin, args...)
@@ -393,3 +398,41 @@ func withoutInboxNote(stderr string) string {
 	}
 	return strings.Join(out, "\n")
 }
+
+// endLinks has the agent's link (docs/cli.md), which a command in env may
+// start apart from itself, end with the test: it outlives the command, and
+// writing in its home while the test's temp folder is removed it would fail
+// the test. Once per home and test; the cleanup runs before that removal,
+// registered after the folder was made.
+func endLinks(t *testing.T, env []string) {
+	var home string
+	for _, e := range env {
+		if v, ok := strings.CutPrefix(e, "HERMESH_HOME="); ok {
+			home = v
+		}
+	}
+	if home == "" {
+		return
+	}
+	if _, loaded := linkHomes.LoadOrStore(t.Name()+"\x00"+home, true); loaded {
+		return
+	}
+	t.Cleanup(func() {
+		dir := paths.LinkLock(home)
+		for deadline := time.Now().Add(5 * time.Second); time.Now().Before(deadline); time.Sleep(50 * time.Millisecond) {
+			b, _ := os.ReadFile(filepath.Join(dir, "lock"))
+			pid, _ := strconv.Atoi(strings.TrimSpace(string(b)))
+			// Its lock held: a link runs, the one whose pid the lock says.
+			l, err := flock.Acquire(dir)
+			if err == nil {
+				l.Release()
+				return
+			}
+			if p, err := os.FindProcess(pid); pid > 0 && err == nil {
+				p.Kill()
+			}
+		}
+	})
+}
+
+var linkHomes sync.Map
