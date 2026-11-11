@@ -155,6 +155,60 @@ func (NamedKey) EnumDescriptor() ([]byte, []int) {
 	return file_hermesh_screen_v1_screen_proto_rawDescGZIP(), []int{1}
 }
 
+// How the machine pastes: the shortcut it presses once its clipboard holds
+// the text.
+type Paste int32
+
+const (
+	// Not at all: the text only goes to the machine's clipboard.
+	Paste_PASTE_UNSPECIFIED Paste = 0
+	// As an app pastes: Command-V on a Mac, Ctrl+V on Linux.
+	Paste_PASTE_APP Paste = 1
+	// As a terminal pastes: Ctrl+Shift+V on Linux, Command-V on a Mac.
+	Paste_PASTE_TERMINAL Paste = 2
+)
+
+// Enum value maps for Paste.
+var (
+	Paste_name = map[int32]string{
+		0: "PASTE_UNSPECIFIED",
+		1: "PASTE_APP",
+		2: "PASTE_TERMINAL",
+	}
+	Paste_value = map[string]int32{
+		"PASTE_UNSPECIFIED": 0,
+		"PASTE_APP":         1,
+		"PASTE_TERMINAL":    2,
+	}
+)
+
+func (x Paste) Enum() *Paste {
+	p := new(Paste)
+	*p = x
+	return p
+}
+
+func (x Paste) String() string {
+	return protoimpl.X.EnumStringOf(x.Descriptor(), protoreflect.EnumNumber(x))
+}
+
+func (Paste) Descriptor() protoreflect.EnumDescriptor {
+	return file_hermesh_screen_v1_screen_proto_enumTypes[2].Descriptor()
+}
+
+func (Paste) Type() protoreflect.EnumType {
+	return &file_hermesh_screen_v1_screen_proto_enumTypes[2]
+}
+
+func (x Paste) Number() protoreflect.EnumNumber {
+	return protoreflect.EnumNumber(x)
+}
+
+// Deprecated: Use Paste.Descriptor instead.
+func (Paste) EnumDescriptor() ([]byte, []int) {
+	return file_hermesh_screen_v1_screen_proto_rawDescGZIP(), []int{2}
+}
+
 type ConnectRequest struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// The viewer's SDP offer.
@@ -294,6 +348,7 @@ type Input struct {
 	//	*Input_Key
 	//	*Input_Text
 	//	*Input_ShowPointer
+	//	*Input_Clipboard
 	Event         isInput_Event `protobuf_oneof:"event"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
@@ -390,6 +445,15 @@ func (x *Input) GetShowPointer() *ShowPointer {
 	return nil
 }
 
+func (x *Input) GetClipboard() *Clipboard {
+	if x != nil {
+		if x, ok := x.Event.(*Input_Clipboard); ok {
+			return x.Clipboard
+		}
+	}
+	return nil
+}
+
 type isInput_Event interface {
 	isInput_Event()
 }
@@ -418,6 +482,10 @@ type Input_ShowPointer struct {
 	ShowPointer *ShowPointer `protobuf:"bytes,6,opt,name=show_pointer,json=showPointer,proto3,oneof"`
 }
 
+type Input_Clipboard struct {
+	Clipboard *Clipboard `protobuf:"bytes,7,opt,name=clipboard,proto3,oneof"`
+}
+
 func (*Input_Move) isInput_Event() {}
 
 func (*Input_Button) isInput_Event() {}
@@ -429,6 +497,8 @@ func (*Input_Key) isInput_Event() {}
 func (*Input_Text) isInput_Event() {}
 
 func (*Input_ShowPointer) isInput_Event() {}
+
+func (*Input_Clipboard) isInput_Event() {}
 
 // The pointer moved. While a button is down it drags.
 type Move struct {
@@ -719,8 +789,12 @@ func (x *Key) GetShift() bool {
 
 // Text entered as it is, whatever keyboard the machine has selected.
 type Text struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Text          string                 `protobuf:"bytes,1,opt,name=text,proto3" json:"text,omitempty"`
+	state protoimpl.MessageState `protogen:"open.v1"`
+	Text  string                 `protobuf:"bytes,1,opt,name=text,proto3" json:"text,omitempty"`
+	// How the machine pastes what it can't type as keys (GNOME takes no
+	// character its keyboard layout lacks: those are pasted): as an app
+	// pastes, or as a terminal does.
+	Paste         Paste `protobuf:"varint,2,opt,name=paste,proto3,enum=hermesh.screen.v1.Paste" json:"paste,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -762,6 +836,69 @@ func (x *Text) GetText() string {
 	return ""
 }
 
+func (x *Text) GetPaste() Paste {
+	if x != nil {
+		return x.Paste
+	}
+	return Paste_PASTE_UNSPECIFIED
+}
+
+// Text on a clipboard. From the viewer: the phone's clipboard, given to
+// the machine's, then pasted there as paste says. From the machine (in a
+// ScreenEvent): what was copied there while the viewer was in control.
+// At most clipboardMax bytes (60000: a data channel message).
+type Clipboard struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Text          string                 `protobuf:"bytes,1,opt,name=text,proto3" json:"text,omitempty"`
+	Paste         Paste                  `protobuf:"varint,2,opt,name=paste,proto3,enum=hermesh.screen.v1.Paste" json:"paste,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *Clipboard) Reset() {
+	*x = Clipboard{}
+	mi := &file_hermesh_screen_v1_screen_proto_msgTypes[8]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *Clipboard) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*Clipboard) ProtoMessage() {}
+
+func (x *Clipboard) ProtoReflect() protoreflect.Message {
+	mi := &file_hermesh_screen_v1_screen_proto_msgTypes[8]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use Clipboard.ProtoReflect.Descriptor instead.
+func (*Clipboard) Descriptor() ([]byte, []int) {
+	return file_hermesh_screen_v1_screen_proto_rawDescGZIP(), []int{8}
+}
+
+func (x *Clipboard) GetText() string {
+	if x != nil {
+		return x.Text
+	}
+	return ""
+}
+
+func (x *Clipboard) GetPaste() Paste {
+	if x != nil {
+		return x.Paste
+	}
+	return Paste_PASTE_UNSPECIFIED
+}
+
 // Whether the picture has the pointer in it, from now on.
 type ShowPointer struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
@@ -772,7 +909,7 @@ type ShowPointer struct {
 
 func (x *ShowPointer) Reset() {
 	*x = ShowPointer{}
-	mi := &file_hermesh_screen_v1_screen_proto_msgTypes[8]
+	mi := &file_hermesh_screen_v1_screen_proto_msgTypes[9]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -784,7 +921,7 @@ func (x *ShowPointer) String() string {
 func (*ShowPointer) ProtoMessage() {}
 
 func (x *ShowPointer) ProtoReflect() protoreflect.Message {
-	mi := &file_hermesh_screen_v1_screen_proto_msgTypes[8]
+	mi := &file_hermesh_screen_v1_screen_proto_msgTypes[9]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -797,7 +934,7 @@ func (x *ShowPointer) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ShowPointer.ProtoReflect.Descriptor instead.
 func (*ShowPointer) Descriptor() ([]byte, []int) {
-	return file_hermesh_screen_v1_screen_proto_rawDescGZIP(), []int{8}
+	return file_hermesh_screen_v1_screen_proto_rawDescGZIP(), []int{9}
 }
 
 func (x *ShowPointer) GetShown() bool {
@@ -814,6 +951,7 @@ type ScreenEvent struct {
 	//
 	//	*ScreenEvent_Format
 	//	*ScreenEvent_State
+	//	*ScreenEvent_Clipboard
 	Event         isScreenEvent_Event `protobuf_oneof:"event"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
@@ -821,7 +959,7 @@ type ScreenEvent struct {
 
 func (x *ScreenEvent) Reset() {
 	*x = ScreenEvent{}
-	mi := &file_hermesh_screen_v1_screen_proto_msgTypes[9]
+	mi := &file_hermesh_screen_v1_screen_proto_msgTypes[10]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -833,7 +971,7 @@ func (x *ScreenEvent) String() string {
 func (*ScreenEvent) ProtoMessage() {}
 
 func (x *ScreenEvent) ProtoReflect() protoreflect.Message {
-	mi := &file_hermesh_screen_v1_screen_proto_msgTypes[9]
+	mi := &file_hermesh_screen_v1_screen_proto_msgTypes[10]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -846,7 +984,7 @@ func (x *ScreenEvent) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ScreenEvent.ProtoReflect.Descriptor instead.
 func (*ScreenEvent) Descriptor() ([]byte, []int) {
-	return file_hermesh_screen_v1_screen_proto_rawDescGZIP(), []int{9}
+	return file_hermesh_screen_v1_screen_proto_rawDescGZIP(), []int{10}
 }
 
 func (x *ScreenEvent) GetEvent() isScreenEvent_Event {
@@ -874,6 +1012,15 @@ func (x *ScreenEvent) GetState() *State {
 	return nil
 }
 
+func (x *ScreenEvent) GetClipboard() *Clipboard {
+	if x != nil {
+		if x, ok := x.Event.(*ScreenEvent_Clipboard); ok {
+			return x.Clipboard
+		}
+	}
+	return nil
+}
+
 type isScreenEvent_Event interface {
 	isScreenEvent_Event()
 }
@@ -886,9 +1033,15 @@ type ScreenEvent_State struct {
 	State *State `protobuf:"bytes,2,opt,name=state,proto3,oneof"`
 }
 
+type ScreenEvent_Clipboard struct {
+	Clipboard *Clipboard `protobuf:"bytes,3,opt,name=clipboard,proto3,oneof"`
+}
+
 func (*ScreenEvent_Format) isScreenEvent_Event() {}
 
 func (*ScreenEvent_State) isScreenEvent_Event() {}
+
+func (*ScreenEvent_Clipboard) isScreenEvent_Event() {}
 
 // The picture's size in pixels.
 type Format struct {
@@ -901,7 +1054,7 @@ type Format struct {
 
 func (x *Format) Reset() {
 	*x = Format{}
-	mi := &file_hermesh_screen_v1_screen_proto_msgTypes[10]
+	mi := &file_hermesh_screen_v1_screen_proto_msgTypes[11]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -913,7 +1066,7 @@ func (x *Format) String() string {
 func (*Format) ProtoMessage() {}
 
 func (x *Format) ProtoReflect() protoreflect.Message {
-	mi := &file_hermesh_screen_v1_screen_proto_msgTypes[10]
+	mi := &file_hermesh_screen_v1_screen_proto_msgTypes[11]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -926,7 +1079,7 @@ func (x *Format) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Format.ProtoReflect.Descriptor instead.
 func (*Format) Descriptor() ([]byte, []int) {
-	return file_hermesh_screen_v1_screen_proto_rawDescGZIP(), []int{10}
+	return file_hermesh_screen_v1_screen_proto_rawDescGZIP(), []int{11}
 }
 
 func (x *Format) GetWidth() uint32 {
@@ -959,7 +1112,7 @@ type State struct {
 
 func (x *State) Reset() {
 	*x = State{}
-	mi := &file_hermesh_screen_v1_screen_proto_msgTypes[11]
+	mi := &file_hermesh_screen_v1_screen_proto_msgTypes[12]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -971,7 +1124,7 @@ func (x *State) String() string {
 func (*State) ProtoMessage() {}
 
 func (x *State) ProtoReflect() protoreflect.Message {
-	mi := &file_hermesh_screen_v1_screen_proto_msgTypes[11]
+	mi := &file_hermesh_screen_v1_screen_proto_msgTypes[12]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -984,7 +1137,7 @@ func (x *State) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use State.ProtoReflect.Descriptor instead.
 func (*State) Descriptor() ([]byte, []int) {
-	return file_hermesh_screen_v1_screen_proto_rawDescGZIP(), []int{11}
+	return file_hermesh_screen_v1_screen_proto_rawDescGZIP(), []int{12}
 }
 
 func (x *State) GetError() string {
@@ -1022,14 +1175,15 @@ const file_hermesh_screen_v1_screen_proto_rawDesc = "" +
 	"\x0fConnectResponse\x12\x16\n" +
 	"\x06answer\x18\x01 \x01(\tR\x06answer\x12\x1d\n" +
 	"\n" +
-	"session_id\x18\x02 \x01(\tR\tsessionId\"\xc6\x02\n" +
+	"session_id\x18\x02 \x01(\tR\tsessionId\"\x84\x03\n" +
 	"\x05Input\x12-\n" +
 	"\x04move\x18\x01 \x01(\v2\x17.hermesh.screen.v1.MoveH\x00R\x04move\x123\n" +
 	"\x06button\x18\x02 \x01(\v2\x19.hermesh.screen.v1.ButtonH\x00R\x06button\x120\n" +
 	"\x05wheel\x18\x03 \x01(\v2\x18.hermesh.screen.v1.WheelH\x00R\x05wheel\x12*\n" +
 	"\x03key\x18\x04 \x01(\v2\x16.hermesh.screen.v1.KeyH\x00R\x03key\x12-\n" +
 	"\x04text\x18\x05 \x01(\v2\x17.hermesh.screen.v1.TextH\x00R\x04text\x12C\n" +
-	"\fshow_pointer\x18\x06 \x01(\v2\x1e.hermesh.screen.v1.ShowPointerH\x00R\vshowPointerB\a\n" +
+	"\fshow_pointer\x18\x06 \x01(\v2\x1e.hermesh.screen.v1.ShowPointerH\x00R\vshowPointer\x12<\n" +
+	"\tclipboard\x18\a \x01(\v2\x1c.hermesh.screen.v1.ClipboardH\x00R\tclipboardB\a\n" +
 	"\x05event\"\"\n" +
 	"\x04Move\x12\f\n" +
 	"\x01x\x18\x01 \x01(\x01R\x01x\x12\f\n" +
@@ -1051,14 +1205,19 @@ const file_hermesh_screen_v1_screen_proto_rawDesc = "" +
 	"\acommand\x18\x03 \x01(\bR\acommand\x12\x16\n" +
 	"\x06option\x18\x04 \x01(\bR\x06option\x12\x18\n" +
 	"\acontrol\x18\x05 \x01(\bR\acontrol\x12\x14\n" +
-	"\x05shift\x18\x06 \x01(\bR\x05shift\"\x1a\n" +
+	"\x05shift\x18\x06 \x01(\bR\x05shift\"J\n" +
 	"\x04Text\x12\x12\n" +
-	"\x04text\x18\x01 \x01(\tR\x04text\"#\n" +
+	"\x04text\x18\x01 \x01(\tR\x04text\x12.\n" +
+	"\x05paste\x18\x02 \x01(\x0e2\x18.hermesh.screen.v1.PasteR\x05paste\"O\n" +
+	"\tClipboard\x12\x12\n" +
+	"\x04text\x18\x01 \x01(\tR\x04text\x12.\n" +
+	"\x05paste\x18\x02 \x01(\x0e2\x18.hermesh.screen.v1.PasteR\x05paste\"#\n" +
 	"\vShowPointer\x12\x14\n" +
-	"\x05shown\x18\x01 \x01(\bR\x05shown\"}\n" +
+	"\x05shown\x18\x01 \x01(\bR\x05shown\"\xbb\x01\n" +
 	"\vScreenEvent\x123\n" +
 	"\x06format\x18\x01 \x01(\v2\x19.hermesh.screen.v1.FormatH\x00R\x06format\x120\n" +
-	"\x05state\x18\x02 \x01(\v2\x18.hermesh.screen.v1.StateH\x00R\x05stateB\a\n" +
+	"\x05state\x18\x02 \x01(\v2\x18.hermesh.screen.v1.StateH\x00R\x05state\x12<\n" +
+	"\tclipboard\x18\x03 \x01(\v2\x1c.hermesh.screen.v1.ClipboardH\x00R\tclipboardB\a\n" +
 	"\x05event\"6\n" +
 	"\x06Format\x12\x14\n" +
 	"\x05width\x18\x01 \x01(\rR\x05width\x12\x16\n" +
@@ -1088,7 +1247,11 @@ const file_hermesh_screen_v1_screen_proto_rawDesc = "" +
 	"\x0eNAMED_KEY_HOME\x10\v\x12\x11\n" +
 	"\rNAMED_KEY_END\x10\f\x12\x15\n" +
 	"\x11NAMED_KEY_PAGE_UP\x10\r\x12\x17\n" +
-	"\x13NAMED_KEY_PAGE_DOWN\x10\x0e2a\n" +
+	"\x13NAMED_KEY_PAGE_DOWN\x10\x0e*A\n" +
+	"\x05Paste\x12\x15\n" +
+	"\x11PASTE_UNSPECIFIED\x10\x00\x12\r\n" +
+	"\tPASTE_APP\x10\x01\x12\x12\n" +
+	"\x0ePASTE_TERMINAL\x10\x022a\n" +
 	"\rScreenService\x12P\n" +
 	"\aConnect\x12!.hermesh.screen.v1.ConnectRequest\x1a\".hermesh.screen.v1.ConnectResponseB\xca\x01\n" +
 	"\x15com.hermesh.screen.v1B\vScreenProtoP\x01Z>github.com/hermeshai/hermesh/gen/go/hermesh/screen/v1;screenv1\xa2\x02\x03HSX\xaa\x02\x11Hermesh.Screen.V1\xca\x02\x11Hermesh\\Screen\\V1\xe2\x02\x1dHermesh\\Screen\\V1\\GPBMetadata\xea\x02\x13Hermesh::Screen::V1b\x06proto3"
@@ -1105,42 +1268,48 @@ func file_hermesh_screen_v1_screen_proto_rawDescGZIP() []byte {
 	return file_hermesh_screen_v1_screen_proto_rawDescData
 }
 
-var file_hermesh_screen_v1_screen_proto_enumTypes = make([]protoimpl.EnumInfo, 2)
-var file_hermesh_screen_v1_screen_proto_msgTypes = make([]protoimpl.MessageInfo, 12)
+var file_hermesh_screen_v1_screen_proto_enumTypes = make([]protoimpl.EnumInfo, 3)
+var file_hermesh_screen_v1_screen_proto_msgTypes = make([]protoimpl.MessageInfo, 13)
 var file_hermesh_screen_v1_screen_proto_goTypes = []any{
 	(MouseButton)(0),        // 0: hermesh.screen.v1.MouseButton
 	(NamedKey)(0),           // 1: hermesh.screen.v1.NamedKey
-	(*ConnectRequest)(nil),  // 2: hermesh.screen.v1.ConnectRequest
-	(*ConnectResponse)(nil), // 3: hermesh.screen.v1.ConnectResponse
-	(*Input)(nil),           // 4: hermesh.screen.v1.Input
-	(*Move)(nil),            // 5: hermesh.screen.v1.Move
-	(*Button)(nil),          // 6: hermesh.screen.v1.Button
-	(*Wheel)(nil),           // 7: hermesh.screen.v1.Wheel
-	(*Key)(nil),             // 8: hermesh.screen.v1.Key
-	(*Text)(nil),            // 9: hermesh.screen.v1.Text
-	(*ShowPointer)(nil),     // 10: hermesh.screen.v1.ShowPointer
-	(*ScreenEvent)(nil),     // 11: hermesh.screen.v1.ScreenEvent
-	(*Format)(nil),          // 12: hermesh.screen.v1.Format
-	(*State)(nil),           // 13: hermesh.screen.v1.State
+	(Paste)(0),              // 2: hermesh.screen.v1.Paste
+	(*ConnectRequest)(nil),  // 3: hermesh.screen.v1.ConnectRequest
+	(*ConnectResponse)(nil), // 4: hermesh.screen.v1.ConnectResponse
+	(*Input)(nil),           // 5: hermesh.screen.v1.Input
+	(*Move)(nil),            // 6: hermesh.screen.v1.Move
+	(*Button)(nil),          // 7: hermesh.screen.v1.Button
+	(*Wheel)(nil),           // 8: hermesh.screen.v1.Wheel
+	(*Key)(nil),             // 9: hermesh.screen.v1.Key
+	(*Text)(nil),            // 10: hermesh.screen.v1.Text
+	(*Clipboard)(nil),       // 11: hermesh.screen.v1.Clipboard
+	(*ShowPointer)(nil),     // 12: hermesh.screen.v1.ShowPointer
+	(*ScreenEvent)(nil),     // 13: hermesh.screen.v1.ScreenEvent
+	(*Format)(nil),          // 14: hermesh.screen.v1.Format
+	(*State)(nil),           // 15: hermesh.screen.v1.State
 }
 var file_hermesh_screen_v1_screen_proto_depIdxs = []int32{
-	5,  // 0: hermesh.screen.v1.Input.move:type_name -> hermesh.screen.v1.Move
-	6,  // 1: hermesh.screen.v1.Input.button:type_name -> hermesh.screen.v1.Button
-	7,  // 2: hermesh.screen.v1.Input.wheel:type_name -> hermesh.screen.v1.Wheel
-	8,  // 3: hermesh.screen.v1.Input.key:type_name -> hermesh.screen.v1.Key
-	9,  // 4: hermesh.screen.v1.Input.text:type_name -> hermesh.screen.v1.Text
-	10, // 5: hermesh.screen.v1.Input.show_pointer:type_name -> hermesh.screen.v1.ShowPointer
-	0,  // 6: hermesh.screen.v1.Button.button:type_name -> hermesh.screen.v1.MouseButton
-	1,  // 7: hermesh.screen.v1.Key.key:type_name -> hermesh.screen.v1.NamedKey
-	12, // 8: hermesh.screen.v1.ScreenEvent.format:type_name -> hermesh.screen.v1.Format
-	13, // 9: hermesh.screen.v1.ScreenEvent.state:type_name -> hermesh.screen.v1.State
-	2,  // 10: hermesh.screen.v1.ScreenService.Connect:input_type -> hermesh.screen.v1.ConnectRequest
-	3,  // 11: hermesh.screen.v1.ScreenService.Connect:output_type -> hermesh.screen.v1.ConnectResponse
-	11, // [11:12] is the sub-list for method output_type
-	10, // [10:11] is the sub-list for method input_type
-	10, // [10:10] is the sub-list for extension type_name
-	10, // [10:10] is the sub-list for extension extendee
-	0,  // [0:10] is the sub-list for field type_name
+	6,  // 0: hermesh.screen.v1.Input.move:type_name -> hermesh.screen.v1.Move
+	7,  // 1: hermesh.screen.v1.Input.button:type_name -> hermesh.screen.v1.Button
+	8,  // 2: hermesh.screen.v1.Input.wheel:type_name -> hermesh.screen.v1.Wheel
+	9,  // 3: hermesh.screen.v1.Input.key:type_name -> hermesh.screen.v1.Key
+	10, // 4: hermesh.screen.v1.Input.text:type_name -> hermesh.screen.v1.Text
+	12, // 5: hermesh.screen.v1.Input.show_pointer:type_name -> hermesh.screen.v1.ShowPointer
+	11, // 6: hermesh.screen.v1.Input.clipboard:type_name -> hermesh.screen.v1.Clipboard
+	0,  // 7: hermesh.screen.v1.Button.button:type_name -> hermesh.screen.v1.MouseButton
+	1,  // 8: hermesh.screen.v1.Key.key:type_name -> hermesh.screen.v1.NamedKey
+	2,  // 9: hermesh.screen.v1.Text.paste:type_name -> hermesh.screen.v1.Paste
+	2,  // 10: hermesh.screen.v1.Clipboard.paste:type_name -> hermesh.screen.v1.Paste
+	14, // 11: hermesh.screen.v1.ScreenEvent.format:type_name -> hermesh.screen.v1.Format
+	15, // 12: hermesh.screen.v1.ScreenEvent.state:type_name -> hermesh.screen.v1.State
+	11, // 13: hermesh.screen.v1.ScreenEvent.clipboard:type_name -> hermesh.screen.v1.Clipboard
+	3,  // 14: hermesh.screen.v1.ScreenService.Connect:input_type -> hermesh.screen.v1.ConnectRequest
+	4,  // 15: hermesh.screen.v1.ScreenService.Connect:output_type -> hermesh.screen.v1.ConnectResponse
+	15, // [15:16] is the sub-list for method output_type
+	14, // [14:15] is the sub-list for method input_type
+	14, // [14:14] is the sub-list for extension type_name
+	14, // [14:14] is the sub-list for extension extendee
+	0,  // [0:14] is the sub-list for field type_name
 }
 
 func init() { file_hermesh_screen_v1_screen_proto_init() }
@@ -1155,18 +1324,20 @@ func file_hermesh_screen_v1_screen_proto_init() {
 		(*Input_Key)(nil),
 		(*Input_Text)(nil),
 		(*Input_ShowPointer)(nil),
+		(*Input_Clipboard)(nil),
 	}
-	file_hermesh_screen_v1_screen_proto_msgTypes[9].OneofWrappers = []any{
+	file_hermesh_screen_v1_screen_proto_msgTypes[10].OneofWrappers = []any{
 		(*ScreenEvent_Format)(nil),
 		(*ScreenEvent_State)(nil),
+		(*ScreenEvent_Clipboard)(nil),
 	}
 	type x struct{}
 	out := protoimpl.TypeBuilder{
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_hermesh_screen_v1_screen_proto_rawDesc), len(file_hermesh_screen_v1_screen_proto_rawDesc)),
-			NumEnums:      2,
-			NumMessages:   12,
+			NumEnums:      3,
+			NumMessages:   13,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

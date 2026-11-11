@@ -144,6 +144,52 @@ public nonisolated enum Hermesh_Screen_V1_NamedKey: SwiftProtobuf.Enum, Swift.Ca
 
 }
 
+/// How the machine pastes: the shortcut it presses once its clipboard holds
+/// the text.
+public nonisolated enum Hermesh_Screen_V1_Paste: SwiftProtobuf.Enum, Swift.CaseIterable {
+  public typealias RawValue = Int
+
+  /// Not at all: the text only goes to the machine's clipboard.
+  case unspecified // = 0
+
+  /// As an app pastes: Command-V on a Mac, Ctrl+V on Linux.
+  case app // = 1
+
+  /// As a terminal pastes: Ctrl+Shift+V on Linux, Command-V on a Mac.
+  case terminal // = 2
+  case UNRECOGNIZED(Int)
+
+  public init() {
+    self = .unspecified
+  }
+
+  public init?(rawValue: Int) {
+    switch rawValue {
+    case 0: self = .unspecified
+    case 1: self = .app
+    case 2: self = .terminal
+    default: self = .UNRECOGNIZED(rawValue)
+    }
+  }
+
+  public var rawValue: Int {
+    switch self {
+    case .unspecified: return 0
+    case .app: return 1
+    case .terminal: return 2
+    case .UNRECOGNIZED(let i): return i
+    }
+  }
+
+  // The compiler won't synthesize support with the UNRECOGNIZED case.
+  public static let allCases: [Hermesh_Screen_V1_Paste] = [
+    .unspecified,
+    .app,
+    .terminal,
+  ]
+
+}
+
 public nonisolated struct Hermesh_Screen_V1_ConnectRequest: Sendable {
   // SwiftProtobuf.Message conformance is added in an extension below. See the
   // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
@@ -240,6 +286,14 @@ public nonisolated struct Hermesh_Screen_V1_Input: Sendable {
     set {event = .showPointer(newValue)}
   }
 
+  public var clipboard: Hermesh_Screen_V1_Clipboard {
+    get {
+      if case .clipboard(let v)? = event {return v}
+      return Hermesh_Screen_V1_Clipboard()
+    }
+    set {event = .clipboard(newValue)}
+  }
+
   public var unknownFields = SwiftProtobuf.UnknownStorage()
 
   public nonisolated enum OneOf_Event: Equatable, Sendable {
@@ -249,6 +303,7 @@ public nonisolated struct Hermesh_Screen_V1_Input: Sendable {
     case key(Hermesh_Screen_V1_Key)
     case text(Hermesh_Screen_V1_Text)
     case showPointer(Hermesh_Screen_V1_ShowPointer)
+    case clipboard(Hermesh_Screen_V1_Clipboard)
 
   }
 
@@ -344,6 +399,29 @@ public nonisolated struct Hermesh_Screen_V1_Text: Sendable {
 
   public var text: String = String()
 
+  /// How the machine pastes what it can't type as keys (GNOME takes no
+  /// character its keyboard layout lacks: those are pasted): as an app
+  /// pastes, or as a terminal does.
+  public var paste: Hermesh_Screen_V1_Paste = .unspecified
+
+  public var unknownFields = SwiftProtobuf.UnknownStorage()
+
+  public init() {}
+}
+
+/// Text on a clipboard. From the viewer: the phone's clipboard, given to
+/// the machine's, then pasted there as paste says. From the machine (in a
+/// ScreenEvent): what was copied there while the viewer was in control.
+/// At most clipboardMax bytes (60000: a data channel message).
+public nonisolated struct Hermesh_Screen_V1_Clipboard: Sendable {
+  // SwiftProtobuf.Message conformance is added in an extension below. See the
+  // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
+  // methods supported on all messages.
+
+  public var text: String = String()
+
+  public var paste: Hermesh_Screen_V1_Paste = .unspecified
+
   public var unknownFields = SwiftProtobuf.UnknownStorage()
 
   public init() {}
@@ -386,11 +464,20 @@ public nonisolated struct Hermesh_Screen_V1_ScreenEvent: Sendable {
     set {event = .state(newValue)}
   }
 
+  public var clipboard: Hermesh_Screen_V1_Clipboard {
+    get {
+      if case .clipboard(let v)? = event {return v}
+      return Hermesh_Screen_V1_Clipboard()
+    }
+    set {event = .clipboard(newValue)}
+  }
+
   public var unknownFields = SwiftProtobuf.UnknownStorage()
 
   public nonisolated enum OneOf_Event: Equatable, Sendable {
     case format(Hermesh_Screen_V1_Format)
     case state(Hermesh_Screen_V1_State)
+    case clipboard(Hermesh_Screen_V1_Clipboard)
 
   }
 
@@ -443,6 +530,10 @@ nonisolated extension Hermesh_Screen_V1_MouseButton: SwiftProtobuf._ProtoNamePro
 
 nonisolated extension Hermesh_Screen_V1_NamedKey: SwiftProtobuf._ProtoNameProviding {
   public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{2}\0NAMED_KEY_UNSPECIFIED\0\u{1}NAMED_KEY_RETURN\0\u{1}NAMED_KEY_TAB\0\u{1}NAMED_KEY_SPACE\0\u{1}NAMED_KEY_BACKSPACE\0\u{1}NAMED_KEY_ESCAPE\0\u{1}NAMED_KEY_LEFT\0\u{1}NAMED_KEY_RIGHT\0\u{1}NAMED_KEY_DOWN\0\u{1}NAMED_KEY_UP\0\u{1}NAMED_KEY_DELETE\0\u{1}NAMED_KEY_HOME\0\u{1}NAMED_KEY_END\0\u{1}NAMED_KEY_PAGE_UP\0\u{1}NAMED_KEY_PAGE_DOWN\0")
+}
+
+nonisolated extension Hermesh_Screen_V1_Paste: SwiftProtobuf._ProtoNameProviding {
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{2}\0PASTE_UNSPECIFIED\0\u{1}PASTE_APP\0\u{1}PASTE_TERMINAL\0")
 }
 
 nonisolated extension Hermesh_Screen_V1_ConnectRequest: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
@@ -527,7 +618,7 @@ nonisolated extension Hermesh_Screen_V1_ConnectResponse: SwiftProtobuf.Message, 
 
 nonisolated extension Hermesh_Screen_V1_Input: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
   public static let protoMessageName: String = _protobuf_package + ".Input"
-  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{1}move\0\u{1}button\0\u{1}wheel\0\u{1}key\0\u{1}text\0\u{3}show_pointer\0")
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{1}move\0\u{1}button\0\u{1}wheel\0\u{1}key\0\u{1}text\0\u{3}show_pointer\0\u{1}clipboard\0")
 
   public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
     while let fieldNumber = try decoder.nextFieldNumber() {
@@ -613,6 +704,19 @@ nonisolated extension Hermesh_Screen_V1_Input: SwiftProtobuf.Message, SwiftProto
           self.event = .showPointer(v)
         }
       }()
+      case 7: try {
+        var v: Hermesh_Screen_V1_Clipboard?
+        var hadOneofValue = false
+        if let current = self.event {
+          hadOneofValue = true
+          if case .clipboard(let m) = current {v = m}
+        }
+        try decoder.decodeSingularMessageField(value: &v)
+        if let v = v {
+          if hadOneofValue {try decoder.handleConflictingOneOf()}
+          self.event = .clipboard(v)
+        }
+      }()
       default: break
       }
     }
@@ -647,6 +751,10 @@ nonisolated extension Hermesh_Screen_V1_Input: SwiftProtobuf.Message, SwiftProto
     case .showPointer?: try {
       guard case .showPointer(let v)? = self.event else { preconditionFailure() }
       try visitor.visitSingularMessageField(value: v, fieldNumber: 6)
+    }()
+    case .clipboard?: try {
+      guard case .clipboard(let v)? = self.event else { preconditionFailure() }
+      try visitor.visitSingularMessageField(value: v, fieldNumber: 7)
     }()
     case nil: break
     }
@@ -847,7 +955,7 @@ nonisolated extension Hermesh_Screen_V1_Key: SwiftProtobuf.Message, SwiftProtobu
 
 nonisolated extension Hermesh_Screen_V1_Text: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
   public static let protoMessageName: String = _protobuf_package + ".Text"
-  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{1}text\0")
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{1}text\0\u{1}paste\0")
 
   public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
     while let fieldNumber = try decoder.nextFieldNumber() {
@@ -856,6 +964,7 @@ nonisolated extension Hermesh_Screen_V1_Text: SwiftProtobuf.Message, SwiftProtob
       // enabled. https://github.com/apple/swift-protobuf/issues/1034
       switch fieldNumber {
       case 1: try { try decoder.decodeSingularStringField(value: &self.text) }()
+      case 2: try { try decoder.decodeSingularEnumField(value: &self.paste) }()
       default: break
       }
     }
@@ -865,11 +974,50 @@ nonisolated extension Hermesh_Screen_V1_Text: SwiftProtobuf.Message, SwiftProtob
     if !self.text.isEmpty {
       try visitor.visitSingularStringField(value: self.text, fieldNumber: 1)
     }
+    if self.paste != .unspecified {
+      try visitor.visitSingularEnumField(value: self.paste, fieldNumber: 2)
+    }
     try unknownFields.traverse(visitor: &visitor)
   }
 
   public static func ==(lhs: Hermesh_Screen_V1_Text, rhs: Hermesh_Screen_V1_Text) -> Bool {
     if lhs.text != rhs.text {return false}
+    if lhs.paste != rhs.paste {return false}
+    if lhs.unknownFields != rhs.unknownFields {return false}
+    return true
+  }
+}
+
+nonisolated extension Hermesh_Screen_V1_Clipboard: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
+  public static let protoMessageName: String = _protobuf_package + ".Clipboard"
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{1}text\0\u{1}paste\0")
+
+  public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
+    while let fieldNumber = try decoder.nextFieldNumber() {
+      // The use of inline closures is to circumvent an issue where the compiler
+      // allocates stack space for every case branch when no optimizations are
+      // enabled. https://github.com/apple/swift-protobuf/issues/1034
+      switch fieldNumber {
+      case 1: try { try decoder.decodeSingularStringField(value: &self.text) }()
+      case 2: try { try decoder.decodeSingularEnumField(value: &self.paste) }()
+      default: break
+      }
+    }
+  }
+
+  public func traverse<V: SwiftProtobuf.Visitor>(visitor: inout V) throws {
+    if !self.text.isEmpty {
+      try visitor.visitSingularStringField(value: self.text, fieldNumber: 1)
+    }
+    if self.paste != .unspecified {
+      try visitor.visitSingularEnumField(value: self.paste, fieldNumber: 2)
+    }
+    try unknownFields.traverse(visitor: &visitor)
+  }
+
+  public static func ==(lhs: Hermesh_Screen_V1_Clipboard, rhs: Hermesh_Screen_V1_Clipboard) -> Bool {
+    if lhs.text != rhs.text {return false}
+    if lhs.paste != rhs.paste {return false}
     if lhs.unknownFields != rhs.unknownFields {return false}
     return true
   }
@@ -907,7 +1055,7 @@ nonisolated extension Hermesh_Screen_V1_ShowPointer: SwiftProtobuf.Message, Swif
 
 nonisolated extension Hermesh_Screen_V1_ScreenEvent: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
   public static let protoMessageName: String = _protobuf_package + ".ScreenEvent"
-  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{1}format\0\u{1}state\0")
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{1}format\0\u{1}state\0\u{1}clipboard\0")
 
   public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
     while let fieldNumber = try decoder.nextFieldNumber() {
@@ -941,6 +1089,19 @@ nonisolated extension Hermesh_Screen_V1_ScreenEvent: SwiftProtobuf.Message, Swif
           self.event = .state(v)
         }
       }()
+      case 3: try {
+        var v: Hermesh_Screen_V1_Clipboard?
+        var hadOneofValue = false
+        if let current = self.event {
+          hadOneofValue = true
+          if case .clipboard(let m) = current {v = m}
+        }
+        try decoder.decodeSingularMessageField(value: &v)
+        if let v = v {
+          if hadOneofValue {try decoder.handleConflictingOneOf()}
+          self.event = .clipboard(v)
+        }
+      }()
       default: break
       }
     }
@@ -959,6 +1120,10 @@ nonisolated extension Hermesh_Screen_V1_ScreenEvent: SwiftProtobuf.Message, Swif
     case .state?: try {
       guard case .state(let v)? = self.event else { preconditionFailure() }
       try visitor.visitSingularMessageField(value: v, fieldNumber: 2)
+    }()
+    case .clipboard?: try {
+      guard case .clipboard(let v)? = self.event else { preconditionFailure() }
+      try visitor.visitSingularMessageField(value: v, fieldNumber: 3)
     }()
     case nil: break
     }

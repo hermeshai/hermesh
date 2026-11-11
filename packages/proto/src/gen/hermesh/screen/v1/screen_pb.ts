@@ -10,7 +10,7 @@ import type { Message } from "@bufbuild/protobuf";
  * Describes the file hermesh/screen/v1/screen.proto.
  */
 export const file_hermesh_screen_v1_screen: GenFile = /*@__PURE__*/
-  fileDesc("Ch5oZXJtZXNoL3NjcmVlbi92MS9zY3JlZW4ucHJvdG8SEWhlcm1lc2guc2NyZWVuLnYxIlQKDkNvbm5lY3RSZXF1ZXN0Eg0KBW9mZmVyGAEgASgJEhIKCnNlc3Npb25faWQYAiABKAkSDgoGdmlld2VyGAMgASgJEg8KB3BvaW50ZXIYBCABKAgiNQoPQ29ubmVjdFJlc3BvbnNlEg4KBmFuc3dlchgBIAEoCRISCgpzZXNzaW9uX2lkGAIgASgJIpkCCgVJbnB1dBInCgRtb3ZlGAEgASgLMhcuaGVybWVzaC5zY3JlZW4udjEuTW92ZUgAEisKBmJ1dHRvbhgCIAEoCzIZLmhlcm1lc2guc2NyZWVuLnYxLkJ1dHRvbkgAEikKBXdoZWVsGAMgASgLMhguaGVybWVzaC5zY3JlZW4udjEuV2hlZWxIABIlCgNrZXkYBCABKAsyFi5oZXJtZXNoLnNjcmVlbi52MS5LZXlIABInCgR0ZXh0GAUgASgLMhcuaGVybWVzaC5zY3JlZW4udjEuVGV4dEgAEjYKDHNob3dfcG9pbnRlchgGIAEoCzIeLmhlcm1lc2guc2NyZWVuLnYxLlNob3dQb2ludGVySABCBwoFZXZlbnQiHAoETW92ZRIJCgF4GAEgASgBEgkKAXkYAiABKAEibAoGQnV0dG9uEgkKAXgYASABKAESCQoBeRgCIAEoARIuCgZidXR0b24YAyABKA4yHi5oZXJtZXNoLnNjcmVlbi52MS5Nb3VzZUJ1dHRvbhIMCgRkb3duGAQgASgIEg4KBmNsaWNrcxgFIAEoDSI1CgVXaGVlbBIJCgF4GAEgASgBEgkKAXkYAiABKAESCgoCZHgYAyABKAESCgoCZHkYBCABKAEigwEKA0tleRIoCgNrZXkYASABKA4yGy5oZXJtZXNoLnNjcmVlbi52MS5OYW1lZEtleRIRCgljaGFyYWN0ZXIYAiABKAkSDwoHY29tbWFuZBgDIAEoCBIOCgZvcHRpb24YBCABKAgSDwoHY29udHJvbBgFIAEoCBINCgVzaGlmdBgGIAEoCCIUCgRUZXh0EgwKBHRleHQYASABKAkiHAoLU2hvd1BvaW50ZXISDQoFc2hvd24YASABKAgibgoLU2NyZWVuRXZlbnQSKwoGZm9ybWF0GAEgASgLMhkuaGVybWVzaC5zY3JlZW4udjEuRm9ybWF0SAASKQoFc3RhdGUYAiABKAsyGC5oZXJtZXNoLnNjcmVlbi52MS5TdGF0ZUgAQgcKBWV2ZW50IicKBkZvcm1hdBINCgV3aWR0aBgBIAEoDRIOCgZoZWlnaHQYAiABKA0iOwoFU3RhdGUSDQoFZXJyb3IYASABKAkSDgoGZGV0YWlsGAIgASgJEhMKC2Nhbl9jb250cm9sGAMgASgIKloKC01vdXNlQnV0dG9uEhwKGE1PVVNFX0JVVFRPTl9VTlNQRUNJRklFRBAAEhUKEU1PVVNFX0JVVFRPTl9MRUZUEAESFgoSTU9VU0VfQlVUVE9OX1JJR0hUEAIqzgIKCE5hbWVkS2V5EhkKFU5BTUVEX0tFWV9VTlNQRUNJRklFRBAAEhQKEE5BTUVEX0tFWV9SRVRVUk4QARIRCg1OQU1FRF9LRVlfVEFCEAISEwoPTkFNRURfS0VZX1NQQUNFEAMSFwoTTkFNRURfS0VZX0JBQ0tTUEFDRRAEEhQKEE5BTUVEX0tFWV9FU0NBUEUQBRISCg5OQU1FRF9LRVlfTEVGVBAGEhMKD05BTUVEX0tFWV9SSUdIVBAHEhIKDk5BTUVEX0tFWV9ET1dOEAgSEAoMTkFNRURfS0VZX1VQEAkSFAoQTkFNRURfS0VZX0RFTEVURRAKEhIKDk5BTUVEX0tFWV9IT01FEAsSEQoNTkFNRURfS0VZX0VORBAMEhUKEU5BTUVEX0tFWV9QQUdFX1VQEA0SFwoTTkFNRURfS0VZX1BBR0VfRE9XThAOMmEKDVNjcmVlblNlcnZpY2USUAoHQ29ubmVjdBIhLmhlcm1lc2guc2NyZWVuLnYxLkNvbm5lY3RSZXF1ZXN0GiIuaGVybWVzaC5zY3JlZW4udjEuQ29ubmVjdFJlc3BvbnNlYgZwcm90bzM");
+  fileDesc("Ch5oZXJtZXNoL3NjcmVlbi92MS9zY3JlZW4ucHJvdG8SEWhlcm1lc2guc2NyZWVuLnYxIlQKDkNvbm5lY3RSZXF1ZXN0Eg0KBW9mZmVyGAEgASgJEhIKCnNlc3Npb25faWQYAiABKAkSDgoGdmlld2VyGAMgASgJEg8KB3BvaW50ZXIYBCABKAgiNQoPQ29ubmVjdFJlc3BvbnNlEg4KBmFuc3dlchgBIAEoCRISCgpzZXNzaW9uX2lkGAIgASgJIswCCgVJbnB1dBInCgRtb3ZlGAEgASgLMhcuaGVybWVzaC5zY3JlZW4udjEuTW92ZUgAEisKBmJ1dHRvbhgCIAEoCzIZLmhlcm1lc2guc2NyZWVuLnYxLkJ1dHRvbkgAEikKBXdoZWVsGAMgASgLMhguaGVybWVzaC5zY3JlZW4udjEuV2hlZWxIABIlCgNrZXkYBCABKAsyFi5oZXJtZXNoLnNjcmVlbi52MS5LZXlIABInCgR0ZXh0GAUgASgLMhcuaGVybWVzaC5zY3JlZW4udjEuVGV4dEgAEjYKDHNob3dfcG9pbnRlchgGIAEoCzIeLmhlcm1lc2guc2NyZWVuLnYxLlNob3dQb2ludGVySAASMQoJY2xpcGJvYXJkGAcgASgLMhwuaGVybWVzaC5zY3JlZW4udjEuQ2xpcGJvYXJkSABCBwoFZXZlbnQiHAoETW92ZRIJCgF4GAEgASgBEgkKAXkYAiABKAEibAoGQnV0dG9uEgkKAXgYASABKAESCQoBeRgCIAEoARIuCgZidXR0b24YAyABKA4yHi5oZXJtZXNoLnNjcmVlbi52MS5Nb3VzZUJ1dHRvbhIMCgRkb3duGAQgASgIEg4KBmNsaWNrcxgFIAEoDSI1CgVXaGVlbBIJCgF4GAEgASgBEgkKAXkYAiABKAESCgoCZHgYAyABKAESCgoCZHkYBCABKAEigwEKA0tleRIoCgNrZXkYASABKA4yGy5oZXJtZXNoLnNjcmVlbi52MS5OYW1lZEtleRIRCgljaGFyYWN0ZXIYAiABKAkSDwoHY29tbWFuZBgDIAEoCBIOCgZvcHRpb24YBCABKAgSDwoHY29udHJvbBgFIAEoCBINCgVzaGlmdBgGIAEoCCI9CgRUZXh0EgwKBHRleHQYASABKAkSJwoFcGFzdGUYAiABKA4yGC5oZXJtZXNoLnNjcmVlbi52MS5QYXN0ZSJCCglDbGlwYm9hcmQSDAoEdGV4dBgBIAEoCRInCgVwYXN0ZRgCIAEoDjIYLmhlcm1lc2guc2NyZWVuLnYxLlBhc3RlIhwKC1Nob3dQb2ludGVyEg0KBXNob3duGAEgASgIIqEBCgtTY3JlZW5FdmVudBIrCgZmb3JtYXQYASABKAsyGS5oZXJtZXNoLnNjcmVlbi52MS5Gb3JtYXRIABIpCgVzdGF0ZRgCIAEoCzIYLmhlcm1lc2guc2NyZWVuLnYxLlN0YXRlSAASMQoJY2xpcGJvYXJkGAMgASgLMhwuaGVybWVzaC5zY3JlZW4udjEuQ2xpcGJvYXJkSABCBwoFZXZlbnQiJwoGRm9ybWF0Eg0KBXdpZHRoGAEgASgNEg4KBmhlaWdodBgCIAEoDSI7CgVTdGF0ZRINCgVlcnJvchgBIAEoCRIOCgZkZXRhaWwYAiABKAkSEwoLY2FuX2NvbnRyb2wYAyABKAgqWgoLTW91c2VCdXR0b24SHAoYTU9VU0VfQlVUVE9OX1VOU1BFQ0lGSUVEEAASFQoRTU9VU0VfQlVUVE9OX0xFRlQQARIWChJNT1VTRV9CVVRUT05fUklHSFQQAirOAgoITmFtZWRLZXkSGQoVTkFNRURfS0VZX1VOU1BFQ0lGSUVEEAASFAoQTkFNRURfS0VZX1JFVFVSThABEhEKDU5BTUVEX0tFWV9UQUIQAhITCg9OQU1FRF9LRVlfU1BBQ0UQAxIXChNOQU1FRF9LRVlfQkFDS1NQQUNFEAQSFAoQTkFNRURfS0VZX0VTQ0FQRRAFEhIKDk5BTUVEX0tFWV9MRUZUEAYSEwoPTkFNRURfS0VZX1JJR0hUEAcSEgoOTkFNRURfS0VZX0RPV04QCBIQCgxOQU1FRF9LRVlfVVAQCRIUChBOQU1FRF9LRVlfREVMRVRFEAoSEgoOTkFNRURfS0VZX0hPTUUQCxIRCg1OQU1FRF9LRVlfRU5EEAwSFQoRTkFNRURfS0VZX1BBR0VfVVAQDRIXChNOQU1FRF9LRVlfUEFHRV9ET1dOEA4qQQoFUGFzdGUSFQoRUEFTVEVfVU5TUEVDSUZJRUQQABINCglQQVNURV9BUFAQARISCg5QQVNURV9URVJNSU5BTBACMmEKDVNjcmVlblNlcnZpY2USUAoHQ29ubmVjdBIhLmhlcm1lc2guc2NyZWVuLnYxLkNvbm5lY3RSZXF1ZXN0GiIuaGVybWVzaC5zY3JlZW4udjEuQ29ubmVjdFJlc3BvbnNlYgZwcm90bzM");
 
 /**
  * @generated from message hermesh.screen.v1.ConnectRequest
@@ -124,6 +124,12 @@ export type Input = Message<"hermesh.screen.v1.Input"> & {
      */
     value: ShowPointer;
     case: "showPointer";
+  } | {
+    /**
+     * @generated from field: hermesh.screen.v1.Clipboard clipboard = 7;
+     */
+    value: Clipboard;
+    case: "clipboard";
   } | { case: undefined; value?: undefined };
 };
 
@@ -289,6 +295,15 @@ export type Text = Message<"hermesh.screen.v1.Text"> & {
    * @generated from field: string text = 1;
    */
   text: string;
+
+  /**
+   * How the machine pastes what it can't type as keys (GNOME takes no
+   * character its keyboard layout lacks: those are pasted): as an app
+   * pastes, or as a terminal does.
+   *
+   * @generated from field: hermesh.screen.v1.Paste paste = 2;
+   */
+  paste: Paste;
 };
 
 /**
@@ -297,6 +312,33 @@ export type Text = Message<"hermesh.screen.v1.Text"> & {
  */
 export const TextSchema: GenMessage<Text> = /*@__PURE__*/
   messageDesc(file_hermesh_screen_v1_screen, 7);
+
+/**
+ * Text on a clipboard. From the viewer: the phone's clipboard, given to
+ * the machine's, then pasted there as paste says. From the machine (in a
+ * ScreenEvent): what was copied there while the viewer was in control.
+ * At most clipboardMax bytes (60000: a data channel message).
+ *
+ * @generated from message hermesh.screen.v1.Clipboard
+ */
+export type Clipboard = Message<"hermesh.screen.v1.Clipboard"> & {
+  /**
+   * @generated from field: string text = 1;
+   */
+  text: string;
+
+  /**
+   * @generated from field: hermesh.screen.v1.Paste paste = 2;
+   */
+  paste: Paste;
+};
+
+/**
+ * Describes the message hermesh.screen.v1.Clipboard.
+ * Use `create(ClipboardSchema)` to create a new message.
+ */
+export const ClipboardSchema: GenMessage<Clipboard> = /*@__PURE__*/
+  messageDesc(file_hermesh_screen_v1_screen, 8);
 
 /**
  * Whether the picture has the pointer in it, from now on.
@@ -315,7 +357,7 @@ export type ShowPointer = Message<"hermesh.screen.v1.ShowPointer"> & {
  * Use `create(ShowPointerSchema)` to create a new message.
  */
 export const ShowPointerSchema: GenMessage<ShowPointer> = /*@__PURE__*/
-  messageDesc(file_hermesh_screen_v1_screen, 8);
+  messageDesc(file_hermesh_screen_v1_screen, 9);
 
 /**
  * What the machine tells the viewer, on the "input" channel.
@@ -338,6 +380,12 @@ export type ScreenEvent = Message<"hermesh.screen.v1.ScreenEvent"> & {
      */
     value: State;
     case: "state";
+  } | {
+    /**
+     * @generated from field: hermesh.screen.v1.Clipboard clipboard = 3;
+     */
+    value: Clipboard;
+    case: "clipboard";
   } | { case: undefined; value?: undefined };
 };
 
@@ -346,7 +394,7 @@ export type ScreenEvent = Message<"hermesh.screen.v1.ScreenEvent"> & {
  * Use `create(ScreenEventSchema)` to create a new message.
  */
 export const ScreenEventSchema: GenMessage<ScreenEvent> = /*@__PURE__*/
-  messageDesc(file_hermesh_screen_v1_screen, 9);
+  messageDesc(file_hermesh_screen_v1_screen, 10);
 
 /**
  * The picture's size in pixels.
@@ -370,7 +418,7 @@ export type Format = Message<"hermesh.screen.v1.Format"> & {
  * Use `create(FormatSchema)` to create a new message.
  */
 export const FormatSchema: GenMessage<Format> = /*@__PURE__*/
-  messageDesc(file_hermesh_screen_v1_screen, 10);
+  messageDesc(file_hermesh_screen_v1_screen, 11);
 
 /**
  * Why there is no picture, or what the viewer can't do.
@@ -405,7 +453,7 @@ export type State = Message<"hermesh.screen.v1.State"> & {
  * Use `create(StateSchema)` to create a new message.
  */
 export const StateSchema: GenMessage<State> = /*@__PURE__*/
-  messageDesc(file_hermesh_screen_v1_screen, 11);
+  messageDesc(file_hermesh_screen_v1_screen, 12);
 
 /**
  * @generated from enum hermesh.screen.v1.MouseButton
@@ -518,6 +566,41 @@ export enum NamedKey {
  */
 export const NamedKeySchema: GenEnum<NamedKey> = /*@__PURE__*/
   enumDesc(file_hermesh_screen_v1_screen, 1);
+
+/**
+ * How the machine pastes: the shortcut it presses once its clipboard holds
+ * the text.
+ *
+ * @generated from enum hermesh.screen.v1.Paste
+ */
+export enum Paste {
+  /**
+   * Not at all: the text only goes to the machine's clipboard.
+   *
+   * @generated from enum value: PASTE_UNSPECIFIED = 0;
+   */
+  UNSPECIFIED = 0,
+
+  /**
+   * As an app pastes: Command-V on a Mac, Ctrl+V on Linux.
+   *
+   * @generated from enum value: PASTE_APP = 1;
+   */
+  APP = 1,
+
+  /**
+   * As a terminal pastes: Ctrl+Shift+V on Linux, Command-V on a Mac.
+   *
+   * @generated from enum value: PASTE_TERMINAL = 2;
+   */
+  TERMINAL = 2,
+}
+
+/**
+ * Describes the enum hermesh.screen.v1.Paste.
+ */
+export const PasteSchema: GenEnum<Paste> = /*@__PURE__*/
+  enumDesc(file_hermesh_screen_v1_screen, 2);
 
 /**
  * Computer Control (docs/computer-control.md): the owner's devices see and
