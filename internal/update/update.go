@@ -43,14 +43,15 @@ var (
 
 // Programs are the programs an update replaces, where they are (Windows:
 // with hermeshdw, the windowless hermeshd its service runs; elsewhere with
-// her, Her's kernel, which hermeshd runs from beside itself).
+// her, Her's kernel, and hermesh-screen, Computer Control's helper, which
+// hermeshd runs from beside itself).
 var Programs = programs()
 
 func programs() []string {
 	if runtime.GOOS == "windows" {
 		return []string{"hermeshd.exe", "hermeshdw.exe", "hermesh.exe"}
 	}
-	return []string{"hermeshd", "hermesh", "her"}
+	return []string{"hermeshd", "hermesh", "her", "hermesh-screen"}
 }
 
 // herConsole is the folder of her's console beside her, and
@@ -194,7 +195,7 @@ func Install(ctx context.Context, dataDir, dir string, r *Release) ([]string, er
 	defer lock.Release()
 	var names []string
 	for _, name := range Programs {
-		if _, err := os.Stat(filepath.Join(dir, name)); err == nil && (name != "her" || r.sums[asset(name)] != "") {
+		if _, err := os.Stat(filepath.Join(dir, name)); err == nil && (!ownVersion(name) || r.sums[asset(name)] != "") {
 			names = append(names, name)
 		}
 	}
@@ -272,9 +273,9 @@ func download(ctx context.Context, dir, name string, r *Release) error {
 	}
 	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
 	defer cancel()
-	if name == "her" { // her has a version of its own
+	if ownVersion(name) {
 		if out, err := exec.CommandContext(ctx, tmp, "--version").Output(); err != nil {
-			return fmt.Errorf("the downloaded her does not start: %v %s", err, bytes.TrimSpace(out))
+			return fmt.Errorf("the downloaded %s does not start: %v %s", name, err, bytes.TrimSpace(out))
 		}
 		return nil
 	}
@@ -284,6 +285,10 @@ func download(ctx context.Context, dir, name string, r *Release) error {
 	}
 	return nil
 }
+
+// ownVersion: her and hermesh-screen have versions of their own, and go
+// only from a release that carries them.
+func ownVersion(name string) bool { return name == "her" || name == "hermesh-screen" }
 
 // unpack writes the folders and files of a .tar.gz into dir.
 func unpack(body []byte, dir string) error {

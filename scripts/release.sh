@@ -4,11 +4,13 @@
 # the public key. Windows also gets hermeshdw, hermeshd without a console
 # window, which its background service runs (docs/windows.md §4.4). Linux
 # also gets her, Her's kernel, and her console, built beforehand, which
-# install.sh puts beside hermeshd (docs/her-server.md §6.4).
+# install.sh puts beside hermeshd (docs/her-server.md §6.4), and
+# hermesh-screen, Computer Control's helper (docs/computer-control-linux.md).
 #   RELEASE_SIGNING_KEY_FILE  path to the ECDSA P-256 private key (PEM)
 #   VERSION                   e.g. v0.1.0
 #   HER_LINUX_AMD64, HER_LINUX_ARM64  her for Linux, static with musl
 #   HER_CONSOLE               her console's built files (her/apps/console/dist)
+#   SCREEN_LINUX_AMD64, SCREEN_LINUX_ARM64  hermesh-screen for Linux (apps/screen/linux/build-release.sh)
 set -euo pipefail
 cd "$(dirname "$0")/.."
 VERSION="${VERSION:?set VERSION}"
@@ -30,6 +32,8 @@ for arch in arm64 amd64; do
 done
 [ -z "${HER_LINUX_AMD64:-}" ] || install -m 0755 "$HER_LINUX_AMD64" "$OUT/her-linux-amd64"
 [ -z "${HER_LINUX_ARM64:-}" ] || install -m 0755 "$HER_LINUX_ARM64" "$OUT/her-linux-arm64"
+[ -z "${SCREEN_LINUX_AMD64:-}" ] || install -m 0755 "$SCREEN_LINUX_AMD64" "$OUT/hermesh-screen-linux-amd64"
+[ -z "${SCREEN_LINUX_ARM64:-}" ] || install -m 0755 "$SCREEN_LINUX_ARM64" "$OUT/hermesh-screen-linux-arm64"
 [ -z "${HER_CONSOLE:-}" ] || COPYFILE_DISABLE=1 tar -czf "$OUT/her-console.tar.gz" -C "$HER_CONSOLE" .
 # The version, signed with the programs, for installed ones to update (docs/machine-updates.md).
 printf '%s\n' "${VERSION#v}" > "$OUT/version"

@@ -2,7 +2,8 @@
 # Hermesh installer. Downloads release binaries from GitHub Releases,
 # verifies them against a signed checksum list, installs them under
 # ~/.local/bin (a Linux machine: with her and her-console/, Her's kernel and
-# its console) and (for machines) starts pairing.
+# its console, and hermesh-screen, Computer Control's helper) and (for
+# machines) starts pairing.
 #
 #   Add a machine:   curl -fsSL https://github.com/hermeshai/hermesh/releases/latest/download/install.sh | sh -s -- [connection address]
 #                    (without one: $HERMESH_CENTER, else the official center https://hermesh.io)
@@ -329,6 +330,12 @@ if [ "$MODE" = machine ] && grep -q " her-$OS-$ARCH\$" "$TMP/checksums.txt"; the
   rm -rf "$BIN_DIR/her-console"
   cp -R "$TMP/her-console" "$BIN_DIR/her-console"
   [ -z "$AS" ] || chown -R "$FOR_USER:$(id -gn "$FOR_USER")" "$BIN_DIR/her-console"
+fi
+# Computer Control's helper, beside hermeshd, which starts it while one of
+# the owner's devices sees this screen (docs/computer-control-linux.md).
+if [ "$MODE" = machine ] && grep -q " hermesh-screen-$OS-$ARCH\$" "$TMP/checksums.txt"; then
+  fetch "hermesh-screen-$OS-$ARCH"
+  put "$TMP/hermesh-screen-$OS-$ARCH" "$BIN_DIR/hermesh-screen"
 fi
 echo "✓ installed to $BIN_DIR"
 if [ -z "$AS" ]; then

@@ -11,6 +11,9 @@ final class ScreenKeyField: UITextField, UITextFieldDelegate {
     var onDismiss: (() -> Void)?
     private let bar = ScreenKeyBar()
 
+    /// The row names the keys as a Linux desktop does.
+    func useLinuxModifiers() { bar.useLinuxModifiers() }
+
     override init(frame: CGRect) {
         // A point nobody sees: not hidden, which would take it out of the keyboard's and VoiceOver's reach.
         super.init(frame: CGRect(x: 0, y: 0, width: 1, height: 1))
@@ -95,12 +98,13 @@ struct ScreenModifiers {
 final class ScreenKeyBar: UIInputView {
     var onKey: ((Hermesh_Screen_V1_NamedKey) -> Void)?
     var onHide: (() -> Void)?
+    /// ⌘, ⌥, ⌃ and ⇧, in the order takeModifiers reads them.
     private var modifiers: [UIButton] = []
+    private let stack = UIStackView()
 
     init() {
         super.init(frame: CGRect(x: 0, y: 0, width: 320, height: 48), inputViewStyle: .keyboard)
         allowsSelfSizing = true
-        let stack = UIStackView()
         stack.axis = .horizontal
         stack.spacing = 6
         stack.alignment = .center
@@ -156,6 +160,16 @@ final class ScreenKeyBar: UIInputView {
     required init?(coder: NSCoder) { fatalError() }
 
     override var intrinsicContentSize: CGSize { CGSize(width: UIView.noIntrinsicMetric, height: 48) }
+
+    /// useLinuxModifiers names the modifiers Ctrl, Alt, Super and ⇧, in that
+    /// order: they are sent as control, option and command.
+    func useLinuxModifiers() {
+        for (b, title) in zip(modifiers, ["Super", "Alt", "Ctrl", "⇧"]) { b.configuration?.title = title }
+        for (i, b) in [modifiers[2], modifiers[1], modifiers[0], modifiers[3]].enumerated() {
+            stack.removeArrangedSubview(b)
+            stack.insertArrangedSubview(b, at: 2 + i)
+        }
+    }
 
     /// The modifiers held, which let go with the key they are taken for.
     func takeModifiers() -> ScreenModifiers {

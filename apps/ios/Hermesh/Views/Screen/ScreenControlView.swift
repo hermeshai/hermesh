@@ -21,6 +21,8 @@ enum ScreenOrientation {
 final class ScreenSession {
     let machineID: String
     let machineName: String
+    /// The machine is a Linux one: its keys are Ctrl, Alt and Super, and its texts are its own.
+    let linux: Bool
 
     /// The connection, as the core last reported it.
     var link = ScreenLink()
@@ -28,8 +30,10 @@ final class ScreenSession {
     var live = false
     /// Why the session ended; nil while it lasts.
     var ended: String?
-    /// Why the machine has no picture ("screen_recording", …), or empty.
+    /// Why the machine has no picture ("screen_recording", "consent", "locked", …), or empty.
     var machineError = ""
+    /// What the machine said with it.
+    var machineDetail = ""
     /// Whether the machine can post input; false leaves the owner watching.
     var canControl = true
     var keyboard = false {
@@ -57,14 +61,16 @@ final class ScreenSession {
     @ObservationIgnored private var connection: ScreenConnection?
     @ObservationIgnored private var endpoint: (port: Int, token: String)?
 
-    init(machineID: String, machineName: String) {
+    init(machineID: String, machineName: String, linux: Bool = false) {
         self.machineID = machineID
         self.machineName = machineName
+        self.linux = linux
         mode = ScreenMode(rawValue: UserDefaults.standard.string(forKey: "screen-mode") ?? "") ?? .direct
         surface.mode = mode
         surface.send = { [weak self] in self?.connection?.send($0) }
         surface.keys.send = { [weak self] in self?.connection?.send($0) }
         surface.keys.onDismiss = { [weak self] in self?.keyboard = false }
+        if linux { surface.keys.useLinuxModifiers() }
         surface.picture.onFirstFrame = { [weak self] in
             self?.live = true
             self?.surface.accessibilityValue = "live"
@@ -86,6 +92,7 @@ final class ScreenSession {
         link = ScreenLink()
         ended = nil
         machineError = ""
+        machineDetail = ""
         let c = ScreenConnection()
         connection = c
         let picture = surface.picture
@@ -98,6 +105,7 @@ final class ScreenSession {
                 case .format(let f): self.surface.contentSize = CGSize(width: Int(f.width), height: Int(f.height))
                 case .state(let s):
                     self.machineError = s.error == "ended" ? "" : s.error
+                    self.machineDetail = s.detail
                     self.canControl = s.canControl
                 case nil: break
                 }
@@ -158,8 +166,24 @@ struct ScreenControlView: View {
                        String(localized: "On that Mac, open System Settings › Privacy & Security › Screen & System Audio Recording and turn on Hermesh. Then connect again.")) {
                     Button("Reconnect") { session.reconnect() }.buttonStyle(.borderedProminent)
                 }
+            } else if session.machineError == "consent" {
+                // The desktop asks at the computer, the first time (docs/computer-control-linux.md §3.2).
+                notice(String(localized: "\(session.machineName) is asking at its screen"),
+                       String(localized: "Someone at that computer allows it there, once. After that it connects without asking.")) {
+                    Button("Reconnect") { session.reconnect() }.buttonStyle(.borderedProminent)
+                }
+            } else if session.machineError == "locked" {
+                notice(String(localized: "\(session.machineName) is locked"),
+                       String(localized: "GNOME shares no locked screen. Unlock it at the computer, then connect again.")) {
+                    Button("Reconnect") { session.reconnect() }.buttonStyle(.borderedProminent)
+                }
+            } else if session.machineError == "no_display" {
+                notice(String(localized: "\(session.machineName) has no desktop running"),
+                       String(localized: "Log in to its desktop, then connect again.")) {
+                    Button("Reconnect") { session.reconnect() }.buttonStyle(.borderedProminent)
+                }
             } else if !session.machineError.isEmpty {
-                notice(String(localized: "\(session.machineName) can’t show its screen"), session.machineError) {
+                notice(String(localized: "\(session.machineName) can’t show its screen"), session.machineDetail.isEmpty ? session.machineError : session.machineDetail) {
                     Button("Reconnect") { session.reconnect() }.buttonStyle(.borderedProminent)
                 }
             } else if !session.live {
@@ -171,7 +195,8 @@ struct ScreenControlView: View {
         }
         .overlay(alignment: .top) {
             if session.live, session.ended == nil, !session.canControl {
-                Text("You can watch, not control: on \(session.machineName), turn on Accessibility for hermeshd.")
+                Text(session.linux ? String(localized: "You can watch, not control: \(session.machineName) shares its screen without its keyboard and mouse.")
+                     : String(localized: "You can watch, not control: on \(session.machineName), turn on Accessibility for hermeshd."))
                     .font(.footnote)
                     .foregroundStyle(.white)
                     .multilineTextAlignment(.center)
@@ -210,7 +235,7 @@ struct ScreenControlView: View {
     /// Why the session ended, in the owner's words where the core's are known.
     private func reason(_ ended: String) -> String {
         switch ended {
-        case "the machine ended the session": String(localized: "Another device took over, or the session was stopped on that Mac.")
+        case "the machine ended the session": String(localized: "Another device took over, or the session was stopped on \(session.machineName).")
         case "the connection to the machine was lost": String(localized: "The connection to \(session.machineName) was lost.")
         default: ended
         }

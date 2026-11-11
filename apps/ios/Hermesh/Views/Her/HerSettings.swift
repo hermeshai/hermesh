@@ -204,7 +204,7 @@ struct HerSettings: View {
     private func openControl(_ machine: HerMachine) {
         Task {
             guard await Authentication.confirm(String(localized: "Control \(machine.machineName)")) != nil else { return }
-            control = ScreenSession(machineID: machine.machineID, machineName: machine.machineName)
+            control = ScreenSession(machineID: machine.machineID, machineName: machine.machineName, linux: machine.status.platform.hasPrefix("linux/"))
         }
     }
 
