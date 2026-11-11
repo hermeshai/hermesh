@@ -21,7 +21,8 @@ func TestScreenIsTheOwnersOnly(t *testing.T) {
 		t.Fatal("agents may call ScreenService")
 	}
 	helper := filepath.Join(t.TempDir(), "hermesh-screen")
-	if err := os.WriteFile(helper, []byte("#!/bin/sh\n"), 0o755); err != nil {
+	// On Linux the machine asks the helper whether a desktop is there (--status).
+	if err := os.WriteFile(helper, []byte("#!/bin/sh\necho '{\"available\":true,\"way\":\"test\"}'\n"), 0o755); err != nil {
 		t.Fatal(err)
 	}
 	n, err := Open(Config{DataDir: t.TempDir(), ScreenBin: helper, Providers: map[string]provider.Provider{}})
