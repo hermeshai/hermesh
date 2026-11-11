@@ -340,9 +340,15 @@ key.
   inside `hermesh-relay`, on one port, UDP and TCP:
   `--turn-listen :3478` (`HERMESH_RELAY_TURN_LISTEN`) turns it on, and
   `--turn-host` (`HERMESH_RELAY_TURN_HOST`) names the address devices and
-  machines reach it by, the relay's own by default. A self-hosted relay
-  publishes that port beside 443:
-  `-p 3478:3478/udp -p 3478:3478/tcp -e HERMESH_RELAY_TURN_LISTEN=:3478`.
+  machines reach it by, the relay's own by default.
+- Each forwarded session takes a UDP port of its own besides that one,
+  where the relay sends and takes the packets for it. `--turn-ports
+  49160-49200` (`HERMESH_RELAY_TURN_PORTS`) keeps them in a range a
+  firewall opens; without it they are any free port, which a relay behind
+  a firewall or in a container cannot be reached on. A self-hosted relay
+  in Docker publishes both beside 443:
+  `-p 3478:3478/udp -p 3478:3478/tcp -p 49160-49200:49160-49200/udp
+  -e HERMESH_RELAY_TURN_LISTEN=:3478 -e HERMESH_RELAY_TURN_PORTS=49160-49200`.
 - TURN credentials come from the relay's control services
   (`GetScreenServers`), last an hour, and go to admitted devices and
   machines only.
@@ -351,8 +357,9 @@ key.
 - The relay counts the bytes that pass the port
   (`hermesh_relay_turn_bytes_total`). It stores nothing about a session.
 - Without the port the feature still works wherever a direct path exists.
-- A relay on several nodes runs a TURN server on each, named by that
-  node's own address.
+- A relay on several nodes behind one public address (the hosted
+  center) runs the server on one node: the others hand out credentials for
+  it (`TURNConfig` with no `Listen`), signed with a secret the nodes share.
 
 ## 8. What we build
 

@@ -224,7 +224,11 @@ func New(cfg Config) (*Server, error) {
 			return nil, err
 		}
 		s.turn = t
-		s.log.Info("STUN and TURN listening", "addr", cfg.TURN.Listen, "host", cfg.TURN.Host)
+		if cfg.TURN.Listen != "" {
+			s.log.Info("STUN and TURN listening", "addr", cfg.TURN.Listen, "host", t.host, "relay ports", fmt.Sprintf("%d-%d", cfg.TURN.MinPort, cfg.TURN.MaxPort))
+		} else {
+			s.log.Info("STUN and TURN on another node", "host", t.host)
+		}
 	}
 	if s.cluster != nil {
 		if s.sqlite != nil {
@@ -240,9 +244,7 @@ func New(cfg Config) (*Server, error) {
 
 func (s *Server) Close() error {
 	s.stopOnce.Do(func() { close(s.stop) })
-	if s.turn != nil {
-		s.turn.srv.Close()
-	}
+	s.turn.close()
 	return s.store.Close()
 }
 
