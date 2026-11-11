@@ -1,3 +1,4 @@
+import HermeshHer
 import HermeshProto
 import HermeshSessions
 import SwiftUI
@@ -162,6 +163,7 @@ struct MachineView: View {
     @State private var renaming = false
     @State private var newName = ""
     @State private var confirmRemove = false
+    @State private var erasingHer = false
     @State private var removeProject: Project?
     @State private var checking = false
     @State private var help: Help?
@@ -262,6 +264,14 @@ struct MachineView: View {
             } footer: {
                 if m.online && m.status.paused { Text("Running sessions go on; no new ones start here.") }
             }
+            if !m.her.enabled && herData(m) && herReachable(m) {
+                Section {
+                    Button("Erase Her’s Data…", role: .destructive) { erasingHer = true }
+                        .accessibilityIdentifier("machine-erase-her")
+                } footer: {
+                    Text("Her is off. Her’s data is still on this machine; turned on again, she carries on.")
+                }
+            }
             Section {
                 let platform = platformText(m.status.platform)
                 if !platform.isEmpty { LabeledContent("Operating System", value: platform) }
@@ -326,16 +336,32 @@ struct MachineView: View {
         } message: {
             Text("Agents find projects as “machine/project” and will see the new name. Use lowercase letters, digits and -.")
         }
+        // Her running there or her data kept: it can go too, while the machine answers (docs/her-server.md §5.6).
         .confirmationDialog(device(m).map { String(localized: "Remove the trusted device “\($0.label)”?") } ?? String(localized: "Remove the machine “\(m.machineName)”?"), isPresented: $confirmRemove, titleVisibility: .visible) {
-            Button("Remove", role: .destructive) {
-                if let d = device(m) { Task { await model.removeDevice(d) } } else { Task { await model.remove(m) } }
+            if hasHer(m) && herReachable(m) {
+                Button("Remove, Keep Her’s Data", role: .destructive) { remove(m, eraseHer: false) }
+                Button("Remove and Erase Her’s Data", role: .destructive) { remove(m, eraseHer: true) }
+            } else {
+                Button("Remove", role: .destructive) { remove(m, eraseHer: false) }
             }
         } message: {
-            if device(m) != nil {
-                Text("This device will immediately lose approval rights and its own machine will be removed. Machines and agents it previously approved will be re-signed by this iPhone so they keep working (requires Face ID).")
+            let base = device(m) != nil
+                ? String(localized: "This device will immediately lose approval rights and its own machine will be removed. Machines and agents it previously approved will be re-signed by this iPhone so they keep working (requires Face ID).")
+                : String(localized: "This machine will disconnect immediately and running sessions will stop. You will need to pair it again to reconnect.")
+            if !hasHer(m) {
+                Text(base)
+            } else if herReachable(m) {
+                Text(base + "\n\n" + String(localized: "Kept, Her’s data stays on it. Erasing deletes her assistants, conversations, memory, routines, files, connectors and model logins there, and can’t be undone."))
             } else {
-                Text("This machine will disconnect immediately and running sessions will stop. You will need to pair it again to reconnect.")
+                Text(base + "\n\n" + String(localized: "Her’s data stays on it: it’s offline, so it can’t be erased now."))
             }
+        }
+        .confirmationDialog("Erase Her’s data on “\(m.machineName)”?", isPresented: $erasingHer, titleVisibility: .visible) {
+            Button("Erase", role: .destructive) {
+                Task { if await model.eraseHer(m) { model.show(String(localized: "Her’s data on \(m.machineName) is erased")) } }
+            }
+        } message: {
+            Text("Her’s assistants, conversations, memory, routines, files, connectors and model logins on \(m.machineName) are deleted. This can’t be undone.")
         }
         .confirmationDialog(removeProject.map { String(localized: "Remove project “\($0.projectID)”?") } ?? "", isPresented: Binding(get: { removeProject != nil }, set: { if !$0 { removeProject = nil } }), titleVisibility: .visible) {
             Button("Remove", role: .destructive) {
@@ -383,6 +409,22 @@ struct MachineView: View {
 
     /// The trusted device this machine is, if it is one.
     private func device(_ m: Machine) -> Device? { model.devices.first { $0.machineID == m.machineID } }
+
+    /// Her runs on it, or her data is still there.
+    private func hasHer(_ m: Machine) -> Bool { m.her.enabled || herData(m) }
+
+    /// Removes it; with eraseHer, Her's data there is erased first. A trusted device's removal can't take that
+    /// along, so it is turned off with her data erased, then removed.
+    private func remove(_ m: Machine, eraseHer: Bool) {
+        Task {
+            if let d = device(m) {
+                if eraseHer, await !model.eraseHer(m) { return }
+                await model.removeDevice(d)
+            } else {
+                await model.remove(m, eraseHer: eraseHer)
+            }
+        }
+    }
 
     /// An installed agent: whether it is signed in, how many projects it may
     /// work in, and its defaults when set.
