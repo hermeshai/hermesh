@@ -352,6 +352,9 @@ func TestPushNoticeWaitsForRelay(t *testing.T) {
 	if testing.Short() {
 		t.Skip("e2e")
 	}
+	// Mostly waiting (for pings to go unanswered): it runs beside the other
+	// tests that are, after the rest of the suite.
+	t.Parallel()
 	fake := filepath.Join(binaries(t), "fakeacp")
 	w := newOwnerMac(t, []string{"HERMESH_GEMINI_BIN=" + fake, "FAKE_ACP_STATE=" + filepath.Join(t.TempDir(), "fakeacp")},
 		&localv1.GrantSpec{Agents: []string{"gemini"}})

@@ -42,6 +42,9 @@ func TestFrozenMachineNoticed(t *testing.T) {
 	if testing.Short() {
 		t.Skip("e2e")
 	}
+	// Mostly waiting (for pings to go unanswered): it runs beside the other
+	// tests that are, after the rest of the suite.
+	t.Parallel()
 	w, vpsID, _ := farOwnerWithVPS(t, 0)
 	vps := procNamed(t, w, "vps-1")
 	ctx, cancel := context.WithCancel(context.Background())
@@ -81,6 +84,9 @@ func TestMachineBackAfterDeadLink(t *testing.T) {
 	if testing.Short() {
 		t.Skip("e2e")
 	}
+	// Mostly waiting (for pings to go unanswered): it runs beside the other
+	// tests that are, after the rest of the suite.
+	t.Parallel()
 	env := []string{"HERMESH_FAKE_PROVIDERS=1"}
 	w := newOwnerMac(t, env, &localv1.GrantSpec{})
 	ctx, cancel := context.WithCancel(context.Background())
