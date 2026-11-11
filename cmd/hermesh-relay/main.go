@@ -36,7 +36,7 @@ func main() {
 	var apnsKey, apnsKeyID, apnsTeam, apnsTopic, pushSpool string
 	var pairingTTL time.Duration
 	var pairingsPerMinute int
-	var turnListen, turnHost string
+	var turnListen, turnHost, turnPorts string
 	serve := &cobra.Command{
 		Use:   "serve",
 		Short: "Run the relay",
@@ -77,6 +77,11 @@ func main() {
 					}
 				}
 				turn = &relay.TURNConfig{Listen: turnListen, Host: host}
+				if turnPorts != "" {
+					if turn.MinPort, turn.MaxPort, err = relay.ParsePortRange(turnPorts); err != nil {
+						return fmt.Errorf("--turn-ports: %w", err)
+					}
+				}
 			}
 			srv, err := relay.New(relay.Config{DataDir: dataDir, Logger: log, Pusher: pusher, PairingTTL: pairingTTL, PairingsPerMinute: pairingsPerMinute, MCPURL: mcpURL, TURN: turn})
 			if err != nil {
@@ -153,6 +158,7 @@ func main() {
 	serve.Flags().StringVar(&listen, "listen", ":8080", "listen address (plain HTTP or with --tls-cert)")
 	serve.Flags().StringVar(&turnListen, "turn-listen", os.Getenv("HERMESH_RELAY_TURN_LISTEN"), "run the STUN and TURN server Computer Control connects through, on this UDP and TCP address (\":3478\"); empty runs none")
 	serve.Flags().StringVar(&turnHost, "turn-host", os.Getenv("HERMESH_RELAY_TURN_HOST"), "the name or address devices and machines reach the STUN and TURN server by (default: this relay's own)")
+	serve.Flags().StringVar(&turnPorts, "turn-ports", os.Getenv("HERMESH_RELAY_TURN_PORTS"), "the UDP ports forwarded sessions take, as 49160-49200, for a firewall to open (default: any)")
 	serve.Flags().StringVar(&domain, "domain", os.Getenv("HERMESH_RELAY_DOMAIN"), "serve HTTPS on :443 with an automatic Let's Encrypt certificate for this domain (or HERMESH_RELAY_DOMAIN)")
 	serve.Flags().StringVar(&certFile, "tls-cert", "", "TLS certificate file")
 	serve.Flags().StringVar(&keyFile, "tls-key", "", "TLS key file")

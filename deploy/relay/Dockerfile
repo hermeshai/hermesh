@@ -5,7 +5,8 @@
 # Without HERMESH_RELAY_DOMAIN it serves plain HTTP on :8080, for a proxy
 # that serves HTTPS (then set HERMESH_RELAY_PUBLIC_URL).
 # For Computer Control where the two ends don't reach each other directly, add
-#   -p 3478:3478/udp -p 3478:3478/tcp -e HERMESH_RELAY_TURN_LISTEN=:3478
+#   -p 3478:3478/udp -p 3478:3478/tcp -p 49160-49200:49160-49200/udp \
+#   -e HERMESH_RELAY_TURN_LISTEN=:3478 -e HERMESH_RELAY_TURN_PORTS=49160-49200
 # (docs/computer-control.md §7).
 # Built on the build platform for each target (linux/amd64, linux/arm64).
 FROM --platform=$BUILDPLATFORM golang:1.27 AS build
