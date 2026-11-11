@@ -16,9 +16,9 @@ import (
 // docs/computer-control-linux.md): whether the owner's devices can see and
 // operate its screen, and the switches a person at the machine has.
 func screenCommand(dataDir *string, open func() (*machine.Machine, error)) *cobra.Command {
-	cmd := &cobra.Command{Use: "screen", Short: "Computer Control: whether your devices can see and operate this screen",
-		Long: `Your trusted devices can see and operate this machine's screen (Computer
-Control in the iPhone app's Her settings). On Linux it works on X11, GNOME,
+	cmd := &cobra.Command{Use: "screen", Short: "Remote Desktop: whether your devices can see and operate this screen",
+		Long: `Your trusted devices can see and operate this machine's screen (Remote
+Desktop, in the iPhone app's Her settings). On Linux it works on X11, GNOME,
 Plasma and wlroots desktops (Sway, Hyprland and their kind).`,
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
@@ -27,7 +27,7 @@ Plasma and wlroots desktops (Sway, Hyprland and their kind).`,
 				return err
 			}
 			if c.Screen == nil {
-				fmt.Println("Computer Control is not installed on this machine")
+				fmt.Println("Remote Desktop is not installed on this machine")
 				return nil
 			}
 			fmt.Println(screenLine(c.Screen))
@@ -52,7 +52,7 @@ Plasma and wlroots desktops (Sway, Hyprland and their kind).`,
 					return err
 				}
 				machine.ControlRequest(cmd.Context(), filepath.Join(*dataDir, "machine"), "POST", "/screen/stop", nil)
-				fmt.Println("Computer Control is off on this machine")
+				fmt.Println("Remote Desktop is off on this machine")
 				return nil
 			}},
 		&cobra.Command{Use: "on", Short: "Let your devices see and operate this screen again", Args: cobra.NoArgs,
@@ -60,14 +60,14 @@ Plasma and wlroots desktops (Sway, Hyprland and their kind).`,
 				if err := os.Remove(machine.ScreenOffPath(filepath.Join(*dataDir, "machine"))); err != nil && !os.IsNotExist(err) {
 					return err
 				}
-				fmt.Println("Computer Control is on on this machine")
+				fmt.Println("Remote Desktop is on on this machine")
 				return nil
 			}},
 		&cobra.Command{Use: "allow", Short: "On Plasma: let Hermesh show this screen without asking each time", Args: cobra.NoArgs,
 			RunE: func(cmd *cobra.Command, _ []string) error {
 				bin := screenBin()
 				if bin == "" {
-					return errors.New("Computer Control is not installed on this machine")
+					return errors.New("Remote Desktop is not installed on this machine")
 				}
 				c := exec.CommandContext(cmd.Context(), bin, "--allow")
 				c.Stdout, c.Stderr = os.Stdout, os.Stderr
