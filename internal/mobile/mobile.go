@@ -52,7 +52,10 @@ func Start(dataDir string, log *slog.Logger) (*Core, error) {
 	var protocols http.Protocols
 	protocols.SetHTTP1(true)
 	protocols.SetUnencryptedHTTP2(true)
-	c.srv = &http.Server{Handler: c.authorize(o.LocalHandler()), Protocols: &protocols}
+	mux := http.NewServeMux()
+	mux.Handle("/", o.LocalHandler())
+	mux.Handle("/screen/", o.ScreenHandler()) // Computer Control's picture and input (owner.ScreenHandler)
+	c.srv = &http.Server{Handler: c.authorize(mux), Protocols: &protocols}
 	c.mu.Lock()
 	c.serveLocked(ln)
 	c.mu.Unlock()

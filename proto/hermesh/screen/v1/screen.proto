@@ -1,0 +1,147 @@
+syntax = "proto3";
+
+package hermesh.screen.v1;
+
+// Computer Control (docs/computer-control.md): the owner's devices see and
+// operate a Mac that runs hermeshd. The picture and the input travel between
+// the two ends as WebRTC, directly where a path exists. ScreenService is only
+// the handshake: it is served by the machine's hermeshd over the end-to-end
+// tunnel, to the owner's devices only (agents get PermissionDenied), so the
+// relay can neither read nor replace what the two ends agree on.
+service ScreenService {
+  // Starts a session, or moves a live one to another network path. The
+  // viewer sends its offer with its candidates gathered, the machine
+  // answers with its own. The offer asks for one video track and opens the
+  // data channels "input" (ordered, reliable: Input from the viewer,
+  // ScreenEvent from the machine) and "pointer" (unordered, unreliable:
+  // Input holding a Move). A machine serves one viewer: a new session ends
+  // the one before.
+  rpc Connect(ConnectRequest) returns (ConnectResponse);
+}
+
+message ConnectRequest {
+  // The viewer's SDP offer.
+  string offer = 1;
+  // Empty for a new session. A live session's id for an offer that restarts
+  // ICE (the viewer's network changed).
+  string session_id = 2;
+  // The viewer's name, for the notice on the machine.
+  string viewer = 3;
+  // Whether the picture has the pointer in it. A viewer that draws its own
+  // (trackpad mode) asks for none.
+  bool pointer = 4;
+}
+
+message ConnectResponse {
+  // The machine's SDP answer.
+  string answer = 1;
+  string session_id = 2;
+}
+
+// What the viewer does, sent on a data channel. Positions are fractions of
+// the display, from its top left corner.
+message Input {
+  oneof event {
+    Move move = 1;
+    Button button = 2;
+    Wheel wheel = 3;
+    Key key = 4;
+    Text text = 5;
+    ShowPointer show_pointer = 6;
+  }
+}
+
+// The pointer moved. While a button is down it drags.
+message Move {
+  double x = 1;
+  double y = 2;
+}
+
+enum MouseButton {
+  MOUSE_BUTTON_UNSPECIFIED = 0;
+  MOUSE_BUTTON_LEFT = 1;
+  MOUSE_BUTTON_RIGHT = 2;
+}
+
+// A mouse button went down or up.
+message Button {
+  double x = 1;
+  double y = 2;
+  MouseButton button = 3;
+  bool down = 4;
+  // 1 for a click, 2 for the second click of a double click.
+  uint32 clicks = 5;
+}
+
+// Scrolling, in points of the display: positive dy moves down the page.
+message Wheel {
+  double x = 1;
+  double y = 2;
+  double dx = 3;
+  double dy = 4;
+}
+
+enum NamedKey {
+  NAMED_KEY_UNSPECIFIED = 0;
+  NAMED_KEY_RETURN = 1;
+  NAMED_KEY_TAB = 2;
+  NAMED_KEY_SPACE = 3;
+  NAMED_KEY_BACKSPACE = 4;
+  NAMED_KEY_ESCAPE = 5;
+  NAMED_KEY_LEFT = 6;
+  NAMED_KEY_RIGHT = 7;
+  NAMED_KEY_DOWN = 8;
+  NAMED_KEY_UP = 9;
+  NAMED_KEY_DELETE = 10;
+  NAMED_KEY_HOME = 11;
+  NAMED_KEY_END = 12;
+  NAMED_KEY_PAGE_UP = 13;
+  NAMED_KEY_PAGE_DOWN = 14;
+}
+
+// One key pressed and released, with the modifiers held meanwhile: a named
+// key, or the key that types character on the standard layout (a shortcut
+// such as Command-C).
+message Key {
+  NamedKey key = 1;
+  string character = 2;
+  bool command = 3;
+  bool option = 4;
+  bool control = 5;
+  bool shift = 6;
+}
+
+// Text entered as it is, whatever keyboard the machine has selected.
+message Text {
+  string text = 1;
+}
+
+// Whether the picture has the pointer in it, from now on.
+message ShowPointer {
+  bool shown = 1;
+}
+
+// What the machine tells the viewer, on the "input" channel.
+message ScreenEvent {
+  oneof event {
+    Format format = 1;
+    State state = 2;
+  }
+}
+
+// The picture's size in pixels.
+message Format {
+  uint32 width = 1;
+  uint32 height = 2;
+}
+
+// Why there is no picture, or what the viewer can't do.
+message State {
+  // Empty while the picture comes. Else: "screen_recording" (the permission
+  // is off on the machine), "no_display", "capture", "encoder", "ended"
+  // (another viewer took over, or the machine stopped the session).
+  string error = 1;
+  string detail = 2;
+  // Whether the machine can post the viewer's input (Accessibility).
+  bool can_control = 3;
+}

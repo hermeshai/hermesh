@@ -144,6 +144,10 @@ service LocalService {
   // The address of a machine's Her console, served by this hermeshd on
   // 127.0.0.1 with a token in its path.
   rpc GetHerConsole(GetHerConsoleRequest) returns (GetHerConsoleResponse);
+  // Ends the Computer Control session on this computer's own machine, if
+  // one is under way (docs/computer-control.md §4.3): the Mac's menu bar
+  // names the device in control and offers this.
+  rpc StopScreen(StopScreenRequest) returns (StopScreenResponse);
 
   // Projects.
   rpc ListProjects(ListProjectsRequest) returns (ListProjectsResponse);
@@ -1284,6 +1288,10 @@ message HerDownloadRequest {
 message HerDownloadResponse {
   string local_path = 1;
 }
+
+message StopScreenRequest {}
+
+message StopScreenResponse {}
 
 message GetHerConsoleRequest {
   string machine_id = 1;

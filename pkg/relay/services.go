@@ -701,6 +701,14 @@ func (o *ownerControl) GetAccount(ctx context.Context, _ *relayv1.GetAccountRequ
 	return res, nil
 }
 
+func (o *ownerControl) GetScreenServers(ctx context.Context, _ *relayv1.GetScreenServersRequest) (*relayv1.GetScreenServersResponse, error) {
+	return &relayv1.GetScreenServersResponse{Servers: o.s.turn.servers(peerFrom(ctx).subject.ID)}, nil
+}
+
+func (n *machineControl) GetScreenServers(ctx context.Context, _ *relayv1.GetScreenServersRequest) (*relayv1.GetScreenServersResponse, error) {
+	return &relayv1.GetScreenServersResponse{Servers: n.s.turn.servers(peerFrom(ctx).subject.ID)}, nil
+}
+
 func (o *ownerControl) GetMCP(context.Context, *relayv1.GetMCPRequest) (*relayv1.GetMCPResponse, error) {
 	return &relayv1.GetMCPResponse{Url: o.s.cfg.MCPURL}, nil
 }

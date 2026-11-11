@@ -19,6 +19,7 @@ import (
 	"github.com/hermeshai/hermesh/gen/go/hermesh/machine/v1/machinev1connect"
 	relayv1 "github.com/hermeshai/hermesh/gen/go/hermesh/relay/v1"
 	"github.com/hermeshai/hermesh/gen/go/hermesh/relay/v1/relayv1connect"
+	"github.com/hermeshai/hermesh/gen/go/hermesh/screen/v1/screenv1connect"
 	"github.com/hermeshai/hermesh/gen/go/hermesh/session/v1/sessionv1connect"
 	"github.com/hermeshai/hermesh/pkg/identity"
 	"github.com/hermeshai/hermesh/pkg/transport"
@@ -248,6 +249,7 @@ func (n *Machine) handler() http.Handler {
 	mux.Handle(machinev1connect.NewMachineServiceHandler(&machineService{n: n}, opts))
 	mux.Handle(machinev1connect.NewMachineAdminServiceHandler(&adminService{n: n}, opts))
 	mux.Handle(herv1connect.NewHerServiceHandler(&herService{n: n}, opts))
+	mux.Handle(screenv1connect.NewScreenServiceHandler(&screenService{n: n}, opts))
 	mux.Handle("/her/console/", n.herConsole())
 	return mux
 }
@@ -255,8 +257,8 @@ func (n *Machine) handler() http.Handler {
 var errUnauthenticated = errors.New("unauthenticated")
 
 // authInterceptor re-checks the caller's grant on every request (it may
-// have been revoked since the tunnel opened) and keeps admin RPCs, and Her's,
-// to the owner.
+// have been revoked since the tunnel opened) and keeps admin RPCs, Her's and
+// the screen's to the owner.
 func (n *Machine) authInterceptor() connect.Interceptor {
 	check := func(ctx context.Context, procedure string) error {
 		p := principalFrom(ctx)
@@ -277,7 +279,8 @@ func (n *Machine) authInterceptor() connect.Interceptor {
 }
 
 func isAdminProcedure(p string) bool {
-	return strings.HasPrefix(p, "/"+machinev1connect.MachineAdminServiceName+"/") || strings.HasPrefix(p, "/"+herv1connect.HerServiceName+"/")
+	return strings.HasPrefix(p, "/"+machinev1connect.MachineAdminServiceName+"/") || strings.HasPrefix(p, "/"+herv1connect.HerServiceName+"/") ||
+		strings.HasPrefix(p, "/"+screenv1connect.ScreenServiceName+"/")
 }
 
 type interceptor struct {

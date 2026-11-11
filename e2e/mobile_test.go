@@ -66,6 +66,8 @@ type mobileCore struct {
 	app    *testApp
 	// started: when the core answered with its port (the app's Core.start returned).
 	started time.Time
+	// port and token: where the core serves the app, and what the app sends.
+	port, token string
 }
 
 // startMobileCore starts the app's core with its data in dir, and plays its
@@ -111,6 +113,7 @@ func startMobileCore(t *testing.T, dir string, root *identity.SoftwareKey) *mobi
 		t.Fatal("mobile core did not start")
 	}
 	m.started = time.Now()
+	m.port, m.token = port, token
 	hc := &http.Client{Transport: &bearer{token: token, next: http.DefaultTransport}}
 	m.client = localv1connect.NewLocalServiceClient(hc, "http://127.0.0.1:"+port)
 	m.app = &testApp{t: t, client: m.client, root: root, keys: map[string]*identity.SoftwareKey{identity.KeyID(root.Public()): root}}

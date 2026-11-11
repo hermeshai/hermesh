@@ -111,6 +111,8 @@
     "attention": "需要处理",
     "running": "进行中",
     "update": "重新启动以更新到 {{version}}",
+    "control": "{{name}} 正在操控这台 Mac",
+    "stopControl": "停止",
     "open": "打开 Hermesh",
     "settings": "设置",
     "settingsTitle": "设置…",

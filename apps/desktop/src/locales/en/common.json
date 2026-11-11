@@ -114,6 +114,8 @@
     "attention": "Needs you",
     "running": "In progress",
     "update": "Restart to Update to {{version}}",
+    "control": "{{name}} is controlling this Mac",
+    "stopControl": "Stop",
     "open": "Open Hermesh",
     "settings": "Settings",
     "settingsTitle": "Settings…",

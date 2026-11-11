@@ -342,3 +342,6 @@ func (n *Machine) Unpair() error {
 	n.audit.Log(AuditRecord{Kind: "unpaired"})
 	return nil
 }
+
+// StopScreen ends the Computer Control session under way, if any.
+func (l *Local) StopScreen() { l.n.screen.Stop() }
