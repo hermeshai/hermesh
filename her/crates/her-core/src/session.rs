@@ -453,11 +453,21 @@ impl Session {
         }
     }
 
+    /// Whether `call` writes the bot's own memory (docs/her-memory.md §5). Judged by the words
+    /// of the path alone, with no I/O: the path the prompt gives for the memory is the one
+    /// compared with.
+    pub(crate) fn is_own_note(&self, call: &her_llm::ToolCall) -> bool {
+        let args = call.arguments.to_value();
+        let path = args.get("path").and_then(|path| path.as_str());
+        matches!(call.name.as_str(), "write" | "edit")
+            && self.memory_dir.as_ref().zip(path).is_some_and(|(dir, path)| self.env.resolve(path).starts_with(dir))
+    }
+
     /// What a bot's session still owes its owner (bot-turn-design §6).
     pub(crate) fn owed(&self) -> crate::bot::Owed {
         let state = self.state.lock();
         if state.bot.is_some() {
-            crate::bot::owed(&state.history)
+            crate::bot::owed(&state.history, |call| self.is_own_note(call))
         } else {
             crate::bot::Owed::Nothing
         }

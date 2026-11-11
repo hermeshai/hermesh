@@ -202,8 +202,22 @@ a new copy after 10 minutes costs one uncached request.
   is there without announcing it; a line never authorizes sending, paying or
   deleting; put what matters into an agent's task.
 
-Writing costs model requests: in a turn of plain talk, one for the edit and
-one to end the turn, after the owner already has the reply.
+The turn rules follow from it (`task.rs`, `bot::owed`):
+
+- A note may go beside the reply in one step, the one exception to "the
+  first send goes alone".
+- A note written once the owner has their reply ends the turn by itself: no
+  request is made only for the model to stop, and no reminder that work went
+  unsent. So a note costs no request beside the reply, or one after it.
+- A note that failed keeps the turn open, even beside a send that closed it,
+  so the model sees why and writes it again.
+- A note is nothing the owner waits for: it never sets off the reminder for
+  unsent work.
+
+A first run with a real model (Bailian Token Plan, Qwen3.8-Max) showed why:
+before these rules, about a third of the turns that said "noted" ended
+without the edit, and a note made after the reply was followed by the same
+reply sent again. `tools/bench/bot_memory.mjs` runs those cases.
 
 ## 6. Who writes
 
@@ -256,6 +270,7 @@ What is not closed:
 - **Searching earlier conversation**, compacted parts included.
 - **Tidying**: a scheduled pass that checks the notes against the
   conversation, merges repeats and marks what is out of date.
-- **An evaluation with real models**: whether each model writes when it
-  should and leaves out what it should, and whether 8 KB and 10 minutes are
-  the right values.
+- **Evaluation across models**: `tools/bench/bot_memory.mjs` measures one
+  model at a time (when it writes, what it leaves out, recall after a
+  clear). Only Bailian Token Plan has been run; whether 8 KB and 10 minutes
+  are the right values is not measured.
