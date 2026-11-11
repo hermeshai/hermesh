@@ -208,7 +208,10 @@ The relay knows when something happened, never what (center-data rules).
    says its title (the starter's, else the prompt's first line, cut at 40
    characters), who started it (the agent's name), the machine, the
    project and the coding agent; the relay seals a request to connect
-   itself.
+   itself. A notice the relay does not take (the machine is not connected
+   to it, or the call fails) waits on the machine, the newest of each
+   session, for up to an hour, and goes out once the machine is connected
+   again; a question answered meanwhile is not announced.
 4. The relay sends APNs a generic alert ("Something needs you", a localized
    key) with the ciphertext; urgent notices are time-sensitive.
 5. On the phone, the notification service extension opens the notice and

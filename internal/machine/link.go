@@ -99,6 +99,7 @@ func (n *Machine) serveConn(ctx context.Context, conn *transport.RelayConn) {
 	}()
 	go n.watchUpdates(lctx, conn)
 	go n.reportStatus(lctx, conn)
+	go n.sendWaitingNotices(conn)
 	go func() {
 		n.registerInbox(lctx, conn)
 		n.followInbox(lctx, conn)
