@@ -1275,7 +1275,22 @@ func (s *Server) erased(ownerID string) {
 		s.single = ""
 	}
 	hooks := slices.Clone(s.eraseHooks)
+	// Its agents are told at their next command, by the refusal to admit
+	// them: one that keeps a connection between commands must not go on
+	// being answered on it meanwhile. (The owner's devices and machines
+	// keep theirs a moment longer, to hear of the order.)
+	var agents []*peer
+	if t := s.tenants[ownerID]; t != nil {
+		for p := range t.peers {
+			if p.role == relayv1.Role_ROLE_CLIENT {
+				agents = append(agents, p)
+			}
+		}
+	}
 	s.mu.Unlock()
+	for _, p := range agents {
+		p.sess.Close()
+	}
 	s.log.Info("owner erased everything", "owner", ownerID)
 	time.AfterFunc(500*time.Millisecond, func() {
 		s.ForgetOwner(ownerID)
