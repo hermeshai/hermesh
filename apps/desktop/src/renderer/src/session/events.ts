@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { EventView, type SessionEvent } from "@hermesh/proto/session";
 import { local } from "../api";
+import { followAgainIn } from "./retry";
 
 /** A session's stored events, and the reply the agent is still writing ("" when none). */
 export type Conversation = { events: SessionEvent[]; draft: string };
@@ -53,9 +54,13 @@ export function useSessionEvents(sessionId: string, last: bigint): Conversation 
     };
     (async () => {
       let after = held.at(-1)?.seq ?? 0n;
+      let broken = 0; // times in a row the stream broke with nothing received
       while (!stop.signal.aborted) {
+        // The daemon ended the stream: there is nothing to follow for now.
+        let again = 3000;
         try {
           for await (const e of local.streamSessionEvents({ sessionId, afterSeq: after, follow: true, partial: true, view: EventView.BASIC }, { signal: stop.signal })) {
+            broken = 0;
             if (e.kind.case === "agentDraft") {
               draft = e.kind.value.whole ? e.kind.value.text : draft + e.kind.value.text;
               timer ??= setTimeout(flush, 30);
@@ -74,8 +79,9 @@ export function useSessionEvents(sessionId: string, last: bigint): Conversation 
           }
         } catch {
           // Broken or cancelled; picked up again below unless the page moved on.
+          again = followAgainIn(broken++);
         }
-        await new Promise((r) => setTimeout(r, 3000));
+        await new Promise((r) => setTimeout(r, again));
       }
     })();
     return () => {
