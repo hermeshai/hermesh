@@ -136,7 +136,7 @@ struct HerSettings: View {
                 }
             }
         } message: {
-            Text("The chat history is cleared and the work it is doing stops. Its files, scheduled tasks and settings stay.")
+            Text("The chat history is cleared and the work it is doing stops. What it remembers, its files, scheduled tasks and settings stay.")
         }
         // What full access means, before it is turned on (the Mac's AccessSheet).
         .confirmationDialog("Give “\(bot?.name ?? "Her")” full access?", isPresented: $fullAccess, titleVisibility: .visible) {

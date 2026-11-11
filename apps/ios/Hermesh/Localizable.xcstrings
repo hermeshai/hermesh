@@ -8801,12 +8801,12 @@
         }
       }
     },
-    "The chat history is cleared and the work it is doing stops. Its files, scheduled tasks and settings stay.": {
+    "The chat history is cleared and the work it is doing stops. What it remembers, its files, scheduled tasks and settings stay.": {
       "localizations": {
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "聊天记录会清空，它正在做的事会停止。文件、定时任务和设置都保留。"
+            "value": "聊天记录会清空，它正在做的事会停止。它记住的事、文件、定时任务和设置都保留。"
           }
         }
       }

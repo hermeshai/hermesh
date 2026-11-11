@@ -270,7 +270,7 @@
   },
   "clear": {
     "title": "Clear your chat with “{{name}}”?",
-    "message": "The chat history is cleared and the work it is doing stops. Its files, scheduled tasks and settings stay.",
+    "message": "The chat history is cleared and the work it is doing stops. What it remembers, its files, scheduled tasks and settings stay.",
     "button": "Clear",
     "done": "Chat cleared"
   },
