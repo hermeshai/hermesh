@@ -23,6 +23,16 @@
           }
         }
       }
+    },
+    "NSLocalNetworkUsageDescription": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Hermesh 在你用远程桌面时直接连接同一网络里的电脑，画面不必绕道中转。"
+          }
+        }
+      }
     }
   },
   "version": "1.0"

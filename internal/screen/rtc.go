@@ -9,6 +9,7 @@ import (
 	"github.com/pion/interceptor"
 	"github.com/pion/interceptor/pkg/cc"
 	"github.com/pion/interceptor/pkg/gcc"
+	"github.com/pion/transport/v5"
 	"github.com/pion/webrtc/v4"
 
 	relayv1 "github.com/hermeshai/hermesh/gen/go/hermesh/relay/v1"
@@ -36,7 +37,7 @@ const (
 // newAPI is pion set up the same way on both ends: H.264 only, lost packets
 // asked for again, and on the sending side a bandwidth estimate (estimate
 // receives it once the connection has a stream).
-func newAPI(estimate func(cc.BandwidthEstimator)) (*webrtc.API, error) {
+func newAPI(estimate func(cc.BandwidthEstimator), network transport.Net) (*webrtc.API, error) {
 	m := &webrtc.MediaEngine{}
 	if err := m.RegisterCodec(webrtc.RTPCodecParameters{RTPCodecCapability: h264, PayloadType: 102}, webrtc.RTPCodecTypeVideo); err != nil {
 		return nil, err
@@ -87,6 +88,21 @@ func newAPI(estimate func(cc.BandwidthEstimator)) (*webrtc.API, error) {
 	s.SetSrflxAcceptanceMinWait(100 * time.Millisecond)
 	s.SetPrflxAcceptanceMinWait(300 * time.Millisecond)
 	s.SetRelayAcceptanceMinWait(time.Second)
+	// The path taken first need not be the one kept: the viewer goes on
+	// checking the others every second and moves to a better one that
+	// answers (always from the relay to a local address), a second apart at
+	// least: pion's 3 s made three moves in a row take 8 s. An iPhone asks
+	// its owner before the app's first packet to the local network, and
+	// drops what is sent meanwhile; the session starts through the relay
+	// and moves once the owner allowed it. For that, no pair is given up
+	// while the first path is looked for (pion's 7 checks are 1.4 s).
+	if err := s.SetICERenomination(webrtc.WithRenominationInterval(time.Second)); err != nil {
+		return nil, err
+	}
+	s.SetICEMaxBindingRequests(100)
+	if network != nil {
+		s.SetNet(network)
+	}
 	return webrtc.NewAPI(webrtc.WithMediaEngine(m), webrtc.WithInterceptorRegistry(i), webrtc.WithSettingEngine(s)), nil
 }
 

@@ -6,7 +6,9 @@ import (
 	"fmt"
 	"net"
 	"os"
+	"slices"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -50,6 +52,11 @@ type Status struct {
 	// telling what a slow session goes through.
 	Local  string `json:"local,omitempty"`
 	Remote string `json:"remote,omitempty"`
+	// Nearby, with Path "relay": both ends reach the internet from one
+	// address, so they are most likely on one network, where a direct path
+	// should have worked. Something there keeps them apart: the app or the
+	// machine not allowed on the local network, or the network itself.
+	Nearby bool `json:"nearby,omitempty"`
 }
 
 // Viewer is a session with a machine, seen from the device.
@@ -70,7 +77,7 @@ type Viewer struct {
 // Dial opens a session: it returns once the machine has answered, and the
 // picture follows when a path between the two is found (Status).
 func Dial(ctx context.Context, cfg ViewerConfig) (*Viewer, error) {
-	api, err := newAPI(nil)
+	api, err := newAPI(nil, blockedNet(cfg.Servers))
 	if err != nil {
 		return nil, err
 	}
@@ -211,28 +218,53 @@ func (v *Viewer) status(phase string) {
 }
 
 // path fills in how the packets travel now, and the round trip that way.
+// The path can change while connected (newAPI): this is the one in use.
 func (v *Viewer) path(st *Status) {
 	st.Path = "direct"
-	stats := v.pc.GetStats()
-	for _, s := range stats {
-		pair, ok := s.(webrtc.ICECandidatePairStats)
-		if !ok || !pair.Nominated || pair.State != webrtc.StatsICECandidatePairStateSucceeded {
-			continue
-		}
-		end := func(id string) string {
-			c, ok := stats[id].(webrtc.ICECandidateStats)
-			if !ok {
-				return ""
-			}
-			if c.CandidateType == webrtc.ICECandidateTypeRelay {
-				st.Path = "relay"
-			}
-			return fmt.Sprintf("%s %s", c.CandidateType, net.JoinHostPort(c.IP, strconv.Itoa(int(c.Port))))
-		}
-		st.Local, st.Remote = end(pair.LocalCandidateID), end(pair.RemoteCandidateID)
-		st.RTT = int(pair.CurrentRoundTripTime * 1000)
+	ice := v.pc.SCTP().Transport().ICETransport()
+	pair, err := ice.GetSelectedCandidatePair()
+	if err != nil || pair == nil {
 		return
 	}
+	end := func(c *webrtc.ICECandidate) string {
+		if c.Typ == webrtc.ICECandidateTypeRelay {
+			st.Path = "relay"
+		}
+		return fmt.Sprintf("%s %s", c.Typ, net.JoinHostPort(c.Address, strconv.Itoa(int(c.Port))))
+	}
+	st.Local, st.Remote = end(pair.Local), end(pair.Remote)
+	if stats, ok := ice.GetSelectedCandidatePairStats(); ok {
+		st.RTT = int(stats.CurrentRoundTripTime * 1000)
+	}
+	if st.Path == "relay" {
+		st.Nearby = sameAddress(publicAddresses(v.pc.LocalDescription()), publicAddresses(v.pc.RemoteDescription()))
+	}
+}
+
+// publicAddresses are the addresses a description's end is seen at from
+// the relay's STUN server.
+func publicAddresses(d *webrtc.SessionDescription) []string {
+	if d == nil {
+		return nil
+	}
+	var out []string
+	for _, line := range strings.Split(d.SDP, "\n") {
+		// a=candidate:<foundation> <component> <transport> <priority> <address> <port> typ <type> ...
+		f := strings.Fields(strings.TrimSpace(line))
+		if len(f) >= 8 && strings.HasPrefix(f[0], "a=candidate:") && f[6] == "typ" && f[7] == "srflx" {
+			out = append(out, f[4])
+		}
+	}
+	return out
+}
+
+func sameAddress(a, b []string) bool {
+	for _, x := range a {
+		if slices.Contains(b, x) {
+			return true
+		}
+	}
+	return false
 }
 
 // watch reports the path and the round trip while connected.

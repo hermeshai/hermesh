@@ -70,6 +70,8 @@ func TestIPhone(t *testing.T) {
 	// extension opens it.
 	spool := filepath.Join(t.TempDir(), "push")
 	w.relayArgs = append(w.relayArgs, "--push-spool", spool, "--mcp") // the MCP gateway keeps doorbells
+	// STUN and TURN, for the screen that starts relayed (testComputerControl).
+	w.relayArgs = append(w.relayArgs, "--turn-listen", fmt.Sprintf("127.0.0.1:%d", freePort(t)), "--turn-host", "127.0.0.1")
 	w.relayEnv = []string{"HERMESH_MCP_LOCAL_WEBHOOKS=1"}
 	w.restartRelay()
 	eventually(t, 30*time.Second, "the machine is back on the relay", func() bool {

@@ -11,6 +11,9 @@ nonisolated struct ScreenLink: Decodable, Equatable, Sendable {
     /// "direct", or "relay" when the packets go through the relay.
     var path: String?
     var rtt_ms: Int?
+    /// Relayed though both ends look to be on one network, where a direct
+    /// path should have worked.
+    var nearby: Bool?
     /// Why the session ended, with phase "failed".
     var error: String?
 }

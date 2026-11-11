@@ -223,6 +223,72 @@ func TestScreenUnreachableTURN(t *testing.T) {
 	}
 }
 
+// An iPhone asks its owner before the app's first packet to the local
+// network and drops what is sent meanwhile (here for 6 s, by
+// HERMESH_SCREEN_BLOCK_LOCAL). The session starts through the relay, says
+// that the two ends look to be on one network, and moves to the direct path
+// by itself once it works, the picture going on.
+func TestScreenTurnsDirect(t *testing.T) {
+	if testing.Short() || runtime.GOOS != "darwin" {
+		t.Skip("e2e on macOS")
+	}
+	env, _ := screenEnv(t)
+	w := newOwnerMac(t, append([]string{"HERMESH_FAKE_PROVIDERS=1"}, env...), &localv1.GrantSpec{})
+	w.relayArgs = append(w.relayArgs, "--turn-listen", fmt.Sprintf("127.0.0.1:%d", freePort(t)), "--turn-host", "127.0.0.1")
+	w.restartRelay()
+	st, err := w.app.client.GetStatus(context.Background(), &localv1.GetStatusRequest{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	root, _ := identity.GenerateKey()
+	t.Setenv("HERMESH_SCREEN_BLOCK_LOCAL", "6") // the phone's core, started next
+	m := joinMobile(t, w, st.RelayUrl, t.TempDir(), root)
+	s := openScreen(t, m, screenMachine(t, m))
+	start := time.Now()
+	var relayed, nearby, direct bool
+	var turned time.Duration
+	framesDirect := 0
+	deadline := time.Now().Add(40 * time.Second)
+	for framesDirect < 30 && time.Now().Before(deadline) {
+		s.conn.SetReadDeadline(deadline)
+		k, p, err := screenrtc.ReadMessage(s.r)
+		if err != nil {
+			t.Fatalf("reading the screen: %v", err)
+		}
+		switch k {
+		case screenrtc.KindVideo:
+			if direct {
+				framesDirect++
+			}
+		case screenrtc.KindStatus:
+			var status struct {
+				Phase, Path, Error string
+				Nearby             bool
+			}
+			json.Unmarshal(p, &status)
+			if status.Phase == "failed" {
+				t.Fatalf("the session failed: %s", status.Error)
+			}
+			if status.Phase != "connected" {
+				continue
+			}
+			switch {
+			case status.Path == "relay" && !direct:
+				relayed = true
+				nearby = nearby || status.Nearby
+			case status.Path == "direct" && !direct:
+				direct, turned = true, time.Since(start)
+			case status.Path == "relay" && direct:
+				t.Fatal("back through the relay after the direct path")
+			}
+		}
+	}
+	t.Logf("direct %v after the page opened", turned.Round(time.Millisecond))
+	if !relayed || !nearby || !direct || framesDirect < 30 {
+		t.Fatalf("relayed first %v, said the ends are nearby %v, turned direct %v, frames after that %d", relayed, nearby, direct, framesDirect)
+	}
+}
+
 // Computer Control end to end, but for the app's page: an iPhone's core,
 // joined as a trusted device, opens the screen of the owner's Mac through
 // the relay. The Mac's hermeshd runs the real helper with its test picture.

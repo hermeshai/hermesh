@@ -23,6 +23,7 @@ extension HermeshUITests {
         try XCTContext.runActivity(named: "trackpad mode: a finger moves the pointer, a tap clicks where it is") { _ in try controlTrackpad() }
         try XCTContext.runActivity(named: "the bar folds into a round button, moves to another edge, and opens there") { _ in try controlBar() }
         try XCTContext.runActivity(named: "the page turns with the phone, and Close ends the session") { _ in try controlTurnAndClose() }
+        try XCTContext.runActivity(named: "kept off the local network at first, it starts relayed, says what to allow, and turns direct by itself") { _ in try controlRelayedThenDirect() }
     }
 
     /// The input the Mac's helper was sent so far, each a JSON object with one member (`button`, `text`, …).
@@ -53,6 +54,35 @@ extension HermeshUITests {
         try waitFor("connected, straight to the Mac") { quality.label.hasSuffix("ms") && !quality.label.contains("中转") ? true : nil }
         XCTAssertFalse(app.descendants(matching: .any)["screen-watch-only"].exists, "the Mac takes input")
         herShot("Computer Control: the Mac's screen")
+    }
+
+    /// The iPhone drops an app's packets to the local network until its owner allows them. Here the core
+    /// does so for the session's first 15 seconds (HERMESH_SCREEN_BLOCK_LOCAL): the picture comes through
+    /// the relay, the page says what to allow, and once a direct path works the session takes it.
+    func controlRelayedThenDirect() throws {
+        app.terminate()
+        app.launchEnvironment["HERMESH_SCREEN_BLOCK_LOCAL"] = "15"
+        app.launch()
+        openMenu()
+        app.descendants(matching: .any)["drawer"].buttons["her-place"].tap()
+        let name = app.buttons["her-name"]
+        XCTAssertTrue(name.waitForExistence(timeout: 60), "Her's page")
+        name.tap()
+        let row = app.descendants(matching: .any)["her-computer-control"].firstMatch
+        XCTAssertTrue(row.waitForExistence(timeout: 60), "the row in Her's settings")
+        row.tap()
+        XCTAssertTrue(surface.waitForExistence(timeout: 30), "the page")
+        let hint = app.descendants(matching: .any)["screen-relay-hint"].firstMatch
+        XCTAssertTrue(hint.waitForExistence(timeout: 12), "the hint while relayed")
+        XCTAssertTrue(text("正在中转，但 owner-mac 看起来和这台 iPhone 在同一网络。要直连，请在这台 iPhone 上允许 Hermesh 访问「本地网络」，并在 owner-mac 上允许 hermeshd。").exists)
+        XCTAssertTrue(app.buttons["打开设置"].exists)
+        let quality = app.descendants(matching: .any)["screen-quality"].firstMatch
+        XCTAssertTrue(quality.label.contains("中转"), "the bar says relayed: \(quality.label)")
+        herShot("Computer Control: relayed on one network")
+        try waitFor("the direct path taken", timeout: 40) { !quality.label.contains("中转") && quality.label.hasSuffix("ms") ? true : nil }
+        XCTAssertTrue(hint.waitForNonExistence(timeout: 10), "the hint gone once direct")
+        XCTAssertEqual(surface.value as? String, "live", "the picture went on")
+        tap("screen-close")
     }
 
     func controlTouch() throws {
