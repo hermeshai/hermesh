@@ -84,6 +84,8 @@ export type Bridge = {
   openHerConsole(machineId: string): Promise<void>;
   /** Saves a file from an assistant's folder on its machine to Downloads, and shows it there. */
   saveHerFile(machineId: string, botId: string, path: string): Promise<void>;
+  /** A file from an assistant's folder on its machine, read whole to show in the window (a PDF); nothing of it stays on this computer. */
+  readHerFile(machineId: string, botId: string, path: string): Promise<Uint8Array>;
   /** Signs in to ChatGPT for a machine's Her in the browser (shared/herSignin.ts); resolves once it ended. */
   signInHerChatGpt(machineId: string): Promise<ChatGptSignIn>;
   /** Opens the browser again at the sign-in under way for a machine. */

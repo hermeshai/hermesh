@@ -23,20 +23,20 @@ const SourceContext = createContext("");
  * memoized, and the block still being written is closed (remend) so nothing shows as raw Markdown
  * on its way (docs/reply-streaming.md); document-scoped references take the whole-document path.
  */
-export function Markdown({ text, streaming = false }: { text: string; streaming?: boolean }) {
+export function Markdown({ text, streaming = false, mode = "chat" }: { text: string; streaming?: boolean; mode?: "chat" | "document" }) {
   const prefix = useId();
   const split = useRef(createMarkdownSlices());
   const blocks = useMemo(() => split.current(text, streaming), [text, streaming]);
   return (
     <div className="md sel-text">
       {blocks.map((block) => (
-        <Block key={block.id} text={block.text} pending={block.pending} prefix={prefix} offset={block.id} />
+        <Block key={block.id} text={block.text} pending={block.pending} prefix={prefix} offset={block.id} mode={mode} />
       ))}
     </div>
   );
 }
 
-const Block = memo(function Block({ text, pending, prefix, offset }: { text: string; pending: boolean; prefix: string; offset: number }) {
+const Block = memo(function Block({ text, pending, prefix, offset, mode }: { text: string; pending: boolean; prefix: string; offset: number; mode: string }) {
   const { t } = useTranslation("session");
   const [mathPlugin, setMathPlugin] = useState<PluggableList>([]);
   const hasMath = /\$\$|```math|~~~math|\\[([]/.test(text);
@@ -59,7 +59,7 @@ const Block = memo(function Block({ text, pending, prefix, offset }: { text: str
       <SourceContext.Provider value={text}>
         <RenderBoundary source={text}>
           <ReactMarkdown
-            remarkPlugins={plugins}
+            remarkPlugins={mode === "document" ? documentPlugins : plugins}
             rehypePlugins={rehypePlugins}
             components={components}
             remarkRehypeOptions={{ footnoteLabel: t("markdown.footnotes"), footnoteBackLabel: t("markdown.backToReference") }}
@@ -156,7 +156,9 @@ function chatText() {
   };
 }
 
-const plugins: PluggableList = [[remarkGfm, { singleTilde: false }], [remarkMath, { singleDollarTextMath: false }], remarkDirective, texMath, contentExtensions, chatText];
+// A Markdown file reads as written: its single line breaks are not a chat's.
+const documentPlugins: PluggableList = [[remarkGfm, { singleTilde: false }], [remarkMath, { singleDollarTextMath: false }], remarkDirective, texMath, contentExtensions];
+const plugins: PluggableList = [...documentPlugins, chatText];
 
 function Table({ children, sourceStart, sourceEnd }: { children: ReactNode; sourceStart?: number; sourceEnd?: number }) {
   const source = useContext(SourceContext);

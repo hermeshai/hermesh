@@ -3,7 +3,7 @@ import path from "node:path";
 import type { Command, MenuItem, MenuState, Preferences, TerminalCommand } from "../shared/bridge";
 import { i18n } from "../shared/i18n";
 import { openComputerPermission } from "./computer";
-import { cancelHerChatGpt, cancelHerConnector, herConsoleURL, reopenHerChatGpt, reopenHerConnector, saveHerFile, signInHerChatGpt, signInHerConnector } from "./her";
+import { cancelHerChatGpt, cancelHerConnector, herConsoleURL, reopenHerChatGpt, reopenHerConnector, readHerFile, saveHerFile, signInHerChatGpt, signInHerConnector } from "./her";
 import { preferences, setPreferences, world } from "./notify";
 import { platform } from "./platform";
 import { cancelSignIn, completeSignIn, connectURL, errorMessage, signIn, signInPending, takeLinks } from "./signin";
@@ -180,6 +180,14 @@ export function registerIPC() {
       const [m, b, p] = [id(machineId), id(botId), id(file)];
       if (!m || !b || !p) throw new Error("no file");
       return saveHerFile(m, b, p);
+    }),
+  );
+  ipcMain.handle(
+    "her-read-file",
+    answer((machineId: unknown, botId: unknown, file: unknown) => {
+      const [m, b, p] = [id(machineId), id(botId), id(file)];
+      if (!m || !b || !p) throw new Error("no file");
+      return readHerFile(m, b, p);
     }),
   );
   ipcMain.handle(
