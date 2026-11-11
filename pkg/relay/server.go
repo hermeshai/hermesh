@@ -132,7 +132,7 @@ type tenant struct {
 	peers       map[*peer]struct{}
 	reported    map[string]*relayv1.ReportStatusRequest // name and version
 	lastSeen    map[string]time.Time
-	watchers    map[string]map[chan *relayv1.MachineUpdate]struct{}
+	watchers    map[string]map[*updates]struct{} // each machine's WatchUpdates streams
 	revocations *identityv1.RevocationList
 	// ownerWatchers are woken when what WatchOwner sends may have changed.
 	ownerWatchers map[chan struct{}]struct{}
@@ -336,7 +336,7 @@ func (s *Server) loadTenant(ownerID string) (*tenant, error) {
 	}
 	t = &tenant{ownerID: ownerID, trust: trust, machines: map[string]*peer{}, peers: map[*peer]struct{}{},
 		reported: map[string]*relayv1.ReportStatusRequest{}, lastSeen: map[string]time.Time{},
-		watchers: map[string]map[chan *relayv1.MachineUpdate]struct{}{}, revocations: rev, ownerWatchers: map[chan struct{}]struct{}{},
+		watchers: map[string]map[*updates]struct{}{}, revocations: rev, ownerWatchers: map[chan struct{}]struct{}{},
 		version: version, used: time.Now()}
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -1043,11 +1043,8 @@ func (s *Server) broadcastMachineUpdate(t *tenant, u *relayv1.MachineUpdate) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	for _, set := range t.watchers {
-		for ch := range set {
-			select {
-			case ch <- u:
-			default:
-			}
+		for q := range set {
+			q.put(u)
 		}
 	}
 }
@@ -1198,11 +1195,8 @@ func (s *Server) pushGrants(t *tenant) {
 		}
 		u := &relayv1.MachineUpdate{Update: &relayv1.MachineUpdate_Grants{Grants: g}}
 		s.mu.Lock()
-		for ch := range t.watchers[id] {
-			select {
-			case ch <- u:
-			default:
-			}
+		for q := range t.watchers[id] {
+			q.put(u)
 		}
 		s.mu.Unlock()
 	}

@@ -415,17 +415,17 @@ func (n *machineControl) WatchUpdates(ctx context.Context, _ *relayv1.WatchUpdat
 	s := n.s
 	p := peerFrom(ctx)
 	t := p.t
-	ch := make(chan *relayv1.MachineUpdate, 16)
+	q := newUpdates()
 	s.mu.Lock()
 	if t.watchers[p.subject.ID] == nil {
-		t.watchers[p.subject.ID] = map[chan *relayv1.MachineUpdate]struct{}{}
+		t.watchers[p.subject.ID] = map[*updates]struct{}{}
 	}
-	t.watchers[p.subject.ID][ch] = struct{}{}
+	t.watchers[p.subject.ID][q] = struct{}{}
 	rev := t.revocations
 	s.mu.Unlock()
 	defer func() {
 		s.mu.Lock()
-		delete(t.watchers[p.subject.ID], ch)
+		delete(t.watchers[p.subject.ID], q)
 		s.mu.Unlock()
 	}()
 	if err := stream.Send(&relayv1.MachineUpdate{Update: &relayv1.MachineUpdate_RootChain{RootChain: t.trust.RootChain()}}); err != nil {
@@ -451,9 +451,11 @@ func (n *machineControl) WatchUpdates(ctx context.Context, _ *relayv1.WatchUpdat
 			return nil
 		case <-p.sess.CloseChan():
 			return nil
-		case u := <-ch:
-			if err := stream.Send(u); err != nil {
-				return err
+		case <-q.wake:
+			for _, u := range q.take() {
+				if err := stream.Send(u); err != nil {
+					return err
+				}
 			}
 		}
 	}
@@ -652,11 +654,8 @@ func (o *ownerControl) PublishMachineCert(ctx context.Context, req *relayv1.Publ
 	}
 	o.s.mu.Lock()
 	o.s.wakeOwnerLocked(t)
-	for ch := range t.watchers[nc.MachineId] {
-		select {
-		case ch <- &relayv1.MachineUpdate{Update: &relayv1.MachineUpdate_MachineCert{MachineCert: req.MachineCert}}:
-		default:
-		}
+	for q := range t.watchers[nc.MachineId] {
+		q.put(&relayv1.MachineUpdate{Update: &relayv1.MachineUpdate_MachineCert{MachineCert: req.MachineCert}})
 	}
 	o.s.mu.Unlock()
 	o.s.publish(t.ownerID, Event{Kind: EventCert, ID: nc.MachineId})
