@@ -34,7 +34,9 @@ func TestEraseEverything(t *testing.T) {
 	for _, d := range []string{herMac, herVPS} {
 		os.MkdirAll(filepath.Join(d, "bots"), 0o700)
 	}
-	herEnv := func(home string) []string { return append(slices.Clone(env), "HER_HOME="+home, "HER_CREDENTIAL_STORE=file") }
+	herEnv := func(home string) []string {
+		return append(slices.Clone(env), "HER_HOME="+home, "HER_CREDENTIAL_STORE=file")
+	}
 	w := newOwnerMac(t, herEnv(herMac), &localv1.GrantSpec{})
 	ctx := context.Background()
 	daemon := filepath.Join(w.bin, "hermeshd")
