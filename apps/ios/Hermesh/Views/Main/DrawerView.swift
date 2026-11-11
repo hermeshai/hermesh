@@ -97,14 +97,16 @@ struct DrawerView: View {
         .padding(.horizontal, 10)
     }
 
-    /// Her, first, as on the Mac: her mark, and what she sent that is unread.
+    /// Her, first, as on the Mac: the Mac's robot, and what she sent that is unread.
     private var herPlace: some View {
         let unread = herUnread(model.machines)
         return Button {
             model.open(.her)
         } label: {
             HStack(spacing: 12) {
-                Mark(size: 26).frame(width: 28)
+                // The Mac's 16-point icon at 22 points, its 1.25 line grown alike, beside the symbols.
+                HerRobot().stroke(style: StrokeStyle(lineWidth: 1.7, lineCap: .round, lineJoin: .round))
+                    .frame(width: 22, height: 22).frame(width: 28)
                 Text("Her")
                 Spacer(minLength: 0)
                 if unread > 0 {
@@ -223,5 +225,21 @@ struct RowStyle: ButtonStyle {
         configuration.label
             .background(selected || configuration.isPressed ? AnyShapeStyle(.fill.secondary) : AnyShapeStyle(.clear), in: .capsule)
             .contentShape(.capsule)
+    }
+}
+
+/// The Mac's Her icon (icons.tsx `her`): a robot's head with its antenna,
+/// ears and eyes, drawn on the same 16-point grid.
+private nonisolated struct HerRobot: Shape {
+    func path(in rect: CGRect) -> Path {
+        let k = min(rect.width, rect.height) / 16
+        func p(_ x: CGFloat, _ y: CGFloat) -> CGPoint { CGPoint(x: rect.minX + x * k, y: rect.minY + y * k) }
+        var path = Path()
+        path.addRoundedRect(in: CGRect(origin: p(2.9, 4.6), size: CGSize(width: 10.2 * k, height: 8.2 * k)), cornerSize: CGSize(width: 2.3 * k, height: 2.3 * k))
+        for (x, y0, y1) in [(8, 2, 4.6), (1.3, 7.9, 9.6), (14.7, 7.9, 9.6), (6.1, 7.8, 9.5), (9.9, 7.8, 9.5)] as [(CGFloat, CGFloat, CGFloat)] {
+            path.move(to: p(x, y0))
+            path.addLine(to: p(x, y1))
+        }
+        return path
     }
 }
