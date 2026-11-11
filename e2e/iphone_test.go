@@ -285,6 +285,7 @@ func simulator(t *testing.T) string {
 	t.Helper()
 	if id := os.Getenv("HERMESH_IPHONE_SIMULATOR"); id != "" {
 		run(t, nil, 3*time.Minute, "xcrun", "simctl", "bootstatus", id, "-b")
+		pinyinKeyboard(t, id)
 		return id
 	}
 	types := run(t, nil, time.Minute, "xcrun", "simctl", "list", "devicetypes", "-j").stdout
@@ -320,10 +321,28 @@ func simulator(t *testing.T) string {
 	if r := run(t, nil, 3*time.Minute, "xcrun", "simctl", "bootstatus", id, "-b"); r.code != 0 {
 		t.Fatalf("boot: %+v", r)
 	}
+	pinyinKeyboard(t, id)
 	// A device booted for the first time shows the notification permission
 	// alert only once SpringBoard has loaded its notification sources, two
 	// minutes and more later: allowNotifications in the UI tests waits.
 	return id
+}
+
+// pinyinKeyboard gives the Simulator the Pinyin keyboard first, as the
+// owner types (testHer types Chinese into Her's composer). The keyboards
+// are read at boot: written, the Simulator boots again.
+func pinyinKeyboard(t *testing.T, id string) {
+	t.Helper()
+	if r := run(t, nil, time.Minute, "xcrun", "simctl", "spawn", id, "defaults", "read", "-g", "AppleKeyboards"); strings.Contains(r.stdout, "Pinyin") {
+		return
+	}
+	run(t, nil, time.Minute, "xcrun", "simctl", "spawn", id, "defaults", "write", "-g", "AppleKeyboards", "-array",
+		"zh_Hans-Pinyin@sw=Pinyin10;hw=Automatic", "en_US@sw=QWERTY;hw=Automatic")
+	run(t, nil, 2*time.Minute, "xcrun", "simctl", "shutdown", id)
+	run(t, nil, time.Minute, "xcrun", "simctl", "boot", id)
+	if r := run(t, nil, 3*time.Minute, "xcrun", "simctl", "bootstatus", id, "-b"); r.code != 0 {
+		t.Fatalf("boot again for the Pinyin keyboard: %+v", r)
+	}
 }
 
 // newIPhoneControl serves what the UI tests ask of the world around the
