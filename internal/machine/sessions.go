@@ -2220,7 +2220,7 @@ func (s *Sessions) emitOutput(l *live, e *sessionv1.SessionEvent, output string)
 	}
 	var ns *noticeSession
 	switch k := e.Kind.(type) {
-	case *sessionv1.SessionEvent_QuestionAsked, *sessionv1.SessionEvent_TurnCompleted:
+	case *sessionv1.SessionEvent_QuestionAsked, *sessionv1.SessionEvent_QuestionResolved, *sessionv1.SessionEvent_TurnCompleted:
 		ns = &noticeSession{l.id, l.row.Title, l.row.CreatedBy, l.row.ProjectID, l.row.Agent, l.asker, l.askerConv, l.row.Conversation}
 	case *sessionv1.SessionEvent_Status:
 		if k.Status.Status == sessionv1.SessionStatus_SESSION_STATUS_CRASHED {

@@ -3,6 +3,8 @@ package machine
 import (
 	"bytes"
 	"context"
+	"maps"
+	"slices"
 	"sync"
 	"time"
 
@@ -15,6 +17,7 @@ import (
 	sessionv1 "github.com/hermeshai/hermesh/gen/go/hermesh/session/v1"
 	"github.com/hermeshai/hermesh/internal/provider"
 	"github.com/hermeshai/hermesh/pkg/identity"
+	"github.com/hermeshai/hermesh/pkg/transport"
 )
 
 // Notices for the owner's iPhones. When a session asks something, fails or
@@ -48,7 +51,26 @@ type notices struct {
 	// sent remembers the last notice of each session, so a crash after a
 	// failed turn is not announced twice.
 	sent map[string]string
+	// waiting is, per thread, the newest notice the relay has not taken:
+	// the machine was not connected, or the call failed. It goes out once
+	// the machine is connected again (sendWaitingNotices).
+	waiting map[string]waitingNotice
 }
+
+// waitingNotice is a notice sealed for each device, kept for the relay.
+type waitingNotice struct {
+	at     time.Time
+	kind   string
+	sealed []*relayv1.SealedNotice
+}
+
+const (
+	// noticeKept: a notice older than this is not sent any more (the push
+	// service keeps one an hour too).
+	noticeKept = time.Hour
+	// noticesKept: at most this many threads wait; the oldest goes first.
+	noticesKept = 64
+)
 
 func (n *Machine) acceptPushTargets(pts *relayv1.PushTargets) {
 	n.mu.Lock()
@@ -111,6 +133,9 @@ func (n *Machine) sessionNotice(s noticeSession, e *sessionv1.SessionEvent) {
 		default:
 			return
 		}
+	case *sessionv1.SessionEvent_QuestionResolved:
+		n.dropWaitingNotice(s.id, "question") // answered meanwhile: nothing to ask
+		return
 	default:
 		return
 	}
@@ -165,26 +190,93 @@ func (n *Machine) notify(nt *sessionv1.Notice, thread string, fill func()) {
 		}
 		out = append(out, &relayv1.SealedNotice{DeviceKeyId: t.keyID, Sealed: sealed, Kind: nt.Kind, Thread: thread})
 	}
-	n.mu.Lock()
-	conn := n.conn
-	n.mu.Unlock()
 	if len(out) == 0 {
 		return
 	}
+	w := waitingNotice{at: time.Now(), kind: nt.Kind, sealed: out}
+	n.notices.mu.Lock()
+	delete(n.notices.waiting, thread) // this one is newer
+	n.notices.mu.Unlock()
+	n.mu.Lock()
+	conn := n.conn
+	n.mu.Unlock()
 	if conn == nil {
+		n.keepNotice(thread, w)
 		return
 	}
 	go func() {
-		ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
-		defer cancel()
-		c, err := n.control(conn)
-		if err == nil {
-			_, err = c.Notify(ctx, &relayv1.NotifyRequest{Notices: out})
-		}
-		if err != nil {
-			n.log.Debug("notice not sent", "kind", nt.Kind, "thread", thread, "err", err)
+		if err := n.handNotice(conn, w); err != nil {
+			n.log.Debug("notice kept for later", "kind", w.kind, "thread", thread, "err", err)
+			n.keepNotice(thread, w)
 		}
 	}()
+}
+
+// handNotice hands a sealed notice to the relay.
+func (n *Machine) handNotice(conn *transport.RelayConn, w waitingNotice) error {
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+	defer cancel()
+	c, err := n.control(conn)
+	if err != nil {
+		return err
+	}
+	_, err = c.Notify(ctx, &relayv1.NotifyRequest{Notices: w.sealed})
+	return err
+}
+
+// keepNotice keeps w for when the machine is connected again, unless a
+// newer one of its thread waits already.
+func (n *Machine) keepNotice(thread string, w waitingNotice) {
+	n.notices.mu.Lock()
+	defer n.notices.mu.Unlock()
+	if cur, ok := n.notices.waiting[thread]; ok && cur.at.After(w.at) {
+		return
+	}
+	if n.notices.waiting == nil {
+		n.notices.waiting = map[string]waitingNotice{}
+	}
+	n.notices.waiting[thread] = w
+	for len(n.notices.waiting) > noticesKept {
+		oldest := ""
+		for t, x := range n.notices.waiting {
+			if oldest == "" || x.at.Before(n.notices.waiting[oldest].at) {
+				oldest = t
+			}
+		}
+		delete(n.notices.waiting, oldest)
+	}
+}
+
+// dropWaitingNotice forgets the thread's waiting notice if it is of kind.
+func (n *Machine) dropWaitingNotice(thread, kind string) {
+	n.notices.mu.Lock()
+	defer n.notices.mu.Unlock()
+	if w, ok := n.notices.waiting[thread]; ok && w.kind == kind {
+		delete(n.notices.waiting, thread)
+	}
+}
+
+// sendWaitingNotices hands the relay the notices that waited for a
+// connection, oldest first; those it does not take wait on.
+func (n *Machine) sendWaitingNotices(conn *transport.RelayConn) {
+	n.notices.mu.Lock()
+	waiting := n.notices.waiting
+	n.notices.waiting = nil
+	n.notices.mu.Unlock()
+	threads := slices.SortedFunc(maps.Keys(waiting), func(a, b string) int { return waiting[a].at.Compare(waiting[b].at) })
+	for i, t := range threads {
+		w := waiting[t]
+		if time.Since(w.at) > noticeKept {
+			continue
+		}
+		if err := n.handNotice(conn, w); err != nil {
+			n.log.Debug("notices kept for later", "count", len(threads)-i, "err", err)
+			for _, t := range threads[i:] {
+				n.keepNotice(t, waiting[t])
+			}
+			return
+		}
+	}
 }
 
 // trimQuestion keeps a question small enough for a notification (the push

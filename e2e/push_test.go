@@ -343,3 +343,81 @@ func TestPushHerNotices(t *testing.T) {
 		}
 	}
 }
+
+// TestPushNoticeWaitsForRelay: a session asks its question while the
+// machine has no connection to the relay. The notice is not lost: it goes
+// out once the machine is connected again. A question answered meanwhile
+// (on the Mac itself, which needs no relay) is not announced any more.
+func TestPushNoticeWaitsForRelay(t *testing.T) {
+	if testing.Short() {
+		t.Skip("e2e")
+	}
+	fake := filepath.Join(binaries(t), "fakeacp")
+	w := newOwnerMac(t, []string{"HERMESH_GEMINI_BIN=" + fake, "FAKE_ACP_STATE=" + filepath.Join(t.TempDir(), "fakeacp")},
+		&localv1.GrantSpec{Agents: []string{"gemini"}})
+	spool := filepath.Join(t.TempDir(), "push")
+	w.relayArgs = append(w.relayArgs, "--push-spool", spool)
+	w.restartRelay()
+	eventually(t, 30*time.Second, "the machine is back on the relay", func() bool {
+		r := w.cli(30*time.Second, "project", "list")
+		return r.code == 0 && strings.Contains(r.stdout, "owner-mac/demo")
+	})
+	ctx := context.Background()
+	key, _ := ecdh.X25519().GenerateKey(rand.Reader)
+	eventually(t, 15*time.Second, "the device registered", func() bool {
+		_, err := w.app.client.RegisterPush(ctx, &localv1.RegisterPushRequest{Token: "abc123", Environment: "development",
+			NoticePublicKey: key.PublicKey().Bytes(), Kinds: []string{"question"}})
+		return err == nil
+	})
+	time.Sleep(time.Second) // the machine hears of the registration over its update stream
+
+	// Two sessions that ask after a while; the relay goes away before they do.
+	kept, r := w.startSession(time.Minute, "--agent", "gemini", "--title", "留着问", "--prompt", "sleep 3s\nask 选哪个|红,蓝")
+	answered, r2 := w.startSession(time.Minute, "--agent", "gemini", "--title", "已回答", "--prompt", "sleep 3s\nask 要吗|要,不要")
+	if kept.SessionID == "" || answered.SessionID == "" {
+		t.Fatalf("start: %+v %+v", r, r2)
+	}
+	w.relay.stop()
+	asked := func(id string) *sessionv1.Question {
+		res, _ := w.app.client.ListSessions(ctx, &localv1.ListSessionsRequest{})
+		for _, s := range res.GetSessions() {
+			if s.SessionId == id {
+				return s.Progress.GetPendingQuestion()
+			}
+		}
+		return nil
+	}
+	eventually(t, 30*time.Second, "both sessions ask", func() bool { return asked(kept.SessionID) != nil && asked(answered.SessionID) != nil })
+	q := asked(answered.SessionID)
+	if _, err := w.app.client.AnswerQuestion(ctx, &localv1.AnswerQuestionRequest{SessionId: answered.SessionID, QuestionId: q.QuestionId,
+		Answers: []*sessionv1.Answer{{ItemId: q.Items[0].Id, Selected: []string{"要"}}}}); err != nil {
+		t.Fatal(err)
+	}
+	time.Sleep(time.Second)
+	if got := mustGlob(spool); len(got) != 0 {
+		t.Fatalf("%d notices reached the push service with the relay stopped", len(got))
+	}
+
+	w.startRelay()
+	seen := map[string]bool{}
+	var got []*sessionv1.Notice
+	read := func() {
+		for _, s := range readSpool(t, spool, seen) {
+			sealed, _ := base64.StdEncoding.DecodeString(s.Payload.Hermesh.N)
+			n := &sessionv1.Notice{}
+			if err := identity.OpenNotice(key.Bytes(), sealed, n); err != nil {
+				t.Fatalf("open notice: %v", err)
+			}
+			got = append(got, n)
+		}
+	}
+	eventually(t, 60*time.Second, "the question's notice, once the machine is connected again", func() bool {
+		read()
+		return len(got) > 0
+	})
+	time.Sleep(3 * time.Second) // what else would come has come
+	read()
+	if len(got) != 1 || got[0].Kind != "question" || got[0].SessionId != kept.SessionID || got[0].Title != "留着问" {
+		t.Fatalf("notices after the relay came back: %+v", got)
+	}
+}
