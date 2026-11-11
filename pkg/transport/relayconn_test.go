@@ -284,12 +284,13 @@ func TestWatch(t *testing.T) {
 		conn, link := connect(t, 0)
 		link.toRelay.Store(true)
 		link.fromRelay.Store(true)
-		began := time.Now()
 		if !closedWithin(conn, 3*time.Second) {
 			t.Fatal("still open: the silent relay went unnoticed")
 		}
-		if took := time.Since(began); took < pingEvery {
-			t.Fatalf("closed after %v, before the relay was due a ping (%v)", took, pingEvery)
+		// Due from when the relay was last heard, not from when it went
+		// silent: a slow dial (Windows) heard it last a while before that.
+		if quiet := wallNow().Sub(time.Unix(0, conn.admit.read.Load())); quiet < pingEvery {
+			t.Fatalf("closed %v after the relay was last heard, before it was due a ping (%v)", quiet, pingEvery)
 		}
 	})
 	t.Run("a relay gone while the computer slept", func(t *testing.T) {

@@ -371,9 +371,10 @@ func TestPushNoticeWaitsForRelay(t *testing.T) {
 	})
 	time.Sleep(time.Second) // the machine hears of the registration over its update stream
 
-	// Two sessions that ask after a while; the relay goes away before they do.
-	kept, r := w.startSession(time.Minute, "--agent", "gemini", "--title", "留着问", "--prompt", "sleep 3s\nask 选哪个|红,蓝")
-	answered, r2 := w.startSession(time.Minute, "--agent", "gemini", "--title", "已回答", "--prompt", "sleep 3s\nask 要吗|要,不要")
+	// Two sessions that ask after a while; the relay goes away before they
+	// do (it has stopped before either asks: checked below).
+	kept, r := w.startSession(time.Minute, "--agent", "gemini", "--title", "留着问", "--prompt", "sleep 10s\nask 选哪个|红,蓝")
+	answered, r2 := w.startSession(time.Minute, "--agent", "gemini", "--title", "已回答", "--prompt", "sleep 10s\nask 要吗|要,不要")
 	if kept.SessionID == "" || answered.SessionID == "" {
 		t.Fatalf("start: %+v %+v", r, r2)
 	}
@@ -386,6 +387,9 @@ func TestPushNoticeWaitsForRelay(t *testing.T) {
 			}
 		}
 		return nil
+	}
+	if asked(kept.SessionID) != nil || asked(answered.SessionID) != nil {
+		t.Fatal("a session asked before the relay stopped: give them longer")
 	}
 	eventually(t, 30*time.Second, "both sessions ask", func() bool { return asked(kept.SessionID) != nil && asked(answered.SessionID) != nil })
 	q := asked(answered.SessionID)
