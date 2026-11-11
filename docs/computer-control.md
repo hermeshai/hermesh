@@ -154,8 +154,8 @@ length-prefixed messages:
 |---|---|
 | `start` (longest edge, frame rate, bitrate, pointer drawn or not) | `format` (the picture's size) |
 | `bitrate`, `keyframe` | `video` (one frame as Annex B, capture time, key or not) |
-| `input` (a move, a button, the wheel, a key, text) | `state` (why there is no picture; whether input can be posted) |
-| `pointer` (drawn or not, from now on) | `log` |
+| `input` (a move, a button, the wheel, a key, text, the clipboard) | `state` (why there is no picture; whether input can be posted) |
+| `pointer` (drawn or not, from now on) | `clipboard` (text copied on the Mac, §4.4), `log` |
 
 - **Capture**: ScreenCaptureKit, the main display. The pointer is drawn
   into the picture for direct touch and left out for trackpad mode, where
@@ -213,6 +213,26 @@ of it.
   device's name.
 - Without Accessibility the picture still comes: the owner can watch, and
   the page says what to turn on to control.
+
+### 4.4 The clipboard
+
+Text only, both ways, at most 60000 bytes of UTF-8 (what fits a data
+channel message); longer text is not sent.
+
+- **Phone to Mac**: `Input.clipboard` gives the Mac's clipboard the
+  phone's text, then pastes it as its `paste` says: not at all
+  (`PASTE_UNSPECIFIED`), as an app pastes (`PASTE_APP`) or as a terminal
+  does (`PASTE_TERMINAL`). On a Mac both press Command-V; Linux tells them
+  apart (Ctrl+V, Ctrl+Shift+V). `Text.paste` means nothing on a Mac: every
+  character is typed as Unicode there.
+- **Mac to phone**: once the session has started, the helper looks at the
+  clipboard's change count twice a second. New text copied there goes to
+  hermeshd as a `clipboard` message and on to the phone as
+  `ScreenEvent.clipboard`. Empty or too long text, what isn't text, the
+  phone's own text and the same text twice in a row are not sent.
+- In tests, `--test-clipboard <file>` makes a file the helper's clipboard:
+  the phone's text is written there, and what someone else writes there is
+  sent. No key is pressed.
 
 ## 5. Not lagging
 
@@ -439,7 +459,8 @@ machine's status, the menu bar notice with Stop.
   through loss and reordering; a session against the real helper, which
   shows a test picture (`--test-source`) and writes the input it gets to a
   file (`--input-log`) instead of posting it: frames from a keyframe on, a
-  keyframe on request, input, a new path on a live session, a second
+  keyframe on request, input, the clipboard both ways (a file,
+  `--test-clipboard`), a new path on a live session, a second
   viewer taking over, a viewer that never arrives, the helper gone at the
   end.
 
@@ -448,8 +469,9 @@ binary stream, the page, both gesture modes, the keyboard, the row in
 Her's settings.
 
 - `go test ./e2e -run TestScreen`: an iPhone's core, joined as a trusted
-  device, opens the Mac's screen through a relay; the Mac's app sees who
-  is in control and stops it, and the phone is told.
+  device, opens the Mac's screen through a relay; the clipboard goes both
+  ways, and the phone's own text does not come back; the Mac's app sees
+  who is in control and stops it, and the phone is told.
 - `HERMESH_IPHONE_E2E=1 HERMESH_IPHONE_GREP=testComputerControl go test
   ./e2e -run TestIPhone`: in the Simulator, the row in Her's settings
   opens the page, the picture comes, a tap clicks where it lands and a
@@ -472,7 +494,7 @@ owner or is working on the desktop, more than one display, the clipboard.
 
 ## 9. Not doing now
 
-- Sound, files, HDR, more than one display, the clipboard.
+- Sound, files, HDR, more than one display; the clipboard beyond text.
 - A Mac with no display attached, or with its lid closed and no monitor:
   there is no picture to capture.
 - The login window before anyone has logged in.

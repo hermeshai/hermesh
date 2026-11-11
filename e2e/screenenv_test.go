@@ -33,15 +33,18 @@ func screenHelper(t *testing.T) string {
 
 // screenEnv is what a Mac's hermeshd needs for Computer Control in a test:
 // the helper, showing its test picture and writing the input it gets to the
-// file returned. With HERMESH_SCREEN_REAL set it shows this Mac's screen and
-// posts the input instead, for a look by hand (macOS asks for Screen
-// Recording and Accessibility for whatever started the test).
+// file returned. Its clipboard is screen-clipboard.txt beside that file.
+// With HERMESH_SCREEN_REAL set it shows this Mac's screen and posts the
+// input instead, for a look by hand (macOS asks for Screen Recording and
+// Accessibility for whatever started the test).
 func screenEnv(t *testing.T) (env []string, inputLog string) {
 	t.Helper()
 	env = []string{"HERMESH_SCREEN_BIN=" + screenHelper(t)}
 	if os.Getenv("HERMESH_SCREEN_REAL") != "" {
 		return env, ""
 	}
-	inputLog = filepath.Join(t.TempDir(), "screen-input.jsonl")
-	return append(env, "HERMESH_SCREEN_ARGS=--test-source --input-log "+inputLog), inputLog
+	dir := t.TempDir()
+	inputLog = filepath.Join(dir, "screen-input.jsonl")
+	clipboard := filepath.Join(dir, "screen-clipboard.txt")
+	return append(env, "HERMESH_SCREEN_ARGS=--test-source --input-log "+inputLog+" --test-clipboard "+clipboard), inputLog
 }

@@ -53,13 +53,15 @@ func waitFor(t *testing.T, what string, ok func() bool) {
 // picture: frames arrive from a keyframe on, the machine says the picture's
 // size, input reaches the helper, and leaving stops it.
 func TestSession(t *testing.T) {
-	log := filepath.Join(t.TempDir(), "input.jsonl")
+	dir := t.TempDir()
+	log, clip := filepath.Join(dir, "input.jsonl"), filepath.Join(dir, "clipboard.txt")
 	var mu sync.Mutex
-	h := NewHost(HostConfig{Bin: helperBin(t), Args: []string{"--test-source", "--input-log", log}})
+	h := NewHost(HostConfig{Bin: helperBin(t), Args: []string{"--test-source", "--input-log", log, "--test-clipboard", clip}})
 	var frames, keys int
 	var first bool
 	var format *screenv1.Format
 	var state *screenv1.State
+	var copied []string
 	var phase string
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
@@ -84,6 +86,9 @@ func TestSession(t *testing.T) {
 			}
 			if s := ev.GetState(); s != nil {
 				state = s
+			}
+			if c := ev.GetClipboard(); c != nil {
+				copied = append(copied, c.Text)
 			}
 		},
 		Status: func(s Status) { mu.Lock(); phase = s.Phase; mu.Unlock() },
@@ -128,6 +133,25 @@ func TestSession(t *testing.T) {
 		return strings.Contains(s, `"button":"MOUSE_BUTTON_LEFT"`) && strings.Contains(s, `"down":true`) && strings.Contains(s, "你好 hi") &&
 			strings.Contains(s, `"character":"c"`) && strings.Contains(s, `"command":true`) && strings.Contains(s, `"x":0.75`)
 	})
+
+	// The clipboard both ways: the viewer's text goes to the machine's
+	// clipboard; what is copied there comes back, as long as it is new text,
+	// and not too long.
+	send(false, &screenv1.Input{Event: &screenv1.Input_Clipboard{Clipboard: &screenv1.Clipboard{Text: "from the viewer"}}})
+	waitFor(t, "the viewer's clipboard", func() bool { b, _ := os.ReadFile(clip); return string(b) == "from the viewer" })
+	time.Sleep(500 * time.Millisecond)
+	for _, text := range []string{"", strings.Repeat("x", ClipboardMax+1), "copied 一", "", "copied 一", "copied 二"} {
+		os.WriteFile(clip+".new", []byte(text), 0o600) // whole, never half written
+		os.Rename(clip+".new", clip)
+		time.Sleep(400 * time.Millisecond)
+	}
+	waitFor(t, "the machine's clipboard", get(func() bool { return len(copied) >= 2 }))
+	time.Sleep(500 * time.Millisecond)
+	mu.Lock()
+	if strings.Join(copied, "|") != "copied 一|copied 二" {
+		t.Errorf("the viewer got the clipboards %q", copied)
+	}
+	mu.Unlock()
 
 	// A keyframe on request: the viewer lost its place.
 	mu.Lock()

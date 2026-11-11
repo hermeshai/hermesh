@@ -9,8 +9,11 @@ final class Input {
     private var last = CGPoint.zero
     /// When set, events are written here as JSON lines and not posted (tests).
     private let log: FileHandle?
+    /// Where the viewer's clipboard goes; nil when tests leave the Mac's alone.
+    private let clipboard: Clipboard?
 
-    init(logPath: String?) {
+    init(logPath: String?, clipboard: Clipboard?) {
+        self.clipboard = clipboard
         if let logPath {
             FileManager.default.createFile(atPath: logPath, contents: nil)
             log = FileHandle(forWritingAtPath: logPath)
@@ -56,6 +59,8 @@ final class Input {
     func handle(_ raw: Data) {
         if let log {
             log.write(raw); log.write(Data("\n".utf8))
+            // A test's clipboard, a file, still takes the text.
+            if let v = (try? JSONDecoder().decode(InputMessage.self, from: raw))?.clipboard { paste(v) }
             return
         }
         guard let m = try? JSONDecoder().decode(InputMessage.self, from: raw) else { return }
@@ -64,6 +69,20 @@ final class Input {
         if let v = m.wheel { wheel(v) }
         if let v = m.key { key(v) }
         if let v = m.text, let t = v.text { type(t) }
+        if let v = m.clipboard { paste(v) }
+    }
+
+    /// paste gives the clipboard the viewer's text, then pastes it as asked:
+    /// Command-V, as an app and a terminal both paste on a Mac.
+    private func paste(_ v: InputMessage.Clipboard) {
+        guard let clipboard, let text = v.text, !text.isEmpty else { return }
+        clipboard.set(text)
+        guard log == nil, !clipboard.isFile, v.paste == "PASTE_APP" || v.paste == "PASTE_TERMINAL" else { return }
+        for down in [true, false] {
+            let e = CGEvent(keyboardEventSource: source, virtualKey: 9, keyDown: down)  // v
+            e?.flags = .maskCommand
+            e?.post(tap: .cghidEventTap)
+        }
     }
 
     private func move(to p: CGPoint) {
