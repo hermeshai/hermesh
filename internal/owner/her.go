@@ -212,14 +212,19 @@ func errNoRootKey(what string) error {
 // on, she also becomes one of the owner's agents (docs/her-mesh.md §3.3):
 // the same confirmation signs her grant, for the client key the machine
 // keeps for her. Turned on again for a Her that has none yet, it signs the
-// grant. Turned off, her grant is revoked.
-func (o *Owner) SetHer(ctx context.Context, machineID string, enabled bool) error {
+// grant. Turned off, her grant is revoked, and with erase her data on the
+// machine is deleted, and the messages waiting here for her
+// (docs/her-server.md §5.6).
+func (o *Owner) SetHer(ctx context.Context, machineID string, enabled, erase bool) error {
 	if _, ok, _ := o.onlyMachine(); ok {
 		return errNoRootKey("turn Her on or off")
 	}
+	if enabled && erase {
+		return connect.NewError(connect.CodeInvalidArgument, errors.New("her data is erased only with Her turned off"))
+	}
 	cmd := &identityv1.AdminCommand{OwnerId: o.ownerID, CommandId: identity.RandomCode(16), TargetMachineId: machineID,
 		ExpiresAt: timestamppb.New(time.Now().Add(5 * time.Minute)),
-		Command:   &identityv1.AdminCommand_SetHer{SetHer: &identityv1.SetHer{Enabled: enabled}}}
+		Command:   &identityv1.AdminCommand_SetHer{SetHer: &identityv1.SetHer{Enabled: enabled, Erase: erase}}}
 	msgs := []proto.Message{cmd}
 	var grant *identityv1.Grant
 	if enabled {
@@ -243,13 +248,25 @@ func (o *Owner) SetHer(ctx context.Context, machineID string, enabled bool) erro
 	if remote, err = c.Machine(ctx, machineID); err != nil {
 		return connect.NewError(connect.CodeUnavailable, err)
 	}
-	if _, err := remote.Admin.ApplyAdminCommand(ctx, &machinev1.ApplyAdminCommandRequest{Command: signed[0]}); err != nil {
+	res, err := remote.Admin.ApplyAdminCommand(ctx, &machinev1.ApplyAdminCommandRequest{Command: signed[0]})
+	if err != nil {
 		c.Forget(machineID)
 		return err
 	}
 	if !enabled {
 		o.revokeHer(ctx, machineID)
-		return nil
+		if !erase {
+			return nil
+		}
+		switch msg := res.GetMessage(); msg {
+		case machine.HerErased:
+			o.dropHerWaiting(machineID)
+			return nil
+		case machine.HerOff:
+			return connect.NewError(connect.CodeFailedPrecondition, errors.New("Her is off, but her data stays: this machine's Hermesh is too old to erase it. Update it, then turn Her on and off again"))
+		default:
+			return connect.NewError(connect.CodeInternal, errors.New(msg))
+		}
 	}
 	if grant == nil {
 		return nil
@@ -989,6 +1006,21 @@ func (o *Owner) forgetHer(machineID string) {
 	}
 	if err := o.st.dropHerKept(machineID); err != nil {
 		o.log.Warn("forgetting a removed machine's Her", "machine", machineID, "err", err)
+	}
+}
+
+// dropHerWaiting drops the messages waiting here for a machine's Her, and
+// their pictures, once her data there is erased.
+func (o *Owner) dropHerWaiting(machineID string) {
+	ws, err := o.st.herWaiting(machineID, "")
+	for _, w := range ws {
+		if _, err = o.st.deleteHerWaiting(machineID, w.Id); err != nil {
+			break
+		}
+		o.dropPictures(w.Id)
+	}
+	if err != nil {
+		o.log.Warn("dropping the messages waiting for an erased Her", "machine", machineID, "err", err)
 	}
 }
 

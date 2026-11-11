@@ -127,7 +127,7 @@ func (h *Host) rpc(w http.ResponseWriter, r *http.Request) {
 	}
 	res, err := c.call(r.Context(), req.Method, params)
 	if err != nil {
-		httpError(w, lost(r.Context(), err))
+		httpError(w, h.lost(r.Context(), err))
 		return
 	}
 	out := map[string]any{"jsonrpc": "2.0", "id": req.ID}

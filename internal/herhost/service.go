@@ -40,7 +40,7 @@ func (h *Host) Open(ctx context.Context, req *herv1.OpenRequest, send func(*herv
 	for i, r := range req.GetSetup() {
 		res, err := c.call(ctx, r.GetMethod(), setup[i])
 		if err != nil {
-			return lost(ctx, err)
+			return h.lost(ctx, err)
 		}
 		opened.Responses = append(opened.Responses, res)
 	}
@@ -52,7 +52,7 @@ func (h *Host) Open(ctx context.Context, req *herv1.OpenRequest, send func(*herv
 		case <-ctx.Done():
 			return nil
 		case <-c.done:
-			return lost(ctx, c.err)
+			return h.lost(ctx, c.err)
 		case n := <-c.notes:
 			if err := send(&herv1.OpenEvent{Kind: &herv1.OpenEvent_Notification{Notification: &herv1.Notification{Method: n.method, Params: n.params}}}); err != nil {
 				return err
@@ -80,7 +80,7 @@ func (h *Host) Call(ctx context.Context, req *herv1.CallRequest) (*herv1.CallRes
 	}
 	res, err := c.call(ctx, r.GetMethod(), params)
 	if err != nil {
-		return nil, lost(ctx, err)
+		return nil, h.lost(ctx, err)
 	}
 	return &herv1.CallResponse{Response: res}, nil
 }
@@ -197,11 +197,19 @@ func (h *Host) release(id string, c *conn) {
 	c.Close()
 }
 
-// lost is a connection that failed under a request: ctx ending, or her
-// going away.
-func lost(ctx context.Context, err error) error {
+// lost is a connection that failed under a request: ctx ending, Her turned
+// off (the machine's answer, not the tunnel failing: the owner's device
+// keeps the tunnel, and what else it carries, such as the command turning
+// her off), or her going away.
+func (h *Host) lost(ctx context.Context, err error) error {
 	if ctx.Err() != nil {
 		return ctx.Err()
+	}
+	h.mu.Lock()
+	off := h.off
+	h.mu.Unlock()
+	if off {
+		return errOff
 	}
 	return connect.NewError(connect.CodeUnavailable, fmt.Errorf("lost her: %w", err))
 }

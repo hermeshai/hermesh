@@ -2847,6 +2847,9 @@ public nonisolated struct Hermesh_Local_V1_SetHerRequest: Sendable {
 
   public var enabled: Bool = false
 
+  /// With enabled false: erase her data on the machine (docs/her-server.md §5.6).
+  public var erase: Bool = false
+
   public var unknownFields = SwiftProtobuf.UnknownStorage()
 
   public init() {}
@@ -8657,7 +8660,7 @@ nonisolated extension Hermesh_Local_V1_GetDiffRequest: SwiftProtobuf.Message, Sw
 
 nonisolated extension Hermesh_Local_V1_SetHerRequest: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
   public static let protoMessageName: String = _protobuf_package + ".SetHerRequest"
-  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{3}machine_id\0\u{1}enabled\0")
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{3}machine_id\0\u{1}enabled\0\u{1}erase\0")
 
   public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
     while let fieldNumber = try decoder.nextFieldNumber() {
@@ -8667,6 +8670,7 @@ nonisolated extension Hermesh_Local_V1_SetHerRequest: SwiftProtobuf.Message, Swi
       switch fieldNumber {
       case 1: try { try decoder.decodeSingularStringField(value: &self.machineID) }()
       case 2: try { try decoder.decodeSingularBoolField(value: &self.enabled) }()
+      case 3: try { try decoder.decodeSingularBoolField(value: &self.erase) }()
       default: break
       }
     }
@@ -8679,12 +8683,16 @@ nonisolated extension Hermesh_Local_V1_SetHerRequest: SwiftProtobuf.Message, Swi
     if self.enabled != false {
       try visitor.visitSingularBoolField(value: self.enabled, fieldNumber: 2)
     }
+    if self.erase != false {
+      try visitor.visitSingularBoolField(value: self.erase, fieldNumber: 3)
+    }
     try unknownFields.traverse(visitor: &visitor)
   }
 
   public static func ==(lhs: Hermesh_Local_V1_SetHerRequest, rhs: Hermesh_Local_V1_SetHerRequest) -> Bool {
     if lhs.machineID != rhs.machineID {return false}
     if lhs.enabled != rhs.enabled {return false}
+    if lhs.erase != rhs.erase {return false}
     if lhs.unknownFields != rhs.unknownFields {return false}
     return true
   }

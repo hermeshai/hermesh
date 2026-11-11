@@ -256,10 +256,13 @@ message SetPaused {
 }
 
 // SetHer turns Her on or off for the machine (docs/her-server.md §5.2): on, its
-// hermeshd keeps her running; off, it stops her and keeps her data. Root-signed
-// only, never a setting.
+// hermeshd keeps her running; off, it stops her and keeps her data, unless
+// erase (§5.6). Root-signed only, never a setting.
 message SetHer {
   bool enabled = 1;
+  // With enabled false only: her data is deleted too, her home and, on a
+  // Mac, her Keychain items. Refused with enabled true.
+  bool erase = 2;
 }
 
 // SetHerAssistantMode sets how freely one of Her's assistants acts: her's

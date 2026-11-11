@@ -8133,9 +8133,11 @@ func (x *GetDiffRequest) GetTurn() uint32 {
 }
 
 type SetHerRequest struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	MachineId     string                 `protobuf:"bytes,1,opt,name=machine_id,json=machineId,proto3" json:"machine_id,omitempty"`
-	Enabled       bool                   `protobuf:"varint,2,opt,name=enabled,proto3" json:"enabled,omitempty"`
+	state     protoimpl.MessageState `protogen:"open.v1"`
+	MachineId string                 `protobuf:"bytes,1,opt,name=machine_id,json=machineId,proto3" json:"machine_id,omitempty"`
+	Enabled   bool                   `protobuf:"varint,2,opt,name=enabled,proto3" json:"enabled,omitempty"`
+	// With enabled false: erase her data on the machine (docs/her-server.md §5.6).
+	Erase         bool `protobuf:"varint,3,opt,name=erase,proto3" json:"erase,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -8180,6 +8182,13 @@ func (x *SetHerRequest) GetMachineId() string {
 func (x *SetHerRequest) GetEnabled() bool {
 	if x != nil {
 		return x.Enabled
+	}
+	return false
+}
+
+func (x *SetHerRequest) GetErase() bool {
+	if x != nil {
+		return x.Erase
 	}
 	return false
 }
@@ -10042,11 +10051,12 @@ const file_hermesh_local_v1_local_proto_rawDesc = "" +
 	"\x0eGetDiffRequest\x12\x1d\n" +
 	"\n" +
 	"session_id\x18\x01 \x01(\tR\tsessionId\x12\x12\n" +
-	"\x04turn\x18\x02 \x01(\rR\x04turn\"H\n" +
+	"\x04turn\x18\x02 \x01(\rR\x04turn\"^\n" +
 	"\rSetHerRequest\x12\x1d\n" +
 	"\n" +
 	"machine_id\x18\x01 \x01(\tR\tmachineId\x12\x18\n" +
-	"\aenabled\x18\x02 \x01(\bR\aenabled\"\x10\n" +
+	"\aenabled\x18\x02 \x01(\bR\aenabled\x12\x14\n" +
+	"\x05erase\x18\x03 \x01(\bR\x05erase\"\x10\n" +
 	"\x0eSetHerResponse\"{\n" +
 	"\x1aSetHerAssistantModeRequest\x12\x1d\n" +
 	"\n" +

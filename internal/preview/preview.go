@@ -360,6 +360,13 @@ func admin(c *identityv1.AdminCommand, h Hints, typ string, w words) (Card, erro
 		return Card{Title: w.f("Set the model %s runs with on %s", agentTitle(d.Agent), target),
 			Lines: []string{w.f("Model: %s", cmpOr(d.Model, w.f("its own"))), w.f("Reasoning effort: %s", cmpOr(d.Effort, w.f("its own"))), w.f("Speed: %s", d.Speed.String())}}, nil
 	case *identityv1.AdminCommand_SetHer:
+		if x.SetHer.Enabled && x.SetHer.Erase {
+			return Card{}, &Refused{typ, "Her turned on with her data erased"}
+		}
+		if x.SetHer.Erase {
+			return Card{Title: w.f("Turn Her off for %s and erase her data", target),
+				Why: w.f("Her stops there, and her assistants, conversations, memory, routines, files, connectors and model logins on the machine are deleted. This can't be undone.")}, nil
+		}
 		if x.SetHer.Enabled {
 			return Card{Title: w.f("Turn Her on for %s", target),
 				Why: w.f("Her runs there as the machine's user and keeps her conversations, settings and logins on it. Her assistants can read and write files, run commands and reach the internet there; new ones ask before risky steps.")}, nil

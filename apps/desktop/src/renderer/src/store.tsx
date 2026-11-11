@@ -40,7 +40,9 @@ export type Sheet =
   | { kind: "wake"; clientId: string; agent: string; wake?: Wake; code?: string; name?: string }
   | { kind: "confirm"; title: string; message: string; button: string; run: () => Promise<unknown>; done?: string }
   /** Erase Everything (docs/erase-everything.md). */
-  | { kind: "erase" };
+  | { kind: "erase" }
+  /** Turning Her off on a machine, her data kept or erased (docs/her-server.md §5.6). */
+  | { kind: "herOff"; machineId: string; machineName: string };
 
 export type Toast = { text: string; undo?: () => void; id: number };
 

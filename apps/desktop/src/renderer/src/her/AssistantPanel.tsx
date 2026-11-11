@@ -21,7 +21,8 @@ const modes: PermissionMode[] = ["manual", "accept-edits", "bypass-permissions"]
  * Her's settings, beside the conversation: its avatar and
  * name, changed where they are; the model it answers with, from those its environment can use, and how
  * hard it thinks; what it may do without asking (full access is signed, docs/her-server.md §8); whether
- * it alerts; what it remembers (docs/her-memory.md), on a page of its own; clearing its chat or its memory.
+ * it alerts; what it remembers (docs/her-memory.md), on a page of its own; clearing its chat or its memory;
+ * turning Her off on its machine (docs/her-server.md §5.6).
  * What the whole environment does is in its console.
  */
 export function AssistantPanel({ bot, view, op, files, onClose }: { bot: BotSummary; view: SessionView | null; op: SendOp; files: FileScope; onClose: () => void }) {
@@ -92,6 +93,11 @@ export function AssistantPanel({ bot, view, op, files, onClose }: { bot: BotSumm
             </button>
             <button className="frow bpn-end" onClick={clearMemory}>
               {t("panel.clearMemory")}
+            </button>
+          </section>
+          <section className="fgroup">
+            <button className="frow bpn-end" onClick={() => st.set({ sheet: { kind: "herOff", machineId: her.machine.machineId, machineName: her.machine.machineName } })}>
+              {t("panel.turnOff", { machine: her.machine.machineName })}
             </button>
           </section>
         </div>

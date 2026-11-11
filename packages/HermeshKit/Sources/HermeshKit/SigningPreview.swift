@@ -465,6 +465,11 @@ public enum SigningPreview {
             return Card(type: type, title: String(localized: "Set the model \(agent) runs with on \(target)", bundle: .module), who: who, lines: lines,
                         why: String(localized: "Once approved, its sessions there that name no model run with these; the agent’s own configuration is not changed.", bundle: .module))
         case .setHer(let h):
+            if h.enabled && h.erase { throw Refusal.unsupported(type) }
+            if h.erase {
+                return Card(type: type, title: String(localized: "Turn Her off for \(target) and erase her data", bundle: .module), who: who, lines: [],
+                            why: String(localized: "Once approved, Her stops on the machine, and her assistants, conversations, memory, routines, files, connectors and model logins there are deleted. This can’t be undone.", bundle: .module))
+            }
             return h.enabled
                 ? Card(type: type, title: String(localized: "Turn Her on for \(target)", bundle: .module), who: who, lines: [],
                        why: String(localized: "Once approved, Her runs on the machine as its user and keeps her conversations, settings and logins there. Her assistants can read and write files, run commands and reach the internet on it; new ones ask before risky steps.", bundle: .module))

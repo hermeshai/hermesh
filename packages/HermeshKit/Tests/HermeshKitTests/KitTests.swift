@@ -119,6 +119,8 @@ private func admin(_ build: (inout Hermesh_Identity_V1_AdminCommand) -> Void) ->
     let hints = SigningPreview.Hints(machineNames: ["m_1": "box"])
     #expect(try SigningPreview.card(admin { $0.setHer.enabled = true }, hints).title == "Turn Her on for machine “box”")
     #expect(try SigningPreview.card(admin { $0.setHer = .init() }, hints).title == "Turn Her off for machine “box”")
+    #expect(try SigningPreview.card(admin { $0.setHer.erase = true }, hints).title == "Turn Her off for machine “box” and erase her data")
+    #expect(throws: Refusal.unsupported(SigningPreview.adminCommand)) { try SigningPreview.card(admin { $0.setHer.enabled = true; $0.setHer.erase = true }, hints) }
     let full = try SigningPreview.card(admin {
         $0.setHerAssistantMode.botID = "b1"
         $0.setHerAssistantMode.permissionMode = "bypass-permissions"

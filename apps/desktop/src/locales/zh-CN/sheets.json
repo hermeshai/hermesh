@@ -237,5 +237,17 @@
     "finishFailed": "这台 Mac 未能完成本机清空：{{error}}",
     "finishFailed_win": "这台电脑未能完成本机清空：{{error}}",
     "retry": "再试一次"
+  },
+  "herOff": {
+    "title": "在「{{name}}」上关闭 Her？",
+    "sub": "Her 会在那里停止运行，也不能再使用你的电脑。",
+    "erase": "同时清空 Her 的数据",
+    "eraseDesc": "删除「{{name}}」上 Her 的助手、对话、记忆、定时任务、文件、连接器和模型登录，无法恢复。不清空的话，这些都会保留，下次开启 Her 时接着用。",
+    "button": "关闭 Her",
+    "buttonErase": "关闭并清空",
+    "approve": "用 Touch ID 确认。",
+    "approve_win": "用 Windows Hello 确认。",
+    "done": "已在「{{name}}」上关闭 Her",
+    "erased": "已在「{{name}}」上关闭 Her，并清空了她的数据"
   }
 }

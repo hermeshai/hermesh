@@ -14,7 +14,7 @@ import (
 // machines (her.go).
 
 func (l *localService) SetHer(ctx context.Context, req *localv1.SetHerRequest) (*localv1.SetHerResponse, error) {
-	err := l.o().SetHer(ctx, req.MachineId, req.Enabled)
+	err := l.o().SetHer(ctx, req.MachineId, req.Enabled, req.Erase)
 	l.o().wrote(ctx, err, false, req.MachineId)
 	if err != nil {
 		return nil, err

@@ -93,9 +93,9 @@ it has it (§3.4), then erases:
 
 | Device | What it erases |
 |---|---|
-| Trusted device (Mac app) | `Leave`, without asking (the owner forgotten, the root key deleted), then the profile's directory, its own machine's sessions, projects list and the worktrees Hermesh made, and the app's settings (first-run steps, window, notification choices). The app opens on its first run |
+| Trusted device (Mac app) | `Leave`, without asking (the owner forgotten, the root key deleted), then the profile's directory, its own machine's sessions, projects list and the worktrees Hermesh made, Her's data if Her was ever on there ([her-server.md](her-server.md) §5.6), and the app's settings (first-run steps, window, notification choices). The app opens on its first run |
 | Trusted device (iPhone) | The same `Leave`, its push registration (ending with the owner), the cached world and the app's settings. It opens on its first run |
-| Machine (VPS, Linux, machine-only Mac) | Its key, owner, sessions, projects list and Hermesh's worktrees: it is a newly installed machine, waiting to be paired |
+| Machine (VPS, Linux, machine-only Mac) | Its key, owner, sessions, projects list, Hermesh's worktrees, and Her's data if Her was ever on there: it is a newly installed machine, waiting to be paired |
 | Agent (CLI) | Its key and grant files (`hermesh auth logout`) |
 | Agent (connector) | Its connection at the gateway, and its OAuth registration and consent: connecting again starts from the consent page |
 | Center account | The owner and everything under it (machines, grants, messages, doorbells, push targets); every browser signed out |

@@ -93,6 +93,53 @@ func TestHerSetting(t *testing.T) {
 	}
 }
 
+// Turned off with erase, her data goes once she stopped; on with erase is
+// refused. Erase Everything erases it where Her was ever on, and only there.
+func TestHerErased(t *testing.T) {
+	home := filepath.Join(t.TempDir(), "her")
+	t.Setenv("HER_HOME", home)
+	t.Setenv("HER_CREDENTIAL_STORE", "file") // never the Keychain
+	mkHome := func() {
+		t.Helper()
+		if err := os.MkdirAll(filepath.Join(home, "bots", "b1"), 0o700); err != nil {
+			t.Fatal(err)
+		}
+	}
+	gone := func() bool { _, err := os.Stat(home); return os.IsNotExist(err) }
+	erase := func(on bool) *identityv1.AdminCommand {
+		return &identityv1.AdminCommand{Command: &identityv1.AdminCommand_SetHer{SetHer: &identityv1.SetHer{Enabled: on, Erase: true}}}
+	}
+	dir := t.TempDir()
+	cfg := Config{DataDir: dir, Providers: map[string]provider.Provider{}}
+	mkHome()
+
+	// Never on here: Erase Everything leaves a her of the user's own.
+	if err := EraseHer(cfg); err != nil || gone() {
+		t.Fatalf("Her never on: %v, home gone %v", err, gone())
+	}
+	n := openHerMachine(t, dir, "")
+	ctx := context.Background()
+	if _, err := n.execAdmin(ctx, erase(true)); connect.CodeOf(err) != connect.CodeInvalidArgument || n.Status().Her.Enabled {
+		t.Fatalf("on with erase: %v", err)
+	}
+	if _, err := n.execAdmin(ctx, setHer(true)); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := n.execAdmin(ctx, setHer(false)); err != nil || gone() {
+		t.Fatalf("off: %v, home gone %v", err, gone())
+	}
+	msg, err := n.execAdmin(ctx, erase(false))
+	if err != nil || msg != HerErased || !gone() || n.Status().Her.Enabled {
+		t.Fatalf("off with erase: %q %v, home gone %v", msg, err, gone())
+	}
+	n.Close()
+
+	mkHome()
+	if err := EraseHer(cfg); err != nil || !gone() {
+		t.Fatalf("Her once on: %v, home gone %v", err, gone())
+	}
+}
+
 // With HerExtensionHost, turning Her on registers her with the browsers for
 // the machine's socket, and turning it off takes that back; closing the
 // machine (hermeshd stopping) leaves it.

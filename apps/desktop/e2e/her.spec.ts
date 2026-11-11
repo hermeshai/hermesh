@@ -12,7 +12,8 @@ import { fixture, launch, snap } from "./app";
 // model until Her's onboarding connects one, and switched between, then
 // work-mac offline: what was read stays, after the app restarts too, and what
 // is written waits on this Mac. Her's memory shows in her settings, as written,
-// and is cleared there.
+// and is cleared there. Last, Her is turned off on this Mac, her data kept,
+// then erased.
 
 type Hook = { notifications(): { id: string; title: string; body: string; click(): void }[] };
 
@@ -375,5 +376,58 @@ test("Her: the first run, a chat, a secure card, the console, a second environme
   await expect(page.getByText(/^work-mac 离线 · .+在线$/)).toBeVisible({ timeout: 30_000 });
   await expect(page.getByRole("log", { name: "对话" })).toContainText("来自 work-mac");
   await snap(page, "her-offline-restarted");
+
+  // Her turned off on this Mac from her settings (docs/her-server.md §5.6): the sheet says what stops and asks
+  // whether her data goes too, keeping it unless chosen. Kept, Her carries on once turned on again, from the
+  // switch in Settings › Machines; there, turned off and erased, she starts anew, asking for a model.
+  await page.locator(".her-env").click();
+  await page.getByRole("menuitemradio").filter({ hasNotText: "work-mac" }).click();
+  await expect(page.getByRole("log", { name: "对话" })).toContainText("你好，主人", { timeout: 30_000 });
+  await page.getByRole("button", { name: "助手设置", exact: true }).click();
+  await page.getByRole("complementary", { name: "助手设置" }).getByRole("button", { name: /^在 .+ 上关闭 Her…$/ }).click();
+  const off = page.getByRole("dialog", { name: /^在「.+」上关闭 Her？$/ });
+  await expect(off).toContainText("Her 会在那里停止运行，也不能再使用你的电脑。");
+  await expect(off).toContainText("不清空的话，这些都会保留，下次开启 Her 时接着用。");
+  const erase = off.getByRole("switch", { name: "同时清空 Her 的数据" });
+  await expect(erase).toHaveAttribute("aria-checked", "false");
+  await erase.click();
+  await expect(off.getByRole("button", { name: "关闭并清空" })).toBeVisible();
+  await snap(page, "her-off-erase");
+  await erase.click();
+  await snap(page, "her-off");
+  await off.getByRole("button", { name: "关闭 Her" }).click();
+  await expect(off).toBeHidden({ timeout: 30_000 });
+  await expect(page.locator(".toast")).toHaveText(/^已在「.+」上关闭 Her$/);
+  // Her runs on work-mac alone now: the page is its, and no menu of environments shows.
+  await expect(page.getByText(/^work-mac 离线 · .+在线$/)).toBeVisible({ timeout: 30_000 });
+  await expect(page.locator(".her-env")).toHaveCount(0);
+
+  const [win] = await Promise.all([app.waitForEvent("window"), page.evaluate(() => window.hermesh?.openSettings("machines"))]);
+  await win.waitForLoadState();
+  const machines = win.getByRole("main", { name: "机器" });
+  await machines.getByRole("list", { name: "机器" }).getByRole("button").filter({ hasNotText: "work-mac" }).first().click();
+  const run = machines.getByRole("switch", { name: "在这台机器上运行 Her" });
+  await expect(run).toHaveAttribute("aria-checked", "false");
+  await run.click();
+  await expect(run).toHaveAttribute("aria-checked", "true", { timeout: 60_000 });
+  await expect(machines).toContainText("关闭时会问你是保留到下次，还是清空。");
+  await page.locator(".her-env").click({ timeout: 60_000 });
+  await page.getByRole("menuitemradio").filter({ hasNotText: "work-mac" }).click();
+  await expect(page.getByRole("log", { name: "对话" })).toContainText("你好，主人", { timeout: 60_000 });
+
+  await run.click();
+  const offThere = win.getByRole("dialog", { name: /^在「.+」上关闭 Her？$/ });
+  await offThere.getByRole("switch", { name: "同时清空 Her 的数据" }).click();
+  await offThere.getByRole("button", { name: "关闭并清空" }).click();
+  await expect(offThere).toBeHidden({ timeout: 30_000 });
+  await expect(win.locator(".toast")).toHaveText(/^已在「.+」上关闭 Her，并清空了她的数据$/);
+  await expect(run).toHaveAttribute("aria-checked", "false");
+  await run.click();
+  await expect(run).toHaveAttribute("aria-checked", "true", { timeout: 60_000 });
+  await page.locator(".her-env").click({ timeout: 60_000 });
+  await page.getByRole("menuitemradio").filter({ hasNotText: "work-mac" }).click();
+  const fresh = page.getByRole("log", { name: "对话" });
+  await expect(fresh.getByText(/^你好，我是 .+，在 .+ 上为你做事。开始之前，我需要接上一个模型/)).toBeVisible({ timeout: 120_000 });
+  await expect(fresh).not.toContainText("你好，主人");
   await app.close();
 });

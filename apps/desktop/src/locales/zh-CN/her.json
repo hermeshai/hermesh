@@ -306,7 +306,8 @@
     "memoryNote": "你的偏好、定下的事、东西放在哪，它会自己记下，清空聊天记录也还在。要改哪条，直接跟它说。",
     "clear": "清空聊天记录",
     "clearMemory": "清空记忆",
-    "permissionNote_win": "{{desc}}。Her 创建的智能体和定时任务也按这个权限运行，你不在时也一样。完全访问要用 Windows Hello 确认。"
+    "permissionNote_win": "{{desc}}。Her 创建的智能体和定时任务也按这个权限运行，你不在时也一样。完全访问要用 Windows Hello 确认。",
+    "turnOff": "在 {{machine}} 上关闭 Her…"
   },
   "approval": {
     "label": "等你批准",

@@ -78,6 +78,7 @@
 "Once approved, Her no longer starts it on the machine." = "批准后，Her 将不再在这台机器上启动它。";
 "Once approved, Her runs on the machine as its user and keeps her conversations, settings and logins there. Her assistants can read and write files, run commands and reach the internet on it; new ones ask before risky steps." = "批准后，Her 将以这台机器的用户身份在上面运行，对话、设置和登录信息都保存在这台机器上。Her 的助手可在这台机器上读写文件、运行命令、访问网络；新助手遇到有风险的操作会先征求你的同意。";
 "Once approved, Her runs this command on the machine as its user whenever her assistants use the connector. It can do anything that user can: read and change files, run programs and reach the network." = "批准后，每当 Her 的助手用到这个连接器，Her 都会以这台机器的用户身份运行这条命令。它能做这个用户能做的一切：读写文件、运行程序、访问网络。";
+"Once approved, Her stops on the machine, and her assistants, conversations, memory, routines, files, connectors and model logins there are deleted. This can’t be undone." = "批准后，Her 将在这台机器上停止运行，她在那里的助手、对话、记忆、定时任务、文件、连接器和模型登录都会被删除。此操作无法撤销。";
 "Once approved, Her stops on the machine; her conversations, settings and logins stay there." = "批准后，Her 将在这台机器上停止运行；对话、设置和登录信息仍保存在这台机器上。";
 "Once approved, Hermesh on all your trusted devices and machines, this Mac included, erases its keys, sessions and settings, and your agents are disconnected. This can’t be undone." = "批准后，你所有可信设备和机器（包括这台 Mac）上的 Hermesh 都将清除密钥、会话和设置，所有 Agent 也会断开连接。此操作无法撤销。";
 "Once approved, Hermesh on all your trusted devices and machines, this iPhone included, erases its keys, sessions and settings, and your agents are disconnected. This can’t be undone." = "批准后，你所有可信设备和机器（包括这台 iPhone）上的 Hermesh 都将清除密钥、会话和设置，所有 Agent 也会断开连接。此操作无法撤销。";
@@ -139,6 +140,7 @@
 "This sends a join request to your existing devices. Check the same code on one of them and approve, and this Mac becomes a trusted device." = "将向你已有的设备发送加入请求。在已有设备上核对相同的核对码并批准后，这台 Mac 即可成为可信设备。";
 "This sends a join request to your existing devices. Check the same code on one of them and approve, and this iPhone becomes a trusted device." = "将向你已有的设备发送加入请求。在已有设备上核对相同的核对码并批准后，这台 iPhone 即可成为可信设备。";
 "Trusted devices" = "可信设备";
+"Turn Her off for %@ and erase her data" = "在%@上关闭 Her 并清空她的数据";
 "Turn Her off for %@" = "在%@上关闭 Her";
 "Turn Her on for %@" = "在%@上开启 Her";
 "Unknown program" = "未知程序";

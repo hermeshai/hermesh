@@ -4,7 +4,8 @@ import XCTest
 /// the owner Mac's her, whose model is her-mock (TestIPhone, iphoneHerEnv):
 /// Her turned on for the Mac with Face ID, her onboarding connecting a model
 /// with a Token Plan, a chat, Chinese typed at a line's end, her settings and her memory, a question, files she sends, an approval, and the Mac gone
-/// offline, where a message waits on the iPhone until it is back. her-mock
+/// offline, where a message waits on the iPhone until it is back; last, Her turned off with her data erased,
+/// and on again, new. her-mock
 /// answers a message by its directive (e2e/her_owner_test.go).
 ///
 ///     HERMESH_IPHONE_E2E=1 HERMESH_IPHONE_GREP=testHer go test ./e2e -run TestIPhone -v -timeout 40m
@@ -24,6 +25,7 @@ extension HermeshUITests {
         try XCTContext.runActivity(named: "an approval in the composer's place, allowed once") { _ in try herApproval() }
         try XCTContext.runActivity(named: "the Mac offline: what was said stays, and a message waits here until it is back") { _ in try herOffline() }
         try XCTContext.runActivity(named: "opened on its last messages, earlier ones are read at the top") { _ in try herEarlier() }
+        try XCTContext.runActivity(named: "turned off from her settings, her data erased: on again, she is new") { _ in try herTurnOff() }
     }
 
     func herTurnOn() throws {
@@ -347,6 +349,31 @@ extension HermeshUITests {
         for _ in 0 ..< 6 where !first.exists { app.swipeDown() }
         XCTAssertTrue(first.waitForExistence(timeout: 30), "the first ones, read at the top")
         herShot("Her: earlier messages read")
+    }
+
+    func herTurnOff() throws {
+        // At the end of her settings: turning her off asks whether her data goes too (docs/her-server.md §5.6).
+        app.buttons["her-name"].tap()
+        XCTAssertTrue(text("运行在").waitForExistence(timeout: 10), "her settings")
+        let off = app.buttons["her-turn-off"]
+        for _ in 0 ..< 4 where !off.isHittable { app.swipeUp() }
+        XCTAssertTrue(off.label.contains("在 owner-mac 上关闭 Her"), off.label)
+        off.tap()
+        XCTAssertTrue(text("在「owner-mac」上关闭 Her？").waitForExistence(timeout: 10), "asked first")
+        XCTAssertTrue(text("保留数据的话，下次开启 Her 时接着用").exists, "what keeping means")
+        XCTAssertTrue(app.buttons["关闭，保留数据"].exists, "keeping her data")
+        herShot("Her: turning her off")
+        app.buttons["关闭并清空数据"].tap()
+        // Off, Her runs nowhere: the entry asks where she should run. On again there, she is new, with no model.
+        XCTAssertTrue(text("选择 Her 在哪里运行").waitForExistence(timeout: 60), "the first run again")
+        tap("her-turn-on-owner-mac", timeout: 30)
+        XCTAssertTrue(text("在机器「owner-mac」上开启 Her").waitForExistence(timeout: 30), "the signing sheet")
+        let approve = app.descendants(matching: .any)["sign-approve"].firstMatch
+        for _ in 0 ..< 4 where !approve.exists { app.swipeUp() }
+        tap("sign-approve")
+        XCTAssertTrue(text("开始之前，我需要接上一个模型").waitForExistence(timeout: 180), "a new Her, asking for a model")
+        XCTAssertFalse(app.staticTexts["你好，主人"].exists, "nothing of what was said")
+        herShot("Her: on again after erasing")
     }
 
     // MARK: Helpers

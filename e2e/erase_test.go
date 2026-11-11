@@ -28,7 +28,14 @@ func TestEraseEverything(t *testing.T) {
 		t.Skip("e2e")
 	}
 	env := []string{"HERMESH_FAKE_PROVIDERS=1"}
-	w := newOwnerMac(t, env, &localv1.GrantSpec{})
+	// Her's homes: the Mac's, where Her is turned on, and the servers', where
+	// she never is (docs/her-server.md §5.6).
+	herMac, herVPS := filepath.Join(t.TempDir(), "her"), filepath.Join(t.TempDir(), "her")
+	for _, d := range []string{herMac, herVPS} {
+		os.MkdirAll(filepath.Join(d, "bots"), 0o700)
+	}
+	herEnv := func(home string) []string { return append(slices.Clone(env), "HER_HOME="+home, "HER_CREDENTIAL_STORE=file") }
+	w := newOwnerMac(t, herEnv(herMac), &localv1.GrantSpec{})
 	ctx := context.Background()
 	daemon := filepath.Join(w.bin, "hermeshd")
 
@@ -65,7 +72,7 @@ func TestEraseEverything(t *testing.T) {
 		return data
 	}
 	runVPS := func(name, data string) *proc {
-		p := start(t, name, env, daemon, "run", "--data-dir", data)
+		p := start(t, name, herEnv(herVPS), daemon, "run", "--data-dir", data)
 		w.logs = append(w.logs, p)
 		return p
 	}
@@ -137,6 +144,11 @@ func TestEraseEverything(t *testing.T) {
 		"machine/vps-off this=false online=false done=false", "machine/vps-on this=false online=true done=false",
 		"agent/bot this=false online=false done=false", "agent/late this=false online=false done=false"}; !slices.Equal(shown, want) {
 		t.Fatalf("preview:\n%s", strings.Join(shown, "\n"))
+	}
+
+	// Her on the Mac's own machine.
+	if _, err := w.app.client.SetHer(ctx, &localv1.SetHerRequest{MachineId: localMachine(t, w.app.client), Enabled: true}); err != nil {
+		t.Fatal(err)
 	}
 
 	// Erase everything, from the Mac: one approval.
@@ -225,6 +237,12 @@ func TestEraseEverything(t *testing.T) {
 	}
 	if _, err := w.app.client.ListMachines(ctx, &localv1.ListMachinesRequest{}); connect.CodeOf(err) != connect.CodeFailedPrecondition {
 		t.Fatalf("listing machines after erasing: %v", err)
+	}
+	if _, err := os.Stat(herMac); !os.IsNotExist(err) {
+		t.Fatalf("Her's data on the Mac after erasing: %v", err)
+	}
+	if _, err := os.Stat(herVPS); err != nil {
+		t.Fatalf("a her of the server's own, where Her was never on: %v", err)
 	}
 
 	// The other trusted device and the machine-only Mac erased themselves.

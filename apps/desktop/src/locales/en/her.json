@@ -307,7 +307,8 @@
     "memoryNote": "Your preferences, what you decide and where things are: it notes them itself, and they stay when the chat is cleared. To change one, tell it.",
     "clear": "Clear Chat",
     "clearMemory": "Clear Memory",
-    "permissionNote_win": "{{desc}}. The agents and scheduled tasks Her starts run with it too, while you are away as well. Full access is confirmed with Windows Hello."
+    "permissionNote_win": "{{desc}}. The agents and scheduled tasks Her starts run with it too, while you are away as well. Full access is confirmed with Windows Hello.",
+    "turnOff": "Turn Off Her on {{machine}}…"
   },
   "approval": {
     "label": "Waiting for your approval",
