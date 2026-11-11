@@ -6,6 +6,7 @@
 mod agents;
 pub mod approval;
 pub mod bot;
+pub mod bot_memory;
 mod browser;
 pub mod browser_install;
 mod budget;

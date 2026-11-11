@@ -229,6 +229,8 @@ async fn run(
         tokens_after,
         dropped_messages: input.dropped,
     })));
+    // The context is new from here on: a bot's prompt takes its memory as it is now.
+    session.refresh_memory();
     session.emit(EventMsg::CompactionCompleted {
         reason,
         seq,

@@ -581,6 +581,11 @@ async fn run_task(session: &Arc<Session>, task: &TaskCtx, input: Option<Input>) 
         if let Err(outcome) = check_context(session, task, &mut compactions).await {
             return outcome;
         }
+        // A bot's memory changes its system prompt, which is free only while no provider still
+        // caches the conversation (docs/her-memory.md §4).
+        if turn == 0 && session.quiet() {
+            session.refresh_memory();
+        }
         // Past midnight, or a compaction left only the system prompt's date; the same for a
         // bot's name.
         session.note_date();

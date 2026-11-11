@@ -82,7 +82,7 @@ pub(crate) struct ActiveTask {
 
 pub(crate) struct SessionState {
     pub(crate) history: History,
-    /// What is sent: `base_prompt`, then `mcp_section` when there is one.
+    /// What is sent: `base_prompt`, then `mcp_section` and `memory` when there are any.
     pub(crate) system_prompt: Arc<str>,
     /// Fixed when the session started, and kept on resume.
     pub(crate) base_prompt: Arc<str>,
@@ -90,6 +90,9 @@ pub(crate) struct SessionState {
     /// browser turned on later, connectors-entry-design §9.4), then the MCP server catalog and
     /// instructions. Changes only with those.
     pub(crate) mcp_section: Option<String>,
+    /// A bot's session: its memory as the prompt last took it, the prompt's last part
+    /// (`bot_memory::section`, docs/her-memory.md §4).
+    pub(crate) memory: Option<String>,
     /// The skills of the session, frozen with the system prompt (its catalog lists the ones
     /// the model may load). Sub-agents get the main session's.
     pub(crate) skills: Arc<[SkillRef]>,
@@ -168,6 +171,7 @@ impl SessionState {
             base_prompt: system_prompt.clone(),
             system_prompt,
             mcp_section: None,
+            memory: None,
             skills: Arc::from([]),
             model,
             thinking,
@@ -196,6 +200,15 @@ impl SessionState {
             sub_agent_prompt: None,
             prompt_template: None,
         }
+    }
+
+    /// `system_prompt` from its parts, after one of them changed.
+    pub(crate) fn compose_prompt(&mut self) {
+        let text = crate::mcp::compose(&self.base_prompt, self.mcp_section.as_deref());
+        self.system_prompt = match &self.memory {
+            Some(memory) => format!("{}\n\n{memory}\n", text.trim_end()).into(),
+            None => text.into(),
+        };
     }
 
     /// A waiting report would start a task now. Stopping the bot's work holds back the reports
@@ -305,6 +318,8 @@ pub(crate) struct Session {
     pub(crate) own_folder: Option<PathBuf>,
     /// See [`SessionView::skill_roots`].
     pub(crate) skill_roots: Arc<[PathBuf]>,
+    /// See [`SessionView::memory_dir`].
+    pub(crate) memory_dir: Option<PathBuf>,
     pub(crate) trusted: bool,
     pub(crate) interactive_approvals: bool,
     /// One lock per file, shared with the sub-agents: changes to a file never interleave.
@@ -465,6 +480,35 @@ impl Session {
         if let Some(text) = changed {
             self.record(EntryKind::Routines { text });
         }
+    }
+
+    /// Takes a bot's memory into its system prompt as `MEMORY.md` is now. A new copy is recorded
+    /// and costs one prompt-cache miss, so this is called only where that miss is free
+    /// (docs/her-memory.md §4): after a compaction, and before a task that follows a quiet time.
+    pub(crate) fn refresh_memory(&self) {
+        let Some(dir) = &self.memory_dir else {
+            return;
+        };
+        // Read before the lock: no I/O happens under it.
+        let memory = crate::bot_memory::section(dir);
+        {
+            let mut state = self.state.lock();
+            if state.memory.as_deref() == Some(memory.as_str()) {
+                return;
+            }
+            state.memory = Some(memory);
+            state.compose_prompt();
+        }
+        *self.fixed_tokens.lock() = None;
+        self.record_system_prompt();
+    }
+
+    /// Whether the model last answered long enough ago for a provider's prompt cache to be gone,
+    /// or never did: changing the system prompt now costs nothing.
+    pub(crate) fn quiet(&self) -> bool {
+        let state = self.state.lock();
+        let last = state.history.branch_back().find(|entry| matches!(&entry.kind, EntryKind::Message { message: Message::Assistant(_), .. }));
+        last.is_none_or(|entry| now_ms().saturating_sub(entry.ts) >= crate::bot_memory::QUIET.as_millis() as i64)
     }
 
     /// A sub-agent told the user something: they have it from now on, and no task starts for it.
@@ -775,6 +819,7 @@ impl Session {
             data_dir: self.data_dir.clone(),
             own_folder: self.own_folder.clone(),
             skill_roots: self.skill_roots.clone(),
+            memory_dir: self.memory_dir.clone(),
             site_grants: state.site_grants.clone(),
             browser: self.system.get().browser.policy.clone(),
             desktop: self.system.get().desktop.clone(),

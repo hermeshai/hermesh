@@ -222,6 +222,8 @@ struct Launch {
     mcp: Option<Arc<McpManager>>,
     /// The tree's browser and desktop settings (connectors-entry-design §9.4).
     system: Arc<SystemCell>,
+    /// A bot's main session: its memory (docs/her-memory.md §3).
+    memory_dir: Option<PathBuf>,
 }
 
 fn launch(launch: Launch) -> (Kernel, Arc<Session>) {
@@ -323,6 +325,7 @@ fn launch(launch: Launch) -> (Kernel, Arc<Session>) {
         data_dir: crate::protected::canonical_data_dir(launch.home.root()),
         own_folder,
         skill_roots,
+        memory_dir: launch.memory_dir,
         trusted: launch.trusted,
         interactive_approvals: launch.interactive_approvals,
         locks: launch.locks,
@@ -509,6 +512,7 @@ pub(crate) fn start_child(mut child: ChildLaunch) -> Result<Kernel, KernelError>
         locks: child.locks,
         mcp: child.mcp,
         system: child.system,
+        memory_dir: None,
     });
     // The main session has waited for the servers already: their tools are in from the start.
     session.refresh_mcp();
@@ -535,6 +539,11 @@ pub(crate) fn start_child(mut child: ChildLaunch) -> Result<Kernel, KernelError>
         context: Some(session.budget().usage),
     });
     Ok(kernel)
+}
+
+/// A bot's memory folder in its canonical form, as the paths of tool calls are judged.
+fn memory_dir(home: &HerHome, bot: &str) -> PathBuf {
+    crate::protected::canonical_lossy(&home.bot_memory_dir(bot))
 }
 
 /// A bot's session reaches its routines through the service (routine-design §4.3).
@@ -702,6 +711,9 @@ impl Kernel {
         state.sub_agent_prompt = sub_agent.map(Arc::from);
         state.prompt_template = opts.bot.as_ref().and_then(|_| crate::prompt::bot_template(&opts.config).ok());
         let bot_id = opts.bot.as_ref().map(|bot| bot.id.clone());
+        let memory_dir = bot_id.as_ref().map(|id| memory_dir(&opts.home, id));
+        state.memory = memory_dir.as_deref().map(crate::bot_memory::section);
+        state.compose_prompt();
         state.bot = opts.bot.map(|bot| BotNames {
             given: bot.name.clone(),
             current: bot.name,
@@ -726,6 +738,7 @@ impl Kernel {
             locks: Arc::new(PathLocks::new()),
             mcp: mcp.clone(),
             system,
+            memory_dir,
         });
         if let Some(tree) = &agents {
             tree.bind_root(&session, kernel.internal.clone());
@@ -776,7 +789,7 @@ impl Kernel {
         let starting = starting_tools(&deps, &system);
         let history = History::from_entries(loaded.entries);
         let mut system_prompt = None;
-        let mut last_prompt: Option<(Vec<String>, Option<String>)> = None;
+        let mut last_prompt: Option<(Vec<String>, Option<String>, Option<String>)> = None;
         let mut last_template = None;
         let mut model_ref = None;
         let mut thinking = None;
@@ -816,7 +829,7 @@ impl Kernel {
             match &entry.kind {
                 EntryKind::SystemPrompt(prompt) => {
                     system_prompt = Some(prompt.text.clone());
-                    last_prompt = Some((prompt.tools.clone(), prompt.mcp.clone()));
+                    last_prompt = Some((prompt.tools.clone(), prompt.mcp.clone(), prompt.memory.clone()));
                     last_template = prompt.template.clone();
                     // Entries written again later (a new tool set) may leave the skills out.
                     if !prompt.skills.is_empty() {
@@ -923,6 +936,14 @@ impl Kernel {
         state.sub_agent_prompt = sub_agent.map(Arc::from);
         state.prompt_template = template;
         let bot_id = bot_ref.as_ref().map(|bot| bot.id.clone());
+        // A bot's memory stays as the prompt on record has it, which a provider may still cache;
+        // the next task takes a new copy if the conversation was quiet (docs/her-memory.md §4).
+        // A prompt written anew, or a log from before there was memory, takes it now.
+        let memory_dir = bot_id.as_ref().map(|id| memory_dir(&opts.home, id));
+        let recorded = last_prompt.as_ref().and_then(|(_, _, memory)| memory.clone()).filter(|_| !new_template);
+        state.memory = memory_dir.as_deref().map(|dir| recorded.unwrap_or_else(|| crate::bot_memory::section(dir)));
+        state.compose_prompt();
+        let memory = state.memory.clone();
         state.bot = bot_ref.map(|bot| BotNames {
             current: opts.bot_name.clone().unwrap_or_else(|| bot.name.clone()),
             given: bot.name,
@@ -949,6 +970,7 @@ impl Kernel {
             locks: Arc::new(PathLocks::new()),
             mcp: mcp.clone(),
             system,
+            memory_dir,
         });
         if let Some(tree) = &agents {
             tree.bind_root(&session, kernel.internal.clone());
@@ -956,8 +978,9 @@ impl Kernel {
         }
         link_routines(&session, routines, bot_id);
         kernel.restored_agents = restored_agents;
-        // A new entry only when the prompt, the tools or the MCP part differ from what the log has.
-        let current = (session.tools().names(), mcp_section);
+        // A new entry only when the prompt, the tools, the MCP part or the memory differ from what
+        // the log has.
+        let current = (session.tools().names(), mcp_section, memory);
         if new_template || last_prompt.as_ref() != Some(&current) {
             session.record_system_prompt();
         }

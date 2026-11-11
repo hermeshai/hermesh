@@ -36,6 +36,7 @@ use crate::rules::ShellContext;
 use crate::rules::Target;
 
 const OUTSIDE_WORKSPACE: &str = "The path is outside the workspace.";
+const OTHERS_MEMORY: &str = "This is a bot's memory, and only the bot itself writes it. Say in your reply what it should know.";
 const TOO_DEEP: &str = "The command nests scripts too deeply to check.";
 const HARD_LINK: &str = "The copy would write into a file that has other hard links, which may be outside the workspace.";
 
@@ -581,6 +582,13 @@ fn workspace_roots(view: &SessionView) -> Vec<PathBuf> {
 }
 
 fn evaluate_file_change(call: &ToolCall, args: &serde_json::Value, raw_path: &str, view: &SessionView) -> Gate {
+    // A bot's memory is its own notes: it keeps them without asking, and no other session
+    // writes them, whatever the mode (docs/her-memory.md §6).
+    match protected::memory(&canonical_lossy(&view.env.resolve(raw_path)), view) {
+        Some(true) => return Gate::Allow,
+        Some(false) => return Gate::Deny(OTHERS_MEMORY.into()),
+        None => {}
+    }
     if view.permission_mode == PermissionMode::BypassPermissions {
         return Gate::Allow;
     }
@@ -635,6 +643,7 @@ mod tests {
             data_dir: canonical_lossy(&dir.join("her-home")),
             own_folder: None,
             skill_roots: Arc::from([]),
+            memory_dir: None,
             site_grants: vec![],
             browser: Arc::default(),
             desktop: Default::default(),
@@ -675,6 +684,34 @@ mod tests {
 
     fn doc_call(name: &str, args: serde_json::Value) -> ToolCall {
         ToolCall { id: "c".into(), name: name.into(), arguments: args.into(), arguments_error: None, provider_data: None }
+    }
+
+    /// A bot's memory (docs/her-memory.md §6): its own session writes it in every mode, and no
+    /// other session's file tools do, full access included. The rest of a bot's directory is
+    /// her's data as before.
+    #[test]
+    fn a_bots_memory_is_written_by_the_bot_alone() {
+        let dir = tempfile::tempdir().unwrap();
+        let memory = canonical_lossy(&dir.path().join("her-home/bots/b1/memory"));
+        let line = memory.join("MEMORY.md").display().to_string();
+        let page = memory.join("pages/trip.md").display().to_string();
+        let mut own = view(dir.path(), PermissionMode::Manual);
+        own.memory_dir = Some(memory.clone());
+        for path in [&line, &page] {
+            assert_eq!(evaluate(&write(path), ToolKind::Mutating, &own), Gate::Allow, "{path}");
+        }
+        for mode in PermissionMode::ALL {
+            let other = view(dir.path(), mode);
+            for path in [&line, &page] {
+                assert!(matches!(evaluate(&write(path), ToolKind::Mutating, &other), Gate::Deny(_)), "{mode:?} {path}");
+            }
+            let mut another = view(dir.path(), mode);
+            another.memory_dir = Some(canonical_lossy(&dir.path().join("her-home/bots/b2/memory")));
+            assert!(matches!(evaluate(&write(&line), ToolKind::Mutating, &another), Gate::Deny(_)), "another bot's, {mode:?}");
+        }
+        let settings = dir.path().join("her-home/bots/b1/bot.json").display().to_string();
+        assert!(matches!(evaluate(&write(&settings), ToolKind::Mutating, &own), Gate::Ask { .. }));
+        assert_eq!(evaluate(&write(&settings), ToolKind::Mutating, &view(dir.path(), PermissionMode::BypassPermissions)), Gate::Allow);
     }
 
     #[test]

@@ -256,6 +256,10 @@ pub struct SystemPromptEntry {
     pub skills: Vec<SkillRef>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub mcp: Option<String>,
+    /// A bot's session: its memory as this prompt has it, the part after `mcp`
+    /// (docs/her-memory.md §4).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub memory: Option<String>,
     /// A bot's session: which `bot.md` the text comes from (bot-turn-design §8).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub template: Option<String>,

@@ -101,6 +101,18 @@ pub(crate) fn protected(path: &Path, view: &SessionView) -> Option<String> {
     protected_name(&relative)
 }
 
+/// Whether `path` (absolute and normalized) is in a bot's memory, `bots/<id>/memory` in the data
+/// directory, and whether that memory is this session's own.
+pub(crate) fn memory(path: &Path, view: &SessionView) -> Option<bool> {
+    let path = canonical_lossy(path);
+    if view.memory_dir.as_ref().is_some_and(|own| path.starts_with(own)) {
+        return Some(true);
+    }
+    let mut below = path.strip_prefix(view.data_dir.join("bots")).ok()?.components();
+    below.next()?;
+    (below.next()?.as_os_str() == crate::bot_memory::DIR).then_some(false)
+}
+
 /// The protected name among the components of `path`, judged by the names alone.
 pub(crate) fn protected_name(path: &Path) -> Option<String> {
     let names: Vec<&str> = path
@@ -253,6 +265,7 @@ mod tests {
             data_dir: canonical_lossy(data_dir),
             own_folder: None,
             skill_roots: Arc::from([]),
+            memory_dir: None,
             site_grants: Vec::new(),
             browser: Arc::default(),
             desktop: Default::default(),

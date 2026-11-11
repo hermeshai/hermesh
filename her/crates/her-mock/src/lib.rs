@@ -53,6 +53,8 @@
 //! | `routine:NAME\|SCHEDULE\|RUN` | a bot's `manage_routine` create, with RUN as the routine's prompt in brackets (`[[mock:RUN]]`); then `转告：<its result>` sent with `end_turn`, and for each report that wakes it, what the run found, sent with `end_turn` |
 //! | `connect:NAME[\|URL]` | Her's `call_tool` on `connector_connect` (`name` NAME, `url` URL); then `send_to_user` of the card it prepared (`type` card); when how the card ended wakes her: if it is done, `call_tool` on the connector's `echo` (`mcp__NAME__echo`); then `转告：<its note>`, with what `echo` said on a line of its own, sent with `end_turn` |
 //! | `say:TEXT` | TEXT, as it is |
+//! | `remember:LINE` | a bot noting LINE in its memory, the `MEMORY.md` its system prompt gives in `<memory path="…">`: a `write` of LINE when nothing is there yet, else an `edit` that puts LINE after the last line; then `记下了。` sent with `end_turn` |
+//! | `recall` | `记得：<what the system prompt's <memory> holds>` sent with `end_turn`, or `什么都不记得。` when it holds nothing |
 //!
 //! [`MockOptions`] adds a gateway's latency: a pause before the first chunk of every reply
 //! and between chunks.
@@ -598,6 +600,11 @@ fn plan(shared: &Shared, messages: &[Value], name: &str, arg: &str, prompt: &str
         "invoked" => invoked_step(messages, prompt, step, bot),
         "context" => Plan::Step(Step::text(skills_in_context(messages))),
         "echo" => Plan::Step(Step::text(format!("echo: {prompt}"))),
+        "remember" => remember_step(messages, arg, step, bot),
+        "recall" => match memory(messages) {
+            Some((_, text)) if !text.is_empty() => last_words(bot, format!("记得：{text}")),
+            _ => last_words(bot, "什么都不记得。".into()),
+        },
         "think" => Plan::Step(Step {
             parts: vec![
                 Part::Thinking("Let me think about this.".into()),
@@ -1059,6 +1066,33 @@ fn plan(shared: &Shared, messages: &[Value], name: &str, arg: &str, prompt: &str
     }
 }
 
+/// A bot's memory as its system prompt gives it (docs/her-memory.md §4): where `MEMORY.md` is,
+/// and what it holds, which is nothing before the first note.
+fn memory(messages: &[Value]) -> Option<(String, String)> {
+    let system = messages
+        .first()
+        .filter(|m| matches!(m.get("role").and_then(Value::as_str), Some("system" | "developer")))
+        .map(content_text)?;
+    let (_, rest) = system.rsplit_once("<memory path=\"")?;
+    let (path, rest) = rest.split_once("\">\n")?;
+    let (text, _) = rest.split_once("\n</memory>")?;
+    Some((path.to_string(), if text == "(empty)" { String::new() } else { text.to_string() }))
+}
+
+/// A bot noting `line` in its memory, with the file tools it has anyway.
+fn remember_step(messages: &[Value], line: &str, step: usize, bot: bool) -> Plan {
+    let Some((path, text)) = memory(messages) else {
+        return last_words(bot, "no memory".into());
+    };
+    if step > 0 {
+        return last_words(bot, "记下了。".into());
+    }
+    match text.lines().last() {
+        None => Plan::Step(Step::calls(vec![("write", json!({ "path": path, "content": format!("{line}\n") }))])),
+        Some(last) => Plan::Step(Step::calls(vec![("edit", json!({ "path": path, "edits": [{ "old_text": last, "new_text": format!("{last}\n{line}") }] }))])),
+    }
+}
+
 /// A model following the skill `name`: first the SKILL.md that the catalog in the system
 /// prompt lists, then what its text names in backticks, as the catalog's instructions say.
 fn skill_step(messages: &[Value], name: &str, step: usize, bot: bool) -> Plan {
@@ -1511,6 +1545,25 @@ mod tests {
         let messages = vec![json!({"role": "user", "content": [{"type": "text", "text": "[[mock:long:7]]"}]})];
         let (name, arg, _, step) = directive(&messages);
         assert_eq!((name.as_str(), arg.as_str(), step), ("long", "7", 0));
+    }
+
+    #[test]
+    fn a_bot_notes_in_the_memory_its_prompt_gives_and_recalls_from_it() {
+        let system = |memory: &str| json!({"role": "system", "content": format!("You are Her.\n`<memory>` at the end.\n\n<memory path=\"/h/bots/b1/memory/MEMORY.md\">\n{memory}\n</memory>\n")});
+        let user = json!({"role": "user", "content": "[[mock:remember:- 新的一条。]] 记住"});
+        let sent = |text: &str| ("send_to_user", json!({ "text": text, "end_turn": true }));
+        assert_eq!(
+            call_of(remember_step(&[system("(empty)"), user.clone()], "- 新的一条。", 0, true)),
+            ("write", json!({ "path": "/h/bots/b1/memory/MEMORY.md", "content": "- 新的一条。\n" }))
+        );
+        assert_eq!(
+            call_of(remember_step(&[system("## A\n- 旧的一条。"), user.clone()], "- 新的一条。", 0, true)),
+            ("edit", json!({ "path": "/h/bots/b1/memory/MEMORY.md", "edits": [{ "old_text": "- 旧的一条。", "new_text": "- 旧的一条。\n- 新的一条。" }] }))
+        );
+        assert_eq!(call_of(remember_step(&[system("(empty)"), user.clone()], "- 新的一条。", 1, true)), sent("记下了。"));
+        assert_eq!(call_of(remember_step(&[json!({"role": "system", "content": "no memory here"}), user], "- x", 0, true)), sent("no memory"));
+        assert_eq!(memory(&[system("## A\n- 旧的一条。")]), Some(("/h/bots/b1/memory/MEMORY.md".into(), "## A\n- 旧的一条。".into())));
+        assert_eq!(memory(&[system("(empty)")]).unwrap().1, "");
     }
 
     #[test]

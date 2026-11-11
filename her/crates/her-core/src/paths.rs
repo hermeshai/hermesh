@@ -149,6 +149,12 @@ impl HerHome {
         self.bot_dir(id).join("files")
     }
 
+    /// A bot's memory: the notes it keeps about its owner and their work, beside its working
+    /// folder, so that clearing its conversation leaves them (docs/her-memory.md §3).
+    pub fn bot_memory_dir(&self, id: &str) -> PathBuf {
+        self.bot_dir(id).join(crate::bot_memory::DIR)
+    }
+
     /// Whether a session in `cwd` (canonical) has no project: one started without a project,
     /// or a bot's. Neither looks for a project around its folder.
     pub fn has_no_project(&self, cwd: &Path) -> bool {

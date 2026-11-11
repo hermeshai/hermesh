@@ -415,6 +415,7 @@ mod tests {
             data_dir: root.join(".her-data"),
             own_folder: None,
             skill_roots: Arc::from([]),
+            memory_dir: None,
             site_grants: grants,
             browser: Arc::new(policy),
             desktop: Default::default(),
