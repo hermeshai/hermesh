@@ -1,9 +1,9 @@
 # Computer Control on Linux
 
 Status: built 2026-11-12. The four ways of §3.2 run against the desktops
-themselves in containers (§9, §10); the release build is checked on Debian
-13 and Fedora 43. Not yet checked: a Plasma desktop (KWin's screen sharing
-needs a graphics device a container here lacks), a real network, a real
+themselves in containers, and the release build against logged-in GNOME
+50 and Plasma 6.6 desktops in an Ubuntu 26.04 virtual machine, hermeshd its
+systemd user service (§9, §10). Not yet checked: a real network, a real
 iPhone (§11).
 
 [computer-control.md](computer-control.md) is the feature: the owner sees
@@ -137,8 +137,8 @@ screen, so the owner can type the password.
 
 **GNOME.** Mutter's service takes calls from any program of the user's
 session and shows no dialog; GNOME's own remote desktop uses it. Checked
-on Mutter 51 alone and under GNOME Shell 51 (§9), and on Debian 13's
-Mutter 48. GNOME shows its own mark in the top bar while a session lasts.
+on Mutter 51 alone and under GNOME Shell 51, on Fedora 43's 49.8, and in a
+logged-in GNOME 50 on Ubuntu 26.04 (§9). GNOME shows its own mark in the top bar while a session lasts.
 It is not a public interface: GNOME's developers have said they may limit
 who can call it. When a call is refused, the helper uses the portal.
 
@@ -249,9 +249,14 @@ JSON. `--test-source` and `--input-log` do what the Mac's do. `--allow` is
   session manager, else `org.freedesktop.ScreenSaver`).
 - **X11**: a locked screen shows and takes input.
 - **GNOME on Wayland**: locking ends every remote session and refuses new
-  ones until it is unlocked. The helper reads the lock from logind and
-  reports `locked` without starting one; one under way that GNOME ends
-  reports it too.
+  ones until it is unlocked. The helper reads the lock from logind: a
+  session under way that GNOME ends reports `locked`, the machine stays
+  offered, and a phone that connects then is told "the screen is locked"
+  at once. GNOME locks itself after a while idle by default: a machine
+  meant to be reached from afar has its automatic screen lock off
+  (Settings › Privacy & Security › Screen Lock).
+- **Plasma**: a session goes on while the screen is locked, and shows the
+  lock screen (6.6.6). Whether typing reaches it is not checked.
 - **The login screen** belongs to another user: out of reach everywhere.
 
 ## 4. The encoder
@@ -364,7 +369,16 @@ writing what reached it:
 | GNOME Shell 51, headless | the shell's top bar with GNOME's sharing mark | as typed | first frame in 0.05–0.09 s |
 | Sway 1.12, headless, pixman | 1280×720, the background's colour right | as typed, and Ctrl+A | no dialog |
 | GNOME's portal over Mutter 51 | 1280×720 | as typed (Chinese pasted) | `consent` while the dialog waited; the dialog clicked through by GNOME's own way; the token kept; a second session with no dialog, first frame in 0.06–0.11 s |
-| Debian 13 (glibc 2.41, Mutter 48), Fedora 43, the release build | see §10 | | |
+| Fedora 43 (glibc 2.42, Mutter 49.8), the release build | X11 and GNOME pictures | as typed, both | |
+
+A virtual machine (Lima, Apple's virtualization, Ubuntu 26.04.1 with a
+virtual display), its user logged in by GDM, the release build, hermeshd
+installed by `hermeshd pair` as the systemd user service it is:
+
+| Desktop | Found from the service | Picture | Typed | Lock |
+|---|---|---|---|---|
+| GNOME Shell 50.1, Wayland | the GNOME way, with no variables in its environment | 1920×1200, direct | "Hello VM 你好" (pasted) | the phone told "the screen is locked", in a session and connecting; back once unlocked |
+| Plasma 6.6.6, Wayland | the portal; `hermeshd screen allow`, then no dialog | 1920×1200, direct | "Hello VM 你好" (keysyms) | the lock screen shows in the picture |
 
 Container lessons: Xvfb resets (root colour, pointer) when its last client
 leaves unless started with `-noreset`; GNOME Shell waits 25 seconds on
@@ -386,18 +400,21 @@ sharing needs a render node (`/dev/dri`), which Docker Desktop has not.
   and "Hello Linux 你好" reach the terminal; `hermeshd screen stop` ends it
   and the phone is told; `screen off` takes the screen from the phone and
   `on` gives it back. CI runs it.
+- `HERMESH_LINUX_VM=<a Lima instance> go test ./e2e -run
+  TestLinuxScreenVM`: the same against a virtual machine logged in to its
+  desktop, with the release build and hermeshd as a systemd user service;
+  on GNOME also the lock and unlock, on Plasma `hermeshd screen allow`
+  first. Passed on GNOME 50 and Plasma 6.6.
 - The Mac's `TestScreen` and `TestScreenThroughTURN` still pass.
 - By hand, with a script that drives the helper as hermeshd does: the
-  portal end to end on GNOME's portal (§9), the release build on Debian 13
-  and Fedora 43.
+  portal end to end on GNOME's portal, its dialog clicked through (§9);
+  the release build on Fedora 43.
 
 ## 11. Open
 
-- Plasma: the portal against KDE's backend, `hermeshd screen allow`, a
-  locked screen. Needs a machine or virtual machine with a graphics
-  device.
-- A real Linux desktop under systemd: the helper finding a logged-in
-  session from the service, GNOME's lock.
+- Plasma's dialog the first time without `hermeshd screen allow`, and
+  typing into its lock screen.
+- A real network between the phone and the machine; a real iPhone.
 - An iPhone UI test against a Linux machine: Her would have to run there
   (the row is in Her's settings).
 - Software encoding on a cloud machine's core, x86-64 and arm64.
