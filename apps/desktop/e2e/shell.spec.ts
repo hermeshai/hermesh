@@ -72,8 +72,15 @@ test("an idle window makes no calls to hermeshd: it follows one Watch", async ()
   await page.waitForTimeout(2000); // what opening the window reads (the overview's usage)
   const before = await calls();
   expect(before.Watch).toBe(1);
+  const quarter = () => Math.floor(Date.now() / 900_000);
+  const began = quarter();
   await page.waitForTimeout(8000);
-  expect(await calls()).toEqual(before);
+  const after = await calls();
+  // At each quarter hour the machine counts the session at work in the new
+  // quarter (docs/work-stats.md), and the overview reads the counts again:
+  // one QueryWork more when the wait went over one.
+  if (quarter() !== began && after.QueryWork === (before.QueryWork ?? 0) + 1) after.QueryWork = before.QueryWork;
+  expect(after).toEqual(before);
   await app.close();
 });
 
