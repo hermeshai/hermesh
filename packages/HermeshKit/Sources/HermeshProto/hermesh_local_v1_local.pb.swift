@@ -907,6 +907,10 @@ public nonisolated struct Hermesh_Local_V1_RemoveDeviceRequest: Sendable {
 
   public var keyID: String = String()
 
+  /// Her's data on the device's own machine is erased first, signed with the
+  /// same approval, while it answers (docs/her-server.md §5.6).
+  public var eraseHer: Bool = false
+
   public var unknownFields = SwiftProtobuf.UnknownStorage()
 
   public init() {}
@@ -4785,7 +4789,7 @@ nonisolated extension Hermesh_Local_V1_ApproveDevicePairingResponse: SwiftProtob
 
 nonisolated extension Hermesh_Local_V1_RemoveDeviceRequest: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
   public static let protoMessageName: String = _protobuf_package + ".RemoveDeviceRequest"
-  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{3}key_id\0")
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{3}key_id\0\u{3}erase_her\0")
 
   public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
     while let fieldNumber = try decoder.nextFieldNumber() {
@@ -4794,6 +4798,7 @@ nonisolated extension Hermesh_Local_V1_RemoveDeviceRequest: SwiftProtobuf.Messag
       // enabled. https://github.com/apple/swift-protobuf/issues/1034
       switch fieldNumber {
       case 1: try { try decoder.decodeSingularStringField(value: &self.keyID) }()
+      case 2: try { try decoder.decodeSingularBoolField(value: &self.eraseHer) }()
       default: break
       }
     }
@@ -4803,11 +4808,15 @@ nonisolated extension Hermesh_Local_V1_RemoveDeviceRequest: SwiftProtobuf.Messag
     if !self.keyID.isEmpty {
       try visitor.visitSingularStringField(value: self.keyID, fieldNumber: 1)
     }
+    if self.eraseHer != false {
+      try visitor.visitSingularBoolField(value: self.eraseHer, fieldNumber: 2)
+    }
     try unknownFields.traverse(visitor: &visitor)
   }
 
   public static func ==(lhs: Hermesh_Local_V1_RemoveDeviceRequest, rhs: Hermesh_Local_V1_RemoveDeviceRequest) -> Bool {
     if lhs.keyID != rhs.keyID {return false}
+    if lhs.eraseHer != rhs.eraseHer {return false}
     if lhs.unknownFields != rhs.unknownFields {return false}
     return true
   }

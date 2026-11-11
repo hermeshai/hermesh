@@ -158,7 +158,7 @@ func (l *localService) ApproveDevicePairing(ctx context.Context, req *localv1.Ap
 }
 
 func (l *localService) RemoveDevice(ctx context.Context, req *localv1.RemoveDeviceRequest) (*localv1.RemoveDeviceResponse, error) {
-	res, err := l.o().RemoveDevice(ctx, req.KeyId)
+	res, err := l.o().RemoveDevice(ctx, req.KeyId, req.EraseHer)
 	l.o().wrote(ctx, err, true)
 	return res, err
 }

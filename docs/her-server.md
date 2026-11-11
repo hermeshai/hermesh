@@ -509,12 +509,16 @@ status while it answers, else from what the device kept (`Machine.her`).
 has the same choice, "Also erase Her's data". Chosen, the device turns Her
 off with `erase` first (`RemoveMachineRequest.erase_her`, one approval),
 then removes the machine; offline, it can't, and the dialog says so. A
+trusted device's own machine goes with the device (Account & Devices on the
+Mac): `RemoveDeviceRequest.erase_her` signs the `SetHer` with the new root
+chain, in the same approval, and the machine gets it before it is revoked. A
 machine that finds itself removed (the relay refuses it as no longer its
 owner's) turns Her off by itself, keeping her data.
 
 **On the command line.** `hermeshd uninstall` and `hermeshd erase`, on a
 machine where Her was on and her data is still there
-(`machine.HerData`), ask "Also delete Her's data in ~/.her? [y/N]";
+(`machine.HerData`, asking the running machine on its control socket when
+its service runs), ask "Also delete Her's data in <her home>? [y/N]";
 `--erase-her` says yes without asking; with `--yes` alone it stays, as
 before, and they say where it is.
 

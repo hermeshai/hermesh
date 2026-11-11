@@ -2340,8 +2340,11 @@ func (x *ApproveDevicePairingResponse) GetMatchCode() string {
 }
 
 type RemoveDeviceRequest struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	KeyId         string                 `protobuf:"bytes,1,opt,name=key_id,json=keyId,proto3" json:"key_id,omitempty"`
+	state protoimpl.MessageState `protogen:"open.v1"`
+	KeyId string                 `protobuf:"bytes,1,opt,name=key_id,json=keyId,proto3" json:"key_id,omitempty"`
+	// Her's data on the device's own machine is erased first, signed with the
+	// same approval, while it answers (docs/her-server.md §5.6).
+	EraseHer      bool `protobuf:"varint,2,opt,name=erase_her,json=eraseHer,proto3" json:"erase_her,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -2381,6 +2384,13 @@ func (x *RemoveDeviceRequest) GetKeyId() string {
 		return x.KeyId
 	}
 	return ""
+}
+
+func (x *RemoveDeviceRequest) GetEraseHer() bool {
+	if x != nil {
+		return x.EraseHer
+	}
+	return false
 }
 
 type RemoveDeviceResponse struct {
@@ -9655,9 +9665,10 @@ const file_hermesh_local_v1_local_proto_rawDesc = "" +
 	"\x1cApproveDevicePairingResponse\x12\x15\n" +
 	"\x06key_id\x18\x01 \x01(\tR\x05keyId\x12\x1d\n" +
 	"\n" +
-	"match_code\x18\x02 \x01(\tR\tmatchCode\",\n" +
+	"match_code\x18\x02 \x01(\tR\tmatchCode\"I\n" +
 	"\x13RemoveDeviceRequest\x12\x15\n" +
-	"\x06key_id\x18\x01 \x01(\tR\x05keyId\"l\n" +
+	"\x06key_id\x18\x01 \x01(\tR\x05keyId\x12\x1b\n" +
+	"\terase_her\x18\x02 \x01(\bR\beraseHer\"l\n" +
 	"\x14RemoveDeviceResponse\x12+\n" +
 	"\x11reissued_machines\x18\x01 \x01(\rR\x10reissuedMachines\x12'\n" +
 	"\x0freissued_grants\x18\x02 \x01(\rR\x0ereissuedGrants\"\x0e\n" +

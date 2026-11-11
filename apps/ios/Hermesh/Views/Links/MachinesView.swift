@@ -413,13 +413,12 @@ struct MachineView: View {
     /// Her runs on it, or her data is still there.
     private func hasHer(_ m: Machine) -> Bool { m.her.enabled || herData(m) }
 
-    /// Removes it; with eraseHer, Her's data there is erased first. A trusted device's removal can't take that
-    /// along, so it is turned off with her data erased, then removed.
+    /// Removes it; with eraseHer, Her's data there is erased first, with the same approval. A trusted device's
+    /// machine goes with the device.
     private func remove(_ m: Machine, eraseHer: Bool) {
         Task {
             if let d = device(m) {
-                if eraseHer, await !model.eraseHer(m) { return }
-                await model.removeDevice(d)
+                await model.removeDevice(d, eraseHer: eraseHer)
             } else {
                 await model.remove(m, eraseHer: eraseHer)
             }

@@ -334,9 +334,11 @@ extension AppAPI {
         let _: Hermesh_Local_V1_RemoveProjectResponse = try await call("RemoveProject", r, timeout: signingTimeout)
     }
 
-    func removeDevice(_ keyID: String) async throws {
+    /// eraseHer: Her's data on its own machine is erased first, with the same approval (docs/her-server.md §5.6).
+    func removeDevice(_ keyID: String, eraseHer: Bool = false) async throws {
         var r = Hermesh_Local_V1_RemoveDeviceRequest()
         r.keyID = keyID
+        r.eraseHer = eraseHer
         let _: Hermesh_Local_V1_RemoveDeviceResponse = try await call("RemoveDevice", r, timeout: signingTimeout)
     }
 
