@@ -589,7 +589,8 @@ What `~/.her` holds on a Her Server:
 ~/.her/
   config.toml        connectors, web search, the browser: the user layer
   models.toml        model providers and models
-  bots/<id>/         an assistant: bot.json, its avatar, its folder
+  bots/<id>/         an assistant: bot.json, its avatar, its folder, its
+                     memory (her-memory.md)
   sessions/          conversations, as JSON lines, by date
   skills/            installed skills; .system/ holds the built-in ones
   credentials.toml   secrets, on Linux only (the Keychain on macOS)

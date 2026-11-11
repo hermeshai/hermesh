@@ -712,6 +712,49 @@ async fn renaming_avatars_clearing_and_deleting() {
     assert_eq!(refused(missing.unwrap_err()), "bot_not_found");
 }
 
+/// A bot's memory (docs/her-memory.md): it notes a line without asking, in the mode where every
+/// other file change asks; a cleared conversation starts with what it kept; and the notes go to
+/// the trash with the bot.
+#[tokio::test]
+async fn a_bot_remembers_across_a_cleared_conversation() {
+    let env = TestEnv::new("manual", "").await;
+    let (_child, client, incoming) = env.spawn_rpc(&["serve", "--stdio"]);
+    native_init(&client).await;
+    let mut wire = route(incoming);
+    client.request("bots/subscribe", Value::Null).await.unwrap();
+    let created = client.request("bots/create", json!({"name": "写作助手", "avatar": {"kind": "mono", "hue": "clay"}})).await.unwrap();
+    let bot = created["bot"]["id"].as_str().unwrap().to_string();
+    let memory = env.home.path().join("bots").join(&bot).join("memory").join("MEMORY.md");
+    const LINE: &str = "- 回复一律用中文。(2026-11-11)";
+
+    let session = open(&client, &bot).await;
+    say(&client, &session, "[[mock:recall]] 你记得什么").await;
+    assert_eq!(sent(&until_event(&mut wire, ended).await), ["什么都不记得。"]);
+    say(&client, &session, &format!("[[mock:remember:{LINE}]] 以后都用中文")).await;
+    let events = until_event(&mut wire, ended).await;
+    assert_eq!(sent(&events), ["记下了。"]);
+    assert!(events.iter().all(|e| e["type"] != "approval_requested"), "it asked: {events:?}");
+    assert_eq!(std::fs::read_to_string(&memory).unwrap(), format!("{LINE}\n"));
+
+    client.request("bots/clear", json!({"bot_id": bot})).await.unwrap();
+    until_row(&mut wire, &bot, |b| b.get("session_id").is_none()).await;
+    let again = open(&client, &bot).await;
+    assert_ne!(again, session);
+    say(&client, &again, "[[mock:recall]] 你记得什么").await;
+    assert_eq!(sent(&until_event(&mut wire, ended).await), [format!("记得：{LINE}")]);
+
+    client.request("bots/delete", json!({"bot_id": bot})).await.unwrap();
+    loop {
+        let changed = tokio::time::timeout(WAIT, wire.bots.recv()).await.unwrap().unwrap();
+        if changed["deleted"].as_array().is_some_and(|d| d.iter().any(|id| id == bot.as_str())) {
+            break;
+        }
+    }
+    assert!(!memory.exists());
+    let trashed = env.home.path().join("trash").join("bots").join(&bot).join("memory").join("MEMORY.md");
+    assert_eq!(std::fs::read_to_string(trashed).unwrap(), format!("{LINE}\n"));
+}
+
 #[tokio::test]
 async fn bots_and_their_rows_survive_a_restart() {
     let env = TestEnv::new("manual", "").await;

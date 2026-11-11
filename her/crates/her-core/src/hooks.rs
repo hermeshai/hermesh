@@ -59,6 +59,10 @@ pub struct SessionView {
     /// Configured skill paths (canonical). What is written there becomes instructions for
     /// later sessions, so they are protected like `.agents`.
     pub skill_roots: Arc<[PathBuf]>,
+    /// A bot's main session: its memory (canonical), which it alone writes, without asking
+    /// (docs/her-memory.md §6). `None` in every other session, the bot's sub-agents and its
+    /// routines' runs too.
+    pub memory_dir: Option<PathBuf>,
     /// Site permissions given for the session (the main session's, in a sub-agent).
     pub site_grants: Vec<SiteGrant>,
     /// The `[browser]` policy: domain lists and configured sites.
