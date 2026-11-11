@@ -21,6 +21,11 @@ struct HerComposer: View {
     @State private var adding = false
     @State private var sending = false
     @FocusState private var focused: Bool
+    /// The field's own height, and the height it keeps: it grows at once and shrinks only once the text has been
+    /// still for a moment. Typing Chinese, the letters being composed are wider than the characters they become, so
+    /// at a line's end they wrap and come back with each character; held, the composer doesn't jump up and down.
+    @State private var fieldHeight: CGFloat = 0
+    @State private var heldHeight: CGFloat = 0
 
     var body: some View {
         let draft = chat.draft
@@ -74,6 +79,16 @@ struct HerComposer: View {
                         .lineLimit(1 ... 6)
                         .focused($focused)
                         .padding(.vertical, 8)
+                        .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { h in
+                            fieldHeight = h
+                            if h > heldHeight || chat.draft.text.isEmpty { heldHeight = h } // sent or cleared: at once
+                        }
+                        .task(id: fieldHeight) {
+                            guard fieldHeight < heldHeight else { return }
+                            try? await Task.sleep(for: .milliseconds(800))
+                            if !Task.isCancelled { heldHeight = fieldHeight }
+                        }
+                        .frame(minHeight: heldHeight, alignment: .top)
                         .accessibilityIdentifier("her-composer")
                     Button { send() } label: {
                         Image(systemName: "arrow.up").font(.body.weight(.semibold)).frame(width: 36, height: 36)

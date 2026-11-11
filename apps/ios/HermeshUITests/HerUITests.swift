@@ -3,7 +3,7 @@ import XCTest
 /// Her on the iPhone (docs/her-server.md §9), as a person uses her, against
 /// the owner Mac's her, whose model is her-mock (TestIPhone, iphoneHerEnv):
 /// Her turned on for the Mac with Face ID, her onboarding connecting a model
-/// with a Token Plan, a chat, her settings and her memory, a question, files she sends, an approval, and the Mac gone
+/// with a Token Plan, a chat, Chinese typed at a line's end, her settings and her memory, a question, files she sends, an approval, and the Mac gone
 /// offline, where a message waits on the iPhone until it is back. her-mock
 /// answers a message by its directive (e2e/her_owner_test.go).
 ///
@@ -15,6 +15,7 @@ extension HermeshUITests {
         try XCTContext.runActivity(named: "Her is first in the menu, and is turned on for the Mac with Face ID") { _ in try herTurnOn() }
         try XCTContext.runActivity(named: "with no model, Her speaks first, offers the ways, and connects a Token Plan") { _ in try herOnboarding() }
         try XCTContext.runActivity(named: "a chat: the message, then Her's reply") { _ in try herChat() }
+        try XCTContext.runActivity(named: "typing Chinese at a line's end, the composer holds its height") { _ in try herTypingChinese() }
         try XCTContext.runActivity(named: "the plus beside the field: what it adds opens out of it, the field staying") { _ in try herAdd() }
         try XCTContext.runActivity(named: "her name opens her settings, a page of their own") { _ in try herSettings() }
         try XCTContext.runActivity(named: "what she notes shows in her settings as written, and is cleared there") { _ in try herMemory() }
@@ -108,6 +109,41 @@ extension HermeshUITests {
         XCTAssertEqual(long.frame.maxX, first.frame.maxX, accuracy: 1, "one edge for bubbles of more than a line")
         XCTAssertGreaterThan(long.frame.width, app.frame.width * 0.8, "most of the page")
         herShot("Her: a chat")
+    }
+
+    func herTypingChinese() throws {
+        // On the Pinyin keyboard, the letters being composed are wider than the character they become: at a line's
+        // end they take a new line, and the character comes back. The composer grows with the letters and keeps its
+        // height while typing goes on, and sits back once the text has been still a moment. Its height is from the
+        // field's top (held, the field keeps to the top of it) to Send's foot.
+        let composer = app.descendants(matching: .any)["her-composer"].firstMatch
+        let send = app.buttons["her-send"]
+        XCTAssertTrue(composer.waitForExistence(timeout: 30) && send.exists)
+        func height() -> CGFloat { send.frame.maxY - composer.frame.minY }
+        composer.tap()
+        XCTAssertTrue(app.keys["w"].waitForExistence(timeout: 10), "the keyboard")
+        let one = height()
+        let space = app.keys["space"].exists ? app.keys["space"] : app.keys["空格"]
+        var before = one, came = 0
+        for syllable in "wo men jin tian yao qu kan yi xia zhe ge wen ti dao di shi zen me hui shi ran hou zai xiu hao ta wo men jin tian yao qu kan yi xia zhe ge wen ti dao di shi zen me hui shi".split(separator: " ") {
+            for c in syllable { app.keys[String(c)].tap() }
+            let typed = height()
+            space.tap()
+            XCTAssertGreaterThanOrEqual(height(), typed - 1, "as tall right after “\(syllable)” became a character")
+            if typed > before + 1 { // the letters took a new line
+                sleep(2)
+                if height() < typed - 1 { came += 1 }
+            }
+            before = height()
+        }
+        let text = composer.value as? String ?? ""
+        XCTAssertTrue(text.unicodeScalars.contains { (0x4E00...0x9FFF).contains($0.value) }, "typed on the Pinyin keyboard: \(text)")
+        XCTAssertGreaterThan(before, one + 30, "grown to more lines")
+        XCTAssertGreaterThan(came, 0, "a character came back from a new line, and the composer sat back after it")
+        herShot("Her: typing Chinese")
+        // Cleared, it is one line again at once.
+        composer.typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: text.count + 10))
+        try waitFor("one line again") { abs(height() - one) < 1 ? true : nil }
     }
 
     func herAdd() throws {
