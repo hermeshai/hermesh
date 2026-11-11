@@ -298,6 +298,9 @@ func grantCard(g *identityv1.Grant, h Hints, reissue, confirmed bool, w words) C
 		lines = append(lines, w.f("Connects through %s, which holds its key", g.Custodian))
 	}
 	lines = append(lines, w.f("Fingerprint: %s", identity.ShortFingerprint(g.ClientPublicKey)))
+	if g.HerMachineId != "" {
+		return herCard(g, h, lines, w)
+	}
 	switch {
 	case reissue:
 		return Card{Title: w.f("Re-issue the grant of “%s”", g.ClientLabel), Lines: lines, Why: w.f("It keeps the same access, now signed by this computer.")}
@@ -312,6 +315,23 @@ func grantCard(g *identityv1.Grant, h Hints, reissue, confirmed bool, w words) C
 		c.Code = identity.VerificationCode(identityv1.PairingKind_PAIRING_KIND_CLIENT, g.ClientPublicKey, g.OwnerId)
 	}
 	return c
+}
+
+// herCard is Her's own grant (docs/her-mesh.md §3): she becomes one of the
+// owner's agents, on the machine she runs on, whose hermeshd keeps her key.
+// No code to compare: the key came from that machine, end to end. What she
+// may use and until when are read from the signed bytes, as for any grant.
+func herCard(g *identityv1.Grant, h Hints, lines []string, w words) Card {
+	if g.ExpiresAt.AsTime().Equal(identity.NoExpiry) {
+		for i, l := range lines {
+			if l == w.f("Expires: %s", g.ExpiresAt.AsTime().Local().Format(w.f(time.DateOnly))) {
+				lines[i] = w.f("Doesn’t expire")
+			}
+		}
+	}
+	return Card{Title: w.f("Let Her on %s use your computers", cmpOr(h.MachineNames[g.HerMachineId], g.HerMachineId)), Lines: lines,
+		Why:     w.f("Her becomes one of your agents: she can start coding agents in your projects, read their sessions and answer them. It ends when you turn Her off there."),
+		Warning: w.f("Full trust: on these machines, a coding agent she starts can do anything you can.")}
 }
 
 func admin(c *identityv1.AdminCommand, h Hints, typ string, w words) (Card, error) {

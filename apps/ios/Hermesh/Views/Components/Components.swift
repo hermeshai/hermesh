@@ -332,7 +332,8 @@ struct ToastView: View {
 }
 
 /// A grant's avatar: the icon its owner picked (a picture, an app's logo or
-/// its initial), else its app's logo, else a tile with its initial.
+/// its initial), else Her's cat for her own grant, else its app's logo, else
+/// a tile with its initial.
 struct GrantAvatar: View {
     let client: Client
     var size: CGFloat = 28
@@ -344,6 +345,8 @@ struct GrantAvatar: View {
                 .accessibilityHidden(true)
         } else if client.icon.hasPrefix("app:") {
             AgentLogo(id: String(client.icon.dropFirst(4)), size: size)
+        } else if !client.herMachineID.isEmpty && client.icon.isEmpty {
+            HerAvatar(size: size)
         } else {
             AgentLogo(id: client.label, size: size, initialOnly: !client.icon.isEmpty)
         }

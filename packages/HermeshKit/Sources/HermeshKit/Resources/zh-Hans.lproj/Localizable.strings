@@ -161,3 +161,7 @@
 "machine %@…" = "机器 %@…";
 /* Used within a sentence */
 "machine “%@”" = "机器「%@」";
+"Let Her on %@ use your computers" = "允许 %@ 上的 Her 使用你的电脑";
+"Her becomes one of your agents: she can start coding agents in your projects, read their sessions and answer them. It ends when you turn Her off there." = "Her 成为你的一个 agent：她可以在你的项目里启动编程 agent，查看并回复它们的会话。在那台机器上关闭 Her 即结束。";
+"Full trust: on these machines, a coding agent she starts can do anything you can." = "完全信任：在这些机器上，她启动的编程 agent 能做你本人能做的一切。";
+"Doesn’t expire" = "不会到期";

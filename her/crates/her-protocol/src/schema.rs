@@ -261,6 +261,8 @@ pub fn document() -> Value {
         (method::WEB_SEARCH_SET_KEY, Some(name::<web_search::WebSearchSetKeyParams>(g)), name::<web_search::WebSearchSetKeyResult>(g)),
         (method::BROWSER_HOST, Some(name::<api::BrowserHostParams>(g)), name::<api::BrowserHostResult>(g)),
         (method::DOCX_HOST, None, name::<api::Empty>(g)),
+        (method::MESH_HOST, Some(name::<api::MeshHostParams>(g)), name::<api::Empty>(g)),
+        (method::MESH_NEWS, Some(name::<api::MeshNewsParams>(g)), name::<api::Empty>(g)),
         (method::BROWSER_STATUS, None, name::<api::BrowserStatus>(g)),
         (method::BROWSER_SITE_ICON, Some(name::<api::BrowserSiteIconParams>(g)), name::<api::BrowserSiteIconResult>(g)),
         (method::DESKTOP_STATUS, None, name::<api::DesktopStatus>(g)),
@@ -360,7 +362,11 @@ pub fn document() -> Value {
         ),
     ];
     // Requests the server sends to a client, which answers them.
-    let server_requests = [(method::DOCX_SERIALIZE, name::<api::DocxSerializeParams>(g), name::<api::DocxSerializeResult>(g))];
+    let server_requests = [
+        (method::DOCX_SERIALIZE, name::<api::DocxSerializeParams>(g), name::<api::DocxSerializeResult>(g)),
+        (method::MESH_DESCRIBE, name::<api::MeshDescribeParams>(g), name::<api::MeshDescribeResult>(g)),
+        (method::MESH_CALL, name::<api::MeshCallParams>(g), name::<api::MeshCallResult>(g)),
+    ];
     // Also used on their own: `her exec --output stream-json` lines and `--ops-stdin` lines.
     // The deck's rule ids, for clients to name checks (`DeckDiagnostic.rule` is a string). A
     // secure card, which `send_to_user`'s result details carry.
@@ -421,7 +427,7 @@ pub fn document() -> Value {
 /// follows the compatibility rules; `experimental` may change with any version; `internal` is for
 /// the desktop app and the extension host.
 pub fn stability(name: &str) -> &'static str {
-    const INTERNAL: &[&str] = &["browser/host", "browser/cdp", "browser/extension", "browser/control", "browser/request", "docx/host", "docx/serialize"];
+    const INTERNAL: &[&str] = &["browser/host", "browser/cdp", "browser/extension", "browser/control", "browser/request", "docx/host", "docx/serialize", "mesh/host", "mesh/describe", "mesh/call", "mesh/news"];
     const EXPERIMENTAL: &[&str] = &["connections/", "connectors/", "doc/", "docx/", "pptx/", "bots/", "browser/", "routines/", "bot/", "connector/", "desktop/", "cards/"];
     if INTERNAL.contains(&name) {
         "internal"

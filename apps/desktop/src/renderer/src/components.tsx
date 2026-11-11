@@ -4,6 +4,7 @@ import { AgentLogo, AgentTile, grantColor, grantLogo, grantPicture, type GrantLo
 import { useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { useTranslation } from "react-i18next";
+import { Cat } from "./her/Cat";
 import { Icon } from "./icons";
 
 /** The session's state as a small dot: orange waits on you, red failed, green runs. */
@@ -19,10 +20,11 @@ export function StatusDot({ s }: { s: Session }) {
   return <span className={`sdot ${c}`} role="img" aria-label={isFailed(s) && s.status !== SessionStatus.CRASHED ? t("status.failed") : statusTitle(s.status)} />;
 }
 
-/** A grant's picture or app logo, when it has one (null: draw its initial). */
-export function grantFace(c: GrantLook, size: number): ReactNode {
+/** A grant's picture or app logo, when it has one (null: draw its initial). Her's own grant has her cat until the owner picks another. */
+export function grantFace(c: GrantLook & { herMachineId?: string }, size: number): ReactNode {
   const pic = grantPicture(c);
   if (pic) return <img className="gpic" src={pic} alt="" style={{ width: size, height: size, borderRadius: size * 0.28 }} />;
+  if (c.herMachineId && !c.icon) return <span className="gcat" style={{ width: size, height: size }} aria-hidden="true"><Cat small={size <= 28} /></span>;
   const logo = grantLogo(c);
   return logo ? <AgentTile agent={logo} size={size} /> : null;
 }

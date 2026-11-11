@@ -1971,6 +1971,13 @@ public nonisolated struct Hermesh_Local_V1_Client: @unchecked Sendable {
     set {_uniqueStorage()._image = newValue}
   }
 
+  /// Her's own grant (identity.v1.Grant her_machine_id): the machine she
+  /// runs on. It doesn't expire, and ends when Her is turned off there.
+  public var herMachineID: String {
+    get {_storage._herMachineID}
+    set {_uniqueStorage()._herMachineID = newValue}
+  }
+
   public var unknownFields = SwiftProtobuf.UnknownStorage()
 
   public init() {}
@@ -6782,7 +6789,7 @@ nonisolated extension Hermesh_Local_V1_RemoveProjectResponse: SwiftProtobuf.Mess
 
 nonisolated extension Hermesh_Local_V1_Client: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
   public static let protoMessageName: String = _protobuf_package + ".Client"
-  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{3}client_id\0\u{3}grant_id\0\u{1}label\0\u{1}fingerprint\0\u{1}spec\0\u{3}grant_version\0\u{3}expires_at\0\u{1}online\0\u{3}last_seen\0\u{1}revoked\0\u{1}custodian\0\u{1}icon\0\u{1}image\0")
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{3}client_id\0\u{3}grant_id\0\u{1}label\0\u{1}fingerprint\0\u{1}spec\0\u{3}grant_version\0\u{3}expires_at\0\u{1}online\0\u{3}last_seen\0\u{1}revoked\0\u{1}custodian\0\u{1}icon\0\u{1}image\0\u{3}her_machine_id\0")
 
   fileprivate class _StorageClass {
     var _clientID: String = String()
@@ -6798,6 +6805,7 @@ nonisolated extension Hermesh_Local_V1_Client: SwiftProtobuf.Message, SwiftProto
     var _custodian: String = String()
     var _icon: String = String()
     var _image: Data = Data()
+    var _herMachineID: String = String()
 
       // This property is used as the initial default value for new instances of the type.
       // The type itself is protecting the reference to its storage via CoW semantics.
@@ -6821,6 +6829,7 @@ nonisolated extension Hermesh_Local_V1_Client: SwiftProtobuf.Message, SwiftProto
       _custodian = source._custodian
       _icon = source._icon
       _image = source._image
+      _herMachineID = source._herMachineID
     }
   }
 
@@ -6852,6 +6861,7 @@ nonisolated extension Hermesh_Local_V1_Client: SwiftProtobuf.Message, SwiftProto
         case 11: try { try decoder.decodeSingularStringField(value: &_storage._custodian) }()
         case 12: try { try decoder.decodeSingularStringField(value: &_storage._icon) }()
         case 13: try { try decoder.decodeSingularBytesField(value: &_storage._image) }()
+        case 14: try { try decoder.decodeSingularStringField(value: &_storage._herMachineID) }()
         default: break
         }
       }
@@ -6903,6 +6913,9 @@ nonisolated extension Hermesh_Local_V1_Client: SwiftProtobuf.Message, SwiftProto
       if !_storage._image.isEmpty {
         try visitor.visitSingularBytesField(value: _storage._image, fieldNumber: 13)
       }
+      if !_storage._herMachineID.isEmpty {
+        try visitor.visitSingularStringField(value: _storage._herMachineID, fieldNumber: 14)
+      }
     }
     try unknownFields.traverse(visitor: &visitor)
   }
@@ -6925,6 +6938,7 @@ nonisolated extension Hermesh_Local_V1_Client: SwiftProtobuf.Message, SwiftProto
         if _storage._custodian != rhs_storage._custodian {return false}
         if _storage._icon != rhs_storage._icon {return false}
         if _storage._image != rhs_storage._image {return false}
+        if _storage._herMachineID != rhs_storage._herMachineID {return false}
         return true
       }
       if !storagesAreEqual {return false}

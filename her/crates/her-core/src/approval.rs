@@ -14,6 +14,7 @@ use her_llm::ToolCall;
 use her_protocol::CommandRule;
 use her_protocol::PermissionMode;
 use her_protocol::RuleDecision;
+use her_tools::ApprovalWords;
 use her_tools::Authority;
 use her_tools::Tool;
 use her_tools::ToolKind;
@@ -52,10 +53,45 @@ impl Hooks for ApprovalPolicy {
             return crate::site_policy::evaluate(authorities, view).await;
         }
         let kind = tool.kind_for(&call.arguments.to_value());
+        // A change by a tool whose host says what the call would do (the `mesh` group): judged by
+        // the host's words. Without them it asks as any other change does.
+        if kind == ToolKind::Mutating
+            && view.permission_mode != PermissionMode::BypassPermissions
+            && let Some(words) = tool.approval_words(&call.arguments.to_value()).await
+        {
+            return evaluate_described(words, view);
+        }
         match through_call_tool(call) {
             Some(inner) => evaluate(&inner, kind, view),
             None => evaluate(call, kind, view),
         }
+    }
+}
+
+/// A call its host described: a deny rule with the host's rule words denies it and an allow rule
+/// lets it run; otherwise the user is asked in the host's words, and approving for the session
+/// keeps the rule.
+fn evaluate_described(words: ApprovalWords, view: &SessionView) -> Gate {
+    let rules: Vec<CommandRule> = view.config_rules.iter().chain(view.session_rules.iter()).cloned().collect();
+    if let Some(prefix) = &words.rule {
+        if let Some(rule) = rules::first_match(&rules, prefix, RuleDecision::Deny) {
+            return Gate::Deny(format!(
+                "The tool is blocked by the rule `{}`{}",
+                rule.prefix.join(" "),
+                rule.reason.as_deref().map(|r| format!(": {r}")).unwrap_or_default()
+            ));
+        }
+        if rules::first_match(&rules, prefix, RuleDecision::Allow).is_some() {
+            return Gate::Allow;
+        }
+    }
+    Gate::Ask {
+        summary: words.summary,
+        reason: None,
+        proposed_rule: words.rule.map(|prefix| CommandRule { prefix, decision: RuleDecision::Allow, reason: None }),
+        proposed_mode: None,
+        proposed_grants: Vec::new(),
+        own_browser: false,
     }
 }
 
@@ -727,6 +763,29 @@ mod tests {
         assert!(matches!(evaluate(&save, ToolKind::Mutating, &view(dir.path(), PermissionMode::Manual)), Gate::Ask { .. }));
         let outside = doc_call("docx_save", json!({"docx": "/elsewhere/a.docx"}));
         assert!(matches!(evaluate(&outside, ToolKind::Mutating, &view(dir.path(), PermissionMode::AcceptEdits)), Gate::Ask { .. }));
+    }
+
+    #[test]
+    fn a_call_its_host_described_is_judged_by_the_hosts_rule_words() {
+        let dir = tempfile::tempdir().unwrap();
+        let words = |rule: Option<&[&str]>| ApprovalWords { summary: "Start work in shed".into(), rule: rule.map(|r| r.iter().map(|w| w.to_string()).collect()) };
+        let mut manual = view(dir.path(), PermissionMode::Manual);
+        match evaluate_described(words(Some(&["mesh", "shed"])), &manual) {
+            Gate::Ask { summary, proposed_rule, proposed_mode: None, .. } => {
+                assert_eq!(summary, "Start work in shed");
+                assert_eq!(proposed_rule, Some(rule(&["mesh", "shed"], RuleDecision::Allow, None)));
+            }
+            other => panic!("{other:?}"),
+        }
+        // Kept for the session, the rule lets that call run; other words still ask, and so does
+        // a call the host gives no rule for.
+        manual.session_rules.push(rule(&["mesh", "shed"], RuleDecision::Allow, None));
+        assert_eq!(evaluate_described(words(Some(&["mesh", "shed"])), &manual), Gate::Allow);
+        assert_eq!(proposal(evaluate_described(words(Some(&["mesh", "attic"])), &manual)).as_deref(), Some("mesh attic"));
+        assert_eq!(proposal(evaluate_described(words(None), &manual)), None);
+        // A deny rule wins over an allow rule.
+        manual.config_rules.push(rule(&["mesh"], RuleDecision::Deny, Some("Not from here")));
+        assert_eq!(evaluate_described(words(Some(&["mesh", "shed"])), &manual), Gate::Deny("The tool is blocked by the rule `mesh`: Not from here".into()));
     }
 
     /// The reason of an `Ask` that offers nothing for the rest of the session.

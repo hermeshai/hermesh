@@ -619,6 +619,15 @@ public nonisolated struct Hermesh_Machine_V1_HerStatus: Sendable {
   /// Why her is not running although Her is on, or empty.
   public var error: String = String()
 
+  /// Her's client key on this machine (SPKI DER), for the owner's device to
+  /// sign her grant with (docs/her-mesh.md §3); empty on a machine that
+  /// can't run her.
+  public var clientPublicKey: Data = Data()
+
+  /// Her holds a grant this machine accepts: she can use the owner's
+  /// computers and agents.
+  public var mesh: Bool = false
+
   public var unknownFields = SwiftProtobuf.UnknownStorage()
 
   public init() {}
@@ -1081,6 +1090,50 @@ public nonisolated struct Hermesh_Machine_V1_PushRevocationsResponse: Sendable {
   // methods supported on all messages.
 
   public var applied: Bool = false
+
+  public var unknownFields = SwiftProtobuf.UnknownStorage()
+
+  public init() {}
+}
+
+public nonisolated struct Hermesh_Machine_V1_SetHerGrantRequest: Sendable {
+  // SwiftProtobuf.Message conformance is added in an extension below. See the
+  // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
+  // methods supported on all messages.
+
+  /// Signed Grant with her_machine_id.
+  public var grant: Hermesh_Identity_V1_Signed {
+    get {_grant ?? Hermesh_Identity_V1_Signed()}
+    set {_grant = newValue}
+  }
+  /// Returns true if `grant` has been explicitly set.
+  public var hasGrant: Bool {self._grant != nil}
+  /// Clears the value of `grant`. Subsequent reads from it will return its default value.
+  public mutating func clearGrant() {self._grant = nil}
+
+  /// The owner's root chain, when the grant's signing key is newer than the
+  /// one the machine knows.
+  public var rootChain: Hermesh_Identity_V1_RootChain {
+    get {_rootChain ?? Hermesh_Identity_V1_RootChain()}
+    set {_rootChain = newValue}
+  }
+  /// Returns true if `rootChain` has been explicitly set.
+  public var hasRootChain: Bool {self._rootChain != nil}
+  /// Clears the value of `rootChain`. Subsequent reads from it will return its default value.
+  public mutating func clearRootChain() {self._rootChain = nil}
+
+  public var unknownFields = SwiftProtobuf.UnknownStorage()
+
+  public init() {}
+
+  fileprivate var _grant: Hermesh_Identity_V1_Signed? = nil
+  fileprivate var _rootChain: Hermesh_Identity_V1_RootChain? = nil
+}
+
+public nonisolated struct Hermesh_Machine_V1_SetHerGrantResponse: Sendable {
+  // SwiftProtobuf.Message conformance is added in an extension below. See the
+  // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
+  // methods supported on all messages.
 
   public var unknownFields = SwiftProtobuf.UnknownStorage()
 
@@ -1814,7 +1867,7 @@ nonisolated extension Hermesh_Machine_V1_ScreenStatus: SwiftProtobuf.Message, Sw
 
 nonisolated extension Hermesh_Machine_V1_HerStatus: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
   public static let protoMessageName: String = _protobuf_package + ".HerStatus"
-  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{1}enabled\0\u{1}running\0\u{1}version\0\u{3}model_ready\0\u{1}unsupported\0\u{1}unread\0\u{1}latest\0\u{1}error\0")
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{1}enabled\0\u{1}running\0\u{1}version\0\u{3}model_ready\0\u{1}unsupported\0\u{1}unread\0\u{1}latest\0\u{1}error\0\u{3}client_public_key\0\u{1}mesh\0")
 
   public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
     while let fieldNumber = try decoder.nextFieldNumber() {
@@ -1830,6 +1883,8 @@ nonisolated extension Hermesh_Machine_V1_HerStatus: SwiftProtobuf.Message, Swift
       case 6: try { try decoder.decodeSingularUInt32Field(value: &self.unread) }()
       case 7: try { try decoder.decodeSingularMessageField(value: &self._latest) }()
       case 8: try { try decoder.decodeSingularStringField(value: &self.error) }()
+      case 9: try { try decoder.decodeSingularBytesField(value: &self.clientPublicKey) }()
+      case 10: try { try decoder.decodeSingularBoolField(value: &self.mesh) }()
       default: break
       }
     }
@@ -1864,6 +1919,12 @@ nonisolated extension Hermesh_Machine_V1_HerStatus: SwiftProtobuf.Message, Swift
     if !self.error.isEmpty {
       try visitor.visitSingularStringField(value: self.error, fieldNumber: 8)
     }
+    if !self.clientPublicKey.isEmpty {
+      try visitor.visitSingularBytesField(value: self.clientPublicKey, fieldNumber: 9)
+    }
+    if self.mesh != false {
+      try visitor.visitSingularBoolField(value: self.mesh, fieldNumber: 10)
+    }
     try unknownFields.traverse(visitor: &visitor)
   }
 
@@ -1876,6 +1937,8 @@ nonisolated extension Hermesh_Machine_V1_HerStatus: SwiftProtobuf.Message, Swift
     if lhs.unread != rhs.unread {return false}
     if lhs._latest != rhs._latest {return false}
     if lhs.error != rhs.error {return false}
+    if lhs.clientPublicKey != rhs.clientPublicKey {return false}
+    if lhs.mesh != rhs.mesh {return false}
     if lhs.unknownFields != rhs.unknownFields {return false}
     return true
   }
@@ -2730,6 +2793,64 @@ nonisolated extension Hermesh_Machine_V1_PushRevocationsResponse: SwiftProtobuf.
 
   public static func ==(lhs: Hermesh_Machine_V1_PushRevocationsResponse, rhs: Hermesh_Machine_V1_PushRevocationsResponse) -> Bool {
     if lhs.applied != rhs.applied {return false}
+    if lhs.unknownFields != rhs.unknownFields {return false}
+    return true
+  }
+}
+
+nonisolated extension Hermesh_Machine_V1_SetHerGrantRequest: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
+  public static let protoMessageName: String = _protobuf_package + ".SetHerGrantRequest"
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{1}grant\0\u{3}root_chain\0")
+
+  public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
+    while let fieldNumber = try decoder.nextFieldNumber() {
+      // The use of inline closures is to circumvent an issue where the compiler
+      // allocates stack space for every case branch when no optimizations are
+      // enabled. https://github.com/apple/swift-protobuf/issues/1034
+      switch fieldNumber {
+      case 1: try { try decoder.decodeSingularMessageField(value: &self._grant) }()
+      case 2: try { try decoder.decodeSingularMessageField(value: &self._rootChain) }()
+      default: break
+      }
+    }
+  }
+
+  public func traverse<V: SwiftProtobuf.Visitor>(visitor: inout V) throws {
+    // The use of inline closures is to circumvent an issue where the compiler
+    // allocates stack space for every if/case branch local when no optimizations
+    // are enabled. https://github.com/apple/swift-protobuf/issues/1034 and
+    // https://github.com/apple/swift-protobuf/issues/1182
+    try { if let v = self._grant {
+      try visitor.visitSingularMessageField(value: v, fieldNumber: 1)
+    } }()
+    try { if let v = self._rootChain {
+      try visitor.visitSingularMessageField(value: v, fieldNumber: 2)
+    } }()
+    try unknownFields.traverse(visitor: &visitor)
+  }
+
+  public static func ==(lhs: Hermesh_Machine_V1_SetHerGrantRequest, rhs: Hermesh_Machine_V1_SetHerGrantRequest) -> Bool {
+    if lhs._grant != rhs._grant {return false}
+    if lhs._rootChain != rhs._rootChain {return false}
+    if lhs.unknownFields != rhs.unknownFields {return false}
+    return true
+  }
+}
+
+nonisolated extension Hermesh_Machine_V1_SetHerGrantResponse: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
+  public static let protoMessageName: String = _protobuf_package + ".SetHerGrantResponse"
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap()
+
+  public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
+    // Load everything into unknown fields
+    while try decoder.nextFieldNumber() != nil {}
+  }
+
+  public func traverse<V: SwiftProtobuf.Visitor>(visitor: inout V) throws {
+    try unknownFields.traverse(visitor: &visitor)
+  }
+
+  public static func ==(lhs: Hermesh_Machine_V1_SetHerGrantResponse, rhs: Hermesh_Machine_V1_SetHerGrantResponse) -> Bool {
     if lhs.unknownFields != rhs.unknownFields {return false}
     return true
   }

@@ -31,6 +31,7 @@ pub mod instructions;
 pub mod kernel;
 pub mod lang;
 pub mod mcp;
+pub mod mesh;
 pub mod models;
 pub mod paths;
 pub mod prompt;

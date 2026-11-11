@@ -87,5 +87,9 @@
   "Let Her start connector “%s” on %s": "允许 Her 在%[2]s上启动连接器“%[1]s”",
   "Her runs this command there as the machine's user whenever her assistants use the connector: it can do anything that user can, read and change files, run programs and reach the network.": "Her 的助手用到这个连接器时，Her 会以这台机器的用户身份在那里运行这条命令：它能做这个用户能做的任何事，包括读写文件、运行程序、访问网络。",
   "Approve only if you know this command and trust where it comes from.": "只有你了解这条命令、信任它的来源时才批准。",
-  "all": "全部"
+  "all": "全部",
+  "Let Her on %s use your computers": "允许 %s 上的 Her 使用你的电脑",
+  "Her becomes one of your agents: she can start coding agents in your projects, read their sessions and answer them. It ends when you turn Her off there.": "Her 成为你的一个 agent：她可以在你的项目里启动编程 agent，查看并回复它们的会话。在那台机器上关闭 Her 即结束。",
+  "Full trust: on these machines, a coding agent she starts can do anything you can.": "完全信任：在这些机器上，她启动的编程 agent 能做你能做的任何事。",
+  "Doesn’t expire": "不会到期"
 }

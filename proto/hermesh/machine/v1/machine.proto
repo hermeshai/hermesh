@@ -198,6 +198,13 @@ message HerStatus {
   HerLatest latest = 7;
   // Why her is not running although Her is on, or empty.
   string error = 8;
+  // Her's client key on this machine (SPKI DER), for the owner's device to
+  // sign her grant with (docs/her-mesh.md §3); empty on a machine that
+  // can't run her.
+  bytes client_public_key = 9;
+  // Her holds a grant this machine accepts: she can use the owner's
+  // computers and agents.
+  bool mesh = 10;
 }
 
 // HerLatest is the newest thing an assistant sent the owner.
@@ -350,6 +357,12 @@ service MachineAdminService {
   rpc TestAgent(TestAgentRequest) returns (TestAgentResponse) {
     option (hermesh.options.v1.access) = ACCESS_WRITE;
   }
+  // Gives this machine's Her her grant (docs/her-mesh.md §3.3). The owner's
+  // devices only; the grant is root-signed and checked by the machine: for
+  // its own Her key, with its own machine id.
+  rpc SetHerGrant(SetHerGrantRequest) returns (SetHerGrantResponse) {
+    option (hermesh.options.v1.access) = ACCESS_WRITE;
+  }
 }
 
 message ListReposRequest {}
@@ -434,3 +447,13 @@ message PushRevocationsRequest {
 message PushRevocationsResponse {
   bool applied = 1;
 }
+
+message SetHerGrantRequest {
+  // Signed Grant with her_machine_id.
+  hermesh.identity.v1.Signed grant = 1;
+  // The owner's root chain, when the grant's signing key is newer than the
+  // one the machine knows.
+  hermesh.identity.v1.RootChain root_chain = 2;
+}
+
+message SetHerGrantResponse {}

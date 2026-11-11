@@ -4,11 +4,13 @@ import type { Machine } from "@hermesh/proto/local";
 import { SessionStatus } from "@hermesh/proto/session";
 import { agoText, dateOf, isActive, platformTitle } from "@hermesh/core";
 import { Mark } from "@hermesh/ui";
+import { i18n } from "../../../shared/i18n";
 import { AgentList, AgentPage, sortAgents } from "../AgentList";
 import { useCheckAgents } from "../agents";
 import { local } from "../api";
 import { ComputerUse } from "../her-computer/ComputerUse";
 import { Problems } from "../health";
+import { GrantLine } from "../her/GrantLine";
 import { Icon } from "../icons";
 import { useNow, useStore, type Store } from "../store";
 import { GoRow, SRow, Switch, type Ask } from "./common";
@@ -101,6 +103,7 @@ function ShareRow() {
 /**
  * Her on a machine (docs/her-server.md §11, phase 1): turned on or off with Touch ID (SetHer); its
  * assistants, conversations and settings stay there when it is off. Windows can't run her yet.
+ * Turning her on also lets her use the owner's computers (docs/her-mesh.md §3.3), and says so first.
  */
 function HerRow({ m }: { m: Machine }) {
   const { t } = useTranslation("settings");
@@ -115,7 +118,7 @@ function HerRow({ m }: { m: Machine }) {
     await st.run(() => local.setHer({ machineId: m.machineId, enabled: v }));
     setPending(null);
   };
-  const desc = windows ? t("machines.herWindows") : unsupported ? t("machines.herUnsupported", { reason: unsupported }) : t("machines.herDesc");
+  const desc = windows ? t("machines.herWindows") : unsupported ? t("machines.herUnsupported", { reason: unsupported }) : m.her?.enabled ? t("machines.herDesc") : <>{i18n.t("her:grant.runs")}<br />{i18n.t("her:grant.desc")}</>;
   return (
     <SRow title={t("machines.herRun")} desc={desc}>
       <Switch on={on} label={t("machines.herRun")} set={set} disabled={pending !== null || (!on && (windows || unsupported !== "")) || (!m.online && !m.local)} />
@@ -228,6 +231,7 @@ function MachineDetail({ m, ask, open }: { m: Machine; ask: (a: Ask) => void; op
           <div className="fgroup">
             <HerRow m={m} />
           </div>
+          <GrantLine m={m} />
         </div>
       )}
       {/* What macOS lets Her's desktop tools do here: the Mac's permissions (macOS checks hermeshd), not an assistant's. */}

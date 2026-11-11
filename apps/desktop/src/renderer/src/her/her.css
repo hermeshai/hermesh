@@ -438,6 +438,7 @@ span.shimmer{display:inline-block;max-width:100%;vertical-align:bottom}
 .her-first-wait{display:flex;align-items:center;gap:8px;color:var(--l2)}
 .her-setup{width:100%;max-width:520px;text-align:left}
 .her-choices{background:var(--win2);border-radius:var(--r-card)}
+.her-setup-note{margin:10px 4px 0;font-size:12px;color:var(--l2)}
 .her-choice{display:flex;align-items:center;gap:12px;min-height:58px;padding:10px 14px;border-top:.5px solid var(--sep)}
 .her-choice:first-child{border-top:0}
 .her-choice-i{width:32px;height:32px;border-radius:9px;background:var(--accent-bg);color:var(--accent-t);display:flex;align-items:center;justify-content:center;flex:none}

@@ -631,6 +631,7 @@ impl Server {
         deps.mcp_servers = self.session_mcp_servers(&workspace, &[]);
         deps.routines = Some(self.0.routines.clone());
         deps.connectors = Some(self.0.connectors.clone());
+        deps.mesh = Some(self.bot_mesh(id));
         let options = StartOptions {
             model,
             thinking: thinking.unwrap_or(workspace.config.thinking),

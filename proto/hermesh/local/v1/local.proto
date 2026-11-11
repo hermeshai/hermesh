@@ -855,6 +855,9 @@ message Client {
   // The icon the owner picked (identity.v1.Grant client_icon, client_image).
   string icon = 12;
   bytes image = 13;
+  // Her's own grant (identity.v1.Grant her_machine_id): the machine she
+  // runs on. It doesn't expire, and ends when Her is turned off there.
+  string her_machine_id = 14;
 }
 
 message ListClientsRequest {}

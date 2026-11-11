@@ -122,6 +122,10 @@ public func herEnvironments(_ machines: [HerMachine]) -> [HerMachine] {
     machines.filter(\.her.enabled).sorted { $0.machineName.localizedStandardCompare($1.machineName) == .orderedAscending }
 }
 
+/// Her on without her grant (docs/her-mesh.md §3.4): her machine keeps a key for her (its software knows the
+/// mesh), and the owner has not let her use the computers yet, or revoked it.
+public func herLacksGrant(_ m: HerMachine) -> Bool { m.her.enabled && !m.her.mesh && !m.her.clientPublicKey.isEmpty }
+
 /// The environment to show: the one remembered while it is one, else the first.
 public func herPick(_ envs: [HerMachine], remembered: String?) -> HerMachine? {
     envs.first { $0.machineID == remembered } ?? envs.first

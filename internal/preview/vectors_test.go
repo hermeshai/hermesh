@@ -128,6 +128,10 @@ func makeVectors(t *testing.T) []vector {
 	grant := &identityv1.Grant{OwnerId: "o_x", ClientLabel: "bot", ClientPublicKey: client, ProjectIds: []string{"app"}, MachineIds: []string{"m_1"},
 		Agents: []string{"claude"}, ExpiresAt: in30, Version: 1}
 
+	herKey := key()
+	her := &identityv1.Grant{OwnerId: "o_x", ClientLabel: "Her on vps-1", ClientPublicKey: herKey, ProjectIds: []string{"*"}, MachineIds: []string{"*"},
+		Agents: []string{"*"}, TaskVisibility: identityv1.TaskVisibility_TASK_VISIBILITY_ALL, ExpiresAt: timestamppb.New(identity.NoExpiry), Version: 1, HerMachineId: "m_1"}
+
 	phone, added := key(), key()
 	devices := map[string]string{identity.Fingerprint(phone): "phone"}
 	addDevice := &identityv1.RootCert{OwnerId: "o_x", Version: 2, RootKeys: []*identityv1.RootKey{{PublicKey: phone, Label: "phone"}, {PublicKey: added, Label: "vps-2"}}}
@@ -175,6 +179,8 @@ func makeVectors(t *testing.T) []vector {
 			Cards: []vectorCard{{Shows: []string{"e1"}}}},
 		{Name: "Her turned on", Requests: []vectorRequest{req(admin(&identityv1.AdminCommand{Command: &identityv1.AdminCommand_SetHer{SetHer: &identityv1.SetHer{Enabled: true}}}))},
 			Hints: vectorHints{MachineNames: machines}, Cards: []vectorCard{{Shows: []string{"Turn Her on", "vps-1"}}}},
+		{Name: "Her turned on, with her grant", Requests: []vectorRequest{req(admin(&identityv1.AdminCommand{Command: &identityv1.AdminCommand_SetHer{SetHer: &identityv1.SetHer{Enabled: true}}})), req(her)},
+			Hints: vectorHints{MachineNames: machines}, Cards: []vectorCard{{Shows: []string{"Turn Her on", "vps-1"}}, {Shows: []string{"Her", "vps-1", identity.ShortFingerprint(herKey)}}}},
 		{Name: "Her turned off", Requests: []vectorRequest{req(admin(&identityv1.AdminCommand{Command: &identityv1.AdminCommand_SetHer{SetHer: &identityv1.SetHer{}}}))},
 			Hints: vectorHints{MachineNames: machines}, Cards: []vectorCard{{Shows: []string{"Turn Her off", "vps-1"}}}},
 		{Name: "an assistant given full access", Requests: []vectorRequest{req(admin(&identityv1.AdminCommand{Command: &identityv1.AdminCommand_SetHerAssistantMode{

@@ -4,6 +4,7 @@
 
 use async_trait::async_trait;
 use her_llm::ToolSpec;
+use her_tools::ApprovalWords;
 use her_tools::Environment;
 use her_tools::Tool;
 use her_tools::ToolCategory;
@@ -48,6 +49,14 @@ impl Shown {
     pub(crate) fn clear(&mut self) {
         self.tools.clear();
         self.servers.clear();
+    }
+
+    /// A group changed: its guidelines and definitions are shown again.
+    pub(crate) fn forget(&mut self, group: &Group) {
+        self.servers.remove(group.name);
+        for tool in &group.tools {
+            self.tools.remove(&tool.spec().name);
+        }
     }
 }
 
@@ -468,6 +477,11 @@ impl Tool for CallTool {
             Some((tool, inner)) => tool.check(&inner, ctx).await,
             None => Ok(()),
         }
+    }
+
+    async fn approval_words(&self, args: &Value) -> Option<ApprovalWords> {
+        let (tool, inner) = self.builtin(args)?;
+        tool.approval_words(&inner).await
     }
 
     async fn execute(&self, args: Value, ctx: ToolCtx) -> Result<ToolOutput, ToolError> {

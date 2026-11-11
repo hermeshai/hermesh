@@ -1615,8 +1615,13 @@ func (o *Owner) RemoveMachine(ctx context.Context, machineID string) error {
 	if err != nil {
 		return err
 	}
-	if _, err := ctl.Revoke(ctx, &relayv1.RevokeRequest{Revocations: &identityv1.RevocationList{OwnerId: o.ownerID, RevokedMachineIds: []string{machineID}}}); err != nil {
+	// Her on that machine goes with it (docs/her-mesh.md §3.5).
+	her := o.herGrants(ctx, machineID)
+	if _, err := ctl.Revoke(ctx, &relayv1.RevokeRequest{Revocations: &identityv1.RevocationList{OwnerId: o.ownerID, RevokedMachineIds: []string{machineID}, RevokedGrantIds: her}}); err != nil {
 		return err
+	}
+	for _, id := range her {
+		o.st.setRevoked(id)
 	}
 	o.forgetHer(machineID)
 	if o.Status().LocalMachineId == machineID {
@@ -1826,7 +1831,7 @@ func (o *Owner) clientsFrom(res *relayv1.ListClientsResponse) []*localv1.Client 
 		}
 		a := &localv1.Client{ClientId: g.ClientId, GrantId: g.GrantId, Label: g.ClientLabel, Fingerprint: identity.ShortFingerprint(g.ClientPublicKey),
 			Spec: specFromGrant(g), GrantVersion: g.Version, ExpiresAt: g.ExpiresAt, Online: c.Online && !expired, LastSeen: c.LastSeen, Revoked: c.Revoked,
-			Custodian: g.Custodian, Icon: g.ClientIcon, Image: g.ClientImage}
+			Custodian: g.Custodian, Icon: g.ClientIcon, Image: g.ClientImage, HerMachineId: g.HerMachineId}
 		if len(c.MachineIds) > 0 { // without removed machines; an update signs them away
 			a.Spec.MachineIds = c.MachineIds
 		}
@@ -1872,6 +1877,10 @@ func (o *Owner) UpdateClient(ctx context.Context, grantID string, spec *localv1.
 	cur, err := o.latestGrant(ctx, grantID)
 	if err != nil {
 		return 0, nil, err
+	}
+	if cur.HerMachineId != "" {
+		// docs/her-mesh.md §3.2: it has no scope and no expiry to change.
+		return 0, nil, connect.NewError(connect.CodeFailedPrecondition, errors.New("Her's access is whole and doesn't expire: turn Her off to end it"))
 	}
 	return o.publishGrant(ctx, grantFromSpec(cur, spec), cur.Version)
 }

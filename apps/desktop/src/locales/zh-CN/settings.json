@@ -117,6 +117,7 @@
     "disconnectedOffline": "已断开「{{name}}」，{{machines}} 离线，上线后生效",
     "disconnected": "已断开「{{name}}」",
     "validUntil": "有效期至 {{date}}",
+    "her": "所有电脑 · 不会到期",
     "canUse": "能用什么",
     "projects": "项目",
     "machines": "机器",

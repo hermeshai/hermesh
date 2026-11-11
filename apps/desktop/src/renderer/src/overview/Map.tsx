@@ -595,7 +595,7 @@ function ClientCard({ c, now, style, ref, onMouseEnter, onMouseLeave }: {
         <dt>{t("card.agents")}</dt>
         <dd>{chips(agents.includes("*"), agents.map(codingAgentTitle), t("card.allAgents"))}</dd>
         <dt>{t("card.expiry")}</dt>
-        <dd>{until ? t("card.daysLeft", { count: Math.max(0, Math.ceil((until.getTime() - now.getTime()) / 86_400_000)), date: monthDay(until) }) : "—"}</dd>
+        <dd>{c.herMachineId ? t("card.noExpiry") : until ? t("card.daysLeft", { count: Math.max(0, Math.ceil((until.getTime() - now.getTime()) / 86_400_000)), date: monthDay(until) }) : "—"}</dd>
         <dt>{t("card.here")}</dt>
         <dd>{seen ? t("card.seen", { count: today, ago: agoText(seen, now) }) : t("map.notYet")}</dd>
       </dl>

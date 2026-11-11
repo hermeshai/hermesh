@@ -247,6 +247,7 @@ pub fn kernel_deps(
         words: None,
         routines: None,
         connectors: None,
+        mesh: None,
     })
 }
 

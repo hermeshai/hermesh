@@ -33,6 +33,11 @@
     "turningOn": "Turning on Her…",
     "paired": "Paired just now"
   },
+  "grant": {
+    "runs": "Her runs on this computer and works whenever it is on.",
+    "desc": "Her can use all your computers: start coding agents in any project, read their sessions and answer them. This doesn't expire. Turn Her off to end it.",
+    "allow": "Let Her use your computers"
+  },
   "line": {
     "agents": "Working on {{things}}",
     "typing": "Typing…"
@@ -269,6 +274,7 @@
     "session": "Allow for This Conversation",
     "sessionDesc": "Calls like this one won't ask again in this conversation",
     "sessionRule": "Commands starting with “{{rule}}” won't ask again in this conversation",
+    "project": "Don't ask again for {{project}}",
     "siteQuestion": "Allow Her to use {{site}}?",
     "siteOnce": "Allow Once",
     "siteAlways": "Always Allow This Site",

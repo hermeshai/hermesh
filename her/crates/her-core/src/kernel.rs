@@ -7,6 +7,7 @@ use her_llm::ResolveError;
 use her_llm::ThinkingLevel;
 use her_llm::UsageTotals;
 use her_llm::UserContent;
+use her_protocol::AgentRef;
 use her_protocol::CommandRule;
 use her_protocol::ErrorInfo;
 use her_protocol::Event;
@@ -58,6 +59,8 @@ use crate::instructions;
 use crate::mcp;
 use crate::mcp::McpManager;
 use crate::mcp::tools::Shown;
+use crate::mesh::MeshHost;
+use crate::mesh::MeshLink;
 use crate::paths::HerHome;
 use crate::prompt;
 use crate::prompt::PromptInputs;
@@ -117,6 +120,9 @@ pub struct KernelDeps {
     /// The service's connectors, for Her's own conversation: it gets the `connectors` group and
     /// may ask the owner on a secure card (docs/her-secure-cards.md §2.2).
     pub connectors: Option<Arc<dyn ConnectorHost>>,
+    /// The service's mesh host, for a bot's own conversation: it gets the `mesh` group while the
+    /// host offers tools (crate::mesh).
+    pub mesh: Option<Arc<dyn MeshHost>>,
 }
 
 pub struct StartOptions {
@@ -232,8 +238,10 @@ fn launch(launch: Launch) -> (Kernel, Arc<Session>) {
     let embedded = pool.as_ref().is_some_and(|p| p.has_host());
     let role = launch.role;
     let connectors = launch.deps.connectors.is_some();
-    let deferred: crate::deferred::DeferredCell =
-        Arc::new(Mutex::new(Arc::new(crate::deferred::Deferred::of(&settings, pool.is_some(), embedded, launch.deps.docs.is_some(), role, connectors))));
+    let mesh = launch.deps.mesh.clone().map(|host| Arc::new(MeshLink::new(host)));
+    let mut starting = crate::deferred::Deferred::of(&settings, pool.is_some(), embedded, launch.deps.docs.is_some(), role, connectors);
+    starting.groups.extend(mesh.as_ref().and_then(|mesh| mesh.group()));
+    let deferred: crate::deferred::DeferredCell = Arc::new(Mutex::new(Arc::new(starting)));
     let base_tools = mcp::base_tools(&launch.deps.tools, launch.mcp.as_ref(), &deferred, &shown);
     let skill_roots =
         crate::protected::skill_locations(&launch.config.skills, &launch.home, launch.deps.env.cwd());
@@ -261,6 +269,9 @@ fn launch(launch: Launch) -> (Kernel, Arc<Session>) {
     if let Some(host) = &launch.deps.connectors {
         tool_state.insert(Arc::new(ConnectorLink { host: host.clone() }));
         tool_state.insert(Arc::new(Cards::new(emitter.clone(), internal_tx.clone())));
+    }
+    if let Some(mesh) = mesh {
+        tool_state.insert(mesh);
     }
     if let Some(decks) = &launch.deps.decks {
         tool_state.insert(Arc::new(crate::deck::DecksHandle { store: decks.clone(), session: launch.root_id.clone() }));
@@ -569,7 +580,9 @@ struct BuiltPrompt {
 /// The deferred built-in tools a session starts with, for the catalog in its first prompt.
 fn starting_deferred(deps: &KernelDeps, system: &SystemCell, tree: bool) -> crate::deferred::Deferred {
     let embedded = deps.browser_pool.as_ref().is_some_and(|p| p.has_host());
-    crate::deferred::Deferred::of(&system.get(), deps.browser_pool.is_some(), embedded, deps.docs.is_some(), main_role(tree), deps.connectors.is_some())
+    let mut deferred = crate::deferred::Deferred::of(&system.get(), deps.browser_pool.is_some(), embedded, deps.docs.is_some(), main_role(tree), deps.connectors.is_some());
+    deferred.groups.extend(deps.mesh.clone().and_then(|host| MeshLink::new(host).group()));
+    deferred
 }
 
 /// The tools a session starts with, before MCP: what its prompt describes. The browsers' and
@@ -1005,6 +1018,24 @@ impl Kernel {
         {
             bot.current = name;
         }
+    }
+
+    /// News for this conversation from the mesh host (`mesh/news`): mail that wakes it as a
+    /// sub-agent's report does. The receiver hears once the news is in the history, and closes
+    /// when the session ends first. News whose id already waits is not added again.
+    pub fn news(&self, id: String, from: AgentRef, text: String) -> oneshot::Receiver<()> {
+        let (recorded, hears) = oneshot::channel();
+        let Some(session) = self.session.upgrade() else { return hears };
+        let waits = {
+            let mut state = session.state.lock();
+            let waits = state.news.contains_key(&id);
+            state.news.entry(id.clone()).or_default().push(recorded);
+            waits
+        };
+        if !waits {
+            let _ = self.internal.send(Box::new(Internal::Mail(agents::Mail::news(id, from, text))));
+        }
+        hears
     }
 
     /// What the model is to know of a bot's routines (`routine::listing`), which it is told when

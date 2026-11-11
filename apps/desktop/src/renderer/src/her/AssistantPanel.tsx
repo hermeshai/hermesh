@@ -9,6 +9,7 @@ import type { SendOp } from "./Approval";
 import { BotAvatar } from "./Avatar";
 import { useHer } from "./context";
 import { permissionDesc, permissionTitle } from "./format";
+import { GrantLine } from "./GrantLine";
 import { MenuButton, MenuItem, ModelRows } from "./menus";
 import { AvatarChoices, NAME_MAX, pickPicture } from "./sheets";
 
@@ -214,6 +215,7 @@ function PermissionSection({ bot, mode }: { bot: BotSummary; mode: PermissionMod
         </div>
       </div>
       <p className="set-note">{t("panel.permissionNote", { desc: permissionDesc(mode) })}</p>
+      <GrantLine m={her.machine} />
     </section>
   );
 }

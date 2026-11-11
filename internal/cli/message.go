@@ -930,6 +930,10 @@ func (a *app) post(ctx context.Context, ms relayv1connect.MessageServiceClient, 
 	if t.contact == nil || t.contact.info.InboxKey == nil {
 		return &exitError{code: exitUsage, kind: "invalid_state", err: fmt.Errorf("%s has no inbox yet", t.inbox), hint: "its Hermesh is older than messages: it needs an update"}
 	}
+	if t.contact.info.TakesMessages == "her" {
+		// docs/her-mesh.md §6.6
+		return &exitError{code: exitUsage, kind: "invalid_state", err: fmt.Errorf("%s takes no messages from agents yet", t.name), hint: "the owner writes to Her in the Hermesh app"}
+	}
 	var me *identityv1.Contact
 	for _, c := range contacts {
 		if c.info.Inbox == a.g.ClientId {

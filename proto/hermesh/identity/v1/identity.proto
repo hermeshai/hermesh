@@ -177,6 +177,10 @@ message Grant {
   // A square PNG or JPEG of at most 256 px, re-encoded by the owner's
   // device, when client_icon is "image".
   bytes client_image = 17;
+  // Set on Her's own grant (docs/her-mesh.md §3.2): the machine she runs
+  // on, whose hermeshd holds the client key. Turning Her off there or
+  // removing that machine revokes it. "" for every other agent.
+  string her_machine_id = 18;
 }
 
 // EraseOrder is the owner's order to erase Hermesh everywhere
@@ -354,7 +358,9 @@ message InboxRegistration {
   // X25519, 32 bytes.
   bytes inbox_public_key = 3;
   // How the inbox takes its messages, for senders to know what to expect:
-  // "session", "hook", "wait", "webhook" or "poll". Informational.
+  // "session", "hook", "wait", "webhook" or "poll". Informational, but for
+  // "her": Her's inbox takes the news of her own sessions and no message
+  // from an agent (docs/her-mesh.md §6.6), so senders don't write to it.
   string takes_messages = 4;
   google.protobuf.Timestamp issued_at = 5;
 }

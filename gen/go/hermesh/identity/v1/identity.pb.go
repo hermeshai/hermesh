@@ -941,7 +941,11 @@ type Grant struct {
 	ClientIcon string `protobuf:"bytes,16,opt,name=client_icon,json=clientIcon,proto3" json:"client_icon,omitempty"`
 	// A square PNG or JPEG of at most 256 px, re-encoded by the owner's
 	// device, when client_icon is "image".
-	ClientImage   []byte `protobuf:"bytes,17,opt,name=client_image,json=clientImage,proto3" json:"client_image,omitempty"`
+	ClientImage []byte `protobuf:"bytes,17,opt,name=client_image,json=clientImage,proto3" json:"client_image,omitempty"`
+	// Set on Her's own grant (docs/her-mesh.md §3.2): the machine she runs
+	// on, whose hermeshd holds the client key. Turning Her off there or
+	// removing that machine revokes it. "" for every other agent.
+	HerMachineId  string `protobuf:"bytes,18,opt,name=her_machine_id,json=herMachineId,proto3" json:"her_machine_id,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -1086,6 +1090,13 @@ func (x *Grant) GetClientImage() []byte {
 		return x.ClientImage
 	}
 	return nil
+}
+
+func (x *Grant) GetHerMachineId() string {
+	if x != nil {
+		return x.HerMachineId
+	}
+	return ""
 }
 
 // EraseOrder is the owner's order to erase Hermesh everywhere
@@ -2211,7 +2222,9 @@ type InboxRegistration struct {
 	// X25519, 32 bytes.
 	InboxPublicKey []byte `protobuf:"bytes,3,opt,name=inbox_public_key,json=inboxPublicKey,proto3" json:"inbox_public_key,omitempty"`
 	// How the inbox takes its messages, for senders to know what to expect:
-	// "session", "hook", "wait", "webhook" or "poll". Informational.
+	// "session", "hook", "wait", "webhook" or "poll". Informational, but for
+	// "her": Her's inbox takes the news of her own sessions and no message
+	// from an agent (docs/her-mesh.md §6.6), so senders don't write to it.
 	TakesMessages string                 `protobuf:"bytes,4,opt,name=takes_messages,json=takesMessages,proto3" json:"takes_messages,omitempty"`
 	IssuedAt      *timestamppb.Timestamp `protobuf:"bytes,5,opt,name=issued_at,json=issuedAt,proto3" json:"issued_at,omitempty"`
 	unknownFields protoimpl.UnknownFields
@@ -2407,7 +2420,7 @@ const file_hermesh_identity_v1_identity_proto_rawDesc = "" +
 	"machine_id\x18\x02 \x01(\tR\tmachineId\x12,\n" +
 	"\x12machine_public_key\x18\x03 \x01(\fR\x10machinePublicKey\x127\n" +
 	"\tissued_at\x18\x05 \x01(\v2\x1a.google.protobuf.TimestampR\bissuedAt\x12\"\n" +
-	"\rdevice_key_id\x18\x06 \x01(\tR\vdeviceKeyIdJ\x04\b\x04\x10\x05R\fmachine_name\"\x89\x05\n" +
+	"\rdevice_key_id\x18\x06 \x01(\tR\vdeviceKeyIdJ\x04\b\x04\x10\x05R\fmachine_name\"\xaf\x05\n" +
 	"\x05Grant\x12\x19\n" +
 	"\bowner_id\x18\x01 \x01(\tR\aownerId\x12\x19\n" +
 	"\bgrant_id\x18\x02 \x01(\tR\agrantId\x12\x18\n" +
@@ -2429,7 +2442,8 @@ const file_hermesh_identity_v1_identity_proto_rawDesc = "" +
 	"\tcustodian\x18\x0f \x01(\tR\tcustodian\x12\x1f\n" +
 	"\vclient_icon\x18\x10 \x01(\tR\n" +
 	"clientIcon\x12!\n" +
-	"\fclient_image\x18\x11 \x01(\fR\vclientImageJ\x04\b\n" +
+	"\fclient_image\x18\x11 \x01(\fR\vclientImage\x12$\n" +
+	"\x0eher_machine_id\x18\x12 \x01(\tR\fherMachineIdJ\x04\b\n" +
 	"\x10\vR\x06preset\"{\n" +
 	"\n" +
 	"EraseOrder\x12\x19\n" +

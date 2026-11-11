@@ -159,8 +159,28 @@ func (n *Machine) sessionNews(s noticeSession, e *sessionv1.SessionEvent) {
 	}
 }
 
-// newsFor writes one agent the news of event e.
+// newsFor writes one agent the news of event e. This machine's own Her
+// gets it without the post office (docs/her-mesh.md §6.1).
 func (n *Machine) newsFor(to *inboxv1.Address, s noticeSession, e *sessionv1.SessionEvent) {
+	m := n.newsMessage(to, s, e)
+	if m == nil {
+		return
+	}
+	if n.herTakes(m) {
+		return
+	}
+	for attempt := range 3 {
+		err := n.sendMessage(m)
+		if err == nil {
+			return
+		}
+		n.log.Debug("session news not sent", "session", s.id, "to", to.Inbox, "attempt", attempt, "err", err)
+		time.Sleep(time.Duration(5*(attempt+1)) * time.Second)
+	}
+}
+
+// newsMessage is the news of event e for one agent; nil when e is none.
+func (n *Machine) newsMessage(to *inboxv1.Address, s noticeSession, e *sessionv1.SessionEvent) *inboxv1.Message {
 	news := &inboxv1.SessionNews{SessionId: s.id, Title: s.title, Project: s.project, Agent: s.agent, Machine: n.Name()}
 	switch k := e.Kind.(type) {
 	case *sessionv1.SessionEvent_QuestionAsked:
@@ -170,7 +190,7 @@ func (n *Machine) newsFor(to *inboxv1.Address, s noticeSession, e *sessionv1.Ses
 		news.Turn = tc.Turn
 		if f := tc.Failure; f != nil {
 			if f.Kind == sessionv1.FailureKind_FAILURE_KIND_INTERRUPTED {
-				return
+				return nil
 			}
 			news.Kind, news.Failure = "failure", f.Kind
 			news.FailureMessage, _ = provider.Truncate(f.Message, 1000)
@@ -180,22 +200,14 @@ func (n *Machine) newsFor(to *inboxv1.Address, s noticeSession, e *sessionv1.Ses
 		}
 	case *sessionv1.SessionEvent_Status:
 		if k.Status.Status != sessionv1.SessionStatus_SESSION_STATUS_CRASHED {
-			return
+			return nil
 		}
 		news.Kind, news.Failure = "failure", sessionv1.FailureKind_FAILURE_KIND_AGENT_CRASHED
 	default:
-		return
+		return nil
 	}
-	m := &inboxv1.Message{MessageId: "msg_" + strings.ToLower(ulid.Make().String()), From: &inboxv1.Address{Inbox: n.machineID, Session: s.id},
+	return &inboxv1.Message{MessageId: "msg_" + strings.ToLower(ulid.Make().String()), From: &inboxv1.Address{Inbox: n.machineID, Session: s.id},
 		To: to, SentAt: timestamppb.Now(), Text: newsText(news), SessionNews: news}
-	for attempt := range 3 {
-		err := n.sendMessage(m)
-		if err == nil {
-			return
-		}
-		n.log.Debug("session news not sent", "session", s.id, "to", to.Inbox, "attempt", attempt, "err", err)
-		time.Sleep(time.Duration(5*(attempt+1)) * time.Second)
-	}
 }
 
 // sendMessage signs m with the machine key, seals it to its recipient and

@@ -532,6 +532,9 @@ pub enum MailKind {
     /// What a bot's sub-agent told the user with `send_to_user`: they have it already, and its
     /// round goes on (docs/kernel/agent-messaging-design.md §17).
     ToUser,
+    /// What the mesh host says happened to work started through its tools (`mesh/news`): `from`
+    /// is whoever the host names.
+    News,
 }
 
 /// Where a delivered message came from.

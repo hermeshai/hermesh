@@ -44,8 +44,11 @@ type conn struct {
 	mu      sync.Mutex
 	next    int64
 	pending map[int64]chan *message
-	done    chan struct{} // closed with err set
-	err     error
+	// serve answers her's own requests on this connection (the mesh
+	// host's, mesh.go); nil: they are left unanswered.
+	serve func(ctx context.Context, method string, params json.RawMessage) (any, error)
+	done  chan struct{} // closed with err set
+	err   error
 }
 
 // message is a line of her's: an answer (id, result or error) or a
@@ -161,6 +164,15 @@ func (c *conn) read() {
 		if json.Unmarshal(sc.Bytes(), &m) != nil {
 			continue
 		}
+		if m.Method != "" && len(m.ID) > 0 && string(m.ID) != "null" {
+			c.mu.Lock()
+			serve := c.serve
+			c.mu.Unlock()
+			if serve != nil {
+				go c.answer(serve, m.ID, m.Method, bytes.Clone(m.Params))
+			}
+			continue
+		}
 		if m.Method != "" {
 			if c.notes == nil {
 				continue
@@ -192,6 +204,34 @@ func (c *conn) read() {
 		err = errClosed
 	}
 	c.close(err)
+}
+
+// answer runs one request of her's and writes its result, or its error.
+func (c *conn) answer(serve func(context.Context, string, json.RawMessage) (any, error), id json.RawMessage, method string, params json.RawMessage) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	go func() {
+		select {
+		case <-c.done:
+			cancel()
+		case <-ctx.Done():
+		}
+	}()
+	res, err := serve(ctx, method, params)
+	out := struct {
+		JSONRPC string          `json:"jsonrpc"`
+		ID      json.RawMessage `json:"id"`
+		Result  any             `json:"result,omitempty"`
+		Error   any             `json:"error,omitempty"`
+	}{JSONRPC: "2.0", ID: id, Result: res}
+	if err != nil {
+		out.Result, out.Error = nil, map[string]any{"code": -32000, "message": err.Error()}
+	}
+	line, merr := json.Marshal(out)
+	if merr != nil {
+		line, _ = json.Marshal(map[string]any{"jsonrpc": "2.0", "id": id, "error": map[string]any{"code": -32603, "message": merr.Error()}})
+	}
+	c.write(append(line, '\n'))
 }
 
 // close ends the connection: calls waiting on it fail with err.

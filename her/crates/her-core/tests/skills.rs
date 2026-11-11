@@ -83,6 +83,7 @@ fn deps(api: &Arc<ScriptedApi>, env: &Env, tools: &[&str]) -> KernelDeps {
         words: None,
         routines: None,
         connectors: None,
+        mesh: None,
     }
 }
 

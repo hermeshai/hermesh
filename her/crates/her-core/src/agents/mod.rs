@@ -605,6 +605,7 @@ impl AgentTree {
                 words: self.deps.words.clone(),
                 routines: None,
                 connectors: None,
+                mesh: None,
             },
             home: self.deps.home.clone(),
             config: self.deps.config.clone(),

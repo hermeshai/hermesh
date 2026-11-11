@@ -148,6 +148,13 @@ pub(crate) enum HubCmd {
     },
     /// A run started here has ended.
     RunEnded,
+    /// A bot's conversation: news from the mesh host (`mesh/news`). The receiver in the reply
+    /// hears once the conversation has it in its history; `None` when the session is closing, so
+    /// another attempt can load it again.
+    News {
+        news: Box<her_protocol::api::MeshNewsParams>,
+        reply: oneshot::Sender<Option<oneshot::Receiver<()>>>,
+    },
 }
 
 /// Where a session's changes are listed.
@@ -642,6 +649,13 @@ impl Hub {
             HubCmd::RunEnded => {
                 self.shared.routine_runs.fetch_sub(1, Ordering::Relaxed);
                 self.update_idle();
+            }
+            HubCmd::News { news, reply } => {
+                let recorded = match &self.kernel {
+                    Some(kernel) if !self.closing => Some(kernel.news(news.id, news.from, news.text)),
+                    _ => None,
+                };
+                let _ = reply.send(recorded);
             }
             HubCmd::Meta { op, reply } => {
                 let result = if self.closing {

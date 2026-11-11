@@ -26,6 +26,10 @@ import (
 	identityv1 "github.com/hermeshai/hermesh/gen/go/hermesh/identity/v1"
 	localv1 "github.com/hermeshai/hermesh/gen/go/hermesh/local/v1"
 	machinev1 "github.com/hermeshai/hermesh/gen/go/hermesh/machine/v1"
+	relayv1 "github.com/hermeshai/hermesh/gen/go/hermesh/relay/v1"
+	"github.com/hermeshai/hermesh/internal/machine"
+	"github.com/hermeshai/hermesh/internal/peer"
+	"github.com/hermeshai/hermesh/pkg/identity"
 )
 
 // Her (docs/her-server.md): the owner's side of Her on its machines. Every
@@ -204,15 +208,138 @@ func errNoRootKey(what string) error {
 	return connect.NewError(connect.CodeFailedPrecondition, fmt.Errorf("a trusted device has to %s: this computer is only a machine, without an owner key", what))
 }
 
-// SetHer turns Her on or off for a machine, signed by the root key.
+// SetHer turns Her on or off for a machine, signed by the root key. Turned
+// on, she also becomes one of the owner's agents (docs/her-mesh.md §3.3):
+// the same confirmation signs her grant, for the client key the machine
+// keeps for her. Turned on again for a Her that has none yet, it signs the
+// grant. Turned off, her grant is revoked.
 func (o *Owner) SetHer(ctx context.Context, machineID string, enabled bool) error {
 	if _, ok, _ := o.onlyMachine(); ok {
 		return errNoRootKey("turn Her on or off")
 	}
-	_, err := o.admin(ctx, machineID, func(c *identityv1.AdminCommand) {
-		c.Command = &identityv1.AdminCommand_SetHer{SetHer: &identityv1.SetHer{Enabled: enabled}}
-	})
-	return err
+	cmd := &identityv1.AdminCommand{OwnerId: o.ownerID, CommandId: identity.RandomCode(16), TargetMachineId: machineID,
+		ExpiresAt: timestamppb.New(time.Now().Add(5 * time.Minute)),
+		Command:   &identityv1.AdminCommand_SetHer{SetHer: &identityv1.SetHer{Enabled: enabled}}}
+	msgs := []proto.Message{cmd}
+	var grant *identityv1.Grant
+	if enabled {
+		if grant = o.herGrant(ctx, machineID); grant != nil {
+			msgs = append(msgs, grant)
+		}
+	}
+	signed, err := o.signRoot(ctx, msgs...)
+	if err != nil {
+		return err
+	}
+	var local *machine.Local
+	var remote *peer.Machine
+	if l := o.local(); l != nil && l.MachineID() == machineID && grant != nil {
+		local = l
+	}
+	c, err := o.relay(ctx)
+	if err != nil {
+		return err
+	}
+	if remote, err = c.Machine(ctx, machineID); err != nil {
+		return connect.NewError(connect.CodeUnavailable, err)
+	}
+	if _, err := remote.Admin.ApplyAdminCommand(ctx, &machinev1.ApplyAdminCommandRequest{Command: signed[0]}); err != nil {
+		c.Forget(machineID)
+		return err
+	}
+	if !enabled {
+		o.revokeHer(ctx, machineID)
+		return nil
+	}
+	if grant == nil {
+		return nil
+	}
+	// Her is on from here; what follows only gives her the mesh, and the
+	// owner can ask for it again (turning Her on once more).
+	if local != nil {
+		err = local.SetHerGrant(signed[1], o.trust.RootChain())
+	} else {
+		_, err = remote.Admin.SetHerGrant(ctx, &machinev1.SetHerGrantRequest{Grant: signed[1], RootChain: o.trust.RootChain()})
+	}
+	if err != nil {
+		o.log.Warn("Her is on without the mesh: her machine did not take her grant", "machine", machineID, "err", err)
+		return nil
+	}
+	ctl, _, err := o.control(ctx)
+	if err == nil {
+		_, err = ctl.PublishGrant(ctx, &relayv1.PublishGrantRequest{Grant: signed[1]})
+	}
+	if err != nil {
+		o.log.Warn("Her's grant not published yet", "machine", machineID, "err", err)
+		return nil
+	}
+	o.st.putGrant(signed[1], false)
+	go o.refreshCards()
+	return nil
+}
+
+// herGrant is the grant to sign for Her on a machine: nil when its hermeshd
+// keeps no key for her (it is older, or can't run her) or she holds one.
+func (o *Owner) herGrant(ctx context.Context, machineID string) *identityv1.Grant {
+	var st *machinev1.MachineStatus
+	if l := o.local(); l != nil && l.MachineID() == machineID {
+		st = l.Info().Status
+	} else if n, err := o.machineClient(ctx, machineID); err == nil {
+		if info, err := n.Info.GetInfo(ctx, &machinev1.GetInfoRequest{}); err == nil {
+			st = info.Status
+		}
+	}
+	her := st.GetHer()
+	if len(her.GetClientPublicKey()) == 0 || her.GetMesh() {
+		return nil
+	}
+	name := st.GetName()
+	return HerGrant(o.ownerID, machineID, name, her.ClientPublicKey)
+}
+
+// HerGrant is Her's grant on a machine (docs/her-mesh.md §3.2): every
+// machine, project and agent, every session to read, and no expiry. It ends
+// when Her is turned off there or the machine is removed.
+func HerGrant(ownerID, machineID, machineName string, clientKey []byte) *identityv1.Grant {
+	label := "Her"
+	if machineName != "" {
+		label = "Her on " + machineName
+	}
+	return &identityv1.Grant{OwnerId: ownerID, GrantId: "g_" + strings.ToLower(ulid.Make().String()), Version: 1,
+		ClientId: identity.ClientID(clientKey), ClientPublicKey: clientKey, ClientLabel: label,
+		MachineIds: []string{"*"}, ProjectIds: []string{"*"}, Agents: []string{"*"},
+		TaskVisibility: identityv1.TaskVisibility_TASK_VISIBILITY_ALL,
+		NotBefore:      timestamppb.New(time.Now().Add(-time.Minute)), ExpiresAt: timestamppb.New(identity.NoExpiry),
+		HerMachineId: machineID}
+}
+
+// herGrants are the ids of the grants Her holds on a machine.
+func (o *Owner) herGrants(ctx context.Context, machineID string) []string {
+	ctl, _, err := o.control(ctx)
+	if err != nil {
+		return nil
+	}
+	res, err := ctl.ListClients(ctx, &relayv1.ListClientsRequest{})
+	if err != nil {
+		return nil
+	}
+	var ids []string
+	for _, c := range res.Clients {
+		g := &identityv1.Grant{}
+		if identity.Unverified(c.Grant, g) == nil && g.OwnerId == o.ownerID && g.HerMachineId == machineID && !c.Revoked && !slices.Contains(ids, g.GrantId) {
+			ids = append(ids, g.GrantId)
+		}
+	}
+	return ids
+}
+
+// revokeHer revokes the grants of a machine's Her: she was turned off.
+func (o *Owner) revokeHer(ctx context.Context, machineID string) {
+	for _, id := range o.herGrants(ctx, machineID) {
+		if _, err := o.RevokeClient(ctx, id); err != nil {
+			o.log.Warn("revoking Her's grant", "machine", machineID, "grant", id, "err", err)
+		}
+	}
 }
 
 // SetHerCommandConnector adds, changes or removes a connector her starts as
