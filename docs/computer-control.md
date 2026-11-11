@@ -1,8 +1,9 @@
 # Computer control: the owner's hands on a Her Server's Mac
 
-Status: agreed 2026-11-10. Steps 1 to 3 of §8 are built: the Mac side, the
-iPhone side and the relay's STUN and TURN. Step 0's questions about the
-real screen (§10) and step 4 are open.
+Status: agreed 2026-11-10. Steps 0 to 3 of §8 are built: the Mac side, the
+iPhone side and the relay's STUN and TURN, checked against a real screen
+from the Simulator, with each stage's delay measured (§5.1). Open: the lock
+screen, a real network and a real iPhone (§10), and step 4.
 
 ## 0. Summary
 
