@@ -16,6 +16,10 @@ func TestMain(m *testing.M) {
 		fmt.Fprintln(os.Stderr, "isolating CODEX_HOME:", err)
 		os.Exit(1)
 	}
+	// These tests' agents stand for agents on other computers, though they
+	// run on this one beside the machines: they reach them through the
+	// relay. TestLocalAgent turns the local way on for its own.
+	os.Setenv("HERMESH_LOCAL", "off")
 	code := m.Run()
 	cleanup()
 	os.Exit(code)

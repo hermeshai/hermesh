@@ -72,6 +72,9 @@ type app struct {
 	// link (link.go); linkStart starts it once when none answers.
 	link      bool
 	linkStart sync.Once
+	// local: a machine on this computer is reached without the relay, and
+	// can still be used while the relay cannot be reached (local.go).
+	local bool
 }
 
 func homeDir() string {
@@ -198,6 +201,21 @@ func (a *app) credentials() *identityv1.Credentials {
 // handshakes to the machines warm picks from the last list: the ones the
 // command will likely use.
 func (a *app) connect(ctx context.Context, warm func([]machineRef) []machineRef) (*peer.Client, []machineRef, error) {
+	c, machines, err := a.connectRelay(ctx, warm)
+	if ee := (*exitError)(nil); err == nil || !a.local || errors.As(err, &ee) || ctx.Err() != nil {
+		return c, machines, err
+	}
+	// The relay could not be reached. The machines of this computer can be
+	// all the same (local.go), as they were last listed.
+	if c, machines := a.withoutRelay(); c != nil {
+		fmt.Fprintf(os.Stderr, "warning: the relay cannot be reached (%v): only this computer's own machine can be used, as last listed\n", err)
+		return c, machines, nil
+	}
+	return nil, nil, err
+}
+
+// connectRelay is connect through the relay.
+func (a *app) connectRelay(ctx context.Context, warm func([]machineRef) []machineRef) (*peer.Client, []machineRef, error) {
 	if err := a.load(); err != nil {
 		return nil, nil, err
 	}
@@ -357,8 +375,12 @@ func (a *app) dial(ctx context.Context, pipeline bool) (*peer.Client, error) {
 
 // dialer connects with the stored credentials.
 func (a *app) dialer(pipeline bool) *peer.Dialer {
-	return &peer.Dialer{RelayURL: a.st.RelayURL, Role: relayv1.Role_ROLE_CLIENT, Key: a.key, Credentials: a.credentials, Trust: a.trust, HTTPClient: a.hc,
+	d := &peer.Dialer{RelayURL: a.st.RelayURL, Role: relayv1.Role_ROLE_CLIENT, Key: a.key, Credentials: a.credentials, Trust: a.trust, HTTPClient: a.hc,
 		Pipeline: pipeline}
+	if a.local {
+		d.Local = localDial
+	}
+	return d
 }
 
 // syncGrant adopts a renewed or re-issued grant if the owner published one,

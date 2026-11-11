@@ -3,7 +3,10 @@
 // and LocalAPI.
 package paths
 
-import "os"
+import (
+	"os"
+	"path/filepath"
+)
 
 // DataDir is hermeshd's data directory: $HERMESH_DATA_DIR, else this
 // system's place for it.
@@ -21,4 +24,21 @@ func CLIHome() string {
 		return v
 	}
 	return cliHome()
+}
+
+// Local is where the machine machineID takes the connections of its own
+// user's agents on this computer, so that they need not go through the
+// relay to reach it (docs/technical-design.md §4.3): "" when HERMESH_LOCAL
+// is off. It depends on nothing but the machine and the user, so an agent
+// finds it knowing neither the machine's data directory nor its own home;
+// $HERMESH_LOCAL_DIR puts it elsewhere.
+func Local(machineID string) string {
+	if os.Getenv("HERMESH_LOCAL") == "off" || machineID == "" {
+		return ""
+	}
+	dir := os.Getenv("HERMESH_LOCAL_DIR")
+	if dir == "" {
+		dir = localDir()
+	}
+	return filepath.Join(dir, machineID+localExt)
 }

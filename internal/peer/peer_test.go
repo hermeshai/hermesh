@@ -210,3 +210,40 @@ func TestLink(t *testing.T) {
 		t.Fatal("the machine reached through the link was dropped")
 	}
 }
+
+// A client first looks for a machine on this computer. One that is not
+// here is reached through the relay; and a client made without a relay
+// connection dials one only when something needs the relay.
+func TestLocalMachineNotHere(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	var asked []string
+	key, _ := identity.GenerateKey()
+	d := &Dialer{RelayURL: admittingRelay(t), Role: relayv1.Role_ROLE_CLIENT, Key: key,
+		Credentials: func() *identityv1.Credentials { return &identityv1.Credentials{} },
+		Local: func(_ context.Context, machineID string) (net.Conn, error) {
+			asked = append(asked, machineID)
+			return nil, io.ErrClosedPipe
+		}}
+	c := d.Detached()
+	defer c.Close()
+	select {
+	case <-c.Done():
+		t.Fatal("a detached client has a connection")
+	default:
+	}
+	if err := c.Ping(ctx); err == nil {
+		t.Fatal("a detached client answered a ping")
+	}
+	brief, stop := context.WithTimeout(ctx, time.Second)
+	defer stop()
+	if _, err := c.Machine(brief, "m_1"); err == nil { // the stand-in relay has no machines
+		t.Fatal("reached a machine nobody has")
+	}
+	if len(asked) != 1 || asked[0] != "m_1" {
+		t.Fatalf("looked here for %v, want m_1 once", asked)
+	}
+	if err := c.Ping(ctx); err != nil {
+		t.Fatalf("the relay connection the machine needed: %v", err)
+	}
+}
