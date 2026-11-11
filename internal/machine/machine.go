@@ -144,7 +144,9 @@ type Machine struct {
 	her *herhost.Host
 	// screen shows this machine's screen to one of the owner's devices (screen.go).
 	screen *screenhost.Host
-	herOn  bool
+	// iceServers are the relay's STUN and TURN servers, kept for it (screen.go).
+	iceServers screenhost.Servers
+	herOn      bool
 	// mesh is Her as one of the owner's agents (her_mesh.go).
 	mesh herMesh
 }

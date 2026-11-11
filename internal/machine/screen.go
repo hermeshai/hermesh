@@ -10,6 +10,7 @@ import (
 	relayv1 "github.com/hermeshai/hermesh/gen/go/hermesh/relay/v1"
 	screenv1 "github.com/hermeshai/hermesh/gen/go/hermesh/screen/v1"
 	screenhost "github.com/hermeshai/hermesh/internal/screen"
+	"github.com/hermeshai/hermesh/pkg/transport"
 )
 
 // ScreenOffPath is the file that turns Computer Control off on the machine
@@ -49,8 +50,9 @@ func (s *screenService) Connect(ctx context.Context, req *screenv1.ConnectReques
 }
 
 // screenServers are the relay's STUN and TURN servers for a session that
-// starts; none when it runs none, is an older relay, or does not answer in
-// time: the two ends then find what paths they can by themselves.
+// starts, as kept (keepScreenServers); none when it runs none, is an older
+// relay, or does not answer in time: the two ends then find what paths they
+// can by themselves.
 func (n *Machine) screenServers(ctx context.Context) []*relayv1.IceServer {
 	n.mu.Lock()
 	conn := n.conn
@@ -58,17 +60,41 @@ func (n *Machine) screenServers(ctx context.Context) []*relayv1.IceServer {
 	if conn == nil {
 		return nil
 	}
-	c, err := n.control(conn)
-	if err != nil {
-		return nil
+	return n.iceServers.Get(ctx, conn, n.fetchScreenServers(conn))
+}
+
+// keepScreenServers keeps the relay's servers at hand while conn lasts, so
+// that a session does not wait for them.
+func (n *Machine) keepScreenServers(ctx context.Context, conn *transport.RelayConn) {
+	if n.cfg.ScreenBin == "" {
+		return
 	}
-	ctx, cancel := context.WithTimeout(ctx, 3*time.Second)
-	defer cancel()
-	res, err := c.GetScreenServers(ctx, &relayv1.GetScreenServersRequest{})
-	if err != nil {
-		return nil
+	tick := time.NewTicker(screenhost.ServersFresh)
+	defer tick.Stop()
+	for {
+		n.iceServers.Warm(conn, n.fetchScreenServers(conn))
+		select {
+		case <-ctx.Done():
+			return
+		case <-tick.C:
+		}
 	}
-	return res.Servers
+}
+
+func (n *Machine) fetchScreenServers(conn *transport.RelayConn) func(context.Context) []*relayv1.IceServer {
+	return func(ctx context.Context) []*relayv1.IceServer {
+		c, err := n.control(conn)
+		if err != nil {
+			return nil
+		}
+		ctx, cancel := context.WithTimeout(ctx, 3*time.Second)
+		defer cancel()
+		res, err := c.GetScreenServers(ctx, &relayv1.GetScreenServersRequest{})
+		if err != nil {
+			return nil
+		}
+		return res.Servers
+	}
 }
 
 // screenStatus is nil on a machine that can't show its screen.

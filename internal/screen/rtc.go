@@ -1,6 +1,8 @@
 package screen
 
 import (
+	"net"
+	"sync"
 	"time"
 
 	"github.com/pion/ice/v4"
@@ -67,9 +69,24 @@ func newAPI(estimate func(cc.BandwidthEstimator)) (*webrtc.API, error) {
 	s.SetNetworkTypes([]webrtc.NetworkType{webrtc.NetworkTypeUDP4, webrtc.NetworkTypeUDP6})
 	// A viewer on the machine itself (the Simulator, the tests).
 	s.SetIncludeLoopbackCandidate(true)
+	// None of the other end's IPv6 link-local addresses. Every interface has
+	// one (VPNs, virtual machines, AirDrop: a Mac here had 17), none carries
+	// its zone across, and checking them held the first picture up 2–6 s on
+	// one computer; without them, 30–300 ms. A filter on this end's own
+	// addresses would be quicker still, but pion then asks STUN and TURN from
+	// each address apart: a dozen TURN allocations a session.
+	s.SetRemoteIPFilter(func(ip net.IP) bool { return !ip.IsLinkLocalUnicast() })
 	s.SetICETimeouts(5*time.Second, 12*time.Second, time.Second)
 	// A STUN or TURN server that does not answer must not hold the handshake up for long.
 	s.SetSTUNGatherTimeout(3 * time.Second)
+	// How long a working path waits before it is taken, in case a better one
+	// works too. pion's 0.5/1/2 s are for candidates that trickle in; here
+	// both ends have all of them before the first check, so a better path
+	// answers about as soon as a worse one. Through TURN, waiting longer
+	// gains nothing when no direct path exists, which is when it is taken.
+	s.SetSrflxAcceptanceMinWait(100 * time.Millisecond)
+	s.SetPrflxAcceptanceMinWait(300 * time.Millisecond)
+	s.SetRelayAcceptanceMinWait(time.Second)
 	return webrtc.NewAPI(webrtc.WithMediaEngine(m), webrtc.WithInterceptorRegistry(i), webrtc.WithSettingEngine(s)), nil
 }
 
@@ -82,13 +99,32 @@ func iceServers(list []*relayv1.IceServer) []webrtc.ICEServer {
 	return out
 }
 
-// gathered sets pc's local description and returns it once every candidate
-// is in it: the handshake is one call each way, with nothing trickled.
+// gatherWithin: the longest the candidates are gathered for (a variable for
+// the tests).
+var gatherWithin = 2 * time.Second
+
+// gathered sets pc's local description and returns it with the candidates
+// it has: the handshake is one call each way, with nothing trickled. It
+// returns once gathering is done, or once a TURN address came (the last
+// kind to come; the second TURN transport adds nothing), or after
+// gatherWithin: a server that does not answer would otherwise hold the
+// handshake up for seconds (STUN 3 s, TURN over UDP 7.8 s).
 func gathered(pc *webrtc.PeerConnection, d webrtc.SessionDescription) (string, error) {
-	done := webrtc.GatheringCompletePromise(pc)
+	enough := make(chan struct{})
+	var once sync.Once
+	pc.OnICECandidate(func(c *webrtc.ICECandidate) {
+		if c == nil || c.Typ == webrtc.ICECandidateTypeRelay {
+			once.Do(func() { close(enough) })
+		}
+	})
 	if err := pc.SetLocalDescription(d); err != nil {
 		return "", err
 	}
-	<-done
+	t := time.NewTimer(gatherWithin)
+	defer t.Stop()
+	select {
+	case <-enough:
+	case <-t.C:
+	}
 	return pc.LocalDescription().SDP, nil
 }

@@ -120,10 +120,11 @@ sequenceDiagram
     Note over P,R: a path through TURN is used only if no direct one works
 ```
 
-- **One call each way.** The phone gathers all its candidates, then sends
+- **One call each way.** The phone gathers its candidates, then sends
   its offer in `ScreenService.Connect`; the Mac gathers its own and
   answers. Nothing is trickled, so there is no stream to keep open, and a
-  session lasts as long as the connection between the two does. A viewer
+  session lasts as long as the connection between the two does. Gathering
+  ends once a TURN address has come, or after 2 seconds (§5.2). A viewer
   that never arrives is given up on after 20 seconds.
 - **Candidates**: local addresses (same Wi-Fi), IPv6 addresses, addresses
   seen by the relay's STUN, and the relay's TURN address. ICE picks the
@@ -282,6 +283,47 @@ What is left, and what would move it:
   (not measurable in the Simulator).
 - Over a network the path's own delay is added, and through TURN the
   detour to the relay.
+
+### 5.2 The first picture
+
+On 2026-11-12 the owner found the first connection slow. From the page
+opening to the first frame, timed in the e2e tests on one Mac (`TestScreen`,
+`TestScreenUnreachableTURN`, `TestScreenThroughTURN`):
+
+| Case | Before | Now |
+|---|---|---|
+| Direct | 5.3–12.3 s | 0.75–1.0 s |
+| The relay's STUN and TURN out of reach | 13.8 s | 4.2 s |
+| Through TURN only: from the answer to connected | 2 s and more | 1.0 s |
+
+Where the time went, and what changed:
+
+- **The connectivity checks, 2–12 s.** Every interface has an IPv6
+  link-local address (VPNs, virtual machines, AirDrop: 17 on that Mac, and
+  an iPhone has its own share); none carries its zone across, and pion took
+  seconds to settle among the pairs they make, sometimes on a link-local
+  one. Each end now ignores the other's link-local addresses (`newAPI`):
+  30–300 ms. A filter on its own addresses would be quicker still, but pion
+  then asks STUN and TURN from each address apart, a dozen TURN allocations
+  a session.
+- **Waiting for servers that do not answer.** Each end gathered until every
+  server answered or gave up: STUN after 3 s, TURN over UDP after 7.8 s.
+  Gathering now ends when a TURN address has come, or after 2 s at most
+  (`gathered`).
+- **Taking a path.** pion waits 0.5 s before taking a path through a NAT
+  and 2 s before one through TURN, for candidates that trickle in. Here
+  both ends have all of them before the first check: 0.1 s and 1 s.
+- **Asking the relay for its servers**, a round trip on each end before
+  anything else. The answer is kept (`screen.Servers`; the credentials last
+  an hour, used for 40 minutes): the iPhone asks when it connects to the
+  relay, the Mac when it connects and every 20 minutes after.
+
+Not on the way: the helper's first frame comes 0.6–0.7 s after it starts,
+alongside the handshake; the tunnel to the Mac is already open from the Her
+page. What is left on a real network: on each end, gathering takes about
+three round trips to the relay (the TURN allocation), and the offer, the
+answer and the checks a few more. Sending candidates as they come
+(trickling) instead of in one offer would take the gathering off the way.
 
 ## 6. On the iPhone
 
