@@ -31,22 +31,23 @@ import (
 var linuxDesktops = []struct {
 	name, packages, start string
 	width, height         uint32
+	way                   string // as `hermeshd screen` names it
 }{
 	{"x11", "xvfb xterm font-misc-misc xsetroot",
 		`Xvfb :5 -noreset -screen 0 1600x900x24 >/tmp/run/x.log 2>&1 &
 sleep 1; export DISPLAY=:5; xsetroot -solid '#d02020'
-(sleep 4; xterm -u8 -geometry 80x20+500+300 -e sh -c 'stty raw -echo; dd bs=1 of=/tmp/typed.txt 2>/dev/null') &`, 1600, 900},
+(sleep 4; xterm -u8 -geometry 80x20+500+300 -e sh -c 'stty raw -echo; dd bs=1 of=/tmp/typed.txt 2>/dev/null') &`, 1600, 900, "X11"},
 	{"sway", "sway swaybg foot font-dejavu libcap-setcap",
 		`printf 'output * bg #2040d0 solid_color\noutput HEADLESS-1 resolution 1280x720\n' > /tmp/run/sway.conf
 WLR_BACKENDS=headless WLR_RENDERER=pixman WLR_LIBINPUT_NO_DEVICES=1 sway -c /tmp/run/sway.conf >/tmp/run/sway.log 2>&1 &
 sleep 2
-(sleep 4; WAYLAND_DISPLAY=$(cd /tmp/run && ls wayland-* | grep -v lock | head -1) foot sh -c 'stty raw -echo; dd bs=1 of=/tmp/typed.txt 2>/dev/null') &`, 1280, 720},
+(sleep 4; WAYLAND_DISPLAY=$(cd /tmp/run && ls wayland-* | grep -v lock | head -1) foot sh -c 'stty raw -echo; dd bs=1 of=/tmp/typed.txt 2>/dev/null') &`, 1280, 720, "wlroots"},
 	{"gnome", "mutter pipewire wireplumber foot font-dejavu mesa-dri-gallium",
 		`pipewire >/tmp/run/pw.log 2>&1 &
 sleep 0.5; wireplumber >/tmp/run/wp.log 2>&1 &
 mutter --wayland --headless --no-x11 --virtual-monitor 1280x720 >/tmp/run/mutter.log 2>&1 &
 sleep 3
-(sleep 4; WAYLAND_DISPLAY=wayland-0 foot -o key-bindings.clipboard-paste=Control+v sh -c 'stty raw -echo; dd bs=1 of=/tmp/typed.txt 2>/dev/null') &`, 1280, 720},
+(sleep 4; WAYLAND_DISPLAY=wayland-0 foot -o key-bindings.clipboard-paste=Control+v sh -c 'stty raw -echo; dd bs=1 of=/tmp/typed.txt 2>/dev/null') &`, 1280, 720, "GNOME"},
 }
 
 // TestLinuxScreen (HERMESH_DOCKER=1) is Computer Control on Linux end to end
@@ -57,6 +58,8 @@ sleep 3
 // the relay. The picture comes from a keyframe on at the desktop's size,
 // what the phone types (Chinese among it) reaches the terminal there, and
 // `hermeshd screen stop` at the machine ends the session, the phone told why.
+// `hermeshd screen` says which way it uses; `hermeshd screen off` takes the
+// screen from the phone, and `on` gives it back.
 //
 // The helper is HERMESH_SCREEN_LINUX, else built in Docker (linuxScreenHelper).
 func TestLinuxScreen(t *testing.T) {
@@ -84,7 +87,12 @@ func TestLinuxScreen(t *testing.T) {
 		t.Fatal(err)
 	}
 	m := joinMobile(t, w, st.RelayUrl, t.TempDir(), func() *identity.SoftwareKey { k, _ := identity.GenerateKey(); return k }())
-	addr := strings.Replace(w.addr, "127.0.0.1", "host.docker.internal", 1)
+	// Docker Desktop (a Mac) reaches this computer's loopback as host.docker.internal; on Linux the
+	// containers share this computer's network.
+	addr, network := strings.Replace(w.addr, "127.0.0.1", "host.docker.internal", 1), "bridge"
+	if runtime.GOOS == "linux" {
+		addr, network = w.addr, "host"
+	}
 	for _, d := range linuxDesktops {
 		t.Run(d.name, func(t *testing.T) {
 			name := fmt.Sprintf("hermesh-e2e-screen-%s-%d", d.name, time.Now().UnixNano())
@@ -100,7 +108,7 @@ func TestLinuxScreen(t *testing.T) {
 				"adduser -D -u 1000 me && mkdir -p /data && chown me /data",
 				"exec su me -c 'dbus-run-session -- sh /opt/session.sh'",
 			}, " && ")
-			dockerRun := exec.Command("docker", "run", "--rm", "-d", "--name", name, "--shm-size=512m", "--add-host", "host.docker.internal:host-gateway",
+			dockerRun := exec.Command("docker", "run", "--rm", "-d", "--name", name, "--shm-size=512m", "--network", network,
 				"-v", linuxBin+":/opt/hermesh:ro", "-v", session+":/opt/session.sh:ro", "-e", "HERMESH_FAKE_PROVIDERS=1", "alpine:edge", "sh", "-c", script)
 			if out, err := dockerRun.CombinedOutput(); err != nil {
 				t.Fatalf("docker run: %v %s", err, out)
@@ -119,7 +127,7 @@ func TestLinuxScreen(t *testing.T) {
 				t.Fatalf("approve: %v\n%s", err, logs())
 			}
 			// The phone sees that the machine can show its screen.
-			eventually(t, 90*time.Second, "the Linux screen offered to the iPhone", func() bool {
+			offered := func() bool {
 				res, err := m.client.ListMachines(ctx, &localv1.ListMachinesRequest{})
 				if err != nil {
 					return false
@@ -130,7 +138,18 @@ func TestLinuxScreen(t *testing.T) {
 					}
 				}
 				return false
-			})
+			}
+			eventually(t, 90*time.Second, "the Linux screen offered to the iPhone", offered)
+			hermeshd := func(args string) string {
+				out, err := exec.Command("docker", "exec", name, "su", "me", "-c", "/opt/hermesh/hermeshd "+args+" --data-dir /data").CombinedOutput()
+				if err != nil {
+					t.Fatalf("hermeshd %s: %v %s", args, err, out)
+				}
+				return string(out)
+			}
+			if out := hermeshd("screen"); !strings.Contains(out, "ready, through "+d.way) {
+				t.Errorf("hermeshd screen: %q", out)
+			}
 			s := openScreen(t, m, approved.MachineId)
 			format, path := s.picture(t)
 			if format.GetWidth() != d.width || format.GetHeight() != d.height {
@@ -156,13 +175,19 @@ func TestLinuxScreen(t *testing.T) {
 				return string(o)
 			}
 			eventually(t, 20*time.Second, "what the phone typed, in the terminal", func() bool { return typed() == "Hello Linux 你好" })
-			// The machine's user ends it there.
-			if out, err := exec.Command("docker", "exec", name, "su", "me", "-c", "/opt/hermesh/hermeshd screen stop --data-dir /data").CombinedOutput(); err != nil {
-				t.Fatalf("hermeshd screen stop: %v %s", err, out)
+			if out := hermeshd("screen"); !strings.Contains(out, "test-iphone is in control") {
+				t.Errorf("hermeshd screen, in a session: %q", out)
 			}
+			// The machine's user ends it there.
+			hermeshd("screen stop")
 			if why := s.ended(t); why != "the machine ended the session" {
 				t.Errorf("the phone was told %q", why)
 			}
+			// And turns it off, then on again.
+			hermeshd("screen off")
+			eventually(t, 60*time.Second, "the screen no longer offered", func() bool { return !offered() })
+			hermeshd("screen on")
+			eventually(t, 60*time.Second, "the screen offered again", offered)
 		})
 	}
 }

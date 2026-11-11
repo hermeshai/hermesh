@@ -9294,16 +9294,6 @@
         }
       }
     },
-    "Another device took over, or the session was stopped on that Mac.": {
-      "localizations": {
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "另一台设备接管了操控，或者这次操控在那台 Mac 上被停止了。"
-          }
-        }
-      }
-    },
     "The connection to %@ was lost.": {
       "localizations": {
         "zh-Hans": {
@@ -9460,6 +9450,86 @@
           "stringUnit": {
             "state": "translated",
             "value": "已在 %@ 上关闭 Her"
+          }
+        }
+      }
+    },
+    "Another device took over, or the session was stopped on %@.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "另一台设备接管了操控，或者这次操控在 %@ 上被停止了。"
+          }
+        }
+      }
+    },
+    "%@ is asking at its screen": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ 正在它的屏幕上请求允许"
+          }
+        }
+      }
+    },
+    "Someone at that computer allows it there, once. After that it connects without asking.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "需要有人在那台电脑前允许一次，之后连接就不再询问。"
+          }
+        }
+      }
+    },
+    "%@ is locked": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ 已锁屏"
+          }
+        }
+      }
+    },
+    "GNOME shares no locked screen. Unlock it at the computer, then connect again.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "GNOME 不共享锁定的屏幕。请在那台电脑前解锁后再连接。"
+          }
+        }
+      }
+    },
+    "%@ has no desktop running": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ 没有运行中的桌面"
+          }
+        }
+      }
+    },
+    "Log in to its desktop, then connect again.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "登录它的桌面后再连接。"
+          }
+        }
+      }
+    },
+    "You can watch, not control: %@ shares its screen without its keyboard and mouse.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "现在只能观看，不能操作：%@ 只共享了屏幕，没有共享键盘和鼠标。"
           }
         }
       }

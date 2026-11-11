@@ -69,8 +69,31 @@ jobs:
           name: her-linux-${{ matrix.arch }}
           path: her-linux-${{ matrix.arch }}
           if-no-files-found: error
+  # Computer Control's helper for Linux (docs/computer-control-linux.md §5),
+  # against glibc 2.28, built on a runner of each architecture; the
+  # binaries job signs it.
+  screen:
+    strategy:
+      matrix:
+        include:
+          - arch: amd64
+            runner: ubuntu-24.04
+          - arch: arm64
+            runner: ubuntu-24.04-arm
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: build hermesh-screen
+        run: |
+          apps/screen/linux/build-release.sh "$PWD/hermesh-screen-linux-${{ matrix.arch }}"
+          ./hermesh-screen-linux-${{ matrix.arch }} --version
+      - uses: actions/upload-artifact@v4
+        with:
+          name: hermesh-screen-linux-${{ matrix.arch }}
+          path: hermesh-screen-linux-${{ matrix.arch }}
+          if-no-files-found: error
   binaries:
-    needs: [notes, her]
+    needs: [notes, her, screen]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -87,6 +110,11 @@ jobs:
           pattern: her-linux-*
           path: ${{ runner.temp }}/her
           merge-multiple: true
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: hermesh-screen-linux-*
+          path: ${{ runner.temp }}/screen
+          merge-multiple: true
       - name: build and sign
         env:
           RELEASE_SIGNING_KEY: ${{ secrets.RELEASE_SIGNING_KEY }}
@@ -94,7 +122,8 @@ jobs:
           umask 077
           printf '%s\n' "$RELEASE_SIGNING_KEY" > /tmp/release.key
           VERSION=${GITHUB_REF_NAME} RELEASE_SIGNING_KEY_FILE=/tmp/release.key \
-            HER_LINUX_AMD64="$RUNNER_TEMP/her/her-linux-amd64" HER_LINUX_ARM64="$RUNNER_TEMP/her/her-linux-arm64" HER_CONSOLE=her/apps/console/dist ./scripts/release.sh
+            HER_LINUX_AMD64="$RUNNER_TEMP/her/her-linux-amd64" HER_LINUX_ARM64="$RUNNER_TEMP/her/her-linux-arm64" HER_CONSOLE=her/apps/console/dist \
+            SCREEN_LINUX_AMD64="$RUNNER_TEMP/screen/hermesh-screen-linux-amd64" SCREEN_LINUX_ARM64="$RUNNER_TEMP/screen/hermesh-screen-linux-arm64" ./scripts/release.sh
           rm -f /tmp/release.key
       - run: gh release upload "$TAG" dist/release/* --clobber
   # This version's image, on ghcr.io; promoting the release copies it to

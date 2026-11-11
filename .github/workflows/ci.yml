@@ -33,6 +33,24 @@ jobs:
         env:
           # Race-detector binaries on one runner: a data race fails the test.
           HERMESH_E2E_RACE: ${{ matrix.os == 'ubuntu-latest' && '1' || '' }}
+  # Computer Control's helper for Linux (docs/computer-control-linux.md): its
+  # own tests, then end to end on X11, Sway and GNOME in containers.
+  screen-linux:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - name: lint and unit tests
+        run: |
+          toolchain="$(sed -n 's/^channel = "\(.*\)"/\1/p' apps/screen/linux/rust-toolchain.toml)"
+          docker run --rm -v "$PWD/apps/screen/linux:/src" -w /src -e RUSTFLAGS="-C target-feature=-crt-static" "rust:$toolchain-alpine" \
+            sh -c 'apk add --no-cache build-base nasm >/dev/null && cargo fmt --check && cargo clippy --locked --release --all-targets -- -D warnings && cargo test --locked --release'
+      - name: end to end
+        run: go test ./e2e -run TestLinuxScreen -count=1 -v -timeout 30m
+        env:
+          HERMESH_DOCKER: "1"
   # Windows (docs/windows.md): what is ported so far.
   windows:
     runs-on: windows-latest
