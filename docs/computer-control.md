@@ -3,7 +3,8 @@
 Status: agreed 2026-11-10. Steps 0 to 3 of §8 are built: the Mac side, the
 iPhone side and the relay's STUN and TURN, checked against a real screen
 from the Simulator, with each stage's delay measured (§5.1). Open: the lock
-screen, a real network and a real iPhone (§10), and step 4.
+screen, a real network and a real iPhone (§10), and step 4. Linux machines
+have their own helper: [computer-control-linux.md](computer-control-linux.md).
 
 ## 0. Summary
 
@@ -433,9 +434,9 @@ owner or is working on the desktop, more than one display, the clipboard.
 - A Mac with no display attached, or with its lid closed and no monitor:
   there is no picture to capture.
 - The login window before anyone has logged in.
-- Windows and Linux machines. The wire doesn't depend on the Mac, so each
-  needs only its own helper. Linux's plan is
-  [computer-control-linux.md](computer-control-linux.md).
+- Windows machines. The wire doesn't depend on the Mac, so Windows needs
+  only its own helper, as Linux had
+  ([computer-control-linux.md](computer-control-linux.md)).
 - Controlling from the Mac app.
 - Machines that aren't Her Servers.
 - Direct connections for anything but this.
