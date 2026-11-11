@@ -762,6 +762,7 @@ Hermesh.app/
 - Fully non-interactive; prints human-readable text by default, and stable JSON with `-o json` (or the environment variable `HERMESH_OUTPUT=json`). Every command has the same outer structure `{ok, exit_code, error, <data key>}`, where `error` is `{kind, message, hint, retryable}`; the full conventions are in [cli-output.md](cli-output.md);
 - Exit codes: 0 success, 1 internal error, 2 bad arguments, not found or state does not allow it, 3 not paired, revoked or refused, 4 the relay or the machine needed is offline or unreachable, 5 session failed, 6 wait timed out, 7 retryable, 8 waiting for an answer;
 - Write operations carry an idempotency key automatically; every wait can be resumed by seq.
+- An agent's commands share one connection to the relay and its tunnels, kept by a background process of the CLI (the link, [cli.md](cli.md)); a command whose link does not answer connects by itself.
 
 ```
 hermesh auth login <connection-address> [--name N]           # pairing (section 3.5); rerun after an interruption to show the same pairing code; rerun after revocation or expiry to apply again as a new agent

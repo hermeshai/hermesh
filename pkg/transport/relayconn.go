@@ -358,6 +358,10 @@ func (c *RelayConn) Close() error {
 
 func (c *RelayConn) Done() <-chan struct{} { return c.sess.CloseChan() }
 
+// Heard is when the relay was last heard from on this connection (by the
+// wall clock, which goes on while the computer sleeps).
+func (c *RelayConn) Heard() time.Time { return time.Unix(0, c.admit.read.Load()) }
+
 // Ping waits for the relay to answer a ping: whether the connection still
 // works, which one kept while its process was suspended may not.
 func (c *RelayConn) Ping(ctx context.Context) error {

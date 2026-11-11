@@ -31,6 +31,13 @@ type Dialer struct {
 	HTTPClient  *http.Client
 	// Pipeline: see transport.Dialer (the first connection only).
 	Pipeline bool
+	// Link, when set, reaches the relay's control services (machineID "")
+	// or a machine through a process on this computer that keeps this
+	// client's relay connection and its tunnels from one command to the
+	// next (the CLI's link). The connection it returns carries HTTP/2 to
+	// them; machineName is the name the machine presented in the end-to-end
+	// handshake. Once it fails, the client connects by itself, as without.
+	Link func(ctx context.Context, machineID string) (conn net.Conn, machineName string, err error)
 }
 
 // Client is a relay connection plus cached E2E tunnels to machines.
@@ -46,6 +53,12 @@ type Client struct {
 	machines map[string]*Machine
 	warming  map[string]chan struct{} // closed when the attempt ends
 	gen      int                      // counts Resets
+
+	// linked: the relay and machines are reached through Dialer.Link, with
+	// no connection of this client's own (conn is nil until it fails).
+	linkMu      sync.Mutex
+	linked      bool
+	linkControl *transport.H2Client
 }
 
 // Machine holds typed clients for one machine over one E2E tunnel.
@@ -78,6 +91,9 @@ func newMachine(machineID, name string, h2 *transport.H2Client) *Machine {
 func (n *Machine) HTTP() *http.Client { return n.h2.Client }
 
 func (d *Dialer) Connect(ctx context.Context) (*Client, error) {
+	if d.Link != nil {
+		return &Client{d: d, linked: true, machines: map[string]*Machine{}, warming: map[string]chan struct{}{}}, nil
+	}
 	td := &transport.Dialer{RelayURL: d.RelayURL, Role: d.Role, Key: d.Key, Credentials: d.Credentials, HTTPClient: d.HTTPClient, Pipeline: d.Pipeline}
 	conn, err := td.Dial(ctx)
 	if err != nil {
@@ -107,24 +123,66 @@ func (c *Client) Close() error {
 	for _, n := range c.machines {
 		n.h2.Close()
 	}
-	return c.conn.Load().Close()
+	c.linkMu.Lock()
+	if c.linkControl != nil {
+		c.linkControl.Close()
+	}
+	c.linkMu.Unlock()
+	if conn := c.conn.Load(); conn != nil {
+		return conn.Close()
+	}
+	return nil
 }
 
-// Done is closed when the current relay connection is lost.
-func (c *Client) Done() <-chan struct{} { return c.conn.Load().Done() }
+// Done is closed when the current relay connection is lost (never, for a
+// client that has none of its own).
+func (c *Client) Done() <-chan struct{} {
+	if conn := c.conn.Load(); conn != nil {
+		return conn.Done()
+	}
+	return nil
+}
 
 // Ping waits for the relay to answer a ping on the current connection.
-func (c *Client) Ping(ctx context.Context) error { return c.conn.Load().Ping(ctx) }
+func (c *Client) Ping(ctx context.Context) error {
+	conn := c.conn.Load()
+	if conn == nil {
+		return net.ErrClosed
+	}
+	return conn.Ping(ctx)
+}
+
+// Heard is when the relay was last heard from on the current connection.
+func (c *Client) Heard() time.Time {
+	if conn := c.conn.Load(); conn != nil {
+		return conn.Heard()
+	}
+	return time.Time{}
+}
+
+// Drop closes the relay connection, which stopped answering; the next use
+// dials again.
+func (c *Client) Drop() {
+	if conn := c.conn.Load(); conn != nil {
+		conn.Close()
+	}
+}
 
 // Admitted waits for the relay's answer to this connection's Hello: nil
 // once it admitted it.
-func (c *Client) Admitted(ctx context.Context) error { return c.conn.Load().Admitted(ctx) }
+func (c *Client) Admitted(ctx context.Context) error {
+	conn := c.conn.Load()
+	if conn == nil {
+		return nil
+	}
+	return conn.Admitted(ctx)
+}
 
 // Refused is why the relay refused the current connection
 // (transport.ErrAdmission), once it is closed; nil otherwise.
 func (c *Client) Refused() error {
 	conn := c.conn.Load()
-	if !conn.IsClosed() {
+	if conn == nil || !conn.IsClosed() {
 		return nil
 	}
 	if err := conn.Explain(nil); errors.Is(err, transport.ErrAdmission) {
@@ -142,17 +200,24 @@ func (c *Client) relay(ctx context.Context) (*transport.RelayConn, error) {
 	if c.closed {
 		return nil, net.ErrClosed
 	}
-	if conn := c.conn.Load(); !conn.IsClosed() {
-		return conn, nil
+	old := c.conn.Load()
+	if old != nil && !old.IsClosed() {
+		return old, nil
 	}
 	if err := c.Refused(); err != nil {
 		return nil, err // refused: dialing again would be too
 	}
-	for _, n := range c.machines {
-		n.h2.Close()
-	}
-	c.machines = map[string]*Machine{}
 	td := &transport.Dialer{RelayURL: c.d.RelayURL, Role: c.d.Role, Key: c.d.Key, Credentials: c.d.Credentials, HTTPClient: c.d.HTTPClient}
+	if old == nil {
+		// The first connection of a client whose link failed: as Connect
+		// makes it. The machines it reached through the link stay.
+		td.Pipeline = c.d.Pipeline
+	} else {
+		for _, n := range c.machines {
+			n.h2.Close()
+		}
+		c.machines = map[string]*Machine{}
+	}
 	conn, err := td.Dial(ctx)
 	if err != nil {
 		return nil, err
@@ -163,6 +228,9 @@ func (c *Client) relay(ctx context.Context) (*transport.RelayConn, error) {
 
 // Control returns an HTTP client for the relay control services.
 func (c *Client) Control() (*transport.H2Client, error) {
+	if hc := c.controlByLink(); hc != nil {
+		return hc, nil
+	}
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 	conn, err := c.relay(ctx)
@@ -170,6 +238,65 @@ func (c *Client) Control() (*transport.H2Client, error) {
 		return nil, err
 	}
 	return conn.Control()
+}
+
+// Linked says whether the client reaches the relay through Dialer.Link
+// (false once the link failed, or without one).
+func (c *Client) Linked() bool {
+	c.linkMu.Lock()
+	defer c.linkMu.Unlock()
+	return c.linked
+}
+
+// controlByLink is the control client through the link; nil when the
+// client connects by itself (it has no link, or the link failed).
+func (c *Client) controlByLink() *transport.H2Client {
+	c.linkMu.Lock()
+	defer c.linkMu.Unlock()
+	if !c.linked {
+		return nil
+	}
+	if c.linkControl != nil && c.linkControl.Alive() {
+		return c.linkControl
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	conn, _, err := c.d.Link(ctx, "")
+	if err != nil {
+		c.linked = false
+		return nil
+	}
+	hc, err := transport.NewH2Client(conn)
+	if err != nil {
+		conn.Close()
+		c.linked = false
+		return nil
+	}
+	c.linkControl = hc
+	return hc
+}
+
+// machineByLink is machineID through the link; nil when the client
+// connects by itself.
+func (c *Client) machineByLink(ctx context.Context, machineID string) *Machine {
+	c.linkMu.Lock()
+	linked := c.linked
+	c.linkMu.Unlock()
+	if !linked {
+		return nil
+	}
+	conn, name, err := c.d.Link(ctx, machineID)
+	if err == nil {
+		var h2 *transport.H2Client
+		if h2, err = transport.NewH2Client(conn); err == nil {
+			return newMachine(machineID, name, h2)
+		}
+		conn.Close()
+	}
+	c.linkMu.Lock()
+	c.linked = false
+	c.linkMu.Unlock()
+	return nil
 }
 
 // Machine returns (and caches) an E2E connection to machineID. It joins a
@@ -222,6 +349,16 @@ func (c *Client) dialMachine(ctx context.Context, machineID string) (*Machine, e
 	c.mu.Lock()
 	gen := c.gen
 	c.mu.Unlock()
+	if n := c.machineByLink(ctx, machineID); n != nil {
+		c.mu.Lock()
+		defer c.mu.Unlock()
+		if c.gen != gen {
+			n.h2.Close()
+			return nil, fmt.Errorf("connect to %s: credentials changed", machineID)
+		}
+		c.machines[machineID] = n
+		return n, nil
+	}
 	conn, err := c.relay(ctx)
 	if err != nil {
 		return nil, err
@@ -264,6 +401,20 @@ func (c *Client) Reset() {
 		n.h2.Close()
 	}
 	c.machines = map[string]*Machine{}
+}
+
+// ForgetRenamed drops the connections to the machines that presented
+// another name than names (by machine id) has for them: made before a
+// machine was renamed, they are made again, and say what it presents now.
+func (c *Client) ForgetRenamed(names map[string]string) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	for id, n := range c.machines {
+		if want, ok := names[id]; ok && n.Name != want {
+			n.h2.Close()
+			delete(c.machines, id)
+		}
+	}
 }
 
 // Forget drops a cached tunnel (after an error).

@@ -68,6 +68,10 @@ type app struct {
 	// extra are data keys a command adds to whatever document it ends with
 	// (message send --wait: the message, beside the session).
 	extra []field
+	// link: commands reach the relay and their machines through this home's
+	// link (link.go); linkStart starts it once when none answers.
+	link      bool
+	linkStart sync.Once
 }
 
 func homeDir() string {
@@ -197,6 +201,41 @@ func (a *app) connect(ctx context.Context, warm func([]machineRef) []machineRef)
 	if err := a.load(); err != nil {
 		return nil, nil, err
 	}
+	warn := func(warnings []string) {
+		for _, w := range warnings {
+			fmt.Fprintln(os.Stderr, "warning:", w)
+		}
+	}
+	if a.link && a.kept() == nil {
+		// Through this home's link, when it answers (link.go): the first
+		// calls only read, so when it does not carry them in time the
+		// command starts over by itself, as it would without a link.
+		d := a.dialer(true)
+		d.Link = a.linkDial
+		if c, err := d.Connect(ctx); err == nil {
+			_, err := c.Control()
+			switch {
+			case c.Linked():
+				lctx, cancel := context.WithTimeout(ctx, linkConnect)
+				machines, warnings, err := a.settle(lctx, c, warm)
+				cancel()
+				if ee := (*exitError)(nil); err == nil || errors.As(err, &ee) {
+					warn(warnings)
+					return orNil(c, err), machines, err
+				}
+			case err != nil: // no link answered, and the relay could not be reached, or refused
+				c.Close()
+				if errors.Is(err, transport.ErrAdmission) {
+					return nil, nil, a.refused(err)
+				}
+				return nil, nil, err
+			default: // no link answered: c connected by itself
+				machines, warnings, err := a.settle(ctx, c, warm)
+				warn(warnings)
+				return orNil(c, err), machines, err
+			}
+		}
+	}
 	var c *peer.Client
 	var err error
 	if p := a.kept(); p != nil {
@@ -207,14 +246,30 @@ func (a *app) connect(ctx context.Context, warm func([]machineRef) []machineRef)
 	if err != nil {
 		return nil, nil, err
 	}
+	machines, warnings, err := a.settle(ctx, c, warm)
+	warn(warnings)
+	return orNil(c, err), machines, err
+}
+
+// orNil is c unless err.
+func orNil(c *peer.Client, err error) *peer.Client {
+	if err != nil {
+		return nil
+	}
+	return c
+}
+
+// settle makes the first calls on c: the grant check and the machine list,
+// with the handshakes warm picks. It closes c when it fails; warnings are
+// what to tell the caller besides.
+func (a *app) settle(ctx context.Context, c *peer.Client, warm func([]machineRef) []machineRef) (machines []machineRef, warnings []string, err error) {
 	before := a.credentials()
 	synced := make(chan error, 1)
+	var inbox error
 	go func() {
 		_, err := a.syncGrant(ctx, c)
 		if err == nil {
-			if rerr := a.registerInbox(ctx, c); rerr != nil {
-				fmt.Fprintln(os.Stderr, "warning: registering this agent's inbox:", rerr)
-			}
+			inbox = a.registerInbox(ctx, c)
 		}
 		synced <- err
 	}()
@@ -227,12 +282,15 @@ func (a *app) connect(ctx context.Context, warm func([]machineRef) []machineRef)
 	}
 	listed, err := listMachines(ctx, c)
 	serr := <-synced
+	if inbox != nil {
+		warnings = append(warnings, fmt.Sprint("registering this agent's inbox: ", inbox))
+	}
 	switch {
 	case errors.Is(serr, errRevoked), errors.Is(serr, transport.ErrAdmission):
 		c.Close()
-		return nil, nil, a.refused(serr)
+		return nil, warnings, a.refused(serr)
 	case errors.Is(serr, errBadUpdate):
-		fmt.Fprintln(os.Stderr, "warning:", serr)
+		warnings = append(warnings, serr.Error())
 	}
 	if p := a.kept(); p != nil {
 		p.adopt(a)
@@ -242,13 +300,24 @@ func (a *app) connect(ctx context.Context, warm func([]machineRef) []machineRef)
 	if err != nil {
 		c.Close()
 		if errors.Is(err, transport.ErrAdmission) {
-			return nil, nil, a.refused(err)
+			return nil, warnings, a.refused(err)
 		}
-		return nil, nil, err
+		return nil, warnings, err
 	}
-	machines := a.machineRefs(listed) // with the root the sync may have renewed
+	machines = a.machineRefs(listed) // with the root the sync may have renewed
 	a.remember(machines)
-	return c, machines, nil
+	if c.Linked() {
+		// The link's tunnels outlive a command: one made before a machine
+		// was renamed still says its old name. It is made again (linkDial
+		// names the machine as listed), and checkName judges what the
+		// machine presents then, as for a command that connects by itself.
+		names := map[string]string{}
+		for _, m := range machines {
+			names[m.ID] = m.Name
+		}
+		c.ForgetRenamed(names)
+	}
+	return machines, warnings, nil
 }
 
 // remember stores the machine list for the next command's warm.
@@ -260,7 +329,9 @@ func (a *app) remember(machines []machineRef) {
 	if slices.Equal(seen, a.st.Machines) {
 		return
 	}
+	a.mu.Lock() // read by the link's dials (linkDial) while a command warms
 	a.st.Machines = seen
+	a.mu.Unlock()
 	if a.mem == nil {
 		a.save()
 	} else if p := a.mem.Peer; p != nil {
@@ -281,9 +352,13 @@ func (a *app) kept() *Peer {
 // dial opens the relay connection with the stored credentials; pipelined,
 // a refusal surfaces from the first call.
 func (a *app) dial(ctx context.Context, pipeline bool) (*peer.Client, error) {
-	d := &peer.Dialer{RelayURL: a.st.RelayURL, Role: relayv1.Role_ROLE_CLIENT, Key: a.key, Credentials: a.credentials, Trust: a.trust, HTTPClient: a.hc,
+	return a.dialer(pipeline).Connect(ctx)
+}
+
+// dialer connects with the stored credentials.
+func (a *app) dialer(pipeline bool) *peer.Dialer {
+	return &peer.Dialer{RelayURL: a.st.RelayURL, Role: relayv1.Role_ROLE_CLIENT, Key: a.key, Credentials: a.credentials, Trust: a.trust, HTTPClient: a.hc,
 		Pipeline: pipeline}
-	return d.Connect(ctx)
 }
 
 // syncGrant adopts a renewed or re-issued grant if the owner published one,

@@ -77,3 +77,16 @@ func Her(dataDir string) string {
 	}
 	return p
 }
+
+// Link is where the CLI with this home keeps its relay connection between
+// commands (the CLI's link, docs/cli.md); a long path's is named after the
+// home, so two agents of one user never share it.
+func Link(cliHome string) string {
+	p := filepath.Join(cliHome, "link", "link.sock")
+	if len(p) > 100 {
+		abs, _ := filepath.Abs(cliHome)
+		h := sha256.Sum256([]byte(abs))
+		p = filepath.Join(os.TempDir(), fmt.Sprintf("hermesh-link-%d-%x.sock", os.Getuid(), h[:8]))
+	}
+	return p
+}

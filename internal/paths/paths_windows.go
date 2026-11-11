@@ -36,3 +36,7 @@ func Tools(dataDir, machineID string) string { return filepath.Join(dataDir, "ru
 // Her is where her would listen; her does not run on Windows yet
 // (docs/her-server.md §12).
 func Her(dataDir string) string { return filepath.Join(dataDir, "her", "her.sock") }
+
+// Link is where the CLI with this home keeps its relay connection between
+// commands (the CLI's link, docs/cli.md).
+func Link(cliHome string) string { return filepath.Join(cliHome, "link", "link.pipe") }

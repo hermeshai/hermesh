@@ -99,7 +99,8 @@ func exitCode(err error) int {
 
 // Main runs the CLI and returns the process exit code.
 func Main(args []string, stdout, stderr io.Writer) int {
-	a := &app{hc: http.DefaultClient}
+	// HERMESH_LINK=off: every command connects by itself (link.go).
+	a := &app{hc: http.DefaultClient, link: os.Getenv("HERMESH_LINK") != "off"}
 	defaultOutput := "text"
 	if os.Getenv("HERMESH_OUTPUT") == "json" {
 		defaultOutput = "json"
@@ -151,7 +152,7 @@ func (a *app) root(defaultOutput string) *cobra.Command {
 			}
 			fmt.Fprintln(c.OutOrStdout(), machine.Version)
 			return nil
-		}}, a.updateCmd())
+		}}, a.updateCmd(), a.linkCmd())
 	return root
 }
 
