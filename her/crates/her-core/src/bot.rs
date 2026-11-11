@@ -5,6 +5,7 @@
 
 use async_trait::async_trait;
 use her_llm::Message;
+use her_llm::ToolCall;
 use her_protocol::AgentStatus;
 use her_protocol::card::Card;
 use her_tools::Environment;
@@ -75,21 +76,39 @@ impl Owed {
 }
 
 /// Looks back from the end of the history to the last message that reached the owner.
-pub(crate) fn owed(history: &History) -> Owed {
+/// `own_notes` says which calls only kept the bot's memory: their results are nothing the owner
+/// waits for (docs/her-memory.md §5).
+pub(crate) fn owed(history: &History, own_notes: impl Fn(&ToolCall) -> bool) -> Owed {
     let mut worked = false;
+    // The calls whose results came after that message, and of the calls made since, the notes.
+    let mut results: Vec<&str> = Vec::new();
+    let mut notes: Vec<&str> = Vec::new();
     let mut last_reply = None;
+    let mut sent = false;
     for entry in history.branch_back() {
         match &entry.kind {
+            // The step that sent: calls made beside the send may have finished after it.
+            EntryKind::Message {
+                message: Message::Assistant(reply),
+                ..
+            } if sent => {
+                notes.extend(reply.tool_calls().into_iter().filter(|call| own_notes(call)).map(|call| call.id.as_str()));
+                break;
+            }
+            _ if sent => {}
             EntryKind::Message {
                 message: Message::ToolResult(result),
                 ..
             } => {
                 if result.tool_name == SEND_TO_USER && !result.is_error {
-                    break;
+                    sent = true;
+                    continue;
                 }
                 // Starting an agent or telling it something gives the owner nothing to hear, and a
                 // message the tool refused is nothing that came of the work.
-                worked |= !matches!(result.tool_name.as_str(), "spawn_agent" | "send_message" | SEND_TO_USER);
+                if !matches!(result.tool_name.as_str(), "spawn_agent" | "send_message" | SEND_TO_USER) {
+                    results.push(&result.call_id);
+                }
             }
             EntryKind::Message {
                 message: Message::User(_), ..
@@ -97,7 +116,12 @@ pub(crate) fn owed(history: &History) -> Owed {
             EntryKind::Message {
                 message: Message::Assistant(reply),
                 ..
-            } if last_reply.is_none() => last_reply = Some(reply),
+            } => {
+                notes.extend(reply.tool_calls().into_iter().filter(|call| own_notes(call)).map(|call| call.id.as_str()));
+                if last_reply.is_none() {
+                    last_reply = Some(reply);
+                }
+            }
             EntryKind::Mail { mail, .. } if mail.kind == MailKind::Routine => {
                 if !last_reply.is_some_and(|reply| crate::routine::quiet_note(&reply.text()).is_some()) {
                     return Owed::RoutineReport;
@@ -109,6 +133,7 @@ pub(crate) fn owed(history: &History) -> Owed {
             _ => {}
         }
     }
+    worked |= results.iter().any(|id| !notes.contains(id));
     // Its reply can say there is nothing to tell (routine-design D-441).
     let settled = last_reply.is_some_and(|reply| crate::routine::quiet_note(&reply.text()).is_some());
     if worked && !settled { Owed::Delivery } else { Owed::Nothing }

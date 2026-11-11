@@ -359,6 +359,79 @@ async fn the_bot_writes_its_memory_without_asking() {
     assert!(!last_result(&h.api.requests()[1]).0);
 }
 
+fn reminders(h: &Harness) -> usize {
+    let store = JsonlStore::new(h.home.sessions_dir());
+    let (_, entries) = store.read(&SessionRef::Id(h.kernel.session_id().to_string())).unwrap();
+    entries.iter().filter(|e| matches!(e.kind, EntryKind::Undelivered | EntryKind::Unanswered { .. })).count()
+}
+
+fn moved(file: &Path) -> serde_json::Value {
+    json!({ "path": file, "edits": [{ "old_text": "- 住在杭州。(2026-11-11)", "new_text": "- 2026-12 起住上海，之前在杭州。(2026-11-20)" }] })
+}
+
+/// A note written after the reply ends the turn by itself: the owner has nothing more to hear,
+/// so no request is made for the model to say so, and no reminder that work went unsent. Other
+/// work after the reply still gets its reminder (§5).
+#[tokio::test]
+async fn a_note_after_the_reply_ends_the_turn() {
+    let mut h = bot(Some(KEPT), vec![]).await;
+    let file = h.memory_file();
+    h.api.push(Script::tool_call("c1", "send_to_user", json!({ "text": "记下了。" })));
+    h.api.push(Script::tool_call("c2", "edit", moved(&file)));
+    h.kernel.run(prompt("我下个月搬到上海")).await.unwrap();
+    assert_eq!(std::fs::read_to_string(&file).unwrap(), MOVED);
+    assert_eq!(h.api.requests().len(), 2, "the reply and the note");
+    assert_eq!(reminders(&h), 0);
+
+    h.api.push(Script::tool_call("c3", "send_to_user", json!({ "text": "好。" })));
+    h.api.push(Script::tool_call("c4", "write", json!({ "path": "list.txt", "content": "牛奶\n" })));
+    h.api.push(Script::text("Written."));
+    h.api.push(send_last("c5", "写好了。"));
+    h.kernel.run(prompt("帮我记个购物清单")).await.unwrap();
+    assert_eq!(h.api.requests().len(), 6);
+    assert_eq!(reminders(&h), 1, "a file in its folder is work the owner may wait for");
+}
+
+/// A note beside the reply that closes the turn: one request does both (§5).
+#[tokio::test]
+async fn a_note_beside_the_last_reply_takes_one_request() {
+    let mut h = bot(Some(KEPT), vec![]).await;
+    let file = h.memory_file();
+    h.api.push(send_last("c1", "记下了。").then_tool_call("c2", "edit", moved(&file)));
+    h.kernel.run(prompt("我下个月搬到上海")).await.unwrap();
+    assert_eq!(std::fs::read_to_string(&file).unwrap(), MOVED);
+    assert_eq!(h.api.requests().len(), 1);
+    assert_eq!(reminders(&h), 0);
+}
+
+/// A note that failed keeps the turn open, though the send beside it closed it: the model sees
+/// what went wrong and writes it again, and that ends the turn (§5).
+#[tokio::test]
+async fn a_note_that_failed_is_written_again() {
+    let mut h = bot(Some(KEPT), vec![]).await;
+    let file = h.memory_file();
+    let wrong = json!({ "path": file, "edits": [{ "old_text": "- 住在苏州。", "new_text": "- 住在上海。" }] });
+    h.api.push(send_last("c1", "记下了。").then_tool_call("c2", "edit", wrong));
+    h.api.push(Script::tool_call("c3", "edit", moved(&file)));
+    h.kernel.run(prompt("我下个月搬到上海")).await.unwrap();
+    let requests = h.api.requests();
+    assert_eq!(requests.len(), 2);
+    assert!(last_result(&requests[1]).0, "it is shown the failure");
+    assert_eq!(std::fs::read_to_string(&file).unwrap(), MOVED);
+}
+
+/// A note before any reply ends nothing: the owner still waits (§5).
+#[tokio::test]
+async fn a_note_before_the_reply_does_not_end_the_turn() {
+    let mut h = bot(Some(KEPT), vec![]).await;
+    let file = h.memory_file();
+    h.api.push(Script::tool_call("c1", "edit", moved(&file)));
+    h.api.push(send_last("c2", "记下了。"));
+    h.kernel.run(prompt("我下个月搬到上海")).await.unwrap();
+    assert_eq!(h.api.requests().len(), 2);
+    assert_eq!(reminders(&h), 0);
+}
+
 fn a_run() -> RoutineRun {
     RoutineRun {
         id: "run_1".into(),

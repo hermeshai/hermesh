@@ -658,18 +658,30 @@ async fn run_task(session: &Arc<Session>, task: &TaskCtx, input: Option<Input>) 
             last_message = Some(text);
         }
         let calls: Vec<ToolCall> = message.tool_calls().into_iter().cloned().collect();
+        let mut failed: Vec<String> = Vec::new();
         if !calls.is_empty() {
             let results = if message.stop_reason == StopReason::Length {
                 tool_exec::reject_all(session, &calls, tool_exec::TRUNCATED_CALL)
             } else {
                 tool_exec::execute_batch(session, task, calls.clone()).await
             };
+            failed = results.iter().filter(|result| result.is_error).map(|result| result.call_id.clone()).collect();
             for result in results {
                 session.record(EntryKind::message(Message::ToolResult(result)));
             }
         }
         // Taken now, so that it never outlives its batch.
-        let last_word = task.take_end_request();
+        let mut last_word = task.take_end_request();
+        // A bot's note to its memory (docs/her-memory.md §5). One that failed keeps the turn
+        // open, whatever a send beside it said, so the model can write it again. A step of
+        // nothing but notes ends the turn once the owner has their reply: there is nothing
+        // more to say about them.
+        let notes: Vec<&ToolCall> = calls.iter().filter(|call| session.is_own_note(call)).collect();
+        if notes.iter().any(|call| failed.contains(&call.id)) {
+            last_word = false;
+        } else if !notes.is_empty() && notes.len() == calls.len() && session.owed() == Owed::Nothing {
+            last_word = true;
+        }
         end_turn(session, task, turn, &message);
         if task.cancel.is_cancelled() {
             return TaskOutcome::Interrupted;
