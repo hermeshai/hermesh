@@ -113,7 +113,7 @@ func (n *Machine) serveConn(ctx context.Context, conn *transport.RelayConn) {
 			st.Close()
 			continue
 		}
-		go n.serveTunnel(lctx, st)
+		go n.serveTunnel(lctx, st, false)
 	}
 }
 
@@ -214,8 +214,15 @@ func principalFrom(ctx context.Context) *Principal {
 	return p
 }
 
-func (n *Machine) serveTunnel(ctx context.Context, raw net.Conn) {
+// serveTunnel serves an agent or an owner device over raw, a tunnel the
+// relay spliced or, with local, a connection from this computer
+// (serveLocal): the end-to-end handshake, then their calls.
+func (n *Machine) serveTunnel(ctx context.Context, raw net.Conn, local bool) {
 	defer raw.Close()
+	via := ""
+	if local {
+		via = "from this computer, not through the relay"
+	}
 	hsStart := time.Now()
 	tc, sub, err := transport.ServerHandshake(ctx, raw, n.key.CryptoSigner(), n.credentials, n.trust, func(s *identity.Subject) error {
 		if s.Kind == identity.SubjectClient {
@@ -224,7 +231,7 @@ func (n *Machine) serveTunnel(ctx context.Context, raw net.Conn) {
 		return nil
 	})
 	if err != nil {
-		n.audit.Log(AuditRecord{Kind: "tunnel", Decision: "deny", Reason: err.Error()})
+		n.audit.Log(AuditRecord{Kind: "tunnel", Decision: "deny", Reason: err.Error(), Detail: via})
 		return
 	}
 	defer tc.Close()
@@ -245,7 +252,7 @@ func (n *Machine) serveTunnel(ctx context.Context, raw net.Conn) {
 		delete(n.tunnels, t)
 		n.mu.Unlock()
 	}()
-	n.audit.Log(AuditRecord{Kind: "tunnel", Subject: p.ID(), Decision: "allow"})
+	n.audit.Log(AuditRecord{Kind: "tunnel", Subject: p.ID(), Decision: "allow", Detail: via})
 	transport.ServeH2(context.WithValue(ctx, principalKey{}, p), tc, n.handler())
 }
 

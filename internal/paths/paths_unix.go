@@ -90,3 +90,9 @@ func Link(cliHome string) string {
 	}
 	return p
 }
+
+// localDir is this user's own folder in the temp directory (the same for
+// what launchd or systemd starts and for a shell), as LocalAPI's is.
+func localDir() string { return filepath.Join(os.TempDir(), fmt.Sprintf("hermesh-%d", os.Getuid())) }
+
+const localExt = ".sock"

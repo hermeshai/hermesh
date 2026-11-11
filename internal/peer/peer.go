@@ -38,6 +38,12 @@ type Dialer struct {
 	// them; machineName is the name the machine presented in the end-to-end
 	// handshake. Once it fails, the client connects by itself, as without.
 	Link func(ctx context.Context, machineID string) (conn net.Conn, machineName string, err error)
+	// Local, when set, connects to machineID on this computer without the
+	// relay (the machine's own endpoint for its user's agents), failing
+	// when it is not here. The end-to-end handshake runs on that connection
+	// as it does through a tunnel; a machine that is not here, or refuses
+	// it, is reached as without.
+	Local func(ctx context.Context, machineID string) (net.Conn, error)
 }
 
 // Client is a relay connection plus cached E2E tunnels to machines.
@@ -89,6 +95,13 @@ func newMachine(machineID, name string, h2 *transport.H2Client) *Machine {
 // HTTP is the tunnel's HTTP/2 client, for the machine's plain HTTP routes
 // (Her's console): requests go to "https://machine/…".
 func (n *Machine) HTTP() *http.Client { return n.h2.Client }
+
+// Detached is a client with no connection to the relay yet: it dials when
+// something needs the relay, and reaches the machines of this computer
+// (Dialer.Local) without.
+func (d *Dialer) Detached() *Client {
+	return &Client{d: d, machines: map[string]*Machine{}, warming: map[string]chan struct{}{}}
+}
 
 func (d *Dialer) Connect(ctx context.Context) (*Client, error) {
 	if d.Link != nil {
@@ -276,6 +289,30 @@ func (c *Client) controlByLink() *transport.H2Client {
 	return hc
 }
 
+// machineHere is machineID on this computer, reached without the relay;
+// nil when it is not here or refused the handshake (the relay's way then
+// says why).
+func (c *Client) machineHere(ctx context.Context, machineID string) *Machine {
+	if c.d.Local == nil {
+		return nil
+	}
+	raw, err := c.d.Local(ctx, machineID)
+	if err != nil {
+		return nil
+	}
+	tc, sub, err := transport.ClientHandshake(ctx, raw, c.d.Key.CryptoSigner(), c.d.Credentials, c.d.Trust, machineID)
+	if err != nil {
+		raw.Close()
+		return nil
+	}
+	h2, err := transport.NewH2Client(tc)
+	if err != nil {
+		tc.Close()
+		return nil
+	}
+	return newMachine(machineID, sub.MachineName, h2)
+}
+
 // machineByLink is machineID through the link; nil when the client
 // connects by itself.
 func (c *Client) machineByLink(ctx context.Context, machineID string) *Machine {
@@ -349,7 +386,11 @@ func (c *Client) dialMachine(ctx context.Context, machineID string) (*Machine, e
 	c.mu.Lock()
 	gen := c.gen
 	c.mu.Unlock()
-	if n := c.machineByLink(ctx, machineID); n != nil {
+	n := c.machineHere(ctx, machineID)
+	if n == nil {
+		n = c.machineByLink(ctx, machineID)
+	}
+	if n != nil {
 		c.mu.Lock()
 		defer c.mu.Unlock()
 		if c.gen != gen {
@@ -379,7 +420,7 @@ func (c *Client) dialMachine(ctx context.Context, machineID string) (*Machine, e
 		tc.Close()
 		return nil, err
 	}
-	n := newMachine(machineID, sub.MachineName, h2)
+	n = newMachine(machineID, sub.MachineName, h2)
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	if c.gen != gen {

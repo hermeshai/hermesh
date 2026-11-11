@@ -100,7 +100,9 @@ func exitCode(err error) int {
 // Main runs the CLI and returns the process exit code.
 func Main(args []string, stdout, stderr io.Writer) int {
 	// HERMESH_LINK=off: every command connects by itself (link.go).
-	a := &app{hc: http.DefaultClient, link: os.Getenv("HERMESH_LINK") != "off"}
+	// HERMESH_LOCAL=off: a machine on this computer is reached through the
+	// relay as any other (local.go).
+	a := &app{hc: http.DefaultClient, link: os.Getenv("HERMESH_LINK") != "off", local: os.Getenv("HERMESH_LOCAL") != "off"}
 	defaultOutput := "text"
 	if os.Getenv("HERMESH_OUTPUT") == "json" {
 		defaultOutput = "json"

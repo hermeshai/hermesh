@@ -400,6 +400,17 @@ Pairing uses two public HTTPS endpoints (the applicant has no credentials yet at
 
 A single-process in-memory map: `machine_id → connection`. If the same machine_id connects again, the newest connection is kept. A self-hosted relay is this one process. The hosted center runs the same relay on several nodes through `relay.Cluster` (`pkg/relay/cluster.go`): each node keeps its own map, the cluster says which node holds a machine and what the other nodes changed, and a tunnel to a machine on another node is forwarded there.
 
+### 4.3 An Agent on the Machine's Own Computer
+
+An agent often runs on a computer that is also a machine: Claude Code with the `hermesh` CLI on the Mac that runs hermeshd. Through the relay, each of its calls to that machine would leave the computer and come back (two round trips to the relay each), and nothing would work while the relay cannot be reached. So (decided 2026-11-11):
+
+- **The machine serves its own user's agents directly.** Each machine listens on an endpoint of its own on its computer (`paths.Local`: a Unix socket in the user's folder of the temp directory, named after the machine; on Windows a named pipe), which only that user can open. A connection there is served as a tunnel the relay spliced: the same end-to-end handshake, the same grant, the same checks, the same audit record (marked as not through the relay). The relay's own check before it splices a tunnel (the grant covers the machine, and is not revoked) is one the machine makes too.
+- **The CLI tries there first.** Connecting to a machine, it looks for that machine's endpoint on this computer; a machine that is not here, or that refuses the handshake, is reached through the relay as before, which then says why. The machine still proves it is the one the agent meant, by its key, so nothing is taken on trust from the endpoint's path.
+- **Without the relay, the computer's own machine still works.** A command whose relay cannot be reached goes on with the machines as the relay last listed them: those of this computer are online, the others are not. It starts sessions there, reads and lists them; the inbox and messages between agents, which the relay keeps, wait for the relay.
+- **No time limit.** A machine goes on serving its own computer's agents however long ago it last heard from the relay. A revocation the machine has heard of holds as ever; one it has not, made while its computer was off the network, takes effect when it is back. Whoever runs an agent as this user on this computer can do as much as the machine does anyway.
+
+`HERMESH_LOCAL=off` turns it off on either side (the machine serves no endpoint, the CLI looks for none); `HERMESH_LOCAL_DIR` puts the endpoints elsewhere.
+
 ---
 
 ## 5. Contracts (protobuf)

@@ -40,3 +40,7 @@ func Her(dataDir string) string { return filepath.Join(dataDir, "her", "her.sock
 // Link is where the CLI with this home keeps its relay connection between
 // commands (the CLI's link, docs/cli.md).
 func Link(cliHome string) string { return filepath.Join(cliHome, "link", "link.pipe") }
+
+func localDir() string { return filepath.Join(localAppData(), "Hermesh", "run") }
+
+const localExt = ".pipe"
