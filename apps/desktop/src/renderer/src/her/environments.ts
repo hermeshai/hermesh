@@ -25,6 +25,12 @@ export function unreadCount(envs: Pick<Machine, "her">[]): number {
   return envs.reduce((n, m) => n + (m.her?.enabled ? m.her.unread : 0), 0);
 }
 
+/**
+ * Her on without her grant (docs/her-mesh.md §3.4): her machine keeps a key for her (its software knows
+ * the mesh), and the owner has not let her use the computers yet, or revoked it.
+ */
+export const lacksGrant = (her: Machine["her"]): boolean => !!her?.enabled && !her.mesh && her.clientPublicKey.length > 0;
+
 /** What an environment's Her is doing, for its page. */
 export type EnvState =
   | { kind: "offline"; seen?: Date }

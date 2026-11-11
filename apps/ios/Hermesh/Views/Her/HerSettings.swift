@@ -9,7 +9,8 @@ import SwiftUI
 /// model she answers with, among those her environment can use; whether she
 /// asks before acting or has full access; her notifications; another machine
 /// to run her on; clearing her conversation. Models, connectors and the rest
-/// of an environment are set on the Mac.
+/// of an environment are set on the Mac. A Her that is on without her grant
+/// (docs/her-mesh.md §3.4) has one more row, which signs it.
 struct HerSettings: View {
     @Environment(AppModel.self) private var model
     @Environment(\.dismiss) private var dismiss
@@ -18,6 +19,7 @@ struct HerSettings: View {
     @State private var adding = false
     /// The Computer Control session on screen (docs/computer-control.md).
     @State private var control: ScreenSession?
+    @State private var granting = false
 
     var body: some View {
         let envs = herEnvironments(model.machines)
@@ -54,6 +56,15 @@ struct HerSettings: View {
                         .accessibilityIdentifier("her-environment")
                 }
                 Button("Turn On Her on Another Machine…") { adding = true }
+            }
+            if herLacksGrant(machine) {
+                Section {
+                    Button("Let Her use your computers") { allowMesh(machine) }
+                        .disabled(granting || !herReachable(machine))
+                        .accessibilityIdentifier("her-allow-mesh")
+                } footer: {
+                    Text(herGrantNote)
+                }
             }
             if let s = chat.live {
                 Section {
@@ -147,6 +158,21 @@ struct HerSettings: View {
         }
     }
 
+    /// Lets Her use the owner's computers: SetHer once more, which signs her grant alone. The row said what it
+    /// gives, so Face ID asks at once; her machine then says she holds it, and the row goes.
+    private func allowMesh(_ machine: HerMachine) {
+        guard let api = model.api else { return }
+        granting = true
+        model.signer.expect(.types([SigningPreview.adminCommand, SigningPreview.grant]))
+        var r = Hermesh_Local_V1_SetHerRequest()
+        r.machineID = machine.machineID
+        r.enabled = true
+        Task {
+            do { let _: Hermesh_Local_V1_SetHerResponse = try await api.call("SetHer", r, timeout: signingTimeout) } catch { model.report(error) }
+            granting = false
+        }
+    }
+
     /// How freely Her acts (SetHerAssistantMode): her conversation says so once it is set.
     private func setMode(_ mode: String, chat: HerChat, machine: HerMachine) {
         guard let bot = chat.bot, let api = model.api else { return }
@@ -163,8 +189,15 @@ struct HerSettings: View {
     }
 }
 
+/// What turning Her on lets her do (docs/her-mesh.md §3.6), said before it is signed.
+private var herGrantNote: String {
+    String(localized: "Her can use all your computers: start coding agents in any project, read their sessions and answer them. This doesn’t expire. Turn Her off to end it.")
+}
+
 /// Where Her can run, to turn her on (docs/her-server.md §9.2): the owner's Macs and Linux machines, those online
-/// first; one offline, a Windows one or one that can't run her shows why. Turning her on is signed with Face ID.
+/// first; one offline, a Windows one or one that can't run her shows why. Turning her on is signed with Face ID,
+/// and the same confirmation lets her use the owner's computers (docs/her-mesh.md §3.3): the line under the
+/// choices says so.
 struct HerChoices: View {
     @Environment(AppModel.self) private var model
     /// Inside a sheet the signing sheet can't show over it: Face ID asks at once, the owner having chosen here.
@@ -179,6 +212,9 @@ struct HerChoices: View {
             if choices.isEmpty {
                 Text("Her runs on one of your Macs or Linux servers. Add one in Machines first.")
                     .font(.subheadline).foregroundStyle(.secondary).frame(maxWidth: .infinity, alignment: .leading)
+            } else {
+                Text(herGrantNote)
+                    .font(.footnote).foregroundStyle(.secondary).frame(maxWidth: .infinity, alignment: .leading).padding(.horizontal, 4).padding(.top, 4)
             }
         }
     }
@@ -216,7 +252,7 @@ struct HerChoices: View {
     private func turnOn(_ m: HerMachine) {
         guard let api = model.api else { return }
         turning = m.machineID
-        if signedHere { model.signer.expect(.types([SigningPreview.adminCommand])) }
+        if signedHere { model.signer.expect(.types([SigningPreview.adminCommand, SigningPreview.grant])) }
         var r = Hermesh_Local_V1_SetHerRequest()
         r.machineID = m.machineID
         r.enabled = true

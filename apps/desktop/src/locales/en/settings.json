@@ -119,6 +119,7 @@
     "disconnectedOffline": "Disconnected “{{name}}”; {{machines}} offline, will take effect once back online",
     "disconnected": "Disconnected “{{name}}”",
     "validUntil": "Valid until {{date}}",
+    "her": "All computers · Doesn’t expire",
     "canUse": "What It Can Use",
     "projects": "Projects",
     "machines": "Machines",

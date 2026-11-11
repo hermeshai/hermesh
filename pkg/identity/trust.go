@@ -17,6 +17,10 @@ import (
 // ClockSkew tolerated when checking validity windows.
 const ClockSkew = 5 * time.Minute
 
+// NoExpiry is the expires_at of a grant that doesn't expire: Her's
+// (docs/her-mesh.md §3.2). Every verifier wants a date, so it is a far one.
+var NoExpiry = time.Date(9999, 12, 31, 23, 59, 59, 0, time.UTC)
+
 // Trust verifies credentials against one owner, anchored on the owner ID
 // (the fingerprint of the first trusted device's root key). It keeps the
 // longest root chain it has verified (docs/trusted-devices.md 3).

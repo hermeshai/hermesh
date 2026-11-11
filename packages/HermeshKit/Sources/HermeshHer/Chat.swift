@@ -272,6 +272,21 @@ public func herToolObject(name: String, title: String, category: String) -> Stri
     return first == name || words.contains(first) ? title[space...].trimmingCharacters(in: .whitespaces) : title
 }
 
+/// The project a `mesh <machine>/<project>` rule remembers (docs/her-mesh.md §5): the choice names it, not the raw rule.
+public func herMeshProject(_ rule: [String]?) -> String? {
+    guard let rule, rule.count == 2, rule[0] == "mesh" else { return nil }
+    return rule[1]
+}
+
+/// A summary of several lines ("Start Codex in homemini/hermesh", then the prompt): its first line is the
+/// question, the rest shows under it. Nil for a summary of one line.
+public func herSummaryParts(_ summary: String) -> (title: String, body: String)? {
+    guard let cut = summary.firstIndex(of: "\n") else { return nil }
+    let title = summary[..<cut].trimmingCharacters(in: .whitespaces)
+    let body = String(summary[cut...].drop { $0 == "\n" }).replacingOccurrences(of: "\\s+$", with: "", options: .regularExpression)
+    return title.isEmpty || body.isEmpty ? nil : (title, body)
+}
+
 /// What an approval shows of the call it asks about: the command, the change as removed and added lines,
 /// what it writes, or the arguments. Long ones are cut at `max` lines, with how many more there were.
 public enum HerApprovalPreview: Equatable, Sendable {

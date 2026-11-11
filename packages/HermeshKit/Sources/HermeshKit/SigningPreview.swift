@@ -359,6 +359,23 @@ public enum SigningPreview {
             custody = [String(localized: "Connects through \(custodian), which holds its key", bundle: .module)]
             rows.append(CardRow(kind: .extra, value: custody[0]))
         }
+        // Her's own grant (docs/her-mesh.md §3): she becomes one of the owner's
+        // agents, on the machine she runs on, whose hermeshd keeps her key. No
+        // code to compare: the key came from that machine, end to end. What she
+        // may use and until when are read from the signed bytes.
+        if !g.herMachineID.isEmpty {
+            let her = hints.machineNames[g.herMachineID] ?? String(g.herMachineID.prefix(12))
+            let noExpiry = g.expiresAt.seconds == 253_402_300_799
+            let until = noExpiry ? String(localized: "Doesn’t expire", bundle: .module) : String(localized: "Until \(day)", bundle: .module)
+            rows[rows.firstIndex { $0.kind == .expires }!] = CardRow(kind: .expires, value: until)
+            return Card(type: type, title: String(localized: "Let Her on \(her) use your computers", bundle: .module), who: "",
+                        lines: [String(localized: "Projects it can use: \(projects)", bundle: .module), String(localized: "On these machines: \(machines)", bundle: .module),
+                                String(localized: "Coding agents it can run: \(agents)", bundle: .module)] + limits
+                            + [noExpiry ? until : String(localized: "Expires: \(when)", bundle: .module), id],
+                        rows: rows,
+                        why: String(localized: "Her becomes one of your agents: she can start coding agents in your projects, read their sessions and answer them. It ends when you turn Her off there.", bundle: .module),
+                        warning: String(localized: "Full trust: on these machines, a coding agent she starts can do anything you can.", bundle: .module))
+        }
         if g.version <= 1 {
             return Card(type: type, title: String(localized: "Approve “\(name)” to connect to your computer", bundle: .module), who: "",
                         code: verificationCode(.client, g.clientPublicKey, g.ownerID),

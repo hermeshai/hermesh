@@ -44,9 +44,14 @@ struct GrantRow: View {
             VStack(alignment: .leading, spacing: 2) {
                 Text(AgentLogo.name(client.label))
                 HStack(spacing: 0) {
-                    Text(usedText())
-                    Text(" · ")
-                    Text(days <= 7 ? String(localized: "ends in \(days) days") : String(localized: "\(days) days left")).foregroundStyle(days <= 7 ? .orange : .secondary)
+                    // Her's grant is whole and has no end (docs/her-mesh.md §3.6).
+                    if !client.herMachineID.isEmpty {
+                        Text("All computers · Doesn’t expire")
+                    } else {
+                        Text(usedText())
+                        Text(" · ")
+                        Text(days <= 7 ? String(localized: "ends in \(days) days") : String(localized: "\(days) days left")).foregroundStyle(days <= 7 ? .orange : .secondary)
+                    }
                 }
                 .font(.subheadline).foregroundStyle(.secondary).lineLimit(1)
             }
@@ -94,6 +99,8 @@ struct GrantView: View {
     private func content(_ c: Client) -> some View {
         let days = c.daysLeft(now: model.now)
         let sessions = model.sessions.filter { $0.createdBy == c.clientID }
+        // Her's own grant (docs/her-mesh.md §3.6): no scope or expiry to change (UpdateClient refuses it).
+        let her = !c.herMachineID.isEmpty
         return List {
             Section {
                 VStack(spacing: 8) {
@@ -105,8 +112,12 @@ struct GrantView: View {
                     }
                     .font(.subheadline).buttonStyle(.borderless)
                     .accessibilityIdentifier("rename-agent")
-                    Text("Valid until \(c.expiresAt.date.formatted(date: .abbreviated, time: .omitted)) · \(days) days left")
-                        .font(.subheadline).foregroundStyle(days <= 7 ? .orange : .secondary)
+                    if her {
+                        Text("All computers · Doesn’t expire").font(.subheadline).foregroundStyle(.secondary)
+                    } else {
+                        Text("Valid until \(c.expiresAt.date.formatted(date: .abbreviated, time: .omitted)) · \(days) days left")
+                            .font(.subheadline).foregroundStyle(days <= 7 ? .orange : .secondary)
+                    }
                 }
                 .frame(maxWidth: .infinity).listRowBackground(Color.clear)
             }
@@ -133,8 +144,10 @@ struct GrantView: View {
                 LabeledContent("Fingerprint", value: c.fingerprint).font(.body.monospaced())
             }
             Section {
-                Button("Change What It Can Use…") { model.sheet = .scope(c.grantID) }.accessibilityIdentifier("change-scope")
-                Button("Renew…") { model.sheet = .renew(c.grantID) }.accessibilityIdentifier("renew")
+                if !her {
+                    Button("Change What It Can Use…") { model.sheet = .scope(c.grantID) }.accessibilityIdentifier("change-scope")
+                    Button("Renew…") { model.sheet = .renew(c.grantID) }.accessibilityIdentifier("renew")
+                }
                 Button("Disconnect…", role: .destructive) { confirmDisconnect = true }.accessibilityIdentifier("disconnect")
             } footer: {
                 Text("Disconnecting revokes access immediately and stops any running sessions. Past session history is kept.")

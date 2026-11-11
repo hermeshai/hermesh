@@ -134,6 +134,9 @@ func snapshot(_ items: [JSON], task: JSON = nil, seq: Int = 10, queued: JSON = [
          "message": ["role": "user", "ts": 2, "content": [["type": "text", "text": "<sent_to_user from=\"sales\">\nMarch is missing.\n</sent_to_user>"]]]],
         ["type": "message", "message_id": "m2", "mail": ["id": "y", "kind": "report", "from": ["id": "ag1", "name": "sales"], "status": "completed"],
          "message": ["role": "user", "ts": 3, "content": [["type": "text", "text": "<agent_report>done</agent_report>"]]]],
+        // News of a coding session Her started (docs/her-mesh.md §6) is hers to read, as a report is.
+        ["type": "message", "message_id": "m3", "mail": ["id": "z", "kind": "news", "from": ["id": "s_1", "name": "Fix the flaky relay test"], "status": "completed"],
+         "message": ["role": "user", "ts": 4, "content": [["type": "text", "text": "<session_news id=\"msg_1\" kind=\"turn_done\">\n<result>\nok\n</result>\n</session_news>\nNews of a coding session you started: its turn ended."]]]],
     ])
     #expect(herChat(v).map(\.kind) == [.user(text: "check", images: [], files: [], queued: false), .her("March is missing.")])
 }
@@ -161,6 +164,20 @@ func snapshot(_ items: [JSON], task: JSON = nil, seq: Int = 10, queued: JSON = [
     #expect(herApprovalOp(theirs!.approval, agent: theirs!.agent, decision: ["type": "deny"])["type"] == "agent_approval")
     guard case .diff(let lines, 0) = herApprovalPreview(theirs!.approval) else { Issue.record("no diff"); return }
     #expect(lines.map { "\($0.sign)\($0.text)" } == ["-one", "+two", "+three"])
+}
+
+@Test func aSessionOnTheOwnersComputersAsksInItsOwnWords() {
+    let ask: JSON = ["call_id": "c1", "name": "session_start", "args": ["project": "homemini/hermesh"], "summary": "Start Codex in homemini/hermesh\n\nFix the flaky relay test.\n  Keep the diff small.\n",
+                     "proposed_rule": ["prefix": ["mesh", "homemini/hermesh"]]]
+    let v = snapshot([said("u1", "fix it", ts: 1)], task: ["task_id": "t1", "turn": 1, "approvals": [ask], "tools": []])
+    let a = herPendingApproval(v)!.approval
+    #expect(herMeshProject(a.rule) == "homemini/hermesh")
+    #expect(herApprovalPreview(a) == .args(a.summary))
+    let parts = herSummaryParts(a.summary)
+    #expect(parts?.title == "Start Codex in homemini/hermesh" && parts?.body == "Fix the flaky relay test.\n  Keep the diff small.")
+    // Any other rule, and a summary of one line, read as before.
+    #expect(herMeshProject(["brew", "upgrade"]) == nil && herMeshProject(["mesh"]) == nil && herMeshProject(nil) == nil)
+    #expect(herSummaryParts("brew upgrade") == nil && herSummaryParts("Start Codex in homemini/hermesh\n\n") == nil)
 }
 
 @Test func theConversationGoesBackWhenRewound() {

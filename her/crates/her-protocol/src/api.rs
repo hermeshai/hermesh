@@ -13,6 +13,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use crate::card::CardState;
+use crate::event::AgentRef;
 use crate::event::AgentStatus;
 use crate::event::CompletionReason;
 use crate::event::ErrorInfo;
@@ -199,6 +200,18 @@ pub mod method {
     pub const DOCX_HOST: &str = "docx/host";
     /// Server request to the `docx/host` connection: write one document's bytes.
     pub const DOCX_SERIALIZE: &str = "docx/serialize";
+    /// This connection is the mesh host: it gives a bot's own conversation the `mesh` group of
+    /// deferred tools and runs them. A later host replaces the one before it, calling it again
+    /// replaces the group, no tools removes it, and the host leaves with its connection.
+    pub const MESH_HOST: &str = "mesh/host";
+    /// Server request to the `mesh/host` connection, before the user is asked to approve a call
+    /// that writes: what the call would do.
+    pub const MESH_DESCRIBE: &str = "mesh/describe";
+    /// Server request to the `mesh/host` connection: run one tool of the group.
+    pub const MESH_CALL: &str = "mesh/call";
+    /// From the `mesh/host` connection: news for a bot's conversation, which wakes it. It answers
+    /// once the news is in the conversation's history.
+    pub const MESH_NEWS: &str = "mesh/news";
     // Word documents held by the kernel (docs/desktop/word-design.md §4).
     pub const DOCX_OPEN: &str = "docx/open";
     /// A request from a replica (its Yrs update), and a server notification with the kernel's.
@@ -405,6 +418,88 @@ pub struct DocxSerializeParams {
 pub struct DocxSerializeResult {
     /// How many bytes were written to `out_path`.
     pub bytes: u64,
+}
+
+/// Parameters of `mesh/host`: the `mesh` group as the host gives it.
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize, JsonSchema)]
+pub struct MeshHostParams {
+    /// The group's line in the catalog of deferred tools.
+    pub summary: String,
+    /// What the model reads with the group's definitions, a line each.
+    #[serde(default)]
+    pub guidelines: Vec<String>,
+    /// The group's tools; none removes the group.
+    #[serde(default)]
+    pub tools: Vec<MeshTool>,
+}
+
+/// One tool of the `mesh` group.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, JsonSchema)]
+pub struct MeshTool {
+    pub name: String,
+    pub description: String,
+    /// JSON Schema of its arguments.
+    pub parameters: Value,
+    /// It changes something: a call goes through the approval policy. One that only reads runs
+    /// in every mode.
+    #[serde(default)]
+    pub writes: bool,
+}
+
+/// Parameters of `mesh/describe`, a request from the kernel to the `mesh/host` connection.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, JsonSchema)]
+pub struct MeshDescribeParams {
+    /// The bot whose conversation makes the call.
+    pub bot: String,
+    /// The tool.
+    pub name: String,
+    pub arguments: Value,
+}
+
+/// The result of `mesh/describe`.
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+pub struct MeshDescribeResult {
+    /// What the call would do, in words for the user who approves it.
+    pub summary: String,
+    /// The words of the rule that covers the call: an allow rule with them lets it run unasked,
+    /// and approving for the session keeps one. None: every such call is asked about.
+    #[serde(default)]
+    pub rule: Option<Vec<String>>,
+}
+
+/// Parameters of `mesh/call`, a request from the kernel to the `mesh/host` connection.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, JsonSchema)]
+pub struct MeshCallParams {
+    /// The bot whose conversation makes the call.
+    pub bot: String,
+    /// The model's tool call.
+    pub call_id: String,
+    /// The tool.
+    pub name: String,
+    pub arguments: Value,
+}
+
+/// The result of `mesh/call`.
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+pub struct MeshCallResult {
+    /// What the model reads as the tool's result.
+    pub output: String,
+    /// The call failed, and `output` says how.
+    #[serde(default)]
+    pub is_error: bool,
+}
+
+/// Parameters of `mesh/news`.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+pub struct MeshNewsParams {
+    /// The bot whose conversation takes the news.
+    pub bot: String,
+    /// The news' id: one that already waits in the conversation is not added again.
+    pub id: String,
+    /// Who the news is from.
+    pub from: AgentRef,
+    /// What the model reads.
+    pub text: String,
 }
 
 /// The result of methods that return nothing: `{}`.

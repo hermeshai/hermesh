@@ -9193,6 +9193,46 @@
           }
         }
       }
+    },
+    "Her can use all your computers: start coding agents in any project, read their sessions and answer them. This doesn’t expire. Turn Her off to end it.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Her 可以使用你的所有电脑：在任意项目里启动编程 agent，查看并回复它们的会话。这项授权不会到期，关闭 Her 即结束。"
+          }
+        }
+      }
+    },
+    "Let Her use your computers": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "允许 Her 使用你的电脑"
+          }
+        }
+      }
+    },
+    "All computers · Doesn’t expire": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "所有电脑 · 不会到期"
+          }
+        }
+      }
+    },
+    "Don’t ask again for %@": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ 不再询问"
+          }
+        }
+      }
     }
   },
   "version": "1.0"

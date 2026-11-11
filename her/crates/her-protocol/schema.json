@@ -482,6 +482,24 @@
       "$ref": "#/definitions/McpToolsResult"
     },
     {
+      "$ref": "#/definitions/MeshCallParams"
+    },
+    {
+      "$ref": "#/definitions/MeshCallResult"
+    },
+    {
+      "$ref": "#/definitions/MeshDescribeParams"
+    },
+    {
+      "$ref": "#/definitions/MeshDescribeResult"
+    },
+    {
+      "$ref": "#/definitions/MeshHostParams"
+    },
+    {
+      "$ref": "#/definitions/MeshNewsParams"
+    },
+    {
       "$ref": "#/definitions/ModelsListResult"
     },
     {
@@ -12850,6 +12868,13 @@
             "to_user"
           ],
           "type": "string"
+        },
+        {
+          "description": "What the mesh host says happened to work started through its tools (`mesh/news`): `from` is whoever the host names.",
+          "enum": [
+            "news"
+          ],
+          "type": "string"
         }
       ]
     },
@@ -14046,6 +14071,175 @@
           "type": "string"
         }
       ]
+    },
+    "MeshCallParams": {
+      "description": "Parameters of `mesh/call`, a request from the kernel to the `mesh/host` connection.",
+      "properties": {
+        "arguments": true,
+        "bot": {
+          "description": "The bot whose conversation makes the call.",
+          "type": "string"
+        },
+        "call_id": {
+          "description": "The model's tool call.",
+          "type": "string"
+        },
+        "name": {
+          "description": "The tool.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "arguments",
+        "bot",
+        "call_id",
+        "name"
+      ],
+      "type": "object"
+    },
+    "MeshCallResult": {
+      "description": "The result of `mesh/call`.",
+      "properties": {
+        "is_error": {
+          "default": false,
+          "description": "The call failed, and `output` says how.",
+          "type": "boolean"
+        },
+        "output": {
+          "description": "What the model reads as the tool's result.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "output"
+      ],
+      "type": "object"
+    },
+    "MeshDescribeParams": {
+      "description": "Parameters of `mesh/describe`, a request from the kernel to the `mesh/host` connection.",
+      "properties": {
+        "arguments": true,
+        "bot": {
+          "description": "The bot whose conversation makes the call.",
+          "type": "string"
+        },
+        "name": {
+          "description": "The tool.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "arguments",
+        "bot",
+        "name"
+      ],
+      "type": "object"
+    },
+    "MeshDescribeResult": {
+      "description": "The result of `mesh/describe`.",
+      "properties": {
+        "rule": {
+          "default": null,
+          "description": "The words of the rule that covers the call: an allow rule with them lets it run unasked, and approving for the session keeps one. None: every such call is asked about.",
+          "items": {
+            "type": "string"
+          },
+          "type": [
+            "array",
+            "null"
+          ]
+        },
+        "summary": {
+          "description": "What the call would do, in words for the user who approves it.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "summary"
+      ],
+      "type": "object"
+    },
+    "MeshHostParams": {
+      "description": "Parameters of `mesh/host`: the `mesh` group as the host gives it.",
+      "properties": {
+        "guidelines": {
+          "default": [],
+          "description": "What the model reads with the group's definitions, a line each.",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "summary": {
+          "description": "The group's line in the catalog of deferred tools.",
+          "type": "string"
+        },
+        "tools": {
+          "default": [],
+          "description": "The group's tools; none removes the group.",
+          "items": {
+            "$ref": "#/definitions/MeshTool"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "summary"
+      ],
+      "type": "object"
+    },
+    "MeshNewsParams": {
+      "description": "Parameters of `mesh/news`.",
+      "properties": {
+        "bot": {
+          "description": "The bot whose conversation takes the news.",
+          "type": "string"
+        },
+        "from": {
+          "$ref": "#/definitions/AgentRef",
+          "description": "Who the news is from."
+        },
+        "id": {
+          "description": "The news' id: one that already waits in the conversation is not added again.",
+          "type": "string"
+        },
+        "text": {
+          "description": "What the model reads.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "bot",
+        "from",
+        "id",
+        "text"
+      ],
+      "type": "object"
+    },
+    "MeshTool": {
+      "description": "One tool of the `mesh` group.",
+      "properties": {
+        "description": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        },
+        "parameters": {
+          "description": "JSON Schema of its arguments."
+        },
+        "writes": {
+          "default": false,
+          "description": "It changes something: a call goes through the approval policy. One that only reads runs in every mode.",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "description",
+        "name",
+        "parameters"
+      ],
+      "type": "object"
     },
     "Message": {
       "description": "A message of the conversation. The parts are shared: the session history and every request built from it point at the same data, so cloning a message is cheap.",
@@ -20968,6 +21162,14 @@
       "params": "McpServerParams",
       "result": "McpToolsResult"
     },
+    "mesh/host": {
+      "params": "MeshHostParams",
+      "result": "Empty"
+    },
+    "mesh/news": {
+      "params": "MeshNewsParams",
+      "result": "Empty"
+    },
     "models/list": {
       "result": "ModelsListResult"
     },
@@ -21126,6 +21328,14 @@
     "docx/serialize": {
       "params": "DocxSerializeParams",
       "result": "DocxSerializeResult"
+    },
+    "mesh/call": {
+      "params": "MeshCallParams",
+      "result": "MeshCallResult"
+    },
+    "mesh/describe": {
+      "params": "MeshDescribeParams",
+      "result": "MeshDescribeResult"
     }
   },
   "x-stability": {
@@ -21237,6 +21447,8 @@
       "mcp/probe": "stable",
       "mcp/probe_cancel": "stable",
       "mcp/tools": "stable",
+      "mesh/host": "internal",
+      "mesh/news": "internal",
       "models/list": "stable",
       "models/refresh": "stable",
       "models/show": "stable",
@@ -21298,7 +21510,9 @@
       "skills/changed": "stable"
     },
     "server_requests": {
-      "docx/serialize": "internal"
+      "docx/serialize": "internal",
+      "mesh/call": "internal",
+      "mesh/describe": "internal"
     }
   }
 }

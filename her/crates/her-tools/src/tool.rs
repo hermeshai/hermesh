@@ -90,7 +90,25 @@ pub trait Tool: Send + Sync + 'static {
         Ok(())
     }
 
+    /// For a tool that a host outside the kernel runs: what one call would do, in the host's
+    /// words. The approval policy asks for it only before it would ask the user about a call
+    /// that changes something. `None` for every other tool, or when the host does not say.
+    async fn approval_words(&self, args: &Value) -> Option<ApprovalWords> {
+        let _ = args;
+        None
+    }
+
     async fn execute(&self, args: Value, ctx: ToolCtx) -> Result<ToolOutput, ToolError>;
+}
+
+/// What a tool's host says of one call, for the approval policy ([`Tool::approval_words`]).
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct ApprovalWords {
+    /// What the call would do, for the user who approves it.
+    pub summary: String,
+    /// The words of the rule that covers the call, if one can: an allow rule with them lets it
+    /// run unasked, and approving for the session keeps one.
+    pub rule: Option<Vec<String>>,
 }
 
 /// Display category of a call; independent of [`ToolKind`], which only drives locking.

@@ -69,8 +69,8 @@ export type Step =
   | { kind: "end"; key: string; end: TaskEndItem; chain?: TaskChain }
   | { kind: "note"; key: string; note: NoteEntry };
 
-/** A report ends an agent's round of work; what it sends on the way does not. */
-const endsRound = (mail: MailInfo): boolean => mail.kind === "report" || mail.kind === "routine";
+/** A report ends an agent's round of work; what it sends on the way does not. News of work started through the mesh host's tools reads as a report. */
+const endsRound = (mail: MailInfo): boolean => mail.kind === "report" || mail.kind === "routine" || mail.kind === "news";
 
 /** The conversation's steps, oldest first, ending with what is being written now. */
 export function conversation(v: SessionView): Step[] {

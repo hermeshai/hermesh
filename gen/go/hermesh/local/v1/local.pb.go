@@ -5450,8 +5450,11 @@ type Client struct {
 	// the client holds its own.
 	Custodian string `protobuf:"bytes,11,opt,name=custodian,proto3" json:"custodian,omitempty"`
 	// The icon the owner picked (identity.v1.Grant client_icon, client_image).
-	Icon          string `protobuf:"bytes,12,opt,name=icon,proto3" json:"icon,omitempty"`
-	Image         []byte `protobuf:"bytes,13,opt,name=image,proto3" json:"image,omitempty"`
+	Icon  string `protobuf:"bytes,12,opt,name=icon,proto3" json:"icon,omitempty"`
+	Image []byte `protobuf:"bytes,13,opt,name=image,proto3" json:"image,omitempty"`
+	// Her's own grant (identity.v1.Grant her_machine_id): the machine she
+	// runs on. It doesn't expire, and ends when Her is turned off there.
+	HerMachineId  string `protobuf:"bytes,14,opt,name=her_machine_id,json=herMachineId,proto3" json:"her_machine_id,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -5575,6 +5578,13 @@ func (x *Client) GetImage() []byte {
 		return x.Image
 	}
 	return nil
+}
+
+func (x *Client) GetHerMachineId() string {
+	if x != nil {
+		return x.HerMachineId
+	}
+	return ""
 }
 
 type ListClientsRequest struct {
@@ -9834,7 +9844,7 @@ const file_hermesh_local_v1_local_proto_rawDesc = "" +
 	"machine_id\x18\x01 \x01(\tR\tmachineId\x12\x1d\n" +
 	"\n" +
 	"project_id\x18\x02 \x01(\tR\tprojectId\"\x17\n" +
-	"\x15RemoveProjectResponse\"\xbc\x03\n" +
+	"\x15RemoveProjectResponse\"\xe2\x03\n" +
 	"\x06Client\x12\x1b\n" +
 	"\tclient_id\x18\x01 \x01(\tR\bclientId\x12\x19\n" +
 	"\bgrant_id\x18\x02 \x01(\tR\agrantId\x12\x14\n" +
@@ -9850,7 +9860,8 @@ const file_hermesh_local_v1_local_proto_rawDesc = "" +
 	" \x01(\bR\arevoked\x12\x1c\n" +
 	"\tcustodian\x18\v \x01(\tR\tcustodian\x12\x12\n" +
 	"\x04icon\x18\f \x01(\tR\x04icon\x12\x14\n" +
-	"\x05image\x18\r \x01(\fR\x05image\"\x14\n" +
+	"\x05image\x18\r \x01(\fR\x05image\x12$\n" +
+	"\x0eher_machine_id\x18\x0e \x01(\tR\fherMachineId\"\x14\n" +
 	"\x12ListClientsRequest\"I\n" +
 	"\x13ListClientsResponse\x122\n" +
 	"\aclients\x18\x01 \x03(\v2\x18.hermesh.local.v1.ClientR\aclients\"a\n" +

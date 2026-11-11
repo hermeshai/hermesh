@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import type { Machine } from "@hermesh/proto/local";
-import { environments, envState, herChoices, newServer, pickEnvironment, unreadCount } from "./environments.ts";
+import { environments, envState, herChoices, lacksGrant, newServer, pickEnvironment, unreadCount } from "./environments.ts";
 
 type Her = NonNullable<Machine["her"]>;
 
@@ -83,4 +83,17 @@ test("a new server is offered once it is paired, online and able to run Her; nev
   assert.equal(newServer([...there, machine("n", "her-1", { online: false, platform: "linux/amd64" })], before), undefined);
   assert.equal(newServer([...there, machine("n", "her-1", { platform: "linux/amd64", her: { unsupported: "no her" } })], before), undefined);
   assert.equal(newServer([...there, machine("n", "her-1", { platform: "linux/amd64", her: {} })], before)?.machineId, "n");
+});
+
+test("Her lacks her grant while she is on, her machine keeps a key for her, and she holds none", () => {
+  const key = new Uint8Array([1, 2, 3]);
+  const none = new Uint8Array();
+  assert.equal(lacksGrant(machine("m1", "a", { her: { ...ready, clientPublicKey: key, mesh: false } }).her), true);
+  // She holds it.
+  assert.equal(lacksGrant(machine("m1", "a", { her: { ...ready, clientPublicKey: key, mesh: true } }).her), false);
+  // Software from before the mesh keeps no key for her: nothing to sign.
+  assert.equal(lacksGrant(machine("m1", "a", { her: { ...ready, clientPublicKey: none, mesh: false } }).her), false);
+  // Off, turning her on signs it.
+  assert.equal(lacksGrant(machine("m1", "a", { her: { enabled: false, clientPublicKey: key, mesh: false } }).her), false);
+  assert.equal(lacksGrant(machine("m1", "a").her), false);
 });

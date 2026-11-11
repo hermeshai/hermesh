@@ -137,6 +137,11 @@ import Testing
                     machine("m5", "asleep", online: false), machine("m6", "box", platform: "linux/amd64")]
     #expect(herEnvironments(machines).map(\.machineName) == ["cloud", "studio"])
     #expect(herUnread(machines) == 3)
+    // Her's grant (docs/her-mesh.md §3.4): missing only while she is on and her machine keeps a key for her.
+    let keyed = machine("m7", "mini", her: { var h = $0; h.enabled = true; h.clientPublicKey = Data([1, 2, 3]); return h })
+    let held = machine("m8", "held", her: { var h = $0; h.enabled = true; h.clientPublicKey = Data([1, 2, 3]); h.mesh = true; return h })
+    let off = machine("m9", "off", her: { var h = $0; h.clientPublicKey = Data([1, 2, 3]); return h })
+    #expect(herLacksGrant(keyed) && !herLacksGrant(held) && !herLacksGrant(off) && !herLacksGrant(on))
     #expect(herPick(herEnvironments(machines), remembered: "m1")?.machineID == "m1" && herPick(herEnvironments(machines), remembered: "gone")?.machineID == "m2")
     #expect(herState(on) == .noModel && herState(away) == .offline(nil))
     #expect(herChoices(machines).map { "\($0.machine.machineName):\(String(describing: $0.why))" } ==

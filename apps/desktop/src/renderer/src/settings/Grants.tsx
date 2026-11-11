@@ -19,9 +19,11 @@ function daysLeft(c: Client, now: Date): number {
   return d ? Math.max(0, Math.ceil((d.getTime() - now.getTime()) / 86_400_000)) : 0;
 }
 
-/** "30 days left", or, in the last week, "Expires in 4 days" in orange. */
-function Left({ days }: { days: number }) {
+/** "30 days left", or, in the last week, "Expires in 4 days" in orange; Her's grant is whole and has no end (docs/her-mesh.md §3.6). */
+function Left({ c, now }: { c: Client; now: Date }) {
   const { t } = useTranslation("settings");
+  if (c.herMachineId) return <span>{t("grants.her")}</span>;
+  const days = daysLeft(c, now);
   return days <= 7 ? <span className="warn">{t("grants.expiresIn", { count: days })}</span> : <span>{t("grants.daysLeft", { count: days })}</span>;
 }
 
@@ -62,7 +64,7 @@ export function Grants({ open, select }: { open: string; select: (id: string) =>
           {clients.map((x) => (
             <GoRow key={x.grantId} icon={<GrantAvatar c={x} size="md" />} title={agentName(x.label)} sub={usedText(st, x, now)} onClick={() => select(x.grantId)}>
               <span className="fv-side">
-                <Left days={daysLeft(x, now)} />
+                <Left c={x} now={now} />
               </span>
             </GoRow>
           ))}
@@ -118,7 +120,8 @@ function GrantDetail({ c }: { c: Client }) {
         <div>
           <b>{name}</b>
           <span>
-            {t("grants.validUntil", { date: expires ? monthDay(expires) : "—" })} · <Left days={daysLeft(c, now)} />
+            {!c.herMachineId && <>{t("grants.validUntil", { date: expires ? monthDay(expires) : "—" })} · </>}
+            <Left c={c} now={now} />
           </span>
         </div>
       </div>
@@ -133,8 +136,9 @@ function GrantDetail({ c }: { c: Client }) {
       </div>
       <div className="set-acts">
         <button className="btn" onClick={rename}>{t("grants.rename")}</button>
-        <button className="btn" onClick={() => scope(false)}>{t("grants.changeScope")}</button>
-        <button className="btn" onClick={() => scope(true)}>{t("grants.renew")}</button>
+        {/* Her's grant has no scope or expiry to change (UpdateClient refuses it). */}
+        {!c.herMachineId && <button className="btn" onClick={() => scope(false)}>{t("grants.changeScope")}</button>}
+        {!c.herMachineId && <button className="btn" onClick={() => scope(true)}>{t("grants.renew")}</button>}
         <button className="btn danger push" onClick={revoke}>{t("grants.disconnect")}</button>
       </div>
       <Wakes c={c} />

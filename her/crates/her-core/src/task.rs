@@ -223,8 +223,9 @@ fn go_back(session: &Session, state: &mut SessionState, resend: Resend) -> (Task
 pub(crate) fn on_mail(session: &Arc<Session>, mail: Mail) {
     // From an agent a `resend` removed, it belongs to what was taken back; a sub-agent's session,
     // with no list of its own, hears only from agents at work. A routine's run is on
-    // no such list, and a bot's conversation does not go back.
-    let kept = mail.info.kind == MailKind::Routine || session.agents.as_ref().is_none_or(|tree| tree.has(&mail.info.from.id));
+    // no such list, and a bot's conversation does not go back. News comes from outside the tree.
+    let news = mail.info.kind == MailKind::News;
+    let kept = news || mail.info.kind == MailKind::Routine || session.agents.as_ref().is_none_or(|tree| tree.has(&mail.info.from.id));
     let wake = {
         let mut state = session.state.lock();
         if kept {
@@ -232,7 +233,8 @@ pub(crate) fn on_mail(session: &Arc<Session>, mail: Mail) {
         }
         state.active_task.is_none() && state.has_waking_mail()
     };
-    if let Some(tree) = &session.agents {
+    // No agent counted news as on its way.
+    if !news && let Some(tree) = &session.agents {
         tree.mail_received();
     }
     if wake {

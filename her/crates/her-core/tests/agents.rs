@@ -172,6 +172,7 @@ fn deps(api: &Arc<ScriptedApi>, work: &std::path::Path, home: &HerHome) -> Kerne
         words: None,
         routines: None,
         connectors: None,
+        mesh: None,
     }
 }
 
@@ -1518,6 +1519,7 @@ async fn sub_agents_can_be_turned_off() {
             words: None,
             routines: None,
             connectors: None,
+            mesh: None,
         },
     )
     .await

@@ -310,6 +310,18 @@ test("what a peer sends shows in the agent's own conversation", () => {
   assert.equal(v.agents[0].status, "running");
 });
 
+test("news from the mesh host is a report from whoever the host names", () => {
+  const text = '<news id="n1">The shelf is built.</news>';
+  const v = play([
+    user("u1", "Build a shelf."),
+    done("t1"),
+    { type: "task_started", task_id: "t2", trigger: "mail" },
+    { type: "message_completed", message_id: "mail-n1", message: { role: "user", content: [{ type: "text", text }], ts: 5000 }, mail: { id: "n1", from: { id: "shed", name: "Shed" }, kind: "news", status: "completed" } },
+  ]);
+  const step = conversation(v).at(-1);
+  assert.ok(step?.kind === "report" && step.name === "Shed" && step.status === "completed" && step.text === text && step.agent === undefined);
+});
+
 test("a message's own words come without the wrapper", () => {
   assert.equal(messageBody('<agent_message from="a">\nMarch is missing.\n\nGoing on.\n</agent_message>'), "March is missing.\n\nGoing on.");
   assert.equal(messageBody("plain"), "plain");

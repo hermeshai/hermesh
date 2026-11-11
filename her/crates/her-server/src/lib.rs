@@ -45,6 +45,7 @@ mod decks;
 mod desktop_status;
 mod docs;
 mod docx_host;
+mod mesh_host;
 mod words;
 mod files;
 mod models;

@@ -248,14 +248,19 @@ async fn judge(
     tool: &dyn Tool,
     authorities: &[Authority],
 ) -> Option<(Gate, Option<OwnedMutexGuard<()>>)> {
-    let verdict = gate(session, call, tool, authorities).await;
+    let turn = task.turn();
+    // A gate may ask a tool's host what the call would do: a stop does not wait for its answer.
+    let verdict = tokio::select! {
+        biased;
+        _ = turn.cancelled() => return None,
+        verdict = gate(session, call, tool, authorities) => verdict,
+    };
     if !matches!(verdict, Gate::Ask { .. }) || !session.interactive_approvals {
         return Some((verdict, None));
     }
     if let Ok(asking) = session.approval_line.clone().try_lock_owned() {
         return Some((verdict, Some(asking)));
     }
-    let turn = task.turn();
     let asking = tokio::select! {
         biased;
         _ = turn.cancelled() => return None,

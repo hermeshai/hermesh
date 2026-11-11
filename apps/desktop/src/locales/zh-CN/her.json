@@ -33,6 +33,11 @@
     "turningOn": "正在开启 Her…",
     "paired": "刚刚配对"
   },
+  "grant": {
+    "runs": "Her 在这台电脑上运行，电脑开着时她一直可用。",
+    "desc": "Her 可以使用你的所有电脑：在任意项目里启动编程 agent，查看并回复它们的会话。这项授权不会到期，关闭 Her 即结束。",
+    "allow": "允许 Her 使用你的电脑"
+  },
   "line": {
     "agents": "正在处理{{things}}",
     "typing": "正在输入…"
@@ -268,6 +273,7 @@
     "session": "本次对话都允许",
     "sessionDesc": "这段对话里同类的调用不再询问",
     "sessionRule": "这段对话里以「{{rule}}」开头的命令不再询问",
+    "project": "{{project}} 不再询问",
     "siteQuestion": "允许 Her 使用 {{site}}？",
     "siteOnce": "允许一次",
     "siteAlways": "始终允许此网站",

@@ -70,10 +70,14 @@ impl crate::session::Session {
     /// computer use's settings when they changed, or the first time. Their deferred tools, the
     /// handles and the policy follow; a browser turned off closes this session's tabs in it; the
     /// catalog in the prompt says which groups there are. A change is recorded, and costs one
-    /// prompt-cache miss (connectors-entry-design §9.4).
+    /// prompt-cache miss (connectors-entry-design §9.4). So does the `mesh` group, when its host
+    /// came, left or changed it.
     pub(crate) fn prepare_system(&self) {
         let generation = self.system.generation();
-        if self.system_applied.swap(generation, Ordering::AcqRel) == generation {
+        let mesh = self.tool_state.get::<crate::mesh::MeshLink>();
+        let system_changed = self.system_applied.swap(generation, Ordering::AcqRel) != generation;
+        let mesh_changed = mesh.as_ref().is_some_and(|mesh| mesh.changed());
+        if !system_changed && !mesh_changed {
             return;
         }
         let settings = self.system.get();
@@ -95,7 +99,15 @@ impl crate::session::Session {
         }
         let docs = self.tool_state.get::<crate::docs::DocsHandle>().is_some();
         let connectors = self.tool_state.get::<crate::connect::ConnectorLink>().is_some();
-        *self.deferred.lock() = Arc::new(crate::deferred::Deferred::of(&settings, self.browser_pool.is_some(), embedded, docs, self.agent_role, connectors));
+        let mut deferred = crate::deferred::Deferred::of(&settings, self.browser_pool.is_some(), embedded, docs, self.agent_role, connectors);
+        if let Some(group) = mesh.and_then(|mesh| mesh.group()) {
+            // What a search showed of the group before may no longer hold.
+            if mesh_changed {
+                self.mcp_shown.lock().forget(&group);
+            }
+            deferred.groups.push(group);
+        }
+        *self.deferred.lock() = Arc::new(deferred);
         *self.base_tools.lock() = crate::mcp::base_tools(&self.core_tools, self.mcp.as_ref(), &self.deferred, &self.mcp_shown);
         if self.refresh_tools(true) {
             self.record_system_prompt();

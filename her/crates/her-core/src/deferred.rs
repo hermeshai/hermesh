@@ -14,13 +14,16 @@ use crate::system::SystemSettings;
 pub(crate) struct Group {
     pub(crate) name: &'static str,
     pub(crate) summary: String,
+    /// Guidelines of the group's own, for one whose words are not the kernel's (`mesh`).
+    pub(crate) guidelines: Vec<String>,
     pub(crate) tools: Vec<Arc<dyn Tool>>,
 }
 
 impl Group {
-    /// The guidelines of its tools, once each: what the base prompt says of the other tools.
-    pub(crate) fn guidelines(&self) -> Vec<&'static str> {
-        let mut lines: Vec<&'static str> = Vec::new();
+    /// Its own guidelines, then those of its tools, once each: what the base prompt says of the
+    /// other tools.
+    pub(crate) fn guidelines(&self) -> Vec<&str> {
+        let mut lines: Vec<&str> = self.guidelines.iter().map(String::as_str).collect();
         for tool in &self.tools {
             for line in tool.guidelines() {
                 if !lines.contains(line) {
@@ -74,6 +77,7 @@ impl Deferred {
             groups.push(Group {
                 name: crate::web_search::GROUP,
                 summary: crate::web_search::GROUP_SUMMARY.into(),
+                guidelines: Vec::new(),
                 tools: crate::web_search::tools(&settings.web_search),
             });
         }
@@ -95,6 +99,7 @@ impl Deferred {
             groups.push(Group {
                 name: BROWSER,
                 summary: format!("{BROWSER_SUMMARY}{default}"),
+                guidelines: Vec::new(),
                 tools,
             });
         }
@@ -102,6 +107,7 @@ impl Deferred {
             groups.push(Group {
                 name: CUA,
                 summary: CUA_SUMMARY.into(),
+                guidelines: Vec::new(),
                 tools: crate::desktop::desktop_tools(),
             });
         }
@@ -109,6 +115,7 @@ impl Deferred {
             groups.push(Group {
                 name: DOC,
                 summary: DOC_SUMMARY.into(),
+                guidelines: Vec::new(),
                 tools: crate::docs::doc_tools(),
             });
         }
@@ -117,6 +124,7 @@ impl Deferred {
             groups.push(Group {
                 name: crate::deck::GROUP,
                 summary: crate::deck::GROUP_SUMMARY.into(),
+                guidelines: Vec::new(),
                 tools: crate::deck::tools(),
             });
         }
@@ -124,6 +132,7 @@ impl Deferred {
             groups.push(Group {
                 name: crate::word::GROUP,
                 summary: crate::word::GROUP_SUMMARY.into(),
+                guidelines: Vec::new(),
                 tools: crate::word::tools(),
             });
         }
@@ -131,11 +140,13 @@ impl Deferred {
             AgentRole::Main => groups.push(Group {
                 name: AGENTS,
                 summary: AGENTS_SUMMARY.into(),
+                guidelines: Vec::new(),
                 tools: crate::agents::deferred_agent_tools(),
             }),
             AgentRole::SubAgent => groups.push(Group {
                 name: AGENTS,
                 summary: SUB_AGENT_AGENTS_SUMMARY.into(),
+                guidelines: Vec::new(),
                 tools: crate::agents::deferred_sub_agent_tools(),
             }),
             AgentRole::None => {}
@@ -144,6 +155,7 @@ impl Deferred {
             groups.push(Group {
                 name: crate::connect::GROUP,
                 summary: crate::connect::GROUP_SUMMARY.into(),
+                guidelines: Vec::new(),
                 tools: crate::connect::tools(),
             });
         }

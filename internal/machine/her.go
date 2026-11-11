@@ -40,6 +40,7 @@ func (n *Machine) startHer() {
 	n.mu.Unlock()
 	if on && n.herUnsupported() == "" {
 		n.her.Start()
+		n.startHerLink()
 	}
 }
 
@@ -57,6 +58,9 @@ func (n *Machine) setHer(on bool) (string, error) {
 	n.herOn = on
 	n.mu.Unlock()
 	if !on {
+		// Her's access to the owner's computers ends with her
+		// (docs/her-mesh.md §3.5): the owner's device revokes the grant too.
+		n.dropHerGrant("Her was turned off")
 		n.her.Off()
 		return "Her is off", nil
 	}
@@ -64,6 +68,7 @@ func (n *Machine) setHer(on bool) (string, error) {
 		return "Her is on, but this machine can't run her (" + why + ")", nil
 	}
 	n.her.Start()
+	n.startHerLink()
 	return "Her is on", nil
 }
 
@@ -77,6 +82,10 @@ func (n *Machine) herStatus() *machinev1.HerStatus {
 	}
 	st := n.her.Status()
 	st.Enabled = on
+	st.ClientPublicKey = n.herClientKey()
+	n.mu.Lock()
+	st.Mesh = n.mesh.grant != nil
+	n.mu.Unlock()
 	return st
 }
 

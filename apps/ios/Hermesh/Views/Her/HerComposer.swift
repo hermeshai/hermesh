@@ -191,7 +191,7 @@ struct HerApprovalPanel: View {
         VStack(alignment: .leading, spacing: 12) {
             HStack(spacing: 8) {
                 Mark(size: 20)
-                Text(question(category: category, title: live?.title ?? target.name, name: target.name)).font(.subheadline.weight(.semibold)).lineLimit(2)
+                Text(said?.title ?? question(category: category, title: live?.title ?? target.name, name: target.name)).font(.subheadline.weight(.semibold)).lineLimit(2)
                 Spacer(minLength: 0)
                 if waiting > 1 { Text("1 of \(waiting)").font(.caption).foregroundStyle(.secondary) }
             }
@@ -246,10 +246,19 @@ struct HerApprovalPanel: View {
         }
     }
 
+    /// A summary of several lines (a session on the owner's computers, docs/her-mesh.md §5): its first is the
+    /// question, the rest shows under it.
+    private var said: (title: String, body: String)? {
+        if case .args = herApprovalPreview(approval), site == nil { return herSummaryParts(approval.summary) }
+        return nil
+    }
+
     /// The call itself: a command, a change as removed and added lines, or what it writes.
     @ViewBuilder private var preview: some View {
         switch herApprovalPreview(approval) {
-        case .command(let text), .args(let text):
+        case .args(let text):
+            Text(said?.body ?? text)
+        case .command(let text):
             Text(text)
         case .diff(let lines, let more):
             VStack(alignment: .leading, spacing: 1) {
@@ -277,8 +286,10 @@ struct HerApprovalPanel: View {
             return (String(localized: "Always Allow"), ["type": "approve_for_session", "grant": 0], String(localized: "Won’t ask again for this in this conversation."))
         }
         if let rule = approval.rule {
-            return (String(localized: "Always Allow"), ["type": "approve_for_session"],
-                    String(localized: "Commands starting with “\(rule.joined(separator: " "))” won’t ask again in this conversation."))
+            // A project on the owner's computers reads by its name, not as the raw rule.
+            let note = herMeshProject(rule).map { String(localized: "Don’t ask again for \($0)") }
+                ?? String(localized: "Commands starting with “\(rule.joined(separator: " "))” won’t ask again in this conversation.")
+            return (String(localized: "Always Allow"), ["type": "approve_for_session"], note)
         }
         if approval.mode != nil {
             return (String(localized: "Always Allow"), ["type": "approve_for_session"], String(localized: "Calls like this one won’t ask again in this conversation."))

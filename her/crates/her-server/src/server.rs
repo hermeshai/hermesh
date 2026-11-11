@@ -168,6 +168,8 @@ pub(crate) struct Inner {
     /// The connectors Her's conversation reaches, and its cards that wait for a sign-in
     /// (crate::cards).
     pub(crate) connectors: Arc<crate::cards::Connectors>,
+    /// The connection that gives a bot's conversation the `mesh` group (crate::mesh_host).
+    pub(crate) mesh: Arc<crate::mesh_host::MeshHosts>,
 }
 
 impl Server {
@@ -208,6 +210,7 @@ impl Server {
             bots,
             routines,
             connectors: Arc::default(),
+            mesh: Arc::default(),
             defaults,
             store: Arc::new(JsonlStore::new(options.home.sessions_dir())),
             home: options.home,
@@ -592,6 +595,7 @@ impl Server {
         deps.mcp_servers = self.session_mcp_servers(&workspace, &overrides.mcp_servers);
         deps.routines = header.bot.is_some().then(|| self.0.routines.clone() as Arc<dyn her_core::routine::RoutineHost>);
         deps.connectors = header.bot.is_some().then(|| self.0.connectors.clone() as Arc<dyn her_core::connect::ConnectorHost>);
+        deps.mesh = header.bot.as_ref().map(|bot| self.bot_mesh(&bot.id));
         let base = match self.0.store.summary(&SessionRef::Path(location.clone())) {
             Ok(found) => SummaryBase {
                 updated_at: last_active(&found),

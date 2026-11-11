@@ -29,6 +29,7 @@ import (
 	relayv1 "github.com/hermeshai/hermesh/gen/go/hermesh/relay/v1"
 	"github.com/hermeshai/hermesh/gen/go/hermesh/relay/v1/relayv1connect"
 	"github.com/hermeshai/hermesh/internal/connaddr"
+	"github.com/hermeshai/hermesh/internal/herlink"
 	"github.com/hermeshai/hermesh/internal/localipc"
 	"github.com/hermeshai/hermesh/internal/machine"
 	"github.com/hermeshai/hermesh/internal/owner"
@@ -153,7 +154,7 @@ A computer that runs no coding agents can approve instead: hermeshd device.`}
 		}
 		her := herBin()
 		return machine.Config{DataDir: filepath.Join(dataDir, "machine"), Logger: logger(verbose), Providers: providers(), Limits: lim, WorkspaceMode: workspaceMode,
-			HerBin: her, HerConsole: herConsole(her), HerExtensionHost: herExtensionHost(),
+			HerBin: her, HerConsole: herConsole(her), HerExtensionHost: herExtensionHost(), NewHerLink: herlink.New,
 			ScreenBin: screenBin(), ScreenArgs: strings.Fields(os.Getenv("HERMESH_SCREEN_ARGS"))}
 	}
 	openMachine := func() (*machine.Machine, error) { return machine.Open(machineConfig()) }

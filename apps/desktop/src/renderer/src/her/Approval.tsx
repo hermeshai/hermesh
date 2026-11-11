@@ -5,6 +5,7 @@ import type { ApprovalDecision, Op, SiteGrant } from "@hermesh/her-protocol";
 import { Mark } from "@hermesh/ui";
 import { Code } from "../session/Code";
 import { useStore } from "../store";
+import { meshProject, summaryParts } from "./approvalWords";
 import { useHer } from "./context";
 import { toolDo } from "./format";
 
@@ -31,6 +32,8 @@ export function Approval({ view, op }: { view: SessionView; op: SendOp }) {
   const target = callTarget(a.name, a.args);
   const tool = live.tools.find((x) => x.call_id === a.call_id) ?? { ...describe(a.name, argsOf(a.args), view.info.cwd), name: a.name };
   const preview = approvalPreview(target.name, target.args, a.summary);
+  // A summary of several lines (a session on the owner's computers, docs/her-mesh.md §5): its first is the question.
+  const said = preview.kind === "args" ? summaryParts(a.summary) : null;
   const [denying, setDenying] = useState(false);
   const [feedback, setFeedback] = useState("");
   const [busy, setBusy] = useState(false);
@@ -73,8 +76,9 @@ export function Approval({ view, op }: { view: SessionView; op: SendOp }) {
     if (denying) field.current?.focus();
   }, [denying]);
 
-  const question = script ? t("approval.scriptQuestion", { site: hostOf(script.origin) }) : tool.category === "execute" ? t("approval.runCommand") : t("approval.useTool", { verb: toolDo(tool.category), object: toolObject(tool) });
+  const question = script ? t("approval.scriptQuestion", { site: hostOf(script.origin) }) : said ? said.title : tool.category === "execute" ? t("approval.runCommand") : t("approval.useTool", { verb: toolDo(tool.category), object: toolObject(tool) });
   const rule = a.proposed_rule?.prefix.join(" ");
+  const project = meshProject(a.proposed_rule);
   const denyField = (
     <>
       <input
@@ -143,12 +147,12 @@ export function Approval({ view, op }: { view: SessionView; op: SendOp }) {
     <div className="appr" role="region" aria-label={t("approval.label")}>
       <div className="appr-h">
         <Mark size={16} />
-        <b>{question}</b>
+        <b title={said?.title}>{question}</b>
         {a.reason && <span className="why" title={a.reason}>{a.reason}</span>}
         {who}
         {queue}
       </div>
-      <Preview p={preview} />
+      <Preview p={said ? { kind: "args", text: said.body } : preview} />
       <div className="appr-f">
         {denying ? (
           denyField
@@ -169,8 +173,8 @@ export function Approval({ view, op }: { view: SessionView; op: SendOp }) {
                   </button>
                 ))
               : (rule || a.proposed_mode) && (
-                  <button className="btn" disabled={busy} title={rule ? t("approval.sessionRule", { rule }) : t("approval.sessionDesc")} onClick={() => void give({ type: "approve_for_session" })}>
-                    {t("approval.session")}
+                  <button className="btn" disabled={busy} title={rule && !project ? t("approval.sessionRule", { rule }) : t("approval.sessionDesc")} onClick={() => void give({ type: "approve_for_session" })}>
+                    {project ? t("approval.project", { project }) : t("approval.session")}
                   </button>
                 )}
             <button className="btn primary" disabled={busy} onClick={() => void give({ type: "approve" })}>

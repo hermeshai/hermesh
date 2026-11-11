@@ -32,6 +32,7 @@
 //! | `churn:N[:SEED]` | N tool turns in one task, each picked at random: read, write or edit `notes/state.txt`, append to `notes/log.txt`, search with grep, find or rg, read part of a file; then `churn done` (see [`churn_step`]) |
 //! | `mcp:SERVER:PROJECT` | `tool_search` for the vault tool, `call_tool` on `mcp__SERVER__vault_reveal_code`, then `mcp done: <its result>`, sent with `end_turn` in a bot's conversation |
 //! | `mcp_direct:SERVER:PROJECT` | a direct call of `mcp__SERVER__vault_reveal_code`, then `mcp done: <its result>`, the same way |
+//! | `mesh:NAME[:JSON]` | `tool_search` for the `mesh` group, `call_tool` on NAME with the JSON object as its arguments (none: `{}`; the JSON may hold colons, but no `]]`), then `mesh done: <its result>`, or `mesh failed: <its result>` when the call was denied or failed (see [`mesh_failed`]), sent with `end_turn` in a bot's conversation; there, `回复：<the latest message>` sent with `end_turn` for whatever comes next without a directive of its own, news too |
 //! | `sheet:PATH` | a workbook session through `call_tool`: `doc_open` PATH, `doc_read` the inputs, `sheet_calc` WACC at 9%, `doc_edit` it, `sheet_trace` what reads it, `doc_save`; then `sheet done` |
 //! | `mcp_env:SERVER:VAR` | `call_tool` on `mcp__SERVER__env` for VAR (the server's environment), then `mcp done: <its result>`, the same way |
 //! | `send[:TEXT]` | a bot's `send_to_user` of TEXT (else the prompt) with `end_turn` |
@@ -556,6 +557,23 @@ fn card_end(messages: &[Value]) -> Option<(String, String)> {
     })
 }
 
+/// Whether a `mesh` tool's result says the call did not go through. The wire carries no error
+/// flag, so the text decides: what the kernel says of a call that was denied, could not be
+/// approved, was not found or was stopped; what it says when the mesh host cannot be reached; or
+/// a JSON document whose `ok` is false.
+fn mesh_failed(result: &str) -> bool {
+    const REFUSED: &[&str] = &[
+        "The user denied this tool call",
+        "Tool call denied",
+        "This tool call needs approval",
+        "Unknown tool",
+        "Invalid arguments",
+        "Cancelled by user",
+        "The mesh host",
+    ];
+    REFUSED.iter().any(|start| result.starts_with(start)) || serde_json::from_str::<Value>(result).is_ok_and(|document| document["ok"] == json!(false))
+}
+
 /// A scenario's last words: text, or in a bot's conversation, where only `send_to_user` reaches
 /// the owner, sent with `end_turn`.
 fn last_words(bot: bool, text: String) -> Plan {
@@ -661,6 +679,23 @@ fn plan(shared: &Shared, messages: &[Value], name: &str, arg: &str, prompt: &str
                 ("mcp", 1) => Plan::Step(Step::calls(vec![("call_tool", json!({ "name": tool, "arguments": arguments }))])),
                 ("mcp_direct", 0) => Plan::Step(Step::calls(vec![(tool.as_str(), arguments)])),
                 _ => last_words(bot, format!("mcp done: {}", last_tool_result(messages))),
+            }
+        }
+        "mesh" => {
+            let (tool, arguments) = arg.split_once(':').unwrap_or((arg, ""));
+            match step {
+                0 => Plan::Step(Step::calls(vec![("tool_search", json!({ "server": "mesh" }))])),
+                1 => {
+                    let arguments = serde_json::from_str::<Value>(arguments).ok().filter(Value::is_object).unwrap_or_else(|| json!({}));
+                    Plan::Step(Step::calls(vec![("call_tool", json!({ "name": tool, "arguments": arguments }))]))
+                }
+                // What wakes a bot after its reply, such as news of the work it started.
+                3.. if bot => Plan::Step(answer_latest(messages)),
+                _ => {
+                    let result = last_tool_result(messages);
+                    let how = if mesh_failed(&result) { "failed" } else { "done" };
+                    last_words(bot, format!("mesh {how}: {result}"))
+                }
             }
         }
         "sheet" => {
@@ -1512,6 +1547,30 @@ mod tests {
         let last = |bot| call_of(plan(&shared(), &messages, "mcp", "vault:Apollo", "go", 2, bot));
         assert_eq!(last(false), ("text", json!("mcp done: Release code for Apollo: FX-1")));
         assert_eq!(last(true), ("send_to_user", json!({"text": "mcp done: Release code for Apollo: FX-1", "end_turn": true})));
+    }
+
+    #[test]
+    fn the_mesh_scenario_calls_the_tool_with_its_json_and_says_how_it_went() {
+        let arg = r#"session_start:{"project":"mac/app","prompt":"fix: the test"}"#;
+        let mut messages = vec![json!({"role": "user", "content": format!("[[mock:mesh:{arg}]]")})];
+        let (name, parsed, _, _) = directive(&messages);
+        assert_eq!((name.as_str(), parsed.as_str()), ("mesh", arg));
+        let step = |messages: &[Value], step, bot| call_of(plan(&shared(), messages, "mesh", arg, "", step, bot));
+        assert_eq!(step(&messages, 0, true), ("tool_search", json!({"server": "mesh"})));
+        messages.extend([json!({"role": "assistant", "content": null}), json!({"role": "tool", "content": "Group mesh: …"})]);
+        assert_eq!(step(&messages, 1, true), ("call_tool", json!({"name": "session_start", "arguments": {"project": "mac/app", "prompt": "fix: the test"}})));
+        // No JSON: no arguments.
+        assert_eq!(call_of(plan(&shared(), &messages, "mesh", "project_list", "", 1, true)), ("call_tool", json!({"name": "project_list", "arguments": {}})));
+        messages.extend([json!({"role": "assistant", "content": null}), json!({"role": "tool", "content": r#"{"ok":true,"session":"s1"}"#})]);
+        assert_eq!(step(&messages, 2, false), ("text", json!(r#"mesh done: {"ok":true,"session":"s1"}"#)));
+        assert_eq!(step(&messages, 2, true), ("send_to_user", json!({"text": r#"mesh done: {"ok":true,"session":"s1"}"#, "end_turn": true})));
+        for failed in ["The user denied this tool call.", "Tool call denied: The tool is blocked by the rule `mesh`", "The mesh host is not connected, so these tools cannot run now.", r#"{"ok":false,"error":{"kind":"no_grant"}}"#] {
+            *messages.last_mut().unwrap() = json!({"role": "tool", "content": failed});
+            assert_eq!(step(&messages, 2, true), ("send_to_user", json!({"text": format!("mesh failed: {failed}"), "end_turn": true})));
+        }
+        // News that wakes the bot afterwards is answered as a message without a directive is.
+        messages.extend([json!({"role": "assistant", "content": null}), json!({"role": "user", "content": "<news>built</news>"})]);
+        assert_eq!(step(&messages, 3, true), ("send_to_user", json!({"text": "回复：<news>built</news>", "end_turn": true})));
     }
 
     #[test]

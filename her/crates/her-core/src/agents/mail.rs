@@ -141,6 +141,16 @@ impl Mail {
             wake: true,
         }
     }
+
+    /// News from the mesh host (`mesh/news`), in the host's words and under its id. It wakes as a
+    /// report does.
+    pub(crate) fn news(id: String, from: AgentRef, text: String) -> Mail {
+        Mail {
+            info: MailInfo { id, from, kind: MailKind::News, status: AgentStatus::Completed, no_reply: false, routine_id: None },
+            message: UserMessage::text(text),
+            wake: true,
+        }
+    }
 }
 
 /// What the report says: the agent's last reply, after the error if it failed. The error's kind

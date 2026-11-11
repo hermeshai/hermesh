@@ -59,6 +59,9 @@ const (
 	// MachineAdminServiceTestAgentProcedure is the fully-qualified name of the MachineAdminService's
 	// TestAgent RPC.
 	MachineAdminServiceTestAgentProcedure = "/hermesh.machine.v1.MachineAdminService/TestAgent"
+	// MachineAdminServiceSetHerGrantProcedure is the fully-qualified name of the MachineAdminService's
+	// SetHerGrant RPC.
+	MachineAdminServiceSetHerGrantProcedure = "/hermesh.machine.v1.MachineAdminService/SetHerGrant"
 )
 
 // MachineServiceClient is a client for the hermesh.machine.v1.MachineService service.
@@ -250,6 +253,10 @@ type MachineAdminServiceClient interface {
 	// One short fixed turn of a coding agent in a scratch folder, to prove it
 	// is installed and signed in: no session, project or grant is involved.
 	TestAgent(context.Context, *v1.TestAgentRequest) (*v1.TestAgentResponse, error)
+	// Gives this machine's Her her grant (docs/her-mesh.md §3.3). The owner's
+	// devices only; the grant is root-signed and checked by the machine: for
+	// its own Her key, with its own machine id.
+	SetHerGrant(context.Context, *v1.SetHerGrantRequest) (*v1.SetHerGrantResponse, error)
 }
 
 // NewMachineAdminServiceClient constructs a client for the hermesh.machine.v1.MachineAdminService
@@ -293,6 +300,12 @@ func NewMachineAdminServiceClient(httpClient connect.HTTPClient, baseURL string,
 			connect.WithSchema(machineAdminServiceMethods.ByName("TestAgent")),
 			connect.WithClientOptions(opts...),
 		),
+		setHerGrant: connect.NewClient[v1.SetHerGrantRequest, v1.SetHerGrantResponse](
+			httpClient,
+			baseURL+MachineAdminServiceSetHerGrantProcedure,
+			connect.WithSchema(machineAdminServiceMethods.ByName("SetHerGrant")),
+			connect.WithClientOptions(opts...),
+		),
 	}
 }
 
@@ -303,6 +316,7 @@ type machineAdminServiceClient struct {
 	listRepos         *connect.Client[v1.ListReposRequest, v1.ListReposResponse]
 	listFolders       *connect.Client[v1.ListFoldersRequest, v1.ListFoldersResponse]
 	testAgent         *connect.Client[v1.TestAgentRequest, v1.TestAgentResponse]
+	setHerGrant       *connect.Client[v1.SetHerGrantRequest, v1.SetHerGrantResponse]
 }
 
 // ApplyAdminCommand calls hermesh.machine.v1.MachineAdminService.ApplyAdminCommand.
@@ -350,6 +364,15 @@ func (c *machineAdminServiceClient) TestAgent(ctx context.Context, req *v1.TestA
 	return nil, err
 }
 
+// SetHerGrant calls hermesh.machine.v1.MachineAdminService.SetHerGrant.
+func (c *machineAdminServiceClient) SetHerGrant(ctx context.Context, req *v1.SetHerGrantRequest) (*v1.SetHerGrantResponse, error) {
+	response, err := c.setHerGrant.CallUnary(ctx, connect.NewRequest(req))
+	if response != nil {
+		return response.Msg, err
+	}
+	return nil, err
+}
+
 // MachineAdminServiceHandler is an implementation of the hermesh.machine.v1.MachineAdminService
 // service.
 type MachineAdminServiceHandler interface {
@@ -364,6 +387,10 @@ type MachineAdminServiceHandler interface {
 	// One short fixed turn of a coding agent in a scratch folder, to prove it
 	// is installed and signed in: no session, project or grant is involved.
 	TestAgent(context.Context, *v1.TestAgentRequest) (*v1.TestAgentResponse, error)
+	// Gives this machine's Her her grant (docs/her-mesh.md §3.3). The owner's
+	// devices only; the grant is root-signed and checked by the machine: for
+	// its own Her key, with its own machine id.
+	SetHerGrant(context.Context, *v1.SetHerGrantRequest) (*v1.SetHerGrantResponse, error)
 }
 
 // NewMachineAdminServiceHandler builds an HTTP handler from the service implementation. It returns
@@ -403,6 +430,12 @@ func NewMachineAdminServiceHandler(svc MachineAdminServiceHandler, opts ...conne
 		connect.WithSchema(machineAdminServiceMethods.ByName("TestAgent")),
 		connect.WithHandlerOptions(opts...),
 	)
+	machineAdminServiceSetHerGrantHandler := connect.NewUnaryHandlerSimple(
+		MachineAdminServiceSetHerGrantProcedure,
+		svc.SetHerGrant,
+		connect.WithSchema(machineAdminServiceMethods.ByName("SetHerGrant")),
+		connect.WithHandlerOptions(opts...),
+	)
 	return "/hermesh.machine.v1.MachineAdminService/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case MachineAdminServiceApplyAdminCommandProcedure:
@@ -415,6 +448,8 @@ func NewMachineAdminServiceHandler(svc MachineAdminServiceHandler, opts ...conne
 			machineAdminServiceListFoldersHandler.ServeHTTP(w, r)
 		case MachineAdminServiceTestAgentProcedure:
 			machineAdminServiceTestAgentHandler.ServeHTTP(w, r)
+		case MachineAdminServiceSetHerGrantProcedure:
+			machineAdminServiceSetHerGrantHandler.ServeHTTP(w, r)
 		default:
 			http.NotFound(w, r)
 		}
@@ -442,4 +477,8 @@ func (UnimplementedMachineAdminServiceHandler) ListFolders(context.Context, *v1.
 
 func (UnimplementedMachineAdminServiceHandler) TestAgent(context.Context, *v1.TestAgentRequest) (*v1.TestAgentResponse, error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("hermesh.machine.v1.MachineAdminService.TestAgent is not implemented"))
+}
+
+func (UnimplementedMachineAdminServiceHandler) SetHerGrant(context.Context, *v1.SetHerGrantRequest) (*v1.SetHerGrantResponse, error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("hermesh.machine.v1.MachineAdminService.SetHerGrant is not implemented"))
 }

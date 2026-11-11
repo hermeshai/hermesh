@@ -88,6 +88,7 @@ fn deps(api: &Arc<ScriptedApi>, work: &Path, home: &HerHome, servers: Vec<McpSer
         words: None,
         routines: None,
         connectors: None,
+        mesh: None,
     }
 }
 

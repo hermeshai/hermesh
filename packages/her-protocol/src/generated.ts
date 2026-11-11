@@ -2882,7 +2882,7 @@ export type MailInfo = {
   status: AgentStatus;
 };
 
-export type MailKind = "report" | "message" | "routine" | "to_user";
+export type MailKind = "report" | "message" | "routine" | "to_user" | "news";
 
 /** How much a server's tools are trusted to run unasked. */
 export type McpApproval = "never";
@@ -3169,6 +3169,74 @@ export type McpToolsResult = {
 export type McpToolsSource = "session" | "cache" | "none";
 
 export type McpTransportKind = "stdio" | "http" | "sse";
+
+/** Parameters of `mesh/call`, a request from the kernel to the `mesh/host` connection. */
+export type MeshCallParams = {
+  arguments: unknown;
+  /** The bot whose conversation makes the call. */
+  bot: string;
+  /** The model's tool call. */
+  call_id: string;
+  /** The tool. */
+  name: string;
+};
+
+/** The result of `mesh/call`. */
+export type MeshCallResult = {
+  /** The call failed, and `output` says how. */
+  is_error?: boolean;
+  /** What the model reads as the tool's result. */
+  output: string;
+};
+
+/** Parameters of `mesh/describe`, a request from the kernel to the `mesh/host` connection. */
+export type MeshDescribeParams = {
+  arguments: unknown;
+  /** The bot whose conversation makes the call. */
+  bot: string;
+  /** The tool. */
+  name: string;
+};
+
+/** The result of `mesh/describe`. */
+export type MeshDescribeResult = {
+  /** The words of the rule that covers the call: an allow rule with them lets it run unasked, and approving for the session keeps one. None: every such call is asked about. */
+  rule?: string[] | null;
+  /** What the call would do, in words for the user who approves it. */
+  summary: string;
+};
+
+/** Parameters of `mesh/host`: the `mesh` group as the host gives it. */
+export type MeshHostParams = {
+  /** What the model reads with the group's definitions, a line each. */
+  guidelines?: string[];
+  /** The group's line in the catalog of deferred tools. */
+  summary: string;
+  /** The group's tools; none removes the group. */
+  tools?: MeshTool[];
+};
+
+/** Parameters of `mesh/news`. */
+export type MeshNewsParams = {
+  /** The bot whose conversation takes the news. */
+  bot: string;
+  /** Who the news is from. */
+  from: AgentRef;
+  /** The news' id: one that already waits in the conversation is not added again. */
+  id: string;
+  /** What the model reads. */
+  text: string;
+};
+
+/** One tool of the `mesh` group. */
+export type MeshTool = {
+  description: string;
+  name: string;
+  /** JSON Schema of its arguments. */
+  parameters: unknown;
+  /** It changes something: a call goes through the approval policy. One that only reads runs in every mode. */
+  writes?: boolean;
+};
 
 /** A message of the conversation. The parts are shared: the session history and every request built from it point at the same data, so cloning a message is cheap. */
 export type Message = {
@@ -4833,6 +4901,8 @@ export interface Methods {
   "mcp/probe": [McpProbeParams, McpProbeResult];
   "mcp/probe_cancel": [McpProbeCancelParams, Empty];
   "mcp/tools": [McpServerParams, McpToolsResult];
+  "mesh/host": [MeshHostParams, Empty];
+  "mesh/news": [MeshNewsParams, Empty];
   "models/list": [Record<string, never>, ModelsListResult];
   "models/refresh": [ModelsRefreshParams, ModelsRefreshResult];
   "models/show": [ModelsShowParams, Empty];
@@ -4871,6 +4941,8 @@ export interface Methods {
 /** Requests the server sends, which the client answers: [params, result]. */
 export interface ServerRequests {
   "docx/serialize": [DocxSerializeParams, DocxSerializeResult];
+  "mesh/call": [MeshCallParams, MeshCallResult];
+  "mesh/describe": [MeshDescribeParams, MeshDescribeResult];
 }
 
 /** Notifications: their params. */

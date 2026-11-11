@@ -114,6 +114,9 @@ pub(crate) struct SessionState {
     pub(crate) turn_scan: crate::budget::TurnScan,
     /// Sub-agents' reports and messages, and how cards ended, not yet in the history, oldest first.
     pub(crate) inbox: VecDeque<Delivery>,
+    /// News on its way into the history, by its id, with who waits to hear that it is there
+    /// (`Kernel::news`).
+    pub(crate) news: HashMap<String, Vec<oneshot::Sender<()>>>,
     /// What sub-agents told the user during the running task, which joins the history at its next
     /// boundary (agent-messaging-design §17).
     pub(crate) told: Vec<Told>,
@@ -182,6 +185,7 @@ impl SessionState {
             estimate_ratio: 1.0,
             turn_scan: crate::budget::TurnScan::default(),
             inbox: VecDeque::new(),
+            news: HashMap::new(),
             told: Vec::new(),
             hold: false,
             idle: false,
@@ -526,11 +530,17 @@ impl Session {
             let message = Message::from(mail.message);
             let info = Box::new(mail.info.clone());
             let entry = self.record(match mail.info.kind {
-                MailKind::Report | MailKind::Routine => EntryKind::Mail { mail: info, message: message.clone() },
+                MailKind::Report | MailKind::Routine | MailKind::News => EntryKind::Mail { mail: info, message: message.clone() },
                 MailKind::Message => EntryKind::AgentMessage { mail: info, message: message.clone() },
                 // It never waits in the inbox: see `tell_user`.
                 MailKind::ToUser => EntryKind::AgentToUser { mail: info, message: message.clone() },
             });
+            // Whoever brought the news hears that the conversation has it.
+            if mail.info.kind == MailKind::News {
+                for waiting in self.state.lock().news.remove(&mail.info.id).into_iter().flatten() {
+                    let _ = waiting.send(());
+                }
+            }
             self.emit(EventMsg::MessageCompleted {
                 message_id: entry.id,
                 message,

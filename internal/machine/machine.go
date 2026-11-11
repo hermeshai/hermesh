@@ -61,6 +61,9 @@ type Config struct {
 	// passed to it (the tests' picture).
 	ScreenBin  string
 	ScreenArgs []string
+	// NewHerLink makes Her's link to the mesh (internal/herlink, which is
+	// above this package); nil: Her has no mesh tools.
+	NewHerLink func(HerLinkConfig) HerLink
 }
 
 func DefaultProviders() map[string]provider.Provider {
@@ -142,6 +145,8 @@ type Machine struct {
 	// screen shows this machine's screen to one of the owner's devices (screen.go).
 	screen *screenhost.Host
 	herOn  bool
+	// mesh is Her as one of the owner's agents (her_mesh.go).
+	mesh herMesh
 }
 
 const (
@@ -187,7 +192,8 @@ func Open(cfg Config) (*Machine, error) {
 		infos: map[string]provider.Info{}, defaults: map[string]*identityv1.AgentDefaults{}, tunnels: map[*tunnel]struct{}{}, adminSeen: map[string]time.Time{}, grantSeen: map[string]uint64{},
 		statusKick: make(chan struct{}, 1), revocations: &identityv1.RevocationList{MinGrantVersions: map[string]uint64{}}}
 	n.her = herhost.New(herhost.Config{Bin: cfg.HerBin, ConsoleDir: cfg.HerConsole, Socket: paths.Her(cfg.DataDir), Env: shellenv.Environ,
-		Version: Version, Logger: n.log, ExtensionHost: cfg.HerExtensionHost, Notice: n.herNotice})
+		Version: Version, Logger: n.log, ExtensionHost: cfg.HerExtensionHost, Notice: n.herNotice, Mesh: n.herMeshNow})
+	n.openHerMesh()
 	n.screen = screenhost.NewHost(screenhost.HostConfig{Bin: cfg.ScreenBin, Args: cfg.ScreenArgs, Log: n.log, Servers: n.screenServers})
 	if n.audit, err = OpenAudit(filepath.Join(cfg.DataDir, "audit"), key); err != nil {
 		return nil, err
@@ -247,11 +253,13 @@ func (n *Machine) loadState() error {
 	p, _ := n.st.Get(kPaused)
 	n.paused = string(p) == "1"
 	n.loadGrants()
+	n.loadHerGrant()
 	return nil
 }
 
 func (n *Machine) Close() error {
 	n.screen.Stop()
+	n.stopHerLink()
 	n.her.Stop()
 	n.sessions.w.close()
 	err := n.st.Close()
@@ -525,6 +533,7 @@ func (n *Machine) applyRevocations(r *identityv1.RevocationList) {
 			n.sessions.InterruptByClient(c, "agent access revoked")
 		}
 	}
+	n.checkHerGrant()
 	n.audit.Log(AuditRecord{Kind: "revocations", Detail: fmt.Sprintf("grants=%v machines=%v min=%v", cur.RevokedGrantIds, cur.RevokedMachineIds, cur.MinGrantVersions)})
 }
 

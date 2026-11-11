@@ -203,6 +203,7 @@ async fn harness_config(mode: PermissionMode, interactive: bool, sites: &[(&str,
         words: None,
         routines: None,
         connectors: None,
+        mesh: None,
     };
     let options = StartOptions {
         model: "test/scripted".into(),

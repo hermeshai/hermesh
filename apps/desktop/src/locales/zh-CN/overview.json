@@ -108,6 +108,7 @@
     "allAgents": "所有编码 agent",
     "expiry": "有效期",
     "daysLeft_other": "还剩 {{count}} 天 · {{date}}",
+    "noExpiry": "不会到期",
     "here": "在这台 Mac",
     "here_win": "在这台电脑",
     "seen_other": "今天 {{count}} 个任务 · 最近一次 {{ago}}",

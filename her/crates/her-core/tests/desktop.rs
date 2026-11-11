@@ -98,6 +98,7 @@ async fn harness(mode: PermissionMode) -> Harness {
         words: None,
         routines: None,
         connectors: None,
+        mesh: None,
     };
     let options = StartOptions {
         model: "test/scripted".into(),

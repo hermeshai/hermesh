@@ -41,6 +41,8 @@ type Config struct {
 	// Notice is told of each newest the owner's devices tell of (snapshot's
 	// changed): her reply, a question, or what waits for the owner.
 	Notice func(*machinev1.HerLatest)
+	// Mesh is what serves her's mesh tools now (mesh.go); nil: none.
+	Mesh func() Mesh
 }
 
 // Host keeps one her running while Her is on.
@@ -54,6 +56,7 @@ type Host struct {
 	done  chan struct{}      // closed when the supervisor has stopped her
 	home  string             // her's home, once her was started
 	snap  *snapshot          // while her answers
+	mon   *conn              // the monitor's connection, while her answers
 	err   string             // why her is not running although Her is on
 	conns map[string]*conn   // the connections Open streams and console event streams hold
 }
@@ -251,9 +254,21 @@ func (h *Host) watch(ctx context.Context, mon *conn, p *provider.Proc) error {
 	}
 	json.Unmarshal(res.Result, &list)
 	snap := newSnapshot(mon.version, list.Bots)
+	mon.mu.Lock()
+	mon.serve = h.serveMesh
+	mon.mu.Unlock()
+	if err := h.offerMesh(ctx, mon); err != nil {
+		// A her older than the mesh group: Her works without it.
+		h.log.Info("her takes no mesh group", "err", err)
+	}
 	h.mu.Lock()
-	h.snap, h.err = snap, ""
+	h.snap, h.err, h.mon = snap, "", mon
 	h.mu.Unlock()
+	defer func() {
+		h.mu.Lock()
+		h.mon = nil
+		h.mu.Unlock()
+	}()
 	h.log.Info("her running", "version", mon.version, "socket", h.cfg.Socket)
 	models := make(chan struct{}, 1)
 	models <- struct{}{}

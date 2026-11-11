@@ -581,6 +581,14 @@ public nonisolated struct Hermesh_Identity_V1_Grant: @unchecked Sendable {
     set {_uniqueStorage()._clientImage = newValue}
   }
 
+  /// Set on Her's own grant (docs/her-mesh.md §3.2): the machine she runs
+  /// on, whose hermeshd holds the client key. Turning Her off there or
+  /// removing that machine revokes it. "" for every other agent.
+  public var herMachineID: String {
+    get {_storage._herMachineID}
+    set {_uniqueStorage()._herMachineID = newValue}
+  }
+
   public var unknownFields = SwiftProtobuf.UnknownStorage()
 
   public init() {}
@@ -1041,7 +1049,9 @@ public nonisolated struct Hermesh_Identity_V1_InboxRegistration: Sendable {
   public var inboxPublicKey: Data = Data()
 
   /// How the inbox takes its messages, for senders to know what to expect:
-  /// "session", "hook", "wait", "webhook" or "poll". Informational.
+  /// "session", "hook", "wait", "webhook" or "poll". Informational, but for
+  /// "her": Her's inbox takes the news of her own sessions and no message
+  /// from an agent (docs/her-mesh.md §6.6), so senders don't write to it.
   public var takesMessages: String = String()
 
   public var issuedAt: SwiftProtobuf.Google_Protobuf_Timestamp {
@@ -1547,7 +1557,7 @@ nonisolated extension Hermesh_Identity_V1_MachineCert: SwiftProtobuf.Message, Sw
 
 nonisolated extension Hermesh_Identity_V1_Grant: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
   public static let protoMessageName: String = _protobuf_package + ".Grant"
-  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{3}owner_id\0\u{3}grant_id\0\u{1}version\0\u{3}client_id\0\u{3}client_public_key\0\u{3}client_label\0\u{3}machine_ids\0\u{3}project_ids\0\u{1}agents\0\u{4}\u{2}task_visibility\0\u{3}max_concurrent_sessions\0\u{3}not_before\0\u{3}expires_at\0\u{1}custodian\0\u{3}client_icon\0\u{3}client_image\0\u{b}preset\0\u{c}\u{a}\u{1}")
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{3}owner_id\0\u{3}grant_id\0\u{1}version\0\u{3}client_id\0\u{3}client_public_key\0\u{3}client_label\0\u{3}machine_ids\0\u{3}project_ids\0\u{1}agents\0\u{4}\u{2}task_visibility\0\u{3}max_concurrent_sessions\0\u{3}not_before\0\u{3}expires_at\0\u{1}custodian\0\u{3}client_icon\0\u{3}client_image\0\u{3}her_machine_id\0\u{b}preset\0\u{c}\u{a}\u{1}")
 
   fileprivate class _StorageClass {
     var _ownerID: String = String()
@@ -1566,6 +1576,7 @@ nonisolated extension Hermesh_Identity_V1_Grant: SwiftProtobuf.Message, SwiftPro
     var _custodian: String = String()
     var _clientIcon: String = String()
     var _clientImage: Data = Data()
+    var _herMachineID: String = String()
 
       // This property is used as the initial default value for new instances of the type.
       // The type itself is protecting the reference to its storage via CoW semantics.
@@ -1592,6 +1603,7 @@ nonisolated extension Hermesh_Identity_V1_Grant: SwiftProtobuf.Message, SwiftPro
       _custodian = source._custodian
       _clientIcon = source._clientIcon
       _clientImage = source._clientImage
+      _herMachineID = source._herMachineID
     }
   }
 
@@ -1626,6 +1638,7 @@ nonisolated extension Hermesh_Identity_V1_Grant: SwiftProtobuf.Message, SwiftPro
         case 15: try { try decoder.decodeSingularStringField(value: &_storage._custodian) }()
         case 16: try { try decoder.decodeSingularStringField(value: &_storage._clientIcon) }()
         case 17: try { try decoder.decodeSingularBytesField(value: &_storage._clientImage) }()
+        case 18: try { try decoder.decodeSingularStringField(value: &_storage._herMachineID) }()
         default: break
         }
       }
@@ -1686,6 +1699,9 @@ nonisolated extension Hermesh_Identity_V1_Grant: SwiftProtobuf.Message, SwiftPro
       if !_storage._clientImage.isEmpty {
         try visitor.visitSingularBytesField(value: _storage._clientImage, fieldNumber: 17)
       }
+      if !_storage._herMachineID.isEmpty {
+        try visitor.visitSingularStringField(value: _storage._herMachineID, fieldNumber: 18)
+      }
     }
     try unknownFields.traverse(visitor: &visitor)
   }
@@ -1711,6 +1727,7 @@ nonisolated extension Hermesh_Identity_V1_Grant: SwiftProtobuf.Message, SwiftPro
         if _storage._custodian != rhs_storage._custodian {return false}
         if _storage._clientIcon != rhs_storage._clientIcon {return false}
         if _storage._clientImage != rhs_storage._clientImage {return false}
+        if _storage._herMachineID != rhs_storage._herMachineID {return false}
         return true
       }
       if !storagesAreEqual {return false}

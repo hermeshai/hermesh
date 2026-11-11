@@ -13,7 +13,8 @@ import { herChoices, newServer, type Choice } from "./environments";
 /**
  * Where Her runs (docs/her-server.md §9.2): this Mac, or another of the owner's Macs and Linux machines;
  * Windows machines show, not to be chosen yet; a new server is added as Add Machine does, and offered
- * first once it is paired (fresh). Touch ID turns Her on there (SetHer, signed by the root key). The first
+ * first once it is paired (fresh). Touch ID turns Her on there (SetHer, signed by the root key), which also
+ * lets her use the owner's computers (docs/her-mesh.md §3.3): the line under the choices says so. The first
  * run of the Her entry, and Add Environment.
  */
 export function Setup({ onDone, onNewServer, fresh }: { onDone: (machineId: string) => void; onNewServer: () => void; fresh?: string }) {
@@ -45,6 +46,7 @@ export function Setup({ onDone, onNewServer, fresh }: { onDone: (machineId: stri
           </button>
         </div>
       </div>
+      <p className="her-setup-note">{t("grant.desc")}</p>
       {act.busy && chosen && <SignerWaiting detail={t("setup.signer", { name: chosen.local ? t("setup.thisMac") : chosen.machineName })} />}
       <ErrorLine text={act.error} />
     </div>

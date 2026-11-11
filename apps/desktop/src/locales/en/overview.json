@@ -118,6 +118,7 @@
     "expiry": "Expires",
     "daysLeft_one": "{{count}} day left · {{date}}",
     "daysLeft_other": "{{count}} days left · {{date}}",
+    "noExpiry": "Doesn’t expire",
     "here": "On this Mac",
     "here_win": "On this PC",
     "seen_one": "{{count}} session today · last active {{ago}}",
