@@ -76,6 +76,8 @@ test("adding a project: a folder on this Mac becomes a project", async () => {
   const { app, page } = await launch();
   await command(app, page, "addProject");
   const sheet = page.getByRole("dialog", { name: "添加项目" });
+  // The window behind goes dim and soft, as behind every dialog.
+  await expect(page.locator(".sheet-scrim")).toHaveCSS("backdrop-filter", "blur(12px) saturate(1.2)");
   await expect(sheet.getByRole("group", { name: "机器" }).getByRole("button", { name: "owner-mac" })).toHaveAttribute("aria-pressed", "true");
   await expect(sheet.getByRole("button", { name: "选择…" })).toBeVisible(); // this Mac: the folder can be picked
   await sheet.getByLabel("目录").fill(dir); // the native folder dialog can't be driven
