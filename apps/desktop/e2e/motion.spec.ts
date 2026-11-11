@@ -93,6 +93,10 @@ test("while nothing happens, the page changes only its clocks, all in the same f
   // The running session's page: its clocks only (the bar's, the card's, the list's).
   await page.getByRole("list", { name: "会话" }).getByText("跑很久", { exact: true }).click();
   await expect(page.getByRole("region", { name: "这一轮" })).toContainText("正在工作");
+  // The command's colours come from a worker, a moment after its text
+  // (Code.tsx): they are in, or the worker has given up (2.5 s), before the
+  // page is watched.
+  await page.locator(".sm2.cmd .hl").first().waitFor({ timeout: 4000 }).catch(() => {});
   await page.waitForTimeout(1000);
   for (const c of (await changes(page, 2200)).flat()) expect(c).toMatch(/^(el|insp-time|stime) characterData$/);
   await app.close();
