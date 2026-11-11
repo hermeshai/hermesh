@@ -180,8 +180,13 @@ final class AppModel {
     /// The root page scrolled far enough that its title is small.
     var rootTitleSmall = false
     var drawerOpen = false
-    /// The menu stands beside the page (regular width), always in view: no button opens it.
+    /// The menu stands beside the page (regular width, wider than tall).
     var menuBeside = false
+    /// The owner hid the menu that stands beside the page, and how wide they dragged it; kept on this iPhone.
+    var menuHidden = false { didSet { save(menuHidden, "menuHidden") } }
+    var menuWidth: Double = 322 { didSet { save(menuWidth, "menuWidth") } }
+    /// The menu in view beside the page: no menu button then.
+    var menuInView: Bool { menuBeside && !menuHidden }
     var sheet: SheetKind?
     /// How the session list is laid out, whether it shows archived sessions,
     /// and its collapsed sections ("grouping:key"); kept on this iPhone.
@@ -203,6 +208,8 @@ final class AppModel {
         listView = Self.saved("listView") ?? SessionListLayout()
         showArchived = Self.saved("showArchived") ?? false
         collapsed = Self.saved("collapsed") ?? []
+        menuHidden = Self.saved("menuHidden") ?? false
+        menuWidth = Self.saved("menuWidth") ?? 322
     }
 
     private func save(_ v: some Encodable, _ key: String) {
