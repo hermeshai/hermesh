@@ -25,12 +25,16 @@ import (
 const extensionOrigin = "chrome-extension://igeolfcjdhlfopmimahmhleloehmfkdc/"
 
 // With ExtensionHost, Start registers her with the browsers, for her's home
-// and this socket, before her starts; hermeshd stopping keeps that, and Her
-// off takes it back. Without, the browsers are never touched.
+// and this socket, before her starts, and has her write the extension it
+// carries where the guide says, as no app ships one beside this her;
+// hermeshd stopping keeps that, and Her off takes it back. Without, the
+// browsers are never touched.
 func TestExtensionHost(t *testing.T) {
 	t.Setenv("HER_HOME", "/hers")
+	user := t.TempDir()
+	t.Setenv("HOME", user)
 	sock := shortSocket(t)
-	install, serve, uninstall := "/hers browser extension install --socket "+sock, "/hers serve --listen unix://"+sock, "/hers browser extension uninstall"
+	install, serve, uninstall := "/hers browser extension install --socket "+sock+" --folder "+ExtensionFolder(user), "/hers serve --listen unix://"+sock, "/hers browser extension uninstall"
 	bin, calls := hertest.Fake(t)
 	runs := func(want ...string) func() bool {
 		return func() bool { return slices.Equal(hertest.Calls(calls), want) }
@@ -92,6 +96,13 @@ func TestExtensionHostReachesHer(t *testing.T) {
 	json.Unmarshal(b, &manifest)
 	if manifest.Path != filepath.Join(home, "browser", "native-host") || !slices.Contains(manifest.AllowedOrigins, extensionOrigin) {
 		t.Fatalf("manifest %s", b)
+	}
+	// The extension her carries is where the console's guide says to load it from.
+	var loaded struct {
+		Key string `json:"key"`
+	}
+	if b, err := os.ReadFile(filepath.Join(ExtensionFolder(user), "manifest.json")); err != nil || json.Unmarshal(b, &loaded) != nil || loaded.Key == "" {
+		t.Fatalf("the extension in %s: %v %s", ExtensionFolder(user), err, b)
 	}
 
 	// The console's connection, as its Browser section holds it: her's

@@ -110,7 +110,9 @@ func TestHerExtensionHost(t *testing.T) {
 	ctx := context.Background()
 	install, uninstall := "/hers browser extension install --socket "+paths.Her(dir), "/hers browser extension uninstall"
 	has := func(line string) func() bool {
-		return func() bool { return slices.Contains(hertest.Calls(calls), line) }
+		return func() bool {
+			return slices.ContainsFunc(hertest.Calls(calls), func(call string) bool { return call == line || strings.HasPrefix(call, line+" ") })
+		}
 	}
 	if _, err := n.execAdmin(ctx, setHer(true)); err != nil {
 		t.Fatal(err)

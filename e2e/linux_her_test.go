@@ -117,8 +117,21 @@ func TestLinuxHer(t *testing.T) {
 	}
 	status("her          0.2.0, off")
 
-	// 2. Her on: she answers, and her console is A's.
+	// 2. Her on: she answers, and her console is A's. A Chrome the owner
+	// has used on this machine starts her as the Hermesh extension's host,
+	// and the extension her carries is where the console's guide says.
+	if _, err := sh("mkdir -p /root/.config/google-chrome"); err != nil {
+		t.Fatal(err)
+	}
 	turnHerOn(t, c, id)
+	eventually(t, time.Minute, "her registered with Chrome, and the extension in its folder", func() bool {
+		host, _ := sh("cat /root/.config/google-chrome/NativeMessagingHosts/com.hermesh.browser.json")
+		extension, _ := sh("cat /root/.local/share/hermesh/chrome-extension/manifest.json")
+		return strings.Contains(host, "/root/.her/browser/native-host") && strings.Contains(extension, `"name": "Hermesh"`)
+	})
+	if s, err := sh("cat /root/.her/browser/native-host"); err != nil || !strings.Contains(s, "/root/.local/bin/her' browser native-host --socket ") {
+		t.Fatalf("the host Chrome starts: %v\n%s", err, s)
+	}
 	bot := defaultBot(t, c, id)
 	talk(t, c, id, bot.ID, "hello from her-1")
 	console := func(want string) {
@@ -172,7 +185,7 @@ func TestLinuxHer(t *testing.T) {
 		!strings.Contains(s, "Her's assistants, conversations and settings, in /root/.her") || !strings.Contains(s, "✓ Hermesh is uninstalled for root.") {
 		t.Fatalf("uninstall: %v\n%s", err, s)
 	}
-	if left, _ := sh("pgrep -l her; ls -d /root/.local/bin/her /root/.local/bin/her-console 2>/dev/null"); left != "" {
+	if left, _ := sh("pgrep -l her; ls -d /root/.local/bin/her /root/.local/bin/her-console /root/.config/google-chrome/NativeMessagingHosts/* /root/.local/share/hermesh/chrome-extension 2>/dev/null"); left != "" {
 		t.Errorf("left after uninstalling:\n%s", left)
 	}
 	if _, err := sh("test -f /root/.her/models.toml"); err != nil {

@@ -405,6 +405,17 @@ impl BrowserPool {
         }))
     }
 
+    /// The browser the built-in browser starts where `browser.executable` names none: one
+    /// installed on this machine, else her's own (D-194).
+    pub fn program(&self) -> Option<PathBuf> {
+        crate::launch::find_executable().or_else(|| crate::launch::installed_executable(&self.root))
+    }
+
+    /// Whether the built-in browser shows a window where `browser.headless` is auto.
+    pub fn shows_window(&self) -> bool {
+        !self.auto_headless
+    }
+
     async fn launch(&self, config: &BrowserConfig) -> Result<Arc<Browser>, BrowserError> {
         if config.profile.is_empty() || config.profile.contains(['/', '\\']) || config.profile.starts_with('.') {
             return Err(BrowserError::Launch(format!("invalid browser.profile \"{}\"", config.profile)));

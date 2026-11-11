@@ -394,6 +394,92 @@ async fn a_host_registered_for_a_socket_of_its_own_reaches_that_service() {
     let _ = tokio::time::timeout(Duration::from_secs(20), service.wait()).await;
 }
 
+/// Where no app brings the extension, as on a Linux machine: `install --folder` writes the one
+/// her carries, a real Chrome loads it from that folder with the ID the host allows, and it
+/// reaches the service through the host registered in the same step. The status names the
+/// system, which the guide to adding the extension goes by.
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn chrome_loads_the_extension_her_wrote_and_it_connects() {
+    let Some(chrome_exe) = her_browser::launch::find_executable() else {
+        eprintln!("no Chromium-family browser installed; skipping");
+        return;
+    };
+    let env = TestEnv::new("manual", "").await;
+    let socket = env.home.path().join("run").join("her.sock");
+    let profile = env.work().join("chrome-profile");
+    let folder = env.work().join("share").join("hermesh").join("chrome-extension");
+    let (mut service, client, _demux) = serve(&env, &socket, None).await;
+    let installed = env
+        .her(&["browser", "extension", "install", "--user-data-dir", profile.to_str().unwrap(), "--folder", folder.to_str().unwrap()])
+        .output()
+        .await
+        .unwrap();
+    assert!(installed.status.success(), "{}", String::from_utf8_lossy(&installed.stderr));
+    assert!(String::from_utf8_lossy(&installed.stdout).contains(&format!("extension: {}", folder.display())));
+    let manifest: Value = serde_json::from_str(&std::fs::read_to_string(folder.join("manifest.json")).unwrap()).unwrap();
+
+    let (_chrome, _chrome_process) = chrome_with_folder(&env, &profile, &chrome_exe, &folder).await;
+    let status = status_until(&client, "the extension", |s| s.get("extension").is_some()).await;
+    assert_eq!(status["extension"]["extension_version"], manifest["version"], "{status}");
+    assert!(status["extension"].get("problem").is_none(), "{status}");
+    assert_eq!(status["os"], std::env::consts::OS, "{status}");
+
+    client.request("server/shutdown", json!({})).await.unwrap();
+    let _ = tokio::time::timeout(Duration::from_secs(20), service.wait()).await;
+}
+
+/// her as Hermesh runs it on a machine, with no desktop app: the built-in browser stays off
+/// until the console's switch turns it on (`browser.enabled = true`, through config/write), and
+/// then a session opens a page in a Chrome of her own, here without a window, as on a server
+/// without a display. browser/status names the program, for the console to show. The switch
+/// off writes no `false`: the setting goes.
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn the_consoles_switch_turns_the_built_in_browser_on_and_a_session_uses_it() {
+    let Some(chrome_exe) = her_browser::launch::find_executable() else {
+        eprintln!("no Chromium-family browser installed; skipping");
+        return;
+    };
+    let env = TestEnv::new("bypass-permissions", "[browser]\nheadless = true\n").await;
+    let socket = env.home.path().join("run").join("her.sock");
+    let (mut service, client, demux) = serve(&env, &socket, None).await;
+    let status = client.request("browser/status", json!({})).await.unwrap();
+    assert_eq!(status["program"], chrome_exe.to_str().unwrap(), "{status}");
+    let page = serve_page(
+        "<title>Own</title><h1>In her own browser</h1>\
+         <button onclick=\"document.body.insertAdjacentHTML('beforeend','<p>clicked it</p>')\">Go</button>",
+    )
+    .await;
+    let cwd = env.workspace("builtin");
+    let prompt = format!("[[mock:browser:{page}]] open it");
+
+    // Off: no browser to open it in.
+    let created = client.request("session/new", json!({"cwd": cwd})).await.unwrap();
+    let session = created["session_id"].as_str().unwrap().to_string();
+    let mut events = demux.subscribe(&session);
+    let off = native_prompt(&client, &mut events, &session, &prompt, true).await;
+    assert!(!off.text.contains("clicked it"), "{}", off.text);
+
+    // The console's switch, on.
+    let edit = |value: Value| json!({"layer": "user", "edits": [{"key_path": "browser.enabled", "value": value}]});
+    client.request("config/write", edit(json!(true))).await.unwrap();
+    let created = client.request("session/new", json!({"cwd": cwd})).await.unwrap();
+    let session = created["session_id"].as_str().unwrap().to_string();
+    let mut events = demux.subscribe(&session);
+    let on = native_prompt(&client, &mut events, &session, &prompt, true).await;
+    assert_eq!(on.end["type"], "task_completed", "{:?}", on.events);
+    assert!(on.text.contains("clicked it"), "{}", on.text);
+    let opened = tool_results(&on);
+    assert!(opened.contains("In her own browser") && !opened.contains("the user's own browser"), "{opened}");
+
+    // Off again: the setting goes, and the file keeps the rest.
+    client.request("config/write", edit(Value::Null)).await.unwrap();
+    let file = std::fs::read_to_string(env.home.path().join("config.toml")).unwrap();
+    assert!(!file.contains("enabled") && file.contains("headless = true"), "{file}");
+
+    client.request("server/shutdown", json!({})).await.unwrap();
+    let _ = tokio::time::timeout(Duration::from_secs(20), service.wait()).await;
+}
+
 // ---- The tabs' lifetime and the connection's (browser-design §8.4.7) ----
 
 /// A service on `socket`, and a client that follows the browsers' status.

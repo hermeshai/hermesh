@@ -118,5 +118,14 @@
   },
   "titleStuck": {
     "message": "Hermesh：连不上"
+  },
+  "statusNoAnswer": {
+    "message": "扩展没有响应"
+  },
+  "hintNoAnswer": {
+    "message": "重新加载扩展就能恢复，标签页不受影响。"
+  },
+  "reload": {
+    "message": "重新加载扩展"
   }
 }

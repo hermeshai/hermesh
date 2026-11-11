@@ -4,16 +4,19 @@ import { PageTop } from "../components";
 import { errorText } from "../format";
 import { useConfig, useHer } from "../her";
 import { Icon } from "../icons";
+import { BuiltinBrowser } from "../yours/BuiltinBrowser";
+import { useBrowser } from "../yours/useBrowser";
 import { YourBrowser } from "../yours/YourBrowser";
 import { siteKey, siteLevels, siteOrigin, sitesOf, type SiteLevel } from "./settings";
 
-// Browser: the owner's own Chrome (YourBrowser), then the sites Her may open without asking
+// Browser: the owner's own Chrome (YourBrowser), Her's own browser (BuiltinBrowser), then the sites Her may open without asking
 // (`[browser] sites` of her's user file), each with its level, which can be changed or removed, and a site added by hand.
 // "All sites" comes first; Her's "Always allow" adds sites here too.
 
 export function BrowserPage() {
   const { t } = useTranslation();
   const her = useHer();
+  const browser = useBrowser(her.rpc);
   const { config, failed, read } = useConfig();
   const sites = config === null ? null : sitesOf(config);
   const [site, setSite] = useState("");
@@ -46,7 +49,8 @@ export function BrowserPage() {
       <PageTop title={t("nav.browser")} />
       <div className="set-body">
         <div className="form browser-set">
-          <YourBrowser rpc={her.rpc} />
+          <YourBrowser rpc={her.rpc} browser={browser} />
+          <BuiltinBrowser rpc={her.rpc} browser={browser} />
           <section>
             <h3 className="fhead">{t("browser.sites")}</h3>
             <div className="fgroup">

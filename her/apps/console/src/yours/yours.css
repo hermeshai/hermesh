@@ -23,3 +23,6 @@
 .yours-waiting,.yours-done{display:flex;align-items:center;gap:8px}
 .yours-count{margin-left:auto;color:var(--l3);font-variant-numeric:tabular-nums}
 .yours-guide .yours-done{color:var(--green)}
+
+/* The built-in browser's install lines, on a Linux computer without Chrome. */
+.builtin-install pre{margin:6px 0 0;font-family:var(--mono);font-size:12px;line-height:1.55;background:var(--code);border-radius:var(--r-sm,6px);padding:8px 10px;overflow-x:auto;white-space:pre;color:var(--l1)}

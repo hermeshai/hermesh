@@ -1,5 +1,9 @@
 {
   "title": "Your Chrome",
+  "computer": {
+    "macos": "Mac",
+    "linux": "Linux computer"
+  },
   "connectTitle": "Connect Your Chrome",
   "badge": {
     "on": "In use",
@@ -8,15 +12,16 @@
     "lost": "Not connected",
     "outdated": "Needs update"
   },
-  "off": "Let Her open sites that need your sign-ins in your own Chrome, on the Mac Her runs on.",
+  "off": "Let Her open sites that need your sign-ins in your own Chrome, on the {{computer}} Her runs on.",
   "on": "Sites that need your accounts open in your Chrome.",
   "ready": "The extension is connected, but Her doesn't use it yet.",
-  "lost": "The extension is not connected. Check that Chrome is open on the Mac Her runs on, and that Hermesh is on in its extensions page.",
+  "lost": "The extension is not connected. Check that Chrome is open on the {{computer}} Her runs on, and that Hermesh is on in its extensions page.",
+  "noChrome": "There is no Chrome on the {{computer}} Her runs on, so yours can't connect from there.",
   "refused": "Hermesh was just updated; the extension is moving to the new version and will connect in a few seconds.",
   "refusedStuck": "The extension is still running the old program. Click its reload button on Chrome's extensions page.",
   "outdated": {
     "extension": "The extension in {{name}} is too old. It updates by itself; to update it now, choose “Update extension” in its menu.",
-    "her": "The extension is newer than this Hermesh; update Hermesh on the Mac Her runs on."
+    "her": "The extension is newer than this Hermesh; update Hermesh on the {{computer}} Her runs on."
   },
   "connect": "Connect",
   "use": "Use",
@@ -30,13 +35,16 @@
       "install": "Add extension",
       "wait": "Connect"
     },
-    "store": "Add the Hermesh extension to Chrome on the Mac Her runs on. You only do this once.",
+    "store": "Add the Hermesh extension to Chrome on the {{computer}} Her runs on. You only do this once.",
     "addToChrome": "Add to Chrome",
-    "install": "Add the Hermesh extension to Chrome on the Mac Her runs on. You only do this once:",
+    "install": "Add the Hermesh extension to Chrome on the {{computer}} Her runs on. You only do this once:",
     "howto": {
       "open": "In Chrome, open the extensions page:",
       "developer": "Turn on “Developer mode” at the top right of the page, and leave it on: Chrome may turn the extension off without it.",
-      "load": "Click “Load unpacked”, press ⇧⌘G in the window that opens, and paste the folder Hermesh keeps the extension in:"
+      "load": {
+        "macos": "Click “Load unpacked”, press ⇧⌘G in the window that opens, and paste the folder Hermesh keeps the extension in:",
+        "linux": "Click “Load unpacked”, press Ctrl+L in the window that opens, and paste the folder Hermesh keeps the extension in:"
+      }
     },
     "already": "Added it before? Find Hermesh on the extensions page and click its reload button.",
     "added": "I've Added It",
@@ -47,5 +55,14 @@
     "done": "Connected to {{name}}",
     "doneHint": "Sites that need your accounts now open in your Chrome, in every conversation from its next step. Turn it off here at any time; closing the “debugging” bar at the top of Chrome also takes a tab back.",
     "finish": "Done"
+  },
+  "builtin": {
+    "title": "Built-in Browser",
+    "none": "No Chrome Found",
+    "desc": "Her opens pages in her own {{program}} on the {{computer}} she runs on, without your sign-ins, {{how}}.",
+    "window": "in a window there",
+    "noWindow": "with no window",
+    "missing": "There is no Chrome on the {{computer}} Her runs on. Install Google Chrome there, and Her finds it.",
+    "linuxInstall": "On Ubuntu or Debian (x86-64), in a terminal there:"
   }
 }

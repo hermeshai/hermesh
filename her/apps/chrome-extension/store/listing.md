@@ -32,7 +32,7 @@ Design basis: `docs/her-server.md`. This is what to fill in when submitting, and
 
 **Long description** (en)
 
-> Hermesh runs AI agents on your own machines, and Her, its built-in assistant, on the ones you choose. This extension lets Her use your own Chrome on the Mac Her runs on, so it works with the sites you are already signed in to.
+> Hermesh runs AI agents on your own machines, and Her, its built-in assistant, on the ones you choose. This extension lets Her use your own Chrome on the computer Her runs on, so it works with the sites you are already signed in to.
 >
 > - It needs Hermesh on the same Mac, with Her turned on for that Mac; on its own it does nothing.
 > - Her's tabs open in a separate window, in a tab group named after the conversation. It only ever controls the tabs it opened, the tabs those open, and a tab you hand to it from the extension's menu. Your other tabs are never attached or read.
@@ -56,7 +56,7 @@ Design basis: `docs/her-server.md`. This is what to fill in when submitting, and
 
 ## 3. Single purpose
 
-> Let Her, the assistant in Hermesh, open, read and operate browser tabs on the user's behalf, in the user's own Chrome on the Mac Her runs on.
+> Let Her, the assistant in Hermesh, open, read and operate browser tabs on the user's behalf, in the user's own Chrome on the computer Her runs on.
 
 ## 4. Permission justifications
 

@@ -427,11 +427,68 @@ fn launcher_script(exe: &Path, home: &Path, socket: Option<&Path>) -> String {
     )
 }
 
+macro_rules! extension_file {
+    ($path:literal) => {
+        ($path, include_bytes!(concat!(env!("CARGO_MANIFEST_DIR"), "/../../apps/chrome-extension/", $path)) as &[u8])
+    };
+}
+
+/// The Hermesh extension as Chrome loads it (apps/chrome-extension, without its tests and
+/// types): her carries the one that speaks its bridge versions, for where no app brings it.
+/// The manifest keeps its `key`, so loaded from a folder it has [`EXTENSION_ID`].
+const EXTENSION_FILES: &[(&str, &[u8])] = &[
+    extension_file!("manifest.json"),
+    extension_file!("src/background.js"),
+    extension_file!("src/browser.js"),
+    extension_file!("src/methods.js"),
+    extension_file!("src/panel.js"),
+    extension_file!("src/popup.css"),
+    extension_file!("src/popup.html"),
+    extension_file!("src/popup.js"),
+    extension_file!("src/relay.js"),
+    extension_file!("icons/16.png"),
+    extension_file!("icons/32.png"),
+    extension_file!("icons/48.png"),
+    extension_file!("icons/128.png"),
+    extension_file!("_locales/en/messages.json"),
+    extension_file!("_locales/zh_CN/messages.json"),
+];
+
+/// Makes `folder` the extension, unless it is that already: written beside it first, so
+/// Chrome never finds half of it.
+fn place_extension(folder: &Path) -> anyhow::Result<()> {
+    if EXTENSION_FILES.iter().all(|(name, data)| std::fs::read(folder.join(name)).is_ok_and(|have| have == *data)) {
+        return Ok(());
+    }
+    let mut draft = folder.as_os_str().to_owned();
+    draft.push(".new");
+    let draft = PathBuf::from(draft);
+    if draft.exists() {
+        std::fs::remove_dir_all(&draft)?;
+    }
+    for (name, data) in EXTENSION_FILES {
+        let path = draft.join(name);
+        std::fs::create_dir_all(path.parent().unwrap_or(&draft))?;
+        std::fs::write(&path, data)?;
+    }
+    if folder.exists() {
+        std::fs::remove_dir_all(folder)?;
+    }
+    std::fs::rename(&draft, folder)?;
+    Ok(())
+}
+
 /// `her browser extension install`: the launcher script, and a manifest for every
-/// Chromium-family browser on this machine (or for one user data directory).
-pub fn install(extension_ids: &[String], user_data_dir: Option<PathBuf>, socket: Option<PathBuf>) -> anyhow::Result<u8> {
+/// Chromium-family browser on this machine (or for one user data directory); with `folder`,
+/// the extension itself there, to load in Chrome.
+pub fn install(extension_ids: &[String], user_data_dir: Option<PathBuf>, socket: Option<PathBuf>, folder: Option<PathBuf>) -> anyhow::Result<u8> {
     use std::os::unix::fs::PermissionsExt as _;
     let home = setup::home()?;
+    // First: it is there to load even where no browser is installed yet.
+    if let Some(folder) = &folder {
+        place_extension(folder).with_context(|| format!("cannot write the extension to {}", folder.display()))?;
+        println!("extension: {}", folder.display());
+    }
     let exe = std::env::current_exe().context("cannot find the her program")?;
     let exe = std::fs::canonicalize(&exe).unwrap_or(exe);
     // Chrome starts the host in a folder of its own.
@@ -560,6 +617,52 @@ fn launcher_program(launcher: &Path) -> Option<PathBuf> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn her_carries_every_file_chrome_loads() {
+        fn walk(dir: &Path, root: &Path, out: &mut Vec<String>) {
+            for entry in std::fs::read_dir(dir).unwrap() {
+                let path = entry.unwrap().path();
+                if path.is_dir() {
+                    walk(&path, root, out);
+                } else {
+                    out.push(path.strip_prefix(root).unwrap().to_string_lossy().into_owned());
+                }
+            }
+        }
+        let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../apps/chrome-extension");
+        let mut loads = vec!["manifest.json".to_string()];
+        for part in ["src", "icons", "_locales"] {
+            walk(&root.join(part), &root, &mut loads);
+        }
+        loads.retain(|f| !f.ends_with(".test.js") && !f.ends_with(".d.ts") && !f.ends_with(".DS_Store"));
+        loads.sort();
+        let mut carried: Vec<&str> = EXTENSION_FILES.iter().map(|(name, _)| *name).collect();
+        carried.sort_unstable();
+        assert_eq!(carried, loads, "list every file of apps/chrome-extension that Chrome loads in EXTENSION_FILES");
+    }
+
+    #[test]
+    fn the_extension_is_written_once_and_replaced_whole() {
+        let dir = tempfile::tempdir().unwrap();
+        let folder = dir.path().join("share").join("chrome-extension");
+        place_extension(&folder).unwrap();
+        for (name, data) in EXTENSION_FILES {
+            assert_eq!(std::fs::read(folder.join(name)).unwrap(), *data, "{name}");
+        }
+
+        // The same: left alone, with what Chrome wrote beside the files.
+        std::fs::write(folder.join("mark"), "kept").unwrap();
+        place_extension(&folder).unwrap();
+        assert!(folder.join("mark").exists(), "a folder that was the same was written again");
+
+        // An older one: replaced whole, and nothing is left beside it.
+        std::fs::write(folder.join("src/background.js"), "old").unwrap();
+        place_extension(&folder).unwrap();
+        assert_eq!(std::fs::read(folder.join("src/background.js")).unwrap(), EXTENSION_FILES[1].1);
+        assert!(!folder.join("mark").exists(), "the old folder's files are left");
+        assert!(!dir.path().join("share").join("chrome-extension.new").exists(), "the draft is left");
+    }
 
     #[test]
     fn large_messages_go_in_pieces_under_chromes_limit() {

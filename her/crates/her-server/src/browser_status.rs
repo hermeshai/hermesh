@@ -71,6 +71,9 @@ impl Server {
             refused: self.0.host_refused.lock().clone(),
             revoked: pool.revoked(),
             waiting: pool.waiting(),
+            os: std::env::consts::OS.to_string(),
+            program: pool.program(),
+            window: pool.shows_window(),
         }
     }
 

@@ -196,6 +196,10 @@ func uninstall(ctx context.Context, w io.Writer, ask func(string) (string, error
 	if err := os.RemoveAll(cliHome); err != nil {
 		return err
 	}
+	// The browsers here would go on starting a her that is gone.
+	if her := filepath.Join(filepath.Dir(bin), "her"); herExtensionHost() && exists(her) {
+		exec.CommandContext(ctx, her, "browser", "extension", "uninstall").Run()
+	}
 	for _, p := range programs {
 		if err := os.RemoveAll(p); err != nil {
 			return err

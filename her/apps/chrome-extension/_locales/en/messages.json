@@ -118,5 +118,14 @@
   },
   "titleStuck": {
     "message": "Hermesh: can't connect"
+  },
+  "statusNoAnswer": {
+    "message": "The extension is not responding"
+  },
+  "hintNoAnswer": {
+    "message": "Reloading the extension brings it back. Your tabs stay as they are."
+  },
+  "reload": {
+    "message": "Reload extension"
   }
 }

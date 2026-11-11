@@ -1,5 +1,5 @@
 import { expect, test, type Page } from "@playwright/test";
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { startStandIn, type StandIn } from "../scripts/stand-in.ts";
@@ -135,6 +135,40 @@ test("an environment set up from its console", async ({ page }) => {
     await expect.poll(() => read("config.toml")).toContain('"https://example.com" = "act"');
   });
 
+  await test.step("the guide to the owner's own Chrome goes by the system her runs on", async () => {
+    // her runs on this computer: its folder for the extension, and its file window's shortcut.
+    const linux = process.platform === "linux";
+    await expect(page.locator(".yours")).toContainText(`on the ${linux ? "Linux computer" : "Mac"} Her runs on`);
+    await page.getByRole("button", { name: "Connect", exact: true }).click();
+    const guide = page.getByRole("dialog", { name: "Connect Your Chrome" });
+    await expect(guide).toContainText(`Add the Hermesh extension to Chrome on the ${linux ? "Linux computer" : "Mac"} Her runs on.`);
+    await expect(guide).toContainText(linux ? "press Ctrl+L" : "press ⇧⌘G");
+    await expect(guide.locator("code").last()).toHaveText(linux ? "~/.local/share/hermesh/chrome-extension" : "~/Library/Application Support/Hermesh/Chrome Extension");
+    await guide.getByRole("button", { name: "Close" }).click();
+    await expect(guide).toBeHidden();
+  });
+
+  await test.step("the built-in browser: the Chrome her found, and a switch that turns it on and back to unset", async () => {
+    const section = page.locator("section.builtin");
+    const row = section.locator(".frow");
+    const chrome = "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome";
+    if (process.platform === "darwin" && existsSync(chrome)) {
+      await expect(row.locator(".fn")).toHaveText("Google Chrome");
+      await expect(row.locator(".fn")).toHaveAttribute("title", chrome);
+      await expect(row.locator(".fdesc")).toHaveText("Her opens pages in her own Google Chrome on the Mac she runs on, without your sign-ins, in a window there.");
+    } else {
+      await expect(row.locator(".fdesc")).toHaveText(/without your sign-ins|There is no Chrome on the/);
+    }
+    const toggle = section.getByRole("switch", { name: "Built-in Browser" });
+    await expect(toggle).toHaveAttribute("aria-checked", "false");
+    await toggle.click();
+    await expect(toggle).toHaveAttribute("aria-checked", "true");
+    await expect.poll(() => read("config.toml")).toMatch(/^\[browser\][^[]*^enabled = true$/m);
+    await toggle.click();
+    await expect(toggle).toHaveAttribute("aria-checked", "false");
+    await expect.poll(() => read("config.toml")).not.toMatch(/^enabled = /m);
+  });
+
   await test.step("a dropped connection is opened again, and the page goes on working", async () => {
     site.drop();
     await expect(page.locator(".conn-bar")).toHaveText("Connecting to Her…");
@@ -156,5 +190,7 @@ test.describe("in Chinese", () => {
     await page.goto(site.url);
     await expect(page.getByRole("navigation", { name: "页面" }).getByRole("button", { name: "连接器" })).toBeVisible();
     await expect(page.locator("html")).toHaveAttribute("lang", "zh-CN");
+    await page.getByRole("navigation", { name: "页面" }).getByRole("button", { name: "浏览器" }).click();
+    await expect(page.locator(".yours")).toContainText(process.platform === "linux" ? "就在 Her 所在的那台 Linux 电脑上" : "就在 Her 所在的那台 Mac 电脑上");
   });
 });
