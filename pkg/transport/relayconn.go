@@ -242,7 +242,9 @@ func (c *RelayConn) watch(every, within, tick, gap, woken time.Duration) {
 		ctx, cancel := context.WithTimeout(context.Background(), wait)
 		err := c.Ping(ctx)
 		cancel()
-		if err != nil && c.admit.read.Load() <= at.UnixNano() {
+		// Heard at the very time the ping left counts as heard since: a
+		// coarse clock (Windows) gives what came right after the same time.
+		if err != nil && c.admit.read.Load() < at.UnixNano() {
 			c.sess.Close()
 			return
 		}
