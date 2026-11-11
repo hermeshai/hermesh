@@ -9164,16 +9164,6 @@
         }
       }
     },
-    "Computer Control": {
-      "localizations": {
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "电脑操控"
-          }
-        }
-      }
-    },
     "Connecting to %@…": {
       "localizations": {
         "zh-Hans": {
@@ -9260,16 +9250,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "中转 · %lld ms"
-          }
-        }
-      }
-    },
-    "See %@’s screen and operate it from here.": {
-      "localizations": {
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "在这里查看并操作 %@ 的屏幕。"
           }
         }
       }
@@ -9380,6 +9360,26 @@
           "stringUnit": {
             "state": "translated",
             "value": "展开控制栏"
+          }
+        }
+      }
+    },
+    "Remote Desktop": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "远程桌面"
+          }
+        }
+      }
+    },
+    "See and operate %@’s screen from this phone.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "在手机上查看并操作 %@ 的屏幕。"
           }
         }
       }

@@ -9,8 +9,10 @@ screen, a real network and a real iPhone (§10), and step 4.
 
 From the iPhone, the owner opens a live view of the Mac that Her runs on
 and operates it: to do a step Her can't (a password, a system prompt, a
-CAPTCHA), or to watch Her work. The entry is one row, **Computer Control**
-(电脑操控), in Her's settings.
+CAPTCHA), or to watch Her work. The entry is one row, **Remote Desktop**
+(远程桌面), in Her's settings: named for the owner looking at a desktop
+from afar, so it does not read as a permission for Her (the Mac app's
+Computer Control page is that permission).
 
 The first version is minimal and has one bar to clear: it must not lag.
 

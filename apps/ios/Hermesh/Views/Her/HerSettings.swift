@@ -96,7 +96,7 @@ struct HerSettings: View {
                 Section {
                     Button { openControl(machine) } label: {
                         HStack {
-                            Text("Computer Control").foregroundStyle(herReachable(machine) ? .primary : .secondary)
+                            Text("Remote Desktop").foregroundStyle(herReachable(machine) ? .primary : .secondary)
                             Spacer()
                             Image(systemName: "chevron.right").font(.footnote.weight(.semibold)).foregroundStyle(.tertiary)
                         }
@@ -106,7 +106,7 @@ struct HerSettings: View {
                     .disabled(!herReachable(machine))
                     .accessibilityIdentifier("her-computer-control")
                 } footer: {
-                    Text(herReachable(machine) ? "See \(machine.machineName)’s screen and operate it from here." : "\(machine.machineName) is offline.")
+                    Text(herReachable(machine) ? "See and operate \(machine.machineName)’s screen from this phone." : "\(machine.machineName) is offline.")
                 }
             }
             if let bot {

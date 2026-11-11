@@ -41,7 +41,7 @@ extension HermeshUITests {
         name.tap()
         let row = app.descendants(matching: .any)["her-computer-control"].firstMatch
         XCTAssertTrue(row.waitForExistence(timeout: 60), "the row in Her's settings")
-        XCTAssertTrue(text("电脑操控").exists && text("在这里查看并操作 owner-mac 的屏幕。").exists)
+        XCTAssertTrue(text("远程桌面").exists && text("在手机上查看并操作 owner-mac 的屏幕。").exists)
         herShot("Computer Control: the row in Her's settings")
         row.tap()
         // Face ID stands aside in the tests (-HermeshTestApprove); then the Mac's picture.
