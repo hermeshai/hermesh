@@ -69,13 +69,26 @@ func ServerHandshake(ctx context.Context, raw net.Conn, key crypto.Signer, creds
 		},
 	}
 	tc := tls.Server(raw, cfg)
-	hctx, cancel := context.WithTimeout(ctx, 15*time.Second)
-	defer cancel()
-	if err := tc.HandshakeContext(hctx); err != nil {
-		tc.Close()
-		return nil, nil, fmt.Errorf("e2e handshake: %w", err)
+	if err := handshake(ctx, raw, tc); err != nil {
+		return nil, nil, err
 	}
 	return tc, sub, nil
+}
+
+// handshake runs tc's handshake over raw within 15 s (ctx's deadline if
+// sooner). The deadline is set on raw too: closing a tunnel's stream, which
+// is all the context's end does, leaves a read on it waiting.
+func handshake(ctx context.Context, raw net.Conn, tc *tls.Conn) error {
+	hctx, cancel := context.WithTimeout(ctx, 15*time.Second)
+	defer cancel()
+	deadline, _ := hctx.Deadline()
+	raw.SetDeadline(deadline)
+	if err := tc.HandshakeContext(hctx); err != nil {
+		tc.Close()
+		return fmt.Errorf("e2e handshake: %w", err)
+	}
+	raw.SetDeadline(time.Time{})
+	return nil
 }
 
 // ClientHandshake runs the client side and checks that the peer is the
@@ -105,11 +118,8 @@ func ClientHandshake(ctx context.Context, raw net.Conn, key crypto.Signer, creds
 		},
 	}
 	tc := tls.Client(raw, cfg)
-	hctx, cancel := context.WithTimeout(ctx, 15*time.Second)
-	defer cancel()
-	if err := tc.HandshakeContext(hctx); err != nil {
-		tc.Close()
-		return nil, nil, fmt.Errorf("e2e handshake: %w", err)
+	if err := handshake(ctx, raw, tc); err != nil {
+		return nil, nil, err
 	}
 	return tc, sub, nil
 }
