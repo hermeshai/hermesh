@@ -185,8 +185,8 @@
     "diagnosticsCopied": "诊断信息已拷贝，可以直接粘贴发给我们",
     "her": "Her",
     "herRun": "在这台机器上运行 Her",
-    "herDesc": "Her 的助手、对话和设置都保存在这台机器上，关掉后也保留。开启或关闭需要 Touch ID。",
-    "herDesc_win": "Her 的助手、对话和设置都保存在这台机器上，关掉后也保留。开启或关闭需要 Windows Hello。",
+    "herDesc": "Her 的助手、对话和设置都保存在这台机器上。关闭时会问你是保留到下次，还是清空。开启或关闭需要 Touch ID。",
+    "herDesc_win": "Her 的助手、对话和设置都保存在这台机器上。关闭时会问你是保留到下次，还是清空。开启或关闭需要 Windows Hello。",
     "herWindows": "Her 暂不支持 Windows。",
     "herUnsupported": "这台机器不能运行 Her：{{reason}}"
   },

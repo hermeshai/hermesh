@@ -375,6 +375,67 @@ func TestHerOnThisMac(t *testing.T) {
 	eventually(t, 5*time.Second, "her stopped with this Mac's hermeshd", func() bool { return !answers() })
 }
 
+// TestHerTurnedOff turns Her off on the owner Mac's own machine as the apps
+// do (docs/her-server.md §5.6): kept, she carries on when turned on again,
+// the same assistant with her model; erased, her home is gone, and turned
+// on once more she is a new Her, asking for a model.
+func TestHerTurnedOff(t *testing.T) {
+	her, mockBin := herBinaries(t)
+	mock := startHerMock(t, mockBin)
+	home := herHome(t, mock.models)
+	w := newOwnerMac(t, herEnv(her, herConsole(t), home, mock.base), &localv1.GrantSpec{})
+	t.Cleanup(w.owner.stop) // so that it stops her, as in TestHerOnThisMac
+	c := w.app.client
+	ctx := context.Background()
+	mac := localMachine(t, c)
+	off := func(erase bool) {
+		t.Helper()
+		if _, err := c.SetHer(ctx, &localv1.SetHerRequest{MachineId: mac, Erase: erase}); err != nil {
+			t.Fatalf("SetHer off (erase %v): %v", erase, err)
+		}
+		eventually(t, time.Minute, "Her off", func() bool {
+			m := listedMachine(t, c, mac)
+			return m != nil && !m.GetHer().GetEnabled()
+		})
+	}
+
+	turnHerOn(t, c, mac)
+	bot := defaultBot(t, c, mac)
+	talk(t, c, mac, bot.ID, "before turning off")
+
+	// Off, her data kept: on again, the same Her answers with her model.
+	off(false)
+	if _, err := os.Stat(filepath.Join(home, "bots")); err != nil {
+		t.Fatalf("her assistants after turning off: %v", err)
+	}
+	turnHerOn(t, c, mac)
+	if again := defaultBot(t, c, mac); again.ID != bot.ID {
+		t.Fatalf("turned on again: assistant %s, was %s", again.ID, bot.ID)
+	}
+	talk(t, c, mac, bot.ID, "after turning on again")
+
+	// On with erase is refused, and Her stays on.
+	if _, err := c.SetHer(ctx, &localv1.SetHerRequest{MachineId: mac, Enabled: true, Erase: true}); connect.CodeOf(err) != connect.CodeInvalidArgument {
+		t.Fatalf("on with erase: %v", err)
+	}
+
+	// Off, her data erased: her home goes, and this device keeps nothing of her.
+	off(true)
+	if _, err := os.Stat(home); !os.IsNotExist(err) {
+		t.Fatalf("her home after erasing: %v", err)
+	}
+	if conv, err := c.GetHerConversation(ctx, &localv1.GetHerConversationRequest{MachineId: mac}); err != nil || len(conv.Bot) != 0 {
+		t.Fatalf("what this device keeps of an erased Her: %v %v", conv, err)
+	}
+	if _, err := c.SetHer(ctx, &localv1.SetHerRequest{MachineId: mac, Enabled: true}); err != nil {
+		t.Fatal(err)
+	}
+	eventually(t, 2*time.Minute, "a new Her, without a model", func() bool {
+		h := listedMachine(t, c, mac).GetHer()
+		return h.GetRunning() && !h.GetModelReady()
+	})
+}
+
 func httpDo(t *testing.T, method, url, body string) (int, string) {
 	t.Helper()
 	req, _ := http.NewRequest(method, url, strings.NewReader(body))

@@ -269,14 +269,15 @@ func TestHer(t *testing.T) {
 		t.Fatalf("an agent's console: %d", code)
 	}
 
-	// Off: her stops, and the stream holding a connection ends.
+	// Off: her stops, and the stream holding a connection ends, saying so:
+	// the tunnel is fine, so the owner's device keeps it.
 	apply(setHer(false))
 	if st := herStatus(); st.Enabled || st.Running {
 		t.Fatalf("off: %v", st)
 	}
 	for stream.Receive() {
 	}
-	if connect.CodeOf(stream.Err()) != connect.CodeUnavailable {
+	if connect.CodeOf(stream.Err()) != connect.CodeFailedPrecondition {
 		t.Fatalf("the stream after Her went off: %v", stream.Err())
 	}
 }

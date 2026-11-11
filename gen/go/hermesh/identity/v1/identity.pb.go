@@ -1673,11 +1673,14 @@ func (x *SetPaused) GetPaused() bool {
 }
 
 // SetHer turns Her on or off for the machine (docs/her-server.md §5.2): on, its
-// hermeshd keeps her running; off, it stops her and keeps her data. Root-signed
-// only, never a setting.
+// hermeshd keeps her running; off, it stops her and keeps her data, unless
+// erase (§5.6). Root-signed only, never a setting.
 type SetHer struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Enabled       bool                   `protobuf:"varint,1,opt,name=enabled,proto3" json:"enabled,omitempty"`
+	state   protoimpl.MessageState `protogen:"open.v1"`
+	Enabled bool                   `protobuf:"varint,1,opt,name=enabled,proto3" json:"enabled,omitempty"`
+	// With enabled false only: her data is deleted too, her home and, on a
+	// Mac, her Keychain items. Refused with enabled true.
+	Erase         bool `protobuf:"varint,2,opt,name=erase,proto3" json:"erase,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -1715,6 +1718,13 @@ func (*SetHer) Descriptor() ([]byte, []int) {
 func (x *SetHer) GetEnabled() bool {
 	if x != nil {
 		return x.Enabled
+	}
+	return false
+}
+
+func (x *SetHer) GetErase() bool {
+	if x != nil {
+		return x.Erase
 	}
 	return false
 }
@@ -2491,9 +2501,10 @@ const file_hermesh_identity_v1_identity_proto_rawDesc = "" +
 	"\aSetName\x12\x12\n" +
 	"\x04name\x18\x01 \x01(\tR\x04name\"#\n" +
 	"\tSetPaused\x12\x16\n" +
-	"\x06paused\x18\x01 \x01(\bR\x06paused\"\"\n" +
+	"\x06paused\x18\x01 \x01(\bR\x06paused\"8\n" +
 	"\x06SetHer\x12\x18\n" +
-	"\aenabled\x18\x01 \x01(\bR\aenabled\"U\n" +
+	"\aenabled\x18\x01 \x01(\bR\aenabled\x12\x14\n" +
+	"\x05erase\x18\x02 \x01(\bR\x05erase\"U\n" +
 	"\x13SetHerAssistantMode\x12\x15\n" +
 	"\x06bot_id\x18\x01 \x01(\tR\x05botId\x12'\n" +
 	"\x0fpermission_mode\x18\x02 \x01(\tR\x0epermissionMode\"\xf2\x01\n" +

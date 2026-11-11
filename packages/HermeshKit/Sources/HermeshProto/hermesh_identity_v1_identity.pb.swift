@@ -831,14 +831,18 @@ public nonisolated struct Hermesh_Identity_V1_SetPaused: Sendable {
 }
 
 /// SetHer turns Her on or off for the machine (docs/her-server.md §5.2): on, its
-/// hermeshd keeps her running; off, it stops her and keeps her data. Root-signed
-/// only, never a setting.
+/// hermeshd keeps her running; off, it stops her and keeps her data, unless
+/// erase (§5.6). Root-signed only, never a setting.
 public nonisolated struct Hermesh_Identity_V1_SetHer: Sendable {
   // SwiftProtobuf.Message conformance is added in an extension below. See the
   // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
   // methods supported on all messages.
 
   public var enabled: Bool = false
+
+  /// With enabled false only: her data is deleted too, her home and, on a
+  /// Mac, her Keychain items. Refused with enabled true.
+  public var erase: Bool = false
 
   public var unknownFields = SwiftProtobuf.UnknownStorage()
 
@@ -2166,7 +2170,7 @@ nonisolated extension Hermesh_Identity_V1_SetPaused: SwiftProtobuf.Message, Swif
 
 nonisolated extension Hermesh_Identity_V1_SetHer: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
   public static let protoMessageName: String = _protobuf_package + ".SetHer"
-  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{1}enabled\0")
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{1}enabled\0\u{1}erase\0")
 
   public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
     while let fieldNumber = try decoder.nextFieldNumber() {
@@ -2175,6 +2179,7 @@ nonisolated extension Hermesh_Identity_V1_SetHer: SwiftProtobuf.Message, SwiftPr
       // enabled. https://github.com/apple/swift-protobuf/issues/1034
       switch fieldNumber {
       case 1: try { try decoder.decodeSingularBoolField(value: &self.enabled) }()
+      case 2: try { try decoder.decodeSingularBoolField(value: &self.erase) }()
       default: break
       }
     }
@@ -2184,11 +2189,15 @@ nonisolated extension Hermesh_Identity_V1_SetHer: SwiftProtobuf.Message, SwiftPr
     if self.enabled != false {
       try visitor.visitSingularBoolField(value: self.enabled, fieldNumber: 1)
     }
+    if self.erase != false {
+      try visitor.visitSingularBoolField(value: self.erase, fieldNumber: 2)
+    }
     try unknownFields.traverse(visitor: &visitor)
   }
 
   public static func ==(lhs: Hermesh_Identity_V1_SetHer, rhs: Hermesh_Identity_V1_SetHer) -> Bool {
     if lhs.enabled != rhs.enabled {return false}
+    if lhs.erase != rhs.erase {return false}
     if lhs.unknownFields != rhs.unknownFields {return false}
     return true
   }

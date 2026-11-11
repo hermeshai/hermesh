@@ -9,7 +9,8 @@ import SwiftUI
 /// model she answers with, among those her environment can use; whether she
 /// asks before acting or has full access; her notifications; what she
 /// remembers, on a page of its own (docs/her-memory.md); another machine
-/// to run her on; clearing her conversation or her memory. Models, connectors and the rest
+/// to run her on; clearing her conversation or her memory; turning her off on her machine, her data kept or
+/// erased (docs/her-server.md §5.6). Models, connectors and the rest
 /// of an environment are set on the Mac. A Her that is on without her grant
 /// (docs/her-mesh.md §3.4) has one more row, which signs it.
 struct HerSettings: View {
@@ -24,6 +25,7 @@ struct HerSettings: View {
     /// The Computer Control session on screen (docs/computer-control.md).
     @State private var control: ScreenSession?
     @State private var granting = false
+    @State private var turningOff = false
 
     var body: some View {
         let envs = herEnvironments(model.machines)
@@ -137,6 +139,11 @@ struct HerSettings: View {
                         .accessibilityIdentifier("her-clear-memory")
                 }
             }
+            Section {
+                Button("Turn Off Her on \(machine.machineName)…", role: .destructive) { turningOff = true }
+                    .disabled(!herReachable(machine))
+                    .accessibilityIdentifier("her-turn-off")
+            }
         }
         .task(id: bot?.id) {
             if let bot { memory = try? await HerMemory.load(chat, bot: bot.id) }
@@ -180,6 +187,13 @@ struct HerSettings: View {
         } message: {
             Text("It acts on \(machine.machineName) without asking you, and so do the agents and scheduled tasks it starts. Her reads web pages and messages from anyone, so turn this on only if you trust everything on that machine to it.")
         }
+        // Her data stays unless the owner chooses to erase it too (docs/her-server.md §5.6).
+        .confirmationDialog("Turn off Her on “\(machine.machineName)”?", isPresented: $turningOff, titleVisibility: .visible) {
+            Button("Turn Off, Keep Her Data") { turnOff(machine, erase: false) }
+            Button("Turn Off and Erase Her Data", role: .destructive) { turnOff(machine, erase: true) }
+        } message: {
+            Text("Her stops there and can no longer use your computers. Kept, her data stays, and she carries on when you turn her on again. Erasing deletes her assistants, conversations, memory, routines, files, connectors and model logins on \(machine.machineName), and can’t be undone.")
+        }
         .sheet(isPresented: $adding) { HerAddSheet().environment(model) }
         .fullScreenCover(isPresented: Binding(get: { control != nil }, set: { if !$0 { control = nil } })) {
             if let control { ScreenControlView(session: control).environment(model) }
@@ -206,6 +220,25 @@ struct HerSettings: View {
         Task {
             do { let _: Hermesh_Local_V1_SetHerResponse = try await api.call("SetHer", r, timeout: signingTimeout) } catch { model.report(error) }
             granting = false
+        }
+    }
+
+    /// Turns Her off on her machine (SetHer), erasing her data there if chosen. The dialog said which, so Face ID
+    /// asks at once; the page goes, its environment with it.
+    private func turnOff(_ machine: HerMachine, erase: Bool) {
+        guard let api = model.api else { return }
+        model.signer.expect(.types([SigningPreview.adminCommand]))
+        var r = Hermesh_Local_V1_SetHerRequest()
+        r.machineID = machine.machineID
+        r.enabled = false
+        r.erase = erase
+        Task {
+            do {
+                let _: Hermesh_Local_V1_SetHerResponse = try await api.call("SetHer", r, timeout: signingTimeout)
+                model.show(erase ? String(localized: "Her is off on \(machine.machineName), and her data is erased") : String(localized: "Her is off on \(machine.machineName)"))
+                // From the path, not dismiss(): the page may be empty by now, its environment gone.
+                model.path.removeAll { $0 == .herSettings }
+            } catch { model.report(error) }
         }
     }
 

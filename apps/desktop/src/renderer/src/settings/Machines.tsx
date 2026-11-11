@@ -101,9 +101,9 @@ function ShareRow() {
 }
 
 /**
- * Her on a machine (docs/her-server.md §11, phase 1): turned on or off with Touch ID (SetHer); its
- * assistants, conversations and settings stay there when it is off. Windows can't run her yet.
- * Turning her on also lets her use the owner's computers (docs/her-mesh.md §3.3), and says so first.
+ * Her on a machine (docs/her-server.md §11, phase 1): turned on with Touch ID (SetHer); turned off on a
+ * sheet that asks whether her data goes too (§5.6). Windows can't run her yet. Turning her on also lets
+ * her use the owner's computers (docs/her-mesh.md §3.3), and says so first.
  */
 function HerRow({ m }: { m: Machine }) {
   const { t } = useTranslation("settings");
@@ -114,6 +114,7 @@ function HerRow({ m }: { m: Machine }) {
   const unsupported = m.her?.unsupported ?? "";
   const windows = unsupported === "windows" || (m.status?.platform ?? "").split("/")[0] === "windows";
   const set = async (v: boolean) => {
+    if (!v) return st.set({ sheet: { kind: "herOff", machineId: m.machineId, machineName: m.machineName } });
     setPending(v);
     await st.run(() => local.setHer({ machineId: m.machineId, enabled: v }));
     setPending(null);

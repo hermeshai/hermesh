@@ -187,8 +187,8 @@
     "diagnosticsCopied": "Diagnostics copied to clipboard",
     "her": "Her",
     "herRun": "Run Her on this machine",
-    "herDesc": "Her’s assistants, conversations and settings live on this machine, and stay when you turn it off. Turning it on or off requires Touch ID.",
-    "herDesc_win": "Her’s assistants, conversations and settings live on this machine, and stay when you turn it off. Turning it on or off requires Windows Hello.",
+    "herDesc": "Her’s assistants, conversations and settings live on this machine. Turning Her off asks whether to keep them for next time or erase them. Turning it on or off requires Touch ID.",
+    "herDesc_win": "Her’s assistants, conversations and settings live on this machine. Turning Her off asks whether to keep them for next time or erase them. Turning it on or off requires Windows Hello.",
     "herWindows": "Her can’t run on Windows yet.",
     "herUnsupported": "Her can’t run here: {{reason}}"
   },

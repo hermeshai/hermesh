@@ -58,6 +58,7 @@ type Host struct {
 	snap  *snapshot          // while her answers
 	mon   *conn              // the monitor's connection, while her answers
 	err   string             // why her is not running although Her is on
+	off   bool               // turned off (Off), so what her was doing ends with errOff
 	conns map[string]*conn   // the connections Open streams and console event streams hold
 }
 
@@ -87,7 +88,7 @@ func (h *Host) Start() {
 		return
 	}
 	ctx, cancel := context.WithCancel(context.Background())
-	h.stop, h.done = cancel, make(chan struct{})
+	h.stop, h.done, h.off = cancel, make(chan struct{}), false
 	go h.supervise(ctx, h.done)
 }
 
@@ -104,6 +105,9 @@ func (h *Host) Stop() {
 func (h *Host) Off() {
 	h.op.Lock()
 	defer h.op.Unlock()
+	h.mu.Lock()
+	h.off = true
+	h.mu.Unlock()
 	h.halt()
 	if h.cfg.ExtensionHost {
 		h.extension(context.Background(), "uninstall")

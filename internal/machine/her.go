@@ -44,9 +44,20 @@ func (n *Machine) startHer() {
 	}
 }
 
+// setHer's answers when Her goes off: HerErased once her data is erased,
+// HerOff while it stays (a machine older than SetHer.erase gives it then
+// too); one that couldn't erase it says why after HerOff.
+const (
+	HerOff    = "Her is off"
+	HerErased = "Her is off, and her data is erased"
+)
+
 // setHer turns Her on or off (AdminCommand.set_her): her starts or stops,
-// and her's data stays either way.
-func (n *Machine) setHer(on bool) (string, error) {
+// and her's data stays, unless erase (docs/her-server.md §5.6).
+func (n *Machine) setHer(on, erase bool) (string, error) {
+	if on && erase {
+		return "", connect.NewError(connect.CodeInvalidArgument, errors.New("her data is erased only with Her turned off"))
+	}
 	v := "0"
 	if on {
 		v = "1"
@@ -62,7 +73,15 @@ func (n *Machine) setHer(on bool) (string, error) {
 		// (docs/her-mesh.md §3.5): the owner's device revokes the grant too.
 		n.dropHerGrant("Her was turned off")
 		n.her.Off()
-		return "Her is off", nil
+		if !erase {
+			return HerOff, nil
+		}
+		// Off whatever happens: an error would tell the owner's device
+		// that Her is still on.
+		if err := n.her.Erase(); err != nil {
+			return HerOff + ", but her data stays: " + err.Error(), nil
+		}
+		return HerErased, nil
 	}
 	if why := n.herUnsupported(); why != "" {
 		return "Her is on, but this machine can't run her (" + why + ")", nil
@@ -70,6 +89,21 @@ func (n *Machine) setHer(on bool) (string, error) {
 	n.her.Start()
 	n.startHerLink()
 	return "Her is on", nil
+}
+
+// EraseHer erases her data for Erase Everything (docs/erase-everything.md),
+// on a machine that ever had Her on: kept at its uninstall, it would
+// outlive the owner. The machine must not be running.
+func EraseHer(cfg Config) error {
+	n, err := Open(cfg)
+	if err != nil {
+		return err
+	}
+	defer n.Close()
+	if was, _ := n.st.Get(kHer); len(was) == 0 {
+		return nil
+	}
+	return n.her.Erase()
 }
 
 // herStatus is HerStatus as hermeshd last saw her: never a request to her.

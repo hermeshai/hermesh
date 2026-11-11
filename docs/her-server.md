@@ -449,6 +449,54 @@ or dropped. The relay's post office
 device goes away, but today it takes no messages from owner devices, and
 changing that needs a relay release (§12).
 
+### 5.6 Turning Her off, and erasing her data
+
+Turning Her off asks first whether her data goes too. Keeping it is the
+default: turned on again, Her carries on where she was.
+
+**Where.**
+
+- Mac: the last row of Her's settings panel, "Turn Off Her on Mac mini…",
+  and the Run Her switch in Settings › Machines. Both open the same sheet.
+  Turning Her on stays where it is (the first run, Add Environment, the
+  switch).
+- iPhone: the last row of Her's settings, with a confirmation dialog.
+
+**The question.** The sheet says that Her stops there and can no longer use
+the owner's computers. It has one choice, off by default: "Also erase Her's
+data". Under it, what goes: her assistants, conversations, memory,
+routines, files, connectors and model logins on that machine. It says this
+can't be undone, and that unticked it all stays for next time. The button
+reads "Turn Off Her", or "Turn Off and Erase" when ticked. On the iPhone
+the dialog has the two as buttons, the erasing one destructive. Touch ID
+or Face ID follows, and its card names what was chosen.
+
+**What happens.** `SetHer` gains `erase`, valid only with `enabled` false:
+signers and machines refuse it with `enabled` true. The machine:
+
+1. keeps Her off, ends her grant and stops her, as turning off does. The
+   conversations the devices hold open end with "Her is off on this
+   machine", the machine's answer, so a device keeps its tunnel there and
+   the turning off's own answer on it;
+2. with `erase`, deletes her home (`~/.her`, or `HER_HOME` from her
+   environment), and on a Mac her Keychain items, service `her` (model
+   keys, ChatGPT's tokens, connector secrets). With `HER_CREDENTIAL_STORE`
+   set, her used no Keychain, and the machine leaves it alone;
+3. answers `Her is off, and her data is erased`; one that couldn't erase
+   it says why, Her staying off.
+
+The owner's device then drops what it kept for that machine: Her's
+conversation, as it does for any Her turned off, and with `erase` the
+messages waiting for her too. A machine older than `erase` ignores the
+field: it turns Her off and keeps her data. Its answer lacks the line
+above, so the device says the data stayed and the machine needs an update.
+An older signer refuses the request, as for any field it doesn't know.
+
+To erase the data of a Her turned off earlier, the owner turns her on and
+off again. Erase Everything ([erase-everything.md](erase-everything.md))
+erases her data on every machine Her was ever on. `hermeshd uninstall`
+still leaves `~/.her`, and says so.
+
 ## 6. Interfaces
 
 ### 6.1 her's protocol, by caller
@@ -482,7 +530,7 @@ The protos are the contract; this is their outline.
     `/her/console/`, server-sent events at `/her/console/events`, and
     JSON-RPC requests at `/her/console/rpc`.
 - [identity.proto](../proto/hermesh/identity/v1/identity.proto): three
-  root-signed `AdminCommand`s. `SetHer` turns Her on or off for a machine;
+  root-signed `AdminCommand`s. `SetHer` turns Her on or off for a machine, and erases her data if asked (§5.6);
   `SetHerAssistantMode` sets an assistant's permission mode, the only way to
   reach `bypass-permissions`; `SetHerCommandConnector` manages connectors
   started as commands.
@@ -601,7 +649,8 @@ the entry follows them (`bots/open`'s snapshot, then the conversation's
 events), so her is asked nothing more, and serves it as
 `GetHerConversation`. What Her says while no window follows the
 conversation is kept once the entry opens it again. It all goes when the
-machine is removed or Her is turned off there.
+machine is removed or Her is turned off there. Messages waiting for her go too when her data is
+erased (§5.6).
 
 What `~/.her` holds on a Her Server:
 
@@ -734,7 +783,7 @@ What changes, because Her may run on another computer than the app:
 On the right of the top bar: Her's routines, Her's settings and ⋯, which
 holds "Manage this environment" (the console). Her's settings panel holds its name, avatar, model, thinking level and
 approval mode, whether it notifies, and lets the owner clear its
-conversation. Environment-wide settings are in the console.
+conversation or turn Her off there (§5.6). Environment-wide settings are in the console.
 
 Settings › Machines shows, for this Mac while Her is on there, Computer
 use: the two permissions of §4.4 as her finds them, with a button for each

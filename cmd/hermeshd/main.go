@@ -832,6 +832,9 @@ func report(name string, i provider.Info) bool {
 // to be paired as a newly installed one does. The rest of dataDir stays: on
 // a Mac it is also the app's (its owners' profiles).
 func eraseMachine(dataDir string, cfg machine.Config) error {
+	if err := machine.EraseHer(cfg); err != nil {
+		fmt.Fprintf(os.Stderr, "warning: Her's data stays: %v\n", err)
+	}
 	kept, err := eraseHere(dataDir, cfg)
 	if err != nil {
 		return err

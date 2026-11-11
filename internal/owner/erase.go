@@ -238,6 +238,9 @@ func (o *Owner) eraseData(ctx context.Context, eraseID, keepDir string) []string
 				o.log.Warn("telling the owner this device's machine is erasing", "err", err)
 			}
 		}
+		if err := machine.EraseHer(cfg); err != nil {
+			o.log.Warn("erasing Her's data on this device's machine", "err", err)
+		}
 		if kept, err = machine.Erase(cfg, keepDir); err != nil {
 			o.log.Warn("erasing this device's machine", "err", err)
 		}

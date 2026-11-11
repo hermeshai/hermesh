@@ -70,6 +70,8 @@
   "Turn Her on for %s": "在%s上开启 Her",
   "Her runs there as the machine's user and keeps her conversations, settings and logins on it. Her assistants can read and write files, run commands and reach the internet there; new ones ask before risky steps.": "Her 以这台机器的用户身份在上面运行，对话、设置和登录信息都留在这台机器上。Her 的助手能在那里读写文件、运行命令、访问网络；新助手遇到有风险的操作会先问你。",
   "Turn Her off for %s": "在%s上关闭 Her",
+  "Turn Her off for %s and erase her data": "在%s上关闭 Her 并清空她的数据",
+  "Her stops there, and her assistants, conversations, memory, routines, files, connectors and model logins on the machine are deleted. This can't be undone.": "Her 在那里停止运行，这台机器上她的助手、对话、记忆、定时任务、文件、连接器和模型登录都会被删除。此操作无法撤销。",
   "Her stops there; her conversations, settings and logins stay on the machine.": "Her 在那里停止运行；对话、设置和登录信息仍留在这台机器上。",
   "asks before each file change and command": "每次改文件、运行命令前都先问",
   "changes files without asking, asks before other commands": "改文件不问，运行其他命令前先问",

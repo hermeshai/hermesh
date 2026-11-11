@@ -183,6 +183,10 @@ func makeVectors(t *testing.T) []vector {
 			Hints: vectorHints{MachineNames: machines}, Cards: []vectorCard{{Shows: []string{"Turn Her on", "vps-1"}}, {Shows: []string{"Her", "vps-1", identity.ShortFingerprint(herKey)}}}},
 		{Name: "Her turned off", Requests: []vectorRequest{req(admin(&identityv1.AdminCommand{Command: &identityv1.AdminCommand_SetHer{SetHer: &identityv1.SetHer{}}}))},
 			Hints: vectorHints{MachineNames: machines}, Cards: []vectorCard{{Shows: []string{"Turn Her off", "vps-1"}}}},
+		{Name: "Her turned off, her data erased", Requests: []vectorRequest{req(admin(&identityv1.AdminCommand{Command: &identityv1.AdminCommand_SetHer{SetHer: &identityv1.SetHer{Erase: true}}}))},
+			Hints: vectorHints{MachineNames: machines}, Cards: []vectorCard{{Shows: []string{"Turn Her off", "erase her data", "vps-1", "undone"}}}},
+		{Name: "refused: Her turned on with her data erased", Requests: []vectorRequest{req(admin(&identityv1.AdminCommand{Command: &identityv1.AdminCommand_SetHer{SetHer: &identityv1.SetHer{Enabled: true, Erase: true}}}))},
+			Hints: vectorHints{MachineNames: machines}, Refused: true},
 		{Name: "an assistant given full access", Requests: []vectorRequest{req(admin(&identityv1.AdminCommand{Command: &identityv1.AdminCommand_SetHerAssistantMode{
 			SetHerAssistantMode: &identityv1.SetHerAssistantMode{BotId: "bot-7", PermissionMode: "bypass-permissions"}}}))},
 			Hints: vectorHints{MachineNames: machines}, Cards: []vectorCard{{Shows: []string{"full access", "bot-7", "vps-1"}}}},

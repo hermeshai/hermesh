@@ -240,5 +240,17 @@
     "finishFailed": "This Mac couldn’t finish erasing local data: {{error}}",
     "finishFailed_win": "This PC couldn’t finish erasing local data: {{error}}",
     "retry": "Try Again"
+  },
+  "herOff": {
+    "title": "Turn off Her on “{{name}}”?",
+    "sub": "Her stops there and can no longer use your computers.",
+    "erase": "Also erase Her’s data",
+    "eraseDesc": "Her’s assistants, conversations, memory, routines, files, connectors and model logins on “{{name}}” are deleted. This can’t be undone. Off, they stay, and Her carries on when you turn her on again.",
+    "button": "Turn Off Her",
+    "buttonErase": "Turn Off and Erase",
+    "approve": "Confirm with Touch ID.",
+    "approve_win": "Confirm with Windows Hello.",
+    "done": "Her is off on “{{name}}”",
+    "erased": "Her is off on “{{name}}”, and her data is erased"
   }
 }

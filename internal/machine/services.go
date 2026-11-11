@@ -380,7 +380,7 @@ func (n *Machine) execAdmin(ctx context.Context, cmd *identityv1.AdminCommand) (
 		}
 		return "paused=" + v, nil
 	case *identityv1.AdminCommand_SetHer:
-		return n.setHer(c.SetHer.Enabled)
+		return n.setHer(c.SetHer.Enabled, c.SetHer.Erase)
 	case *identityv1.AdminCommand_SetHerAssistantMode, *identityv1.AdminCommand_SetHerCommandConnector:
 		return n.execHer(ctx, cmd)
 	}

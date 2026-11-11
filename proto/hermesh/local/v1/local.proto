@@ -111,7 +111,8 @@ service LocalService {
 
   // Her (docs/her-server.md). A machine's Her is Machine.her. Each call
   // goes in process when the machine is this Mac, else through the tunnel.
-  // Turns Her on or off for a machine: signed by this device's root key.
+  // Turns Her on or off for a machine, erasing her data if asked: signed by
+  // this device's root key.
   rpc SetHer(SetHerRequest) returns (SetHerResponse);
   // How freely an assistant acts; "bypass-permissions" is signed by the root
   // key, the other modes are not.
@@ -1164,6 +1165,8 @@ message GetDiffRequest {
 message SetHerRequest {
   string machine_id = 1;
   bool enabled = 2;
+  // With enabled false: erase her data on the machine (docs/her-server.md §5.6).
+  bool erase = 3;
 }
 
 message SetHerResponse {}

@@ -9393,6 +9393,76 @@
           }
         }
       }
+    },
+    "Turn Off Her on %@…": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "在 %@ 上关闭 Her…"
+          }
+        }
+      }
+    },
+    "Turn off Her on “%@”?": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "在「%@」上关闭 Her？"
+          }
+        }
+      }
+    },
+    "Turn Off, Keep Her Data": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "关闭，保留数据"
+          }
+        }
+      }
+    },
+    "Turn Off and Erase Her Data": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "关闭并清空数据"
+          }
+        }
+      }
+    },
+    "Her stops there and can no longer use your computers. Kept, her data stays, and she carries on when you turn her on again. Erasing deletes her assistants, conversations, memory, routines, files, connectors and model logins on %@, and can’t be undone.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Her 会在那里停止运行，也不能再使用你的电脑。保留数据的话，下次开启 Her 时接着用。清空会删除 %@ 上 Her 的助手、对话、记忆、定时任务、文件、连接器和模型登录，无法恢复。"
+          }
+        }
+      }
+    },
+    "Her is off on %@, and her data is erased": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "已在 %@ 上关闭 Her，并清空了她的数据"
+          }
+        }
+      }
+    },
+    "Her is off on %@": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "已在 %@ 上关闭 Her"
+          }
+        }
+      }
     }
   },
   "version": "1.0"

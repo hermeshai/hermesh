@@ -468,7 +468,9 @@ func TestHerAssistantModeAndSignedCommands(t *testing.T) {
 		want proto.Message
 		got  func(*identityv1.AdminCommand) proto.Message
 	}{
-		{"Her on", func() error { return o.SetHer(ctx, "m_1", true) }, &identityv1.SetHer{Enabled: true},
+		{"Her on", func() error { return o.SetHer(ctx, "m_1", true, false) }, &identityv1.SetHer{Enabled: true},
+			func(c *identityv1.AdminCommand) proto.Message { return c.GetSetHer() }},
+		{"Her off, her data erased", func() error { return o.SetHer(ctx, "m_1", false, true) }, &identityv1.SetHer{Erase: true},
 			func(c *identityv1.AdminCommand) proto.Message { return c.GetSetHer() }},
 		{"a connector", func() error { return o.SetHerCommandConnector(ctx, "m_1", connector) }, connector,
 			func(c *identityv1.AdminCommand) proto.Message { return c.GetSetHerCommandConnector() }},
@@ -496,6 +498,9 @@ func TestHerAssistantModeAndSignedCommands(t *testing.T) {
 	if got := h.prompts(t); len(got) != 2 {
 		t.Fatalf("sent unsigned: %q", got)
 	}
+	if err := o.SetHer(ctx, "m_1", true, true); connect.CodeOf(err) != connect.CodeInvalidArgument {
+		t.Fatalf("Her on, her data erased: %v", err)
+	}
 	if err := o.SetHerCommandConnector(ctx, "m_1", &identityv1.SetHerCommandConnector{Name: "x"}); connect.CodeOf(err) != connect.CodeInvalidArgument {
 		t.Fatalf("a connector without a command: %v", err)
 	}
@@ -513,7 +518,7 @@ func TestHerOnAMachineOnly(t *testing.T) {
 	o.st.set(kMachineOnly, []byte("1"))
 	ctx := context.Background()
 	for name, err := range map[string]error{
-		"Her on":      o.SetHer(ctx, "m_1", true),
+		"Her on":      o.SetHer(ctx, "m_1", true, false),
 		"a connector": o.SetHerCommandConnector(ctx, "m_1", &identityv1.SetHerCommandConnector{Name: "x", Command: "y"}),
 	} {
 		if connect.CodeOf(err) != connect.CodeFailedPrecondition || !strings.Contains(err.Error(), "a trusted device has to") {

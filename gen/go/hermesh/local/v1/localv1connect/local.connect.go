@@ -332,7 +332,8 @@ type LocalServiceClient interface {
 	GetDiagnostics(context.Context, *v1.GetDiagnosticsRequest) (*v1.GetDiagnosticsResponse, error)
 	// Her (docs/her-server.md). A machine's Her is Machine.her. Each call
 	// goes in process when the machine is this Mac, else through the tunnel.
-	// Turns Her on or off for a machine: signed by this device's root key.
+	// Turns Her on or off for a machine, erasing her data if asked: signed by
+	// this device's root key.
 	SetHer(context.Context, *v1.SetHerRequest) (*v1.SetHerResponse, error)
 	// How freely an assistant acts; "bypass-permissions" is signed by the root
 	// key, the other modes are not.
@@ -1702,7 +1703,8 @@ type LocalServiceHandler interface {
 	GetDiagnostics(context.Context, *v1.GetDiagnosticsRequest) (*v1.GetDiagnosticsResponse, error)
 	// Her (docs/her-server.md). A machine's Her is Machine.her. Each call
 	// goes in process when the machine is this Mac, else through the tunnel.
-	// Turns Her on or off for a machine: signed by this device's root key.
+	// Turns Her on or off for a machine, erasing her data if asked: signed by
+	// this device's root key.
 	SetHer(context.Context, *v1.SetHerRequest) (*v1.SetHerResponse, error)
 	// How freely an assistant acts; "bypass-permissions" is signed by the root
 	// key, the other modes are not.
