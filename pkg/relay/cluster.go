@@ -316,11 +316,8 @@ func (s *Server) sendCert(t *tenant, machineID string) {
 	}
 	u := &relayv1.MachineUpdate{Update: &relayv1.MachineUpdate_MachineCert{MachineCert: certs[machineID]}}
 	s.mu.Lock()
-	for ch := range t.watchers[machineID] {
-		select {
-		case ch <- u:
-		default:
-		}
+	for q := range t.watchers[machineID] {
+		q.put(u)
 	}
 	s.mu.Unlock()
 }

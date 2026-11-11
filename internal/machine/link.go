@@ -146,18 +146,24 @@ func (n *Machine) reportStatus(ctx context.Context, conn *transport.RelayConn) {
 	}
 }
 
+// watchUpdates follows what the relay has for this machine (the root chain,
+// revocations, its cert, push targets, grants) while the connection lasts;
+// a stream that ends before it is opened again.
 func (n *Machine) watchUpdates(ctx context.Context, conn *transport.RelayConn) {
-	c, err := n.control(conn)
-	if err != nil {
-		return
-	}
-	stream, err := c.WatchUpdates(ctx, &relayv1.WatchUpdatesRequest{})
-	if err != nil {
-		return
-	}
-	defer stream.Close()
-	for stream.Receive() {
-		n.handleUpdate(stream.Msg())
+	for {
+		if c, err := n.control(conn); err == nil {
+			if stream, err := c.WatchUpdates(ctx, &relayv1.WatchUpdatesRequest{}); err == nil {
+				for stream.Receive() {
+					n.handleUpdate(stream.Msg())
+				}
+				stream.Close()
+			}
+		}
+		select {
+		case <-ctx.Done():
+			return
+		case <-time.After(5 * time.Second):
+		}
 	}
 }
 
