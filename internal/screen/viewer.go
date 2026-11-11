@@ -105,8 +105,11 @@ func Dial(ctx context.Context, cfg ViewerConfig) (*Viewer, error) {
 		if cfg.Event != nil {
 			cfg.Event(&ev)
 		}
-		if st := ev.GetState(); st != nil && st.Error == "ended" {
+		switch ev.GetState().GetError() {
+		case "ended":
 			go v.close(errors.New("the machine ended the session"))
+		case "locked":
+			go v.close(errors.New(ErrLocked))
 		}
 	})
 	pc.OnTrack(func(t *webrtc.TrackRemote, _ *webrtc.RTPReceiver) { go v.receive(t) })

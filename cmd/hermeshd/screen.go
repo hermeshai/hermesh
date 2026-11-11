@@ -84,14 +84,14 @@ func screenLine(s *machine.ScreenCheck) string {
 		return "off (hermeshd screen on turns it on)"
 	case s.Viewer != "":
 		return s.Viewer + " is in control (hermeshd screen stop ends it)"
+	case s.Desktop.Error == "locked":
+		return "the screen is locked: unlock it at the computer"
 	case s.Desktop.Available:
 		way := map[string]string{"x11": "X11", "gnome": "GNOME", "portal": "the desktop portal", "wlroots": "wlroots", "test": "a test picture", "darwin": "macOS"}[s.Desktop.Way]
 		if way == "" {
 			way = "the system"
 		}
 		return "ready, through " + way
-	case s.Desktop.Error == "locked":
-		return "the screen is locked: unlock it at the computer"
 	case s.Desktop.Detail != "":
 		return "not available: " + s.Desktop.Detail
 	}

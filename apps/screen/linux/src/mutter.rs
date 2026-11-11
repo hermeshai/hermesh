@@ -92,9 +92,12 @@ impl Mutter {
         log("reading the stream");
         std::thread::spawn(move || {
             if closed.next().is_some() {
-                let locked = crate::detect::logind_session().is_some_and(|s| s.locked);
-                if locked {
-                    crate::fail("locked", "");
+                // GNOME ends remote sessions as it locks, and says it is locked a moment later.
+                for _ in 0..20 {
+                    if crate::detect::logind_session().is_some_and(|s| s.locked) {
+                        crate::fail("locked", "");
+                    }
+                    std::thread::sleep(std::time::Duration::from_millis(150));
                 }
                 crate::fail("capture", "GNOME ended the session");
             }

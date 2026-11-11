@@ -157,7 +157,13 @@ struct ScreenControlView: View {
             Color.black.ignoresSafeArea()
             ScreenSurface(session: session)
                 .ignoresSafeArea(.container)
-            if let ended = session.ended {
+            if session.machineError == "locked" || session.ended == "the screen is locked" {
+                // GNOME ends a session when it locks, and starts none (docs/computer-control-linux.md §3.7).
+                notice(String(localized: "\(session.machineName) is locked"),
+                       String(localized: "GNOME shares no locked screen. Unlock it at the computer, then connect again.")) {
+                    Button("Reconnect") { session.reconnect() }.buttonStyle(.borderedProminent)
+                }
+            } else if let ended = session.ended {
                 notice(String(localized: "The session ended"), reason(ended)) {
                     Button("Reconnect") { session.reconnect() }.buttonStyle(.borderedProminent)
                 }
@@ -170,11 +176,6 @@ struct ScreenControlView: View {
                 // The desktop asks at the computer, the first time (docs/computer-control-linux.md §3.2).
                 notice(String(localized: "\(session.machineName) is asking at its screen"),
                        String(localized: "Someone at that computer allows it there, once. After that it connects without asking.")) {
-                    Button("Reconnect") { session.reconnect() }.buttonStyle(.borderedProminent)
-                }
-            } else if session.machineError == "locked" {
-                notice(String(localized: "\(session.machineName) is locked"),
-                       String(localized: "GNOME shares no locked screen. Unlock it at the computer, then connect again.")) {
                     Button("Reconnect") { session.reconnect() }.buttonStyle(.borderedProminent)
                 }
             } else if session.machineError == "no_display" {

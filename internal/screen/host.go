@@ -98,6 +98,9 @@ func (h *Host) isOff() bool {
 	return err == nil
 }
 
+// ErrLocked is why a locked desktop shows nothing: the viewer is told so.
+const ErrLocked = "the screen is locked"
+
 // probeEvery is how long the helper's word on the desktop is kept.
 const probeEvery = 30 * time.Second
 
@@ -183,6 +186,9 @@ func (h *Host) Connect(ctx context.Context, req *screenv1.ConnectRequest) (*scre
 			return nil, connect.NewError(connect.CodeInvalidArgument, err)
 		}
 		return &screenv1.ConnectResponse{Answer: answer, SessionId: s.id}, nil
+	}
+	if h.Desktop().Error == "locked" { // GNOME shares no locked screen (docs/computer-control-linux.md §3.7)
+		return nil, connect.NewError(connect.CodeFailedPrecondition, errors.New(ErrLocked))
 	}
 	h.Stop()
 	s, err := h.open(ctx, req)
@@ -505,4 +511,8 @@ func (s *hostSession) end(reason string) {
 		s.h.cur = nil
 	}
 	s.h.mu.Unlock()
+	// The desktop may have changed with the session's end (locked, say): asked again before the next.
+	s.h.pmu.Lock()
+	s.h.probed = time.Time{}
+	s.h.pmu.Unlock()
 }

@@ -183,10 +183,12 @@ fn start(video: Arc<Video>, pointer: bool) -> (Box<dyn Way>, detect::Kind) {
 }
 
 /// print_status says, for hermeshd, whether this desktop can be shown and
-/// which way, or why not.
+/// which way, or why not. A locked GNOME is there all the same: the phone
+/// keeps its row and is told why it can't connect now.
 fn print_status() {
     let (available, way, error, detail) = match detect::find() {
         Ok(k) => (true, k.name(), "", String::new()),
+        Err(("locked", d)) => (true, detect::Kind::Mutter.name(), "locked", d),
         Err((e, d)) => (false, "", e, d),
     };
     let v =
