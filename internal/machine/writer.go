@@ -45,9 +45,15 @@ type turnRec struct {
 // writer persists events and session rows in batched transactions (one
 // fsync per batch instead of per event) and hands each event to deliver
 // only after it is committed, so subscribers never see an event that a
-// crash could lose.
+// crash could lose. A batch the store refuses is written again a few
+// times (writeRetries): a passing failure loses nothing and shows nothing
+// early. One it keeps refusing is delivered all the same, so that whoever
+// waits for a turn's end is not left waiting; its events are then missing
+// from the store.
 type writer struct {
-	st      *Store
+	// write stores a batch (Store.WriteBatch, whose statements can be run
+	// again).
+	write   func([]writeOp) error
 	ch      chan writeOp
 	deliver func(*live, *sessionv1.SessionEvent)
 	done    chan struct{}
@@ -76,8 +82,14 @@ var (
 
 const maxBatch = 2048
 
+// writeRetries: how long the writer waits before each new try of a batch
+// the store refused.
+var writeRetries = []time.Duration{100 * time.Millisecond, 400 * time.Millisecond, 1600 * time.Millisecond}
+
+var mBatchRetries = metrics.Default.Counter("hermesh_machine_write_retries_total")
+
 func newWriter(st *Store, log *slog.Logger, deliver func(*live, *sessionv1.SessionEvent), stored func(id string)) *writer {
-	w := &writer{st: st, ch: make(chan writeOp, 8192), deliver: deliver, stored: stored, done: make(chan struct{}), log: log}
+	w := &writer{write: st.WriteBatch, ch: make(chan writeOp, 8192), deliver: deliver, stored: stored, done: make(chan struct{}), log: log}
 	go w.run()
 	return w
 }
@@ -136,9 +148,18 @@ func (w *writer) run() {
 		var err error
 		if stores(batch) {
 			start := time.Now()
-			err = w.st.WriteBatch(batch)
+			err = w.write(batch)
+			for _, wait := range writeRetries {
+				if err == nil {
+					break
+				}
+				w.log.Warn("persist batch, trying again", "ops", len(batch), "in", wait, "err", err)
+				mBatchRetries.Inc()
+				time.Sleep(wait)
+				err = w.write(batch)
+			}
 			if err != nil {
-				w.log.Error("persist batch", "ops", len(batch), "err", err)
+				w.log.Error("persist batch: its events are not stored", "ops", len(batch), "err", err)
 			}
 			mBatch.Since(start)
 			mBatches.Inc()
