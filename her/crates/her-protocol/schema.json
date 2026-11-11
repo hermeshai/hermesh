@@ -29,6 +29,9 @@
       "$ref": "#/definitions/BotIdParams"
     },
     {
+      "$ref": "#/definitions/BotMemoryResult"
+    },
+    {
       "$ref": "#/definitions/BotOpenParams"
     },
     {
@@ -1711,7 +1714,7 @@
       "type": "object"
     },
     "BotIdParams": {
-      "description": "Parameters of `bots/avatar`, `bots/read`, `bots/unread`, `bots/clear` and `bots/delete`.",
+      "description": "Parameters of `bots/avatar`, `bots/read`, `bots/unread`, `bots/clear`, `bots/delete`, `bots/memory` and `bots/memory_clear`.",
       "properties": {
         "bot_id": {
           "type": "string"
@@ -1719,6 +1722,55 @@
       },
       "required": [
         "bot_id"
+      ],
+      "type": "object"
+    },
+    "BotMemoryPage": {
+      "description": "A file of a bot's memory besides `MEMORY.md`.",
+      "properties": {
+        "modified_at": {
+          "description": "RFC 3339.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "name": {
+          "type": "string"
+        },
+        "path": {
+          "description": "For `files/read`.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "name",
+        "path"
+      ],
+      "type": "object"
+    },
+    "BotMemoryResult": {
+      "description": "What a bot keeps in its memory (docs/her-memory.md): its `MEMORY.md` as written, to show as Markdown whatever its form, and the other files of the folder.",
+      "properties": {
+        "pages": {
+          "description": "The other files of the memory folder, by name.",
+          "items": {
+            "$ref": "#/definitions/BotMemoryPage"
+          },
+          "type": "array"
+        },
+        "path": {
+          "description": "Where `MEMORY.md` is on the Her Server, for `files/read`.",
+          "type": "string"
+        },
+        "text": {
+          "description": "`MEMORY.md`, empty when nothing is kept.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "path",
+        "text"
       ],
       "type": "object"
     },
@@ -20771,6 +20823,14 @@
       "params": "BotIdParams",
       "result": "Empty"
     },
+    "bots/memory": {
+      "params": "BotIdParams",
+      "result": "BotMemoryResult"
+    },
+    "bots/memory_clear": {
+      "params": "BotIdParams",
+      "result": "Empty"
+    },
     "bots/open": {
       "params": "BotOpenParams",
       "result": "SessionNewResult"
@@ -21347,6 +21407,8 @@
       "bots/clear": "experimental",
       "bots/create": "experimental",
       "bots/delete": "experimental",
+      "bots/memory": "experimental",
+      "bots/memory_clear": "experimental",
       "bots/open": "experimental",
       "bots/read": "experimental",
       "bots/routine": "experimental",

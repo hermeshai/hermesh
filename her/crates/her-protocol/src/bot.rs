@@ -184,7 +184,8 @@ pub struct BotUpdateParams {
     pub muted: Option<bool>,
 }
 
-/// Parameters of `bots/avatar`, `bots/read`, `bots/unread`, `bots/clear` and `bots/delete`.
+/// Parameters of `bots/avatar`, `bots/read`, `bots/unread`, `bots/clear`, `bots/delete`,
+/// `bots/memory` and `bots/memory_clear`.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 pub struct BotIdParams {
     pub bot_id: String,
@@ -194,6 +195,30 @@ pub struct BotIdParams {
 pub struct BotAvatarResult {
     /// `data:image/png;base64,…`
     pub data: String,
+}
+
+/// What a bot keeps in its memory (docs/her-memory.md): its `MEMORY.md` as written, to show as
+/// Markdown whatever its form, and the other files of the folder.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+pub struct BotMemoryResult {
+    /// `MEMORY.md`, empty when nothing is kept.
+    pub text: String,
+    /// Where `MEMORY.md` is on the Her Server, for `files/read`.
+    pub path: String,
+    /// The other files of the memory folder, by name.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub pages: Vec<BotMemoryPage>,
+}
+
+/// A file of a bot's memory besides `MEMORY.md`.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+pub struct BotMemoryPage {
+    pub name: String,
+    /// For `files/read`.
+    pub path: String,
+    /// RFC 3339.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub modified_at: Option<String>,
 }
 
 /// Parameters of `bots/open`, which answers as `session/new` does.

@@ -21,6 +21,8 @@ use her_protocol::bot::Avatar;
 use her_protocol::bot::AvatarInput;
 use her_protocol::bot::BotAvatarResult;
 use her_protocol::bot::BotCreateParams;
+use her_protocol::bot::BotMemoryPage;
+use her_protocol::bot::BotMemoryResult;
 use her_protocol::bot::BotResult;
 use her_protocol::bot::BotSummary;
 use her_protocol::bot::BotUpdateParams;
@@ -685,6 +687,43 @@ impl Server {
         saved
     }
 
+    /// `bots/memory`: the bot's `MEMORY.md` as written and the other files of its memory folder
+    /// (docs/her-memory.md §7). Nothing kept yet is an empty memory, not an error.
+    pub async fn bots_memory(&self, id: &str) -> Result<BotMemoryResult, RpcError> {
+        self.bot_exists(id)?;
+        let dir = self.0.home.bot_memory_dir(id);
+        tokio::task::spawn_blocking(move || read_memory(&dir))
+            .await
+            .map_err(|e| RpcError::internal(e.to_string()))?
+            .map_err(|e| RpcError::internal(format!("cannot read the memory: {e}")))
+    }
+
+    /// `bots/memory_clear`: the bot's memory goes to `trash/memory/`, and its conversation's
+    /// prompt drops it now rather than at the next free moment: the owner asked to be forgotten.
+    /// The conversation itself stays.
+    pub async fn bots_memory_clear(&self, id: &str) -> Result<(), RpcError> {
+        self.bot_exists(id)?;
+        let (home, bot) = (self.0.home.clone(), id.to_string());
+        tokio::task::spawn_blocking(move || {
+            let dir = home.bot_memory_dir(&bot);
+            if !dir.exists() {
+                return Ok(());
+            }
+            let trash = home.root().join("trash").join("memory");
+            std::fs::create_dir_all(&trash)?;
+            std::fs::rename(&dir, trash.join(format!("{bot}-{}", chrono::Utc::now().format("%Y%m%dT%H%M%S%.3fZ"))))
+        })
+        .await
+        .map_err(|e| RpcError::internal(e.to_string()))?
+        .map_err(|e| RpcError::internal(format!("cannot move the memory to the trash: {e}")))?;
+        let has_conversation = self.bots().with_bot(id, |bot| bot.file.session_id.is_some())?;
+        if has_conversation {
+            let hub = self.load_bot_session(id).await?;
+            hub.send(HubCmd::Memory).await?;
+        }
+        Ok(())
+    }
+
     /// `bots/delete`: the bot's folder goes to `trash/bots/`, its conversation to the trash.
     pub async fn bots_delete(&self, id: &str) -> Result<(), RpcError> {
         let registry = self.bots().clone();
@@ -750,4 +789,35 @@ fn new_file(name: String, avatar: Avatar, default: bool) -> BotFile {
         permission_mode: None,
         summary: Kept::default(),
     }
+}
+
+/// `MEMORY.md` is shown whole up to this; the model only ever loads 8 KB of it.
+const MEMORY_SHOWN: u64 = 256 * 1024;
+
+/// A bot's memory folder as `bots/memory` gives it.
+fn read_memory(dir: &Path) -> std::io::Result<BotMemoryResult> {
+    use std::io::Read;
+    let file = dir.join(her_core::bot_memory::FILE);
+    let mut bytes = Vec::new();
+    match std::fs::File::open(&file) {
+        Ok(f) => {
+            f.take(MEMORY_SHOWN).read_to_end(&mut bytes)?;
+        }
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
+        Err(e) => return Err(e),
+    }
+    let mut pages = Vec::new();
+    if let Ok(entries) = std::fs::read_dir(dir) {
+        for entry in entries.flatten() {
+            let name = entry.file_name().to_string_lossy().into_owned();
+            let Ok(meta) = entry.metadata() else { continue };
+            if name == her_core::bot_memory::FILE || name.starts_with('.') || !meta.is_file() {
+                continue;
+            }
+            let modified_at = meta.modified().ok().map(|t| chrono::DateTime::<chrono::Utc>::from(t).to_rfc3339_opts(chrono::SecondsFormat::Secs, true));
+            pages.push(BotMemoryPage { path: entry.path().display().to_string(), name, modified_at });
+        }
+    }
+    pages.sort_by(|a, b| a.name.cmp(&b.name));
+    Ok(BotMemoryResult { text: String::from_utf8_lossy(&bytes).into_owned(), path: file.display().to_string(), pages })
 }

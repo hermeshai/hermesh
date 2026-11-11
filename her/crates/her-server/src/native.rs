@@ -788,6 +788,16 @@ impl NativeProtocol {
                 }
                 Err(err) => conn.send_error(Some(id), &err),
             },
+            method::BOTS_MEMORY | method::BOTS_MEMORY_CLEAR => match her_rpc::params::<BotIdParams>(params) {
+                Ok(p) => {
+                    let (conn, id, read) = (conn.clone(), id.clone(), method_name == method::BOTS_MEMORY);
+                    tokio::spawn(async move {
+                        let result = if read { server.bots_memory(&p.bot_id).await.map(|r| json!(r)) } else { server.bots_memory_clear(&p.bot_id).await.map(|()| json!({})) };
+                        conn.send(reply(&id, result));
+                    });
+                }
+                Err(err) => conn.send_error(Some(id), &err),
+            },
             method::BOTS_CLEAR | method::BOTS_DELETE => match her_rpc::params::<BotIdParams>(params) {
                 Ok(p) => {
                     let (conn, id, clear) = (conn.clone(), id.clone(), method_name == method::BOTS_CLEAR);
