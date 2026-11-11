@@ -88,7 +88,10 @@ irm https://github.com/hermeshai/hermesh/releases/latest/download/install.ps1 | 
 | Command | Does |
 |---|---|
 | `hermeshd doctor` | Checks the pairing, the coding agents, the service and the relay, and says what to fix (exit 1 when something is wrong); and how Her is |
-| `hermeshd status` | The machine, whether it is connected, the service, updates, Her (installed, which version, on, running) and the projects |
+| `hermeshd status` | The machine, whether it is connected, the service, updates, Her (installed, which version, on, running), Computer Control and the projects |
+| `hermeshd screen` | Whether the owner's devices can see and operate this screen, which way, who is in control ([computer-control-linux.md](computer-control-linux.md) §6) |
+| `hermeshd screen stop`, `screen off`, `screen on` | Ends the session under way; refuses every device until `on` |
+| `hermeshd screen allow` | On Plasma: lets Hermesh show the screen without its dialog |
 | `hermeshd project add <folder>` | Lets agents work in a folder: a separate worktree per session, or `--in-place`; `--agents claude` limits it |
 | `hermeshd project list`, `project remove <name>` | The projects; removing one leaves its folder |
 | `hermeshd service status` | Whether the service runs and starts at boot, and where its log is |
