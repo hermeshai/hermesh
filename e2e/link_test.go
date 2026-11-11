@@ -202,6 +202,9 @@ func TestAgentLinkThatFails(t *testing.T) {
 	if testing.Short() {
 		t.Skip("e2e")
 	}
+	// Mostly waiting (for pings to go unanswered): it runs beside the other
+	// tests that are, after the rest of the suite.
+	t.Parallel()
 	w := newOwnerMac(t, []string{"HERMESH_FAKE_PROVIDERS=1"}, &localv1.GrantSpec{})
 	home := filepath.Join(w.tmp, "agent")
 	// The agent reaches the relay over a network of its own.

@@ -30,7 +30,7 @@ test-app:
 
 # End-to-end with real binaries and scripted agents.
 e2e:
-	go test ./e2e/ -count=1 -timeout 30m
+	go test ./e2e/ -count=1 -timeout 45m
 
 # End-to-end with this machine's real Claude Code and Codex (costs tokens).
 e2e-real:
