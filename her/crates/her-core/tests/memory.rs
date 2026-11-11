@@ -310,6 +310,20 @@ async fn a_compaction_takes_the_file_as_it_is() {
     assert_eq!(h.prompts(), 2);
 }
 
+/// Cleared by the owner, the memory leaves the prompt at once, quiet or not, and that is
+/// recorded (§4.2).
+#[tokio::test]
+async fn a_refresh_from_outside_takes_the_file_at_once() {
+    let mut h = bot(Some(KEPT), vec![send_last("c1", "在。"), send_last("c2", "在。")]).await;
+    h.kernel.run(prompt("一")).await.unwrap();
+    std::fs::remove_file(h.memory_file()).unwrap();
+    h.kernel.refresh_memory();
+    h.kernel.run(prompt("二")).await.unwrap();
+    let requests = h.api.requests();
+    assert!(requests[1].system.ends_with(&h.memory("(empty)")), "{}", requests[1].system);
+    assert_eq!(h.prompts(), 2);
+}
+
 /// A conversation from before bots had memory gets it when it is next opened (§4.2).
 #[tokio::test]
 async fn a_conversation_from_before_memory_takes_it_when_opened() {

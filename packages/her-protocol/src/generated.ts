@@ -242,9 +242,28 @@ export type BotCreateParams = {
   thinking?: ThinkingLevel | null;
 };
 
-/** Parameters of `bots/avatar`, `bots/read`, `bots/unread`, `bots/clear` and `bots/delete`. */
+/** Parameters of `bots/avatar`, `bots/read`, `bots/unread`, `bots/clear`, `bots/delete`, `bots/memory` and `bots/memory_clear`. */
 export type BotIdParams = {
   bot_id: string;
+};
+
+/** A file of a bot's memory besides `MEMORY.md`. */
+export type BotMemoryPage = {
+  /** RFC 3339. */
+  modified_at?: string | null;
+  name: string;
+  /** For `files/read`. */
+  path: string;
+};
+
+/** What a bot keeps in its memory (docs/her-memory.md): its `MEMORY.md` as written, to show as Markdown whatever its form, and the other files of the folder. */
+export type BotMemoryResult = {
+  /** The other files of the memory folder, by name. */
+  pages?: BotMemoryPage[];
+  /** Where `MEMORY.md` is on the Her Server, for `files/read`. */
+  path: string;
+  /** `MEMORY.md`, empty when nothing is kept. */
+  text: string;
 };
 
 /** Parameters of `bots/open`, which answers as `session/new` does. */
@@ -4801,6 +4820,8 @@ export interface Methods {
   "bots/clear": [BotIdParams, Empty];
   "bots/create": [BotCreateParams, BotResult];
   "bots/delete": [BotIdParams, Empty];
+  "bots/memory": [BotIdParams, BotMemoryResult];
+  "bots/memory_clear": [BotIdParams, Empty];
   "bots/open": [BotOpenParams, SessionNewResult];
   "bots/read": [BotIdParams, Empty];
   "bots/routine": [BotRoutineParams, BotRoutineResult];

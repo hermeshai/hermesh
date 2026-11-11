@@ -90,12 +90,14 @@ Protocol version 2. Generated from `her protocol schema` by `tools/gen-protocol-
 
 | Method | Parameters | Result | What it does |
 |---|---|---|---|
-| `bots/avatar` | `BotIdParams` | `BotAvatarResult` | Parameters of `bots/avatar`, `bots/read`, `bots/unread`, `bots/clear` and `bots/delete`. |
-| `bots/clear` | `BotIdParams` | `Empty` | Parameters of `bots/avatar`, `bots/read`, `bots/unread`, `bots/clear` and `bots/delete`. |
+| `bots/avatar` | `BotIdParams` | `BotAvatarResult` | Parameters of `bots/avatar`, `bots/read`, `bots/unread`, `bots/clear`, `bots/delete`, `bots/memory` and `bots/memory_clear`. |
+| `bots/clear` | `BotIdParams` | `Empty` | Parameters of `bots/avatar`, `bots/read`, `bots/unread`, `bots/clear`, `bots/delete`, `bots/memory` and `bots/memory_clear`. |
 | `bots/create` | `BotCreateParams` | `BotResult` |  |
-| `bots/delete` | `BotIdParams` | `Empty` | Parameters of `bots/avatar`, `bots/read`, `bots/unread`, `bots/clear` and `bots/delete`. |
+| `bots/delete` | `BotIdParams` | `Empty` | Parameters of `bots/avatar`, `bots/read`, `bots/unread`, `bots/clear`, `bots/delete`, `bots/memory` and `bots/memory_clear`. |
+| `bots/memory` | `BotIdParams` | `BotMemoryResult` | Parameters of `bots/avatar`, `bots/read`, `bots/unread`, `bots/clear`, `bots/delete`, `bots/memory` and `bots/memory_clear`. |
+| `bots/memory_clear` | `BotIdParams` | `Empty` | Parameters of `bots/avatar`, `bots/read`, `bots/unread`, `bots/clear`, `bots/delete`, `bots/memory` and `bots/memory_clear`. |
 | `bots/open` | `BotOpenParams` | `SessionNewResult` | Parameters of `bots/open`, which answers as `session/new` does. |
-| `bots/read` | `BotIdParams` | `Empty` | Parameters of `bots/avatar`, `bots/read`, `bots/unread`, `bots/clear` and `bots/delete`. |
+| `bots/read` | `BotIdParams` | `Empty` | Parameters of `bots/avatar`, `bots/read`, `bots/unread`, `bots/clear`, `bots/delete`, `bots/memory` and `bots/memory_clear`. |
 | `bots/routine` | `BotRoutineParams` | `BotRoutineResult` | Parameters of `bots/routine`, `bots/routine_run_now`, `bots/routine_stop` and `bots/routine_delete`. |
 | `bots/routine_delete` | `BotRoutineParams` | `Empty` | Parameters of `bots/routine`, `bots/routine_run_now`, `bots/routine_stop` and `bots/routine_delete`. |
 | `bots/routine_run` | `BotRoutineRunParams` | `BotRoutineRunResult` |  |
@@ -104,7 +106,7 @@ Protocol version 2. Generated from `her protocol schema` by `tools/gen-protocol-
 | `bots/routine_set_enabled` | `BotRoutineSetEnabledParams` | `Empty` |  |
 | `bots/routine_stop` | `BotRoutineParams` | `Empty` | Parameters of `bots/routine`, `bots/routine_run_now`, `bots/routine_stop` and `bots/routine_delete`. |
 | `bots/subscribe` | — | `BotsResult` | Result of `bots/subscribe`. |
-| `bots/unread` | `BotIdParams` | `Empty` | Parameters of `bots/avatar`, `bots/read`, `bots/unread`, `bots/clear` and `bots/delete`. |
+| `bots/unread` | `BotIdParams` | `Empty` | Parameters of `bots/avatar`, `bots/read`, `bots/unread`, `bots/clear`, `bots/delete`, `bots/memory` and `bots/memory_clear`. |
 | `bots/unsubscribe` | — | `Empty` | The result of methods that return nothing: `{}`. |
 | `bots/update` | `BotUpdateParams` | `BotResult` |  |
 | `browser/allow` | `BrowserSessionParams` | `Empty` | Parameters of `browser/allow` and `browser/cancel_wait`. |

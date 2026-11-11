@@ -713,8 +713,8 @@ async fn renaming_avatars_clearing_and_deleting() {
 }
 
 /// A bot's memory (docs/her-memory.md): it notes a line without asking, in the mode where every
-/// other file change asks; a cleared conversation starts with what it kept; and the notes go to
-/// the trash with the bot.
+/// other file change asks; a cleared conversation starts with what it kept; the apps read it and
+/// clear it, and the conversation forgets at once; the notes go to the trash with the bot.
 #[tokio::test]
 async fn a_bot_remembers_across_a_cleared_conversation() {
     let env = TestEnv::new("manual", "").await;
@@ -743,6 +743,31 @@ async fn a_bot_remembers_across_a_cleared_conversation() {
     say(&client, &again, "[[mock:recall]] 你记得什么").await;
     assert_eq!(sent(&until_event(&mut wire, ended).await), [format!("记得：{LINE}")]);
 
+    // What the apps show: the file as written, and the other files of the folder.
+    std::fs::write(memory.with_file_name("launch.md"), "# Launch\n").unwrap();
+    let kept = client.request("bots/memory", json!({"bot_id": bot})).await.unwrap();
+    assert_eq!(kept["text"], format!("{LINE}\n"));
+    assert_eq!(Path::new(kept["path"].as_str().unwrap()).canonicalize().unwrap(), memory.canonicalize().unwrap());
+    let pages = kept["pages"].as_array().unwrap();
+    assert_eq!(pages.len(), 1, "{kept}");
+    assert_eq!(pages[0]["name"], "launch.md");
+    assert!(pages[0]["modified_at"].as_str().is_some_and(|t| t.ends_with('Z')), "{kept}");
+
+    // Clearing it: the folder goes to the trash and the conversation, which stays, forgets at once.
+    client.request("bots/memory_clear", json!({"bot_id": bot})).await.unwrap();
+    assert!(!memory.exists());
+    let trashed: Vec<_> = std::fs::read_dir(env.home.path().join("trash").join("memory")).unwrap().flatten().collect();
+    assert_eq!(trashed.len(), 1);
+    assert_eq!(std::fs::read_to_string(trashed[0].path().join("MEMORY.md")).unwrap(), format!("{LINE}\n"));
+    say(&client, &again, "[[mock:recall]] 你记得什么").await;
+    assert_eq!(sent(&until_event(&mut wire, ended).await), ["什么都不记得。"]);
+    let empty = client.request("bots/memory", json!({"bot_id": bot})).await.unwrap();
+    assert_eq!((empty["text"].as_str(), empty.get("pages")), (Some(""), None));
+    let missing = client.request("bots/memory", json!({"bot_id": "nobody"})).await;
+    assert!(missing.is_err());
+
+    say(&client, &again, &format!("[[mock:remember:{LINE}]] 以后都用中文")).await;
+    until_event(&mut wire, ended).await;
     client.request("bots/delete", json!({"bot_id": bot})).await.unwrap();
     loop {
         let changed = tokio::time::timeout(WAIT, wire.bots.recv()).await.unwrap().unwrap();

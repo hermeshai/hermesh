@@ -1069,6 +1069,15 @@ impl Kernel {
         }
     }
 
+    /// A bot's memory changed from outside and must not wait for a free moment (docs/her-memory.md
+    /// §4.2), as when the owner clears it: the system prompt takes it now, at the cost of one
+    /// prompt-cache miss.
+    pub fn refresh_memory(&self) {
+        if let Some(session) = self.session.upgrade() {
+            session.refresh_memory();
+        }
+    }
+
     /// Starts a routine's run in the background (routine-design §2.1): the receiver gets how it
     /// went. It needs sub-agents to be on, as it is built like one.
     pub fn start_run(&self, run: RoutineRun) -> Result<oneshot::Receiver<RunOutcome>, String> {

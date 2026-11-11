@@ -127,6 +127,8 @@ pub(crate) enum HubCmd {
     BotName { name: String },
     /// A bot's conversation: what its model is to know of its routines (routine-design §4.4).
     Routines { text: String },
+    /// A bot's conversation: its memory changed from outside; the prompt takes it now.
+    Memory,
     /// A bot's conversation: starts a routine's run (routine-design §7.2). `None` when the
     /// session is closing, so another attempt can load it again.
     StartRun {
@@ -621,6 +623,11 @@ impl Hub {
             HubCmd::Routines { text } => {
                 if let Some(kernel) = &self.kernel {
                     kernel.set_routines(text);
+                }
+            }
+            HubCmd::Memory => {
+                if let Some(kernel) = &self.kernel {
+                    kernel.refresh_memory();
                 }
             }
             HubCmd::StartRun { run, reply } => {

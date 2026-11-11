@@ -15,9 +15,9 @@ var allowed = map[string]bool{}
 
 func init() {
 	for _, m := range []string{
-		// The Her entry: assistants, their conversations, routines and files.
+		// The Her entry: assistants, their conversations, memory, routines and files.
 		"bots/subscribe", "bots/unsubscribe", "bots/open", "bots/read", "bots/unread", "bots/create", "bots/update",
-		"bots/avatar", "bots/clear", "bots/delete", "bots/routine", "bots/routine_delete", "bots/routine_run",
+		"bots/avatar", "bots/clear", "bots/delete", "bots/memory", "bots/memory_clear", "bots/routine", "bots/routine_delete", "bots/routine_run",
 		"bots/routine_run_now", "bots/routine_runs", "bots/routine_set_enabled", "bots/routine_stop",
 		"session/op", "session/history", "session/detach", "models/list", "files/list", "files/read",
 		// The owner's answer to a secure card (docs/her-secure-cards.md §3.3).

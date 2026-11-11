@@ -455,7 +455,7 @@ changing that needs a relay release (§12).
 
 | Methods | Used by | Owner's devices | Agents |
 |---|---|---|---|
-| `bots/*`: assistants, their routines, unread marks | Her entry | Allowed | No |
+| `bots/*`: assistants, their memory, routines, unread marks | Her entry | Allowed | No |
 | `session/op` and session events: prompts, approvals, answers, stopping | Her entry | Allowed | No |
 | `models/list` | Her entry, console | Allowed | No |
 | `desktop/status`: whether computer use can work there (§4.4) | Her entry | Allowed | No |

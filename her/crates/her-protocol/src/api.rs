@@ -238,6 +238,10 @@ pub mod method {
     /// Starts the bot's conversation over.
     pub const BOTS_CLEAR: &str = "bots/clear";
     pub const BOTS_DELETE: &str = "bots/delete";
+    /// What a bot keeps in its memory (docs/her-memory.md).
+    pub const BOTS_MEMORY: &str = "bots/memory";
+    /// Moves a bot's memory to the trash; its conversation stays.
+    pub const BOTS_MEMORY_CLEAR: &str = "bots/memory_clear";
     /// Server notification to `bots/subscribe`rs.
     pub const BOTS_CHANGED: &str = "bots/changed";
     // A bot's routines (docs/kernel/routine-design.md §8). New ones and edits come from the chat.
