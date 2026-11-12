@@ -47,7 +47,7 @@ func TestUninstallRemovesHerAndKeepsHerData(t *testing.T) {
 	os.MkdirAll(herHome, 0o700)
 	os.WriteFile(filepath.Join(herHome, "config.toml"), []byte("x"), 0o600)
 	var out bytes.Buffer
-	if err := uninstall(context.Background(), &out, nil, data, bin); err != nil {
+	if err := uninstall(context.Background(), &out, nil, data, bin, false); err != nil {
 		t.Fatal(err)
 	}
 	for _, want := range []string{bin + ", " + her + ", " + console, "Her's assistants, conversations and settings, in " + herHome} {
@@ -67,7 +67,7 @@ func TestUninstallRemovesEverythingAfterAsking(t *testing.T) {
 	data, real, cli, bin := fakeInstall(t)
 	var asked string
 	var out bytes.Buffer
-	err := uninstall(context.Background(), &out, func(p string) (string, error) { asked = p; return "y", nil }, data, bin)
+	err := uninstall(context.Background(), &out, func(p string) (string, error) { asked = p; return "y", nil }, data, bin, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -88,7 +88,7 @@ func TestUninstallRemovesEverythingAfterAsking(t *testing.T) {
 
 func TestUninstallRemovesNothingUnlessYes(t *testing.T) {
 	data, real, cli, bin := fakeInstall(t)
-	err := uninstall(context.Background(), &bytes.Buffer{}, func(string) (string, error) { return "", nil }, data, bin)
+	err := uninstall(context.Background(), &bytes.Buffer{}, func(string) (string, error) { return "", nil }, data, bin, false)
 	if err == nil || err.Error() != "not uninstalled" {
 		t.Fatalf("Enter: %v", err)
 	}
@@ -104,7 +104,7 @@ func TestUninstallRefuses(t *testing.T) {
 		never := func(string) (string, error) { t.Fatal("asked"); return "", nil }
 		_, _, _, bin := fakeInstall(t)
 		home, _ := os.UserHomeDir()
-		if err := uninstall(context.Background(), &bytes.Buffer{}, never, home, bin); err == nil || !strings.Contains(err.Error(), "not removing it") {
+		if err := uninstall(context.Background(), &bytes.Buffer{}, never, home, bin, false); err == nil || !strings.Contains(err.Error(), "not removing it") {
 			t.Fatalf("got %v", err)
 		}
 	})
@@ -112,7 +112,7 @@ func TestUninstallRefuses(t *testing.T) {
 		never := func(string) (string, error) { t.Fatal("asked"); return "", nil }
 		data, real, _, bin := fakeInstall(t)
 		os.MkdirAll(filepath.Join(real, "kept-worktrees", "s_1"), 0o700)
-		if err := uninstall(context.Background(), &bytes.Buffer{}, never, data, bin); err == nil || !strings.Contains(err.Error(), "uncommitted changes") {
+		if err := uninstall(context.Background(), &bytes.Buffer{}, never, data, bin, false); err == nil || !strings.Contains(err.Error(), "uncommitted changes") {
 			t.Fatalf("got %v", err)
 		}
 		if !exists(filepath.Join(real, "kept-worktrees", "s_1")) {

@@ -144,6 +144,18 @@ func TestHerErased(t *testing.T) {
 	if !n.Status().Her.Data {
 		t.Fatal("her data kept, after a restart")
 	}
+	// Running (as its service runs it), it is asked.
+	ctl, stopCtl := context.WithCancel(ctx)
+	go n.serveControl(ctl)
+	for deadline := time.Now().Add(5 * time.Second); ; time.Sleep(20 * time.Millisecond) {
+		if _, err := os.Stat(paths.Control(dir)); err == nil || time.Now().After(deadline) {
+			break
+		}
+	}
+	if h, ok, err := HerData(cfg); err != nil || !ok || h != home {
+		t.Fatalf("HerData, the machine running: %q %v %v", h, ok, err)
+	}
+	stopCtl()
 	msg, err := n.execAdmin(ctx, erase(false))
 	if err != nil || msg != HerErased || !gone() || n.Status().Her.Enabled || n.Status().Her.Data {
 		t.Fatalf("off with erase: %q %v, home gone %v, %v", msg, err, gone(), n.Status().Her)

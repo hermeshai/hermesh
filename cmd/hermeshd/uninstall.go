@@ -22,9 +22,10 @@ import (
 )
 
 // uninstallCommand is `hermeshd uninstall` (docs/hermeshd.md): it removes
-// what the install script put here for this user, after one question.
+// what the install script put here for this user, after one question (and
+// one more where Her's data is kept).
 func uninstallCommand(dataDir *string) *cobra.Command {
-	var yes bool
+	var yes, eraseHer bool
 	cmd := &cobra.Command{
 		Use:   "uninstall",
 		Short: "Remove Hermesh for this user on this computer: its machine, unpaired, the background service, its data and its programs",
@@ -53,18 +54,20 @@ func uninstallCommand(dataDir *string) *cobra.Command {
 			if yes {
 				ask = nil
 			}
-			return uninstall(cmd.Context(), os.Stdout, ask, *dataDir, bin)
+			return uninstall(cmd.Context(), os.Stdout, ask, *dataDir, bin, eraseHer)
 		},
 	}
 	cmd.Flags().BoolVar(&yes, "yes", false, "don't ask")
+	cmd.Flags().BoolVar(&eraseHer, "erase-her", false, "delete Her's data too, without asking")
 	return cmd
 }
 
 // uninstall removes Hermesh for this user: the machine in dataDir,
 // unpaired, the service, dataDir (and where it links to), the CLI's home
 // and the programs, hermeshd at bin and hermesh, her and her-console/
-// beside it. Her's own data, ~/.her, stays. ask, when not nil, asks first.
-func uninstall(ctx context.Context, w io.Writer, ask func(string) (string, error), dataDir, bin string) error {
+// beside it. Her's data, where Her was on, goes with eraseHer, or when ask
+// is answered so; else it stays. ask, when not nil, asks first.
+func uninstall(ctx context.Context, w io.Writer, ask func(string) (string, error), dataDir, bin string, eraseHer bool) error {
 	home, _ := os.UserHomeDir()
 	realHome := home
 	if r, err := filepath.EvalSymlinks(home); err == nil {
@@ -90,6 +93,7 @@ func uninstall(ctx context.Context, w io.Writer, ask func(string) (string, error
 	}
 	svc := service.InstalledFor(dataDir)
 	machineLine := "its machine: unpaired, and gone from your devices"
+	herHome, herData := filepath.Join(home, ".her"), false
 	if isMachine {
 		c, running, err := machineCheck(ctx, dataDir, func() (*machine.Machine, error) { return machine.Open(cfg) })
 		if (running || err != nil) && !svc {
@@ -101,7 +105,12 @@ func uninstall(ctx context.Context, w io.Writer, ask func(string) (string, error
 		if c.Busy > 0 {
 			machineLine += fmt.Sprintf("; the %d sessions running now stop", c.Busy)
 		}
+		if h, ok, err := machine.HerData(cfg); err == nil {
+			herHome, herData = h, ok
+		}
 	}
+	eraseHer = eraseHer && herData
+	askHer := herData && !eraseHer && ask != nil
 	cliHome := paths.CLIHome()
 	programs := []string{bin}
 	if p := filepath.Join(filepath.Dir(bin), "hermesh"); exists(p) {
@@ -112,7 +121,6 @@ func uninstall(ctx context.Context, w io.Writer, ask func(string) (string, error
 			programs = append(programs, p)
 		}
 	}
-	herHome := filepath.Join(home, ".her")
 	keepDir := filepath.Join(home, "hermesh-kept-worktrees")
 
 	name := os.Getenv("USER")
@@ -141,10 +149,13 @@ func uninstall(ctx context.Context, w io.Writer, ask func(string) (string, error
 			fmt.Fprintln(w, "    (an agent signed in with it stays listed on your devices until you revoke it there)")
 		}
 	}
+	if eraseHer {
+		fmt.Fprintf(w, "  • Her's assistants, conversations and settings: %s\n", herHome)
+	}
 	fmt.Fprintf(w, "  • the programs: %s\n", strings.Join(programs, ", "))
 	fmt.Fprintln(w, "Stays: your project folders and repositories, branches included.")
-	if exists(herHome) {
-		fmt.Fprintf(w, "Stays too: Her's assistants, conversations and settings, in %s; delete it yourself to remove them.\n", herHome)
+	if exists(herHome) && !eraseHer && !askHer {
+		fmt.Fprintf(w, herStays, herHome)
 	}
 	if isMachine {
 		fmt.Fprintf(w, "Worktrees with uncommitted changes move to %s.\n", keepDir)
@@ -155,6 +166,15 @@ func uninstall(ctx context.Context, w io.Writer, ask func(string) (string, error
 				return err
 			}
 			return errors.New("not uninstalled")
+		}
+	}
+	if askHer {
+		a, err := ask(fmt.Sprintf(herAsk, herHome))
+		if err != nil {
+			return err
+		}
+		if eraseHer = strings.EqualFold(a, "y"); !eraseHer {
+			fmt.Fprintf(w, herStays, herHome)
 		}
 	}
 
@@ -175,6 +195,9 @@ func uninstall(ctx context.Context, w io.Writer, ask func(string) (string, error
 				cancel()
 			}
 			n.Close()
+		}
+		if eraseHer {
+			eraseHerData(cfg, herHome)
 		}
 		var err error
 		if kept, err = machine.Erase(cfg, keepDir); err != nil {
@@ -217,6 +240,21 @@ func uninstall(ctx context.Context, w io.Writer, ask func(string) (string, error
 		fmt.Fprintf(w, "Lingering stays on for %s, as other services of %s's may need it; to turn it off: sudo loginctl disable-linger %s\n", name, name, name)
 	}
 	return nil
+}
+
+// What `hermeshd uninstall` and `erase` say of Her's data, where Her was
+// on (docs/her-server.md §5.6).
+const (
+	herAsk   = "Also delete Her's data in %s? [y/N] "
+	herStays = "Stays too: Her's assistants, conversations and settings, in %s; delete it yourself to remove them.\n"
+)
+
+// eraseHerData deletes Her's data, for the machine in cfg, stopped, before
+// it is erased: it tells where Her was on.
+func eraseHerData(cfg machine.Config, home string) {
+	if err := machine.EraseHer(cfg); err != nil {
+		fmt.Fprintf(os.Stderr, "warning: Her's data stays in %s: %v\n", home, err)
+	}
 }
 
 // checkLeftAsDevice refuses while this computer is one of the owner's
