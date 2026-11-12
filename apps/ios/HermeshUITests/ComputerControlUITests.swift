@@ -1,4 +1,5 @@
 import XCTest
+import UniformTypeIdentifiers
 
 /// Computer Control on the iPhone (docs/computer-control.md), as a person
 /// uses it, against the owner Mac of TestIPhone. That Mac's screen helper
@@ -135,7 +136,10 @@ extension HermeshUITests {
     func controlClipboard() throws {
         // Text the phone holds, put there by another app (this test's); the system's Paste key reads it without asking.
         let phone = "从手机粘贴 pasted from the phone"
-        UIPasteboard.general.string = phone
+        // Keep this test payload local to the Simulator. Clipboard sharing
+        // with the host can replace its file-backed item provider mid-paste.
+        UIPasteboard.general.setItems([[UTType.utf8PlainText.identifier: phone]], options: [.localOnly: true])
+        XCTAssertEqual(UIPasteboard.general.string, phone, "the test app wrote the phone's clipboard")
         tap("screen-keyboard")
         let paste = app.descendants(matching: .any)["screen-key-paste"].firstMatch
         XCTAssertTrue(paste.waitForExistence(timeout: 10), "Paste in the row of keys")

@@ -6,6 +6,20 @@
 	objectVersion = 77;
 	objects = {
 
+/* Begin PBXAggregateTarget section */
+		81DC81E2DC56407F92FBF401 /* HermeshCore */ = {
+			isa = PBXAggregateTarget;
+			buildConfigurationList = 81DC81E2DC56407F92FBF402 /* Build configuration list for PBXAggregateTarget "HermeshCore" */;
+			buildPhases = (
+				16527DD7CD2D7CF6A7105481 /* Build the Hermesh core */,
+			);
+			dependencies = (
+			);
+			name = HermeshCore;
+			productName = HermeshCore;
+		};
+/* End PBXAggregateTarget section */
+
 /* Begin PBXBuildFile section */
 		D0CBAA91C3D9B6287E36D725 /* HermeshKit in Frameworks */ = {isa = PBXBuildFile; productRef = CA58F41DB714CCA58E4C53F5 /* HermeshKit */; };
 		86AC8F9E5D0563AB542BD55A /* HermeshProto in Frameworks */ = {isa = PBXBuildFile; productRef = 268F62350FE5702012D12E3E /* HermeshProto */; };
@@ -21,6 +35,13 @@
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
+		81DC81E2DC56407F92FBF403 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 4DC844ABCCFC0D132D087C1C /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 81DC81E2DC56407F92FBF401;
+			remoteInfo = HermeshCore;
+		};
 		3BF4A6A658FBB756A0985A3C /* PBXContainerItemProxy */ = {
 			isa = PBXContainerItemProxy;
 			containerPortal = 4DC844ABCCFC0D132D087C1C /* Project object */;
@@ -170,7 +191,6 @@
 			isa = PBXNativeTarget;
 			buildConfigurationList = AC573CC2B6EF8ABF3A944EA0 /* Build configuration list for PBXNativeTarget "Hermesh" */;
 			buildPhases = (
-				16527DD7CD2D7CF6A7105481 /* Build the Hermesh core */,
 				A26B49697F3E690398527AAB /* Sources */,
 				F72F053D4455B87BA57FD8AA /* Frameworks */,
 				509E3C5AD660F43AEF16CAB4 /* Resources */,
@@ -181,6 +201,7 @@
 			buildRules = (
 			);
 			dependencies = (
+				81DC81E2DC56407F92FBF404 /* PBXTargetDependency */,
 				6CDFEBCC5EF1093301C130AB /* PBXTargetDependency */,
 			);
 			fileSystemSynchronizedGroups = (
@@ -287,6 +308,7 @@
 			projectDirPath = "";
 			projectRoot = "";
 			targets = (
+				81DC81E2DC56407F92FBF401 /* HermeshCore */,
 				778130C49534A4D32801D13D /* Hermesh */,
 				55DB8C8CBE065C9A073AA91C /* HermeshNotifications */,
 				A6B4318BC1886F2EA7CD85E7 /* HermeshUITests */,
@@ -333,6 +355,7 @@
 			outputFileListPaths = (
 			);
 			outputPaths = (
+				"$(SRCROOT)/build/HermeshCore.xcframework",
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 			shellPath = /bin/sh;
@@ -403,6 +426,11 @@
 /* End PBXSourcesBuildPhase section */
 
 /* Begin PBXTargetDependency section */
+		81DC81E2DC56407F92FBF404 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 81DC81E2DC56407F92FBF401 /* HermeshCore */;
+			targetProxy = 81DC81E2DC56407F92FBF403 /* PBXContainerItemProxy */;
+		};
 		4565C36A75270CB695C29EC6 /* PBXTargetDependency */ = {
 			isa = PBXTargetDependency;
 			target = 778130C49534A4D32801D13D /* Hermesh */;
@@ -416,6 +444,20 @@
 /* End PBXTargetDependency section */
 
 /* Begin XCBuildConfiguration section */
+		81DC81E2DC56407F92FBF405 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ENABLE_USER_SCRIPT_SANDBOXING = NO;
+			};
+			name = Debug;
+		};
+		81DC81E2DC56407F92FBF406 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ENABLE_USER_SCRIPT_SANDBOXING = NO;
+			};
+			name = Release;
+		};
 		67DDDDDBE66D4EDED7FE72A7 /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
@@ -633,6 +675,15 @@
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
+		81DC81E2DC56407F92FBF402 /* Build configuration list for PBXAggregateTarget "HermeshCore" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				81DC81E2DC56407F92FBF405 /* Debug */,
+				81DC81E2DC56407F92FBF406 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
 		A7492CCDE30BE8F54F16B52E /* Build configuration list for PBXProject "Hermesh" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
