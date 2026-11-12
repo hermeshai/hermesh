@@ -11,7 +11,6 @@ import (
 	"os"
 	"strings"
 	"sync"
-	"sync/atomic"
 	"time"
 
 	"connectrpc.com/connect"
@@ -21,6 +20,7 @@ import (
 	relayv1 "github.com/hermeshai/hermesh/gen/go/hermesh/relay/v1"
 	"github.com/hermeshai/hermesh/gen/go/hermesh/relay/v1/relayv1connect"
 	screenv1 "github.com/hermeshai/hermesh/gen/go/hermesh/screen/v1"
+	"github.com/hermeshai/hermesh/gen/go/hermesh/screen/v1/screenv1connect"
 	"github.com/hermeshai/hermesh/internal/peer"
 	"github.com/hermeshai/hermesh/internal/screen"
 	"github.com/hermeshai/hermesh/pkg/transport"
@@ -51,9 +51,9 @@ type screenStatus struct {
 	Error string `json:"error,omitempty"`
 }
 
-// screenConnect is ScreenService.Connect on a machine, through its tunnel.
-func (o *Owner) screenConnect(machineID string) func(context.Context, *screenv1.ConnectRequest) (*screenv1.ConnectResponse, error) {
-	return func(ctx context.Context, req *screenv1.ConnectRequest) (*screenv1.ConnectResponse, error) {
+// screenCall is a call of ScreenService on a machine, through its tunnel.
+func screenCall[Req, Res any](o *Owner, machineID string, call func(screenv1connect.ScreenServiceClient, context.Context, *Req) (*Res, error)) func(context.Context, *Req) (*Res, error) {
+	return func(ctx context.Context, req *Req) (*Res, error) {
 		c, err := o.relay(ctx)
 		if err != nil {
 			return nil, err
@@ -62,7 +62,7 @@ func (o *Owner) screenConnect(machineID string) func(context.Context, *screenv1.
 		if err != nil {
 			return nil, connect.NewError(connect.CodeUnavailable, err)
 		}
-		res, err := n.Screen.Connect(ctx, req)
+		res, err := call(n.Screen, ctx, req)
 		if err != nil && ctx.Err() == nil && tunnelError(err) {
 			c.Forget(machineID)
 		}
@@ -94,7 +94,7 @@ func (o *Owner) screenServers(ctx context.Context) []*relayv1.IceServer {
 	if err != nil {
 		return nil
 	}
-	return o.iceServers.Get(ctx, pc, fetchScreenServers(c))
+	return o.iceServers.Get(ctx, pc, o.fetchScreenServers(c))
 }
 
 // warmScreenServers asks for the relay's servers ahead of a session, on the
@@ -107,13 +107,16 @@ func (o *Owner) warmScreenServers(pc *peer.Client) {
 	if err != nil {
 		return
 	}
-	o.iceServers.Warm(pc, fetchScreenServers(relayv1connect.NewOwnerControlServiceClient(hc, "http://relay", transport.ClientNoCompression)))
+	o.iceServers.Warm(pc, o.fetchScreenServers(relayv1connect.NewOwnerControlServiceClient(hc, "http://relay", transport.ClientNoCompression)))
 }
 
-func fetchScreenServers(c relayv1connect.OwnerControlServiceClient) func(context.Context) []*relayv1.IceServer {
+func (o *Owner) fetchScreenServers(c relayv1connect.OwnerControlServiceClient) func(context.Context) []*relayv1.IceServer {
 	return func(ctx context.Context) []*relayv1.IceServer {
 		res, err := c.GetScreenServers(ctx, &relayv1.GetScreenServersRequest{})
 		if err != nil {
+			// Without them a session has the paths the two ends find by
+			// themselves, and no relay to fall back on: say why.
+			o.log.Warn("screen: the relay's STUN and TURN servers", "err", err)
 			return nil
 		}
 		return res.Servers
@@ -185,8 +188,18 @@ func (d *Device) serveScreen(w http.ResponseWriter, r *http.Request) {
 
 	q := r.URL.Query()
 	lost := make(chan struct{}, 1)
+	moved := d.networkMoved()
+	// A machine that takes candidates after the offer says so in its state;
+	// an older one gets an offer with all of them, as before.
+	var candidates func(context.Context, *screenv1.CandidatesRequest) (*screenv1.CandidatesResponse, error)
+	o.rep.feeds(func(feeds map[string]*feed) {
+		if f := feeds[machineID]; f != nil && f.status.GetScreen().GetCandidatesLater() {
+			candidates = screenCall(o, machineID, screenv1connect.ScreenServiceClient.Candidates)
+		}
+	})
 	v, err := screen.Dial(ctx, screen.ViewerConfig{
-		Connect: o.screenConnect(machineID), Name: q.Get("name"), Pointer: q.Get("pointer") != "0", Servers: o.screenServers(ctx),
+		Connect: screenCall(o, machineID, screenv1connect.ScreenServiceClient.Connect), Candidates: candidates,
+		Name: q.Get("name"), Pointer: q.Get("pointer") != "0", Servers: o.screenServers(ctx),
 		Frame: func(key bool, data []byte, t *screen.Trace) {
 			b := make([]byte, screen.VideoHeader, screen.VideoHeader+len(data))
 			if key {
@@ -222,7 +235,37 @@ func (d *Device) serveScreen(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	defer v.Close()
-	var restarting atomic.Bool
+	// Finding a path again, through the tunnel, which may itself be coming
+	// back. Asked for with false when the path broke: the session waits a
+	// moment for it to come back by itself. With true when this device's
+	// network changed: the path may still carry the picture, but a new
+	// network has other addresses, and only an offer finds a path from them.
+	again := make(chan bool, 1)
+	go func() {
+		for {
+			var now bool
+			select {
+			case <-ctx.Done():
+				return
+			case now = <-again:
+			}
+			for i := 0; i < 5 && ctx.Err() == nil; i++ {
+				if !now {
+					time.Sleep(1500 * time.Millisecond)
+					if v.Connected() {
+						break
+					}
+				}
+				now = false
+				rctx, done := context.WithTimeout(ctx, 10*time.Second)
+				err := v.Restart(rctx)
+				done()
+				if err == nil {
+					break
+				}
+			}
+		}
+	}()
 	for {
 		select {
 		case <-ctx.Done():
@@ -237,26 +280,20 @@ func (d *Device) serveScreen(w http.ResponseWriter, r *http.Request) {
 		case f := <-input:
 			f(v)
 		case <-lost:
-			// The path broke (this device changed networks): find another,
-			// through the tunnel, which may itself be coming back.
-			if !restarting.CompareAndSwap(false, true) {
-				continue
+			select {
+			case again <- false:
+			default: // one is under way, or waits
 			}
-			go func() {
-				defer restarting.Store(false)
-				for i := 0; i < 5 && ctx.Err() == nil; i++ {
-					time.Sleep(1500 * time.Millisecond)
-					if v.Connected() {
-						return
-					}
-					rctx, done := context.WithTimeout(ctx, 10*time.Second)
-					err := v.Restart(rctx)
-					done()
-					if err == nil {
-						return
-					}
-				}
-			}()
+		case <-moved:
+			moved = d.networkMoved()
+			select {
+			case <-again: // a broken path that waited: the new network is the reason
+			default:
+			}
+			select {
+			case again <- true:
+			default:
+			}
 		}
 	}
 }

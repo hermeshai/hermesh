@@ -1168,9 +1168,12 @@ type ScreenStatus struct {
 	// The machine is a Mac and has the helper that captures its screen.
 	Available bool `protobuf:"varint,1,opt,name=available,proto3" json:"available,omitempty"`
 	// The device in control now, as it named itself; empty when none is.
-	Viewer        string `protobuf:"bytes,2,opt,name=viewer,proto3" json:"viewer,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	Viewer string `protobuf:"bytes,2,opt,name=viewer,proto3" json:"viewer,omitempty"`
+	// The machine takes a viewer's candidates after its offer
+	// (ScreenService.Candidates): the offer need not wait for them.
+	CandidatesLater bool `protobuf:"varint,3,opt,name=candidates_later,json=candidatesLater,proto3" json:"candidates_later,omitempty"`
+	unknownFields   protoimpl.UnknownFields
+	sizeCache       protoimpl.SizeCache
 }
 
 func (x *ScreenStatus) Reset() {
@@ -1215,6 +1218,13 @@ func (x *ScreenStatus) GetViewer() string {
 		return x.Viewer
 	}
 	return ""
+}
+
+func (x *ScreenStatus) GetCandidatesLater() bool {
+	if x != nil {
+		return x.CandidatesLater
+	}
+	return false
 }
 
 // HerStatus is Her on a machine, as its hermeshd last saw her.
@@ -2772,10 +2782,11 @@ const file_hermesh_machine_v1_machine_proto_rawDesc = "" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
 	"\x05value\x18\x02 \x01(\rR\x05value:\x028\x01J\x04\b\b\x10\tJ\x04\b\n" +
 	"\x10\vJ\x04\b\v\x10\fR\x04hostR\x0fagent_processesR\n" +
-	"started_at\"D\n" +
+	"started_at\"o\n" +
 	"\fScreenStatus\x12\x1c\n" +
 	"\tavailable\x18\x01 \x01(\bR\tavailable\x12\x16\n" +
-	"\x06viewer\x18\x02 \x01(\tR\x06viewer\"\xd5\x02\n" +
+	"\x06viewer\x18\x02 \x01(\tR\x06viewer\x12)\n" +
+	"\x10candidates_later\x18\x03 \x01(\bR\x0fcandidatesLater\"\xd5\x02\n" +
 	"\tHerStatus\x12\x18\n" +
 	"\aenabled\x18\x01 \x01(\bR\aenabled\x12\x18\n" +
 	"\arunning\x18\x02 \x01(\bR\arunning\x12\x18\n" +

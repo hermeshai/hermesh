@@ -30,7 +30,7 @@ import (
 // TestMobileCoreProcess is the iPhone app's process in the tests that start
 // one (startMobileCore): the owner role as the app runs it (internal/mobile),
 // paused and resumed by lines on stdin as the app does when it leaves the
-// front and comes back.
+// front and comes back, and told the same way that its network changed.
 func TestMobileCoreProcess(t *testing.T) {
 	dir := os.Getenv("HERMESH_TEST_MOBILE_CORE")
 	if dir == "" {
@@ -49,6 +49,8 @@ func TestMobileCoreProcess(t *testing.T) {
 			c.Pause()
 		case "resume":
 			c.Resume()
+		case "network":
+			c.Reconnect()
 		}
 		fmt.Println("did", sc.Text())
 	}
@@ -124,7 +126,7 @@ func startMobileCore(t *testing.T, dir string, root *identity.SoftwareKey) *mobi
 	return m
 }
 
-// do sends the core "pause" or "resume" and waits until it did it.
+// do sends the core "pause", "resume" or "network" and waits until it did it.
 func (m *mobileCore) do(cmd string) {
 	fmt.Fprintln(m.stdin, cmd)
 	select {

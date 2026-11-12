@@ -10,7 +10,7 @@ import type { Message } from "@bufbuild/protobuf";
  * Describes the file hermesh/screen/v1/screen.proto.
  */
 export const file_hermesh_screen_v1_screen: GenFile = /*@__PURE__*/
-  fileDesc("Ch5oZXJtZXNoL3NjcmVlbi92MS9zY3JlZW4ucHJvdG8SEWhlcm1lc2guc2NyZWVuLnYxIlQKDkNvbm5lY3RSZXF1ZXN0Eg0KBW9mZmVyGAEgASgJEhIKCnNlc3Npb25faWQYAiABKAkSDgoGdmlld2VyGAMgASgJEg8KB3BvaW50ZXIYBCABKAgiNQoPQ29ubmVjdFJlc3BvbnNlEg4KBmFuc3dlchgBIAEoCRISCgpzZXNzaW9uX2lkGAIgASgJIswCCgVJbnB1dBInCgRtb3ZlGAEgASgLMhcuaGVybWVzaC5zY3JlZW4udjEuTW92ZUgAEisKBmJ1dHRvbhgCIAEoCzIZLmhlcm1lc2guc2NyZWVuLnYxLkJ1dHRvbkgAEikKBXdoZWVsGAMgASgLMhguaGVybWVzaC5zY3JlZW4udjEuV2hlZWxIABIlCgNrZXkYBCABKAsyFi5oZXJtZXNoLnNjcmVlbi52MS5LZXlIABInCgR0ZXh0GAUgASgLMhcuaGVybWVzaC5zY3JlZW4udjEuVGV4dEgAEjYKDHNob3dfcG9pbnRlchgGIAEoCzIeLmhlcm1lc2guc2NyZWVuLnYxLlNob3dQb2ludGVySAASMQoJY2xpcGJvYXJkGAcgASgLMhwuaGVybWVzaC5zY3JlZW4udjEuQ2xpcGJvYXJkSABCBwoFZXZlbnQiHAoETW92ZRIJCgF4GAEgASgBEgkKAXkYAiABKAEibAoGQnV0dG9uEgkKAXgYASABKAESCQoBeRgCIAEoARIuCgZidXR0b24YAyABKA4yHi5oZXJtZXNoLnNjcmVlbi52MS5Nb3VzZUJ1dHRvbhIMCgRkb3duGAQgASgIEg4KBmNsaWNrcxgFIAEoDSI1CgVXaGVlbBIJCgF4GAEgASgBEgkKAXkYAiABKAESCgoCZHgYAyABKAESCgoCZHkYBCABKAEigwEKA0tleRIoCgNrZXkYASABKA4yGy5oZXJtZXNoLnNjcmVlbi52MS5OYW1lZEtleRIRCgljaGFyYWN0ZXIYAiABKAkSDwoHY29tbWFuZBgDIAEoCBIOCgZvcHRpb24YBCABKAgSDwoHY29udHJvbBgFIAEoCBINCgVzaGlmdBgGIAEoCCI9CgRUZXh0EgwKBHRleHQYASABKAkSJwoFcGFzdGUYAiABKA4yGC5oZXJtZXNoLnNjcmVlbi52MS5QYXN0ZSJCCglDbGlwYm9hcmQSDAoEdGV4dBgBIAEoCRInCgVwYXN0ZRgCIAEoDjIYLmhlcm1lc2guc2NyZWVuLnYxLlBhc3RlIhwKC1Nob3dQb2ludGVyEg0KBXNob3duGAEgASgIIqEBCgtTY3JlZW5FdmVudBIrCgZmb3JtYXQYASABKAsyGS5oZXJtZXNoLnNjcmVlbi52MS5Gb3JtYXRIABIpCgVzdGF0ZRgCIAEoCzIYLmhlcm1lc2guc2NyZWVuLnYxLlN0YXRlSAASMQoJY2xpcGJvYXJkGAMgASgLMhwuaGVybWVzaC5zY3JlZW4udjEuQ2xpcGJvYXJkSABCBwoFZXZlbnQiJwoGRm9ybWF0Eg0KBXdpZHRoGAEgASgNEg4KBmhlaWdodBgCIAEoDSI7CgVTdGF0ZRINCgVlcnJvchgBIAEoCRIOCgZkZXRhaWwYAiABKAkSEwoLY2FuX2NvbnRyb2wYAyABKAgqWgoLTW91c2VCdXR0b24SHAoYTU9VU0VfQlVUVE9OX1VOU1BFQ0lGSUVEEAASFQoRTU9VU0VfQlVUVE9OX0xFRlQQARIWChJNT1VTRV9CVVRUT05fUklHSFQQAirOAgoITmFtZWRLZXkSGQoVTkFNRURfS0VZX1VOU1BFQ0lGSUVEEAASFAoQTkFNRURfS0VZX1JFVFVSThABEhEKDU5BTUVEX0tFWV9UQUIQAhITCg9OQU1FRF9LRVlfU1BBQ0UQAxIXChNOQU1FRF9LRVlfQkFDS1NQQUNFEAQSFAoQTkFNRURfS0VZX0VTQ0FQRRAFEhIKDk5BTUVEX0tFWV9MRUZUEAYSEwoPTkFNRURfS0VZX1JJR0hUEAcSEgoOTkFNRURfS0VZX0RPV04QCBIQCgxOQU1FRF9LRVlfVVAQCRIUChBOQU1FRF9LRVlfREVMRVRFEAoSEgoOTkFNRURfS0VZX0hPTUUQCxIRCg1OQU1FRF9LRVlfRU5EEAwSFQoRTkFNRURfS0VZX1BBR0VfVVAQDRIXChNOQU1FRF9LRVlfUEFHRV9ET1dOEA4qQQoFUGFzdGUSFQoRUEFTVEVfVU5TUEVDSUZJRUQQABINCglQQVNURV9BUFAQARISCg5QQVNURV9URVJNSU5BTBACMmEKDVNjcmVlblNlcnZpY2USUAoHQ29ubmVjdBIhLmhlcm1lc2guc2NyZWVuLnYxLkNvbm5lY3RSZXF1ZXN0GiIuaGVybWVzaC5zY3JlZW4udjEuQ29ubmVjdFJlc3BvbnNlYgZwcm90bzM");
+  fileDesc("Ch5oZXJtZXNoL3NjcmVlbi92MS9zY3JlZW4ucHJvdG8SEWhlcm1lc2guc2NyZWVuLnYxIm4KDkNvbm5lY3RSZXF1ZXN0Eg0KBW9mZmVyGAEgASgJEhIKCnNlc3Npb25faWQYAiABKAkSDgoGdmlld2VyGAMgASgJEg8KB3BvaW50ZXIYBCABKAgSGAoQY2FuZGlkYXRlc19sYXRlchgFIAEoCCJPCg9Db25uZWN0UmVzcG9uc2USDgoGYW5zd2VyGAEgASgJEhIKCnNlc3Npb25faWQYAiABKAkSGAoQY2FuZGlkYXRlc19sYXRlchgDIAEoCCJKChFDYW5kaWRhdGVzUmVxdWVzdBISCgpzZXNzaW9uX2lkGAEgASgJEg0KBXVmcmFnGAIgASgJEhIKCmNhbmRpZGF0ZXMYAyADKAkiKAoSQ2FuZGlkYXRlc1Jlc3BvbnNlEhIKCmNhbmRpZGF0ZXMYASADKAkizAIKBUlucHV0EicKBG1vdmUYASABKAsyFy5oZXJtZXNoLnNjcmVlbi52MS5Nb3ZlSAASKwoGYnV0dG9uGAIgASgLMhkuaGVybWVzaC5zY3JlZW4udjEuQnV0dG9uSAASKQoFd2hlZWwYAyABKAsyGC5oZXJtZXNoLnNjcmVlbi52MS5XaGVlbEgAEiUKA2tleRgEIAEoCzIWLmhlcm1lc2guc2NyZWVuLnYxLktleUgAEicKBHRleHQYBSABKAsyFy5oZXJtZXNoLnNjcmVlbi52MS5UZXh0SAASNgoMc2hvd19wb2ludGVyGAYgASgLMh4uaGVybWVzaC5zY3JlZW4udjEuU2hvd1BvaW50ZXJIABIxCgljbGlwYm9hcmQYByABKAsyHC5oZXJtZXNoLnNjcmVlbi52MS5DbGlwYm9hcmRIAEIHCgVldmVudCIcCgRNb3ZlEgkKAXgYASABKAESCQoBeRgCIAEoASJsCgZCdXR0b24SCQoBeBgBIAEoARIJCgF5GAIgASgBEi4KBmJ1dHRvbhgDIAEoDjIeLmhlcm1lc2guc2NyZWVuLnYxLk1vdXNlQnV0dG9uEgwKBGRvd24YBCABKAgSDgoGY2xpY2tzGAUgASgNIjUKBVdoZWVsEgkKAXgYASABKAESCQoBeRgCIAEoARIKCgJkeBgDIAEoARIKCgJkeRgEIAEoASKDAQoDS2V5EigKA2tleRgBIAEoDjIbLmhlcm1lc2guc2NyZWVuLnYxLk5hbWVkS2V5EhEKCWNoYXJhY3RlchgCIAEoCRIPCgdjb21tYW5kGAMgASgIEg4KBm9wdGlvbhgEIAEoCBIPCgdjb250cm9sGAUgASgIEg0KBXNoaWZ0GAYgASgIIj0KBFRleHQSDAoEdGV4dBgBIAEoCRInCgVwYXN0ZRgCIAEoDjIYLmhlcm1lc2guc2NyZWVuLnYxLlBhc3RlIkIKCUNsaXBib2FyZBIMCgR0ZXh0GAEgASgJEicKBXBhc3RlGAIgASgOMhguaGVybWVzaC5zY3JlZW4udjEuUGFzdGUiHAoLU2hvd1BvaW50ZXISDQoFc2hvd24YASABKAgioQEKC1NjcmVlbkV2ZW50EisKBmZvcm1hdBgBIAEoCzIZLmhlcm1lc2guc2NyZWVuLnYxLkZvcm1hdEgAEikKBXN0YXRlGAIgASgLMhguaGVybWVzaC5zY3JlZW4udjEuU3RhdGVIABIxCgljbGlwYm9hcmQYAyABKAsyHC5oZXJtZXNoLnNjcmVlbi52MS5DbGlwYm9hcmRIAEIHCgVldmVudCInCgZGb3JtYXQSDQoFd2lkdGgYASABKA0SDgoGaGVpZ2h0GAIgASgNIjsKBVN0YXRlEg0KBWVycm9yGAEgASgJEg4KBmRldGFpbBgCIAEoCRITCgtjYW5fY29udHJvbBgDIAEoCCpaCgtNb3VzZUJ1dHRvbhIcChhNT1VTRV9CVVRUT05fVU5TUEVDSUZJRUQQABIVChFNT1VTRV9CVVRUT05fTEVGVBABEhYKEk1PVVNFX0JVVFRPTl9SSUdIVBACKs4CCghOYW1lZEtleRIZChVOQU1FRF9LRVlfVU5TUEVDSUZJRUQQABIUChBOQU1FRF9LRVlfUkVUVVJOEAESEQoNTkFNRURfS0VZX1RBQhACEhMKD05BTUVEX0tFWV9TUEFDRRADEhcKE05BTUVEX0tFWV9CQUNLU1BBQ0UQBBIUChBOQU1FRF9LRVlfRVNDQVBFEAUSEgoOTkFNRURfS0VZX0xFRlQQBhITCg9OQU1FRF9LRVlfUklHSFQQBxISCg5OQU1FRF9LRVlfRE9XThAIEhAKDE5BTUVEX0tFWV9VUBAJEhQKEE5BTUVEX0tFWV9ERUxFVEUQChISCg5OQU1FRF9LRVlfSE9NRRALEhEKDU5BTUVEX0tFWV9FTkQQDBIVChFOQU1FRF9LRVlfUEFHRV9VUBANEhcKE05BTUVEX0tFWV9QQUdFX0RPV04QDipBCgVQYXN0ZRIVChFQQVNURV9VTlNQRUNJRklFRBAAEg0KCVBBU1RFX0FQUBABEhIKDlBBU1RFX1RFUk1JTkFMEAIyvAEKDVNjcmVlblNlcnZpY2USUAoHQ29ubmVjdBIhLmhlcm1lc2guc2NyZWVuLnYxLkNvbm5lY3RSZXF1ZXN0GiIuaGVybWVzaC5zY3JlZW4udjEuQ29ubmVjdFJlc3BvbnNlElkKCkNhbmRpZGF0ZXMSJC5oZXJtZXNoLnNjcmVlbi52MS5DYW5kaWRhdGVzUmVxdWVzdBolLmhlcm1lc2guc2NyZWVuLnYxLkNhbmRpZGF0ZXNSZXNwb25zZWIGcHJvdG8z");
 
 /**
  * @generated from message hermesh.screen.v1.ConnectRequest
@@ -45,6 +45,15 @@ export type ConnectRequest = Message<"hermesh.screen.v1.ConnectRequest"> & {
    * @generated from field: bool pointer = 4;
    */
   pointer: boolean;
+
+  /**
+   * The offer went as soon as the viewer's local addresses were in it; the
+   * rest follow in Candidates, and the machine may answer the same way. A
+   * machine that does not know this field gathers all of its own first.
+   *
+   * @generated from field: bool candidates_later = 5;
+   */
+  candidatesLater: boolean;
 };
 
 /**
@@ -69,6 +78,16 @@ export type ConnectResponse = Message<"hermesh.screen.v1.ConnectResponse"> & {
    * @generated from field: string session_id = 2;
    */
   sessionId: string;
+
+  /**
+   * The machine takes the viewer's other candidates in Candidates and
+   * gives the rest of its own there. Unset by a machine that does not: it
+   * knows the viewer's local addresses alone until an offer with all of the
+   * viewer's candidates restarts ICE.
+   *
+   * @generated from field: bool candidates_later = 3;
+   */
+  candidatesLater: boolean;
 };
 
 /**
@@ -77,6 +96,57 @@ export type ConnectResponse = Message<"hermesh.screen.v1.ConnectResponse"> & {
  */
 export const ConnectResponseSchema: GenMessage<ConnectResponse> = /*@__PURE__*/
   messageDesc(file_hermesh_screen_v1_screen, 1);
+
+/**
+ * @generated from message hermesh.screen.v1.CandidatesRequest
+ */
+export type CandidatesRequest = Message<"hermesh.screen.v1.CandidatesRequest"> & {
+  /**
+   * @generated from field: string session_id = 1;
+   */
+  sessionId: string;
+
+  /**
+   * The ICE username fragment of the offer these belong to. The machine
+   * refuses them (FailedPrecondition) once a later offer has come.
+   *
+   * @generated from field: string ufrag = 2;
+   */
+  ufrag: string;
+
+  /**
+   * All of the viewer's candidates, each as a "candidate:" line.
+   *
+   * @generated from field: repeated string candidates = 3;
+   */
+  candidates: string[];
+};
+
+/**
+ * Describes the message hermesh.screen.v1.CandidatesRequest.
+ * Use `create(CandidatesRequestSchema)` to create a new message.
+ */
+export const CandidatesRequestSchema: GenMessage<CandidatesRequest> = /*@__PURE__*/
+  messageDesc(file_hermesh_screen_v1_screen, 2);
+
+/**
+ * @generated from message hermesh.screen.v1.CandidatesResponse
+ */
+export type CandidatesResponse = Message<"hermesh.screen.v1.CandidatesResponse"> & {
+  /**
+   * All of the machine's candidates, each as a "candidate:" line.
+   *
+   * @generated from field: repeated string candidates = 1;
+   */
+  candidates: string[];
+};
+
+/**
+ * Describes the message hermesh.screen.v1.CandidatesResponse.
+ * Use `create(CandidatesResponseSchema)` to create a new message.
+ */
+export const CandidatesResponseSchema: GenMessage<CandidatesResponse> = /*@__PURE__*/
+  messageDesc(file_hermesh_screen_v1_screen, 3);
 
 /**
  * What the viewer does, sent on a data channel. Positions are fractions of
@@ -138,7 +208,7 @@ export type Input = Message<"hermesh.screen.v1.Input"> & {
  * Use `create(InputSchema)` to create a new message.
  */
 export const InputSchema: GenMessage<Input> = /*@__PURE__*/
-  messageDesc(file_hermesh_screen_v1_screen, 2);
+  messageDesc(file_hermesh_screen_v1_screen, 4);
 
 /**
  * The pointer moved. While a button is down it drags.
@@ -162,7 +232,7 @@ export type Move = Message<"hermesh.screen.v1.Move"> & {
  * Use `create(MoveSchema)` to create a new message.
  */
 export const MoveSchema: GenMessage<Move> = /*@__PURE__*/
-  messageDesc(file_hermesh_screen_v1_screen, 3);
+  messageDesc(file_hermesh_screen_v1_screen, 5);
 
 /**
  * A mouse button went down or up.
@@ -203,7 +273,7 @@ export type Button = Message<"hermesh.screen.v1.Button"> & {
  * Use `create(ButtonSchema)` to create a new message.
  */
 export const ButtonSchema: GenMessage<Button> = /*@__PURE__*/
-  messageDesc(file_hermesh_screen_v1_screen, 4);
+  messageDesc(file_hermesh_screen_v1_screen, 6);
 
 /**
  * Scrolling, in points of the display: positive dy moves down the page.
@@ -237,7 +307,7 @@ export type Wheel = Message<"hermesh.screen.v1.Wheel"> & {
  * Use `create(WheelSchema)` to create a new message.
  */
 export const WheelSchema: GenMessage<Wheel> = /*@__PURE__*/
-  messageDesc(file_hermesh_screen_v1_screen, 5);
+  messageDesc(file_hermesh_screen_v1_screen, 7);
 
 /**
  * One key pressed and released, with the modifiers held meanwhile: a named
@@ -283,7 +353,7 @@ export type Key = Message<"hermesh.screen.v1.Key"> & {
  * Use `create(KeySchema)` to create a new message.
  */
 export const KeySchema: GenMessage<Key> = /*@__PURE__*/
-  messageDesc(file_hermesh_screen_v1_screen, 6);
+  messageDesc(file_hermesh_screen_v1_screen, 8);
 
 /**
  * Text entered as it is, whatever keyboard the machine has selected.
@@ -311,7 +381,7 @@ export type Text = Message<"hermesh.screen.v1.Text"> & {
  * Use `create(TextSchema)` to create a new message.
  */
 export const TextSchema: GenMessage<Text> = /*@__PURE__*/
-  messageDesc(file_hermesh_screen_v1_screen, 7);
+  messageDesc(file_hermesh_screen_v1_screen, 9);
 
 /**
  * Text on a clipboard. From the viewer: the phone's clipboard, given to
@@ -338,7 +408,7 @@ export type Clipboard = Message<"hermesh.screen.v1.Clipboard"> & {
  * Use `create(ClipboardSchema)` to create a new message.
  */
 export const ClipboardSchema: GenMessage<Clipboard> = /*@__PURE__*/
-  messageDesc(file_hermesh_screen_v1_screen, 8);
+  messageDesc(file_hermesh_screen_v1_screen, 10);
 
 /**
  * Whether the picture has the pointer in it, from now on.
@@ -357,7 +427,7 @@ export type ShowPointer = Message<"hermesh.screen.v1.ShowPointer"> & {
  * Use `create(ShowPointerSchema)` to create a new message.
  */
 export const ShowPointerSchema: GenMessage<ShowPointer> = /*@__PURE__*/
-  messageDesc(file_hermesh_screen_v1_screen, 9);
+  messageDesc(file_hermesh_screen_v1_screen, 11);
 
 /**
  * What the machine tells the viewer, on the "input" channel.
@@ -394,7 +464,7 @@ export type ScreenEvent = Message<"hermesh.screen.v1.ScreenEvent"> & {
  * Use `create(ScreenEventSchema)` to create a new message.
  */
 export const ScreenEventSchema: GenMessage<ScreenEvent> = /*@__PURE__*/
-  messageDesc(file_hermesh_screen_v1_screen, 10);
+  messageDesc(file_hermesh_screen_v1_screen, 12);
 
 /**
  * The picture's size in pixels.
@@ -418,7 +488,7 @@ export type Format = Message<"hermesh.screen.v1.Format"> & {
  * Use `create(FormatSchema)` to create a new message.
  */
 export const FormatSchema: GenMessage<Format> = /*@__PURE__*/
-  messageDesc(file_hermesh_screen_v1_screen, 11);
+  messageDesc(file_hermesh_screen_v1_screen, 13);
 
 /**
  * Why there is no picture, or what the viewer can't do.
@@ -453,7 +523,7 @@ export type State = Message<"hermesh.screen.v1.State"> & {
  * Use `create(StateSchema)` to create a new message.
  */
 export const StateSchema: GenMessage<State> = /*@__PURE__*/
-  messageDesc(file_hermesh_screen_v1_screen, 12);
+  messageDesc(file_hermesh_screen_v1_screen, 14);
 
 /**
  * @generated from enum hermesh.screen.v1.MouseButton
@@ -628,6 +698,20 @@ export const ScreenService: GenService<{
     methodKind: "unary";
     input: typeof ConnectRequestSchema;
     output: typeof ConnectResponseSchema;
+  },
+  /**
+   * The candidates each end found after its half of Connect, which then
+   * carried its local addresses alone (candidates_later): a path between
+   * local addresses is checked without waiting for the relay's STUN and
+   * TURN servers. The viewer calls it once its gathering has ended; the
+   * machine adds the viewer's and answers with its own once it has them.
+   *
+   * @generated from rpc hermesh.screen.v1.ScreenService.Candidates
+   */
+  candidates: {
+    methodKind: "unary";
+    input: typeof CandidatesRequestSchema;
+    output: typeof CandidatesResponseSchema;
   },
 }> = /*@__PURE__*/
   serviceDesc(file_hermesh_screen_v1_screen, 0);

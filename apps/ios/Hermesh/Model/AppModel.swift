@@ -312,6 +312,8 @@ final class AppModel {
 
     /// Wi-Fi to cellular and back: the connections made on the old network
     /// may be dead without anything noticing, so the core connects again.
+    /// Any other change is the core's to judge, by the device's addresses
+    /// (one Wi-Fi to another keeps the interface).
     private func watchNetwork() {
         let m = NWPathMonitor()
         m.pathUpdateHandler = { [weak self] path in
@@ -324,8 +326,8 @@ final class AppModel {
 
     private func networkChanged(to seen: String) {
         defer { networkSeen = seen }
-        guard let before = networkSeen, before != seen, !seen.isEmpty, active, phase == .ready else { return }
-        Core.networkChanged()
+        guard let before = networkSeen, !seen.isEmpty, active, phase == .ready else { return }
+        if before != seen { Core.networkChanged() } else { Core.pathChanged() }
     }
 
     // MARK: What is kept on the phone

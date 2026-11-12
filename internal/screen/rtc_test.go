@@ -31,11 +31,12 @@ func offerWith(t *testing.T, servers []webrtc.ICEServer) (string, time.Duration)
 		t.Fatal(err)
 	}
 	start := time.Now()
-	sdp, err := gathered(pc, o)
+	g, err := gather(pc, o)
 	if err != nil {
 		t.Fatal(err)
 	}
-	return sdp, time.Since(start)
+	g.wait(false)
+	return pc.LocalDescription().SDP, time.Since(start)
 }
 
 // STUN and TURN servers nobody answers at (a network that blocks them) hold
@@ -85,5 +86,53 @@ func TestGatheredGoesWithTheFirstTURNAddress(t *testing.T) {
 	}
 	if !strings.Contains(sdp, "typ relay") {
 		t.Errorf("the offer has no TURN address:\n%s", sdp)
+	}
+}
+
+// With early, the wait ends as soon as the local addresses are in, whatever
+// the servers do: the offer can go, and the other candidates follow.
+func TestGatheringEarlyDoesNotWaitForServers(t *testing.T) {
+	api, err := newAPI(nil, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	dead := "192.0.2.1:3478" // TEST-NET-1: nothing answers there
+	pc, err := api.NewPeerConnection(webrtc.Configuration{ICEServers: []webrtc.ICEServer{
+		{URLs: []string{"stun:" + dead}},
+		{URLs: []string{"turn:" + dead + "?transport=udp"}, Username: "u", Credential: "p"},
+	}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer pc.Close()
+	if _, err := pc.CreateDataChannel(inputChannel, nil); err != nil {
+		t.Fatal(err)
+	}
+	o, err := pc.CreateOffer(nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	start := time.Now()
+	g, err := gather(pc, o)
+	if err != nil {
+		t.Fatal(err)
+	}
+	g.wait(true)
+	if took := time.Since(start); took > 500*time.Millisecond {
+		t.Errorf("the local addresses took %v", took)
+	}
+	sdp := pc.LocalDescription().SDP
+	if !strings.Contains(sdp, "typ host") {
+		t.Errorf("the offer has no local address:\n%s", sdp)
+	}
+	if iceUfrag(sdp) == "" {
+		t.Errorf("no ICE username fragment in:\n%s", sdp)
+	}
+	if got := kinds(g.candidates()); !strings.HasPrefix(got, "host ") {
+		t.Errorf("candidates: %q", got)
+	}
+	g.wait(false)
+	if took := time.Since(start); took < gatherWithin-100*time.Millisecond || took > gatherWithin+time.Second {
+		t.Errorf("the gathering ended after %v, want about %v", took, gatherWithin)
 	}
 }

@@ -1,7 +1,10 @@
 package screen
 
 import (
+	"bytes"
 	"context"
+	"errors"
+	"log/slog"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -10,9 +13,11 @@ import (
 	"testing"
 	"time"
 
+	"connectrpc.com/connect"
 	"github.com/pion/webrtc/v4"
 	"google.golang.org/protobuf/proto"
 
+	relayv1 "github.com/hermeshai/hermesh/gen/go/hermesh/relay/v1"
 	screenv1 "github.com/hermeshai/hermesh/gen/go/hermesh/screen/v1"
 )
 
@@ -66,7 +71,7 @@ func TestSession(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 	v, err := Dial(ctx, ViewerConfig{
-		Connect: h.Connect, Name: "test phone", Pointer: true,
+		Connect: h.Connect, Candidates: h.Candidates, Name: "test phone", Pointer: true,
 		Frame: func(key bool, data []byte, _ *Trace) {
 			mu.Lock()
 			defer mu.Unlock()
@@ -225,13 +230,147 @@ func TestSessionEndsWhenViewerNeverConnects(t *testing.T) {
 	pc.AddTransceiverFromKind(webrtc.RTPCodecTypeVideo, webrtc.RTPTransceiverInit{Direction: webrtc.RTPTransceiverDirectionRecvonly})
 	pc.CreateDataChannel(inputChannel, nil)
 	o, _ := pc.CreateOffer(nil)
-	sdp, err := gathered(pc, o)
+	g, err := gather(pc, o)
 	if err != nil {
 		t.Fatal(err)
 	}
+	g.wait(false)
+	sdp := pc.LocalDescription().SDP
 	pc.Close()
 	if _, err := h.Connect(context.Background(), &screenv1.ConnectRequest{Offer: sdp, Viewer: "gone"}); err != nil {
 		t.Fatal(err)
 	}
 	waitFor(t, "the session to end", func() bool { return h.Viewer() == "" })
+}
+
+type writerFunc func([]byte) (int, error)
+
+func (f writerFunc) Write(p []byte) (int, error) { return f(p) }
+
+// Servers that do not answer (a network that blocks the relay's STUN and
+// TURN) do not hold a session on one network up: each end's half of the
+// handshake goes with its local addresses, and the rest follow. An older
+// viewer, which sends all its candidates in its offer, and an older machine,
+// which takes none after it, still connect.
+func TestCandidatesLater(t *testing.T) {
+	dead := []*relayv1.IceServer{{Urls: []string{"stun:192.0.2.1:3478", "turn:192.0.2.1:3478?transport=udp"}, Username: "u", Credential: "p"}}
+	for _, c := range []struct {
+		name          string
+		viewer, older bool // the viewer sends candidates later; the machine is an older one
+		within        time.Duration
+	}{
+		{"both", true, false, 1500 * time.Millisecond},
+		{"an older viewer", false, false, 10 * time.Second},
+		{"an older machine", true, true, 10 * time.Second},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			var mu sync.Mutex
+			var log bytes.Buffer
+			h := NewHost(HostConfig{Bin: helperBin(t), Args: []string{"--test-source"}, Servers: func(context.Context) []*relayv1.IceServer { return dead },
+				Log: slog.New(slog.NewTextHandler(writerFunc(func(p []byte) (int, error) { mu.Lock(); defer mu.Unlock(); return log.Write(p) }), nil))})
+			defer h.Stop()
+			var connected time.Time
+			var exchanged int
+			cfg := ViewerConfig{
+				Name: "test phone", Servers: dead,
+				Connect: func(ctx context.Context, req *screenv1.ConnectRequest) (*screenv1.ConnectResponse, error) {
+					if c.older { // it does not know the field
+						req.CandidatesLater = false
+					}
+					return h.Connect(ctx, req)
+				},
+				Status: func(s Status) {
+					mu.Lock()
+					defer mu.Unlock()
+					if s.Phase == "connected" && connected.IsZero() {
+						connected = time.Now()
+					}
+				},
+			}
+			if c.viewer {
+				cfg.Candidates = func(ctx context.Context, req *screenv1.CandidatesRequest) (*screenv1.CandidatesResponse, error) {
+					mu.Lock()
+					exchanged++
+					mu.Unlock()
+					if c.older {
+						return nil, connect.NewError(connect.CodeUnimplemented, errors.New("unimplemented"))
+					}
+					return h.Candidates(ctx, req)
+				}
+			}
+			ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+			defer cancel()
+			start := time.Now()
+			v, err := Dial(ctx, cfg)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer v.Close()
+			waitFor(t, "connected", func() bool { mu.Lock(); defer mu.Unlock(); return !connected.IsZero() })
+			mu.Lock()
+			took := connected.Sub(start)
+			mu.Unlock()
+			t.Logf("connected after %v", took.Round(time.Millisecond))
+			if took > c.within {
+				t.Errorf("connected after %v, want within %v", took, c.within)
+			}
+			if c.viewer && !c.older {
+				waitFor(t, "the other candidates exchanged", func() bool { mu.Lock(); defer mu.Unlock(); return exchanged == 1 })
+			}
+			// The machine's log says what each end found and the path taken
+			// (docs/peer-connectivity-tests.md reads these lines).
+			waitFor(t, "the session's lines in the log", func() bool {
+				mu.Lock()
+				defer mu.Unlock()
+				l := log.String()
+				return strings.Contains(l, `msg="screen: candidates"`) && strings.Contains(l, `local="host `) && strings.Contains(l, `remote="host `) &&
+					strings.Contains(l, `msg="screen: path"`) && strings.Contains(l, " after=")
+			})
+			if c.older {
+				time.Sleep(gatherWithin + time.Second)
+				mu.Lock()
+				if exchanged != 0 {
+					t.Errorf("candidates were sent to a machine that takes none: %d times", exchanged)
+				}
+				mu.Unlock()
+			}
+		})
+	}
+}
+
+// A candidate exchange for an offer that another has replaced is refused:
+// its candidates belong to paths that are gone.
+func TestCandidatesOfAnEarlierOfferAreRefused(t *testing.T) {
+	h := NewHost(HostConfig{Bin: helperBin(t), Args: []string{"--test-source"}})
+	defer h.Stop()
+	var mu sync.Mutex
+	var first *screenv1.CandidatesRequest
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	v, err := Dial(ctx, ViewerConfig{
+		Name: "test phone", Connect: h.Connect,
+		Candidates: func(ctx context.Context, req *screenv1.CandidatesRequest) (*screenv1.CandidatesResponse, error) {
+			mu.Lock()
+			if first == nil {
+				first = req
+			}
+			mu.Unlock()
+			return h.Candidates(ctx, req)
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer v.Close()
+	waitFor(t, "the first exchange", func() bool { mu.Lock(); defer mu.Unlock(); return first != nil })
+	if err := v.Restart(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := h.Candidates(ctx, first); connect.CodeOf(err) != connect.CodeFailedPrecondition {
+		t.Errorf("the earlier offer's candidates: %v, want them refused", err)
+	}
+	if _, err := h.Candidates(ctx, &screenv1.CandidatesRequest{SessionId: "none"}); connect.CodeOf(err) != connect.CodeNotFound {
+		t.Errorf("candidates for no session: %v", err)
+	}
+	waitFor(t, "connected after the restart", v.Connected)
 }

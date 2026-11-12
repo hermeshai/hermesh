@@ -220,9 +220,13 @@ type ConnectRequest struct {
 	Viewer string `protobuf:"bytes,3,opt,name=viewer,proto3" json:"viewer,omitempty"`
 	// Whether the picture has the pointer in it. A viewer that draws its own
 	// (trackpad mode) asks for none.
-	Pointer       bool `protobuf:"varint,4,opt,name=pointer,proto3" json:"pointer,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	Pointer bool `protobuf:"varint,4,opt,name=pointer,proto3" json:"pointer,omitempty"`
+	// The offer went as soon as the viewer's local addresses were in it; the
+	// rest follow in Candidates, and the machine may answer the same way. A
+	// machine that does not know this field gathers all of its own first.
+	CandidatesLater bool `protobuf:"varint,5,opt,name=candidates_later,json=candidatesLater,proto3" json:"candidates_later,omitempty"`
+	unknownFields   protoimpl.UnknownFields
+	sizeCache       protoimpl.SizeCache
 }
 
 func (x *ConnectRequest) Reset() {
@@ -283,13 +287,25 @@ func (x *ConnectRequest) GetPointer() bool {
 	return false
 }
 
+func (x *ConnectRequest) GetCandidatesLater() bool {
+	if x != nil {
+		return x.CandidatesLater
+	}
+	return false
+}
+
 type ConnectResponse struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// The machine's SDP answer.
-	Answer        string `protobuf:"bytes,1,opt,name=answer,proto3" json:"answer,omitempty"`
-	SessionId     string `protobuf:"bytes,2,opt,name=session_id,json=sessionId,proto3" json:"session_id,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	Answer    string `protobuf:"bytes,1,opt,name=answer,proto3" json:"answer,omitempty"`
+	SessionId string `protobuf:"bytes,2,opt,name=session_id,json=sessionId,proto3" json:"session_id,omitempty"`
+	// The machine takes the viewer's other candidates in Candidates and
+	// gives the rest of its own there. Unset by a machine that does not: it
+	// knows the viewer's local addresses alone until an offer with all of the
+	// viewer's candidates restarts ICE.
+	CandidatesLater bool `protobuf:"varint,3,opt,name=candidates_later,json=candidatesLater,proto3" json:"candidates_later,omitempty"`
+	unknownFields   protoimpl.UnknownFields
+	sizeCache       protoimpl.SizeCache
 }
 
 func (x *ConnectResponse) Reset() {
@@ -336,6 +352,121 @@ func (x *ConnectResponse) GetSessionId() string {
 	return ""
 }
 
+func (x *ConnectResponse) GetCandidatesLater() bool {
+	if x != nil {
+		return x.CandidatesLater
+	}
+	return false
+}
+
+type CandidatesRequest struct {
+	state     protoimpl.MessageState `protogen:"open.v1"`
+	SessionId string                 `protobuf:"bytes,1,opt,name=session_id,json=sessionId,proto3" json:"session_id,omitempty"`
+	// The ICE username fragment of the offer these belong to. The machine
+	// refuses them (FailedPrecondition) once a later offer has come.
+	Ufrag string `protobuf:"bytes,2,opt,name=ufrag,proto3" json:"ufrag,omitempty"`
+	// All of the viewer's candidates, each as a "candidate:" line.
+	Candidates    []string `protobuf:"bytes,3,rep,name=candidates,proto3" json:"candidates,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *CandidatesRequest) Reset() {
+	*x = CandidatesRequest{}
+	mi := &file_hermesh_screen_v1_screen_proto_msgTypes[2]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *CandidatesRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*CandidatesRequest) ProtoMessage() {}
+
+func (x *CandidatesRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_hermesh_screen_v1_screen_proto_msgTypes[2]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use CandidatesRequest.ProtoReflect.Descriptor instead.
+func (*CandidatesRequest) Descriptor() ([]byte, []int) {
+	return file_hermesh_screen_v1_screen_proto_rawDescGZIP(), []int{2}
+}
+
+func (x *CandidatesRequest) GetSessionId() string {
+	if x != nil {
+		return x.SessionId
+	}
+	return ""
+}
+
+func (x *CandidatesRequest) GetUfrag() string {
+	if x != nil {
+		return x.Ufrag
+	}
+	return ""
+}
+
+func (x *CandidatesRequest) GetCandidates() []string {
+	if x != nil {
+		return x.Candidates
+	}
+	return nil
+}
+
+type CandidatesResponse struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// All of the machine's candidates, each as a "candidate:" line.
+	Candidates    []string `protobuf:"bytes,1,rep,name=candidates,proto3" json:"candidates,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *CandidatesResponse) Reset() {
+	*x = CandidatesResponse{}
+	mi := &file_hermesh_screen_v1_screen_proto_msgTypes[3]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *CandidatesResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*CandidatesResponse) ProtoMessage() {}
+
+func (x *CandidatesResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_hermesh_screen_v1_screen_proto_msgTypes[3]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use CandidatesResponse.ProtoReflect.Descriptor instead.
+func (*CandidatesResponse) Descriptor() ([]byte, []int) {
+	return file_hermesh_screen_v1_screen_proto_rawDescGZIP(), []int{3}
+}
+
+func (x *CandidatesResponse) GetCandidates() []string {
+	if x != nil {
+		return x.Candidates
+	}
+	return nil
+}
+
 // What the viewer does, sent on a data channel. Positions are fractions of
 // the display, from its top left corner.
 type Input struct {
@@ -356,7 +487,7 @@ type Input struct {
 
 func (x *Input) Reset() {
 	*x = Input{}
-	mi := &file_hermesh_screen_v1_screen_proto_msgTypes[2]
+	mi := &file_hermesh_screen_v1_screen_proto_msgTypes[4]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -368,7 +499,7 @@ func (x *Input) String() string {
 func (*Input) ProtoMessage() {}
 
 func (x *Input) ProtoReflect() protoreflect.Message {
-	mi := &file_hermesh_screen_v1_screen_proto_msgTypes[2]
+	mi := &file_hermesh_screen_v1_screen_proto_msgTypes[4]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -381,7 +512,7 @@ func (x *Input) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Input.ProtoReflect.Descriptor instead.
 func (*Input) Descriptor() ([]byte, []int) {
-	return file_hermesh_screen_v1_screen_proto_rawDescGZIP(), []int{2}
+	return file_hermesh_screen_v1_screen_proto_rawDescGZIP(), []int{4}
 }
 
 func (x *Input) GetEvent() isInput_Event {
@@ -511,7 +642,7 @@ type Move struct {
 
 func (x *Move) Reset() {
 	*x = Move{}
-	mi := &file_hermesh_screen_v1_screen_proto_msgTypes[3]
+	mi := &file_hermesh_screen_v1_screen_proto_msgTypes[5]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -523,7 +654,7 @@ func (x *Move) String() string {
 func (*Move) ProtoMessage() {}
 
 func (x *Move) ProtoReflect() protoreflect.Message {
-	mi := &file_hermesh_screen_v1_screen_proto_msgTypes[3]
+	mi := &file_hermesh_screen_v1_screen_proto_msgTypes[5]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -536,7 +667,7 @@ func (x *Move) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Move.ProtoReflect.Descriptor instead.
 func (*Move) Descriptor() ([]byte, []int) {
-	return file_hermesh_screen_v1_screen_proto_rawDescGZIP(), []int{3}
+	return file_hermesh_screen_v1_screen_proto_rawDescGZIP(), []int{5}
 }
 
 func (x *Move) GetX() float64 {
@@ -568,7 +699,7 @@ type Button struct {
 
 func (x *Button) Reset() {
 	*x = Button{}
-	mi := &file_hermesh_screen_v1_screen_proto_msgTypes[4]
+	mi := &file_hermesh_screen_v1_screen_proto_msgTypes[6]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -580,7 +711,7 @@ func (x *Button) String() string {
 func (*Button) ProtoMessage() {}
 
 func (x *Button) ProtoReflect() protoreflect.Message {
-	mi := &file_hermesh_screen_v1_screen_proto_msgTypes[4]
+	mi := &file_hermesh_screen_v1_screen_proto_msgTypes[6]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -593,7 +724,7 @@ func (x *Button) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Button.ProtoReflect.Descriptor instead.
 func (*Button) Descriptor() ([]byte, []int) {
-	return file_hermesh_screen_v1_screen_proto_rawDescGZIP(), []int{4}
+	return file_hermesh_screen_v1_screen_proto_rawDescGZIP(), []int{6}
 }
 
 func (x *Button) GetX() float64 {
@@ -644,7 +775,7 @@ type Wheel struct {
 
 func (x *Wheel) Reset() {
 	*x = Wheel{}
-	mi := &file_hermesh_screen_v1_screen_proto_msgTypes[5]
+	mi := &file_hermesh_screen_v1_screen_proto_msgTypes[7]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -656,7 +787,7 @@ func (x *Wheel) String() string {
 func (*Wheel) ProtoMessage() {}
 
 func (x *Wheel) ProtoReflect() protoreflect.Message {
-	mi := &file_hermesh_screen_v1_screen_proto_msgTypes[5]
+	mi := &file_hermesh_screen_v1_screen_proto_msgTypes[7]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -669,7 +800,7 @@ func (x *Wheel) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Wheel.ProtoReflect.Descriptor instead.
 func (*Wheel) Descriptor() ([]byte, []int) {
-	return file_hermesh_screen_v1_screen_proto_rawDescGZIP(), []int{5}
+	return file_hermesh_screen_v1_screen_proto_rawDescGZIP(), []int{7}
 }
 
 func (x *Wheel) GetX() float64 {
@@ -717,7 +848,7 @@ type Key struct {
 
 func (x *Key) Reset() {
 	*x = Key{}
-	mi := &file_hermesh_screen_v1_screen_proto_msgTypes[6]
+	mi := &file_hermesh_screen_v1_screen_proto_msgTypes[8]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -729,7 +860,7 @@ func (x *Key) String() string {
 func (*Key) ProtoMessage() {}
 
 func (x *Key) ProtoReflect() protoreflect.Message {
-	mi := &file_hermesh_screen_v1_screen_proto_msgTypes[6]
+	mi := &file_hermesh_screen_v1_screen_proto_msgTypes[8]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -742,7 +873,7 @@ func (x *Key) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Key.ProtoReflect.Descriptor instead.
 func (*Key) Descriptor() ([]byte, []int) {
-	return file_hermesh_screen_v1_screen_proto_rawDescGZIP(), []int{6}
+	return file_hermesh_screen_v1_screen_proto_rawDescGZIP(), []int{8}
 }
 
 func (x *Key) GetKey() NamedKey {
@@ -801,7 +932,7 @@ type Text struct {
 
 func (x *Text) Reset() {
 	*x = Text{}
-	mi := &file_hermesh_screen_v1_screen_proto_msgTypes[7]
+	mi := &file_hermesh_screen_v1_screen_proto_msgTypes[9]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -813,7 +944,7 @@ func (x *Text) String() string {
 func (*Text) ProtoMessage() {}
 
 func (x *Text) ProtoReflect() protoreflect.Message {
-	mi := &file_hermesh_screen_v1_screen_proto_msgTypes[7]
+	mi := &file_hermesh_screen_v1_screen_proto_msgTypes[9]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -826,7 +957,7 @@ func (x *Text) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Text.ProtoReflect.Descriptor instead.
 func (*Text) Descriptor() ([]byte, []int) {
-	return file_hermesh_screen_v1_screen_proto_rawDescGZIP(), []int{7}
+	return file_hermesh_screen_v1_screen_proto_rawDescGZIP(), []int{9}
 }
 
 func (x *Text) GetText() string {
@@ -857,7 +988,7 @@ type Clipboard struct {
 
 func (x *Clipboard) Reset() {
 	*x = Clipboard{}
-	mi := &file_hermesh_screen_v1_screen_proto_msgTypes[8]
+	mi := &file_hermesh_screen_v1_screen_proto_msgTypes[10]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -869,7 +1000,7 @@ func (x *Clipboard) String() string {
 func (*Clipboard) ProtoMessage() {}
 
 func (x *Clipboard) ProtoReflect() protoreflect.Message {
-	mi := &file_hermesh_screen_v1_screen_proto_msgTypes[8]
+	mi := &file_hermesh_screen_v1_screen_proto_msgTypes[10]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -882,7 +1013,7 @@ func (x *Clipboard) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Clipboard.ProtoReflect.Descriptor instead.
 func (*Clipboard) Descriptor() ([]byte, []int) {
-	return file_hermesh_screen_v1_screen_proto_rawDescGZIP(), []int{8}
+	return file_hermesh_screen_v1_screen_proto_rawDescGZIP(), []int{10}
 }
 
 func (x *Clipboard) GetText() string {
@@ -909,7 +1040,7 @@ type ShowPointer struct {
 
 func (x *ShowPointer) Reset() {
 	*x = ShowPointer{}
-	mi := &file_hermesh_screen_v1_screen_proto_msgTypes[9]
+	mi := &file_hermesh_screen_v1_screen_proto_msgTypes[11]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -921,7 +1052,7 @@ func (x *ShowPointer) String() string {
 func (*ShowPointer) ProtoMessage() {}
 
 func (x *ShowPointer) ProtoReflect() protoreflect.Message {
-	mi := &file_hermesh_screen_v1_screen_proto_msgTypes[9]
+	mi := &file_hermesh_screen_v1_screen_proto_msgTypes[11]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -934,7 +1065,7 @@ func (x *ShowPointer) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ShowPointer.ProtoReflect.Descriptor instead.
 func (*ShowPointer) Descriptor() ([]byte, []int) {
-	return file_hermesh_screen_v1_screen_proto_rawDescGZIP(), []int{9}
+	return file_hermesh_screen_v1_screen_proto_rawDescGZIP(), []int{11}
 }
 
 func (x *ShowPointer) GetShown() bool {
@@ -959,7 +1090,7 @@ type ScreenEvent struct {
 
 func (x *ScreenEvent) Reset() {
 	*x = ScreenEvent{}
-	mi := &file_hermesh_screen_v1_screen_proto_msgTypes[10]
+	mi := &file_hermesh_screen_v1_screen_proto_msgTypes[12]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -971,7 +1102,7 @@ func (x *ScreenEvent) String() string {
 func (*ScreenEvent) ProtoMessage() {}
 
 func (x *ScreenEvent) ProtoReflect() protoreflect.Message {
-	mi := &file_hermesh_screen_v1_screen_proto_msgTypes[10]
+	mi := &file_hermesh_screen_v1_screen_proto_msgTypes[12]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -984,7 +1115,7 @@ func (x *ScreenEvent) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ScreenEvent.ProtoReflect.Descriptor instead.
 func (*ScreenEvent) Descriptor() ([]byte, []int) {
-	return file_hermesh_screen_v1_screen_proto_rawDescGZIP(), []int{10}
+	return file_hermesh_screen_v1_screen_proto_rawDescGZIP(), []int{12}
 }
 
 func (x *ScreenEvent) GetEvent() isScreenEvent_Event {
@@ -1054,7 +1185,7 @@ type Format struct {
 
 func (x *Format) Reset() {
 	*x = Format{}
-	mi := &file_hermesh_screen_v1_screen_proto_msgTypes[11]
+	mi := &file_hermesh_screen_v1_screen_proto_msgTypes[13]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1066,7 +1197,7 @@ func (x *Format) String() string {
 func (*Format) ProtoMessage() {}
 
 func (x *Format) ProtoReflect() protoreflect.Message {
-	mi := &file_hermesh_screen_v1_screen_proto_msgTypes[11]
+	mi := &file_hermesh_screen_v1_screen_proto_msgTypes[13]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1079,7 +1210,7 @@ func (x *Format) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Format.ProtoReflect.Descriptor instead.
 func (*Format) Descriptor() ([]byte, []int) {
-	return file_hermesh_screen_v1_screen_proto_rawDescGZIP(), []int{11}
+	return file_hermesh_screen_v1_screen_proto_rawDescGZIP(), []int{13}
 }
 
 func (x *Format) GetWidth() uint32 {
@@ -1112,7 +1243,7 @@ type State struct {
 
 func (x *State) Reset() {
 	*x = State{}
-	mi := &file_hermesh_screen_v1_screen_proto_msgTypes[12]
+	mi := &file_hermesh_screen_v1_screen_proto_msgTypes[14]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1124,7 +1255,7 @@ func (x *State) String() string {
 func (*State) ProtoMessage() {}
 
 func (x *State) ProtoReflect() protoreflect.Message {
-	mi := &file_hermesh_screen_v1_screen_proto_msgTypes[12]
+	mi := &file_hermesh_screen_v1_screen_proto_msgTypes[14]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1137,7 +1268,7 @@ func (x *State) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use State.ProtoReflect.Descriptor instead.
 func (*State) Descriptor() ([]byte, []int) {
-	return file_hermesh_screen_v1_screen_proto_rawDescGZIP(), []int{12}
+	return file_hermesh_screen_v1_screen_proto_rawDescGZIP(), []int{14}
 }
 
 func (x *State) GetError() string {
@@ -1165,17 +1296,30 @@ var File_hermesh_screen_v1_screen_proto protoreflect.FileDescriptor
 
 const file_hermesh_screen_v1_screen_proto_rawDesc = "" +
 	"\n" +
-	"\x1ehermesh/screen/v1/screen.proto\x12\x11hermesh.screen.v1\"w\n" +
+	"\x1ehermesh/screen/v1/screen.proto\x12\x11hermesh.screen.v1\"\xa2\x01\n" +
 	"\x0eConnectRequest\x12\x14\n" +
 	"\x05offer\x18\x01 \x01(\tR\x05offer\x12\x1d\n" +
 	"\n" +
 	"session_id\x18\x02 \x01(\tR\tsessionId\x12\x16\n" +
 	"\x06viewer\x18\x03 \x01(\tR\x06viewer\x12\x18\n" +
-	"\apointer\x18\x04 \x01(\bR\apointer\"H\n" +
+	"\apointer\x18\x04 \x01(\bR\apointer\x12)\n" +
+	"\x10candidates_later\x18\x05 \x01(\bR\x0fcandidatesLater\"s\n" +
 	"\x0fConnectResponse\x12\x16\n" +
 	"\x06answer\x18\x01 \x01(\tR\x06answer\x12\x1d\n" +
 	"\n" +
-	"session_id\x18\x02 \x01(\tR\tsessionId\"\x84\x03\n" +
+	"session_id\x18\x02 \x01(\tR\tsessionId\x12)\n" +
+	"\x10candidates_later\x18\x03 \x01(\bR\x0fcandidatesLater\"h\n" +
+	"\x11CandidatesRequest\x12\x1d\n" +
+	"\n" +
+	"session_id\x18\x01 \x01(\tR\tsessionId\x12\x14\n" +
+	"\x05ufrag\x18\x02 \x01(\tR\x05ufrag\x12\x1e\n" +
+	"\n" +
+	"candidates\x18\x03 \x03(\tR\n" +
+	"candidates\"4\n" +
+	"\x12CandidatesResponse\x12\x1e\n" +
+	"\n" +
+	"candidates\x18\x01 \x03(\tR\n" +
+	"candidates\"\x84\x03\n" +
 	"\x05Input\x12-\n" +
 	"\x04move\x18\x01 \x01(\v2\x17.hermesh.screen.v1.MoveH\x00R\x04move\x123\n" +
 	"\x06button\x18\x02 \x01(\v2\x19.hermesh.screen.v1.ButtonH\x00R\x06button\x120\n" +
@@ -1251,9 +1395,11 @@ const file_hermesh_screen_v1_screen_proto_rawDesc = "" +
 	"\x05Paste\x12\x15\n" +
 	"\x11PASTE_UNSPECIFIED\x10\x00\x12\r\n" +
 	"\tPASTE_APP\x10\x01\x12\x12\n" +
-	"\x0ePASTE_TERMINAL\x10\x022a\n" +
+	"\x0ePASTE_TERMINAL\x10\x022\xbc\x01\n" +
 	"\rScreenService\x12P\n" +
-	"\aConnect\x12!.hermesh.screen.v1.ConnectRequest\x1a\".hermesh.screen.v1.ConnectResponseB\xca\x01\n" +
+	"\aConnect\x12!.hermesh.screen.v1.ConnectRequest\x1a\".hermesh.screen.v1.ConnectResponse\x12Y\n" +
+	"\n" +
+	"Candidates\x12$.hermesh.screen.v1.CandidatesRequest\x1a%.hermesh.screen.v1.CandidatesResponseB\xca\x01\n" +
 	"\x15com.hermesh.screen.v1B\vScreenProtoP\x01Z>github.com/hermeshai/hermesh/gen/go/hermesh/screen/v1;screenv1\xa2\x02\x03HSX\xaa\x02\x11Hermesh.Screen.V1\xca\x02\x11Hermesh\\Screen\\V1\xe2\x02\x1dHermesh\\Screen\\V1\\GPBMetadata\xea\x02\x13Hermesh::Screen::V1b\x06proto3"
 
 var (
@@ -1269,44 +1415,48 @@ func file_hermesh_screen_v1_screen_proto_rawDescGZIP() []byte {
 }
 
 var file_hermesh_screen_v1_screen_proto_enumTypes = make([]protoimpl.EnumInfo, 3)
-var file_hermesh_screen_v1_screen_proto_msgTypes = make([]protoimpl.MessageInfo, 13)
+var file_hermesh_screen_v1_screen_proto_msgTypes = make([]protoimpl.MessageInfo, 15)
 var file_hermesh_screen_v1_screen_proto_goTypes = []any{
-	(MouseButton)(0),        // 0: hermesh.screen.v1.MouseButton
-	(NamedKey)(0),           // 1: hermesh.screen.v1.NamedKey
-	(Paste)(0),              // 2: hermesh.screen.v1.Paste
-	(*ConnectRequest)(nil),  // 3: hermesh.screen.v1.ConnectRequest
-	(*ConnectResponse)(nil), // 4: hermesh.screen.v1.ConnectResponse
-	(*Input)(nil),           // 5: hermesh.screen.v1.Input
-	(*Move)(nil),            // 6: hermesh.screen.v1.Move
-	(*Button)(nil),          // 7: hermesh.screen.v1.Button
-	(*Wheel)(nil),           // 8: hermesh.screen.v1.Wheel
-	(*Key)(nil),             // 9: hermesh.screen.v1.Key
-	(*Text)(nil),            // 10: hermesh.screen.v1.Text
-	(*Clipboard)(nil),       // 11: hermesh.screen.v1.Clipboard
-	(*ShowPointer)(nil),     // 12: hermesh.screen.v1.ShowPointer
-	(*ScreenEvent)(nil),     // 13: hermesh.screen.v1.ScreenEvent
-	(*Format)(nil),          // 14: hermesh.screen.v1.Format
-	(*State)(nil),           // 15: hermesh.screen.v1.State
+	(MouseButton)(0),           // 0: hermesh.screen.v1.MouseButton
+	(NamedKey)(0),              // 1: hermesh.screen.v1.NamedKey
+	(Paste)(0),                 // 2: hermesh.screen.v1.Paste
+	(*ConnectRequest)(nil),     // 3: hermesh.screen.v1.ConnectRequest
+	(*ConnectResponse)(nil),    // 4: hermesh.screen.v1.ConnectResponse
+	(*CandidatesRequest)(nil),  // 5: hermesh.screen.v1.CandidatesRequest
+	(*CandidatesResponse)(nil), // 6: hermesh.screen.v1.CandidatesResponse
+	(*Input)(nil),              // 7: hermesh.screen.v1.Input
+	(*Move)(nil),               // 8: hermesh.screen.v1.Move
+	(*Button)(nil),             // 9: hermesh.screen.v1.Button
+	(*Wheel)(nil),              // 10: hermesh.screen.v1.Wheel
+	(*Key)(nil),                // 11: hermesh.screen.v1.Key
+	(*Text)(nil),               // 12: hermesh.screen.v1.Text
+	(*Clipboard)(nil),          // 13: hermesh.screen.v1.Clipboard
+	(*ShowPointer)(nil),        // 14: hermesh.screen.v1.ShowPointer
+	(*ScreenEvent)(nil),        // 15: hermesh.screen.v1.ScreenEvent
+	(*Format)(nil),             // 16: hermesh.screen.v1.Format
+	(*State)(nil),              // 17: hermesh.screen.v1.State
 }
 var file_hermesh_screen_v1_screen_proto_depIdxs = []int32{
-	6,  // 0: hermesh.screen.v1.Input.move:type_name -> hermesh.screen.v1.Move
-	7,  // 1: hermesh.screen.v1.Input.button:type_name -> hermesh.screen.v1.Button
-	8,  // 2: hermesh.screen.v1.Input.wheel:type_name -> hermesh.screen.v1.Wheel
-	9,  // 3: hermesh.screen.v1.Input.key:type_name -> hermesh.screen.v1.Key
-	10, // 4: hermesh.screen.v1.Input.text:type_name -> hermesh.screen.v1.Text
-	12, // 5: hermesh.screen.v1.Input.show_pointer:type_name -> hermesh.screen.v1.ShowPointer
-	11, // 6: hermesh.screen.v1.Input.clipboard:type_name -> hermesh.screen.v1.Clipboard
+	8,  // 0: hermesh.screen.v1.Input.move:type_name -> hermesh.screen.v1.Move
+	9,  // 1: hermesh.screen.v1.Input.button:type_name -> hermesh.screen.v1.Button
+	10, // 2: hermesh.screen.v1.Input.wheel:type_name -> hermesh.screen.v1.Wheel
+	11, // 3: hermesh.screen.v1.Input.key:type_name -> hermesh.screen.v1.Key
+	12, // 4: hermesh.screen.v1.Input.text:type_name -> hermesh.screen.v1.Text
+	14, // 5: hermesh.screen.v1.Input.show_pointer:type_name -> hermesh.screen.v1.ShowPointer
+	13, // 6: hermesh.screen.v1.Input.clipboard:type_name -> hermesh.screen.v1.Clipboard
 	0,  // 7: hermesh.screen.v1.Button.button:type_name -> hermesh.screen.v1.MouseButton
 	1,  // 8: hermesh.screen.v1.Key.key:type_name -> hermesh.screen.v1.NamedKey
 	2,  // 9: hermesh.screen.v1.Text.paste:type_name -> hermesh.screen.v1.Paste
 	2,  // 10: hermesh.screen.v1.Clipboard.paste:type_name -> hermesh.screen.v1.Paste
-	14, // 11: hermesh.screen.v1.ScreenEvent.format:type_name -> hermesh.screen.v1.Format
-	15, // 12: hermesh.screen.v1.ScreenEvent.state:type_name -> hermesh.screen.v1.State
-	11, // 13: hermesh.screen.v1.ScreenEvent.clipboard:type_name -> hermesh.screen.v1.Clipboard
+	16, // 11: hermesh.screen.v1.ScreenEvent.format:type_name -> hermesh.screen.v1.Format
+	17, // 12: hermesh.screen.v1.ScreenEvent.state:type_name -> hermesh.screen.v1.State
+	13, // 13: hermesh.screen.v1.ScreenEvent.clipboard:type_name -> hermesh.screen.v1.Clipboard
 	3,  // 14: hermesh.screen.v1.ScreenService.Connect:input_type -> hermesh.screen.v1.ConnectRequest
-	4,  // 15: hermesh.screen.v1.ScreenService.Connect:output_type -> hermesh.screen.v1.ConnectResponse
-	15, // [15:16] is the sub-list for method output_type
-	14, // [14:15] is the sub-list for method input_type
+	5,  // 15: hermesh.screen.v1.ScreenService.Candidates:input_type -> hermesh.screen.v1.CandidatesRequest
+	4,  // 16: hermesh.screen.v1.ScreenService.Connect:output_type -> hermesh.screen.v1.ConnectResponse
+	6,  // 17: hermesh.screen.v1.ScreenService.Candidates:output_type -> hermesh.screen.v1.CandidatesResponse
+	16, // [16:18] is the sub-list for method output_type
+	14, // [14:16] is the sub-list for method input_type
 	14, // [14:14] is the sub-list for extension type_name
 	14, // [14:14] is the sub-list for extension extendee
 	0,  // [0:14] is the sub-list for field type_name
@@ -1317,7 +1467,7 @@ func file_hermesh_screen_v1_screen_proto_init() {
 	if File_hermesh_screen_v1_screen_proto != nil {
 		return
 	}
-	file_hermesh_screen_v1_screen_proto_msgTypes[2].OneofWrappers = []any{
+	file_hermesh_screen_v1_screen_proto_msgTypes[4].OneofWrappers = []any{
 		(*Input_Move)(nil),
 		(*Input_Button)(nil),
 		(*Input_Wheel)(nil),
@@ -1326,7 +1476,7 @@ func file_hermesh_screen_v1_screen_proto_init() {
 		(*Input_ShowPointer)(nil),
 		(*Input_Clipboard)(nil),
 	}
-	file_hermesh_screen_v1_screen_proto_msgTypes[10].OneofWrappers = []any{
+	file_hermesh_screen_v1_screen_proto_msgTypes[12].OneofWrappers = []any{
 		(*ScreenEvent_Format)(nil),
 		(*ScreenEvent_State)(nil),
 		(*ScreenEvent_Clipboard)(nil),
@@ -1337,7 +1487,7 @@ func file_hermesh_screen_v1_screen_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_hermesh_screen_v1_screen_proto_rawDesc), len(file_hermesh_screen_v1_screen_proto_rawDesc)),
 			NumEnums:      3,
-			NumMessages:   13,
+			NumMessages:   15,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

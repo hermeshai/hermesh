@@ -5,6 +5,8 @@ iPhone side and the relay's STUN and TURN, checked against a real screen
 from the Simulator, with each stage's delay measured (§5.1). Open: the lock
 screen, a real network and a real iPhone (§10), and step 4. Linux machines
 have their own helper: [computer-control-linux.md](computer-control-linux.md).
+How the path between the two ends is found, kept and reported, and what is
+next for it, is in [peer-connectivity.md](peer-connectivity.md).
 
 ## 0. Summary
 
@@ -108,29 +110,40 @@ sequenceDiagram
     participant D as hermeshd
     participant H as hermesh-screen
     P->>R: GetScreenServers
-    Note over P: gathers its candidates
+    Note over P: its local addresses
     P->>D: ScreenService.Connect with the offer, through the tunnel
     D->>R: GetScreenServers
     D->>H: start
-    Note over D: gathers its candidates
+    Note over D: its local addresses
     D-->>P: the answer
-    Note over P,D: connectivity checks, direct first
+    Note over P,D: connectivity checks between local addresses
+    Note over P: its addresses from STUN and TURN
+    P->>D: ScreenService.Candidates with all of the phone's
+    Note over D: its addresses from STUN and TURN
+    D-->>P: all of the Mac's
+    Note over P,D: connectivity checks on the rest, direct first
     D->>P: video, RTP over UDP
     P->>D: input, data channels
     Note over P,R: a path through TURN is used only if no direct one works
 ```
 
-- **One call each way.** The phone gathers its candidates, then sends
-  its offer in `ScreenService.Connect`; the Mac gathers its own and
-  answers. Nothing is trickled, so there is no stream to keep open, and a
-  session lasts as long as the connection between the two does. Gathering
-  ends once a TURN address has come, or after 2 seconds (§5.2). A viewer
-  that never arrives is given up on after 20 seconds.
+- **Two calls.** The phone sends its offer in `ScreenService.Connect` as
+  soon as its local addresses are in it, and the Mac answers the same way:
+  two ends on one network find each other without waiting for the relay's
+  servers. Each end's other candidates follow in `ScreenService.Candidates`
+  once its gathering has ended: a TURN address has come, or 2 seconds
+  passed (§5.2). No stream is kept open, and a session lasts as long as the
+  connection between the two does. A viewer that never arrives is given up
+  on after 20 seconds. A machine that takes candidates later says so in its
+  state; to an older one the phone sends all of them in its offer, as an
+  older phone does to any machine
+  ([peer-connectivity.md](peer-connectivity.md) §2.1).
 - **Candidates**: local addresses (same Wi-Fi), IPv6 addresses, addresses
   seen by the relay's STUN, and the relay's TURN address. ICE picks the
   best that works. When the phone's network changes it sends a new offer
-  for the same session (`session_id`), which restarts ICE. The path
-  can change again while connected (§5.3).
+  for the same session (`session_id`) at once, which restarts ICE from the
+  addresses it has now; a path that only broke is given 1.5 seconds to come
+  back first. The path can change again while connected (§5.3).
 - **Trust**: the DTLS fingerprints travel in the offer and answer, inside
   the tunnel, which is already pinned to the owner's root chain. A relay
   that forwards the packets sees SRTP and DTLS, nothing else.
@@ -315,7 +328,7 @@ opening to the first frame, timed in the e2e tests on one Mac (`TestScreen`,
 | Case | Before | Now |
 |---|---|---|
 | Direct | 5.3–12.3 s | 0.75–1.0 s |
-| The relay's STUN and TURN out of reach | 13.8 s | 4.2 s |
+| The relay's STUN and TURN out of reach | 13.8 s | 4.2 s, then 0.6 s (below) |
 | Through TURN only: from the answer to connected | 2 s and more | 1.0 s |
 
 Where the time went, and what changed:
@@ -342,10 +355,13 @@ Where the time went, and what changed:
 
 Not on the way: the helper's first frame comes 0.6–0.7 s after it starts,
 alongside the handshake; the tunnel to the Mac is already open from the Her
-page. What is left on a real network: on each end, gathering takes about
-three round trips to the relay (the TURN allocation), and the offer, the
-answer and the checks a few more. Sending candidates as they come
-(trickling) instead of in one offer would take the gathering off the way.
+page. On a real network each end's gathering takes about three round trips
+to the relay (the TURN allocation). That is off the way of a path on one
+network since each end's half of the handshake goes with its local
+addresses and the rest follow (§3): with the relay's servers out of reach
+the first picture comes in 0.6 s, as with them. A path that needs those
+addresses still waits for them, the two ends now gathering at the same
+time instead of one after the other.
 
 ### 5.3 Which path
 
@@ -564,6 +580,8 @@ owner or is working on the desktop, more than one display, the clipboard.
   Apple's persistent content capture entitlement.
 - Whether pion's receiver holds up on a poor network, or the iPhone side
   should use libwebrtc.
+- Two real devices on real networks, and what the path checks cost the
+  phone's battery: [peer-connectivity-tests.md](peer-connectivity-tests.md).
 - The hosted relay: opening the port and naming each node's TURN address.
 - A limit on what one owner may send through TURN.
 - The menu bar notice has no test that drives the Mac app.

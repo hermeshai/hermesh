@@ -134,6 +134,10 @@ func (c *Core) Pause() {
 // changed (Wi-Fi to cellular, say).
 func (c *Core) Reconnect() { c.o.Reconnect() }
 
+// PathChanged is Reconnect when the device's addresses changed: the system
+// reports a change of the network that left its interfaces as they were.
+func (c *Core) PathChanged() { c.o.PathChanged() }
+
 func (c *Core) authorize(next http.Handler) http.Handler {
 	want := []byte("Bearer " + c.token)
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

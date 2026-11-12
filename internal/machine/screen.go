@@ -49,6 +49,10 @@ func (s *screenService) Connect(ctx context.Context, req *screenv1.ConnectReques
 	return res, err
 }
 
+func (s *screenService) Candidates(ctx context.Context, req *screenv1.CandidatesRequest) (*screenv1.CandidatesResponse, error) {
+	return s.n.screen.Candidates(ctx, req)
+}
+
 // screenServers are the relay's STUN and TURN servers for a session that
 // starts, as kept (keepScreenServers); none when it runs none, is an older
 // relay, or does not answer in time: the two ends then find what paths they
@@ -91,6 +95,9 @@ func (n *Machine) fetchScreenServers(conn *transport.RelayConn) func(context.Con
 		defer cancel()
 		res, err := c.GetScreenServers(ctx, &relayv1.GetScreenServersRequest{})
 		if err != nil {
+			// Without them a session has the paths the two ends find by
+			// themselves, and no relay to fall back on: say why.
+			n.log.Warn("screen: the relay's STUN and TURN servers", "err", err)
 			return nil
 		}
 		return res.Servers
@@ -102,5 +109,5 @@ func (n *Machine) screenStatus() *machinev1.ScreenStatus {
 	if !n.screen.Available() {
 		return nil
 	}
-	return &machinev1.ScreenStatus{Available: true, Viewer: n.screen.Viewer()}
+	return &machinev1.ScreenStatus{Available: true, Viewer: n.screen.Viewer(), CandidatesLater: true}
 }

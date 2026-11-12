@@ -14,6 +14,7 @@ import (
 	"os/exec"
 	"runtime"
 	"slices"
+	"strings"
 	"sync"
 	"time"
 
@@ -181,11 +182,12 @@ func (h *Host) Connect(ctx context.Context, req *screenv1.ConnectRequest) (*scre
 		if s == nil || s.id != req.SessionId {
 			return nil, connect.NewError(connect.CodeNotFound, errors.New("the session has ended"))
 		}
-		answer, err := s.answer(offer)
+		h.cfg.Log.Info("screen: the viewer looks for a path again", "session", s.id, "after", time.Since(s.opened).Round(time.Millisecond))
+		answer, err := s.answer(offer, req.CandidatesLater)
 		if err != nil {
 			return nil, connect.NewError(connect.CodeInvalidArgument, err)
 		}
-		return &screenv1.ConnectResponse{Answer: answer, SessionId: s.id}, nil
+		return &screenv1.ConnectResponse{Answer: answer, SessionId: s.id, CandidatesLater: req.CandidatesLater}, nil
 	}
 	if h.Desktop().Error == "locked" { // GNOME shares no locked screen (docs/computer-control-linux.md §3.7)
 		return nil, connect.NewError(connect.CodeFailedPrecondition, errors.New(ErrLocked))
@@ -202,12 +204,24 @@ func (h *Host) Connect(ctx context.Context, req *screenv1.ConnectRequest) (*scre
 	if prev != nil { // two viewers at once: the later one stays
 		prev.end("ended")
 	}
-	answer, err := s.answer(offer)
+	answer, err := s.answer(offer, req.CandidatesLater)
 	if err != nil {
 		s.end("")
 		return nil, connect.NewError(connect.CodeInvalidArgument, err)
 	}
-	return &screenv1.ConnectResponse{Answer: answer, SessionId: s.id}, nil
+	return &screenv1.ConnectResponse{Answer: answer, SessionId: s.id, CandidatesLater: req.CandidatesLater}, nil
+}
+
+// Candidates takes the candidates the viewer found after its offer, and
+// answers with this machine's once they are found.
+func (h *Host) Candidates(ctx context.Context, req *screenv1.CandidatesRequest) (*screenv1.CandidatesResponse, error) {
+	h.mu.Lock()
+	s := h.cur
+	h.mu.Unlock()
+	if s == nil || s.id != req.SessionId {
+		return nil, connect.NewError(connect.CodeNotFound, errors.New("the session has ended"))
+	}
+	return s.candidates(req)
 }
 
 // connectWithin: how long a viewer has to find a path to this machine
@@ -219,10 +233,14 @@ type hostSession struct {
 	h      *Host
 	id     string
 	viewer string
+	opened time.Time
 	pc     *webrtc.PeerConnection
 	track  *webrtc.TrackLocalStaticSample
 	cmd    *exec.Cmd
 	done   chan struct{} // closed when the session ended
+
+	amu  sync.Mutex // one answer at a time
+	gath *gathering // the latest answer's
 
 	wmu   sync.Mutex // writes to the helper
 	stdin io.WriteCloser
@@ -241,7 +259,7 @@ type hostSession struct {
 func (h *Host) open(ctx context.Context, req *screenv1.ConnectRequest) (*hostSession, error) {
 	id := make([]byte, 8)
 	rand.Read(id)
-	s := &hostSession{h: h, id: hex.EncodeToString(id), viewer: req.Viewer, done: make(chan struct{}), bitrate: startBitrate}
+	s := &hostSession{h: h, id: hex.EncodeToString(id), viewer: req.Viewer, opened: time.Now(), done: make(chan struct{}), bitrate: startBitrate}
 	api, err := newAPI(func(e cc.BandwidthEstimator) { e.OnTargetBitrateChange(s.setBitrate) }, nil)
 	if err != nil {
 		return nil, err
@@ -278,6 +296,11 @@ func (h *Host) open(ctx context.Context, req *screenv1.ConnectRequest) (*hostSes
 		case pointerChannel:
 			dc.OnMessage(func(m webrtc.DataChannelMessage) { s.onInput(m.Data) })
 		}
+	})
+	// What the session goes through, as it changes: for telling why one is
+	// slow (the viewer picks the path, this end follows).
+	s.pc.SCTP().Transport().ICETransport().OnSelectedCandidatePairChange(func(p *webrtc.ICECandidatePair) {
+		h.cfg.Log.Info("screen: path", "session", s.id, "local", pathEnd(p.Local), "remote", pathEnd(p.Remote), "after", time.Since(s.opened).Round(time.Millisecond))
 	})
 	connected := make(chan struct{})
 	var once sync.Once
@@ -321,8 +344,12 @@ func (h *Host) open(ctx context.Context, req *screenv1.ConnectRequest) (*hostSes
 	return s, nil
 }
 
-// answer takes the viewer's offer, the first or one that restarts ICE.
-func (s *hostSession) answer(offer webrtc.SessionDescription) (string, error) {
+// answer takes the viewer's offer, the first or one that restarts ICE. With
+// later it answers as soon as this machine's local addresses are found; the
+// rest go in candidates.
+func (s *hostSession) answer(offer webrtc.SessionDescription, later bool) (string, error) {
+	s.amu.Lock()
+	defer s.amu.Unlock()
 	if err := s.pc.SetRemoteDescription(offer); err != nil {
 		return "", err
 	}
@@ -330,7 +357,39 @@ func (s *hostSession) answer(offer webrtc.SessionDescription) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	return gathered(s.pc, a)
+	g, err := gather(s.pc, a)
+	if err != nil {
+		return "", err
+	}
+	s.gath = g
+	g.wait(later)
+	sdp := s.pc.LocalDescription().SDP
+	if !later {
+		s.h.cfg.Log.Info("screen: candidates", "session", s.id, "local", kinds(strings.Split(sdp, "\n")), "remote", kinds(strings.Split(offer.SDP, "\n")))
+	}
+	return sdp, nil
+}
+
+// candidates adds the viewer's candidates for the offer answered last, and
+// returns this machine's once its gathering has ended.
+func (s *hostSession) candidates(req *screenv1.CandidatesRequest) (*screenv1.CandidatesResponse, error) {
+	s.amu.Lock()
+	g, offer := s.gath, s.pc.RemoteDescription()
+	if g == nil || offer == nil || iceUfrag(offer.SDP) != req.Ufrag {
+		s.amu.Unlock()
+		return nil, connect.NewError(connect.CodeFailedPrecondition, errors.New("another offer came since"))
+	}
+	for _, c := range req.Candidates {
+		if err := s.pc.AddICECandidate(webrtc.ICECandidateInit{Candidate: c}); err != nil {
+			s.amu.Unlock()
+			return nil, connect.NewError(connect.CodeInvalidArgument, err)
+		}
+	}
+	s.amu.Unlock()
+	g.wait(false)
+	mine := g.candidates()
+	s.h.cfg.Log.Info("screen: candidates", "session", s.id, "local", kinds(mine), "remote", kinds(req.Candidates))
+	return &screenv1.CandidatesResponse{Candidates: mine}, nil
 }
 
 func (s *hostSession) toHelper(k Kind, v any) {

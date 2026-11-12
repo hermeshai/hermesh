@@ -56,4 +56,7 @@ enum Core {
 
     /// Connects again over the network now in use (Wi-Fi to cellular, say).
     static func networkChanged() { lifecycle.async { HermeshCoreNetworkChanged() } }
+    /// The network changed in some way that left its interfaces as they
+    /// were: the core connects again if the device's addresses differ.
+    static func pathChanged() { lifecycle.async { HermeshCorePathChanged() } }
 }
