@@ -206,7 +206,7 @@ func (d *Device) serveScreen(w http.ResponseWriter, r *http.Request) {
 	})
 	v, err := screen.Dial(ctx, screen.ViewerConfig{
 		Connect: screenCall(o, machineID, screenv1connect.ScreenServiceClient.Connect), Candidates: candidates,
-		Name: q.Get("name"), Pointer: q.Get("pointer") != "0", Servers: o.screenServers(ctx), Fresh: o.screenServers,
+		Name: q.Get("name"), Pointer: q.Get("pointer") != "0", Servers: o.screenServers(ctx), Fresh: o.screenServers, NoRelay: o.iceServers.Doubt,
 		Frame: func(key bool, data []byte, t *screen.Trace) {
 			b := make([]byte, screen.VideoHeader, screen.VideoHeader+len(data))
 			if key {

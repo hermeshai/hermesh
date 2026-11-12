@@ -134,6 +134,11 @@ var (
 	settle       = 30 * time.Millisecond
 )
 
+// relayWithin: how long after an offer a relayed address has to come from
+// the TURN servers given, before they are doubted (a variable for the
+// tests). An allocation is two round trips, three over TCP.
+var relayWithin = 5 * time.Second
+
 // exchangeWithin: how long after an offer the two ends go on telling each
 // other of candidates they find. pion gives up on a STUN server after 3 s
 // and on a TURN allocation after 7.8 s.
@@ -144,17 +149,31 @@ const exchangeWithin = 15 * time.Second
 type gathering struct {
 	start time.Time
 
-	mu     sync.Mutex
-	list   []string      // each as a "candidate:" line
-	last   time.Time     // when the latest came
-	enough bool          // all are in, or a TURN address is
-	all    bool          // all are in
-	more   chan struct{} // closed, and made anew, as each comes
+	mu      sync.Mutex
+	list    []string      // each as a "candidate:" line
+	last    time.Time     // when the latest came
+	enough  bool          // all are in, or a TURN address is
+	all     bool          // all are in
+	relayed bool          // a TURN address is among them
+	more    chan struct{} // closed, and made anew, as each comes
 }
 
-// gather sets pc's local description, which starts the gathering.
-func gather(pc *webrtc.PeerConnection, d webrtc.SessionDescription) (*gathering, error) {
+// gather sets pc's local description, which starts the gathering. noRelay,
+// when not nil, is called if pc has TURN servers and no relayed address
+// came from them within relayWithin.
+func gather(pc *webrtc.PeerConnection, d webrtc.SessionDescription, noRelay func()) (*gathering, error) {
 	g := &gathering{start: time.Now(), more: make(chan struct{})}
+	turns := slices.ContainsFunc(pc.GetConfiguration().ICEServers, func(s webrtc.ICEServer) bool { return s.Username != "" })
+	if noRelay != nil && turns {
+		time.AfterFunc(relayWithin, func() {
+			g.mu.Lock()
+			relayed := g.relayed
+			g.mu.Unlock()
+			if !relayed && pc.ConnectionState() != webrtc.PeerConnectionStateClosed {
+				noRelay()
+			}
+		})
+	}
 	pc.OnICECandidate(func(c *webrtc.ICECandidate) {
 		g.mu.Lock()
 		defer g.mu.Unlock()
@@ -164,7 +183,8 @@ func gather(pc *webrtc.PeerConnection, d webrtc.SessionDescription) (*gathering,
 			g.list, g.last = append(g.list, c.ToJSON().Candidate), time.Now()
 			// A TURN address is the last kind to come; the second TURN
 			// transport adds nothing.
-			g.enough = g.enough || c.Typ == webrtc.ICECandidateTypeRelay
+			g.relayed = g.relayed || c.Typ == webrtc.ICECandidateTypeRelay
+			g.enough = g.enough || g.relayed
 		}
 		close(g.more)
 		g.more = make(chan struct{})

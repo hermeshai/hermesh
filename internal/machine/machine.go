@@ -198,7 +198,7 @@ func Open(cfg Config) (*Machine, error) {
 	n.her = herhost.New(herhost.Config{Bin: cfg.HerBin, ConsoleDir: cfg.HerConsole, Socket: paths.Her(cfg.DataDir), Env: shellenv.Environ,
 		Version: Version, Logger: n.log, ExtensionHost: cfg.HerExtensionHost, Notice: n.herNotice, Mesh: n.herMeshNow})
 	n.openHerMesh()
-	n.screen = screenhost.NewHost(screenhost.HostConfig{Bin: cfg.ScreenBin, Args: cfg.ScreenArgs, Off: ScreenOffPath(cfg.DataDir), Log: n.log, Servers: n.screenServers})
+	n.screen = screenhost.NewHost(screenhost.HostConfig{Bin: cfg.ScreenBin, Args: cfg.ScreenArgs, Off: ScreenOffPath(cfg.DataDir), Log: n.log, Servers: n.screenServers, NoRelay: n.iceServers.Doubt})
 	if n.audit, err = OpenAudit(filepath.Join(cfg.DataDir, "audit"), key); err != nil {
 		return nil, err
 	}

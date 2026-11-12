@@ -296,12 +296,20 @@ The code for it is in place:
   they share its secret, so they can be another `hermesh-relay` or coturn
   with that secret as its `static-auth-secret`.
 - **Each end uses the nearest.** When a device or machine is given several,
-  it asks each a STUN question over UDP and keeps the one that answers
-  soonest (`screen.Servers`, measured when the servers are asked for, which
-  is ahead of a session and again after a network change). The two ends may
-  keep different servers: each relays through its own, and the servers
-  pass the packets between them. Where none answers over UDP all are kept,
-  and the checks find the one that works.
+  it asks each for a relayed address over UDP, with the credential, and
+  keeps the one that gives it soonest (`screen.Servers`, measured when the
+  servers are asked for, which is ahead of a session and again after a
+  network change). The measure is what a session needs of a server, so one
+  that answers and cannot relay (it is down, or has another secret) is
+  never the one kept. The two ends may keep different servers: each relays
+  through its own, and the servers pass the packets between them. Where
+  none gives an address over UDP all are kept, and the checks find the one
+  that works, TLS on 443 among them; a server's every transport is one
+  entry, so the one kept brings them all.
+- **A server that goes.** A session whose TURN servers gave it no relayed
+  address within 5 s doubts them (`Servers.Doubt`): they are asked for and
+  measured again at once, and the next offer, which a session without a
+  path sends every few seconds, goes with the server that then answers.
 - **Credentials** keep the session they began, and a restart takes new
   ones (§2.4).
 
@@ -370,7 +378,8 @@ Automated, on one Mac (`go test ./internal/screen ./pkg/relay ./e2e -run 'Screen
 | `TestHostUDPUsesItsInterface` | On Apple systems a local address's socket is bound to its interface |
 | `TestSlowTURNDoesNotBlockDirectChecks`, `TestRelaySTUNDoesNotBlockOrQueueDuplicateChecks` | A slow TURN server's permissions do not hold up a direct path (the patch) |
 | `TestPublicTURNIsNotAskedForPrivatePeers`, `TestRelaySTUNSkipsPrivatePeersOfAPublicServer` | A TURN server on the internet is asked for no permission to a private address: 2 asked in 3.5 s, where it was 106 |
-| `TestNearestTURNServer` | Of several TURN servers the one that answers soonest is kept; all, when none answers |
+| `TestNearestTURNServer` | Of several TURN servers the one that gives a relayed address soonest is kept, never one that refuses the credential; all, when none gives one |
+| `TestServersDoubted`, `TestGatheringDoubtsServersThatGiveNoRelay` | Servers that gave a session no relayed address are asked for and measured again, and another is kept |
 | `TestOnNetworks` | Nearby is told by the other end's address on one of this device's networks |
 | `TestTURNCredentialOutlivedByItsSession` | A credential past its time keeps its session and begins none; other TURN servers are handed out with the relay's credential |
 | `TestSession` | A whole session with candidates later, a restart included |
