@@ -48,6 +48,7 @@ message Input {
     Key key = 4;
     Text text = 5;
     ShowPointer show_pointer = 6;
+    Clipboard clipboard = 7;
   }
 }
 
@@ -114,6 +115,30 @@ message Key {
 // Text entered as it is, whatever keyboard the machine has selected.
 message Text {
   string text = 1;
+  // How the machine pastes what it can't type as keys (GNOME takes no
+  // character its keyboard layout lacks: those are pasted): as an app
+  // pastes, or as a terminal does.
+  Paste paste = 2;
+}
+
+// How the machine pastes: the shortcut it presses once its clipboard holds
+// the text.
+enum Paste {
+  // Not at all: the text only goes to the machine's clipboard.
+  PASTE_UNSPECIFIED = 0;
+  // As an app pastes: Command-V on a Mac, Ctrl+V on Linux.
+  PASTE_APP = 1;
+  // As a terminal pastes: Ctrl+Shift+V on Linux, Command-V on a Mac.
+  PASTE_TERMINAL = 2;
+}
+
+// Text on a clipboard. From the viewer: the phone's clipboard, given to
+// the machine's, then pasted there as paste says. From the machine (in a
+// ScreenEvent): what was copied there while the viewer was in control.
+// At most clipboardMax bytes (60000: a data channel message).
+message Clipboard {
+  string text = 1;
+  Paste paste = 2;
 }
 
 // Whether the picture has the pointer in it, from now on.
@@ -126,6 +151,7 @@ message ScreenEvent {
   oneof event {
     Format format = 1;
     State state = 2;
+    Clipboard clipboard = 3;
   }
 }
 

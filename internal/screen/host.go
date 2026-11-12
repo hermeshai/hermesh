@@ -472,6 +472,11 @@ func (s *hostSession) readHelper(stdout io.Reader) {
 				s.mu.Unlock()
 				s.sendEvent(ev)
 			}
+		case KindClipboard:
+			var c struct{ Text string }
+			if json.Unmarshal(p, &c) == nil && c.Text != "" && len(c.Text) <= ClipboardMax {
+				s.sendEvent(&screenv1.ScreenEvent{Event: &screenv1.ScreenEvent_Clipboard{Clipboard: &screenv1.Clipboard{Text: c.Text}}})
+			}
 		case KindLog:
 			s.h.cfg.Log.Info("screen helper", "msg", string(p))
 		}

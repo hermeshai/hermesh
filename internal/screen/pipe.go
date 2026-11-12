@@ -35,12 +35,19 @@ const (
 	KindVideo  Kind = 'v' // 1 byte of flags (1: keyframe), the times (see below), Annex B
 	KindState  Kind = 'e' // from the helper JSON: error, detail, can_control; to the app a ScreenEvent
 	KindLog    Kind = 'l'
+	// From the helper: JSON {"text"}, what was copied on the machine; the
+	// viewer gets it as a ScreenEvent's clipboard.
+	KindClipboard Kind = 'x'
 	// Between the core and the app only.
 	KindMove   Kind = 'm' // an Input that may be lost: a pointer move
 	KindStatus Kind = 'p' // JSON: Status
 )
 
 const maxMessage = 16 << 20
+
+// ClipboardMax is the most text a clipboard carries either way, in bytes:
+// what fits a data channel message.
+const ClipboardMax = 60000
 
 // VideoHeader is what precedes the Annex B bytes of a KindVideo message to
 // the app: the flags, and 8 bytes that name the frame when its path is
