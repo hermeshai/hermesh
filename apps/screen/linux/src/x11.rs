@@ -1,10 +1,11 @@
 //! X11: the picture from shared memory when DAMAGE says the screen
-//! changed, the pointer drawn in from XFIXES, input through XTEST. No
-//! permission, no dialog; a locked screen shows and takes input.
+//! changed, the pointer drawn in from XFIXES, input through XTEST, the
+//! CLIPBOARD selection kept from a hidden window. No permission, no dialog;
+//! a locked screen shows and takes input.
 
 use std::os::fd::AsRawFd;
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use x11rb::connection::{Connection, RequestConnection};
@@ -17,10 +18,9 @@ use x11rb::protocol::xtest::{self, ConnectionExt as _};
 use x11rb::protocol::Event;
 use x11rb::rust_connection::RustConnection;
 
-use crate::keys;
 use crate::pipe::{self, Input};
 use crate::video::{Frame, Order, Video};
-use crate::Way;
+use crate::{clip, keys, Way};
 
 /// The part of the root window that is the primary display.
 #[derive(Clone, Copy, Debug)]
@@ -98,6 +98,7 @@ pub fn probe() -> Result<(), String> {
 pub struct X11 {
     input: X11Input,
     pointer: Arc<AtomicBool>,
+    clip: Option<X11Clip>,
 }
 
 impl X11 {
@@ -107,6 +108,9 @@ impl X11 {
         let screen = conn.setup().roots[n].clone();
         let rect = primary(&conn, screen.root, &screen);
         let input = X11Input::new(rect)?;
+        let clip = X11Clip::start()
+            .map_err(|e| crate::out().log(&format!("x11: no clipboard: {e}")))
+            .ok();
         let s = shown.clone();
         std::thread::Builder::new()
             .name("x11".into())
@@ -120,12 +124,20 @@ impl X11 {
         Ok(X11 {
             input,
             pointer: shown,
+            clip,
         })
     }
 }
 
 impl Way for X11 {
     fn input(&mut self, i: &Input) {
+        if let Some(c) = &i.clipboard {
+            if self.clip.as_ref().is_some_and(|k| k.set(&c.text)) {
+                if let Some(mods) = clip::paste_mods(&c.paste) {
+                    self.input.press(mods, 'v' as u32);
+                }
+            }
+        }
         self.input.handle(i);
     }
     fn show_pointer(&mut self, shown: bool) {
@@ -614,4 +626,194 @@ impl X11Input {
         }
         self.sync();
     }
+}
+
+x11rb::atom_manager! {
+    Atoms: AtomsCookie {
+        CLIPBOARD,
+        TARGETS,
+        UTF8_STRING,
+        TEXT,
+        INCR,
+        HERMESH_CLIPBOARD,
+    }
+}
+
+/// X11Clip keeps the CLIPBOARD selection for the phone's text from a hidden
+/// window on a connection of its own, until another program takes it, and
+/// reads what others copy there (XFIXES says when).
+struct X11Clip {
+    conn: Arc<RustConnection>,
+    window: Window,
+    atoms: Atoms,
+    text: Arc<Mutex<Option<String>>>,
+}
+
+impl X11Clip {
+    fn start() -> Result<X11Clip, String> {
+        let e = |e: &dyn std::fmt::Display| e.to_string();
+        let (conn, n) = RustConnection::connect(None).map_err(|x| e(&x))?;
+        let root = conn.setup().roots[n].root;
+        let window = conn.generate_id().map_err(|x| e(&x))?;
+        conn.create_window(
+            0,
+            window,
+            root,
+            0,
+            0,
+            1,
+            1,
+            0,
+            xproto::WindowClass::INPUT_ONLY,
+            x11rb::COPY_FROM_PARENT,
+            &xproto::CreateWindowAux::new(),
+        )
+        .map_err(|x| e(&x))?;
+        let atoms = Atoms::new(&conn)
+            .map_err(|x| e(&x))?
+            .reply()
+            .map_err(|x| e(&x))?;
+        conn.xfixes_query_version(5, 0)
+            .map_err(|x| e(&x))?
+            .reply()
+            .map_err(|x| e(&x))?;
+        conn.xfixes_select_selection_input(
+            window,
+            atoms.CLIPBOARD,
+            xfixes::SelectionEventMask::SET_SELECTION_OWNER,
+        )
+        .map_err(|x| e(&x))?;
+        conn.flush().map_err(|x| e(&x))?;
+        let c = X11Clip {
+            conn: Arc::new(conn),
+            window,
+            atoms,
+            text: Arc::new(Mutex::new(None)),
+        };
+        let (conn, text) = (c.conn.clone(), c.text.clone());
+        std::thread::Builder::new()
+            .name("x11 clipboard".into())
+            .spawn(move || serve(&conn, window, atoms, &text))
+            .unwrap();
+        Ok(c)
+    }
+
+    /// set makes text the clipboard, and says whether it is.
+    fn set(&self, text: &str) -> bool {
+        *self.text.lock().unwrap() = Some(text.to_string());
+        clip::put(text);
+        let _ =
+            self.conn
+                .set_selection_owner(self.window, self.atoms.CLIPBOARD, x11rb::CURRENT_TIME);
+        self.conn
+            .get_selection_owner(self.atoms.CLIPBOARD)
+            .ok()
+            .and_then(|c| c.reply().ok())
+            .is_some_and(|r| r.owner == self.window)
+    }
+}
+
+/// serve answers those who paste while the helper's text is the clipboard,
+/// and reads what others copy.
+fn serve(conn: &RustConnection, window: Window, atoms: Atoms, text: &Mutex<Option<String>>) {
+    while let Ok(ev) = conn.wait_for_event() {
+        match ev {
+            Event::SelectionRequest(r) => {
+                let t = text.lock().unwrap().clone();
+                answer(conn, &atoms, &r, t.as_deref());
+            }
+            Event::SelectionClear(c) if c.selection == atoms.CLIPBOARD => {
+                // Another program took it (unless the helper took it back since).
+                let owner = conn
+                    .get_selection_owner(atoms.CLIPBOARD)
+                    .ok()
+                    .and_then(|c| c.reply().ok());
+                if owner.is_some_and(|o| o.owner != window) {
+                    *text.lock().unwrap() = None;
+                }
+            }
+            Event::XfixesSelectionNotify(n) if n.owner != window && n.owner != x11rb::NONE => {
+                let _ = conn.convert_selection(
+                    window,
+                    atoms.CLIPBOARD,
+                    atoms.UTF8_STRING,
+                    atoms.HERMESH_CLIPBOARD,
+                    n.timestamp,
+                );
+            }
+            Event::SelectionNotify(n) if n.requestor == window && n.property != x11rb::NONE => {
+                let r = conn
+                    .get_property(
+                        true,
+                        window,
+                        n.property,
+                        xproto::AtomEnum::ANY,
+                        0,
+                        (clip::MAX / 4 + 1) as u32,
+                    )
+                    .ok()
+                    .and_then(|c| c.reply().ok());
+                // Text sent in parts (INCR) is longer than the most a clipboard carries.
+                if let Some(r) = r.filter(|r| r.type_ != atoms.INCR && r.bytes_after == 0) {
+                    if let Ok(t) = String::from_utf8(r.value) {
+                        clip::copied(&t);
+                    }
+                }
+            }
+            _ => {}
+        }
+        let _ = conn.flush();
+    }
+}
+
+/// answer gives a program that pastes the text as it asks: its types, or
+/// the text as UTF-8 or Latin-1.
+fn answer(
+    conn: &RustConnection,
+    atoms: &Atoms,
+    r: &xproto::SelectionRequestEvent,
+    text: Option<&str>,
+) {
+    use x11rb::wrapper::ConnectionExt as _;
+    let prop = if r.property == x11rb::NONE {
+        r.target
+    } else {
+        r.property
+    };
+    let replace = xproto::PropMode::REPLACE;
+    let string: u32 = xproto::AtomEnum::STRING.into();
+    let ok = match text {
+        Some(_) if r.selection != atoms.CLIPBOARD => false,
+        Some(_) if r.target == atoms.TARGETS => conn
+            .change_property32(
+                replace,
+                r.requestor,
+                prop,
+                xproto::AtomEnum::ATOM,
+                &[atoms.TARGETS, atoms.UTF8_STRING, atoms.TEXT, string],
+            )
+            .is_ok(),
+        Some(t) if r.target == atoms.UTF8_STRING || r.target == atoms.TEXT => conn
+            .change_property8(replace, r.requestor, prop, atoms.UTF8_STRING, t.as_bytes())
+            .is_ok(),
+        Some(t) if r.target == string => {
+            let latin1: Vec<u8> = t
+                .chars()
+                .map(|c| if (c as u32) < 0x100 { c as u8 } else { b'?' })
+                .collect();
+            conn.change_property8(replace, r.requestor, prop, string, &latin1)
+                .is_ok()
+        }
+        _ => false,
+    };
+    let notify = xproto::SelectionNotifyEvent {
+        response_type: xproto::SELECTION_NOTIFY_EVENT,
+        sequence: 0,
+        time: r.time,
+        requestor: r.requestor,
+        selection: r.selection,
+        target: r.target,
+        property: if ok { prop } else { x11rb::NONE },
+    };
+    let _ = conn.send_event(false, r.requestor, xproto::EventMask::NO_EVENT, notify);
 }

@@ -1,4 +1,5 @@
-//! hermesh-screen [--test-source] [--input-log <file>] | --status | --allow
+//! hermesh-screen [--test-source] [--input-log <file>] [--test-clipboard <file>]
+//!     | --status | --allow
 //!
 //! Started by hermeshd for one Computer Control session
 //! (docs/computer-control-linux.md). It finds the desktop, captures its
@@ -6,6 +7,7 @@
 //! viewer's input from stdin and posts it. When stdin closes it lets go of
 //! what it holds and exits.
 
+mod clip;
 mod detect;
 mod keys;
 mod mutter;
@@ -47,6 +49,7 @@ pub fn fail(error: &str, detail: &str) -> ! {
 fn main() {
     let mut test_source = false;
     let mut input_log: Option<String> = None;
+    let mut test_clipboard: Option<String> = None;
     let mut args = std::env::args().skip(1);
     while let Some(a) = args.next() {
         match a.as_str() {
@@ -67,6 +70,7 @@ fn main() {
             }
             "--test-source" => test_source = true,
             "--input-log" => input_log = args.next(),
+            "--test-clipboard" => test_clipboard = args.next(),
             _ => {
                 eprintln!("hermesh-screen: unknown argument {a}");
                 std::process::exit(2);
@@ -83,12 +87,21 @@ fn main() {
                 let mut f = log.lock().unwrap();
                 let _ = f.write_all(payload);
                 let _ = f.write_all(b"\n");
+            }
+            let Ok(i) = serde_json::from_slice::<Input>(payload) else {
+                return;
+            };
+            // In tests the clipboard is a file, and nothing is pasted.
+            if let (Some(f), Some(c)) = (&test_clipboard, &i.clipboard) {
+                clip::put(&c.text);
+                let _ = std::fs::write(f, &c.text);
                 return;
             }
-            if let Ok(i) = serde_json::from_slice::<Input>(payload) {
-                if let Some(w) = way.lock().unwrap().as_mut() {
-                    w.input(&i);
-                }
+            if log.is_some() {
+                return;
+            }
+            if let Some(w) = way.lock().unwrap().as_mut() {
+                w.input(&i);
             }
         }
         pipe::START => {
@@ -104,8 +117,12 @@ fn main() {
             );
             video = Some(v.clone());
             let pointer = m.pointer.unwrap_or(true);
+            if let Some(f) = &test_clipboard {
+                clip::watch_file(f.into());
+            }
             if test_source {
                 out().state("", "", true);
+                clip::started();
                 std::thread::spawn(move || test_picture(v, m.fps.unwrap_or(30).min(60)));
                 return;
             }
@@ -116,6 +133,7 @@ fn main() {
                 let can = w.can_control();
                 *slot.lock().unwrap() = Some(w);
                 out().state("", "", can);
+                clip::started();
                 notify::session_started(kind);
             });
         }

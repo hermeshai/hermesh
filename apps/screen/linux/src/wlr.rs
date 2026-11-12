@@ -1,12 +1,13 @@
 //! wlroots compositors (Sway, Hyprland, niri, river, labwc): the picture
 //! through wlr-screencopy, a frame each time the screen changes; input
 //! through a virtual pointer and a virtual keyboard whose keymap the helper
-//! writes, so any character can be typed. They ask nothing.
+//! writes, so any character can be typed; the clipboard through
+//! wlr-data-control. They ask nothing.
 
 use std::io::Write;
 use std::os::fd::{AsFd, FromRawFd, OwnedFd};
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 use std::time::Instant;
 
 use wayland_client::globals::{registry_queue_init, GlobalListContents};
@@ -15,6 +16,10 @@ use wayland_client::{delegate_noop, Connection, Dispatch, Proxy, QueueHandle, WE
 use wayland_protocols_misc::zwp_virtual_keyboard_v1::client::{
     zwp_virtual_keyboard_manager_v1, zwp_virtual_keyboard_v1,
 };
+use wayland_protocols_wlr::data_control::v1::client::{
+    zwlr_data_control_device_v1, zwlr_data_control_manager_v1, zwlr_data_control_offer_v1,
+    zwlr_data_control_source_v1,
+};
 use wayland_protocols_wlr::screencopy::v1::client::{
     zwlr_screencopy_frame_v1, zwlr_screencopy_manager_v1,
 };
@@ -22,10 +27,9 @@ use wayland_protocols_wlr::virtual_pointer::v1::client::{
     zwlr_virtual_pointer_manager_v1, zwlr_virtual_pointer_v1,
 };
 
-use crate::keys;
 use crate::pipe::Input;
 use crate::video::{Frame, Order, Video};
-use crate::Way;
+use crate::{clip, keys, Way};
 
 /// available says whether the compositor offers the protocols this way needs.
 pub fn available() -> bool {
@@ -238,6 +242,140 @@ fn capture(video: Arc<Video>, shown: Arc<AtomicBool>) -> Result<(), String> {
     }
 }
 
+// The clipboard's side: wlr-data-control, on a connection and a thread of its own.
+
+struct Clips;
+impl Dispatch<wl_registry::WlRegistry, GlobalListContents> for Clips {
+    fn event(
+        _: &mut Self,
+        _: &wl_registry::WlRegistry,
+        _: wl_registry::Event,
+        _: &GlobalListContents,
+        _: &Connection,
+        _: &QueueHandle<Self>,
+    ) {
+    }
+}
+delegate_noop!(Clips: ignore wl_seat::WlSeat);
+delegate_noop!(Clips: zwlr_data_control_manager_v1::ZwlrDataControlManagerV1);
+
+impl Dispatch<zwlr_data_control_device_v1::ZwlrDataControlDeviceV1, ()> for Clips {
+    fn event(
+        _: &mut Self,
+        _: &zwlr_data_control_device_v1::ZwlrDataControlDeviceV1,
+        ev: zwlr_data_control_device_v1::Event,
+        _: &(),
+        conn: &Connection,
+        _: &QueueHandle<Self>,
+    ) {
+        let zwlr_data_control_device_v1::Event::Selection { id: Some(offer) } = ev else {
+            return;
+        };
+        let offered = offer
+            .data::<Mutex<Vec<String>>>()
+            .map(|m| m.lock().unwrap().clone())
+            .unwrap_or_default();
+        if let (Some(mime), Some((r, w))) = (clip::text_type(&offered), clip::pipe()) {
+            offer.receive(mime.into(), w.as_fd());
+            drop(w);
+            let _ = conn.flush();
+            // Read off this thread: the text may be the helper's own, written from here.
+            std::thread::spawn(move || {
+                if let Some(t) = clip::read_text(r) {
+                    clip::copied(&t);
+                }
+            });
+        }
+        offer.destroy();
+    }
+
+    wayland_client::event_created_child!(Clips, zwlr_data_control_device_v1::ZwlrDataControlDeviceV1, [
+        zwlr_data_control_device_v1::EVT_DATA_OFFER_OPCODE => (zwlr_data_control_offer_v1::ZwlrDataControlOfferV1, Mutex::new(Vec::new())),
+    ]);
+}
+
+impl Dispatch<zwlr_data_control_offer_v1::ZwlrDataControlOfferV1, Mutex<Vec<String>>> for Clips {
+    fn event(
+        _: &mut Self,
+        _: &zwlr_data_control_offer_v1::ZwlrDataControlOfferV1,
+        ev: zwlr_data_control_offer_v1::Event,
+        offered: &Mutex<Vec<String>>,
+        _: &Connection,
+        _: &QueueHandle<Self>,
+    ) {
+        if let zwlr_data_control_offer_v1::Event::Offer { mime_type } = ev {
+            offered.lock().unwrap().push(mime_type);
+        }
+    }
+}
+
+/// A source's user data is its text.
+impl Dispatch<zwlr_data_control_source_v1::ZwlrDataControlSourceV1, String> for Clips {
+    fn event(
+        _: &mut Self,
+        source: &zwlr_data_control_source_v1::ZwlrDataControlSourceV1,
+        ev: zwlr_data_control_source_v1::Event,
+        text: &String,
+        _: &Connection,
+        _: &QueueHandle<Self>,
+    ) {
+        match ev {
+            zwlr_data_control_source_v1::Event::Send { fd, .. } => {
+                let text = text.clone();
+                std::thread::spawn(move || {
+                    let _ = std::fs::File::from(fd).write_all(text.as_bytes());
+                });
+            }
+            zwlr_data_control_source_v1::Event::Cancelled => source.destroy(),
+            _ => {}
+        }
+    }
+}
+
+/// WlrClip makes the phone's text the seat's clipboard, and reads what
+/// others copy.
+struct WlrClip {
+    conn: Connection,
+    manager: zwlr_data_control_manager_v1::ZwlrDataControlManagerV1,
+    device: zwlr_data_control_device_v1::ZwlrDataControlDeviceV1,
+    qh: QueueHandle<Clips>,
+}
+
+impl WlrClip {
+    fn start() -> Result<WlrClip, String> {
+        let conn = Connection::connect_to_env().map_err(|e| e.to_string())?;
+        let (globals, mut queue) =
+            registry_queue_init::<Clips>(&conn).map_err(|e| e.to_string())?;
+        let qh = queue.handle();
+        let seat: wl_seat::WlSeat = globals.bind(&qh, 1..=1, ()).map_err(|e| e.to_string())?;
+        let manager: zwlr_data_control_manager_v1::ZwlrDataControlManagerV1 =
+            globals.bind(&qh, 1..=1, ()).map_err(|e| e.to_string())?;
+        let device = manager.get_data_device(&seat, &qh, ());
+        conn.flush().map_err(|e| e.to_string())?;
+        std::thread::Builder::new()
+            .name("wlr clipboard".into())
+            .spawn(move || while queue.blocking_dispatch(&mut Clips).is_ok() {})
+            .unwrap();
+        Ok(WlrClip {
+            conn,
+            manager,
+            device,
+            qh,
+        })
+    }
+
+    /// set makes text the clipboard, once the compositor has taken it.
+    fn set(&self, text: &str) -> bool {
+        clip::put(text);
+        let source = self.manager.create_data_source(&self.qh, text.to_string());
+        for m in clip::OFFERED {
+            source.offer(m.into());
+        }
+        self.device.set_selection(Some(&source));
+        self.conn.roundtrip().is_ok()
+    }
+}
+
 // The input's side.
 
 struct Inputs;
@@ -292,6 +430,7 @@ pub struct Wlr {
     held: Vec<u32>,
     wheel: (f64, f64),
     shown: Arc<AtomicBool>,
+    clip: Option<WlrClip>,
     _queue: wayland_client::EventQueue<Inputs>,
 }
 
@@ -324,6 +463,9 @@ impl Wlr {
             held: vec![],
             wheel: (0.0, 0.0),
             shown,
+            clip: WlrClip::start()
+                .map_err(|e| crate::out().log(&format!("wlroots: no clipboard: {e}")))
+                .ok(),
             _queue: queue,
         };
         w.upload()?;
@@ -468,6 +610,14 @@ impl Way for Wlr {
                 self.ensure(chunk);
                 for s in chunk {
                     self.key(*s, 0);
+                }
+            }
+        }
+        if let Some(c) = &i.clipboard {
+            if self.clip.as_ref().is_some_and(|k| k.set(&c.text)) {
+                if let Some(mods) = clip::paste_mods(&c.paste) {
+                    self.ensure(&['v' as u32]);
+                    self.key('v' as u32, mask(mods));
                 }
             }
         }

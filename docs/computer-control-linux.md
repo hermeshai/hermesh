@@ -95,6 +95,7 @@ flowchart LR
 | `pipewire.rs` | `libpipewire-0.3.so.0` loaded at run time; SPA's format written and read by hand |
 | `video.rs` | Scaling, I420, OpenH264, the newest picture only |
 | `keys.rs` | Keysyms and evdev codes of the viewer's keys |
+| `clip.rs` | What the four ways' clipboards share: the paste shortcuts, what is told to hermeshd (§3.8) |
 | `notify.rs` | The notification at the computer, keeping it from going idle |
 
 ## 3. The helper
@@ -196,6 +197,7 @@ Positions come as fractions of the display, as on the Mac.
 | `wheel` | buttons 4 to 7, a step for each 40 points | `NotifyPointerAxisDiscrete` | `axis_discrete` |
 | `key` | modifier keys down, the key, modifiers up | the same, as keysyms | the key in our keymap, with `modifiers` |
 | `text` | each character on its key, or on a spare keycode | keysyms; the clipboard for what the layout lacks | each character in our keymap |
+| `clipboard` | the text on the clipboard (§3.8), then the paste shortcut | the same | the same |
 
 - **Modifiers.** The message's `control`, `option`, `shift` and `command`
   are Ctrl, Alt, Shift and Super, pressed and let go around the key in one
@@ -206,10 +208,10 @@ Positions come as fractions of the display, as on the Mac.
   types); the keycodes are put back when the helper leaves.
 - **Text on GNOME and the portal.** Mutter drops a keysym the layout has
   no key for. Text with any character outside ASCII is put on the
-  session's clipboard and pasted with Ctrl+V. Most programs paste so; a
-  terminal pastes with Ctrl+Shift+V, which the owner can press from the key
-  row, the text still on the clipboard. On Plasma (6.6 and later type any
-  character) the helper types keysyms instead.
+  session's clipboard and pasted as `Text.paste` says: Ctrl+Shift+V for
+  `PASTE_TERMINAL` (a terminal pastes so), else Ctrl+V, as most programs
+  paste. On Plasma (6.6 and later type any character) the helper types
+  keysyms instead.
 - **Text on wlroots.** The helper writes an xkb keymap with each character
   on a key of its own, as `wtype` does, and sends it again when a new one
   comes.
@@ -240,7 +242,9 @@ can watch, not control: *Name* shares its screen without its keyboard and
 mouse."
 
 `--status` prints, for hermeshd, the way it would take or why none, as
-JSON. `--test-source` and `--input-log` do what the Mac's do. `--allow` is
+JSON. `--test-source`, `--input-log` and `--test-clipboard <file>` do what
+the Mac's do (the last: the file is the machine's clipboard, written by a
+`clipboard` input, read every 200 ms; nothing is pasted). `--allow` is
 `hermeshd screen allow`. `--version`, for updates.
 
 ### 3.7 Lock, sleep, the login screen
@@ -258,6 +262,40 @@ JSON. `--test-source` and `--input-log` do what the Mac's do. `--allow` is
 - **Plasma**: a session goes on while the screen is locked, and shows the
   lock screen (6.6.6). Whether typing reaches it is not checked.
 - **The login screen** belongs to another user: out of reach everywhere.
+
+### 3.8 The clipboard
+
+Both ways, as on the Mac. The phone's `clipboard` input puts its text on
+the desktop's clipboard (CLIPBOARD on X11, the seat's selection on
+Wayland), then presses the paste shortcut its `paste` names:
+
+| `Paste` | Keys |
+|---|---|
+| `PASTE_APP` | Ctrl+V |
+| `PASTE_TERMINAL` | Ctrl+Shift+V (a terminal pastes so) |
+| unspecified | none: the text only goes on the clipboard |
+
+What a program on the machine copies comes back to the phone (a pipe
+message of its own, `x`, which hermeshd gives the phone as the
+`ScreenEvent`'s `clipboard`): text only (`UTF8_STRING`,
+`text/plain;charset=utf-8`), not empty, at most 60000 bytes, only while a
+session lasts, never what the helper itself put there, and not the same
+text twice in a row.
+
+| Way | Gives | Watches |
+|---|---|---|
+| **X11** | owns CLIPBOARD from a hidden window on a connection and a thread of its own; answers `TARGETS`, `UTF8_STRING`, `TEXT`, `STRING`; keeps it until another program takes it | XFIXES says the owner changed; the helper converts the selection to `UTF8_STRING` into its window (text sent in parts, `INCR`, is longer than the limit and skipped) |
+| **GNOME** | the Mutter session's clipboard: `SetSelection`, then the text to whoever asks (`SelectionTransfer`) | `SelectionOwnerChanged` (not when `session-is-owner`), then `SelectionRead` |
+| **Portal** | the portal's `Clipboard`, asked for with the session (also on Plasma, which types text as keysyms) | the same, the portal's way |
+| **wlroots** | `wlr-data-control` (Sway, Hyprland, niri, river, labwc have it), on a connection and a thread of its own | the data device's `selection` |
+
+- Mutter's session sends the types of `SelectionOwnerChanged` inside a
+  struct, `(as)`, not as the list its documentation names; Mutter 51 sends
+  the list as it should on a second interface,
+  `org.gnome.Mutter.Clipboard`. The helper reads both.
+- The text is read off the thread that serves the helper's own, with a
+  limit of three seconds: a program that never finishes writing holds
+  nothing up.
 
 ## 4. The encoder
 
@@ -384,6 +422,16 @@ installed by `hermeshd pair` as the systemd user service it is:
 | GNOME Shell 50.1, Wayland | the GNOME way, with no variables in its environment | 1920×1200, direct | "Hello VM 你好" (pasted) | the phone told "the screen is locked", in a session and connecting; back once unlocked |
 | Plasma 6.6.6, Wayland | the portal; `hermeshd screen allow`, then no dialog | 1920×1200, direct | "Hello VM 你好" (keysyms) | the lock screen shows in the picture |
 
+The clipboard (§3.8), on Xvfb, Sway 1.12 and Mutter 51 in containers and
+on GNOME 50 and Plasma 6.6.6 in the virtual machine: the phone's
+clipboard "剪贴板 from phone" pasted into a terminal with Ctrl+Shift+V
+(foot as it comes; xterm told to paste CLIPBOARD so), "你好" pasted the same
+way where GNOME can't type it, and text copied there (`xclip` on X11,
+`wl-copy` on Wayland, Chinese among it) reaching the phone once, with
+nothing of the phone's own coming back. The portal's clipboard on Plasma
+6.6.6 works both ways. Not checked: GNOME's portal (the way GNOME takes
+when its own service refuses), other wlroots compositors.
+
 Container lessons: Xvfb resets (root colour, pointer) when its last client
 leaves unless started with `-noreset`; GNOME Shell waits 25 seconds on
 every missing system service unless they fail at once; KWin's screen
@@ -392,8 +440,8 @@ sharing needs a render node (`/dev/dri`), which Docker Desktop has not.
 ## 10. Tests
 
 - `apps/screen/linux`: `cargo test` (the pipe's JSON, keys, sizes,
-  packing, the encoder, SPA's format, the keymap); `cargo clippy -D
-  warnings`.
+  packing, the encoder, SPA's format, the keymap, what of the clipboard is
+  told); `cargo clippy -D warnings`.
 - `HERMESH_DOCKER=1 go test ./e2e -run TestLinuxScreen`: on X11, Sway and
   GNOME, each in a container with no screen, a Linux hermeshd (its
   environment naming no display, as under systemd) with the helper beside
@@ -401,14 +449,16 @@ sharing needs a render node (`/dev/dri`), which Docker Desktop has not.
   device, sees the screen offered and opens it through the relay. The
   picture comes from a keyframe on at the desktop's size, a direct path;
   `hermeshd screen` names the way and then the phone in control; a click
-  and "Hello Linux 你好" reach the terminal; `hermeshd screen stop` ends it
+  and "Hello Linux 你好" reach the terminal; the phone's clipboard is pasted
+  there as a terminal pastes, and what a program copies there reaches the
+  phone; `hermeshd screen stop` ends it
   and the phone is told; `screen off` takes the screen from the phone and
   `on` gives it back. CI runs it.
 - `HERMESH_LINUX_VM=<a Lima instance> go test ./e2e -run
   TestLinuxScreenVM`: the same against a virtual machine logged in to its
-  desktop, with the release build and hermeshd as a systemd user service;
-  on GNOME also the lock and unlock, on Plasma `hermeshd screen allow`
-  first. Passed on GNOME 50 and Plasma 6.6.
+  desktop, with the release build and hermeshd as a systemd user service,
+  the clipboard both ways too; on GNOME also the lock and unlock, on Plasma
+  `hermeshd screen allow` first. Passed on GNOME 50 and Plasma 6.6.
 - The Mac's `TestScreen` and `TestScreenThroughTURN` still pass.
 - By hand, with a script that drives the helper as hermeshd does: the
   portal end to end on GNOME's portal, its dialog clicked through (§9);
@@ -422,8 +472,6 @@ sharing needs a render node (`/dev/dri`), which Docker Desktop has not.
 - An iPhone UI test against a Linux machine: Her would have to run there
   (the row is in Her's settings).
 - Software encoding on a cloud machine's core, x86-64 and arm64.
-- Text the layout lacks, into a terminal on GNOME (pasting needs
-  Ctrl+Shift+V there).
 - A virtual screen for a server with no desktop, with Her's browser on it.
 - Whether GNOME keeps its service open to other programs.
 

@@ -29,8 +29,10 @@ import (
 // go to ~/.local/bin there; `hermeshd pair` installs hermeshd as the systemd
 // user service it is, which finds the desktop by itself. An iPhone's core
 // opens the screen through the relay on this computer, a click and
-// "Hello VM 你好" reach a terminal there; locking the screen takes it from
-// the phone with the reason, unlocking gives it back.
+// "Hello VM 你好" reach a terminal there, the phone's clipboard is pasted
+// there as a terminal pastes, and what wl-copy copies there reaches the
+// phone; locking the screen takes it from the phone with the reason,
+// unlocking gives it back.
 //
 // HERMESH_LINUX_VM_HOST is this computer as the machine reaches it
 // (host.lima.internal by default); HERMESH_SCREEN_LINUX_RELEASE the helper,
@@ -140,30 +142,41 @@ func TestLinuxScreenVM(t *testing.T) {
 	}
 	t.Logf("the service: %s", sh(time.Minute, "systemctl --user is-active hermeshd; loginctl show-user $(id -u) -p Linger"))
 
-	// A terminal, filling the screen, writes what reaches it.
-	sh(time.Minute, session+" (setsid foot --maximized -o key-bindings.clipboard-paste=Control+v sh -c 'stty raw -echo; dd bs=1 of=/tmp/typed.txt 2>/dev/null' >/dev/null 2>&1 &)")
+	// A terminal, filling the screen, writes what reaches it; it pastes with Ctrl+Shift+V, as terminals do.
+	sh(time.Minute, session+" (setsid foot --maximized sh -c 'stty raw -echo; dd bs=1 of=/tmp/typed.txt 2>/dev/null' >/dev/null 2>&1 &)")
 	time.Sleep(3 * time.Second)
 	s := openScreen(t, m, approved.MachineId)
 	format, path := s.picture(t)
 	t.Logf("the picture: %dx%d, %s", format.GetWidth(), format.GetHeight(), path)
-	for _, in := range []*screenv1.Input{
-		{Event: &screenv1.Input_Button{Button: &screenv1.Button{X: 0.5, Y: 0.5, Button: screenv1.MouseButton_MOUSE_BUTTON_LEFT, Down: true, Clicks: 1}}},
-		{Event: &screenv1.Input_Button{Button: &screenv1.Button{X: 0.5, Y: 0.5, Button: screenv1.MouseButton_MOUSE_BUTTON_LEFT, Clicks: 1}}},
-		{Event: &screenv1.Input_Text{Text: &screenv1.Text{Text: "Hello VM "}}},
-		{Event: &screenv1.Input_Text{Text: &screenv1.Text{Text: "你好"}}},
-	} {
-		b, _ := proto.Marshal(in)
-		if err := screenrtc.WriteMessage(s.conn, screenrtc.KindInput, b); err != nil {
-			t.Fatal(err)
+	send := func(ins ...*screenv1.Input) {
+		for _, in := range ins {
+			b, _ := proto.Marshal(in)
+			if err := screenrtc.WriteMessage(s.conn, screenrtc.KindInput, b); err != nil {
+				t.Fatal(err)
+			}
+			time.Sleep(400 * time.Millisecond)
 		}
-		time.Sleep(400 * time.Millisecond)
 	}
+	send(
+		&screenv1.Input{Event: &screenv1.Input_Button{Button: &screenv1.Button{X: 0.5, Y: 0.5, Button: screenv1.MouseButton_MOUSE_BUTTON_LEFT, Down: true, Clicks: 1}}},
+		&screenv1.Input{Event: &screenv1.Input_Button{Button: &screenv1.Button{X: 0.5, Y: 0.5, Button: screenv1.MouseButton_MOUSE_BUTTON_LEFT, Clicks: 1}}},
+		&screenv1.Input{Event: &screenv1.Input_Text{Text: &screenv1.Text{Text: "Hello VM "}}},
+		&screenv1.Input{Event: &screenv1.Input_Text{Text: &screenv1.Text{Text: "你好", Paste: screenv1.Paste_PASTE_TERMINAL}}},
+	)
 	typed := func() string {
 		out, _ := exec.Command("limactl", "shell", vm, "--", "cat", "/tmp/typed.txt").Output()
 		return string(out)
 	}
-	// Chinese is pasted on GNOME, typed on Plasma (§3.4): this terminal pastes with Ctrl+V.
+	// Chinese is pasted on GNOME, as a terminal pastes, and typed on Plasma (§3.4).
 	eventually(t, 20*time.Second, "what the phone typed, in the terminal", func() bool { return typed() == "Hello VM 你好" })
+	// The phone's clipboard, pasted as a terminal pastes; what a program copies there reaches the phone.
+	send(&screenv1.Input{Event: &screenv1.Input_Clipboard{Clipboard: &screenv1.Clipboard{Text: "剪贴板 from phone", Paste: screenv1.Paste_PASTE_TERMINAL}}})
+	eventually(t, 20*time.Second, "the phone's clipboard, pasted in the terminal", func() bool { return typed() == "Hello VM 你好剪贴板 from phone" })
+	sh(5*time.Minute, "command -v wl-copy >/dev/null || sudo DEBIAN_FRONTEND=noninteractive apt-get install -y wl-clipboard >/dev/null")
+	sh(time.Minute, session+" printf %s 'copied in the VM 复制' | wl-copy >/dev/null 2>&1")
+	if got := linuxCopied(t, s); got != "copied in the VM 复制" {
+		t.Errorf("the phone was told %q was copied", got)
+	}
 
 	if !gnome {
 		return // what a locked screen does is GNOME's (docs/computer-control-linux.md §3.7)

@@ -9,11 +9,11 @@ use std::os::fd::{FromRawFd, IntoRawFd};
 use std::sync::{Arc, Mutex};
 
 use zbus::blocking::{fdo::DBusProxy, Connection, Proxy};
-use zbus::zvariant::{OwnedFd, OwnedObjectPath, Value};
+use zbus::zvariant::{OwnedFd, OwnedObjectPath, OwnedValue, Value};
 
-use crate::keys;
 use crate::pipe::Input;
 use crate::video::Video;
+use crate::{clip, keys};
 use crate::{pipewire, Way};
 
 const RD: &str = "org.gnome.Mutter.RemoteDesktop";
@@ -143,11 +143,26 @@ impl Mutter {
         );
         self.call("NotifyPointerMotionAbsolute", &(self.stream.as_str(), x, y));
     }
+
+    /// set_clipboard makes text the session's clipboard, given to whoever
+    /// pastes.
+    fn set_clipboard(&self, text: &str) -> bool {
+        let Some(waiting) = &self.clip else {
+            return false;
+        };
+        *waiting.lock().unwrap() = text.to_string();
+        clip::put(text);
+        let mimes: HashMap<&str, Value> =
+            HashMap::from([("mime-types", Value::from(clip::OFFERED.to_vec()))]);
+        self.session
+            .call::<_, _, ()>("SetSelection", &(mimes,))
+            .is_ok()
+    }
 }
 
-/// enable_clipboard lets the helper offer text to paste: what the keyboard
-/// layout has no key for can't be typed through Mutter (it drops such
-/// keysyms).
+/// enable_clipboard lets the helper offer text to paste (the phone's
+/// clipboard, and what the keyboard layout has no key for: Mutter drops
+/// such keysyms), and tells what others copy.
 fn enable_clipboard(conn: &Connection, session: &Proxy<'static>) -> Option<Arc<Mutex<String>>> {
     session
         .call::<_, _, ()>("EnableClipboard", &(HashMap::<&str, Value>::new(),))
@@ -161,6 +176,29 @@ fn enable_clipboard(conn: &Connection, session: &Proxy<'static>) -> Option<Arc<M
         format!("{RD}.Session"),
     )
     .ok()?;
+    if let Ok(changes) = session.receive_signal("SelectionOwnerChanged") {
+        let s = s.clone();
+        std::thread::spawn(move || {
+            for m in changes {
+                let Ok((o,)) = m.body().deserialize::<(HashMap<String, OwnedValue>,)>() else {
+                    continue;
+                };
+                let ours = o
+                    .get("session-is-owner")
+                    .and_then(|v| bool::try_from(v.clone()).ok())
+                    .unwrap_or(false);
+                let offered = o.get("mime-types").map(clip::strings).unwrap_or_default();
+                let Some(mime) = clip::text_type(&offered).filter(|_| !ours) else {
+                    continue;
+                };
+                if let Ok(fd) = s.call::<_, _, OwnedFd>("SelectionRead", &(mime,)) {
+                    if let Some(t) = clip::read_text(fd.into()) {
+                        clip::copied(&t);
+                    }
+                }
+            }
+        });
+    }
     let t = text.clone();
     std::thread::spawn(move || {
         for m in transfers {
@@ -222,29 +260,20 @@ impl Way for Mutter {
             }
         }
         if let Some(t) = &i.text {
-            match &self.clip {
-                Some(clip) if !plain(&t.text) => {
-                    *clip.lock().unwrap() = t.text.clone();
-                    let mimes: HashMap<&str, Value> = HashMap::from([(
-                        "mime-types",
-                        Value::from(vec![
-                            "text/plain;charset=utf-8",
-                            "text/plain",
-                            "UTF8_STRING",
-                        ]),
-                    )]);
-                    if self
-                        .session
-                        .call::<_, _, ()>("SetSelection", &(mimes,))
-                        .is_ok()
-                    {
-                        self.press(&[keys::CONTROL_L], 'v' as u32);
-                    }
+            if self.clip.is_some() && !plain(&t.text) {
+                if self.set_clipboard(&t.text) {
+                    self.press(clip::text_paste_mods(&t.paste), 'v' as u32);
                 }
-                _ => {
-                    for c in t.text.chars() {
-                        self.press(&[], keys::of_char(c));
-                    }
+            } else {
+                for c in t.text.chars() {
+                    self.press(&[], keys::of_char(c));
+                }
+            }
+        }
+        if let Some(c) = &i.clipboard {
+            if self.set_clipboard(&c.text) {
+                if let Some(mods) = clip::paste_mods(&c.paste) {
+                    self.press(mods, 'v' as u32);
                 }
             }
         }
