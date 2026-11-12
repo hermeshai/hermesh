@@ -13,6 +13,7 @@ FROM --platform=$BUILDPLATFORM golang:1.27 AS build
 ARG TARGETOS TARGETARCH
 WORKDIR /src
 COPY go.mod go.sum ./
+COPY third_party/pion-ice ./third_party/pion-ice
 RUN go mod download
 COPY . .
 RUN CGO_ENABLED=0 GOOS=$TARGETOS GOARCH=$TARGETARCH go build -trimpath -ldflags "-s -w" -o /out/hermesh-relay ./cmd/hermesh-relay && mkdir /out/data
