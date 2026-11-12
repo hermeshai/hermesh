@@ -261,6 +261,12 @@ public nonisolated struct Hermesh_Screen_V1_CandidatesRequest: Sendable {
   /// before. A machine that has no more yet waits up to a second for one.
   public var have: UInt32 = 0
 
+  /// What the viewer found of its own side, for the machine's log, where
+  /// the owner can read why a session took the path it did: how long the
+  /// offer took to be answered, and how its network maps its packets
+  /// (internal/screen's probeNAT). Not used for anything else.
+  public var network: String = String()
+
   public var unknownFields = SwiftProtobuf.UnknownStorage()
 
   public init() {}
@@ -686,7 +692,7 @@ nonisolated extension Hermesh_Screen_V1_ConnectResponse: SwiftProtobuf.Message, 
 
 nonisolated extension Hermesh_Screen_V1_CandidatesRequest: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
   public static let protoMessageName: String = _protobuf_package + ".CandidatesRequest"
-  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{3}session_id\0\u{1}ufrag\0\u{1}candidates\0\u{1}complete\0\u{1}have\0")
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{3}session_id\0\u{1}ufrag\0\u{1}candidates\0\u{1}complete\0\u{1}have\0\u{1}network\0")
 
   public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
     while let fieldNumber = try decoder.nextFieldNumber() {
@@ -699,6 +705,7 @@ nonisolated extension Hermesh_Screen_V1_CandidatesRequest: SwiftProtobuf.Message
       case 3: try { try decoder.decodeRepeatedStringField(value: &self.candidates) }()
       case 4: try { try decoder.decodeSingularBoolField(value: &self.complete) }()
       case 5: try { try decoder.decodeSingularUInt32Field(value: &self.have) }()
+      case 6: try { try decoder.decodeSingularStringField(value: &self.network) }()
       default: break
       }
     }
@@ -720,6 +727,9 @@ nonisolated extension Hermesh_Screen_V1_CandidatesRequest: SwiftProtobuf.Message
     if self.have != 0 {
       try visitor.visitSingularUInt32Field(value: self.have, fieldNumber: 5)
     }
+    if !self.network.isEmpty {
+      try visitor.visitSingularStringField(value: self.network, fieldNumber: 6)
+    }
     try unknownFields.traverse(visitor: &visitor)
   }
 
@@ -729,6 +739,7 @@ nonisolated extension Hermesh_Screen_V1_CandidatesRequest: SwiftProtobuf.Message
     if lhs.candidates != rhs.candidates {return false}
     if lhs.complete != rhs.complete {return false}
     if lhs.have != rhs.have {return false}
+    if lhs.network != rhs.network {return false}
     if lhs.unknownFields != rhs.unknownFields {return false}
     return true
   }

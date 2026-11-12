@@ -306,6 +306,37 @@ UDP did not, and ICE over TCP would connect there. Not loaded: the network
 keeps the two apart, or the phone's proxy app took the request (its
 address in the log, if any, is not the phone's): say which the log shows.
 
+### T15. How each network maps a socket
+
+Why a session between two networks is relayed is in one log line an end
+(design §2.5), from this commit on, with both ends built from it:
+
+```text
+screen: network session=… end=machine found="system 183.0.2.9:54428>54428 54430>54430; 192.168.1.5 183.0.2.9:53344>53344 53345>53345"
+screen: network session=… end=viewer found="answered in 812ms, try 1; system …; 10.20.3.4 …"
+```
+
+For each way a packet leaves (`system`, then each local address) and each
+of two sockets: the port the STUN server saw, `>`, the port a relayed
+address on the same server saw. `none`: no answer that way.
+
+1. ✋ One session each: the phone on cellular and the Mac at home; the
+   phone on the office Wi-Fi and the Mac at home; both on the home Wi-Fi.
+   With the proxy apps as the owner normally has them.
+
+**Pass**: nothing to pass. Write down both lines of each session, and for
+each end and way say which of these it shows:
+
+- the same port to both destinations (`40001>40001`): the checks alone
+  can find a direct path through that NAT;
+- different ports, a small step apart from socket to socket
+  (`28293>28294 28296>28297`): a direct path needs the next ports tried;
+- different ports far apart (`51350>39438`): no direct path through that
+  NAT unless the other end's lets in what it was not told of.
+
+And `answered in`: over a second is the tunnel to the machine, which the
+relayed path's servers (T14) do not change.
+
 ### T14. Reachable, low-latency relay fallback
 
 Requires the TURN servers of design §5.1. In an isolated test network,

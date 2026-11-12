@@ -372,6 +372,15 @@ func TestCandidatesLater(t *testing.T) {
 				return strings.Contains(l, `msg="screen: candidates"`) && strings.Contains(l, `local="host `) && strings.Contains(l, `remote="host `) &&
 					strings.Contains(l, `msg="screen: path"`) && strings.Contains(l, " after=")
 			})
+			// And, from a viewer that sends candidates later, how long its
+			// offer took to be answered.
+			if c.viewer && !c.older {
+				waitFor(t, "the viewer's side of the session in the log", func() bool {
+					mu.Lock()
+					defer mu.Unlock()
+					return strings.Contains(log.String(), `msg="screen: network"`) && strings.Contains(log.String(), `end=viewer found="answered in `)
+				})
+			}
 			if c.older {
 				time.Sleep(gatherWithin + time.Second)
 				mu.Lock()
@@ -525,6 +534,9 @@ func TestLateTURNAddressIsExchanged(t *testing.T) {
 					}
 					if older {
 						res.Again, res.Complete = false, false
+					}
+					if req.Network != "" { // the viewer's report for the log, not the exchange
+						return res, nil
 					}
 					mu.Lock()
 					defer mu.Unlock()

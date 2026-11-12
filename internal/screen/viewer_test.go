@@ -84,7 +84,7 @@ func TestInitialSignalHasLimitedAttempts(t *testing.T) {
 		calls++
 		return nil, context.DeadlineExceeded
 	}}}
-	_, err := v.connect(context.Background(), &screenv1.ConnectRequest{})
+	_, _, err := v.connect(context.Background(), &screenv1.ConnectRequest{})
 	if calls != 3 || !errors.Is(err, context.DeadlineExceeded) {
 		t.Fatalf("calls=%d, err=%v", calls, err)
 	}
