@@ -263,6 +263,10 @@ private var herGrantNote: String {
     String(localized: "Her can use all your computers: start coding agents in any project, read their sessions and answer them. This doesn’t expire. Turn Her off to end it.")
 }
 
+/// Her was on once on m and her data is still there (docs/her-server.md §5.6): as m says while it answers, else
+/// as last seen. A machine older than this says neither.
+func herData(_ m: HerMachine) -> Bool { m.hasStatus ? m.status.her.data : m.her.data }
+
 /// Where Her can run, to turn her on (docs/her-server.md §9.2): the owner's Macs and Linux machines, those online
 /// first; one offline, a Windows one or one that can't run her shows why. Turning her on is signed with Face ID,
 /// and the same confirmation lets her use the owner's computers (docs/her-mesh.md §3.3): the line under the
@@ -302,6 +306,7 @@ struct HerChoices: View {
             VStack(alignment: .leading, spacing: 2) {
                 Text(m.machineName).font(.subheadline.weight(.semibold))
                 Text(detail).font(.caption).foregroundStyle(.secondary).lineLimit(2)
+                if herData(m) { Text("Her’s data from before is still here").font(.caption).foregroundStyle(.secondary) }
             }
             Spacer(minLength: 8)
             if turning == m.machineID {

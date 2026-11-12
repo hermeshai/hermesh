@@ -9583,6 +9583,116 @@
           }
         }
       }
+    },
+    "Her’s data from before is still here": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "上次的数据还在"
+          }
+        }
+      }
+    },
+    "Erase Her’s Data…": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "清空 Her 的数据…"
+          }
+        }
+      }
+    },
+    "Her is off. Her’s data is still on this machine; turned on again, she carries on.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Her 已关闭。她的数据还在这台机器上，再次开启时接着用。"
+          }
+        }
+      }
+    },
+    "Erase Her’s data on “%@”?": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "清空 Her 在「%@」上的数据？"
+          }
+        }
+      }
+    },
+    "Erase": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "清空"
+          }
+        }
+      }
+    },
+    "Her’s assistants, conversations, memory, routines, files, connectors and model logins on %@ are deleted. This can’t be undone.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ 上 Her 的助手、对话、记忆、定时任务、文件、连接器和模型登录都会删除，无法恢复。"
+          }
+        }
+      }
+    },
+    "Her’s data on %@ is erased": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "已清空 Her 在 %@ 上的数据"
+          }
+        }
+      }
+    },
+    "Remove, Keep Her’s Data": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "移除，保留 Her 的数据"
+          }
+        }
+      }
+    },
+    "Remove and Erase Her’s Data": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "移除并清空 Her 的数据"
+          }
+        }
+      }
+    },
+    "Kept, Her’s data stays on it. Erasing deletes her assistants, conversations, memory, routines, files, connectors and model logins there, and can’t be undone.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "保留的话，Her 的数据留在上面。清空会删除那里 Her 的助手、对话、记忆、定时任务、文件、连接器和模型登录，无法恢复。"
+          }
+        }
+      }
+    },
+    "Her’s data stays on it: it’s offline, so it can’t be erased now.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Her 的数据会留在上面：它离线了，现在无法清空。"
+          }
+        }
+      }
     }
   },
   "version": "1.0"

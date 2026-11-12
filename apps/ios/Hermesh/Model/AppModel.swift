@@ -934,14 +934,34 @@ final class AppModel {
         } catch { report(error) }
     }
 
-    func remove(_ m: Machine) async {
+    /// eraseHer: Her's data there is erased first, signed; the owner chose it in the dialog, so Face ID asks at once.
+    func remove(_ m: Machine, eraseHer: Bool) async {
         guard let api else { return }
+        if eraseHer { signer.expect(.types([SigningPreview.adminCommand])) }
         do {
-            try await api.removeMachine(m.machineID)
+            try await api.removeMachine(m.machineID, eraseHer: eraseHer)
             machines = (try? await api.machines()) ?? machines
             show(String(localized: "Removed “\(m.machineName)”"))
             if case .machine(let id)? = path.last, id == m.machineID { path.removeLast() }
         } catch { report(error) }
+    }
+
+    /// Erases Her's data on a machine where she is off (SetHer off with erase, docs/her-server.md §5.6). The owner
+    /// chose it in a dialog, so Face ID asks at once.
+    func eraseHer(_ m: Machine) async -> Bool {
+        guard let api else { return false }
+        signer.expect(.types([SigningPreview.adminCommand]))
+        var r = Hermesh_Local_V1_SetHerRequest()
+        r.machineID = m.machineID
+        r.enabled = false
+        r.erase = true
+        do {
+            let _: Hermesh_Local_V1_SetHerResponse = try await api.call("SetHer", r, timeout: signingTimeout)
+            return true
+        } catch {
+            report(error)
+            return false
+        }
     }
 
     /// Check Again: that machine looks at its coding agents now.

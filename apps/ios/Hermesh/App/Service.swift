@@ -279,9 +279,11 @@ extension AppAPI {
         let _: Hermesh_Local_V1_SetAgentDefaultsResponse = try await call("SetAgentDefaults", r)
     }
 
-    func removeMachine(_ id: String) async throws {
+    /// eraseHer: Her's data there is erased first (docs/her-server.md §5.6).
+    func removeMachine(_ id: String, eraseHer: Bool) async throws {
         var r = Hermesh_Local_V1_RemoveMachineRequest()
         r.machineID = id
+        r.eraseHer = eraseHer
         let _: Hermesh_Local_V1_RemoveMachineResponse = try await call("RemoveMachine", r, timeout: signingTimeout)
     }
 

@@ -4,8 +4,8 @@ import XCTest
 /// the owner Mac's her, whose model is her-mock (TestIPhone, iphoneHerEnv):
 /// Her turned on for the Mac with Face ID, her onboarding connecting a model
 /// with a Token Plan, a chat, Chinese typed at a line's end, her settings and her memory, a question, files she sends, an approval, and the Mac gone
-/// offline, where a message waits on the iPhone until it is back; last, Her turned off with her data erased,
-/// and on again, new. her-mock
+/// offline, where a message waits on the iPhone until it is back; Her turned off with her data erased,
+/// and on again, new; last, turned off with her data kept, which the machine's page erases. her-mock
 /// answers a message by its directive (e2e/her_owner_test.go).
 ///
 ///     HERMESH_IPHONE_E2E=1 HERMESH_IPHONE_GREP=testHer go test ./e2e -run TestIPhone -v -timeout 40m
@@ -26,6 +26,7 @@ extension HermeshUITests {
         try XCTContext.runActivity(named: "the Mac offline: what was said stays, and a message waits here until it is back") { _ in try herOffline() }
         try XCTContext.runActivity(named: "opened on its last messages, earlier ones are read at the top") { _ in try herEarlier() }
         try XCTContext.runActivity(named: "turned off from her settings, her data erased: on again, she is new") { _ in try herTurnOff() }
+        try XCTContext.runActivity(named: "turned off with her data kept: the card says so, removing the machine offers to erase it, and its page erases it") { _ in try herEraseKept() }
     }
 
     func herTurnOn() throws {
@@ -374,6 +375,53 @@ extension HermeshUITests {
         XCTAssertTrue(text("开始之前，我需要接上一个模型").waitForExistence(timeout: 180), "a new Her, asking for a model")
         XCTAssertFalse(app.staticTexts["你好，主人"].exists, "nothing of what was said")
         herShot("Her: on again after erasing")
+    }
+
+    func herEraseKept() throws {
+        // Turned off with her data kept, the first run's card says it is still there.
+        app.buttons["her-name"].tap()
+        XCTAssertTrue(text("运行在").waitForExistence(timeout: 10), "her settings")
+        let off = app.buttons["her-turn-off"]
+        for _ in 0 ..< 4 where !off.isHittable { app.swipeUp() }
+        off.tap()
+        tap("关闭，保留数据", timeout: 10)
+        XCTAssertTrue(text("选择 Her 在哪里运行").waitForExistence(timeout: 60), "the first run again")
+        XCTAssertTrue(text("上次的数据还在").waitForExistence(timeout: 30), "her data kept, on the card")
+        herShot("Her: off, her data kept")
+        // Removing the machine could erase it too, while the machine answers; owner-mac stays here.
+        openMenu()
+        app.buttons["机器"].tap()
+        tap("machine-owner-mac", timeout: 20)
+        tap("machine-menu")
+        tap("移除…")
+        XCTAssertTrue(app.buttons["移除，保留 Her 的数据"].waitForExistence(timeout: 10), "removing, her data kept")
+        XCTAssertTrue(app.buttons["移除并清空 Her 的数据"].exists, "or erased")
+        XCTAssertFalse(app.buttons["移除"].exists, "no removal that says nothing of Her")
+        herShot("Her: removing her machine")
+        if app.buttons["取消"].exists { app.buttons["取消"].tap() } else { app.otherElements["PopoverDismissRegion"].firstMatch.tap() }
+        XCTAssertTrue(app.buttons["移除并清空 Her 的数据"].waitForNonExistence(timeout: 5), "cancelled")
+        // The machine's page erases it: asked first, then Face ID.
+        let erase = app.buttons["machine-erase-her"]
+        for _ in 0 ..< 4 where !erase.exists || !erase.isHittable { app.swipeUp() }
+        XCTAssertTrue(erase.waitForExistence(timeout: 10), "erasing her data, near the end of the machine's page")
+        erase.tap()
+        XCTAssertTrue(text("清空 Her 在「owner-mac」上的数据？").waitForExistence(timeout: 10), "asked first")
+        XCTAssertTrue(text("无法恢复").exists, "what goes, for good")
+        herShot("Her: erasing her data")
+        app.buttons["清空"].tap()
+        XCTAssertTrue(toast(containing: "已清空 Her 在 owner-mac 上的数据"))
+        XCTAssertTrue(erase.waitForNonExistence(timeout: 60), "nothing left to erase")
+        // The card says nothing of it now; on again, she is new.
+        openMenu()
+        app.descendants(matching: .any)["drawer"].buttons["her-place"].tap()
+        XCTAssertTrue(text("选择 Her 在哪里运行").waitForExistence(timeout: 30), "the first run")
+        XCTAssertFalse(text("上次的数据还在").exists, "no data kept")
+        tap("her-turn-on-owner-mac", timeout: 30)
+        XCTAssertTrue(text("在机器「owner-mac」上开启 Her").waitForExistence(timeout: 30), "the signing sheet")
+        let approve = app.descendants(matching: .any)["sign-approve"].firstMatch
+        for _ in 0 ..< 4 where !approve.exists { app.swipeUp() }
+        tap("sign-approve")
+        XCTAssertTrue(text("开始之前，我需要接上一个模型").waitForExistence(timeout: 180), "a new Her, asking for a model")
     }
 
     // MARK: Helpers

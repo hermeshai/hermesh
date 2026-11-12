@@ -748,7 +748,7 @@ struct MachineJoining: View {
                 if long {
                     Button("It didn’t join? Remove it", role: .destructive) {
                         Task {
-                            if let m = model.machines.first(where: { $0.machineID == machineID }) { await model.remove(m) }
+                            if let m = model.machines.first(where: { $0.machineID == machineID }) { await model.remove(m, eraseHer: false) }
                             close()
                         }
                     }
