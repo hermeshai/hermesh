@@ -1,7 +1,10 @@
 package relay
 
 import (
+	"crypto/hmac"
 	"crypto/rand"
+	"crypto/sha1"
+	"encoding/base64"
 	"encoding/hex"
 	"errors"
 	"fmt"
@@ -10,6 +13,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/pion/stun/v4"
 	"github.com/pion/turn/v5"
 
 	relayv1 "github.com/hermeshai/hermesh/gen/go/hermesh/relay/v1"
@@ -41,15 +45,44 @@ type TURNConfig struct {
 	// MinPort and MaxPort bound the UDP ports a forwarded session takes
 	// (one each), so that a firewall opens those alone. 0: any port.
 	MinPort, MaxPort uint16
+	// Others are the center's other TURN servers, each as its URLs
+	// ("turn:hk.example.com:3478?transport=udp",
+	// "turns:hk.example.com:443?transport=tcp"). They take the credentials
+	// this relay signs, so they share Secret: another hermesh-relay, or
+	// coturn with it as its static-auth-secret. Each device and machine
+	// then uses the one nearest to it (internal/screen's Servers).
+	Others [][]string
 }
 
-// turnTTL: how long a credential lasts. A session asks for one as it starts.
+// turnTTL: how long a credential begins sessions for. One a session began
+// with keeps that session for as long as it lasts (turnAuth).
 const turnTTL = time.Hour
 
 type turnServer struct {
 	srv    *turn.Server
 	secret string
 	host   string // host:port, as in the URLs
+	others [][]string
+}
+
+// turnAuth checks a credential. Past its time it begins no session, but
+// keeps the one it began: the server asks for it again every few minutes
+// (the allocation and each permission are refreshed), and a session whose
+// credential ran out would lose its relayed path while still on.
+func turnAuth(secret string) turn.AuthHandler {
+	fresh := turn.LongTermTURNRESTAuthHandler(secret, nil)
+	return func(ra *turn.RequestAttributes) (string, []byte, bool) {
+		if ra.Method == stun.MethodAllocate {
+			return fresh(ra)
+		}
+		expires, user, ok := strings.Cut(ra.Username, ":")
+		if _, err := strconv.ParseInt(expires, 10, 64); err != nil || !ok {
+			return "", nil, false
+		}
+		mac := hmac.New(sha1.New, []byte(secret))
+		mac.Write([]byte(ra.Username))
+		return user, turn.GenerateAuthKey(ra.Username, ra.Realm, base64.StdEncoding.EncodeToString(mac.Sum(nil))), true
+	}
 }
 
 var mTURNBytes = metrics.Default.Counter("hermesh_relay_turn_bytes_total")
@@ -75,6 +108,9 @@ func startTURN(cfg TURNConfig) (*turnServer, error) {
 	}
 	secret := hex.EncodeToString(cfg.Secret)
 	if len(cfg.Secret) == 0 {
+		if len(cfg.Others) > 0 {
+			return nil, errors.New("other TURN servers need the secret they share with this relay")
+		}
 		b := make([]byte, 32)
 		rand.Read(b)
 		secret = hex.EncodeToString(b)
@@ -86,7 +122,7 @@ func startTURN(cfg TURNConfig) (*turnServer, error) {
 		if len(cfg.Secret) == 0 {
 			return nil, errors.New("TURN served by another node needs the secret the nodes share")
 		}
-		return &turnServer{secret: secret, host: cfg.Host}, nil
+		return &turnServer{secret: secret, host: cfg.Host, others: cfg.Others}, nil
 	}
 	if (cfg.MinPort == 0) != (cfg.MaxPort == 0) || cfg.MinPort > cfg.MaxPort {
 		return nil, fmt.Errorf("TURN relay ports %d-%d: give both, the first no greater", cfg.MinPort, cfg.MaxPort)
@@ -119,7 +155,7 @@ func startTURN(cfg TURNConfig) (*turnServer, error) {
 		udp.Close()
 		return nil, err
 	}
-	t := &turnServer{secret: secret, host: net.JoinHostPort(host, port)}
+	t := &turnServer{secret: secret, host: net.JoinHostPort(host, port), others: cfg.Others}
 	any := "0.0.0.0"
 	if ip.To4() == nil {
 		any = "::"
@@ -137,7 +173,7 @@ func startTURN(cfg TURNConfig) (*turnServer, error) {
 	allowed := func(_ net.Addr, peer net.IP) bool { return peer.Equal(ip) || !private(peer) || private(ip) }
 	t.srv, err = turn.NewServer(turn.ServerConfig{
 		Realm:             "hermesh",
-		AuthHandler:       turn.LongTermTURNRESTAuthHandler(t.secret, nil),
+		AuthHandler:       turnAuth(t.secret),
 		PacketConnConfigs: []turn.PacketConnConfig{{PacketConn: countingConn{udp}, RelayAddressGenerator: gen, PermissionHandler: allowed}},
 		ListenerConfigs:   []turn.ListenerConfig{{Listener: tcp, RelayAddressGenerator: gen, PermissionHandler: allowed}},
 	})
@@ -156,7 +192,8 @@ func (t *turnServer) close() {
 	}
 }
 
-// servers are the URLs and a fresh credential for one admitted peer.
+// servers are the URLs and a fresh credential for one admitted peer: the
+// STUN server, then each TURN server as one entry, this relay's first.
 func (t *turnServer) servers(subject string) []*relayv1.IceServer {
 	if t == nil {
 		return nil
@@ -165,10 +202,14 @@ func (t *turnServer) servers(subject string) []*relayv1.IceServer {
 	if err != nil {
 		return nil
 	}
-	return []*relayv1.IceServer{
+	out := []*relayv1.IceServer{
 		{Urls: []string{"stun:" + t.host}},
 		{Urls: []string{"turn:" + t.host + "?transport=udp", "turn:" + t.host + "?transport=tcp"}, Username: user, Credential: pass},
 	}
+	for _, urls := range t.others {
+		out = append(out, &relayv1.IceServer{Urls: urls, Username: user, Credential: pass})
+	}
+	return out
 }
 
 // ParsePortRange reads a range of ports written "49160-49200".
