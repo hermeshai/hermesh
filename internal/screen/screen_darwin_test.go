@@ -261,7 +261,7 @@ func TestSessionEndsWhenViewerNeverConnects(t *testing.T) {
 	pc.AddTransceiverFromKind(webrtc.RTPCodecTypeVideo, webrtc.RTPTransceiverInit{Direction: webrtc.RTPTransceiverDirectionRecvonly})
 	pc.CreateDataChannel(inputChannel, nil)
 	o, _ := pc.CreateOffer(nil)
-	g, err := gather(pc, o)
+	g, err := gather(pc, o, nil)
 	if err != nil {
 		t.Fatal(err)
 	}

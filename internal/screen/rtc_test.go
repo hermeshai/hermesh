@@ -31,7 +31,7 @@ func offerWith(t *testing.T, servers []webrtc.ICEServer) (string, time.Duration)
 		t.Fatal(err)
 	}
 	start := time.Now()
-	g, err := gather(pc, o)
+	g, err := gather(pc, o, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -113,7 +113,7 @@ func TestGatheringEarlyDoesNotWaitForServers(t *testing.T) {
 		t.Fatal(err)
 	}
 	start := time.Now()
-	g, err := gather(pc, o)
+	g, err := gather(pc, o, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -164,5 +164,55 @@ func TestCandidateDiagnosticsExcludeCredentials(t *testing.T) {
 	got := candidateAddresses(lines)
 	if got != "host 192.0.2.1:1234/udp, host [fd00::1]:5678/udp" {
 		t.Fatalf("candidate addresses: %s", got)
+	}
+}
+
+// TURN servers that give no relayed address in relayWithin are doubted;
+// ones that give one, and a connection with none, are not.
+func TestGatheringDoubtsServersThatGiveNoRelay(t *testing.T) {
+	old := relayWithin
+	relayWithin = 400 * time.Millisecond
+	defer func() { relayWithin = old }()
+	working, _ := slowTURN(t, turnAllocate, 0, net.ParseIP("127.0.0.1"))
+	for _, c := range []struct {
+		name    string
+		servers []webrtc.ICEServer
+		doubted bool
+	}{
+		{"a server nothing answers at", []webrtc.ICEServer{{URLs: []string{"turn:192.0.2.1:3478?transport=udp"}, Username: "u", Credential: "p"}}, true},
+		{"a server that refuses the credential", []webrtc.ICEServer{{URLs: []string{"turn:" + working + "?transport=udp"}, Username: "u", Credential: "wrong"}}, true},
+		{"a server that works", []webrtc.ICEServer{{URLs: []string{"turn:" + working + "?transport=udp"}, Username: "u", Credential: "p"}}, false},
+		{"no TURN server", []webrtc.ICEServer{{URLs: []string{"stun:192.0.2.1:3478"}}}, false},
+	} {
+		api, err := newAPI(nil, nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		pc, err := api.NewPeerConnection(webrtc.Configuration{ICEServers: c.servers})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := pc.CreateDataChannel(inputChannel, nil); err != nil {
+			t.Fatal(err)
+		}
+		o, err := pc.CreateOffer(nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		doubted := make(chan struct{}, 1)
+		if _, err := gather(pc, o, func() { doubted <- struct{}{} }); err != nil {
+			t.Fatal(err)
+		}
+		select {
+		case <-doubted:
+			if !c.doubted {
+				t.Errorf("%s: doubted", c.name)
+			}
+		case <-time.After(relayWithin + 600*time.Millisecond):
+			if c.doubted {
+				t.Errorf("%s: not doubted", c.name)
+			}
+		}
+		pc.Close()
 	}
 }

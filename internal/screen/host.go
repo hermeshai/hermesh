@@ -46,6 +46,9 @@ type HostConfig struct {
 	// starts; nil, or none returned, leaves the paths the two ends find by
 	// themselves.
 	Servers func(context.Context) []*relayv1.IceServer
+	// NoRelay is called when those servers gave a session no relayed
+	// address: the next ones asked for should be looked at again.
+	NoRelay func()
 }
 
 // Host serves this machine's screen to one viewer at a time.
@@ -382,7 +385,7 @@ func (s *hostSession) answer(offer webrtc.SessionDescription, later bool) (strin
 	if err != nil {
 		return "", err
 	}
-	g, err := gather(s.pc, a)
+	g, err := gather(s.pc, a, s.h.cfg.NoRelay)
 	if err != nil {
 		return "", err
 	}

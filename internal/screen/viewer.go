@@ -38,6 +38,9 @@ type ViewerConfig struct {
 	// network another server may be the near one. nil, or none returned,
 	// keeps the ones the session has.
 	Fresh func(context.Context) []*relayv1.IceServer
+	// NoRelay is called when the servers gave this device no relayed
+	// address: the next ones asked for should be looked at again.
+	NoRelay func()
 	// Frame gets each frame, whole and in order, as Annex B; and, while the
 	// machine measures the picture's path, when it passed each stage.
 	Frame func(key bool, data []byte, trace *Trace)
@@ -185,7 +188,7 @@ func (v *Viewer) offer(ctx context.Context, restart bool) error {
 	if err != nil {
 		return err
 	}
-	g, err := gather(v.pc, o)
+	g, err := gather(v.pc, o, v.cfg.NoRelay)
 	if err != nil {
 		return err
 	}
