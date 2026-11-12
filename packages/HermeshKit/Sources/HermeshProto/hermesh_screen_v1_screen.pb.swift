@@ -251,8 +251,15 @@ public nonisolated struct Hermesh_Screen_V1_CandidatesRequest: Sendable {
   /// refuses them (FailedPrecondition) once a later offer has come.
   public var ufrag: String = String()
 
-  /// All of the viewer's candidates, each as a "candidate:" line.
+  /// All of the viewer's candidates so far, each as a "candidate:" line.
   public var candidates: [String] = []
+
+  /// The viewer has found all of its candidates.
+  public var complete: Bool = false
+
+  /// How many of the machine's candidates the viewer has from the call
+  /// before. A machine that has no more yet waits up to a second for one.
+  public var have: UInt32 = 0
 
   public var unknownFields = SwiftProtobuf.UnknownStorage()
 
@@ -264,8 +271,16 @@ public nonisolated struct Hermesh_Screen_V1_CandidatesResponse: Sendable {
   // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
   // methods supported on all messages.
 
-  /// All of the machine's candidates, each as a "candidate:" line.
+  /// All of the machine's candidates so far, each as a "candidate:" line.
   public var candidates: [String] = []
+
+  /// The machine has found all of its candidates.
+  public var complete: Bool = false
+
+  /// The machine takes this call again as either end finds more. Unset by
+  /// a machine that answers once: the viewer then calls again only to give
+  /// candidates of its own.
+  public var again: Bool = false
 
   public var unknownFields = SwiftProtobuf.UnknownStorage()
 
@@ -671,7 +686,7 @@ nonisolated extension Hermesh_Screen_V1_ConnectResponse: SwiftProtobuf.Message, 
 
 nonisolated extension Hermesh_Screen_V1_CandidatesRequest: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
   public static let protoMessageName: String = _protobuf_package + ".CandidatesRequest"
-  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{3}session_id\0\u{1}ufrag\0\u{1}candidates\0")
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{3}session_id\0\u{1}ufrag\0\u{1}candidates\0\u{1}complete\0\u{1}have\0")
 
   public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
     while let fieldNumber = try decoder.nextFieldNumber() {
@@ -682,6 +697,8 @@ nonisolated extension Hermesh_Screen_V1_CandidatesRequest: SwiftProtobuf.Message
       case 1: try { try decoder.decodeSingularStringField(value: &self.sessionID) }()
       case 2: try { try decoder.decodeSingularStringField(value: &self.ufrag) }()
       case 3: try { try decoder.decodeRepeatedStringField(value: &self.candidates) }()
+      case 4: try { try decoder.decodeSingularBoolField(value: &self.complete) }()
+      case 5: try { try decoder.decodeSingularUInt32Field(value: &self.have) }()
       default: break
       }
     }
@@ -697,6 +714,12 @@ nonisolated extension Hermesh_Screen_V1_CandidatesRequest: SwiftProtobuf.Message
     if !self.candidates.isEmpty {
       try visitor.visitRepeatedStringField(value: self.candidates, fieldNumber: 3)
     }
+    if self.complete != false {
+      try visitor.visitSingularBoolField(value: self.complete, fieldNumber: 4)
+    }
+    if self.have != 0 {
+      try visitor.visitSingularUInt32Field(value: self.have, fieldNumber: 5)
+    }
     try unknownFields.traverse(visitor: &visitor)
   }
 
@@ -704,6 +727,8 @@ nonisolated extension Hermesh_Screen_V1_CandidatesRequest: SwiftProtobuf.Message
     if lhs.sessionID != rhs.sessionID {return false}
     if lhs.ufrag != rhs.ufrag {return false}
     if lhs.candidates != rhs.candidates {return false}
+    if lhs.complete != rhs.complete {return false}
+    if lhs.have != rhs.have {return false}
     if lhs.unknownFields != rhs.unknownFields {return false}
     return true
   }
@@ -711,7 +736,7 @@ nonisolated extension Hermesh_Screen_V1_CandidatesRequest: SwiftProtobuf.Message
 
 nonisolated extension Hermesh_Screen_V1_CandidatesResponse: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
   public static let protoMessageName: String = _protobuf_package + ".CandidatesResponse"
-  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{1}candidates\0")
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{1}candidates\0\u{1}complete\0\u{1}again\0")
 
   public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
     while let fieldNumber = try decoder.nextFieldNumber() {
@@ -720,6 +745,8 @@ nonisolated extension Hermesh_Screen_V1_CandidatesResponse: SwiftProtobuf.Messag
       // enabled. https://github.com/apple/swift-protobuf/issues/1034
       switch fieldNumber {
       case 1: try { try decoder.decodeRepeatedStringField(value: &self.candidates) }()
+      case 2: try { try decoder.decodeSingularBoolField(value: &self.complete) }()
+      case 3: try { try decoder.decodeSingularBoolField(value: &self.again) }()
       default: break
       }
     }
@@ -729,11 +756,19 @@ nonisolated extension Hermesh_Screen_V1_CandidatesResponse: SwiftProtobuf.Messag
     if !self.candidates.isEmpty {
       try visitor.visitRepeatedStringField(value: self.candidates, fieldNumber: 1)
     }
+    if self.complete != false {
+      try visitor.visitSingularBoolField(value: self.complete, fieldNumber: 2)
+    }
+    if self.again != false {
+      try visitor.visitSingularBoolField(value: self.again, fieldNumber: 3)
+    }
     try unknownFields.traverse(visitor: &visitor)
   }
 
   public static func ==(lhs: Hermesh_Screen_V1_CandidatesResponse, rhs: Hermesh_Screen_V1_CandidatesResponse) -> Bool {
     if lhs.candidates != rhs.candidates {return false}
+    if lhs.complete != rhs.complete {return false}
+    if lhs.again != rhs.again {return false}
     if lhs.unknownFields != rhs.unknownFields {return false}
     return true
   }

@@ -54,16 +54,21 @@ type screenStatus struct {
 // screenCall is a call of ScreenService on a machine, through its tunnel.
 func screenCall[Req, Res any](o *Owner, machineID string, call func(screenv1connect.ScreenServiceClient, context.Context, *Req) (*Res, error)) func(context.Context, *Req) (*Res, error) {
 	return func(ctx context.Context, req *Req) (*Res, error) {
+		started := time.Now()
+		method := fmt.Sprintf("%T", req)
 		c, err := o.relay(ctx)
 		if err != nil {
+			o.log.Warn("screen: signal relay", "method", method, "err", err, "after", time.Since(started).Round(time.Millisecond))
 			return nil, err
 		}
 		n, err := c.Machine(ctx, machineID)
 		if err != nil {
+			o.log.Warn("screen: signal tunnel", "method", method, "err", err, "after", time.Since(started).Round(time.Millisecond))
 			return nil, connect.NewError(connect.CodeUnavailable, err)
 		}
 		res, err := call(n.Screen, ctx, req)
-		if err != nil && ctx.Err() == nil && tunnelError(err) {
+		o.log.Info("screen: signal response", "method", method, "err", err, "after", time.Since(started).Round(time.Millisecond))
+		if err != nil && (ctx.Err() == nil && tunnelError(err) || errors.Is(ctx.Err(), context.DeadlineExceeded)) {
 			c.Forget(machineID)
 		}
 		return res, err
@@ -189,6 +194,8 @@ func (d *Device) serveScreen(w http.ResponseWriter, r *http.Request) {
 	q := r.URL.Query()
 	lost := make(chan struct{}, 1)
 	moved := d.networkMoved()
+	var smu sync.Mutex
+	var said string // the status last logged
 	// A machine that takes candidates after the offer says so in its state;
 	// an older one gets an offer with all of them, as before.
 	var candidates func(context.Context, *screenv1.CandidatesRequest) (*screenv1.CandidatesResponse, error)
@@ -199,7 +206,7 @@ func (d *Device) serveScreen(w http.ResponseWriter, r *http.Request) {
 	})
 	v, err := screen.Dial(ctx, screen.ViewerConfig{
 		Connect: screenCall(o, machineID, screenv1connect.ScreenServiceClient.Connect), Candidates: candidates,
-		Name: q.Get("name"), Pointer: q.Get("pointer") != "0", Servers: o.screenServers(ctx),
+		Name: q.Get("name"), Pointer: q.Get("pointer") != "0", Servers: o.screenServers(ctx), Fresh: o.screenServers,
 		Frame: func(key bool, data []byte, t *screen.Trace) {
 			b := make([]byte, screen.VideoHeader, screen.VideoHeader+len(data))
 			if key {
@@ -219,6 +226,14 @@ func (d *Device) serveScreen(w http.ResponseWriter, r *http.Request) {
 			}
 		},
 		Status: func(st screen.Status) {
+			smu.Lock()
+			now := st.Phase + " " + st.Path + " " + st.Local
+			changed := now != said
+			said = now
+			smu.Unlock()
+			if changed { // not every two seconds
+				o.log.Info("screen: viewer status", "phase", st.Phase, "path", st.Path, "rtt_ms", st.RTT)
+			}
 			status(screenStatus{Status: st})
 			if st.Phase == "reconnecting" {
 				select {
@@ -229,6 +244,7 @@ func (d *Device) serveScreen(w http.ResponseWriter, r *http.Request) {
 		},
 	})
 	if err != nil {
+		o.log.Warn("screen: viewer dial", "err", err)
 		if ctx.Err() == nil {
 			status(screenStatus{Status: screen.Status{Phase: "failed"}, Error: errorText(err)})
 		}
@@ -269,8 +285,10 @@ func (d *Device) serveScreen(w http.ResponseWriter, r *http.Request) {
 	for {
 		select {
 		case <-ctx.Done():
+			o.log.Info("screen: viewer app closed")
 			return
 		case <-v.Done():
+			o.log.Info("screen: viewer ended", "err", v.Err())
 			msg := ""
 			if err := v.Err(); err != nil {
 				msg = err.Error()
@@ -285,6 +303,7 @@ func (d *Device) serveScreen(w http.ResponseWriter, r *http.Request) {
 			default: // one is under way, or waits
 			}
 		case <-moved:
+			o.log.Info("screen: viewer network changed")
 			moved = d.networkMoved()
 			select {
 			case <-again: // a broken path that waited: the new network is the reason

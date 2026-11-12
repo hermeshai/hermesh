@@ -3,12 +3,14 @@ package screen
 import (
 	"context"
 	"errors"
+	"net"
 	"os"
 	"slices"
 	"strings"
 	"sync"
 	"time"
 
+	"connectrpc.com/connect"
 	"github.com/pion/rtcp"
 	"github.com/pion/webrtc/v4"
 	"google.golang.org/protobuf/proto"
@@ -31,6 +33,11 @@ type ViewerConfig struct {
 	Pointer bool
 	// Servers are the relay's STUN and TURN servers, when it has any.
 	Servers []*relayv1.IceServer
+	// Fresh are those servers as they are when the session looks for a path
+	// again: the credentials of Servers last an hour, and on another
+	// network another server may be the near one. nil, or none returned,
+	// keeps the ones the session has.
+	Fresh func(context.Context) []*relayv1.IceServer
 	// Frame gets each frame, whole and in order, as Annex B; and, while the
 	// machine measures the picture's path, when it passed each stage.
 	Frame func(key bool, data []byte, trace *Trace)
@@ -54,7 +61,8 @@ type Status struct {
 	// telling what a slow session goes through.
 	Local  string `json:"local,omitempty"`
 	Remote string `json:"remote,omitempty"`
-	// Nearby, with Path "relay": both ends reach the internet from one
+	// Nearby, with Path "relay": the other end has an address on one of
+	// this device's networks, or both ends reach the internet from one
 	// address, so they are most likely on one network, where a direct path
 	// should have worked. Something there keeps them apart: the app or the
 	// machine not allowed on the local network, or the network itself.
@@ -69,7 +77,7 @@ type Viewer struct {
 	pointer *webrtc.DataChannel
 	session string
 
-	omu sync.Mutex // one offer at a time
+	omu sync.Mutex // offers and applying candidate batches, one at a time
 
 	once sync.Once
 	done chan struct{}
@@ -166,6 +174,13 @@ func Dial(ctx context.Context, cfg ViewerConfig) (*Viewer, error) {
 func (v *Viewer) offer(ctx context.Context, restart bool) error {
 	v.omu.Lock()
 	defer v.omu.Unlock()
+	if restart && v.cfg.Fresh != nil {
+		if list := v.cfg.Fresh(ctx); len(list) > 0 {
+			conf := v.pc.GetConfiguration()
+			conf.ICEServers = iceServers(list)
+			v.pc.SetConfiguration(conf) // takes effect at the gathering this offer starts
+		}
+	}
 	o, err := v.pc.CreateOffer(&webrtc.OfferOptions{ICERestart: restart})
 	if err != nil {
 		return err
@@ -181,7 +196,7 @@ func (v *Viewer) offer(ctx context.Context, restart bool) error {
 	v.mu.Unlock()
 	g.wait(later)
 	sdp := v.pc.LocalDescription().SDP
-	res, err := v.cfg.Connect(ctx, &screenv1.ConnectRequest{Offer: sdp, SessionId: v.session, Viewer: v.cfg.Name, Pointer: v.cfg.Pointer, CandidatesLater: later})
+	res, err := v.connect(ctx, &screenv1.ConnectRequest{Offer: sdp, SessionId: v.session, Viewer: v.cfg.Name, Pointer: v.cfg.Pointer, CandidatesLater: later})
 	if err != nil {
 		return err
 	}
@@ -202,6 +217,9 @@ func (v *Viewer) offer(ctx context.Context, restart bool) error {
 		v.mu.Unlock()
 		go func() {
 			g.wait(false)
+			if !g.addsTo(sdp) {
+				return // the older machine already has every candidate
+			}
 			for i := 0; i < 20 && v.current(n) && !v.Connected(); i++ {
 				time.Sleep(50 * time.Millisecond)
 			}
@@ -215,33 +233,82 @@ func (v *Viewer) offer(ctx context.Context, restart bool) error {
 	return nil
 }
 
+// An initial answer that arrives after the host's ICE deadline is useless.
+// Retry transient signaling failures with a fresh host session; established
+// sessions keep their ID and the owner's existing restart policy.
+func (v *Viewer) connect(ctx context.Context, req *screenv1.ConnectRequest) (*screenv1.ConnectResponse, error) {
+	if req.SessionId != "" {
+		return v.cfg.Connect(ctx, req)
+	}
+	var res *screenv1.ConnectResponse
+	var err error
+	for i := 0; i < 3; i++ {
+		attempt, cancel := context.WithTimeout(ctx, 6*time.Second)
+		res, err = v.cfg.Connect(attempt, req)
+		cancel()
+		if err == nil || ctx.Err() != nil || (connect.CodeOf(err) != connect.CodeUnavailable && connect.CodeOf(err) != connect.CodeDeadlineExceeded && !errors.Is(err, context.DeadlineExceeded)) {
+			break
+		}
+	}
+	return res, err
+}
+
 // exchange gives the machine the candidates found for the offer numbered n
-// once the gathering has ended, and takes the machine's.
+// and takes the machine's: first once this end has a TURN address or
+// gatherWithin has passed, then again as either end finds more (a TURN
+// server that is slow, its second transport), until both have found all of
+// theirs or exchangeWithin has passed. Every call carries all of this
+// end's candidates so far, so one that is lost costs nothing.
 func (v *Viewer) exchange(g *gathering, n int, session, ufrag string) {
 	g.wait(false)
-	for try := 0; try < 3 && v.current(n); try++ {
-		ctx, cancel := v.within(10 * time.Second)
-		res, err := v.cfg.Candidates(ctx, &screenv1.CandidatesRequest{SessionId: session, Ufrag: ufrag, Candidates: g.candidates()})
-		cancel()
-		if err != nil {
-			select {
-			case <-v.done:
-			case <-time.After(time.Second):
+	sent, have, theirs, failed := -1, 0, false, 0
+	for v.current(n) && failed < 3 {
+		mine, all := g.found()
+		if len(mine) != sent || !theirs {
+			ctx, cancel := v.within(10 * time.Second)
+			res, err := v.cfg.Candidates(ctx, &screenv1.CandidatesRequest{SessionId: session, Ufrag: ufrag, Candidates: mine, Complete: all, Have: uint32(have)})
+			cancel()
+			if err == nil {
+				err = v.addCandidates(n, res.Candidates)
 			}
-			continue
+			if err != nil {
+				failed++
+				select {
+				case <-v.done:
+				case <-time.After(time.Second):
+				}
+				continue
+			}
+			// A machine that answers once has given all it will.
+			sent, have, theirs, failed = len(mine), len(res.Candidates), res.Complete || !res.Again, 0
 		}
-		v.mu.Lock()
-		if v.offers != n {
-			v.mu.Unlock()
+		left := time.Until(g.start.Add(exchangeWithin))
+		if all && theirs || left <= 0 {
 			return
 		}
-		v.theirs = res.Candidates
-		v.mu.Unlock()
-		for _, c := range res.Candidates {
-			v.pc.AddICECandidate(webrtc.ICECandidateInit{Candidate: c})
+		if theirs { // else the machine's call waits for its next one
+			g.grown(sent, left)
 		}
-		return
 	}
+}
+
+// addCandidates keeps the generation check and the whole batch on the
+// same side of a restart. The RPC itself must not hold omu: it can be slow.
+func (v *Viewer) addCandidates(n int, candidates []string) error {
+	v.omu.Lock()
+	defer v.omu.Unlock()
+	if !v.current(n) {
+		return nil
+	}
+	for _, c := range candidates {
+		if err := v.pc.AddICECandidate(webrtc.ICECandidateInit{Candidate: c}); err != nil {
+			return err
+		}
+	}
+	v.mu.Lock()
+	v.theirs = candidates
+	v.mu.Unlock()
+	return nil
 }
 
 // current says whether the offer numbered n is the latest, in a session
@@ -348,13 +415,44 @@ func (v *Viewer) path(st *Status) {
 		v.mu.Lock()
 		theirs := v.theirs
 		v.mu.Unlock()
-		st.Nearby = sameAddress(publicAddresses(v.pc.LocalDescription(), nil), publicAddresses(v.pc.RemoteDescription(), theirs))
+		remote := v.pc.RemoteDescription()
+		st.Nearby = sameAddress(addresses("srflx", v.pc.LocalDescription(), nil), addresses("srflx", remote, theirs)) ||
+			onNetworks(localNetworks(), addresses("host", remote, theirs))
 	}
 }
 
-// publicAddresses are the addresses an end is seen at from the relay's STUN
-// server: in its description, and among the candidates that came later.
-func publicAddresses(d *webrtc.SessionDescription, later []string) []string {
+// localNetworks are the networks this device is on, by its addresses, but
+// for loopback and link-local ones.
+func localNetworks() []*net.IPNet {
+	addrs, _ := net.InterfaceAddrs()
+	var out []*net.IPNet
+	for _, a := range addrs {
+		if n, ok := a.(*net.IPNet); ok && n.IP.IsGlobalUnicast() {
+			out = append(out, n)
+		}
+	}
+	return out
+}
+
+// onNetworks says whether one of the other end's addresses is on one of
+// these networks, and is not this end's own there (two ends behind the same
+// kind of VPN have the same address on it).
+func onNetworks(networks []*net.IPNet, theirs []string) bool {
+	for _, a := range theirs {
+		ip := net.ParseIP(a)
+		for _, n := range networks {
+			if ip != nil && n.Contains(ip) && !n.IP.Equal(ip) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// addresses are an end's addresses of one kind: "srflx", where the relay's
+// STUN server sees it, or "host", its own. They are read from its
+// description and from the candidates that came later.
+func addresses(kind string, d *webrtc.SessionDescription, later []string) []string {
 	lines := later
 	if d != nil {
 		lines = append(strings.Split(d.SDP, "\n"), later...)
@@ -363,7 +461,7 @@ func publicAddresses(d *webrtc.SessionDescription, later []string) []string {
 	for _, line := range lines {
 		// [a=]candidate:<foundation> <component> <transport> <priority> <address> <port> typ <type> ...
 		f := strings.Fields(strings.TrimSpace(line))
-		if len(f) >= 8 && strings.HasPrefix(strings.TrimPrefix(f[0], "a="), "candidate:") && f[6] == "typ" && f[7] == "srflx" {
+		if len(f) >= 8 && strings.HasPrefix(strings.TrimPrefix(f[0], "a="), "candidate:") && f[6] == "typ" && f[7] == kind {
 			out = append(out, f[4])
 		}
 	}

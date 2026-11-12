@@ -53,8 +53,11 @@ type ScreenServiceClient interface {
 	// The candidates each end found after its half of Connect, which then
 	// carried its local addresses alone (candidates_later): a path between
 	// local addresses is checked without waiting for the relay's STUN and
-	// TURN servers. The viewer calls it once its gathering has ended; the
-	// machine adds the viewer's and answers with its own once it has them.
+	// TURN servers. The viewer calls it once it has a TURN address, or after
+	// two seconds; the machine adds the viewer's and answers with its own
+	// once it has as much. An address can come later than that (a slow TURN
+	// server, its second transport): the viewer calls again, with all it has
+	// by then, until both ends have found all of theirs.
 	Candidates(context.Context, *v1.CandidatesRequest) (*v1.CandidatesResponse, error)
 }
 
@@ -121,8 +124,11 @@ type ScreenServiceHandler interface {
 	// The candidates each end found after its half of Connect, which then
 	// carried its local addresses alone (candidates_later): a path between
 	// local addresses is checked without waiting for the relay's STUN and
-	// TURN servers. The viewer calls it once its gathering has ended; the
-	// machine adds the viewer's and answers with its own once it has them.
+	// TURN servers. The viewer calls it once it has a TURN address, or after
+	// two seconds; the machine adds the viewer's and answers with its own
+	// once it has as much. An address can come later than that (a slow TURN
+	// server, its second transport): the viewer calls again, with all it has
+	// by then, until both ends have found all of theirs.
 	Candidates(context.Context, *v1.CandidatesRequest) (*v1.CandidatesResponse, error)
 }
 
