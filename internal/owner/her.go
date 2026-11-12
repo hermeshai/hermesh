@@ -999,10 +999,9 @@ func (o *Owner) forgetHer(machineID string) {
 	o.herMu.Lock()
 	defer o.herMu.Unlock()
 	delete(o.herSeen, machineID)
-	for _, q := range []string{`DELETE FROM her_waiting WHERE machine_id=?`, `DELETE FROM her_status WHERE machine_id=?`} {
-		if _, err := o.st.db.Exec(q, machineID); err != nil {
-			o.log.Warn("forgetting a removed machine's Her", "machine", machineID, "err", err)
-		}
+	o.dropHerWaiting(machineID)
+	if _, err := o.st.db.Exec(`DELETE FROM her_status WHERE machine_id=?`, machineID); err != nil {
+		o.log.Warn("forgetting a removed machine's Her", "machine", machineID, "err", err)
 	}
 	if err := o.st.dropHerKept(machineID); err != nil {
 		o.log.Warn("forgetting a removed machine's Her", "machine", machineID, "err", err)
@@ -1010,7 +1009,7 @@ func (o *Owner) forgetHer(machineID string) {
 }
 
 // dropHerWaiting drops the messages waiting here for a machine's Her, and
-// their pictures, once her data there is erased.
+// their pictures: her data there is erased, or the machine removed.
 func (o *Owner) dropHerWaiting(machineID string) {
 	ws, err := o.st.herWaiting(machineID, "")
 	for _, w := range ws {

@@ -380,7 +380,7 @@ func (l *localService) GetDiagnostics(ctx context.Context, _ *localv1.GetDiagnos
 }
 
 func (l *localService) RemoveMachine(ctx context.Context, req *localv1.RemoveMachineRequest) (*localv1.RemoveMachineResponse, error) {
-	err := l.o().RemoveMachine(ctx, req.MachineId)
+	err := l.o().RemoveMachine(ctx, req.MachineId, req.EraseHer)
 	l.o().wrote(ctx, err, true)
 	return &localv1.RemoveMachineResponse{}, err
 }

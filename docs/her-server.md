@@ -492,10 +492,36 @@ field: it turns Her off and keeps her data. Its answer lacks the line
 above, so the device says the data stayed and the machine needs an update.
 An older signer refuses the request, as for any field it doesn't know.
 
-To erase the data of a Her turned off earlier, the owner turns her on and
-off again. Erase Everything ([erase-everything.md](erase-everything.md))
-erases her data on every machine Her was ever on. `hermeshd uninstall`
-still leaves `~/.her`, and says so.
+**Her's data kept while she is off.** `HerStatus.data` says that Her was
+on once and her home is still there. The apps read it from the machine's
+status while it answers, else from what the device kept (`Machine.her`).
+
+- Mac, Settings › Machines, Her off with data kept: under the Run Her
+  switch, "Her's data is still on this machine; turned on again, she
+  carries on", and a quiet "Erase Data…" that asks first, then Touch ID
+  (`SetHer` off with `erase`, valid for a Her already off).
+- iPhone: the first run's machine card says "Her's data from before is
+  still here"; the machine's page has "Erase Her's Data…", asked first,
+  then Face ID.
+- A machine older than `data` shows neither.
+
+**Removing a machine** that runs Her or keeps her data: the remove dialog
+has the same choice, "Also erase Her's data". Chosen, the device turns Her
+off with `erase` first (`RemoveMachineRequest.erase_her`, one approval),
+then removes the machine; offline, it can't, and the dialog says so. A
+machine that finds itself removed (the relay refuses it as no longer its
+owner's) turns Her off by itself, keeping her data.
+
+**On the command line.** `hermeshd uninstall` and `hermeshd erase`, on a
+machine where Her was on and her data is still there
+(`machine.HerData`), ask "Also delete Her's data in ~/.her? [y/N]";
+`--erase-her` says yes without asking; with `--yes` alone it stays, as
+before, and they say where it is.
+
+Erase Everything ([erase-everything.md](erase-everything.md)) erases her
+data on every machine Her was ever on. Moving the Mac app to the Trash
+runs no code: the guide says to turn Her off with her data erased first,
+or to use Erase Everything.
 
 ## 6. Interfaces
 

@@ -45,6 +45,12 @@ func (h *Host) Erase() error {
 	return nil
 }
 
+// Home is her home, as her environment names it (HER_HOME, else ~/.her).
+func (h *Host) Home() string {
+	userHome, _ := os.UserHomeDir()
+	return herHome(h.cfg.Env(), userHome)
+}
+
 // deleteKeychainItems deletes every generic password of service; a variable
 // for tests, which must never touch the Keychain.
 var deleteKeychainItems = func(service string) error {

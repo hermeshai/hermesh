@@ -1615,10 +1615,18 @@ func (o *Owner) SetAgentDefaults(ctx context.Context, machineID string, d *ident
 	return err
 }
 
-func (o *Owner) RemoveMachine(ctx context.Context, machineID string) error {
+// RemoveMachine removes a machine; with eraseHer, Her's data there is
+// erased first (docs/her-server.md §5.6), which needs the machine to answer:
+// otherwise nothing is removed.
+func (o *Owner) RemoveMachine(ctx context.Context, machineID string, eraseHer bool) error {
 	ctl, _, err := o.control(ctx)
 	if err != nil {
 		return err
+	}
+	if eraseHer {
+		if err := o.SetHer(ctx, machineID, false, true); err != nil {
+			return err
+		}
 	}
 	// Her on that machine goes with it (docs/her-mesh.md §3.5).
 	her := o.herGrants(ctx, machineID)

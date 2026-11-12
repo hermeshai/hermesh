@@ -205,6 +205,10 @@ message HerStatus {
   // Her holds a grant this machine accepts: she can use the owner's
   // computers and agents.
   bool mesh = 10;
+  // Her was on here once and her data is still on the machine: turned on
+  // again she carries on, or it can be erased (SetHer erase,
+  // docs/her-server.md §5.6).
+  bool data = 11;
 }
 
 // HerLatest is the newest thing an assistant sent the owner.
