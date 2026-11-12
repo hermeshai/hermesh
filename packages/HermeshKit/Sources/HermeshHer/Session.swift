@@ -13,6 +13,8 @@ public struct HerSession: Equatable, Sendable {
     public var sessionID: String
     /// The model it answers with ("provider/model").
     public var model: String
+    /// How hard it thinks: "default" (the provider decides), "off", "low"… (her's ThinkingLevel).
+    public var thinking: String
     /// "manual", "accept-edits" or "bypass-permissions".
     public var permissionMode: String
     public var lastSeq: Int
@@ -34,6 +36,7 @@ public struct HerSession: Equatable, Sendable {
         guard let id = s["session"]["session_id"].string else { return nil }
         self.init(id: id, snapshot: s)
         model = s["session"]["model"].string ?? ""
+        thinking = s["session"]["thinking"].string ?? "default"
         permissionMode = s["session"]["permission_mode"].string ?? ""
         agents = (s["agents"].array ?? []).compactMap { a in
             guard let agentID = a["agent_id"].string else { return nil }
@@ -46,6 +49,7 @@ public struct HerSession: Equatable, Sendable {
     init(id: String, snapshot s: JSON) {
         sessionID = id
         model = ""
+        thinking = "default"
         permissionMode = ""
         lastSeq = s["last_seq"].int ?? 0
         entries = (s["transcript"]["items"].array ?? []).map(HerEntry.init)
@@ -91,6 +95,7 @@ public struct HerSession: Equatable, Sendable {
             if let id = e["card_id"].string, let state = e["state"].string { cards[id] = HerCardStatus(state: state, note: e["note"].string) }
         case "session_started", "settings_changed":
             model = e["model"].string ?? model
+            thinking = e["thinking"].string ?? thinking
             permissionMode = e["permission_mode"].string ?? permissionMode
         case "task_started":
             failure = nil

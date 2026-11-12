@@ -153,6 +153,19 @@ import Testing
     let models = HerModels(["models": [["id": "a/one", "name": "One", "provider": "a", "available": true, "shown": true], ["id": "b/two", "name": "Two", "provider": "b", "available": false, "shown": true]]])
     #expect(models.menu(current: "a/one").map(\.id) == ["a/one"] && models.menu(current: "b/two").map(\.id) == ["b/two", "a/one"])
     #expect(models.title("c/three") == "three")
+    #expect(models.thinkingLevels("a/one").isEmpty, "no control")
+}
+
+@Test func aModelsThinkingLevelsAndTheLevelThatGoesWithIt() {
+    let models = HerModels(["models": [
+        ["id": "q/flash", "name": "Flash", "provider": "q", "available": true, "shown": true, "thinking_levels": ["off", "low", "medium", "xhigh"], "default_thinking": "default"],
+        ["id": "h/hy3", "name": "Hy3", "provider": "h", "available": true, "shown": true, "thinking_levels": ["off", "high"], "default_thinking": "high"],
+    ]])
+    #expect(models.thinkingLevels("q/flash") == ["off", "low", "medium", "xhigh"])
+    #expect(models.thinking(for: "h/hy3", current: "off") == "off", "kept when the new model offers it")
+    #expect(models.thinking(for: "h/hy3", current: "low") == "high", "else the level it starts with")
+    #expect(models.thinking(for: "q/flash", current: "high") == "default")
+    #expect(models.thinking(for: "x/gone", current: "low") == "default", "a model not in the list")
 }
 
 // MARK: The call transport

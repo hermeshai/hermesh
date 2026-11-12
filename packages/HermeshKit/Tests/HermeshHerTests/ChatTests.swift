@@ -82,8 +82,9 @@ func snapshot(_ items: [JSON], task: JSON = nil, seq: Int = 10, queued: JSON = [
     v.apply(["seq": 9, "ts": 13, "type": "task_completed", "task_id": "t2", "reason": "end_turn"])
     #expect(!herBusy(v) && v.lastSeq == 9)
     #expect(herChat(v).map(\.key) == ["u1", "c1"])
-    v.apply(["seq": 10, "ts": 14, "type": "settings_changed", "model": "openai/gpt-5", "thinking": "default", "permission_mode": "bypass-permissions", "context_window": 1])
-    #expect(v.model == "openai/gpt-5" && v.permissionMode == "bypass-permissions")
+    #expect(v.thinking == "default", "the snapshot's level")
+    v.apply(["seq": 10, "ts": 14, "type": "settings_changed", "model": "openai/gpt-5", "thinking": "low", "permission_mode": "bypass-permissions", "context_window": 1])
+    #expect(v.model == "openai/gpt-5" && v.thinking == "low" && v.permissionMode == "bypass-permissions")
 }
 
 @Test func theLatestQuestionIsOpenUntilTheOwnerAnswers() {
