@@ -15,6 +15,7 @@ enum Kind: UInt8 {
     case video = 0x76  // v: 1 byte of flags (1 = keyframe), three times of 8 bytes (Stamps), Annex B
     case state = 0x65  // e: JSON StateMessage
     case log = 0x6C  // l: text
+    case clipboard = 0x78  // x: JSON ClipboardMessage, what was copied on this Mac
 }
 
 let maxMessage = 16 << 20
@@ -127,15 +128,19 @@ struct StateMessage: Encodable {
     var can_control: Bool
 }
 
+struct ClipboardMessage: Encodable { var text: String }
+
 struct InputMessage: Decodable {
     struct Move: Decodable { var x: Double?; var y: Double? }
     struct Button: Decodable { var x: Double?; var y: Double?; var button: String?; var down: Bool?; var clicks: Int? }
     struct Wheel: Decodable { var x: Double?; var y: Double?; var dx: Double?; var dy: Double? }
     struct Key: Decodable { var key: String?; var character: String?; var command: Bool?; var option: Bool?; var control: Bool?; var shift: Bool? }
     struct Text: Decodable { var text: String? }
+    struct Clipboard: Decodable { var text: String?; var paste: String? }
     var move: Move?
     var button: Button?
     var wheel: Wheel?
     var key: Key?
     var text: Text?
+    var clipboard: Clipboard?
 }

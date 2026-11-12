@@ -117,6 +117,23 @@ func (s *screenStream) ended(t *testing.T) string {
 	}
 }
 
+// clipboard reads the stream until the machine sends what was copied there,
+// and returns it.
+func (s *screenStream) clipboard(t *testing.T) string {
+	t.Helper()
+	s.conn.SetReadDeadline(time.Now().Add(20 * time.Second))
+	for {
+		k, p, err := screenrtc.ReadMessage(s.r)
+		if err != nil {
+			t.Fatalf("waiting for the machine's clipboard: %v", err)
+		}
+		var ev screenv1.ScreenEvent
+		if k == screenrtc.KindState && proto.Unmarshal(p, &ev) == nil && ev.GetClipboard() != nil {
+			return ev.GetClipboard().GetText()
+		}
+	}
+}
+
 // screenMachine waits until the phone sees a machine that can show its
 // screen, and returns its id.
 func screenMachine(t *testing.T, m *mobileCore) string {
@@ -210,7 +227,8 @@ func TestScreenUnreachableTURN(t *testing.T) {
 // joined as a trusted device, opens the screen of the owner's Mac through
 // the relay. The Mac's hermeshd runs the real helper with its test picture.
 // The frames arrive from a keyframe on, the Mac reports the picture's size,
-// what the phone types reaches the helper, the Mac says who is in control,
+// what the phone types reaches the helper, the clipboard goes both ways
+// (the helper's is a file here), the Mac says who is in control,
 // and when the app leaves the session ends.
 func TestScreen(t *testing.T) {
 	if testing.Short() || runtime.GOOS != "darwin" {
@@ -265,6 +283,27 @@ func TestScreen(t *testing.T) {
 		b, _ := os.ReadFile(log)
 		return strings.Contains(string(b), `"down":true`) && strings.Contains(string(b), "你好")
 	})
+
+	// The phone's clipboard goes to the Mac's and is pasted there; what is
+	// copied on the Mac comes back to the phone, but never the phone's own.
+	clipboard := filepath.Join(filepath.Dir(log), "screen-clipboard.txt")
+	b, _ := proto.Marshal(&screenv1.Input{Event: &screenv1.Input_Clipboard{Clipboard: &screenv1.Clipboard{Text: "从手机 copied", Paste: screenv1.Paste_PASTE_APP}}})
+	if err := screenrtc.WriteMessage(s.conn, screenrtc.KindInput, b); err != nil {
+		t.Fatal(err)
+	}
+	eventually(t, 20*time.Second, "the phone's clipboard on the Mac", func() bool {
+		in, _ := os.ReadFile(log)
+		c, _ := os.ReadFile(clipboard)
+		return strings.Contains(string(in), `"paste":"PASTE_APP"`) && strings.Contains(string(in), "从手机 copied") && string(c) == "从手机 copied"
+	})
+	time.Sleep(time.Second) // time enough for the helper to send it back, were it to
+	if err := os.WriteFile(clipboard, []byte("copied on the Mac 在电脑上"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if got := s.clipboard(t); got != "copied on the Mac 在电脑上" {
+		t.Errorf("the phone got the clipboard %q", got)
+	}
+
 	eventually(t, 30*time.Second, "the Mac says who is in control", func() bool { v, _ := viewer(); return v == "test-iphone" })
 	// The Mac's own app sees it too (its menu bar names the device), and stops it there: the phone is told why.
 	eventually(t, 30*time.Second, "the Mac's app sees who is in control", func() bool {

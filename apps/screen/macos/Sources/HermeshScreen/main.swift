@@ -2,7 +2,7 @@ import CoreGraphics
 import Foundation
 import IOKit.pwr_mgt
 
-// hermesh-screen [--test-source] [--input-log <file>] | --status
+// hermesh-screen [--test-source] [--input-log <file>] [--test-clipboard <file>] | --status
 //
 // Started by hermeshd for one Computer Control session
 // (docs/computer-control.md §4.1). It captures the main display, encodes it
@@ -11,6 +11,7 @@ import IOKit.pwr_mgt
 
 var testSource = false
 var inputLog: String?
+var testClipboard: String?
 var args = CommandLine.arguments.dropFirst().makeIterator()
 while let a = args.next() {
     switch a {
@@ -21,6 +22,7 @@ while let a = args.next() {
         exit(0)
     case "--test-source": testSource = true
     case "--input-log": inputLog = args.next()
+    case "--test-clipboard": testClipboard = args.next()
     default:
         FileHandle.standardError.write(Data("hermesh-screen: unknown argument \(a)\n".utf8))
         exit(2)
@@ -35,7 +37,9 @@ var capture: Capture?
 var source: TestSource?
 var awake: IOPMAssertionID = 0
 
-let input = Input(logPath: inputLog)
+// A test that logs its input and names no clipboard file leaves the Mac's clipboard alone.
+let clipboard = testClipboard != nil || inputLog == nil ? Clipboard(out: out, file: testClipboard) : nil
+let input = Input(logPath: inputLog, clipboard: clipboard)
 
 func canControl() -> Bool { inputLog != nil || Input.canControl }
 
@@ -44,6 +48,7 @@ func start(_ m: StartMessage) {
     let fps = m.fps ?? 30
     let enc = Encoder(out: out, fps: fps, bitrate: m.bitrate ?? 3_000_000)
     encoder = enc
+    clipboard?.watch()
     if testSource {
         out.send(.state, json: StateMessage(error: "", detail: "", can_control: canControl()))
         let s = TestSource(encoder: enc)
