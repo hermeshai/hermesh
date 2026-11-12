@@ -129,7 +129,8 @@ sequenceDiagram
 - **Candidates**: local addresses (same Wi-Fi), IPv6 addresses, addresses
   seen by the relay's STUN, and the relay's TURN address. ICE picks the
   best that works. When the phone's network changes it sends a new offer
-  for the same session (`session_id`), which restarts ICE.
+  for the same session (`session_id`), which restarts ICE. The path
+  can change again while connected (§5.3).
 - **Trust**: the DTLS fingerprints travel in the offer and answer, inside
   the tunnel, which is already pinned to the owner's root chain. A relay
   that forwards the packets sees SRTP and DTLS, nothing else.
@@ -189,6 +190,7 @@ The helper is hermeshd's child, so macOS holds hermeshd responsible for it
 |---|---|---|
 | Screen & System Audio Recording | the picture | Hermesh |
 | Accessibility | keyboard and mouse | hermeshd |
+| Local Network | a direct path to a phone on the same network (§5.3) | hermeshd |
 
 The Mac app's Settings › Machines › Computer use already shows both and
 opens the right panes. Computer Control adds nothing there. The machine
@@ -345,6 +347,36 @@ three round trips to the relay (the TURN allocation), and the offer, the
 answer and the checks a few more. Sending candidates as they come
 (trickling) instead of in one offer would take the gathering off the way.
 
+### 5.3 Which path
+
+Direct first, the relay when nothing else works, and the choice is not
+final:
+
+- The phone checks every pair of addresses at once, five times a second,
+  and takes the best that has answered: one between local addresses at
+  once, one through a NAT after 0.1 s, one through TURN after 1 s.
+- Connected, it goes on checking the others every second and moves to a
+  better one that answers: always from the relay to a pair of local
+  addresses, otherwise to one that is quicker by 10 ms or more (pion's
+  renomination; the Mac follows the phone's choice). The picture goes on
+  while it moves.
+- **The local network asks first.** An iPhone asks its owner before an
+  app's first packet to the local network, and drops what is sent until
+  they allow it; macOS does the same for hermeshd. So a first session on
+  one Wi-Fi starts through the relay. The alert says why
+  (`NSLocalNetworkUsageDescription`), and once the owner allows it the
+  session moves to the direct path within seconds, without being opened
+  again. The Simulator asks nothing; `HERMESH_SCREEN_BLOCK_LOCAL=<seconds>`
+  makes a core drop those packets that long (`TestScreenTurnsDirect`,
+  `testComputerControl`).
+- **Relayed on one network.** When the path is the relay and both ends are
+  seen at one address by the relay's STUN server (`Status.Nearby`), they
+  are most likely on one network. The page then says so and what to allow:
+  Local Network for Hermesh on the iPhone (with a button to its Settings),
+  and for hermeshd on the Mac. It goes away once the path is direct. A
+  network that keeps its devices apart (a guest Wi-Fi) shows the same, and
+  stays relayed.
+
 ## 6. On the iPhone
 
 ### 6.1 Gestures
@@ -394,6 +426,8 @@ way at most 60000 bytes; more is not sent, and the page says it is too much.
 - Full screen, both orientations. The picture starts fitted to the screen.
 - One small bar: hide, connection quality (the round trip, and "Relayed"
   when the packets go through the relay), the mode button, keyboard, close.
+  Relayed while both ends look to be on one network, a note at the top says
+  what to allow (§5.3); it can be put away.
   Hide folds it into a round button that keeps the quality's colour; a tap
   opens it again where it is. Folded or not, it is dragged to any edge and
   keeps to the one nearest where it is let go, never the middle of the

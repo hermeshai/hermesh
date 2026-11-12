@@ -214,7 +214,7 @@ func TestSessionEndsWhenViewerNeverConnects(t *testing.T) {
 	defer func() { connectWithin = old }()
 	h := NewHost(HostConfig{Bin: helperBin(t), Args: []string{"--test-source"}})
 	// An offer from a viewer that then goes away.
-	api, err := newAPI(nil)
+	api, err := newAPI(nil, nil)
 	if err != nil {
 		t.Fatal(err)
 	}

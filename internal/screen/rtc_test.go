@@ -14,7 +14,7 @@ import (
 // description and how long that took.
 func offerWith(t *testing.T, servers []webrtc.ICEServer) (string, time.Duration) {
 	t.Helper()
-	api, err := newAPI(nil)
+	api, err := newAPI(nil, nil)
 	if err != nil {
 		t.Fatal(err)
 	}

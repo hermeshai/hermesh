@@ -9264,6 +9264,46 @@
         }
       }
     },
+    "Dismiss": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "关闭提示"
+          }
+        }
+      }
+    },
+    "Open Settings": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "打开设置"
+          }
+        }
+      }
+    },
+    "Relayed, though %@ looks to be on this network. To connect directly, allow Local Network for Hermesh on this iPhone, and for hermeshd on %@.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "正在中转，但 %1$@ 看起来和这台 iPhone 在同一网络。要直连，请在这台 iPhone 上允许 Hermesh 访问「本地网络」，并在 %2$@ 上允许 hermeshd。"
+          }
+        }
+      }
+    },
+    "Relayed, though %@ looks to be on this network. To connect directly, allow Local Network for Hermesh on this iPhone.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "正在中转，但 %@ 看起来和这台 iPhone 在同一网络。要直连，请在这台 iPhone 上允许 Hermesh 访问「本地网络」。"
+          }
+        }
+      }
+    },
     "The session ended": {
       "localizations": {
         "zh-Hans": {

@@ -242,7 +242,7 @@ func (h *Host) open(ctx context.Context, req *screenv1.ConnectRequest) (*hostSes
 	id := make([]byte, 8)
 	rand.Read(id)
 	s := &hostSession{h: h, id: hex.EncodeToString(id), viewer: req.Viewer, done: make(chan struct{}), bitrate: startBitrate}
-	api, err := newAPI(func(e cc.BandwidthEstimator) { e.OnTargetBitrateChange(s.setBitrate) })
+	api, err := newAPI(func(e cc.BandwidthEstimator) { e.OnTargetBitrateChange(s.setBitrate) }, nil)
 	if err != nil {
 		return nil, err
 	}

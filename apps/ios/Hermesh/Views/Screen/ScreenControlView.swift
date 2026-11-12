@@ -170,6 +170,8 @@ struct ScreenControlView: View {
     @State private var away = false
     /// The bar folded into a round button, as the owner left it last time.
     @AppStorage("screen-bar-folded") private var folded = false
+    /// The owner put the relay's hint away, for as long as the page shows.
+    @State private var hintDismissed = false
 
     var body: some View {
         ZStack {
@@ -214,26 +216,28 @@ struct ScreenControlView: View {
             }
         }
         .overlay(alignment: .top) {
-            if session.live, session.ended == nil, !session.canControl {
-                Text(session.linux ? String(localized: "You can watch, not control: \(session.machineName) shares its screen without its keyboard and mouse.")
-                     : String(localized: "You can watch, not control: on \(session.machineName), turn on Accessibility for hermeshd."))
-                    .font(.footnote)
-                    .foregroundStyle(.white)
-                    .multilineTextAlignment(.center)
-                    .padding(.horizontal, 14).padding(.vertical, 8)
-                    .background(.black.opacity(0.7), in: .capsule)
-                    .padding(.top, 8).padding(.horizontal, 16)
-                    .accessibilityIdentifier("screen-watch-only")
-            } else if let flashed = session.flashed {
-                Text(flashed.text)
-                    .font(.footnote)
-                    .foregroundStyle(.white.opacity(0.9))
-                    .padding(.horizontal, 14).padding(.vertical, 8)
-                    .background(.black.opacity(0.7), in: .capsule)
-                    .padding(.top, 8).padding(.horizontal, 16)
-                    .transition(.opacity)
-                    .accessibilityIdentifier(flashed.id)
+            VStack(spacing: 8) {
+                if session.live, session.ended == nil, !session.canControl {
+                    Text(session.linux ? String(localized: "You can watch, not control: \(session.machineName) shares its screen without its keyboard and mouse.")
+                         : String(localized: "You can watch, not control: on \(session.machineName), turn on Accessibility for hermeshd."))
+                        .font(.footnote)
+                        .foregroundStyle(.white)
+                        .multilineTextAlignment(.center)
+                        .padding(.horizontal, 14).padding(.vertical, 8)
+                        .background(.black.opacity(0.7), in: .capsule)
+                        .accessibilityIdentifier("screen-watch-only")
+                } else if let flashed = session.flashed {
+                    Text(flashed.text)
+                        .font(.footnote)
+                        .foregroundStyle(.white.opacity(0.9))
+                        .padding(.horizontal, 14).padding(.vertical, 8)
+                        .background(.black.opacity(0.7), in: .capsule)
+                        .transition(.opacity)
+                        .accessibilityIdentifier(flashed.id)
+                }
+                if relayedNearby, !hintDismissed { relayHint }
             }
+            .padding(.top, 8).padding(.horizontal, 16)
         }
         .overlay { bar }
         .statusBarHidden()
@@ -280,6 +284,42 @@ struct ScreenControlView: View {
         }
         .padding(24)
         .frame(maxWidth: 420)
+    }
+
+    /// The picture goes through the relay though the two look to be on one
+    /// network: the iPhone asks before an app's first packet to the local
+    /// network (and a Mac before hermeshd's), and until the owner allows it
+    /// there is no direct path. The session moves to it by itself once there is.
+    private var relayedNearby: Bool {
+        session.live && session.ended == nil && session.link.phase == "connected" && session.link.path == "relay" && session.link.nearby == true
+    }
+
+    private var relayHint: some View {
+        HStack(alignment: .top, spacing: 4) {
+            VStack(alignment: .leading, spacing: 6) {
+                Text(session.linux ? String(localized: "Relayed, though \(session.machineName) looks to be on this network. To connect directly, allow Local Network for Hermesh on this iPhone.")
+                     : String(localized: "Relayed, though \(session.machineName) looks to be on this network. To connect directly, allow Local Network for Hermesh on this iPhone, and for hermeshd on \(session.machineName)."))
+                    .font(.footnote)
+                    .foregroundStyle(.white)
+                    .fixedSize(horizontal: false, vertical: true)
+                Button("Open Settings") {
+                    if let url = URL(string: UIApplication.openSettingsURLString) { UIApplication.shared.open(url) }
+                }
+                .font(.footnote.weight(.semibold))
+                .accessibilityIdentifier("screen-relay-settings")
+            }
+            Spacer(minLength: 0)
+            Button { withAnimation(.snappy) { hintDismissed = true } } label: {
+                Image(systemName: "xmark").font(.caption.weight(.semibold)).foregroundStyle(.white.opacity(0.7)).frame(width: 30, height: 30)
+            }
+            .accessibilityLabel(Text("Dismiss"))
+            .accessibilityIdentifier("screen-relay-dismiss")
+        }
+        .padding(.leading, 14).padding(.trailing, 4).padding(.vertical, 10)
+        .background(.black.opacity(0.7), in: .rect(cornerRadius: 16))
+        .frame(maxWidth: 420)
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("screen-relay-hint")
     }
 
     /// The connection's quality in a word the owner can act on: a number while
