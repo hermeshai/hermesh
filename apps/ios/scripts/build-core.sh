@@ -8,7 +8,7 @@ set -euo pipefail
 cd "$(dirname "$0")/../../.."
 OUT=apps/ios/build/HermeshCore.xcframework
 VERSION="${VERSION:-0.0.0-dev}"
-if [[ -d "$OUT" && -z "${FORCE:-}" ]] && [[ -z "$(find cmd internal pkg gen go.mod go.sum -newer "$OUT/Info.plist" -name '*.go' -o -newer "$OUT/Info.plist" -name 'go.*' | head -1)" ]]; then
+if [[ -d "$OUT" && -z "${FORCE:-}" ]] && [[ -z "$(find cmd internal pkg gen third_party/pion-ice go.mod go.sum -newer "$OUT/Info.plist" -name '*.go' -o -newer "$OUT/Info.plist" -name 'go.*' | head -1)" ]]; then
   echo "› HermeshCore.xcframework is up to date"
   exit 0
 fi
