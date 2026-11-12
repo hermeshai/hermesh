@@ -566,6 +566,10 @@ public nonisolated struct Hermesh_Machine_V1_ScreenStatus: Sendable {
   /// The device in control now, as it named itself; empty when none is.
   public var viewer: String = String()
 
+  /// The machine takes a viewer's candidates after its offer
+  /// (ScreenService.Candidates): the offer need not wait for them.
+  public var candidatesLater: Bool = false
+
   public var unknownFields = SwiftProtobuf.UnknownStorage()
 
   public init() {}
@@ -1853,7 +1857,7 @@ nonisolated extension Hermesh_Machine_V1_MachineStatus: SwiftProtobuf.Message, S
 
 nonisolated extension Hermesh_Machine_V1_ScreenStatus: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
   public static let protoMessageName: String = _protobuf_package + ".ScreenStatus"
-  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{1}available\0\u{1}viewer\0")
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{1}available\0\u{1}viewer\0\u{3}candidates_later\0")
 
   public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
     while let fieldNumber = try decoder.nextFieldNumber() {
@@ -1863,6 +1867,7 @@ nonisolated extension Hermesh_Machine_V1_ScreenStatus: SwiftProtobuf.Message, Sw
       switch fieldNumber {
       case 1: try { try decoder.decodeSingularBoolField(value: &self.available) }()
       case 2: try { try decoder.decodeSingularStringField(value: &self.viewer) }()
+      case 3: try { try decoder.decodeSingularBoolField(value: &self.candidatesLater) }()
       default: break
       }
     }
@@ -1875,12 +1880,16 @@ nonisolated extension Hermesh_Machine_V1_ScreenStatus: SwiftProtobuf.Message, Sw
     if !self.viewer.isEmpty {
       try visitor.visitSingularStringField(value: self.viewer, fieldNumber: 2)
     }
+    if self.candidatesLater != false {
+      try visitor.visitSingularBoolField(value: self.candidatesLater, fieldNumber: 3)
+    }
     try unknownFields.traverse(visitor: &visitor)
   }
 
   public static func ==(lhs: Hermesh_Machine_V1_ScreenStatus, rhs: Hermesh_Machine_V1_ScreenStatus) -> Bool {
     if lhs.available != rhs.available {return false}
     if lhs.viewer != rhs.viewer {return false}
+    if lhs.candidatesLater != rhs.candidatesLater {return false}
     if lhs.unknownFields != rhs.unknownFields {return false}
     return true
   }

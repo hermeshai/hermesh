@@ -5,10 +5,12 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"net"
 	"net/http"
 	"os"
 	"path/filepath"
 	"slices"
+	"sort"
 	"strings"
 	"sync"
 
@@ -37,6 +39,13 @@ type Device struct {
 	runDone  chan struct{}
 	// lock holds the data directory for this process.
 	lock *flock.Lock
+
+	// The network this device is on: its addresses as last seen, and a
+	// channel closed (and made anew) when it changed, for what must find
+	// its paths again (a Computer Control session).
+	nmu   sync.Mutex
+	addrs string
+	moved chan struct{}
 }
 
 // Open opens the device's profiles under cfg.DataDir, and an empty one to
@@ -242,10 +251,59 @@ func (d *Device) Pause() {
 // Reconnect drops the current profile's relay connection and follows its
 // machines again from what it holds: the network changed, and the
 // connections made on the old one may be dead without anything noticing.
+// A Computer Control session finds its path again from the addresses this
+// device has now.
 func (d *Device) Reconnect() {
+	d.nmu.Lock()
+	d.addrs = localAddresses()
+	if d.moved != nil {
+		close(d.moved)
+		d.moved = nil
+	}
+	d.nmu.Unlock()
 	o := d.owner()
 	o.dropRelay()
 	o.rep.restart()
+}
+
+// PathChanged is Reconnect when this device's addresses are not the ones
+// last seen: the system says something about the network changed, which
+// need not be the interfaces (an interface that kept its name on another
+// network, an address that came later).
+func (d *Device) PathChanged() {
+	now := localAddresses()
+	d.nmu.Lock()
+	same := d.addrs == "" || d.addrs == now
+	d.addrs = now
+	d.nmu.Unlock()
+	if !same {
+		d.Reconnect()
+	}
+}
+
+// networkMoved is closed the next time this device's network changes.
+func (d *Device) networkMoved() <-chan struct{} {
+	d.nmu.Lock()
+	defer d.nmu.Unlock()
+	if d.moved == nil {
+		d.moved = make(chan struct{})
+	}
+	return d.moved
+}
+
+// localAddresses are the addresses this device has on its networks, but
+// for those that say nothing of which network it is on (loopback,
+// link-local), in one string to compare.
+func localAddresses() string {
+	addrs, _ := net.InterfaceAddrs()
+	var out []string
+	for _, a := range addrs {
+		if n, ok := a.(*net.IPNet); ok && n.IP.IsGlobalUnicast() {
+			out = append(out, n.IP.String())
+		}
+	}
+	sort.Strings(out)
+	return strings.Join(out, ",")
 }
 
 // restart runs the current profile again, as it now is (signed in or out).

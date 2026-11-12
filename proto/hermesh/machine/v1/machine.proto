@@ -177,6 +177,9 @@ message ScreenStatus {
   bool available = 1;
   // The device in control now, as it named itself; empty when none is.
   string viewer = 2;
+  // The machine takes a viewer's candidates after its offer
+  // (ScreenService.Candidates): the offer need not wait for them.
+  bool candidates_later = 3;
 }
 
 // HerStatus is Her on a machine, as its hermeshd last saw her.

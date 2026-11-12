@@ -35,6 +35,9 @@ const (
 const (
 	// ScreenServiceConnectProcedure is the fully-qualified name of the ScreenService's Connect RPC.
 	ScreenServiceConnectProcedure = "/hermesh.screen.v1.ScreenService/Connect"
+	// ScreenServiceCandidatesProcedure is the fully-qualified name of the ScreenService's Candidates
+	// RPC.
+	ScreenServiceCandidatesProcedure = "/hermesh.screen.v1.ScreenService/Candidates"
 )
 
 // ScreenServiceClient is a client for the hermesh.screen.v1.ScreenService service.
@@ -47,6 +50,12 @@ type ScreenServiceClient interface {
 	// Input holding a Move). A machine serves one viewer: a new session ends
 	// the one before.
 	Connect(context.Context, *v1.ConnectRequest) (*v1.ConnectResponse, error)
+	// The candidates each end found after its half of Connect, which then
+	// carried its local addresses alone (candidates_later): a path between
+	// local addresses is checked without waiting for the relay's STUN and
+	// TURN servers. The viewer calls it once its gathering has ended; the
+	// machine adds the viewer's and answers with its own once it has them.
+	Candidates(context.Context, *v1.CandidatesRequest) (*v1.CandidatesResponse, error)
 }
 
 // NewScreenServiceClient constructs a client for the hermesh.screen.v1.ScreenService service. By
@@ -66,17 +75,33 @@ func NewScreenServiceClient(httpClient connect.HTTPClient, baseURL string, opts 
 			connect.WithSchema(screenServiceMethods.ByName("Connect")),
 			connect.WithClientOptions(opts...),
 		),
+		candidates: connect.NewClient[v1.CandidatesRequest, v1.CandidatesResponse](
+			httpClient,
+			baseURL+ScreenServiceCandidatesProcedure,
+			connect.WithSchema(screenServiceMethods.ByName("Candidates")),
+			connect.WithClientOptions(opts...),
+		),
 	}
 }
 
 // screenServiceClient implements ScreenServiceClient.
 type screenServiceClient struct {
-	connect *connect.Client[v1.ConnectRequest, v1.ConnectResponse]
+	connect    *connect.Client[v1.ConnectRequest, v1.ConnectResponse]
+	candidates *connect.Client[v1.CandidatesRequest, v1.CandidatesResponse]
 }
 
 // Connect calls hermesh.screen.v1.ScreenService.Connect.
 func (c *screenServiceClient) Connect(ctx context.Context, req *v1.ConnectRequest) (*v1.ConnectResponse, error) {
 	response, err := c.connect.CallUnary(ctx, connect.NewRequest(req))
+	if response != nil {
+		return response.Msg, err
+	}
+	return nil, err
+}
+
+// Candidates calls hermesh.screen.v1.ScreenService.Candidates.
+func (c *screenServiceClient) Candidates(ctx context.Context, req *v1.CandidatesRequest) (*v1.CandidatesResponse, error) {
+	response, err := c.candidates.CallUnary(ctx, connect.NewRequest(req))
 	if response != nil {
 		return response.Msg, err
 	}
@@ -93,6 +118,12 @@ type ScreenServiceHandler interface {
 	// Input holding a Move). A machine serves one viewer: a new session ends
 	// the one before.
 	Connect(context.Context, *v1.ConnectRequest) (*v1.ConnectResponse, error)
+	// The candidates each end found after its half of Connect, which then
+	// carried its local addresses alone (candidates_later): a path between
+	// local addresses is checked without waiting for the relay's STUN and
+	// TURN servers. The viewer calls it once its gathering has ended; the
+	// machine adds the viewer's and answers with its own once it has them.
+	Candidates(context.Context, *v1.CandidatesRequest) (*v1.CandidatesResponse, error)
 }
 
 // NewScreenServiceHandler builds an HTTP handler from the service implementation. It returns the
@@ -108,10 +139,18 @@ func NewScreenServiceHandler(svc ScreenServiceHandler, opts ...connect.HandlerOp
 		connect.WithSchema(screenServiceMethods.ByName("Connect")),
 		connect.WithHandlerOptions(opts...),
 	)
+	screenServiceCandidatesHandler := connect.NewUnaryHandlerSimple(
+		ScreenServiceCandidatesProcedure,
+		svc.Candidates,
+		connect.WithSchema(screenServiceMethods.ByName("Candidates")),
+		connect.WithHandlerOptions(opts...),
+	)
 	return "/hermesh.screen.v1.ScreenService/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case ScreenServiceConnectProcedure:
 			screenServiceConnectHandler.ServeHTTP(w, r)
+		case ScreenServiceCandidatesProcedure:
+			screenServiceCandidatesHandler.ServeHTTP(w, r)
 		default:
 			http.NotFound(w, r)
 		}
@@ -123,4 +162,8 @@ type UnimplementedScreenServiceHandler struct{}
 
 func (UnimplementedScreenServiceHandler) Connect(context.Context, *v1.ConnectRequest) (*v1.ConnectResponse, error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("hermesh.screen.v1.ScreenService.Connect is not implemented"))
+}
+
+func (UnimplementedScreenServiceHandler) Candidates(context.Context, *v1.CandidatesRequest) (*v1.CandidatesResponse, error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("hermesh.screen.v1.ScreenService.Candidates is not implemented"))
 }

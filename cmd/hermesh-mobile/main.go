@@ -74,6 +74,17 @@ func HermeshCoreNetworkChanged() {
 	}
 }
 
+// HermeshCorePathChanged connects again when the device's addresses are not
+// those last seen: the system reported a change of the network that left
+// its interfaces as they were.
+//
+//export HermeshCorePathChanged
+func HermeshCorePathChanged() {
+	if c := started(); c != nil {
+		c.PathChanged()
+	}
+}
+
 // HermeshCoreFree frees a string the core returned.
 //
 //export HermeshCoreFree

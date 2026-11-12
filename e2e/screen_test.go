@@ -218,8 +218,67 @@ func TestScreenUnreachableTURN(t *testing.T) {
 	}
 	took := time.Since(start)
 	t.Logf("the picture came %v after the page opened", took.Round(time.Millisecond))
-	if took > 6*time.Second {
+	if took > 3*time.Second {
 		t.Errorf("the picture took %v; the unreachable server held it up", took)
+	}
+}
+
+// The phone's network changes while a session is on (one Wi-Fi to another,
+// or to cellular): its core connects to the relay again, and the session,
+// which goes on, finds a path again from the addresses the phone has now.
+// Here the addresses are the same ones, so the new path shows as the
+// phone's end of it moving to another port.
+func TestScreenNetworkChange(t *testing.T) {
+	if testing.Short() || runtime.GOOS != "darwin" {
+		t.Skip("e2e on macOS")
+	}
+	env, _ := screenEnv(t)
+	w := newOwnerMac(t, append([]string{"HERMESH_FAKE_PROVIDERS=1"}, env...), &localv1.GrantSpec{})
+	st, err := w.app.client.GetStatus(context.Background(), &localv1.GetStatusRequest{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	root, _ := identity.GenerateKey()
+	m := joinMobile(t, w, st.RelayUrl, t.TempDir(), root)
+	s := openScreen(t, m, screenMachine(t, m))
+	// until reads the session until a connected status passes ok and 30
+	// frames came after it, and returns that status's end on the phone.
+	until := func(what string, ok func(local string) bool) string {
+		t.Helper()
+		local, frames := "", 0
+		deadline := time.Now().Add(40 * time.Second)
+		for frames < 30 {
+			s.conn.SetReadDeadline(deadline)
+			k, p, err := screenrtc.ReadMessage(s.r)
+			if err != nil {
+				t.Fatalf("%s: reading the screen: %v", what, err)
+			}
+			switch k {
+			case screenrtc.KindVideo:
+				if local != "" {
+					frames++
+				}
+			case screenrtc.KindStatus:
+				var status struct{ Phase, Path, Local, Error string }
+				json.Unmarshal(p, &status)
+				if status.Phase == "failed" {
+					t.Fatalf("%s: the session failed: %s", what, status.Error)
+				}
+				if status.Phase == "connected" && local == "" && ok(status.Local) {
+					local = status.Local
+				}
+			}
+		}
+		return local
+	}
+	before := until("the picture", func(local string) bool { return local != "" })
+	start := time.Now()
+	m.do("network")
+	after := until("the picture on the new path", func(local string) bool { return local != "" && local != before })
+	t.Logf("the path moved from %s to %s; 30 frames on it %v after the network changed", before, after, time.Since(start).Round(time.Millisecond))
+	res, err := w.app.client.ListMachines(context.Background(), &localv1.ListMachinesRequest{})
+	if err != nil || len(res.Machines) != 1 || res.Machines[0].Status.GetScreen().GetViewer() != "test-iphone" {
+		t.Fatalf("the Mac's session after the change: %v %v", res, err)
 	}
 }
 

@@ -17,6 +17,12 @@ service ScreenService {
   // Input holding a Move). A machine serves one viewer: a new session ends
   // the one before.
   rpc Connect(ConnectRequest) returns (ConnectResponse);
+  // The candidates each end found after its half of Connect, which then
+  // carried its local addresses alone (candidates_later): a path between
+  // local addresses is checked without waiting for the relay's STUN and
+  // TURN servers. The viewer calls it once its gathering has ended; the
+  // machine adds the viewer's and answers with its own once it has them.
+  rpc Candidates(CandidatesRequest) returns (CandidatesResponse);
 }
 
 message ConnectRequest {
@@ -30,12 +36,35 @@ message ConnectRequest {
   // Whether the picture has the pointer in it. A viewer that draws its own
   // (trackpad mode) asks for none.
   bool pointer = 4;
+  // The offer went as soon as the viewer's local addresses were in it; the
+  // rest follow in Candidates, and the machine may answer the same way. A
+  // machine that does not know this field gathers all of its own first.
+  bool candidates_later = 5;
 }
 
 message ConnectResponse {
   // The machine's SDP answer.
   string answer = 1;
   string session_id = 2;
+  // The machine takes the viewer's other candidates in Candidates and
+  // gives the rest of its own there. Unset by a machine that does not: it
+  // knows the viewer's local addresses alone until an offer with all of the
+  // viewer's candidates restarts ICE.
+  bool candidates_later = 3;
+}
+
+message CandidatesRequest {
+  string session_id = 1;
+  // The ICE username fragment of the offer these belong to. The machine
+  // refuses them (FailedPrecondition) once a later offer has come.
+  string ufrag = 2;
+  // All of the viewer's candidates, each as a "candidate:" line.
+  repeated string candidates = 3;
+}
+
+message CandidatesResponse {
+  // All of the machine's candidates, each as a "candidate:" line.
+  repeated string candidates = 1;
 }
 
 // What the viewer does, sent on a data channel. Positions are fractions of
