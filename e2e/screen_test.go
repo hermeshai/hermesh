@@ -173,6 +173,39 @@ func TestScreenThroughTURN(t *testing.T) {
 	eventually(t, 30*time.Second, "the session ended on the Mac", func() bool { return viewer() == "" })
 }
 
+// Where the relay's STUN and TURN server can't be reached (a network that
+// blocks it), the two ends stop waiting for its addresses and connect
+// directly: the picture comes in seconds, where each end used to wait 7.8 s
+// for a TURN answer before it even made its half of the handshake.
+func TestScreenUnreachableTURN(t *testing.T) {
+	if testing.Short() || runtime.GOOS != "darwin" {
+		t.Skip("e2e on macOS")
+	}
+	env, _ := screenEnv(t)
+	w := newOwnerMac(t, append([]string{"HERMESH_FAKE_PROVIDERS=1"}, env...), &localv1.GrantSpec{})
+	port := freePort(t)
+	// The relay serves TURN here, but tells everyone it is at an address where nothing answers.
+	w.relayArgs = append(w.relayArgs, "--turn-listen", fmt.Sprintf("127.0.0.1:%d", port), "--turn-host", fmt.Sprintf("192.0.2.1:%d", port))
+	w.restartRelay()
+	st, err := w.app.client.GetStatus(context.Background(), &localv1.GetStatusRequest{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	root, _ := identity.GenerateKey()
+	m := joinMobile(t, w, st.RelayUrl, t.TempDir(), root)
+	id := screenMachine(t, m)
+	start := time.Now()
+	s := openScreen(t, m, id)
+	if path := s.live(t); path != "direct" {
+		t.Errorf("path: %q, want direct", path)
+	}
+	took := time.Since(start)
+	t.Logf("the picture came %v after the page opened", took.Round(time.Millisecond))
+	if took > 6*time.Second {
+		t.Errorf("the picture took %v; the unreachable server held it up", took)
+	}
+}
+
 // Computer Control end to end, but for the app's page: an iPhone's core,
 // joined as a trusted device, opens the screen of the owner's Mac through
 // the relay. The Mac's hermeshd runs the real helper with its test picture.
@@ -210,10 +243,12 @@ func TestScreen(t *testing.T) {
 	}
 	eventually(t, 60*time.Second, "the Mac's screen offered to the iPhone", func() bool { _, ok := viewer(); return ok })
 
+	start := time.Now()
 	s := openScreen(t, m, machineID)
 	if path := s.live(t); path != "direct" {
 		t.Errorf("path: %q, want direct", path)
 	}
+	t.Logf("the picture came %v after the page opened", time.Since(start).Round(time.Millisecond))
 
 	// What the phone does reaches the Mac's helper.
 	for _, in := range []*screenv1.Input{

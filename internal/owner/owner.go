@@ -37,6 +37,7 @@ import (
 	"github.com/hermeshai/hermesh/internal/flock"
 	"github.com/hermeshai/hermesh/internal/machine"
 	"github.com/hermeshai/hermesh/internal/peer"
+	"github.com/hermeshai/hermesh/internal/screen"
 	"github.com/hermeshai/hermesh/pkg/identity"
 	"github.com/hermeshai/hermesh/pkg/transport"
 )
@@ -65,6 +66,9 @@ type Owner struct {
 	// rep is this device's copy of the owner's world, which the List
 	// calls answer from (replica.go).
 	rep *replica
+	// iceServers are the relay's STUN and TURN servers, kept for Computer
+	// Control (screen.go).
+	iceServers screen.Servers
 
 	mu         sync.Mutex
 	ownerID    string
@@ -390,6 +394,7 @@ func (o *Owner) relay(ctx context.Context) (*peer.Client, error) {
 			return nil, w.err
 		}
 		c.Warm(o.seenOnline()) // before the callers waiting wake, so that they join these handshakes
+		o.warmScreenServers(c)
 		close(w.done)
 		if c == kept {
 			return c, nil

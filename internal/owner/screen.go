@@ -19,8 +19,11 @@ import (
 
 	localv1 "github.com/hermeshai/hermesh/gen/go/hermesh/local/v1"
 	relayv1 "github.com/hermeshai/hermesh/gen/go/hermesh/relay/v1"
+	"github.com/hermeshai/hermesh/gen/go/hermesh/relay/v1/relayv1connect"
 	screenv1 "github.com/hermeshai/hermesh/gen/go/hermesh/screen/v1"
+	"github.com/hermeshai/hermesh/internal/peer"
 	"github.com/hermeshai/hermesh/internal/screen"
+	"github.com/hermeshai/hermesh/pkg/transport"
 )
 
 // Computer Control (docs/computer-control.md), the device's side: the app
@@ -81,20 +84,40 @@ func (l *localService) StopScreen(context.Context, *localv1.StopScreenRequest) (
 	return &localv1.StopScreenResponse{}, nil
 }
 
-// screenServers are the relay's STUN and TURN servers; none when it runs
-// none, is an older relay, or does not answer in time.
+// screenServers are the relay's STUN and TURN servers, as kept
+// (warmScreenServers); none when it runs none, is an older relay, or does
+// not answer in time.
 func (o *Owner) screenServers(ctx context.Context) []*relayv1.IceServer {
 	ctx, cancel := context.WithTimeout(ctx, 3*time.Second)
 	defer cancel()
-	c, _, err := o.control(ctx)
+	c, pc, err := o.control(ctx)
 	if err != nil {
 		return nil
 	}
-	res, err := c.GetScreenServers(ctx, &relayv1.GetScreenServersRequest{})
-	if err != nil {
-		return nil
+	return o.iceServers.Get(ctx, pc, fetchScreenServers(c))
+}
+
+// warmScreenServers asks for the relay's servers ahead of a session, on the
+// iPhone (the device Computer Control is served on) once it has connected.
+func (o *Owner) warmScreenServers(pc *peer.Client) {
+	if !o.cfg.NoLocalMachine {
+		return
 	}
-	return res.Servers
+	hc, err := pc.Control()
+	if err != nil {
+		return
+	}
+	o.iceServers.Warm(pc, fetchScreenServers(relayv1connect.NewOwnerControlServiceClient(hc, "http://relay", transport.ClientNoCompression)))
+}
+
+func fetchScreenServers(c relayv1connect.OwnerControlServiceClient) func(context.Context) []*relayv1.IceServer {
+	return func(ctx context.Context) []*relayv1.IceServer {
+		res, err := c.GetScreenServers(ctx, &relayv1.GetScreenServersRequest{})
+		if err != nil {
+			return nil
+		}
+		return res.Servers
+	}
 }
 
 // ScreenHandler serves /screen/<machine_id>, for a caller that provides its
