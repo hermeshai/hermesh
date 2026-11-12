@@ -326,6 +326,10 @@ and Chromium do and this helper does, has no such cover.
 
 - On a Linux machine (its platform in the status) the key row reads Ctrl,
   Alt, Super, ⇧, sent as the same four fields.
+- Beside Paste the row says how the machine pastes, App (Ctrl+V) or
+  Terminal (Ctrl+Shift+V), remembered on the phone; it goes with the
+  clipboard Paste sends and with typed text (`Text.paste`)
+  ([computer-control.md](computer-control.md) §6.2).
 - "That Mac" in the session's texts became the machine's name; the texts
   of §3.6 are new, in English and Chinese.
 

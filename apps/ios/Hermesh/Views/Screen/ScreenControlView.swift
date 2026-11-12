@@ -57,6 +57,20 @@ final class ScreenSession {
         }
     }
 
+    /// A word the page shows for a moment (text copied from the machine), and its identifier.
+    var flashed: (text: String, id: String)?
+    @ObservationIgnored private var flashEnd: Task<Void, Never>?
+
+    func flash(_ text: String, id: String) {
+        withAnimation { flashed = (text, id) }
+        flashEnd?.cancel()
+        flashEnd = Task { [weak self] in
+            try? await Task.sleep(for: .seconds(2))
+            guard !Task.isCancelled else { return }
+            withAnimation(.easeOut(duration: 0.4)) { self?.flashed = nil }
+        }
+    }
+
     @ObservationIgnored let surface = ScreenSurfaceView()
     @ObservationIgnored private var connection: ScreenConnection?
     @ObservationIgnored private var endpoint: (port: Int, token: String)?
@@ -70,7 +84,8 @@ final class ScreenSession {
         surface.send = { [weak self] in self?.connection?.send($0) }
         surface.keys.send = { [weak self] in self?.connection?.send($0) }
         surface.keys.onDismiss = { [weak self] in self?.keyboard = false }
-        if linux { surface.keys.useLinuxModifiers() }
+        surface.keys.onPasteTooLong = { [weak self] in self?.flash(String(localized: "Too much text to paste"), id: "screen-clipboard-too-long") }
+        if linux { surface.keys.useLinux() }
         surface.picture.onFirstFrame = { [weak self] in
             self?.live = true
             self?.surface.accessibilityValue = "live"
@@ -107,6 +122,10 @@ final class ScreenSession {
                     self.machineError = s.error == "ended" ? "" : s.error
                     self.machineDetail = s.detail
                     self.canControl = s.canControl
+                case .clipboard(let c):
+                    // Copied on the machine: the phone's to paste too.
+                    UIPasteboard.general.string = c.text
+                    self.flash(String(localized: "Copied from \(self.machineName)"), id: "screen-clipboard-copied")
                 case nil: break
                 }
             }
@@ -205,6 +224,15 @@ struct ScreenControlView: View {
                     .background(.black.opacity(0.7), in: .capsule)
                     .padding(.top, 8).padding(.horizontal, 16)
                     .accessibilityIdentifier("screen-watch-only")
+            } else if let flashed = session.flashed {
+                Text(flashed.text)
+                    .font(.footnote)
+                    .foregroundStyle(.white.opacity(0.9))
+                    .padding(.horizontal, 14).padding(.vertical, 8)
+                    .background(.black.opacity(0.7), in: .capsule)
+                    .padding(.top, 8).padding(.horizontal, 16)
+                    .transition(.opacity)
+                    .accessibilityIdentifier(flashed.id)
             }
         }
         .overlay { bar }

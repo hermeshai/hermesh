@@ -6,7 +6,8 @@ import XCTest
 /// file the control server reads back (`screen`), so the test sees on the Mac
 /// what each touch did: Her's settings have the row, Face ID opens the page,
 /// the picture comes, a tap clicks where it lands, the phone's keyboard types
-/// text and keys, trackpad mode clicks where its pointer is, the page turns
+/// text and keys, Paste gives the Mac the phone's clipboard and what the Mac
+/// copies comes back, trackpad mode clicks where its pointer is, the page turns
 /// with the phone, and Close ends it.
 ///
 ///     HERMESH_IPHONE_E2E=1 HERMESH_IPHONE_GREP=testComputerControl go test ./e2e -run TestIPhone -v -timeout 40m
@@ -18,6 +19,7 @@ extension HermeshUITests {
         try XCTContext.runActivity(named: "Her's settings open the Mac's screen") { _ in try controlOpen() }
         try XCTContext.runActivity(named: "a tap clicks where it lands; a long press is the other button") { _ in try controlTouch() }
         try XCTContext.runActivity(named: "the phone's keyboard types text, and the keys a phone lacks") { _ in try controlKeyboard() }
+        try XCTContext.runActivity(named: "Paste gives the Mac the phone's clipboard; what the Mac copies comes to the phone") { _ in try controlClipboard() }
         try XCTContext.runActivity(named: "trackpad mode: a finger moves the pointer, a tap clicks where it is") { _ in try controlTrackpad() }
         try XCTContext.runActivity(named: "the bar folds into a round button, moves to another edge, and opens there") { _ in try controlBar() }
         try XCTContext.runActivity(named: "the page turns with the phone, and Close ends the session") { _ in try controlTurnAndClose() }
@@ -72,18 +74,14 @@ extension HermeshUITests {
         let keys = app.textFields["screen-keys"]
         keys.typeText("hi 你好")
         try waitFor("the text on the Mac") { try screenEvents("text").compactMap { $0["text"] as? String }.joined().contains("hi 你好") ? true : nil }
+        XCTAssertTrue(try screenEvents("text").allSatisfy { ($0["paste"] as? String) == "PASTE_APP" }, "what it can't type, a Mac pastes as an app does")
         app.buttons["screen-key-esc"].tap()
         try waitFor("esc on the Mac") { try screenEvents("key").contains { ($0["key"] as? String) == "NAMED_KEY_ESCAPE" } ? true : nil }
         // A modifier holds until the next key: Command, then C.
         // Typing Chinese goes through the Simulator's hardware keyboard, which puts the on-screen keyboard
         // away and brings it back: a tap while the row moves misses. Wait until it is still.
         let command = app.buttons["screen-key-command"]
-        var last = CGRect.null
-        try waitFor("the row of keys at rest") {
-            let f = command.frame
-            defer { last = f }
-            return f == last ? true : nil
-        }
+        try waitAtRest(command)
         command.tap()
         keys.typeText("c")
         try waitFor("Command-C on the Mac") {
@@ -92,6 +90,48 @@ extension HermeshUITests {
         herShot("Computer Control: the keyboard")
         app.buttons["screen-key-hide"].tap()
         XCTAssertTrue(app.buttons["screen-key-esc"].waitForNonExistence(timeout: 10), "the keyboard put away")
+    }
+
+    /// Waits until a key in the row stops moving (the keyboard coming up, or going away and back).
+    private func waitAtRest(_ key: XCUIElement) throws {
+        var last = CGRect.null
+        try waitFor("the row of keys at rest") {
+            let f = key.frame
+            defer { last = f }
+            return f == last ? true : nil
+        }
+    }
+
+    func controlClipboard() throws {
+        // Text the phone holds, put there by another app (this test's); the system's Paste key reads it without asking.
+        let phone = "从手机粘贴 pasted from the phone"
+        UIPasteboard.general.string = phone
+        tap("screen-keyboard")
+        let paste = app.descendants(matching: .any)["screen-key-paste"].firstMatch
+        XCTAssertTrue(paste.waitForExistence(timeout: 10), "Paste in the row of keys")
+        try waitAtRest(paste)
+        paste.tap()
+        let sent = try waitFor("the phone's clipboard on the Mac") { try screenEvents("clipboard").last }
+        XCTAssertEqual(sent["text"] as? String, phone, "all of it, in one go")
+        XCTAssertEqual(sent["paste"] as? String, "PASTE_APP", "pasted as an app pastes (Command-V on a Mac)")
+        XCTAssertFalse(try screenEvents("text").contains { ($0["text"] as? String)?.contains("pasted from the phone") == true }, "not typed key by key")
+        herShot("Computer Control: Paste")
+
+        // Copied on the Mac: the phone's clipboard has it, and the page says so for a moment.
+        let mac = "在 Mac 上复制 copied on the Mac"
+        let changes = UIPasteboard.general.changeCount
+        _ = try control("screen-clipboard?text=\(mac.addingPercentEncoding(withAllowedCharacters: .alphanumerics)!)", method: "POST")
+        let copied = app.descendants(matching: .any)["screen-clipboard-copied"].firstMatch
+        XCTAssertTrue(copied.waitForExistence(timeout: 20), "the word that the Mac's text came")
+        XCTAssertEqual(copied.label, "已复制 owner-mac 上的文字")
+        herShot("Computer Control: copied from the Mac")
+        // Reading the clipboard from this test would ask; its count says it changed, and Paste shows what it holds.
+        XCTAssertNotEqual(UIPasteboard.general.changeCount, changes, "the phone's clipboard was written")
+        paste.tap()
+        try waitFor("the Mac's text, back from the phone's clipboard") { try (screenEvents("clipboard").last?["text"] as? String) == mac ? true : nil }
+        XCTAssertTrue(copied.waitForNonExistence(timeout: 5), "the word goes by itself")
+        app.buttons["screen-key-hide"].tap()
+        XCTAssertTrue(paste.waitForNonExistence(timeout: 10), "the keyboard put away")
     }
 
     func controlTrackpad() throws {

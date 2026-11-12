@@ -521,15 +521,34 @@ func newIPhoneControl(t *testing.T, w *ownerMac, sessions map[string]string) str
 	})
 	// What the Mac's screen helper was sent (testComputerControl): the input
 	// it would have posted, a JSON object a line (screenEnv).
-	mux.HandleFunc("GET /screen", func(rw http.ResponseWriter, _ *http.Request) {
-		var log string
+	inputLog := func() string {
 		for _, kv := range w.daemonEnv {
-			if _, path, ok := strings.Cut(kv, "--input-log "); ok && strings.HasPrefix(kv, "HERMESH_SCREEN_ARGS=") {
-				log = path
+			if args, ok := strings.CutPrefix(kv, "HERMESH_SCREEN_ARGS="); ok {
+				if _, rest, ok := strings.Cut(args, "--input-log "); ok {
+					return strings.Fields(rest)[0]
+				}
 			}
 		}
-		b, _ := os.ReadFile(log)
+		return ""
+	}
+	mux.HandleFunc("GET /screen", func(rw http.ResponseWriter, _ *http.Request) {
+		b, _ := os.ReadFile(inputLog())
 		reply(rw, map[string]string{"input": string(b)})
+	})
+	// Text copied on the Mac (testComputerControl): the helper, given
+	// --test-clipboard, sends what is written to this file beside its input
+	// log as the machine's clipboard.
+	mux.HandleFunc("POST /screen-clipboard", func(rw http.ResponseWriter, r *http.Request) {
+		log := inputLog()
+		if log == "" {
+			http.Error(rw, "no screen helper input log", 500)
+			return
+		}
+		if err := os.WriteFile(filepath.Join(filepath.Dir(log), "screen-clipboard.txt"), []byte(r.URL.Query().Get("text")), 0o600); err != nil {
+			http.Error(rw, err.Error(), 500)
+			return
+		}
+		reply(rw, map[string]string{})
 	})
 	mux.HandleFunc("GET /digits", func(rw http.ResponseWriter, _ *http.Request) {
 		mu.Lock()

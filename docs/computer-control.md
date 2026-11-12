@@ -376,6 +376,19 @@ phone, Chinese included, and sent as text. A row above the keyboard has
 esc, tab, ⌘, ⌥, ⌃, ⇧ and the arrows; a modifier latches until the next
 key.
 
+Paste, first in the row, is the system's paste key (`UIPasteControl`: it
+reads the phone's clipboard without asking, the tap being the consent).
+It gives the machine's clipboard the phone's text and pastes it there in
+one go, Command-V on a Mac; the system's Paste in the hidden field (a
+hardware keyboard's Command-V) does the same. On a Linux machine a key
+beside it says how: as an app pastes (Ctrl+V) or as a terminal does
+(Ctrl+Shift+V). The app remembers the choice, and typed text carries it
+too, for what the desktop pastes for lack of a key
+([computer-control-linux.md](computer-control-linux.md) §3.4). Text
+copied on the machine while the phone is in control comes to the phone's
+clipboard, and the page says "Copied from *name*" for two seconds. Either
+way at most 60000 bytes; more is not sent, and the page says it is too much.
+
 ### 6.3 The page
 
 - Full screen, both orientations. The picture starts fitted to the screen.
@@ -476,7 +489,8 @@ Her's settings.
   ./e2e -run TestIPhone`: in the Simulator, the row in Her's settings
   opens the page, the picture comes, a tap clicks where it lands and a
   long press is the right button, the keyboard types Chinese, esc and
-  Command-C, trackpad mode clicks where its pointer went, the page turns
+  Command-C, Paste sends the phone's clipboard and the Mac's copied text
+  comes back to it, trackpad mode clicks where its pointer went, the page turns
   with the phone, Close ends it.
 
 **Step 3: any network.** Built: STUN and TURN in the relay, credentials,

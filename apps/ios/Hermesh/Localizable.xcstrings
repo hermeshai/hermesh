@@ -9533,6 +9533,56 @@
           }
         }
       }
+    },
+    "Too much text to paste": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "文字太多，无法粘贴"
+          }
+        }
+      }
+    },
+    "Copied from %@": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "已复制 %@ 上的文字"
+          }
+        }
+      }
+    },
+    "Paste As": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "粘贴方式"
+          }
+        }
+      }
+    },
+    "App (Ctrl+V)": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "应用 (Ctrl+V)"
+          }
+        }
+      }
+    },
+    "Terminal (Ctrl+Shift+V)": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "终端 (Ctrl+Shift+V)"
+          }
+        }
+      }
     }
   },
   "version": "1.0"
