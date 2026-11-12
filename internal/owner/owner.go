@@ -942,6 +942,16 @@ func (o *Owner) stopLocalMachine() {
 // SanitizeMachineName turns s into a machine name (see machine.SanitizeName).
 func SanitizeMachineName(s string) string { return machine.SanitizeName(s) }
 
+// renameTo is the name a rename gives: refused when nothing of s is left,
+// rather than turned into "machine" as a pairing's would be.
+func renameTo(s string) (string, error) {
+	name := machine.CleanName(s)
+	if name == "" {
+		return "", connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("%q has no letter or digit; a machine name uses lowercase letters, digits and -", strings.TrimSpace(s)))
+	}
+	return name, nil
+}
+
 // kPendingNames: machine id → a name chosen at approval, to set on the
 // machine once it connects (JSON).
 const kPendingNames = "pending_names"
@@ -1579,11 +1589,14 @@ func (o *Owner) TestMachineAgent(ctx context.Context, machineID, agent string) (
 // RenameMachine gives a machine another name: a setting, sent over this
 // device's own connection (no Touch ID).
 func (o *Owner) RenameMachine(ctx context.Context, machineID, name string) error {
+	name, err := renameTo(name)
+	if err != nil {
+		return err
+	}
 	n, err := o.findMachine(ctx, machineID)
 	if err != nil {
 		return err
 	}
-	name = SanitizeMachineName(name)
 	machines, err := o.machines(ctx)
 	if err != nil {
 		return err

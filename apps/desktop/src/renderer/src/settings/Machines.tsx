@@ -148,6 +148,14 @@ function HerRow({ m }: { m: Machine }) {
   );
 }
 
+/** A machine name as hermeshd's machine.CleanName makes it: lowercase letters, digits and -, at most 63 bytes; "" when nothing is left. */
+export function cleanName(s: string): string {
+  let n = s.trim().toLowerCase();
+  if (n.endsWith(".local")) n = n.slice(0, -".local".length);
+  n = n.replace(/[^a-z0-9-]+/g, "-").replace(/^-+|-+$/g, "");
+  return n.length > 63 ? n.slice(0, 63).replace(/^-+|-+$/g, "") : n;
+}
+
 function MachineDetail({ m, ask, open }: { m: Machine; ask: (a: Ask) => void; open: (agent: string) => void }) {
   const { t } = useTranslation("settings");
   const st = useStore();
@@ -162,7 +170,18 @@ function MachineDetail({ m, ask, open }: { m: Machine; ask: (a: Ask) => void; op
     ask({
       title: t("machines.renameTitle"),
       message: t("machines.renameMessage"),
-      field: { label: t("machines.machineName"), value: m.machineName, button: t("machines.renameButton"), run: (name) => st.run(() => local.renameMachine({ machineId: m.machineId, machineName: name })) },
+      field: {
+        label: t("machines.machineName"),
+        value: m.machineName,
+        button: t("machines.renameButton"),
+        run: (name) => st.run(() => local.renameMachine({ machineId: m.machineId, machineName: name })),
+        // What hermeshd keeps of the name (machine.CleanName): said before saving, not found out after.
+        hint: (typed) => {
+          const name = cleanName(typed);
+          if (!typed.trim() || name === typed.trim()) return undefined;
+          return name ? { text: t("machines.nameSavedAs", { name }) } : { text: t("machines.nameUnusable"), error: true };
+        },
+      },
     });
   // Another trusted device's own machine is removed with the device, in
   // 账号与设备 only: removing just the machine would leave the device trusted.

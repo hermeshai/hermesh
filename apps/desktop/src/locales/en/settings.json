@@ -170,6 +170,8 @@
     "renameMessage": "Agents refer to projects as “machine/project”, so renaming updates how they address this machine. Use only lowercase letters, digits, and hyphens (-).",
     "machineName": "Machine name",
     "renameButton": "Rename",
+    "nameSavedAs": "Will be saved as “{{name}}”",
+    "nameUnusable": "This name has no letter or digit. Machine names use only lowercase letters, digits, and hyphens (-).",
     "removeMessage": "This machine will disconnect immediately and any running sessions will stop. It will need to pair again to rejoin.",
     "pausedToast": "“{{name}}” paused new sessions",
     "resumedToast": "“{{name}}” accepts new sessions again",
