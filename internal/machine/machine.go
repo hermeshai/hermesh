@@ -280,13 +280,19 @@ var nameRE = regexp.MustCompile(`[^a-z0-9-]+`)
 // SanitizeName turns s into a machine name: lowercase letters, digits and
 // '-', at most 63 bytes ("machine" if nothing is left).
 func SanitizeName(s string) string {
+	if s = CleanName(s); s == "" {
+		s = "machine"
+	}
+	return s
+}
+
+// CleanName is SanitizeName without the fallback: "" when nothing is left
+// (a name all Chinese, say), which a rename refuses.
+func CleanName(s string) string {
 	s = strings.TrimSuffix(strings.ToLower(strings.TrimSpace(s)), ".local")
 	s = strings.Trim(nameRE.ReplaceAllString(s, "-"), "-")
 	if len(s) > 63 {
 		s = strings.Trim(s[:63], "-")
-	}
-	if s == "" {
-		s = "machine"
 	}
 	return s
 }

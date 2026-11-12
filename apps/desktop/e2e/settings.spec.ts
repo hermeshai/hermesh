@@ -373,7 +373,19 @@ test("settings 机器 opens this Mac: its sharing, its agents each opening a pag
     const field = dialog.getByRole("textbox", { name: "机器名" });
     await expect(field).toHaveValue(from);
     await snap(settings, "settings-machines-rename");
+    // A name with nothing usable is said before saving, and cannot be saved;
+    // one partly usable shows what it will be saved as.
+    const button = dialog.getByRole("button", { name: "改名" });
+    await field.fill("我的电脑");
+    await expect(dialog).toContainText("名字里没有字母或数字");
+    await expect(button).toBeDisabled();
+    await field.press("Enter");
+    await expect(dialog).toBeVisible();
+    await field.fill(`办公室 ${to}`);
+    await expect(dialog).toContainText(`将保存为「${to}」`);
+    await expect(button).toBeEnabled();
     await field.fill(to);
+    await expect(dialog.locator(".sheet-note")).toHaveCount(0);
     await field.press("Enter");
     await expect(dialog).toBeHidden();
     await expect(panel.locator(".dhero")).toContainText(to);

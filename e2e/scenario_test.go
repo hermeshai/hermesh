@@ -18,6 +18,7 @@ import (
 	"testing"
 	"time"
 
+	"connectrpc.com/connect"
 	identityv1 "github.com/hermeshai/hermesh/gen/go/hermesh/identity/v1"
 	localv1 "github.com/hermeshai/hermesh/gen/go/hermesh/local/v1"
 	sessionv1 "github.com/hermeshai/hermesh/gen/go/hermesh/session/v1"
@@ -257,6 +258,13 @@ func TestUserJourney(t *testing.T) {
 		t.Fatal(err)
 	}
 	eventually(t, 30*time.Second, "the name back", func() bool { return listed(grokEnv)["vps-1/demo"] != nil })
+	// A name with nothing usable (all Chinese) is refused, not saved as "machine".
+	if _, err := app.client.RenameMachine(ctx, &localv1.RenameMachineRequest{MachineId: vps1.MachineId, MachineName: "我的电脑"}); connect.CodeOf(err) != connect.CodeInvalidArgument {
+		t.Fatalf("rename to an all-Chinese name: %v", err)
+	}
+	if listed(grokEnv)["vps-1/demo"] == nil {
+		t.Fatal("a refused rename changed the name")
+	}
 	if got := app.signedTypes()[renameFrom:]; len(got) != 0 {
 		t.Fatalf("renaming signed %v", got)
 	}

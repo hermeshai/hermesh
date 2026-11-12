@@ -11,7 +11,14 @@ import type { Store } from "../store";
 export type Ask = {
   title: string;
   message: string;
-  field?: { label: string; value: string; button: string; run: (value: string) => Promise<unknown> };
+  field?: {
+    label: string;
+    value: string;
+    button: string;
+    run: (value: string) => Promise<unknown>;
+    /** A line under the field for what was typed; an error one blocks the button. */
+    hint?: (value: string) => { text: string; error?: boolean } | undefined;
+  };
 };
 
 export function AskSheet({ ask, close }: { ask: Ask; close: () => void }) {
@@ -19,8 +26,9 @@ export function AskSheet({ ask, close }: { ask: Ask; close: () => void }) {
   const f = ask.field;
   const [value, setValue] = useState(f?.value ?? "");
   const [busy, setBusy] = useState(false);
+  const hint = f?.hint?.(value);
   const go = async () => {
-    if (!f || !value.trim() || busy) return;
+    if (!f || !value.trim() || busy || hint?.error) return;
     setBusy(true);
     await f.run(value.trim()); // failures show as a toast
     close();
@@ -42,11 +50,12 @@ export function AskSheet({ ask, close }: { ask: Ask; close: () => void }) {
             onKeyDown={(e) => e.key === "Enter" && go()}
           />
         )}
+        {hint && <p className={`sheet-note ${hint.error ? "sheet-err" : "muted"}`}>{hint.text}</p>}
         <div className="sheet-foot">
           {f ? (
             <>
               <button className="btn" onClick={close}>{t("cancel")}</button>
-              <button className="btn primary" disabled={busy || !value.trim()} onClick={go}>
+              <button className="btn primary" disabled={busy || !value.trim() || hint?.error} onClick={go}>
                 {f.button}
               </button>
             </>

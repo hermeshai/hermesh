@@ -276,9 +276,13 @@ func (l *localService) ListMachines(ctx context.Context, _ *localv1.ListMachines
 
 func (l *localService) RenameMachine(ctx context.Context, req *localv1.RenameMachineRequest) (*localv1.RenameMachineResponse, error) {
 	if m, ok, err := l.o().onlyMachine(); ok {
+		var name string
+		if err == nil {
+			name, err = renameTo(req.MachineName)
+		}
 		if err == nil {
 			err = onlyMachineSettings(ctx, m, req.MachineId, func(c *identityv1.AdminCommand) {
-				c.Command = &identityv1.AdminCommand_SetName{SetName: &identityv1.SetName{Name: SanitizeMachineName(req.MachineName)}}
+				c.Command = &identityv1.AdminCommand_SetName{SetName: &identityv1.SetName{Name: name}}
 			})
 		}
 		return &localv1.RenameMachineResponse{}, err

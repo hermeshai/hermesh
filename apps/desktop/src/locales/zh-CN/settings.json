@@ -168,6 +168,8 @@
     "renameMessage": "agent 用“机器名/项目”找到项目，改名后它们会看到新名字。只能用小写字母、数字和 -。",
     "machineName": "机器名",
     "renameButton": "改名",
+    "nameSavedAs": "将保存为「{{name}}」",
+    "nameUnusable": "名字里没有字母或数字，无法使用。机器名只能用小写字母、数字和 -，不能用中文。",
     "removeMessage": "这台机器会立即断开，正在运行的会话会停止。之后需要重新配对才能加入。",
     "pausedToast": "「{{name}}」暂停接受新会话",
     "resumedToast": "「{{name}}」恢复接受新会话",
