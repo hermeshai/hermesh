@@ -2,6 +2,7 @@ package relay
 
 import (
 	"bytes"
+	"encoding/hex"
 	"net"
 	"strconv"
 	"strings"
@@ -101,6 +102,68 @@ func TestTURNOnAnotherNode(t *testing.T) {
 	bad := stranger.servers("m_machine")
 	if _, err := allocate(t, addr, bad[1].Username, bad[1].Credential); err == nil {
 		t.Fatal("a credential signed with another secret was taken")
+	}
+}
+
+// A credential past its time keeps the session it began (the server asks
+// for it again at every permission and refresh, for as long as the session
+// lasts) and begins no other. The other TURN servers of a center are handed
+// out after this relay's, with the same credential.
+func TestTURNCredentialOutlivedByItsSession(t *testing.T) {
+	secret := bytes.Repeat([]byte{7}, 32)
+	l, _ := net.ListenPacket("udp4", "127.0.0.1:0")
+	addr := l.LocalAddr().String()
+	l.Close()
+	other := []string{"turn:other.example.com:3478?transport=udp", "turns:other.example.com:443?transport=tcp"}
+	s, err := startTURN(TURNConfig{Listen: addr, Host: "127.0.0.1", Secret: secret, Others: [][]string{other}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.close()
+	list := s.servers("m_machine")
+	if len(list) != 3 || strings.Join(list[2].Urls, " ") != strings.Join(other, " ") || list[2].Username != list[1].Username || list[2].Credential != list[1].Credential {
+		t.Fatalf("servers: %v", list)
+	}
+	if _, err := startTURN(TURNConfig{Listen: addr, Host: "127.0.0.1", Others: [][]string{other}}); err == nil {
+		t.Fatal("other servers were taken without the secret they share")
+	}
+
+	user, pass, err := turn.GenerateLongTermTURNRESTCredentials(hex.EncodeToString(secret), "m_machine", 2*time.Second)
+	if err != nil {
+		t.Fatal(err)
+	}
+	a, err := allocate(t, addr, user, pass)
+	if err != nil {
+		t.Fatal(err)
+	}
+	fresh := s.servers("m_machine")[1]
+	b, err := allocate(t, addr, fresh.Username, fresh.Credential)
+	if err != nil {
+		t.Fatal(err)
+	}
+	time.Sleep(3 * time.Second) // the first credential's time has passed
+	// A permission for a peer it had none for: the server checks the credential again.
+	if _, err := a.WriteTo([]byte("hi"), b.LocalAddr()); err != nil {
+		t.Fatalf("the session lost its relayed path when its credential ran out: %v", err)
+	}
+	b.WriteTo([]byte("hi"), a.LocalAddr())
+	got := make([]byte, 16)
+	b.SetReadDeadline(time.Now().Add(3 * time.Second))
+	for {
+		a.WriteTo([]byte("through"), b.LocalAddr())
+		n, _, err := b.ReadFrom(got)
+		if err != nil {
+			t.Fatalf("nothing came through after the credential ran out: %v", err)
+		}
+		if string(got[:n]) == "through" {
+			break
+		}
+	}
+	if _, err := allocate(t, addr, user, pass); err == nil {
+		t.Fatal("a credential past its time began a session")
+	}
+	if _, err := allocate(t, addr, "nonsense", pass); err == nil {
+		t.Fatal("a credential that is none was taken")
 	}
 }
 
