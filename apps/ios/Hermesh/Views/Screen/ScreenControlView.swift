@@ -1,6 +1,7 @@
 import HermeshKit
 import HermeshProto
 import SwiftUI
+import UniformTypeIdentifiers
 
 /// Which way the phone may be held: upright everywhere, and on its side
 /// too while Computer Control shows a wide screen.
@@ -124,7 +125,9 @@ final class ScreenSession {
                     self.canControl = s.canControl
                 case .clipboard(let c):
                     // Copied on the machine: the phone's to paste too.
-                    UIPasteboard.general.string = c.text
+                    // This transfer already crossed devices; do not send it
+                    // back through Universal Clipboard as another transfer.
+                    UIPasteboard.general.setItems([[UTType.utf8PlainText.identifier: c.text]], options: [.localOnly: true])
                     self.flash(String(localized: "Copied from \(self.machineName)"), id: "screen-clipboard-copied")
                 case nil: break
                 }
