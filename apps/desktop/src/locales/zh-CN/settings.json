@@ -188,7 +188,13 @@
     "herDesc": "Her 的助手、对话和设置都保存在这台机器上。关闭时会问你是保留到下次，还是清空。开启或关闭需要 Touch ID。",
     "herDesc_win": "Her 的助手、对话和设置都保存在这台机器上。关闭时会问你是保留到下次，还是清空。开启或关闭需要 Windows Hello。",
     "herWindows": "Her 暂不支持 Windows。",
-    "herUnsupported": "这台机器不能运行 Her：{{reason}}"
+    "herUnsupported": "这台机器不能运行 Her：{{reason}}",
+    "herKept": "Her 的数据还在这台机器上，再次开启时接着用。",
+    "herErase": "清空数据…",
+    "herEraseTitle": "清空「{{name}}」上 Her 的数据？",
+    "herEraseMessage": "删除「{{name}}」上 Her 的助手、对话、记忆、定时任务、文件、连接器和模型登录，无法恢复。",
+    "herEraseButton": "清空",
+    "herErased": "已清空「{{name}}」上 Her 的数据"
   },
   "wake": {
     "title": "新消息提醒",

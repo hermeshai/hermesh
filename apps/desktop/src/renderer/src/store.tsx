@@ -38,7 +38,11 @@ export type Sheet =
    * with code, set one up from the agent's wake link (name: the bot it is for).
    */
   | { kind: "wake"; clientId: string; agent: string; wake?: Wake; code?: string; name?: string }
-  | { kind: "confirm"; title: string; message: string; button: string; run: () => Promise<unknown>; done?: string }
+  /**
+   * With herData, removing a machine that has Her's data: the choice to erase it too, given to run, or a line
+   * that it stays while the machine is offline (docs/her-server.md §5.6).
+   */
+  | { kind: "confirm"; title: string; message: string; button: string; run: (eraseHer: boolean) => Promise<unknown>; done?: string; herData?: { name: string; offline: boolean } }
   /** Erase Everything (docs/erase-everything.md). */
   | { kind: "erase" }
   /** Turning Her off on a machine, her data kept or erased (docs/her-server.md §5.6). */

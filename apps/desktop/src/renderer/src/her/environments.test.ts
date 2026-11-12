@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import type { Machine } from "@hermesh/proto/local";
-import { environments, envState, herChoices, lacksGrant, newServer, pickEnvironment, unreadCount } from "./environments.ts";
+import { environments, envState, herChoices, herDataKept, lacksGrant, newServer, pickEnvironment, unreadCount } from "./environments.ts";
 
 type Her = NonNullable<Machine["her"]>;
 
@@ -96,4 +96,16 @@ test("Her lacks her grant while she is on, her machine keeps a key for her, and 
   // Off, turning her on signs it.
   assert.equal(lacksGrant(machine("m1", "a", { her: { enabled: false, clientPublicKey: key, mesh: false } }).her), false);
   assert.equal(lacksGrant(machine("m1", "a").her), false);
+});
+
+test("Her's data is kept as the machine says while it answers, else as last seen", () => {
+  const her = (data: boolean) => ({ enabled: false, data }) as Her;
+  // Offline: what this device kept.
+  assert.equal(herDataKept(machine("m1", "a", { online: false, her: { data: true } })), true);
+  // Answering: its status, over what was kept.
+  assert.equal(herDataKept({ ...machine("m1", "a", { her: { data: true } }), status: { her: her(false) } } as Machine), false);
+  assert.equal(herDataKept({ ...machine("m1", "a"), status: { her: her(true) } } as Machine), true);
+  // Never on, or software older than HerStatus.data.
+  assert.equal(herDataKept(machine("m1", "a")), false);
+  assert.equal(herDataKept(machine("m1", "a", { her: { enabled: false } })), false);
 });

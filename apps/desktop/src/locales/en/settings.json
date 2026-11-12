@@ -190,7 +190,13 @@
     "herDesc": "Her’s assistants, conversations and settings live on this machine. Turning Her off asks whether to keep them for next time or erase them. Turning it on or off requires Touch ID.",
     "herDesc_win": "Her’s assistants, conversations and settings live on this machine. Turning Her off asks whether to keep them for next time or erase them. Turning it on or off requires Windows Hello.",
     "herWindows": "Her can’t run on Windows yet.",
-    "herUnsupported": "Her can’t run here: {{reason}}"
+    "herUnsupported": "Her can’t run here: {{reason}}",
+    "herKept": "Her’s data is still on this machine; turned on again, she carries on.",
+    "herErase": "Erase Data…",
+    "herEraseTitle": "Erase Her’s data on “{{name}}”?",
+    "herEraseMessage": "Her’s assistants, conversations, memory, routines, files, connectors and model logins on “{{name}}” are deleted. This can’t be undone.",
+    "herEraseButton": "Erase",
+    "herErased": "Her’s data on “{{name}}” is erased"
   },
   "wake": {
     "title": "Wake on New Messages",

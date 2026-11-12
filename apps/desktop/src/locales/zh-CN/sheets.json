@@ -248,6 +248,7 @@
     "approve": "用 Touch ID 确认。",
     "approve_win": "用 Windows Hello 确认。",
     "done": "已在「{{name}}」上关闭 Her",
-    "erased": "已在「{{name}}」上关闭 Her，并清空了她的数据"
+    "erased": "已在「{{name}}」上关闭 Her，并清空了她的数据",
+    "offline": "「{{name}}」离线，Her 的数据会留在上面。"
   }
 }
