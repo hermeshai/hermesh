@@ -24,12 +24,15 @@ type assembler struct {
 	key     bool                   // … which is a keyframe
 	stuck   time.Time              // since when a packet has been missing; zero when none is
 	open    time.Time              // when the frame under way last grew; zero between frames
+	wait    time.Duration          // how long a missing packet is waited for (patience)
 }
 
 const (
 	// stallAfter: how long frames wait for a missing packet before the
-	// assembler asks for a keyframe.
+	// assembler asks for a keyframe, on a path with no round trip to speak
+	// of; stallMost: on any path.
 	stallAfter = 250 * time.Millisecond
+	stallMost  = 2 * time.Second
 	// heldMax: more packets than a lost one could reasonably hold up.
 	heldMax = 2048
 )
@@ -39,7 +42,26 @@ type frame struct {
 	data []byte
 }
 
-func newAssembler() *assembler { return &assembler{held: map[uint16]*rtp.Packet{}} }
+func newAssembler() *assembler { return &assembler{held: map[uint16]*rtp.Packet{}, wait: stallAfter} }
+
+// patience is how long frames wait for a missing packet on a path whose
+// round trip is rtt. The packet is asked for again and takes a round trip
+// to come; given up on sooner, every lost packet costs a keyframe, which
+// takes as long to come and is many packets, each of which can be lost in
+// turn: through a relay 450 ms away the picture never recovered. Twice the
+// round trip leaves room for the asking to be lost once.
+func patience(rtt time.Duration) time.Duration {
+	return min(max(2*rtt+100*time.Millisecond, stallAfter), stallMost)
+}
+
+// roundTrip tells the assembler the path's round trip as it is now, and
+// returns how long it waits for a missing packet.
+func (a *assembler) roundTrip(rtt time.Duration) time.Duration {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	a.wait = patience(rtt)
+	return a.wait
+}
 
 // beginsKeyframe: whether an RTP payload starts a keyframe, which the
 // sender always begins with the parameter sets (alone, or several units in
@@ -121,7 +143,7 @@ func (a *assembler) reset() {
 func (a *assembler) wantKey(now time.Time) bool {
 	a.mu.Lock()
 	defer a.mu.Unlock()
-	late := func(t time.Time) bool { return !t.IsZero() && now.Sub(t) > stallAfter }
+	late := func(t time.Time) bool { return !t.IsZero() && now.Sub(t) > a.wait }
 	if a.started && (late(a.stuck) || late(a.open)) {
 		a.started = false
 	}

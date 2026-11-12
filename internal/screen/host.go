@@ -194,6 +194,7 @@ func (h *Host) Connect(ctx context.Context, req *screenv1.ConnectRequest) (*scre
 				conf := s.pc.GetConfiguration()
 				conf.ICEServers = iceServers(list)
 				s.pc.SetConfiguration(conf)
+				go s.probe(list)
 			}
 		}
 		answer, err := s.answer(offer, req.CandidatesLater)
@@ -281,7 +282,9 @@ func (h *Host) open(ctx context.Context, req *screenv1.ConnectRequest) (*hostSes
 	}
 	var cfg webrtc.Configuration
 	if h.cfg.Servers != nil {
-		cfg.ICEServers = iceServers(h.cfg.Servers(ctx))
+		list := h.cfg.Servers(ctx)
+		cfg.ICEServers = iceServers(list)
+		go s.probe(list)
 	}
 	if s.pc, err = api.NewPeerConnection(cfg); err != nil {
 		return nil, err
@@ -396,6 +399,14 @@ func (s *hostSession) answer(offer webrtc.SessionDescription, later bool) (strin
 	return sdp, nil
 }
 
+// probe writes how this machine's network maps its packets to the log
+// (probeNAT), beside what the viewer says of its own (candidates).
+func (s *hostSession) probe(servers []*relayv1.IceServer) {
+	if mapped := probeNAT(context.Background(), servers); mapped != "" {
+		s.h.cfg.Log.Info("screen: network", "session", s.id, "end", "machine", "found", mapped)
+	}
+}
+
 // candidates adds the viewer's candidates for the offer answered last, and
 // returns this machine's once its gathering has ended.
 func (s *hostSession) candidates(req *screenv1.CandidatesRequest) (*screenv1.CandidatesResponse, error) {
@@ -412,6 +423,9 @@ func (s *hostSession) candidates(req *screenv1.CandidatesRequest) (*screenv1.Can
 		}
 	}
 	s.amu.Unlock()
+	if req.Network != "" {
+		s.h.cfg.Log.Info("screen: network", "session", s.id, "end", "viewer", "found", req.Network)
+	}
 	g.wait(false)
 	// A viewer that calls again has these already: wait a moment for more.
 	if req.Have > 0 {

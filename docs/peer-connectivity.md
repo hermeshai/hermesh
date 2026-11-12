@@ -210,6 +210,7 @@ What was wrong, in the order it mattered:
 | A candidate answer could be applied after a restart had begun | The check and the applying were not one step | They are, under the lock an offer takes |
 | A TURN address that came after 2 s was never told to the other end | The exchange was one call | §2.1 |
 | A relayed session lost its path 20 to 60 minutes in | The TURN server checks the credential again at every refresh, and it lasts an hour from when it was handed out, which can be 40 minutes before the session | The relay lets a credential keep the session it began (`turnAuth`); a restart takes fresh ones (§2.2) |
+| Through the far relay the picture froze, or never came | The viewer gave up on a lost packet after 250 ms and asked for a keyframe; sent again, the packet takes a round trip, 450 ms there, so every loss cost a keyframe, itself many packets that can be lost | It waits twice the path's round trip and a little, 2 s at most, and asks for a keyframe no more often than that (`patience`) |
 | The app's Go core could be an older build than its Swift | The Xcode script that builds it declared no output | It is a target of its own that the app depends on |
 
 On the hotspot, with both proxy apps on, the first path is then one
@@ -219,6 +220,35 @@ neighbour table has no entry for the phone and a stand-in for its
 hardware address: that network keeps its devices apart, and nothing on
 the devices makes a direct path there. It needs the relay, and so a relay
 that is near (§5.1).
+
+### 2.5 Finding out why a path is not direct
+
+- **How a network maps a socket** (`probeNAT`). A NAT that shows a socket
+  at one public port to every destination lets the checks find a direct
+  path by themselves. One that gives it another port for each destination
+  does not, unless the other end's NAT lets in what it was not told of, or
+  the port can be foretold. Each end asks, at every offer, with nothing
+  but the relay's TURN server: one destination is its STUN port, the other
+  a relayed address allocated for the probe, where the end itself reads
+  from which port its packet came. It asks through the system's route
+  (which a proxy app may own, and which pion's STUN and TURN sockets
+  take) and from each of its addresses, bound to its interface as the
+  local candidates are; two sockets each, one after the other, so that the
+  step from one socket's port to the next shows too. The machine logs its
+  own and the viewer's (`CandidatesRequest.network`):
+
+  ```text
+  screen: network session=… end=viewer found="answered in 812ms, try 1; system 203.0.113.7:40001>40001 40002>40002; 10.20.3.4 203.0.113.7:51350>39438 14924>24571"
+  ```
+
+  Here the system's route keeps a port (`40001>40001`), and the phone's own
+  address does not (`51350>39438`), with ports far apart.
+- **How long the offer took to be answered**, and at which try, is in the
+  same line: an answer that takes seconds is the tunnel, not the path.
+
+What follows from a line is not built. Whether the checks alone can
+connect two networks, or the ports a carrier is about to hand out have to
+be tried, is decided from what the lines of real sessions say (T15).
 
 ## 3. What pion does and does not do
 
@@ -267,9 +297,14 @@ Read from the source of the versions in use; the tests of §6 hold them.
   phone's battery and its cellular interface are not measured yet. If it
   is too much, the options are fewer candidates (no cellular while on
   Wi-Fi) or an interval that grows, in the patch.
-- **Behind a proxy app, no direct path across the internet.** The STUN
-  server sees the proxy's exit, not the device's router, so the address it
-  reports opens nothing. Two such ends on different networks are relayed.
+- **No direct path yet between a home network and a phone on cellular.**
+  Measured with both ends behind a proxy app: each end's public address
+  was the right one (the proxy sent the STUN question straight out), the
+  checks between them got nowhere, and the session was relayed, on a
+  network pair where another remote desktop app connects directly over
+  UDP. The home side has no public IPv6 address, so there is no path
+  without a NAT. What the phone's carrier does with a socket's port from
+  one destination to the next is not known from the logs; §2.5 measures it.
 - **A relayed start can stay relayed** when the direct pair is between
   public addresses and the relay is near enough that its round trip is
   within 10 ms. That is slower by nothing worth a move, and it uses the
@@ -382,6 +417,8 @@ Automated, on one Mac (`go test ./internal/screen ./pkg/relay ./e2e -run 'Screen
 | `TestServersDoubted`, `TestGatheringDoubtsServersThatGiveNoRelay` | Servers that gave a session no relayed address are asked for and measured again, and another is kept |
 | `TestOnNetworks` | Nearby is told by the other end's address on one of this device's networks |
 | `TestTURNCredentialOutlivedByItsSession` | A credential past its time keeps its session and begins none; other TURN servers are handed out with the relay's credential |
+| `TestAssemblerWaitsARoundTripForAMissingPacket` | A lost packet is waited for as long as its second sending takes on the path in use |
+| `TestProbeNAT` | The probe says at which port two destinations see each of two sockets |
 | `TestSession` | A whole session with candidates later, a restart included |
 | `TestScreen`, `TestScreenThroughTURN` | Direct, and relayed only |
 | `TestScreenUnreachableTURN` | Servers out of reach: the first frame within 3 s (0.6 s measured) |

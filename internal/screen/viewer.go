@@ -3,11 +3,13 @@ package screen
 import (
 	"context"
 	"errors"
+	"fmt"
 	"net"
 	"os"
 	"slices"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"connectrpc.com/connect"
@@ -95,6 +97,11 @@ type Viewer struct {
 	full bool
 	// theirs are the machine's candidates that came after its answer.
 	theirs []string
+	// servers are the relay's servers the connection has now.
+	servers []*relayv1.IceServer
+	// rtt is the round trip of the path in use, in nanoseconds, as last
+	// read: how long the picture waits for a lost packet goes by it.
+	rtt atomic.Int64
 }
 
 // Dial opens a session: it returns once the machine has answered, and the
@@ -112,7 +119,7 @@ func Dial(ctx context.Context, cfg ViewerConfig) (*Viewer, error) {
 	if err != nil {
 		return nil, err
 	}
-	v := &Viewer{cfg: cfg, pc: pc, done: make(chan struct{})}
+	v := &Viewer{cfg: cfg, pc: pc, done: make(chan struct{}), servers: cfg.Servers}
 	fail := func(err error) (*Viewer, error) {
 		pc.Close()
 		return nil, err
@@ -182,6 +189,9 @@ func (v *Viewer) offer(ctx context.Context, restart bool) error {
 			conf := v.pc.GetConfiguration()
 			conf.ICEServers = iceServers(list)
 			v.pc.SetConfiguration(conf) // takes effect at the gathering this offer starts
+			v.mu.Lock()
+			v.servers = list
+			v.mu.Unlock()
 		}
 	}
 	o, err := v.pc.CreateOffer(&webrtc.OfferOptions{ICERestart: restart})
@@ -199,7 +209,8 @@ func (v *Viewer) offer(ctx context.Context, restart bool) error {
 	v.mu.Unlock()
 	g.wait(later)
 	sdp := v.pc.LocalDescription().SDP
-	res, err := v.connect(ctx, &screenv1.ConnectRequest{Offer: sdp, SessionId: v.session, Viewer: v.cfg.Name, Pointer: v.cfg.Pointer, CandidatesLater: later})
+	asked := time.Now()
+	res, tries, err := v.connect(ctx, &screenv1.ConnectRequest{Offer: sdp, SessionId: v.session, Viewer: v.cfg.Name, Pointer: v.cfg.Pointer, CandidatesLater: later})
 	if err != nil {
 		return err
 	}
@@ -210,6 +221,7 @@ func (v *Viewer) offer(ctx context.Context, restart bool) error {
 	switch {
 	case later && res.CandidatesLater:
 		go v.exchange(g, n, res.SessionId, iceUfrag(sdp))
+		go v.report(g, n, res.SessionId, iceUfrag(sdp), fmt.Sprintf("answered in %v, try %d", time.Since(asked).Round(time.Millisecond), tries))
 	case later:
 		// The machine takes none after all (an older one, its state not yet
 		// read again): it knows this device's local addresses alone, which
@@ -239,13 +251,13 @@ func (v *Viewer) offer(ctx context.Context, restart bool) error {
 // An initial answer that arrives after the host's ICE deadline is useless.
 // Retry transient signaling failures with a fresh host session; established
 // sessions keep their ID and the owner's existing restart policy.
-func (v *Viewer) connect(ctx context.Context, req *screenv1.ConnectRequest) (*screenv1.ConnectResponse, error) {
+func (v *Viewer) connect(ctx context.Context, req *screenv1.ConnectRequest) (res *screenv1.ConnectResponse, tries int, err error) {
 	if req.SessionId != "" {
-		return v.cfg.Connect(ctx, req)
+		res, err = v.cfg.Connect(ctx, req)
+		return res, 1, err
 	}
-	var res *screenv1.ConnectResponse
-	var err error
-	for i := 0; i < 3; i++ {
+	for tries < 3 {
+		tries++
 		attempt, cancel := context.WithTimeout(ctx, 6*time.Second)
 		res, err = v.cfg.Connect(attempt, req)
 		cancel()
@@ -253,7 +265,30 @@ func (v *Viewer) connect(ctx context.Context, req *screenv1.ConnectRequest) (*sc
 			break
 		}
 	}
-	return res, err
+	return res, tries, err
+}
+
+// report tells the machine, for its log, how the offer numbered n went on
+// this side: how long its answer took, and how this device's network maps
+// its packets (probeNAT). The owner reads a session's story in one place.
+func (v *Viewer) report(g *gathering, n int, session, ufrag, answered string) {
+	ctx, cancel := v.within(15 * time.Second)
+	defer cancel()
+	v.mu.Lock()
+	servers := v.servers
+	v.mu.Unlock()
+	text := answered
+	if mapped := probeNAT(ctx, servers); mapped != "" {
+		text += "; " + mapped
+	}
+	if !v.current(n) {
+		return
+	}
+	mine, all := g.found()
+	res, err := v.cfg.Candidates(ctx, &screenv1.CandidatesRequest{SessionId: session, Ufrag: ufrag, Candidates: mine, Complete: all, Network: text})
+	if err == nil {
+		v.addCandidates(n, res.Candidates)
+	}
 }
 
 // exchange gives the machine the candidates found for the offer numbered n
@@ -363,7 +398,10 @@ func (v *Viewer) receive(t *webrtc.TrackRemote) {
 			case <-v.done:
 				return
 			case now := <-tick.C:
-				if a.wantKey(now) && now.Sub(asked) >= 400*time.Millisecond {
+				// A keyframe asked for takes a round trip to come: not asked
+				// for again before it could have.
+				wait := a.roundTrip(time.Duration(v.rtt.Load()))
+				if a.wantKey(now) && now.Sub(asked) >= max(400*time.Millisecond, wait) {
 					asked = now
 					v.pc.WriteRTCP([]rtcp.Packet{&rtcp.PictureLossIndication{MediaSSRC: uint32(t.SSRC())}})
 				}
@@ -413,6 +451,7 @@ func (v *Viewer) path(st *Status) {
 	st.Local, st.Remote = pathEnd(pair.Local), pathEnd(pair.Remote)
 	if stats, ok := ice.GetSelectedCandidatePairStats(); ok {
 		st.RTT = int(stats.CurrentRoundTripTime * 1000)
+		v.rtt.Store(int64(stats.CurrentRoundTripTime * float64(time.Second)))
 	}
 	if st.Path == "relay" {
 		v.mu.Lock()
