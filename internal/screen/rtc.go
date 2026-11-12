@@ -106,9 +106,14 @@ func newAPI(estimate func(cc.BandwidthEstimator), network transport.Net) (*webrt
 		return nil, err
 	}
 	s.SetICEMaxBindingRequests(100)
-	if network != nil {
-		s.SetNet(network)
+	if network == nil {
+		var err error
+		network, err = newSystemNet()
+		if err != nil {
+			return nil, err
+		}
 	}
+	s.SetNet(network)
 	return webrtc.NewAPI(webrtc.WithMediaEngine(m), webrtc.WithInterceptorRegistry(i), webrtc.WithSettingEngine(s)), nil
 }
 
@@ -129,6 +134,11 @@ var (
 	settle       = 30 * time.Millisecond
 )
 
+// exchangeWithin: how long after an offer the two ends go on telling each
+// other of candidates they find. pion gives up on a STUN server after 3 s
+// and on a TURN allocation after 7.8 s.
+const exchangeWithin = 15 * time.Second
+
 // gathering follows the candidates a connection finds for one offer or
 // answer.
 type gathering struct {
@@ -138,6 +148,7 @@ type gathering struct {
 	list   []string      // each as a "candidate:" line
 	last   time.Time     // when the latest came
 	enough bool          // all are in, or a TURN address is
+	all    bool          // all are in
 	more   chan struct{} // closed, and made anew, as each comes
 }
 
@@ -148,7 +159,7 @@ func gather(pc *webrtc.PeerConnection, d webrtc.SessionDescription) (*gathering,
 		g.mu.Lock()
 		defer g.mu.Unlock()
 		if c == nil {
-			g.enough = true
+			g.enough, g.all = true, true
 		} else {
 			g.list, g.last = append(g.list, c.ToJSON().Candidate), time.Now()
 			// A TURN address is the last kind to come; the second TURN
@@ -199,9 +210,50 @@ func (g *gathering) wait(early bool) {
 
 // candidates are those found so far.
 func (g *gathering) candidates() []string {
+	list, _ := g.found()
+	return list
+}
+
+// found are the candidates found so far, and whether they are all of them.
+func (g *gathering) found() ([]string, bool) {
 	g.mu.Lock()
 	defer g.mu.Unlock()
-	return slices.Clone(g.list)
+	return slices.Clone(g.list), g.all
+}
+
+// grown waits until there are more candidates than n or all are in, for d
+// at most.
+func (g *gathering) grown(n int, d time.Duration) {
+	limit := time.NewTimer(d)
+	defer limit.Stop()
+	for {
+		g.mu.Lock()
+		done, more := g.all || len(g.list) > n, g.more
+		g.mu.Unlock()
+		if done {
+			return
+		}
+		select {
+		case <-more:
+		case <-limit.C:
+			return
+		}
+	}
+}
+
+// addsTo says whether an older peer needs a second offer at all. Restarting
+// with exactly the same candidates interrupts a path still connecting.
+func (g *gathering) addsTo(sdp string) bool {
+	known := map[string]bool{}
+	for _, line := range strings.Split(sdp, "\n") {
+		known[strings.TrimSpace(line)] = true
+	}
+	for _, c := range g.candidates() {
+		if !known["a="+c] {
+			return true
+		}
+	}
+	return false
 }
 
 // iceUfrag is the ICE username fragment of a description: what tells one
@@ -231,6 +283,26 @@ func kinds(lines []string) string {
 			out = append(out, fmt.Sprintf("%s %d", k, n[k]))
 		}
 	}
+	return strings.Join(out, ", ")
+}
+
+// candidateAddresses is local diagnostics, never SDP credentials. A host
+// address can be a VPN or a USB debug tunnel rather than the Wi-Fi network.
+func candidateAddresses(lines []string) string {
+	seen := map[string]bool{}
+	var out []string
+	for _, line := range lines {
+		f := strings.Fields(strings.TrimSpace(line))
+		if len(f) < 8 || !strings.HasPrefix(strings.TrimPrefix(f[0], "a="), "candidate:") || f[6] != "typ" {
+			continue
+		}
+		address := fmt.Sprintf("%s %s/%s", f[7], net.JoinHostPort(f[4], f[5]), strings.ToLower(f[2]))
+		if !seen[address] {
+			seen[address] = true
+			out = append(out, address)
+		}
+	}
+	slices.Sort(out)
 	return strings.Join(out, ", ")
 }
 

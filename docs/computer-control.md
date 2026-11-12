@@ -478,13 +478,18 @@ way at most 60000 bytes; more is not sent, and the page says it is too much.
   `-p 3478:3478/udp -p 3478:3478/tcp -p 49160-49200:49160-49200/udp
   -e HERMESH_RELAY_TURN_LISTEN=:3478 -e HERMESH_RELAY_TURN_PORTS=49160-49200`.
 - TURN credentials come from the relay's control services
-  (`GetScreenServers`), last an hour, and go to admitted devices and
-  machines only.
+  (`GetScreenServers`) and go to admitted devices and machines only. One
+  begins sessions for an hour, and keeps a session it began for as long as
+  that lasts.
 - A relay on the internet forwards to public addresses only, and to its
   own, where the two ends' packets meet: never into the network it runs in.
 - The relay counts the bytes that pass the port
   (`hermesh_relay_turn_bytes_total`). It stores nothing about a session.
 - Without the port the feature still works wherever a direct path exists.
+- A center with TURN servers in several places names the others
+  (`TURNConfig.Others`); they share its secret, and each device and machine
+  uses the one nearest to it ([peer-connectivity.md](peer-connectivity.md)
+  §5.1).
 - A relay on several nodes behind one public address (the hosted
   center) runs the server on one node: the others hand out credentials for
   it (`TURNConfig` with no `Listen`), signed with a secret the nodes share.

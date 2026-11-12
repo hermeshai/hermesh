@@ -2,6 +2,8 @@ package screen
 
 import (
 	"context"
+	"net"
+	"strings"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -78,5 +80,67 @@ func TestServers(t *testing.T) {
 	e.Get(ctx, connA, none)
 	if e.Get(ctx, connA, fetch); asked.Load() != 6 {
 		t.Fatalf("asked %d times, want 6", asked.Load())
+	}
+}
+
+// stunAnswering is a UDP socket that answers STUN requests after delay,
+// as a TURN server does; with a negative delay it answers nothing.
+func stunAnswering(t *testing.T, delay time.Duration) string {
+	t.Helper()
+	c, err := net.ListenPacket("udp4", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { c.Close() })
+	go func() {
+		b := make([]byte, 1500)
+		for {
+			n, from, err := c.ReadFrom(b)
+			if err != nil {
+				return
+			}
+			if delay < 0 || n < 20 {
+				continue
+			}
+			res := append([]byte(nil), b[:n]...)
+			res[0], res[1] = 0x01, 0x01 // a Binding success, with the request's transaction
+			go func() {
+				time.Sleep(delay)
+				c.WriteTo(res, from)
+			}()
+		}
+	}()
+	return c.LocalAddr().String()
+}
+
+// Of a center's several TURN servers, each end keeps the one that answers
+// it soonest, and the STUN server. One that takes TCP alone is not
+// measured; when none answers, all are kept.
+func TestNearestTURNServer(t *testing.T) {
+	far, near, silent := stunAnswering(t, 150*time.Millisecond), stunAnswering(t, 0), stunAnswering(t, -1)
+	node := func(addr string) *relayv1.IceServer {
+		return &relayv1.IceServer{Urls: []string{"turn:" + addr + "?transport=udp", "turn:" + addr + "?transport=tcp"}, Username: "u", Credential: "p"}
+	}
+	stunServer := &relayv1.IceServer{Urls: []string{"stun:" + far}}
+	tls := &relayv1.IceServer{Urls: []string{"turns:" + near + "?transport=tcp"}, Username: "u", Credential: "p"}
+	urls := func(list []*relayv1.IceServer) string {
+		var out []string
+		for _, s := range list {
+			out = append(out, s.Urls[0])
+		}
+		return strings.Join(out, " ")
+	}
+	for _, c := range []struct {
+		name     string
+		in, want []*relayv1.IceServer
+	}{
+		{"the near one of two", []*relayv1.IceServer{stunServer, node(far), node(near)}, []*relayv1.IceServer{stunServer, node(near)}},
+		{"the one that answers", []*relayv1.IceServer{stunServer, node(silent), node(far), tls}, []*relayv1.IceServer{stunServer, node(far)}},
+		{"one server", []*relayv1.IceServer{stunServer, node(far)}, []*relayv1.IceServer{stunServer, node(far)}},
+		{"none answers", []*relayv1.IceServer{stunServer, node(silent), tls}, []*relayv1.IceServer{stunServer, node(silent), tls}},
+	} {
+		if got := nearest(c.in); urls(got) != urls(c.want) {
+			t.Errorf("%s: %s, want %s", c.name, urls(got), urls(c.want))
+		}
 	}
 }

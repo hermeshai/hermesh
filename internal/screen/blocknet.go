@@ -8,7 +8,6 @@ import (
 	"time"
 
 	"github.com/pion/transport/v5"
-	"github.com/pion/transport/v5/stdnet"
 
 	relayv1 "github.com/hermeshai/hermesh/gen/go/hermesh/relay/v1"
 )
@@ -22,7 +21,7 @@ func blockedNet(servers []*relayv1.IceServer) transport.Net {
 	if err != nil || secs <= 0 {
 		return nil
 	}
-	std, err := stdnet.NewNet()
+	std, err := newSystemNet()
 	if err != nil {
 		return nil
 	}
@@ -37,16 +36,16 @@ func blockedNet(servers []*relayv1.IceServer) transport.Net {
 		}
 	}
 	until := time.Now().Add(time.Duration(secs) * time.Second)
-	return &blockNet{Net: std, open: func(to net.Addr) bool { return time.Now().After(until) || relay[to.String()] }}
+	return &blockNet{systemNet: std, open: func(to net.Addr) bool { return time.Now().After(until) || relay[to.String()] }}
 }
 
 type blockNet struct {
-	*stdnet.Net
+	*systemNet
 	open func(net.Addr) bool
 }
 
 func (n *blockNet) ListenUDP(network string, addr *net.UDPAddr) (transport.UDPConn, error) {
-	c, err := n.Net.ListenUDP(network, addr)
+	c, err := n.systemNet.ListenUDP(network, addr)
 	if err != nil {
 		return nil, err
 	}

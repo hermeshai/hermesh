@@ -4,7 +4,10 @@ For whoever runs them (a person, or an agent with a person at the phone).
 [peer-connectivity.md](peer-connectivity.md) says what was built and why;
 its §6 lists what the automated tests on one Mac already hold. This plan is
 the rest: two real devices, real networks, and the phone's battery, which
-one Mac cannot show.
+one Mac cannot show. T12 to T14 were added after the first sessions on
+real devices (design §2.4): T12 for the candidate exchange that now
+repeats, T13 a question to answer before ICE over TCP is built, T14 for
+the relayed path once it has servers.
 
 The outcome is a report (§4): each test passed, failed or not run, with its
 numbers. It decides three things: whether stage 1 ships as it is, how much
@@ -43,7 +46,9 @@ screen: the relay's STUN and TURN servers err=…
   candidates later (the second is the full set); `relay 0` or no `relay`
   means the relay's TURN server was not reached from that end.
 - `path`: each path taken, the machine's end first. `host`–`host` is a
-  path on one network; `srflx` or `prflx` is direct through a NAT; `relay`
+  path between advertised interface addresses, possibly a VPN or debugging
+  tunnel rather than physical Wi-Fi; `srflx` or `prflx` can describe a
+  direct NAT path; `relay`
   on either end is relayed. `after` counts from the session opening on the
   machine: the first `path` line is how long the handshake took.
 - `looks for a path again`: an ICE restart (a network change, or a path
@@ -255,10 +260,71 @@ relayed with the note: write down what had to be opened.
    phone awake.
 2. ✋ Then Wi-Fi on and off again, as T4 a and b.
 
-**Pass**: the session lasts the 70 minutes. For 2, write down what
-happens: the TURN credentials of the session have expired by then, and a
-restart that needs the relay may find none (a known gap, stage 2). A
-session that ends here is the expected finding, not a surprise.
+**Pass**, against a relay built from this commit or later: the session
+lasts the 70 minutes, and in 2 it finds a path again as in T4 (the
+machine's `candidates` line after the restart has `relay` on both sides).
+Against an older relay the session is expected to lose its path 20 to 60
+minutes in: that relay refuses a credential past its hour at every
+refresh. Write down which relay it was, and when the picture stopped.
+
+### T12. Candidates that come late
+
+`TestLateTURNAddressIsExchanged` holds this on one Mac. On real devices,
+with the relay's TURN server far away (its allocation over TCP then takes
+about two seconds):
+
+1. On a network that blocks UDP to the TURN server and passes TCP (block
+   UDP port 3478 to its host on the router), with the two ends on different
+   networks, open Remote Desktop five times.
+
+**Pass**: five of five connect, relayed. The machine's log has more than
+one `candidates` line for the session, the last with `relay` on both
+sides; the first `path` line comes within 3 s of the last `candidates`
+line. No `looks for a path again` line: nothing was restarted to get there.
+
+### T13. Before ICE over TCP is built: can a TCP connection be made?
+
+ICE over TCP is set aside (design §5.3): it helps only where the two ends
+cannot exchange UDP and can make a TCP connection to each other. This
+test finds out whether such a network is among those the owners use. It
+builds nothing.
+
+1. On each network of T1 and T5 where the session was relayed though both
+   devices were on it (the note showed), on the Mac:
+
+   ```bash
+   python3 -m http.server 8765 --bind <the Mac's address on that network>
+   ```
+
+2. ✋ On the iPhone, open `http://<that address>:8765` in Safari. Then stop
+   the server.
+
+**Pass**: nothing to pass. Write down, per network: whether the page
+loaded, and the address the server's log shows the request came from. Loaded,
+from the phone's address on that network: a TCP connection passes where
+UDP did not, and ICE over TCP would connect there. Not loaded: the network
+keeps the two apart, or the phone's proxy app took the request (its
+address in the log, if any, is not the phone's): say which the log shows.
+
+### T14. Reachable, low-latency relay fallback
+
+Requires the TURN servers of design §5.1. In an isolated test network,
+block direct paths and UDP to TURN, then TCP 3478, leaving TURN over TLS
+on 443 reachable. Check that the certificate is verified (a server with an
+invalid one must be refused), ten sessions with picture and input, one
+server stopped during a session and at the start of one, and which server
+each end kept (the `relay` addresses in the machine's `local_addresses`
+and `remote_addresses`). Run T11 again: a credential running out must no longer end
+the session, nor a restart after 70 minutes.
+
+✋ On the actual Wi-Fi and cellular networks, compare available regions at
+the same bitrate and resolution. Record allocation time, selected path
+RTT (median/p95), first frame, freezes and signal/answer latency separately.
+Choose and record the region-specific latency target before deployment;
+neither a region name nor an echo test proves desktop performance. Compare
+with another remote desktop app on the same networks as a baseline for how
+it feels, without assuming how that app connects. TLS on 443 does not pass
+a network that requires an authenticated HTTP proxy.
 
 ## 4. The report
 

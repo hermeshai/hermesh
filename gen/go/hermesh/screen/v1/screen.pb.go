@@ -365,8 +365,13 @@ type CandidatesRequest struct {
 	// The ICE username fragment of the offer these belong to. The machine
 	// refuses them (FailedPrecondition) once a later offer has come.
 	Ufrag string `protobuf:"bytes,2,opt,name=ufrag,proto3" json:"ufrag,omitempty"`
-	// All of the viewer's candidates, each as a "candidate:" line.
-	Candidates    []string `protobuf:"bytes,3,rep,name=candidates,proto3" json:"candidates,omitempty"`
+	// All of the viewer's candidates so far, each as a "candidate:" line.
+	Candidates []string `protobuf:"bytes,3,rep,name=candidates,proto3" json:"candidates,omitempty"`
+	// The viewer has found all of its candidates.
+	Complete bool `protobuf:"varint,4,opt,name=complete,proto3" json:"complete,omitempty"`
+	// How many of the machine's candidates the viewer has from the call
+	// before. A machine that has no more yet waits up to a second for one.
+	Have          uint32 `protobuf:"varint,5,opt,name=have,proto3" json:"have,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -422,10 +427,30 @@ func (x *CandidatesRequest) GetCandidates() []string {
 	return nil
 }
 
+func (x *CandidatesRequest) GetComplete() bool {
+	if x != nil {
+		return x.Complete
+	}
+	return false
+}
+
+func (x *CandidatesRequest) GetHave() uint32 {
+	if x != nil {
+		return x.Have
+	}
+	return 0
+}
+
 type CandidatesResponse struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
-	// All of the machine's candidates, each as a "candidate:" line.
-	Candidates    []string `protobuf:"bytes,1,rep,name=candidates,proto3" json:"candidates,omitempty"`
+	// All of the machine's candidates so far, each as a "candidate:" line.
+	Candidates []string `protobuf:"bytes,1,rep,name=candidates,proto3" json:"candidates,omitempty"`
+	// The machine has found all of its candidates.
+	Complete bool `protobuf:"varint,2,opt,name=complete,proto3" json:"complete,omitempty"`
+	// The machine takes this call again as either end finds more. Unset by
+	// a machine that answers once: the viewer then calls again only to give
+	// candidates of its own.
+	Again         bool `protobuf:"varint,3,opt,name=again,proto3" json:"again,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -465,6 +490,20 @@ func (x *CandidatesResponse) GetCandidates() []string {
 		return x.Candidates
 	}
 	return nil
+}
+
+func (x *CandidatesResponse) GetComplete() bool {
+	if x != nil {
+		return x.Complete
+	}
+	return false
+}
+
+func (x *CandidatesResponse) GetAgain() bool {
+	if x != nil {
+		return x.Again
+	}
+	return false
 }
 
 // What the viewer does, sent on a data channel. Positions are fractions of
@@ -1308,18 +1347,22 @@ const file_hermesh_screen_v1_screen_proto_rawDesc = "" +
 	"\x06answer\x18\x01 \x01(\tR\x06answer\x12\x1d\n" +
 	"\n" +
 	"session_id\x18\x02 \x01(\tR\tsessionId\x12)\n" +
-	"\x10candidates_later\x18\x03 \x01(\bR\x0fcandidatesLater\"h\n" +
+	"\x10candidates_later\x18\x03 \x01(\bR\x0fcandidatesLater\"\x98\x01\n" +
 	"\x11CandidatesRequest\x12\x1d\n" +
 	"\n" +
 	"session_id\x18\x01 \x01(\tR\tsessionId\x12\x14\n" +
 	"\x05ufrag\x18\x02 \x01(\tR\x05ufrag\x12\x1e\n" +
 	"\n" +
 	"candidates\x18\x03 \x03(\tR\n" +
-	"candidates\"4\n" +
+	"candidates\x12\x1a\n" +
+	"\bcomplete\x18\x04 \x01(\bR\bcomplete\x12\x12\n" +
+	"\x04have\x18\x05 \x01(\rR\x04have\"f\n" +
 	"\x12CandidatesResponse\x12\x1e\n" +
 	"\n" +
 	"candidates\x18\x01 \x03(\tR\n" +
-	"candidates\"\x84\x03\n" +
+	"candidates\x12\x1a\n" +
+	"\bcomplete\x18\x02 \x01(\bR\bcomplete\x12\x14\n" +
+	"\x05again\x18\x03 \x01(\bR\x05again\"\x84\x03\n" +
 	"\x05Input\x12-\n" +
 	"\x04move\x18\x01 \x01(\v2\x17.hermesh.screen.v1.MoveH\x00R\x04move\x123\n" +
 	"\x06button\x18\x02 \x01(\v2\x19.hermesh.screen.v1.ButtonH\x00R\x06button\x120\n" +

@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"net"
 	"os"
 	"os/exec"
 	"runtime"
@@ -183,6 +184,15 @@ func (h *Host) Connect(ctx context.Context, req *screenv1.ConnectRequest) (*scre
 			return nil, connect.NewError(connect.CodeNotFound, errors.New("the session has ended"))
 		}
 		h.cfg.Log.Info("screen: the viewer looks for a path again", "session", s.id, "after", time.Since(s.opened).Round(time.Millisecond))
+		// The relay's servers as they are now: the credentials the session
+		// began with last an hour.
+		if h.cfg.Servers != nil {
+			if list := h.cfg.Servers(ctx); len(list) > 0 {
+				conf := s.pc.GetConfiguration()
+				conf.ICEServers = iceServers(list)
+				s.pc.SetConfiguration(conf)
+			}
+		}
 		answer, err := s.answer(offer, req.CandidatesLater)
 		if err != nil {
 			return nil, connect.NewError(connect.CodeInvalidArgument, err)
@@ -239,8 +249,10 @@ type hostSession struct {
 	cmd    *exec.Cmd
 	done   chan struct{} // closed when the session ended
 
-	amu  sync.Mutex // one answer at a time
-	gath *gathering // the latest answer's
+	cmu    sync.Mutex // closing the connection, or reading its statistics
+	amu    sync.Mutex // one answer at a time
+	gath   *gathering // the latest answer's
+	logged int        // how many candidates the log's latest line counted
 
 	wmu   sync.Mutex // writes to the helper
 	stdin io.WriteCloser
@@ -285,6 +297,7 @@ func (h *Host) open(ctx context.Context, req *screenv1.ConnectRequest) (*hostSes
 		switch dc.Label() {
 		case inputChannel:
 			dc.OnOpen(func() {
+				h.cfg.Log.Info("screen: input ready", "session", s.id, "after", time.Since(s.opened).Round(time.Millisecond))
 				s.mu.Lock()
 				s.input = dc
 				format, state := s.format, s.state
@@ -305,6 +318,7 @@ func (h *Host) open(ctx context.Context, req *screenv1.ConnectRequest) (*hostSes
 	connected := make(chan struct{})
 	var once sync.Once
 	s.pc.OnConnectionStateChange(func(st webrtc.PeerConnectionState) {
+		h.cfg.Log.Info("screen: connection", "session", s.id, "state", st.String(), "after", time.Since(s.opened).Round(time.Millisecond))
 		switch st {
 		case webrtc.PeerConnectionStateConnected:
 			once.Do(func() { close(connected) })
@@ -313,6 +327,17 @@ func (h *Host) open(ctx context.Context, req *screenv1.ConnectRequest) (*hostSes
 			go s.end("")
 		}
 	})
+	// A session slow to connect says how its checks went. Not once it is
+	// connected: pion closes a connection by itself when the other end
+	// leaves, and its statistics are not safe to read meanwhile.
+	go func() {
+		select {
+		case <-s.done:
+		case <-connected:
+		case <-time.After(4 * time.Second):
+			s.logConnectivity()
+		}
+	}()
 	// A viewer that left before a path was found sends no goodbye.
 	go func() {
 		select {
@@ -364,9 +389,7 @@ func (s *hostSession) answer(offer webrtc.SessionDescription, later bool) (strin
 	s.gath = g
 	g.wait(later)
 	sdp := s.pc.LocalDescription().SDP
-	if !later {
-		s.h.cfg.Log.Info("screen: candidates", "session", s.id, "local", kinds(strings.Split(sdp, "\n")), "remote", kinds(strings.Split(offer.SDP, "\n")))
-	}
+	s.logCandidates(strings.Split(sdp, "\n"), strings.Split(offer.SDP, "\n"))
 	return sdp, nil
 }
 
@@ -387,9 +410,85 @@ func (s *hostSession) candidates(req *screenv1.CandidatesRequest) (*screenv1.Can
 	}
 	s.amu.Unlock()
 	g.wait(false)
-	mine := g.candidates()
-	s.h.cfg.Log.Info("screen: candidates", "session", s.id, "local", kinds(mine), "remote", kinds(req.Candidates))
-	return &screenv1.CandidatesResponse{Candidates: mine}, nil
+	// A viewer that calls again has these already: wait a moment for more.
+	if req.Have > 0 {
+		g.grown(int(req.Have), time.Second)
+	}
+	mine, all := g.found()
+	s.mu.Lock()
+	n := len(mine) + len(req.Candidates)
+	said := n == s.logged
+	s.logged = n
+	s.mu.Unlock()
+	if !said {
+		s.logCandidates(mine, req.Candidates)
+	}
+	return &screenv1.CandidatesResponse{Candidates: mine, Complete: all, Again: true}, nil
+}
+
+func (s *hostSession) logCandidates(local, remote []string) {
+	s.h.cfg.Log.Info("screen: candidates", "session", s.id, "local", kinds(local), "remote", kinds(remote),
+		"local_addresses", candidateAddresses(local), "remote_addresses", candidateAddresses(remote))
+}
+
+// logConnectivity distinguishes unreachable local paths from media that
+// never leaves. It runs outside ICE callbacks and never logs credentials.
+func (s *hostSession) logConnectivity() {
+	s.cmu.Lock()
+	s.mu.Lock()
+	ended := s.ended
+	s.mu.Unlock()
+	if ended {
+		s.cmu.Unlock()
+		return
+	}
+	stats := s.pc.GetStats()
+	s.cmu.Unlock()
+	networks := map[string]*net.IPNet{}
+	interfaces := map[string]string{}
+	ifaces, _ := net.Interfaces()
+	for _, iface := range ifaces {
+		addrs, _ := iface.Addrs()
+		for _, a := range addrs {
+			if n, ok := a.(*net.IPNet); ok && !n.IP.IsLoopback() {
+				networks[n.IP.String()], interfaces[n.IP.String()] = n, iface.Name
+			}
+		}
+	}
+	var packets, bytes uint64
+	hasRTPStats := false
+	for _, stat := range stats {
+		switch v := stat.(type) {
+		case webrtc.OutboundRTPStreamStats:
+			hasRTPStats = true
+			packets += uint64(v.PacketsSent)
+			bytes += v.BytesSent
+		case webrtc.ICECandidatePairStats:
+			local, lok := stats[v.LocalCandidateID].(webrtc.ICECandidateStats)
+			remote, rok := stats[v.RemoteCandidateID].(webrtc.ICECandidateStats)
+			if !lok || !rok || local.CandidateType != webrtc.ICECandidateTypeHost || remote.CandidateType != webrtc.ICECandidateTypeHost || local.IP == remote.IP {
+				continue
+			}
+			n := networks[local.IP]
+			if n == nil || !n.Contains(net.ParseIP(remote.IP)) {
+				continue
+			}
+			s.h.cfg.Log.Info("screen: nearby check", "session", s.id, "interface", interfaces[local.IP], "local", local.IP, "remote", remote.IP,
+				"state", v.State, "requests_sent", v.RequestsSent, "responses_received", v.ResponsesReceived, "requests_received", v.RequestsReceived)
+		}
+	}
+	relayProtocol := ""
+	if pair, ok := s.pc.SCTP().Transport().ICETransport().GetSelectedCandidatePairStats(); ok {
+		if local, ok := stats[pair.LocalCandidateID].(webrtc.ICECandidateStats); ok {
+			relayProtocol = local.RelayProtocol
+		}
+	}
+	fields := []any{"session", s.id, "state", s.pc.ConnectionState().String(), "relay_protocol", relayProtocol,
+		"rtp_stats_available", hasRTPStats, "after", time.Since(s.opened).Round(time.Millisecond)}
+	if hasRTPStats {
+		fields = append(fields, "rtp_packets", packets, "rtp_bytes", bytes)
+	}
+	s.h.cfg.Log.Info("screen: transport", fields...)
 }
 
 func (s *hostSession) toHelper(k Kind, v any) {
@@ -499,10 +598,14 @@ func (s *hostSession) readHelper(stdout io.Reader) {
 			}
 			now := time.Now()
 			s.mu.Lock()
+			first := s.last.IsZero()
 			d := now.Sub(s.last)
 			s.last = now
 			s.mu.Unlock()
 			data := p[helperVideoHeader:]
+			if first {
+				s.h.cfg.Log.Info("screen: first encoded frame", "session", s.id, "bytes", len(data), "after", time.Since(s.opened).Round(time.Millisecond))
+			}
 			if s.h.trace {
 				t := helperStamps(p)
 				t.Sent = now.UnixMicro()
@@ -525,6 +628,7 @@ func (s *hostSession) readHelper(stdout io.Reader) {
 				CanControl    bool `json:"can_control"`
 			}
 			if json.Unmarshal(p, &st) == nil {
+				s.h.cfg.Log.Info("screen: capture state", "session", s.id, "error", st.Error, "can_control", st.CanControl)
 				ev := &screenv1.ScreenEvent{Event: &screenv1.ScreenEvent_State{State: &screenv1.State{Error: st.Error, Detail: st.Detail, CanControl: st.CanControl}}}
 				s.mu.Lock()
 				s.state = ev
@@ -557,7 +661,9 @@ func (s *hostSession) end(reason string) {
 		s.sendEvent(&screenv1.ScreenEvent{Event: &screenv1.ScreenEvent_State{State: &screenv1.State{Error: reason}}})
 		time.Sleep(50 * time.Millisecond) // let it leave before the connection closes
 	}
+	s.cmu.Lock()
 	s.pc.Close()
+	s.cmu.Unlock()
 	s.wmu.Lock()
 	s.stdin.Close() // the helper releases the buttons it holds and exits
 	s.wmu.Unlock()

@@ -20,8 +20,11 @@ service ScreenService {
   // The candidates each end found after its half of Connect, which then
   // carried its local addresses alone (candidates_later): a path between
   // local addresses is checked without waiting for the relay's STUN and
-  // TURN servers. The viewer calls it once its gathering has ended; the
-  // machine adds the viewer's and answers with its own once it has them.
+  // TURN servers. The viewer calls it once it has a TURN address, or after
+  // two seconds; the machine adds the viewer's and answers with its own
+  // once it has as much. An address can come later than that (a slow TURN
+  // server, its second transport): the viewer calls again, with all it has
+  // by then, until both ends have found all of theirs.
   rpc Candidates(CandidatesRequest) returns (CandidatesResponse);
 }
 
@@ -58,13 +61,24 @@ message CandidatesRequest {
   // The ICE username fragment of the offer these belong to. The machine
   // refuses them (FailedPrecondition) once a later offer has come.
   string ufrag = 2;
-  // All of the viewer's candidates, each as a "candidate:" line.
+  // All of the viewer's candidates so far, each as a "candidate:" line.
   repeated string candidates = 3;
+  // The viewer has found all of its candidates.
+  bool complete = 4;
+  // How many of the machine's candidates the viewer has from the call
+  // before. A machine that has no more yet waits up to a second for one.
+  uint32 have = 5;
 }
 
 message CandidatesResponse {
-  // All of the machine's candidates, each as a "candidate:" line.
+  // All of the machine's candidates so far, each as a "candidate:" line.
   repeated string candidates = 1;
+  // The machine has found all of its candidates.
+  bool complete = 2;
+  // The machine takes this call again as either end finds more. Unset by
+  // a machine that answers once: the viewer then calls again only to give
+  // candidates of its own.
+  bool again = 3;
 }
 
 // What the viewer does, sent on a data channel. Positions are fractions of

@@ -5,11 +5,13 @@ import (
 	"context"
 	"errors"
 	"log/slog"
+	"net"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -20,6 +22,35 @@ import (
 	relayv1 "github.com/hermeshai/hermesh/gen/go/hermesh/relay/v1"
 	screenv1 "github.com/hermeshai/hermesh/gen/go/hermesh/screen/v1"
 )
+
+// The host created a session, but the initial answer was lost in its tunnel.
+// Opening again is automatic and the real helper's picture still arrives.
+func TestSessionRecoversLostInitialAnswer(t *testing.T) {
+	h := NewHost(HostConfig{Bin: helperBin(t), Args: []string{"--test-source"}})
+	defer h.Stop()
+	var frames atomic.Int32
+	calls := 0
+	v, err := Dial(context.Background(), ViewerConfig{
+		Connect: func(ctx context.Context, req *screenv1.ConnectRequest) (*screenv1.ConnectResponse, error) {
+			calls++
+			res, err := h.Connect(ctx, req)
+			if err == nil && calls == 1 {
+				return nil, connect.NewError(connect.CodeDeadlineExceeded, errors.New("the answer was lost"))
+			}
+			return res, err
+		},
+		Candidates: h.Candidates,
+		Frame:      func(bool, []byte, *Trace) { frames.Add(1) },
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer v.Close()
+	waitFor(t, "the picture after a lost initial answer", func() bool { return frames.Load() > 20 })
+	if calls != 2 {
+		t.Fatalf("initial offers=%d, want 2", calls)
+	}
+}
 
 // helperBin is the helper to test with: $HERMESH_SCREEN_BIN, else the one
 // built here from apps/screen/macos.
@@ -271,13 +302,25 @@ func TestCandidatesLater(t *testing.T) {
 			defer h.Stop()
 			var connected time.Time
 			var exchanged int
+			var offers int
+			var start time.Time
 			cfg := ViewerConfig{
 				Name: "test phone", Servers: dead,
 				Connect: func(ctx context.Context, req *screenv1.ConnectRequest) (*screenv1.ConnectResponse, error) {
+					mu.Lock()
+					offers++
+					mu.Unlock()
+					if c.older {
+						t.Logf("offer at %v, restart=%v, candidates=%s", time.Since(start).Round(time.Millisecond), req.SessionId != "", kinds(strings.Split(req.Offer, "\n")))
+					}
 					if c.older { // it does not know the field
 						req.CandidatesLater = false
 					}
-					return h.Connect(ctx, req)
+					res, err := h.Connect(ctx, req)
+					if c.older && err == nil {
+						t.Logf("answer at %v, candidates=%s", time.Since(start).Round(time.Millisecond), kinds(strings.Split(res.Answer, "\n")))
+					}
+					return res, err
 				},
 				Status: func(s Status) {
 					mu.Lock()
@@ -300,7 +343,7 @@ func TestCandidatesLater(t *testing.T) {
 			}
 			ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 			defer cancel()
-			start := time.Now()
+			start = time.Now()
 			v, err := Dial(ctx, cfg)
 			if err != nil {
 				t.Fatal(err)
@@ -312,10 +355,13 @@ func TestCandidatesLater(t *testing.T) {
 			mu.Unlock()
 			t.Logf("connected after %v", took.Round(time.Millisecond))
 			if took > c.within {
+				mu.Lock()
+				t.Log(log.String())
+				mu.Unlock()
 				t.Errorf("connected after %v, want within %v", took, c.within)
 			}
 			if c.viewer && !c.older {
-				waitFor(t, "the other candidates exchanged", func() bool { mu.Lock(); defer mu.Unlock(); return exchanged == 1 })
+				waitFor(t, "the other candidates exchanged", func() bool { mu.Lock(); defer mu.Unlock(); return exchanged >= 1 })
 			}
 			// The machine's log says what each end found and the path taken
 			// (docs/peer-connectivity-tests.md reads these lines).
@@ -332,9 +378,75 @@ func TestCandidatesLater(t *testing.T) {
 				if exchanged != 0 {
 					t.Errorf("candidates were sent to a machine that takes none: %d times", exchanged)
 				}
+				if offers != 1 {
+					t.Errorf("the older machine got %d offers with no new candidates, want one", offers)
+				}
 				mu.Unlock()
 			}
 		})
+	}
+}
+
+// An old response can be in flight while the viewer restarts. It must not
+// add its addresses to the new generation, or hold the restart's RPC up.
+func TestLateCandidateResponseAfterRestart(t *testing.T) {
+	h := NewHost(HostConfig{Bin: helperBin(t), Args: []string{"--test-source"}})
+	defer h.Stop()
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+	defer cancel()
+	asked, release, returned := make(chan struct{}), make(chan struct{}), make(chan struct{})
+	var unblock sync.Once
+	defer unblock.Do(func() { close(release) })
+	var mu sync.Mutex
+	calls, frames := 0, 0
+	v, err := Dial(ctx, ViewerConfig{
+		Connect: h.Connect,
+		Candidates: func(ctx context.Context, req *screenv1.CandidatesRequest) (*screenv1.CandidatesResponse, error) {
+			res, err := h.Candidates(ctx, req)
+			if err != nil {
+				return nil, err
+			}
+			mu.Lock()
+			calls++
+			first := calls == 1
+			mu.Unlock()
+			if first {
+				close(asked)
+				select {
+				case <-release:
+				case <-ctx.Done():
+					return nil, ctx.Err()
+				}
+				res.Candidates = append(res.Candidates, "candidate:stale 1 udp 2130706431 192.0.2.222 54321 typ host")
+				close(returned)
+			}
+			return res, nil
+		},
+		Frame: func(bool, []byte, *Trace) { mu.Lock(); frames++; mu.Unlock() },
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer v.Close()
+	select {
+	case <-asked:
+	case <-ctx.Done():
+		t.Fatal("no candidate exchange")
+	}
+	waitFor(t, "the initial picture", func() bool { mu.Lock(); defer mu.Unlock(); return frames >= 10 })
+	if err := v.Restart(ctx); err != nil {
+		t.Fatal(err)
+	}
+	unblock.Do(func() { close(release) })
+	<-returned
+	mu.Lock()
+	before := frames
+	mu.Unlock()
+	waitFor(t, "the picture after the old response", func() bool { mu.Lock(); defer mu.Unlock(); return frames >= before+20 })
+	for _, stat := range v.pc.GetStats() {
+		if c, ok := stat.(webrtc.ICECandidateStats); ok && c.IP == "192.0.2.222" {
+			t.Fatal("the old response added a candidate to the new generation")
+		}
 	}
 }
 
@@ -372,5 +484,136 @@ func TestCandidatesOfAnEarlierOfferAreRefused(t *testing.T) {
 	if _, err := h.Candidates(ctx, &screenv1.CandidatesRequest{SessionId: "none"}); connect.CodeOf(err) != connect.CodeNotFound {
 		t.Errorf("candidates for no session: %v", err)
 	}
+	waitFor(t, "connected after the restart", v.Connected)
+}
+
+// A TURN address that comes after the first exchange of candidates (the
+// server is slow, past gatherWithin) still reaches the other end: the viewer calls again as either end finds more, until both have
+// found all of theirs, and then stops. A machine that answers once gets a
+// second call when the viewer has more to give, and no others.
+func TestLateTURNAddressIsExchanged(t *testing.T) {
+	old := gatherWithin
+	gatherWithin = 400 * time.Millisecond
+	defer func() { gatherWithin = old }()
+	// Each end's own server, slow over an allocation, which is asked for
+	// twice: refused, then with the credentials.
+	slow := func() []*relayv1.IceServer {
+		server, _ := slowTURN(t, turnAllocate, 400*time.Millisecond, net.ParseIP("127.0.0.1"))
+		return []*relayv1.IceServer{{Urls: []string{"turn:" + server + "?transport=udp"}, Username: "u", Credential: "p"}}
+	}
+	for _, older := range []bool{false, true} {
+		name := "both"
+		if older {
+			name = "a machine that answers once"
+		}
+		t.Run(name, func(t *testing.T) {
+			servers, theirs := slow(), slow()
+			h := NewHost(HostConfig{Bin: helperBin(t), Args: []string{"--test-source"}, Servers: func(context.Context) []*relayv1.IceServer { return theirs }})
+			defer h.Stop()
+			var mu sync.Mutex
+			var calls int
+			var firstHad, sent, got, done bool
+			relayed := func(list []string) bool { return strings.Contains(strings.Join(list, "\n"), " typ relay") }
+			ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+			defer cancel()
+			v, err := Dial(ctx, ViewerConfig{
+				Name: "test phone", Servers: servers, Connect: h.Connect,
+				Candidates: func(ctx context.Context, req *screenv1.CandidatesRequest) (*screenv1.CandidatesResponse, error) {
+					res, err := h.Candidates(ctx, req)
+					if err != nil {
+						return nil, err
+					}
+					if older {
+						res.Again, res.Complete = false, false
+					}
+					mu.Lock()
+					defer mu.Unlock()
+					calls++
+					if calls == 1 {
+						firstHad = relayed(req.Candidates) || relayed(res.Candidates)
+					}
+					sent, got = sent || relayed(req.Candidates), got || relayed(res.Candidates)
+					done = done || req.Complete && res.Complete
+					return res, nil
+				},
+			})
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer v.Close()
+			get := func(f func() bool) func() bool {
+				return func() bool { mu.Lock(); defer mu.Unlock(); return f() }
+			}
+			waitFor(t, "the viewer's TURN address to reach the machine", get(func() bool { return sent }))
+			if !older {
+				waitFor(t, "the machine's TURN address to reach the viewer", get(func() bool { return got }))
+				waitFor(t, "both ends to say they found everything", get(func() bool { return done }))
+			}
+			time.Sleep(2500 * time.Millisecond)
+			mu.Lock()
+			defer mu.Unlock()
+			t.Logf("%d calls", calls)
+			if firstHad {
+				t.Error("the first exchange had a TURN address already: the server was not slow enough to test this")
+			}
+			if older && calls != 2 {
+				t.Errorf("%d calls to a machine that answers once, want the first and one with the viewer's TURN address", calls)
+			}
+			if !older && calls > 8 {
+				t.Errorf("%d calls, want a few", calls)
+			}
+		})
+	}
+}
+
+// A session that looks for a path again takes the relay's servers as they
+// are then, on both ends: the credentials it began with last an hour. Here
+// it begins with no server at all, and has TURN addresses after a restart.
+func TestRestartTakesTheServersOfTheMoment(t *testing.T) {
+	server, _ := slowTURN(t, turnAllocate, 0, net.ParseIP("127.0.0.1"))
+	servers := []*relayv1.IceServer{{Urls: []string{"turn:" + server + "?transport=udp"}, Username: "u", Credential: "p"}}
+	var mu sync.Mutex
+	var asked int // the machine's: none for the first offer
+	h := NewHost(HostConfig{Bin: helperBin(t), Args: []string{"--test-source"}, Servers: func(context.Context) []*relayv1.IceServer {
+		mu.Lock()
+		defer mu.Unlock()
+		asked++
+		if asked == 1 {
+			return nil
+		}
+		return servers
+	}})
+	defer h.Stop()
+	var sent, got bool
+	relayed := func(list []string) bool { return strings.Contains(strings.Join(list, "\n"), " typ relay") }
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	v, err := Dial(ctx, ViewerConfig{
+		Name: "test phone", Connect: h.Connect, Fresh: func(context.Context) []*relayv1.IceServer { return servers },
+		Candidates: func(ctx context.Context, req *screenv1.CandidatesRequest) (*screenv1.CandidatesResponse, error) {
+			res, err := h.Candidates(ctx, req)
+			if err == nil {
+				mu.Lock()
+				sent, got = sent || relayed(req.Candidates), got || relayed(res.Candidates)
+				mu.Unlock()
+			}
+			return res, err
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer v.Close()
+	waitFor(t, "connected", v.Connected)
+	time.Sleep(time.Second)
+	mu.Lock()
+	if sent || got {
+		t.Errorf("a TURN address before any server was given: the viewer's %v, the machine's %v", sent, got)
+	}
+	mu.Unlock()
+	if err := v.Restart(ctx); err != nil {
+		t.Fatal(err)
+	}
+	waitFor(t, "both ends' TURN addresses after the restart", func() bool { mu.Lock(); defer mu.Unlock(); return sent && got })
 	waitFor(t, "connected after the restart", v.Connected)
 }

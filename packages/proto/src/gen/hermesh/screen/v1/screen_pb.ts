@@ -10,7 +10,7 @@ import type { Message } from "@bufbuild/protobuf";
  * Describes the file hermesh/screen/v1/screen.proto.
  */
 export const file_hermesh_screen_v1_screen: GenFile = /*@__PURE__*/
-  fileDesc("Ch5oZXJtZXNoL3NjcmVlbi92MS9zY3JlZW4ucHJvdG8SEWhlcm1lc2guc2NyZWVuLnYxIm4KDkNvbm5lY3RSZXF1ZXN0Eg0KBW9mZmVyGAEgASgJEhIKCnNlc3Npb25faWQYAiABKAkSDgoGdmlld2VyGAMgASgJEg8KB3BvaW50ZXIYBCABKAgSGAoQY2FuZGlkYXRlc19sYXRlchgFIAEoCCJPCg9Db25uZWN0UmVzcG9uc2USDgoGYW5zd2VyGAEgASgJEhIKCnNlc3Npb25faWQYAiABKAkSGAoQY2FuZGlkYXRlc19sYXRlchgDIAEoCCJKChFDYW5kaWRhdGVzUmVxdWVzdBISCgpzZXNzaW9uX2lkGAEgASgJEg0KBXVmcmFnGAIgASgJEhIKCmNhbmRpZGF0ZXMYAyADKAkiKAoSQ2FuZGlkYXRlc1Jlc3BvbnNlEhIKCmNhbmRpZGF0ZXMYASADKAkizAIKBUlucHV0EicKBG1vdmUYASABKAsyFy5oZXJtZXNoLnNjcmVlbi52MS5Nb3ZlSAASKwoGYnV0dG9uGAIgASgLMhkuaGVybWVzaC5zY3JlZW4udjEuQnV0dG9uSAASKQoFd2hlZWwYAyABKAsyGC5oZXJtZXNoLnNjcmVlbi52MS5XaGVlbEgAEiUKA2tleRgEIAEoCzIWLmhlcm1lc2guc2NyZWVuLnYxLktleUgAEicKBHRleHQYBSABKAsyFy5oZXJtZXNoLnNjcmVlbi52MS5UZXh0SAASNgoMc2hvd19wb2ludGVyGAYgASgLMh4uaGVybWVzaC5zY3JlZW4udjEuU2hvd1BvaW50ZXJIABIxCgljbGlwYm9hcmQYByABKAsyHC5oZXJtZXNoLnNjcmVlbi52MS5DbGlwYm9hcmRIAEIHCgVldmVudCIcCgRNb3ZlEgkKAXgYASABKAESCQoBeRgCIAEoASJsCgZCdXR0b24SCQoBeBgBIAEoARIJCgF5GAIgASgBEi4KBmJ1dHRvbhgDIAEoDjIeLmhlcm1lc2guc2NyZWVuLnYxLk1vdXNlQnV0dG9uEgwKBGRvd24YBCABKAgSDgoGY2xpY2tzGAUgASgNIjUKBVdoZWVsEgkKAXgYASABKAESCQoBeRgCIAEoARIKCgJkeBgDIAEoARIKCgJkeRgEIAEoASKDAQoDS2V5EigKA2tleRgBIAEoDjIbLmhlcm1lc2guc2NyZWVuLnYxLk5hbWVkS2V5EhEKCWNoYXJhY3RlchgCIAEoCRIPCgdjb21tYW5kGAMgASgIEg4KBm9wdGlvbhgEIAEoCBIPCgdjb250cm9sGAUgASgIEg0KBXNoaWZ0GAYgASgIIj0KBFRleHQSDAoEdGV4dBgBIAEoCRInCgVwYXN0ZRgCIAEoDjIYLmhlcm1lc2guc2NyZWVuLnYxLlBhc3RlIkIKCUNsaXBib2FyZBIMCgR0ZXh0GAEgASgJEicKBXBhc3RlGAIgASgOMhguaGVybWVzaC5zY3JlZW4udjEuUGFzdGUiHAoLU2hvd1BvaW50ZXISDQoFc2hvd24YASABKAgioQEKC1NjcmVlbkV2ZW50EisKBmZvcm1hdBgBIAEoCzIZLmhlcm1lc2guc2NyZWVuLnYxLkZvcm1hdEgAEikKBXN0YXRlGAIgASgLMhguaGVybWVzaC5zY3JlZW4udjEuU3RhdGVIABIxCgljbGlwYm9hcmQYAyABKAsyHC5oZXJtZXNoLnNjcmVlbi52MS5DbGlwYm9hcmRIAEIHCgVldmVudCInCgZGb3JtYXQSDQoFd2lkdGgYASABKA0SDgoGaGVpZ2h0GAIgASgNIjsKBVN0YXRlEg0KBWVycm9yGAEgASgJEg4KBmRldGFpbBgCIAEoCRITCgtjYW5fY29udHJvbBgDIAEoCCpaCgtNb3VzZUJ1dHRvbhIcChhNT1VTRV9CVVRUT05fVU5TUEVDSUZJRUQQABIVChFNT1VTRV9CVVRUT05fTEVGVBABEhYKEk1PVVNFX0JVVFRPTl9SSUdIVBACKs4CCghOYW1lZEtleRIZChVOQU1FRF9LRVlfVU5TUEVDSUZJRUQQABIUChBOQU1FRF9LRVlfUkVUVVJOEAESEQoNTkFNRURfS0VZX1RBQhACEhMKD05BTUVEX0tFWV9TUEFDRRADEhcKE05BTUVEX0tFWV9CQUNLU1BBQ0UQBBIUChBOQU1FRF9LRVlfRVNDQVBFEAUSEgoOTkFNRURfS0VZX0xFRlQQBhITCg9OQU1FRF9LRVlfUklHSFQQBxISCg5OQU1FRF9LRVlfRE9XThAIEhAKDE5BTUVEX0tFWV9VUBAJEhQKEE5BTUVEX0tFWV9ERUxFVEUQChISCg5OQU1FRF9LRVlfSE9NRRALEhEKDU5BTUVEX0tFWV9FTkQQDBIVChFOQU1FRF9LRVlfUEFHRV9VUBANEhcKE05BTUVEX0tFWV9QQUdFX0RPV04QDipBCgVQYXN0ZRIVChFQQVNURV9VTlNQRUNJRklFRBAAEg0KCVBBU1RFX0FQUBABEhIKDlBBU1RFX1RFUk1JTkFMEAIyvAEKDVNjcmVlblNlcnZpY2USUAoHQ29ubmVjdBIhLmhlcm1lc2guc2NyZWVuLnYxLkNvbm5lY3RSZXF1ZXN0GiIuaGVybWVzaC5zY3JlZW4udjEuQ29ubmVjdFJlc3BvbnNlElkKCkNhbmRpZGF0ZXMSJC5oZXJtZXNoLnNjcmVlbi52MS5DYW5kaWRhdGVzUmVxdWVzdBolLmhlcm1lc2guc2NyZWVuLnYxLkNhbmRpZGF0ZXNSZXNwb25zZWIGcHJvdG8z");
+  fileDesc("Ch5oZXJtZXNoL3NjcmVlbi92MS9zY3JlZW4ucHJvdG8SEWhlcm1lc2guc2NyZWVuLnYxIm4KDkNvbm5lY3RSZXF1ZXN0Eg0KBW9mZmVyGAEgASgJEhIKCnNlc3Npb25faWQYAiABKAkSDgoGdmlld2VyGAMgASgJEg8KB3BvaW50ZXIYBCABKAgSGAoQY2FuZGlkYXRlc19sYXRlchgFIAEoCCJPCg9Db25uZWN0UmVzcG9uc2USDgoGYW5zd2VyGAEgASgJEhIKCnNlc3Npb25faWQYAiABKAkSGAoQY2FuZGlkYXRlc19sYXRlchgDIAEoCCJqChFDYW5kaWRhdGVzUmVxdWVzdBISCgpzZXNzaW9uX2lkGAEgASgJEg0KBXVmcmFnGAIgASgJEhIKCmNhbmRpZGF0ZXMYAyADKAkSEAoIY29tcGxldGUYBCABKAgSDAoEaGF2ZRgFIAEoDSJJChJDYW5kaWRhdGVzUmVzcG9uc2USEgoKY2FuZGlkYXRlcxgBIAMoCRIQCghjb21wbGV0ZRgCIAEoCBINCgVhZ2FpbhgDIAEoCCLMAgoFSW5wdXQSJwoEbW92ZRgBIAEoCzIXLmhlcm1lc2guc2NyZWVuLnYxLk1vdmVIABIrCgZidXR0b24YAiABKAsyGS5oZXJtZXNoLnNjcmVlbi52MS5CdXR0b25IABIpCgV3aGVlbBgDIAEoCzIYLmhlcm1lc2guc2NyZWVuLnYxLldoZWVsSAASJQoDa2V5GAQgASgLMhYuaGVybWVzaC5zY3JlZW4udjEuS2V5SAASJwoEdGV4dBgFIAEoCzIXLmhlcm1lc2guc2NyZWVuLnYxLlRleHRIABI2CgxzaG93X3BvaW50ZXIYBiABKAsyHi5oZXJtZXNoLnNjcmVlbi52MS5TaG93UG9pbnRlckgAEjEKCWNsaXBib2FyZBgHIAEoCzIcLmhlcm1lc2guc2NyZWVuLnYxLkNsaXBib2FyZEgAQgcKBWV2ZW50IhwKBE1vdmUSCQoBeBgBIAEoARIJCgF5GAIgASgBImwKBkJ1dHRvbhIJCgF4GAEgASgBEgkKAXkYAiABKAESLgoGYnV0dG9uGAMgASgOMh4uaGVybWVzaC5zY3JlZW4udjEuTW91c2VCdXR0b24SDAoEZG93bhgEIAEoCBIOCgZjbGlja3MYBSABKA0iNQoFV2hlZWwSCQoBeBgBIAEoARIJCgF5GAIgASgBEgoKAmR4GAMgASgBEgoKAmR5GAQgASgBIoMBCgNLZXkSKAoDa2V5GAEgASgOMhsuaGVybWVzaC5zY3JlZW4udjEuTmFtZWRLZXkSEQoJY2hhcmFjdGVyGAIgASgJEg8KB2NvbW1hbmQYAyABKAgSDgoGb3B0aW9uGAQgASgIEg8KB2NvbnRyb2wYBSABKAgSDQoFc2hpZnQYBiABKAgiPQoEVGV4dBIMCgR0ZXh0GAEgASgJEicKBXBhc3RlGAIgASgOMhguaGVybWVzaC5zY3JlZW4udjEuUGFzdGUiQgoJQ2xpcGJvYXJkEgwKBHRleHQYASABKAkSJwoFcGFzdGUYAiABKA4yGC5oZXJtZXNoLnNjcmVlbi52MS5QYXN0ZSIcCgtTaG93UG9pbnRlchINCgVzaG93bhgBIAEoCCKhAQoLU2NyZWVuRXZlbnQSKwoGZm9ybWF0GAEgASgLMhkuaGVybWVzaC5zY3JlZW4udjEuRm9ybWF0SAASKQoFc3RhdGUYAiABKAsyGC5oZXJtZXNoLnNjcmVlbi52MS5TdGF0ZUgAEjEKCWNsaXBib2FyZBgDIAEoCzIcLmhlcm1lc2guc2NyZWVuLnYxLkNsaXBib2FyZEgAQgcKBWV2ZW50IicKBkZvcm1hdBINCgV3aWR0aBgBIAEoDRIOCgZoZWlnaHQYAiABKA0iOwoFU3RhdGUSDQoFZXJyb3IYASABKAkSDgoGZGV0YWlsGAIgASgJEhMKC2Nhbl9jb250cm9sGAMgASgIKloKC01vdXNlQnV0dG9uEhwKGE1PVVNFX0JVVFRPTl9VTlNQRUNJRklFRBAAEhUKEU1PVVNFX0JVVFRPTl9MRUZUEAESFgoSTU9VU0VfQlVUVE9OX1JJR0hUEAIqzgIKCE5hbWVkS2V5EhkKFU5BTUVEX0tFWV9VTlNQRUNJRklFRBAAEhQKEE5BTUVEX0tFWV9SRVRVUk4QARIRCg1OQU1FRF9LRVlfVEFCEAISEwoPTkFNRURfS0VZX1NQQUNFEAMSFwoTTkFNRURfS0VZX0JBQ0tTUEFDRRAEEhQKEE5BTUVEX0tFWV9FU0NBUEUQBRISCg5OQU1FRF9LRVlfTEVGVBAGEhMKD05BTUVEX0tFWV9SSUdIVBAHEhIKDk5BTUVEX0tFWV9ET1dOEAgSEAoMTkFNRURfS0VZX1VQEAkSFAoQTkFNRURfS0VZX0RFTEVURRAKEhIKDk5BTUVEX0tFWV9IT01FEAsSEQoNTkFNRURfS0VZX0VORBAMEhUKEU5BTUVEX0tFWV9QQUdFX1VQEA0SFwoTTkFNRURfS0VZX1BBR0VfRE9XThAOKkEKBVBhc3RlEhUKEVBBU1RFX1VOU1BFQ0lGSUVEEAASDQoJUEFTVEVfQVBQEAESEgoOUEFTVEVfVEVSTUlOQUwQAjK8AQoNU2NyZWVuU2VydmljZRJQCgdDb25uZWN0EiEuaGVybWVzaC5zY3JlZW4udjEuQ29ubmVjdFJlcXVlc3QaIi5oZXJtZXNoLnNjcmVlbi52MS5Db25uZWN0UmVzcG9uc2USWQoKQ2FuZGlkYXRlcxIkLmhlcm1lc2guc2NyZWVuLnYxLkNhbmRpZGF0ZXNSZXF1ZXN0GiUuaGVybWVzaC5zY3JlZW4udjEuQ2FuZGlkYXRlc1Jlc3BvbnNlYgZwcm90bzM");
 
 /**
  * @generated from message hermesh.screen.v1.ConnectRequest
@@ -115,11 +115,26 @@ export type CandidatesRequest = Message<"hermesh.screen.v1.CandidatesRequest"> &
   ufrag: string;
 
   /**
-   * All of the viewer's candidates, each as a "candidate:" line.
+   * All of the viewer's candidates so far, each as a "candidate:" line.
    *
    * @generated from field: repeated string candidates = 3;
    */
   candidates: string[];
+
+  /**
+   * The viewer has found all of its candidates.
+   *
+   * @generated from field: bool complete = 4;
+   */
+  complete: boolean;
+
+  /**
+   * How many of the machine's candidates the viewer has from the call
+   * before. A machine that has no more yet waits up to a second for one.
+   *
+   * @generated from field: uint32 have = 5;
+   */
+  have: number;
 };
 
 /**
@@ -134,11 +149,27 @@ export const CandidatesRequestSchema: GenMessage<CandidatesRequest> = /*@__PURE_
  */
 export type CandidatesResponse = Message<"hermesh.screen.v1.CandidatesResponse"> & {
   /**
-   * All of the machine's candidates, each as a "candidate:" line.
+   * All of the machine's candidates so far, each as a "candidate:" line.
    *
    * @generated from field: repeated string candidates = 1;
    */
   candidates: string[];
+
+  /**
+   * The machine has found all of its candidates.
+   *
+   * @generated from field: bool complete = 2;
+   */
+  complete: boolean;
+
+  /**
+   * The machine takes this call again as either end finds more. Unset by
+   * a machine that answers once: the viewer then calls again only to give
+   * candidates of its own.
+   *
+   * @generated from field: bool again = 3;
+   */
+  again: boolean;
 };
 
 /**
@@ -703,8 +734,11 @@ export const ScreenService: GenService<{
    * The candidates each end found after its half of Connect, which then
    * carried its local addresses alone (candidates_later): a path between
    * local addresses is checked without waiting for the relay's STUN and
-   * TURN servers. The viewer calls it once its gathering has ended; the
-   * machine adds the viewer's and answers with its own once it has them.
+   * TURN servers. The viewer calls it once it has a TURN address, or after
+   * two seconds; the machine adds the viewer's and answers with its own
+   * once it has as much. An address can come later than that (a slow TURN
+   * server, its second transport): the viewer calls again, with all it has
+   * by then, until both ends have found all of theirs.
    *
    * @generated from rpc hermesh.screen.v1.ScreenService.Candidates
    */

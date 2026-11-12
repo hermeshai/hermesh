@@ -136,3 +136,33 @@ func TestGatheringEarlyDoesNotWaitForServers(t *testing.T) {
 		t.Errorf("the gathering ended after %v, want about %v", took, gatherWithin)
 	}
 }
+
+func TestLateCandidatesNeedAnOfferOnlyWhenNew(t *testing.T) {
+	host := "candidate:1 1 udp 2130706431 127.0.0.1 12345 typ host"
+	relay := "candidate:2 1 udp 16777215 192.0.2.1 23456 typ relay"
+	g := &gathering{list: []string{host}}
+	for _, ending := range []string{"\n", "\r\n"} {
+		sdp := "v=0" + ending + "a=" + host + ending
+		if g.addsTo(sdp) {
+			t.Fatal("the older peer already has the host candidate")
+		}
+		g.list = append(g.list, relay)
+		if !g.addsTo(sdp) {
+			t.Fatal("the older peer still needs the late relay candidate")
+		}
+		g.list = g.list[:1]
+	}
+}
+
+func TestCandidateDiagnosticsExcludeCredentials(t *testing.T) {
+	lines := []string{
+		"a=ice-pwd:secret-password", "a=ice-ufrag:secret-user",
+		"a=candidate:1 1 UDP 1 192.0.2.1 1234 typ host ufrag secret-user",
+		"a=candidate:1 2 UDP 1 192.0.2.1 1234 typ host",
+		"candidate:2 1 udp 1 fd00::1 5678 typ host",
+	}
+	got := candidateAddresses(lines)
+	if got != "host 192.0.2.1:1234/udp, host [fd00::1]:5678/udp" {
+		t.Fatalf("candidate addresses: %s", got)
+	}
+}
