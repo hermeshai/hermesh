@@ -16,10 +16,12 @@ import (
 
 	identityv1 "github.com/hermeshai/hermesh/gen/go/hermesh/identity/v1"
 	localv1 "github.com/hermeshai/hermesh/gen/go/hermesh/local/v1"
+	machinev1 "github.com/hermeshai/hermesh/gen/go/hermesh/machine/v1"
 	relayv1 "github.com/hermeshai/hermesh/gen/go/hermesh/relay/v1"
 	"github.com/hermeshai/hermesh/gen/go/hermesh/relay/v1/relayv1connect"
 	"github.com/hermeshai/hermesh/internal/connaddr"
 	"github.com/hermeshai/hermesh/internal/machine"
+	"github.com/hermeshai/hermesh/internal/peer"
 	"github.com/hermeshai/hermesh/pkg/identity"
 )
 
@@ -452,7 +454,10 @@ func (o *Owner) ApproveDevicePairing(ctx context.Context, code string) (string, 
 // re-issued by this device (so they keep working), and its own machine
 // revoked. A device cannot remove itself: what it signed must be re-issued
 // by one that stays.
-func (o *Owner) RemoveDevice(ctx context.Context, keyID string) (*localv1.RemoveDeviceResponse, error) {
+// With eraseHer, Her's data on the device's own machine is erased first,
+// signed with the same approval (docs/her-server.md §5.6): the machine must
+// answer, or nothing is removed.
+func (o *Owner) RemoveDevice(ctx context.Context, keyID string, eraseHer bool) (*localv1.RemoveDeviceResponse, error) {
 	if err := o.requireInit(); err != nil {
 		return nil, err
 	}
@@ -506,11 +511,28 @@ func (o *Owner) RemoveDevice(ctx context.Context, keyID string) (*localv1.Remove
 		g.Version++
 		msgs = append(msgs, g)
 	}
+	nCerts := len(msgs)
+	var herMachine *peer.Machine
+	if eraseHer {
+		if len(gone) == 0 {
+			return nil, connect.NewError(connect.CodeInvalidArgument, errors.New("that device has no machine of its own, where Her's data would be"))
+		}
+		c, err := o.relay(ctx)
+		if err != nil {
+			return nil, err
+		}
+		if herMachine, err = c.Machine(ctx, gone[0]); err != nil {
+			return nil, connect.NewError(connect.CodeUnavailable, fmt.Errorf("its machine doesn't answer, so Her's data there can't be erased now: %w", err))
+		}
+		msgs = append(msgs, &identityv1.AdminCommand{OwnerId: o.ownerID, CommandId: identity.RandomCode(16), TargetMachineId: gone[0],
+			ExpiresAt: timestamppb.New(time.Now().Add(5 * time.Minute)),
+			Command:   &identityv1.AdminCommand_SetHer{SetHer: &identityv1.SetHer{Erase: true}}})
+	}
 	signed, err := o.extendChain(ctx, ctl, keys, msgs...)
 	if err != nil {
 		return nil, err
 	}
-	for i, s := range signed[1:] {
+	for i, s := range signed[1 : 1+nCerts] {
 		if i < nMachines {
 			_, err = ctl.PublishMachineCert(ctx, &relayv1.PublishMachineCertRequest{MachineCert: s})
 		} else {
@@ -521,12 +543,23 @@ func (o *Owner) RemoveDevice(ctx context.Context, keyID string) (*localv1.Remove
 			return nil, err
 		}
 	}
+	// Her's data goes while the machine is still the owner's.
+	var herErr error
+	if herMachine != nil {
+		res, err := herMachine.Admin.ApplyAdminCommand(ctx, &machinev1.ApplyAdminCommandRequest{Command: signed[len(signed)-1]})
+		if herErr = err; err == nil {
+			herErr = o.herTurnedOff(ctx, gone[0], true, res.GetMessage())
+		}
+	}
 	if len(gone) > 0 {
 		if _, err := o.revoke(ctx, &identityv1.RevocationList{OwnerId: o.ownerID, RevokedMachineIds: gone}); err != nil {
 			return nil, err
 		}
 	}
-	return &localv1.RemoveDeviceResponse{ReissuedMachines: uint32(nMachines), ReissuedGrants: uint32(len(signed) - 1 - nMachines)}, nil
+	if herErr != nil {
+		return nil, connect.NewError(connect.CodeFailedPrecondition, fmt.Errorf("the device is removed, but Her's data stays on its machine: %w", herErr))
+	}
+	return &localv1.RemoveDeviceResponse{ReissuedMachines: uint32(nMachines), ReissuedGrants: uint32(nCerts - nMachines)}, nil
 }
 
 // checkRemoved asks the relay, after it refused this device, whether the

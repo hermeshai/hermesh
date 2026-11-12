@@ -3,6 +3,7 @@ import { useTranslation } from "react-i18next";
 import type { Device } from "@hermesh/proto/local";
 import { platformTitle } from "@hermesh/core";
 import { local } from "../api";
+import { herDataKept } from "../her/environments";
 import { Icon } from "../icons";
 import { useStore } from "../store";
 import { copy, More, type Ask } from "./common";
@@ -22,17 +23,21 @@ export function Account({ ask }: { ask: (a: Ask) => void }) {
   const host = URL.canParse(relay) ? new URL(relay).host : relay;
   const addr = s?.connectAddress ?? "";
   const silent = useElevatesSilently();
-  const removeDevice = (d: Device) =>
+  const removeDevice = (d: Device) => {
+    // Its own machine goes with it, and Her's data there can go too (docs/her-server.md §5.6).
+    const m = st.machines.find((x) => x.machineId === d.machineId);
     st.set({
       sheet: {
         kind: "confirm",
         title: t("removeDeviceTitle", { name: d.label }),
         message: t("account.removeDeviceMessage"),
         button: t("removeButton"),
-        run: () => local.removeDevice({ keyId: d.keyId }),
+        run: (eraseHer) => local.removeDevice({ keyId: d.keyId, eraseHer }),
         done: t("removed", { name: d.label }),
+        herData: m && (m.her?.enabled || herDataKept(m)) ? { name: m.machineName, offline: !m.online } : undefined,
       },
     });
+  };
   const leave = () =>
     s?.removed
       ? st.set({

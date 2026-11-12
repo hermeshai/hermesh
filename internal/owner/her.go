@@ -254,19 +254,7 @@ func (o *Owner) SetHer(ctx context.Context, machineID string, enabled, erase boo
 		return err
 	}
 	if !enabled {
-		o.revokeHer(ctx, machineID)
-		if !erase {
-			return nil
-		}
-		switch msg := res.GetMessage(); msg {
-		case machine.HerErased:
-			o.dropHerWaiting(machineID)
-			return nil
-		case machine.HerOff:
-			return connect.NewError(connect.CodeFailedPrecondition, errors.New("Her is off, but her data stays: this machine's Hermesh is too old to erase it. Update it, then turn Her on and off again"))
-		default:
-			return connect.NewError(connect.CodeInternal, errors.New(msg))
-		}
+		return o.herTurnedOff(ctx, machineID, erase, res.GetMessage())
 	}
 	if grant == nil {
 		return nil
@@ -293,6 +281,25 @@ func (o *Owner) SetHer(ctx context.Context, machineID string, enabled, erase boo
 	o.st.putGrant(signed[1], false)
 	go o.refreshCards()
 	return nil
+}
+
+// herTurnedOff follows Her turned off on a machine, which answered msg: her
+// grants are revoked, and with erase, what waits here for her goes once her
+// data is erased there, or the error says why it stays.
+func (o *Owner) herTurnedOff(ctx context.Context, machineID string, erase bool, msg string) error {
+	o.revokeHer(ctx, machineID)
+	if !erase {
+		return nil
+	}
+	switch msg {
+	case machine.HerErased:
+		o.dropHerWaiting(machineID)
+		return nil
+	case machine.HerOff:
+		return connect.NewError(connect.CodeFailedPrecondition, errors.New("Her is off, but her data stays: this machine's Hermesh is too old to erase it. Update it, then turn Her on and off again"))
+	default:
+		return connect.NewError(connect.CodeInternal, errors.New(msg))
+	}
 }
 
 // herGrant is the grant to sign for Her on a machine: nil when its hermeshd

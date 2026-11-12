@@ -496,6 +496,9 @@ message ApproveDevicePairingResponse {
 
 message RemoveDeviceRequest {
   string key_id = 1;
+  // Her's data on the device's own machine is erased first, signed with the
+  // same approval, while it answers (docs/her-server.md §5.6).
+  bool erase_her = 2;
 }
 
 message RemoveDeviceResponse {

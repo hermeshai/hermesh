@@ -981,10 +981,10 @@ final class AppModel {
         }
     }
 
-    func removeDevice(_ d: Device) async {
+    func removeDevice(_ d: Device, eraseHer: Bool = false) async {
         guard let api else { return }
         do {
-            try await api.removeDevice(d.keyID)
+            try await api.removeDevice(d.keyID, eraseHer: eraseHer)
             devices = (try? await api.devices()) ?? devices
             machines = (try? await api.machines()) ?? machines
             show(String(localized: "Removed “\(d.label)”"))

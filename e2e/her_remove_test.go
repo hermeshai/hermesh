@@ -4,11 +4,13 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 	"time"
 
 	localv1 "github.com/hermeshai/hermesh/gen/go/hermesh/local/v1"
+	"github.com/hermeshai/hermesh/pkg/identity"
 )
 
 // Removing a machine that runs Her, and `hermeshd uninstall` and `erase`
@@ -124,4 +126,70 @@ func TestHerUninstallErasesHerData(t *testing.T) {
 		}
 	}
 	eventually(t, 30*time.Second, "the machine gone from the owner's machines", func() bool { return listedMachine(t, env.c, env.machine) == nil })
+}
+
+// TestHerRemoveDeviceErasesHerData: removing a trusted device whose own
+// machine runs Her, with "Also erase Her's data" (RemoveDevice erase_her):
+// one approval signs both, her home there is gone, and the device with its
+// machine.
+func TestHerRemoveDeviceErasesHerData(t *testing.T) {
+	skipHerInDocker(t)
+	her, mockBin := herBinaries(t)
+	mock := startHerMock(t, mockBin)
+	console := herConsole(t)
+	w := newOwnerMac(t, herEnv(her, console, herHome(t, mock.models), mock.base), &localv1.GrantSpec{})
+	t.Cleanup(w.owner.stop)
+	ctx := context.Background()
+
+	// mac2: a second trusted device, running Her on its own machine.
+	home := herHome(t, mock.models)
+	_, sock := w.otherMac("mac2", herEnv(her, console, home, mock.base))
+	root2, _ := identity.GenerateKey()
+	app2 := newTestApp(t, sock, root2)
+	st, _ := w.app.client.GetStatus(ctx, &localv1.GetStatusRequest{})
+	join, err := app2.client.RequestJoin(ctx, &localv1.RequestJoinRequest{RelayUrl: st.RelayUrl, OwnerId: st.OwnerId,
+		RootPublicKey: rootPub(root2), RootLabel: "mac2", RootPlatform: "macos"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var approval *localv1.ApproveDevicePairingResponse
+	eventually(t, 15*time.Second, "mac2's request on the Mac", func() bool {
+		approval, err = w.app.client.ApproveDevicePairing(ctx, &localv1.ApproveDevicePairingRequest{Code: join.Code})
+		return err == nil
+	})
+	eventually(t, time.Minute, "the approval reaches mac2", func() bool {
+		r, err := app2.client.WaitJoin(ctx, &localv1.WaitJoinRequest{Code: join.Code})
+		return err == nil && r.Done
+	})
+	if _, err := app2.client.ConfirmJoin(ctx, &localv1.ConfirmJoinRequest{Code: join.Code, Accept: true, MatchCode: approval.MatchCode}); err != nil {
+		t.Fatal(err)
+	}
+	mac2, err := app2.client.SetLocalMachine(ctx, &localv1.SetLocalMachineRequest{Enabled: true, MachineName: "mac2"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	eventually(t, time.Minute, "mac2's machine online on the Mac", func() bool {
+		m := listedMachine(t, w.app.client, mac2.MachineId)
+		return m != nil && m.Online && m.Status != nil
+	})
+	turnHerOn(t, w.app.client, mac2.MachineId)
+	if _, err := os.Stat(filepath.Join(home, "bots")); err != nil {
+		t.Fatalf("her assistants on mac2: %v", err)
+	}
+
+	before := len(w.app.signedTypes())
+	if _, err := w.app.client.RemoveDevice(ctx, &localv1.RemoveDeviceRequest{KeyId: identity.KeyID(root2.Public()), EraseHer: true}); err != nil {
+		t.Fatal(err)
+	}
+	if got := w.app.signedTypes()[before:]; !slices.Contains(got, "hermesh.identity.v1.AdminCommand") || !slices.Contains(got, "hermesh.identity.v1.RootCert") {
+		t.Fatalf("removing signed %v", got)
+	}
+	if _, err := os.Stat(home); !os.IsNotExist(err) {
+		t.Fatalf("her home on the removed device's machine: %v", err)
+	}
+	devices, err := w.app.client.ListDevices(ctx, &localv1.ListDevicesRequest{})
+	if err != nil || len(devices.Devices) != 1 {
+		t.Fatalf("devices after removing mac2: %v %v", devices, err)
+	}
+	eventually(t, 30*time.Second, "mac2's machine no longer listed", func() bool { return listedMachine(t, w.app.client, mac2.MachineId) == nil })
 }
