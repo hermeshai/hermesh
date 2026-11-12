@@ -6,7 +6,8 @@ import SwiftUI
 
 /// Her's settings, a page of their own (the Mac's AssistantPanel, cut to
 /// what is used on a phone): where she runs, and her other environments; the
-/// model she answers with, among those her environment can use; whether she
+/// model she answers with, among those her environment can use, and how hard
+/// she thinks, while that model offers levels; whether she
 /// asks before acting or has full access; her notifications; what she
 /// remembers, on a page of its own (docs/her-memory.md); another machine
 /// to run her on; clearing her conversation or her memory; turning her off on her machine, her data kept or
@@ -74,12 +75,28 @@ struct HerSettings: View {
             }
             if let s = chat.live {
                 Section {
-                    Picker("Model", selection: Binding(get: { s.model }, set: { m in Task { await chat.op(["type": "set_model", "model": .string(m)]) } })) {
+                    Picker("Model", selection: Binding(get: { s.model }, set: { m in
+                        // Her keeps the level when the new model offers it, else takes the one it starts with: said when it changes.
+                        let after = chat.models.thinking(for: m, current: s.thinking)
+                        if m != s.model, s.thinking != "default", after != s.thinking {
+                            model.show(String(localized: "\(chat.models.title(m)) has no “\(herThinkingName(s.thinking))” level; thinking is now “\(herThinkingName(after))”"))
+                        }
+                        Task { await chat.op(["type": "set_model", "model": .string(m)]) }
+                    })) {
                         ForEach(chat.models.menu(current: s.model), id: \.id) { m in
                             Text(chat.models.provider(m.provider).map { "\(m.name) · \($0.name)" } ?? m.name).tag(m.id)
                         }
                     }
                     .accessibilityIdentifier("her-model")
+                    let levels = chat.models.thinkingLevels(s.model)
+                    if !levels.isEmpty {
+                        Picker("Thinking", selection: Binding(get: { s.thinking }, set: { l in
+                            Task { await chat.op(["type": "set_model", "model": .string(s.model), "thinking": .string(l)]) }
+                        })) {
+                            ForEach(["default"] + levels, id: \.self) { l in Text(herThinkingName(l)) }
+                        }
+                        .accessibilityIdentifier("her-thinking")
+                    }
                     LabeledContent("Before Acting") {
                         Picker("Before Acting", selection: Binding(get: { s.permissionMode == "bypass-permissions" }, set: { full in
                             if full { fullAccess = true } else if s.permissionMode == "bypass-permissions" { setMode("manual", chat: chat, machine: machine) }
@@ -379,5 +396,16 @@ struct HerAddSheet: View {
             .navigationBarTitleDisplayMode(.inline)
             .toolbar { ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } } }
         }
+    }
+}
+
+/// A thinking level as the Mac's thinking menu names it.
+func herThinkingName(_ l: String) -> String {
+    switch l {
+    case "default": String(localized: "Default")
+    case "off": String(localized: "No Thinking")
+    case "on": String(localized: "Thinking On")
+    case "minimal": String(localized: "Minimal")
+    default: effortName(l)
     }
 }

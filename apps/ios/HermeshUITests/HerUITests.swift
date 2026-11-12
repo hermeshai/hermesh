@@ -190,6 +190,7 @@ extension HermeshUITests {
         XCTAssertTrue(text("模型").exists && app.buttons["先问我"].exists && app.buttons["完全访问"].exists)
         XCTAssertTrue(text("在另一台机器上开启 Her").exists)
         herShot("Her: settings")
+        try herThinking()
         // Further down: her memory, a row of its own that says when there is nothing yet, then clearing.
         app.swipeUp()
         let memory = app.buttons["her-memory"]
@@ -199,6 +200,38 @@ extension HermeshUITests {
         herShot("Her: settings, further down")
         app.navigationBars.buttons.element(boundBy: 0).tap()
         XCTAssertTrue(app.descendants(matching: .any)["her-composer"].firstMatch.waitForExistence(timeout: 10), "back to the conversation")
+    }
+
+    /// How hard she thinks, as on the Mac: a row under the model while the model offers levels, set in her conversation
+    /// (what the row shows is what her says back); another model without the level says what it is now.
+    func herThinking() throws {
+        // What a picker's row shows, its title and the value chosen (iOS puts the value in either).
+        let shown = { (e: XCUIElement) in "\(e.label) | \(e.value as? String ?? "")" }
+        let modelRow = app.buttons["her-model"]
+        XCTAssertFalse(app.buttons["her-thinking"].exists, "no thinking row: the first model offers no levels")
+        let first = shown(modelRow)
+        // Hy3 on the Token Plan offers no thinking and high (her's catalog).
+        modelRow.tap()
+        let hy3 = app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@ AND identifier != %@", "Hy3", "her-model")).firstMatch
+        XCTAssertTrue(hy3.waitForExistence(timeout: 10), "Hy3 in the model menu")
+        hy3.tap()
+        let thinking = app.buttons["her-thinking"]
+        XCTAssertTrue(thinking.waitForExistence(timeout: 30), "the thinking row, Hy3 offering levels")
+        try waitFor("the model row says Hy3 (\(shown(modelRow)))") { shown(modelRow).contains("Hy3") ? true : nil }
+        thinking.tap()
+        XCTAssertTrue(app.buttons["默认"].waitForExistence(timeout: 10) && app.buttons["高"].exists && app.buttons["不思考"].exists, "Default and Hy3's own levels")
+        herShot("Her: thinking levels")
+        app.buttons["不思考"].tap()
+        try waitFor("her says the level back (\(shown(thinking)))") { shown(thinking).contains("不思考") ? true : nil }
+        herShot("Her: thinking set")
+        // Back to the first model, which has no such level: the row goes with the model. (The toast saying the level it
+        // is now is gone before the menu's dismissal lets a query run.)
+        modelRow.tap()
+        let back = app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@ AND identifier != %@", "Auto", "her-model")).firstMatch
+        XCTAssertTrue(back.waitForExistence(timeout: 10), "\(first): its model in the menu")
+        back.tap()
+        try waitFor("the thinking row gone with the model") { thinking.exists ? nil : true }
+        XCTAssertTrue(shown(modelRow).contains("Auto"), shown(modelRow))
     }
 
     func herMemory() throws {

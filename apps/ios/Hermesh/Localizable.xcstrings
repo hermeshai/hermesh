@@ -70,6 +70,16 @@
         }
       }
     },
+    "%@ has no “%@” level; thinking is now “%@”": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%1$@ 没有「%2$@」档，思考强度改为「%3$@」"
+          }
+        }
+      }
+    },
     "%@ interrupted this turn. The session stays; when %@ sends another message, it continues.": {
       "localizations": {
         "zh-Hans": {
@@ -2073,6 +2083,16 @@
         }
       }
     },
+    "Default": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "默认"
+          }
+        }
+      }
+    },
     "Default Model": {
       "localizations": {
         "zh-Hans": {
@@ -3182,6 +3202,46 @@
           "stringUnit": {
             "state": "translated",
             "value": "对方回复 400：定时任务暂停了吗？"
+          }
+        }
+      }
+    },
+    "Minimal": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "最少"
+          }
+        }
+      }
+    },
+    "No Thinking": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "不思考"
+          }
+        }
+      }
+    },
+    "Thinking": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "思考强度"
+          }
+        }
+      }
+    },
+    "Thinking On": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "思考"
           }
         }
       }

@@ -50,6 +50,11 @@ public struct HerModel: Equatable, Sendable {
     public var available: Bool
     /// In the model menu.
     public var shown: Bool
+    /// The provider's own thinking levels it offers ("off" when thinking can be switched off); "default" is always
+    /// possible and not listed. Empty: no control.
+    public var thinkingLevels: [String] = []
+    /// The level a conversation starts with on it.
+    public var defaultThinking = "default"
 }
 
 /// A provider of models, with how it is signed in to.
@@ -84,7 +89,8 @@ public struct HerModels: Equatable, Sendable {
 
     public init(_ j: JSON) {
         models = (j["models"].array ?? []).compactMap { m in
-            m["id"].string.map { HerModel(id: $0, name: m["name"].string ?? $0, provider: m["provider"].string ?? "", available: m["available"].bool ?? false, shown: m["shown"].bool ?? false) }
+            m["id"].string.map { HerModel(id: $0, name: m["name"].string ?? $0, provider: m["provider"].string ?? "", available: m["available"].bool ?? false, shown: m["shown"].bool ?? false,
+                                          thinkingLevels: (m["thinking_levels"].array ?? []).compactMap(\.string), defaultThinking: m["default_thinking"].string ?? "default") }
         }
         providers = (j["providers"].array ?? []).compactMap { p in
             p["id"].string.map {
@@ -105,6 +111,17 @@ public struct HerModels: Equatable, Sendable {
     public func title(_ ref: String) -> String { models.first { $0.id == ref }?.name ?? herModelName(ref) }
 
     public func provider(_ id: String) -> HerProvider? { providers.first { $0.id == id } }
+
+    /// The thinking levels a model offers besides "default" (the Mac's thinking menu); none: no control.
+    public func thinkingLevels(_ ref: String) -> [String] { models.first { $0.id == ref }?.thinkingLevels ?? [] }
+
+    /// The thinking level that goes with a model (the Mac's thinkingFor): `current` when the model offers it, else the
+    /// level the model starts with.
+    public func thinking(for ref: String, current: String) -> String {
+        let m = models.first { $0.id == ref }
+        if current != "default", m?.thinkingLevels.contains(current) == true { return current }
+        return m?.defaultThinking ?? "default"
+    }
 }
 
 /// A model's id without its provider ("deepseek/deepseek-chat": deepseek-chat).
