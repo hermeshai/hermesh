@@ -384,7 +384,8 @@ test("a row's ⋯ menu renames in place, archives, and deletes once confirmed, i
 test("a narrow window hides the info card, then the sidebar; asked for, they show over the conversation", async () => {
   const { app, page } = await launch();
   const resize = async (width: number) => {
-    await app.evaluate(({ BrowserWindow }, w) => BrowserWindow.getAllWindows()[0].setSize(w, 800), width);
+    // Native window sizes can be clamped to the runner's display; exercise the layout at each viewport width.
+    await page.setViewportSize({ width, height: 800 });
     await expect.poll(() => page.evaluate(() => innerWidth)).toBe(width);
   };
   const main = page.locator(".mainwrap");
@@ -466,7 +467,8 @@ test("a narrow window hides the info card, then the sidebar; asked for, they sho
 
   // The window goes no narrower than the conversation alone.
   await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].setSize(300, 800));
-  await expect.poll(() => page.evaluate(() => innerWidth)).toBe(480);
+  await expect.poll(() => app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].getSize()[0])).toBe(480);
+  await resize(480);
   await snap(page, "layout-480");
   // The overview fits it too: nothing wider than the window.
   await showSidebar.click();
