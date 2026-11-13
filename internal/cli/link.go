@@ -350,7 +350,7 @@ func (k *link) serve(ctx context.Context, conn net.Conn) {
 	} else {
 		n, err := c.Machine(ctx, req.Machine)
 		if err == nil && req.Listed != "" && n.Name != req.Listed {
-			c.Forget(req.Machine) // renamed since this tunnel was made?
+			c.ForgetMachine(n) // renamed since this tunnel was made?
 			n, err = c.Machine(ctx, req.Machine)
 		}
 		if err != nil {
@@ -358,7 +358,7 @@ func (k *link) serve(ctx context.Context, conn net.Conn) {
 			return
 		}
 		reply.Name = n.Name
-		carry = carryTo(n.HTTP(), "https://machine", func() { c.Forget(req.Machine) })
+		carry = carryTo(n.HTTP(), "https://machine", func() { c.ForgetMachine(n) })
 	}
 	b, _ := json.Marshal(reply)
 	if _, err := conn.Write(append(b, '\n')); err != nil {

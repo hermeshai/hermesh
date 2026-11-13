@@ -38,7 +38,9 @@ func (n *Machine) screenCheck() *ScreenCheck {
 type screenService struct{ n *Machine }
 
 func (s *screenService) Connect(ctx context.Context, req *screenv1.ConnectRequest) (*screenv1.ConnectResponse, error) {
+	started := time.Now()
 	res, err := s.n.screen.Connect(ctx, req)
+	answered := time.Now()
 	if req.SessionId == "" { // a new session, not a live one finding another path
 		rec := AuditRecord{Kind: "screen", Subject: principalFrom(ctx).ID(), Action: "connect", Decision: "allow", Detail: req.Viewer}
 		if err != nil {
@@ -46,6 +48,13 @@ func (s *screenService) Connect(ctx context.Context, req *screenv1.ConnectReques
 		}
 		s.n.audit.Log(rec)
 	}
+	session := req.SessionId
+	if res != nil {
+		session = res.SessionId
+	}
+	s.n.log.Info("screen: signal answered", "session", session, "err", err,
+		"answer_after", answered.Sub(started).Round(time.Millisecond),
+		"audit_after", time.Since(answered).Round(time.Millisecond), "after", time.Since(started).Round(time.Millisecond))
 	return res, err
 }
 
