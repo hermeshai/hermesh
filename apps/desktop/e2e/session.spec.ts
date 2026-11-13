@@ -153,6 +153,8 @@ test("the title is 14px medium, bright in front and grey while the window is beh
 
 test("the session card floats over the conversation with what a glance needs, and the toolbar hides it", async () => {
   const { app, page } = await launch();
+  // The card docks only when there is room beside the conversation, regardless of the runner's display size.
+  await page.setViewportSize({ width: 1240, height: 800 });
   await open(page, "写 hello");
   const card = page.getByRole("complementary", { name: "会话信息" });
   const toggle = page.getByRole("button", { name: "信息面板", exact: true });
@@ -317,6 +319,7 @@ test("a question waits in the control area; the owner picks an option by key and
 
 test("a session worked on in place shows the branch its folder is on, or that it is no git repository; another machine's can only be copied", async () => {
   const { app, page } = await launch();
+  await page.setViewportSize({ width: 1240, height: 800 });
   const card = page.getByRole("complementary", { name: "会话信息" });
   await open(page, "就地");
   await expect(card.getByRole("listitem")).toHaveText([/bot 发起$/, "Gemini CLI 执行", thisComputer, "live", "feature/card"]);
@@ -334,6 +337,7 @@ test("a session worked on in place shows the branch its folder is on, or that it
 
 test("a running session shows what it does, and 打断 stops the turn", async () => {
   const { app, page } = await launch();
+  await page.setViewportSize({ width: 1240, height: 800 });
   await open(page, "跑很久");
   await expect(titleLine(page, "跑很久")).toHaveText("跑很久");
   const ctl = page.getByRole("region", { name: "这一轮" });
@@ -561,7 +565,7 @@ test("formulas, diagrams, callouts, folds, footnotes and tables show as the repl
   // A table's tools show under the pointer: Copy gives a sheet tabs, Expand shows it large until Escape.
   const table = md.locator(".md-table");
   const tools = table.locator(".md-table-tools");
-  expect(await tools.evaluate((el) => getComputedStyle(el).opacity)).toBe("0");
+  await expect.poll(() => tools.evaluate((el) => getComputedStyle(el).opacity)).toBe("0");
   await table.locator("table").hover();
   await expect.poll(() => tools.evaluate((el) => getComputedStyle(el).opacity)).toBe("1");
   await tools.getByRole("button", { name: "拷贝表格" }).click();
