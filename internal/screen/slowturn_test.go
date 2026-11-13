@@ -99,7 +99,7 @@ func turnPair(t *testing.T, delay time.Duration, relay net.IP, settle time.Durat
 	if err != nil {
 		t.Fatal(err)
 	}
-	api, err := newAPI(nil, loopbackNet{n})
+	api, err := newAPI(nil, loopbackNet{n}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}

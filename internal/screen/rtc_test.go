@@ -14,7 +14,7 @@ import (
 // description and how long that took.
 func offerWith(t *testing.T, servers []webrtc.ICEServer) (string, time.Duration) {
 	t.Helper()
-	api, err := newAPI(nil, nil)
+	api, err := newAPI(nil, nil, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -92,7 +92,7 @@ func TestGatheredGoesWithTheFirstTURNAddress(t *testing.T) {
 // With early, the wait ends as soon as the local addresses are in, whatever
 // the servers do: the offer can go, and the other candidates follow.
 func TestGatheringEarlyDoesNotWaitForServers(t *testing.T) {
-	api, err := newAPI(nil, nil)
+	api, err := newAPI(nil, nil, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -184,7 +184,7 @@ func TestGatheringDoubtsServersThatGiveNoRelay(t *testing.T) {
 		{"a server that works", []webrtc.ICEServer{{URLs: []string{"turn:" + working + "?transport=udp"}, Username: "u", Credential: "p"}}, false},
 		{"no TURN server", []webrtc.ICEServer{{URLs: []string{"stun:192.0.2.1:3478"}}}, false},
 	} {
-		api, err := newAPI(nil, nil)
+		api, err := newAPI(nil, nil, nil)
 		if err != nil {
 			t.Fatal(err)
 		}

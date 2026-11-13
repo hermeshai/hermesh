@@ -78,6 +78,12 @@ go test ./e2e -run '^TestScreen' -count=1 -v
 HERMESH_IPHONE_E2E=1 HERMESH_IPHONE_GREP=testComputerControl go test ./e2e -run TestIPhone -v -timeout 40m
 ```
 
+The UI flow opens Remote Desktop through Her's settings, so it needs both
+`her` and `her-mock`. Build them with `cargo build` in `her/`, or provide
+existing binaries with `HERMESH_HER_BIN` and `HERMESH_HER_MOCK`. Check the
+result bundle's executed and skipped counts: Xcode can exit successfully
+when every selected test was skipped. The Go harness rejects zero passes.
+
 All must pass before anything below means something. The second prints
 the times the design quotes (the first frame, the move to a direct path,
 the picture after a network change): put them in the report.
@@ -308,8 +314,9 @@ address in the log, if any, is not the phone's): say which the log shows.
 
 ### T15. How each network maps a socket
 
-Why a session between two networks is relayed is in one log line an end
-(design §2.5), from this commit on, with both ends built from it:
+Mapping observations are in one log line per end (design §2.5), with both
+ends built from this commit. These observations alone do not establish
+why a session is relayed:
 
 ```text
 screen: network session=… end=machine found="system 183.0.2.9:54428>54428 54430>54430; 192.168.1.5 183.0.2.9:53344>53344 53345>53345"
@@ -328,11 +335,14 @@ address on the same server saw. `none`: no answer that way.
 each end and way say which of these it shows:
 
 - the same port to both destinations (`40001>40001`): the checks alone
-  can find a direct path through that NAT;
+  observed a stable mapping for those destinations; filtering is still
+  unknown, so this does not prove direct reachability;
 - different ports, a small step apart from socket to socket
-  (`28293>28294 28296>28297`): a direct path needs the next ports tried;
-- different ports far apart (`51350>39438`): no direct path through that
-  NAT unless the other end's lets in what it was not told of.
+  (`28293>28294 28296>28297`): record the samples, without assuming the
+  peer-directed port follows the same pattern;
+- different ports far apart (`51350>39438`): the advertised STUN mapping
+  may not be the peer-directed mapping. The other end's filter and
+  peer-reflexive discovery determine whether standard checks can connect.
 
 And `answered in`: over a second is the tunnel to the machine, which the
 relayed path's servers (T14) do not change.
@@ -356,6 +366,65 @@ neither a region name nor an echo test proves desktop performance. Compare
 with another remote desktop app on the same networks as a baseline for how
 it feels, without assuming how that app connects. TLS on 443 does not pass
 a network that requires an authenticated HTTP proxy.
+
+### T16. Physical UDP mapping and first-frame recovery (peerfix10–12)
+
+Automated checks:
+
+```bash
+(cd third_party/pion-ice && go test . -race -run '^Test(HostSocketDiscoversPublicAddressAndConnects|NATDirectReplacesRelay|RenominationKeepsStableRelayAndFindsNATDirect)$' -count=3)
+go test ./internal/screen -race -run '^TestViewerRecoversFirstFrameOnHighRTT$' -count=3
+```
+
+The first blocks the default UDP route, verifies srflx candidates share
+physical host base ports, exchanges data through two simulated NATs, and
+repeats after ICE restart. The second uses WebRTC SRTP and RTCP NACK on a
+550 ms RTT virtual path, loses one initial-keyframe packet, and requires
+byte-identical recovered frames with no UI status callback or replacement
+keyframe.
+
+The NAT tests also cover a destination-dependent phone mapping with two
+machine filters: an IP-only filter permits standard direct discovery and
+TURN-to-direct upgrade; an exact IP/port filter retains a working relay in
+the bounded test. Neither identifies the real network's filter type.
+
+✋ For the real-device comparison, unplug USB, keep both Surge instances
+in their normal working state, and connect from Duo on 5G to yee-homebook.
+Record 3 opens: success, displayed direct/relay and RTT, first picture time,
+and whether input remains usable for 60 seconds. Correlate both ends'
+candidates and selected pair with the phone core's `viewer first packet`,
+`viewer first frame` and `viewer receive ended` logs. An assembled frame
+alone is not proof of successful native decoding/display. Repeat on common
+Wi-Fi, then switch Wi-Fi/5G during one session. Retain failures as failures;
+no manual proxy rules are part of the acceptance criteria.
+
+On Mac peerfix12, correlate `screen: checks received` at 4 s, 12 s and
+session end with `screen: public direct check received` (at most 16 distinct
+pairs). These count authenticated arrivals even after TURN is connected;
+they add no network probes. If public direct requests arrive but selection
+stays relayed, inspect ICE response/selection. If none arrive, distinguish
+network loss/filtering from packets rejected before authentication using
+the authorized scoped capture; do not infer a particular router or proxy
+is responsible from a zero counter alone.
+
+### T17. Interrupted restart signaling (peerfix13 / phone 1122)
+
+```bash
+go test ./internal/screen -race -run '^Test(SessionRecoversInterruptedRestart|SignalRetriesOnlyTransientErrors)$' -count=1
+```
+
+The full screen/helper test drops a restart request or its answer. It also
+exhausts the first restart's retries, then restores signaling. Require the
+same session, a stable signaling state, more received frames and input at
+the helper. A retry must finish the pending offer before creating another;
+it must not retry permission/not-found errors as transient failures.
+
+✋ Leave a working session open while switching Wi-Fi/5G and back, keeping
+the normal Surge settings. Correlate network-change events, restart errors,
+selected paths and uninterrupted/recovered picture and input on both ends.
+Record 5G direct/relay separately: successful restart recovery is not proof
+that cellular UDP hole punching succeeded.
+
 
 ## 4. The report
 

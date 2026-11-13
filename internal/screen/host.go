@@ -20,6 +20,7 @@ import (
 	"time"
 
 	"connectrpc.com/connect"
+	"github.com/pion/ice/v4"
 	"github.com/pion/interceptor/pkg/cc"
 	"github.com/pion/rtcp"
 	"github.com/pion/webrtc/v4"
@@ -270,13 +271,24 @@ type hostSession struct {
 	bitrateT time.Time
 	keyT     time.Time
 	ended    bool
+	checks   [3]uint64 // authenticated direct, public direct, relay requests
+	checkLog map[string]bool
 }
 
 func (h *Host) open(ctx context.Context, req *screenv1.ConnectRequest) (*hostSession, error) {
 	id := make([]byte, 8)
 	rand.Read(id)
 	s := &hostSession{h: h, id: hex.EncodeToString(id), viewer: req.Viewer, opened: time.Now(), done: make(chan struct{}), bitrate: startBitrate}
-	api, err := newAPI(func(e cc.BandwidthEstimator) { e.OnTargetBitrateChange(s.setBitrate) }, nil)
+	network, err := newSystemNet()
+	if err != nil {
+		return nil, err
+	}
+	// Only the authenticated desktop side spends the bounded extra probes.
+	// Report locally: the daemon's stderr may be discarded by its launcher.
+	punch := &ice.BoundedNATPunchNet{Net: network, Report: func(message string) {
+		h.cfg.Log.Info("screen: NAT punch", "session", s.id, "detail", message)
+	}}
+	api, err := newAPI(func(e cc.BandwidthEstimator) { e.OnTargetBitrateChange(s.setBitrate) }, punch, s.observeCheck)
 	if err != nil {
 		return nil, err
 	}
@@ -322,6 +334,20 @@ func (h *Host) open(ctx context.Context, req *screenv1.ConnectRequest) (*hostSes
 		h.cfg.Log.Info("screen: path", "session", s.id, "local", pathEnd(p.Local), "remote", pathEnd(p.Remote), "after", time.Since(s.opened).Round(time.Millisecond))
 	})
 	connected := make(chan struct{})
+	go func() {
+		// Bounded snapshots also run when TURN connected first. Do not read
+		// PeerConnection.GetStats here: transport shutdown can race it.
+		for _, delay := range []time.Duration{4 * time.Second, 8 * time.Second} {
+			timer := time.NewTimer(delay)
+			select {
+			case <-s.done:
+				timer.Stop()
+				return
+			case <-timer.C:
+				s.logChecks()
+			}
+		}
+	}()
 	var once sync.Once
 	s.pc.OnConnectionStateChange(func(st webrtc.PeerConnectionState) {
 		h.cfg.Log.Info("screen: connection", "session", s.id, "state", st.String(), "after", time.Since(s.opened).Round(time.Millisecond))
@@ -446,6 +472,52 @@ func (s *hostSession) candidates(req *screenv1.CandidatesRequest) (*screenv1.Can
 func (s *hostSession) logCandidates(local, remote []string) {
 	s.h.cfg.Log.Info("screen: candidates", "session", s.id, "local", kinds(local), "remote", kinds(remote),
 		"local_addresses", candidateAddresses(local), "remote_addresses", candidateAddresses(remote))
+}
+
+// observeCheck runs after ICE authenticates a peer's request. Counting actual
+// arrivals distinguishes an unreachable direct path from failed selection;
+// outbound request counts alone do not prove packets left an interface.
+func (s *hostSession) observeCheck(local, remote ice.Candidate) {
+	s.mu.Lock()
+	if local.Type() == ice.CandidateTypeRelay || remote.Type() == ice.CandidateTypeRelay {
+		s.checks[2]++
+		s.mu.Unlock()
+		return
+	}
+	s.checks[0]++
+	ip := net.ParseIP(remote.Address())
+	public := ip != nil && ip.IsGlobalUnicast() && !ip.IsPrivate()
+	if v4 := ip.To4(); v4 != nil {
+		// Proxy benchmark addresses and carrier shared space are not
+		// public peer endpoints, although net.IP.IsPrivate excludes them.
+		public = public && !(v4[0] == 198 && v4[1] >= 18 && v4[1] <= 19) &&
+			!(v4[0] == 100 && v4[1] >= 64 && v4[1] <= 127)
+	}
+	if public {
+		s.checks[1]++
+	}
+	left := fmt.Sprintf("%s %s", local.Type(), net.JoinHostPort(local.Address(), fmt.Sprint(local.Port())))
+	right := fmt.Sprintf("%s %s", remote.Type(), net.JoinHostPort(remote.Address(), fmt.Sprint(remote.Port())))
+	key := left + "/" + right
+	if !public || s.checkLog[key] || len(s.checkLog) >= 16 {
+		s.mu.Unlock()
+		return
+	}
+	if s.checkLog == nil {
+		s.checkLog = map[string]bool{}
+	}
+	s.checkLog[key] = true
+	s.mu.Unlock()
+	s.h.cfg.Log.Info("screen: public direct check received", "session", s.id, "local", left, "remote", right,
+		"after", time.Since(s.opened).Round(time.Millisecond))
+}
+
+func (s *hostSession) logChecks() {
+	s.mu.Lock()
+	counts := s.checks
+	s.mu.Unlock()
+	s.h.cfg.Log.Info("screen: checks received", "session", s.id, "direct", counts[0], "public_direct", counts[1], "relay", counts[2],
+		"after", time.Since(s.opened).Round(time.Millisecond))
 }
 
 // logConnectivity distinguishes unreachable local paths from media that
@@ -681,6 +753,7 @@ func (s *hostSession) end(reason string) {
 	s.cmu.Lock()
 	s.pc.Close()
 	s.cmu.Unlock()
+	s.logChecks()
 	s.wmu.Lock()
 	s.stdin.Close() // the helper releases the buttons it holds and exits
 	s.wmu.Unlock()
