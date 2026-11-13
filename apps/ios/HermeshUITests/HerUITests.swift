@@ -10,6 +10,18 @@ import XCTest
 ///
 ///     HERMESH_IPHONE_E2E=1 HERMESH_IPHONE_GREP=testHer go test ./e2e -run TestIPhone -v -timeout 40m
 extension HermeshUITests {
+    /// Returning from settings with the keyboard open must still let the owner send a message.
+    @objc func testHerSettingsReturn() throws {
+        guard ProcessInfo.processInfo.environment["HERMESH_E2E_HER"] != nil else { throw XCTSkip("run with Her built") }
+        try join()
+        try herTurnOn()
+        try herOnboarding()
+        try herChat()
+        try herSettings()
+        herSend("[[mock:send:设置后仍能聊天]] hi")
+        XCTAssertTrue(app.staticTexts["设置后仍能聊天"].waitForExistence(timeout: 60))
+    }
+
     @objc func testHer() throws {
         guard ProcessInfo.processInfo.environment["HERMESH_E2E_HER"] != nil else { throw XCTSkip("run by TestIPhone with her built (HERMESH_E2E_HER)") }
         try XCTContext.runActivity(named: "joins the owner by its connection address") { _ in try join() }
@@ -128,7 +140,9 @@ extension HermeshUITests {
         let one = height()
         let space = app.keys["space"].exists ? app.keys["space"] : app.keys["空格"]
         var before = one, came = 0
-        for syllable in "wo men jin tian yao qu kan yi xia zhe ge wen ti dao di shi zen me hui shi ran hou zai xiu hao ta wo men jin tian yao qu kan yi xia zhe ge wen ti dao di shi zen me hui shi".split(separator: " ") {
+        // A long syllable leaves room for its single character to come back from a new line. Short syllables in
+        // a fixed sentence can all land away from that boundary, depending on the phone's width and font.
+        for syllable in Array(repeating: "chuang", count: 36) {
             for c in syllable { app.keys[String(c)].tap() }
             let typed = height()
             space.tap()
@@ -464,6 +478,7 @@ extension HermeshUITests {
         XCTAssertTrue(composer.waitForExistence(timeout: 30), "the composer")
         composer.tap()
         composer.typeText(text)
+        XCTAssertTrue(waitUntil { self.app.buttons["her-send"].isHittable }, "Send is reachable above the keyboard")
         tap("her-send")
     }
 
