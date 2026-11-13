@@ -9,7 +9,7 @@ import UserNotifications
 
 /// Where the side menu leads.
 enum Root: Hashable {
-    case her, overview, grants, machines, sessions
+    case her, overview, grants, machines
     case session(String)
 
     /// A page with a large title (Her's, the overview's and a session's are in the bar).
@@ -29,6 +29,8 @@ enum Route: Hashable {
     case machineAgent(String, String) // machine id, coding agent
     case grantSessions(String) // client id
     case machineSessions(String) // machine id
+    case agentSessions(String, String) // machine id, coding agent
+    case sessions // all of them, from Work
     case herSettings // the environment's Her shown
 }
 
@@ -110,7 +112,9 @@ final class AppModel {
     var loadingOlder = false
     var noOlder = false
     var unreachable: [Unreachable] = []
-    var machines: [Machine] = []
+    var machines: [Machine] = [] {
+        didSet { if herLater, machines.contains(where: \.her.enabled) { herLater = false } } // she runs now: the choice is over
+    }
     var clients: [Client] = []
     var devices: [Device] = []
     var projects: [Project] = []
@@ -175,7 +179,11 @@ final class AppModel {
     }
 
     // Navigation
+    /// Her's page first (docs/her-team.md §4.1); Work in the demo, which has no Her, and once the owner put her
+    /// first run off.
     var root: Root = .overview
+    /// "Not Now" on Her's first run: Work is the first page until a machine runs her. Kept on this iPhone.
+    var herLater = false { didSet { save(herLater, "herLater") } }
     var path: [Route] = []
     /// The root page scrolled far enough that its title is small.
     var rootTitleSmall = false
@@ -210,6 +218,8 @@ final class AppModel {
         collapsed = Self.saved("collapsed") ?? []
         menuHidden = Self.saved("menuHidden") ?? false
         menuWidth = Self.saved("menuWidth") ?? 322
+        herLater = Self.saved("herLater") ?? false
+        root = herLater ? .overview : .her
     }
 
     private func save(_ v: some Encodable, _ key: String) {
@@ -600,11 +610,12 @@ final class AppModel {
         olderKey += 1
     }
 
-    /// The overview's range counted, from what the core holds (nothing is
-    /// asked of the machines, so it answers at once).
-    func loadWork() async {
+    /// A range's work counted, Work's own or the one named (today's, for the
+    /// team panel), from what the core holds (nothing is asked of the
+    /// machines, so it answers at once).
+    func loadWork(_ range: WorkPeriod? = nil) async {
         guard let api else { return }
-        let period = workPeriod, now = Date()
+        let period = range ?? workPeriod, now = Date()
         let r = period.request(now)
         if let res = try? await api.queryWork(r) {
             work[period] = RangeWork(period: period, firstDay: r.firstDay, res)
@@ -650,6 +661,16 @@ final class AppModel {
         clients.first { $0.clientID == clientID }?.label ?? String(localized: "Disconnected agent")
     }
 
+    /// Who sent work, in a row: Her by her name alone, the owner as "You", the others as their grants name them.
+    func senderName(_ clientID: String) -> String {
+        if clientID == "owner" { return String(localized: "You") }
+        if let c = clients.first(where: { $0.clientID == clientID }), !c.herMachineID.isEmpty { return "Her" }
+        return clientLabel(clientID)
+    }
+
+    /// A session's second line in lists: who sent the work to which coding agent, and the project.
+    func senderLine(_ s: Session) -> String { "\(senderName(s.createdBy)) → \(agentShortTitle(s.agent)) · \(s.projectID)" }
+
     func machineName(_ id: String) -> String { machines.first { $0.machineID == id }?.machineName ?? String(id.prefix(12)) }
 
     var attentionCount: Int { sessions.filter { $0.status == .waitingInput }.count + pairings.count }
@@ -676,6 +697,13 @@ final class AppModel {
     func open(_ r: Root) {
         root = r
         path = []
+        drawerOpen = false
+    }
+
+    /// A page of Work's, from the menu (a machine's sessions, an agent's): Back returns to Work.
+    func open(underWork route: Route) {
+        root = .overview
+        path = [route]
         drawerOpen = false
     }
 
@@ -752,7 +780,7 @@ final class AppModel {
             heldSessions = mergeSessions(heldSessions, [], deleted: [s.sessionID])
             conversations.forget(s.sessionID)
             path.removeAll { $0 == .session(s.sessionID) }
-            if case .session(let id) = root, id == s.sessionID { root = .sessions }
+            if case .session(let id) = root, id == s.sessionID { root = .overview }
             show(String(localized: "Deleted “\(s.displayTitle)”"))
             return true
         } catch {

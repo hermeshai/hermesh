@@ -29,8 +29,8 @@ public func partialOutput(_ r: ToolResult) -> Bool {
 /// One row of the conversation.
 public enum TranscriptItem: Equatable {
     case turn(seq: UInt64, turn: Int, at: Date?)
-    /// at: when it was sent.
-    case user(seq: UInt64, text: String, at: Date?)
+    /// at: when it was sent. asker: who asked for its turn (a client id, or "owner"; "" when the machine didn't say).
+    case user(seq: UInt64, text: String, at: Date?, asker: String = "")
     case agent(seq: UInt64, text: String)
     case tool(ToolItem)
     case question(seq: UInt64, question: Question, resolution: QuestionResolved?)
@@ -44,7 +44,7 @@ public enum TranscriptItem: Equatable {
 
     public var seq: UInt64 {
         switch self {
-        case .turn(let s, _, _), .user(let s, _, _), .agent(let s, _), .question(let s, _, _), .turnEnd(let s, _, _), .error(let s, _),
+        case .turn(let s, _, _), .user(let s, _, _, _), .agent(let s, _), .question(let s, _, _), .turnEnd(let s, _, _), .error(let s, _),
              .message(let s, _, _, _, _): s
         case .tool(let t): t.seq
         }
@@ -71,13 +71,15 @@ public func transcript(_ events: [SessionEvent], running: Bool) -> [TranscriptIt
     }
     var items: [TranscriptItem] = []
     var turnStart: Date?
+    var asker = ""
     for e in events {
         let at = dateOf(e.ts, set: e.hasTs)
         switch e.kind {
         case .turnStarted(let t):
             turnStart = at
+            asker = t.asker
             items.append(.turn(seq: e.seq, turn: Int(t.turn), at: at))
-        case .userMessage(let m): items.append(.user(seq: e.seq, text: m.text, at: at))
+        case .userMessage(let m): items.append(.user(seq: e.seq, text: m.text, at: at, asker: asker))
         case .agentMessage(let m): items.append(.agent(seq: e.seq, text: m.text))
         case .toolCall(let c):
             let r = results[c.callID]

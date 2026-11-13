@@ -34,8 +34,11 @@ private struct PageView: View {
                     case .grant(let id): GrantView(id: id).syncSubtitle()
                     case .machine(let id): MachineView(id: id).syncSubtitle()
                     case .machineAgent(let machine, let agent): MachineAgentView(machineID: machine, agent: agent).syncSubtitle()
-                    case .grantSessions(let id): ScopedSessionsView(filter: SessionFilter(grant: id), title: String(localized: "“\(model.clients.first { $0.clientID == id }?.label ?? "")” Sessions")).syncSubtitle()
-                    case .machineSessions(let id): ScopedSessionsView(filter: SessionFilter(machine: id), title: String(localized: "Sessions on \(model.machineName(id))")).syncSubtitle()
+                    case .grantSessions(let id): ScopedSessionsView(filter: SessionFilter(grant: id), title: String(localized: "“\(model.clients.first { $0.clientID == id }?.label ?? "")” Sessions"), about: model.clients.first { $0.clientID == id }.map { .grant($0.grantID) }).syncSubtitle()
+                    case .machineSessions(let id): ScopedSessionsView(filter: SessionFilter(machine: id), title: String(localized: "Sessions on \(model.machineName(id))"), about: .machine(id)).syncSubtitle()
+                    case .agentSessions(let machine, let agent):
+                        ScopedSessionsView(filter: SessionFilter(agent: agent, machine: machine), title: String(localized: "\(agentTitle(agent)) on \(model.machineName(machine))"), about: .machineAgent(machine, agent)).syncSubtitle()
+                    case .sessions: SessionsView().syncSubtitle()
                     case .herSettings: HerSettings()
                     }
                 }
@@ -62,7 +65,6 @@ private struct PageView: View {
         case .overview: OverviewView()
         case .grants: GrantsView()
         case .machines: MachinesView()
-        case .sessions: SessionsView()
         case .session(let id): SessionView(id: id).id(id) // a page of its own: the one left keeps its conversation as it goes
         }
     }

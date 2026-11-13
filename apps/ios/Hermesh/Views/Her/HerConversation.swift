@@ -131,7 +131,7 @@ private extension HerItem {
     var side: HerSide? {
         switch kind {
         case .user, .waiting: .owner
-        case .her, .attachment, .question, .card: .her
+        case .her, .attachment, .question, .card, .session: .her
         case .failure, .onboarding: nil
         }
     }
@@ -215,6 +215,8 @@ private struct HerRow: View {
             }
         case .failure(let f, _):
             FailLine(title: String(localized: "This task didn’t finish"), message: f.message)
+        case .session(let started):
+            HerSessionCard(started: started)
         case .onboarding:
             if let flow = chat.flow { HerOnboardingView(chat: chat, flow: flow, machine: machine) }
         }
@@ -302,6 +304,80 @@ extension View {
         ViewThatFits(in: .horizontal) {
             self
             frame(maxWidth: .infinity, alignment: .leading)
+        }
+    }
+}
+
+/// A coding session Her started, where she started it (docs/her-team.md §4.4): the agent, the title, where it
+/// runs, and how it stands now, kept current from the sessions the app holds; it opens the session's page. One the
+/// app holds no more (deleted, or older than what it keeps) shows as the call named it, without a state. It
+/// answers no question: news of her own sessions goes to Her first.
+struct HerSessionCard: View {
+    @Environment(AppModel.self) private var model
+    let started: HerStarted
+
+    var body: some View {
+        let s = model.session(started.sessionID)
+        let agent = s?.agent ?? started.agent
+        Button { model.openSession(started.sessionID) } label: {
+            HStack(alignment: .top, spacing: 10) {
+                AgentLogo(id: agent, size: 30)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(s?.displayTitle ?? started.title).font(.callout.weight(.semibold)).lineLimit(1)
+                    Text(verbatim: "\(agentShortTitle(agent)) · \(s.map { model.machineName($0.machineID) } ?? started.machine)")
+                        .font(.footnote).foregroundStyle(.secondary).lineLimit(1)
+                    if let s { state(s) }
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                if let s { mark(s).frame(height: 20) }
+            }
+            .padding(12)
+            .contentShape(.rect)
+        }
+        .buttonStyle(.plain)
+        .disabled(s == nil)
+        .herReply()
+        .herSide()
+        .accessibilityElement(children: .combine)
+        .accessibilityIdentifier("her-session-\(s?.displayTitle ?? started.title)")
+    }
+
+    /// The third line: what it does now, that it waits, how it failed, or what it changed.
+    @ViewBuilder private func state(_ s: Session) -> some View {
+        if s.status == .waitingInput {
+            Text("Waiting for an answer").font(.footnote).foregroundStyle(.orange)
+        } else if s.isFailed {
+            Text("Failed").font(.footnote).foregroundStyle(.red)
+        } else if s.isActive {
+            HStack(spacing: 6) {
+                if !s.progress.currentTool.isEmpty { Text(s.progress.currentTool).font(.caption.monospaced()).lineLimit(1) }
+                if let start = s.turnStartedDate { Text(start, style: .timer).font(.caption).monospacedDigit() }
+            }
+            .foregroundStyle(.secondary)
+        } else if s.status == .idle {
+            let d = s.progress.diffStat
+            if d.filesChanged > 0 {
+                HStack(spacing: 6) {
+                    Text("\(d.filesChanged) files")
+                    Text(verbatim: "+\(d.insertions)").foregroundStyle(.green)
+                    Text(verbatim: "−\(d.deletions)").foregroundStyle(.red)
+                }
+                .font(.footnote).foregroundStyle(.secondary).monospacedDigit()
+            } else {
+                Text("Done").font(.footnote).foregroundStyle(.secondary)
+            }
+        }
+    }
+
+    @ViewBuilder private func mark(_ s: Session) -> some View {
+        if s.status == .waitingInput {
+            Circle().fill(.orange).frame(width: 9, height: 9)
+        } else if s.isFailed {
+            Circle().fill(.red).frame(width: 9, height: 9)
+        } else if s.isActive {
+            ProgressView().controlSize(.small)
+        } else if s.status == .idle {
+            Image(systemName: "checkmark.circle.fill").foregroundStyle(.green)
         }
     }
 }

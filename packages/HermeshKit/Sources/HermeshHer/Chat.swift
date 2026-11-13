@@ -4,11 +4,14 @@ import Foundation
 // botChat.ts): the owner's messages, and each message Her sent with
 // send_to_user (words, files, a question, or a secure card), in the order
 // they were sent, with what a sub-agent told the owner, which reads the
-// same, and a failure where a task failed. What Her did and wrote for
+// same, a card for each coding session she started (docs/her-team.md §4.4),
+// and a failure where a task failed. What else Her did and wrote for
 // herself never shows. An approval is no part of it: it waits above the
 // composer.
 
 public let sendToUser = "send_to_user"
+/// The mesh tool that starts a coding session (docs/her-mesh.md §4.2).
+public let sessionStart = "session_start"
 
 /// A row of the conversation.
 public struct HerItem: Equatable, Identifiable, Sendable {
@@ -35,6 +38,8 @@ public struct HerItem: Equatable, Identifiable, Sendable {
         case waiting(id: String, text: String, files: [String], error: String)
         /// Her's onboarding while no model works there (HerOnboarding).
         case onboarding
+        /// A coding session Her started, where she started it.
+        case session(HerStarted)
     }
 
     public init(key: String, ts: Double, kind: Kind) {
@@ -68,6 +73,30 @@ public struct HerFile: Equatable, Sendable {
     public var image: Bool
 }
 
+/// A coding session Her started, as her session_start call's result names it (the CLI's document,
+/// docs/cli-output.md): enough to find the session, and to name it when the phone holds it no more.
+public struct HerStarted: Equatable, Sendable {
+    public var sessionID: String
+    public var title: String
+    public var agent: String
+    /// The machine's name.
+    public var machine: String
+
+    public init(sessionID: String, title: String, agent: String, machine: String) {
+        self.sessionID = sessionID
+        self.title = title
+        self.agent = agent
+        self.machine = machine
+    }
+
+    /// From a result's text; nil unless it is a command's document that succeeded and names a session.
+    init?(result text: String) {
+        guard let doc = try? JSON.parse(Data(text.utf8)), doc["ok"].bool == true, let id = doc["session"]["session_id"].string, !id.isEmpty else { return nil }
+        let s = doc["session"]
+        self.init(sessionID: id, title: s["title"].string ?? "", agent: s["agent"].string ?? "", machine: s["machine"].string ?? "")
+    }
+}
+
 /// How a tool call stands, from its result and the task under way.
 enum CallState { case done, failed, denied, live, cancelled }
 
@@ -96,9 +125,14 @@ public func herChat(_ v: HerSession) -> [HerItem] {
             }
         case .assistant(_, let calls, let ts, let duration):
             // Sent when the reply that called send_to_user ended.
-            for c in calls where c.name == sendToUser {
-                if let kind = delivered(c, state(c.id, open: v.live != nil && i == lastReply), results[c.id]) {
-                    out.append(HerItem(key: c.id, ts: ts + duration, kind: kind))
+            for c in calls {
+                if c.name == sendToUser {
+                    if let kind = delivered(c, state(c.id, open: v.live != nil && i == lastReply), results[c.id]) {
+                        out.append(HerItem(key: c.id, ts: ts + duration, kind: kind))
+                    }
+                } else if herCallTarget(c.name, c.args).name == sessionStart, let r = results[c.id], !r.isError, let started = HerStarted(result: r.text) {
+                    // A session she started: a call that was refused, failed or never ran started none.
+                    out.append(HerItem(key: c.id, ts: ts + duration, kind: .session(started)))
                 }
             }
         case .taskEnd("failed", let error?, let ts):

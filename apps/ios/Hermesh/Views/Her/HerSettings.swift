@@ -361,16 +361,26 @@ struct HerChoices: View {
     }
 }
 
-/// The Her entry while Her runs nowhere: where she should run.
+/// The Her entry while Her runs nowhere (docs/her-team.md §4.9): her, asleep, and where she should run. Not Now
+/// makes Work the first page until a machine runs her.
 struct HerFirstRun: View {
+    @Environment(AppModel.self) private var model
+
     var body: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: 0) {
-                Mark(size: 52)
-                Text("Choose where Her runs").font(.title2.bold()).padding(.top, 14)
-                Text("Her’s conversations, files and model keys stay on that machine. You can add other machines later.")
-                    .font(.subheadline).foregroundStyle(.secondary).padding(.top, 4).padding(.bottom, 18)
+            VStack(spacing: 0) {
+                HerAvatar(size: 112, asleep: true)
+                Text("Choose where Her runs").font(.title2.bold()).padding(.top, 10)
+                Text("She runs on a computer of yours and leads the coding agents on all of them. Her conversations, files and model keys stay on that machine.")
+                    .font(.subheadline).foregroundStyle(.secondary).multilineTextAlignment(.center).padding(.top, 4).padding(.bottom, 18)
                 HerChoices()
+                Button("Not Now") {
+                    model.herLater = true
+                    model.open(.overview)
+                }
+                .font(.subheadline).foregroundStyle(.secondary)
+                .frame(minHeight: 44).padding(.top, 8)
+                .accessibilityIdentifier("her-not-now")
             }
             .padding(.horizontal, 20).padding(.top, 8)
         }

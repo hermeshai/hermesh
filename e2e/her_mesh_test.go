@@ -162,6 +162,19 @@ func TestHerMesh(t *testing.T) {
 	if !strings.HasPrefix(said, "mesh done") || first == "" {
 		t.Fatalf("session_start: %s", said)
 	}
+	// The apps draw her session's card from this result (docs/her-team.md
+	// §4.4): the command's document, with the session it started.
+	var doc struct {
+		Ok      bool `json:"ok"`
+		Session struct {
+			SessionID             string `json:"session_id"`
+			Title, Machine, Agent string
+		} `json:"session"`
+	}
+	if at := strings.Index(said, "{"); at < 0 || json.NewDecoder(strings.NewReader(said[at:])).Decode(&doc) != nil || !doc.Ok || doc.Session.SessionID != first ||
+		doc.Session.Title == "" || doc.Session.Machine != "owner-mac" || doc.Session.Agent != "claude" {
+		t.Fatalf("session_start's result is not the document the apps read: %s", said)
+	}
 	// The session is Her's, on the owner's Mac.
 	eventually(t, time.Minute, "the session on the owner's Mac", func() bool {
 		res, err := c.ListSessions(ctx, &localv1.ListSessionsRequest{})

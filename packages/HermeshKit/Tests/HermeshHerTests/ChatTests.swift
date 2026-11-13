@@ -194,3 +194,25 @@ func snapshot(_ items: [JSON], task: JSON = nil, seq: Int = 10, queued: JSON = [
     #expect(herToolCategory("bash") == "execute" && herToolCategory("mcp__x") == "other")
     #expect(herCallTarget("call_tool", ["name": "browser_navigate", "arguments": ["url": "https://a.example"]]).name == "browser_navigate")
 }
+
+@Test func aSessionHerStartedIsARowWhereSheStartedIt() {
+    let doc = #"{"ok":true,"exit_code":0,"error":null,"session":{"session_id":"s_ab_12","title":"Fix the relay test","machine":"Mac mini","agent":"claude"}}"#
+    let v = snapshot([
+        said("u1", "fix the relay test", ts: 1000),
+        reply("a1", [call("c1", "send_to_user", ["text": "Starting Claude Code."]), call("c2", "call_tool", ["name": "session_start", "arguments": ["project": "mini/hermesh"]])], ts: 2000, duration: 500),
+        result("c1"), result("c2", text: doc),
+        reply("a2", [call("c3", "session_start", ["project": "mini/hermesh"]), call("c4", "session_start", [:]), call("c5", "session_start", [:]),
+                     call("c6", "session_send", ["session_id": "s_ab_12"]), call("c7", "session_start", [:])], ts: 3000),
+        result("c3", text: doc.replacingOccurrences(of: "s_ab_12", with: "s_cd_34")),
+        result("c4", error: true, text: #"{"ok":false,"exit_code":3,"error":{"kind":"denied"}}"#),
+        result("c5", text: "denied by the user"),
+        result("c6", text: doc),
+        ["type": "task_end", "task_id": "t1", "outcome": "completed", "ts": 3100],
+    ])
+    let items = herChat(v)
+    #expect(items.map(\.key) == ["u1", "c1", "c2", "c3"], "one row a session started: none for a call that failed, was refused, never ran, or wrote to a session")
+    #expect(items[2].kind == .session(HerStarted(sessionID: "s_ab_12", title: "Fix the relay test", agent: "claude", machine: "Mac mini")), "inside call_tool too")
+    #expect(items[2].ts == 2500 && !items[2].isOwner)
+    guard case .session(let second) = items[3].kind else { Issue.record("no session row"); return }
+    #expect(second.sessionID == "s_cd_34")
+}
