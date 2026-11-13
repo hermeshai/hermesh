@@ -181,6 +181,30 @@ func (c *Client) Drop() {
 	}
 }
 
+// tunnelTimeout identifies the relay connection on which a new machine
+// tunnel failed to complete its TLS handshake. Ordinary RPC deadlines and
+// authentication failures are not evidence for replacing that connection.
+type tunnelTimeout struct {
+	err  error
+	conn *transport.RelayConn
+}
+
+func (e *tunnelTimeout) Error() string { return e.err.Error() }
+func (e *tunnelTimeout) Unwrap() error { return e.err }
+
+// RecoverTunnel drops the still-current relay connection after a new tunnel's
+// transport timeout. Callers must bound this recovery: a sleeping machine can
+// cause the same timeout, and replacing the relay also ends its other tunnels.
+// It does not retry the call or change its deadline.
+func (c *Client) RecoverTunnel(err error) bool {
+	var failed *tunnelTimeout
+	if !errors.As(err, &failed) || c.conn.Load() != failed.conn || failed.conn.IsClosed() {
+		return false
+	}
+	failed.conn.Close()
+	return true
+}
+
 // Admitted waits for the relay's answer to this connection's Hello: nil
 // once it admitted it.
 func (c *Client) Admitted(ctx context.Context) error {
@@ -413,7 +437,12 @@ func (c *Client) dialMachine(ctx context.Context, machineID string) (*Machine, e
 	tc, sub, err := transport.ClientHandshake(hctx, raw, c.d.Key.CryptoSigner(), c.d.Credentials, c.d.Trust, machineID)
 	if err != nil {
 		raw.Close()
-		return nil, fmt.Errorf("connect to %s: %w", machineID, conn.Explain(err))
+		err = fmt.Errorf("connect to %s: %w", machineID, conn.Explain(err))
+		var timeout net.Error
+		if !errors.Is(err, context.Canceled) && !errors.Is(err, transport.ErrAdmission) && errors.As(err, &timeout) && timeout.Timeout() {
+			return nil, &tunnelTimeout{err: err, conn: conn}
+		}
+		return nil, err
 	}
 	h2, err := transport.NewTunnelClient(tc)
 	if err != nil {
@@ -458,7 +487,7 @@ func (c *Client) ForgetRenamed(names map[string]string) {
 	}
 }
 
-// Forget drops a cached tunnel (after an error).
+// Forget drops the current cached tunnel deliberately.
 func (c *Client) Forget(machineID string) {
 	c.mu.Lock()
 	if n := c.machines[machineID]; n != nil {
@@ -466,6 +495,22 @@ func (c *Client) Forget(machineID string) {
 		delete(c.machines, machineID)
 	}
 	c.mu.Unlock()
+}
+
+// ForgetMachine drops the tunnel used by a failed call. A later failure of
+// an old tunnel must not close the replacement another caller has made.
+func (c *Client) ForgetMachine(n *Machine) {
+	if n == nil {
+		return
+	}
+	c.mu.Lock()
+	if c.machines[n.MachineID] != n {
+		c.mu.Unlock()
+		return
+	}
+	delete(c.machines, n.MachineID)
+	c.mu.Unlock()
+	n.h2.Close()
 }
 
 // FanOut runs fn against each machine concurrently (at most 8 at a time) and
@@ -488,7 +533,7 @@ func (c *Client) FanOut(ctx context.Context, machineIDs []string, fn func(ctx co
 				err = fn(nctx, n)
 			}
 			if err != nil {
-				c.Forget(id)
+				c.ForgetMachine(n)
 				mu.Lock()
 				errs[id] = err
 				mu.Unlock()

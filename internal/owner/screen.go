@@ -53,6 +53,8 @@ type screenStatus struct {
 
 // screenCall is a call of ScreenService on a machine, through its tunnel.
 func screenCall[Req, Res any](o *Owner, machineID string, call func(screenv1connect.ScreenServiceClient, context.Context, *Req) (*Res, error)) func(context.Context, *Req) (*Res, error) {
+	var recoveryMu sync.Mutex
+	var recovered *Req // the viewer retries the same Connect request
 	return func(ctx context.Context, req *Req) (*Res, error) {
 		started := time.Now()
 		method := fmt.Sprintf("%T", req)
@@ -61,15 +63,33 @@ func screenCall[Req, Res any](o *Owner, machineID string, call func(screenv1conn
 			o.log.Warn("screen: signal relay", "method", method, "err", err, "after", time.Since(started).Round(time.Millisecond))
 			return nil, err
 		}
+		relayAfter := time.Since(started).Round(time.Millisecond)
 		n, err := c.Machine(ctx, machineID)
 		if err != nil {
 			o.log.Warn("screen: signal tunnel", "method", method, "err", err, "after", time.Since(started).Round(time.Millisecond))
+			if _, ok := any(req).(*screenv1.ConnectRequest); ok {
+				recoveryMu.Lock()
+				reset := recovered != req && c.RecoverTunnel(err)
+				if reset {
+					recovered = req
+				}
+				recoveryMu.Unlock()
+				if reset {
+					o.log.Info("screen: signal relay recovery", "method", method, "after", time.Since(started).Round(time.Millisecond))
+				}
+			}
 			return nil, connect.NewError(connect.CodeUnavailable, err)
 		}
+		tunnelAfter := time.Since(started).Round(time.Millisecond)
+		if _, ok := any(req).(*screenv1.ConnectRequest); ok {
+			o.log.Info("screen: signal request", "method", method, "relay_after", relayAfter, "tunnel_after", tunnelAfter)
+		}
 		res, err := call(n.Screen, ctx, req)
-		o.log.Info("screen: signal response", "method", method, "err", err, "after", time.Since(started).Round(time.Millisecond))
+		rpcAfter := time.Since(started).Round(time.Millisecond)
+		o.log.Info("screen: signal response", "method", method, "err", err, "after", rpcAfter,
+			"relay_after", relayAfter, "tunnel_after", tunnelAfter, "rpc_after", rpcAfter)
 		if err != nil && (ctx.Err() == nil && tunnelError(err) || errors.Is(ctx.Err(), context.DeadlineExceeded)) {
-			c.Forget(machineID)
+			c.ForgetMachine(n)
 		}
 		return res, err
 	}

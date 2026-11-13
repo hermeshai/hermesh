@@ -241,7 +241,7 @@ func (a *app) waitTurn(ctx context.Context, cmd *cobra.Command, c *peer.Client, 
 			return a.outcome(w, ref.Name, s, &exitError{code: exitTimeout, kind: "wait_timeout", err: fmt.Errorf("stopped waiting for session %s; its turn goes on", id),
 				hint: fmt.Sprintf("check it with `hermesh session get %s`", id)})
 		}
-		c.Forget(ref.ID)
+		c.ForgetMachine(n)
 		if attempt > 30 {
 			return a.outcome(w, ref.Name, nil, &exitError{code: exitUnavailable, kind: "unreachable", err: fmt.Errorf("lost connection to %s: %v", ref.Name, err),
 				hint: fmt.Sprintf("check it later with `hermesh session get %s`", id)})

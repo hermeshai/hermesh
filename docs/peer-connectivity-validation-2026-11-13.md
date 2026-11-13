@@ -4,11 +4,14 @@ Workspace: `/Users/yipengfei/.codex/worktrees/peer-udp-performance/hermesh`.
 Branch: `codex/peer-udp-performance`; base `d68c45a8` plus the local diff.
 The user's main checkout and Claude's checkout were not changed.
 
-Current installed pair: **Mac peerfix17 / Duo 1125**. Cellular direct
+Installed pair at the end of this traversal round: **Mac peerfix17 / Duo 1125**. Cellular direct
 acceptance remains outstanding. The peerfix16 test on the new Wi-Fi stayed
 relayed at 400–500 ms; UU also appeared to relay there. The earlier Wi-Fi,
 where UU had proven UDP P2P, cannot be retested until the user returns.
 Later sections distinguish each build, network and automated result.
+
+Subsequent home-Wi-Fi startup work and peerfix18/19 installations are recorded
+in [connection-startup-validation-2026-11-13.md](connection-startup-validation-2026-11-13.md).
 
 ## Implemented and installed
 
