@@ -20,11 +20,11 @@ import (
 var probeWithin = 1500 * time.Millisecond
 
 // probeNAT finds out how this end's network maps its packets, for the log:
-// whether a socket is seen at the same public port by two destinations (a
-// direct path through that NAT can then be found by the checks alone), or
-// at another port for each (it cannot, unless the other end's NAT lets in
-// what it was not told of), and how far apart the ports of one socket after
-// another are. It needs nothing but the relay's TURN server: one
+// whether a socket is seen at the same public port by two destinations,
+// and how far apart the ports of consecutive sockets are. These two
+// destinations may share an IP: this measures mapping, not NAT filtering
+// or general reachability, and cannot establish that direct ICE will work.
+// It needs nothing but the relay's TURN server: one
 // destination is its STUN port, the other a relayed address allocated on it
 // for the probe, where this end reads what arrives and from where.
 //

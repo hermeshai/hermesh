@@ -122,6 +122,13 @@ func TestIPhone(t *testing.T) {
 		summary := run(t, nil, time.Minute, "xcrun", "xcresulttool", "get", "test-results", "tests", "--path", results).stdout
 		t.Fatalf("UI tests failed (result bundle %s):\n%s\n---- last output ----\n%s\n%s", results, failureMessages(summary), tail(r.stdout, 40), tail(r.stderr, 40))
 	}
+	// Xcode exits successfully when the selected test was skipped. Require
+	// an executed pass so missing prerequisites cannot masquerade as coverage.
+	summary := run(t, nil, time.Minute, "xcrun", "xcresulttool", "get", "test-results", "summary", "--path", results)
+	var counts struct{ PassedTests int }
+	if err := json.Unmarshal([]byte(summary.stdout), &counts); summary.code != 0 || err != nil || counts.PassedTests == 0 {
+		t.Fatalf("no iPhone UI test passed (result bundle %s):\n%s\n%s", results, summary.stdout, summary.stderr)
+	}
 	t.Log(tail(r.stdout, 30))
 	// testTheIPhoneApp adds a project; the other tests none.
 	if r := w.cli(30*time.Second, "project", "list"); only == "testTheIPhoneApp" && !strings.Contains(r.stdout, "owner-mac/demo-2") {

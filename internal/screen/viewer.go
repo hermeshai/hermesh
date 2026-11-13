@@ -4,15 +4,16 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 	"net"
 	"os"
 	"slices"
 	"strings"
 	"sync"
-	"sync/atomic"
 	"time"
 
 	"connectrpc.com/connect"
+	"github.com/pion/ice/v4"
 	"github.com/pion/rtcp"
 	"github.com/pion/webrtc/v4"
 	"google.golang.org/protobuf/proto"
@@ -23,6 +24,8 @@ import (
 
 // ViewerConfig is what a device's side needs.
 type ViewerConfig struct {
+	// Log records the first packet/frame and the receive totals, locally.
+	Log *slog.Logger
 	// Connect is ScreenService.Connect on the machine, through its tunnel.
 	Connect func(context.Context, *screenv1.ConnectRequest) (*screenv1.ConnectResponse, error)
 	// Candidates is ScreenService.Candidates on the machine. With it the
@@ -81,8 +84,10 @@ type Viewer struct {
 	input   *webrtc.DataChannel
 	pointer *webrtc.DataChannel
 	session string
+	started time.Time
 
-	omu sync.Mutex // offers and applying candidate batches, one at a time
+	omu     sync.Mutex // offers and applying candidate batches, one at a time
+	pending *viewerOffer
 
 	once sync.Once
 	done chan struct{}
@@ -99,15 +104,33 @@ type Viewer struct {
 	theirs []string
 	// servers are the relay's servers the connection has now.
 	servers []*relayv1.IceServer
-	// rtt is the round trip of the path in use, in nanoseconds, as last
-	// read: how long the picture waits for a lost packet goes by it.
-	rtt atomic.Int64
+}
+
+// A failed signaling call leaves Pion in have-local-offer. Keep that exact
+// offer until its answer arrives; creating another offer is invalid there.
+type viewerOffer struct {
+	g       *gathering
+	n       int
+	request *screenv1.ConnectRequest
 }
 
 // Dial opens a session: it returns once the machine has answered, and the
 // picture follows when a path between the two is found (Status).
 func Dial(ctx context.Context, cfg ViewerConfig) (*Viewer, error) {
-	api, err := newAPI(nil, blockedNet(cfg.Servers))
+	network := blockedNet(cfg.Servers)
+	if network == nil {
+		var err error
+		network, err = newSystemNet()
+		if err != nil {
+			return nil, err
+		}
+	}
+	punch := &ice.BoundedNATPunchNet{Net: network, Report: func(message string) {
+		if cfg.Log != nil {
+			cfg.Log.Info("screen: NAT punch", "detail", message)
+		}
+	}}
+	api, err := newAPI(nil, punch, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -119,7 +142,7 @@ func Dial(ctx context.Context, cfg ViewerConfig) (*Viewer, error) {
 	if err != nil {
 		return nil, err
 	}
-	v := &Viewer{cfg: cfg, pc: pc, done: make(chan struct{}), servers: cfg.Servers}
+	v := &Viewer{cfg: cfg, pc: pc, done: make(chan struct{}), servers: cfg.Servers, started: time.Now()}
 	fail := func(err error) (*Viewer, error) {
 		pc.Close()
 		return nil, err
@@ -184,6 +207,13 @@ func Dial(ctx context.Context, cfg ViewerConfig) (*Viewer, error) {
 func (v *Viewer) offer(ctx context.Context, restart bool) error {
 	v.omu.Lock()
 	defer v.omu.Unlock()
+	if v.pending != nil {
+		if err := v.finishOffer(ctx); err != nil {
+			return err
+		}
+		// The network may have changed again while signaling was down.
+		// Once stable, gather a fresh offer for the current interfaces.
+	}
 	if restart && v.cfg.Fresh != nil {
 		if list := v.cfg.Fresh(ctx); len(list) > 0 {
 			conf := v.pc.GetConfiguration()
@@ -209,8 +239,19 @@ func (v *Viewer) offer(ctx context.Context, restart bool) error {
 	v.mu.Unlock()
 	g.wait(later)
 	sdp := v.pc.LocalDescription().SDP
+	v.pending = &viewerOffer{g: g, n: n, request: &screenv1.ConnectRequest{
+		Offer: sdp, SessionId: v.session, Viewer: v.cfg.Name, Pointer: v.cfg.Pointer, CandidatesLater: later,
+	}}
+	return v.finishOffer(ctx)
+}
+
+// finishOffer is called with omu held, including when a later Restart resumes
+// an interrupted exchange. A transient failure must not discard its offer.
+func (v *Viewer) finishOffer(ctx context.Context) error {
+	p := v.pending
+	g, n, sdp, later := p.g, p.n, p.request.Offer, p.request.CandidatesLater
 	asked := time.Now()
-	res, tries, err := v.connect(ctx, &screenv1.ConnectRequest{Offer: sdp, SessionId: v.session, Viewer: v.cfg.Name, Pointer: v.cfg.Pointer, CandidatesLater: later})
+	res, tries, err := v.connect(ctx, p.request)
 	if err != nil {
 		return err
 	}
@@ -218,6 +259,7 @@ func (v *Viewer) offer(ctx context.Context, restart bool) error {
 	if err := v.pc.SetRemoteDescription(webrtc.SessionDescription{Type: webrtc.SDPTypeAnswer, SDP: res.Answer}); err != nil {
 		return err
 	}
+	v.pending = nil
 	switch {
 	case later && res.CandidatesLater:
 		go v.exchange(g, n, res.SessionId, iceUfrag(sdp))
@@ -249,13 +291,9 @@ func (v *Viewer) offer(ctx context.Context, restart bool) error {
 }
 
 // An initial answer that arrives after the host's ICE deadline is useless.
-// Retry transient signaling failures with a fresh host session; established
-// sessions keep their ID and the owner's existing restart policy.
+// Retry transient signaling failures with a fresh host session initially;
+// established sessions retry the same offer on the same session.
 func (v *Viewer) connect(ctx context.Context, req *screenv1.ConnectRequest) (res *screenv1.ConnectResponse, tries int, err error) {
-	if req.SessionId != "" {
-		res, err = v.cfg.Connect(ctx, req)
-		return res, 1, err
-	}
 	for tries < 3 {
 		tries++
 		attempt, cancel := context.WithTimeout(ctx, 6*time.Second)
@@ -381,10 +419,20 @@ func (v *Viewer) Restart(ctx context.Context) error { return v.offer(ctx, true) 
 // receive turns the track's packets into frames, and asks for a keyframe
 // while there is none to start from.
 func (v *Viewer) receive(t *webrtc.TrackRemote) {
+	v.omu.Lock()
+	session := v.session
+	v.omu.Unlock()
+	var packets, frames int
+	defer func() {
+		if v.cfg.Log != nil {
+			v.cfg.Log.Info("screen: viewer receive ended", "session", session, "packets", packets, "frames", frames)
+		}
+	}()
 	v.mu.Lock()
 	v.ssrc = uint32(t.SSRC())
 	v.mu.Unlock()
 	a := newAssembler()
+	a.roundTrip(v.roundTrip())
 	stop := make(chan struct{})
 	defer close(stop)
 	go func() {
@@ -400,7 +448,7 @@ func (v *Viewer) receive(t *webrtc.TrackRemote) {
 			case now := <-tick.C:
 				// A keyframe asked for takes a round trip to come: not asked
 				// for again before it could have.
-				wait := a.roundTrip(time.Duration(v.rtt.Load()))
+				wait := a.roundTrip(v.roundTrip())
 				if a.wantKey(now) && now.Sub(asked) >= max(400*time.Millisecond, wait) {
 					asked = now
 					v.pc.WriteRTCP([]rtcp.Packet{&rtcp.PictureLossIndication{MediaSSRC: uint32(t.SSRC())}})
@@ -413,7 +461,15 @@ func (v *Viewer) receive(t *webrtc.TrackRemote) {
 		if err != nil {
 			return
 		}
+		packets++
+		if packets == 1 && v.cfg.Log != nil {
+			v.cfg.Log.Info("screen: viewer first packet", "session", session, "after", time.Since(v.started).Round(time.Millisecond))
+		}
 		for _, f := range a.push(p, time.Now()) {
+			frames++
+			if frames == 1 && v.cfg.Log != nil {
+				v.cfg.Log.Info("screen: viewer first frame", "session", session, "after", time.Since(v.started).Round(time.Millisecond), "bytes", len(f.data), "key", f.key)
+			}
 			if v.cfg.Frame != nil {
 				data, trace := takeTrace(f.data)
 				if trace != nil {
@@ -423,6 +479,17 @@ func (v *Viewer) receive(t *webrtc.TrackRemote) {
 			}
 		}
 	}
+}
+
+// Read the transport directly: first-frame recovery must not wait for a
+// UI status update (or depend on a Status callback being installed).
+func (v *Viewer) roundTrip() time.Duration {
+	stats, ok := v.pc.SCTP().Transport().ICETransport().GetSelectedCandidatePairStats()
+	if ok && stats.CurrentRoundTripTime > 0 {
+		return time.Duration(stats.CurrentRoundTripTime * float64(time.Second))
+	}
+	// Until the first measurement, leave one retransmission time to arrive.
+	return 500 * time.Millisecond
 }
 
 func (v *Viewer) status(phase string) {
@@ -451,7 +518,6 @@ func (v *Viewer) path(st *Status) {
 	st.Local, st.Remote = pathEnd(pair.Local), pathEnd(pair.Remote)
 	if stats, ok := ice.GetSelectedCandidatePairStats(); ok {
 		st.RTT = int(stats.CurrentRoundTripTime * 1000)
-		v.rtt.Store(int64(stats.CurrentRoundTripTime * float64(time.Second)))
 	}
 	if st.Path == "relay" {
 		v.mu.Lock()

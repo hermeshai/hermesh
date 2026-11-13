@@ -205,6 +205,7 @@ func (d *Device) serveScreen(w http.ResponseWriter, r *http.Request) {
 		}
 	})
 	v, err := screen.Dial(ctx, screen.ViewerConfig{
+		Log:     o.log,
 		Connect: screenCall(o, machineID, screenv1connect.ScreenServiceClient.Connect), Candidates: candidates,
 		Name: q.Get("name"), Pointer: q.Get("pointer") != "0", Servers: o.screenServers(ctx), Fresh: o.screenServers, NoRelay: o.iceServers.Doubt,
 		Frame: func(key bool, data []byte, t *screen.Trace) {
@@ -268,7 +269,7 @@ func (d *Device) serveScreen(w http.ResponseWriter, r *http.Request) {
 			for i := 0; i < 5 && ctx.Err() == nil; i++ {
 				if !now {
 					time.Sleep(1500 * time.Millisecond)
-					if v.Connected() {
+					if i == 0 && v.Connected() {
 						break
 					}
 				}
@@ -279,6 +280,9 @@ func (d *Device) serveScreen(w http.ResponseWriter, r *http.Request) {
 				if err == nil {
 					break
 				}
+				// After a failed offer, the old transport may still report
+				// connected. Its pending negotiation must still be retried.
+				o.log.Warn("screen: viewer restart", "attempt", i+1, "err", err)
 			}
 		}
 	}()

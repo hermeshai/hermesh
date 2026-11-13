@@ -44,7 +44,7 @@ func TestCandidatesWaitForOffer(t *testing.T) {
 	}
 }
 
-func TestInitialSignalRetriesOnlyTransientErrors(t *testing.T) {
+func TestSignalRetriesOnlyTransientErrors(t *testing.T) {
 	for _, tc := range []struct {
 		name    string
 		err     error
@@ -54,23 +54,26 @@ func TestInitialSignalRetriesOnlyTransientErrors(t *testing.T) {
 		{"deadline", context.DeadlineExceeded, "", 2},
 		{"tunnel lost", connect.NewError(connect.CodeUnavailable, errors.New("connection lost")), "", 2},
 		{"permission", connect.NewError(connect.CodePermissionDenied, errors.New("denied")), "", 1},
-		{"restart", context.DeadlineExceeded, "live", 1},
+		{"restart", context.DeadlineExceeded, "live", 2},
+		{"restart permission", connect.NewError(connect.CodePermissionDenied, errors.New("denied")), "live", 1},
+		{"ended session", connect.NewError(connect.CodeNotFound, errors.New("ended")), "live", 1},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			calls := 0
 			v := &Viewer{cfg: ViewerConfig{Connect: func(ctx context.Context, req *screenv1.ConnectRequest) (*screenv1.ConnectResponse, error) {
 				calls++
-				if req.SessionId == "" {
-					if deadline, ok := ctx.Deadline(); !ok || time.Until(deadline) > 6*time.Second {
-						t.Error("signal attempt has no bounded deadline")
-					}
+				if req.SessionId != tc.session || req.Offer != "same offer" {
+					t.Error("a retry changed the session or offer")
+				}
+				if deadline, ok := ctx.Deadline(); !ok || time.Until(deadline) > 6*time.Second {
+					t.Error("signal attempt has no bounded deadline")
 				}
 				if calls == 1 {
 					return nil, tc.err
 				}
 				return &screenv1.ConnectResponse{}, nil
 			}}}
-			v.connect(context.Background(), &screenv1.ConnectRequest{SessionId: tc.session})
+			v.connect(context.Background(), &screenv1.ConnectRequest{SessionId: tc.session, Offer: "same offer"})
 			if calls != tc.calls {
 				t.Fatalf("calls=%d, want %d", calls, tc.calls)
 			}
