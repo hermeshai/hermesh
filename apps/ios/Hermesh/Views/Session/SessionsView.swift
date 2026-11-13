@@ -2,8 +2,8 @@ import HermeshProto
 import HermeshSessions
 import SwiftUI
 
-/// Every session, laid out as the Mac's sidebar and drawn as the menu's
-/// lists: grouped, sorted by last activity, with or without each row's
+/// Every session, reached from Work, laid out as the Mac's sidebar and drawn
+/// as the menu's rows: grouped, sorted by last activity, with or without each row's
 /// metadata (the view menu), each group collapsible; archived sessions on
 /// request. Swipe or long-press a row to rename, archive or delete it.
 struct SessionsView: View {
@@ -73,8 +73,8 @@ struct SessionsView: View {
         }
         .listStyle(.plain)
         .listSectionSpacing(0)
-        .navigationTitle("Sessions")
-        .rootToolbar()
+        .navigationTitle("All Sessions")
+        .navigationBarTitleDisplayMode(.inline)
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) { ViewMenu() }
         }
@@ -90,12 +90,16 @@ struct SessionsView: View {
     }
 }
 
-/// The sessions of one grant or one machine, newest first: where Grants and
-/// Machines lead. Its own page; the full list stays as the owner laid it out.
+/// The sessions of one grant, one machine or one coding agent on a machine,
+/// newest first: where the menu, Grants and Machines lead. Its own page; the
+/// full list stays as the owner laid it out. about: the page of what it
+/// lists (the machine's, the agent's, the grant's), a button in the bar
+/// unless the list was opened from that page.
 struct ScopedSessionsView: View {
     @Environment(AppModel.self) private var model
     let filter: SessionFilter
     let title: String
+    var about: Route?
 
     var body: some View {
         let list = model.sessions.filter { filter.matches($0) && $0.status != .archived }.sorted { $0.updatedDate > $1.updatedDate }
@@ -109,6 +113,14 @@ struct ScopedSessionsView: View {
         .listStyle(.plain)
         .navigationTitle(title)
         .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            if let about, !model.path.contains(about) {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button("Details", systemImage: "info.circle") { model.path.append(about) }
+                        .accessibilityIdentifier("scope-details")
+                }
+            }
+        }
     }
 }
 

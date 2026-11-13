@@ -266,3 +266,42 @@ func ask(_ s: inout Session) {
     #expect(modelTitle("claude-3-5-sonnet-20241022") == "claude-3-5-sonnet-20241022")
     #expect(modelTitle("gemini-3-pro") == "gemini-3-pro")
 }
+
+@Test func theTeamsStateSaysWhatTheNameTagShows() {
+    var asked = session("w", .waitingInput, updated: -600, agent: "codex")
+    ask(&asked)
+    var failed = session("f", .idle, updated: -300)
+    failed.progress.lastFailure.kind = .auth
+    let run = session("r", .running, created: -50, agent: "claude"), run2 = session("r2", .queued, created: -20, agent: "claude")
+    let done = session("d", .idle, updated: -10), archived = session("a", .archived)
+
+    #expect(teamState([done, archived], requests: 0).tag == .quiet)
+    #expect(teamState([done, run, run2], requests: 0).tag == .working(2))
+    #expect(teamState([run, failed], requests: 0).tag == .failed(1), "a failure shows before what runs")
+    #expect(teamState([run, failed, asked], requests: 0).tag == .waiting(agent: "codex"), "one question names its agent")
+    #expect(teamState([asked], requests: 1).tag == .needYou(2))
+    #expect(teamState([], requests: 1).tag == .needYou(1), "a request to connect alone has no agent to name")
+
+    let t = teamState([done, archived, run, run2, failed, asked], requests: 0)
+    #expect(t.waiting.map(\.sessionID) == ["w"] && t.failed.map(\.sessionID) == ["f"])
+    #expect(t.running.map(\.sessionID) == ["r2", "r"], "the newest first")
+    #expect(t.finished.map(\.sessionID) == ["d"], "archived sessions are no part of it")
+    #expect(t.runningAgents == ["claude"])
+}
+
+@Test func aQuestionWithOneChoiceIsAnsweredWhereItIsListed() {
+    func question(_ change: (inout Hermesh_Session_V1_QuestionItem) -> Void = { _ in }, items: Int = 1) -> Question {
+        var item = Hermesh_Session_V1_QuestionItem()
+        item.id = "i"
+        item.options = ["pnpm", "npm"].map { l in var o = Hermesh_Session_V1_QuestionOption(); o.label = l; return o }
+        change(&item)
+        var q = Question()
+        q.items = Array(repeating: item, count: items)
+        return q
+    }
+    #expect(quickOptions(question()) == ["pnpm", "npm"])
+    #expect(quickOptions(question { $0.multiSelect = true }) == nil)
+    #expect(quickOptions(question { $0.secret = true }) == nil)
+    #expect(quickOptions(question { $0.options = [] }) == nil)
+    #expect(quickOptions(question(items: 2)) == nil)
+}
