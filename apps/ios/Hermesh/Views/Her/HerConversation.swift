@@ -131,7 +131,7 @@ private extension HerItem {
     var side: HerSide? {
         switch kind {
         case .user, .waiting: .owner
-        case .her, .attachment, .question, .card: .her
+        case .her, .attachment, .question, .card, .session, .work: .her
         case .failure, .onboarding: nil
         }
     }
@@ -215,6 +215,10 @@ private struct HerRow: View {
             }
         case .failure(let f, _):
             FailLine(title: String(localized: "This task didn’t finish"), message: f.message)
+        case .session(let started):
+            HerSessionCard(started: started)
+        case .work(let work):
+            HerWorkCard(work: work)
         case .onboarding:
             if let flow = chat.flow { HerOnboardingView(chat: chat, flow: flow, machine: machine) }
         }
@@ -302,6 +306,143 @@ extension View {
         ViewThatFits(in: .horizontal) {
             self
             frame(maxWidth: .infinity, alignment: .leading)
+        }
+    }
+}
+
+/// A coding session Her started, where she started it (docs/her-team.md §4.4): the agent, the title, where it
+/// runs, and how it stands now, kept current from the sessions the app holds; it opens the session's page. One the
+/// app holds no more (deleted, or older than what it keeps) shows as the call named it, without a state. It
+/// answers no question: news of her own sessions goes to Her first.
+struct HerSessionCard: View {
+    @Environment(AppModel.self) private var model
+    let started: HerStarted
+
+    var body: some View {
+        let s = model.session(started.sessionID)
+        let agent = s?.agent ?? started.agent
+        Button { model.openSession(started.sessionID) } label: {
+            HStack(alignment: .top, spacing: 10) {
+                AgentLogo(id: agent, size: 30)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(s?.displayTitle ?? started.title).font(.callout.weight(.semibold)).lineLimit(1)
+                    Text(verbatim: "\(agentShortTitle(agent)) · \(s.map { model.machineName($0.machineID) } ?? started.machine)")
+                        .font(.footnote).foregroundStyle(.secondary).lineLimit(1)
+                    if let s { state(s) }
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                if let s { mark(s).frame(height: 20) }
+            }
+            .padding(12)
+            .contentShape(.rect)
+        }
+        .buttonStyle(.plain)
+        .disabled(s == nil)
+        .herReply()
+        .herSide()
+        .accessibilityElement(children: .combine)
+        .accessibilityIdentifier("her-session-\(s?.displayTitle ?? started.title)")
+    }
+
+    /// The third line: what it does now, that it waits, how it failed, or what it changed.
+    @ViewBuilder private func state(_ s: Session) -> some View {
+        if s.status == .waitingInput {
+            Text("Waiting for an answer").font(.footnote).foregroundStyle(.orange)
+        } else if s.isFailed {
+            Text("Failed").font(.footnote).foregroundStyle(.red)
+        } else if s.isActive {
+            HStack(spacing: 6) {
+                if !s.progress.currentTool.isEmpty { Text(s.progress.currentTool).font(.caption.monospaced()).lineLimit(1) }
+                if let start = s.turnStartedDate { Text(start, style: .timer).font(.caption).monospacedDigit() }
+            }
+            .foregroundStyle(.secondary)
+        } else if s.status == .idle {
+            let d = s.progress.diffStat
+            if d.filesChanged > 0 {
+                HStack(spacing: 6) {
+                    Text("\(d.filesChanged) files")
+                    Text(verbatim: "+\(d.insertions)").foregroundStyle(.green)
+                    Text(verbatim: "−\(d.deletions)").foregroundStyle(.red)
+                }
+                .font(.footnote).foregroundStyle(.secondary).monospacedDigit()
+            } else {
+                Text("Done").font(.footnote).foregroundStyle(.secondary)
+            }
+        }
+    }
+
+    @ViewBuilder private func mark(_ s: Session) -> some View {
+        if s.status == .waitingInput {
+            Circle().fill(.orange).frame(width: 9, height: 9)
+        } else if s.isFailed {
+            Circle().fill(.red).frame(width: 9, height: 9)
+        } else if s.isActive {
+            ProgressView().controlSize(.small)
+        } else if s.status == .idle {
+            Image(systemName: "checkmark.circle.fill").foregroundStyle(.green)
+        }
+    }
+}
+
+/// The team's work Her counted for the owner (docs/her-team.md §6.3), as Work's card draws it, smaller: the sessions
+/// at work, what came of them, a bar for each hour or day, and the coding agents and who sent the work. It opens Work.
+struct HerWorkCard: View {
+    @Environment(AppModel.self) private var model
+    let work: HerWork
+
+    var body: some View {
+        let top = max(work.buckets.max() ?? 0, 1)
+        Button { model.open(.overview) } label: {
+            VStack(alignment: .leading, spacing: 10) {
+                HStack(alignment: .firstTextBaseline, spacing: 6) {
+                    Text("\(work.sessions)").font(.system(size: 34, weight: .bold)).monospacedDigit()
+                    Text(work.days == 1 ? "sessions today" : "sessions in \(work.days) days").foregroundStyle(.secondary)
+                    Spacer()
+                    Image(systemName: "chevron.right").font(.caption.weight(.semibold)).foregroundStyle(.tertiary)
+                }
+                Text("Done \(Text("\(work.done)").bold().foregroundStyle(.primary)) · \(work.turns) turns · \(tokensText(UInt64(work.tokens))) tokens")
+                    .font(.footnote).foregroundStyle(.secondary).monospacedDigit()
+                if !work.buckets.isEmpty {
+                    HStack(alignment: .bottom, spacing: 2) {
+                        ForEach(work.buckets.indices, id: \.self) { i in
+                            RoundedRectangle(cornerRadius: 2, style: .continuous)
+                                .fill(Color.primary.opacity(work.buckets[i] > 0 ? 0.32 : 0.08))
+                                .frame(height: max(3, CGFloat(work.buckets[i]) / CGFloat(top) * 32))
+                        }
+                    }
+                    .frame(height: 32, alignment: .bottom)
+                    .accessibilityHidden(true)
+                }
+                groups(work.agents) { AgentLogo(id: $0.id, size: 18) } name: { agentShortTitle($0.id) }
+                groups(work.senders) { g in sender(g.id) } name: { model.senderName($0.id) }
+            }
+            .padding(12)
+            .contentShape(.rect)
+        }
+        .buttonStyle(.plain)
+        .herReply()
+        .herSide()
+        .accessibilityElement(children: .combine)
+        .accessibilityIdentifier("her-work")
+    }
+
+    /// The three busiest of a grouping, each with its picture and sessions.
+    private func groups(_ gs: [HerWork.Group], @ViewBuilder picture: @escaping (HerWork.Group) -> some View, name: @escaping (HerWork.Group) -> String) -> some View {
+        HStack(spacing: 12) {
+            ForEach(gs.prefix(3), id: \.id) { g in
+                HStack(spacing: 5) {
+                    picture(g)
+                    Text(verbatim: "\(name(g)) \(g.sessions)").font(.caption).foregroundStyle(.secondary).lineLimit(1).monospacedDigit()
+                }
+            }
+        }
+    }
+
+    @ViewBuilder private func sender(_ id: String) -> some View {
+        if let c = model.clients.first(where: { $0.clientID == id }) {
+            GrantAvatar(client: c, size: 18)
+        } else {
+            Image(systemName: "person.crop.circle.fill").font(.system(size: 16)).foregroundStyle(.secondary).frame(width: 18, height: 18)
         }
     }
 }

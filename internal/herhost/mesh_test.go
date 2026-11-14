@@ -16,8 +16,11 @@ func (m fakeMesh) Group() *MeshGroup { return m.group }
 func (m fakeMesh) Describe(_ context.Context, bot, name string, args json.RawMessage) (string, []string) {
 	return "Start " + name + " for " + bot, []string{"mesh", "mini/app"}
 }
-func (m fakeMesh) Call(_ context.Context, bot, callID, name string, args json.RawMessage) (string, bool) {
-	return fmt.Sprintf("%s %s %s %s", bot, callID, name, args), name == "fails"
+func (m fakeMesh) Call(_ context.Context, bot, callID, name string, args json.RawMessage) (string, any, bool) {
+	if name == "fails" {
+		return "failed", nil, true
+	}
+	return fmt.Sprintf("%s %s %s %s", bot, callID, name, args), map[string]any{"session": map[string]any{"session_id": "s_1"}}, false
 }
 
 // The mesh host: her is offered the group (none: an empty one), her
@@ -82,10 +85,10 @@ func TestMeshHost(t *testing.T) {
 	if r := got["r1"]; r["summary"] != "Start session_start for b1" || fmt.Sprint(r["rule"]) != "[mesh mini/app]" {
 		t.Errorf("describe: %v", r)
 	}
-	if r := got["r2"]; r["output"] != `b1 c9 session_get {"session_id":"s_1"}` || r["is_error"] != false {
+	if r := got["r2"]; r["output"] != `b1 c9 session_get {"session_id":"s_1"}` || r["is_error"] != false || fmt.Sprint(r["details"]) != "map[session:map[session_id:s_1]]" {
 		t.Errorf("call: %v", r)
 	}
-	if r := got["r3"]; r["is_error"] != true {
+	if r := got["r3"]; r["is_error"] != true || r["details"] != nil {
 		t.Errorf("a failed call: %v", r)
 	}
 

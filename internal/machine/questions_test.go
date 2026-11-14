@@ -8,6 +8,7 @@ import (
 
 	"connectrpc.com/connect"
 
+	identityv1 "github.com/hermeshai/hermesh/gen/go/hermesh/identity/v1"
 	sessionv1 "github.com/hermeshai/hermesh/gen/go/hermesh/session/v1"
 )
 
@@ -168,5 +169,54 @@ func TestInterruptWithdrawsQuestion(t *testing.T) {
 	h.wait(id, idle)
 	if r := h.resolved(id); len(r) != 1 || r[0].Resolution != sessionv1.QuestionResolution_QUESTION_RESOLUTION_CANCELLED {
 		t.Fatalf("resolved: %v", r)
+	}
+}
+
+// Her's grant (docs/her-team.md §6.1) answers, stops, archives and
+// unarchives a session another agent started; an agent that only sees
+// every task does none of it; renaming and deleting stay the owner's.
+func TestHerActsOnEverySession(t *testing.T) {
+	h := newHarness(t, DefaultLimits())
+	ctx := context.Background()
+	all := func(id string, her string) *Principal {
+		return &Principal{Kind: PrincipalClient, ClientID: id, Grant: &identityv1.Grant{GrantId: "g_" + id, MachineIds: []string{"*"}, ProjectIds: []string{"*"},
+			Agents: []string{"*"}, TaskVisibility: identityv1.TaskVisibility_TASK_VISIBILITY_ALL, HerMachineId: her}}
+	}
+	other, her := all("c_other", ""), all("c_her", "m_her")
+
+	id := h.start("ask Color|Which color?|Red,Blue\nsleep 30s\nsay done")
+	h.wait(id, waiting)
+	answer := &sessionv1.AnswerQuestionRequest{SessionId: id, Answers: []*sessionv1.Answer{{Selected: []string{"Red"}}}}
+	if _, err := h.s.AnswerQuestion(ctx, other, answer); connect.CodeOf(err) != connect.CodePermissionDenied {
+		t.Fatalf("another agent answers: %v", err)
+	}
+	if _, err := h.s.Interrupt(ctx, other, id); connect.CodeOf(err) != connect.CodePermissionDenied {
+		t.Fatalf("another agent stops it: %v", err)
+	}
+	if _, err := h.s.AnswerQuestion(ctx, her, answer); err != nil {
+		t.Fatalf("Her answers: %v", err)
+	}
+	h.said(id, "answer: Red")
+	if r := h.resolved(id); len(r) != 1 || r[0].By != "c_her" {
+		t.Fatalf("resolved: %v", r)
+	}
+	if _, err := h.s.Interrupt(ctx, her, id); err != nil {
+		t.Fatalf("Her stops it: %v", err)
+	}
+	h.wait(id, idle)
+	if _, err := h.s.Archive(ctx, other, id); connect.CodeOf(err) != connect.CodePermissionDenied {
+		t.Fatalf("another agent archives it: %v", err)
+	}
+	if s, err := h.s.Archive(ctx, her, id); err != nil || s.Status != sessionv1.SessionStatus_SESSION_STATUS_ARCHIVED {
+		t.Fatalf("Her archives it: %v %v", s, err)
+	}
+	if s, err := h.s.Unarchive(ctx, her, id); err != nil || s.Status != idle {
+		t.Fatalf("Her unarchives it: %v %v", s, err)
+	}
+	if _, err := h.s.Rename(ctx, her, id, "hers now"); connect.CodeOf(err) != connect.CodePermissionDenied {
+		t.Fatalf("Her renames it: %v", err)
+	}
+	if err := h.s.Delete(ctx, her, id); connect.CodeOf(err) != connect.CodePermissionDenied {
+		t.Fatalf("Her deletes it: %v", err)
 	}
 }

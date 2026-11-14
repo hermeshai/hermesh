@@ -194,3 +194,61 @@ func snapshot(_ items: [JSON], task: JSON = nil, seq: Int = 10, queued: JSON = [
     #expect(herToolCategory("bash") == "execute" && herToolCategory("mcp__x") == "other")
     #expect(herCallTarget("call_tool", ["name": "browser_navigate", "arguments": ["url": "https://a.example"]]).name == "browser_navigate")
 }
+
+@Test func aSessionHerStartedIsARowWhereSheStartedIt() {
+    let doc = #"{"ok":true,"exit_code":0,"error":null,"session":{"session_id":"s_ab_12","title":"Fix the relay test","machine":"Mac mini","agent":"claude"}}"#
+    let v = snapshot([
+        said("u1", "fix the relay test", ts: 1000),
+        reply("a1", [call("c1", "send_to_user", ["text": "Starting Claude Code."]), call("c2", "call_tool", ["name": "session_start", "arguments": ["project": "mini/hermesh"]])], ts: 2000, duration: 500),
+        result("c1"), result("c2", text: doc),
+        reply("a2", [call("c3", "session_start", ["project": "mini/hermesh"]), call("c4", "session_start", [:]), call("c5", "session_start", [:]),
+                     call("c6", "session_send", ["session_id": "s_ab_12"]), call("c7", "session_start", [:])], ts: 3000),
+        result("c3", text: doc.replacingOccurrences(of: "s_ab_12", with: "s_cd_34")),
+        result("c4", error: true, text: #"{"ok":false,"exit_code":3,"error":{"kind":"denied"}}"#),
+        result("c5", text: "denied by the user"),
+        result("c6", text: doc),
+        ["type": "task_end", "task_id": "t1", "outcome": "completed", "ts": 3100],
+    ])
+    let items = herChat(v)
+    #expect(items.map(\.key) == ["u1", "c1", "c2", "c3"], "one row a session started: none for a call that failed, was refused, never ran, or wrote to a session")
+    #expect(items[2].kind == .session(HerStarted(sessionID: "s_ab_12", title: "Fix the relay test", agent: "claude", machine: "Mac mini")), "inside call_tool too")
+    #expect(items[2].ts == 2500 && !items[2].isOwner)
+    guard case .session(let second) = items[3].kind else { Issue.record("no session row"); return }
+    #expect(second.sessionID == "s_cd_34")
+}
+
+/// The session a start made, from its result's details (docs/her-team.md §6.2): they win over the text, which a long
+/// result has cut; a Her Server on an older hermeshd sends none, and the text still names the session.
+@Test func aSessionCardComesFromTheResultsDetails() {
+    let details: JSON = ["session": ["session_id": "s_ef_56", "title": "Fix the relay test", "agent": "codex", "machine": "Mac mini", "machine_id": "m_ef"]]
+    let v = snapshot([
+        reply("a1", [call("c1", "session_start", ["project": "mini/hermesh"]), call("c2", "session_start", ["project": "mini/hermesh"])], ts: 2000),
+        result("c1", details: details, text: #"{"ok":true,"session":{"session_id":"s_ef_56","tit"#),
+        result("c2", details: ["session": ["title": "no id"]], text: "not a document"),
+        ["type": "task_end", "task_id": "t1", "outcome": "completed", "ts": 2100],
+    ])
+    let items = herChat(v)
+    #expect(items.map(\.key) == ["c1"], "details without a session id make no card")
+    #expect(items.first?.kind == .session(HerStarted(sessionID: "s_ef_56", title: "Fix the relay test", agent: "codex", machine: "Mac mini")))
+}
+
+/// The team's work Her counted is a card where she counted it (docs/her-team.md §6.3): from its result's details; a
+/// call that failed, or a result without counts, makes none.
+@Test func theTeamsWorkHerCountedIsACard() {
+    let work: JSON = ["work": ["days": 1, "sessions": 5, "done": 3, "turns": 9, "failed_turns": 1, "input_tokens": 1000, "output_tokens": 200,
+                               "buckets": [0, 2, 3], "by_agent": [["agent": "claude", "sessions": 4, "turns": 8], ["agent": "codex", "sessions": 1, "turns": 1]],
+                               "by_client": [["client": "c_her", "name": "", "you": true, "sessions": 3, "turns": 6], ["client": "owner", "sessions": 2, "turns": 3]]]]
+    let v = snapshot([
+        reply("a1", [call("c1", "call_tool", ["name": "work_summary", "arguments": [:]]), call("c2", "work_summary", [:]), call("c3", "work_summary", [:])], ts: 2000, duration: 100),
+        result("c1", details: work),
+        result("c2", error: true, text: #"{"ok":false}"#),
+        result("c3", details: ["work": ["by_agent": []]]),
+        ["type": "task_end", "task_id": "t1", "outcome": "completed", "ts": 2200],
+    ])
+    let items = herChat(v)
+    #expect(items.map(\.key) == ["c1"])
+    #expect(items.first?.kind == .work(HerWork(days: 1, sessions: 5, done: 3, turns: 9, failedTurns: 1, tokens: 1200, buckets: [0, 2, 3],
+                                               agents: [.init(id: "claude", sessions: 4, turns: 8), .init(id: "codex", sessions: 1, turns: 1)],
+                                               senders: [.init(id: "c_her", sessions: 3, turns: 6), .init(id: "owner", sessions: 2, turns: 3)])))
+    #expect(items.first?.ts == 2100)
+}

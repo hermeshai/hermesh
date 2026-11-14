@@ -29,6 +29,7 @@ var Guidelines = []string{
 	"A request to stop covers the sessions you started for that work: session_interrupt each, besides stop_agents. Say a session stopped only once the result shows it.",
 	"Before you say a session is still working, look at session_get. Archive a session only when the user asks.",
 	"A computer that is off is not an error: tell the user which one, and that the work can start when it is back.",
+	"A session the user or another agent started is theirs. Answer, write to, stop or archive it only when the user asks for that session, and say whose it is.",
 	"Every result is JSON: read `ok` first. On a failure, `error.kind` and `error.hint` say what to do next. A hint that names a command means the tool of that name (`hermesh session get` is session_get; `hermesh message send` is session_send).",
 }
 
@@ -49,14 +50,15 @@ var tools = []tool{
 	{name: "coding_agent_list", cmd: "agent_list", desc: "List the coding agents on the user's computers, one entry per agent per computer: the models it offers, the reasoning efforts each model takes, and what a session runs with when you name none. You need this only when the user names a model or an effort."},
 	{name: "session_start", cmd: "session_start", writes: true, desc: "Start a coding agent on one job in one project. Returns at once with the session; keep `session.session_id`. Its news comes to you by itself. In a worktree project the agent works on its own branch, checked out from `base` (default: the project's): to work from another branch, tag or commit, pass it as `base`, and never ask the agent to make a worktree or switch branches. In an in_place project it edits the directory itself."},
 	{name: "session_send", cmd: "message_send", writes: true, desc: "Tell a session more: a follow-up, a correction, a retry after a failure. If the turn you asked for is still running, the message joins it, and answers its question if it waits on one. Otherwise it starts a new turn. Returns at once; that turn's news comes by itself. While the session's computer is off, the message waits for it."},
-	{name: "session_answer", cmd: "session_answer", writes: true, desc: "Answer the question a session of yours waits on. `choose` picks options by label or number, `text` answers in words, `item` answers one part of a question with several (\"<header or id>=<option or text>\"). `decline` tells the agent that nobody will answer, and it goes on alone."},
+	{name: "session_answer", cmd: "session_answer", writes: true, desc: "Answer the question a session waits on. `choose` picks options by label or number, `text` answers in words, `item` answers one part of a question with several (\"<header or id>=<option or text>\"). `decline` tells the agent that nobody will answer, and it goes on alone."},
 	{name: "session_get", cmd: "session_get", desc: "One session as it is now: its status, what it is doing, its pending question, and the full result of its last turn. Use it when news was cut short, when the user asks how a session is doing, or before you say one is still working. Not for waiting."},
-	{name: "session_list", cmd: "session_list", desc: "The sessions on the user's computers: yours, and those the user or their other agents started (`created_by` says whose). Filter with `machine`, `status` or `since`. You can stop, archive and answer only your own."},
+	{name: "session_list", cmd: "session_list", desc: "The sessions on the user's computers: yours, and those the user or their other agents started (`created_by` says whose). Filter with `machine`, `status` or `since`. You can answer, stop and archive any of them; one the user or another agent started is theirs."},
 	{name: "session_events", cmd: "session_events", desc: "What happened in a session, oldest first, a page at a time: messages, tool calls, turns, questions. Without a cursor, the latest `limit` events; `after` and `before` move through them. It is long: read it only when the result and the diff leave the question open."},
 	{name: "session_diff", cmd: "session_diff", desc: "What a session changed, in a worktree project: everything, or one `turn`. `stat` gives the summary only: start there. An in_place project has no diff: ask the session with session_send to report its changes."},
-	{name: "session_interrupt", cmd: "session_interrupt", desc: "Stop the turn in progress in a session of yours. The session and its changes stay, and session_send goes on in the same conversation."},
-	{name: "session_archive", cmd: "session_archive", desc: "Put away a session of yours: it becomes read-only, its worktree is freed, and its branch keeps the work."},
-	{name: "session_unarchive", cmd: "session_unarchive", desc: "Bring an archived session of yours back so that it takes messages again."},
+	{name: "session_interrupt", cmd: "session_interrupt", desc: "Stop the turn in progress in a session. The session and its changes stay, and session_send goes on in the same conversation."},
+	{name: "session_archive", cmd: "session_archive", desc: "Put away a session: it becomes read-only, its worktree is freed, and its branch keeps the work."},
+	{name: "session_unarchive", cmd: "session_unarchive", desc: "Bring an archived session back so that it takes messages again."},
+	{name: "work_summary", cmd: "work", desc: "What the coding agents on the user's computers did over the last days: sessions at work, how many are done, turns, failed turns, tokens and time, by coding agent and by who sent the work (the user, you, or another agent). Use it when the user asks what the team or their agents did. The app shows the numbers as a card above your reply: say in words what stands out, not every number."},
 }
 
 // hidden are the CLI's parameters she doesn't see: hermeshd sets `as` and
@@ -75,11 +77,12 @@ var params = map[string]string{
 	"question_timeout": "How long the agent's questions wait for an answer before it goes on alone; 0s: nobody will answer",
 	"choose":           "Option labels or numbers to pick (several for a multi-select)",
 	"item":             "Answers to a question with several parts, each \"<header or id>=<option or text>\"",
+	"days":             "How many days, today the last of them (1: today; at most 31)",
 }
 
 func commands() map[string]cli.Tool {
 	out := map[string]cli.Tool{}
-	for _, t := range cli.Tools() {
+	for _, t := range cli.HerTools() {
 		out[t.Name] = t
 	}
 	return out

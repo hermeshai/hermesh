@@ -157,3 +157,19 @@ func call(_ kind: String, _ summary: String, id: String? = nil, name: String = "
     #expect(interrupter(f) == nil)
     #expect(interrupter(nil) == nil)
 }
+
+@Test func eachPromptNamesWhoAskedForItsTurn() {
+    func started(_ turn: UInt32, _ asker: String) -> Hermesh_Session_V1_TurnStarted {
+        var t = Hermesh_Session_V1_TurnStarted()
+        t.turn = turn
+        t.asker = asker
+        return t
+    }
+    var user = Hermesh_Session_V1_UserMessage()
+    user.text = "do it"
+    let events = [event(1, .turnStarted(started(1, "c_grok"))), event(2, .userMessage(user)), event(3, .turnStarted(started(2, "c_her"))), event(4, .userMessage(user))]
+    let askers = transcript(events, running: false).compactMap { item -> String? in
+        if case .user(_, _, _, let asker) = item { return asker } else { return nil }
+    }
+    #expect(askers == ["c_grok", "c_her"])
+}

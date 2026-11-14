@@ -10,8 +10,7 @@ import XCTest
 ///
 ///     HERMESH_IPHONE_E2E=1 HERMESH_IPHONE_GREP=testHer go test ./e2e -run TestIPhone -v -timeout 40m
 extension HermeshUITests {
-    /// Returning from settings with the keyboard open must still let the owner send a message.
-    @objc func testHerSettingsReturn() throws {
+    @objc func testHerTeam() throws {
         guard ProcessInfo.processInfo.environment["HERMESH_E2E_HER"] != nil else { throw XCTSkip("run with Her built") }
         try join()
         try herTurnOn()
@@ -20,6 +19,8 @@ extension HermeshUITests {
         try herSettings()
         herSend("[[mock:send:设置后仍能聊天]] hi")
         XCTAssertTrue(app.staticTexts["设置后仍能聊天"].waitForExistence(timeout: 60))
+        try herTeam()
+        herTeamAppearanceAndRestart()
     }
 
     @objc func testHer() throws {
@@ -35,6 +36,8 @@ extension HermeshUITests {
         try XCTContext.runActivity(named: "a question: a tapped answer is the owner's message") { _ in try herQuestion() }
         try XCTContext.runActivity(named: "files Her sent: Markdown reads as the conversation renders it, code in its colours") { _ in try herFiles() }
         try XCTContext.runActivity(named: "an approval in the composer's place, allowed once") { _ in try herApproval() }
+        try XCTContext.runActivity(named: "her name tag says what the agents do, its panel answers a question, and a session she starts is a card") { _ in try herTeam() }
+        XCTContext.runActivity(named: "Her is the start page once enabled, and the team panel works in dark appearance") { _ in herTeamAppearanceAndRestart() }
         try XCTContext.runActivity(named: "the Mac offline: what was said stays, and a message waits here until it is back") { _ in try herOffline() }
         try XCTContext.runActivity(named: "opened on its last messages, earlier ones are read at the top") { _ in try herEarlier() }
         try XCTContext.runActivity(named: "turned off from her settings, her data erased: on again, she is new") { _ in try herTurnOff() }
@@ -46,7 +49,7 @@ extension HermeshUITests {
         let drawer = app.descendants(matching: .any)["drawer"]
         let place = drawer.buttons["her-place"]
         XCTAssertTrue(place.waitForExistence(timeout: 5))
-        XCTAssertLessThan(place.frame.minY, drawer.buttons["概览"].frame.minY, "first, above the overview")
+        XCTAssertLessThan(place.frame.minY, drawer.buttons["work-place"].frame.minY, "first, above Work")
         place.tap()
         // Her runs nowhere yet: where should she?
         XCTAssertTrue(text("选择 Her 在哪里运行").waitForExistence(timeout: 10))
@@ -193,9 +196,10 @@ extension HermeshUITests {
     }
 
     func herSettings() throws {
-        // Her's mark and name over the conversation, which scrolls under them; no button beside them.
-        let name = app.buttons["her-name"]
-        XCTAssertTrue(name.exists && name.label.contains("Her"), name.label)
+        // Her's mark and name tag over the conversation, which scrolls under them; no button beside them. Her
+        // mark opens her settings (the tag, the team panel: herTeam).
+        let name = app.buttons["her-avatar"]
+        XCTAssertTrue(name.exists && name.label.contains("Her") && app.buttons["her-tag"].exists, name.label)
         XCTAssertFalse(app.buttons["her-settings"].exists, "no button beside them")
         name.tap()
         // Where she runs, her model, and how freely she acts.
@@ -253,7 +257,7 @@ extension HermeshUITests {
         herSend("[[mock:remember:- 回复一律用中文。(2026-11-11)]] 以后都用中文")
         XCTAssertTrue(text("记下了。").waitForExistence(timeout: 60), "her reply")
         // Her settings: the memory row opens the page, MEMORY.md as the conversation renders Markdown.
-        app.buttons["her-name"].tap()
+        app.buttons["her-avatar"].tap()
         XCTAssertTrue(text("运行在").waitForExistence(timeout: 10), "her settings")
         app.swipeUp()
         let row = app.buttons["her-memory"]
@@ -365,6 +369,98 @@ extension HermeshUITests {
         try waitFor("back at the end") { done.isHittable && !toEnd.exists ? true : nil }
     }
 
+    /// Her and her team (docs/her-team.md §4.2 to §4.4, §4.8): her name tag says what the owner's agents are
+    /// doing, the panel it opens answers a question where it is listed, a session Her starts is a card in her
+    /// conversation that follows it, and the session's page says she sent the work.
+    func herTeam() throws {
+        // 选颜色 waits for an answer: the tag says so.
+        let tag = app.buttons["her-tag"]
+        try waitFor("the tag says a session waits") { tag.label.contains("在等你") ? true : nil }
+        herShot("Her: the name tag, a session waits")
+        tag.tap()
+        let panel = app.descendants(matching: .any)["team-panel"].firstMatch
+        XCTAssertTrue(panel.waitForExistence(timeout: 10), "the team panel")
+        XCTAssertTrue(text("团队").exists && text("需要你处理").exists, "what needs the owner, listed")
+        herShot("Her: the team panel")
+        // A label's default swipe can be shorter than the dismissal threshold; drag out of the heading.
+        let heading = text("团队").coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
+        heading.press(forDuration: 0.05, thenDragTo: heading.withOffset(CGVector(dx: 0, dy: -90)))
+        XCTAssertTrue(panel.waitForNonExistence(timeout: 5), "swiping the panel's heading up closes it")
+        tag.tap()
+        XCTAssertTrue(panel.waitForExistence(timeout: 5))
+        // One tap answers it, there.
+        tap("quick-answer-蓝")
+        XCTAssertTrue(toast(containing: "已回答"))
+        try waitFor("the question is answered") { try self.sessionStatus("选颜色") != "waiting_input" ? true : nil }
+        // A tap beside it closes it: under the panel, where the dimmed conversation shows.
+        app.descendants(matching: .any)["team-close"].firstMatch.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.96)).tap()
+        XCTAssertTrue(panel.waitForNonExistence(timeout: 5), "the panel closes")
+        try waitFor("the tag no longer says it waits") { !tag.label.contains("在等你") ? true : nil }
+        tag.tap()
+        tap("team-work")
+        XCTAssertTrue(app.navigationBars["工作"].waitForExistence(timeout: 10), "the panel's count opens Work")
+        XCTAssertFalse(app.buttons["quick-answer-蓝"].exists, "Work no longer offers the answered question")
+        openMenu()
+        tap("her-place")
+        // Her starts a coding session (asking first, in her default mode): a card where she started it.
+        herSend(#"[[mock:mesh:session_start:{"project":"owner-mac/demo","agent":"gemini","prompt":"say 做完了","title":"Her 派的活"}]] 开工"#)
+        XCTAssertTrue(app.descendants(matching: .any)["her-approval"].firstMatch.waitForExistence(timeout: 60), "Her asks before she starts it")
+        tap("her-allow-once")
+        let card = app.descendants(matching: .any)["her-session-Her 派的活"].firstMatch
+        XCTAssertTrue(card.waitForExistence(timeout: 60), "the session's card")
+        try waitFor("the card says the session is done", timeout: 90) { card.label.contains("完成") || card.label.contains("个文件") ? true : nil }
+        if app.buttons["to-end"].exists { tap("to-end") }
+        // The scripted model echoes the tool result and session news after the card; scroll back to it.
+        for _ in 0..<12 where !card.isHittable { app.swipeDown() }
+        XCTAssertTrue(waitUntil { card.isHittable }, "the card is in view before opening it")
+        herShot("Her: a session she started")
+        // It opens the session, whose prompt says Her sent it.
+        press(card)
+        let sender = app.descendants(matching: .any)["prompt-sender"].firstMatch
+        XCTAssertTrue(sender.waitForExistence(timeout: 20), "who sent the prompt")
+        XCTAssertTrue(sender.label.contains("Her"), sender.label)
+        app.navigationBars.buttons.element(boundBy: 0).tap()
+        XCTAssertTrue(tag.waitForExistence(timeout: 10), "back on Her's page")
+        // What the team did today, as she counted it (docs/her-team.md §6.3): a card, which opens Work. Reading
+        // asks nothing.
+        herSend("[[mock:mesh:work_summary:{}]] 今天团队干了什么")
+        let work = app.descendants(matching: .any)["her-work"].firstMatch
+        XCTAssertTrue(work.waitForExistence(timeout: 60), "the card of the team's work")
+        XCTAssertTrue(work.label.contains("个会话（今天）"), work.label)
+        if app.buttons["to-end"].exists { tap("to-end") }
+        for _ in 0..<12 where !work.isHittable { app.swipeDown() }
+        XCTAssertTrue(waitUntil { work.isHittable }, "the work card is in view before opening it")
+        herShot("Her: the team's work today")
+        press(work)
+        XCTAssertTrue(app.navigationBars["工作"].waitForExistence(timeout: 10), "the work card opens Work")
+        openMenu()
+        tap("her-place")
+        XCTAssertTrue(tag.waitForExistence(timeout: 10), "back on Her's page")
+    }
+
+    func herTeamAppearanceAndRestart() {
+        app.terminate()
+        app.launch()
+        XCTAssertTrue(app.buttons["her-tag"].waitForExistence(timeout: 30), "Her is the start page once enabled")
+        openMenu()
+        tap("account")
+        tap("appearance-dark")
+        tap("close")
+        tap("her-place")
+        tap("her-tag")
+        let panel = app.descendants(matching: .any)["team-panel"].firstMatch
+        XCTAssertTrue(panel.waitForExistence(timeout: 10))
+        herShot("Her: the team panel in dark appearance")
+        let heading = text("团队").coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
+        heading.press(forDuration: 0.05, thenDragTo: heading.withOffset(CGVector(dx: 0, dy: -90)))
+        XCTAssertTrue(panel.waitForNonExistence(timeout: 5))
+        openMenu()
+        tap("account")
+        tap("appearance-light")
+        tap("close")
+        tap("her-place")
+    }
+
     func herOffline() throws {
         _ = try control("machine?up=0", method: "POST")
         let line = app.descendants(matching: .any)["her-offline"].firstMatch
@@ -401,7 +497,7 @@ extension HermeshUITests {
 
     func herTurnOff() throws {
         // At the end of her settings: turning her off asks whether her data goes too (docs/her-server.md §5.6).
-        app.buttons["her-name"].tap()
+        app.buttons["her-avatar"].tap()
         XCTAssertTrue(text("运行在").waitForExistence(timeout: 10), "her settings")
         let off = app.buttons["her-turn-off"]
         for _ in 0 ..< 4 where !off.isHittable { app.swipeUp() }
@@ -426,7 +522,7 @@ extension HermeshUITests {
 
     func herEraseKept() throws {
         // Turned off with her data kept, the first run's card says it is still there.
-        app.buttons["her-name"].tap()
+        app.buttons["her-avatar"].tap()
         XCTAssertTrue(text("运行在").waitForExistence(timeout: 10), "her settings")
         let off = app.buttons["her-turn-off"]
         for _ in 0 ..< 4 where !off.isHittable { app.swipeUp() }
@@ -437,7 +533,7 @@ extension HermeshUITests {
         herShot("Her: off, her data kept")
         // Removing the machine could erase it too, while the machine answers; owner-mac stays here.
         openMenu()
-        app.buttons["机器"].tap()
+        tap("menu-machines")
         tap("machine-owner-mac", timeout: 20)
         tap("machine-menu")
         tap("移除…")
