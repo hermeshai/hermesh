@@ -40,7 +40,7 @@ extension HermeshUITests {
     private var surface: XCUIElement { app.descendants(matching: .any)["screen-surface"].firstMatch }
 
     func controlOpen() throws {
-        let name = app.buttons["her-name"]
+        let name = app.buttons["her-avatar"]
         XCTAssertTrue(name.waitForExistence(timeout: 180), "Her's page")
         name.tap()
         let row = app.descendants(matching: .any)["her-computer-control"].firstMatch
@@ -66,7 +66,7 @@ extension HermeshUITests {
         app.launch()
         openMenu()
         app.descendants(matching: .any)["drawer"].buttons["her-place"].tap()
-        let name = app.buttons["her-name"]
+        let name = app.buttons["her-avatar"]
         XCTAssertTrue(name.waitForExistence(timeout: 60), "Her's page")
         name.tap()
         let row = app.descendants(matching: .any)["her-computer-control"].firstMatch

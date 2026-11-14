@@ -18,8 +18,8 @@ final class HermeshUITests: XCTestCase {
 
     func testTheIPhoneApp() throws {
         try XCTContext.runActivity(named: "joins the owner by its connection address") { _ in try join() }
-        try XCTContext.runActivity(named: "the menu: the logo, the three places, and the account as a round picture") { _ in try menu() }
-        try XCTContext.runActivity(named: "counts the sessions waiting on the overview, and answers one from the menu") { _ in try answerFromOverview() }
+        try XCTContext.runActivity(named: "the menu: the logo, Her and Work, the machines and agents, and the account as a round picture") { _ in try menu() }
+        try XCTContext.runActivity(named: "lists what needs the owner on Work, and answers a question there") { _ in try answerFromOverview() }
         try XCTContext.runActivity(named: "interrupts a running session") { _ in try interrupt() }
         try XCTContext.runActivity(named: "shows a reply as the agent writes it") { _ in try streamedReply() }
         try XCTContext.runActivity(named: "shows a conversation as the Mac does: Markdown, code, and tool details folded") { _ in try richConversation() }
@@ -59,6 +59,16 @@ final class HermeshUITests: XCTestCase {
         XCTAssertTrue(app.staticTexts.containing(NSPredicate(format: "label CONTAINS %@", "hermesh agent login antigravity")).firstMatch.waitForExistence(timeout: 20))
     }
 
+    func testSearchAndConnectivity() throws {
+        try join()
+        try search()
+        try centeredLoader()
+        try machineOffline()
+        try offline()
+        try backAndForth()
+        try notification()
+    }
+
     // MARK: Steps
 
     func join() throws {
@@ -89,8 +99,10 @@ final class HermeshUITests: XCTestCase {
         XCTAssertTrue(finish.waitForExistence(timeout: 30), "joined")
         XCTAssertTrue(text("打开通知").exists)
         allowNotifications(after: finish)
-        // The overview, by its menu button: its bar is at the top, or on the side (iPhone Duo).
-        XCTAssertTrue(app.buttons["menu"].waitForExistence(timeout: 30), "the overview")
+        // Her's page is the first one; she runs nowhere yet, so it asks where she should, and Not Now leads to
+        // Work, which is then the first page.
+        tap("her-not-now", timeout: 30)
+        XCTAssertTrue(app.navigationBars["工作"].waitForExistence(timeout: 10) && app.buttons["menu"].exists, "Work")
         try waitFor("this iPhone registers for notifications") { (try self.control("registered")["devices"] as? Int ?? 0) > 0 ? true : nil }
     }
 
@@ -98,18 +110,20 @@ final class HermeshUITests: XCTestCase {
         openMenu()
         let drawer = app.descendants(matching: .any)["drawer"]
         XCTAssertTrue(drawer.descendants(matching: .any)["Hermesh"].exists, "the logo")
-        for place in ["概览", "授权", "机器"] {
-            XCTAssertTrue(drawer.buttons[place].exists, place)
+        // A map of the team: Her (off, she runs nowhere), Work, the machines with their coding agents, the
+        // connected agents.
+        for id in ["her-place", "work-place", "menu-machines", "menu-machine-owner-mac", "menu-grants"] {
+            XCTAssertTrue(drawer.buttons[id].waitForExistence(timeout: 20), id)
         }
+        XCTAssertTrue(drawer.buttons["her-place"].label.contains("未启用"), drawer.buttons["her-place"].label)
+        XCTAssertTrue(drawer.buttons.matching(NSPredicate(format: "identifier BEGINSWITH %@", "menu-agent-owner-mac-")).count > 0, "the Mac's coding agents under it")
         // A picture alone, no name beside it: on a server of one's own, a server.
         let account = drawer.buttons["account"]
         XCTAssertTrue(account.exists)
         XCTAssertEqual(account.frame.width, account.frame.height, accuracy: 1, "round")
         XCTAssertLessThan(account.frame.width, 60, "the picture alone")
-        // A running session's title shimmers, as on the Mac: no spinner beside it.
-        let running = drawer.descendants(matching: .any)["drawer-session-跑很久"]
-        XCTAssertTrue(running.waitForExistence(timeout: 20), "the running session in the menu")
-        XCTAssertEqual(running.activityIndicators.count, 0, "no spinner")
+        // It lists no session: the one that runs is on Work, and marks Work's row.
+        XCTAssertFalse(drawer.descendants(matching: .any).matching(NSPredicate(format: "label CONTAINS %@", "跑很久")).firstMatch.exists, "no session in the menu")
         let shot = XCTAttachment(screenshot: app.screenshot())
         shot.name = "menu"
         shot.lifetime = .keepAlways
@@ -118,22 +132,24 @@ final class HermeshUITests: XCTestCase {
     }
 
     func answerFromOverview() throws {
-        // The overview counts them (one asks, two failed); the menu lists them.
-        let waiting = app.descendants(matching: .any)["sessions-waiting"].firstMatch
-        XCTAssertTrue(waiting.waitForExistence(timeout: 30), "the sessions waiting")
-        XCTAssertTrue(waiting.label.contains("3 个会话等你处理"), waiting.label)
-        press(waiting)
-        XCTAssertTrue(app.descendants(matching: .any)["drawer-dim"].waitForExistence(timeout: 5), "the menu opens")
-        tap("drawer-session-选颜色")
-        XCTAssertTrue(app.descendants(matching: .any)["question"].waitForExistence(timeout: 20), "the question")
-        app.buttons["蓝"].tap()
-        tap("answer")
+        // Work lists them (one asks, two failed). The question is a card that says who sent the work to which
+        // agent, and one tap on an answer answers it there.
+        let card = app.descendants(matching: .any)["session-选颜色"].firstMatch
+        XCTAssertTrue(card.waitForExistence(timeout: 30), "the question's card")
+        for _ in 0..<6 where !card.isHittable { app.swipeUp() }
+        XCTAssertTrue(card.label.contains("→"), card.label)
+        XCTAssertTrue(text("需要你处理").exists)
+        tap("quick-answer-蓝")
         XCTAssertTrue(toast(containing: "已回答"))
         try waitFor("the question is answered") { try self.sessionStatus("选颜色") != "waiting_input" ? true : nil }
     }
 
     func interrupt() throws {
-        openFromMenu(session: "跑很久")
+        // There is running work now: its count scrolls Work to that list.
+        reach("running-now")
+        tap("running-now")
+        try waitFor("In Progress in view") { text("进行中").isHittable ? true : nil }
+        tap("session-跑很久")
         XCTAssertTrue(text("跑很久").waitForExistence(timeout: 20))
         tap("interrupt")
         tap("interrupt-confirm")
@@ -142,8 +158,11 @@ final class HermeshUITests: XCTestCase {
     }
 
     func streamedReply() throws {
-        _ = try control("stream?title=\("慢慢写".addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed)!)", method: "POST")
-        openFromMenu(session: "慢慢写")
+        let title = "慢慢写".addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed)!
+        _ = try control("start?title=\(title)", method: "POST")
+        openSession("慢慢写")
+        // Start writing once the owner is looking: navigating through Work must not race a short reply.
+        _ = try control("stream?title=\(title)", method: "POST")
         // The reply shows while the turn still runs...
         let draft = app.descendants(matching: .any)["session-draft"].firstMatch
         XCTAssertTrue(draft.waitForExistence(timeout: 30))
@@ -157,7 +176,7 @@ final class HermeshUITests: XCTestCase {
 
     func richConversation() throws {
         _ = try control("rich?title=\("排版".addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed)!)", method: "POST")
-        openFromMenu(session: "排版")
+        openSession("排版")
         // The reply as GitHub shows it, never as raw Markdown (the prompt above it is raw).
         XCTAssertTrue(app.staticTexts["计划"].waitForExistence(timeout: 20), "the heading")
         XCTAssertTrue(app.staticTexts["先看 加粗的文字 和 main.go。"].exists, "bold and code, without their marks")
@@ -211,7 +230,7 @@ final class HermeshUITests: XCTestCase {
 
     func opensAtTheEnd() throws {
         _ = try control("long?title=\("长对话".addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed)!)", method: "POST")
-        openFromMenu(session: "长对话")
+        openSession("长对话")
         XCTAssertTrue(app.descendants(matching: .any)["drawer-dim"].waitForNonExistence(timeout: 5), "the menu closed")
         // The reply's paragraphs, not the prompt above them (its lines start with "say").
         let reply = { (s: String) in self.app.staticTexts.matching(NSPredicate(format: "label BEGINSWITH %@", s)).firstMatch }
@@ -235,8 +254,7 @@ final class HermeshUITests: XCTestCase {
     }
 
     func archiveAndUndo() throws {
-        openMenu()
-        app.buttons["全部会话"].tap()
+        openAllSessions()
         let row = app.descendants(matching: .any)["session-写 hello"].firstMatch
         XCTAssertTrue(row.waitForExistence(timeout: 20))
         row.swipeLeft()
@@ -314,7 +332,7 @@ final class HermeshUITests: XCTestCase {
     }
 
     func diff() throws {
-        openFromMenu(session: "写 hello")
+        openSession("写 hello")
         tap("session-info")
         // Under its environment, its context: the model it runs on; the agent tells
         // no reasoning effort, so that follows the agent's own.
@@ -336,7 +354,7 @@ final class HermeshUITests: XCTestCase {
 
     func approveAgent() throws {
         openMenu()
-        app.buttons["概览"].tap()
+        tap("work-place")
         let code = try control("agent", method: "POST")["code"] as! String
         XCTAssertFalse(code.isEmpty)
         let verify = app.buttons["verify-pairing"]
@@ -386,7 +404,7 @@ final class HermeshUITests: XCTestCase {
     /// A grant for all coding agents opens as that, and can name some instead.
     func narrowAgents() throws {
         openMenu()
-        app.buttons["授权"].tap()
+        tap("menu-grants")
         let grant = app.buttons["grant-Cursor"]
         XCTAssertTrue(grant.waitForExistence(timeout: 20))
         grant.tap()
@@ -411,7 +429,7 @@ final class HermeshUITests: XCTestCase {
     func renew() throws {
         let before = try control("grant?label=bot")["version"] as? Int ?? 0
         openMenu()
-        app.buttons["授权"].tap()
+        tap("menu-grants")
         let grant = app.buttons["grant-bot"]
         XCTAssertTrue(grant.waitForExistence(timeout: 20))
         grant.tap()
@@ -429,7 +447,7 @@ final class HermeshUITests: XCTestCase {
 
     func wake() throws {
         openMenu()
-        app.buttons["授权"].tap()
+        tap("menu-grants")
         let grant = app.buttons["grant-bot"]
         XCTAssertTrue(grant.waitForExistence(timeout: 20))
         grant.tap()
@@ -497,7 +515,7 @@ final class HermeshUITests: XCTestCase {
 
     func machine() throws {
         openMenu()
-        app.buttons["机器"].tap()
+        tap("menu-machines")
         let m = app.buttons["machine-owner-mac"]
         XCTAssertTrue(m.waitForExistence(timeout: 20))
         m.tap()
@@ -551,7 +569,7 @@ final class HermeshUITests: XCTestCase {
         // The owner's Mac is a machine and a trusted device; this iPhone a
         // trusted device only.
         openMenu()
-        app.buttons["机器"].tap()
+        tap("menu-machines")
         let mac = app.buttons["machine-owner-mac"]
         XCTAssertTrue(mac.waitForExistence(timeout: 20))
         XCTAssertTrue(mac.label.contains("可信设备"), mac.label)
@@ -563,7 +581,7 @@ final class HermeshUITests: XCTestCase {
 
     func approveDevice() throws {
         openMenu()
-        app.buttons["概览"].tap()
+        tap("work-place")
         let asked = try control("device", method: "POST")
         let verification = asked["verification"] as! String
         let verify = app.buttons["verify-pairing"]
@@ -635,7 +653,7 @@ final class HermeshUITests: XCTestCase {
     func swipeOnRow() throws {
         // The page follows the finger, so the finger ends where it started on
         // the row: the row must not open as well.
-        for id in ["machine-row-owner-mac", "flow-client-bot"] {
+        for id in ["all-sessions", "flow-client-bot"] {
             let row = app.descendants(matching: .any)[id].firstMatch
             XCTAssertTrue(row.waitForExistence(timeout: 20), id)
             // The overview is longer than the screen: the row in view first.
@@ -646,7 +664,7 @@ final class HermeshUITests: XCTestCase {
             XCTAssertTrue(app.descendants(matching: .any)["drawer-dim"].waitForExistence(timeout: 5), "the menu opens from \(id)")
             app.descendants(matching: .any)["drawer-dim"].tap()
             sleep(1)
-            XCTAssertTrue(app.navigationBars["概览"].exists && app.buttons["menu"].exists, "\(id) opened too")
+            XCTAssertTrue(app.navigationBars["工作"].exists && app.buttons["menu"].exists, "\(id) opened too")
         }
     }
 
@@ -724,7 +742,7 @@ final class HermeshUITests: XCTestCase {
 
     func usage() throws {
         openMenu()
-        app.buttons["概览"].tap()
+        tap("work-place")
         // Nothing runs since the interrupt; today's sessions as the machine
         // counts them; who sent work to which coding agent: bot to Gemini
         // CLI, the agent approved sending none; Gemini CLI's day; the machine.
@@ -770,8 +788,6 @@ final class HermeshUITests: XCTestCase {
         try waitFor("what bot sent Gemini CLI") { gemini.label.contains("bot 发起") ? true : nil }
         press(bot)
         try waitFor("all of Gemini CLI's turns again") { gemini.label.contains("1 台机器") ? true : nil }
-        let mac = app.descendants(matching: .any)["machine-row-owner-mac"].firstMatch
-        XCTAssertTrue(mac.exists && mac.label.contains("在线"), mac.label)
         // Every coding agent is listed, the idle ones too: no fold.
         let agentRows = app.descendants(matching: .any).matching(NSPredicate(format: "identifier BEGINSWITH 'coding-agent-'"))
         XCTAssertTrue(agentRows.count > 1 && !app.descendants(matching: .any)["more-agents"].exists, "every agent, nothing folded: \(agentRows.count)")
@@ -787,9 +803,9 @@ final class HermeshUITests: XCTestCase {
         XCTAssertTrue(heat.label.contains("Gemini CLI") && heat.label.contains("个会话运行过"), heat.label)
         app.otherElements["PopoverDismissRegion"].firstMatch.tap()
         XCTAssertTrue(heat.waitForNonExistence(timeout: 5), "a tap elsewhere closes it")
-        // What runs now opens the menu, which lists the sessions; usage is in the account, from there.
-        tap("running-now")
-        XCTAssertTrue(app.descendants(matching: .any)["drawer-dim"].waitForExistence(timeout: 5), "the menu opens")
+        // Nothing runs now; interrupt checked that count's link while a session was running.
+        // Usage is in the account, from the menu.
+        openMenu()
         tap("account")
         // Usage in place: the numbers and the weeks of days, no page to open.
         XCTAssertTrue(app.descendants(matching: .any)["usage"].firstMatch.waitForExistence(timeout: 20), "usage")
@@ -806,21 +822,23 @@ final class HermeshUITests: XCTestCase {
         // search within and the recent sessions first.
         let field = app.searchFields.firstMatch
         XCTAssertTrue(field.waitForExistence(timeout: 10), "the search page")
+        let results = app.descendants(matching: .any)["session-search"].firstMatch
+        XCTAssertTrue(results.waitForExistence(timeout: 10))
         XCTAssertTrue(text("按状态搜索").waitForExistence(timeout: 5), "the states")
-        XCTAssertTrue(app.descendants(matching: .any)["session-写 hello"].firstMatch.exists, "a recent session")
+        XCTAssertTrue(results.descendants(matching: .any)["session-写 hello"].firstMatch.exists, "a recent session")
         // A state becomes a token: the failed sessions alone.
         tap("search-state-failed")
         XCTAssertTrue(text("2 个结果").waitForExistence(timeout: 10), "the failed ones")
-        XCTAssertTrue(app.descendants(matching: .any)["session-崩溃"].firstMatch.exists && app.descendants(matching: .any)["session-限流"].firstMatch.exists)
-        XCTAssertFalse(app.descendants(matching: .any)["session-写 hello"].firstMatch.exists, "only what matches")
+        XCTAssertTrue(results.descendants(matching: .any)["session-崩溃"].firstMatch.exists && results.descendants(matching: .any)["session-限流"].firstMatch.exists)
+        XCTAssertFalse(results.descendants(matching: .any)["session-写 hello"].firstMatch.exists, "only what matches, excluding Work under the sheet")
         cancelSearch()
 
         tap("search")
         XCTAssertTrue(field.waitForExistence(timeout: 10))
         sleep(1)
-        field.typeText("崩溃")
+        field.typeText("崩溃\n") // submit the query, dismissing the search suggestions
         XCTAssertTrue(text("1 个结果").waitForExistence(timeout: 10))
-        let result = app.descendants(matching: .any)["session-崩溃"].firstMatch
+        let result = results.descendants(matching: .any)["session-崩溃"].firstMatch
         XCTAssertTrue(result.waitForExistence(timeout: 10))
         result.tap()
         XCTAssertFalse(app.searchFields.firstMatch.exists, "the search page closes")
@@ -856,10 +874,13 @@ final class HermeshUITests: XCTestCase {
     func centeredLoader() throws {
         let title = "还读不到"
         _ = try control("start?title=\(title.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed)!)", method: "POST")
-        openMenu()
-        XCTAssertTrue(app.descendants(matching: .any)["drawer-session-\(title)"].waitForExistence(timeout: 30), "the new session in the menu")
+        showWork()
+        let row = app.descendants(matching: .any)["session-\(title)"].firstMatch
+        XCTAssertTrue(row.waitForExistence(timeout: 30), "the new session on Work")
+        reach(row)
+        // Be ready to open it before disconnecting: menu navigation can outlast the ten-second loading state.
         _ = try control("relay?up=0", method: "POST")
-        tap("drawer-session-\(title)")
+        press(row)
         let loading = app.descendants(matching: .any)["loading"].firstMatch
         XCTAssertTrue(loading.waitForExistence(timeout: 10), "the conversation waits")
         let screen = app.windows.firstMatch.frame
@@ -886,23 +907,20 @@ final class HermeshUITests: XCTestCase {
             let q = { (t: String) in t.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed)! }
             _ = try control("start?title=\(q(title))&say=\(q(say))", method: "POST")
         }
-        openMenu()
-        tap("drawer-session-\(read)", timeout: 30)
+        openSession(read, timeout: 30)
         XCTAssertTrue(app.staticTexts["say 离线前读到"].waitForExistence(timeout: 30), "the conversation, read while the Mac is online")
-        openMenu()
-        XCTAssertTrue(app.descendants(matching: .any)["drawer-session-\(unread)"].waitForExistence(timeout: 30), "the other session in the menu")
-        tap("drawer-session-还读不到") // away from it (centeredLoader's session): what was read is kept as its page goes
+        showWork()
+        XCTAssertTrue(app.descendants(matching: .any)["session-\(unread)"].waitForExistence(timeout: 30), "the other session on Work")
+        openSession("还读不到") // away from it (centeredLoader's session): what was read is kept as its page goes
         _ = try control("machine?up=0", method: "POST")
-        openMenu()
-        tap("drawer-session-\(read)")
+        openSession(read)
         XCTAssertTrue(app.staticTexts["say 离线前读到"].waitForExistence(timeout: 5), "what was read shows")
         try waitFor("a line says it is what was last read", timeout: 60) { app.staticTexts["owner-mac 离线了，这里是上次读到的内容。"].exists ? true : nil }
         let kept = XCTAttachment(screenshot: app.screenshot())
         kept.name = "a conversation read before its machine went offline"
         kept.lifetime = .keepAlways
         add(kept)
-        openMenu()
-        tap("drawer-session-\(unread)")
+        openSession(unread)
         let empty = app.descendants(matching: .any)["session-unread"].firstMatch
         try waitFor("it says the Mac is offline", timeout: 30) { empty.exists && app.staticTexts["owner-mac 离线了"].exists ? true : nil }
         let shot = XCTAttachment(screenshot: app.screenshot())
@@ -911,7 +929,7 @@ final class HermeshUITests: XCTestCase {
         add(shot)
         // Its page: one row opens how to bring it back, the command to copy.
         openMenu()
-        app.buttons["机器"].tap()
+        tap("menu-machines")
         tap("machine-owner-mac", timeout: 20)
         tap("machine-offline", timeout: 20)
         XCTAssertTrue(text("hermeshd status").waitForExistence(timeout: 10), "the command to run there")
@@ -922,8 +940,7 @@ final class HermeshUITests: XCTestCase {
         add(page)
         tap("close")
         app.navigationBars.buttons.element(boundBy: 0).tap()
-        openMenu()
-        tap("drawer-session-\(unread)")
+        openSession(unread)
         _ = try control("machine?up=1", method: "POST")
         try waitFor("the conversation shows once the Mac is back", timeout: 90) { !empty.exists && app.staticTexts["say 离线时没读"].exists ? true : nil }
     }
@@ -935,11 +952,11 @@ final class HermeshUITests: XCTestCase {
         _ = try control("relay?up=0", method: "POST")
         app.terminate()
         app.launch()
-        XCTAssertTrue(app.descendants(matching: .any)["machine-row-owner-mac"].waitForExistence(timeout: 3), "what it kept shows at once")
+        XCTAssertTrue(app.descendants(matching: .any)["coding-agent-gemini"].waitForExistence(timeout: 3), "what it kept shows at once")
         let line = app.descendants(matching: .any)["sync-line"].firstMatch
         XCTAssertTrue(line.waitForExistence(timeout: 5), "it says it is connecting")
         try waitFor("it says it can't reach the relay", timeout: 30) { line.exists && line.label.contains("连不上") ? true : nil }
-        let bar = app.navigationBars["概览"].frame
+        let bar = app.navigationBars["工作"].frame
         XCTAssertTrue(bar.contains(CGPoint(x: line.frame.midX, y: line.frame.midY)), "the sync line in the middle of the bar, not over the page: \(line.frame) in \(bar)")
         XCTAssertEqual(line.frame.midX, bar.midX, accuracy: 2, "the sync line in the middle of the bar")
         let shot = XCTAttachment(screenshot: app.screenshot())
@@ -974,8 +991,9 @@ final class HermeshUITests: XCTestCase {
                 XCTAssertFalse(unreachable.exists, "the Mac shown unreachable on the way back")
                 XCTAssertEqual(agentRows.count, agents, "the coding agents held while the Mac is read again")
             } while line.exists && Date() < deadline
-            XCTAssertFalse(line.exists, "current again")
-            XCTAssertTrue(app.descendants(matching: .any)["machine-row-owner-mac"].exists)
+            // Foregrounding may publish its sync line just after the loop first sees it absent.
+            XCTAssertTrue(line.waitForNonExistence(timeout: 30), "current again")
+            XCTAssertTrue(app.descendants(matching: .any)["coding-agent-gemini"].exists)
         }
         // The Notification Center pulled part way and let go: the app was
         // only inactive, and stays current.
@@ -1085,9 +1103,45 @@ final class HermeshUITests: XCTestCase {
         sleep(1) // until it has slid in
     }
 
-    func openFromMenu(session title: String) {
+    /// Work, from wherever the app is: by the menu.
+    func showWork() {
         openMenu()
-        tap("drawer-session-\(title)")
+        tap("work-place")
+        XCTAssertTrue(app.descendants(matching: .any)["drawer-dim"].waitForNonExistence(timeout: 5), "the menu closed")
+    }
+
+    /// Opens a session from Work, which lists the ones that need the owner, run or ended last (the menu lists
+    /// none); one that is not there, from All Sessions.
+    func openSession(_ title: String, timeout: TimeInterval = 15) {
+        showWork()
+        var row = app.descendants(matching: .any)["session-\(title)"].firstMatch
+        if !row.waitForExistence(timeout: timeout) {
+            reach("all-sessions")
+            tap("all-sessions")
+            row = app.descendants(matching: .any)["session-\(title)"].firstMatch
+            XCTAssertTrue(row.waitForExistence(timeout: timeout), "no session \(title)")
+        }
+        reach(row)
+        press(row)
+    }
+
+    /// All Sessions, which Work leads to.
+    func openAllSessions() {
+        showWork()
+        reach("all-sessions")
+        tap("all-sessions")
+    }
+
+    /// Scrolls the page until an element can be tapped: down the page first, then back up.
+    @nonobjc func reach(_ e: XCUIElement) {
+        for _ in 0..<8 where !e.isHittable { app.swipeUp() }
+        for _ in 0..<12 where !e.isHittable { app.swipeDown() }
+    }
+
+    func reach(_ id: String) {
+        let e = app.descendants(matching: .any)[id].firstMatch
+        XCTAssertTrue(e.waitForExistence(timeout: 15), "no \(id)")
+        reach(e)
     }
 
     func toast(containing text: String) -> Bool {

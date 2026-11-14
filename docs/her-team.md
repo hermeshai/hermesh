@@ -1,8 +1,10 @@
 # Her and her team: one product from Her and the mesh
 
-Status: design, 2026-11-13. Nothing here is built. The interaction was
-agreed on a clickable iPhone prototype on 2026-11-13; this document says
-what it takes to build it on the system as it is. It covers the iPhone app.
+Status: stage 1 built on the iPhone 2026-11-13, with acceptance results
+updated 2026-11-14 (§13); stage 2 (§6) is not built. The
+interaction was agreed on a clickable iPhone prototype on 2026-11-13; this
+document says what it takes to build it on the system as it is. It covers
+the iPhone app.
 The Mac app follows the same model and gets its own section once the
 iPhone is built (§12).
 
@@ -102,8 +104,10 @@ part of this design (§11).
 | Her | The app opens on |
 |---|---|
 | Runs on at least one machine | Her |
-| Runs nowhere, and the owner has not said "Not Now" on this iPhone | Her's first run (§4.9) |
+| Runs nowhere, there is a machine, and the owner has not said "Not Now" on this iPhone | Her's first run (§4.9) |
 | Runs nowhere, and the owner said "Not Now" | Work |
+| There is no machine yet | Work: she has nowhere to run, and Work has Get Started, the way to a first machine |
+| The demo | Work: the demo has no Her |
 
 "Not Now" is kept on the iPhone only (`UserDefaults`). It is forgotten as
 soon as a machine runs Her.
@@ -141,14 +145,17 @@ conversation. It closes by a tap outside, a swipe up, or opening a row.
 |---|---|---|
 | Head | "Team", and "Today · 11 sessions ›" which opens Work | `QueryWork`, today |
 | Needs You | Each waiting question; each request to connect; each failed session | as `DrawerView.lists` today |
-| In Progress | Title, "sender → agent · machine", what it does now, how long | `current_tool`, `turn_started_at` |
+| In Progress | Title, "sender → agent · project" (the shared row in §4.7), what it does now, how long | `current_tool`, `turn_started_at` |
 | Just Finished | The two sessions that ended last | `updated_at` |
 
 **Answering in place.** A question is answered in the panel when it has
-one item, with options, one choice, not secret. The options are buttons;
-one tap answers (`model.answer`). Any other question (several items, free
-text, a secret) is a row that opens the session, where `QuestionPanel`
-handles it as today.
+one required item, with options, one choice, not secret; any other items
+are optional and left blank. A single optional choice also keeps its
+buttons. The options are buttons; one tap answers that item by its id
+(`model.answer`), regardless of its position in the form. Any other
+question (several required items, free text, a secret) is a row that opens
+the session, where `QuestionPanel` handles it as today. This includes the
+owner’s 2026-11-14 decision to allow a choice with optional notes.
 
 Empty, the panel says "Nothing is running now." and still shows Just
 Finished.
@@ -354,7 +361,9 @@ A first draft; the prototype has them in Chinese.
 | Her is here | Her 在这里 |
 | Waiting for an answer | 在等回答 |
 | Her isn't on | Her 还没启用 |
-| Not Now | 暂时不用 |
+| Not Now | 以后再说 (the app's word for it already) |
+| Not on (Her's row in the menu) | 未启用 |
+| Sent by %@ | %@ 派的活 |
 
 ## 9. Tests
 
@@ -380,7 +389,8 @@ and the banner brings the first run back. Tests that find sessions by
 `drawer-session-…`, and those that open Her's settings by `her-name`, are
 moved to the new places.
 
-End to end (`TestIPhone`, real hermeshd and Her): ask Her to start a
+End to end (`TestIPhone` with `HERMESH_IPHONE_GREP=testHer`, real hermeshd
+and Her with scripted model and coding agents): ask Her to start a
 session; the card appears and reaches Done; a second client starts a
 session that asks a question; the tag says it waits; answer in the panel;
 the session goes on.
@@ -434,9 +444,111 @@ Her the centre.
    thing people will ask her, and in stage 1 she must say she can't for
    sessions others started. It is a small change on the machine, but it
    widens what a compromised Her Server can do.
-5. **After compaction.** The card needs the `session_start` call to still
-   be in the conversation's history. Check in step 1 that compaction keeps
-   history entries; if it drops them, the card needs B3 or a small record
-   of its own.
+5. **After compaction (checked 2026-11-14).** Compaction appends a
+   checkpoint to the history (`her-core/src/compaction.rs`); it does not
+   delete the tool calls or results. `Kernel::transcript` walks the whole
+   branch, and `transcript_of` keeps those entries, so a loaded card
+   survives compaction. Older history still uses the existing pagination;
+   a card appears when its call and result have been loaded.
 6. **The first-device guide.** The guide for a first device ends in the
    app; where Her's first run sits in it is not decided here.
+
+## 13. Acceptance work, 2026-11-14
+
+The remaining stage 1 work adds the Chinese words, moves the existing UI
+tests to Work and the team menu, and covers the panel and Her's session
+card against the real local services. The one-choice rule in §4.3 now
+allows optional extra fields, and uses the choice's item id even when an
+optional field comes first. The panel's heading can be swiped up to close
+it; the name tag honours Reduce Motion.
+Its busy ring uses the same timeline drawing approach as Her's avatar,
+and stays still with Reduce Motion or while inactive, without installing
+a repeating UIKit animation.
+The start page is chosen only from an initialized owner's snapshot. The
+iOS 26 run exposed a pre-join status-only snapshot choosing Work too
+early, even when the owner joined afterward already had a machine.
+
+Existing UI checks needed their timing made independent of the new
+navigation: streaming starts after the session opens, and Duo's resize
+check compares the resulting width and its persistence rather than
+assuming every point of the gesture resizes the menu. The running-count
+link is exercised while work runs, before it is interrupted; the empty
+In Progress section is not shown. The panel's swipe test drags out of its
+heading, beyond the dismissal threshold. The Chinese typing
+fixture and settings-return focus fix come from main's `d796093b`; the
+new avatar entry is covered by sending a message after returning from
+settings. No production backend or protocol changed.
+Search checks are scoped to the search list: Work remains underneath its
+sheet and can contain a session with the same accessibility identifier.
+The text-search check submits the query before reading the result list,
+so search suggestions are dismissed. `testSearchAndConnectivity` provides
+a focused run of search, loading, offline recovery and notifications.
+Foreground recovery waits for the sync line to disappear, since it can
+first appear just after the app becomes foreground; the machine/agent
+continuity checks remain in place.
+The offline-loader check positions the session row before disconnecting
+the relay, then opens it immediately: navigating through the menu again
+could consume the ten-second loading state before the offline message.
+The real-service question fixture already has a required choice and an
+optional note, so the quick-answer rule is covered through the UI too.
+The card check scrolls back from the end and requires the card to be
+hittable before opening it; the scripted model echoes long tool results
+and session news after the card, pushing it outside the viewport.
+
+The iPhone harness limits Xcode to four build jobs after initial parallel
+runs caused resource contention and a service setup timeout. A separate
+retry also hit an occupied test TURN port before launching the UI.
+Her's full iOS 27.2 run repeatedly waited 60 seconds for animation
+quiescence, including later in the existing file flow after replacing the
+tag's spinner. That run was stopped; the full flow passed on the installed
+iOS 26 runtime, and the focused team flow passed on iOS 27.2. The spinner
+change alone is not claimed to resolve every animation wait.
+
+Passed:
+
+- `swift test --package-path packages/HermeshKit`: 81 tests, including the
+  quick-choice regression (observed failing before the fix).
+- `HERMESH_FAKE_PROVIDERS=1 HERMESH_HER_BIN=… go test ./e2e -run
+  '^TestHerMesh$' -count=1 -v -timeout 15m`: the real Her/mesh contract with
+  scripted coding agents.
+- `DuoUITests/testWalk`, with `TEST_RUNNER_HERMESH_DUO_SHOTS` and
+  `TEST_RUNNER_HERMESH_DUO_POSE=open`: upright and landscape, including
+  sidebar resizing and hide/show. Result: `/tmp/hermesh-team-duo-3.xcresult`.
+- `HERMESH_IPHONE_E2E=1 go test ./e2e -run '^TestIPhoneFirstRun$'
+  -count=1 -v -timeout 45m`: claim a server, no-machine Work start page,
+  defer/resume the guide, pair a machine and an agent, run the first task,
+  reconnect and erase the isolated test owner. Result:
+  `/tmp/hermesh-team-first-run.xcresult`.
+- `TestIPhone` with `HERMESH_IPHONE_GREP=testHerTeam`, iOS 27.2:
+  settings-return sending, both panel dismissal gestures, quick answering,
+  the completed session card and its Her sender, enabled-Her restart and
+  the dark panel. Result: `/tmp/hermesh-team-her-focused-2.xcresult`.
+  The light/dark panel and completed-card screenshots were inspected;
+  Chinese text renders correctly and the controls fit the phone.
+- `TestIPhone` with `HERMESH_IPHONE_GREP=testHer`, iOS 26: the complete
+  Her flow, including onboarding, Chinese input, settings, memory, files,
+  approval, team/card/restart, offline recovery, history and data erasure.
+  Result: `/tmp/hermesh-team-her-ios26-3.xcresult`.
+- `TestIPhone` with `HERMESH_IPHONE_GREP=testSearchAndConnectivity`,
+  iOS 27.2: search, the centered loader, machine and relay offline recovery,
+  foreground continuity and notification answering. Result:
+  `/tmp/hermesh-team-connectivity-2.xcresult`.
+- Default `TestIPhone`, iOS 27.2: the complete mesh app flow, from joining,
+  Work and session operations through grants, machines, appearance,
+  search, offline recovery and notification answering. Result:
+  `/tmp/hermesh-team-iphone-8.xcresult`.
+
+Manual Simulator checks covered the team menu, machine/agent scoping,
+quick answering, Her's Not Now entry, account appearance, and a session
+in dark appearance, with Duo open and closed. These are Simulator checks,
+not physical-device or frame-performance measurements. Duo's automated
+PNG captures were black in this runtime, so they are not visual evidence;
+the interactive Device Hub checks and UI assertions are recorded separately.
+The installed iOS 26 runtime renders Chinese as missing-glyph boxes,
+including in the system keyboard. Its UI assertions can check behaviour,
+but its screenshots are not evidence of Chinese typography or layout.
+
+For Her's full flow use `HERMESH_IPHONE_GREP=testHer`; `testHerTeam` is the
+focused team/settings-return/start-page/dark-appearance regression. Both
+need `HERMESH_IPHONE_E2E=1` and a built `HERMESH_HER_BIN`. The default
+`TestIPhone` runs the mesh app flow, not either Her test.

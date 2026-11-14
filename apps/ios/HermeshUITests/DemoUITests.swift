@@ -33,8 +33,8 @@ final class DemoUITests: XCTestCase {
         XCTAssertTrue(app.buttons["start-new"].waitForExistence(timeout: 10))
         // Reopening starts a new disposable world, and never initializes the real owner.
         tap("try-demo")
-        tap("menu")
-        XCTAssertEqual(app.buttons.matching(identifier: "drawer-session-Choose a greeting").count, 1)
+        reach("session-Choose a greeting")
+        XCTAssertEqual(app.buttons.matching(identifier: "session-Choose a greeting").count, 1)
         tap("exit-demo")
         app.terminate(); app.launch()
         XCTAssertTrue(app.buttons["start-new"].waitForExistence(timeout: 15))
@@ -57,7 +57,7 @@ final class DemoUITests: XCTestCase {
         tap("decline")
         XCTAssertTrue(app.staticTexts.matching(NSPredicate(format: "label CONTAINS %@", "The sample page now says")).firstMatch.waitForExistence(timeout: 15))
         backToOverview()
-        tap("menu"); tap("Machines")
+        tap("menu"); tap("menu-machines")
         tap("Add a Machine")
         tap("approve")
         XCTAssertTrue(app.descendants(matching: .any)["machine-joined"].waitForExistence(timeout: 10))
@@ -170,7 +170,11 @@ final class DemoUITests: XCTestCase {
         let all = app.switches["All projects (including ones added later)"]
         (all.switches.firstMatch.exists ? all.switches.firstMatch : all).tap()
         tap("hello-world")
-        back(); tap("Coding agents"); tap("Codex"); back(); tap("Save")
+        back(); tap("Coding agents")
+        // All coding agents first, as on the Mac: turned off, none is chosen, and Claude Code alone is.
+        let agentsAll = app.switches["all-agents"]
+        (agentsAll.switches.firstMatch.exists ? agentsAll.switches.firstMatch : agentsAll).tap()
+        tap("scope-agent-claude"); back(); tap("Save")
         XCTAssertTrue(app.buttons["scope-projects"].waitForNonExistence(timeout: 5))
         for _ in 0..<3 where !contains("hello-world").exists { app.swipeDown() }
         XCTAssertTrue(contains("hello-world").waitForExistence(timeout: 5))
@@ -196,7 +200,7 @@ final class DemoUITests: XCTestCase {
     }
 
     func testReviewSessionLifecycle() {
-        tap("try-demo"); tap("menu"); tap("drawer-session-Add a welcome page")
+        tap("try-demo"); reach("session-Add a welcome page"); tap("session-Add a welcome page")
         tap("session-more"); tap("Copy Session ID")
         XCTAssertTrue(contains("Copied the session ID").waitForExistence(timeout: 5))
         tap("session-more"); tap("Rename")
@@ -313,9 +317,10 @@ final class DemoUITests: XCTestCase {
         row.coordinate(withNormalizedOffset: .zero).withOffset(CGVector(dx: 50 + (row.frame.width - 64) * (hour + 0.5) / 24, dy: row.frame.height - 14)).tap()
         XCTAssertTrue(app.descendants(matching: .any)["heat-tip"].waitForExistence(timeout: 5))
         app.otherElements["PopoverDismissRegion"].firstMatch.tap()
-        reach("machine-row-Mac mini"); tap("machine-row-Mac mini"); back()
-        app.swipeDown(); app.swipeDown(); reach("sessions-waiting"); tap("sessions-waiting")
-        tap("account")
+        // The way to all sessions; then the menu: a machine's sessions, and from them the machine's page.
+        reach("all-sessions"); tap("all-sessions"); back()
+        tap("menu"); tap("menu-machine-Mac mini"); tap("scope-details"); back(); back()
+        tap("menu"); tap("account")
         for theme in ["light", "dark", "system"] {
             tap("appearance-\(theme)"); XCTAssertTrue(app.buttons["appearance-\(theme)"].isSelected)
         }
@@ -324,8 +329,51 @@ final class DemoUITests: XCTestCase {
         tap("close"); tap("exit-demo")
     }
 
+    /// Her and her team (docs/her-team.md): Work lists what needs the owner and answers a question where it is
+    /// listed; the menu is a map of the team with no session in it, whose rows open a machine's or an agent's
+    /// sessions; Her's entry, while she runs nowhere, asks where she should, and Not Now returns to Work.
+    func testReviewHerAndHerTeam() {
+        tap("try-demo")
+        // The question's card says who sent the work to which agent; one tap answers it.
+        reach("session-Choose a greeting")
+        let card = app.descendants(matching: .any).matching(identifier: "session-Choose a greeting").firstMatch
+        XCTAssertTrue(card.label.contains("ChatGPT → Codex"), card.label)
+        checkpoint("work-needs-you")
+        tap("quick-answer-Hello, world!")
+        XCTAssertTrue(app.buttons["quick-answer-Hello, world!"].waitForNonExistence(timeout: 15), "answered: no answers to tap")
+        // The menu: Her (not on), Work, the machines with their coding agents, the connected agents.
+        tap("menu")
+        let drawer = app.descendants(matching: .any).matching(identifier: "drawer").firstMatch
+        for id in ["her-place", "work-place", "menu-machines", "menu-machine-Mac mini", "menu-agent-Mac mini-claude", "menu-agent-Linux Studio-codex", "menu-grants", "menu-agent-ChatGPT"] {
+            XCTAssertTrue(drawer.buttons[id].waitForExistence(timeout: 10), id)
+        }
+        XCTAssertTrue(drawer.buttons["her-place"].label.contains("not on"), drawer.buttons["her-place"].label)
+        XCTAssertFalse(drawer.staticTexts["Add a welcome page"].exists, "no session in the menu")
+        checkpoint("menu-team-map")
+        // A coding agent's row opens its sessions on that machine; from them, its page; Back returns to Work.
+        tap("menu-agent-Linux Studio-codex")
+        XCTAssertTrue(app.navigationBars["Codex on Linux Studio"].waitForExistence(timeout: 10))
+        XCTAssertTrue(app.buttons["session-Add a welcome page"].waitForExistence(timeout: 10), "its session")
+        XCTAssertFalse(app.buttons["session-Choose a greeting"].exists, "not the other machine's")
+        tap("scope-details"); back(); back()
+        XCTAssertTrue(app.navigationBars["Work"].waitForExistence(timeout: 10))
+        // A connected agent's row opens the sessions it started.
+        tap("menu"); tap("menu-agent-ChatGPT")
+        XCTAssertTrue(app.buttons["session-Add a welcome page"].waitForExistence(timeout: 10))
+        back()
+        // Her: asleep, asking where she should run. Not Now returns to Work.
+        tap("menu"); tap("her-place")
+        XCTAssertTrue(app.buttons["her-not-now"].waitForExistence(timeout: 10), "Her's first run")
+        checkpoint("her-first-run")
+        tap("her-not-now")
+        XCTAssertTrue(app.navigationBars["Work"].waitForExistence(timeout: 10))
+        reach("her-off"); tap("her-off")
+        XCTAssertTrue(app.buttons["her-not-now"].waitForExistence(timeout: 10), "Work's banner leads to her first run")
+        tap("exit-demo")
+    }
+
     func testReviewToolOutputsAndClipboard() {
-        tap("try-demo"); tap("menu"); tap("drawer-session-Add a welcome page")
+        tap("try-demo"); reach("session-Add a welcome page"); tap("session-Add a welcome page")
         let group = app.buttons.matching(NSPredicate(format: "label CONTAINS 'Edited 1 file'")).firstMatch
         XCTAssertTrue(group.waitForExistence(timeout: 10)); group.tap()
         let shell = app.buttons.matching(NSPredicate(format: "label CONTAINS 'npm test'")).firstMatch
@@ -379,7 +427,7 @@ final class DemoUITests: XCTestCase {
 
     func testReviewFolderChoices() {
         tap("try-demo"); place("Machines"); tap("machine-Mac mini"); tap("agent-claude")
-        tap("add-project"); tap("repo-~/Projects/hello-world")
+        reach("add-project"); tap("add-project"); tap("repo-~/Projects/hello-world")
         XCTAssertFalse(app.buttons["add-project-confirm"].isEnabled)
         tap("chosen-folder")
         tap("folder-menu"); tap("Show Hidden Folders")
@@ -404,8 +452,8 @@ final class DemoUITests: XCTestCase {
         tap("Hello, world!"); tap("answer")
         XCUIDevice.shared.press(.home); app.activate()
         XCTAssertTrue(contains("The sample page now says “Hello, world!”").waitForExistence(timeout: 15))
-        tap("exit-demo"); tap("try-demo"); tap("menu")
-        XCTAssertEqual(app.buttons.matching(identifier: "drawer-session-Choose a greeting").count, 1)
+        tap("exit-demo"); tap("try-demo"); reach("session-Choose a greeting")
+        XCTAssertEqual(app.buttons.matching(identifier: "session-Choose a greeting").count, 1)
         tap("exit-demo")
         app.terminate(); app.launch()
         XCTAssertTrue(app.buttons["start-new"].waitForExistence(timeout: 15))
@@ -421,7 +469,7 @@ final class DemoUITests: XCTestCase {
         tap("view-options"); menuItem("Show"); tap("Metadata")
         tap("toggle-archived")
         app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH 'group-'")).firstMatch.tap()
-        tap("menu"); tap("search")
+        backToOverview(); tap("menu"); tap("search")
         XCTAssertFalse(contains("real-search-sentinel").exists)
         let field = app.searchFields.firstMatch
         XCTAssertTrue(field.waitForExistence(timeout: 5))
@@ -470,15 +518,31 @@ final class DemoUITests: XCTestCase {
 
     private func back() { app.navigationBars.buttons.element(boundBy: 0).tap() }
 
+    /// A place by its old name: Work, the pages the menu's headings open, and All Sessions, which Work leads to.
     private func place(_ title: String) {
-        backToOverview(); tap("menu"); tap(title)
+        backToOverview()
+        // A tap while the page under it is still coming back (after Back or a delete) can be lost: again, once.
+        tap("menu")
+        if !app.descendants(matching: .any)["drawer"].firstMatch.waitForExistence(timeout: 3) { tap("menu") }
+        switch title {
+        case "Overview": tap("work-place")
+        case "Grants": tap("menu-grants")
+        case "Machines": tap("menu-machines")
+        case "All Sessions": tap("work-place"); reach("all-sessions"); tap("all-sessions")
+        default: tap(title)
+        }
     }
 
     private func reach(_ identifier: String) {
         let item = app.descendants(matching: .any).matching(identifier: identifier).firstMatch
+        // Down the page first, then back up: Work can open scrolled past what is near its top.
         for _ in 0..<6 {
             if item.exists && item.isHittable { return }
             app.swipeUp()
+        }
+        for _ in 0..<10 {
+            if item.exists && item.isHittable { return }
+            app.swipeDown()
         }
         XCTAssertTrue(item.exists && item.isHittable, identifier)
     }
@@ -492,8 +556,16 @@ final class DemoUITests: XCTestCase {
     }
 
     private func tap(_ identifier: String) {
-        let element = app.descendants(matching: .any).matching(identifier: identifier).firstMatch
-        XCTAssertTrue(element.waitForExistence(timeout: 20), identifier)
-        element.tap()
+        let all = app.descendants(matching: .any).matching(identifier: identifier)
+        XCTAssertTrue(all.firstMatch.waitForExistence(timeout: 20), identifier)
+        // The same identifier can be on Work under a sheet or the menu (a session's card and its search result):
+        // the one in front.
+        let deadline = Date().addingTimeInterval(5)
+        var front = all.allElementsBoundByIndex.first { $0.isHittable }
+        while front == nil && Date() < deadline {
+            RunLoop.current.run(until: Date().addingTimeInterval(0.25))
+            front = all.allElementsBoundByIndex.first { $0.isHittable }
+        }
+        (front ?? all.firstMatch).tap()
     }
 }

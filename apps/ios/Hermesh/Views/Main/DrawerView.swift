@@ -107,7 +107,7 @@ struct DrawerView: View {
                 Text("Her")
                 Spacer(minLength: 0)
                 if off {
-                    Text("Off").font(.footnote).foregroundStyle(.secondary)
+                    Text("Not on").font(.footnote).foregroundStyle(.secondary)
                 } else if unread > 0 {
                     Text("\(unread)").font(.caption.weight(.semibold)).monospacedDigit().foregroundStyle(.white)
                         .padding(.horizontal, 6).frame(minWidth: 20, minHeight: 20)
@@ -119,7 +119,7 @@ struct DrawerView: View {
         }
         .buttonStyle(RowStyle(selected: model.root == .her))
         .padding(.horizontal, 10)
-        .accessibilityLabel(unread > 0 ? Text("Her, \(unread) unread") : Text("Her"))
+        .accessibilityLabel(off ? Text("Her, not on") : unread > 0 ? Text("Her, \(unread) unread") : Text("Her"))
         .accessibilityIdentifier("her-place")
     }
 

@@ -51,8 +51,10 @@ private struct HerPage: View {
                 ZStack(alignment: .top) {
                     Color.black.opacity(0.22).ignoresSafeArea()
                         .onTapGesture { showTeam(false) }
+                        .accessibilityElement()
                         .accessibilityLabel("Close")
                         .accessibilityAddTraits(.isButton)
+                        .accessibilityAction { showTeam(false) }
                         .accessibilityIdentifier("team-close")
                     TeamPanel { showTeam(false) }
                         .padding(.top, -tagHeight - 4)
@@ -124,6 +126,7 @@ private struct HerPage: View {
 /// that waits, by its coding agent; how many things wait; how many sessions failed; how many run, with their
 /// agents' logos. While something needs the owner and sessions also run, their number follows, at a ring.
 private struct HerTag: View {
+    @Environment(\.accessibilityReduceMotion) private var still
     let name: String
     let team: TeamState
     /// Nothing turns while the app is not in front.
@@ -156,17 +159,32 @@ private struct HerTag: View {
                     if case .working = team.tag {} else {
                         Text(verbatim: "\(team.running.count)").foregroundStyle(.secondary).monospacedDigit()
                     }
-                    if paused { Circle().strokeBorder(.tertiary, lineWidth: 1.5).frame(width: 12, height: 12) } else { ProgressView().controlSize(.mini) }
+                    runningRing
                 }
             }
         }
         .font(.system(size: 15, weight: .medium))
         .lineLimit(1)
-        .animation(.snappy, value: team.tag)
+        .animation(still ? nil : .snappy, value: team.tag)
         .accessibilityElement(children: .combine)
     }
 
     private func dot(_ color: Color) -> some View { Circle().fill(color).frame(width: 9, height: 9) }
+
+    /// Like Her's avatar, draw the continuous motion without a never-ending UIKit animation.
+    private var runningRing: some View {
+        TimelineView(.animation(minimumInterval: 1 / 30, paused: paused || still)) { timeline in
+            let angle = paused || still ? 0 : timeline.date.timeIntervalSinceReferenceDate.truncatingRemainder(dividingBy: 1) * 360
+            Canvas { context, size in
+                var arc = Path()
+                arc.addArc(center: CGPoint(x: size.width / 2, y: size.height / 2), radius: 5,
+                           startAngle: .degrees(angle), endAngle: .degrees(angle + 270), clockwise: false)
+                context.stroke(arc, with: .color(.secondary), style: StrokeStyle(lineWidth: 1.5, lineCap: .round))
+            }
+        }
+        .frame(width: 12, height: 12)
+        .accessibilityHidden(true)
+    }
 }
 
 /// The team panel (docs/her-team.md §4.3): what needs the owner, answered in place where one tap can, what
@@ -210,6 +228,10 @@ private struct TeamPanel: View {
                 .accessibilityIdentifier("team-work")
             }
             .padding(.horizontal, 8)
+            .contentShape(.rect)
+            .simultaneousGesture(DragGesture(minimumDistance: 20).onEnded { drag in
+                if drag.translation.height < -30 && abs(drag.translation.height) > abs(drag.translation.width) { close() }
+            })
             if team.waiting.isEmpty && team.running.isEmpty && team.failed.isEmpty && model.pairings.isEmpty {
                 Text("Nothing is running now.").font(.callout).foregroundStyle(.secondary)
                     .frame(maxWidth: .infinity).padding(.vertical, 18)

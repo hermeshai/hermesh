@@ -54,8 +54,10 @@ public func teamState(_ sessions: [Session], requests: Int) -> TeamState {
         finished: visible.filter { !$0.isActive && !$0.needsAttention }.sorted { $0.updatedDate > $1.updatedDate })
 }
 
-/// A question the owner can answer with one tap where it is listed: one item, with options, one choice, no secret.
-public func quickOptions(_ q: Question) -> [String]? {
-    guard q.items.count == 1, let item = q.items.first, !item.options.isEmpty, !item.multiSelect, !item.secret else { return nil }
-    return item.options.map(\.label)
+/// The item one tap can answer: a single, non-secret choice, with any other items optional.
+/// Return the item as well as its options so a preceding optional field cannot receive the answer.
+public func quickChoice(_ q: Question) -> Hermesh_Session_V1_QuestionItem? {
+    let items = q.items.count == 1 ? q.items : q.items.filter { !$0.optional }
+    guard items.count == 1, let item = items.first, !item.options.isEmpty, !item.multiSelect, !item.secret else { return nil }
+    return item
 }

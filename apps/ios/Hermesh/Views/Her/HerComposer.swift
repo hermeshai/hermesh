@@ -107,6 +107,8 @@ struct HerComposer: View {
             .opacity(noModel ? 0.6 : 1)
         }
         .padding(.horizontal, 12).padding(.bottom, 6)
+        // End focus as navigation starts, so returning from settings lays the composer above the keyboard again.
+        .onChange(of: model.path) { focused = false }
         .photosPicker(isPresented: $pickingPhotos, selection: $photos, maxSelectionCount: 10, matching: .images)
         .onChange(of: photos) {
             let picked = photos
