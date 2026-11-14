@@ -6,8 +6,8 @@ B3 then B2), designed in §6.1 to §6.5 and built 2026-11-15 (§6.6). The
 interaction was agreed on a clickable iPhone prototype on 2026-11-13; this
 document says what it takes to build it on the system as it is. It covers
 the iPhone app.
-The Mac app follows the same model and gets its own section once the
-iPhone is built (§12).
+The Mac app follows the same model; its design is §14 (decided and built
+2026-11-15, §14.8).
 
 It builds on [her-server.md](her-server.md) (what Her is),
 [her-mesh.md](her-mesh.md) (Her as an agent that starts coding sessions),
@@ -601,14 +601,10 @@ Her the centre.
 - The suggestions above Her's message field. The prototype used them to
   drive the demo.
 - `work` for the MCP gateway's agents (§6.3): only Her has it.
-- The work card on the Mac (§12).
-- The Mac app (§12).
 
 ## 12. Open questions
 
-1. **The Mac app.** Its sidebar lists sessions under Her in the same way.
-   The model carries over (the tag, the map, Work); the layout is its own
-   design, with a demo first.
+1. **The Mac app.** Decided 2026-11-15, designed in §14.
 2. **The coding agents' cells on Work** (§4.6, item 8). The prototype
    leaves them out; they are a function people have today and nothing else
    shows it. Keep, or move to each agent's page?
@@ -725,3 +721,204 @@ For Her's full flow use `HERMESH_IPHONE_GREP=testHer`; `testHerTeam` is the
 focused team/settings-return/start-page/dark-appearance regression. Both
 need `HERMESH_IPHONE_E2E=1` and a built `HERMESH_HER_BIN`. The default
 `TestIPhone` runs the mesh app flow, not either Her test.
+
+## 14. The Mac app
+
+Decided by the owner on 2026-11-15. The model is the iPhone's (§4): Her
+leads, the mesh is her team, Work is the overview. The Mac keeps what a
+desktop needs that the phone does not: the session list one click away.
+
+### 14.1 Decisions
+
+1. **The sidebar is navigation only** (revised 2026-11-15, after trying
+   the first build, which had the session list under the map: three kinds
+   of things in one column read as a muddle). Her, Work, Search and All
+   Sessions; then the team's map, which folds. No session title.
+2. **Sessions in three columns, as Mail** (chosen 2026-11-15 on the demo,
+   over a full-page list with Back): All Sessions or a row of the map opens
+   the session list as a column of its own; the session chosen in it shows
+   beside it, so switching sessions is one click.
+3. **The sidebar has a rail** (2026-11-15, on the demo): expanded, or a
+   74 px column of icons; it is never hidden, and which of the two is the
+   owner's choice, kept from page to page (§14.9).
+4. **New windows open 1240 × 800**, as before. For a day they opened
+   1440 × 860, to fit the info card beside the expanded sidebar and the
+   list. At 1240 the card gives way beside the expanded sidebar and fits
+   beside the rail.
+5. **The start page** is the iPhone's rule (§4.1): Her when she runs on a
+   machine; otherwise her first run, or Work.
+
+### 14.2 The sidebar
+
+| Part | Rows | Opens | Marks |
+|---|---|---|---|
+| Top | Her | Her | Unread count, as today; "Off" while she runs nowhere |
+| | Work (today's Overview, ⌘1) | Work | Orange dot when something needs the owner; ring and count of running sessions |
+| | Search (⌘K) | The search, as today | |
+| | All Sessions | The list's column, all sessions | How many (archived aside) |
+| **Team** (heading, folds; open by default) | Each machine, this Mac first | The list's column, its sessions | Green dot online; "Her is here"; "Offline · 2 hours ago" |
+| | Each installed coding agent, under its machine | Its sessions there | Orange dot, ring |
+| | Connected agents, on one line each | Its sessions | A request to connect that waits has an orange dot and opens the pairing sheet |
+| Foot | The account menu, as today | | |
+
+- **Grouping.** `sessionGroupings` in `@hermesh/core` gains `sender`, and
+  it is the default view for a list that has never been set. A section is
+  "Sent by Her", "Sent by Grok", "Sent by you"; the order is Her, then the
+  agents by their latest session, then the owner. The other groupings stay
+  in the view menu. A view the owner already chose is kept.
+- **The list's column** (300 px) is the list as before (view menu,
+  archived, rename, context menu), headed by what it shows ("All
+  Sessions", "Codex on This Mac", "Sent by Grok") and how many. The row of
+  the sidebar it came from is marked current. Its session shows beside it;
+  with none chosen yet, "Choose a session". A session opened from
+  elsewhere (Her's card, Work, a notification) shows with the list beside
+  it, all sessions when the list's filter leaves it out. Work and Her have
+  no list. This is the Mac's form of the iPhone's scoped lists (§4.7).
+- **Narrow windows** give way in order: the info card, then the sidebar
+  shrinks to its rail, then the list beside a session (the list alone
+  stays: it is the page).
+- **Rows** read "Grok → Codex · hermesh" (§4.7).
+- **Her's own grant** is not among the connected agents; she is the first
+  row.
+
+### 14.3 Her's page
+
+- **The name tag.** The capsule under the avatar carries the team's state
+  (§4.2, same words and order). Today the avatar and the name both open
+  her settings; they become two: the avatar opens the settings panel, the
+  capsule opens the team panel. The environment menu in the capsule, when
+  Her runs on several machines, moves to the ⋯ menu.
+- **The team panel** is a popover under the capsule (§4.3: Needs You with
+  answering in place, In Progress, Just Finished, "Today · 11 sessions ›"
+  to Work). Esc or a click outside closes it.
+- **Cards in her conversation.** The session card (§4.4) and the work card
+  (§6.3), drawn as on the iPhone at the conversation's width. Built in
+  `packages/her-client/src/botChat.ts`, the Mac's `herChat`, with the same
+  rules and tests as `Chat.swift`. A click opens the session, or Work.
+
+### 14.4 Work
+
+Today's Overview, renamed, with the lists the sidebar no longer stands for:
+
+1. Unreachable machines and Attention, as today.
+2. The link map, as today (it is the Mac's richer form of `FlowCard`).
+3. **Needs You**, answering in place (§4.3's rule).
+4. Working, as today (In Progress).
+5. **Recently Finished**: three.
+6. Usage, as today.
+
+There is no All Sessions link: the sidebar's list is all sessions.
+
+### 14.5 Without Her
+
+The first run takes Not Now (§4.9), kept in the app's settings on this
+Mac; Work then opens, with the "Her isn't on" banner.
+
+### 14.6 Shared code
+
+The team's state (§4.2) is a pure function in Swift today
+(`HermeshSessions/Team.swift`). It is written again in TypeScript in
+`@hermesh/core`, with the same table of tests, so the tag, the panel and
+the sidebar's marks say the same on both apps.
+
+### 14.7 Steps
+
+1. `@hermesh/core`: the team's state and the `sender` grouping; `botChat`:
+   session and work rows. → unit tests.
+2. The sidebar (§14.2) and the start page. → Playwright.
+3. The tag and the team panel. → Playwright.
+4. The cards in Her's conversation. → Playwright.
+5. Work's lists; Not Now. → Playwright.
+6. Words in English and Chinese; end to end with real hermeshd and Her
+   (the desktop's e2e, as `TestHerMesh` drives the iPhone's); every
+   control walked in light and dark.
+
+No backend change: everything the Mac shows is already in its store, as it
+was for the iPhone (§5).
+
+### 14.8 As built, 2026-11-15
+
+A clickable demo came first and was agreed: [Hermesh Mac · Her and her
+team](https://claude.ai/artifact/HBcQMpfA1H6YH53bCJ2TBx). The owner asked to
+keep Work's link map ("链路") as it is. Built as §14.1 to §14.7, with these
+choices:
+
+- **The list's default.** The window keeps whether the owner picked the
+  view in its menu (`viewChosen`). Until then the list is by who sent the
+  work, also for a window that saved a view before this version. A view
+  picked in the menu is kept, as before.
+- **The environments** moved from the capsule to Her's ⋯ menu, with Add
+  Environment and the console: the capsule is the team's button.
+- **The panel's "Today · N sessions"** counts the sessions the window holds
+  (`todayStats`), not `QueryWork`; Work's own counts are unchanged.
+- **Needs You** on Work is the existing attention card, which now also
+  lists the sessions that ask (one click answers a simple question,
+  `quickChoice`) and those whose last turn failed. Working Now stays below
+  it, picked by the map as before; a waiting session shows in both.
+- **A restart keeps an open session.** Decided by the owner on
+  2026-11-15: a window that quit on a session opens on it again, with its
+  unfinished answer; the start page rule holds otherwise.
+- **Tests start on Work.** The e2e launcher opens Work for the fixture's
+  owner window, as most specs expect; `team.spec.ts` checks the start page
+  itself (`start: true`). Specs reach the list through `sessionList()`
+  (`e2e/sessions.ts`), which opens All Sessions when its column is not
+  showing.
+
+Shared code: `teamState` and `quickChoice` in `@hermesh/core` (the same
+table as `Team.swift`), the `sender` grouping, and the session and work
+rows in `@hermesh/her-client`'s `botChat` (the same rules as `Chat.swift`).
+
+Passed, 2026-11-15:
+
+- Unit: `@hermesh/core` (80, with `team.test.ts`), `@hermesh/her-client`
+  (146, with `team.test.ts`), the desktop app (124, with `start.test.ts`
+  and the list column's cases in `layout.test.ts`);
+  the desktop typecheck, its e2e specs included.
+- `go test ./e2e -run 'TestDesktop$'`: every spec, with `team.spec.ts`
+  (the start page and Not Now; the sidebar as navigation; All Sessions and
+  the map's rows opening the list's column, the chosen session beside it;
+  the list by sender; Work's quick answer and Recently Finished) and the
+  specs updated for the new words, the default and the three columns
+  (`frame.spec.ts` checks the narrow-window order at 1440, 1300, 1000 and
+  900 px, and the rail kept from page to page; `team.spec.ts` the rail's
+  places, marks and hover words).
+- `HERMESH_HER_BIN=… go test ./e2e -run '^TestDesktopHer$'`: real
+  hermeshd and her with her-mock and scripted coding agents on this Mac:
+  the capsule opens the team panel and Esc closes it; Her starts a session
+  after the owner's approval; its card in her conversation reaches Done,
+  the panel lists it under Just Finished as "Her → Claude · demo", and the
+  card opens the session; environments are switched from ⋯.
+
+Not done: walking every control by hand in light and dark.
+
+### 14.9 The rail
+
+Decided by the owner on 2026-11-15, on the demo's board A2.
+
+- **Two states, never hidden.** Expanded (272 px) or the rail (74 px:
+  the traffic lights span x 12 to 72 on macOS 27, measured, and keep 2 px
+  clear of the rail's edge). View › Expand Sidebar / Collapse Sidebar
+  (⌃⌘S) switches them, kept for the window.
+- **The owner's choice, not the page's** (decided 2026-11-15). For a
+  while the sidebar folded to its rail whenever sessions showed and came
+  back on Her and Work; trying it, the owner found the column jumping at
+  each click. Now no click changes it: it stays as the owner left it,
+  from page to page, as in Mail and Finder.
+- **A window too narrow** for the expanded sidebar (beside the list,
+  when sessions show) shows the rail; asked to expand there, the sidebar
+  shows over the content until it is put away or a page is chosen.
+- **What it holds**, top to bottom: Her (her cat; unread count, or a ring
+  while she runs nowhere), Work (an orange dot when something needs the
+  owner; a ring with how many run), Search, All Sessions; then the
+  machines as tiles with a dot for online, each with its coding agents'
+  logos under it (an orange dot when one waits, a ring while one runs);
+  then the connected agents' avatars, and requests to connect with a dot;
+  at the foot, Expand and the account, whose menu opens beside the rail.
+- **Where you are.** The current place has the sidebar's fill and an
+  accent bar on its left. Each icon says on hover or focus what it is and
+  how it stands ("Codex on This Mac · 1 waiting for you · 1 working"); the
+  list's column, beside it, names what it shows.
+- **The narrow-window order**: beside a session the card needs 1402 px
+  with the expanded sidebar (1204 with the rail), the expanded sidebar
+  1132 px, and the list gives way below 934 px (rail, list and
+  conversation).

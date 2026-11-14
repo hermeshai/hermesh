@@ -3,7 +3,6 @@ import type { Session } from "@hermesh/proto/session";
 import { displayTitle } from "@hermesh/core";
 import { Icon } from "./icons";
 import { layoutOf, setCard } from "./layout";
-import { SidebarToggle } from "./MainWindow";
 import { keys, ownKeys } from "./platform";
 import { useStore } from "./store";
 import { Chat } from "./session/Chat";
@@ -24,7 +23,6 @@ export function SessionPage({ s }: { s: Session }) {
   return (
     <>
       <div className="ctool drag">
-        <SidebarToggle />
         <div className="ctitle">
           <h2>{displayTitle(s)}</h2>
         </div>

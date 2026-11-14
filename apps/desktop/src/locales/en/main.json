@@ -35,13 +35,13 @@
     },
     "view": {
       "title": "View",
-      "overview": "Overview",
+      "overview": "Work",
       "nextAttention": "Next Session That Needs You",
       "nextActive": "Next Session in Progress",
       "showInspector": "Show Info Panel",
       "hideInspector": "Hide Info Panel",
-      "showSidebar": "Show Sidebar",
-      "hideSidebar": "Hide Sidebar",
+      "showSidebar": "Expand Sidebar",
+      "hideSidebar": "Collapse Sidebar",
       "fullScreen": "Enter Full Screen"
     },
     "session": {

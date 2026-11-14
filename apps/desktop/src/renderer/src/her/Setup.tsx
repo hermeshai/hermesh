@@ -5,8 +5,8 @@ import type { Machine } from "@hermesh/proto/local";
 import { Mark } from "@hermesh/ui";
 import { local } from "../api";
 import { Icon } from "../icons";
-import { SidebarToggle } from "../MainWindow";
 import { ErrorLine, SignerWaiting, useAction } from "../sheets/common";
+import { setNotNow } from "../start";
 import { useStore } from "../store";
 import { herChoices, newServer, type Choice } from "./environments";
 
@@ -95,7 +95,6 @@ export function FirstRun({ onDone }: { onDone: (machineId: string) => void }) {
   return (
     <div className="her-first">
       <div className="ctool drag">
-        <SidebarToggle />
       </div>
       <div className="her-first-in">
         <Mark size={44} variant={waiting ? "pulse" : undefined} />
@@ -118,6 +117,18 @@ export function FirstRun({ onDone }: { onDone: (machineId: string) => void }) {
             }}
             fresh={fresh?.machineId}
           />
+        )}
+        {/* Not Now (docs/her-team.md §4.9): Work becomes the start page on this Mac, until a machine runs Her. */}
+        {!waiting && (
+          <button
+            className="link her-first-later"
+            onClick={() => {
+              setNotNow(true);
+              st.set({ selection: { kind: "overview" } });
+            }}
+          >
+            {t("setup.notNow")}
+          </button>
         )}
       </div>
     </div>

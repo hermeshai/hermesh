@@ -283,7 +283,8 @@ func desktopHerWorld(t *testing.T) desktopFixture {
 			workEnv = append(workEnv, name+"=")
 		}
 	}
-	w := newOwnerMac(t, herEnv(her, console, macHome, mock.base), &localv1.GrantSpec{})
+	// Scripted coding agents on this Mac, for the sessions Her starts (docs/her-team.md §14.3).
+	w := newOwnerMac(t, append(herEnv(her, console, macHome, mock.base), "HERMESH_FAKE_PROVIDERS=1"), &localv1.GrantSpec{})
 	t.Cleanup(w.owner.stop) // stopped as a service is, so that it stops her
 	home, err := w.app.client.GetStatus(context.Background(), &localv1.GetStatusRequest{})
 	if err != nil {

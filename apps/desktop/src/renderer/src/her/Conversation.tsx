@@ -25,6 +25,7 @@ import { FilePreview, previews } from "./preview/FilePreview";
 import { Onboarding, useOnboarding } from "./ModelOnboarding";
 import { onboardingAfter, withOnboarding } from "./onboarding";
 import { SecureCard } from "./SecureCard";
+import { SessionCard, WorkCard } from "./TeamCards";
 import { splitAttached, waitingFor, type WaitingItem } from "./waiting";
 
 /** A pause before a time line (bot-mode-design §6.6). */
@@ -106,10 +107,10 @@ type Item = BotItem | WaitingItem | OnboardingItem;
 type BotRow = VirtualRow & { item: Item; previous: number | undefined; side: "um" | "bm" | null; joinPrev: boolean; joinNext: boolean };
 
 /** Each kind's height until rows of it are measured: only how long the scrollbar is depends on it. */
-const rowHeights: Record<string, number> = { user: 56, waiting: 70, bot: 96, attachment: 160, question: 120, card: 240, routine: 40, deck_edit: 0, failure: 60, onboarding: 160 };
+const rowHeights: Record<string, number> = { user: 56, waiting: 70, bot: 96, attachment: 160, question: 120, card: 240, session: 76, work: 170, routine: 40, deck_edit: 0, failure: 60, onboarding: 160 };
 
 /** Which bubble an item draws: the owner's, the assistant's, or neither (a line of its own). */
-const sideOf = (item: Item): BotRow["side"] => (item.kind === "user" || item.kind === "waiting" ? "um" : item.kind === "bot" || item.kind === "attachment" || item.kind === "question" || item.kind === "card" ? "bm" : null);
+const sideOf = (item: Item): BotRow["side"] => (item.kind === "user" || item.kind === "waiting" ? "um" : item.kind === "bot" || item.kind === "attachment" || item.kind === "question" || item.kind === "card" || item.kind === "session" || item.kind === "work" ? "bm" : null);
 
 /** The rows: two bubbles in a row from the same side, with no time line between (one shows after a pause), sit close. */
 function botRows(items: Item[]): BotRow[] {
@@ -309,6 +310,20 @@ function BotChat({ bot, conv, op, state, waiting, onWaiting }: {
           </BotMessage>
         );
       }
+      case "session":
+        return (
+          <div key={item.key} className="bm">
+            {line}
+            <SessionCard started={item.started} />
+          </div>
+        );
+      case "work":
+        return (
+          <div key={item.key} className="bm">
+            {line}
+            <WorkCard work={item.work} />
+          </div>
+        );
       case "failure":
         return item.last ? <FailureCard key={item.key} error={item.error} working={working} model={view?.info.model} op={op} stateId={`failure:${item.key}`} /> : <PastFailure key={item.key} error={item.error} stateId={`failure:${item.key}`} />;
       case "onboarding":

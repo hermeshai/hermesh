@@ -1,6 +1,8 @@
 /* The overview's additions to the prototype's styles (styles/app.css). */
 
 .ov-warn{display:flex;align-items:center;gap:8px;font-size:12.5px;color:var(--orange)}
+.ov-warn.her-off{color:var(--l2)}
+.ov-warn.her-off .link{margin-left:auto}
 .arow .at code{font-size:12px}
 .arow .ai.r{background:var(--red-bg);color:var(--red)}
 .arow .at span.wrap{white-space:normal;line-height:1.5}

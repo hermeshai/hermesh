@@ -2,9 +2,7 @@
   "page": {
     "more": "More",
     "manage": "Manage “{{name}}”…",
-    "addEnvironment": "Add Environment…",
-    "environments": "Environments",
-    "environment": "Environment: {{name}}"
+    "addEnvironment": "Add Environment…"
   },
   "env": {
     "online": "Online",
@@ -31,7 +29,8 @@
     "turnOn": "Turn On Her",
     "signer": "Confirm in the signer to turn on Her on {{name}}.",
     "turningOn": "Turning on Her…",
-    "paired": "Paired just now"
+    "paired": "Paired just now",
+    "notNow": "Not Now"
   },
   "grant": {
     "runs": "Her runs on this computer and works whenever it is on.",
@@ -43,7 +42,8 @@
     "typing": "Typing…"
   },
   "head": {
-    "settings": "Assistant Settings"
+    "settings": "Assistant Settings",
+    "team": "The team: what it is doing"
   },
   "things": {
     "1": "1 thing",
