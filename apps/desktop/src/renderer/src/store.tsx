@@ -4,6 +4,7 @@ import type { Client, Device, GetStatusResponse, Machine, PairingDetails, Projec
 import type { Session } from "@hermesh/proto/session";
 import { sessionView, unreachableMachines, withKnownState, type SessionFilter, type SessionView } from "@hermesh/core";
 import type { Peek } from "./layout";
+import { notNow, setNotNow, startPage } from "./start";
 import { useWorld } from "./useWorld";
 
 // What the window knows: the owner's world as hermeshd pushes it
@@ -21,8 +22,11 @@ export type Data = {
   devices: Device[];
 };
 
-/** her: the Her entry, at an environment (a machine id) when one was chosen. */
-export type Selection = { kind: "overview" } | { kind: "session"; id: string } | { kind: "her"; machine?: string };
+/**
+ * her: the Her entry, at an environment (a machine id) when one was chosen. list: the session list's column with no
+ * session chosen; a session shows beside it (docs/her-team.md §14.2).
+ */
+export type Selection = { kind: "overview" } | { kind: "session"; id: string } | { kind: "list" } | { kind: "her"; machine?: string };
 
 export type Sheet =
   | { kind: "newGrant" }
@@ -50,6 +54,12 @@ export type Sheet =
 
 export type Toast = { text: string; undo?: () => void; id: number };
 
+/** A row of the team's map, chosen (docs/her-team.md §14.2). */
+export type ListFilter = { kind: "machine"; machine: string } | { kind: "agent"; machine: string; agent: string } | { kind: "client"; client: string };
+
+/** The list by who sent the work, until the owner picks a view. */
+export const defaultView = () => sessionView({ group: "sender" });
+
 type UI = {
   selection: Selection;
   inspector: boolean;
@@ -58,6 +68,10 @@ type UI = {
   peek: Peek;
   /** How the session list is laid out, and whether it shows archived sessions. */
   view: SessionView;
+  /** The owner picked the view in its menu: otherwise the list is by who sent the work (docs/her-team.md §14.2). */
+  viewChosen: boolean;
+  /** What the session list shows: a machine, a coding agent on it, or a connected agent; null, all sessions. */
+  listFilter: ListFilter | null;
   archived: boolean;
   /** The list's collapsed groups, as "grouping:key" (each grouping keeps its own). */
   collapsed: string[];
@@ -129,12 +143,13 @@ export function save(key: string, v: boolean) {
   }
 }
 
-type SavedView = Pick<UI, "selection" | "sidebar" | "view" | "archived" | "collapsed">;
+type SavedView = Pick<UI, "selection" | "sidebar" | "view" | "viewChosen" | "archived" | "collapsed">;
 function savedView(): Partial<SavedView> {
   if (location.hash.startsWith("#settings")) return {};
   try {
     const v: Partial<SavedView> = JSON.parse(localStorage.getItem("main-view") ?? "{}");
-    return { selection: v.selection, sidebar: v.sidebar, view: sessionView(v.view), archived: v.archived, collapsed: Array.isArray(v.collapsed) ? v.collapsed : undefined };
+    const chosen = v.viewChosen === true;
+    return { selection: v.selection, sidebar: v.sidebar, view: chosen ? sessionView(v.view) : undefined, viewChosen: chosen, archived: v.archived, collapsed: Array.isArray(v.collapsed) ? v.collapsed : undefined };
   } catch {
     return {};
   }
@@ -155,7 +170,9 @@ export function HermeshProvider({ children }: { children: ReactNode }) {
     inspector: saved("inspector", true),
     sidebar: true,
     peek: null,
-    view: sessionView(),
+    view: defaultView(),
+    viewChosen: false,
+    listFilter: null,
     archived: false,
     collapsed: [],
     searching: false,
@@ -168,11 +185,26 @@ export function HermeshProvider({ children }: { children: ReactNode }) {
     upgrading: false,
     ...Object.fromEntries(Object.entries(savedView()).filter(([, v]) => v !== undefined)),
   }));
+  // The start page (docs/her-team.md §14.1), chosen once from an initialized owner's world, unless something
+  // (a notification, a click) chose a page since the window opened.
+  const opened = useRef(ui.selection);
+  const started = useRef(false);
+  useEffect(() => {
+    const s = world.status;
+    if (started.current || location.hash.startsWith("#settings") || !world.loaded || !s || !(s.initialized || s.machineOnly)) return;
+    started.current = true;
+    const kind = startPage({ machines: world.machines, machineOnly: s.machineOnly, notNow: notNow(), onSession: opened.current.kind === "session" });
+    if (kind) setUI((u) => (u.selection === opened.current ? { ...u, selection: { kind } } : u));
+  }, [world.loaded, world.status, world.machines]);
+  // Not Now is forgotten as soon as a machine runs Her.
+  useEffect(() => {
+    if (world.machines.some((m) => m.her?.enabled)) setNotNow(false);
+  }, [world.machines]);
   useEffect(() => {
     if (location.hash.startsWith("#settings")) return;
-    try { localStorage.setItem("main-view", JSON.stringify({ selection: ui.selection, sidebar: ui.sidebar, view: ui.view, archived: ui.archived, collapsed: ui.collapsed })); }
+    try { localStorage.setItem("main-view", JSON.stringify({ selection: ui.selection, sidebar: ui.sidebar, view: ui.view, viewChosen: ui.viewChosen, archived: ui.archived, collapsed: ui.collapsed })); }
     catch { /* Main-window context is optional when storage is unavailable. */ }
-  }, [ui.selection, ui.sidebar, ui.view, ui.archived, ui.collapsed]);
+  }, [ui.selection, ui.sidebar, ui.view, ui.viewChosen, ui.archived, ui.collapsed]);
   const [width, setWidth] = useState(() => window.innerWidth);
   useEffect(() => {
     const resize = () => setWidth(window.innerWidth);

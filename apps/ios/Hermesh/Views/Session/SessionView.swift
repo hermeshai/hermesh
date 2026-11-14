@@ -360,6 +360,17 @@ struct StepView: View {
         }
     }
 
+    /// Who sent a prompt: their picture and "Sent by Grok"; the owner is "You".
+    private func sender(_ clientID: String) -> some View {
+        HStack(spacing: 5) {
+            if let c = model.clients.first(where: { $0.clientID == clientID }) { GrantAvatar(client: c, size: 16) }
+            Text(clientID == "owner" ? String(localized: "You") : String(localized: "Sent by \(model.senderName(clientID))"))
+        }
+        .font(.caption).foregroundStyle(.secondary)
+        .accessibilityElement(children: .combine)
+        .accessibilityIdentifier("prompt-sender")
+    }
+
     @ViewBuilder private func row(_ item: TranscriptItem) -> some View {
         switch item {
         case .turn(_, _, let at):
@@ -368,18 +379,22 @@ struct StepView: View {
                 Text(line).font(.caption).foregroundStyle(.tertiary).frame(maxWidth: .infinity)
                     .padding(.top, 8)
             }
-        case .user(_, let text, let at):
-            // The one who started the session speaks on the right; no name (the title says who).
-            Text(text)
-                .lineSpacing(3)
-                .foregroundStyle(Palette.bubbleText)
-                .padding(.horizontal, 14).padding(.vertical, 9)
-                .background(Palette.bubble, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
-                .contentShape(.contextMenuPreview, RoundedRectangle(cornerRadius: 18, style: .continuous))
-                .contextMenu { copy(text, sent: at) }
-                .padding(.leading, 48)
-                .frame(maxWidth: .infinity, alignment: .trailing)
-                .padding(.top, 8).padding(.bottom, 8)
+        case .user(_, let text, let at, let asker):
+            // Who asked for the turn speaks on the right, under their name: a session takes work from several
+            // (the one who started it, Her, the owner), and none of it is a chat with Her.
+            VStack(alignment: .trailing, spacing: 5) {
+                sender(asker.isEmpty ? session.createdBy : asker)
+                Text(text)
+                    .lineSpacing(3)
+                    .foregroundStyle(Palette.bubbleText)
+                    .padding(.horizontal, 14).padding(.vertical, 9)
+                    .background(Palette.bubble, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+                    .contentShape(.contextMenuPreview, RoundedRectangle(cornerRadius: 18, style: .continuous))
+                    .contextMenu { copy(text, sent: at) }
+            }
+            .padding(.leading, 48)
+            .frame(maxWidth: .infinity, alignment: .trailing)
+            .padding(.top, 8).padding(.bottom, 8)
         case .agent(_, let text):
             MarkdownText(text: text)
                 .frame(maxWidth: .infinity, alignment: .leading)

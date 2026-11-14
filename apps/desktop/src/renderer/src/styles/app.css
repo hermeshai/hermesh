@@ -79,7 +79,6 @@ html[data-platform=win] .tl-room{display:none}
 html[data-platform=win] .side-top{padding-left:8px;justify-content:flex-start;gap:2px}
 html[data-platform=win] .side-top>:last-child{margin-left:auto}
 html[data-platform=win] .ctool{padding-right:calc(var(--caption) + 8px)}
-html[data-platform=win] .noside .ctool{padding-left:8px}
 input,textarea,.sel-text{user-select:text;-webkit-user-select:text}
 :focus-visible{outline:2px solid var(--accent);outline-offset:1px}
 @keyframes fadein{from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:none}}
@@ -160,13 +159,53 @@ button{font:inherit;color:inherit}
 @keyframes spin{to{transform:rotate(360deg)}}
 /* main window */
 .mainwrap{position:relative;display:grid;grid-template-columns:272px minmax(0,1fr);height:100%;transition:grid-template-columns .3s cubic-bezier(.2,0,0,1)}
-.mainwrap.noside{grid-template-columns:0 minmax(0,1fr)}
+.mainwrap.railed{grid-template-columns:74px minmax(0,1fr)}
 /* Edge to edge: the sidebar fills the window from top to bottom and left to its edge, one hairline from the content. */
 .side{background:var(--side);border-right:.5px solid var(--sep);display:flex;flex-direction:column;min-height:0;overflow:hidden}
 /* Sidebar titles a step brighter than other text in the dark, as small text on the material reads grey. */
 @media (prefers-color-scheme:dark){.side{--l1:rgba(255,255,255,.93)}}
-.noside .side{opacity:0;pointer-events:none}
 .mainwrap>.content{grid-column:2}
+/* While sessions show, their list is a column of its own between the sidebar and the session (docs/her-team.md §14.2). */
+.mainwrap.withlist{grid-template-columns:272px 300px minmax(0,1fr)}
+.mainwrap.withlist.railed{grid-template-columns:74px 300px minmax(0,1fr)}
+.mainwrap.withlist>.content{grid-column:3}
+.slist{grid-column:2;display:flex;flex-direction:column;min-height:0;min-width:0;background:var(--win);border-right:.5px solid var(--sep)}
+.slist-head{height:44px;flex:none;display:flex;align-items:center;gap:8px;padding:0 8px 0 18px}
+.slist-head h2{margin:0;flex:1;min-width:0;font-size:14px;font-weight:var(--font-weight-semibold);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.slist-head .n{font-size:12px;color:var(--l2);font-variant-numeric:tabular-nums}
+/* The sidebar's rail (docs/her-team.md §14.9): its places as icons, 74 px wide; the traffic lights in its top band. */
+.rail{grid-column:1;position:relative;z-index:3;display:flex;flex-direction:column;align-items:center;min-height:0;background:var(--side);border-right:.5px solid var(--sep)}
+html.vibrant .rail{background:var(--side-tint)}
+.rail-top{height:44px;width:100%;flex:none;display:flex;align-items:center;justify-content:center}
+.rail-nav{flex:1;min-height:0;width:100%;overflow-y:auto;scrollbar-width:none;display:flex;flex-direction:column;align-items:center;gap:4px;padding:2px 0 8px}
+.rail-nav>div{display:flex;flex-direction:column;align-items:center;gap:2px}
+.rail-sep{width:28px;height:.5px;background:var(--l4);margin:6px 0;flex:none}
+.rail-m{margin-bottom:6px}
+.rb{position:relative;width:44px;height:40px;flex:none;border:0;border-radius:10px;background:none;display:flex;align-items:center;justify-content:center;color:var(--l1)}
+.rb:hover{background:var(--fill)}
+.rb.sel{background:var(--side-sel)}
+.rb.sel::before{content:"";position:absolute;left:-14px;top:9px;bottom:9px;width:3px;border-radius:2px;background:var(--accent)}
+.rb.small{height:34px}
+.rb>.ic{width:19px;height:19px}
+.rb-cat{width:26px;height:26px;display:flex}
+.rb-cat>svg{width:100%;height:100%}
+.rb-badge{position:absolute;top:2px;right:2px;min-width:16px;height:16px;padding:0 4px;border-radius:8px;background:var(--fill3);font-size:10px;font-weight:var(--font-weight-bold);line-height:16px;text-align:center;font-variant-numeric:tabular-nums}
+.rb-off{position:absolute;right:7px;bottom:7px;width:8px;height:8px;border-radius:50%;box-shadow:inset 0 0 0 1.5px var(--l3);background:var(--side)}
+.rb-dot{position:absolute;top:5px;right:6px;width:8px;height:8px;border-radius:50%;background:var(--orange);box-shadow:0 0 0 2px var(--side)}
+.rb-busy{position:absolute;bottom:2px;right:2px;display:inline-flex;align-items:center;gap:2px;height:14px;padding:0 3px;border-radius:7px;background:var(--side);font-size:10px;color:var(--l2);font-variant-numeric:tabular-nums}
+.rb-busy>i{width:8px;height:8px;border-radius:50%;border:1.2px solid var(--l4);border-top-color:var(--l2);animation:busy-turn 1s linear infinite}
+@media (prefers-reduced-motion:reduce){.rb-busy>i{animation:none}}
+.rb-tile{position:relative;width:32px;height:32px;border-radius:9px;background:var(--fill2);display:flex;align-items:center;justify-content:center}
+.rb-tile>.ic{width:17px;height:17px;color:var(--l2)}
+.rb-tile>.dotc{position:absolute;right:-2px;bottom:-2px;width:9px;height:9px;box-shadow:0 0 0 2px var(--side)}
+.rail-foot{flex:none;width:100%;display:flex;flex-direction:column;align-items:center;gap:4px;padding:6px 0 10px;border-top:.5px solid var(--sep)}
+.rail-tip{position:fixed;left:80px;z-index:40;transform:translateY(-50%);max-width:320px;padding:5px 9px;border-radius:7px;background:var(--menu-solid);color:var(--l1);box-shadow:0 0 0 .5px var(--menu-bd),0 6px 18px rgba(0,0,0,.18);font-size:12px;line-height:1.3;pointer-events:none;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+/* The account, at the rail's foot: the avatar alone; its menu opens beside the rail. */
+.acct.compact{border-top:0;padding-top:0}
+.acct.compact .side-foot{width:44px;height:44px;margin:0;padding:0;justify-content:center;position:relative}
+.acct.compact .side-foot>.dotc{position:absolute;right:6px;bottom:6px}
+.acct.compact .acct-menu{left:calc(100% + 4px);right:auto;bottom:0;width:240px;transform-origin:0 100%}
+.nosession{flex:1;display:flex;align-items:center;justify-content:center;color:var(--l2);font-size:var(--fs-text-l)}
 /* No room for the sidebar beside the conversation, but asked for: over it, opaque, until a click beside it (layout.ts). */
 .mainwrap.peek .side{position:absolute;top:0;left:0;bottom:0;z-index:20;width:272px;opacity:1;pointer-events:auto;background:var(--side);
   box-shadow:10px 0 30px rgba(0,0,0,.14);animation:peek-in .22s cubic-bezier(.2,0,0,1)}
@@ -189,11 +228,28 @@ button{font:inherit;color:inherit}
 .nav-i:hover{background:var(--fill)}
 .nav-i.sel{background:var(--side-sel)}
 .nav-i .cnt{margin-left:auto;font-size:11.5px;color:var(--l2);font-variant-numeric:tabular-nums}
+/* The team (docs/her-team.md §14.2): Work's marks, the map over the list, and the list's filter. */
+.nav-marks,.map-marks{margin-left:auto;display:inline-flex;align-items:center;gap:6px;flex:none}
+.dot-w{width:7px;height:7px;border-radius:50%;background:var(--orange);flex:none;display:inline-block}
+.busy{display:inline-flex;align-items:center;gap:4px;font-size:11.5px;color:var(--l2);font-variant-numeric:tabular-nums}
+.busy>i{width:10px;height:10px;border-radius:50%;border:1.5px solid var(--l4);border-top-color:var(--l2);animation:busy-turn 1s linear infinite}
+@keyframes busy-turn{to{transform:rotate(360deg)}}
+@media (prefers-reduced-motion:reduce){.busy>i{animation:none}}
+.team-map{display:flex;flex-direction:column;gap:1px}
+.team-map .grp-h{position:static;padding-top:20px}
+.map-row{display:flex;align-items:center;gap:8px;min-height:28px;padding:3px 9px;border:0;border-radius:8px;background:none;width:100%;text-align:left;font-size:13px;color:var(--l1)}
+.map-row:hover{background:var(--fill)}
+.map-row.sel{background:var(--accent-bg);color:var(--accent-t)}
+.map-row.sub{padding-left:33px}
+.map-row>.ic{color:var(--l2)}
+.map-n{min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.map-sub{font-size:11.5px;color:var(--l2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
+.map-h{font-size:11.5px;color:var(--l2);padding:10px 10px 3px}
 .side-list{flex:1;overflow-y:auto;min-height:0;padding:0 8px 8px;scrollbar-width:thin}
-.side-list>[role=group]{display:flex;flex-direction:column;gap:2px}
+.side-sessions>[role=group]{display:flex;flex-direction:column;gap:2px}
 /* A group's heading: its title, its count, and ▾ (▸ when collapsed); a click collapses or opens it. */
 .grp-h{position:sticky;top:0;z-index:2;font:inherit;font-size:12px;font-weight:400;color:var(--l2);padding:24px 10px 6px;margin-bottom:2px;display:flex;align-items:center;gap:6px;background:var(--side-head);border:0;width:100%;text-align:left}
-.side-list>[role=group]:first-child .grp-h{padding-top:20px}
+.side-sessions>[role=group]:first-child .grp-h{padding-top:10px}
 .grp-h:hover{color:var(--l1)}
 .grp-h .n{font-weight:500;color:var(--l3)}
 .grp-h .ic{width:16px;height:16px;color:var(--l2);transition:transform .15s var(--ease-out)}
@@ -270,7 +326,6 @@ button{font:inherit;color:inherit}
 .vmenu .mi:disabled{color:var(--l3)}
 .content{position:relative;display:flex;flex-direction:column;min-width:0;min-height:0;background:var(--win)}
 .ctool{height:44px;flex:none;display:flex;align-items:center;gap:10px;padding:0 14px 0 22px}
-.noside .ctool{padding-left:7px}
 .ctitle{flex:1;min-width:0;display:flex;align-items:center;gap:10px}
 .ctitle h2{margin:0;font-size:14px;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 /* As macOS titles: grey while another window has the focus. */

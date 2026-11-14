@@ -2,9 +2,7 @@
   "page": {
     "more": "更多",
     "manage": "管理「{{name}}」…",
-    "addEnvironment": "添加环境…",
-    "environments": "环境",
-    "environment": "环境：{{name}}"
+    "addEnvironment": "添加环境…"
   },
   "env": {
     "online": "在线",
@@ -31,7 +29,8 @@
     "turnOn": "开启 Her",
     "signer": "在签名窗口里确认，在 {{name}} 上开启 Her。",
     "turningOn": "正在开启 Her…",
-    "paired": "刚刚配对"
+    "paired": "刚刚配对",
+    "notNow": "以后再说"
   },
   "grant": {
     "runs": "Her 在这台电脑上运行，电脑开着时她一直可用。",
@@ -43,7 +42,8 @@
     "typing": "正在输入…"
   },
   "head": {
-    "settings": "助手设置"
+    "settings": "助手设置",
+    "team": "团队：现在在做什么"
   },
   "things": {
     "1": "一件事",

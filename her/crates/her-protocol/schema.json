@@ -14168,6 +14168,9 @@
     "MeshCallResult": {
       "description": "The result of `mesh/call`.",
       "properties": {
+        "details": {
+          "description": "What the apps read of the result, beside the model's text: the tool result's details."
+        },
         "is_error": {
           "default": false,
           "description": "The call failed, and `output` says how.",

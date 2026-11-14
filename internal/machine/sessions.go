@@ -312,8 +312,14 @@ func (s *Sessions) canRead(p *Principal, r *sessionRow) bool {
 	return g.TaskVisibility == identityv1.TaskVisibility_TASK_VISIBILITY_ALL && identity.Allows(g.ProjectIds, r.ProjectID)
 }
 
+// canWrite: the client that started the session, or Her, whose grant
+// (her_machine_id) acts on every session she may read (docs/her-team.md
+// §6.1).
 func (s *Sessions) canWrite(p *Principal, r *sessionRow) bool {
-	return p.Kind == PrincipalClient && r.CreatedBy == p.ClientID
+	if p.Kind != PrincipalClient {
+		return false
+	}
+	return r.CreatedBy == p.ClientID || p.Grant.GetHerMachineId() != "" && s.canRead(p, r)
 }
 
 func (s *Sessions) find(p *Principal, id string, write bool) (*live, *sessionRow, error) {

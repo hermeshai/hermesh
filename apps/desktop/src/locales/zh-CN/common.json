@@ -6,8 +6,8 @@
     "noResponse": "Hermesh 的后台服务没有响应。它通常会自动启动；如果一直这样，请重新打开 Hermesh。"
   },
   "window": {
-    "showSidebar": "显示边栏",
-    "hideSidebar": "隐藏边栏",
+    "showSidebar": "展开边栏",
+    "hideSidebar": "收成窄栏",
     "undo": "撤销",
     "menu": "菜单"
   },
@@ -29,7 +29,6 @@
   },
   "sidebar": {
     "label": "边栏",
-    "overview": "概览",
     "search": "搜索",
     "attention_other": "{{count}} 项需要处理",
     "sessions": "会话",
@@ -45,7 +44,26 @@
     "archived": "已归档「{{title}}」",
     "unarchived": "已取消归档「{{title}}」",
     "her": "Her",
-    "herUnread_other": "Her 有 {{count}} 条未读"
+    "herUnread_other": "Her 有 {{count}} 条未读",
+    "work": "工作",
+    "team": "团队",
+    "connectedAgents": "连接的 Agent",
+    "thisMac": "这台 Mac",
+    "herHere": "Her 在这里",
+    "offline": "离线",
+    "offlineSince": "离线 · {{ago}}",
+    "herOff": "未启用",
+    "you": "你",
+    "sentBy": "{{name}} 派的",
+    "agentOn": "{{machine}} 上的 {{agent}}",
+    "waits": "在等你",
+    "running_other": "{{count}} 个在忙",
+    "pairing": "连接请求",
+    "pairingWaits": "有连接请求在等你",
+    "sentByYou": "你派的",
+    "allSessions": "全部会话",
+    "noneHere": "这里没有会话",
+    "chooseSession": "选一个会话"
   },
   "accountMenu": {
     "settings": "设置…",
@@ -90,7 +108,8 @@
     "newestFirst": "最新在前",
     "oldestFirst": "最早在前",
     "metadata": "元数据",
-    "titleOnly": "仅标题"
+    "titleOnly": "仅标题",
+    "bySender": "按派活的人"
   },
   "search": {
     "openSettings": "打开设置",
@@ -153,5 +172,39 @@
     "openActivityMonitor_win": "打开任务管理器",
     "view": "查看",
     "listLabel": "问题"
+  },
+  "team": {
+    "title": "团队",
+    "today_other": "今天 · {{count}} 个会话",
+    "close": "关闭团队面板",
+    "nothingRunning": "现在没有在跑的活。",
+    "needsYou": "需要你处理",
+    "inProgress": "进行中",
+    "justFinished": "刚完成",
+    "recentlyFinished": "最近完成",
+    "waiting": "{{agent}} 在等你",
+    "needYou_other": "{{count}} 个在等你",
+    "failed_other": "{{count}} 个失败",
+    "working_other": "{{count}} 个在忙",
+    "answered": "已回答：{{answer}}",
+    "wantsToConnect": "请求连接",
+    "lastTurnFailed": "上一轮失败了",
+    "changed_other": "{{count}} 个文件 · +{{add}} −{{del}}",
+    "noChanges": "没有改动",
+    "waitingForAnswer": "在等回答",
+    "done": "完成",
+    "sessionsToday": "个会话（今天）",
+    "sessionsInDays": "个会话（{{count}} 天内）",
+    "workSummary": "已完成 {{done}} · {{turns}} 轮 · {{tokens}} token",
+    "openWork": "打开工作页",
+    "herOff": "Her 还没启用",
+    "turnHerOn": "选择她在哪里运行…"
+  },
+  "rail": {
+    "label": "窄栏",
+    "expand": "展开边栏",
+    "herOff": "Her · 未启用",
+    "online": "在线",
+    "waiting_other": "{{count}} 个在等你"
   }
 }

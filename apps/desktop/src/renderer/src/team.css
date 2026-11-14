@@ -1,0 +1,26 @@
+/* The team (docs/her-team.md §4.3, §14.3, §14.4): the panel under Her's name tag, and the lists it shares with Work. */
+.dot-f{width:7px;height:7px;border-radius:50%;background:var(--red);flex:none;display:inline-block}
+/* The team panel: grown out of the capsule, over a dimmed conversation. */
+.tm-scrim{position:fixed;inset:0;z-index:20;border:0;padding:0;background:var(--scrim);animation:fadein .15s var(--ease-out)}
+.tm-panel{position:absolute;z-index:21;top:96px;left:50%;width:min(440px,calc(100% - 32px));max-height:calc(100vh - 180px);overflow-y:auto;transform:translateX(-50%);padding:14px 10px 10px;border-radius:18px;background:var(--menu);box-shadow:0 0 0 .5px var(--menu-bd),0 18px 50px rgba(10,20,50,.22),0 4px 12px rgba(10,20,50,.10);-webkit-backdrop-filter:blur(30px) saturate(1.6);backdrop-filter:blur(30px) saturate(1.6);outline:none;-webkit-app-region:no-drag;animation:tm-in .18s var(--ease-out);user-select:none}
+@keyframes tm-in{from{opacity:0;transform:translate(-50%,-6px) scale(.98)}}
+@media (prefers-reduced-motion:reduce){.tm-panel,.tm-scrim{animation:none}}
+.tm-head{display:flex;align-items:baseline;padding:0 8px 4px}
+.tm-head h2{flex:1;margin:0;font-size:20px;font-weight:var(--font-weight-bold)}
+.tm-today{display:inline-flex;align-items:center;gap:3px;color:var(--l2);min-height:28px}
+.tm-panel h3,.wk-h{margin:0;padding:12px 10px 4px;font-size:12px;font-weight:var(--font-weight-normal);color:var(--l2)}
+.tm-empty{padding:16px 10px 6px;color:var(--l2)}
+.tm-row{display:flex;align-items:center;gap:10px;width:100%;padding:8px 10px;border:0;border-radius:var(--r-box);background:none;text-align:left;font-size:var(--fs-text-l);color:var(--l1)}
+.tm-row:hover{background:var(--fill)}
+.tm-main{flex:1;min-width:0;display:flex;flex-direction:column}
+.tm-main>b{font-weight:var(--font-weight-medium);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.tm-main>span{font-size:11.5px;color:var(--l2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.tm-main code{font-family:var(--mono);font-size:11px}
+.tm-when{flex:none;font-size:11.5px;color:var(--l2);font-variant-numeric:tabular-nums}
+.tm-ok{color:var(--green);width:18px;height:18px;stroke-width:1.6}
+.tm-need{display:flex;flex-direction:column;gap:6px;margin:2px 0;padding:4px 0 10px;border-radius:12px;background:var(--fill)}
+.tm-need>.tm-row:hover{background:none}
+.tm-q{padding:0 12px;font-size:var(--fs-text-l)}
+.qa{display:flex;flex-wrap:wrap;gap:8px;padding:2px 12px 0}
+.qa .btn{height:30px}
+.wk-list{padding:4px}

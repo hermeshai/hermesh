@@ -2,11 +2,13 @@ import { useEffect, useState, type ReactNode } from "react";
 import { Trans, useTranslation } from "react-i18next";
 import type { Client, PairingDetails } from "@hermesh/proto/local";
 import { PairingKind } from "@hermesh/proto/identity";
-import { dateOf } from "@hermesh/core";
+import { dateOf, displayTitle, pendingQuestion } from "@hermesh/core";
 import { i18n } from "../../../shared/i18n";
 import { opensActivityMonitor, problemBody, problemsOf, problemTitle, severe } from "../health";
 import { Icon } from "../icons";
+import { senderLine } from "../Sidebar";
 import { useStore, type Store } from "../store";
+import { QuickAnswer, useTeam } from "../team";
 
 const day = 86_400_000;
 
@@ -19,10 +21,11 @@ export function expiringClients(st: Store, now: Date): Client[] {
 }
 
 /**
- * "Needs You": what waits on the owner and is not a session (the sidebar
- * lists those): machines kept from working first, then pairing requests and
- * grants about to expire, and an older signer than the app's (Windows). A
- * machine only has only its own health here.
+ * "Needs You": what waits on the owner. Machines kept from working first;
+ * then the sessions that ask a question, answered here when one click can
+ * (docs/her-team.md §14.4), and those whose turn failed; then pairing requests
+ * and grants about to expire, and an older signer than the app's (Windows).
+ * A machine only has only its own health here.
  */
 export function Attention({ now }: { now: Date }) {
   const { t } = useTranslation("overview");
@@ -30,12 +33,13 @@ export function Attention({ now }: { now: Date }) {
   const owner = !st.status?.machineOnly;
   const expiring = owner ? expiringClients(st, now) : [];
   const sick = st.machines.flatMap((m) => problemsOf(m).map((p) => ({ m, p })));
+  const team = useTeam();
   // The signer the app carries, newer than the one set up: it signs what the old one can't show.
   const [signer, setSigner] = useState<string>();
   useEffect(() => {
     if (owner) window.hermesh?.signerUpdate().then(setSigner, () => {});
   }, [owner]);
-  const count = sick.length + st.pairings.length + expiring.length + (signer ? 1 : 0);
+  const count = sick.length + team.waiting.length + team.failed.length + st.pairings.length + expiring.length + (signer ? 1 : 0);
   if (count === 0) return null;
   return (
     <section aria-label={t("attention.title")}>
@@ -48,6 +52,21 @@ export function Attention({ now }: { now: Date }) {
             ) : (
               <button className="btn" onClick={() => window.hermesh?.openSettings(`machines/${m.machineId}`)}>{i18n.t("common:health.view")}</button>
             )}
+          </Row>
+        ))}
+        {team.waiting.map((s) => {
+          const q = pendingQuestion(s);
+          const words = q?.items.map((i) => i.text || i.header).filter(Boolean).join(" ");
+          return (
+            <Row key={s.sessionId} icon="q" tint="y" title={displayTitle(s)} detail={words ? `${senderLine(st, s)} · ${words}` : senderLine(st, s)} wrap>
+              <QuickAnswer s={s} />
+              <button className="btn" onClick={() => st.select(s.sessionId)}>{t("attention.open")}</button>
+            </Row>
+          );
+        })}
+        {team.failed.map((s) => (
+          <Row key={s.sessionId} icon="alert" tint="r" title={displayTitle(s)} detail={`${senderLine(st, s)} · ${s.progress?.lastFailure?.message || i18n.t("common:team.lastTurnFailed")}`}>
+            <button className="btn" onClick={() => st.select(s.sessionId)}>{t("attention.open")}</button>
           </Row>
         ))}
         {st.pairings.map((p) => (

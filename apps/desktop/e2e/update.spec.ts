@@ -3,6 +3,7 @@ import { execFileSync, spawn, type ChildProcess } from "node:child_process";
 import fs from "node:fs";
 import net from "node:net";
 import path from "node:path";
+import { sessionList } from "./sessions";
 
 // Updating a packaged, Developer ID–signed Hermesh.app (run by
 // TestDesktopUpdate): HERMESH_UPDATE_APP is version HERMESH_UPDATE_FROM,
@@ -54,7 +55,7 @@ async function start(): Promise<{ child: ChildProcess; browser: Browser; main: P
   expect(browser, "the app's debugging port").toBeTruthy();
   await expect.poll(() => browser!.contexts().flatMap((c) => c.pages()).length).toBeGreaterThan(0);
   const main = browser!.contexts().flatMap((c) => c.pages())[0];
-  await expect(main.getByRole("list", { name: "会话" })).toContainText("写 hello");
+  await expect((await sessionList(main))).toContainText("写 hello");
   return { child, browser: browser!, main };
 }
 
@@ -94,7 +95,7 @@ test("the app finds, downloads and installs a new version, and restarts into it 
   expect(a.child.exitCode).toBeNull();
 
   // Preserve an unfinished answer and selection while the daemon keeps its active sessions.
-  await a.main.getByRole("list", { name: "会话" }).getByRole("listitem").filter({ hasText: "选颜色" }).click();
+  await (await sessionList(a.main)).getByRole("listitem").filter({ hasText: "选颜色" }).click();
   await a.main.getByRole("textbox", { name: "你的回答" }).fill("Draft survives the signed update");
   await a.main.getByRole("radio", { name: /蓝/ }).click();
   await updates.close();

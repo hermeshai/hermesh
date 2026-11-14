@@ -1,11 +1,11 @@
 import { expect, test, type Page } from "@playwright/test";
-import { cli, fixture, launch, onWindows, snap, thisComputer } from "./app";
+import { cli, fixture, launch, onWindows, snap, thisComputer, sessionList } from "./app";
 
 // The session page: the conversation, the changes, the info panel, and the
 // control area where the owner answers the agent or stops it.
 
 async function open(page: Page, title: string) {
-  await page.getByRole("list", { name: "会话" }).getByText(title, { exact: true }).click();
+  await (await sessionList(page)).getByText(title, { exact: true }).click();
   await expect(page.getByRole("heading", { name: title })).toBeVisible();
 }
 
@@ -26,7 +26,7 @@ for (const language of ["zh-Hans", "en"]) {
     await expect.poll(async () => JSON.parse(await cli("session", "get", id, "-o", "json")).session.status).toBe("crashed");
     const { app, page } = await launch(fixture.socket, { systemLanguages: [language] });
     try {
-      await page.getByRole("list", { name: language === "en" ? "Sessions" : "会话", exact: true }).getByText(title, { exact: true }).click();
+      await (await sessionList(page)).getByText(title, { exact: true }).click();
       const failure = page.getByRole("alert");
       await expect(failure).toContainText(language === "en" ? "The worktree’s base ref was not found" : "无法创建工作目录：找不到基准引用");
       await expect(failure).toContainText('project "demo"');
@@ -154,7 +154,7 @@ test("the title is 14px medium, bright in front and grey while the window is beh
 test("the session card floats over the conversation with what a glance needs, and the toolbar hides it", async () => {
   const { app, page } = await launch();
   // The card docks only when there is room beside the conversation, regardless of the runner's display size.
-  await page.setViewportSize({ width: 1240, height: 800 });
+  await page.setViewportSize({ width: 1440, height: 800 });
   await open(page, "写 hello");
   const card = page.getByRole("complementary", { name: "会话信息" });
   const toggle = page.getByRole("button", { name: "信息面板", exact: true });
@@ -224,8 +224,8 @@ test("the session card floats over the conversation with what a glance needs, an
   expect(log.x + log.width).toBeLessThanOrEqual(c.x);
   await snap(page, "session-info");
 
-  // The toggle is a toolbar button the size of the sidebar's, highlighted only while the info shows.
-  const left = (await page.getByRole("button", { name: "隐藏边栏" }).boundingBox())!;
+  // The toggle is a toolbar button the size of the list's view options, highlighted only while the info shows.
+  const left = (await page.getByRole("button", { name: "视图选项" }).boundingBox())!;
   const right = (await toggle.boundingBox())!;
   expect([right.width, right.height]).toEqual([left.width, left.height]);
   const fill = () => toggle.evaluate((el) => getComputedStyle(el).backgroundColor);
@@ -319,7 +319,7 @@ test("a question waits in the control area; the owner picks an option by key and
 
 test("a session worked on in place shows the branch its folder is on, or that it is no git repository; another machine's can only be copied", async () => {
   const { app, page } = await launch();
-  await page.setViewportSize({ width: 1240, height: 800 });
+  await page.setViewportSize({ width: 1440, height: 800 });
   const card = page.getByRole("complementary", { name: "会话信息" });
   await open(page, "就地");
   await expect(card.getByRole("listitem")).toHaveText([/bot 发起$/, "Gemini CLI 执行", thisComputer, "live", "feature/card"]);
@@ -337,7 +337,7 @@ test("a session worked on in place shows the branch its folder is on, or that it
 
 test("a running session shows what it does, and 打断 stops the turn", async () => {
   const { app, page } = await launch();
-  await page.setViewportSize({ width: 1240, height: 800 });
+  await page.setViewportSize({ width: 1440, height: 800 });
   await open(page, "跑很久");
   await expect(titleLine(page, "跑很久")).toHaveText("跑很久");
   const ctl = page.getByRole("region", { name: "这一轮" });
@@ -376,7 +376,7 @@ test("a session its agent stops as it starts says the agent interrupted it, not 
   await expect.poll(async () => JSON.parse(await cli("session", "get", id, "-o", "json")).session.status).toBe("idle");
   const { app, page } = await launch();
   try {
-    await page.getByRole("list", { name: "会话" }).getByText(title, { exact: true }).click();
+    await (await sessionList(page)).getByText(title, { exact: true }).click();
     const log = page.getByRole("log", { name: "对话" });
     await expect(log).toContainText("bot 打断了这一轮。会话还在，bot 再发消息就会接着做。");
     await expect(log).not.toContainText("出错了");
@@ -665,7 +665,7 @@ test("a conversation on a machine gone offline says why: one read before shows w
   await expect(page.getByText(/^这个会话的内容保存在那台机器上，连上后会自动显示。.*还在线。$/)).toBeVisible();
   await snap(page, "session-machine-offline");
   // The overview says it as the iPhone does: offline, when it was last seen, no raw error.
-  await page.getByRole("button", { name: /^概览/ }).click();
+  await page.getByRole("button", { name: /^工作/ }).click();
   const warn = page.locator(".ov-warn");
   await expect(warn).toContainText("work-mac 离线了，它上面的会话暂时看不到");
   await expect(warn).toContainText("还在线 · 连上后会自动补上");

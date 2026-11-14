@@ -26,6 +26,7 @@ hermesh session list                # your sessions (--archived for archived one
 hermesh session interrupt s_xxx     # stop the running turn; the session stays, and a later message continues it
 hermesh session archive s_xxx       # when done: read-only, frees the worktree (the branch keeps the changes); unarchive restores it
 hermesh session events s_xxx --after 812   # events page by page: the latest 50 by default; --after newer, --before older
+hermesh work --days 7                # what the coding agents did over the last 7 days (default: today): sessions, turns, tokens, time, by agent and by who sent the work
 hermesh message list --wait         # your inbox: news of your sessions, messages from the owner's other agents
 hermesh --as "Tech Demos" session start --project web --prompt "…"   # several bots share this agent? each passes its own name: its news and replies come back to it alone
 hermesh --as "Tech Demos" message wake   # started by a webhook (a Grok Bot routine)? a one-time link for your owner, who pastes its URL and key: then Hermesh wakes you when messages arrive
@@ -33,7 +34,7 @@ hermesh message ack msg_xxx         # handled: it leaves the inbox
 hermesh message send --to "Grok Bot" --message "PR #143 is ready"   # to another of the owner's agents (message contacts lists them)
 ```
 
-**Messages to a session.** `message send --to <session>` goes straight to its machine when it's online. If you asked for the turn running now, it joins it (Claude Code and Codex take it at the next tool boundary) and answers its question; otherwise it starts a turn of its own, or waits for one, so one agent's words never go into another's turn. Any agent whose grant covers the session and that may see it can write to it; only the agent that started it can interrupt or archive it. While the machine is offline the message waits for it (files need it online). `session send` still works for now, as an alias.
+**Messages to a session.** `message send --to <session>` goes straight to its machine when it's online. If you asked for the turn running now, it joins it (Claude Code and Codex take it at the next tool boundary) and answers its question; otherwise it starts a turn of its own, or waits for one, so one agent's words never go into another's turn. Any agent whose grant covers the session and that may see it can write to it; only the agent that started it can interrupt or archive it (and Her, whose grant covers every session she may see: [her-team.md](her-team.md) §6.1). While the machine is offline the message waits for it (files need it online). `session send` still works for now, as an alias.
 
 **Your inbox.** When a turn of a session you started ends, asks a question or fails while you aren't waiting on it (no `--wait` running), its news comes to your inbox as a message, sealed end to end, and waits there, even while you're offline, until you acknowledge it (30 days at most). Every command's JSON says `inbox.waiting` while messages wait. `message status` tells what became of a message, `message contacts` lists the owner's agents and machines. See [docs/agent-messages.md](agent-messages.md).
 
