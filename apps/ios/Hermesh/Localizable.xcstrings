@@ -7484,6 +7484,26 @@
         }
       }
     },
+    "sessions in %lld days": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "个会话（%lld 天内）"
+          }
+        }
+      }
+    },
+    "sessions today": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "个会话（今天）"
+          }
+        }
+      }
+    },
     "sessions worked": {
       "localizations": {
         "zh-Hans": {
