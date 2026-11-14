@@ -4,11 +4,13 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"fmt"
 	"log/slog"
 	"net"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -52,6 +54,76 @@ func TestSessionRecoversLostInitialAnswer(t *testing.T) {
 	}
 }
 
+// Network changes can close the signaling tunnel after an ICE restart's
+// offer was installed locally, either before or after the host answered.
+// Recovery must finish that pending offer before creating another one.
+func TestSessionRecoversInterruptedRestart(t *testing.T) {
+	for _, answered := range []bool{false, true} {
+		for _, exhausted := range []bool{false, true} {
+			name := fmt.Sprintf("answered=%v/exhausted=%v", answered, exhausted)
+			t.Run(name, func(t *testing.T) {
+				dir := t.TempDir()
+				inputLog := filepath.Join(dir, "input.jsonl")
+				h := NewHost(HostConfig{Bin: helperBin(t), Args: []string{"--test-source", "--input-log", inputLog}})
+				defer h.Stop()
+				var frames atomic.Int32
+				failures, calls := 1, 0
+				if exhausted {
+					failures = 3
+				}
+				v, err := Dial(context.Background(), ViewerConfig{
+					Connect: func(ctx context.Context, req *screenv1.ConnectRequest) (*screenv1.ConnectResponse, error) {
+						if req.SessionId != "" {
+							calls++
+							if calls <= failures {
+								if answered {
+									if _, err := h.Connect(ctx, req); err != nil {
+										return nil, err
+									}
+								}
+								return nil, connect.NewError(connect.CodeUnavailable, errors.New("network change closed the signaling tunnel"))
+							}
+						}
+						return h.Connect(ctx, req)
+					},
+					Candidates: h.Candidates,
+					Frame:      func(bool, []byte, *Trace) { frames.Add(1) },
+				})
+				if err != nil {
+					t.Fatal(err)
+				}
+				defer v.Close()
+				waitFor(t, "initial picture", func() bool { return frames.Load() > 10 })
+				session := v.session
+				ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+				defer cancel()
+				err = v.Restart(ctx)
+				if exhausted {
+					if err == nil {
+						t.Fatal("expected the first restart to exhaust its transient retries")
+					}
+					failures = calls // the tunnel is now available
+					err = v.Restart(ctx)
+				}
+				if err != nil {
+					t.Fatalf("restart could not recover: %v", err)
+				}
+				if v.session != session || v.pc.SignalingState() != webrtc.SignalingStateStable {
+					t.Fatal("recovery did not finish negotiation on the existing session")
+				}
+				before := frames.Load()
+				waitFor(t, "picture after interrupted restart", func() bool { return frames.Load() > before+20 })
+				b, _ := proto.Marshal(&screenv1.Input{Event: &screenv1.Input_Text{Text: &screenv1.Text{Text: "after restart"}}})
+				waitFor(t, "input after interrupted restart", func() bool { return v.Send(false, b) == nil })
+				waitFor(t, "input at the helper", func() bool {
+					b, _ := os.ReadFile(inputLog)
+					return strings.Contains(string(b), "after restart")
+				})
+			})
+		}
+	}
+}
+
 // helperBin is the helper to test with: $HERMESH_SCREEN_BIN, else the one
 // built here from apps/screen/macos.
 func helperBin(t *testing.T) string {
@@ -92,7 +164,14 @@ func TestSession(t *testing.T) {
 	dir := t.TempDir()
 	log, clip := filepath.Join(dir, "input.jsonl"), filepath.Join(dir, "clipboard.txt")
 	var mu sync.Mutex
-	h := NewHost(HostConfig{Bin: helperBin(t), Args: []string{"--test-source", "--input-log", log, "--test-clipboard", clip}})
+	var checkMu sync.Mutex
+	var checks bytes.Buffer
+	h := NewHost(HostConfig{Bin: helperBin(t), Args: []string{"--test-source", "--input-log", log, "--test-clipboard", clip},
+		Log: slog.New(slog.NewTextHandler(writerFunc(func(p []byte) (int, error) {
+			checkMu.Lock()
+			defer checkMu.Unlock()
+			return checks.Write(p)
+		}), nil))})
 	var frames, keys int
 	var first bool
 	var format *screenv1.Format
@@ -227,9 +306,19 @@ func TestSession(t *testing.T) {
 	if v.Err() == nil {
 		t.Error("the first viewer ended without a reason")
 	}
+	waitFor(t, "authenticated checks recorded after a working session", func() bool {
+		checkMu.Lock()
+		defer checkMu.Unlock()
+		return regexp.MustCompile(`screen: checks received.* direct=[1-9][0-9]* `).Match(checks.Bytes())
+	})
 	waitFor(t, "the second viewer", func() bool { return h.Viewer() == "second" })
 	waitFor(t, "the second viewer connected", get(func() bool { return phase2 == "connected" }))
+	h.mu.Lock()
 	s := h.cur
+	h.mu.Unlock()
+	if s == nil {
+		t.Fatal("the second session ended before its viewer closed")
+	}
 	v2.Close()
 	select {
 	case <-s.done:
@@ -250,7 +339,7 @@ func TestSessionEndsWhenViewerNeverConnects(t *testing.T) {
 	defer func() { connectWithin = old }()
 	h := NewHost(HostConfig{Bin: helperBin(t), Args: []string{"--test-source"}})
 	// An offer from a viewer that then goes away.
-	api, err := newAPI(nil, nil)
+	api, err := newAPI(nil, nil, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -372,6 +461,15 @@ func TestCandidatesLater(t *testing.T) {
 				return strings.Contains(l, `msg="screen: candidates"`) && strings.Contains(l, `local="host `) && strings.Contains(l, `remote="host `) &&
 					strings.Contains(l, `msg="screen: path"`) && strings.Contains(l, " after=")
 			})
+			// And, from a viewer that sends candidates later, how long its
+			// offer took to be answered.
+			if c.viewer && !c.older {
+				waitFor(t, "the viewer's side of the session in the log", func() bool {
+					mu.Lock()
+					defer mu.Unlock()
+					return strings.Contains(log.String(), `msg="screen: network"`) && strings.Contains(log.String(), `end=viewer found="answered in `)
+				})
+			}
 			if c.older {
 				time.Sleep(gatherWithin + time.Second)
 				mu.Lock()
@@ -512,6 +610,9 @@ func TestLateTURNAddressIsExchanged(t *testing.T) {
 			defer h.Stop()
 			var mu sync.Mutex
 			var calls int
+			var callsAtComplete int
+			lastSent := -1
+			repeated := false
 			var firstHad, sent, got, done bool
 			relayed := func(list []string) bool { return strings.Contains(strings.Join(list, "\n"), " typ relay") }
 			ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
@@ -526,14 +627,24 @@ func TestLateTURNAddressIsExchanged(t *testing.T) {
 					if older {
 						res.Again, res.Complete = false, false
 					}
+					if req.Network != "" { // the viewer's report for the log, not the exchange
+						return res, nil
+					}
 					mu.Lock()
 					defer mu.Unlock()
 					calls++
+					if older && len(req.Candidates) <= lastSent {
+						repeated = true
+					}
+					lastSent = len(req.Candidates)
 					if calls == 1 {
 						firstHad = relayed(req.Candidates) || relayed(res.Candidates)
 					}
 					sent, got = sent || relayed(req.Candidates), got || relayed(res.Candidates)
 					done = done || req.Complete && res.Complete
+					if done && callsAtComplete == 0 {
+						callsAtComplete = calls
+					}
 					return res, nil
 				},
 			})
@@ -556,11 +667,11 @@ func TestLateTURNAddressIsExchanged(t *testing.T) {
 			if firstHad {
 				t.Error("the first exchange had a TURN address already: the server was not slow enough to test this")
 			}
-			if older && calls != 2 {
-				t.Errorf("%d calls to a machine that answers once, want the first and one with the viewer's TURN address", calls)
+			if older && (calls < 2 || repeated) {
+				t.Errorf("%d calls to a machine that answers once (repeated=%v), want only batches with new candidates, including the late TURN address", calls, repeated)
 			}
-			if !older && calls > 8 {
-				t.Errorf("%d calls, want a few", calls)
+			if !older && calls != callsAtComplete {
+				t.Errorf("%d calls after completion at call %d, want the exchange to stop", calls, callsAtComplete)
 			}
 		})
 	}

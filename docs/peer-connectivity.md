@@ -1,10 +1,10 @@
 # Peer connectivity: direct paths between a device and a machine
 
-Status: 2026-11-12. Stage 1 (§2) is built, with what the first tests on
+Status: 2026-11-13. Stage 1 (§2) is built, with what the first tests on
 real devices found wrong in it put right (§2.4); it is tested on one Mac,
 and what needs real devices and networks is in
 [peer-connectivity-tests.md](peer-connectivity-tests.md). The relayed path
-(§5.1) has its code and waits for servers; RPC on a direct path (§5.2) is
+(§5.1) has library support and waits for cloud wiring and servers; RPC on a direct path (§5.2) is
 designed and not built. Remote Desktop
 ([computer-control.md](computer-control.md)) is the one user of a direct
 path today; this document owns how that path is found, kept and reported.
@@ -127,7 +127,9 @@ sequenceDiagram
   times. A timed-out signaling tunnel is forgotten before the next call.
   Each retry opens a fresh host session: an answer delivered after that
   host's ICE deadline must not strand the page. Permission errors do not
-  retry. Established sessions retain the existing restart policy.
+  retry. Established sessions retry transient signaling failures on the
+  same session and complete a pending offer before creating the next one
+  (§2.2).
 
 Measured on one Mac (e2e, the page opening to the first frame):
 
@@ -155,6 +157,15 @@ few round trips to the relay, and both are now off the way.
   to be declared dead. A second change during a restart is kept and done
   after it. A path that only broke still waits 1.5 s for itself first, as
   before.
+- **An interrupted restart (peerfix13).** A network change can close the
+  signaling tunnel while an offer is pending. The viewer now retains and
+  resends that exact offer, including when one restart exhausts its retries.
+  It completes the pending answer before gathering again for the latest
+  interfaces. Previously, the next attempt created a new offer in
+  `have-local-offer`, which Pion rejected. A failed negotiation is retried
+  even if the old transport still reports connected. The real screen/input
+  regression covers lost requests, lost replies and exhausted retries;
+  real device Wi-Fi/5G validation is still pending.
 - `TestScreenNetworkChange`: the picture is back on a new path 0.25 s after
   the change on one Mac (the relay and the tunnel reconnecting included).
 - **The addresses of the moment.** pion's own network object reads the
@@ -193,6 +204,13 @@ few round trips to the relay, and both are now off the way.
   picture is written.
 - Each end logs why the relay's STUN and TURN servers did not come, and
   the device how long each call of the handshake took.
+- Since peerfix12, the machine also counts authenticated incoming checks
+  at 4 s, 12 s and session end, including after TURN connected. It logs at
+  most 16 distinct public direct pairs and sends no extra packets. No
+  authenticated arrivals alone does not locate the drop: filtering,
+  routing and pre-authentication rejection still need to be distinguished.
+  Proxy benchmark and carrier shared addresses are excluded from the
+  public counter in peerfix13.
 
 ### 2.4 What real devices found
 
@@ -210,15 +228,100 @@ What was wrong, in the order it mattered:
 | A candidate answer could be applied after a restart had begun | The check and the applying were not one step | They are, under the lock an offer takes |
 | A TURN address that came after 2 s was never told to the other end | The exchange was one call | §2.1 |
 | A relayed session lost its path 20 to 60 minutes in | The TURN server checks the credential again at every refresh, and it lasts an hour from when it was handed out, which can be 40 minutes before the session | The relay lets a credential keep the session it began (`turnAuth`); a restart takes fresh ones (§2.2) |
+| Through the far relay the picture froze, or never came | The viewer gave up on a lost packet after 250 ms and asked for a keyframe; sent again, the packet takes a round trip, 450 ms there, so every loss cost a keyframe, itself many packets that can be lost | It waits twice the path's round trip and a little, 2 s at most, and asks for a keyframe no more often than that (`patience`) |
 | The app's Go core could be an older build than its Swift | The Xcode script that builds it declared no output | It is a target of its own that the app depends on |
 
 On the hotspot, with both proxy apps on, the first path is then one
-between local addresses in 0.5 to 0.8 s. On the office Wi-Fi the two
-ends' checks to each other get no answer by IPv4 or IPv6, the Mac's
-neighbour table has no entry for the phone and a stand-in for its
-hardware address: that network keeps its devices apart, and nothing on
-the devices makes a direct path there. It needs the relay, and so a relay
-that is near (§5.1).
+between local addresses in 0.5 to 0.8 s. On the former office Wi-Fi the checks received no answers and the Mac
+had no resolved neighbour entry for the phone. These observations do not
+distinguish AP isolation from proxy routing or socket problems. Isolation
+was not established. On the later home Wi-Fi a physical direct path was
+measured at 16–25 ms. A near relay is still needed for paths that cannot
+connect directly (§5.1).
+
+### 2.5 Finding out why a path is not direct
+
+- **How a network maps a socket** (`probeNAT`). A NAT that shows a socket
+  at the same public port for two destinations has consistent mapping
+  in that sample. This does not test filtering or prove a direct path.
+  The destinations here can share an IP, so the probe cannot distinguish
+  every mapping behaviour either (RFC 4787 §§4.1 and 5). Each end asks, at every offer, with nothing
+  but the relay's TURN server: one destination is its STUN port, the other
+  a relayed address allocated for the probe, where the end itself reads
+  from which port its packet came. It asks through the system's route
+  (which a proxy app may own, and which pion's STUN and TURN sockets
+  take) and from each of its addresses, bound to its interface as the
+  local candidates are; two sockets each, one after the other, so that the
+  step from one socket's port to the next shows too. The machine logs its
+  own and the viewer's (`CandidatesRequest.network`):
+
+  ```text
+  screen: network session=… end=viewer found="answered in 812ms, try 1; system 203.0.113.7:40001>40001 40002>40002; 10.20.3.4 203.0.113.7:51350>39438 14924>24571"
+  ```
+
+  Here the system's route keeps a port (`40001>40001`), and the phone's own
+  address does not (`51350>39438`), with ports far apart.
+- **How long the offer took to be answered**, and at which try, is in the
+  same line: an answer that takes seconds is the tunnel, not the path.
+
+The probe is diagnostic; it does not predict ports or change ICE strategy.
+Do not infer a full-cone NAT or a need for port prediction from this line
+alone. Compare the selected path and the candidates' actual base sockets.
+
+### 2.6 Shared host/STUN sockets and path recovery (peerfix10–11)
+
+Each ordinary UDP host socket now also discovers its public address using
+Pion's UniversalUDPMux. The resulting srflx candidate names that host's
+address and port as its base, and checks/media use that same socket. This
+follows RFC 8445 §5.1.1.2. It adds a physical-interface path when the system
+route used by separate wildcard STUN sockets is intercepted by a VPN.
+System-route STUN and TURN remain available; there is no additional TURN
+allocation per interface. Externally configured muxes and address rewrite
+rules retain their existing behaviour. Closing or restarting the host
+candidate closes its owned mux and socket.
+
+A virtual-network regression blocks wildcard UDP, puts both ends behind
+endpoint-independent mappings with endpoint-dependent filtering, and checks
+that physical host bases yield public candidates, bidirectional data and
+reconnection after ICE restart. This reproduces a missing capability; it
+does not establish the cause of every failed real session. It is in the
+shared ICE dependency, so future uses of that dependency can reuse it.
+
+The viewer reads transport RTT directly when receiving video, independently
+of the optional UI status callback. A full SRTP/NACK regression at 550 ms
+RTT drops the second packet of the initial keyframe and requires all frames
+to recover, without sending another keyframe. The previous implementation
+failed this test even though its assembler-only test passed. First packet,
+first assembled frame and receive totals are recorded in the local owner
+log; these do not claim the native decoder displayed a frame.
+
+The peerfix11 follow-up fixes the controlled end's late-candidate checks
+and the path-score/RTT hysteresis described in §3. A TURN-to-NAT-direct
+integration test failed before that change and passes with bidirectional
+connectivity checks.
+
+ICE-TCP, media pacing/FEC and nearby TURN deployment remain outstanding.
+Subsequent bounded UDP work is described below. A live 5G test is required
+before claiming parity with UU.
+
+### 2.7 Bounded enhanced UDP attempts and device acceptance
+
+The opt-in ICE transport now supports authenticated neighbor-port checks
+and a negotiated multi-socket attempt after TURN connects. The latter opens
+at most 128 phone sockets and sends at most 2048 Mac probes, with a 15-second
+pool lifetime. Authentication, generation checks, direct-path nomination
+and cleanup remain in the transport; media and input continue through the
+existing PeerConnection. See [the dependency notes](../third_party/pion-ice/HERMESH.md)
+for budgets and [the validation report](peer-connectivity-validation-2026-11-13.md)
+for reproduced defects and device evidence.
+
+Controlled WebRTC tests verify frames and input before and after socket
+adoption. Actual 5G direct acceptance is still pending. The 1124 device test
+used a different Mac Wi-Fi with destination-dependent mapping at both ends;
+its pool received no probe and it remained relayed. UU also appeared to use
+UDP relay there. The earlier Wi-Fi, where UU established UDP P2P, has not
+yet been retested with the new pool. These environments must stay separate
+in success-rate claims.
 
 ## 3. What pion does and does not do
 
@@ -231,9 +334,14 @@ Read from the source of the versions in use; the tests of §6 hold them.
   20 s). So a direct pair that did not answer at first is still tried for
   as long as the session lasts.
 - **It moves** from a relayed pair to one between two local addresses
-  always; to any other pair when its round trip is 10 ms shorter or its
-  score 15 % better; once per renomination interval (1 s) at most. The
-  controlled end follows.
+  always, including srflx/prflx NAT paths. Other moves require a round-trip
+  gain greater than both 10 ms and 15%, or a score gain greater than both
+  5 points and 15% of the absolute old score; at most once per second.
+  Type quality uses the weaker end so host-relay is still scored as relay.
+  While relayed, the controlled end also checks waiting/in-progress pairs,
+  up to the existing per-pair request limit, so late candidates can open
+  both NAT filters. It never nominates and stops checking succeeded or
+  failed pairs. The additional real-device cost still needs T6.
 - **It gathers once per offer.** `GatherCandidates` refuses to run again
   until `Restart`, and servers given later take effect at the next
   gathering only. A new local address, or new servers, reach a connection
@@ -246,12 +354,10 @@ Read from the source of the versions in use; the tests of §6 hold them.
   again inside every write while the server refuses. pion writes its
   checks on the thread that runs the whole agent. The copy of pion's ICE
   in [third_party/pion-ice](../third_party/pion-ice/HERMESH.md) differs
-  from v4.4.8 in two things, both in how a check is sent from a relayed
-  address: it is written off that thread, one at a time for each pair and
-  kind of message; and it is not written at all to a private address from
-  a server on the internet, which forwards to none. Media, the checks from
-  other addresses, and what the server allows are as upstream. The first
-  belongs upstream; the copy goes when a release has it.
+  includes the asynchronous relay writes and unreachable-private-address
+  pruning, plus shared host/STUN sockets and the path-selection fixes
+  described in §2.6 and the dependency's HERMESH.md. Authentication and
+  the TURN server's permission rules remain in force.
 - **A restart forgets the pair in use** and every candidate: the picture
   stops until a pair is taken again (0.25 s on one Mac). It is the answer
   to a changed network, never a way to look for a better path on a
@@ -267,13 +373,24 @@ Read from the source of the versions in use; the tests of §6 hold them.
   phone's battery and its cellular interface are not measured yet. If it
   is too much, the options are fewer candidates (no cellular while on
   Wi-Fi) or an interval that grows, in the patch.
-- **Behind a proxy app, no direct path across the internet.** The STUN
-  server sees the proxy's exit, not the device's router, so the address it
-  reports opens nothing. Two such ends on different networks are relayed.
-- **A relayed start can stay relayed** when the direct pair is between
-  public addresses and the relay is near enough that its round trip is
-  within 10 ms. That is slower by nothing worth a move, and it uses the
-  relay's bandwidth.
+- **No direct path yet between a home network and a phone on cellular.**
+  Measured with both ends behind a proxy app: each end's public address
+  was the right one (the proxy sent the STUN question straight out), the
+  checks between them got nowhere, and the session was relayed, on a
+  network pair where another remote desktop app connects directly over
+  UDP. The home side has no public IPv6 address, so there is no path
+  without a NAT. The build 1120 session on November 13 observed the phone
+  path mapping a physical socket to port 47672 at STUN and 33532 at a
+  different destination port; the Mac's mapping stayed at one port in the
+  same probe. This establishes destination-dependent mapping on the phone
+  path (carrier plus proxy), not its filtering rules or which component
+  caused it. The complete failed-session record is in
+  [the validation report](peer-connectivity-validation-2026-11-13.md).
+- **Late NAT direct paths are now checked at both ends.** Previously the
+  controlled end only kept the selected relay alive, so the other end's
+  checks could not open its NAT filter. The bounded checks and NAT direct
+  promotion are covered by `TestNATDirectReplacesRelay`. Real 5G validation
+  of this follow-up is still pending.
 - **Loopback addresses** are gathered everywhere, for a viewer on the
   machine itself (the Simulator, the tests). They add pairs that never
   leave the device. Left as is.
@@ -288,7 +405,7 @@ carrier's NAT, two ends behind proxy apps), the session is as good as the
 relay is near. One TURN server on another continent is 0.3 s away from
 some owners; the handshake goes through the same far center.
 
-The code for it is in place:
+Library support is in place:
 
 - **Several TURN servers.** `TURNConfig.Others` names the center's other
   TURN servers by their URLs (`turn:` over UDP and TCP, `turns:` for TLS on
@@ -313,10 +430,14 @@ The code for it is in place:
 - **Credentials** keep the session they began, and a restart takes new
   ones (§2.4).
 
-What is left is not code in this repository: the servers themselves (where,
-and who pays), the certificate for TLS on 443, the center's configuration
-naming them, and whether the center itself can be reached from where its
-owners are without a proxy. T7 and T14 measure the result.
+Deployment also requires code in hermesh-cloud: its current center CLI does
+not populate `TURNConfig.Others`. Wire the configured server groups into
+both center nodes before expecting additional URLs to reach clients. Then
+provide the servers (region and budget), a publicly trusted certificate
+for TLS on 443 and direct DNS for the TURN host. Verify shared credentials
+by allocating and forwarding data, check which URLs clients actually receive,
+and measure T7/T14 before rollout. Center reachability without a proxy is
+a separate requirement. No nearby server has been provisioned in this work.
 
 ### 5.2 Stage 3: RPC on a direct path
 
@@ -382,6 +503,8 @@ Automated, on one Mac (`go test ./internal/screen ./pkg/relay ./e2e -run 'Screen
 | `TestServersDoubted`, `TestGatheringDoubtsServersThatGiveNoRelay` | Servers that gave a session no relayed address are asked for and measured again, and another is kept |
 | `TestOnNetworks` | Nearby is told by the other end's address on one of this device's networks |
 | `TestTURNCredentialOutlivedByItsSession` | A credential past its time keeps its session and begins none; other TURN servers are handed out with the relay's credential |
+| `TestAssemblerWaitsARoundTripForAMissingPacket` | A lost packet is waited for as long as its second sending takes on the path in use |
+| `TestProbeNAT` | The probe says at which port two destinations see each of two sockets |
 | `TestSession` | A whole session with candidates later, a restart included |
 | `TestScreen`, `TestScreenThroughTURN` | Direct, and relayed only |
 | `TestScreenUnreachableTURN` | Servers out of reach: the first frame within 3 s (0.6 s measured) |

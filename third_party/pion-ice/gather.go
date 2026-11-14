@@ -351,6 +351,16 @@ func (a *Agent) gatherCandidatesLocal(
 	generation uint64,
 	localUfrag string,
 ) {
+	var srflx sync.WaitGroup
+	defer srflx.Wait()
+	// In addition to the system route, discover the mapping of each host
+	// socket. A VPN can route wildcard STUN sockets differently from a
+	// socket bound to a physical interface. Keep that host socket for the
+	// checks and media too (RFC 8445 section 5.1.1.2).
+	shareSTUN := a.udpMuxSrflx == nil && a.addressRewriteMapper == nil &&
+		a.mDNSMode != MulticastDNSModeQueryAndGather &&
+		containsCandidateType(CandidateTypeServerReflexive, a.candidateTypes) &&
+		slices.ContainsFunc(a.urls, func(u *stun.URI) bool { return urlSupportsSrflxGathering(*u) })
 	networks := map[string]struct{}{}
 	for _, networkType := range networkTypes {
 		if networkType.IsTCP() {
@@ -492,6 +502,18 @@ func (a *Agent) gatherCandidatesLocal(
 				}
 
 				for _, connAndPort := range conns {
+					var hostMux *UniversalUDPMuxDefault
+					if shareSTUN && network == udp && !isLocationTracked {
+						hostMux = NewUniversalUDPMuxDefault(UniversalUDPMuxParams{
+							UDPConn: connAndPort.conn, Logger: a.log, Net: a.net,
+						})
+						conn, err := hostMux.GetConn(localUfrag, connAndPort.conn.LocalAddr())
+						if err != nil {
+							_ = hostMux.Close()
+							continue
+						}
+						connAndPort.conn = &hostUDPMuxConn{PacketConn: conn, mux: hostMux}
+					}
 					hostConfig := CandidateHostConfig{
 						Network:   network,
 						Address:   address,
@@ -526,12 +548,31 @@ func (a *Agent) gatherCandidatesLocal(
 					if err := a.addCandidate(ctx, candidateHost, connAndPort.conn, &generation, false); err != nil {
 						a.log.Warnf("Failed to append to localCandidates and run onCandidateHdlr: %v", err)
 						a.cleanupCandidate(candidateHost, connAndPort.conn, "failed")
+						continue
+					}
+					if hostMux != nil {
+						srflx.Add(1)
+						go func() {
+							defer srflx.Done()
+							a.gatherCandidatesSrflxUDPMuxWith(ctx, hostMux, a.urls,
+								[]NetworkType{candidateHost.NetworkType()}, generation, localUfrag)
+						}()
 					}
 				}
 			}
 		}
 	}
 }
+
+// The host candidate owns this mux. Closing or restarting the agent closes
+// the physical socket and all its srflx views, including pending STUN I/O.
+// Externally supplied muxes retain their existing caller-owned lifetime.
+type hostUDPMuxConn struct {
+	net.PacketConn
+	mux *UniversalUDPMuxDefault
+}
+
+func (c *hostUDPMuxConn) Close() error { return c.mux.Close() }
 
 // shouldFilterLocationTrackedIP returns if this candidate IP should be filtered out from
 // any candidate publishing/notification for location tracking reasons.
@@ -764,6 +805,17 @@ func (a *Agent) gatherCandidatesSrflxUDPMux(
 	generation uint64,
 	localUfrag string,
 ) {
+	a.gatherCandidatesSrflxUDPMuxWith(ctx, a.udpMuxSrflx, urls, networkTypes, generation, localUfrag)
+}
+
+func (a *Agent) gatherCandidatesSrflxUDPMuxWith(
+	ctx context.Context,
+	mux UniversalUDPMux,
+	urls []*stun.URI,
+	networkTypes []NetworkType,
+	generation uint64,
+	localUfrag string,
+) {
 	var wg sync.WaitGroup
 	defer wg.Wait()
 
@@ -777,7 +829,7 @@ func (a *Agent) gatherCandidatesSrflxUDPMux(
 				continue
 			}
 
-			for _, listenAddr := range a.udpMuxSrflx.GetListenAddresses() {
+			for _, listenAddr := range mux.GetListenAddresses() {
 				udpAddr, ok := listenAddr.(*net.UDPAddr)
 				if !ok {
 					a.log.Warn("Failed to cast udpMuxSrflx listen address to UDPAddr")
@@ -802,14 +854,14 @@ func (a *Agent) gatherCandidatesSrflxUDPMux(
 						return
 					}
 
-					xorAddr, err := getXORMappedAddr(ctx, a.udpMuxSrflx, serverAddr, a.stunGatherTimeout)
+					xorAddr, err := getXORMappedAddr(ctx, mux, serverAddr, a.stunGatherTimeout)
 					if err != nil {
 						a.log.Warnf("Failed get server reflexive address %s %s: %v", network, url, err)
 
 						return
 					}
 
-					conn, err := a.udpMuxSrflx.GetConnForURL(localUfrag, url.String(), localAddr)
+					conn, err := mux.GetConnForURL(localUfrag, url.String(), localAddr)
 					if err != nil {
 						a.log.Warnf("Failed to find connection in UDPMuxSrflx %s %s: %v", network, url, err)
 

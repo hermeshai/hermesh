@@ -1514,7 +1514,7 @@ func (o *Owner) admin(ctx context.Context, machineID string, build func(*identit
 	}
 	res, err := n.Admin.ApplyAdminCommand(ctx, req)
 	if err != nil {
-		c.Forget(machineID)
+		c.ForgetMachine(n)
 		return "", err
 	}
 	return res.Message, nil

@@ -147,3 +147,45 @@ func TestAssemblerLostTail(t *testing.T) {
 		t.Error("does not ask for a keyframe when a frame's end never comes")
 	}
 }
+
+// On a path with a long round trip a lost packet is waited for as long as
+// its second sending takes to come: through a relay 450 ms away it comes
+// after half a second, and the frames go on from it, where a quarter of a
+// second's wait had the picture start over from a keyframe at every loss.
+func TestAssemblerWaitsARoundTripForAMissingPacket(t *testing.T) {
+	for _, c := range []struct {
+		rtt, want time.Duration
+	}{
+		{0, stallAfter}, {20 * time.Millisecond, stallAfter}, {150 * time.Millisecond, 400 * time.Millisecond},
+		{450 * time.Millisecond, time.Second}, {3 * time.Second, stallMost},
+	} {
+		if got := patience(c.rtt); got != c.want {
+			t.Errorf("patience(%v) = %v, want %v", c.rtt, got, c.want)
+		}
+	}
+	sent := [][]byte{keyframe(0xA1), delta(0xB2), delta(0xC3)}
+	for _, rtt := range []time.Duration{0, 450 * time.Millisecond} {
+		fs := packets(t, sent...)
+		a, now := newAssembler(), time.Now()
+		a.roundTrip(rtt)
+		var got []frame
+		late := fs[1][1]
+		for i, f := range fs {
+			for j, p := range f {
+				if i == 1 && j == 1 {
+					continue
+				}
+				got = append(got, a.push(p, now)...)
+			}
+		}
+		after := now.Add(575 * time.Millisecond) // the packet, sent again, arrives
+		gaveUp := a.wantKey(after)
+		got = append(got, a.push(late, after)...)
+		if rtt == 0 && (!gaveUp || len(got) != 1) {
+			t.Errorf("with no round trip: gave up %v, %d frames; want a keyframe asked for after %v", gaveUp, len(got), stallAfter)
+		}
+		if rtt > 0 && (gaveUp || len(got) != 3 || !bytes.Equal(got[2].data, sent[2])) {
+			t.Errorf("with a round trip of %v: gave up %v, %d frames; want all three, none dropped", rtt, gaveUp, len(got))
+		}
+	}
+}

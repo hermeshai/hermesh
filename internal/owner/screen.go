@@ -53,6 +53,8 @@ type screenStatus struct {
 
 // screenCall is a call of ScreenService on a machine, through its tunnel.
 func screenCall[Req, Res any](o *Owner, machineID string, call func(screenv1connect.ScreenServiceClient, context.Context, *Req) (*Res, error)) func(context.Context, *Req) (*Res, error) {
+	var recoveryMu sync.Mutex
+	var recovered *Req // the viewer retries the same Connect request
 	return func(ctx context.Context, req *Req) (*Res, error) {
 		started := time.Now()
 		method := fmt.Sprintf("%T", req)
@@ -61,15 +63,33 @@ func screenCall[Req, Res any](o *Owner, machineID string, call func(screenv1conn
 			o.log.Warn("screen: signal relay", "method", method, "err", err, "after", time.Since(started).Round(time.Millisecond))
 			return nil, err
 		}
+		relayAfter := time.Since(started).Round(time.Millisecond)
 		n, err := c.Machine(ctx, machineID)
 		if err != nil {
 			o.log.Warn("screen: signal tunnel", "method", method, "err", err, "after", time.Since(started).Round(time.Millisecond))
+			if _, ok := any(req).(*screenv1.ConnectRequest); ok {
+				recoveryMu.Lock()
+				reset := recovered != req && c.RecoverTunnel(err)
+				if reset {
+					recovered = req
+				}
+				recoveryMu.Unlock()
+				if reset {
+					o.log.Info("screen: signal relay recovery", "method", method, "after", time.Since(started).Round(time.Millisecond))
+				}
+			}
 			return nil, connect.NewError(connect.CodeUnavailable, err)
 		}
+		tunnelAfter := time.Since(started).Round(time.Millisecond)
+		if _, ok := any(req).(*screenv1.ConnectRequest); ok {
+			o.log.Info("screen: signal request", "method", method, "relay_after", relayAfter, "tunnel_after", tunnelAfter)
+		}
 		res, err := call(n.Screen, ctx, req)
-		o.log.Info("screen: signal response", "method", method, "err", err, "after", time.Since(started).Round(time.Millisecond))
+		rpcAfter := time.Since(started).Round(time.Millisecond)
+		o.log.Info("screen: signal response", "method", method, "err", err, "after", rpcAfter,
+			"relay_after", relayAfter, "tunnel_after", tunnelAfter, "rpc_after", rpcAfter)
 		if err != nil && (ctx.Err() == nil && tunnelError(err) || errors.Is(ctx.Err(), context.DeadlineExceeded)) {
-			c.Forget(machineID)
+			c.ForgetMachine(n)
 		}
 		return res, err
 	}
@@ -205,6 +225,7 @@ func (d *Device) serveScreen(w http.ResponseWriter, r *http.Request) {
 		}
 	})
 	v, err := screen.Dial(ctx, screen.ViewerConfig{
+		Log:     o.log,
 		Connect: screenCall(o, machineID, screenv1connect.ScreenServiceClient.Connect), Candidates: candidates,
 		Name: q.Get("name"), Pointer: q.Get("pointer") != "0", Servers: o.screenServers(ctx), Fresh: o.screenServers, NoRelay: o.iceServers.Doubt,
 		Frame: func(key bool, data []byte, t *screen.Trace) {
@@ -268,7 +289,7 @@ func (d *Device) serveScreen(w http.ResponseWriter, r *http.Request) {
 			for i := 0; i < 5 && ctx.Err() == nil; i++ {
 				if !now {
 					time.Sleep(1500 * time.Millisecond)
-					if v.Connected() {
+					if i == 0 && v.Connected() {
 						break
 					}
 				}
@@ -279,6 +300,9 @@ func (d *Device) serveScreen(w http.ResponseWriter, r *http.Request) {
 				if err == nil {
 					break
 				}
+				// After a failed offer, the old transport may still report
+				// connected. Its pending negotiation must still be retried.
+				o.log.Warn("screen: viewer restart", "attempt", i+1, "err", err)
 			}
 		}
 	}()

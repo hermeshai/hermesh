@@ -1,9 +1,11 @@
 package screen
 
 import (
+	"context"
 	"encoding/binary"
 	"fmt"
 	"net"
+	"regexp"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -12,6 +14,8 @@ import (
 	"github.com/pion/transport/v5"
 	"github.com/pion/turn/v5"
 	"github.com/pion/webrtc/v4"
+
+	relayv1 "github.com/hermeshai/hermesh/gen/go/hermesh/relay/v1"
 )
 
 // The TURN requests a test server is slow over.
@@ -95,7 +99,7 @@ func turnPair(t *testing.T, delay time.Duration, relay net.IP, settle time.Durat
 	if err != nil {
 		t.Fatal(err)
 	}
-	api, err := newAPI(nil, loopbackNet{n})
+	api, err := newAPI(nil, loopbackNet{n}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -186,5 +190,27 @@ func TestPublicTURNIsNotAskedForPrivatePeers(t *testing.T) {
 	t.Logf("the TURN server was asked for %d permissions", asked)
 	if asked > 2 {
 		t.Errorf("the TURN server was asked for %d permissions, want one from each end", asked)
+	}
+}
+
+// The probe asks from one socket after another how this end is seen by the
+// TURN server's STUN port and by a relayed address on it. With no NAT
+// between (the server is on this computer) each socket is seen at one port
+// by both.
+func TestProbeNAT(t *testing.T) {
+	server, _ := slowTURN(t, turnAllocate, 0, net.ParseIP("127.0.0.1"))
+	servers := []*relayv1.IceServer{{Urls: []string{"stun:" + server}}, {Urls: []string{"turn:" + server + "?transport=udp"}, Username: "u", Credential: "p"}}
+	got := probeNAT(context.Background(), servers)
+	t.Log(got)
+	system, _, _ := strings.Cut(got, ";")
+	m := regexp.MustCompile(`^system 127\.0\.0\.1:(\d+)>(\d+) (\d+)>(\d+)$`).FindStringSubmatch(system)
+	if m == nil || m[1] != m[2] || m[3] != m[4] || m[1] == m[3] {
+		t.Errorf("by the system's route: %q, want two sockets, each at one port for both destinations", system)
+	}
+	if got := probeNAT(context.Background(), servers[:1]); got != "" {
+		t.Errorf("with no TURN server: %q", got)
+	}
+	if got := probeNAT(context.Background(), []*relayv1.IceServer{{Urls: []string{"turn:" + server + "?transport=udp"}, Username: "u", Credential: "wrong"}}); got != "" {
+		t.Errorf("with a server that refuses the credential: %q", got)
 	}
 }
