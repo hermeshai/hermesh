@@ -90,7 +90,7 @@ struct TeamLists: View {
 }
 
 /// A session that waits for an answer: its question, who sent the work to
-/// which agent, and, when one tap answers it (quickOptions), the answers.
+/// which agent, and, when one tap answers it (quickChoice), the answers.
 /// Any other question opens the session, where the question's panel is.
 struct QuestionCard: View {
     @Environment(AppModel.self) private var model
@@ -99,7 +99,8 @@ struct QuestionCard: View {
 
     var body: some View {
         let question = session.pendingQuestion
-        let item = question?.items.first
+        let choice = question.flatMap(quickChoice)
+        let item = choice ?? question?.items.first
         VStack(alignment: .leading, spacing: 12) {
             Button { model.openSession(session.sessionID) } label: {
                 HStack(alignment: .top, spacing: 10) {
@@ -115,12 +116,13 @@ struct QuestionCard: View {
                 .contentShape(.rect)
             }
             .buttonStyle(.plain)
-            .accessibilityIdentifier("question-card-\(session.displayTitle)")
-            if let question, let item, let options = quickOptions(question) {
+            .accessibilityIdentifier("session-\(session.displayTitle)")
+            if let choice {
+                let options = choice.options.map(\.label)
                 // Side by side while they fit, else one under the other.
                 ViewThatFits(in: .horizontal) {
-                    HStack(spacing: 8) { answers(options, item: item.id, wide: true) }
-                    VStack(spacing: 8) { answers(options, item: item.id, wide: true) }
+                    HStack(spacing: 8) { answers(options, item: choice.id, wide: true) }
+                    VStack(spacing: 8) { answers(options, item: choice.id, wide: true) }
                 }
                 .disabled(sending)
             }

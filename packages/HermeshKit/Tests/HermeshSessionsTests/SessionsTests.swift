@@ -299,9 +299,26 @@ func ask(_ s: inout Session) {
         q.items = Array(repeating: item, count: items)
         return q
     }
-    #expect(quickOptions(question()) == ["pnpm", "npm"])
-    #expect(quickOptions(question { $0.multiSelect = true }) == nil)
-    #expect(quickOptions(question { $0.secret = true }) == nil)
-    #expect(quickOptions(question { $0.options = [] }) == nil)
-    #expect(quickOptions(question(items: 2)) == nil)
+    #expect(quickChoice(question())?.options.map(\.label) == ["pnpm", "npm"])
+    #expect(quickChoice(question { $0.multiSelect = true }) == nil)
+    #expect(quickChoice(question { $0.secret = true }) == nil)
+    #expect(quickChoice(question { $0.options = [] }) == nil)
+    #expect(quickChoice(question(items: 2)) == nil)
+    #expect(quickChoice(question(items: 0)) == nil)
+    #expect(quickChoice(question { $0.optional = true })?.id == "i", "a single optional choice still works")
+    #expect(quickChoice(question({ $0.optional = true }, items: 2)) == nil, "several optional choices need the full form")
+
+    var withNotes = question()
+    let note = Hermesh_Session_V1_QuestionItem.with {
+        $0.id = "note"
+        $0.text = "Anything else?"
+        $0.optional = true
+    }
+    withNotes.items.append(note)
+    #expect(quickChoice(withNotes)?.options.map(\.label) == ["pnpm", "npm"], "optional notes can be left blank")
+    withNotes.items.reverse()
+    #expect(quickChoice(withNotes)?.options.map(\.label) == ["pnpm", "npm"], "the choice need not be first")
+    #expect(quickChoice(withNotes)?.id == "i", "send the answer to the choice, not the first item")
+    withNotes.items[0].optional = false
+    #expect(quickChoice(withNotes) == nil, "another required answer needs the full form")
 }

@@ -182,6 +182,7 @@ final class AppModel {
     /// Her's page first (docs/her-team.md §4.1); Work in the demo, which has no Her, and once the owner put her
     /// first run off.
     var root: Root = .overview
+    @ObservationIgnored private var startSettled = false
     /// "Not Now" on Her's first run: Work is the first page until a machine runs her. Kept on this iPhone.
     var herLater = false { didSet { save(herLater, "herLater") } }
     var path: [Route] = []
@@ -408,6 +409,7 @@ final class AppModel {
         pairings = []
         cursor = nil
         hasWorld = false
+        startSettled = false
         keptOwner = ""
         try? FileManager.default.removeItem(at: worldFile)
         UserDefaults.standard.removeObject(forKey: Guide.key) // the guide is the owner's
@@ -594,6 +596,13 @@ final class AppModel {
         }
         r.deletedSessionIds.forEach(conversations.forget)
         if watched { saveSoon() }
+        // Status-only snapshots before joining know no machines yet. Choose from the initialized owner's first
+        // snapshot: with none, Work has the way to a first machine. Enabled Her wins over an old Not Now choice.
+        if r.reset && status.initialized && !status.signedOut && !startSettled {
+            startSettled = true
+            if root == .her && path.isEmpty && machines.isEmpty { root = .overview }
+            if !isDemo && root == .overview && path.isEmpty && machines.contains(where: \.her.enabled) { root = .her }
+        }
     }
 
     /// The next older page, when the end of the list comes into view.

@@ -120,6 +120,16 @@
         }
       }
     },
+    "%@ is waiting": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ 在等你"
+          }
+        }
+      }
+    },
     "%@ is working": {
       "localizations": {
         "zh-Hans": {
@@ -166,6 +176,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "%@ 保管该 Agent 的密钥，可代其执行操作，并查看其参与的会话。"
+          }
+        }
+      }
+    },
+    "%@ on %@": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%2$@ 上的 %1$@"
           }
         }
       }
@@ -350,6 +370,16 @@
         }
       }
     },
+    "%lld failed": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld 个失败"
+          }
+        }
+      }
+    },
     "%lld h": {
       "localizations": {
         "zh-Hans": {
@@ -404,6 +434,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "其他 %lld 个"
+          }
+        }
+      }
+    },
+    "%lld need you": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld 个在等你"
           }
         }
       }
@@ -474,34 +514,6 @@
         }
       }
     },
-    "%lld sessions need you": {
-      "localizations": {
-        "en": {
-          "variations": {
-            "plural": {
-              "one": {
-                "stringUnit": {
-                  "state": "translated",
-                  "value": "%lld session needs you"
-                }
-              },
-              "other": {
-                "stringUnit": {
-                  "state": "translated",
-                  "value": "%lld sessions need you"
-                }
-              }
-            }
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "%lld 个会话等你处理"
-          }
-        }
-      }
-    },
     "%lld sessions worked": {
       "localizations": {
         "zh-Hans": {
@@ -556,6 +568,26 @@
           "stringUnit": {
             "state": "translated",
             "value": "%1$lld 轮 · %2$@ token"
+          }
+        }
+      }
+    },
+    "%lld working": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld 个在忙"
+          }
+        }
+      }
+    },
+    "%u files": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%u 个文件"
           }
         }
       }
@@ -1883,6 +1915,16 @@
         }
       }
     },
+    "Connected Agents": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "连接的 Agent"
+          }
+        }
+      }
+    },
     "Connecting to Hermesh…": {
       "localizations": {
         "zh-Hans": {
@@ -2733,6 +2775,36 @@
         }
       }
     },
+    "Her is here": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Her 在这里"
+          }
+        }
+      }
+    },
+    "Her isn’t on": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Her 还没启用"
+          }
+        }
+      }
+    },
+    "Her, not on": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Her，未启用"
+          }
+        }
+      }
+    },
     "Hermesh": {
       "shouldTranslate": false
     },
@@ -3206,6 +3278,16 @@
         }
       }
     },
+    "Just Finished": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "刚完成"
+          }
+        }
+      }
+    },
     "Minimal": {
       "localizations": {
         "zh-Hans": {
@@ -3222,6 +3304,86 @@
           "stringUnit": {
             "state": "translated",
             "value": "不思考"
+          }
+        }
+      }
+    },
+    "Not on": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "未启用"
+          }
+        }
+      }
+    },
+    "Nothing is running now.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "现在没有在跑的活。"
+          }
+        }
+      }
+    },
+    "Recently Finished": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "最近完成"
+          }
+        }
+      }
+    },
+    "Sent by %@": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ 派的活"
+          }
+        }
+      }
+    },
+    "She runs on a computer of yours and leads the coding agents on all of them. Her conversations, files and model keys stay on that machine.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "她运行在你的一台电脑上，带着所有电脑上的编程 Agent 干活。她的对话、文件和模型密钥都留在那台机器上。"
+          }
+        }
+      }
+    },
+    "She runs on a computer of yours and leads these agents for you": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "她运行在你的一台电脑上，替你带着这些 Agent 干活"
+          }
+        }
+      }
+    },
+    "Shows what your agents are doing": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "查看你的 Agent 在做什么"
+          }
+        }
+      }
+    },
+    "Team": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "团队"
           }
         }
       }
@@ -3342,6 +3504,26 @@
           "stringUnit": {
             "state": "translated",
             "value": "对方自报：%@"
+          }
+        }
+      }
+    },
+    "Today · %lld sessions": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "今天 %lld 个会话"
+          }
+        }
+      }
+    },
+    "Waiting for an answer": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "在等回答"
           }
         }
       }
@@ -4620,16 +4802,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "其他可信设备"
-          }
-        }
-      }
-    },
-    "Overview": {
-      "localizations": {
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "概览"
           }
         }
       }
@@ -7045,6 +7217,16 @@
         }
       }
     },
+    "Work": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "工作"
+          }
+        }
+      }
+    },
     "Worktrees with uncommitted changes: moved aside and kept, and you’re told where": {
       "localizations": {
         "zh-Hans": {
@@ -7061,6 +7243,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "写下你的回答…"
+          }
+        }
+      }
+    },
+    "You": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "你"
           }
         }
       }
