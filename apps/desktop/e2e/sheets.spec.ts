@@ -3,7 +3,7 @@ import { execFile, execFileSync, spawn, type ChildProcess } from "node:child_pro
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { fixture, launch, snap } from "./app";
+import { fixture, launch, snap, sessionList } from "./app";
 
 // The sheets over the main window: adding a project, connecting an agent,
 // adding a machine with its pairing code, and approving a request from a
@@ -11,7 +11,7 @@ import { fixture, launch, snap } from "./app";
 
 /** What the app menu, the menu bar and notifications send the page (e.g. 文件 › 连接 agent…). */
 async function command(app: ElectronApplication, page: Page, c: string) {
-  await expect(page.getByRole("list", { name: "会话" })).toBeVisible();
+  await expect((await sessionList(page))).toBeVisible();
   type Main = { hermeshTest: { mainWindow(): { webContents: { send(channel: string, c: string): void } } } };
   await app.evaluate((_, c) => (globalThis as unknown as Main).hermeshTest.mainWindow().webContents.send("command", c), c);
 }
@@ -295,7 +295,7 @@ test("requests wait as cards at the bottom right: a notification brings its own 
   // The overview lists it under 需要你处理; elsewhere, a card.
   await expect(page.getByRole("region", { name: "需要你处理" })).toContainText(`「${name}」想连接你的电脑`, { timeout: 30_000 });
   await expect(card).toHaveCount(0);
-  await page.getByRole("complementary", { name: "边栏" }).getByText("跑很久", { exact: true }).click();
+  await (await sessionList(page)).getByText("跑很久", { exact: true }).click();
   // Nothing in the way: a card, no sheet.
   await expect(card).toContainText(`「${name}」想连接你的电脑`, { timeout: 30_000 });
   await expect(card).toContainText("核对码");

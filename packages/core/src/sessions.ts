@@ -129,7 +129,7 @@ function byNewest(a: Date, b: Date): number {
 }
 
 /** How the session list groups its sessions. */
-export const sessionGroupings = ["status", "date", "project", "agent", "machine"] as const;
+export const sessionGroupings = ["sender", "status", "date", "project", "agent", "machine"] as const;
 export type SessionGrouping = (typeof sessionGroupings)[number];
 
 /**
@@ -147,7 +147,7 @@ export function sessionView(v: Partial<SessionView> = {}): SessionView {
   return { group: "status", newestFirst: true, metadata: true, ...v };
 }
 
-/** A section's key: a state or a day (titled by bucketTitle), a project, a coding agent, a machine id, or "archived". */
+/** A section's key: a state or a day (titled by bucketTitle), who sent the work (a client id, or "owner"), a project, a coding agent, a machine id, or "archived". */
 export type SessionBucket = "attention" | "active" | "done" | "today" | "yesterday" | "week" | "earlier" | "archived";
 
 /** A section of the list, by its title. */
@@ -184,9 +184,11 @@ export function sectionCounted(sec: SessionSection): boolean {
  * The list as the view lays it out, each section sorted by last activity.
  * States keep their order (needs you, running, done); days follow the sort;
  * projects and coding agents go by name, machines in the order given
- * (unknown ones last). Archived sessions, when shown, are a section of their own at the end.
+ * (unknown ones last); senders (docs/her-team.md §14.2) are Her (the client
+ * ids in `her`), then the agents by their latest session, then the owner.
+ * Archived sessions, when shown, are a section of their own at the end.
  */
-export function sessionSections(sessions: Session[], view: SessionView, o: { archived: boolean; now: Date; machines?: string[] }): SessionSection[] {
+export function sessionSections(sessions: Session[], view: SessionView, o: { archived: boolean; now: Date; machines?: string[]; her?: string[] }): SessionSection[] {
   const by = new Map<string, Session[]>();
   const archived: Session[] = [];
   for (const s of sessions) {
@@ -194,7 +196,7 @@ export function sessionSections(sessions: Session[], view: SessionView, o: { arc
       if (o.archived) archived.push(s);
       continue;
     }
-    const k = { status: () => statusOf(s), date: () => dayOf(s, o.now), project: () => s.projectId, agent: () => s.agent, machine: () => s.machineId }[view.group]();
+    const k = { sender: () => s.createdBy, status: () => statusOf(s), date: () => dayOf(s, o.now), project: () => s.projectId, agent: () => s.agent, machine: () => s.machineId }[view.group]();
     const list = by.get(k);
     if (list) list.push(s);
     else by.set(k, [s]);
@@ -204,8 +206,12 @@ export function sessionSections(sessions: Session[], view: SessionView, o: { arc
     const i = o.machines?.indexOf(k) ?? -1;
     return i < 0 ? Infinity : i;
   };
+  // Her 0, the agents 1, the owner 2; the agents among themselves by their latest session.
+  const senderRank = (k: string) => (o.her?.includes(k) ? 0 : k === "owner" ? 2 : 1);
+  const latest = (k: string) => Math.max(...by.get(k)!.map((s) => updatedDate(s).getTime()));
   const order =
-    view.group === "status" ? statusOrder
+    view.group === "sender" ? keys.sort((a, b) => senderRank(a) - senderRank(b) || latest(b) - latest(a) || a.localeCompare(b))
+    : view.group === "status" ? statusOrder
     : view.group === "date" ? (view.newestFirst ? dayOrder : [...dayOrder].reverse())
     : view.group === "project" ? keys.sort((a, b) => a.localeCompare(b))
     : view.group === "agent" ? keys.sort((a, b) => codingAgentTitle(a).localeCompare(codingAgentTitle(b)))

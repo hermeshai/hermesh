@@ -491,6 +491,9 @@ pub struct MeshCallResult {
     /// The call failed, and `output` says how.
     #[serde(default)]
     pub is_error: bool,
+    /// What the apps read of the result, beside the model's text: the tool result's details.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub details: Option<Value>,
 }
 
 /// Parameters of `mesh/news`.

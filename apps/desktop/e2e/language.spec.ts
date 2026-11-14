@@ -2,7 +2,7 @@ import { expect, test, type ElectronApplication, type Page } from "@playwright/t
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { launch } from "./app";
+import { launch, sessionList } from "./app";
 
 // The app's language: the first of the system's preferred languages it has
 // (English or Simplified Chinese), else English; or the one chosen in
@@ -16,8 +16,8 @@ test("on an English system the app is in English, menus and pages", async () => 
   const { app, page } = await launch(undefined, { systemLanguages: ["en-GB", "zh-Hans"] });
   await expect.poll(() => lang(page)).toBe("en");
   await expect.poll(() => menus(app)).toEqual(["Hermesh", "File", "Edit", "View", "Session", "Window", "Help"]);
-  await expect(page.getByRole("list", { name: "Sessions" })).toContainText("写 hello"); // a session's title stays as written
-  await expect(page.getByRole("heading", { name: "Overview", level: 1 })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Work", level: 1 })).toBeVisible();
+  await expect((await sessionList(page))).toContainText("写 hello"); // a session's title stays as written
   await app.close();
 });
 
@@ -55,6 +55,6 @@ test("a language chosen in settings takes over from the next start", async () =>
   const second = await launch(undefined, { systemLanguages: ["en"], profile });
   await expect.poll(() => lang(second.page)).toBe("zh-CN");
   await expect.poll(() => menus(second.app)).toContain("文件");
-  await expect(second.page.getByRole("list", { name: "会话" })).toContainText("写 hello");
+  await expect((await sessionList(second.page))).toContainText("写 hello");
   await second.app.close();
 });

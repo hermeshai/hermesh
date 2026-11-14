@@ -1,7 +1,7 @@
 import { expect, test, type ElectronApplication } from "@playwright/test";
 import type { BrowserWindow } from "electron";
 import type { TrayView } from "../src/shared/bridge";
-import { cli, fixture, launch, snap } from "./app";
+import { cli, fixture, launch, snap, sessionList } from "./app";
 
 // The native shell: the app menu, the menu bar panel and notifications, as
 // the person uses them. Menu items are clicked through Electron's own menu
@@ -32,15 +32,15 @@ const tray = (app: ElectronApplication) =>
 
 test("the app menu drives the main window", async () => {
   const { app, page } = await launch();
-  const list = page.getByRole("list", { name: "会话" });
-  const row = (title: string) => list.getByRole("listitem").filter({ hasText: title });
-  await row("写 hello").click();
+  // The session list's column, opened again where a step left it (docs/her-team.md §14.2).
+  const row = async (title: string) => (await sessionList(page)).getByRole("listitem").filter({ hasText: title });
+  await (await row("写 hello")).click();
   await expect(page.getByRole("heading", { name: "写 hello" })).toBeVisible();
   await expect.poll(() => menuItem(app, "overview")).toMatchObject({ checked: false, enabled: true });
 
   // 显示 → 概览 (⌘1)
   await clickMenu(app, "overview");
-  await expect(page.getByRole("heading", { name: "概览", level: 1 })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "工作", level: 1 })).toBeVisible();
   await expect.poll(() => menuItem(app, "overview")).toMatchObject({ checked: true });
 
   // ⌘K: the search palette
@@ -49,16 +49,17 @@ test("the app menu drives the main window", async () => {
   await page.keyboard.press("Escape");
   await expect(page.getByRole("dialog", { name: "搜索会话" })).toHaveCount(0);
 
-  // 显示 → 隐藏边栏 / 显示边栏 (⌃⌘S)
+  // 显示 → 收成窄栏 / 展开边栏 (⌃⌘S)
   await clickMenu(app, "toggleSidebar");
-  await expect(page.getByRole("button", { name: "显示边栏" })).toBeVisible();
-  await expect.poll(() => menuItem(app, "toggleSidebar")).toMatchObject({ label: "显示边栏" });
+  await expect(page.getByRole("button", { name: "展开边栏" })).toBeVisible();
+  await expect.poll(() => menuItem(app, "toggleSidebar")).toMatchObject({ label: "展开边栏" });
+  await expect(page.getByRole("complementary", { name: "窄栏" })).toBeVisible();
   await clickMenu(app, "toggleSidebar");
-  await expect(page.getByRole("button", { name: "隐藏边栏" })).toBeVisible();
-  await expect.poll(() => menuItem(app, "toggleSidebar")).toMatchObject({ label: "隐藏边栏" });
+  await expect(page.getByRole("button", { name: "收成窄栏" })).toBeVisible();
+  await expect.poll(() => menuItem(app, "toggleSidebar")).toMatchObject({ label: "收成窄栏" });
 
   // A session waiting on a question: 回答问题 yes, 归档 no.
-  await row("选颜色").click();
+  await (await row("选颜色")).click();
   await expect.poll(() => menuItem(app, "answer")).toMatchObject({ enabled: true });
   expect(await menuItem(app, "archive")).toMatchObject({ enabled: false });
   expect(await menuItem(app, "interrupt")).toMatchObject({ enabled: true });
@@ -71,16 +72,16 @@ test("the app menu drives the main window", async () => {
   expect(await menuItem(app, "viewDiff")).toBeNull();
 
   // A finished session: 归档 (⌘E), then 编辑 → 撤销 (⌘Z) brings it back.
-  await row("写 hello").click();
+  await (await row("写 hello")).click();
   await expect.poll(() => menuItem(app, "archive")).toMatchObject({ enabled: true });
   expect(await menuItem(app, "answer")).toMatchObject({ enabled: false });
   await clickMenu(app, "archive");
   await expect(page.getByRole("status")).toContainText("已归档「写 hello」");
-  await expect(row("写 hello")).toHaveCount(0);
+  await expect(await row("写 hello")).toHaveCount(0);
   await expect.poll(() => menuItem(app, "unarchive")).toMatchObject({ enabled: true });
   await snap(page, "menu-archived");
   await clickMenu(app, "undo");
-  await expect(row("写 hello")).toHaveCount(1);
+  await expect(await row("写 hello")).toHaveCount(1);
   await expect.poll(() => menuItem(app, "archive")).toMatchObject({ enabled: true });
   await app.close();
 });
@@ -165,7 +166,7 @@ test("a question notifies, and the notification opens its session", async () => 
 
 test("closing the window keeps Hermesh in the menu bar, without a renderer", async () => {
   const { app, page } = await launch();
-  await expect(page.getByRole("list", { name: "会话" })).toContainText("写 hello");
+  await expect((await sessionList(page))).toContainText("写 hello");
   const memory = async () => {
     const metrics = await app.evaluate(({ app }) => app.getAppMetrics().map((m) => ({ type: m.type, kb: m.memory.workingSetSize })));
     const mb = (kb: number) => Math.round(kb / 1024);
@@ -189,7 +190,7 @@ test("closing the window keeps Hermesh in the menu bar, without a renderer", asy
   const opened = app.waitForEvent("window", (w) => !w.url().endsWith("#tray"));
   await panel.getByRole("button", { name: "打开 Hermesh" }).click();
   const again = await opened;
-  await expect(again.getByRole("list", { name: "会话" })).toContainText("写 hello");
+  await expect((await sessionList(again))).toContainText("写 hello");
   await expect.poll(() => app.evaluate(({ app }) => app.dock?.isVisible())).toBe(true);
   await app.close();
 });
@@ -218,7 +219,7 @@ test("a session an agent starts notifies, unless switched off", async () => {
     await page.evaluate(() => window.hermesh?.setPreferences({ notifyStarted: false }));
     const quiet = await start("不通知的会话");
     started.push(quiet);
-    await expect(page.getByRole("list", { name: "会话" })).toContainText("不通知的会话");
+    await expect((await sessionList(page))).toContainText("不通知的会话");
     expect((await posted()).map((n) => n.id)).not.toContain(`session-started-${quiet}`);
   } finally {
     for (const id of started) await cli("session", "archive", id).catch(() => "");

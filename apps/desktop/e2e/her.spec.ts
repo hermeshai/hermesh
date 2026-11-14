@@ -1,8 +1,8 @@
-import { expect, test } from "@playwright/test";
+import { expect, test, type Locator, type Page } from "@playwright/test";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { fixture, launch, snap } from "./app";
+import { fixture, launch, snap, navTo } from "./app";
 
 // The Her entry (docs/her-server.md §9), as the owner uses it, against her
 // itself with her-mock as its models. Run by TestDesktopHer, not TestDesktop:
@@ -65,7 +65,7 @@ test("Her: the first run, a chat, a secure card, the console, a second environme
 
   // The sidebar's Her entry, by her name alone. Her runs nowhere yet: its first run asks where, this Mac or
   // work-mac.
-  await expect(page.locator(".side-nav").getByRole("button", { name: /^Her/ })).toHaveText("Her");
+  await expect(page.locator(".side-nav").getByRole("button", { name: /^Her/ })).toHaveText("Her未启用");
   await page.locator(".side-nav").getByRole("button", { name: /^Her/ }).click();
   await expect(page.getByRole("heading", { name: "选择 Her 在哪里运行" })).toBeVisible();
   const choices = page.getByRole("list", { name: "选择 Her 在哪里运行" });
@@ -74,10 +74,10 @@ test("Her: the first run, a chat, a secure card, the console, a second environme
   // This Mac: the test's signer signs SetHer, as Touch ID would. Her runs there with the mock's model, and greets.
   await choices.getByRole("listitem").filter({ hasText: "这台 Mac" }).getByRole("button", { name: "开启 Her" }).click();
   await expect(page.getByText(/^你好，我是 .+，在 .+ 上为你做事/)).toBeVisible({ timeout: 120_000 });
-  // The page is the conversation with Her alone: its name at the top, no list of assistants, no menu of
-  // environments while there is one.
+  // The page is the conversation with Her alone: its name at the top, no list of assistants, no environments in
+  // its ⋯ menu while there is one.
   await expect(page.locator(".her-id")).toContainText("Her");
-  await expect(page.locator(".her-env")).toHaveCount(0);
+  expect(await environmentNames(page)).toEqual([]);
   // As on the iPhone: Her's cat in the middle, larger than a bar's, its name on a capsule over the cat's lower
   // edge, and the greeting clear of both, with no second avatar in the page.
   const cat = await page.locator(".her-id .bav.cat-av").boundingBox();
@@ -91,17 +91,25 @@ test("Her: the first run, a chat, a secure card, the console, a second environme
   await expect(page.locator(".dbody .bav")).toHaveCount(0);
   await snap(page, "her-greeting");
   // Her's settings, beside the conversation, as on the iPhone: the avatar opens them (no button of their own in the
-  // bar), the name too, both with the hand. A new assistant asks before risky steps, and remembers nothing yet.
+  // bar); the capsule under it is the team's name tag, which opens the team panel (docs/her-team.md §14.3). Both
+  // with the hand. A new assistant asks before risky steps, and remembers nothing yet.
   const avatar = page.getByRole("button", { name: "助手设置", exact: true });
+  const tag = page.getByRole("button", { name: "团队：现在在做什么" });
   await expect(avatar.locator(".bav.cat-av")).toBeVisible();
   await expect(page.locator(".her-head").getByRole("button", { name: "助手设置" })).toHaveCount(1);
-  for (const el of [avatar, page.locator(".her-id-n")]) expect(await el.evaluate((e) => getComputedStyle(e).cursor)).toBe("pointer");
+  for (const el of [avatar, tag]) expect(await el.evaluate((e) => getComputedStyle(e).cursor)).toBe("pointer");
   await avatar.click();
   const settings = page.getByRole("complementary", { name: "助手设置" });
   await expect(settings).toContainText("询问权限");
   await expect(settings.getByRole("button", { name: /^记住的事/ })).toHaveText("记住的事还没有");
-  await page.locator(".her-id-n").click();
+  await avatar.click();
   await expect(settings).toBeHidden();
+  await tag.click();
+  const team = page.getByRole("dialog", { name: "团队" });
+  await expect(team).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect(team).toBeHidden();
+  await expect(tag).toBeFocused();
 
   // A chat: the message, then Her's reply in a bubble of its own.
   await send(mockSend("你好，主人"));
@@ -127,6 +135,27 @@ test("Her: the first run, a chat, a secure card, the console, a second environme
   await consoleAt.close();
   await chrome.getByRole("button", { name: "这次用内置浏览器" }).click();
   await expect(chrome).toBeHidden({ timeout: 30_000 });
+
+  // Her starts a coding session on this Mac, asked first (docs/her-team.md §14.3): a card where she started it,
+  // kept current, which the team panel lists once it is done, and which opens the session.
+  await send(`[[mock:mesh:session_start:${JSON.stringify({ project: "owner-mac/demo", prompt: "say 做完了", title: "Her 派的活" })}]] 开工`);
+  // Asked first, in words that name the agent and the project.
+  const approval = page.getByRole("region", { name: "等你批准" });
+  await expect(approval).toContainText("owner-mac/demo", { timeout: 60_000 });
+  await approval.getByRole("button", { name: /^允许/ }).click();
+  const sessionCard = log.getByRole("button", { name: "Her 派的活" });
+  await expect(sessionCard).toBeVisible({ timeout: 60_000 });
+  await expect(sessionCard).toContainText("Claude · owner-mac");
+  await expect(sessionCard).toContainText("完成", { timeout: 60_000 });
+  await snap(page, "her-session-card");
+  await tag.click();
+  await expect(team.getByRole("region", { name: "刚完成" })).toContainText("Her 派的活");
+  await expect(team.getByRole("region", { name: "刚完成" })).toContainText("Her → Claude · demo");
+  await page.keyboard.press("Escape");
+  await sessionCard.click();
+  await expect(page.getByRole("heading", { name: "Her 派的活" })).toBeVisible();
+  await navTo(page, /^Her/);
+  await expect(sessionCard).toBeVisible();
 
   // Her notes a rule (her-mock's remember), with no approval asked; her settings show it on the memory page,
   // as written (a list, Markdown), and clear it there, after asking.
@@ -264,8 +293,7 @@ test("Her: the first run, a chat, a secure card, the console, a second environme
   const sheet = page.getByRole("dialog", { name: "添加环境" });
   await sheet.getByRole("listitem").filter({ hasText: "work-mac" }).getByRole("button", { name: "开启 Her" }).click();
   await expect(sheet).toBeHidden();
-  const switcher = page.locator(".her-env");
-  await expect(switcher).toContainText("work-mac", { timeout: 120_000 });
+  await expect.poll(async () => (await environmentNames(page)).join("|"), { timeout: 120_000 }).toContain("work-mac");
   // work-mac has no model yet: Her speaks first, the app writing for it, with the ways to connect one in a
   // list, each saying what it takes. The composer waits until then.
   await expect(log.getByText(/^你好，我是 .+，在 work-mac 上为你做事。开始之前，我需要接上一个模型/)).toBeVisible({ timeout: 120_000 });
@@ -359,17 +387,17 @@ test("Her: the first run, a chat, a secure card, the console, a second environme
   await expect(log).toContainText("来自 work-mac", { timeout: 60_000 });
 
   // Back to this Mac, its own conversation, with no onboarding of its own; then to work-mac again, which
-  // keeps its line. The menu opens under the switcher, inside the window.
-  await switcher.click();
-  const [button, menu] = await Promise.all([switcher.boundingBox(), page.getByRole("menu").boundingBox()]);
-  expect(Math.abs(menu!.x - button!.x)).toBeLessThan(2);
-  expect(menu!.x + menu!.width).toBeLessThanOrEqual(page.viewportSize()?.width ?? (await page.evaluate(() => innerWidth)));
-  await page.getByRole("menuitemradio").filter({ hasNotText: "work-mac" }).click();
+  // keeps its line. The ⋯ menu opens under its button, inside the window.
+  const envs = await environments(page);
+  const more = page.locator(".her-head").getByRole("button", { name: "更多" });
+  const [button, menu] = await Promise.all([more.boundingBox(), page.getByRole("menu", { name: "更多" }).boundingBox()]);
+  expect(Math.abs(menu!.x + menu!.width - (button!.x + button!.width))).toBeLessThan(2);
+  expect(menu!.x).toBeGreaterThanOrEqual(0);
+  await envs.filter({ hasNotText: "work-mac" }).click();
   await expect(log).toContainText("你好，主人");
   await expect(log).not.toContainText("来自 work-mac");
   await expect(log).not.toContainText("已接上");
-  await switcher.click();
-  await page.getByRole("menuitemradio").filter({ hasText: "work-mac" }).click();
+  await (await environments(page)).filter({ hasText: "work-mac" }).click();
   await expect(log).toContainText("来自 work-mac");
   await expect(log).toContainText("已接上 腾讯云 Token Plan");
   await snap(page, "her-two-environments");
@@ -398,8 +426,7 @@ test("Her: the first run, a chat, a secure card, the console, a second environme
   // Her turned off on this Mac from her settings (docs/her-server.md §5.6): the sheet says what stops and asks
   // whether her data goes too, keeping it unless chosen. Kept, Settings › Machines says so and Her carries on
   // once turned on again from its switch; there, her data erased, she starts anew, asking for a model.
-  await page.locator(".her-env").click();
-  await page.getByRole("menuitemradio").filter({ hasNotText: "work-mac" }).click();
+  await (await environments(page)).filter({ hasNotText: "work-mac" }).click();
   await expect(page.getByRole("log", { name: "对话" })).toContainText("你好，主人", { timeout: 30_000 });
   await page.getByRole("button", { name: "助手设置", exact: true }).click();
   await page.getByRole("complementary", { name: "助手设置" }).getByRole("button", { name: /^在 .+ 上关闭 Her…$/ }).click();
@@ -418,7 +445,7 @@ test("Her: the first run, a chat, a secure card, the console, a second environme
   await expect(page.locator(".toast")).toHaveText(/^已在「.+」上关闭 Her$/);
   // Her runs on work-mac alone now: the page is its, and no menu of environments shows.
   await expect(page.getByText(/^work-mac 离线 · .+在线$/)).toBeVisible({ timeout: 30_000 });
-  await expect(page.locator(".her-env")).toHaveCount(0);
+  expect(await environmentNames(page)).toEqual([]);
 
   const [win] = await Promise.all([app.waitForEvent("window"), page.evaluate(() => window.hermesh?.openSettings("machines"))]);
   await win.waitForLoadState();
@@ -437,8 +464,8 @@ test("Her: the first run, a chat, a secure card, the console, a second environme
   await expect(run).toHaveAttribute("aria-checked", "true", { timeout: 60_000 });
   await expect(machines).toContainText("关闭时会问你是保留到下次，还是清空。");
   await expect(kept).toBeHidden();
-  await page.locator(".her-env").click({ timeout: 60_000 });
-  await page.getByRole("menuitemradio").filter({ hasNotText: "work-mac" }).click();
+  await expect.poll(async () => (await environmentNames(page)).length, { timeout: 60_000 }).toBe(2);
+  await (await environments(page)).filter({ hasNotText: "work-mac" }).click();
   await expect(page.getByRole("log", { name: "对话" })).toContainText("你好，主人", { timeout: 60_000 });
 
   // Turned off from the switch, her data kept, then erased from the row after asking: turned on again, she
@@ -459,8 +486,8 @@ test("Her: the first run, a chat, a secure card, the console, a second environme
   await expect(run).toHaveAttribute("aria-checked", "false");
   await run.click();
   await expect(run).toHaveAttribute("aria-checked", "true", { timeout: 60_000 });
-  await page.locator(".her-env").click({ timeout: 60_000 });
-  await page.getByRole("menuitemradio").filter({ hasNotText: "work-mac" }).click();
+  await expect.poll(async () => (await environmentNames(page)).length, { timeout: 60_000 }).toBe(2);
+  await (await environments(page)).filter({ hasNotText: "work-mac" }).click();
   const fresh = page.getByRole("log", { name: "对话" });
   await expect(fresh.getByText(/^你好，我是 .+，在 .+ 上为你做事。开始之前，我需要接上一个模型/)).toBeVisible({ timeout: 120_000 });
   await expect(fresh).not.toContainText("你好，主人");
@@ -487,3 +514,17 @@ test("Her: the first run, a chat, a secure card, the console, a second environme
   await expect(removing).toBeHidden();
   await app.close();
 });
+
+/** Opens the ⋯ menu of Her's page and returns its environments (docs/her-team.md §14.3: no longer in the capsule). */
+async function environments(page: Page): Promise<Locator> {
+  const more = page.locator(".her-head").getByRole("button", { name: "更多" });
+  if ((await more.getAttribute("aria-expanded")) !== "true") await more.click();
+  return page.getByRole("menu", { name: "更多" }).getByRole("menuitemradio");
+}
+
+/** The environments' names in the ⋯ menu, which is closed again. */
+async function environmentNames(page: Page): Promise<string[]> {
+  const names = await (await environments(page)).allInnerTexts();
+  await page.keyboard.press("Escape");
+  return names;
+}

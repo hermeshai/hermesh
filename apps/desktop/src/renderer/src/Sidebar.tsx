@@ -1,33 +1,53 @@
 import { memo, useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type RefObject } from "react";
-import { Trans, useTranslation } from "react-i18next";
+import { useTranslation } from "react-i18next";
 import { SessionStatus, type Session } from "@hermesh/proto/session";
 import {
-  bucketTitle, clockText, elapsedSeconds, codingAgentShort, codingAgentTitle, createdDate, dateOf, displayTitle, isActive, isArchivable, isFailed, listTime, needsAttention,
-  sectionCounted, sessionSections, statusTitle, updatedDate, type SessionBucket, type SessionSection, type SessionView,
+  agoText, bucketTitle, clockText, elapsedSeconds, codingAgentShort, codingAgentTitle, createdDate, dateOf, displayTitle, isActive, isArchivable, isFailed, listTime, needsAttention,
+  sessionSections, statusTitle, teamState, updatedDate, type SessionBucket, type SessionSection, type SessionView,
 } from "@hermesh/core";
+import { AgentLogo } from "@hermesh/ui";
 import { i18n } from "../../shared/i18n";
 import { UpdateReminder } from "./update";
 import { local } from "./api";
 import { AppMenuButton } from "./MainWindow";
-import { StatusDot } from "./components";
+import { GrantAvatar, StatusDot } from "./components";
 import { Icon } from "./icons";
-import { setSidebar } from "./layout";
+import { listShown, setSidebar } from "./layout";
 import { unreadCount } from "./her/environments";
 import { expiringClients } from "./overview/Attention";
 import { keys, ownKeys } from "./platform";
-import { useNow, useStore, type Store } from "./store";
+import { useNow, useStore, type ListFilter, type Store } from "./store";
 
 export function grantLabel(st: Store, s: Session): string {
   return st.clients.find((c) => c.clientId === s.createdBy)?.label ?? i18n.t("common:sidebar.disconnectedGrant");
 }
 
-export function machineName(st: Store, id: string): string {
-  return st.machines.find((m) => m.machineId === id)?.machineName ?? id;
+/** Her's own grants: the clients that carry her_machine_id. */
+export function herClients(st: Store): string[] {
+  return st.clients.filter((c) => c.herMachineId !== "").map((c) => c.clientId);
 }
 
-/** What the overview's "Needs You" lists: pairing requests and grants about to expire (sessions count in the list). */
-export function attentionCount(st: Store, now: Date): number {
-  return st.pairings.length + expiringClients(st, now).length;
+/** Who sent work, in a row (docs/her-team.md §4.7): Her by her name alone, the owner as "You", the others as their grants name them. */
+export function senderName(st: Store, clientId: string): string {
+  if (clientId === "owner") return i18n.t("common:sidebar.you");
+  if (herClients(st).includes(clientId)) return "Her";
+  return st.clients.find((c) => c.clientId === clientId)?.label ?? i18n.t("common:sidebar.disconnectedGrant");
+}
+
+/** A session's second line in lists: who sent the work to which coding agent, and the project. */
+export function senderLine(st: Store, s: Session): string {
+  return `${senderName(st, s.createdBy)} → ${codingAgentShort(s.agent)} · ${s.projectId}`;
+}
+
+/** Whether a session is one the team's map chose. */
+export function inFilter(f: ListFilter | null, s: Session): boolean {
+  if (!f) return true;
+  if (f.kind === "client") return s.createdBy === f.client;
+  return s.machineId === f.machine && (f.kind === "machine" || s.agent === f.agent);
+}
+
+export function machineName(st: Store, id: string): string {
+  return st.machines.find((m) => m.machineId === id)?.machineName ?? id;
 }
 
 export function archive(st: Store, s: Session) {
@@ -62,13 +82,14 @@ export function confirmDelete(st: Store, s: Session) {
 /** The list as the sidebar shows it, in the owner's view; machines this Mac first, then by name. */
 export function listSections(st: Store, now: Date): SessionSection[] {
   const machines = [...st.machines].sort((a, b) => Number(b.local) - Number(a.local) || a.machineName.localeCompare(b.machineName)).map((m) => m.machineId);
-  return sessionSections(st.sessions, st.view, { archived: st.archived, now, machines });
+  return sessionSections(st.sessions.filter((s) => inFilter(st.listFilter, s)), st.view, { archived: st.archived, now, machines, her: herClients(st) });
 }
 
-function sectionTitle(st: Store, sec: SessionSection): string {
+export function sectionTitle(st: Store, sec: SessionSection): string {
   if (sec.grouping === "project") return sec.key;
   if (sec.grouping === "agent") return codingAgentTitle(sec.key);
   if (sec.grouping === "machine") return st.machines.find((m) => m.machineId === sec.key)?.local ? i18n.t("overview:thisMac") : machineName(st, sec.key);
+  if (sec.grouping === "sender") return sec.key === "owner" ? i18n.t("common:sidebar.sentByYou") : i18n.t("common:sidebar.sentBy", { name: senderName(st, sec.key) });
   return bucketTitle(sec.key as SessionBucket);
 }
 
@@ -76,23 +97,6 @@ export function Sidebar() {
   const st = useStore();
   const { t } = useTranslation("common");
   const now = useNow(30_000);
-  const sections = listSections(st, now);
-  const count = attentionCount(st, now);
-  const total = sections.reduce((n, x) => n + x.sessions.length, 0);
-  const list = useRef<HTMLDivElement>(null);
-  const end = useRef<HTMLDivElement>(null);
-  // The rows get the store as of a click, so a change elsewhere doesn't render them again.
-  const latest = useRef(st);
-  latest.current = st;
-  // Older sessions load as the end of the list comes into view (again
-  // after each page, until the list is full or there are no more).
-  const { moreSessions, loadOlderSessions } = st;
-  useEffect(() => {
-    if (!moreSessions || !end.current) return;
-    const io = new IntersectionObserver((es) => es.some((e) => e.isIntersecting) && loadOlderSessions(), { root: list.current, rootMargin: "200px" });
-    io.observe(end.current);
-    return () => io.disconnect();
-  }, [moreSessions, loadOlderSessions, st.sessions]);
   return (
     <aside className="side" aria-label={t("sidebar.label")}>
       <div className="side-top drag">
@@ -100,92 +104,200 @@ export function Sidebar() {
         <button className="tb" onClick={() => setSidebar(st, false)} title={`${t("window.hideSidebar")} ${keys(ownKeys.toggleSidebar)}`} aria-label={t("window.hideSidebar")}>
           <Icon name="sidebar" />
         </button>
-        <ListViewMenu />
       </div>
+      {/* Navigation only (docs/her-team.md §14.2): the pages, then the team, whose rows open the session list. */}
       <nav className="side-nav">
-        <button className={`nav-i ${st.selection.kind === "overview" ? "sel" : ""}`} onClick={() => st.set({ selection: { kind: "overview" } })}>
-          <Icon name="grid" />
-          <span>{t("sidebar.overview")}</span>
-          {count ? <span className="cnt" aria-label={t("sidebar.attention", { count })}>{count}</span> : <span className="kbd">{keys("CmdOrCtrl+1")}</span>}
-        </button>
+        {!st.status?.machineOnly && <HerItem />}
+        <WorkItem now={now} />
         <button className="nav-i" onClick={() => st.set({ searching: true })}>
           <Icon name="search" />
           <span>{t("sidebar.search")}</span>
           <span className="kbd">{keys("CmdOrCtrl+K")}</span>
         </button>
-        {!st.status?.machineOnly && <HerItem />}
+        <AllSessionsItem />
       </nav>
-      <div className="side-list" role="list" aria-label={t("sidebar.sessions")} ref={list}>
-        {sections.map((sec) => {
-          const id = `${sec.grouping}:${sec.key}`;
-          const open = !st.collapsed.includes(id);
-          return (
-          <div key={id} role="group" aria-label={sectionTitle(st, sec)}>
-            <button
-              className={`grp-h ${open ? "" : "shut"}`}
-              aria-expanded={open}
-              onClick={() => st.set({ collapsed: open ? [...st.collapsed, id] : st.collapsed.filter((c) => c !== id) })}
-            >
-              {sectionTitle(st, sec)}
-              {sectionCounted(sec) && <span className="n">{sec.sessions.length}</span>}
-              <Icon name="caret" className="sm" />
-            </button>
-            {open && sec.sessions.map((s) => (
-              <SessionRow
-                key={s.sessionId}
-                s={s}
-                sel={st.selection.kind === "session" && st.selection.id === s.sessionId}
-                grant={grantLabel(st, s)}
-                meta={st.view.metadata}
-                renaming={st.renaming === s.sessionId}
-                store={latest}
-              />
-            ))}
-          </div>
-          );
-        })}
-        {!st.sessionsLoaded ? null : st.moreSessions ? (
-          <div className="endrow" ref={end}>{t("sidebar.loadingOlder")}</div>
-        ) : total === 0 ? (
-          <div className="endrow" style={{ paddingTop: 30 }}>
-            <Trans t={t} i18nKey="sidebar.empty" components={{ br: <br /> }} />
-          </div>
-        ) : (
-          <div className="endrow">
-            {t("sidebar.noOlder")}
-            {" · "}
-            <button className="link" onClick={() => st.set({ archived: !st.archived })}>{t(st.archived ? "sidebar.hideArchived" : "sidebar.showArchived")}</button>
-          </div>
-        )}
-      </div>
+      <div className="side-list">{!st.status?.machineOnly && <TeamMap />}</div>
       <UpdateReminder />
       <AccountMenu />
     </aside>
   );
 }
 
+/** The list's column, showing what the filter chose; a session it shows stays chosen, another one is let go. */
+export function openList(st: Store, f: ListFilter | null) {
+  const sel = st.selection;
+  const s = sel.kind === "session" ? st.sessions.find((x) => x.sessionId === sel.id) : undefined;
+  st.set({ listFilter: f, selection: s && inFilter(f, s) ? sel : { kind: "list" } });
+}
+
+/** All Sessions: the list's column, unfiltered, with how many there are (archived ones aside). */
+function AllSessionsItem() {
+  const st = useStore();
+  const { t } = useTranslation("common");
+  const count = st.sessions.filter((s) => s.status !== SessionStatus.ARCHIVED).length;
+  const sel = listShown(st.selection) && st.listFilter === null;
+  return (
+    <button className={`nav-i ${sel ? "sel" : ""}`} aria-current={sel || undefined} onClick={() => openList(st, null)}>
+      <Icon name="menu" />
+      <span>{t("sidebar.allSessions")}</span>
+      <span className="cnt">{count}</span>
+    </button>
+  );
+}
+
 /**
  * The Her entry (docs/her-server.md §9.1): what its assistants sent the owner and they have not read, over
- * every environment, as Watch brings each machine's Her; the page opens Her's connections itself.
+ * every environment, as Watch brings each machine's Her; the page opens Her's connections itself. "Off" while
+ * she runs nowhere (docs/her-team.md §14.2).
  */
 function HerItem() {
   const st = useStore();
   const { t } = useTranslation("common");
   const unread = unreadCount(st.machines);
   const sel = st.selection.kind === "her";
+  const on = st.machines.some((m) => m.her?.enabled);
   return (
     <button className={`nav-i ${sel ? "sel" : ""}`} onClick={() => !sel && st.set({ selection: { kind: "her" } })}>
       <Icon name="her" />
       <span>{t("sidebar.her")}</span>
-      {unread > 0 && <span className="cnt" aria-label={t("sidebar.herUnread", { count: unread })}>{unread}</span>}
+      {!on ? <span className="cnt">{t("sidebar.herOff")}</span> : unread > 0 && <span className="cnt" aria-label={t("sidebar.herUnread", { count: unread })}>{unread}</span>}
     </button>
+  );
+}
+
+/** Work (the overview, docs/her-team.md §14.2): an orange dot when something needs the owner, and what runs. */
+export function workMarks(st: Store, now: Date) {
+  const team = teamState(st.sessions, st.pairings.length);
+  return { waits: team.waiting.length + st.pairings.length + expiringClients(st, now).length, running: team.running.length };
+}
+
+function WorkItem({ now }: { now: Date }) {
+  const st = useStore();
+  const { t } = useTranslation("common");
+  const { waits, running } = workMarks(st, now);
+  return (
+    <button className={`nav-i ${st.selection.kind === "overview" ? "sel" : ""}`} onClick={() => st.set({ selection: { kind: "overview" } })}>
+      <Icon name="grid" />
+      <span>{t("sidebar.work")}</span>
+      <span className="nav-marks">
+        {waits > 0 && <span className="dot-w" role="img" aria-label={t("sidebar.attention", { count: waits })} />}
+        {running > 0 && <Busy count={running} label={t("sidebar.running", { count: running })} />}
+        {waits === 0 && running === 0 && <span className="kbd">{keys("CmdOrCtrl+1")}</span>}
+      </span>
+    </button>
+  );
+}
+
+/** A small ring that turns, and how many run. */
+function Busy({ count, label }: { count: number; label: string }) {
+  return (
+    <span className="busy" role="img" aria-label={label}>
+      <i aria-hidden="true" />
+      <span aria-hidden="true">{count}</span>
+    </span>
+  );
+}
+
+/** What a filter of the list is called, at the head of its column. */
+export function filterName(st: Store, f: ListFilter): string {
+  if (f.kind === "client") return senderName(st, f.client);
+  const m = st.machines.find((x) => x.machineId === f.machine)?.local ? i18n.t("common:sidebar.thisMac") : machineName(st, f.machine);
+  return f.kind === "machine" ? m : i18n.t("common:sidebar.agentOn", { agent: codingAgentShort(f.agent), machine: m });
+}
+
+/**
+ * The team's map (docs/her-team.md §14.2): the machines, this Mac first, each with its coding agents; the agents
+ * connected to the owner, Her apart; requests to connect that wait. A row narrows the list below to its sessions;
+ * the heading folds the map.
+ */
+function TeamMap() {
+  const st = useStore();
+  const { t } = useTranslation("common");
+  const now = useNow(60_000);
+  const open = !st.collapsed.includes("team");
+  const live = st.sessions.filter((s) => s.status !== SessionStatus.ARCHIVED);
+  const machines = [...st.machines].sort((a, b) => Number(b.local) - Number(a.local) || a.machineName.localeCompare(b.machineName));
+  const her = herClients(st);
+  const clients = st.clients.filter((c) => !c.revoked && !her.includes(c.clientId));
+  const same = (f: ListFilter) => listShown(st.selection) && JSON.stringify(st.listFilter) === JSON.stringify(f);
+  const pick = (f: ListFilter) => openList(st, f);
+  const marks = (mine: Session[]) => {
+    const waiting = mine.some((s) => s.status === SessionStatus.WAITING_INPUT);
+    const running = mine.filter(isActive).length;
+    return (
+      <span className="map-marks">
+        {waiting && <span className="dot-w" role="img" aria-label={t("sidebar.waits")} />}
+        {running > 0 && <Busy count={running} label={t("sidebar.running", { count: running })} />}
+      </span>
+    );
+  };
+  return (
+    <div role="group" aria-label={t("sidebar.team")} className="team-map">
+      <button className={`grp-h ${open ? "" : "shut"}`} aria-expanded={open} onClick={() => st.set({ collapsed: open ? [...st.collapsed, "team"] : st.collapsed.filter((c) => c !== "team") })}>
+        {t("sidebar.team")}
+        <Icon name="caret" className="sm" />
+      </button>
+      {open && (
+        <>
+          {machines.map((m) => {
+            const f: ListFilter = { kind: "machine", machine: m.machineId };
+            const seen = dateOf(m.lastSeen);
+            const where = m.local ? t("sidebar.thisMac") : m.machineName;
+            const sub = !(m.local || m.online) ? (seen ? t("sidebar.offlineSince", { ago: agoText(seen, now) }) : t("sidebar.offline")) : m.her?.enabled ? t("sidebar.herHere") : "";
+            const agents = (m.status?.agents ?? []).filter((a) => a.available);
+            return (
+              <div key={m.machineId} className="map-m">
+                <button className={`map-row ${same(f) ? "sel" : ""}`} aria-current={same(f) || undefined} onClick={() => pick(f)}>
+                  <Icon name={m.local ? "laptop" : "server"} />
+                  <span className="map-n">{where}</span>
+                  <i className={`dotc ${m.local || m.online ? "on" : ""}`} aria-hidden="true" />
+                  {sub && <span className="map-sub">{sub}</span>}
+                  {marks(live.filter((s) => s.machineId === m.machineId && !agents.some((a) => a.name === s.agent)))}
+                </button>
+                {agents.map((a) => {
+                  const fa: ListFilter = { kind: "agent", machine: m.machineId, agent: a.name };
+                  return (
+                    <button key={a.name} className={`map-row sub ${same(fa) ? "sel" : ""}`} aria-current={same(fa) || undefined} onClick={() => pick(fa)}>
+                      <AgentLogo agent={a.name} size={16} />
+                      <span className="map-n">{codingAgentTitle(a.name)}</span>
+                      {marks(live.filter((s) => s.machineId === m.machineId && s.agent === a.name))}
+                    </button>
+                  );
+                })}
+              </div>
+            );
+          })}
+          {(clients.length > 0 || st.pairings.length > 0) && <div className="map-h">{t("sidebar.connectedAgents")}</div>}
+          {st.pairings.map((p) => (
+            <button key={p.code} className="map-row" onClick={() => st.set({ sheet: { kind: "pairing", code: p.code } })}>
+              <Icon name="link" />
+              <span className="map-n">{p.label || t("sidebar.pairing")}</span>
+              <span className="map-marks"><span className="dot-w" role="img" aria-label={t("sidebar.pairingWaits")} /></span>
+            </button>
+          ))}
+          {clients.map((c) => {
+            const f: ListFilter = { kind: "client", client: c.clientId };
+            return (
+              <button key={c.clientId} className={`map-row ${same(f) ? "sel" : ""}`} aria-current={same(f) || undefined} onClick={() => pick(f)}>
+                <GrantAvatar c={c} size="sm" />
+                <span className="map-n">{c.label}</span>
+                {marks(live.filter((s) => s.createdBy === c.clientId))}
+              </button>
+            );
+          })}
+        </>
+      )}
+    </div>
   );
 }
 
 type AccountItem = { id: "settings" | "account" | "newGrant" | "addMachine" | "enterCode"; icon: string; shortcut?: string } | null;
 
-/** The account menu, from the avatar at the sidebar's foot: it opens upward, as wide as the foot, with what adds something and the settings. */
-function AccountMenu() {
+/**
+ * The account menu, from the avatar at the sidebar's foot: it opens upward, as wide as the foot, with what adds
+ * something and the settings. compact: the rail's foot, the avatar alone; the menu then opens beside the rail.
+ */
+export function AccountMenu({ compact = false }: { compact?: boolean }) {
   const st = useStore();
   const { t } = useTranslation("common");
   // "key": opened from the keyboard, so the first item is chosen at once, as in a native menu.
@@ -242,7 +354,7 @@ function AccountMenu() {
     }
   };
   return (
-    <div className="acct" ref={ref}>
+    <div className={`acct ${compact ? "compact" : ""}`} ref={ref}>
       {open && (
         <div className="acct-menu" role="menu" aria-label={t("sidebar.account")} tabIndex={-1} ref={menu} onKeyDown={onKeyDown} onMouseLeave={() => menu.current?.focus()}>
           {items.map((it, i) =>
@@ -258,10 +370,12 @@ function AccountMenu() {
           )}
         </div>
       )}
-      <button className="side-foot" ref={foot} aria-label={t("sidebar.account")} aria-haspopup="menu" aria-expanded={!!open} onClick={(e) => setOpen(open ? false : e.detail ? "mouse" : "key")}>
+      <button className="side-foot" ref={foot} aria-label={t("sidebar.account")} title={compact ? t("sidebar.account") : undefined} aria-haspopup="menu" aria-expanded={!!open} onClick={(e) => setOpen(open ? false : e.detail ? "mouse" : "key")}>
         <span className="av" aria-hidden="true">
           {(window.hermesh?.userName ?? "H").slice(0, 1).toUpperCase()}
         </span>
+        {/* The rail has room for the avatar alone; a dot on it when not connected. */}
+        {compact ? (!st.status?.relayConnected && <i className="dotc" aria-hidden="true" />) : <>
         <span className="who">
           <b>{window.hermesh?.userName ?? "Hermesh"}</b>
           <span>
@@ -271,12 +385,13 @@ function AccountMenu() {
           </span>
         </span>
         <Icon name="chevD" className="sm chev" />
+        </>}
       </button>
     </div>
   );
 }
 
-const SessionRow = memo(function SessionRow({ s, sel, grant, meta, renaming, store }: {
+export const SessionRow = memo(function SessionRow({ s, sel, grant, meta, renaming, store }: {
   s: Session; sel: boolean; grant: string; meta: boolean; renaming: boolean; store: RefObject<Store>;
 }) {
   const { t } = useTranslation("common");
@@ -334,7 +449,7 @@ const SessionRow = memo(function SessionRow({ s, sel, grant, meta, renaming, sto
         </div>
         {meta && (
           <div className="sl2">
-            <span className="sl2t">{grant} · {codingAgentShort(s.agent)} · {s.projectId}</span>
+            <span className="sl2t">{grant} → {codingAgentShort(s.agent)} · {s.projectId}</span>
             <RowTime s={s} />
           </div>
         )}
@@ -513,7 +628,7 @@ type ViewChoice = { label: string; on: boolean; role: "menuitemradio" | "menuite
  * menu (→ opens a submenu, ← and Esc go back). Rows follow the mouse only as
  * it moves, so a menu opening under a resting pointer keeps the keyboard's choice.
  */
-function ListViewMenu() {
+export function ListViewMenu() {
   const st = useStore();
   const { t } = useTranslation("common");
   const v = st.view;
@@ -557,10 +672,10 @@ function ListViewMenu() {
     setOpen(e.detail ? "mouse" : "key");
   };
   const choose = (patch: Partial<SessionView>) => {
-    st.set({ view: { ...v, ...patch } });
+    st.set({ view: { ...v, ...patch }, viewChosen: true });
     close(true);
   };
-  const groups = { status: t("listView.byStatus"), date: t("listView.byDate"), project: t("listView.byProject"), agent: t("listView.byAgent"), machine: t("listView.byMachine") };
+  const groups = { sender: t("listView.bySender"), status: t("listView.byStatus"), date: t("listView.byDate"), project: t("listView.byProject"), agent: t("listView.byAgent"), machine: t("listView.byMachine") };
   const panes: { id: ViewPane; label: string; value: string }[] = [
     { id: "group", label: t("listView.group"), value: groups[v.group] },
     { id: "sort", label: t("listView.sort"), value: t(v.newestFirst ? "listView.newestFirst" : "listView.oldestFirst") },

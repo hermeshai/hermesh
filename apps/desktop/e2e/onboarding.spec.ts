@@ -10,7 +10,7 @@ import http from "node:http";
 import type { AddressInfo } from "node:net";
 import os from "node:os";
 import path from "node:path";
-import { answerMenu, fixture, gitRepo, launch, pickAnswers, snap } from "./app";
+import { answerMenu, fixture, gitRepo, launch, pickAnswers, snap, sessionList, navTo } from "./app";
 
 // The first run against owner daemons nobody has set up (the fixture's
 // fresh ones; each can be set up once): a relay of one's own, the browser
@@ -359,8 +359,8 @@ test("browser sign-in: the link brings the authorization page, the center's rela
   await expect(page.getByText("检查 README").first()).toBeVisible();
   await snap(page, "first-12-main");
   // The overview has no setup checklist.
-  await page.getByRole("button", { name: "概览" }).click();
-  await expect(page.getByRole("heading", { name: "概览", level: 1 })).toBeVisible();
+  await page.getByRole("button", { name: "工作" }).click();
+  await expect(page.getByRole("heading", { name: "工作", level: 1 })).toBeVisible();
   await expect(page.getByRole("region", { name: "完成设置" })).toHaveCount(0);
   // Once the first session is done, 正在运行 rests: the mark, what runs (nothing), and what will show there.
   const working = page.getByRole("region", { name: "正在运行" });
@@ -554,7 +554,7 @@ test("a work Mac joins as a machine only: no Touch ID, the code, the two digits;
   // The main window, as on a trusted device: its sessions in the sidebar, and
   // the overview, its links this Mac's own; nothing to approve.
   await expectMainWindow(app, page);
-  await expect(page.getByRole("heading", { name: "概览" })).toBeVisible({ timeout: 30_000 });
+  await expect(page.getByRole("heading", { name: "工作" })).toBeVisible({ timeout: 30_000 });
   const map = page.getByRole("region", { name: "链路" });
   await expect(map).toContainText("这台 Mac");
   // Online: connected to the relay, which the agent's session needs.
@@ -609,7 +609,7 @@ test("a work Mac joins as a machine only: no Touch ID, the code, the two digits;
   await Promise.all([settings.waitForEvent("close"), account.getByRole("button", { name: "让这台 Mac 也能批准…" }).click()]);
   await expect(page.getByRole("heading", { name: "在你已有的设备上批准" })).toBeVisible({ timeout: 30_000 });
   await page.getByRole("button", { name: "取消" }).click();
-  await expect(page.getByRole("heading", { name: "概览" })).toBeVisible({ timeout: 30_000 });
+  await expect(page.getByRole("heading", { name: "工作" })).toBeVisible({ timeout: 30_000 });
 
   // An agent of the owner, granted all machines: before it comes, the map
   // has it as one that may start sessions here, faint.
@@ -633,8 +633,9 @@ test("a work Mac joins as a machine only: no Touch ID, the code, the two digits;
   // the map runs it from the agent to the project, and the agent's card says
   // what it may do here.
   execFileSync(fixture.cli, ["session", "start", "--project", "billing", "--agent", "gemini", "--title", "修账单导出", "--prompt", "shell sleep 1800"], { env });
-  const row = page.getByRole("list", { name: "会话" }).getByRole("listitem").filter({ hasText: "修账单导出" });
+  const row = (await sessionList(page)).getByRole("listitem").filter({ hasText: "修账单导出" });
   await expect(row).toContainText("Grok Bot", { timeout: 30_000 });
+  await navTo(page, /^工作/);
   await expect(grok).not.toContainText("尚无会话", { timeout: 30_000 });
   await expect(page.getByRole("button", { name: "管理授权…" })).toHaveCount(0);
   // Resting on it shows its card, over the map, which keeps its height.
@@ -660,7 +661,7 @@ test("a work Mac joins as a machine only: no Touch ID, the code, the two digits;
   await page.keyboard.press("Escape");
   await expect(card).toHaveCount(0);
 
-  await row.click();
+  await (await sessionList(page)).getByRole("listitem").filter({ hasText: "修账单导出" }).click();
   await expect(page.getByRole("heading", { name: "修账单导出" })).toBeVisible();
   await expect(page.getByRole("log", { name: "对话" })).toContainText("sleep 1800", { timeout: 30_000 });
   await snap(page, "machine-04-session");

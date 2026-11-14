@@ -1,3 +1,4 @@
+import HermeshHer
 import HermeshProto
 import HermeshSessions
 import SwiftUI
@@ -14,10 +15,11 @@ enum PairingText {
     }
 }
 
-/// The first page: what waits for the owner beyond the sessions (requests
-/// to connect, grants that end) and how many sessions wait (the menu lists
-/// them); then the work: what runs, today's sessions hour by hour, who sent
-/// work to which coding agent, each coding agent's day and the machines.
+/// Work (docs/her-team.md §4.6): what waits for the owner beyond the
+/// sessions (requests to connect, grants that end); then the work: today's
+/// sessions hour by hour, who sent work to which coding agent, the sessions
+/// that need the owner, run and ended last, the way to all of them, and
+/// each coding agent's day.
 struct OverviewView: View {
     @Environment(AppModel.self) private var model
     @Environment(\.scenePhase) private var phase
@@ -26,6 +28,7 @@ struct OverviewView: View {
     @AppStorage("hideSecondDevice") private var hideSecondDevice = false
 
     var body: some View {
+        ScrollViewReader { scroll in
         ScrollView {
             VStack(alignment: .leading, spacing: 26) {
                 UnreachableNotice()
@@ -38,16 +41,18 @@ struct OverviewView: View {
                                 .buttonStyle(.borderedProminent).accessibilityIdentifier("run-demo-task")
                         }.padding(.horizontal, 20)
                     } else { GetStarted() }
+                    if herEnvironments(model.machines).isEmpty { herOff }
                     todo
-                    working
+                    working { withAnimation { scroll.scrollTo(TeamLists.inProgress, anchor: .top) } }
                 } else { // nothing kept yet: the first launch, or after joining
                     PageLoader(text: "Reading your machines…")
                 }
             }
             .padding(.bottom, 40)
         }
+        }
         .background(Color(.systemGroupedBackground))
-        .navigationTitle("Overview")
+        .navigationTitle("Work")
         .navigationBarTitleDisplayMode(.inline) // in the bar: the range picker is the page's top
         .rootToolbar()
         .toolbar {
@@ -63,10 +68,30 @@ struct OverviewView: View {
         }
     }
 
+    /// Her runs nowhere: the way to her first run.
+    private var herOff: some View {
+        Button { model.open(.her) } label: {
+            HStack(spacing: 12) {
+                HerAvatar(size: 40, asleep: true)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Her isn’t on").font(.callout.weight(.semibold))
+                    Text("She runs on a computer of yours and leads these agents for you").font(.footnote).foregroundStyle(.secondary)
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                Image(systemName: "chevron.right").font(.caption.weight(.semibold)).foregroundStyle(.tertiary)
+            }
+            .padding(.horizontal, 14).padding(.vertical, 11)
+            .background(Color.accentColor.opacity(0.12), in: RoundedRectangle(cornerRadius: 26, style: .continuous))
+            .contentShape(.rect)
+        }
+        .buttonStyle(.plain)
+        .padding(.horizontal, 16)
+        .accessibilityIdentifier("her-off")
+    }
+
     private enum Todo: Identifiable {
         case pairing(PairingDetails)
         case expiring(Client)
-        case sessions(Int)
         case notificationsOff
         case secondDevice
 
@@ -74,7 +99,6 @@ struct OverviewView: View {
             switch self {
             case .pairing(let p): "p" + p.code
             case .expiring(let c): "g" + c.grantID
-            case .sessions: "s"
             case .notificationsOff: "n"
             case .secondDevice: "d"
             }
@@ -88,8 +112,7 @@ struct OverviewView: View {
     }
 
     @ViewBuilder private var todo: some View {
-        let waiting = model.sessions.filter(\.needsAttention).count
-        let items = model.pairings.map(Todo.pairing) + model.expiringClients.map(Todo.expiring) + (waiting > 0 ? [.sessions(waiting)] : [])
+        let items = model.pairings.map(Todo.pairing) + model.expiringClients.map(Todo.expiring)
             + (notificationsOff ? [.notificationsOff] : []) + (onlyDevice ? [.secondDevice] : [])
         if !items.isEmpty {
             Section {
@@ -99,12 +122,6 @@ struct OverviewView: View {
                         switch item {
                         case .pairing(let p): pairingRow(p)
                         case .expiring(let c): expiringRow(c)
-                        case .sessions(let n):
-                            row(open: { model.drawerOpen = true }) {
-                                Circle().fill(.orange).frame(width: 9, height: 9).frame(width: 28)
-                                Text("\(n) sessions need you").frame(maxWidth: .infinity, alignment: .leading)
-                            }
-                            .accessibilityIdentifier("sessions-waiting")
                         case .notificationsOff: notificationsRow
                         case .secondDevice: secondDeviceRow
                         }
@@ -181,9 +198,10 @@ struct OverviewView: View {
 
     /// The work over the range picked (today, or the last 7 or 30 days): the
     /// sessions at work, hour by hour or day by day, and what runs now; then
-    /// who asked which coding agent for the work, each coding agent's range
-    /// (those that worked first, then the others), and the machines.
-    private var working: some View {
+    /// who asked which coding agent for the work, the sessions as lists and
+    /// the way to all of them, and each coding agent's range (those that
+    /// worked first, then the others). toRunning: shows what runs.
+    private func working(toRunning: @escaping () -> Void) -> some View {
         let running = model.sessions.filter(\.isActive)
         let period = model.workPeriod
         let work = model.work[period]
@@ -211,11 +229,24 @@ struct OverviewView: View {
             .pickerStyle(.segmented)
             .padding(.bottom, 4)
             .accessibilityIdentifier("work-period")
-            WorkCard(running: running.count, work: work, period: period, now: now) { model.drawerOpen = true }
+            WorkCard(running: running.count, work: work, period: period, now: now, showRunning: toRunning)
             if let work, !flow.bands.isEmpty {
                 caption(flowTitle(period), detail: "\(work.turns) turns · \(tokensText(work.tokens)) tokens")
                 FlowCard(flow: flow, picked: $picked, clientName: { model.clientLabel($0) }, idle: idleClients.map { AgentLogo.name($0.label) }, period: period)
             }
+            TeamLists(team: teamState(model.sessions, requests: 0))
+            Button { model.path.append(.sessions) } label: {
+                HStack {
+                    Text("All Sessions").frame(maxWidth: .infinity, alignment: .leading)
+                    Image(systemName: "chevron.right").font(.caption.weight(.semibold)).foregroundStyle(.tertiary)
+                }
+                .padding(.horizontal, 16).frame(minHeight: 50)
+                .background(Color(.secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 26, style: .continuous))
+                .contentShape(.rect)
+            }
+            .buttonStyle(.plain)
+            .padding(.top, 4)
+            .accessibilityIdentifier("all-sessions")
             if !agents.isEmpty || reading {
                 HStack {
                     Text("Agents")
@@ -240,15 +271,6 @@ struct OverviewView: View {
             if let note = sourcesNote(work) {
                 Text(note).font(.caption).foregroundStyle(.secondary).padding(.horizontal, 4)
                     .accessibilityIdentifier("work-sources")
-            }
-            if !model.machines.isEmpty {
-                caption("Machines")
-                card {
-                    ForEach(Array(model.machines.enumerated()), id: \.element.machineID) { i, m in
-                        if i > 0 { Divider().padding(.leading, 50) }
-                        machineRow(m, running: running.filter { $0.machineID == m.machineID }.count)
-                    }
-                }
             }
         }
         .padding(.horizontal, 16)
@@ -371,37 +393,6 @@ struct OverviewView: View {
         .accessibilityIdentifier("agents-loading")
     }
 
-    private func machineRow(_ m: Machine, running: Int) -> some View {
-        Button { model.path.append(.machine(m.machineID)) } label: {
-            HStack(spacing: 10) {
-                Image(systemName: m.status.platform.contains("linux") ? "server.rack" : m.local ? "laptopcomputer" : "desktopcomputer")
-                    .frame(width: 26).foregroundStyle(m.online ? .secondary : .tertiary)
-                Text(m.machineName).lineLimit(1).foregroundStyle(m.online ? .primary : .secondary)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                Circle().fill(m.online ? Color.green : .clear).strokeBorder(m.online ? .clear : Color.secondary, lineWidth: 1.5)
-                    .frame(width: 8, height: 8)
-                Group {
-                    if !m.online {
-                        Text(m.hasLastSeen ? String(localized: "Offline · \(agoText(m.lastSeen.date, now: model.now))") : String(localized: "Offline"))
-                    } else if m.status.paused {
-                        Text("Paused")
-                    } else if running > 0 {
-                        Text("\(running) running")
-                    } else {
-                        Text("Online")
-                    }
-                }
-                .font(.subheadline).foregroundStyle(.secondary).monospacedDigit()
-                Image(systemName: "chevron.right").font(.caption.weight(.semibold)).foregroundStyle(.tertiary)
-            }
-            .padding(.horizontal, 14).frame(minHeight: 48)
-            .contentShape(.rect)
-        }
-        .buttonStyle(.plain)
-        .accessibilityElement(children: .combine)
-        .accessibilityIdentifier("machine-row-\(m.machineName)")
-    }
-
     private func caption(_ title: LocalizedStringKey, detail: LocalizedStringKey? = nil) -> some View {
         HStack {
             Text(title)
@@ -415,18 +406,6 @@ struct OverviewView: View {
     private func card(@ViewBuilder _ content: () -> some View) -> some View {
         VStack(spacing: 0, content: content)
             .background(Color(.secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 26, style: .continuous))
-    }
-
-    private func row(open: @escaping () -> Void, @ViewBuilder _ content: () -> some View) -> some View {
-        Button(action: open) {
-            HStack(spacing: 12) {
-                content()
-                Image(systemName: "chevron.right").font(.caption.weight(.semibold)).foregroundStyle(.tertiary)
-            }
-            .padding(.horizontal, 16).padding(.vertical, 13)
-            .contentShape(.rect)
-        }
-        .buttonStyle(.plain)
     }
 }
 
@@ -1002,13 +981,15 @@ struct UnreachableNotice: View {
 
 /// A session in a list, as the Mac's sidebar and the menu show it: its title
 /// (shimmering while it runs), and at its end a dot and a word for a state
-/// that is not plain (waiting, failed, preparing…); under it who started it,
-/// the coding agent and the project, and when. Without its metadata (the
-/// list's view menu), the first line alone, as tall as the menu's rows.
+/// that is not plain (waiting, failed, preparing…); under it who sent the
+/// work to which coding agent, the project, and when. Without its metadata
+/// (the list's view menu), the first line alone, as tall as the menu's rows.
+/// doing: while it runs, a third line names the tool it is in.
 struct SessionRow: View {
     @Environment(AppModel.self) private var model
     let session: Session
     var metadata = true
+    var doing = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 3) {
@@ -1028,11 +1009,14 @@ struct SessionRow: View {
             }
             if metadata {
                 HStack(spacing: 8) {
-                    Text("\(model.grantLabel(session)) · \(agentShortTitle(session.agent)) · \(session.projectID)")
+                    Text(model.senderLine(session))
                         .lineLimit(1).frame(maxWidth: .infinity, alignment: .leading)
                     time.monospacedDigit()
                 }
                 .font(.footnote).foregroundStyle(.secondary)
+            }
+            if doing, session.isActive, !session.progress.currentTool.isEmpty {
+                Text(session.progress.currentTool).font(.caption.monospaced()).foregroundStyle(.secondary).lineLimit(1)
             }
         }
         .padding(.horizontal, 16).padding(.vertical, metadata ? 9 : 0)

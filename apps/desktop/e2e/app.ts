@@ -39,7 +39,9 @@ export async function launch(
   socket = fixture.socket,
   // systemColors: pages see the app's own light or dark (Playwright makes them light otherwise).
   // dark: the app in dark; args: more of Electron's (the download page's screenshots).
-  o: { systemLanguages?: string[]; profile?: string; systemColors?: boolean; dark?: boolean; args?: string[]; env?: Record<string, string> } = {},
+  // start: leave the window on the start page it picks (docs/her-team.md §14.1); otherwise the fixture's owner
+  // window is put on Work, where most specs begin.
+  o: { systemLanguages?: string[]; profile?: string; systemColors?: boolean; dark?: boolean; args?: string[]; env?: Record<string, string>; start?: boolean } = {},
 ): Promise<{ app: ElectronApplication; page: Page }> {
   const languages = o.systemLanguages ?? ["zh-Hans"];
   const app = await electron.launch({
@@ -55,7 +57,17 @@ export async function launch(
     ...(o.systemColors ? { colorScheme: null } : o.dark ? { colorScheme: "dark" as const } : {}),
   });
   const page = await app.firstWindow();
+  if (socket === fixture.socket && !o.start) await openWork(app, page);
   return { app, page };
+}
+
+/**
+ * View → Work (⌘1), once the sidebar shows, so the window listens: a choice made before the start page is picked
+ * keeps it from being picked.
+ */
+export async function openWork(app: ElectronApplication, page: Page): Promise<void> {
+  await page.locator(".side-nav").waitFor({ timeout: 30_000 });
+  await app.evaluate(({ Menu }) => Menu.getApplicationMenu()?.getMenuItemById("overview")?.click());
 }
 
 /** Runs the agent CLI, as the fixture's agent. */
@@ -103,3 +115,6 @@ export async function answerMenu(app: ElectronApplication, id: string) {
     ipcMain.handle("popup-menu", () => id);
   }, id);
 }
+
+
+export { navTo, sessionList } from "./sessions";

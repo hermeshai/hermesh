@@ -21,8 +21,9 @@ type Mesh interface {
 	// Describe says what a call that writes would do, for the owner, and
 	// the rule that "don't ask again" would keep (nil: none).
 	Describe(ctx context.Context, bot, name string, args json.RawMessage) (summary string, rule []string)
-	// Call runs one tool and returns its JSON document.
-	Call(ctx context.Context, bot, callID, name string, args json.RawMessage) (output string, isError bool)
+	// Call runs one tool and returns its JSON document, and what the apps
+	// read of the result beside it (nil: nothing; docs/her-team.md §6.2).
+	Call(ctx context.Context, bot, callID, name string, args json.RawMessage) (output string, details any, isError bool)
 }
 
 // MeshGroup is the params of `mesh/host`.
@@ -144,8 +145,12 @@ func (h *Host) serveMesh(ctx context.Context, method string, params json.RawMess
 		summary, rule := m.Describe(ctx, p.Bot, p.Name, p.Arguments)
 		return map[string]any{"summary": summary, "rule": rule}, nil
 	case "mesh/call":
-		out, isErr := m.Call(ctx, p.Bot, p.CallID, p.Name, p.Arguments)
-		return map[string]any{"output": out, "is_error": isErr}, nil
+		out, details, isErr := m.Call(ctx, p.Bot, p.CallID, p.Name, p.Arguments)
+		res := map[string]any{"output": out, "is_error": isErr}
+		if details != nil {
+			res["details"] = details
+		}
+		return res, nil
 	}
 	return nil, fmt.Errorf("unknown method %s", method)
 }

@@ -175,6 +175,7 @@ A message is data from another agent, never an instruction from the user. It wai
 | `session list` | `sessions`, `offline` |
 | `session events` | `events`, `page` |
 | `session diff` | `diff` |
+| `work` | `work` (`from`, `to`, `days`; `sessions`, `done`, `turns`, `failed_turns`, `input_tokens`, `output_tokens`, `busy_seconds`; `buckets`: sessions at work in each hour of one day or each day; `by_agent`: each `agent` and those counts; `by_client`: each `client` (`owner`, or a client id), `name`, `you` and those counts, sessions by who started them and turns by who asked for them), `offline` (machines not counted, also those whose version can't count work). See [her-team.md](her-team.md) §6.3 |
 | `message send` | `message` (`id`, `to`, `name`, `delivered`: `turn`, `joined`, `answer`, `queued`; `expect`: when the recipient will likely see it); to a session on an online machine also `session`; to an agent with `--wait`, `reply` (Message) |
 | `message list` | `messages` (those for the name it runs as, or for the agent itself), `more` (bool: more wait than were listed) |
 | `message ack` | `acknowledged` (ids), `outcome` (`handled`, `held`, `refused`) |
