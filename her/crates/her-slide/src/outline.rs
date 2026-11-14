@@ -2,7 +2,7 @@
 //! notes and objects, taken from the engine snapshot. Positions are points from the slide's top
 //! left, like the deck protocol.
 
-use betteroffice_pptx::{DeckSnapshot, ShapeKind, ShapeSnapshot, SlideSnapshot};
+use nimbleoffice_pptx::{DeckSnapshot, ShapeKind, ShapeSnapshot, SlideSnapshot};
 
 /// EMU in a point.
 const EMU_PER_PT: f64 = 12_700.0;
@@ -142,7 +142,7 @@ fn object(shape: &ShapeSnapshot, depth: usize, out: &mut Vec<ObjectOutline>) {
 }
 
 fn kind(shape: &ShapeSnapshot, placeholder: Option<&str>) -> &'static str {
-    use betteroffice_pptx::GraphicFrameData;
+    use nimbleoffice_pptx::GraphicFrameData;
     match shape.kind {
         ShapeKind::Group => "group",
         ShapeKind::Picture => "picture",
@@ -160,7 +160,7 @@ fn kind(shape: &ShapeSnapshot, placeholder: Option<&str>) -> &'static str {
 }
 
 fn cells(shape: &ShapeSnapshot) -> Option<Vec<Vec<String>>> {
-    use betteroffice_pptx::GraphicFrameData;
+    use nimbleoffice_pptx::GraphicFrameData;
     let cols = match &shape.graphic {
         Some(GraphicFrameData::Table(t)) if !t.grid.is_empty() => t.grid.len(),
         _ => shape.table_structure.as_ref().map(|t| t.grid.len()).filter(|&n| n > 0)?,
@@ -175,7 +175,7 @@ fn hex(c: &str) -> String {
     format!("#{}", c.get(..6).unwrap_or(c).to_ascii_uppercase())
 }
 
-fn fill_name(fill: &betteroffice_pptx::ShapeFill) -> Option<String> {
+fn fill_name(fill: &nimbleoffice_pptx::ShapeFill) -> Option<String> {
     match fill.fill_type.as_str() {
         "none" => None,
         "solid" => fill.color.as_ref().and_then(|c| c.rgb.as_deref().map(hex).or_else(|| c.theme_color.as_ref().map(|t| format!("theme {t}")))),

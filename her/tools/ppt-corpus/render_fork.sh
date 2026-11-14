@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Render decks natively with her-slide against a local BetterOffice checkout.
+# Render decks natively with her-slide against a local NimbleOffice checkout.
 # usage: render_fork.sh FORK_DIR OUT_DIR DECK.pptx [DECK.pptx ...]
 # Builds a throwaway crate in $TMPDIR keyed by FORK_DIR; her-slide's system fonts are used.
 set -euo pipefail
@@ -15,8 +15,8 @@ version = "0.0.0"
 edition = "2021"
 [dependencies]
 her-slide = { path = "$repo/crates/her-slide" }
-[patch."https://github.com/Eliseowzy/betteroffice"]
-betteroffice-pptx = { path = "$fork/crates/betteroffice-pptx" }
+[patch."https://github.com/Eliseowzy/nimbleoffice"]
+nimbleoffice-pptx = { path = "$fork/crates/nimbleoffice-pptx" }
 [profile.release]
 debug = false
 [workspace]

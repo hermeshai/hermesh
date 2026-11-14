@@ -58,13 +58,13 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: build her
-        # The PPT and Word engines are a private fork (her/Cargo.toml): cargo fetches it with this token.
+        # The PPT and Word engines are a private repository (her/Cargo.toml): cargo fetches it with this token.
         env:
-          BETTEROFFICE_TOKEN: ${{ secrets.BETTEROFFICE_TOKEN }}
+          NIMBLEOFFICE_TOKEN: ${{ secrets.NIMBLEOFFICE_TOKEN }}
         run: |
           toolchain="$(sed -n 's/^channel = "\(.*\)"/\1/p' her/rust-toolchain.toml)"
-          docker run --rm -v "$PWD/her:/src" -w /src -e BETTEROFFICE_TOKEN -e CARGO_NET_GIT_FETCH_WITH_CLI=true -e RUSTUP_TOOLCHAIN="$toolchain-$(uname -m)-unknown-linux-musl" "rust:$toolchain-alpine" \
-            sh -c 'apk add --no-cache build-base perl linux-headers git >/dev/null && { [ -z "$BETTEROFFICE_TOKEN" ] || git config --global url."https://x-access-token:${BETTEROFFICE_TOKEN}@github.com/Eliseowzy/betteroffice".insteadOf https://github.com/Eliseowzy/betteroffice; } && cargo build --profile dist --locked -p her-cli --bin her --no-default-features'
+          docker run --rm -v "$PWD/her:/src" -w /src -e NIMBLEOFFICE_TOKEN -e CARGO_NET_GIT_FETCH_WITH_CLI=true -e RUSTUP_TOOLCHAIN="$toolchain-$(uname -m)-unknown-linux-musl" "rust:$toolchain-alpine" \
+            sh -c 'apk add --no-cache build-base perl linux-headers git >/dev/null && { [ -z "$NIMBLEOFFICE_TOKEN" ] || git config --global url."https://x-access-token:${NIMBLEOFFICE_TOKEN}@github.com/Eliseowzy/nimbleoffice".insteadOf https://github.com/Eliseowzy/nimbleoffice; } && cargo build --profile dist --locked -p her-cli --bin her --no-default-features'
           cp her/target/dist/her her-linux-${{ matrix.arch }}
           ./her-linux-${{ matrix.arch }} --version
       - uses: actions/upload-artifact@v4
@@ -216,16 +216,16 @@ jobs:
           else
             echo "::warning::MACOS_SIGNER_PROFILE is not set: the signer keeps the root key's Secure Enclave handle in a file"
           fi
-      # The PPT and Word engines are a private fork (her/Cargo.toml): cargo fetches it with this token.
-      - name: Read access to the BetterOffice fork
+      # The PPT and Word engines are a private repository (her/Cargo.toml): cargo fetches it with this token.
+      - name: Read access to the NimbleOffice fork
         env:
-          BETTEROFFICE_TOKEN: ${{ secrets.BETTEROFFICE_TOKEN }}
+          NIMBLEOFFICE_TOKEN: ${{ secrets.NIMBLEOFFICE_TOKEN }}
         run: |
-          if [ -z "$BETTEROFFICE_TOKEN" ]; then
-            echo "::warning::BETTEROFFICE_TOKEN is not set: cargo cannot fetch github.com/Eliseowzy/betteroffice"
+          if [ -z "$NIMBLEOFFICE_TOKEN" ]; then
+            echo "::warning::NIMBLEOFFICE_TOKEN is not set: cargo cannot fetch github.com/Eliseowzy/nimbleoffice"
             exit 0
           fi
-          git config --global url."https://x-access-token:${BETTEROFFICE_TOKEN}@github.com/Eliseowzy/betteroffice".insteadOf "https://github.com/Eliseowzy/betteroffice"
+          git config --global url."https://x-access-token:${NIMBLEOFFICE_TOKEN}@github.com/Eliseowzy/nimbleoffice".insteadOf "https://github.com/Eliseowzy/nimbleoffice"
           echo "CARGO_NET_GIT_FETCH_WITH_CLI=true" >> "$GITHUB_ENV"
       - name: build, sign, notarize
         run: VERSION="${GITHUB_REF_NAME#v}" HERMESH_ARCH=${{ matrix.arch }} node apps/desktop/scripts/build-app.mjs
