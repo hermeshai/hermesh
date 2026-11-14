@@ -527,6 +527,9 @@ func WithNet(net transport.Net) AgentOption {
 		}
 
 		a.net = net
+		if _, ok := net.(*BoundedNATPunchNet); ok {
+			a.boundedPunchEnabled = true
+		}
 
 		return nil
 	}

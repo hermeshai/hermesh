@@ -371,7 +371,12 @@ type CandidatesRequest struct {
 	Complete bool `protobuf:"varint,4,opt,name=complete,proto3" json:"complete,omitempty"`
 	// How many of the machine's candidates the viewer has from the call
 	// before. A machine that has no more yet waits up to a second for one.
-	Have          uint32 `protobuf:"varint,5,opt,name=have,proto3" json:"have,omitempty"`
+	Have uint32 `protobuf:"varint,5,opt,name=have,proto3" json:"have,omitempty"`
+	// What the viewer found of its own side, for the machine's log, where
+	// the owner can read why a session took the path it did: how long the
+	// offer took to be answered, and how its network maps its packets
+	// (internal/screen's probeNAT). Not used for anything else.
+	Network       string `protobuf:"bytes,6,opt,name=network,proto3" json:"network,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -439,6 +444,13 @@ func (x *CandidatesRequest) GetHave() uint32 {
 		return x.Have
 	}
 	return 0
+}
+
+func (x *CandidatesRequest) GetNetwork() string {
+	if x != nil {
+		return x.Network
+	}
+	return ""
 }
 
 type CandidatesResponse struct {
@@ -1347,7 +1359,7 @@ const file_hermesh_screen_v1_screen_proto_rawDesc = "" +
 	"\x06answer\x18\x01 \x01(\tR\x06answer\x12\x1d\n" +
 	"\n" +
 	"session_id\x18\x02 \x01(\tR\tsessionId\x12)\n" +
-	"\x10candidates_later\x18\x03 \x01(\bR\x0fcandidatesLater\"\x98\x01\n" +
+	"\x10candidates_later\x18\x03 \x01(\bR\x0fcandidatesLater\"\xb2\x01\n" +
 	"\x11CandidatesRequest\x12\x1d\n" +
 	"\n" +
 	"session_id\x18\x01 \x01(\tR\tsessionId\x12\x14\n" +
@@ -1356,7 +1368,8 @@ const file_hermesh_screen_v1_screen_proto_rawDesc = "" +
 	"candidates\x18\x03 \x03(\tR\n" +
 	"candidates\x12\x1a\n" +
 	"\bcomplete\x18\x04 \x01(\bR\bcomplete\x12\x12\n" +
-	"\x04have\x18\x05 \x01(\rR\x04have\"f\n" +
+	"\x04have\x18\x05 \x01(\rR\x04have\x12\x18\n" +
+	"\anetwork\x18\x06 \x01(\tR\anetwork\"f\n" +
 	"\x12CandidatesResponse\x12\x1e\n" +
 	"\n" +
 	"candidates\x18\x01 \x03(\tR\n" +

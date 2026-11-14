@@ -95,7 +95,7 @@ func (o *Owner) herOn(ctx context.Context, machineID string) (herMachine, error)
 	if err != nil {
 		return nil, connect.NewError(connect.CodeUnavailable, err)
 	}
-	return herRemote{her: n.Her, http: n.HTTP(), forget: func() { c.Forget(machineID) }}, nil
+	return herRemote{her: n.Her, http: n.HTTP(), forget: func() { c.ForgetMachine(n) }}, nil
 }
 
 // herRemote is HerService on another machine, through its tunnel (its
@@ -250,7 +250,7 @@ func (o *Owner) SetHer(ctx context.Context, machineID string, enabled, erase boo
 	}
 	res, err := remote.Admin.ApplyAdminCommand(ctx, &machinev1.ApplyAdminCommandRequest{Command: signed[0]})
 	if err != nil {
-		c.Forget(machineID)
+		c.ForgetMachine(remote)
 		return err
 	}
 	if !enabled {

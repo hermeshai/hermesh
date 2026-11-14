@@ -68,6 +68,11 @@ message CandidatesRequest {
   // How many of the machine's candidates the viewer has from the call
   // before. A machine that has no more yet waits up to a second for one.
   uint32 have = 5;
+  // What the viewer found of its own side, for the machine's log, where
+  // the owner can read why a session took the path it did: how long the
+  // offer took to be answered, and how its network maps its packets
+  // (internal/screen's probeNAT). Not used for anything else.
+  string network = 6;
 }
 
 message CandidatesResponse {

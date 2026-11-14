@@ -13,6 +13,7 @@ import (
 	"github.com/pion/interceptor"
 	"github.com/pion/interceptor/pkg/cc"
 	"github.com/pion/interceptor/pkg/gcc"
+	"github.com/pion/stun/v4"
 	"github.com/pion/transport/v5"
 	"github.com/pion/webrtc/v4"
 
@@ -41,7 +42,7 @@ const (
 // newAPI is pion set up the same way on both ends: H.264 only, lost packets
 // asked for again, and on the sending side a bandwidth estimate (estimate
 // receives it once the connection has a stream).
-func newAPI(estimate func(cc.BandwidthEstimator), network transport.Net) (*webrtc.API, error) {
+func newAPI(estimate func(cc.BandwidthEstimator), network transport.Net, observed func(ice.Candidate, ice.Candidate)) (*webrtc.API, error) {
 	m := &webrtc.MediaEngine{}
 	if err := m.RegisterCodec(webrtc.RTPCodecParameters{RTPCodecCapability: h264, PayloadType: 102}, webrtc.RTPCodecTypeVideo); err != nil {
 		return nil, err
@@ -69,6 +70,12 @@ func newAPI(estimate func(cc.BandwidthEstimator), network transport.Net) (*webrt
 		return nil, err
 	}
 	var s webrtc.SettingEngine
+	if observed != nil {
+		s.SetICEBindingRequestHandler(func(_ *stun.Message, local, remote ice.Candidate, _ *ice.CandidatePair) bool {
+			observed(local, remote)
+			return false // observe authenticated checks without selecting a path
+		})
+	}
 	// No mDNS names: an iPhone app may not send multicast without asking.
 	s.SetICEMulticastDNSMode(ice.MulticastDNSModeDisabled)
 	s.SetNetworkTypes([]webrtc.NetworkType{webrtc.NetworkTypeUDP4, webrtc.NetworkTypeUDP6})

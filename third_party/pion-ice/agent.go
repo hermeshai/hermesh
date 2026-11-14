@@ -34,6 +34,7 @@ import (
 type bindingRequest struct {
 	timestamp       time.Time
 	transactionID   [stun.TransactionIDSize]byte
+	local           Candidate // The sender, before a shared socket demultiplexes the response.
 	destination     netip.AddrPort
 	networkType     NetworkType // Transport the request was sent over; destination alone omits it.
 	isControlling   bool        // Role advertised in this request.
@@ -188,6 +189,9 @@ type Agent struct {
 	automaticRenomination bool
 	renominationInterval  time.Duration
 	lastRenominationTime  time.Time
+	boundedPunchEnabled   bool
+	boundedPunchState     boundedPunchState
+	birthdayPunchState    *birthdayPunchState
 
 	turnClientFactory func(*turn.ClientConfig) (turnClient, error)
 }
@@ -783,6 +787,9 @@ func (a *Agent) setSelectedPair(pair *CandidatePair) {
 
 	pair.nominated = true
 	a.selectedPair.Store(pair)
+	if pair.Local.Type() != CandidateTypeRelay && pair.Remote.Type() != CandidateTypeRelay {
+		a.stopBirthdayPunch("direct")
+	}
 	a.log.Tracef("Set selected candidate pair: %s", pair)
 
 	// Signal connected: notify any Connect() calls waiting on onConnected
@@ -1444,6 +1451,7 @@ func (a *Agent) addCandidate(
 		}
 
 		a.setCandidateExtensions(cand, candidateGeneration)
+		a.markBirthdayCandidate(cand)
 		cand.start(a, candidateConn, a.startedCh)
 		a.setUniqueLiteCandidatePriority(cand)
 
@@ -1643,6 +1651,7 @@ func (a *Agent) abortStartedCandidateIO() {
 //
 // This is used for restarts, failures and on close.
 func (a *Agent) deleteAllCandidates() {
+	a.stopBirthdayPunch("restart-or-close")
 	for net, cs := range a.localCandidates {
 		for _, c := range cs {
 			if err := c.close(); err != nil {
@@ -1696,6 +1705,7 @@ func (a *Agent) sendBindingRequest(msg *stun.Message, local, remote Candidate) {
 	a.pendingBindingRequests = append(a.pendingBindingRequests, bindingRequest{
 		timestamp:       time.Now(),
 		transactionID:   msg.TransactionID,
+		local:           local,
 		destination:     remote.addrPort(),
 		networkType:     remote.NetworkType(),
 		isControlling:   msg.Contains(stun.AttrICEControlling),
@@ -1948,6 +1958,7 @@ func (a *Agent) handleInboundRequest(
 	}
 
 	a.getSelector().HandleBindingRequest(msg, local, remoteCandidate)
+	a.handleBirthdayRequest(msg, local, remoteCandidate)
 
 	return remoteCandidate, true
 }
@@ -2359,8 +2370,10 @@ func (a *Agent) evaluateCandidatePairQuality(pair *CandidatePair) float64 { //no
 		remoteTypeScore = 0
 	}
 
-	// Combined type score (average of local and remote)
-	score += (localTypeScore + remoteTypeScore) / 2
+	// A host on one end does not make a relayed path direct. Use the
+	// weaker end, as pair priority does, so host-relay cannot outrank a
+	// working srflx-prflx path merely because of its host candidate.
+	score += min(localTypeScore, remoteTypeScore)
 
 	// RTT scoring (convert to penalty, lower RTT = higher score)
 	// Use current RTT if available, otherwise assume high latency
@@ -2401,8 +2414,8 @@ func (a *Agent) shouldRenominate(current, candidate *CandidatePair) bool { //nol
 	// Type-based switching (always prefer direct over relay)
 	currentIsRelay := current.Local.Type() == CandidateTypeRelay ||
 		current.Remote.Type() == CandidateTypeRelay
-	candidateIsDirect := candidate.Local.Type() == CandidateTypeHost &&
-		candidate.Remote.Type() == CandidateTypeHost
+	candidateIsDirect := candidate.Local.Type() != CandidateTypeRelay &&
+		candidate.Remote.Type() != CandidateTypeRelay
 
 	if currentIsRelay && candidateIsDirect {
 		a.log.Debugf("Should renominate: relay -> direct connection available")
@@ -2410,7 +2423,8 @@ func (a *Agent) shouldRenominate(current, candidate *CandidatePair) bool { //nol
 		return true
 	}
 
-	// RTT-based switching (must improve by at least 10ms)
+	// Require both an absolute and relative gain. A 20 ms fluctuation on
+	// a 500 ms relay must not move the media path every keepalive.
 	currentRTT := current.CurrentRoundTripTime()
 	candidateRTT := candidate.CurrentRoundTripTime()
 
@@ -2420,18 +2434,19 @@ func (a *Agent) shouldRenominate(current, candidate *CandidatePair) bool { //nol
 		candidateRTTDuration := time.Duration(candidateRTT * float64(time.Second))
 		rttImprovement := currentRTTDuration - candidateRTTDuration
 
-		if rttImprovement > 10*time.Millisecond {
+		if rttImprovement > max(10*time.Millisecond, currentRTTDuration*15/100) {
 			a.log.Debugf("Should renominate: RTT improvement of %v", rttImprovement)
 
 			return true
 		}
 	}
 
-	// Quality score comparison (must improve by at least 15%)
+	// Scores can be near zero or negative on a distant relay. Multiplying
+	// a negative score by 1.15 used to accept even a worse path.
 	currentScore := a.evaluateCandidatePairQuality(current)
 	candidateScore := a.evaluateCandidatePairQuality(candidate)
 
-	if candidateScore > currentScore*1.15 {
+	if candidateScore-currentScore > max(5, math.Abs(currentScore)*0.15) {
 		a.log.Debugf("Should renominate: quality score improved from %.2f to %.2f",
 			currentScore, candidateScore)
 

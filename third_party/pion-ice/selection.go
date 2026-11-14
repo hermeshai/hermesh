@@ -4,6 +4,7 @@
 package ice
 
 import (
+	"net"
 	"net/netip"
 	"time"
 
@@ -25,16 +26,62 @@ func responseSymmetric(pendingRequest *bindingRequest, local Candidate, remoteAd
 		addrPortEqual(pendingRequest.destination, remoteAddr)
 }
 
+// responseLocal restores the check's sender when a shared UDP socket delivers
+// its response through another host/srflx reader. Only the same physical mux
+// may do this: matching advertised addresses alone do not prove socket identity.
+func responseLocal(request *bindingRequest, received Candidate) Candidate {
+	if request.local == nil {
+		return received
+	}
+	if request.local == received || (request.local.ID() != "" && request.local.ID() == received.ID()) {
+		return request.local
+	}
+	if mux := candidateUDPMux(request.local); mux != nil && mux == candidateUDPMux(received) {
+		return request.local
+	}
+
+	return nil
+}
+
+func candidateUDPMux(candidate Candidate) *UDPMuxDefault {
+	var conn net.PacketConn
+	switch c := candidate.(type) {
+	case *candidateBase:
+		conn = c.conn
+	case *CandidateHost:
+		conn = c.conn
+	case *CandidateServerReflexive:
+		conn = c.conn
+	default:
+		return nil
+	}
+	switch c := conn.(type) {
+	case *hostUDPMuxConn:
+		return c.mux.UDPMuxDefault
+	case *sharedAddrPortConn:
+		conn = c.underlying
+	case *sharedPacketConn:
+		conn = c.underlying
+	}
+	if c, ok := conn.(*udpMuxedConn); ok {
+		return c.params.Mux
+	}
+
+	return nil
+}
+
 type controllingSelector struct {
-	startTime     time.Time
-	agent         *Agent
-	nominatedPair *CandidatePair
-	log           logging.LeveledLogger
+	startTime      time.Time
+	agent          *Agent
+	nominatedPair  *CandidatePair
+	lastNomination *uint32
+	log            logging.LeveledLogger
 }
 
 func (s *controllingSelector) Start() {
 	s.startTime = time.Now()
 	s.nominatedPair = nil
+	s.lastNomination = nil
 }
 
 func (s *controllingSelector) isNominatable(c Candidate) bool {
@@ -68,6 +115,7 @@ func (s *controllingSelector) ContactCandidates() {
 			}
 
 			s.checkForAutomaticRenomination()
+			s.agent.startBirthdayPunch()
 		}
 	case s.nominatedPair != nil:
 		s.nominatePair(s.nominatedPair)
@@ -184,6 +232,12 @@ func (s *controllingSelector) HandleSuccessResponse(
 		return
 	}
 
+	local = responseLocal(pendingRequest, local)
+	if local == nil {
+		s.log.Debug("Discard success response received on a different local socket")
+
+		return
+	}
 	s.log.Tracef("Inbound STUN (SuccessResponse) from %s to %s", remote, local)
 	pair := s.agent.findPair(local, remote)
 
@@ -201,12 +255,16 @@ func (s *controllingSelector) HandleSuccessResponse(
 	if pendingRequest.isUseCandidate {
 		selectedPair := s.agent.getSelectedPair()
 
-		// If this is a renomination request (has nomination value), always update the selected pair
-		// If it's a standard nomination (no value), only set if no pair is selected yet
+		// Delayed responses must not undo a newer successful renomination.
+		// Standard nomination only selects the initial pair.
 		if pendingRequest.nominationValue != nil {
-			s.log.Infof("Renomination success response received for pair %s (nomination value: %d), switching to this pair",
-				pair, *pendingRequest.nominationValue)
-			s.agent.setSelectedPair(pair)
+			value := *pendingRequest.nominationValue
+			if s.lastNomination == nil || value > *s.lastNomination {
+				s.lastNomination = &value
+				s.log.Infof("Renomination success response received for pair %s (nomination value: %d), switching to this pair",
+					pair, value)
+				s.agent.setSelectedPair(pair)
+			}
 		} else if selectedPair == nil {
 			s.agent.setSelectedPair(pair)
 		}
@@ -361,6 +419,17 @@ func (s *controlledSelector) ContactCandidates() {
 		if s.agent.validateSelectedPair() {
 			s.log.Trace("Checking keepalive")
 			s.agent.checkKeepalive()
+			pair := s.agent.getSelectedPair()
+			s.agent.startBirthdayPunch()
+			if s.agent.automaticRenomination && pair != nil &&
+				(pair.Local.Type() == CandidateTypeRelay || pair.Remote.Type() == CandidateTypeRelay) {
+				// Late direct candidates need outbound checks at both NATs.
+				// Only the controlling end nominates, but it cannot open this
+				// end's filter. These checks retain maxBindingRequests and stop
+				// on succeeded/failed pairs, rather than probing forever.
+				s.agent.pingAllCandidates()
+				s.agent.startBoundedPunch()
+			}
 		}
 	} else {
 		s.agent.pingAllCandidates()
@@ -419,6 +488,12 @@ func (s *controlledSelector) HandleSuccessResponse(
 		return
 	}
 
+	local = responseLocal(pendingRequest, local)
+	if local == nil {
+		s.log.Debug("Discard success response received on a different local socket")
+
+		return
+	}
 	s.log.Tracef("Inbound STUN (SuccessResponse) from %s to %s", remote, local)
 
 	pair := s.agent.findPair(local, remote)
