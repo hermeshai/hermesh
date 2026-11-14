@@ -1,7 +1,8 @@
 # Her and her team: one product from Her and the mesh
 
 Status: stage 1 built on the iPhone 2026-11-13, with acceptance results
-updated 2026-11-14 (§13); stage 2 (§6) is not built. The
+updated 2026-11-14 (§13); stage 2 (§6) decided 2026-11-14 (all three, B1,
+B3 then B2), designed in §6.1 to §6.5 and built 2026-11-15 (§6.6). The
 interaction was agreed on a clickable iPhone prototype on 2026-11-13; this
 document says what it takes to build it on the system as it is. It covers
 the iPhone app.
@@ -318,6 +319,179 @@ stage 1 holds the contract meanwhile (§9).
 The relay and the center change in neither stage. No new enum value
 crosses the hosted MCP.
 
+**Decided 2026-11-14:** all three, in the order B1, B3, B2. The owner
+accepted B1's wider reach (§6.1, Security).
+
+### 6.1 B1: Her acts on every session she can read
+
+**The rule.** A machine lets a client change a session (`canWrite`) when
+the client started it, **or** the client's grant carries `her_machine_id`
+and the client may read the session (`canRead`: Her's grant sees every
+task). `canWrite` decides `session send`, answering a question, interrupt,
+archive and unarchive. Rename and delete stay the owner's.
+
+What she already had: `message send --to <session>` (her `session_send`)
+is delivered under the read rule and the grant's projects and agents, not
+under `canWrite` (`Sessions.Deliver`). So B1 adds answering, stopping,
+archiving and unarchiving; writing worked before.
+
+**Security.** A compromised Her Server could already write to every session
+she reads, which is running any command where it runs. B1 adds stopping a
+turn (it loses that turn), archiving (undone by unarchive; the branch keeps
+the work) and answering a question. The exception holds only for a grant
+signed by the owner's root key with `her_machine_id`, which only the
+owner's app makes, for one Her key. The audit log names Her as the subject
+of each change, as for every client.
+
+**News.** Her's `session_send` makes her the one who asked for that turn,
+so its news comes to her (machines already write news to the turn's asker,
+[her-mesh.md](her-mesh.md) §6.1). An answer does not: the turn's news
+still goes to whoever asked for it, and to the session's creator.
+
+**Approval.** Unchanged. A write or an answer to a session she did not
+start has no "don't ask again" rule and is asked every time
+([her-mesh.md](her-mesh.md) §5). Interrupt and archive run unasked, as for
+her own.
+
+**Words.** The tools stop saying "of yours" (`session_answer`,
+`session_interrupt`, `session_archive`, `session_unarchive`,
+`session_list`), and one guideline is added:
+
+> A session the user or another agent started is theirs. Answer, write
+> to, stop or archive it only when the user asks for that session, and say
+> whose it is.
+
+**Older machines** refuse as today ("only the client that started the
+session may change it"), and Her says so. Nothing changes on the phone.
+
+### 6.2 B3: a mesh tool's result carries details
+
+- `MeshCallResult` gains `details`, any JSON, absent by default. The kernel
+  hands it to the tool result (`ToolOutput::with_details`); `call_tool`
+  already passes a deferred tool's details through. A host that sends
+  none changes nothing.
+- hermeshd's `Mesh.Call` returns details beside the text. `herlink` fills
+  them for `session_start`, `{"session": {session_id, title, agent,
+  machine, machine_id, project}}`, and for `work_summary`, `{"work": …}`
+  (§6.3).
+- The app takes Her's session card from `details.session` first and keeps
+  reading the text when there are none: a Her Server on an older hermeshd.
+  Details are not cut, as a long text result is.
+
+### 6.3 B2: what the team did, as numbers and a card
+
+**The CLI.** `hermesh work [--days N] [--machine M] [--time-zone TZ]`.
+It pulls each reachable machine's counts with `PullWork` (from the range's
+first hour, page by page) and adds them up as `QueryWork` does on an
+owner device ([work-stats.md](work-stats.md) §7). Machines already serve
+`PullWork` to clients and filter it by the read rule, so no machine
+changes. A day runs from midnight in `--time-zone` (an IANA name; default
+the computer's); `--days` is 1 (today) to 31.
+
+```json
+{"ok": true, "exit_code": 0, "error": null,
+ "work": {
+   "from": "2026-11-14T00:00:00+08:00", "to": "2026-11-15T00:00:00+08:00", "days": 1,
+   "sessions": 11, "done": 8, "turns": 40, "failed_turns": 2,
+   "input_tokens": 912000, "output_tokens": 41000, "busy_seconds": 5400,
+   "buckets": [0, 0, 1, 3, …],
+   "by_agent":  [{"agent": "claude", "sessions": 7, "done": 5, "turns": 30, "failed_turns": 1, "busy_seconds": 4000}],
+   "by_client": [{"client": "c_…", "name": "Grok", "you": false, "sessions": 4, "done": 3, "turns": 9, "failed_turns": 0, "busy_seconds": 900}]
+ },
+ "offline": []}
+```
+
+- `sessions` are sessions at work in the range, each once; `done`, those
+  idle after a good turn or archived now; `buckets`, sessions at work in
+  each hour (one day) or each day.
+- `by_client`: sessions by who started them, turns by who asked for them,
+  as on Work. `client` is `owner` for the user; `you` marks the client
+  that runs the command. Names come from the owner's contacts (`message
+  contacts`); a client without one has its id.
+- A machine that is off, or answers `PullWork` with "unimplemented" (a
+  version before work counts), is listed under `offline`, and its work is
+  not counted.
+- Not added to `cli.Tools()`: the MCP gateway's agents don't get it in
+  this step, so the hosted MCP doesn't change.
+
+**The tool.** `work_summary` in the `mesh` group, read-only, runs `work`
+with `days` and `machine`. Its description:
+
+> What the coding agents on the user's computers did over the last days:
+> sessions at work, how many are done, turns, failed turns, tokens and
+> time, by coding agent and by who sent the work (the user, you, or
+> another agent). Use it when the user asks what the team or their agents
+> did. The app shows the numbers as a card above your reply: say in words
+> what stands out, not every number.
+
+**The card.** `herChat` makes a work row for a `work_summary` call that
+succeeded and has `details.work`, as it makes a session row. It is drawn
+like Work's card, smaller: the number of sessions, "Done 8 · 40 turns ·
+953K tokens", a bar for each hour or day, and the agents and senders with
+their logos. A tap opens Work.
+
+### 6.4 Changes by module (stage 2)
+
+| Module | Change |
+|---|---|
+| `internal/machine/sessions.go` | `canWrite`: Her's exception (B1) |
+| `her/crates/her-protocol` | `MeshCallResult.details`; schema |
+| `her/crates/her-core/src/mesh.rs` | Passes the details to the tool result |
+| `internal/herhost/mesh.go` | `Mesh.Call` returns details; `mesh/call` sends them |
+| `internal/cli` | `hermesh work` |
+| `internal/herlink` | Details for `session_start` and `work_summary`; the new tool; B1's words |
+| `packages/HermeshKit/Sources/HermeshHer/Chat.swift` | Session row from details; the work row |
+| `apps/ios/Hermesh/Views/Her/HerConversation.swift` | The work card |
+| `docs/her-mesh.md`, `docs/cli.md`, `docs/cli-output.md` | The rule, the tool, the command |
+
+### 6.5 Tests (stage 2)
+
+- **B1, unit** (`internal/machine`): Her's grant answers, interrupts,
+  archives and unarchives another client's session; an ordinary grant that
+  sees every task still can't; rename and delete stay the owner's.
+- **B3, unit**: the kernel puts a host's details on the tool result
+  (`her-core/tests/mesh.rs`); `herhost` sends them; `herChat` prefers
+  `details.session` and still reads the text without it.
+- **B2, unit** (`internal/cli`): adding up pages from two machines over a
+  range, by agent and client, with a session in both halves of the range
+  counted once.
+- **End to end** (`TestHerMesh`, real hermeshd and Her, scripted coding
+  agents): `session_start`'s result carries `details.session`; another
+  agent (the test's CLI) starts a session that asks, and Her answers it
+  with `session_answer`, then stops another of its sessions with
+  `session_interrupt`; `work_summary` counts the sessions of both, with
+  her own marked `you`.
+- **iPhone** (`TestIPhone`, `testHerTeam`): Her's work card appears and
+  opens Work.
+
+### 6.6 Acceptance, 2026-11-15
+
+Passed:
+
+- `go test ./internal/machine ./internal/cli ./internal/herlink
+  ./internal/herhost ./pkg/mcpgw ./internal/workstats`, including
+  `TestHerActsOnEverySession` (observed failing before the rule changed),
+  `TestCountWork` and `TestDetails`.
+- `cargo test -p her-protocol` (the schema regenerated),
+  `-p her-core --test mesh`, `-p her-server mesh_host`; the TypeScript
+  types regenerated from the schema.
+- `swift test --package-path packages/HermeshKit --filter ChatTests`: the
+  session card from details and from text, and the work card.
+- `HERMESH_FAKE_PROVIDERS=1 HERMESH_HER_BIN=… go test ./e2e -run
+  '^TestHerMesh$'`: real hermeshd and Her with scripted coding agents;
+  `details.session` on `session_start`; Her answers the test CLI's
+  session (asked first) and stops another of its sessions (unasked);
+  `work_summary` counts both, Her's marked `you`.
+- `TestIPhone` with `HERMESH_IPHONE_GREP=testHerTeam`, iOS 27.2: the
+  stage 1 team flow, then Her's work card, which opens Work. The card's
+  screenshot was inspected: Chinese words, counts, agents and senders fit
+  the phone.
+
+Two earlier attempts at the iPhone run did not reach the UI tests: the
+first stopped at a switch in `HerConversation.swift` that lacked the work
+row (fixed), the second could not fetch Swift packages while github.com
+was unreachable from the machine.
+
 ## 7. Changes by module (stage 1)
 
 | Module | Change |
@@ -426,7 +600,8 @@ Her the centre.
   had them; the search sheet exists).
 - The suggestions above Her's message field. The prototype used them to
   drive the demo.
-- Stage 2 (§6).
+- `work` for the MCP gateway's agents (§6.3): only Her has it.
+- The work card on the Mac (§12).
 - The Mac app (§12).
 
 ## 12. Open questions
@@ -440,10 +615,8 @@ Her the centre.
 3. **Failed sessions on the tag.** "1 failed" stays until the session is
    opened, archived or runs again. Should it count at all, or only show in
    the panel?
-4. **B1 first?** With Her as the lead, "answer Codex for me" is the first
-   thing people will ask her, and in stage 1 she must say she can't for
-   sessions others started. It is a small change on the machine, but it
-   widens what a compromised Her Server can do.
+4. **B1 first?** Settled 2026-11-14: built, with the rest of stage 2
+   (§6.1).
 5. **After compaction (checked 2026-11-14).** Compaction appends a
    checkpoint to the history (`her-core/src/compaction.rs`); it does not
    delete the tool calls or results. `Kernel::transcript` walks the whole

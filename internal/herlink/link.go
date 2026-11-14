@@ -192,19 +192,20 @@ func isSession(to string) bool {
 	return strings.HasPrefix(s, "s_")
 }
 
-// Call runs one of her tools and returns the command's JSON document.
-func (l *Link) Call(ctx context.Context, bot, callID, name string, raw json.RawMessage) (string, bool) {
+// Call runs one of her tools and returns the command's JSON document, and
+// what the apps read of it (docs/her-team.md §6.2).
+func (l *Link) Call(ctx context.Context, bot, callID, name string, raw json.RawMessage) (string, any, bool) {
 	t, ok := find(name)
 	if !ok {
-		return failure("usage", "no tool "+name), true
+		return failure("usage", "no tool "+name), nil, true
 	}
 	args, err := l.arguments(t, bot, callID, raw)
 	if err != nil {
-		return failure("usage", err.Error()), true
+		return failure("usage", err.Error()), nil, true
 	}
 	opts, ok := l.options()
 	if !ok {
-		return failure("revoked", "Her has no access to the user's computers now"), true
+		return failure("revoked", "Her has no access to the user's computers now"), nil, true
 	}
 	doc, code := cli.Exec(ctx, opts, args)
 	if code == 0 && t.name == "session_start" {
@@ -213,7 +214,42 @@ func (l *Link) Call(ctx context.Context, bot, callID, name string, raw json.RawM
 	if code != 0 && errorKind(doc) == "revoked" {
 		l.cfg.Revoked()
 	}
-	return string(doc), code != 0
+	if code != 0 {
+		return string(doc), nil, true
+	}
+	return string(doc), details(t.name, doc), false
+}
+
+// details are what the apps read of a call's document: the session a
+// session_start started, for Her's card of it; the counts of work_summary,
+// for the card of the team's work.
+func details(tool string, doc []byte) any {
+	switch tool {
+	case "work_summary":
+		var d struct {
+			Work json.RawMessage `json:"work"`
+		}
+		if json.Unmarshal(doc, &d) != nil || len(d.Work) == 0 || string(d.Work) == "null" {
+			return nil
+		}
+		return map[string]any{"work": d.Work}
+	case "session_start":
+		var d struct {
+			Session struct {
+				SessionID string `json:"session_id"`
+				Title     string `json:"title"`
+				Agent     string `json:"agent"`
+				Machine   string `json:"machine"`
+				MachineID string `json:"machine_id"`
+				Project   string `json:"project"`
+			} `json:"session"`
+		}
+		if json.Unmarshal(doc, &d) != nil || d.Session.SessionID == "" {
+			return nil
+		}
+		return map[string]any{"session": d.Session}
+	}
+	return nil
 }
 
 func errorKind(doc []byte) string {

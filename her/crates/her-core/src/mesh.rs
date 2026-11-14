@@ -99,6 +99,10 @@ impl Tool for MeshTool {
 
     async fn execute(&self, args: Value, ctx: ToolCtx) -> Result<ToolOutput, ToolError> {
         let result = self.host.call(&ctx.call_id, &self.spec.name, args).await.map_err(ToolError::Failed)?;
-        Ok(if result.is_error { ToolOutput::error(result.output) } else { ToolOutput::text(result.output) })
+        let output = if result.is_error { ToolOutput::error(result.output) } else { ToolOutput::text(result.output) };
+        Ok(match result.details {
+            Some(details) => output.with_details(details),
+            None => output,
+        })
     }
 }

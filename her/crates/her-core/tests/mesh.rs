@@ -105,8 +105,9 @@ impl MeshHost for Host {
         }
         self.called.lock().push((call_id.to_string(), name.to_string(), arguments));
         Ok(match name {
-            "broken" => MeshCallResult { output: "it broke".into(), is_error: true },
-            _ => MeshCallResult { output: format!("{name} done"), is_error: false },
+            "broken" => MeshCallResult { output: "it broke".into(), is_error: true, details: None },
+            // What the apps read beside the text.
+            _ => MeshCallResult { output: format!("{name} done"), is_error: false, details: Some(json!({ "tool": name })) },
         })
     }
 }
@@ -219,6 +220,14 @@ fn result_of(events: &[Event], id: &str) -> (String, bool) {
         .unwrap_or_else(|| panic!("no result of {id}"))
 }
 
+/// The details of the call `id`'s result among `events`.
+fn details_of(events: &[Event], id: &str) -> Option<Value> {
+    events.iter().find_map(|e| match &e.msg {
+        EventMsg::ToolCompleted { call_id, result } if call_id == id => Some(result.details.as_ref().map(|d| serde_json::from_str(d.as_str()).unwrap())),
+        _ => None,
+    })?
+}
+
 /// The catalog's line for the group in a request's system prompt.
 fn in_catalog(request: &Context) -> bool {
     request.system.contains(&format!("- mesh: {SUMMARY}"))
@@ -295,6 +304,9 @@ async fn tool_search_gives_the_hosts_words_and_call_tool_runs_its_tools() {
     assert_eq!(result_of(&result.events, "c2"), ("look done".to_string(), false));
     assert_eq!(result_of(&result.events, "c3"), ("it broke".to_string(), true));
     assert_eq!(result_of(&result.events, "c4"), ("look done".to_string(), false));
+    // The host's details are the result's, through call_tool or not; a call without them has none.
+    assert_eq!((details_of(&result.events, "c2"), details_of(&result.events, "c4")), (Some(json!({ "tool": "look" })), Some(json!({ "tool": "look" }))));
+    assert_eq!(details_of(&result.events, "c3"), None);
     assert_eq!(
         *h.host.called.lock(),
         [

@@ -271,7 +271,7 @@ mod tests {
         let waiting = call(&server);
         let request = next(&mut lines).await;
         send(&mut writes, json!({"jsonrpc": "2.0", "id": request["id"], "result": {"output": "ok"}})).await;
-        assert_eq!(waiting.await.unwrap(), Ok(MeshCallResult { output: "ok".into(), is_error: false }));
+        assert_eq!(waiting.await.unwrap(), Ok(MeshCallResult { output: "ok".into(), is_error: false, details: None }));
 
         send(&mut writes, json!({"jsonrpc": "2.0", "id": 6, "method": "mesh/host", "params": group()})).await;
         next(&mut lines).await;
@@ -291,7 +291,12 @@ mod tests {
         assert_eq!(request["method"], "mesh/call");
         assert_eq!(request["params"], json!({"bot": "b1", "call_id": "c7", "name": "start", "arguments": {"workshop": "shed"}}));
         send(&mut writes, json!({"jsonrpc": "2.0", "id": request["id"], "result": {"output": "{\"ok\":false}", "is_error": true}})).await;
-        assert_eq!(waiting.await.unwrap(), Ok(MeshCallResult { output: "{\"ok\":false}".into(), is_error: true }));
+        assert_eq!(waiting.await.unwrap(), Ok(MeshCallResult { output: "{\"ok\":false}".into(), is_error: true, details: None }));
+        // With what the apps read beside the text.
+        let waiting = call(&server);
+        let request = next(&mut lines).await;
+        send(&mut writes, json!({"jsonrpc": "2.0", "id": request["id"], "result": {"output": "{\"ok\":true}", "details": {"session": {"session_id": "s_1"}}}})).await;
+        assert_eq!(waiting.await.unwrap(), Ok(MeshCallResult { output: "{\"ok\":true}".into(), is_error: false, details: Some(json!({"session": {"session_id": "s_1"}})) }));
 
         let mesh = server.bot_mesh("b1");
         let waiting = tokio::spawn(async move { mesh.describe("start", &json!({"workshop": "shed"})).await });

@@ -216,3 +216,39 @@ func snapshot(_ items: [JSON], task: JSON = nil, seq: Int = 10, queued: JSON = [
     guard case .session(let second) = items[3].kind else { Issue.record("no session row"); return }
     #expect(second.sessionID == "s_cd_34")
 }
+
+/// The session a start made, from its result's details (docs/her-team.md §6.2): they win over the text, which a long
+/// result has cut; a Her Server on an older hermeshd sends none, and the text still names the session.
+@Test func aSessionCardComesFromTheResultsDetails() {
+    let details: JSON = ["session": ["session_id": "s_ef_56", "title": "Fix the relay test", "agent": "codex", "machine": "Mac mini", "machine_id": "m_ef"]]
+    let v = snapshot([
+        reply("a1", [call("c1", "session_start", ["project": "mini/hermesh"]), call("c2", "session_start", ["project": "mini/hermesh"])], ts: 2000),
+        result("c1", details: details, text: #"{"ok":true,"session":{"session_id":"s_ef_56","tit"#),
+        result("c2", details: ["session": ["title": "no id"]], text: "not a document"),
+        ["type": "task_end", "task_id": "t1", "outcome": "completed", "ts": 2100],
+    ])
+    let items = herChat(v)
+    #expect(items.map(\.key) == ["c1"], "details without a session id make no card")
+    #expect(items.first?.kind == .session(HerStarted(sessionID: "s_ef_56", title: "Fix the relay test", agent: "codex", machine: "Mac mini")))
+}
+
+/// The team's work Her counted is a card where she counted it (docs/her-team.md §6.3): from its result's details; a
+/// call that failed, or a result without counts, makes none.
+@Test func theTeamsWorkHerCountedIsACard() {
+    let work: JSON = ["work": ["days": 1, "sessions": 5, "done": 3, "turns": 9, "failed_turns": 1, "input_tokens": 1000, "output_tokens": 200,
+                               "buckets": [0, 2, 3], "by_agent": [["agent": "claude", "sessions": 4, "turns": 8], ["agent": "codex", "sessions": 1, "turns": 1]],
+                               "by_client": [["client": "c_her", "name": "", "you": true, "sessions": 3, "turns": 6], ["client": "owner", "sessions": 2, "turns": 3]]]]
+    let v = snapshot([
+        reply("a1", [call("c1", "call_tool", ["name": "work_summary", "arguments": [:]]), call("c2", "work_summary", [:]), call("c3", "work_summary", [:])], ts: 2000, duration: 100),
+        result("c1", details: work),
+        result("c2", error: true, text: #"{"ok":false}"#),
+        result("c3", details: ["work": ["by_agent": []]]),
+        ["type": "task_end", "task_id": "t1", "outcome": "completed", "ts": 2200],
+    ])
+    let items = herChat(v)
+    #expect(items.map(\.key) == ["c1"])
+    #expect(items.first?.kind == .work(HerWork(days: 1, sessions: 5, done: 3, turns: 9, failedTurns: 1, tokens: 1200, buckets: [0, 2, 3],
+                                               agents: [.init(id: "claude", sessions: 4, turns: 8), .init(id: "codex", sessions: 1, turns: 1)],
+                                               senders: [.init(id: "c_her", sessions: 3, turns: 6), .init(id: "owner", sessions: 2, turns: 3)])))
+    #expect(items.first?.ts == 2100)
+}

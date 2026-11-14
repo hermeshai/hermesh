@@ -421,6 +421,21 @@ extension HermeshUITests {
         XCTAssertTrue(sender.label.contains("Her"), sender.label)
         app.navigationBars.buttons.element(boundBy: 0).tap()
         XCTAssertTrue(tag.waitForExistence(timeout: 10), "back on Her's page")
+        // What the team did today, as she counted it (docs/her-team.md §6.3): a card, which opens Work. Reading
+        // asks nothing.
+        herSend("[[mock:mesh:work_summary:{}]] 今天团队干了什么")
+        let work = app.descendants(matching: .any)["her-work"].firstMatch
+        XCTAssertTrue(work.waitForExistence(timeout: 60), "the card of the team's work")
+        XCTAssertTrue(work.label.contains("个会话（今天）"), work.label)
+        if app.buttons["to-end"].exists { tap("to-end") }
+        for _ in 0..<12 where !work.isHittable { app.swipeDown() }
+        XCTAssertTrue(waitUntil { work.isHittable }, "the work card is in view before opening it")
+        herShot("Her: the team's work today")
+        press(work)
+        XCTAssertTrue(app.navigationBars["工作"].waitForExistence(timeout: 10), "the work card opens Work")
+        openMenu()
+        tap("her-place")
+        XCTAssertTrue(tag.waitForExistence(timeout: 10), "back on Her's page")
     }
 
     func herTeamAppearanceAndRestart() {
