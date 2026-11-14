@@ -195,13 +195,16 @@ const consoles = new Map<string, BrowserWindow>();
  * app's pages: no preload, sandboxed, in a session of its own that grants no permission. It stays on
  * the console's origin; https links, and the sign-in pages it opens, go to the default browser.
  */
-export async function showHerConsole(machineId: string, title: string, address: () => Promise<string>) {
+export async function showHerConsole(machineId: string, title: string, address: () => Promise<string>, page?: string) {
   const url = consoleURL(await address());
   if (!url) throw new Error(i18n.t("main:herConsoleBad"));
+  if (page) url.hash = page;
   const open = consoles.get(machineId);
   if (open && !open.isDestroyed()) {
-    // hermeshd started again meanwhile: the console is at another port and token.
-    if (!open.webContents.getURL().startsWith(url.href)) open.loadURL(url.href);
+    // hermeshd started again meanwhile: the console is at another port and token. A page asked for goes there.
+    const now = open.webContents.getURL();
+    if (!now.startsWith(url.href.split("#")[0])) open.loadURL(url.href);
+    else if (page) open.webContents.executeJavaScript(`location.hash = ${JSON.stringify(page)}`).catch(() => {});
     open.show();
     open.focus();
     return;

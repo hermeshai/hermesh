@@ -80,8 +80,8 @@ export type Bridge = {
   pickDirectory(): Promise<string | null>;
   /** Where a file given to the page (picked, dropped, pasted) is on this computer; empty for one that is not a file there. */
   pathForFile(file: File): string;
-  /** A machine's Her console, in a window of its own (docs/her-server.md §5.3). */
-  openHerConsole(machineId: string): Promise<void>;
+  /** A machine's Her console, in a window of its own (docs/her-server.md §5.3); at `page`, its address's hash ("browser/connect"). */
+  openHerConsole(machineId: string, page?: string): Promise<void>;
   /** Saves a file from an assistant's folder on its machine to Downloads, and shows it there. */
   saveHerFile(machineId: string, botId: string, path: string): Promise<void>;
   /** A file from an assistant's folder on its machine, read whole to show in the window (a PDF); nothing of it stays on this computer. */

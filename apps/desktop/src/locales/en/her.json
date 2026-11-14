@@ -550,5 +550,11 @@
       "delete": "Deleted the scheduled task “{{name}}”"
     },
     "fromRoutine": "From the scheduled task “{{name}}”"
+  },
+  "chrome": {
+    "title": "Connect your Chrome?",
+    "body": "This step needs your sign-ins, which are in your own Chrome, and its extension isn't connected. Connect it once, and Her picks up where she left off.",
+    "builtin": "Use Built-in Browser This Time",
+    "connect": "Connect Chrome…"
   }
 }

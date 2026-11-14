@@ -81,7 +81,7 @@ export function App() {
         {page === "connectors" && <ConnectorsPage item={item} go={open} />}
         {page === "skills" && <SkillsPage item={item} go={open} />}
         {page === "search" && <SearchPage go={go} />}
-        {page === "browser" && <BrowserPage />}
+        {page === "browser" && <BrowserPage item={item} go={open} />}
       </main>
       <ToastView />
       <AskSheet />

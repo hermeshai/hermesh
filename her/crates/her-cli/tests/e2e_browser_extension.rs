@@ -480,6 +480,41 @@ async fn the_consoles_switch_turns_the_built_in_browser_on_and_a_session_uses_it
     let _ = tokio::time::timeout(Duration::from_secs(20), service.wait()).await;
 }
 
+/// The user's own browser is the default, but its extension is not connected: a page opened
+/// without naming a browser opens in the built-in one at once, instead of waiting for it.
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn the_default_falls_back_to_the_built_in_browser_until_the_users_connects() {
+    if her_browser::launch::find_executable().is_none() {
+        eprintln!("no Chromium-family browser installed; skipping");
+        return;
+    }
+    let env = TestEnv::new(
+        "bypass-permissions",
+        "[browser]\nheadless = true\nenabled = true\nextension = true\ndefault = \"yours\"\n",
+    )
+    .await;
+    let socket = env.home.path().join("run").join("her.sock");
+    let (mut service, client, demux) = serve(&env, &socket, None).await;
+    let page = serve_page("<title>Fallback</title><h1>Opened in the built-in browser</h1>").await;
+    let created = client.request("session/new", json!({"cwd": env.workspace("fallback")})).await.unwrap();
+    let session = created["session_id"].as_str().unwrap().to_string();
+    let mut events = demux.subscribe(&session);
+    let turn = tokio::time::timeout(
+        Duration::from_secs(60),
+        native_prompt(&client, &mut events, &session, &format!("[[mock:default_browser:{page}]] default"), true),
+    )
+    .await
+    .expect("the page opened without waiting for the user's browser");
+    assert_eq!(turn.end["type"], "task_completed", "{:?}", turn.events);
+    let opened = tool_results(&turn);
+    assert!(opened.contains("Opened in the built-in browser") && !opened.contains("the user's own browser"), "{opened}");
+    let status = client.request("browser/status", json!({})).await.unwrap();
+    assert!(status["waiting"].as_array().is_none_or(|w| w.is_empty()), "nothing waits: {status}");
+
+    client.request("server/shutdown", json!({})).await.unwrap();
+    let _ = tokio::time::timeout(Duration::from_secs(20), service.wait()).await;
+}
+
 // ---- The tabs' lifetime and the connection's (browser-design §8.4.7) ----
 
 /// A service on `socket`, and a client that follows the browsers' status.

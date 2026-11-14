@@ -25,6 +25,7 @@ func TestCheck(t *testing.T) {
 		{"models, for both", "models/list", ``, 0},
 		{"the owner's Chrome, connected or not", "browser/status", `{}`, 0},
 		{"which Chrome Her uses", "browser/use_extension", `{"instance":"i"}`, 0},
+		{"going on without the owner's Chrome", "browser/cancel_wait", `{"session_id":"s"}`, 0},
 		{"computer use's permissions", "desktop/status", ``, 0},
 
 		{"a method off the list", "server/shutdown", ``, connect.CodePermissionDenied},

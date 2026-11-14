@@ -1,5 +1,14 @@
 {
   "title": "Your Chrome",
+  "control": {
+    "title": "Allow Her to Control Browsers",
+    "desc": "Her opens web pages and acts in them. Which sites she may use without asking is below.",
+    "default": "Default Browser",
+    "defaultDesc": "When the agent doesn't name a browser, new pages open here.",
+    "defaultLocked": "Connect your Chrome to choose it. Until then, new pages open in the built-in browser.",
+    "builtin": "Built-in Browser",
+    "yours": "{{name}} (Your Browser)"
+  },
   "computer": {
     "macos": "Mac",
     "linux": "Linux computer"
@@ -13,7 +22,7 @@
     "outdated": "Needs update"
   },
   "off": "Let Her open sites that need your sign-ins in your own Chrome, on the {{computer}} Her runs on.",
-  "on": "Sites that need your accounts open in your Chrome.",
+  "on": "Her's tabs go in a “Hermesh” tab group and work in the background. Closing the “debugging” bar at the top of Chrome takes a tab back.",
   "ready": "The extension is connected, but Her doesn't use it yet.",
   "lost": "The extension is not connected. Check that Chrome is open on the {{computer}} Her runs on, and that Hermesh is on in its extensions page.",
   "noChrome": "There is no Chrome on the {{computer}} Her runs on, so yours can't connect from there.",
@@ -26,7 +35,7 @@
   "connect": "Connect",
   "use": "Use",
   "reconnect": "Reconnect…",
-  "disconnect": "Stop Using",
+  "disconnect": "Disconnect",
   "useThis": "Use This",
   "guide": {
     "title": "Connect Your Chrome",
@@ -53,8 +62,9 @@
     "waitHint": "Still not connected? Check that Chrome is open, then on its extensions page find Hermesh, make sure its switch is on, and click its reload button.",
     "back": "Back",
     "done": "Connected to {{name}}",
-    "doneHint": "Sites that need your accounts now open in your Chrome, in every conversation from its next step. Turn it off here at any time; closing the “debugging” bar at the top of Chrome also takes a tab back.",
-    "finish": "Done"
+    "doneHint": "Sites open here in every conversation from its next step. Disconnect it on this page at any time; closing the “debugging” bar at the top of Chrome also takes a tab back.",
+    "finish": "Done",
+    "asDefault": "Make it the default browser"
   },
   "builtin": {
     "title": "Built-in Browser",
