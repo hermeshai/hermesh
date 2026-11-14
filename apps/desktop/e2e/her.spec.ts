@@ -118,6 +118,24 @@ test("Her: the first run, a chat, a secure card, the console, a second environme
   await expect.poll(posted, { timeout: 60_000 }).toContainEqual(expect.objectContaining({ title: expect.stringMatching(/^Her/), body: "你好，主人" }));
   await snap(page, "her-chat");
 
+  // A step that needs the owner's own Chrome, whose extension is not connected: it waits, and a card above the
+  // composer says so. Connecting opens the console at its guide; going on without it this time lets the step go on.
+  await send("[[mock:yours:https://example.com/]] hi");
+  // The site asks first in the owner's own browser, whatever the mode: their sign-ins are real.
+  const asked = page.getByRole("region", { name: "等你批准" });
+  await expect(asked).toContainText("example.com", { timeout: 60_000 });
+  await asked.getByRole("button", { name: /^允许一次/ }).click();
+  const chrome = page.getByRole("region", { name: "连接你的 Chrome？" });
+  await expect(chrome).toBeVisible({ timeout: 60_000 });
+  await snap(page, "her-chrome-wait");
+  const guide = app.waitForEvent("window");
+  await chrome.getByRole("button", { name: "连接 Chrome…" }).click();
+  const consoleAt = await guide;
+  await expect.poll(() => consoleAt.url()).toMatch(/#browser\/connect$/);
+  await consoleAt.close();
+  await chrome.getByRole("button", { name: "这次用内置浏览器" }).click();
+  await expect(chrome).toBeHidden({ timeout: 30_000 });
+
   // Her starts a coding session on this Mac, asked first (docs/her-team.md §14.3): a card where she started it,
   // kept current, which the team panel lists once it is done, and which opens the session.
   await send(`[[mock:mesh:session_start:${JSON.stringify({ project: "owner-mac/demo", prompt: "say 做完了", title: "Her 派的活" })}]] 开工`);

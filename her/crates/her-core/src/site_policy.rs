@@ -196,8 +196,11 @@ fn granted(view: &SessionView, origin: &str, act: bool) -> bool {
 }
 
 /// "Every site", granted for the session or kept as `"*"` in `browser.sites`: public sites
-/// only, so a private address never asks this (D-221).
-fn any_site(view: &SessionView, act: bool) -> bool {
+/// only, so a private address never asks this (D-221). A site kept as `ask` is left out.
+fn any_site(view: &SessionView, origin: &str, act: bool) -> bool {
+    if view.browser.site(origin) == Some(SiteLevel::Ask) {
+        return false;
+    }
     view.site_grants.iter().any(|g| {
         g.origin == ANY_SITE && opens(g.authority, act)
     }) || covers(view.browser.any_site(), act)
@@ -287,7 +290,7 @@ async fn navigate(raw: &str, own: bool, view: &SessionView) -> Verdict {
         AddressClass::Loopback => return Verdict::Allow,
         AddressClass::Public => {}
     }
-    if granted(view, &origin, false) || any_site(view, false) || bypass(view, own) {
+    if granted(view, &origin, false) || any_site(view, &origin, false) || bypass(view, own) {
         return Verdict::Allow;
     }
     Verdict::Ask {
@@ -317,7 +320,7 @@ async fn act(origin: &str, action: &str, own: bool, view: &SessionView) -> Verdi
             grants: vec![grant(GrantAuthority::Act, origin)],
         },
         AddressClass::Private | AddressClass::Loopback => Verdict::Allow,
-        AddressClass::Public if granted(view, origin, true) || any_site(view, true) => Verdict::Allow,
+        AddressClass::Public if granted(view, origin, true) || any_site(view, origin, true) => Verdict::Allow,
         AddressClass::Public if bypass(view, own) => Verdict::Allow,
         AddressClass::Public => Verdict::Ask {
             summary,
@@ -525,6 +528,24 @@ mod tests {
         let browsing = view(PermissionMode::Manual, vec![], policy, dir.path());
         assert_eq!(evaluate(&[nav("https://93.184.215.14/x")], &browsing).await, Gate::Allow);
         assert!(asks(&evaluate(&[act_on("https://93.184.215.14")], &browsing).await).is_some(), "navigate does not act");
+    }
+
+    #[tokio::test]
+    async fn a_site_kept_as_ask_asks_whatever_every_site_allows() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut policy = SitePolicy::default();
+        policy.sites.insert("*".into(), SiteLevel::Act);
+        policy.sites.insert("https://93.184.215.16".into(), SiteLevel::Ask);
+        let every = vec![grant(GrantAuthority::Act, ANY_SITE)];
+        let manual = view(PermissionMode::Manual, every, policy, dir.path());
+        assert_eq!(evaluate(&[nav("https://93.184.215.14/x")], &manual).await, Gate::Allow, "other sites follow \"*\"");
+        assert!(asks(&evaluate(&[nav("https://93.184.215.16/")], &manual).await).is_some(), "nor a session's every-site grant");
+        assert!(asks(&evaluate(&[act_on("https://93.184.215.16")], &manual).await).is_some());
+        let once = vec![grant(GrantAuthority::Act, "https://93.184.215.16")];
+        let mut policy = SitePolicy::default();
+        policy.sites.insert("https://93.184.215.16".into(), SiteLevel::Ask);
+        let granted = view(PermissionMode::Manual, once, policy, dir.path());
+        assert_eq!(evaluate(&[act_on("https://93.184.215.16")], &granted).await, Gate::Allow, "once allowed in the session");
     }
 
     #[tokio::test]

@@ -3,7 +3,7 @@
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 
-use betteroffice_pptx::{EditCtx, FindRequest, Presentation, TextStyle};
+use nimbleoffice_pptx::{EditCtx, FindRequest, Presentation, TextStyle};
 use base64::Engine as _;
 use base64::engine::general_purpose::STANDARD as B64;
 use her_docs::deck::{DeckError, DeckEvent, DeckLauncher, DeckStore};

@@ -57,9 +57,12 @@ pub(crate) type DeferredCell = Arc<Mutex<Arc<Deferred>>>;
 const BROWSER: &str = "browser";
 const BROWSER_SUMMARY: &str = "Open web pages, read them and act in them: local pages, files and sites";
 const BUILTIN_DEFAULT: &str = "; new pages open in the built-in browser unless you name the user's own";
-const YOURS_DEFAULT: &str = "; new pages open in the user's own browser, with their sign-ins, unless you name the built-in one";
+const YOURS_DEFAULT: &str = "; new pages open in the user's own browser, with their sign-ins, while it is connected, else in the built-in one, unless you name one";
 const CUA: &str = "cua";
-const CUA_SUMMARY: &str = "Computer use: see and operate the other apps on this computer";
+const CUA_SUMMARY: &str = "Computer use: see and operate the other apps on this computer; not for web pages, which the browser tools open";
+/// Driving a browser's window takes the user's mouse and focus; the browser tools do not.
+const CUA_NOT_BROWSERS: &str = "Do not open or act on web pages by operating a browser app (Chrome, Edge, Safari, Arc, Brave) with these tools: \
+    use the browser tools. Where there are none, ask the user to connect their browser in Hermesh's Browser settings.";
 const DOC: &str = "doc";
 const DOC_SUMMARY: &str = "Documents and workbooks (PDF, XLSX, XLSM): open them beside the conversation; read or search pages and cell ranges, trace or calculate formulas, and edit or save workbooks";
 const AGENTS: &str = "agents";
@@ -107,7 +110,7 @@ impl Deferred {
             groups.push(Group {
                 name: CUA,
                 summary: CUA_SUMMARY.into(),
-                guidelines: Vec::new(),
+                guidelines: vec![CUA_NOT_BROWSERS.into()],
                 tools: crate::desktop::desktop_tools(),
             });
         }

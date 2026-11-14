@@ -28,17 +28,23 @@
   },
   "browser": {
     "sites": "网站权限",
-    "sitesEmpty": "还没有网站。Her 打开网站前会先问你；选“始终允许”会加到这里。",
     "allSites": "所有网站",
-    "allSitesDesc": "内网地址不包括在内",
+    "allSitesDesc": {
+      "ask": "每个网站第一次用到时先问你",
+      "navigate": "网站直接打开，操作前先问你",
+      "act": "网站直接打开和操作，不再问你"
+    },
     "siteLevel": "{{site}} 的权限",
     "level": {
       "act": "打开和操作",
       "navigate": "只打开",
+      "ask": "先问我",
       "deny": "禁止"
     },
     "removeSite": "移除 {{site}}",
-    "sitesNote": "没列出的网站第一次用到时会先问你。",
+    "exceptions": "例外",
+    "exceptionsEmpty": "还没有例外。在对话里选“始终允许”会加到这里。",
+    "sitesNote": "两个浏览器共用。内网地址不跟随“所有网站”，每个第一次用到时都会先问你。",
     "addLabel": "要添加的网站",
     "addLevel": "要添加的网站的权限",
     "addPlaceholder": "example.com",

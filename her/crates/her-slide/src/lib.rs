@@ -1,4 +1,4 @@
-//! PowerPoint decks on BetterOffice: render slides, read them as Markdown, find and replace
+//! PowerPoint decks on NimbleOffice: render slides, read them as Markdown, find and replace
 //! text, and save surgically, touching only the parts an edit changed.
 
 pub mod check;
@@ -9,13 +9,13 @@ mod parts;
 use std::collections::BTreeSet;
 use std::sync::Mutex;
 
-use betteroffice_pptx::fonts::{FontError, FontSource};
-use betteroffice_pptx::{
+use nimbleoffice_pptx::fonts::{FontError, FontSource};
+use nimbleoffice_pptx::{
     EditCtx, FindRequest, OpenOptions, PngTarget, PptxExportOptions, Presentation, RenderOptions,
     TextStyle,
 };
 
-pub use betteroffice_pptx::{
+pub use nimbleoffice_pptx::{
     DeckSnapshot, FindMatch, Proposal, ProposalEdit, ProposalError, ProposalRequest,
     ProposalStripEntry, ProposalStripStatus, ShapeKind, ShapeSnapshot, SlideSnapshot, StorySnapshot,
 };
@@ -23,8 +23,8 @@ pub use fonts::SystemFonts;
 
 /// The engine build, recorded beside a deck's update log: a log written by another build is
 /// replayed only if the result still saves (presentation-kernel-authority §7.2). Keep in step
-/// with the `betteroffice-pptx` rev in the workspace Cargo.toml.
-pub const ENGINE: &str = "betteroffice 330266fb";
+/// with the `nimbleoffice-pptx` rev in the workspace Cargo.toml.
+pub const ENGINE: &str = "nimbleoffice 65549f0e";
 
 /// Language PowerPoint would edit in: East Asian text with no language of its own is Chinese.
 const EAST_ASIAN_LANGUAGE: &str = "zh-CN";
@@ -40,7 +40,7 @@ const SLIDES_DIR: &str = "ppt/slides/";
 #[derive(Debug, thiserror::Error)]
 pub enum SlideError {
     #[error(transparent)]
-    Engine(#[from] betteroffice_pptx::Error),
+    Engine(#[from] nimbleoffice_pptx::Error),
     #[error("fonts: {0}")]
     Fonts(#[from] FontError),
     #[error("refused: {0}")]
@@ -140,9 +140,9 @@ impl Deck {
 
     /// Finds the first edit that fails on its own, by proposing ever longer prefixes (each
     /// withdrawn at once), so the agent hears which step to fix.
-    fn failing_step(&self, request: ProposalRequest, error: betteroffice_pptx::Error) -> SlideError {
+    fn failing_step(&self, request: ProposalRequest, error: nimbleoffice_pptx::Error) -> SlideError {
         let message = error.to_string();
-        let whole = matches!(&error, betteroffice_pptx::Error::Proposal(ProposalError::Invalid(_)));
+        let whole = matches!(&error, nimbleoffice_pptx::Error::Proposal(ProposalError::Invalid(_)));
         if whole || request.edits.is_empty() {
             return SlideError::Proposal { step: None, message };
         }
@@ -188,7 +188,7 @@ impl Deck {
                 self.touch(before, &self.presentation.snapshot()?)?;
                 Ok(Accepted { applied: true, stale_targets: Vec::new(), update: self.encode_diff(&sv)? })
             }
-            Err(betteroffice_pptx::Error::Proposal(ProposalError::Stale(targets))) => {
+            Err(nimbleoffice_pptx::Error::Proposal(ProposalError::Stale(targets))) => {
                 Ok(Accepted { applied: false, stale_targets: targets, update: Vec::new() })
             }
             Err(e) => Err(no_proposal(id, e)),
@@ -469,9 +469,9 @@ impl Deck {
     }
 }
 
-fn no_proposal(id: &str, error: betteroffice_pptx::Error) -> SlideError {
+fn no_proposal(id: &str, error: nimbleoffice_pptx::Error) -> SlideError {
     match error {
-        betteroffice_pptx::Error::Proposal(ProposalError::NotFound(_)) => SlideError::NoProposal(id.to_owned()),
+        nimbleoffice_pptx::Error::Proposal(ProposalError::NotFound(_)) => SlideError::NoProposal(id.to_owned()),
         e => e.into(),
     }
 }

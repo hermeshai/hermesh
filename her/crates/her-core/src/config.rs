@@ -159,7 +159,7 @@ impl BrowserSettings {
         for (origin, level) in file.sites.unwrap_or_default() {
             // Every public site: navigate or act; refusing them all is `allowed_domains`' job.
             if origin == her_browser::policy::ANY_SITE {
-                let level = SiteLevel::parse(&level).filter(|l| *l != SiteLevel::Deny).ok_or_else(|| {
+                let level = SiteLevel::parse(&level).filter(|l| !matches!(l, SiteLevel::Deny | SiteLevel::Ask)).ok_or_else(|| {
                     ConfigError::Invalid(format!("browser.sites.\"*\" must be navigate or act, got \"{level}\""))
                 })?;
                 sites.insert(origin, level);
@@ -171,7 +171,7 @@ impl BrowserSettings {
                 ))
             })?;
             let level = SiteLevel::parse(&level).ok_or_else(|| {
-                ConfigError::Invalid(format!("browser.sites.\"{origin}\" must be deny, navigate or act, got \"{level}\""))
+                ConfigError::Invalid(format!("browser.sites.\"{origin}\" must be deny, ask, navigate or act, got \"{level}\""))
             })?;
             sites.insert(normalized, level);
         }
@@ -1521,6 +1521,9 @@ mod tests {
         let bad = load(&user, None, true, &["browser.sites.\"github.com\"=\"act\"".into()]);
         assert!(bad.is_err());
         assert!(load(&user, None, true, &["browser.sites.\"*\"=\"deny\"".into()]).is_err(), "every site is navigate or act");
+        assert!(load(&user, None, true, &["browser.sites.\"*\"=\"ask\"".into()]).is_err(), "asking is every site left out");
+        let ask = load(&user, None, true, &["browser.sites.\"https://bank.test\"=\"ask\"".into()]).unwrap().config.browser;
+        assert_eq!(ask.policy.site("https://bank.test"), Some(SiteLevel::Ask), "a site may ask whatever every site allows");
     }
 
     /// The user's own browser has a switch of its own; the old `backend = "extension"` reads as
