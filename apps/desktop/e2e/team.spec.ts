@@ -49,9 +49,14 @@ test("the sidebar is navigation only: its pages and the team, All Sessions first
   // All Sessions is the map's first row: the list unfiltered, before its filters.
   const all = map.getByRole("button", { name: /^全部会话/ });
   await expect(map.locator(".map-row").first()).toHaveText(/^全部会话\d+$/);
-  // The rows are flush: an agent's logo under its machine's icon, no indent.
+  // The rows are flush: an agent's logo under its machine's name, no indent.
   const left = async (l: typeof mac) => (await l.locator(":scope > *").first().boundingBox())!.x;
   expect(await left(gemini)).toBe(await left(mac));
+  // A machine's row is its name alone, no icon and no dot, and a chevron at its end saying it opens.
+  await expect(mac.locator(":scope > *").first()).toHaveText(thisComputer);
+  await expect(mac.locator(".dotc")).toHaveCount(0);
+  const go = (await mac.locator(".map-go").boundingBox())!, row = (await mac.boundingBox())!;
+  expect(row.x + row.width - (go.x + go.width)).toBeLessThan(12);
 
   // All Sessions: the column, by who sent the work, each row saying who sent it to whom; none chosen yet.
   await all.click();

@@ -29,6 +29,7 @@ func TestCheck(t *testing.T) {
 		{"going on without the owner's Chrome", "browser/cancel_wait", `{"session_id":"s"}`, 0},
 		{"the guide's extensions page and folder", "browser/open_setup", `{"what":"extensions_page"}`, 0},
 		{"computer use's permissions", "desktop/status", ``, 0},
+		{"where her data is, and its size", "storage/usage", ``, 0},
 
 		{"a method off the list", "server/shutdown", ``, connect.CodeUnimplemented},
 		{"a session of its own", "session/new", `{"cwd":"/"}`, connect.CodeUnimplemented},
