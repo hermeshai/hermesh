@@ -19,3 +19,6 @@ node_modules/
 /apps/ios/build/
 /apps/ios/DerivedData/
 xcuserdata/
+
+# local secrets (HER_GITHUB_OAUTH_CLIENT_SECRET and API keys)
+.env
