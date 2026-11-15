@@ -6,3 +6,4 @@
 !internal
 !pkg
 !gen/go
+!third_party/pion-ice

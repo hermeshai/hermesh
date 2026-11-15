@@ -43,12 +43,40 @@ func allocate(t *testing.T, addr, user, pass string) (net.PacketConn, error) {
 // secret is refused. Packets go both ways through two relayed addresses.
 func TestTURNOnAnotherNode(t *testing.T) {
 	secret := bytes.Repeat([]byte{7}, 32)
+	// Windows can reserve the documented range for Hyper-V. Find a small
+	// range we can bind on this runner, while still testing bounded ports.
+	var minPort, maxPort uint16
+	for attempt := 0; attempt < 100; attempt++ {
+		first, err := net.ListenPacket("udp4", "0.0.0.0:0")
+		if err != nil {
+			t.Fatal(err)
+		}
+		port := first.LocalAddr().(*net.UDPAddr).Port
+		ports := []net.PacketConn{first}
+		for p := port + 1; p <= port+40 && p <= 65535; p++ {
+			conn, err := net.ListenPacket("udp4", net.JoinHostPort("0.0.0.0", itoa(p)))
+			if err != nil {
+				break
+			}
+			ports = append(ports, conn)
+		}
+		for _, conn := range ports {
+			conn.Close()
+		}
+		if len(ports) == 41 {
+			minPort, maxPort = uint16(port), uint16(port+40)
+			break
+		}
+	}
+	if minPort == 0 {
+		t.Fatal("no available TURN port range")
+	}
 	// A port for the server, which the other node names.
 	l, _ := net.ListenPacket("udp4", "127.0.0.1:0")
 	port := l.LocalAddr().(*net.UDPAddr).Port
 	l.Close()
 	addr := net.JoinHostPort("127.0.0.1", itoa(port))
-	serving, err := startTURN(TURNConfig{Listen: addr, Host: "127.0.0.1", Secret: secret, MinPort: 49160, MaxPort: 49200})
+	serving, err := startTURN(TURNConfig{Listen: addr, Host: "127.0.0.1", Secret: secret, MinPort: minPort, MaxPort: maxPort})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -74,8 +102,8 @@ func TestTURNOnAnotherNode(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, r := range []net.PacketConn{a, b} {
-		if p := r.LocalAddr().(*net.UDPAddr).Port; p < 49160 || p > 49200 {
-			t.Fatalf("relayed on port %d, outside 49160-49200", p)
+		if p := r.LocalAddr().(*net.UDPAddr).Port; p < int(minPort) || p > int(maxPort) {
+			t.Fatalf("relayed on port %d, outside %d-%d", p, minPort, maxPort)
 		}
 	}
 	// Each lets the other's packets in (a permission comes with the first
