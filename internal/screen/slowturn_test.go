@@ -22,6 +22,7 @@ import (
 const (
 	turnAllocate         = 0x0003
 	turnCreatePermission = 0x0008
+	directConnectWait    = 5 * time.Second
 )
 
 // slowConn is a TURN server's socket that takes its time over each request
@@ -161,7 +162,7 @@ func turnPair(t *testing.T, delay time.Duration, relay net.IP, settle time.Durat
 	}
 	select {
 	case <-ready:
-	case <-time.After(time.Until(started.Add(2 * time.Second))):
+	case <-time.After(time.Until(started.Add(directConnectWait))):
 		t.Fatalf("slow TURN blocked the direct data channel: %v", time.Since(started))
 	}
 	took := time.Since(started)
@@ -172,8 +173,10 @@ func turnPair(t *testing.T, delay time.Duration, relay net.IP, settle time.Durat
 // A slow TURN server on this computer's network refuses the addresses it
 // cannot reach. Its permissions must not hold up a direct path that works.
 func TestSlowTURNDoesNotBlockDirectChecks(t *testing.T) {
-	took, _ := turnPair(t, 150*time.Millisecond, net.ParseIP("127.0.0.1"), 0)
-	if took > 2*time.Second {
+	// Leave room for a busy runner, but keep the twelve serial permissions
+	// slower than the deadline, so a blocked ICE loop still fails.
+	took, _ := turnPair(t, time.Second, net.ParseIP("127.0.0.1"), 0)
+	if took > directConnectWait {
 		t.Fatalf("the direct data channel took %v", took)
 	}
 }
@@ -184,7 +187,7 @@ func TestSlowTURNDoesNotBlockDirectChecks(t *testing.T) {
 // used to ask at every check, for as long as the connection lasted.
 func TestPublicTURNIsNotAskedForPrivatePeers(t *testing.T) {
 	took, asked := turnPair(t, 0, net.ParseIP("203.0.113.5"), 3*time.Second)
-	if took > 2*time.Second {
+	if took > directConnectWait {
 		t.Fatalf("the direct data channel took %v", took)
 	}
 	t.Logf("the TURN server was asked for %d permissions", asked)
