@@ -64,7 +64,15 @@ private struct HerPage: View {
             }
         }
         .toolbar(sideBars ? .visible : .hidden, for: .navigationBar)
-        .toolbar { if sideBars { MenuToolbarItem() } }
+        // With the bars on the side (iPhone Duo), Progress is in the system's bar too.
+        .toolbar {
+            if sideBars {
+                MenuToolbarItem()
+                if chat.bot != nil {
+                    ToolbarItem(placement: .topBarTrailing) { HerProgressButton(waiting: herProgressWaiting(chat, model), inBar: true) }
+                }
+            }
+        }
         .safeAreaBar(edge: .top) { header(chat) }
         // A row opened, or a sheet: the panel is done.
         .onChange(of: model.path) { team = false }
@@ -81,7 +89,7 @@ private struct HerPage: View {
             HStack {
                 if !sideBars && !model.menuBeside { HerMenuButton() }
                 Spacer()
-                if chat.bot != nil { HerProgressButton(waiting: herProgressWaiting(chat, model)) }
+                if chat.bot != nil && !sideBars { HerProgressButton(waiting: herProgressWaiting(chat, model)) }
             }
             VStack(spacing: -16) {
                 Button {
@@ -265,23 +273,35 @@ extension View {
     func herConnections(_ chat: HerChat, machine: HerMachine) -> some View { modifier(HerConnections(chat: chat, machine: machine)) }
 }
 
-/// Progress, at the top right of Her's page: the work she sent out, marked while a piece of it waits for the owner.
+/// Progress, at the top right of Her's page, or in the system's bar where it stands on the side (inBar): the work
+/// she sent out, marked while a piece of it waits for the owner.
 private struct HerProgressButton: View {
     @Environment(AppModel.self) private var model
     let waiting: Int
+    var inBar = false
 
     var body: some View {
-        Button {
-            model.path.append(.progress)
-        } label: {
-            Image(systemName: "waveform.path.ecg").font(.body.weight(.medium)).frame(width: 44, height: 44)
-                .overlay(alignment: .topTrailing) {
-                    if waiting > 0 { Circle().fill(.orange).frame(width: 8, height: 8).offset(x: -9, y: 11) }
+        Group {
+            if inBar {
+                // The bar draws the button, as it does the menu button beside it.
+                Button { model.path.append(.progress) } label: {
+                    Image(systemName: "waveform.path.ecg")
+                        .overlay(alignment: .topTrailing) {
+                            if waiting > 0 { Circle().fill(.orange).frame(width: 8, height: 8).offset(x: 5, y: -4) }
+                        }
                 }
-                .glassEffect(.regular.interactive(), in: .circle)
-                .contentShape(.circle)
+            } else {
+                Button { model.path.append(.progress) } label: {
+                    Image(systemName: "waveform.path.ecg").font(.body.weight(.medium)).frame(width: 44, height: 44)
+                        .overlay(alignment: .topTrailing) {
+                            if waiting > 0 { Circle().fill(.orange).frame(width: 8, height: 8).offset(x: -9, y: 11) }
+                        }
+                        .glassEffect(.regular.interactive(), in: .circle)
+                        .contentShape(.circle)
+                }
+                .buttonStyle(.plain)
+            }
         }
-        .buttonStyle(.plain)
         .accessibilityLabel(waiting > 0 ? Text("Progress, \(waiting) waiting for you") : Text("Progress"))
         .accessibilityIdentifier("her-progress")
     }
