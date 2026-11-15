@@ -62,6 +62,61 @@ use crate::server::ResumeOverrides;
 use crate::server::Server;
 use her_protocol::customize::*;
 
+/// Requests of the protocol's schema this server does not answer yet: presentation-ai-design
+/// §12 and §6.6 describe them ahead of the kernel.
+const NOT_SERVED: &[&str] = &[
+    method::AI_ACTION,
+    method::DECK_SUMMARY,
+    method::DECK_READ,
+    method::DECK_FIND,
+    method::DECK_VIEW,
+    method::DECK_FOCUS,
+    method::DECK_EDIT,
+    method::DECK_COPY,
+    method::DECK_PROPOSAL_LIST,
+    method::DECK_PROPOSAL_ACCEPT,
+    method::DECK_PROPOSAL_REJECT,
+    method::DECK_PROPOSAL_REVERT,
+    method::DECK_CHECK,
+    method::DECK_LAYOUTS,
+    method::DECK_TEMPLATE_PROFILE,
+    method::DECK_LINKS,
+    method::DECK_DIFF,
+];
+
+/// The methods `initialize` says this server answers: the schema's requests but those not
+/// served yet (docs/version-skew.md §6.1). A test checks the list is exact both ways
+/// (e2e_native.rs, `initialize_lists_what_it_answers`).
+fn served_methods() -> &'static [String] {
+    static METHODS: std::sync::OnceLock<Vec<String>> = std::sync::OnceLock::new();
+    METHODS.get_or_init(|| {
+        let doc = her_protocol::schema::document();
+        let all = doc["x-methods"].as_object().map(|m| m.keys().cloned().collect::<Vec<_>>()).unwrap_or_default();
+        let without = test_without();
+        if without.iter().any(|m| m == "no-list") {
+            return Vec::new();
+        }
+        all.into_iter().filter(|m| !NOT_SERVED.contains(&m.as_str()) && !without.contains(m)).collect()
+    })
+}
+
+/// Debug builds only: the methods this her acts as if it lacked, one per line of the file
+/// HER_TEST_WITHOUT names, read when it starts; with a line `no-list`, `initialize` lists none, as
+/// a her from before the list. The end-to-end tests stand in for a machine older than the app with
+/// it (docs/version-skew.md §8).
+fn test_without() -> &'static [String] {
+    static WITHOUT: std::sync::OnceLock<Vec<String>> = std::sync::OnceLock::new();
+    WITHOUT.get_or_init(|| {
+        if !cfg!(debug_assertions) {
+            return Vec::new();
+        }
+        std::env::var_os("HER_TEST_WITHOUT")
+            .and_then(|path| std::fs::read_to_string(path).ok())
+            .map(|text| text.lines().map(str::trim).filter(|l| !l.is_empty()).map(String::from).collect())
+            .unwrap_or_default()
+    })
+}
+
 pub struct NativeProtocol {
     server: Server,
     initialized: AtomicBool,
@@ -200,6 +255,10 @@ impl NativeProtocol {
             conn.send_error(Some(id), &errors::not_initialized());
             return;
         }
+        if test_without().iter().any(|m| m == method_name) {
+            conn.send_error(Some(id), &RpcError::method_not_found(method_name));
+            return;
+        }
         let server = self.server.clone();
         match method_name {
             method::INITIALIZE => {
@@ -242,6 +301,7 @@ impl NativeProtocol {
                             bots: true,
                             routines: true,
                         },
+                        methods: served_methods().to_vec(),
                     })
                 });
                 conn.send(reply(id, result));

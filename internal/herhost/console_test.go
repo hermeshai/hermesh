@@ -56,7 +56,7 @@ func TestConsoleRefusals(t *testing.T) {
 		method, path, body string
 		status             int
 	}{
-		{"POST", "/her/console/rpc", `{"jsonrpc":"2.0","id":1,"method":"server/shutdown"}`, 403},
+		{"POST", "/her/console/rpc", `{"jsonrpc":"2.0","id":1,"method":"server/shutdown"}`, 501},
 		{"POST", "/her/console/rpc", `{"jsonrpc":"2.0","id":1,"method":"config/write","params":{"layer":"user","edits":[{"key_path":"mcp_servers.x.command","value":"sh"}]}}`, 403},
 		{"POST", "/her/console/rpc", `[{"jsonrpc":"2.0","id":1,"method":"models/list"}]`, 400},
 		{"POST", "/her/console/rpc", `{"jsonrpc":"2.0","method":"models/list"}`, 400},

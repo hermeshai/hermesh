@@ -135,6 +135,7 @@ func (h *Host) Status() *machinev1.HerStatus {
 	st := &machinev1.HerStatus{Enabled: h.stop != nil, Error: h.err}
 	if s := h.snap; s != nil {
 		st.Running, st.Version, st.ModelReady, st.Unread = true, s.version, s.modelReady, s.unread()
+		st.Methods = slices.Clone(s.methods)
 		if s.latest != nil {
 			st.Latest = proto.Clone(s.latest).(*machinev1.HerLatest)
 		}
@@ -256,7 +257,7 @@ func (h *Host) watch(ctx context.Context, mon *conn, p *provider.Proc) error {
 		Bots []bot `json:"bots"`
 	}
 	json.Unmarshal(res.Result, &list)
-	snap := newSnapshot(mon.version, list.Bots)
+	snap := newSnapshot(mon.version, mon.methods, list.Bots)
 	mon.mu.Lock()
 	mon.serve = h.serveMesh
 	mon.mu.Unlock()

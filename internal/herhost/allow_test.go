@@ -9,7 +9,8 @@ import (
 )
 
 // The allowlist (docs/her-server.md §6.1): the Her entry's and the
-// console's methods pass, anything else is refused; connectors started as
+// console's methods pass, anything else is unimplemented (docs/version-skew.md
+// §6.3); connectors started as
 // commands are refused however they are written, since only root-signed
 // commands give them. An assistant's full access is the owner's choice,
 // made on any of their devices.
@@ -28,13 +29,13 @@ func TestCheck(t *testing.T) {
 		{"going on without the owner's Chrome", "browser/cancel_wait", `{"session_id":"s"}`, 0},
 		{"computer use's permissions", "desktop/status", ``, 0},
 
-		{"a method off the list", "server/shutdown", ``, connect.CodePermissionDenied},
-		{"a session of its own", "session/new", `{"cwd":"/"}`, connect.CodePermissionDenied},
-		{"a document panel", "doc/open", `{}`, connect.CodePermissionDenied},
-		{"the rest of browser/*", "browser/reveal", `{}`, connect.CodePermissionDenied},
-		{"initialize is hermeshd's", "initialize", `{"protocol_version":2}`, connect.CodePermissionDenied},
-		{"an unknown method", "bots/everything", ``, connect.CodePermissionDenied},
-		{"no method", "", ``, connect.CodePermissionDenied},
+		{"a method off the list", "server/shutdown", ``, connect.CodeUnimplemented},
+		{"a session of its own", "session/new", `{"cwd":"/"}`, connect.CodeUnimplemented},
+		{"a document panel", "doc/open", `{}`, connect.CodeUnimplemented},
+		{"the rest of browser/*", "browser/reveal", `{}`, connect.CodeUnimplemented},
+		{"initialize is hermeshd's", "initialize", `{"protocol_version":2}`, connect.CodeUnimplemented},
+		{"an unknown method", "bots/everything", ``, connect.CodeUnimplemented},
+		{"no method", "", ``, connect.CodeUnimplemented},
 		{"params that are not JSON", "bots/open", `{"bot_id":`, connect.CodeInvalidArgument},
 
 		{"asking first", "session/op", `{"session_id":"s","op":{"type":"set_permission_mode","mode":"manual"}}`, 0},
@@ -229,5 +230,17 @@ func TestParseKeyPath(t *testing.T) {
 		if got != want {
 			t.Errorf("parseKeyPath(%q) = %q, want %q", path, got, want)
 		}
+	}
+}
+
+// What the owner's devices may call is what her answers and the list allows;
+// a her that lists nothing leaves it unknown (docs/version-skew.md §6.1).
+func TestOpenTo(t *testing.T) {
+	got := openTo([]string{"bots/memory", "server/shutdown", "session/new", "bots/subscribe"})
+	if strings.Join(got, ",") != "bots/memory,bots/subscribe" {
+		t.Fatalf("openTo: %v", got)
+	}
+	if openTo(nil) != nil {
+		t.Fatal("openTo(nil) must stay nil")
 	}
 }

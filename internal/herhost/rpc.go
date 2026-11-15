@@ -39,6 +39,7 @@ type conn struct {
 	nc      net.Conn
 	notes   chan note // nil: notifications are dropped
 	version string    // her's, as initialize gave it
+	methods []string  // what her answers, as initialize listed it; nil from a her too old to list them
 
 	wmu     sync.Mutex // one write at a time
 	mu      sync.Mutex
@@ -93,9 +94,10 @@ func dial(ctx context.Context, sock, version string, notes bool) (*conn, error) 
 		ServerInfo struct {
 			Version string `json:"version"`
 		} `json:"server_info"`
+		Methods []string `json:"methods"`
 	}
 	json.Unmarshal(res.Result, &init)
-	c.version = init.ServerInfo.Version
+	c.version, c.methods = init.ServerInfo.Version, init.Methods
 	return c, nil
 }
 
