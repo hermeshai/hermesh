@@ -503,7 +503,10 @@ test("a narrow window hides the info card, then the sidebar shrinks to its rail,
   await showSidebar.click();
   await sidebar.getByRole("button", { name: /^工作/ }).click();
   await expect(main).not.toHaveClass(/\bpeek\b/);
-  expect(await page.evaluate(() => [...document.querySelectorAll(".content *")].every((e) => e.closest(".u-heat") || e.getBoundingClientRect().right <= innerWidth + 1))).toBe(true);
+  // The map scales to its measured width in ResizeObserver, after the page mounts.
+  await expect.poll(() => page.evaluate(() => [...document.querySelectorAll(".content *")]
+    .filter((e) => !e.closest(".u-heat") && e.getBoundingClientRect().right > innerWidth + 1)
+    .map((e) => ({ tag: e.tagName, class: e.getAttribute("class"), right: e.getBoundingClientRect().right })))).toEqual([]);
   await snap(page, "layout-480-overview");
   await app.close();
 });
