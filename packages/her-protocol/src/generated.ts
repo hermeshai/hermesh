@@ -445,6 +445,11 @@ export type BrowserHostResult = {
   problem?: ExtensionProblem | null;
 };
 
+/** Parameters of `browser/open_setup`. */
+export type BrowserOpenSetupParams = {
+  what: BrowserSetupPlace;
+};
+
 /** What the extension asks of the app (`browser/request`). */
 export type BrowserRequest = {
   kind: "open_session";
@@ -467,6 +472,9 @@ export type BrowserRevealParams = {
 export type BrowserSessionParams = {
   session_id: string;
 };
+
+/** What `browser/open_setup` opens. */
+export type BrowserSetupPlace = "extensions_page" | "extension_folder";
 
 /** Parameters of `browser/site_icon`. */
 export type BrowserSiteIconParams = {
@@ -4852,6 +4860,7 @@ export interface Methods {
   "browser/cancel_wait": [BrowserSessionParams, Empty];
   "browser/close_tabs": [BrowserCloseTabsParams, Empty];
   "browser/host": [BrowserHostParams, BrowserHostResult];
+  "browser/open_setup": [BrowserOpenSetupParams, Empty];
   "browser/reveal": [BrowserRevealParams, Empty];
   "browser/site_icon": [BrowserSiteIconParams, BrowserSiteIconResult];
   "browser/status": [Record<string, never>, BrowserStatus];

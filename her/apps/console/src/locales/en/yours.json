@@ -49,10 +49,13 @@
     "install": "Add the Hermesh extension to Chrome on the {{computer}} Her runs on. You only do this once:",
     "howto": {
       "open": "In Chrome, open the extensions page:",
+      "openPage": "Open",
       "developer": "Turn on “Developer mode” at the top right of the page, and leave it on: Chrome may turn the extension off without it.",
+      "drag": "Drag the folder Hermesh keeps the extension in onto the extensions page:",
+      "reveal": "Show Folder",
       "load": {
-        "macos": "Click “Load unpacked”, press ⇧⌘G in the window that opens, and paste the folder Hermesh keeps the extension in:",
-        "linux": "Click “Load unpacked”, press Ctrl+L in the window that opens, and paste the folder Hermesh keeps the extension in:"
+        "macos": "Or click “Load unpacked”, press ⇧⌘G in the window that opens, and paste this folder:",
+        "linux": "Or click “Load unpacked”, press Ctrl+L in the window that opens, and paste this folder:"
       }
     },
     "already": "Added it before? Find Hermesh on the extensions page and click its reload button.",

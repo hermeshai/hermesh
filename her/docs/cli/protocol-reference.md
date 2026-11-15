@@ -113,6 +113,7 @@ Protocol version 2. Generated from `her protocol schema` by `tools/gen-protocol-
 | `browser/assign_tab` | `BrowserAssignTabParams` | `Empty` | Parameters of `browser/assign_tab`. |
 | `browser/cancel_wait` | `BrowserSessionParams` | `Empty` | Parameters of `browser/allow` and `browser/cancel_wait`. |
 | `browser/close_tabs` | `BrowserCloseTabsParams` | `Empty` | Parameters of `browser/close_tabs`. |
+| `browser/open_setup` | `BrowserOpenSetupParams` | `Empty` | Parameters of `browser/open_setup`. |
 | `browser/reveal` | `BrowserRevealParams` | `Empty` | Parameters of `browser/reveal`. |
 | `browser/site_icon` | `BrowserSiteIconParams` | `BrowserSiteIconResult` | Parameters of `browser/site_icon`. |
 | `browser/status` | — | `BrowserStatus` | The result of `browser/status`, and the parameters of `browser/changed`. |
