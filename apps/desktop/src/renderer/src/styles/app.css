@@ -227,7 +227,7 @@ html.vibrant .rail{background:var(--side-tint)}
 .nav-i:hover .kbd,.nav-i:focus-visible .kbd{opacity:1}
 .nav-i:hover{background:var(--fill)}
 .nav-i.sel{background:var(--side-sel)}
-.nav-i .cnt{margin-left:auto;font-size:11.5px;color:var(--l2);font-variant-numeric:tabular-nums}
+.nav-i .cnt,.map-row .cnt{margin-left:auto;font-size:11.5px;color:var(--l2);font-variant-numeric:tabular-nums}
 /* The team (docs/her-team.md §14.2): Work's marks, the map over the list, and the list's filter. */
 .nav-marks,.map-marks{margin-left:auto;display:inline-flex;align-items:center;gap:6px;flex:none}
 .dot-w{width:7px;height:7px;border-radius:50%;background:var(--orange);flex:none;display:inline-block}
@@ -236,11 +236,10 @@ html.vibrant .rail{background:var(--side-tint)}
 @keyframes busy-turn{to{transform:rotate(360deg)}}
 @media (prefers-reduced-motion:reduce){.busy>i{animation:none}}
 .team-map{display:flex;flex-direction:column;gap:1px}
-.team-map .grp-h{position:static;padding-top:20px}
+.team-map .grp-h{position:static;padding:12px 10px 4px;margin-bottom:0}
 .map-row{display:flex;align-items:center;gap:8px;min-height:28px;padding:3px 9px;border:0;border-radius:8px;background:none;width:100%;text-align:left;font-size:13px;color:var(--l1)}
 .map-row:hover{background:var(--fill)}
 .map-row.sel{background:var(--accent-bg);color:var(--accent-t)}
-.map-row.sub{padding-left:33px}
 .map-row>.ic{color:var(--l2)}
 .map-n{min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .map-sub{font-size:11.5px;color:var(--l2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}

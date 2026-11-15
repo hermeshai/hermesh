@@ -115,7 +115,7 @@ export function Sidebar() {
           <span>{t("sidebar.search")}</span>
           <span className="kbd">{keys("CmdOrCtrl+K")}</span>
         </button>
-        <AllSessionsItem />
+        {st.status?.machineOnly && <AllSessionsItem className="nav-i" />}
       </nav>
       <div className="side-list">{!st.status?.machineOnly && <TeamMap />}</div>
       <UpdateReminder />
@@ -131,14 +131,14 @@ export function openList(st: Store, f: ListFilter | null) {
   st.set({ listFilter: f, selection: s && inFilter(f, s) ? sel : { kind: "list" } });
 }
 
-/** All Sessions: the list's column, unfiltered, with how many there are (archived ones aside). */
-function AllSessionsItem() {
+/** All Sessions: the list's column, unfiltered, with how many there are (archived ones aside); the team's first row. */
+function AllSessionsItem({ className }: { className: string }) {
   const st = useStore();
   const { t } = useTranslation("common");
   const count = st.sessions.filter((s) => s.status !== SessionStatus.ARCHIVED).length;
   const sel = listShown(st.selection) && st.listFilter === null;
   return (
-    <button className={`nav-i ${sel ? "sel" : ""}`} aria-current={sel || undefined} onClick={() => openList(st, null)}>
+    <button className={`${className} ${sel ? "sel" : ""}`} aria-current={sel || undefined} onClick={() => openList(st, null)}>
       <Icon name="menu" />
       <span>{t("sidebar.allSessions")}</span>
       <span className="cnt">{count}</span>
@@ -270,6 +270,7 @@ function TeamMap() {
         {t("sidebar.team")}
         <Icon name="caret" className="sm" />
       </button>
+      <AllSessionsItem className="map-row" />
       {open && (
         <>
           {machines.map((m) => {
@@ -290,7 +291,7 @@ function TeamMap() {
                 {agents.map((a) => {
                   const fa: ListFilter = { kind: "agent", machine: m.machineId, agent: a.name };
                   return (
-                    <button key={a.name} className={`map-row sub ${same(fa) ? "sel" : ""}`} aria-current={same(fa) || undefined} onClick={() => pick(fa)}>
+                    <button key={a.name} className={`map-row ${same(fa) ? "sel" : ""}`} aria-current={same(fa) || undefined} onClick={() => pick(fa)}>
                       <AgentLogo agent={a.name} size={16} />
                       <span className="map-n">{codingAgentTitle(a.name)}</span>
                       {marks(live.filter((s) => s.machineId === m.machineId && s.agent === a.name))}

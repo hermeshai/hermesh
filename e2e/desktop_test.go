@@ -44,7 +44,12 @@ type desktopFixture struct {
 	// her's ChatGPT fixture, standing in for OpenAI, for the app to open
 	// its sign-in page (empty when none).
 	ChatGPT string `json:"chatgpt,omitempty"`
-	owner   *ownerMac
+	// The file of the methods this Mac's her acts as if it lacked
+	// (HER_TEST_WITHOUT), and the her program it runs, for the spec to
+	// restart her as an update does (empty when none).
+	HerWithout string `json:"herWithout,omitempty"`
+	HerBin     string `json:"herBin,omitempty"`
+	owner      *ownerMac
 }
 
 // freshOwner is an owner daemon not set up yet: its socket, a relay of its
@@ -229,6 +234,33 @@ func TestDesktopHerChatGPT(t *testing.T) {
 	w := newOwnerMac(t, env, &localv1.GrantSpec{})
 	t.Cleanup(w.owner.stop) // stopped as a service is, so that it stops her
 	herSpec(t, desktopFixture{Socket: w.sock, Sessions: map[string]string{}, CLI: filepath.Join(w.bin, "hermesh"), CLIEnv: w.cliEnv, ChatGPT: chatgpt, owner: w}, "her-chatgpt.spec.ts")
+}
+
+// TestDesktopHerOlder runs apps/desktop/e2e/her-older.spec.ts: this Mac's
+// her stands in for one older than the app (HER_TEST_WITHOUT,
+// docs/version-skew.md §8), first one from before her listed her methods,
+// then one that lists them without bots/memory, then one that has it; the
+// spec restarts her between, as an update does.
+//
+//	go test ./e2e -run TestDesktopHerOlder -v -timeout 30m
+func TestDesktopHerOlder(t *testing.T) {
+	if testing.Short() {
+		t.Skip("e2e")
+	}
+	if _, err := exec.LookPath("pnpm"); err != nil {
+		t.Skip("pnpm not installed")
+	}
+	her, mockBin := herBinaries(t)
+	mock := startHerMock(t, mockBin)
+	without := filepath.Join(t.TempDir(), "her-without")
+	if err := os.WriteFile(without, []byte("bots/memory\nno-list\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	env := append(herEnv(her, herConsole(t), herHome(t, mock.models), mock.base), "HER_TEST_WITHOUT="+without)
+	w := newOwnerMac(t, env, &localv1.GrantSpec{})
+	t.Cleanup(w.owner.stop) // stopped as a service is, so that it stops her
+	herSpec(t, desktopFixture{Socket: w.sock, Sessions: map[string]string{}, CLI: filepath.Join(w.bin, "hermesh"), CLIEnv: w.cliEnv,
+		HerWithout: without, HerBin: her, owner: w}, "her-older.spec.ts")
 }
 
 // herSpec builds the app and runs one of the Her entry's specs against f.

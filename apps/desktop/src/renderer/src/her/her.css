@@ -491,3 +491,6 @@ span.shimmer{display:inline-block;max-width:100%;vertical-align:bottom}
 .her-choice-t b{display:block;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .her-choice-t span{display:block;font-size:12px;color:var(--l2);margin-top:2px}
 .her-choice.off .her-choice-t b{color:var(--l2)}
+
+/* A feature the machine's older Hermesh lacks (docs/version-skew.md §6.2). */
+.needs-update{color:var(--orange)}

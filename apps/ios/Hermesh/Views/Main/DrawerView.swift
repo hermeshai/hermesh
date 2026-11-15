@@ -41,16 +41,16 @@ struct DrawerView: View {
                 VStack(alignment: .leading, spacing: 2) {
                     HStack {
                         if model.menuBeside {
-                            // Where the page's button shows the menu again once it is hidden.
+                            // Where the rail's button expands it again. Over the page, it puts the menu away.
                             Button {
-                                model.menuHidden = true
+                                if model.drawerOpen { model.drawerOpen = false } else { model.menuRail = true }
                             } label: {
                                 Image(systemName: "sidebar.left").font(.body.weight(.medium)).frame(width: button, height: button)
                                     .glassEffect(.regular.interactive(), in: .circle)
                                     .contentShape(.circle)
                             }
                             .buttonStyle(.plain)
-                            .accessibilityLabel("Hide the menu")
+                            .accessibilityLabel("Collapse the menu")
                             .accessibilityIdentifier("menu-hide")
                         }
                         Wordmark()
@@ -91,6 +91,21 @@ struct DrawerView: View {
             herPlace
             if !herEnvironments(model.machines).isEmpty { progressPlace }
             workPlace
+            sessionsPlace
+        }
+    }
+
+    /// All Sessions, as in the Mac's sidebar: the list, with how many there are.
+    private var sessionsPlace: some View {
+        item(.sessions, id: "sessions-place") {
+            HStack(spacing: 12) {
+                Image(systemName: "list.bullet").frame(width: 28)
+                Text("All Sessions")
+                Spacer(minLength: 0)
+                Text("\(model.sessions.filter { $0.status != .archived }.count)").font(.footnote).monospacedDigit().foregroundStyle(.secondary)
+            }
+            .font(.body).frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.horizontal, 16).frame(height: 48)
         }
     }
 
@@ -266,7 +281,7 @@ struct DrawerView: View {
     /// A row that opens a page of Work's.
     private func item(_ route: Route, id: String, @ViewBuilder label: () -> some View) -> some View {
         Button { model.open(underWork: route) } label: { label() }
-            .buttonStyle(RowStyle(selected: model.root == .overview && model.path.first == route))
+            .buttonStyle(RowStyle(selected: model.shows(route)))
             .padding(.horizontal, 10)
             .accessibilityIdentifier(id)
     }
@@ -317,7 +332,7 @@ struct RowStyle: ButtonStyle {
 
 /// The Mac's Her icon (icons.tsx `her`): a robot's head with its antenna,
 /// ears and eyes, drawn on the same 16-point grid.
-private nonisolated struct HerRobot: Shape {
+nonisolated struct HerRobot: Shape {
     func path(in rect: CGRect) -> Path {
         let k = min(rect.width, rect.height) / 16
         func p(_ x: CGFloat, _ y: CGFloat) -> CGPoint { CGPoint(x: rect.minX + x * k, y: rect.minY + y * k) }

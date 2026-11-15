@@ -44,6 +44,7 @@ extension HermeshUITests {
         try XCTContext.runActivity(named: "the plus beside the field: what it adds opens out of it, the field staying") { _ in try herAdd() }
         try XCTContext.runActivity(named: "her name opens her settings, a page of their own") { _ in try herSettings() }
         try XCTContext.runActivity(named: "what she notes shows in her settings as written, and is cleared there") { _ in try herMemory() }
+        try XCTContext.runActivity(named: "a Mac older than the app says it needs an update, and the memory loads once it has one") { _ in try herOlder() }
         try XCTContext.runActivity(named: "a question: a tapped answer is the owner's message") { _ in try herQuestion() }
         try XCTContext.runActivity(named: "files Her sent: Markdown reads as the conversation renders it, code in its colours") { _ in try herFiles() }
         try XCTContext.runActivity(named: "an approval in the composer's place, allowed once") { _ in try herApproval() }
@@ -286,6 +287,43 @@ extension HermeshUITests {
         XCTAssertTrue(text("清空「Her」记住的事？").waitForExistence(timeout: 10), "asked first")
         app.buttons["清除"].firstMatch.tap()
         XCTAssertTrue(text("还没有").waitForExistence(timeout: 30), "nothing remembered")
+        app.navigationBars.buttons.element(boundBy: 0).tap()
+        XCTAssertTrue(app.descendants(matching: .any)["her-composer"].firstMatch.waitForExistence(timeout: 10), "back to the conversation")
+    }
+
+    /// A Mac older than the app (docs/version-skew.md §8): its her acts as if it lacked bots/memory, restarted as an
+    /// update does (TestIPhone's her-without). First one from before her listed her methods: the page says Hermesh
+    /// there needs an update, never her's "unknown method". Then one that lists them without it: the row says so before
+    /// it is opened, and Clear Memory explains. Then her has it, and the open page loads the memory by itself.
+    func herOlder() throws {
+        _ = try control("her-without?methods=bots/memory,no-list", method: "POST")
+        app.buttons["her-avatar"].tap()
+        XCTAssertTrue(text("运行在").waitForExistence(timeout: 10), "her settings")
+        app.swipeUp()
+        let row = app.buttons["her-memory"]
+        XCTAssertTrue(row.waitForExistence(timeout: 10), "the memory row")
+        row.tap()
+        let needs = app.descendants(matching: .any)["needs-update"].firstMatch
+        XCTAssertTrue(needs.waitForExistence(timeout: 60), "the page says the Mac needs an update")
+        XCTAssertTrue(text("需要更新 Hermesh").exists, needs.label)
+        XCTAssertFalse(app.staticTexts.containing(NSPredicate(format: "label CONTAINS 'unknown method'")).firstMatch.exists, "never her's words")
+        herShot("Her: a Mac older than the app")
+        app.navigationBars.buttons.element(boundBy: 0).tap()
+
+        _ = try control("her-without?methods=bots/memory", method: "POST")
+        let mark = app.descendants(matching: .any)["her-memory-needs-update"].firstMatch
+        XCTAssertTrue(mark.waitForExistence(timeout: 60), "the row says it needs an update")
+        let clear = app.buttons["her-clear-memory"]
+        if !clear.waitForExistence(timeout: 5) { app.swipeUp() }
+        clear.tap()
+        XCTAssertFalse(text("清空「Her」记住的事？").waitForExistence(timeout: 3), "nothing to confirm")
+
+        row.tap()
+        XCTAssertTrue(needs.waitForExistence(timeout: 10), "still older")
+        _ = try control("her-without?methods=", method: "POST")
+        XCTAssertTrue(text("还没有记下什么").waitForExistence(timeout: 90), "updated: the page loads by itself")
+        XCTAssertFalse(needs.exists)
+        app.navigationBars.buttons.element(boundBy: 0).tap()
         app.navigationBars.buttons.element(boundBy: 0).tap()
         XCTAssertTrue(app.descendants(matching: .any)["her-composer"].firstMatch.waitForExistence(timeout: 10), "back to the conversation")
     }

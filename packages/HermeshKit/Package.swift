@@ -43,6 +43,7 @@ let package = Package(
             name: "HermeshHer",
             dependencies: ["HermeshProto", .product(name: "SwiftProtobuf", package: "swift-protobuf")],
             path: "Sources/HermeshHer",
+            resources: [.process("Resources")],
             swiftSettings: [.swiftLanguageMode(.v5)]
         ),
         .testTarget(

@@ -20,6 +20,10 @@ export type Fixture = {
   connector?: string;
   /** her's ChatGPT fixture, standing in for OpenAI (TestDesktopHerChatGPT). */
   chatgpt?: string;
+  /** The file of the methods this Mac's her acts as if it lacked, read when her starts (TestDesktopHerOlder). */
+  herWithout?: string;
+  /** The her program this Mac runs, for the spec to restart it as an update does (TestDesktopHerOlder). */
+  herBin?: string;
 };
 
 /** Loaded first in every launch: the app's windows open without taking focus. */

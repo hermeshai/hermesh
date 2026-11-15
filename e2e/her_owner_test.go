@@ -610,3 +610,56 @@ func TestHerTwoEnvironments(t *testing.T) {
 		return false
 	})
 }
+
+// restartHerWithout has the owner Mac's her act as if it lacked methods
+// (HER_TEST_WITHOUT, read when her starts; "no-list" also leaves her methods
+// unlisted, as a her from before the list: docs/version-skew.md §8), and
+// restarts her as an update does: her stops, and hermeshd starts the program
+// anew. It returns once the new her serves.
+func restartHerWithout(w *ownerMac, methods []string) error {
+	var file, bin string
+	for _, kv := range w.daemonEnv {
+		if v, ok := strings.CutPrefix(kv, "HER_TEST_WITHOUT="); ok {
+			file = v
+		}
+		if v, ok := strings.CutPrefix(kv, "HERMESH_HER_BIN="); ok {
+			bin = v
+		}
+	}
+	if file == "" || bin == "" {
+		return fmt.Errorf("the owner Mac runs no her with HER_TEST_WITHOUT")
+	}
+	if err := os.WriteFile(file, []byte(strings.Join(methods, "\n")), 0o600); err != nil {
+		return err
+	}
+	// The test's her, serving: never the installed app's.
+	serving := func() (pid, sock string) {
+		out, _ := exec.Command("ps", "-Ao", "pid=,command=").Output()
+		for _, line := range strings.Split(string(out), "\n") {
+			pid, cmd, _ := strings.Cut(strings.TrimSpace(line), " ")
+			if m := regexp.MustCompile(`^` + regexp.QuoteMeta(bin) + ` serve .*--listen unix://(\S+)`).FindStringSubmatch(strings.TrimSpace(cmd)); m != nil {
+				return pid, m[1]
+			}
+		}
+		return "", ""
+	}
+	old, sock := serving()
+	if sock == "" {
+		return fmt.Errorf("no her serving")
+	}
+	c, err := net.DialTimeout("unix", sock, 5*time.Second)
+	if err != nil {
+		return err
+	}
+	c.SetDeadline(time.Now().Add(10 * time.Second))
+	fmt.Fprintln(c, `{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocol_version":2,"client_info":{"name":"e2e"}}}`)
+	fmt.Fprintln(c, `{"jsonrpc":"2.0","id":2,"method":"server/shutdown"}`)
+	io.Copy(io.Discard, c) // her closes it as it stops
+	c.Close()
+	for deadline := time.Now().Add(60 * time.Second); time.Now().Before(deadline); time.Sleep(200 * time.Millisecond) {
+		if pid, _ := serving(); pid != "" && pid != old {
+			return nil
+		}
+	}
+	return fmt.Errorf("her did not start again")
+}

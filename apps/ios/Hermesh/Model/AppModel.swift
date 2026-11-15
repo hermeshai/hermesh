@@ -36,6 +36,14 @@ enum Route: Hashable {
     case sessions // all of them, from Work
     case herSettings // the environment's Her shown
     case progressAgent(String) // a sub-agent of Her's: its record
+
+    /// A list of sessions: on a wide screen it stands as a column, what it leads to beside it.
+    var isList: Bool {
+        switch self {
+        case .sessions, .grantSessions, .machineSessions, .agentSessions: true
+        default: false
+        }
+    }
 }
 
 /// Sheets over everything.
@@ -193,13 +201,24 @@ final class AppModel {
     /// The root page scrolled far enough that its title is small.
     var rootTitleSmall = false
     var drawerOpen = false
-    /// The menu stands beside the page (regular width, wider than tall).
-    var menuBeside = false
-    /// The owner hid the menu that stands beside the page, and how wide they dragged it; kept on this iPhone.
-    var menuHidden = false { didSet { save(menuHidden, "menuHidden") } }
+    /// How a wide screen is shared (regular width, wider than tall): the menu stands beside the page, expanded
+    /// or as its rail, and a session list as a column of its own (docs/iphone-app.md). Nil on any other screen.
+    var wide: WideLayout?
+    /// The menu stands beside the page, or its rail does: no menu button then.
+    var menuBeside: Bool { wide != nil }
+    /// The owner shrank the menu that stands beside the page to its rail, and how wide they dragged it; kept
+    /// on this iPhone.
+    var menuRail = false { didSet { save(menuRail, "menuRail") } }
     var menuWidth: Double = 322 { didSet { save(menuWidth, "menuWidth") } }
-    /// The menu in view beside the page: no menu button then.
-    var menuInView: Bool { menuBeside && !menuHidden }
+    /// The expanded menu in view beside the page.
+    var menuInView: Bool { wide.map { !$0.rail } ?? false }
+    /// Where in the path the list that stands as a column is, while one does.
+    var listAt: Int? { wide?.list == true ? path.lastIndex(where: \.isList) : nil }
+    /// The session chosen in the list's column, shown beside it.
+    var chosenSession: String? {
+        guard let i = listAt, path.count > i + 1, case .session(let id) = path[i + 1] else { return nil }
+        return id
+    }
     var sheet: SheetKind?
     /// How the session list is laid out, whether it shows archived sessions,
     /// and its collapsed sections ("grouping:key"); kept on this iPhone.
@@ -221,7 +240,7 @@ final class AppModel {
         listView = Self.saved("listView") ?? SessionListLayout()
         showArchived = Self.saved("showArchived") ?? false
         collapsed = Self.saved("collapsed") ?? []
-        menuHidden = Self.saved("menuHidden") ?? false
+        menuRail = Self.saved("menuRail") ?? false
         menuWidth = Self.saved("menuWidth") ?? 322
         herLater = Self.saved("herLater") ?? false
         root = herLater ? .overview : .her
@@ -770,10 +789,20 @@ final class AppModel {
         drawerOpen = false
     }
 
+    /// A page of Work's is the one the menu led to: its row is the current one.
+    func shows(_ route: Route) -> Bool { root == .overview && path.first == route }
+
     func openSession(_ id: String) {
         if case .session(let cur) = root, cur == id, path.isEmpty { return }
         if path.last == .session(id) { return }
         path.append(.session(id))
+    }
+
+    /// A session chosen in a list: it takes the place of what the list led to before (beside the list, where
+    /// the list stands as a column).
+    func chooseSession(_ id: String) {
+        guard let i = path.lastIndex(where: \.isList) else { return openSession(id) }
+        path = Array(path[...i]) + [.session(id)]
     }
 
     func show(_ text: String, undo: (@MainActor () -> Void)? = nil) {
