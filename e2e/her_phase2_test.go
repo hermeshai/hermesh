@@ -65,7 +65,9 @@ func newHerEnvironment(t *testing.T, herVars ...string) *herEnvironment {
 	}
 	her, mockBin := herBinaries(t)
 	mock := startHerMock(t, mockBin)
-	w := newOwnerMac(t, nil, &localv1.GrantSpec{})
+	// The scripted coding agents, never the ones installed here: the
+	// sessions Her starts follow their scripts (sleep, ask, say).
+	w := newOwnerMac(t, []string{"HERMESH_FAKE_PROVIDERS=1"}, &localv1.GrantSpec{})
 	env := &herEnvironment{w: w, c: w.app.client, mac: "127.0.0.1"}
 	ctx := context.Background()
 	if docker {
