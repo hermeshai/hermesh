@@ -219,7 +219,7 @@ struct OptionArg {
 
 #[derive(Debug, Deserialize, JsonSchema)]
 pub(crate) struct SendArgs {
-    /// What this message is. text (the default): words, rendered as Markdown. attachment: one or more files or images, with the message that goes with them, however long. question: a question, when you need the user to decide; it ends your turn and their answer comes back as their next message; send any background first as a text message. card: a card a tool prepared for the user to answer, with your words above it; it ends your turn, and you hear how it ends.
+    /// What this message is. text (the default): words, rendered as Markdown. attachment: one or more files or images, with a short message that goes with them. question: a question, when you need the user to decide; it ends your turn and their answer comes back as their next message; send any background first as a text message. card: a card a tool prepared for the user to answer, with your words above it; it ends your turn, and you hear how it ends.
     #[serde(default, rename = "type")]
     kind: Option<MessageType>,
     /// The message. For attachment, the message shown above the files. For question, the question in one sentence.
