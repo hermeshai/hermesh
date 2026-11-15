@@ -78,7 +78,7 @@ private struct HerPage: View {
 
     private func header(_ chat: HerChat) -> some View {
         ZStack(alignment: .top) {
-            if !sideBars && !model.menuInView {
+            if !sideBars && !model.menuBeside {
                 HStack {
                     HerMenuButton()
                     Spacer()
@@ -282,7 +282,7 @@ private struct HerMenuButton: View {
         Button {
             model.drawerOpen = true
         } label: {
-            Image(systemName: model.menuBeside ? "sidebar.left" : "line.3.horizontal").font(.body.weight(.medium)).frame(width: 44, height: 44)
+            Image(systemName: "line.3.horizontal").font(.body.weight(.medium)).frame(width: 44, height: 44)
                 .overlay(alignment: .topTrailing) {
                     if model.attentionCount > 0 {
                         Circle().fill(.orange).frame(width: 8, height: 8).offset(x: -9, y: 11)
