@@ -88,6 +88,8 @@ private struct PageView: View {
             ScopedSessionsView(filter: SessionFilter(agent: agent, machine: machine), title: String(localized: "\(agentTitle(agent)) on \(model.machineName(machine))"), about: .machineAgent(machine, agent)).syncSubtitle()
         case .sessions: SessionsView().syncSubtitle()
         case .herSettings: HerSettings()
+        case .herConnectors: HerConnectorsPage()
+        case .herConnector(let name): HerConnectorPage(name: name)
         case .progress: ProgressPage()
         case .progressAgent(let id): ProgressAgentPage(agentID: id)
         case .routines: RoutinesPage()

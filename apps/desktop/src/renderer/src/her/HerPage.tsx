@@ -107,8 +107,8 @@ function Environment({ machine, envs, choose }: { machine: Machine; envs: Machin
     },
     [show],
   );
-  const openConsole = useCallback(() => {
-    window.hermesh?.openHerConsole(id).catch((e: unknown) => show(errorText(e)));
+  const openConsole = useCallback((page?: string) => {
+    window.hermesh?.openHerConsole(id, page).catch((e: unknown) => show(errorText(e)));
   }, [id, show]);
   // Her's conversation, as the page and the panels beside it act on it.
   const op: SendOp = useCallback(

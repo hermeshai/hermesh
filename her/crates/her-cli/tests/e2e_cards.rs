@@ -230,12 +230,13 @@ async fn catch_redirect(device: tokio::net::TcpListener) -> HashMap<String, Stri
     her_mock::mcp_auth::form(target.split_once('?').unwrap().1)
 }
 
-/// Signs in to `name` as the console does on a device: `mcp/login` with its own redirect, the
-/// browser, then `mcp/login_complete` with what the redirect brought.
-async fn sign_in(client: &Client, name: &str) {
+/// Signs in as the console does on a device: `mcp/login` (`params`: the connector's `name`, and
+/// its `server` when it is not added yet) with its own redirect, the browser, then
+/// `mcp/login_complete` with what the redirect brought.
+async fn sign_in(client: &Client, mut params: Value) {
     let device = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
-    let redirect = format!("http://127.0.0.1:{}/callback", device.local_addr().unwrap().port());
-    let login = client.request("mcp/login", json!({"name": name, "redirect_uri": redirect})).await.unwrap();
+    params["redirect_uri"] = json!(format!("http://127.0.0.1:{}/callback", device.local_addr().unwrap().port()));
+    let login = client.request("mcp/login", params).await.unwrap();
     let caught = tokio::spawn(catch_redirect(device));
     her_mock::mcp_auth::browse(login["authorize_url"].as_str().unwrap()).await.unwrap();
     let query = caught.await.unwrap();
@@ -308,7 +309,7 @@ async fn her_connects_an_oauth_connector_on_a_card() {
 
     // The device signs in; the card is done once the connector lists its tools, and Her, woken,
     // uses it and passes it on, all in the conversation as it was loaded.
-    sign_in(&her.client, "tracker").await;
+    sign_in(&her.client, json!({"name": "tracker"})).await;
     let note = her.passed_on(&card, "done").await;
     assert!(note.starts_with("Tracker connected: ") && note.contains("echo"), "{note}");
     until_row(&mut her.wire, |row| row.get("waiting").is_none()).await;
@@ -335,6 +336,77 @@ async fn her_connects_an_oauth_connector_on_a_card() {
     her.say("[[mock:mcp_env:tracker:HER_CARDS_TEST]] read it again").await;
     let told = sent(&her.approving().await).join("\n");
     assert!(told.contains("connector_connect {name: \"tracker\"}"), "{told}");
+    her.stop().await;
+}
+
+/// A connector the owner adds on the connectors page, outside Her's conversation, works in the
+/// conversation as it is loaded, with no card; turned off there, it is gone from it
+/// (docs/her-connectors-demo.html).
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn connectors_changed_on_the_page_reach_the_open_conversation() {
+    let env = TestEnv::new("manual", "").await;
+    let mock = her_mock::mcp::serve_http("127.0.0.1:0", McpTestOptions::default()).await.unwrap();
+    let mut her = her(&env).await;
+    let write = |key: &str, value: Value| json!({"layer": "user", "edits": [{"key_path": key, "value": value, "merge": "replace"}]});
+    let docs_status = |state: &'static str| move |e: &Value| e["type"] == "mcp_server_status" && e["server"] == "docs" && e["state"] == state;
+
+    her.client.request("config/write", write("mcp_servers.docs", json!({"url": mock.url()}))).await.unwrap();
+    until(&mut her.wire, docs_status("ready")).await;
+    her.say("[[mock:mcp_env:docs:HER_CONNECTORS_TEST]] read it").await;
+    let told = sent(&her.approving().await).join("\n");
+    assert!(told.contains("mcp done: (unset)"), "the added connector works: {told}");
+
+    her.client.request("config/write", write("mcp_servers.docs.enabled", json!(false))).await.unwrap();
+    until(&mut her.wire, docs_status("closed")).await;
+    her.say("[[mock:mcp_env:docs:HER_CONNECTORS_TEST]] read it again").await;
+    let told = sent(&her.approving().await).join("\n");
+    assert!(told.starts_with("mcp done: ") && !told.contains("(unset)"), "the connector turned off is gone: {told}");
+    her.stop().await;
+}
+
+/// An OAuth connector added on the connectors page, signed in before it is written as the page
+/// does, works in Her's conversation with no card; its sign-in gone, signing in again on the page
+/// makes it work again in the same conversation (docs/her-connectors-demo.html).
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn an_oauth_connector_added_and_signed_in_again_on_the_page() {
+    let env = TestEnv::new("manual", "").await;
+    let mock = oauth_server().await;
+    let mut her = her(&env).await;
+    let server = json!({"url": mock.url(), "auth": "oauth"});
+    let ready = |e: &Value| e["type"] == "mcp_server_status" && e["server"] == "tracker" && e["state"] == "ready";
+
+    sign_in(&her.client, json!({"name": "tracker", "server": {"name": "tracker", "url": mock.url(), "auth": "oauth"}})).await;
+    let write = json!({"layer": "user", "edits": [{"key_path": "mcp_servers.tracker", "value": server, "merge": "replace"}]});
+    her.client.request("config/write", write).await.unwrap();
+    until(&mut her.wire, ready).await;
+    her.say("[[mock:mcp_env:tracker:HER_CONNECTORS_TEST]] read it").await;
+    let told = sent(&her.approving().await).join("\n");
+    assert!(told.contains("mcp done: (unset)"), "the connector added on the page works: {told}");
+
+    let credentials = std::fs::read_to_string(env.home.path().join("credentials.toml")).unwrap();
+    let access = credentials.split("at-").nth(1).map(|rest| format!("at-{}", rest.chars().take_while(char::is_ascii_digit).collect::<String>())).expect("an access token");
+    her.client.request("mcp/logout", json!({"name": "tracker"})).await.unwrap();
+    revoke(&mock.url(), &access).await;
+    her.say("[[mock:mcp_env:tracker:HER_CONNECTORS_TEST]] read it again").await;
+    let told = sent(&her.approving().await).join("\n");
+    assert!(!told.contains("(unset)"), "signed out, it does not work: {told}");
+
+    sign_in(&her.client, json!({"name": "tracker"})).await;
+    her.say("[[mock:mcp_env:tracker:HER_CONNECTORS_TEST]] once more").await;
+    let told = sent(&her.approving().await).join("\n");
+    assert!(told.contains("mcp done: (unset)"), "signed in again on the page, it works: {told}");
+
+    // Written before it is signed in to, the conversation has it waiting for a sign-in, without
+    // tools; signed in on the page, it connects again there.
+    let notes = oauth_server().await;
+    let write = json!({"layer": "user", "edits": [{"key_path": "mcp_servers.notes", "value": {"url": notes.url(), "auth": "oauth"}, "merge": "replace"}]});
+    her.client.request("config/write", write).await.unwrap();
+    until(&mut her.wire, |e| e["type"] == "mcp_server_status" && e["server"] == "notes" && e["state"] == "needs_login").await;
+    sign_in(&her.client, json!({"name": "notes"})).await;
+    until(&mut her.wire, |e| e["type"] == "mcp_server_status" && e["server"] == "notes" && e["state"] == "ready").await;
+    her.say("[[mock:mcp_env:notes:HER_CONNECTORS_TEST]] read the notes").await;
+    let told = sent(&her.approving().await).join("\n");
+    assert!(told.contains("mcp done: (unset)"), "signed in on the page, the one waiting works: {told}");
     her.stop().await;
 }
 

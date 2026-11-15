@@ -36,8 +36,8 @@ export type Her = {
   call: <M extends keyof Methods & string>(method: M, params: Methods[M][0]) => Promise<Methods[M][1]>;
   /** An action whose failure becomes a toast; resolves to whether it worked. */
   run: (action: () => Promise<unknown>, done?: string) => Promise<boolean>;
-  /** The environment's console, in a window of its own. */
-  openConsole: () => void;
+  /** The environment's console, in a window of its own; at `page` when one is given ("connectors/github"). */
+  openConsole: (page?: string) => void;
 };
 
 export const HerContext = createContext<Her | null>(null);

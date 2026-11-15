@@ -233,6 +233,11 @@ impl Registry {
         self.with(|_| ());
     }
 
+    /// The conversations of the bots that have one.
+    pub(crate) fn session_ids(&self) -> std::collections::HashSet<String> {
+        self.with(|bots| bots.values().filter_map(|b| b.file.session_id.clone()).collect())
+    }
+
     pub(crate) fn exists(&self, id: &str) -> bool {
         self.with(|bots| bots.contains_key(id))
     }
@@ -414,7 +419,7 @@ fn clean_name(name: &str) -> Result<String, RpcError> {
 }
 
 impl Server {
-    fn bots(&self) -> &Arc<Registry> {
+    pub(crate) fn bots(&self) -> &Arc<Registry> {
         &self.0.bots
     }
 
