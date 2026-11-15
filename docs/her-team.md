@@ -936,8 +936,10 @@ follows that work, as they would ask a secretary how things stand.
 
 - **Where.** A page of Her's, not a place of its own (decided 2026-11-15:
   on its own it was too heavy and too thin): a button at the top right of
-  her page, on the iPhone beside nothing, on the Mac before her routines
-  and ⋯. It opens Progress over her conversation (pushed on the iPhone, in
+  her page, on the iPhone a glass circle across from the menu button (where
+  the system stands the bars on the side, iPhone Duo, in that bar with the
+  menu button, as a page that draws its own top leaves its buttons there),
+  on the Mac before her routines and ⋯. It opens Progress over her conversation (pushed on the iPhone, in
   her page's place on the Mac, whose sidebar keeps Her current), with a
   way back to her. Its mark is an orange dot while a piece of her work
   waits for the owner. Her coding sessions are counted as Watch brings
