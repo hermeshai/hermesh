@@ -5456,6 +5456,16 @@
         }
       }
     },
+    "Pan Screen": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "拖动画面"
+          }
+        }
+      }
+    },
     "Paste": {
       "localizations": {
         "zh-Hans": {
@@ -6106,22 +6116,22 @@
         }
       }
     },
-    "Send…": {
-      "localizations": {
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "发送…"
-          }
-        }
-      }
-    },
     "Sending…": {
       "localizations": {
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
             "value": "正在发送…"
+          }
+        }
+      }
+    },
+    "Send…": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "发送…"
           }
         }
       }
