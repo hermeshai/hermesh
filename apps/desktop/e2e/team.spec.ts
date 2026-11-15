@@ -29,9 +29,9 @@ test("the window opens on Her's first run while she runs nowhere; Not Now makes 
   await app.close();
 });
 
-test("the sidebar is navigation only: its pages, All Sessions and the team, whose rows open the list's column beside the session", async () => {
+test("the sidebar is navigation only: its pages and the team, All Sessions first, whose rows open the list's column beside the session", async () => {
   const { app, page } = await launch();
-  await expect(page.locator(".side-nav .nav-i")).toHaveText([/^Her/, /^工作/, /^搜索/, /^全部会话/]);
+  await expect(page.locator(".side-nav .nav-i")).toHaveText([/^Her/, /^工作/, /^搜索/]);
   // No session in the sidebar: the list is a column of its own, opened from it.
   await expect(page.getByRole("complementary", { name: "边栏" })).not.toContainText("写 hello");
   // Work's row: a dot while something waits on the owner, and a ring with what runs.
@@ -46,9 +46,15 @@ test("the sidebar is navigation only: its pages, All Sessions and the team, whos
   await expect(gemini.getByRole("img", { name: "在等你" })).toBeVisible();
   await expect(gemini.getByRole("img", { name: "1 个在忙" })).toBeVisible();
   await expect(map).toContainText("连接的 Agent");
+  // All Sessions is the map's first row: the list unfiltered, before its filters.
+  const all = map.getByRole("button", { name: /^全部会话/ });
+  await expect(map.locator(".map-row").first()).toHaveText(/^全部会话\d+$/);
+  // The rows are flush: an agent's logo under its machine's icon, no indent.
+  const left = async (l: typeof mac) => (await l.locator(":scope > *").first().boundingBox())!.x;
+  expect(await left(gemini)).toBe(await left(mac));
 
   // All Sessions: the column, by who sent the work, each row saying who sent it to whom; none chosen yet.
-  await page.locator(".side-nav").getByRole("button", { name: /^全部会话/ }).click();
+  await all.click();
   const column = page.getByRole("region", { name: "全部会话" });
   const list = page.getByRole("list", { name: "会话" });
   await expect(list.getByRole("group", { name: "bot 派的" })).toContainText("写 hello");
@@ -61,7 +67,7 @@ test("the sidebar is navigation only: its pages, All Sessions and the team, whos
   await expect(column).toBeVisible();
   // The sidebar stays as it was (docs/her-team.md §14.9), the place chosen marked in it.
   await expect(page.getByRole("complementary", { name: "边栏" })).toBeVisible();
-  await expect(page.locator(".side-nav").getByRole("button", { name: /^全部会话/ })).toHaveAttribute("aria-current", "true");
+  await expect(all).toHaveAttribute("aria-current", "true");
   await snap(page, "team-three-columns");
 
   // A row of the map is the list of its sessions, under its name; the chosen session stays when it is one of them.
@@ -97,6 +103,7 @@ test("the sidebar is navigation only: its pages, All Sessions and the team, whos
   // The map folds.
   await map.getByRole("button", { name: /^团队/ }).click();
   await expect(mac).toHaveCount(0);
+  await expect(all).toBeVisible();
   await map.getByRole("button", { name: /^团队/ }).click();
   await expect(mac).toBeVisible();
   await app.close();

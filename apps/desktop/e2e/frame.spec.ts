@@ -38,17 +38,15 @@ test("the sidebar keeps one rhythm, one heading per group and a quiet foot", asy
   // On Work, where the sidebar is expanded (beside sessions it is its rail, docs/her-team.md §14.9).
   const hide = await centre(page.getByRole("button", { name: "收成窄栏" }));
 
-  // Her, Work, Search, All Sessions (docs/her-team.md §14.2), a row apart.
+  // Her, Work, Search (docs/her-team.md §14.2), a row apart.
   const nav = page.locator(".side-nav");
   const her = await box(nav.getByRole("button", { name: /^Her/ }));
   const overview = await box(nav.getByRole("button", { name: /^工作/ }));
   const search = await box(nav.getByRole("button", { name: /^搜索/ }));
-  const all = await box(nav.getByRole("button", { name: /^全部会话/ }));
   expect(overview.height).toBe(32);
   expect(overview.y - her.y).toBe(34);
   expect(search.y - overview.y).toBe(34);
-  expect(all.y - search.y).toBe(34);
-  // The first heading, the team's map's, has its text a row and a breath (~17px) below the last button.
+  // The first heading, the team's map's, has its text a row and a little (~10px) below the last button.
   const heading = page.getByRole("group", { name: "团队" }).locator(".grp-h");
   const text = await heading.evaluate((el) => {
     const r = document.createRange();
@@ -56,9 +54,9 @@ test("the sidebar keeps one rhythm, one heading per group and a quiet foot", asy
     const b = r.getBoundingClientRect();
     return b.y + b.height / 2;
   });
-  const gap = text - (all.y + all.height / 2);
-  expect(gap).toBeGreaterThanOrEqual(48);
-  expect(gap).toBeLessThanOrEqual(54);
+  const gap = text - (search.y + search.height / 2);
+  expect(gap).toBeGreaterThanOrEqual(40);
+  expect(gap).toBeLessThanOrEqual(46);
 
   const list = await sessionList(page);
   await expect(list.getByRole("group", { name: "bot 派的" })).toContainText("写 hello");
