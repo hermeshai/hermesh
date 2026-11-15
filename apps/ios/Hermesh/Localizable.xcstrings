@@ -2918,16 +2918,6 @@
         }
       }
     },
-    "Hide the menu": {
-      "localizations": {
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "隐藏菜单"
-          }
-        }
-      }
-    },
     "High": {
       "localizations": {
         "zh-Hans": {
@@ -10002,6 +9992,46 @@
           "stringUnit": {
             "state": "translated",
             "value": "Her 的数据会留在上面：它离线了，现在无法清空。"
+          }
+        }
+      }
+    },
+    "Collapse the menu": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "收起菜单"
+          }
+        }
+      }
+    },
+    "Expand the menu": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "展开菜单"
+          }
+        }
+      }
+    },
+    "Choose a session": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "选择一个会话"
+          }
+        }
+      }
+    },
+    "%lld waiting for you": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld 个在等你"
           }
         }
       }
