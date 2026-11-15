@@ -16,7 +16,9 @@ import (
 // credential; it returns the relayed connection.
 func allocate(t *testing.T, addr, user, pass string) (net.PacketConn, error) {
 	t.Helper()
-	conn, err := net.ListenPacket("udp4", "127.0.0.1:0")
+	// Match the relay sockets' wildcard binding: Windows permits a
+	// specific-address socket and a wildcard socket to share one port.
+	conn, err := net.ListenPacket("udp4", "0.0.0.0:0")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -32,9 +34,33 @@ func allocate(t *testing.T, addr, user, pass string) (net.PacketConn, error) {
 	}
 	relayed, err := c.Allocate()
 	if err == nil {
+		t.Logf("TURN client %s allocated %s", conn.LocalAddr(), relayed.LocalAddr())
 		t.Cleanup(func() { relayed.Close() })
 	}
 	return relayed, err
+}
+
+// Reserve a port available to both TURN transports. Windows can reserve
+// different port ranges for TCP and UDP.
+func reserveTURNAddress(t *testing.T) (string, func()) {
+	t.Helper()
+	for attempt := 0; attempt < 100; attempt++ {
+		tcp, err := net.Listen("tcp4", "127.0.0.1:0")
+		if err != nil {
+			t.Fatal(err)
+		}
+		addr := tcp.Addr().String()
+		udp, err := net.ListenPacket("udp4", addr)
+		if err != nil {
+			tcp.Close()
+			continue
+		}
+		release := func() { tcp.Close(); udp.Close() }
+		t.Cleanup(release)
+		return addr, release
+	}
+	t.Fatal("no available TCP and UDP TURN port")
+	return "", nil
 }
 
 // The nodes of a center: one runs the server, with its forwarded sessions
@@ -43,6 +69,10 @@ func allocate(t *testing.T, addr, user, pass string) (net.PacketConn, error) {
 // secret is refused. Packets go both ways through two relayed addresses.
 func TestTURNOnAnotherNode(t *testing.T) {
 	secret := bytes.Repeat([]byte{7}, 32)
+	// Keep the listening port outside the forwarded-session range.
+	addr, release := reserveTURNAddress(t)
+	_, portString, _ := net.SplitHostPort(addr)
+	listenPort, _ := strconv.Atoi(portString)
 	// Windows can reserve the documented range for Hyper-V. Find a small
 	// range we can bind on this runner, while still testing bounded ports.
 	var minPort, maxPort uint16
@@ -63,7 +93,7 @@ func TestTURNOnAnotherNode(t *testing.T) {
 		for _, conn := range ports {
 			conn.Close()
 		}
-		if len(ports) == 41 {
+		if len(ports) == 41 && (listenPort < port || listenPort > port+40) {
 			minPort, maxPort = uint16(port), uint16(port+40)
 			break
 		}
@@ -71,11 +101,8 @@ func TestTURNOnAnotherNode(t *testing.T) {
 	if minPort == 0 {
 		t.Fatal("no available TURN port range")
 	}
-	// A port for the server, which the other node names.
-	l, _ := net.ListenPacket("udp4", "127.0.0.1:0")
-	port := l.LocalAddr().(*net.UDPAddr).Port
-	l.Close()
-	addr := net.JoinHostPort("127.0.0.1", itoa(port))
+	t.Logf("TURN port range %d-%d", minPort, maxPort)
+	release()
 	serving, err := startTURN(TURNConfig{Listen: addr, Host: "127.0.0.1", Secret: secret, MinPort: minPort, MaxPort: maxPort})
 	if err != nil {
 		t.Fatal(err)
@@ -108,26 +135,14 @@ func TestTURNOnAnotherNode(t *testing.T) {
 	}
 	// Each lets the other's packets in (a permission comes with the first
 	// packet sent to a peer), then they talk.
-	if _, err := a.WriteTo([]byte("hi"), b.LocalAddr()); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := b.WriteTo([]byte("hi"), a.LocalAddr()); err != nil {
-		t.Fatal(err)
-	}
+	a.WriteTo([]byte("hi"), b.LocalAddr())
+	b.WriteTo([]byte("hi"), a.LocalAddr())
 	got := make([]byte, 16)
 	for _, x := range []struct{ from, to net.PacketConn }{{a, b}, {b, a}} {
-		deadline := time.Now().Add(5 * time.Second)
+		x.to.SetReadDeadline(time.Now().Add(3 * time.Second))
 		for {
-			if _, err := x.from.WriteTo([]byte("through"), x.to.LocalAddr()); err != nil {
-				t.Fatal(err)
-			}
-			// UDP can lose the first packet while TURN's channel binding
-			// settles. Send again, within the overall delivery deadline.
-			x.to.SetReadDeadline(time.Now().Add(100 * time.Millisecond))
+			x.from.WriteTo([]byte("through"), x.to.LocalAddr())
 			n, _, err := x.to.ReadFrom(got)
-			if timeout, ok := err.(net.Error); ok && timeout.Timeout() && time.Now().Before(deadline) {
-				continue
-			}
 			if err != nil {
 				t.Fatalf("nothing came through: %v", err)
 			}
@@ -151,9 +166,8 @@ func TestTURNOnAnotherNode(t *testing.T) {
 // out after this relay's, with the same credential.
 func TestTURNCredentialOutlivedByItsSession(t *testing.T) {
 	secret := bytes.Repeat([]byte{7}, 32)
-	l, _ := net.ListenPacket("udp4", "127.0.0.1:0")
-	addr := l.LocalAddr().String()
-	l.Close()
+	addr, release := reserveTURNAddress(t)
+	release()
 	other := []string{"turn:other.example.com:3478?transport=udp", "turns:other.example.com:443?transport=tcp"}
 	s, err := startTURN(TURNConfig{Listen: addr, Host: "127.0.0.1", Secret: secret, Others: [][]string{other}})
 	if err != nil {
