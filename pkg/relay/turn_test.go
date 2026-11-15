@@ -108,14 +108,26 @@ func TestTURNOnAnotherNode(t *testing.T) {
 	}
 	// Each lets the other's packets in (a permission comes with the first
 	// packet sent to a peer), then they talk.
-	a.WriteTo([]byte("hi"), b.LocalAddr())
-	b.WriteTo([]byte("hi"), a.LocalAddr())
+	if _, err := a.WriteTo([]byte("hi"), b.LocalAddr()); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := b.WriteTo([]byte("hi"), a.LocalAddr()); err != nil {
+		t.Fatal(err)
+	}
 	got := make([]byte, 16)
 	for _, x := range []struct{ from, to net.PacketConn }{{a, b}, {b, a}} {
-		x.to.SetReadDeadline(time.Now().Add(3 * time.Second))
+		deadline := time.Now().Add(5 * time.Second)
 		for {
-			x.from.WriteTo([]byte("through"), x.to.LocalAddr())
+			if _, err := x.from.WriteTo([]byte("through"), x.to.LocalAddr()); err != nil {
+				t.Fatal(err)
+			}
+			// UDP can lose the first packet while TURN's channel binding
+			// settles. Send again, within the overall delivery deadline.
+			x.to.SetReadDeadline(time.Now().Add(100 * time.Millisecond))
 			n, _, err := x.to.ReadFrom(got)
+			if timeout, ok := err.(net.Error); ok && timeout.Timeout() && time.Now().Before(deadline) {
+				continue
+			}
 			if err != nil {
 				t.Fatalf("nothing came through: %v", err)
 			}
