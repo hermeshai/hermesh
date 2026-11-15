@@ -114,6 +114,15 @@ struct HerComposer: View {
         .padding(.horizontal, 12).padding(.bottom, 6)
         // End focus as navigation starts, so returning from settings lays the composer above the keyboard again.
         .onChange(of: model.path) { focused = false }
+        // Words put here for the owner to finish: the keyboard comes up once the page above has gone.
+        .onChange(of: chat.wantsFocus, initial: true) {
+            guard chat.wantsFocus else { return }
+            chat.wantsFocus = false
+            Task {
+                try? await Task.sleep(for: .milliseconds(500))
+                focused = true
+            }
+        }
         .photosPicker(isPresented: $pickingPhotos, selection: $photos, maxSelectionCount: 10, matching: .images)
         .onChange(of: photos) {
             let picked = photos

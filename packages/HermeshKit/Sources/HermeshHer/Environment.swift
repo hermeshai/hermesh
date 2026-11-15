@@ -27,6 +27,12 @@ public struct HerBot: Equatable, Sendable {
     public var muted: Bool
     /// Its conversation, once there is one: a cleared conversation is a new one.
     public var sessionID: String?
+    /// It is answering: its conversation runs a task.
+    public var typing: Bool
+    /// Its routines, oldest first.
+    public var routines: [HerRoutine]
+    /// Why routines cannot be used now; `routines` is then empty.
+    public var routinesError: String?
 
     public init?(_ j: JSON) {
         guard let id = j["id"].string else { return nil }
@@ -36,6 +42,9 @@ public struct HerBot: Equatable, Sendable {
         unread = j["unread"].int ?? 0
         muted = j["muted"].bool ?? false
         sessionID = j["session_id"].string
+        typing = j["typing"].bool ?? false
+        routines = (j["routines"].array ?? []).compactMap(HerRoutine.init)
+        routinesError = j["routines_error"].text
     }
 }
 

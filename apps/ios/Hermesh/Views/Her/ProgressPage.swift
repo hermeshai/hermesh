@@ -585,6 +585,17 @@ private struct SourceSheet: View {
                 .padding(4)
                 .background(Color(.secondarySystemBackground).opacity(0.6), in: RoundedRectangle(cornerRadius: 22, style: .continuous))
             }
+            if let run = g.run {
+                Button {
+                    dismiss()
+                    model.path.append(.routineRun(run.routineID, run.runID))
+                } label: {
+                    Text("Open This Run").frame(maxWidth: .infinity)
+                }
+                .buttonStyle(.glass).controlSize(.large)
+                .padding(.top, 4)
+                .accessibilityIdentifier("progress-open-run")
+            }
             Button {
                 model.openHer(machineID: machineID)
             } label: {
@@ -875,7 +886,7 @@ private struct Facts: View {
 }
 
 /// A step of the record. report: the agent's last words, which are its report to Her.
-private struct StepRow: View {
+struct StepRow: View {
     let step: HerStep
     let report: Bool
     @Binding var open: Bool
