@@ -678,7 +678,7 @@ extension HermeshUITests {
     }
 
     /// Progress: under Her in the menu, empty until she sends work out; a sub-agent she starts is a post of its own,
-    /// which says that it asks, and opens what set it off in itself by its ⓘ; its record shows what Her
+    /// which says that it asks, and shows what set it off in a sheet from its ⓘ; its record shows what Her
     /// asked of it, answers its question there, then shows its call, its report, and how long and how many tokens it
     /// took; ended, its post is among the earlier ones.
     func herProgress() throws {
@@ -707,18 +707,18 @@ extension HermeshUITests {
         XCTAssertTrue(app.buttons["progress-review"].exists, "a way to its question")
         herShot("Progress: a sub-agent waits")
 
-        // What set it off, opened in the post by its ⓘ: the owner's words and Her's.
+        // What set it off, in a sheet from the post's ⓘ: the owner's words and Her's.
         let why = app.buttons["progress-why"].firstMatch
         XCTAssertTrue(why.exists, "the post's ⓘ")
         why.tap()
-        let note = app.descendants(matching: .any)["progress-source"].firstMatch
-        XCTAssertTrue(note.waitForExistence(timeout: 10), "what set it off, in the post")
+        let sheet = app.descendants(matching: .any)["progress-source"].firstMatch
+        XCTAssertTrue(sheet.waitForExistence(timeout: 10), "the sheet")
         XCTAssertTrue(text("来自你的一句话").exists)
         XCTAssertTrue(text("写一篇长文").exists, "what the owner said")
         XCTAssertTrue(text("好，这个要一会儿，写好发你。").exists, "what Her said back")
         herShot("Progress: what set it off")
-        why.tap()
-        XCTAssertTrue(waitUntil { !note.exists }, "it folds again")
+        app.buttons.matching(NSPredicate(format: "label IN %@", ["关闭", "Close"])).firstMatch.tap()
+        XCTAssertTrue(waitUntil { !sheet.exists }, "the sheet closes")
 
         // Its record: what Her asked of it, and its question, answered there.
         tap("progress-review")

@@ -47,19 +47,6 @@ button.pf-well:hover{background:var(--fill2)}
 .pf-from span{min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .pf-tok{flex:none;font-size:12px;color:var(--l3);font-variant-numeric:tabular-nums}
 .pf-why{margin-left:auto;color:var(--l3)}
-.pf-why.on{color:var(--accent-t)}
-/* What set a post's work off, opened in the post. */
-.pf-why-note{display:flex;flex-direction:column;gap:6px;margin-top:12px;padding-top:12px;border-top:.5px solid var(--sep);font-size:13.5px;line-height:1.5}
-.pf-why-note>b{font-size:13px;color:var(--l2)}
-.pf-why-note>p{margin:0;white-space:pre-wrap;overflow-wrap:anywhere}
-.pf-when{font-size:12px;color:var(--l3)}
-.pf-why-note .pf-her{max-width:none;align-items:flex-start;margin-top:2px}
-.pf-why-note .pf-her p{padding:0;background:none;box-shadow:none;color:var(--l2);font-size:13.5px;display:-webkit-box;-webkit-line-clamp:4;-webkit-box-orient:vertical;overflow:hidden}
-.pf-why-note .pf-her-cat{width:18px;height:18px;margin-top:1px}
-.pf-others{display:flex;flex-direction:column;margin-top:2px}
-.pf-others>span{font-size:12px;color:var(--l2);padding:2px 0 2px}
-.pf-why-note .pf-sib{padding:6px 8px;margin:0 -8px;width:calc(100% + 16px);min-height:38px}
-.pf-chat-link{align-self:flex-start;font-size:13px;min-height:28px}
 @media (prefers-reduced-motion:reduce){.pf-beat i.now{animation:none}}
 /* What set work off, shown whole over the page. */
 .pf-src{display:flex;flex-direction:column;gap:12px;padding:14px 14px 14px;user-select:text}
