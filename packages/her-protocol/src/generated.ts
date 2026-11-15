@@ -2994,7 +2994,7 @@ export type McpOAuthClient = {
 };
 
 /** The OAuth client identity a sign-in would use (mcp-design D-182). */
-export type McpOAuthClientKind = "managed" | "metadata_document" | "registration" | "own";
+export type McpOAuthClientKind = "managed" | "metadata_document" | "registration" | "own" | "builtin";
 
 export type McpProbeAuth = {
   oauth?: McpProbeOAuth | null;

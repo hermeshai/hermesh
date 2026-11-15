@@ -569,6 +569,9 @@ pub enum McpOAuthClientKind {
     Registration,
     /// The user's own client.
     Own,
+    /// The client her registered with the provider, for providers that offer neither metadata
+    /// documents nor registration (GitHub).
+    Builtin,
 }
 
 /// Install a curated connector. No arbitrary download URLs or commands are accepted.
