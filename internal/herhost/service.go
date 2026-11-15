@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"regexp"
+	"sync"
 
 	"connectrpc.com/connect"
 
@@ -37,12 +38,8 @@ func (h *Host) Open(ctx context.Context, req *herv1.OpenRequest, send func(*herv
 	id := h.hold(c)
 	defer h.release(id, c)
 	opened := &herv1.Opened{ConnectionId: id}
-	for i, r := range req.GetSetup() {
-		res, err := c.call(ctx, r.GetMethod(), setup[i])
-		if err != nil {
-			return h.lost(ctx, err)
-		}
-		opened.Responses = append(opened.Responses, res)
+	if err := callSetup(ctx, c, req.GetSetup(), setup, opened); err != nil {
+		return h.lost(ctx, err)
 	}
 	if err := send(&herv1.OpenEvent{Kind: &herv1.OpenEvent_Opened{Opened: opened}}); err != nil {
 		return err
@@ -59,6 +56,48 @@ func (h *Host) Open(ctx context.Context, req *herv1.OpenRequest, send func(*herv
 			}
 		}
 	}
+}
+
+// callSetup issues Open's setup calls, running multiple requests concurrently
+// over c's multiplexed JSON-RPC transport while preserving request order.
+func callSetup(ctx context.Context, c *conn, reqs []*herv1.Request, setup []json.RawMessage, opened *herv1.Opened) error {
+	if len(setup) <= 1 {
+		for i, r := range reqs {
+			res, err := c.call(ctx, r.GetMethod(), setup[i])
+			if err != nil {
+				return err
+			}
+			opened.Responses = append(opened.Responses, res)
+		}
+		return nil
+	}
+	type result struct {
+		res *herv1.Response
+		err error
+	}
+	callCtx, cancel := context.WithCancel(ctx)
+	defer cancel()
+	results := make([]result, len(setup))
+	var wg sync.WaitGroup
+	wg.Add(len(setup))
+	for i, r := range reqs {
+		go func(i int, method string, params json.RawMessage) {
+			defer wg.Done()
+			res, err := c.call(callCtx, method, params)
+			if err != nil {
+				cancel()
+			}
+			results[i] = result{res: res, err: err}
+		}(i, r.GetMethod(), setup[i])
+	}
+	wg.Wait()
+	for _, r := range results {
+		if r.err != nil {
+			return r.err
+		}
+		opened.Responses = append(opened.Responses, r.res)
+	}
+	return nil
 }
 
 // Call sends one request: on the connection req names, or on one of its own.

@@ -318,3 +318,43 @@ func TestClientRelayMachineSkipsDirect(t *testing.T) {
 		t.Fatalf("Her.Call over RelayMachine = (%v, %v)", res, err)
 	}
 }
+
+func TestAdoptDirect(t *testing.T) {
+	fx := setupDirectFixture(t, 0, nil)
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	c, err := fx.dialer.Connect(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer c.Close()
+
+	pre, err := fx.dialer.DialDirect(ctx, fx.machineID, fx.dialer.Direct(fx.machineID))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !c.AdoptDirect(fx.machineID, pre) {
+		t.Fatal("AdoptDirect rejected first direct tunnel")
+	}
+	if !pre.direct {
+		t.Fatal("adopted tunnel not marked direct")
+	}
+	got, err := c.Machine(ctx, fx.machineID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got != pre {
+		t.Fatalf("c.Machine returned %p, want adopted %p", got, pre)
+	}
+
+	dup, err := fx.dialer.DialDirect(ctx, fx.machineID, fx.dialer.Direct(fx.machineID))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if c.AdoptDirect(fx.machineID, dup) {
+		t.Fatal("AdoptDirect should reject duplicate when live tunnel exists")
+	}
+	if _, err := dup.Her.Call(ctx, &herv1.CallRequest{Request: &herv1.Request{Method: "ping"}}); err == nil {
+		t.Fatal("rejected duplicate tunnel should be closed")
+	}
+}
