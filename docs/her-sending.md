@@ -180,7 +180,13 @@ A message keeps its id, and its row its key, from one state to the next, so
 the bubble stays where it is and only its caption changes.
 
 - HerSend answered `delivered`: the bubble stays as sending until the
-  conversation shows the id (its event may come after the answer).
+  conversation shows the id (its event may come after the answer), or its
+  words for an older her (§5.3); from then on it is the conversation's,
+  even when her hands it back. It goes too when the conversation will not
+  show it: five seconds after the answer with the conversation open (a
+  command such as `/context`, which her takes without it joining the
+  conversation), or when the conversation opens afresh without it. Before
+  2026-11-16 such a message said "Sending…" until the app was closed.
 - Answered `waiting`: the outbox list is read again, and the row is the
   outbox's.
 - Answered an error: the outbox list is read again; if it holds the id (the

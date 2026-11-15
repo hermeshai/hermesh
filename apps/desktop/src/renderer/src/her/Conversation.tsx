@@ -27,7 +27,7 @@ import { Onboarding, useOnboarding } from "./ModelOnboarding";
 import { onboardingAfter, withOnboarding } from "./onboarding";
 import { SecureCard } from "./SecureCard";
 import { SessionCard, WorkCard } from "./TeamCards";
-import { outboxFor, splitAttached, type Sending, type SendingItem, type WaitingItem } from "./waiting";
+import { outboxFor, splitAttached, stillSending, type Sending, type SendingItem, type WaitingItem } from "./waiting";
 
 /** A pause before a time line (bot-mode-design §6.6). */
 const PAUSE = 10 * 60_000;
@@ -54,18 +54,26 @@ type Draft = { text: string; attachments: Attachment[] };
  * draft each was, to send again or edit. Kept here, not in a page, so that a message being sent still shows after
  * going to another page and back.
  */
+/** delivered: HerSend answered that her took it; due: a while ago, so the conversation would show it by now. */
+type Outgoing = Sending & { botId: string; draft: Draft; delivered?: boolean; due?: boolean };
 const outbox = (() => {
-  const by = new Map<string, (Sending & { botId: string; draft: Draft })[]>();
+  const by = new Map<string, Outgoing[]>();
   const listeners = new Set<() => void>();
-  const set = (machineId: string, list: (Sending & { botId: string; draft: Draft })[]) => {
+  const set = (machineId: string, list: Outgoing[]) => {
     by.set(machineId, list);
     for (const l of listeners) l();
   };
   return {
     list: (machineId: string) => by.get(machineId) ?? none,
     get: (machineId: string, id: string) => by.get(machineId)?.find((m) => m.id === id),
-    add: (machineId: string, m: Sending & { botId: string; draft: Draft }) => set(machineId, [...(by.get(machineId) ?? []), m]),
+    add: (machineId: string, m: Outgoing) => set(machineId, [...(by.get(machineId) ?? []), m]),
     refuse: (machineId: string, id: string, refused: string | null) => set(machineId, (by.get(machineId) ?? []).map((m) => (m.id === id ? { ...m, refused } : m))),
+    /** Taken by her: the conversation shows it in a moment, unless it never will (a command such as /context). */
+    taken: (machineId: string, id: string) => {
+      const mark = (patch: Partial<Outgoing>) => set(machineId, (by.get(machineId) ?? []).map((m) => (m.id === id ? { ...m, ...patch } : m)));
+      mark({ delivered: true });
+      setTimeout(() => by.get(machineId)?.some((m) => m.id === id) && mark({ due: true }), 5_000);
+    },
     drop: (machineId: string, ids: string[]) => {
       const list = by.get(machineId) ?? [];
       if (list.some((m) => ids.includes(m.id))) set(machineId, list.filter((m) => !ids.includes(m.id)));
@@ -195,8 +203,16 @@ function BotChat({ bot, conv, op, state, waiting, onWaiting }: {
   const sent = useOutbox(her.machine.machineId);
   const owners = useMemo(() => chat.flatMap((i) => (i.kind === "user" ? [{ key: i.key, text: i.text, ts: i.ts }] : [])), [chat]);
   const kept = useMemo(() => outboxFor(waiting, bot.id, owners, sent.filter((m) => m.botId === bot.id)), [waiting, bot.id, owners, sent]);
-  // What was sent goes once the conversation has it.
-  useEffect(() => outbox.drop(her.machine.machineId, owners.map((o) => o.key)), [owners]);
+  // What was sent goes once the conversation has it, and what her took that it doesn't have and won't: it would by
+  // now, or the conversation opened afresh without it.
+  const opened = useRef(conv.connectionId);
+  useEffect(() => {
+    const fresh = conv.connectionId !== null && conv.connectionId !== opened.current;
+    opened.current = conv.connectionId;
+    const mine = sent.filter((m) => m.botId === bot.id);
+    const left = new Set(stillSending(mine, owners, (m) => fresh || (!!m.due && conv.rpc !== null)).map((m) => m.id));
+    outbox.drop(her.machine.machineId, mine.flatMap((m) => (left.has(m.id) ? [] : [m.id])));
+  }, [owners, sent, conv.connectionId, conv.rpc]);
   const said = useMemo(() => [...chat, ...kept], [chat, kept]);
   // No model works there: Her's onboarding, the app speaking for Her, until the conversation opens on one.
   const noModel = state.kind === "noModel" || conv.noModel;
@@ -819,7 +835,7 @@ function Dock({ bot, conv, op, state, onWaiting, onHeight }: {
         if (!r.delivered) {
           await onWaiting();
           outbox.drop(key, [id]);
-        }
+        } else outbox.taken(key, id);
       } catch (e) {
         const list = await onWaiting();
         if (list.some((w) => w.id === id)) outbox.drop(key, [id]);
