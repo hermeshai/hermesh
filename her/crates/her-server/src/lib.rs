@@ -36,6 +36,7 @@ pub use transport::serve_unix;
 
 mod bots;
 mod browser_host;
+mod browser_setup;
 mod cards;
 mod browser_status;
 mod connections;

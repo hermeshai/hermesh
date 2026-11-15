@@ -1,5 +1,5 @@
 import { expect, test, type Page } from "@playwright/test";
-import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { startStandIn, type StandIn } from "../scripts/stand-in.ts";
@@ -144,6 +144,20 @@ test("an environment set up from its console", async ({ page }) => {
     await expect(guide).toContainText(`Add the Hermesh extension to Chrome on the ${linux ? "Linux computer" : "Mac"} Her runs on.`);
     await expect(guide).toContainText(linux ? "press Ctrl+L" : "press ⇧⌘G");
     await expect(guide.locator("code").last()).toHaveText(linux ? "~/.local/share/hermesh/chrome-extension" : "~/Library/Application Support/Hermesh/Chrome Extension");
+    // Its two places open on that computer at a click: the extensions page, in the default browser
+    // (Google Chrome, as the stand-in's osascript says), and the extension's folder.
+    await guide.getByRole("button", { name: "Open", exact: true }).click();
+    await expect.poll(() => site.opened()).toContain(linux ? "google-chrome chrome://extensions" : "open -a /Applications/Google Chrome.app chrome://extensions");
+    const reveal = guide.getByRole("button", { name: "Show Folder" });
+    await reveal.click();
+    // hermeshd puts the extension there when it starts; here nothing has yet.
+    await expect(guide.locator(".set-note.warn")).toContainText("the Hermesh extension is not in");
+    const folder = path.join(site.home, "user", linux ? ".local/share/hermesh/chrome-extension" : "Library/Application Support/Hermesh/Chrome Extension");
+    mkdirSync(folder, { recursive: true });
+    writeFileSync(path.join(folder, "manifest.json"), "{}");
+    await reveal.click();
+    await expect.poll(() => site.opened()).toContain(linux ? `xdg-open ${folder}` : `open -R ${folder}`);
+    await expect(guide.locator(".set-note.warn")).toBeHidden();
     await guide.getByRole("button", { name: "Close" }).click();
     await expect(guide).toBeHidden();
     // Sent here to connect it (the Mac app's chat does so): the guide opens by itself, and the address goes back to the page.
