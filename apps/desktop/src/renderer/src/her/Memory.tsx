@@ -4,6 +4,7 @@ import type { BotMemoryPage, BotMemoryResult, BotSummary } from "@hermesh/her-pr
 import { Icon } from "../icons";
 import { Markdown } from "../session/Markdown";
 import { errorText } from "../store";
+import { herAnswers, needsUpdate } from "../skew";
 import { Tile } from "./Composer";
 import { useHer } from "./context";
 import { useSaveFile, type FileScope } from "./Messages";
@@ -14,33 +15,42 @@ import { FilePreview, previews } from "./preview/FilePreview";
 // its prompt's business, not this page's. Changing it goes through the chat.
 
 /**
- * The memory as bots/memory gives it, read again whenever the assistant's last message changes and when
- * `reload` is called (after it was cleared); null until then.
+ * The memory as bots/memory gives it, read again whenever the assistant's last message changes, when
+ * `reload` is called (after it was cleared), and when the machine's methods or her connection change
+ * (her restarted, updated); null until then.
+ * `older`: the machine's Hermesh is older than this app and has no memory to show (docs/version-skew.md
+ * §6.2), as it says or as its answer showed; once it is updated, the memory is read by itself.
  */
-export function useMemory(bot: BotSummary): { memory: BotMemoryResult | null; error: string | null; reload: () => void } {
+export function useMemory(bot: BotSummary): { memory: BotMemoryResult | null; error: string | null; older: boolean; reload: () => void } {
   const her = useHer();
+  const answers = herAnswers(her.machine, "bots/memory");
   const [memory, setMemory] = useState<BotMemoryResult | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [lacks, setLacks] = useState(false);
   const [round, setRound] = useState(0);
   const last = JSON.stringify(bot.last ?? null);
+  const connection = her.env.rpc;
   useEffect(() => {
+    if (answers === false || !connection) return;
     let live = true;
     her.call("bots/memory", { bot_id: bot.id }).then(
-      (m) => live && (setMemory(m), setError(null)),
-      (e) => live && setError(errorText(e)),
+      (m) => live && (setMemory(m), setError(null), setLacks(false)),
+      (e) => live && (setError(errorText(e)), setLacks(needsUpdate(e))),
     );
     return () => {
       live = false;
     };
-  }, [bot.id, last, round]);
-  return { memory, error, reload: () => setRound((n) => n + 1) };
+  }, [bot.id, last, round, answers, connection]);
+  return { memory, error, older: answers === false || lacks, reload: () => setRound((n) => n + 1) };
 }
 
 export const isEmpty = (m: BotMemoryResult) => m.text.trim() === "" && (m.pages ?? []).length === 0;
 
 export function MemoryPage({ bot, files, onBack, onClose }: { bot: BotSummary; files: FileScope; onBack: () => void; onClose: () => void }) {
   const { t } = useTranslation("her");
-  const { memory, error } = useMemory(bot);
+  const { t: tc } = useTranslation("common");
+  const { memory, error, older } = useMemory(bot);
+  const her = useHer();
   return (
     <aside className="her-panel rtn mem" aria-label={t("memory.title")}>
       <div className="her-panel-top drag rtn-top rtn-sub">
@@ -53,7 +63,13 @@ export function MemoryPage({ bot, files, onBack, onClose }: { bot: BotSummary; f
         </button>
       </div>
       <div className="her-panel-body">
-        {error && !memory && <p className="set-note">{t("memory.failed", { error })}</p>}
+        {older && !memory && (
+          <div className="rtn-empty" data-testid="needs-update">
+            <b>{tc("needsUpdate.title")}</b>
+            {tc("needsUpdate.body", { machine: her.machine.machineName })}
+          </div>
+        )}
+        {error && !memory && !older && <p className="set-note">{t("memory.failed", { error })}</p>}
         {memory && isEmpty(memory) && (
           <div className="rtn-empty">
             <b>{t("memory.emptyTitle")}</b>

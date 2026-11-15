@@ -869,6 +869,10 @@ pub struct InitializeResult {
     pub protocol_version: u32,
     pub server_info: PeerInfo,
     pub capabilities: ServerCapabilities,
+    /// Every method this server answers, so a client asks what it can do rather than going by
+    /// its version (docs/version-skew.md §6.1). An older server leaves it out.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub methods: Vec<String>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]

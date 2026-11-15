@@ -755,9 +755,9 @@ desktop needs that the phone does not: the session list one click away.
 | Top | Her | Her | Unread count, as today; "Off" while she runs nowhere |
 | | Work (today's Overview, ⌘1) | Work | Orange dot when something needs the owner; ring and count of running sessions |
 | | Search (⌘K) | The search, as today | |
-| | All Sessions | The list's column, all sessions | How many (archived aside) |
-| **Team** (heading, folds; open by default) | Each machine, this Mac first | The list's column, its sessions | Green dot online; "Her is here"; "Offline · 2 hours ago" |
-| | Each installed coding agent, under its machine | Its sessions there | Orange dot, ring |
+| **Team** (heading, folds; open by default) | All Sessions, first, staying when the team is folded (in the top part when there is no team) | The list's column, all sessions | How many (archived aside) |
+| | Each machine, this Mac first | The list's column, its sessions | Green dot online; "Her is here"; "Offline · 2 hours ago" |
+| | Each installed coding agent, under its machine, flush with it | Its sessions there | Orange dot, ring |
 | | Connected agents, on one line each | Its sessions | A request to connect that waits has an orange dot and opens the pairing sheet |
 | Foot | The account menu, as today | | |
 

@@ -6,6 +6,8 @@ import { sessionView, unreachableMachines, withKnownState, type SessionFilter, t
 import type { Peek } from "./layout";
 import { notNow, setNotNow, startPage } from "./start";
 import { useWorld } from "./useWorld";
+import { i18n } from "../../shared/i18n";
+import { needsUpdate } from "./skew";
 
 // What the window knows: the owner's world as hermeshd pushes it
 // (useWorld: no polling), plus the window's own state (selection, list
@@ -136,6 +138,7 @@ export function useStore(): Store {
 
 /** Message of an error from hermeshd, for the person. */
 export function errorText(e: unknown): string {
+  if (needsUpdate(e)) return i18n.t("common:needsUpdate.text");
   if (e instanceof ConnectError) return e.rawMessage;
   return e instanceof Error ? e.message : String(e);
 }

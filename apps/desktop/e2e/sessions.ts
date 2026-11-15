@@ -2,7 +2,7 @@ import type { Locator, Page } from "@playwright/test";
 
 /** Opens a place from the sidebar, or from its rail when that is what shows (docs/her-team.md §14.9). */
 export async function navTo(page: Page, name: RegExp): Promise<void> {
-  const nav = page.locator(".side-nav, .rail-nav");
+  const nav = page.locator(".side-nav, .team-map, .rail-nav");
   await nav.first().waitFor({ timeout: 30_000 });
   await nav.getByRole("button", { name }).first().click();
 }

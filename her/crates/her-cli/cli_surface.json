@@ -130,6 +130,7 @@
     "HER_TEST_RELEASES": { "job": "test", "stability": "internal" },
     "HER_TEST_RELEASE_KEY": { "job": "test", "stability": "internal" },
     "HER_TEST_CHATGPT_BASE": { "job": "test", "stability": "internal" },
+    "HER_TEST_WITHOUT": { "job": "test", "stability": "internal" },
     "HER_TEST_NO_SUCH_TOKEN": { "job": "test", "stability": "internal" },
     "HER_TEST_SURELY_UNSET_KEY": { "job": "test", "stability": "internal" },
     "HER_TEST_UNSIGNED_BROWSER": { "job": "test", "stability": "internal" },

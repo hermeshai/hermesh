@@ -218,5 +218,11 @@
     "online": "Online",
     "waiting_one": "{{count}} waiting for you",
     "waiting_other": "{{count}} waiting for you"
+  },
+  "needsUpdate": {
+    "mark": "Needs update",
+    "title": "Hermesh needs an update",
+    "body": "Hermesh on {{machine}} doesn’t have this yet. Update Hermesh there, and this page loads by itself.",
+    "text": "Hermesh on that computer is older and doesn’t have this yet. Update Hermesh there, then try again."
   }
 }

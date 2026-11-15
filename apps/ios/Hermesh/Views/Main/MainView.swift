@@ -20,29 +20,38 @@ struct MainView: View {
     }
 }
 
-/// The page under the menu: the navigation stack, and the toast over it.
+/// The page under the menu: the navigation stack, and the toast over it. On a wide screen a session list
+/// stands as a column of its own (docs/her-team.md §14.2, as on the Mac): the list, and beside it what it leads
+/// to, the session chosen in it first. The path is one, so the pages are the same when the screen changes.
 private struct PageView: View {
     @Environment(AppModel.self) private var model
 
     var body: some View {
         @Bindable var model = model
-        NavigationStack(path: $model.path) {
-            rootPage
-                .navigationDestination(for: Route.self) { route in
-                    switch route {
-                    case .session(let id): SessionView(id: id) // the sync line in its title's second line
-                    case .grant(let id): GrantView(id: id).syncSubtitle()
-                    case .machine(let id): MachineView(id: id).syncSubtitle()
-                    case .machineAgent(let machine, let agent): MachineAgentView(machineID: machine, agent: agent).syncSubtitle()
-                    case .grantSessions(let id): ScopedSessionsView(filter: SessionFilter(grant: id), title: String(localized: "“\(model.clients.first { $0.clientID == id }?.label ?? "")” Sessions"), about: model.clients.first { $0.clientID == id }.map { .grant($0.grantID) }).syncSubtitle()
-                    case .machineSessions(let id): ScopedSessionsView(filter: SessionFilter(machine: id), title: String(localized: "Sessions on \(model.machineName(id))"), about: .machine(id)).syncSubtitle()
-                    case .agentSessions(let machine, let agent):
-                        ScopedSessionsView(filter: SessionFilter(agent: agent, machine: machine), title: String(localized: "\(agentTitle(agent)) on \(model.machineName(machine))"), about: .machineAgent(machine, agent)).syncSubtitle()
-                    case .sessions: SessionsView().syncSubtitle()
-                    case .herSettings: HerSettings()
-                    case .progressAgent(let id): ProgressAgentPage(agentID: id)
+        Group {
+            if let i = model.listAt {
+                HStack(spacing: 0) {
+                    NavigationStack { page(model.path[i]) }
+                        .frame(width: WideLayout.listWidth)
+                        .accessibilityElement(children: .contain)
+                        .accessibilityIdentifier("list-column")
+                    Divider().ignoresSafeArea()
+                    NavigationStack(path: Binding { Array(model.path.dropFirst(i + 2)) } set: { model.path = Array(model.path.prefix(i + 2)) + $0 }) {
+                        Group {
+                            if model.path.count > i + 1 {
+                                page(model.path[i + 1]).id(model.path[i + 1]) // a page of its own, as the menu's
+                            } else {
+                                Text("Choose a session").foregroundStyle(.secondary).accessibilityIdentifier("no-session")
+                            }
+                        }
+                        .navigationDestination(for: Route.self) { page($0) }
                     }
                 }
+            } else {
+                NavigationStack(path: $model.path) {
+                    rootPage.navigationDestination(for: Route.self) { page($0) }
+                }
+            }
         }
         .overlay(alignment: .top) { // in the middle of a root page's bar while its title is large
             if model.path.isEmpty && model.root.titleLarge && !model.rootTitleSmall && model.shownSync != nil {
@@ -58,6 +67,22 @@ private struct PageView: View {
             }
         }
         .animation(.smooth(duration: 0.35), value: model.toast)
+    }
+
+    @ViewBuilder private func page(_ route: Route) -> some View {
+        switch route {
+        case .session(let id): SessionView(id: id) // the sync line in its title's second line
+        case .grant(let id): GrantView(id: id).syncSubtitle()
+        case .machine(let id): MachineView(id: id).syncSubtitle()
+        case .machineAgent(let machine, let agent): MachineAgentView(machineID: machine, agent: agent).syncSubtitle()
+        case .grantSessions(let id): ScopedSessionsView(filter: SessionFilter(grant: id), title: String(localized: "“\(model.clients.first { $0.clientID == id }?.label ?? "")” Sessions"), about: model.clients.first { $0.clientID == id }.map { .grant($0.grantID) }).syncSubtitle()
+        case .machineSessions(let id): ScopedSessionsView(filter: SessionFilter(machine: id), title: String(localized: "Sessions on \(model.machineName(id))"), about: .machine(id)).syncSubtitle()
+        case .agentSessions(let machine, let agent):
+            ScopedSessionsView(filter: SessionFilter(agent: agent, machine: machine), title: String(localized: "\(agentTitle(agent)) on \(model.machineName(machine))"), about: .machineAgent(machine, agent)).syncSubtitle()
+        case .sessions: SessionsView().syncSubtitle()
+        case .herSettings: HerSettings()
+        case .progressAgent(let id): ProgressAgentPage(agentID: id)
+        }
     }
 
     @ViewBuilder private var rootPage: some View {
@@ -84,6 +109,7 @@ private struct SideMenu: UIViewControllerRepresentable {
     func makeUIViewController(context: Context) -> SideMenuController {
         SideMenuController(
             menu: UIHostingController(rootView: DrawerView().environment(model)),
+            rail: UIHostingController(rootView: RailView().environment(model)),
             page: UIHostingController(rootView: PageView().environment(model)),
             width: 322)
     }
@@ -91,11 +117,11 @@ private struct SideMenu: UIViewControllerRepresentable {
     func updateUIViewController(_ c: SideMenuController, context: Context) {
         c.panAnywhere = panAnywhere
         c.onChange = { open = $0 }
-        c.onBeside = { model.menuBeside = $0 }
-        c.onHidden = { model.menuHidden = $0 }
+        c.onLayout = { model.wide = $0 }
+        c.onRail = { model.menuRail = $0 }
         c.onWidth = { model.menuWidth = $0 }
         c.set(width: model.menuWidth)
-        c.set(hidden: model.menuHidden)
+        c.set(rail: model.menuRail, list: model.path.contains(where: \.isList))
         c.set(open: open)
     }
 }
@@ -107,19 +133,22 @@ final class SideMenuController: UIViewController, UIGestureRecognizerDelegate {
     /// closed), that strip of the screen is the bars' in every state, and a
     /// page beside the menu would lie under them: the menu takes the whole
     /// page's place (cover). At regular width, wider than tall (iPhone Duo
-    /// open, on its side), both show side by side (beside), unless the owner
-    /// hid the menu; upright, the page keeps its width and the menu slides
+    /// open, on its side), both show side by side (beside), as the Mac's
+    /// sidebar: the menu expanded, or its rail of icons, never hidden
+    /// (WideLayout); with no room for it expanded, it shows over the page
+    /// when asked. Upright, the page keeps its width and the menu slides
     /// over it, as on an iPhone.
     private enum Arrangement { case drawer, cover, beside }
 
     var panAnywhere = true
     var onChange: (Bool) -> Void = { _ in }
-    /// Told when the menu starts or stops standing beside the page.
-    var onBeside: (Bool) -> Void = { _ in }
-    /// Told when the owner asks for the menu beside the page while it is hidden, and the width they dragged it to.
-    var onHidden: (Bool) -> Void = { _ in }
+    /// Told how the wide screen is shared, as it changes; nil where the menu does not stand beside the page.
+    var onLayout: (WideLayout?) -> Void = { _ in }
+    /// Told when the owner expands the menu beside the page or shrinks it to its rail, and the width they dragged it to.
+    var onRail: (Bool) -> Void = { _ in }
     var onWidth: (Double) -> Void = { _ in }
     private let menu: UIViewController
+    private let rail: UIViewController
     private let page: UIViewController
     private let width: CGFloat
     private let card = UIView() // moves, and casts the shadow
@@ -127,9 +156,18 @@ final class SideMenuController: UIViewController, UIGestureRecognizerDelegate {
     private let dim = UIView() // fades the page back; a tap closes the menu
     private let divider = UIView() // between the menu and the page, side by side
     private let grip = UIView() // over the divider: drags the menu wider or narrower
-    /// The menu's width beside the page, and whether it is hidden there.
+    private let scrim = UIView() // fades the page back under the menu shown over it; a tap puts the menu away
+    /// The menu's width beside the page; whether the owner shrank it to its rail there; whether a session list
+    /// is among the pages; and how the screen is shared, as last worked out.
     private var besideWidth: CGFloat = 322
-    private var hidden = false
+    private var railChosen = false
+    private var listWanted = false
+    private var layout: WideLayout?
+    /// The menu shows over the page, from the rail, where there is no room for it beside the page.
+    private var peek = false
+    /// The menu moves between expanded and its rail: it stays in view until it rests.
+    private var sliding = false
+    private let railWidth: CGFloat = 74
     private var gripStart: CGFloat?
     /// Covering, what moves is a picture of the page; the page stays where it rests, hidden.
     private var standIn: UIView?
@@ -146,8 +184,9 @@ final class SideMenuController: UIViewController, UIGestureRecognizerDelegate {
     private var generation = 0
     private var sideMargins = NSDirectionalEdgeInsets.zero
 
-    init(menu: UIViewController, page: UIViewController, width: CGFloat) {
+    init(menu: UIViewController, rail: UIViewController, page: UIViewController, width: CGFloat) {
         self.menu = menu
+        self.rail = rail
         self.page = page
         self.width = width
         travel = width
@@ -185,9 +224,28 @@ final class SideMenuController: UIViewController, UIGestureRecognizerDelegate {
         dim.accessibilityIdentifier = "drawer-dim"
         divider.backgroundColor = .separator
         divider.isHidden = true
+        addChild(rail)
+        view.addSubview(rail.view)
+        rail.didMove(toParent: self)
+        rail.view.isHidden = true
         view.addSubview(divider)
+        scrim.backgroundColor = UIColor.black.withAlphaComponent(0.22)
+        scrim.alpha = 0
+        scrim.addGestureRecognizer(UITapGestureRecognizer(target: self, action: #selector(closePeek)))
+        scrim.isAccessibilityElement = true
+        scrim.accessibilityLabel = String(localized: "Close the menu")
+        scrim.accessibilityTraits = .button
+        scrim.accessibilityIdentifier = "menu-scrim"
+        view.addSubview(scrim)
         view.addSubview(grip)
         grip.addGestureRecognizer(UIPanGestureRecognizer(target: self, action: #selector(resize(_:))))
+        // Beside the page, a finger also moves the menu: right on the rail expands it, left on the menu shrinks it.
+        let out = UISwipeGestureRecognizer(target: self, action: #selector(swipeRail))
+        out.direction = .right
+        rail.view.addGestureRecognizer(out)
+        let back = UISwipeGestureRecognizer(target: self, action: #selector(swipeMenu))
+        back.direction = .left
+        menu.view.addGestureRecognizer(back)
         // Closed, the shadow falls off the screen's left edge.
         card.layer.shadowColor = UIColor.black.cgColor
         card.layer.shadowRadius = 12
@@ -218,10 +276,22 @@ final class SideMenuController: UIViewController, UIGestureRecognizerDelegate {
         // clear of the bars' strip), and the page leaves with its shadow.
         let menuWidth = arrangement == .cover ? b.width : arrangement == .beside ? besideWidth : width
         travel = arrangement == .cover ? b.width + 24 : width
-        let pageX = arrangement == .beside && !hidden ? besideWidth : 0
+        // The rail keeps its width clear of the screen's leading safe area (the island, on its side).
+        let railFull = railWidth + view.safeAreaInsets.left
+        let wide = arrangement == .beside ? wideLayout(width: b.width, menu: besideWidth, rail: railFull, expanded: !railChosen, list: listWanted) : nil
+        let railed = wide?.rail == true
+        if !railed { peek = false }
+        let pageX = wide == nil ? 0 : railed ? railFull : besideWidth
         let pageBounds = CGRect(x: 0, y: 0, width: b.width - pageX, height: b.height)
         menu.view.bounds = CGRect(x: 0, y: 0, width: menuWidth, height: b.height)
-        menu.view.center = CGPoint(x: menuWidth / 2, y: b.midY)
+        // As a rail, the expanded menu waits off the screen's leading edge, and comes over the page when asked.
+        menu.view.center = CGPoint(x: menuWidth / 2 - (railed && !peek ? menuWidth : 0), y: b.midY)
+        rail.view.frame = CGRect(x: 0, y: 0, width: railFull, height: b.height)
+        rail.view.isHidden = wide == nil
+        rail.view.accessibilityElementsHidden = !railed || peek
+        scrim.frame = b
+        scrim.alpha = peek ? 1 : 0
+        scrim.isHidden = !peek && !sliding
         // Bounds and center: the card's transform moves it.
         card.bounds = pageBounds
         card.center = CGPoint(x: pageX + pageBounds.midX, y: b.midY)
@@ -239,11 +309,17 @@ final class SideMenuController: UIViewController, UIGestureRecognizerDelegate {
         dim.frame = pageBounds
         let hairline = 1 / max(traitCollection.displayScale, 1)
         divider.frame = CGRect(x: pageX - hairline, y: 0, width: hairline, height: b.height)
-        divider.isHidden = arrangement != .beside || hidden
+        divider.isHidden = wide == nil
         // Mostly over the menu: the page's edge is where its swipe back starts.
         grip.frame = CGRect(x: pageX - 16, y: 0, width: 22, height: b.height)
-        grip.isHidden = divider.isHidden
-        if arrangement != .beside || !hidden { menu.view.isHidden = false }
+        grip.isHidden = wide == nil || railed
+        // Out of view, the menu is out of VoiceOver's way too.
+        if !railed || peek { menu.view.isHidden = false } else if !sliding { menu.view.isHidden = true }
+        if wide != layout {
+            layout = wide
+            // After the layout pass: this writes the app's state, which lays views out again.
+            DispatchQueue.main.async { [self] in onLayout(wide) }
+        }
         guard before != (arrangement, travel) else { return }
         // Another arrangement (the device opened or closed, or turned): at rest in it, the menu closed.
         generation += 1
@@ -253,25 +329,34 @@ final class SideMenuController: UIViewController, UIGestureRecognizerDelegate {
             card.transform = .identity
             menu.view.transform = .identity
             menu.view.alpha = 1
-            menu.view.isHidden = hidden // under the page, out of VoiceOver's way
+            // Over the page and the rail, for when it shows over them.
+            for v in [rail.view!, divider, scrim, menu.view!, grip] { view.bringSubviewToFront(v) }
         } else {
+            view.sendSubviewToBack(menu.view)
             apply(0)
         }
-        let beside = arrangement == .beside, wasOpen = isOpen
+        let wasOpen = isOpen
         isOpen = false
-        // After the layout pass: these write the app's state, which lays views out again.
-        DispatchQueue.main.async { [self] in
-            if wasOpen { onChange(false) }
-            onBeside(beside)
-        }
+        // After the layout pass: this writes the app's state, which lays views out again.
+        if wasOpen { DispatchQueue.main.async { [self] in onChange(false) } }
     }
 
-    /// Opens or closes the menu to match the app's state. Beside the page, opening it shows it if it was hidden.
+    /// Opens or closes the menu to match the app's state. Beside the page, opening it expands the rail: beside
+    /// the page where there is room (the owner's choice from then on), else over the page until it is put away
+    /// or a place is chosen.
     func set(open: Bool) {
         guard arrangement != .beside else {
-            if open {
-                onChange(false)
-                if hidden { onHidden(false) }
+            if !open {
+                if peek { peek = false; slide() }
+            } else if let layout, layout.rail, !layout.menuFits {
+                if !peek { peek = true; slide() }
+            } else {
+                // After the update this is called in: these write the app's state.
+                let railed = layout?.rail == true
+                DispatchQueue.main.async { [self] in
+                    onChange(false)
+                    if railed { onRail(false) }
+                }
             }
             return
         }
@@ -279,20 +364,48 @@ final class SideMenuController: UIViewController, UIGestureRecognizerDelegate {
         animate(open: open, velocity: 0)
     }
 
-    /// Hides or shows the menu beside the page: the page slides over it, or aside to show it.
-    func set(hidden: Bool) {
-        guard hidden != self.hidden else { return }
-        self.hidden = hidden
+    /// The owner's choice of the menu beside the page, expanded or its rail, and whether a session list is
+    /// among the pages: the page slides to its new place.
+    func set(rail: Bool, list: Bool) {
+        guard rail != railChosen || list != listWanted else { return }
+        railChosen = rail
+        listWanted = list
+        slide()
+    }
+
+    /// Beside the page, moves the menu, its rail and the page to where the layout now has them.
+    private func slide() {
         guard arrangement == .beside, view.window != nil else { return view.setNeedsLayout() }
         menu.view.isHidden = false
+        scrim.isHidden = false
+        sliding = true
         generation += 1
         let g = generation
         UIView.animate(springDuration: 0.32, bounce: 0) {
             self.view.setNeedsLayout()
             self.view.layoutIfNeeded()
         } completion: { _ in
-            if g == self.generation && self.hidden && self.arrangement == .beside { self.menu.view.isHidden = true }
+            guard g == self.generation else { return }
+            self.sliding = false
+            self.view.setNeedsLayout()
         }
+    }
+
+    @objc private func closePeek() {
+        guard peek else { return }
+        peek = false
+        slide()
+        onChange(false)
+    }
+
+    @objc private func swipeRail() {
+        guard arrangement == .beside else { return }
+        onChange(true) // as the rail's own button
+    }
+
+    @objc private func swipeMenu() {
+        guard arrangement == .beside else { return }
+        if peek { closePeek() } else { onRail(true) }
     }
 
     /// The menu's width beside the page, as the owner left it; not while they drag it.
@@ -495,8 +608,7 @@ struct NewMenu: View {
     }
 }
 
-/// The menu button on root pages, with a dot when something needs the owner; where the menu stands beside the
-/// page but is hidden, it shows it again.
+/// The menu button on root pages, with a dot when something needs the owner.
 struct MenuButton: View {
     @Environment(AppModel.self) private var model
 
@@ -504,7 +616,7 @@ struct MenuButton: View {
         Button {
             model.drawerOpen = true
         } label: {
-            Image(systemName: model.menuBeside ? "sidebar.left" : "line.3.horizontal")
+            Image(systemName: "line.3.horizontal")
                 .overlay(alignment: .topTrailing) {
                     if model.attentionCount > 0 {
                         Circle().fill(.orange).frame(width: 8, height: 8).offset(x: 5, y: -4)
@@ -524,12 +636,12 @@ extension EnvironmentValues {
     }
 }
 
-/// The menu button in a root page's bar; none while the menu stands in view beside the page.
+/// The menu button in a root page's bar; none while the menu or its rail stands beside the page.
 struct MenuToolbarItem: ToolbarContent {
     @Environment(AppModel.self) private var model
 
     var body: some ToolbarContent {
-        if !model.menuInView { ToolbarItem(placement: .topBarLeading) { MenuButton() } }
+        if !model.menuBeside { ToolbarItem(placement: .topBarLeading) { MenuButton() } }
     }
 }
 

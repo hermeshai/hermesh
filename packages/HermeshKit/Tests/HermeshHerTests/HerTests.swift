@@ -284,3 +284,20 @@ final class FakeSignIn: @unchecked Sendable {
     #expect(await herSignInConnector(done.deps, name: "tracker") == .connected(account: nil))
     #expect(done.called.last?.0 == "mcp/login_complete" && done.called.last?.1 == ["login_id": "M2", "code": "k", "state": "s", "iss": "https://issuer"])
 }
+
+/// A method her doesn't answer means her there is older than this app: it says so, in place of
+/// her's "unknown method"; and what a machine lists is what it answers, nothing listed being
+/// unknown (docs/version-skew.md §6.1, §6.3).
+@Test func aMethodHerLacksSaysTheMachineNeedsAnUpdate() {
+    let e = HerRPCError(code: -32601, message: "unknown method 'bots/memory'", data: ["kind": "method_not_found"])
+    #expect(e.needsUpdate && e.message == HerRPCError.needsUpdateText && e.errorDescription == HerRPCError.needsUpdateText)
+    let other = HerRPCError(code: -32602, message: "invalid params", data: ["kind": "invalid_params"])
+    #expect(!other.needsUpdate && other.message == "invalid params")
+
+    var her = Hermesh_Machine_V1_HerStatus()
+    #expect(herAnswers(her, "bots/memory") == nil)
+    her.methods = ["bots/subscribe", "bots/memory"]
+    #expect(herAnswers(her, "bots/memory") == true)
+    #expect(herAnswers(her, "bots/routine") == false)
+}
+

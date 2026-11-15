@@ -53,9 +53,10 @@ final class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCent
 
     func application(_ application: UIApplication, didFailToRegisterForRemoteNotificationsWithError error: Error) {}
 
-    /// Upright, but for Computer Control's page, which may be held sideways.
+    /// Upright, but for Computer Control's page, which may be held sideways. (-HermeshTestTurns YES: every
+    /// page turns, so WideUITests reaches the wide layout on an iPhone Pro Max, as iPhone Duo's inner display does.)
     func application(_ application: UIApplication, supportedInterfaceOrientationsFor window: UIWindow?) -> UIInterfaceOrientationMask {
-        ScreenOrientation.allowed
+        UserDefaults.standard.bool(forKey: "HermeshTestTurns") ? .allButUpsideDown : ScreenOrientation.allowed
     }
 
     /// In front: show it, unless it is about the session on screen. A new

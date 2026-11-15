@@ -632,16 +632,6 @@
         }
       }
     },
-    "%lld waiting for you": {
-      "localizations": {
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "%lld 路在等你"
-          }
-        }
-      }
-    },
     "%lld working": {
       "localizations": {
         "zh-Hans": {
@@ -3098,6 +3088,26 @@
         }
       }
     },
+    "Hermesh Needs an Update": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "需要更新 Hermesh"
+          }
+        }
+      }
+    },
+    "Hermesh on %@ doesn’t have this yet. Update Hermesh there, and this page loads by itself.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ 上的 Hermesh 版本较旧，还没有这项功能。在那里更新 Hermesh 后，这里会自动恢复。"
+          }
+        }
+      }
+    },
     "Hermesh on %@ is too old to browse its folders. Update it there, or type a path.": {
       "localizations": {
         "zh-Hans": {
@@ -3174,16 +3184,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "隐藏已归档"
-          }
-        }
-      }
-    },
-    "Hide the menu": {
-      "localizations": {
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "隐藏菜单"
           }
         }
       }
@@ -3614,6 +3614,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "待批准"
+          }
+        }
+      }
+    },
+    "Needs Update": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "需更新"
           }
         }
       }
@@ -10642,6 +10652,46 @@
           "stringUnit": {
             "state": "translated",
             "value": "Her 的数据会留在上面：它离线了，现在无法清空。"
+          }
+        }
+      }
+    },
+    "Collapse the menu": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "收起菜单"
+          }
+        }
+      }
+    },
+    "Expand the menu": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "展开菜单"
+          }
+        }
+      }
+    },
+    "Choose a session": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "选择一个会话"
+          }
+        }
+      }
+    },
+    "%lld waiting for you": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld 个在等你"
           }
         }
       }
