@@ -425,6 +425,7 @@ impl Server {
                 id,
                 bots: self.0.bots.clone(),
                 routines: self.0.routines.clone(),
+                sessions: self.0.feed.clone(),
             },
             None => hub::Listing::Sessions(self.0.feed.clone()),
         };

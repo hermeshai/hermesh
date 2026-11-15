@@ -240,6 +240,7 @@ impl Server {
                         title: title.lines().next().unwrap_or_default().to_string(),
                         state: summary.state,
                         handoff: hub.shared.handoff.lock().as_ref().map(|h| h.what.clone()),
+                        task: hub.shared.task.lock().clone(),
                     },
                 );
             }

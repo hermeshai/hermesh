@@ -33,6 +33,14 @@ impl ListFeed {
         *self.observer.lock() = Some(f);
     }
 
+    /// Tells the observer alone: a bot's conversation changed, which the list leaves out.
+    pub fn observed(&self) {
+        let observer = self.observer.lock().clone();
+        if let Some(observer) = observer {
+            observer();
+        }
+    }
+
     /// Starts collecting changes for `conn`; `start` sends them after the list.
     pub fn watch(&self, conn: &ConnHandle) {
         let mut watchers = self.watchers.lock();
@@ -59,10 +67,7 @@ impl ListFeed {
     }
 
     pub fn publish(&self, sessions: Vec<SessionSummary>, deleted: Vec<String>) {
-        let observer = self.observer.lock().clone();
-        if let Some(observer) = observer {
-            observer();
-        }
+        self.observed();
         if self.watchers.lock().is_empty() {
             return;
         }

@@ -779,6 +779,9 @@ pub struct ExtensionSession {
     /// What it waits for the user to do in the page.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub handoff: Option<String>,
+    /// How the user's latest message starts: the task its tabs are for.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub task: Option<String>,
 }
 
 /// What the service tells the extension through its host (`browser/control`).
