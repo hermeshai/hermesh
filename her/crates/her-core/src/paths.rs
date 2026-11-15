@@ -4,6 +4,10 @@ use std::io;
 use std::path::Path;
 use std::path::PathBuf;
 
+/// The file that says her made her data directory: erasing her data deletes all of it then
+/// (docs/her-server.md §5.6). A directory without it, but `~/.her`, may hold the user's own files.
+pub const MARK: &str = ".her-home";
+
 #[derive(Clone, Debug)]
 pub struct HerHome {
     root: PathBuf,
@@ -185,9 +189,22 @@ impl HerHome {
         }
     }
 
-    /// Creates the data directory with owner-only permissions.
+    /// The file that says her made this directory (`MARK`).
+    pub fn mark_file(&self) -> PathBuf {
+        self.root.join(MARK)
+    }
+
+    /// Creates the data directory with owner-only permissions. A directory her makes, or finds
+    /// empty, is marked hers alone (`MARK`).
     pub fn ensure(&self) -> io::Result<()> {
+        let fresh = match std::fs::read_dir(&self.root) {
+            Ok(mut entries) => entries.next().is_none(),
+            Err(e) => e.kind() == io::ErrorKind::NotFound,
+        };
         std::fs::create_dir_all(self.sessions_dir())?;
+        if fresh {
+            std::fs::write(self.mark_file(), "her made this folder for her data: erasing her data deletes all of it.\n")?;
+        }
         #[cfg(unix)]
         {
             use std::os::unix::fs::PermissionsExt;
@@ -222,6 +239,32 @@ pub fn project_key(project_dir: &Path) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_data_directory_her_makes_or_finds_empty_is_marked_hers_and_no_other() {
+        let dir = tempfile::tempdir().unwrap();
+        let made = HerHome::new(dir.path().join("made"));
+        made.ensure().unwrap();
+        assert!(made.mark_file().is_file());
+
+        let empty = HerHome::new(dir.path().join("empty"));
+        std::fs::create_dir(empty.root()).unwrap();
+        empty.ensure().unwrap();
+        assert!(empty.mark_file().is_file());
+
+        // A folder the user already keeps things in: her's data goes there too, but erasing
+        // must not take the rest with it.
+        let theirs = HerHome::new(dir.path().join("Documents"));
+        std::fs::create_dir(theirs.root()).unwrap();
+        std::fs::write(theirs.root().join("taxes.pdf"), "x").unwrap();
+        theirs.ensure().unwrap();
+        assert!(!theirs.mark_file().exists());
+
+        // Marked once, it stays so; unmarked, a later start does not mark it.
+        made.ensure().unwrap();
+        theirs.ensure().unwrap();
+        assert!(made.mark_file().is_file() && !theirs.mark_file().exists());
+    }
 
     #[test]
     fn private_folders_are_a_sessions_own_folder_in_the_data_directory() {

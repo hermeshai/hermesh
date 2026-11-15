@@ -33,6 +33,7 @@ func TestEraseEverything(t *testing.T) {
 	herMac, herVPS := filepath.Join(t.TempDir(), "her"), filepath.Join(t.TempDir(), "her")
 	for _, d := range []string{herMac, herVPS} {
 		os.MkdirAll(filepath.Join(d, "bots"), 0o700)
+		os.WriteFile(filepath.Join(d, ".her-home"), nil, 0o600) // as her marks a home she makes
 	}
 	herEnv := func(home string) []string {
 		return append(slices.Clone(env), "HER_HOME="+home, "HER_CREDENTIAL_STORE=file")

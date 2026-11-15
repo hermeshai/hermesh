@@ -481,7 +481,13 @@ signers and machines refuse it with `enabled` true. The machine:
 2. with `erase`, deletes her home (`~/.her`, or `HER_HOME` from her
    environment), and on a Mac her Keychain items, service `her` (model
    keys, ChatGPT's tokens, connector secrets). With `HER_CREDENTIAL_STORE`
-   set, her used no Keychain, and the machine leaves it alone;
+   set, her used no Keychain, and the machine leaves it alone. A home is
+   deleted whole, so only one that is hers alone: `~/.her`, or a folder
+   her made, which she marks with `.her-home` when she makes it or finds
+   it empty. `HER_HOME` naming a folder that held other things first, such
+   as `~/Documents`, is not erased at all: deleting her entries by name
+   could take the owner's own folders of the same name. The answer says
+   so, and nothing is deleted;
 3. answers `Her is off, and her data is erased`; one that couldn't erase
    it says why, Her staying off.
 

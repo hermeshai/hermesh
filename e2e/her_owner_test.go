@@ -84,7 +84,9 @@ func startHerMock(t *testing.T, bin string) *herMock {
 func herHome(t *testing.T, models string) string {
 	t.Helper()
 	home := t.TempDir()
-	for name, content := range map[string]string{"models.toml": models, "config.toml": "model = \"mock/mock-1\"\n"} {
+	// .her-home: her marks a home she makes as hers alone (her-core paths.rs),
+	// as she would have made this one, so erasing her data may delete it.
+	for name, content := range map[string]string{"models.toml": models, "config.toml": "model = \"mock/mock-1\"\n", ".her-home": ""} {
 		if err := os.WriteFile(filepath.Join(home, name), []byte(content), 0o600); err != nil {
 			t.Fatal(err)
 		}
@@ -435,6 +437,49 @@ func TestHerTurnedOff(t *testing.T) {
 		h := listedMachine(t, c, mac).GetHer()
 		return h.GetRunning() && !h.GetModelReady()
 	})
+}
+
+// TestHerEraseKeepsAFolderNotHers: HER_HOME naming a folder the owner keeps
+// their own files in, which her did not make. Turned off with "Also erase
+// Her's data", Her goes off, and nothing there is deleted: the owner's
+// device hears why, and her data stays beside their files.
+func TestHerEraseKeepsAFolderNotHers(t *testing.T) {
+	her, mockBin := herBinaries(t)
+	mock := startHerMock(t, mockBin)
+	home := herHome(t, mock.models)
+	if err := os.Remove(filepath.Join(home, ".her-home")); err != nil {
+		t.Fatal(err)
+	}
+	theirs := filepath.Join(home, "taxes.pdf")
+	if err := os.WriteFile(theirs, []byte("the owner's own"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	w := newOwnerMac(t, herEnv(her, herConsole(t), home, mock.base), &localv1.GrantSpec{})
+	t.Cleanup(w.owner.stop)
+	c := w.app.client
+	ctx := context.Background()
+	mac := localMachine(t, c)
+	turnHerOn(t, c, mac)
+	bot := defaultBot(t, c, mac)
+	talk(t, c, mac, bot.ID, "before turning off")
+	if _, err := os.Stat(filepath.Join(home, ".her-home")); !os.IsNotExist(err) {
+		t.Fatalf("her marked a folder she found with the owner's files in it: %v", err)
+	}
+
+	_, err := c.SetHer(ctx, &localv1.SetHerRequest{MachineId: mac, Erase: true})
+	if err == nil || !strings.Contains(err.Error(), "her data stays") || !strings.Contains(err.Error(), "was not made by her") {
+		t.Fatalf("SetHer off with erase, in a folder not hers: %v", err)
+	}
+	eventually(t, time.Minute, "Her off", func() bool {
+		m := listedMachine(t, c, mac)
+		return m != nil && !m.GetHer().GetEnabled() && m.GetHer().GetData()
+	})
+	if b, err := os.ReadFile(theirs); err != nil || string(b) != "the owner's own" {
+		t.Fatalf("the owner's file after erasing her data: %q %v", b, err)
+	}
+	if _, err := os.Stat(filepath.Join(home, "bots")); err != nil {
+		t.Fatalf("her data, not erased: %v", err)
+	}
 }
 
 func httpDo(t *testing.T, method, url, body string) (int, string) {
