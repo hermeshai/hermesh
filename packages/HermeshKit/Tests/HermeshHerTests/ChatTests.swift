@@ -201,20 +201,67 @@ func snapshot(_ items: [JSON], task: JSON = nil, seq: Int = 10, queued: JSON = [
         said("u1", "fix the relay test", ts: 1000),
         reply("a1", [call("c1", "send_to_user", ["text": "Starting Claude Code."]), call("c2", "call_tool", ["name": "session_start", "arguments": ["project": "mini/hermesh"]])], ts: 2000, duration: 500),
         result("c1"), result("c2", text: doc),
-        reply("a2", [call("c3", "session_start", ["project": "mini/hermesh"]), call("c4", "session_start", [:]), call("c5", "session_start", [:]),
-                     call("c6", "session_send", ["session_id": "s_ab_12"]), call("c7", "session_start", [:])], ts: 3000),
+        reply("a2", [call("c3", "session_start", ["project": "mini/hermesh"]), call("c4", "session_start", [:]), call("c5", "session_start", [:]), call("c7", "session_start", [:])], ts: 3000),
         result("c3", text: doc.replacingOccurrences(of: "s_ab_12", with: "s_cd_34")),
         result("c4", error: true, text: #"{"ok":false,"exit_code":3,"error":{"kind":"denied"}}"#),
         result("c5", text: "denied by the user"),
-        result("c6", text: doc),
         ["type": "task_end", "task_id": "t1", "outcome": "completed", "ts": 3100],
     ])
     let items = herChat(v)
-    #expect(items.map(\.key) == ["u1", "c1", "c2", "c3"], "one row a session started: none for a call that failed, was refused, never ran, or wrote to a session")
+    #expect(items.map(\.key) == ["u1", "c1", "session:s_ab_12", "session:s_cd_34"], "one row a session started: none for a call that failed, was refused or never ran")
     #expect(items[2].kind == .session(HerStarted(sessionID: "s_ab_12", title: "Fix the relay test", agent: "claude", machine: "Mac mini")), "inside call_tool too")
     #expect(items[2].ts == 2500 && !items[2].isOwner)
     guard case .session(let second) = items[3].kind else { Issue.record("no session row"); return }
     #expect(second.sessionID == "s_cd_34")
+}
+
+/// More asked of a session days later (docs/her-team.md §4.4): its one card comes down to where she asked, and the
+/// earlier one goes. Named as the result names it, or as it was named before; a call that failed moves nothing, and
+/// one that names no session it can be named as makes no card.
+@Test func aSessionsCardFollowsWhatSheAsksOfIt() {
+    let doc = #"{"ok":true,"session":{"session_id":"s_ab_12","title":"Fix the relay test","machine":"Mac mini","agent":"claude"}}"#
+    let v = snapshot([
+        said("u1", "fix the relay test", ts: 1000),
+        reply("a1", [call("c1", "session_start", ["project": "mini/hermesh"])], ts: 2000),
+        result("c1", text: doc),
+        ["type": "task_end", "task_id": "t1", "outcome": "completed", "ts": 2100],
+        said("u2", "also the flaky one", ts: 900_000_000),
+        reply("a2", [call("c2", "send_to_user", ["text": "Asking it."]), call("c3", "call_tool", ["name": "session_send", "arguments": ["session_id": "s_ab_12", "message": "and the flaky one"]]),
+                     call("c4", "session_send", ["session_id": "s_ab_12", "message": "again"]), call("c5", "session_answer", ["session_id": "s_zz_99", "text": "yes"])], ts: 900_001_000, duration: 300),
+        result("c2"), result("c3", text: #"{"ok":true,"message":{"id":"m1","delivered":"queued"}}"#), result("c4", error: true, text: #"{"ok":false}"#), result("c5", text: #"{"ok":true}"#),
+        ["type": "task_end", "task_id": "t2", "outcome": "completed", "ts": 900_001_400],
+    ])
+    let items = herChat(v)
+    #expect(items.map(\.key) == ["u1", "u2", "c2", "session:s_ab_12"], "one card, under what she said when she asked")
+    #expect(items[3].ts == 900_001_300)
+    #expect(items[3].kind == .session(HerStarted(sessionID: "s_ab_12", title: "Fix the relay test", agent: "claude", machine: "Mac mini")), "named as it was")
+}
+
+/// News of a session wakes her (docs/her-mesh.md §6.2): what she then tells the owner has the session's card under
+/// it, named from the news when nothing else named it (her history holds the last page only). News she tells nothing
+/// of moves nothing, and the next task's words have no card under them.
+@Test func aSessionsCardFollowsWhatSheSaysOfItsNews() {
+    func news(_ id: String, _ session: String, ts: Double) -> JSON {
+        ["type": "message", "message_id": .string(id), "mail": ["id": .string(id), "kind": "news", "from": ["id": .string(session), "name": "Fix"], "status": "completed"],
+         "message": ["role": "user", "ts": .number(ts), "content": [["type": "text", "text": .string(#"<session_news id="\#(id)" kind="turn_done" session="\#(session)" title="Fix \"the\" test" agent="codex" project="macbook/hermesh" sent="x">"# + "\n<result>\nok\n</result>\n</session_news>\nNews of a coding session you started: its turn ended.")]]]]
+    }
+    let v = snapshot([
+        news("n1", "s_ab_12", ts: 1000),
+        reply("a1", [call("c1", "send_to_user", ["text": "Done."])], ts: 2000, duration: 100),
+        result("c1"),
+        reply("a2", [call("c2", "send_to_user", ["text": "Two files."])], ts: 3000, duration: 100),
+        result("c2"),
+        ["type": "task_end", "task_id": "t1", "outcome": "completed", "ts": 3200],
+        news("n2", "s_cd_34", ts: 4000),
+        ["type": "task_end", "task_id": "t2", "outcome": "completed", "ts": 4100],
+        said("u1", "thanks", ts: 5000),
+        reply("a3", [call("c3", "send_to_user", ["text": "You're welcome."])], ts: 6000),
+        result("c3"),
+    ])
+    let items = herChat(v)
+    #expect(items.map(\.key) == ["c1", "c2", "session:s_ab_12", "u1", "c3"], "under the last she said of it")
+    #expect(items[2].kind == .session(HerStarted(sessionID: "s_ab_12", title: #"Fix "the" test"#, agent: "codex", machine: "macbook")))
+    #expect(HerStarted(news: "<agent_report>done</agent_report>") == nil && HerStarted(news: #"<session_news id="n" session="">"#) == nil)
 }
 
 /// The session a start made, from its result's details (docs/her-team.md §6.2): they win over the text, which a long
@@ -228,7 +275,7 @@ func snapshot(_ items: [JSON], task: JSON = nil, seq: Int = 10, queued: JSON = [
         ["type": "task_end", "task_id": "t1", "outcome": "completed", "ts": 2100],
     ])
     let items = herChat(v)
-    #expect(items.map(\.key) == ["c1"], "details without a session id make no card")
+    #expect(items.map(\.key) == ["session:s_ef_56"], "details without a session id make no card")
     #expect(items.first?.kind == .session(HerStarted(sessionID: "s_ef_56", title: "Fix the relay test", agent: "codex", machine: "Mac mini")))
 }
 

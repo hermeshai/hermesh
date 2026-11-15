@@ -164,7 +164,10 @@ Finished.
 ### 4.4 Session cards in Her's conversation
 
 When Her starts a session, a card appears in her conversation at that
-point, and stays current.
+point, and stays current. When she later asks more of it, or tells the
+owner what its news said, the card moves down to that point: a job
+picked up again days later shows where the owner reads now, not where it
+began.
 
 | The session | The card shows |
 |---|---|
@@ -184,10 +187,29 @@ tool calls. It adds a row kind for a call whose tool is `session_start`
 result is not an error, and whose result text parses as the CLI's document
 with `session.session_id`. The card looks the session up in
 `model.sessions` by that id. A call that was denied, failed or cancelled
-makes no card. `session_send` and the other tools make none.
+makes no card.
 
-One card per session. Sessions that others started are never in Her's
-conversation.
+**Where it stands.** One card per session, at the last of:
+
+- a `session_start` that started it;
+- a `session_send` or `session_answer` to it (its `session_id` argument)
+  whose result is not an error;
+- each message Her sends the owner with `send_to_user` in a task that news
+  of the session ([her-mesh.md](her-mesh.md) §6.2) woke, under that message.
+  The news's mail names the session (`from.id`). News she tells the owner
+  nothing of moves nothing; the owner's next message ends it.
+
+The card's row key is `session:<id>`, the same wherever it stands, so the
+conversation moves it and draws nothing again. It is named by what named
+the session first in the history read: the start's result, a send's
+result (`session` on an online machine), or the news's tag (`title`,
+`agent`, and the machine from `project`). History is read a page at a
+time, so the start may not be among it. A session nothing names makes no
+card. Each result and news is read only for a session not named yet, so
+the conversation costs no more to lay out as a job goes on.
+
+Sessions that others started have a card only once Her asks more of them.
+The other tools make none.
 
 ### 4.5 The menu
 
@@ -545,8 +567,11 @@ Unit (Swift package):
 
 - `herChat`: a `session_start` call with a good result makes one session
   row with the id; inside `call_tool` too; an error, a denial, a cancelled
-  call and a result that is not the document make none; `session_send`
-  makes none.
+  call and a result that is not the document make none.
+- `herChat`: a `session_send` or `session_answer` days later moves the one
+  card down to it, named as before; one that failed moves nothing. What Her
+  says after news of a session has its card under it, named from the news;
+  news she says nothing of moves nothing.
 - The team's state: each row of §4.2's table, and which wins.
 - Who asked each turn.
 

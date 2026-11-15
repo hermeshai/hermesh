@@ -480,7 +480,7 @@ extension View {
     }
 }
 
-/// A coding session Her started, where she started it (docs/her-team.md §4.4): the agent, the title, where it
+/// A coding session Her started or works on, where she last did (docs/her-team.md §4.4): the agent, the title, where it
 /// runs, and how it stands now, kept current from the sessions the app holds; it opens the session's page. One the
 /// app holds no more (deleted, or older than what it keeps) shows as the call named it, without a state. It
 /// answers no question: news of her own sessions goes to Her first.
