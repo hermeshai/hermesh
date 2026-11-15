@@ -621,6 +621,17 @@ async fn unix_service_shares_sessions_between_clients() {
     // A leaves; the session stays loaded and B keeps working with it.
     drop(a);
     drop(a_events);
+    tokio::time::timeout(common::WAIT, async {
+        loop {
+            let list = b.request("session/list", json!({"cwd": cwd})).await.unwrap();
+            if list["sessions"][0]["attached_clients"] == 1 {
+                break;
+            }
+            tokio::time::sleep(Duration::from_millis(10)).await;
+        }
+    })
+    .await
+    .expect("A's connection is removed before it reconnects");
     let turn = native_prompt(&b, &mut b_events, &session, "[[mock:echo]] after a left", true).await;
     assert_eq!(turn.text, "echo: after a left");
 

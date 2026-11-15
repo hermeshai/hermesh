@@ -127,6 +127,7 @@
     "HER_CALL_ID": { "job": "tool-child", "stability": "stable" },
     "HER_MARK": { "job": "tool-child", "stability": "internal" },
     "HER_SYSTEM_SKILLS_FINGERPRINT": { "job": "build", "stability": "internal" },
+    "HER_GITHUB_OAUTH_CLIENT_SECRET": { "job": "build", "stability": "internal" },
     "HER_TEST_RELEASES": { "job": "test", "stability": "internal" },
     "HER_TEST_RELEASE_KEY": { "job": "test", "stability": "internal" },
     "HER_TEST_CHATGPT_BASE": { "job": "test", "stability": "internal" },

@@ -73,11 +73,14 @@ private func request<M: SwiftProtobuf.Message>(_ m: M) -> SigningRequest {
 
 /// What a machine older than this app lacks reads as that, whatever the transport said
 /// (docs/version-skew.md §6.3); its code stays, for the screens that act on it.
-@Test func unimplementedSaysTheMachineNeedsAnUpdate() {
+@Test func unimplementedSaysTheMachineNeedsAnUpdate() throws {
     let e = LocalAPI.parseError(Data(#"{"code":"unimplemented","message":"her's \"bots/memory\" is not open to the owner's devices"}"#.utf8), status: 501, headers: [:])
     #expect(e.code == "unimplemented" && e.message == APIError.needsUpdateText)
     #expect(LocalAPI.parseError(Data(#"{"code":"permission_denied","message":"no"}"#.utf8), status: 403, headers: [:]).message == "no")
-    let zh = Bundle(path: Bundle.module.path(forResource: "zh-Hans", ofType: "lproj")!)!
+    let bundle = HermeshKitResources.bundle
+    let lang = try #require(bundle.localizations.first { $0.lowercased() == "zh-hans" })
+    let path = try #require(bundle.path(forResource: lang, ofType: "lproj"))
+    let zh = try #require(Bundle(path: path))
     #expect(zh.localizedString(forKey: "Hermesh on that computer is older and doesn’t have this yet. Update Hermesh there, then try again.", value: nil, table: nil).hasPrefix("那台电脑上的 Hermesh 版本较旧"))
 }
 
