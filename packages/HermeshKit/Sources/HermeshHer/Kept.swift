@@ -31,14 +31,17 @@ public struct HerOutgoing: Equatable, Sendable {
     public var ts: Double
     /// Why it was not sent: nil while it is being sent.
     public var refused: String?
+    /// What it replies to.
+    public var reply: HerReply?
 
-    public init(id: String, text: String, images: [HerImage] = [], files: [String] = [], ts: Double, refused: String? = nil) {
+    public init(id: String, text: String, images: [HerImage] = [], files: [String] = [], ts: Double, refused: String? = nil, reply: HerReply? = nil) {
         self.id = id
         self.text = text
         self.images = images
         self.files = files
         self.ts = ts
         self.refused = refused
+        self.reply = reply
     }
 }
 
@@ -64,13 +67,28 @@ public func herOutbox(sending: [HerOutgoing] = [], waiting list: [Hermesh_Local_
     var out: [HerItem] = []
     let kept = list.filter { $0.botID == botID }.sorted { millis($0) < millis($1) }
     for w in kept where !shown(w.id, w.text, millis(w)) {
-        out.append(HerItem(key: w.id, ts: millis(w), kind: .waiting(id: w.id, text: w.text, files: w.localPaths.map(baseName), error: w.error)))
+        out.append(HerItem(key: w.id, ts: millis(w), kind: .waiting(id: w.id, text: w.text, files: w.localPaths.map(baseName), error: w.error),
+                           reply: w.hasReply ? HerReply(w.reply) : nil))
     }
     let inOutbox = Set(kept.map(\.id))
     for m in sending.sorted(by: { $0.ts < $1.ts }) where !inOutbox.contains(m.id) && !shown(m.id, m.text, m.ts) {
-        out.append(HerItem(key: m.id, ts: m.ts, kind: .sending(id: m.id, text: m.text, images: m.images, files: m.files, refused: m.refused)))
+        out.append(HerItem(key: m.id, ts: m.ts, kind: .sending(id: m.id, text: m.text, images: m.images, files: m.files, refused: m.refused), reply: m.reply))
     }
     return out
+}
+
+extension HerReply {
+    /// A reply as HerSend takes it and the outbox keeps it.
+    public init(_ r: Hermesh_Local_V1_HerReply) { self.init(ref: r.ref, own: r.own, text: r.text, partial: r.partial) }
+
+    public var proto: Hermesh_Local_V1_HerReply {
+        .with {
+            $0.ref = ref
+            $0.own = own
+            $0.text = text
+            $0.partial = partial
+        }
+    }
 }
 
 private func millis(_ w: Hermesh_Local_V1_HerWaiting) -> Double {

@@ -252,3 +252,38 @@ func snapshot(_ items: [JSON], task: JSON = nil, seq: Int = 10, queued: JSON = [
                                                senders: [.init(id: "c_her", sessions: 3, turns: 6), .init(id: "owner", sessions: 2, turns: 3)])))
     #expect(items.first?.ts == 2100)
 }
+
+/// The cases the core writes its blocks from (internal/owner TestHerReplyBlock), so that what it writes is what is read.
+@Test func whatAMessageRepliesToIsReadBackFromItsBlock() throws {
+    struct Shared: Decodable {
+        struct Case: Decodable {
+            struct Reply: Decodable { var ref: String; var own: Bool; var text: String; var partial: Bool }
+            var reply: Reply
+            var block: String
+        }
+        var cases: [Case]
+        var not: [String]
+    }
+    let url = URL(fileURLWithPath: #filePath)
+        .deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
+        .appendingPathComponent("internal/owner/testdata/her_reply.json")
+    let shared = try JSONDecoder().decode(Shared.self, from: Data(contentsOf: url))
+    #expect(shared.cases.count >= 4 && shared.not.count >= 8)
+    for c in shared.cases {
+        #expect(herReply(c.block) == HerReply(ref: c.reply.ref, own: c.reply.own, text: c.reply.text, partial: c.reply.partial), "\(c.block)")
+    }
+    for text in shared.not { #expect(herReply(text) == nil, "\(text)") }
+
+    // It shows as a quote, not as words, sent or still queued; words that only look like one stay words.
+    let block = shared.cases[0].block, reply = try #require(herReply(block))
+    let v = snapshot([
+        ["type": "message", "message_id": "u1", "message": ["role": "user", "ts": 1, "content": [
+            ["type": "text", "text": "is it far?"], ["type": "text", "text": .string(block)], ["type": "text", "text": "Attached files:\n/b/uploads/a.txt"],
+        ]]],
+        said("u2", shared.not[0], ts: 2),
+    ], task: ["task_id": "t1", "turn": 1], queued: [["id": "q1", "mode": "steer", "message": ["content": [["type": "text", "text": "by car"], ["type": "text", "text": .string(block)]], "ts": 5]]])
+    let items = herChat(v)
+    #expect(items[0] == HerItem(key: "u1", ts: 1, kind: .user(text: "is it far?", images: [], files: ["/b/uploads/a.txt"], queued: false), reply: reply))
+    #expect(items[1] == HerItem(key: "u2", ts: 2, kind: .user(text: shared.not[0], images: [], files: [], queued: false)))
+    #expect(items[2] == HerItem(key: "q1", ts: 5, kind: .user(text: "by car", images: [], files: [], queued: true), reply: reply))
+}

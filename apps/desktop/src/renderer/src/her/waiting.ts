@@ -1,3 +1,4 @@
+import type { ReplyQuote } from "@hermesh/her-client";
 import type { HerWaiting } from "@hermesh/proto/local";
 
 // Messages written to an assistant while its machine was offline: this device
@@ -6,9 +7,9 @@ import type { HerWaiting } from "@hermesh/proto/local";
 // what was said, as waiting.
 
 /** A message waiting to be delivered, as the conversation shows it. */
-export type WaitingItem = { kind: "waiting"; key: string; id: string; text: string; files: string[]; ts: number; error: string };
+export type WaitingItem = { kind: "waiting"; key: string; id: string; text: string; files: string[]; ts: number; error: string; reply?: ReplyQuote };
 
-type Waiting = Pick<HerWaiting, "id" | "botId" | "text" | "localPaths" | "createdAt" | "error">;
+type Waiting = Pick<HerWaiting, "id" | "botId" | "text" | "localPaths" | "createdAt" | "error"> & { reply?: ReplyQuote };
 
 const millis = (ts: Waiting["createdAt"]) => (ts ? Number(ts.seconds) * 1000 + Math.floor(ts.nanos / 1e6) : 0);
 
@@ -38,6 +39,8 @@ export type SendingItem = {
   images: { mime_type: string; data: string }[];
   ts: number;
   refused: string | null;
+  /** What it replies to (docs/her-reply.md). */
+  reply?: ReplyQuote;
 };
 
 /** What the app sent and has not heard of yet: its id (the outbox's and her's), words, files by name, pictures. */
@@ -64,7 +67,7 @@ export function outboxFor(list: Waiting[], botId: string, said: { key: string; t
   const kept = [...list].filter((w) => w.botId === botId).sort((a, b) => millis(a.createdAt) - millis(b.createdAt));
   for (const w of kept) {
     const ts = millis(w.createdAt);
-    if (!shown(w.id, w.text, ts)) out.push({ kind: "waiting", key: w.id, id: w.id, text: w.text, files: w.localPaths.map(fileName), ts, error: w.error });
+    if (!shown(w.id, w.text, ts)) out.push({ kind: "waiting", key: w.id, id: w.id, text: w.text, files: w.localPaths.map(fileName), ts, error: w.error, ...(w.reply && { reply: { ref: w.reply.ref, own: w.reply.own, text: w.reply.text, partial: w.reply.partial } }) });
   }
   const inOutbox = new Set(kept.map((w) => w.id));
   for (const m of [...sending].sort((a, b) => a.ts - b.ts)) {

@@ -30,6 +30,10 @@ test("a row's second line: an approval, then sub-agents, then answering, then th
   assert.deepEqual(botLine(bot("a", { last })), { kind: "last", from: "user", text: "看看这个", images: 0, files: ["报告.pdf", "data.xlsx"] });
   assert.deepEqual(botLine(bot("a")), { kind: "empty" });
   assert.deepEqual(lastText({ from: "bot", text: "\n## **对比好了**\n- 三种", ts: at(2) }), { text: "对比好了", files: [] });
+  // What the owner's message replies to is none of its words, with words before it or files alone after it.
+  const replying = '<resource uri="her-reply:c1">\nReplying to this earlier message of yours, quoted in part:\n> 西湖边的\n</resource>';
+  assert.deepEqual(lastText({ from: "user", text: `这家远吗？\n${replying}`, ts: at(2) }), { text: "这家远吗？", files: [] });
+  assert.deepEqual(lastText({ from: "user", text: `${replying}\nAttached files:\n/b/uploads/a.pdf`, ts: at(2) }), { text: "", files: ["a.pdf"] });
   assert.equal(plain("[文档](https://x.y) 和 `code` ~~旧~~"), "文档 和 code 旧");
   assert.equal(initialOf("  研究员"), "研");
   assert.equal(initialOf("👩‍🔬 Lab"), "👩‍🔬".slice(0, 2));
@@ -311,4 +315,29 @@ test("a search finds bots by name or by what was last said", () => {
   assert.deepEqual(searchBots(list, "对比").map((b) => b.id), ["研究员"]);
   assert.deepEqual(searchBots(list, "writ").map((b) => b.id), ["Writer"]);
   assert.deepEqual(searchBots(list, "nothing"), []);
+});
+
+test("a message that replies names what it replies to by that message's key, sent or still queued", () => {
+  const block = (ref: string, whose: string, text: string) => `<resource uri="her-reply:${ref}">\nReplying to this earlier message of ${whose}, quoted in part:\n> ${text}\n</resource>`;
+  const said = (id: string, text: string, quote: string, ts: number): EventMsg => ({ type: "message_completed", message_id: id, message: { role: "user", content: [{ type: "text", text }, { type: "text", text: quote }], ts } });
+  const v = play([
+    { type: "task_started", task_id: "t1" },
+    user("u1", "酒店有哪些？", 10_000),
+    assistant("a1", [send("c1", "两家：园区旁的，西湖边的。", true)], 11_000, 500),
+    started("c1"),
+    done("c1"),
+    { type: "task_completed", task_id: "t1", usage: { per_model: {} }, reason: "done" },
+    { type: "task_started", task_id: "t2" },
+    said("u2", "这家远吗？", block("c1", "yours", "西湖边的"), 20_000),
+    { type: "queue_changed", queued: [{ id: "u3", mode: "steer", message: { content: [{ type: "text", text: "我是说打车" }, { type: "text", text: block("u2", "mine", "这家远吗？") }], ts: 21_000 } }] },
+  ]);
+  const items = botChat(v);
+  const hers = items.find((i) => i.kind === "bot");
+  const [, second, third] = items.filter((i) => i.kind === "user");
+  assert.equal(hers?.key, "c1");
+  assert.ok(second.kind === "user" && third.kind === "user");
+  assert.equal(second.text, "这家远吗？");
+  assert.deepEqual(second.reply, { ref: "c1", own: false, text: "西湖边的", partial: true });
+  assert.equal(third.queued, true);
+  assert.deepEqual(third.reply, { ref: "u2", own: true, text: "这家远吗？", partial: true });
 });

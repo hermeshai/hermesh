@@ -12,7 +12,7 @@ import { addAttachments, fromFiles, pastedAttachments, pickFiles, type Attachmen
  * waits, sits above it. While nothing can be sent (no model yet), nothing is
  * written either.
  */
-export function Composer({ above, onHeight, value, onChange, onSend, placeholder, canSend = true, attachments, onAttachments }: {
+export function Composer({ above, onHeight, value, onChange, onSend, placeholder, canSend = true, attachments, onAttachments, quote, onUnquote }: {
   above?: ReactNode;
   onHeight: (h: number) => void;
   value: string;
@@ -22,6 +22,9 @@ export function Composer({ above, onHeight, value, onChange, onSend, placeholder
   canSend?: boolean;
   attachments: Attachment[];
   onAttachments: (a: Attachment[]) => void;
+  /** What the message replies to (docs/her-reply.md), above the text: × or Esc takes it away. */
+  quote?: { label: string; text: string };
+  onUnquote?: () => void;
 }) {
   const { t } = useTranslation("her");
   const area = useRef<HTMLTextAreaElement>(null);
@@ -62,7 +65,7 @@ export function Composer({ above, onHeight, value, onChange, onSend, placeholder
         {above}
         <div
           className={`cmp ${dropping ? "dropping" : ""}`}
-          onMouseDown={(e) => e.target instanceof HTMLElement && e.target.matches(".cmp,.cmp-row,.cmp-att") && (e.preventDefault(), area.current?.focus())}
+          onMouseDown={(e) => e.target instanceof HTMLElement && e.target.matches(".cmp,.cmp-row,.cmp-att,.cmp-q,.cmp-q-t,.cmp-q-t *") && (e.preventDefault(), area.current?.focus())}
           onPasteCapture={(e) => {
             const got = pastedAttachments(e.clipboardData);
             if (!got) return;
@@ -75,6 +78,17 @@ export function Composer({ above, onHeight, value, onChange, onSend, placeholder
             <div className="cmp-drop" aria-hidden="true">
               <b>{t("composer.dropTitle")}</b>
               <span className="cmp-drop-hint">{t("composer.dropHint")}</span>
+            </div>
+          )}
+          {quote && (
+            <div className="cmp-q" data-testid="her-reply-bar">
+              <span className="cmp-q-t">
+                <b>{quote.label}</b>
+                <span>{quote.text}</span>
+              </span>
+              <button className="cmp-q-x" aria-label={t("reply.cancel")} title={t("reply.cancel")} onClick={() => (onUnquote?.(), area.current?.focus())}>
+                <Icon name="x" />
+              </button>
             </div>
           )}
           {attachments.length > 0 && (
@@ -104,6 +118,11 @@ export function Composer({ above, onHeight, value, onChange, onSend, placeholder
               spellCheck={false}
               onChange={(e) => onChange(e.target.value)}
               onKeyDown={(e) => {
+                if (e.key === "Escape" && quote && !e.nativeEvent.isComposing) {
+                  e.preventDefault();
+                  onUnquote?.();
+                  return;
+                }
                 // ⌘↩ is an approval's (Approval.tsx), not Send.
                 if (e.key !== "Enter" || e.shiftKey || e.altKey || e.metaKey || e.ctrlKey || e.nativeEvent.isComposing) return;
                 e.preventDefault();

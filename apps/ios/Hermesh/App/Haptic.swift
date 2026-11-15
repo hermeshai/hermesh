@@ -14,6 +14,8 @@ enum Haptic: String {
     case success
     /// Something went wrong: the alert that says so, a message not delivered, a task that failed.
     case error
+    /// A message swiped far enough: letting go replies to it.
+    case armed
 
     func play() {
         switch self {
@@ -22,6 +24,7 @@ enum Haptic: String {
         case .asks: UIImpactFeedbackGenerator(style: .medium).impactOccurred()
         case .success: UINotificationFeedbackGenerator().notificationOccurred(.success)
         case .error: UINotificationFeedbackGenerator().notificationOccurred(.error)
+        case .armed: UIImpactFeedbackGenerator(style: .light).impactOccurred()
         }
         if HapticLog.shared.on { HapticLog.shared.played.append(self) }
     }

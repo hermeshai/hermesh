@@ -33,6 +33,30 @@ struct HerComposer: View {
         VStack(alignment: .leading, spacing: 8) {
             if let note { Label(note, systemImage: "clock").font(.footnote).foregroundStyle(.secondary).padding(.horizontal, 12) }
             VStack(alignment: .leading, spacing: 6) {
+                // What the message replies to (docs/her-reply.md §3.3): above its words, until it is sent or taken away.
+                if let reply = draft.reply {
+                    HStack(spacing: 9) {
+                        RoundedRectangle(cornerRadius: 1.5).fill(Color.accentColor).frame(width: 3)
+                        VStack(alignment: .leading, spacing: 1) {
+                            Text(reply.own ? String(localized: "Quoting your own message") : String(localized: "Replying to \(chat.bot?.name ?? "Her")"))
+                                .font(.footnote.weight(.semibold)).foregroundStyle(Color.accentColor)
+                            Text(herPlainText(reply.text)).font(.subheadline).foregroundStyle(.secondary).lineLimit(1)
+                        }
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .accessibilityElement(children: .combine)
+                        Button { withAnimation(.snappy(duration: 0.2)) { chat.draft.reply = nil } } label: {
+                            Image(systemName: "xmark.circle.fill").font(.title3).foregroundStyle(.tertiary).frame(width: 36, height: 36).contentShape(.rect)
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityLabel(Text("Cancel Reply"))
+                        .accessibilityIdentifier("her-reply-cancel")
+                    }
+                    .fixedSize(horizontal: false, vertical: true)
+                    .padding(.leading, 10).padding(.top, 4)
+                    .transition(.opacity.combined(with: .move(edge: .bottom)))
+                    .accessibilityElement(children: .contain)
+                    .accessibilityIdentifier("her-reply-bar")
+                }
                 if !draft.photos.isEmpty || !draft.files.isEmpty || loadingPhotos > 0 {
                     ScrollView(.horizontal) {
                         HStack(spacing: 6) {

@@ -72,6 +72,19 @@ extension HermeshUITests {
         try herSendingOnce()
     }
 
+    /// Replying (docs/her-reply.md §3.3) on its own: from a message's menu, to all of it and to words selected on a
+    /// sheet; by swiping it left; and the quote that brings the message replied to into view.
+    ///
+    ///     HERMESH_IPHONE_E2E=1 HERMESH_IPHONE_GREP=testHerReplying go test ./e2e -run TestIPhone -v -timeout 40m
+    @objc func testHerReplying() throws {
+        guard ProcessInfo.processInfo.environment["HERMESH_E2E_HER"] != nil else { throw XCTSkip("run with Her built") }
+        try join()
+        try herTurnOn()
+        try herOnboarding()
+        try herChat()
+        try herReplying()
+    }
+
     @objc func testHer() throws {
         guard ProcessInfo.processInfo.environment["HERMESH_E2E_HER"] != nil else { throw XCTSkip("run by TestIPhone with her built (HERMESH_E2E_HER)") }
         try XCTContext.runActivity(named: "joins the owner by its connection address") { _ in try join() }
@@ -178,6 +191,79 @@ extension HermeshUITests {
         XCTAssertEqual(long.frame.maxX, first.frame.maxX, accuracy: 1, "one edge for bubbles of more than a line")
         XCTAssertGreaterThan(long.frame.width, app.frame.width * 0.8, "most of the page")
         herShot("Her: a chat")
+    }
+
+    /// A reply (docs/her-reply.md): touch and hold a message for Reply, Copy and Select Text; what the next message
+    /// replies to shows above the composer's words until it is sent or taken away; sent, the message quotes it at the
+    /// top of its bubble and Her is told of it after the owner's words (her-mock sends back the prompt it got). Select
+    /// Text opens the message's words on a sheet, where Reply leads the edit menu of what is selected. Swiping a
+    /// message left replies to all of it. A quote brings the message it quotes into view.
+    func herReplying() throws {
+        let any = app.descendants(matching: .any)
+        // Her long reply of herChat: in view above the keyboard, where her first words have scrolled away.
+        let said = "这一段回复比较长"
+        let bubble = any.matching(identifier: "her-reply").containing(NSPredicate(format: "label BEGINSWITH %@", said)).firstMatch
+        XCTAssertTrue(bubble.waitForExistence(timeout: 30) && bubble.isHittable, "her bubble, in view")
+        let bar = any["her-reply-bar"].firstMatch
+        func quoting(_ words: String) -> Bool { bar.exists && bar.descendants(matching: .any).matching(NSPredicate(format: "label CONTAINS %@", words)).count > 0 }
+        func heard(_ words: String) -> Int { any.matching(NSPredicate(format: "label CONTAINS %@", words)).count }
+        func menu(_ title: String) throws {
+            bubble.press(forDuration: 1.0)
+            XCTAssertTrue(app.buttons["回复"].waitForExistence(timeout: 10) && app.buttons["拷贝"].exists && app.buttons["选择文本"].exists, "Reply, Copy, Select Text")
+            if title == "回复" { herShot("Her: a message's menu") }
+            app.buttons[title].tap()
+        }
+
+        // Reply: above the composer, which has the keyboard; the × takes it away.
+        try menu("回复")
+        XCTAssertTrue(waitUntil { quoting("回复 Her") && quoting(said) }, "what the next message replies to")
+        XCTAssertTrue(waitUntil(timeout: 5) { self.app.keyboards.count > 0 }, "the composer has the keyboard")
+        herShot("Her: replying")
+        tap("her-reply-cancel")
+        XCTAssertTrue(bar.waitForNonExistence(timeout: 5), "taken away")
+
+        // Sent: quoted at the top of the bubble. Her answers in a word, so the bubble stays clear of the bar at the top.
+        try menu("回复")
+        XCTAssertTrue(waitUntil { quoting(said) })
+        herSend("[[mock:send:好的]] 这句是什么意思")
+        XCTAssertTrue(bar.waitForNonExistence(timeout: 5), "gone with the message")
+        let quotes = any.matching(identifier: "her-quote")
+        XCTAssertTrue(waitUntil(timeout: 30) { quotes.count == 1 && quotes.firstMatch.label.contains(said) }, "the message quotes it")
+        XCTAssertTrue(app.staticTexts["好的"].waitForExistence(timeout: 60), "Her's answer")
+        herShot("Her: a reply")
+
+        // A quote brings the message it quotes into view.
+        XCTAssertTrue(waitUntil(timeout: 10) { quotes.firstMatch.isHittable }, "the quote can be tapped")
+        let was = bubble.frame
+        quotes.firstMatch.tap()
+        XCTAssertTrue(waitUntil(timeout: 10) { bubble.isHittable }, "the message replied to is in view (it was at \(was))")
+
+        // Select Text: the words on a sheet; touch and hold selects, and Reply leads the edit menu. Her is told what
+        // the message replies to, after the owner's words.
+        try menu("选择文本")
+        let words = app.textViews["her-select-text"]
+        XCTAssertTrue(words.waitForExistence(timeout: 10), "the message's words")
+        XCTAssertTrue((words.value as? String)?.hasPrefix(said) == true, "\(String(describing: words.value))")
+        words.coordinate(withNormalizedOffset: CGVector(dx: 0.3, dy: 0)).withOffset(CGVector(dx: 0, dy: 26)).press(forDuration: 1.0)
+        let reply = try waitFor("Reply in the edit menu", timeout: 10) { () -> XCUIElement? in
+            [self.app.menuItems["回复"], self.app.buttons["回复"]].first { $0.exists && $0.isHittable }
+        }
+        herShot("Her: selecting text")
+        reply.tap()
+        XCTAssertTrue(words.waitForNonExistence(timeout: 10), "the sheet goes")
+        XCTAssertTrue(waitUntil { bar.exists }, "what was selected is what the next message replies to")
+        herSend("[[mock:send]] 再说一遍")
+        XCTAssertTrue(waitUntil(timeout: 30) { quotes.count == 2 }, "the second message quotes too")
+        XCTAssertTrue(waitUntil(timeout: 60) { heard("Replying to this earlier message of yours") > 0 }, "Her was told, after the owner's words")
+
+        // Swiping a message left replies to all of it.
+        let last = any.matching(identifier: "her-reply").allElementsBoundByIndex.last { $0.isHittable }
+        let from = try XCTUnwrap(last, "a reply of Her's in view").coordinate(withNormalizedOffset: CGVector(dx: 0.7, dy: 0.5))
+        from.press(forDuration: 0.05, thenDragTo: from.withOffset(CGVector(dx: -170, dy: 0)))
+        XCTAssertTrue(waitUntil { quoting("回复 Her") }, "swiped left: replying")
+        herShot("Her: swiped to reply")
+        tap("her-reply-cancel")
+        XCTAssertTrue(bar.waitForNonExistence(timeout: 5))
     }
 
     func herTypingChinese() throws {

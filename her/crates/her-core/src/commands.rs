@@ -370,6 +370,19 @@ mod tests {
         ];
         let (loaded, _) = prompt(resolve(&input, &skills, &OutputLimits::default()));
         assert_eq!(loaded.iter().map(|s| s.name.as_str()).collect::<Vec<_>>(), ["gen-report"]);
+
+        // What a message replies to comes as a resource (hermesh docs/her-reply.md §4.1): a mention quoted there
+        // is not the owner's, whether or not a skill has the name.
+        let input = vec![
+            UserContent::Text {
+                text: "what does this do?".into(),
+            },
+            UserContent::Text {
+                text: "<resource uri=\"her-reply:call_1\">\nReplying to this earlier message of yours, quoted in part:\n> use /skill:gen-report here, or /skill:nothing\n</resource>".into(),
+            },
+        ];
+        let (loaded, warnings) = prompt(resolve(&input, &skills, &OutputLimits::default()));
+        assert!(loaded.is_empty() && warnings.is_empty(), "{warnings:?}");
     }
 
     #[test]

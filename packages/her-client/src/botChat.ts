@@ -1,6 +1,6 @@
 import type { ErrorInfo } from "@hermesh/her-protocol";
 import { callTarget, runningAgents, type AgentView, type SessionView } from "./session.ts";
-import { conversation, detailsOf, userText, type ToolView, type WorkItem } from "./steps.ts";
+import { conversation, detailsOf, userText, type ReplyQuote, type ToolView, type WorkItem } from "./steps.ts";
 import { baseName } from "./text.ts";
 
 // A bot's conversation as Bot mode shows it (docs/kernel/bot-design.md §3.4):
@@ -62,8 +62,8 @@ export interface RoutineSource {
 }
 
 export type BotItem =
-  /** queued: sent while the bot was busy, not in its conversation yet. */
-  | { kind: "user"; key: string; text: string; images: { mime_type: string; data: string }[]; files: string[]; skills: string[]; ts: number; queued: boolean }
+  /** queued: sent while the bot was busy, not in its conversation yet. reply: what it replies to (docs/her-reply.md). */
+  | { kind: "user"; key: string; text: string; images: { mime_type: string; data: string }[]; files: string[]; skills: string[]; ts: number; queued: boolean; reply?: ReplyQuote }
   /** A message from the bot. */
   | { kind: "bot"; key: string; text: string; ts: number; source?: RoutineSource }
   /** Files and images the bot sent, as one message, with its words if it had any. */
@@ -239,7 +239,7 @@ export function botChat(v: SessionView): BotItem[] {
   for (const s of conversation(v)) {
     switch (s.kind) {
       case "user":
-        out.push({ kind: "user", key: s.key, text: s.text, images: s.images, files: s.files, skills: s.skills, ts: s.ts, queued: false });
+        out.push({ kind: "user", key: s.key, text: s.text, images: s.images, files: s.files, skills: s.skills, ts: s.ts, queued: false, ...(s.reply && { reply: s.reply }) });
         since ??= s.ts;
         source = undefined;
         break;
@@ -298,9 +298,9 @@ export function botChat(v: SessionView): BotItem[] {
   const lastFailure = out.findLastIndex((i) => i.kind === "failure");
   if (lastFailure >= 0 && !v.live && v.failure) out[lastFailure] = { ...(out[lastFailure] as Extract<BotItem, { kind: "failure" }>), last: true };
   for (const q of v.queued) {
-    const { text, files } = userText(q.message.content);
+    const { text, files, reply } = userText(q.message.content);
     const images = q.message.content.flatMap((c) => (c.type === "image" ? [{ mime_type: c.mime_type, data: c.data }] : []));
-    out.push({ kind: "user", key: q.id, text, images, files, skills: [], ts: q.message.ts, queued: true });
+    out.push({ kind: "user", key: q.id, text, images, files, skills: [], ts: q.message.ts, queued: true, ...(reply && { reply }) });
   }
   // In the order things were sent; the same time keeps the history's order.
   const sorted = out.map((item, i) => ({ item, i })).sort((a, b) => a.item.ts - b.item.ts || a.i - b.i).map((x) => x.item);

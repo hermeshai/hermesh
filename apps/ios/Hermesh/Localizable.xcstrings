@@ -12458,6 +12458,76 @@
           }
         }
       }
+    },
+    "Reply": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "回复"
+          }
+        }
+      }
+    },
+    "Select Text": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "选择文本"
+          }
+        }
+      }
+    },
+    "Replying to %@": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "回复 %@"
+          }
+        }
+      }
+    },
+    "Quoting your own message": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "引用自己的消息"
+          }
+        }
+      }
+    },
+    "Cancel Reply": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "取消回复"
+          }
+        }
+      }
+    },
+    "The message this replies to isn’t here anymore": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "原消息不在这里了"
+          }
+        }
+      }
+    },
+    "Shows the message": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "显示这条消息"
+          }
+        }
+      }
     }
   },
   "version": "1.0"

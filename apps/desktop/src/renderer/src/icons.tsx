@@ -46,6 +46,8 @@ const paths: Record<string, string> = {
   shield: "<path d=\"M8 1.8l5 2v4c0 3-2.2 5.3-5 6.4-2.8-1.1-5-3.4-5-6.4v-4z\"/><path d=\"M5.8 8l1.6 1.6 2.9-3\"/>",
   lock: "<rect x=\"3.2\" y=\"7\" width=\"9.6\" height=\"6.8\" rx=\"1.6\"/><path d=\"M5.3 7V5.2a2.7 2.7 0 0 1 5.4 0V7\"/>",
   undo: "<path d=\"M5.5 4L2.8 6.7l2.7 2.7\"/><path d=\"M2.8 6.7h6.7a3.6 3.6 0 0 1 0 7.2H7\"/>",
+  // An arrow turning back to what was said: reply.
+  reply: "<path d=\"M6.3 4.1L2.8 7.6l3.5 3.5\"/><path d=\"M2.8 7.6h6.3a4.1 4.1 0 0 1 4.1 4.1v1.1\"/>",
   devices: "<rect x=\"1.4\" y=\"3.4\" width=\"9\" height=\"6.4\" rx=\"1\"/><path d=\"M.8 12h10.4\"/><rect x=\"11.6\" y=\"5.8\" width=\"3.6\" height=\"7.2\" rx=\".9\"/>",
   warn: "<path d=\"M8 2.2l6.2 11H1.8z\"/><path d=\"M8 6.4v3.2M8 11.4v.1\"/>",
   q: "<circle cx=\"8\" cy=\"8\" r=\"6\"/><path d=\"M6.3 6.2a1.8 1.8 0 1 1 2.5 1.7c-.5.2-.8.6-.8 1.1v.3M8 11.3v.1\"/>",

@@ -82,6 +82,15 @@
     "copiedError": "Error copied",
     "failedPast": "This task didn't finish: {{title}}"
   },
+  "reply": {
+    "reply": "Reply",
+    "to": "Replying to {{name}}",
+    "own": "Quoting your own message",
+    "you": "You",
+    "cancel": "Cancel reply",
+    "gone": "The message this replies to isn't here anymore",
+    "needsUpdate": "Hermesh is finishing an update. Reply works once it has restarted."
+  },
   "onboard": {
     "greeting": "Hi, I'm {{name}}. I work on {{machine}}. Before we start, I need a model to think and answer with. Pick a way to connect one.",
     "ways": "Ways to connect",

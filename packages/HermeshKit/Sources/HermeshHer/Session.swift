@@ -288,9 +288,21 @@ func herTokens(totals t: JSON) -> Int {
 public func herReturned(_ e: JSON) -> [String] {
     guard ["task_failed", "task_interrupted"].contains(e["type"].string ?? "") else { return [] }
     return (e["returned_input"].array ?? []).compactMap { m in
-        let text = (m["content"].array ?? []).compactMap { $0["type"].string == "text" ? $0["text"].string : nil }.joined(separator: "\n")
+        // What one replied to goes back as that (herReturnedReply), not as words.
+        let text = (m["content"].array ?? []).compactMap { $0["type"].string == "text" ? $0["text"].string : nil }.filter { herReply($0) == nil }.joined(separator: "\n")
         return text.isEmpty ? nil : text
     }
+}
+
+/// What the first of those messages that replied was replying to: it goes back into the composer with their words.
+public func herReturnedReply(_ e: JSON) -> HerReply? {
+    guard ["task_failed", "task_interrupted"].contains(e["type"].string ?? "") else { return nil }
+    for m in e["returned_input"].array ?? [] {
+        for c in m["content"].array ?? [] where c["type"].string == "text" {
+            if let reply = c["text"].string.flatMap(herReply) { return reply }
+        }
+    }
+    return nil
 }
 
 public enum HerUserContent: Equatable, Sendable {
