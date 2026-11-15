@@ -1,12 +1,13 @@
 import type { TaskEndItem } from "@hermesh/her-protocol";
 import { saidTo, startedSession, type StartedSession } from "./botChat.ts";
 import { type AgentView, type SessionView } from "./session.ts";
-import { conversation, taskGists, type AgentLaunch, type Step, type ToolView } from "./steps.ts";
+import { conversation, taskGists, toolObject, type AgentLaunch, type Step, type ToolView, type WorkItem } from "./steps.ts";
 import { plain } from "./bots.ts";
 import { totals } from "./text.ts";
 
-// The work a bot sent out, as the Progress page shows it (docs/her-team.md §15): under each thing the owner
-// said to it, the sub-agents it started for that and the coding sessions it started on the mesh. Worked out
+// The work a bot sent out, as the Progress page shows it (docs/her-team.md §15): for each thing the owner
+// said to it, the sub-agents it started for that and the coding sessions it started on the mesh, each a post of
+// its own with what set it off at its foot; and what a sub-agent's post says. Worked out
 // from the conversation the page already follows, sub-agents' own sessions included (their agent_events), so
 // the page asks her for nothing more.
 
@@ -119,25 +120,51 @@ export function agentTitles(tasks: ProgressTask[]): Map<string, string> {
 
 const firstLine = (text: string) => plain(text.split("\n").map((l) => l.trim()).find((l) => l !== "") ?? "");
 
-/**
- * A card's one line: what the agent does now (its latest call, else its latest words or thought), what it
- * asks, how it ended (the start of its report), or why it failed. Null when there is nothing to say yet.
- */
-export function agentLine(l: AgentLaunch): { kind: "tool"; tool: ToolView } | { kind: "text"; text: string } | null {
+/** What a sub-agent's post in the feed shows, from one pass over its record. */
+export interface AgentPost {
+  /** A line of how it goes: what it asks, why it failed, the start of its report, else its latest words or thought. */
+  words: string | null;
+  /** The call it is on while it works; null while it thinks. */
+  now: ToolView | null;
+  /** How many calls it made. */
+  calls: number;
+  /** The files it wrote, in the order it first wrote them. */
+  files: string[];
+}
+
+export function agentPost(l: AgentLaunch): AgentPost {
+  const post: AgentPost = { words: null, now: null, calls: 0, files: [] };
   const a = l.agent;
-  if (!a) return null;
-  const text = (t: string | undefined) => (t && firstLine(t) !== "" ? { kind: "text" as const, text: firstLine(t) } : null);
+  if (!a) return post;
+  const line = (t: string | undefined) => (t && firstLine(t) !== "" ? firstLine(t) : null);
+  let latest: string | undefined, said: string | undefined, last: WorkItem | Step | undefined;
+  for (const s of stepsOf(a.view)) {
+    if (s.kind === "text") {
+      latest = said = s.text;
+      last = s;
+    } else if (s.kind === "work") {
+      for (const it of s.items) {
+        last = it;
+        if (it.kind === "thinking") {
+          if (!it.redacted) latest = it.text;
+          continue;
+        }
+        post.calls++;
+        const object = toolObject(it.tool);
+        if (it.tool.category === "edit" && it.tool.state === "done" && object && !post.files.includes(object)) post.files.push(object);
+      }
+    } else {
+      last = s;
+    }
+  }
   const state = agentState(l);
-  if (state === "waiting") return text(a.view.live?.approvals[0]?.summary);
-  if (state === "failed") return text(a.error?.message ?? lastEnd(a)?.error?.message);
-  const all = stepsOf(a.view);
-  if (state === "done") return text(a.summary) ?? text(all.findLast((s) => s.kind === "text")?.text);
-  if (state !== "running") return null;
-  const last = all.at(-1);
-  if (last?.kind === "text") return text(last.text);
-  if (last?.kind !== "work") return null;
-  const item = last.items.at(-1);
-  return item?.kind === "tool" ? { kind: "tool", tool: item.tool } : text(item?.text);
+  post.words =
+    state === "waiting" ? line(a.view.live?.approvals[0]?.summary)
+    : state === "failed" ? line(a.error?.message ?? lastEnd(a)?.error?.message)
+    : state === "done" ? (line(a.summary) ?? line(said))
+    : line(latest);
+  if ((state === "running" || state === "waiting") && last?.kind === "tool" && ["streaming", "pending", "awaiting_approval", "running"].includes(last.tool.state)) post.now = last.tool;
+  return post;
 }
 
 function lastEnd(a: AgentView): TaskEndItem | undefined {

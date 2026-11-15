@@ -49,7 +49,7 @@ private func inner(_ seq: Int, _ agent: String, _ n: Int, _ event: [String: JSON
         guard case .agent(let l)? = herProgress(v).first?.tasks.first else { return HerLaunch(callID: "", name: "", description: "", task: "", agent: nil) }
         return l
     }
-    #expect(herAgentLine(launch()) == nil)
+    #expect(herAgentPost(launch()) == HerAgentPost(words: nil, now: nil, calls: 0, files: []))
 
     v.apply(["seq": 11, "ts": 5000, "type": "agent_started", "agent_id": "ag1", "name": "data", "description": "整理数据", "call_id": "c1", "session_file": "/a"])
     v.apply(inner(12, "ag1", 1, ["type": "task_started", "task_id": "x"]))
@@ -62,15 +62,18 @@ private func inner(_ seq: Int, _ agent: String, _ n: Int, _ event: [String: JSON
     var a = launch().agent!
     #expect(a.callID == "c1" && a.since == 5000)
     #expect(herAgentState(launch()) == .running)
-    guard case .tool(let now)? = herAgentLine(launch()) else { Issue.record("no call"); return }
+    // Its post: its latest thought, and the call it is on.
+    let post = herAgentPost(launch())
+    guard let now = post.now else { Issue.record("no call"); return }
+    #expect(post.words == "先看表头。" && post.calls == 1)
     #expect(now.title == "read a.csv" && now.object == "a.csv" && now.state == .live && now.category == "read")
     #expect(herAgentTokens(a) == 120, "its running task's turns count already")
     #expect(herAgentElapsed(a, now: a.since + 4200) == 4200)
     #expect(herAgentBrief(launch()) == "Sum the tables.")
 
-    // It asks: the card says what, and the record's call waits.
+    // It asks: the post says what, and the record's call waits.
     v.apply(inner(17, "ag1", 6, ["type": "approval_requested", "call_id": "k1", "name": "read", "args": [:], "summary": "读取 a.csv\n在项目外"]))
-    #expect(herAgentState(launch()) == .waiting && herAgentLine(launch()) == .text("读取 a.csv"))
+    #expect(herAgentState(launch()) == .waiting && herAgentPost(launch()).words == "读取 a.csv" && herAgentPost(launch()).now?.state == .awaiting)
     #expect(herSteps(launch().agent!.view).last?.kind == .tool(HerToolStep(callID: "k1", name: "read", category: "read", title: "read a.csv", state: .awaiting, output: "")))
 
     v.apply(inner(18, "ag1", 7, ["type": "approval_resolved", "call_id": "k1", "decision": ["type": "approve"]]))
@@ -80,7 +83,7 @@ private func inner(_ seq: Int, _ agent: String, _ n: Int, _ event: [String: JSON
     v.apply(inner(21, "ag1", 10, ["type": "task_completed", "task_id": "x", "usage": usage, "ts": 40_000]))
     v.apply(["seq": 22, "ts": 41_000, "type": "agent_status", "agent_id": "ag1", "name": "data", "status": "completed", "summary": "**周活** 多了 12%。", "elapsed_ms": 30_000])
     a = launch().agent!
-    #expect(herAgentState(launch()) == .done && herAgentLine(launch()) == .text("周活 多了 12%。"))
+    #expect(herAgentState(launch()) == .done && herAgentPost(launch()) == HerAgentPost(words: "周活 多了 12%。", now: nil, calls: 1, files: []))
     #expect(herAgentElapsed(a, now: 0) == 30_000 && herAgentTokens(a) == 120 && herAgentCalls(a) == 1)
     // Its record: the task, its thought, its call with what came back, its words.
     #expect(herSteps(a.view).map(\.kind) == [
@@ -90,12 +93,28 @@ private func inner(_ seq: Int, _ agent: String, _ n: Int, _ event: [String: JSON
         .text("**周活** 多了 12%。\n表在附件里。"),
     ])
 
-    // A round that failed says why, on the card and in the record.
+    // A round that failed says why, in the post and in the record.
     v.apply(inner(23, "ag1", 11, ["type": "task_started", "task_id": "y"]))
     v.apply(inner(24, "ag1", 12, ["type": "task_failed", "task_id": "y", "error": ["kind": "provider", "message": "模型没有回应"], "ts": 50_000]))
     v.apply(["seq": 25, "ts": 51_000, "type": "agent_status", "agent_id": "ag1", "name": "data", "status": "failed", "error": ["kind": "provider", "message": "模型没有回应"]])
-    #expect(herAgentState(launch()) == .failed && herAgentLine(launch()) == .text("模型没有回应"))
+    #expect(herAgentState(launch()) == .failed && herAgentPost(launch()).words == "模型没有回应")
     #expect(herSteps(launch().agent!.view).last?.kind == .ended(outcome: "failed", error: launch().agent!.error))
+}
+
+@Test func aSubAgentsPostNamesTheFilesItWroteOnceEach() {
+    let items: [JSON] = [
+        said("x0", "You are a sub-agent.\n<task>\nWrite it.\n</task>", ts: 1000),
+        reply("x1", [call("k1", "write", ["path": "out/周报.md"]), call("k2", "edit", ["path": "out/周报.md"]), call("k3", "edit", ["path": "b.txt"]), call("k4", "read", ["path": "c.txt"])], ts: 2000),
+        result("k1"), result("k2"), result("k3", error: true), result("k4"),
+        ["type": "message", "message_id": "x2", "message": ["role": "assistant", "ts": 3000, "content": [["type": "text", "text": "写好了。"]]]],
+    ]
+    let v = snapshot([said("u1", "go", ts: 500), reply("a1", [spawn("c1", "w", "写周报")], ts: 600)], agents: [
+        ["agent_id": "ag1", "name": "w", "description": "写周报", "call_id": "c1", "status": "completed", "since": 4000, "transcript": ["items": .array(items)]],
+    ])
+    guard case .agent(let l)? = herProgress(v).first?.tasks.first else { Issue.record("no agent"); return }
+    let post = herAgentPost(l)
+    // What failed wrote nothing; a read is no file of its.
+    #expect(post.files == ["out/周报.md"] && post.calls == 4 && post.now == nil && post.words == "写好了。")
 }
 
 @Test func agentsOfEarlierPagesAreAGroupOfTheirOwnAndTheirHistoryIsReadByTheirCursor() {

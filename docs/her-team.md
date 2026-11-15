@@ -953,10 +953,42 @@ follows that work, as they would ask a secretary how things stand.
   task's first line), one line of what it does now or how it ended, and how
   long it ran with how many tokens it used. Not when it started.
 
+That was the first version. Using it, the owner found that most messages
+send one piece of work out, so the page was a list of groups of one; on both
+apps it became a feed instead, decided on 2026-11-15 on a second demo
+([进展 · iPhone 信息流](https://claude.ai/artifact/KPaxCyu9xG8oQBsoEAhiZL)).
+The groups stay as the data (`progressGroups`, `herProgress`); the page
+shows each task of theirs as a post:
+
+- **One post a piece of work**, in three parts: Needs you (it waits for the
+  owner, or failed), Now (at work), Earlier (ended); the latest first in
+  each. No summary line, no filter.
+- **A post** is its title with one time beside it (how long it has worked,
+  in the accent, or how long ago it ended), a line of how it goes (what it
+  asks, why it failed, the start of its report, else its latest words or
+  thought), one piece that shows where it stands, and what set it off at
+  its foot, with the tokens it used. Only a post that needs the owner has a
+  mark: an orange dot when it waits, a red one when it failed. No picture,
+  no state word: the part it is under says that.
+- **The piece**: while a sub-agent works, a bar for each call it made (the
+  last beating) and the call it is on; while it waits, Review, which opens
+  its record, where the approval is answered (an approval shows what it
+  would run, too much for a post); done, the files it wrote. A coding
+  session: the tool it runs, or the lines it changed. Results with more to
+  show (numbers, tables) need sub-agents to report them in a shape the
+  apps can read, which they do not yet.
+- **What set it off** is a capsule ("You 10:58 · …"); a tap shows it whole
+  (on the iPhone a sheet, Liquid Glass at half height; on the Mac a panel
+  over the page, as the team panel is): what the owner said and when, what
+  Her said back, everything it sent out, each as it stands, and a way to
+  the conversation.
+
 ### 15.2 A card's page
 
 A sub-agent's card opens its record: the owner's words that set it off, the
-other cards of the same group (one tap shows another), what Her asked of it,
+other cards of the same group (one tap shows another; both are now behind
+the capsule at its top, and the iPhone shows how long it ran, its tokens and
+its steps as three tiles), what Her asked of it,
 then everything it thought, said and called, in order, and how it ended: its
 last words are its report to Her. Thoughts show whole; a call is a line that
 opens to its output, and Expand All Output opens them all. What it asks the
@@ -1004,12 +1036,15 @@ kind; the apps tell by the `/` and do not read on with it.
 
 - `cargo test -p her-server --lib mirror`: an agent's history by its cursor.
 - `@hermesh/her-client` `progress.test.ts`, and `ProgressTests.swift` in
-  `HermeshHerTests`: groups, card states and lines, tokens and times, the
+  `HermeshHerTests`: groups, card states and posts (what they say, the call
+  under way, the files written), tokens and times, the
   record's steps, agents of earlier pages and their cursor, a routine's run.
 - `go test ./e2e -run '^TestDesktopHerProgress$'`: real hermeshd and her
   with her-mock, the Mac app: the entry appears with Her; an empty page; a
-  sub-agent's card that asks, its record, the approval answered there, its
-  report, time and tokens; an ended group folded; a coding session's card
-  and its record.
+  sub-agent's post under Needs you, the panel of what set it off, Review to
+  its record, the approval answered there, its report, time and tokens; the
+  post under Earlier once it ends; a coding session's post and its record.
 - `HERMESH_IPHONE_E2E=1 HERMESH_IPHONE_GREP=testHerProgress go test ./e2e
-  -run '^TestIPhone$'`: the same story on the iPhone.
+  -run '^TestIPhone$'`: the same story on the iPhone's feed: the post under
+  Needs you, its capsule's sheet with the owner's words and Her's, Review to
+  the record, and the ended post under Earlier.

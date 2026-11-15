@@ -1,8 +1,9 @@
 import Foundation
 
-// The work Her sent out, as the Progress page shows it (docs/her-team.md §15, her-client's progress.ts): under
+// The work Her sent out, as the Progress page shows it (docs/her-team.md §15, her-client's progress.ts): for
 // each thing the owner said to her, the sub-agents she started for that and the coding sessions she started on
-// the mesh; and a sub-agent's record, everything it thought, said and called, in order. Worked out from the
+// the mesh (the iPhone shows each as a post of its own, with what set it off at its foot); a sub-agent's post; and
+// its record, everything it thought, said and called, in order. Worked out from the
 // conversation the app already follows, sub-agents' own conversations included (their agent_events), so the
 // page asks her for nothing more.
 
@@ -145,40 +146,51 @@ public func herAgentTitle(_ l: HerLaunch) -> String {
     return first.isEmpty ? l.name : first
 }
 
-/// A card's one line.
-public enum HerAgentLine: Equatable, Sendable {
-    case tool(HerToolStep)
-    case text(String)
+/// What a sub-agent's post in the feed shows, from one pass over its record.
+public struct HerAgentPost: Equatable, Sendable {
+    /// A line of how it goes: what it asks, why it failed, the start of its report, else its latest words or thought.
+    public var words: String?
+    /// The call it is on while it works; nil while it thinks.
+    public var now: HerToolStep?
+    /// How many calls it made.
+    public var calls: Int
+    /// The files it wrote, in the order it first wrote them.
+    public var files: [String]
 }
 
-/// What the agent does now (its latest call, else its latest words or thought), what it asks, how it ended (the
-/// start of its report), or why it failed. Nil when there is nothing to say yet.
-public func herAgentLine(_ l: HerLaunch) -> HerAgentLine? {
-    guard let a = l.agent else { return nil }
-    func text(_ s: String?) -> HerAgentLine? {
+public func herAgentPost(_ l: HerLaunch) -> HerAgentPost {
+    var post = HerAgentPost(words: nil, now: nil, calls: 0, files: [])
+    guard let a = l.agent else { return post }
+    func line(_ s: String?) -> String? {
         guard let s else { return nil }
         let line = plainLine(firstLine(s))
-        return line.isEmpty ? nil : .text(line)
+        return line.isEmpty ? nil : line
     }
-    switch herAgentState(l) {
-    case .waiting:
-        return text(a.view.live?.approvals.first?.summary)
-    case .failed:
-        return text(a.error?.message ?? a.view.failure?.message)
-    case .done:
-        if let said = text(a.summary) { return said }
-        for s in herSteps(a.view).reversed() { if case .text(let t) = s.kind { return text(t) } }
-        return nil
-    case .running:
-        guard let last = herSteps(a.view).last else { return nil }
-        switch last.kind {
-        case .tool(let t): return .tool(t)
-        case .text(let t), .thinking(let t, _): return text(t)
-        default: return nil
+    var latest: String?, said: String?, last: HerStep.Kind?
+    for s in herSteps(a.view) {
+        switch s.kind {
+        case .tool(let t):
+            post.calls += 1
+            if t.category == "edit", t.state == .done, !t.object.isEmpty, !post.files.contains(t.object) { post.files.append(t.object) }
+        case .text(let t):
+            latest = t
+            said = t
+        case .thinking(let t, redacted: false):
+            latest = t
+        default:
+            break
         }
-    default:
-        return nil
+        last = s.kind
     }
+    let state = herAgentState(l)
+    switch state {
+    case .waiting: post.words = line(a.view.live?.approvals.first?.summary)
+    case .failed: post.words = line(a.error?.message ?? a.view.failure?.message)
+    case .done: post.words = line(a.summary) ?? line(said)
+    default: post.words = line(latest)
+    }
+    if state == .running || state == .waiting, case .tool(let t)? = last, t.state == .live || t.state == .awaiting { post.now = t }
+    return post
 }
 
 /// The tokens an agent used: its ended tasks', and its running task's turns so far.

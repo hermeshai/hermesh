@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import type { AssistantContent, Event, EventMsg, SessionInfo, Usage, UsageTotals } from "@hermesh/her-protocol";
-import { agentCalls, agentElapsed, agentLine, agentState, agentTitles, agentTokens, findAgentTask, progressGroups, stepsOf } from "./progress.ts";
+import { agentCalls, agentElapsed, agentPost, agentState, agentTitles, agentTokens, findAgentTask, progressGroups, stepsOf } from "./progress.ts";
 import { agentHistoryCursor, applyEvents, fromSnapshot, withAgentHistory, type SessionView } from "./session.ts";
 
 // The Progress page's groups and cards (docs/her-team.md §15): what the owner said, and under it the
@@ -83,7 +83,7 @@ test("each thing the owner said heads the work the bot sent out for it; what sen
   assert.equal(stepsOf(v), stepsOf(v));
 });
 
-test("a card says how its agent stands: starting, at work on a call, asking, done with its report's start, failed", () => {
+test("a post says how its agent stands: starting, at work on a call, asking, done with its report's start, failed", () => {
   let v = play([{ type: "task_started", task_id: "t1" }, user("u1", "go"), assistant("a1", [spawn("c1", "data", "整理数据")])]);
   const launch = () => {
     const t = progressGroups(v)[0].tasks[0];
@@ -91,7 +91,7 @@ test("a card says how its agent stands: starting, at work on a call, asking, don
     return t.launch;
   };
   assert.equal(agentState(launch()), "starting");
-  assert.equal(agentLine(launch()), null);
+  assert.deepEqual(agentPost(launch()), { words: null, now: null, calls: 0, files: [] });
 
   v = play(
     [
@@ -105,8 +105,10 @@ test("a card says how its agent stands: starting, at work on a call, asking, don
     v,
   );
   assert.equal(agentState(launch()), "running");
-  const now = agentLine(launch());
-  assert.ok(now?.kind === "tool" && now.tool.title === "read a.csv" && now.tool.state === "pending");
+  // Its latest thought, and the call it is on.
+  const post = agentPost(launch());
+  assert.ok(post.now?.title === "read a.csv" && post.now.state === "pending");
+  assert.equal(post.words, "先看表头。");
   // Its running task's turns count already.
   assert.equal(agentTokens(launch().agent!), 120);
   assert.equal(agentElapsed(launch().agent!, launch().agent!.since + 4200), 4200);
@@ -114,7 +116,7 @@ test("a card says how its agent stands: starting, at work on a call, asking, don
 
   v = play([inner("ag1", 6, { type: "approval_requested", call_id: "k1", name: "read", args: {}, summary: "读取 a.csv\n在项目外" })], v);
   assert.equal(agentState(launch()), "waiting");
-  assert.deepEqual(agentLine(launch()), { kind: "text", text: "读取 a.csv" });
+  assert.equal(agentPost(launch()).words, "读取 a.csv");
 
   v = play(
     [
@@ -127,13 +129,40 @@ test("a card says how its agent stands: starting, at work on a call, asking, don
     v,
   );
   assert.equal(agentState(launch()), "done");
-  assert.deepEqual(agentLine(launch()), { kind: "text", text: "周活 多了 12%。" });
+  assert.deepEqual(agentPost(launch()), { words: "周活 多了 12%。", now: null, calls: 1, files: [] });
   assert.equal(agentElapsed(launch().agent!, 0), 30_000);
   assert.equal(agentTokens(launch().agent!), 120);
 
   v = play([{ type: "agent_status", agent_id: "ag1", name: "data", status: "failed", error: { kind: "provider", message: "模型没有回应" } as never }], v);
   assert.equal(agentState(launch()), "failed");
-  assert.deepEqual(agentLine(launch()), { kind: "text", text: "模型没有回应" });
+  assert.equal(agentPost(launch()).words, "模型没有回应");
+});
+
+test("a post names the files its agent wrote, once each", () => {
+  const done = (id: string, error = false) => ({ type: "tool_completed", call_id: id, result: { call_id: id, tool_name: "edit", content: [{ type: "text", text: "ok" }], is_error: error, ts: 3 } }) as EventMsg;
+  const v = play([
+    { type: "task_started", task_id: "t1" },
+    user("u1", "go"),
+    assistant("a1", [spawn("c1", "w", "写周报")]),
+    ...spawned("c1", "ag1", "w", "写周报"),
+    inner("ag1", 1, { type: "task_started", task_id: "x" }),
+    inner("ag1", 2, user("x1", "<task>\nWrite it.\n</task>", 10_000)),
+    inner("ag1", 3, assistant("x2", [
+      { type: "tool_call", id: "k1", name: "write", arguments: { path: "out/周报.md" } },
+      { type: "tool_call", id: "k2", name: "edit", arguments: { path: "out/周报.md" } },
+      { type: "tool_call", id: "k3", name: "edit", arguments: { path: "b.txt" } },
+      { type: "tool_call", id: "k4", name: "read", arguments: { path: "c.txt" } },
+    ])),
+    inner("ag1", 4, done("k1")),
+    inner("ag1", 5, done("k2")),
+    inner("ag1", 6, done("k3", true)),
+    inner("ag1", 7, done("k4")),
+  ]);
+  const t = progressGroups(v)[0].tasks[0];
+  assert.ok(t.kind === "agent");
+  // What failed wrote nothing; a read is no file of its.
+  const post = agentPost(t.launch);
+  assert.deepEqual([post.files, post.calls], [["out/周报.md"], 4]);
 });
 
 test("agents whose spawn calls are on an earlier page of the history are a group of their own, first", () => {
