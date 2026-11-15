@@ -4,7 +4,7 @@ import SwiftUI
 
 /// The menu's rail (docs/her-team.md §14.9, as on the Mac): the menu's places as icons, in a column 74 points
 /// wide, where the menu stands beside the page and the owner shrank it, or the screen has no room for more. Top
-/// to bottom: Expand, Her, Work, Search, All Sessions; the machines, each with its coding agents under it; the
+/// to bottom: Expand, Her, Work, Search; All Sessions and the machines, each with its coding agents under it; the
 /// connected agents; the account. Each says to VoiceOver what it is and how it stands, as the Mac's says on hover.
 struct RailView: View {
     @Environment(AppModel.self) private var model
@@ -70,7 +70,6 @@ struct RailView: View {
             marks(waiting: waits > 0, failed: !work.failed.isEmpty, running: work.running.count)
         }
         button("Search", id: "rail-search") { model.sheet = .search } icon: { Image(systemName: "magnifyingglass") }
-        route(.sessions, Text("All Sessions"), id: "rail-sessions") { Image(systemName: "list.bullet") }
     }
 
     /// The team (docs/her-team.md §4.5), as the menu lists it.
@@ -80,6 +79,7 @@ struct RailView: View {
         let clients = model.clients.filter { !$0.revoked && $0.herMachineID.isEmpty }.sorted { $0.label.localizedStandardCompare($1.label) == .orderedAscending }
         let pairings = model.pairings.filter { $0.kind != .device && $0.kind != .machine }
         separator
+        route(.sessions, Text("All Sessions"), id: "rail-sessions") { Image(systemName: "list.bullet") }
         ForEach(machines, id: \.machineID) { m in
             route(.machineSessions(m.machineID), Text(verbatim: "\(m.machineName), \(m.online ? (m.her.enabled ? String(localized: "Her is here") : String(localized: "Online")) : String(localized: "Offline"))"), id: "rail-machine-\(m.machineName)") {
                 Image(systemName: machineIcon(m)).foregroundStyle(m.online ? .primary : .secondary)
