@@ -667,6 +667,15 @@ public nonisolated struct Hermesh_Machine_V1_HerStatus: @unchecked Sendable {
     set {_uniqueStorage()._data = newValue}
   }
 
+  /// The methods of her's protocol the owner's devices may call here: those
+  /// this her answers and this hermeshd lets through (docs/version-skew.md
+  /// §6.1). Empty means unknown (her not running, or one too old to list
+  /// them), never "none".
+  public var methods: [String] {
+    get {_storage._methods}
+    set {_uniqueStorage()._methods = newValue}
+  }
+
   public var unknownFields = SwiftProtobuf.UnknownStorage()
 
   public init() {}
@@ -1952,7 +1961,7 @@ nonisolated extension Hermesh_Machine_V1_ScreenStatus: SwiftProtobuf.Message, Sw
 
 nonisolated extension Hermesh_Machine_V1_HerStatus: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
   public static let protoMessageName: String = _protobuf_package + ".HerStatus"
-  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{1}enabled\0\u{1}running\0\u{1}version\0\u{3}model_ready\0\u{1}unsupported\0\u{1}unread\0\u{1}latest\0\u{1}error\0\u{3}client_public_key\0\u{1}mesh\0\u{1}data\0")
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{1}enabled\0\u{1}running\0\u{1}version\0\u{3}model_ready\0\u{1}unsupported\0\u{1}unread\0\u{1}latest\0\u{1}error\0\u{3}client_public_key\0\u{1}mesh\0\u{1}data\0\u{1}methods\0")
 
   fileprivate class _StorageClass {
     var _enabled: Bool = false
@@ -1966,6 +1975,7 @@ nonisolated extension Hermesh_Machine_V1_HerStatus: SwiftProtobuf.Message, Swift
     var _clientPublicKey: Data = Data()
     var _mesh: Bool = false
     var _data: Bool = false
+    var _methods: [String] = []
 
       // This property is used as the initial default value for new instances of the type.
       // The type itself is protecting the reference to its storage via CoW semantics.
@@ -1987,6 +1997,7 @@ nonisolated extension Hermesh_Machine_V1_HerStatus: SwiftProtobuf.Message, Swift
       _clientPublicKey = source._clientPublicKey
       _mesh = source._mesh
       _data = source._data
+      _methods = source._methods
     }
   }
 
@@ -2016,6 +2027,7 @@ nonisolated extension Hermesh_Machine_V1_HerStatus: SwiftProtobuf.Message, Swift
         case 9: try { try decoder.decodeSingularBytesField(value: &_storage._clientPublicKey) }()
         case 10: try { try decoder.decodeSingularBoolField(value: &_storage._mesh) }()
         case 11: try { try decoder.decodeSingularBoolField(value: &_storage._data) }()
+        case 12: try { try decoder.decodeRepeatedStringField(value: &_storage._methods) }()
         default: break
         }
       }
@@ -2061,6 +2073,9 @@ nonisolated extension Hermesh_Machine_V1_HerStatus: SwiftProtobuf.Message, Swift
       if _storage._data != false {
         try visitor.visitSingularBoolField(value: _storage._data, fieldNumber: 11)
       }
+      if !_storage._methods.isEmpty {
+        try visitor.visitRepeatedStringField(value: _storage._methods, fieldNumber: 12)
+      }
     }
     try unknownFields.traverse(visitor: &visitor)
   }
@@ -2081,6 +2096,7 @@ nonisolated extension Hermesh_Machine_V1_HerStatus: SwiftProtobuf.Message, Swift
         if _storage._clientPublicKey != rhs_storage._clientPublicKey {return false}
         if _storage._mesh != rhs_storage._mesh {return false}
         if _storage._data != rhs_storage._data {return false}
+        if _storage._methods != rhs_storage._methods {return false}
         return true
       }
       if !storagesAreEqual {return false}

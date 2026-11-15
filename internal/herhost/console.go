@@ -222,6 +222,7 @@ func httpError(w http.ResponseWriter, err error) {
 		connect.CodeInvalidArgument:    http.StatusBadRequest,
 		connect.CodeFailedPrecondition: http.StatusBadRequest,
 		connect.CodePermissionDenied:   http.StatusForbidden,
+		connect.CodeUnimplemented:      http.StatusNotImplemented,
 		connect.CodeNotFound:           http.StatusNotFound,
 		connect.CodeUnavailable:        http.StatusServiceUnavailable,
 		connect.CodeCanceled:           499,

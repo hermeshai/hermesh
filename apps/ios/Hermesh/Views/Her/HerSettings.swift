@@ -39,6 +39,8 @@ struct HerSettings: View {
 
     private func form(_ chat: HerChat, machine: HerMachine, envs: [HerMachine]) -> some View {
         let bot = chat.bot
+        // An older Hermesh there has no memory to show (docs/version-skew.md §6.2).
+        let lacksMemory = herAnswers(machine.her, "bots/memory") == false
         return Form {
             Section {
                 VStack(spacing: 10) {
@@ -141,7 +143,9 @@ struct HerSettings: View {
                 Section {
                     NavigationLink { HerMemoryPage(chat: chat, bot: bot.id) } label: {
                         LabeledContent("Remembered") {
-                            if memory?.isEmpty == true { Text("Nothing Yet") }
+                            if lacksMemory {
+                                Text("Needs Update").foregroundStyle(.orange).accessibilityIdentifier("her-memory-needs-update")
+                            } else if memory?.isEmpty == true { Text("Nothing Yet") }
                         }
                     }
                     .accessibilityIdentifier("her-memory")
@@ -152,7 +156,9 @@ struct HerSettings: View {
                 }
                 Section {
                     Button("Clear Conversation", role: .destructive) { clearing = true }
-                    Button("Clear Memory", role: .destructive) { forgetting = true }
+                    Button("Clear Memory", role: .destructive) {
+                        if lacksMemory { model.show(APIError.needsUpdateText) } else { forgetting = true }
+                    }
                         .accessibilityIdentifier("her-clear-memory")
                 }
             }

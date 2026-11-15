@@ -27,10 +27,11 @@ const modes: PermissionMode[] = ["manual", "accept-edits", "bypass-permissions"]
  */
 export function AssistantPanel({ bot, view, op, files, onClose }: { bot: BotSummary; view: SessionView | null; op: SendOp; files: FileScope; onClose: () => void }) {
   const { t } = useTranslation("her");
+  const { t: tc } = useTranslation("common");
   const st = useStore();
   const her = useHer();
   const memoryShown = her.panel?.kind === "settings" && her.panel.page === "memory";
-  const { memory, reload } = useMemory(bot);
+  const { memory, older, reload } = useMemory(bot);
   // Clearing the chat is asked first, and what stays is said (bot-mode-design §6.5.1).
   const clear = () =>
     st.set({
@@ -45,7 +46,7 @@ export function AssistantPanel({ bot, view, op, files, onClose }: { bot: BotSumm
     });
   // The memory goes to the trash, and the assistant stops remembering at once; the chat stays.
   const clearMemory = () =>
-    st.set({
+    older ? st.show(tc("needsUpdate.text")) : st.set({
       sheet: {
         kind: "confirm",
         title: t("memoryClear.title", { name: bot.name }),
@@ -86,7 +87,7 @@ export function AssistantPanel({ bot, view, op, files, onClose }: { bot: BotSumm
             </div>
             <p className="set-note">{t("panel.mutedNote")}</p>
           </section>
-          <MemorySection memory={memory} />
+          <MemorySection memory={memory} older={older} />
           <section className="fgroup">
             <button className="frow bpn-end" onClick={clear}>
               {t("panel.clear")}
@@ -107,8 +108,9 @@ export function AssistantPanel({ bot, view, op, files, onClose }: { bot: BotSumm
 }
 
 /** What it remembers: one row to its page, which says only when there is nothing yet. */
-function MemorySection({ memory }: { memory: BotMemoryResult | null }) {
+function MemorySection({ memory, older }: { memory: BotMemoryResult | null; older: boolean }) {
   const { t } = useTranslation("her");
+  const { t: tc } = useTranslation("common");
   const her = useHer();
   return (
     <section>
@@ -117,7 +119,7 @@ function MemorySection({ memory }: { memory: BotMemoryResult | null }) {
         <button className="frow bpn-go" onClick={() => her.setPanel({ kind: "settings", page: "memory" })}>
           <span className="fl">{t("panel.memoryRow")}</span>
           <span className="fv">
-            {memory && isEmpty(memory) && t("panel.memoryNone")}
+            {older ? <span className="needs-update">{tc("needsUpdate.mark")}</span> : memory && isEmpty(memory) && t("panel.memoryNone")}
             <Icon name="chevR" />
           </span>
         </button>

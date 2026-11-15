@@ -23,7 +23,7 @@ func bots(t *testing.T, rows string) []bot {
 // last; an approval waiting is the newest when it comes; a rename follows;
 // a deleted assistant's message gives way to the newest left.
 func TestSnapshot(t *testing.T) {
-	s := newSnapshot("0.2.0", bots(t, `[
+	s := newSnapshot("0.2.0", nil, bots(t, `[
 		{"id":"her","name":"Her","avatar":{"kind":"mark"},"default":true,"unread":1,"last":{"from":"bot","text":"older","ts":"2026-11-08T09:00:00Z"},"created_at":"x"},
 		{"id":"w","name":"Writer","unread":2,"last":{"from":"bot","text":"newer","ts":"2026-11-08T10:00:00Z"}},
 		{"id":"q","name":"Quiet","last":{"from":"user","text":"the owner's own","ts":"2026-11-08T11:00:00Z"}}]`))
@@ -92,7 +92,7 @@ func TestSnapshot(t *testing.T) {
 // while it waits, another assistant changing meanwhile included; once it
 // ends, the newest message is again, until Her says how it went.
 func TestSnapshotCard(t *testing.T) {
-	s := newSnapshot("0.2.0", bots(t, `[
+	s := newSnapshot("0.2.0", nil, bots(t, `[
 		{"id":"her","name":"Her","last":{"from":"bot","text":"hello","ts":"2026-11-09T09:00:00Z"}},
 		{"id":"w","name":"Writer","last":{"from":"bot","text":"draft ready","ts":"2026-11-09T08:00:00Z"}}]`))
 	latest := func(id, text string, kind machinev1.HerLatestKind) {
@@ -140,7 +140,7 @@ func TestModelReady(t *testing.T) {
 // A question Her asks is the newest as a question, so a device can say she
 // waits for an answer; her next message is a message again.
 func TestSnapshotQuestion(t *testing.T) {
-	s := newSnapshot("0.2.0", bots(t, `[{"id":"her","name":"Her","unread":1,"last":{"from":"bot","text":"Send it now?","question":true,"ts":"2026-11-09T09:00:00Z"}}]`))
+	s := newSnapshot("0.2.0", nil, bots(t, `[{"id":"her","name":"Her","unread":1,"last":{"from":"bot","text":"Send it now?","question":true,"ts":"2026-11-09T09:00:00Z"}}]`))
 	if l := s.latest; l == nil || l.Text != "Send it now?" || l.Kind != machinev1.HerLatestKind_HER_LATEST_KIND_QUESTION {
 		t.Fatalf("latest %v", l)
 	}
@@ -157,7 +157,7 @@ func TestSnapshotQuestion(t *testing.T) {
 // nor a newest that comes back.
 func TestSnapshotNews(t *testing.T) {
 	first := `[{"id":"her","name":"Her","unread":1,"last":{"from":"bot","text":"old news","ts":"2026-11-09T09:00:00Z"}},{"id":"q","name":"Quiet","muted":true}]`
-	s := newSnapshot("0.2.0", bots(t, first))
+	s := newSnapshot("0.2.0", nil, bots(t, first))
 	now := time.Now()
 	news := func(rows string, want string, kind machinev1.HerLatestKind) {
 		t.Helper()
@@ -197,7 +197,7 @@ func TestSnapshotNews(t *testing.T) {
 // Assistants at work, whose work an update waits for: a turn (an approval
 // waiting is in one), sub-agents, a routine's run; none once it is done.
 func TestSnapshotBusy(t *testing.T) {
-	s := newSnapshot("0.2.0", bots(t, `[{"id":"her","name":"Her"},{"id":"w","name":"Writer","routines":[{"id":"r","running":false}]}]`))
+	s := newSnapshot("0.2.0", nil, bots(t, `[{"id":"her","name":"Her"},{"id":"w","name":"Writer","routines":[{"id":"r","running":false}]}]`))
 	busy := func(rows string, want int) {
 		t.Helper()
 		s.changed(bots(t, rows), nil, time.Now())
