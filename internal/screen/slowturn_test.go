@@ -25,22 +25,61 @@ const (
 	directConnectWait    = 5 * time.Second
 )
 
-// slowConn is a TURN server's socket that takes its time over each request
-// of one kind, and counts them.
+// slowConn delays matching TURN packets independently, as network latency
+// does, without blocking unrelated allocation or binding requests.
 type slowConn struct {
 	net.PacketConn
-	request uint16
-	delay   time.Duration
-	asked   *atomic.Int32
+	packets chan turnPacket
+	done    <-chan struct{}
+	cancel  context.CancelFunc
 }
 
-func (c slowConn) ReadFrom(p []byte) (int, net.Addr, error) {
-	n, a, err := c.PacketConn.ReadFrom(p)
-	if n >= 20 && binary.BigEndian.Uint16(p[:2]) == c.request {
-		c.asked.Add(1)
-		time.Sleep(c.delay)
+type turnPacket struct {
+	data []byte
+	addr net.Addr
+}
+
+func newSlowConn(conn net.PacketConn, request uint16, delay time.Duration, asked *atomic.Int32) *slowConn {
+	ctx, cancel := context.WithCancel(context.Background())
+	c := &slowConn{PacketConn: conn, packets: make(chan turnPacket), done: ctx.Done(), cancel: cancel}
+	go func() {
+		defer c.Close()
+		for {
+			data := make([]byte, 65535)
+			n, addr, err := conn.ReadFrom(data)
+			if err != nil {
+				return
+			}
+			packet := turnPacket{data[:n], addr}
+			deliver := func() {
+				select {
+				case c.packets <- packet:
+				case <-c.done:
+				}
+			}
+			if n >= 20 && binary.BigEndian.Uint16(data[:2]) == request {
+				asked.Add(1)
+				time.AfterFunc(delay, deliver)
+			} else {
+				deliver()
+			}
+		}
+	}()
+	return c
+}
+
+func (c *slowConn) Close() error {
+	c.cancel()
+	return c.PacketConn.Close()
+}
+
+func (c *slowConn) ReadFrom(p []byte) (int, net.Addr, error) {
+	select {
+	case packet := <-c.packets:
+		return copy(p, packet.data), packet.addr, nil
+	case <-c.done:
+		return 0, nil, net.ErrClosed
 	}
-	return n, a, err
 }
 
 // slowTURN is a TURN server on this computer that takes delay over each
@@ -61,7 +100,7 @@ func slowTURN(t *testing.T, request uint16, delay time.Duration, relay net.IP) (
 			return r.Username, turn.GenerateAuthKey(r.Username, r.Realm, "p"), true
 		},
 		PacketConnConfigs: []turn.PacketConnConfig{{
-			PacketConn:            slowConn{udp, request, delay, asked},
+			PacketConn:            newSlowConn(udp, request, delay, asked),
 			RelayAddressGenerator: &turn.RelayAddressGeneratorStatic{RelayAddress: relay, Address: "127.0.0.1"},
 			PermissionHandler:     func(_ net.Addr, ip net.IP) bool { return ip.IsLoopback() || ip.Equal(relay) },
 		}},
@@ -137,7 +176,7 @@ func turnPair(t *testing.T, delay time.Duration, relay net.IP, settle time.Durat
 		select {
 		case <-done:
 		case <-time.After(3 * time.Second):
-			t.Fatal("gathering did not finish")
+			t.Fatalf("%s gathering did not finish (permissions: A=%d B=%d)", d.Type, askedA.Load(), askedB.Load())
 		}
 		out := *pc.LocalDescription()
 		if !strings.Contains(out.SDP, "typ relay") {

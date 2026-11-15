@@ -118,9 +118,6 @@ func TestNearestTURNServer(t *testing.T) {
 		}
 		return strings.Join(out, ", ")
 	}
-	old := measureWithin
-	measureWithin = time.Second
-	defer func() { measureWithin = old }()
 	for _, c := range []struct {
 		name     string
 		in, want []*relayv1.IceServer
