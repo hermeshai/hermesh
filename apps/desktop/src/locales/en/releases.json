@@ -17,7 +17,9 @@
       "Dead connections are detected sooner, including after sleep. Her reconnects interrupted conversation streams, and notifications wait for the connection to return instead of being lost.",
       "Coding sessions interrupted by a rate limit retry automatically in the same conversation and explain when the retries are exhausted.",
       "Removing an account disconnects its agents immediately. Renaming a machine closes connections made under its old name, and names without letters or digits are rejected.",
-      "Devices explain when a Mac’s background service is older than the app and recover once it is updated."
+      "Devices explain when a Mac’s background service is older than the app and recover once it is updated.",
+      "Erasing Her’s data checks that the data directory belongs to her, protecting personal files kept in a shared directory.",
+      "Windows: choosing a connection path no longer skips relay servers that respond faster than one clock tick."
     ]
   },
   "0.1.4": {
