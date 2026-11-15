@@ -467,6 +467,11 @@ private struct RunDetail: View {
     @State private var run: HerRoutineRun?
     @State private var steps: [HerStep] = []
     @State private var failed: String?
+    /// The run cannot be read: an older her refuses the runs of a deleted task, or there is no such run.
+    @State private var gone = false
+    /// The task's name, and whether it has been deleted since: its runs are kept.
+    @State private var routineName = ""
+    @State private var routineDeleted = false
     /// The steps the owner opened or folded.
     @State private var chosen: [String: Bool] = [:]
 
@@ -479,6 +484,8 @@ private struct RunDetail: View {
         Group {
             if let run {
                 list(run)
+            } else if gone {
+                ContentUnavailableView("This Run Is Gone", systemImage: "clock.badge.xmark", description: Text("Its scheduled task may have been deleted."))
             } else if let failed {
                 ContentUnavailableView("Can’t Read This Run", systemImage: "exclamationmark.triangle", description: Text(failed))
             } else {
@@ -504,6 +511,10 @@ private struct RunDetail: View {
                     }
                     .buttonStyle(.plain)
                     .accessibilityIdentifier("routine-run-task")
+                } else if !fromTask, !routineName.isEmpty {
+                    // Deleted, or not in her list yet: named, with nothing to open.
+                    LabeledContent("Scheduled Task", value: routineDeleted ? String(localized: "\(routineName) (Deleted)") : routineName)
+                        .accessibilityIdentifier("routine-run-task")
                 }
                 LabeledContent("Result") {
                     Text(run.delivered.map { "\(r.text) \(momentText($0, now: model.now))" } ?? r.text)
@@ -555,8 +566,12 @@ private struct RunDetail: View {
         do {
             let r = try await chat.call("bots/routine_run", ["bot_id": .string(bot.id), "routine_id": .string(routineID), "run_id": .string(runID)])
             run = HerRoutineRun(r["run"])
+            routineName = r["routine_name"].string ?? ""
+            routineDeleted = r["routine_deleted"].bool ?? false
             steps = herRunSteps(r["transcript"], run: runID)
             failed = nil
+        } catch let refused as HerRPCError where refused.kind == "routine_not_found" {
+            if run == nil { gone = true }
         } catch {
             if run == nil { failed = error.localizedDescription }
         }

@@ -1338,18 +1338,32 @@ impl Server {
     pub async fn bots_routine_run(&self, bot: &str, id: &str, run: String) -> Result<BotRoutineRunResult, RpcError> {
         self.bot_exists(bot)?;
         let routines = self.routines();
-        let routine = routines.find(bot, id).map_err(RoutineError::for_client)?;
-        let db = routines.db().map_err(RoutineError::for_client)?;
+        // Read from the database, not the routines kept running: a deleted routine's runs are kept, and what one
+        // told the user can still be opened from the chat.
+        let db = match routines.db() {
+            Ok(db) => db,
+            Err(_) if matches!(routines.state.lock().store, Store::Empty) => return Err(errors::routine_not_found(id)),
+            Err(err) => return Err(err.for_client()),
+        };
         let found = {
-            let run = run.clone();
+            let (run, routine, bot) = (run.clone(), id.to_string(), bot.to_string());
             db.call(move |conn| {
-                let sql = format!("SELECT {RUN_COLUMNS} FROM routine_runs WHERE id = ?1 AND routine_id = ?2");
-                conn.query_row(&sql, params![run, routine.id], |row| Ok((run_from(row)?, row.get::<_, Option<String>>("log")?))).optional()
+                let sql = format!(
+                    "SELECT {RUN_COLUMNS}, (SELECT name FROM routines WHERE id = ?2) AS routine_name, \
+                     (SELECT deleted_at FROM routines WHERE id = ?2) AS routine_deleted \
+                     FROM routine_runs WHERE id = ?1 AND routine_id = ?2 AND bot_id = ?3"
+                );
+                conn.query_row(&sql, params![run, routine, bot], |row| {
+                    let routine_name: Option<String> = row.get("routine_name")?;
+                    let deleted: Option<String> = row.get("routine_deleted")?;
+                    Ok((run_from(row)?, row.get::<_, Option<String>>("log")?, routine_name.unwrap_or_default(), deleted.is_some()))
+                })
+                .optional()
             })
             .await
             .map_err(|err| errors::routines_unavailable(err.to_string()))?
         };
-        let Some((info, log)) = found else {
+        let Some((info, log, routine_name, routine_deleted)) = found else {
             return Err(errors::routine_not_found(&run));
         };
         let home = self.0.home.clone();
@@ -1362,7 +1376,7 @@ impl Server {
             .map_err(|err| RpcError::internal(err.to_string()))?,
             None => Vec::new(),
         };
-        Ok(BotRoutineRunResult { run: info, transcript })
+        Ok(BotRoutineRunResult { run: info, routine_name, routine_deleted, transcript })
     }
 
     pub async fn bots_routine_set_enabled(&self, bot: &str, id: &str, enabled: bool) -> Result<(), RpcError> {

@@ -1074,7 +1074,7 @@ export class MockServer {
               { type: "tool_result", call_id: "c1", result: { call_id: "c1", tool_name: "bash", content: [{ type: "text", text: "Exit code: 0" }], is_error: false, ts } },
             ]
           : [];
-        return { run, transcript: transcript as TranscriptItem[] } satisfies R<"bots/routine_run">;
+        return { run, routine_name: routine.summary.name, transcript: transcript as TranscriptItem[] } satisfies R<"bots/routine_run">;
       }
       case "bots/routine_set_enabled": {
         const q = p as P<"bots/routine_set_enabled">;
