@@ -97,7 +97,7 @@ export class ExtensionBrowser extends TargetRelay {
     } catch (e) {
       // A missed onRemoved must not leave a dead tab in the next connection's recovery.
       // Other attach failures (permissions, another debugger) can still be recovered.
-      if (e instanceof Error && e.message === `No tab with given id ${t.tabId}`) {
+      if (e instanceof Error && e.message.replace(/\.$/, "") === `No tab with given id ${t.tabId}`) {
         this.tabs.forget(t.tabId);
         this.drop(t, "the tab was closed", "gone");
       }
