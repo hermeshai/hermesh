@@ -1,7 +1,7 @@
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import type { SessionView } from "@hermesh/her-client";
-import type { AvatarHue, AvatarInput, BotMemoryResult, BotSummary, PermissionMode } from "@hermesh/her-protocol";
+import type { AvatarHue, AvatarInput, BotMemoryResult, BotSummary, McpServerView, PermissionMode } from "@hermesh/her-protocol";
 import { local } from "../api";
 import { Icon } from "../icons";
 import { useStore } from "../store";
@@ -69,6 +69,7 @@ export function AssistantPanel({ bot, view, op, files, onClose }: { bot: BotSumm
         <div className="form">
           {view && <ModelSection view={view} op={op} />}
           {view && <PermissionSection bot={bot} mode={view.info.permission_mode} />}
+          <ConnectorsSection />
           <section>
             <h3 className="fhead">{t("panel.notifications")}</h3>
             <div className="fgroup">
@@ -104,6 +105,41 @@ export function AssistantPanel({ bot, view, op, files, onClose }: { bot: BotSumm
         </div>
       </div>
     </aside>
+  );
+}
+
+/**
+ * The apps and services Her can use (docs/her-connectors-demo.html): one row, how many are on or need the owner, to
+ * the console's Connectors page. They are the environment's, shared by its assistants.
+ */
+function ConnectorsSection() {
+  const { t } = useTranslation("her");
+  const her = useHer();
+  const [servers, setServers] = useState<McpServerView[] | null>(null);
+  useEffect(() => {
+    let live = true;
+    her.call("mcp/list", {}).then((r) => live && setServers(r.servers), () => {});
+    return () => {
+      live = false;
+    };
+  }, [her.call]);
+  const on = servers?.filter((s) => s.enabled) ?? [];
+  const attention = on.filter((s) => s.status.state === "failed" || s.status.state === "needs_login" || (!!s.connector && s.auth_state !== "logged_in")).length;
+  return (
+    <section>
+      <h3 className="fhead">{t("panel.connectors")}</h3>
+      <div className="fgroup">
+        <button className="frow bpn-go" onClick={() => her.openConsole("connectors")}>
+          <span className="fl">{t("panel.connectorsRow")}</span>
+          <span className="fv">
+            {servers &&
+              (attention > 0 ? <span className="needs-update">{t("panel.connectorsAttention", { count: attention })}</span> : servers.length === 0 ? t("panel.connectorsNone") : t("panel.connectorsOn", { count: on.length }))}
+            <Icon name="chevR" />
+          </span>
+        </button>
+      </div>
+      <p className="set-note">{t("panel.connectorsNote", { machine: her.machine.machineName })}</p>
+    </section>
   );
 }
 

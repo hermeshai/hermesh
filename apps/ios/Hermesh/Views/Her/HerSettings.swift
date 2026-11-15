@@ -11,8 +11,9 @@ import SwiftUI
 /// asks before acting or has full access; her notifications; what she
 /// remembers, on a page of its own (docs/her-memory.md); another machine
 /// to run her on; clearing her conversation or her memory; turning her off on her machine, her data kept or
-/// erased (docs/her-server.md §5.6). Models, connectors and the rest
-/// of an environment are set on the Mac. A Her that is on without her grant
+/// erased (docs/her-server.md §5.6). Her's connectors have a page of their
+/// own (HerConnectorsPage); models and the rest of an environment are set
+/// on the Mac. A Her that is on without her grant
 /// (docs/her-mesh.md §3.4) has one more row, which signs it.
 struct HerSettings: View {
     @Environment(AppModel.self) private var model
@@ -112,6 +113,11 @@ struct HerSettings: View {
                 } footer: {
                     Text("The agents and scheduled tasks Her starts work the same way, while you are away as well.")
                 }
+            }
+            Section {
+                HerConnectorsRow(chat: chat)
+            } footer: {
+                Text("Apps and services Her can use, such as GitHub or Notion. Kept on \(machine.machineName) and shared by the assistants there.")
             }
             if machine.status.screen.available, model.api?.live != nil {
                 Section {

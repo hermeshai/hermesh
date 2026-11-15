@@ -20,6 +20,7 @@ struct HerComposer: View {
     @State private var pickingPhotos = false
     @State private var pickingFiles = false
     @State private var adding = false
+    @State private var connectors = false
     @FocusState private var focused: Bool
     /// The field's own height, and the height it keeps: it grows at once and shrinks only once the text has been
     /// still for a moment. Typing Chinese, the letters being composed are wider than the characters they become, so
@@ -73,12 +74,22 @@ struct HerComposer: View {
                         VStack(alignment: .leading, spacing: 0) {
                             Button { add(photos: true) } label: { Label("Photos", systemImage: "photo.on.rectangle").frame(maxWidth: .infinity, alignment: .leading).padding(.horizontal, 18).padding(.vertical, 12).contentShape(.rect) }
                             Button { add(photos: false) } label: { Label("Files", systemImage: "folder").frame(maxWidth: .infinity, alignment: .leading).padding(.horizontal, 18).padding(.vertical, 12).contentShape(.rect) }
+                            Divider().padding(.vertical, 4)
+                            // The connectors' switches, and managing them, a sheet of their own.
+                            Button {
+                                adding = false
+                                connectors = true
+                            } label: {
+                                Label("Connectors", systemImage: "powerplug").frame(maxWidth: .infinity, alignment: .leading).padding(.horizontal, 18).padding(.vertical, 12).contentShape(.rect)
+                            }
+                            .accessibilityIdentifier("her-connectors-menu")
                         }
                         .buttonStyle(.plain)
-                        .frame(width: 180)
+                        .frame(width: 200)
                         .padding(.vertical, 6)
                         .presentationCompactAdaptation(.popover)
                     }
+                    .sheet(isPresented: $connectors) { HerConnectorsSheet(chat: chat, machine: machine) }
                     TextField(noModel ? String(localized: "I can reply once a model is connected") : String(localized: "Message \(chat.bot?.name ?? "Her")"),
                               text: $chat.draft.text, axis: .vertical)
                         .lineLimit(1 ... 6)

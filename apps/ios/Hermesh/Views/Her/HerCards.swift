@@ -23,7 +23,15 @@ struct HerSecureCard: View {
             let name = herConnectorName(connect.name)
             Group {
                 if case .ended(let outcome, let tools, _) = shown {
-                    ended(outcome, tools: tools, name: name)
+                    HStack(spacing: 10) {
+                        ended(outcome, tools: tools, name: name)
+                        // Connected: its page is a tap away.
+                        if outcome == "done" {
+                            Button("Manage") { model.path.append(.herConnector(connect.name)) }
+                                .font(.footnote).buttonStyle(.bordered).controlSize(.small)
+                                .accessibilityIdentifier("her-card-manage")
+                        }
+                    }
                 } else {
                     form(card, connect, shown: shown, name: name)
                 }

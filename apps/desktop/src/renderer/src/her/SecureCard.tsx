@@ -92,6 +92,12 @@ export function SecureCard({ card, view, rpc, session }: { card: Card; view: Ses
       <div className={`sc-end ${shown.outcome}`} role="status" title={shown.note}>
         <Icon name={shown.outcome === "done" ? "check" : "lock"} className="sm" />
         <span>{line}</span>
+        {/* Connected: its page in the console is a click away. */}
+        {shown.outcome === "done" && (
+          <button className="btn sm" onClick={() => her.openConsole(`connectors/${encodeURIComponent(body.name)}`)}>
+            {t("card.manage")}
+          </button>
+        )}
       </div>
     );
   }

@@ -81,6 +81,8 @@ final class HerChat {
     private(set) var paging = false
     /// The sub-agents whose earlier history is being read.
     private(set) var agentPaging: Set<String> = []
+    /// Moves when her says a connector changed (mcp/changed): the connectors pages read them again.
+    private(set) var connectorsChanged = 0
     /// The connections are open.
     private(set) var envUp = false
     private(set) var convUp = false
@@ -205,6 +207,8 @@ final class HerChat {
                         bots = mergeBots(bots, params)
                     case .notification("models/changed", _):
                         Task { if let m = try? await c.call("models/list") { models = HerModels(m) } }
+                    case .notification("mcp/changed", _):
+                        connectorsChanged += 1
                     default:
                         break
                     }
@@ -252,7 +256,9 @@ final class HerChat {
                         let e = p["event"]
                         // What a task that ended early hands back goes back into the composer, once.
                         let back = (e["seq"].int ?? 0) > (self.live?.lastSeq ?? .max) ? herReturned(e) : []
+                        let was = self.live
                         self.live?.apply(e)
+                        feel(was, self.live)
                         if !back.isEmpty { draft.text = (back + [draft.text]).filter { !$0.isEmpty }.joined(separator: "\n\n") }
                         settle()
                     case .notification("session/detached", let p) where p["session_id"].string == opened:
@@ -348,7 +354,8 @@ final class HerChat {
 
     /// A tapped answer to a question is the owner's message: while Her works, it waits for the step under way.
     func say(_ text: String) async -> Bool {
-        await op(prompt([.text(text)]))
+        Haptic.sent.play()
+        return await op(prompt([.text(text)]))
     }
 
     private func prompt(_ input: [HerUserContent]) -> JSON {
@@ -398,6 +405,7 @@ final class HerChat {
     func send() {
         let sent = draft
         guard bot != nil, api != nil, !sent.isEmpty else { return }
+        Haptic.sent.play()
         draft = HerDraft()
         let id = "hw_" + UUID().uuidString.lowercased().replacingOccurrences(of: "-", with: "")
         outgoing[id] = sent
@@ -448,9 +456,28 @@ final class HerChat {
                 forget(id)
             } else if let i = sending.firstIndex(where: { $0.id == id }) {
                 sending[i].refused = (error as? APIError)?.message ?? error.localizedDescription
+                Haptic.error.play()
             }
         }
         settle()
+    }
+
+    /// What an event brought, felt while the owner looks at the conversation: an approval Her waits on, a card or a
+    /// question of hers, her first words since the owner's (once a turn, not each), a task that failed.
+    private func feel(_ was: HerSession?, _ now: HerSession?) {
+        guard let was, let now, was != now, model?.root == .her, model?.path.isEmpty == true else { return }
+        if let asked = herPendingApproval(now)?.approval.callID, asked != herPendingApproval(was)?.approval.callID {
+            return Haptic.asks.play()
+        }
+        if now.failure != nil, was.failure == nil { return Haptic.error.play() }
+        let said = herChat(now)
+        guard let last = said.last, last.key != herChat(was).last?.key else { return }
+        switch last.kind {
+        case .card, .question(_, _, true): Haptic.asks.play()
+        case .her, .attachment, .question, .session, .work:
+            if said.count > 1, case .user = said[said.count - 2].kind { Haptic.reply.play() }
+        default: break
+        }
     }
 
     private func forget(_ id: String) {
@@ -547,6 +574,7 @@ final class HerChat {
         do {
             let r = try await conv.call("cards/answer", ["session_id": .string(id), "card_id": .string(card.id), "answer": answer])
             answered[card.id] = HerCardStatus(state: r["state"].string ?? "open", note: r["note"].string)
+            Haptic.success.play()
         } catch { report(error) }
     }
 
@@ -569,6 +597,23 @@ final class HerChat {
     func stopSignIn(_ card: HerCard) {
         signingIn[card.id]?.cancel()
         signingIn[card.id] = nil
+    }
+
+    /// Signs in to the connector `name` on the connectors page, in the browser: one added already, or with `server`,
+    /// one about to be added. Closing the browser, or cancelling the task, stops it.
+    func signIn(connector name: String, server: JSON? = nil) async -> HerSignInEnd {
+        let running = SignInTask()
+        let task = Task { () -> HerSignInEnd in
+            do {
+                return await herSignInConnector(try await signInDeps { running.task?.cancel() }, name: name, server: server)
+            } catch {
+                return .failed(error.localizedDescription)
+            }
+        }
+        running.task = task
+        let end = await withTaskCancellationHandler { await task.value } onCancel: { task.cancel() }
+        HerBrowser.shared.close()
+        return end
     }
 
     /// A sign-in's ways: this iPhone's catcher (the console's routes on its core), her on a connection of its own,
@@ -594,6 +639,11 @@ final class HerChat {
         return HerSignInDeps(catcher: catcher, call: { method, params in try await HerConnection.call(tunnel, machineID: machine, method, params) },
                              open: { url in await HerBrowser.shared.open(url, closed: closed) })
     }
+}
+
+/// A connector's sign-in under way, for the browser's closing to stop.
+private final class SignInTask {
+    var task: Task<HerSignInEnd, Never>?
 }
 
 /// Why the catcher said no: its JSON's `error`, or its text.

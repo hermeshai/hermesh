@@ -33,6 +33,8 @@ enum Route: Hashable {
     case agentSessions(String, String) // machine id, coding agent
     case sessions // all of them, from Work
     case herSettings // the environment's Her shown
+    case herConnectors // the environment's connectors (docs/her-connectors-demo.html)
+    case herConnector(String) // one of them, by name
     case progress // the work Her sent out (docs/her-team.md §15), from her page's top
     case progressAgent(String) // a sub-agent of Her's: its record
     case routines // Her's scheduled tasks, from her page's top
@@ -844,6 +846,7 @@ final class AppModel {
         do {
             replace(try await api.answer(s.sessionID, question: q.questionID, answers: answers, decline: decline))
             show(decline ? String(localized: "Told it to decide by itself") : String(localized: "Answered; \(agentTitle(s.agent)) is working again"))
+            Haptic.success.play()
             return true
         } catch {
             report(error)
@@ -907,6 +910,7 @@ final class AppModel {
             try await api.approveClient(p.code, spec: spec)
             pairings.removeAll { $0.code == p.code }
             clients = (try? await api.clients()) ?? clients
+            Haptic.success.play()
             return true
         } catch {
             report(error)
@@ -926,6 +930,7 @@ final class AppModel {
             let res = try await api.approveMachine(p.code, name: name)
             pairings.removeAll { $0.code == p.code }
             machines = (try? await api.machines()) ?? machines
+            Haptic.success.play()
             return res
         } catch {
             report(error)
@@ -967,6 +972,7 @@ final class AppModel {
             let res = try await api.approveDevice(p.code)
             pairings.removeAll { $0.code == p.code }
             devices = (try? await api.devices()) ?? devices
+            Haptic.success.play()
             return res
         } catch {
             report(error)
