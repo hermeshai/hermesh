@@ -774,10 +774,15 @@ func newIPhoneControl(t *testing.T, w *ownerMac, sessions map[string]string) str
 		reply(rw, map[string]bool{"joined": true})
 	})
 	// An agent asks a new question (for a notification).
+	// wait: how long the agent works before it asks (a Go duration), for a page opened meanwhile.
 	mux.HandleFunc("POST /ask", func(rw http.ResponseWriter, r *http.Request) {
 		title := r.URL.Query().Get("title")
+		prompt := "ask " + title + "|发布,先不"
+		if wait := r.URL.Query().Get("wait"); wait != "" {
+			prompt = "sleep " + wait + "\n" + prompt
+		}
 		go func() {
-			s, _ := w.startSession(2*time.Minute, "--agent", "gemini", "--title", title, "--prompt", "ask "+title+"|发布,先不", "--wait")
+			s, _ := w.startSession(2*time.Minute, "--agent", "gemini", "--title", title, "--prompt", prompt, "--wait")
 			mu.Lock()
 			sessions[title] = s.SessionID
 			mu.Unlock()

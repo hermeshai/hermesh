@@ -256,7 +256,9 @@ final class HerChat {
                         let e = p["event"]
                         // What a task that ended early hands back goes back into the composer, once.
                         let back = (e["seq"].int ?? 0) > (self.live?.lastSeq ?? .max) ? herReturned(e) : []
+                        let was = self.live
                         self.live?.apply(e)
+                        feel(was, self.live)
                         if !back.isEmpty { draft.text = (back + [draft.text]).filter { !$0.isEmpty }.joined(separator: "\n\n") }
                         settle()
                     case .notification("session/detached", let p) where p["session_id"].string == opened:
@@ -352,7 +354,8 @@ final class HerChat {
 
     /// A tapped answer to a question is the owner's message: while Her works, it waits for the step under way.
     func say(_ text: String) async -> Bool {
-        await op(prompt([.text(text)]))
+        Haptic.sent.play()
+        return await op(prompt([.text(text)]))
     }
 
     private func prompt(_ input: [HerUserContent]) -> JSON {
@@ -402,6 +405,7 @@ final class HerChat {
     func send() {
         let sent = draft
         guard bot != nil, api != nil, !sent.isEmpty else { return }
+        Haptic.sent.play()
         draft = HerDraft()
         let id = "hw_" + UUID().uuidString.lowercased().replacingOccurrences(of: "-", with: "")
         outgoing[id] = sent
@@ -452,9 +456,28 @@ final class HerChat {
                 forget(id)
             } else if let i = sending.firstIndex(where: { $0.id == id }) {
                 sending[i].refused = (error as? APIError)?.message ?? error.localizedDescription
+                Haptic.error.play()
             }
         }
         settle()
+    }
+
+    /// What an event brought, felt while the owner looks at the conversation: an approval Her waits on, a card or a
+    /// question of hers, her first words since the owner's (once a turn, not each), a task that failed.
+    private func feel(_ was: HerSession?, _ now: HerSession?) {
+        guard let was, let now, was != now, model?.root == .her, model?.path.isEmpty == true else { return }
+        if let asked = herPendingApproval(now)?.approval.callID, asked != herPendingApproval(was)?.approval.callID {
+            return Haptic.asks.play()
+        }
+        if now.failure != nil, was.failure == nil { return Haptic.error.play() }
+        let said = herChat(now)
+        guard let last = said.last, last.key != herChat(was).last?.key else { return }
+        switch last.kind {
+        case .card, .question(_, _, true): Haptic.asks.play()
+        case .her, .attachment, .question, .session, .work:
+            if said.count > 1, case .user = said[said.count - 2].kind { Haptic.reply.play() }
+        default: break
+        }
     }
 
     private func forget(_ id: String) {
@@ -551,6 +574,7 @@ final class HerChat {
         do {
             let r = try await conv.call("cards/answer", ["session_id": .string(id), "card_id": .string(card.id), "answer": answer])
             answered[card.id] = HerCardStatus(state: r["state"].string ?? "open", note: r["note"].string)
+            Haptic.success.play()
         } catch { report(error) }
     }
 
