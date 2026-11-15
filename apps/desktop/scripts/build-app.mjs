@@ -258,8 +258,9 @@ if (archs.includes(process.arch)) {
   fs.writeFileSync(path.join(home, "check.pdf"), minimalPdf());
   const opened = JSON.parse(execFileSync(her, ["doc-worker"], { input: JSON.stringify({ op: "open", handle: 1, path: path.join(home, "check.pdf") }) + "\n", env, cwd: home, encoding: "utf8" }).split("\n")[0]);
   if (opened.ok?.pages !== 1) throw new Error(`the bundled her cannot open a PDF: ${JSON.stringify(opened)}`);
-  const said = JSON.parse(out(path.join(contents, "Helpers/agent-desktop"), ["version"]).split("\n").pop());
-  if (said.data?.version !== agentDesktopRelease.version) throw new Error(`the bundled agent-desktop says ${JSON.stringify(said)}, not ${agentDesktopRelease.version}`);
+  // The version command starts a background service; --version leaves no process behind.
+  const said = out(path.join(contents, "Helpers/agent-desktop"), ["--version"]).trim();
+  if (said !== `agent-desktop ${agentDesktopRelease.version}`) throw new Error(`the bundled agent-desktop says ${JSON.stringify(said)}, not ${agentDesktopRelease.version}`);
 }
 
 const auth = process.env.HERMESH_NOTARY_PROFILE
