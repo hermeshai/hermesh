@@ -13301,6 +13301,13 @@
             "own"
           ],
           "type": "string"
+        },
+        {
+          "description": "The client her registered with the provider, for providers that offer neither metadata documents nor registration (GitHub).",
+          "enum": [
+            "builtin"
+          ],
+          "type": "string"
         }
       ]
     },

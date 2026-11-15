@@ -17,6 +17,9 @@ env:
   GH_TOKEN: ${{ github.token }}
   GH_REPO: ${{ github.repository }}
   TAG: ${{ github.ref_name }}
+  # The secret of her's GitHub OAuth app, built into her (her-mcp oauth/client.rs): public once
+  # shipped, as a native app's is. Without it, signing in to GitHub's MCP server needs the user's own client.
+  HER_GITHUB_OAUTH_CLIENT_SECRET: ${{ secrets.HER_GITHUB_OAUTH_CLIENT_SECRET }}
 jobs:
   # The version's highlights for users, in English and Chinese, from the app's
   # catalogs (apps/desktop/src/locales/*/releases.json): nothing is built
@@ -63,7 +66,7 @@ jobs:
           NIMBLEOFFICE_TOKEN: ${{ secrets.NIMBLEOFFICE_TOKEN }}
         run: |
           toolchain="$(sed -n 's/^channel = "\(.*\)"/\1/p' her/rust-toolchain.toml)"
-          docker run --rm -v "$PWD/her:/src" -w /src -e NIMBLEOFFICE_TOKEN -e CARGO_NET_GIT_FETCH_WITH_CLI=true -e RUSTUP_TOOLCHAIN="$toolchain-$(uname -m)-unknown-linux-musl" "rust:$toolchain-alpine" \
+          docker run --rm -v "$PWD/her:/src" -w /src -e NIMBLEOFFICE_TOKEN -e HER_GITHUB_OAUTH_CLIENT_SECRET -e CARGO_NET_GIT_FETCH_WITH_CLI=true -e RUSTUP_TOOLCHAIN="$toolchain-$(uname -m)-unknown-linux-musl" "rust:$toolchain-alpine" \
             sh -c 'apk add --no-cache build-base perl linux-headers git >/dev/null && { [ -z "$NIMBLEOFFICE_TOKEN" ] || git config --global url."https://x-access-token:${NIMBLEOFFICE_TOKEN}@github.com/Eliseowzy/nimbleoffice".insteadOf https://github.com/Eliseowzy/nimbleoffice; } && cargo build --profile dist --locked -p her-cli --bin her --no-default-features'
           cp her/target/dist/her her-linux-${{ matrix.arch }}
           ./her-linux-${{ matrix.arch }} --version

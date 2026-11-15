@@ -1,6 +1,7 @@
 //! The client identity a sign-in uses (D-182): the user's own client, else her's client
-//! metadata document when the authorization server reads them, else a dynamic registration,
-//! made once per authorization server and reused, so reconnecting never piles up clients.
+//! metadata document when the authorization server reads them, else the client her registered
+//! with that provider, else a dynamic registration, made once per authorization server and
+//! reused, so reconnecting never piles up clients.
 
 use her_protocol::customize::McpOAuthClientKind;
 use serde::Deserialize;
@@ -12,13 +13,27 @@ use std::time::Duration;
 use super::OAuthPaths;
 use super::discovery::AuthServerMeta;
 
+/// Clients her registered with providers that offer neither metadata documents nor
+/// registration: issuer, client id, secret. The secret is set when her is built
+/// (`HER_GITHUB_OAUTH_CLIENT_SECRET`); it ships in the binary, so it is public, as a native
+/// app's is (RFC 8252 §8.5): the loopback redirect and PKCE keep sign-ins safe. A build without
+/// it has no built-in client.
+const BUILTIN: &[(&str, &str, Option<&str>)] = &[("https://github.com/login/oauth", "Ov23liCY8iwmJDRtTvvD", option_env!("HER_GITHUB_OAUTH_CLIENT_SECRET"))];
+
+/// The client id and secret her registered with `issuer`, when this build has them.
+pub(crate) fn builtin(issuer: &str) -> Option<(&'static str, &'static str)> {
+    let (_, id, secret) = BUILTIN.iter().find(|(i, _, _)| *i == issuer)?;
+    Some((id, secret.filter(|s| !s.is_empty())?))
+}
+
 /// Which identity a sign-in will use, before it starts: `prefer` when it is possible here,
-/// else the user's own client, the metadata document, then registration.
+/// else the user's own client, the metadata document, her's built-in client, then registration.
 pub fn choose_kind(own: bool, meta: &AuthServerMeta, metadata_url: Option<&str>, prefer: Option<McpOAuthClientKind>) -> Option<McpOAuthClientKind> {
     let possible = |kind: McpOAuthClientKind| match kind {
         McpOAuthClientKind::Own => own,
         McpOAuthClientKind::Managed => false,
         McpOAuthClientKind::MetadataDocument => meta.client_id_metadata_document_supported && metadata_url.is_some(),
+        McpOAuthClientKind::Builtin => builtin(&meta.issuer).is_some(),
         McpOAuthClientKind::Registration => meta.registration_endpoint.is_some(),
     };
     if let Some(kind) = prefer.filter(|k| possible(*k)) {
@@ -28,6 +43,8 @@ pub fn choose_kind(own: bool, meta: &AuthServerMeta, metadata_url: Option<&str>,
         Some(McpOAuthClientKind::Own)
     } else if meta.client_id_metadata_document_supported && metadata_url.is_some() {
         Some(McpOAuthClientKind::MetadataDocument)
+    } else if builtin(&meta.issuer).is_some() {
+        Some(McpOAuthClientKind::Builtin)
     } else if meta.registration_endpoint.is_some() {
         Some(McpOAuthClientKind::Registration)
     } else {
@@ -144,4 +161,32 @@ pub(crate) async fn register(http: &reqwest::Client, meta: &AuthServerMeta, redi
         },
         secret,
     ))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// What github.com publishes at /.well-known/oauth-authorization-server/login/oauth.
+    fn github() -> AuthServerMeta {
+        serde_json::from_value(json!({
+            "issuer": "https://github.com/login/oauth",
+            "authorization_endpoint": "https://github.com/login/oauth/authorize",
+            "token_endpoint": "https://github.com/login/oauth/access_token",
+            "code_challenge_methods_supported": ["S256"],
+            "authorization_response_iss_parameter_supported": true,
+        }))
+        .unwrap()
+    }
+
+    #[test]
+    fn github_signs_in_with_hers_when_the_build_has_its_secret() {
+        let built_with_secret = option_env!("HER_GITHUB_OAUTH_CLIENT_SECRET").is_some_and(|s| !s.is_empty());
+        let expected = built_with_secret.then_some(McpOAuthClientKind::Builtin);
+        assert_eq!(choose_kind(false, &github(), Some("https://hermesh.io/oauth/client.json"), None), expected);
+        assert_eq!(builtin("https://github.com/login/oauth").map(|(id, _)| id), built_with_secret.then_some("Ov23liCY8iwmJDRtTvvD"));
+        // The user's own client still comes first, and other providers have no built-in one.
+        assert_eq!(choose_kind(true, &github(), None, None), Some(McpOAuthClientKind::Own));
+        assert_eq!(builtin("https://auth.example.com"), None);
+    }
 }
