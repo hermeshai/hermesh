@@ -28,6 +28,13 @@ final class HerPlace {
         chats[machineID] = c
         return c
     }
+
+    /// Wakes every environment chat's retry backoff sleep after connectivity returns.
+    func wakeRetries() {
+        for chat in chats.values {
+            chat.wakeRetry()
+        }
+    }
 }
 
 /// One environment's Her, as the page shows it: the environment's connection
@@ -62,11 +69,21 @@ final class HerChat {
     var draft = HerDraft()
     /// Earlier history is being read.
     private(set) var paging = false
+    /// The sub-agents whose earlier history is being read.
+    private(set) var agentPaging: Set<String> = []
     /// The connections are open.
     private(set) var envUp = false
     private(set) var convUp = false
     @ObservationIgnored private var env: HerConnection?
     @ObservationIgnored private var conv: HerConnection?
+    /// The pages holding the connections, what they follow, and the tasks that keep them.
+    @ObservationIgnored private var holders = 0
+    @ObservationIgnored private var following: Following?
+    @ObservationIgnored private var envTask: Task<Void, Never>?
+    @ObservationIgnored private var convTask: Task<Void, Never>?
+    @ObservationIgnored private var letGo: Task<Void, Never>?
+    @ObservationIgnored private var retryWaits: [UUID: Task<Void, Never>] = [:]
+    @ObservationIgnored private var progressMemo: (key: ProgressKey, groups: [HerProgressGroup])?
     @ObservationIgnored private var chatGPT: Task<Void, Never>?
 
     init(machineID: String, model: AppModel) {
@@ -89,9 +106,68 @@ final class HerChat {
 
     // MARK: Connections
 
+    /// Wakes any backoff sleep currently waiting to retry, without disturbing live streams.
+    func wakeRetry() {
+        for task in retryWaits.values { task.cancel() }
+        retryWaits.removeAll()
+    }
+
     /// After a connection ended: again in 1 s, then up to every 30 s while it keeps failing.
     private func pause(_ failures: Int) async {
-        try? await Task.sleep(for: .seconds(min(30, 1 << min(5, max(0, failures - 1)))))
+        let id = UUID()
+        let seconds = min(30, 1 << min(5, max(0, failures - 1)))
+        let sleep = Task<Void, Never> { try? await Task.sleep(for: .seconds(seconds)) }
+        retryWaits[id] = sleep
+        defer { retryWaits.removeValue(forKey: id) }
+        await withTaskCancellationHandler {
+            await sleep.value
+        } onCancel: {
+            sleep.cancel()
+        }
+    }
+
+    /// What the connections follow: they open again when it changes.
+    struct Following: Hashable {
+        var bot: String?
+        var session: String?
+        /// The machine is reached and her runs there.
+        var running: Bool
+        var modelReady: Bool
+    }
+
+    /// Holds the connections open for a page that shows this environment, until the page's task is cancelled. Pages
+    /// of Her's hold them one after another, so they stay as the owner goes from one to the next, and close a moment
+    /// after the last one let go: her conversation is read once, not again for each page.
+    func hold(_ f: Following) async {
+        holders += 1
+        letGo?.cancel()
+        follow(f)
+        while !Task.isCancelled { try? await Task.sleep(for: .seconds(3600)) }
+        holders -= 1
+        guard holders == 0 else { return }
+        letGo = Task {
+            try? await Task.sleep(for: .seconds(1))
+            guard !Task.isCancelled, holders == 0 else { return }
+            envTask?.cancel()
+            convTask?.cancel()
+            envTask = nil
+            convTask = nil
+            following = nil
+        }
+    }
+
+    private func follow(_ f: Following) {
+        if envTask == nil || f.running != following?.running {
+            envTask?.cancel()
+            envTask = nil
+            if f.running { envTask = Task { await self.followEnvironment() } }
+        }
+        if convTask == nil || f != following {
+            convTask?.cancel()
+            convTask = nil
+            if f.running, let bot = f.bot { convTask = Task { await self.followConversation(botID: bot) } }
+        }
+        following = f
     }
 
     /// The environment's connection, until the task is cancelled: her's assistants and models as she pushes them;
@@ -180,6 +256,36 @@ final class HerChat {
         guard let page = try? await conv.call("session/history", ["session_id": .string(s.sessionID), "before": .string(cursor), "limit": testWindow]),
               live?.sessionID == s.sessionID, live?.before == cursor else { return }
         live?.prepend(history: page)
+    }
+
+    /// Reads the page of a sub-agent's own history before what its record shows (session/history with the agent's
+    /// cursor, docs/her-team.md §15.4): one at a time for each agent, and a page that comes after its record moved
+    /// on is dropped.
+    func earlier(agent id: String) async {
+        guard !agentPaging.contains(id), let conv, convUp, let s = live, let cursor = s.agents.first(where: { $0.id == id }).flatMap(herAgentHistoryCursor) else { return }
+        agentPaging.insert(id)
+        defer { agentPaging.remove(id) }
+        guard let page = try? await conv.call("session/history", ["session_id": .string(s.sessionID), "before": .string(cursor), "limit": testWindow]),
+              live?.sessionID == s.sessionID, live?.agents.first(where: { $0.id == id })?.view.before == cursor else { return }
+        live?.prepend(history: page, agent: id)
+    }
+
+    /// What tells one state of the conversation from another, as far as Progress reads it.
+    private struct ProgressKey: Equatable {
+        var session: String
+        var seq: Int
+        var entries: Int
+        var agentEntries: Int
+    }
+
+    /// The work Her sent out (herProgress), worked out once for each state of the conversation.
+    var progress: [HerProgressGroup] {
+        guard let s = session else { return [] }
+        let key = ProgressKey(session: s.sessionID, seq: s.lastSeq, entries: s.entries.count, agentEntries: s.agents.reduce(0) { $0 + $1.view.entries.count })
+        if let m = progressMemo, m.key == key { return m.groups }
+        let groups = herProgress(s)
+        progressMemo = (key, groups)
+        return groups
     }
 
     /// How many items her sends at a time, the last ones and each earlier page: her's 100, or a test's few (HerUITests,

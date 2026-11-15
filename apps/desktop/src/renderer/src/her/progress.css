@@ -1,0 +1,104 @@
+/* Progress (docs/her-team.md §15): the work Her sent out, as cards under what set it off; and a card's page, the record of that piece of work. */
+.pg{padding:0 var(--sp-4) var(--sp-5);display:flex;flex-direction:column;gap:var(--sp-2);max-width:1040px;margin:0 auto}
+.pg-h{display:flex;align-items:baseline;gap:var(--sp-2);height:32px;min-width:0}
+.pg-h h1{margin:0;font-size:26px;font-weight:700;letter-spacing:-.01em}
+.pg-h span{color:var(--l2);font-size:var(--fs-text)}
+.pg-sum{margin:-4px 0 var(--sp-1);color:var(--l2);font-size:14px}
+.pg-empty{display:flex;flex-direction:column;align-items:center;gap:6px;padding:72px 24px;color:var(--l2);text-align:center}
+.pg-empty b{color:var(--l1);font-size:15px}
+.pg-cat{width:44px;height:44px;display:flex;margin-bottom:6px}
+.pg-cat>svg{width:100%;height:100%}
+.pg-list{display:flex;flex-direction:column;gap:var(--sp-2)}
+.pg-sec{font-size:12px;color:var(--l2);padding:var(--sp-1) 6px}
+.pg-more{display:flex;justify-content:center;align-items:center;min-height:28px;font-size:12.5px}
+/* A group: what the owner said, and the cards of what Her sent out for it. */
+.pg-g{background:var(--win2);border-radius:18px}
+.pg-gh{display:flex;align-items:flex-start;gap:2px;padding:6px 8px 6px 6px}
+.pg-gh>.tb{margin-top:8px}
+.pg-gt{flex:1;min-width:0;display:flex;align-items:flex-start;gap:11px;padding:8px;border:0;border-radius:12px;background:none;font:inherit;color:var(--l1);text-align:left}
+.pg-gt:hover{background:var(--fill)}
+.pg-who{width:28px;height:28px;flex:none;margin-top:1px;border-radius:50%;background:var(--fill3);display:flex;align-items:center;justify-content:center;color:var(--l2)}
+.pg-gm{flex:1;min-width:0;display:flex;flex-direction:column;gap:1px}
+.pg-when{font-size:12px;color:var(--l2)}
+.pg-ask{font-size:15.5px;font-weight:var(--font-weight-semibold);line-height:1.35;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;overflow-wrap:anywhere}
+.pg-said{display:flex;align-items:center;gap:6px;margin-top:4px;min-width:0;font-size:13px;color:var(--l2)}
+.pg-said>span:last-child{min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.pg-said-cat{width:16px;height:16px;flex:none;display:flex}
+.pg-said-cat>svg{width:100%;height:100%}
+.pg-marks{flex:none;display:flex;align-items:center;gap:10px;height:28px}
+.pg-wait,.pg-fail,.pg-off{flex:none;display:inline-flex;align-items:center;gap:5px;font-size:12px;white-space:nowrap}
+.pg-wait{color:var(--orange)}
+.pg-fail{color:var(--red)}
+.pg-off{color:var(--l2)}
+.pg-n{font-size:11.5px;color:var(--l2);font-variant-numeric:tabular-nums;white-space:nowrap}
+.pg-chev{width:14px;height:14px;color:var(--l3);transform:rotate(-90deg);transition:transform .15s}
+.pg-chev.open{transform:none}
+.pg-cards{display:grid;grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:10px;padding:4px 10px 10px}
+/* A card: who, how it stands, the work, what it does now, how long and how much. */
+.pg-c{display:flex;flex-direction:column;gap:7px;min-height:124px;min-width:0;padding:13px 14px 12px;border:0;border-radius:14px;background:var(--win);box-shadow:0 0 0 .5px var(--sep),0 1px 2px rgba(0,0,0,.04);font:inherit;color:var(--l1);text-align:left;transition:box-shadow .16s,transform .16s}
+.pg-c:hover:not(:disabled){transform:translateY(-1px);box-shadow:0 0 0 .5px var(--l4),0 4px 14px rgba(10,20,50,.09)}
+.pg-c:disabled{opacity:1}
+@media (prefers-color-scheme:dark){.pg-c{background:var(--win3);box-shadow:0 0 0 .5px var(--sep)}}
+.pg-ct{display:flex;align-items:center;gap:7px;min-height:22px;min-width:0}
+.pg-kit{width:22px;height:22px;flex:none;border-radius:7px;background:var(--accent-bg);color:var(--accent-t);display:flex;align-items:center;justify-content:center}
+.pg-kit .ic{width:14px;height:14px}
+.pg-doer{flex:1;min-width:0;font-size:12px;color:var(--l2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.pg-title{font-size:14.5px;font-weight:var(--font-weight-semibold);line-height:1.35;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;overflow-wrap:anywhere}
+.pg-line{font-size:12.5px;color:var(--l2);line-height:1.45;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;overflow-wrap:anywhere}
+.pg-line code{font-family:var(--mono);font-size:11.5px}
+.pg-facts{margin-top:auto;padding-top:4px;min-height:16px;font-size:11.5px;color:var(--l2);font-variant-numeric:tabular-nums;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+@media (prefers-reduced-motion:reduce){.pg-c:hover:not(:disabled){transform:none}}
+/* A card's page: what set it off, its siblings, then the record. */
+.pt-bar{height:auto;min-height:52px;gap:12px;padding:10px 20px 10px 16px}
+.pt-bar .link{flex:none;font-size:12.5px;white-space:nowrap}
+.pt-back{flex:none;padding:0 12px 0 8px}
+.pt-said{flex:1;min-width:0;font-size:13px;color:var(--l2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.pt-sibs{flex:none;display:flex;gap:4px;padding:0 16px 8px;overflow-x:auto;scrollbar-width:none}
+.pt-sib{flex:none;display:inline-flex;align-items:center;gap:7px;height:30px;max-width:260px;padding:0 12px 0 10px;border:0;border-radius:15px;background:none;font:inherit;font-size:13px;color:var(--l2)}
+.pt-sib>span:last-child{min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.pt-sib:hover:not(:disabled){background:var(--fill)}
+.pt-sib.sel{background:var(--fill2);color:var(--l1);font-weight:var(--font-weight-semibold)}
+.pt-off{width:7px;height:7px;border-radius:50%;background:var(--l3);flex:none}
+.pt-shead{flex:none;display:flex;align-items:center;gap:8px;padding:10px 24px;min-width:0}
+.pt-shead b{font-size:14.5px;font-weight:var(--font-weight-semibold);min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.pt-shead span{font-size:12.5px;color:var(--l2);white-space:nowrap}
+.pt{max-width:calc(var(--conversation-width) + 48px);margin:0 auto;padding:26px 24px 48px;display:flex;flex-direction:column;gap:18px}
+.pt-h{display:flex;align-items:flex-start;gap:16px;flex-wrap:wrap}
+.pt-hm{flex:1 1 360px;min-width:0}
+.pt-hm h2{margin:0;font-size:22px;font-weight:var(--font-weight-bold);line-height:1.3;overflow-wrap:anywhere}
+.pt-meta{margin-top:8px;display:flex;align-items:center;gap:8px;flex-wrap:wrap;font-size:12.5px;color:var(--l2)}
+.pt-pill{display:inline-flex;align-items:center;height:22px;padding:0 9px;border-radius:11px;background:var(--fill2);font-size:12px}
+.pt-pill.waiting{color:var(--orange)}
+.pt-pill.failed{color:var(--red)}
+.pt-facts{font-variant-numeric:tabular-nums}
+.pt-brief{display:flex;gap:10px;align-items:flex-start}
+.pt-brief-cat{width:24px;height:24px;flex:none;margin-top:8px;display:flex}
+.pt-brief-cat>svg{width:100%;height:100%}
+.pt-brief>div{flex:1;min-width:0;padding:10px 14px;border-radius:16px;background:var(--win2);box-shadow:inset 0 0 0 .5px var(--sep)}
+.pt-brief span,.pt-again span{font-size:12px;color:var(--l2)}
+.pt-brief p,.pt-again p{margin:3px 0 0;font-size:var(--chat-size);line-height:1.6;white-space:pre-wrap;overflow-wrap:anywhere}
+.pt-again{align-self:flex-start;max-width:86%;margin:6px 0;padding:10px 14px;border-radius:16px;background:var(--win2);box-shadow:inset 0 0 0 .5px var(--sep)}
+.pt-steps-h{display:flex;align-items:center;gap:12px;margin-bottom:-12px;font-size:12px;color:var(--l2)}
+.pt-steps-h span{flex:1}
+.pt-steps{display:flex;flex-direction:column;gap:2px}
+/* Each row is laid out as it comes into view: a long record costs what it shows. */
+.pt-work{display:flex;flex-direction:column;gap:1px}
+.pt-work .tool{content-visibility:auto;contain-intrinsic-size:auto 28px}
+.pt-work .tool .th{width:100%;min-height:28px;padding:3px 8px;border-radius:7px}
+.pt-work .tool .th:hover{background:var(--fill)}
+.pt-work .tool .th .sm2{flex:1;color:var(--l1)}
+.pt-work .tool .th .mini-spin{flex:none}
+.pt-work .tool .out{margin:3px 8px 8px;max-height:420px;overflow:auto}
+.pt-work .tool.thought .out{font-family:var(--font);font-size:13.5px;line-height:1.65;background:var(--win2);color:var(--l1)}
+.pt-say{padding:4px 8px}
+.pt-end{padding:14px 16px;border-radius:16px;background:var(--win2);box-shadow:inset 0 0 0 .5px var(--sep)}
+.pt-end>span{display:flex;align-items:center;gap:7px;font-size:12px;color:var(--l2)}
+.pt-end.fail>span{color:var(--red)}
+.pt-end>p{margin:6px 0 0;font-size:var(--chat-size);line-height:1.55;white-space:pre-wrap;overflow-wrap:anywhere}
+.pt-end .am{margin-top:6px}
+.pt-end .tm-ok.sm,.pt-sib .tm-ok.sm{width:14px;height:14px;stroke-width:1.8}
+.pt-note{margin:0;padding:0 8px;font-size:13px;color:var(--l2)}
+.pt-ask{position:relative}
+/* An agent at work, in the busy bubble: it opens its record. */
+.wb-go{border:0;background:none;padding:0;font:inherit;color:inherit;text-align:left;cursor:pointer}
+.wb-go:hover .wb-t,.wb-r.wb-go:hover{color:var(--l1)}

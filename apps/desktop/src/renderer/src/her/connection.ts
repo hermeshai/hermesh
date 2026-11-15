@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { applyEvents, fromSnapshot, mergeBots, openCallTransport, RpcClient, RpcError, sortBots, withHistory, type SessionView } from "@hermesh/her-client";
+import { agentHistoryCursor, applyEvents, fromSnapshot, mergeBots, openCallTransport, RpcClient, RpcError, sortBots, withAgentHistory, withHistory, type SessionView } from "@hermesh/her-client";
 import type { BotSummary, Event, EventClass, ModelsListResult, SessionNewResult } from "@hermesh/her-protocol";
 import type { HerWaiting, Machine } from "@hermesh/proto/local";
 import { local } from "../api";
@@ -126,6 +126,8 @@ export type Conversation = {
   /** her can't start the conversation: no model works in the environment. */
   noModel: boolean;
   loadEarlier: () => Promise<void>;
+  /** The page of a sub-agent's own history before what its view has (docs/her-team.md §15.4). */
+  loadAgentEarlier: (agentId: string) => Promise<void>;
 };
 
 /**
@@ -149,6 +151,7 @@ export function useConversation(machine: Machine, bot: BotSummary | undefined, s
     noModel: false,
   }));
   const earlier = useRef<() => Promise<void>>(async () => {});
+  const agentEarlier = useRef<(agentId: string) => Promise<void>>(async () => {});
   // A conversation cleared, or detached by her, is opened again.
   const [generation, setGeneration] = useState(0);
   const attached = got.key === key ? got.session : null;
@@ -224,6 +227,30 @@ export function useConversation(machine: Machine, bot: BotSummary | undefined, s
         .finally(() => (paging = null));
       return paging;
     };
+    // A sub-agent's earlier history is read on the same connection, with the cursor its page gave: one page at a
+    // time for each agent, and a page that comes after its view moved on is dropped.
+    const agentPaging = new Map<string, Promise<void>>();
+    agentEarlier.current = (agentId) => {
+      const agent = view?.agents.find((a) => a.id === agentId);
+      const cursor = agent && agentHistoryCursor(agent);
+      if (!cursor || !session) return Promise.resolve();
+      let page = agentPaging.get(agentId);
+      if (!page) {
+        page = client
+          .request("session/history", { session_id: session, before: cursor })
+          .then((p) => {
+            if (stop || !view || view.agents.find((a) => a.id === agentId)?.view.before !== cursor) return;
+            view = withAgentHistory(view, agentId, p);
+            publish();
+          })
+          .catch((e) => {
+            if (!stop) show(errorText(e));
+          })
+          .finally(() => agentPaging.delete(agentId));
+        agentPaging.set(agentId, page);
+      }
+      return page;
+    };
     client.onClose(() => {
       if (stop) return;
       rpc = null;
@@ -234,6 +261,7 @@ export function useConversation(machine: Machine, bot: BotSummary | undefined, s
     return () => {
       stop = true;
       earlier.current = async () => {};
+      agentEarlier.current = async () => {};
       cancelAnimationFrame(frame);
       transport.close();
       setGot((g) => (g.key === key && g.rpc === client ? { ...g, rpc: null } : g));
@@ -241,9 +269,10 @@ export function useConversation(machine: Machine, bot: BotSummary | undefined, s
   }, [id, botId, live, running, modelReady, generation, attempt]);
 
   const loadEarlier = useCallback(() => earlier.current(), []);
-  if (got.key === key) return { view: got.view, session: got.session, rpc: got.rpc, noModel: got.noModel, loadEarlier };
+  const loadAgentEarlier = useCallback((agentId: string) => agentEarlier.current(agentId), []);
+  if (got.key === key) return { view: got.view, session: got.session, rpc: got.rpc, noModel: got.noModel, loadEarlier, loadAgentEarlier };
   const kept = keptViews.get(key);
-  return { view: kept?.view ?? null, session: kept?.session ?? null, rpc: null, noModel: false, loadEarlier };
+  return { view: kept?.view ?? null, session: kept?.session ?? null, rpc: null, noModel: false, loadEarlier, loadAgentEarlier };
 }
 
 /**

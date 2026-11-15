@@ -160,6 +160,12 @@ function delivered(item: WorkItem): Sent | null {
   return text !== null ? { kind: "bot", text } : null;
 }
 
+/** The words a send_to_user call told the owner, with whatever else it carried; null for a call that told them none. */
+export function saidTo(item: WorkItem): string | null {
+  const sent = delivered(item);
+  return sent?.text ?? null;
+}
+
 const docEdits = new Set(["deck_edit", "docx_edit", "docx_review"]);
 
 /** The details of a deck_edit that changed the deck, or of a Word change (docx_edit, docx_review), itself or through call_tool. */
@@ -179,7 +185,7 @@ const record = (v: unknown): Record<string, unknown> | null => (v && typeof v ==
  * its text, the command's document (a Her Server on an older hermeshd sends no details). A call that failed, was
  * refused or never ran started none.
  */
-function startedSession(item: WorkItem): StartedSession | null {
+export function startedSession(item: WorkItem): StartedSession | null {
   if (item.kind !== "tool" || item.tool.state !== "done" || callTarget(item.tool.name, item.tool.args).name !== SESSION_START) return null;
   let s = record(detailsOf(item.tool.result).session);
   if (!s && !("session" in detailsOf(item.tool.result))) {

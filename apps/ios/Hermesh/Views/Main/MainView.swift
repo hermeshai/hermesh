@@ -40,6 +40,7 @@ private struct PageView: View {
                         ScopedSessionsView(filter: SessionFilter(agent: agent, machine: machine), title: String(localized: "\(agentTitle(agent)) on \(model.machineName(machine))"), about: .machineAgent(machine, agent)).syncSubtitle()
                     case .sessions: SessionsView().syncSubtitle()
                     case .herSettings: HerSettings()
+                    case .progressAgent(let id): ProgressAgentPage(agentID: id)
                     }
                 }
         }
@@ -63,6 +64,7 @@ private struct PageView: View {
         switch model.root {
         case .her: HerView()
         case .overview: OverviewView()
+        case .progress: ProgressPage()
         case .grants: GrantsView()
         case .machines: MachinesView()
         case .session(let id): SessionView(id: id).id(id) // a page of its own: the one left keeps its conversation as it goes
