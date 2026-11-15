@@ -154,6 +154,7 @@ impl AgentTree {
                 input: vec![UserContent::Text { text: brief }],
                 mode: PromptMode::Steer,
                 commands: false,
+                id: None,
             })
             .await;
         let mut round = Round::new();

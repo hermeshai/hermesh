@@ -55,5 +55,6 @@ pub use op::SiteGrant;
 pub use op::Op;
 pub use op::PromptMode;
 pub use op::RuleDecision;
+pub use op::valid_input_id;
 
 pub const PROTOCOL_VERSION: u32 = 2;

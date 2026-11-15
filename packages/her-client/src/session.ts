@@ -222,6 +222,20 @@ export function withHistory(v: SessionView, page: TranscriptPage): SessionView {
   return { ...v, entries: [...page.items, ...v.entries], before: page.before ?? undefined };
 }
 
+/** Earlier history of a sub-agent's own session (session/history with its cursor) put before what its view has. */
+export function withAgentHistory(v: SessionView, agentId: string, page: TranscriptPage): SessionView {
+  return withAgent(v, agentId, (a) => ({ ...a, view: withHistory(a.view, page) }));
+}
+
+/**
+ * The cursor to a sub-agent's earlier history, when her can read on from it: one that names the agent
+ * ("<agent id>/i<n>"). An older her gives the agent's page a cursor of the main session's kind, which
+ * session/history would answer with the main session's items.
+ */
+export function agentHistoryCursor(a: AgentView): string | undefined {
+  return a.view.before?.includes("/") ? a.view.before : undefined;
+}
+
 /** A sub-agent from a snapshot: its own session shares the main one's settings. */
 function agentFrom(info: SessionInfo, a: AgentSnapshot): AgentView {
   const own: SessionSnapshot = {

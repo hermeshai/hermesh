@@ -1185,3 +1185,42 @@ async fn initialize_lists_what_it_answers() {
     assert_eq!(err.kind(), Some("method_not_found"));
     child.kill().await.ok();
 }
+
+/// A front end's id is the message's: the prompt joins the history
+/// under it, the same prompt sent again (its answer lost) is answered and changes nothing, also
+/// once the session was loaded again from its log, and an id that can't be one is refused.
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn a_prompt_sent_again_by_its_id_is_taken_once() {
+    let env = TestEnv::new("bypass-permissions", "").await;
+    let (mut child, client, incoming) = env.spawn_rpc(&["serve", "--stdio"]);
+    native_init(&client).await;
+    let demux = Demux::spawn(incoming);
+    let (session, _) = new_session(&client, &env.workspace("a")).await;
+    let mut events = demux.subscribe(&session);
+    let prompt = |text: &str, id: &str| {
+        json!({"session_id": session, "op": {"type": "prompt", "id": id, "input": [{"type": "text", "text": text}]}})
+    };
+    client.request("session/op", prompt("hello", "hw_01")).await.unwrap();
+    client.request("session/op", prompt("hello", "hw_01")).await.expect("answered again");
+    let turn = to_task_end(&mut events).await;
+    assert_eq!(sent_id(&turn), "hw_01");
+    assert_eq!(turn.iter().filter(|e| e["type"] == "task_started").count(), 1);
+
+    client.request("session/close", json!({"session_id": session})).await.unwrap();
+    drop(events);
+    let mut events = demux.subscribe(&session);
+    client.request("session/resume", json!({"session_id": session})).await.unwrap();
+    client.request("session/op", prompt("hello", "hw_01")).await.expect("answered from the log");
+    client.request("session/op", prompt("next", "hw_02")).await.unwrap();
+    let turn = to_task_end(&mut events).await;
+    assert_eq!(sent_id(&turn), "hw_02", "only the new one starts a task");
+    let snapshot = client.request("session/attach", json!({"session_id": session})).await.unwrap()["snapshot"].clone();
+    assert_eq!(texts_of(&snapshot).iter().filter(|t| t.as_str() == "hello").count(), 1, "{:?}", texts_of(&snapshot));
+
+    for bad in ["", "has space", &"x".repeat(65)] {
+        let err = client.request("session/op", prompt("no", bad)).await.unwrap_err();
+        assert_eq!(err.kind(), Some("invalid_params"), "{bad:?}");
+    }
+    drop(client);
+    assert_eq!(common::exit_code(&mut child).await, 0);
+}

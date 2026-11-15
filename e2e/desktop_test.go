@@ -118,7 +118,7 @@ func TestDesktop(t *testing.T) {
 	specs, _ := filepath.Glob(filepath.Join(dir, "e2e", "*.spec.ts"))
 	for _, spec := range specs {
 		name := strings.TrimSuffix(filepath.Base(spec), ".spec.ts")
-		if name == "packaged" || name == "update" || name == "her" || name == "her-chatgpt" { // TestDesktopPackaged, TestDesktopUpdate, TestDesktopHer, TestDesktopHerChatGPT
+		if name == "packaged" || name == "update" || name == "her" || name == "her-chatgpt" || name == "progress" { // TestDesktopPackaged, TestDesktopUpdate, TestDesktopHer, TestDesktopHerChatGPT, TestDesktopHerProgress
 			continue
 		}
 		// Windows runs its own spec and those ported to it (docs/windows.md §11).
@@ -190,6 +190,22 @@ func TestDesktopHer(t *testing.T) {
 		return
 	}
 	herSpec(t, f, "her.spec.ts")
+}
+
+// TestDesktopHerProgress runs the Progress page's end-to-end test (apps/
+// desktop/e2e/progress.spec.ts, docs/her-team.md §15) in the same world:
+// Her on this Mac hands work to a sub-agent and starts a coding session, and
+// the page shows both as cards with their records.
+//
+//	go test ./e2e -run TestDesktopHerProgress -v -timeout 30m
+func TestDesktopHerProgress(t *testing.T) {
+	if testing.Short() {
+		t.Skip("e2e")
+	}
+	if _, err := exec.LookPath("pnpm"); err != nil {
+		t.Skip("pnpm not installed")
+	}
+	herSpec(t, desktopHerWorld(t), "progress.spec.ts")
 }
 
 // TestDesktopHerChatGPT runs apps/desktop/e2e/her-chatgpt.spec.ts: on this

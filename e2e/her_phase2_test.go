@@ -511,14 +511,16 @@ func TestHerFilesBothWays(t *testing.T) {
 	defer stream.Close()
 
 	// A message with two files: they go up first, and the message names where
-	// they landed. her-mock's Her answers with the message she got.
+	// they landed, a path a line after its words, as the apps' composers did
+	// (docs/her-sending.md §4.4). her-mock's Her answers with the message she
+	// got.
 	res, err := env.c.HerSend(ctx, &localv1.HerSendRequest{MachineId: env.machine, BotId: env.bot.ID, Text: "[[mock:send]] Two files for you.",
 		LocalPaths: []string{notes, pic}})
 	if err != nil || !res.Delivered {
 		t.Fatalf("HerSend with files: %v %v", res, err)
 	}
 	said := untilEvent(t, stream, "Her's answer naming the files", func(e herEvent) bool { return e.sentText("Attached files:") })
-	named := regexp.MustCompile(`(?m)^- (/.+)$`).FindAllStringSubmatch(said.Args.Text, -1)
+	named := regexp.MustCompile(`(?m)^(/.+)$`).FindAllStringSubmatch(said.Args.Text, -1)
 	if len(named) != 2 || !strings.HasSuffix(named[0][1], "/uploads/notes.txt") || !strings.HasSuffix(named[1][1], "/uploads/pic.png") {
 		t.Fatalf("the files the message names: %q", said.Args.Text)
 	}

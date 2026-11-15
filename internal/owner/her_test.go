@@ -3,6 +3,7 @@ package owner
 import (
 	"bufio"
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -13,6 +14,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -21,6 +23,7 @@ import (
 
 	"connectrpc.com/connect"
 	"google.golang.org/protobuf/proto"
+	"google.golang.org/protobuf/types/known/timestamppb"
 
 	herv1 "github.com/hermeshai/hermesh/gen/go/hermesh/her/v1"
 	"github.com/hermeshai/hermesh/gen/go/hermesh/her/v1/herv1connect"
@@ -48,6 +51,7 @@ type herSide struct {
 	failBot string            // bots/open fails for this assistant
 	refuse  string            // her refuses a call that holds this
 	silent  bool              // Open never answers: the machine froze
+	slow    time.Duration     // how long a call takes
 }
 
 func (h *herSide) Open(ctx context.Context, req *herv1.OpenRequest, s *connect.ServerStream[herv1.OpenEvent]) error {
@@ -81,7 +85,14 @@ func (h *herSide) Open(ctx context.Context, req *herv1.OpenRequest, s *connect.S
 
 func (h *herSide) Call(_ context.Context, req *herv1.CallRequest) (*herv1.CallResponse, error) {
 	h.mu.Lock()
+	slow := h.slow
+	h.mu.Unlock()
+	time.Sleep(slow)
+	h.mu.Lock()
 	defer h.mu.Unlock()
+	if strings.HasPrefix(req.ConnectionId, "gone") { // as herhost answers for a stream that ended
+		return nil, connect.NewError(connect.CodeNotFound, fmt.Errorf("no her connection %s: its stream ended", req.ConnectionId))
+	}
 	h.ops = append(h.ops, req.ConnectionId+" "+req.Request.Method+" "+string(req.Request.Params))
 	if h.refuse != "" && strings.Contains(string(req.Request.Params), h.refuse) {
 		return &herv1.CallResponse{Response: &herv1.Response{Error: &herv1.Error{Code: -32602, Message: "her won't take it"}}}, nil
@@ -203,26 +214,36 @@ func herOwner(t *testing.T, h *herSide) (*Device, *Owner, *atomic.Bool, *atomic.
 }
 
 // A message goes to the assistant at once while its machine answers: its
-// files first, into the assistant's folder, then the text naming where they
-// landed, on a connection that opened its conversation without the deltas.
+// files first, into the assistant's folder, then its words and a block
+// naming where they landed (workbooks with how to read them), on a
+// connection that opened its conversation without the deltas.
 func TestHerSendDelivers(t *testing.T) {
 	h := &herSide{}
 	_, o, _, _ := herOwner(t, h)
 	ctx := context.Background()
-	file := filepath.Join(t.TempDir(), "notes.txt")
+	file, book := filepath.Join(t.TempDir(), "notes.txt"), filepath.Join(t.TempDir(), "sums.xlsx")
 	os.WriteFile(file, []byte("some notes"), 0o644)
-	res, err := o.HerSend(ctx, &localv1.HerSendRequest{MachineId: "m_1", BotId: "b1", Text: "have a look", LocalPaths: []string{file}})
+	os.WriteFile(book, []byte("cells"), 0o644)
+	res, err := o.HerSend(ctx, &localv1.HerSendRequest{MachineId: "m_1", BotId: "b1", Text: "have a look ", LocalPaths: []string{file}})
 	if err != nil || !res.Delivered || res.Waiting != nil {
 		t.Fatalf("send: %v %v", res, err)
 	}
 	if h.uploads["b1/notes.txt"] != "some notes" {
 		t.Fatalf("uploaded: %v", h.uploads)
 	}
-	if want := `bots/open {"bot_id":"b1","events":{"exclude":["text_delta","thinking_delta","tool_call_delta","tool_progress"]}}`; len(h.opens) != 1 || h.opens[0] != want {
+	if want := `bots/open {"bot_id":"b1","events":{"exclude":["text_delta","thinking_delta","tool_call_delta","tool_progress"]},"history_limit":0}`; len(h.opens) != 1 || h.opens[0] != want {
 		t.Fatalf("opened %q, want %q", h.opens, want)
 	}
-	if got := h.prompts(t); len(got) != 1 || got[0] != "conv-b1: have a look\n\nAttached files:\n- /her/bots/b1/files/uploads/notes.txt" {
-		t.Fatalf("handed %q", got)
+	if got := h.sent(t); len(got) != 1 || got[0].Session != "conv-b1" || len(got[0].Input) != 2 || got[0].Input[0]["text"] != "have a look" ||
+		got[0].Input[1]["text"] != "Attached files:\n/her/bots/b1/files/uploads/notes.txt" {
+		t.Fatalf("handed %+v", got)
+	}
+	if _, err := o.HerSend(ctx, &localv1.HerSendRequest{MachineId: "m_1", BotId: "b1", LocalPaths: []string{book}}); err != nil {
+		t.Fatal(err)
+	}
+	if got := h.sent(t)[1].Input; len(got) != 1 || !strings.HasPrefix(got[0]["text"].(string), "Attached files. For XLSX and XLSM workbooks, use the deferred doc tools") ||
+		!strings.HasSuffix(got[0]["text"].(string), ":\n/her/bots/b1/files/uploads/sums.xlsx") {
+		t.Fatalf("a workbook: %+v", got)
 	}
 	if !strings.HasPrefix(h.ops[0], "c1 ") {
 		t.Fatalf("not on the connection that opened the conversation: %q", h.ops[0])
@@ -242,9 +263,10 @@ func TestHerSendDelivers(t *testing.T) {
 	}
 }
 
-// A message to a machine that doesn't answer waits here, and so does the
-// next one to the same assistant, behind it, though the machine answers by
-// then; once they are tried again they arrive in order and wait no more.
+// A message to a machine that doesn't answer waits here; once the machine
+// answers, the next one to the same assistant delivers it first, then
+// itself, so that they arrive in order and wait no more. One the machine
+// answers no more waits behind the first that waits (flushWaiting).
 func TestHerSendWaits(t *testing.T) {
 	h := &herSide{}
 	d, o, down, _ := herOwner(t, h)
@@ -255,13 +277,9 @@ func TestHerSendWaits(t *testing.T) {
 	if err != nil || first.Delivered || first.Waiting.GetText() != "one" || !strings.Contains(first.Waiting.Error, "offline") || first.Waiting.CreatedAt == nil {
 		t.Fatalf("first: %v %v", first, err)
 	}
-	down.Store(false)
 	second, err := o.HerSend(ctx, &localv1.HerSendRequest{MachineId: "m_1", BotId: "b1", Text: "two"})
-	if err != nil || second.Delivered {
+	if err != nil || second.Delivered || second.Waiting.GetError() != "" { // not tried: behind the first
 		t.Fatalf("second: %v %v", second, err)
-	}
-	if res, err := o.HerSend(ctx, &localv1.HerSendRequest{MachineId: "m_1", BotId: "b2", Text: "three"}); err != nil || !res.Delivered {
-		t.Fatalf("to another assistant: %v %v", res, err)
 	}
 	list, err := l.ListHerWaiting(ctx, &localv1.ListHerWaitingRequest{MachineId: "m_1"})
 	if err != nil || len(list.Waiting) != 2 || list.Waiting[0].Id != first.Waiting.Id || list.Waiting[1].Id != second.Waiting.Id {
@@ -270,8 +288,14 @@ func TestHerSendWaits(t *testing.T) {
 	if list, _ := l.ListHerWaiting(ctx, &localv1.ListHerWaitingRequest{MachineId: "m_1", BotId: "b2"}); len(list.Waiting) != 0 {
 		t.Fatalf("b2's: %v", list)
 	}
-	o.flushWaiting(ctx)
-	if got, want := h.prompts(t), []string{"conv-b2: three", "conv-b1: one", "conv-b1: two"}; !equal(got, want) {
+	down.Store(false)
+	if res, err := o.HerSend(ctx, &localv1.HerSendRequest{MachineId: "m_1", BotId: "b2", Text: "three"}); err != nil || !res.Delivered {
+		t.Fatalf("to another assistant: %v %v", res, err)
+	}
+	if res, err := o.HerSend(ctx, &localv1.HerSendRequest{MachineId: "m_1", BotId: "b1", Text: "four"}); err != nil || !res.Delivered {
+		t.Fatalf("behind the waiting ones: %v %v", res, err)
+	}
+	if got, want := h.prompts(t), []string{"conv-b2: three", "conv-b1: one", "conv-b1: two", "conv-b1: four"}; !equal(got, want) {
 		t.Fatalf("handed %q, want %q", got, want)
 	}
 	if list, _ := l.ListHerWaiting(ctx, &localv1.ListHerWaitingRequest{}); len(list.Waiting) != 0 {
@@ -1036,8 +1060,8 @@ func TestHerSendKeepsPictures(t *testing.T) {
 	if h.uploads["b1/image.png"] != "png" {
 		t.Fatalf("uploaded: %v", h.uploads)
 	}
-	if got := h.prompts(t); len(got) != 1 || !strings.Contains(got[0], "/uploads/image.png") {
-		t.Fatalf("handed %q", got)
+	if got := h.sent(t); len(got) != 1 || !strings.Contains(got[0].Input[0]["text"].(string), "/uploads/image.png") {
+		t.Fatalf("handed %+v", got)
 	}
 	if left, _ := os.ReadDir(o.herPictures()); len(left) != 0 {
 		t.Fatalf("pictures left after delivery: %v", left)
@@ -1057,5 +1081,206 @@ func TestHerSendKeepsPictures(t *testing.T) {
 	big := make([]byte, herPictureMax+1)
 	if _, err := o.HerSend(ctx, &localv1.HerSendRequest{MachineId: "m_1", BotId: "b1", Pictures: []*localv1.HerPicture{{Name: "big.png", Data: big}}}); connect.CodeOf(err) != connect.CodeInvalidArgument {
 		t.Fatalf("a picture too large: %v", err)
+	}
+}
+
+// herSent is a prompt as her was handed it: on which connection and
+// conversation, under which id, with what.
+type herSent struct {
+	Conn, Session, ID string
+	Input             []map[string]any
+}
+
+func (h *herSide) sent(t *testing.T) []herSent {
+	t.Helper()
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	var out []herSent
+	for _, op := range h.ops {
+		conn, call, _ := strings.Cut(op, " ")
+		_, params, _ := strings.Cut(call, " ")
+		var p struct {
+			SessionID string `json:"session_id"`
+			Op        struct {
+				Type  string
+				ID    string
+				Input []map[string]any
+			}
+		}
+		if json.Unmarshal([]byte(params), &p) != nil || p.Op.Type != "prompt" {
+			t.Fatalf("not a prompt: %s", op)
+		}
+		out = append(out, herSent{conn, p.SessionID, p.Op.ID, p.Op.Input})
+	}
+	return out
+}
+
+// A message goes to her under the id the app gave it (docs/her-sending.md
+// §4.1), or one of this device's; sent again while it waits, the one kept
+// goes, once; an id her would not take is refused here.
+func TestHerSendByItsID(t *testing.T) {
+	h := &herSide{}
+	_, o, down, _ := herOwner(t, h)
+	ctx := context.Background()
+	res, err := o.HerSend(ctx, &localv1.HerSendRequest{MachineId: "m_1", BotId: "b1", Text: "hi", Id: "hw_app1"})
+	if err != nil || !res.Delivered {
+		t.Fatalf("send: %v %v", res, err)
+	}
+	if _, err := o.HerSend(ctx, &localv1.HerSendRequest{MachineId: "m_1", BotId: "b1", Text: "no id"}); err != nil {
+		t.Fatal(err)
+	}
+	down.Store(true)
+	kept, err := o.HerSend(ctx, &localv1.HerSendRequest{MachineId: "m_1", BotId: "b1", Text: "later", Id: "hw_app2"})
+	if err != nil || kept.Waiting.GetId() != "hw_app2" {
+		t.Fatalf("kept: %v %v", kept, err)
+	}
+	again, err := o.HerSend(ctx, &localv1.HerSendRequest{MachineId: "m_1", BotId: "b1", Text: "later", Id: "hw_app2"})
+	if err != nil || again.Waiting.GetId() != "hw_app2" {
+		t.Fatalf("sent again: %v %v", again, err)
+	}
+	if list, _ := o.st.herWaiting("m_1", ""); len(list) != 1 {
+		t.Fatalf("kept twice: %v", list)
+	}
+	down.Store(false)
+	if res, err := o.HerSend(ctx, &localv1.HerSendRequest{MachineId: "m_1", BotId: "b1", Text: "later", Id: "hw_app2"}); err != nil || !res.Delivered {
+		t.Fatalf("once the machine is back: %v %v", res, err)
+	}
+	var ids []string
+	for _, s := range h.sent(t) {
+		ids = append(ids, s.ID)
+	}
+	if len(ids) != 3 || ids[0] != "hw_app1" || !strings.HasPrefix(ids[1], "hw_") || ids[2] != "hw_app2" {
+		t.Fatalf("ids: %q", ids)
+	}
+	for _, bad := range []string{"has space", strings.Repeat("x", 65), "ü"} {
+		if _, err := o.HerSend(ctx, &localv1.HerSendRequest{MachineId: "m_1", BotId: "b1", Text: "x", Id: bad}); connect.CodeOf(err) != connect.CodeInvalidArgument {
+			t.Errorf("%q: %v", bad, err)
+		}
+	}
+}
+
+// With the conversation the app has open, a message goes on it, one call
+// and no connection of the core's own; when that connection is gone, on one
+// of its own, which opens no history.
+func TestHerSendOnTheAppsConnection(t *testing.T) {
+	h := &herSide{}
+	_, o, _, _ := herOwner(t, h)
+	ctx := context.Background()
+	res, err := o.HerSend(ctx, &localv1.HerSendRequest{MachineId: "m_1", BotId: "b1", Text: "hi", Id: "hw_1", ConnectionId: "app7", SessionId: "conv-b1"})
+	if err != nil || !res.Delivered {
+		t.Fatalf("send: %v %v", res, err)
+	}
+	if got := h.sent(t); len(got) != 1 || got[0].Conn != "app7" || got[0].Session != "conv-b1" || got[0].ID != "hw_1" || len(h.opens) != 0 {
+		t.Fatalf("handed %+v, opened %q", got, h.opens)
+	}
+	res, err = o.HerSend(ctx, &localv1.HerSendRequest{MachineId: "m_1", BotId: "b1", Text: "again", Id: "hw_2", ConnectionId: "gone3", SessionId: "conv-b1"})
+	if err != nil || !res.Delivered {
+		t.Fatalf("send on a connection gone: %v %v", res, err)
+	}
+	if got := h.sent(t); len(got) != 2 || got[1].Conn != "c1" || got[1].ID != "hw_2" || len(h.opens) != 1 || !strings.Contains(h.opens[0], `"history_limit":0`) {
+		t.Fatalf("handed %+v, opened %q", got, h.opens)
+	}
+}
+
+// A picture goes to her as a picture, its type read from its bytes; a kept
+// one that is no image goes as a file.
+func TestHerSendPicturesAsPictures(t *testing.T) {
+	h := &herSide{}
+	_, o, _, _ := herOwner(t, h)
+	png := append([]byte("\x89PNG\r\n\x1a\n"), make([]byte, 16)...)
+	res, err := o.HerSend(context.Background(), &localv1.HerSendRequest{MachineId: "m_1", BotId: "b1", Text: "look",
+		Pictures: []*localv1.HerPicture{{Name: "a.png", Data: png}, {Name: "notes.txt", Data: []byte("plain words")}}})
+	if err != nil || !res.Delivered {
+		t.Fatalf("send: %v %v", res, err)
+	}
+	got := h.sent(t)
+	if len(got) != 1 || len(got[0].Input) < 2 {
+		t.Fatalf("handed %+v", got)
+	}
+	text, picture := got[0].Input[0], got[0].Input[1]
+	if len(got[0].Input) != 3 || got[0].Input[2]["text"] != "Attached files:\n/her/bots/b1/files/uploads/notes.txt" || text["text"] != "look" || h.uploads["b1/notes.txt"] != "plain words" {
+		t.Fatalf("handed %+v, uploads %v", got[0].Input, h.uploads)
+	}
+	if picture["type"] != "image" || picture["mime_type"] != "image/png" || picture["data"] != base64.StdEncoding.EncodeToString(png) {
+		t.Fatalf("picture %v", picture)
+	}
+	if _, ok := h.uploads["b1/a.png"]; ok {
+		t.Fatal("the picture went as a file too")
+	}
+}
+
+// HerSend and the waiting messages' round deliver an assistant's messages
+// one at a time: a message is never handed to her twice at once.
+func TestHerSendAndTheRoundNeverDeliverOneTwice(t *testing.T) {
+	h := &herSide{}
+	_, o, down, _ := herOwner(t, h)
+	ctx := context.Background()
+	down.Store(true)
+	if _, err := o.HerSend(ctx, &localv1.HerSendRequest{MachineId: "m_1", BotId: "b1", Text: "one", Id: "hw_1"}); err != nil {
+		t.Fatal(err)
+	}
+	down.Store(false)
+	h.mu.Lock()
+	h.slow = 200 * time.Millisecond
+	h.mu.Unlock()
+	var wg sync.WaitGroup
+	for range 3 {
+		wg.Add(2)
+		go func() { defer wg.Done(); o.flushWaiting(ctx) }()
+		go func() {
+			defer wg.Done()
+			if _, err := o.HerSend(ctx, &localv1.HerSendRequest{MachineId: "m_1", BotId: "b1", Text: "two", Id: "hw_2"}); err != nil {
+				t.Error(err)
+			}
+		}()
+	}
+	wg.Wait()
+	var ids []string
+	for _, s := range h.sent(t) {
+		ids = append(ids, s.ID)
+	}
+	// "two" is sent three times, by the app: each send that finds it delivered sends it again.
+	if len(ids) < 2 || ids[0] != "hw_1" || slices.Contains(ids[1:], "hw_1") {
+		t.Fatalf("handed %q", ids)
+	}
+	for i := 1; i < len(ids); i++ {
+		if ids[i] != "hw_2" {
+			t.Fatalf("handed %q", ids)
+		}
+	}
+}
+
+// One machine that does not answer holds no other's messages back.
+func TestHerRoundDeliversMachinesSideBySide(t *testing.T) {
+	defer func(d time.Duration) { herAnswerWithin = d }(herAnswerWithin)
+	herAnswerWithin = 3 * time.Second
+	h := &herSide{}
+	_, o, _, _ := herOwner(t, h)
+	m1 := o.herReach
+	o.herReach = func(ctx context.Context, machineID string) (herMachine, error) {
+		if machineID == "m_2" {
+			<-ctx.Done() // frozen
+			return nil, ctx.Err()
+		}
+		return m1(ctx, machineID)
+	}
+	for _, m := range []string{"m_2", "m_1"} {
+		w := &localv1.HerWaiting{Id: "hw_" + m, MachineId: m, BotId: "b1", Text: "to " + m, CreatedAt: timestamppb.Now()}
+		if err := o.st.addHerWaiting(w); err != nil {
+			t.Fatal(err)
+		}
+	}
+	done := make(chan struct{})
+	go func() { o.flushWaiting(context.Background()); close(done) }()
+	deadline := time.Now().Add(2 * time.Second)
+	for len(h.sent(t)) == 0 {
+		if time.Now().After(deadline) {
+			t.Fatal("m_1's message waited for m_2")
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	<-done
+	if list, _ := o.st.herWaiting("", ""); len(list) != 1 || list[0].MachineId != "m_2" || list[0].Error == "" {
+		t.Fatalf("waiting: %v", list)
 	}
 }

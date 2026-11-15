@@ -174,7 +174,7 @@ async fn drive(
     if run.ops_stdin {
         spawn_stdin_ops(ops.clone());
     }
-    ops.send(Op::Prompt { input, mode: Default::default(), commands: true })
+    ops.send(Op::Prompt { input, mode: Default::default(), commands: true, id: None })
         .await
         .context("the session closed unexpectedly")?;
 

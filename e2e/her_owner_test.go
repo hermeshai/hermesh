@@ -337,9 +337,10 @@ func TestHerOnThisMac(t *testing.T) {
 		t.Fatalf("models/list through the console: %d %s", code, body)
 	}
 
-	// What the machine lets no device do: desktop document panels.
+	// What the machine lets no device do: desktop document panels, a method
+	// its gate doesn't open, unimplemented (docs/version-skew.md §6.3).
 	_, err = c.HerCall(ctx, &localv1.HerCallRequest{MachineId: mac, Call: &herv1.CallRequest{Request: herSetup("doc/open", map[string]string{"path": "/tmp/x.xlsx"})}})
-	if connect.CodeOf(err) != connect.CodePermissionDenied {
+	if connect.CodeOf(err) != connect.CodeUnimplemented {
 		t.Fatalf("doc/open: %v", err)
 	}
 	// An assistant's mode, full access too, goes unsigned: the owner chose it.

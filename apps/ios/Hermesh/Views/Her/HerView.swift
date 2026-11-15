@@ -244,25 +244,17 @@ private struct TeamPanel: View {
 
 /// Her's connections while a page of hers shows the environment (docs/her-server.md §5.1): the environment's,
 /// while her runs there; the conversation's, opened again when what it follows changes (a cleared conversation is a
-/// new one; a model just connected opens it); and what this iPhone keeps.
+/// new one; a model just connected opens it); and what this iPhone keeps. The pages hold them one after another
+/// (HerChat.hold), so going from her conversation to Progress, a card's record or her settings opens nothing again.
 private struct HerConnections: ViewModifier {
     let chat: HerChat
     let machine: HerMachine
 
-    private struct Opening: Hashable {
-        var bot: String?
-        var session: String?
-        var running: Bool
-        var modelReady: Bool
-    }
-
     func body(content: Content) -> some View {
         let running = herReachable(machine) && machine.her.running
+        let following = HerChat.Following(bot: chat.bot?.id, session: chat.bot?.sessionID, running: running, modelReady: machine.her.modelReady)
         content
-            .task(id: running) { if running { await chat.followEnvironment() } }
-            .task(id: Opening(bot: chat.bot?.id, session: chat.bot?.sessionID, running: running, modelReady: machine.her.modelReady)) {
-                if running, let bot = chat.bot { await chat.followConversation(botID: bot.id) }
-            }
+            .task(id: following) { await chat.hold(following) }
             .task { await chat.loadKept() }
             .task(id: herReachable(machine)) { await chat.refreshWaiting() }
             // Delivered meanwhile: what waits is asked for again as the conversation grows.

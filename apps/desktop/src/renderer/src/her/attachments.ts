@@ -1,11 +1,9 @@
-import { attachedBlock } from "@hermesh/her-client";
-import type { UserContent } from "@hermesh/her-protocol";
 
 // What the composer attaches to a message (docs/her-server.md §9.1, Files):
-// pictures go in the message itself; other files are
-// uploaded into the assistant's folder on its machine first (HerUpload), and
-// the message names where they landed ("Attached files:"). Both are read here
-// by their paths on this Mac, which the preload tells (webUtils).
+// pictures go in the message itself; other files are uploaded by hermeshd
+// into the assistant's folder on its machine first (HerSend), and the message
+// names where they landed ("Attached files:"). Both are read here by their
+// paths on this Mac, which the preload tells (webUtils).
 
 export type Attachment =
   /** `local`: the picture's file on this Mac, when it came from one (a paste has none). */
@@ -55,13 +53,4 @@ export function pastedAttachments(data: DataTransfer): Promise<Attachment[]> | n
 export function addAttachments(list: Attachment[], more: Attachment[]): Attachment[] {
   const have = new Set(list.map((a) => a.path));
   return [...list, ...more.filter((a) => !have.has(a.path))];
-}
-
-/** A message's content: its words, its pictures, then a block naming the files uploaded for it (their paths on the machine). */
-export function toInput(text: string, atts: Attachment[], uploaded: string[]): UserContent[] {
-  const out: UserContent[] = [];
-  if (text.trim() !== "") out.push({ type: "text", text: text.trim() });
-  for (const a of atts) if (a.kind === "image") out.push({ type: "image", mime_type: a.mime_type, data: a.data });
-  if (uploaded.length) out.push(attachedBlock(uploaded));
-  return out;
 }

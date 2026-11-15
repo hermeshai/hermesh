@@ -240,6 +240,16 @@
         }
       }
     },
+    "%@ tokens": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ tokens"
+          }
+        }
+      }
+    },
     "%@ wants to connect": {
       "localizations": {
         "zh-Hans": {
@@ -295,6 +305,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "%@ · 已读完"
+          }
+        }
+      }
+    },
+    "%@ · to Her": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ · 对 Her 说"
           }
         }
       }
@@ -376,6 +396,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "%lld 个失败"
+          }
+        }
+      }
+    },
+    "%lld files": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld 个文件"
           }
         }
       }
@@ -1245,6 +1275,16 @@
         }
       }
     },
+    "Another approval is ahead of this one; it shows here when its turn comes.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "前面还有一项在等你批准，轮到它时会出现在这里。"
+          }
+        }
+      }
+    },
     "Another iPhone or a Mac can approve too. If you lose this iPhone, it keeps your machines and agents working.": {
       "localizations": {
         "zh-Hans": {
@@ -1435,6 +1475,26 @@
         }
       }
     },
+    "Asked earlier": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "更早交代的"
+          }
+        }
+      }
+    },
+    "Asked “%@” to stop": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "已让「%@」停下"
+          }
+        }
+      }
+    },
     "Back": {
       "localizations": {
         "zh-Hans": {
@@ -1521,6 +1581,26 @@
           "stringUnit": {
             "state": "translated",
             "value": "按状态"
+          }
+        }
+      }
+    },
+    "Called": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "已调用"
+          }
+        }
+      }
+    },
+    "Calling": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "正在调用"
           }
         }
       }
@@ -2175,6 +2255,16 @@
         }
       }
     },
+    "Deleted": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "已删除"
+          }
+        }
+      }
+    },
     "Deleted “%@”": {
       "localizations": {
         "zh-Hans": {
@@ -2191,6 +2281,26 @@
           "stringUnit": {
             "state": "translated",
             "value": "删除…"
+          }
+        }
+      }
+    },
+    "Deleting": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "正在删除"
+          }
+        }
+      }
+    },
+    "Denied": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "已拒绝"
           }
         }
       }
@@ -2415,6 +2525,66 @@
         }
       }
     },
+    "Earlier": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "早些时候"
+          }
+        }
+      }
+    },
+    "Earlier Steps": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "更早的过程"
+          }
+        }
+      }
+    },
+    "Earlier Work": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "更早的进展"
+          }
+        }
+      }
+    },
+    "Edit": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "编辑"
+          }
+        }
+      }
+    },
+    "Edited": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "已修改"
+          }
+        }
+      }
+    },
+    "Editing": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "正在修改"
+          }
+        }
+      }
+    },
     "End-to-end encrypted: the server only forwards, and can’t read anything.": {
       "localizations": {
         "zh-Hans": {
@@ -2545,6 +2715,16 @@
         }
       }
     },
+    "Expand All Output": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "展开全部输出"
+          }
+        }
+      }
+    },
     "Expanded": {
       "localizations": {
         "zh-Hans": {
@@ -2611,6 +2791,26 @@
           "stringUnit": {
             "state": "translated",
             "value": "快速"
+          }
+        }
+      }
+    },
+    "Fetched": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "已访问"
+          }
+        }
+      }
+    },
+    "Fetching": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "正在访问"
           }
         }
       }
@@ -2715,6 +2915,16 @@
         }
       }
     },
+    "Give Her something to do: each part she sends out shows up here.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "交给 Her 一件事，她分头去办的每一路都会出现在这里。"
+          }
+        }
+      }
+    },
     "Go": {
       "localizations": {
         "zh-Hans": {
@@ -2775,6 +2985,16 @@
         }
       }
     },
+    "Her added": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Her 又交代"
+          }
+        }
+      }
+    },
     "Her is here": {
       "localizations": {
         "zh-Hans": {
@@ -2801,6 +3021,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "Her，未启用"
+          }
+        }
+      }
+    },
+    "Here": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "当前"
           }
         }
       }
@@ -3288,6 +3518,36 @@
         }
       }
     },
+    "It failed, and stopped here": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "没办成，停在了这里"
+          }
+        }
+      }
+    },
+    "Its last turn failed": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "上一轮失败了"
+          }
+        }
+      }
+    },
+    "Its report to Her": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "交回给 Her 的汇报"
+          }
+        }
+      }
+    },
     "Just Finished": {
       "localizations": {
         "zh-Hans": {
@@ -3308,12 +3568,72 @@
         }
       }
     },
+    "Moved": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "已移动"
+          }
+        }
+      }
+    },
+    "Moving": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "正在移动"
+          }
+        }
+      }
+    },
+    "Needs approval:": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "待批准"
+          }
+        }
+      }
+    },
     "Needs Update": {
       "localizations": {
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
             "value": "需更新"
+          }
+        }
+      }
+    },
+    "Needs you": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "需要你"
+          }
+        }
+      }
+    },
+    "Needs your approval": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "等你批准"
+          }
+        }
+      }
+    },
+    "No longer on this iPhone": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "这台 iPhone 上已经没有了"
           }
         }
       }
@@ -3328,12 +3648,32 @@
         }
       }
     },
+    "No work sent out yet": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "还没有派出去的活"
+          }
+        }
+      }
+    },
     "Not on": {
       "localizations": {
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
             "value": "未启用"
+          }
+        }
+      }
+    },
+    "Not run": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "未执行"
           }
         }
       }
@@ -3348,12 +3688,122 @@
         }
       }
     },
+    "Open the Conversation": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "打开对话"
+          }
+        }
+      }
+    },
+    "Progress": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "进展"
+          }
+        }
+      }
+    },
+    "Ran": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "已运行"
+          }
+        }
+      }
+    },
+    "Read": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "已读取"
+          }
+        }
+      }
+    },
+    "Reading": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "正在读取"
+          }
+        }
+      }
+    },
     "Recently Finished": {
       "localizations": {
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
             "value": "最近完成"
+          }
+        }
+      }
+    },
+    "Review": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "去批准"
+          }
+        }
+      }
+    },
+    "Running": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "正在运行"
+          }
+        }
+      }
+    },
+    "Running for": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "已运行"
+          }
+        }
+      }
+    },
+    "Scheduled task “%@” · %@": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "定时任务「%@」· %@"
+          }
+        }
+      }
+    },
+    "Searched": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "已搜索"
+          }
+        }
+      }
+    },
+    "Searching": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "正在搜索"
           }
         }
       }
@@ -3398,12 +3848,102 @@
         }
       }
     },
+    "Starting": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "正在启动"
+          }
+        }
+      }
+    },
+    "Starting…": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "正在启动…"
+          }
+        }
+      }
+    },
+    "Steps": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "步骤"
+          }
+        }
+      }
+    },
+    "Stop": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "停下"
+          }
+        }
+      }
+    },
+    "Stopped": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "已停下"
+          }
+        }
+      }
+    },
+    "Sub-agent": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "子智能体"
+          }
+        }
+      }
+    },
     "Team": {
       "localizations": {
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
             "value": "团队"
+          }
+        }
+      }
+    },
+    "The provider keeps this reasoning private": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "服务商没有公开这段推理"
+          }
+        }
+      }
+    },
+    "The work Her sends out shows here once she runs on one of your machines.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Her 在你的某台机器上运行后，她派出去的活会显示在这里。"
+          }
+        }
+      }
+    },
+    "The work Her sent out shows here once the machine is back.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "机器恢复连接后，这里会显示 Her 派出去的活。"
           }
         }
       }
@@ -3418,12 +3958,32 @@
         }
       }
     },
+    "Thinking about the next step": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "在想下一步"
+          }
+        }
+      }
+    },
     "Thinking On": {
       "localizations": {
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
             "value": "思考"
+          }
+        }
+      }
+    },
+    "Thinking Only": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "只展开思考"
           }
         }
       }
@@ -3528,12 +4088,72 @@
         }
       }
     },
+    "This record is gone": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "这一路的记录不在了"
+          }
+        }
+      }
+    },
+    "This round was interrupted": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "这一轮被打断了"
+          }
+        }
+      }
+    },
+    "This sent out %lld": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "这句话派出了 %lld 路"
+          }
+        }
+      }
+    },
+    "Thought": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "思考"
+          }
+        }
+      }
+    },
     "Today · %lld sessions": {
       "localizations": {
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
             "value": "今天 %lld 个会话"
+          }
+        }
+      }
+    },
+    "Tokens": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tokens"
+          }
+        }
+      }
+    },
+    "Took": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "用时"
           }
         }
       }
@@ -4836,6 +5456,16 @@
         }
       }
     },
+    "Pan Screen": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "拖动画面"
+          }
+        }
+      }
+    },
     "Paste": {
       "localizations": {
         "zh-Hans": {
@@ -5482,6 +6112,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "把这段话发给 %@"
+          }
+        }
+      }
+    },
+    "Sending…": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "正在发送…"
           }
         }
       }
@@ -7124,6 +7764,16 @@
         }
       }
     },
+    "What Her asked": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Her 派的活"
+          }
+        }
+      }
+    },
     "What it can use": {
       "localizations": {
         "zh-Hans": {
@@ -7140,6 +7790,26 @@
           "stringUnit": {
             "state": "translated",
             "value": "离线设备上的本地数据（需待设备重置后清除）"
+          }
+        }
+      }
+    },
+    "What set it off": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "来自定时任务"
+          }
+        }
+      }
+    },
+    "What you said": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "来自你的一句话"
           }
         }
       }
@@ -7190,6 +7860,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "你的代码在哪台电脑上？"
+          }
+        }
+      }
+    },
+    "Where it came from": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "来自哪句话"
           }
         }
       }
@@ -7247,6 +7927,16 @@
         }
       }
     },
+    "Working…": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "正在干活…"
+          }
+        }
+      }
+    },
     "Worktrees with uncommitted changes: moved aside and kept, and you’re told where": {
       "localizations": {
         "zh-Hans": {
@@ -7273,6 +7963,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "你"
+          }
+        }
+      }
+    },
+    "You %@ · %@": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "你 %1$@ · %2$@"
           }
         }
       }

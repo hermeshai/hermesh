@@ -171,7 +171,11 @@
   "waiting": {
     "until": "等 {{name}} 在线后送达",
     "failed": "没能送达：{{error}}",
-    "discard": "丢弃"
+    "discard": "丢弃",
+    "sending": "正在发送…",
+    "retry": "再试一次",
+    "edit": "编辑",
+    "connecting": "正在连接 {{name}}…"
   },
   "files": {
     "save": "把 {{name}} 存到“下载”",
@@ -548,5 +552,63 @@
     "body": "这一步需要你的登录状态，它在你自己的 Chrome 里，而扩展还没连上。连接一次后，Her 会从这里接着做。",
     "builtin": "这次用内置浏览器",
     "connect": "连接 Chrome…"
+  },
+  "progress": {
+    "title": "进展",
+    "log": "派出去的活",
+    "empty": "还没有派出去的活",
+    "emptySub": "交给 Her 一件事，她分头去办的每一路都会出现在这里。",
+    "notRead": "连上 {{name}} 后，这里会显示 Her 派出去的活。",
+    "routine": "定时任务「{{name}}」",
+    "earlier": "更早交代的",
+    "inChat": "在对话里看",
+    "agent": "子智能体",
+    "state": {
+      "starting": "正在启动",
+      "running": "进行中",
+      "waiting": "等你批准",
+      "done": "已完成",
+      "failed": "没办成",
+      "stopped": "已停下"
+    },
+    "ran": "已运行 {{time}}",
+    "took": "用时 {{time}}",
+    "tokens": "{{tokens}} tokens",
+    "starting": "正在启动…",
+    "sessionGone": "这个会话不在这台 Mac 上了",
+    "back": "进展",
+    "openSession": "在全部会话里打开",
+    "brief": "Her 派的活",
+    "steps_other": "过程 · {{count}} 步",
+    "expandAll": "展开全部输出",
+    "thinkingOnly": "只展开思考",
+    "earlierSteps": "更早的过程",
+    "loadingEarlier": "正在载入更早的过程",
+    "earlierWork": "更早的进展",
+    "loadingWork": "正在载入更早的进展",
+    "stop": "停下",
+    "stopSent": "已让「{{title}}」停下",
+    "report": "交回给 Her 的汇报",
+    "waitingBehind": "前面还有一项在等你批准，轮到它时会出现在这里。",
+    "failedHere": "没办成，停在了这里",
+    "interrupted": "这一轮被打断了",
+    "again": "Her 又交代",
+    "gone": "这一路的记录不在了",
+    "thinking": "在想下一步",
+    "part": {
+      "need": "需要你",
+      "now": "现在",
+      "earlier": "早些时候"
+    },
+    "review": "去批准",
+    "files_other": "{{count}} 个文件",
+    "working": "正在干活…",
+    "fromYou": "你 {{time}} · {{text}}",
+    "fromSaid": "来自你的一句话",
+    "fromRoutine": "来自定时任务",
+    "toHer": "{{time}} · 对 Her 说",
+    "sent_other": "这句话派出了 {{count}} 路",
+    "close": "关闭",
+    "why": "来自哪句话"
   }
 }

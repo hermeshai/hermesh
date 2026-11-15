@@ -10,7 +10,7 @@ import { Icon } from "./icons";
 import { listShown, setSidebar } from "./layout";
 import { AppMenuButton } from "./MainWindow";
 import { keys, ownKeys } from "./platform";
-import { AccountMenu, herClients, openList, workMarks } from "./Sidebar";
+import { AccountMenu, herClients, openList, progressMarks, workMarks } from "./Sidebar";
 import { useNow, useStore, type ListFilter } from "./store";
 
 // The sidebar's rail (docs/her-team.md §14.9): the same places as the sidebar, as icons, 74 px wide. Her, Work,
@@ -40,6 +40,8 @@ export function Rail() {
   const unread = unreadCount(st.machines);
   const herOn = st.machines.some((m) => m.her?.enabled);
   const work = workMarks(st, now);
+  const progress = progressMarks(st);
+  const progressLabel = [t("sidebar.progress"), progress.waits ? t("rail.waiting", { count: progress.waits }) : "", progress.running ? t("sidebar.running", { count: progress.running }) : ""].filter(Boolean).join(" · ");
   const machines = [...st.machines].sort((a, b) => Number(b.local) - Number(a.local) || a.machineName.localeCompare(b.machineName));
   const clients = st.clients.filter((c) => !c.revoked && !her.includes(c.clientId));
   const state = (mine: Session[]) => {
@@ -76,6 +78,20 @@ export function Rail() {
             onClick: () => sel.kind !== "her" && st.set({ selection: { kind: "her" } }),
             children: <span className="rb-cat" aria-hidden="true"><Cat small /></span>,
             marks: herOn ? unread > 0 && <span className="rb-badge" aria-hidden="true">{unread}</span> : <span className="rb-off" aria-hidden="true" />,
+          })}
+        {owner &&
+          herOn &&
+          button({
+            label: progressLabel,
+            current: sel.kind === "progress",
+            onClick: () => st.set({ selection: { kind: "progress" } }),
+            children: <Icon name="pulse" />,
+            marks: (
+              <>
+                {progress.waits > 0 && <i className="rb-dot" aria-hidden="true" />}
+                {progress.running > 0 && <span className="rb-busy" aria-hidden="true"><i />{progress.running}</span>}
+              </>
+            ),
           })}
         {button({
           label: workLabel,

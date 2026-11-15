@@ -14732,6 +14732,13 @@
               "description": "Whether a leading `/name` is a command: a built-in one such as `/compact`, or a skill, whose instructions replace it. Front ends leave it out; messages between agents set false.",
               "type": "boolean"
             },
+            "id": {
+              "description": "The input's id, given by the front end: the `message_id` it has once it joins the history. A prompt whose id the session knows already, in its history or its queues, is taken once: sent again, it changes nothing. At most 64 of `A-Z a-z 0-9 _ -`; left out, the kernel gives one.",
+              "type": [
+                "string",
+                "null"
+              ]
+            },
             "input": {
               "items": {
                 "$ref": "#/definitions/UserContent"

@@ -8548,10 +8548,19 @@ type HerSendRequest struct {
 	// Files on this device to upload into the assistant's folder first; the
 	// message names where they landed.
 	LocalPaths []string `protobuf:"bytes,4,rep,name=local_paths,json=localPaths,proto3" json:"local_paths,omitempty"`
-	// Pictures pasted rather than picked from a file: kept on this device
-	// with the message, uploaded as files too, and deleted once it is
-	// delivered or dropped.
-	Pictures      []*HerPicture `protobuf:"bytes,5,rep,name=pictures,proto3" json:"pictures,omitempty"`
+	// Pictures, kept on this device with the message and deleted once it is
+	// delivered or dropped; they go to her as pictures (a kept one that is
+	// no image, as a file).
+	Pictures []*HerPicture `protobuf:"bytes,5,rep,name=pictures,proto3" json:"pictures,omitempty"`
+	// The message's id, given when it was sent (docs/her-sending.md): it is
+	// the outbox's and her's for it, so that a send tried again is kept and
+	// taken once. Left out (an older app), this device gives one.
+	Id string `protobuf:"bytes,6,opt,name=id,proto3" json:"id,omitempty"`
+	// The conversation the app has open on the machine, when it does: the
+	// message is delivered on it (session/op), else on a connection of its
+	// own.
+	ConnectionId  string `protobuf:"bytes,7,opt,name=connection_id,json=connectionId,proto3" json:"connection_id,omitempty"`
+	SessionId     string `protobuf:"bytes,8,opt,name=session_id,json=sessionId,proto3" json:"session_id,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -8621,6 +8630,27 @@ func (x *HerSendRequest) GetPictures() []*HerPicture {
 	return nil
 }
 
+func (x *HerSendRequest) GetId() string {
+	if x != nil {
+		return x.Id
+	}
+	return ""
+}
+
+func (x *HerSendRequest) GetConnectionId() string {
+	if x != nil {
+		return x.ConnectionId
+	}
+	return ""
+}
+
+func (x *HerSendRequest) GetSessionId() string {
+	if x != nil {
+		return x.SessionId
+	}
+	return ""
+}
+
 type HerPicture struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// Its name, as pasted ("image.png").
@@ -8676,7 +8706,8 @@ func (x *HerPicture) GetData() []byte {
 
 type HerSendResponse struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
-	// Delivered now; otherwise kept on this device as `waiting`.
+	// her took it; otherwise it is kept on this device as `waiting`, its
+	// error saying why it waits.
 	Delivered     bool        `protobuf:"varint,1,opt,name=delivered,proto3" json:"delivered,omitempty"`
 	Waiting       *HerWaiting `protobuf:"bytes,2,opt,name=waiting,proto3" json:"waiting,omitempty"`
 	unknownFields protoimpl.UnknownFields
@@ -10098,7 +10129,7 @@ const file_hermesh_local_v1_local_proto_rawDesc = "" +
 	"\x0eHerCallRequest\x12\x1d\n" +
 	"\n" +
 	"machine_id\x18\x01 \x01(\tR\tmachineId\x12/\n" +
-	"\x04call\x18\x02 \x01(\v2\x1b.hermesh.her.v1.CallRequestR\x04call\"\xb5\x01\n" +
+	"\x04call\x18\x02 \x01(\v2\x1b.hermesh.her.v1.CallRequestR\x04call\"\x89\x02\n" +
 	"\x0eHerSendRequest\x12\x1d\n" +
 	"\n" +
 	"machine_id\x18\x01 \x01(\tR\tmachineId\x12\x15\n" +
@@ -10106,7 +10137,11 @@ const file_hermesh_local_v1_local_proto_rawDesc = "" +
 	"\x04text\x18\x03 \x01(\tR\x04text\x12\x1f\n" +
 	"\vlocal_paths\x18\x04 \x03(\tR\n" +
 	"localPaths\x128\n" +
-	"\bpictures\x18\x05 \x03(\v2\x1c.hermesh.local.v1.HerPictureR\bpictures\"4\n" +
+	"\bpictures\x18\x05 \x03(\v2\x1c.hermesh.local.v1.HerPictureR\bpictures\x12\x0e\n" +
+	"\x02id\x18\x06 \x01(\tR\x02id\x12#\n" +
+	"\rconnection_id\x18\a \x01(\tR\fconnectionId\x12\x1d\n" +
+	"\n" +
+	"session_id\x18\b \x01(\tR\tsessionId\"4\n" +
 	"\n" +
 	"HerPicture\x12\x12\n" +
 	"\x04name\x18\x01 \x01(\tR\x04name\x12\x12\n" +
