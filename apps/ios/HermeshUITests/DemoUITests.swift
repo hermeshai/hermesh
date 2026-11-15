@@ -86,6 +86,42 @@ final class DemoUITests: XCTestCase {
         XCTAssertTrue(app.buttons["start-new"].waitForExistence(timeout: 10))
     }
 
+    /// Haptics (Apple's HIG, Playing haptics), as the log the app keeps under -HermeshHapticLog has them: a question
+    /// already there when its page opens plays none; the answer taken plays success, and so does a pairing approved.
+    func testHaptics() {
+        app.terminate()
+        app.launchArguments += ["-HermeshHapticLog"]
+        app.launch()
+        tap("try-demo")
+        tap("run-demo-task")
+        XCTAssertTrue(app.staticTexts["Which greeting should the sample app show?"].waitForExistence(timeout: 10))
+        sleep(2)
+        played("")
+        tap("Welcome aboard!")
+        tap("answer")
+        played("success")
+        backToOverview()
+        tap("verify-pairing")
+        tap("scope-projects")
+        let all = app.switches["All projects (including ones added later)"]
+        XCTAssertTrue(all.waitForExistence(timeout: 10))
+        all.switches.firstMatch.exists ? all.switches.firstMatch.tap() : all.tap()
+        back()
+        tap("approve")
+        XCTAssertTrue(app.descendants(matching: .any)["client-connected"].waitForExistence(timeout: 10))
+        played("success success")
+        tap("exit-demo")
+    }
+
+    /// The haptics played so far, by name, in order.
+    private func played(_ names: String, file: StaticString = #filePath, line: UInt = #line) {
+        let log = app.descendants(matching: .any).matching(identifier: "haptics").firstMatch
+        let heard = XCTNSPredicateExpectation(predicate: NSPredicate(format: "value == %@", names), object: log)
+        if XCTWaiter().wait(for: [heard], timeout: 5) != .completed {
+            XCTFail("haptics: \(String(describing: log.value)), not \(names)", file: file, line: line)
+        }
+    }
+
     func testSearch() {
         tap("try-demo")
         tap("menu"); tap("search")

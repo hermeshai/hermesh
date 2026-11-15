@@ -1,0 +1,873 @@
+<!doctype html>
+<html lang="zh-CN" data-theme="light">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Her 连接器原型</title>
+<style>
+/* ---------- tokens ---------- */
+:root{
+  --font-ios:-apple-system,BlinkMacSystemFont,"SF Pro Text","PingFang SC",system-ui,sans-serif;
+  --font-mac:"Google Sans Flex","Google Sans",system-ui,-apple-system,BlinkMacSystemFont,"PingFang SC",sans-serif;
+  --mono:ui-monospace,"SF Mono",Menlo,Monaco,monospace;
+}
+[data-theme=light]{
+  --page:#e8eaf0;--page-fg:#1b1c22;--page-fg2:#62646f;--page-card:#fff;--page-bd:rgba(0,0,0,.08);
+  /* iOS */
+  --i-bg:#f2f2f7;--i-card:#fff;--i-l1:#000;--i-l2:rgba(60,60,67,.6);--i-l3:rgba(60,60,67,.3);--i-sep:rgba(60,60,67,.18);
+  --i-fill:rgba(118,118,128,.12);--i-tint:#007aff;--i-green:#34c759;--i-orange:#ff9500;--i-red:#ff3b30;
+  --i-glass:rgba(255,255,255,.72);--i-glass-bd:rgba(0,0,0,.06);--i-bub:#e9e9eb;--i-me:#007aff;--i-sheet:#f2f2f7;--i-pop:rgba(250,250,252,.92);
+  /* Mac (apps/desktop app.css) */
+  --win:#fff;--win2:#f4f4f7;--win3:#ebebf0;--side:#f4f4f7;
+  --l1:rgba(0,0,0,.86);--l2:rgba(0,0,0,.54);--l3:rgba(0,0,0,.32);--l4:rgba(0,0,0,.14);
+  --sep:rgba(0,0,0,.075);--fill:rgba(0,0,0,.045);--fill2:rgba(0,0,0,.075);--fill3:rgba(0,0,0,.12);
+  --accent:#3d5bff;--accent-bg:rgba(61,91,255,.10);--ok:#17924f;--warn:#e67e0a;--danger:#d7333f;
+  --btn:#fff;--btn-sh:0 0 0 .5px rgba(0,0,0,.14),0 1px 1.5px rgba(0,0,0,.08);
+  --field:#fff;--field-bd:rgba(0,0,0,.16);--menu:rgba(248,248,250,.94);--menu-bd:rgba(0,0,0,.10);
+  --glass:rgba(255,255,255,.72);--glass-sh:0 0 0 .5px rgba(0,0,0,.10),0 2px 8px rgba(0,0,0,.08);
+  --shadow-win:0 0 0 .5px rgba(0,0,0,.20),0 24px 70px rgba(10,20,50,.30),0 8px 22px rgba(10,20,50,.14);
+  --scrim:rgba(0,0,0,.22);--bub:rgba(0,0,0,.86);--bub-fg:#fff;--seg-on:#fff;
+}
+[data-theme=dark]{
+  --page:#0d0e12;--page-fg:#ececf1;--page-fg2:#9a9ca8;--page-card:#1a1b20;--page-bd:rgba(255,255,255,.08);
+  --i-bg:#000;--i-card:#1c1c1e;--i-l1:#fff;--i-l2:rgba(235,235,245,.6);--i-l3:rgba(235,235,245,.3);--i-sep:rgba(84,84,88,.55);
+  --i-fill:rgba(118,118,128,.24);--i-tint:#0a84ff;--i-green:#30d158;--i-orange:#ff9f0a;--i-red:#ff453a;
+  --i-glass:rgba(40,40,44,.7);--i-glass-bd:rgba(255,255,255,.08);--i-bub:#26252a;--i-me:#0a84ff;--i-sheet:#1c1c1e;--i-pop:rgba(44,44,48,.94);
+  --win:#1e1e21;--win2:#29292d;--win3:#323237;--side:#25252a;
+  --l1:rgba(255,255,255,.88);--l2:rgba(255,255,255,.55);--l3:rgba(255,255,255,.32);--l4:rgba(255,255,255,.14);
+  --sep:rgba(255,255,255,.09);--fill:rgba(255,255,255,.05);--fill2:rgba(255,255,255,.085);--fill3:rgba(255,255,255,.14);
+  --accent:#6f87ff;--accent-bg:rgba(91,121,255,.16);--ok:#3fcf86;--warn:#ffab3d;--danger:#ff6670;
+  --btn:rgba(255,255,255,.12);--btn-sh:0 0 0 .5px rgba(255,255,255,.08);
+  --field:rgba(255,255,255,.06);--field-bd:rgba(255,255,255,.16);--menu:rgba(44,44,48,.96);--menu-bd:rgba(255,255,255,.12);
+  --glass:rgba(60,60,66,.62);--glass-sh:0 0 0 .5px rgba(255,255,255,.10),0 2px 10px rgba(0,0,0,.3);
+  --shadow-win:0 0 0 .5px rgba(255,255,255,.14),0 24px 70px rgba(0,0,0,.6),0 8px 22px rgba(0,0,0,.35);
+  --scrim:rgba(0,0,0,.4);--bub:rgba(255,255,255,.09);--bub-fg:rgba(255,255,255,.88);--seg-on:rgba(255,255,255,.22);
+}
+*{box-sizing:border-box}
+html,body{margin:0}
+body{background:var(--page);color:var(--page-fg);font:14px/1.5 var(--font-mac);min-height:100vh;padding-bottom:120px}
+button{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:pointer}
+.top{max-width:1560px;margin:0 auto;padding:22px 24px 6px;display:flex;align-items:baseline;gap:14px;flex-wrap:wrap}
+.top h1{font-size:19px;margin:0;font-weight:650}
+.top span{color:var(--page-fg2);font-size:13px}
+.wrap{max-width:1560px;margin:0 auto;padding:10px 24px;display:flex;gap:28px;align-items:flex-start;justify-content:center;flex-wrap:wrap}
+.notes{width:330px;flex:none;background:var(--page-card);border:1px solid var(--page-bd);border-radius:14px;padding:16px 18px;font-size:13px;line-height:1.65}
+.notes h3{margin:0 0 6px;font-size:14px}
+.notes ul{margin:6px 0 0;padding-left:18px}
+.notes li{margin:4px 0}
+.notes .tag{display:inline-block;font-size:11px;padding:1px 7px;border-radius:99px;background:var(--accent-bg);color:var(--accent);margin-right:4px}
+.notes .q{margin-top:12px;padding-top:10px;border-top:1px solid var(--page-bd);color:var(--page-fg2)}
+/* control bar */
+.ctl{position:fixed;left:0;right:0;bottom:0;background:var(--page-card);border-top:1px solid var(--page-bd);padding:9px 16px;display:flex;flex-wrap:wrap;gap:6px 18px;align-items:center;font-size:12px;z-index:50}
+.ctl .g{display:flex;gap:4px;align-items:center;flex-wrap:wrap}
+.ctl .g b{color:var(--page-fg2);font-weight:500;margin-right:4px}
+.ctl button{padding:3px 9px;border-radius:7px;background:var(--fill);color:var(--page-fg)}
+.ctl button.on{background:var(--accent);color:#fff}
+
+/* ================= iPhone ================= */
+.phone{width:393px;height:852px;border-radius:56px;padding:12px;background:#111;box-shadow:0 30px 80px rgba(10,20,50,.35),inset 0 0 0 2px #333;flex:none}
+.scr{position:relative;width:100%;height:100%;border-radius:45px;overflow:hidden;background:var(--i-bg);color:var(--i-l1);font:17px/1.3 var(--font-ios);letter-spacing:-.2px}
+.sb{position:absolute;top:0;left:0;right:0;height:50px;display:flex;justify-content:space-between;align-items:center;padding:6px 34px 0 40px;font-size:16px;font-weight:600;z-index:30;pointer-events:none}
+.island{position:absolute;top:11px;left:50%;transform:translateX(-50%);width:122px;height:35px;border-radius:20px;background:#000;z-index:31}
+.ibody{position:absolute;inset:0;padding-top:50px;display:flex;flex-direction:column}
+.iscroll{flex:1;overflow-y:auto;overflow-x:hidden;scrollbar-width:none}
+.iscroll::-webkit-scrollbar{display:none}
+.home{position:absolute;bottom:8px;left:50%;transform:translateX(-50%);width:134px;height:5px;border-radius:3px;background:var(--i-l1);opacity:.85;z-index:40}
+/* nav */
+.nav{height:44px;display:flex;align-items:center;justify-content:space-between;padding:0 8px;flex:none;position:relative}
+.nav .t{position:absolute;left:50%;transform:translateX(-50%);font-weight:600;font-size:17px;white-space:nowrap}
+.nav .back{color:var(--i-tint);display:flex;align-items:center;gap:2px;padding:0 8px;height:44px}
+.nav .back svg{width:13px;height:21px}
+.nav .act{color:var(--i-tint);padding:0 10px;height:44px;display:flex;align-items:center;font-size:17px}
+.nav .act.b{font-weight:600}
+.nav .act[disabled]{opacity:.35}
+.glassbtn{width:44px;height:44px;border-radius:22px;background:var(--i-glass);backdrop-filter:blur(20px);box-shadow:0 0 0 .5px var(--i-glass-bd),0 2px 8px rgba(0,0,0,.06);display:flex;align-items:center;justify-content:center;color:var(--i-l1);position:relative}
+.glassbtn svg{width:20px;height:20px}
+.glassbtn .dot{position:absolute;top:9px;right:9px;width:8px;height:8px;border-radius:4px;background:var(--i-orange)}
+.lt{font-size:34px;font-weight:700;letter-spacing:.3px;padding:2px 20px 10px}
+/* grouped list */
+.sec{margin:0 16px 22px}
+.sec .hd{font-size:13px;color:var(--i-l2);text-transform:none;padding:0 16px 6px}
+.sec .ft{font-size:13px;color:var(--i-l2);padding:6px 16px 0;line-height:1.38}
+.card{background:var(--i-card);border-radius:12px;overflow:hidden}
+.row{display:flex;align-items:center;gap:12px;min-height:44px;padding:0 16px;position:relative;width:100%;text-align:left}
+.row+.row::before{content:"";position:absolute;top:0;right:0;left:16px;border-top:.5px solid var(--i-sep)}
+.row.ic+.row::before,.row.ic+.row.ic::before{left:60px}
+.row .k{flex:1;min-width:0}
+.row .v{color:var(--i-l2);white-space:nowrap}
+.row .chev{color:var(--i-l3);font-weight:600;font-size:15px}
+.row.tall{min-height:60px;padding-top:8px;padding-bottom:8px}
+.row .sub{font-size:13px;color:var(--i-l2);margin-top:1px;display:flex;align-items:center;gap:5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.row.tap:active{background:var(--i-fill)}
+.row .bl{color:var(--i-tint)}
+.row .rd{color:var(--i-red)}
+.seg{display:flex;background:var(--i-fill);border-radius:9px;padding:2px;margin:0 16px 16px}
+.seg button{flex:1;height:28px;border-radius:7px;font-size:13px;font-weight:500}
+.seg button.on{background:var(--i-card);box-shadow:0 2px 6px rgba(0,0,0,.12),0 0 0 .5px rgba(0,0,0,.04)}
+[data-theme=dark] .seg button.on{background:#636366}
+.sw{width:51px;height:31px;border-radius:16px;background:var(--i-fill);position:relative;flex:none;transition:background .2s}
+.sw::after{content:"";position:absolute;top:2px;left:2px;width:27px;height:27px;border-radius:14px;background:#fff;box-shadow:0 3px 8px rgba(0,0,0,.15),0 0 0 .5px rgba(0,0,0,.04);transition:transform .2s}
+.sw.on{background:var(--i-green)}
+.sw.on::after{transform:translateX(20px)}
+.sw.dis{opacity:.45}
+.logo{flex:none;display:flex;align-items:center;justify-content:center;font-weight:700;color:#fff;letter-spacing:-.3px}
+.dotc{width:7px;height:7px;border-radius:4px;flex:none}
+.pillbtn{font-size:13px;font-weight:600;padding:4px 12px;border-radius:99px;background:var(--i-fill);color:var(--i-tint);white-space:nowrap}
+.pillbtn.fill{background:var(--i-tint);color:#fff}
+.banner{margin:0 16px 16px;padding:11px 14px;border-radius:12px;font-size:14px;line-height:1.4;display:flex;gap:10px;align-items:center}
+.banner.warn{background:rgba(255,149,0,.13)}
+.banner.err{background:rgba(255,59,48,.11)}
+.banner.info{background:var(--i-fill)}
+.banner .k{flex:1}
+/* her page */
+.herhead{position:absolute;top:50px;left:0;right:0;z-index:5;padding:0 16px;height:126px}
+.herhead .lr{display:flex;justify-content:space-between}
+.herhead .r{display:flex;gap:10px}
+.av{border-radius:50%;background:radial-gradient(circle at 35% 30%,#ffd6e7,#ff7eb6 40%,#7b61ff 100%);box-shadow:0 4px 18px rgba(123,97,255,.35)}
+.herhead .mid{position:absolute;left:50%;top:0;transform:translateX(-50%);display:flex;flex-direction:column;align-items:center}
+.htag{margin-top:-16px;height:36px;padding:0 14px;border-radius:18px;background:var(--i-glass);backdrop-filter:blur(20px);box-shadow:0 0 0 .5px var(--i-glass-bd),0 2px 8px rgba(0,0,0,.08);display:flex;align-items:center;gap:6px;font-weight:600;font-size:16px}
+.htag small{font-weight:500;color:var(--i-l2);font-size:13px}
+.conv{padding:136px 16px 120px;display:flex;flex-direction:column;gap:10px;font-size:16px;line-height:1.4}
+.me{align-self:flex-end;max-width:78%;background:var(--i-me);color:#fff;padding:8px 13px;border-radius:19px}
+.her{max-width:92%}
+.time{align-self:center;font-size:12px;color:var(--i-l2);margin:4px 0}
+.scard{background:var(--i-card);border-radius:16px;padding:14px;box-shadow:0 0 0 .5px var(--i-sep);display:flex;flex-direction:column;gap:10px}
+.scard .h{display:flex;gap:10px;align-items:center}
+.scard .h b{font-size:16px}
+.scard .h small{display:block;color:var(--i-l2);font-size:13px;font-weight:400}
+.scard .f{font-size:13px;color:var(--i-l2);background:var(--i-fill);border-radius:10px;padding:8px 10px;line-height:1.5}
+.scard .f code{font-family:var(--mono);font-size:12px;color:var(--i-l1)}
+.scard .bs{display:flex;gap:8px}
+.scard .bs button{flex:1;height:40px;border-radius:12px;font-weight:600;font-size:15px;background:var(--i-fill)}
+.scard .bs button.p{background:var(--i-tint);color:#fff}
+.scard.done{flex-direction:row;align-items:center;padding:11px 14px}
+.composer{position:absolute;left:12px;right:12px;bottom:28px;display:flex;gap:8px;align-items:flex-end;z-index:8}
+.composer .in{flex:1;min-height:44px;border-radius:22px;background:var(--i-glass);backdrop-filter:blur(20px);box-shadow:0 0 0 .5px var(--i-glass-bd),0 2px 10px rgba(0,0,0,.08);display:flex;align-items:center;padding:0 16px;color:var(--i-l3);font-size:16px}
+.pop{position:absolute;left:12px;bottom:80px;width:250px;border-radius:22px;background:var(--i-pop);backdrop-filter:blur(30px);box-shadow:0 10px 40px rgba(0,0,0,.2),0 0 0 .5px var(--i-glass-bd);z-index:20;overflow:hidden;padding:6px 0}
+.pop .pi{display:flex;align-items:center;gap:12px;padding:11px 18px;width:100%;text-align:left;font-size:16px}
+.pop .pi svg{width:20px;height:20px;flex:none;color:var(--i-l1)}
+.pop .pi .k{flex:1}
+.pop .pi small{color:var(--i-l2);font-size:14px}
+.pop hr{border:0;border-top:.5px solid var(--i-sep);margin:4px 0}
+.scrim{position:absolute;inset:0;background:rgba(0,0,0,.18);z-index:18}
+.isheet{position:absolute;left:0;right:0;bottom:0;background:var(--i-sheet);border-radius:20px 20px 0 0;z-index:25;display:flex;flex-direction:column;box-shadow:0 -10px 40px rgba(0,0,0,.18)}
+.isheet.full{top:56px}
+.isheet.half{height:560px}
+.grab{width:36px;height:5px;border-radius:3px;background:var(--i-l3);margin:6px auto 0;flex:none}
+.field{display:flex;flex-direction:column;gap:3px;padding:10px 16px}
+.field label{font-size:13px;color:var(--i-l2)}
+.field .inp{font-size:17px;min-height:24px;outline:none}
+.field .inp.mono{font-family:var(--mono);font-size:15px;word-break:break-all}
+.field .ph{color:var(--i-l3)}
+.recog{font-size:13px;color:var(--i-tint);padding:6px 16px 0;display:flex;gap:6px;align-items:center}
+.steps .row{min-height:48px}
+.spin{width:16px;height:16px;border-radius:50%;border:2px solid var(--i-l3);border-top-color:var(--i-tint);animation:sp .8s linear infinite;flex:none}
+@keyframes sp{to{transform:rotate(360deg)}}
+.ok{color:var(--i-green);font-weight:700}
+.chip{font-size:12px;padding:1px 7px;border-radius:6px;background:var(--i-fill);color:var(--i-l2);margin-left:6px;vertical-align:1px}
+.chip.det{background:rgba(0,122,255,.12);color:var(--i-tint)}
+.bigbtn{display:block;margin:0 16px 12px;height:50px;border-radius:14px;background:var(--i-tint);color:#fff;font-weight:600;font-size:17px;width:calc(100% - 32px)}
+.bigbtn.sec2{background:var(--i-fill);color:var(--i-tint)}
+.center{display:flex;flex-direction:column;align-items:center;text-align:center;padding:40px 30px 20px;gap:10px}
+.center h2{margin:6px 0 0;font-size:22px}
+.center p{margin:0;color:var(--i-l2);font-size:15px;line-height:1.45}
+.tool{padding:9px 16px;position:relative}
+.tool+.tool::before{content:"";position:absolute;top:0;right:0;left:16px;border-top:.5px solid var(--i-sep)}
+.tool b{font-family:var(--mono);font-size:13px;font-weight:500}
+.tool div{font-size:13px;color:var(--i-l2);margin-top:1px}
+.facts{display:flex;gap:0;margin:0 16px 18px;background:var(--i-card);border-radius:12px}
+.facts>div{flex:1;padding:10px 12px;min-width:0}
+.facts>div+div{border-left:.5px solid var(--i-sep)}
+.facts small{display:block;font-size:12px;color:var(--i-l2)}
+.facts span{font-size:14px;display:flex;align-items:center;gap:5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.dhead{display:flex;flex-direction:column;align-items:center;gap:8px;padding:4px 16px 18px}
+.dhead h2{margin:0;font-size:24px}
+.ctxmenu{position:absolute;top:96px;right:12px;width:230px;border-radius:14px;background:var(--i-pop);backdrop-filter:blur(30px);box-shadow:0 10px 40px rgba(0,0,0,.25);z-index:20;overflow:hidden}
+.ctxmenu button{display:flex;justify-content:space-between;width:100%;padding:11px 16px;font-size:16px;text-align:left}
+.ctxmenu button+button{border-top:.5px solid var(--i-sep)}
+.ctxmenu hr{border:0;height:8px;background:var(--i-sep);opacity:.4;margin:0}
+.toast{position:absolute;left:50%;transform:translateX(-50%);bottom:96px;background:rgba(30,30,32,.92);color:#fff;font-size:14px;padding:10px 16px;border-radius:14px;z-index:60;max-width:330px;text-align:center;line-height:1.35;animation:tin .25s ease}
+@keyframes tin{from{opacity:0;transform:translate(-50%,8px)}}
+.disc{display:flex;gap:12px;align-items:center;padding:12px 16px;position:relative}
+.disc+.disc::before{content:"";position:absolute;top:0;right:0;left:68px;border-top:.5px solid var(--i-sep)}
+.disc .k{flex:1;min-width:0}
+.disc .k div{font-size:13px;color:var(--i-l2);line-height:1.35;margin-top:1px}
+.addc{width:30px;height:30px;border-radius:15px;background:var(--i-fill);color:var(--i-tint);display:flex;align-items:center;justify-content:center;font-size:22px;font-weight:400;flex:none}
+.addc.done{color:var(--i-green);font-size:16px;font-weight:700}
+.offline .card,.offline .facts{opacity:.55}
+
+/* ================= Mac ================= */
+.mac{width:1120px;height:760px;border-radius:12px;overflow:hidden;box-shadow:var(--shadow-win);display:flex;background:var(--win);color:var(--l1);font:13px/1.45 var(--font-mac);flex:none;position:relative}
+.mside{width:220px;background:var(--side);border-right:.5px solid var(--sep);padding:44px 10px 10px;flex:none;position:relative}
+.lights{position:absolute;top:16px;left:16px;display:flex;gap:8px}
+.lights i{width:12px;height:12px;border-radius:6px;background:#ff5f57}
+.lights i:nth-child(2){background:#febc2e}.lights i:nth-child(3){background:#28c840}
+.mside .it{display:flex;align-items:center;gap:8px;height:30px;padding:0 10px;border-radius:7px;color:var(--l1);width:100%;text-align:left}
+.mside .it.on{background:var(--fill2)}
+.mside .it svg{width:16px;height:16px;color:var(--l2)}
+.mside .gh{font-size:11.5px;color:var(--l3);padding:14px 10px 4px}
+.mside .ses{height:28px;padding:0 10px;display:flex;align-items:center;gap:8px;color:var(--l2);white-space:nowrap;overflow:hidden}
+.mside .ses i{width:6px;height:6px;border-radius:3px;background:var(--ok);flex:none}
+.mmain{flex:1;position:relative;display:flex;flex-direction:column;min-width:0}
+.mtop{height:96px;display:flex;align-items:flex-start;justify-content:flex-end;padding:12px 14px;gap:6px;position:relative;flex:none}
+.mtop .mid{position:absolute;left:50%;top:10px;transform:translateX(-50%);display:flex;flex-direction:column;align-items:center}
+.mtag{margin-top:-12px;height:28px;padding:0 12px;border-radius:14px;background:var(--glass);box-shadow:var(--glass-sh);display:flex;align-items:center;gap:6px;font-weight:550;backdrop-filter:blur(16px)}
+.mtag small{color:var(--l2);font-weight:400}
+.ib{width:30px;height:30px;border-radius:8px;display:flex;align-items:center;justify-content:center;color:var(--l2);position:relative}
+.ib:hover,.ib.on{background:var(--fill2);color:var(--l1)}
+.ib svg{width:17px;height:17px}
+.mconv{flex:1;overflow:auto;padding:10px 0 130px}
+.mconv .col{max-width:680px;margin:0 auto;display:flex;flex-direction:column;gap:12px;font-size:14.5px;line-height:1.55}
+.mconv .me{background:var(--bub);color:var(--bub-fg);border-radius:16px;padding:8px 14px;font-size:14.5px}
+.mconv .time{color:var(--l3)}
+.mcard{border-radius:12px;box-shadow:0 0 0 .5px var(--field-bd);padding:14px;display:flex;flex-direction:column;gap:10px;background:var(--win);max-width:520px}
+.mcard .h{display:flex;gap:10px;align-items:center}
+.mcard .h small{display:block;color:var(--l2);font-size:12.5px}
+.mcard .f{font-size:12.5px;color:var(--l2);background:var(--fill);border-radius:8px;padding:8px 10px}
+.mcard .f code{font-family:var(--mono);color:var(--l1)}
+.mcard .bs{display:flex;gap:8px;justify-content:flex-end}
+.mbtn{height:28px;padding:0 12px;border-radius:7px;background:var(--btn);box-shadow:var(--btn-sh);font-weight:500;display:inline-flex;align-items:center;gap:5px;white-space:nowrap}
+.mbtn.p{background:var(--accent);color:#fff;box-shadow:none}
+.mbtn.sm{height:24px;padding:0 9px;font-size:12px}
+.mbtn[disabled]{opacity:.45}
+.mcomp{position:absolute;left:50%;transform:translateX(-50%);bottom:18px;width:680px;border-radius:18px;background:var(--glass);box-shadow:var(--glass-sh);backdrop-filter:blur(20px);padding:12px 12px 10px 16px;z-index:8}
+.mcomp .ph{color:var(--l3);font-size:14.5px;height:24px}
+.mcomp .bar{display:flex;justify-content:space-between;align-items:center;margin-top:6px}
+.mcomp .bar .l{display:flex;gap:4px;align-items:center;color:var(--l2);font-size:12.5px}
+.send{width:30px;height:30px;border-radius:15px;background:var(--l4);display:flex;align-items:center;justify-content:center;color:#fff}
+.mmenu{position:absolute;background:var(--menu);backdrop-filter:blur(24px);border-radius:10px;box-shadow:0 0 0 .5px var(--menu-bd),0 10px 32px rgba(0,0,0,.18);padding:5px;z-index:30;font-size:13px;min-width:220px}
+.mmenu .mi{display:flex;align-items:center;gap:8px;height:28px;padding:0 9px;border-radius:6px;width:100%;text-align:left;white-space:nowrap}
+.mmenu .mi:hover,.mmenu .mi.hov{background:var(--accent);color:#fff}
+.mmenu .mi:hover small,.mmenu .mi.hov small{color:rgba(255,255,255,.8)}
+.mmenu .mi .k{flex:1}
+.mmenu .mi small{color:var(--l3)}
+.mmenu .mi svg{width:15px;height:15px}
+.mmenu hr{border:0;border-top:.5px solid var(--sep);margin:4px 6px}
+.mmenu .mi.danger{color:var(--danger)}
+.msw{width:28px;height:16px;border-radius:8px;background:var(--fill3);position:relative;flex:none;transition:background .15s}
+.msw::after{content:"";position:absolute;top:2px;left:2px;width:12px;height:12px;border-radius:6px;background:#fff;box-shadow:0 1px 2px rgba(0,0,0,.2);transition:transform .15s}
+.msw.on{background:var(--accent)}
+.msw.on::after{transform:translateX(12px)}
+.msw.dis{opacity:.45}
+.mpanel{position:absolute;top:0;right:0;bottom:0;width:340px;background:var(--win);border-left:.5px solid var(--sep);box-shadow:-10px 0 30px rgba(0,0,0,.06);z-index:12;display:flex;flex-direction:column}
+.mpanel .ph{height:52px;display:flex;align-items:center;justify-content:space-between;padding:0 14px 0 18px;font-weight:600;font-size:14px;flex:none}
+.mpanel .pb{flex:1;overflow:auto;padding:0 18px 20px}
+.fgroup{background:var(--win2);border-radius:10px;margin-bottom:6px}
+[data-theme=light] .fgroup{background:#f6f6f8}
+.frow{display:flex;align-items:center;justify-content:space-between;gap:10px;min-height:38px;padding:4px 12px;position:relative;width:100%;text-align:left}
+.frow+.frow::before{content:"";position:absolute;top:0;left:12px;right:12px;border-top:.5px solid var(--sep)}
+.frow .v{color:var(--l2);display:flex;align-items:center;gap:6px}
+.frow.lk:hover{background:var(--fill);border-radius:10px}
+.fnote{font-size:12px;color:var(--l2);margin:0 4px 16px;line-height:1.5}
+.fhd{font-size:12px;color:var(--l2);margin:14px 4px 6px;font-weight:500}
+.popup{height:24px;padding:0 8px;border-radius:6px;background:var(--btn);box-shadow:var(--btn-sh);display:inline-flex;align-items:center;gap:6px;font-size:12.5px}
+.mseg{display:inline-flex;background:var(--fill2);border-radius:7px;padding:2px}
+.mseg button{height:22px;padding:0 10px;border-radius:5px;font-size:12.5px;color:var(--l2)}
+.mseg button.on{background:var(--seg-on);color:var(--l1);box-shadow:0 0 0 .5px rgba(0,0,0,.06),0 1px 2px rgba(0,0,0,.08)}
+.mpage{flex:1;overflow:auto;padding:4px 40px 40px}
+.mpage .in{max-width:852px;margin:0 auto}
+.mback{color:var(--l2);display:inline-flex;align-items:center;gap:4px;height:26px;padding:0 6px;margin-left:-6px;border-radius:6px}
+.mback:hover{background:var(--fill)}
+.mh1{display:flex;align-items:center;justify-content:space-between;margin:10px 0 14px}
+.mh1 h1{font-size:26px;margin:0;font-weight:600;letter-spacing:-.2px}
+.mh1 .sub{color:var(--l2);font-size:12.5px;margin-top:2px}
+.ghd{font-size:12px;color:var(--l2);margin:18px 0 4px;display:flex;gap:6px}
+.ghd span{color:var(--l3)}
+.czrow{display:flex;align-items:center;gap:12px;padding:10px 0;position:relative;cursor:pointer}
+.czrow+.czrow::before{content:"";position:absolute;top:0;left:0;right:0;border-top:.5px solid var(--sep)}
+.czrow:hover{background:var(--fill);border-radius:10px;margin:0 -12px;padding:10px 12px}
+.czrow:hover::before,.czrow:hover+.czrow::before{opacity:0}
+.czrow .k{flex:1;min-width:0}
+.czrow .k b{font-weight:550}
+.czrow .k div{font-size:12px;color:var(--l3);font-family:var(--mono);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.czrow .st{font-size:12px;display:flex;align-items:center;gap:5px;white-space:nowrap}
+.czrow .st a{color:var(--accent);cursor:pointer}
+.mtagx{font-size:11px;padding:0 6px;border-radius:5px;background:var(--fill2);color:var(--l2);margin-left:6px;font-weight:400}
+.dgrid{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.dcard{border-radius:12px;box-shadow:0 0 0 .5px var(--field-bd);padding:14px;display:flex;gap:12px;align-items:flex-start}
+.dcard .k{flex:1}
+.dcard .k div{font-size:12.5px;color:var(--l2);margin-top:2px;line-height:1.45}
+.dcard .chips{margin-top:6px;display:flex;gap:4px}
+.mchip{font-size:11px;padding:0 6px;border-radius:5px;background:var(--fill2);color:var(--l2)}
+.mchip.rec{background:var(--accent-bg);color:var(--accent)}
+.plus{width:26px;height:26px;border-radius:13px;box-shadow:var(--btn-sh);background:var(--btn);display:flex;align-items:center;justify-content:center;font-size:17px;color:var(--l1);flex:none}
+.plus.done{color:var(--ok);font-size:13px;font-weight:700}
+.mfacts{display:flex;gap:34px;margin:21px 0}
+.mfacts small{display:block;font-size:12px;color:var(--l3)}
+.mfacts span{font-size:13px;display:flex;align-items:center;gap:5px}
+.mnote{border-radius:10px;padding:10px 14px;display:flex;align-items:center;gap:10px;margin-bottom:21px}
+.mnote .k{flex:1}
+.mnote.warn{background:rgba(230,126,10,.10)}
+.mnote.err{background:rgba(215,51,63,.09)}
+.mnote.info{background:var(--fill)}
+.mtools .t{display:grid;grid-template-columns:200px 1fr;gap:12px;padding:8px 0;border-top:.5px solid var(--sep)}
+.mtools .t b{font-family:var(--mono);font-weight:500;font-size:12.5px}
+.mtools .t div{color:var(--l2)}
+.mscrim{position:absolute;inset:0;background:var(--scrim);z-index:40;display:flex;align-items:center;justify-content:center}
+.msheet{width:560px;max-height:640px;background:var(--win);border-radius:14px;box-shadow:var(--shadow-win);display:flex;flex-direction:column;overflow:hidden}
+.msheet .sh{padding:18px 22px 6px;font-weight:600;font-size:15px}
+.msheet .sb2{padding:6px 22px 14px;overflow:auto;flex:1}
+.msheet .sf{padding:12px 22px;display:flex;justify-content:flex-end;gap:8px;border-top:.5px solid var(--sep)}
+.mfield{margin-bottom:12px}
+.mfield label{display:block;font-size:12px;color:var(--l2);margin-bottom:4px}
+.mfield .box{border-radius:7px;background:var(--field);box-shadow:0 0 0 .5px var(--field-bd);padding:6px 9px;min-height:30px}
+.mfield .box.mono{font-family:var(--mono);font-size:12.5px}
+.mfield .ph{color:var(--l3)}
+.mrecog{font-size:12px;color:var(--accent);margin-top:5px}
+.mstep{display:flex;align-items:center;gap:10px;height:34px;border-top:.5px solid var(--sep)}
+.mstep:first-child{border-top:0}
+.mstep .k{flex:1}
+.mstep .r{color:var(--l2);font-family:var(--mono);font-size:12px}
+.mspin{width:14px;height:14px;border-radius:50%;border:2px solid var(--l4);border-top-color:var(--accent);animation:sp .8s linear infinite}
+.mok{color:var(--ok);font-weight:700;width:14px;text-align:center}
+.mtoast{position:absolute;left:50%;transform:translateX(-50%);bottom:110px;background:rgba(30,30,34,.94);color:#fff;font-size:13px;padding:8px 14px;border-radius:9px;z-index:60;animation:tin .25s ease}
+[data-theme=dark] .mtoast,[data-theme=dark] .toast{background:#4a4a52}
+.moffline .czrow,.moffline .mfacts,.moffline .mtools{opacity:.55}
+</style>
+</head>
+<body>
+<div class="top"><h1>Her 连接器 · 原型</h1><span>管理页沿用 FinXWork 的设计（我的 / 发现 / 添加 / 详情），入口按 Her 这个 Bot 重新放。底部切换平台、屏幕和情况；页面里的按钮也能点。</span></div>
+<div class="wrap"><div id="stage"></div><aside class="notes" id="notes"></aside></div>
+<div class="ctl" id="ctl"></div>
+
+<script>
+/* ---------------- data ---------------- */
+const BASE = [
+  {id:"github",name:"GitHub",mono:"GH",bg:"#1f2328",kind:"remote",addr:"https://api.githubcopilot.com/mcp/",auth:"token",status:"ok",tools:26,on:true,checked:"3 分钟前",routines:["每天早上的 PR 汇总"],
+   tl:[["get_me","你的 GitHub 账号"],["list_pull_requests","列出仓库的 PR"],["get_pull_request","读一个 PR 的详情和改动"],["search_issues","按条件搜索 Issue 和 PR"],["create_issue","新建 Issue"],["add_issue_comment","在 Issue 或 PR 下评论"],["search_code","在代码里搜索"],["list_notifications","你的通知"]]},
+  {id:"notion",name:"Notion",mono:"N",bg:"#ffffff",fg:"#111",ring:true,kind:"remote",addr:"https://mcp.notion.com/mcp",auth:"oauth",account:"notion.com",status:"ok",tools:14,on:true,checked:"1 小时前",routines:[],
+   tl:[["notion-search","搜索页面和数据库"],["notion-fetch","读一个页面"],["notion-create-pages","新建页面"],["notion-update-page","修改页面"],["notion-create-comment","添加评论"]]},
+  {id:"linear",name:"Linear",mono:"L",bg:"linear-gradient(135deg,#5e6ad2,#8b5cf6)",kind:"remote",addr:"https://mcp.linear.app/mcp",auth:"oauth",account:"linear.app",status:"ok",tools:22,on:true,checked:"今天 09:12",routines:["周五的迭代小结"],
+   tl:[["list_issues","列出 Issue"],["get_issue","读一个 Issue"],["create_issue","新建 Issue"],["update_issue","修改 Issue"],["list_projects","列出项目"],["list_cycles","列出周期"]]},
+  {id:"feishu",name:"飞书",mono:"飞",bg:"#3370ff",kind:"managed",addr:"飞书 CLI · 随 Her 安装",auth:"managed",account:"飞书账号",status:"ok",tools:9,on:true,checked:"昨天",routines:[],
+   tl:[["lark_message_send","发消息"],["lark_doc_read","读文档"],["lark_calendar_list","查日程"]]},
+  {id:"playwright",name:"playwright",mono:"PW",bg:"#2ead33",kind:"command",addr:"npx @playwright/mcp@latest",auth:"none",status:"ok",tools:21,on:false,checked:"3 天前",routines:[],
+   tl:[["browser_navigate","打开网址"],["browser_snapshot","读页面结构"],["browser_click","点击"]]},
+];
+const SENTRY = {id:"sentry",name:"Sentry",mono:"S",bg:"#362d59",kind:"remote",addr:"https://mcp.sentry.dev/mcp",auth:"oauth",account:"sentry.io",status:"ok",tools:18,on:true,checked:"刚刚",routines:[],
+  tl:[["search_issues","搜索错误"],["get_issue_details","读一个错误的详情和堆栈"],["find_releases","列出发布"]]};
+const addSentry=()=>{if(!byId("sentry"))C.push({...SENTRY});};
+const CATALOG = [
+  {g:"开发",items:[
+    {id:"github",name:"GitHub",mono:"GH",bg:"#1f2328",desc:"仓库、Issue、PR 和代码搜索",ways:["令牌","登录"]},
+    {id:"linear",name:"Linear",mono:"L",bg:"linear-gradient(135deg,#5e6ad2,#8b5cf6)",desc:"Issue、项目和周期",ways:["登录"]},
+    {id:"sentry",name:"Sentry",mono:"S",bg:"#362d59",desc:"错误、性能问题和发布",ways:["登录"]},
+    {id:"context7",name:"Context7",mono:"C7",bg:"#0f766e",desc:"最新的库文档，写代码时查",ways:["不需要鉴权"]},
+  ]},
+  {g:"办公与协作",items:[
+    {id:"notion",name:"Notion",mono:"N",bg:"#fff",fg:"#111",ring:true,desc:"页面、数据库和评论",ways:["登录"]},
+    {id:"feishu",name:"飞书",mono:"飞",bg:"#3370ff",desc:"消息、文档、日程",ways:["内置"]},
+    {id:"dingtalk",name:"钉钉",mono:"钉",bg:"#0089ff",desc:"消息、审批、日程",ways:["内置"]},
+    {id:"wecom",name:"企业微信",mono:"企",bg:"#2b7bea",desc:"消息、通讯录、日程",ways:["内置"]},
+  ]},
+];
+const SCREENS = [["chat","对话"],["settings","Her 设置"],["plus","＋ 菜单"],["list","连接器"],["discover","发现"],["add","添加"],["detail","详情"]];
+const SCEN = [["normal","正常"],["login","需要登录"],["failed","连接失败"],["offline","Mac mini 离线"],["empty","一个也没有"]];
+const ADDSTEPS = [["address","地址"],["probing","检测中"],["settings","设置"],["waiting","等待登录"],["done","完成"],["command","本地命令"]];
+
+let S = {plat:"iphone",screen:"chat",scen:"normal",theme:"light",detail:"github",add:"address",menu:false,plusSub:false,toast:"",cards:"ask"};
+let C = [];
+function reset(){
+  S.cards="ask";
+  C = S.scen==="empty" ? [] : BASE.map(c=>({...c}));
+  if(S.scen==="login"){const n=C.find(c=>c.id==="notion");n.status="login";}
+  if(S.scen==="failed"){const n=C.find(c=>c.id==="linear");n.status="failed";n.err="连不上 mcp.linear.app：请求超时（30 秒）";}
+}
+reset();
+const offline=()=>S.scen==="offline";
+const byId=id=>C.find(c=>c.id===id);
+const onCount=()=>C.filter(c=>c.on).length;
+
+/* ---------------- helpers ---------------- */
+const chev='<svg viewBox="0 0 13 21"><path d="M11 2 3 10.5 11 19" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+const I = {
+  menu:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 7h16M4 12h16M4 17h10"/></svg>',
+  progress:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 12h3l2-5 4 10 2-5h5"/></svg>',
+  clock:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="8.5"/><path d="M12 7.5V12l3 2"/></svg>',
+  gear:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg>',
+  more:'<svg viewBox="0 0 24 24" fill="currentColor"><circle cx="6" cy="12" r="1.7"/><circle cx="12" cy="12" r="1.7"/><circle cx="18" cy="12" r="1.7"/></svg>',
+  plus:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>',
+  photo:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="5" width="18" height="14" rx="3"/><circle cx="9" cy="10" r="1.6"/><path d="m4 17 5-4 4 3 3-2 4 3"/></svg>',
+  folder:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg>',
+  plug:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M9 3v4M15 3v4M7 7h10v4a5 5 0 0 1-10 0zM12 16v5"/></svg>',
+  search:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="11" cy="11" r="6.5"/><path d="m20 20-4-4"/></svg>',
+  grid:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="4" y="4" width="7" height="7" rx="1.5"/><rect x="13" y="4" width="7" height="7" rx="1.5"/><rect x="4" y="13" width="7" height="7" rx="1.5"/><rect x="13" y="13" width="7" height="7" rx="1.5"/></svg>',
+  heart:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="8.5"/><path d="M8.5 13.5c1 1.3 2.1 2 3.5 2s2.5-.7 3.5-2"/></svg>',
+  up:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M12 19V5M6 11l6-6 6 6"/></svg>',
+  x:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M6 6l12 12M18 6 6 18"/></svg>',
+};
+function logo(c,size,radius){
+  const r = radius ?? Math.round(size*0.23);
+  const fs = Math.round(size*(c.mono.length>1?0.36:0.5));
+  return `<div class="logo" style="width:${size}px;height:${size}px;border-radius:${r}px;background:${c.bg};color:${c.fg||"#fff"};font-size:${fs}px;${c.ring?"box-shadow:inset 0 0 0 .5px rgba(0,0,0,.18);":""}">${c.mono}</div>`;
+}
+function stInfo(c, mac){
+  const v = mac ? {ok:"var(--ok)",warn:"var(--warn)",err:"var(--danger)",off:"var(--l3)"} : {ok:"var(--i-green)",warn:"var(--i-orange)",err:"var(--i-red)",off:"var(--i-l3)"};
+  if(!c.on) return {t:"已停用",col:v.off};
+  if(c.status==="login") return {t:"需要登录",col:v.warn,act:"登录"};
+  if(c.status==="failed") return {t:"连接失败",col:v.err,act:"重试"};
+  if(c.status==="waiting") return {t:"等待授权…",col:v.warn};
+  if(c.status==="checking") return {t:"正在检测…",col:v.off};
+  return {t:`可用 · ${c.tools} 个工具`,col:v.ok};
+}
+function kindLabel(c){return c.kind==="remote"?"远程":c.kind==="managed"?"内置 · 由 Her 管理":"本地命令 · 在 Mac mini 上运行";}
+function authFact(c){
+  if(c.auth==="oauth") return ["账号",`${c.account} <span style="opacity:.55">${c.status==="login"?"未登录":"已登录"}</span>`];
+  if(c.auth==="token") return ["令牌",`已保存 <span style="opacity:.55">在 Mac mini 上</span>`];
+  if(c.auth==="managed") return ["账号",`${c.account} <span style="opacity:.55">已登录</span>`];
+  return null;
+}
+
+/* ---------------- notes ---------------- */
+const NOTES = {
+  chat:`<h3>入口一：直接跟 Her 说</h3>
+  <ul><li><span class="tag">已有</span>“帮我连上 Sentry”：Her 先检测地址，再发一张安全卡片；你点同意才写配置，密钥由卡片收，Her 看不到。</li>
+  <li><span class="tag">新增</span>连上以后，卡片收成一行“已连接 Sentry · 18 个工具”，右边“管理”直接进详情页。</li>
+  <li><span class="tag">新增</span>Her 用到一个需要登录或连不上的连接器时，同样发卡片（“GitHub 的令牌失效了”），按钮直达处理。</li>
+  <li>这是 Bot 最自然的入口：要什么能力，跟它说。管理页是给“看全貌、改设置”用的。</li></ul>
+  <div class="q">卡片里点“登录”：在这台手机的浏览器里登录，令牌只存在 Her 所在的 Mac mini 上（her-server.md §5.4，已实现）。</div>`,
+  settings:`<h3>入口二：Her 设置里的“连接器”</h3>
+  <ul><li>点头像进 Her 设置，在“模型 / 做事前”下面加一组：<b>连接器</b>，右边是开着几个。这是固定、好找的入口。</li>
+  <li>脚注写清：<b>装在 Mac mini 上，这台机器上的助手共用</b>。连接器属于环境，不属于某个助手（her-server.md §1：assistants share their environment's connectors）。</li>
+  <li>有要处理的（需要登录、连不上），这一行右边换成橙色“1 个要处理”。</li>
+  <li><b>不放顶栏</b>：顶栏是进展、定时任务这些每天看的；连接器装好就很少动。</li></ul>
+  <div class="q">Mac 上同理：在 Her 设置面板里加同样一行；⋯ ›“管理此环境”（Web 控制台）保留，作为模型、技能等其余环境设置的入口。</div>`,
+  plus:`<h3>入口三：输入框 ＋ 菜单</h3>
+  <ul><li>沿用 FinXWork：＋ 菜单里，照片、文件之后一条线，然后是“连接器”，右边是开着几个。</li>
+  <li>iPhone 上点它弹出半屏：每个连接器一个开关，下面是“管理连接器”“添加连接器…”。Mac 上是二级菜单。</li>
+  <li>用途是<b>临时关掉</b>：比如这会儿不想让 Her 碰 GitHub。开关对 Her 的下一步就生效，菜单不关。</li>
+  <li>开关就是环境里的配置，和管理页、详情页是同一个开关。</li></ul>`,
+  list:`<h3>连接器 · 我的</h3>
+  <ul><li>结构照 FinXWork“自定义 › 连接器 › 我的”：一行一个，logo、名字、状态，右边开关。手机上去掉地址那一行，地址放到详情页。</li>
+  <li>状态的词与 FinXWork 一致：可用 · N 个工具、需要登录、连接失败、已停用、正在检测…、等待授权…</li>
+  <li>要处理的（需要登录、连接失败）排在最前，行内直接给“登录”“重试”。</li>
+  <li>分组：远程的和内置的（飞书、钉钉、企业微信，由 Her 托管）在“已添加”；在 Mac mini 上运行的本地命令单独一组，因为它们以你的身份在那台机器上跑。</li>
+  <li>Mac mini 离线：显示上次的状态，开关不能动，顶部一条说明。</li></ul>`,
+  discover:`<h3>连接器 · 发现</h3>
+  <ul><li>精选目录，按用途分组，每条写清登录方式（登录、令牌、不需要鉴权、内置）。</li>
+  <li>“不需要鉴权”的点 ＋ 直接加上；其余进添加流程的设置页，地址已经填好。</li>
+  <li>已添加的显示勾，点进去是它的详情。</li>
+  <li>底部固定一行“添加自定义连接器…”：粘贴任何 MCP 地址。</li></ul>
+  <div class="q">Gmail 先不放进目录：要等选好 Gmail 的 MCP 服务器，并确认 Google 受限权限的审核。</div>`,
+  add:`<h3>添加连接器</h3>
+  <ul><li>流程照 FinXWork §10.9：名称和地址 → 三步检测（连接服务器、查找登录设置、检查登录服务）→ 设置（方式默认选检测到的那种）→ 登录 → 完成。</li>
+  <li>手机上用全屏 sheet，每一步一屏；Mac 上是居中的弹窗。</li>
+  <li><b>登录在这台设备的浏览器里完成，令牌存在 Mac mini 上</b>，脚注写明，不出现“注册”“身份”这类词。</li>
+  <li>完成页写“Her 现在就能用”：Bot 只有一个长期对话，新连接器要推到这个打开的对话里，不能只对“新会话”生效。</li>
+  <li>本地命令：在 Mac mini 上以你的身份运行，所以要用 Face ID / Touch ID 签名（SetHerCommandConnector，已实现）。</li></ul>`,
+  detail:`<h3>连接器详情</h3>
+  <ul><li>照 FinXWork §10.12：标题行带开关和 ⋯；一行事实（状态、账号或令牌、地址）；要处理时一条提示；工具列表和“重新检测”。</li>
+  <li><span class="tag">Bot 新增</span><b>用到它的定时任务</b>：定时任务在你不在的时候跑，关掉或删掉连接器，它们会悄悄失败。这里列出来，停用、删除时再提醒一次。</li>
+  <li>⋯：编辑配置、重新检测、复制地址、退出登录、删除连接器（删除带 5 秒撤销）。</li></ul>
+  <div class="q">“用到它的定时任务”需要内核记下定时任务用过哪些连接器（目前没有），可以先按定时任务的提示词里点名的连接器来算。</div>`,
+};
+
+/* ---------------- control bar ---------------- */
+function renderCtl(){
+  const b=(k,v,l)=>`<button class="${S[k]===v?"on":""}" data-set="${k}:${v}">${l}</button>`;
+  let h=`<div class="g"><b>平台</b>${b("plat","iphone","iPhone")}${b("plat","mac","Mac")}</div>`;
+  h+=`<div class="g"><b>屏幕</b>${SCREENS.map(([v,l])=>b("screen",v,l)).join("")}</div>`;
+  if(S.screen==="add") h+=`<div class="g"><b>添加</b>${ADDSTEPS.map(([v,l])=>b("add",v,l)).join("")}</div>`;
+  h+=`<div class="g"><b>情况</b>${SCEN.map(([v,l])=>b("scen",v,l)).join("")}</div>`;
+  h+=`<div class="g"><b>外观</b>${b("theme","light","浅色")}${b("theme","dark","深色")}</div>`;
+  document.getElementById("ctl").innerHTML=h;
+}
+
+/* ================= iPhone ================= */
+function iFrame(inner){
+  return `<div class="phone"><div class="scr"><div class="island"></div><div class="sb"><span>9:41</span><span style="font-size:14px;letter-spacing:1px">▂▄▆ ▮</span></div>${inner}<div class="home"></div>${S.toast?`<div class="toast">${S.toast}</div>`:""}</div></div>`;
+}
+function iNav(back,title,right){
+  return `<div class="nav">${back?`<button class="back" data-go="${back[1]}">${chev}<span>${back[0]}</span></button>`:"<span></span>"}<div class="t">${title||""}</div>${right||"<span style='width:44px'></span>"}</div>`;
+}
+function iHerPage(extra){
+  const card = S.cards==="ask" ? `
+    <div class="scard">
+      <div class="h">${logo(SENTRY,40)}<div><b>连接 Sentry</b><small>远程连接器 · 用账号登录</small></div></div>
+      <div class="f">地址 <code>https://mcp.sentry.dev/mcp</code><br>连上后 Her 能查你项目里的错误和发布。会在这台 iPhone 的浏览器里登录，令牌存在 Mac mini 上。</div>
+      <div class="bs"><button data-act="cardNo">不用了</button><button class="p" data-act="cardYes">连接并登录</button></div>
+    </div>` : `
+    <div class="scard done">${logo(SENTRY,30)}<div style="flex:1;font-size:15px"><b>已连接 Sentry</b><div style="font-size:13px;color:var(--i-l2)">18 个工具 · Her 现在就能用</div></div><button class="pillbtn" data-detail="sentry">管理</button></div>
+    <div class="her">连上了。今天 api 服务新出了 3 个错误，最多的是 relay 重连超时（212 次）。要我在 Linear 里建一个 Issue 吗？</div>`;
+  const conv = `
+    <div class="time">今天 10:24</div>
+    <div class="me">看看 Sentry 上今天有什么新错误</div>
+    <div class="her">我还没连上你的 Sentry。要连的话点下面的卡片，登录一次就行。</div>
+    ${card}`;
+  return `<div class="ibody">
+    <div class="herhead"><div class="lr"><button class="glassbtn">${I.menu}</button><div class="r"><button class="glassbtn">${I.progress}</button><button class="glassbtn">${I.clock}</button></div></div>
+      <div class="mid"><button data-go="settings"><div class="av" style="width:72px;height:72px"></div></button><div class="htag">Her <small>· 2 个在跑</small></div></div></div>
+    <div class="iscroll"><div class="conv">${conv}</div></div>
+    <div class="composer"><button class="glassbtn" data-act="plus">${I.plus}</button><div class="in">跟 Her 说…</div></div>
+    ${extra||""}
+  </div>`;
+}
+function iPlus(){
+  const n=C.length;
+  let pop = `<div class="scrim" data-act="closePop"></div><div class="pop">
+    <button class="pi">${I.photo}<span class="k">照片</span></button>
+    <button class="pi">${I.folder}<span class="k">文件</span></button><hr>
+    <button class="pi" data-act="plusSub">${I.plug}<span class="k">连接器</span><small>${n?onCount()+" 个开着":"还没有"} ›</small></button></div>`;
+  if(S.plusSub){
+    pop = `<div class="scrim" data-act="closePop"></div><div class="isheet half"><div class="grab"></div>
+      ${iNav(null,"连接器",`<button class="act b" data-act="closePop">完成</button>`)}
+      <div class="iscroll">
+      ${offline()?`<div class="banner info"><span class="k">Mac mini 离线，连上后才能开关。</span></div>`:""}
+      ${n?`<div class="sec ${offline()?"offline":""}"><div class="card">${C.map(c=>{const s=stInfo(c);return `<div class="row ic">${logo(c,30)}<div class="k">${c.name}<div class="sub"><i class="dotc" style="background:${s.col}"></i>${s.t}</div></div><button class="sw ${c.on?"on":""} ${offline()?"dis":""}" data-toggle="${c.id}"></button></div>`}).join("")}</div>
+        <div class="ft">关掉的连接器，Her 从下一步起就不用了。</div></div>`
+        :`<div class="center" style="padding-top:20px"><p>还没有连接器。</p></div>`}
+      <div class="sec"><div class="card">
+        <button class="row tap" data-go="list"><span class="k bl">管理连接器</span><span class="chev">›</span></button>
+        <button class="row tap" data-act="add"><span class="k bl">添加连接器…</span></button>
+      </div></div></div></div>`;
+  }
+  return pop;
+}
+function iSettings(){
+  const need = C.filter(c=>c.on&&(c.status==="login"||c.status==="failed")).length;
+  const right = !C.length ? "还没有" : need ? `<span style="color:var(--i-orange)">${need} 个要处理</span>` : `${onCount()} 个`;
+  return `<div class="ibody">${iNav(["Her","chat"],"",`<span style="width:44px"></span>`)}
+  <div class="iscroll">
+    <div style="display:flex;flex-direction:column;align-items:center;gap:10px;padding:0 0 22px"><div class="av" style="width:88px;height:88px"></div><div style="font-size:22px;font-weight:600">Her</div></div>
+    <div class="sec"><div class="card"><div class="row"><span class="k">运行在</span><span class="v">Mac mini</span></div><button class="row tap"><span class="k bl">在另一台机器上开启 Her…</span></button></div></div>
+    <div class="sec"><div class="card">
+      <div class="row"><span class="k">模型</span><span class="v">Claude Opus · Anthropic ⌃</span></div>
+      <div class="row"><span class="k">思考强度</span><span class="v">默认 ⌃</span></div>
+      <div class="row"><span class="k">做事前</span><span class="v"><span class="seg" style="margin:0;display:inline-flex;width:150px"><button class="on">先问我</button><button>完全访问</button></span></span></div>
+    </div><div class="ft">Her 启动的智能体和定时任务也一样，你不在的时候也是。</div></div>
+    <div class="sec"><div class="card" style="outline:2px solid var(--i-tint);outline-offset:2px">
+      <button class="row tap" data-go="list"><span class="k">连接器</span><span class="v">${right}</span><span class="chev">›</span></button>
+    </div><div class="ft">Her 能用的应用和服务，比如 GitHub、Notion。装在 Mac mini 上，这台机器上的助手共用。</div></div>
+    <div class="sec"><div class="card"><div class="row"><span class="k">远程桌面</span><span class="chev">›</span></div></div></div>
+    <div class="sec"><div class="card"><div class="row"><span class="k">通知</span><span class="sw on"></span></div></div></div>
+    <div class="sec"><div class="hd">记忆</div><div class="card"><div class="row"><span class="k">记住的事</span><span class="chev">›</span></div></div></div>
+    <div class="sec"><div class="card"><div class="row"><span class="k rd">清空对话</span></div><div class="row"><span class="k rd">清空记忆</span></div></div></div>
+  </div></div>`;
+}
+function iListRow(c){
+  const s=stInfo(c);
+  const act = s.act&&!offline() ? `<button class="pillbtn" data-fix="${c.id}">${s.act}</button>` : "";
+  return `<div class="row ic tall tap" data-detail="${c.id}" style="cursor:pointer">${logo(c,36)}<div class="k"><div>${c.name}</div><div class="sub"><i class="dotc" style="background:${s.col}"></i>${s.t}</div></div>${act}<button class="sw ${c.on?"on":""} ${offline()?"dis":""}" data-toggle="${c.id}"></button></div>`;
+}
+function iList(){
+  const seg=`<div class="seg"><button class="on">我的</button><button data-go="discover">发现</button></div>`;
+  let body;
+  if(!C.length){
+    body=`<div class="center"><div style="width:64px;height:64px;border-radius:16px;background:var(--i-fill);display:flex;align-items:center;justify-content:center;color:var(--i-l2)">${I.plug.replace('<svg','<svg width="30" height="30"')}</div>
+      <h2>还没有连接器</h2><p>连上 GitHub、Notion 这样的服务，Her 就能替你查、替你做。</p></div>
+      <button class="bigbtn" data-go="discover">看看有哪些</button><button class="bigbtn sec2" data-act="add">添加自定义连接器…</button>
+      <div class="sec"><div class="ft" style="text-align:center">也可以直接跟 Her 说：“帮我连上 GitHub”。</div></div>`;
+  } else {
+    const fix=C.filter(c=>c.on&&(c.status==="login"||c.status==="failed"));
+    const rest=C.filter(c=>!fix.includes(c)&&c.kind!=="command");
+    const cmd=C.filter(c=>!fix.includes(c)&&c.kind==="command");
+    body = (offline()?`<div class="banner info"><span class="k">Mac mini 离线。下面是上次的状态，连上以后才能修改。</span></div>`:"")
+      +(fix.length?`<div class="sec"><div class="hd">要处理</div><div class="card">${fix.map(iListRow).join("")}</div></div>`:"")
+      +(rest.length?`<div class="sec"><div class="hd">已添加 ${rest.length}</div><div class="card">${rest.map(iListRow).join("")}</div></div>`:"")
+      +(cmd.length?`<div class="sec"><div class="hd">在 Mac mini 上运行</div><div class="card">${cmd.map(iListRow).join("")}</div><div class="ft">本地命令以你的身份在 Mac mini 上运行。</div></div>`:"")
+      +`<div class="sec"><div class="ft">装在 Mac mini 上，这台机器上的助手共用。开关对 Her 的下一步就生效。</div></div>`;
+  }
+  return `<div class="ibody ${offline()?"offline":""}">${iNav(["设置","settings"],"",`<button class="act" data-act="add" ${offline()?"disabled":""} style="font-size:28px;font-weight:300">+</button>`)}
+    <div class="iscroll"><div class="lt">连接器</div>${seg}${body}</div></div>`;
+}
+function iDiscover(){
+  const seg=`<div class="seg"><button data-go="list">我的</button><button class="on">发现</button></div>`;
+  const groups=CATALOG.map(g=>`<div class="sec"><div class="hd">${g.g}</div><div class="card">${g.items.map(it=>{
+    const added=!!byId(it.id);
+    return `<div class="disc">${logo(it,40)}<div class="k">${it.name}<div>${it.desc}</div><div style="margin-top:3px">${it.ways.map((w,i)=>`<span class="chip ${i===0&&it.ways.length>1?"det":""}" style="margin:0 4px 0 0">${w}${i===0&&it.ways.length>1?" · 推荐":""}</span>`).join("")}</div></div>
+      ${added?`<button class="addc done" data-detail="${it.id}">✓</button>`:`<button class="addc" data-install="${it.id}">+</button>`}</div>`}).join("")}</div></div>`).join("");
+  return `<div class="ibody">${iNav(["设置","settings"],"",`<button class="act" data-act="add" style="font-size:28px;font-weight:300">+</button>`)}
+    <div class="iscroll"><div class="lt">连接器</div>${seg}${groups}
+    <div class="sec"><div class="card"><button class="row tap" data-act="add"><span class="k bl">添加自定义连接器…</span></button></div><div class="ft">任何 MCP 服务器的地址都可以，比如 https://mcp.example.com/mcp。</div></div></div></div>`;
+}
+function iAdd(){
+  const sentry=CATALOG[0].items[2];
+  const cancel=`<button class="act" data-go="list">取消</button>`;
+  let nav, body;
+  switch(S.add){
+    case "address":
+      nav=iNav(null,"添加连接器",`<button class="act b" data-set="add:probing">连接</button>`).replace("<span></span>",cancel);
+      body=`<div class="sec" style="margin-top:12px"><div class="card">
+        <div class="field"><label>名称</label><div class="inp ph">sentry</div></div>
+        <div class="field" style="border-top:.5px solid var(--i-sep)"><label>地址</label><div class="inp mono">https://mcp.sentry.dev/mcp</div></div></div>
+        <div class="recog">● 远程服务器 · https</div>
+        <div class="ft">MCP 服务器的地址，或者在 Mac mini 上运行的命令，比如 npx -y @scope/server。名称不填就用 sentry。</div></div>`;
+      break;
+    case "probing":
+      nav=iNav(null,"添加连接器","").replace("<span></span>",cancel);
+      body=`<div class="sec" style="margin-top:12px"><div class="card"><div class="row tall">${logo(sentry,36)}<div class="k">sentry<div class="sub">https://mcp.sentry.dev/mcp</div></div></div></div></div>
+        <div class="sec steps"><div class="card">
+        <div class="row"><span class="ok">✓</span><span class="k">连接服务器</span><span class="v" style="font-family:var(--mono);font-size:14px">401</span></div>
+        <div class="row"><span class="ok">✓</span><span class="k">查找登录设置</span><span class="v">OAuth</span></div>
+        <div class="row"><span class="spin"></span><span class="k">检查登录服务</span><span class="v"></span></div></div>
+        <div class="ft">由 Mac mini 去连，结果和 Her 实际用到的一样。</div></div>`;
+      break;
+    case "settings":
+      nav=iNav(["返回","add:address"],"sentry","");
+      body=`<div class="sec" style="margin-top:8px"><div class="card"><div class="row tall">${logo(sentry,36)}<div class="k">sentry<div class="sub">https://mcp.sentry.dev/mcp · 可流式 HTTP</div></div><button class="pillbtn" data-set="add:address">修改</button></div></div></div>
+        <div class="sec"><div class="hd">鉴权</div><div class="card">
+          <div class="row"><span class="k">方式</span><span class="v" style="color:var(--i-tint)">用账号登录<span class="chip det">检测到</span> ⌃</span></div></div>
+          <div class="ft"><span style="color:var(--i-tint)">服务器要求登录，支持自动登记应用。</span> 添加后在这台 iPhone 的浏览器里用你的 Sentry 账号登录；令牌只存在 Mac mini 上，不经过 Hermesh 服务器。</div></div>
+        <div class="sec"><div class="card"><div class="row"><span class="k">高级选项</span><span class="v" style="font-size:15px">自动 · 可流式 HTTP</span><span class="chev">›</span></div></div>
+          <div class="ft">只添加你信任的连接器：Her 会按它说的去做。</div></div>
+        <div style="position:absolute;left:0;right:0;bottom:28px"><button class="bigbtn" data-set="add:waiting">添加并登录</button></div>`;
+      break;
+    case "waiting":
+      nav=iNav(null,"","").replace("<span></span>",cancel);
+      body=`<div class="center" style="padding-top:110px">${logo(sentry,64)}<h2>在浏览器里登录 Sentry</h2><p>登录完会自动回到这里。</p><div class="spin" style="width:22px;height:22px;margin-top:12px"></div></div>
+        <div style="position:absolute;left:0;right:0;bottom:28px"><button class="bigbtn sec2">复制链接</button><button class="bigbtn sec2" data-set="add:done" style="color:var(--i-l2)">（原型：模拟登录成功）</button></div>`;
+      break;
+    case "done":
+      nav=iNav(null,"","");
+      body=`<div class="center" style="padding-top:90px"><div style="width:64px;height:64px;border-radius:32px;background:var(--i-green);color:#fff;font-size:32px;display:flex;align-items:center;justify-content:center">✓</div>
+        <h2>已添加 Sentry</h2><p>18 个工具 · Her 现在就能用</p></div>
+        <div class="sec"><div class="card">${["search_issues","get_issue_details","find_releases"].map(t=>`<div class="tool"><b>${t}</b></div>`).join("")}<div class="tool"><div>还有 15 个</div></div></div></div>
+        <div style="position:absolute;left:0;right:0;bottom:28px"><button class="bigbtn" data-act="addDone">完成</button></div>`;
+      break;
+    case "command":
+      nav=iNav(["返回","add:address"],"postgres",`<button class="act b" data-act="sign">添加</button>`);
+      body=`<div class="sec" style="margin-top:8px"><div class="card"><div class="row tall">${logo({mono:"PG",bg:"#336791"},36)}<div class="k">postgres<div class="sub">本地命令 · 在 Mac mini 上运行</div></div></div></div></div>
+        <div class="sec"><div class="hd">命令</div><div class="card"><div class="field"><div class="inp mono">npx -y @modelcontextprotocol/server-postgres</div></div></div>
+          <div class="ft">第一次运行要下载，检查可能要几十秒。</div></div>
+        <div class="sec"><div class="hd">环境变量</div><div class="card"><div class="row"><span class="k" style="font-family:var(--mono);font-size:15px">DATABASE_URL</span><span class="v">🔒 ••••••••</span></div><button class="row tap"><span class="k bl">添加变量</span></button></div>
+          <div class="ft">上锁的值存在 Mac mini 的钥匙串里，配置里只写引用。</div></div>
+        <div class="banner warn" style="align-items:flex-start"><span style="font-size:20px">🔐</span><span class="k">这条命令会以你的身份在 Mac mini 上运行。添加时要用 Face ID 签名确认，Her 自己不能添加本地命令。</span></div>`;
+      break;
+  }
+  return `<div class="ibody">${iHerPage()}</div><div class="scrim"></div><div class="isheet full"><div class="grab"></div>${nav}<div class="iscroll" style="position:relative">${body}</div></div>`;
+}
+function iDetail(){
+  const c=byId(S.detail)||C[0];
+  if(!c) return `<div class="ibody">${iNav(["连接器","list"],"","")}<div class="center"><p>还没有连接器。</p></div></div>`;
+  const s=stInfo(c);
+  const af=authFact(c);
+  let note="";
+  if(offline()) note=`<div class="banner info"><span class="k">Mac mini 离线，显示的是上次的状态。</span></div>`;
+  else if(c.on&&c.status==="login") note=`<div class="banner warn"><span class="k">登录过期了，Her 暂时用不了 ${c.name}。</span><button class="pillbtn fill" data-fix="${c.id}">登录</button></div>`;
+  else if(c.on&&c.status==="failed") note=`<div class="banner err"><span class="k" style="font-size:13px">${c.err}</span><button class="pillbtn fill" data-fix="${c.id}">重试</button></div>`;
+  const tools = c.on&&c.status==="ok" ? `<div class="sec"><div class="hd" style="display:flex;justify-content:space-between"><span>工具 ${c.tools}</span><span>${c.checked}检测 · <span style="color:var(--i-tint)">重新检测</span></span></div><div class="card">${c.tl.map(([n,d])=>`<div class="tool"><b>${n}</b><div>${d}</div></div>`).join("")}${c.tools>c.tl.length?`<div class="tool"><div style="color:var(--i-tint)">显示全部 ${c.tools} 个</div></div>`:""}</div></div>`
+    : `<div class="sec"><div class="hd">工具</div><div class="card"><div class="tool"><div>${c.on?"连上之后，这里列出它提供的工具。":"打开以后，这里列出它提供的工具。"}</div></div></div></div>`;
+  const rts = `<div class="sec"><div class="hd">用到它的定时任务</div><div class="card">${c.routines.length?c.routines.map(r=>`<div class="row"><span style="color:var(--i-l2)">${I.clock.replace('<svg','<svg width="18" height="18"')}</span><span class="k">${r}</span><span class="chev">›</span></div>`).join(""):`<div class="row"><span class="k" style="color:var(--i-l2);font-size:15px">没有</span></div>`}</div>${c.routines.length?`<div class="ft">关掉或删掉 ${c.name}，这些定时任务下次运行会失败。</div>`:""}</div>`;
+  const menu = S.menu ? `<div class="scrim" data-act="menu" style="background:transparent"></div><div class="ctxmenu">
+    ${c.kind!=="managed"?`<button>编辑配置…<span>✎</span></button>`:""}<button data-fix="${c.id}">重新检测<span>↻</span></button><button>复制地址<span>⧉</span></button>
+    ${c.auth==="oauth"?`<button>退出登录</button>`:""}<button data-act="del" style="color:var(--i-red)">删除连接器<span>🗑</span></button></div>`:"";
+  return `<div class="ibody ${offline()?"offline":""}">${iNav(["连接器","list"],"",`<button class="act" data-act="menu" style="width:44px;justify-content:center">${I.more.replace('<svg','<svg width="22" height="22"')}</button>`)}
+  <div class="iscroll">
+    <div class="dhead">${logo(c,64)}<h2>${c.name}</h2><div style="font-size:14px;color:var(--i-l2)">${kindLabel(c)}</div></div>
+    <div class="sec"><div class="card"><div class="row"><span class="k">${c.kind==="command"?"在 Mac mini 上运行":"让 Her 使用"}</span><button class="sw ${c.on?"on":""} ${offline()?"dis":""}" data-toggle="${c.id}"></button></div></div></div>
+    <div class="facts"><div><small>状态</small><span><i class="dotc" style="background:${s.col}"></i>${s.t.split(" · ")[0]}</span></div>${af?`<div><small>${af[0]}</small><span>${af[1]}</span></div>`:""}</div>
+    ${note}
+    <div class="sec"><div class="card"><div class="row"><span class="k" style="font-family:${c.kind==="managed"?"inherit":"var(--mono)"};font-size:14px;word-break:break-all;padding:10px 0">${c.addr}</span><span style="color:var(--i-tint);font-size:15px">⧉</span></div></div></div>
+    ${rts}${tools}
+  </div>${menu}</div>`;
+}
+function renderIphone(){
+  switch(S.screen){
+    case "chat": return iFrame(iHerPage());
+    case "plus": return iFrame(iHerPage(iPlus()));
+    case "settings": return iFrame(iSettings());
+    case "list": return iFrame(iList());
+    case "discover": return iFrame(iDiscover());
+    case "add": return iFrame(iAdd());
+    case "detail": return iFrame(iDetail());
+  }
+}
+
+/* ================= Mac ================= */
+function mFrame(main, overlay){
+  return `<div class="mac"><div class="mside"><div class="lights"><i></i><i></i><i></i></div>
+    <button class="it">${I.grid}概览</button><button class="it">${I.search}搜索</button><button class="it on" data-go="chat">${I.heart}Her</button>
+    <div class="gh">会话</div>
+    <div class="ses"><i></i>hermesh · 修复 relay 重连</div><div class="ses"><i style="background:var(--warn)"></i>finxwork · 表格导出</div><div class="ses"><i style="background:var(--l4)"></i>Her 的 PR 汇总</div>
+    </div><div class="mmain">${main}</div>${overlay||""}${S.toast?`<div class="mtoast">${S.toast}</div>`:""}</div>`;
+}
+function mTop(settingsOn){
+  return `<div class="mtop"><div class="mid"><button data-go="settings"><div class="av" style="width:56px;height:56px"></div></button><div class="mtag">Her <small>· Mac mini</small></div></div>
+    <button class="ib">${I.progress}</button><button class="ib">${I.clock}</button><button class="ib ${settingsOn?"on":""}" data-go="settings">${I.gear}</button><button class="ib">${I.more}</button></div>`;
+}
+function mConv(){
+  const card = S.cards==="ask" ? `<div class="mcard"><div class="h">${logo(SENTRY,34)}<div><b>连接 Sentry</b><small>远程连接器 · 用账号登录</small></div></div>
+      <div class="f">地址 <code>https://mcp.sentry.dev/mcp</code>　连上后 Her 能查你项目里的错误和发布。在这台 Mac 的浏览器里登录，令牌存在 Mac mini 上。</div>
+      <div class="bs"><button class="mbtn" data-act="cardNo">不用了</button><button class="mbtn p" data-act="cardYes">连接并登录</button></div></div>`
+    : `<div class="mcard" style="flex-direction:row;align-items:center">${logo(SENTRY,28)}<div style="flex:1"><b>已连接 Sentry</b><div style="font-size:12.5px;color:var(--l2)">18 个工具 · Her 现在就能用</div></div><button class="mbtn sm" data-detail="sentry">管理</button></div>
+      <div>连上了。今天 api 服务新出了 3 个错误，最多的是 relay 重连超时（212 次）。要我在 Linear 里建一个 Issue 吗？</div>`;
+  return `<div class="mconv"><div class="col"><div class="time" style="align-self:center;font-size:12px">今天 10:24</div>
+    <div class="me" style="align-self:flex-end;max-width:70%">看看 Sentry 上今天有什么新错误</div>
+    <div>我还没连上你的 Sentry。要连的话点下面的卡片，登录一次就行。</div>${card}</div></div>`;
+}
+function mComposer(menu){
+  return `<div class="mcomp"><div class="ph">跟 Her 说…</div><div class="bar"><div class="l"><button class="ib ${menu?"on":""}" data-act="plus">${I.plus}</button>Claude Opus · 先问我</div><div class="send">${I.up.replace('<svg','<svg width="16" height="16"')}</div></div>${menu||""}</div>`;
+}
+function mPlusMenu(){
+  const n=C.length;
+  let m = `<div class="mmenu" style="left:8px;bottom:52px">
+    <button class="mi">${I.folder}<span class="k">添加文件…</span></button><button class="mi">${I.photo}<span class="k">添加照片…</span></button><hr>
+    <button class="mi ${S.plusSub?"hov":""}" data-act="plusSub">${I.plug}<span class="k">连接器</span><small>${n?onCount():""} ›</small></button></div>`;
+  if(S.plusSub){
+    m += `<div class="mmenu" style="left:236px;bottom:52px;width:260px">
+      <button class="mi" data-go="discover"><span class="k">浏览连接器</span></button><button class="mi" data-go="list"><span class="k">管理连接器</span></button><hr>
+      ${offline()?`<div style="padding:4px 9px;color:var(--l3);font-size:12px">Mac mini 离线，连上后才能开关</div>`:""}
+      ${n?C.map(c=>`<div class="mi" style="cursor:default">${logo(c,18,5)}<span class="k">${c.name}</span>${c.on&&c.status!=="ok"?`<small style="color:var(--warn)">${stInfo(c,1).t}</small>`:""}<button class="msw ${c.on?"on":""} ${offline()?"dis":""}" data-toggle="${c.id}"></button></div>`).join("")
+        :`<div style="padding:4px 9px;color:var(--l3)">还没有连接器</div>`}</div>`;
+  }
+  return m;
+}
+function mSettingsPanel(){
+  const need=C.filter(c=>c.on&&(c.status==="login"||c.status==="failed")).length;
+  const right=!C.length?"还没有":need?`<span style="color:var(--warn)">${need} 个要处理</span>`:`${onCount()} 个`;
+  return `<div class="mpanel"><div class="ph">Her<button class="ib" data-go="chat">${I.x}</button></div><div class="pb">
+    <div style="display:flex;flex-direction:column;align-items:center;gap:6px;padding:4px 0 16px"><div class="av" style="width:64px;height:64px"></div><b style="font-size:15px">Her</b></div>
+    <div class="fgroup"><div class="frow"><span>模型</span><span class="popup">Claude Opus ⌃</span></div><div class="frow"><span>思考强度</span><span class="popup">默认 ⌃</span></div>
+      <div class="frow"><span>做事前</span><span class="mseg"><button class="on">先问我</button><button>完全访问</button></span></div></div>
+    <div class="fnote">Her 启动的智能体和定时任务也一样，你不在的时候也是。</div>
+    <div class="fgroup" style="outline:2px solid var(--accent);outline-offset:2px"><button class="frow lk" data-go="list"><span>连接器</span><span class="v">${right} ›</span></button></div>
+    <div class="fnote">Her 能用的应用和服务。装在 Mac mini 上，这台机器上的助手共用。</div>
+    <div class="fgroup"><div class="frow"><span>通知</span><span class="msw on"></span></div></div><div class="fnote"></div>
+    <div class="fgroup"><div class="frow lk"><span>记住的事</span><span class="v">›</span></div></div><div class="fnote"></div>
+    <div class="fgroup"><div class="frow" style="color:var(--danger)">清空对话</div><div class="frow" style="color:var(--danger)">清空记忆</div></div>
+  </div></div>`;
+}
+function mRow(c){
+  const s=stInfo(c,1);
+  const act=s.act&&!offline()?` · <a data-fix="${c.id}">${s.act}</a>`:"";
+  return `<div class="czrow" data-detail="${c.id}">${logo(c,34,8)}<div class="k"><b>${c.name}</b>${c.kind==="managed"?`<span class="mtagx">内置</span>`:c.kind==="command"?`<span class="mtagx">本地命令</span>`:""}<div>${c.addr}</div></div>
+    <span class="st" style="color:${s.col}"><i class="dotc" style="background:${s.col}"></i>${s.t}<span style="color:var(--accent)">${act}</span></span>
+    <button class="msw ${c.on?"on":""} ${offline()?"dis":""}" data-toggle="${c.id}"></button><button class="ib" style="width:24px;height:24px">${I.more}</button></div>`;
+}
+function mPageHead(tab){
+  return `<button class="mback" data-go="chat">‹ Her</button>
+    <div class="mh1"><div><h1>连接器</h1><div class="sub">装在 Mac mini 上，这台机器上的助手共用</div></div><button class="mbtn" data-act="add" ${offline()?"disabled":""}>＋ 添加</button></div>
+    <div class="mseg"><button class="${tab==="list"?"on":""}" data-go="list">我的</button><button class="${tab==="discover"?"on":""}" data-go="discover">发现</button></div>`;
+}
+function mList(){
+  let body;
+  if(!C.length){
+    body=`<div style="text-align:center;padding:70px 0;color:var(--l2)"><div style="font-size:16px;color:var(--l1);font-weight:550;margin-bottom:6px">还没有连接器</div>连上 GitHub、Notion 这样的服务，Her 就能替你查、替你做。也可以直接跟 Her 说“帮我连上 GitHub”。<div style="margin-top:16px;display:flex;gap:8px;justify-content:center"><button class="mbtn p" data-go="discover">看看有哪些</button><button class="mbtn" data-act="add">添加自定义连接器…</button></div></div>`;
+  } else {
+    const fix=C.filter(c=>c.on&&(c.status==="login"||c.status==="failed"));
+    const rest=C.filter(c=>!fix.includes(c)&&c.kind!=="command");
+    const cmd=C.filter(c=>!fix.includes(c)&&c.kind==="command");
+    body=(offline()?`<div class="mnote info" style="margin-top:16px"><span class="k">Mac mini 离线。下面是上次的状态，连上以后才能修改。</span></div>`:"")
+      +(fix.length?`<div class="ghd">要处理 <span>${fix.length}</span></div>${fix.map(mRow).join("")}`:"")
+      +(rest.length?`<div class="ghd">已添加 <span>${rest.length}</span></div>${rest.map(mRow).join("")}`:"")
+      +(cmd.length?`<div class="ghd">在 Mac mini 上运行 <span>${cmd.length} · 以你的身份运行</span></div>${cmd.map(mRow).join("")}`:"");
+  }
+  return `<div class="mpage ${offline()?"moffline":""}"><div class="in">${mPageHead("list")}${body}</div></div>`;
+}
+function mDiscover(){
+  const groups=CATALOG.map(g=>`<div class="ghd" style="margin-top:22px">${g.g}</div><div class="dgrid">${g.items.map(it=>{const added=!!byId(it.id);
+    return `<div class="dcard">${logo(it,38,9)}<div class="k"><b>${it.name}</b><div>${it.desc}</div><div class="chips">${it.ways.map((w,i)=>`<span class="mchip ${i===0&&it.ways.length>1?"rec":""}">${w}${i===0&&it.ways.length>1?" · 推荐":""}</span>`).join("")}</div></div>
+      ${added?`<button class="plus done" data-detail="${it.id}">✓</button>`:`<button class="plus" data-install="${it.id}">+</button>`}</div>`}).join("")}</div>`).join("");
+  return `<div class="mpage"><div class="in">${mPageHead("discover")}${groups}<div style="margin-top:22px;color:var(--l2);font-size:12.5px">没有你要的？<a style="color:var(--accent);cursor:pointer" data-act="add">添加自定义连接器…</a> 任何 MCP 服务器的地址都可以。</div></div></div>`;
+}
+function mDetail(){
+  const c=byId(S.detail)||C[0];
+  if(!c) return `<div class="mpage"><div class="in"><button class="mback" data-go="list">‹ 连接器</button><p style="color:var(--l2)">还没有连接器。</p></div></div>`;
+  const s=stInfo(c,1), af=authFact(c);
+  let note="";
+  if(offline()) note=`<div class="mnote info"><span class="k">Mac mini 离线，显示的是上次的状态。</span></div>`;
+  else if(c.on&&c.status==="login") note=`<div class="mnote warn"><span class="k">登录过期了，Her 暂时用不了 ${c.name}。</span><button class="mbtn p sm" data-fix="${c.id}">在浏览器里登录</button></div>`;
+  else if(c.on&&c.status==="failed") note=`<div class="mnote err"><span class="k">${c.err}</span><button class="mbtn sm" data-fix="${c.id}">重试</button></div>`;
+  const menu=S.menu?`<div class="mmenu" style="right:0;top:34px"><button class="mi"><span class="k">编辑配置…</span></button><hr><button class="mi" data-fix="${c.id}"><span class="k">重新检测</span></button><button class="mi"><span class="k">复制地址</span></button>${c.auth==="oauth"?`<button class="mi"><span class="k">退出登录</span></button>`:""}<hr><button class="mi danger" data-act="del"><span class="k">删除连接器</span></button></div>`:"";
+  const tools=c.on&&c.status==="ok"?`<div class="mtools"><div style="display:flex;justify-content:space-between;margin-bottom:8px"><b style="font-size:14px">工具 <span style="color:var(--l3);font-weight:400">${c.tools}</span></b><span style="color:var(--l3);font-size:12px">${c.checked}检测 · <a style="color:var(--accent)">重新检测</a></span></div>${c.tl.map(([n,d])=>`<div class="t"><b>${n}</b><div>${d}</div></div>`).join("")}</div>`
+    :`<div style="color:var(--l2)"><b style="color:var(--l1);font-size:14px">工具</b><p>${c.on?"连上之后，这里列出它提供的工具。":"打开以后，这里列出它提供的工具。"}</p></div>`;
+  const rts=`<div style="margin-bottom:34px"><b style="font-size:14px">用到它的定时任务</b>${c.routines.length?c.routines.map(r=>`<div class="czrow" style="padding:8px 0">${I.clock.replace('<svg','<svg width="16" height="16" style="color:var(--l2)"')}<div class="k">${r}</div><span style="color:var(--l3)">›</span></div>`).join("")+`<div style="font-size:12px;color:var(--l3)">关掉或删掉 ${c.name}，这些定时任务下次运行会失败。</div>`:`<div style="color:var(--l3);margin-top:6px">没有</div>`}</div>`;
+  return `<div class="mpage ${offline()?"moffline":""}"><div class="in"><button class="mback" data-go="list">‹ 连接器</button>
+    <div style="display:flex;align-items:center;gap:14px;margin-top:21px;position:relative">${logo(c,48,11)}<div style="flex:1"><span style="font-size:26px;font-weight:600">${c.name}</span><span class="mtagx">${c.kind==="managed"?"内置":c.kind==="command"?"本地命令":"自定义"}</span></div>
+      <span style="color:var(--l2);font-size:12.5px">启用</span><button class="msw ${c.on?"on":""} ${offline()?"dis":""}" data-toggle="${c.id}"></button><button class="ib" data-act="menu">${I.more}</button>${menu}</div>
+    <div class="mfacts"><div><small>状态</small><span><i class="dotc" style="background:${s.col}"></i>${s.t.split(" · ")[0]}</span></div>${af?`<div><small>${af[0]}</small><span>${af[1]}</span></div>`:""}<div style="flex:1;min-width:0"><small>${c.kind==="command"?"命令":c.kind==="managed"?"来源":"地址"}</small><span style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${c.addr}</span></div></div>
+    ${note}${rts}${tools}</div></div>`;
+}
+function mAddSheet(){
+  const sentry=CATALOG[0].items[2];
+  let title="添加连接器", body="", foot="";
+  const cancel=`<button class="mbtn" data-go="list">取消</button>`;
+  switch(S.add){
+    case "address":
+      body=`<div class="mfield"><label>名称</label><div class="box ph">sentry</div></div><div class="mfield"><label>地址</label><div class="box mono">https://mcp.sentry.dev/mcp</div><div class="mrecog">● 远程服务器 · https</div></div>
+        <div style="font-size:12px;color:var(--l3)">MCP 服务器的地址，或者在 Mac mini 上运行的命令。</div>`;
+      foot=`${cancel}<button class="mbtn p" data-set="add:probing">连接</button>`; break;
+    case "probing":
+      body=`<div style="display:flex;gap:10px;align-items:center;margin-bottom:12px">${logo(sentry,28,7)}<b>sentry</b><span style="color:var(--l3);font-family:var(--mono);font-size:12px">https://mcp.sentry.dev/mcp</span></div>
+        <div class="mstep"><span class="mok">✓</span><span class="k">连接服务器</span><span class="r">401</span></div><div class="mstep"><span class="mok">✓</span><span class="k">查找登录设置</span><span class="r">OAuth</span></div><div class="mstep"><span class="mspin"></span><span class="k">检查登录服务</span><span class="r"></span></div>`;
+      foot=cancel; break;
+    case "settings":
+      body=`<div style="display:flex;gap:10px;align-items:center;margin-bottom:14px">${logo(sentry,28,7)}<b>sentry</b><span style="color:var(--l3);font-family:var(--mono);font-size:12px;flex:1">https://mcp.sentry.dev/mcp</span><button class="mbtn sm" data-set="add:address">修改</button></div>
+        <div class="fhd">鉴权</div><div class="fgroup"><div class="frow"><span>方式</span><span class="popup">用账号登录 <span class="mchip rec">检测到</span> ⌃</span></div></div>
+        <div class="fnote"><span style="color:var(--accent)">服务器要求登录，支持自动登记应用。</span> 添加后在这台 Mac 的浏览器里用你的 Sentry 账号登录；令牌只存在 Mac mini 上，不经过 Hermesh 服务器。</div>
+        <div class="fgroup"><div class="frow"><span>高级选项</span><span class="v">自动 · 可流式 HTTP ›</span></div></div><div class="fnote">只添加你信任的连接器：Her 会按它说的去做。</div>`;
+      foot=`<button class="mbtn" data-set="add:address">返回</button><button class="mbtn p" data-set="add:waiting">添加并登录</button>`; break;
+    case "waiting":
+      body=`<div style="text-align:center;padding:30px 0">${logo(sentry,48,11).replace('class="logo"','class="logo" style="margin:0 auto"')}<div style="font-size:16px;font-weight:600;margin-top:12px">在浏览器里登录 Sentry</div><div style="color:var(--l2);margin-top:4px">登录完会自动回到这里。</div><div class="mspin" style="margin:16px auto 0"></div></div>`;
+      foot=`<button class="mbtn">复制链接</button><button class="mbtn" data-set="add:done" style="color:var(--l3)">（原型：模拟登录成功）</button>${cancel}`; break;
+    case "done":
+      body=`<div style="text-align:center;padding:20px 0"><div style="width:48px;height:48px;border-radius:24px;background:var(--ok);color:#fff;font-size:24px;display:flex;align-items:center;justify-content:center;margin:0 auto">✓</div><div style="font-size:16px;font-weight:600;margin-top:12px">已添加 Sentry</div><div style="color:var(--l2);margin-top:4px">18 个工具 · Her 现在就能用</div><div style="color:var(--l3);font-family:var(--mono);font-size:12px;margin-top:10px">search_issues · get_issue_details · find_releases …</div></div>`;
+      foot=`<button class="mbtn p" data-act="addDone">完成</button>`; break;
+    case "command":
+      title="添加 postgres";
+      body=`<div class="fhd">命令</div><div class="mfield"><div class="box mono">npx -y @modelcontextprotocol/server-postgres</div></div>
+        <div class="fhd">环境变量</div><div class="fgroup"><div class="frow"><span style="font-family:var(--mono)">DATABASE_URL</span><span class="v">🔒 ••••••••</span></div></div><div class="fnote">上锁的值存在 Mac mini 的钥匙串里。第一次运行要下载，检查可能要几十秒。</div>
+        <div class="mnote warn"><span class="k">这条命令会以你的身份在 Mac mini 上运行。添加时要用 Touch ID 签名确认，Her 自己不能添加本地命令。</span></div>`;
+      foot=`<button class="mbtn" data-set="add:address">返回</button><button class="mbtn p" data-act="sign">用 Touch ID 添加</button>`; break;
+  }
+  return `<div class="mscrim"><div class="msheet"><div class="sh">${title}</div><div class="sb2">${body}</div><div class="sf">${foot}</div></div></div>`;
+}
+function renderMac(){
+  const conv=()=>mTop()+mConv()+mComposer();
+  switch(S.screen){
+    case "chat": return mFrame(conv());
+    case "plus": return mFrame(mTop()+mConv()+mComposer(mPlusMenu()));
+    case "settings": return mFrame(mTop(true)+mConv()+mComposer()+mSettingsPanel());
+    case "list": return mFrame(mList());
+    case "discover": return mFrame(mDiscover());
+    case "detail": return mFrame(mDetail());
+    case "add": return mFrame(mList(), mAddSheet());
+  }
+}
+
+/* ---------------- render & events ---------------- */
+let toastTimer, probeTimer;
+function toast(t){S.toast=t;render();clearTimeout(toastTimer);toastTimer=setTimeout(()=>{S.toast="";render();},2600);}
+function render(){
+  document.documentElement.dataset.theme=S.theme;
+  document.getElementById("stage").innerHTML = S.plat==="iphone"?renderIphone():renderMac();
+  document.getElementById("notes").innerHTML = NOTES[S.screen];
+  renderCtl();
+  clearTimeout(probeTimer);
+  if(S.screen==="add"&&S.add==="probing") probeTimer=setTimeout(()=>{if(S.screen==="add"&&S.add==="probing"){S.add="settings";render();}},1800);
+}
+function go(screen){S.screen=screen;S.menu=false;S.plusSub=false;if(screen==="add")S.add="address";render();}
+document.addEventListener("click",e=>{
+  const t=e.target.closest("[data-set],[data-go],[data-act],[data-detail],[data-toggle],[data-fix],[data-install]");
+  if(!t) return;
+  e.stopPropagation();
+  const d=t.dataset;
+  if(d.set){const [k,v]=d.set.split(":");S[k]=v;if(k==="scen")reset();if(k==="screen"){S.menu=false;S.plusSub=false;if(v==="add")S.add="address";}render();return;}
+  if(d.go){if(d.go.includes(":")){const [k,v]=d.go.split(":");S[k]=v;render();}else go(d.go);return;}
+  if(d.detail){S.detail=d.detail;go("detail");return;}
+  if(d.toggle){if(offline()){toast("Mac mini 离线，连上后才能修改");return;}const c=byId(d.toggle);c.on=!c.on;
+    toast(c.on?`已打开 ${c.name}，Her 下一步起就能用`:(c.routines.length?`已关掉 ${c.name}。“${c.routines[0]}”下次运行会失败`:`已关掉 ${c.name}，Her 下一步起不再用它`));return;}
+  if(d.fix){if(offline())return;const c=byId(d.fix);const was=c.status;c.status=was==="login"?"waiting":"checking";S.menu=false;render();
+    setTimeout(()=>{c.status="ok";toast(was==="login"?`已登录 ${c.name} · ${c.tools} 个工具`:`${c.name} 可用 · ${c.tools} 个工具`);},1500);return;}
+  if(d.install){const it=CATALOG.flatMap(g=>g.items).find(i=>i.id===d.install);
+    if(it.ways[0]==="不需要鉴权"){C.push({id:it.id,name:it.name,mono:it.mono,bg:it.bg,kind:"remote",addr:"https://mcp.context7.com/mcp",auth:"none",status:"ok",tools:2,on:true,checked:"刚刚",routines:[],tl:[["resolve-library-id","找到库的 ID"],["get-library-docs","读库的文档"]]});toast(`已添加 ${it.name} · 2 个工具，Her 现在就能用`);}
+    else if(it.ways[0]==="内置"){toast(`${it.name} 随 Her 安装：会在 Mac mini 上打开它的登录（原型）`);}
+    else {S.screen="add";S.add="settings";render();}
+    return;}
+  switch(d.act){
+    case "plus": if(S.screen==="plus"){go("chat");}else{S.screen="plus";S.plusSub=false;render();} break;
+    case "plusSub": S.plusSub=!S.plusSub;render();break;
+    case "closePop": go("chat");break;
+    case "add": go("add");break;
+    case "addDone": addSentry();go("list");toast("已添加 Sentry · 18 个工具");break;
+    case "menu": S.menu=!S.menu;render();break;
+    case "del": S.menu=false;{const c=byId(S.detail);C=C.filter(x=>x!==c);go("list");toast(`已删除 ${c.name}，它的令牌一并删除 · 撤销`);}break;
+    case "cardYes": addSentry();S.cards="done";render();toast("在浏览器里登录 Sentry…（原型：直接成功）");break;
+    case "cardNo": S.cards="ask";toast("好的，不连了");break;
+    case "sign": toast(S.plat==="iphone"?"Face ID 确认后添加（原型）":"Touch ID 确认后添加（原型）");break;
+  }
+});
+render();
+</script>
+</body>
+</html>

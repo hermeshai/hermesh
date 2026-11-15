@@ -234,7 +234,7 @@ export function Onboarding({ flow, bot }: { flow: Flow; bot: BotSummary }) {
               disabled={busy}
               rows={[
                 ...keyChoices(models.providers).map((p) => ({ id: p.id, title: name(p.id), current: p.id === asked, onPick: () => pick(p.id) })),
-                { id: "", title: t("onboard.otherServices"), icon: "ext" as const, onPick: her.openConsole },
+                { id: "", title: t("onboard.otherServices"), icon: "ext" as const, onPick: () => her.openConsole() },
               ]}
             />
             {other}
