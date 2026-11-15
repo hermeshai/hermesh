@@ -1,7 +1,7 @@
 //! Conservative checks based on the current engine snapshot. This module deliberately
 //! does not claim text overflow, rotated bounds, or group-child geometry without layout.
 
-use betteroffice_pptx::{DeckSnapshot, ShapeKind, ShapeSnapshot};
+use nimbleoffice_pptx::{DeckSnapshot, ShapeKind, ShapeSnapshot};
 use her_protocol::deck::{DeckDiagnostic, DiagnosticRule};
 
 /// Evaluate the implemented rules in slide/shape order; `index` is one-based.

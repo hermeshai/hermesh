@@ -1,4 +1,4 @@
-//! Local PPTX bytes for the browser's editable BetterOffice session. Layout and editing
+//! Local PPTX bytes for the browser's editable NimbleOffice session. Layout and editing
 //! belong to that session; the host owns fonts, conflict checks and atomic file writes.
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};

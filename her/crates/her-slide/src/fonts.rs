@@ -1,4 +1,4 @@
-//! Faces for BetterOffice from the machine itself; the only fonts compiled in are Carlito and
+//! Faces for NimbleOffice from the machine itself; the only fonts compiled in are Carlito and
 //! Caladea (SIL OFL, `fonts/`), metric-compatible with Calibri and Cambria.
 //!
 //! A family resolves to an installed face, including fonts in Office's app bundles, then the
@@ -11,7 +11,7 @@ use std::io::{Read, Seek, SeekFrom};
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, OnceLock};
 
-use betteroffice_pptx::fonts::{
+use nimbleoffice_pptx::fonts::{
     FontError, FontFaceHandle, FontPack, FontProvider, LastResortOffice,
 };
 

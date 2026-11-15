@@ -2,7 +2,7 @@
 
 use std::io::Read;
 
-use betteroffice_pptx::{EditCtx, FindRequest, Presentation, TextStyle};
+use nimbleoffice_pptx::{EditCtx, FindRequest, Presentation, TextStyle};
 use her_slide::{Deck, ProposalEdit, ProposalRequest, ProposalStripStatus, SlideError};
 
 const FIXTURE: &[u8] = include_bytes!("fixtures/editor.pptx");
