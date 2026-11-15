@@ -1414,3 +1414,59 @@ async fn a_sub_agents_tabs_stay_with_the_conversation() {
     client.request("server/shutdown", json!({})).await.unwrap();
     let _ = tokio::time::timeout(Duration::from_secs(20), service.wait()).await;
 }
+
+/// The name of the tab group `url`'s tab is in, read until it is `name`.
+async fn group_named(chrome: &her_browser::cdp::Conn, url: &str, name: &str) {
+    let read = format!("chrome.tabs.query({{url: {}}}).then(t => t[0] && t[0].groupId !== -1 ? chrome.tabGroups.get(t[0].groupId).then(g => g.title) : null)", json!(url));
+    let mut now = Value::Null;
+    for _ in 0..100 {
+        now = worker(chrome, &read).await;
+        if now == name {
+            return;
+        }
+        tokio::time::sleep(Duration::from_millis(100)).await;
+    }
+    panic!("the group of {url} was never named {name:?}: {now}");
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn a_tab_group_is_named_for_the_users_latest_words() {
+    let Some(chrome_exe) = her_browser::launch::find_executable() else {
+        eprintln!("no Chromium-family browser installed; skipping");
+        return;
+    };
+    let env = TestEnv::new("bypass-permissions", "[browser]\nextension = true\n").await;
+    let socket = env.home.path().join("run").join("her.sock");
+    let profile = env.work().join("chrome-profile");
+    let (mut service, client, demux) = serve(&env, &socket, None).await;
+    let installed = env.her(&["browser", "extension", "install", "--user-data-dir", profile.to_str().unwrap()]).output().await.unwrap();
+    assert!(installed.status.success(), "{}", String::from_utf8_lossy(&installed.stderr));
+    let (chrome, _chrome_process) = chrome_with_extension(&env, &profile, &chrome_exe).await;
+    status_until(&client, "the extension", |s| s["extension"]["in_use"] == true).await;
+
+    // A session goes on from one task to the next in the same tab: its group follows.
+    let cwd = env.workspace("ext");
+    let created = client.request("session/new", json!({"cwd": cwd})).await.unwrap();
+    let session = created["session_id"].as_str().unwrap().to_string();
+    let mut events = demux.subscribe(&session);
+    let page = serve_page("<title>Flights</title><h1>Flights</h1>").await;
+    native_prompt(&client, &mut events, &session, &format!("查一下去东京的机票\n[[mock:yours:{page}]]"), true).await;
+    group_named(&chrome, &page, "查一下去东京的机票").await;
+    native_prompt(&client, &mut events, &session, "再看看那边的酒店\n[[mock:yours_read:y1]]", true).await;
+    group_named(&chrome, &page, "再看看那边的酒店").await;
+
+    // So does the group of a conversation with an assistant, which the session list leaves out.
+    let bot = client.request("bots/create", json!({"name": "助手", "avatar": {"kind": "mono", "hue": "teal"}})).await.unwrap();
+    let opened = client.request("bots/open", json!({"bot_id": bot["bot"]["id"]})).await.unwrap();
+    let chat = opened["session_id"].as_str().unwrap().to_string();
+    let mut chat_events = demux.subscribe(&chat);
+    let other = serve_page("<title>Weather</title><h1>Weather</h1>").await;
+    native_prompt(&client, &mut chat_events, &chat, &format!("明天天气怎么样\n[[mock:yours:{other}]]"), true).await;
+    group_named(&chrome, &other, "明天天气怎么样").await;
+    native_prompt(&client, &mut chat_events, &chat, "那后天呢\n[[mock:yours_read:y1]]", true).await;
+    group_named(&chrome, &other, "那后天呢").await;
+    group_named(&chrome, &page, "再看看那边的酒店").await;
+
+    client.request("server/shutdown", json!({})).await.unwrap();
+    let _ = tokio::time::timeout(Duration::from_secs(20), service.wait()).await;
+}

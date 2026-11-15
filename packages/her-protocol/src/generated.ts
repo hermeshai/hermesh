@@ -2572,6 +2572,8 @@ export type ExtensionSession = {
   /** What it waits for the user to do in the page. */
   handoff?: string | null;
   state: SessionState;
+  /** How the user's latest message starts: the task its tabs are for. */
+  task?: string | null;
   title: string;
 };
 

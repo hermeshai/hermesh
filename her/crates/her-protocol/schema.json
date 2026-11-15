@@ -11585,6 +11585,13 @@
         "state": {
           "$ref": "#/definitions/SessionState"
         },
+        "task": {
+          "description": "How the user's latest message starts: the task its tabs are for.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
         "title": {
           "type": "string"
         }

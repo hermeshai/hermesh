@@ -60,7 +60,7 @@ const lastUsed = new Map();
 const groups = new Map();
 /** Tabs the user offered to a conversation, not given to a session yet. */
 const offered = new Set();
-/** What the service says about the sessions with tabs here. @type {Record<string, {title: string, state: string, handoff?: string}>} */
+/** What the service says about the sessions with tabs here. @type {Record<string, {title: string, state: string, handoff?: string, task?: string}>} */
 let sessions = {};
 /** The window the agent's tabs open in: its own, so the user's tabs are never taken. */
 let windowId = null;
@@ -164,7 +164,8 @@ async function agentWindow() {
 
 function groupLook(session) {
   const known = sessions[session];
-  const title = (known?.title || GROUP_TITLE).slice(0, TITLE_CHARS);
+  // Named for the task at hand, which a long conversation changes: the user's latest words.
+  const title = (known?.task || known?.title || GROUP_TITLE).slice(0, TITLE_CHARS);
   const waiting = known?.state === "awaiting_approval";
   // Orange asks for the user, blue is at work, grey has finished: the tabs stay theirs.
   const color = waiting ? "orange" : known?.state === "running" ? "blue" : "grey";

@@ -171,6 +171,8 @@ pub(crate) enum Listing {
         id: String,
         bots: Arc<crate::bots::Registry>,
         routines: Arc<crate::routines::Routines>,
+        /// The session list, not to be listed in: its observer tells the extension.
+        sessions: Arc<ListFeed>,
     },
 }
 
@@ -204,6 +206,8 @@ pub struct HubShared {
     pub mcp: parking_lot::Mutex<std::collections::BTreeMap<String, her_protocol::McpServerInfo>>,
     /// The approval that waits for the user to do something in a page.
     pub handoff: parking_lot::Mutex<Option<Handoff>>,
+    /// How the user's latest message starts: the task its tab group in their browser is named for.
+    pub task: parking_lot::Mutex<Option<String>>,
     done: watch::Receiver<bool>,
 }
 
@@ -321,6 +325,7 @@ pub(crate) fn spawn(
         idle_since: AtomicU64::new(0),
         mcp: parking_lot::Mutex::new(std::collections::BTreeMap::new()),
         handoff: parking_lot::Mutex::new(None),
+        task: parking_lot::Mutex::new(mirror.last_user_text().map(|text| preview(&text))),
         done: done_rx,
     });
     let mut hub = Hub {
@@ -395,7 +400,7 @@ impl Hub {
 
     fn dispatch(&mut self, event: Event) {
         self.mirror.apply(&event);
-        if let Listing::Bot { id, bots, routines } = &self.listing {
+        if let Listing::Bot { id, bots, routines, .. } = &self.listing {
             bots.on_event(id, &event, &self.mirror);
             routines.on_event(id, &event);
         }
@@ -503,6 +508,12 @@ impl Hub {
                 self.base.preview = Some(preview(&user.text_content()));
                 true
             }
+            // The user's next words name its tab group anew.
+            EventMsg::MessageCompleted {
+                message: her_llm::Message::User(user),
+                mail: None,
+                ..
+            } => self.shared.task.lock().as_deref() != Some(preview(&user.text_content()).as_str()),
             _ => false,
         }
     }
@@ -521,8 +532,10 @@ impl Hub {
             summary.task_started_at = Some(list::rfc3339(since));
         }
         *self.shared.summary.lock() = summary.clone();
-        if let Listing::Sessions(feed) = &self.listing {
-            feed.publish(vec![summary], Vec::new());
+        *self.shared.task.lock() = self.mirror.last_user_text().map(|text| preview(&text));
+        match &self.listing {
+            Listing::Sessions(feed) => feed.publish(vec![summary], Vec::new()),
+            Listing::Bot { sessions, .. } => sessions.observed(),
         }
     }
 

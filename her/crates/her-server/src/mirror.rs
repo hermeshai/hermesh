@@ -172,6 +172,18 @@ impl SessionMirror {
         })
     }
 
+    /// The text of the user's latest message, reports (`mail`) aside.
+    pub fn last_user_text(&self) -> Option<String> {
+        self.transcript.iter().rev().find_map(|item| match item {
+            TranscriptItem::Message {
+                message: her_llm::Message::User(user),
+                mail: None,
+                ..
+            } => Some(user.text_content()),
+            _ => None,
+        })
+    }
+
     pub fn apply(&mut self, event: &Event) {
         self.last_seq = event.seq;
         match &event.msg {
@@ -745,6 +757,7 @@ mod tests {
         assert_eq!(agent.status, AgentStatus::Completed);
         assert_eq!((agent.summary.as_deref(), agent.elapsed_ms), (Some("3 files"), Some(1200)));
         assert!(matches!(&snap.transcript.items[0], TranscriptItem::Message { mail: Some(mail), .. } if mail.from.name == "counter"));
+        assert_eq!(m.last_user_text(), None, "a report is not the user's words");
     }
 
     #[test]
@@ -885,6 +898,7 @@ mod tests {
         }
         assert_eq!(m.state(), SessionState::Failed);
         assert_eq!(m.snapshot(None).transcript.items.len(), 4);
+        assert_eq!(m.last_user_text().as_deref(), Some("second"));
         m.apply(&ev(
             9,
             EventMsg::SessionRewound {
@@ -901,6 +915,7 @@ mod tests {
         assert_eq!(m.state(), SessionState::Idle, "the failure was in what went");
         assert_eq!(snap.usage, spent(5), "what was spent stays");
         assert!(m.has_user_message());
+        assert_eq!(m.last_user_text().as_deref(), Some("first"), "the latest words left");
         // Back before the first message.
         m.apply(&ev(
             10,
@@ -912,6 +927,7 @@ mod tests {
         ));
         assert!(m.snapshot(None).transcript.items.is_empty());
         assert!(!m.has_user_message());
+        assert_eq!(m.last_user_text(), None);
     }
 
     #[test]
