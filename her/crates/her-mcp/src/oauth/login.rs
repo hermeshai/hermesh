@@ -206,6 +206,10 @@ pub async fn start_login(req: LoginRequest) -> Result<PendingLogin, String> {
             let own = req.own.clone().unwrap_or_default();
             ClientChoice { kind, client_id: own.client_id, client_secret: own.client_secret, redirect_uri: None }
         }
+        McpOAuthClientKind::Builtin => {
+            let (id, secret) = client::builtin(&meta.issuer).ok_or("her has no client of its own for this provider")?;
+            ClientChoice { kind, client_id: id.into(), client_secret: Some(secret.into()), redirect_uri: None }
+        }
         McpOAuthClientKind::MetadataDocument => ClientChoice {
             kind,
             client_id: req.metadata_url.clone().unwrap_or_default(),

@@ -48,6 +48,18 @@ extension HermeshUITests {
         try herConnectors(url)
     }
 
+    /// Scheduled tasks (docs/kernel/routine-design.md §8), from the clock at the top right of Her's page: the list, a
+    /// task's page and a run's, and the ways in from her conversation.
+    ///
+    ///     HERMESH_IPHONE_E2E=1 HERMESH_IPHONE_GREP=testHerRoutines go test ./e2e -run TestIPhone -v -timeout 40m
+    @objc func testHerRoutines() throws {
+        guard ProcessInfo.processInfo.environment["HERMESH_E2E_HER"] != nil else { throw XCTSkip("run with Her built") }
+        try join()
+        try herTurnOn()
+        try herOnboarding()
+        try herRoutines()
+    }
+
     /// Sending (docs/her-sending.md) on its own: a message leaves the composer at once and shows once.
     ///
     ///     HERMESH_IPHONE_E2E=1 HERMESH_IPHONE_GREP=testHerSending go test ./e2e -run TestIPhone -v -timeout 40m
@@ -858,6 +870,110 @@ extension HermeshUITests {
     }
 
     // MARK: Helpers
+
+    /// Scheduled tasks as the owner meets them: none yet, New writing a sentence for Her, one she makes (her-mock's
+    /// routine) a line in her conversation that opens it, paused and resumed by its switch, run now, its run's message
+    /// naming it and opening the run, which shows its message in the chat, and deleted.
+    func herRoutines() throws {
+        // At the top right of her page, after Progress.
+        let entry = app.buttons["her-routines"]
+        XCTAssertTrue(entry.waitForExistence(timeout: 10), "on her page")
+        XCTAssertGreaterThan(entry.frame.minX, app.buttons["her-progress"].frame.maxX, "beside Progress, on its right")
+        entry.tap()
+        XCTAssertTrue(app.navigationBars["定时任务"].waitForExistence(timeout: 10))
+        XCTAssertTrue(text("还没有定时任务").waitForExistence(timeout: 30), "none yet")
+        herShot("Scheduled tasks: none yet")
+
+        // New goes back to the conversation with a sentence to finish, the keyboard up.
+        tap("routines-new")
+        let composer = app.descendants(matching: .any)["her-composer"].firstMatch
+        try waitFor("the sentence in the composer", timeout: 10) { (composer.value as? String)?.hasPrefix("帮我建一个定时任务：") == true ? true : nil }
+        XCTAssertTrue(waitUntil(timeout: 5) { self.app.keyboards.count > 0 }, "ready to type on")
+        composer.typeText("[[mock:routine:拉伸|in 1m|say:该起来活动一下了。]] 一分钟后提醒我拉伸")
+        tap("her-send")
+        approveIfAsked()
+        let lines = app.buttons.matching(identifier: "her-routine-line")
+        let stretchLine = lines.containing(NSPredicate(format: "label CONTAINS %@", "已创建定时任务「拉伸」")).firstMatch
+        XCTAssertTrue(stretchLine.waitForExistence(timeout: 60), "what Her did, as a line")
+
+        // One that runs every night: its line opens it.
+        herSend("[[mock:routine:夜间检查|0 3 * * *|say:夜间检查做完了。]] 每天凌晨三点检查一下")
+        approveIfAsked()
+        let nightLine = lines.containing(NSPredicate(format: "label CONTAINS %@", "已创建定时任务「夜间检查」")).firstMatch
+        XCTAssertTrue(nightLine.waitForExistence(timeout: 60))
+        herShot("Her: scheduled tasks she made")
+        press(nightLine)
+        XCTAssertTrue(app.navigationBars["夜间检查"].waitForExistence(timeout: 10), "the task's page")
+        try waitFor("what it is told", timeout: 20) { text("[[mock:say:夜间检查做完了。]]").exists ? true : nil }
+        XCTAssertTrue(text("说好的时间").exists, "when, as Her wrote it")
+        XCTAssertTrue(text("接下来").waitForExistence(timeout: 10), "its next runs")
+        herShot("Scheduled task: its page")
+
+        // Paused on its page, it is under Paused in the list; its switch there resumes it.
+        let enabled = app.switches["routine-enabled"].firstMatch
+        XCTAssertTrue(enabled.waitForExistence(timeout: 10))
+        XCTAssertEqual(enabled.value as? String, "1")
+        enabled.switches.firstMatch.tap()
+        try waitFor("paused", timeout: 20) { enabled.value as? String == "0" && !text("接下来").exists ? true : nil }
+        app.navigationBars.buttons.element(boundBy: 0).tap()
+        XCTAssertTrue(lines.firstMatch.waitForExistence(timeout: 10), "back in the conversation")
+        entry.tap()
+        XCTAssertTrue(text("已暂停").waitForExistence(timeout: 10), "under Paused")
+        let night = app.descendants(matching: .any).matching(identifier: "routine-row").containing(NSPredicate(format: "label CONTAINS %@", "夜间检查")).firstMatch
+        XCTAssertTrue(night.exists)
+        herShot("Scheduled tasks: one paused")
+        let rowSwitch = night.switches.firstMatch
+        rowSwitch.switches.firstMatch.tap()
+        try waitFor("resumed", timeout: 20) { rowSwitch.value as? String == "1" && !text("已暂停").exists ? true : nil }
+
+        // Run now, once the owner says so: it runs, and its report reaches the conversation.
+        press(night.buttons.firstMatch)
+        XCTAssertTrue(app.navigationBars["夜间检查"].waitForExistence(timeout: 10))
+        tap("routine-run-now")
+        let confirm = app.buttons.matching(NSPredicate(format: "identifier == %@ OR label == %@", "routine-run-now-confirm", "立即运行")).allElementsBoundByIndex.last { $0.isHittable && $0.identifier != "routine-run-now" }
+        XCTAssertNotNil(confirm, "asked first")
+        confirm?.tap()
+        let runs = app.descendants(matching: .any).matching(identifier: "routine-run")
+        try waitFor("its run, told", timeout: 90) { runs.containing(NSPredicate(format: "label CONTAINS %@", "发给你了")).firstMatch.exists ? true : nil }
+        herShot("Scheduled task: run now")
+        app.navigationBars.buttons.element(boundBy: 0).tap()
+        app.navigationBars.buttons.element(boundBy: 0).tap()
+        XCTAssertTrue(app.staticTexts["夜间检查做完了。"].waitForExistence(timeout: 30), "its report, passed on")
+
+        // The reminder, a minute after it was made: its message names the task, and opens the run.
+        XCTAssertTrue(app.staticTexts["该起来活动一下了。"].waitForExistence(timeout: 120), "the reminder")
+        let source = app.buttons.matching(identifier: "her-routine-source").containing(NSPredicate(format: "label CONTAINS %@", "拉伸")).firstMatch
+        XCTAssertTrue(source.waitForExistence(timeout: 10), "which task sent it")
+        herShot("Her: a scheduled task's message")
+        press(source)
+        XCTAssertTrue(app.navigationBars["一次运行"].waitForExistence(timeout: 10), "the run's page")
+        try waitFor("how it went", timeout: 20) { text("发给你了").exists ? true : nil }
+        XCTAssertTrue(app.buttons["routine-run-task"].exists, "its task a tap away")
+        herShot("Scheduled task: a run")
+        tap("routine-show-in-chat")
+        XCTAssertTrue(waitUntil(timeout: 10) { self.app.staticTexts["该起来活动一下了。"].isHittable }, "its message in view")
+
+        // A one-off that has run is over: under Finished, where it is deleted from its page.
+        entry.tap()
+        XCTAssertTrue(text("已结束").waitForExistence(timeout: 20), "under Finished")
+        let stretch = app.descendants(matching: .any).matching(identifier: "routine-row").containing(NSPredicate(format: "label CONTAINS %@", "拉伸")).firstMatch
+        press(stretch.buttons.firstMatch)
+        XCTAssertTrue(app.navigationBars["拉伸"].waitForExistence(timeout: 10))
+        tap("routine-delete")
+        let delete = app.buttons.matching(NSPredicate(format: "identifier == %@ OR label == %@", "routine-delete-confirm", "删除")).allElementsBoundByIndex.last { $0.isHittable }
+        XCTAssertNotNil(delete, "asked first")
+        delete?.tap()
+        XCTAssertTrue(app.navigationBars["定时任务"].waitForExistence(timeout: 10), "back at the list")
+        try waitFor("gone from the list", timeout: 20) { !text("已结束").exists && !stretch.exists ? true : nil }
+        XCTAssertTrue(night.exists, "the other one stays")
+        herShot("Scheduled tasks: one deleted")
+        app.navigationBars.buttons.element(boundBy: 0).tap()
+    }
+
+    /// Allows Her's next call when she asks (a routine she makes asks in the manual mode).
+    func approveIfAsked() {
+        if app.descendants(matching: .any)["her-approval"].firstMatch.waitForExistence(timeout: 30) { tap("her-allow-once") }
+    }
 
     func herSend(_ text: String) {
         let composer = app.descendants(matching: .any)["her-composer"].firstMatch

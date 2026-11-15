@@ -180,6 +180,16 @@
         }
       }
     },
+    "%@ late": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "晚了 %@"
+          }
+        }
+      }
+    },
     "%@ on %@": {
       "localizations": {
         "zh-Hans": {
@@ -236,6 +246,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "%@ 今天未发起任务"
+          }
+        }
+      }
+    },
+    "%@ to %@": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%1$@ 到 %2$@"
           }
         }
       }
@@ -540,6 +560,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "%lld 个运行中"
+          }
+        }
+      }
+    },
+    "%lld runs, open to see each": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld 次，点开看每一次"
           }
         }
       }
@@ -1615,6 +1645,16 @@
         }
       }
     },
+    "Can’t Read This Run": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "读不到这次运行"
+          }
+        }
+      }
+    },
     "Can’t join": {
       "localizations": {
         "zh-Hans": {
@@ -1661,6 +1701,36 @@
           "stringUnit": {
             "state": "translated",
             "value": "修改范围…"
+          }
+        }
+      }
+    },
+    "Change in the Chat": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "在对话里修改"
+          }
+        }
+      }
+    },
+    "Change the scheduled task “%@” to: ": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "把定时任务「%@」改成："
+          }
+        }
+      }
+    },
+    "Changed the scheduled task “%@” · %@": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "已修改定时任务「%1$@」· %2$@"
           }
         }
       }
@@ -2165,6 +2235,16 @@
         }
       }
     },
+    "Created the scheduled task “%@” · %@": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "已创建定时任务「%1$@」· %2$@"
+          }
+        }
+      }
+    },
     "Creates a management key": {
       "localizations": {
         "zh-Hans": {
@@ -2235,12 +2315,32 @@
         }
       }
     },
+    "Delete Scheduled Task": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "删除定时任务"
+          }
+        }
+      }
+    },
     "Delete the 3 old migration files?": {
       "localizations": {
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
             "value": "要删掉 3 个旧的迁移文件吗？"
+          }
+        }
+      }
+    },
+    "Delete the scheduled task “%@”?": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "删除定时任务「%@」？"
           }
         }
       }
@@ -2261,6 +2361,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "已删除"
+          }
+        }
+      }
+    },
+    "Deleted the scheduled task “%@”": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "已删除定时任务「%@」"
           }
         }
       }
@@ -2535,6 +2645,16 @@
         }
       }
     },
+    "Earlier Runs": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "更早的运行"
+          }
+        }
+      }
+    },
     "Earlier Steps": {
       "localizations": {
         "zh-Hans": {
@@ -2581,6 +2701,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "正在修改"
+          }
+        }
+      }
+    },
+    "Enabled": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "启用"
           }
         }
       }
@@ -2845,6 +2975,16 @@
         }
       }
     },
+    "Finished": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "已结束"
+          }
+        }
+      }
+    },
     "Finished turns": {
       "localizations": {
         "zh-Hans": {
@@ -2901,6 +3041,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "查到了，计划写好了。Codex 来改？"
+          }
+        }
+      }
+    },
+    "From the scheduled task “%@”": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "来自定时任务「%@」"
           }
         }
       }
@@ -3144,6 +3294,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "Hermesh 会唤醒它一次，待处理的消息也会一并读取。"
+          }
+        }
+      }
+    },
+    "Her’s scheduled tasks show here once she runs on one of your machines.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Her 在你的某台机器上运行后，她的定时任务会显示在这里。"
           }
         }
       }
@@ -3448,6 +3608,16 @@
         }
       }
     },
+    "Instructions": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "说明"
+          }
+        }
+      }
+    },
     "Interrupt": {
       "localizations": {
         "zh-Hans": {
@@ -3528,6 +3698,36 @@
         }
       }
     },
+    "It hasn’t run yet.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "还没有运行过。"
+          }
+        }
+      }
+    },
+    "It really does the task, as when its time comes.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "会真的去做这件事，和到点时一样。"
+          }
+        }
+      }
+    },
+    "It won’t run again.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "删除后不再运行。"
+          }
+        }
+      }
+    },
     "Its last turn failed": {
       "localizations": {
         "zh-Hans": {
@@ -3554,6 +3754,36 @@
           "stringUnit": {
             "state": "translated",
             "value": "刚完成"
+          }
+        }
+      }
+    },
+    "Just tell %@, for example “give me a pre-market brief every morning at 8”.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "跟 %@ 说一句就能建，比如“每天早上 8 点给我一份盘前简报”。"
+          }
+        }
+      }
+    },
+    "Last run failed": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "上次没做成"
+          }
+        }
+      }
+    },
+    "Last run failed · %@": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "上次没做成 · %@"
           }
         }
       }
@@ -3628,6 +3858,46 @@
         }
       }
     },
+    "New Scheduled Task": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "新建定时任务"
+          }
+        }
+      }
+    },
+    "Next %@ · %@": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "下次 %1$@ · %2$@"
+          }
+        }
+      }
+    },
+    "Next Runs": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "接下来"
+          }
+        }
+      }
+    },
+    "No Scheduled Tasks Yet": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "还没有定时任务"
+          }
+        }
+      }
+    },
     "No longer on this iPhone": {
       "localizations": {
         "zh-Hans": {
@@ -3654,6 +3924,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "还没有派出去的活"
+          }
+        }
+      }
+    },
+    "Not delivered": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "没有送达"
           }
         }
       }
@@ -3688,12 +3968,62 @@
         }
       }
     },
+    "Nothing to report": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "没有要说的"
+          }
+        }
+      }
+    },
+    "One Run": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "一次运行"
+          }
+        }
+      }
+    },
+    "Open This Run": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "查看这次运行"
+          }
+        }
+      }
+    },
     "Open the Conversation": {
       "localizations": {
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
             "value": "打开对话"
+          }
+        }
+      }
+    },
+    "Passing it on": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "正在转告"
+          }
+        }
+      }
+    },
+    "Paused the scheduled task “%@”": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "已暂停定时任务「%@」"
           }
         }
       }
@@ -3728,6 +4058,16 @@
         }
       }
     },
+    "Ran for %@": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "运行 %@"
+          }
+        }
+      }
+    },
     "Read": {
       "localizations": {
         "zh-Hans": {
@@ -3748,6 +4088,26 @@
         }
       }
     },
+    "Reading the run…": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "正在读取这次运行…"
+          }
+        }
+      }
+    },
+    "Recent Runs": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "最近运行"
+          }
+        }
+      }
+    },
     "Recently Finished": {
       "localizations": {
         "zh-Hans": {
@@ -3758,12 +4118,62 @@
         }
       }
     },
+    "Report": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "汇报"
+          }
+        }
+      }
+    },
+    "Result": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "结果"
+          }
+        }
+      }
+    },
+    "Resumed the scheduled task “%@” · %@": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "已恢复定时任务「%1$@」· %2$@"
+          }
+        }
+      }
+    },
     "Review": {
       "localizations": {
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
             "value": "去批准"
+          }
+        }
+      }
+    },
+    "Run Now": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "立即运行"
+          }
+        }
+      }
+    },
+    "Run “%@” now?": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "现在运行「%@」？"
           }
         }
       }
@@ -3788,12 +4198,102 @@
         }
       }
     },
+    "Running · %@": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "正在运行 · %@"
+          }
+        }
+      }
+    },
+    "Running…": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "正在运行…"
+          }
+        }
+      }
+    },
+    "Scheduled Task": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "定时任务"
+          }
+        }
+      }
+    },
+    "Scheduled Tasks": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "定时任务"
+          }
+        }
+      }
+    },
+    "Scheduled Tasks Aren’t Available": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "定时任务现在用不了"
+          }
+        }
+      }
+    },
+    "Scheduled Tasks, a last run failed": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "定时任务，有一个上次没做成"
+          }
+        }
+      }
+    },
+    "Scheduled Tasks, one running": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "定时任务，有一个正在运行"
+          }
+        }
+      }
+    },
+    "Scheduled for": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "计划时间"
+          }
+        }
+      }
+    },
     "Scheduled task “%@” · %@": {
       "localizations": {
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
             "value": "定时任务「%@」· %@"
+          }
+        }
+      }
+    },
+    "Scheduled tasks run on %@. They don’t run while it is off or asleep, and catch up once, with the latest, when it is back.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "定时任务在 %@ 上运行。那台机器关机或睡眠时不跑，回来后补最近一次。"
           }
         }
       }
@@ -3828,6 +4328,26 @@
         }
       }
     },
+    "Sent to you": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "发给你了"
+          }
+        }
+      }
+    },
+    "Set up a scheduled task for me: ": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "帮我建一个定时任务："
+          }
+        }
+      }
+    },
     "She runs on a computer of yours and leads the coding agents on all of them. Her conversations, files and model keys stay on that machine.": {
       "localizations": {
         "zh-Hans": {
@@ -3848,12 +4368,32 @@
         }
       }
     },
+    "Show in Chat": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "在对话里看"
+          }
+        }
+      }
+    },
     "Shows what your agents are doing": {
       "localizations": {
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
             "value": "查看你的 Agent 在做什么"
+          }
+        }
+      }
+    },
+    "Skipped": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "跳过"
           }
         }
       }
@@ -3938,6 +4478,16 @@
         }
       }
     },
+    "The run before it was still going": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "上一次还在运行"
+          }
+        }
+      }
+    },
     "The work Her sends out shows here once she runs on one of your machines.": {
       "localizations": {
         "zh-Hans": {
@@ -3994,6 +4544,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "只展开思考"
+          }
+        }
+      }
+    },
+    "This Scheduled Task Is Gone": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "这个定时任务已经不在了"
           }
         }
       }
@@ -4138,6 +4698,16 @@
         }
       }
     },
+    "Today %@": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "今天 %@"
+          }
+        }
+      }
+    },
     "Today · %lld sessions": {
       "localizations": {
         "zh-Hans": {
@@ -4154,6 +4724,26 @@
           "stringUnit": {
             "state": "translated",
             "value": "Tokens"
+          }
+        }
+      }
+    },
+    "Tomorrow %@": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "明天 %@"
+          }
+        }
+      }
+    },
+    "Tonight %@": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "今晚 %@"
           }
         }
       }
@@ -7784,6 +8374,16 @@
         }
       }
     },
+    "What It Found": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "查到的"
+          }
+        }
+      }
+    },
     "What it can use": {
       "localizations": {
         "zh-Hans": {
@@ -7830,6 +8430,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "「%@」能用什么"
+          }
+        }
+      }
+    },
+    "When": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "时间"
           }
         }
       }
@@ -7904,6 +8514,16 @@
         }
       }
     },
+    "Why": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "原因"
+          }
+        }
+      }
+    },
     "Windows": {
       "shouldTranslate": false
     },
@@ -7963,6 +8583,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "写下你的回答…"
+          }
+        }
+      }
+    },
+    "Yesterday %@": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "昨天 %@"
           }
         }
       }

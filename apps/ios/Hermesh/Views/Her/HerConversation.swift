@@ -29,6 +29,8 @@ struct HerConversation: View {
     @State private var page: HerFileText?
     /// The conversation's connection has been opening again for a while.
     @State private var slow = false
+    /// The message a scheduled task's run page brought into view, marked a moment.
+    @State private var marked: String?
 
     /// No model works there: Her's onboarding, the app speaking for her, until the conversation opens on one.
     private var noModel: Bool { state == .noModel || chat.noModel }
@@ -56,7 +58,7 @@ struct HerConversation: View {
                             .accessibilityIdentifier("her-earlier")
                     }
                     ForEach(Array(rows.enumerated()), id: \.element.key) { i, row in
-                        HerRow(chat: chat, row: row, previous: i > 0 ? rows[i - 1] : nil, machine: machine, preview: $preview, page: $page)
+                        HerRow(chat: chat, row: row, previous: i > 0 ? rows[i - 1] : nil, machine: machine, preview: $preview, page: $page, marked: marked == row.key)
                     }
                     if busy { HerTyping().padding(.top, rows.isEmpty ? 0 : herGap(joined: rows.last?.side == .her)) }
                 }
@@ -68,6 +70,20 @@ struct HerConversation: View {
             }
             // A page read while the top still shows: the next one.
             .onChange(of: chat.live?.before) { if topSeen { Task { await chat.earlier() } } }
+            // A run's message, asked for from its page: brought into view and marked a moment.
+            .onChange(of: chat.revealRun, initial: true) {
+                guard let run = chat.revealRun else { return }
+                chat.revealRun = nil
+                guard let key = rows.first(where: { $0.source?.runID == run })?.key else { return }
+                atEnd = false
+                Task {
+                    try? await Task.sleep(for: .milliseconds(450))
+                    withAnimation(still ? nil : .smooth) { proxy.scrollTo(key, anchor: .center) }
+                    withAnimation(.easeOut(duration: 0.2)) { marked = key }
+                    try? await Task.sleep(for: .seconds(1.6))
+                    withAnimation(.easeOut(duration: 0.6)) { if marked == key { marked = nil } }
+                }
+            }
         }
         // Nothing drawn under the top: the conversation scrolls under Her's mark and the menu button as it is.
         .scrollEdgeEffectHidden(true, for: .top)
@@ -146,7 +162,7 @@ private extension HerItem {
         switch kind {
         case .user, .waiting, .sending: .owner
         case .her, .attachment, .question, .card, .session, .work: .her
-        case .failure, .onboarding: nil
+        case .failure, .onboarding, .routine: nil
         }
     }
 }
@@ -164,6 +180,8 @@ private struct HerRow: View {
     let machine: HerMachine
     @Binding var preview: URL?
     @Binding var page: HerFileText?
+    /// Brought into view from a scheduled task's run: marked a moment.
+    var marked = false
     /// One of the owner's files being brought here.
     @State private var opening: String?
 
@@ -173,7 +191,13 @@ private struct HerRow: View {
             if let line {
                 Text(line).font(.caption).foregroundStyle(.tertiary).frame(maxWidth: .infinity).padding(.top, 6)
             }
-            content
+            VStack(alignment: .leading, spacing: 2) {
+                if let source = row.source { HerRunSource(source: source) }
+                content
+            }
+            .padding(marked ? 8 : 0)
+            .background(marked ? Color.yellow.opacity(0.22) : .clear, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+            .padding(marked ? -8 : 0)
         }
         .padding(.top, previous.map { herGap(joined: line == nil && row.side != nil && row.side == $0.side) } ?? 0)
     }
@@ -254,9 +278,74 @@ private struct HerRow: View {
             HerSessionCard(started: started)
         case .work(let work):
             HerWorkCard(work: work)
+        case .routine(let change):
+            HerRoutineLine(change: change)
         case .onboarding:
             if let flow = chat.flow { HerOnboardingView(chat: chat, flow: flow, machine: machine) }
         }
+    }
+}
+
+/// What Her did to a scheduled task, as a line of its own in the middle that opens it (the list, for one deleted).
+private struct HerRoutineLine: View {
+    @Environment(AppModel.self) private var model
+    let change: HerRoutineChange
+
+    var body: some View {
+        Button {
+            model.path.append(change.action == "delete" ? .routines : .routine(change.routineID))
+        } label: {
+            HStack(spacing: 6) {
+                Image(systemName: "clock")
+                Text(words).multilineTextAlignment(.leading)
+                Image(systemName: "chevron.right").font(.caption2.weight(.semibold)).foregroundStyle(.tertiary)
+            }
+            .font(.footnote).foregroundStyle(.secondary)
+            .padding(.horizontal, 12).padding(.vertical, 7)
+            .background(Color(.secondarySystemBackground), in: .capsule)
+            .frame(minHeight: 44)
+            .contentShape(.rect)
+        }
+        .buttonStyle(.plain)
+        .frame(maxWidth: .infinity)
+        .accessibilityIdentifier("her-routine-line")
+    }
+
+    private var words: String {
+        let time = change.nextRun.map { momentText($0, now: model.now) } ?? change.when
+        let name = change.name
+        return switch change.action {
+        case "create": String(localized: "Created the scheduled task “\(name)” · \(time)")
+        case "update": String(localized: "Changed the scheduled task “\(name)” · \(time)")
+        case "pause": String(localized: "Paused the scheduled task “\(name)”")
+        case "resume": String(localized: "Resumed the scheduled task “\(name)” · \(time)")
+        case "delete": String(localized: "Deleted the scheduled task “\(name)”")
+        default: name
+        }
+    }
+}
+
+/// Over a message Her passed on from a scheduled task's run: the task's name, opening the run.
+private struct HerRunSource: View {
+    @Environment(AppModel.self) private var model
+    let source: HerRoutineSource
+
+    var body: some View {
+        Button {
+            model.path.append(.routineRun(source.routineID, source.runID))
+        } label: {
+            HStack(spacing: 5) {
+                Image(systemName: "clock")
+                Text(source.name).lineLimit(1)
+                Image(systemName: "chevron.right").font(.caption2.weight(.semibold)).foregroundStyle(.tertiary)
+            }
+            .font(.footnote).foregroundStyle(.secondary)
+            .frame(minHeight: 32)
+            .contentShape(.rect)
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(Text("From the scheduled task “\(source.name)”"))
+        .accessibilityIdentifier("her-routine-source")
     }
 }
 

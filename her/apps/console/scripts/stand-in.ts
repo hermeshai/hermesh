@@ -25,6 +25,8 @@ export type StandIn = {
   home: string;
   /** her-mock's MCP server, for a connector added by address. */
   mcpUrl: string;
+  /** What her opened on its computer (browser/open_setup), one line each: the program and its arguments. */
+  opened(): string[];
   /** Every connection the console holds drops, as when the tunnel goes. */
   drop(): void;
   close(): Promise<void>;
@@ -73,6 +75,7 @@ const allowed = new Set([
   "browser/status",
   "browser/cancel_wait",
   "browser/use_extension",
+  "browser/open_setup",
   "models/refresh",
   "models/show",
 ]);
@@ -303,6 +306,15 @@ export async function startStandIn(opts: { port?: number; bin?: string; dist?: s
     path.join(home, "config.toml"),
     `# Search services at her-mock, as only tests do.\n[web_search.endpoints]\nexa = "${base}/exa/mcp"\nparallel = "${base}/parallel/mcp"\ntavily = "${base}/tavily"\nbrave = "${base}/brave"\nbocha = "${base}/bocha"\n`,
   );
+  // The programs her opens things with on its computer, standing in: each notes what it was asked,
+  // and osascript names Google Chrome as the default browser.
+  const programs = path.join(home, "bin");
+  const openedLog = path.join(home, "opened.log");
+  mkdirSync(programs);
+  for (const program of ["open", "osascript", "xdg-open", "google-chrome"]) {
+    const answer = program === "osascript" ? `echo "/Applications/Google Chrome.app"\n` : "";
+    writeFileSync(path.join(programs, program), `#!/bin/sh\necho "${program} $*" >> '${openedLog}'\n${answer}`, { mode: 0o755 });
+  }
   const socketPath = path.join(home, "her.sock");
   const her = spawn(path.join(bin, "her"), ["serve", "--listen", `unix://${socketPath}`], {
     env: {
@@ -312,6 +324,7 @@ export async function startStandIn(opts: { port?: number; bin?: string; dist?: s
       HOME: path.join(home, "user"),
       HER_CREDENTIAL_STORE: "file",
       HER_NO_BROWSER: "1",
+      PATH: `${programs}${path.delimiter}${process.env.PATH ?? ""}`,
       HER_LANG: "en",
       HER_MODEL_CATALOG_URL: `${base}/catalog/api.json`,
       ...opts.herEnv,
@@ -417,6 +430,7 @@ export async function startStandIn(opts: { port?: number; bin?: string; dist?: s
     url: `http://127.0.0.1:${port}/her/console/`,
     home,
     mcpUrl,
+    opened: () => (existsSync(openedLog) ? readFileSync(openedLog, "utf8").trim().split("\n") : []),
     drop() {
       for (const c of held.values()) c.close();
     },

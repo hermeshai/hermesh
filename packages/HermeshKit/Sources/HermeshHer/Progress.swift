@@ -55,6 +55,8 @@ public struct HerProgressGroup: Equatable, Identifiable, Sendable {
     /// What Her last told the owner since then.
     public var said: String?
     public var tasks: [HerProgressTask]
+    /// The routine's run that set it off.
+    public var run: HerRoutineSource? = nil
     public var id: String { key }
 }
 
@@ -82,7 +84,10 @@ public func herProgress(_ v: HerSession) -> [HerProgressGroup] {
         case .user(let id, let content, let ts, let mail):
             if let mail {
                 // A routine's run is Her's to act on, as the owner's message is.
-                if mail.kind == "routine" { begin(HerProgressGroup(key: id, parent: .routine(name: mail.fromName, ts: ts), tasks: [])) }
+                if mail.kind == "routine" {
+                    let run = mail.routineID.map { HerRoutineSource(routineID: $0, runID: mail.fromID, name: mail.fromName) }
+                    begin(HerProgressGroup(key: id, parent: .routine(name: mail.fromName, ts: ts), tasks: [], run: run))
+                }
             } else if case .user(let text, _, _, _) = ownerKind(content, queued: false) {
                 begin(HerProgressGroup(key: id, parent: .user(text: text, ts: ts), tasks: []))
             }

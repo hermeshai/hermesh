@@ -237,12 +237,12 @@ test("the session card floats over the conversation with what a glance needs, an
   await page.mouse.move(0, 0);
   await expect.poll(fill).toBe("rgba(0, 0, 0, 0)");
   await snap(page, "session-chat");
-  // In the dark, the owner's messages are a quiet raised grey with light text, not a white block.
-  await page.emulateMedia({ colorScheme: "dark" });
+  // The owner's messages are in the brand blue with white words, as on the iPhone; a brighter blue in the dark.
   const bubble = page.getByRole("log", { name: "对话" }).locator(".um .bub").first();
   const colors = () => bubble.evaluate((el) => [getComputedStyle(el).backgroundColor, getComputedStyle(el).color]);
-  await expect.poll(async () => (await colors())[0]).toMatch(/^rgba\(255, 255, 255, 0\.\d+\)$/);
-  expect((await colors())[1]).toMatch(/^rgba\(255, 255, 255, 0\.8\d*\)$/);
+  expect(await colors()).toEqual(["rgb(61, 91, 255)", "rgb(255, 255, 255)"]);
+  await page.emulateMedia({ colorScheme: "dark" });
+  await expect.poll(colors).toEqual(["rgb(74, 102, 255)", "rgb(255, 255, 255)"]);
   await snap(page, "session-chat-dark");
   await page.emulateMedia({ colorScheme: "light" });
   await toggle.click();

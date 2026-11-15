@@ -745,6 +745,30 @@ func (c *Client) storeMachine(machineID string, gen int, conn *transport.RelayCo
 	return n, nil
 }
 
+// AdoptDirect installs a pre-dialed direct tunnel n for machineID if c is still
+// active and has no live tunnel for that machine, closing n otherwise.
+func (c *Client) AdoptDirect(machineID string, n *Machine) bool {
+	if n == nil {
+		return false
+	}
+	n.direct = true
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.closed || !n.h2.Alive() {
+		n.h2.Close()
+		return false
+	}
+	if existing := c.machines[machineID]; existing != nil {
+		if existing.h2.Alive() {
+			n.h2.Close()
+			return false
+		}
+		existing.h2.Close()
+	}
+	c.machines[machineID] = n
+	return true
+}
+
 // Reset drops the machine connections, made or being made: the credentials
 // they presented changed. (A machine refuses credentials after the TLS 1.3
 // handshake has completed on this side.)

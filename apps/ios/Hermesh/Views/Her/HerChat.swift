@@ -67,6 +67,10 @@ final class HerChat {
     var pictures: [String: UIImage?] = [:]
     /// What the owner wrote and has not sent.
     var draft = HerDraft()
+    /// The composer is to take the keyboard: something put words in it for the owner to finish.
+    var wantsFocus = false
+    /// The routine's run whose message the conversation is to bring into view, and mark.
+    var revealRun: String?
     /// What was sent and HerSend has not answered for, or refused (docs/her-sending.md §5.2); the drafts they were, to
     /// send again or edit.
     private(set) var sending: [HerOutgoing] = []
@@ -336,6 +340,14 @@ final class HerChat {
             report(error)
             return false
         }
+    }
+
+    /// Words for the owner to finish (a scheduled task's page writes them), after what the composer holds, ready to
+    /// type on.
+    func put(_ text: String) {
+        let had = draft.text.trimmingCharacters(in: .whitespacesAndNewlines)
+        draft.text = had.isEmpty ? text : had + "\n" + text
+        wantsFocus = true
     }
 
     /// A tapped answer to a question is the owner's message: while Her works, it waits for the step under way.
