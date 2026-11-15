@@ -44,6 +44,12 @@ type Dialer struct {
 	// as it does through a tunnel; a machine that is not here, or refuses
 	// it, is reached as without.
 	Local func(ctx context.Context, machineID string) (net.Conn, error)
+	// Direct, when set, returns direct E2E TCP addresses (LAN IPv4 / public
+	// IPv6) for machineID to race against the relay.
+	Direct func(machineID string) []string
+	// OnDirectSuccess, when set, is called with the winning direct address so
+	// subsequent dials can try it first.
+	OnDirectSuccess func(machineID, addr string)
 }
 
 // Client is a relay connection plus cached E2E tunnels to machines.
@@ -79,6 +85,7 @@ type Machine struct {
 	Her     herv1connect.HerServiceClient
 	Screen  screenv1connect.ScreenServiceClient
 	h2      *transport.H2Client
+	direct  bool
 }
 
 // newMachine is the typed clients for machineID over h2, its tunnel.
@@ -95,6 +102,12 @@ func newMachine(machineID, name string, h2 *transport.H2Client) *Machine {
 // HTTP is the tunnel's HTTP/2 client, for the machine's plain HTTP routes
 // (Her's console): requests go to "https://machine/…".
 func (n *Machine) HTTP() *http.Client { return n.h2.Client }
+
+// Alive reports whether the machine's tunnel can accept new requests.
+func (n *Machine) Alive() bool { return n.h2.Alive() }
+
+// Close closes the machine's underlying tunnel.
+func (n *Machine) Close() error { return n.h2.Close() }
 
 // Detached is a client with no connection to the relay yet: it dials when
 // something needs the relay, and reaches the machines of this computer
@@ -361,19 +374,27 @@ func (c *Client) machineByLink(ctx context.Context, machineID string) *Machine {
 }
 
 // Machine returns (and caches) an E2E connection to machineID. It joins a
-// Warm attempt in progress, and makes a failed one again.
+// Warm or concurrent Machine dial in progress, and retries if that attempt fails.
 func (c *Client) Machine(ctx context.Context, machineID string) (*Machine, error) {
 	for {
 		c.mu.Lock()
+		if c.closed {
+			c.mu.Unlock()
+			return nil, errors.New("peer client closed")
+		}
 		if n := c.machines[machineID]; n != nil && n.h2.Alive() {
 			c.mu.Unlock()
 			return n, nil
 		}
 		w := c.warming[machineID]
-		c.mu.Unlock()
 		if w == nil {
-			return c.dialMachine(ctx, machineID)
+			w = make(chan struct{})
+			c.warming[machineID] = w
+			c.mu.Unlock()
+			n, err := c.dialAndFinishWarm(ctx, machineID, w)
+			return n, err
 		}
+		c.mu.Unlock()
 		select {
 		case <-w:
 		case <-ctx.Done():
@@ -382,14 +403,55 @@ func (c *Client) Machine(ctx context.Context, machineID string) (*Machine, error
 	}
 }
 
+func (c *Client) dialAndFinishWarm(ctx context.Context, machineID string, w chan struct{}) (*Machine, error) {
+	defer func() {
+		c.mu.Lock()
+		if c.warming[machineID] == w {
+			delete(c.warming, machineID)
+		}
+		c.mu.Unlock()
+		close(w)
+	}()
+	return c.dialMachine(ctx, machineID)
+}
+
+// RelayMachine returns (and caches) an E2E connection to machineID through
+// the relay without running direct-path discovery.
+func (c *Client) RelayMachine(ctx context.Context, machineID string) (*Machine, error) {
+	c.mu.Lock()
+	if c.closed {
+		c.mu.Unlock()
+		return nil, errors.New("peer client closed")
+	}
+	if n := c.machines[machineID]; n != nil && n.h2.Alive() {
+		c.mu.Unlock()
+		return n, nil
+	}
+	gen := c.gen
+	c.mu.Unlock()
+	rn, conn, err := c.openRelayTunnel(ctx, machineID)
+	if err != nil {
+		return nil, err
+	}
+	return c.storeMachine(machineID, gen, conn, rn)
+}
+
 // Warm connects to machines in the background, ahead of the calls likely to
 // need them.
 func (c *Client) Warm(machineIDs []string) {
 	for _, id := range machineIDs {
 		c.mu.Lock()
-		if c.machines[id] != nil || c.warming[id] != nil {
+		if c.warming[id] != nil {
 			c.mu.Unlock()
 			continue
+		}
+		if n := c.machines[id]; n != nil {
+			if n.h2.Alive() {
+				c.mu.Unlock()
+				continue
+			}
+			n.h2.Close()
+			delete(c.machines, id)
 		}
 		done := make(chan struct{})
 		c.warming[id] = done
@@ -406,31 +468,208 @@ func (c *Client) Warm(machineIDs []string) {
 	}
 }
 
-func (c *Client) dialMachine(ctx context.Context, machineID string) (*Machine, error) {
-	c.mu.Lock()
-	gen := c.gen
-	c.mu.Unlock()
-	n := c.machineHere(ctx, machineID)
-	if n == nil {
-		n = c.machineByLink(ctx, machineID)
-	}
-	if n != nil {
-		c.mu.Lock()
-		defer c.mu.Unlock()
-		if c.gen != gen {
-			n.h2.Close()
-			return nil, fmt.Errorf("connect to %s: credentials changed", machineID)
+const (
+	directStagger = 25 * time.Millisecond
+	directHeadLAN = 80 * time.Millisecond
+	directHeadWAN = 280 * time.Millisecond
+	directTimeout = 2 * time.Second
+)
+
+func directHeadFor(addrs []string) time.Duration {
+	for _, hp := range addrs {
+		host, _, err := net.SplitHostPort(hp)
+		if err != nil {
+			continue
 		}
-		c.machines[machineID] = n
-		return n, nil
+		if ip := net.ParseIP(host); ip != nil && ip.To4() == nil {
+			return directHeadWAN
+		}
 	}
+	return directHeadLAN
+}
+
+// DialDirect tries addrs in parallel (staggered slightly so preferred
+// addresses go first) and returns the first established E2E tunnel to
+// machineID, cancelling the remaining attempts.
+func (d *Dialer) DialDirect(ctx context.Context, machineID string, addrs []string) (*Machine, error) {
+	if len(addrs) == 0 {
+		return nil, errors.New("no direct addresses")
+	}
+	rctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+
+	type res struct {
+		n    *Machine
+		addr string
+		err  error
+	}
+	ch := make(chan res, len(addrs))
+	for i, addr := range addrs {
+		go func(delay time.Duration, addr string) {
+			if delay > 0 {
+				t := time.NewTimer(delay)
+				select {
+				case <-t.C:
+				case <-rctx.Done():
+					t.Stop()
+					ch <- res{err: rctx.Err()}
+					return
+				}
+			}
+			dctx, dcancel := context.WithTimeout(rctx, directTimeout)
+			defer dcancel()
+			nd := net.Dialer{Timeout: directTimeout, KeepAlive: 15 * time.Second}
+			raw, err := nd.DialContext(dctx, "tcp", addr)
+			if err != nil {
+				ch <- res{err: err}
+				return
+			}
+			tc, sub, err := transport.ClientHandshake(dctx, raw, d.Key.CryptoSigner(), d.Credentials, d.Trust, machineID)
+			if err != nil {
+				raw.Close()
+				ch <- res{err: err}
+				return
+			}
+			h2, err := transport.NewTunnelClient(tc)
+			if err != nil {
+				tc.Close()
+				ch <- res{err: err}
+				return
+			}
+			ch <- res{n: newMachine(machineID, sub.MachineName, h2), addr: addr}
+		}(time.Duration(i)*directStagger, addr)
+	}
+
+	var firstErr error
+	var winner *Machine
+	var winAddr string
+	for range addrs {
+		r := <-ch
+		if r.n != nil {
+			if winner == nil {
+				winner, winAddr = r.n, r.addr
+				cancel()
+			} else {
+				r.n.Close()
+			}
+		} else if firstErr == nil {
+			firstErr = r.err
+		}
+	}
+	if winner != nil {
+		if d.OnDirectSuccess != nil && winAddr != "" {
+			d.OnDirectSuccess(machineID, winAddr)
+		}
+		return winner, nil
+	}
+	if firstErr == nil {
+		return nil, errors.New("direct dial failed")
+	}
+	return nil, firstErr
+}
+
+// RaceDirect tries addrs via DialDirect and races that against slow after a
+// brief direct head-start (waking slow immediately if all direct dials finish
+// failing first). Whichever succeeds first cancels the other and wins; at
+// most one of direct or viaSlow is non-nil when err is nil.
+func (d *Dialer) RaceDirect(ctx context.Context, machineID string, addrs []string, slow func(context.Context) (*Machine, error)) (direct, viaSlow *Machine, err error) {
+	if len(addrs) == 0 {
+		sn, err := slow(ctx)
+		return nil, sn, err
+	}
+	rctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+
+	type attempt struct {
+		n   *Machine
+		err error
+	}
+	directCh := make(chan attempt, 1)
+	go func() {
+		dn, err := d.DialDirect(rctx, machineID, addrs)
+		directCh <- attempt{n: dn, err: err}
+	}()
+
+	slowCh := make(chan attempt, 1)
+	slowRunning := false
+	startSlow := func() {
+		slowRunning = true
+		go func() {
+			sn, err := slow(rctx)
+			slowCh <- attempt{n: sn, err: err}
+		}()
+	}
+
+	head := time.NewTimer(directHeadFor(addrs))
+	defer head.Stop()
+	var directErr error
+	directDone := false
+	select {
+	case a := <-directCh:
+		directDone = true
+		head.Stop()
+		if a.n != nil {
+			return a.n, nil, nil
+		}
+		directErr = a.err
+		startSlow()
+	case <-head.C:
+		startSlow()
+	case <-ctx.Done():
+		cancel()
+		if a := <-directCh; a.n != nil {
+			a.n.Close()
+		}
+		return nil, nil, ctx.Err()
+	}
+
+	var slowErr error
+	for !directDone || slowRunning {
+		select {
+		case a := <-directCh:
+			directDone = true
+			if a.n != nil {
+				cancel()
+				if slowRunning {
+					go func() {
+						if s := <-slowCh; s.n != nil {
+							s.n.Close()
+						}
+					}()
+				}
+				return a.n, nil, nil
+			}
+			directErr = a.err
+		case s := <-slowCh:
+			slowRunning = false
+			if s.n != nil {
+				cancel()
+				if !directDone {
+					go func() {
+						if a := <-directCh; a.n != nil {
+							a.n.Close()
+						}
+					}()
+				}
+				return nil, s.n, nil
+			}
+			slowErr = s.err
+		}
+	}
+	if slowErr != nil {
+		return nil, nil, slowErr
+	}
+	return nil, nil, directErr
+}
+
+func (c *Client) openRelayTunnel(ctx context.Context, machineID string) (*Machine, *transport.RelayConn, error) {
 	conn, err := c.relay(ctx)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	raw, err := conn.OpenTunnel(machineID)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	hctx, cancel := context.WithTimeout(ctx, 20*time.Second)
 	defer cancel()
@@ -440,21 +679,67 @@ func (c *Client) dialMachine(ctx context.Context, machineID string) (*Machine, e
 		err = fmt.Errorf("connect to %s: %w", machineID, conn.Explain(err))
 		var timeout net.Error
 		if !errors.Is(err, context.Canceled) && !errors.Is(err, transport.ErrAdmission) && errors.As(err, &timeout) && timeout.Timeout() {
-			return nil, &tunnelTimeout{err: err, conn: conn}
+			return nil, nil, &tunnelTimeout{err: err, conn: conn}
 		}
-		return nil, err
+		return nil, nil, err
 	}
 	h2, err := transport.NewTunnelClient(tc)
 	if err != nil {
 		tc.Close()
+		return nil, nil, err
+	}
+	return newMachine(machineID, sub.MachineName, h2), conn, nil
+}
+
+func (c *Client) dialMachine(ctx context.Context, machineID string) (*Machine, error) {
+	c.mu.Lock()
+	gen := c.gen
+	c.mu.Unlock()
+	n := c.machineHere(ctx, machineID)
+	if n == nil {
+		n = c.machineByLink(ctx, machineID)
+	}
+	if n != nil {
+		return c.storeMachine(machineID, gen, nil, n)
+	}
+	var addrs []string
+	if c.d.Direct != nil {
+		addrs = c.d.Direct(machineID)
+	}
+	var slowConn *transport.RelayConn
+	dn, sn, err := c.d.RaceDirect(ctx, machineID, addrs, func(rctx context.Context) (*Machine, error) {
+		rn, conn, err := c.openRelayTunnel(rctx, machineID)
+		if err == nil {
+			slowConn = conn
+		}
+		return rn, err
+	})
+	if err != nil {
 		return nil, err
 	}
-	n = newMachine(machineID, sub.MachineName, h2)
+	if dn != nil {
+		dn.direct = true
+		return c.storeMachine(machineID, gen, nil, dn)
+	}
+	return c.storeMachine(machineID, gen, slowConn, sn)
+}
+
+func (c *Client) storeMachine(machineID string, gen int, conn *transport.RelayConn, n *Machine) (*Machine, error) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	if c.gen != gen {
-		h2.Close()
-		return nil, fmt.Errorf("connect to %s: credentials changed", machineID)
+	if c.closed || c.gen != gen || (conn != nil && !c.linked && c.conn.Load() != conn) {
+		n.h2.Close()
+		if c.gen != gen {
+			return nil, fmt.Errorf("connect to %s: credentials changed", machineID)
+		}
+		return nil, fmt.Errorf("connect to %s: relay changed", machineID)
+	}
+	if existing := c.machines[machineID]; existing != nil {
+		if existing.h2.Alive() {
+			n.h2.Close()
+			return existing, nil
+		}
+		existing.h2.Close()
 	}
 	c.machines[machineID] = n
 	return n, nil
@@ -493,6 +778,19 @@ func (c *Client) Forget(machineID string) {
 	if n := c.machines[machineID]; n != nil {
 		n.h2.Close()
 		delete(c.machines, machineID)
+	}
+	c.mu.Unlock()
+}
+
+// ForgetDirect drops cached direct tunnels while leaving relayed tunnels intact.
+func (c *Client) ForgetDirect() {
+	c.mu.Lock()
+	for id, n := range c.machines {
+		if !n.direct {
+			continue
+		}
+		n.h2.Close()
+		delete(c.machines, id)
 	}
 	c.mu.Unlock()
 }

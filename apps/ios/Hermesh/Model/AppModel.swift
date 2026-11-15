@@ -245,6 +245,7 @@ final class AppModel {
     @ObservationIgnored private var active = false
     @ObservationIgnored private var network: NWPathMonitor?
     @ObservationIgnored private var networkSeen: String?
+    @ObservationIgnored private var networkPending = false
 
     // MARK: Lifecycle
 
@@ -301,6 +302,7 @@ final class AppModel {
         }
         Core.resume { [self] in // the core listens again
             guard active, phase == .ready else { return }
+            flushNetworkChange()
             begin()
             Task { await askForNotifications() }
         }
@@ -328,17 +330,56 @@ final class AppModel {
     private func watchNetwork() {
         let m = NWPathMonitor()
         m.pathUpdateHandler = { [weak self] path in
-            let seen = path.status == .satisfied ? path.availableInterfaces.map(\.name).joined(separator: ",") : ""
+            let seen = Self.networkSignature(for: path)
             Task { @MainActor in self?.networkChanged(to: seen) }
         }
         m.start(queue: .global(qos: .utility))
         network = m
     }
 
-    private func networkChanged(to seen: String) {
-        defer { networkSeen = seen }
-        guard let before = networkSeen, !seen.isEmpty, active, phase == .ready else { return }
-        if before != seen { Core.networkChanged() } else { Core.pathChanged() }
+    private nonisolated static func networkSignature(for path: NWPath) -> String? {
+        guard path.status == .satisfied else { return nil }
+        let types: [(NWInterface.InterfaceType, String)] = [
+            (.wifi, "wifi"), (.cellular, "cell"), (.wiredEthernet, "wired"), (.other, "other"),
+        ]
+        let activeTypes = types.filter { path.usesInterfaceType($0.0) }.map(\.1).joined(separator: "+")
+        if !activeTypes.isEmpty { return activeTypes }
+        return path.availableInterfaces.first.map { interfaceTag($0.type) } ?? ""
+    }
+
+    private nonisolated static func interfaceTag(_ type: NWInterface.InterfaceType) -> String {
+        switch type {
+        case .wifi: "wifi"
+        case .cellular: "cell"
+        case .wiredEthernet: "wired"
+        case .loopback: "lo"
+        default: "other"
+        }
+    }
+
+    private func networkChanged(to seen: String?) {
+        guard let seen else {
+            if networkSeen != nil { networkPending = true }
+            return
+        }
+        guard let before = networkSeen else {
+            networkSeen = seen
+            return
+        }
+        let changed = before != seen || networkPending
+        networkSeen = seen
+        guard active, phase == .ready else {
+            if changed { networkPending = true }
+            return
+        }
+        networkPending = false
+        if changed { Core.networkChanged() } else { Core.pathChanged() }
+    }
+
+    private func flushNetworkChange() {
+        guard !isDemo, active, phase == .ready, networkPending else { return }
+        networkPending = false
+        Core.networkChanged()
     }
 
     // MARK: What is kept on the phone
@@ -499,6 +540,7 @@ final class AppModel {
     }
 
     private func begin() {
+        flushNetworkChange()
         guard api != nil, watchTask == nil else { return }
         watchTask = Task { await watch() }
         clockTask = Task { await clock() }

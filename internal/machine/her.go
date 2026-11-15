@@ -190,11 +190,12 @@ func (n *Machine) herStatus() *machinev1.HerStatus {
 }
 
 // statusFor is the machine's status as p may see it: Her's carries message
-// text, and the screen's the name of a device, for the owner's devices only.
+// text, the screen's the name of a device, and direct_addrs internal/public
+// endpoints, for the owner's devices only.
 func (n *Machine) statusFor(p *Principal) *machinev1.MachineStatus {
 	st := n.Status()
 	if p == nil || p.Kind != PrincipalOwner {
-		st.Her, st.Screen = nil, nil
+		st.Her, st.Screen, st.DirectAddrs = nil, nil, nil
 	}
 	return st
 }

@@ -43,6 +43,50 @@ func responseLocal(request *bindingRequest, received Candidate) Candidate {
 	return nil
 }
 
+// requestLocal resolves the local candidate for an inbound STUN Binding Request
+// on a shared UDP socket (hostMux), where an outbound srflx check rebinds the
+// mux's remote-address map and would otherwise shadow the higher-priority host
+// candidate on the same socket.
+func (a *Agent) requestLocal(local, remote Candidate) Candidate {
+	mux := candidateUDPMux(local)
+	if mux == nil || remote == nil {
+		return local
+	}
+	var bestCandidate Candidate
+	var bestPair *CandidatePair
+	var bestSucceeded *CandidatePair
+	for _, c := range a.localCandidates[local.NetworkType()] {
+		if candidateUDPMux(c) != mux {
+			continue
+		}
+		if bestCandidate == nil || c.Priority() > bestCandidate.Priority() {
+			bestCandidate = c
+		}
+		p := a.findPair(c, remote)
+		if p == nil {
+			continue
+		}
+		if bestPair == nil || p.priority() > bestPair.priority() {
+			bestPair = p
+		}
+		if p.state == CandidatePairStateSucceeded &&
+			(bestSucceeded == nil || p.priority() > bestSucceeded.priority()) {
+			bestSucceeded = p
+		}
+	}
+	if bestSucceeded != nil {
+		return bestSucceeded.Local
+	}
+	if bestPair != nil {
+		return bestPair.Local
+	}
+	if bestCandidate != nil {
+		return bestCandidate
+	}
+
+	return local
+}
+
 func candidateUDPMux(candidate Candidate) *UDPMuxDefault {
 	var conn net.PacketConn
 	switch c := candidate.(type) {

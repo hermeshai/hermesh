@@ -11,6 +11,7 @@ import (
 	"strings"
 	"sync"
 	"sync/atomic"
+	"syscall"
 	"time"
 
 	"github.com/coder/websocket"
@@ -107,14 +108,54 @@ func Probe(ctx context.Context, relayURL string, hc *http.Client) error {
 	return ReadFrame(conn, &ch)
 }
 
+var defaultDialHTTPClient = newDefaultDialHTTPClient()
+
+func newDefaultDialHTTPClient() *http.Client {
+	tr, ok := http.DefaultTransport.(*http.Transport)
+	if !ok {
+		return &http.Client{}
+	}
+	cl := tr.Clone()
+	cl.DialContext = (&net.Dialer{
+		Timeout:   5 * time.Second,
+		KeepAlive: 30 * time.Second,
+	}).DialContext
+	cl.TLSHandshakeTimeout = 5 * time.Second
+	return &http.Client{Transport: cl}
+}
+
+func dialWebSocket(ctx context.Context, wsURL string, hc *http.Client) (*websocket.Conn, error) {
+	for attempt := range 3 {
+		actx, cancel := context.WithTimeout(ctx, 6*time.Second)
+		ws, resp, err := websocket.Dial(actx, wsURL, &websocket.DialOptions{HTTPClient: hc, Subprotocols: []string{"hermesh.v1"}})
+		cancel()
+		if err == nil {
+			return ws, nil
+		}
+		if attempt == 2 || ctx.Err() != nil || resp != nil || errors.Is(err, syscall.ECONNREFUSED) {
+			return nil, err
+		}
+		select {
+		case <-ctx.Done():
+			return nil, err
+		case <-time.After(100 * time.Millisecond):
+		}
+	}
+	return nil, context.DeadlineExceeded
+}
+
 func (d *Dialer) Dial(ctx context.Context) (*RelayConn, error) {
 	wsURL, err := WebSocketURL(d.RelayURL, "/v1/connect")
 	if err != nil {
 		return nil, err
 	}
+	hc := d.HTTPClient
+	if hc == nil || hc == http.DefaultClient {
+		hc = defaultDialHTTPClient
+	}
 	dctx, cancel := context.WithTimeout(ctx, 20*time.Second)
 	defer cancel()
-	ws, _, err := websocket.Dial(dctx, wsURL, &websocket.DialOptions{HTTPClient: d.HTTPClient, Subprotocols: []string{"hermesh.v1"}})
+	ws, err := dialWebSocket(dctx, wsURL, hc)
 	if err != nil {
 		return nil, fmt.Errorf("dial relay: %w", err)
 	}

@@ -94,7 +94,7 @@ struct ScreenBarHost<Bar: View, Folded: View>: View {
 
     private func drag(from start: CGPoint, page: CGSize) -> some Gesture {
         // A finger that moves a little more than a tap would drags; the buttons keep their taps.
-        DragGesture(minimumDistance: 8, coordinateSpace: .local)
+        DragGesture(minimumDistance: 12, coordinateSpace: .local)
             .onChanged { g in
                 dragged = CGPoint(x: start.x + g.translation.width, y: start.y + g.translation.height)
             }

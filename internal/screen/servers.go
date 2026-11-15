@@ -35,17 +35,35 @@ const (
 	serversKeep = 40 * time.Minute
 )
 
-// Get returns the servers kept for the connection key, or asks with fetch
-// when none are (or they are too old). An empty answer is not kept: the
-// relay runs none, or did not answer.
+// Cached returns the kept servers when they have not expired, and whether
+// they are still younger than ServersFresh. Callers can use kept servers
+// immediately without waiting to dial the relay first.
+func (s *Servers) Cached() (list []*relayv1.IceServer, fresh bool) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.list == nil {
+		return nil, false
+	}
+	age := time.Since(s.at)
+	if age >= serversKeep {
+		return nil, false
+	}
+	return s.list, age < ServersFresh
+}
+
+// Get returns the servers kept, or asks with fetch when none are (or they
+// are too old). Across a relay reconnect (a new key), kept servers that have
+// not expired are used immediately while a background refresh runs for the
+// new connection. An empty answer is not kept: the relay runs none, or did
+// not answer.
 func (s *Servers) Get(ctx context.Context, key any, fetch func(context.Context) []*relayv1.IceServer) []*relayv1.IceServer {
 	s.mu.Lock()
-	if s.key == key && s.list != nil {
+	if s.list != nil {
 		age := time.Since(s.at)
 		if age < serversKeep {
 			list := s.list
 			s.fetch = fetch
-			if age >= ServersFresh {
+			if s.key != key || age >= ServersFresh {
 				s.refreshLocked(key, fetch)
 			}
 			s.mu.Unlock()

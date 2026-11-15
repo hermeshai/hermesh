@@ -168,6 +168,9 @@ message MachineStatus {
   // Computer Control on this machine (docs/computer-control.md). Sent to
   // the owner's devices only, never to agents.
   ScreenStatus screen = 15;
+  // Direct LAN IPv4 / public IPv6 E2E tunnel endpoints (host:port) for
+  // bypassing the relay when reachable. Sent to the owner's devices only.
+  repeated string direct_addrs = 16;
 }
 
 // ScreenStatus is whether the owner's devices can see and operate this

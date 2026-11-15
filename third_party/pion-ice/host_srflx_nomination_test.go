@@ -120,10 +120,15 @@ func testHostSRFLXMuxNomination(t *testing.T, controlling, differentSocket bool)
 			a.getSelector().(*controllingSelector).nominatePair(a.findPair(host, remote))
 		}))
 	} else {
-		// Register the host reader, then deliver an authenticated nomination.
-		// The controlled agent replies and sends its triggered check.
+		// Register the host reader, then let the lower-priority srflx check on the
+		// same socket rebind the mux before the peer's USE-CANDIDATE request arrives.
+		// The controlled agent must still attribute the inbound nomination to host.
 		ping(host)
 		readSTUN()
+		if !differentSocket {
+			ping(srflx)
+			readSTUN()
+		}
 		nomination, err := stun.Build(stun.BindingRequest, stun.TransactionID,
 			stun.NewUsername(localUfrag+":"+remoteUfrag), UseCandidate(), AttrControlling(1),
 			PriorityAttr(remote.Priority()), stun.NewShortTermIntegrity(localPwd), stun.Fingerprint)

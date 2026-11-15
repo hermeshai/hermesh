@@ -130,3 +130,32 @@ func TestOnNetworks(t *testing.T) {
 		t.Errorf("srflx addresses: %q", got)
 	}
 }
+
+func TestViewerRestartEmitsReconnectingAndChecksHealth(t *testing.T) {
+	pc, err := webrtc.NewPeerConnection(webrtc.Configuration{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer pc.Close()
+
+	var phases []string
+	v := &Viewer{
+		pc:   pc,
+		done: make(chan struct{}),
+		cfg: ViewerConfig{
+			Status: func(st Status) { phases = append(phases, st.Phase) },
+		},
+	}
+	if v.LocalPathHealthy() {
+		t.Fatal("disconnected viewer should not report healthy local path")
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	if err := v.Restart(ctx); err == nil {
+		t.Fatal("expected Restart to return error without active ICE agent")
+	}
+	if len(phases) == 0 || phases[0] != "reconnecting" {
+		t.Fatalf("phases = %v, want initial reconnecting status", phases)
+	}
+}

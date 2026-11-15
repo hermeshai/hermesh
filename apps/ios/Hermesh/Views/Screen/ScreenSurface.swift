@@ -26,6 +26,8 @@ final class ScreenSurfaceView: UIView {
     let picture = ScreenPictureView()
     let keys = ScreenKeyField()
     var send: ((Hermesh_Screen_V1_Input) -> Void)?
+    var onZoomChanged: ((Bool) -> Void)?
+    var panning = false
 
     /// The picture's size in its own pixels.
     var contentSize = CGSize(width: 1920, height: 1200) {
@@ -40,6 +42,7 @@ final class ScreenSurfaceView: UIView {
     var mode = ScreenMode.direct {
         didSet {
             guard mode != oldValue else { return }
+            if mode == .direct { panning = false }
             pointer.isHidden = mode != .trackpad
             if mode == .trackpad { follow() }
             place()
@@ -49,6 +52,7 @@ final class ScreenSurfaceView: UIView {
     // Where the picture sits: scale, and the offset of its top left corner.
     private var s: CGFloat = 1, tx: CGFloat = 0, ty: CGFloat = 0
     private var fit = true
+    private var zoomed = false
     private var minScale: CGFloat = 1
     private var maxScale: CGFloat { max(minScale * 6, 1.5) }
     /// The trackpad's pointer, in the picture's pixels.
@@ -106,10 +110,32 @@ final class ScreenSurfaceView: UIView {
         fullRate?.invalidate()
         fullRate = nil
         guard window != nil else { return }
+        startDisplayLink()
+    }
+
+    private func startDisplayLink() {
+        guard fullRate == nil, window != nil else { return }
         let link = CADisplayLink(target: self, selector: #selector(refreshed))
         link.preferredFrameRateRange = CAFrameRateRange(minimum: 80, maximum: 120, preferred: 120)
         link.add(to: .main, forMode: .common)
         fullRate = link
+    }
+
+    /// Re-arms frame presentation and display refresh before connecting.
+    func prepare() {
+        picture.prepare()
+        startDisplayLink()
+    }
+
+    /// Stops frame decoding and 120Hz link immediately when dismissing.
+    func stop() {
+        fullRate?.invalidate()
+        fullRate = nil
+        if case .one(let g) = gesture { g.timer?.cancel() }
+        showRing(nil)
+        touches.removeAll()
+        gesture = .none
+        picture.stop()
     }
 
     @objc private func refreshed() {}
@@ -119,13 +145,19 @@ final class ScreenSurfaceView: UIView {
         minScale = min(bounds.width / contentSize.width, bounds.height / contentSize.height)
         if fit { s = minScale }
         clampView()
-        if mode == .trackpad { follow() }
+        if mode == .trackpad && fit { follow() }
         place()
     }
 
     private func clampView() {
         s = min(maxScale, max(minScale, s))
         fit = s <= minScale * 1.001
+        let nowZoomed = !fit
+        if nowZoomed != zoomed {
+            zoomed = nowZoomed
+            if !nowZoomed { panning = false }
+            onZoomChanged?(nowZoomed)
+        }
         let cw = contentSize.width * s, ch = contentSize.height * s
         tx = cw <= bounds.width ? (bounds.width - cw) / 2 : min(0, max(bounds.width - cw, tx))
         ty = ch <= bounds.height ? (bounds.height - ch) / 2 : min(0, max(bounds.height - ch, ty))
@@ -244,6 +276,7 @@ final class ScreenSurfaceView: UIView {
         case none
         case one(One)
         case two(Two)
+        case pan(CGPoint)
         /// A two-finger gesture ended with a finger still down: nothing more until all are up.
         case done
     }
@@ -274,7 +307,33 @@ final class ScreenSurfaceView: UIView {
         return (CGPoint(x: (a.x + b.x) / 2, y: (a.y + b.y) / 2), hypot(a.x - b.x, a.y - b.y))
     }
 
+    private func averageCenter() -> CGPoint {
+        var x: CGFloat = 0, y: CGFloat = 0
+        for t in touches {
+            let p = t.location(in: self)
+            x += p.x; y += p.y
+        }
+        let n = CGFloat(max(1, touches.count))
+        return CGPoint(x: x / n, y: y / n)
+    }
+
+    private func cancelOne(_ g: One) {
+        g.timer?.cancel()
+        showRing(nil)
+        if g.drag { button(target(g.last), down: false) }
+    }
+
+    private func pruneTouches() {
+        let hadOne: One? = if case .one(let g) = gesture { g } else { nil }
+        touches.removeAll { $0.phase == .ended || $0.phase == .cancelled }
+        if touches.isEmpty {
+            if let g = hadOne { cancelOne(g) }
+            gesture = .none
+        }
+    }
+
     override func touchesBegan(_ new: Set<UITouch>, with event: UIEvent?) {
+        pruneTouches()
         for t in new where !touches.contains(t) { touches.append(t) }
         let now = event?.timestamp ?? ProcessInfo.processInfo.systemUptime
         if touches.count == 1 {
@@ -283,27 +342,28 @@ final class ScreenSurfaceView: UIView {
             g.last = g.start
             g.began = now
             g.lastTime = now
-            let work = DispatchWorkItem { [weak self, weak g] in
-                guard let self, let g, case .one(let cur) = self.gesture, cur === g, !g.moved else { return }
-                g.long = true
-                self.haptic.impactOccurred()
-                self.showRing(self.mode == .trackpad ? self.onScreen(self.loc) : g.start)
+            if !(mode == .trackpad && panning) {
+                let work = DispatchWorkItem { [weak self, weak g] in
+                    guard let self, let g, case .one(let cur) = self.gesture, cur === g, !g.moved else { return }
+                    g.long = true
+                    self.haptic.impactOccurred()
+                    self.showRing(self.mode == .trackpad ? self.onScreen(self.loc) : g.start)
+                }
+                g.timer = work
+                DispatchQueue.main.asyncAfter(deadline: .now() + longPress, execute: work)
             }
-            g.timer = work
-            DispatchQueue.main.asyncAfter(deadline: .now() + longPress, execute: work)
             gesture = .one(g)
         } else if touches.count == 2 {
-            if case .one(let g) = gesture {
-                g.timer?.cancel()
-                showRing(nil)
-                if g.drag { button(target(g.last), down: false) }
-            }
+            if case .one(let g) = gesture { cancelOne(g) }
             let g = Two()
             (g.center0, g.distance0) = centerAndDistance()
             g.center = g.center0
             g.distance = g.distance0
             g.began = now
             gesture = .two(g)
+        } else if touches.count >= 3 {
+            if case .one(let g) = gesture { cancelOne(g) }
+            gesture = .pan(averageCenter())
         }
     }
 
@@ -317,6 +377,10 @@ final class ScreenSurfaceView: UIView {
                 if hypot(p.x - g.start.x, p.y - g.start.y) < slop { return }
                 g.moved = true
                 if !g.long { g.timer?.cancel() }
+                // If the user panned away so the pointer is off-screen, bring it into the visible area instead of snapping back.
+                if mode == .trackpad && !panning && !bounds.contains(onScreen(loc)) {
+                    loc = inPicture(CGPoint(x: bounds.midX, y: bounds.midY))
+                }
             }
             let dx = p.x - g.last.x, dy = p.y - g.last.y, dt = max(0.001, now - g.lastTime)
             g.last = p
@@ -325,7 +389,7 @@ final class ScreenSurfaceView: UIView {
                 g.drag = true
                 button(target(g.start), down: true)
             }
-            if mode == .direct {
+            if mode == .direct || (panning && !g.drag) {
                 if g.drag {
                     move(inPicture(p))
                     showRing(p)
@@ -366,6 +430,13 @@ final class ScreenSurfaceView: UIView {
             }
             g.center = c
             g.distance = d
+        case .pan(let prev):
+            let c = averageCenter()
+            tx += c.x - prev.x
+            ty += c.y - prev.y
+            clampView()
+            place()
+            gesture = .pan(c)
         default:
             break
         }
@@ -385,7 +456,7 @@ final class ScreenSurfaceView: UIView {
                 button(target(g.last), down: false)
             } else if g.long && !g.moved {
                 if !cancelled { click(target(g.start), right: true) }
-            } else if !g.moved && !cancelled {
+            } else if !g.moved && !cancelled, !(mode == .trackpad && panning) {
                 let double = now - lastTap.time < 0.32 && hypot(g.start.x - lastTap.at.x, g.start.y - lastTap.at.y) < 28
                 lastTap = double ? (0, .zero) : (now, g.start)
                 ripple(mode == .trackpad ? onScreen(loc) : g.start)
@@ -396,8 +467,22 @@ final class ScreenSurfaceView: UIView {
             if g.kind == .undecided && now - g.began < 0.35 && !cancelled {
                 ripple(mode == .trackpad ? onScreen(loc) : g.center0)
                 click(target(g.center0), right: true)
+                gesture = .done
+            } else if g.kind == .pinch && (mode == .direct || panning) && touches.count == 1 && !cancelled {
+                // Lifting one finger after a pinch keeps one-finger panning continuous.
+                let next = One()
+                let p = touches[0].location(in: self)
+                next.start = p
+                next.last = p
+                next.began = now
+                next.lastTime = now
+                next.moved = true
+                gesture = .one(next)
+            } else {
+                gesture = .done
             }
-            gesture = .done
+        case .pan:
+            gesture = touches.count >= 3 ? .pan(averageCenter()) : .done
         default:
             break
         }

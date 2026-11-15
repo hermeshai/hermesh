@@ -626,7 +626,8 @@ func (o *Owner) Leave(ctx context.Context) error {
 	o.mcpURL, o.avatarURL = "", ""
 	o.signedOut, o.account = false, ""
 	o.mu.Unlock()
-	for _, k := range []string{kOwnerID, kSignedOut, kAccount} {
+	o.closeDirectMachines()
+	for _, k := range []string{kOwnerID, kSignedOut, kAccount, kDirectAddrs} {
 		if err := o.st.set(k, []byte{}); err != nil {
 			return err
 		}

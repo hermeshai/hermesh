@@ -16,6 +16,7 @@ import (
 	"runtime"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"google.golang.org/protobuf/proto"
@@ -151,6 +152,8 @@ type Machine struct {
 	herData bool
 	// mesh is Her as one of the owner's agents (her_mesh.go).
 	mesh herMesh
+	// directPort is the ephemeral TCP port of serveDirect when listening.
+	directPort atomic.Int32
 }
 
 const (
@@ -485,6 +488,7 @@ func (n *Machine) Status() *machinev1.MachineStatus {
 	st.Sessions = n.sessions.Counts()
 	st.Her = n.herStatus()
 	st.Screen = n.screenStatus()
+	st.DirectAddrs = n.directAddresses()
 	return st
 }
 
@@ -501,6 +505,7 @@ func (n *Machine) Run(ctx context.Context) error {
 	go n.serveSessionTools(ctx)
 	go n.serveControl(ctx)
 	go n.serveLocal(ctx)
+	go n.serveDirect(ctx)
 	n.startHer()
 	n.log.Info("hermeshd machine running", "machine", n.machineID, "name", n.Name(), "relay", n.relayURL)
 	n.runLink(ctx)

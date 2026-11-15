@@ -854,6 +854,10 @@ func (a *Agent) gatherCandidatesSrflxUDPMuxWith(
 						return
 					}
 
+					if localAddr.IP.IsLoopback() != serverAddr.IP.IsLoopback() {
+						return
+					}
+
 					xorAddr, err := getXORMappedAddr(ctx, mux, serverAddr, a.stunGatherTimeout)
 					if err != nil {
 						a.log.Warnf("Failed get server reflexive address %s %s: %v", network, url, err)

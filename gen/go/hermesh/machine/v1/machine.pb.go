@@ -1042,7 +1042,10 @@ type MachineStatus struct {
 	Her *HerStatus `protobuf:"bytes,14,opt,name=her,proto3" json:"her,omitempty"`
 	// Computer Control on this machine (docs/computer-control.md). Sent to
 	// the owner's devices only, never to agents.
-	Screen        *ScreenStatus `protobuf:"bytes,15,opt,name=screen,proto3" json:"screen,omitempty"`
+	Screen *ScreenStatus `protobuf:"bytes,15,opt,name=screen,proto3" json:"screen,omitempty"`
+	// Direct LAN IPv4 / public IPv6 E2E tunnel endpoints (host:port) for
+	// bypassing the relay when reachable. Sent to the owner's devices only.
+	DirectAddrs   []string `protobuf:"bytes,16,rep,name=direct_addrs,json=directAddrs,proto3" json:"direct_addrs,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -1157,6 +1160,13 @@ func (x *MachineStatus) GetHer() *HerStatus {
 func (x *MachineStatus) GetScreen() *ScreenStatus {
 	if x != nil {
 		return x.Screen
+	}
+	return nil
+}
+
+func (x *MachineStatus) GetDirectAddrs() []string {
+	if x != nil {
+		return x.DirectAddrs
 	}
 	return nil
 }
@@ -2764,7 +2774,7 @@ const file_hermesh_machine_v1_machine_proto_rawDesc = "" +
 	"\n" +
 	"machine_id\x18\x01 \x01(\tR\tmachineId\x12!\n" +
 	"\fmachine_name\x18\x02 \x01(\tR\vmachineName\x129\n" +
-	"\x06status\x18\x03 \x01(\v2!.hermesh.machine.v1.MachineStatusR\x06status\"\x8d\x05\n" +
+	"\x06status\x18\x03 \x01(\v2!.hermesh.machine.v1.MachineStatusR\x06status\"\xb0\x05\n" +
 	"\rMachineStatus\x12\x12\n" +
 	"\x04name\x18\f \x01(\tR\x04name\x12)\n" +
 	"\x10protocol_version\x18\x01 \x01(\rR\x0fprotocolVersion\x12\x1a\n" +
@@ -2777,7 +2787,8 @@ const file_hermesh_machine_v1_machine_proto_rawDesc = "" +
 	"\bsessions\x18\t \x03(\v2/.hermesh.machine.v1.MachineStatus.SessionsEntryR\bsessions\x12>\n" +
 	"\bproblems\x18\r \x03(\v2\".hermesh.machine.v1.MachineProblemR\bproblems\x12/\n" +
 	"\x03her\x18\x0e \x01(\v2\x1d.hermesh.machine.v1.HerStatusR\x03her\x128\n" +
-	"\x06screen\x18\x0f \x01(\v2 .hermesh.machine.v1.ScreenStatusR\x06screen\x1a;\n" +
+	"\x06screen\x18\x0f \x01(\v2 .hermesh.machine.v1.ScreenStatusR\x06screen\x12!\n" +
+	"\fdirect_addrs\x18\x10 \x03(\tR\vdirectAddrs\x1a;\n" +
 	"\rSessionsEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
 	"\x05value\x18\x02 \x01(\rR\x05value:\x028\x01J\x04\b\b\x10\tJ\x04\b\n" +

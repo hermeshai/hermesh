@@ -78,8 +78,9 @@ type Owner struct {
 	device     *identity.SoftwareKey
 	deviceCert *identityv1.Signed
 	client     *peer.Client
-	dialing    *relayDial   // the dial to the relay under way, if any
-	kept       *peer.Client // client, kept over a pause: not known to work yet
+	dialing    *relayDial    // the dial to the relay under way, if any
+	kept       *peer.Client  // client, kept over a pause: not known to work yet
+	recheck    chan struct{} // closed when an in-flight reconnect probe finishes
 	relayInfo  *relayv1.GetInfoResponse
 	mcpURL     string       // the relay's own MCP address, with its key (GetMCP)
 	avatarURL  string       // the account's picture on a center (fetchAccount)
@@ -129,6 +130,11 @@ type Owner struct {
 	herReach  func(ctx context.Context, machineID string) (herMachine, error)
 	consoleMu sync.Mutex
 	console   *herConsole // serving the consoles, once asked for one
+
+	directMu       sync.Mutex
+	direct         map[string][]string      // machineID -> normalized direct_addrs, persisted under kDirectAddrs
+	lastDirect     map[string]string        // machineID -> last winning direct address, tried first on reconnect
+	directMachines map[string]*peer.Machine // direct tunnels opened while relay isn't ready
 }
 
 const (
@@ -148,6 +154,9 @@ const (
 	// kMachineDir: where this profile's machine is, when not in its own
 	// directory (a device's machine from before profiles, profiles.go).
 	kMachineDir = "machine_dir"
+	// kDirectAddrs caches each machine's direct LAN/IPv6 E2E tunnel endpoints
+	// across app restarts so direct racing can start before relay connects.
+	kDirectAddrs = "direct_addrs"
 )
 
 // openProfile opens one profile (profiles.go): cfg.DataDir is its
@@ -183,6 +192,12 @@ func (o *Owner) load() error {
 		var kept localv1.ListClientsResponse
 		if proto.Unmarshal(b, &kept) == nil {
 			o.lastClients = kept.Clients
+		}
+	}
+	if b, _ := o.st.get(kDirectAddrs); len(b) > 0 {
+		var direct map[string][]string
+		if json.Unmarshal(b, &direct) == nil {
+			o.direct = direct
 		}
 	}
 	if b, _ := o.st.get(kErased); len(b) > 0 {
@@ -255,6 +270,7 @@ func (o *Owner) Run(ctx context.Context) {
 		o.client = nil
 	}
 	o.mu.Unlock()
+	o.closeDirectMachines()
 	o.stopLocalMachine()
 }
 
@@ -263,13 +279,20 @@ func (o *Owner) Run(ctx context.Context) {
 // the next call.
 func (o *Owner) stayConnected(ctx context.Context) {
 	backoff := time.Second
+	warned := false
 	for ctx.Err() == nil {
 		var done <-chan struct{}
 		var c *peer.Client
 		if o.Initialized() {
+			started := time.Now()
 			var err error
 			if c, err = o.relay(ctx); err == nil {
 				done = c.Done()
+				warned = false
+				o.log.Info("owner: relay connected", "after", time.Since(started).Round(time.Millisecond))
+			} else if !warned && ctx.Err() == nil {
+				warned = true
+				o.log.Warn("owner: relay unreachable", "err", err, "retry_in", backoff)
 			} else {
 				o.log.Debug("relay unreachable", "err", err, "retry_in", backoff)
 			}
@@ -280,6 +303,7 @@ func (o *Owner) stayConnected(ctx context.Context) {
 				continue
 			case <-done:
 			}
+			o.log.Info("owner: relay disconnected")
 			if err := c.Refused(); err == nil {
 				backoff = time.Second
 				continue
@@ -291,7 +315,7 @@ func (o *Owner) stayConnected(ctx context.Context) {
 		case <-time.After(backoff):
 		}
 		if o.Initialized() {
-			backoff = min(backoff*2, 30*time.Second)
+			backoff = min(backoff*2, 10*time.Second)
 		}
 	}
 }
@@ -367,13 +391,14 @@ func (o *Owner) relay(ctx context.Context) (*peer.Client, error) {
 				return nil, ctx.Err()
 			}
 		}
+		d := o.dialerLocked()
+		if d == nil {
+			o.mu.Unlock()
+			return nil, connect.NewError(connect.CodeFailedPrecondition, errors.New("no relay configured"))
+		}
 		w := &relayDial{done: make(chan struct{})}
 		o.dialing = w
 		relayURL := o.relayURL
-		d := &peer.Dialer{RelayURL: relayURL, Role: relayv1.Role_ROLE_OWNER, Key: o.device, Trust: o.trust, HTTPClient: o.cfg.HTTPClient, Pipeline: true,
-			Credentials: func() *identityv1.Credentials {
-				return &identityv1.Credentials{RootChain: o.trust.RootChain(), Subject: &identityv1.Credentials_DeviceCert{DeviceCert: o.deviceCert}}
-			}}
 		o.mu.Unlock()
 		c, err := connectOrKeep(ctx, d, kept)
 		o.mu.Lock()
@@ -489,6 +514,64 @@ func (o *Owner) dropRelay() {
 	if c != nil {
 		c.Close()
 	}
+	o.closeDirectMachines()
+}
+
+// reconnect verifies whether the active relay connection still answers Ping
+// before dropping it and restarting the replica. Transient network events (e.g.
+// iOS path changes) can fire without disrupting an active socket.
+func (o *Owner) reconnect() {
+	o.closeDirectMachines()
+	o.mu.Lock()
+	c := o.client
+	rctx := o.runCtx
+	rep := o.rep
+	if c == nil {
+		o.mu.Unlock()
+		if rep != nil {
+			rep.restart()
+		}
+		return
+	}
+	probe := make(chan struct{})
+	o.recheck = probe
+	o.mu.Unlock()
+	if rctx == nil {
+		rctx = context.Background()
+	}
+	go func() {
+		defer func() {
+			o.mu.Lock()
+			if o.recheck == probe {
+				o.recheck = nil
+			}
+			o.mu.Unlock()
+			close(probe)
+		}()
+		pctx, cancel := context.WithTimeout(rctx, 500*time.Millisecond)
+		err := c.Ping(pctx)
+		cancel()
+		if err == nil {
+			c.ForgetDirect()
+			return
+		}
+		o.mu.Lock()
+		still := o.client == c
+		if still {
+			o.client = nil
+		}
+		if o.kept == c {
+			o.kept = nil
+		}
+		o.mu.Unlock()
+		c.Close()
+		if still {
+			o.closeDirectMachines()
+		}
+		if still && rctx.Err() == nil && rep != nil {
+			rep.restart()
+		}
+	}()
 }
 
 // fetchRelayInfo learns whether the relay is a hosted center (for Status).
@@ -743,7 +826,126 @@ func (o *Owner) saveIdentity(ownerID, relayURL string, rootPub []byte, chain *id
 	o.ownerID, o.relayURL, o.rootPub, o.trust, o.device, o.deviceCert = ownerID, relayURL, pub, trust, device, deviceCert
 	o.account, o.signedOut = account, false
 	o.mu.Unlock()
+	o.closeDirectMachines()
 	return nil
+}
+
+func (o *Owner) dialerLocked() *peer.Dialer {
+	if o.ownerID == "" || o.device == nil || o.trust == nil {
+		return nil
+	}
+	return &peer.Dialer{
+		RelayURL:        o.relayURL,
+		Role:            relayv1.Role_ROLE_OWNER,
+		Key:             o.device,
+		Trust:           o.trust,
+		HTTPClient:      o.cfg.HTTPClient,
+		Pipeline:        true,
+		Credentials:     o.credentials,
+		Direct:          o.directAddrs,
+		OnDirectSuccess: o.noteDirectSuccess,
+	}
+}
+
+func (o *Owner) dialer() *peer.Dialer {
+	o.mu.Lock()
+	defer o.mu.Unlock()
+	return o.dialerLocked()
+}
+
+func (o *Owner) directAddrs(machineID string) []string {
+	o.directMu.Lock()
+	defer o.directMu.Unlock()
+	out := slices.Clone(o.direct[machineID])
+	if last := o.lastDirect[machineID]; last != "" {
+		if idx := slices.Index(out, last); idx > 0 {
+			out[0], out[idx] = out[idx], out[0]
+		}
+	}
+	return out
+}
+
+func (o *Owner) noteDirectSuccess(machineID, addr string) {
+	if addr == "" {
+		return
+	}
+	o.directMu.Lock()
+	if o.lastDirect == nil {
+		o.lastDirect = map[string]string{}
+	}
+	o.lastDirect[machineID] = addr
+	o.directMu.Unlock()
+}
+
+func (o *Owner) saveDirectAddrs(machineID string, addrs []string) {
+	var clean []string
+	for _, a := range addrs {
+		if a = strings.TrimSpace(a); a != "" {
+			clean = append(clean, a)
+		}
+	}
+	o.directMu.Lock()
+	defer o.directMu.Unlock()
+	if slices.Equal(o.direct[machineID], clean) {
+		return
+	}
+	if o.direct == nil {
+		o.direct = map[string][]string{}
+	}
+	if len(clean) == 0 {
+		delete(o.direct, machineID)
+	} else {
+		o.direct[machineID] = clean
+	}
+	if b, err := json.Marshal(o.direct); err == nil && o.st != nil {
+		_ = o.st.set(kDirectAddrs, b)
+	}
+}
+
+func (o *Owner) cachedDirectMachine(machineID string) *peer.Machine {
+	o.directMu.Lock()
+	defer o.directMu.Unlock()
+	n := o.directMachines[machineID]
+	if n == nil {
+		return nil
+	}
+	if !n.Alive() {
+		delete(o.directMachines, machineID)
+		n.Close()
+		return nil
+	}
+	return n
+}
+
+func (o *Owner) storeDirectMachine(machineID string, n *peer.Machine) {
+	o.directMu.Lock()
+	defer o.directMu.Unlock()
+	if o.directMachines == nil {
+		o.directMachines = map[string]*peer.Machine{}
+	}
+	if prev := o.directMachines[machineID]; prev != nil && prev != n {
+		prev.Close()
+	}
+	o.directMachines[machineID] = n
+}
+
+func (o *Owner) forgetDirectMachine(machineID string, n *peer.Machine) {
+	o.directMu.Lock()
+	defer o.directMu.Unlock()
+	if o.directMachines[machineID] == n {
+		delete(o.directMachines, machineID)
+		n.Close()
+	}
+}
+
+func (o *Owner) closeDirectMachines() {
+	o.directMu.Lock()
+	ms := o.directMachines
+	o.directMachines = nil
+	o.directMu.Unlock()
+	for _, n := range ms {
+		n.Close()
+	}
 }
 
 func normalizeRelayURL(s string) string {

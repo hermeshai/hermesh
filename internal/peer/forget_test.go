@@ -5,6 +5,7 @@ import (
 	"io"
 	"net"
 	"net/http"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -100,5 +101,53 @@ func TestLateOldRPCFailureKeepsReplacementTunnel(t *testing.T) {
 	body, err := io.ReadAll(res.Body)
 	if err != nil || string(body) != "ready" {
 		t.Fatalf("replacement response: %q, %v", body, err)
+	}
+}
+
+func TestConcurrentMachineDialsCoalesce(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+	var dials atomic.Int32
+	gate := make(chan struct{})
+	d := &Dialer{Link: func(context.Context, string) (net.Conn, string, error) {
+		dials.Add(1)
+		<-gate
+		a, b := net.Pipe()
+		go transport.ServeH2(ctx, b, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			io.WriteString(w, "ok")
+		}))
+		return a, "machine", nil
+	}}
+	c, err := d.Connect(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer c.Close()
+
+	const nCallers = 3
+	results := make([]*Machine, nCallers)
+	errs := make([]error, nCallers)
+	var wg sync.WaitGroup
+	for i := range nCallers {
+		wg.Add(1)
+		go func(idx int) {
+			defer wg.Done()
+			results[idx], errs[idx] = c.Machine(ctx, "m")
+		}(i)
+	}
+	time.Sleep(50 * time.Millisecond)
+	close(gate)
+	wg.Wait()
+
+	if got := dials.Load(); got != 1 {
+		t.Fatalf("concurrent Machine calls dialed %d times, want 1", got)
+	}
+	for i := range nCallers {
+		if errs[i] != nil {
+			t.Fatalf("caller %d failed: %v", i, errs[i])
+		}
+		if results[i] != results[0] {
+			t.Fatalf("caller %d got distinct *Machine pointer", i)
+		}
 	}
 }

@@ -195,7 +195,14 @@ func (h *Host) Connect(ctx context.Context, req *screenv1.ConnectRequest) (*scre
 				conf := s.pc.GetConfiguration()
 				conf.ICEServers = iceServers(list)
 				s.pc.SetConfiguration(conf)
-				go s.probe(list)
+				go func(list []*relayv1.IceServer) {
+					select {
+					case <-s.done:
+						return
+					case <-time.After(2 * time.Second):
+					}
+					s.probe(list)
+				}(list)
 			}
 		}
 		answer, err := s.answer(offer, req.CandidatesLater)
@@ -293,10 +300,10 @@ func (h *Host) open(ctx context.Context, req *screenv1.ConnectRequest) (*hostSes
 		return nil, err
 	}
 	var cfg webrtc.Configuration
+	var servers []*relayv1.IceServer
 	if h.cfg.Servers != nil {
-		list := h.cfg.Servers(ctx)
-		cfg.ICEServers = iceServers(list)
-		go s.probe(list)
+		servers = h.cfg.Servers(ctx)
+		cfg.ICEServers = iceServers(servers)
 	}
 	if s.pc, err = api.NewPeerConnection(cfg); err != nil {
 		return nil, err
@@ -332,8 +339,22 @@ func (h *Host) open(ctx context.Context, req *screenv1.ConnectRequest) (*hostSes
 	// slow (the viewer picks the path, this end follows).
 	s.pc.SCTP().Transport().ICETransport().OnSelectedCandidatePairChange(func(p *webrtc.ICECandidatePair) {
 		h.cfg.Log.Info("screen: path", "session", s.id, "local", pathEnd(p.Local), "remote", pathEnd(p.Remote), "after", time.Since(s.opened).Round(time.Millisecond))
+		if s.pc.ConnectionState() == webrtc.PeerConnectionStateConnected {
+			go s.keyframe()
+		}
 	})
 	connected := make(chan struct{})
+	if len(servers) > 0 {
+		go func(list []*relayv1.IceServer) {
+			select {
+			case <-s.done:
+				return
+			case <-connected:
+			case <-time.After(2 * time.Second):
+			}
+			s.probe(list)
+		}(servers)
+	}
 	go func() {
 		// Bounded snapshots also run when TURN connected first. Do not read
 		// PeerConnection.GetStats here: transport shutdown can race it.

@@ -212,8 +212,8 @@ struct HerSettings: View {
             Text("Her stops there and can no longer use your computers. Kept, her data stays, and she carries on when you turn her on again. Erasing deletes her assistants, conversations, memory, routines, files, connectors and model logins on \(machine.machineName), and can’t be undone.")
         }
         .sheet(isPresented: $adding) { HerAddSheet().environment(model) }
-        .fullScreenCover(isPresented: Binding(get: { control != nil }, set: { if !$0 { control = nil } })) {
-            if let control { ScreenControlView(session: control).environment(model) }
+        .fullScreenCover(item: $control) { control in
+            ScreenControlView(session: control).environment(model)
         }
     }
 

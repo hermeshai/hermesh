@@ -87,8 +87,11 @@ func newAPI(estimate func(cc.BandwidthEstimator), network transport.Net, observe
 	// one computer; without them, 30–300 ms. A filter on this end's own
 	// addresses would be quicker still, but pion then asks STUN and TURN from
 	// each address apart: a dozen TURN allocations a session.
-	s.SetRemoteIPFilter(func(ip net.IP) bool { return !ip.IsLinkLocalUnicast() })
+	s.SetRemoteIPFilter(UsableInterfaceIP)
 	s.SetICETimeouts(5*time.Second, 12*time.Second, time.Second)
+	// Cap SCTP retransmission backoff so input/control messages recover
+	// quickly after a brief network handover instead of backing off up to 60s.
+	s.SetSCTPRTOMax(time.Second)
 	// A STUN or TURN server that does not answer must not hold the handshake up for long.
 	s.SetSTUNGatherTimeout(3 * time.Second)
 	// How long a working path waits before it is taken, in case a better one

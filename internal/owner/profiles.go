@@ -19,6 +19,7 @@ import (
 
 	localv1 "github.com/hermeshai/hermesh/gen/go/hermesh/local/v1"
 	"github.com/hermeshai/hermesh/internal/flock"
+	"github.com/hermeshai/hermesh/internal/screen"
 )
 
 // Device is the owner role on one device, for every owner it set up or
@@ -43,9 +44,10 @@ type Device struct {
 	// The network this device is on: its addresses as last seen, and a
 	// channel closed (and made anew) when it changed, for what must find
 	// its paths again (a Computer Control session).
-	nmu   sync.Mutex
-	addrs string
-	moved chan struct{}
+	nmu         sync.Mutex
+	addrs       string
+	moved       chan struct{}
+	movedForced bool
 }
 
 // Open opens the device's profiles under cfg.DataDir, and an empty one to
@@ -61,7 +63,7 @@ func Open(cfg Config) (*Device, error) {
 	if err != nil {
 		return nil, err
 	}
-	d := &Device{cfg: cfg, hub: newSignHub(), profiles: map[string]*Owner{}, lock: lock}
+	d := &Device{cfg: cfg, hub: newSignHub(), profiles: map[string]*Owner{}, lock: lock, addrs: localAddresses()}
 	if err := d.migrate(); err != nil {
 		return nil, fmt.Errorf("moving the owner into a profile: %w", err)
 	}
@@ -189,6 +191,7 @@ func (d *Device) Run(ctx context.Context) {
 	d.runCtx = ctx
 	d.startLocked()
 	d.mu.Unlock()
+	d.PathChanged()
 	<-ctx.Done()
 	d.mu.Lock()
 	d.runCtx = nil
@@ -256,50 +259,72 @@ func (d *Device) Pause() {
 func (d *Device) Reconnect() {
 	d.nmu.Lock()
 	d.addrs = localAddresses()
-	if d.moved != nil {
-		close(d.moved)
-		d.moved = nil
-	}
+	d.movedForced = true
+	d.signalMovedLocked()
 	d.nmu.Unlock()
-	o := d.owner()
-	o.dropRelay()
-	o.rep.restart()
+	d.owner().reconnect()
 }
 
 // PathChanged is Reconnect when this device's addresses are not the ones
 // last seen: the system says something about the network changed, which
 // need not be the interfaces (an interface that kept its name on another
-// network, an address that came later).
+// network, an address that came later). Unlike Reconnect, it preserves the
+// distinction between an interface switch and a trailing path event.
 func (d *Device) PathChanged() {
 	now := localAddresses()
 	d.nmu.Lock()
-	same := d.addrs == "" || d.addrs == now
+	same := d.addrs == now
 	d.addrs = now
+	if !same {
+		d.signalMovedLocked()
+	}
 	d.nmu.Unlock()
 	if !same {
-		d.Reconnect()
+		d.owner().reconnect()
+	}
+}
+
+func (d *Device) signalMovedLocked() {
+	if d.moved != nil {
+		close(d.moved)
+		d.moved = nil
 	}
 }
 
 // networkMoved is closed the next time this device's network changes.
 func (d *Device) networkMoved() <-chan struct{} {
+	ch, _ := d.nextNetworkMove()
+	return ch
+}
+
+// nextNetworkMove returns the next network-change channel and reports whether
+// an explicit Reconnect occurred since the previous channel was issued.
+func (d *Device) nextNetworkMove() (<-chan struct{}, bool) {
 	d.nmu.Lock()
 	defer d.nmu.Unlock()
+	forced := d.movedForced
+	d.movedForced = false
 	if d.moved == nil {
 		d.moved = make(chan struct{})
 	}
-	return d.moved
+	return d.moved, forced
 }
 
 // localAddresses are the addresses this device has on its networks, but
 // for those that say nothing of which network it is on (loopback,
 // link-local), in one string to compare.
 func localAddresses() string {
-	addrs, _ := net.InterfaceAddrs()
+	ifaces, _ := net.Interfaces()
 	var out []string
-	for _, a := range addrs {
-		if n, ok := a.(*net.IPNet); ok && n.IP.IsGlobalUnicast() {
-			out = append(out, n.IP.String())
+	for _, iface := range ifaces {
+		if iface.Flags&net.FlagUp == 0 || !screen.UsableInterface(iface.Name) {
+			continue
+		}
+		addrs, _ := iface.Addrs()
+		for _, a := range addrs {
+			if n, ok := a.(*net.IPNet); ok && n.IP.IsGlobalUnicast() && screen.UsableInterfaceIP(n.IP) {
+				out = append(out, n.IP.String())
+			}
 		}
 	}
 	sort.Strings(out)
