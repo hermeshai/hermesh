@@ -542,5 +542,11 @@
       "delete": "已删除定时任务「{{name}}」"
     },
     "fromRoutine": "来自定时任务「{{name}}」"
+  },
+  "chrome": {
+    "title": "连接你的 Chrome？",
+    "body": "这一步需要你的登录状态，它在你自己的 Chrome 里，而扩展还没连上。连接一次后，Her 会从这里接着做。",
+    "builtin": "这次用内置浏览器",
+    "connect": "连接 Chrome…"
   }
 }

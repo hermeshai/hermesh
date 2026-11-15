@@ -50,7 +50,7 @@ const bridge: Bridge = {
       return "";
     }
   },
-  openHerConsole: (machineId: string) => ask("her-console", machineId),
+  openHerConsole: (machineId: string, page?: string) => ask("her-console", machineId, page),
   saveHerFile: (machineId: string, botId: string, path: string) => ask("her-save-file", machineId, botId, path),
   readHerFile: (machineId: string, botId: string, path: string) => ask("her-read-file", machineId, botId, path),
   signInHerChatGpt: (machineId: string) => ask("her-chatgpt", machineId),

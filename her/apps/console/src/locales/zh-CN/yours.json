@@ -1,5 +1,14 @@
 {
   "title": "你的 Chrome",
+  "control": {
+    "title": "允许 Her 控制浏览器",
+    "desc": "Her 打开网页并在里面操作。哪些网站不用问你，见下方的网站权限。",
+    "default": "默认使用的浏览器",
+    "defaultDesc": "智能体没有指定浏览器时，新网页在这里打开。",
+    "defaultLocked": "连接你的 Chrome 后可以选它。在那之前，新网页都在内置浏览器里打开。",
+    "builtin": "内置浏览器",
+    "yours": "{{name}}（你的浏览器）"
+  },
   "computer": {
     "macos": "Mac 电脑",
     "linux": "Linux 电脑"
@@ -13,7 +22,7 @@
     "outdated": "需要更新"
   },
   "off": "需要登录的网站，让 Her 用你自己的 Chrome 打开，就在 Her 所在的那台 {{computer}}上。",
-  "on": "需要你账号的网站会在你的 Chrome 里打开。",
+  "on": "Her 打开的标签页放在「Hermesh」分组里，在后台操作。关掉 Chrome 顶部的“正在调试”提示条，就能收回某个标签页。",
   "ready": "扩展已连接，Her 还没有使用。",
   "lost": "扩展没有连上。确认 Her 所在的 {{computer}}上 Chrome 是打开的，并且它的扩展程序页面里 Hermesh 是打开的。",
   "noChrome": "Her 所在的 {{computer}}上没有 Chrome，所以没法从那里连接你的 Chrome。",
@@ -26,7 +35,7 @@
   "connect": "连接",
   "use": "开始使用",
   "reconnect": "重新连接…",
-  "disconnect": "停止使用",
+  "disconnect": "断开",
   "useThis": "用这个",
   "guide": {
     "title": "连接你的 Chrome",
@@ -53,8 +62,9 @@
     "waitHint": "还没连上？确认 Chrome 是打开的，然后在它的扩展程序页面找到 Hermesh，确认开关是打开的，再点一下它的刷新按钮。",
     "back": "返回上一步",
     "done": "已连接 {{name}}",
-    "doneHint": "需要你账号的网站，Her 会在你的 Chrome 里打开，所有对话从下一步起生效。随时可以在这里关掉；关掉 Chrome 顶部的“正在调试”提示条，也能收回某个标签页。",
-    "finish": "完成"
+    "doneHint": "所有对话从下一步起生效。随时可以在这里断开；关掉 Chrome 顶部的“正在调试”提示条，也能收回某个标签页。",
+    "finish": "完成",
+    "asDefault": "设为默认使用的浏览器"
   },
   "builtin": {
     "title": "内置浏览器",

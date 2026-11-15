@@ -1,0 +1,5 @@
+BetterOffice
+Copyright 2026 Elia Hilse, The OpenOOXML Project
+
+NimbleOffice
+This product is a modified version of BetterOffice.

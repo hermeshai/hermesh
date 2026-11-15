@@ -14,6 +14,7 @@ import { errorText, useNow, useStore } from "../store";
 import { Approval, type SendOp } from "./Approval";
 import { addAttachments, toInput, type Attachment } from "./attachments";
 import { cardOf } from "./cards";
+import { ChromeWait, useWaitsForChrome } from "./ChromeWait";
 import { Composer, Tile } from "./Composer";
 import type { Conversation as Conv } from "./connection";
 import { useHer } from "./context";
@@ -626,6 +627,7 @@ function Dock({ bot, conv, op, state, waiting, onWaiting, onHeight }: {
   const view = conv.view;
   const key = her.machine.machineId;
   const asking = view && conv.rpc ? pendingApproval(view) : null;
+  const waitsForChrome = useWaitsForChrome(conv.rpc, conv.session);
   const [draft, setDraft] = useState(() => drafts.get(key) ?? { text: "", attachments: [] });
   const change = (d: { text: string; attachments: Attachment[] }) => {
     setDraft(d);
@@ -683,6 +685,12 @@ function Dock({ bot, conv, op, state, waiting, onWaiting, onHeight }: {
   // Without a model, the onboarding in the conversation says what to do; the composer waits.
   const above = asking ? (
     <Approval key={`${asking.agent?.id ?? ""}/${asking.approval.call_id}`} view={view!} op={op} />
+  ) : waitsForChrome && conv.rpc && conv.session ? (
+    <ChromeWait
+      rpc={conv.rpc}
+      session={conv.session}
+      onConnect={() => void window.hermesh?.openHerConsole(her.machine.machineId, "browser/connect").catch((e: unknown) => st.show(errorText(e)))}
+    />
   ) : state.kind === "starting" ? (
     <StateNote icon="clock" title={t("env.starting", { name })} />
   ) : state.kind === "failed" ? (

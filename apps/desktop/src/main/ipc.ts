@@ -167,11 +167,13 @@ export function registerIPC() {
   const id = (v: unknown) => (typeof v === "string" && v !== "" ? v : null);
   ipcMain.handle(
     "her-console",
-    answer((machineId: unknown) => {
+    answer((machineId: unknown, page: unknown) => {
       const m = id(machineId);
       if (!m) throw new Error("no machine");
       const name = world.machines.find((x) => x.machineId === m)?.machineName ?? m;
-      return showHerConsole(m, i18n.t("main:herConsole", { name }), () => herConsoleURL(m));
+      // A console page and item by its address's hash, e.g. "browser/connect"; nothing else.
+      const at = typeof page === "string" && /^[a-z]+(\/[a-z]+)?$/.test(page) ? page : undefined;
+      return showHerConsole(m, i18n.t("main:herConsole", { name }), () => herConsoleURL(m), at);
     }),
   );
   ipcMain.handle(

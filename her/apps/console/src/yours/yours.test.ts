@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import type { BrowserStatus, ExtensionStatus } from "@hermesh/her-protocol";
-import { browserName, builtin, builtinConfig, builtinEdits, extensionEdits, extensionFolder, herSystem, programName, yours, yoursConfig } from "./yours.ts";
+import { browserName, builtin, builtinConfig, controlConfig, controlEdits, controlOn, defaultBrowser, defaultEdits, extensionEdits, extensionFolder, herSystem, programName, yours, yoursConfig } from "./yours.ts";
 
 // What the Browser section makes of browser/status and `[browser]`.
 
@@ -64,18 +64,28 @@ test("a browser's name without its build", () => {
   assert.equal(browserName(""), "Chrome");
 });
 
-test("the built-in browser: on only when turned on in so many words, and off goes back to unset", () => {
-  assert.deepEqual(builtinConfig({}), { enabled: false, executable: null, headless: null });
-  assert.equal(builtinConfig({ browser: { enabled: true } }).enabled, true);
-  assert.equal(builtinConfig({ browser: { enabled: false } }).enabled, false);
-  // Off writes no `false`, which would turn the owner's Chrome off too.
-  assert.deepEqual(builtinEdits(true), [{ key_path: "browser.enabled", value: true }]);
-  assert.deepEqual(builtinEdits(false), [{ key_path: "browser.enabled", value: null }]);
+test("browser control: as set, else on where a desktop app shows browsers or the owner's Chrome is used", () => {
+  const unset = controlConfig({});
+  assert.deepEqual(unset, { enabled: null, default: "builtin" });
+  assert.equal(controlOn(status(), unset, yoursConfig({})), false);
+  assert.equal(controlOn(status({ embedded: true }), unset, yoursConfig({})), true);
+  assert.equal(controlOn(status(), unset, yoursConfig({ browser: { extension: true } })), true);
+  assert.equal(controlOn(status({ embedded: true }), controlConfig({ browser: { enabled: false } }), null), false);
+  assert.equal(controlOn(null, controlConfig({ browser: { enabled: true } }), null), true);
+  assert.deepEqual(controlEdits(false), [{ key_path: "browser.enabled", value: false }]);
+});
+
+test("new pages open in the owner's Chrome only while it is in use and connected", () => {
+  const yoursDefault = controlConfig({ browser: { default: "yours" } });
+  assert.equal(defaultBrowser(yoursDefault, "on"), "yours");
+  for (const state of ["off", "ready", "lost", "outdated"] as const) assert.equal(defaultBrowser(yoursDefault, state), "builtin", state);
+  assert.equal(defaultBrowser(controlConfig({}), "on"), "builtin");
+  assert.deepEqual(defaultEdits("yours"), [{ key_path: "browser.default", value: "yours" }]);
 });
 
 test("the built-in browser's program and window: what her finds, unless the settings say", () => {
   const found = status({ program: "/usr/bin/google-chrome", window: false });
-  assert.deepEqual(builtin(found, builtinConfig({})), { on: false, program: "/usr/bin/google-chrome", window: false });
+  assert.deepEqual(builtin(found, builtinConfig({})), { program: "/usr/bin/google-chrome", window: false });
   assert.equal(builtin(status(), builtinConfig({})).program, null, "none found");
   assert.equal(builtin(found, builtinConfig({ browser: { executable: "/opt/chromium/chrome" } })).program, "/opt/chromium/chrome");
   assert.equal(builtin(found, builtinConfig({ browser: { headless: false } })).window, true);

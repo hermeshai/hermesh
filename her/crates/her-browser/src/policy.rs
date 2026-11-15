@@ -132,6 +132,8 @@ pub async fn classify_url(url: &Url) -> AddressClass {
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub enum SiteLevel {
     Deny,
+    /// Asks on first use in a session, whatever `"*"` allows.
+    Ask,
     Navigate,
     Act,
 }
@@ -140,6 +142,7 @@ impl SiteLevel {
     pub fn parse(text: &str) -> Option<Self> {
         match text {
             "deny" => Some(Self::Deny),
+            "ask" => Some(Self::Ask),
             "navigate" => Some(Self::Navigate),
             "act" => Some(Self::Act),
             _ => None,

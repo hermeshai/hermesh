@@ -53,27 +53,49 @@ export const extensionFolder: Record<HerSystem, string> = {
   linux: "~/.local/share/hermesh/chrome-extension",
 };
 
-/** `[browser]` as the built-in browser's row reads it: whether it is turned on in so many words, the
- * program named, and whether it shows a window (null: auto). */
-export type BuiltinConfig = { enabled: boolean; executable: string | null; headless: boolean | null };
+/** `[browser]` as the page's first rows read it: browser control turned on or off in so many words
+ * (null: not set), and where new pages open. */
+export type ControlConfig = { enabled: boolean | null; default: DefaultBrowser };
+export type DefaultBrowser = "builtin" | "yours";
+
+export function controlConfig(config: unknown): ControlConfig {
+  const browser = ((config as Record<string, unknown> | null)?.browser ?? {}) as Record<string, unknown>;
+  return { enabled: typeof browser.enabled === "boolean" ? browser.enabled : null, default: browser.default === "yours" ? "yours" : "builtin" };
+}
+
+/** Whether Her controls browsers: as set, else where a desktop app shows them or the owner's Chrome is used (her's `control_on`). */
+export function controlOn(status: BrowserStatus | null, control: ControlConfig, yoursConfig: YoursConfig | null): boolean {
+  return control.enabled ?? (!!status?.embedded || yoursConfig?.extension === true);
+}
+
+export function controlEdits(on: boolean): ConfigEdit[] {
+  return [{ key_path: "browser.enabled", value: on }];
+}
+
+/** Where new pages open: the owner's Chrome only while Her uses it and it is connected, else the built-in browser (her's `Browsers::default`). */
+export function defaultBrowser(control: ControlConfig, state: YoursState): DefaultBrowser {
+  return control.default === "yours" && state === "on" ? "yours" : "builtin";
+}
+
+export function defaultEdits(which: DefaultBrowser): ConfigEdit[] {
+  return [{ key_path: "browser.default", value: which }];
+}
+
+/** `[browser]` as the built-in browser's row reads it: the program named, and whether it shows a window (null: auto). */
+export type BuiltinConfig = { executable: string | null; headless: boolean | null };
 
 export function builtinConfig(config: unknown): BuiltinConfig {
   const browser = ((config as Record<string, unknown> | null)?.browser ?? {}) as Record<string, unknown>;
   const executable = typeof browser.executable === "string" && browser.executable ? browser.executable : null;
   const headless = browser.headless === true || browser.headless === "true" ? true : browser.headless === false || browser.headless === "false" ? false : null;
-  return { enabled: browser.enabled === true, executable, headless };
+  return { executable, headless };
 }
 
-/** The built-in browser: on or not, the program it starts (null: none found), and whether with a window. */
-export type Builtin = { on: boolean; program: string | null; window: boolean };
+/** The built-in browser: the program it starts (null: none found), and whether with a window. */
+export type Builtin = { program: string | null; window: boolean };
 
 export function builtin(status: BrowserStatus | null, config: BuiltinConfig): Builtin {
-  return { on: config.enabled, program: config.executable ?? status?.program ?? null, window: config.headless === null ? !!status?.window : !config.headless };
-}
-
-/** Turns the built-in browser on, or back to unset: `browser.enabled = false` would turn the owner's Chrome off too. */
-export function builtinEdits(on: boolean): ConfigEdit[] {
-  return [{ key_path: "browser.enabled", value: on ? true : null }];
+  return { program: config.executable ?? status?.program ?? null, window: config.headless === null ? !!status?.window : !config.headless };
 }
 
 const programs: [RegExp, string][] = [

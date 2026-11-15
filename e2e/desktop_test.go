@@ -265,10 +265,14 @@ func desktopHerWorld(t *testing.T) desktopFixture {
 		return connector != ""
 	})
 	macHome, workHome := herHome(t, mock.models), t.TempDir()
+	// This Mac's Her uses the owner's own Chrome, whose extension never connects here: a step that
+	// asks for it waits, and the chat says so (her.spec.ts).
+	config := "[browser]\nextension = true\n"
 	if model := os.Getenv("HERMESH_HER_MODEL"); model != "" {
-		if err := os.WriteFile(filepath.Join(macHome, "config.toml"), []byte(fmt.Sprintf("model = %q\n", model)), 0o600); err != nil {
-			t.Fatal(err)
-		}
+		config = fmt.Sprintf("model = %q\n\n", model) + config
+	}
+	if err := os.WriteFile(filepath.Join(macHome, "config.toml"), []byte(config), 0o600); err != nil {
+		t.Fatal(err)
 	}
 	base := regexp.MustCompile(`base_url = "([^"]+)"`).FindStringSubmatch(mock.models)[1]
 	if err := os.WriteFile(filepath.Join(workHome, "models.toml"), []byte(fmt.Sprintf("[providers.deepseek]\nbase_url = %q\n\n[providers.tencent-token-plan]\nbase_url = %q\n", base, base)), 0o600); err != nil {

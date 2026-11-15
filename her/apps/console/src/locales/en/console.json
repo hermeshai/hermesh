@@ -30,17 +30,23 @@
   },
   "browser": {
     "sites": "Site permissions",
-    "sitesEmpty": "No sites yet. Her asks before it opens a site; “Always allow” adds it here.",
     "allSites": "All Sites",
-    "allSitesDesc": "Private network addresses are not included",
+    "allSitesDesc": {
+      "ask": "Each site asks the first time it's used",
+      "navigate": "Sites open without asking; acting on them asks first",
+      "act": "Sites open and are acted on without asking"
+    },
     "siteLevel": "Permission for {{site}}",
     "level": {
       "act": "Open and Act",
       "navigate": "Open Only",
+      "ask": "Ask First",
       "deny": "Deny"
     },
     "removeSite": "Remove {{site}}",
-    "sitesNote": "Sites not listed ask the first time.",
+    "exceptions": "Exceptions",
+    "exceptionsEmpty": "No exceptions yet. “Always allow” in a conversation adds a site here.",
+    "sitesNote": "Both browsers share these. Addresses on a private network don't follow All Sites: each asks the first time.",
     "addLabel": "Site to add",
     "addLevel": "Permission for the site to add",
     "addPlaceholder": "example.com",

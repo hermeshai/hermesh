@@ -51,7 +51,8 @@ agent-client-protocol-schema = { version = "1.13", default-features = false }
 anyhow = "1"
 async-stream = "0.3"
 async-trait = "0.1"
-# PPT engine: our fork of BetterOffice (openooxml/betteroffice), branch finx/0.5. On top of
+# PPT engine: NimbleOffice (github.com/Eliseowzy/nimbleoffice), our fork of BetterOffice
+# (openooxml/betteroffice) renamed, formerly github.com/Eliseowzy/betteroffice branch finx/0.5. On top of
 # upstream a45ba76 the fork carries fixes upstream does not have yet:
 #   77a1364 pptx-render: wrap preset-shape text to the preset's text rect
 #   169980a pptx-raster: synthesize bold for faces with no bold weight
@@ -64,13 +65,13 @@ async-trait = "0.1"
 # Back to upstream once all of these are merged there and a release carries them. No font packs
 # (fonts-latin, fonts-intl, fonts-cjk): every face comes from the machine (her-slide's
 # SystemFonts). Local work against a checkout of the fork: crates/her-slide/README.md.
-betteroffice-pptx = { git = "https://github.com/Eliseowzy/betteroffice", rev = "aac46417ba2f2e5a924d3427af28606ea932c408", default-features = false, features = ["raster", "fonts"] }
+nimbleoffice-pptx = { git = "https://github.com/Eliseowzy/nimbleoffice", rev = "65549f0e05e5edf91bd0edc85de94d55345d93c7", default-features = false, features = ["raster", "fonts"] }
 # Word on the same fork: the editing session (Yrs) and rasterization of saved bytes.
-betteroffice-docx = { git = "https://github.com/Eliseowzy/betteroffice", rev = "aac46417ba2f2e5a924d3427af28606ea932c408", default-features = false, features = ["raster", "fonts"] }
-docx-edit = { package = "betteroffice-docx-edit", git = "https://github.com/Eliseowzy/betteroffice", rev = "aac46417ba2f2e5a924d3427af28606ea932c408" }
-ooxml-metafile = { package = "betteroffice-metafile", git = "https://github.com/Eliseowzy/betteroffice", rev = "aac46417ba2f2e5a924d3427af28606ea932c408", features = ["svg"] }
+nimbleoffice-docx = { git = "https://github.com/Eliseowzy/nimbleoffice", rev = "65549f0e05e5edf91bd0edc85de94d55345d93c7", default-features = false, features = ["raster", "fonts"] }
+docx-edit = { package = "nimbleoffice-docx-edit", git = "https://github.com/Eliseowzy/nimbleoffice", rev = "65549f0e05e5edf91bd0edc85de94d55345d93c7" }
+ooxml-metafile = { package = "nimbleoffice-metafile", git = "https://github.com/Eliseowzy/nimbleoffice", rev = "65549f0e05e5edf91bd0edc85de94d55345d93c7", features = ["svg"] }
 # The .docx written from the session in Rust: the fork's port of the JS engine's saveYrsDocx.
-docx-native-save = { package = "betteroffice-docx-native-save", git = "https://github.com/Eliseowzy/betteroffice", rev = "aac46417ba2f2e5a924d3427af28606ea932c408" }
+docx-native-save = { package = "nimbleoffice-docx-native-save", git = "https://github.com/Eliseowzy/nimbleoffice", rev = "65549f0e05e5edf91bd0edc85de94d55345d93c7" }
 base64 = "0.22"
 bytes = "1"
 calamine = "0.38"
