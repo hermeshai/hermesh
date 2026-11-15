@@ -283,6 +283,16 @@ func herTokens(totals t: JSON) -> Int {
     (t["per_model"].object ?? [:]).values.reduce(0) { $0 + herTokens(usage: $1) }
 }
 
+/// The words her handed back with a task that failed or was interrupted (its `returned_input`): what waited for it,
+/// which goes back into the composer (docs/her-sending.md §5.1).
+public func herReturned(_ e: JSON) -> [String] {
+    guard ["task_failed", "task_interrupted"].contains(e["type"].string ?? "") else { return [] }
+    return (e["returned_input"].array ?? []).compactMap { m in
+        let text = (m["content"].array ?? []).compactMap { $0["type"].string == "text" ? $0["text"].string : nil }.joined(separator: "\n")
+        return text.isEmpty ? nil : text
+    }
+}
+
 public enum HerUserContent: Equatable, Sendable {
     case text(String)
     /// Base64.

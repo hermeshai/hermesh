@@ -696,6 +696,7 @@ impl AgentTree {
                 mode: PromptMode::Steer,
                 // A task brief is not the user's input: a leading `/name` stays text.
                 commands: false,
+                id: None,
             })
             .await;
         // `background`: the report arrives later, as mail; `reported`: this result is the report.
@@ -774,6 +775,7 @@ impl AgentTree {
                 }],
                 mode: PromptMode::Steer,
                 commands: false,
+                id: None,
             })
             .await;
         // As spawn_agent's: `background` when this starts a round of work that reports by mail.

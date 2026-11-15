@@ -172,7 +172,11 @@
   "waiting": {
     "until": "Delivered when {{name}} is back",
     "failed": "Not delivered: {{error}}",
-    "discard": "Discard"
+    "discard": "Discard",
+    "sending": "Sending…",
+    "retry": "Try Again",
+    "edit": "Edit",
+    "connecting": "Connecting to {{name}}…"
   },
   "files": {
     "save": "Save {{name}} to Downloads",

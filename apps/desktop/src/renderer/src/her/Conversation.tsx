@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type CSSProperties, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import { botChat, busyBubble, pendingApproval, type BotItem, type WorkingAgent } from "@hermesh/her-client";
 import type { BotSummary } from "@hermesh/her-protocol";
@@ -12,7 +12,7 @@ import { ContentScope } from "../session/scope";
 import { useVirtualRows, type VirtualRow } from "../session/useVirtualRows";
 import { errorText, useNow, useStore } from "../store";
 import { Approval, type SendOp } from "./Approval";
-import { addAttachments, toInput, type Attachment } from "./attachments";
+import { addAttachments, type Attachment } from "./attachments";
 import { cardOf } from "./cards";
 import { ChromeWait, useWaitsForChrome } from "./ChromeWait";
 import { Composer, Tile } from "./Composer";
@@ -27,7 +27,7 @@ import { Onboarding, useOnboarding } from "./ModelOnboarding";
 import { onboardingAfter, withOnboarding } from "./onboarding";
 import { SecureCard } from "./SecureCard";
 import { SessionCard, WorkCard } from "./TeamCards";
-import { splitAttached, waitingFor, type WaitingItem } from "./waiting";
+import { outboxFor, splitAttached, type Sending, type SendingItem, type WaitingItem } from "./waiting";
 
 /** A pause before a time line (bot-mode-design §6.6). */
 const PAUSE = 10 * 60_000;
@@ -44,12 +44,51 @@ export const putInComposer = (machineId: string, text: string) => composerText.g
 /** Brings a routine run's message into view in an environment's conversation, and flashes it. */
 export const showRun = (machineId: string, run: string) => runShowers.get(machineId)?.(run);
 
+/** A message not sent, back into the composer of an environment's conversation (Edit). */
+const composerReturn = new Map<string, (sent: Draft) => void>();
+
+type Draft = { text: string; attachments: Attachment[] };
+
+/**
+ * What this Mac sent and HerSend has not answered for, or refused, by environment (docs/her-sending.md §5.2): with the
+ * draft each was, to send again or edit. Kept here, not in a page, so that a message being sent still shows after
+ * going to another page and back.
+ */
+const outbox = (() => {
+  const by = new Map<string, (Sending & { botId: string; draft: Draft })[]>();
+  const listeners = new Set<() => void>();
+  const set = (machineId: string, list: (Sending & { botId: string; draft: Draft })[]) => {
+    by.set(machineId, list);
+    for (const l of listeners) l();
+  };
+  return {
+    list: (machineId: string) => by.get(machineId) ?? none,
+    get: (machineId: string, id: string) => by.get(machineId)?.find((m) => m.id === id),
+    add: (machineId: string, m: Sending & { botId: string; draft: Draft }) => set(machineId, [...(by.get(machineId) ?? []), m]),
+    refuse: (machineId: string, id: string, refused: string | null) => set(machineId, (by.get(machineId) ?? []).map((m) => (m.id === id ? { ...m, refused } : m))),
+    drop: (machineId: string, ids: string[]) => {
+      const list = by.get(machineId) ?? [];
+      if (list.some((m) => ids.includes(m.id))) set(machineId, list.filter((m) => !ids.includes(m.id)));
+    },
+    subscribe: (l: () => void) => {
+      listeners.add(l);
+      return () => void listeners.delete(l);
+    },
+  };
+})();
+const none: never[] = [];
+
+const useOutbox = (machineId: string) => useSyncExternalStore(outbox.subscribe, () => outbox.list(machineId));
+
+/** A message id: the outbox's and her's for it. */
+const messageId = () => `hw_${crypto.randomUUID().replaceAll("-", "")}`;
+
 /**
  * The conversation with Her, under the page's top
  * bar: bubbles on both sides, and the composer. Her says only what it sends. Offline, what was read
  * stays readable, and what is written meanwhile waits on this Mac.
  */
-export function Conversation({ bot, conv, op, waiting, onWaiting }: { bot: BotSummary; conv: Conv; op: SendOp; waiting: HerWaiting[]; onWaiting: () => void }) {
+export function Conversation({ bot, conv, op, waiting, onWaiting }: { bot: BotSummary; conv: Conv; op: SendOp; waiting: HerWaiting[]; onWaiting: () => Promise<HerWaiting[]> }) {
   const her = useHer();
   useMarkRead(bot);
   const state = envState(her.machine);
@@ -58,6 +97,7 @@ export function Conversation({ bot, conv, op, waiting, onWaiting }: { bot: BotSu
       <div className="dwrap">
         <div className="dmain">
           <OfflineLine state={state} />
+          <ConnectingLine state={state} reconnecting={conv.reconnecting} />
           <BotChat bot={bot} conv={conv} op={op} state={state} waiting={waiting} onWaiting={onWaiting} />
         </div>
       </div>
@@ -76,6 +116,27 @@ export function OfflineLine({ state }: { state: EnvState }) {
     <div className="her-note" role="status">
       <Icon name="wifi" className="sm" />
       <span>{state.seen ? t("env.offlineSeen", { name, ago: agoText(state.seen, now) }) : t("env.offline", { name })}</span>
+    </div>
+  );
+}
+
+/** The conversation's connection opening again for more than a moment, while the machine answers: a reply may take a
+ * while, and the page says why (docs/her-sending.md §5.4). */
+function ConnectingLine({ state, reconnecting }: { state: EnvState; reconnecting: boolean }) {
+  const { t } = useTranslation("her");
+  const her = useHer();
+  const [slow, setSlow] = useState(false);
+  useEffect(() => {
+    setSlow(false);
+    if (!reconnecting) return;
+    const timer = setTimeout(() => setSlow(true), 2000);
+    return () => clearTimeout(timer);
+  }, [reconnecting]);
+  if (state.kind !== "ready" || !reconnecting || !slow) return null;
+  return (
+    <div className="her-note" role="status" data-testid="her-connecting">
+      <span className="mini-spin" aria-hidden="true" />
+      <span>{t("waiting.connecting", { name: her.machine.machineName })}</span>
     </div>
   );
 }
@@ -102,7 +163,7 @@ function useMarkRead(bot: BotSummary) {
 /** The onboarding while no model works there (ModelOnboarding.tsx), as one row of the conversation. */
 type OnboardingItem = { kind: "onboarding"; key: string; ts: number };
 
-type Item = BotItem | WaitingItem | OnboardingItem;
+type Item = BotItem | WaitingItem | SendingItem | OnboardingItem;
 
 /** A row of the conversation: its item, the time of the one before, and whether it sits close to its neighbours. */
 type BotRow = VirtualRow & { item: Item; previous: number | undefined; side: "um" | "bm" | null; joinPrev: boolean; joinNext: boolean };
@@ -111,7 +172,7 @@ type BotRow = VirtualRow & { item: Item; previous: number | undefined; side: "um
 const rowHeights: Record<string, number> = { user: 56, waiting: 70, bot: 96, attachment: 160, question: 120, card: 240, session: 76, work: 170, routine: 40, deck_edit: 0, failure: 60, onboarding: 160 };
 
 /** Which bubble an item draws: the owner's, the assistant's, or neither (a line of its own). */
-const sideOf = (item: Item): BotRow["side"] => (item.kind === "user" || item.kind === "waiting" ? "um" : item.kind === "bot" || item.kind === "attachment" || item.kind === "question" || item.kind === "card" || item.kind === "session" || item.kind === "work" ? "bm" : null);
+const sideOf = (item: Item): BotRow["side"] => (item.kind === "user" || item.kind === "waiting" || item.kind === "sending" ? "um" : item.kind === "bot" || item.kind === "attachment" || item.kind === "question" || item.kind === "card" || item.kind === "session" || item.kind === "work" ? "bm" : null);
 
 /** The rows: two bubbles in a row from the same side, with no time line between (one shows after a pause), sit close. */
 function botRows(items: Item[]): BotRow[] {
@@ -125,16 +186,17 @@ function BotChat({ bot, conv, op, state, waiting, onWaiting }: {
   op: SendOp;
   state: EnvState;
   waiting: HerWaiting[];
-  onWaiting: () => void;
+  onWaiting: () => Promise<HerWaiting[]>;
 }) {
   const { t } = useTranslation("her");
   const her = useHer();
   const { view, session } = conv;
   const chat = useMemo(() => (view ? botChat(view).filter((i) => i.kind !== "deck_edit") : []), [view]);
-  const kept = useMemo(
-    () => waitingFor(waiting, bot.id, chat.flatMap((i) => (i.kind === "user" ? [{ text: i.text, ts: i.ts }] : []))),
-    [waiting, bot.id, chat],
-  );
+  const sent = useOutbox(her.machine.machineId);
+  const owners = useMemo(() => chat.flatMap((i) => (i.kind === "user" ? [{ key: i.key, text: i.text, ts: i.ts }] : [])), [chat]);
+  const kept = useMemo(() => outboxFor(waiting, bot.id, owners, sent.filter((m) => m.botId === bot.id)), [waiting, bot.id, owners, sent]);
+  // What was sent goes once the conversation has it.
+  useEffect(() => outbox.drop(her.machine.machineId, owners.map((o) => o.key)), [owners]);
   const said = useMemo(() => [...chat, ...kept], [chat, kept]);
   // No model works there: Her's onboarding, the app speaking for Her, until the conversation opens on one.
   const noModel = state.kind === "noModel" || conv.noModel;
@@ -267,6 +329,8 @@ function BotChat({ bot, conv, op, state, waiting, onWaiting }: {
         return <UserBubble key={item.key} item={item} fresh={fresh(item.key)} line={line} scope={files} />;
       case "waiting":
         return <WaitingBubble key={item.key} item={item} line={line} onDiscarded={onWaiting} />;
+      case "sending":
+        return <SendingBubble key={item.key} item={item} line={line} />;
       case "routine":
         return <RoutineChange key={item.key} item={item} line={line} />;
       case "bot":
@@ -364,7 +428,7 @@ function BotChat({ bot, conv, op, state, waiting, onWaiting }: {
       <button className={`tobottom ${away ? "on" : ""}`} style={{ "--dock": `${dock}px` } as CSSProperties} aria-label={t("chat.toBottom")} title={t("chat.toBottom")} tabIndex={away ? 0 : -1} aria-hidden={!away} onClick={toEnd}>
         <Icon name="arrowDown" />
       </button>
-      <Dock bot={bot} conv={conv} op={op} state={state} waiting={kept.length > 0} onWaiting={onWaiting} onHeight={setDock} />
+      <Dock bot={bot} conv={conv} op={op} state={state} onWaiting={onWaiting} onHeight={setDock} />
     </>
   );
 }
@@ -437,6 +501,57 @@ function UserBubble({ item, fresh, line, scope }: { item: Extract<BotItem, { kin
  * (docs/her-server.md §5.5): it says so, and why the last try failed when one did. One her keeps
  * refusing holds back those after it, so it can be discarded.
  */
+/** A message this Mac is sending, or couldn't: Try Again sends it again as it was, Edit puts it back in the composer. */
+function SendingBubble({ item, line }: { item: SendingItem; line: ReactNode }) {
+  const { t } = useTranslation("her");
+  const her = useHer();
+  const machineId = her.machine.machineId;
+  return (
+    <>
+      {line}
+      <div className={`um ${item.refused === null ? "waiting" : ""}`} data-testid="her-sending">
+        {(item.files.length > 0 || item.images.length > 0) && (
+          <div className="um-att">
+            {item.files.map((f) => (
+              <Tile key={f} name={f} />
+            ))}
+          </div>
+        )}
+        {item.text !== "" && <div className="bub sel-text">{item.text}</div>}
+        <div className={`um-wait ${item.refused !== null ? "warn" : ""}`} role="status">
+          {item.refused === null ? (
+            <span>{t("waiting.sending")}</span>
+          ) : (
+            <>
+              <Icon name="alert" className="sm" />
+              <span title={item.refused}>{t("waiting.failed", { error: item.refused })}</span>
+              <button className="link" onClick={() => sendAgain(machineId, item.id)}>
+                {t("waiting.retry")}
+              </button>
+              <button className="link" onClick={() => editAgain(machineId, item.id)}>
+                {t("waiting.edit")}
+              </button>
+            </>
+          )}
+        </div>
+      </div>
+    </>
+  );
+}
+
+/** Sends what was sent again, by the delivery the composer registered for the environment. */
+const deliveries = new Map<string, (id: string) => void>();
+const sendAgain = (machineId: string, id: string) => {
+  outbox.refuse(machineId, id, null);
+  deliveries.get(machineId)?.(id);
+};
+const editAgain = (machineId: string, id: string) => {
+  const m = outbox.get(machineId, id);
+  if (!m) return;
+  outbox.drop(machineId, [id]);
+  composerReturn.get(machineId)?.(m.draft);
+};
+
 function WaitingBubble({ item, line, onDiscarded }: { item: WaitingItem; line: ReactNode; onDiscarded: () => void }) {
   const { t } = useTranslation("her");
   const st = useStore();
@@ -618,17 +733,17 @@ const handed = new WeakSet<object>();
 
 /**
  * The composer of an assistant's page: only Send (bot-mode-design §6.14); every message goes in as it
- * is sent. While the conversation is open, a message goes on it (session/op), its pictures in it and
- * its files uploaded first; otherwise, or behind messages that wait, it goes through hermeshd, which
- * delivers it now or keeps it here until the machine is back (HerSend).
+ * is sent, and the composer is free at once (docs/her-sending.md). A message shows as being sent under
+ * an id of its own, and goes through hermeshd, which keeps it, then delivers it, on the conversation
+ * this page has open or on one of its own, now or when the machine is back; sent again, her takes it
+ * once.
  */
-function Dock({ bot, conv, op, state, waiting, onWaiting, onHeight }: {
+function Dock({ bot, conv, op, state, onWaiting, onHeight }: {
   bot: BotSummary;
   conv: Conv;
   op: SendOp;
   state: EnvState;
-  waiting: boolean;
-  onWaiting: () => void;
+  onWaiting: () => Promise<HerWaiting[]>;
   onHeight: (h: number) => void;
 }) {
   const { t } = useTranslation("her");
@@ -664,33 +779,78 @@ function Dock({ bot, conv, op, state, waiting, onWaiting, onHeight }: {
       if (composerText.get(key) === put) composerText.delete(key);
     };
   }, [key]);
-  const name = her.machine.machineName;
-  const noModel = state.kind === "noModel" || conv.noModel;
-  const send = async () => {
-    const sent = draft;
-    change({ text: "", attachments: [] });
-    let ok = false;
-    try {
-      if (conv.rpc && conv.session && state.kind === "ready" && !waiting) {
-        const uploaded: string[] = [];
-        for (const a of sent.attachments) if (a.kind === "file") uploaded.push((await local.herUpload({ machineId: her.machine.machineId, botId: bot.id, localPath: a.path })).path);
-        // While it answers, a message waits for the step under way and is answered next.
-        ok = await op({ type: "prompt", input: toInput(sent.text, sent.attachments, uploaded), mode: view?.live ? "steer" : undefined });
-      } else {
-        // Files go by their path here; a pasted picture, which has none, is kept by hermeshd with the message.
-        const paths = sent.attachments.flatMap((a) => (a.kind === "file" ? [a.path] : a.local ? [a.local] : []));
-        const pictures = sent.attachments.flatMap((a) => (a.kind === "image" && !a.local ? [{ name: a.name, data: Uint8Array.from(atob(a.data), (c) => c.charCodeAt(0)) }] : []));
-        await local.herSend({ machineId: her.machine.machineId, botId: bot.id, text: sent.text.trim(), localPaths: paths, pictures });
-        onWaiting();
-        ok = true;
-      }
-    } catch (e) {
-      st.show(errorText(e));
-    }
-    if (!ok) {
+  // A message not sent, edited: back into the composer, before what is there.
+  useEffect(() => {
+    const put = (sent: Draft) => {
       const d = drafts.get(key) ?? { text: "", attachments: [] };
       change({ text: [sent.text, d.text].filter(Boolean).join("\n"), attachments: addAttachments(sent.attachments, d.attachments) });
-    }
+    };
+    composerReturn.set(key, put);
+    return () => {
+      if (composerReturn.get(key) === put) composerReturn.delete(key);
+    };
+  }, [key]);
+  const name = her.machine.machineName;
+  const noModel = state.kind === "noModel" || conv.noModel;
+  // The conversation open now, read when a message goes (a retry goes on the one open then).
+  const open = useRef(conv);
+  open.current = conv;
+  // HerSend for a message being sent. Kept in the outbox, the outbox shows it; taken, the conversation will; an error
+  // says it is in neither, unless the outbox has it after all (the answer was lost, not the message).
+  const deliver = useCallback(
+    async (id: string) => {
+      const m = outbox.get(key, id);
+      if (!m) return;
+      const c = open.current;
+      // Files go by their path here; pictures by their bytes, kept by hermeshd with the message, which her reads as pictures.
+      const paths = m.draft.attachments.flatMap((a) => (a.kind === "file" ? [a.path] : []));
+      const pictures = m.draft.attachments.flatMap((a) => (a.kind === "image" ? [{ name: a.name, data: Uint8Array.from(atob(a.data), (ch) => ch.charCodeAt(0)) }] : []));
+      try {
+        const r = await local.herSend({
+          id,
+          machineId: key,
+          botId: m.botId,
+          text: m.draft.text.trim(),
+          localPaths: paths,
+          pictures,
+          connectionId: c.rpc && c.session ? (c.connectionId ?? "") : "",
+          sessionId: c.rpc && c.connectionId ? (c.session ?? "") : "",
+        });
+        if (!r.delivered) {
+          await onWaiting();
+          outbox.drop(key, [id]);
+        }
+      } catch (e) {
+        const list = await onWaiting();
+        if (list.some((w) => w.id === id)) outbox.drop(key, [id]);
+        else outbox.refuse(key, id, errorText(e));
+      }
+    },
+    [key, onWaiting],
+  );
+  useEffect(() => {
+    const again = (id: string) => void deliver(id);
+    deliveries.set(key, again);
+    return () => {
+      if (deliveries.get(key) === again) deliveries.delete(key);
+    };
+  }, [key, deliver]);
+  const send = () => {
+    const sent = draft;
+    if (!sent.text.trim() && sent.attachments.length === 0) return;
+    change({ text: "", attachments: [] });
+    const id = messageId();
+    outbox.add(key, {
+      id,
+      botId: bot.id,
+      text: sent.text.trim(),
+      files: sent.attachments.map((a) => a.name),
+      images: sent.attachments.flatMap((a) => (a.kind === "image" ? [{ mime_type: a.mime_type, data: a.data }] : [])),
+      ts: Date.now(),
+      refused: null,
+      draft: sent,
+    });
+    void deliver(id);
   };
   // Without a model, the onboarding in the conversation says what to do; the composer waits.
   const above = asking ? (
@@ -714,7 +874,7 @@ function Dock({ bot, conv, op, state, waiting, onWaiting, onHeight }: {
       onChange={(text) => change({ ...draft, text })}
       attachments={draft.attachments}
       onAttachments={(attachments) => change({ ...draft, attachments })}
-      onSend={() => void send()}
+      onSend={send}
       canSend={!noModel}
       placeholder={noModel ? t("onboard.placeholder") : t("chat.placeholder", { name: bot.name })}
     />

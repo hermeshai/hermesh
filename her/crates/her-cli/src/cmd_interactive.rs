@@ -987,7 +987,7 @@ impl App {
         }
         self.dirty = true;
         let input = vec![UserContent::Text { text: text.to_string() }];
-        let _ = self.kernel.submit(Op::Prompt { input, mode, commands: true }).await;
+        let _ = self.kernel.submit(Op::Prompt { input, mode, commands: true, id: None }).await;
     }
 
     async fn on_tab(&mut self) {

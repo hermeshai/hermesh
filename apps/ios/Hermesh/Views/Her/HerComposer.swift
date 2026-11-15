@@ -5,21 +5,21 @@ import SwiftUI
 import UniformTypeIdentifiers
 
 /// The composer under Her's conversation: words, photos and files, and only
-/// Send; every message goes in as it is sent. Without a model, the
-/// onboarding in the conversation says what to do and the composer waits.
+/// Send; every message goes in as it is sent, and the composer is free at once
+/// (docs/her-sending.md §5.1). Without a model, the onboarding in the
+/// conversation says what to do and the composer waits.
 struct HerComposer: View {
     @Environment(AppModel.self) private var model
     @Bindable var chat: HerChat
     let machine: HerMachine
     let state: HerEnvState
     let noModel: Bool
-    /// The message goes on the conversation itself; otherwise through the core, which may keep it here (HerSend).
-    let direct: Bool
     @State private var photos: [PhotosPickerItem] = []
+    /// Photos picked and still being read: they show, and Send waits for them.
+    @State private var loadingPhotos = 0
     @State private var pickingPhotos = false
     @State private var pickingFiles = false
     @State private var adding = false
-    @State private var sending = false
     @FocusState private var focused: Bool
     /// The field's own height, and the height it keeps: it grows at once and shrinks only once the text has been
     /// still for a moment. Typing Chinese, the letters being composed are wider than the characters they become, so
@@ -32,7 +32,7 @@ struct HerComposer: View {
         VStack(alignment: .leading, spacing: 8) {
             if let note { Label(note, systemImage: "clock").font(.footnote).foregroundStyle(.secondary).padding(.horizontal, 12) }
             VStack(alignment: .leading, spacing: 6) {
-                if !draft.photos.isEmpty || !draft.files.isEmpty {
+                if !draft.photos.isEmpty || !draft.files.isEmpty || loadingPhotos > 0 {
                     ScrollView(.horizontal) {
                         HStack(spacing: 6) {
                             ForEach(draft.photos) { p in
@@ -47,6 +47,11 @@ struct HerComposer: View {
                                     .padding(3)
                                     .accessibilityLabel(Text("Remove \(p.name)"))
                                 }
+                            }
+                            ForEach(0 ..< loadingPhotos, id: \.self) { _ in
+                                ProgressView().frame(width: 56, height: 56)
+                                    .background(Palette.fill2, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                                    .accessibilityIdentifier("her-photo-loading")
                             }
                             ForEach(draft.files) { f in HerChip(name: f.name) { chat.draft.files.removeAll { $0.id == f.id } } }
                         }
@@ -114,11 +119,13 @@ struct HerComposer: View {
             let picked = photos
             guard !picked.isEmpty else { return }
             photos = []
+            loadingPhotos += picked.count
             Task {
                 for item in picked {
                     if let data = try? await item.loadTransferable(type: Data.self), let jpeg = Self.jpeg(data) {
                         chat.draft.photos.append(.init(name: String(localized: "Photo") + ".jpg", data: jpeg))
                     }
+                    loadingPhotos -= 1
                 }
             }
         }
@@ -130,7 +137,7 @@ struct HerComposer: View {
         }
     }
 
-    private var canSend: Bool { !noModel && !sending && !chat.draft.isEmpty }
+    private var canSend: Bool { !noModel && loadingPhotos == 0 && !chat.draft.isEmpty }
 
     /// What keeps the environment from answering, above the composer.
     private var note: String? {
@@ -150,11 +157,18 @@ struct HerComposer: View {
         }
     }
 
+    /// What the keyboard is composing (pinyin not yet chosen, say) goes with the message. Emptied while it composes,
+    /// the field would get it back from the keyboard, which keeps it: the field lets go of the keyboard first, which
+    /// commits it, then the message goes and the field takes the keyboard again.
     private func send() {
-        sending = true
-        Task {
-            await chat.send(direct: direct)
-            sending = false
+        guard focused, let field = UIResponder.herFirst, (field as? UITextInput)?.markedTextRange != nil else {
+            if canSend { chat.send() }
+            return
+        }
+        _ = field.resignFirstResponder()
+        Task { @MainActor in
+            if canSend { chat.send() }
+            focused = true
         }
     }
 
@@ -321,4 +335,17 @@ struct HerApprovalPanel: View {
             busy = false
         }
     }
+}
+
+extension UIResponder {
+    private static weak var found: UIResponder?
+
+    /// The view the keyboard types into, if any.
+    static var herFirst: UIResponder? {
+        found = nil
+        UIApplication.shared.sendAction(#selector(herFind), to: nil, from: nil, for: nil)
+        return found
+    }
+
+    @objc private func herFind() { UIResponder.found = self }
 }

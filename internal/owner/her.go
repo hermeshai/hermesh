@@ -2,6 +2,7 @@ package owner
 
 import (
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -14,6 +15,7 @@ import (
 	"path/filepath"
 	"slices"
 	"strings"
+	"sync"
 	"time"
 
 	"connectrpc.com/connect"
@@ -467,10 +469,11 @@ func herOp(ctx context.Context, h herMachine, conn, session string, op any) erro
 }
 
 // onBot opens a her connection on h with the assistant botID's
-// conversation (bots/open, without the events of herQuiet) and runs fn
-// with the connection and the conversation; the connection closes after.
+// conversation (bots/open, without its history or the events of herQuiet)
+// and runs fn with the connection and the conversation; the connection
+// closes after.
 func onBot(ctx context.Context, h herMachine, botID string, fn func(conn, session string) error) error {
-	params, err := json.Marshal(map[string]any{"bot_id": botID, "events": map[string]any{"exclude": herQuiet}})
+	params, err := json.Marshal(map[string]any{"bot_id": botID, "events": map[string]any{"exclude": herQuiet}, "history_limit": 0})
 	if err != nil {
 		return err
 	}
@@ -534,15 +537,19 @@ func onTheWay(ctx context.Context, err error) error {
 	return err
 }
 
-// HerSend sends an assistant a message: now when its machine answers,
-// else once it does (deliverWaiting), behind the messages to the same
-// assistant that wait already.
+// HerSend sends an assistant a message (docs/her-sending.md §4): it is kept
+// here first, under the id the app gave it, then delivered with the
+// assistant's earlier waiting messages, in order. It answers delivered, or
+// waiting with why; an error means the message is not kept and was not
+// taken (a wrong request, or her refused it).
 func (o *Owner) HerSend(ctx context.Context, req *localv1.HerSendRequest) (*localv1.HerSendResponse, error) {
 	switch {
 	case req.MachineId == "" || req.BotId == "":
 		return nil, connect.NewError(connect.CodeInvalidArgument, errors.New("a message goes to a machine's assistant"))
 	case req.Text == "" && len(req.LocalPaths) == 0 && len(req.Pictures) == 0:
 		return nil, connect.NewError(connect.CodeInvalidArgument, errors.New("an empty message"))
+	case req.Id != "" && !herInputID(req.Id):
+		return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("%q can't be a message's id: 1 to 64 of A-Z a-z 0-9 _ -", req.Id))
 	}
 	for _, p := range req.LocalPaths {
 		f, _, err := openFile(p)
@@ -551,48 +558,133 @@ func (o *Owner) HerSend(ctx context.Context, req *localv1.HerSendRequest) (*loca
 		}
 		f.Close()
 	}
-	w := &localv1.HerWaiting{Id: "hw_" + strings.ToLower(ulid.Make().String()), MachineId: req.MachineId, BotId: req.BotId, Text: req.Text,
-		LocalPaths: slices.Clone(req.LocalPaths), CreatedAt: timestamppb.Now()}
-	if err := o.keepPictures(w, req.Pictures); err != nil {
-		return nil, err
+	id := req.Id
+	if id == "" {
+		id = "hw_" + strings.ToLower(ulid.Make().String())
 	}
-	sent, err := o.herSendNow(ctx, w)
-	if err != nil || sent.Delivered {
-		o.dropPictures(w.Id)
-	}
-	return sent, err
-}
-
-// herSendNow delivers w now, or keeps it to deliver later.
-func (o *Owner) herSendNow(ctx context.Context, w *localv1.HerWaiting) (*localv1.HerSendResponse, error) {
-	before, err := o.st.herWaiting(w.MachineId, w.BotId)
+	bot := o.herBotLock(req.MachineId, req.BotId)
+	bot.Lock()
+	defer bot.Unlock()
+	w, err := o.herKeptOne(req.MachineId, req.BotId, id)
 	if err != nil {
 		return nil, err
 	}
-	switch {
-	case len(before) > 0:
-	case o.rep.offline(w.MachineId):
-		w.Error = "offline"
-	default:
-		err := o.herDeliver(ctx, w)
-		if err == nil {
-			return &localv1.HerSendResponse{Delivered: true}, nil
-		}
-		if !errors.As(err, new(unreachable)) {
+	fresh := w == nil
+	if fresh { // else a send tried again: the one kept goes
+		w = &localv1.HerWaiting{Id: id, MachineId: req.MachineId, BotId: req.BotId, Text: req.Text,
+			LocalPaths: slices.Clone(req.LocalPaths), CreatedAt: timestamppb.Now()}
+		if err := o.keepPictures(w, req.Pictures); err != nil {
 			return nil, err
 		}
-		w.Error = err.Error()
+		if err := o.st.addHerWaiting(w); err != nil {
+			o.dropPictures(w.Id)
+			return nil, err
+		}
 	}
-	if err := o.st.addHerWaiting(w); err != nil {
-		return nil, err
+	on := herConv{conn: req.ConnectionId, session: req.SessionId}
+	if refused, _ := o.flushBot(ctx, req.MachineId, req.BotId, w.Id, fresh, on); refused != nil {
+		return nil, refused
 	}
-	o.wakeHer()
+	if w, err = o.herKeptOne(req.MachineId, req.BotId, id); err != nil || w == nil {
+		return &localv1.HerSendResponse{Delivered: err == nil}, err
+	}
 	return &localv1.HerSendResponse{Waiting: w}, nil
 }
 
-// herDeliver delivers w: its files into the assistant's folder, then the
-// message naming where they landed, on the conversation bots/open loads.
-func (o *Owner) herDeliver(ctx context.Context, w *localv1.HerWaiting) error {
+// herInputID: what her takes as a prompt's id (her-protocol's valid_input_id).
+func herInputID(id string) bool {
+	if len(id) == 0 || len(id) > 64 {
+		return false
+	}
+	for _, c := range id {
+		if !(c >= 'a' && c <= 'z' || c >= 'A' && c <= 'Z' || c >= '0' && c <= '9' || c == '_' || c == '-') {
+			return false
+		}
+	}
+	return true
+}
+
+// herKeptOne is the message id waiting for an assistant, or nil.
+func (o *Owner) herKeptOne(machineID, botID, id string) (*localv1.HerWaiting, error) {
+	list, err := o.st.herWaiting(machineID, botID)
+	for _, w := range list {
+		if w.Id == id {
+			return w, err
+		}
+	}
+	return nil, err
+}
+
+// herBotLock is an assistant's delivery lock: HerSend and flushWaiting
+// deliver its messages one at a time, so that none goes twice at once and
+// they arrive in the order they were written.
+func (o *Owner) herBotLock(machineID, botID string) *sync.Mutex {
+	mu, _ := o.herBots.LoadOrStore(machineID+"/"+botID, &sync.Mutex{})
+	return mu.(*sync.Mutex)
+}
+
+// herConv is a conversation an app has open on the machine, to deliver on.
+type herConv struct{ conn, session string }
+
+// flushBot delivers an assistant's waiting messages, oldest first, with its
+// lock held, and stops at the first that does not go: kept with why, it
+// holds back the later ones. down says the machine did not answer. The
+// message mine (HerSend's) is marked offline when nothing was tried; when
+// it is fresh (kept by this send), her's refusal drops it and is returned.
+func (o *Owner) flushBot(ctx context.Context, machineID, botID, mine string, fresh bool, on herConv) (refused error, down bool) {
+	list, err := o.st.herWaiting(machineID, botID)
+	if err != nil {
+		o.log.Warn("Her's waiting messages not read", "err", err)
+		return nil, false
+	}
+	if o.rep.offline(machineID) {
+		for _, w := range list {
+			if w.Id == mine && w.Error == "" {
+				w.Error = "offline"
+				o.keepWaiting(w)
+			}
+		}
+		return nil, true
+	}
+	for _, w := range list {
+		err := o.herDeliver(ctx, w, on)
+		if ctx.Err() != nil {
+			return nil, false // asked again later, by its id
+		}
+		if err == nil {
+			if _, err := o.st.deleteHerWaiting(machineID, w.Id); err != nil {
+				o.log.Warn("a message delivered to Her still kept", "id", w.Id, "err", err)
+			}
+			o.dropPictures(w.Id)
+			continue
+		}
+		lost := errors.As(err, new(unreachable))
+		if w.Id == mine && fresh && !lost {
+			if _, err := o.st.deleteHerWaiting(machineID, w.Id); err != nil {
+				o.log.Warn("a message her refused still kept", "id", w.Id, "err", err)
+			}
+			o.dropPictures(w.Id)
+			return err, false
+		}
+		w.Error = err.Error()
+		o.keepWaiting(w)
+		return nil, lost
+	}
+	return nil, false
+}
+
+// keepWaiting writes down why a waiting message waits.
+func (o *Owner) keepWaiting(w *localv1.HerWaiting) {
+	if err := o.st.updateHerWaiting(w); err != nil {
+		o.log.Warn("Her's waiting message not kept", "id", w.Id, "err", err)
+	}
+}
+
+// herDeliver delivers w as one prompt under its id (docs/her-sending.md
+// §4.4): its files into the assistant's folder first, named after its
+// words, and its pictures as pictures; on the conversation the app has open
+// (on), or else on a connection of its own.
+func (o *Owner) herDeliver(ctx context.Context, w *localv1.HerWaiting, on herConv) error {
 	rctx, cancel := context.WithTimeout(ctx, herAnswerWithin)
 	h, err := o.herOn(rctx, w.MachineId)
 	cancel()
@@ -602,9 +694,16 @@ func (o *Owner) herDeliver(ctx context.Context, w *localv1.HerWaiting) error {
 		}
 		return err
 	}
-	text := w.Text
+	input := []any{}
+	if text := strings.TrimSpace(w.Text); text != "" {
+		input = append(input, map[string]any{"type": "text", "text": text})
+	}
 	var paths []string
 	for _, p := range w.LocalPaths {
+		if picture := o.herPicture(p); picture != nil {
+			input = append(input, picture)
+			continue
+		}
 		path, err := herUpload(ctx, h, w.BotId, p)
 		if err != nil {
 			return onTheWay(ctx, err)
@@ -612,35 +711,68 @@ func (o *Owner) herDeliver(ctx context.Context, w *localv1.HerWaiting) error {
 		paths = append(paths, path)
 	}
 	if len(paths) > 0 {
-		text = attached(text, paths)
+		input = append(input, map[string]any{"type": "text", "text": attachedBlock(paths)})
 	}
+	op := map[string]any{"type": "prompt", "id": w.Id, "input": input}
 	octx, cancel := context.WithTimeout(ctx, herAnswerWithin)
 	defer cancel()
+	if on.conn != "" && on.session != "" {
+		err := herOp(octx, h, on.conn, on.session, op)
+		if err == nil || ctx.Err() != nil || octx.Err() != nil || tunnelError(err) {
+			return o.herLate(ctx, octx, h, err)
+		}
+		// Not on the way: that connection is gone, or no longer on the
+		// conversation. One of its own says.
+	}
 	err = onBot(octx, h, w.BotId, func(conn, session string) error {
-		return herOp(octx, h, conn, session, map[string]any{"type": "prompt", "input": []any{map[string]any{"type": "text", "text": text}}})
+		return herOp(octx, h, conn, session, op)
 	})
-	// Out of time, here or at the machine (connect passes the deadline on).
+	return o.herLate(ctx, octx, h, err)
+}
+
+// herLate is a delivery's error as HerSend keeps it: out of time, here or at
+// the machine (connect passes the deadline on), or lost on the way, the
+// message waits; the machine that stopped answering is dialled again next
+// time.
+func (o *Owner) herLate(ctx, octx context.Context, h herMachine, err error) error {
 	if err != nil && ctx.Err() == nil && (octx.Err() != nil || connect.CodeOf(err) == connect.CodeDeadlineExceeded) {
 		if r, ok := h.(herRemote); ok {
-			r.forget() // it stopped answering: dial again next time
+			r.forget()
 		}
 		return unreachable{connect.NewError(connect.CodeDeadlineExceeded, fmt.Errorf("the machine did not answer within %s", herAnswerWithin))}
 	}
 	return onTheWay(ctx, err)
 }
 
-// attached is a message followed by where the files sent with it are.
-func attached(text string, paths []string) string {
-	var b strings.Builder
-	b.WriteString(text)
-	if text != "" {
-		b.WriteString("\n\n")
+// herPicture is a picture kept with a message as her takes it (an image,
+// base64), or nil for a path that is not one: a file to upload.
+func (o *Owner) herPicture(path string) map[string]any {
+	if !strings.HasPrefix(path, o.herPictures()+string(filepath.Separator)) {
+		return nil
 	}
-	b.WriteString("Attached files:")
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return nil
+	}
+	mime := http.DetectContentType(data)
+	if !strings.HasPrefix(mime, "image/") {
+		return nil
+	}
+	return map[string]any{"type": "image", "mime_type": mime, "data": base64.StdEncoding.EncodeToString(data)}
+}
+
+// attachedBlock names the files uploaded for a message, after its words,
+// as the apps' composers did (her-client's attachedBlock): workbooks with
+// how to read them.
+func attachedBlock(paths []string) string {
+	prefix := "Attached files:\n"
 	for _, p := range paths {
-		b.WriteString("\n- " + p)
+		if ext := strings.ToLower(filepath.Ext(p)); ext == ".xlsx" || ext == ".xlsm" {
+			prefix = "Attached files. For XLSX and XLSM workbooks, use the deferred doc tools (doc_open, then doc_read) instead of unpacking them or parsing them with shell/Python:\n"
+			break
+		}
 	}
-	return b.String()
+	return prefix + strings.Join(paths, "\n")
 }
 
 // wakeHer has the waiting messages tried now: a machine may answer again.
@@ -667,44 +799,38 @@ func (o *Owner) deliverWaiting(ctx context.Context) {
 	}
 }
 
-// flushWaiting delivers the messages waiting here, oldest first, to the
-// machines that answer. An assistant's later messages wait behind one that
-// failed, so that they arrive in order; the failure is kept with it.
+// flushWaiting delivers the messages waiting here to the machines that
+// answer, side by side, so that one that doesn't holds no other back; on
+// each, an assistant at a time (flushBot).
 func (o *Owner) flushWaiting(ctx context.Context) {
 	all, err := o.st.herWaiting("", "")
 	if err != nil {
 		o.log.Warn("Her's waiting messages not read", "err", err)
 		return
 	}
-	down, stuck := map[string]bool{}, map[string]bool{}
+	bots := map[string][]string{} // a machine's assistants, in the order their first waits
 	for _, w := range all {
-		bot := w.MachineId + "/" + w.BotId
-		if down[w.MachineId] || stuck[bot] {
-			continue
-		}
-		if o.rep.offline(w.MachineId) {
-			down[w.MachineId] = true
-			continue
-		}
-		err := o.herDeliver(ctx, w)
-		if ctx.Err() != nil {
-			return
-		}
-		if err == nil {
-			_, err = o.st.deleteHerWaiting(w.MachineId, w.Id)
-			o.dropPictures(w.Id)
-		} else {
-			stuck[bot] = true
-			if errors.As(err, new(unreachable)) {
-				down[w.MachineId] = true
-			}
-			w.Error = err.Error()
-			err = o.st.updateHerWaiting(w)
-		}
-		if err != nil {
-			o.log.Warn("Her's waiting message not kept", "id", w.Id, "err", err)
+		if !slices.Contains(bots[w.MachineId], w.BotId) {
+			bots[w.MachineId] = append(bots[w.MachineId], w.BotId)
 		}
 	}
+	var wg sync.WaitGroup
+	for machineID, ids := range bots {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for _, botID := range ids {
+				bot := o.herBotLock(machineID, botID)
+				bot.Lock()
+				_, down := o.flushBot(ctx, machineID, botID, "", false, herConv{})
+				bot.Unlock()
+				if down || ctx.Err() != nil {
+					return
+				}
+			}
+		}()
+	}
+	wg.Wait()
 }
 
 // DeleteHerWaiting drops a message kept here, undelivered; the assistant's

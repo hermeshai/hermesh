@@ -692,6 +692,9 @@ impl Hub {
             return Err(errors::prompt_in_progress(id));
         }
         match &op {
+            Op::Prompt { id: Some(id), .. } if !her_protocol::valid_input_id(id) => {
+                return Err(RpcError::invalid_params("a prompt's id is 1 to 64 of A-Z a-z 0-9 _ -"));
+            }
             Op::Shutdown => {
                 self.close_reason = DetachReason::Closed;
                 self.begin_close(None);

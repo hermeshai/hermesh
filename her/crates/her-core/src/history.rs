@@ -41,6 +41,11 @@ impl History {
         history
     }
 
+    /// Whether an entry has this id.
+    pub fn contains(&self, id: &str) -> bool {
+        self.index.contains_key(id)
+    }
+
     pub fn new_id(&self) -> String {
         loop {
             let id = format!("{:08x}", rand::random::<u32>());

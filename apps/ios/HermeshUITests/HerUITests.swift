@@ -34,6 +34,18 @@ extension HermeshUITests {
         try herProgress()
     }
 
+    /// Sending (docs/her-sending.md) on its own: a message leaves the composer at once and shows once.
+    ///
+    ///     HERMESH_IPHONE_E2E=1 HERMESH_IPHONE_GREP=testHerSending go test ./e2e -run TestIPhone -v -timeout 40m
+    @objc func testHerSending() throws {
+        guard ProcessInfo.processInfo.environment["HERMESH_E2E_HER"] != nil else { throw XCTSkip("run with Her built") }
+        try join()
+        try herTurnOn()
+        try herOnboarding()
+        try herChat()
+        try herSendingOnce()
+    }
+
     @objc func testHer() throws {
         guard ProcessInfo.processInfo.environment["HERMESH_E2E_HER"] != nil else { throw XCTSkip("run by TestIPhone with her built (HERMESH_E2E_HER)") }
         try XCTContext.runActivity(named: "joins the owner by its connection address") { _ in try join() }
@@ -41,6 +53,7 @@ extension HermeshUITests {
         try XCTContext.runActivity(named: "with no model, Her speaks first, offers the ways, and connects a Token Plan") { _ in try herOnboarding() }
         try XCTContext.runActivity(named: "a chat: the message, then Her's reply") { _ in try herChat() }
         try XCTContext.runActivity(named: "typing Chinese at a line's end, the composer holds its height") { _ in try herTypingChinese() }
+        try XCTContext.runActivity(named: "a message leaves the composer at once and shows once: typed, while Pinyin composes, and with the connection gone") { _ in try herSendingOnce() }
         try XCTContext.runActivity(named: "the plus beside the field: what it adds opens out of it, the field staying") { _ in try herAdd() }
         try XCTContext.runActivity(named: "her name opens her settings, a page of their own") { _ in try herSettings() }
         try XCTContext.runActivity(named: "what she notes shows in her settings as written, and is cleared there") { _ in try herMemory() }
@@ -176,6 +189,54 @@ extension HermeshUITests {
         // Cleared, it is one line again at once.
         composer.typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: text.count + 10))
         try waitFor("one line again") { abs(height() - one) < 1 ? true : nil }
+    }
+
+    /// A message sent leaves the composer at once and shows once (docs/her-sending.md): typed; sent while the Pinyin
+    /// keyboard still composes, what it composed going with it and not back into the field; and sent while the
+    /// conversation's connection is gone (the relay down), delivered once it is back.
+    func herSendingOnce() throws {
+        let composer = app.descendants(matching: .any)["her-composer"].firstMatch
+        XCTAssertTrue(composer.waitForExistence(timeout: 30))
+        func typed() -> String {
+            let v = composer.value as? String ?? ""
+            return v == composer.placeholderValue ? "" : v
+        }
+        func shown(_ label: String) -> Int { app.staticTexts.matching(NSPredicate(format: "label == %@", label)).count }
+
+        herSend("[[mock:send:只收到一次]] hi")
+        XCTAssertTrue(waitUntil(timeout: 2) { typed().isEmpty }, "emptied at once: \(typed())")
+        XCTAssertTrue(app.staticTexts["只收到一次"].waitForExistence(timeout: 60), "Her's reply")
+        XCTAssertEqual(shown("[[mock:send:只收到一次]] hi"), 1, "the message once")
+        XCTAssertTrue(typed().isEmpty, "nothing came back into the composer: \(typed())")
+
+        // Pinyin being composed, no character chosen yet: Send. Before 2026-11-15 the message went, the keyboard wrote
+        // what it composed back into the emptied field, and Send stayed greyed out under it.
+        composer.tap()
+        XCTAssertTrue(app.keys["n"].waitForExistence(timeout: 10), "the keyboard")
+        composer.typeText("[[mock:send:拼音也送到了]] ")
+        for c in "nihao" { app.keys[String(c)].tap() }
+        XCTAssertTrue(app.buttons["her-send"].isEnabled, "Send takes what is being composed")
+        app.buttons["her-send"].tap()
+        XCTAssertTrue(app.staticTexts["拼音也送到了"].waitForExistence(timeout: 60), "Her's reply")
+        let went = app.staticTexts.matching(NSPredicate(format: "label BEGINSWITH %@", "[[mock:send:拼音也送到了]]"))
+        XCTAssertEqual(went.count, 1, "the message once")
+        XCTAssertTrue(went.firstMatch.label.lowercased().contains("ni"), "with what was composed: \(went.firstMatch.label)")
+        sleep(2)
+        XCTAssertTrue(typed().isEmpty, "the keyboard wrote nothing back: \(typed())")
+        XCTAssertTrue(waitUntil(timeout: 5) { app.keyboards.count > 0 }, "the field has the keyboard again")
+        herShot("Her: sent while Pinyin composed")
+
+        // The connection gone: the message shows at once, waits, and goes once the relay is back.
+        _ = try control("relay?up=0", method: "POST")
+        herSend("[[mock:send:断线后送达]] hi")
+        XCTAssertTrue(waitUntil(timeout: 2) { typed().isEmpty }, "emptied at once: \(typed())")
+        let row = app.descendants(matching: .any).matching(NSPredicate(format: "identifier IN %@", ["her-sending", "her-waiting"])).firstMatch
+        XCTAssertTrue(row.waitForExistence(timeout: 10), "shown as being sent, then waiting")
+        herShot("Her: sent with the relay down")
+        _ = try control("relay?up=1", method: "POST")
+        XCTAssertTrue(app.staticTexts["断线后送达"].waitForExistence(timeout: 180), "delivered once the relay is back, and answered")
+        XCTAssertEqual(shown("[[mock:send:断线后送达]] hi"), 1, "the message once")
+        XCTAssertTrue(waitUntil(timeout: 30) { !app.descendants(matching: .any)["her-waiting"].exists && !app.descendants(matching: .any)["her-sending"].exists })
     }
 
     func herAdd() throws {
