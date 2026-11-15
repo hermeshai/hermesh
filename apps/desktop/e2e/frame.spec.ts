@@ -92,6 +92,8 @@ test("long titles are cut, the status dot sits by its text, a running title shim
   const running = list.getByRole("listitem").filter({ hasText: "一个正在运行" });
   await expect(running).toBeVisible();
 
+  // Hovering a row replaces its metadata with actions. Measure the resting layout.
+  await page.mouse.move(0, 0);
   const box = async (l: ReturnType<typeof page.locator>) => (await l.boundingBox())!;
   for (const row of await list.getByRole("listitem").all()) {
     const title = row.locator(".stitle");

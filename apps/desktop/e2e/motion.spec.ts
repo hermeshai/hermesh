@@ -87,6 +87,8 @@ test("while nothing happens, the page changes only its clocks, all in the same f
   const row = (await sessionList(page)).getByRole("listitem").filter({ hasText: "跑很久" });
   await row.click();
   await expect(row.locator(".stime")).toHaveText(/^\d+:\d\d$/);
+  // Opening the session also starts the syntax worker; its reply is not a clock tick.
+  await page.locator(".sm2.cmd .hl").first().waitFor({ timeout: 4000 }).catch(() => {});
   await page.waitForTimeout(1500);
   batches = await changes(page, 3200);
   expect(batches.flat().length).toBeGreaterThan(0);
