@@ -90,11 +90,10 @@ struct DrawerView: View {
         VStack(spacing: 2) {
             herPlace
             workPlace
-            sessionsPlace
         }
     }
 
-    /// All Sessions, as in the Mac's sidebar: the list, with how many there are.
+    /// All Sessions, as in the Mac's sidebar: the list, with how many there are; the team's first row.
     private var sessionsPlace: some View {
         item(.sessions, id: "sessions-place") {
             HStack(spacing: 12) {
@@ -176,12 +175,14 @@ struct DrawerView: View {
         .accessibilityHidden(true)
     }
 
-    /// The team (docs/her-team.md §4.5): the machines, each with its coding agents, and the connected agents.
-    /// A row opens its sessions; a heading opens the page that manages them.
+    /// The team (docs/her-team.md §4.5), as the Mac's sidebar lists it: All Sessions first, the machines, each
+    /// with its coding agents flush under it, and the connected agents. A row opens its sessions; a heading opens
+    /// the page that manages them.
     @ViewBuilder private var lists: some View {
         let sessions = model.sessions.filter { $0.status != .archived }
         let machines = model.machines.sorted { $0.machineName.localizedStandardCompare($1.machineName) == .orderedAscending }
         heading("Machines", opens: .machines)
+        sessionsPlace
         ForEach(machines, id: \.machineID) { m in
             machineRow(m)
             ForEach(sortedAgents(m.status.agents).installed, id: \.name) { a in
@@ -216,7 +217,7 @@ struct DrawerView: View {
                 Image(systemName: "chevron.right").font(.caption2.weight(.semibold)).foregroundStyle(.tertiary)
             }
             .font(.footnote).foregroundStyle(model.root == root ? .primary : .secondary)
-            .padding(.horizontal, 26).padding(.top, 20).padding(.bottom, 6)
+            .padding(.horizontal, 26).padding(.top, 12).padding(.bottom, 4)
             .contentShape(.rect)
         }
         .buttonStyle(.plain)
@@ -247,7 +248,6 @@ struct DrawerView: View {
     private func agentRow(_ agent: String, on m: Machine, sessions: [Session]) -> some View {
         item(.agentSessions(m.machineID, agent), id: "menu-agent-\(m.machineName)-\(agent)") {
             row { AgentLogo(id: agent, size: 22) } title: { Text(agentTitle(agent)).font(.callout) } trailing: { marks(sessions) }
-                .padding(.leading, 28)
         }
     }
 
