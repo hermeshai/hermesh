@@ -34,5 +34,7 @@ struct RootView: View {
         } message: {
             Text(model.problem ?? model.signer.failure ?? "")
         }
+        .onChange(of: model.problem != nil || model.signer.failure != nil) { _, wrong in if wrong { Haptic.error.play() } }
+        .hapticLog()
     }
 }
