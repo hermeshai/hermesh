@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { cli, fixture, snap } from "./app";
+import { cli, fixture, snap, sessionList } from "./app";
 
 import { installer, type Hook } from "./install-app";
 
@@ -61,7 +61,7 @@ for (const move of ["cancel", "error"] as const) {
 test("hermeshd of another version: once no session is busy, launchd loads its job again from the plist now in the bundle, without blocking on its exit", async () => {
   const app = await installer(true);
   const page = await app.firstWindow();
-  await expect(page.getByRole("list", { name: "会话" })).toContainText("写 hello");
+  await expect((await sessionList(page))).toContainText("写 hello");
   const seen = () => app.evaluate(() => {
     const { launchctl, loginItems } = (globalThis as unknown as Hook).installTest;
     return { launchctl, loginItems };
@@ -87,7 +87,7 @@ test("hermeshd of another version: once no session is busy, launchd loads its jo
 test("from Applications the app starts normally; update errors explain recovery and fold technical details", async () => {
   const app = await installer(true);
   const page = await app.firstWindow();
-  await expect(page.getByRole("list", { name: "会话" })).toContainText("写 hello");
+  await expect((await sessionList(page))).toContainText("写 hello");
   expect(await app.evaluate(() => (globalThis as unknown as Hook).installTest.dialogs)).toEqual([]);
   expect(await app.evaluate(() => (globalThis as unknown as Hook).installTest.loginItems)).toHaveLength(1);
   expect(await app.evaluate(() => (globalThis as unknown as Hook).installTest.protocols)).toEqual(["hermesh"]);

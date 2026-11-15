@@ -2,16 +2,18 @@ import SwiftUI
 
 /// Her's avatar: her cat, with no ground of its own (the Mac draws the same one, her/Avatar.tsx). A round body
 /// with two ears behind it, a lighter face, two eyes, a cat's mouth and a blush, in soft shading with no outline.
-/// She breathes and blinks; busy, she looks around and bobs. Still with Reduce Motion.
+/// She breathes and blinks; busy, she looks around and bobs; asleep (she runs nowhere yet), her eyes are shut and
+/// she breathes slowly. Still with Reduce Motion.
 struct HerAvatar: View {
     var size: CGFloat
     var busy = false
+    var asleep = false
     @Environment(\.accessibilityReduceMotion) private var still
 
     var body: some View {
         TimelineView(.animation(minimumInterval: 1 / 30, paused: still)) { timeline in
             let t = still ? nil : timeline.date.timeIntervalSinceReferenceDate
-            Canvas { ctx, _ in HerCat.draw(&ctx, size: size, time: t, busy: busy) }
+            Canvas { ctx, _ in HerCat.draw(&ctx, size: size, time: t, busy: busy, asleep: asleep) }
         }
         .frame(width: size, height: size)
         .accessibilityHidden(true)
@@ -73,7 +75,7 @@ enum HerCat {
     private static let ink = Color(hex: "3c2f3a")
 
     /// Draws her in a square of `size`; `time` nil holds her still.
-    static func draw(_ ctx: inout GraphicsContext, size: CGFloat, time: Double?, busy: Bool) {
+    static func draw(_ ctx: inout GraphicsContext, size: CGFloat, time: Double?, busy: Bool, asleep: Bool = false) {
         let k = size / 104
         ctx.scaleBy(x: k, y: k)
         ctx.translateBy(x: -8, y: -16)
@@ -89,7 +91,7 @@ enum HerCat {
 
         // She breathes from the ground up; busy, a quicker bob.
         let t = time ?? 0
-        let breath = time == nil ? 0 : (1 - cos(2 * .pi * t / (busy ? 0.8 : 3.4))) / 2
+        let breath = time == nil ? 0 : (1 - cos(2 * .pi * t / (busy ? 0.8 : asleep ? 5 : 3.4))) / 2
         ctx.translateBy(x: 60, y: 110)
         ctx.scaleBy(x: 1 + (busy ? 0.03 : 0.02) * breath, y: 1 - (busy ? 0.04 : 0.025) * breath)
         ctx.translateBy(x: -60, y: -110)
@@ -117,6 +119,13 @@ enum HerCat {
         let open = time != nil && abs(phase - 0.47) < 0.02 ? 0.1 + 0.9 * abs(phase - 0.47) / 0.02 : 1
         let look = busy && time != nil ? CGSize(width: -2.5 * cos(2 * .pi * t / 2.4), height: -2.5) : .zero
         for x in [48.5, 71.5] {
+            if asleep { // shut: a lid's curve
+                var lid = Path()
+                lid.move(to: pt(x - 4.4, 63.4))
+                lid.addQuadCurve(to: pt(x + 4.4, 63.4), control: pt(x, 68.2))
+                ctx.stroke(lid, with: .color(ink), style: StrokeStyle(lineWidth: 2.1, lineCap: .round))
+                continue
+            }
             var eye = ctx
             eye.translateBy(x: x + look.width, y: 64 + look.height)
             eye.scaleBy(x: 1, y: open)

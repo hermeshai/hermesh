@@ -1,5 +1,5 @@
 {
-  "title": "概览",
+  "title": "工作",
   "day": "{{date}} {{weekday}}",
   "listSeparator": "、",
   "thisMac": "这台 Mac",
@@ -33,7 +33,8 @@
     "signer": "Hermesh 签名器有新版本",
     "signerDetail": "这台电脑装的是 {{version}}。更新后它才能签下新版 Hermesh 的请求；Windows 会请你允许一次",
     "updateSigner": "更新…",
-    "signerUpdated": "签名器已更新"
+    "signerUpdated": "签名器已更新",
+    "open": "打开"
   },
   "map": {
     "title": "链路",

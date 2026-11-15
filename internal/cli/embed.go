@@ -219,11 +219,20 @@ var toolCommands = [][]string{
 // cannot use.
 var localFlags = map[string]bool{"file": true, "prompt-file": true, "message-file": true, "output": true, "help": true}
 
+// herCommands are Her's beside toolCommands (docs/her-team.md §6.3): the MCP
+// gateway's agents don't get them yet.
+var herCommands = [][]string{{"work"}}
+
 // Tools lists the CLI commands an agent can run through Exec, as tools.
-func Tools() []Tool {
+func Tools() []Tool { return tools(toolCommands) }
+
+// HerTools are Tools and Her's own commands.
+func HerTools() []Tool { return tools(append(slices.Clone(toolCommands), herCommands...)) }
+
+func tools(paths [][]string) []Tool {
 	root := (&app{}).root("json")
 	var out []Tool
-	for _, path := range toolCommands {
+	for _, path := range paths {
 		cmd, _, err := root.Find(path)
 		if err != nil || cmd == root {
 			panic(fmt.Sprintf("cli: no command %v", path))

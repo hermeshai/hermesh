@@ -1,5 +1,5 @@
 import { expect, test, type Page } from "@playwright/test";
-import { launch } from "./app";
+import { launch, sessionList } from "./app";
 
 // What moves on the main window, and that the page itself does no work for
 // it: every animation is one the compositor runs (transform and opacity
@@ -45,7 +45,8 @@ test("the overview's motion is all the compositor's: comets ride the running ses
   );
   for (const a of animated) expect(a.props.every((p) => p === "transform" || p === "opacity"), `${a.name}: ${a.props}`).toBe(true);
   const names = new Set(animated.map((a) => a.name));
-  for (const n of ["wc-sweep", "lm-beat", "lm-ring", "lm-breathe", "ping", "stitle-run", "stitle-run-back"]) expect(names, n).toContain(n);
+  // (A running session's title shimmers in the session list's column, which Work does not show: docs/her-team.md §14.2.)
+  for (const n of ["wc-sweep", "lm-beat", "lm-ring", "lm-breathe", "ping"]) expect(names, n).toContain(n);
 
   // Each dot where the link puts it: u of the way along (the document's time over the comet's
   // duration, plus its phase), less its place in the tail; faded in and out at the ends.
@@ -78,20 +79,21 @@ test("while nothing happens, the page changes only its clocks, all in the same f
   const { app, page } = await launch();
   const running = page.getByRole("region", { name: "正在运行" }).getByRole("listitem").filter({ hasText: "跑很久" });
   await expect(running.locator(".wc-time")).toHaveText(/^\d+:\d\d$/);
-  // The card ticks while the turn is still queued or preparing; the list
-  // row only once it runs. Wait for both clocks.
-  const row = page.getByRole("list", { name: "会话" }).getByRole("listitem").filter({ hasText: "跑很久" });
-  await expect(row.locator(".stime")).toHaveText(/^\d+:\d\d$/);
   await page.waitForTimeout(1500); // the first lists and the usage are in
-  const batches = await changes(page, 3200);
-  const all = batches.flat();
-  expect(all.length).toBeGreaterThan(0);
-  for (const c of all) expect(c).toMatch(/^(wc-time|stime) characterData$/);
-  // The card's clock and the list row's tick together.
-  for (const b of batches) expect(b.some((c) => c.startsWith("wc-time")) && b.some((c) => c.startsWith("stime")), b.join(", ")).toBe(true);
+  let batches = await changes(page, 3200);
+  expect(batches.flat().length).toBeGreaterThan(0);
+  for (const c of batches.flat()) expect(c).toMatch(/^wc-time characterData$/);
+  // Beside the session list's column (docs/her-team.md §14.2), the card's clock and the list row's tick together.
+  const row = (await sessionList(page)).getByRole("listitem").filter({ hasText: "跑很久" });
+  await row.click();
+  await expect(row.locator(".stime")).toHaveText(/^\d+:\d\d$/);
+  await page.waitForTimeout(1500);
+  batches = await changes(page, 3200);
+  expect(batches.flat().length).toBeGreaterThan(0);
+  for (const b of batches) expect(b.some((c) => c.startsWith("stime")), b.join(", ")).toBe(true);
 
   // The running session's page: its clocks only (the bar's, the card's, the list's).
-  await page.getByRole("list", { name: "会话" }).getByText("跑很久", { exact: true }).click();
+  await (await sessionList(page)).getByText("跑很久", { exact: true }).click();
   await expect(page.getByRole("region", { name: "这一轮" })).toContainText("正在工作");
   // The command's colours come from a worker, a moment after its text
   // (Code.tsx): they are in, or the worker has given up (2.5 s), before the

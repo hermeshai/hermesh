@@ -6,8 +6,8 @@
     "noResponse": "Hermesh’s background service isn’t responding. It usually starts automatically; if this continues, reopen Hermesh."
   },
   "window": {
-    "showSidebar": "Show Sidebar",
-    "hideSidebar": "Hide Sidebar",
+    "showSidebar": "Expand Sidebar",
+    "hideSidebar": "Collapse Sidebar",
     "undo": "Undo",
     "menu": "Menu"
   },
@@ -29,7 +29,6 @@
   },
   "sidebar": {
     "label": "Sidebar",
-    "overview": "Overview",
     "search": "Search",
     "attention_one": "{{count}} item needs you",
     "attention_other": "{{count}} items need you",
@@ -48,7 +47,27 @@
     "unarchived": "Unarchived “{{title}}”",
     "her": "Her",
     "herUnread_one": "{{count}} unread from Her",
-    "herUnread_other": "{{count}} unread from Her"
+    "herUnread_other": "{{count}} unread from Her",
+    "work": "Work",
+    "team": "Team",
+    "connectedAgents": "Connected Agents",
+    "thisMac": "This Mac",
+    "herHere": "Her is here",
+    "offline": "Offline",
+    "offlineSince": "Offline · {{ago}}",
+    "herOff": "Off",
+    "you": "You",
+    "sentBy": "Sent by {{name}}",
+    "agentOn": "{{agent}} on {{machine}}",
+    "waits": "Waiting for you",
+    "running_one": "{{count}} working",
+    "running_other": "{{count}} working",
+    "pairing": "Request to connect",
+    "pairingWaits": "A request to connect waits",
+    "sentByYou": "Sent by You",
+    "allSessions": "All Sessions",
+    "noneHere": "No sessions here",
+    "chooseSession": "Choose a session"
   },
   "accountMenu": {
     "settings": "Settings…",
@@ -93,7 +112,8 @@
     "newestFirst": "Newest First",
     "oldestFirst": "Oldest First",
     "metadata": "Metadata",
-    "titleOnly": "Title Only"
+    "titleOnly": "Title Only",
+    "bySender": "By Sender"
   },
   "search": {
     "openSettings": "Open Settings",
@@ -157,5 +177,45 @@
     "openActivityMonitor_win": "Open Task Manager",
     "view": "View",
     "listLabel": "Problems"
+  },
+  "team": {
+    "title": "Team",
+    "today_one": "Today · {{count}} session",
+    "today_other": "Today · {{count}} sessions",
+    "close": "Close the team panel",
+    "nothingRunning": "Nothing is running now.",
+    "needsYou": "Needs You",
+    "inProgress": "In Progress",
+    "justFinished": "Just Finished",
+    "recentlyFinished": "Recently Finished",
+    "waiting": "{{agent}} is waiting",
+    "needYou_one": "{{count}} needs you",
+    "needYou_other": "{{count}} need you",
+    "failed_one": "{{count}} failed",
+    "failed_other": "{{count}} failed",
+    "working_one": "{{count}} working",
+    "working_other": "{{count}} working",
+    "answered": "Answered: {{answer}}",
+    "wantsToConnect": "Wants to connect",
+    "lastTurnFailed": "Its last turn failed",
+    "changed_one": "{{count}} file · +{{add}} −{{del}}",
+    "changed_other": "{{count}} files · +{{add}} −{{del}}",
+    "noChanges": "No changes",
+    "waitingForAnswer": "Waiting for an answer",
+    "done": "Done",
+    "sessionsToday": "sessions today",
+    "sessionsInDays": "sessions in {{count}} days",
+    "workSummary": "Done {{done}} · {{turns}} turns · {{tokens}} tokens",
+    "openWork": "Open Work",
+    "herOff": "Her isn't on",
+    "turnHerOn": "Choose where she runs…"
+  },
+  "rail": {
+    "label": "Sidebar Rail",
+    "expand": "Expand Sidebar",
+    "herOff": "Her · Not on",
+    "online": "Online",
+    "waiting_one": "{{count}} waiting for you",
+    "waiting_other": "{{count}} waiting for you"
   }
 }

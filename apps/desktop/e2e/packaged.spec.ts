@@ -4,7 +4,7 @@ import fs from "node:fs";
 import net from "node:net";
 import os from "node:os";
 import path from "node:path";
-import { fixture } from "./app";
+import { fixture, sessionList } from "./app";
 
 // The packaged Hermesh.app (HERMESH_DESKTOP_APP; run by TestDesktopPackaged):
 // with its fuses on, Playwright cannot drive Electron's main process, so the
@@ -45,7 +45,7 @@ async function checkApp(bundle: string) {
     expect(browser, "the app's debugging port").toBeTruthy();
     await expect.poll(() => browser!.contexts().flatMap((c) => c.pages()).length).toBeGreaterThan(0);
     const page = browser!.contexts().flatMap((c) => c.pages())[0];
-    await expect(page.getByRole("list", { name: "会话" })).toContainText("写 hello");
+    await expect((await sessionList(page))).toContainText("写 hello");
     expect(page.url()).toMatch(/^app:\/\/hermesh\//);
     expect(await page.evaluate(() => typeof (globalThis as { require?: unknown }).require)).toBe("undefined");
     await expect.poll(() => signers(child.pid!).length, { message: "the bundled signer runs as the app's child" }).toBe(1);

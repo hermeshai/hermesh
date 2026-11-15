@@ -3208,6 +3208,8 @@ export type MeshCallParams = {
 
 /** The result of `mesh/call`. */
 export type MeshCallResult = {
+  /** What the apps read of the result, beside the model's text: the tool result's details. */
+  details?: unknown;
   /** The call failed, and `output` says how. */
   is_error?: boolean;
   /** What the model reads as the tool's result. */
