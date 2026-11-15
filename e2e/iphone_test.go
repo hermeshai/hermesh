@@ -164,7 +164,12 @@ func iphoneHerEnv(t *testing.T) []string {
 	if err := os.WriteFile(filepath.Join(home, "models.toml"), []byte(fmt.Sprintf("[providers.deepseek]\nbase_url = %q\n\n[providers.tencent-token-plan]\nbase_url = %q\n", base, base)), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	env := herEnv(her, herConsole(t), home, mock.base)
+	// What her acts as if it lacked from its next start, for herOlder (restartHerWithout); nothing yet.
+	without := filepath.Join(t.TempDir(), "her-without")
+	if err := os.WriteFile(without, nil, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	env := append(herEnv(her, herConsole(t), home, mock.base), "HER_TEST_WITHOUT="+without)
 	// Nor a key or model from this computer, which the login shell may have.
 	for _, kv := range shellenv.Environ() {
 		if name, _, _ := strings.Cut(kv, "="); strings.HasSuffix(name, "_API_KEY") || name == "HER_MODEL" {
@@ -458,6 +463,19 @@ func newIPhoneControl(t *testing.T, w *ownerMac, sessions map[string]string) str
 		} else {
 			w.owner.stop()
 			w.app.cancel()
+		}
+		reply(rw, map[string]string{})
+	})
+	// The Mac's her as one older than the app, then updated (testHer's herOlder):
+	// it acts as if it lacked these methods from now, restarted as an update does.
+	mux.HandleFunc("POST /her-without", func(rw http.ResponseWriter, r *http.Request) {
+		var methods []string
+		if m := r.URL.Query().Get("methods"); m != "" {
+			methods = strings.Split(m, ",")
+		}
+		if err := restartHerWithout(w, methods); err != nil {
+			http.Error(rw, err.Error(), http.StatusInternalServerError)
+			return
 		}
 		reply(rw, map[string]string{})
 	})

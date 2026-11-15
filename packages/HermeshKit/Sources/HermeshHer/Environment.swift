@@ -9,6 +9,13 @@ import HermeshProto
 
 public typealias HerMachine = Hermesh_Local_V1_Machine
 
+/// Whether the owner's devices can call `method` of her's protocol on this machine
+/// (docs/version-skew.md §6.1): nil while unknown (her not running there, or a machine too old to
+/// list its methods), which callers take as yes.
+public func herAnswers(_ her: Hermesh_Machine_V1_HerStatus, _ method: String) -> Bool? {
+    her.methods.isEmpty ? nil : her.methods.contains(method)
+}
+
 /// An assistant as bots/subscribe lists it (her's BotSummary).
 public struct HerBot: Equatable, Sendable {
     public var id: String

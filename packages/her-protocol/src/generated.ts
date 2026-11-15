@@ -2782,6 +2782,8 @@ export type InitializeParams = {
 
 export type InitializeResult = {
   capabilities: ServerCapabilities;
+  /** Every method this server answers, so a client asks what it can do rather than going by its version (docs/version-skew.md §6.1). An older server leaves it out. */
+  methods?: string[];
   protocol_version: number;
   server_info: PeerInfo;
 };
