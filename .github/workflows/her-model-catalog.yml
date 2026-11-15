@@ -26,6 +26,17 @@ jobs:
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
+      # The PPT and Word engines are a private fork (her/Cargo.toml): cargo fetches it with this token.
+      - name: Read access to the BetterOffice fork
+        env:
+          BETTEROFFICE_TOKEN: ${{ secrets.BETTEROFFICE_TOKEN }}
+        run: |
+          if [ -z "$BETTEROFFICE_TOKEN" ]; then
+            echo "::warning::BETTEROFFICE_TOKEN is not set: cargo cannot fetch github.com/Eliseowzy/betteroffice"
+            exit 0
+          fi
+          git config --global url."https://x-access-token:${BETTEROFFICE_TOKEN}@github.com/Eliseowzy/betteroffice".insteadOf "https://github.com/Eliseowzy/betteroffice"
+          echo "CARGO_NET_GIT_FETCH_WITH_CLI=true" >> "$GITHUB_ENV"
       - name: Sync the snapshot
         run: cargo run -q -p her-llm --example sync_catalog | tee report.txt
       - name: Open a pull request
