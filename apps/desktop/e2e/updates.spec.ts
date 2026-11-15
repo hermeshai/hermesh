@@ -102,7 +102,9 @@ test("background discovery stays quiet; details, snooze and automatic download s
 test("approval protection covers the window and fast menu command; returning never approves", async () => {
   const app = await installer(true);
   const main = await app.firstWindow();
+  await main.setViewportSize({ width: 1000, height: 760 });
   await expect((await sessionList(main))).toBeVisible();
+  await clickMenu(app, "overview");
   await app.evaluate(() => { (globalThis as unknown as Hook).installTest.latest = "1.2.0"; });
   await advance(app, 30_000);
   await app.evaluate(({ autoUpdater }) => autoUpdater.emit("update-downloaded", {}, "", "1.2.0"));
