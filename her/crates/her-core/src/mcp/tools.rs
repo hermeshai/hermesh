@@ -197,9 +197,8 @@ impl ToolSearch {
                 manager
                     .servers()
                     .iter()
-                    .enumerate()
-                    .filter(|(i, _)| manager.is_deferred(*i))
-                    .map(|(_, s)| s.name().to_string()),
+                    .filter(|s| manager.is_deferred(s))
+                    .map(|s| s.name().to_string()),
             );
         }
         names
