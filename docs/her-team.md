@@ -979,11 +979,12 @@ shows each task of theirs as a post:
   session: the tool it runs, or the lines it changed. Results with more to
   show (numbers, tables) need sub-agents to report them in a shape the
   apps can read, which they do not yet.
-- **What set it off** opens in the post itself, by its ⓘ: what the owner
-  said and when, what Her said back, the rest it sent out for that, each as
-  it stands (a click opens one), and a way to the conversation. A record's
-  page keeps it as a capsule at its top, shown whole in a sheet (iPhone)
-  or a panel over the page (Mac).
+- **What set it off** shows from the post's ⓘ in a sheet (iPhone, Liquid
+  Glass at half height) or a panel over the page (Mac): what the owner said
+  and when, what Her said back, everything it sent out, each as it stands
+  (a tap opens one), and a way to the conversation. Opened in the post
+  itself, it was too much for the feed. A record's page has the same
+  behind the capsule at its top.
 
 ### 15.2 A card's page
 
@@ -1043,10 +1044,10 @@ kind; the apps tell by the `/` and do not read on with it.
   record's steps, agents of earlier pages and their cursor, a routine's run.
 - `go test ./e2e -run '^TestDesktopHerProgress$'`: real hermeshd and her
   with her-mock, the Mac app: the entry appears with Her; an empty page; a
-  sub-agent's post under Needs you, what set it off opened by its ⓘ, Review to
+  sub-agent's post under Needs you, what set it off from its ⓘ, Review to
   its record, the approval answered there, its report, time and tokens; the
   post under Earlier once it ends; a coding session's post and its record.
 - `HERMESH_IPHONE_E2E=1 HERMESH_IPHONE_GREP=testHerProgress go test ./e2e
   -run '^TestIPhone$'`: the same story on the iPhone's feed: the post under
-  Needs you, its ⓘ with the owner's words and Her's, Review to
+  Needs you, its ⓘ's sheet with the owner's words and Her's, Review to
   the record, and the ended post under Earlier.

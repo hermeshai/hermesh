@@ -197,7 +197,10 @@ final class AppModel {
     @ObservationIgnored private var startSettled = false
     /// "Not Now" on Her's first run: Work is the first page until a machine runs her. Kept on this iPhone.
     var herLater = false { didSet { save(herLater, "herLater") } }
-    var path: [Route] = []
+    var path: [Route] = [] { didSet { if path.first != menuPage { menuPage = nil } } }
+    /// The page the menu opened on Work's stack, while it is still the first: a place of the menu's, as a root
+    /// page is (the menu's button in its bar, a swipe right brings the menu out), not a page pushed onto Work.
+    private(set) var menuPage: Route?
     /// The root page scrolled far enough that its title is small.
     var rootTitleSmall = false
     var drawerOpen = false
@@ -782,12 +785,17 @@ final class AppModel {
         drawerOpen = false
     }
 
-    /// A page of Work's, from the menu (a machine's sessions, an agent's): Back returns to Work.
+    /// A page of Work's, from the menu (a machine's sessions, an agent's, all of them): a place of the menu's,
+    /// whose swipe right brings the menu back, as a root page's does.
     func open(underWork route: Route) {
         root = .overview
         path = [route]
+        menuPage = route
         drawerOpen = false
     }
+
+    /// The page in front is a place of the menu's: the root page, or the one the menu opened.
+    var atMenuPlace: Bool { path.isEmpty || (path.count == 1 && menuPage != nil) }
 
     /// A page of Work's is the one the menu led to: its row is the current one.
     func shows(_ route: Route) -> Bool { root == .overview && path.first == route }
