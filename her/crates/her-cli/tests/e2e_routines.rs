@@ -204,6 +204,8 @@ async fn a_routine_said_in_the_chat_runs_at_its_time_and_the_bot_tells_the_user(
     // Its steps come from its own log, without the brief it started from.
     let one = client.request("bots/routine_run", json!({"bot_id": bot, "routine_id": id, "run_id": run})).await.unwrap();
     schema.check("BotRoutineRunResult", &one);
+    assert_eq!(one["routine_name"], "报价");
+    assert!(one.get("routine_deleted").is_none(), "{one}");
     let steps = serde_json::to_string(&one["transcript"]).unwrap();
     assert!(steps.contains("跌到 290 了。"), "{steps}");
     assert!(!steps.contains("You are carrying out"), "{steps}");
@@ -460,6 +462,51 @@ async fn the_panel_changes_a_routine_and_the_model_hears_of_it() {
     until_event(&mut wire, ended).await;
     assert!(told("your routines: none"));
     let err = client.request("bots/routine", json!({"bot_id": bot, "routine_id": id})).await.unwrap_err();
+    assert_eq!(kind(&err), "routine_not_found");
+}
+
+/// A deleted routine's runs stay readable: what one told the user opens from the chat, marked as of a deleted
+/// routine, and only for its own bot.
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn a_deleted_routines_run_still_opens_from_the_chat() {
+    let env = TestEnv::new("bypass-permissions", "").await;
+    let (_child, client, incoming) = env.spawn_rpc(&["serve", "--stdio"]);
+    native_init(&client).await;
+    let mut wire = route(incoming);
+    let schema = SchemaCheck::new(&["BotRoutineRunResult"]);
+    let bot = the_bot(&client).await;
+    let session = open(&client, &bot).await;
+    let id = make(&mut wire, &client, &session, &bot, "入组检查", "*/5 * * * *", "say:已入组。").await;
+
+    client.request("bots/routine_run_now", json!({"bot_id": bot, "routine_id": id})).await.unwrap();
+    // The user sees the relayed message, which names the run it came from.
+    let events = until_event(&mut wire, ended).await;
+    assert_eq!(sent(&events), ["已入组。"]);
+    let mail = &events.iter().find(|e| e["type"] == "message_completed" && e["mail"].is_object()).expect("the letter")["mail"];
+    let run = mail["from"]["id"].as_str().unwrap().to_string();
+    until_row(&mut wire, &bot, |b| routine(b, &id)["last_run"]["delivered"].is_string()).await;
+
+    // The check is over, and the routine deleted.
+    client.request("bots/routine_delete", json!({"bot_id": bot, "routine_id": id})).await.unwrap();
+    until_row(&mut wire, &bot, |b| b.get("routines").is_none()).await;
+    let err = client.request("bots/routine", json!({"bot_id": bot, "routine_id": id})).await.unwrap_err();
+    assert_eq!(kind(&err), "routine_not_found", "the routine itself is gone");
+
+    // The run it told the user of still opens, with its report and steps.
+    let one = client.request("bots/routine_run", json!({"bot_id": bot, "routine_id": id, "run_id": run})).await.unwrap();
+    schema.check("BotRoutineRunResult", &one);
+    assert_eq!(one["routine_name"], "入组检查");
+    assert_eq!(one["routine_deleted"], true);
+    assert_eq!(one["run"]["outcome"], "reported");
+    assert_eq!(one["run"]["report"], "已入组。");
+    assert!(serde_json::to_string(&one["transcript"]).unwrap().contains("已入组。"), "{one}");
+
+    // Not another run's id, and not for another bot.
+    let err = client.request("bots/routine_run", json!({"bot_id": bot, "routine_id": id, "run_id": "run_nope"})).await.unwrap_err();
+    assert_eq!(kind(&err), "routine_not_found");
+    let created = client.request("bots/create", json!({"name": "研究员", "avatar": {"kind": "mono", "hue": "teal"}})).await.unwrap();
+    let other = created["bot"]["id"].as_str().unwrap();
+    let err = client.request("bots/routine_run", json!({"bot_id": other, "routine_id": id, "run_id": run})).await.unwrap_err();
     assert_eq!(kind(&err), "routine_not_found");
 }
 

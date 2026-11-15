@@ -193,6 +193,33 @@ test("Her: the first run, a chat, a secure card, the console, a second environme
   await memory.getByRole("button", { name: "关闭" }).click();
   await expect(memory).toBeHidden();
 
+  // A scheduled task Her makes (her-mock's routine): its message names it and opens its run. Once the task is
+  // deleted, as one that has done its job often is, the message still opens the run, the task marked as deleted.
+  await send("[[mock:routine:拉伸|in 2s|say:该起来活动一下了。]] hi");
+  // Asked first, as Her's settings ask before risky steps.
+  await expect(approval).toContainText("拉伸", { timeout: 60_000 });
+  await approval.getByRole("button", { name: /^允许/ }).click();
+  await expect(log.getByRole("button", { name: /已创建定时任务「拉伸」/ })).toBeVisible({ timeout: 60_000 });
+  const reminder = log.locator(".bm").filter({ hasText: "该起来活动一下了。" });
+  await expect(reminder).toBeVisible({ timeout: 60_000 });
+  const fromTask = reminder.getByRole("button", { name: "来自定时任务「拉伸」" });
+  await reminder.hover();
+  await fromTask.click();
+  const routines = page.getByRole("complementary", { name: "定时任务" });
+  await expect(routines).toContainText("发给你了", { timeout: 30_000 });
+  await expect(routines).not.toContainText("已删除");
+  await routines.getByRole("button", { name: "返回" }).click();
+  await routines.getByRole("button", { name: "删除" }).click();
+  await page.getByRole("dialog", { name: "删除定时任务「拉伸」？" }).getByRole("button", { name: "删除" }).click();
+  await expect(routines).toContainText("还没有定时任务", { timeout: 30_000 });
+  await reminder.hover();
+  await fromTask.click();
+  await expect(routines).toContainText("拉伸（已删除）", { timeout: 30_000 });
+  await expect(routines).toContainText("发给你了");
+  await snap(page, "her-routine-run-deleted");
+  await routines.getByRole("button", { name: "关闭" }).click();
+  await expect(routines).toBeHidden();
+
   // A PDF and a Markdown file, sent to Her with the composer's button and sent back (her-mock's attach): a tile
   // of either, the owner's or Her's, opens it over the window instead of saving it to Downloads. The PDF shows
   // its pages, which can be searched, gone through by their pictures and zoomed; the Markdown reads as written

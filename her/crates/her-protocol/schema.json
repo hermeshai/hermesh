@@ -1861,6 +1861,14 @@
     },
     "BotRoutineRunResult": {
       "properties": {
+        "routine_deleted": {
+          "description": "The routine has been deleted since. Its runs are kept, and still read here.",
+          "type": "boolean"
+        },
+        "routine_name": {
+          "description": "The name of the routine it is a run of.",
+          "type": "string"
+        },
         "run": {
           "$ref": "#/definitions/RoutineRunInfo"
         },
@@ -1873,6 +1881,7 @@
         }
       },
       "required": [
+        "routine_name",
         "run",
         "transcript"
       ],
