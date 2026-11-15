@@ -266,6 +266,7 @@ pub fn document() -> Value {
         (method::BROWSER_STATUS, None, name::<api::BrowserStatus>(g)),
         (method::BROWSER_SITE_ICON, Some(name::<api::BrowserSiteIconParams>(g)), name::<api::BrowserSiteIconResult>(g)),
         (method::DESKTOP_STATUS, None, name::<api::DesktopStatus>(g)),
+        (method::STORAGE_USAGE, None, name::<api::StorageUsage>(g)),
         (method::BROWSER_REVEAL, Some(name::<api::BrowserRevealParams>(g)), name::<api::Empty>(g)),
         (method::BROWSER_CLOSE_TABS, Some(name::<api::BrowserCloseTabsParams>(g)), name::<api::Empty>(g)),
         (method::BROWSER_ALLOW, Some(name::<api::BrowserSessionParams>(g)), name::<api::Empty>(g)),

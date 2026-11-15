@@ -4426,6 +4426,26 @@ export type Speaker = "user" | "bot";
 
 export type StopReason = "stop" | "length" | "tool_use" | "error" | "aborted";
 
+export type StorageKind = "files" | "conversations" | "trash" | "memory" | "browser" | "cache" | "other";
+
+/** One kind of data in her's data directory. */
+export type StoragePart = {
+  bytes: number;
+  kind: StorageKind;
+};
+
+/** The result of `storage/usage`: her's data directory, the only copy of what it holds, and its size by kind. */
+export type StorageUsage = {
+  /** `HER_HOME` put it somewhere other than `~/.her`. */
+  custom: boolean;
+  /** The data directory: `HER_HOME`, else `~/.her`. */
+  home: string;
+  /** Each kind of data, in this order, every kind listed; their bytes add up to `total`. */
+  parts: StoragePart[];
+  /** Bytes of every file in it. */
+  total: number;
+};
+
 /** A text story of a shape: its body, or one table cell's. */
 export type StoryRead = {
   /** A table cell's. */
@@ -4980,6 +5000,7 @@ export interface Methods {
   "skills/read": [SkillsReadParams, SkillsReadResult];
   "skills/remove": [SkillsRemoveParams, Empty];
   "skills/set_enabled": [SkillsSetEnabledParams, SkillsSetEnabledResult];
+  "storage/usage": [Record<string, never>, StorageUsage];
   "tools/list": [ToolsListParams, ToolsListResult];
   "web_search/set_key": [WebSearchSetKeyParams, WebSearchSetKeyResult];
   "web_search/status": [Record<string, never>, WebSearchStatus];

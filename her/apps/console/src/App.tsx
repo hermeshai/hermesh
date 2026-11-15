@@ -9,6 +9,7 @@ import { Icon, type IconName } from "./icons";
 import { BrowserPage } from "./pages/Browser";
 import { ModelsPage } from "./pages/Models";
 import { SearchPage } from "./pages/Search";
+import { StoragePage } from "./pages/Storage";
 
 // The console's frame, as the Mac app's settings window: the pages in a sidebar, the page on
 // the right under its bar. The page and the item open in it are the address's hash
@@ -21,6 +22,7 @@ const pages = [
   { id: "skills", icon: "read" },
   { id: "search", icon: "search" },
   { id: "browser", icon: "web" },
+  { id: "storage", icon: "disk" },
 ] as const satisfies readonly { id: string; icon: IconName }[];
 
 export type Page = (typeof pages)[number]["id"];
@@ -82,6 +84,7 @@ export function App() {
         {page === "skills" && <SkillsPage item={item} go={open} />}
         {page === "search" && <SearchPage go={go} />}
         {page === "browser" && <BrowserPage item={item} go={open} />}
+        {page === "storage" && <StoragePage />}
       </main>
       <ToastView />
       <AskSheet />

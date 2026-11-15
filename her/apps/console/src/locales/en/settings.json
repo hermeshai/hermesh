@@ -206,5 +206,46 @@
         "sheet": "A search service for Chinese content."
       }
     }
+  },
+  "storage": {
+    "location": "Location",
+    "default": "The default location",
+    "custom": "Chosen with HER_HOME",
+    "copy": "Copy Path",
+    "copied": "Path copied",
+    "onlyCopy": "This folder is the only copy of Her's assistants, conversations, memory and the files they make. The relay and your other devices don't keep it, so include it in this computer's backups. Erasing Her's data deletes it.",
+    "usage": "What It Holds",
+    "total": "{{size}} in all",
+    "countedNote": "Counted each time this page opens.",
+    "kind": {
+      "files": {
+        "name": "Files",
+        "desc": "What assistants and conversations made"
+      },
+      "conversations": {
+        "name": "Conversations",
+        "desc": "Every conversation, with its tools' full output"
+      },
+      "trash": {
+        "name": "Deleted Conversations",
+        "desc": "Moved aside when deleted, and not removed on their own"
+      },
+      "memory": {
+        "name": "Memory",
+        "desc": "What each assistant remembers about you and your work"
+      },
+      "browser": {
+        "name": "Browser",
+        "desc": "The built-in browser's sign-ins and downloads"
+      },
+      "cache": {
+        "name": "Cache",
+        "desc": "Model lists, connectors' tools, icons and logs; fetched again when gone"
+      },
+      "other": {
+        "name": "Settings and Other",
+        "desc": "Settings, skills, routines and the rest"
+      }
+    }
   }
 }

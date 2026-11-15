@@ -39,6 +39,8 @@ func init() {
 		// The console's guide to the owner's Chrome: its extensions page, and the
 		// extension's folder, opened on that computer.
 		"browser/open_setup",
+		// The console's Storage page: where her data is, and how much of it.
+		"storage/usage",
 	} {
 		allowed[m] = true
 	}

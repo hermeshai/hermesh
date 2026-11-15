@@ -78,6 +78,7 @@ const allowed = new Set([
   "browser/open_setup",
   "models/refresh",
   "models/show",
+  "storage/usage",
 ]);
 
 /** What config/write may change (allow.go's `writable`): null, anything under it; "*", any key. */

@@ -261,12 +261,11 @@ function TeamMap() {
             const agents = (m.status?.agents ?? []).filter((a) => a.available);
             return (
               <div key={m.machineId} className="map-m">
-                <button className={`map-row ${same(f) ? "sel" : ""}`} aria-current={same(f) || undefined} onClick={() => pick(f)}>
-                  <Icon name={m.local ? "laptop" : "server"} />
+                <button className={`map-row map-mach ${m.local || m.online ? "" : "off"} ${same(f) ? "sel" : ""}`} aria-current={same(f) || undefined} onClick={() => pick(f)}>
                   <span className="map-n">{where}</span>
-                  <i className={`dotc ${m.local || m.online ? "on" : ""}`} aria-hidden="true" />
                   {sub && <span className="map-sub">{sub}</span>}
                   {marks(live.filter((s) => s.machineId === m.machineId && !agents.some((a) => a.name === s.agent)))}
+                  <Icon name="chevR" className="sm map-go" />
                 </button>
                 {agents.map((a) => {
                   const fa: ListFilter = { kind: "agent", machine: m.machineId, agent: a.name };

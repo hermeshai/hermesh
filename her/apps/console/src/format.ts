@@ -25,6 +25,19 @@ export function tokensText(n: number): string {
   return String(n);
 }
 
+/** "0 B", "820 KB", "4.2 MB", "127 MB": a size on disk, in the units Finder uses (1 KB = 1000 bytes). */
+export function bytesText(n: number): string {
+  if (n < 1000) return `${n} B`;
+  const units = ["KB", "MB", "GB", "TB"];
+  let v = n / 1000;
+  let i = 0;
+  while (v >= 999.5 && i < units.length - 1) {
+    v /= 1000;
+    i++;
+  }
+  return `${v < 9.95 ? v.toFixed(1).replace(/\.0$/, "") : Math.round(v)} ${units[i]}`;
+}
+
 /** "$0.15 / $0.60": input and output prices per million tokens. */
 export function priceText(cost: ModelPrice): string {
   const sign = cost.currency === "CNY" ? "¥" : "$";

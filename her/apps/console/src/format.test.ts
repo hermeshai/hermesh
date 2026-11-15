@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { httpTransport, RpcClient, RpcError } from "@hermesh/her-client";
-import { agoText, errorText, priceText, tokensText } from "./format.ts";
+import { agoText, bytesText, errorText, priceText, tokensText } from "./format.ts";
 import { i18n } from "./i18n.ts";
 
 // Errors in words: her's own, the connection's, and hermeshd's refusals as it said them.
@@ -53,4 +53,12 @@ test("times, sizes and prices", () => {
   assert.equal(tokensText(200_000), "200K");
   assert.equal(tokensText(1_500_000), "1.5M");
   assert.equal(priceText({ input: 1, output: 12.5, currency: "USD" }), "$1.00 / $13");
+  assert.equal(bytesText(0), "0 B");
+  assert.equal(bytesText(999), "999 B");
+  assert.equal(bytesText(4_096), "4.1 KB");
+  assert.equal(bytesText(9_960), "10 KB");
+  assert.equal(bytesText(820_000), "820 KB");
+  assert.equal(bytesText(999_600), "1 MB");
+  assert.equal(bytesText(127_300_000), "127 MB");
+  assert.equal(bytesText(2_500_000_000), "2.5 GB");
 });

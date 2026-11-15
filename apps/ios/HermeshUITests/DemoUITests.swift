@@ -384,6 +384,13 @@ final class DemoUITests: XCTestCase {
             XCTAssertTrue(drawer.buttons[id].waitForExistence(timeout: 10), id)
         }
         XCTAssertTrue(drawer.buttons["her-place"].label.contains("not on"), drawer.buttons["her-place"].label)
+        // A machine's row is its name alone, no picture before it: the only picture in it is the chevron at its end.
+        let machine = drawer.buttons["menu-machine-Mac mini"]
+        XCTAssertTrue(machine.label.hasPrefix("Mac mini"), machine.label)
+        XCTAssertGreaterThan(machine.images.count, 0, "the chevron")
+        for image in machine.images.allElementsBoundByIndex {
+            XCTAssertGreaterThan(image.frame.minX, machine.frame.midX, "no picture before the name")
+        }
         XCTAssertFalse(drawer.staticTexts["Add a welcome page"].exists, "no session in the menu")
         checkpoint("menu-team-map")
         // A coding agent's row opens its sessions on that machine; from them, its page. The page the menu opened

@@ -5,7 +5,8 @@
     "connectors": "连接器",
     "skills": "技能",
     "search": "联网搜索",
-    "browser": "浏览器"
+    "browser": "浏览器",
+    "storage": "存储"
   },
   "conn": {
     "connecting": "正在连接 Her…",

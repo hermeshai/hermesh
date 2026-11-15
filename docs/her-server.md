@@ -537,7 +537,7 @@ or to use Erase Everything.
 | `session/op` and session events: prompts, approvals, answers, stopping | Her entry | Allowed | No |
 | `models/list` | Her entry, console | Allowed | No |
 | `desktop/status`: whether computer use can work there (§4.4) | Her entry | Allowed | No |
-| `config/*`, `connections/*`, `credentials/*`, `mcp/*`, `skills/*`, `web_search/*`, `browser/allow`, `browser/status`, `browser/use_extension`, `browser/open_setup` | Console | Allowed | No |
+| `config/*`, `connections/*`, `credentials/*`, `mcp/*`, `skills/*`, `web_search/*`, `browser/allow`, `browser/status`, `browser/use_extension`, `browser/open_setup`, `storage/usage` | Console | Allowed | No |
 | `doc/*`, `deck/*`, `docx/*` and the other `browser/*` methods: desktop document panels and a built-in browser, which Hermesh does not have | Nobody | Not forwarded | No |
 
 Types are in [schema.json](../her/crates/her-protocol/schema.json), and the
@@ -688,12 +688,23 @@ What `~/.her` holds on a Her Server:
 ~/.her/
   config.toml        connectors, web search, the browser: the user layer
   models.toml        model providers and models
-  bots/<id>/         an assistant: bot.json, its avatar, its folder, its
-                     memory (her-memory.md)
-  sessions/          conversations, as JSON lines, by date
+  her.db             routines and other records that change
+  bots/<id>/         an assistant: bot.json, its avatar, its folder
+                     (files/, what it makes), its memory (her-memory.md)
+  chats/<id>/        the folder of a conversation started without a project
+  sessions/          conversations, as JSON lines, by date, each with the
+                     full output of its tools beside it
+  trash/sessions/    deleted conversations, not removed on their own
+  browser/           the built-in browser's profiles and downloads
+  models/, mcp/, logs/  caches her fetches again, and its logs
   skills/            installed skills; .system/ holds the built-in ones
   credentials.toml   secrets, on Linux only (the Keychain on macOS)
 ```
+
+The console's Storage page shows this folder: where it is (`HER_HOME`, else
+`~/.her`), that it is the only copy, and its size by kind, from
+`storage/usage`, which counts it each time the page opens. It changes
+nothing there.
 
 ## 8. Security
 
@@ -882,6 +893,7 @@ Sections:
 | Skills | Installed skills: turn on or off, add by upload, remove, read |
 | Web search | The search provider and its key |
 | Browser | Whether the owner's own Chrome, on the computer Her runs on, is connected through the Hermesh extension, and used; the built-in browser, on or off, and the Chrome it starts; the sites Her may open without asking |
+| Storage | Where Her's data is on that computer, that it is the only copy, and how much of each kind there is (§7). Only to read |
 
 There is no overview, no defaults for new assistants and no instructions for
 all of them: the apps show Her alone, whose model, thinking and permissions

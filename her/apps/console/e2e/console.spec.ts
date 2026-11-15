@@ -230,6 +230,45 @@ test("an environment set up from its console", async ({ page }) => {
   expect(errors).toEqual([]);
 });
 
+// The Storage page against what is really in her home: files written there by kind, sized as
+// the page should say them, and counted again when the page opens again.
+test("the Storage page says where her data is and what it holds", async ({ page }) => {
+  const errors: string[] = [];
+  page.on("pageerror", (e) => errors.push(e.message));
+  const put = (file: string, size: number) => {
+    mkdirSync(path.dirname(path.join(site.home, file)), { recursive: true });
+    writeFileSync(path.join(site.home, file), Buffer.alloc(size, "x"));
+  };
+  put("bots/e2e/files/report.md", 1_200_000);
+  put("bots/e2e/files/site/index.html", 300_000);
+  put("bots/e2e/memory/owner.md", 20_000);
+  put("trash/sessions/2026/11/15/old.jsonl", 3_000_000);
+  const row = (name: string) => page.locator(".st-row", { has: page.locator(".fn", { hasText: new RegExp(`^${name}$`) }) });
+
+  await page.goto(site.url);
+  await nav(page, "Storage");
+  await expect(page.locator(".st-path")).toHaveText(site.home);
+  await expect(page.getByText("Chosen with HER_HOME")).toBeVisible();
+  await expect(page.getByText(/only copy of Her's assistants/)).toBeVisible();
+  await expect(page.locator(".st-row")).toHaveCount(7);
+  await expect(row("Files").locator(".st-size")).toHaveText("1.5 MB");
+  await expect(row("Memory").locator(".st-size")).toHaveText("20 KB");
+  await expect(row("Deleted Conversations").locator(".st-size")).toHaveText("3 MB");
+  await expect(page.locator(".st-total")).toHaveText(/^\d[\d.]* MB in all$/);
+
+  await page.context().grantPermissions(["clipboard-read", "clipboard-write"]);
+  await page.getByRole("button", { name: "Copy Path" }).click();
+  await expect(page.getByText("Path copied")).toBeVisible();
+  expect(await page.evaluate(() => navigator.clipboard.readText())).toBe(site.home);
+
+  // More made meanwhile shows the next time the page opens.
+  put("bots/e2e/files/deck.pptx", 2_500_000);
+  await nav(page, "Models");
+  await nav(page, "Storage");
+  await expect(row("Files").locator(".st-size")).toHaveText("4 MB");
+  expect(errors).toEqual([]);
+});
+
 test.describe("in Chinese", () => {
   test.use({ locale: "zh-CN" });
   test("the console speaks the browser's language", async ({ page }) => {
