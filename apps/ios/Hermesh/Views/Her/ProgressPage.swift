@@ -138,6 +138,7 @@ struct ProgressPage: View {
 private struct ProgressBoard: View {
     @Environment(AppModel.self) private var model
     let machine: HerMachine
+    @State private var source: Source?
 
     var body: some View {
         let chat = model.her.chat(machine.machineID, model: model)
@@ -161,7 +162,7 @@ private struct ProgressBoard: View {
                             .padding(.top, 24)
                             .accessibilityAddTraits(.isHeader)
                     case .post(let p):
-                        PostView(post: p, machineID: machine.machineID, open: open)
+                        PostView(post: p, open: open, why: { source = Source(id: p.group.key) })
                     }
                 }
                 if chat.live?.before != nil, chat.convUp {
@@ -179,6 +180,12 @@ private struct ProgressBoard: View {
         }
         .herConnections(chat, machine: machine)
         .accessibilityIdentifier("progress")
+        .sheet(item: $source) { s in
+            SourceSheet(chat: chat, machineID: machine.machineID, key: s.id) { task in
+                source = nil
+                open(task)
+            }
+        }
     }
 
     private enum Row: Identifiable {
@@ -236,15 +243,13 @@ private struct ProgressBoard: View {
 }
 
 /// A post: its title, a few lines of how it goes, one piece that shows where it stands, and at its foot one time
-/// (how long it has worked, or how long ago it ended) with the tokens it used, and ⓘ, which opens what set it off
-/// in the post itself. Only one that needs the owner carries a mark.
+/// (how long it has worked, or how long ago it ended) with the tokens it used, and ⓘ, which shows what set it off
+/// in a sheet. Only one that needs the owner carries a mark.
 private struct PostView: View {
     @Environment(AppModel.self) private var model
     let post: Post
-    let machineID: String
     let open: (HerProgressTask) -> Void
-    /// What set it off shows.
-    @State private var why = false
+    let why: () -> Void
 
     var body: some View {
         let s = session
@@ -271,10 +276,6 @@ private struct PostView: View {
             .accessibilityLabel([post.title, post.stand.words, words].compactMap { $0 }.joined(separator: ", "))
             .accessibilityIdentifier("progress-card-\(post.title)")
             piece(s)
-            if why {
-                WhyNote(group: post.group, here: post.task.id, machineID: machineID, open: open)
-                    .transition(.opacity.combined(with: .move(edge: .top)))
-            }
             HStack(spacing: 6) {
                 PostTime(post: post, session: s)
                 let used = tokensUsed(s)
@@ -283,16 +284,13 @@ private struct PostView: View {
                         .accessibilityLabel(Text("\(tokensText(UInt64(used))) tokens"))
                 }
                 Spacer(minLength: 8)
-                Button {
-                    withAnimation(.snappy(duration: 0.25)) { why.toggle() }
-                } label: {
-                    Image(systemName: why ? "info.circle.fill" : "info.circle").font(.title3)
-                        .foregroundStyle(why ? AnyShapeStyle(Color.accentColor) : AnyShapeStyle(.secondary))
+                Button(action: why) {
+                    Image(systemName: "info.circle").font(.title3).foregroundStyle(.secondary)
                         .frame(width: 44, height: 44).contentShape(.rect)
                 }
                 .buttonStyle(.plain)
+                .disabled(post.group.parent == .earlier)
                 .accessibilityLabel(Text("Where it came from"))
-                .accessibilityValue(why ? Text("Expanded") : Text("Collapsed"))
                 .accessibilityIdentifier("progress-why")
             }
             .padding(.top, 2)
@@ -467,73 +465,6 @@ private struct PostTime: View {
             }
         }
         .font(.footnote).monospacedDigit().lineLimit(1)
-    }
-}
-
-/// What set a post's work off, opened in the post by its ⓘ: what the owner said and when, what Her said back, and
-/// the rest it sent out for that, each as it stands (a tap opens one); and a way to the conversation.
-private struct WhyNote: View {
-    @Environment(AppModel.self) private var model
-    let group: HerProgressGroup
-    /// This post's task.
-    let here: String
-    let machineID: String
-    let open: (HerProgressTask) -> Void
-
-    var body: some View {
-        let others = group.tasks.filter { $0.id != here }
-        VStack(alignment: .leading, spacing: 8) {
-            Rectangle().fill(Palette.separator).frame(height: 0.5).padding(.bottom, 6)
-            switch group.parent {
-            case .user(let text, let ts):
-                Text("What you said").font(.subheadline.weight(.semibold)).foregroundStyle(.secondary)
-                Text(text).font(.subheadline).textSelection(.enabled)
-                Text("\(when(ts, now: model.now)) · to Her").font(.footnote).foregroundStyle(.tertiary)
-            case .routine(let name, let ts):
-                Text("What set it off").font(.subheadline.weight(.semibold)).foregroundStyle(.secondary)
-                Text("Scheduled task “\(name)” · \(when(ts, now: model.now))").font(.subheadline)
-            case .earlier:
-                Text("Asked earlier").font(.subheadline.weight(.semibold)).foregroundStyle(.secondary)
-            }
-            if let said = group.said {
-                HStack(alignment: .top, spacing: 8) {
-                    HerAvatar(size: 20)
-                    Text(said).font(.subheadline).foregroundStyle(.secondary).lineLimit(4).textSelection(.enabled)
-                }
-                .padding(.top, 2)
-            }
-            if !others.isEmpty {
-                Text("This sent out \(group.tasks.count)").font(.footnote).foregroundStyle(.secondary).padding(.top, 4)
-                ForEach(others) { task in
-                    let s = stand(task, model)
-                    Button { open(task) } label: {
-                        HStack(spacing: 10) {
-                            StandMark(stand: s).frame(width: 18)
-                            Text(title(task)).font(.subheadline).lineLimit(1)
-                            Spacer(minLength: 0)
-                            Image(systemName: "chevron.right").font(.caption.weight(.semibold)).foregroundStyle(.tertiary).accessibilityHidden(true)
-                        }
-                        .frame(minHeight: 40).contentShape(.rect)
-                    }
-                    .buttonStyle(.plain)
-                    .accessibilityLabel(Text(verbatim: "\(title(task)), \(s.words)"))
-                }
-            }
-            if group.parent != .earlier {
-                Button("Open the Conversation") { model.openHer(machineID: machineID) }
-                    .font(.subheadline).frame(minHeight: 40)
-            }
-        }
-        .padding(.top, 14)
-        .accessibilityElement(children: .contain)
-        .accessibilityIdentifier("progress-source")
-    }
-
-    private func title(_ task: HerProgressTask) -> String {
-        switch task {
-        case .agent(let l): herAgentTitle(l)
-        case .session(_, let started): model.session(started.sessionID)?.displayTitle ?? started.title
-        }
     }
 }
 

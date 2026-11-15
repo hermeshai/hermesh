@@ -51,14 +51,13 @@ test("Progress: what Her sent out as a feed, a sub-agent's record, and a coding 
   await expect(nav.getByRole("button", { name: /^进展/ }).getByRole("img", { name: /在等你/ })).toBeVisible();
   await snap(page, "progress-waiting");
 
-  // What set it off, opened in the post by its ⓘ: what the owner said and what Her said back.
-  const why = post.getByRole("button", { name: "来自哪句话" });
-  await why.click();
-  const source = post.getByRole("region", { name: "来自你的一句话" });
+  // What set it off, shown over the page by the post's ⓘ: what the owner said and what Her said back.
+  await post.getByRole("button", { name: "来自哪句话" }).click();
+  const source = page.getByRole("dialog", { name: "来自你的一句话" });
   await expect(source).toContainText("写一篇长文");
   await expect(source).toContainText("好，这个要一会儿，写好发你。");
   await snap(page, "progress-source");
-  await why.click();
+  await page.keyboard.press("Escape");
   await expect(source).toBeHidden();
 
   // Review opens its record: what set it off, the work, what Her asked of it, and the question, answered there.
@@ -99,7 +98,8 @@ test("Progress: what Her sent out as a feed, a sub-agent's record, and a coding 
   const session = list.getByRole("article", { name: "Her 派的活" });
   await expect(session.getByRole("button", { name: /^Her 派的活 · 已完成/ })).toBeVisible({ timeout: 60_000 });
   await session.getByRole("button", { name: "来自哪句话" }).click();
-  await expect(session.getByRole("region", { name: "来自你的一句话" })).toContainText("开工");
+  await expect(page.getByRole("dialog", { name: "来自你的一句话" })).toContainText("开工");
+  await page.keyboard.press("Escape");
   await snap(page, "progress-board");
   await session.getByRole("button", { name: /^Her 派的活/ }).click();
   await expect(page.locator(".pt-shead")).toContainText("Her 派的活");
@@ -111,7 +111,7 @@ test("Progress: what Her sent out as a feed, a sub-agent's record, and a coding 
   await navTo(page, /^进展/);
   const done = list.getByRole("article", { name: "写长文" });
   await done.getByRole("button", { name: "来自哪句话" }).click();
-  await done.getByRole("region", { name: "来自你的一句话" }).getByRole("button", { name: "在对话里看" }).click();
+  await page.getByRole("dialog", { name: "来自你的一句话" }).getByRole("button", { name: "在对话里看" }).click();
   await expect(log).toContainText("好，这个要一会儿，写好发你。");
   await app.close();
 });

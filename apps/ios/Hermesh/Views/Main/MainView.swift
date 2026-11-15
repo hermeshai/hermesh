@@ -12,7 +12,7 @@ struct MainView: View {
 
     var body: some View {
         @Bindable var model = model
-        SideMenu(model: model, open: $model.drawerOpen, panAnywhere: model.path.isEmpty)
+        SideMenu(model: model, open: $model.drawerOpen, panAnywhere: model.atMenuPlace)
             .ignoresSafeArea(edges: model.isDemo ? [.top, .horizontal] : .all)
             .sheet(item: $model.sheet) { sheet in
                 SheetHost(kind: sheet).environment(model)
@@ -49,7 +49,14 @@ private struct PageView: View {
                 }
             } else {
                 NavigationStack(path: $model.path) {
-                    rootPage.navigationDestination(for: Route.self) { page($0) }
+                    rootPage.navigationDestination(for: Route.self) { route in
+                        // The page the menu opened: the menu's button in place of Back (and of its swipe).
+                        if model.menuPage == route && model.path.first == route {
+                            page(route).navigationBarBackButtonHidden().toolbar { MenuToolbarItem() }
+                        } else {
+                            page(route)
+                        }
+                    }
                 }
             }
         }

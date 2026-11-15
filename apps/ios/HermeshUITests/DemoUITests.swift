@@ -319,7 +319,7 @@ final class DemoUITests: XCTestCase {
         app.otherElements["PopoverDismissRegion"].firstMatch.tap()
         // The way to all sessions; then the menu: a machine's sessions, and from them the machine's page.
         reach("all-sessions"); tap("all-sessions"); back()
-        tap("menu"); tap("menu-machine-Mac mini"); tap("scope-details"); back(); back()
+        tap("menu"); tap("menu-machine-Mac mini"); tap("scope-details"); back()
         tap("menu"); tap("account")
         for theme in ["light", "dark", "system"] {
             tap("appearance-\(theme)"); XCTAssertTrue(app.buttons["appearance-\(theme)"].isSelected)
@@ -350,17 +350,26 @@ final class DemoUITests: XCTestCase {
         XCTAssertTrue(drawer.buttons["her-place"].label.contains("not on"), drawer.buttons["her-place"].label)
         XCTAssertFalse(drawer.staticTexts["Add a welcome page"].exists, "no session in the menu")
         checkpoint("menu-team-map")
-        // A coding agent's row opens its sessions on that machine; from them, its page; Back returns to Work.
+        // A coding agent's row opens its sessions on that machine; from them, its page. The page the menu opened
+        // is a place of the menu's: no Back to Work, and a swipe right brings the menu out again.
         tap("menu-agent-Linux Studio-codex")
         XCTAssertTrue(app.navigationBars["Codex on Linux Studio"].waitForExistence(timeout: 10))
         XCTAssertTrue(app.buttons["session-Add a welcome page"].waitForExistence(timeout: 10), "its session")
         XCTAssertFalse(app.buttons["session-Choose a greeting"].exists, "not the other machine's")
-        tap("scope-details"); back(); back()
+        tap("scope-details"); back()
+        XCTAssertTrue(app.navigationBars["Codex on Linux Studio"].waitForExistence(timeout: 10))
+        swipeMenuOut()
+        XCTAssertTrue(drawer.buttons["work-place"].isHittable, "the menu, not Work")
+        tap("work-place")
         XCTAssertTrue(app.navigationBars["Work"].waitForExistence(timeout: 10))
+        // All Sessions, from the menu, alike.
+        tap("menu"); tap("sessions-place")
+        XCTAssertTrue(app.buttons["menu"].waitForExistence(timeout: 10), "the menu's button, not Back")
+        swipeMenuOut()
+        XCTAssertTrue(drawer.buttons["work-place"].isHittable, "the menu, not Work")
         // A connected agent's row opens the sessions it started.
-        tap("menu"); tap("menu-agent-ChatGPT")
+        tap("menu-agent-ChatGPT")
         XCTAssertTrue(app.buttons["session-Add a welcome page"].waitForExistence(timeout: 10))
-        back()
         // Her: asleep, asking where she should run. Not Now returns to Work.
         tap("menu"); tap("her-place")
         XCTAssertTrue(app.buttons["her-not-now"].waitForExistence(timeout: 10), "Her's first run")
@@ -517,6 +526,14 @@ final class DemoUITests: XCTestCase {
     }
 
     private func back() { app.navigationBars.buttons.element(boundBy: 0).tap() }
+
+    /// The system's swipe back, from the screen's left edge across the bar: on a place of the menu's, the menu.
+    private func swipeMenuOut() {
+        let y = app.navigationBars.firstMatch.frame.midY / app.frame.height
+        app.coordinate(withNormalizedOffset: CGVector(dx: 0.01, dy: y))
+            .press(forDuration: 0.05, thenDragTo: app.coordinate(withNormalizedOffset: CGVector(dx: 0.8, dy: y)), withVelocity: 600, thenHoldForDuration: 0.1)
+        sleep(1)
+    }
 
     /// A place by its old name: Work, the pages the menu's headings open, and All Sessions, which Work leads to.
     private func place(_ title: String) {
