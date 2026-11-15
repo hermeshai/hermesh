@@ -10,7 +10,8 @@ import (
 
 // allowed are the methods of her's protocol that the owner's devices may
 // call, on HerService and on the console's routes alike (docs/her-server.md
-// §6.1). Anything else is refused, methods unknown here included.
+// §6.1). Anything else is refused as unimplemented: a device newer than this
+// hermeshd tells it from a refusal (docs/version-skew.md §6.3).
 var allowed = map[string]bool{}
 
 func init() {
@@ -38,6 +39,18 @@ func init() {
 	} {
 		allowed[m] = true
 	}
+}
+
+// openTo is what of her's methods the owner's devices may call: those her
+// answers that are allowed. nil (her listed none) stays nil: unknown.
+func openTo(methods []string) []string {
+	var open []string
+	for _, m := range methods {
+		if allowed[m] {
+			open = append(open, m)
+		}
+	}
+	return open
 }
 
 // commandKeys are what an MCP server started as a command runs: the program,
@@ -70,7 +83,7 @@ type node map[string]node
 // looked at (decoded once and encoded again, so her reads what was checked).
 func check(method string, params []byte) (json.RawMessage, error) {
 	if !allowed[method] {
-		return nil, denied("her's %q is not open to the owner's devices", method)
+		return nil, connect.NewError(connect.CodeUnimplemented, fmt.Errorf("her's %q is not open to the owner's devices", method))
 	}
 	if len(params) == 0 {
 		return nil, nil
@@ -128,6 +141,9 @@ func refuse(method string, params any) error {
 			m, _ := op["method"].(string)
 			if m == "cards/answer" {
 				return denied("a card's op can't answer a card")
+			}
+			if !allowed[m] {
+				return denied("a card's op %q is not open to the owner's devices", m)
 			}
 			params, _ := json.Marshal(op["params"])
 			if _, err := check(m, params); err != nil {
