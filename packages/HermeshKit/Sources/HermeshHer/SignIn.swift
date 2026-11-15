@@ -70,12 +70,18 @@ public func herSignInChatGPT(_ d: HerSignInDeps) async -> HerSignInEnd {
         cancel: { login in _ = try? await d.call("chatgpt/cancel", ["login_id": .string(login)]) })
 }
 
-/// Signs in to the environment's connector `name`, in her's configuration already (a card's ops added it): her says
-/// on the card how it went. The page is an https one, or http on loopback, as her lets a connector be addressed.
-public func herSignInConnector(_ d: HerSignInDeps, name: String) async -> HerSignInEnd {
+/// Signs in to the environment's connector `name`: one in her's configuration already (a card's ops added it, or the
+/// connectors page), or, with `server`, one about to be added, whose sign-in her saves first. The page is an https
+/// one, or http on loopback, as her lets a connector be addressed.
+public func herSignInConnector(_ d: HerSignInDeps, name: String, server: JSON? = nil) async -> HerSignInEnd {
     await signIn(d, path: "/callback", page: herConnectorPage,
         start: { redirect in
-            let r = try await d.call("mcp/login", ["name": .string(name), "redirect_uri": .string(redirect)])
+            var params: JSON = ["name": .string(name), "redirect_uri": .string(redirect)]
+            if let server, case .object(var o) = params {
+                o["server"] = server
+                params = .object(o)
+            }
+            let r = try await d.call("mcp/login", params)
             guard let url = r["authorize_url"].string.flatMap(URL.init(string:)), let login = r["login_id"].string else { return .ended(.failed(r["message"].string ?? "")) }
             return .begun(url, login)
         },
@@ -83,7 +89,8 @@ public func herSignInConnector(_ d: HerSignInDeps, name: String) async -> HerSig
             _ = try await d.call("mcp/login_complete", ["login_id": .string(login), "code": got["code"], "state": got["state"], "iss": got["iss"]])
             return .connected(account: nil)
         },
-        cancel: { _ in _ = try? await d.call("mcp/login_cancel", ["name": .string(name)]) })
+        // Not added yet: signing out ends the sign-in and forgets what it saved.
+        cancel: { _ in _ = try? await d.call(server == nil ? "mcp/login_cancel" : "mcp/logout", ["name": .string(name)]) })
 }
 
 /// Where a connector's sign-in may send the browser.
