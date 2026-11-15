@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import type { RpcClient } from "@hermesh/her-client";
-import type { ExtensionProblem, ExtensionStatus } from "@hermesh/her-protocol";
+import type { BrowserSetupPlace, ExtensionProblem, ExtensionStatus } from "@hermesh/her-protocol";
 import type { BrowserState } from "./useBrowser";
 import { browserName, defaultEdits, extensionEdits, extensionFolder, herSystem, yours, yoursConfig, type HerSystem } from "./yours";
 import "./yours.css";
@@ -149,7 +149,17 @@ export function YourBrowser({ rpc, browser, connect = false, onConnectOpened }: 
         </div>
       )}
       {error && <p className="set-note warn">{error}</p>}
-      {guide && <Guide system={system} connected={y.connected} problem={y.problem} onConnected={() => use(true)} onDefault={makeDefault} onClose={() => setGuide(false)} />}
+      {guide && (
+        <Guide
+          system={system}
+          connected={y.connected}
+          problem={y.problem}
+          onOpen={rpc ? (what) => rpc.request("browser/open_setup", { what }) : null}
+          onConnected={() => use(true)}
+          onDefault={makeDefault}
+          onClose={() => setGuide(false)}
+        />
+      )}
     </section>
   );
 }
@@ -157,13 +167,18 @@ export function YourBrowser({ rpc, browser, connect = false, onConnectOpened }: 
 type Step = "install" | "wait" | "done";
 
 /** Connecting, one step at a time: adding the extension is the owner's; the rest happens by itself. Once
- * connected, the owner's Chrome becomes the default browser unless they untick it. */
-function Guide({ system, connected, problem, onConnected, onDefault, onClose }: { system: HerSystem; connected: ExtensionStatus | null; problem: ExtensionProblem | null; onConnected: () => Promise<unknown>; onDefault: () => Promise<unknown>; onClose: () => void }) {
+ * connected, the owner's Chrome becomes the default browser unless they untick it. `onOpen` opens the
+ * extensions page or the extension's folder on the computer Her runs on. */
+function Guide({ system, connected, problem, onOpen, onConnected, onDefault, onClose }: { system: HerSystem; connected: ExtensionStatus | null; problem: ExtensionProblem | null; onOpen: ((what: BrowserSetupPlace) => Promise<unknown>) | null; onConnected: () => Promise<unknown>; onDefault: () => Promise<unknown>; onClose: () => void }) {
   const { t } = useTranslation("yours");
   const [step, setStep] = useState<Step>("install");
   const [error, setError] = useState("");
   const [asDefault, setAsDefault] = useState(true);
   const [finishing, setFinishing] = useState(false);
+  const open = (what: BrowserSetupPlace) => {
+    setError("");
+    onOpen?.(what).catch((e) => setError(errorText(e)));
+  };
   const finish = async () => {
     setFinishing(true);
     try {
@@ -236,16 +251,26 @@ function Guide({ system, connected, problem, onConnected, onDefault, onClose }: 
             <p className="sub">{t("guide.install", { computer })}</p>
             <ol className="yours-howto">
               <li>
-                {t("guide.howto.open")} <code className="sel-text">chrome://extensions</code>
+                {t("guide.howto.open")} <code className="sel-text">chrome://extensions</code>{" "}
+                <button className="btn sm" disabled={!onOpen} onClick={() => open("extensions_page")}>
+                  {t("guide.howto.openPage")}
+                </button>
               </li>
               <li>{t("guide.howto.developer")}</li>
               <li>
-                {t(`guide.howto.load.${system}`)} <code className="sel-text">{extensionFolder[system]}</code>
+                {t("guide.howto.drag")}{" "}
+                <button className="btn sm" disabled={!onOpen} onClick={() => open("extension_folder")}>
+                  {t("guide.howto.reveal")}
+                </button>
+                <div className="yours-load">
+                  {t(`guide.howto.load.${system}`)} <code className="sel-text">{extensionFolder[system]}</code>
+                </div>
               </li>
             </ol>
+            {error && <p className="set-note warn">{error}</p>}
             <p className="set-note">{t("guide.already")}</p>
             <div className="sheet-foot">
-              <button className="btn primary" onClick={() => setStep("wait")}>
+              <button className="btn primary" onClick={() => (setError(""), setStep("wait"))}>
                 {t("guide.added")}
               </button>
             </div>

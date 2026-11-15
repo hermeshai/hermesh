@@ -739,6 +739,9 @@ impl NativeProtocol {
                 }
                 Err(err) => conn.send_error(Some(id), &err),
             },
+            method::BROWSER_OPEN_SETUP => self.call(id, params, conn, |_, p: her_protocol::api::BrowserOpenSetupParams| async move {
+                crate::browser_setup::open_setup(p.what).await.map(|()| json!({}))
+            }),
             method::BROWSER_ASSIGN_TAB => match her_rpc::params::<her_protocol::api::BrowserAssignTabParams>(params) {
                 Ok(p) => conn.send(reply(id, server.assign_tab(p).map(|()| json!({})))),
                 Err(err) => conn.send_error(Some(id), &err),

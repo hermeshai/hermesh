@@ -537,7 +537,7 @@ or to use Erase Everything.
 | `session/op` and session events: prompts, approvals, answers, stopping | Her entry | Allowed | No |
 | `models/list` | Her entry, console | Allowed | No |
 | `desktop/status`: whether computer use can work there (§4.4) | Her entry | Allowed | No |
-| `config/*`, `connections/*`, `credentials/*`, `mcp/*`, `skills/*`, `web_search/*`, `browser/allow`, `browser/status`, `browser/use_extension` | Console | Allowed | No |
+| `config/*`, `connections/*`, `credentials/*`, `mcp/*`, `skills/*`, `web_search/*`, `browser/allow`, `browser/status`, `browser/use_extension`, `browser/open_setup` | Console | Allowed | No |
 | `doc/*`, `deck/*`, `docx/*` and the other `browser/*` methods: desktop document panels and a built-in browser, which Hermesh does not have | Nobody | Not forwarded | No |
 
 Types are in [schema.json](../her/crates/her-protocol/schema.json), and the
