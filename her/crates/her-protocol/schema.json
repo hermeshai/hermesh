@@ -623,6 +623,9 @@
       "$ref": "#/definitions/SnapshotResult"
     },
     {
+      "$ref": "#/definitions/StorageUsage"
+    },
+    {
       "$ref": "#/definitions/TemplateProfile"
     },
     {
@@ -18997,6 +19000,110 @@
       ],
       "type": "string"
     },
+    "StorageKind": {
+      "oneOf": [
+        {
+          "description": "What assistants and conversations made: each bot's folder, each chat's folder.",
+          "enum": [
+            "files"
+          ],
+          "type": "string"
+        },
+        {
+          "description": "Conversations, with the full output of their tools.",
+          "enum": [
+            "conversations"
+          ],
+          "type": "string"
+        },
+        {
+          "description": "Deleted conversations, kept until removed by hand.",
+          "enum": [
+            "trash"
+          ],
+          "type": "string"
+        },
+        {
+          "description": "What each assistant remembers.",
+          "enum": [
+            "memory"
+          ],
+          "type": "string"
+        },
+        {
+          "description": "The built-in browser's profiles and downloads.",
+          "enum": [
+            "browser"
+          ],
+          "type": "string"
+        },
+        {
+          "description": "What her fetches again when it is gone: model lists, connectors' tool lists, icons, logs.",
+          "enum": [
+            "cache"
+          ],
+          "type": "string"
+        },
+        {
+          "description": "Settings, skills, routines and everything else.",
+          "enum": [
+            "other"
+          ],
+          "type": "string"
+        }
+      ]
+    },
+    "StoragePart": {
+      "description": "One kind of data in her's data directory.",
+      "properties": {
+        "bytes": {
+          "format": "uint64",
+          "minimum": 0.0,
+          "type": "integer"
+        },
+        "kind": {
+          "$ref": "#/definitions/StorageKind"
+        }
+      },
+      "required": [
+        "bytes",
+        "kind"
+      ],
+      "type": "object"
+    },
+    "StorageUsage": {
+      "description": "The result of `storage/usage`: her's data directory, the only copy of what it holds, and its size by kind.",
+      "properties": {
+        "custom": {
+          "description": "`HER_HOME` put it somewhere other than `~/.her`.",
+          "type": "boolean"
+        },
+        "home": {
+          "description": "The data directory: `HER_HOME`, else `~/.her`.",
+          "type": "string"
+        },
+        "parts": {
+          "description": "Each kind of data, in this order, every kind listed; their bytes add up to `total`.",
+          "items": {
+            "$ref": "#/definitions/StoragePart"
+          },
+          "type": "array"
+        },
+        "total": {
+          "description": "Bytes of every file in it.",
+          "format": "uint64",
+          "minimum": 0.0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "custom",
+        "home",
+        "parts",
+        "total"
+      ],
+      "type": "object"
+    },
     "StoryRead": {
       "description": "A text story of a shape: its body, or one table cell's.",
       "properties": {
@@ -21430,6 +21537,9 @@
       "params": "SkillsSetEnabledParams",
       "result": "SkillsSetEnabledResult"
     },
+    "storage/usage": {
+      "result": "StorageUsage"
+    },
     "tools/list": {
       "params": "ToolsListParams",
       "result": "ToolsListResult"
@@ -21628,6 +21738,7 @@
       "skills/read": "stable",
       "skills/remove": "stable",
       "skills/set_enabled": "stable",
+      "storage/usage": "stable",
       "tools/list": "stable",
       "web_search/set_key": "stable",
       "web_search/status": "stable",

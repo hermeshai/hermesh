@@ -81,6 +81,7 @@ Protocol version 2. Generated from `her protocol schema` by `tools/gen-protocol-
 | `skills/read` | `SkillsReadParams` | `SkillsReadResult` |  |
 | `skills/remove` | `SkillsRemoveParams` | `Empty` |  |
 | `skills/set_enabled` | `SkillsSetEnabledParams` | `SkillsSetEnabledResult` |  |
+| `storage/usage` | — | `StorageUsage` | The result of `storage/usage`: her's data directory, the only copy of what it holds, and its size by kind. |
 | `tools/list` | `ToolsListParams` | `ToolsListResult` | Parameters of `tools/list`. |
 | `web_search/set_key` | `WebSearchSetKeyParams` | `WebSearchSetKeyResult` |  |
 | `web_search/status` | — | `WebSearchStatus` | The result of `web_search/status`. |
