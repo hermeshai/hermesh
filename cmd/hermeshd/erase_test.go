@@ -27,6 +27,10 @@ func herWasOn(t *testing.T, dataDir string) (home string) {
 	if err := os.MkdirAll(filepath.Join(home, "bots", "b1"), 0o700); err != nil {
 		t.Fatal(err)
 	}
+	// As her marks a home she makes: erasing deletes only such a home.
+	if err := os.WriteFile(filepath.Join(home, ".her-home"), nil, 0o600); err != nil {
+		t.Fatal(err)
+	}
 	cfg := machine.Config{DataDir: filepath.Join(dataDir, "machine"), Providers: map[string]provider.Provider{}}
 	n, err := machine.Open(cfg)
 	if err != nil {

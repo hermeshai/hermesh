@@ -104,6 +104,10 @@ func TestHerErased(t *testing.T) {
 		if err := os.MkdirAll(filepath.Join(home, "bots", "b1"), 0o700); err != nil {
 			t.Fatal(err)
 		}
+		// As her marks a home she makes: erasing deletes only such a home.
+		if err := os.WriteFile(filepath.Join(home, ".her-home"), nil, 0o600); err != nil {
+			t.Fatal(err)
+		}
 	}
 	gone := func() bool { _, err := os.Stat(home); return os.IsNotExist(err) }
 	erase := func(on bool) *identityv1.AdminCommand {

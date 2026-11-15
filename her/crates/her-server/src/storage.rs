@@ -128,8 +128,10 @@ mod tests {
         assert_eq!(of(&u, StorageKind::Memory), 30);
         assert_eq!(of(&u, StorageKind::Browser), 200);
         assert_eq!(of(&u, StorageKind::Cache), 40);
-        assert_eq!(of(&u, StorageKind::Other), 28);
-        assert_eq!(u.total, 2428);
+        // The mark her leaves in a home she makes is hers too.
+        let mark = std::fs::metadata(home.mark_file()).unwrap().len();
+        assert_eq!(of(&u, StorageKind::Other), 28 + mark);
+        assert_eq!(u.total, 2428 + mark);
     }
 
     #[test]
@@ -152,6 +154,7 @@ mod tests {
         std::fs::create_dir_all(home.bot_files_dir("b1")).unwrap();
         std::os::unix::fs::symlink(dir.path().join("elsewhere"), home.bot_files_dir("b1").join("linked")).unwrap();
         std::os::unix::fs::symlink(dir.path().join("elsewhere/big.bin"), home.bot_files_dir("b1").join("big.bin")).unwrap();
-        assert_eq!(usage(&home).total, 0);
+        // Only her's own mark is counted.
+        assert_eq!(usage(&home).total, std::fs::metadata(home.mark_file()).unwrap().len());
     }
 }

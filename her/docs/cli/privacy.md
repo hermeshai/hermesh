@@ -26,6 +26,7 @@ Everything is under `~/.her` (`HER_HOME` moves it):
 | `history.jsonl` | What you typed in conversations; `history.enabled = false` turns it off |
 | `addons/`, `browser/`, `desktop/` | Components |
 | `logs/` | Logs |
+| `.her-home` | Says her made this folder, when she made it or found it empty: Hermesh erases her data by deleting such a folder whole, and leaves one without it alone |
 
 Keys are in the macOS keychain, or in a 0600 file on Linux and with `HER_CREDENTIAL_STORE=file`. Commands the model runs do not get provider keys in their environment unless `tools.bash.pass_provider_keys` says so.
 
