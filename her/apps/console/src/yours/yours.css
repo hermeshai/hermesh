@@ -26,3 +26,13 @@
 
 /* The built-in browser's install lines, on a Linux computer without Chrome. */
 .builtin-install pre{margin:6px 0 0;font-family:var(--mono);font-size:12px;line-height:1.55;background:var(--code);border-radius:var(--r-sm,6px);padding:8px 10px;overflow-x:auto;white-space:pre;color:var(--l1)}
+
+/* The page's first rows (BrowserControl.tsx): the default browser's menu keeps its width. */
+.browser-control .psel{width:auto;max-width:55%;flex:none}
+/* The rest of the page, dimmed and out of reach while browser control is off. */
+.browser-rest{display:flex;flex-direction:column;gap:21px}
+.browser-rest.off{opacity:.45}
+.site-exceptions{margin-top:14px}
+/* The guide's last step: the owner's Chrome as the default browser. */
+.yours-default{display:flex;align-items:center;gap:8px;margin:12px 0 4px;font-size:var(--fs-text)}
+.yours-default input{margin:0;accent-color:var(--accent)}

@@ -3,7 +3,7 @@ import { useTranslation } from "react-i18next";
 import type { RpcClient } from "@hermesh/her-client";
 import type { ExtensionProblem, ExtensionStatus } from "@hermesh/her-protocol";
 import type { BrowserState } from "./useBrowser";
-import { browserName, extensionEdits, extensionFolder, herSystem, yours, yoursConfig, type HerSystem } from "./yours";
+import { browserName, defaultEdits, extensionEdits, extensionFolder, herSystem, yours, yoursConfig, type HerSystem } from "./yours";
 import "./yours.css";
 
 // The console's Browser section, its first part: whether the owner's own Chrome, on the Mac or Linux computer Her runs on, is connected
@@ -24,7 +24,8 @@ const WAIT_SECONDS = 5;
 
 const errorText = (e: unknown) => (e instanceof Error ? e.message : String(e));
 
-export function YourBrowser({ rpc, browser }: { rpc: RpcClient | null; browser: BrowserState }) {
+/** `connect`: the page was opened to connect the owner's Chrome: the guide opens, unless Her uses it already, and `onConnectOpened` says so. */
+export function YourBrowser({ rpc, browser, connect = false, onConnectOpened }: { rpc: RpcClient | null; browser: BrowserState; connect?: boolean; onConnectOpened?: () => void }) {
   const { t } = useTranslation("yours");
   const { status, readConfig } = browser;
   const config = useMemo(() => (browser.config === null ? null : yoursConfig(browser.config)), [browser.config]);
@@ -43,7 +44,20 @@ export function YourBrowser({ rpc, browser }: { rpc: RpcClient | null; browser: 
     [rpc, legacy, readConfig],
   );
 
+  /** New pages open in the owner's Chrome while it is connected, unless the agent names the built-in browser. */
+  const makeDefault = useCallback(async () => {
+    if (!rpc) return;
+    await rpc.request("config/write", { layer: "user", edits: defaultEdits("yours") });
+    await readConfig();
+  }, [rpc, readConfig]);
+
   const y = yours(status, config);
+  // Asked for from elsewhere: once her has said where the owner's Chrome stands.
+  useEffect(() => {
+    if (!connect || !status || !config) return;
+    if (y.state !== "on") setGuide(true);
+    onConnectOpened?.();
+  }, [connect, !!status, !!config]);
   // A host that exits on refusal is gone in moments. One that stays runs code from before it could.
   const [stuck, setStuck] = useState(false);
   useEffect(() => {
@@ -135,18 +149,31 @@ export function YourBrowser({ rpc, browser }: { rpc: RpcClient | null; browser: 
         </div>
       )}
       {error && <p className="set-note warn">{error}</p>}
-      {guide && <Guide system={system} connected={y.connected} problem={y.problem} onConnected={() => use(true)} onClose={() => setGuide(false)} />}
+      {guide && <Guide system={system} connected={y.connected} problem={y.problem} onConnected={() => use(true)} onDefault={makeDefault} onClose={() => setGuide(false)} />}
     </section>
   );
 }
 
 type Step = "install" | "wait" | "done";
 
-/** Connecting, one step at a time: adding the extension is the owner's; the rest happens by itself. */
-function Guide({ system, connected, problem, onConnected, onClose }: { system: HerSystem; connected: ExtensionStatus | null; problem: ExtensionProblem | null; onConnected: () => Promise<unknown>; onClose: () => void }) {
+/** Connecting, one step at a time: adding the extension is the owner's; the rest happens by itself. Once
+ * connected, the owner's Chrome becomes the default browser unless they untick it. */
+function Guide({ system, connected, problem, onConnected, onDefault, onClose }: { system: HerSystem; connected: ExtensionStatus | null; problem: ExtensionProblem | null; onConnected: () => Promise<unknown>; onDefault: () => Promise<unknown>; onClose: () => void }) {
   const { t } = useTranslation("yours");
   const [step, setStep] = useState<Step>("install");
   const [error, setError] = useState("");
+  const [asDefault, setAsDefault] = useState(true);
+  const [finishing, setFinishing] = useState(false);
+  const finish = async () => {
+    setFinishing(true);
+    try {
+      if (asDefault) await onDefault();
+      onClose();
+    } catch (e) {
+      setError(errorText(e));
+      setFinishing(false);
+    }
+  };
   // Seconds left before saying what to check, counted down on screen so the wait has an end.
   const [left, setLeft] = useState(WAIT_SECONDS);
   const slow = left === 0;
@@ -253,9 +280,14 @@ function Guide({ system, connected, problem, onConnected, onClose }: { system: H
             <Glyph d="M3.4 8.4l3 3 6.2-6.8" />
             {t("guide.done", { name })}
           </p>
+          <label className="yours-default">
+            <input type="checkbox" checked={asDefault} onChange={(e) => setAsDefault(e.target.checked)} />
+            {t("guide.asDefault")}
+          </label>
           <p className="set-note">{t("guide.doneHint")}</p>
+          {error && <p className="set-note warn">{error}</p>}
           <div className="sheet-foot">
-            <button className="btn primary" onClick={onClose}>
+            <button className="btn primary" disabled={finishing} onClick={() => void finish()}>
               {t("guide.finish")}
             </button>
           </div>

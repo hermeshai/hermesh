@@ -146,27 +146,59 @@ test("an environment set up from its console", async ({ page }) => {
     await expect(guide.locator("code").last()).toHaveText(linux ? "~/.local/share/hermesh/chrome-extension" : "~/Library/Application Support/Hermesh/Chrome Extension");
     await guide.getByRole("button", { name: "Close" }).click();
     await expect(guide).toBeHidden();
+    // Sent here to connect it (the Mac app's chat does so): the guide opens by itself, and the address goes back to the page.
+    await page.goto(`${site.url}#browser/connect`);
+    await expect(page.getByRole("dialog", { name: "Connect Your Chrome" })).toBeVisible();
+    await expect.poll(() => new URL(page.url()).hash).toBe("#browser");
+    await page.getByRole("dialog", { name: "Connect Your Chrome" }).getByRole("button", { name: "Close" }).click();
   });
 
-  await test.step("the built-in browser: the Chrome her found, and a switch that turns it on and back to unset", async () => {
-    const section = page.locator("section.builtin");
-    const row = section.locator(".frow");
-    const chrome = "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome";
-    if (process.platform === "darwin" && existsSync(chrome)) {
-      await expect(row.locator(".fn")).toHaveText("Google Chrome");
-      await expect(row.locator(".fn")).toHaveAttribute("title", chrome);
-      await expect(row.locator(".fdesc")).toHaveText("Her opens pages in her own Google Chrome on the Mac she runs on, without your sign-ins, in a window there.");
-    } else {
-      await expect(row.locator(".fdesc")).toHaveText(/without your sign-ins|There is no Chrome on the/);
-    }
-    const toggle = section.getByRole("switch", { name: "Built-in Browser" });
+  await test.step("browser control: a switch for all of it, and new pages in the built-in browser until the owner's Chrome connects", async () => {
+    const toggle = page.getByRole("switch", { name: "Allow Her to Control Browsers" });
+    // No desktop app shows browsers here, and the owner's Chrome is not used: off, and not set.
     await expect(toggle).toHaveAttribute("aria-checked", "false");
+    const chosen = page.getByLabel("Default Browser");
+    await expect(chosen).toBeDisabled();
+    await expect(chosen).toHaveValue("builtin");
+    await expect(page.locator(".browser-control")).toContainText("Connect your Chrome to choose it.");
     await toggle.click();
     await expect(toggle).toHaveAttribute("aria-checked", "true");
     await expect.poll(() => read("config.toml")).toMatch(/^\[browser\][^[]*^enabled = true$/m);
     await toggle.click();
     await expect(toggle).toHaveAttribute("aria-checked", "false");
-    await expect.poll(() => read("config.toml")).not.toMatch(/^enabled = /m);
+    await expect.poll(() => read("config.toml")).toMatch(/^\[browser\][^[]*^enabled = false$/m);
+    await expect(page.locator(".browser-rest")).toHaveClass(/\boff\b/);
+    await toggle.click();
+    await expect(page.locator(".browser-rest")).not.toHaveClass(/\boff\b/);
+    await expect.poll(() => read("config.toml")).toMatch(/^\[browser\][^[]*^enabled = true$/m);
+  });
+
+  await test.step("all sites ask unless set; a site set apart asks whatever all sites allow", async () => {
+    const all = page.getByLabel("Permission for All Sites");
+    await expect(all).toHaveValue("ask");
+    await all.selectOption("navigate");
+    await expect.poll(() => read("config.toml")).toContain('"*" = "navigate"');
+    await expect(page.locator(".site-row", { hasText: "All Sites" })).toContainText("acting on them asks first");
+    await page.getByLabel("Site to add", { exact: true }).fill("bank.example");
+    await page.getByLabel("Permission for the site to add").selectOption("ask");
+    await page.getByRole("button", { name: "Add", exact: true }).click();
+    await expect(page.getByLabel("Permission for bank.example")).toHaveValue("ask");
+    await expect.poll(() => read("config.toml")).toContain('"https://bank.example" = "ask"');
+    await all.selectOption("ask");
+    await expect.poll(() => read("config.toml")).not.toContain('"*"');
+  });
+
+  await test.step("the built-in browser: the Chrome her found", async () => {
+    const row = page.locator("section.builtin .frow");
+    const chrome = "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome";
+    if (process.platform === "darwin" && existsSync(chrome)) {
+      await expect(row.locator(".fn")).toHaveText("Google Chrome");
+      await expect(row.locator(".fn")).toHaveAttribute("title", chrome);
+      await expect(row.locator(".fdesc")).toHaveText(/^Her opens pages in her own Google Chrome on the Mac she runs on, without your sign-ins/);
+    } else {
+      await expect(row.locator(".fdesc")).toHaveText(/without your sign-ins|There is no Chrome on the/);
+    }
+    await expect(page.locator("section.builtin").getByRole("switch")).toHaveCount(0);
   });
 
   await test.step("a dropped connection is opened again, and the page goes on working", async () => {

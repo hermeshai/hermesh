@@ -71,6 +71,7 @@ const allowed = new Set([
   "web_search/test",
   "browser/allow",
   "browser/status",
+  "browser/cancel_wait",
   "browser/use_extension",
   "models/refresh",
   "models/show",

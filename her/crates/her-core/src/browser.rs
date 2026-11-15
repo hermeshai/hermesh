@@ -219,10 +219,11 @@ impl Browsers {
     }
 
     /// Where a page opens when the call names no browser: the user's default while it is on,
-    /// else the one that is (browser-design §10.1).
-    fn default(&self) -> Which {
+    /// else the one that is (browser-design §10.1). The user's own browser is the default only
+    /// while its extension is `connected`: until then pages open in the built-in one, if it is on.
+    fn default(&self, connected: bool) -> Which {
         let default = Which::from(self.settings.default);
-        if self.on(default) {
+        if self.on(default) && (default == Which::Builtin || connected || !self.builtin) {
             default
         } else if self.builtin {
             Which::Builtin
@@ -249,7 +250,7 @@ impl BrowserHandle {
             current: Which::Builtin,
             settings: settings.clone(),
         };
-        browsers.current = browsers.default();
+        browsers.current = browsers.default(pool.has_extension());
         Self {
             pool,
             policy: Arc::new(Mutex::new(settings.policy.clone())),
@@ -294,7 +295,7 @@ impl BrowserHandle {
         state.builtin = builtin;
         state.yours = yours;
         if !state.on(state.current) {
-            state.current = state.default();
+            state.current = state.default(self.pool.has_extension());
         }
         gone
     }
@@ -438,7 +439,8 @@ fn pick(ctx: &ToolCtx, asked: Option<Which>, id: Option<&str>) -> Result<Which, 
 /// The browser a page opens in: the one asked for, else the one of the tab named, else the
 /// user's default (`browser.default`, browser-design §10.1).
 fn pick_new(ctx: &ToolCtx, asked: Option<Which>, tab: Option<&str>) -> Result<Which, ToolError> {
-    let fallback = handle(ctx)?.state.lock().default();
+    let handle = handle(ctx)?;
+    let fallback = handle.state.lock().default(handle.pool.has_extension());
     pick(ctx, asked.or(tab.map(Which::of)).or(Some(fallback)), tab)
 }
 
@@ -1657,12 +1659,14 @@ mod tests {
             yours,
             current: Which::Builtin,
         };
-        assert_eq!(browsers(&settings, true, true).default(), Which::Builtin, "the built-in browser unless set");
+        assert_eq!(browsers(&settings, true, true).default(true), Which::Builtin, "the built-in browser unless set");
         settings.default = crate::config::DefaultBrowser::Yours;
-        assert_eq!(browsers(&settings, true, true).default(), Which::Yours);
-        assert_eq!(browsers(&settings, true, false).default(), Which::Builtin, "the user's browser not connected");
+        assert_eq!(browsers(&settings, true, true).default(true), Which::Yours);
+        assert_eq!(browsers(&settings, true, false).default(true), Which::Builtin, "the user's browser turned off");
+        assert_eq!(browsers(&settings, true, true).default(false), Which::Builtin, "its extension not connected");
+        assert_eq!(browsers(&settings, false, true).default(false), Which::Yours, "waited for when it is the only one");
         settings.default = crate::config::DefaultBrowser::Builtin;
-        assert_eq!(browsers(&settings, false, true).default(), Which::Yours, "only the user's browser on");
+        assert_eq!(browsers(&settings, false, true).default(true), Which::Yours, "only the user's browser on");
     }
 
     #[test]

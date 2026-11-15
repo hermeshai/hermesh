@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { siteKey, siteOrigin, sitesOf } from "./settings.ts";
+import { allSitesEdits, allSitesOf, exceptionsOf, siteKey, siteOrigin, sitesOf } from "./settings.ts";
 
 // What the Browser page makes of her's answers.
 
@@ -25,4 +25,17 @@ test("sites from config/read: all sites first, then by origin; anything not a le
   ]);
   assert.deepEqual(sitesOf({}), []);
   assert.deepEqual(sitesOf(null), []);
+});
+
+test("all sites: asked about unless set, and asking writes no \"*\"; the other sites are its exceptions", () => {
+  assert.equal(allSitesOf({}), "ask");
+  assert.equal(allSitesOf({ browser: { sites: { "*": "navigate" } } }), "navigate");
+  assert.equal(allSitesOf({ browser: { sites: { "*": "act", "https://a.example": "ask" } } }), "act");
+  assert.equal(allSitesOf({ browser: { sites: { "*": "deny" } } }), "ask", "her refuses that; the page does not show it");
+  assert.deepEqual(allSitesEdits("ask"), [{ key_path: 'browser.sites."*"', value: null }]);
+  assert.deepEqual(allSitesEdits("act"), [{ key_path: 'browser.sites."*"', value: "act" }]);
+  assert.deepEqual(exceptionsOf({ browser: { sites: { "*": "act", "https://a.example": "ask", "https://b.example": "deny" } } }), [
+    ["https://a.example", "ask"],
+    ["https://b.example", "deny"],
+  ]);
 });
