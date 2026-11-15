@@ -231,18 +231,19 @@ struct DrawerView: View {
     private func machineRow(_ m: Machine) -> some View {
         let note: String? = !m.online ? (m.hasLastSeen ? String(localized: "Offline · \(agoText(m.lastSeen.date, now: model.now))") : String(localized: "Offline"))
             : m.her.enabled ? String(localized: "Her is here") : nil
+        // The machine heads its coding agents: its name alone, no picture, and a chevron saying the row opens.
         return item(.machineSessions(m.machineID), id: "menu-machine-\(m.machineName)") {
-            row {
-                Image(systemName: machineIcon(m)).foregroundStyle(m.online ? .primary : .secondary)
-            } title: {
+            HStack(spacing: 12) {
                 VStack(alignment: .leading, spacing: 1) {
-                    Text(m.machineName).foregroundStyle(m.online ? .primary : .secondary)
+                    Text(m.machineName).fontWeight(.semibold).foregroundStyle(m.online ? .primary : .secondary)
                     if let note { Text(note).font(.caption).foregroundStyle(.secondary) }
                 }
-            } trailing: {
-                if m.online { Circle().fill(.green).frame(width: 8, height: 8) }
+                .lineLimit(1).frame(maxWidth: .infinity, alignment: .leading)
+                Image(systemName: "chevron.right").font(.footnote.weight(.semibold)).foregroundStyle(.tertiary).accessibilityHidden(true)
             }
+            .padding(.horizontal, 16).frame(minHeight: 44)
         }
+        .padding(.top, 8)
     }
 
     private func agentRow(_ agent: String, on m: Machine, sessions: [Session]) -> some View {
