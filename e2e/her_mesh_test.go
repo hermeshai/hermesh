@@ -32,6 +32,11 @@ type meshEvent struct {
 	Args struct {
 		Text string `json:"text"`
 	} `json:"args"`
+	// tool_completed: what the apps read of the result (docs/her-team.md §6.2).
+	Result struct {
+		ToolName string          `json:"tool_name"`
+		Details  json.RawMessage `json:"details"`
+	} `json:"result"`
 }
 
 // tellHer sends Her a message, answers each approval she asks for with
@@ -39,6 +44,14 @@ type meshEvent struct {
 // the owner a message with want in it. It returns the approvals she asked
 // for and what she sent.
 func tellHer(t *testing.T, env *herEnvironment, text, decision, want string) (asked []meshEvent, said string) {
+	t.Helper()
+	asked, said, _ = tellHerDetails(t, env, text, decision, want)
+	return asked, said
+}
+
+// tellHerDetails is tellHer, with the details of the last mesh call's
+// result.
+func tellHerDetails(t *testing.T, env *herEnvironment, text, decision, want string) (asked []meshEvent, said string, details json.RawMessage) {
 	t.Helper()
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
 	defer cancel()
@@ -63,12 +76,14 @@ func tellHer(t *testing.T, env *herEnvironment, text, decision, want string) (as
 			asked = append(asked, e)
 			herCall(t, env, op.ConnectionId, "session/op", map[string]any{"session_id": session,
 				"op": map[string]any{"type": "approval", "call_id": e.CallID, "decision": map[string]string{"type": decision}}})
+		case e.Type == "tool_completed" && e.Result.ToolName == "call_tool":
+			details = e.Result.Details
 		case e.Type == "tool_started" && e.Name == "send_to_user" && strings.Contains(e.Args.Text, want):
-			return asked, e.Args.Text
+			return asked, e.Args.Text, details
 		}
 	}
 	t.Fatalf("Her never said %q: %v", want, stream.Err())
-	return nil, ""
+	return nil, "", nil
 }
 
 // meshCall is a message that has her-mock run one mesh tool.
@@ -114,6 +129,23 @@ func herSaid(t *testing.T, env *herEnvironment, what string, parts ...string) {
 	t.Fatalf("no %s: %v\nher conversation meanwhile: %q", what, stream.Err(), seen)
 }
 
+// startedBy starts a session on the owner's Mac as the test's CLI, another
+// agent than Her, and returns its id.
+func startedBy(t *testing.T, w *ownerMac, prompt string) string {
+	t.Helper()
+	s, r := w.startSession(time.Minute, "--prompt", prompt)
+	if r.code != 0 || s.SessionID == "" {
+		t.Fatalf("session start: %d %s %s", r.code, r.stdout, r.stderr)
+	}
+	return s.SessionID
+}
+
+// cliStatus is a session's status as the test's CLI reads it.
+func cliStatus(t *testing.T, w *ownerMac, id string) string {
+	t.Helper()
+	return firstSession(w.cli(30*time.Second, "session", "get", id, "-o", "json").stdout).Status
+}
+
 // herClient is Her's own grant among the owner's agents, nil when she has
 // none that holds.
 func herClient(t *testing.T, env *herEnvironment) *localv1.Client {
@@ -153,7 +185,7 @@ func TestHerMesh(t *testing.T) {
 	// She starts a coding agent on the owner's Mac, another machine than
 	// hers. In her default mode the owner is asked first, in words that name
 	// the agent, the project and the prompt.
-	asked, said := tellHer(t, env, meshCall("session_start", map[string]any{"project": "owner-mac/demo", "prompt": "sleep 4s\nsay built it"}), "approve_for_session", "mesh ")
+	asked, said, details := tellHerDetails(t, env, meshCall("session_start", map[string]any{"project": "owner-mac/demo", "prompt": "sleep 4s\nsay built it"}), "approve_for_session", "mesh ")
 	if len(asked) != 1 || asked[0].Summary != "Start Claude Code in owner-mac/demo\n\nsleep 4s\nsay built it" ||
 		asked[0].ProposedRule == nil || !slices.Equal(asked[0].ProposedRule.Prefix, []string{"mesh", "owner-mac/demo"}) {
 		t.Fatalf("the approval: %+v", asked)
@@ -161,6 +193,29 @@ func TestHerMesh(t *testing.T) {
 	first := sessionID.FindString(said)
 	if !strings.HasPrefix(said, "mesh done") || first == "" {
 		t.Fatalf("session_start: %s", said)
+	}
+	// The apps draw her session's card from this result (docs/her-team.md
+	// §4.4): the command's document, with the session it started.
+	var doc struct {
+		Ok      bool `json:"ok"`
+		Session struct {
+			SessionID             string `json:"session_id"`
+			Title, Machine, Agent string
+		} `json:"session"`
+	}
+	if at := strings.Index(said, "{"); at < 0 || json.NewDecoder(strings.NewReader(said[at:])).Decode(&doc) != nil || !doc.Ok || doc.Session.SessionID != first ||
+		doc.Session.Title == "" || doc.Session.Machine != "owner-mac" || doc.Session.Agent != "claude" {
+		t.Fatalf("session_start's result is not the document the apps read: %s", said)
+	}
+	// And beside it, the details the apps read first (docs/her-team.md §6.2).
+	var card struct {
+		Session struct {
+			SessionID             string `json:"session_id"`
+			Title, Machine, Agent string
+		} `json:"session"`
+	}
+	if json.Unmarshal(details, &card) != nil || card.Session.SessionID != first || card.Session.Machine != "owner-mac" || card.Session.Agent != "claude" || card.Session.Title != doc.Session.Title {
+		t.Fatalf("session_start's details: %s", details)
 	}
 	// The session is Her's, on the owner's Mac.
 	eventually(t, time.Minute, "the session on the owner's Mac", func() bool {
@@ -206,6 +261,66 @@ func TestHerMesh(t *testing.T) {
 	// Reading needs no approval, and she sees the sessions others started.
 	if asked, said := tellHer(t, env, meshCall("session_list", map[string]any{}), "approve", "mesh "); len(asked) != 0 || !strings.Contains(said, first) {
 		t.Fatalf("session_list: asked %+v, said %s", asked, said)
+	}
+
+	// A session another agent started (the CLI here): she answers its
+	// question, asked first since it is not hers, and stops another of its
+	// sessions (docs/her-team.md §6.1).
+	theirs := startedBy(t, w, "sleep 3s\nask Size|Which size?|S,M\nsay size chosen")
+	eventually(t, time.Minute, "the agent's session waits", func() bool { return cliStatus(t, w, theirs) == "waiting_input" })
+	asked, said = tellHer(t, env, meshCall("session_answer", map[string]any{"session_id": theirs, "choose": []string{"M"}}), "approve", "mesh ")
+	if len(asked) != 1 || !strings.Contains(asked[0].Summary, "Answer the question in session "+theirs) || !strings.HasPrefix(said, "mesh done") {
+		t.Fatalf("her answer to the agent's session: asked %+v, said %s", asked, said)
+	}
+	eventually(t, time.Minute, "the agent's session goes on with her answer", func() bool {
+		r := w.cli(30*time.Second, "session", "get", theirs, "-o", "json")
+		s := firstSession(r.stdout)
+		return s.Status == "idle" && s.Result == "size chosen"
+	})
+	busy := startedBy(t, w, "sleep 120s\nsay never")
+	eventually(t, time.Minute, "the agent's other session runs", func() bool { return cliStatus(t, w, busy) == "running" })
+	if asked, said := tellHer(t, env, meshCall("session_interrupt", map[string]any{"session_id": busy}), "approve", "mesh "); len(asked) != 0 || !strings.HasPrefix(said, "mesh done") {
+		t.Fatalf("her stop of the agent's session: asked %+v, said %s", asked, said)
+	}
+	eventually(t, time.Minute, "the agent's session stopped", func() bool { return cliStatus(t, w, busy) == "idle" })
+
+	// What the team did today: her sessions and the agent's, with her own
+	// marked; the numbers come as details for the app's card too
+	// (docs/her-team.md §6.3).
+	asked, said, details = tellHerDetails(t, env, meshCall("work_summary", map[string]any{}), "approve", "mesh ")
+	var work struct {
+		Work struct {
+			Sessions uint32   `json:"sessions"`
+			Turns    uint32   `json:"turns"`
+			Buckets  []uint32 `json:"buckets"`
+			ByAgent  []struct {
+				Agent    string `json:"agent"`
+				Sessions uint32 `json:"sessions"`
+			} `json:"by_agent"`
+			ByClient []struct {
+				Client   string `json:"client"`
+				You      bool   `json:"you"`
+				Sessions uint32 `json:"sessions"`
+			} `json:"by_client"`
+		} `json:"work"`
+	}
+	if len(asked) != 0 || !strings.HasPrefix(said, "mesh done") || json.Unmarshal(details, &work) != nil {
+		t.Fatalf("work_summary: asked %+v, said %s, details %s", asked, said, details)
+	}
+	mine, theirsCount := uint32(0), uint32(0)
+	for _, c := range work.Work.ByClient {
+		switch {
+		case c.Client == her.ClientId && c.You:
+			mine = c.Sessions
+		case !c.You:
+			theirsCount += c.Sessions
+		}
+	}
+	// Her started three on the owner's Mac (a fourth, elsewhere, did not
+	// start); the agent two.
+	if work.Work.Sessions < 5 || mine < 3 || theirsCount < 2 || work.Work.Turns == 0 || len(work.Work.Buckets) < 23 ||
+		len(work.Work.ByAgent) == 0 || work.Work.ByAgent[0].Agent != "claude" {
+		t.Fatalf("work_summary's numbers: %s", details)
 	}
 
 	// No other agent writes to her.

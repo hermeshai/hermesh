@@ -1,13 +1,14 @@
 import { useState } from "react";
 import { Trans, useTranslation } from "react-i18next";
 import { agoText, dateOf } from "@hermesh/core";
-import { SidebarToggle } from "./MainWindow";
 import { Icon } from "./icons";
 import { Attention } from "./overview/Attention";
 import { LinkMap } from "./overview/Map";
 import { dayText, Usage, useUsage } from "./overview/Usage";
 import { Working } from "./overview/Working";
 import { useNow, useStore } from "./store";
+import { notNow } from "./start";
+import { FinishedRow, useTeam } from "./team";
 import "./overview/overview.css";
 
 // The overview: what needs the owner beyond the session list, the link map of grants, machines and projects, what runs now, and a year of usage.
@@ -22,7 +23,6 @@ export function Overview() {
   return (
     <>
       <div className="ctool drag">
-        <SidebarToggle />
         <div className="ctitle" />
       </div>
       <div className="cscroll">
@@ -33,12 +33,14 @@ export function Overview() {
               <span>{dayText(now)}</span>
             </div>
           </div>
+          <HerNotOn />
           {st.sessionsUnreachable.length > 0 && <Unreachable now={now} />}
           <Attention now={now} />
           <section aria-label={t("map.title")}>
             <LinkMap pick={pick} onPick={setPick} now={now} usage={usage} />
           </section>
           <Working pick={pick} onClear={() => setPick("")} />
+          <RecentlyFinished />
           <Usage now={now} res={usage} />
         </div>
       </div>
@@ -72,6 +74,35 @@ function Unreachable({ now }: { now: Date }) {
         {" · "}
         {more}
       </span>
+    </div>
+  );
+}
+
+/** The three sessions that finished last (docs/her-team.md §14.4). */
+function RecentlyFinished() {
+  const { t } = useTranslation("common");
+  const team = useTeam();
+  if (team.finished.length === 0) return null;
+  return (
+    <section aria-label={t("team.recentlyFinished")}>
+      <div className="sec-h">{t("team.recentlyFinished")}</div>
+      <div className="card wk-list">
+        {team.finished.slice(0, 3).map((s) => <FinishedRow key={s.sessionId} s={s} />)}
+      </div>
+    </section>
+  );
+}
+
+/** After Not Now, while Her runs nowhere (docs/her-team.md §4.6): a line that brings her first run back. */
+function HerNotOn() {
+  const { t } = useTranslation("common");
+  const st = useStore();
+  if (st.status?.machineOnly || st.machines.length === 0 || st.machines.some((m) => m.her?.enabled) || !notNow()) return null;
+  return (
+    <div className="ov-warn her-off" role="status">
+      <Icon name="her" />
+      <span>{t("team.herOff")}</span>
+      <button className="link" onClick={() => st.set({ selection: { kind: "her" } })}>{t("team.turnHerOn")}</button>
     </div>
   );
 }

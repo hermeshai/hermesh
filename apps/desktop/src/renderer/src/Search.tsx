@@ -7,7 +7,7 @@ import { StatusDot } from "./components";
 import { Icon } from "./icons";
 import { addActions, openAdd } from "./overview/actions";
 import { keys } from "./platform";
-import { grantLabel, machineName } from "./Sidebar";
+import { grantLabel, machineName, senderLine } from "./Sidebar";
 import { useStore, type Store } from "./store";
 
 type Action = { label: string; shortcut: string; run: (st: Store) => void };
@@ -134,7 +134,7 @@ export function SearchPalette() {
               <StatusDot s={s} />
               <span className="t">{displayTitle(s)}</span>
               <span className="muted">
-                {grantLabel(st, s)} · {codingAgentShort(s.agent)} · {s.projectId} · {s.status === SessionStatus.ARCHIVED ? t("search.archived") : shortTime(updatedDate(s), now)}
+                {senderLine(st, s)} · {s.status === SessionStatus.ARCHIVED ? t("search.archived") : shortTime(updatedDate(s), now)}
               </span>
             </Row>
           ))}

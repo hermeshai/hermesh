@@ -35,7 +35,7 @@ export function useCommands() {
           project: s.projectId,
         }
       : null,
-    sidebar: layoutOf(st).sidebar !== "hidden",
+    sidebar: layoutOf(st).sidebar !== "rail",
     undo: st.toast?.undo !== undefined,
   };
   const key = JSON.stringify(state);
@@ -63,7 +63,7 @@ function run(st: Store, c: Command) {
     case "toggleInspector":
       return s && setCard(st, layoutOf(st).card === "hidden");
     case "toggleSidebar":
-      return setSidebar(st, layoutOf(st).sidebar === "hidden");
+      return setSidebar(st, layoutOf(st).sidebar === "rail");
     case "newGrant":
     case "addMachine":
     case "addProject":

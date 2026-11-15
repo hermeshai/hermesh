@@ -35,13 +35,13 @@
     },
     "view": {
       "title": "显示",
-      "overview": "概览",
+      "overview": "工作",
       "nextAttention": "下一个需要处理的会话",
       "nextActive": "下一个进行中的会话",
       "showInspector": "显示信息面板",
       "hideInspector": "隐藏信息面板",
-      "showSidebar": "显示边栏",
-      "hideSidebar": "隐藏边栏",
+      "showSidebar": "展开边栏",
+      "hideSidebar": "收成窄栏",
       "fullScreen": "进入全屏幕"
     },
     "session": {

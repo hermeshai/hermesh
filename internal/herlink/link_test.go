@@ -11,6 +11,7 @@ import (
 
 	inboxv1 "github.com/hermeshai/hermesh/gen/go/hermesh/inbox/v1"
 	sessionv1 "github.com/hermeshai/hermesh/gen/go/hermesh/session/v1"
+	"github.com/hermeshai/hermesh/internal/cli"
 	"github.com/hermeshai/hermesh/internal/machine"
 )
 
@@ -47,9 +48,17 @@ func TestToolsAreTheCLIs(t *testing.T) {
 		}
 	}
 	want := []string{"project_list", "coding_agent_list", "session_start", "session_send", "session_answer", "session_get", "session_list",
-		"session_events", "session_diff", "session_interrupt", "session_archive", "session_unarchive"}
+		"session_events", "session_diff", "session_interrupt", "session_archive", "session_unarchive", "work_summary"}
 	if !slices.Equal(names, want) {
 		t.Errorf("tools: %v", names)
+	}
+	// Her's own: not among the MCP gateway's agents' tools.
+	if slices.ContainsFunc(cli.Tools(), func(t cli.Tool) bool { return t.Name == "work" }) {
+		t.Error("the gateway's agents have work")
+	}
+	work := g.Tools[len(g.Tools)-1].Parameters["properties"].(map[string]any)
+	if len(work) != 3 || work["days"] == nil || work["machine"] == nil || work["time_zone"] == nil {
+		t.Errorf("work_summary's parameters: %v", work)
 	}
 	// Neither name of her kernel's own agent tools.
 	for _, n := range names {
@@ -169,5 +178,25 @@ func TestNewsText(t *testing.T) {
 		if !strings.Contains(text, want) {
 			t.Errorf("failure lacks %q:\n%s", want, text)
 		}
+	}
+}
+
+// What the apps read of a result beside its text (docs/her-team.md §6.2):
+// the session a start made; nothing for other tools or a document without one.
+func TestDetails(t *testing.T) {
+	doc := []byte(`{"ok":true,"exit_code":0,"error":null,"session":{"session_id":"s_ab_01","title":"Fix it","project":"mac/app","machine":"mac","machine_id":"m_ab","agent":"claude","status":"queued"}}`)
+	b, _ := json.Marshal(details("session_start", doc))
+	if string(b) != `{"session":{"session_id":"s_ab_01","title":"Fix it","agent":"claude","machine":"mac","machine_id":"m_ab","project":"mac/app"}}` {
+		t.Fatalf("session_start: %s", b)
+	}
+	if d := details("session_get", doc); d != nil {
+		t.Fatalf("session_get: %v", d)
+	}
+	if d := details("session_start", []byte(`{"ok":true}`)); d != nil {
+		t.Fatalf("no session: %v", d)
+	}
+	b, _ = json.Marshal(details("work_summary", []byte(`{"ok":true,"work":{"sessions":3,"by_agent":[]},"offline":[]}`)))
+	if string(b) != `{"work":{"sessions":3,"by_agent":[]}}` {
+		t.Fatalf("work_summary: %s", b)
 	}
 }

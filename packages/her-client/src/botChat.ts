@@ -6,13 +6,42 @@ import { baseName } from "./text.ts";
 // A bot's conversation as Bot mode shows it (docs/kernel/bot-design.md §3.4):
 // the owner's messages, each message the bot sent with send_to_user (words,
 // files, a question, §3.12, or a secure card), what its sub-agents told the
-// owner, which reads the same (agent-messaging-design §17), and failures, in
-// the order they were sent.
+// owner, which reads the same (agent-messaging-design §17), a card for each
+// coding session it started and for the team's work it counted
+// (docs/her-team.md §4.4, §6.3, §14.3), and failures, in the order they were
+// sent.
 // What the bot did and wrote for itself does not show. An approval is no part of it:
 // it pops up above the composer, as on a session's page.
 
 export const SEND_TO_USER = "send_to_user";
 export const MANAGE_ROUTINE = "manage_routine";
+/** The mesh tools whose results the chat shows as cards (docs/her-mesh.md §4.2). */
+export const SESSION_START = "session_start";
+export const WORK_SUMMARY = "work_summary";
+
+/** A coding session the bot started, as its session_start call's result names it: enough to find the session, and to name it when the app holds it no more. */
+export interface StartedSession {
+  session_id: string;
+  title: string;
+  agent: string;
+  /** The machine's name. */
+  machine: string;
+}
+
+/** The team's work over some days, as a work_summary call's result details carry it. */
+export interface TeamWork {
+  days: number;
+  sessions: number;
+  done: number;
+  turns: number;
+  failed_turns: number;
+  tokens: number;
+  /** Sessions at work in each hour (one day) or day. */
+  buckets: number[];
+  /** The busiest first: coding agents, and who sent the work (a client id, or "owner"). */
+  agents: { id: string; sessions: number; turns: number }[];
+  senders: { id: string; sessions: number; turns: number }[];
+}
 
 /** What the bot did to a routine, which the chat shows as a line (bot-mode-design §6.21). */
 export interface RoutineChange {
@@ -43,6 +72,10 @@ export type BotItem =
   | { kind: "question"; key: string; text: string; options: string[]; open: boolean; ts: number; source?: RoutineSource }
   /** A secure card her made for the owner to answer (docs/her-secure-cards.md), with the bot's words if it had any; `card` is the result's, validated where it is shown. */
   | { kind: "card"; key: string; card: unknown; text?: string; ts: number; source?: RoutineSource }
+  /** A coding session the bot started, where it started it. */
+  | { kind: "session"; key: string; started: StartedSession; ts: number }
+  /** The team's work the bot counted for the owner. */
+  | { kind: "work"; key: string; work: TeamWork; ts: number }
   /** What the bot did to a routine, as a line in the chat. */
   | ({ kind: "routine"; key: string; ts: number } & RoutineChange)
   /** A change the bot made to a deck (deck_edit) or a Word document (docx_edit, docx_review), shown where the owner looks so it can be taken back; `details` is the tool's, validated where it is shown. */
@@ -68,7 +101,11 @@ function sendTimes(v: SessionView): Map<string, number> {
   for (const e of v.entries) {
     if (e.type !== "message" || e.message.role !== "assistant") continue;
     const done = e.message.ts + (e.message.duration_ms ?? 0);
-    for (const c of e.message.content) if (c.type === "tool_call" && (c.name === SEND_TO_USER || c.name === MANAGE_ROUTINE)) at.set(c.id, done);
+    for (const c of e.message.content) {
+      if (c.type !== "tool_call") continue;
+      const target = callTarget(c.name, c.arguments).name;
+      if (c.name === SEND_TO_USER || c.name === MANAGE_ROUTINE || target === SESSION_START || target === WORK_SUMMARY) at.set(c.id, done);
+    }
   }
   return at;
 }
@@ -133,6 +170,45 @@ function deckEdit(item: WorkItem): Record<string, unknown> | null {
   return typeof d.deck_id === "string" && typeof d.edit === "number" ? d : null;
 }
 
+const str = (v: unknown) => (typeof v === "string" ? v : "");
+const num = (v: unknown) => (typeof v === "number" ? v : 0);
+const record = (v: unknown): Record<string, unknown> | null => (v && typeof v === "object" && !Array.isArray(v) ? (v as Record<string, unknown>) : null);
+
+/**
+ * The session a session_start call started, itself or through call_tool: from its result's details, or else from
+ * its text, the command's document (a Her Server on an older hermeshd sends no details). A call that failed, was
+ * refused or never ran started none.
+ */
+function startedSession(item: WorkItem): StartedSession | null {
+  if (item.kind !== "tool" || item.tool.state !== "done" || callTarget(item.tool.name, item.tool.args).name !== SESSION_START) return null;
+  let s = record(detailsOf(item.tool.result).session);
+  if (!s && !("session" in detailsOf(item.tool.result))) {
+    const text = (item.tool.result?.content ?? []).flatMap((c) => (c.type === "text" ? [c.text] : [])).join("\n");
+    try {
+      const doc = record(JSON.parse(text));
+      if (doc?.ok === true) s = record(doc.session);
+    } catch {
+      // Not the command's document: no card.
+    }
+  }
+  const id = str(s?.session_id);
+  return s && id !== "" ? { session_id: id, title: str(s.title), agent: str(s.agent), machine: str(s.machine) } : null;
+}
+
+/** The counts of a work_summary call that succeeded, itself or through call_tool. */
+function teamWork(item: WorkItem): TeamWork | null {
+  if (item.kind !== "tool" || item.tool.state !== "done" || callTarget(item.tool.name, item.tool.args).name !== WORK_SUMMARY) return null;
+  const w = record(detailsOf(item.tool.result).work);
+  if (!w || typeof w.sessions !== "number") return null;
+  const groups = (list: unknown, id: string) =>
+    (Array.isArray(list) ? list : []).flatMap((g) => (typeof record(g)?.[id] === "string" ? [{ id: str(record(g)![id]), sessions: num(record(g)!.sessions), turns: num(record(g)!.turns) }] : []));
+  return {
+    days: typeof w.days === "number" ? w.days : 1, sessions: w.sessions, done: num(w.done), turns: num(w.turns), failed_turns: num(w.failed_turns),
+    tokens: num(w.input_tokens) + num(w.output_tokens), buckets: (Array.isArray(w.buckets) ? w.buckets : []).map(num),
+    agents: groups(w.by_agent, "agent"), senders: groups(w.by_client, "client"),
+  };
+}
+
 /** What a manage_routine call changed; reading a routine changes nothing, and has no details. */
 function routineChange(item: WorkItem): RoutineChange | null {
   if (item.kind !== "tool" || item.tool.name !== MANAGE_ROUTINE || item.tool.state !== "done") return null;
@@ -169,6 +245,10 @@ export function botChat(v: SessionView): BotItem[] {
             if (details) out.push({ kind: "deck_edit", key: `deck_edit:${item.key}`, details, ts: times.get(item.key) ?? since ?? Date.now() });
             const change = routineChange(item);
             if (change) out.push({ kind: "routine", key: `routine:${item.key}`, ts: times.get(item.key) ?? since ?? Date.now(), ...change });
+            const started = startedSession(item);
+            if (started) out.push({ kind: "session", key: item.key, started, ts: times.get(item.key) ?? since ?? Date.now() });
+            const work = teamWork(item);
+            if (work) out.push({ kind: "work", key: item.key, work, ts: times.get(item.key) ?? since ?? Date.now() });
             continue;
           }
           const ts = times.get(item.key) ?? since ?? Date.now();

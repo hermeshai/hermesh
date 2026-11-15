@@ -137,9 +137,12 @@ is only in the code that builds grants for the owner's app
 change in any verifier. Her's grant is built by its own function, not from a
 `GrantSpec`, so the cap for other agents stays.
 
-**Control of sessions she did not start.** Today a grant with `ALL` reads
+**Control of sessions she did not start.** A grant with `ALL` reads
 every session and may write to it, but interrupts, archives and answers
-only its own. Her follows the same rule in this step (§15, question 4).
+only its own. Her's grant is the exception since 2026-11-14: a grant with
+`her_machine_id` answers, interrupts, archives and unarchives every session
+it may read ([her-team.md](her-team.md) §6.1). Rename and delete stay the
+owner's. Machines on an older version refuse her as before.
 
 ### 3.3 Turning Her on
 
@@ -257,7 +260,7 @@ her run by hermeshd, the host is hermeshd.
 |---|---|---|
 | `mesh/host` | hermeshd → her | Registers this connection as the host and gives the group: its catalog line, its guidelines and its tools. A later host replaces it; it leaves with its connection |
 | `mesh/describe` | her → hermeshd | Before the approval gate, for a tool that writes: what the call would do, in words for the owner, and what "don't ask again" would cover (§5) |
-| `mesh/call` | her → hermeshd | Runs one tool. Params: the assistant's id, the call's id, the tool's name and arguments. Result: the command's JSON document |
+| `mesh/call` | her → hermeshd | Runs one tool. Params: the assistant's id, the call's id, the tool's name and arguments. Result: the command's JSON document, and details for the apps (§4.5) |
 | `mesh/news` | hermeshd → her | Puts news into an assistant's conversation and wakes her (§6). It answers once the news is in the conversation |
 
 ```json
@@ -284,7 +287,8 @@ requests from her.
 ### 4.2 The tools
 
 Twelve of the seventeen CLI commands that agents get today
-(`cli.Tools()`):
+(`cli.Tools()`), and `work`, which only Her gets (`cli.HerTools()`,
+[her-team.md](her-team.md) §6.3):
 
 | Tool | CLI command | Parameters the model sees | Writes |
 |---|---|---|---|
@@ -300,6 +304,7 @@ Twelve of the seventeen CLI commands that agents get today
 | `session_interrupt` | `session interrupt` | `session_id`\* | stop |
 | `session_archive` | `session archive` | `session_id`\* | tidy |
 | `session_unarchive` | `session unarchive` | `session_id`\* | tidy |
+| `work_summary` | `work` | `days`, `machine`, `time_zone` | |
 
 \* required.
 
@@ -370,15 +375,19 @@ keeps at most 250 characters of a line; this is 230.
    session only when the user asks.
 10. A computer that is off is not an error: tell the user which one, and
     that the work can start when it is back.
-11. Every result is JSON: read `ok` first. On a failure, `error.kind` and
+11. A session the user or another agent started is theirs. Answer, write
+    to, stop or archive it only when the user asks for that session, and
+    say whose it is.
+12. Every result is JSON: read `ok` first. On a failure, `error.kind` and
     `error.hint` say what to do next. A hint that names a command means the
     tool of that name (`hermesh session get` is session_get; `hermesh message
     send` is session_send).
-12. For work that takes several sessions, sessions on several computers, or
+13. For work that takes several sessions, sessions on several computers, or
     a review of what a session did, first read the skill at `<path>`.
 
-`<path>` is the skill's file on that Her Server (§8). Line 12 comes with
-the skill, in step 2; step 1 ships the first eleven.
+`<path>` is the skill's file on that Her Server (§8). Line 13 comes with
+the skill, in step 2; step 1 ships the first eleven, and line 11 came with
+[her-team.md](her-team.md) §6.1.
 
 ### 4.4 The tools' descriptions
 
@@ -391,14 +400,15 @@ assistant to poll, and Her must not.
 | `coding_agent_list` | List the coding agents on the user's computers, one entry per agent per computer: the models it offers, the reasoning efforts each model takes, and what a session runs with when you name none. You need this only when the user names a model or an effort. |
 | `session_start` | Start a coding agent on one job in one project. Returns at once with the session; keep `session.session_id`. Its news comes to you by itself. In a worktree project the agent works on its own branch, checked out from `base` (default: the project's): to work from another branch, tag or commit, pass it as `base`, and never ask the agent to make a worktree or switch branches. In an in_place project it edits the directory itself. |
 | `session_send` | Tell a session more: a follow-up, a correction, a retry after a failure. If the turn you asked for is still running, the message joins it, and answers its question if it waits on one. Otherwise it starts a new turn. Returns at once; that turn's news comes by itself. While the session's computer is off, the message waits for it. |
-| `session_answer` | Answer the question a session of yours waits on. `choose` picks options by label or number, `text` answers in words, `item` answers one part of a question with several ("<header or id>=<option or text>"). `decline` tells the agent that nobody will answer, and it goes on alone. |
+| `session_answer` | Answer the question a session waits on. `choose` picks options by label or number, `text` answers in words, `item` answers one part of a question with several ("<header or id>=<option or text>"). `decline` tells the agent that nobody will answer, and it goes on alone. |
 | `session_get` | One session as it is now: its status, what it is doing, its pending question, and the full result of its last turn. Use it when news was cut short, when the user asks how a session is doing, or before you say one is still working. Not for waiting. |
-| `session_list` | The sessions on the user's computers: yours, and those the user or their other agents started (`created_by` says whose). Filter with `machine`, `status` or `since`. You can stop, archive and answer only your own. |
+| `session_list` | The sessions on the user's computers: yours, and those the user or their other agents started (`created_by` says whose). Filter with `machine`, `status` or `since`. You can answer, stop and archive any of them; one the user or another agent started is theirs. |
 | `session_events` | What happened in a session, oldest first, a page at a time: messages, tool calls, turns, questions. Without a cursor, the latest `limit` events; `after` and `before` move through them. It is long: read it only when the result and the diff leave the question open. |
 | `session_diff` | What a session changed, in a worktree project: everything, or one `turn`. `stat` gives the summary only: start there. An in_place project has no diff: ask the session with session_send to report its changes. |
-| `session_interrupt` | Stop the turn in progress in a session of yours. The session and its changes stay, and session_send goes on in the same conversation. |
-| `session_archive` | Put away a session of yours: it becomes read-only, its worktree is freed, and its branch keeps the work. |
-| `session_unarchive` | Bring an archived session of yours back so that it takes messages again. |
+| `session_interrupt` | Stop the turn in progress in a session. The session and its changes stay, and session_send goes on in the same conversation. |
+| `session_archive` | Put away a session: it becomes read-only, its worktree is freed, and its branch keeps the work. |
+| `session_unarchive` | Bring an archived session back so that it takes messages again. |
+| `work_summary` | What the coding agents on the user's computers did over the last days: sessions at work, how many are done, turns, failed turns, tokens and time, by coding agent and by who sent the work (the user, you, or another agent). Use it when the user asks what the team or their agents did. The app shows the numbers as a card above your reply: say in words what stands out, not every number. |
 
 Parameter descriptions are the MCP gateway's
 ([descriptions.go](../pkg/mcpgw/descriptions.go)) where they fit; `wait` and
@@ -414,6 +424,11 @@ Its top-level `inbox` field, which tells an agent that messages wait, stays
 absent: hermeshd takes her messages as they arrive. The kernel cuts a long
 result as it cuts every tool's and keeps the whole in the session's
 `tool-output` directory.
+
+Beside it, `mesh/call` may answer `details`, which the kernel puts on the
+tool result for the apps and the model never reads
+([her-team.md](her-team.md) §6.2): `{"session": …}` for `session_start`,
+`{"work": …}` for `work_summary`.
 
 ### 4.6 How hermeshd runs a call
 
@@ -449,7 +464,7 @@ Claude Code to run the same command.
 
 | Tools | Manual (default) | Accept edits | Full access |
 |---|---|---|---|
-| `project_list`, `coding_agent_list`, `session_get`, `session_list`, `session_events`, `session_diff` | Run | Run | Run |
+| `project_list`, `coding_agent_list`, `session_get`, `session_list`, `session_events`, `session_diff`, `work_summary` | Run | Run | Run |
 | `session_start`, `session_send`, `session_answer` | Ask, unless the project is remembered | Ask, unless the project is remembered | Run |
 | `session_interrupt` | Run | Run | Run |
 | `session_archive`, `session_unarchive` | Run | Run | Run |
@@ -894,9 +909,9 @@ Mac): the same, and Her in the agents list.
    what was to come next. If the acceptance runs show this, `session_start`
    gains a note ("when this ends, do …") that hermeshd keeps and adds to
    the news.
-4. **Sessions the owner started.** "Stop the Codex session I started from
-   the app" doesn't work: an agent controls only its own sessions. Her's
-   grant could be the exception.
+4. **Sessions the owner started.** Settled 2026-11-14: Her's grant is the
+   exception, and she answers, stops and archives every session she reads
+   ([her-team.md](her-team.md) §6.1).
 5. **The label when the assistant is renamed.** "Her on MacBook" is fixed
    in the grant; a rename would need a new version of the grant, which is a
    root signature.

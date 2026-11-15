@@ -53,15 +53,43 @@
 .her .her-note{position:relative;z-index:1;margin-top:36px}
 .her .her-note+.cscroll>.dbody{padding-top:24px}
 .her-id-n{flex:none;font-size:14px;font-weight:500;white-space:nowrap}
-/* Her's avatar and name open her settings: the hand says they can be clicked, as the owner asked. */
+/* Her's avatar opens her settings, the capsule the team panel: the hand says they can be clicked, as the owner asked. */
 .her-id-av{display:flex;padding:0;border:0;border-radius:50%;background:none;cursor:pointer}
-.her-id-n.no-drag{cursor:pointer}
+button.her-cap{cursor:pointer}
 .her-id-sep{flex:none;margin:0 -2px;color:var(--l3)}
-.her-env{display:flex;align-items:center;gap:4px;min-width:0;height:26px;padding:0 6px;border:0;border-radius:var(--r-md);background:none;font:inherit;font-size:14px;color:var(--l2)}
-.her-env:hover,.her-env.on{background:var(--fill);color:var(--l1)}
-.her-env-n{min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.her-env .ic{flex:none}
 .bhead-gap{flex:1}
+/* The capsule is the team's name tag (docs/her-team.md §14.3): a button, its width following what it says. */
+button.her-cap{border:0;background:none;font:inherit;color:inherit;transition:max-width .25s var(--ease-out)}
+button.her-cap:hover::before,button.her-cap.on::before{background:var(--lg-bg)}
+@media (prefers-reduced-motion:reduce){button.her-cap{transition:none}}
+.tag-w{display:inline-flex;align-items:center;gap:6px;min-width:0;font-size:13px;white-space:nowrap}
+.tag-w .her-id-sep{margin:0 2px 0 -2px}
+.tag-wait{color:var(--orange)}
+.tag-logos{display:inline-flex;gap:2px}
+/* Her's cards in her conversation: a coding session she started, the team's work she counted. */
+.her-card{display:flex;gap:10px;width:100%;max-width:460px;padding:12px 14px;border:0;border-radius:16px;background:var(--fill);box-shadow:inset 0 0 0 .5px var(--sep);text-align:left;font:inherit;color:var(--l1)}
+.her-card:hover:not(:disabled){background:var(--fill2)}
+.her-card:disabled{opacity:1}
+.hc-main{flex:1;min-width:0;display:flex;flex-direction:column;gap:1px}
+.hc-main>b{font-size:14px;font-weight:var(--font-weight-semibold);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.hc-main>span{font-size:12.5px;color:var(--l2)}
+.hc-state{display:flex;gap:8px;margin-top:2px;font-size:12px;font-variant-numeric:tabular-nums}
+.hc-state code{font-family:var(--mono);font-size:11.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
+.hc-run{display:flex;gap:8px;min-width:0}
+.hc-wait{color:var(--orange)}
+.hc-fail{color:var(--red)}
+.hc-mark{flex:none;padding-top:4px}
+.hc-work{flex-direction:column;gap:6px}
+.hcw-top{display:flex;align-items:baseline;gap:6px}
+.hcw-top>b{font-size:30px;line-height:1.1;font-weight:var(--font-weight-bold);font-variant-numeric:tabular-nums}
+.hcw-top>span{flex:1;color:var(--l2)}
+.hcw-top>.ic{color:var(--l2);align-self:center}
+.hcw-sum{font-size:12.5px;color:var(--l2);font-variant-numeric:tabular-nums}
+.hcw-bars{display:flex;align-items:flex-end;gap:2px;height:30px;margin-top:4px}
+.hcw-bars>i{flex:1;border-radius:2px;background:var(--fill3)}
+.hcw-bars>i.on{background:var(--l3)}
+.hcw-groups{display:flex;flex-wrap:wrap;gap:4px 14px;font-size:12px;color:var(--l2)}
+.hcw-groups>span{display:inline-flex;align-items:center;gap:5px}
 html.blurred .her-id-n{color:var(--l2)}
 
 /* The one place beside the conversation: an assistant's settings or its routines. */
@@ -449,6 +477,7 @@ span.shimmer{display:inline-block;max-width:100%;vertical-align:bottom}
 .her-first{flex:1;min-height:0;display:flex;flex-direction:column}
 .her-first-in{flex:1;min-height:0;overflow-y:auto;display:flex;flex-direction:column;align-items:center;text-align:center;gap:10px;padding:8vh 34px 34px}
 .her-first-in h1{margin:12px 0 0;font-size:22px;font-weight:700;letter-spacing:-.01em}
+.her-first-later{margin-top:6px;font-size:13px;color:var(--l2)}
 .her-first-in .lede{margin:0 0 12px;max-width:460px;color:var(--l2);line-height:1.6;text-wrap:balance}
 .her-first-wait{display:flex;align-items:center;gap:8px;color:var(--l2)}
 .her-setup{width:100%;max-width:520px;text-align:left}

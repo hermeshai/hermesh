@@ -2,7 +2,7 @@ import { expect, test, type ElectronApplication, type Page } from "@playwright/t
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { launch, snap } from "./app";
+import { launch, snap, sessionList } from "./app";
 import { installer, restartInstaller, type Hook } from "./install-app";
 
 test.skip(process.platform !== "darwin", "macOS updates");
@@ -42,7 +42,7 @@ async function holdWorkArea(app: ElectronApplication, route: string) {
 test("background discovery stays quiet; details, snooze and automatic download share one window", async () => {
   const app = await installer(true, "success", { autoDownload: false });
   const main = await app.firstWindow();
-  await expect(main.getByRole("list", { name: "会话" })).toContainText("写 hello");
+  await expect((await sessionList(main))).toContainText("写 hello");
   expect(await requests(app)).toBe(0);
   await app.evaluate(() => { (globalThis as unknown as Hook).installTest.latest = "1.2.0"; });
   await advance(app, 30_000);
@@ -100,7 +100,7 @@ test("background discovery stays quiet; details, snooze and automatic download s
 test("approval protection covers the window and fast menu command; returning never approves", async () => {
   const app = await installer(true);
   const main = await app.firstWindow();
-  await expect(main.getByRole("list", { name: "会话" })).toBeVisible();
+  await expect((await sessionList(main))).toBeVisible();
   await app.evaluate(() => { (globalThis as unknown as Hook).installTest.latest = "1.2.0"; });
   await advance(app, 30_000);
   await app.evaluate(({ autoUpdater }) => autoUpdater.emit("update-downloaded", {}, "", "1.2.0"));
@@ -169,7 +169,7 @@ test("checks debounce, retry with backoff, recover after wake, and preserve fres
   // Relaunch retains last success and snooze settings instead of checking immediately.
   app = await restartInstaller(app);
   main = await app.firstWindow();
-  await expect(main.getByRole("list", { name: "会话" })).toBeVisible();
+  await expect((await sessionList(main))).toBeVisible();
   await advance(app, 30_000);
   expect(await requests(app)).toBe(0);
   expect((await main.evaluate(() => window.hermesh!.getUpdate())).checkedAt).toBe(success);
@@ -243,13 +243,14 @@ test("a restart restores the selected session, layout and unfinished answer", as
   const profile = fs.mkdtempSync(path.join(os.tmpdir(), "hmview-"));
   let instance = await launch(undefined, { profile });
   try {
-    const list = instance.page.getByRole("list", { name: "会话" });
+    const list = (await sessionList(instance.page));
     await list.getByRole("listitem").filter({ hasText: "选颜色" }).click();
     await instance.page.getByRole("radio", { name: /蓝/ }).click();
     await instance.page.getByRole("textbox", { name: "你的回答" }).fill("Keep this unfinished answer");
     await instance.page.getByRole("button", { name: "信息面板" }).click();
     await instance.app.close();
-    instance = await launch(undefined, { profile });
+    // As it was left, not the start page (docs/her-team.md §14.8).
+    instance = await launch(undefined, { profile, start: true });
     await expect(instance.page.getByRole("heading", { name: "选颜色" })).toBeVisible();
     await expect(instance.page.getByRole("textbox", { name: "你的回答" })).toHaveValue("Keep this unfinished answer");
     await expect(instance.page.getByRole("radio", { name: /蓝/ })).toHaveAttribute("aria-checked", "true");
