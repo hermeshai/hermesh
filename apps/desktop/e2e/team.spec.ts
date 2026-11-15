@@ -31,6 +31,8 @@ test("the window opens on Her's first run while she runs nowhere; Not Now makes 
 
 test("the sidebar is navigation only: its pages and the team, All Sessions first, whose rows open the list's column beside the session", async () => {
   const { app, page } = await launch();
+  // This test checks all three columns; native windows are clamped to CI's display.
+  await page.setViewportSize({ width: 1240, height: 800 });
   await expect(page.locator(".side-nav .nav-i")).toHaveText([/^Her/, /^工作/, /^搜索/]);
   // No session in the sidebar: the list is a column of its own, opened from it.
   await expect(page.getByRole("complementary", { name: "边栏" })).not.toContainText("写 hello");

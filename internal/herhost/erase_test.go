@@ -59,6 +59,7 @@ func TestErase(t *testing.T) {
 
 	userHome := t.TempDir()
 	t.Setenv("HOME", userHome)
+	t.Setenv("USERPROFILE", userHome) // os.UserHomeDir on Windows
 	env = []string{"HER_HOME=" + userHome}
 	if err := h.Erase(); err == nil {
 		t.Fatal("erased the user's home")
