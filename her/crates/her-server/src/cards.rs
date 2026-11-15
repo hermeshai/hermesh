@@ -251,7 +251,7 @@ impl Server {
     /// Her's conversation takes up the connector as the configuration has it now, and connects
     /// it, so that the turn the card's end wakes knows its tools: one it does not know yet would
     /// wait for the owner's approval.
-    async fn add_to_conversation(&self, session: &str, connector: &str) {
+    pub(crate) async fn add_to_conversation(&self, session: &str, connector: &str) {
         let Some(hub) = self.hub(session) else {
             return;
         };

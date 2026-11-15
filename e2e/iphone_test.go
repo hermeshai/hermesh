@@ -115,7 +115,7 @@ func TestIPhone(t *testing.T) {
 	// xcodebuild hands TEST_RUNNER_-prefixed variables to the UI tests.
 	runner := []string{"TEST_RUNNER_HERMESH_E2E_CONTROL=" + control, "TEST_RUNNER_HERMESH_E2E_FOLDERS=" + folders}
 	if her != nil {
-		runner = append(runner, "TEST_RUNNER_HERMESH_E2E_HER=1")
+		runner = append(runner, "TEST_RUNNER_HERMESH_E2E_HER=1", "TEST_RUNNER_HERMESH_E2E_MCP_URL="+startMCPTools(t))
 	}
 	r := run(t, runner, 30*time.Minute, "xcodebuild", args...)
 	if r.code != 0 {
@@ -177,6 +177,30 @@ func iphoneHerEnv(t *testing.T) []string {
 		}
 	}
 	return env
+}
+
+// startMCPTools is an MCP server open to anyone, with her-mock's test tools
+// (echo, env…), for testHerConnectors to add as a connector by its address.
+func startMCPTools(t *testing.T) string {
+	t.Helper()
+	bin := os.Getenv("HERMESH_HER_MOCK")
+	if bin == "" {
+		her := os.Getenv("HERMESH_HER_BIN")
+		if her == "" {
+			her, _ = filepath.Abs(filepath.Join("her", "target", "debug", "her"))
+		}
+		bin = filepath.Join(filepath.Dir(her), "her-mock")
+	}
+	p := start(t, "her-mock tools", nil, bin, "127.0.0.1:0", "--tools")
+	var url string
+	eventually(t, 20*time.Second, "the MCP test tools up", func() bool {
+		m := regexp.MustCompile(`mcp_url = "([^"]+)"`).FindStringSubmatch(p.output())
+		if m != nil {
+			url = m[1]
+		}
+		return m != nil
+	})
+	return url
 }
 
 // checkIPhoneStrings: every string the build found in the app and its
