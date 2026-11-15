@@ -215,6 +215,11 @@ message HerStatus {
   // again she carries on, or it can be erased (SetHer erase,
   // docs/her-server.md §5.6).
   bool data = 11;
+  // The methods of her's protocol the owner's devices may call here: those
+  // this her answers and this hermeshd lets through (docs/version-skew.md
+  // §6.1). Empty means unknown (her not running, or one too old to list
+  // them), never "none".
+  repeated string methods = 12;
 }
 
 // HerLatest is the newest thing an assistant sent the owner.

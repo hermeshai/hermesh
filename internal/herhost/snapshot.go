@@ -43,6 +43,7 @@ type routine struct {
 
 type snapshot struct {
 	version    string
+	methods    []string // what the owner's devices may call: her's answered methods they are allowed
 	modelReady bool
 	bots       map[string]bot
 	latest     *machinev1.HerLatest
@@ -51,8 +52,8 @@ type snapshot struct {
 // latestText is how much of a message HerLatest carries, in characters.
 const latestText = 200
 
-func newSnapshot(version string, bots []bot) *snapshot {
-	s := &snapshot{version: version, bots: map[string]bot{}}
+func newSnapshot(version string, methods []string, bots []bot) *snapshot {
+	s := &snapshot{version: version, methods: openTo(methods), bots: map[string]bot{}}
 	for _, b := range bots {
 		s.bots[b.ID] = b
 	}

@@ -1152,3 +1152,36 @@ async fn a_model_whose_connection_is_gone_is_reported_as_unavailable() {
     drop(client);
     assert_eq!(common::exit_code(&mut child).await, 0);
 }
+
+/// `initialize` lists the methods the server answers (docs/version-skew.md §6.1), exactly: asked
+/// with params of the wrong shape, none listed is an unknown method, and every other request of
+/// the schema is.
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn initialize_lists_what_it_answers() {
+    let env = TestEnv::new("manual", "").await;
+    let (mut child, client, _incoming) = env.spawn_rpc(&["serve", "--stdio"]);
+    let init = client
+        .request("initialize", json!({"protocol_version": 2, "client_info": {"name": "e2e"}}))
+        .await
+        .unwrap();
+    let methods: Vec<String> = serde_json::from_value(init["methods"].clone()).unwrap();
+    assert!(methods.iter().any(|m| m == "bots/memory"), "{methods:?}");
+    let mut unknown = Vec::new();
+    for method in methods.iter().filter(|m| !matches!(m.as_str(), "initialize" | "server/shutdown")) {
+        let asked = tokio::time::timeout(Duration::from_secs(5), client.request(method, json!("not params"))).await;
+        if let Ok(Err(err)) = asked
+            && err.kind() == Some("method_not_found")
+        {
+            unknown.push(method.clone());
+        }
+    }
+    assert!(unknown.is_empty(), "listed but unknown: {unknown:?}");
+    let schema = her_protocol::schema::document();
+    for method in schema["x-methods"].as_object().unwrap().keys().filter(|m| !methods.contains(m)) {
+        let err = client.request(method, json!("not params")).await.unwrap_err();
+        assert_eq!(err.kind(), Some("method_not_found"), "{method} is answered but not listed");
+    }
+    let err = client.request("bots/everything", json!({})).await.unwrap_err();
+    assert_eq!(err.kind(), Some("method_not_found"));
+    child.kill().await.ok();
+}

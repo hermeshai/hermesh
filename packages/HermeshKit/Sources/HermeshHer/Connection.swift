@@ -24,10 +24,17 @@ public struct HerRPCError: LocalizedError, Equatable, Sendable {
 
     public init(code: Int, message: String, data: JSON = .null) {
         self.code = code
-        self.message = message
         self.data = data
         kind = data["kind"].string ?? "internal_error"
+        // her answers a method it doesn't have only when it is older than this app (docs/version-skew.md §6.3).
+        self.message = kind == "method_not_found" ? Self.needsUpdateText : message
     }
+
+    /// her on that machine is older than this app and lacks what was asked.
+    public var needsUpdate: Bool { kind == "method_not_found" }
+
+    /// What a her older than this app says, for what it doesn't have.
+    public static let needsUpdateText = String(localized: "Hermesh on that computer is older and doesn’t have this yet. Update Hermesh there, then try again.", bundle: .module)
 
     public var errorDescription: String? { message }
 

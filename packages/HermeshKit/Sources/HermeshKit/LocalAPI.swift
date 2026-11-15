@@ -13,6 +13,16 @@ public struct APIError: LocalizedError {
         self.code = code
         self.message = message
     }
+
+    /// The text for something a machine's Hermesh doesn't have yet: its own version is older than
+    /// this app's (docs/version-skew.md §6.3).
+    public static let needsUpdateText = String(localized: "Hermesh on that computer is older and doesn’t have this yet. Update Hermesh there, then try again.", bundle: .module)
+
+    /// An error as the core sent it. `unimplemented` only ever means a machine older than this app,
+    /// so it says that, in place of the transport's words.
+    static func received(code: String, message: String) -> APIError {
+        APIError(code: code, message: code == "unimplemented" ? needsUpdateText : message)
+    }
 }
 
 /// Where LocalService is served: hermeshd's Unix socket (the Mac), or the
@@ -93,7 +103,7 @@ public final class LocalAPI: @unchecked Sendable {
                             if flags & 0x02 != 0 {
                                 if let obj = try? JSONSerialization.jsonObject(with: payload) as? [String: Any],
                                    let err = obj["error"] as? [String: Any] {
-                                    throw APIError(code: err["code"] as? String ?? "unknown", message: err["message"] as? String ?? "")
+                                    throw APIError.received(code: err["code"] as? String ?? "unknown", message: err["message"] as? String ?? "")
                                 }
                                 continuation.finish()
                                 return
@@ -134,7 +144,7 @@ public final class LocalAPI: @unchecked Sendable {
 
     static func parseError(_ data: Data, status: Int, headers: [String: String]) -> APIError {
         if let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
-            return APIError(code: obj["code"] as? String ?? "http_\(status)", message: obj["message"] as? String ?? "")
+            return APIError.received(code: obj["code"] as? String ?? "http_\(status)", message: obj["message"] as? String ?? "")
         }
         return APIError(code: "http_\(status)", message: String(data: data, encoding: .utf8) ?? "")
     }
