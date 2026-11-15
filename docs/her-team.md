@@ -963,13 +963,15 @@ shows each task of theirs as a post:
 - **One post a piece of work**, in three parts: Needs you (it waits for the
   owner, or failed), Now (at work), Earlier (ended); the latest first in
   each. No summary line, no filter.
-- **A post** is its title with one time beside it (how long it has worked,
-  in the accent, or how long ago it ended), a line of how it goes (what it
-  asks, why it failed, the start of its report, else its latest words or
-  thought), one piece that shows where it stands, and what set it off at
-  its foot, with the tokens it used. Only a post that needs the owner has a
-  mark: an orange dot when it waits, a red one when it failed. No picture,
-  no state word: the part it is under says that.
+- **A post** is its title alone, a few lines of how it goes (what it asks,
+  why it failed, the start of its report, else its latest words or
+  thought; up to four), one piece that shows where it stands, and a foot:
+  one time on the left (how long it has worked, in the accent, or how long
+  ago it ended) with the tokens it used, and ⓘ on the right. Only a post
+  that needs the owner has a mark: an orange dot when it waits, a red one
+  when it failed. No picture, no state word: the part it is under says
+  that. (Decided 2026-11-15 after trying it on the phone: what set it off,
+  shown on every post, made the feed busy.)
 - **The piece**: while a sub-agent works, a bar for each call it made (the
   last beating) and the call it is on; while it waits, Review, which opens
   its record, where the approval is answered (an approval shows what it
@@ -977,11 +979,11 @@ shows each task of theirs as a post:
   session: the tool it runs, or the lines it changed. Results with more to
   show (numbers, tables) need sub-agents to report them in a shape the
   apps can read, which they do not yet.
-- **What set it off** is a capsule ("You 10:58 · …"); a tap shows it whole
-  (on the iPhone a sheet, Liquid Glass at half height; on the Mac a panel
-  over the page, as the team panel is): what the owner said and when, what
-  Her said back, everything it sent out, each as it stands, and a way to
-  the conversation.
+- **What set it off** opens in the post itself, by its ⓘ: what the owner
+  said and when, what Her said back, the rest it sent out for that, each as
+  it stands (a click opens one), and a way to the conversation. A record's
+  page keeps it as a capsule at its top, shown whole in a sheet (iPhone)
+  or a panel over the page (Mac).
 
 ### 15.2 A card's page
 
@@ -1041,10 +1043,10 @@ kind; the apps tell by the `/` and do not read on with it.
   record's steps, agents of earlier pages and their cursor, a routine's run.
 - `go test ./e2e -run '^TestDesktopHerProgress$'`: real hermeshd and her
   with her-mock, the Mac app: the entry appears with Her; an empty page; a
-  sub-agent's post under Needs you, the panel of what set it off, Review to
+  sub-agent's post under Needs you, what set it off opened by its ⓘ, Review to
   its record, the approval answered there, its report, time and tokens; the
   post under Earlier once it ends; a coding session's post and its record.
 - `HERMESH_IPHONE_E2E=1 HERMESH_IPHONE_GREP=testHerProgress go test ./e2e
   -run '^TestIPhone$'`: the same story on the iPhone's feed: the post under
-  Needs you, its capsule's sheet with the owner's words and Her's, Review to
+  Needs you, its ⓘ with the owner's words and Her's, Review to
   the record, and the ended post under Earlier.

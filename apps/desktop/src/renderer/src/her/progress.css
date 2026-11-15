@@ -18,9 +18,9 @@
 .pf-t{display:flex;align-items:baseline;gap:8px;min-width:0}
 .pf-t>i{align-self:center;flex:none}
 .pf-t b{flex:1;min-width:0;font-size:15.5px;font-weight:var(--font-weight-semibold);line-height:1.35;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;overflow-wrap:anywhere}
-.pf-time{flex:none;font-size:12px;color:var(--l3);font-variant-numeric:tabular-nums;white-space:nowrap}
+.pf-time{flex:none;font-size:12px;color:var(--l2);font-variant-numeric:tabular-nums;white-space:nowrap}
 .pf-time.live{color:var(--accent-t)}
-.pf-w{font-size:13.5px;line-height:1.5;color:var(--l2);display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;overflow-wrap:anywhere}
+.pf-w{font-size:13.5px;line-height:1.5;color:var(--l2);display:-webkit-box;-webkit-line-clamp:4;-webkit-box-orient:vertical;overflow:hidden;overflow-wrap:anywhere}
 .pf-well{display:flex;align-items:center;gap:12px;width:100%;min-height:40px;margin-top:10px;padding:9px 12px;border:0;border-radius:12px;background:var(--fill);font:inherit;font-size:13px;color:var(--l2);text-align:left}
 button.pf-well:hover{background:var(--fill2)}
 .pf-step{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
@@ -39,13 +39,27 @@ button.pf-well:hover{background:var(--fill2)}
 .pf-diff .add{color:var(--green)}
 .pf-diff .del{color:var(--orange)}
 .pf-diff span{flex:1;text-align:right}
-.pf-foot{display:flex;align-items:center;gap:8px;min-height:40px}
+.pf-foot{display:flex;align-items:center;gap:6px;min-height:40px;margin-top:2px}
 .pf-from{flex:0 1 auto;min-width:0;display:inline-flex;align-items:center;gap:6px;height:26px;padding:0 10px 0 8px;border:0;border-radius:13px;background:var(--fill);font:inherit;font-size:12px;color:var(--l2)}
 .pf-from:hover:not(:disabled){background:var(--fill2);color:var(--l1)}
 .pf-from:disabled{opacity:1}
 .pf-from .ic{width:13px;height:13px;flex:none;color:var(--l3)}
 .pf-from span{min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.pf-tok{margin-left:auto;flex:none;font-size:11.5px;color:var(--l3);font-variant-numeric:tabular-nums}
+.pf-tok{flex:none;font-size:12px;color:var(--l3);font-variant-numeric:tabular-nums}
+.pf-why{margin-left:auto;color:var(--l3)}
+.pf-why.on{color:var(--accent-t)}
+/* What set a post's work off, opened in the post. */
+.pf-why-note{display:flex;flex-direction:column;gap:6px;margin-top:12px;padding-top:12px;border-top:.5px solid var(--sep);font-size:13.5px;line-height:1.5}
+.pf-why-note>b{font-size:13px;color:var(--l2)}
+.pf-why-note>p{margin:0;white-space:pre-wrap;overflow-wrap:anywhere}
+.pf-when{font-size:12px;color:var(--l3)}
+.pf-why-note .pf-her{max-width:none;align-items:flex-start;margin-top:2px}
+.pf-why-note .pf-her p{padding:0;background:none;box-shadow:none;color:var(--l2);font-size:13.5px;display:-webkit-box;-webkit-line-clamp:4;-webkit-box-orient:vertical;overflow:hidden}
+.pf-why-note .pf-her-cat{width:18px;height:18px;margin-top:1px}
+.pf-others{display:flex;flex-direction:column;margin-top:2px}
+.pf-others>span{font-size:12px;color:var(--l2);padding:2px 0 2px}
+.pf-why-note .pf-sib{padding:6px 8px;margin:0 -8px;width:calc(100% + 16px);min-height:38px}
+.pf-chat-link{align-self:flex-start;font-size:13px;min-height:28px}
 @media (prefers-reduced-motion:reduce){.pf-beat i.now{animation:none}}
 /* What set work off, shown whole over the page. */
 .pf-src{display:flex;flex-direction:column;gap:12px;padding:14px 14px 14px;user-select:text}

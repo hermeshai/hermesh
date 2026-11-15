@@ -91,7 +91,7 @@ export function Progress({ bot, conv, op, task }: { bot: BotSummary; conv: Conv;
   const sourceGroup = source ? groups.find((g) => g.key === source) : undefined;
   return (
     <ContentScope value={`${her.machine.machineId}/${conv.session ?? ""}`}>
-      {open ? <TaskPage key={open.task.key} post={open} conv={conv} op={op} onSource={setSource} /> : <Board posts={posts} conv={conv} missing={!!task} onSource={setSource} />}
+      {open ? <TaskPage key={open.task.key} post={open} conv={conv} op={op} onSource={setSource} /> : <Board posts={posts} conv={conv} missing={!!task} />}
       {sourceGroup && <SourcePanel bot={bot} group={sourceGroup} posts={posts} here={open?.task.key} onClose={() => setSource(null)} />}
     </ContentScope>
   );
@@ -113,7 +113,7 @@ const refOf = (task: ProgressTask): ProgressTaskRef | null => (task.kind === "se
 // MARK: The feed
 
 /** The feed: what needs the owner, then what is at work now, then what ended; the latest first in each. */
-function Board({ posts, conv, missing, onSource }: { posts: Post[]; conv: Conv; missing: boolean; onSource: (key: string) => void }) {
+function Board({ posts, conv, missing }: { posts: Post[]; conv: Conv; missing: boolean }) {
   const { t } = useTranslation("her");
   const her = useHer();
   const st = useStore();
@@ -162,7 +162,7 @@ function Board({ posts, conv, missing, onSource }: { posts: Post[]; conv: Conv; 
               {sections.map((x) => (
                 <section key={x.key} role="listitem" aria-label={x.title}>
                   <h3 className="pg-sec">{x.title}</h3>
-                  {x.posts.map((p) => <PostView key={p.task.key} post={p} onSource={onSource} />)}
+                  {x.posts.map((p) => <PostView key={p.task.key} post={p} posts={posts} />)}
                 </section>
               ))}
             </div>
@@ -188,14 +188,16 @@ function useWorked() {
 }
 
 /**
- * A post: its title and one time (how long it has worked, or how long ago it ended), a line of how it goes, one
- * piece that shows where it stands, and what set it off. Only one that needs the owner carries a mark.
+ * A post: its title, a few lines of how it goes, one piece that shows where it stands, and at its foot one time (how
+ * long it has worked, or how long ago it ended) with the tokens it used, and ⓘ, which opens what set it off in the
+ * post itself. Only one that needs the owner carries a mark.
  */
-function PostView({ post: p, onSource }: { post: Post; onSource: (key: string) => void }) {
+function PostView({ post: p, posts }: { post: Post; posts: Post[] }) {
   const { t } = useTranslation(["her", "common"]);
   const go = useOpen();
   const worked = useWorked();
   const now = useNow(atWork(p.stand) || p.stand === "waiting" ? 10_000 : 60_000);
+  const [why, setWhy] = useState(false);
   const ref = refOf(p.task);
   const open = () => ref && go.task(ref);
   const s = p.session;
@@ -214,20 +216,73 @@ function PostView({ post: p, onSource }: { post: Post; onSource: (key: string) =
         <span className="pf-t">
           {needsOwner(p.stand) && <i className={p.stand === "waiting" ? "dot-w" : "dot-f"} aria-hidden="true" />}
           <b>{p.title}</b>
-          {atWork(p.stand) || p.stand === "waiting" ? (
-            <span className={`pf-time ${atWork(p.stand) ? "live" : ""}`}>{worked(now.getTime() - since)}</span>
-          ) : (
-            <span className="pf-time">{listTime(new Date(p.at), now)}</span>
-          )}
         </span>
         {words && <span className="pf-w">{words}</span>}
       </button>
       <Piece post={p} open={open} />
+      {why && <WhyNote group={p.group} here={p.task.key} posts={posts} />}
       <div className="pf-foot">
-        <FromCapsule group={p.group} onClick={() => onSource(p.group.key)} />
-        {tokens > 0 && <span className="pf-tok" aria-label={t("progress.tokens", { tokens: tokensText(tokens) })}>{tokensText(tokens)}</span>}
+        {atWork(p.stand) || p.stand === "waiting" ? (
+          <span className={`pf-time ${atWork(p.stand) ? "live" : ""}`}>{worked(now.getTime() - since)}</span>
+        ) : (
+          <span className="pf-time">{listTime(new Date(p.at), now)}</span>
+        )}
+        {tokens > 0 && <span className="pf-tok" aria-label={t("progress.tokens", { tokens: tokensText(tokens) })}>· {tokensText(tokens)}</span>}
+        <button className={`tb pf-why ${why ? "on" : ""}`} aria-label={t("progress.why")} aria-expanded={why} title={t("progress.why")} onClick={() => setWhy(!why)}>
+          <Icon name="info" />
+        </button>
       </div>
     </article>
+  );
+}
+
+/**
+ * What set a post's work off, opened in the post by its ⓘ: what the owner said and when, what Her said back, and the
+ * rest it sent out for that, each as it stands (a click opens one); and a way to the conversation.
+ */
+function WhyNote({ group: g, here, posts }: { group: ProgressGroup; here: string; posts: Post[] }) {
+  const { t } = useTranslation("her");
+  const go = useOpen();
+  const now = useNow(60_000);
+  const p = g.parent;
+  const others = posts.filter((x) => x.group.key === g.key && x.task.key !== here);
+  const title = p.kind === "user" ? t("progress.fromSaid") : p.kind === "routine" ? t("progress.fromRoutine") : t("progress.earlier");
+  return (
+    <div className="pf-why-note" role="region" aria-label={title}>
+      <b>{title}</b>
+      {p.kind === "user" && (
+        <>
+          <p className="sel-text">{p.text}</p>
+          <span className="pf-when">{t("progress.toHer", { time: messageTime(new Date(p.ts), now) })}</span>
+        </>
+      )}
+      {p.kind === "routine" && <p>{`${t("progress.routine", { name: p.name })} · ${messageTime(new Date(p.ts), now)}`}</p>}
+      {g.said && (
+        <div className="pf-her">
+          <span className="pf-her-cat" aria-hidden="true"><Cat small /></span>
+          <p className="sel-text">{g.said}</p>
+        </div>
+      )}
+      {others.length > 0 && (
+        <div className="pf-others">
+          <span>{t("progress.sent", { count: g.tasks.length })}</span>
+          {others.map((x) => {
+            const ref = refOf(x.task);
+            return (
+              <button key={x.task.key} className="pf-sib" disabled={!ref} onClick={() => ref && go.task(ref)}>
+                <SibMark stand={x.stand} />
+                <span>
+                  <b>{x.title}</b>
+                  <span>{x.stand === "gone" ? t("progress.sessionGone") : t(`progress.state.${x.stand}`)}</span>
+                </span>
+                <Icon name="chevR" className="sm" />
+              </button>
+            );
+          })}
+        </div>
+      )}
+      {p.kind !== "earlier" && <button className="link pf-chat-link" onClick={go.chat}>{t("progress.inChat")}</button>}
+    </div>
   );
 }
 
