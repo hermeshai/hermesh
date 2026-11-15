@@ -222,7 +222,9 @@ func allocationTime(server *relayv1.IceServer) time.Duration {
 				took <- 0
 				return
 			}
-			took <- time.Since(start)
+			// Zero means unavailable; a fast loopback allocation can take less than
+			// one clock tick on Windows, but must still count as a success.
+			took <- max(time.Since(start), time.Nanosecond)
 			relayed.Close() // gives the address back
 		}()
 		select {
