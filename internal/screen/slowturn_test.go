@@ -95,7 +95,10 @@ func (n loopbackNet) Interfaces() ([]*transport.Interface, error) {
 // permissions the server was asked for in that time and the settle after.
 func turnPair(t *testing.T, delay time.Duration, relay net.IP, settle time.Duration) (time.Duration, int32) {
 	t.Helper()
-	server, asked := slowTURN(t, turnCreatePermission, delay, relay)
+	// Each peer has its own server: sleeping over A's permission must not
+	// also hold up B's allocation while the fixture gathers its candidates.
+	serverA, askedA := slowTURN(t, turnCreatePermission, delay, relay)
+	serverB, askedB := slowTURN(t, turnCreatePermission, delay, relay)
 	n, err := newSystemNet()
 	if err != nil {
 		t.Fatal(err)
@@ -104,13 +107,13 @@ func turnPair(t *testing.T, delay time.Duration, relay net.IP, settle time.Durat
 	if err != nil {
 		t.Fatal(err)
 	}
-	cfg := webrtc.Configuration{ICEServers: []webrtc.ICEServer{{URLs: []string{"turn:" + server + "?transport=udp"}, Username: "u", Credential: "p"}}}
+	cfg := webrtc.Configuration{ICEServers: []webrtc.ICEServer{{URLs: []string{"turn:" + serverA + "?transport=udp"}, Username: "u", Credential: "p"}}}
 	a, err := api.NewPeerConnection(cfg)
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer a.Close()
-	b, err := api.NewPeerConnection(cfg)
+	b, err := api.NewPeerConnection(webrtc.Configuration{ICEServers: []webrtc.ICEServer{{URLs: []string{"turn:" + serverB + "?transport=udp"}, Username: "u", Credential: "p"}}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -167,7 +170,7 @@ func turnPair(t *testing.T, delay time.Duration, relay net.IP, settle time.Durat
 	}
 	took := time.Since(started)
 	time.Sleep(settle)
-	return took, asked.Load()
+	return took, askedA.Load() + askedB.Load()
 }
 
 // A slow TURN server on this computer's network refuses the addresses it
