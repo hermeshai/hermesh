@@ -117,6 +117,14 @@ test("Her: the first run, a chat, a secure card, the console, a second environme
   // The window is behind (tests open it so): the reply is unread, and notified, by the assistant's name.
   await expect.poll(posted, { timeout: 60_000 }).toContainEqual(expect.objectContaining({ title: expect.stringMatching(/^Her/), body: "你好，主人" }));
   await snap(page, "her-chat");
+  // A message leaves the composer at once and shows once (docs/her-sending.md): it goes by its id through hermeshd,
+  // on this conversation's connection, and stays where it is from being sent to her having it.
+  await send(mockSend("只收到一次"));
+  await expect(composer).toHaveValue("", { timeout: 1_000 });
+  await expect(log).toContainText("只收到一次", { timeout: 60_000 });
+  await expect(log.locator(".um").filter({ hasText: mockSend("只收到一次") })).toHaveCount(1);
+  await expect(log.locator(".um.waiting, [data-testid=her-sending]")).toHaveCount(0);
+  await expect(composer).toHaveValue("");
 
   // A step that needs the owner's own Chrome, whose extension is not connected: it waits, and a card above the
   // composer says so. Connecting opens the console at its guide; going on without it this time lets the step go on.
@@ -409,8 +417,10 @@ test("Her: the first run, a chat, a secure card, the console, a second environme
   await snap(page, "her-offline");
   // Written meanwhile, a message waits on this Mac until work-mac is back; discarded, it goes.
   await send("等你回来再说");
+  await expect(composer).toHaveValue("", { timeout: 1_000 });
   const waiting = log.locator(".um.waiting").filter({ hasText: "等你回来再说" });
-  await expect(waiting).toContainText("等 work-mac 在线后送达");
+  await expect(waiting).toContainText("等 work-mac 在线后送达", { timeout: 60_000 });
+  await expect(log.locator(".um").filter({ hasText: "等你回来再说" })).toHaveCount(1);
   await waiting.getByRole("button", { name: "丢弃" }).click();
   await expect(waiting).toBeHidden();
 

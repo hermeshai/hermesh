@@ -2996,10 +2996,22 @@ public nonisolated struct Hermesh_Local_V1_HerSendRequest: Sendable {
   /// message names where they landed.
   public var localPaths: [String] = []
 
-  /// Pictures pasted rather than picked from a file: kept on this device
-  /// with the message, uploaded as files too, and deleted once it is
-  /// delivered or dropped.
+  /// Pictures, kept on this device with the message and deleted once it is
+  /// delivered or dropped; they go to her as pictures (a kept one that is
+  /// no image, as a file).
   public var pictures: [Hermesh_Local_V1_HerPicture] = []
+
+  /// The message's id, given when it was sent (docs/her-sending.md): it is
+  /// the outbox's and her's for it, so that a send tried again is kept and
+  /// taken once. Left out (an older app), this device gives one.
+  public var id: String = String()
+
+  /// The conversation the app has open on the machine, when it does: the
+  /// message is delivered on it (session/op), else on a connection of its
+  /// own.
+  public var connectionID: String = String()
+
+  public var sessionID: String = String()
 
   public var unknownFields = SwiftProtobuf.UnknownStorage()
 
@@ -3026,7 +3038,8 @@ public nonisolated struct Hermesh_Local_V1_HerSendResponse: Sendable {
   // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
   // methods supported on all messages.
 
-  /// Delivered now; otherwise kept on this device as `waiting`.
+  /// her took it; otherwise it is kept on this device as `waiting`, its
+  /// error saying why it waits.
   public var delivered: Bool = false
 
   public var waiting: Hermesh_Local_V1_HerWaiting {
@@ -8932,7 +8945,7 @@ nonisolated extension Hermesh_Local_V1_HerCallRequest: SwiftProtobuf.Message, Sw
 
 nonisolated extension Hermesh_Local_V1_HerSendRequest: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
   public static let protoMessageName: String = _protobuf_package + ".HerSendRequest"
-  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{3}machine_id\0\u{3}bot_id\0\u{1}text\0\u{3}local_paths\0\u{1}pictures\0")
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{3}machine_id\0\u{3}bot_id\0\u{1}text\0\u{3}local_paths\0\u{1}pictures\0\u{1}id\0\u{3}connection_id\0\u{3}session_id\0")
 
   public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
     while let fieldNumber = try decoder.nextFieldNumber() {
@@ -8945,6 +8958,9 @@ nonisolated extension Hermesh_Local_V1_HerSendRequest: SwiftProtobuf.Message, Sw
       case 3: try { try decoder.decodeSingularStringField(value: &self.text) }()
       case 4: try { try decoder.decodeRepeatedStringField(value: &self.localPaths) }()
       case 5: try { try decoder.decodeRepeatedMessageField(value: &self.pictures) }()
+      case 6: try { try decoder.decodeSingularStringField(value: &self.id) }()
+      case 7: try { try decoder.decodeSingularStringField(value: &self.connectionID) }()
+      case 8: try { try decoder.decodeSingularStringField(value: &self.sessionID) }()
       default: break
       }
     }
@@ -8966,6 +8982,15 @@ nonisolated extension Hermesh_Local_V1_HerSendRequest: SwiftProtobuf.Message, Sw
     if !self.pictures.isEmpty {
       try visitor.visitRepeatedMessageField(value: self.pictures, fieldNumber: 5)
     }
+    if !self.id.isEmpty {
+      try visitor.visitSingularStringField(value: self.id, fieldNumber: 6)
+    }
+    if !self.connectionID.isEmpty {
+      try visitor.visitSingularStringField(value: self.connectionID, fieldNumber: 7)
+    }
+    if !self.sessionID.isEmpty {
+      try visitor.visitSingularStringField(value: self.sessionID, fieldNumber: 8)
+    }
     try unknownFields.traverse(visitor: &visitor)
   }
 
@@ -8975,6 +9000,9 @@ nonisolated extension Hermesh_Local_V1_HerSendRequest: SwiftProtobuf.Message, Sw
     if lhs.text != rhs.text {return false}
     if lhs.localPaths != rhs.localPaths {return false}
     if lhs.pictures != rhs.pictures {return false}
+    if lhs.id != rhs.id {return false}
+    if lhs.connectionID != rhs.connectionID {return false}
+    if lhs.sessionID != rhs.sessionID {return false}
     if lhs.unknownFields != rhs.unknownFields {return false}
     return true
   }

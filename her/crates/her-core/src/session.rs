@@ -26,6 +26,7 @@ use her_tools::PathLocks;
 use her_tools::ToolRegistry;
 use parking_lot::Mutex;
 use std::collections::HashMap;
+use std::collections::HashSet;
 use std::collections::VecDeque;
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -105,6 +106,9 @@ pub(crate) struct SessionState {
     pub(crate) active_task: Option<ActiveTask>,
     pub(crate) steer: VecDeque<Input>,
     pub(crate) follow_up: VecDeque<Input>,
+    /// The ids front ends gave the input taken since the session loaded, wherever it is now (in
+    /// a queue, on its way into the history, handed back): a prompt sent again is taken once.
+    pub(crate) taken_inputs: HashSet<String>,
     /// Goes ahead when the running task has ended.
     pub(crate) pending_resend: Option<Resend>,
     pub(crate) pending_approvals: HashMap<String, oneshot::Sender<ApprovalDecision>>,
@@ -181,6 +185,7 @@ impl SessionState {
             active_task: None,
             steer: VecDeque::new(),
             follow_up: VecDeque::new(),
+            taken_inputs: HashSet::new(),
             pending_resend: None,
             pending_approvals: HashMap::new(),
             pending_model: None,
@@ -227,6 +232,11 @@ impl SessionState {
     }
 
     /// The id of input that arrives now: free in the history and among the input that waits.
+    /// Whether input with this id was taken: since the session loaded, or before (its history).
+    pub(crate) fn knows_input(&self, id: &str) -> bool {
+        self.taken_inputs.contains(id) || self.history.contains(id)
+    }
+
     pub(crate) fn input_id(&self) -> String {
         loop {
             let id = self.history.new_id();

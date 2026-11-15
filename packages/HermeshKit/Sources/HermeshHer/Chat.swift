@@ -39,6 +39,8 @@ public struct HerItem: Equatable, Identifiable, Sendable {
         case failure(HerFailure, last: Bool)
         /// A message this device keeps until the machine is back (HerSend); error: why the last try failed.
         case waiting(id: String, text: String, files: [String], error: String)
+        /// A message this app is sending (HerSend has not answered), or couldn't: refused says why.
+        case sending(id: String, text: String, images: [HerImage], files: [String], refused: String?)
         /// Her's onboarding while no model works there (HerOnboarding).
         case onboarding
         /// A coding session Her started, where she started it.
@@ -66,6 +68,11 @@ public struct HerImage: Equatable, Sendable {
     public var mime: String
     /// Base64.
     public var data: String
+
+    public init(mime: String, data: String) {
+        self.mime = mime
+        self.data = data
+    }
 }
 
 /// A file Her sent, as its call's result describes it.
@@ -293,11 +300,6 @@ public func baseName(_ path: String) -> String {
 }
 
 // MARK: What a message names
-
-/// The block the composer puts after a message's words to name the files uploaded for it (her-client's attachedBlock).
-public func attachedBlock(_ paths: [String]) -> HerUserContent {
-    .text((paths.contains { $0.lowercased().hasSuffix(".xlsx") || $0.lowercased().hasSuffix(".xlsm") } ? attachedWithWorkbooks : attached) + paths.joined(separator: "\n"))
-}
 
 private let attached = "Attached files:\n"
 private let attachedWithWorkbooks = "Attached files. For XLSX and XLSM workbooks, use the deferred doc tools (doc_open, then doc_read) instead of unpacking them or parsing them with shell/Python:\n"

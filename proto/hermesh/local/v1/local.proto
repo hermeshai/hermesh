@@ -124,8 +124,9 @@ service LocalService {
   rpc HerOpen(HerOpenRequest) returns (stream hermesh.her.v1.OpenEvent);
   // One her request on a machine (hermesh.her.v1.HerService.Call).
   rpc HerCall(HerCallRequest) returns (hermesh.her.v1.CallResponse);
-  // A message to an assistant that is delivered now, or kept on this device
-  // and delivered when the machine is back (docs/her-server.md §5.5).
+  // A message to an assistant: kept on this device first, then delivered,
+  // now or when the machine is back (docs/her-sending.md §4). An error: it
+  // is not kept and was not taken.
   rpc HerSend(HerSendRequest) returns (HerSendResponse);
   // The messages this device keeps for a machine's assistants until it is
   // back, oldest first.
@@ -1212,10 +1213,19 @@ message HerSendRequest {
   // Files on this device to upload into the assistant's folder first; the
   // message names where they landed.
   repeated string local_paths = 4;
-  // Pictures pasted rather than picked from a file: kept on this device
-  // with the message, uploaded as files too, and deleted once it is
-  // delivered or dropped.
+  // Pictures, kept on this device with the message and deleted once it is
+  // delivered or dropped; they go to her as pictures (a kept one that is
+  // no image, as a file).
   repeated HerPicture pictures = 5;
+  // The message's id, given when it was sent (docs/her-sending.md): it is
+  // the outbox's and her's for it, so that a send tried again is kept and
+  // taken once. Left out (an older app), this device gives one.
+  string id = 6;
+  // The conversation the app has open on the machine, when it does: the
+  // message is delivered on it (session/op), else on a connection of its
+  // own.
+  string connection_id = 7;
+  string session_id = 8;
 }
 
 message HerPicture {
@@ -1225,7 +1235,8 @@ message HerPicture {
 }
 
 message HerSendResponse {
-  // Delivered now; otherwise kept on this device as `waiting`.
+  // her took it; otherwise it is kept on this device as `waiting`, its
+  // error saying why it waits.
   bool delivered = 1;
   HerWaiting waiting = 2;
 }

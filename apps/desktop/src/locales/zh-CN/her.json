@@ -171,7 +171,11 @@
   "waiting": {
     "until": "等 {{name}} 在线后送达",
     "failed": "没能送达：{{error}}",
-    "discard": "丢弃"
+    "discard": "丢弃",
+    "sending": "正在发送…",
+    "retry": "再试一次",
+    "edit": "编辑",
+    "connecting": "正在连接 {{name}}…"
   },
   "files": {
     "save": "把 {{name}} 存到“下载”",

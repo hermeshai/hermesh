@@ -67,6 +67,12 @@ final class HerChat {
     var pictures: [String: UIImage?] = [:]
     /// What the owner wrote and has not sent.
     var draft = HerDraft()
+    /// What was sent and HerSend has not answered for, or refused (docs/her-sending.md §5.2); the drafts they were, to
+    /// send again or edit.
+    private(set) var sending: [HerOutgoing] = []
+    @ObservationIgnored private var outgoing: [String: HerDraft] = [:]
+    /// The conversation's connection is opening again after it was open: a reply may take a moment.
+    private(set) var reconnecting = false
     /// Earlier history is being read.
     private(set) var paging = false
     /// The sub-agents whose earlier history is being read.
@@ -162,7 +168,11 @@ final class HerChat {
             envTask = nil
             if f.running { envTask = Task { await self.followEnvironment() } }
         }
-        if convTask == nil || f != following {
+        // A model connected opens the conversation her refused for want of one; otherwise what the machine says of
+        // its models changes nothing on an open conversation (docs/her-sending.md §5.4).
+        var reopen = f
+        reopen.modelReady = following?.modelReady ?? f.modelReady
+        if convTask == nil || reopen != following || (f.modelReady != following?.modelReady && noModel) {
             convTask?.cancel()
             convTask = nil
             if f.running, let bot = f.bot { convTask = Task { await self.followConversation(botID: bot) } }
@@ -225,6 +235,8 @@ final class HerChat {
                             noModel = false
                             conv = c
                             convUp = true
+                            reconnecting = false
+                            settle()
                         case .failure(let refused)?:
                             // Without a model, the page says so; deleted meanwhile, the list hears of it too. The
                             // connection stays until what it waits on changes.
@@ -233,7 +245,12 @@ final class HerChat {
                             break events
                         }
                     case .notification("session/event", let p) where p["session_id"].string == opened:
-                        self.live?.apply(p["event"])
+                        let e = p["event"]
+                        // What a task that ended early hands back goes back into the composer, once.
+                        let back = (e["seq"].int ?? 0) > (self.live?.lastSeq ?? .max) ? herReturned(e) : []
+                        self.live?.apply(e)
+                        if !back.isEmpty { draft.text = (back + [draft.text]).filter { !$0.isEmpty }.joined(separator: "\n\n") }
+                        settle()
                     case .notification("session/detached", let p) where p["session_id"].string == opened:
                         break events
                     default:
@@ -241,7 +258,7 @@ final class HerChat {
                     }
                 }
             } catch {}
-            if conv === c { conv = nil; convUp = false }
+            if conv === c { conv = nil; convUp = false; reconnecting = !Task.isCancelled }
             failures += 1
             await pause(failures)
         }
@@ -363,42 +380,77 @@ final class HerChat {
 
     // MARK: Sending
 
-    /// Sends the draft. While the conversation is open, it goes on it (its pictures in it, its files uploaded
-    /// first); otherwise, or behind messages that wait, it goes through the core, which delivers it now or keeps
-    /// it here until the machine is back (HerSend). A draft that did not go comes back.
-    func send(direct: Bool) async {
+    /// Sends the draft (docs/her-sending.md): the composer is empty at once and the message shows as being sent, under
+    /// an id of its own. It goes through the core, which keeps it, then delivers it, on the conversation this page has
+    /// open or on one of its own, now or when the machine is back; sent again, her takes it once.
+    func send() {
         let sent = draft
-        guard let bot, let api, !sent.isEmpty else { return }
+        guard bot != nil, api != nil, !sent.isEmpty else { return }
         draft = HerDraft()
+        let id = "hw_" + UUID().uuidString.lowercased().replacingOccurrences(of: "-", with: "")
+        outgoing[id] = sent
+        sending.append(HerOutgoing(id: id, text: sent.text.trimmingCharacters(in: .whitespacesAndNewlines),
+                                   images: sent.photos.map { HerImage(mime: "image/jpeg", data: $0.data.base64EncodedString()) },
+                                   files: sent.files.map(\.name), ts: Date.now.timeIntervalSince1970 * 1000))
+        Task { await deliver(id) }
+    }
+
+    /// A message that was not sent, sent again as it was.
+    func retry(_ id: String) {
+        guard let i = sending.firstIndex(where: { $0.id == id }) else { return }
+        sending[i].refused = nil
+        Task { await deliver(id) }
+    }
+
+    /// A message that was not sent, back into the composer, before what is there.
+    func edit(_ id: String) {
+        guard let sent = outgoing.removeValue(forKey: id) else { return }
+        sending.removeAll { $0.id == id }
+        draft = sent.joined(draft)
+    }
+
+    /// HerSend for a message being sent. Kept in the outbox, the outbox shows it; taken, the conversation will; an error
+    /// says it is in neither, unless the outbox has it after all (the answer was lost, not the message).
+    private func deliver(_ id: String) async {
+        guard let sent = outgoing[id], let bot, let api else { return }
+        var r = Hermesh_Local_V1_HerSendRequest()
+        r.id = id
+        r.machineID = machineID
+        r.botID = bot.id
+        r.text = sent.text
+        r.localPaths = sent.files.map(\.path)
+        r.pictures = sent.photos.map { p in .with { $0.name = p.name; $0.data = p.data } }
+        if convUp, let connection = conv?.connectionID, let session = live?.sessionID {
+            r.connectionID = connection
+            r.sessionID = session
+        }
         do {
-            if direct, let conv, let id = live?.sessionID {
-                var uploaded: [String] = []
-                for f in sent.files {
-                    var r = Hermesh_Local_V1_HerUploadRequest()
-                    r.machineID = machineID
-                    r.botID = bot.id
-                    r.localPath = f.path
-                    let res: Hermesh_Local_V1_HerUploadResponse = try await api.call("HerUpload", r, timeout: 120)
-                    uploaded.append(res.path)
-                }
-                var input: [HerUserContent] = sent.text.isEmpty ? [] : [.text(sent.text)]
-                input += sent.photos.map { .image(mime: "image/jpeg", data: $0.data.base64EncodedString()) }
-                if !uploaded.isEmpty { input.append(attachedBlock(uploaded)) }
-                _ = try await conv.call("session/op", ["session_id": .string(id), "op": prompt(input)])
-            } else {
-                var r = Hermesh_Local_V1_HerSendRequest()
-                r.machineID = machineID
-                r.botID = bot.id
-                r.text = sent.text
-                r.localPaths = sent.files.map(\.path)
-                r.pictures = sent.photos.map { p in .with { $0.name = p.name; $0.data = p.data } }
-                let _: Hermesh_Local_V1_HerSendResponse = try await api.call("HerSend", r, timeout: 120)
+            let res: Hermesh_Local_V1_HerSendResponse = try await api.call("HerSend", r, timeout: 120)
+            if !res.delivered {
                 await refreshWaiting()
+                forget(id)
             }
         } catch {
-            report(error)
-            draft = sent.joined(draft)
+            await refreshWaiting()
+            if waiting.contains(where: { $0.id == id }) {
+                forget(id)
+            } else if let i = sending.firstIndex(where: { $0.id == id }) {
+                sending[i].refused = (error as? APIError)?.message ?? error.localizedDescription
+            }
         }
+        settle()
+    }
+
+    private func forget(_ id: String) {
+        sending.removeAll { $0.id == id }
+        outgoing[id] = nil
+    }
+
+    /// Drops what was sent once the conversation has it.
+    private func settle() {
+        guard let s = live, !sending.isEmpty else { return }
+        let there = Set(s.entries.compactMap { if case .user(let id, _, _, _) = $0 { id } else { nil } } + s.queued.map(\.id))
+        for m in sending where there.contains(m.id) { forget(m.id) }
     }
 
     // MARK: Files Her sent

@@ -345,8 +345,9 @@ type LocalServiceClient interface {
 	HerOpen(context.Context, *v1.HerOpenRequest) (*connect.ServerStreamForClient[v12.OpenEvent], error)
 	// One her request on a machine (hermesh.her.v1.HerService.Call).
 	HerCall(context.Context, *v1.HerCallRequest) (*v12.CallResponse, error)
-	// A message to an assistant that is delivered now, or kept on this device
-	// and delivered when the machine is back (docs/her-server.md §5.5).
+	// A message to an assistant: kept on this device first, then delivered,
+	// now or when the machine is back (docs/her-sending.md §4). An error: it
+	// is not kept and was not taken.
 	HerSend(context.Context, *v1.HerSendRequest) (*v1.HerSendResponse, error)
 	// The messages this device keeps for a machine's assistants until it is
 	// back, oldest first.
@@ -1716,8 +1717,9 @@ type LocalServiceHandler interface {
 	HerOpen(context.Context, *v1.HerOpenRequest, *connect.ServerStream[v12.OpenEvent]) error
 	// One her request on a machine (hermesh.her.v1.HerService.Call).
 	HerCall(context.Context, *v1.HerCallRequest) (*v12.CallResponse, error)
-	// A message to an assistant that is delivered now, or kept on this device
-	// and delivered when the machine is back (docs/her-server.md §5.5).
+	// A message to an assistant: kept on this device first, then delivered,
+	// now or when the machine is back (docs/her-sending.md §4). An error: it
+	// is not kept and was not taken.
 	HerSend(context.Context, *v1.HerSendRequest) (*v1.HerSendResponse, error)
 	// The messages this device keeps for a machine's assistants until it is
 	// back, oldest first.

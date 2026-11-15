@@ -118,6 +118,7 @@ pub(super) async fn drive(tree: Arc<AgentTree>, id: String, mut kernel: Kernel, 
                                 mode: PromptMode::Steer,
                                 // Only the user's own input holds commands.
                                 commands: false,
+                                id: None,
                             })
                             .await;
                     }

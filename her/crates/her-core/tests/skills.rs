@@ -460,6 +460,7 @@ async fn only_explicit_mentions_of_the_users_own_input_load_skills() {
             input: prompt("/skill:deploy from another agent"),
             mode: her_protocol::PromptMode::Steer,
             commands: false,
+            id: None,
         })
         .await
         .unwrap();
@@ -631,6 +632,7 @@ async fn queued_input_comes_back_as_written() {
             input: prompt("/skill:deploy later"),
             mode: her_protocol::PromptMode::FollowUp,
             commands: true,
+            id: None,
         })
         .await
         .unwrap();

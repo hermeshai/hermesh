@@ -19,6 +19,12 @@ pub enum Op {
         /// agents set false.
         #[serde(default = "yes", skip_serializing_if = "is_yes")]
         commands: bool,
+        /// The input's id, given by the front end: the `message_id` it has once it joins the
+        /// history. A prompt whose id the session knows already, in its history or its queues,
+        /// is taken once: sent again, it changes nothing. At most 64 of
+        /// `A-Z a-z 0-9 _ -`; left out, the kernel gives one.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        id: Option<String>,
     },
     /// Starts again from a message the user sent earlier: the running task stops, the
     /// conversation goes back to just before that message, and `input` takes its place. Nothing
@@ -93,8 +99,14 @@ impl Op {
             input: vec![UserContent::Text { text: text.into() }],
             mode: PromptMode::Steer,
             commands: true,
+            id: None,
         }
     }
+}
+
+/// Whether a front end's id for a prompt can be one: 1 to 64 of `A-Z a-z 0-9 _ -`.
+pub fn valid_input_id(id: &str) -> bool {
+    (1..=64).contains(&id.len()) && id.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'_' || b == b'-')
 }
 
 fn yes() -> bool {
@@ -271,6 +283,10 @@ mod tests {
             serde_json::from_str(r#"{"type":"prompt","input":[{"type":"text","text":"/x"}],"commands":false}"#).unwrap();
         assert!(matches!(plain, Op::Prompt { commands: false, .. }));
         assert!(serde_json::to_string(&plain).unwrap().ends_with(r#""commands":false}"#));
+        let named: Op = serde_json::from_str(r#"{"type":"prompt","input":[],"id":"hw_01"}"#).unwrap();
+        assert!(matches!(&named, Op::Prompt { id: Some(id), .. } if id == "hw_01"));
+        assert!(serde_json::to_string(&named).unwrap().ends_with(r#""id":"hw_01"}"#));
+        assert!(valid_input_id("hw_01jcx-Z9") && !valid_input_id("") && !valid_input_id("a b") && !valid_input_id(&"x".repeat(65)));
         let approval: Op = serde_json::from_str(
             r#"{"type":"approval","call_id":"c1","decision":{"type":"deny","feedback":"no"}}"#,
         )
