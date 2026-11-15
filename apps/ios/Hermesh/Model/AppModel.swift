@@ -33,6 +33,8 @@ enum Route: Hashable {
     case agentSessions(String, String) // machine id, coding agent
     case sessions // all of them, from Work
     case herSettings // the environment's Her shown
+    case herConnectors // the environment's connectors (docs/her-connectors-demo.html)
+    case herConnector(String) // one of them, by name
     case progress // the work Her sent out (docs/her-team.md §15), from her page's top
     case progressAgent(String) // a sub-agent of Her's: its record
 

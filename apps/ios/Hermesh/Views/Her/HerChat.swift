@@ -77,6 +77,8 @@ final class HerChat {
     private(set) var paging = false
     /// The sub-agents whose earlier history is being read.
     private(set) var agentPaging: Set<String> = []
+    /// Moves when her says a connector changed (mcp/changed): the connectors pages read them again.
+    private(set) var connectorsChanged = 0
     /// The connections are open.
     private(set) var envUp = false
     private(set) var convUp = false
@@ -201,6 +203,8 @@ final class HerChat {
                         bots = mergeBots(bots, params)
                     case .notification("models/changed", _):
                         Task { if let m = try? await c.call("models/list") { models = HerModels(m) } }
+                    case .notification("mcp/changed", _):
+                        connectorsChanged += 1
                     default:
                         break
                     }
@@ -559,6 +563,23 @@ final class HerChat {
         signingIn[card.id] = nil
     }
 
+    /// Signs in to the connector `name` on the connectors page, in the browser: one added already, or with `server`,
+    /// one about to be added. Closing the browser, or cancelling the task, stops it.
+    func signIn(connector name: String, server: JSON? = nil) async -> HerSignInEnd {
+        let running = SignInTask()
+        let task = Task { () -> HerSignInEnd in
+            do {
+                return await herSignInConnector(try await signInDeps { running.task?.cancel() }, name: name, server: server)
+            } catch {
+                return .failed(error.localizedDescription)
+            }
+        }
+        running.task = task
+        let end = await withTaskCancellationHandler { await task.value } onCancel: { task.cancel() }
+        HerBrowser.shared.close()
+        return end
+    }
+
     /// A sign-in's ways: this iPhone's catcher (the console's routes on its core), her on a connection of its own,
     /// and the browser, whose closing calls `closed`.
     private func signInDeps(closed: @escaping @MainActor () -> Void) async throws -> HerSignInDeps {
@@ -582,6 +603,11 @@ final class HerChat {
         return HerSignInDeps(catcher: catcher, call: { method, params in try await HerConnection.call(tunnel, machineID: machine, method, params) },
                              open: { url in await HerBrowser.shared.open(url, closed: closed) })
     }
+}
+
+/// A connector's sign-in under way, for the browser's closing to stop.
+private final class SignInTask {
+    var task: Task<HerSignInEnd, Never>?
 }
 
 /// Why the catcher said no: its JSON's `error`, or its text.
