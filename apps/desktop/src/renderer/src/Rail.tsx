@@ -62,6 +62,7 @@ export function Rail() {
   const herLabel = !herOn ? t("rail.herOff") : unread > 0 ? t("sidebar.herUnread", { count: unread }) : "Her";
   const workLabel = [t("sidebar.work"), work.waits ? t("sidebar.attention", { count: work.waits }) : "", work.running ? t("sidebar.running", { count: work.running }) : ""].filter(Boolean).join(" · ");
   const allLabel = `${t("sidebar.allSessions")} · ${live.length}`;
+  const allButton = button({ label: allLabel, current: same(null), onClick: () => openList(st, null), children: <Icon name="menu" /> });
   return (
     <aside className="rail" aria-label={t("rail.label")}>
       <div className="rail-top drag">
@@ -89,10 +90,11 @@ export function Rail() {
           ),
         })}
         {button({ label: `${t("sidebar.search")} ${keys("CmdOrCtrl+K")}`, current: false, onClick: () => st.set({ searching: true }), children: <Icon name="search" /> })}
-        {button({ label: allLabel, current: same(null), onClick: () => openList(st, null), children: <Icon name="menu" /> })}
+        {!owner && allButton}
         {owner && (
           <>
             <div className="rail-sep" role="separator" aria-label={t("sidebar.team")} />
+            {allButton}
             {machines.map((m) => {
               const f: ListFilter = { kind: "machine", machine: m.machineId };
               const seen = dateOf(m.lastSeen);
