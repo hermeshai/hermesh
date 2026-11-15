@@ -195,6 +195,8 @@ pub mod method {
     /// Whether computer use can work where her runs: its switch, agent-desktop, and the system's
     /// permissions as agent-desktop finds them.
     pub const DESKTOP_STATUS: &str = "desktop/status";
+    /// Where her keeps her data, and how much of it there is, by kind.
+    pub const STORAGE_USAGE: &str = "storage/usage";
     /// This connection writes .docx files from the kernel's Word documents (word-design §2): a
     /// later host replaces the one before it, and the host leaves with its connection.
     pub const DOCX_HOST: &str = "docx/host";
@@ -694,6 +696,46 @@ pub enum DesktopPermission {
     Unknown,
     /// Computer use is for macOS only.
     Unsupported,
+}
+
+/// The result of `storage/usage`: her's data directory, the only copy of what it holds, and its
+/// size by kind.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+pub struct StorageUsage {
+    /// The data directory: `HER_HOME`, else `~/.her`.
+    pub home: PathBuf,
+    /// `HER_HOME` put it somewhere other than `~/.her`.
+    pub custom: bool,
+    /// Bytes of every file in it.
+    pub total: u64,
+    /// Each kind of data, in this order, every kind listed; their bytes add up to `total`.
+    pub parts: Vec<StoragePart>,
+}
+
+/// One kind of data in her's data directory.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+pub struct StoragePart {
+    pub kind: StorageKind,
+    pub bytes: u64,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum StorageKind {
+    /// What assistants and conversations made: each bot's folder, each chat's folder.
+    Files,
+    /// Conversations, with the full output of their tools.
+    Conversations,
+    /// Deleted conversations, kept until removed by hand.
+    Trash,
+    /// What each assistant remembers.
+    Memory,
+    /// The built-in browser's profiles and downloads.
+    Browser,
+    /// What her fetches again when it is gone: model lists, connectors' tool lists, icons, logs.
+    Cache,
+    /// Settings, skills, routines and everything else.
+    Other,
 }
 
 /// Parameters of `browser/reveal`.

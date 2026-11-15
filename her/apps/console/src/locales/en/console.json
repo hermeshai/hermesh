@@ -5,7 +5,8 @@
     "connectors": "Connectors",
     "skills": "Skills",
     "search": "Web Search",
-    "browser": "Browser"
+    "browser": "Browser",
+    "storage": "Storage"
   },
   "conn": {
     "connecting": "Connecting to Her…",
