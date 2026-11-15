@@ -544,6 +544,8 @@
     },
     "run": {
       "title": "One Run",
+      "task": "Scheduled task",
+      "deleted": "{{name}} (deleted)",
       "result": "Result",
       "scheduled": "Scheduled for",
       "started": "Started",

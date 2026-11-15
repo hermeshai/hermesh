@@ -383,6 +383,11 @@ pub struct BotRoutineRunParams {
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize, JsonSchema)]
 pub struct BotRoutineRunResult {
     pub run: RoutineRunInfo,
+    /// The name of the routine it is a run of.
+    pub routine_name: String,
+    /// The routine has been deleted since. Its runs are kept, and still read here.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub routine_deleted: bool,
     /// Its steps. Empty once its log has been cleaned up, or when it never started.
     pub transcript: Vec<TranscriptItem>,
 }

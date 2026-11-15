@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
-import { conversation, routineGroups, routineLine, runLate, runRows, runTime, runTook, totals, viewOfRun, type RunRow, type SessionView } from "@hermesh/her-client";
+import { RpcError, conversation, routineGroups, routineLine, runLate, runRows, runTime, runTook, totals, viewOfRun, type RunRow, type SessionView } from "@hermesh/her-client";
 import type { BotRoutineRunResult, BotSummary, RoutineDetail, RoutineRunInfo, RoutineSummary, SessionInfo } from "@hermesh/her-protocol";
 import { Icon } from "../icons";
 import { Markdown } from "../session/Markdown";
@@ -31,19 +31,20 @@ export function RoutinesPanel({ bot, view, route, onDraft, onShowBubble, onClose
   const routines = bot.routines ?? [];
   const routine = routines.find((r) => r.id === route.routine);
   const go = (next: RoutinesRoute) => her.setPanel({ kind: "routines", route: next });
-  // Deleted, or the panel stayed while another assistant came up: back to the list.
+  // Deleted, or the panel stayed while another assistant came up: back to the list. A run of a deleted routine
+  // still opens: its runs are kept.
   useEffect(() => {
-    if (route.routine && !routine) go({});
-  }, [route.routine, routine === undefined]);
+    if (route.routine && !routine && !route.run) go({});
+  }, [route.routine, route.run, routine === undefined]);
   const close = (
     <button className="tb" title={t("panel.close")} aria-label={t("panel.close")} onClick={onClose}>
       <Icon name="x" />
     </button>
   );
-  if (routine && route.run) {
+  if (route.routine && route.run) {
     return (
-      <Shell title={t("routines.run.title")} back={() => go({ routine: routine.id })} close={close}>
-        <RunPage key={route.run} bot={bot} routine={routine} id={route.run} info={view?.info} onShowBubble={onShowBubble} />
+      <Shell title={t("routines.run.title")} back={() => go(routine ? { routine: routine.id } : {})} close={close}>
+        <RunPage key={route.run} bot={bot} routineId={route.routine} lastRun={routine?.last_run} id={route.run} info={view?.info} onShowBubble={onShowBubble} onGone={() => go({})} />
       </Shell>
     );
   }
@@ -379,15 +380,27 @@ function OneRun({ run, relaying, onOpen }: { run: RoutineRunInfo; relaying: bool
 }
 
 /** One run: how it went, what it said, and its steps, which answer "why did it not tell me". */
-function RunPage({ bot, routine, id, info, onShowBubble }: { bot: BotSummary; routine: RoutineSummary; id: string; info: SessionInfo | undefined; onShowBubble: (run: string) => void }) {
+function RunPage({ bot, routineId, lastRun, id, info, onShowBubble, onGone }: {
+  bot: BotSummary;
+  routineId: string;
+  lastRun: RoutineSummary["last_run"];
+  id: string;
+  info: SessionInfo | undefined;
+  onShowBubble: (run: string) => void;
+  onGone: () => void;
+}) {
   const { t } = useTranslation("her");
   const her = useHer();
   const [found, setFound] = useState<BotRoutineRunResult | null>(null);
   const now = useNow(found && !found.run.outcome ? 1000 : 60_000);
-  const changed = JSON.stringify(routine.last_run);
+  const changed = JSON.stringify(lastRun);
   useEffect(() => {
     let gone = false;
-    her.call("bots/routine_run", { bot_id: bot.id, routine_id: routine.id, run_id: id }).then((r) => gone || setFound(r), () => {});
+    her.call("bots/routine_run", { bot_id: bot.id, routine_id: routineId, run_id: id }).then(
+      (r) => gone || setFound(r),
+      // Not this assistant's, or not kept: the list.
+      (e) => gone || (e instanceof RpcError && e.kind === "routine_not_found" && onGone()),
+    );
     return () => {
       gone = true;
     };
@@ -407,6 +420,12 @@ function RunPage({ bot, routine, id, info, onShowBubble }: { bot: BotSummary; ro
     <div className="form">
       <section>
         <div className="fgroup rtn-g">
+          {found.routine_deleted && (
+            <div className="frow">
+              <span className="fl">{t("routines.run.task")}</span>
+              <div className="fv">{t("routines.run.deleted", { name: found.routine_name })}</div>
+            </div>
+          )}
           <RunResult run={run} relaying={!!bot.typing} onShowBubble={onShowBubble} />
           {late !== null && (
             <div className="frow">

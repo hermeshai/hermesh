@@ -968,6 +968,17 @@ extension HermeshUITests {
         XCTAssertTrue(night.exists, "the other one stays")
         herShot("Scheduled tasks: one deleted")
         app.navigationBars.buttons.element(boundBy: 0).tap()
+
+        // Deleted, its message still opens the run it came from, with the task named as deleted and nothing to open.
+        XCTAssertTrue(source.waitForExistence(timeout: 10), "the message still names it")
+        press(source)
+        XCTAssertTrue(app.navigationBars["一次运行"].waitForExistence(timeout: 10), "the run's page")
+        try waitFor("how it went", timeout: 20) { text("发给你了").exists ? true : nil }
+        XCTAssertTrue(text("拉伸（已删除）").exists, "its task, named as deleted")
+        XCTAssertFalse(app.buttons["routine-run-task"].exists, "a deleted task does not open")
+        XCTAssertFalse(text("读不到这次运行").exists)
+        herShot("Scheduled task: a run of a deleted task")
+        app.navigationBars.buttons.element(boundBy: 0).tap()
     }
 
     /// Allows Her's next call when she asks (a routine she makes asks in the manual mode).
