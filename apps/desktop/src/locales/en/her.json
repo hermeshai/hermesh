@@ -615,6 +615,7 @@
     "toHer": "{{time}} · to Her",
     "sent_one": "This sent out {{count}}",
     "sent_other": "This sent out {{count}}",
-    "close": "Close"
+    "close": "Close",
+    "why": "Where it came from"
   }
 }

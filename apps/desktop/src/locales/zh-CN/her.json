@@ -604,6 +604,7 @@
     "fromRoutine": "来自定时任务",
     "toHer": "{{time}} · 对 Her 说",
     "sent_other": "这句话派出了 {{count}} 路",
-    "close": "关闭"
+    "close": "关闭",
+    "why": "来自哪句话"
   }
 }
