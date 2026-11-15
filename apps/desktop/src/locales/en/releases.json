@@ -3,6 +3,23 @@
     "improvements": [],
     "fixes": []
   },
+  "0.1.5": {
+    "improvements": [
+      "Her is now built into Hermesh on Mac and iPhone. Choose a Mac or Linux machine as her environment, connect a model, and keep talking even when that machine is temporarily offline.",
+      "Her can start and follow coding sessions on your computers, work with a team of agents, and show their work in Progress. The Mac and iPhone layouts keep Her, the team and their work together.",
+      "Connect services from Her’s conversation with sign-in cards, or manage them from her connectors page. Her can also work in your own Chrome through the bundled extension, with tab groups named for the task.",
+      "Her remembers what you tell her across conversations. Her settings show that memory and let you clear it; turning Her off or removing a machine can also erase her saved data.",
+      "iPhone: Remote Desktop lets you operate a Mac or Linux desktop, with direct touch or trackpad controls and clipboard sharing. Connections recover when the network changes and try to use a direct path.",
+      "iPhone: Her’s scheduled tasks have their own page. Conversations support math, Mermaid diagrams and opening PDF or Markdown files; important actions now have haptic feedback.",
+      "Mac: long conversations have a new reading layout, PDF and Markdown files open over the window, and narrower windows adapt the sidebar and details pane."
+    ],
+    "fixes": [
+      "Dead connections are detected sooner, including after sleep. Her reconnects interrupted conversation streams, and notifications wait for the connection to return instead of being lost.",
+      "Coding sessions interrupted by a rate limit retry automatically in the same conversation and explain when the retries are exhausted.",
+      "Removing an account disconnects its agents immediately. Renaming a machine closes connections made under its old name, and names without letters or digits are rejected.",
+      "Devices explain when a Mac’s background service is older than the app and recover once it is updated."
+    ]
+  },
   "0.1.4": {
     "improvements": [
       "The session list can be grouped by project, on the Mac and the iPhone: choose By Project from the view menu’s Group.",
