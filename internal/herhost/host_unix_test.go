@@ -112,6 +112,10 @@ func TestHost(t *testing.T) {
 	if st := h.Status(); !st.Enabled || st.Version == "" || st.Error != "" {
 		t.Fatalf("status %v", st)
 	}
+	// What the owner's devices may call here: her's methods the list allows (docs/version-skew.md §6.1).
+	if m := h.Status().Methods; !slices.Contains(m, "bots/memory") || slices.Contains(m, "server/shutdown") {
+		t.Fatalf("methods %v", m)
+	}
 	eventually(t, func() bool { return h.Status().ModelReady })
 
 	events := make(chan *herv1.OpenEvent, 4096)

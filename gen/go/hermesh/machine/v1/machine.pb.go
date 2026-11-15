@@ -1267,7 +1267,12 @@ type HerStatus struct {
 	// Her was on here once and her data is still on the machine: turned on
 	// again she carries on, or it can be erased (SetHer erase,
 	// docs/her-server.md §5.6).
-	Data          bool `protobuf:"varint,11,opt,name=data,proto3" json:"data,omitempty"`
+	Data bool `protobuf:"varint,11,opt,name=data,proto3" json:"data,omitempty"`
+	// The methods of her's protocol the owner's devices may call here: those
+	// this her answers and this hermeshd lets through (docs/version-skew.md
+	// §6.1). Empty means unknown (her not running, or one too old to list
+	// them), never "none".
+	Methods       []string `protobuf:"bytes,12,rep,name=methods,proto3" json:"methods,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -1377,6 +1382,13 @@ func (x *HerStatus) GetData() bool {
 		return x.Data
 	}
 	return false
+}
+
+func (x *HerStatus) GetMethods() []string {
+	if x != nil {
+		return x.Methods
+	}
+	return nil
 }
 
 // HerLatest is the newest thing an assistant sent the owner.
@@ -2797,7 +2809,7 @@ const file_hermesh_machine_v1_machine_proto_rawDesc = "" +
 	"\fScreenStatus\x12\x1c\n" +
 	"\tavailable\x18\x01 \x01(\bR\tavailable\x12\x16\n" +
 	"\x06viewer\x18\x02 \x01(\tR\x06viewer\x12)\n" +
-	"\x10candidates_later\x18\x03 \x01(\bR\x0fcandidatesLater\"\xd5\x02\n" +
+	"\x10candidates_later\x18\x03 \x01(\bR\x0fcandidatesLater\"\xef\x02\n" +
 	"\tHerStatus\x12\x18\n" +
 	"\aenabled\x18\x01 \x01(\bR\aenabled\x12\x18\n" +
 	"\arunning\x18\x02 \x01(\bR\arunning\x12\x18\n" +
@@ -2811,7 +2823,8 @@ const file_hermesh_machine_v1_machine_proto_rawDesc = "" +
 	"\x11client_public_key\x18\t \x01(\fR\x0fclientPublicKey\x12\x12\n" +
 	"\x04mesh\x18\n" +
 	" \x01(\bR\x04mesh\x12\x12\n" +
-	"\x04data\x18\v \x01(\bR\x04data\"\xca\x01\n" +
+	"\x04data\x18\v \x01(\bR\x04data\x12\x18\n" +
+	"\amethods\x18\f \x03(\tR\amethods\"\xca\x01\n" +
 	"\tHerLatest\x12\x15\n" +
 	"\x06bot_id\x18\x01 \x01(\tR\x05botId\x12\x19\n" +
 	"\bbot_name\x18\x02 \x01(\tR\abotName\x12\x12\n" +
