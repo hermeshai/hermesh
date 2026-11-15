@@ -31,15 +31,27 @@ public struct HerOutgoing: Equatable, Sendable {
     public var ts: Double
     /// Why it was not sent: nil while it is being sent.
     public var refused: String?
+    /// HerSend answered that her took it: it shows as sent until the conversation does.
+    public var delivered: Bool
 
-    public init(id: String, text: String, images: [HerImage] = [], files: [String] = [], ts: Double, refused: String? = nil) {
+    public init(id: String, text: String, images: [HerImage] = [], files: [String] = [], ts: Double, refused: String? = nil, delivered: Bool = false) {
         self.id = id
         self.text = text
         self.images = images
         self.files = files
         self.ts = ts
         self.refused = refused
+        self.delivered = delivered
     }
+}
+
+/// The messages still being sent once the conversation is `said` (docs/her-sending.md §5.2): one it shows goes, by its
+/// id or her's own by its words (`herOutbox`), so that it is the conversation's from then on; and so does one her took
+/// that it doesn't show and won't (`lost`: a command such as /context, which her takes without it joining the
+/// conversation, or the conversation opened afresh without it).
+public func herStillSending(_ sending: [HerOutgoing], said: [HerItem], lost: (HerOutgoing) -> Bool = { _ in false }) -> [HerOutgoing] {
+    let unshown = Set(herOutbox(sending: sending, waiting: [], botID: "", said: said).map(\.key))
+    return sending.filter { unshown.contains($0.id) && !($0.delivered && lost($0)) }
 }
 
 /// What an assistant was sent that its conversation (`said`: its rows, its queue among them) doesn't show yet, as
