@@ -47,6 +47,11 @@ private enum Stand: Equatable {
     }
 }
 
+/// How many pieces of the work Her sent out wait for the owner: what marks Progress on her page.
+@MainActor func herProgressWaiting(_ chat: HerChat, _ model: AppModel) -> Int {
+    chat.progress.reduce(0) { n, g in n + g.tasks.filter { stand($0, model) == .waiting }.count }
+}
+
 @MainActor private func stand(_ t: HerProgressTask, _ model: AppModel) -> Stand {
     switch t {
     case .agent(let l): Stand(herAgentState(l))
@@ -112,7 +117,7 @@ private struct Post: Identifiable {
 /// What a sheet shows: the thing the owner said (a group's key).
 private struct Source: Identifiable, Hashable { let id: String }
 
-/// The page the menu's Progress opens: Her's environment as the Her entry shows it.
+/// The page Progress on Her's page opens, pushed over her conversation: her environment as her page shows it.
 struct ProgressPage: View {
     @Environment(AppModel.self) private var model
 
@@ -130,7 +135,6 @@ struct ProgressPage: View {
         }
         .background(Color(.systemBackground))
         .navigationTitle("Progress")
-        .rootToolbar()
     }
 }
 

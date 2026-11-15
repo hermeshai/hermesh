@@ -3708,6 +3708,16 @@
         }
       }
     },
+    "Progress, %lld waiting for you": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "进展，%lld 个在等你"
+          }
+        }
+      }
+    },
     "Ran": {
       "localizations": {
         "zh-Hans": {

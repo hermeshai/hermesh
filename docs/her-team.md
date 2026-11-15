@@ -934,11 +934,14 @@ follows that work, as they would ask a secretary how things stand.
 
 ### 15.1 The page
 
-- **Where.** Under Her in the sidebar, the rail and the iPhone's menu, once
-  Her runs on a machine. Its mark is an orange dot while a piece of her work
-  waits for the owner, and a ring with how many are at work. Her coding
-  sessions are counted as Watch brings them; her sub-agents, while a page of
-  hers follows her conversation (nothing tells the app of them otherwise).
+- **Where.** A page of Her's, not a place of its own (decided 2026-11-15:
+  on its own it was too heavy and too thin): a button at the top right of
+  her page, on the iPhone beside nothing, on the Mac before her routines
+  and ⋯. It opens Progress over her conversation (pushed on the iPhone, in
+  her page's place on the Mac, whose sidebar keeps Her current), with a
+  way back to her. Its mark is an orange dot while a piece of her work
+  waits for the owner. Her coding sessions are counted as Watch brings
+  them; her sub-agents, while a page of hers follows her conversation.
 - **Groups.** One for each thing that set work off: the owner's message (its
   words head the group, with what Her last told the owner since), or a
   routine's run. A message that sent nothing out is no group. Agents whose

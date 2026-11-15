@@ -11,8 +11,6 @@ import UserNotifications
 /// Where the side menu leads.
 enum Root: Hashable {
     case her, overview, grants, machines
-    /// The work Her sent out (docs/her-team.md §15).
-    case progress
     case session(String)
 
     /// A page with a large title (Her's, the overview's and a session's are in the bar).
@@ -35,6 +33,7 @@ enum Route: Hashable {
     case agentSessions(String, String) // machine id, coding agent
     case sessions // all of them, from Work
     case herSettings // the environment's Her shown
+    case progress // the work Her sent out (docs/her-team.md §15), from her page's top
     case progressAgent(String) // a sub-agent of Her's: its record
 
     /// A list of sessions: on a wide screen it stands as a column, what it leads to beside it.

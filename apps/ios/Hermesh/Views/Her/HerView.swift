@@ -23,7 +23,7 @@ struct HerView: View {
 }
 
 /// One environment's Her: the menu button, her mark large in the middle with her name tag over its lower edge,
-/// and the conversation scrolling under them. The tag says what the team is doing (docs/her-team.md §4.2) and
+/// Progress at the right (the work she sent out, docs/her-team.md §15), and the conversation scrolling under them. The tag says what the team is doing (docs/her-team.md §4.2) and
 /// opens the team panel; her mark opens her settings.
 private struct HerPage: View {
     @Environment(AppModel.self) private var model
@@ -78,11 +78,10 @@ private struct HerPage: View {
 
     private func header(_ chat: HerChat) -> some View {
         ZStack(alignment: .top) {
-            if !sideBars && !model.menuBeside {
-                HStack {
-                    HerMenuButton()
-                    Spacer()
-                }
+            HStack {
+                if !sideBars && !model.menuBeside { HerMenuButton() }
+                Spacer()
+                if chat.bot != nil { HerProgressButton(waiting: herProgressWaiting(chat, model)) }
             }
             VStack(spacing: -16) {
                 Button {
@@ -264,6 +263,28 @@ private struct HerConnections: ViewModifier {
 
 extension View {
     func herConnections(_ chat: HerChat, machine: HerMachine) -> some View { modifier(HerConnections(chat: chat, machine: machine)) }
+}
+
+/// Progress, at the top right of Her's page: the work she sent out, marked while a piece of it waits for the owner.
+private struct HerProgressButton: View {
+    @Environment(AppModel.self) private var model
+    let waiting: Int
+
+    var body: some View {
+        Button {
+            model.path.append(.progress)
+        } label: {
+            Image(systemName: "waveform.path.ecg").font(.body.weight(.medium)).frame(width: 44, height: 44)
+                .overlay(alignment: .topTrailing) {
+                    if waiting > 0 { Circle().fill(.orange).frame(width: 8, height: 8).offset(x: -9, y: 11) }
+                }
+                .glassEffect(.regular.interactive(), in: .circle)
+                .contentShape(.circle)
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(waiting > 0 ? Text("Progress, \(waiting) waiting for you") : Text("Progress"))
+        .accessibilityIdentifier("her-progress")
+    }
 }
 
 /// The menu button, as root pages have it in their bar: Her's page draws its own top.

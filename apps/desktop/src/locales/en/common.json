@@ -67,8 +67,7 @@
     "sentByYou": "Sent by You",
     "allSessions": "All Sessions",
     "noneHere": "No sessions here",
-    "chooseSession": "Choose a session",
-    "progress": "Progress"
+    "chooseSession": "Choose a session"
   },
   "accountMenu": {
     "settings": "Settings…",

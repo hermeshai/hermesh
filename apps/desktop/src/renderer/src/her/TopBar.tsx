@@ -7,13 +7,16 @@ import { useHer } from "./context";
 import { reachable } from "./environments";
 import { menuKeys } from "./menus";
 import { TagWords, TeamPanel, useTeam } from "../team";
+import { progressMarks } from "../Sidebar";
+import { useStore } from "../store";
 
 /**
  * The Her page's top (docs/her-server.md §9.1), as on the iPhone: Her's avatar in the middle, larger than a bar's,
  * its name on a capsule over the avatar's lower edge, and in the capsule the environment as a quiet
  * menu when Her runs on more than one machine; the conversation scrolls under them. A click on the avatar or the name
- * opens Her's settings beside the conversation, as a tap does on the iPhone. On the right, Her's routines, which open
- * there too, and ⋯: the environment's console, and another environment while there is no menu of them.
+ * opens Her's settings beside the conversation, as a tap does on the iPhone. On the right, Progress (the work she sent
+ * out, docs/her-team.md §15), marked while a piece of it waits for the owner; Her's routines, which open beside the
+ * conversation too; and ⋯: the environment's console, and another environment while there is no menu of them.
  */
 export function TopBar() {
   const { t } = useTranslation("her");
@@ -47,6 +50,7 @@ export function TopBar() {
       </div>
       {teamOpen && <TeamPanel onClose={closeTeam} />}
       <span className="bhead-gap" />
+      {bot && <ProgressButton />}
       {bot && (
         <button className={`tb rtn-btn ${panel?.kind === "routines" ? "on" : ""}`} title={t("routines.title")} aria-label={t("routines.title")} aria-pressed={panel?.kind === "routines"} onClick={() => toggle("routines")}>
           <Icon name="clock" />
@@ -55,6 +59,21 @@ export function TopBar() {
       )}
       <MoreMenu />
     </div>
+  );
+}
+
+/** Progress, a page of Her's: an orange dot while a piece of the work she sent out waits for the owner. */
+function ProgressButton() {
+  const { t } = useTranslation("her");
+  const st = useStore();
+  const her = useHer();
+  const { waits } = progressMarks(st);
+  const label = waits > 0 ? `${t("progress.title")} · ${t("progress.waiting", { count: waits })}` : t("progress.title");
+  return (
+    <button className="tb rtn-btn" title={label} aria-label={label} onClick={() => st.set({ selection: { kind: "progress", machine: her.machine.machineId } })}>
+      <Icon name="pulse" />
+      {waits > 0 && <i className="rtn-dot" />}
+    </button>
   );
 }
 

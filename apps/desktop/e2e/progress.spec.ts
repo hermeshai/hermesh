@@ -17,8 +17,13 @@ test("Progress: what Her sent out as a feed, a sub-agent's record, and a coding 
     await composer.press("Enter");
   };
   const nav = page.locator(".side-nav");
+  // Progress is a page of Her's: her top bar's button opens it.
+  const progress = async () => {
+    await navTo(page, /^Her/);
+    await page.locator(".her-head").getByRole("button", { name: /^进展/ }).click();
+  };
 
-  // Her runs nowhere yet: Progress is no place to go.
+  // The sidebar has no place for Progress: it is Her's.
   await expect(nav.getByRole("button", { name: /^Her/ })).toBeVisible();
   await expect(nav.getByRole("button", { name: /^进展/ })).toHaveCount(0);
   await nav.getByRole("button", { name: /^Her/ }).click();
@@ -26,10 +31,11 @@ test("Progress: what Her sent out as a feed, a sub-agent's record, and a coding 
   await choices.getByRole("listitem").filter({ hasText: "这台 Mac" }).getByRole("button", { name: "开启 Her" }).click({ timeout: 60_000 });
   await expect(page.getByText(/^你好，我是 .+，在 .+ 上为你做事/)).toBeVisible({ timeout: 120_000 });
 
-  // Now it is, under Her; she has sent nothing out.
-  await navTo(page, /^进展/);
+  // Now her top bar has it; she has sent nothing out. Her row stays current there, and the back button leads to her.
+  await progress();
   await expect(page.getByRole("heading", { name: "进展", level: 1 })).toBeVisible();
   await expect(page.getByText("还没有派出去的活")).toBeVisible();
+  await expect(nav.getByRole("button", { name: /^Her/ })).toHaveClass(/\bsel\b/);
   await snap(page, "progress-empty");
 
   // She hands a piece of work to a sub-agent (her-mock's relay_slow: "写长文", which runs a command).
@@ -47,8 +53,10 @@ test("Progress: what Her sent out as a feed, a sub-agent's record, and a coding 
   const post = list.getByRole("article", { name: "写长文" });
   await expect(list.getByRole("listitem", { name: "需要你" }).getByRole("article", { name: "写长文" })).toBeVisible({ timeout: 60_000 });
   await expect(post).toContainText("等你批准");
-  // The sidebar says so while Her's conversation is followed.
-  await expect(nav.getByRole("button", { name: /^进展/ }).getByRole("img", { name: /在等你/ })).toBeVisible();
+  // Her's top bar says so: Progress is marked while a piece of her work waits.
+  await page.locator(".pt-back").click();
+  await expect(page.locator(".her-head").getByRole("button", { name: "进展 · 1 个在等你" })).toBeVisible();
+  await progress();
   await snap(page, "progress-waiting");
 
   // What set it off, shown over the page by the post's ⓘ: what the owner said and what Her said back.
@@ -94,7 +102,7 @@ test("Progress: what Her sent out as a feed, a sub-agent's record, and a coding 
   await expect(approval).toContainText("owner-mac/demo", { timeout: 60_000 });
   await approval.getByRole("button", { name: /^允许/ }).first().click();
   await expect(log.getByRole("button", { name: "Her 派的活" })).toBeVisible({ timeout: 60_000 });
-  await navTo(page, /^进展/);
+  await progress();
   const session = list.getByRole("article", { name: "Her 派的活" });
   await expect(session.getByRole("button", { name: /^Her 派的活 · 已完成/ })).toBeVisible({ timeout: 60_000 });
   await session.getByRole("button", { name: "来自哪句话" }).click();
@@ -108,7 +116,7 @@ test("Progress: what Her sent out as a feed, a sub-agent's record, and a coding 
   // From there, the session among all sessions; and from what set it off, back to what Her said.
   await page.getByRole("button", { name: "在全部会话里打开" }).click();
   await expect(page.getByRole("heading", { name: "Her 派的活" })).toBeVisible();
-  await navTo(page, /^进展/);
+  await progress();
   const done = list.getByRole("article", { name: "写长文" });
   await done.getByRole("button", { name: "来自哪句话" }).click();
   await page.getByRole("dialog", { name: "来自你的一句话" }).getByRole("button", { name: "在对话里看" }).click();

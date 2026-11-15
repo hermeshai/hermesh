@@ -609,6 +609,7 @@
     "toHer": "{{time}} · 对 Her 说",
     "sent_other": "这句话派出了 {{count}} 路",
     "close": "关闭",
-    "why": "来自哪句话"
+    "why": "来自哪句话",
+    "waiting_other": "{{count}} 个在等你"
   }
 }
