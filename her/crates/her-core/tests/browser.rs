@@ -776,6 +776,7 @@ async fn the_browser_turned_on_and_off_while_a_session_is_open() {
     assert!(!names.iter().any(|n| n.starts_with("browser_")), "deferred, not in the list: {names:?}");
     assert!(first.system.starts_with(&frozen), "the frozen part stays as it was");
     assert!(first.system.contains("- browser:"), "the catalog lists the group");
+    assert!(first.system.contains("the first choice for web pages"), "{}", first.system);
     assert!(first.system.contains("- agents:"), "the sub-agents' group stays through the rebuild");
     let search = &h.api.requests()[2];
     let found = search

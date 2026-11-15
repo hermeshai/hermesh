@@ -55,14 +55,13 @@ pub(crate) struct Deferred {
 pub(crate) type DeferredCell = Arc<Mutex<Arc<Deferred>>>;
 
 const BROWSER: &str = "browser";
-const BROWSER_SUMMARY: &str = "Open web pages, read them and act in them: local pages, files and sites";
+/// The one word on which tools web pages go through: said here, so it is there only while the
+/// browser tools are, and computer use stays free to operate a browser app like any other.
+const BROWSER_SUMMARY: &str = "Open web pages, read them and act in them: local pages, files and sites; the first choice for web pages";
 const BUILTIN_DEFAULT: &str = "; new pages open in the built-in browser unless you name the user's own";
 const YOURS_DEFAULT: &str = "; new pages open in the user's own browser, with their sign-ins, while it is connected, else in the built-in one, unless you name one";
 const CUA: &str = "cua";
-const CUA_SUMMARY: &str = "Computer use: see and operate the other apps on this computer; not for web pages, which the browser tools open";
-/// Driving a browser's window takes the user's mouse and focus; the browser tools do not.
-const CUA_NOT_BROWSERS: &str = "Do not open or act on web pages by operating a browser app (Chrome, Edge, Safari, Arc, Brave) with these tools: \
-    use the browser tools. Where there are none, ask the user to connect their browser in Hermesh's Browser settings.";
+const CUA_SUMMARY: &str = "Computer use: see and operate any of the apps on this computer";
 const DOC: &str = "doc";
 const DOC_SUMMARY: &str = "Documents and workbooks (PDF, XLSX, XLSM): open them beside the conversation; read or search pages and cell ranges, trace or calculate formulas, and edit or save workbooks";
 const AGENTS: &str = "agents";
@@ -110,7 +109,7 @@ impl Deferred {
             groups.push(Group {
                 name: CUA,
                 summary: CUA_SUMMARY.into(),
-                guidelines: vec![CUA_NOT_BROWSERS.into()],
+                guidelines: Vec::new(),
                 tools: crate::desktop::desktop_tools(),
             });
         }
@@ -227,6 +226,24 @@ mod tests {
                 assert_eq!(made, Deferred::names_of(&settings, true, false, true, role, connectors));
             }
         }
+    }
+
+    /// Computer use may operate a browser app like any other: the browser's line alone says
+    /// which tools web pages go through, so the word is there only while those tools are.
+    #[test]
+    fn computer_use_says_nothing_of_browsers() {
+        let mut config = Config::default();
+        config.browser.enabled = Some(true);
+        config.desktop.enabled = Some(true);
+        let deferred = Deferred::of(&SystemSettings::of(&config), true, false, false, super::AgentRole::None, false);
+        let cua = deferred.group("cua").expect("computer use");
+        assert_eq!(cua.summary, "Computer use: see and operate any of the apps on this computer");
+        for line in cua.guidelines() {
+            let line = line.to_lowercase();
+            assert!(!line.contains("browser") && !line.contains("web page"), "{line}");
+        }
+        let browser = deferred.group("browser").expect("the browsers");
+        assert!(browser.summary.contains("the first choice for web pages"), "{}", browser.summary);
     }
 
     #[test]
