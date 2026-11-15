@@ -58,7 +58,8 @@ final class DuoUITests: XCTestCase {
     }
 
     /// iPhone Duo open (unfolded by hand: Device Hub on the Simulator, or the device itself). On its side the
-    /// menu stands beside the page, drags narrower, hides and comes back; upright it slides over the page as on
+    /// menu stands beside the page, drags narrower, shrinks to its rail and expands again (WideUITests has the
+    /// list's column); upright it slides over the page as on
     /// an iPhone. Runs against the app as it is (the demo, or signed in), from Her's page, a root page.
     func testOpen() throws {
         guard ProcessInfo.processInfo.environment["HERMESH_DUO_OPEN"] != nil else { throw XCTSkip("set HERMESH_DUO_OPEN") }
@@ -66,7 +67,7 @@ final class DuoUITests: XCTestCase {
         let drawer = app.descendants(matching: .any)["drawer"], dim = app.descendants(matching: .any)["drawer-dim"]
         XCUIDevice.shared.orientation = .landscapeLeft
         sleep(2)
-        if app.buttons["menu"].exists { app.buttons["menu"].tap(); sleep(1) } // hidden when the test began
+        if app.buttons["rail-expand"].exists { app.buttons["rail-expand"].tap(); sleep(1) } // its rail when the test began
         tap("her-place")
         sleep(1)
         XCTAssertTrue(drawer.exists && !app.buttons["menu"].exists, "on its side, the menu beside the page")
@@ -146,8 +147,8 @@ final class DuoUITests: XCTestCase {
         tap("close")
     }
 
-    /// Beside the page, the menu's hairline drags it narrower, its sidebar button hides it, and the page's
-    /// button shows it again. Elsewhere there is nothing to do.
+    /// Beside the page, the menu's hairline drags it narrower, its sidebar button shrinks it to its rail, and
+    /// the rail's button expands it again. Elsewhere there is nothing to do.
     private func hideAndResize(_ suffix: String) {
         let drawer = app.descendants(matching: .any)["drawer"]
         guard !app.buttons["menu"].exists, drawer.exists else { return }
@@ -162,10 +163,10 @@ final class DuoUITests: XCTestCase {
         shot("menu-narrow" + suffix)
         tap("menu-hide")
         sleep(1)
-        XCTAssertFalse(drawer.exists, "the menu hidden")
-        XCTAssertTrue(app.buttons["menu"].isHittable, "the page's button to show it")
-        shot("menu-hidden" + suffix)
-        tap("menu")
+        XCTAssertFalse(drawer.exists, "the menu shrunk")
+        XCTAssertTrue(app.buttons["rail-expand"].isHittable && !app.buttons["menu"].exists, "its rail, with the button to expand it")
+        shot("menu-rail" + suffix)
+        tap("rail-expand")
         sleep(1)
         XCTAssertTrue(drawer.exists && !app.buttons["menu"].exists, "the menu beside the page again")
         XCTAssertEqual(drawer.frame.width, narrower, accuracy: 4, "as wide as it was left")

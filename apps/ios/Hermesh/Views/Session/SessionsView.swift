@@ -134,8 +134,8 @@ struct SessionListRow: View {
     @State private var deleting = false
 
     var body: some View {
-        Button { model.openSession(session.sessionID) } label: { SessionRow(session: session, metadata: model.listView.metadata) }
-            .buttonStyle(RowStyle(selected: false))
+        Button { model.chooseSession(session.sessionID) } label: { SessionRow(session: session, metadata: model.listView.metadata) }
+            .buttonStyle(RowStyle(selected: model.chosenSession == session.sessionID))
             .listRowInsets(EdgeInsets(top: 0, leading: 10, bottom: 0, trailing: 10))
             .listRowSeparator(.hidden)
             .listRowBackground(Color.clear)
