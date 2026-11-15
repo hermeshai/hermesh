@@ -527,6 +527,8 @@
     },
     "run": {
       "title": "一次运行",
+      "task": "定时任务",
+      "deleted": "{{name}}（已删除）",
       "result": "结果",
       "scheduled": "计划时间",
       "started": "开始",

@@ -295,6 +295,10 @@ export type BotRoutineRunParams = {
 };
 
 export type BotRoutineRunResult = {
+  /** The routine has been deleted since. Its runs are kept, and still read here. */
+  routine_deleted?: boolean;
+  /** The name of the routine it is a run of. */
+  routine_name: string;
   run: RoutineRunInfo;
   /** Its steps. Empty once its log has been cleaned up, or when it never started. */
   transcript: TranscriptItem[];

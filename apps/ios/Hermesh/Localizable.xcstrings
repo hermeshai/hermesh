@@ -30,6 +30,16 @@
         }
       }
     },
+    "%@ (Deleted)": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@（已删除）"
+          }
+        }
+      }
+    },
     "%@ (offline)": {
       "localizations": {
         "zh-Hans": {
@@ -3748,6 +3758,16 @@
         }
       }
     },
+    "Its scheduled task may have been deleted.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "它所属的定时任务可能已被删除。"
+          }
+        }
+      }
+    },
     "Just Finished": {
       "localizations": {
         "zh-Hans": {
@@ -4544,6 +4564,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "只展开思考"
+          }
+        }
+      }
+    },
+    "This Run Is Gone": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "这次运行已经不在了"
           }
         }
       }
