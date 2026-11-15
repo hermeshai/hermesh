@@ -108,7 +108,6 @@ export function Sidebar() {
       {/* Navigation only (docs/her-team.md §14.2): the pages, then the team, whose rows open the session list. */}
       <nav className="side-nav">
         {!st.status?.machineOnly && <HerItem />}
-        {!st.status?.machineOnly && <ProgressItem />}
         <WorkItem now={now} />
         <button className="nav-i" onClick={() => st.set({ searching: true })}>
           <Icon name="search" />
@@ -155,10 +154,10 @@ function HerItem() {
   const st = useStore();
   const { t } = useTranslation("common");
   const unread = unreadCount(st.machines);
-  const sel = st.selection.kind === "her";
+  const sel = st.selection.kind === "her" || st.selection.kind === "progress";
   const on = st.machines.some((m) => m.her?.enabled);
   return (
-    <button className={`nav-i ${sel ? "sel" : ""}`} onClick={() => !sel && st.set({ selection: { kind: "her" } })}>
+    <button className={`nav-i ${sel ? "sel" : ""}`} onClick={() => st.selection.kind !== "her" && st.set({ selection: { kind: "her" } })}>
       <Icon name="her" />
       <span>{t("sidebar.her")}</span>
       {!on ? <span className="cnt">{t("sidebar.herOff")}</span> : unread > 0 && <span className="cnt" aria-label={t("sidebar.herUnread", { count: unread })}>{unread}</span>}
@@ -167,8 +166,8 @@ function HerItem() {
 }
 
 /**
- * What Her sent out and how it stands (docs/her-team.md §15): her coding sessions, as Watch brings them, and her
- * sub-agents while a page of hers follows her conversation.
+ * What Her sent out and how it stands (docs/her-team.md §15), for the Progress button on her page: her coding
+ * sessions, as Watch brings them, and her sub-agents while a page of hers follows her conversation.
  */
 export function progressMarks(st: Store) {
   const her = herClients(st);
@@ -177,25 +176,6 @@ export function progressMarks(st: Store) {
     waits: mine.filter((s) => s.status === SessionStatus.WAITING_INPUT).length + (st.herAgents?.waits ?? 0),
     running: mine.filter(isActive).length + (st.herAgents?.running ?? 0),
   };
-}
-
-/** Progress, once Her runs somewhere: an orange dot when a piece of her work waits for the owner, and how many are at work. */
-function ProgressItem() {
-  const st = useStore();
-  const { t } = useTranslation("common");
-  if (!st.machines.some((m) => m.her?.enabled)) return null;
-  const { waits, running } = progressMarks(st);
-  const sel = st.selection.kind === "progress";
-  return (
-    <button className={`nav-i ${sel ? "sel" : ""}`} aria-current={sel || undefined} onClick={() => st.set({ selection: { kind: "progress" } })}>
-      <Icon name="pulse" />
-      <span>{t("sidebar.progress")}</span>
-      <span className="nav-marks">
-        {waits > 0 && <span className="dot-w" role="img" aria-label={t("rail.waiting", { count: waits })} />}
-        {running > 0 && <Busy count={running} label={t("sidebar.running", { count: running })} />}
-      </span>
-    </button>
-  );
 }
 
 /** Work (the overview, docs/her-team.md §14.2): an orange dot when something needs the owner, and what runs. */

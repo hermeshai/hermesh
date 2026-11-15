@@ -620,6 +620,8 @@
     "sent_one": "This sent out {{count}}",
     "sent_other": "This sent out {{count}}",
     "close": "Close",
-    "why": "Where it came from"
+    "why": "Where it came from",
+    "waiting_one": "{{count}} waiting for you",
+    "waiting_other": "{{count}} waiting for you"
   }
 }

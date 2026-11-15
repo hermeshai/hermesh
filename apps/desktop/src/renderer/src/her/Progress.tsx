@@ -91,7 +91,7 @@ export function Progress({ bot, conv, op, task }: { bot: BotSummary; conv: Conv;
   const sourceGroup = source ? groups.find((g) => g.key === source) : undefined;
   return (
     <ContentScope value={`${her.machine.machineId}/${conv.session ?? ""}`}>
-      {open ? <TaskPage key={open.task.key} post={open} conv={conv} op={op} onSource={setSource} /> : <Board posts={posts} conv={conv} missing={!!task} onSource={setSource} />}
+      {open ? <TaskPage key={open.task.key} post={open} conv={conv} op={op} onSource={setSource} /> : <Board bot={bot} posts={posts} conv={conv} missing={!!task} onSource={setSource} />}
       {sourceGroup && <SourcePanel bot={bot} group={sourceGroup} posts={posts} here={open?.task.key} onClose={() => setSource(null)} />}
     </ContentScope>
   );
@@ -112,9 +112,10 @@ const refOf = (task: ProgressTask): ProgressTaskRef | null => (task.kind === "se
 
 // MARK: The feed
 
-/** The feed: what needs the owner, then what is at work now, then what ended; the latest first in each. */
-function Board({ posts, conv, missing, onSource }: { posts: Post[]; conv: Conv; missing: boolean; onSource: (key: string) => void }) {
+/** The feed, a page of Her's (her top bar's Progress opens it): what needs the owner, then what is at work now, then what ended; the latest first in each. */
+function Board({ bot, posts, conv, missing, onSource }: { bot: BotSummary; posts: Post[]; conv: Conv; missing: boolean; onSource: (key: string) => void }) {
   const { t } = useTranslation("her");
+  const go = useOpen();
   const her = useHer();
   const st = useStore();
   const state = envState(her.machine);
@@ -137,8 +138,12 @@ function Board({ posts, conv, missing, onSource }: { posts: Post[]; conv: Conv; 
   ].filter((x) => x.posts.length > 0);
   return (
     <>
-      <div className="ctool drag">
-        <div className="ctitle" />
+      {/* A page of Her's: back to her conversation. */}
+      <div className="ctool drag pt-bar">
+        <button className="btn pt-back" onClick={go.chat}>
+          <Icon name="chevL" />
+          {bot.name}
+        </button>
       </div>
       <OfflineLine state={state} />
       <div className="cscroll">
