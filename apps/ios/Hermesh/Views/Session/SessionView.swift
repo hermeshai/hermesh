@@ -33,6 +33,8 @@ struct SessionView: View {
             if let s = model.session(id) {
                 content(s)
                     .onChange(of: s.isActive) { _, running in rebuild(running: running) }
+                    // The agent asks while the owner looks.
+                    .onChange(of: s.pendingQuestion?.questionID) { _, asked in if asked != nil { Haptic.asks.play() } }
             } else {
                 PageLoader(text: "Reading the session…", bare: true)
             }

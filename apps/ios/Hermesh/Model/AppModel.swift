@@ -846,6 +846,7 @@ final class AppModel {
         do {
             replace(try await api.answer(s.sessionID, question: q.questionID, answers: answers, decline: decline))
             show(decline ? String(localized: "Told it to decide by itself") : String(localized: "Answered; \(agentTitle(s.agent)) is working again"))
+            Haptic.success.play()
             return true
         } catch {
             report(error)
@@ -909,6 +910,7 @@ final class AppModel {
             try await api.approveClient(p.code, spec: spec)
             pairings.removeAll { $0.code == p.code }
             clients = (try? await api.clients()) ?? clients
+            Haptic.success.play()
             return true
         } catch {
             report(error)
@@ -928,6 +930,7 @@ final class AppModel {
             let res = try await api.approveMachine(p.code, name: name)
             pairings.removeAll { $0.code == p.code }
             machines = (try? await api.machines()) ?? machines
+            Haptic.success.play()
             return res
         } catch {
             report(error)
@@ -969,6 +972,7 @@ final class AppModel {
             let res = try await api.approveDevice(p.code)
             pairings.removeAll { $0.code == p.code }
             devices = (try? await api.devices()) ?? devices
+            Haptic.success.play()
             return res
         } catch {
             report(error)

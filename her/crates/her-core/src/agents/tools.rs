@@ -234,7 +234,7 @@ impl TypedTool for BotSpawnAgent {
     const DESCRIPTION: &'static str = spawn_description!(
         "Hand work to a sub-agent: a separate agent with your workspace, permissions, model and tools, except that it \
         cannot start agents. It works in the background while you stay free for the user. This is how you get anything \
-        beyond a quick answer done: research, data and files, scripts, long writing.\n\n\
+        beyond a quick answer done: research, data and files, scripts, writing that takes real work.\n\n\
         It sees none of this conversation: the task you write is all it knows.",
         "Its report comes to you as a new message when it finishes, even after you end your turn. So end your turn \
         rather than wait for it: that is not your final answer.",

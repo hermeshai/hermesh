@@ -226,6 +226,15 @@ const complexAsks = ["民主党当选，为何港股大涨？", "中期选举之
 const mediumAsks = ["帮我写个 Python 脚本，造一份 200 行、5 列的随机数据存成 data.csv，算每列的平均值，把结果告诉我。", "把 1 到 1000 里的质数算出来存成 primes.txt，发给我。"];
 const simpleAsks = ["1 加 1 等于几？", "今天星期几？", "你好，你是谁？用一句话回答。", "谢谢！", "1 公里等于多少英里？", "你能帮我做什么？简单说。"];
 const lookupAsks = ["你文件夹里现在有哪些文件？", "现在几点了？", "腾讯现在股价多少？"];
+// `form`: each ask, and whether the owner asked for a file.
+const formAsks = [
+  ["我预算一万块左右，想买台剪视频用的笔记本，买哪台好？", false],
+  ["RAG 是什么？", false],
+  ["帮我给房东写段话，说下个月起房租要晚三天交，我自己发给他。", false],
+  ["regions.csv 是公司今年四个区的月度收入，今年整体情况怎么样？", false],
+  ["把 regions.csv 里各区的全年总收入和同比增长整理成一个表格文件发我。", true],
+  ["帮我写一份详细的剪视频笔记本选购调研报告，存成文件发我。", true],
+];
 const isOwnStep = (e) => e.type === "message_completed" && e.message.role === "assistant" && e.message.content.some((x) => x.type === "tool_call" && !["send_to_user", "spawn_agent"].includes(x.name));
 const routed = (w) => w.events.filter(isOwnStep).length >= 5 || w.events.some((e) => e.type === "agent_started" && Date.now() - e.at > 3000);
 const route = (asks) => ({ ms: 300_000, route: true, say: (run) => [[0, asks[run % asks.length]]], until: routed });
@@ -242,8 +251,8 @@ const scenarios = {
   hello: { oneByOne: true, say: () => ["你好，你是谁？用一句话回答。", "你能帮我做什么？简单说。", "谢谢！"].map((t) => [0, t]) },
   // The message types (bot-design §3.12): is a file sent as one, and a choice asked as one?
   files: { say: () => [[0, "写一份 100 字的周报，存成 report.md，再用 Python 把 1 到 5 的平方写进 squares.csv，都发给我。"]] },
-  // A question, not a request for a file: the owner gets a conclusion, and the long version the bot
-  // chose to write is the file. Is it handed over, or only named at the end of the words?
+  // A question, not a request for a file: the owner gets an answer in words (noFile). When the bot
+  // writes a file anyway, is it handed over, or only named at the end of the words?
   report: {
     ms: 600_000,
     files: process.env.HER_BENCH_FILES
@@ -268,6 +277,25 @@ const scenarios = {
       else t.kept++;
       if (handed && named) t.alsoLinked++;
       console.log(`   (made: ${made.join(", ") || "none"}; in files: ${inFiles.join(", ") || "none"})`);
+    },
+  },
+  // Words or a file: a question or a draft gets words however much there is to say, and a file goes
+  // out only when the owner asked for one. right, wrong: the form matched what was asked;
+  // sentChars: how much the bot wrote to the owner.
+  form: {
+    ms: 600_000,
+    files: { "regions.csv": monthlySales() },
+    say: (run) => [[0, formAsks[run % formAsks.length][0]]],
+    check(t, w, at, bot, run) {
+      const [ask, wanted] = formAsks[run % formAsks.length];
+      const failed = new Set(w.events.filter((e) => e.type === "tool_completed" && e.result.is_error).map((e) => e.call_id));
+      const sends = w.events.filter((e) => isSend(e) && !failed.has(e.call_id));
+      const filed = sends.some((e) => e.args.files?.length > 0);
+      const chars = sends.reduce((n, e) => n + String(e.args.text ?? "").length, 0);
+      t.sentChars.push(chars);
+      if (filed === wanted) t.right++;
+      else t.wrong++;
+      console.log(`   [${ask.slice(0, 20)}] ${filed ? "file" : "words"}, ${wanted ? "a file" : "words"} wanted, ${chars} characters`);
     },
   },
   // The answers can be listed: a question with options fits.
@@ -575,7 +603,7 @@ async function oneRun(name, s, run, t) {
     if (next === 4) t.ordered++;
     else console.log(`   (order: got through ${next} of the 4 poems)`);
   }
-  s.check?.(t, w, at, bot);
+  s.check?.(t, w, at, bot, run);
   // The first decision: what the first reply called, and how long it thought before.
   const opening = events.find((e) => e.type === "message_completed" && e.message.role === "assistant");
   const openingCalls = opening ? opening.message.content.filter((x) => x.type === "tool_call").map((x) => x.name) : [];
@@ -605,12 +633,13 @@ for (const [name, s] of Object.entries(scenarios)) {
     ordered: 0, attached: 0, linked: 0, handed: 0, pointed: 0, kept: 0, alsoLinked: 0, noFile: 0, asked: 0, prose: 0, rejected: 0, stopFirst: 0, stopped: 0, told: 0, restarted: 0, checked: 0, lastAutumn: 0, spring: 0,
     notes: 0, wokenByNote: 0, answered: 0, peerNotes: 0, covered: 0, early: 0, inTask: 0, alone: 0, thinking: [], ownRounds: [],
     updates: 0, updateRuns: 0, updateFiller: 0, updateLeaks: 0, updateInternal: 0, updateOtherLanguage: 0, firstUpdateMs: [], gapMs: [], workMs: [], updateChars: [], botSteps: 0, repeated: 0,
+    right: 0, wrong: 0, sentChars: [],
   });
   for (let run = 0; run < runs; run += parallel) {
     const batch = Array.from({ length: Math.min(parallel, runs - run) }, (_, k) => oneRun(name, s, run + k, t).catch((e) => console.log(`${name} #${run + k + 1}: ${e.message}`)));
     await Promise.all(batch);
   }
-  for (const key of ["firstMs", "nextMs", "thinking", "ownRounds", "firstUpdateMs", "gapMs", "workMs", "updateChars"]) t[key] = { median: median(t[key]), worst: t[key].length ? Math.max(...t[key]) : null };
+  for (const key of ["firstMs", "nextMs", "thinking", "ownRounds", "firstUpdateMs", "gapMs", "workMs", "updateChars", "sentChars"]) t[key] = { median: median(t[key]), worst: t[key].length ? Math.max(...t[key]) : null };
 }
 console.log("\n" + JSON.stringify(totals, null, 1));
 server.kill();
