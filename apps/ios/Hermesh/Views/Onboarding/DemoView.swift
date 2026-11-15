@@ -32,6 +32,8 @@ struct DemoView: View {
             .alert("Something went wrong", isPresented: Binding(get: { model.problem != nil }, set: { if !$0 { model.problem = nil } })) {
                 Button("OK", role: .cancel) {}
             } message: { Text(model.problem ?? "") }
+            .onChange(of: model.problem != nil) { _, wrong in if wrong { Haptic.error.play() } }
+            .hapticLog()
     }
 }
 
