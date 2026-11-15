@@ -1,13 +1,16 @@
-//! `her-mock [ADDR] [--simulation]`: model gateway, optionally with companion MCP tools.
+//! `her-mock [ADDR] [--simulation | --tools]`: model gateway, optionally with companion MCP tools: the
+//! simulation's, or the test server's own (echo, env…), open to anyone, for a connector added by its address.
 use std::io::Write;
 
 #[tokio::main(flavor = "multi_thread", worker_threads = 4)]
 async fn main() -> std::io::Result<()> {
     let mut addr = "127.0.0.1:0".to_string();
     let mut simulation = false;
+    let mut tools = false;
     for arg in std::env::args().skip(1) {
         match arg.as_str() {
             "--simulation" => simulation = true,
+            "--tools" => tools = true,
             "--list-scenarios" => {
                 let cases: Vec<_> = her_mock::simulation::scenarios().iter().map(|s| serde_json::json!({
                     "id":s.id,"version":s.version,"title":s.title,"turns":s.turns,"steps":s.steps.len(),"tool_calls_per_turn":s.calls_per_turn()
@@ -41,6 +44,7 @@ async fn main() -> std::io::Result<()> {
     } else {
         None
     };
+    let test_tools = if tools { Some(her_mock::mcp::serve_http("127.0.0.1:0", her_mock::mcp::McpTestOptions::default()).await?) } else { None };
     let mut out = std::io::stdout().lock();
     writeln!(
         out,
@@ -53,6 +57,9 @@ async fn main() -> std::io::Result<()> {
             "# Add the following to config.toml\n[mcp_servers.sim]\nurl = {:?}\nexposure = \"direct\"\nrequired = true",
             tools.url()
         )?;
+    }
+    if let Some(tools) = &test_tools {
+        writeln!(out, "# MCP test tools\nmcp_url = {:?}", tools.url())?;
     }
     out.flush()?;
     drop(out);

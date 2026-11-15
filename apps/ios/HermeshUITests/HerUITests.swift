@@ -34,6 +34,20 @@ extension HermeshUITests {
         try herProgress()
     }
 
+    /// Her's connectors (docs/her-connectors-demo.html): added on their page by an address, which Her then uses in
+    /// the conversation she has, with no card; turned off from the plus beside the composer, she no longer can; removed
+    /// on its page. The address is her-mock's test tools, open to anyone (startMCPTools).
+    ///
+    ///     HERMESH_IPHONE_E2E=1 HERMESH_IPHONE_GREP=testHerConnectors go test ./e2e -run TestIPhone -v -timeout 40m
+    @objc func testHerConnectors() throws {
+        let env = ProcessInfo.processInfo.environment
+        guard env["HERMESH_E2E_HER"] != nil, let url = env["HERMESH_E2E_MCP_URL"] else { throw XCTSkip("run with Her built") }
+        try join()
+        try herTurnOn()
+        try herOnboarding()
+        try herConnectors(url)
+    }
+
     /// Sending (docs/her-sending.md) on its own: a message leaves the composer at once and shows once.
     ///
     ///     HERMESH_IPHONE_E2E=1 HERMESH_IPHONE_GREP=testHerSending go test ./e2e -run TestIPhone -v -timeout 40m
@@ -748,6 +762,99 @@ extension HermeshUITests {
         XCTAssertTrue(text("早些时候").exists, "among the earlier ones")
         XCTAssertFalse(text("需要你").exists, "nothing needs the owner now")
         herShot("Progress: ended")
+    }
+
+    func herConnectors(_ url: String) throws {
+        // Her's settings: a row of its own, with nothing yet.
+        app.buttons["her-avatar"].tap()
+        let row = app.buttons["her-connectors"]
+        XCTAssertTrue(row.waitForExistence(timeout: 10), "the connectors row")
+        try waitFor("the row says there is none yet (\(row.label))") { row.label.contains("还没有") ? true : nil }
+        row.tap()
+        XCTAssertTrue(text("还没有连接器").waitForExistence(timeout: 20), "the page, empty")
+        herShot("Connectors: none yet")
+
+        // Added by its address: her checks it, finds it needs no sign-in, adds it, and lists its tools.
+        tap("connectors-add")
+        let name = app.textFields["add-connector-name"]
+        XCTAssertTrue(name.waitForExistence(timeout: 10))
+        name.tap()
+        name.typeText("tools")
+        let address = app.textFields["add-connector-url"]
+        address.tap()
+        address.typeText(url)
+        tap("add-connector-connect")
+        XCTAssertTrue(text("不需要鉴权 · 检测到").waitForExistence(timeout: 30), "the way her found")
+        herShot("Connectors: adding, how it signs in")
+        tap("add-connector-add")
+        XCTAssertTrue(app.descendants(matching: .any)["add-connector-done"].firstMatch.waitForExistence(timeout: 30), "added")
+        XCTAssertTrue(text("已添加 tools").exists && text("Her 现在就能用").exists)
+        herShot("Connectors: added")
+        tap("add-connector-close")
+        let added = app.descendants(matching: .any)["connector-tools"].firstMatch
+        XCTAssertTrue(added.waitForExistence(timeout: 10), "in the list")
+        XCTAssertTrue(text("可用 ·").waitForExistence(timeout: 20), "available, with its tools")
+        herShot("Connectors: mine")
+
+        // Its page: the tools it offers.
+        added.staticTexts["tools"].firstMatch.tap()
+        XCTAssertTrue(app.descendants(matching: .any)["connector-page"].firstMatch.waitForExistence(timeout: 10), "its page")
+        XCTAssertTrue(text("echo").waitForExistence(timeout: 20), "its tools")
+        herShot("Connectors: its page")
+        herBackToConversation()
+
+        // Her uses it in the conversation she has, with no card.
+        herSend("[[mock:mcp_env:tools:HERMESH_UI_TEST]] 用一下")
+        herAllowIfAsked()
+        XCTAssertTrue(text("mcp done: (unset)").waitForExistence(timeout: 60), "what the connector said, in Her's answer")
+
+        // Turned off from the plus beside the composer: Her no longer has it.
+        tap("her-attach")
+        tap("her-connectors-menu")
+        let toggle = app.switches["connector-switch-tools"]
+        XCTAssertTrue(toggle.waitForExistence(timeout: 20), "its switch in the sheet")
+        XCTAssertEqual(toggle.value as? String, "1")
+        herShot("Connectors: from the plus")
+        toggle.coordinate(withNormalizedOffset: CGVector(dx: 0.93, dy: 0.5)).tap()
+        try waitFor("turned off (\(toggle.value ?? ""))") { toggle.value as? String == "0" ? true : nil }
+        XCTAssertTrue(text("关掉的连接器，Her 从下一步起就不用了").exists, "the sheet says when it takes effect")
+        app.navigationBars.buttons["完成"].tap()
+        herSend("[[mock:mcp_env:tools:HERMESH_UI_TEST]] 再用一下")
+        herAllowIfAsked()
+        let gone = app.staticTexts.matching(NSPredicate(format: "label BEGINSWITH %@ AND NOT label CONTAINS %@", "mcp done:", "(unset)")).firstMatch
+        XCTAssertTrue(gone.waitForExistence(timeout: 60), "Her can't use it any more")
+
+        // Removed on its page: the list has none again.
+        app.buttons["her-avatar"].tap()
+        tap("her-connectors")
+        let off = app.descendants(matching: .any)["connector-tools"].firstMatch
+        XCTAssertTrue(off.waitForExistence(timeout: 20))
+        XCTAssertTrue(text("已停用").waitForExistence(timeout: 10), "off, in the list")
+        off.staticTexts["tools"].firstMatch.tap()
+        tap("connector-more")
+        app.buttons["删除连接器"].firstMatch.tap()
+        let confirm = app.sheets.buttons["删除连接器"].firstMatch
+        XCTAssertTrue(confirm.waitForExistence(timeout: 10), "asked first")
+        confirm.tap()
+        XCTAssertTrue(text("还没有连接器").waitForExistence(timeout: 20), "none again")
+        herShot("Connectors: removed")
+        herBackToConversation()
+    }
+
+    /// Back down the pages to Her's conversation.
+    func herBackToConversation() {
+        let composer = app.descendants(matching: .any)["her-composer"].firstMatch
+        for _ in 0..<4 where !composer.exists {
+            app.navigationBars.buttons.element(boundBy: 0).tap()
+            _ = composer.waitForExistence(timeout: 3)
+        }
+        XCTAssertTrue(composer.waitForExistence(timeout: 10), "back to the conversation")
+    }
+
+    /// Allows what Her asks to run, when she asks.
+    func herAllowIfAsked() {
+        let allow = app.buttons["her-allow-once"]
+        if allow.waitForExistence(timeout: 20) { allow.tap() }
     }
 
     // MARK: Helpers

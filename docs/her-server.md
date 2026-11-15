@@ -815,6 +815,17 @@ holds "Manage this environment" (the console). Her's settings panel holds its na
 approval mode, whether it notifies, and lets the owner clear its
 conversation or turn Her off there (§5.6). Environment-wide settings are in the console.
 
+**Connectors** (docs/her-connectors-demo.html) are the environment's, shared
+by its assistants, and Her's settings lead to them. On the Mac, a row in the
+settings panel opens the console's Connectors page. The iPhone has
+its own page: what is added (on or off, signing in again, retrying), Discover,
+a connector's page with its tools, and adding one by its address, an account
+signed in to in the iPhone's browser while its tokens stay on the Her Server;
+the plus beside the composer turns one on or off. A connect card once done
+opens its connector's page on both. Her's conversation takes up a change
+made there from its next request (`McpManager::sync`), and a sign-in made
+there connects it again.
+
 Settings › Machines shows, for this Mac while Her is on there, Computer
 use: the two permissions of §4.4 as her finds them, with a button for each
 missing one that opens its pane of System Settings. They belong to the Mac,

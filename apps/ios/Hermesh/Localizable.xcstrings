@@ -10775,6 +10775,1029 @@
           }
         }
       }
+    },
+    "%@ Added": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "已添加 %@"
+          }
+        }
+      }
+    },
+    "%@ is off: Her stops using it from her next step": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "已关闭 %@：Her 从下一步起不再用它"
+          }
+        }
+      }
+    },
+    "%@ is offline. This is how things were last; changes can be made once it is back.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ 离线。下面是上次的状态，连上以后才能修改。"
+          }
+        }
+      }
+    },
+    "%@ is on: Her can use it from her next step": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "已打开 %@：Her 下一步起就能用"
+          }
+        }
+      }
+    },
+    "%lld need attention": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld 个要处理"
+          }
+        }
+      }
+    },
+    "%lld on": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld 个开着"
+          }
+        }
+      }
+    },
+    "%lld tools · Her can use it now": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld 个工具 · Her 现在就能用"
+          }
+        }
+      }
+    },
+    "A name is 1 to 32 letters, digits, - or _.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "名称是 1 到 32 个字母、数字、- 或 _。"
+          }
+        }
+      }
+    },
+    "Account": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "账号"
+          }
+        }
+      }
+    },
+    "Add %@": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "添加 %@"
+          }
+        }
+      }
+    },
+    "Add Anyway": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "仍然添加"
+          }
+        }
+      }
+    },
+    "Add Connector": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "添加连接器"
+          }
+        }
+      }
+    },
+    "Add Connector…": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "添加连接器…"
+          }
+        }
+      }
+    },
+    "Add a Custom Connector…": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "添加自定义连接器…"
+          }
+        }
+      }
+    },
+    "Add and Sign In": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "添加并登录"
+          }
+        }
+      }
+    },
+    "Added": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "已添加"
+          }
+        }
+      }
+    },
+    "Added %@": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "已添加 %@"
+          }
+        }
+      }
+    },
+    "Address": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "地址"
+          }
+        }
+      }
+    },
+    "An MCP server’s address. %@ connects to it, as Her will.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "MCP 服务器的地址。由 %@ 去连，和 Her 实际用到的一样。"
+          }
+        }
+      }
+    },
+    "Any MCP server’s address works, such as https://mcp.example.com/mcp.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "任何 MCP 服务器的地址都可以，比如 https://mcp.example.com/mcp。"
+          }
+        }
+      }
+    },
+    "Anyone who can reach this address can use it.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "能访问这个地址的人都能用它。"
+          }
+        }
+      }
+    },
+    "Apps and services Her can use, such as GitHub or Notion. Kept on %@ and shared by the assistants there.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Her 能用的应用和服务，比如 GitHub、Notion。装在 %@ 上，这台机器上的助手共用。"
+          }
+        }
+      }
+    },
+    "Available · %lld tools": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "可用 · %lld 个工具"
+          }
+        }
+      }
+    },
+    "Built in · managed by Her": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "内置 · 由 Her 管理"
+          }
+        }
+      }
+    },
+    "Can’t Read the Connectors": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "读不到连接器"
+          }
+        }
+      }
+    },
+    "Check the address and try again, or add it anyway and fix it later.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "检查地址后重试，或者先添加，之后再修。"
+          }
+        }
+      }
+    },
+    "Checked %@": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@检测"
+          }
+        }
+      }
+    },
+    "Checking the address from %@…": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "正在从 %@ 检测这个地址…"
+          }
+        }
+      }
+    },
+    "Command": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "命令"
+          }
+        }
+      }
+    },
+    "Command · runs on %@": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "本地命令 · 在 %@ 上运行"
+          }
+        }
+      }
+    },
+    "Commands run on %@ as you.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "本地命令以你的身份在 %@ 上运行。"
+          }
+        }
+      }
+    },
+    "Connect": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "连接"
+          }
+        }
+      }
+    },
+    "Connect services such as GitHub or Notion, and Her can look things up and get things done there for you.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "连上 GitHub、Notion 这样的服务，Her 就能替你查、替你做。"
+          }
+        }
+      }
+    },
+    "Connectors": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "连接器"
+          }
+        }
+      }
+    },
+    "Connectors that run as a command are added on the Mac. Here, enter an address that starts with https://.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "以命令运行的连接器要在 Mac 上添加。这里请输入以 https:// 开头的地址。"
+          }
+        }
+      }
+    },
+    "Copy Address": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "复制地址"
+          }
+        }
+      }
+    },
+    "Copy Command": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "复制命令"
+          }
+        }
+      }
+    },
+    "Couldn’t connect": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "连接失败"
+          }
+        }
+      }
+    },
+    "Couldn’t sign in to %@": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "没能登录 %@"
+          }
+        }
+      }
+    },
+    "Detected": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "检测到"
+          }
+        }
+      }
+    },
+    "Development": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "开发"
+          }
+        }
+      }
+    },
+    "Discover": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "发现"
+          }
+        }
+      }
+    },
+    "Edit the Address": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "修改地址"
+          }
+        }
+      }
+    },
+    "Errors, performance issues and releases": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "错误、性能问题和发布"
+          }
+        }
+      }
+    },
+    "Get a token from %@": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "去 %@ 获取令牌"
+          }
+        }
+      }
+    },
+    "Her can’t reach %@ now.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Her 现在连不上 %@。"
+          }
+        }
+      }
+    },
+    "Her can’t use %@ until you sign in.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "登录之前，Her 用不了 %@。"
+          }
+        }
+      }
+    },
+    "Her stops using a connector turned off from her next step.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "关掉的连接器，Her 从下一步起就不用了。"
+          }
+        }
+      }
+    },
+    "Her stops using it from her next step, and what was saved for it on %@ is deleted.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Her 从下一步起不再用它，%@ 上为它保存的登录和令牌一并删除。"
+          }
+        }
+      }
+    },
+    "Issues, projects and cycles": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Issue、项目和周期"
+          }
+        }
+      }
+    },
+    "It was removed, here or elsewhere.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "它已经被删除了，可能是在这里，也可能是在别处。"
+          }
+        }
+      }
+    },
+    "Kept on %@ and shared by the assistants there. Turning one on or off takes effect from Her’s next step.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "装在 %@ 上，这台机器上的助手共用。开关对 Her 的下一步就生效。"
+          }
+        }
+      }
+    },
+    "Let Her Use %@": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "让 Her 使用 %@"
+          }
+        }
+      }
+    },
+    "Let Her Use It": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "让 Her 使用"
+          }
+        }
+      }
+    },
+    "Manage": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "管理"
+          }
+        }
+      }
+    },
+    "Manage Connectors": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "管理连接器"
+          }
+        }
+      }
+    },
+    "Mine": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "我的"
+          }
+        }
+      }
+    },
+    "Needs Your Attention": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "要处理"
+          }
+        }
+      }
+    },
+    "Needs sign-in": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "需要登录"
+          }
+        }
+      }
+    },
+    "Next": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "下一步"
+          }
+        }
+      }
+    },
+    "No Connectors Yet": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "还没有连接器"
+          }
+        }
+      }
+    },
+    "No connectors yet.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "还没有连接器。"
+          }
+        }
+      }
+    },
+    "No sign-in needed": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "不需要鉴权"
+          }
+        }
+      }
+    },
+    "None Yet": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "还没有"
+          }
+        }
+      }
+    },
+    "Not checked yet": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "未检测"
+          }
+        }
+      }
+    },
+    "Once connected, the tools it offers are listed here.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "连上之后，这里列出它提供的工具。"
+          }
+        }
+      }
+    },
+    "Once it is on, the tools it offers are listed here.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "打开以后，这里列出它提供的工具。"
+          }
+        }
+      }
+    },
+    "Only add connectors you trust: Her does what their tools say.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "只添加你信任的连接器：Her 会按它的工具说的去做。"
+          }
+        }
+      }
+    },
+    "Only http and https addresses work.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "只支持 http 和 https 地址。"
+          }
+        }
+      }
+    },
+    "Pages, databases and comments": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "页面、数据库和评论"
+          }
+        }
+      }
+    },
+    "Remote": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "远程"
+          }
+        }
+      }
+    },
+    "Remove %@?": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "删除 %@？"
+          }
+        }
+      }
+    },
+    "Remove Connector": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "删除连接器"
+          }
+        }
+      }
+    },
+    "Removed %@, and what was saved for it": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "已删除 %@，为它保存的内容一并删除"
+          }
+        }
+      }
+    },
+    "Repositories, issues, pull requests and code search": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "仓库、Issue、PR 和代码搜索"
+          }
+        }
+      }
+    },
+    "Retry": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "重试"
+          }
+        }
+      }
+    },
+    "Run on %@": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "在 %@ 上运行"
+          }
+        }
+      }
+    },
+    "Running on %@": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "在 %@ 上运行"
+          }
+        }
+      }
+    },
+    "Saved on %@": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "保存在 %@ 上"
+          }
+        }
+      }
+    },
+    "See What’s Available": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "看看有哪些"
+          }
+        }
+      }
+    },
+    "Sent as Authorization: Bearer. It is kept on %@; the configuration only refers to it.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "以 Authorization: Bearer 发送。令牌保存在 %@ 上，配置里只写引用。"
+          }
+        }
+      }
+    },
+    "Sign In": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "登录"
+          }
+        }
+      }
+    },
+    "Sign In in the Browser": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "在浏览器里登录"
+          }
+        }
+      }
+    },
+    "Sign in to %@ in the browser": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "在浏览器里登录 %@"
+          }
+        }
+      }
+    },
+    "Sign in with": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "方式"
+          }
+        }
+      }
+    },
+    "Sign in with an account": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "用账号登录"
+          }
+        }
+      }
+    },
+    "Sign-In": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "鉴权"
+          }
+        }
+      }
+    },
+    "Signed in to %@": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "已登录 %@"
+          }
+        }
+      }
+    },
+    "Signed out of %@": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "已退出 %@ 的登录"
+          }
+        }
+      }
+    },
+    "There is a connector named %@ already.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "已经有一个叫 %@ 的连接器了。"
+          }
+        }
+      }
+    },
+    "This Connector Is Gone": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "这个连接器不在了"
+          }
+        }
+      }
+    },
+    "This server asked for a sign-in: without one it may refuse Her.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "这个服务器要求登录：不登录，它可能拒绝 Her。"
+          }
+        }
+      }
+    },
+    "Token": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "令牌"
+          }
+        }
+      }
+    },
+    "Token or API key": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "令牌或 API Key"
+          }
+        }
+      }
+    },
+    "Tools": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "工具"
+          }
+        }
+      }
+    },
+    "Tools %lld": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "工具 %lld"
+          }
+        }
+      }
+    },
+    "Up-to-date library documentation for writing code": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "最新的库文档，写代码时查"
+          }
+        }
+      }
+    },
+    "You can also just tell Her: “Connect GitHub for me”.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "也可以直接跟 Her 说：“帮我连上 GitHub”。"
+          }
+        }
+      }
+    },
+    "You come back here once you’re done.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "登录完会自动回到这里。"
+          }
+        }
+      }
+    },
+    "You sign in with your %@ account in this iPhone’s browser. The sign-in is kept on %@, not on this iPhone or Hermesh’s servers.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "在这台 iPhone 的浏览器里用你的 %1$@ 账号登录。登录保存在 %2$@ 上，不在这台 iPhone 上，也不经过 Hermesh 服务器。"
+          }
+        }
+      }
+    },
+    "and %lld more": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "还有 %lld 个"
+          }
+        }
+      }
+    },
+    "https://mcp.example.com/mcp": {
+      "shouldTranslate": false
+    },
+    "Turned off": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "已停用"
+          }
+        }
+      }
     }
   },
   "version": "1.0"
