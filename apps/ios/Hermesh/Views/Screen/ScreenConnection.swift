@@ -34,7 +34,9 @@ nonisolated final class ScreenConnection: @unchecked Sendable {
     var onLink: (@Sendable (ScreenLink) -> Void)?
 
     private var fd: Int32 = -1
-    private let lock = NSLock()
+    // stateLock only guards fd, closed and callbacks; never held across syscalls so close() never blocks.
+    private let stateLock = NSLock()
+    private let writeLock = NSLock()
     private var closed = false
 
     /// Opens the session and reads until it ends; onLink gets "failed" last,
@@ -42,21 +44,31 @@ nonisolated final class ScreenConnection: @unchecked Sendable {
     func start(port: Int, token: String, machineID: String, name: String, pointer: Bool) {
         Thread.detachNewThread { [self] in
             let reason = run(port: port, token: token, machineID: machineID, name: name, pointer: pointer)
-            lock.lock()
+            stateLock.lock()
             let wasClosed = closed
+            let linkCB = wasClosed ? nil : onLink
             closed = true
-            if fd >= 0 { Darwin.close(fd); fd = -1 }
-            lock.unlock()
-            if !wasClosed { onLink?(ScreenLink(phase: "failed", error: reason)) }
+            let s = fd
+            fd = -1
+            onFrame = nil
+            onEvent = nil
+            onLink = nil
+            stateLock.unlock()
+            if s >= 0 { Darwin.close(s) }
+            if !wasClosed { linkCB?(ScreenLink(phase: "failed", error: reason)) }
         }
     }
 
-    /// Ends the session from any thread.
+    /// Ends the session from any thread without waiting for in-flight I/O.
     func close() {
-        lock.lock()
-        defer { lock.unlock() }
+        stateLock.lock()
         closed = true
-        if fd >= 0 { Darwin.shutdown(fd, SHUT_RDWR) }
+        let s = fd
+        onFrame = nil
+        onEvent = nil
+        onLink = nil
+        stateLock.unlock()
+        if s >= 0 { Darwin.shutdown(s, SHUT_RDWR) }
     }
 
     func send(_ input: Hermesh_Screen_V1_Input) {
@@ -73,13 +85,16 @@ nonisolated final class ScreenConnection: @unchecked Sendable {
         msg.append(Data(bytes: &n, count: 4))
         msg.append(kind.rawValue)
         msg.append(payload)
-        lock.lock()
-        defer { lock.unlock() }
-        guard fd >= 0, !closed else { return }
+        writeLock.lock()
+        defer { writeLock.unlock() }
+        stateLock.lock()
+        let s = closed ? -1 : fd
+        stateLock.unlock()
+        guard s >= 0 else { return }
         msg.withUnsafeBytes { raw in
             var off = 0
             while off < raw.count {
-                let w = Darwin.write(fd, raw.baseAddress! + off, raw.count - off)
+                let w = Darwin.write(s, raw.baseAddress! + off, raw.count - off)
                 if w <= 0 { return }
                 off += w
             }
@@ -100,14 +115,14 @@ nonisolated final class ScreenConnection: @unchecked Sendable {
         var on: Int32 = 1
         setsockopt(s, SOL_SOCKET, SO_NOSIGPIPE, &on, socklen_t(MemoryLayout<Int32>.size))
         setsockopt(s, IPPROTO_TCP, TCP_NODELAY, &on, socklen_t(MemoryLayout<Int32>.size))
-        lock.lock()
+        stateLock.lock()
         if closed || ok != 0 {
-            lock.unlock()
+            stateLock.unlock()
             Darwin.close(s)
             return "The Hermesh core is not running"
         }
         fd = s
-        lock.unlock()
+        stateLock.unlock()
 
         var query = URLComponents()
         query.queryItems = [URLQueryItem(name: "name", value: name), URLQueryItem(name: "pointer", value: pointer ? "1" : "0")]
@@ -144,12 +159,23 @@ nonisolated final class ScreenConnection: @unchecked Sendable {
                 buffer.removeSubrange(b ..< b + 4 + n)
                 switch Kind(rawValue: kind) {
                 case .video:
-                    if payload.count > 9 { onFrame?(payload[payload.startIndex] == 1, payload.subdata(in: payload.startIndex + 9 ..< payload.endIndex)) }
+                    if payload.count > 9 {
+                        let cb = stateLock.withLock { closed ? nil : onFrame }
+                        cb?(payload[payload.startIndex] == 1, payload.subdata(in: payload.startIndex + 9 ..< payload.endIndex))
+                    }
                 case .state:
-                    if let ev = try? Hermesh_Screen_V1_ScreenEvent(serializedBytes: payload) { onEvent?(ev) }
+                    if let ev = try? Hermesh_Screen_V1_ScreenEvent(serializedBytes: payload) {
+                        let cb = stateLock.withLock { closed ? nil : onEvent }
+                        cb?(ev)
+                    }
                 case .status:
                     if let link = try? JSONDecoder().decode(ScreenLink.self, from: payload) {
-                        if link.phase == "failed" { reason = link.error ?? "" } else { onLink?(link) }
+                        if link.phase == "failed" {
+                            reason = link.error ?? ""
+                        } else {
+                            let cb = stateLock.withLock { closed ? nil : onLink }
+                            cb?(link)
+                        }
                     }
                 default:
                     break

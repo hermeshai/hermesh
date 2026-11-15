@@ -11,7 +11,9 @@ enum ScreenOrientation {
             guard allowed != oldValue else { return }
             for case let scene as UIWindowScene in UIApplication.shared.connectedScenes {
                 scene.keyWindow?.rootViewController?.setNeedsUpdateOfSupportedInterfaceOrientations()
-                if allowed == .portrait { scene.requestGeometryUpdate(.iOS(interfaceOrientations: .portrait)) }
+                if allowed == .portrait, !scene.effectiveGeometry.interfaceOrientation.isPortrait {
+                    scene.requestGeometryUpdate(.iOS(interfaceOrientations: .portrait))
+                }
             }
         }
     }
@@ -19,7 +21,7 @@ enum ScreenOrientation {
 
 /// One Computer Control session as its page shows it.
 @MainActor @Observable
-final class ScreenSession {
+final class ScreenSession: Identifiable {
     let machineID: String
     let machineName: String
     /// The machine is a Linux one: its keys are Ctrl, Alt and Super, and its texts are its own.
@@ -49,6 +51,7 @@ final class ScreenSession {
             guard mode != oldValue else { return }
             UserDefaults.standard.set(mode.rawValue, forKey: "screen-mode")
             surface.mode = mode
+            if mode == .direct { panning = false }
             // In trackpad mode the pointer is drawn here, so the picture leaves it out.
             var p = Hermesh_Screen_V1_ShowPointer()
             p.shown = mode == .direct
@@ -56,6 +59,13 @@ final class ScreenSession {
             input.showPointer = p
             connection?.send(input)
         }
+    }
+
+    /// True when the user pinched larger than fit-to-screen.
+    var zoomed = false
+    /// True in trackpad mode while one-finger drag pans the zoomed screen instead of moving the pointer.
+    var panning = false {
+        didSet { surface.panning = panning }
     }
 
     /// A word the page shows for a moment (text copied from the machine), and its identifier.
@@ -82,6 +92,13 @@ final class ScreenSession {
         self.linux = linux
         mode = ScreenMode(rawValue: UserDefaults.standard.string(forKey: "screen-mode") ?? "") ?? .direct
         surface.mode = mode
+        surface.onZoomChanged = { [weak self] zoomed in
+            Task { @MainActor [weak self] in
+                guard let self, self.zoomed != zoomed else { return }
+                self.zoomed = zoomed
+                if !zoomed { self.panning = false }
+            }
+        }
         surface.send = { [weak self] in self?.connection?.send($0) }
         surface.keys.send = { [weak self] in self?.connection?.send($0) }
         surface.keys.onDismiss = { [weak self] in self?.keyboard = false }
@@ -105,6 +122,7 @@ final class ScreenSession {
     private func connect() {
         guard let endpoint else { return }
         connection?.close()
+        surface.prepare()
         link = ScreenLink()
         ended = nil
         machineError = ""
@@ -149,6 +167,7 @@ final class ScreenSession {
 
     /// Ends the session; reconnect opens it again.
     func stop() {
+        surface.stop()
         connection?.close()
         connection = nil
         keyboard = false
@@ -220,6 +239,19 @@ struct ScreenControlView: View {
         }
         .overlay(alignment: .top) {
             VStack(spacing: 8) {
+                if session.live, session.ended == nil, session.link.phase == "reconnecting" {
+                    HStack(spacing: 8) {
+                        ProgressView()
+                            .controlSize(.mini)
+                            .tint(.white)
+                        Text(String(localized: "Reconnecting…"))
+                            .font(.footnote)
+                            .foregroundStyle(.white)
+                    }
+                    .padding(.horizontal, 14).padding(.vertical, 8)
+                    .background(.black.opacity(0.7), in: .capsule)
+                    .accessibilityIdentifier("screen-reconnecting")
+                }
                 if session.live, session.ended == nil, !session.canControl {
                     Text(session.linux ? String(localized: "You can watch, not control: \(session.machineName) shares its screen without its keyboard and mouse.")
                          : String(localized: "You can watch, not control: on \(session.machineName), turn on Accessibility for hermeshd."))
@@ -263,7 +295,12 @@ struct ScreenControlView: View {
                 session.stop()
             } else if phase == .active, away {
                 away = false
-                session.reconnect()
+                // Wait for Core.resume on the lifecycle queue so the loopback listener is open again.
+                Task { @MainActor in
+                    Core.whenReady {
+                        if !away { session.reconnect() }
+                    }
+                }
             }
         }
     }
@@ -326,13 +363,18 @@ struct ScreenControlView: View {
     }
 
     /// The connection's quality in a word the owner can act on: a number while
-    /// direct, and that it goes through the relay when it does.
+    /// direct, and that it goes through the relay when it does. Once the first
+    /// frame is live, avoid showing "Connecting…" while waiting for RTT telemetry.
     private var quality: String {
-        guard session.link.phase == "connected" else {
-            return session.link.phase == "reconnecting" ? String(localized: "Reconnecting…") : String(localized: "Connecting…")
+        switch session.link.phase {
+        case "connected":
+            let ms = max(1, session.link.rtt_ms ?? 1)
+            return session.link.path == "relay" ? String(localized: "Relayed · \(ms) ms") : String(localized: "\(ms) ms")
+        case "reconnecting":
+            return String(localized: "Reconnecting…")
+        default:
+            return session.live ? "" : String(localized: "Connecting…")
         }
-        let ms = max(1, session.link.rtt_ms ?? 1)
-        return session.link.path == "relay" ? String(localized: "Relayed · \(ms) ms") : String(localized: "\(ms) ms")
     }
 
     /// The connection's colour: green while direct and quick, orange through
@@ -355,11 +397,11 @@ struct ScreenControlView: View {
                 // Down a side the dot alone: its colour says how the connection is.
                 HStack(spacing: 6) {
                     Circle().fill(health).frame(width: 7, height: 7)
-                    if !vertical { Text(quality).font(.caption).monospacedDigit().foregroundStyle(.white.opacity(0.8)) }
+                    if !vertical, !quality.isEmpty { Text(quality).font(.caption).monospacedDigit().foregroundStyle(.white.opacity(0.8)) }
                 }
                 .padding(vertical ? .vertical : .horizontal, 6)
                 .accessibilityElement(children: .combine)
-                .accessibilityLabel(Text(quality))
+                .accessibilityLabel(Text(quality.isEmpty ? String(localized: "Connected") : quality))
                 .accessibilityIdentifier("screen-quality")
                 Button { session.mode = session.mode == .direct ? .trackpad : .direct } label: {
                     Image(systemName: session.mode == .trackpad ? "cursorarrow.motionlines" : "hand.tap")
@@ -367,12 +409,26 @@ struct ScreenControlView: View {
                 }
                 .accessibilityLabel(session.mode == .trackpad ? Text("Trackpad Mode") : Text("Direct Touch"))
                 .accessibilityIdentifier("screen-mode")
+                if session.mode == .trackpad && session.zoomed {
+                    Button { session.panning.toggle() } label: {
+                        Image(systemName: session.panning ? "hand.raised.fill" : "hand.raised")
+                            .frame(width: 38, height: 38)
+                            .background(session.panning ? .white.opacity(0.24) : .clear, in: .circle)
+                    }
+                    .accessibilityLabel(Text("Pan Screen"))
+                    .accessibilityValue(session.panning ? Text("On") : Text("Off"))
+                    .accessibilityIdentifier("screen-pan")
+                }
                 Button { session.keyboard.toggle() } label: {
                     Image(systemName: session.keyboard ? "keyboard.fill" : "keyboard").frame(width: 38, height: 38)
                 }
                 .accessibilityLabel(Text("Keyboard"))
                 .accessibilityIdentifier("screen-keyboard")
-                Button { dismiss() } label: {
+                Button {
+                    session.stop()
+                    ScreenOrientation.allowed = .portrait
+                    dismiss()
+                } label: {
                     Image(systemName: "xmark").frame(width: 38, height: 38)
                 }
                 .accessibilityLabel(Text("Close"))
@@ -389,7 +445,7 @@ struct ScreenControlView: View {
             }
             .glassEffect(.regular.interactive(), in: .circle)
             .accessibilityLabel(Text("Show Controls"))
-            .accessibilityValue(Text(quality))
+            .accessibilityValue(Text(quality.isEmpty ? String(localized: "Connected") : quality))
             .accessibilityIdentifier("screen-unfold")
         }
     }

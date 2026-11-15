@@ -33,6 +33,9 @@ func TestServers(t *testing.T) {
 	if got := s.Get(ctx, connA, none); len(got) != 1 || asked.Load() != 1 {
 		t.Fatalf("got %v after %d asks, want the warmed answer and no other ask", got, asked.Load())
 	}
+	if got, fresh := s.Cached(); len(got) != 1 || !fresh {
+		t.Fatalf("Cached() = %v, %v, want 1 fresh server", got, fresh)
+	}
 	// Fresh: warming again does not ask.
 	s.Warm(connA, fetch)
 	time.Sleep(50 * time.Millisecond)
@@ -40,18 +43,6 @@ func TestServers(t *testing.T) {
 		t.Fatalf("asked %d times, want 1", asked.Load())
 	}
 
-	// Another relay connection: asked again.
-	if got := s.Get(ctx, connB, fetch); len(got) != 1 || asked.Load() != 2 {
-		t.Fatalf("got %v after %d asks on another connection", got, asked.Load())
-	}
-
-	// Old: used meanwhile, and asked again in the background.
-	s.mu.Lock()
-	s.at = time.Now().Add(-ServersFresh - time.Minute)
-	s.mu.Unlock()
-	if got := s.Get(ctx, connB, fetch); len(got) != 1 {
-		t.Fatalf("got %v from old servers", got)
-	}
 	eventually := func(what string, ok func() bool) {
 		t.Helper()
 		deadline := time.Now().Add(5 * time.Second)
@@ -61,6 +52,24 @@ func TestServers(t *testing.T) {
 			}
 			time.Sleep(10 * time.Millisecond)
 		}
+	}
+
+	// Another relay connection: used meanwhile, and asked again in the background.
+	if got := s.Get(ctx, connB, fetch); len(got) != 1 {
+		t.Fatalf("got %v on another connection", got)
+	}
+	eventually("another connection asked for again", func() bool {
+		s.mu.Lock()
+		defer s.mu.Unlock()
+		return asked.Load() == 2 && s.key == connB
+	})
+
+	// Old: used meanwhile, and asked again in the background.
+	s.mu.Lock()
+	s.at = time.Now().Add(-ServersFresh - time.Minute)
+	s.mu.Unlock()
+	if got := s.Get(ctx, connB, fetch); len(got) != 1 {
+		t.Fatalf("got %v from old servers", got)
 	}
 	eventually("old servers asked for again", func() bool {
 		s.mu.Lock()

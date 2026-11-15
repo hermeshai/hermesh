@@ -58,8 +58,9 @@ func (n *Machine) runLink(ctx context.Context) {
 			n.serveConn(ctx, conn)
 			n.setConnected(false)
 			n.log.Warn("relay connection lost")
-			if time.Since(start) > time.Minute {
+			if time.Since(start) > 10*time.Second {
 				backoff = time.Second
+				continue
 			}
 		}
 		sleep := time.Duration(rand.Int64N(int64(backoff))) + backoff/2
@@ -68,7 +69,7 @@ func (n *Machine) runLink(ctx context.Context) {
 			return
 		case <-time.After(sleep):
 		}
-		backoff = min(backoff*2, time.Minute)
+		backoff = min(backoff*2, 10*time.Second)
 	}
 }
 
@@ -117,7 +118,7 @@ func (n *Machine) serveConn(ctx context.Context, conn *transport.RelayConn) {
 			st.Close()
 			continue
 		}
-		go n.serveTunnel(lctx, st, false)
+		go n.serveTunnel(lctx, st, "", false)
 	}
 }
 
@@ -219,16 +220,15 @@ func principalFrom(ctx context.Context) *Principal {
 }
 
 // serveTunnel serves an agent or an owner device over raw, a tunnel the
-// relay spliced or, with local, a connection from this computer
-// (serveLocal): the end-to-end handshake, then their calls.
-func (n *Machine) serveTunnel(ctx context.Context, raw net.Conn, local bool) {
+// relay spliced or, with via non-empty, a local or direct connection
+// (serveLocal / serveDirect): the end-to-end handshake, then their calls.
+func (n *Machine) serveTunnel(ctx context.Context, raw net.Conn, via string, ownerOnly bool) {
 	defer raw.Close()
-	via := ""
-	if local {
-		via = "from this computer, not through the relay"
-	}
 	hsStart := time.Now()
 	tc, sub, err := transport.ServerHandshake(ctx, raw, n.key.CryptoSigner(), n.credentials, n.trust, func(s *identity.Subject) error {
+		if ownerOnly && s.Kind != identity.SubjectOwnerDevice {
+			return errors.New("direct tunnel requires owner device")
+		}
 		if s.Kind == identity.SubjectClient {
 			return n.checkGrant(s.Grant)
 		}

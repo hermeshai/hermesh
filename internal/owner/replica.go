@@ -231,10 +231,12 @@ func (r *replica) firstScreen(ctx context.Context) error {
 	if err := r.o.requireInit(); err != nil {
 		return err
 	}
+	started := time.Now()
 	r.mu.Lock()
 	s := r.startLocked()
 	r.mu.Unlock()
 	if s.warm {
+		r.o.log.Info("watch: first screen", "warm", true, "after", time.Since(started).Round(time.Millisecond))
 		return nil
 	}
 	select {
@@ -242,12 +244,15 @@ func (r *replica) firstScreen(ctx context.Context) error {
 	case <-ctx.Done():
 		return ctx.Err()
 	}
+	wait := "settled"
 	select {
 	case <-s.settled:
 	case <-time.After(screenWait):
+		wait = "timeout"
 	case <-ctx.Done():
 		return ctx.Err()
 	}
+	r.o.log.Info("watch: first screen", "warm", false, "wait", wait, "after", time.Since(started).Round(time.Millisecond))
 	return nil
 }
 
@@ -765,8 +770,8 @@ func (r *replica) followWatch(ctx context.Context, s *sources, f *feed, n *peer.
 func (r *replica) machineChanged(s *sources, f *feed, machineID string, m *machinev1.WatchResponse) {
 	sessions := machine.BasicSessions(m.Sessions) // a machine that ignores the view
 	r.mu.Lock()
-	defer r.mu.Unlock()
 	if r.src != s {
+		r.mu.Unlock()
 		return
 	}
 	f.token, f.heldAt = m.ResumeToken, m.SentAt
@@ -794,14 +799,21 @@ func (r *replica) machineChanged(s *sources, f *feed, machineID string, m *machi
 	for _, id := range m.RemovedProjectIds {
 		f.projects = slices.DeleteFunc(f.projects, func(x *localv1.Project) bool { return x.ProjectId == id })
 	}
+	var directAddrs []string
+	var haveStatus bool
 	if m.Status != nil {
 		f.status = m.Status
+		directAddrs, haveStatus = m.Status.DirectAddrs, true
 	}
 	r.workSeenLocked(s, f, machineID, m.WorkSeq)
 	if len(sessions) > 0 || len(deleted) > 0 {
 		r.broadcastLocked(s, &localv1.WatchSessionsResponse{Sessions: sessions, DeletedSessionIds: deleted})
 	}
 	r.kickLocked()
+	r.mu.Unlock()
+	if haveStatus {
+		r.o.saveDirectAddrs(machineID, directAddrs)
+	}
 }
 
 // goneFrom is the sessions held that a machine's first page (now, up to
@@ -889,13 +901,17 @@ func (r *replica) readInfo(ctx context.Context, s *sources, f *feed, n *peer.Mac
 		}
 	}
 	r.mu.Lock()
-	defer r.mu.Unlock()
-	if r.src == s {
+	kept := r.src == s
+	if kept {
 		f.status = info.Status
 		if projects {
 			f.projects = list
 		}
 		r.kickLocked()
+	}
+	r.mu.Unlock()
+	if kept && info.Status != nil {
+		r.o.saveDirectAddrs(n.MachineID, info.Status.DirectAddrs)
 	}
 	return nil
 }

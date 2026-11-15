@@ -177,6 +177,7 @@ func Dial(ctx context.Context, cfg ViewerConfig) (*Viewer, error) {
 	pc.SCTP().Transport().ICETransport().OnSelectedCandidatePairChange(func(*webrtc.ICECandidatePair) {
 		if pc.ConnectionState() == webrtc.PeerConnectionStateConnected {
 			go v.status("connected")
+			go v.RequestKeyframe()
 		}
 	})
 	pc.OnConnectionStateChange(func(st webrtc.PeerConnectionState) {
@@ -296,11 +297,21 @@ func (v *Viewer) finishOffer(ctx context.Context) error {
 func (v *Viewer) connect(ctx context.Context, req *screenv1.ConnectRequest) (res *screenv1.ConnectResponse, tries int, err error) {
 	for tries < 3 {
 		tries++
+		started := time.Now()
 		attempt, cancel := context.WithTimeout(ctx, 6*time.Second)
 		res, err = v.cfg.Connect(attempt, req)
 		cancel()
 		if err == nil || ctx.Err() != nil || (connect.CodeOf(err) != connect.CodeUnavailable && connect.CodeOf(err) != connect.CodeDeadlineExceeded && !errors.Is(err, context.DeadlineExceeded)) {
 			break
+		}
+		if tries < 3 {
+			if wait := 500*time.Millisecond - time.Since(started); wait > 0 {
+				select {
+				case <-ctx.Done():
+					return res, tries, err
+				case <-time.After(wait):
+				}
+			}
 		}
 	}
 	return res, tries, err
@@ -310,6 +321,12 @@ func (v *Viewer) connect(ctx context.Context, req *screenv1.ConnectRequest) (res
 // this side: how long its answer took, and how this device's network maps
 // its packets (probeNAT). The owner reads a session's story in one place.
 func (v *Viewer) report(g *gathering, n int, session, ufrag, answered string) {
+	for i := 0; i < 30 && v.current(n) && !v.Connected(); i++ {
+		time.Sleep(50 * time.Millisecond)
+	}
+	if !v.current(n) {
+		return
+	}
 	ctx, cancel := v.within(15 * time.Second)
 	defer cancel()
 	v.mu.Lock()
@@ -414,7 +431,30 @@ func (v *Viewer) within(d time.Duration) (context.Context, context.CancelFunc) {
 }
 
 // Restart finds a new path to the machine: this device's network changed.
-func (v *Viewer) Restart(ctx context.Context) error { return v.offer(ctx, true) }
+func (v *Viewer) Restart(ctx context.Context) error {
+	v.status("reconnecting")
+	if err := v.offer(ctx, true); err != nil {
+		return err
+	}
+	if v.Connected() {
+		go v.RequestKeyframe()
+		// Emit a settled connected update quickly in case ICE keeps the same
+		// candidate pair instead of triggering OnSelectedCandidatePairChange.
+		go func() {
+			t := time.NewTimer(200 * time.Millisecond)
+			defer t.Stop()
+			select {
+			case <-v.done:
+				return
+			case <-t.C:
+			}
+			if v.Connected() {
+				v.status("connected")
+			}
+		}()
+	}
+	return nil
+}
 
 // receive turns the track's packets into frames, and asks for a keyframe
 // while there is none to start from.
@@ -449,7 +489,7 @@ func (v *Viewer) receive(t *webrtc.TrackRemote) {
 				// A keyframe asked for takes a round trip to come: not asked
 				// for again before it could have.
 				wait := a.roundTrip(v.roundTrip())
-				if a.wantKey(now) && now.Sub(asked) >= max(400*time.Millisecond, wait) {
+				if a.wantKey(now) && now.Sub(asked) >= max(200*time.Millisecond, wait) {
 					asked = now
 					v.pc.WriteRTCP([]rtcp.Packet{&rtcp.PictureLossIndication{MediaSSRC: uint32(t.SSRC())}})
 				}
@@ -488,8 +528,8 @@ func (v *Viewer) roundTrip() time.Duration {
 	if ok && stats.CurrentRoundTripTime > 0 {
 		return time.Duration(stats.CurrentRoundTripTime * float64(time.Second))
 	}
-	// Until the first measurement, leave one retransmission time to arrive.
-	return 500 * time.Millisecond
+	// Until the first measurement, leave a short window before requesting PLI.
+	return 200 * time.Millisecond
 }
 
 func (v *Viewer) status(phase string) {
@@ -530,13 +570,19 @@ func (v *Viewer) path(st *Status) {
 }
 
 // localNetworks are the networks this device is on, by its addresses, but
-// for loopback and link-local ones.
+// for loopback, link-local, and virtual/proxy ones.
 func localNetworks() []*net.IPNet {
-	addrs, _ := net.InterfaceAddrs()
+	ifaces, _ := net.Interfaces()
 	var out []*net.IPNet
-	for _, a := range addrs {
-		if n, ok := a.(*net.IPNet); ok && n.IP.IsGlobalUnicast() {
-			out = append(out, n)
+	for _, iface := range ifaces {
+		if iface.Flags&net.FlagUp == 0 || !UsableInterface(iface.Name) {
+			continue
+		}
+		addrs, _ := iface.Addrs()
+		for _, a := range addrs {
+			if n, ok := a.(*net.IPNet); ok && n.IP.IsGlobalUnicast() && UsableInterfaceIP(n.IP) {
+				out = append(out, n)
+			}
 		}
 	}
 	return out
@@ -629,6 +675,32 @@ func (v *Viewer) RequestKeyframe() {
 // Connected says whether the picture has a path now.
 func (v *Viewer) Connected() bool {
 	return v.pc.ConnectionState() == webrtc.PeerConnectionStateConnected
+}
+
+// LocalPathHealthy reports whether the currently selected local ICE address
+// is still up on a usable local interface.
+func (v *Viewer) LocalPathHealthy() bool {
+	if !v.Connected() {
+		return false
+	}
+	pair, err := v.pc.SCTP().Transport().ICETransport().GetSelectedCandidatePair()
+	if err != nil || pair == nil || pair.Local == nil {
+		return false
+	}
+	addr := pair.Local.Address
+	if pair.Local.Typ != webrtc.ICECandidateTypeHost && pair.Local.RelatedAddress != "" {
+		addr = pair.Local.RelatedAddress
+	}
+	ip := net.ParseIP(addr)
+	if ip == nil {
+		return false
+	}
+	for _, n := range localNetworks() {
+		if n.IP.Equal(ip) {
+			return true
+		}
+	}
+	return false
 }
 
 // Done is closed when the session has ended; Err says why, nil when this

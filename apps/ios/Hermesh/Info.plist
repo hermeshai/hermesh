@@ -22,6 +22,8 @@
 	<string>$(AppIdentifierPrefix)io.hermesh.ios.shared</string>
 	<key>ITSAppUsesNonExemptEncryption</key>
 	<false/>
+	<key>NSLocalNetworkUsageDescription</key>
+	<string>Hermesh uses the local network for low-latency connections and screen control with your machines.</string>
 	<key>UIBackgroundModes</key>
 	<array>
 		<string>remote-notification</string>

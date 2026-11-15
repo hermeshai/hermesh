@@ -13,6 +13,8 @@ final class Capture: NSObject, SCStreamOutput, SCStreamDelegate {
     /// The picture last captured (on queue): a still screen sends no frames,
     /// and a keyframe asked for meanwhile is made from this.
     private var last: CVImageBuffer?
+    /// True once either SCStream or the initial screenshot has delivered a frame (on queue).
+    private var hasFrame = false
     /// Frames a second: the most the viewer asked for, and what is captured now.
     private var most = 60, rate = 60
 
@@ -22,7 +24,7 @@ final class Capture: NSObject, SCStreamOutput, SCStreamDelegate {
     }
 
     func start(maxEdge: Int, fps: Int, pointer: Bool) async throws {
-        let content = try await SCShareableContent.excludingDesktopWindows(false, onScreenWindowsOnly: true)
+        let content = try await SCShareableContent.excludingDesktopWindows(true, onScreenWindowsOnly: true)
         guard let display = content.displays.first(where: { $0.displayID == CGMainDisplayID() }) ?? content.displays.first else {
             throw NSError(domain: "hermesh.screen", code: 1, userInfo: [NSLocalizedDescriptionKey: "no display"])
         }
@@ -43,6 +45,29 @@ final class Capture: NSObject, SCStreamOutput, SCStreamDelegate {
         try s.addStreamOutput(self, type: .screen, sampleHandlerQueue: queue)
         try await s.startCapture()
         stream = s
+        seedFirstFrame(filter: filter)
+    }
+
+    /// Captures an immediate initial frame so a still desktop does not wait for
+    /// SCStream's first change-driven callback.
+    private func seedFirstFrame(filter: SCContentFilter) {
+        let snapshotConfig = config
+        Task { [weak self] in
+            guard let sample = try? await SCScreenshotManager.captureSampleBuffer(contentFilter: filter, configuration: snapshotConfig),
+                  let image = sample.imageBuffer
+            else { return }
+            self?.deliverSeededFrame(image)
+        }
+    }
+
+    private func deliverSeededFrame(_ image: CVImageBuffer) {
+        nonisolated(unsafe) let box = image
+        queue.async { [self] in
+            guard !hasFrame else { return }
+            hasFrame = true
+            last = box
+            encoder.encode(box, time: CMClockGetTime(CMClockGetHostTimeClock()), stamps: Stamps(captured: Stamps.now()))
+        }
     }
 
     /// showPointer: whether the picture has the pointer in it.
@@ -79,6 +104,7 @@ final class Capture: NSObject, SCStreamOutput, SCStreamDelegate {
               let list = CMSampleBufferGetSampleAttachmentsArray(sample, createIfNecessary: false) as? [[SCStreamFrameInfo: Any]],
               let raw = list.first?[.status] as? Int, SCFrameStatus(rawValue: raw) == .complete
         else { return }
+        hasFrame = true
         last = image
         var stamps = Stamps(captured: Stamps.now())
         if let shown = list.first?[.displayTime] as? UInt64 { stamps.displayed = Stamps.wall(machTime: shown) }

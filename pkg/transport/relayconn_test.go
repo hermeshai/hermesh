@@ -321,3 +321,47 @@ func TestWatch(t *testing.T) {
 		}
 	})
 }
+
+func TestDialRetriesTransientHandshakeDrop(t *testing.T) {
+	var attempts atomic.Int32
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if attempts.Add(1) == 1 {
+			if hj, ok := w.(http.Hijacker); ok {
+				if conn, _, err := hj.Hijack(); err == nil {
+					conn.Close()
+					return
+				}
+			}
+		}
+		ws, err := websocket.Accept(w, r, &websocket.AcceptOptions{Subprotocols: []string{"hermesh.v1"}})
+		if err != nil {
+			return
+		}
+		conn := NetConnFromWS(ws)
+		defer conn.Close()
+		WriteFrame(conn, &relayv1.Challenge{Nonce: make([]byte, 32), RelayId: "r"})
+		var hello relayv1.Hello
+		if err := ReadFrame(conn, &hello); err != nil {
+			return
+		}
+		WriteFrame(conn, &relayv1.HelloResult{Ok: true})
+		sess, err := yamux.Server(conn, YamuxConfig())
+		if err != nil {
+			return
+		}
+		defer sess.Close()
+		<-sess.CloseChan()
+	}))
+	t.Cleanup(srv.Close)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	conn, err := dialer(t, srv.URL, false).Dial(ctx)
+	if err != nil {
+		t.Fatalf("Dial failed after transient drop: %v", err)
+	}
+	conn.Close()
+	if got := attempts.Load(); got != 2 {
+		t.Fatalf("attempts = %d, want 2", got)
+	}
+}

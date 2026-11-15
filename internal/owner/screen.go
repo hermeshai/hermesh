@@ -11,6 +11,7 @@ import (
 	"os"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"connectrpc.com/connect"
@@ -51,45 +52,145 @@ type screenStatus struct {
 	Error string `json:"error,omitempty"`
 }
 
+// screenMachine returns a tunnel to machineID for signaling: when the relay
+// client is already connected, it uses c.Machine (which races cached direct
+// addresses against opening a relay tunnel). While the relay client itself is
+// still dialing (e.g. cold app launch or proxy delay), it races cached
+// direct_addrs against o.relay so Computer Control signaling doesn't wait.
+func (o *Owner) screenMachine(ctx context.Context, machineID string) (c *peer.Client, n *peer.Machine, tunnelWait time.Duration, err error) {
+	started := time.Now()
+	o.mu.Lock()
+	probe := o.recheck
+	o.mu.Unlock()
+	if probe != nil {
+		select {
+		case <-probe:
+		case <-ctx.Done():
+			return nil, nil, time.Since(started).Round(time.Millisecond), ctx.Err()
+		}
+	}
+	o.mu.Lock()
+	c = o.client
+	o.mu.Unlock()
+	if c != nil {
+		n, err = c.Machine(ctx, machineID)
+		return c, n, time.Since(started).Round(time.Millisecond), err
+	}
+	addrs := o.directAddrs(machineID)
+	d := o.dialer()
+	if len(addrs) == 0 || d == nil {
+		c, err = o.relay(ctx)
+		if err != nil {
+			return nil, nil, time.Since(started).Round(time.Millisecond), err
+		}
+		n, err = c.Machine(ctx, machineID)
+		return c, n, time.Since(started).Round(time.Millisecond), err
+	}
+	if cached := o.cachedDirectMachine(machineID); cached != nil {
+		return nil, cached, 0, nil
+	}
+	var relayClient *peer.Client
+	dn, sn, err := d.RaceDirect(ctx, machineID, addrs, func(rctx context.Context) (*peer.Machine, error) {
+		rc, err := o.relay(rctx)
+		if err != nil {
+			return nil, err
+		}
+		relayClient = rc
+		return rc.RelayMachine(rctx, machineID)
+	})
+	elapsed := time.Since(started).Round(time.Millisecond)
+	if err != nil {
+		return relayClient, nil, elapsed, err
+	}
+	if dn != nil {
+		o.storeDirectMachine(machineID, dn)
+		return nil, dn, elapsed, nil
+	}
+	return relayClient, sn, elapsed, nil
+}
+
 // screenCall is a call of ScreenService on a machine, through its tunnel.
 func screenCall[Req, Res any](o *Owner, machineID string, call func(screenv1connect.ScreenServiceClient, context.Context, *Req) (*Res, error)) func(context.Context, *Req) (*Res, error) {
 	var recoveryMu sync.Mutex
 	var recovered *Req // the viewer retries the same Connect request
+	var pingRecovered *Req
 	return func(ctx context.Context, req *Req) (*Res, error) {
 		started := time.Now()
 		method := fmt.Sprintf("%T", req)
-		c, err := o.relay(ctx)
+		c, n, tunnelAfter, err := o.screenMachine(ctx, machineID)
 		if err != nil {
-			o.log.Warn("screen: signal relay", "method", method, "err", err, "after", time.Since(started).Round(time.Millisecond))
-			return nil, err
-		}
-		relayAfter := time.Since(started).Round(time.Millisecond)
-		n, err := c.Machine(ctx, machineID)
-		if err != nil {
-			o.log.Warn("screen: signal tunnel", "method", method, "err", err, "after", time.Since(started).Round(time.Millisecond))
-			if _, ok := any(req).(*screenv1.ConnectRequest); ok {
-				recoveryMu.Lock()
-				reset := recovered != req && c.RecoverTunnel(err)
-				if reset {
-					recovered = req
+			o.log.Warn("screen: signal tunnel", "method", method, "err", err, "after", tunnelAfter)
+			if c != nil {
+				if _, ok := any(req).(*screenv1.ConnectRequest); ok {
+					recoveryMu.Lock()
+					reset := recovered != req && c.RecoverTunnel(err)
+					if reset {
+						recovered = req
+					}
+					recoveryMu.Unlock()
+					if reset {
+						o.log.Info("screen: signal relay recovery", "method", method, "after", time.Since(started).Round(time.Millisecond))
+					}
 				}
-				recoveryMu.Unlock()
-				if reset {
-					o.log.Info("screen: signal relay recovery", "method", method, "after", time.Since(started).Round(time.Millisecond))
-				}
+			}
+			var ce *connect.Error
+			if errors.As(err, &ce) {
+				return nil, ce
 			}
 			return nil, connect.NewError(connect.CodeUnavailable, err)
 		}
-		tunnelAfter := time.Since(started).Round(time.Millisecond)
-		if _, ok := any(req).(*screenv1.ConnectRequest); ok {
-			o.log.Info("screen: signal request", "method", method, "relay_after", relayAfter, "tunnel_after", tunnelAfter)
+		_, isConnect := any(req).(*screenv1.ConnectRequest)
+		if isConnect {
+			o.log.Info("screen: signal request", "method", method, "direct", c == nil, "tunnel_after", tunnelAfter)
 		}
-		res, err := call(n.Screen, ctx, req)
+		callCtx := ctx
+		var callCancel context.CancelFunc
+		var stop func() bool
+		if isConnect {
+			if dl, ok := ctx.Deadline(); ok && time.Until(dl) > 2500*time.Millisecond {
+				callCtx, callCancel = context.WithTimeout(ctx, 2500*time.Millisecond)
+			}
+		} else if dl, ok := ctx.Deadline(); ok && dl.Sub(started) >= 4*time.Second && time.Until(dl) < 4*time.Second {
+			callCtx, callCancel = context.WithTimeout(context.WithoutCancel(ctx), 4*time.Second)
+			stop = context.AfterFunc(ctx, func() {
+				if !errors.Is(ctx.Err(), context.DeadlineExceeded) {
+					callCancel()
+				}
+			})
+		}
+		if callCancel != nil {
+			defer func() {
+				if stop != nil {
+					stop()
+				}
+				callCancel()
+			}()
+		}
+		res, err := call(n.Screen, callCtx, req)
 		rpcAfter := time.Since(started).Round(time.Millisecond)
 		o.log.Info("screen: signal response", "method", method, "err", err, "after", rpcAfter,
-			"relay_after", relayAfter, "tunnel_after", tunnelAfter, "rpc_after", rpcAfter)
-		if err != nil && (ctx.Err() == nil && tunnelError(err) || errors.Is(ctx.Err(), context.DeadlineExceeded)) {
-			c.ForgetMachine(n)
+			"direct", c == nil, "tunnel_after", tunnelAfter, "rpc_after", rpcAfter)
+		if err != nil && (callCtx.Err() == nil && tunnelError(err) || errors.Is(callCtx.Err(), context.DeadlineExceeded)) {
+			if c != nil {
+				c.ForgetMachine(n)
+				recoveryMu.Lock()
+				checkPing := pingRecovered != req
+				if checkPing {
+					pingRecovered = req
+				}
+				recoveryMu.Unlock()
+				if checkPing {
+					pctx, pcancel := context.WithTimeout(ctx, 500*time.Millisecond)
+					perr := c.Ping(pctx)
+					pcancel()
+					if perr != nil {
+						c.Drop()
+						o.log.Info("screen: signal relay dropped", "method", method, "err", perr)
+					}
+				}
+			} else {
+				o.forgetDirectMachine(machineID, n)
+			}
 		}
 		return res, err
 	}
@@ -113,6 +214,18 @@ func (l *localService) StopScreen(context.Context, *localv1.StopScreenRequest) (
 // (warmScreenServers); none when it runs none, is an older relay, or does
 // not answer in time.
 func (o *Owner) screenServers(ctx context.Context) []*relayv1.IceServer {
+	if list, fresh := o.iceServers.Cached(); list != nil {
+		if !fresh {
+			go func() {
+				rctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+				defer cancel()
+				if c, pc, err := o.control(rctx); err == nil {
+					o.iceServers.Warm(pc, o.fetchScreenServers(c))
+				}
+			}()
+		}
+		return list
+	}
 	ctx, cancel := context.WithTimeout(ctx, 3*time.Second)
 	defer cancel()
 	c, pc, err := o.control(ctx)
@@ -213,9 +326,21 @@ func (d *Device) serveScreen(w http.ResponseWriter, r *http.Request) {
 
 	q := r.URL.Query()
 	lost := make(chan struct{}, 1)
-	moved := d.networkMoved()
+	moved, _ := d.nextNetworkMove()
 	var smu sync.Mutex
 	var said string // the status last logged
+	var restarting atomic.Bool
+	reportStatus := func(st screen.Status) {
+		smu.Lock()
+		now := st.Phase + " " + st.Path + " " + st.Local
+		changed := now != said
+		said = now
+		smu.Unlock()
+		if changed { // not every two seconds
+			o.log.Info("screen: viewer status", "phase", st.Phase, "path", st.Path, "rtt_ms", st.RTT)
+		}
+		status(screenStatus{Status: st})
+	}
 	// A machine that takes candidates after the offer says so in its state;
 	// an older one gets an offer with all of them, as before.
 	var candidates func(context.Context, *screenv1.CandidatesRequest) (*screenv1.CandidatesResponse, error)
@@ -247,16 +372,8 @@ func (d *Device) serveScreen(w http.ResponseWriter, r *http.Request) {
 			}
 		},
 		Status: func(st screen.Status) {
-			smu.Lock()
-			now := st.Phase + " " + st.Path + " " + st.Local
-			changed := now != said
-			said = now
-			smu.Unlock()
-			if changed { // not every two seconds
-				o.log.Info("screen: viewer status", "phase", st.Phase, "path", st.Path, "rtt_ms", st.RTT)
-			}
-			status(screenStatus{Status: st})
-			if st.Phase == "reconnecting" {
+			reportStatus(st)
+			if st.Phase == "reconnecting" && !restarting.Load() {
 				select {
 				case lost <- struct{}{}:
 				default:
@@ -278,6 +395,7 @@ func (d *Device) serveScreen(w http.ResponseWriter, r *http.Request) {
 	// network changed: the path may still carry the picture, but a new
 	// network has other addresses, and only an offer finds a path from them.
 	again := make(chan bool, 1)
+	wake := make(chan struct{}, 1)
 	go func() {
 		for {
 			var now bool
@@ -288,14 +406,58 @@ func (d *Device) serveScreen(w http.ResponseWriter, r *http.Request) {
 			}
 			for i := 0; i < 5 && ctx.Err() == nil; i++ {
 				if !now {
-					time.Sleep(1500 * time.Millisecond)
-					if i == 0 && v.Connected() {
+					woke := false
+					timer := time.NewTimer(1500 * time.Millisecond)
+					select {
+					case <-ctx.Done():
+						timer.Stop()
+						return
+					case <-v.Done():
+						timer.Stop()
+						return
+					case <-wake:
+						timer.Stop()
+						woke = true
+					case <-timer.C:
+					}
+					if !woke && i == 0 && v.Connected() {
 						break
 					}
+				} else if i == 0 {
+					// Coalesce bursty OS interface events (e.g. Wi-Fi <-> 5G transitions)
+					// so we issue one clean ICE restart after the new path settles.
+					settle := time.NewTimer(250 * time.Millisecond)
+				coalesceLoop:
+					for {
+						select {
+						case <-ctx.Done():
+							settle.Stop()
+							return
+						case <-v.Done():
+							settle.Stop()
+							return
+						case <-wake:
+							if !settle.Stop() {
+								select {
+								case <-settle.C:
+								default:
+								}
+							}
+							settle.Reset(250 * time.Millisecond)
+						case <-settle.C:
+							break coalesceLoop
+						}
+					}
+				}
+				select {
+				case <-again:
+				default:
 				}
 				now = false
 				rctx, done := context.WithTimeout(ctx, 10*time.Second)
+				restarting.Store(true)
 				err := v.Restart(rctx)
+				restarting.Store(false)
 				done()
 				if err == nil {
 					break
@@ -327,10 +489,20 @@ func (d *Device) serveScreen(w http.ResponseWriter, r *http.Request) {
 			default: // one is under way, or waits
 			}
 		case <-moved:
-			o.log.Info("screen: viewer network changed")
-			moved = d.networkMoved()
+			var forced bool
+			moved, forced = d.nextNetworkMove()
+			if !forced && v.LocalPathHealthy() {
+				o.log.Info("screen: viewer path unchanged, keeping active connection")
+				continue
+			}
+			o.log.Info("screen: viewer network changed", "forced", forced)
+			reportStatus(screen.Status{Phase: "reconnecting"})
 			select {
 			case <-again: // a broken path that waited: the new network is the reason
+			default:
+			}
+			select {
+			case wake <- struct{}{}:
 			default:
 			}
 			select {

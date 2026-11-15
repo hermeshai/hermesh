@@ -54,6 +54,11 @@ enum Core {
     /// connection to try again first (the app went to the background).
     static func pause() { lifecycle.async { HermeshCorePause() } }
 
+    /// Runs body on the main actor after queued lifecycle transitions settle.
+    static func whenReady(_ body: @escaping @Sendable @MainActor () -> Void) {
+        lifecycle.async { Task { @MainActor in body() } }
+    }
+
     /// Connects again over the network now in use (Wi-Fi to cellular, say).
     static func networkChanged() { lifecycle.async { HermeshCoreNetworkChanged() } }
     /// The network changed in some way that left its interfaces as they

@@ -67,11 +67,15 @@ func (s *screenService) Candidates(ctx context.Context, req *screenv1.Candidates
 // relay, or does not answer in time: the two ends then find what paths they
 // can by themselves.
 func (n *Machine) screenServers(ctx context.Context) []*relayv1.IceServer {
+	if list, fresh := n.iceServers.Cached(); list != nil && fresh {
+		return list
+	}
 	n.mu.Lock()
 	conn := n.conn
 	n.mu.Unlock()
 	if conn == nil {
-		return nil
+		list, _ := n.iceServers.Cached()
+		return list
 	}
 	return n.iceServers.Get(ctx, conn, n.fetchScreenServers(conn))
 }

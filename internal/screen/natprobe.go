@@ -167,6 +167,10 @@ func probeNAT(ctx context.Context, servers []*relayv1.IceServer) string {
 			switch {
 			case ip == "":
 				out += " none"
+				if i == 0 {
+					out += " none"
+					return strings.ReplaceAll(out, ": ", ":")
+				}
 				continue
 			case public == "":
 				public = ip
@@ -189,13 +193,19 @@ func probeNAT(ctx context.Context, servers []*relayv1.IceServer) string {
 		name  string
 		local net.IP
 	}{{"system", nil}}
-	addrs, _ := net.InterfaceAddrs()
-	for _, a := range addrs {
-		if n, ok := a.(*net.IPNet); ok && n.IP.To4() != nil && n.IP.IsGlobalUnicast() && len(ways) < 7 {
-			ways = append(ways, struct {
-				name  string
-				local net.IP
-			}{n.IP.String(), n.IP})
+	ifaces, _ := net.Interfaces()
+	for _, iface := range ifaces {
+		if iface.Flags&net.FlagUp == 0 || !UsableInterface(iface.Name) {
+			continue
+		}
+		addrs, _ := iface.Addrs()
+		for _, a := range addrs {
+			if n, ok := a.(*net.IPNet); ok && n.IP.To4() != nil && n.IP.IsGlobalUnicast() && UsableInterfaceIP(n.IP) && len(ways) < 7 {
+				ways = append(ways, struct {
+					name  string
+					local net.IP
+				}{n.IP.String(), n.IP})
+			}
 		}
 	}
 	lines := make([]string, len(ways))

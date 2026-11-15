@@ -1948,6 +1948,8 @@ func (a *Agent) handleInboundRequest(
 		}
 	}
 
+	local = a.requestLocal(local, remoteCandidate)
+
 	// Support Remotes that don't set a TIE-BREAKER. Not standards compliant, but
 	// keeping to maintain backwards compat
 	remoteTieBreaker := &AttrControl{}
