@@ -1112,6 +1112,24 @@ impl Kernel {
         Some(async move { server.wait_settled(deadline).await })
     }
 
+    /// Her's conversation takes up its connectors as the configuration has them now, after the
+    /// owner added, changed, turned off or removed one outside it: the tools change from the next
+    /// request on, and servers taken out are shut down (`McpManager::sync`). Nothing when the
+    /// session has no MCP servers to change (MCP is turned off).
+    pub fn set_mcp_servers(&self, servers: Vec<her_protocol::McpServerConfig>) {
+        let Some(mcp) = self.session.upgrade().and_then(|session| session.mcp.clone()) else {
+            return;
+        };
+        let removed = mcp.sync(servers);
+        if !removed.is_empty() {
+            tokio::spawn(async move {
+                for server in removed {
+                    server.shutdown().await;
+                }
+            });
+        }
+    }
+
     /// Stops a routine's run. False when none of that id is under way.
     pub fn stop_run(&self, run_id: &str) -> bool {
         self.session.upgrade().is_some_and(|session| session.agents.as_ref().is_some_and(|tree| tree.stop_run(run_id)))

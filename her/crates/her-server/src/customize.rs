@@ -277,11 +277,13 @@ impl Server {
     }
 
     /// Every open session's browser and desktop settings, from the configuration as it is now:
-    /// each takes them up before its next request (connectors-entry-design §9.4). Sessions of
-    /// one folder share one read of their files.
+    /// each takes them up before its next request (connectors-entry-design §9.4). A bot's
+    /// conversation takes up its connectors too: the owner manages them outside it, and it lasts
+    /// (her-connectors-demo.html). Sessions of one folder share one read of their files.
     fn push_system_connectors(&self) {
         let server = self.clone();
         tokio::spawn(async move {
+            let bots = server.bots().session_ids();
             let mut by_folder: std::collections::BTreeMap<PathBuf, Vec<crate::hub::HubHandle>> = Default::default();
             for hub in server.hubs() {
                 let cwd = hub.shared.summary.lock().cwd.clone();
@@ -292,8 +294,13 @@ impl Server {
                 let opened = tokio::task::spawn_blocking(move || her_core::Workspace::open(&home, &cwd, &overrides)).await;
                 let Ok(Ok(workspace)) = opened else { continue };
                 let settings = her_core::SystemSettings::of(&workspace.config);
+                let mut servers = None;
                 for hub in hubs {
                     let _ = hub.send(crate::hub::HubCmd::System(Box::new(settings.clone()))).await;
+                    if bots.contains(&*hub.shared.session.id) {
+                        let servers = servers.get_or_insert_with(|| server.session_mcp_servers(&workspace, &[])).clone();
+                        let _ = hub.send(crate::hub::HubCmd::McpServers(servers)).await;
+                    }
                 }
             }
         });
@@ -787,8 +794,15 @@ impl Server {
             let mut changed = json!({ "name": name, "login_id": login_id });
             if let Err(error) = &outcome { changed["login_error"] = json!(error); }
             server.notify(Topic::Mcp, method::MCP_CHANGED, changed);
+            let signed_in = outcome.is_ok();
             // A secure card that waits for this sign-in ends with it (docs/her-secure-cards.md §6).
             server.card_sign_in_ended(&name, outcome).await;
+            // Signed in on the connectors page: the bots' conversations connect it again.
+            if signed_in {
+                for session in server.bots().session_ids() {
+                    server.add_to_conversation(&session, &name).await;
+                }
+            }
         });
         drop(startup);
         login_result(response).await

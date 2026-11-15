@@ -512,6 +512,34 @@ async fn direct_tool_changes_apply_between_requests() {
     assert_eq!(prompt_entries(&h.home).len(), 3, "the change is recorded");
 }
 
+/// Her's conversation follows its connectors as the owner changes them outside it (the
+/// connectors page): one added is in the next request's tools, one removed or turned off is not.
+#[tokio::test]
+async fn connectors_changed_outside_the_conversation_apply_from_the_next_request() {
+    let (one, two) = (test_server(McpTestOptions::default()).await, test_server(McpTestOptions::default()).await);
+    let direct = |name: &str, server: &McpHttpServer| McpServerConfig { exposure: Some(McpExposure::Direct), ..http_config(name, server) };
+    let (first, second) = (direct("first", &one), direct("second", &two));
+    let mut h = Harness::start(vec![first.clone()], Some(one), vec![Script::text("a"), Script::text("b"), Script::text("c"), Script::text("d")]).await;
+    let has = |h: &Harness, i: usize, tool: &str| tool_names(&h.api.requests()[i]).contains(&tool.to_string());
+
+    assert!(matches!(h.run("before").await.0, TaskEnd::Completed { .. }));
+    assert!(has(&h, 0, "mcp__first__echo") && !has(&h, 0, "mcp__second__echo"));
+
+    h.kernel.set_mcp_servers(vec![first.clone(), second.clone()]);
+    until(&mut h.kernel, |e| matches!(e, EventMsg::McpServerStatus { server, state: McpServerState::Ready, .. } if server == "second")).await;
+    assert!(matches!(h.run("added").await.0, TaskEnd::Completed { .. }));
+    assert!(has(&h, 1, "mcp__first__echo") && has(&h, 1, "mcp__second__echo"), "the added one joins");
+
+    h.kernel.set_mcp_servers(vec![second.clone()]);
+    assert!(matches!(h.run("removed").await.0, TaskEnd::Completed { .. }));
+    assert!(!has(&h, 2, "mcp__first__echo") && has(&h, 2, "mcp__second__echo"), "the removed one leaves");
+
+    h.kernel.set_mcp_servers(vec![McpServerConfig { enabled: Some(false), ..second }]);
+    assert!(matches!(h.run("turned off").await.0, TaskEnd::Completed { .. }));
+    assert!(!has(&h, 3, "mcp__second__echo"), "the one turned off leaves");
+    drop(two);
+}
+
 #[tokio::test]
 async fn a_required_server_that_cannot_start_fails_the_task() {
     let config = McpServerConfig {

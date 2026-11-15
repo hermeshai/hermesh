@@ -78,14 +78,14 @@ impl Catalog {
 }
 
 pub(crate) struct McpManager {
-    /// Only ever added to, so an index into one list stays good in the next.
+    /// Replaced whole when servers are added or taken out (`add`, `sync`).
     servers: Mutex<Arc<Vec<Arc<McpServer>>>>,
-    exposure: Mutex<Vec<McpExposure>>,
     /// What a server added later starts with (`add`).
     ctx: ServerContext,
     default_exposure: McpExposure,
-    /// Servers added after the start: each changes the generation.
-    added: AtomicU64,
+    /// Servers added after the start, and those taken out with their generations: so the
+    /// generation only grows, and every such change moves it.
+    changes: AtomicU64,
     /// Every server, for the status callback, which must not keep them.
     made: Arc<Mutex<Vec<std::sync::Weak<McpServer>>>>,
     startup_wait: Duration,
@@ -110,7 +110,7 @@ impl McpManager {
         project_root: Option<PathBuf>,
         grows: bool,
     ) -> Option<Arc<McpManager>> {
-        let mut configs: Vec<McpServerConfig> = configs.into_iter().filter(|s| s.is_enabled() && (s.connector.is_none() || settings.her_home.as_deref().is_some_and(|home| crate::connectors::authorized(home, s)))).collect();
+        let mut configs: Vec<McpServerConfig> = configs.into_iter().filter(|s| admitted(s, settings.her_home.as_deref())).collect();
         if (configs.is_empty() && !grows) || !settings.enabled {
             return None;
         }
@@ -152,15 +152,13 @@ impl McpManager {
             oauth: settings.her_home.clone().map(|her_home| her_mcp::oauth::OAuthPaths { her_home }),
         };
         configs.sort_by(|a, b| a.name.cmp(&b.name));
-        let exposure = configs.iter().map(|c| c.exposure.unwrap_or(settings.exposure)).collect();
         let servers: Vec<Arc<McpServer>> = configs.into_iter().map(|c| McpServer::new(c, ctx.clone())).collect();
         *made.lock() = servers.iter().map(Arc::downgrade).collect();
         Some(Arc::new(McpManager {
             servers: Mutex::new(Arc::new(servers)),
-            exposure: Mutex::new(exposure),
             ctx,
             default_exposure: settings.exposure,
-            added: AtomicU64::new(0),
+            changes: AtomicU64::new(0),
             made,
             startup_wait: settings.startup_wait,
             started: Instant::now(),
@@ -179,15 +177,19 @@ impl McpManager {
     }
 
     /// Adds a server configured after the session started, and connects it once the session
-    /// has: the owner just connected it on a card (docs/her-secure-cards.md §6). A name the
-    /// session has already is left alone. Returns the server under that name.
+    /// has: the owner just connected it, or signed in to it (docs/her-secure-cards.md §6). A
+    /// name the session has already is kept, and connected again unless it is ready: it may
+    /// have been taken up from the configuration before its sign-in was done (`sync`).
+    /// Returns the server under that name.
     pub(crate) fn add(&self, config: McpServerConfig) -> Arc<McpServer> {
         let server = {
             let mut servers = self.servers.lock();
             if let Some(had) = servers.iter().find(|s| s.name() == config.name) {
+                if had.status().state != McpServerState::Ready && self.events.lock().is_some() {
+                    had.connect();
+                }
                 return had.clone();
             }
-            self.exposure.lock().push(config.exposure.unwrap_or(self.default_exposure));
             let server = McpServer::new(config, self.ctx.clone());
             self.made.lock().push(Arc::downgrade(&server));
             let mut list = (**servers).clone();
@@ -195,11 +197,50 @@ impl McpManager {
             *servers = Arc::new(list);
             server
         };
-        self.added.fetch_add(1, Ordering::AcqRel);
+        self.changes.fetch_add(1, Ordering::AcqRel);
         if self.events.lock().is_some() {
             server.connect();
         }
         server
+    }
+
+    /// Brings Her's conversation up to its connectors as the configuration has them now, after
+    /// the owner added, changed, turned off or removed one outside it (the connectors page). A
+    /// server whose configuration is unchanged is kept as it is; one changed is replaced, one
+    /// gone is taken out, and new ones connect once the session has. Returns the servers taken
+    /// out, for the caller to shut down.
+    pub(crate) fn sync(&self, configs: Vec<McpServerConfig>) -> Vec<Arc<McpServer>> {
+        let her_home = self.ctx.oauth.as_ref().map(|o| o.her_home.as_path());
+        let configs: Vec<McpServerConfig> = configs.into_iter().filter(|s| admitted(s, her_home)).collect();
+        let (added, removed) = {
+            let mut servers = self.servers.lock();
+            let (kept, removed): (Vec<Arc<McpServer>>, Vec<Arc<McpServer>>) = servers.iter().cloned().partition(|s| configs.contains(s.config()));
+            let added: Vec<Arc<McpServer>> = configs
+                .into_iter()
+                .filter(|c| !kept.iter().any(|s| s.config() == c))
+                .map(|c| McpServer::new(c, self.ctx.clone()))
+                .collect();
+            if added.is_empty() && removed.is_empty() {
+                return Vec::new();
+            }
+            {
+                let mut made = self.made.lock();
+                made.retain(|w| w.upgrade().is_some_and(|s| !removed.iter().any(|r| Arc::ptr_eq(r, &s))));
+                made.extend(added.iter().map(Arc::downgrade));
+            }
+            let mut list = kept;
+            list.extend(added.iter().cloned());
+            *servers = Arc::new(list);
+            (added, removed)
+        };
+        let gone: u64 = removed.iter().map(|s| s.generation() + 1).sum();
+        self.changes.fetch_add(gone + added.len() as u64, Ordering::AcqRel);
+        if self.events.lock().is_some() {
+            for server in &added {
+                server.connect();
+            }
+        }
+        removed
     }
 
     /// How long a turn waits for a server still connecting.
@@ -211,24 +252,24 @@ impl McpManager {
         self.servers.lock().clone()
     }
 
-    pub(crate) fn is_deferred(&self, i: usize) -> bool {
-        self.exposure.lock()[i] == McpExposure::Deferred
+    pub(crate) fn is_deferred(&self, server: &McpServer) -> bool {
+        server.config().exposure.unwrap_or(self.default_exposure) == McpExposure::Deferred
     }
 
     /// Whether `tool_search` and `call_tool` belong in the tool list.
     pub(crate) fn has_deferred(&self) -> bool {
-        self.exposure.lock().iter().any(|e| *e == McpExposure::Deferred)
+        self.servers().iter().any(|s| self.is_deferred(s))
     }
 
     /// Servers whose tools go into the tool list, so the first request waits for them.
-    fn waits_for(&self, i: usize) -> bool {
-        !self.is_deferred(i) || !self.servers()[i].config().direct_tools.is_empty()
+    fn waits_for(&self, server: &McpServer) -> bool {
+        !self.is_deferred(server) || !server.config().direct_tools.is_empty()
     }
 
     /// Changes with every change of any server's tools or instructions, and with every server
     /// added.
     pub(crate) fn generation(&self) -> u64 {
-        self.servers().iter().map(|s| s.generation()).sum::<u64>() + self.added.load(Ordering::Acquire)
+        self.servers().iter().map(|s| s.generation()).sum::<u64>() + self.changes.load(Ordering::Acquire)
     }
 
     /// Before the first request: waits for the servers whose tools go into the tool list,
@@ -237,9 +278,9 @@ impl McpManager {
     pub(crate) async fn settle(&self, cancel: &CancellationToken) -> Vec<(String, String)> {
         let deadline = self.started + self.startup_wait;
         let servers = self.servers();
-        let waits = servers.iter().enumerate().filter_map(|(i, server)| {
+        let waits = servers.iter().filter_map(|server| {
             let required = server.config().required;
-            if !(self.waits_for(i) || required) {
+            if !(self.waits_for(server) || required) {
                 return None;
             }
             let until = if required {
@@ -320,7 +361,7 @@ impl McpManager {
         let mut direct: Vec<Arc<dyn Tool>> = Vec::new();
         let mut docs = Vec::new();
         let mut index_entries = Vec::new();
-        for (i, server) in self.servers().iter().enumerate() {
+        for server in self.servers().iter() {
             let mut tools: Vec<ToolInfo> = server.tools().iter().cloned().collect();
             tools.sort_by(|a, b| a.name.cmp(&b.name));
             let raw: Vec<&str> = tools.iter().map(|t| t.name.as_str()).collect();
@@ -333,7 +374,7 @@ impl McpManager {
                         continue;
                     }
                 };
-                let deferred = self.is_deferred(i) && !server.config().direct_tools.contains(&info.name);
+                let deferred = self.is_deferred(server) && !server.config().direct_tools.contains(&info.name);
                 if deferred {
                     index_entries.push(entries.len());
                     docs.push(SearchDoc {
@@ -389,17 +430,16 @@ impl McpManager {
     fn deferred_servers(&self) -> Vec<(String, Option<String>)> {
         self.servers()
             .iter()
-            .enumerate()
-            .filter(|(i, _)| self.is_deferred(*i))
-            .map(|(_, s)| (s.name().to_string(), s.config().description.clone()))
+            .filter(|s| self.is_deferred(s))
+            .map(|s| (s.name().to_string(), s.config().description.clone()))
             .collect()
     }
 
     /// The instructions of direct servers, each in its own part.
     fn direct_instructions(&self) -> Vec<String> {
         let mut parts = Vec::new();
-        for (i, server) in self.servers().iter().enumerate() {
-            if self.is_deferred(i) {
+        for server in self.servers().iter() {
+            if self.is_deferred(server) {
                 continue;
             }
             if let Some(instructions) = server.instructions() {
@@ -687,6 +727,11 @@ fn overlay(base: &McpServerConfig, over: &McpServerConfig) -> McpServerConfig {
 /// says neither how to start the server nor where it is) applies to the `.mcp.json` server
 /// of its name. Invalid servers are dropped, and the warnings say why; disabled ones are
 /// kept, unchecked, and not started.
+/// A server a session starts: turned on, and a curated connector only once authorized.
+fn admitted(server: &McpServerConfig, her_home: Option<&Path>) -> bool {
+    server.is_enabled() && (server.connector.is_none() || her_home.is_some_and(|home| crate::connectors::authorized(home, server)))
+}
+
 pub fn merge_servers(
     configured: &[McpServerConfig],
     project_json: Vec<McpServerConfig>,
@@ -875,16 +920,15 @@ impl crate::session::Session {
             let missing: Vec<String> = mcp
                 .servers()
                 .iter()
-                .enumerate()
-                .filter(|(i, s)| {
+                .filter(|s| {
                     !s.config().required
                         && match s.status().state {
                             McpServerState::Ready => false,
-                            McpServerState::Starting => mcp.waits_for(*i),
+                            McpServerState::Starting => mcp.waits_for(s),
                             McpServerState::Failed | McpServerState::NeedsLogin | McpServerState::Closed => true,
                         }
                 })
-                .map(|(_, s)| {
+                .map(|s| {
                     let status = s.status();
                     match status.state {
                         McpServerState::Starting => format!("'{}' (still connecting)", s.name()),
@@ -989,6 +1033,57 @@ mod tests {
         let after = manager.generation();
         manager.add(tracker);
         assert_eq!((manager.servers().len(), manager.generation()), (1, after));
+    }
+
+    /// The owner changes Her's connectors outside the conversation: an unchanged server stays
+    /// the same server, a changed one is replaced, a removed or turned-off one is taken out,
+    /// and every change moves the generation forward.
+    #[test]
+    fn sync_follows_the_configuration() {
+        let settings = McpSettings {
+            enabled: true,
+            project_json: false,
+            startup_wait: Duration::ZERO,
+            exposure: McpExposure::Deferred,
+            cache_dir: None,
+            her_home: None,
+            client_metadata_url: None,
+        };
+        let remote = |name: &str, url: &str| McpServerConfig { name: name.into(), url: Some(url.into()), ..Default::default() };
+        let (docs, tracker) = (remote("docs", "https://docs.example.com/mcp"), remote("tracker", "https://tracker.example.com/mcp"));
+        let manager = McpManager::new(vec![docs.clone()], &settings, None, Vec::new(), PathBuf::from("/"), None, true).unwrap();
+        let first = manager.servers()[0].clone();
+        let names = |m: &McpManager| m.servers().iter().map(|s| s.name().to_string()).collect::<Vec<_>>();
+
+        let g0 = manager.generation();
+        assert!(manager.sync(vec![docs.clone(), tracker.clone()]).is_empty(), "nothing taken out");
+        assert_eq!(names(&manager), ["docs", "tracker"]);
+        assert!(Arc::ptr_eq(&manager.servers()[0], &first), "an unchanged server is kept as it is");
+        let g1 = manager.generation();
+        assert!(g1 > g0);
+
+        assert!(manager.sync(vec![docs.clone(), tracker.clone()]).is_empty());
+        assert_eq!(manager.generation(), g1, "the same configuration changes nothing");
+
+        let moved = remote("docs", "https://docs.example.com/v2/mcp");
+        let removed = manager.sync(vec![moved.clone(), tracker.clone()]);
+        assert!(removed.len() == 1 && Arc::ptr_eq(&removed[0], &first), "a changed server is replaced");
+        assert_eq!(names(&manager), ["tracker", "docs"]);
+        assert_eq!(manager.servers()[1].config(), &moved);
+        let g2 = manager.generation();
+        assert!(g2 > g1);
+
+        let off = McpServerConfig { enabled: Some(false), ..tracker.clone() };
+        assert_eq!(manager.sync(vec![moved.clone(), off]).len(), 1, "a server turned off is taken out");
+        assert_eq!(names(&manager), ["docs"]);
+        let g3 = manager.generation();
+        assert!(g3 > g2);
+
+        assert_eq!(manager.sync(Vec::new()).len(), 1);
+        assert!(manager.servers().is_empty() && !manager.has_deferred());
+        assert!(manager.generation() > g3);
+        let none = crate::deferred::Deferred::default();
+        assert_eq!(prompt_section(Some(&manager), &none), None, "the catalog names nothing");
     }
 
     #[test]

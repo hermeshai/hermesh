@@ -142,6 +142,9 @@ pub(crate) enum HubCmd {
         server: Box<her_protocol::McpServerConfig>,
         reply: oneshot::Sender<Option<futures::future::BoxFuture<'static, ()>>>,
     },
+    /// A bot's conversation: its connectors as the configuration has them now
+    /// (`Kernel::set_mcp_servers`).
+    McpServers(Vec<her_protocol::McpServerConfig>),
     /// The conversation's secure cards, `card_id` taken back from its history if need be; `None`
     /// when it has none.
     Cards {
@@ -649,6 +652,11 @@ impl Hub {
             HubCmd::AddMcpServer { server, reply } => {
                 let settled = self.kernel.as_ref().and_then(|kernel| kernel.add_mcp_server(*server));
                 let _ = reply.send(settled.map(|settled| Box::pin(settled) as futures::future::BoxFuture<'static, ()>));
+            }
+            HubCmd::McpServers(servers) => {
+                if let Some(kernel) = &self.kernel {
+                    kernel.set_mcp_servers(servers);
+                }
             }
             HubCmd::Cards { card_id, reply } => {
                 let _ = reply.send(self.kernel.as_ref().and_then(|kernel| kernel.cards(&card_id)));
