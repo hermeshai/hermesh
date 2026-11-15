@@ -265,6 +265,8 @@ pub mod method {
     pub const BROWSER_CANCEL_WAIT: &str = "browser/cancel_wait";
     /// Which of the connected extensions the agent uses.
     pub const BROWSER_USE_EXTENSION: &str = "browser/use_extension";
+    /// Opens, on the computer her runs on, what adding the extension by hand takes there.
+    pub const BROWSER_OPEN_SETUP: &str = "browser/open_setup";
     /// Gives a tab the user offered from their browser to a session.
     pub const BROWSER_ASSIGN_TAB: &str = "browser/assign_tab";
     /// What the extension says, from its host's connection.
@@ -723,6 +725,23 @@ pub struct BrowserSessionParams {
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 pub struct BrowserUseExtensionParams {
     pub instance: String,
+}
+
+/// Parameters of `browser/open_setup`.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+pub struct BrowserOpenSetupParams {
+    pub what: BrowserSetupPlace,
+}
+
+/// What `browser/open_setup` opens.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum BrowserSetupPlace {
+    /// `chrome://extensions`, in the default browser when it is one the extension works in,
+    /// else in Google Chrome.
+    ExtensionsPage,
+    /// The folder the extension is loaded from, shown in the file manager.
+    ExtensionFolder,
 }
 
 /// Parameters of `browser/assign_tab`.

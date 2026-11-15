@@ -27,6 +27,7 @@ func TestCheck(t *testing.T) {
 		{"the owner's Chrome, connected or not", "browser/status", `{}`, 0},
 		{"which Chrome Her uses", "browser/use_extension", `{"instance":"i"}`, 0},
 		{"going on without the owner's Chrome", "browser/cancel_wait", `{"session_id":"s"}`, 0},
+		{"the guide's extensions page and folder", "browser/open_setup", `{"what":"extensions_page"}`, 0},
 		{"computer use's permissions", "desktop/status", ``, 0},
 
 		{"a method off the list", "server/shutdown", ``, connect.CodeUnimplemented},

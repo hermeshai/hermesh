@@ -271,6 +271,7 @@ pub fn document() -> Value {
         (method::BROWSER_ALLOW, Some(name::<api::BrowserSessionParams>(g)), name::<api::Empty>(g)),
         (method::BROWSER_CANCEL_WAIT, Some(name::<api::BrowserSessionParams>(g)), name::<api::Empty>(g)),
         (method::BROWSER_USE_EXTENSION, Some(name::<api::BrowserUseExtensionParams>(g)), name::<api::Empty>(g)),
+        (method::BROWSER_OPEN_SETUP, Some(name::<api::BrowserOpenSetupParams>(g)), name::<api::Empty>(g)),
         (method::BROWSER_ASSIGN_TAB, Some(name::<api::BrowserAssignTabParams>(g)), name::<api::Empty>(g)),
         (method::FILES_LIST, Some(name::<files::FilesListParams>(g)), name::<files::FilesListResult>(g)),
         (method::FILES_READ, Some(name::<files::FilesReadParams>(g)), name::<files::FilesReadResult>(g)),
