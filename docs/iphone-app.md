@@ -51,8 +51,11 @@ session, which is a page again. Where the expanded menu has no room, the
 rail's button shows it over the page, shaded, until the shade is tapped or a
 place is chosen. A session opened from elsewhere (Her's card, Work, a
 notification) is a page as before, with Back; the Mac shows the list beside
-it. The menu lists All Sessions under Work on every screen, as the Mac's
-sidebar.
+it. As the Mac's sidebar does since its team group was tightened, the menu
+lists All Sessions as the team's first row, under Machines, on every
+screen, and the rail puts it first among the machines; a machine's coding
+agents are flush with it, not indented, and the team's headings sit closer
+to the rows around them.
 
 Changing from one to another (the device opened, closed or turned) leaves the
 menu closed. Covering, a finger drags a picture of the page, and the menu

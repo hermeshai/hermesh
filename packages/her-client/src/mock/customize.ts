@@ -530,7 +530,7 @@ export class CustomizeMock {
       transport: sse,
       auth: { required: true, oauth: { authorization_server: issuer, pkce: true, metadata_document: !github, registration: !github } },
       // her has not published its client metadata document yet, so registration comes first.
-      suggested: { auth: "oauth", client: github ? "own" : "registration" },
+      suggested: { auth: "oauth", client: github ? "builtin" : "registration" },
       ...(CustomizeMock.logoOf(p.server as Record<string, unknown>) ? { icon: CustomizeMock.logoOf(p.server as Record<string, unknown>) } : {}),
     };
   }

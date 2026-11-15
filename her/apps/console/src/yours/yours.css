@@ -19,6 +19,9 @@
 .yours-num .ic{width:12px;height:12px}
 .yours-howto{margin:0 0 4px;padding-left:20px;line-height:1.6}
 .yours-howto li{margin-bottom:4px}
+.yours-howto .btn.sm{vertical-align:1px}
+/* Step 3's other way, under its button. */
+.yours-load{color:var(--l3);font-size:12px}
 .yours-howto code{font-family:var(--mono);font-size:12px;background:var(--code);border-radius:var(--r-xs);padding:1px 5px;white-space:nowrap}
 .yours-waiting,.yours-done{display:flex;align-items:center;gap:8px}
 .yours-count{margin-left:auto;color:var(--l3);font-variant-numeric:tabular-nums}

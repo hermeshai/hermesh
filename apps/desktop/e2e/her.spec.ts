@@ -120,6 +120,9 @@ test("Her: the first run, a chat, a secure card, the console, a second environme
   // The window is behind (tests open it so): the reply is unread, and notified, by the assistant's name.
   await expect.poll(posted, { timeout: 60_000 }).toContainEqual(expect.objectContaining({ title: expect.stringMatching(/^Her/), body: "你好，主人" }));
   await snap(page, "her-chat");
+  // The owner's bubble is a session page's: the brand blue with white words, as on the iPhone.
+  await expect(log.locator(".um .bub").first()).toHaveCSS("background-color", "rgb(61, 91, 255)");
+  await expect(log.locator(".um .bub").first()).toHaveCSS("color", "rgb(255, 255, 255)");
   // A message leaves the composer at once and shows once (docs/her-sending.md): it goes by its id through hermeshd,
   // on this conversation's connection, and stays where it is from being sent to her having it.
   await send(mockSend("只收到一次"));

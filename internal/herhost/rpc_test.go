@@ -12,6 +12,8 @@ import (
 	"sync"
 	"testing"
 	"time"
+
+	herv1 "github.com/hermeshai/hermesh/gen/go/hermesh/her/v1"
 )
 
 // fakeHer listens on a socket like her: each connection answers initialize,
@@ -169,5 +171,64 @@ func eventually(t *testing.T, cond func() bool) {
 			t.Fatal("timed out")
 		}
 		time.Sleep(20 * time.Millisecond)
+	}
+}
+
+func TestOpenConcurrentSetup(t *testing.T) {
+	var mu sync.Mutex
+	var subID, listID any
+	sock := fakeHer(t, func(req map[string]any, c net.Conn) {
+		mu.Lock()
+		defer mu.Unlock()
+		switch req["method"] {
+		case "bots/subscribe":
+			subID = req["id"]
+		case "models/list":
+			listID = req["id"]
+		}
+		// Only respond once both requests arrived on the same connection; reply out of order.
+		if subID != nil && listID != nil {
+			fmt.Fprintf(c, `{"jsonrpc":"2.0","id":%v,"result":{"order":2}}`+"\n", listID)
+			fmt.Fprintf(c, `{"jsonrpc":"2.0","id":%v,"result":{"order":1}}`+"\n", subID)
+		}
+	})
+	h := New(Config{Socket: sock, Version: "test"})
+	h.mu.Lock()
+	h.stop = func() {}
+	h.snap = &snapshot{}
+	h.mu.Unlock()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	gotOpened := make(chan *herv1.Opened, 1)
+	done := make(chan error, 1)
+	go func() {
+		done <- h.Open(ctx, &herv1.OpenRequest{
+			Setup: []*herv1.Request{
+				{Method: "bots/subscribe"},
+				{Method: "models/list"},
+			},
+		}, func(ev *herv1.OpenEvent) error {
+			if o := ev.GetOpened(); o != nil {
+				gotOpened <- o
+				cancel()
+			}
+			return nil
+		})
+	}()
+
+	var opened *herv1.Opened
+	select {
+	case opened = <-gotOpened:
+	case err := <-done:
+		t.Fatalf("Open ended before opened: %v", err)
+	case <-ctx.Done():
+		t.Fatal("Open did not issue setup calls concurrently")
+	}
+	if err := <-done; err != nil {
+		t.Fatalf("Open: %v", err)
+	}
+	if len(opened.Responses) != 2 || string(opened.Responses[0].GetResult()) != `{"order":1}` || string(opened.Responses[1].GetResult()) != `{"order":2}` {
+		t.Fatalf("Responses = %v", opened.Responses)
 	}
 }

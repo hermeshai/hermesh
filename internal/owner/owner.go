@@ -401,7 +401,18 @@ func (o *Owner) relay(ctx context.Context) (*peer.Client, error) {
 		o.dialing = w
 		relayURL := o.relayURL
 		o.mu.Unlock()
+		var adoptPrewarm func(*peer.Client)
+		if kept == nil {
+			adoptPrewarm = prewarmDirect(ctx, d, o.seenOnline())
+		}
 		c, err := connectOrKeep(ctx, d, kept)
+		if adoptPrewarm != nil {
+			if err == nil {
+				adoptPrewarm(c)
+			} else {
+				adoptPrewarm(nil)
+			}
+		}
 		o.mu.Lock()
 		o.dialing = nil
 		if err == nil {
@@ -494,6 +505,63 @@ func connectOrKeep(ctx context.Context, d *peer.Dialer, kept *peer.Client) (*pee
 		kept.Close()
 	}
 	return nil, err
+}
+
+type prewarmHit struct {
+	id string
+	n  *peer.Machine
+}
+
+// prewarmDirect races direct E2E dials for seen online machines while a cold
+// relay connection is being established, and returns an adopt function that
+// cancels remaining attempts and installs any completed tunnels onto c.
+func prewarmDirect(ctx context.Context, d *peer.Dialer, ids []string) func(*peer.Client) {
+	if d == nil || d.Direct == nil || len(ids) == 0 {
+		return nil
+	}
+	targets := make(map[string][]string, len(ids))
+	for _, id := range ids {
+		if addrs := d.Direct(id); len(addrs) > 0 {
+			targets[id] = addrs
+		}
+	}
+	if len(targets) == 0 {
+		return nil
+	}
+	preCtx, cancel := context.WithCancel(ctx)
+	hits := make(chan prewarmHit, len(targets))
+	var wg sync.WaitGroup
+	for id, addrs := range targets {
+		wg.Add(1)
+		go func(id string, addrs []string) {
+			defer wg.Done()
+			if n, err := d.DialDirect(preCtx, id, addrs); err == nil {
+				hits <- prewarmHit{id: id, n: n}
+			}
+		}(id, addrs)
+	}
+	return func(c *peer.Client) {
+		cancel()
+		for {
+			select {
+			case h := <-hits:
+				if c == nil {
+					h.n.Close()
+				} else {
+					c.AdoptDirect(h.id, h.n)
+				}
+			default:
+				go func() {
+					wg.Wait()
+					close(hits)
+					for h := range hits {
+						h.n.Close()
+					}
+				}()
+				return
+			}
+		}
+	}
 }
 
 // keepRelay keeps the relay connection over a pause, to be tried again

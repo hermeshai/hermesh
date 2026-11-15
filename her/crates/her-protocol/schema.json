@@ -86,6 +86,9 @@
       "$ref": "#/definitions/BrowserHostResult"
     },
     {
+      "$ref": "#/definitions/BrowserOpenSetupParams"
+    },
+    {
       "$ref": "#/definitions/BrowserRequest"
     },
     {
@@ -2416,6 +2419,18 @@
       },
       "type": "object"
     },
+    "BrowserOpenSetupParams": {
+      "description": "Parameters of `browser/open_setup`.",
+      "properties": {
+        "what": {
+          "$ref": "#/definitions/BrowserSetupPlace"
+        }
+      },
+      "required": [
+        "what"
+      ],
+      "type": "object"
+    },
     "BrowserRequest": {
       "description": "What the extension asks of the app (`browser/request`).",
       "oneOf": [
@@ -2495,6 +2510,25 @@
         "session_id"
       ],
       "type": "object"
+    },
+    "BrowserSetupPlace": {
+      "description": "What `browser/open_setup` opens.",
+      "oneOf": [
+        {
+          "description": "`chrome://extensions`, in the default browser when it is one the extension works in, else in Google Chrome.",
+          "enum": [
+            "extensions_page"
+          ],
+          "type": "string"
+        },
+        {
+          "description": "The folder the extension is loaded from, shown in the file manager.",
+          "enum": [
+            "extension_folder"
+          ],
+          "type": "string"
+        }
+      ]
     },
     "BrowserSiteIconParams": {
       "description": "Parameters of `browser/site_icon`.",
@@ -13267,6 +13301,13 @@
             "own"
           ],
           "type": "string"
+        },
+        {
+          "description": "The client her registered with the provider, for providers that offer neither metadata documents nor registration (GitHub).",
+          "enum": [
+            "builtin"
+          ],
+          "type": "string"
         }
       ]
     },
@@ -20934,6 +20975,10 @@
       "params": "BrowserHostParams",
       "result": "BrowserHostResult"
     },
+    "browser/open_setup": {
+      "params": "BrowserOpenSetupParams",
+      "result": "Empty"
+    },
     "browser/reveal": {
       "params": "BrowserRevealParams",
       "result": "Empty"
@@ -21460,6 +21505,7 @@
       "browser/cancel_wait": "experimental",
       "browser/close_tabs": "experimental",
       "browser/host": "internal",
+      "browser/open_setup": "experimental",
       "browser/reveal": "experimental",
       "browser/site_icon": "experimental",
       "browser/status": "experimental",

@@ -36,6 +36,9 @@ func init() {
 		// A conversation waiting for the owner's Chrome: the owner goes on without it.
 		"browser/cancel_wait",
 		"browser/use_extension", "models/refresh", "models/show",
+		// The console's guide to the owner's Chrome: its extensions page, and the
+		// extension's folder, opened on that computer.
+		"browser/open_setup",
 	} {
 		allowed[m] = true
 	}
