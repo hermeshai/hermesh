@@ -75,3 +75,14 @@ export function outboxFor(list: Waiting[], botId: string, said: { key: string; t
   }
   return out;
 }
+
+/**
+ * The messages still being sent once the conversation shows `said` (docs/her-sending.md §5.2): one it shows goes, by
+ * its id or her's own by its words (`outboxFor`), so that it is the conversation's from then on; and so does one her
+ * took (`delivered`) that it doesn't show and won't (`lost`: a command such as /context, which her takes without it
+ * joining the conversation, or the conversation opened afresh without it).
+ */
+export function stillSending<T extends Sending & { delivered?: boolean }>(sending: T[], said: { key: string; text: string; ts: number }[], lost: (m: T) => boolean = () => false): T[] {
+  const unshown = new Set(outboxFor([], "", said, sending).map((r) => r.key));
+  return sending.filter((m) => unshown.has(m.id) && !(m.delivered && lost(m)));
+}

@@ -246,7 +246,7 @@ final class HerChat {
                             conv = c
                             convUp = true
                             reconnecting = false
-                            settle()
+                            settle { _ in true }
                         case .failure(let refused)?:
                             // Without a model, the page says so; deleted meanwhile, the list hears of it too. The
                             // connection stays until what it waits on changes.
@@ -460,6 +460,13 @@ final class HerChat {
             if !res.delivered {
                 await refreshWaiting()
                 forget(id)
+            } else if let i = sending.firstIndex(where: { $0.id == id }) {
+                sending[i].delivered = true
+                // Taken: the conversation shows it in a moment, unless it never will (a command such as /context).
+                Task {
+                    try? await Task.sleep(for: .seconds(5))
+                    if convUp { settle { $0.id == id } }
+                }
             }
         } catch {
             await refreshWaiting()
@@ -496,11 +503,12 @@ final class HerChat {
         outgoing[id] = nil
     }
 
-    /// Drops what was sent once the conversation has it.
-    private func settle() {
+    /// Drops what was sent once the conversation has it, and what her took that it doesn't have and won't (`lost`)
+    /// (docs/her-sending.md §5.2).
+    private func settle(lost: (HerOutgoing) -> Bool = { _ in false }) {
         guard let s = live, !sending.isEmpty else { return }
-        let there = Set(s.entries.compactMap { if case .user(let id, _, _, _) = $0 { id } else { nil } } + s.queued.map(\.id))
-        for m in sending where there.contains(m.id) { forget(m.id) }
+        let left = Set(herStillSending(sending, said: herChat(s), lost: lost).map(\.id))
+        for m in sending where !left.contains(m.id) { forget(m.id) }
     }
 
     // MARK: Files Her sent

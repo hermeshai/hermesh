@@ -40,6 +40,21 @@ import Testing
     #expect(rows[2].kind == .sending(id: "hw_d", text: "no", images: [], files: [], refused: "her: no"))
 }
 
+/// A message being sent stops showing as sent (docs/her-sending.md §5.2): once the conversation shows it, by its id or,
+/// from an older her, by its words; and, taken by her, once it is lost: the conversation doesn't show it and won't.
+@Test func aMessageBeingSentGoesOnceTheConversationHasItOrWontHaveIt() throws {
+    let conversation = herChat(try #require(HerSession(snapshot: snapshotJSON([said("hw_a", "mine", ts: 1000), said("u7", "older her", ts: 2000)]))))
+    let sending = [HerOutgoing(id: "hw_a", text: "mine", ts: 900, delivered: true),
+                   HerOutgoing(id: "hw_c", text: "older her", ts: 1900, delivered: true),
+                   HerOutgoing(id: "hw_x", text: "/context", ts: 2500, delivered: true),
+                   HerOutgoing(id: "hw_y", text: "taken, its event to come", ts: 2550, delivered: true),
+                   HerOutgoing(id: "hw_p", text: "HerSend not answered", ts: 2600),
+                   HerOutgoing(id: "hw_r", text: "refused", ts: 2700, refused: "her: no")]
+    #expect(herStillSending(sending, said: conversation).map(\.id) == ["hw_x", "hw_y", "hw_p", "hw_r"])
+    #expect(herStillSending(sending, said: conversation) { $0.id == "hw_x" }.map(\.id) == ["hw_y", "hw_p", "hw_r"])
+    #expect(herStillSending(sending, said: conversation) { _ in true }.map(\.id) == ["hw_p", "hw_r"], "only what her took")
+}
+
 @Test func whatATaskHandsBackGoesBackToTheComposer() {
     let failed: JSON = ["type": "task_failed", "returned_input": [["content": [["type": "text", "text": "one"], ["type": "image", "mime_type": "image/png", "data": "x"]]],
                                                                   ["content": [["type": "text", "text": "two"]]]]]
