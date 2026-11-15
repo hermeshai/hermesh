@@ -117,6 +117,11 @@ final class HermeshUITests: XCTestCase {
         }
         XCTAssertTrue(drawer.buttons["her-place"].label.contains("未启用"), drawer.buttons["her-place"].label)
         XCTAssertTrue(drawer.buttons.matching(NSPredicate(format: "identifier BEGINSWITH %@", "menu-agent-owner-mac-")).count > 0, "the Mac's coding agents under it")
+        // All Sessions is the team's first row, as in the Mac's sidebar: under Machines, above the first machine.
+        let all = drawer.buttons["sessions-place"]
+        XCTAssertGreaterThan(all.frame.minY, drawer.buttons["menu-machines"].frame.minY, "under the Machines heading")
+        XCTAssertLessThan(all.frame.minY, drawer.buttons["menu-machine-owner-mac"].frame.minY, "above the machines")
+        XCTAssertGreaterThan(all.frame.minY, drawer.buttons["work-place"].frame.maxY, "not among the pages")
         // A picture alone, no name beside it: on a server of one's own, a server.
         let account = drawer.buttons["account"]
         XCTAssertTrue(account.exists)
