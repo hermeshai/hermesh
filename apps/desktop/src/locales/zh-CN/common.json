@@ -63,7 +63,8 @@
     "sentByYou": "你派的",
     "allSessions": "全部会话",
     "noneHere": "这里没有会话",
-    "chooseSession": "选一个会话"
+    "chooseSession": "选一个会话",
+    "progress": "进展"
   },
   "accountMenu": {
     "settings": "设置…",

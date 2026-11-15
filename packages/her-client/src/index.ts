@@ -10,6 +10,7 @@ export * from "./files.ts";
 export * from "./http.ts";
 export * from "./mentions.ts";
 export * from "./models.ts";
+export * from "./progress.ts";
 export * from "./refs.ts";
 export * from "./routines.ts";
 export * from "./rpc.ts";

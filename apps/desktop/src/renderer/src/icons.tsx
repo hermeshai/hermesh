@@ -69,6 +69,10 @@ const paths: Record<string, string> = {
   pin: "<path d=\"M6 2.4h4l-.6 3.4 2 2v1H3.6v-1l2-2z\"/><path d=\"M8 8.8v4.8\"/>",
   play: "<path d=\"M5 3.4v9.2L12.4 8z\"/>",
   retry: "<path d=\"M12.8 7.6a4.8 4.8 0 1 1-1.4-3.4\"/><path d=\"M12 2.4v2.8H9.2\"/>",
+  // A pulse: the Progress entry.
+  pulse: "<path d=\"M1.8 8.4h2.8l1.9-4.8 3 8.8 1.9-4h2.8\"/>",
+  // A kitten's head: a sub-agent of Her's.
+  kit: "<path d=\"M6.2 4.6L3 2.8l.2 3.8c-.7.9-1 1.9-1 2.9 0 2.5 2.4 4 5.8 4s5.8-1.5 5.8-4c0-1-.3-2-1-2.9l.2-3.8-3.2 1.8c-1.2-.3-2.4-.3-3.6 0z\"/><path d=\"M6 9.4v.2M10 9.4v.2\" stroke-width=\"1.7\"/>",
 };
 
 export type IconName = keyof typeof paths;

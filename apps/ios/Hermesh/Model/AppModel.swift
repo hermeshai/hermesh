@@ -1,4 +1,5 @@
 import Foundation
+import HermeshHer
 import HermeshKit
 import HermeshProto
 import HermeshSessions
@@ -10,6 +11,8 @@ import UserNotifications
 /// Where the side menu leads.
 enum Root: Hashable {
     case her, overview, grants, machines
+    /// The work Her sent out (docs/her-team.md §15).
+    case progress
     case session(String)
 
     /// A page with a large title (Her's, the overview's and a session's are in the bar).
@@ -32,6 +35,7 @@ enum Route: Hashable {
     case agentSessions(String, String) // machine id, coding agent
     case sessions // all of them, from Work
     case herSettings // the environment's Her shown
+    case progressAgent(String) // a sub-agent of Her's: its record
 }
 
 /// Sheets over everything.
@@ -398,6 +402,10 @@ final class AppModel {
         saveTask?.cancel() // nothing new to keep
         watched = false
         keptOwner = w.status.ownerID
+        if root == .her, let m = herPick(herEnvironments(machines), remembered: her.machine) {
+            let chat = her.chat(m.machineID, model: self)
+            Task { await chat.loadKept() }
+        }
         return w
     }
 
@@ -610,9 +618,13 @@ final class AppModel {
             watched = true
             hasWorld = true
         }
+        let wasRelay = status.relayConnected
         if r.hasStatus {
             status = r.status
             relayDownSince = status.relayConnected ? nil : relayDownSince ?? Date()
+            if !wasRelay && status.relayConnected {
+                her.wakeRetries()
+            }
         }
         machines = upsert(machines, holdingState(r.machines, known: known), removed: r.removedMachineIds, key: \.machineID).sorted { $0.machineName < $1.machineName }
         clients = upsert(clients, r.clients, removed: r.removedGrantIds, key: \.grantID).sorted { $0.label < $1.label }

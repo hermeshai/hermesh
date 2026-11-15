@@ -66,7 +66,7 @@ export function Conversation({ bot, conv, op, waiting, onWaiting }: { bot: BotSu
 }
 
 /** An environment that can't be reached: what was read stays, with when the machine was last seen. */
-function OfflineLine({ state }: { state: EnvState }) {
+export function OfflineLine({ state }: { state: EnvState }) {
   const { t } = useTranslation("her");
   const her = useHer();
   const now = useNow(30_000);
@@ -545,6 +545,10 @@ function BotMessage({ item, fresh, line, copy, after, children }: { item: SentIt
  */
 function BusyBubble({ busy, retry, onOpen }: { busy: { typing: boolean; agents: WorkingAgent[] }; retry?: { at: number }; onOpen: () => void }) {
   const { t } = useTranslation("her");
+  const st = useStore();
+  const her = useHer();
+  // An agent at work opens its record on the Progress page (docs/her-team.md §15).
+  const record = (agent: string) => st.set({ selection: { kind: "progress", machine: her.machine.machineId, task: { agent } } });
   const now = useNow(1000).getTime();
   const [open, setOpen] = useState(false);
   const agents = busy.agents;
@@ -578,19 +582,25 @@ function BusyBubble({ busy, retry, onOpen }: { busy: { typing: boolean; agents: 
             ) : (
               <div className="wb-h" title={label ?? t("line.typing")}>
                 {dots}
-                {label && (
-                  <span className="wb-w">
+                {label && agents.length === 1 ? (
+                  <button className="wb-w wb-go" onClick={() => record(agents[0].id)}>
                     <span className="wb-t shimmer">{label}</span>
-                  </span>
+                  </button>
+                ) : (
+                  label && (
+                    <span className="wb-w">
+                      <span className="wb-t shimmer">{label}</span>
+                    </span>
+                  )
                 )}
               </div>
             )}
             {shown && (
               <div className="wb-l">
                 {agents.map((a) => (
-                  <div key={a.id} className="wb-r shimmer">
+                  <button key={a.id} className="wb-r wb-go shimmer" onClick={() => record(a.id)}>
                     {a.label}
-                  </div>
+                  </button>
                 ))}
               </div>
             )}

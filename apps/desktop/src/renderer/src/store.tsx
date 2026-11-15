@@ -24,9 +24,18 @@ export type Data = {
 
 /**
  * her: the Her entry, at an environment (a machine id) when one was chosen. list: the session list's column with no
- * session chosen; a session shows beside it (docs/her-team.md §14.2).
+ * session chosen; a session shows beside it (docs/her-team.md §14.2). progress: the work Her sent out, in the
+ * environment the Her entry shows, or one of its cards opened (docs/her-team.md §15).
  */
-export type Selection = { kind: "overview" } | { kind: "session"; id: string } | { kind: "list" } | { kind: "her"; machine?: string };
+export type Selection =
+  | { kind: "overview" }
+  | { kind: "session"; id: string }
+  | { kind: "list" }
+  | { kind: "her"; machine?: string }
+  | { kind: "progress"; machine?: string; task?: ProgressTaskRef };
+
+/** A card of the Progress page: a sub-agent of Her's, by its id, or a coding session she started. */
+export type ProgressTaskRef = { agent: string } | { session: string };
 
 export type Sheet =
   | { kind: "newGrant" }
@@ -88,6 +97,11 @@ type UI = {
   frontRequest: string | null;
   /** A machine only asked to become a trusted device: the join pages show. */
   upgrading: boolean;
+  /**
+   * Her's sub-agents that wait for the owner and that work, as the conversation the Her page follows says; null
+   * while no page of hers follows one (the sidebar then counts her coding sessions alone).
+   */
+  herAgents: { waits: number; running: number } | null;
 };
 
 export type Store = Data &
@@ -183,6 +197,7 @@ export function HermeshProvider({ children }: { children: ReactNode }) {
     dismissed: [],
     frontRequest: null,
     upgrading: false,
+    herAgents: null,
     ...Object.fromEntries(Object.entries(savedView()).filter(([, v]) => v !== undefined)),
   }));
   // The start page (docs/her-team.md §14.1), chosen once from an initialized owner's world, unless something

@@ -23,6 +23,17 @@ extension HermeshUITests {
         herTeamAppearanceAndRestart()
     }
 
+    /// Progress (docs/her-team.md §15): the work Her sent out as cards, and a sub-agent's record.
+    ///
+    ///     HERMESH_IPHONE_E2E=1 HERMESH_IPHONE_GREP=testHerProgress go test ./e2e -run TestIPhone -v -timeout 40m
+    @objc func testHerProgress() throws {
+        guard ProcessInfo.processInfo.environment["HERMESH_E2E_HER"] != nil else { throw XCTSkip("run with Her built") }
+        try join()
+        try herTurnOn()
+        try herOnboarding()
+        try herProgress()
+    }
+
     @objc func testHer() throws {
         guard ProcessInfo.processInfo.environment["HERMESH_E2E_HER"] != nil else { throw XCTSkip("run by TestIPhone with her built (HERMESH_E2E_HER)") }
         try XCTContext.runActivity(named: "joins the owner by its connection address") { _ in try join() }
@@ -565,6 +576,68 @@ extension HermeshUITests {
         for _ in 0 ..< 4 where !approve.exists { app.swipeUp() }
         tap("sign-approve")
         XCTAssertTrue(text("开始之前，我需要接上一个模型").waitForExistence(timeout: 180), "a new Her, asking for a model")
+    }
+
+    /// Progress: under Her in the menu, empty until she sends work out; a sub-agent she starts is a card under what
+    /// the owner said, which says that it asks; its record shows what Her asked of it, answers its question there,
+    /// then shows its call, its report, and how long and how many tokens it took; ended, its group is folded when
+    /// the page comes up again.
+    func herProgress() throws {
+        openMenu()
+        let drawer = app.descendants(matching: .any)["drawer"]
+        let place = drawer.buttons["progress-place"]
+        XCTAssertTrue(place.waitForExistence(timeout: 10), "Progress, once Her is on")
+        XCTAssertGreaterThan(place.frame.minY, drawer.buttons["her-place"].frame.minY, "under Her")
+        XCTAssertLessThan(place.frame.minY, drawer.buttons["work-place"].frame.minY, "above Work")
+        place.tap()
+        XCTAssertTrue(app.navigationBars["进展"].waitForExistence(timeout: 10))
+        XCTAssertTrue(app.descendants(matching: .any)["progress-empty"].firstMatch.waitForExistence(timeout: 30), "nothing sent out yet")
+        herShot("Progress: nothing sent out yet")
+
+        // Her hands a piece of work to a sub-agent (her-mock's relay_slow: "写长文", which runs a command).
+        openMenu()
+        tap("her-place")
+        herSend("[[mock:relay_slow:3]] 写一篇长文")
+        XCTAssertTrue(text("好，这个要一会儿，写好发你。").waitForExistence(timeout: 60), "Her's words")
+        openMenu()
+        tap("progress-place")
+        let card = app.descendants(matching: .any)["progress-card-写长文"].firstMatch
+        XCTAssertTrue(card.waitForExistence(timeout: 30), "the sub-agent's card")
+        try waitFor("the card says it waits for the owner", timeout: 60) { card.label.contains("等你批准") ? true : nil }
+        XCTAssertTrue(card.label.contains("子智能体"), card.label)
+        XCTAssertTrue(text("Her：好，这个要一会儿，写好发你。").exists, "Her's words since, under what the owner said")
+        herShot("Progress: a sub-agent waits")
+
+        // Its record: what Her asked of it, and its question, answered there.
+        press(card)
+        XCTAssertTrue(app.navigationBars["写长文"].waitForExistence(timeout: 10), "the record's page")
+        let brief = app.descendants(matching: .any)["progress-brief"].firstMatch
+        XCTAssertTrue(brief.waitForExistence(timeout: 10) && brief.label.contains("Write it and report."), "what Her asked")
+        XCTAssertTrue(app.descendants(matching: .any)["her-approval"].firstMatch.waitForExistence(timeout: 30), "its question")
+        XCTAssertTrue(text("运行这条命令？").exists)
+        herShot("Progress: a record that asks")
+        tap("her-allow-once")
+        let state = app.descendants(matching: .any)["progress-state"].firstMatch
+        try waitFor("the record says it is done", timeout: 90) { state.label == "完成" ? true : nil }
+        XCTAssertTrue(app.descendants(matching: .any)["progress-report"].firstMatch.waitForExistence(timeout: 10), "its last words, as its report")
+        let facts = app.descendants(matching: .any)["progress-facts"].firstMatch
+        XCTAssertTrue(facts.label.contains("用时") && facts.label.contains("tokens"), facts.label)
+        XCTAssertTrue(text("sleep 3").exists, "its call, as a line")
+        herShot("Progress: a record that ended")
+
+        // Back on the board the card says how it ended; when the page comes up again, its group is folded.
+        app.navigationBars.buttons.element(boundBy: 0).tap()
+        XCTAssertTrue(app.navigationBars["进展"].waitForExistence(timeout: 10))
+        try waitFor("the card says how long it took") { card.label.contains("用时") ? true : nil }
+        openMenu()
+        tap("her-place")
+        openMenu()
+        tap("progress-place")
+        XCTAssertTrue(text("已结束").waitForExistence(timeout: 10), "among the ended ones")
+        XCTAssertFalse(card.exists, "folded")
+        herShot("Progress: ended and folded")
+        app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH %@", "progress-group-")).firstMatch.tap()
+        XCTAssertTrue(card.waitForExistence(timeout: 5), "opened again")
     }
 
     // MARK: Helpers

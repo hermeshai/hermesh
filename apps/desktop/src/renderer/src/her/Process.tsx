@@ -28,14 +28,18 @@ export function Process({ steps }: { steps: Step[] }) {
   );
 }
 
-function StepRow({ item }: { item: WorkItem }) {
+/**
+ * A step on its line: a thought, or a call. For the Progress page's record (docs/her-team.md §15.2): `thinkingOpen`,
+ * a thought shows whole to begin with; `outputOpen`, a call's output does; `spin`, a call still at work turns.
+ */
+export function StepRow({ item, thinkingOpen = false, outputOpen = false, spin = false }: { item: WorkItem; thinkingOpen?: boolean; outputOpen?: boolean; spin?: boolean }) {
   const { t } = useTranslation("her");
-  const [open, setOpen] = useState(false);
+  const [open, setOpen] = useState(thinkingOpen);
   if (item.kind === "thinking") {
     const text = item.text.trim();
     const gist = item.redacted ? t("steps.thinkingHidden") : (text.split("\n").find((l) => l.trim() !== "") ?? "");
     return (
-      <div className={`tool ${open && text ? "open" : ""}`}>
+      <div className={`tool thought ${open && text ? "open" : ""}`}>
         <button className="th" onClick={() => text && !item.redacted && setOpen(!open)} aria-expanded={text && !item.redacted ? open : undefined}>
           <span className="vb">{t("steps.thought")}</span>
           <span className="sm2">{gist}</span>
@@ -45,13 +49,14 @@ function StepRow({ item }: { item: WorkItem }) {
       </div>
     );
   }
-  return <ToolStep tool={item.tool} />;
+  return <ToolStep tool={item.tool} outputOpen={outputOpen} spin={spin} />;
 }
 
-function ToolStep({ tool }: { tool: ToolView }) {
-  const [open, setOpen] = useState(false);
+function ToolStep({ tool, outputOpen, spin }: { tool: ToolView; outputOpen: boolean; spin: boolean }) {
+  const [open, setOpen] = useState(outputOpen);
   const output = toolOutput(tool);
   const object = toolObject(tool);
+  const live = spin && (tool.state === "running" || tool.state === "pending" || tool.state === "streaming");
   return (
     <div className={`tool ${tool.state === "failed" ? "err" : ""} ${open && output ? "open" : ""}`}>
       <button className="th" onClick={() => output && setOpen(!open)} aria-expanded={output ? open : undefined}>
@@ -63,6 +68,7 @@ function ToolStep({ tool }: { tool: ToolView }) {
         ) : (
           <span className="sm2" title={tool.title}>{object}</span>
         )}
+        {live && <span className="mini-spin" aria-hidden="true" />}
         {output && <Icon name="caret" className="chev" />}
       </button>
       {output && <div className="out sel-text">{output}</div>}
