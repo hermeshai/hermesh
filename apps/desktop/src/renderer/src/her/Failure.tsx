@@ -46,7 +46,7 @@ export function FailureCard({ error, working, model, op, stateId }: { error?: Er
   const copy = () => error?.message && navigator.clipboard.writeText(error.message).then(() => st.show(t("chat.copiedError")));
   const main =
     kind === "auth" ? (
-      <button className="btn sm primary" onClick={her.openConsole}>
+      <button className="btn sm primary" onClick={() => her.openConsole()}>
         {t("model.openConsole")}
       </button>
     ) : kind === "context_overflow" ? (

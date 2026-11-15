@@ -102,6 +102,9 @@ test("Her: the first run, a chat, a secure card, the console, a second environme
   const settings = page.getByRole("complementary", { name: "助手设置" });
   await expect(settings).toContainText("询问权限");
   await expect(settings.getByRole("button", { name: /^记住的事/ })).toHaveText("记住的事还没有");
+  // Her's connectors (docs/her-connectors-demo.html): a row of their own, the environment's, with none yet.
+  await expect(settings.getByRole("button", { name: /^连接器/ })).toHaveText("连接器还没有");
+  await expect(settings).toContainText("这台机器上的助手共用");
   await avatar.click();
   await expect(settings).toBeHidden();
   await tag.click();
@@ -276,11 +279,25 @@ test("Her: the first run, a chat, a secure card, the console, a second environme
   const landed = await fetch(authorize);
   expect(landed.ok).toBe(true);
   expect(landed.url.startsWith(`${back}?`)).toBe(true);
-  await expect(log.locator(".sc-end.done")).toHaveText(/^已连接 Tracker · \d+ 个工具$/, { timeout: 60_000 });
+  await expect(log.locator(".sc-end.done > span")).toHaveText(/^已连接 Tracker · \d+ 个工具$/, { timeout: 60_000 });
   await expect(card).toHaveCount(0);
   // her-mock hears how it went, and says so.
   await expect(log.locator(".bm .bbub").last()).toContainText(/tracker/i, { timeout: 60_000 });
   await snap(page, "her-card-done");
+  // Connected, the card's line opens its page in the console; her settings say it is on, and open the console's
+  // connectors.
+  const managed = app.waitForEvent("window");
+  await log.locator(".sc-end.done").getByRole("button", { name: "管理" }).click();
+  const connectorAt = await managed;
+  await expect.poll(() => connectorAt.url()).toMatch(/#connectors\/tracker$/);
+  await page.getByRole("button", { name: "助手设置", exact: true }).click();
+  const connectorsRow = settings.getByRole("button", { name: /^连接器/ });
+  await expect(connectorsRow).toHaveText("连接器1 个开着", { timeout: 30_000 });
+  await connectorsRow.click();
+  await expect.poll(() => connectorAt.url()).toMatch(/#connectors$/);
+  await connectorAt.close();
+  await page.getByRole("button", { name: "助手设置", exact: true }).click();
+  await expect(settings).toBeHidden();
 
   // The console, from ⋯: a window of its own at this Mac's hermeshd, which is none of the app's pages.
   const opened = app.waitForEvent("window");
