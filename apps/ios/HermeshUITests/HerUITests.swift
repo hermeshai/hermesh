@@ -616,10 +616,10 @@ extension HermeshUITests {
         XCTAssertTrue(text("开始之前，我需要接上一个模型").waitForExistence(timeout: 180), "a new Her, asking for a model")
     }
 
-    /// Progress: under Her in the menu, empty until she sends work out; a sub-agent she starts is a card under what
-    /// the owner said, which says that it asks; its record shows what Her asked of it, answers its question there,
-    /// then shows its call, its report, and how long and how many tokens it took; ended, its group is folded when
-    /// the page comes up again.
+    /// Progress: under Her in the menu, empty until she sends work out; a sub-agent she starts is a post of its own,
+    /// which says that it asks, with what set it off at its foot, shown whole in a sheet; its record shows what Her
+    /// asked of it, answers its question there, then shows its call, its report, and how long and how many tokens it
+    /// took; ended, its post is among the earlier ones.
     func herProgress() throws {
         openMenu()
         let drawer = app.descendants(matching: .any)["drawer"]
@@ -640,14 +640,26 @@ extension HermeshUITests {
         openMenu()
         tap("progress-place")
         let card = app.descendants(matching: .any)["progress-card-写长文"].firstMatch
-        XCTAssertTrue(card.waitForExistence(timeout: 30), "the sub-agent's card")
-        try waitFor("the card says it waits for the owner", timeout: 60) { card.label.contains("等你批准") ? true : nil }
-        XCTAssertTrue(card.label.contains("子智能体"), card.label)
-        XCTAssertTrue(text("Her：好，这个要一会儿，写好发你。").exists, "Her's words since, under what the owner said")
+        XCTAssertTrue(card.waitForExistence(timeout: 30), "the sub-agent's post")
+        try waitFor("the post says it waits for the owner", timeout: 60) { card.label.contains("等你批准") ? true : nil }
+        XCTAssertTrue(text("需要你").exists, "among what needs the owner")
+        XCTAssertTrue(app.buttons["progress-review"].exists, "a way to its question")
         herShot("Progress: a sub-agent waits")
 
+        // What set it off, at the post's foot: the owner's words and Her's, in a sheet.
+        let from = app.buttons["progress-from"].firstMatch
+        XCTAssertTrue(from.label.contains("写一篇长文"), from.label)
+        from.tap()
+        let sheet = app.descendants(matching: .any)["progress-source"].firstMatch
+        XCTAssertTrue(sheet.waitForExistence(timeout: 10), "the sheet")
+        XCTAssertTrue(text("来自你的一句话").exists)
+        XCTAssertTrue(text("好，这个要一会儿，写好发你。").exists, "what Her said back")
+        herShot("Progress: what set it off")
+        app.buttons.matching(NSPredicate(format: "label IN %@", ["关闭", "Close"])).firstMatch.tap()
+        XCTAssertTrue(waitUntil { !sheet.exists }, "the sheet closes")
+
         // Its record: what Her asked of it, and its question, answered there.
-        press(card)
+        tap("progress-review")
         XCTAssertTrue(app.navigationBars["写长文"].waitForExistence(timeout: 10), "the record's page")
         let brief = app.descendants(matching: .any)["progress-brief"].firstMatch
         XCTAssertTrue(brief.waitForExistence(timeout: 10) && brief.label.contains("Write it and report."), "what Her asked")
@@ -659,23 +671,17 @@ extension HermeshUITests {
         try waitFor("the record says it is done", timeout: 90) { state.label == "完成" ? true : nil }
         XCTAssertTrue(app.descendants(matching: .any)["progress-report"].firstMatch.waitForExistence(timeout: 10), "its last words, as its report")
         let facts = app.descendants(matching: .any)["progress-facts"].firstMatch
-        XCTAssertTrue(facts.label.contains("用时") && facts.label.contains("tokens"), facts.label)
+        XCTAssertTrue(facts.label.contains("用时") && facts.label.contains("Tokens") && facts.label.contains("步骤"), facts.label)
         XCTAssertTrue(text("sleep 3").exists, "its call, as a line")
         herShot("Progress: a record that ended")
 
-        // Back on the board the card says how it ended; when the page comes up again, its group is folded.
+        // Back in the feed it is among the earlier ones, and says how it ended.
         app.navigationBars.buttons.element(boundBy: 0).tap()
         XCTAssertTrue(app.navigationBars["进展"].waitForExistence(timeout: 10))
-        try waitFor("the card says how long it took") { card.label.contains("用时") ? true : nil }
-        openMenu()
-        tap("her-place")
-        openMenu()
-        tap("progress-place")
-        XCTAssertTrue(text("已结束").waitForExistence(timeout: 10), "among the ended ones")
-        XCTAssertFalse(card.exists, "folded")
-        herShot("Progress: ended and folded")
-        app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH %@", "progress-group-")).firstMatch.tap()
-        XCTAssertTrue(card.waitForExistence(timeout: 5), "opened again")
+        XCTAssertTrue(waitUntil(timeout: 60) { card.label.contains("完成") }, "the post says it is done: \(card.label)")
+        XCTAssertTrue(text("早些时候").exists, "among the earlier ones")
+        XCTAssertFalse(text("需要你").exists, "nothing needs the owner now")
+        herShot("Progress: ended")
     }
 
     // MARK: Helpers

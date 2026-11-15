@@ -1,12 +1,12 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import {
-  agentBrief, agentCalls, agentElapsed, agentHistoryCursor, agentLine, agentState, agentTaskOf, agentTitles, agentTokens, messageBody, pendingApproval, progressGroups, stepsOf,
-  toolObject, type AgentLaunch, type AgentState, type AgentView, type ProgressGroup, type ProgressTask, type SessionView, type StartedSession, type Step,
+  agentBrief, agentCalls, agentElapsed, agentHistoryCursor, agentPost, agentState, agentTaskOf, agentTitles, agentTokens, messageBody, pendingApproval, progressGroups, stepsOf,
+  toolObject, type AgentLaunch, type AgentPost, type AgentState, type AgentView, type ProgressGroup, type ProgressTask, type SessionView, type Step,
 } from "@hermesh/her-client";
 import type { BotSummary } from "@hermesh/her-protocol";
 import { SessionStatus, type Session } from "@hermesh/proto/session";
-import { clockText, codingAgentShort, createdDate, dateOf, displayTitle, elapsedSeconds, isActive, isFailed, pendingQuestion, tokensText } from "@hermesh/core";
+import { clockText, codingAgentShort, dateOf, displayTitle, elapsedSeconds, isActive, isFailed, listTime, pendingQuestion, tokensText, updatedDate } from "@hermesh/core";
 import { AgentLogo } from "@hermesh/ui";
 import { Icon } from "../icons";
 import { Chat } from "../session/Chat";
@@ -25,12 +25,12 @@ import { durationText, messageTime, toolVerb } from "./format";
 import { StepRow } from "./Process";
 import "./progress.css";
 
-// Progress (docs/her-team.md §15): the work Her sent out, as cards under what the owner said that set it off, and
-// behind each card the whole record of that piece of work. Everything is read from the conversation the Her page
-// already follows (its sub-agents' own sessions come with it), so the page asks her for nothing more; a coding
-// session's record is the session's own page, shown here.
+// Progress (docs/her-team.md §15): the work Her sent out as a feed, one post a piece of work, with what set it off
+// at its foot; behind each post the whole record of that piece of work. Everything is read from the conversation
+// the Her page already follows (its sub-agents' own sessions come with it), so the page asks her for nothing more;
+// a coding session's record is the session's own page, shown here.
 
-/** How a card stands: a sub-agent's state, or the same words for a coding session; gone: the window holds the session no more. */
+/** How a post stands: a sub-agent's state, or the same words for a coding session; gone: the window holds the session no more. */
 type Stand = AgentState | "gone";
 
 function sessionStand(s: Session | undefined): Stand {
@@ -41,35 +41,58 @@ function sessionStand(s: Session | undefined): Stand {
 }
 
 const sessionTokens = (s: Session | undefined) => Number((s?.progress?.usage?.inputTokens ?? 0n) + (s?.progress?.usage?.outputTokens ?? 0n));
+const atWork = (s: Stand) => s === "running" || s === "starting";
+/** It waits for the owner, or could not go on: the posts that carry a mark, above the rest. */
+const needsOwner = (s: Stand) => s === "waiting" || s === "failed";
+const parentTime = (g: ProgressGroup) => (g.parent.kind === "earlier" ? 0 : g.parent.ts);
 
-/** A group as the page draws it: its cards' states, and where it stands as a whole. */
-type GroupView = ProgressGroup & { stands: Stand[]; stand: "waiting" | "running" | "ended"; tokens: number; titles: Map<string, string> };
+/** A piece of work as the feed shows it: the work, what set it off, how it stands, and what its post says (read once, here). */
+interface Post {
+  task: ProgressTask;
+  group: ProgressGroup;
+  stand: Stand;
+  title: string;
+  /** A sub-agent's. */
+  post: AgentPost | null;
+  session?: Session;
+  /** When it began its work (at work) or last changed (otherwise): the feed's order. */
+  at: number;
+}
 
-function useGroups(view: SessionView | null): GroupView[] {
+function usePosts(view: SessionView | null): { groups: ProgressGroup[]; posts: Post[] } {
   const st = useStore();
   const groups = useMemo(() => (view ? progressGroups(view) : []), [view]);
-  return useMemo(
+  const posts = useMemo(
     () =>
-      groups.map((g) => {
-        const sessions = g.tasks.map((t) => (t.kind === "session" ? st.sessions.find((s) => s.sessionId === t.started.session_id) : undefined));
-        const stands = g.tasks.map((t, i): Stand => (t.kind === "agent" ? agentState(t.launch) : sessionStand(sessions[i])));
-        const tokens = g.tasks.reduce((n, t, i) => n + (t.kind === "agent" ? (t.launch.agent ? agentTokens(t.launch.agent) : 0) : sessionTokens(sessions[i])), 0);
-        const stand = stands.includes("waiting") ? "waiting" : stands.some((s) => s === "running" || s === "starting") ? "running" : "ended";
-        return { ...g, stands, stand, tokens, titles: agentTitles(g.tasks) };
-      }),
+      groups
+        .flatMap((g) => {
+          const titles = agentTitles(g.tasks);
+          return g.tasks.map((t): Post => {
+            if (t.kind === "agent") return { task: t, group: g, stand: agentState(t.launch), title: titles.get(t.key) ?? "", post: agentPost(t.launch), at: t.launch.agent?.since ?? parentTime(g) };
+            const s = st.sessions.find((x) => x.sessionId === t.started.session_id);
+            const at = s ? ((isActive(s) && dateOf(s.progress?.turnStartedAt)) || updatedDate(s)).getTime() : parentTime(g);
+            return { task: t, group: g, stand: sessionStand(s), title: s ? displayTitle(s) : t.started.title, post: null, session: s, at };
+          });
+        })
+        .sort((a, b) => b.at - a.at),
     [groups, st.sessions],
   );
+  return { groups, posts };
 }
 
 const sameTask = (task: ProgressTask, ref: ProgressTaskRef) => ("agent" in ref ? task.kind === "agent" && task.launch.agent?.id === ref.agent : task.kind === "session" && task.started.session_id === ref.session);
 
 export function Progress({ bot, conv, op, task }: { bot: BotSummary; conv: Conv; op: SendOp; task?: ProgressTaskRef }) {
   const her = useHer();
-  const groups = useGroups(conv.view);
-  const open = task && groups.flatMap((g) => g.tasks.map((t) => ({ group: g, task: t }))).find((x) => sameTask(x.task, task));
+  const { groups, posts } = usePosts(conv.view);
+  // What set work off, shown whole over the page: a group's key.
+  const [source, setSource] = useState<string | null>(null);
+  const open = task && posts.find((p) => sameTask(p.task, task));
+  const sourceGroup = source ? groups.find((g) => g.key === source) : undefined;
   return (
     <ContentScope value={`${her.machine.machineId}/${conv.session ?? ""}`}>
-      {open ? <TaskPage key={open.task.key} group={open.group} task={open.task} conv={conv} op={op} /> : <Board bot={bot} groups={groups} conv={conv} missing={!!task} />}
+      {open ? <TaskPage key={open.task.key} post={open} conv={conv} op={op} onSource={setSource} /> : <Board posts={posts} conv={conv} missing={!!task} onSource={setSource} />}
+      {sourceGroup && <SourcePanel bot={bot} group={sourceGroup} posts={posts} here={open?.task.key} onClose={() => setSource(null)} />}
     </ContentScope>
   );
 }
@@ -87,35 +110,31 @@ function useOpen() {
 
 const refOf = (task: ProgressTask): ProgressTaskRef | null => (task.kind === "session" ? { session: task.started.session_id } : task.launch.agent ? { agent: task.launch.agent.id } : null);
 
-// MARK: The board
+// MARK: The feed
 
-function Board({ bot, groups, conv, missing }: { bot: BotSummary; groups: GroupView[]; conv: Conv; missing: boolean }) {
+/** The feed: what needs the owner, then what is at work now, then what ended; the latest first in each. */
+function Board({ posts, conv, missing, onSource }: { posts: Post[]; conv: Conv; missing: boolean; onSource: (key: string) => void }) {
   const { t } = useTranslation("her");
   const her = useHer();
   const st = useStore();
   const state = envState(her.machine);
   const now = useNow(30_000);
-  // A card that is gone (its agent went back with the conversation, or a link to it is old) is said once.
+  // A post that is gone (its agent went back with the conversation, or a link to it is old) is said once.
   const { show } = st;
   useEffect(() => {
     if (missing && conv.view) show(t("progress.gone"));
   }, [missing, !!conv.view]);
-  // Those that wait and those at work first, the latest first; then the ended ones.
-  const order = { waiting: 0, running: 1, ended: 2 };
-  const sorted = useMemo(() => [...groups].reverse().sort((a, b) => order[a.stand] - order[b.stand]), [groups]);
-  const firstEnded = sorted.findIndex((g) => g.stand === "ended");
-  const count = (stand: Stand[]) => groups.reduce((n, g) => n + g.stands.filter((s) => stand.includes(s)).length, 0);
-  const parts = [
-    count(["running", "starting"]) > 0 ? t("progress.sumRunning", { count: count(["running", "starting"]) }) : "",
-    count(["waiting"]) > 0 ? t("progress.sumWaiting", { count: count(["waiting"]) }) : "",
-    count(["done"]) > 0 ? t("progress.sumDone", { count: count(["done"]) }) : "",
-  ].filter(Boolean);
   const [paging, setPaging] = useState(false);
   const earlier = () => {
     setPaging(true);
     conv.loadEarlier().finally(() => setPaging(false));
   };
   const view = conv.view;
+  const sections = [
+    { key: "need", title: t("progress.part.need"), posts: posts.filter((p) => needsOwner(p.stand)) },
+    { key: "now", title: t("progress.part.now"), posts: posts.filter((p) => atWork(p.stand)) },
+    { key: "earlier", title: t("progress.part.earlier"), posts: posts.filter((p) => !needsOwner(p.stand) && !atWork(p.stand)) },
+  ].filter((x) => x.posts.length > 0);
   return (
     <>
       <div className="ctool drag">
@@ -128,24 +147,23 @@ function Board({ bot, groups, conv, missing }: { bot: BotSummary; groups: GroupV
             <h1>{t("progress.title")}</h1>
             <span>{now.toLocaleDateString(undefined, { month: "long", day: "numeric", weekday: "long" })}</span>
           </div>
-          {parts.length > 0 && <p className="pg-sum">{t("progress.sumLead") + parts.join(t("progress.sumSep")) + t("progress.sumEnd")}</p>}
           {!view ? (
             <div className="pg-empty" role="status">
               {state.kind === "ready" || state.kind === "starting" ? <span className="mini-spin" /> : <span>{t("progress.notRead", { name: her.machine.machineName })}</span>}
             </div>
-          ) : groups.length === 0 ? (
+          ) : posts.length === 0 ? (
             <div className="pg-empty">
               <span className="pg-cat" aria-hidden="true"><Cat small /></span>
               <b>{t("progress.empty")}</b>
               <span>{conv.rpc || view.agents.length > 0 ? t("progress.emptySub") : t("progress.notRead", { name: her.machine.machineName })}</span>
             </div>
           ) : (
-            <div className="pg-list" role="list" aria-label={t("progress.log")}>
-              {sorted.map((g, i) => (
-                <div key={g.key} role="listitem">
-                  {i === firstEnded && <div className="pg-sec">{t("progress.ended")}</div>}
-                  <Group bot={bot} group={g} />
-                </div>
+            <div className="pf" role="list" aria-label={t("progress.log")}>
+              {sections.map((x) => (
+                <section key={x.key} role="listitem" aria-label={x.title}>
+                  <h3 className="pg-sec">{x.title}</h3>
+                  {x.posts.map((p) => <PostView key={p.task.key} post={p} onSource={onSource} />)}
+                </section>
               ))}
             </div>
           )}
@@ -160,168 +178,218 @@ function Board({ bot, groups, conv, missing }: { bot: BotSummary; groups: GroupV
   );
 }
 
+/** "21 min": how long something has been at work, in its largest unit. */
+function useWorked() {
+  const { t } = useTranslation("her");
+  return (ms: number) => {
+    const s = Math.max(1, Math.floor(ms / 1000));
+    return s < 60 ? t("time.seconds", { count: s }) : s < 3600 ? t("time.minutes", { count: Math.floor(s / 60) }) : t("time.hours", { count: Math.floor(s / 3600) });
+  };
+}
+
 /**
- * What the owner said (or what else set the work off), Her's last words since, and under them the cards. A group that
- * had ended when the page came up is folded until asked for; one that ends while it shows stays as it is.
+ * A post: its title and one time (how long it has worked, or how long ago it ended), a line of how it goes, one
+ * piece that shows where it stands, and what set it off. Only one that needs the owner carries a mark.
  */
-function Group({ bot, group: g }: { bot: BotSummary; group: GroupView }) {
+function PostView({ post: p, onSource }: { post: Post; onSource: (key: string) => void }) {
   const { t } = useTranslation(["her", "common"]);
-  const now = useNow(30_000);
   const go = useOpen();
-  const [open, setOpen] = useState(g.stand !== "ended");
-  const p = g.parent;
-  const who = p.kind === "user" ? t("progress.you") : p.kind === "routine" ? t("progress.routine", { name: p.name }) : t("progress.earlier");
-  const waits = g.stands.filter((s) => s === "waiting").length;
-  const running = g.stands.filter((s) => s === "running" || s === "starting").length;
+  const worked = useWorked();
+  const now = useNow(atWork(p.stand) || p.stand === "waiting" ? 10_000 : 60_000);
+  const ref = refOf(p.task);
+  const open = () => ref && go.task(ref);
+  const s = p.session;
+  const since = p.task.kind === "agent" ? (p.task.launch.agent?.since ?? p.at) : ((s && dateOf(s.progress?.turnStartedAt)?.getTime()) || p.at);
+  const words =
+    p.task.kind === "agent" ? p.post?.words
+    : !s ? t("progress.sessionGone")
+    : p.stand === "waiting" ? (pendingQuestion(s)?.items[0]?.text || t("common:team.waitingForAnswer"))
+    : p.stand === "failed" ? (s.progress?.lastFailure?.message || t("common:team.lastTurnFailed"))
+    : null;
+  const tokens = p.task.kind === "agent" ? (p.task.launch.agent ? agentTokens(p.task.launch.agent) : 0) : sessionTokens(s);
+  const stateWord = p.stand === "gone" ? t("progress.sessionGone") : t(`progress.state.${p.stand}`);
   return (
-    <section className="pg-g" aria-label={p.kind === "user" ? p.text : who}>
-      <div className="pg-gh">
-        <button className="pg-gt" aria-expanded={open} onClick={() => setOpen(!open)}>
-          <span className="pg-who" aria-hidden="true">
-            <Icon name={p.kind === "user" ? "person" : "clock"} />
-          </span>
-          <span className="pg-gm">
-            <span className="pg-when">{p.kind === "earlier" ? who : `${who} · ${messageTime(new Date(p.ts), now)}`}</span>
-            {p.kind === "user" && <span className="pg-ask">{p.text}</span>}
-            {g.said && (
-              <span className="pg-said">
-                <span className="pg-said-cat" aria-hidden="true"><Cat small /></span>
-                <span title={bot.name}>{g.said.split("\n").find((l) => l.trim() !== "") ?? ""}</span>
-              </span>
-            )}
-          </span>
-          <span className="pg-marks">
-            {waits > 0 && <span className="pg-wait"><i className="dot-w" aria-hidden="true" />{t("progress.waits")}</span>}
-            {running > 0 && <span className="busy" role="img" aria-label={t("common:sidebar.running", { count: running })}><i aria-hidden="true" /><span aria-hidden="true">{running}</span></span>}
-            {g.stand === "ended" && <Icon name="check" className="tm-ok" />}
-            <span className="pg-n">{[t("progress.routes", { count: g.tasks.length }), g.tokens > 0 ? t("progress.tokens", { tokens: tokensText(g.tokens) }) : ""].filter(Boolean).join(" · ")}</span>
-            <Icon name="chevD" className={`pg-chev ${open ? "open" : ""}`} />
-          </span>
-        </button>
-        {p.kind === "user" && (
-          <button className="tb" title={t("progress.inChat")} aria-label={t("progress.inChat")} onClick={go.chat}>
-            <Icon name="ext" />
-          </button>
-        )}
+    <article className="pf-p" aria-label={p.title}>
+      <button className="pf-main" disabled={!ref} onClick={open} aria-label={[p.title, stateWord, words].filter(Boolean).join(" · ")}>
+        <span className="pf-t">
+          {needsOwner(p.stand) && <i className={p.stand === "waiting" ? "dot-w" : "dot-f"} aria-hidden="true" />}
+          <b>{p.title}</b>
+          {atWork(p.stand) || p.stand === "waiting" ? (
+            <span className={`pf-time ${atWork(p.stand) ? "live" : ""}`}>{worked(now.getTime() - since)}</span>
+          ) : (
+            <span className="pf-time">{listTime(new Date(p.at), now)}</span>
+          )}
+        </span>
+        {words && <span className="pf-w">{words}</span>}
+      </button>
+      <Piece post={p} open={open} />
+      <div className="pf-foot">
+        <FromCapsule group={p.group} onClick={() => onSource(p.group.key)} />
+        {tokens > 0 && <span className="pf-tok" aria-label={t("progress.tokens", { tokens: tokensText(tokens) })}>{tokensText(tokens)}</span>}
       </div>
-      {open && (
-        <div className="pg-cards">
-          {g.tasks.map((task, i) => (task.kind === "agent" ? <AgentCard key={task.key} launch={task.launch} title={g.titles.get(task.key) ?? ""} stand={g.stands[i]} /> : <SessionTaskCard key={task.key} started={task.started} />))}
-        </div>
-      )}
-    </section>
+    </article>
   );
 }
 
-/** The mark at a card's top right: a ring while it works, a dot and a word when it waits or failed, a check when done. */
-function StandMark({ stand }: { stand: Stand }) {
-  const { t } = useTranslation("her");
-  switch (stand) {
-    case "starting":
-    case "running":
-      return <span className="busy" role="img" aria-label={t(`progress.state.${stand}`)}><i aria-hidden="true" /></span>;
-    case "waiting":
-      return <span className="pg-wait"><i className="dot-w" aria-hidden="true" />{t("progress.state.waiting")}</span>;
-    case "done":
-      return <Icon name="check" className="tm-ok" />;
-    case "failed":
-      return <span className="pg-fail"><i className="dot-f" aria-hidden="true" />{t("progress.state.failed")}</span>;
-    case "stopped":
-      return <span className="pg-off">{t("progress.state.stopped")}</span>;
-    default:
-      return null;
-  }
-}
-
-/** How long and how much: "Running 4:12 · 55K tokens", "Took 13 min 7 s · 86K tokens". */
-function useFacts(a: AgentView | undefined): string {
-  const { t } = useTranslation("her");
-  const running = a?.status === "running";
-  const now = useNow(running ? 1000 : 3_600_000);
-  if (!a) return "";
-  const tokens = agentTokens(a);
-  const took = agentElapsed(a, now.getTime());
-  const time = running ? t("progress.ran", { time: clockText(elapsedSeconds(new Date(a.since), now)) }) : took > 0 ? t("progress.took", { time: durationText(took) }) : "";
-  return [time, tokens > 0 ? t("progress.tokens", { tokens: tokensText(tokens) }) : ""].filter(Boolean).join(" · ");
-}
-
-/** A sub-agent's card: who, how it stands, what the work is, what it does now or how it ended, how long and how many tokens. */
-function AgentCard({ launch, title, stand }: { launch: AgentLaunch; title: string; stand: Stand }) {
-  const { t } = useTranslation("her");
-  const go = useOpen();
-  const a = launch.agent;
-  const line = agentLine(launch);
-  const facts = useFacts(a);
-  return (
-    <button className="pg-c" disabled={!a} onClick={() => a && go.task({ agent: a.id })} aria-label={`${title} · ${t(`progress.state.${stand as AgentState}`)}`}>
-      <span className="pg-ct">
-        <span className="pg-kit" aria-hidden="true"><Icon name="kit" /></span>
-        <span className="pg-doer">{t("progress.agent")}</span>
-        <StandMark stand={stand} />
-      </span>
-      <b className="pg-title">{title}</b>
-      <span className="pg-line">
-        {line?.kind === "tool" ? (
-          <>
-            {toolVerb(line.tool)} {line.tool.category === "execute" ? <code>{toolObject(line.tool)}</code> : toolObject(line.tool)}
-          </>
-        ) : (
-          (line?.text ?? (stand === "starting" ? t("progress.starting") : stand === "running" ? t("progress.thinking") : ""))
-        )}
-      </span>
-      <span className="pg-facts">{facts}</span>
-    </button>
-  );
-}
-
-/** A coding session Her started, as its card: kept current from the sessions the window holds, as her card in the conversation is. */
-function SessionTaskCard({ started }: { started: StartedSession }) {
+/** What shows where a post stands: the step it is on while it works, what waits for the owner, what it made. */
+function Piece({ post: p, open }: { post: Post; open: () => void }) {
   const { t } = useTranslation(["her", "common"]);
-  const st = useStore();
-  const go = useOpen();
-  const s = st.sessions.find((x) => x.sessionId === started.session_id);
-  const stand = sessionStand(s);
-  const now = useNow(stand === "running" ? 1000 : 3_600_000);
-  const agent = s?.agent ?? started.agent;
-  const title = s ? displayTitle(s) : started.title;
-  const d = s?.progress?.diffStat;
-  const line =
-    !s ? t("progress.sessionGone")
-    : stand === "waiting" ? (pendingQuestion(s)?.items[0]?.text || t("common:team.waitingForAnswer"))
-    : stand === "failed" ? (s.progress?.lastFailure?.message || t("common:team.lastTurnFailed"))
-    : stand === "running" ? (s.progress?.currentTool ?? "")
-    : d && d.filesChanged > 0 ? t("common:team.changed", { count: d.filesChanged, add: d.insertions, del: d.deletions })
-    : t("common:team.done");
-  const tokens = sessionTokens(s);
-  const facts = [
-    s && stand === "running" ? t("progress.ran", { time: clockText(elapsedSeconds(dateOf(s.progress?.turnStartedAt) ?? createdDate(s), now)) }) : "",
-    tokens > 0 ? t("progress.tokens", { tokens: tokensText(tokens) }) : "",
-  ].filter(Boolean).join(" · ");
+  const s = p.session;
+  if (p.task.kind === "agent") {
+    const post = p.post;
+    switch (p.stand) {
+      case "starting":
+        return <div className="pf-well">{t("progress.starting")}</div>;
+      case "running":
+        return (
+          <button className="pf-well pf-now" onClick={open}>
+            <Beat count={post?.calls ?? 0} />
+            {post?.now ? (
+              <span className="pf-step">
+                <span>{toolVerb(post.now)}</span> {post.now.category === "execute" ? <code>{toolObject(post.now)}</code> : <b>{toolObject(post.now)}</b>}
+              </span>
+            ) : (
+              <span className="pf-step">{t("progress.thinking")}</span>
+            )}
+          </button>
+        );
+      case "waiting":
+        return (
+          <div className="pf-well pf-ask">
+            <span>{t("progress.state.waiting")}</span>
+            <button className="btn primary" onClick={open}>{t("progress.review")}</button>
+          </div>
+        );
+      case "done":
+        if (!post?.files.length) return null;
+        return (
+          <button className="pf-well pf-files" onClick={open}>
+            <Icon name="doc" />
+            <b>{post.files[0].split("/").at(-1)}</b>
+            {post.files.length > 1 && <span>{t("progress.files", { count: post.files.length })}</span>}
+          </button>
+        );
+      default:
+        return null;
+    }
+  }
+  if (!s) return null;
+  if (p.stand === "running")
+    return (
+      <button className="pf-well pf-now" onClick={open}>
+        <span className="busy" aria-hidden="true"><i /></span>
+        <span className="pf-step">{s.progress?.currentTool ? <code>{s.progress.currentTool}</code> : t("progress.working")}</span>
+      </button>
+    );
+  const d = s.progress?.diffStat;
+  if (p.stand === "done" && d && d.filesChanged > 0)
+    return (
+      <button className="pf-well pf-diff" onClick={open}>
+        <b className="add">+{d.insertions}</b>
+        <b className="del">−{d.deletions}</b>
+        <span>{t("progress.files", { count: d.filesChanged })}</span>
+      </button>
+    );
+  return null;
+}
+
+/** A sub-agent's calls as bars, the last beating while it works: at most the last eight. */
+function Beat({ count }: { count: number }) {
+  const heights = [8, 12, 8, 16, 11, 8, 16, 12, 16, 11, 8, 14];
+  const n = Math.min(Math.max(count, 1), 8);
   return (
-    <button className="pg-c" disabled={!s} onClick={() => go.task({ session: started.session_id })} aria-label={`${title} · ${stand === "gone" ? t("progress.sessionGone") : t(`progress.state.${stand}`)}`}>
-      <span className="pg-ct">
-        <AgentLogo agent={agent} size={22} />
-        <span className="pg-doer">{codingAgentShort(agent)} · {s ? machineName(st, s.machineId) : started.machine}</span>
-        <StandMark stand={stand} />
-      </span>
-      <b className="pg-title">{title}</b>
-      <span className="pg-line">{stand === "running" && line ? <code>{line}</code> : line}</span>
-      <span className="pg-facts">{facts}</span>
+    <span className="pf-beat" aria-hidden="true">
+      {Array.from({ length: n }, (_, i) => (
+        <i key={i} className={i === n - 1 ? "now" : ""} style={{ height: heights[(count - n + i + heights.length) % heights.length] }} />
+      ))}
+    </span>
+  );
+}
+
+/** What set work off, as a capsule: "You 10:58 · …". */
+function FromCapsule({ group: g, onClick }: { group: ProgressGroup; onClick: () => void }) {
+  const { t } = useTranslation("her");
+  const now = useNow(60_000);
+  const p = g.parent;
+  const text = p.kind === "user" ? t("progress.fromYou", { time: messageTime(new Date(p.ts), now), text: p.text }) : p.kind === "routine" ? `${t("progress.routine", { name: p.name })} · ${messageTime(new Date(p.ts), now)}` : t("progress.earlier");
+  return (
+    <button className="pf-from" disabled={p.kind === "earlier"} onClick={onClick} title={p.kind === "user" ? p.text : undefined}>
+      <Icon name="q" />
+      <span>{text}</span>
     </button>
   );
 }
 
-// MARK: A card's page
+/**
+ * What set work off, shown whole over the page: what the owner said and when, what Her said back, and everything
+ * it sent out, each as it stands; a click opens one. Esc or a click outside closes it.
+ */
+function SourcePanel({ bot, group: g, posts, here, onClose }: { bot: BotSummary; group: ProgressGroup; posts: Post[]; here?: string; onClose: () => void }) {
+  const { t } = useTranslation("her");
+  const go = useOpen();
+  const now = useNow(60_000);
+  const box = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    box.current?.focus();
+    const key = (e: KeyboardEvent) => e.key === "Escape" && (e.stopPropagation(), onClose());
+    window.addEventListener("keydown", key, true);
+    return () => window.removeEventListener("keydown", key, true);
+  }, [onClose]);
+  const p = g.parent;
+  const mine = posts.filter((x) => x.group.key === g.key);
+  const title = p.kind === "routine" ? t("progress.fromRoutine") : t("progress.fromSaid");
+  return (
+    <>
+      <button className="tm-scrim" aria-label={t("progress.close")} onClick={onClose} />
+      <div className="tm-panel pf-src" role="dialog" aria-label={title} tabIndex={-1} ref={box}>
+        <div className="pf-src-h">
+          <div>
+            <h2>{title}</h2>
+            {p.kind !== "earlier" && <span>{p.kind === "user" ? t("progress.toHer", { time: messageTime(new Date(p.ts), now) }) : `${t("progress.routine", { name: p.name })} · ${messageTime(new Date(p.ts), now)}`}</span>}
+          </div>
+          <button className="tb" aria-label={t("progress.close")} onClick={onClose}><Icon name="x" /></button>
+        </div>
+        {p.kind === "user" && <p className="pf-me sel-text">{p.text}</p>}
+        {g.said && (
+          <div className="pf-her">
+            <span className="pf-her-cat" aria-hidden="true"><Cat small /></span>
+            <p className="sel-text" title={bot.name}>{g.said}</p>
+          </div>
+        )}
+        {mine.length > 1 && (
+          <section aria-label={t("progress.sent", { count: mine.length })}>
+            <h3>{t("progress.sent", { count: mine.length })}</h3>
+            {mine.map((x) => {
+              const ref = refOf(x.task);
+              const sel = x.task.key === here;
+              return (
+                <button key={x.task.key} className={`pf-sib ${sel ? "sel" : ""}`} aria-current={sel || undefined} disabled={!ref} onClick={() => (onClose(), ref && go.task(ref))}>
+                  <SibMark stand={x.stand} />
+                  <span>
+                    <b>{x.title}</b>
+                    <span>{x.stand === "gone" ? t("progress.sessionGone") : t(`progress.state.${x.stand}`)}</span>
+                  </span>
+                  <Icon name="chevR" className="sm" />
+                </button>
+              );
+            })}
+          </section>
+        )}
+        <button className="btn pf-chat" onClick={() => (onClose(), go.chat())}>{t("progress.inChat")}</button>
+      </div>
+    </>
+  );
+}
 
-/** A card opened: what set it off and its siblings at the top, then the record of that piece of work. */
-function TaskPage({ group, task, conv, op }: { group: GroupView; task: ProgressTask; conv: Conv; op: SendOp }) {
+// MARK: A post's page
+
+/** A post opened: back to the feed and what set it off, then the record of that piece of work. */
+function TaskPage({ post: p, conv, op, onSource }: { post: Post; conv: Conv; op: SendOp; onSource: (key: string) => void }) {
   const { t } = useTranslation("her");
   const go = useOpen();
   const st = useStore();
-  const now = useNow(30_000);
-  const p = group.parent;
-  const said = p.kind === "user" ? `${t("progress.you")} · ${messageTime(new Date(p.ts), now)}：${p.text}` : p.kind === "routine" ? t("progress.routine", { name: p.name }) : t("progress.earlier");
-  const session = task.kind === "session" ? st.sessions.find((s) => s.sessionId === task.started.session_id) : undefined;
+  const task = p.task;
+  const session = p.session;
   return (
     <>
       <div className="ctool drag pt-bar">
@@ -329,26 +397,12 @@ function TaskPage({ group, task, conv, op }: { group: GroupView; task: ProgressT
           <Icon name="chevL" />
           {t("progress.back")}
         </button>
-        <span className="pt-said" title={p.kind === "user" ? p.text : undefined}>{said}</span>
+        <FromCapsule group={p.group} onClick={() => onSource(p.group.key)} />
+        <span className="pt-gap" />
         {session && <button className="link" onClick={() => st.select(session.sessionId)}>{t("progress.openSession")}</button>}
-        {p.kind === "user" && <button className="link" onClick={go.chat}>{t("progress.inChat")}</button>}
       </div>
-      {group.tasks.length > 1 && (
-        <div className="pt-sibs" role="group" aria-label={t("progress.siblings")}>
-          {group.tasks.map((x, i) => {
-            const ref = refOf(x);
-            const title = x.kind === "agent" ? (group.titles.get(x.key) ?? "") : (st.sessions.find((s) => s.sessionId === x.started.session_id)?.title || x.started.title);
-            return (
-              <button key={x.key} className={`pt-sib ${x === task ? "sel" : ""}`} aria-pressed={x === task} disabled={!ref} onClick={() => ref && go.task(ref)}>
-                <SibMark stand={group.stands[i]} />
-                <span>{title}</span>
-              </button>
-            );
-          })}
-        </div>
-      )}
       {task.kind === "agent" && task.launch.agent ? (
-        <AgentRecord launch={task.launch} agent={task.launch.agent} title={group.titles.get(task.key) ?? ""} conv={conv} op={op} />
+        <AgentRecord launch={task.launch} agent={task.launch.agent} title={p.title} conv={conv} op={op} />
       ) : session ? (
         <SessionRecord s={session} />
       ) : (
@@ -372,6 +426,18 @@ function SibMark({ stand }: { stand: Stand }) {
     default:
       return <i className="pt-off" aria-hidden="true" />;
   }
+}
+
+/** How long and how much: "Running 4:12 · 55K tokens", "Took 13 min 7 s · 86K tokens". */
+function useFacts(a: AgentView | undefined): string {
+  const { t } = useTranslation("her");
+  const running = a?.status === "running";
+  const now = useNow(running ? 1000 : 3_600_000);
+  if (!a) return "";
+  const tokens = agentTokens(a);
+  const took = agentElapsed(a, now.getTime());
+  const time = running ? t("progress.ran", { time: clockText(elapsedSeconds(new Date(a.since), now)) }) : took > 0 ? t("progress.took", { time: durationText(took) }) : "";
+  return [time, tokens > 0 ? t("progress.tokens", { tokens: tokensText(tokens) }) : ""].filter(Boolean).join(" · ");
 }
 
 /** A coding session's record is its own page's conversation, drawn here: nothing is read twice, and it answers its question as there. */
@@ -443,7 +509,6 @@ function AgentRecord({ launch, agent: a, title, conv, op }: { launch: AgentLaunc
               <div className="pt-hm">
                 <h2>{title}</h2>
                 <div className="pt-meta">
-                  <span className="pg-kit" aria-hidden="true"><Icon name="kit" /></span>
                   <span>{t("progress.agent")}</span>
                   <span className={`pt-pill ${stand}`}>{t(`progress.state.${stand}`)}</span>
                   <span className="pt-facts">{facts}</span>

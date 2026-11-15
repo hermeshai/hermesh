@@ -4,12 +4,12 @@ import HermeshProto
 import HermeshSessions
 import SwiftUI
 
-// Progress (docs/her-team.md §15): the work Her sent out, as cards under what the owner said that set it off, and
-// behind a sub-agent's card the whole record of that piece of work. Everything is read from the conversation the
-// app already follows for Her (HerChat: her sub-agents' own conversations come with it), so the pages ask her for
-// nothing more; a coding session's card opens the session's own page.
+// Progress (docs/her-team.md §15): the work Her sent out as a feed, one post a piece of work, with what set it off
+// at its foot; behind a sub-agent's post the whole record of that piece of work. Everything is read from the
+// conversation the app already follows for Her (HerChat: her sub-agents' own conversations come with it), so the
+// pages ask her for nothing more; a coding session's post opens the session's own page.
 
-/// How a card stands: a sub-agent's state, or the same for a coding session; gone: the app holds the session no more.
+/// How a post stands: a sub-agent's state, or the same for a coding session; gone: the app holds the session no more.
 private enum Stand: Equatable {
     case starting, running, waiting, done, failed, stopped, gone
 
@@ -30,30 +30,21 @@ private enum Stand: Equatable {
     }
 
     var atWork: Bool { self == .running || self == .starting }
+    /// It waits for the owner, or could not go on: the posts that carry a mark, above the rest.
+    var needsOwner: Bool { self == .waiting || self == .failed }
 
-    var words: LocalizedStringKey {
+    /// In the app's language (a resource read with String(localized:) would follow the device's region instead).
+    var words: String {
         switch self {
-        case .starting: "Starting"
-        case .running: "In progress"
-        case .waiting: "Needs your approval"
-        case .done: "Done"
-        case .failed: "Failed"
-        case .stopped: "Stopped"
-        case .gone: "No longer on this iPhone"
+        case .starting: String(localized: "Starting")
+        case .running: String(localized: "In progress")
+        case .waiting: String(localized: "Needs your approval")
+        case .done: String(localized: "Done")
+        case .failed: String(localized: "Failed")
+        case .stopped: String(localized: "Stopped")
+        case .gone: String(localized: "No longer on this iPhone")
         }
     }
-}
-
-/// A group as the page draws it: its cards' states, and where it stands as a whole.
-private struct GroupView: Identifiable {
-    enum Overall: Int { case waiting, running, ended }
-
-    var group: HerProgressGroup
-    var stands: [Stand]
-    var tokens: Int
-    var id: String { group.key }
-
-    var overall: Overall { stands.contains(.waiting) ? .waiting : stands.contains(where: \.atWork) ? .running : .ended }
 }
 
 @MainActor private func stand(_ t: HerProgressTask, _ model: AppModel) -> Stand {
@@ -65,24 +56,61 @@ private struct GroupView: Identifiable {
 
 private func tokens(_ s: Session?) -> Int { s.map { Int($0.progress.usage.inputTokens + $0.progress.usage.outputTokens) } ?? 0 }
 
-@MainActor private func groupViews(_ groups: [HerProgressGroup], _ model: AppModel) -> [GroupView] {
-    groups.map { g in
-        let used = g.tasks.reduce(0) { n, t in
-            switch t {
-            case .agent(let l): n + (l.agent.map(herAgentTokens) ?? 0)
-            case .session(_, let started): n + tokens(model.session(started.sessionID))
-            }
-        }
-        return GroupView(group: g, stands: g.tasks.map { stand($0, model) }, tokens: used)
-    }
-}
-
 /// "Took 13 min 7 s": a time in its two largest units.
 private func tookText(_ ms: Double) -> String {
     Duration.seconds(max(1, (ms / 1000).rounded())).formatted(.units(allowed: [.hours, .minutes, .seconds], width: .narrow, maximumUnitCount: 2))
 }
 
+/// "21 min": how long something has been at work, in its largest unit.
+private func workedText(_ ms: Double) -> String {
+    Duration.seconds(max(1, (ms / 1000).rounded(.down))).formatted(.units(allowed: [.hours, .minutes, .seconds], width: .abbreviated, maximumUnitCount: 1))
+}
+
 private func when(_ ts: Double, now: Date) -> String { shortTime(Date(timeIntervalSince1970: ts / 1000), now: now) }
+
+private func parentTime(_ g: HerProgressGroup) -> Double {
+    switch g.parent {
+    case .user(_, let ts), .routine(_, let ts): ts
+    case .earlier: 0
+    }
+}
+
+/// A piece of work as the feed shows it: the work, what set it off, how it stands, and, for a sub-agent, what its
+/// post says (read once, here).
+private struct Post: Identifiable {
+    var task: HerProgressTask
+    var group: HerProgressGroup
+    var stand: Stand
+    var agent: HerAgentPost?
+    /// When it began its work (at work) or last changed (otherwise), in ms: the feed's order.
+    var at: Double
+    var id: String { task.id }
+
+    var title: String {
+        switch task {
+        case .agent(let l): herAgentTitle(l)
+        case .session(_, let started): started.title
+        }
+    }
+}
+
+@MainActor private func posts(_ groups: [HerProgressGroup], _ model: AppModel) -> [Post] {
+    groups.flatMap { g in
+        g.tasks.map { t in
+            switch t {
+            case .agent(let l):
+                return Post(task: t, group: g, stand: stand(t, model), agent: herAgentPost(l), at: l.agent?.since ?? parentTime(g))
+            case .session(_, let started):
+                let s = model.session(started.sessionID)
+                let at = s.map { ($0.isActive ? $0.turnStartedDate ?? $0.updatedDate : $0.updatedDate).timeIntervalSince1970 * 1000 } ?? parentTime(g)
+                return Post(task: t, group: g, stand: stand(t, model), agent: nil, at: at)
+            }
+        }
+    }
+}
+
+/// What a sheet shows: the thing the owner said (a group's key).
+private struct Source: Identifiable, Hashable { let id: String }
 
 /// The page the menu's Progress opens: Her's environment as the Her entry shows it.
 struct ProgressPage: View {
@@ -100,39 +128,42 @@ struct ProgressPage: View {
                 }
             }
         }
-        .background(Color(.systemGroupedBackground))
+        .background(Color(.systemBackground))
         .navigationTitle("Progress")
         .rootToolbar()
     }
 }
 
-/// The board: a line that sums the work up, then each group, those that wait and those at work first.
+/// The feed: what needs the owner, then what is at work now, then what ended; the latest first in each.
 private struct ProgressBoard: View {
     @Environment(AppModel.self) private var model
     let machine: HerMachine
-    /// Whether each group shows its cards: as it stood when it first showed (one that had ended is folded), then as the owner left it.
-    @State private var open: [String: Bool] = [:]
+    @State private var source: Source?
 
     var body: some View {
         let chat = model.her.chat(machine.machineID, model: model)
-        let groups = groupViews(chat.progress, model)
-        // Those that wait and those at work first, the latest first; then the ended ones.
-        let sorted = groups.reversed().enumerated().sorted { ($0.element.overall.rawValue, $0.offset) < ($1.element.overall.rawValue, $1.offset) }.map(\.element)
-        let firstEnded = sorted.first { $0.overall == .ended }?.id
+        let all = posts(chat.progress, model).sorted { $0.at > $1.at }
+        let need = all.filter(\.stand.needsOwner)
+        let working = all.filter(\.stand.atWork)
+        let ended = all.filter { !$0.stand.needsOwner && !$0.stand.atWork }
         ScrollView {
-            LazyVStack(alignment: .leading, spacing: 12) {
-                if let line = summary(groups) { Text(line).font(.subheadline).foregroundStyle(.secondary).padding(.horizontal, 6) }
+            LazyVStack(alignment: .leading, spacing: 0) {
                 if chat.session == nil {
                     notRead
-                } else if groups.isEmpty {
+                } else if all.isEmpty {
                     empty(connected: chat.convUp)
                 }
-                ForEach(sorted) { g in
-                    if g.id == firstEnded {
-                        Text("Ended").font(.footnote).foregroundStyle(.secondary).padding(.horizontal, 14).padding(.top, 8)
+                // One ForEach for the whole feed: a post that moves to another part keeps one identity, so the
+                // lazy stack draws it as it is now (with a ForEach a part, it kept the row it had).
+                ForEach(rows(need: need, working: working, ended: ended)) { row in
+                    switch row {
+                    case .part(let title):
+                        Text(title).font(.footnote.weight(.semibold)).foregroundStyle(.secondary)
+                            .padding(.top, 24)
+                            .accessibilityAddTraits(.isHeader)
+                    case .post(let p):
+                        PostView(post: p, open: { open(p.task) }, from: { source = Source(id: p.group.key) })
                     }
-                    GroupCard(view: g, open: Binding(get: { open[g.id] ?? (g.overall != .ended) }, set: { open[g.id] = $0 }))
-                        .onAppear { if open[g.id] == nil { open[g.id] = g.overall != .ended } }
                 }
                 if chat.live?.before != nil, chat.convUp {
                     HStack {
@@ -142,29 +173,45 @@ private struct ProgressBoard: View {
                         }
                         Spacer()
                     }
-                    .frame(minHeight: 44)
+                    .frame(minHeight: 44).padding(.top, 8)
                 }
             }
-            .padding(.horizontal, 16).padding(.bottom, 40)
+            .padding(.horizontal, 20).padding(.bottom, 40)
         }
         .herConnections(chat, machine: machine)
         .accessibilityIdentifier("progress")
+        .sheet(item: $source) { s in
+            SourceSheet(chat: chat, machineID: machine.machineID, key: s.id) { task in
+                source = nil
+                open(task)
+            }
+        }
     }
 
-    /// "2 at work, 1 waiting for you, 3 done."
-    private func summary(_ groups: [GroupView]) -> String? {
-        let all = groups.flatMap(\.stands)
-        let parts = [
-            all.filter(\.atWork).count,
-            all.filter { $0 == .waiting }.count,
-            all.filter { $0 == .done }.count,
-        ]
-        let words = [
-            parts[0] > 0 ? String(localized: "\(parts[0]) at work") : nil,
-            parts[1] > 0 ? String(localized: "\(parts[1]) waiting for you") : nil,
-            parts[2] > 0 ? String(localized: "\(parts[2]) done") : nil,
-        ].compactMap { $0 }
-        return words.isEmpty ? nil : String(localized: "Work Her sent out: \(listText(words)).")
+    private enum Row: Identifiable {
+        case part(LocalizedStringKey)
+        case post(Post)
+
+        var id: String {
+            switch self {
+            case .part(let title): "part:\(title)"
+            case .post(let p): p.id
+            }
+        }
+    }
+
+    /// Each part's title, then its posts; a part with none is left out.
+    private func rows(need: [Post], working: [Post], ended: [Post]) -> [Row] {
+        [("Needs you", need), ("Now", working), ("Earlier", ended)].flatMap { (title: LocalizedStringKey, posts: [Post]) in
+            posts.isEmpty ? [] : [Row.part(title)] + posts.map(Row.post)
+        }
+    }
+
+    private func open(_ task: HerProgressTask) {
+        switch task {
+        case .agent(let l): if let a = l.agent { model.path.append(.progressAgent(a.id)) }
+        case .session(_, let started): model.openSession(started.sessionID)
+        }
     }
 
     private var notRead: some View {
@@ -195,241 +242,376 @@ private struct ProgressBoard: View {
     }
 }
 
-/// What the owner said (or what else set the work off), Her's last words since, and under them the cards.
-private struct GroupCard: View {
+/// A post: its title and one time (how long it has worked, or how long ago it ended), a line of how it goes, one
+/// piece that shows where it stands, and what set it off. Only one that needs the owner carries a mark.
+private struct PostView: View {
     @Environment(AppModel.self) private var model
-    let view: GroupView
-    @Binding var open: Bool
+    let post: Post
+    let open: () -> Void
+    let from: () -> Void
 
     var body: some View {
-        let g = view.group
-        VStack(spacing: 6) {
-            Button {
-                withAnimation(.snappy(duration: 0.25)) { open.toggle() }
-            } label: {
-                header(g)
+        let s = session
+        let words = words(s)
+        VStack(alignment: .leading, spacing: 0) {
+            Button(action: open) {
+                VStack(alignment: .leading, spacing: 4) {
+                    HStack(alignment: .firstTextBaseline, spacing: 8) {
+                        if post.stand.needsOwner {
+                            Circle().fill(post.stand == .waiting ? Color.orange : Color.red).frame(width: 8, height: 8)
+                                .alignmentGuide(.firstTextBaseline) { $0.height + 2 }
+                        }
+                        Text(post.title).font(.headline).lineLimit(2).multilineTextAlignment(.leading)
+                        Spacer(minLength: 8)
+                        PostTime(post: post, session: s)
+                    }
+                    if let words {
+                        Text(words).font(.subheadline).foregroundStyle(.secondary).lineLimit(2).multilineTextAlignment(.leading)
+                    }
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .contentShape(.rect)
             }
             .buttonStyle(.plain)
-            .accessibilityValue(open ? Text("Expanded") : Text("Collapsed"))
-            .accessibilityIdentifier("progress-group-\(title(g))")
-            if open {
-                ForEach(Array(g.tasks.enumerated()), id: \.element.id) { i, task in
-                    TaskCard(task: task, stand: view.stands[i])
-                }
-            }
+            .disabled(!canOpen(s))
+            .accessibilityLabel([post.title, post.stand.words, words].compactMap { $0 }.joined(separator: ", "))
+            .accessibilityIdentifier("progress-card-\(post.title)")
+            piece(s)
+            FromLine(group: post.group, tokens: tokensUsed(s), action: from)
         }
-        .padding(6)
-        .background(Color(.secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 26, style: .continuous))
+        .padding(.top, 16).padding(.bottom, 2)
+        .overlay(alignment: .bottom) { Rectangle().fill(Palette.separator).frame(height: 0.5) }
     }
 
-    private func title(_ g: HerProgressGroup) -> String {
-        switch g.parent {
-        case .user(let text, _): text
-        case .routine(let name, _): name
-        case .earlier: "earlier"
+    private var session: Session? {
+        if case .session(_, let started) = post.task { model.session(started.sessionID) } else { nil }
+    }
+
+    private func canOpen(_ s: Session?) -> Bool {
+        switch post.task {
+        case .agent(let l): l.agent != nil
+        case .session: s != nil
         }
     }
 
-    private func header(_ g: HerProgressGroup) -> some View {
-        let waits = view.stands.contains(.waiting)
-        let running = view.stands.filter(\.atWork).count
-        return HStack(alignment: .top, spacing: 11) {
-            Image(systemName: { if case .user = g.parent { "person.fill" } else { "clock" } }())
-                .font(.footnote).foregroundStyle(.secondary)
-                .frame(width: 32, height: 32).background(Palette.fill2, in: .circle)
-                .padding(.top, 2)
-                .accessibilityHidden(true)
-            VStack(alignment: .leading, spacing: 2) {
-                HStack(spacing: 8) {
-                    who(g).font(.footnote).foregroundStyle(.secondary).lineLimit(1)
-                    Spacer(minLength: 0)
-                    if waits { Circle().fill(.orange).frame(width: 9, height: 9).accessibilityLabel("Needs your approval") }
-                    if running > 0 {
-                        ProgressView().controlSize(.mini)
-                        Text("\(running)").font(.footnote).monospacedDigit().foregroundStyle(.secondary)
+    private func tokensUsed(_ s: Session?) -> Int {
+        switch post.task {
+        case .agent(let l): l.agent.map(herAgentTokens) ?? 0
+        case .session: tokens(s)
+        }
+    }
+
+    /// The line under the title, in the work's own words where it has them.
+    private func words(_ s: Session?) -> String? {
+        if case .agent = post.task { return post.agent?.words }
+        guard let s else { return post.stand.words }
+        switch post.stand {
+        case .waiting: return String(localized: "Waiting for an answer")
+        case .failed: return s.progress.lastFailure.message.isEmpty ? String(localized: "Its last turn failed") : s.progress.lastFailure.message
+        default: return nil
+        }
+    }
+
+    /// What shows where it stands: the step it is on while it works, what waits for the owner, what it made.
+    @ViewBuilder private func piece(_ s: Session?) -> some View {
+        switch (post.task, post.stand) {
+        case (.agent, .starting):
+            Well { Text("Starting…").foregroundStyle(.secondary) }
+        case (.agent, .running):
+            Button(action: open) {
+                Well {
+                    HStack(spacing: 12) {
+                        StepBeat(count: post.agent?.calls ?? 0)
+                        if let now = post.agent?.now { StepWords(tool: now) } else { Text("Thinking about the next step").foregroundStyle(.secondary) }
                     }
-                    if view.overall == .ended { Image(systemName: "checkmark").font(.footnote.weight(.semibold)).foregroundStyle(.green).accessibilityHidden(true) }
-                    Caret(open: open)
                 }
-                if case .user(let text, _) = g.parent {
-                    Text(text).font(.headline).lineLimit(2).multilineTextAlignment(.leading)
+            }
+            .buttonStyle(.plain)
+            .accessibilityIdentifier("progress-now")
+        case (.agent, .waiting):
+            Well {
+                HStack(spacing: 12) {
+                    Text("Needs your approval").foregroundStyle(.orange)
+                    Spacer(minLength: 0)
+                    Button("Review", action: open).buttonStyle(.glassProminent).controlSize(.small).accessibilityIdentifier("progress-review")
                 }
-                if let said = g.said {
-                    Text("Her: \(firstWords(said))").font(.subheadline).foregroundStyle(.secondary).lineLimit(2).multilineTextAlignment(.leading).padding(.top, 2)
+            }
+        case (.agent, .done):
+            if let files = post.agent?.files, let first = files.first {
+                Button(action: open) {
+                    Well {
+                        HStack(spacing: 8) {
+                            Image(systemName: "doc").foregroundStyle(.secondary).accessibilityHidden(true)
+                            Text((first as NSString).lastPathComponent).lineLimit(1)
+                            Spacer(minLength: 0)
+                            if files.count > 1 { Text("\(files.count) files").foregroundStyle(.secondary) }
+                        }
+                    }
                 }
-                let total = view.tokens > 0 ? String(localized: "\(g.tasks.count) sent out · \(tokensText(UInt64(view.tokens))) tokens") : String(localized: "\(g.tasks.count) sent out")
-                Text(total).font(.caption).monospacedDigit().foregroundStyle(.secondary).padding(.top, 2)
+                .buttonStyle(.plain)
+                .accessibilityIdentifier("progress-files")
             }
-        }
-        .padding(10)
-        .frame(maxWidth: .infinity, minHeight: 60, alignment: .leading)
-        .contentShape(.rect)
-    }
-
-    private func who(_ g: HerProgressGroup) -> Text {
-        switch g.parent {
-        case .user(_, let ts): Text("You · \(when(ts, now: model.now))")
-        case .routine(let name, let ts): Text("Scheduled task “\(name)” · \(when(ts, now: model.now))")
-        case .earlier: Text("Asked earlier")
-        }
-    }
-
-    private func firstWords(_ text: String) -> String {
-        text.split(separator: "\n").map { $0.trimmingCharacters(in: .whitespaces) }.first { !$0.isEmpty } ?? ""
-    }
-}
-
-/// The mark at a card's top right: a ring while it works, a dot and a word when it waits or failed, a check when done.
-private struct StandMark: View {
-    let stand: Stand
-
-    var body: some View {
-        switch stand {
-        case .starting, .running:
-            ProgressView().controlSize(.mini)
-        case .waiting:
-            HStack(spacing: 5) {
-                Circle().fill(.orange).frame(width: 8, height: 8)
-                Text(stand.words).font(.footnote).foregroundStyle(.orange)
+        case (.session, .running):
+            if let s {
+                Button(action: open) {
+                    Well {
+                        HStack(spacing: 10) {
+                            Spinner()
+                            if s.progress.currentTool.isEmpty { Text("Working…").foregroundStyle(.secondary) } else {
+                                Text(s.progress.currentTool).font(.footnote.monospaced()).lineLimit(1)
+                            }
+                        }
+                    }
+                }
+                .buttonStyle(.plain)
             }
-        case .done:
-            Image(systemName: "checkmark").font(.footnote.weight(.semibold)).foregroundStyle(.green)
-        case .failed:
-            HStack(spacing: 5) {
-                Circle().fill(.red).frame(width: 8, height: 8)
-                Text(stand.words).font(.footnote).foregroundStyle(.red)
+        case (.session, .done):
+            if let d = s?.progress.diffStat, d.filesChanged > 0 {
+                Button(action: open) {
+                    Well {
+                        HStack(alignment: .firstTextBaseline, spacing: 8) {
+                            Text(verbatim: "+\(d.insertions)").fontWeight(.semibold).foregroundStyle(.green)
+                            Text(verbatim: "−\(d.deletions)").fontWeight(.semibold).foregroundStyle(.orange)
+                            Spacer(minLength: 0)
+                            Text("\(d.filesChanged) files").foregroundStyle(.secondary)
+                        }
+                        .monospacedDigit()
+                    }
+                }
+                .buttonStyle(.plain)
             }
-        case .stopped:
-            Text(stand.words).font(.footnote).foregroundStyle(.secondary)
-        case .gone:
+        default:
             EmptyView()
         }
     }
 }
 
-/// A sub-agent's small picture: a cat's head, Her's own being a cat.
-private struct AgentTile: View {
-    var size: CGFloat = 26
+/// The well a post's piece sits in.
+private struct Well<Content: View>: View {
+    @ViewBuilder let content: Content
 
     var body: some View {
-        Image(systemName: "cat").font(.system(size: size * 0.54, weight: .medium)).foregroundStyle(Color.accentColor)
-            .frame(width: size, height: size)
-            .background(Color.accentColor.opacity(0.12), in: RoundedRectangle(cornerRadius: size * 0.3, style: .continuous))
-            .accessibilityHidden(true)
+        content
+            .font(.subheadline)
+            .padding(.horizontal, 14).padding(.vertical, 12)
+            .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+            .background(Color(.secondarySystemBackground), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+            .contentShape(.rect)
+            .padding(.top, 12)
     }
 }
 
-/// How long and how much: "Running 4:12 · 55K tokens", "Took 13 min 7 s · 86K tokens".
-private struct AgentFacts: View {
-    @Environment(AppModel.self) private var model
-    let agent: HerAgent
+/// A sub-agent's calls as bars, the last beating while it works: at most the last eight.
+private struct StepBeat: View {
+    let count: Int
+    @Environment(\.accessibilityReduceMotion) private var still
+    @State private var low = false
+    private static let heights: [CGFloat] = [8, 12, 8, 16, 11, 8, 16, 12, 16, 11, 8, 14]
 
     var body: some View {
-        let used = herAgentTokens(agent)
-        let took = herAgentElapsed(agent, now: model.now.timeIntervalSince1970 * 1000)
-        HStack(spacing: 4) {
-            if agent.status == "running" {
-                Text("Running \(Text(Date(timeIntervalSince1970: agent.since / 1000), style: .timer))")
-            } else if took > 0 {
-                Text("Took \(tookText(took))")
-            }
-            if used > 0 {
-                if agent.status == "running" || took > 0 { Text(verbatim: "·") }
-                Text("\(tokensText(UInt64(used))) tokens")
+        let n = min(max(count, 1), 8)
+        HStack(alignment: .bottom, spacing: 3) {
+            ForEach(0..<n, id: \.self) { i in
+                let last = i == n - 1
+                Capsule().fill(Color.accentColor.opacity(last ? 1 : 0.34))
+                    .frame(width: 4, height: Self.heights[(count - n + i + Self.heights.count) % Self.heights.count])
+                    .scaleEffect(x: 1, y: last && low ? 0.45 : 1, anchor: .bottom)
             }
         }
-        .monospacedDigit()
+        .frame(height: 18, alignment: .bottom)
+        .accessibilityHidden(true)
+        .onAppear {
+            guard !still else { return }
+            withAnimation(.easeInOut(duration: 0.9).repeatForever(autoreverses: true)) { low = true }
+        }
     }
 }
 
-/// A card: who, how it stands, what the work is, what it does now or how it ended, how long and how many tokens.
-/// A sub-agent's opens its record; a coding session's, the session's page.
-private struct TaskCard: View {
+/// The time beside a post's title: while it works, how long it has, in the accent; else how long ago it ended.
+private struct PostTime: View {
     @Environment(AppModel.self) private var model
-    let task: HerProgressTask
+    let post: Post
+    let session: Session?
+
+    var body: some View {
+        let now = model.now.timeIntervalSince1970 * 1000
+        Group {
+            if post.stand.atWork || post.stand == .waiting {
+                let since: Double = switch post.task {
+                case .agent(let l): l.agent?.since ?? post.at
+                case .session: session?.turnStartedDate.map { $0.timeIntervalSince1970 * 1000 } ?? post.at
+                }
+                Text(workedText(now - since)).foregroundStyle(post.stand == .waiting ? AnyShapeStyle(.secondary) : AnyShapeStyle(Color.accentColor))
+            } else {
+                Text(agoText(Date(timeIntervalSince1970: post.at / 1000), now: model.now)).foregroundStyle(.tertiary)
+            }
+        }
+        .font(.footnote).monospacedDigit().lineLimit(1)
+    }
+}
+
+/// What set the work off, at a post's foot: a tap shows it whole. The tokens the work used beside it.
+private struct FromLine: View {
+    @Environment(AppModel.self) private var model
+    let group: HerProgressGroup
+    let tokens: Int
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            HStack(spacing: 8) {
+                HStack(spacing: 6) {
+                    Image(systemName: "text.bubble").font(.caption).foregroundStyle(.tertiary).accessibilityHidden(true)
+                    origin.lineLimit(1)
+                }
+                .padding(.leading, 9).padding(.trailing, 11).frame(height: 28)
+                .background(Color(.secondarySystemBackground), in: .capsule)
+                Spacer(minLength: 8)
+                if tokens > 0 {
+                    Text(verbatim: tokensText(UInt64(tokens))).foregroundStyle(.tertiary).monospacedDigit()
+                        .accessibilityLabel(Text("\(tokensText(UInt64(tokens))) tokens"))
+                }
+            }
+            .font(.footnote).foregroundStyle(.secondary)
+            .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+            .contentShape(.rect)
+        }
+        .buttonStyle(.plain)
+        .disabled(group.parent == .earlier)
+        .accessibilityIdentifier("progress-from")
+    }
+
+    private var origin: Text {
+        switch group.parent {
+        case .user(let text, let ts): Text("You \(when(ts, now: model.now)) · \(text)")
+        case .routine(let name, let ts): Text("Scheduled task “\(name)” · \(when(ts, now: model.now))")
+        case .earlier: Text("Asked earlier")
+        }
+    }
+}
+
+/// What set work off, shown whole in a sheet: what the owner said and when, what Her said back, and everything it
+/// sent out, each as it stands; a tap opens one.
+private struct SourceSheet: View {
+    @Environment(AppModel.self) private var model
+    @Environment(\.dismiss) private var dismiss
+    let chat: HerChat
+    let machineID: String
+    let key: String
+    /// Here: the piece of work being looked at, marked as such.
+    var here: String? = nil
+    let open: (HerProgressTask) -> Void
+
+    var body: some View {
+        let group = chat.progress.first { $0.key == key }
+        NavigationStack {
+            ScrollView {
+                if let group { content(group) }
+            }
+            .navigationTitle(group.map(title) ?? "")
+            .navigationSubtitle(group.map(subtitle) ?? "")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .topBarTrailing) { Button(role: .close) { dismiss() } }
+            }
+        }
+        .presentationDetents([.medium, .large])
+        .presentationDragIndicator(.visible)
+        .accessibilityIdentifier("progress-source")
+    }
+
+    private func title(_ g: HerProgressGroup) -> String {
+        switch g.parent {
+        case .user: String(localized: "What you said")
+        case .routine: String(localized: "What set it off")
+        case .earlier: ""
+        }
+    }
+
+    private func subtitle(_ g: HerProgressGroup) -> String {
+        switch g.parent {
+        case .user(_, let ts): String(localized: "\(when(ts, now: model.now)) · to Her")
+        case .routine(let name, let ts): String(localized: "Scheduled task “\(name)” · \(when(ts, now: model.now))")
+        case .earlier: ""
+        }
+    }
+
+    private func content(_ g: HerProgressGroup) -> some View {
+        VStack(alignment: .leading, spacing: 12) {
+            if case .user(let text, _) = g.parent {
+                Text(text).font(.body).foregroundStyle(Palette.bubbleText)
+                    .padding(.horizontal, 15).padding(.vertical, 10)
+                    .background(Palette.bubble, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
+                    .frame(maxWidth: .infinity, alignment: .trailing).padding(.leading, 40)
+                    .textSelection(.enabled)
+            }
+            if let said = g.said {
+                HStack(alignment: .bottom, spacing: 8) {
+                    HerAvatar(size: 26)
+                    Text(said).font(.body)
+                        .padding(.horizontal, 15).padding(.vertical, 10)
+                        .background(Palette.reply, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
+                        .textSelection(.enabled)
+                }
+                .padding(.trailing, 40)
+            }
+            if g.tasks.count > 1 {
+                Text("This sent out \(g.tasks.count)").font(.footnote).foregroundStyle(.secondary).padding(.horizontal, 8).padding(.top, 6)
+                VStack(spacing: 0) {
+                    ForEach(g.tasks) { task in row(task) }
+                }
+                .padding(4)
+                .background(Color(.secondarySystemBackground).opacity(0.6), in: RoundedRectangle(cornerRadius: 22, style: .continuous))
+            }
+            Button {
+                model.openHer(machineID: machineID)
+            } label: {
+                Text("Open the Conversation").frame(maxWidth: .infinity)
+            }
+            .buttonStyle(.glass).controlSize(.large)
+            .padding(.top, 4)
+        }
+        .padding(.horizontal, 16).padding(.top, 8).padding(.bottom, 20)
+    }
+
+    private func row(_ task: HerProgressTask) -> some View {
+        let s = stand(task, model)
+        let mine = task.id == here
+        let title: String = switch task {
+        case .agent(let l): herAgentTitle(l)
+        case .session(_, let started): model.session(started.sessionID)?.displayTitle ?? started.title
+        }
+        return Button { if !mine { open(task) } } label: {
+            HStack(spacing: 10) {
+                StandMark(stand: s).frame(width: 18)
+                VStack(alignment: .leading, spacing: 1) {
+                    Text(title).font(.body.weight(mine ? .semibold : .regular)).lineLimit(1)
+                    Text(s.words).font(.footnote).foregroundStyle(.secondary).lineLimit(1)
+                }
+                Spacer(minLength: 0)
+                if mine { Text("Here").font(.caption).foregroundStyle(.secondary).padding(.horizontal, 8).padding(.vertical, 2).background(Palette.fill2, in: .capsule) }
+                Image(systemName: "chevron.right").font(.caption.weight(.semibold)).foregroundStyle(.tertiary).accessibilityHidden(true)
+            }
+            .padding(.horizontal, 12).frame(minHeight: 52)
+            .contentShape(.rect)
+        }
+        .buttonStyle(.plain)
+        .accessibilityAddTraits(mine ? .isSelected : [])
+    }
+}
+
+/// A small mark of how work stands: a ring while it works, a dot when it waits or failed, a check when done.
+private struct StandMark: View {
     let stand: Stand
 
     var body: some View {
-        switch task {
-        case .agent(let l):
-            Button {
-                if let a = l.agent { model.path.append(.progressAgent(a.id)) }
-            } label: {
-                card(icon: AgentTile(), doer: Text("Sub-agent"), title: herAgentTitle(l)) {
-                    switch herAgentLine(l) {
-                    case .tool(let t): StepWords(tool: t)
-                    case .text(let t): Text(t)
-                    case nil: stand == .starting ? Text("Starting…") : stand == .running ? Text("Thinking about the next step") : Text(verbatim: "")
-                    }
-                } facts: {
-                    if let a = l.agent { AgentFacts(agent: a) }
-                }
-            }
-            .buttonStyle(.plain)
-            .disabled(l.agent == nil)
-            .accessibilityIdentifier("progress-card-\(herAgentTitle(l))")
-        case .session(_, let started):
-            let s = model.session(started.sessionID)
-            let agent = s?.agent ?? started.agent
-            Button { model.openSession(started.sessionID) } label: {
-                card(icon: AgentLogo(id: agent, size: 26), doer: Text(verbatim: "\(agentShortTitle(agent)) · \(s.map { model.machineName($0.machineID) } ?? started.machine)"),
-                     title: s?.displayTitle ?? started.title) {
-                    sessionLine(s)
-                } facts: {
-                    sessionFacts(s)
-                }
-            }
-            .buttonStyle(.plain)
-            .disabled(s == nil)
-            .accessibilityIdentifier("progress-card-\(s?.displayTitle ?? started.title)")
+        switch stand {
+        case .starting, .running: ProgressView().controlSize(.mini)
+        case .waiting: Circle().fill(.orange).frame(width: 8, height: 8)
+        case .done: Image(systemName: "checkmark").font(.caption.weight(.semibold)).foregroundStyle(.green)
+        case .failed: Circle().fill(.red).frame(width: 8, height: 8)
+        default: Circle().fill(.tertiary).frame(width: 8, height: 8)
         }
-    }
-
-    private func card(icon: some View, doer: Text, title: String, @ViewBuilder line: () -> some View, @ViewBuilder facts: () -> some View) -> some View {
-        VStack(alignment: .leading, spacing: 6) {
-            HStack(spacing: 8) {
-                icon
-                doer.font(.footnote).foregroundStyle(.secondary).lineLimit(1)
-                Spacer(minLength: 0)
-                StandMark(stand: stand)
-            }
-            .frame(minHeight: 26)
-            Text(title).font(.callout.weight(.semibold)).lineLimit(2).multilineTextAlignment(.leading)
-            line().font(.subheadline).foregroundStyle(.secondary).lineLimit(2).multilineTextAlignment(.leading)
-            facts().font(.caption).foregroundStyle(.secondary).lineLimit(1).padding(.top, 2)
-        }
-        .padding(.horizontal, 14).padding(.vertical, 13)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Color(.systemGroupedBackground), in: RoundedRectangle(cornerRadius: 20, style: .continuous))
-        .contentShape(.rect)
-        .accessibilityElement(children: .combine)
-    }
-
-    @ViewBuilder private func sessionLine(_ s: Session?) -> some View {
-        if let s {
-            switch stand {
-            case .waiting: Text("Waiting for an answer")
-            case .failed: Text(s.progress.lastFailure.message.isEmpty ? String(localized: "Its last turn failed") : s.progress.lastFailure.message)
-            case .running: Text(s.progress.currentTool).font(.footnote.monospaced())
-            default:
-                let d = s.progress.diffStat
-                if d.filesChanged > 0 { Text(verbatim: "\(String(localized: "\(d.filesChanged) files")) · +\(d.insertions) −\(d.deletions)") } else { Text("Done") }
-            }
-        } else {
-            Text(stand.words)
-        }
-    }
-
-    @ViewBuilder private func sessionFacts(_ s: Session?) -> some View {
-        let used = tokens(s)
-        HStack(spacing: 4) {
-            if let s, stand == .running, let start = s.turnStartedDate {
-                Text("Running \(Text(start, style: .timer))")
-                if used > 0 { Text(verbatim: "·") }
-            }
-            if used > 0 { Text("\(tokensText(UInt64(used))) tokens") }
-        }
-        .monospacedDigit()
     }
 }
 
@@ -474,9 +656,10 @@ private struct StepWords: View {
 
 // MARK: A sub-agent's record
 
-/// A sub-agent's card opened: what set it off and its siblings at the top, what Her asked of it, then everything
-/// it thought, said and called, in order, and how it ended. Its thoughts show whole; a call is a line that opens
-/// to its output. Rows are made as they scroll into view, and a long record's earlier part is read when asked for.
+/// A sub-agent's post opened: its title and how it stands, how long, how many tokens and steps, what set it off,
+/// what Her asked of it, then everything it thought, said and called, in order, and how it ended. Its thoughts
+/// show whole; a call is a line that opens to its output. Rows are made as they scroll into view, and a long
+/// record's earlier part is read when asked for.
 struct ProgressAgentPage: View {
     @Environment(AppModel.self) private var model
     let agentID: String
@@ -485,6 +668,7 @@ struct ProgressAgentPage: View {
     /// The rows the owner opened or folded, by step.
     @State private var chosen: [String: Bool] = [:]
     @State private var stopping = false
+    @State private var source: Source?
 
     var body: some View {
         if let machine = herPick(herEnvironments(model.machines), remembered: model.her.machine) {
@@ -502,6 +686,17 @@ struct ProgressAgentPage: View {
             .background(Color(.systemGroupedBackground))
             .navigationBarTitleDisplayMode(.inline)
             .herConnections(chat, machine: machine)
+            .sheet(item: $source) { s in
+                SourceSheet(chat: chat, machineID: machine.machineID, key: s.id, here: found?.launch.callID) { task in
+                    source = nil
+                    switch task {
+                    case .agent(let l):
+                        if let id = l.agent?.id, id != agentID { model.path[model.path.count - 1] = .progressAgent(id) }
+                    case .session(_, let started):
+                        model.openSession(started.sessionID)
+                    }
+                }
+            }
         }
     }
 
@@ -520,24 +715,28 @@ struct ProgressAgentPage: View {
         let report = state == .done ? steps.last { if case .text = $0.kind { true } else { false } }?.key : nil
         let asking = chat.live.flatMap(herPendingApproval)
         let title = herAgentTitle(launch)
+        let calls = herAgentCalls(agent)
         return ScrollView {
-            LazyVStack(alignment: .leading, spacing: 14) {
-                parentLine(group)
-                if group.tasks.count > 1 { siblings(group) }
+            LazyVStack(alignment: .leading, spacing: 12) {
                 VStack(alignment: .leading, spacing: 8) {
                     Text(title).font(.title2.bold()).multilineTextAlignment(.leading)
                     HStack(spacing: 8) {
-                        AgentTile(size: 22)
+                        HStack(spacing: 6) {
+                            if state == .running || state == .starting { ProgressView().controlSize(.mini) }
+                            Text(Stand(state).words)
+                        }
+                        .font(.footnote)
+                        .foregroundStyle(state == .waiting ? AnyShapeStyle(.orange) : state == .failed ? AnyShapeStyle(.red) : state == .running ? AnyShapeStyle(Color.accentColor) : AnyShapeStyle(.secondary))
+                        .padding(.horizontal, 10).frame(height: 26).background(Color(.secondarySystemGroupedBackground), in: .capsule)
+                        .accessibilityElement(children: .combine)
+                        .accessibilityIdentifier("progress-state")
                         Text("Sub-agent").font(.subheadline).foregroundStyle(.secondary)
-                        Text(Stand(state).words).font(.footnote)
-                            .foregroundStyle(state == .waiting ? AnyShapeStyle(.orange) : state == .failed ? AnyShapeStyle(.red) : AnyShapeStyle(.secondary))
-                            .padding(.horizontal, 10).frame(height: 24).background(Palette.fill2, in: .capsule)
-                            .accessibilityIdentifier("progress-state")
                     }
-                    AgentFacts(agent: agent).font(.subheadline).foregroundStyle(.secondary)
-                        .accessibilityElement(children: .combine).accessibilityIdentifier("progress-facts")
                 }
                 .padding(.horizontal, 4)
+                Facts(agent: agent, calls: calls)
+                FromLine(group: group, tokens: 0) { source = Source(id: group.key) }
+                    .padding(.horizontal, 4)
                 let brief = herAgentBrief(launch)
                 if !brief.isEmpty {
                     VStack(alignment: .leading, spacing: 4) {
@@ -551,9 +750,9 @@ struct ProgressAgentPage: View {
                     .accessibilityIdentifier("progress-brief")
                 }
                 HStack {
-                    Text("Steps · \(herAgentCalls(agent))").font(.footnote).foregroundStyle(.secondary)
+                    Text("Steps").font(.footnote.weight(.semibold)).foregroundStyle(.secondary)
                     Spacer()
-                    if herAgentCalls(agent) > 0 {
+                    if calls > 0 {
                         Button(allOpen ? "Thinking Only" : "Expand All Output") {
                             allOpen.toggle()
                             chosen = [:]
@@ -561,7 +760,7 @@ struct ProgressAgentPage: View {
                         .font(.footnote)
                     }
                 }
-                .padding(.horizontal, 4).frame(minHeight: 30)
+                .padding(.horizontal, 4).padding(.top, 6).frame(minHeight: 30)
                 if chat.convUp, herAgentHistoryCursor(agent) != nil {
                     HStack {
                         Spacer()
@@ -620,61 +819,36 @@ struct ProgressAgentPage: View {
         if case .thinking = s.kind { return true }
         return allOpen
     }
+}
 
-    private func parentLine(_ g: HerProgressGroup) -> some View {
-        Group {
-            switch g.parent {
-            case .user(let text, let ts): Text("You · \(when(ts, now: model.now)): \(text)")
-            case .routine(let name, let ts): Text("Scheduled task “\(name)” · \(when(ts, now: model.now))")
-            case .earlier: Text("Asked earlier")
+/// How long, how many tokens, how many steps: three tiles.
+private struct Facts: View {
+    @Environment(AppModel.self) private var model
+    let agent: HerAgent
+    let calls: Int
+
+    var body: some View {
+        let running = agent.status == "running"
+        let took = herAgentElapsed(agent, now: model.now.timeIntervalSince1970 * 1000)
+        HStack(spacing: 8) {
+            tile(running ? "Running for" : "Took") {
+                if running { Text(Date(timeIntervalSince1970: agent.since / 1000), style: .timer) } else { Text(took > 0 ? tookText(took) : "—") }
             }
+            tile("Tokens") { Text(verbatim: tokensText(UInt64(herAgentTokens(agent)))) }
+            tile("Steps") { Text(verbatim: "\(calls)") }
         }
-        .font(.footnote).foregroundStyle(.secondary).lineLimit(2).padding(.horizontal, 4)
+        .accessibilityElement(children: .combine)
+        .accessibilityIdentifier("progress-facts")
     }
 
-    /// The other cards of the same group, each with how it stands: a tap shows that one instead.
-    private func siblings(_ g: HerProgressGroup) -> some View {
-        ScrollView(.horizontal) {
-            HStack(spacing: 8) {
-                ForEach(g.tasks) { task in
-                    let mine: Bool = { if case .agent(let l) = task { l.agent?.id == agentID } else { false } }()
-                    Button {
-                        switch task {
-                        case .agent(let l):
-                            if let id = l.agent?.id, id != agentID { model.path[model.path.count - 1] = .progressAgent(id) }
-                        case .session(_, let started):
-                            model.openSession(started.sessionID)
-                        }
-                    } label: {
-                        HStack(spacing: 7) {
-                            sibMark(stand(task, model))
-                            Text({ switch task {
-                            case .agent(let l): herAgentTitle(l)
-                            case .session(_, let started): model.session(started.sessionID)?.displayTitle ?? started.title
-                            } }()).lineLimit(1)
-                        }
-                        .font(.subheadline.weight(mine ? .semibold : .regular))
-                        .foregroundStyle(mine ? AnyShapeStyle(Color(.systemBackground)) : AnyShapeStyle(.secondary))
-                        .padding(.horizontal, 14).frame(height: 44)
-                        .background(mine ? AnyShapeStyle(Color.primary) : AnyShapeStyle(Color(.secondarySystemGroupedBackground)), in: .capsule)
-                    }
-                    .buttonStyle(.plain)
-                    .accessibilityAddTraits(mine ? .isSelected : [])
-                }
-            }
+    private func tile(_ label: LocalizedStringKey, @ViewBuilder value: () -> some View) -> some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Text(label).font(.caption).foregroundStyle(.secondary)
+            value().font(.title3.weight(.semibold)).monospacedDigit().lineLimit(1).minimumScaleFactor(0.7)
         }
-        .scrollIndicators(.hidden)
-        .scrollClipDisabled()
-    }
-
-    @ViewBuilder private func sibMark(_ s: Stand) -> some View {
-        switch s {
-        case .starting, .running: ProgressView().controlSize(.mini)
-        case .waiting: Circle().fill(.orange).frame(width: 8, height: 8)
-        case .done: Image(systemName: "checkmark").font(.caption.weight(.semibold)).foregroundStyle(.green)
-        case .failed: Circle().fill(.red).frame(width: 8, height: 8)
-        default: Circle().fill(.tertiary).frame(width: 8, height: 8)
-        }
+        .padding(.horizontal, 12).padding(.vertical, 10)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Color(.secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
     }
 }
 

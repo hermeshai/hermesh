@@ -560,24 +560,11 @@
   "progress": {
     "title": "Progress",
     "log": "Work sent out",
-    "sumRunning_one": "{{count}} at work",
-    "sumRunning_other": "{{count}} at work",
-    "sumWaiting_one": "{{count}} waiting for you",
-    "sumWaiting_other": "{{count}} waiting for you",
-    "sumDone_one": "{{count}} done",
-    "sumDone_other": "{{count}} done",
-    "sumLead": "Work Her sent out: ",
-    "sumSep": ", ",
-    "sumEnd": ".",
     "empty": "No work sent out yet",
     "emptySub": "Give Her something to do: each part she sends out shows up here.",
     "notRead": "The work Her sent out shows here once {{name}} is connected.",
-    "you": "You",
     "routine": "Scheduled task “{{name}}”",
     "earlier": "Asked earlier",
-    "ended": "Ended",
-    "routes_one": "{{count}} agent",
-    "routes_other": "{{count}} agents",
     "inChat": "Show in Conversation",
     "agent": "Sub-agent",
     "state": {
@@ -588,14 +575,12 @@
       "failed": "Failed",
       "stopped": "Stopped"
     },
-    "waits": "Waiting",
     "ran": "Running {{time}}",
     "took": "Took {{time}}",
     "tokens": "{{tokens}} tokens",
     "starting": "Starting…",
     "sessionGone": "This session is no longer on this Mac",
     "back": "Progress",
-    "siblings": "Sent out for the same message",
     "openSession": "Open in All Sessions",
     "brief": "What Her asked",
     "steps_one": "Steps · {{count}}",
@@ -614,6 +599,22 @@
     "interrupted": "This round was interrupted",
     "again": "Her added",
     "gone": "This record is gone",
-    "thinking": "Thinking about the next step"
+    "thinking": "Thinking about the next step",
+    "part": {
+      "need": "Needs you",
+      "now": "Now",
+      "earlier": "Earlier"
+    },
+    "review": "Review",
+    "files_one": "{{count}} file",
+    "files_other": "{{count}} files",
+    "working": "Working…",
+    "fromYou": "You {{time}} · {{text}}",
+    "fromSaid": "What you said",
+    "fromRoutine": "What set it off",
+    "toHer": "{{time}} · to Her",
+    "sent_one": "This sent out {{count}}",
+    "sent_other": "This sent out {{count}}",
+    "close": "Close"
   }
 }

@@ -552,20 +552,11 @@
   "progress": {
     "title": "进展",
     "log": "派出去的活",
-    "sumRunning_other": "{{count}} 路在办",
-    "sumWaiting_other": "{{count}} 路在等你",
-    "sumDone_other": "办完了 {{count}} 路",
-    "sumLead": "Her 派出去的活：",
-    "sumSep": "，",
-    "sumEnd": "。",
     "empty": "还没有派出去的活",
     "emptySub": "交给 Her 一件事，她分头去办的每一路都会出现在这里。",
     "notRead": "连上 {{name}} 后，这里会显示 Her 派出去的活。",
-    "you": "你",
     "routine": "定时任务「{{name}}」",
     "earlier": "更早交代的",
-    "ended": "已结束",
-    "routes_other": "{{count}} 路",
     "inChat": "在对话里看",
     "agent": "子智能体",
     "state": {
@@ -576,14 +567,12 @@
       "failed": "没办成",
       "stopped": "已停下"
     },
-    "waits": "等你",
     "ran": "已运行 {{time}}",
     "took": "用时 {{time}}",
     "tokens": "{{tokens}} tokens",
     "starting": "正在启动…",
     "sessionGone": "这个会话不在这台 Mac 上了",
     "back": "进展",
-    "siblings": "同一句话派出去的几路",
     "openSession": "在全部会话里打开",
     "brief": "Her 派的活",
     "steps_other": "过程 · {{count}} 步",
@@ -601,6 +590,20 @@
     "interrupted": "这一轮被打断了",
     "again": "Her 又交代",
     "gone": "这一路的记录不在了",
-    "thinking": "在想下一步"
+    "thinking": "在想下一步",
+    "part": {
+      "need": "需要你",
+      "now": "现在",
+      "earlier": "早些时候"
+    },
+    "review": "去批准",
+    "files_other": "{{count}} 个文件",
+    "working": "正在干活…",
+    "fromYou": "你 {{time}} · {{text}}",
+    "fromSaid": "来自你的一句话",
+    "fromRoutine": "来自定时任务",
+    "toHer": "{{time}} · 对 Her 说",
+    "sent_other": "这句话派出了 {{count}} 路",
+    "close": "关闭"
   }
 }

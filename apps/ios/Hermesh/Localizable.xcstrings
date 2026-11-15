@@ -309,6 +309,16 @@
         }
       }
     },
+    "%@ · to Her": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ · 对 Her 说"
+          }
+        }
+      }
+    },
     "%@ · used %@": {
       "localizations": {
         "zh-Hans": {
@@ -350,16 +360,6 @@
     "%lld": {
       "shouldTranslate": false
     },
-    "%lld at work": {
-      "localizations": {
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "%lld 路在办"
-          }
-        }
-      }
-    },
     "%lld chosen": {
       "localizations": {
         "zh-Hans": {
@@ -386,16 +386,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "还剩 %lld 天"
-          }
-        }
-      }
-    },
-    "%lld done": {
-      "localizations": {
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "办完了 %lld 路"
           }
         }
       }
@@ -550,26 +540,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "%lld 个运行中"
-          }
-        }
-      }
-    },
-    "%lld sent out": {
-      "localizations": {
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "%lld 路"
-          }
-        }
-      }
-    },
-    "%lld sent out · %@ tokens": {
-      "localizations": {
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "%lld 路 · %@ tokens"
           }
         }
       }
@@ -2555,6 +2525,16 @@
         }
       }
     },
+    "Earlier": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "早些时候"
+          }
+        }
+      }
+    },
     "Earlier Steps": {
       "localizations": {
         "zh-Hans": {
@@ -2601,16 +2581,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "端到端加密：服务器只转发，看不到内容。"
-          }
-        }
-      }
-    },
-    "Ended": {
-      "localizations": {
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "已结束"
           }
         }
       }
@@ -3045,12 +3015,12 @@
         }
       }
     },
-    "Her: %@": {
+    "Here": {
       "localizations": {
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "Her：%@"
+            "value": "当前"
           }
         }
       }
@@ -3628,6 +3598,16 @@
         }
       }
     },
+    "Needs you": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "需要你"
+          }
+        }
+      }
+    },
     "Needs your approval": {
       "localizations": {
         "zh-Hans": {
@@ -3698,6 +3678,16 @@
         }
       }
     },
+    "Open the Conversation": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "打开对话"
+          }
+        }
+      }
+    },
     "Progress": {
       "localizations": {
         "zh-Hans": {
@@ -3748,6 +3738,16 @@
         }
       }
     },
+    "Review": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "去批准"
+          }
+        }
+      }
+    },
     "Running": {
       "localizations": {
         "zh-Hans": {
@@ -3758,12 +3758,12 @@
         }
       }
     },
-    "Running %@": {
+    "Running for": {
       "localizations": {
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "已运行 %@"
+            "value": "已运行"
           }
         }
       }
@@ -3858,12 +3858,12 @@
         }
       }
     },
-    "Steps · %lld": {
+    "Steps": {
       "localizations": {
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "过程 · %lld 步"
+            "value": "步骤"
           }
         }
       }
@@ -4098,6 +4098,16 @@
         }
       }
     },
+    "This sent out %lld": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "这句话派出了 %lld 路"
+          }
+        }
+      }
+    },
     "Thought": {
       "localizations": {
         "zh-Hans": {
@@ -4118,12 +4128,22 @@
         }
       }
     },
-    "Took %@": {
+    "Tokens": {
       "localizations": {
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "用时 %@"
+            "value": "Tokens"
+          }
+        }
+      }
+    },
+    "Took": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "用时"
           }
         }
       }
@@ -7744,6 +7764,26 @@
         }
       }
     },
+    "What set it off": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "来自定时任务"
+          }
+        }
+      }
+    },
+    "What you said": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "来自你的一句话"
+          }
+        }
+      }
+    },
     "What “%@” Can Use": {
       "localizations": {
         "zh-Hans": {
@@ -7847,12 +7887,12 @@
         }
       }
     },
-    "Work Her sent out: %@.": {
+    "Working…": {
       "localizations": {
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "Her 派出去的活：%@。"
+            "value": "正在干活…"
           }
         }
       }
@@ -7887,6 +7927,16 @@
         }
       }
     },
+    "You %@ · %@": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "你 %1$@ · %2$@"
+          }
+        }
+      }
+    },
     "You can only set up again on this iPhone; your machines and agents then need pairing again.": {
       "localizations": {
         "zh-Hans": {
@@ -7913,26 +7963,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "你打断了这一轮。会话还在，%@ 再发消息就会接着做。"
-          }
-        }
-      }
-    },
-    "You · %@": {
-      "localizations": {
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "你 · %@"
-          }
-        }
-      }
-    },
-    "You · %@: %@": {
-      "localizations": {
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "你 · %@：%@"
           }
         }
       }
