@@ -15,6 +15,8 @@ public let sendToUser = "send_to_user"
 public let sessionStart = "session_start"
 /// The mesh tool that counts the team's work (docs/her-team.md §6.3).
 public let workSummary = "work_summary"
+/// The tool that makes and changes routines (bot-mode-design §6.21).
+public let manageRoutine = "manage_routine"
 
 /// A row of the conversation.
 public struct HerItem: Equatable, Identifiable, Sendable {
@@ -22,6 +24,8 @@ public struct HerItem: Equatable, Identifiable, Sendable {
     /// When it was sent (ms).
     public let ts: Double
     public var kind: Kind
+    /// The routine's run whose report this message passes on.
+    public var source: HerRoutineSource?
     public var id: String { key }
 
     public enum Kind: Equatable, Sendable {
@@ -47,12 +51,15 @@ public struct HerItem: Equatable, Identifiable, Sendable {
         case session(HerStarted)
         /// The team's work over some days, as Her counted it for the owner.
         case work(HerWork)
+        /// What Her did to a routine, as a line of its own.
+        case routine(HerRoutineChange)
     }
 
-    public init(key: String, ts: Double, kind: Kind) {
+    public init(key: String, ts: Double, kind: Kind, source: HerRoutineSource? = nil) {
         self.key = key
         self.ts = ts
         self.kind = kind
+        self.source = source
     }
 
     /// Drawn as the owner's: on the right.
@@ -164,6 +171,42 @@ public struct HerWork: Equatable, Sendable {
     }
 }
 
+/// What a manage_routine call changed, as its result's details say; reading a routine changes nothing, and has none.
+public struct HerRoutineChange: Equatable, Sendable {
+    /// "create", "update", "pause", "resume" or "delete".
+    public var action: String
+    public var routineID: String
+    public var name: String
+    public var when: String
+    public var nextRun: Date?
+
+    public init(action: String, routineID: String, name: String, when: String, nextRun: Date? = nil) {
+        self.action = action
+        self.routineID = routineID
+        self.name = name
+        self.when = when
+        self.nextRun = nextRun
+    }
+
+    init?(details d: JSON) {
+        guard let action = d["action"].string, let id = d["routine_id"].string else { return nil }
+        self.init(action: action, routineID: id, name: d["name"].string ?? "", when: d["when"].string ?? "", nextRun: herDate(d["next_run"]))
+    }
+}
+
+/// The run of a routine whose report a message passes on: the run's mail names it.
+public struct HerRoutineSource: Equatable, Sendable {
+    public var routineID: String
+    public var runID: String
+    public var name: String
+
+    public init(routineID: String, runID: String, name: String) {
+        self.routineID = routineID
+        self.runID = runID
+        self.name = name
+    }
+}
+
 /// How a tool call stands, from its result and the task under way.
 enum CallState { case done, failed, denied, live, cancelled }
 
@@ -181,22 +224,28 @@ public func herChat(_ v: HerSession) -> [HerItem] {
     }
 
     var out: [HerItem] = []
+    // The run whose report the task under way passes on.
+    var source: HerRoutineSource?
     for (i, e) in v.entries.enumerated() {
         switch e {
         case .user(let id, let content, let ts, let mail):
             if let mail {
                 // What a sub-agent told the owner reads as a message from Her.
                 if mail.kind == "to_user" { out.append(HerItem(key: id, ts: ts, kind: .her(messageBody(texts(content))))) }
+                if let routine = mail.routineID { source = HerRoutineSource(routineID: routine, runID: mail.fromID, name: mail.fromName) }
             } else {
                 out.append(HerItem(key: id, ts: ts, kind: ownerKind(content, queued: false)))
+                source = nil
             }
         case .assistant(_, let calls, let ts, let duration, _):
             // Sent when the reply that called send_to_user ended.
             for c in calls {
                 if c.name == sendToUser {
                     if let kind = delivered(c, state(c.id, open: v.live != nil && i == lastReply), results[c.id]) {
-                        out.append(HerItem(key: c.id, ts: ts + duration, kind: kind))
+                        out.append(HerItem(key: c.id, ts: ts + duration, kind: kind, source: source))
                     }
+                } else if c.name == manageRoutine, let r = results[c.id], !r.isError, let change = HerRoutineChange(details: r.details) {
+                    out.append(HerItem(key: "routine:\(c.id)", ts: ts + duration, kind: .routine(change)))
                 } else if herCallTarget(c.name, c.args).name == sessionStart, let r = results[c.id], !r.isError, let started = HerStarted(result: r) {
                     // A session she started: a call that was refused, failed or never ran started none.
                     out.append(HerItem(key: c.id, ts: ts + duration, kind: .session(started)))
@@ -204,8 +253,9 @@ public func herChat(_ v: HerSession) -> [HerItem] {
                     out.append(HerItem(key: c.id, ts: ts + duration, kind: .work(work)))
                 }
             }
-        case .taskEnd("failed", let error?, let ts, _):
-            out.append(HerItem(key: "end:\(i)", ts: ts, kind: .failure(error, last: false)))
+        case .taskEnd(let outcome, let error, let ts, _):
+            if outcome == "failed", let error { out.append(HerItem(key: "end:\(i)", ts: ts, kind: .failure(error, last: false))) }
+            source = nil
         default:
             break
         }

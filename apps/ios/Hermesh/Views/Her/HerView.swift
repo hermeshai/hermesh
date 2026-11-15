@@ -68,8 +68,9 @@ private struct HerPage: View {
         .toolbar {
             if sideBars {
                 MenuToolbarItem()
-                if chat.bot != nil {
+                if let bot = chat.bot {
                     ToolbarItem(placement: .topBarTrailing) { HerProgressButton(waiting: herProgressWaiting(chat, model), inBar: true) }
+                    ToolbarItem(placement: .topBarTrailing) { HerRoutinesButton(dot: herRoutineDot(bot.routines), inBar: true) }
                 }
             }
         }
@@ -89,7 +90,10 @@ private struct HerPage: View {
             HStack {
                 if !sideBars && !model.menuBeside { HerMenuButton() }
                 Spacer()
-                if chat.bot != nil && !sideBars { HerProgressButton(waiting: herProgressWaiting(chat, model)) }
+                if let bot = chat.bot, !sideBars {
+                    HerProgressButton(waiting: herProgressWaiting(chat, model))
+                    HerRoutinesButton(dot: herRoutineDot(bot.routines))
+                }
             }
             VStack(spacing: -16) {
                 Button {
@@ -304,6 +308,37 @@ private struct HerProgressButton: View {
         }
         .accessibilityLabel(waiting > 0 ? Text("Progress, \(waiting) waiting for you") : Text("Progress"))
         .accessibilityIdentifier("her-progress")
+    }
+}
+
+/// Her's scheduled tasks, beside Progress: marked while one's last run failed (orange) or one runs (blue).
+private struct HerRoutinesButton: View {
+    @Environment(AppModel.self) private var model
+    let dot: HerRoutineDot?
+    var inBar = false
+
+    var body: some View {
+        Group {
+            if inBar {
+                Button { model.path.append(.routines) } label: {
+                    Image(systemName: "clock").overlay(alignment: .topTrailing) { mark.offset(x: 5, y: -4) }
+                }
+            } else {
+                Button { model.path.append(.routines) } label: {
+                    Image(systemName: "clock").font(.body.weight(.medium)).frame(width: 44, height: 44)
+                        .overlay(alignment: .topTrailing) { mark.offset(x: -9, y: 11) }
+                        .glassEffect(.regular.interactive(), in: .circle)
+                        .contentShape(.circle)
+                }
+                .buttonStyle(.plain)
+            }
+        }
+        .accessibilityLabel(dot == .failed ? Text("Scheduled Tasks, a last run failed") : dot == .running ? Text("Scheduled Tasks, one running") : Text("Scheduled Tasks"))
+        .accessibilityIdentifier("her-routines")
+    }
+
+    @ViewBuilder private var mark: some View {
+        if let dot { Circle().fill(dot == .failed ? Color.orange : Color.accentColor).frame(width: 8, height: 8) }
     }
 }
 
