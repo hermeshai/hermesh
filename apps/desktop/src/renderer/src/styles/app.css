@@ -245,6 +245,11 @@ html.vibrant .rail{background:var(--side-tint)}
 .map-n{min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .map-sub{font-size:11.5px;color:var(--l2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
 .map-h{font-size:11.5px;color:var(--l2);padding:10px 10px 3px}
+.map-mach{margin-top:6px}
+.map-mach .map-n{font-weight:600}
+.map-mach.off:not(.sel) .map-n{color:var(--l2)}
+.map-go{color:var(--l3)}
+.map-row.sel .map-go{color:inherit}
 .side-list{flex:1;overflow-y:auto;min-height:0;padding:0 8px 8px;scrollbar-width:thin}
 .side-sessions>[role=group]{display:flex;flex-direction:column;gap:2px}
 /* A group's heading: its title, its count, and ▾ (▸ when collapsed); a click collapses or opens it. */
