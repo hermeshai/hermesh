@@ -408,6 +408,7 @@ async fn a_message_that_was_interjected_can_be_taken_back_too() {
         input: vec![UserContent::Text { text: "by the way".into() }],
         mode: PromptMode::Steer,
         commands: true,
+        id: None,
     })
     .await;
     let events = h.until_idle().await;
@@ -504,6 +505,7 @@ async fn what_waits_goes_back_to_the_composer_and_never_to_the_model() {
             input: vec![UserContent::Text { text: text.into() }],
             mode,
             commands: true,
+            id: None,
         })
         .await;
     }
@@ -558,6 +560,7 @@ async fn a_task_that_completes_as_the_resend_arrives_still_hands_back_what_waits
         input: vec![UserContent::Text { text: "afterwards".into() }],
         mode: PromptMode::FollowUp,
         commands: true,
+        id: None,
     })
     .await;
     h.until(|m| matches!(m, EventMsg::QueueChanged { queued } if queued.len() == 1)).await;
@@ -590,6 +593,7 @@ async fn interjected_input_does_not_slip_in_while_the_task_stops() {
         input: vec![UserContent::Text { text: "by the way".into() }],
         mode: PromptMode::Steer,
         commands: true,
+        id: None,
     })
     .await;
     h.until(|m| matches!(m, EventMsg::QueueChanged { queued } if queued.len() == 1)).await;

@@ -75,7 +75,7 @@ const initialized: InitializeResult = {
  */
 export function openCallTransport(
   adapter: CallAdapter,
-  o: { setup?: SetupRequest[]; onOpened?: (responses: CallResult[]) => void } = {},
+  o: { setup?: SetupRequest[]; onOpened?: (responses: CallResult[], connectionId: string) => void } = {},
 ): Transport & { close(): void } {
   const texts = new Set<(text: string) => void>();
   const closes = new Set<() => void>();
@@ -105,7 +105,7 @@ export function openCallTransport(
       for await (const e of adapter.open(abort.signal, o.setup ?? [])) {
         if (closed) break;
         if ("opened" in e) {
-          o.onOpened?.(e.opened.responses ?? []);
+          o.onOpened?.(e.opened.responses ?? [], e.opened.connectionId);
           opened(e.opened.connectionId);
         } else deliver({ method: e.notification.method, params: e.notification.params });
       }

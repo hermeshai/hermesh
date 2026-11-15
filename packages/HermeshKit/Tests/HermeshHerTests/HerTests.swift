@@ -19,10 +19,33 @@ import Testing
         .with { $0.id = id; $0.botID = "b1"; $0.text = text; $0.createdAt = .init(date: Date(timeIntervalSince1970: ms / 1000)); $0.localPaths = ["/var/a/photo.jpg"]; $0.error = error }
     }
     let list = [waiting("w2", "later", at: 9000, error: "offline"), waiting("w1", "deliver me", at: 4000), waiting("w3", "hello", at: 900_000)]
-    let rows = herWaiting(list + [.with { $0.id = "other"; $0.botID = "b2"; $0.text = "x" }], botID: "b1", said: herChat(kept.session!))
+    let rows = herOutbox(waiting: list + [.with { $0.id = "other"; $0.botID = "b2"; $0.text = "x" }], botID: "b1", said: herChat(kept.session!))
     // "deliver me" was delivered meanwhile; "hello" was said long before the one waiting was written.
-    #expect(rows.map(\.key) == ["waiting:w2", "waiting:w3"])
+    #expect(rows.map(\.key) == ["w2", "w3"])
     #expect(rows[0].kind == .waiting(id: "w2", text: "later", files: ["photo.jpg"], error: "offline"))
+}
+
+/// A message is shown once (docs/her-sending.md §5.3): in the conversation when a message there has its id, in the
+/// outbox, or as the app sends it; one with an id of the app's is never taken for another with the same words, one
+/// her gave her own id is matched by its words.
+@Test func aMessageShowsOnceByItsID() throws {
+    let v = snapshotJSON([said("hw_a", "same", ts: 1000), said("u7", "older her", ts: 2000)])
+    let conversation = herChat(try #require(HerSession(snapshot: v)))
+    let kept: [Hermesh_Local_V1_HerWaiting] = [.with { $0.id = "hw_k"; $0.botID = "b1"; $0.text = "kept"; $0.createdAt = .init(date: Date(timeIntervalSince1970: 3)) }]
+    let sending = [HerOutgoing(id: "hw_a", text: "same", ts: 900), HerOutgoing(id: "hw_b", text: "same", ts: 1500),
+                   HerOutgoing(id: "hw_c", text: "older her", ts: 1900), HerOutgoing(id: "hw_k", text: "kept", ts: 2900),
+                   HerOutgoing(id: "hw_d", text: "no", ts: 4000, refused: "her: no")]
+    let rows = herOutbox(sending: sending, waiting: kept, botID: "b1", said: conversation)
+    #expect(rows.map(\.key) == ["hw_k", "hw_b", "hw_d"])
+    #expect(rows[2].kind == .sending(id: "hw_d", text: "no", images: [], files: [], refused: "her: no"))
+}
+
+@Test func whatATaskHandsBackGoesBackToTheComposer() {
+    let failed: JSON = ["type": "task_failed", "returned_input": [["content": [["type": "text", "text": "one"], ["type": "image", "mime_type": "image/png", "data": "x"]]],
+                                                                  ["content": [["type": "text", "text": "two"]]]]]
+    #expect(herReturned(failed) == ["one", "two"])
+    #expect(herReturned(["type": "task_interrupted", "returned_input": []]).isEmpty)
+    #expect(herReturned(["type": "task_completed"]).isEmpty)
 }
 
 @Test func aConnectCardFillsItsOpsAndEndsInOneLine() throws {

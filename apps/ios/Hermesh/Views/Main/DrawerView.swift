@@ -89,6 +89,7 @@ struct DrawerView: View {
     private var places: some View {
         VStack(spacing: 2) {
             herPlace
+            if !herEnvironments(model.machines).isEmpty { progressPlace }
             workPlace
             sessionsPlace
         }
@@ -136,6 +137,32 @@ struct DrawerView: View {
         .padding(.horizontal, 10)
         .accessibilityLabel(off ? Text("Her, not on") : unread > 0 ? Text("Her, \(unread) unread") : Text("Her"))
         .accessibilityIdentifier("her-place")
+    }
+
+    /// Progress, once Her runs somewhere (docs/her-team.md §15): marked while a piece of the work she sent out waits
+    /// for the owner, with how many are at work. Her coding sessions are counted as Watch brings them; her
+    /// sub-agents, while a page of hers follows her conversation.
+    private var progressPlace: some View {
+        let her = Set(model.clients.filter { !$0.herMachineID.isEmpty }.map(\.clientID))
+        let mine = model.sessions.filter { her.contains($0.createdBy) && $0.status != .archived }
+        let agents = herPick(herEnvironments(model.machines), remembered: model.her.machine)
+            .flatMap { model.her.chat($0.machineID, model: model).live }?.agents.filter { $0.status == "running" } ?? []
+        let asking = agents.filter { $0.view.live?.approvals.isEmpty == false }.count
+        return Button {
+            model.open(.progress)
+        } label: {
+            HStack(spacing: 12) {
+                Image(systemName: "waveform.path.ecg").frame(width: 28)
+                Text("Progress")
+                Spacer(minLength: 0)
+                marks(waiting: asking > 0 || mine.contains { $0.status == .waitingInput }, failed: false, running: mine.filter(\.isActive).count + agents.count - asking, counted: true)
+            }
+            .font(.body).frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.horizontal, 16).frame(height: 48)
+        }
+        .buttonStyle(RowStyle(selected: model.root == .progress))
+        .padding(.horizontal, 10)
+        .accessibilityIdentifier("progress-place")
     }
 
     /// Work: marked while something needs the owner, with how many sessions run.

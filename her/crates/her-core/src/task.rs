@@ -105,7 +105,15 @@ enum Work {
     Context,
 }
 
-pub(crate) fn on_prompt(session: &Arc<Session>, input: Vec<UserContent>, mode: PromptMode, commands: bool) {
+pub(crate) fn on_prompt(session: &Arc<Session>, input: Vec<UserContent>, mode: PromptMode, commands: bool, id: Option<String>) {
+    // Taken once: a front end sending it again (its answer lost) changes nothing.
+    if let Some(id) = &id {
+        let mut state = session.state.lock();
+        if state.knows_input(id) {
+            return;
+        }
+        state.taken_inputs.insert(id.clone());
+    }
     let mut skills = Vec::new();
     if commands {
         let known = session.state.lock().skills.clone();
@@ -125,7 +133,7 @@ pub(crate) fn on_prompt(session: &Arc<Session>, input: Vec<UserContent>, mode: P
         // New input ends the hold after an interruption.
         state.hold = false;
         let message = Input {
-            id: state.input_id(),
+            id: id.unwrap_or_else(|| state.input_id()),
             message: UserMessage {
                 content: input,
                 ts: now_ms(),

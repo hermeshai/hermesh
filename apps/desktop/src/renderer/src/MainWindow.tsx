@@ -90,7 +90,7 @@ export function MainWindow() {
           <SessionPage s={session} />
         ) : st.selection.kind === "list" ? (
           <NoSession />
-        ) : st.selection.kind === "her" && !st.status?.machineOnly ? (
+        ) : (st.selection.kind === "her" || st.selection.kind === "progress") && !st.status?.machineOnly ? (
           <Suspense fallback={<div className="ctool drag" />}>
             <HerPage />
           </Suspense>

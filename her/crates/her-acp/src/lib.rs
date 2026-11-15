@@ -445,6 +445,7 @@ impl AcpProtocol {
                                 input,
                                 mode: PromptMode::Steer,
                                 commands: true,
+                                id: None,
                             };
                             if let Err(err) = server.submit(&session, conn.clone(), op, true, respond).await {
                                 conn.send_error(Some(&id), &err);

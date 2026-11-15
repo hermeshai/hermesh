@@ -513,8 +513,13 @@ impl SessionMirror {
         }
     }
 
-    /// Items before the `before` cursor of an earlier page.
+    /// Items before the `before` cursor of an earlier page: the session's own, or those of the
+    /// sub-agent the cursor names (`<agent id>/i<n>`, as the agent's page in a snapshot gave it).
     pub fn history(&self, before: &str, limit: usize) -> Option<TranscriptPage> {
+        if let Some((agent, own)) = before.rsplit_once('/') {
+            let agent = self.agents.iter().find(|a| a.agent_id == agent)?;
+            return agent.session.history(own, limit).map(|page| agent.page(page));
+        }
         let end: usize = before.strip_prefix('i')?.parse().ok()?;
         let end = end.min(self.transcript.len());
         Some(self.page(end.saturating_sub(limit), end))
@@ -543,9 +548,16 @@ impl AgentMirror {
             usage: self.usage.clone(),
             error: self.error.clone(),
             elapsed_ms: self.elapsed_ms,
-            transcript: own.transcript,
+            transcript: self.page(own.transcript),
             active_task: own.active_task,
         }
+    }
+
+    /// A page of its own session whose cursor names the agent, so that `session/history` on the
+    /// main session reads on from it.
+    fn page(&self, mut page: TranscriptPage) -> TranscriptPage {
+        page.before = page.before.map(|own| format!("{}/{own}", self.agent_id));
+        page
     }
 }
 
@@ -1133,6 +1145,51 @@ mod tests {
         let page = m.history(page.before.as_deref().unwrap(), 2).unwrap();
         assert_eq!(page.items.len(), 1);
         assert!(page.before.is_none());
+    }
+
+    #[test]
+    fn pages_through_a_sub_agents_history_by_its_own_cursor() {
+        let mut m = SessionMirror::new(info(), Vec::new());
+        m.apply(&ev(
+            1,
+            EventMsg::AgentStarted {
+                agent_id: "a1".into(),
+                name: "counter".into(),
+                description: String::new(),
+                session_file: PathBuf::from("/a1"),
+                call_id: "c1".into(),
+            },
+        ));
+        for i in 0..5 {
+            m.apply(&ev(
+                2 + i,
+                EventMsg::AgentEvent {
+                    agent_id: "a1".into(),
+                    event: Box::new(ev(
+                        1 + i,
+                        EventMsg::MessageCompleted {
+                            message_id: format!("u{i}"),
+                            message: UserMessage::text(format!("{i}")).into(),
+                            mail: None,
+                            skills: Vec::new(),
+                        },
+                    )),
+                },
+            ));
+        }
+        let snap = m.snapshot(Some(2));
+        let own = &snap.agents[0].transcript;
+        assert_eq!(own.items.len(), 2);
+        let before = own.before.clone().unwrap();
+        assert_eq!(before, "a1/i3", "the cursor names the agent");
+        let page = m.history(&before, 2).unwrap();
+        assert_eq!(page.items.len(), 2);
+        let page = m.history(page.before.as_deref().unwrap(), 2).unwrap();
+        assert_eq!(page.items.len(), 1);
+        assert!(page.before.is_none());
+        // The main session has no earlier history, and no such agent.
+        assert!(m.history("a2/i3", 2).is_none());
+        assert!(m.history("i0", 2).is_some_and(|p| p.items.is_empty()));
     }
 
     #[test]

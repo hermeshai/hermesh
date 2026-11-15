@@ -39,6 +39,8 @@ public struct HerItem: Equatable, Identifiable, Sendable {
         case failure(HerFailure, last: Bool)
         /// A message this device keeps until the machine is back (HerSend); error: why the last try failed.
         case waiting(id: String, text: String, files: [String], error: String)
+        /// A message this app is sending (HerSend has not answered), or couldn't: refused says why.
+        case sending(id: String, text: String, images: [HerImage], files: [String], refused: String?)
         /// Her's onboarding while no model works there (HerOnboarding).
         case onboarding
         /// A coding session Her started, where she started it.
@@ -66,6 +68,11 @@ public struct HerImage: Equatable, Sendable {
     public var mime: String
     /// Base64.
     public var data: String
+
+    public init(mime: String, data: String) {
+        self.mime = mime
+        self.data = data
+    }
 }
 
 /// A file Her sent, as its call's result describes it.
@@ -179,11 +186,11 @@ public func herChat(_ v: HerSession) -> [HerItem] {
         case .user(let id, let content, let ts, let mail):
             if let mail {
                 // What a sub-agent told the owner reads as a message from Her.
-                if mail == "to_user" { out.append(HerItem(key: id, ts: ts, kind: .her(messageBody(texts(content))))) }
+                if mail.kind == "to_user" { out.append(HerItem(key: id, ts: ts, kind: .her(messageBody(texts(content))))) }
             } else {
                 out.append(HerItem(key: id, ts: ts, kind: ownerKind(content, queued: false)))
             }
-        case .assistant(_, let calls, let ts, let duration):
+        case .assistant(_, let calls, let ts, let duration, _):
             // Sent when the reply that called send_to_user ended.
             for c in calls {
                 if c.name == sendToUser {
@@ -197,7 +204,7 @@ public func herChat(_ v: HerSession) -> [HerItem] {
                     out.append(HerItem(key: c.id, ts: ts + duration, kind: .work(work)))
                 }
             }
-        case .taskEnd("failed", let error?, let ts):
+        case .taskEnd("failed", let error?, let ts, _):
             out.append(HerItem(key: "end:\(i)", ts: ts, kind: .failure(error, last: false)))
         default:
             break
@@ -252,7 +259,7 @@ private func filesOf(_ r: HerResult?) -> [HerFile] {
 }
 
 /// The owner's message: its words, pictures and the files it names, either way they name them.
-private func ownerKind(_ content: [HerUserContent], queued: Bool) -> HerItem.Kind {
+func ownerKind(_ content: [HerUserContent], queued: Bool) -> HerItem.Kind {
     var words: [String] = [], files: [String] = [], images: [HerImage] = []
     for c in content {
         switch c {
@@ -267,12 +274,12 @@ private func ownerKind(_ content: [HerUserContent], queued: Bool) -> HerItem.Kin
     return .user(text: text, images: images, files: files, queued: queued)
 }
 
-private func texts(_ content: [HerUserContent]) -> String {
+func texts(_ content: [HerUserContent]) -> String {
     content.compactMap { if case .text(let t) = $0 { return t } else { return nil } }.joined(separator: "\n")
 }
 
 /// A refusal's result: her answers a denied call with an error result.
-private func deniedText(_ text: String) -> Bool {
+func deniedText(_ text: String) -> Bool {
     text.range(of: #"^(denied|rejected) by (the )?user"#, options: [.regularExpression, .caseInsensitive]) != nil
 }
 
@@ -293,11 +300,6 @@ public func baseName(_ path: String) -> String {
 }
 
 // MARK: What a message names
-
-/// The block the composer puts after a message's words to name the files uploaded for it (her-client's attachedBlock).
-public func attachedBlock(_ paths: [String]) -> HerUserContent {
-    .text((paths.contains { $0.lowercased().hasSuffix(".xlsx") || $0.lowercased().hasSuffix(".xlsm") } ? attachedWithWorkbooks : attached) + paths.joined(separator: "\n"))
-}
 
 private let attached = "Attached files:\n"
 private let attachedWithWorkbooks = "Attached files. For XLSX and XLSM workbooks, use the deferred doc tools (doc_open, then doc_read) instead of unpacking them or parsing them with shell/Python:\n"

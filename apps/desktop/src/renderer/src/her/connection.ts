@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { applyEvents, fromSnapshot, mergeBots, openCallTransport, RpcClient, RpcError, sortBots, withHistory, type SessionView } from "@hermesh/her-client";
+import { agentHistoryCursor, applyEvents, fromSnapshot, mergeBots, openCallTransport, RpcClient, RpcError, sortBots, withAgentHistory, withHistory, type SessionView } from "@hermesh/her-client";
 import type { BotSummary, Event, EventClass, ModelsListResult, SessionNewResult } from "@hermesh/her-protocol";
 import type { HerWaiting, Machine } from "@hermesh/proto/local";
 import { local } from "../api";
@@ -121,11 +121,16 @@ function keepView(key: string, session: string, view: SessionView) {
 export type Conversation = {
   view: SessionView | null;
   session: string | null;
-  /** The conversation's connection, while it is open. */
+  /** The conversation's connection, while it is open, and its id: a message is delivered on it (HerSend). */
   rpc: RpcClient | null;
+  connectionId: string | null;
+  /** The connection is opening again after it was open: a reply may take a moment. */
+  reconnecting: boolean;
   /** her can't start the conversation: no model works in the environment. */
   noModel: boolean;
   loadEarlier: () => Promise<void>;
+  /** The page of a sub-agent's own history before what its view has (docs/her-team.md §15.4). */
+  loadAgentEarlier: (agentId: string) => Promise<void>;
 };
 
 /**
@@ -141,14 +146,17 @@ export function useConversation(machine: Machine, bot: BotSummary | undefined, s
   const live = reachable(machine);
   const running = !!machine.her?.running;
   const modelReady = !!machine.her?.modelReady;
-  const [got, setGot] = useState<{ key: string; session: string | null; view: SessionView | null; rpc: RpcClient | null; noModel: boolean }>(() => ({
+  const [got, setGot] = useState<{ key: string; session: string | null; view: SessionView | null; rpc: RpcClient | null; connectionId: string | null; reconnecting: boolean; noModel: boolean }>(() => ({
     key,
     session: keptViews.get(key)?.session ?? null,
     view: keptViews.get(key)?.view ?? null,
     rpc: null,
+    connectionId: null,
+    reconnecting: false,
     noModel: false,
   }));
   const earlier = useRef<() => Promise<void>>(async () => {});
+  const agentEarlier = useRef<(agentId: string) => Promise<void>>(async () => {});
   // A conversation cleared, or detached by her, is opened again.
   const [generation, setGeneration] = useState(0);
   const attached = got.key === key ? got.session : null;
@@ -158,6 +166,12 @@ export function useConversation(machine: Machine, bot: BotSummary | undefined, s
   }, [sessionNow]);
   const failures = useRef(0);
   const [attempt, setAttempt] = useState(0);
+  // A model connected opens the conversation her refused for want of one; otherwise what the machine says of its
+  // models changes nothing on an open conversation (docs/her-sending.md §5.4).
+  const refused = got.key === key && got.noModel;
+  useEffect(() => {
+    if (modelReady && refused) setGeneration((g) => g + 1);
+  }, [modelReady]);
 
   useEffect(() => {
     if (!botId || !live || !running) return;
@@ -167,9 +181,17 @@ export function useConversation(machine: Machine, bot: BotSummary | undefined, s
     let pending: Event[] = [];
     let frame = 0;
     let rpc: RpcClient | null = null;
+    let connectionId: string | null = null;
     const publish = (patch: Partial<typeof got> = {}) => {
       if (view && session) keepView(key, session, view);
-      setGot((g) => ({ ...(g.key === key ? g : { key, session: null, view: null, rpc: null, noModel: false }), session, view, rpc, ...patch }));
+      setGot((g) => ({
+        ...(g.key === key ? g : { key, session: null, view: null, rpc: null, connectionId: null, reconnecting: false, noModel: false }),
+        session,
+        view,
+        rpc,
+        connectionId,
+        ...patch,
+      }));
     };
     const flush = () => {
       frame = 0;
@@ -180,7 +202,7 @@ export function useConversation(machine: Machine, bot: BotSummary | undefined, s
     };
     const transport = openCallTransport(herAdapter(local, id), {
       setup: [{ method: "bots/open", params: { bot_id: botId, events: notStreamed } }],
-      onOpened: ([r]) => {
+      onOpened: ([r], opened) => {
         if (!r || "error" in r) {
           const kind = r && "error" in r ? new RpcError(r.error as never).kind : "";
           // Deleted meanwhile: the list hears of it too. Without a model, the page says so.
@@ -189,12 +211,13 @@ export function useConversation(machine: Machine, bot: BotSummary | undefined, s
           return;
         }
         failures.current = 0;
-        const opened = r.result as SessionNewResult;
-        session = opened.session_id;
+        const result = r.result as SessionNewResult;
+        session = result.session_id;
+        connectionId = opened;
         // Events up to the snapshot are in it already: applyEvents skips them by seq.
-        view = applyEvents(fromSnapshot(opened.snapshot), pending);
+        view = applyEvents(fromSnapshot(result.snapshot), pending);
         pending = [];
-        publish({ noModel: false });
+        publish({ noModel: false, reconnecting: false });
       },
     });
     rpc = new RpcClient(transport);
@@ -224,26 +247,54 @@ export function useConversation(machine: Machine, bot: BotSummary | undefined, s
         .finally(() => (paging = null));
       return paging;
     };
+    // A sub-agent's earlier history is read on the same connection, with the cursor its page gave: one page at a
+    // time for each agent, and a page that comes after its view moved on is dropped.
+    const agentPaging = new Map<string, Promise<void>>();
+    agentEarlier.current = (agentId) => {
+      const agent = view?.agents.find((a) => a.id === agentId);
+      const cursor = agent && agentHistoryCursor(agent);
+      if (!cursor || !session) return Promise.resolve();
+      let page = agentPaging.get(agentId);
+      if (!page) {
+        page = client
+          .request("session/history", { session_id: session, before: cursor })
+          .then((p) => {
+            if (stop || !view || view.agents.find((a) => a.id === agentId)?.view.before !== cursor) return;
+            view = withAgentHistory(view, agentId, p);
+            publish();
+          })
+          .catch((e) => {
+            if (!stop) show(errorText(e));
+          })
+          .finally(() => agentPaging.delete(agentId));
+        agentPaging.set(agentId, page);
+      }
+      return page;
+    };
     client.onClose(() => {
       if (stop) return;
       rpc = null;
-      setGot((g) => (g.key === key ? { ...g, rpc: null } : g));
+      connectionId = null;
+      setGot((g) => (g.key === key ? { ...g, rpc: null, connectionId: null, reconnecting: g.session !== null } : g));
       failures.current += 1;
       setTimeout(() => !stop && setAttempt((a) => a + 1), retryIn(failures.current));
     });
     return () => {
       stop = true;
       earlier.current = async () => {};
+      agentEarlier.current = async () => {};
       cancelAnimationFrame(frame);
       transport.close();
-      setGot((g) => (g.key === key && g.rpc === client ? { ...g, rpc: null } : g));
+      setGot((g) => (g.key === key && g.rpc === client ? { ...g, rpc: null, connectionId: null } : g));
     };
-  }, [id, botId, live, running, modelReady, generation, attempt]);
+  }, [id, botId, live, running, generation, attempt]);
 
   const loadEarlier = useCallback(() => earlier.current(), []);
-  if (got.key === key) return { view: got.view, session: got.session, rpc: got.rpc, noModel: got.noModel, loadEarlier };
+  const loadAgentEarlier = useCallback((agentId: string) => agentEarlier.current(agentId), []);
+  if (got.key === key)
+    return { view: got.view, session: got.session, rpc: got.rpc, connectionId: got.connectionId, reconnecting: got.reconnecting, noModel: got.noModel, loadEarlier, loadAgentEarlier };
   const kept = keptViews.get(key);
-  return { view: kept?.view ?? null, session: kept?.session ?? null, rpc: null, noModel: false, loadEarlier };
+  return { view: kept?.view ?? null, session: kept?.session ?? null, rpc: null, connectionId: null, reconnecting: false, noModel: false, loadEarlier, loadAgentEarlier };
 }
 
 /**
@@ -271,11 +322,10 @@ export function useKept(machineId: string): Kept | null {
  * back (ListHerWaiting): asked for when the page shows the environment, when
  * the machine comes and goes, and when `refresh` says something changed.
  */
-export function useWaiting(machine: Machine): { list: HerWaiting[]; refresh: () => void } {
+export function useWaiting(machine: Machine): { list: HerWaiting[]; refresh: () => Promise<HerWaiting[]> } {
   const id = machine.machineId;
   const live = reachable(machine);
   const [got, setGot] = useState<{ id: string; list: HerWaiting[] }>({ id, list: [] });
-  const [asked, setAsked] = useState(0);
   useEffect(() => {
     let stop = false;
     local.listHerWaiting({ machineId: id }).then(
@@ -285,7 +335,18 @@ export function useWaiting(machine: Machine): { list: HerWaiting[]; refresh: () 
     return () => {
       stop = true;
     };
-  }, [id, live, asked]);
-  const refresh = useCallback(() => setAsked((a) => a + 1), []);
+  }, [id, live]);
+  // The list as it is now, also to the caller: whether a message is kept there.
+  const refresh = useCallback(
+    () =>
+      local.listHerWaiting({ machineId: id }).then(
+        (r) => {
+          setGot({ id, list: r.waiting });
+          return r.waiting;
+        },
+        () => [] as HerWaiting[],
+      ),
+    [id],
+  );
   return { list: got.id === id ? got.list : [], refresh };
 }

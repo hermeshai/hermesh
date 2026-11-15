@@ -1213,6 +1213,7 @@ impl Kernel {
             input,
             mode: PromptMode::Steer,
             commands: true,
+            id: None,
         })
         .await?;
         let mut events = Vec::new();
@@ -1268,7 +1269,7 @@ async fn submission_loop(
             op = ops.recv() => {
                 let Some(op) = op else { break };
                 match op {
-                    Op::Prompt { input, mode, commands } => task::on_prompt(&session, input, mode, commands),
+                    Op::Prompt { input, mode, commands, id } => task::on_prompt(&session, input, mode, commands, id),
                     Op::Resend { message_id, input, commands } => task::on_resend(&session, message_id, input, commands),
                     Op::Continue => task::on_continue(&session),
                     Op::Interrupt => session.interrupt(),

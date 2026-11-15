@@ -124,6 +124,7 @@ type Owner struct {
 	// Her (her.go). herWake has the waiting messages tried now; herSeen
 	// is each machine's Her as last seen, kept in the store.
 	herWake chan struct{}
+	herBots sync.Map // each assistant's delivery lock, by machine/assistant (herBotLock)
 	herMu   sync.Mutex
 	herSeen map[string]*machinev1.HerStatus
 	// herReach, when set, is how tests reach a machine's HerService.

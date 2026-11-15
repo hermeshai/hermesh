@@ -23,6 +23,29 @@ extension HermeshUITests {
         herTeamAppearanceAndRestart()
     }
 
+    /// Progress (docs/her-team.md §15): the work Her sent out as cards, and a sub-agent's record.
+    ///
+    ///     HERMESH_IPHONE_E2E=1 HERMESH_IPHONE_GREP=testHerProgress go test ./e2e -run TestIPhone -v -timeout 40m
+    @objc func testHerProgress() throws {
+        guard ProcessInfo.processInfo.environment["HERMESH_E2E_HER"] != nil else { throw XCTSkip("run with Her built") }
+        try join()
+        try herTurnOn()
+        try herOnboarding()
+        try herProgress()
+    }
+
+    /// Sending (docs/her-sending.md) on its own: a message leaves the composer at once and shows once.
+    ///
+    ///     HERMESH_IPHONE_E2E=1 HERMESH_IPHONE_GREP=testHerSending go test ./e2e -run TestIPhone -v -timeout 40m
+    @objc func testHerSending() throws {
+        guard ProcessInfo.processInfo.environment["HERMESH_E2E_HER"] != nil else { throw XCTSkip("run with Her built") }
+        try join()
+        try herTurnOn()
+        try herOnboarding()
+        try herChat()
+        try herSendingOnce()
+    }
+
     @objc func testHer() throws {
         guard ProcessInfo.processInfo.environment["HERMESH_E2E_HER"] != nil else { throw XCTSkip("run by TestIPhone with her built (HERMESH_E2E_HER)") }
         try XCTContext.runActivity(named: "joins the owner by its connection address") { _ in try join() }
@@ -30,6 +53,7 @@ extension HermeshUITests {
         try XCTContext.runActivity(named: "with no model, Her speaks first, offers the ways, and connects a Token Plan") { _ in try herOnboarding() }
         try XCTContext.runActivity(named: "a chat: the message, then Her's reply") { _ in try herChat() }
         try XCTContext.runActivity(named: "typing Chinese at a line's end, the composer holds its height") { _ in try herTypingChinese() }
+        try XCTContext.runActivity(named: "a message leaves the composer at once and shows once: typed, while Pinyin composes, and with the connection gone") { _ in try herSendingOnce() }
         try XCTContext.runActivity(named: "the plus beside the field: what it adds opens out of it, the field staying") { _ in try herAdd() }
         try XCTContext.runActivity(named: "her name opens her settings, a page of their own") { _ in try herSettings() }
         try XCTContext.runActivity(named: "what she notes shows in her settings as written, and is cleared there") { _ in try herMemory() }
@@ -165,6 +189,54 @@ extension HermeshUITests {
         // Cleared, it is one line again at once.
         composer.typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: text.count + 10))
         try waitFor("one line again") { abs(height() - one) < 1 ? true : nil }
+    }
+
+    /// A message sent leaves the composer at once and shows once (docs/her-sending.md): typed; sent while the Pinyin
+    /// keyboard still composes, what it composed going with it and not back into the field; and sent while the
+    /// conversation's connection is gone (the relay down), delivered once it is back.
+    func herSendingOnce() throws {
+        let composer = app.descendants(matching: .any)["her-composer"].firstMatch
+        XCTAssertTrue(composer.waitForExistence(timeout: 30))
+        func typed() -> String {
+            let v = composer.value as? String ?? ""
+            return v == composer.placeholderValue ? "" : v
+        }
+        func shown(_ label: String) -> Int { app.staticTexts.matching(NSPredicate(format: "label == %@", label)).count }
+
+        herSend("[[mock:send:只收到一次]] hi")
+        XCTAssertTrue(waitUntil(timeout: 2) { typed().isEmpty }, "emptied at once: \(typed())")
+        XCTAssertTrue(app.staticTexts["只收到一次"].waitForExistence(timeout: 60), "Her's reply")
+        XCTAssertEqual(shown("[[mock:send:只收到一次]] hi"), 1, "the message once")
+        XCTAssertTrue(typed().isEmpty, "nothing came back into the composer: \(typed())")
+
+        // Pinyin being composed, no character chosen yet: Send. Before 2026-11-15 the message went, the keyboard wrote
+        // what it composed back into the emptied field, and Send stayed greyed out under it.
+        composer.tap()
+        XCTAssertTrue(app.keys["n"].waitForExistence(timeout: 10), "the keyboard")
+        composer.typeText("[[mock:send:拼音也送到了]] ")
+        for c in "nihao" { app.keys[String(c)].tap() }
+        XCTAssertTrue(app.buttons["her-send"].isEnabled, "Send takes what is being composed")
+        app.buttons["her-send"].tap()
+        XCTAssertTrue(app.staticTexts["拼音也送到了"].waitForExistence(timeout: 60), "Her's reply")
+        let went = app.staticTexts.matching(NSPredicate(format: "label BEGINSWITH %@", "[[mock:send:拼音也送到了]]"))
+        XCTAssertEqual(went.count, 1, "the message once")
+        XCTAssertTrue(went.firstMatch.label.lowercased().contains("ni"), "with what was composed: \(went.firstMatch.label)")
+        sleep(2)
+        XCTAssertTrue(typed().isEmpty, "the keyboard wrote nothing back: \(typed())")
+        XCTAssertTrue(waitUntil(timeout: 5) { app.keyboards.count > 0 }, "the field has the keyboard again")
+        herShot("Her: sent while Pinyin composed")
+
+        // The connection gone: the message shows at once, waits, and goes once the relay is back.
+        _ = try control("relay?up=0", method: "POST")
+        herSend("[[mock:send:断线后送达]] hi")
+        XCTAssertTrue(waitUntil(timeout: 2) { typed().isEmpty }, "emptied at once: \(typed())")
+        let row = app.descendants(matching: .any).matching(NSPredicate(format: "identifier IN %@", ["her-sending", "her-waiting"])).firstMatch
+        XCTAssertTrue(row.waitForExistence(timeout: 10), "shown as being sent, then waiting")
+        herShot("Her: sent with the relay down")
+        _ = try control("relay?up=1", method: "POST")
+        XCTAssertTrue(app.staticTexts["断线后送达"].waitForExistence(timeout: 180), "delivered once the relay is back, and answered")
+        XCTAssertEqual(shown("[[mock:send:断线后送达]] hi"), 1, "the message once")
+        XCTAssertTrue(waitUntil(timeout: 30) { !app.descendants(matching: .any)["her-waiting"].exists && !app.descendants(matching: .any)["her-sending"].exists })
     }
 
     func herAdd() throws {
@@ -603,6 +675,75 @@ extension HermeshUITests {
         for _ in 0 ..< 4 where !approve.exists { app.swipeUp() }
         tap("sign-approve")
         XCTAssertTrue(text("开始之前，我需要接上一个模型").waitForExistence(timeout: 180), "a new Her, asking for a model")
+    }
+
+    /// Progress: under Her in the menu, empty until she sends work out; a sub-agent she starts is a post of its own,
+    /// which says that it asks, and opens what set it off in itself by its ⓘ; its record shows what Her
+    /// asked of it, answers its question there, then shows its call, its report, and how long and how many tokens it
+    /// took; ended, its post is among the earlier ones.
+    func herProgress() throws {
+        openMenu()
+        let drawer = app.descendants(matching: .any)["drawer"]
+        let place = drawer.buttons["progress-place"]
+        XCTAssertTrue(place.waitForExistence(timeout: 10), "Progress, once Her is on")
+        XCTAssertGreaterThan(place.frame.minY, drawer.buttons["her-place"].frame.minY, "under Her")
+        XCTAssertLessThan(place.frame.minY, drawer.buttons["work-place"].frame.minY, "above Work")
+        place.tap()
+        XCTAssertTrue(app.navigationBars["进展"].waitForExistence(timeout: 10))
+        XCTAssertTrue(app.descendants(matching: .any)["progress-empty"].firstMatch.waitForExistence(timeout: 30), "nothing sent out yet")
+        herShot("Progress: nothing sent out yet")
+
+        // Her hands a piece of work to a sub-agent (her-mock's relay_slow: "写长文", which runs a command).
+        openMenu()
+        tap("her-place")
+        herSend("[[mock:relay_slow:3]] 写一篇长文")
+        XCTAssertTrue(text("好，这个要一会儿，写好发你。").waitForExistence(timeout: 60), "Her's words")
+        openMenu()
+        tap("progress-place")
+        let card = app.descendants(matching: .any)["progress-card-写长文"].firstMatch
+        XCTAssertTrue(card.waitForExistence(timeout: 30), "the sub-agent's post")
+        try waitFor("the post says it waits for the owner", timeout: 60) { card.label.contains("等你批准") ? true : nil }
+        XCTAssertTrue(text("需要你").exists, "among what needs the owner")
+        XCTAssertTrue(app.buttons["progress-review"].exists, "a way to its question")
+        herShot("Progress: a sub-agent waits")
+
+        // What set it off, opened in the post by its ⓘ: the owner's words and Her's.
+        let why = app.buttons["progress-why"].firstMatch
+        XCTAssertTrue(why.exists, "the post's ⓘ")
+        why.tap()
+        let note = app.descendants(matching: .any)["progress-source"].firstMatch
+        XCTAssertTrue(note.waitForExistence(timeout: 10), "what set it off, in the post")
+        XCTAssertTrue(text("来自你的一句话").exists)
+        XCTAssertTrue(text("写一篇长文").exists, "what the owner said")
+        XCTAssertTrue(text("好，这个要一会儿，写好发你。").exists, "what Her said back")
+        herShot("Progress: what set it off")
+        why.tap()
+        XCTAssertTrue(waitUntil { !note.exists }, "it folds again")
+
+        // Its record: what Her asked of it, and its question, answered there.
+        tap("progress-review")
+        XCTAssertTrue(app.navigationBars["写长文"].waitForExistence(timeout: 10), "the record's page")
+        let brief = app.descendants(matching: .any)["progress-brief"].firstMatch
+        XCTAssertTrue(brief.waitForExistence(timeout: 10) && brief.label.contains("Write it and report."), "what Her asked")
+        XCTAssertTrue(app.descendants(matching: .any)["her-approval"].firstMatch.waitForExistence(timeout: 30), "its question")
+        XCTAssertTrue(text("运行这条命令？").exists)
+        herShot("Progress: a record that asks")
+        tap("her-allow-once")
+        let state = app.descendants(matching: .any)["progress-state"].firstMatch
+        try waitFor("the record says it is done", timeout: 90) { state.label == "完成" ? true : nil }
+        XCTAssertTrue(app.descendants(matching: .any)["progress-report"].firstMatch.waitForExistence(timeout: 10), "its last words, as its report")
+        let facts = app.descendants(matching: .any)["progress-facts"].firstMatch
+        XCTAssertTrue(facts.label.contains("用时") && facts.label.contains("Tokens") && facts.label.contains("步骤"), facts.label)
+        XCTAssertTrue(text("sleep 3").exists, "its call, as a line")
+        herShot("Progress: a record that ended")
+
+        // Back in the feed it is among the earlier ones, and says how it ended.
+        app.navigationBars.buttons.element(boundBy: 0).tap()
+        XCTAssertTrue(app.navigationBars["进展"].waitForExistence(timeout: 10))
+        XCTAssertTrue(waitUntil(timeout: 60) { card.label.contains("完成") }, "the post says it is done: \(card.label)")
+        XCTAssertTrue(text("早些时候").exists, "among the earlier ones")
+        XCTAssertFalse(text("需要你").exists, "nothing needs the owner now")
+        herShot("Progress: ended")
     }
 
     // MARK: Helpers

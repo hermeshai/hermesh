@@ -3370,6 +3370,8 @@ export type NumberScheme = "arabic_period" | "arabic_paren_r" | "arabic_paren_bo
 export type Op = {
   /** Whether a leading `/name` is a command: a built-in one such as `/compact`, or a skill, whose instructions replace it. Front ends leave it out; messages between agents set false. */
   commands?: boolean;
+  /** The input's id, given by the front end: the `message_id` it has once it joins the history. A prompt whose id the session knows already, in its history or its queues, is taken once: sent again, it changes nothing. At most 64 of `A-Z a-z 0-9 _ -`; left out, the kernel gives one. */
+  id?: string | null;
   input: UserContent[];
   mode?: PromptMode;
   type: "prompt";

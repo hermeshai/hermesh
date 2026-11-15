@@ -123,6 +123,9 @@ public final class HerConnection: @unchecked Sendable {
     /// Whether the connection has ended.
     public var isEnded: Bool { lock.withLock { ended } }
 
+    /// The connection's id while it is open: a message can be delivered on it (HerSend's connection_id).
+    public var connectionID: String? { lock.withLock { id } }
+
     private func connectionID() async -> String? {
         await withCheckedContinuation { k in
             lock.lock()

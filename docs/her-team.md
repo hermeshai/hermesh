@@ -922,3 +922,131 @@ Decided by the owner on 2026-11-15, on the demo's board A2.
   with the expanded sidebar (1204 with the rail), the expanded sidebar
   1132 px, and the list gives way below 934 px (rail, list and
   conversation).
+
+## 15. Progress
+
+Decided by the owner on 2026-11-15, on a clickable demo ([Hermesh ·
+进展](https://claude.ai/artifact/QHG99cUAwDCFf3fbpsggBT)), and built the same
+day on the Mac and the iPhone. Her hands work out: to sub-agents of her own
+(`spawn_agent`) and to coding sessions on the mesh (`session_start`). Her
+conversation says little of them, and should: Progress is where the owner
+follows that work, as they would ask a secretary how things stand.
+
+### 15.1 The page
+
+- **Where.** Under Her in the sidebar, the rail and the iPhone's menu, once
+  Her runs on a machine. Its mark is an orange dot while a piece of her work
+  waits for the owner, and a ring with how many are at work. Her coding
+  sessions are counted as Watch brings them; her sub-agents, while a page of
+  hers follows her conversation (nothing tells the app of them otherwise).
+- **Groups.** One for each thing that set work off: the owner's message (its
+  words head the group, with what Her last told the owner since), or a
+  routine's run. A message that sent nothing out is no group. Agents whose
+  `spawn_agent` calls are on a page of the history not read yet are a group
+  of their own, "Asked earlier", until that page is read (Earlier Work).
+- **Order.** Groups with something waiting, then those at work, the latest
+  first; then the ended ones under "Ended". A group that had ended when the
+  page came up is folded; one that ends while it shows stays open.
+- **A card** says who does the work (a sub-agent, or the coding agent and
+  its machine), how it stands (starting, in progress, needs your approval,
+  done, failed, stopped), what the work is (what Her called it, else its
+  task's first line), one line of what it does now or how it ended, and how
+  long it ran with how many tokens it used. Not when it started.
+
+That was the first version. Using it, the owner found that most messages
+send one piece of work out, so the page was a list of groups of one; on both
+apps it became a feed instead, decided on 2026-11-15 on a second demo
+([进展 · iPhone 信息流](https://claude.ai/artifact/KPaxCyu9xG8oQBsoEAhiZL)).
+The groups stay as the data (`progressGroups`, `herProgress`); the page
+shows each task of theirs as a post:
+
+- **One post a piece of work**, in three parts: Needs you (it waits for the
+  owner, or failed), Now (at work), Earlier (ended); the latest first in
+  each. No summary line, no filter.
+- **A post** is its title alone, a few lines of how it goes (what it asks,
+  why it failed, the start of its report, else its latest words or
+  thought; up to four), one piece that shows where it stands, and a foot:
+  one time on the left (how long it has worked, in the accent, or how long
+  ago it ended) with the tokens it used, and ⓘ on the right. Only a post
+  that needs the owner has a mark: an orange dot when it waits, a red one
+  when it failed. No picture, no state word: the part it is under says
+  that. (Decided 2026-11-15 after trying it on the phone: what set it off,
+  shown on every post, made the feed busy.)
+- **The piece**: while a sub-agent works, a bar for each call it made (the
+  last beating) and the call it is on; while it waits, Review, which opens
+  its record, where the approval is answered (an approval shows what it
+  would run, too much for a post); done, the files it wrote. A coding
+  session: the tool it runs, or the lines it changed. Results with more to
+  show (numbers, tables) need sub-agents to report them in a shape the
+  apps can read, which they do not yet.
+- **What set it off** opens in the post itself, by its ⓘ: what the owner
+  said and when, what Her said back, the rest it sent out for that, each as
+  it stands (a click opens one), and a way to the conversation. A record's
+  page keeps it as a capsule at its top, shown whole in a sheet (iPhone)
+  or a panel over the page (Mac).
+
+### 15.2 A card's page
+
+A sub-agent's card opens its record: the owner's words that set it off, the
+other cards of the same group (one tap shows another; both are now behind
+the capsule at its top, and the iPhone shows how long it ran, its tokens and
+its steps as three tiles), what Her asked of it,
+then everything it thought, said and called, in order, and how it ended: its
+last words are its report to Her. Thoughts show whole; a call is a line that
+opens to its output, and Expand All Output opens them all. What it asks the
+owner is answered there, with the approval the conversation shows. Stop
+interrupts it (`agent_interrupt`).
+
+A coding session's card shows the session's own conversation: on the Mac
+inside Progress, with a link to it among all sessions; on the iPhone the
+session's page is pushed.
+
+It reads as a session does (the same rows for thoughts and calls), and is
+not one: a sub-agent is not among All Sessions, where it would read as work
+somebody sent to the team.
+
+### 15.3 Where the data comes from
+
+Nothing new is asked of her. The conversation the Her page follows
+(`bots/open`, then `session/event`) already carries every sub-agent's own
+session: the snapshot's `agents`, then each `agent_event`. The groups, the
+cards and the record are pure functions of that state: `progress.ts` in
+`@hermesh/her-client` and `Progress.swift` in `HermeshHer`, with the same
+tests. A view's steps are worked out once (it is replaced, never changed).
+
+- **One connection.** On the Mac, Progress is the Her page's own component:
+  going from the conversation to Progress to a record opens nothing. On the
+  iPhone the pages hold Her's connections one after another (`HerChat.hold`),
+  which close a moment after the last page let go; before, each page of
+  hers opened them again.
+- **Rows as they show.** The Mac's record lays a row out when it comes into
+  view (`content-visibility`); the iPhone's is a lazy stack.
+- **Offline.** What hermeshd keeps of Her's conversation has no agents: the
+  page then says the work shows once the machine is back.
+
+### 15.4 A long record
+
+A snapshot carries each agent's last 100 items, as it does the
+conversation's. The agent's page now has a cursor that names the agent
+(`<agent id>/i<n>`), and `session/history` on the main session, given such
+a cursor, answers with that agent's earlier items (`her-server`'s mirror).
+The apps read on with it when asked (Earlier Steps), one page at a time. A
+her from before this gives the agent's page a cursor of the main session's
+kind; the apps tell by the `/` and do not read on with it.
+
+### 15.5 Tests
+
+- `cargo test -p her-server --lib mirror`: an agent's history by its cursor.
+- `@hermesh/her-client` `progress.test.ts`, and `ProgressTests.swift` in
+  `HermeshHerTests`: groups, card states and posts (what they say, the call
+  under way, the files written), tokens and times, the
+  record's steps, agents of earlier pages and their cursor, a routine's run.
+- `go test ./e2e -run '^TestDesktopHerProgress$'`: real hermeshd and her
+  with her-mock, the Mac app: the entry appears with Her; an empty page; a
+  sub-agent's post under Needs you, what set it off opened by its ⓘ, Review to
+  its record, the approval answered there, its report, time and tokens; the
+  post under Earlier once it ends; a coding session's post and its record.
+- `HERMESH_IPHONE_E2E=1 HERMESH_IPHONE_GREP=testHerProgress go test ./e2e
+  -run '^TestIPhone$'`: the same story on the iPhone's feed: the post under
+  Needs you, its ⓘ with the owner's words and Her's, Review to
+  the record, and the ended post under Earlier.

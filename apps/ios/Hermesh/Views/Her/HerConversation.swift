@@ -27,6 +27,8 @@ struct HerConversation: View {
     @State private var preview: URL?
     /// Markdown or code Her sent, brought here to read on a page of the app's.
     @State private var page: HerFileText?
+    /// The conversation's connection has been opening again for a while.
+    @State private var slow = false
 
     /// No model works there: Her's onboarding, the app speaking for her, until the conversation opens on one.
     private var noModel: Bool { state == .noModel || chat.noModel }
@@ -36,7 +38,7 @@ struct HerConversation: View {
 
     var body: some View {
         let said = chat.session.map(herChat) ?? []
-        let waiting = chat.bot.map { herWaiting(chat.waiting, botID: $0.id, said: said) } ?? []
+        let waiting = chat.bot.map { herOutbox(sending: chat.sending, waiting: chat.waiting, botID: $0.id, said: said) } ?? []
         let place = herOnboardingPlace(chat.flow, noModel: noModel, session: chat.session?.sessionID, last: (said + waiting).last?.key)
         let rows = herWithOnboarding(said + waiting, place, at: chat.flow?.at ?? .now)
         let busy = chat.live.map(herBusy) ?? false
@@ -85,14 +87,26 @@ struct HerConversation: View {
             if rows.isEmpty && !busy { HerEmpty(chat: chat, machine: machine, loading: noModel || (chat.session == nil && state == .ready)) }
         }
         .safeAreaInset(edge: .top) {
-            if case .offline(let seen) = state { HerOfflineLine(name: machine.machineName, seen: seen) }
+            if case .offline(let seen) = state {
+                HerOfflineLine(name: machine.machineName, seen: seen)
+            } else if state == .ready && slow {
+                HerConnectingLine(name: machine.machineName)
+            }
+        }
+        // The conversation's connection opening again for more than a moment: a reply may take a while, and the page
+        // says why (docs/her-sending.md §5.4).
+        .task(id: chat.reconnecting) {
+            slow = false
+            guard chat.reconnecting else { return }
+            try? await Task.sleep(for: .seconds(2))
+            if !Task.isCancelled { slow = chat.reconnecting }
         }
         .safeAreaInset(edge: .bottom) {
             Group {
                 if let asking {
                     HerApprovalPanel(chat: chat, approval: asking.approval, agent: asking.agent, waiting: asking.waiting).id(asking.approval.callID)
                 } else {
-                    HerComposer(chat: chat, machine: machine, state: state, noModel: noModel, direct: state == .ready && chat.convUp && waiting.isEmpty)
+                    HerComposer(chat: chat, machine: machine, state: state, noModel: noModel)
                 }
             }
             .toEndButton(away) {
@@ -130,7 +144,7 @@ private enum HerSide { case owner, her }
 private extension HerItem {
     var side: HerSide? {
         switch kind {
-        case .user, .waiting: .owner
+        case .user, .waiting, .sending: .owner
         case .her, .attachment, .question, .card, .session, .work: .her
         case .failure, .onboarding: nil
         }
@@ -199,6 +213,27 @@ private struct HerRow: View {
             .frame(maxWidth: .infinity, alignment: .trailing)
             .accessibilityElement(children: .contain)
             .accessibilityIdentifier("her-waiting")
+        case .sending(let id, let text, let images, let files, let refused):
+            VStack(alignment: .trailing, spacing: 5) {
+                HerBubble(text: text, images: images, files: files).opacity(refused == nil ? 0.62 : 1)
+                HStack(spacing: 8) {
+                    if let refused {
+                        Label("Not delivered: \(refused)", systemImage: "exclamationmark.triangle").lineLimit(2)
+                        Button("Try Again") { chat.retry(id) }
+                            .fontWeight(.semibold).foregroundStyle(.secondary)
+                            .accessibilityIdentifier("her-retry")
+                        Button("Edit") { chat.edit(id) }
+                            .fontWeight(.semibold).foregroundStyle(.secondary)
+                            .accessibilityIdentifier("her-edit")
+                    } else {
+                        Text("Sending…")
+                    }
+                }
+                .font(.caption).foregroundStyle(.tertiary)
+            }
+            .frame(maxWidth: .infinity, alignment: .trailing)
+            .accessibilityElement(children: .contain)
+            .accessibilityIdentifier("her-sending")
         case .her(let text):
             HerWords(text: text)
         case .attachment(let files, let text):
@@ -677,6 +712,25 @@ private struct HerOfflineLine: View {
         .padding(.top, 4)
         .accessibilityElement(children: .combine)
         .accessibilityIdentifier("her-offline")
+    }
+}
+
+/// The conversation's connection opening again, under the top, while the machine answers.
+private struct HerConnectingLine: View {
+    let name: String
+
+    var body: some View {
+        HStack(spacing: 7) {
+            ProgressView().controlSize(.mini)
+            Text("Connecting to \(name)…")
+        }
+        .font(.footnote).foregroundStyle(.secondary)
+        .padding(.horizontal, 12).padding(.vertical, 7)
+        .background(.bar, in: .capsule)
+        .frame(maxWidth: .infinity)
+        .padding(.top, 4)
+        .accessibilityElement(children: .combine)
+        .accessibilityIdentifier("her-connecting")
     }
 }
 

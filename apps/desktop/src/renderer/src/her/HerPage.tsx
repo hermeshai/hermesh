@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { runningAgents } from "@hermesh/her-client";
 import { useTranslation } from "react-i18next";
 import type { Methods, Op } from "@hermesh/her-protocol";
 import type { Machine } from "@hermesh/proto/local";
@@ -10,6 +11,7 @@ import { AssistantPanel } from "./AssistantPanel";
 import { useConversation, useEnvironment, useKept, useWaiting } from "./connection";
 import { HerContext, useHer, type Her, type HerSheet, type Panel } from "./context";
 import { Conversation, putInComposer, showRun } from "./Conversation";
+import { Progress } from "./Progress";
 import { environments, envState, pickEnvironment } from "./environments";
 import { RoutinesPanel } from "./RoutinesPanel";
 import { FirstRun, Setup } from "./Setup";
@@ -45,13 +47,15 @@ function rememberEnv(machine: string) {
 export default function HerPage() {
   const st = useStore();
   const envs = useMemo(() => environments(st.machines), [st.machines]);
-  const wanted = st.selection.kind === "her" ? st.selection.machine : undefined;
+  const wanted = st.selection.kind === "her" || st.selection.kind === "progress" ? st.selection.machine : undefined;
   const machine = pickEnvironment(envs, wanted ?? rememberedEnv());
   useEffect(() => {
     if (machine) rememberEnv(machine.machineId);
   }, [machine?.machineId]);
   const { set } = st;
-  const choose = useCallback((machineId: string) => set({ selection: { kind: "her", machine: machineId } }), [set]);
+  // Another environment: of the page shown, Her's conversation or what she sent out.
+  const progress = st.selection.kind === "progress";
+  const choose = useCallback((machineId: string) => set({ selection: { kind: progress ? "progress" : "her", machine: machineId } }), [set, progress]);
   if (!machine) return <FirstRun onDone={choose} />;
   return <Environment key={machine.machineId} machine={machine} envs={envs} choose={choose} />;
 }
@@ -59,7 +63,7 @@ export default function HerPage() {
 function Environment({ machine, envs, choose }: { machine: Machine; envs: Machine[]; choose: (machineId: string) => void }) {
   const { t } = useTranslation("her");
   const st = useStore();
-  const { show } = st;
+  const { show, set } = st;
   const env = useEnvironment(machine);
   const kept = useKept(machine.machineId);
   const waiting = useWaiting(machine);
@@ -70,6 +74,14 @@ function Environment({ machine, envs, choose }: { machine: Machine; envs: Machin
   const bot = env.bots.find((b) => b.default) ?? kept?.bot;
   const live = useConversation(machine, bot, show);
   const conv = live.view || !kept?.view ? live : { ...live, view: kept.view, session: kept.session };
+  // Her's sub-agents that wait and that work, for the sidebar's Progress entry, while her conversation is followed here.
+  const followed = live.rpc ? live.view : null;
+  const agentsWaiting = followed ? runningAgents(followed).filter((a) => (a.view.live?.approvals.length ?? 0) > 0).length : -1;
+  const agentsRunning = followed ? runningAgents(followed).length - agentsWaiting : -1;
+  useEffect(() => {
+    set({ herAgents: agentsWaiting < 0 ? null : { waits: agentsWaiting, running: agentsRunning } });
+  }, [agentsWaiting, agentsRunning, set]);
+  useEffect(() => () => set({ herAgents: null }), [set]);
   // Delivered meanwhile: what waits is asked for again as Her changes.
   const refreshWaiting = waiting.refresh;
   const anyWaiting = waiting.list.length > 0;
@@ -119,13 +131,22 @@ function Environment({ machine, envs, choose }: { machine: Machine; envs: Machin
     () => ({ machine, envs, choose, env, bot, panel, setPanel, sheet, setSheet, call, run, openConsole }),
     [machine, envs, choose, env, bot, panel, sheet, call, run, openConsole],
   );
-  const shown = bot ? panel : null;
+  // Progress (docs/her-team.md §15) is this page too: the same connections, so going from one to the other reads nothing again.
+  const sel = st.selection;
+  const progress = sel.kind === "progress" && !!bot;
+  const shown = bot && !progress ? panel : null;
   return (
     <HerContext.Provider value={her}>
       <div className={`her ${shown ? "bgopen" : ""}`}>
         <div className="scol">
-          <TopBar />
-          {bot ? <Conversation bot={bot} conv={conv} op={op} waiting={waiting.list} onWaiting={refreshWaiting} /> : <EnvStatus machine={machine} />}
+          {progress ? (
+            <Progress bot={bot} conv={conv} op={op} task={sel.kind === "progress" ? sel.task : undefined} />
+          ) : (
+            <>
+              <TopBar />
+              {bot ? <Conversation bot={bot} conv={conv} op={op} waiting={waiting.list} onWaiting={refreshWaiting} /> : <EnvStatus machine={machine} />}
+            </>
+          )}
         </div>
         {bot && shown?.kind === "settings" && (
           <AssistantPanel bot={bot} view={conv.view} op={op} files={{ rpc: conv.rpc, session: conv.session ?? "", bot: bot.id }} onClose={() => setPanel(null)} />

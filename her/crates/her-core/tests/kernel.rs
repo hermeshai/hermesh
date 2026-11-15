@@ -718,6 +718,7 @@ async fn follow_up_runs_after_the_task_would_end() {
             input: prompt("later"),
             mode: her_protocol::PromptMode::FollowUp,
             commands: true,
+            id: None,
         })
         .await
         .unwrap();
@@ -760,6 +761,7 @@ fn input(text: &str, mode: PromptMode) -> Op {
         input: prompt(text),
         mode,
         commands: true,
+        id: None,
     }
 }
 
@@ -804,6 +806,62 @@ async fn queued_input_joins_under_its_id_steering_first() {
     let requests = h.api.requests();
     assert_eq!(user_texts(&requests[1]), ["first", "now"]);
     assert_eq!(user_texts(&requests[2]), ["first", "now", "later"]);
+}
+
+fn named(text: &str, id: &str) -> Op {
+    Op::Prompt {
+        input: prompt(text),
+        mode: PromptMode::Steer,
+        commands: true,
+        id: Some(id.into()),
+    }
+}
+
+/// A front end's id is the message's: it joins the history under it, and the same prompt sent
+/// again (its answer lost) is taken once, whether it started a task, waits in the queue, or has
+/// joined the history.
+#[tokio::test]
+async fn a_prompt_given_an_id_is_taken_once() {
+    let mut h = harness(
+        PermissionMode::BypassPermissions,
+        false,
+        vec![Script::tool_call("call_1", "bash", json!({"command": "sleep 1"})), Script::text("one"), Script::text("two")],
+    )
+    .await;
+    // Sent twice at once: the second comes before the first has joined the history.
+    h.kernel.submit(named("first", "hw_first")).await.unwrap();
+    h.kernel.submit(named("first", "hw_first")).await.unwrap();
+    let started = until(&mut h.kernel, |m| matches!(m, EventMsg::ToolStarted { .. })).await;
+    let firsts: Vec<&str> = started
+        .iter()
+        .filter_map(|e| match &e.msg {
+            EventMsg::MessageCompleted { message_id, message: Message::User(_), .. } => Some(message_id.as_str()),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(firsts, ["hw_first"]);
+    let queued = queue(&mut h, named("now", "hw_now"), 1).await;
+    assert_eq!(queued[0].id, "hw_now");
+    h.kernel.submit(named("now", "hw_now")).await.unwrap();
+    h.kernel.submit(named("first", "hw_first")).await.unwrap();
+    let events = until(&mut h.kernel, |m| m.is_task_end()).await;
+    assert!(!events.iter().any(|e| matches!(&e.msg, EventMsg::QueueChanged { queued } if queued.len() > 1)));
+    assert!(!events.iter().any(|e| matches!(e.msg, EventMsg::TaskStarted { .. })), "no task of its own");
+    let joined: Vec<&str> = events
+        .iter()
+        .filter_map(|e| match &e.msg {
+            EventMsg::MessageCompleted { message_id, message: Message::User(_), .. } => Some(message_id.as_str()),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(joined, ["hw_now"]);
+    assert_eq!(user_texts(&h.api.requests()[1]), ["first", "now"]);
+
+    // Once it has joined, sent again it starts nothing; new input does.
+    h.kernel.submit(named("first", "hw_first")).await.unwrap();
+    let result = h.kernel.run(prompt("next")).await.unwrap();
+    assert!(matches!(result.end, TaskEnd::Completed { .. }));
+    assert_eq!(user_texts(h.api.requests().last().unwrap()), ["first", "now", "next"]);
 }
 
 #[tokio::test]

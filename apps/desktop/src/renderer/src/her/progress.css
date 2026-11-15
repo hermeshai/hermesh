@@ -1,0 +1,133 @@
+/* Progress (docs/her-team.md §15): the work Her sent out, as a feed with what set each piece off at its foot; and a post's page, the record of that piece of work. */
+.pg{padding:0 var(--sp-4) var(--sp-5);display:flex;flex-direction:column;gap:var(--sp-2);max-width:calc(var(--conversation-width) + 48px);margin:0 auto}
+.pg-h{display:flex;align-items:baseline;gap:var(--sp-2);height:32px;min-width:0}
+.pg-h h1{margin:0;font-size:26px;font-weight:700;letter-spacing:-.01em}
+.pg-h span{color:var(--l2);font-size:var(--fs-text)}
+.pg-empty{display:flex;flex-direction:column;align-items:center;gap:6px;padding:72px 24px;color:var(--l2);text-align:center}
+.pg-empty b{color:var(--l1);font-size:15px}
+.pg-cat{width:44px;height:44px;display:flex;margin-bottom:6px}
+.pg-cat>svg{width:100%;height:100%}
+.pg-sec{margin:0;padding:22px 0 2px;font-size:12px;font-weight:var(--font-weight-semibold);color:var(--l2)}
+.pg-more{display:flex;justify-content:center;align-items:center;min-height:28px;font-size:12.5px}
+/* A post: its title and one time, a line of how it goes, one piece that shows where it stands, what set it off. */
+.pf{display:flex;flex-direction:column}
+.pf-p{padding:14px 0 2px;border-bottom:.5px solid var(--sep)}
+.pf-main{display:flex;flex-direction:column;gap:3px;width:100%;padding:0;border:0;background:none;font:inherit;color:var(--l1);text-align:left}
+.pf-main:disabled{opacity:1}
+.pf-main:hover:not(:disabled) b{text-decoration:underline;text-decoration-color:var(--l3);text-underline-offset:3px}
+.pf-t{display:flex;align-items:baseline;gap:8px;min-width:0}
+.pf-t>i{align-self:center;flex:none}
+.pf-t b{flex:1;min-width:0;font-size:15.5px;font-weight:var(--font-weight-semibold);line-height:1.35;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;overflow-wrap:anywhere}
+.pf-time{flex:none;font-size:12px;color:var(--l2);font-variant-numeric:tabular-nums;white-space:nowrap}
+.pf-time.live{color:var(--accent-t)}
+.pf-w{font-size:13.5px;line-height:1.5;color:var(--l2);display:-webkit-box;-webkit-line-clamp:4;-webkit-box-orient:vertical;overflow:hidden;overflow-wrap:anywhere}
+.pf-well{display:flex;align-items:center;gap:12px;width:100%;min-height:40px;margin-top:10px;padding:9px 12px;border:0;border-radius:12px;background:var(--fill);font:inherit;font-size:13px;color:var(--l2);text-align:left}
+button.pf-well:hover{background:var(--fill2)}
+.pf-step{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.pf-step b{font-weight:var(--font-weight-normal);color:var(--l1)}
+.pf-step code{font-family:var(--mono);font-size:12px;color:var(--l1)}
+.pf-beat{flex:none;display:flex;align-items:flex-end;gap:3px;height:16px}
+.pf-beat i{width:4px;border-radius:2px;background:var(--accent);opacity:.34}
+.pf-beat i.now{opacity:1;transform-origin:bottom;animation:pf-beat .9s ease-in-out infinite alternate}
+@keyframes pf-beat{from{transform:scaleY(.45)}}
+.pf-ask>span{flex:1;color:var(--orange)}
+.pf-ask .btn{flex:none}
+.pf-files .ic{width:15px;height:15px;flex:none}
+.pf-files b{flex:1;min-width:0;font-weight:var(--font-weight-normal);color:var(--l1);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.pf-diff{gap:8px;font-variant-numeric:tabular-nums}
+.pf-diff b{font-size:14px}
+.pf-diff .add{color:var(--green)}
+.pf-diff .del{color:var(--orange)}
+.pf-diff span{flex:1;text-align:right}
+.pf-foot{display:flex;align-items:center;gap:6px;min-height:40px;margin-top:2px}
+.pf-from{flex:0 1 auto;min-width:0;display:inline-flex;align-items:center;gap:6px;height:26px;padding:0 10px 0 8px;border:0;border-radius:13px;background:var(--fill);font:inherit;font-size:12px;color:var(--l2)}
+.pf-from:hover:not(:disabled){background:var(--fill2);color:var(--l1)}
+.pf-from:disabled{opacity:1}
+.pf-from .ic{width:13px;height:13px;flex:none;color:var(--l3)}
+.pf-from span{min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.pf-tok{flex:none;font-size:12px;color:var(--l3);font-variant-numeric:tabular-nums}
+.pf-why{margin-left:auto;color:var(--l3)}
+.pf-why.on{color:var(--accent-t)}
+/* What set a post's work off, opened in the post. */
+.pf-why-note{display:flex;flex-direction:column;gap:6px;margin-top:12px;padding-top:12px;border-top:.5px solid var(--sep);font-size:13.5px;line-height:1.5}
+.pf-why-note>b{font-size:13px;color:var(--l2)}
+.pf-why-note>p{margin:0;white-space:pre-wrap;overflow-wrap:anywhere}
+.pf-when{font-size:12px;color:var(--l3)}
+.pf-why-note .pf-her{max-width:none;align-items:flex-start;margin-top:2px}
+.pf-why-note .pf-her p{padding:0;background:none;box-shadow:none;color:var(--l2);font-size:13.5px;display:-webkit-box;-webkit-line-clamp:4;-webkit-box-orient:vertical;overflow:hidden}
+.pf-why-note .pf-her-cat{width:18px;height:18px;margin-top:1px}
+.pf-others{display:flex;flex-direction:column;margin-top:2px}
+.pf-others>span{font-size:12px;color:var(--l2);padding:2px 0 2px}
+.pf-why-note .pf-sib{padding:6px 8px;margin:0 -8px;width:calc(100% + 16px);min-height:38px}
+.pf-chat-link{align-self:flex-start;font-size:13px;min-height:28px}
+@media (prefers-reduced-motion:reduce){.pf-beat i.now{animation:none}}
+/* What set work off, shown whole over the page. */
+.pf-src{display:flex;flex-direction:column;gap:12px;padding:14px 14px 14px;user-select:text}
+.pf-src-h{display:flex;align-items:flex-start;gap:8px;padding:0 0 2px 4px}
+.pf-src-h>div{flex:1;min-width:0}
+.pf-src-h h2{margin:0;font-size:17px;font-weight:var(--font-weight-bold)}
+.pf-src-h span{font-size:12px;color:var(--l2)}
+.pf-me{align-self:flex-end;max-width:86%;margin:0;padding:9px 14px;border-radius:18px;background:var(--accent);color:#fff;font-size:14px;line-height:1.5;white-space:pre-wrap;overflow-wrap:anywhere}
+.pf-her{display:flex;align-items:flex-end;gap:8px;max-width:90%}
+.pf-her-cat{width:24px;height:24px;flex:none;display:flex}
+.pf-her-cat>svg{width:100%;height:100%}
+.pf-her p{margin:0;padding:9px 14px;border-radius:18px;background:var(--win2);box-shadow:inset 0 0 0 .5px var(--sep);font-size:14px;line-height:1.5;white-space:pre-wrap;overflow-wrap:anywhere}
+.pf-src h3{margin:0;padding:4px 4px;font-size:12px;font-weight:var(--font-weight-normal);color:var(--l2)}
+.pf-sib{display:flex;align-items:center;gap:10px;width:100%;min-height:44px;padding:6px 10px;border:0;border-radius:10px;background:none;font:inherit;color:var(--l1);text-align:left}
+.pf-sib:hover:not(:disabled){background:var(--fill)}
+.pf-sib.sel{background:var(--fill2)}
+.pf-sib>span:nth-child(2){flex:1;min-width:0;display:flex;flex-direction:column}
+.pf-sib b{font-size:13.5px;font-weight:var(--font-weight-normal);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.pf-sib.sel b{font-weight:var(--font-weight-semibold)}
+.pf-sib>span:nth-child(2)>span{font-size:12px;color:var(--l2)}
+.pf-sib>.ic{color:var(--l3)}
+.pf-chat{align-self:stretch;justify-content:center}
+/* A post's page: back to the feed and what set it off, then the record. */
+.pt-bar{height:auto;min-height:52px;gap:12px;padding:10px 20px 10px 16px}
+.pt-bar .link{flex:none;font-size:12.5px;white-space:nowrap}
+.pt-back{flex:none;padding:0 12px 0 8px}
+.pt-gap{flex:1}
+.pt-off{width:7px;height:7px;border-radius:50%;background:var(--l3);flex:none}
+.pt-shead{flex:none;display:flex;align-items:center;gap:8px;padding:10px 24px;min-width:0}
+.pt-shead b{font-size:14.5px;font-weight:var(--font-weight-semibold);min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.pt-shead span{font-size:12.5px;color:var(--l2);white-space:nowrap}
+.pt{max-width:calc(var(--conversation-width) + 48px);margin:0 auto;padding:26px 24px 48px;display:flex;flex-direction:column;gap:18px}
+.pt-h{display:flex;align-items:flex-start;gap:16px;flex-wrap:wrap}
+.pt-hm{flex:1 1 360px;min-width:0}
+.pt-hm h2{margin:0;font-size:22px;font-weight:var(--font-weight-bold);line-height:1.3;overflow-wrap:anywhere}
+.pt-meta{margin-top:8px;display:flex;align-items:center;gap:8px;flex-wrap:wrap;font-size:12.5px;color:var(--l2)}
+.pt-pill{display:inline-flex;align-items:center;height:22px;padding:0 9px;border-radius:11px;background:var(--fill2);font-size:12px}
+.pt-pill.waiting{color:var(--orange)}
+.pt-pill.failed{color:var(--red)}
+.pt-facts{font-variant-numeric:tabular-nums}
+.pt-brief{display:flex;gap:10px;align-items:flex-start}
+.pt-brief-cat{width:24px;height:24px;flex:none;margin-top:8px;display:flex}
+.pt-brief-cat>svg{width:100%;height:100%}
+.pt-brief>div{flex:1;min-width:0;padding:10px 14px;border-radius:16px;background:var(--win2);box-shadow:inset 0 0 0 .5px var(--sep)}
+.pt-brief span,.pt-again span{font-size:12px;color:var(--l2)}
+.pt-brief p,.pt-again p{margin:3px 0 0;font-size:var(--chat-size);line-height:1.6;white-space:pre-wrap;overflow-wrap:anywhere}
+.pt-again{align-self:flex-start;max-width:86%;margin:6px 0;padding:10px 14px;border-radius:16px;background:var(--win2);box-shadow:inset 0 0 0 .5px var(--sep)}
+.pt-steps-h{display:flex;align-items:center;gap:12px;margin-bottom:-12px;font-size:12px;color:var(--l2)}
+.pt-steps-h span{flex:1}
+.pt-steps{display:flex;flex-direction:column;gap:2px}
+/* Each row is laid out as it comes into view: a long record costs what it shows. */
+.pt-work{display:flex;flex-direction:column;gap:1px}
+.pt-work .tool{content-visibility:auto;contain-intrinsic-size:auto 28px}
+.pt-work .tool .th{width:100%;min-height:28px;padding:3px 8px;border-radius:7px}
+.pt-work .tool .th:hover{background:var(--fill)}
+.pt-work .tool .th .sm2{flex:1;color:var(--l1)}
+.pt-work .tool .th .mini-spin{flex:none}
+.pt-work .tool .out{margin:3px 8px 8px;max-height:420px;overflow:auto}
+.pt-work .tool.thought .out{font-family:var(--font);font-size:13.5px;line-height:1.65;background:var(--win2);color:var(--l1)}
+.pt-say{padding:4px 8px}
+.pt-end{padding:14px 16px;border-radius:16px;background:var(--win2);box-shadow:inset 0 0 0 .5px var(--sep)}
+.pt-end>span{display:flex;align-items:center;gap:7px;font-size:12px;color:var(--l2)}
+.pt-end.fail>span{color:var(--red)}
+.pt-end>p{margin:6px 0 0;font-size:var(--chat-size);line-height:1.55;white-space:pre-wrap;overflow-wrap:anywhere}
+.pt-end .am{margin-top:6px}
+.pt-end .tm-ok.sm,.pf-sib .tm-ok.sm{width:14px;height:14px;stroke-width:1.8}
+.pt-note{margin:0;padding:0 8px;font-size:13px;color:var(--l2)}
+.pt-ask{position:relative}
+/* An agent at work, in the busy bubble: it opens its record. */
+.wb-go{border:0;background:none;padding:0;font:inherit;color:inherit;text-align:left;cursor:pointer}
+.wb-go:hover .wb-t,.wb-r.wb-go:hover{color:var(--l1)}

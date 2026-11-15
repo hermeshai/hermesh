@@ -180,9 +180,13 @@ func TestHer(t *testing.T) {
 	})
 
 	// What only the root key may do; an assistant's full access is the
-	// owner's choice on any of their devices, and older ones sign it.
+	// owner's choice on any of their devices, and older ones sign it. A
+	// method the gate doesn't open at all is unimplemented, as one this
+	// hermeshd doesn't know (docs/version-skew.md §6.3).
 	_, err = call("", "server/shutdown", ``)
-	refused(err)
+	if connect.CodeOf(err) != connect.CodeUnimplemented {
+		t.Fatalf("server/shutdown not refused as unimplemented: %v", err)
+	}
 	_, err = call("", "config/write", `{"layer":"user","edits":[{"key_path":"mcp_servers.notes","value":{"command":"/bin/cat"}}]}`)
 	refused(err)
 	apply(&identityv1.AdminCommand{Command: &identityv1.AdminCommand_SetHerAssistantMode{SetHerAssistantMode: &identityv1.SetHerAssistantMode{BotId: bot, PermissionMode: "bypass-permissions"}}})
@@ -244,7 +248,8 @@ func TestHer(t *testing.T) {
 	if code, body := get(h2, "POST", "/her/console/rpc", `{"jsonrpc":"2.0","id":1,"method":"models/list"}`); code != 200 || !strings.Contains(body, `"result"`) {
 		t.Fatalf("console rpc: %d %s", code, body)
 	}
-	if code, _ := get(h2, "POST", "/her/console/rpc", `{"jsonrpc":"2.0","id":2,"method":"server/shutdown"}`); code != http.StatusForbidden {
+	// Unimplemented, as on HerService: the gate doesn't open it.
+	if code, _ := get(h2, "POST", "/her/console/rpc", `{"jsonrpc":"2.0","id":2,"method":"server/shutdown"}`); code != http.StatusNotImplemented {
 		t.Fatalf("console rpc refused: %d", code)
 	}
 
