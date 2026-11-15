@@ -1,5 +1,6 @@
 import HermeshHer
 import SwiftUI
+import UIKit.UIGestureRecognizerSubclass
 
 // Replying to a message of Her's conversation, or to a part of one (docs/her-reply.md §3.3). Touch and hold is the
 // way in: Reply, Copy, Select Text. Select Text opens the message's words on a sheet, where a part is selected as
@@ -112,26 +113,85 @@ private struct HerSwipeToReply: ViewModifier {
                         .allowsHitTesting(false)
                 }
             }
-            .simultaneousGesture(swipe, isEnabled: action != nil)
+            .gesture(HerLeftSwipe(enabled: action != nil, moved: moved, ended: ended))
     }
 
-    private var swipe: some Gesture {
-        DragGesture(minimumDistance: 18)
-            .onChanged { drag in
-                let across = -drag.translation.width
-                // Begun sideways, it stays this gesture's; begun up or down, it is the scroll's.
-                guard pull > 0 || (across > 0 && across > abs(drag.translation.height) * 1.5) else { return }
-                pull = min(max(across, 0) * 0.62, reach)
-                let far = across >= enough
-                if far && !armed { Haptic.armed.play() }
-                armed = far
+    private func moved(_ across: CGFloat) {
+        pull = min(max(across, 0) * 0.62, reach)
+        let far = across >= enough
+        if far && !armed { Haptic.armed.play() }
+        armed = far
+    }
+
+    /// Let go, where the swipe replies if it went far enough; or taken away (a call comes in), where it doesn't.
+    private func ended(_ letGo: Bool) {
+        let reply = armed && letGo
+        armed = false
+        withAnimation(still ? nil : .snappy(duration: 0.25)) { pull = 0 }
+        if reply { action?() }
+    }
+}
+
+/// The swipe itself, as a pan of UIKit's that is only ever a swipe to the left. A drag gesture of SwiftUI's can't
+/// turn a drag down: on a quick flick up or down it began in the same touch as the conversation's scrolling would
+/// have, took the touch, and the conversation stayed where it was.
+private struct HerLeftSwipe: UIGestureRecognizerRepresentable {
+    let enabled: Bool
+    /// How far left of where it began the finger is.
+    let moved: (CGFloat) -> Void
+    /// Whether the finger let go (true) or the swipe was taken away.
+    let ended: (Bool) -> Void
+
+    func makeUIGestureRecognizer(context: Context) -> LeftPan { LeftPan() }
+
+    func updateUIGestureRecognizer(_ pan: LeftPan, context: Context) { pan.isEnabled = enabled }
+
+    func handleUIGestureRecognizerAction(_ pan: LeftPan, context: Context) {
+        switch pan.state {
+        case .began, .changed: moved(-pan.translation(in: nil).x)
+        case .ended: ended(true)
+        case .cancelled, .failed: ended(false)
+        default: break
+        }
+    }
+
+    /// A pan that fails once the finger has gone any way but left, before a scroll view's own pan begins (at 10
+    /// points), so every other drag is the scroll's from its first movement.
+    final class LeftPan: UIPanGestureRecognizer {
+        private var from: CGPoint?
+
+        override func touchesBegan(_ touches: Set<UITouch>, with event: UIEvent) {
+            super.touchesBegan(touches, with: event)
+            if from == nil { from = touches.first?.location(in: nil) }
+        }
+
+        override func touchesMoved(_ touches: Set<UITouch>, with event: UIEvent) {
+            if state == .possible, let from, let at = touches.first?.location(in: nil) {
+                let across = from.x - at.x, along = abs(at.y - from.y)
+                if max(abs(across), along) >= 5, across < along * 1.5 {
+                    state = .failed
+                    return
+                }
             }
-            .onEnded { _ in
-                let reply = armed
-                armed = false
-                withAnimation(still ? nil : .snappy(duration: 0.25)) { pull = 0 }
-                if reply { action?() }
-            }
+            super.touchesMoved(touches, with: event)
+        }
+
+        override func reset() {
+            super.reset()
+            from = nil
+        }
+
+        /// The conversation's scrolling waits for this to fail, which it has by then unless the finger goes left:
+        /// a swipe scrolls nothing, and a scroll never starts a swipe.
+        override func shouldBeRequiredToFail(by other: UIGestureRecognizer) -> Bool { other.view is UIScrollView && !sideways(other) }
+
+        /// Code or a table wider than the bubble scrolls sideways under the finger: that drag is its own.
+        override func shouldRequireFailure(of other: UIGestureRecognizer) -> Bool { sideways(other) }
+
+        private func sideways(_ other: UIGestureRecognizer) -> Bool {
+            guard let scroll = other.view as? UIScrollView, other === scroll.panGestureRecognizer else { return false }
+            return scroll.contentSize.width > scroll.bounds.width
+        }
     }
 }
 

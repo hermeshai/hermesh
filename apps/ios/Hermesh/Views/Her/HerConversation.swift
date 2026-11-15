@@ -19,7 +19,7 @@ struct HerConversation: View {
     @State private var scrolling = false
     @State private var position = ScrollPosition(edge: .bottom)
     /// Whether it was scrolled well up from its end, where a button brings it back.
-    @State private var away = false
+    @State private var far = HerFar()
     /// The top shows, where earlier messages are read.
     @State private var topSeen = false
     @Environment(\.accessibilityReduceMotion) private var still
@@ -49,22 +49,9 @@ struct HerConversation: View {
         let asking = chat.convUp ? chat.live.flatMap(herPendingApproval) : nil
         ScrollViewReader { proxy in
             ScrollView {
-                VStack(alignment: .leading, spacing: 0) {
-                    // Earlier messages (her opens it on its last 100), read once this shows at the top, as on the Mac.
-                    if chat.live?.before != nil {
-                        ProgressView().frame(maxWidth: .infinity).padding(.bottom, 21)
-                            .onScrollVisibilityChange(threshold: 0.1) { seen in
-                                topSeen = seen
-                                if seen { Task { await chat.earlier() } }
-                            }
-                            .accessibilityIdentifier("her-earlier")
-                    }
-                    ForEach(Array(rows.enumerated()), id: \.element.key) { i, row in
-                        HerRow(chat: chat, row: row, previous: i > 0 ? rows[i - 1] : nil, machine: machine, preview: $preview, page: $page, selecting: $selecting, marked: marked == row.key)
-                    }
-                    if busy { HerTyping().padding(.top, rows.isEmpty ? 0 : herGap(joined: rows.last?.side == .her)) }
-                }
-                .padding(.horizontal, 20).padding(.top, 13).padding(.bottom, 21)
+                HerRows(chat: chat, rows: rows, earlier: chat.live?.before != nil, busy: busy, machine: machine, marked: marked,
+                        topSeen: $topSeen, preview: $preview, page: $page, selecting: $selecting)
+                    .equatable()
             }
             // Earlier messages put above what was first: it stays where it was, unless the end is followed.
             .onChange(of: said.first?.key) { old, _ in
@@ -97,10 +84,11 @@ struct HerConversation: View {
         .onScrollGeometryChange(for: Bool.self) { fromEnd($0) < 80 } action: { _, end in
             if scrolling { atEnd = end }
         }
-        .onScrollGeometryChange(for: CGFloat.self) { $0.contentSize.height } action: { _, _ in
+        // As it grows, and as less of it shows (the keyboard comes up): what was last stays in view.
+        .onScrollGeometryChange(for: [CGFloat].self) { [$0.contentSize.height, $0.containerSize.height] } action: { _, _ in
             if atEnd && !scrolling { position.scrollTo(edge: .bottom) }
         }
-        .onScrollGeometryChange(for: Bool.self, of: scrolledAway) { _, far in away = far }
+        .onScrollGeometryChange(for: Bool.self, of: scrolledAway) { _, away in far.away = away }
         .scrollDismissesKeyboard(.interactively)
         .overlay {
             if rows.isEmpty && !busy { HerEmpty(chat: chat, machine: machine, loading: noModel || (chat.session == nil && state == .ready)) }
@@ -121,16 +109,15 @@ struct HerConversation: View {
             if !Task.isCancelled { slow = chat.reconnecting }
         }
         .safeAreaInset(edge: .bottom) {
-            Group {
+            HerToEnd(far: far) {
+                atEnd = true
+                withAnimation(still ? nil : .smooth) { position.scrollTo(edge: .bottom) }
+            } over: {
                 if let asking {
                     HerApprovalPanel(chat: chat, approval: asking.approval, agent: asking.agent, waiting: asking.waiting).id(asking.approval.callID)
                 } else {
                     HerComposer(chat: chat, machine: machine, state: state, noModel: noModel)
                 }
-            }
-            .toEndButton(away) {
-                atEnd = true
-                withAnimation(still ? nil : .smooth) { position.scrollTo(edge: .bottom) }
             }
         }
         .quickLookPreview($preview)
@@ -154,6 +141,11 @@ struct HerConversation: View {
                 position.scrollTo(edge: .bottom)
             }
         }
+        // So is a message sent, or an answer tapped: it shows at the end, wherever the owner had scrolled to.
+        .onChange(of: chat.spoken) {
+            atEnd = true
+            position.scrollTo(edge: .bottom)
+        }
         .onChange(of: openedModel) {
             if let m = openedModel { chat.flow?.finish(model: m, session: chat.live?.sessionID, after: said.last?.key, at: .now) }
         }
@@ -174,6 +166,66 @@ extension HerConversation {
     }
 }
 
+/// Whether the conversation is scrolled well up from its end, kept apart from the conversation's own state: the
+/// button back is all that shows it, and all that is drawn again as it changes, while the conversation scrolls.
+@Observable private final class HerFar {
+    var away = false
+}
+
+/// The button back to the end, over what stands at the conversation's bottom.
+private struct HerToEnd<Bottom: View>: View {
+    let far: HerFar
+    let action: () -> Void
+    @ViewBuilder let over: Bottom
+
+    var body: some View {
+        Group { over }.toEndButton(far.away, action: action)
+    }
+}
+
+/// The conversation's rows, a view of their own that is the same while they are: the page around them changes far
+/// more often than they do (each thing Her does while she works is an event, most of which show nothing here), and a
+/// long conversation laid out again each time kept the page from following the finger.
+private struct HerRows: View, Equatable {
+    let chat: HerChat
+    let rows: [HerItem]
+    /// Earlier messages can be read at the top.
+    let earlier: Bool
+    let busy: Bool
+    let machine: HerMachine
+    let marked: String?
+    @Binding var topSeen: Bool
+    @Binding var preview: URL?
+    @Binding var page: HerFileText?
+    @Binding var selecting: HerSelecting?
+
+    nonisolated static func == (a: HerRows, b: HerRows) -> Bool {
+        a.rows == b.rows && a.earlier == b.earlier && a.busy == b.busy && a.marked == b.marked && a.machine == b.machine
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            // Earlier messages (her opens it on its last 100), read once this shows at the top, as on the Mac.
+            if earlier {
+                ProgressView().frame(maxWidth: .infinity).padding(.bottom, 21)
+                    .onScrollVisibilityChange(threshold: 0.1) { seen in
+                        topSeen = seen
+                        if seen { Task { await chat.earlier() } }
+                    }
+                    .accessibilityIdentifier("her-earlier")
+            }
+            ForEach(Array(rows.enumerated()), id: \.element.key) { i, row in
+                HerRow(chat: chat, row: row, previous: i > 0 ? rows[i - 1] : nil, machine: machine, preview: $preview, page: $page, selecting: $selecting, marked: marked == row.key)
+            }
+            if busy { HerTyping().padding(.top, rows.isEmpty ? 0 : herGap(joined: rows.last?.side == .her)) }
+        }
+        // As wide as the page with nothing in it too: the scroll view is as wide as this, and what shows over it
+        // while the conversation is empty (her greeting) was laid out 40 points wide.
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.horizontal, 20).padding(.top, 13).padding(.bottom, 21)
+    }
+}
+
 /// Which bubble a message is in: the owner's, Her's, or neither (a line of its own, the onboarding).
 private enum HerSide { case owner, her }
 
@@ -191,9 +243,21 @@ private extension HerItem {
 /// side changes.
 func herGap(joined: Bool) -> CGFloat { joined ? 6 : 21 }
 
+/// When a row was sent, over it after a pause: the day as it is called now, and the time.
+private struct HerTimeLine: View {
+    @Environment(AppModel.self) private var model
+    let at: Date
+    let previous: Date?
+
+    var body: some View {
+        if let line = turnTimeLine(at, previous: previous, now: model.now) {
+            Text(line).font(.caption).foregroundStyle(.tertiary).frame(maxWidth: .infinity).padding(.top, 6)
+        }
+    }
+}
+
 /// A row of the conversation, with a time line before it after a pause.
 private struct HerRow: View {
-    @Environment(AppModel.self) private var model
     let chat: HerChat
     let row: HerItem
     let previous: HerItem?
@@ -207,11 +271,12 @@ private struct HerRow: View {
     @State private var opening: String?
 
     var body: some View {
-        let line = row.kind == .onboarding ? nil : turnTimeLine(date(row.ts), previous: previous.map { date($0.ts) }, now: model.now)
+        let at = date(row.ts), before = previous.map { date($0.ts) }
+        // Whether a time line shows is the pause before the row, whatever the time is now; what it says turns on the
+        // clock, which HerTimeLine reads: a row reading it would be laid out again at each tick, every row at once.
+        let timed = row.kind != .onboarding && turnTimeLine(at, previous: before, now: at) != nil
         VStack(alignment: .leading, spacing: 8) {
-            if let line {
-                Text(line).font(.caption).foregroundStyle(.tertiary).frame(maxWidth: .infinity).padding(.top, 6)
-            }
+            if timed { HerTimeLine(at: at, previous: before) }
             VStack(alignment: .leading, spacing: 2) {
                 if let source = row.source { HerRunSource(source: source) }
                 content.environment(\.herReplying, replying)
@@ -220,7 +285,7 @@ private struct HerRow: View {
             .background(marked ? Color.yellow.opacity(0.22) : .clear, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
             .padding(marked ? -8 : 0)
         }
-        .padding(.top, previous.map { herGap(joined: line == nil && row.side != nil && row.side == $0.side) } ?? 0)
+        .padding(.top, previous.map { herGap(joined: !timed && row.side != nil && row.side == $0.side) } ?? 0)
     }
 
     private func date(_ ms: Double) -> Date { Date(timeIntervalSince1970: ms / 1000) }
@@ -480,7 +545,7 @@ extension View {
     }
 }
 
-/// A coding session Her started, where she started it (docs/her-team.md §4.4): the agent, the title, where it
+/// A coding session Her started or works on, where she last did (docs/her-team.md §4.4): the agent, the title, where it
 /// runs, and how it stands now, kept current from the sessions the app holds; it opens the session's page. One the
 /// app holds no more (deleted, or older than what it keeps) shows as the call named it, without a state. It
 /// answers no question: news of her own sessions goes to Her first.
@@ -904,3 +969,4 @@ struct HerWrap: Layout {
         return rows
     }
 }
+

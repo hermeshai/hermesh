@@ -73,6 +73,8 @@ final class HerChat {
     var revealRun: String?
     /// The message one replied to, which the conversation is to bring into view and mark (docs/her-reply.md).
     var revealMessage: String?
+    /// Moves each time the owner says something here (a message sent, an answer tapped): the conversation goes to its end.
+    private(set) var spoken = 0
     /// What was sent and HerSend has not answered for, or refused (docs/her-sending.md §5.2); the drafts they were, to
     /// send again or edit.
     private(set) var sending: [HerOutgoing] = []
@@ -365,6 +367,7 @@ final class HerChat {
     /// A tapped answer to a question is the owner's message: while Her works, it waits for the step under way.
     func say(_ text: String) async -> Bool {
         Haptic.sent.play()
+        spoken += 1
         return await op(prompt([.text(text)]))
     }
 
@@ -416,6 +419,7 @@ final class HerChat {
         let sent = draft
         guard bot != nil, api != nil, !sent.isEmpty else { return }
         Haptic.sent.play()
+        spoken += 1
         draft = HerDraft()
         let id = "hw_" + UUID().uuidString.lowercased().replacingOccurrences(of: "-", with: "")
         outgoing[id] = sent

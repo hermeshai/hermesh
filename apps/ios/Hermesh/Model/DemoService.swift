@@ -12,6 +12,10 @@ final class DemoService {
     private var watchers: [UUID: AsyncThrowingStream<Data, Error>.Continuation] = [:]
     private var followers: [UUID: (String, AsyncThrowingStream<Data, Error>.Continuation)] = [:]
     private var tasks: [String: Task<Void, Never>] = [:]
+    #if DEBUG
+    /// What was written to the demo's Her (DemoHer.swift).
+    var herWaiting: [Hermesh_Local_V1_HerWaiting] = []
+    #endif
 
     init() { seed() }
 
@@ -34,6 +38,9 @@ final class DemoService {
             $0.deviceKeyID = "demo-iphone"
         }
         world.machines = [machine("demo-mac", "Mac mini", "darwin/arm64"), machine("demo-linux", "Linux Studio", "linux/amd64")]
+        #if DEBUG
+        if Self.herDemoOn { Self.herDemo(&world.machines[0]) }
+        #endif
         world.devices = [.with { $0.keyID = "demo-iphone"; $0.label = "iPhone"; $0.platform = "ios"; $0.thisDevice = true }]
         world.projects = world.machines.map { m in .with {
             $0.machineID = m.machineID; $0.projectID = "hello-world"; $0.path = "/Demo/Projects/hello-world"
@@ -188,6 +195,9 @@ final class DemoService {
         func encoded(_ message: some SwiftProtobuf.Message) throws -> Data { try message.jsonUTF8Data() }
         func object(_ value: [String: Any] = [:]) throws -> Data { try JSONSerialization.data(withJSONObject: value) }
         let id = string("sessionId")
+        #if DEBUG
+        if Self.herDemoOn, let answer = try herDemo(method, r) { return answer }
+        #endif
         switch method {
         case "GetStatus": return try encoded(world.status)
         case "ListMachines": return try encoded(Hermesh_Local_V1_ListMachinesResponse.with { $0.machines = world.machines })
