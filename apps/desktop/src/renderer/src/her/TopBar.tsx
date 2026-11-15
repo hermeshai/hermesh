@@ -1,12 +1,12 @@
-import { useEffect, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type ReactNode } from "react";
+import { useCallback, useEffect, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import { botWorking, routineDot } from "@hermesh/her-client";
 import { Icon } from "../icons";
-import { SidebarToggle } from "../MainWindow";
 import { Avatar, BotAvatar } from "./Avatar";
 import { useHer } from "./context";
 import { reachable } from "./environments";
 import { menuKeys } from "./menus";
+import { TagWords, TeamPanel, useTeam } from "../team";
 
 /**
  * The Her page's top (docs/her-server.md §9.1), as on the iPhone: Her's avatar in the middle, larger than a bar's,
@@ -22,9 +22,15 @@ export function TopBar() {
   const panel = her.panel;
   const dot = bot ? routineDot(bot.routines) : null;
   const toggle = (kind: "settings" | "routines") => her.setPanel(panel?.kind === kind ? null : kind === "settings" ? { kind } : { kind, route: {} });
+  const team = useTeam();
+  const [teamOpen, setTeamOpen] = useState(false);
+  const capsule = useRef<HTMLButtonElement>(null);
+  const closeTeam = useCallback(() => {
+    setTeamOpen(false);
+    capsule.current?.focus();
+  }, []);
   return (
     <div className="ctool drag her-head">
-      <SidebarToggle />
       <div className="her-id">
         {bot ? (
           <button className="her-id-av" title={t("head.settings")} aria-label={t("head.settings")} aria-pressed={panel?.kind === "settings"} onClick={() => toggle("settings")}>
@@ -33,14 +39,13 @@ export function TopBar() {
         ) : (
           <Avatar spec={{ kind: "mark" }} name="" size={56} />
         )}
-        <div className="her-cap">
-          {/* The avatar's button is the one for the keyboard and VoiceOver; the name is the same place for the mouse. */}
-          <span className={`her-id-n ${bot ? "no-drag" : ""}`} onClick={bot ? () => toggle("settings") : undefined}>
-            {bot?.name ?? "Her"}
-          </span>
-          {her.envs.length > 1 && <EnvSwitch />}
-        </div>
+        {/* The capsule is the team's name tag (docs/her-team.md §14.3): Her's name and what the team does; it opens the team panel. */}
+        <button ref={capsule} className={`her-cap ${teamOpen ? "on" : ""}`} aria-expanded={teamOpen} aria-haspopup="dialog" aria-label={t("head.team")} onClick={() => setTeamOpen(!teamOpen)}>
+          <span className="her-id-n">{bot?.name ?? "Her"}</span>
+          <TagWords team={team} />
+        </button>
       </div>
+      {teamOpen && <TeamPanel onClose={closeTeam} />}
       <span className="bhead-gap" />
       {bot && (
         <button className={`tb rtn-btn ${panel?.kind === "routines" ? "on" : ""}`} title={t("routines.title")} aria-label={t("routines.title")} aria-pressed={panel?.kind === "routines"} onClick={() => toggle("routines")}>
@@ -99,50 +104,16 @@ function Item({ icon, children, onClick }: { icon: string; children: ReactNode; 
   );
 }
 
-/** The environment shown, beside Her's name; its menu lists every environment, whether it is online and what is unread there, then Add Environment. */
-function EnvSwitch() {
-  const { t } = useTranslation("her");
-  const her = useHer();
-  const m = her.machine;
-  const menu = useMenu("left");
-  const choose = (machineId: string) => {
-    menu.close();
-    her.choose(machineId);
-  };
-  return (
-    <>
-      <span className="her-id-sep" aria-hidden="true">·</span>
-      <button ref={menu.btn} className={`her-env ${menu.open ? "on" : ""}`} aria-haspopup="menu" aria-expanded={!!menu.open} aria-label={t("page.environment", { name: m.machineName })} onClick={menu.toggle}>
-        <span className="her-env-n">{m.machineName}</span>
-        <Icon name="chevD" className="sm" />
-      </button>
-      {menu.open && (
-        <div {...menu.props(t("page.environments"))}>
-          {her.envs.map((e) => (
-            <button key={e.machineId} className="mi" role="menuitemradio" aria-checked={e.machineId === m.machineId} tabIndex={-1} onMouseMove={(ev) => ev.currentTarget.focus()} onClick={() => choose(e.machineId)}>
-              <span className="ck">{e.machineId === m.machineId && <Icon name="check" className="sm" />}</span>
-              <span className="two">
-                {e.machineName}
-                <span>{reachable(e) ? t("env.online") : t("env.offlineShort")}</span>
-              </span>
-              {(e.her?.unread ?? 0) > 0 && <span className="bbadge">{e.her!.unread}</span>}
-            </button>
-          ))}
-          <div className="msep" role="separator" />
-          <Item icon="plus" onClick={() => (menu.close(), her.setSheet({ kind: "add" }))}>
-            {t("page.addEnvironment")}
-          </Item>
-        </div>
-      )}
-    </>
-  );
-}
-
-/** ⋯: the environment's console ("Manage this environment"), and Add Environment while there is no menu of environments. */
+/**
+ * ⋯: the environments when Her runs on more than one machine (the one shown checked, whether each is online and
+ * what is unread there; the capsule is the team's now, docs/her-team.md §14.3), the environment's console ("Manage
+ * this environment"), and Add Environment.
+ */
 function MoreMenu() {
   const { t } = useTranslation("her");
   const her = useHer();
   const menu = useMenu("right");
+  const m = her.machine;
   return (
     <>
       <button ref={menu.btn} className={`tb ${menu.open ? "on" : ""}`} title={t("page.more")} aria-label={t("page.more")} aria-haspopup="menu" aria-expanded={!!menu.open} onClick={menu.toggle}>
@@ -150,14 +121,27 @@ function MoreMenu() {
       </button>
       {menu.open && (
         <div {...menu.props(t("page.more"))}>
-          <Item icon="gear" onClick={() => (menu.close(), her.openConsole())}>
-            {t("page.manage", { name: her.machine.machineName })}
-          </Item>
-          {her.envs.length === 1 && (
-            <Item icon="plus" onClick={() => (menu.close(), her.setSheet({ kind: "add" }))}>
-              {t("page.addEnvironment")}
-            </Item>
+          {her.envs.length > 1 && (
+            <>
+              {her.envs.map((e) => (
+                <button key={e.machineId} className="mi" role="menuitemradio" aria-checked={e.machineId === m.machineId} tabIndex={-1} onMouseMove={(ev) => ev.currentTarget.focus()} onClick={() => (menu.close(), her.choose(e.machineId))}>
+                  <span className="ck">{e.machineId === m.machineId && <Icon name="check" className="sm" />}</span>
+                  <span className="two">
+                    {e.machineName}
+                    <span>{reachable(e) ? t("env.online") : t("env.offlineShort")}</span>
+                  </span>
+                  {(e.her?.unread ?? 0) > 0 && <span className="bbadge">{e.her!.unread}</span>}
+                </button>
+              ))}
+              <div className="msep" role="separator" />
+            </>
           )}
+          <Item icon="gear" onClick={() => (menu.close(), her.openConsole())}>
+            {t("page.manage", { name: m.machineName })}
+          </Item>
+          <Item icon="plus" onClick={() => (menu.close(), her.setSheet({ kind: "add" }))}>
+            {t("page.addEnvironment")}
+          </Item>
         </div>
       )}
     </>

@@ -1,5 +1,5 @@
 {
-  "title": "Overview",
+  "title": "Work",
   "day": "{{weekday}}, {{date}}",
   "listSeparator": ", ",
   "thisMac": "This Mac",
@@ -35,7 +35,8 @@
     "signer": "A new version of Hermesh Signer",
     "signerDetail": "This PC has {{version}}. Update it so it can sign requests for this version of Hermesh. Windows will ask for permission once",
     "updateSigner": "Update…",
-    "signerUpdated": "Signer updated"
+    "signerUpdated": "Signer updated",
+    "open": "Open"
   },
   "map": {
     "title": "Connections",

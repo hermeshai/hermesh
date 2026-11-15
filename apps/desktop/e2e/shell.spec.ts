@@ -2,13 +2,13 @@ import { expect, test } from "@playwright/test";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { launch, snap } from "./app";
+import { launch, snap, sessionList } from "./app";
 
 // The shell around the UI: the page reaches hermeshd only through the main
 // process, which never lets it near signing.
 test("the page reads sessions from hermeshd through the main process", async () => {
   const { app, page } = await launch();
-  await expect(page.getByRole("list", { name: "会话" })).toContainText("写 hello");
+  await expect((await sessionList(page))).toContainText("写 hello");
   await app.close();
 });
 
@@ -42,7 +42,7 @@ test("a cancelled stream releases the daemon connection", async () => {
   const { app, page } = await launch();
   const open = () => app.evaluate(() => (globalThis as unknown as { hermeshTest: { openUpstream(): number } }).hermeshTest.openUpstream());
   // The window keeps one stream open: its watch on the sessions.
-  await expect(page.getByRole("list", { name: "会话" })).toContainText("写 hello");
+  await expect((await sessionList(page))).toContainText("写 hello");
   await expect.poll(open).toBe(1);
   const id = (await import("./app")).fixture.sessions["跑很久"];
   await page.evaluate(async (sessionId) => {
@@ -68,7 +68,7 @@ test("a cancelled stream releases the daemon connection", async () => {
 test("an idle window makes no calls to hermeshd: it follows one Watch", async () => {
   const { app, page } = await launch();
   const calls = () => app.evaluate(() => (globalThis as unknown as { hermeshTest: { forwardedCalls(): Record<string, number> } }).hermeshTest.forwardedCalls());
-  await expect(page.getByRole("list", { name: "会话" })).toContainText("写 hello");
+  await expect((await sessionList(page))).toContainText("写 hello");
   await page.waitForTimeout(2000); // what opening the window reads (the overview's usage)
   const before = await calls();
   expect(before.Watch).toBe(1);

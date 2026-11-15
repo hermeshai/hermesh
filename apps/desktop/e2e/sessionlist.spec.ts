@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { cli, launch, snap } from "./app";
+import { cli, launch, snap, sessionList } from "./app";
 
 // The session list as a chat app's: the newest page at once, older ones as
 // the list scrolls to its end, and what changes shows up as it happens.
@@ -21,7 +21,7 @@ test("the sidebar shows the newest page, and scrolling to its end loads older se
   // page and every session that needs the owner or runs come first.
   const titles = await startSessions(55);
   const { app, page } = await launch();
-  const list = page.getByRole("list", { name: "会话" });
+  const list = (await sessionList(page));
   const rows = list.getByRole("listitem");
   await expect(list).toContainText(titles[54]);
   await expect(list).toContainText("选颜色"); // a question, however old
@@ -61,14 +61,15 @@ test("the sidebar shows the newest page, and scrolling to its end loads older se
 
 test("a session started by an agent shows up at once, and so do its changes", async () => {
   const { app, page } = await launch();
-  const list = page.getByRole("list", { name: "会话" });
+  const list = (await sessionList(page));
   await expect(list).toContainText("选颜色");
   // The list is pushed to, not polled (that took up to 3 s).
   await cli("session", "start", "--project", "demo", "--agent", "gemini", "--title", "新来的", "--prompt", "shell sleep 3\nsay 好了");
   const row = list.getByRole("listitem").filter({ hasText: "新来的" });
   await expect(row).toBeVisible({ timeout: 1500 });
-  await expect(list.getByRole("group", { name: "进行中" })).toContainText("新来的");
-  // It finishes: from 进行中 to 已结束.
-  await expect(list.getByRole("group", { name: "已结束" })).toContainText("新来的", { timeout: 30_000 });
+  // Under who sent it (docs/her-team.md §14.2), its title shimmering while it runs, then still once it finishes.
+  await expect(list.getByRole("group", { name: "bot 派的" })).toContainText("新来的");
+  await expect(row.locator(".stitle.run")).toHaveCount(1);
+  await expect(row.locator(".stitle.run")).toHaveCount(0, { timeout: 30_000 });
   await app.close();
 });

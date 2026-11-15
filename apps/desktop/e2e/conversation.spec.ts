@@ -4,7 +4,7 @@ import os from "node:os";
 import path from "node:path";
 import { startDaemon, type Daemon } from "../perf/daemon";
 import { ids, titles } from "../perf/world";
-import { launch } from "./app";
+import { launch, sessionList } from "./app";
 
 // A long conversation in the real app (docs/desktop-performance.md §7): the benchmark's stand-in
 // for hermeshd (perf/daemon.ts) serves two conversations of 40 turns and about 2,700 events, one
@@ -20,7 +20,7 @@ let page: Page;
 test.beforeAll(async () => {
   daemon = await startDaemon(path.join(fs.mkdtempSync(path.join(os.tmpdir(), "hmconv-")), "d.sock"));
   ({ app, page } = await launch(daemon.socket));
-  await page.setViewportSize({ width: 1240, height: 860 });
+  await page.setViewportSize({ width: 1440, height: 860 });
 });
 
 test.afterAll(async () => {
@@ -61,6 +61,7 @@ async function wheel(dy: number, times = 1) {
 }
 
 async function open(title: string) {
+  await sessionList(page);
   await page.locator(".srow", { has: page.locator(".stitle", { hasText: title }) }).first().click();
   await expect(page.locator(".ctitle h2")).toHaveText(title);
   await expect(page.locator(".tr > .vrow").first()).toBeVisible();
