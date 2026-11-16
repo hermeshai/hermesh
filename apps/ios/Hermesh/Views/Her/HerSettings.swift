@@ -146,8 +146,8 @@ private struct HerPageBody: View {
             }
             HerConnectorTray(state: connectors)
             HStack(spacing: 10) {
-                HerEntryCard(title: "Web Search", symbol: "magnifyingglass", id: "her-search", status: searching.map { .plain($0 ? String(localized: "On") : String(localized: "Off")) }) { go(.herSearch) }
-                HerEntryCard(title: "Browser", symbol: "macwindow", id: "her-browser", status: browsing.map { .plain($0 ? String(localized: "On") : String(localized: "Off")) }) { go(.herBrowser) }
+                HerEntryCard(title: "Web Search", symbol: "magnifyingglass", id: "her-search", status: searching.map { .plain($0 ? String(localized: "her.status.on", defaultValue: "On") : String(localized: "her.status.off", defaultValue: "Off")) }) { go(.herSearch) }
+                HerEntryCard(title: "Browser", symbol: "macwindow", id: "her-browser", status: browsing.map { .plain($0 ? String(localized: "her.status.on", defaultValue: "On") : String(localized: "her.status.off", defaultValue: "Off")) }) { go(.herBrowser) }
             }
         }
     }

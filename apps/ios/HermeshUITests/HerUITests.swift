@@ -1270,6 +1270,8 @@ extension HermeshUITests {
         let any = app.descendants(matching: .any)
         let back = { self.app.navigationBars.buttons.element(boundBy: 0).tap() }
         func on(_ e: XCUIElement) -> Bool { (e.value as? String) == "1" }
+        // What a switch here says shows for a moment only, often gone before a query after the tap: her-page.spec.ts
+        // reads it on the Mac; here, what stays.
         herPage("abilities")
 
         // Skills: her built-in skill-creator, turned off and on here, and its page.
@@ -1282,7 +1284,6 @@ extension HermeshUITests {
         let toggle = app.switches["her-skill-switch-skill-creator"]
         XCTAssertTrue(toggle.waitForExistence(timeout: 10) && on(toggle), "on")
         toggle.switches.firstMatch.tap()
-        XCTAssertTrue(text("已停用 skill-creator").waitForExistence(timeout: 30), "said")
         try waitFor("off, as her says") { self.text("已停用").exists && !on(toggle) ? true : nil }
         creator.tap()
         XCTAssertTrue(app.navigationBars["skill-creator"].waitForExistence(timeout: 10), "its page")
@@ -1310,28 +1311,35 @@ extension HermeshUITests {
         XCTAssertTrue(text("搜索服务").exists && any.matching(NSPredicate(format: "identifier BEGINSWITH %@", "her-search-")).count > 2, "the services")
         herShot("Her: web search")
         search.switches.firstMatch.tap()
-        XCTAssertTrue(text("联网搜索已关闭").waitForExistence(timeout: 30), "said")
+        try waitFor("off") { on(search) ? nil : true }
         back()
         try waitFor("the card says it is off (\(searchCard.label))", timeout: 30) { searchCard.label.contains("已关闭") ? true : nil }
         searchCard.tap()
         XCTAssertTrue(search.waitForExistence(timeout: 30) && !on(search), "off, as her says")
         search.switches.firstMatch.tap()
-        XCTAssertTrue(text("联网搜索已开启").waitForExistence(timeout: 30))
+        try waitFor("on again") { on(search) ? true : nil }
         back()
 
-        // The browsers: the owner's Chrome as it stands, and a site set apart from All Sites.
+        // The browsers: Her controls none here until she is let, as no app shows her browser's window; then the
+        // owner's Chrome as it stands, and a site set apart from All Sites.
+        let browserCard = app.buttons["her-browser"]
+        try waitFor("the card says the browser is off (\(browserCard.label))", timeout: 30) { browserCard.label.contains("已关闭") ? true : nil }
         tap("her-browser")
         XCTAssertTrue(app.navigationBars["浏览器"].waitForExistence(timeout: 10))
-        XCTAssertTrue(app.switches["her-browser-on"].waitForExistence(timeout: 30) && text("你的 Chrome").exists && text("还没有例外").exists)
+        let control = app.switches["her-browser-on"]
+        XCTAssertTrue(control.waitForExistence(timeout: 30) && !on(control), "off")
+        control.switches.firstMatch.tap()
+        try waitFor("Her controls browsers") { on(control) ? true : nil }
+        XCTAssertTrue(text("你的 Chrome").exists && text("还没有例外").exists)
         let site = app.textFields["her-browser-site"]
         for _ in 0 ..< 3 where !site.isHittable { app.swipeUp() }
         site.tap()
         site.typeText("example.com")
         tap("her-browser-site-add")
-        XCTAssertTrue(text("example.com: 打开和操作").waitForExistence(timeout: 30), "said")
         XCTAssertFalse(text("还没有例外").waitForExistence(timeout: 10), "the site set apart")
         herShot("Her: browsers, a site set apart")
         back()
+        try waitFor("the card says the browser is on (\(browserCard.label))", timeout: 30) { browserCard.label.contains("已开启") ? true : nil }
 
         // Settings: the Model page, with the Token Plan onboarding connected, and its models.
         tap("her-tab-settings")
@@ -1350,13 +1358,17 @@ extension HermeshUITests {
         // Her environment: its storage, and its console in the app.
         tap("her-environment")
         tap("her-storage")
-        XCTAssertTrue(text("存放内容").waitForExistence(timeout: 30) && text(".her").exists, "what her data holds, and where")
+        XCTAssertTrue(text("存放内容").waitForExistence(timeout: 30), "what her data holds")
+        let only = text("这个文件夹是 Her 的助手、对话、记忆和产出文件的唯一一份")
+        for _ in 0 ..< 3 where !only.exists { app.swipeUp() }
+        XCTAssertTrue(only.exists, "that it is the only copy")
         herShot("Her: storage")
         back()
         tap("her-console")
         let web = app.webViews.firstMatch
         XCTAssertTrue(web.waitForExistence(timeout: 30), "the console")
-        XCTAssertTrue(web.staticTexts["连接器"].waitForExistence(timeout: 60) || web.links["连接器"].exists, "its pages")
+        let pages = web.descendants(matching: .any).matching(NSPredicate(format: "label IN %@", ["连接器", "Connectors"])).firstMatch
+        XCTAssertTrue(pages.waitForExistence(timeout: 60), "its pages")
         herShot("Her: the console")
         herBackToConversation()
     }

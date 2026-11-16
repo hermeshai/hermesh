@@ -183,20 +183,21 @@ private struct HerSkillsList: View {
 
     private func row(_ s: HerSkill) -> some View {
         let shown = state.shown(s)
-        return NavigationLink(value: Route.herSkill(s.dir)) {
-            HStack(spacing: 12) {
+        // The link and the switch side by side, not one in the other: VoiceOver reads two controls, one opening its page.
+        return HStack(spacing: 12) {
+            NavigationLink(value: Route.herSkill(s.dir)) {
                 VStack(alignment: .leading, spacing: 2) {
                     Text(s.name).font(.body.monospaced())
-                    Text(shown.on ? (s.description.isEmpty ? " " : s.description) : String(localized: "Off")).font(.footnote).foregroundStyle(.secondary).lineLimit(2)
+                    Text(shown.on ? (s.description.isEmpty ? " " : s.description) : String(localized: "Turned off")).font(.footnote).foregroundStyle(.secondary).lineLimit(2)
                 }
-                Spacer(minLength: 8)
-                Toggle(String(localized: "Turn On \(s.name)"), isOn: Binding(get: { shown.on }, set: { on in Task { await state.set(s, on: on, model: model) } }))
-                    .labelsHidden()
-                    .disabled(!herReachable(machine))
-                    .accessibilityIdentifier("her-skill-switch-\(s.name)")
+                .frame(maxWidth: .infinity, alignment: .leading)
             }
+            .accessibilityIdentifier("her-skill-\(s.name)")
+            Toggle(String(localized: "Turn On \(s.name)"), isOn: Binding(get: { shown.on }, set: { on in Task { await state.set(s, on: on, model: model) } }))
+                .labelsHidden()
+                .disabled(!herReachable(machine))
+                .accessibilityIdentifier("her-skill-switch-\(s.name)")
         }
-        .accessibilityIdentifier("her-skill-\(s.name)")
     }
 
     /// Puts the archive on the machine and asks her to read it (a dry run): what it holds is shown before it is added.

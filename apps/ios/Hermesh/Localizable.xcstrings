@@ -5688,26 +5688,6 @@
         }
       }
     },
-    "Scheduled Tasks, a last run failed": {
-      "localizations": {
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "定时任务，有一个上次没做成"
-          }
-        }
-      }
-    },
-    "Scheduled Tasks, one running": {
-      "localizations": {
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "定时任务，有一个正在运行"
-          }
-        }
-      }
-    },
     "Scheduled for": {
       "localizations": {
         "zh-Hans": {
@@ -12856,16 +12836,6 @@
         }
       }
     },
-    "Opens Her’s settings": {
-      "localizations": {
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "打开 Her 的设置"
-          }
-        }
-      }
-    },
     "%@ can’t show its screen": {
       "localizations": {
         "zh-Hans": {
@@ -13602,16 +13572,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "任何 MCP 服务器的地址都可以，比如 https://mcp.example.com/mcp。"
-          }
-        }
-      }
-    },
-    "Apps and services Her can use, such as GitHub or Notion. Kept on %@ and shared by the assistants there.": {
-      "localizations": {
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Her 能用的应用和服务，比如 GitHub、Notion。装在 %@ 上，这台机器上的助手共用。"
           }
         }
       }
@@ -14829,16 +14789,6 @@
         }
       }
     },
-    "Files, needs an update": {
-      "localizations": {
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "文件，需更新"
-          }
-        }
-      }
-    },
     "Files, %lld new": {
       "localizations": {
         "zh-Hans": {
@@ -15085,6 +15035,38 @@
           "stringUnit": {
             "state": "translated",
             "value": "媒体"
+          }
+        }
+      }
+    },
+    "her.status.on": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "On"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "已开启"
+          }
+        }
+      }
+    },
+    "her.status.off": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Off"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "已关闭"
           }
         }
       }
