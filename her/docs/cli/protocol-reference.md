@@ -43,6 +43,7 @@ Protocol version 2. Generated from `her protocol schema` by `tools/gen-protocol-
 | `deck/view` | `DeckViewParams` | `DeckViewResult` | `deck/view`: a slide rasterized on this machine (§6.5). |
 | `deliveries/list` | `DeliveriesListParams` | `DeliveriesListResult` |  |
 | `deliveries/seen` | `DeliveriesSeenParams` | `Empty` |  |
+| `deliveries/sources` | `DeliveriesSourcesParams` | `DeliveriesSourcesResult` |  |
 | `files/list` | `FilesListParams` | `FilesListResult` | Parameters of `files/list`. |
 | `files/read` | `FilesReadParams` | `FilesReadResult` | Parameters of `files/read`. |
 | `files/watch` | `FilesWatchParams` | `Empty` | Parameters of `files/watch`. |
