@@ -368,6 +368,7 @@ async fn a_line_without_end_is_answered_on_every_transport() {
 }
 
 /// What `ps` says the process holds, in MiB.
+#[cfg(unix)]
 async fn resident_mib(pid: u32) -> u64 {
     let output = tokio::process::Command::new("ps").args(["-o", "rss=", "-p", &pid.to_string()]).output().await.unwrap();
     String::from_utf8_lossy(&output.stdout).trim().parse::<u64>().unwrap() / 1024

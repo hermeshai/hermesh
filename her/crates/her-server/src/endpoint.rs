@@ -381,17 +381,22 @@ mod tests {
         assert_eq!(&second.await.unwrap(), b"pong");
 
         // A client that drops what it writes with is gone for the service, which reads no more
-        // from it; closed there, the client's reading ends too.
+        // from it. Both ends at once: a socket's client reads until the service closes, and a
+        // pipe's service until the client's reading has ended.
         let client = connect(&path).await.unwrap();
         let (stream, _) = listener.accept().await.unwrap().unwrap();
         let (mut client_read, client_write) = split_client(client);
         drop(client_write);
+        let client_done = tokio::spawn(async move {
+            let mut rest = Vec::new();
+            let _ = client_read.read_to_end(&mut rest).await;
+        });
         let (mut read, write) = split(stream);
         let mut rest = Vec::new();
         // Windows says a pipe's other end is gone with an error, a socket with its end.
         let _ = tokio::time::timeout(std::time::Duration::from_secs(10), read.read_to_end(&mut rest)).await.expect("the service sees the client gone");
         drop((read, write));
-        let _ = tokio::time::timeout(std::time::Duration::from_secs(10), client_read.read_to_end(&mut rest)).await.expect("the client's reading ends");
+        tokio::time::timeout(std::time::Duration::from_secs(10), client_done).await.expect("the client's reading ends").unwrap();
 
         assert!(answers(&path));
         drop(served);

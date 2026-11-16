@@ -476,7 +476,7 @@ mod tests {
         std::fs::write(&path, "v1\n").unwrap();
         let ctx = test_ctx(dir.path());
         run(&ReadTool, json!({"path": "f.txt"}), ctx.clone()).await.unwrap();
-        let stamp = crate::files::FileStamp::of(&std::fs::metadata(&path).unwrap());
+        let stamp = crate::files::FileStamp::of_path(&path).unwrap();
         assert!(ctx.files.verify(&path, stamp).is_ok());
     }
 

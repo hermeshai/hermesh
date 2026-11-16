@@ -168,7 +168,7 @@ flowchart TB
 | Mac with the Mac app | The app; hermeshd with the owner role and the machine role; her when Her is on for this Mac | Client, and optionally a Her Server |
 | Mac that is only a machine ([trusted-devices.md](trusted-devices.md) §4.7) | The app in machine-only mode, hermeshd's machine role; her when Her is on | Optionally a Her Server |
 | Linux machine | hermeshd as a systemd user unit; her when Her is on | Optionally a Her Server |
-| Windows machine | hermeshd, coding agents | None yet: her has no Windows code |
+| PC with the Windows app, or that is only a machine | The app, hermeshd; her when Her is on for this PC ([windows.md](windows.md) §15) | Client with the app, and optionally a Her Server |
 | iPhone | The app, with the owner role as a library | Client only |
 | Relay host | `hermesh-relay`; on the official service also the hermesh.io console (in hermesh-cloud) | None |
 
@@ -860,8 +860,9 @@ While no machine runs Her, the Her entry shows the first run:
 1. **Choose where Her runs.** The choices are this Mac (Her goes offline
    while the Mac sleeps), a Mac or Linux machine already paired, or a new
    server (an install command, paired as Add Machine does; once paired, it
-   comes first, marked as just paired). Windows machines are shown as not
-   yet supported. Touch ID turns Her on there.
+   comes first, marked as just paired). A PC whose Hermesh is from before
+   her ran on Windows is shown as needing an update. Touch ID turns Her on
+   there.
 2. **Connect a model**, in the conversation: Her speaks first (the app
    writes for it, since no model can yet, and keeps none of it in her's
    conversation) and offers the ways in a list: signing in to ChatGPT, a
@@ -1006,8 +1007,8 @@ Test:
 - Environments talking to each other, sharing settings, or moving a
   conversation between them. Copying one environment's settings into a new
   one, secrets left out, may come later.
-- Windows as a Her Server, and computer use on Linux: her's desktop tools
-  use the macOS accessibility API.
+- Computer use on Linux: her's desktop tools run where agent-desktop has
+  an accessibility API to read, on a Mac and on Windows.
 - Hermesh running Her for its users.
 - Sharing Her with other people, such as a family or a team.
 - The console from the internet without the app (§8).
@@ -1029,7 +1030,7 @@ Test:
 
 | Shape | Why not |
 |---|---|
-| Her on every machine, by itself | Every machine needs a setup nobody asked for, and Windows machines can't run her |
+| Her on every machine, by itself | Every machine needs a setup nobody asked for |
 | The relay stores conversations and settings, as Claude's Remote Control keeps transcripts on Anthropic's servers | In plaintext it breaks Hermesh's promise that the relay sees no content. Encrypted, it needs an account-wide data key, rotation when a device is removed, and a recovery key |
 | Hermesh runs Her for its users | Hermesh would see everything, and would carry the compute, the isolation between users and the liability |
 | Her's settings inside the apps | Every new setting waits for the Mac, iPhone and Windows releases; an older app can't show a newer server's settings; the same screens are written once per app |

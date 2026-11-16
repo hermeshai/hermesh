@@ -190,12 +190,13 @@ impl Environment for LocalEnvironment {
         let path = path.to_path_buf();
         tokio::task::spawn_blocking(move || {
             let (file, meta) = open_regular(&path)?;
+            let stamp = FileStamp::of_file(&file)?;
             let mut bytes = Vec::with_capacity(meta.len().min(max_bytes) as usize);
             file.take(max_bytes).read_to_end(&mut bytes)?;
             Ok(FileContent {
                 truncated: meta.len() > max_bytes,
                 total_size: meta.len(),
-                stamp: FileStamp::of(&meta),
+                stamp,
                 bytes,
             })
         })
@@ -209,7 +210,7 @@ impl Environment for LocalEnvironment {
         let indexes = self.line_indexes.clone();
         tokio::task::spawn_blocking(move || {
             let (mut file, meta) = open_regular(&path)?;
-            let stamp = FileStamp::of(&meta);
+            let stamp = FileStamp::of_file(&file)?;
             let index = {
                 let mut indexes = indexes.lock();
                 let at = indexes.iter().position(|(p, index)| *p == path && index.stamp() == stamp);
@@ -257,7 +258,7 @@ impl Environment for LocalEnvironment {
                 is_file: meta.is_file(),
                 size: meta.len(),
                 readonly: meta.is_file() && is_read_only(&path),
-                stamp: FileStamp::of(&meta),
+                stamp: FileStamp::of_path(&path)?,
             })
         })
         .await
@@ -654,11 +655,10 @@ fn atomic_write(path: &Path, data: &[u8]) -> io::Result<WriteOutcome> {
         return Err(err);
     }
     // From the open file: the version written here, even if another one replaces it at once.
-    let meta = file.metadata()?;
     Ok(WriteOutcome {
         created: existing.is_none(),
         bytes: data.len() as u64,
-        stamp: FileStamp::of(&meta),
+        stamp: FileStamp::of_file(&file)?,
     })
 }
 
@@ -977,12 +977,12 @@ mod tests {
     async fn scrubs_selected_variables() {
         let dir = tempfile::tempdir().unwrap();
         let env = LocalEnvironment::new(dir.path().to_path_buf())
-            .with_scrubbed_env(vec!["HER_SECRET".into()])
+            .with_scrubbed_env(vec!["SCRUBBED_IN_TEST".into()])
             .with_env("HER_MARK", "1");
         // SAFETY: no other test reads this variable.
-        unsafe { std::env::set_var("HER_SECRET", "key") };
+        unsafe { std::env::set_var("SCRUBBED_IN_TEST", "key") };
         let out = env
-            .exec(request("echo \"secret=${HER_SECRET:-unset} mark=$HER_MARK pager=$PAGER\"", dir.path()))
+            .exec(request("echo \"secret=${SCRUBBED_IN_TEST:-unset} mark=$HER_MARK pager=$PAGER\"", dir.path()))
             .await
             .unwrap();
         assert_eq!(out.output.head.trim(), "secret=unset mark=1 pager=cat");
@@ -1040,7 +1040,7 @@ mod tests {
             assert_eq!(std::fs::read_link(&link).unwrap(), points_to);
             assert_eq!(std::fs::read_to_string(&target).unwrap(), data);
             // The stamp is that of the file reached through the link, as later checks see it.
-            assert_eq!(outcome.stamp, FileStamp::of(&std::fs::metadata(&link).unwrap()));
+            assert_eq!(outcome.stamp, FileStamp::of_path(&link).unwrap());
         }
         assert!(leftovers(&root.join("b")).is_empty());
 
@@ -1202,7 +1202,7 @@ mod tests {
         let text = env.read_lines(&file, &window).await.unwrap();
         assert_eq!((text.lines, text.total_lines, text.total_exact), (vec!["a".into(), "b".into()], 2, true));
         assert_eq!(text.total_size, 5);
-        assert_eq!(text.stamp, FileStamp::of(&std::fs::metadata(&file).unwrap()));
+        assert_eq!(text.stamp, FileStamp::of_path(&file).unwrap());
     }
 
     #[tokio::test]
@@ -1229,7 +1229,7 @@ mod tests {
         assert_eq!((changed.lines, changed.total_lines), (vec!["line 399998".into(), "line 399999".into()], 400_001));
         let indexes = env.line_indexes.lock();
         assert_eq!(indexes.len(), 1);
-        assert_eq!(indexes[0].1.stamp(), FileStamp::of(&std::fs::metadata(&path).unwrap()));
+        assert_eq!(indexes[0].1.stamp(), FileStamp::of_path(&path).unwrap());
     }
 
     #[test]
