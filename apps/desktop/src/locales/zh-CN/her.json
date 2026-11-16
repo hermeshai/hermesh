@@ -189,7 +189,57 @@
   },
   "files": {
     "save": "把 {{name}} 存到“下载”",
-    "saved": "已存到“下载”：{{name}}"
+    "saved": "已存到“下载”：{{name}}",
+    "title": "文件",
+    "button": "文件",
+    "buttonNew": "文件，{{count}} 份新的",
+    "search": "搜文件名，或 Her 说过的话",
+    "kinds": {
+      "all": "全部",
+      "doc": "文档",
+      "sheet": "表格",
+      "slide": "演示",
+      "image": "图片",
+      "code": "代码"
+    },
+    "group": {
+      "label": "分组",
+      "time": "按时间",
+      "source": "按来源"
+    },
+    "day": {
+      "today": "今天",
+      "yesterday": "昨天",
+      "week": "过去 7 天",
+      "earlier": "更早"
+    },
+    "source": {
+      "conversation": "对话里要的",
+      "routine": "定时任务",
+      "session": "编程会话"
+    },
+    "versions": "{{count}} 个版本",
+    "version": "第 {{n}} 版",
+    "latestMark": "（最新）",
+    "new": "新的",
+    "open": "打开",
+    "show": "在对话中查看",
+    "reply": "回复，让 Her 接着改",
+    "replyShort": "回复",
+    "download": "下载",
+    "emptyTitle": "Her 发给你的文件都收在这里",
+    "emptyBody": "报告、表格、图片……发在对话里的每一份，都能在这儿找回来。",
+    "noneTitle": "没有找到",
+    "noneBody": "换个词试试，文件名和 Her 发文件时说的话都能搜。",
+    "offline": "{{name}} 离线。这是上次看到的列表；打开过的文件这台 Mac 上还有，其余等它回来。",
+    "needsMachine": "{{name}} 离线，它回来后才能打开这份",
+    "earlierConversation": "这份来自已清空的对话",
+    "fromEarlier": "来自已清空的对话",
+    "notInConversation": "对话里已经找不到这条消息",
+    "more": "加载更多",
+    "noPreview": "这类文件不能在这里预览，可以下载后打开。",
+    "failed": "读不到：{{error}}",
+    "note": "Her 发给你的每份文件，都按发出时的样子留在 {{machine}} 上。"
   },
   "preview": {
     "source": "源码",

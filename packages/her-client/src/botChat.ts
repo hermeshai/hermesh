@@ -93,6 +93,16 @@ export interface BotFile {
   image: boolean;
   width?: number;
   height?: number;
+  /** The copy her kept of it as it was when sent (docs/her-deliverables.md §4.1), absolute: what to read. None from a her that keeps none, or for a file too large. */
+  snapshot?: string;
+}
+
+/**
+ * `read` of a sent file: of its copy, as it was when sent, when her kept one; of the file where it
+ * is now when there is none, or when the copy cannot be read (docs/her-deliverables.md §4.8).
+ */
+export function readSent<T>(f: Pick<BotFile, "path" | "snapshot">, read: (path: string) => Promise<T>): Promise<T> {
+  return f.snapshot === undefined ? read(f.path) : read(f.snapshot).catch(() => read(f.path));
 }
 
 /** When each message the bot sent was sent: the end of the reply that called send_to_user. */
@@ -122,7 +132,7 @@ const some = (list: unknown): list is unknown[] => Array.isArray(list) && list.l
 function filesOf(tool: ToolView): BotFile[] {
   const details = (tool.result as { details?: { files?: unknown } } | undefined)?.details;
   if (!Array.isArray(details?.files)) return [];
-  return details.files.flatMap((f: { path?: unknown; size?: unknown; image?: unknown; width?: unknown; height?: unknown }) =>
+  return details.files.flatMap((f: { path?: unknown; size?: unknown; image?: unknown; width?: unknown; height?: unknown; snapshot?: unknown }) =>
     typeof f?.path === "string"
       ? [{
           path: f.path,
@@ -130,6 +140,7 @@ function filesOf(tool: ToolView): BotFile[] {
           size: typeof f.size === "number" ? f.size : 0,
           image: f.image === true,
           ...(typeof f.width === "number" && typeof f.height === "number" ? { width: f.width, height: f.height } : {}),
+          ...(typeof f.snapshot === "string" && f.snapshot ? { snapshot: f.snapshot } : {}),
         }]
       : [],
   );

@@ -107,6 +107,10 @@ struct Bot {
     failed: bool,
     /// Its routines as its row shows them: the routines' side says when they change.
     routines: Vec<RoutineSummary>,
+    /// The files it sent that the owner has not seen in their list, and its latest send there:
+    /// the record of them says when they change (crate::deliveries).
+    new_deliveries: u32,
+    deliveries_latest: u64,
 }
 
 impl Bot {
@@ -118,6 +122,8 @@ impl Bot {
             waiting: None,
             failed: false,
             routines: Vec::new(),
+            new_deliveries: 0,
+            deliveries_latest: 0,
         }
     }
 
@@ -140,6 +146,8 @@ impl Bot {
             created_at: f.created_at.clone(),
             routines: self.routines.clone(),
             routines_error: routines_error.map(str::to_string),
+            new_deliveries: self.new_deliveries,
+            deliveries_latest: self.deliveries_latest,
         }
     }
 }
@@ -238,6 +246,11 @@ impl Registry {
         self.with(|bots| bots.values().filter_map(|b| b.file.session_id.clone()).collect())
     }
 
+    /// Every bot's id.
+    pub(crate) fn ids(&self) -> Vec<String> {
+        self.with(|bots| bots.keys().cloned().collect())
+    }
+
     pub(crate) fn exists(&self, id: &str) -> bool {
         self.with(|bots| bots.contains_key(id))
     }
@@ -248,6 +261,20 @@ impl Registry {
             bots.get_mut(id).is_some_and(|bot| {
                 let changed = bot.routines != routines;
                 bot.routines = routines;
+                changed
+            })
+        });
+        if changed {
+            self.announce(&[id], Vec::new());
+        }
+    }
+
+    /// What the bot sent changed, or the owner saw it; its row says how much is new.
+    pub(crate) fn set_deliveries(&self, id: &str, new: u32, latest: u64) {
+        let changed = self.with(|bots| {
+            bots.get_mut(id).is_some_and(|bot| {
+                let changed = (bot.new_deliveries, bot.deliveries_latest) != (new, latest);
+                (bot.new_deliveries, bot.deliveries_latest) = (new, latest);
                 changed
             })
         });
@@ -737,6 +764,7 @@ impl Server {
         }
         let session = registry.with_bot(id, |bot| bot.file.session_id.take())?;
         self.0.routines.bot_deleted(id).await;
+        self.0.deliveries.bot_deleted(id).await;
         self.drop_conversation(session).await?;
         let (home, dir_id) = (self.0.home.clone(), id.to_string());
         tokio::task::spawn_blocking(move || {

@@ -11,7 +11,7 @@ use tokio::sync::oneshot;
 
 /// Every step of the schema, in order; `PRAGMA user_version` says how many a file has had.
 /// A step only adds: tables and nullable columns, never a new meaning for an old one.
-const MIGRATIONS: &[&str] = &[crate::routines::SCHEMA_V1];
+const MIGRATIONS: &[&str] = &[crate::routines::SCHEMA_V1, crate::deliveries::SCHEMA_V2];
 
 /// Why the database cannot be used.
 #[derive(Clone, Debug, PartialEq, Eq, thiserror::Error)]
@@ -165,6 +165,29 @@ mod tests {
         conn.execute("INSERT INTO a(x, y) VALUES (1, 'y')", []).unwrap();
         // Nothing to copy from a new file.
         assert!(!backup_path(&path, 0).exists());
+    }
+
+    /// A database from before the sent files were recorded (docs/her-deliverables.md §4.2):
+    /// its routines stay, and it takes the new tables.
+    #[test]
+    fn a_database_of_routines_alone_takes_the_sent_files_tables() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("her.db");
+        let conn = migrate(connect(&path).unwrap(), &path, &MIGRATIONS[..1]).unwrap();
+        conn.execute(
+            "INSERT INTO routines (id, bot_id, name, prompt, schedule, when_text, enabled, created_at, updated_at)
+             VALUES ('r1', 'b1', '晨报', 'p', 's', 'w', 1, 't', 't')",
+            [],
+        )
+        .unwrap();
+        drop(conn);
+        let conn = migrate(connect(&path).unwrap(), &path, MIGRATIONS).unwrap();
+        assert_eq!(version(&conn), MIGRATIONS.len() as u32);
+        let name: String = conn.query_row("SELECT name FROM routines", [], |r| r.get(0)).unwrap();
+        assert_eq!(name, "晨报");
+        conn.execute("INSERT INTO delivery_marks (bot_id, seen) VALUES ('b1', 3)", []).unwrap();
+        let sends: i64 = conn.query_row("SELECT COUNT(*) FROM deliveries", [], |r| r.get(0)).unwrap();
+        assert_eq!(sends, 0);
     }
 
     #[test]

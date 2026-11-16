@@ -570,6 +570,31 @@ func newIPhoneControl(t *testing.T, w *ownerMac, sessions map[string]string) str
 		}
 		reply(rw, map[string]int{"assistants": len(bots)})
 	})
+	// A file in her assistant's folder, by name and text, as a model writes
+	// or changes one there (testHerDeliveries).
+	mux.HandleFunc("POST /her-file", func(rw http.ResponseWriter, r *http.Request) {
+		var home string
+		for _, kv := range w.daemonEnv {
+			if v, ok := strings.CutPrefix(kv, "HER_HOME="); ok {
+				home = v
+			}
+		}
+		name, text := r.URL.Query().Get("name"), r.URL.Query().Get("text")
+		bots, _ := filepath.Glob(filepath.Join(home, "bots", "*", "bot.json"))
+		if home == "" || len(bots) == 0 || name == "" || strings.ContainsAny(name, "/\\") {
+			http.Error(rw, "no assistant in "+home+", or no name", 500)
+			return
+		}
+		for _, bot := range bots {
+			dir := filepath.Join(filepath.Dir(bot), "files")
+			os.MkdirAll(dir, 0o700)
+			if err := os.WriteFile(filepath.Join(dir, name), []byte(text), 0o600); err != nil {
+				http.Error(rw, err.Error(), 500)
+				return
+			}
+		}
+		reply(rw, map[string]int{"assistants": len(bots)})
+	})
 	// Files the owner sends Her from the Mac (testHer): a PDF and a note,
 	// uploaded into her assistant's folder and named in the message, as the
 	// Mac app sends them, for the iPhone to open from the owner's bubble.

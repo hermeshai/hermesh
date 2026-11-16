@@ -88,6 +88,7 @@ private struct HerPage: View {
             if sideBars {
                 MenuToolbarItem()
                 if let bot = chat.bot {
+                    ToolbarItem(placement: .topBarTrailing) { HerFilesButton(new: bot.newDeliveries, older: herAnswers(machine.her, "deliveries/list") == false, inBar: true) }
                     ToolbarItem(placement: .topBarTrailing) { HerProgressButton(waiting: herProgressWaiting(chat, model), inBar: true) }
                     ToolbarItem(placement: .topBarTrailing) { HerRoutinesButton(dot: herRoutineDot(bot.routines), inBar: true) }
                 }
@@ -112,8 +113,13 @@ private struct HerPage: View {
         // Typing, her mark gives the conversation its room; never while the panel hangs from the tag.
         let small = typing && !team
         return ZStack(alignment: .top) {
-            HStack {
+            HStack(spacing: 8) {
                 if !sideBars && !model.menuBeside { HerMenuButton() }
+                // The files Her sent (docs/her-deliverables.md §3.3): beside the menu, so each side has two buttons
+                // and Her's mark stays clear of them.
+                if let bot = chat.bot, !sideBars {
+                    HerFilesButton(new: bot.newDeliveries, older: herAnswers(machine.her, "deliveries/list") == false)
+                }
                 Spacer()
                 if let bot = chat.bot, !sideBars {
                     HerProgressButton(waiting: herProgressWaiting(chat, model))
@@ -387,6 +393,47 @@ private struct HerProgressButton: View {
         }
         .accessibilityLabel(waiting > 0 ? Text("Progress, \(waiting) waiting for you") : Text("Progress"))
         .accessibilityIdentifier("her-progress")
+    }
+}
+
+/// The files Her sent, beside the menu: how many are new since the owner last looked at them, or a mark while her
+/// machine is too old to list them.
+private struct HerFilesButton: View {
+    @Environment(AppModel.self) private var model
+    let new: Int
+    let older: Bool
+    var inBar = false
+
+    var body: some View {
+        Group {
+            if inBar {
+                Button { model.path.append(.herFiles) } label: {
+                    Image(systemName: "tray").overlay(alignment: .topTrailing) { badge.offset(x: 8, y: -6) }
+                }
+            } else {
+                Button { model.path.append(.herFiles) } label: {
+                    Image(systemName: "tray").font(.body.weight(.medium)).frame(width: 44, height: 44)
+                        .overlay(alignment: .topTrailing) { badge.offset(x: 2, y: -2) }
+                        .glassEffect(.regular.interactive(), in: .circle)
+                        .contentShape(.circle)
+                }
+                .buttonStyle(.plain)
+            }
+        }
+        .accessibilityLabel(older ? Text("Files, needs an update") : new > 0 ? Text("Files, \(new) new") : Text("Files"))
+        .accessibilityIdentifier("her-files")
+    }
+
+    @ViewBuilder private var badge: some View {
+        if older {
+            Circle().fill(.orange).frame(width: 8, height: 8)
+        } else if new > 0 {
+            Text(verbatim: new > 99 ? "99+" : "\(new)")
+                .font(.caption2.weight(.bold)).monospacedDigit().foregroundStyle(.white)
+                .padding(.horizontal, 5).frame(minWidth: 18, minHeight: 18)
+                .background(Color.accentColor, in: .capsule)
+                .accessibilityHidden(true)
+        }
     }
 }
 

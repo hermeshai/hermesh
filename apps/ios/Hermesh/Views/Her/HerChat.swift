@@ -350,6 +350,24 @@ final class HerChat {
         }
     }
 
+    /// Brings a message of the conversation into view and marks it a moment (Show in Conversation, from the files Her
+    /// sent): earlier history is read until the conversation holds it, or there is none.
+    func reveal(message key: String) async {
+        for _ in 0 ..< 50 {
+            if let s = session, herChat(s).contains(where: { $0.key == key }) { break }
+            guard live?.before != nil, convUp else { break }
+            await earlier()
+        }
+        revealMessage = key
+    }
+
+    /// The owner saw the list of the files Her sent up to `seq` (deliveries/seen): on a connection of its own, as the
+    /// page that saw it is leaving, and its hold on the environment's connection with it.
+    func seeDeliveries(bot: String, upTo seq: Int) async {
+        guard let live = api?.live else { return }
+        _ = try? await HerConnection.call(HerTunnel(api: live), machineID: machineID, "deliveries/seen", ["bot_id": .string(bot), "seq": .number(Double(seq))])
+    }
+
     /// What the next message replies to: above the composer's words, which take the keyboard.
     func reply(_ quote: HerReply) {
         draft.reply = quote
@@ -517,36 +535,71 @@ final class HerChat {
 
     // MARK: Files Her sent
 
-    /// A picture Her sent, read from her folder on the machine (files/read).
-    func loadPicture(_ path: String) async {
-        guard pictures[path] == nil, let conv, let id = live?.sessionID else { return }
-        let read = try? await conv.call("files/read", ["session_id": .string(id), "path": .string(path)])
-        pictures.updateValue(read?["image"]["data"].string.flatMap { Data(base64Encoded: $0) }.flatMap(UIImage.init(data:)), forKey: path)
+    /// A picture Her sent, read from the machine (files/read): the copy her kept of it as it was sent, when there is
+    /// one, and the file where it is now when there is none or the copy can't be read (docs/her-deliverables.md
+    /// §4.8). Kept by what it reads (HerFile.source): a picture sent again after it changed is another picture.
+    func loadPicture(_ f: HerFile) async {
+        guard pictures[f.source] == nil, let conv, let id = live?.sessionID else { return }
+        var picture: UIImage?
+        for path in f.snapshot == nil ? [f.path] : [f.source, f.path] where picture == nil {
+            let read = try? await conv.call("files/read", ["session_id": .string(id), "path": .string(path)])
+            picture = read?["image"]["data"].string.flatMap { Data(base64Encoded: $0) }.flatMap(UIImage.init(data:))
+        }
+        pictures.updateValue(picture, forKey: f.source)
     }
 
     /// A picture that was read and can't be shown: it shows as a file.
-    func unreadable(_ path: String) -> Bool {
-        if case .some(.none) = pictures[path] { return true }
+    func unreadable(_ f: HerFile) -> Bool {
+        if case .some(.none) = pictures[f.source] { return true }
         return false
     }
 
-    /// A file on Her's machine (one she sent, or one the owner sent her), brought to this iPhone (HerDownload), to preview and save.
-    func download(_ path: String) async -> URL? {
-        guard let api, let bot else { return nil }
+    /// A file on Her's machine (one she sent, or one the owner sent her), brought to this iPhone (HerDownload), to
+    /// preview and save. With `snapshot`, the copy her kept of a sent file is brought instead, as it was when sent;
+    /// the file itself when the copy can't be had. With `sha256`, a file Her sent is kept here by its hash once
+    /// brought, and comes from here next time, while the machine is offline too (docs/her-deliverables.md §4.6).
+    func download(_ path: String, snapshot: String? = nil, sha256: String? = nil) async -> URL? {
+        let kept = sha256.flatMap { keptFile($0, name: baseName(path)) }
+        if let kept, FileManager.default.fileExists(atPath: kept.path) { return kept }
+        if let snapshot, let url = try? await fetch(snapshot) { return keep(url, at: kept) }
         do {
-            let dir = FileManager.default.temporaryDirectory.appendingPathComponent("her/\(machineID)/\(UUID().uuidString)")
-            try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
-            var r = Hermesh_Local_V1_HerDownloadRequest()
-            r.machineID = machineID
-            r.botID = bot.id
-            r.path = path
-            r.localDir = dir.path
-            let res: Hermesh_Local_V1_HerDownloadResponse = try await api.call("HerDownload", r, timeout: 120)
-            return URL(fileURLWithPath: res.localPath)
+            return try await fetch(path).map { keep($0, at: kept) }
         } catch {
             report(error)
             return nil
         }
+    }
+
+    /// Where a file Her sent is kept on this iPhone by its content's hash: in Caches, which the system may clear.
+    func keptFile(_ sha256: String, name: String) -> URL? {
+        guard sha256.count == 64, sha256.allSatisfy(\.isHexDigit), !machineID.contains("/") else { return nil }
+        return FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask).first?
+            .appendingPathComponent("Her Files/\(machineID)/\(sha256)/\(name)")
+    }
+
+    /// Whether this iPhone keeps that file.
+    func keeps(_ sha256: String?, name: String) -> Bool {
+        sha256.flatMap { keptFile($0, name: name) }.map { FileManager.default.fileExists(atPath: $0.path) } ?? false
+    }
+
+    /// `url` copied to where it is kept, which it is then read from; `url` as it is without one.
+    private func keep(_ url: URL, at kept: URL?) -> URL {
+        guard let kept else { return url }
+        try? FileManager.default.createDirectory(at: kept.deletingLastPathComponent(), withIntermediateDirectories: true)
+        return (try? FileManager.default.copyItem(at: url, to: kept)) != nil ? kept : url
+    }
+
+    private func fetch(_ path: String) async throws -> URL? {
+        guard let api, let bot else { return nil }
+        let dir = FileManager.default.temporaryDirectory.appendingPathComponent("her/\(machineID)/\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        var r = Hermesh_Local_V1_HerDownloadRequest()
+        r.machineID = machineID
+        r.botID = bot.id
+        r.path = path
+        r.localDir = dir.path
+        let res: Hermesh_Local_V1_HerDownloadResponse = try await api.call("HerDownload", r, timeout: 120)
+        return URL(fileURLWithPath: res.localPath)
     }
 
     // MARK: The onboarding

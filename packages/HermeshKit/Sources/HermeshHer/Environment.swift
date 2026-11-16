@@ -33,6 +33,10 @@ public struct HerBot: Equatable, Sendable {
     public var routines: [HerRoutine]
     /// Why routines cannot be used now; `routines` is then empty.
     public var routinesError: String?
+    /// The files it sent that the owner has not seen in their list (docs/her-deliverables.md §4.2), and the latest
+    /// send there: the list changed when it moves.
+    public var newDeliveries: Int
+    public var deliveriesLatest: Int
 
     public init?(_ j: JSON) {
         guard let id = j["id"].string else { return nil }
@@ -45,6 +49,8 @@ public struct HerBot: Equatable, Sendable {
         typing = j["typing"].bool ?? false
         routines = (j["routines"].array ?? []).compactMap(HerRoutine.init)
         routinesError = j["routines_error"].text
+        newDeliveries = j["new_deliveries"].int ?? 0
+        deliveriesLatest = j["deliveries_latest"].int ?? 0
     }
 }
 

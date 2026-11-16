@@ -1301,13 +1301,78 @@ async fn an_attachment_is_one_message_of_files_and_says_what_they_are() {
     assert_eq!(h.api.requests().len(), 1, "end_turn ends it");
     let image = h.folder.join("毛利率.png");
     let file = h.folder.join("报告.pdf");
+    let sent = h.home.bot_sent_dir("b1");
+    let (image_hash, file_hash) = (sha256(&png(960, 600)), sha256(b"%PDF-1.7"));
     assert_eq!(
         details(&result.events),
         [json!({ "files": [
-            { "path": image, "size": png(960, 600).len(), "image": true, "width": 960, "height": 600 },
-            { "path": file, "size": 8 },
+            { "path": image, "size": png(960, 600).len(), "image": true, "width": 960, "height": 600,
+              "sha256": image_hash, "snapshot": sent.join(&image_hash).join("毛利率.png") },
+            { "path": file, "size": 8, "sha256": file_hash, "snapshot": sent.join(&file_hash).join("报告.pdf") },
         ] })]
     );
+}
+
+fn sha256(bytes: &[u8]) -> String {
+    ring::digest::digest(&ring::digest::SHA256, bytes).as_ref().iter().map(|b| format!("{b:02x}")).collect()
+}
+
+/// The copy a sent file's entry names, read back.
+fn copy_of(file: &serde_json::Value) -> (PathBuf, Vec<u8>) {
+    let path = PathBuf::from(file["snapshot"].as_str().expect("the entry names a copy"));
+    let bytes = std::fs::read(&path).unwrap();
+    (path, bytes)
+}
+
+// ---- The copy of a sent file (docs/her-deliverables.md §4.1) ----
+
+#[tokio::test]
+async fn a_sent_file_is_kept_as_it_was_when_sent() {
+    let mut h = bot("Her", PermissionMode::Manual, vec![attach("c1", &["报告.md"]), attach("c2", &["报告.md"]), attach("c3", &["报告.md"])]).await;
+    let file = h.folder.join("报告.md");
+    std::fs::write(&file, "第一版").unwrap();
+    let first = details(&h.kernel.run(prompt("发我")).await.unwrap().events)[0]["files"][0].clone();
+    std::fs::write(&file, "第二版，长一些").unwrap();
+    let second = details(&h.kernel.run(prompt("改了再发")).await.unwrap().events)[0]["files"][0].clone();
+    let again = details(&h.kernel.run(prompt("原样再发")).await.unwrap().events)[0]["files"][0].clone();
+
+    let ((one, was), (two, is)) = (copy_of(&first), copy_of(&second));
+    assert_eq!((was.as_slice(), is.as_slice()), ("第一版".as_bytes(), "第二版，长一些".as_bytes()), "each as it was sent");
+    assert_ne!(one, two);
+    assert_eq!(one, h.home.bot_sent_dir("b1").join(sha256("第一版".as_bytes())).join("报告.md"), "by its content, under its name");
+    assert_eq!((first["size"].as_u64(), second["size"].as_u64()), (Some(9), Some(21)));
+    assert!(std::fs::metadata(&one).unwrap().permissions().readonly());
+    assert_eq!(again, second, "the same content is the same copy");
+    let kept: Vec<_> = std::fs::read_dir(h.home.bot_sent_dir("b1")).unwrap().map(|e| e.unwrap().file_name()).collect();
+    assert_eq!(kept.len(), 2, "nothing else stays there: {kept:?}");
+}
+
+#[tokio::test]
+async fn a_file_outside_the_folder_is_kept_too() {
+    let outside = tempfile::tempdir().unwrap();
+    let file = outside.path().canonicalize().unwrap().join("合同.pdf");
+    std::fs::write(&file, b"%PDF-1.7 outside").unwrap();
+    let mut h = bot("Her", PermissionMode::Manual, vec![attach("c1", &[file.to_str().unwrap()])]).await;
+    let sent = details(&h.kernel.run(prompt("发我")).await.unwrap().events)[0]["files"][0].clone();
+    let (copy, bytes) = copy_of(&sent);
+    assert_eq!(bytes, b"%PDF-1.7 outside");
+    assert!(copy.starts_with(h.home.bot_sent_dir("b1")), "{copy:?}");
+}
+
+#[cfg(unix)]
+#[tokio::test]
+async fn a_file_that_cannot_be_copied_is_sent_without_a_copy() {
+    use std::os::unix::fs::PermissionsExt;
+    let mut h = bot("Her", PermissionMode::Manual, vec![attach("c1", &["报告.md"])]).await;
+    std::fs::write(h.folder.join("报告.md"), "周报").unwrap();
+    // Nothing can be written where the copies go.
+    let sent = h.home.bot_sent_dir("b1");
+    std::fs::create_dir_all(&sent).unwrap();
+    std::fs::set_permissions(&sent, std::fs::Permissions::from_mode(0o500)).unwrap();
+    let result = h.kernel.run(prompt("发我")).await.unwrap();
+    std::fs::set_permissions(&sent, std::fs::Permissions::from_mode(0o700)).unwrap();
+    assert!(matches!(result.end, TaskEnd::Completed { .. }));
+    assert_eq!(details(&result.events), [json!({ "files": [{ "path": h.folder.join("报告.md"), "size": 6 }] })]);
 }
 
 #[tokio::test]

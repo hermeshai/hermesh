@@ -546,6 +546,13 @@ fn memory_dir(home: &HerHome, bot: &str) -> PathBuf {
     crate::protected::canonical_lossy(&home.bot_memory_dir(bot))
 }
 
+/// A bot's session keeps a copy of each file it sends (docs/her-deliverables.md §4.1).
+fn link_sent(session: &Session, home: &HerHome, bot: Option<&str>) {
+    if let Some(bot) = bot {
+        session.tool_state.insert(Arc::new(crate::bot::SentDir(home.bot_sent_dir(bot))));
+    }
+}
+
 /// A bot's session reaches its routines through the service (routine-design §4.3).
 fn link_routines(session: &Session, host: Option<Arc<dyn RoutineHost>>, bot: Option<String>) {
     if let (Some(host), Some(bot)) = (host, bot) {
@@ -743,6 +750,7 @@ impl Kernel {
         if let Some(tree) = &agents {
             tree.bind_root(&session, kernel.internal.clone());
         }
+        link_sent(&session, &opts.home, bot_id.as_deref());
         link_routines(&session, routines, bot_id);
         session.record_system_prompt();
         session.record(EntryKind::Settings {
@@ -976,6 +984,7 @@ impl Kernel {
             tree.bind_root(&session, kernel.internal.clone());
             tree.restore(&restored_agents);
         }
+        link_sent(&session, &opts.home, bot_id.as_deref());
         link_routines(&session, routines, bot_id);
         kernel.restored_agents = restored_agents;
         // A new entry only when the prompt, the tools, the MCP part or the memory differ from what

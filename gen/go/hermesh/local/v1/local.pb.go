@@ -9194,7 +9194,12 @@ type GetHerConversationResponse struct {
 	// Her's conversation as bots/open gives it (her's SessionSnapshot, as
 	// JSON), holding what the Her entry shows of its last 100 messages and
 	// no earlier history; empty when none is kept.
-	Snapshot      []byte `protobuf:"bytes,2,opt,name=snapshot,proto3" json:"snapshot,omitempty"`
+	Snapshot []byte `protobuf:"bytes,2,opt,name=snapshot,proto3" json:"snapshot,omitempty"`
+	// The first page of the files Her sent, as deliveries/list last answered
+	// it here (her's DeliveriesListResult, as JSON), its mark of what the
+	// owner saw moved by deliveries/seen since; empty when none is kept
+	// (docs/her-deliverables.md §4.4).
+	Deliveries    []byte `protobuf:"bytes,3,opt,name=deliveries,proto3" json:"deliveries,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -9239,6 +9244,13 @@ func (x *GetHerConversationResponse) GetBot() []byte {
 func (x *GetHerConversationResponse) GetSnapshot() []byte {
 	if x != nil {
 		return x.Snapshot
+	}
+	return nil
+}
+
+func (x *GetHerConversationResponse) GetDeliveries() []byte {
+	if x != nil {
+		return x.Deliveries
 	}
 	return nil
 }
@@ -10285,10 +10297,13 @@ const file_hermesh_local_v1_local_proto_rawDesc = "" +
 	"\x05reply\x18\b \x01(\v2\x1a.hermesh.local.v1.HerReplyR\x05reply\":\n" +
 	"\x19GetHerConversationRequest\x12\x1d\n" +
 	"\n" +
-	"machine_id\x18\x01 \x01(\tR\tmachineId\"J\n" +
+	"machine_id\x18\x01 \x01(\tR\tmachineId\"j\n" +
 	"\x1aGetHerConversationResponse\x12\x10\n" +
 	"\x03bot\x18\x01 \x01(\fR\x03bot\x12\x1a\n" +
-	"\bsnapshot\x18\x02 \x01(\fR\bsnapshot\"g\n" +
+	"\bsnapshot\x18\x02 \x01(\fR\bsnapshot\x12\x1e\n" +
+	"\n" +
+	"deliveries\x18\x03 \x01(\fR\n" +
+	"deliveries\"g\n" +
 	"\x10HerUploadRequest\x12\x1d\n" +
 	"\n" +
 	"machine_id\x18\x01 \x01(\tR\tmachineId\x12\x15\n" +

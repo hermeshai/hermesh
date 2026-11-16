@@ -103,6 +103,10 @@ fn is_zero(n: &u32) -> bool {
     *n == 0
 }
 
+fn is_zero64(n: &u64) -> bool {
+    *n == 0
+}
+
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 pub struct BotSummary {
     pub id: String,
@@ -144,6 +148,13 @@ pub struct BotSummary {
     /// Why routines cannot be used now: their database cannot be opened. `routines` is then empty.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub routines_error: Option<String>,
+    /// The files it sent since the owner last looked at the list of them (`deliveries/seen`).
+    #[serde(default, skip_serializing_if = "is_zero")]
+    pub new_deliveries: u32,
+    /// The latest send in that list, as `deliveries/list` numbers them: the list changed when
+    /// this moves.
+    #[serde(default, skip_serializing_if = "is_zero64")]
+    pub deliveries_latest: u64,
 }
 
 /// Result of `bots/subscribe`.
@@ -208,6 +219,143 @@ pub struct BotMemoryResult {
     /// The other files of the memory folder, by name.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub pages: Vec<BotMemoryPage>,
+}
+
+/// What a file a bot sent is, by its name; a picture by its contents (docs/her-deliverables.md §4.2).
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum DeliveryKind {
+    Doc,
+    Sheet,
+    Slide,
+    Image,
+    Code,
+    Other,
+}
+
+impl DeliveryKind {
+    /// By the name's extension, without regard to case; `image`: its contents are a picture's.
+    pub fn of(name: &str, image: bool) -> Self {
+        if image {
+            return Self::Image;
+        }
+        let ext = name.rsplit_once('.').map(|(_, ext)| ext.to_ascii_lowercase()).unwrap_or_default();
+        match ext.as_str() {
+            "doc" | "docx" | "pdf" | "md" | "markdown" | "txt" | "rtf" | "pages" | "odt" | "html" | "htm" => Self::Doc,
+            "xlsx" | "xls" | "csv" | "tsv" | "numbers" | "ods" => Self::Sheet,
+            "pptx" | "ppt" | "key" | "odp" => Self::Slide,
+            "png" | "jpg" | "jpeg" | "gif" | "webp" | "heic" | "svg" | "bmp" | "tiff" => Self::Image,
+            "rs" | "go" | "py" | "js" | "mjs" | "ts" | "tsx" | "jsx" | "java" | "kt" | "swift" | "c" | "h" | "cc" | "cpp" | "hpp" | "cs" | "rb" | "php"
+            | "sh" | "bash" | "zsh" | "sql" | "json" | "yaml" | "yml" | "toml" | "xml" | "css" | "scss" | "lua" | "r" | "diff" | "patch" | "ipynb" => Self::Code,
+            _ => Self::Other,
+        }
+    }
+
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Doc => "doc",
+            Self::Sheet => "sheet",
+            Self::Slide => "slide",
+            Self::Image => "image",
+            Self::Code => "code",
+            Self::Other => "other",
+        }
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+pub struct DeliveriesListParams {
+    pub bot_id: String,
+    /// Files whose latest send is before this one: the `next` of the page before. The newest without it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub before: Option<u64>,
+    /// How many files: 50 without it, at most 200.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub limit: Option<u32>,
+    /// Only files with this in their name, in the bot's words or in what they came from, in
+    /// any version, without regard to case.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub query: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub kind: Option<DeliveryKind>,
+}
+
+/// Result of `deliveries/list`.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+pub struct DeliveriesListResult {
+    /// Newest first, by their latest send.
+    pub files: Vec<DeliveredFile>,
+    /// The last send the owner saw (`deliveries/seen`): a later one is new.
+    pub seen: u64,
+    /// The `before` of the next page, when there is one.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub next: Option<u64>,
+}
+
+/// A file a bot sent: the sends from one path are one file.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+pub struct DeliveredFile {
+    /// Where it was on the Her Server when sent, absolute.
+    pub path: String,
+    pub name: String,
+    pub kind: DeliveryKind,
+    /// Newest first, each a different content: the same content sent again is its latest send.
+    /// One entry when the latest send kept no copy, as nothing earlier can be shown.
+    pub versions: Vec<Delivery>,
+}
+
+/// One send of a file.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+pub struct Delivery {
+    /// Its number among the bot's sends, growing.
+    pub seq: u64,
+    /// The conversation it was sent in, and the `send_to_user` call that sent it: its message.
+    pub session_id: String,
+    pub call_id: String,
+    pub size: u64,
+    /// A picture's size in pixels, when known.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub width: Option<u32>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub height: Option<u32>,
+    /// The copy kept of it as it was when sent, absolute, and its content's SHA-256: what to
+    /// read. None when no copy was kept; it is then read from `path`, as it is now.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub sha256: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub snapshot: Option<String>,
+    /// The bot's words with it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub text: Option<String>,
+    /// RFC 3339.
+    pub sent_at: String,
+    /// What it came from; none for what the owner asked for in the conversation.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub source: Option<DeliverySource>,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum DeliverySourceKind {
+    /// A routine's report the bot was passing on.
+    Routine,
+    /// News of a coding session the bot was telling the owner of.
+    Session,
+}
+
+/// The routine or the session a file came from, and its name as the bot heard it.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+pub struct DeliverySource {
+    pub kind: DeliverySourceKind,
+    pub id: String,
+    pub name: String,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+pub struct DeliveriesSeenParams {
+    pub bot_id: String,
+    /// The highest `seq` the list showed. The mark never goes back.
+    pub seq: u64,
 }
 
 /// A file of a bot's memory besides `MEMORY.md`.

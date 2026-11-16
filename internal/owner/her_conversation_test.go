@@ -369,3 +369,87 @@ func TestHerConversationCardEnded(t *testing.T) {
 		t.Fatalf("the card's note is not kept: %s", snapshot["transcript"])
 	}
 }
+
+// herCalls is a machine whose her answers each Call with the result the
+// test gives for its method.
+type herCalls struct {
+	herScript
+	call map[string]string
+}
+
+func (h *herCalls) HerCall(_ context.Context, req *herv1.CallRequest) (*herv1.CallResponse, error) {
+	r, ok := h.call[req.GetRequest().GetMethod()]
+	if !ok {
+		return &herv1.CallResponse{Response: &herv1.Response{Error: &herv1.Error{Code: -32601, Message: "no such method"}}}, nil
+	}
+	return &herv1.CallResponse{Response: &herv1.Response{Result: []byte(r)}}, nil
+}
+
+// The first page of the files Her sent, as deliveries/list answered it, is
+// kept with her conversation and served with it (docs/her-deliverables.md
+// §4.4): not a later page, a search or a filter, nor another assistant's;
+// deliveries/seen moves its mark, never back; a restart keeps it, and
+// forgetting the machine's Her forgets it.
+func TestHerDeliveriesKept(t *testing.T) {
+	dir := t.TempDir()
+	h := &herCalls{herScript: herScript{results: map[string]string{"bots/subscribe": `{"bots":[` + herBotJSON + `,` + otherBotJSON + `]}`}}, call: map[string]string{}}
+	d, err := Open(Config{DataDir: dir})
+	if err != nil {
+		t.Fatal(err)
+	}
+	o := d.owner()
+	o.herReach = func(context.Context, string) (herMachine, error) { return h, nil }
+	herFollow(t, o, herSubscribe)
+	kept := func(d *Device) string {
+		t.Helper()
+		res, err := (&localService{d: d}).GetHerConversation(context.Background(), &localv1.GetHerConversationRequest{MachineId: "m_1"})
+		if err != nil {
+			t.Fatal(err)
+		}
+		return string(res.Deliveries)
+	}
+	call := func(method, params string) {
+		t.Helper()
+		if _, err := o.HerCall(context.Background(), "m_1", &herv1.CallRequest{Request: &herv1.Request{Method: method, Params: []byte(params)}}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	const first = `{"files":[{"path":"/f/a.md","name":"a.md","kind":"doc","versions":[]}],"seen":2,"next":4}`
+	h.call["deliveries/list"] = first
+	call("deliveries/list", `{"bot_id":"her"}`)
+	if got := kept(d); got != first {
+		t.Fatalf("the first page: %s", got)
+	}
+	h.call["deliveries/list"] = `{"files":[],"seen":2}`
+	for _, params := range []string{`{"bot_id":"her","before":4}`, `{"bot_id":"her","query":"a"}`, `{"bot_id":"her","kind":"image"}`, `{"bot_id":"other"}`} {
+		call("deliveries/list", params)
+		if got := kept(d); got != first {
+			t.Fatalf("after %s: %s", params, got)
+		}
+	}
+	h.call["deliveries/seen"] = `{}`
+	call("deliveries/seen", `{"bot_id":"her","seq":5}`)
+	call("deliveries/seen", `{"bot_id":"her","seq":3}`)
+	var page struct {
+		Seen  int `json:"seen"`
+		Next  int `json:"next"`
+		Files []struct {
+			Name string `json:"name"`
+		} `json:"files"`
+	}
+	if json.Unmarshal([]byte(kept(d)), &page); page.Seen != 5 || page.Next != 4 || len(page.Files) != 1 || page.Files[0].Name != "a.md" {
+		t.Fatalf("seen up to 5, the rest as it was: %+v", page)
+	}
+	d.Close()
+	d, err = Open(Config{DataDir: dir})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer d.Close()
+	if !strings.Contains(kept(d), `"seen":5`) {
+		t.Fatalf("after a restart: %s", kept(d))
+	}
+	if err := d.owner().st.dropHerKept("m_1"); err != nil || kept(d) != "" {
+		t.Fatalf("forgotten with Her: %q %v", kept(d), err)
+	}
+}

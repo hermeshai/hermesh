@@ -42,6 +42,7 @@ mod browser_status;
 mod connections;
 mod customize;
 mod db;
+mod deliveries;
 mod decks;
 mod desktop_status;
 mod docs;

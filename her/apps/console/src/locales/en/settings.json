@@ -222,6 +222,10 @@
         "name": "Files",
         "desc": "What assistants and conversations made"
       },
+      "sent": {
+        "name": "Files Sent to You",
+        "desc": "A copy of each file an assistant sent you, as it was when sent; the same content is kept once"
+      },
       "conversations": {
         "name": "Conversations",
         "desc": "Every conversation, with its tools' full output"

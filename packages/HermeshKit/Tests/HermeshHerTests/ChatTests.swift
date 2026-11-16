@@ -49,7 +49,7 @@ func snapshot(_ items: [JSON], task: JSON = nil, seq: Int = 10, queued: JSON = [
         reply("a1", [call("c0", "bash", ["command": "ls"]), call("c1", "send_to_user", ["text": "Four are open."])], ts: 2000, duration: 500),
         result("c0"), result("c1"),
         reply("a2", [call("c2", "send_to_user", ["type": "attachment", "text": "Here it is", "files": [["path": "/b/report.pdf"]]])], ts: 3000),
-        result("c2", details: ["files": [["path": "/b/report.pdf", "size": 2048, "image": false], ["path": "/b/chart.png", "size": 10, "image": true]]]),
+        result("c2", details: ["files": [["path": "/b/report.pdf", "size": 2048, "image": false], ["path": "/b/chart.png", "size": 10, "image": true, "sha256": "3f9a", "snapshot": "/b/sent/3f9a/chart.png"]]]),
         ["type": "task_end", "task_id": "t1", "outcome": "completed", "ts": 3100],
     ])
     let items = herChat(v)
@@ -58,6 +58,8 @@ func snapshot(_ items: [JSON], task: JSON = nil, seq: Int = 10, queued: JSON = [
     #expect(items[1].kind == .her("Four are open.") && items[1].ts == 2500, "sent when the reply ended")
     guard case .attachment(let files, let text) = items[2].kind else { Issue.record("no attachment"); return }
     #expect(text == "Here it is" && files.map(\.name) == ["report.pdf", "chart.png"] && files[0].size == 2048 && files[1].image)
+    // A file is read from the copy her kept of it as it was sent, when there is one (docs/her-deliverables.md §4.1).
+    #expect(files.map(\.snapshot) == [nil, "/b/sent/3f9a/chart.png"] && files.map(\.source) == ["/b/report.pdf", "/b/sent/3f9a/chart.png"])
 }
 
 @Test func failedRefusedAndCancelledMessagesDoNotShow() {

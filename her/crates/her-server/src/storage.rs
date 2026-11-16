@@ -15,8 +15,9 @@ use her_rpc::RpcError;
 use crate::server::Server;
 
 /// Every kind, in the order the result lists them: the enum's, so a kind indexes its bytes.
-const KINDS: [StorageKind; 7] = [
+const KINDS: [StorageKind; 8] = [
     StorageKind::Files,
+    StorageKind::Sent,
     StorageKind::Conversations,
     StorageKind::Trash,
     StorageKind::Memory,
@@ -52,6 +53,7 @@ fn folders(home: &HerHome) -> HashMap<PathBuf, StorageKind> {
         let id = bot.file_name().to_string_lossy().into_owned();
         kinds.insert(home.bot_files_dir(&id), StorageKind::Files);
         kinds.insert(home.bot_memory_dir(&id), StorageKind::Memory);
+        kinds.insert(home.bot_sent_dir(&id), StorageKind::Sent);
     }
     kinds
 }
@@ -104,6 +106,7 @@ mod tests {
         write(home.bot_files_dir("b1").join("site/index.html"), 500);
         write(home.chats_dir().join("c1/notes.txt"), 70);
         write(home.bot_memory_dir("b1").join("owner.md"), 30);
+        write(home.bot_sent_dir("b1").join("3f9a/report.md"), 800);
         write(home.bot_dir("b1").join("bot.json"), 9);
         write(home.sessions_dir().join("2026/11/15/s1.jsonl"), 400);
         write(home.sessions_dir().join("2026/11/15/s1/tool-output/call_1.txt"), 100);
@@ -126,12 +129,13 @@ mod tests {
         assert_eq!(of(&u, StorageKind::Conversations), 500);
         assert_eq!(of(&u, StorageKind::Trash), 60);
         assert_eq!(of(&u, StorageKind::Memory), 30);
+        assert_eq!(of(&u, StorageKind::Sent), 800, "the copies are a part of their own");
         assert_eq!(of(&u, StorageKind::Browser), 200);
         assert_eq!(of(&u, StorageKind::Cache), 40);
         // The mark her leaves in a home she makes is hers too.
         let mark = std::fs::metadata(home.mark_file()).unwrap().len();
         assert_eq!(of(&u, StorageKind::Other), 28 + mark);
-        assert_eq!(u.total, 2428 + mark);
+        assert_eq!(u.total, 3228 + mark);
     }
 
     #[test]

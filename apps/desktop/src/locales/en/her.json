@@ -190,7 +190,57 @@
   },
   "files": {
     "save": "Save {{name}} to Downloads",
-    "saved": "Saved to Downloads: {{name}}"
+    "saved": "Saved to Downloads: {{name}}",
+    "title": "Files",
+    "button": "Files",
+    "buttonNew": "Files, {{count}} new",
+    "search": "Search names, or what Her said",
+    "kinds": {
+      "all": "All",
+      "doc": "Documents",
+      "sheet": "Sheets",
+      "slide": "Slides",
+      "image": "Pictures",
+      "code": "Code"
+    },
+    "group": {
+      "label": "Group",
+      "time": "By Time",
+      "source": "By Source"
+    },
+    "day": {
+      "today": "Today",
+      "yesterday": "Yesterday",
+      "week": "Past 7 Days",
+      "earlier": "Earlier"
+    },
+    "source": {
+      "conversation": "Asked in the Conversation",
+      "routine": "Scheduled Task",
+      "session": "Coding Session"
+    },
+    "versions": "{{count}} versions",
+    "version": "Version {{n}}",
+    "latestMark": " (latest)",
+    "new": "New",
+    "open": "Open",
+    "show": "Show in Conversation",
+    "reply": "Reply to Have Her Revise",
+    "replyShort": "Reply",
+    "download": "Download",
+    "emptyTitle": "The files Her sends you are kept here",
+    "emptyBody": "Reports, sheets, pictures: every file she sends in the conversation can be found here again.",
+    "noneTitle": "Nothing found",
+    "noneBody": "Try other words: names and what Her said with each file are both searched.",
+    "offline": "{{name}} is offline. This is the list as last seen; files opened before are on this Mac, the rest wait for it.",
+    "needsMachine": "{{name}} is offline; this file opens once it is back",
+    "earlierConversation": "This came from a cleared conversation",
+    "fromEarlier": "From a cleared conversation",
+    "notInConversation": "That message is no longer in the conversation",
+    "more": "Load More",
+    "noPreview": "This kind of file can't be previewed here; download it to open it.",
+    "failed": "Couldn't read it: {{error}}",
+    "note": "Each file Her sends you is kept on {{machine}} as it was when sent."
   },
   "preview": {
     "source": "Source",
