@@ -188,8 +188,42 @@ fn io_err(path: &Path) -> impl FnOnce(io::Error) -> StoreError + '_ {
     }
 }
 
+/// Takes the log's lock, which one writer holds at a time.
+#[cfg(not(windows))]
+fn try_lock(file: &File) -> Result<(), std::fs::TryLockError> {
+    file.try_lock()
+}
+
+/// Windows keeps other handles from reading the bytes a lock covers, and a log is read while
+/// its session writes it: the lock is on one byte far past any log's end.
+#[cfg(windows)]
+fn try_lock(file: &File) -> Result<(), std::fs::TryLockError> {
+    use std::os::windows::io::AsRawHandle;
+    use windows_sys::Win32::Foundation::ERROR_IO_PENDING;
+    use windows_sys::Win32::Foundation::ERROR_LOCK_VIOLATION;
+    use windows_sys::Win32::Foundation::HANDLE;
+    use windows_sys::Win32::Storage::FileSystem::LOCKFILE_EXCLUSIVE_LOCK;
+    use windows_sys::Win32::Storage::FileSystem::LOCKFILE_FAIL_IMMEDIATELY;
+    use windows_sys::Win32::Storage::FileSystem::LockFileEx;
+    use windows_sys::Win32::System::IO::OVERLAPPED;
+
+    // SAFETY: zeroes are a valid value of this plain C struct.
+    let mut at: OVERLAPPED = unsafe { std::mem::zeroed() };
+    at.Anonymous.Anonymous.OffsetHigh = 0x7fff_ffff;
+    // SAFETY: LockFileEx on a handle the caller keeps open; `at` names the byte and outlives
+    // the call.
+    if unsafe { LockFileEx(file.as_raw_handle() as HANDLE, LOCKFILE_EXCLUSIVE_LOCK | LOCKFILE_FAIL_IMMEDIATELY, 0, 1, 0, &mut at) } != 0 {
+        return Ok(());
+    }
+    let err = io::Error::last_os_error();
+    match err.raw_os_error().map(|code| code as u32) {
+        Some(ERROR_LOCK_VIOLATION | ERROR_IO_PENDING) => Err(std::fs::TryLockError::WouldBlock),
+        _ => Err(std::fs::TryLockError::Error(err)),
+    }
+}
+
 fn lock(file: &File, path: &Path) -> Result<(), StoreError> {
-    match file.try_lock() {
+    match try_lock(file) {
         Ok(()) => Ok(()),
         Err(std::fs::TryLockError::WouldBlock) => Err(StoreError::Locked(path.to_path_buf())),
         Err(std::fs::TryLockError::Error(source)) => Err(StoreError::Io {
@@ -248,8 +282,10 @@ fn create_log(path: &Path, header: &str) -> io::Result<File> {
     if let Some(dir) = path.parent() {
         std::fs::create_dir_all(dir)?;
     }
-    let mut file = private(OpenOptions::new().create_new(true).append(true)).open(path)?;
-    file.try_lock().map_err(|err| match err {
+    // Read as well: Windows locks a file only through a handle that may read or overwrite it,
+    // which one that may only append is not.
+    let mut file = private(OpenOptions::new().create_new(true).read(true).append(true)).open(path)?;
+    try_lock(&file).map_err(|err| match err {
         std::fs::TryLockError::WouldBlock => {
             io::Error::new(io::ErrorKind::WouldBlock, format!("{} is locked by another process", path.display()))
         }
@@ -656,6 +692,9 @@ mod tests {
         let older = store.create(&SessionHeader::new(OLDER.into(), work.clone())).unwrap();
         older.writer.sync().await.unwrap();
         assert!(older.location.exists());
+        // Read while its writer has it, and locked against another writer.
+        assert_eq!(store.header(&SessionRef::Path(older.location.clone())).unwrap().0.id, OLDER);
+        assert!(matches!(store.append(&SessionRef::Path(older.location.clone()), Vec::new()), Err(StoreError::Locked(_))));
         let newer = store.create(&SessionHeader::new(NEWER.into(), work.join("sub"))).unwrap();
         assert!(!newer.location.exists());
 
