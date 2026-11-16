@@ -10,10 +10,13 @@ enum Haptic: String {
     case reply
     /// An agent waits on the owner: a question, an approval, a card to fill.
     case asks
-    /// Something the owner did and waited for went through: a pairing approved, an answer taken.
+    /// Something the owner did and waited for went through: a pairing approved, an answer taken, a code scanned, a
+    /// session's turn done, a screen's connection back.
     case success
-    /// Something went wrong: the alert that says so, a message not delivered, a task that failed.
+    /// Something went wrong: the alert that says so, a message not delivered, a task that failed, a screen's session ended.
     case error
+    /// Something may go wrong: a screen's connection dropped, and it tries again.
+    case warning
     /// A message swiped far enough: letting go replies to it.
     case armed
 
@@ -24,6 +27,7 @@ enum Haptic: String {
         case .asks: UIImpactFeedbackGenerator(style: .medium).impactOccurred()
         case .success: UINotificationFeedbackGenerator().notificationOccurred(.success)
         case .error: UINotificationFeedbackGenerator().notificationOccurred(.error)
+        case .warning: UINotificationFeedbackGenerator().notificationOccurred(.warning)
         case .armed: UIImpactFeedbackGenerator(style: .light).impactOccurred()
         }
         if HapticLog.shared.on { HapticLog.shared.played.append(self) }
