@@ -32,6 +32,22 @@ type Info struct {
 	AllModels bool
 }
 
+// ModelCatalog is an observation, not a machine-wide entitlement guarantee.
+// Scope is an opaque session address, or "isolated" for a workspace-free probe.
+// State distinguishes a known empty model selection from missing information.
+type ModelCatalog struct {
+	Scope, Source, State       string
+	Models                     []Model
+	DefaultModel, CurrentModel string
+	ObservedAt, ExpiresAt      time.Time
+}
+
+// ModelCatalogProvider exposes in-memory, scoped observations without starting
+// processes. Providers without this optional interface retain their old behavior.
+type ModelCatalogProvider interface {
+	ModelCatalogs() []ModelCatalog
+}
+
 // Model is one model an agent offers.
 type Model struct {
 	ID, Name string
@@ -180,9 +196,12 @@ type Input struct {
 // StartSpec describes one provider process.
 type StartSpec struct {
 	WorkDir string
-	TempDir string
-	Prompt  string
-	Images  []Image // with the first prompt
+	// ModelScope names this session for scoped model observations, without
+	// exposing its filesystem path to clients listing coding agents.
+	ModelScope string
+	TempDir    string
+	Prompt     string
+	Images     []Image // with the first prompt
 	// ReadDirs are directories outside WorkDir the agent must be able to
 	// read (the session's attached files).
 	ReadDirs []string

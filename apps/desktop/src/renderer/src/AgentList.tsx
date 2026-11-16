@@ -10,7 +10,7 @@ import type { TerminalCommand } from "../../shared/bridge";
 import { useRecheckAgents } from "./agents";
 import { local } from "./api";
 import { Icon } from "./icons";
-import { useStore } from "./store";
+import { useNow, useStore } from "./store";
 import "./agentlist.css";
 
 // A machine's coding agents, as the first run's "Check and Manage Available
@@ -272,6 +272,7 @@ export function AgentPage({ m, agent }: { m: Machine; agent: string }) {
         </div>
       )}
       {a && a.models.length > 0 && <Defaults a={a} m={m} />}
+      {a && a.modelCatalogs.length > 0 && <ModelCatalogs a={a} />}
       <section aria-label={t("prepare.projectsHead")}>
         <div className="ag-group">{t("prepare.projectsHead")}</div>
         {mine.length > 0 && (
@@ -287,6 +288,29 @@ export function AgentPage({ m, agent }: { m: Machine; agent: string }) {
         </button>
       </section>
     </div>
+  );
+}
+
+/** Read-only contextual observations, separate from machine-wide defaults. */
+function ModelCatalogs({ a }: { a: AgentStatus }) {
+  const { t } = useTranslation("firstrun");
+  const now = useNow(1000);
+  return (
+    <section aria-label={t("prepare.catalogsTitle")}>
+      <div className="ag-group">{t("prepare.catalogsTitle")}</div>
+      <p className="ag-note">{t("prepare.catalogsNote")}</p>
+      {a.modelCatalogs.map((c) => (
+        <div className="ag-prjs ag-catalog" role="group" aria-label={c.scope} key={c.scope}>
+          <p className="ag-note">{c.scope} · {t(`prepare.catalogState.${c.state}`, { defaultValue: t("prepare.catalogState.unknown") })}</p>
+          <p className="ag-note">{t("prepare.catalogSource", { source: c.source || "—" })} · {c.observedAtUnixMs ? new Date(Number(c.observedAtUnixMs)).toLocaleString() : t("prepare.catalogNever")}</p>
+          {c.expiresAtUnixMs > 0n && Number(c.expiresAtUnixMs) <= now.getTime() && <p className="ag-note">{t("prepare.catalogExpired")}</p>}
+          {c.models.map((m) => <p className="ag-note mono" key={m.id}>{m.id}</p>)}
+          {c.state === "known" && c.models.length === 0 && <p className="ag-note">{t("prepare.catalogEmpty")}</p>}
+          {c.defaultModel && <p className="ag-note">{t("prepare.catalogInitial", { model: c.defaultModel })}</p>}
+          {c.currentModel && <p className="ag-note">{t("prepare.catalogCurrent", { model: c.currentModel })}</p>}
+        </div>
+      ))}
+    </section>
   );
 }
 
