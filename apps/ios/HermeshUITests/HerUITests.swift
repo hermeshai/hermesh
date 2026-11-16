@@ -102,6 +102,17 @@ extension HermeshUITests {
         try herReplying()
     }
 
+    /// An approval in the composer's place, under a conversation longer than the page: its end stays above the card.
+    ///
+    ///     HERMESH_IPHONE_E2E=1 HERMESH_IPHONE_GREP=testHerApprovalEnd go test ./e2e -run TestIPhone -v -timeout 40m
+    @objc func testHerApprovalEnd() throws {
+        guard ProcessInfo.processInfo.environment["HERMESH_E2E_HER"] != nil else { throw XCTSkip("run with Her built") }
+        try join()
+        try herTurnOn()
+        try herOnboarding()
+        try herApprovalKeepsTheEnd()
+    }
+
     @objc func testHer() throws {
         guard ProcessInfo.processInfo.environment["HERMESH_E2E_HER"] != nil else { throw XCTSkip("run by TestIPhone with her built (HERMESH_E2E_HER)") }
         try XCTContext.runActivity(named: "joins the owner by its connection address") { _ in try join() }
@@ -943,6 +954,14 @@ extension HermeshUITests {
         // marks Progress while it waits for the owner.
         herSend("[[mock:relay_slow:3]] 写一篇长文")
         XCTAssertTrue(text("好，这个要一会儿，写好发你。").waitForExistence(timeout: 60), "Her's words")
+        // Her's bubble says what is at work, as on the Mac, and opens its record.
+        let working = app.buttons["her-typing-agent"].firstMatch
+        XCTAssertTrue(working.waitForExistence(timeout: 30), "the busy bubble names the sub-agent's work")
+        XCTAssertEqual(working.label, "写长文")
+        herShot("Her: a sub-agent at work")
+        working.tap()
+        XCTAssertTrue(app.navigationBars["写长文"].waitForExistence(timeout: 10), "its record, from the bubble")
+        app.navigationBars.buttons.element(boundBy: 0).tap()
         try waitFor("Progress is marked", timeout: 60) { entry.label.contains("在等你") ? true : nil }
         herShot("Her: Progress marked")
         entry.tap()
@@ -990,6 +1009,58 @@ extension HermeshUITests {
         XCTAssertTrue(text("早些时候").exists, "among the earlier ones")
         XCTAssertFalse(text("需要你").exists, "nothing needs the owner now")
         herShot("Progress: ended")
+        herShot("Progress: ended")
+
+        // Several at work at once: her bubble counts them, and opens to what each does, each to its record.
+        app.navigationBars.buttons.element(boundBy: 0).tap()
+        herSend("[[mock:relay_slow:60]] 再写一篇")
+        XCTAssertTrue(app.buttons["her-typing-agent"].firstMatch.waitForExistence(timeout: 60), "the first at work")
+        // Its command allowed, it works on a while, and the composer is back for the next.
+        tap("her-allow-once", timeout: 60)
+        herSend("[[mock:relay_note:60]] 汇总一下")
+        let count = app.buttons["her-typing-agents"]
+        XCTAssertTrue(count.waitForExistence(timeout: 60), "the busy bubble counts them")
+        try waitFor("it says how many (\(count.label))", timeout: 30) { count.label == "正在处理 2 件事" ? true : nil }
+        // Its command allowed too, both work on; the bubble is tapped once it is still.
+        tap("her-allow-once", timeout: 60)
+        var was = CGRect.null
+        XCTAssertTrue(waitUntil { defer { was = count.frame }; return count.isHittable && count.frame == was }, "the bubble in view, still: \(count.frame) after \(was)")
+        XCTAssertEqual(count.label, "正在处理 2 件事", "both still at work")
+        count.tap()
+        let names = app.buttons.matching(identifier: "her-typing-agent")
+        XCTAssertTrue(waitUntil { names.count == 2 }, "it opens to their names")
+        XCTAssertEqual(Set(names.allElementsBoundByIndex.map(\.label)), ["写长文", "汇总销售数据"])
+        herShot("Her: several sub-agents at work")
+        names.matching(NSPredicate(format: "label == %@", "汇总销售数据")).firstMatch.tap()
+        XCTAssertTrue(app.navigationBars["汇总销售数据"].waitForExistence(timeout: 10), "its record, from the bubble")
+    }
+
+    /// A conversation longer than the page, then a sub-agent's question in the composer's place (the keyboard up as
+    /// the message went): the busy bubble, its last row, stays in view above the card.
+    func herApprovalKeepsTheEnd() throws {
+        for i in 1 ... 6 {
+            herSend("[[mock:send:第 \(i) 条，好让这段对话比一页长]] \(i)")
+            XCTAssertTrue(text("第 \(i) 条，好让这段对话比一页长").waitForExistence(timeout: 60), "reply \(i)")
+        }
+        herSend("[[mock:relay_slow:60]] 写一篇长文")
+        let card = app.descendants(matching: .any)["her-approval"].firstMatch
+        XCTAssertTrue(card.waitForExistence(timeout: 60), "the sub-agent's question")
+        let bubble = app.descendants(matching: .any)["her-typing"].firstMatch
+        XCTAssertTrue(bubble.waitForExistence(timeout: 30), "the busy bubble")
+        var was = CGRect.null
+        XCTAssertTrue(waitUntil { defer { was = bubble.frame }; return bubble.frame == was && card.frame.minY > 0 }, "settled")
+        herShot("Her: a question under a long conversation")
+        XCTAssertLessThanOrEqual(bubble.frame.maxY, card.frame.minY, "the end above the question: \(bubble.frame) over \(card.frame)")
+
+        // Allowed, then another sub-agent, whose question comes as what it told Her shows: the same.
+        tap("her-allow-once", timeout: 30)
+        herSend("[[mock:relay_note:60]] 汇总一下")
+        XCTAssertTrue(app.buttons["her-typing-agents"].waitForExistence(timeout: 60), "both at work")
+        XCTAssertTrue(card.waitForExistence(timeout: 60), "the second's question")
+        was = .null
+        XCTAssertTrue(waitUntil { defer { was = bubble.frame }; return bubble.frame == was && card.frame.minY > 0 }, "settled")
+        herShot("Her: a second question under a long conversation")
+        XCTAssertLessThanOrEqual(bubble.frame.maxY, card.frame.minY, "the end above the second question: \(bubble.frame) over \(card.frame)")
     }
 
     func herConnectors(_ url: String, tokenURL: String, token: String, accountURL: String) throws {
