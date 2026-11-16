@@ -11,7 +11,7 @@ use tokio::sync::oneshot;
 
 /// Every step of the schema, in order; `PRAGMA user_version` says how many a file has had.
 /// A step only adds: tables and nullable columns, never a new meaning for an old one.
-const MIGRATIONS: &[&str] = &[crate::routines::SCHEMA_V1, crate::deliveries::SCHEMA_V2];
+const MIGRATIONS: &[&str] = &[crate::routines::SCHEMA_V1, crate::deliveries::SCHEMA_V2, crate::deliveries::SCHEMA_V3];
 
 /// Why the database cannot be used.
 #[derive(Clone, Debug, PartialEq, Eq, thiserror::Error)]

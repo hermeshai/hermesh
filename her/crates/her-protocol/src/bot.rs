@@ -293,6 +293,21 @@ pub struct DeliveriesListParams {
     /// documents. Both without it.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub media: Option<bool>,
+    /// Only files whose latest send came from this (`deliveries/sources`).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub source: Option<DeliverySourceFilter>,
+}
+
+/// What a list of files keeps by where they came from.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum DeliverySourceFilter {
+    /// What the owner asked for in the conversation: no source.
+    Conversation,
+    /// A routine's, by its id, whatever it was called.
+    Routine { id: String },
+    /// Coding sessions' of this name: a session goes when its work is done, its name stays.
+    Session { name: String },
 }
 
 /// Result of `deliveries/list`.
@@ -364,6 +379,40 @@ pub struct DeliverySource {
     pub kind: DeliverySourceKind,
     pub id: String,
     pub name: String,
+    /// A routine's run it came from (`bots/routine_run`), when known.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub run: Option<String>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+pub struct DeliveriesSourcesParams {
+    pub bot_id: String,
+}
+
+/// Result of `deliveries/sources`: where a bot's files came from, the latest first.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+pub struct DeliveriesSourcesResult {
+    pub sources: Vec<DeliverySourceCount>,
+    /// The bot's routines that sent no file: not listed.
+    pub silent: u32,
+}
+
+/// A source of a bot's files: those whose latest send came from it.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+pub struct DeliverySourceCount {
+    /// What `deliveries/list` takes to show them.
+    pub filter: DeliverySourceFilter,
+    /// What it is called now: a routine's current name, a session's, or none for the conversation.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub name: Option<String>,
+    /// How many files, and how many of them are pictures, video or audio.
+    pub files: u32,
+    pub media: u32,
+    /// Its latest send (`Delivery::seq`).
+    pub latest: u64,
+    /// A routine that was deleted: the files it sent stay.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub gone: bool,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]

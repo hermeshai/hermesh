@@ -9,6 +9,9 @@ import SwiftUI
 // own, from the copy her kept of it as it was sent, with what Her said with it, Show in Conversation and Reply under
 // it. Three tabs: all of them, documents (what is read: reports, sheets, slides, PDF, Markdown, code and the rest), and
 // media (pictures, video and audio), the media as a grid. Once read, a file is kept on this iPhone by its hash, so it opens while her machine is offline too.
+// Where the files came from is not on their rows: the glass button at the top right opens a sheet from the bottom, half
+// the screen and dragged up for all, listing the routines and sessions that sent files, the latest first, to show one
+// source's (§3.5).
 
 /// The environment her page shows, with Her as it lists her.
 struct HerFilesPage: View {
@@ -55,6 +58,9 @@ private struct HerFilesList: View {
     let bot: HerBot
     @State private var query = ""
     @State private var tab = Tab.all
+    @State private var source: HerSourceFilter?
+    @State private var sources: HerDeliverySources?
+    @State private var choosing = false
     @State private var list: HerDeliveries?
     @State private var failed: String?
     @State private var older = false
@@ -73,9 +79,13 @@ private struct HerFilesList: View {
     private struct Asked: Equatable {
         var query: String
         var tab: Tab
+        var source: HerSourceFilter?
         var latest: Int
         var online: Bool
     }
+
+    /// What a tab shows: all (nil), only media, or only documents.
+    private var media: Bool? { tab == .all ? nil : tab == .media }
 
     var body: some View {
         let shownList = list ?? keptList
@@ -117,9 +127,32 @@ private struct HerFilesList: View {
         .listStyle(.insetGrouped)
         .searchable(text: $query, placement: .navigationBarDrawer(displayMode: .always), prompt: Text("Search names, or what Her said"))
         .safeAreaInset(edge: .top, spacing: 0) { tabs }
+        .toolbar {
+            if let sources {
+                ToolbarItem(placement: .topBarTrailing) {
+                    let button = Button { choosing = true } label: {
+                        Label("Filter by Source", systemImage: "line.3.horizontal.decrease")
+                    }
+                    .disabled(!online && source == nil)
+                    .accessibilityValue(source.map { sourceName($0, sources.source($0)) } ?? "")
+                    .accessibilityIdentifier("her-files-sources")
+                    // Glass, as the bar's buttons are; filled with the tint while a source is chosen.
+                    if source == nil { button } else { button.buttonStyle(.glassProminent) }
+                }
+            }
+        }
+        .sheet(isPresented: $choosing) {
+            if let sources {
+                HerSourcesSheet(sources: sources, media: media, source: source) { picked in
+                    source = picked
+                    choosing = false
+                }
+                .presentationDetents([.medium, .large])
+            }
+        }
         .overlay {
             if let shownList, shownList.files.isEmpty {
-                let searching = !query.trimmingCharacters(in: .whitespaces).isEmpty || tab != .all
+                let searching = !query.trimmingCharacters(in: .whitespaces).isEmpty || tab != .all || source != nil
                 ContentUnavailableView {
                     Label(searching ? "Nothing Found" : "The files Her sends you are kept here", systemImage: searching ? "magnifyingglass" : "tray")
                 } description: {
@@ -137,7 +170,8 @@ private struct HerFilesList: View {
         // The pages under this one are hidden, and their tasks with them: the environment's connection is this page's
         // to hold while it shows.
         .task(id: herReachable(machine) && machine.her.running) { if herReachable(machine) && machine.her.running { await chat.followEnvironment() } }
-        .task(id: Asked(query: query.trimmingCharacters(in: .whitespaces), tab: tab, latest: bot.deliveriesLatest, online: online)) { await load() }
+        .task(id: Asked(query: query.trimmingCharacters(in: .whitespaces), tab: tab, source: source, latest: bot.deliveriesLatest, online: online)) { await load() }
+        .task(id: Asked(query: "", tab: .all, latest: bot.deliveriesLatest, online: online)) { await loadSources() }
         // What the list showed, from the first time it shows: leaving is having seen up to there.
         .onChange(of: shownList?.files.compactMap { $0.latest?.seq } ?? [], initial: true) {
             guard let s = shownList else { return }
@@ -159,7 +193,7 @@ private struct HerFilesList: View {
         guard let kept = chat.kept?.deliveries else { return nil }
         let q = query.trimmingCharacters(in: .whitespaces).lowercased()
         let files = kept.files.filter { f in
-            (tab == .all || f.kind.isMedia == (tab == .media)) && (q.isEmpty || ([f.name] + f.versions.flatMap { [$0.text ?? "", $0.source?.name ?? ""] }).contains { $0.lowercased().contains(q) })
+            (tab == .all || f.kind.isMedia == (tab == .media)) && (source.map(f.from) ?? true) && (q.isEmpty || ([f.name] + f.versions.flatMap { [$0.text ?? "", $0.source?.name ?? ""] }).contains { $0.lowercased().contains(q) })
         }
         return HerDeliveries(files: files, seen: kept.seen)
     }
@@ -168,7 +202,8 @@ private struct HerFilesList: View {
         var p: [String: JSON] = ["bot_id": .string(bot.id)]
         let q = query.trimmingCharacters(in: .whitespaces)
         if !q.isEmpty { p["query"] = .string(q) }
-        if tab != .all { p["media"] = .bool(tab == .media) }
+        if let media { p["media"] = .bool(media) }
+        if let source { p["source"] = source.json }
         if let before { p["before"] = .number(Double(before)) }
         return .object(p)
     }
@@ -177,7 +212,7 @@ private struct HerFilesList: View {
         guard online else { return }
         do {
             let page = try await chat.callAlone("deliveries/list", params())
-            list = HerDeliveries(page)?.only(media: tab == .all ? nil : tab == .media)
+            list = HerDeliveries(page)?.only(media: media)
             failed = nil
             older = false
         } catch {
@@ -192,9 +227,15 @@ private struct HerFilesList: View {
         Task {
             defer { loadingMore = false }
             if let j = try? await chat.callAlone("deliveries/list", params(before: next)), let page = HerDeliveries(j), let had = list {
-                list = had.joined(page.only(media: tab == .all ? nil : tab == .media))
+                list = had.joined(page.only(media: media))
             }
         }
+    }
+
+    /// Where the files came from, for the filter: none from a her that cannot say, and then no filter button.
+    private func loadSources() async {
+        guard online else { return }
+        sources = (try? await chat.callAlone("deliveries/sources", ["bot_id": .string(bot.id)])).flatMap(HerDeliverySources.init)
     }
 
     private func markSeen() {
@@ -219,15 +260,44 @@ private struct HerFilesList: View {
     enum Tab: String, Hashable { case all, documents, media }
 
     private var tabs: some View {
-        Picker("Show", selection: $tab) {
-            Text("All").tag(Tab.all)
-            Text("Documents").tag(Tab.documents)
-            Text("Media").tag(Tab.media)
+        VStack(spacing: 10) {
+            Picker("Show", selection: $tab) {
+                Text("All").tag(Tab.all)
+                Text("Documents").tag(Tab.documents)
+                Text("Media").tag(Tab.media)
+            }
+            .pickerStyle(.segmented)
+            .accessibilityIdentifier("her-files-tabs")
+            if let source { chosen(source) }
         }
-        .pickerStyle(.segmented)
         .padding(.horizontal, 16).padding(.vertical, 8)
         .background(.bar)
-        .accessibilityIdentifier("her-files-tabs")
+    }
+
+    /// The source whose files show: its name and how many, and clearing it.
+    private func chosen(_ f: HerSourceFilter) -> some View {
+        let s = sources?.source(f)
+        return HStack(spacing: 8) {
+            Image(systemName: sourceSymbol(f)).font(.subheadline.weight(.semibold))
+            HStack(spacing: 0) {
+                Text(verbatim: sourceName(f, s)).fontWeight(.semibold).lineLimit(1)
+                if let s { Text(verbatim: " · " + String(localized: "\(s.count(media: media)) files")).foregroundStyle(Color.accentColor.opacity(0.8)).layoutPriority(1) }
+            }
+            .font(.subheadline)
+            Spacer(minLength: 4)
+            Button { source = nil } label: {
+                Image(systemName: "xmark").font(.caption.weight(.bold)).frame(width: 26, height: 26)
+                    .background(Color.accentColor.opacity(0.16), in: .circle)
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("Show All Sources")
+            .accessibilityIdentifier("her-files-source-clear")
+        }
+        .foregroundStyle(Color.accentColor)
+        .padding(.leading, 12).padding(.trailing, 7).padding(.vertical, 7)
+        .background(Color.accentColor.opacity(0.12), in: .rect(cornerRadius: 14, style: .continuous))
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("her-files-source")
     }
 
     /// A row, two lines: the name, with the new dot and when it was last sent; then Her's words with it (its size
@@ -524,4 +594,127 @@ private struct HerShareSheet: UIViewControllerRepresentable {
 
 extension URL: @retroactive Identifiable {
     public var id: String { absoluteString }
+}
+
+/// A source's symbol: a routine's clock, a session's code, the conversation's bubble.
+private func sourceSymbol(_ f: HerSourceFilter) -> String {
+    switch f {
+    case .conversation: "bubble.left"
+    case .routine: "clock"
+    case .session: "chevron.left.forwardslash.chevron.right"
+    }
+}
+
+/// What a source is called: the conversation by what it is, the rest by their names as her says them now.
+private func sourceName(_ f: HerSourceFilter, _ s: HerDeliverySourceCount?) -> String {
+    switch f {
+    case .conversation: String(localized: "Asked in the Conversation")
+    case .routine(let id): s?.name ?? id
+    case .session(let name): s?.name ?? name
+    }
+}
+
+/// The filter, from the bottom: all sources; the conversation; the routines and the coding sessions that sent files,
+/// the latest first, each with how many files the tab shows (one with none there can't be chosen); with many, a
+/// search. A deleted routine stays, as its files do; the routines that sent no file are a line at the end.
+private struct HerSourcesSheet: View {
+    let sources: HerDeliverySources
+    let media: Bool?
+    let source: HerSourceFilter?
+    let pick: (HerSourceFilter?) -> Void
+    @State private var query = ""
+    @Environment(\.dismiss) private var dismiss
+
+    /// With more sources than this, a search.
+    private static let many = 8
+
+    var body: some View {
+        let g = sources.groups(query: query)
+        let searching = !query.trimmingCharacters(in: .whitespaces).isEmpty
+        NavigationStack {
+            List {
+                if !searching {
+                    Section {
+                        option(icon: "tray.2", name: String(localized: "All Sources"), count: sources.sources.reduce(0) { $0 + $1.count(media: media) }, on: source == nil, gone: false) { pick(nil) }
+                            .accessibilityIdentifier("her-source-all")
+                    }
+                }
+                if let c = g.conversation {
+                    Section { row(c) }
+                }
+                if !g.routines.isEmpty {
+                    Section("Routines") { ForEach(g.routines) { row($0) } }
+                }
+                if !g.sessions.isEmpty {
+                    Section("Coding Sessions") { ForEach(g.sessions) { row($0) } }
+                }
+                if !searching, sources.silent > 0 {
+                    Section {} footer: {
+                        Text("\(sources.silent) more routines haven’t sent a file, so they aren’t listed.")
+                    }
+                }
+            }
+            .overlay {
+                if searching, g.conversation == nil, g.routines.isEmpty, g.sessions.isEmpty {
+                    ContentUnavailableView.search(text: query)
+                }
+            }
+            .navigationTitle("Filter by Source")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                if source != nil {
+                    ToolbarItem(placement: .topBarLeading) {
+                        Button("Clear") { pick(nil) }.accessibilityIdentifier("her-source-clear")
+                    }
+                }
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button(role: .close) { dismiss() }
+                }
+            }
+            .modifier(SearchWhenMany(many: sources.sources.count > Self.many, query: $query))
+        }
+    }
+
+    private func row(_ s: HerDeliverySourceCount) -> some View {
+        option(icon: sourceSymbol(s.filter), name: sourceName(s.filter, s), count: s.count(media: media), on: s.filter == source, gone: s.gone) { pick(s.filter) }
+            .accessibilityIdentifier("her-source-\(sourceName(s.filter, s))")
+    }
+
+    private func option(icon: String, name: String, count: Int, on: Bool, gone: Bool, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            HStack(spacing: 12) {
+                Image(systemName: icon)
+                    .font(.subheadline.weight(.medium))
+                    .foregroundStyle(on ? Color.accentColor : .secondary)
+                    .frame(width: 30, height: 30)
+                    .background((on ? Color.accentColor.opacity(0.16) : Color(.tertiarySystemFill)), in: .circle)
+                VStack(alignment: .leading, spacing: 1) {
+                    Text(verbatim: name).lineLimit(1)
+                    if gone { Text("Deleted").font(.caption).foregroundStyle(.secondary) }
+                }
+                Spacer(minLength: 8)
+                Text(verbatim: "\(count)").foregroundStyle(.secondary).monospacedDigit()
+                Image(systemName: "checkmark").font(.subheadline.weight(.semibold)).foregroundStyle(Color.accentColor).opacity(on ? 1 : 0)
+            }
+            .contentShape(.rect)
+        }
+        .buttonStyle(.plain)
+        .disabled(count == 0 && !on)
+        .opacity(count == 0 && !on ? 0.42 : 1)
+        .accessibilityAddTraits(on ? .isSelected : [])
+    }
+}
+
+/// A search over the sources, only when there are many.
+private struct SearchWhenMany: ViewModifier {
+    let many: Bool
+    @Binding var query: String
+
+    func body(content: Content) -> some View {
+        if many {
+            content.searchable(text: $query, placement: .navigationBarDrawer(displayMode: .always), prompt: Text("Search routines"))
+        } else {
+            content
+        }
+    }
 }

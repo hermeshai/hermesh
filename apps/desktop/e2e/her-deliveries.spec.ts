@@ -7,8 +7,8 @@ import { fixture, launch, snap } from "./app";
 // with her-mock as its model. Run by TestDesktopHerDeliveries, which needs her built. One story: Her is turned on
 // here and sends a report; it is changed on the machine, as her model would change it, and sent again. The button
 // counts the new files; the panel lists the report once with its two versions, each opening as it was sent; Show in
-// Conversation goes to its message; Reply quotes it, and Her is told which file; search and the kinds filter; and
-// closing the panel is having seen the list.
+// Conversation goes to its message; Reply quotes it, and Her is told which file; search and the kinds filter;
+// closing the panel is having seen the list; and a scheduled task's brief, which the filter by Close shows apart.
 
 test("Her: the files she sent, listed apart, each version as sent, and the way back to its message", async () => {
   test.setTimeout(300_000);
@@ -107,4 +107,47 @@ test("Her: the files she sent, listed apart, each version as sent, and the way b
   await expect(panel.getByTestId("her-file-row")).toHaveCount(2, { timeout: 30_000 });
   await expect(panel.getByTestId("her-file-row").filter({ hasText: "数据" }).getByLabel("新的")).toBeVisible();
   await expect(row.getByLabel("新的")).toHaveCount(0);
+
+  // Where a file came from is not on its row (docs/her-deliverables.md §3.5): a scheduled task makes a brief each
+  // run, and Her sends it on when its report wakes her. The filter by Close lists the sources, the latest first;
+  // choosing the task shows its files only, as the bar under the tabs says, until it is cleared.
+  await panel.getByRole("button", { name: "关闭" }).click();
+  // The brief is there for her to send whether or not the run, which cannot ask, may write it.
+  fs.writeFileSync(path.join(folder, "早报.md"), "# 每日早报\n");
+  await send("[[mock:routine_file:每日早报|in 2s|早报.md]] 每天早上发我早报");
+  const approval = page.getByRole("region", { name: "等你批准" });
+  await expect(approval).toContainText("每日早报", { timeout: 60_000 });
+  await approval.getByRole("button", { name: /^允许/ }).click();
+  await expect(log.getByRole("button", { name: "查看 早报.md" })).toBeVisible({ timeout: 90_000 });
+  await button.click();
+  const rows = panel.getByTestId("her-file-row");
+  await expect(rows).toHaveCount(3, { timeout: 30_000 });
+  await expect(rows.first()).toContainText("早报.md");
+  const filter = panel.getByRole("button", { name: "按来源看" });
+  await filter.click();
+  const menu = page.getByRole("menu", { name: "按来源看" });
+  await expect(menu.getByRole("menuitemradio", { name: /^全部来源/ })).toHaveAttribute("aria-checked", "true");
+  await expect(menu.getByRole("group", { name: "定时任务" })).toContainText("每日早报");
+  await expect(menu.getByRole("menuitemradio", { name: /^对话里要的/ })).toContainText("2");
+  await snap(page, "her-files-sources");
+  await menu.getByRole("menuitemradio", { name: /^每日早报/ }).click();
+  await expect(menu).toBeHidden();
+  await expect(rows).toHaveCount(1, { timeout: 10_000 });
+  await expect(rows.first()).toContainText("早报.md");
+  const chosen = panel.getByTestId("files-source");
+  await expect(chosen).toContainText("每日早报 · 1 个文件");
+  await expect(filter).toHaveClass(/\bon\b/);
+  await snap(page, "her-files-source-chosen");
+  // With the tabs: the brief is a document, and the task sent no media.
+  await panel.getByRole("radio", { name: "媒体" }).click();
+  await expect(panel.getByTestId("files-empty")).toContainText("没有找到", { timeout: 10_000 });
+  await panel.getByRole("radio", { name: "全部" }).click();
+  await chosen.getByRole("button", { name: "看全部来源" }).click();
+  await expect(chosen).toBeHidden();
+  await expect(rows).toHaveCount(3, { timeout: 10_000 });
+  // What the owner asked for in the conversation, apart.
+  await filter.click();
+  await menu.getByRole("menuitemradio", { name: /^对话里要的/ }).click();
+  await expect(rows).toHaveCount(2, { timeout: 10_000 });
+  await expect(rows.filter({ hasText: "早报" })).toHaveCount(0);
 });

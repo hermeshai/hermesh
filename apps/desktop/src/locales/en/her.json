@@ -210,7 +210,22 @@
     "more": "Load More",
     "noPreview": "This kind of file can't be previewed here; download it to open it.",
     "failed": "Couldn't read it: {{error}}",
-    "note": "Each file Her sends you is kept on {{machine}} as it was when sent."
+    "note": "Each file Her sends you is kept on {{machine}} as it was when sent.",
+    "sources": {
+      "button": "Filter by Source",
+      "all": "All Sources",
+      "conversation": "Asked in the Conversation",
+      "routines": "Routines",
+      "sessions": "Coding Sessions",
+      "find": "Search routines",
+      "noMatch": "No source named “{{query}}”",
+      "silent_one": "{{count}} more routine hasn't sent a file, so it isn't listed.",
+      "silent_other": "{{count}} more routines haven't sent a file, so they aren't listed.",
+      "gone": "Deleted",
+      "count_one": "{{count}} file",
+      "count_other": "{{count}} files",
+      "clear": "Show All Sources"
+    }
   },
   "preview": {
     "source": "Source",

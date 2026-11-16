@@ -22,7 +22,7 @@ func init() {
 		"bots/routine_run_now", "bots/routine_runs", "bots/routine_set_enabled", "bots/routine_stop",
 		"session/op", "session/history", "session/detach", "models/list", "files/list", "files/read",
 		// The files an assistant sent, in a list of their own (docs/her-deliverables.md §4.3).
-		"deliveries/list", "deliveries/seen",
+		"deliveries/list", "deliveries/seen", "deliveries/sources",
 		// The owner's answer to a secure card (docs/her-secure-cards.md §3.3).
 		"cards/answer",
 		// Whether computer use can work there, with macOS's permissions as her finds them.

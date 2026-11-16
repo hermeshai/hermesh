@@ -495,6 +495,16 @@
         }
       }
     },
+    "%lld more routines haven’t sent a file, so they aren’t listed.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "另有 %lld 个定时任务还没发过文件，这里不列。"
+          }
+        }
+      }
+    },
     "%lld need you": {
       "localizations": {
         "zh-Hans": {
@@ -1232,6 +1242,16 @@
         }
       }
     },
+    "All Sources": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "全部来源"
+          }
+        }
+      }
+    },
     "Allow Hermesh to use the camera in Settings, or enter the pairing code.": {
       "localizations": {
         "zh-Hans": {
@@ -1518,6 +1538,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "更早交代的"
+          }
+        }
+      }
+    },
+    "Asked in the Conversation": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "对话里要的"
           }
         }
       }
@@ -1968,6 +1998,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "编码 agent"
+          }
+        }
+      }
+    },
+    "Coding Sessions": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "编程会话"
           }
         }
       }
@@ -2958,6 +2998,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "正在访问"
+          }
+        }
+      }
+    },
+    "Filter by Source": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "按来源看"
           }
         }
       }
@@ -4185,6 +4235,16 @@
         }
       }
     },
+    "Routines": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "定时任务"
+          }
+        }
+      }
+    },
     "Run Now": {
       "localizations": {
         "zh-Hans": {
@@ -4325,6 +4385,16 @@
         }
       }
     },
+    "Search routines": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "搜定时任务"
+          }
+        }
+      }
+    },
     "Searched": {
       "localizations": {
         "zh-Hans": {
@@ -4391,6 +4461,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "她运行在你的一台电脑上，替你带着这些 Agent 干活"
+          }
+        }
+      }
+    },
+    "Show All Sources": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "看全部来源"
           }
         }
       }

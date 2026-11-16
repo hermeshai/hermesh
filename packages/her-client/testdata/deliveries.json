@@ -1,5 +1,5 @@
 {
-  "_": "The files Her sent, as both apps read deliveries/list (docs/her-deliverables.md §3.1, §4.3): grouping by time, which files are media, what is new, what to read, the quote for a reply, pages joined. her-client's deliveries.test.ts and HermeshHer's DeliveriesTests.swift run these. Times: now is 2026-11-16 14:40 at UTC+8 (06:40Z).",
+  "_": "The files Her sent, as both apps read deliveries/list (docs/her-deliverables.md §3.1, §4.3): grouping by time, which files are media, what is new, what to read, the quote for a reply, pages joined, and the filter by where files came from (deliveries/sources). her-client's deliveries.test.ts and HermeshHer's DeliveriesTests.swift run these. Times: now is 2026-11-16 14:40 at UTC+8 (06:40Z).",
   "now": "2026-11-16T06:40:00Z",
   "offset_minutes": 480,
   "page": {
@@ -252,5 +252,142 @@
     "report.pdf": false,
     "main.go": false,
     "data.zip": false
-  }
+  },
+  "sources": {
+    "sources": [
+      {
+        "filter": {
+          "kind": "conversation"
+        },
+        "files": 3,
+        "media": 0,
+        "latest": 9
+      },
+      {
+        "filter": {
+          "kind": "routine",
+          "id": "rtn_1"
+        },
+        "name": "每日晨报",
+        "files": 2,
+        "media": 0,
+        "latest": 8
+      },
+      {
+        "filter": {
+          "kind": "session",
+          "name": "接口联调脚本"
+        },
+        "name": "接口联调脚本",
+        "files": 1,
+        "media": 0,
+        "latest": 6
+      },
+      {
+        "filter": {
+          "kind": "routine",
+          "id": "rtn_2"
+        },
+        "name": "Hermesh用户用量周报",
+        "files": 3,
+        "media": 1,
+        "latest": 5
+      },
+      {
+        "filter": {
+          "kind": "routine",
+          "id": "rtn_3"
+        },
+        "name": "PH 周报",
+        "files": 1,
+        "media": 0,
+        "latest": 2,
+        "gone": true
+      }
+    ],
+    "silent": 2
+  },
+  "source_groups": [
+    {
+      "query": "",
+      "conversation": true,
+      "routines": [
+        "每日晨报",
+        "Hermesh用户用量周报",
+        "PH 周报"
+      ],
+      "sessions": [
+        "接口联调脚本"
+      ]
+    },
+    {
+      "query": " 周报 ",
+      "conversation": false,
+      "routines": [
+        "Hermesh用户用量周报",
+        "PH 周报"
+      ],
+      "sessions": []
+    },
+    {
+      "query": "ph",
+      "conversation": false,
+      "routines": [
+        "PH 周报"
+      ],
+      "sessions": []
+    },
+    {
+      "query": "天气",
+      "conversation": false,
+      "routines": [],
+      "sessions": []
+    }
+  ],
+  "source_counts": [
+    {
+      "name": "Hermesh用户用量周报",
+      "all": 3,
+      "media": 1,
+      "documents": 2
+    }
+  ],
+  "from_source": [
+    {
+      "filter": {
+        "kind": "routine",
+        "id": "rtn_1"
+      },
+      "files": [
+        "晨报-11-16.md",
+        "晨报-11-15.md"
+      ]
+    },
+    {
+      "filter": {
+        "kind": "session",
+        "name": "接口联调脚本"
+      },
+      "files": [
+        "接口联调报告.md"
+      ]
+    },
+    {
+      "filter": {
+        "kind": "conversation"
+      },
+      "files": [
+        "杭州出差行程.pdf",
+        "Q3 竞品分析.docx",
+        "合同.pdf"
+      ]
+    },
+    {
+      "filter": {
+        "kind": "routine",
+        "id": "rtn_9"
+      },
+      "files": []
+    }
+  ]
 }
