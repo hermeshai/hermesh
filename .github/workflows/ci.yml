@@ -119,6 +119,15 @@ jobs:
       - run: corepack enable
       - name: types and unit tests
         run: make test-app
+      - name: Build Her for its dedicated desktop fixtures
+        env:
+          NIMBLEOFFICE_TOKEN: ${{ secrets.NIMBLEOFFICE_TOKEN }}
+        run: |
+          if [ -n "$NIMBLEOFFICE_TOKEN" ]; then
+            git config --global url."https://x-access-token:${NIMBLEOFFICE_TOKEN}@github.com/Eliseowzy/nimbleoffice".insteadOf "https://github.com/Eliseowzy/nimbleoffice"
+            export CARGO_NET_GIT_FETCH_WITH_CLI=true
+          fi
+          cargo build --manifest-path her/Cargo.toml -p her-cli -p her-mock
       - name: end-to-end (desktop app and signer)
         run: go test ./e2e -run 'TestDesktop|TestSigner' -count=1 -v -timeout 30m
   # The desktop app on Windows (docs/windows.md, W2): its end-to-end spec

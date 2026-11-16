@@ -10,6 +10,10 @@ function fakeTabs() {
   const kept = [];
   const tabs = {
     released: (label) => kept.filter((t) => t.label === label),
+    forget: (tabId) => {
+      const index = kept.findIndex((t) => t.tabId === tabId);
+      if (index >= 0) kept.splice(index, 1);
+    },
     create: async (url, label) => (log.push(["create", url, label]), nextTab++),
     adopt: (tabId, label) => void log.push(["adopt", tabId, label]),
     close: (tabId) => void log.push(["close", tabId]),
@@ -136,6 +140,38 @@ test("a tab closed while the kernel attaches is not left attached", async () => 
   const attached = await call("Target.attachToTarget", { targetId });
   assert.match(attached.error.message, /closed/);
   assert.deepEqual(fake.log.at(-1), ["detach", 100]);
+});
+
+for (const message of ["No tab with given id 7", "No tab with given id 7."]) test(`a missing restored tab is forgotten: ${message}`, async () => {
+  const { b, fake, call, events } = browser();
+  fake.kept.push({ tabId: 7, label: "s1" }, { tabId: 8, label: "s1" }, { tabId: 9, label: "s2" });
+  fake.tabs.attach = async (tabId) => {
+    if (tabId === 7) throw new Error(message);
+  };
+  await call("Target.getTargets", { herSession: "s1" });
+  assert.match((await call("Target.attachToTarget", { targetId: "T7" })).error.message, /No tab/);
+  assert.equal(b.byTab.has(7), false);
+  assert.deepEqual(fake.kept.map((t) => t.tabId), [8, 9]);
+  assert.equal(events("Target.targetDestroyed").filter((e) => e.params.targetId === "T7").length, 1);
+  assert.deepEqual((await call("Target.getTargets", { herSession: "s1" })).result.targetInfos.map((t) => t.targetId), ["T8"]);
+  assert.ok((await call("Target.attachToTarget", { targetId: "T8" })).result.sessionId);
+  b.close();
+  const next = new ExtensionBrowser(fake.tabs, () => {});
+  assert.deepEqual(next.listTargets({ herSession: "s1" }).map((t) => t.targetId), ["T8"]);
+  assert.deepEqual(next.listTargets({ herSession: "s2" }).map((t) => t.targetId), ["T9"]);
+});
+
+test("attach errors other than the missing tab keep the tab recoverable", async () => {
+  for (const message of ["Permission denied", "Another debugger is already attached", "the browser connection is closed", "No tab with given id 999", "No tab with given id 999.", "Permission denied: No tab with given id 7.", "Target.attachToTarget: No tab with given id 7.", "No tab with given id 7.extra"]) {
+    const { b, fake, call, events } = browser();
+    fake.kept.push({ tabId: 7, label: "s1" });
+    fake.tabs.attach = async () => { throw new Error(message); };
+    await call("Target.getTargets", { herSession: "s1" });
+    assert.equal((await call("Target.attachToTarget", { targetId: "T7" })).error.message, message);
+    assert.ok(b.byTab.has(7));
+    assert.equal(fake.kept.length, 1);
+    assert.equal(events("Target.targetDestroyed").length, 0);
+  }
 });
 
 test("a session that ends lets its tab go, and a later browser finds it", async () => {
