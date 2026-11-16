@@ -73,6 +73,12 @@ type freshOwner struct {
 // Applications, the process limit).
 var windowsSpecs = map[string]bool{"windows": true, "shell": true, "motion": true, "search": true, "overview": true, "sheets": true, "settings": true, "session": true, "sessionlist": true}
 
+// linuxSpecs are the specs that run on Linux too (docs/linux.md §7.1), under
+// a display such as Xvfb's; the others are the Mac's still (its menu bar,
+// its first run's words, Touch ID).
+var linuxSpecs = map[string]bool{"shell": true, "motion": true, "search": true, "overview": true, "sheets": true, "settings": true, "session": true, "sessionlist": true,
+	"conversation": true, "model-catalogs": true}
+
 // These specs read back what they copied. The clipboard is the whole
 // computer's, so they run one at a time, before the specs that run side by
 // side (a parallel subtest starts only when the serial ones are done).
@@ -125,7 +131,7 @@ func TestDesktop(t *testing.T) {
 			continue
 		}
 		// Windows runs its own spec and those ported to it (docs/windows.md §11).
-		if runtime.GOOS == "windows" && !windowsSpecs[name] || runtime.GOOS != "windows" && name == "windows" {
+		if runtime.GOOS == "windows" && !windowsSpecs[name] || runtime.GOOS != "windows" && name == "windows" || runtime.GOOS == "linux" && !linuxSpecs[name] {
 			continue
 		}
 		t.Run(name, func(t *testing.T) {

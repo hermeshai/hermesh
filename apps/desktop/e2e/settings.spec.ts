@@ -5,7 +5,7 @@ import http from "node:http";
 import type { AddressInfo } from "node:net";
 import os from "node:os";
 import path from "node:path";
-import { answerMenu, cli, fixture, gitRepo, launch, onWindows, pickAnswers, snap, thisComputer } from "./app";
+import { answerMenu, cli, fixture, gitRepo, launch, onMac, onWindows, pickAnswers, snap, thisComputer } from "./app";
 
 // The settings window: a window of its own (⌘,), laid out as System
 // Settings, for what is set up once and changed rarely.
@@ -498,7 +498,7 @@ test("settings 账号与设备 shows the identity, the trusted devices and, fold
 
   // Still a trusted device: signing out only explains how.
   await panel.getByRole("button", { name: "退出登录…" }).click();
-  const dialog = settings.getByRole("dialog", { name: onWindows ? "让这台电脑退出登录？" : "让这台 Mac 退出登录？" });
+  const dialog = settings.getByRole("dialog", { name: onMac ? "让这台 Mac 退出登录？" : "让这台电脑退出登录？" });
   await expect(dialog).toContainText("先在你的另一台可信设备上");
   await dialog.getByRole("button", { name: "好" }).click();
   await expect(dialog).toBeHidden();
