@@ -42,7 +42,8 @@
   },
   "head": {
     "settings": "Assistant Settings",
-    "team": "The team: what it is doing"
+    "team": "The team: what it is doing",
+    "waiting": "Something is waiting for you"
   },
   "chat": {
     "log": "Conversation",
@@ -176,8 +177,6 @@
     "save": "Save {{name}} to Downloads",
     "saved": "Saved to Downloads: {{name}}",
     "title": "Files",
-    "button": "Files",
-    "buttonNew": "Files, {{count}} new",
     "search": "Search names, or what Her said",
     "tabs": {
       "all": "All",
@@ -342,26 +341,17 @@
     "close": "Close",
     "avatar": "Change Avatar",
     "nameHint": "Double-click to rename",
-    "model": "Model",
-    "modelNote": "Models and keys are added in the environment’s console.",
-    "permission": "Permissions",
     "permissionMode": "Permission mode",
     "permissionNote": "{{desc}}. The agents and scheduled tasks Her starts run with it too, while you are away as well. Full access is confirmed with Touch ID.",
-    "notifications": "Notifications",
     "muted": "Mute",
     "mutedNote": "No notifications from it, on any device. Unread still shows in the list.",
     "connectors": "Connectors",
-    "connectorsRow": "Connectors",
     "connectorsNone": "None yet",
     "connectorsOn_one": "{{count}} on",
     "connectorsOn_other": "{{count}} on",
     "connectorsAttention_one": "{{count}} needs attention",
     "connectorsAttention_other": "{{count}} need attention",
-    "connectorsNote": "Apps and services Her can use, such as GitHub or Notion. Kept on {{machine}} and shared by the assistants there.",
-    "memory": "Memory",
-    "memoryRow": "Remembered",
     "memoryNone": "Nothing yet",
-    "memoryNote": "Your preferences, what you decide and where things are: it notes them itself, and they stay when the chat is cleared. To change one, tell it.",
     "clear": "Clear Chat",
     "clearMemory": "Clear Memory",
     "permissionNote_win": "{{desc}}. The agents and scheduled tasks Her starts run with it too, while you are away as well. Full access is confirmed with Windows Hello.",
@@ -677,5 +667,232 @@
     "waiting_other": "{{count}} waiting for you",
     "atWork_one": "{{count}} at work",
     "atWork_other": "{{count}} at work"
+  },
+  "hp": {
+    "tabs": "Her’s page",
+    "tab": {
+      "work": "Work",
+      "abilities": "Abilities",
+      "settings": "Settings"
+    },
+    "environment": "Environment",
+    "newFiles_one": "{{count}} new",
+    "newFiles_other": "{{count}} new",
+    "lastFailed": "Last run failed",
+    "on": "On",
+    "off": "Off",
+    "skills": "Skills",
+    "search": "Web Search",
+    "browser": "Browser",
+    "more": "More",
+    "add": "Add",
+    "shownOf": "{{shown}} of {{count}} models shown",
+    "source": {
+      "stored": "Credential store",
+      "env": "Environment variable {{env}}",
+      "command": "From a command",
+      "system": "Built into Her",
+      "catalog": "Featured",
+      "upload": "Uploaded",
+      "local": "Local",
+      "extra": "Configured paths"
+    },
+    "refreshing": "Refreshing…",
+    "updated": "Updated {{when}}",
+    "refreshFailed": "The last refresh failed: {{message}}",
+    "chatgptSignedIn": "Signed in to ChatGPT",
+    "forgetTitle": "Forget the ChatGPT account?",
+    "forgetMessage": "Her stops using the subscription on {{machine}}, and its sign-in is deleted there.",
+    "forget": "Forget Account",
+    "subscription": "Use a Subscription",
+    "chatgptWaiting": "Waiting for the sign-in in the browser…",
+    "chatgptReady": "Connected · {{shown}} of {{count}} models shown",
+    "chatgptExpired": "The sign-in expired; sign in again",
+    "chatgptNote": "Sign in with a ChatGPT account",
+    "signIn": "Sign In",
+    "subscriptionNote": "Uses the account’s subscription; API keys are billed separately.",
+    "planConnect": "Connect a Token Plan…",
+    "api": "API and Custom Services",
+    "addApi": "Add an API Service…",
+    "keysNote": "Keys are kept on {{machine}}, where only Her reads them. New ones are added on the console’s Models page.",
+    "removeTitle": "Remove {{name}}?",
+    "removePlan": "The key saved in this environment is removed; your plan with the provider is not cancelled.",
+    "removeKey": "Its key is deleted from the credential store on {{machine}}, and its models leave the menu.",
+    "remove": "Remove",
+    "fromEnv": "Set in her environment on {{machine}}; to remove it, delete {{env}}",
+    "findModels": "Search models",
+    "shownNote": "Those turned on show in the model menu.",
+    "refresh": "Refresh the List",
+    "replaceKey": "Replace Key…",
+    "runsOn": "Runs On",
+    "unread_one": "{{count}} unread",
+    "unread_other": "{{count}} unread",
+    "storage": "Storage",
+    "consoleNote": "The console is the window that manages {{machine}}: models, connectors, skills, web search, the browser and storage.",
+    "holds": "What It Holds · {{size}} in All",
+    "kind": {
+      "files": {
+        "name": "Files",
+        "desc": "What assistants and conversations made"
+      },
+      "sent": {
+        "name": "Files Sent to You",
+        "desc": "A copy of each file an assistant sent you, as it was when sent; the same content is kept once"
+      },
+      "conversations": {
+        "name": "Conversations",
+        "desc": "Every conversation, with its tools’ full output"
+      },
+      "trash": {
+        "name": "Deleted Conversations",
+        "desc": "Moved aside when deleted, and not removed on their own"
+      },
+      "memory": {
+        "name": "Memory",
+        "desc": "What each assistant remembers about you and your work"
+      },
+      "browser": {
+        "name": "Browser",
+        "desc": "The built-in browser’s sign-ins and downloads"
+      },
+      "cache": {
+        "name": "Cache",
+        "desc": "Model lists, connectors’ tools, icons and logs; fetched again when gone"
+      },
+      "other": {
+        "name": "Settings and Other",
+        "desc": "Settings, skills, routines and the rest"
+      }
+    },
+    "counted": "Counted each time this page opens.",
+    "location": "Location",
+    "custom": "Chosen with HER_HOME",
+    "default": "Default Browser",
+    "copied": "Path copied",
+    "copyPath": "Copy Path",
+    "onlyCopy": "This folder is the only copy of Her’s assistants, conversations, memory and the files they make. The relay and your other devices don’t keep it, so include it in this computer’s backups. Erasing Her’s data deletes it.",
+    "skillOn": "Turned on {{name}} for new conversations",
+    "skillOff": "Turned off {{name}} for new conversations",
+    "noSkills": "No skills of your own yet",
+    "noSkillsHint": "Upload one as a .zip or .skill archive.",
+    "skillOffShort": "Off",
+    "turnOn": "Turn on {{name}}",
+    "broken_one": "{{count}} skill didn’t load; the console’s Skills page says why.",
+    "broken_other": "{{count}} skills didn’t load; the console’s Skills page says why.",
+    "installed": "Installed",
+    "paths": "Configured Paths",
+    "pathsNote": "Folders in skills.paths.",
+    "builtIn": "Built In",
+    "builtInNote": "Updated with Her.",
+    "upload": "Upload a Skill…",
+    "uploadNote": "A skill is a folder with a SKILL.md, uploaded as a .zip or .skill archive on the console’s Skills page. Her copies it into ~/.her/skills on {{machine}}.",
+    "skillGone": "This skill is gone",
+    "deleteTitle": "Delete {{name}}?",
+    "deleteMessage": "It moves to the Trash on {{machine}}, and new conversations no longer have it.",
+    "delete": "Delete",
+    "deleted": "Deleted {{name}}; it is in the Trash",
+    "enabled": "On",
+    "sourceLabel": "Source",
+    "invoke": "Invoke",
+    "copy": "Copy",
+    "copied2": "Copied {{command}}",
+    "userOnly": "Her uses it only when you name it.",
+    "pathsOnly": "This skill comes from a folder in skills.paths. It can only be turned off here.",
+    "path": "Path",
+    "about": "About",
+    "files": "Files",
+    "binary": "This file isn’t text, so it can’t be shown here.",
+    "deleteSkill": "Delete Skill",
+    "needsAccount": "Connect {{name}} under Models first",
+    "keyFromEnv": "Key from the environment variable {{env}}",
+    "why": {
+      "auth_failed": "key rejected",
+      "quota_exhausted": "out of quota",
+      "rate_limited": "limiting requests",
+      "unreachable": "could not be reached",
+      "bad_response": "unreadable answer"
+    },
+    "sources": {
+      "deepseek": {
+        "desc": "Shares your model key · $0.75 per 1,000"
+      },
+      "exa": {
+        "desc": "Free tier, no key needed",
+        "keyed": "Key added · $4 per 1,000, $10 free a month"
+      },
+      "parallel": {
+        "desc": "Free tier, no key needed",
+        "keyed": "Key added, higher limits"
+      },
+      "tavily": {
+        "desc": "1,000 free a month, needs a key",
+        "keyed": "Key added · 1,000 free a month"
+      },
+      "brave": {
+        "desc": "$5 free a month, needs a key",
+        "keyed": "Key added · $5 free a month"
+      },
+      "bocha": {
+        "desc": "Chinese content, needs a key",
+        "keyed": "Key added"
+      }
+    },
+    "searchMaster": "Let the Model Search the Web",
+    "searchOn": "Web search is on",
+    "searchOff": "Web search is off",
+    "searchNote": "The model searches when it needs to. What it searches for is sent to the services below.",
+    "services": "Search Services",
+    "inUse": "In use",
+    "addKey": "Add Key…",
+    "connect": "Connect…",
+    "use": "Use {{name}}",
+    "noneLeft": "Every service is off, so the model can’t search right now.",
+    "searchOrder": "From the top down, the first one that can be used goes first; if it fails, the next. Drag to change the order.",
+    "mac": "Mac",
+    "linux": "Linux computer",
+    "badSite": "Enter a site such as example.com or https://example.com.",
+    "level": {
+      "act": "Open and Act",
+      "navigate": "Open Only",
+      "ask": "Ask First",
+      "deny": "Deny"
+    },
+    "badge": {
+      "on": "In use",
+      "ready": "Connected",
+      "outdated": "Needs update",
+      "off": "Not connected"
+    },
+    "control": "Allow Her to Control Browsers",
+    "controlNote": "Her opens web pages and acts in them. Which sites she may use without asking is below.",
+    "builtin": "Built-in Browser",
+    "yoursName": "{{name}} (Your Browser)",
+    "defaultNote": "When the agent doesn’t name a browser, new pages open here.",
+    "defaultLocked": "Connect your Chrome to choose it. Until then, new pages open in the built-in browser.",
+    "yours": "Your Chrome",
+    "yoursNote": {
+      "off": "Let Her open sites that need your sign-ins in your own Chrome, on the {{computer}} Her runs on.",
+      "ready": "The extension is connected, but Her doesn’t use it yet.",
+      "on": "Her’s tabs go in a “Hermesh” tab group and work in the background. Closing the “debugging” bar at the top of Chrome takes a tab back.",
+      "lost": "The extension is not connected. Check that Chrome is open on the {{computer}} Her runs on, and that Hermesh is on in its extensions page.",
+      "outdated": "The extension and Hermesh on the {{computer}} Her runs on are not the same version; the older one needs an update."
+    },
+    "use2": "Use",
+    "stopUsing": "Stop Using",
+    "builtinWindow": "Her opens pages in her own {{program}} on the {{computer}} she runs on, without your sign-ins, in a window there.",
+    "builtinNoWindow": "Her opens pages in her own {{program}} on the {{computer}} she runs on, without your sign-ins, with no window.",
+    "noChrome": "There is no Chrome on the {{computer}} Her runs on. Install Google Chrome there, and Her finds it.",
+    "sites": "Site Permissions",
+    "allSites": "All Sites",
+    "allSitesDesc": {
+      "ask": "Each site asks the first time it’s used",
+      "navigate": "Sites open without asking; acting on them asks first",
+      "act": "Sites open and are acted on without asking"
+    },
+    "exceptions": "Exceptions",
+    "noExceptions": "No exceptions yet. “Always allow” in a conversation adds a site here.",
+    "removeSite": "Remove {{site}}",
+    "sitesNote": "Both browsers share these. Addresses on a private network don’t follow All Sites: each asks the first time.",
+    "cardLabel": "{{title}}, {{status}}"
   }
 }

@@ -102,21 +102,31 @@ test("Her: the first run, a chat, a secure card, the console, a second environme
   expect(hello!.y).toBeGreaterThan(cap!.y + cap!.height);
   await expect(page.locator(".dbody .bav")).toHaveCount(0);
   await snap(page, "her-greeting");
-  // Her's settings, beside the conversation, as on the iPhone: the avatar opens them (no button of their own in the
-  // bar); the capsule under it is the team's name tag, which opens the team panel (docs/her-team.md §14.3). Both
-  // with the hand. A new assistant asks before risky steps, and remembers nothing yet.
+  // Her's page, beside the conversation, as on the iPhone (docs/her-panel-demo.html): the avatar opens it (no
+  // button of its own in the bar, nor Progress, Files or Scheduled Tasks there); the capsule under it is the team's
+  // name tag, which opens the team panel (docs/her-team.md §14.3). Both with the hand. Three tabs, Work first: a new
+  // assistant remembers nothing yet, has no connectors, and asks before risky steps.
   const avatar = page.getByRole("button", { name: "助手设置", exact: true });
   const tag = page.getByRole("button", { name: "团队：现在在做什么" });
   await expect(avatar.locator(".bav.cat-av")).toBeVisible();
   await expect(page.locator(".her-head").getByRole("button", { name: "助手设置" })).toHaveCount(1);
   for (const el of [avatar, tag]) expect(await el.evaluate((e) => getComputedStyle(e).cursor)).toBe("pointer");
+  await expect(page.locator(".her-head").getByRole("button", { name: /^(进展|文件|定时任务)/ })).toHaveCount(0);
   await avatar.click();
   const settings = page.getByRole("complementary", { name: "助手设置" });
+  await expect(settings.getByRole("tab", { name: "工作" })).toHaveAttribute("aria-selected", "true");
+  for (const id of ["her-progress", "her-files", "her-routines"]) await expect(settings.getByTestId(id)).toBeVisible();
+  await snap(page, "her-page-work");
+  await settings.getByRole("tab", { name: "能力" }).click();
+  await expect(settings.getByTestId("her-memory")).toHaveAttribute("aria-label", "记忆，还没有", { timeout: 30_000 });
+  // Her's connectors (docs/her-connectors-demo.html): the environment's, as themselves, with none yet.
+  await expect(settings.getByTestId("her-connectors")).toHaveText("连接器还没有", { timeout: 30_000 });
+  for (const id of ["her-skills", "her-search", "her-browser"]) await expect(settings.getByTestId(id)).toBeVisible();
+  await snap(page, "her-page-abilities");
+  await settings.getByRole("tab", { name: "设置" }).click();
   await expect(settings).toContainText("询问权限");
-  await expect(settings.getByRole("button", { name: /^记住的事/ })).toHaveText("记住的事还没有");
-  // Her's connectors (docs/her-connectors-demo.html): a row of their own, the environment's, with none yet.
-  await expect(settings.getByRole("button", { name: /^连接器/ })).toHaveText("连接器还没有");
-  await expect(settings).toContainText("这台机器上的助手共用");
+  await expect(settings.getByTestId("her-environment")).toContainText("环境");
+  await snap(page, "her-page-settings");
   await avatar.click();
   await expect(settings).toBeHidden();
   await tag.click();
@@ -193,22 +203,24 @@ test("Her: the first run, a chat, a secure card, the console, a second environme
   await send("[[mock:remember:- 回复一律用中文。(2026-11-11)]] 以后都用中文");
   await expect(log).toContainText("记下了。", { timeout: 60_000 });
   await page.getByRole("button", { name: "助手设置", exact: true }).click();
-  await expect(settings.getByRole("button", { name: /^记住的事/ })).toHaveText("记住的事");
-  await settings.getByRole("button", { name: /^记住的事/ }).click();
+  await settings.getByRole("tab", { name: "能力" }).click();
+  const memoryCard = settings.getByTestId("her-memory");
+  await expect(memoryCard).toHaveAttribute("aria-label", "记忆", { timeout: 30_000 });
+  await memoryCard.click();
   const memory = page.getByRole("complementary", { name: "记忆" });
   await expect(memory.locator(".mem-doc li")).toHaveText("回复一律用中文。(2026-11-11)");
   await expect(memory).toContainText("这就是它读到的内容");
   await snap(page, "her-memory");
-  await memory.getByRole("button", { name: "返回" }).click();
-  await settings.getByRole("button", { name: "清空记忆" }).click();
+  // Clearing it is at the page's foot, with what it clears, and asks first.
+  await memory.getByTestId("her-clear-memory").click();
   const forget = page.getByRole("dialog", { name: "清空「Her」记住的事？" });
   await expect(forget).toContainText("聊天记录保留");
   await forget.getByRole("button", { name: "清空" }).click();
-  await expect(settings.getByRole("button", { name: /^记住的事/ })).toHaveText("记住的事还没有", { timeout: 30_000 });
-  await settings.getByRole("button", { name: /^记住的事/ }).click();
-  await expect(memory).toContainText("还没有记下什么");
-  await memory.getByRole("button", { name: "关闭" }).click();
-  await expect(memory).toBeHidden();
+  await expect(memory).toContainText("还没有记下什么", { timeout: 30_000 });
+  await memory.getByRole("button", { name: "返回" }).click();
+  await expect(memoryCard).toHaveAttribute("aria-label", "记忆，还没有", { timeout: 30_000 });
+  await settings.getByRole("button", { name: "关闭" }).click();
+  await expect(settings).toBeHidden();
 
   // A scheduled task Her makes (her-mock's routine): its message names it and opens its run. Once the task is
   // deleted, as one that has done its job often is, the message still opens the run, the task marked as deleted.
@@ -338,8 +350,10 @@ test("Her: the first run, a chat, a secure card, the console, a second environme
   const connectorAt = await managed;
   await expect.poll(() => connectorAt.url()).toMatch(/#connectors\/tracker$/);
   await page.getByRole("button", { name: "助手设置", exact: true }).click();
-  const connectorsRow = settings.getByRole("button", { name: /^连接器/ });
+  await settings.getByRole("tab", { name: "能力" }).click();
+  const connectorsRow = settings.getByTestId("her-connectors");
   await expect(connectorsRow).toHaveText("连接器1 个开着", { timeout: 30_000 });
+  await expect(settings.getByTestId("her-connectors-tray").getByRole("button", { name: "tracker" })).toBeVisible();
   await connectorsRow.click();
   await expect.poll(() => connectorAt.url()).toMatch(/#connectors$/);
   await connectorAt.close();
@@ -510,7 +524,9 @@ test("Her: the first run, a chat, a secure card, the console, a second environme
   await (await environments(page)).filter({ hasNotText: "work-mac" }).click();
   await readGreeting(30_000);
   await page.getByRole("button", { name: "助手设置", exact: true }).click();
-  await page.getByRole("complementary", { name: "助手设置" }).getByRole("button", { name: /^在 .+ 上关闭 Her…$/ }).click();
+  await page.getByRole("complementary", { name: "助手设置" }).getByRole("tab", { name: "设置" }).click();
+  await page.getByTestId("her-environment").click();
+  await page.getByRole("complementary", { name: "环境" }).getByRole("button", { name: /^在 .+ 上关闭 Her…$/ }).click();
   const off = page.getByRole("dialog", { name: /^在「.+」上关闭 Her？$/ });
   await expect(off).toContainText("Her 会在那里停止运行，也不能再使用你的电脑。");
   await expect(off).toContainText("不清空的话，这些都会保留，下次开启 Her 时接着用。");

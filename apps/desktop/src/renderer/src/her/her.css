@@ -451,9 +451,6 @@ span.shimmer{display:inline-block;max-width:100%;vertical-align:bottom}
 .reply-pill .ic{width:14px;height:14px;color:var(--accent-t)}
 @media (prefers-reduced-motion:reduce){.cmp-q,.reply-pill{animation:none}}
 
-.tb.rtn-btn{position:relative}
-.tb .rtn-dot{position:absolute;top:3px;right:3px;width:6px;height:6px;border-radius:50%;background:var(--orange)}
-.tb .rtn-dot.run{background:var(--accent)}
 .rtn-top{justify-content:flex-start;gap:4px;padding-left:16px}
 .rtn-tt{flex:1;min-width:0;font-size:14px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:var(--l1)}
 .rtn-sub .rtn-tt{font-weight:500}
@@ -518,7 +515,6 @@ span.shimmer{display:inline-block;max-width:100%;vertical-align:bottom}
 /* The files Her sent (Deliveries.tsx, docs/her-deliverables.md §3.2): the button's count, and the panel beside the
    conversation, where her settings and routines open. A row: the file's icon by kind, its name, Her's words, then
    when, how large, where it came from and its versions; its actions show on hover. */
-.dlv-btn .dlv-badge{position:absolute;top:0;right:-2px;min-width:15px;height:15px;padding:0 4px;box-sizing:border-box;border-radius:8px;background:var(--accent);color:#fff;font-size:10px;font-weight:600;line-height:15px;text-align:center;box-shadow:0 0 0 2px var(--win)}
 .dlv-tools{flex:none;display:flex;flex-direction:column;gap:9px;padding:0 14px 6px}
 .dlv-search{display:flex;align-items:center;gap:6px;height:28px;padding:0 9px;border-radius:8px;background:var(--fill2);color:var(--l2)}
 .dlv-search input{flex:1;min-width:0;border:0;outline:none;background:none;font:inherit;font-size:13px;color:var(--l1)}
@@ -576,3 +572,80 @@ span.shimmer{display:inline-block;max-width:100%;vertical-align:bottom}
 .dlv-said{flex:1;min-width:0;display:flex;flex-direction:column;font-size:13px}
 .dlv-said b{font-size:12px;font-weight:600;color:var(--l2)}
 .dlv-said span{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:var(--l1)}
+
+/* Her's page (docs/her-panel-demo.html): three tabs under her name, and under each one kind of thing. Her work and
+   her abilities are cards, each only a way in: panes of glass over a field of Her's own colours. Her settings are
+   rows. A mark on her avatar at the top says something of hers waits for the owner. */
+.her-id-av{position:relative}
+.her-id-dot{position:absolute;top:3px;right:2px;width:11px;height:11px;border-radius:50%;background:var(--orange);box-shadow:0 0 0 2px var(--win)}
+.hp-tabs{display:flex;gap:2px;padding:3px;margin:-10px 0 4px;border-radius:11px;background:var(--win2)}
+.hp-tabs button{flex:1;height:28px;display:flex;align-items:center;justify-content:center;gap:5px;border:0;border-radius:8px;background:none;font:inherit;font-size:12.5px;font-weight:500;color:var(--l2)}
+.hp-tabs button .ic{width:14px;height:14px}
+.hp-tabs button:hover{color:var(--l1)}
+.hp-tabs button.on{background:var(--fill3);color:var(--l1);font-weight:600}
+.hp-page{padding-top:12px;animation:hp-in .22s var(--ease-out)}
+@keyframes hp-in{from{opacity:0;transform:translateY(4px)}}
+@media (prefers-reduced-motion:reduce){.hp-page{animation:none}}
+.hp-cards{position:relative;isolation:isolate;display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.hp-field{position:absolute;inset:-22px -10px;z-index:-1;pointer-events:none;filter:blur(30px);opacity:.62;
+  background:radial-gradient(38% 30% at 16% 14%,#8f9bf0,transparent 72%),radial-gradient(34% 28% at 84% 22%,#f29bc0,transparent 72%),radial-gradient(42% 30% at 56% 60%,#7fc4ea,transparent 72%),radial-gradient(40% 28% at 14% 90%,#b59cf2,transparent 72%)}
+@media (prefers-color-scheme:dark){.hp-field{opacity:.8}}
+.hp-card{position:relative;min-height:84px;padding:10px 12px;border:0;border-radius:16px;text-align:left;font:inherit;color:var(--l1);display:flex;flex-direction:column;gap:2px;
+  background:linear-gradient(135deg,rgba(255,255,255,.78),rgba(255,255,255,.42));box-shadow:inset 0 0 0 1px rgba(255,255,255,.7),0 6px 20px rgba(60,70,140,.1);
+  -webkit-backdrop-filter:blur(22px) saturate(1.5);backdrop-filter:blur(22px) saturate(1.5);transition:transform .2s var(--ease-out)}
+.hp-card.wide{grid-column:1/-1}
+button.hp-card{cursor:pointer}
+button.hp-card:active{transform:scale(.985)}
+.hp-card>b{font-size:14px;font-weight:700}
+.hp-st{display:inline-flex;align-items:center;gap:5px;font-size:11.5px;color:var(--l2)}
+.hp-st.warn{color:var(--orange)}
+.hp-st.run{color:var(--accent-t)}
+.hp-dot{width:7px;height:7px;border-radius:50%;background:var(--orange);flex:none}
+.hp-glyph.ic{position:absolute;right:11px;bottom:10px;width:18px;height:18px;color:var(--l2)}
+@media (prefers-color-scheme:dark){
+  .hp-card{background:linear-gradient(135deg,rgba(255,255,255,.17),rgba(255,255,255,.05));box-shadow:inset 0 0 0 1px rgba(255,255,255,.14),inset 0 1px 0 rgba(255,255,255,.28)}
+}
+/* the connectors as themselves */
+.hp-tray{min-height:0;padding:10px 12px 8px;gap:9px}
+.hp-tray-head{display:flex;align-items:center;gap:6px;width:100%;padding:0;border:0;background:none;font:inherit;color:inherit;text-align:left;cursor:pointer}
+.hp-tray-head b{font-size:14px;font-weight:700;margin-right:auto}
+.hp-tray-head>.ic{width:12px;height:12px;color:var(--l3)}
+.hp-apps{display:flex;justify-content:space-between}
+.hp-app{position:relative;width:46px;display:flex;flex-direction:column;align-items:center;gap:4px;padding:0;border:0;background:none;font:inherit;color:inherit;cursor:pointer}
+.hp-app img,.hp-app i{width:36px;height:36px;border-radius:10px;object-fit:contain;background:#fff;box-shadow:inset 0 0 0 .5px rgba(0,0,0,.12),0 1px 3px rgba(0,0,0,.14)}
+.hp-app i{display:grid;place-items:center;font-style:normal;font-size:12px;font-weight:700;color:var(--l2);background:var(--fill2)}
+.hp-app.add i{background:none;box-shadow:inset 0 0 0 1.2px var(--l3);color:var(--l2)}
+.hp-app.add .ic{width:14px;height:14px}
+.hp-app u{text-decoration:none;font-size:10px;color:var(--l2);max-width:54px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.hp-app.at::after{content:"";position:absolute;top:-3px;right:2px;width:10px;height:10px;border-radius:50%;background:var(--orange);box-shadow:0 0 0 2px var(--win)}
+/* her settings' rows, and the pages her page opens */
+.hp-page .form{gap:16px}
+.hp-val{color:var(--l2);max-width:170px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.hpp .frow .ft{flex:1;min-width:0;display:flex;flex-direction:column;align-items:flex-start;text-align:left}
+.hpp .frow .fn{display:flex;align-items:center;gap:6px;font-size:13px;color:var(--l1)}
+.hpp .frow .fdesc.warn,.hpp .set-note.warn{color:var(--orange)}
+.hpp .frow>.fl{flex:1;width:auto}
+.hpp .frow>.fv{display:flex;align-items:center;gap:6px}
+.hpp .frow>.ic{width:12px;height:12px;color:var(--l3);flex:none}
+.hpp .badge{font-size:10.5px;font-weight:600;padding:0 6px;border-radius:7px;background:var(--fill2);color:var(--l2)}
+.hpp .badge.ok{background:var(--accent-bg);color:var(--accent-t)}
+.hp-mark{width:26px;height:26px;border-radius:7px;display:grid;place-items:center;flex:none;background:var(--fill2);color:var(--l2);font-size:12px;font-weight:700}
+.hp-link .fl{color:var(--accent-t)}
+.hp-lead{margin-top:0}
+.hp-find{width:100%}
+.hp-check.ic{width:14px;height:14px;color:var(--accent-t)}
+.hp-bar{display:flex;gap:2px;height:10px;border-radius:5px;overflow:hidden}
+.hp-bar i{min-width:3px}
+.hp-kind{width:10px;height:10px;border-radius:3px;flex:none}
+.hp-skill .hp-open{border:0;background:none;padding:0;font:inherit;color:inherit;cursor:pointer}
+.hp-skill .hp-open .fdesc{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.hp-path,.hp-about{font-size:12px;line-height:1.5;color:var(--l2);word-break:break-all}
+.hp-file{margin:0;padding:10px 14px;max-height:280px;overflow:auto;border-top:.5px solid var(--sep);font:11px/1.5 var(--mono);white-space:pre-wrap;color:var(--l1)}
+.hp-off{opacity:.5;pointer-events:none}
+.hp-src{cursor:grab}
+.hp-src.drag{opacity:.5}
+.hp-grip{display:flex;color:var(--l3)}
+.hp-grip .ic{width:14px;height:14px}
+.hp-add-site{gap:8px}
+.hp-add-site .field{flex:1;min-width:0}
+.hp-add-site .psel{width:auto}

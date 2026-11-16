@@ -3,7 +3,6 @@ import { useTranslation } from "react-i18next";
 import { botWorking, routineDot } from "@hermesh/her-client";
 import { Icon } from "../icons";
 import { Avatar, BotAvatar } from "./Avatar";
-import { DeliveriesButton } from "./Deliveries";
 import { useHer } from "./context";
 import { reachable } from "./environments";
 import { menuKeys } from "./menus";
@@ -12,19 +11,17 @@ import { useStore } from "../store";
 
 /**
  * The Her page's top (docs/her-server.md §9.1), as on the iPhone: Her's avatar in the middle, larger than a bar's,
- * its name on a capsule over the avatar's lower edge, and in the capsule the environment as a quiet
- * menu when Her runs on more than one machine; the conversation scrolls under them. A click on the avatar or the name
- * opens Her's settings beside the conversation, as a tap does on the iPhone. On the right, Progress (the work she sent
- * out, docs/her-team.md §15), marked while a piece of it waits for the owner; Her's routines, which open beside the
- * conversation too; and ⋯: the environment's console, and another environment while there is no menu of them.
+ * its name on a capsule over the avatar's lower edge, and the conversation scrolling under them. A click on the avatar
+ * opens her page beside the conversation (docs/her-panel-demo.html), where her work, her abilities and her settings
+ * are; the avatar is marked while something of hers waits for the owner. The capsule is the team's: it opens the team
+ * panel. On the right, ⋯: the environments, the environment's console, and another environment.
  */
 export function TopBar() {
   const { t } = useTranslation("her");
   const her = useHer();
+  const st = useStore();
   const bot = her.bot;
   const panel = her.panel;
-  const dot = bot ? routineDot(bot.routines) : null;
-  const toggle = (kind: "settings" | "routines" | "files") => her.setPanel(panel?.kind === kind ? null : kind === "routines" ? { kind, route: {} } : { kind });
   const team = useTeam();
   const [teamOpen, setTeamOpen] = useState(false);
   const capsule = useRef<HTMLButtonElement>(null);
@@ -32,12 +29,16 @@ export function TopBar() {
     setTeamOpen(false);
     capsule.current?.focus();
   }, []);
+  // A sub-agent of hers waits for the owner, or a scheduled task's last run failed.
+  const waits = (st.herAgents?.waits ?? 0) > 0 || (bot ? routineDot(bot.routines) === "failed" : false);
+  const label = waits ? `${t("head.settings")} · ${t("head.waiting")}` : t("head.settings");
   return (
     <div className="ctool drag her-head">
       <div className="her-id">
         {bot ? (
-          <button className="her-id-av" title={t("head.settings")} aria-label={t("head.settings")} aria-pressed={panel?.kind === "settings"} onClick={() => toggle("settings")}>
+          <button className="her-id-av" title={label} aria-label={label} aria-pressed={!!panel} data-testid="her-avatar" onClick={() => her.setPanel(panel ? null : { kind: "settings" })}>
             <BotAvatar bot={bot} size={56} busy={botWorking(bot)} />
+            {waits && <i className="her-id-dot" aria-hidden="true" />}
           </button>
         ) : (
           <Avatar spec={{ kind: "mark" }} name="" size={56} />
@@ -50,36 +51,8 @@ export function TopBar() {
       </div>
       {teamOpen && <TeamPanel onClose={closeTeam} />}
       <span className="bhead-gap" />
-      {bot && <ProgressButton />}
-      {bot && <DeliveriesButton bot={bot} open={panel?.kind === "files"} onClick={() => toggle("files")} />}
-      {bot && (
-        <button className={`tb rtn-btn ${panel?.kind === "routines" ? "on" : ""}`} title={t("routines.title")} aria-label={t("routines.title")} aria-pressed={panel?.kind === "routines"} onClick={() => toggle("routines")}>
-          <Icon name="clock" />
-          {dot && <i className={`rtn-dot ${dot === "running" ? "run" : ""}`} />}
-        </button>
-      )}
       <MoreMenu />
     </div>
-  );
-}
-
-/**
- * Progress, a page of Her's (docs/her-team.md §15): an orange dot while a sub-agent of hers waits for the owner, else a
- * blue one while one is at work, as her page follows her conversation.
- */
-function ProgressButton() {
-  const { t } = useTranslation("her");
-  const st = useStore();
-  const her = useHer();
-  const { waits, running } = st.herAgents ?? { waits: 0, running: 0 };
-  const label = waits > 0 ? `${t("progress.title")} · ${t("progress.waiting", { count: waits })}`
-    : running > 0 ? `${t("progress.title")} · ${t("progress.atWork", { count: running })}`
-    : t("progress.title");
-  return (
-    <button className="tb rtn-btn" title={label} aria-label={label} onClick={() => st.set({ selection: { kind: "progress", machine: her.machine.machineId } })}>
-      <Icon name="pulse" />
-      {(waits > 0 || running > 0) && <i className={`rtn-dot ${waits > 0 ? "" : "run"}`} />}
-    </button>
   );
 }
 

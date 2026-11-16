@@ -18,10 +18,17 @@ test("Progress: what Her sent out to her sub-agents as a feed, and a sub-agent's
     await composer.press("Enter");
   };
   const nav = page.locator(".side-nav");
-  // Progress is a page of Her's: her top bar's button opens it.
-  const progress = async () => {
+  // Progress is a page of Her's: the first card of her page, beside the conversation, opens it.
+  const herPage = page.getByRole("complementary", { name: "助手设置" });
+  const card = herPage.getByTestId("her-progress");
+  const openHerPage = async () => {
     await navTo(page, /^Her/);
-    await page.locator(".her-head").getByRole("button", { name: /^进展/ }).click();
+    if (!(await herPage.isVisible())) await page.getByTestId("her-avatar").click();
+    await herPage.getByRole("tab", { name: "工作" }).click();
+  };
+  const progress = async () => {
+    await openHerPage();
+    await card.click();
   };
 
   // The sidebar has no place for Progress: it is Her's.
@@ -53,9 +60,11 @@ test("Progress: what Her sent out to her sub-agents as a feed, and a sub-agent's
   const post = list.getByRole("article", { name: "写长文" });
   await expect(list.getByRole("listitem", { name: "需要你" }).getByRole("article", { name: "写长文" })).toBeVisible({ timeout: 60_000 });
   await expect(post).toContainText("等你批准");
-  // Her's top bar says so: Progress is marked while a piece of her work waits.
+  // Her's top says so: her avatar is marked while a piece of her work waits, and on her page Progress says it.
   await page.locator(".pt-back").click();
-  await expect(page.locator(".her-head").getByRole("button", { name: "进展 · 1 个在等你" })).toBeVisible();
+  await expect(page.getByTestId("her-avatar")).toHaveAttribute("aria-label", "助手设置 · 有事在等你");
+  await openHerPage();
+  await expect(card).toHaveAttribute("aria-label", "进展，1 个在等你");
   await progress();
   await snap(page, "progress-waiting");
 
@@ -101,7 +110,8 @@ test("Progress: what Her sent out to her sub-agents as a feed, and a sub-agent's
   const asking = page.getByRole("region", { name: "等你批准" });
   await expect(asking).toContainText("sleep 60", { timeout: 60_000 });
   await asking.getByRole("button", { name: /^允许/ }).first().click();
-  await expect(page.locator(".her-head").getByRole("button", { name: "进展 · 1 个进行中" })).toBeVisible({ timeout: 60_000 });
+  await openHerPage();
+  await expect(card).toHaveAttribute("aria-label", "进展，1 个进行中", { timeout: 60_000 });
   await expect(log.locator(".bm.working")).toHaveCount(0);
   await progress();
   await expect(list.getByRole("listitem", { name: "现在" }).getByRole("article", { name: "写长文" })).toBeVisible();
