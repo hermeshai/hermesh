@@ -217,6 +217,7 @@ const tabs = {
     forget(tabId);
     chrome.tabs.remove(tabId).catch(() => {});
   },
+  forget,
   activate(tabId) {
     chrome.tabs.update(tabId, { active: true }).catch(() => {});
   },
