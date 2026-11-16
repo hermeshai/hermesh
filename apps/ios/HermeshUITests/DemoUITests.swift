@@ -87,7 +87,8 @@ final class DemoUITests: XCTestCase {
     }
 
     /// Haptics (Apple's HIG, Playing haptics), as the log the app keeps under -HermeshHapticLog has them: a question
-    /// already there when its page opens plays none; the answer taken plays success, and so does a pairing approved.
+    /// already there when its page opens plays none; the answer taken plays success, so does the turn it lets finish
+    /// while the page shows, and so does a pairing approved.
     func testHaptics() {
         app.terminate()
         app.launchArguments += ["-HermeshHapticLog"]
@@ -99,7 +100,7 @@ final class DemoUITests: XCTestCase {
         played("")
         tap("Welcome aboard!")
         tap("answer")
-        played("success")
+        played("success success")
         backToOverview()
         tap("verify-pairing")
         tap("scope-projects")
@@ -109,7 +110,7 @@ final class DemoUITests: XCTestCase {
         back()
         tap("approve")
         XCTAssertTrue(app.descendants(matching: .any)["client-connected"].waitForExistence(timeout: 10))
-        played("success success")
+        played("success success success")
         tap("exit-demo")
     }
 

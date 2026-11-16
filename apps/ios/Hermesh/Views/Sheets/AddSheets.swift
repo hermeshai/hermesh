@@ -414,6 +414,7 @@ struct ScanSheet: View {
                             error = String(localized: "That isn’t a Hermesh code.")
                             return false
                         }
+                        Haptic.success.play()
                         Task { await model.openPairingCode(code) }
                         return true
                     }
