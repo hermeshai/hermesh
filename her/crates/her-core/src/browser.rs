@@ -1398,7 +1398,7 @@ async fn list(ctx: &ToolCtx) -> Result<String, ToolError> {
         }
     }
     if lines.is_empty() {
-        return Ok("No tabs are open.".into());
+        return Ok("No tabs are open in this session. Tabs the user opened themselves are not listed.".into());
     }
     // Titles and URLs come from pages.
     Ok(her_browser::snapshot::wrap_page_content("browser", &lines.join("\n")))

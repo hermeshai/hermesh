@@ -4,8 +4,9 @@ import Foundation
 // botChat.ts): the owner's messages, and each message Her sent with
 // send_to_user (words, files, a question, or a secure card), in the order
 // they were sent, with what a sub-agent told the owner, which reads the
-// same, a card for each coding session she started (docs/her-team.md §4.4)
-// and for the team's work she counted (§6.3), and a failure where a task
+// same, a card for each coding session she started or worked on, where she
+// last did (docs/her-team.md §4.4), one for the team's work she counted
+// (§6.3), and a failure where a task
 // failed. What else Her did and wrote for
 // herself never shows. An approval is no part of it: it waits above the
 // composer.
@@ -13,6 +14,8 @@ import Foundation
 public let sendToUser = "send_to_user"
 /// The mesh tool that starts a coding session (docs/her-mesh.md §4.2).
 public let sessionStart = "session_start"
+/// The mesh tools that ask more of a session she started or works on: its card follows them.
+let sessionAsks: Set = ["session_send", "session_answer"]
 /// The mesh tool that counts the team's work (docs/her-team.md §6.3).
 public let workSummary = "work_summary"
 /// The tool that makes and changes routines (bot-mode-design §6.21).
@@ -49,7 +52,7 @@ public struct HerItem: Equatable, Identifiable, Sendable {
         case sending(id: String, text: String, images: [HerImage], files: [String], refused: String?)
         /// Her's onboarding while no model works there (HerOnboarding).
         case onboarding
-        /// A coding session Her started, where she started it.
+        /// A coding session Her started, where she last had to do with it: one row a session.
         case session(HerStarted)
         /// The team's work over some days, as Her counted it for the owner.
         case work(HerWork)
@@ -95,7 +98,7 @@ public struct HerFile: Equatable, Sendable {
     public var image: Bool
 }
 
-/// A coding session Her started, as her session_start call's result names it (its details, docs/her-team.md §6.2, or
+/// A coding session Her started or works on, as her session_start call's result names it (its details, docs/her-team.md §6.2, or
 /// the CLI's document, docs/cli-output.md): enough to find the session, and to name it when the phone holds it no more.
 public struct HerStarted: Equatable, Sendable {
     public var sessionID: String
@@ -125,6 +128,24 @@ public struct HerStarted: Equatable, Sendable {
 
     private init(_ id: String, _ s: JSON) {
         self.init(sessionID: id, title: s["title"].string ?? "", agent: s["agent"].string ?? "", machine: s["machine"].string ?? "")
+    }
+
+    /// From news of a session (docs/her-mesh.md §6.2), its first line: `<session_news … session="…" title="…"
+    /// agent="…" project="machine/project" …>`, each value as Go quotes it. Nil for any other text.
+    init?(news text: String) {
+        guard text.hasPrefix("<session_news ") else { return nil }
+        let head = text[..<(text.firstIndex(of: "\n") ?? text.endIndex)]
+        func attr(_ name: String) -> String? {
+            guard let r = head.range(of: " \(name)=\"") else { return nil }
+            var value = "", escaped = false
+            for c in head[r.upperBound...] {
+                if escaped { value.append(c); escaped = false } else if c == "\\" { escaped = true } else if c == "\"" { return value } else { value.append(c) }
+            }
+            return nil
+        }
+        guard let id = attr("session"), !id.isEmpty else { return nil }
+        let project = attr("project") ?? ""
+        self.init(sessionID: id, title: attr("title") ?? "", agent: attr("agent") ?? "", machine: project.split(separator: "/").first.map(String.init) ?? project)
     }
 }
 
@@ -229,6 +250,23 @@ public func herChat(_ v: HerSession) -> [HerItem] {
     var out: [HerItem] = []
     // The run whose report the task under way passes on.
     var source: HerRoutineSource?
+    // Each session as it was last named, and those whose news the task under way brought: their cards follow what
+    // she then tells the owner.
+    var named: [String: HerStarted] = [:]
+    var news: [String] = []
+    // One card a session, the last: where each is in out, and those a later one took the place of. Its key stays
+    // the same, so the card moves rather than is made again.
+    var cards: [String: Int] = [:]
+    var gone = Set<Int>()
+    func card(_ id: String, at ts: Double) {
+        guard let s = named[id] else { return }
+        if let was = cards[id] {
+            guard ts >= out[was].ts else { return }
+            gone.insert(was)
+        }
+        cards[id] = out.count
+        out.append(HerItem(key: "session:\(id)", ts: ts, kind: .session(s)))
+    }
     for (i, e) in v.entries.enumerated() {
         switch e {
         case .user(let id, let content, let ts, let mail):
@@ -236,29 +274,45 @@ public func herChat(_ v: HerSession) -> [HerItem] {
                 // What a sub-agent told the owner reads as a message from Her.
                 if mail.kind == "to_user" { out.append(HerItem(key: id, ts: ts, kind: .her(messageBody(texts(content))))) }
                 if let routine = mail.routineID { source = HerRoutineSource(routineID: routine, runID: mail.fromID, name: mail.fromName) }
+                // News comes from its session (hermeshd's herNews): its words are read only to name one not named yet.
+                if mail.kind == "news" {
+                    let id = mail.fromID
+                    if named[id] == nil, let s = HerStarted(news: texts(content)), s.sessionID == id { named[id] = s }
+                    if named[id] != nil, !news.contains(id) { news.append(id) }
+                }
             } else {
                 out.append(HerItem(key: id, ts: ts, kind: ownerKind(content, queued: false), reply: ownerReply(content)))
                 source = nil
+                news = []
             }
         case .assistant(_, let calls, let ts, let duration, _):
             // Sent when the reply that called send_to_user ended.
             for c in calls {
+                let target = herCallTarget(c.name, c.args)
                 if c.name == sendToUser {
                     if let kind = delivered(c, state(c.id, open: v.live != nil && i == lastReply), results[c.id]) {
                         out.append(HerItem(key: c.id, ts: ts + duration, kind: kind, source: source))
+                        // What she tells the owner of news: the card of its session under it.
+                        for id in news { card(id, at: ts + duration) }
                     }
                 } else if c.name == manageRoutine, let r = results[c.id], !r.isError, let change = HerRoutineChange(details: r.details) {
                     out.append(HerItem(key: "routine:\(c.id)", ts: ts + duration, kind: .routine(change)))
-                } else if herCallTarget(c.name, c.args).name == sessionStart, let r = results[c.id], !r.isError, let started = HerStarted(result: r) {
+                } else if target.name == sessionStart, let r = results[c.id], !r.isError, let started = HerStarted(result: r) {
                     // A session she started: a call that was refused, failed or never ran started none.
-                    out.append(HerItem(key: c.id, ts: ts + duration, kind: .session(started)))
-                } else if herCallTarget(c.name, c.args).name == workSummary, let r = results[c.id], !r.isError, let work = HerWork(details: r.details) {
+                    named[started.sessionID] = started
+                    card(started.sessionID, at: ts + duration)
+                } else if sessionAsks.contains(target.name), let r = results[c.id], !r.isError, let id = target.args["session_id"].string {
+                    // More asked of a session: its card comes down here. The result is read only to name one not named yet.
+                    if named[id] == nil, let s = HerStarted(result: r), s.sessionID == id { named[id] = s }
+                    card(id, at: ts + duration)
+                } else if target.name == workSummary, let r = results[c.id], !r.isError, let work = HerWork(details: r.details) {
                     out.append(HerItem(key: c.id, ts: ts + duration, kind: .work(work)))
                 }
             }
         case .taskEnd(let outcome, let error, let ts, _):
             if outcome == "failed", let error { out.append(HerItem(key: "end:\(i)", ts: ts, kind: .failure(error, last: false))) }
             source = nil
+            news = []
         default:
             break
         }
@@ -269,6 +323,7 @@ public func herChat(_ v: HerSession) -> [HerItem] {
     }
     // One that joined the conversation keeps its id there.
     for q in v.queued where !out.contains(where: { $0.key == q.id }) { out.append(HerItem(key: q.id, ts: q.ts, kind: ownerKind(q.content, queued: true), reply: ownerReply(q.content))) }
+    if !gone.isEmpty { out = out.indices.filter { !gone.contains($0) }.map { out[$0] } }
     // In the order things were sent; the same time keeps the history's order.
     var sorted = out.enumerated().sorted { $0.element.ts != $1.element.ts ? $0.element.ts < $1.element.ts : $0.offset < $1.offset }.map(\.element)
     // The latest question can be answered until the owner says anything.
