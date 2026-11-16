@@ -217,8 +217,8 @@ html.blurred .her-id-n{color:var(--l2)}
 .bline+.sc-end{margin-top:5px;padding-left:2px}
 .sc-end .ic{width:13px;height:13px;color:var(--l3)}
 
-/* Busy: the last bubble. Three dots while it answers; with sub-agents at work, the dots quieten and what they do opens
-   out after them, shimmering. Several open to each one's name. */
+/* Busy: the last bubble. Three dots while it answers; while it is on a call, the dots quieten and what the call does
+   opens out after them, shimmering. */
 .shimmer{position:relative;overflow:clip}
 span.shimmer{display:inline-block;max-width:100%;vertical-align:bottom}
 .shimmer::after{content:"";position:absolute;top:0;bottom:0;left:-100%;width:300%;pointer-events:none;background:linear-gradient(90deg,transparent 38%,color-mix(in srgb,var(--shimmer-on,var(--win)) 64%,transparent) 50%,transparent 62%);animation:shimmer 2.4s linear infinite}
@@ -240,10 +240,6 @@ span.shimmer{display:inline-block;max-width:100%;vertical-align:bottom}
 .wb-w .wb-t{text-overflow:inherit}
 @keyframes wb-open{from{width:0;opacity:0;text-overflow:clip}to{width:auto;opacity:1;text-overflow:clip}}
 .wb-t{min-width:0;font-size:14px;color:var(--l2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.wb-h .chev{width:14px;height:14px;margin-left:-3px;color:var(--l3);transform:rotate(-90deg);transition:transform .15s var(--ease-out)}
-.wb-h[aria-expanded="true"] .chev{transform:none}
-.wb-l{display:flex;flex-direction:column;gap:2px;padding:0 15px 10px}
-.wb-r{min-width:0;font-size:14px;line-height:21px;color:var(--l2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 @media (prefers-reduced-motion:reduce){.dots i,.dots.quiet i{animation:none;opacity:.6;transition:none}.wb-w{animation:none}}
 
 /* The onboarding while no model works (ModelOnboarding.tsx): Her's bubbles as the app writes them, quiet pills under the

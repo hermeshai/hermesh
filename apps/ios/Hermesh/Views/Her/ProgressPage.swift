@@ -4,14 +4,14 @@ import HermeshProto
 import HermeshSessions
 import SwiftUI
 
-// Progress (docs/her-team.md §15): the work Her sent out as a feed, one post a piece of work, with what set it off
-// at its foot; behind a sub-agent's post the whole record of that piece of work. Everything is read from the
+// Progress (docs/her-team.md §15): the work Her sent out to her sub-agents as a feed, one post a piece of work, with
+// what set it off at its foot; behind a post the whole record of that piece of work. Everything is read from the
 // conversation the app already follows for Her (HerChat: her sub-agents' own conversations come with it), so the
-// pages ask her for nothing more; a coding session's post opens the session's own page.
+// pages ask her for nothing more. Coding sessions she started are not here: they are on their own pages.
 
-/// How a post stands: a sub-agent's state, or the same for a coding session; gone: the app holds the session no more.
+/// How a post stands: its sub-agent's state.
 private enum Stand: Equatable {
-    case starting, running, waiting, done, failed, stopped, gone
+    case starting, running, waiting, done, failed, stopped
 
     init(_ s: HerAgentState) {
         self = switch s {
@@ -22,11 +22,6 @@ private enum Stand: Equatable {
         case .failed: .failed
         case .stopped: .stopped
         }
-    }
-
-    init(session s: Session?) {
-        guard let s else { self = .gone; return }
-        self = s.status == .waitingInput ? .waiting : s.isFailed ? .failed : s.isActive ? .running : .done
     }
 
     var atWork: Bool { self == .running || self == .starting }
@@ -42,24 +37,21 @@ private enum Stand: Equatable {
         case .done: String(localized: "Done")
         case .failed: String(localized: "Failed")
         case .stopped: String(localized: "Stopped")
-        case .gone: String(localized: "No longer on this iPhone")
         }
     }
 }
 
-/// How many pieces of the work Her sent out wait for the owner: what marks Progress on her page.
-@MainActor func herProgressWaiting(_ chat: HerChat, _ model: AppModel) -> Int {
-    chat.progress.reduce(0) { n, g in n + g.tasks.filter { stand($0, model) == .waiting }.count }
+/// How many of Her's sub-agents wait for the owner, and how many are at work: what marks Progress on her page.
+@MainActor func herProgressMarks(_ chat: HerChat) -> (waiting: Int, running: Int) {
+    let all = chat.progress.flatMap(\.tasks).map(stand)
+    return (all.count(where: { $0 == .waiting }), all.count(where: \.atWork))
 }
 
-@MainActor private func stand(_ t: HerProgressTask, _ model: AppModel) -> Stand {
+private func stand(_ t: HerProgressTask) -> Stand {
     switch t {
     case .agent(let l): Stand(herAgentState(l))
-    case .session(_, let started): Stand(session: model.session(started.sessionID))
     }
 }
-
-private func tokens(_ s: Session?) -> Int { s.map { Int($0.progress.usage.inputTokens + $0.progress.usage.outputTokens) } ?? 0 }
 
 /// "Took 13 min 7 s": a time in its two largest units.
 private func tookText(_ ms: Double) -> String {
@@ -80,13 +72,13 @@ private func parentTime(_ g: HerProgressGroup) -> Double {
     }
 }
 
-/// A piece of work as the feed shows it: the work, what set it off, how it stands, and, for a sub-agent, what its
-/// post says (read once, here).
+/// A piece of work as the feed shows it: the work, what set it off, how it stands, and what its post says (read
+/// once, here).
 private struct Post: Identifiable {
     var task: HerProgressTask
     var group: HerProgressGroup
     var stand: Stand
-    var agent: HerAgentPost?
+    var agent: HerAgentPost
     /// When it began its work (at work) or last changed (otherwise), in ms: the feed's order.
     var at: Double
     var id: String { task.id }
@@ -94,21 +86,15 @@ private struct Post: Identifiable {
     var title: String {
         switch task {
         case .agent(let l): herAgentTitle(l)
-        case .session(_, let started): started.title
         }
     }
 }
 
-@MainActor private func posts(_ groups: [HerProgressGroup], _ model: AppModel) -> [Post] {
+private func posts(_ groups: [HerProgressGroup]) -> [Post] {
     groups.flatMap { g in
         g.tasks.map { t in
             switch t {
-            case .agent(let l):
-                return Post(task: t, group: g, stand: stand(t, model), agent: herAgentPost(l), at: l.agent?.since ?? parentTime(g))
-            case .session(_, let started):
-                let s = model.session(started.sessionID)
-                let at = s.map { ($0.isActive ? $0.turnStartedDate ?? $0.updatedDate : $0.updatedDate).timeIntervalSince1970 * 1000 } ?? parentTime(g)
-                return Post(task: t, group: g, stand: stand(t, model), agent: nil, at: at)
+            case .agent(let l): Post(task: t, group: g, stand: stand(t), agent: herAgentPost(l), at: l.agent?.since ?? parentTime(g))
             }
         }
     }
@@ -146,7 +132,7 @@ private struct ProgressBoard: View {
 
     var body: some View {
         let chat = model.her.chat(machine.machineID, model: model)
-        let all = posts(chat.progress, model).sorted { $0.at > $1.at }
+        let all = posts(chat.progress).sorted { $0.at > $1.at }
         let need = all.filter(\.stand.needsOwner)
         let working = all.filter(\.stand.atWork)
         let ended = all.filter { !$0.stand.needsOwner && !$0.stand.atWork }
@@ -214,7 +200,6 @@ private struct ProgressBoard: View {
     private func open(_ task: HerProgressTask) {
         switch task {
         case .agent(let l): if let a = l.agent { model.path.append(.progressAgent(a.id)) }
-        case .session(_, let started): model.openSession(started.sessionID)
         }
     }
 
@@ -256,8 +241,7 @@ private struct PostView: View {
     let why: () -> Void
 
     var body: some View {
-        let s = session
-        let words = words(s)
+        let words = post.agent.words
         VStack(alignment: .leading, spacing: 0) {
             Button { open(post.task) } label: {
                 VStack(alignment: .leading, spacing: 4) {
@@ -276,13 +260,13 @@ private struct PostView: View {
                 .contentShape(.rect)
             }
             .buttonStyle(.plain)
-            .disabled(!canOpen(s))
+            .disabled(!canOpen)
             .accessibilityLabel([post.title, post.stand.words, words].compactMap { $0 }.joined(separator: ", "))
             .accessibilityIdentifier("progress-card-\(post.title)")
-            piece(s)
+            piece
             HStack(spacing: 6) {
-                PostTime(post: post, session: s)
-                let used = tokensUsed(s)
+                PostTime(post: post)
+                let used = tokensUsed
                 if used > 0 {
                     Text(verbatim: "· \(tokensText(UInt64(used)))").font(.footnote).monospacedDigit().foregroundStyle(.tertiary)
                         .accessibilityLabel(Text("\(tokensText(UInt64(used))) tokens"))
@@ -305,37 +289,20 @@ private struct PostView: View {
 
     private func openThis() { open(post.task) }
 
-    private var session: Session? {
-        if case .session(_, let started) = post.task { model.session(started.sessionID) } else { nil }
-    }
-
-    private func canOpen(_ s: Session?) -> Bool {
+    private var canOpen: Bool {
         switch post.task {
         case .agent(let l): l.agent != nil
-        case .session: s != nil
         }
     }
 
-    private func tokensUsed(_ s: Session?) -> Int {
+    private var tokensUsed: Int {
         switch post.task {
         case .agent(let l): l.agent.map(herAgentTokens) ?? 0
-        case .session: tokens(s)
-        }
-    }
-
-    /// The line under the title, in the work's own words where it has them.
-    private func words(_ s: Session?) -> String? {
-        if case .agent = post.task { return post.agent?.words }
-        guard let s else { return post.stand.words }
-        switch post.stand {
-        case .waiting: return String(localized: "Waiting for an answer")
-        case .failed: return s.progress.lastFailure.message.isEmpty ? String(localized: "Its last turn failed") : s.progress.lastFailure.message
-        default: return nil
         }
     }
 
     /// What shows where it stands: the step it is on while it works, what waits for the owner, what it made.
-    @ViewBuilder private func piece(_ s: Session?) -> some View {
+    @ViewBuilder private var piece: some View {
         switch (post.task, post.stand) {
         case (.agent, .starting):
             Well { Text("Starting…").foregroundStyle(.secondary) }
@@ -343,8 +310,8 @@ private struct PostView: View {
             Button(action: openThis) {
                 Well {
                     HStack(spacing: 12) {
-                        StepBeat(count: post.agent?.calls ?? 0)
-                        if let now = post.agent?.now { StepWords(tool: now) } else { Text("Thinking about the next step").foregroundStyle(.secondary) }
+                        StepBeat(count: post.agent.calls)
+                        if let now = post.agent.now { StepWords(tool: now) } else { Text("Thinking about the next step").foregroundStyle(.secondary) }
                     }
                 }
             }
@@ -359,7 +326,8 @@ private struct PostView: View {
                 }
             }
         case (.agent, .done):
-            if let files = post.agent?.files, let first = files.first {
+            if let first = post.agent.files.first {
+                let files = post.agent.files
                 Button(action: openThis) {
                     Well {
                         HStack(spacing: 8) {
@@ -372,35 +340,6 @@ private struct PostView: View {
                 }
                 .buttonStyle(.plain)
                 .accessibilityIdentifier("progress-files")
-            }
-        case (.session, .running):
-            if let s {
-                Button(action: openThis) {
-                    Well {
-                        HStack(spacing: 10) {
-                            Spinner()
-                            if s.progress.currentTool.isEmpty { Text("Working…").foregroundStyle(.secondary) } else {
-                                Text(s.progress.currentTool).font(.footnote.monospaced()).lineLimit(1)
-                            }
-                        }
-                    }
-                }
-                .buttonStyle(.plain)
-            }
-        case (.session, .done):
-            if let d = s?.progress.diffStat, d.filesChanged > 0 {
-                Button(action: openThis) {
-                    Well {
-                        HStack(alignment: .firstTextBaseline, spacing: 8) {
-                            Text(verbatim: "+\(d.insertions)").fontWeight(.semibold).foregroundStyle(.green)
-                            Text(verbatim: "−\(d.deletions)").fontWeight(.semibold).foregroundStyle(.orange)
-                            Spacer(minLength: 0)
-                            Text("\(d.filesChanged) files").foregroundStyle(.secondary)
-                        }
-                        .monospacedDigit()
-                    }
-                }
-                .buttonStyle(.plain)
             }
         default:
             EmptyView()
@@ -453,7 +392,6 @@ private struct StepBeat: View {
 private struct PostTime: View {
     @Environment(AppModel.self) private var model
     let post: Post
-    let session: Session?
 
     var body: some View {
         let now = model.now.timeIntervalSince1970 * 1000
@@ -461,7 +399,6 @@ private struct PostTime: View {
             if post.stand.atWork || post.stand == .waiting {
                 let since: Double = switch post.task {
                 case .agent(let l): l.agent?.since ?? post.at
-                case .session: session?.turnStartedDate.map { $0.timeIntervalSince1970 * 1000 } ?? post.at
                 }
                 Text(workedText(now - since)).foregroundStyle(post.stand == .waiting ? AnyShapeStyle(.secondary) : AnyShapeStyle(Color.accentColor))
             } else {
@@ -608,11 +545,10 @@ private struct SourceSheet: View {
     }
 
     private func row(_ task: HerProgressTask) -> some View {
-        let s = stand(task, model)
+        let s = stand(task)
         let mine = task.id == here
         let title: String = switch task {
         case .agent(let l): herAgentTitle(l)
-        case .session(_, let started): model.session(started.sessionID)?.displayTitle ?? started.title
         }
         return Button { if !mine { open(task) } } label: {
             HStack(spacing: 10) {
@@ -655,7 +591,7 @@ private struct StepWords: View {
 
     var body: some View {
         HStack(spacing: 5) {
-            Text(verb).foregroundStyle(failed ? AnyShapeStyle(.red) : AnyShapeStyle(.secondary)).layoutPriority(1)
+            Text(herStepVerb(tool)).foregroundStyle(failed ? AnyShapeStyle(.red) : AnyShapeStyle(.secondary)).layoutPriority(1)
             if tool.category == "execute" {
                 CodeText(text: tool.object, lang: "bash").font(.footnote.monospaced())
             } else {
@@ -664,26 +600,26 @@ private struct StepWords: View {
         }
         .lineLimit(1)
     }
+}
 
-    /// "Read", "Running"; a refused one "Denied".
-    private var verb: LocalizedStringKey {
-        switch tool.state {
-        case .denied: return "Denied"
-        case .cancelled: return "Not run"
-        case .awaiting: return "Needs approval:"
-        default: break
-        }
-        let live = tool.state == .live
-        switch tool.category {
-        case "read": return live ? "Reading" : "Read"
-        case "edit": return live ? "Editing" : "Edited"
-        case "delete": return live ? "Deleting" : "Deleted"
-        case "move": return live ? "Moving" : "Moved"
-        case "search": return live ? "Searching" : "Searched"
-        case "execute": return live ? "Running" : "Ran"
-        case "fetch": return live ? "Fetching" : "Fetched"
-        default: return live ? "Calling" : "Called"
-        }
+/// What a step does, as Progress and Her's busy bubble say it: "Reading", "Ran"; a refused one "Denied".
+func herStepVerb(_ tool: HerToolStep) -> String {
+    switch tool.state {
+    case .denied: return String(localized: "Denied")
+    case .cancelled: return String(localized: "Not run")
+    case .awaiting: return String(localized: "Needs approval:")
+    default: break
+    }
+    let live = tool.state == .live
+    switch tool.category {
+    case "read": return live ? String(localized: "Reading") : String(localized: "Read")
+    case "edit": return live ? String(localized: "Editing") : String(localized: "Edited")
+    case "delete": return live ? String(localized: "Deleting") : String(localized: "Deleted")
+    case "move": return live ? String(localized: "Moving") : String(localized: "Moved")
+    case "search": return live ? String(localized: "Searching") : String(localized: "Searched")
+    case "execute": return live ? String(localized: "Running") : String(localized: "Ran")
+    case "fetch": return live ? String(localized: "Fetching") : String(localized: "Fetched")
+    default: return live ? String(localized: "Calling") : String(localized: "Called")
     }
 }
 
@@ -725,8 +661,6 @@ struct ProgressAgentPage: View {
                     switch task {
                     case .agent(let l):
                         if let id = l.agent?.id, id != agentID { model.path[model.path.count - 1] = .progressAgent(id) }
-                    case .session(_, let started):
-                        model.openSession(started.sessionID)
                     }
                 }
             }

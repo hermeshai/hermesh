@@ -5,9 +5,10 @@ import { fixture, launch, navTo, snap } from "./app";
 // TestDesktopHerProgress, which needs her built. One story: Her is turned on here; nothing is sent out yet; she
 // hands a piece of work to a sub-agent, a post of its own under what needs the owner, with what the owner said at
 // its foot; it asks for the owner's approval, works and ends; its record shows what Her asked, what it called and
-// what it reported; then a coding session she starts, as a post whose record is the session's own.
+// what it reported. Her busy bubble is hers alone: gone once she answered, it says the call she is on. A coding
+// session she starts is no post: its own page holds it.
 
-test("Progress: what Her sent out as a feed, a sub-agent's record, and a coding session's", async () => {
+test("Progress: what Her sent out to her sub-agents as a feed, and a sub-agent's record", async () => {
   test.setTimeout(300_000);
   const { app, page } = await launch(fixture.socket, {});
   const log = page.getByRole("log", { name: "对话" });
@@ -43,12 +44,11 @@ test("Progress: what Her sent out as a feed, a sub-agent's record, and a coding 
   await send("[[mock:relay_slow:3]] 写一篇长文");
   await expect(log).toContainText("好，这个要一会儿，写好发你。", { timeout: 60_000 });
 
-  // The busy bubble names the work: it opens the sub-agent's record, whose back button leads to the board.
-  await log.getByRole("button", { name: "写长文" }).click();
-  await expect(page.getByRole("heading", { name: "写长文", level: 2 })).toBeVisible();
-  await page.locator(".pt-back").click();
+  // She has answered: no dots while her sub-agent works, whose work is Progress's.
+  await expect(log.locator(".bm.working")).toHaveCount(0, { timeout: 30_000 });
 
   // Its post, under what needs the owner: the sub-agent's command waits.
+  await progress();
   const list = page.getByRole("list", { name: "派出去的活" });
   const post = list.getByRole("article", { name: "写长文" });
   await expect(list.getByRole("listitem", { name: "需要你" }).getByRole("article", { name: "写长文" })).toBeVisible({ timeout: 60_000 });
@@ -95,29 +95,36 @@ test("Progress: what Her sent out as a feed, a sub-agent's record, and a coding 
   await expect(list.getByRole("listitem", { name: "需要你" })).toHaveCount(0);
   await expect(post.getByRole("button", { name: /^写长文 · 已完成/ })).toBeVisible();
 
-  // A coding session she starts on this Mac, asked first, is a card too; its record is the session's own page.
+  // Another, allowed: it works on in the background, and her top bar says one is at work, with no dots on her page.
   await navTo(page, /^Her/);
+  await send("[[mock:relay_slow:60]] 再写一篇");
+  const asking = page.getByRole("region", { name: "等你批准" });
+  await expect(asking).toContainText("sleep 60", { timeout: 60_000 });
+  await asking.getByRole("button", { name: /^允许/ }).first().click();
+  await expect(page.locator(".her-head").getByRole("button", { name: "进展 · 1 个进行中" })).toBeVisible({ timeout: 60_000 });
+  await expect(log.locator(".bm.working")).toHaveCount(0);
+  await progress();
+  await expect(list.getByRole("listitem", { name: "现在" }).getByRole("article", { name: "写长文" })).toBeVisible();
+
+  // While Her herself is on a call, her bubble says what it does, in the words Progress says a step in.
+  await navTo(page, /^Her/);
+  await send("[[mock:bash:sleep 8]] 看看");
+  await expect(asking).toContainText("sleep 8", { timeout: 60_000 });
+  await asking.getByRole("button", { name: /^允许/ }).first().click();
+  await expect(log.locator(".bm.working")).toContainText("正在运行 sleep 8", { timeout: 30_000 });
+  await snap(page, "busy-step");
+
+  // A coding session she starts on this Mac, asked first, is a card in her conversation, and no post of Progress.
   await send(`[[mock:mesh:session_start:${JSON.stringify({ project: "owner-mac/demo", prompt: "say 做完了", title: "Her 派的活" })}]] 开工`);
-  const approval = page.getByRole("region", { name: "等你批准" });
-  await expect(approval).toContainText("owner-mac/demo", { timeout: 60_000 });
-  await approval.getByRole("button", { name: /^允许/ }).first().click();
+  await expect(asking).toContainText("owner-mac/demo", { timeout: 60_000 });
+  await asking.getByRole("button", { name: /^允许/ }).first().click();
   await expect(log.getByRole("button", { name: "Her 派的活" })).toBeVisible({ timeout: 60_000 });
   await progress();
-  const session = list.getByRole("article", { name: "Her 派的活" });
-  await expect(session.getByRole("button", { name: /^Her 派的活 · 已完成/ })).toBeVisible({ timeout: 60_000 });
-  await session.getByRole("button", { name: "来自哪句话" }).click();
-  await expect(page.getByRole("dialog", { name: "来自你的一句话" })).toContainText("开工");
-  await page.keyboard.press("Escape");
+  await expect(list.getByRole("article", { name: "写长文" })).toHaveCount(2);
+  await expect(list.getByRole("article", { name: "Her 派的活" })).toHaveCount(0);
   await snap(page, "progress-board");
-  await session.getByRole("button", { name: /^Her 派的活/ }).click();
-  await expect(page.locator(".pt-shead")).toContainText("Her 派的活");
-  await expect(page.locator(".pt-shead")).toContainText("Claude · owner-mac");
-  await expect(page.getByRole("log", { name: "对话" })).toContainText("做完了", { timeout: 60_000 });
-  // From there, the session among all sessions; and from what set it off, back to what Her said.
-  await page.getByRole("button", { name: "在全部会话里打开" }).click();
-  await expect(page.getByRole("heading", { name: "Her 派的活" })).toBeVisible();
-  await progress();
-  const done = list.getByRole("article", { name: "写长文" });
+  // From what set it off, back to what Her said.
+  const done = list.getByRole("listitem", { name: "早些时候" }).getByRole("article", { name: "写长文" });
   await done.getByRole("button", { name: "来自哪句话" }).click();
   await page.getByRole("dialog", { name: "来自你的一句话" }).getByRole("button", { name: "在对话里看" }).click();
   await expect(log).toContainText("好，这个要一会儿，写好发你。");

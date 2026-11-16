@@ -1,5 +1,5 @@
 import type { ErrorInfo } from "@hermesh/her-protocol";
-import { callTarget, runningAgents, type AgentView, type SessionView } from "./session.ts";
+import { callTarget, type AgentView, type SessionView } from "./session.ts";
 import { conversation, detailsOf, userText, type ReplyQuote, type ToolView, type WorkItem } from "./steps.ts";
 import { baseName } from "./text.ts";
 
@@ -342,16 +342,14 @@ export function imageRatio(f: Pick<BotFile, "width" | "height">, alone: boolean)
   return alone ? clamp(own, 0.5, 4) : clamp(own, 0.75, 2);
 }
 
-/** A sub-agent at work, as the busy bubble shows it. */
-export interface WorkingAgent {
-  id: string;
-  /** What the bot called the work. */
-  label: string;
-}
-
-/** What the busy bubble shows, or null when the bot is not busy: waiting for an approval alone is not busy. */
-export function busyBubble(v: SessionView): { typing: boolean; agents: WorkingAgent[] } | null {
-  const agents = runningAgents(v).map((a) => ({ id: a.id, label: a.description || a.name }));
-  const typing = !!v.live && v.live.approvals.length === 0;
-  return typing || agents.length > 0 ? { typing, agents } : null;
+/**
+ * What the busy bubble shows while the bot answers: the call it is on, as Progress says a step (toolVerb, toolObject),
+ * else the dots alone. Null while it does not answer: waiting for an approval is not answering, nor is a sub-agent at
+ * work in the background, which Progress shows (docs/her-team.md §15).
+ */
+export function busyBubble(v: SessionView): { now: ToolView | null } | null {
+  if (!v.live || v.live.approvals.length > 0) return null;
+  // Her's own words and the sub-agents she starts show as themselves, not as what she does.
+  const t = v.live.tools.findLast((t) => (t.phase === "running" || t.phase === "pending") && t.name !== "send_to_user" && t.name !== "spawn_agent");
+  return { now: t ? { call_id: t.call_id, name: t.name, category: t.category, title: t.title, args: t.args, state: t.phase as ToolView["state"] } : null };
 }

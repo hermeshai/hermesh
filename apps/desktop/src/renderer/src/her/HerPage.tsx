@@ -75,7 +75,7 @@ function Environment({ machine, envs, choose }: { machine: Machine; envs: Machin
   const bot = env.bots.find((b) => b.default) ?? kept?.bot;
   const live = useConversation(machine, bot, show);
   const conv = live.view || !kept?.view ? live : { ...live, view: kept.view, session: kept.session };
-  // Her's sub-agents that wait and that work, for the sidebar's Progress entry, while her conversation is followed here.
+  // Her's sub-agents that wait and that work, for the Progress button on her page, while her conversation is followed here.
   const followed = live.rpc ? live.view : null;
   const agentsWaiting = followed ? runningAgents(followed).filter((a) => (a.view.live?.approvals.length ?? 0) > 0).length : -1;
   const agentsRunning = followed ? runningAgents(followed).length - agentsWaiting : -1;

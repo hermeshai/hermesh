@@ -1,9 +1,10 @@
 import Foundation
 
 // The work Her sent out, as the Progress page shows it (docs/her-team.md §15, her-client's progress.ts): for
-// each thing the owner said to her, the sub-agents she started for that and the coding sessions she started on
-// the mesh (the iPhone shows each as a post of its own, with what set it off at its foot); a sub-agent's post; and
-// its record, everything it thought, said and called, in order. Worked out from the
+// each thing the owner said to her, the sub-agents she started for that (the iPhone shows each as a post of its
+// own, with what set it off at its foot); a sub-agent's post; and its record, everything it thought, said and
+// called, in order. Coding sessions she started on the mesh are not her progress: the sessions' own pages hold
+// them (§15, 2026-11-16). Worked out from the
 // conversation the app already follows, sub-agents' own conversations included (their agent_events), so the
 // page asks her for nothing more.
 
@@ -30,14 +31,11 @@ public struct HerLaunch: Equatable, Sendable {
 
 public enum HerProgressTask: Equatable, Identifiable, Sendable {
     case agent(HerLaunch)
-    /// A coding session Her started through the mesh; how it stands is the app's to say, from the sessions it holds.
-    case session(key: String, HerStarted)
 
     /// The call that started it.
     public var id: String {
         switch self {
         case .agent(let l): l.callID
-        case .session(let key, _): key
         }
     }
 }
@@ -94,7 +92,6 @@ public func herProgress(_ v: HerSession) -> [HerProgressGroup] {
         case .assistant(_, let calls, _, _, _):
             for c in calls {
                 let r = results[c.id]
-                let target = herCallTarget(c.name, c.args).name
                 if c.name == "spawn_agent" {
                     guard r?.isError != true else { continue }
                     launched.insert(c.id)
@@ -103,8 +100,6 @@ public func herProgress(_ v: HerSession) -> [HerProgressGroup] {
                     let said = c.args["description"].string?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
                     add(.agent(HerLaunch(callID: c.id, name: name, description: agent.flatMap { $0.description.isEmpty ? nil : $0.description } ?? said,
                                          task: c.args["task"].string ?? "", agent: agent)))
-                } else if target == sessionStart, let r, !r.isError, let started = HerStarted(result: r) {
-                    add(.session(key: c.id, started))
                 } else if c.name == sendToUser, current != nil {
                     let state: CallState = r.map { $0.isError ? .failed : .done } ?? (v.live != nil && i == lastReply ? .live : .cancelled)
                     switch delivered(c, state, r) {

@@ -954,10 +954,17 @@ Decided by the owner on 2026-11-15, on the demo's board A2.
 
 Decided by the owner on 2026-11-15, on a clickable demo ([Hermesh ·
 进展](https://claude.ai/artifact/QHG99cUAwDCFf3fbpsggBT)), and built the same
-day on the Mac and the iPhone. Her hands work out: to sub-agents of her own
-(`spawn_agent`) and to coding sessions on the mesh (`session_start`). Her
-conversation says little of them, and should: Progress is where the owner
-follows that work, as they would ask a secretary how things stand.
+day on the Mac and the iPhone. Her hands work out to sub-agents of her own
+(`spawn_agent`). Her conversation says little of them, and should: Progress
+is where the owner follows that work, as they would ask a secretary how
+things stand.
+
+Changed by the owner on 2026-11-16: Progress is Her's own work, her
+sub-agents, and no coding session. It first held the coding sessions she
+started on the mesh (`session_start`) too, but those are the team's
+sessions: All Sessions holds them, by coding agent, and they read as
+somebody else's work among Her's. In her conversation each stays a card
+that opens the session (§4.4); its question is All Sessions' to ask.
 
 ### 15.1 The page
 
@@ -968,9 +975,9 @@ follows that work, as they would ask a secretary how things stand.
   menu button, as a page that draws its own top leaves its buttons there),
   on the Mac before her routines and ⋯. It opens Progress over her conversation (pushed on the iPhone, in
   her page's place on the Mac, whose sidebar keeps Her current), with a
-  way back to her. Its mark is an orange dot while a piece of her work
-  waits for the owner. Her coding sessions are counted as Watch brings
-  them; her sub-agents, while a page of hers follows her conversation.
+  way back to her. Its mark is an orange dot while a sub-agent of hers
+  waits for the owner, else a blue one while one is at work (2026-11-16),
+  counted while a page of hers follows her conversation.
 - **Groups.** One for each thing that set work off: the owner's message (its
   words head the group, with what Her last told the owner since), or a
   routine's run. A message that sent nothing out is no group. Agents whose
@@ -1030,10 +1037,6 @@ opens to its output, and Expand All Output opens them all. What it asks the
 owner is answered there, with the approval the conversation shows. Stop
 interrupts it (`agent_interrupt`).
 
-A coding session's card shows the session's own conversation: on the Mac
-inside Progress, with a link to it among all sessions; on the iPhone the
-session's page is pushed.
-
 It reads as a session does (the same rows for thoughts and calls), and is
 not one: a sub-agent is not among All Sessions, where it would read as work
 somebody sent to the team.
@@ -1078,8 +1081,33 @@ kind; the apps tell by the `/` and do not read on with it.
   with her-mock, the Mac app: the entry appears with Her; an empty page; a
   sub-agent's post under Needs you, what set it off from its ⓘ, Review to
   its record, the approval answered there, its report, time and tokens; the
-  post under Earlier once it ends; a coding session's post and its record.
+  post under Earlier once it ends; another at work, the top bar's "1 at
+  work" and its post under Now, with no busy bubble; Her's own call in her
+  busy bubble (§15.6); a coding session she starts, a card in her
+  conversation and no post.
 - `HERMESH_IPHONE_E2E=1 HERMESH_IPHONE_GREP=testHerProgress go test ./e2e
   -run '^TestIPhone$'`: the same story on the iPhone's feed: the post under
   Needs you, its ⓘ's sheet with the owner's words and Her's, Review to
-  the record, and the ended post under Earlier.
+  the record, and the ended post under Earlier; another at work, Progress
+  marked at work, its post under Now, no busy bubble; Her's own call in
+  her busy bubble. `testHerApprovalEnd`: under a conversation longer than
+  the page, a sub-agent's question in the composer's place leaves her last
+  words in view.
+
+### 15.6 The busy bubble
+
+Decided by the owner on 2026-11-16. The dots at the end of her
+conversation mean what they mean in any chat: she is answering. They show
+while her task runs and waits for no approval, and are gone once she has
+answered. A sub-agent at work after that is Progress's to show (its post
+under Now, the button's blue dot), not the conversation's: a background
+piece of work can run for half an hour, and dots that long only worry. In
+Her's bot mode she never waits for a sub-agent within a reply
+(`spawn_agent` there has no `wait`), so no sub-agent belongs in the bubble.
+
+While she is on a call of her own (not her words, `send_to_user`, nor a
+sub-agent she starts), the dots quieten and the call follows them,
+shimmering, in the words Progress says a sub-agent's step in: "Running
+df -h". It is read from the task's live tools alone (her-client's
+`busyBubble`, HermeshHer's `herBusyBubble`), nothing more is asked of her,
+and nothing of the conversation is worked out again for it.

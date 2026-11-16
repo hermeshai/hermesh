@@ -3755,16 +3755,6 @@
         }
       }
     },
-    "Its last turn failed": {
-      "localizations": {
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "上一轮失败了"
-          }
-        }
-      }
-    },
     "Its report to Her": {
       "localizations": {
         "zh-Hans": {
@@ -3935,16 +3925,6 @@
         }
       }
     },
-    "No longer on this iPhone": {
-      "localizations": {
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "这台 iPhone 上已经没有了"
-          }
-        }
-      }
-    },
     "No Thinking": {
       "localizations": {
         "zh-Hans": {
@@ -4071,6 +4051,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "进展"
+          }
+        }
+      }
+    },
+    "Progress, %lld at work": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "进展，%lld 个进行中"
           }
         }
       }
@@ -8614,16 +8604,6 @@
         }
       }
     },
-    "Working…": {
-      "localizations": {
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "正在干活…"
-          }
-        }
-      }
-    },
     "Worktrees with uncommitted changes: moved aside and kept, and you’re told where": {
       "localizations": {
         "zh-Hans": {
@@ -9956,16 +9936,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "正在输入…"
-          }
-        }
-      }
-    },
-    "Working on %lld things": {
-      "localizations": {
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "正在处理 %lld 件事"
           }
         }
       }

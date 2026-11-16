@@ -38,25 +38,11 @@
     "allow": "允许 Her 使用你的电脑"
   },
   "line": {
-    "agents": "正在处理{{things}}",
     "typing": "正在输入…"
   },
   "head": {
     "settings": "助手设置",
     "team": "团队：现在在做什么"
-  },
-  "things": {
-    "1": "一件事",
-    "2": "两件事",
-    "3": "三件事",
-    "4": "四件事",
-    "5": "五件事",
-    "6": "六件事",
-    "7": "七件事",
-    "8": "八件事",
-    "9": "九件事",
-    "10": "十件事",
-    "many": "{{count}} 件事"
   },
   "chat": {
     "log": "对话",
@@ -65,8 +51,6 @@
     "unread": "这段对话保存在 {{name}} 上，连上后会自动显示。",
     "copy": "拷贝",
     "image": "图片",
-    "busyOpen": "看看是哪几件事",
-    "busyClose": "收起",
     "retrying": "连接不稳，正在重试",
     "earlier": "更早的消息",
     "loadingEarlier": "正在载入更早的消息",
@@ -629,9 +613,7 @@
     "took": "用时 {{time}}",
     "tokens": "{{tokens}} tokens",
     "starting": "正在启动…",
-    "sessionGone": "这个会话不在这台 Mac 上了",
     "back": "进展",
-    "openSession": "在全部会话里打开",
     "brief": "Her 派的活",
     "steps_other": "过程 · {{count}} 步",
     "expandAll": "展开全部输出",
@@ -656,7 +638,6 @@
     },
     "review": "去批准",
     "files_other": "{{count}} 个文件",
-    "working": "正在干活…",
     "fromYou": "你 {{time}} · {{text}}",
     "fromSaid": "来自你的一句话",
     "fromRoutine": "来自定时任务",
@@ -664,6 +645,7 @@
     "sent_other": "这句话派出了 {{count}} 路",
     "close": "关闭",
     "why": "来自哪句话",
-    "waiting_other": "{{count}} 个在等你"
+    "waiting_other": "{{count}} 个在等你",
+    "atWork_other": "{{count}} 个进行中"
   }
 }

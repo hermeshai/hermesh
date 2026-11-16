@@ -522,15 +522,19 @@ public func herBusy(_ v: HerSession) -> Bool {
     (v.live.map { $0.approvals.isEmpty } ?? false) || v.agents.contains { $0.status == "running" }
 }
 
-/// A sub-agent at work, as the busy bubble names it: what Her called the work, else its name (the Mac's busyBubble).
-public struct HerWorkingAgent: Equatable, Sendable {
-    public var id: String
-    public var label: String
+/// What the busy bubble shows while Her answers (her-client's busyBubble): the call she is on, as Progress says a
+/// step, else the dots alone.
+public struct HerBusyBubble: Equatable, Sendable {
+    public var now: HerToolStep?
 }
 
-/// The sub-agents at work, in the order Her started them.
-public func herWorkingAgents(_ v: HerSession) -> [HerWorkingAgent] {
-    v.agents.filter { $0.status == "running" }.map { HerWorkingAgent(id: $0.id, label: $0.description.isEmpty ? $0.name : $0.description) }
+/// Nil while Her does not answer: waiting for an approval is not answering, nor is a sub-agent at work in the
+/// background, which Progress shows (docs/her-team.md §15). Her own words and the sub-agents she starts show as
+/// themselves, not as what she does.
+public func herBusyBubble(_ v: HerSession) -> HerBusyBubble? {
+    guard let live = v.live, live.approvals.isEmpty else { return nil }
+    let t = live.tools.last { ($0.phase == .running || $0.phase == .pending) && $0.name != sendToUser && $0.name != "spawn_agent" }
+    return HerBusyBubble(now: t.map { HerToolStep(callID: $0.callID, name: $0.name, category: $0.category, title: $0.title, state: .live, output: "") })
 }
 
 /// The op that answers an approval: Her's own, or a sub-agent's.

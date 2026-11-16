@@ -142,7 +142,3 @@ export function failureAdvice(kind: string, retryable: boolean): string {
   return retryable ? t("advice.retryable") : t("advice.unknown");
 }
 
-/** How many things, as the person reads it: 两件事, 2 things. */
-export function thingsText(n: number): string {
-  return n >= 1 && n <= 10 ? t(`things.${n}`) : t("things.many", { count: n });
-}

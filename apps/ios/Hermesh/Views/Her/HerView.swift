@@ -89,7 +89,7 @@ private struct HerPage: View {
                 MenuToolbarItem()
                 if let bot = chat.bot {
                     ToolbarItem(placement: .topBarTrailing) { HerFilesButton(new: bot.newDeliveries, older: herAnswers(machine.her, "deliveries/list") == false, inBar: true) }
-                    ToolbarItem(placement: .topBarTrailing) { HerProgressButton(waiting: herProgressWaiting(chat, model), inBar: true) }
+                    ToolbarItem(placement: .topBarTrailing) { HerProgressButton(marks: herProgressMarks(chat), inBar: true) }
                     ToolbarItem(placement: .topBarTrailing) { HerRoutinesButton(dot: herRoutineDot(bot.routines), inBar: true) }
                 }
             }
@@ -122,7 +122,7 @@ private struct HerPage: View {
                 }
                 Spacer()
                 if let bot = chat.bot, !sideBars {
-                    HerProgressButton(waiting: herProgressWaiting(chat, model))
+                    HerProgressButton(marks: herProgressMarks(chat))
                     HerRoutinesButton(dot: herRoutineDot(bot.routines))
                 }
             }
@@ -363,10 +363,11 @@ extension View {
 }
 
 /// Progress, at the top right of Her's page, or in the system's bar where it stands on the side (inBar): the work
-/// she sent out, marked while a piece of it waits for the owner.
+/// she sent out to her sub-agents (docs/her-team.md §15), marked orange while one waits for the owner, else blue
+/// while one is at work.
 private struct HerProgressButton: View {
     @Environment(AppModel.self) private var model
-    let waiting: Int
+    let marks: (waiting: Int, running: Int)
     var inBar = false
 
     var body: some View {
@@ -376,14 +377,14 @@ private struct HerProgressButton: View {
                 Button { model.path.append(.progress) } label: {
                     Image(systemName: "waveform.path.ecg")
                         .overlay(alignment: .topTrailing) {
-                            if waiting > 0 { Circle().fill(.orange).frame(width: 8, height: 8).offset(x: 5, y: -4) }
+                            if let dot { Circle().fill(dot).frame(width: 8, height: 8).offset(x: 5, y: -4) }
                         }
                 }
             } else {
                 Button { model.path.append(.progress) } label: {
                     Image(systemName: "waveform.path.ecg").font(.body.weight(.medium)).frame(width: 44, height: 44)
                         .overlay(alignment: .topTrailing) {
-                            if waiting > 0 { Circle().fill(.orange).frame(width: 8, height: 8).offset(x: -9, y: 11) }
+                            if let dot { Circle().fill(dot).frame(width: 8, height: 8).offset(x: -9, y: 11) }
                         }
                         .glassEffect(.regular.interactive(), in: .circle)
                         .contentShape(.circle)
@@ -391,9 +392,12 @@ private struct HerProgressButton: View {
                 .buttonStyle(.plain)
             }
         }
-        .accessibilityLabel(waiting > 0 ? Text("Progress, \(waiting) waiting for you") : Text("Progress"))
+        .accessibilityLabel(marks.waiting > 0 ? Text("Progress, \(marks.waiting) waiting for you")
+            : marks.running > 0 ? Text("Progress, \(marks.running) at work") : Text("Progress"))
         .accessibilityIdentifier("her-progress")
     }
+
+    private var dot: Color? { marks.waiting > 0 ? .orange : marks.running > 0 ? .accentColor : nil }
 }
 
 /// The files Her sent, beside the menu: how many are new since the owner last looked at them, or a mark while her

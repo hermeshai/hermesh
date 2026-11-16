@@ -38,25 +38,11 @@
     "allow": "Let Her use your computers"
   },
   "line": {
-    "agents": "Working on {{things}}",
     "typing": "Typing…"
   },
   "head": {
     "settings": "Assistant Settings",
     "team": "The team: what it is doing"
-  },
-  "things": {
-    "1": "1 thing",
-    "2": "2 things",
-    "3": "3 things",
-    "4": "4 things",
-    "5": "5 things",
-    "6": "6 things",
-    "7": "7 things",
-    "8": "8 things",
-    "9": "9 things",
-    "10": "10 things",
-    "many": "{{count}} things"
   },
   "chat": {
     "log": "Conversation",
@@ -65,8 +51,6 @@
     "unread": "This conversation is kept on {{name}}. It shows once the machine is back.",
     "copy": "Copy",
     "image": "Image",
-    "busyOpen": "See which ones",
-    "busyClose": "Hide",
     "retrying": "Connection unstable, retrying",
     "earlier": "Earlier messages",
     "loadingEarlier": "Loading earlier messages",
@@ -639,9 +623,7 @@
     "took": "Took {{time}}",
     "tokens": "{{tokens}} tokens",
     "starting": "Starting…",
-    "sessionGone": "This session is no longer on this Mac",
     "back": "Progress",
-    "openSession": "Open in All Sessions",
     "brief": "What Her asked",
     "steps_one": "Steps · {{count}}",
     "steps_other": "Steps · {{count}}",
@@ -668,7 +650,6 @@
     "review": "Review",
     "files_one": "{{count}} file",
     "files_other": "{{count}} files",
-    "working": "Working…",
     "fromYou": "You {{time}} · {{text}}",
     "fromSaid": "What you said",
     "fromRoutine": "What set it off",
@@ -678,6 +659,8 @@
     "close": "Close",
     "why": "Where it came from",
     "waiting_one": "{{count}} waiting for you",
-    "waiting_other": "{{count}} waiting for you"
+    "waiting_other": "{{count}} waiting for you",
+    "atWork_one": "{{count}} at work",
+    "atWork_other": "{{count}} at work"
   }
 }

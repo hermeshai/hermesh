@@ -36,8 +36,8 @@ export type Selection =
   | { kind: "her"; machine?: string }
   | { kind: "progress"; machine?: string; task?: ProgressTaskRef };
 
-/** A card of the Progress page: a sub-agent of Her's, by its id, or a coding session she started. */
-export type ProgressTaskRef = { agent: string } | { session: string };
+/** A card of the Progress page: a sub-agent of Her's, by its id. */
+export type ProgressTaskRef = { agent: string };
 
 export type Sheet =
   | { kind: "newGrant" }
@@ -101,7 +101,7 @@ type UI = {
   upgrading: boolean;
   /**
    * Her's sub-agents that wait for the owner and that work, as the conversation the Her page follows says; null
-   * while no page of hers follows one (the sidebar then counts her coding sessions alone).
+   * while no page of hers follows one.
    */
   herAgents: { waits: number; running: number } | null;
 };
