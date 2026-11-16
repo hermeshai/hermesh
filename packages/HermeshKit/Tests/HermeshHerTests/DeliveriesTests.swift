@@ -31,6 +31,13 @@ private func expected(_ key: String) -> [JSON] { shared[key].array! }
     }
 }
 
+@Test func aTabShowsOnlyItsKindWhateverHerAnswered() {
+    let mixed = page.joined(HerDeliveries(shared["next_page"])!)
+    #expect(mixed.only(media: true).files.map(\.name) == ["old.png"])
+    #expect(mixed.only(media: false).files.allSatisfy { !$0.kind.isMedia } && mixed.only(media: false).files.count == mixed.files.count - 1)
+    #expect(mixed.only(media: nil) == mixed)
+}
+
 @Test func aFileIsNewWhileItsLatestSendIsAfterWhatTheOwnerSaw() {
     #expect(page.files.filter { $0.isNew(seen: page.seen) }.map(\.name) == expected("new").map { $0.string! })
     #expect(page.next == 2 && page.seen == 4)
