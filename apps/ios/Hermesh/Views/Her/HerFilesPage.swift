@@ -59,14 +59,15 @@ private struct HerFilesList: View {
     @State private var failed: String?
     @State private var older = false
     @State private var loadingMore = false
-    @State private var expanded: Set<String> = []
     @State private var shown: Shown?
     @State private var sharing: URL?
     /// The latest send the list showed, and the mark it opened with: leaving is having seen it.
     @State private var sawUpTo = 0
     @State private var seenBefore: Int?
 
-    private var online: Bool { herReachable(machine) && chat.envUp }
+    /// The machine can be reached: the list is asked for at once, on a connection of its own, not after the
+    /// environment's connection this page holds has opened.
+    private var online: Bool { herReachable(machine) }
 
     /// What the list asks her for, again whenever it changes.
     private struct Asked: Equatable {
@@ -192,7 +193,7 @@ private struct HerFilesList: View {
     private func load() async {
         guard online else { return }
         do {
-            let page = try await chat.call("deliveries/list", params())
+            let page = try await chat.callAlone("deliveries/list", params())
             list = HerDeliveries(page)
             failed = nil
             older = false
@@ -207,7 +208,7 @@ private struct HerFilesList: View {
         loadingMore = true
         Task {
             defer { loadingMore = false }
-            if let j = try? await chat.call("deliveries/list", params(before: next)), let page = HerDeliveries(j), let had = list {
+            if let j = try? await chat.callAlone("deliveries/list", params(before: next)), let page = HerDeliveries(j), let had = list {
                 list = had.joined(page)
             }
         }
@@ -262,34 +263,46 @@ private struct HerFilesList: View {
         .accessibilityIdentifier("her-files-kind-\(k?.rawValue ?? "all")")
     }
 
-    @ViewBuilder private func row(_ f: HerDeliveredFile, seen: Int, bySource: Bool) -> some View {
+    /// A row, two lines: the name, with the new dot and when it was last sent; then Her's words with it (its size
+    /// when she said nothing), and how many versions there are. The rest (its size, where it came from, its
+    /// versions one by one) is on its page.
+    private func row(_ f: HerDeliveredFile, seen: Int, bySource: Bool) -> some View {
         let v = f.versions[0]
         let earlier = bot.sessionID != nil && v.sessionID != bot.sessionID
-        Button { open(f, 0) } label: {
-            HStack(alignment: .top, spacing: 12) {
+        let fresh = f.isNew(seen: seen)
+        let size = ByteCountFormatter.string(fromByteCount: Int64(v.size), countStyle: .file)
+        return Button { open(f, 0) } label: {
+            HStack(spacing: 12) {
                 HerFileIcon(file: f)
-                VStack(alignment: .leading, spacing: 2) {
-                    HStack(spacing: 6) {
+                VStack(alignment: .leading, spacing: 3) {
+                    HStack(alignment: .firstTextBaseline, spacing: 6) {
                         Text(f.name).font(.body.weight(.medium)).lineLimit(1).truncationMode(.middle)
-                        if f.isNew(seen: seen) {
-                            Circle().fill(Color.accentColor).frame(width: 8, height: 8).accessibilityLabel(Text("New file"))
+                        if fresh { Circle().fill(Color.accentColor).frame(width: 8, height: 8) }
+                        Spacer(minLength: 8)
+                        Text(when(v.sentAt)).font(.footnote).foregroundStyle(.secondary).monospacedDigit().layoutPriority(1)
+                    }
+                    HStack(alignment: .firstTextBaseline, spacing: 6) {
+                        Text(v.text ?? size).font(.subheadline).foregroundStyle(.secondary).lineLimit(1)
+                        Spacer(minLength: 8)
+                        if f.versions.count > 1 {
+                            Text("\(f.versions.count) versions")
+                                .font(.caption.weight(.semibold)).foregroundStyle(Color.accentColor)
+                                .padding(.horizontal, 7).padding(.vertical, 2)
+                                .background(Color.accentColor.opacity(0.12), in: .capsule)
+                                .layoutPriority(1)
                         }
                     }
-                    if let text = v.text { Text(text).font(.subheadline).foregroundStyle(.secondary).lineLimit(1) }
-                    HStack(spacing: 6) {
-                        Text(v.sentAt, format: .dateTime.month().day().hour().minute())
-                        Text(ByteCountFormatter.string(fromByteCount: Int64(v.size), countStyle: .file))
-                        if !bySource, let s = v.source { Label(s.name, systemImage: s.kind == .routine ? "clock" : "chevron.left.forwardslash.chevron.right").labelStyle(.titleAndIcon).lineLimit(1) }
-                        if earlier { Text("From a cleared conversation").lineLimit(1) }
-                    }
-                    .font(.caption).foregroundStyle(.secondary)
                 }
-                Spacer(minLength: 0)
             }
+            .padding(.vertical, 2)
             .contentShape(.rect)
             .opacity(canOpen(f, 0) ? 1 : 0.45)
         }
         .buttonStyle(.plain)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(Text(verbatim: [f.name, fresh ? String(localized: "New file") : nil, v.text, when(v.sentAt),
+                                            f.versions.count > 1 ? String(localized: "\(f.versions.count) versions") : nil].compactMap { $0 }.joined(separator: ", ")))
+        .accessibilityAddTraits(.isButton)
         .accessibilityIdentifier("her-file-row-\(f.name)")
         .contextMenu {
             Button { open(f, 0) } label: { Label("Preview", systemImage: "eye") }
@@ -297,35 +310,13 @@ private struct HerFilesList: View {
             Button { reply(f, 0) } label: { Label("Reply to Have Her Revise", systemImage: "arrowshape.turn.up.left") }
             Button { share(f, 0) } label: { Label("Share…", systemImage: "square.and.arrow.up") }
         }
-        if f.versions.count > 1 {
-            Button {
-                withAnimation(.snappy) { if expanded.contains(f.path) { expanded.remove(f.path) } else { expanded.insert(f.path) } }
-            } label: {
-                Label("\(f.versions.count) versions", systemImage: expanded.contains(f.path) ? "chevron.up" : "chevron.down")
-                    .font(.footnote.weight(.semibold)).foregroundStyle(Color.accentColor)
-            }
-            .buttonStyle(.plain)
-            .padding(.leading, 48)
-            .accessibilityIdentifier("her-file-versions-\(f.name)")
-            if expanded.contains(f.path) {
-                ForEach(Array(f.versions.enumerated()), id: \.element.seq) { i, x in
-                    Button { open(f, i) } label: {
-                        VStack(alignment: .leading, spacing: 2) {
-                            HStack(spacing: 6) {
-                                Text("Version \(f.versions.count - i)").font(.subheadline.weight(.medium))
-                                if i == 0 { Text("Latest").font(.caption).foregroundStyle(.secondary) }
-                                Text(x.sentAt, format: .dateTime.month().day().hour().minute()).font(.caption).foregroundStyle(.secondary)
-                            }
-                            if let text = x.text { Text(text).font(.footnote).foregroundStyle(.secondary).lineLimit(1) }
-                        }
-                        .padding(.leading, 48)
-                        .contentShape(.rect)
-                    }
-                    .buttonStyle(.plain)
-                    .accessibilityIdentifier("her-file-version-\(f.versions.count - i)")
-                }
-            }
-        }
+    }
+
+    /// When a file was last sent, as its row says it: the time under Today and Yesterday, the day before that.
+    private func when(_ d: Date) -> String {
+        Calendar.current.isDateInToday(d) || Calendar.current.isDateInYesterday(d)
+            ? d.formatted(date: .omitted, time: .shortened)
+            : d.formatted(.dateTime.month().day())
     }
 
     // MARK: Acting on a file
